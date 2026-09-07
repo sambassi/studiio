@@ -19,6 +19,7 @@
  * composant qui ne doit plus en monter un autre) — ce qu'un rendu ne peut
  * pas prouver aussi directement, et elles le disent.
  */
+import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -42,9 +43,13 @@ import {
 // ─────────────────────────────────────────────────────────────────────────
 const recuParAnalyse: { montage?: unknown }[] = [];
 vi.mock('@/components/creer/AnalyseRush', () => ({
-  default: (props: { montage?: unknown }) => {
+  default: (props: { montage?: unknown; avantAction?: React.ReactNode }) => {
     recuParAnalyse.push({ montage: props.montage });
-    return null;
+    /* ⚠️ LE MOCK REND `avantAction`. Depuis le lot « parcours PC », « Avancé »
+       et la phrase de validation humaine descendent au ras du bouton « Créer
+       ma vidéo », donc a travers ce composant. Un mock qui rend `null` les
+       ferait disparaitre de la mesure alors qu'ils sont bien a l'ecran. */
+    return props.avantAction ? <>{props.avantAction}</> : null;
   },
 }));
 
@@ -387,7 +392,11 @@ describe('5. `designStyle.montage`, sans migration', () => {
 describe('6. Studiio prépare, la personne vérifie', () => {
   it('6.1 la phrase est à l’écran avant même que la vidéo existe', async () => {
     const { container } = await ouvrirTournage();
-    expect(container.querySelector('[data-validation-humaine]')!.textContent)
+    const dits = container.querySelectorAll('[data-validation-humaine]');
+    // Une fois, pas zero (elle serait perdue) et pas deux (elle serait dite
+    // en double, une fois par le panneau et une fois par la chaine).
+    expect(dits.length).toBe(1);
+    expect(dits[0].textContent)
       .toContain('Studiio prépare la vidéo. Vous la vérifiez avant publication.');
   });
 

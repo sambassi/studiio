@@ -72,6 +72,10 @@ interface Props {
   audioInitial?: RecetteAudio | null;
   /** Passe-plat : signale la recette courante au proprietaire du brouillon. */
   onAudioChange?: (recette: RecetteAudio) => void;
+  /** Passe-plat : ce qui s'intercale entre le reglage audio et le bouton. */
+  avantAction?: React.ReactNode;
+  /** Passe-plat : une edition d'objectif ouverte et non validee bloque le CTA. */
+  actionBloquee?: boolean;
   onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
    * Passe-plat vers `PassagesSuggeres`, qui porte le bouton « Créer ma
@@ -120,7 +124,7 @@ interface Refus {
 
 export default function AnalyseRush({
   rushId, montage, onVideoLancee, audioDefaut, audioInitial, onAudioChange,
-  onEnregistrerAudioDefaut,
+  avantAction, actionBloquee, onEnregistrerAudioDefaut,
   variante = 'complete', onVoirAnalyse, relance, objectifCetteVideo,
 }: Props) {
   const chaine = variante === 'chaine';
@@ -559,6 +563,8 @@ export default function AnalyseRush({
               audioDefaut={audioDefaut}
               audioInitial={audioInitial}
               onAudioChange={onAudioChange}
+              avantAction={avantAction}
+              actionBloquee={actionBloquee}
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}
@@ -568,6 +574,16 @@ export default function AnalyseRush({
           )}
         </div>
       )}
+
+      {/* ⚠️ LE CRENEAU, RENDU ICI QUAND LA CHAINE NE L'EST PAS — ET A LA
+          RACINE, PAS DANS UN BLOC CONDITIONNE PAR L'ANALYSE.
+          `PassagesSuggeres` n'existe que sur une analyse REUSSIE ; avant cela
+          (jamais analysee, en attente, en cours, echouee) personne ne rendait
+          « Avancé » ni la phrase de validation humaine. Le parent ne peut pas
+          arbitrer : il connait l'etat du RUSH, pas celui de l'ANALYSE. La
+          garantie « exactement une fois » appartient donc a ce composant, et
+          les deux branches sont exclusives par construction. */}
+      {analyse?.etat !== 'reussie' && avantAction}
     </div>
   );
 }

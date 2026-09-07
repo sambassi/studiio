@@ -304,6 +304,15 @@ export interface MonObjectifPanelProps {
   /** L'objectif de la seule vidéo en cours. N'écrit rien côté compte. */
   onAppliquerACetteVideo?: (objectif: ObjectifCommunication | null) => void;
   /**
+   * Prévient qu'une édition est ouverte et pas encore validée.
+   *
+   * ⚠️ CE N'EST PAS UN SECOND OBJECTIF, C'EST UN VERROU. Tant que le wizard
+   * est ouvert avec des choix non validés, « Créer ma vidéo » doit refuser de
+   * partir : sinon on monte avec l'objectif d'AVANT pendant que l'écran
+   * montre celui d'après. Le brouillon reste interne ; seul ce booléen sort.
+   */
+  onEditionChange?: (enCoursNonValide: boolean) => void;
+  /**
    * L'objectif DÉJÀ appliqué à la vidéo en cours, s'il y en a un.
    *
    * ⚠️ IL SERT À LES DISTINGUER À L'ŒIL. Sans lui, le résumé ne pouvait
@@ -316,7 +325,7 @@ export interface MonObjectifPanelProps {
 
 export default function MonObjectifPanel({
   objectifEnregistre, chargement, onEnregistrerDefaut, onAppliquerACetteVideo,
-  objectifCetteVideo = null,
+  onEditionChange, objectifCetteVideo = null,
 }: MonObjectifPanelProps) {
   const [ouvert, setOuvert] = useState(false);
   const [etape, setEtape] = useState<Etape>(1);
@@ -367,6 +376,24 @@ export default function MonObjectifPanel({
   const agitSurLeMontage = useMemo(
     () => objectifPeutChangerLeMontage(brouillon), [brouillon],
   );
+
+  /**
+   * Une edition est « en cours et non validee » quand le wizard est ouvert ET
+   * que le brouillon differe de l'objectif qui fait foi aujourd'hui.
+   *
+   * ⚠️ ON COMPARE AU CANONIQUE, PAS AUX OBJETS. Chaque touche renormalise le
+   * brouillon et rend un objet neuf : comparer les references dirait
+   * « modifie » des l'ouverture, et bloquerait « Creer ma video » alors que
+   * personne n'a rien change.
+   */
+  const objectifQuiFaitFoi = objectifCetteVideo ?? objectifEnregistre;
+  const editionNonValidee = ouvert
+    && JSON.stringify(normaliserObjectif(brouillon))
+      !== JSON.stringify(normaliserObjectif(objectifQuiFaitFoi ?? OBJECTIF_DEFAUT));
+  useEffect(() => {
+    onEditionChange?.(editionNonValidee);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editionNonValidee]);
 
   const visibles = voirTout
     ? (TYPES_OBJECTIF as readonly TypeObjectif[])
@@ -466,9 +493,23 @@ export default function MonObjectifPanel({
                 {pourUneVideo ? 'Objectif de cette vidéo' : 'Objectif'}
               </p>
             </div>
+            {/* ⚠️ UNE SEULE VALEUR A L'ECRAN, TOUJOURS.
+
+                Mesure en production le 2026-09-07 : ce resume annoncait
+                « Promouvoir un evenement » pendant que le wizard, juste
+                dessous, affichait « Promouvoir un service ». Deux objectifs
+                contradictoires sur le meme ecran, et aucune facon de savoir
+                lequel partirait au montage — c'etait l'evenement, puisque
+                rien n'avait ete valide, mais rien ne le disait.
+
+                La valeur se retire donc pendant l'edition : tant que le
+                wizard est ouvert, LUI est la representation de l'objectif.
+                Le libelle et le bouton « Fermer » restent, eux, pour qu'on
+                sache toujours ou l'on est et comment sortir. */}
             {/* `pl-5` aligne la valeur sous le libelle, pas sous l'icone :
                 14 px de pictogramme plus 6 px d'ecart. Au-dessus de 640 px la
                 ligne se reforme et le decalage disparait. */}
+            {!ouvert && (
             <div className="flex min-w-0 items-center gap-1.5 pl-5">
               {chargement ? (
                 <Loader2 className="w-3 h-3 animate-spin text-gray-400" aria-hidden="true" />
@@ -493,8 +534,9 @@ export default function MonObjectifPanel({
                 <Check className="w-3 h-3 text-purple-400 shrink-0" aria-hidden="true" />
               )}
             </div>
+            )}
           </div>
-          {pourUneVideo && (
+          {pourUneVideo && !ouvert && (
             <p className="pl-5 text-[10px] text-gray-400">
               Objectif par défaut&nbsp;:{' '}
               <span data-mon-objectif-etat={aUnObjectif ? 'personnel' : 'defaut'}>
@@ -832,12 +874,18 @@ export default function MonObjectifPanel({
                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
                 >
                   {enregistrement && <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />}
-                  {pourUneVideo ? 'Utiliser pour cette vidéo' : 'Enregistrer comme mon objectif'}
+                  {/* ⚠️ « VALIDER », ET NON « UTILISER POUR CETTE VIDÉO ».
+                      L'ancien libellé laissait croire qu'il existait un
+                      objectif préparé et un autre déjà actif — deux choses
+                      dont on pouvait se demander laquelle partirait au
+                      montage. Il n'y en a qu'une : celle qu'on valide. */}
+                  {pourUneVideo ? 'Valider l’objectif' : 'Enregistrer comme mon objectif'}
                 </button>
                 {pourUneVideo && (
                   <>
                     <p className="text-[11px] text-gray-400">
-                      Cela ne modifiera pas tes prochaines vidéos.
+                      Cet objectif devient celui de cette vidéo. Tes prochaines
+                      vidéos ne changent pas.
                     </p>
                     <label className="flex min-h-[44px] cursor-pointer items-start gap-2 text-[11px] text-gray-400">
                       <input
@@ -895,8 +943,10 @@ export default function MonObjectifPanel({
             )}
           </div>
 
-          <p className="text-[11px] text-gray-400">
-            Rien n’est enregistré tant que tu n’as pas appliqué.
+          <p className="text-[11px] text-gray-400" data-mon-objectif-non-valide={editionNonValidee ? 'oui' : 'non'}>
+            {editionNonValidee
+              ? 'Modifications non validées — clique « Valider l’objectif ».'
+              : 'Rien n’est enregistré tant que tu n’as pas validé.'}
           </p>
         </div>
       )}

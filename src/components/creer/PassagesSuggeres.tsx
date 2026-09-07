@@ -69,6 +69,24 @@ interface Props {
   audioInitial?: RecetteAudio | null;
   /** Signale la recette courante au proprietaire du brouillon. N'ecrit rien. */
   onAudioChange?: (recette: RecetteAudio) => void;
+  /**
+   * Ce qui s'intercale entre le reglage audio et le bouton.
+   *
+   * ⚠️ UN CRENEAU PLUTOT QU'UNE COUPURE EN DEUX. Le bouton « Creer ma video »
+   * et le reglage audio partagent l'etat de ce composant ; les separer pour
+   * glisser « Avance » entre eux aurait demande de remonter cet etat d'un
+   * cran. Le creneau obtient le meme ordre sans y toucher.
+   */
+  avantAction?: React.ReactNode;
+  /**
+   * Empeche de lancer la creation.
+   *
+   * ⚠️ EXPLICITE, ET NON UNE APPLICATION CACHEE. Quand une edition d'objectif
+   * est ouverte et non validee, lancer le montage partirait avec l'objectif
+   * d'AVANT pendant que l'ecran montre celui d'apres. On refuse, et on dit
+   * pourquoi — plutot que d'appliquer en douce ce que personne n'a valide.
+   */
+  actionBloquee?: boolean;
   /** Enregistre la recette comme defaut. Absent = le bouton ne s'affiche pas. */
   onEnregistrerAudioDefaut?: (recette: RecetteAudio) => Promise<boolean>;
   /**
@@ -106,7 +124,7 @@ type EtatChaine =
 
 export default function PassagesSuggeres({
   analyseId, montage, audioDefaut, audioInitial, onAudioChange,
-  onEnregistrerAudioDefaut, onVideoLancee,
+  avantAction, actionBloquee, onEnregistrerAudioDefaut, onVideoLancee,
   objectifCetteVideo,
   variante = 'complete', onVoirAnalyse,
 }: Props) {
@@ -279,7 +297,12 @@ export default function PassagesSuggeres({
     objectifCetteVideo, onVideoLancee,
   ]);
 
-  if (chargement) return null;
+  /* ⚠️ PENDANT LE CHARGEMENT, LE CRENEAU RESTE. Rendre `null` ici faisait
+     disparaitre « Avancé » et la phrase de validation humaine le temps que
+     les passages arrivent — un trou court, mais reel, et le seul chemin vers
+     les reglages avances. Le reste de l'ecran, lui, ne s'affiche toujours
+     pas tant qu'il n'y a rien a montrer. */
+  if (chargement) return avantAction ? <>{avantAction}</> : null;
 
   const candidats = generation?.candidats ?? [];
   const aReussi = generation?.etat === 'reussie';
@@ -433,11 +456,13 @@ export default function PassagesSuggeres({
               ni si quelque chose avançait encore. Les étapes, elles, sont
               celles que la chaîne et le moteur annoncent vraiment. */}
           {chaine.sorte === 'encours' && <EtapesCreation jalon={chaine.etape} />}
+          {avantAction}
           <button
             type="button"
             onClick={creer}
-            disabled={chaine.sorte === 'encours'}
+            disabled={chaine.sorte === 'encours' || actionBloquee === true}
             data-chaine-bouton
+            data-chaine-bloquee={actionBloquee ? 'oui' : 'non'}
             data-chaine-etat={chaine.sorte}
             className="w-full min-h-[36px] rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
           >
@@ -445,6 +470,11 @@ export default function PassagesSuggeres({
               ? phraseChaine(chaine.etape)
               : 'Créer ma vidéo'}
           </button>
+          {actionBloquee && chaine.sorte !== 'encours' && (
+            <p className="text-[10px] text-gray-400" data-chaine-blocage>
+              Valide d’abord ton objectif.
+            </p>
+          )}
           {chaine.sorte === 'dit' && (
             <p
               className={`text-[10px] leading-relaxed ${chaine.alerte ? 'text-amber-400/80' : 'text-gray-400'}`}

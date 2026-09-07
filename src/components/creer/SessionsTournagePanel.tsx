@@ -105,6 +105,23 @@ interface Props {
    * et n'en fait rien d'autre.
    */
   onObjectifRestaure?: (objectif: ObjectifCommunication | null) => void;
+  /**
+   * Les DECISIONS qui suivent le choix du rush : objectif, puis style.
+   *
+   * ⚠️ UN CRENEAU, ET NON UN IMPORT. Ces deux panneaux appartiennent a
+   * `AutopilotPanel` — ils portent son etat, ses routes, ses erreurs. Les
+   * importer ici en ferait des enfants de ce composant et deplacerait leur
+   * etat avec eux. Le creneau ne deplace que leur POSITION.
+   *
+   * ⚠️ ET LA POSITION EST LA DECISION. Objectif et style vivaient APRES le
+   * format, la duree, l'audio et le bouton « Creer ma video » : on choisissait
+   * comment monter avant d'avoir dit pourquoi la video existe, et le bouton
+   * qui lance tout se presentait au milieu des reglages. Mesure en direct par
+   * Bassi le 2026-09-07 : « Creer ma video apparait trop tot ».
+   */
+  decisions?: React.ReactNode;
+  /** Passe-plat : bloque « Creer ma video » tant qu un objectif est en edition. */
+  actionBloquee?: boolean;
   /** Le réglage AUDIO enregistré du compte. Passe-plat vers `AnalyseRush`. */
   audioDefaut?: RecetteAudio;
   /** Enregistre la recette audio comme défaut. Absent = bouton masqué. */
@@ -152,7 +169,8 @@ interface Props {
 
 export default function SessionsTournagePanel({
   montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee, audioDefaut,
-  onEnregistrerAudioDefaut, avance, objectifCetteVideo, onObjectifRestaure,
+  onEnregistrerAudioDefaut, avance, decisions, actionBloquee,
+  objectifCetteVideo, onObjectifRestaure,
 }: Props = {}) {
   const [sessions, setSessions] = useState<ShootSession[]>([]);
   const [selection, setSelection] = useState<string | null>(null);
@@ -474,6 +492,33 @@ export default function SessionsTournagePanel({
       .replace(/^\d{10,}-/, '')
     : '';
 
+  /* « Avancé » + la phrase de validation humaine. La ligne descend au ras du
+     bouton « Créer ma vidéo » quand la chaîne est là — c'est l'ordre demandé.
+     ⚠️ MAIS elle doit exister AUSSI quand aucun rush n'est encore vérifié :
+     sinon les réglages avancés deviennent inatteignables tant que l'analyse
+     tourne. Les deux emplacements sont mutuellement exclusifs, jamais en
+     double : `chaineVisible` arbitre. */
+  const chaineVisible = rushActif !== null && rushActif !== undefined
+    && rushActif.etat === 'verifie';
+  const ligneAvance = (
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setTiroir('avance')}
+                data-ouvrir-avance
+                className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[11px]
+                  text-gray-500 hover:text-gray-300 focus-visible:outline-none
+                  focus-visible:ring-2 focus-visible:ring-purple-500 transition-colors"
+              >
+                <Settings2 className="h-3.5 w-3.5" aria-hidden="true" /> Avancé
+              </button>
+              {/* La validation humaine, dite une fois, en petit. */}
+              <p className="text-[10px] text-gray-600" data-validation-humaine>
+                Studiio prépare la vidéo. Vous la vérifiez avant publication.
+              </p>
+            </div>
+  );
+
   return (
     <div className="space-y-4" data-tournage-panel>
       {/* ══ EN-TETE ══════════════════════════════════════════════════════
@@ -561,6 +606,12 @@ export default function SessionsTournagePanel({
             envois={envois}
           />
 
+          {/* ══ OBJECTIF, PUIS STYLE ═════════════════════════════════════
+              Le rush dit AVEC QUOI. L'objectif dit POURQUOI, le style dit
+              A QUOI CA RESSEMBLE. Les trois se decident avant de parler de
+              format, de duree ou de son. */}
+          {decisions}
+
           {/* ══ FORMAT ET DUREE ══════════════════════════════════════════
               Une ligne, deux menus. La carte « Reglages de la video » qui les
               entourait n'apportait qu'un cadre et un titre. */}
@@ -627,6 +678,14 @@ export default function SessionsTournagePanel({
               audioDefaut={audioDefaut}
               audioInitial={audioBrouillon}
               onAudioChange={setAudioVideo}
+              /* ⚠️ « AVANCE » DESCEND ENTRE L'AUDIO ET LE BOUTON, et c'est la
+                 seule facon d'obtenir l'ordre demande sans casser en deux un
+                 composant qui tient l'etat audio ET l'action. « Creer ma
+                 video » redevient ainsi la DERNIERE chose de l'ecran, apres
+                 le rush, l'objectif, le style, le format, la duree, le son et
+                 les reglages avances. */
+              actionBloquee={actionBloquee}
+              avantAction={ligneAvance}
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}
@@ -641,23 +700,8 @@ export default function SessionsTournagePanel({
             </p>
           )}
 
-          {/* ══ AVANCE ═══════════════════════════════════════════════════ */}
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setTiroir('avance')}
-              data-ouvrir-avance
-              className="inline-flex items-center gap-1.5 rounded-lg px-1.5 py-1 text-[11px]
-                text-gray-500 hover:text-gray-300 focus-visible:outline-none
-                focus-visible:ring-2 focus-visible:ring-purple-500 transition-colors"
-            >
-              <Settings2 className="h-3.5 w-3.5" aria-hidden="true" /> Avancé
-            </button>
-            {/* La validation humaine, dite une fois, en petit. */}
-            <p className="text-[10px] text-gray-600" data-validation-humaine>
-              Studiio prépare la vidéo. Vous la vérifiez avant publication.
-            </p>
-          </div>
+          {!chaineVisible && ligneAvance}
+
         </>
       )}
 

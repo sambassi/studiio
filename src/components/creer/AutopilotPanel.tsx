@@ -268,6 +268,14 @@ export default function AutopilotPanel({
    */
   const [objectifCetteVideo, setObjectifCetteVideo] = useState<ObjectifCommunication | null>(null);
   /**
+   * Une edition d'objectif est ouverte et pas encore validee.
+   *
+   * ⚠️ CE N'EST PAS UN SECOND OBJECTIF. C'est le verrou qui empeche de
+   * lancer un montage avec l'objectif d'AVANT pendant que l'ecran montre
+   * celui d'apres — la confusion exacte relevee en direct le 2026-09-07.
+   */
+  const [objectifEnEdition, setObjectifEnEdition] = useState(false);
+  /**
    * Quelle médiathèque est ouverte, et pour quoi.
    *
    * ⚠️ PAS UN BOOLEEN. Il y a maintenant DEUX points d'ouverture — les rushes
@@ -878,40 +886,32 @@ export default function AutopilotPanel({
                  qui l'ecrit. Il remonte, et rien de plus : aucune route n'est
                  appelee, le defaut du compte ne bouge pas. */
               onObjectifRestaure={setObjectifCetteVideo}
+              /* ⚠️ UN CRENEAU, ET NON UN DEMENAGEMENT DE CODE. Ces deux
+                 panneaux gardent leur etat, leurs routes et leurs erreurs
+                 ICI ; seule leur POSITION change, et elle change parce que
+                 l'ordre etait faux : on croisait « Creer ma video » AVANT
+                 d'avoir dit pourquoi la video existe ni a quoi elle
+                 ressemble. */
+              decisions={(
+                <>
+                  <MonObjectifPanel
+                    objectifEnregistre={monObjectif}
+                    chargement={monObjectifChargement}
+                    onEnregistrerDefaut={enregistrerMonObjectif}
+                    onAppliquerACetteVideo={setObjectifCetteVideo}
+                    onEditionChange={setObjectifEnEdition}
+                    objectifCetteVideo={objectifCetteVideo}
+                  />
+                  <MonStylePanel
+                    profilEnregistre={monStyle}
+                    chargement={monStyleChargement}
+                    onEnregistrer={enregistrerMonStyle}
+                  />
+                </>
+              )}
+              actionBloquee={objectifEnEdition}
             />
           </div>
-
-{/* ── MON OBJECTIF ─────────────────────────────────────────────
-              POURQUOI la video existe. Regle une fois, applique ensuite tout
-              seul — et modifiable pour une seule video sans toucher au
-              defaut du compte.
-
-              ⚠️ AVANT « Mon style », ET C'EST L'ORDRE DE LA DECISION. On
-              choisit ce qu'on veut obtenir, puis a quoi cela ressemble. */}
-          <MonObjectifPanel
-            objectifEnregistre={monObjectif}
-            chargement={monObjectifChargement}
-            onEnregistrerDefaut={enregistrerMonObjectif}
-            onAppliquerACetteVideo={setObjectifCetteVideo}
-            objectifCetteVideo={objectifCetteVideo}
-          />
-
-{/* ── MON STYLE ────────────────────────────────────────────────
-              L'identite visuelle du compte : look, logo, bandeau de fin,
-              transitions. Reglee UNE FOIS, appliquee ensuite toute seule aux
-              videos de l'Autopilote.
-
-              ⚠️ SA PROPRE ROUTE, ET NON `PUT /api/autopilot/config`. Celle-ci
-              reecrit TOUTES les colonnes — cadence, mode, plateformes,
-              plancher de credits : un champ oublie par l'ecran remettrait un
-              reglage a son defaut sans un mot. Et elle ne verifie pas la
-              PROPRIETE du logo, ce que `PUT /api/autopilot/profil-creatif`
-              fait avant d'ecrire. */}
-          <MonStylePanel
-            profilEnregistre={monStyle}
-            chargement={monStyleChargement}
-            onEnregistrer={enregistrerMonStyle}
-          />
 
         </div>
       )}

@@ -214,7 +214,10 @@ describe('5. Le bouton ne part jamais deux fois', () => {
     // et un libelle qui suit l'etape plutot que « Creer ma video ».
     const src = readFileSync(
       path.join(process.cwd(), 'src/components/creer/PassagesSuggeres.tsx'), 'utf8');
-    expect(src).toContain("disabled={chaine.sorte === 'encours'}");
+    // Le verrou « encours » reste, mais il n'est plus SEUL : le lot « parcours
+    // PC » y ajoute le verrou d'objectif non valide. On tient donc l'etat qui
+    // desarme, pas la forme exacte de l'expression.
+    expect(src).toMatch(/disabled=\{chaine\.sorte === 'encours'/);
     expect(src).toContain('phraseChaine(chaine.etape)');
     // Le verrou de tick, qui bloque le double clic avant meme le rendu React.
     expect(src).toContain('verrouRef.current');
