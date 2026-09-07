@@ -100,6 +100,17 @@ interface Props {
    */
   formatSouhaite?: string;
   /**
+   * L'analyse du rush SELECTIONNE, dont la premiere vignette sert d'apercu
+   * tant qu'aucune video n'existe.
+   *
+   * ⚠️ UN IDENTIFIANT, PAS UNE URL. La route des vignettes est authentifiee
+   * et sert les octets derriere la session ; la construire ici garde le
+   * meme chemin que la bande de rushes, deja eprouve. `null` quand aucun
+   * rush n'est choisi ou qu'il n'a pas encore d'analyse : le cadre retombe
+   * alors sur son icone, jamais sur une zone noire muette.
+   */
+  analyseApercuId?: string | null;
+  /**
    * Compteur de réveil. Chaque incrément relance une lecture.
    *
    * Nécessaire parce que le sondage S'ARRÊTE sur un état terminal — et
@@ -129,8 +140,18 @@ type Etat =
 
 export default function VideosPretes({
   sessionId, aucunRush, relance = 0, onEtat, fetcher, formatSouhaite,
+  analyseApercuId = null,
 }: Props) {
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
+  /**
+   * La vignette d'apercu a echoue (analyse sans image, route en 404).
+   *
+   * ⚠️ REMIS A ZERO A CHAQUE CHANGEMENT DE RUSH : garder l'echec du rush
+   * precedent priverait le suivant de son image alors qu'il en a une.
+   */
+  const [apercuCasse, setApercuCasse] = useState(false);
+  useEffect(() => { setApercuCasse(false); }, [analyseApercuId]);
+  const apercu = apercuCasse ? null : analyseApercuId;
   /**
    * La derniere video REELLEMENT prete de cette session.
    *
@@ -303,13 +324,42 @@ export default function VideosPretes({
    */
   const CadreFormat = ({ enfant }: { enfant?: React.ReactNode }) => {
     const [l, h] = RATIOS_APERCU[formatSouhaite ?? ''] ?? RATIOS_APERCU['9:16'];
+    /* ⚠️ UNE IMAGE, PAS UN `<video>`. Le lecteur ne se monte qu'au clic — la
+       regle du haut de ce fichier ne bouge pas d'un pouce. Ce que l'on
+       montre ici est la premiere vignette de l'analyse, une JPEG de quelques
+       kilo-octets, servie par la meme route que la bande de rushes. Aucun
+       MP4 n'est demande, aucun octet de rush n'est telecharge. */
+    const image = apercu !== null
+      ? `/api/autopilot/analyses/${apercu}/vignettes/0`
+      : null;
     return (
       <div
-        className="flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.02]"
+        className="relative flex items-center justify-center overflow-hidden rounded-lg
+          border border-white/10 bg-white/[0.02]"
         style={geometrieApercu(l, h)}
         data-videos-cadre={formatSouhaite ?? '9:16'}
       >
-        {enfant ?? <Film className="h-6 w-6 text-gray-700" aria-hidden="true" />}
+        {image && (
+          /* `key` sur l'URL : sans lui React garde l'ancienne image affichee
+             pendant le chargement de la nouvelle, et changer de rush laissait
+             une seconde la vignette du rush precedent. */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={image}
+            src={image}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onError={() => setApercuCasse(true)}
+            data-videos-apercu-rush={apercu ?? undefined}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
+        <span className="relative">
+          {enfant ?? (image
+            ? null
+            : <Film className="h-6 w-6 text-gray-700" aria-hidden="true" />)}
+        </span>
       </div>
     );
   };

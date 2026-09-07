@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
-  Sparkles,
+  Sparkles, ChevronRight,
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
@@ -197,7 +197,10 @@ export default function AutopilotPanel({
    * vit dans la colonne de droite, hors de cet arbre : sans ces deux signaux,
    * il faudrait un second lecteur ici — la duplication qu'on vient d'enlever.
    */
-  onSessionChange?: (etat: { sessionId: string | null; aucunRush: boolean; format: string }) => void;
+  onSessionChange?: (etat: {
+    sessionId: string | null; aucunRush: boolean; format: string;
+    analyseApercuId: string | null;
+  }) => void;
   onVideoLancee?: () => void;
   /**
    * Remonte la configuration à chaque changement — c'est ce qui alimente
@@ -680,6 +683,23 @@ export default function AutopilotPanel({
                       Réglages utilisés par les créations automatiques. La vidéo
                       que vous créez ici ne s’en sert pas.
                     </p>
+                    {/* ⚠️ LA SEULE PORTE VERS LA SUITE DE LA CONFIGURATION
+                        AUTONOME depuis l'ecran de creation manuelle. Elle
+                        NOMME sa destination au lieu de dire « Suivant », et
+                        elle est discrete : le geste principal de cet ecran
+                        reste « Créer ma vidéo ». */}
+                    <button
+                      type="button"
+                      onClick={() => setEtape(2)}
+                      data-autonome-configurer
+                      className="mt-2 inline-flex items-center gap-1 rounded-lg px-1.5 py-1
+                        text-[11px] text-gray-400 hover:text-gray-200
+                        focus-visible:outline-none focus-visible:ring-2
+                        focus-visible:ring-purple-500 transition-colors"
+                    >
+                      Configurer l’Autopilote autonome
+                      <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
                   </div>
                   <div className="space-y-3" data-autonome-rushes>{/* ── Banque de rushes ─── */}
           <div>
@@ -1440,7 +1460,15 @@ export default function AutopilotPanel({
         </div>
       )}
 
-      {/* ── Navigation ───────────────────────────────────────────────── */}
+      {/* ── Navigation ───────────────────────────────────────────────────
+          ⚠️ ABSENTE DE L'ETAPE 1, ET C'EST LE POINT. Cette etape ne contient
+          plus que la creation MANUELLE : un « Suivant » plein d'accent y
+          faisait concurrence a « Créer ma vidéo », le seul geste que cet
+          ecran demande. La configuration autonome, elle, se poursuit depuis
+          le tiroir « Avancé → Autopilote autonome », qui la nomme.
+          Rien n'est supprime : le fil d'Ariane au-dessus reste cliquable et
+          mene a n'importe quelle etape, celle-ci comprise. */}
+      {etape !== 1 && (
       <div className="flex items-center justify-between gap-2 pt-1">
         <button
           type="button"
@@ -1464,6 +1492,7 @@ export default function AutopilotPanel({
           </button>
         )}
       </div>
+      )}
 
       {error && (
         <p className="flex items-start gap-1.5 text-xs text-red-400">

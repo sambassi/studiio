@@ -141,6 +141,12 @@ interface Props {
     sessionId: string | null;
     aucunRush: boolean;
     /**
+     * L'analyse du rush CHOISI, pour que l'apercu montre une image de CE
+     * rush plutot qu'un cadre vide. `null` tant qu'aucun rush n'est choisi
+     * ou qu'il n'a pas encore d'analyse.
+     */
+    analyseApercuId: string | null;
+    /**
      * Le format CHOISI a l'instant, pas celui du dernier rendu.
      *
      * ⚠️ C'EST CE QUI CORRIGE L'APERCU QUI MENTAIT. Le cadre de droite se
@@ -419,9 +425,15 @@ export default function SessionsTournagePanel({
   // on regarde. Sans ce signal, il faudrait un second lecteur ici.
   useEffect(() => {
     onSessionChange?.({
-      sessionId: selection, aucunRush: rushes.length === 0, format: montage.format,
+      sessionId: selection,
+      aucunRush: rushes.length === 0,
+      format: montage.format,
+      /* ⚠️ LE RUSH CHOISI, PAS LE PREMIER DE LA LISTE : l'apercu doit suivre
+         la selection, sinon changer de rush laisse l'image de l'ancien. */
+      analyseApercuId: (rushChoisi ? analyses[rushChoisi]?.id : null) ?? null,
     });
-  }, [selection, rushes.length, montage.format, onSessionChange]);
+  }, [selection, rushes.length, montage.format, rushChoisi,
+    rushChoisi ? analyses[rushChoisi]?.id : null, onSessionChange]);
 
   const creer = async () => {
     const t = titre.trim();

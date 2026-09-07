@@ -3164,8 +3164,13 @@ export default function AssistantWizard() {
    * n'existe, puis la vidéo elle-même.
    */
   const [tournageRegarde, setTournageRegarde] = useState<
-    { sessionId: string | null; aucunRush: boolean; format: string }
-  >({ sessionId: null, aucunRush: true, format: '9:16' });
+    {
+      sessionId: string | null; aucunRush: boolean; format: string;
+      /* L'analyse du rush choisi : c'est elle qui donne son image a l'apercu
+         tant qu'aucune video n'existe. */
+      analyseApercuId: string | null;
+    }
+  >({ sessionId: null, aucunRush: true, format: '9:16', analyseApercuId: null });
   const [relanceVideos, setRelanceVideos] = useState(0);
   const [etatVideo, setEtatVideo] = useState<'vide' | 'en_cours' | 'prete' | 'echec'>('vide');
   /** La vidéo prend la place de l'aperçu du projet dès qu'elle existe. */
@@ -9057,6 +9062,7 @@ export default function AssistantWizard() {
                 sessionId={tournageRegarde.sessionId}
                 aucunRush={tournageRegarde.aucunRush}
                 formatSouhaite={tournageRegarde.format}
+                analyseApercuId={tournageRegarde.analyseApercuId}
                 relance={relanceVideos}
                 onEtat={setEtatVideo}
               />

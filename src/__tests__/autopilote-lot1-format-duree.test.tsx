@@ -428,6 +428,10 @@ describe('7. Un seul endroit où regarder', () => {
     await ouvrirTournage({ onSessionChange });
     expect(onSessionChange).toHaveBeenLastCalledWith({
       sessionId: SESSION, aucunRush: false, format: MONTAGE_DEFAUT.format,
+      /* L'analyse du rush choisi, qui donne son image a l'apercu. `null` ici :
+         le fixture n'expose aucune analyse, et le cadre retombe alors sur son
+         icone plutot que sur une zone vide. */
+      analyseApercuId: null,
     });
   });
 
