@@ -98,6 +98,36 @@ export async function preparerBaseSocle(client: Client): Promise<void> {
   }
 }
 
+/**
+ * La chaine complete jusqu'au montage — A_7B0.
+ *
+ * ⚠️ LES FICHIERS DE PRODUCTION, DANS L'ORDRE, ET RIEN D'AUTRE. Un harnais
+ * qui recopierait le schema du montage testerait sa propre copie ; c'est la
+ * meme regle que pour la fonction de credits, et elle vaut d'autant plus ici
+ * que ce qu'on mesure est une propriete du MOTEUR — l'atomicite d'une RPC.
+ */
+export const MIGRATIONS_MONTAGE = [
+  ...MIGRATIONS,
+  join(RACINE, 'migrations/2026-09-02-rush-candidate-sets.sql'),
+  join(RACINE, 'migrations/2026-09-03-rush-transcriptions.sql'),
+  join(RACINE, 'migrations/2026-09-04-rush-clip-sets.sql'),
+  join(RACINE, 'migrations/2026-09-05-rush-montage-plans.sql'),
+  join(RACINE, 'migrations/2026-09-06-rush-montage-renders.sql'),
+  join(RACINE, 'migrations/2026-09-08-rush-montage-plan-sources.sql'),
+  join(RACINE, 'migrations/2026-09-08-rush-montage-politique-suppression.sql'),
+  join(RACINE, 'migrations/2026-09-08-autopilot-multi-rush-plan-rpc.sql'),
+];
+
+/** Repose la base jusqu'au montage multi-rush inclus. */
+export async function preparerBaseMontage(client: Client): Promise<void> {
+  await client.query('drop schema if exists public cascade; create schema public;');
+  await client.query(readFileSync(join(RACINE, 'tests-pg/schema-prealable.sql'), 'utf-8'));
+  for (const fichier of MIGRATIONS_MONTAGE) {
+    if (!existsSync(fichier)) throw new Error(`Migration absente : ${fichier}`);
+    await client.query(readFileSync(fichier, 'utf-8'));
+  }
+}
+
 /** Applique un fichier de migration precis, tel qu'il partira en production. */
 export async function appliquerMigration(client: Client, fichier: string): Promise<void> {
   if (!existsSync(fichier)) throw new Error(`Migration absente : ${fichier}`);

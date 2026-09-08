@@ -22,7 +22,10 @@ import {
   formatValide, planValide,
   type FormatMontage, type IdentitePlan, type MontagePlan, type PlanMontage,
 } from './montage-contrat';
-import { fusionnerJeuxSources, type JeuSource } from './montage-source';
+import {
+  empreinteJeuxSources, fusionnerJeuxSources, type JeuSource,
+} from './montage-source';
+import { UUID } from './clip-contrat';
 
 // ⚠️ UN SEUL LITTÉRAL, JAMAIS UNE CONCATÉNATION. `supabase-js` analyse cette
 // chaîne AU NIVEAU DES TYPES ; un `+` la ramène à `string`, et le client rend
@@ -335,4 +338,214 @@ export async function ecrireSourcesPlan(
     throw new Error(error.message || 'ecriture des sources impossible');
   }
   return { ecrites: lignes.length, motif: null };
+}
+
+// ---------------------------------------------------------------------------
+// La creation ATOMIQUE d'un plan multi-rush — A_7B0
+// ---------------------------------------------------------------------------
+
+/**
+ * ⚠️ DEUX SOURCES AU MINIMUM, ET LE MONO-RUSH GARDE SON CHEMIN.
+ *
+ * Faire passer aussi les plans a une source par la RPC aurait l'air d'une
+ * unification ; ce serait un changement de comportement pour tout le parc. Un
+ * plan mono-rush laisse `source_set_fingerprint` a NULL et vit sous l'index
+ * d'identite historique ; lui donner une empreinte le ferait basculer sous
+ * l'index multi-rush, et ses MP4 deja rendus deviendraient introuvables.
+ */
+export const SOURCES_MULTI_RUSH_MIN = 2;
+
+/**
+ * ⚠️ 64 PARCE QUE `ordinal` S'ARRETE A 63 — c'est la borne MECANIQUE posee par
+ * A_7M, pas une politique produit. Le nombre de rushes qu'un montage a le
+ * droit d'agreger sera decide par A_7b, plus bas que cette limite, et pourra
+ * evoluer sans toucher a la base.
+ */
+export const SOURCES_MULTI_RUSH_MAX = 64;
+
+/** Ce que la RPC peut repondre. Des VALEURS, jamais des exceptions. */
+export type IssuePlanMultiRush =
+  | 'cree'
+  | 'existant'
+  | 'parametres_invalides'
+  | 'empreinte_invalide'
+  | 'sources_insuffisantes'
+  | 'sources_trop_nombreuses'
+  | 'source_dupliquee'
+  | 'source_inconnue'
+  | 'identite_conflictuelle'
+  /** Refuse cote serveur : les sources du JSON ne sont pas celles annoncees. */
+  | 'sources_incoherentes';
+
+/**
+ * L'identite d'un plan multi-rush.
+ *
+ * ⚠️ LES QUATRE SCALAIRES HISTORIQUES N'Y SONT PAS. `clipSetId`,
+ * `clipSetVersion`, `candidateSetId` et `analysisId` decrivent UNE source ;
+ * un plan qui en a plusieurs ne peut en designer une sans mentir. A_7M les a
+ * rendus nullables pour cette raison, et la liste ordonnee des sources — via
+ * son empreinte — prend leur place dans l'identite.
+ */
+export interface IdentitePlanMultiRush {
+  algorithme: string;
+  methodeMaterialisation: string;
+  algorithmePlan: string;
+  format: FormatMontage;
+  dureeCibleSecondes: number;
+}
+
+export interface CreationPlanMultiRush {
+  plan: MontagePlan | null;
+  issue: IssuePlanMultiRush;
+  /** Les sources telles qu'elles seront persistees, dans l'ordre. */
+  sources: JeuSource[];
+  empreinte: string | null;
+  motif: MotifPersistancePlan | null;
+}
+
+/** 42883 / PGRST202 : la migration A_7B0 n'est pas appliquee. */
+function fonctionAbsente(erreur: { code?: string; message?: string } | null): boolean {
+  if (!erreur) return false;
+  const message = (erreur.message ?? '').toLowerCase();
+  return erreur.code === '42883' || erreur.code === 'PGRST202'
+    || message.includes('could not find the function')
+    || message.includes('does not exist');
+}
+
+/**
+ * Cree un plan MULTI-RUSH et ses sources ordonnees, indivisiblement.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ POURQUOI UNE RPC PLUTOT QUE DEUX APPELS
+ * ---------------------------------------------------------------------------
+ *
+ * `creerPlan` puis `ecrireSourcesPlan` sont chacun atomiques, et ensemble ne
+ * le sont pas. Entre les deux, le processus peut mourir. Il resterait un plan
+ * portant une `source_set_fingerprint` qui decrit une matiere absente de la
+ * base — indiscernable, pour A_7M, d'un plan AMPUTE par la suppression d'un
+ * jeu de clips. Ce n'est donc pas « un plan incomplet », c'est un plan qui
+ * ressemble a un plan corrompu.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ LE PARTAGE DU TRAVAIL AVEC LA BASE
+ * ---------------------------------------------------------------------------
+ *
+ *   ICI            forme des sources, doublons, coherence avec le JSON du
+ *                  plan, et le CALCUL de l'empreinte — un seul algorithme,
+ *                  celui d'A_7a, jamais reecrit en SQL ;
+ *   DANS LA RPC    propriete, version reelle du jeu, unicite d'identite,
+ *                  ordre, et l'ATOMICITE, qui n'existe qu'en base.
+ *
+ * Valider ici ce qui peut l'etre evite un aller-retour et rend des refus
+ * nommes ; cela ne remplace jamais les cles etrangeres, qui restent
+ * l'autorite.
+ */
+export async function creerPlanMultiRushAtomique(
+  userId: string,
+  sources: readonly JeuSource[],
+  identite: IdentitePlanMultiRush,
+  contenu: ContenuPlan,
+): Promise<CreationPlanMultiRush> {
+  const vide = (issue: IssuePlanMultiRush): CreationPlanMultiRush =>
+    ({ plan: null, issue, sources: [...sources], empreinte: null, motif: null });
+
+  if (sources.length < SOURCES_MULTI_RUSH_MIN) return vide('sources_insuffisantes');
+  if (sources.length > SOURCES_MULTI_RUSH_MAX) return vide('sources_trop_nombreuses');
+
+  for (const s of sources) {
+    if (typeof s.clipSetId !== 'string' || !UUID.test(s.clipSetId)) {
+      return vide('parametres_invalides');
+    }
+    if (!Number.isInteger(s.clipSetVersion) || s.clipSetVersion < 1) {
+      return vide('parametres_invalides');
+    }
+  }
+
+  /* ⚠️ UN JEU N'APPARAIT QU'UNE FOIS. Reutiliser plusieurs passages du meme
+     rush est le cas NORMAL, et cela s'ecrit par plusieurs SEGMENTS pointant la
+     meme source — jamais par deux lignes de source. Deux lignes rendraient
+     l'empreinte dependante d'un doublon sans signification, et la meme video
+     aurait deux identites selon la facon dont on l'a ecrite. */
+  const cles = sources.map((s) => s.clipSetId);
+  if (new Set(cles).size !== cles.length) return vide('source_dupliquee');
+
+  /* ⚠️ LE PLAN ET SES SOURCES DOIVENT DIRE LA MEME CHOSE — §26.
+     La table dit la MATIERE, le `jsonb` dit le DECOUPAGE. Si un segment cite
+     un jeu absent de la liste, le plan reclame au rendu des octets que la
+     table ne declare pas ; et si une source declaree n'est employee par aucun
+     segment, l'empreinte decrit une matiere plus large que le film — deux
+     montages identiques recevraient deux identites. La verification se fait
+     ICI, avant la RPC : elle demande de comprendre le contrat des segments,
+     et le SQL n'a pas a le connaitre.
+
+     Un plan dont AUCUN segment ne porte de provenance est laisse passer :
+     c'est la forme legacy d'A_7a, et `normaliserPlanSourceAware` la resout a
+     la lecture. Un plan MULTI-RUSH ne peut evidemment pas etre dans ce cas —
+     mais le refuser ici en le nommant « incoherent » serait un faux
+     diagnostic. */
+  const citees = new Set<string>();
+  for (const p of contenu.plans) {
+    if (!p.source) continue;
+    citees.add(p.source.clipSetId);
+  }
+  if (citees.size > 0) {
+    const declarees = new Set(cles);
+    for (const c of citees) if (!declarees.has(c)) return vide('sources_incoherentes');
+    for (const d of declarees) if (!citees.has(d)) return vide('sources_incoherentes');
+  }
+
+  /* ⚠️ UNE SEULE VERITE POUR L'EMPREINTE, ET ELLE EST ICI. La canonicalisation
+     d'A_7a n'est PAS reecrite en PL/pgSQL : deux implementations devant rester
+     d'accord pour toujours finiraient par diverger sur un separateur, et le
+     meme montage serait alors recalcule et refacture indefiniment. */
+  const empreinte = empreinteJeuxSources(sources);
+  if (!empreinte) return vide('empreinte_invalide');
+
+  const { data, error } = await supabaseAdmin.rpc('creer_plan_montage_multi_rush', {
+    p_user_id: userId,
+    p_sources: sources.map((s) => ({
+      clip_set_id: s.clipSetId, clip_set_version: s.clipSetVersion,
+    })),
+    p_source_set_fingerprint: empreinte,
+    p_algorithme: identite.algorithme,
+    p_methode_materialisation: identite.methodeMaterialisation,
+    p_algorithme_plan: identite.algorithmePlan,
+    p_format: identite.format,
+    p_duree_cible_secondes: identite.dureeCibleSecondes,
+    p_largeur_cible: contenu.largeurCible,
+    p_hauteur_cible: contenu.hauteurCible,
+    p_fps: contenu.fps,
+    p_plans: contenu.plans,
+    p_duree_totale_secondes: contenu.dureeTotaleSecondes,
+    p_ecart_secondes: contenu.ecartSecondes,
+    p_clips_ecartes: contenu.clipsEcartes,
+    p_usage: contenu.usage,
+  });
+
+  if (error) {
+    /* ⚠️ `socle_absent` PLUTOT QU'UNE PANNE. La migration n'est pas appliquee
+       en production au moment ou ce code est ecrit. L'appelant doit pouvoir
+       distinguer « la fonction n'existe pas encore » de « la base est
+       tombee » — le premier cas se replie sur le chemin mono-rush, le second
+       doit remonter. */
+    if (fonctionAbsente(error) || socleAbsent(error)) {
+      return { plan: null, issue: 'parametres_invalides', sources: [...sources], empreinte, motif: 'socle_absent' };
+    }
+    throw new Error(error.message || 'creation de plan multi-rush impossible');
+  }
+
+  const ligne = Array.isArray(data) ? data[0] : data;
+  const issue = (ligne && typeof (ligne as { issue?: unknown }).issue === 'string'
+    ? (ligne as { issue: string }).issue : 'parametres_invalides') as IssuePlanMultiRush;
+  const planId = ligne && typeof (ligne as { plan_id?: unknown }).plan_id === 'string'
+    ? (ligne as { plan_id: string }).plan_id : null;
+
+  if (!planId) {
+    return { plan: null, issue, sources: [...sources], empreinte, motif: null };
+  }
+
+  /* La RPC rend l'identifiant ; le modele canonique se relit par le chemin
+     normal, filtre par proprietaire DANS la requete comme partout ailleurs. */
+  const relu = await lirePlanParId(userId, planId);
+  return { plan: relu.plan, issue, sources: [...sources], empreinte, motif: relu.motif };
 }

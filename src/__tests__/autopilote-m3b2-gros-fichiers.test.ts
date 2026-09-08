@@ -802,6 +802,15 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
       // borne ce qu'elle a le droit de faire et vérifie qu'elle ne touche ni
       // au rendu, ni au rush, ni à l'analyse.
       '2026-09-08-rush-montage-politique-suppression.sql',
+      // A_7B0 est la cinquième exception NOMMÉE : elle ajoute UNE fonction qui
+      // crée un plan multi-rush et ses sources dans une seule transaction,
+      // donc elle nomme forcément `rush_montage_plans`, `rush_clip_sets` et
+      // `rush_montage_plan_sources`. Elle ne crée AUCUNE table, AUCUNE
+      // colonne, AUCUN index, n'efface aucune ligne et n'ouvre aucun droit —
+      // sa garde vit dans `autopilote-a7b0-plan-multi-rush-rpc.test.ts`, qui
+      // borne exactement cela, et son comportement est mesuré sur un vrai
+      // PostgreSQL dans `tests-pg/a7b0-plan-multi-rush.pg.test.ts`.
+      '2026-09-08-autopilot-multi-rush-plan-rpc.sql',
     ]);
     const posterieures = fichiersMigration.filter(
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
