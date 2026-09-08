@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, ChevronLeft, ChevronRight, Eye, Film, Loader2, Plus, Check,
   RotateCcw, ScanSearch,
@@ -55,6 +55,22 @@ interface Props {
   analyses: Record<string, AnalyseCarte | null>;
   selection: string | null;
   onSelectionner: (rushId: string) => void;
+  /**
+   * A_7d — LES AUTRES RUSHES RETENUS pour cette vidéo, hors `selection`.
+   *
+   * ⚠️ `selection` RESTE LE RUSH REGARDÉ, et c'est ce qui garde l'aperçu
+   * honnête : la colonne de droite montre UNE image, celle du dernier rush
+   * choisi. Confondre « celui qu'on regarde » et « ceux qu'on monte » ferait
+   * changer l'aperçu à chaque case cochée, ou pire, l'immobiliserait sur le
+   * premier pendant qu'on en ajoute quatre.
+   *
+   * Absent, le composant se comporte exactement comme avant ce lot.
+   */
+  supplementaires?: readonly string[];
+  /** Cocher/décocher un rush SANS changer celui qu'on regarde. */
+  onBasculer?: (rushId: string) => void;
+  /** Le plafond du compte — celui d'A_7b, jamais un second. */
+  maxRushes?: number;
   onVoirAnalyse: (rushId: string) => void;
   onReanalyser: (rushId: string) => void;
   onAjouterFichiers: (fichiers: File[]) => void;
@@ -69,8 +85,19 @@ function nomCourt(r: Rush): string {
 
 export default function BandeRushes({
   rushes, analyses, selection, onSelectionner, onVoirAnalyse, onReanalyser,
-  onAjouterFichiers, envois,
+  onAjouterFichiers, envois, supplementaires, onBasculer, maxRushes,
 }: Props) {
+  /* ⚠️ L'ENSEMBLE MONTÉ = LE RUSH REGARDÉ + LES AUTRES COCHÉS. `selection` en
+     fait toujours partie : décocher celui qu'on regarde n'aurait aucun sens,
+     puisque c'est lui que l'aperçu montre. */
+  const montes = useMemo(() => {
+    const v = new Set<string>(supplementaires ?? []);
+    if (selection) v.add(selection);
+    return v;
+  }, [supplementaires, selection]);
+  const multi = onBasculer !== undefined;
+  const plafond = maxRushes ?? Number.POSITIVE_INFINITY;
+  const complet = montes.size >= plafond;
   const pisteRef = useRef<HTMLDivElement>(null);
   const fichiersRef = useRef<HTMLInputElement>(null);
   const [debord, setDebord] = useState({ gauche: false, droite: false });
@@ -173,6 +200,22 @@ export default function BandeRushes({
         )}
       </div>
 
+      {multi && montes.size > 1 && (
+        /* ⚠️ LE COMPTE EST DIT, PARCE QUE L'APERÇU N'EN MONTRE QU'UN. La
+           colonne de droite affiche le rush REGARDÉ ; sans cette ligne, rien
+           ne dirait que la vidéo en assemblera trois, et la personne croirait
+           monter le seul qu'elle voit. */
+        <p
+          data-bande-compte={montes.size}
+          className="mb-2 text-[0.7rem] text-purple-200/80"
+        >
+          {montes.size}
+          {' rushes seront assemblés dans cette vidéo. L’ordre du montage est décidé '}
+          {'automatiquement.'}
+          {complet && ' Vous avez atteint le maximum.'}
+        </p>
+      )}
+
       <div
         className="relative"
         onDragEnter={surEntree}
@@ -203,11 +246,48 @@ export default function BandeRushes({
                 key={r.id}
                 data-bande-carte={r.id}
                 data-bande-carte-choisie={choisi ? '1' : undefined}
+                data-bande-carte-montee={montes.has(r.id) ? '1' : undefined}
                 className={`group relative w-[9.5rem] shrink-0 overflow-hidden rounded-xl border
                   transition-colors ${choisi
                     ? 'border-purple-500/70 bg-purple-500/[0.06]'
-                    : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
+                    : montes.has(r.id)
+                      ? 'border-purple-500/40 bg-purple-500/[0.03]'
+                      : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
               >
+                {multi && (() => {
+                  const monte = montes.has(r.id);
+                  /* ⚠️ LE RUSH REGARDÉ NE SE DÉCOCHE PAS ICI. C'est lui que
+                     l'aperçu montre ; le retirer laisserait une image sans
+                     rush. On change de rush regardé en cliquant la carte. */
+                  const verrouille = choisi;
+                  const bloque = !monte && complet;
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onBasculer?.(r.id); }}
+                      disabled={verrouille || bloque}
+                      aria-pressed={monte}
+                      data-bande-basculer={r.id}
+                      title={verrouille
+                        ? 'Ce rush est celui que vous regardez : il est toujours monté.'
+                        : bloque
+                          ? `Vous avez atteint ${plafond} rushes pour cette vidéo.`
+                          : monte ? 'Retirer de cette vidéo' : 'Ajouter à cette vidéo'}
+                      aria-label={monte
+                        ? `Retirer ${nom} de cette vidéo`
+                        : `Ajouter ${nom} à cette vidéo`}
+                      className={`absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center
+                        justify-center rounded-md border text-[0.7rem] font-semibold
+                        transition-colors disabled:cursor-not-allowed
+                        ${monte
+                          ? 'border-purple-400/70 bg-purple-500/80 text-white'
+                          : 'border-white/25 bg-black/50 text-white/60 hover:border-white/50'}
+                        ${bloque ? 'opacity-40' : ''}`}
+                    >
+                      {monte ? '✓' : '+'}
+                    </button>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={() => onSelectionner(r.id)}

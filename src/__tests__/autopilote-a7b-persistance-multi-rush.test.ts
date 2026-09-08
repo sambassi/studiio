@@ -56,7 +56,7 @@ beforeEach(() => { rpc.mockReset(); from.mockReset(); });
 
 describe('A_7b — la persistance est atomique', () => {
   it('un plan A,B,C part en UNE transaction A_7B0', async () => {
-    const { persisterPlanMultiRush } = await import('@/lib/autopilot/analyse/montage-pool');
+    const { persisterPlanMultiRush } = await import('@/lib/autopilot/automatique/multi-rush');
     rpc.mockResolvedValue({ data: [{ issue: 'cree', plan_id: null, cree: true }], error: null });
 
     const sources = [1, 2, 3].map((n) => ({ clipSetId: UUID(n), clipSetVersion: 1 }));
@@ -73,7 +73,7 @@ describe('A_7b — la persistance est atomique', () => {
   });
 
   it('le marqueur multi-source voyage dans algorithme_plan', async () => {
-    const { persisterPlanMultiRush } = await import('@/lib/autopilot/analyse/montage-pool');
+    const { persisterPlanMultiRush } = await import('@/lib/autopilot/automatique/multi-rush');
     rpc.mockResolvedValue({ data: [{ issue: 'cree', plan_id: null, cree: true }], error: null });
     const sources = [1, 2].map((n) => ({ clipSetId: UUID(n), clipSetVersion: 1 }));
     await persisterPlanMultiRush(UTILISATEUR, resultat(sources) as never, IDENTITE, DEMANDE);
@@ -82,7 +82,7 @@ describe('A_7b — la persistance est atomique', () => {
   });
 
   it('une source invalide ne crée aucun plan', async () => {
-    const { persisterPlanMultiRush } = await import('@/lib/autopilot/analyse/montage-pool');
+    const { persisterPlanMultiRush } = await import('@/lib/autopilot/automatique/multi-rush');
     rpc.mockResolvedValue({
       data: [{ issue: 'source_inconnue', plan_id: null, cree: false }], error: null,
     });
@@ -95,7 +95,7 @@ describe('A_7b — la persistance est atomique', () => {
   });
 
   it('le même plan deux fois ne fait qu un plan logique', async () => {
-    const { persisterPlanMultiRush } = await import('@/lib/autopilot/analyse/montage-pool');
+    const { persisterPlanMultiRush } = await import('@/lib/autopilot/automatique/multi-rush');
     const sources = [1, 2].map((n) => ({ clipSetId: UUID(n), clipSetVersion: 1 }));
 
     rpc.mockResolvedValueOnce({ data: [{ issue: 'cree', plan_id: null, cree: true }], error: null });
@@ -111,7 +111,7 @@ describe('A_7b — la persistance est atomique', () => {
     /* ⚠️ L'IDEMPOTENCE VIENT DE L'INDEX, PAS D'UN `if`. Le second appel est
        refusé par la base puis rattrapé : c'est A_7B0 qui le prouve sur un vrai
        PostgreSQL ; ici on vérifie seulement que rien ne l'intercepte avant. */
-    const { persisterPlanMultiRush } = await import('@/lib/autopilot/analyse/montage-pool');
+    const { persisterPlanMultiRush } = await import('@/lib/autopilot/automatique/multi-rush');
     const sources = [1, 2].map((n) => ({ clipSetId: UUID(n), clipSetVersion: 1 }));
     rpc.mockResolvedValue({ data: [{ issue: 'existant', plan_id: null, cree: false }], error: null });
 
@@ -141,9 +141,20 @@ describe('A_7b — ce que le module ne fait pas', () => {
   ));
 
   it('il n écrit jamais le plan et les sources séparément', () => {
-    expect(src).not.toContain('ecrireSourcesPlan');
-    expect(src).not.toMatch(/\bcreerPlan\b/);
-    expect(src).toContain('creerPlanMultiRushAtomique');
+    /* ⚠️ L'ÉCRITURE A DÉMÉNAGÉ, ET C'EST STRUCTUREL — A_7d.
+       `persisterPlanMultiRush` vivait dans `montage-pool`, qui importait donc
+       le client de base de données : l'écran de sélection, qui n'a besoin que
+       de `MAX_RUSHES_MANUEL`, l'embarquait, et le build client échouait.
+       `montage-pool` ne fait plus que DÉCIDER — sans base, sans réseau, sans
+       horloge — et l'écriture vit côté serveur, dans l'orchestrateur. */
+    const orchestrateur = sansProse(readFileSync(
+      path.join(process.cwd(), 'src/lib/autopilot/automatique/multi-rush.ts'), 'utf8',
+    ));
+    expect(src).not.toContain('supabase');
+    expect(src).not.toContain('montage-service');
+    expect(orchestrateur).not.toContain('ecrireSourcesPlan');
+    expect(orchestrateur).not.toMatch(/\bcreerPlan\b/);
+    expect(orchestrateur).toContain('creerPlanMultiRushAtomique');
   });
 
   it('il ne débite aucun crédit — un montage à 4 rushes reste UNE vidéo', () => {

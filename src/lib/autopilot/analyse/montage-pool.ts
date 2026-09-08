@@ -690,65 +690,17 @@ export function rendreEstPossible(
   return { possible: true, motif: null };
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// La persistance — par A_7B0, et par lui seul
-// ───────────────────────────────────────────────────────────────────────────
+/* ─────────────────────────────────────────────────────────────────────────
+   ⚠️ LA PERSISTANCE N'EST PAS ICI, ET C'EST STRUCTUREL — A_7d.
 
-export interface IdentitePool {
-  algorithme: string;
-  methodeMaterialisation: string;
-}
+   `persisterPlanMultiRush` vivait dans ce fichier. Elle importait
+   `montage-service`, donc le client Supabase, donc `montage-pool` cessait
+   d'etre un module PUR : l'ecran de selection, qui n'a besoin que de
+   `MAX_RUSHES_MANUEL`, embarquait le client de base de donnees — et le build
+   client echouait.
 
-/**
- * Persiste un plan multi-rush — INDIVISIBLEMENT.
- *
- * ═════════════════════════════════════════════════════════════════════════
- * ⚠️ IL N'Y A QU'UN CHEMIN, ET C'EST LA RPC D'A_7B0
- * ═════════════════════════════════════════════════════════════════════════
- *
- * Écrire le plan puis ses sources en deux appels laisserait, si le second
- * échoue, un plan portant une empreinte qui décrit une matière absente de la
- * base — indiscernable, pour A_7M, d'un plan AMPUTÉ par la suppression d'un
- * jeu de clips. `creerPlanMultiRushAtomique` fait les deux dans une seule
- * transaction ; ce module n'appelle donc NI `creerPlan`, NI
- * `ecrireSourcesPlan`, et un test le vérifie.
- *
- * ⚠️ L'IDEMPOTENCE VIENT DE LA BASE. Deux workers calculant le même montage
- * au même instant sont le fonctionnement normal de l'autopilote : l'index
- * `rush_montage_plans_identite_sources_unique` tranche, et le second repart
- * avec le plan du premier plutôt qu'avec une erreur. Rien n'est à décider ici.
- *
- * ⚠️ AUCUN DÉBIT. Un montage à quatre rushes reste UNE vidéo : facturer par
- * source ferait payer quatre fois le même rendu. Ce module n'importe pas
- * `@/lib/credits`, et un test le vérifie.
- */
-export async function persisterPlanMultiRush(
-  userId: string,
-  resultat: ResultatPool,
-  identite: IdentitePool,
-  demande: { format: FormatMontage; dureeCibleSecondes: number; fps: number;
-             largeurCible: number; hauteurCible: number },
-) {
-  const { creerPlanMultiRushAtomique } = await import('./montage-service');
-  return creerPlanMultiRushAtomique(
-    userId,
-    resultat.sources,
-    {
-      algorithme: identite.algorithme,
-      methodeMaterialisation: identite.methodeMaterialisation,
-      algorithmePlan: resultat.algorithmePlan,
-      format: demande.format,
-      dureeCibleSecondes: demande.dureeCibleSecondes,
-    },
-    {
-      largeurCible: demande.largeurCible,
-      hauteurCible: demande.hauteurCible,
-      fps: demande.fps,
-      plans: resultat.segments,
-      dureeTotaleSecondes: resultat.dureeTotaleSecondes,
-      ecartSecondes: resultat.ecartSecondes,
-      clipsEcartes: resultat.clipsEcartes,
-      usage: resultat.usage,
-    },
-  );
-}
+   Ce module ne fait que DECIDER : pool, diversite, ordre, empreinte. Il n'a
+   ni base, ni reseau, ni horloge, exactement comme `montage.ts` dont il
+   prolonge le travail. L'ecriture vit dans `automatique/multi-rush.ts`, cote
+   serveur, avec le reste de l'orchestration.
+   ───────────────────────────────────────────────────────────────────────── */

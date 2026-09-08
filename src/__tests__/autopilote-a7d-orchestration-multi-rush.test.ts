@@ -383,8 +383,6 @@ describe('A_7d1 — l orchestrateur ne rend jamais un faux multi', () => {
     /* Sur trois rushes, il est NORMAL qu'un fournisseur en refuse un ; faire
        tomber tout le montage punirait les deux autres. */
     const { monterMultiRush } = await import('@/lib/autopilot/automatique/multi-rush');
-    const { persisterPlanMultiRush } = await import('@/lib/autopilot/analyse/montage-pool');
-    void persisterPlanMultiRush;
     preparerJeuClips.mockImplementation(async (_u: string, an: string) =>
       (an === 'an-r2'
         ? { sorte: 'echec', motif: 'analyse_echouee' }

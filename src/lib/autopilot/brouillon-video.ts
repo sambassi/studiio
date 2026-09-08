@@ -71,6 +71,20 @@ import {
 /** Version du format. Un brouillon d'une autre version est ignoré, pas deviné. */
 export const VERSION_BROUILLON = 1;
 
+/** La forme d'un identifiant de rush. Le stockage local n'est pas une source sure. */
+const UUID_BROUILLON =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Le plafond RELU, distinct du plafond PRODUIT.
+ *
+ * ⚠️ IL N'EST PAS LA POLITIQUE. Celle-la vit dans `MAX_RUSHES_MANUEL` (A_7b) et
+ * c'est elle que l'ecran applique. Celui-ci borne seulement ce qu'on accepte de
+ * relire d'un stockage que n'importe quoi a pu ecrire : sans lui, un tableau
+ * de dix mille entrees declencherait autant de preparations de rush.
+ */
+const BORNE_SOURCES_BROUILLON = 64;
+
 const PREFIXE_CLE = `studiio:autopilote:brouillon:v${VERSION_BROUILLON}`;
 
 /**
@@ -96,6 +110,16 @@ export interface BrouillonVideo {
   objectif: ObjectifCommunication | null;
   montage: AutopilotMontageStyle;
   audio: RecetteAudio;
+  /**
+   * A_7d — LES AUTRES RUSHES retenus avec celui-ci, hors lui-meme.
+   *
+   * ⚠️ LA VERSION NE BOUGE PAS, ET C'EST DELIBERE. Le champ est OPTIONNEL :
+   * un brouillon ecrit avant ce lot n'en a pas, et se relit sans rien perdre.
+   * Incrementer `VERSION_BROUILLON` aurait fait rejeter TOUS les brouillons
+   * existants — c'est-a-dire perdre les reglages en cours de tout le monde
+   * pour ajouter un champ qui peut simplement manquer.
+   */
+  sources?: readonly string[];
 }
 
 function stockageDisponible(): boolean {
@@ -146,12 +170,23 @@ export function nettoyerBrouillon(brut: unknown): BrouillonVideo | null {
   const enregistreLe = typeof o.enregistreLe === 'number' && Number.isFinite(o.enregistreLe)
     ? o.enregistreLe : 0;
 
+  /* ⚠️ RELU COMME TOUT LE RESTE : le contenu de `localStorage` est du texte
+     que n'importe quoi a pu ecrire. On ne garde que des identifiants de la
+     bonne forme, dedupliques, et bornes — un tableau de dix mille entrees
+     ferait autant de preparations de rush. */
+  const sources = Array.isArray(o.sources)
+    ? [...new Set(o.sources.filter(
+      (v): v is string => typeof v === 'string' && UUID_BROUILLON.test(v),
+    ))].slice(0, BORNE_SOURCES_BROUILLON)
+    : [];
+
   return {
     version: VERSION_BROUILLON,
     enregistreLe,
     objectif,
     montage: nettoyerMontage(o.montage),
     audio,
+    ...(sources.length > 0 ? { sources } : {}),
   };
 }
 
@@ -190,6 +225,8 @@ export function ecrireBrouillon(
       objectif: brouillon.objectif,
       montage: brouillon.montage,
       audio: brouillon.audio,
+      ...(brouillon.sources && brouillon.sources.length > 0
+        ? { sources: [...brouillon.sources] } : {}),
     };
     window.localStorage.setItem(cle, JSON.stringify(complet));
     return true;

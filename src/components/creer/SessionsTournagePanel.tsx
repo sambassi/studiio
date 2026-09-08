@@ -21,6 +21,10 @@ import {
 import {
   ecrireBrouillon, lireBrouillon,
 } from '@/lib/autopilot/brouillon-video';
+/* ⚠️ LE PLAFOND VIENT D'A_7b, ET DE NULLE PART AILLEURS. Une seconde constante
+   dans l'écran divergerait, et l'interface laisserait cocher ce que le serveur
+   refuserait ensuite. */
+import { MAX_RUSHES_MANUEL } from '@/lib/autopilot/analyse/montage-pool';
 import {
   lireObjectif, normaliserObjectif, type ObjectifCommunication,
 } from '@/lib/autopilot/analyse/objectif-communication';
@@ -198,6 +202,28 @@ export default function SessionsTournagePanel({
   const [defautEnregistre, setDefautEnregistre] = useState(false);
   /** Le rush qu'on regarde : il pilote la chaine et le bouton unique. */
   const [rushChoisi, setRushChoisi] = useState<string | null>(null);
+  /**
+   * A_7d — LES AUTRES RUSHES retenus pour cette vidéo, hors celui regardé.
+   *
+   * ⚠️ `rushChoisi` N'Y EST JAMAIS. Il fait partie du montage par définition —
+   * c'est lui que l'aperçu montre — et l'y ajouter obligerait à le retirer à
+   * chaque changement de rush regardé. L'ensemble monté se recompose donc à la
+   * lecture, jamais au stockage.
+   */
+  const [rushesMontes, setRushesMontes] = useState<string[]>([]);
+
+  /** Coche ou décoche un rush SANS changer celui qu'on regarde. */
+  const basculerRush = useCallback((rushId: string) => {
+    /* Le rush regardé ne se décoche pas : le retirer laisserait un aperçu
+       sans rush. On en change en cliquant la carte. */
+    if (rushId === rushChoisi) return;
+    setRushesMontes((v) => (v.includes(rushId)
+      ? v.filter((x) => x !== rushId)
+      /* ⚠️ LE PLAFOND EST CELUI D'A_7b, JAMAIS UN SECOND. Deux limites
+         divergeraient, et l'écran laisserait cocher ce que le serveur
+         refuserait ensuite. `rushChoisi` compte dans le total. */
+      : v.length + 1 >= MAX_RUSHES_MANUEL ? v : [...v, rushId]));
+  }, [rushChoisi]);
   const [analyses, setAnalyses] = useState<Record<string, AnalyseCarte | null>>({});
   const [tiroir, setTiroir] = useState<'analyse' | 'avance' | null>(null);
   const [relances, setRelances] = useState<Record<string, number>>({});
@@ -383,6 +409,12 @@ export default function SessionsTournagePanel({
     setMontage(brouillon.montage);
     setAudioBrouillon(brouillon.audio);
     setAudioVideo(brouillon.audio);
+    /* ⚠️ RESTAURÉ, ET FILTRÉ SUR LA SESSION COURANTE. Un rush du brouillon qui
+       n'existe plus dans la liste chargée serait coché sans carte : invisible,
+       et pourtant envoyé au serveur. */
+    setRushesMontes((brouillon.sources ?? []).filter(
+      (id) => id !== rushChoisi && rushes.some((r) => r.id === id),
+    ));
     onObjectifRestaure?.(brouillon.objectif);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rushChoisi]);
@@ -416,10 +448,12 @@ export default function SessionsTournagePanel({
       objectif: lu && lu.ok ? normaliserObjectif(lu.objectif) : null,
       montage,
       audio: audioVideo ?? audioDefaut ?? RECETTE_AUDIO_DEFAUT,
+      sources: rushesMontes,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rushChoisi, montage.format, montage.dureeSecondes,
-    JSON.stringify(objectifCetteVideo ?? null), JSON.stringify(audioVideo ?? null)]);
+    JSON.stringify(objectifCetteVideo ?? null), JSON.stringify(audioVideo ?? null),
+    rushesMontes.join('|')]);
 
   // L'aperçu unique de la colonne de droite a besoin de savoir QUEL tournage
   // on regarde. Sans ce signal, il faudrait un second lecteur ici.
@@ -605,6 +639,9 @@ export default function SessionsTournagePanel({
         <>
           {/* ══ RUSHES ═══════════════════════════════════════════════════ */}
           <BandeRushes
+            supplementaires={rushesMontes}
+            onBasculer={basculerRush}
+            maxRushes={MAX_RUSHES_MANUEL}
             rushes={rushes}
             analyses={analyses}
             selection={rushChoisi}
