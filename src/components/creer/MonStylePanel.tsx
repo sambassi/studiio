@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check, ChevronDown, ChevronUp, ImageIcon, Loader2, Palette, Trash2,
 } from 'lucide-react';
@@ -20,6 +20,11 @@ import BibliothequeAnimationsContenu from '@/components/creer/BibliothequeAnimat
 import BibliothequeTransitions from '@/components/creer/BibliothequeTransitions';
 import { transitionCreativeParId } from '@/lib/creatif/transitions';
 import RechercheCreative from '@/components/creer/RechercheCreative';
+import PanneauPresets from '@/components/creer/PanneauPresets';
+import {
+  PRESETS_STUDIIO, PRESETS_PERSONNELS_MAX, appliquerPreset, styleDepuisProfil,
+  nomPresetValide,
+} from '@/lib/creatif/presets';
 import { useBibliothequeCreative } from '@/lib/hooks/useBibliothequeCreative';
 
 /**
@@ -193,6 +198,17 @@ export default function MonStylePanel({
   const recentsContenu = biblio.recents.animationContenu;
   const recentsTransitions = biblio.recents.transition;
   const [rechercheGlobale, setRechercheGlobale] = useState('');
+  /* ⚠️ « ACTIF » SE DEDUIT, IL NE SE STOCKE PAS. Retenir « le dernier preset
+     clique » mentirait des que la personne change une transition juste
+     apres : la carte resterait cochee sur un style qui n'est plus le sien. */
+  const presetActif = useMemo(() => {
+    const courant = JSON.stringify(styleDepuisProfil(brouillon));
+    const studiio = PRESETS_STUDIIO.find((x) => JSON.stringify(x.style) === courant);
+    if (studiio) return studiio.id;
+    return biblio.bibliotheque.presets.find(
+      (x) => JSON.stringify(x.style) === courant,
+    )?.id ?? null;
+  }, [brouillon, biblio.bibliotheque.presets]);
   const [textesOuverts, setTextesOuverts] = useState(false);
   const [appel, setAppel] = useState<{ texte: string | null; destination: string | null }>(
     appelActionEnregistre ?? { texte: null, destination: null },
@@ -474,6 +490,58 @@ export default function MonStylePanel({
                     chaque vidéo. La bibliothèque les porte ensemble — et
                     c'est elle qui décide, sinon deux réglages
                     contradictoires cohabiteraient à l'écran. */}
+                {/* ── LES PRESETS, AVANT LES REGLAGES ────────────────
+                    Un univers entier en un clic vaut mieux que cinq
+                    bibliotheques ouvertes l'une apres l'autre. Ce qui suit
+                    reste la pour ajuster. */}
+                <PanneauPresets
+                  presetsPersonnels={biblio.bibliotheque.presets}
+                  actif={presetActif}
+                  limiteAtteinte={biblio.bibliotheque.presets.length >= PRESETS_PERSONNELS_MAX}
+                  onAppliquer={(style) => {
+                    /* ⚠️ SEULS LES QUATRE BLOCS DU PRESET SONT ECRITS.
+                       `couleurs`, `marque`, `texte`, `ctaVisuel` traversent
+                       sans etre lus : un preset ne repeint pas une charte et
+                       ne remplace pas un message. */
+                    const suivant = appliquerPreset(brouillon, style);
+                    modifier({
+                      lut: suivant.lut,
+                      typographie: suivant.typographie,
+                      animations: suivant.animations,
+                      transitions: suivant.transitions,
+                    });
+                  }}
+                  onEnregistrer={(nom) => {
+                    const propre = nomPresetValide(nom);
+                    if (!propre) return;
+                    /* ⚠️ L'IDENTIFIANT EST FABRIQUE, JAMAIS SAISI. Un nom
+                       saisi comme identifiant collisionnerait des que deux
+                       presets s'appellent pareil. */
+                    void biblio.remplacer({
+                      ...biblio.bibliotheque,
+                      presets: [...biblio.bibliotheque.presets, {
+                        id: `p${Date.now().toString(36)}`,
+                        nom: propre,
+                        style: styleDepuisProfil(brouillon),
+                      }],
+                    });
+                  }}
+                  onRenommer={(id, nom) => {
+                    const propre = nomPresetValide(nom);
+                    if (!propre) return;
+                    void biblio.remplacer({
+                      ...biblio.bibliotheque,
+                      presets: biblio.bibliotheque.presets.map(
+                        (x) => (x.id === id ? { ...x, nom: propre } : x),
+                      ),
+                    });
+                  }}
+                  onSupprimer={(id) => void biblio.remplacer({
+                    ...biblio.bibliotheque,
+                    presets: biblio.bibliotheque.presets.filter((x) => x.id !== id),
+                  })}
+                />
+
                 {/* ── CHERCHER DANS TOUT LE STUDIO ────────────────────
                     Cinq grilles, cinq recherches : trouver « cinema » obligeait
                     a ouvrir les cinq. Celle-ci les interroge ensemble, et

@@ -30,6 +30,7 @@ import { STYLE_TEXTE_IDS } from './styles-texte';
 import { ANIMATION_TEXTE_IDS } from './animations-texte';
 import { ANIMATION_CONTENU_IDS } from './animations-contenu';
 import { TRANSITION_CREATIVE_IDS } from './transitions';
+import { presetsPersonnelsValides, type PresetPersonnel } from './presets';
 
 /** Les cinq familles qu'une personne peut mettre en favori. */
 export const FAMILLES_BIBLIOTHEQUE = [
@@ -81,6 +82,8 @@ export type FavorisCreatifs = Record<FamilleBibliotheque, readonly string[]>;
 
 export interface BibliothequeCreative {
   favoris: FavorisCreatifs;
+  /** A_3e2 — les combinaisons que la personne a nommées elle-même. */
+  presets: readonly PresetPersonnel[];
 }
 
 export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
@@ -93,6 +96,7 @@ export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
 
 export const BIBLIOTHEQUE_VIDE: BibliothequeCreative = Object.freeze({
   favoris: FAVORIS_VIDES,
+  presets: Object.freeze([]) as readonly PresetPersonnel[],
 });
 
 /**
@@ -129,12 +133,13 @@ export function bibliothequeValide(brut: unknown): BibliothequeCreative {
   for (const famille of FAMILLES_BIBLIOTHEQUE) {
     favoris[famille] = favorisValides(f[famille], famille);
   }
-  return { favoris };
+  return { favoris, presets: presetsPersonnelsValides(o.presets) };
 }
 
 /** La bibliothèque ne demande-t-elle rien ? */
 export function bibliothequeVide(b: BibliothequeCreative): boolean {
-  return FAMILLES_BIBLIOTHEQUE.every((f) => b.favoris[f].length === 0);
+  return b.presets.length === 0
+    && FAMILLES_BIBLIOTHEQUE.every((f) => b.favoris[f].length === 0);
 }
 
 /**

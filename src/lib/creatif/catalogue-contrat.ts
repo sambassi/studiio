@@ -30,7 +30,12 @@
  */
 
 /** Les familles. Fermé : une cinquième demanderait son propre rendu. */
-export const FAMILLES_CREATIVES = ['lut', 'style-texte', 'animation-texte', 'transition'] as const;
+export const FAMILLES_CREATIVES = [
+  'lut', 'style-texte', 'animation-texte', 'transition',
+  // A_3e : un preset n'est pas un effet, c'est une COMBINAISON d'effets. Il
+  // se cherche et se trie comme les autres, d'ou sa place dans le contrat.
+  'preset',
+] as const;
 export type FamilleCreative = (typeof FAMILLES_CREATIVES)[number];
 
 /**
