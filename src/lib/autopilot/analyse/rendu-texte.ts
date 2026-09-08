@@ -41,6 +41,7 @@ import { styleTexteParId } from '@/lib/creatif/styles-texte';
 import {
   animationTexteParId, type ExpressionsAnimation,
 } from '@/lib/creatif/animations-texte';
+import { animationContenuParId } from '@/lib/creatif/animations-contenu';
 
 /** Les familles réellement présentes dans l'image (paquet `fonts-liberation`). */
 export const POLICES_RENDU = ['sans', 'serif', 'mono'] as const;
@@ -109,6 +110,14 @@ export interface CoucheTexte {
    * exécuter un langage reçu du navigateur.
    */
   animationId?: string;
+  /**
+   * L'animation du CONTENU. Absente = le texte apparait d'un bloc.
+   *
+   * ⚠️ ELLE CHANGE DE MOTEUR DE RENDU. `drawtext` ne sait pas reveler une
+   * sous-chaine ; une couche qui porte ce champ passe par un document ASS et
+   * le filtre `subtitles`, pas par `drawtext`.
+   */
+  animationContenuId?: string;
 }
 
 /** L'habillage d'avant A_3b : l'ombre douce, et rien d'autre. */
@@ -286,7 +295,7 @@ export interface SourcesTexte {
       actif: boolean; dureeSecondes: number; position: 'haut' | 'centre' | 'bas';
     };
     /** Le bloc `animations` du profil. Absent = aucune animation. */
-    animations?: { texteId?: string | null };
+    animations?: { texteId?: string | null; texteContenuId?: string | null };
   } | null;
   /**
    * Ce que le CTA DIT, et où il mène.
@@ -325,6 +334,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
      réglages là où une personne en veut un, et le contrat pourra toujours
      s'étendre sans casser celui-ci. */
   const animationId = animationTexteParId(p.animations?.texteId).id;
+  const animationContenuId = animationContenuParId(p.animations?.texteContenuId)?.id;
   const taille = (base: number) => base * style.echelle;
   const couches: CoucheTexte[] = [];
   const duree = Number.isFinite(s.dureeTotaleSecondes) && s.dureeTotaleSecondes > 0
@@ -354,6 +364,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         taillePct: taille(TAILLE_PCT[nature]),
         habillage,
         animationId,
+        animationContenuId,
         couleur: couleurTexte,
         ancre: p.texte.position,
         debutSecondes: debut,
@@ -376,6 +387,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         taillePct: taille(TAILLE_PCT.fin),
         habillage,
         animationId,
+        animationContenuId,
         couleur: couleurTexte,
         ancre: 'centre',
         debutSecondes: depart,
@@ -404,6 +416,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         taillePct: taille(TAILLE_PCT.cta),
         habillage,
         animationId,
+        animationContenuId,
         couleur: couleurTexte,
         ancre: p.ctaVisuel.position,
         debutSecondes: depart,
@@ -420,6 +433,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         taillePct: taille(TAILLE_PCT.lien),
         habillage,
         animationId,
+        animationContenuId,
         couleur: couleurAccent,
         ancre: p.ctaVisuel.position,
         debutSecondes: depart,
@@ -448,5 +462,7 @@ export function empreinteCouches(couches: readonly CoucheTexte[]): string {
     JSON.stringify(c.habillage ?? null),
     // L'animation change les pixels image par image.
     c.animationId ?? '',
+    // Elle change de moteur de rendu, donc chaque pixel du texte.
+    c.animationContenuId ?? '',
   ].join('')).join('');
 }

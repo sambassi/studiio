@@ -151,6 +151,7 @@ export function policeParId(id: unknown): PoliceAutorisee | undefined {
 
 import { LOOKS_CREATIFS } from '@/lib/creatif/looks';
 import { ANIMATIONS_TEXTE } from '@/lib/creatif/animations-texte';
+import { ANIMATIONS_CONTENU } from '@/lib/creatif/animations-contenu';
 
 export interface LutAutorisee {
   id: string;
@@ -276,6 +277,20 @@ export const ANIMATION_IDS: readonly string[] = ANIMATIONS_AUTORISEES.map((a) =>
 
 /** L'animation qui ne fait rien — le comportement d'avant ce lot. */
 export const ANIMATION_AUCUNE = 'aucune' as const;
+
+/**
+ * ⚠️ DEUX FAMILLES QUI NE SE REMPLACENT PAS (lot A_3c2).
+ *
+ * L'animation de BLOC deplace le texte entier ; l'animation de CONTENU le
+ * revele mot a mot. Les deux se cumulent — un titre peut monter en fondu
+ * pendant que ses mots s'ecrivent — donc deux reglages, deux listes.
+ *
+ * `aucune` ouvre la liste : c'est le defaut, et c'est EXACTEMENT le rendu
+ * d'avant ce lot, ou le texte apparait d'un bloc.
+ */
+export const ANIMATION_CONTENU_IDS: readonly string[] = [
+  ANIMATION_AUCUNE, ...ANIMATIONS_CONTENU.map((a) => a.id),
+];
 
 export function animationParId(id: unknown): AnimationAutorisee | undefined {
   if (typeof id !== 'string') return undefined;

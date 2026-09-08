@@ -75,7 +75,9 @@
 import {
   type ProfilCreatifAutopilote, type AncreTexte, type PositionLogo,
 } from './profil-creatif';
-import { filtreDrawtext, positionY } from './rendu-texte';
+import { filtreDrawtext, positionY, type PoliceRendu } from './rendu-texte';
+import { documentAss, filtreSousTitres, type CoucheAss } from './rendu-ass';
+import { animationContenuParId } from '@/lib/creatif/animations-contenu';
 import {
   animationTexteParId, expressionsAnimation,
 } from '@/lib/creatif/animations-texte';
@@ -138,6 +140,17 @@ export interface ContexteStyle {
    * de ce que l'utilisateur a saisi n'entre dans le graphe de filtres.
    */
   textes?: readonly TexteAPoser[];
+  /**
+   * Ou le moteur ECRIRA le document ASS, s'il y a du texte anime dans son
+   * contenu.
+   *
+   * ⚠️ CE MODULE NE TOUCHE PAS AU DISQUE. Il recoit le chemin, l'ecrit dans
+   * le filtre, et RETOURNE le document a ecrire — c'est le moteur qui pose
+   * le fichier, comme il pose deja les `.txt` et le `.cube`.
+   */
+  fichierAss?: string | null;
+  /** Le dossier des polices Liberation, pour fontconfig. */
+  dossierPolices?: string | null;
 }
 
 /** Une couche prete a etre dessinee : le texte est deja sur le disque. */
@@ -153,6 +166,22 @@ export interface TexteAPoser {
   habillage?: import('./rendu-texte').HabillageTexte;
   /** L'identifiant d'animation, résolu ici en expressions. */
   animationId?: string;
+  /**
+   * L'animation du CONTENU. Presente, la couche part dans le document ASS
+   * au lieu de `drawtext` : lui seul sait reveler une sous-chaine.
+   */
+  animationContenuId?: string;
+  /**
+   * Le texte SAISI — necessaire au document ASS, qui doit connaitre les mots
+   * pour les reveler un a un.
+   *
+   * ⚠️ IL N'ENTRE JAMAIS DANS LE GRAPHE DE FILTRES. Il ne va que dans le
+   * document, apres `echapperAss`, et le graphe ne recoit qu'un chemin.
+   */
+  texte?: string;
+  /** La famille de police, pour le `Fontname` du document ASS. */
+  police?: PoliceRendu;
+  graisse?: 'normale' | 'grasse';
 }
 
 /**
@@ -167,6 +196,11 @@ export interface StyleRendu {
   entrees: readonly string[];
   post: string;
   /**
+   * Le document ASS a ecrire dans `fichierAss`, ou `null` si aucune couche
+   * n'anime son contenu. Le moteur l'ecrit AVANT de lancer ffmpeg.
+   */
+  documentAss: string | null;
+  /**
    * Transitions du catalogue que ce lot ne rend pas encore. Elles sont
    * acceptees par le contrat et rendues comme `cut` — jamais silencieusement :
    * cette liste remonte au moteur, qui la trace dans `usage`.
@@ -179,6 +213,7 @@ export const STYLE_NEUTRE: StyleRendu = Object.freeze({
   fragmentsParClip: Object.freeze([]) as readonly string[],
   entrees: Object.freeze([]) as readonly string[],
   post: '',
+  documentAss: null,
   transitionsNonRendues: Object.freeze([]) as readonly string[],
 });
 
@@ -572,6 +607,11 @@ export function construireStyle(
      son propre fond serait invisible, et c'est exactement l'ordre des
      couches qui le decide. */
   const marges = margesPixels(profil, ctx.cible);
+  /* ⚠️ LES COUCHES ANIMEES DANS LEUR CONTENU NE PASSENT PAS PAR `drawtext`.
+     Elles se rassemblent ici, puis partent dans UN document ASS et UN filtre
+     `subtitles` — au lieu d'un filtre et d'un fichier par etape, ce qui
+     ferait quatre-vingts filtres pour une accroche ecrite lettre a lettre. */
+  const couchesAss: CoucheAss[] = [];
   (ctx.textes ?? []).forEach((t, i) => {
     const taille = Math.max(8, Math.round(t.taillePx));
     /* La hauteur reelle d'une ligne depend de la police ; `1.2 * fontsize`
@@ -585,6 +625,27 @@ export function construireStyle(
        position finale sont connues. Les calculer plus tôt aurait obligé à
        deviner la taille du cadre — et un déplacement pensé pour 1080×1920
        traverserait l'écran en 16:9. */
+    const contenu = animationContenuParId(t.animationContenuId);
+    if (contenu !== null && ctx.fichierAss) {
+      couchesAss.push({
+        texte: t.texte ?? '',
+        animation: contenu,
+        police: t.police ?? 'sans',
+        graisse: t.graisse ?? 'normale',
+        taillePx: taille,
+        couleur: t.couleur,
+        xCentre: ctx.cible.largeur / 2,
+        /* `y` est le HAUT de la ligne chez `drawtext` ; `\pos` avec un
+           alignement centre designe son MILIEU. Sans cette demi-hauteur, le
+           texte anime se poserait une demi-ligne plus haut que le texte fixe
+           au meme reglage. */
+        yCentre: y + Math.round(taille * 1.2) / 2,
+        debutSecondes: t.debutSecondes,
+        finSecondes: t.finSecondes,
+        habillage: t.habillage,
+      });
+      return;
+    }
     const animation = t.animationId
       ? expressionsAnimation(animationTexteParId(t.animationId), {
         debutSecondes: t.debutSecondes,
@@ -609,11 +670,23 @@ export function construireStyle(
     courant = sortie;
   });
 
+  /* Le document, POSE APRES les `drawtext` : deux couches qui se
+     chevaucheraient laissent celle-ci au-dessus, ce qui est l'ordre du
+     tableau — le texte anime est toujours le dernier prepare. */
+  const docAss = couchesAss.length > 0
+    ? documentAss(ctx.cible, couchesAss) : null;
+  if (docAss !== null && ctx.fichierAss) {
+    const sortie = '[styleass]';
+    etapes.push(`${courant}${filtreSousTitres(ctx.fichierAss, ctx.dossierPolices ?? null)}${sortie}`);
+    courant = sortie;
+  }
+
   if (etapes.length === 0) {
     return {
       fragmentsParClip: fragments,
       entrees: [],
       post: '',
+      documentAss: null,
       transitionsNonRendues,
     };
   }
@@ -623,6 +696,7 @@ export function construireStyle(
   etapes[dernier] = etapes[dernier].replace(new RegExp(`${escapeRegExp(courant)}$`), '[vout]');
 
   return {
+    documentAss: docAss,
     fragmentsParClip: fragments,
     entrees,
     post: etapes.join(';'),

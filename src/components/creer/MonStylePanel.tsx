@@ -18,6 +18,7 @@ import ApercuStyleTexte from '@/components/creer/ApercuStyleTexte';
 import BibliothequeLooks from '@/components/creer/BibliothequeLooks';
 import BibliothequeStylesTexte from '@/components/creer/BibliothequeStylesTexte';
 import BibliothequeAnimationsTexte from '@/components/creer/BibliothequeAnimationsTexte';
+import BibliothequeAnimationsContenu from '@/components/creer/BibliothequeAnimationsContenu';
 
 /**
  * Un champ de texte borne, avec son compteur.
@@ -165,6 +166,8 @@ export default function MonStylePanel({
   const [favorisStyles, setFavorisStyles] = useState<string[]>([]);
   const [favorisAnimations, setFavorisAnimations] = useState<string[]>([]);
   const [recentsAnimations, setRecentsAnimations] = useState<string[]>([]);
+  const [favorisContenu, setFavorisContenu] = useState<string[]>([]);
+  const [recentsContenu, setRecentsContenu] = useState<string[]>([]);
   const [recentsStyles, setRecentsStyles] = useState<string[]>([]);
   const [recentsLooks, setRecentsLooks] = useState<string[]>([]);
   const [textesOuverts, setTextesOuverts] = useState(false);
@@ -467,10 +470,14 @@ export default function MonStylePanel({
                     setRecentsStyles((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
                   }}
                 />
-                {/* ── L'ANIMATION, JUSTE APRÈS LE STYLE ──────────────────
-                    Elle anime la couche ; elle ne redéfinit ni la police, ni
-                    la couleur, ni le CTA. Les deux réglages se lisent donc à
-                    la suite, sans se contredire. */}
+                {/* ── DEUX ANIMATIONS QUI NE FONT PAS LA MÊME CHOSE ────
+                    « Mouvement » déplace le bloc entier ; « Apparition »
+                    révèle les mots un à un. Elles se cumulent, donc elles
+                    sont DEUX réglages nommés — les fondre en une seule liste
+                    obligerait à choisir entre monter et s'écrire. */}
+                <p className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  Mouvement du bloc
+                </p>
                 <BibliothequeAnimationsTexte
                   animationActive={brouillon.animations.texteId}
                   exemple={brouillon.texte.titre ?? undefined}
@@ -485,6 +492,26 @@ export default function MonStylePanel({
                       animations: { ...brouillon.animations, texteId: id },
                     });
                     setRecentsAnimations((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
+                  }}
+                />
+
+                <p className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  Apparition du texte
+                </p>
+                <BibliothequeAnimationsContenu
+                  animationActive={brouillon.animations.texteContenuId}
+                  exemple={brouillon.texte.titre ?? undefined}
+                  couleur={brouillon.couleurs.texte ?? '#FFFFFF'}
+                  favoris={favorisContenu}
+                  recents={recentsContenu}
+                  onBasculerFavori={(id) => setFavorisContenu((f) => (
+                    f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
+                  ))}
+                  onChoisir={(id) => {
+                    modifier({
+                      animations: { ...brouillon.animations, texteContenuId: id },
+                    });
+                    setRecentsContenu((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
                   }}
                 />
 

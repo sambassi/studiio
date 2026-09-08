@@ -76,8 +76,8 @@
  * l'etape 2, comme `musique-source.ts` pour la musique.
  */
 import {
-  ANIMATION_AUCUNE, ANIMATION_IDS, LUT_IDS, POLICE_IDS, PRESET_IDS,
-  TRANSITION_IDS,
+  ANIMATION_AUCUNE, ANIMATION_CONTENU_IDS, ANIMATION_IDS, LUT_IDS, POLICE_IDS,
+  PRESET_IDS, TRANSITION_IDS,
 } from './catalogues-creatifs';
 import { STYLE_TEXTE_IDS } from '@/lib/creatif/styles-texte';
 
@@ -224,7 +224,15 @@ export interface ProfilTransitions {
 }
 
 export interface ProfilAnimations {
+  /** Le geste du BLOC : le texte entier monte, grandit, se fond. */
   texteId: string;
+  /**
+   * La revelation du CONTENU : les mots ou les lettres arrivent un a un.
+   *
+   * ⚠️ NE REMPLACE PAS `texteId`, elle s'y AJOUTE. Un profil ecrit avant ce
+   * lot n'a pas le champ, recoit `aucune`, et rend exactement comme avant.
+   */
+  texteContenuId: string;
   ctaId: string;
   logoId: string;
 }
@@ -321,7 +329,8 @@ export const PROFIL_CREATIF_DEFAUT: ProfilCreatifAutopilote = Object.freeze({
     active: false, transitionId: 'cut', dureeMs: 300, intensite: 0.5,
   }),
   animations: Object.freeze({
-    texteId: ANIMATION_AUCUNE, ctaId: ANIMATION_AUCUNE, logoId: ANIMATION_AUCUNE,
+    texteId: ANIMATION_AUCUNE, texteContenuId: ANIMATION_AUCUNE,
+    ctaId: ANIMATION_AUCUNE, logoId: ANIMATION_AUCUNE,
   }),
   margesSures: Object.freeze({
     hautPct: 0, basPct: 0, gauchePct: 0, droitePct: 0,
@@ -522,6 +531,9 @@ export function normaliserProfilCreatif(
   const a = bloc('animations');
   const animations: ProfilAnimations = {
     texteId: dansListe(a.texteId, ANIMATION_IDS, D.animations.texteId),
+    texteContenuId: dansListe(
+      a.texteContenuId, ANIMATION_CONTENU_IDS, D.animations.texteContenuId,
+    ),
     ctaId: dansListe(a.ctaId, ANIMATION_IDS, D.animations.ctaId),
     logoId: dansListe(a.logoId, ANIMATION_IDS, D.animations.logoId),
   };
@@ -626,6 +638,7 @@ export function profilCreatifCanonique(
     p.transitions.dureeMs.toFixed(0),
     p.transitions.intensite.toFixed(d),
     p.animations.texteId,
+    p.animations.texteContenuId,
     p.animations.ctaId,
     p.animations.logoId,
     p.margesSures.hautPct.toFixed(d),
@@ -737,7 +750,7 @@ const CHAMPS_PAR_BLOC: Record<string, readonly string[]> = {
   texte: ['actif', 'titre', 'sousTitre', 'libre', 'position', 'debutSecondes', 'dureeSecondes'],
   ctaVisuel: ['actif', 'modeleId', 'dureeSecondes', 'position'],
   transitions: ['active', 'transitionId', 'dureeMs', 'intensite'],
-  animations: ['texteId', 'ctaId', 'logoId'],
+  animations: ['texteId', 'texteContenuId', 'ctaId', 'logoId'],
   margesSures: ['hautPct', 'basPct', 'gauchePct', 'droitePct'],
 };
 
@@ -864,6 +877,8 @@ export function lireProfilCreatif(brut: unknown): LectureProfil {
     ['lut', 'lutId', LUT_IDS, 'Ce look n\'existe pas.'],
     ['transitions', 'transitionId', TRANSITION_IDS, 'Cette transition n\'existe pas.'],
     ['animations', 'texteId', ANIMATION_IDS, 'Cette animation n\'existe pas.'],
+    ['animations', 'texteContenuId', ANIMATION_CONTENU_IDS,
+      'Cette animation de texte n\'existe pas.'],
     ['animations', 'ctaId', ANIMATION_IDS, 'Cette animation n\'existe pas.'],
     ['animations', 'logoId', ANIMATION_IDS, 'Cette animation n\'existe pas.'],
   ];

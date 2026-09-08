@@ -38,7 +38,7 @@ import {
 } from './recette-audio';
 import type { MontagePlan, PlanMontage } from './montage-contrat';
 import type { ProfilCreatifAutopilote } from './profil-creatif';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
 import { resoudreLut } from './rendu-lut';
 import { lireCube, doserCube, ecrireCube } from './lut-cube';
@@ -470,10 +470,14 @@ export async function produireMontage(
       dureeTotaleSecondes: plan.dureeTotaleSecondes,
     });
     const textesAPoser: TexteAPoser[] = [];
+    /* Le dossier des polices, deduit du fichier resolu : libass passe par
+       fontconfig et veut un DOSSIER la ou `drawtext` veut un fichier. */
+    let dossierPolices: string | null = null;
     const textesNonRendus: string[] = [];
     for (const [i, c] of couches.entries()) {
       const fichierPol = fichierPolice(c.police, c.graisse);
       if (fichierPol === null) { textesNonRendus.push(c.nature); continue; }
+      if (dossierPolices === null) dossierPolices = dirname(fichierPol);
       const fichierTexte = join(dossier, `texte-${i}.txt`);
       await writeFile(fichierTexte, c.texte, 'utf8');
       textesAPoser.push({
@@ -486,6 +490,10 @@ export async function produireMontage(
         finSecondes: c.finSecondes,
         habillage: c.habillage,
         animationId: c.animationId,
+        animationContenuId: c.animationContenuId,
+        texte: c.texte,
+        police: c.police,
+        graisse: c.graisse,
       });
     }
     if (textesNonRendus.length > 0) usage.textesNonRendus = textesNonRendus;
@@ -503,8 +511,17 @@ export async function produireMontage(
       logo,
       lutFichier,
       textes: textesAPoser,
+      fichierAss: join(dossier, 'textes.ass'),
+      dossierPolices: dossierPolices,
       indicePremiereEntree: sources.length + (musique !== null ? 1 : 0),
     });
+    /* ⚠️ LE DOCUMENT S'ECRIT AVANT ffmpeg, pas apres : le filtre le nomme
+       deja. Sans ce fichier, `subtitles` echoue et le montage entier est
+       perdu — alors que la couche de texte n'en est qu'une partie. */
+    if (style.documentAss !== null) {
+      await writeFile(join(dossier, 'textes.ass'), style.documentAss, 'utf8');
+      usage.textesAnimes = style.documentAss.split('\nDialogue:').length - 1;
+    }
     if (style.transitionsNonRendues.length > 0) {
       // Trace, jamais silence : la transition demandee est acceptee par le
       // contrat mais rendue comme `cut` tant que ce lot ne sait pas la faire
