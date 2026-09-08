@@ -78,38 +78,52 @@ function transformer(ffmpeg, args, entree) {
  */
 const TAILLE = 16;
 
-/** Les coefficients, recopiés de `LOOKS_RENDUS` — la source reste là-bas. */
+/**
+ * LES LOOKS, ET LEUR CHAÎNE DE FILTRES.
+ *
+ * ⚠️ LA CHAÎNE **EST** LE LOOK. Pas un nom, pas une intention : la suite de
+ * filtres que ffmpeg applique, écrite ici une fois et gravée dans un `.cube`.
+ *
+ * ⚠️ LES QUATRE PREMIERS NE DOIVENT JAMAIS CHANGER D'UN CHIFFRE. Ce sont les
+ * chaînes exactes que le lot A_2 produisait depuis `LOOKS_RENDUS` ; les
+ * retoucher changerait le rendu de tous les comptes qui les utilisent déjà,
+ * sans que personne ne l'ait demandé — et sans qu'aucune erreur ne le dise.
+ */
 const LOOKS = {
-  clean: { contraste: 1.06, saturation: 0.97, luminosite: 0.012, rm: 0, bm: 0, rh: 0, bh: 0 },
-  vibrant: { contraste: 1.10, saturation: 1.30, luminosite: 0, rm: 0, bm: 0, rh: 0, bh: 0 },
-  'cinema-warm': {
-    contraste: 1.14, saturation: 1.04, luminosite: 0,
-    rm: 0.10, bm: -0.08, rh: 0.06, bh: -0.05,
-  },
-  'cinema-cool': {
-    contraste: 1.12, saturation: 0.96, luminosite: 0,
-    rm: -0.08, bm: 0.12, rh: -0.04, bh: 0.08,
-  },
+  'clean': 'eq=contrast=1.060:saturation=0.970:brightness=0.012',
+  'vibrant': 'eq=contrast=1.100:saturation=1.300',
+  'cinema-warm': 'eq=contrast=1.140:saturation=1.040,colorbalance=rm=0.100:bm=-0.080:rh=0.060:bh=-0.050',
+  'cinema-cool': 'eq=contrast=1.120:saturation=0.960,colorbalance=rm=-0.080:bm=0.120:rh=-0.040:bh=0.080',
+  'blockbuster': 'eq=contrast=1.18:saturation=1.10,colorbalance=rs=-0.06:bs=0.10:rh=0.08:bh=-0.06',
+  'teal-orange': 'eq=contrast=1.12:saturation=1.15,colorbalance=rs=-0.10:gs=0.02:bs=0.14:rh=0.12:gh=0.02:bh=-0.10',
+  'film-soft': 'eq=contrast=0.94:saturation=0.92:brightness=0.02,colorbalance=rs=0.04:bs=0.04',
+  'film-contrast': 'eq=contrast=1.28:saturation=0.98',
+  'dramatic': 'eq=contrast=1.34:saturation=0.88:brightness=-0.03',
+  'noir': 'eq=contrast=1.22:saturation=0.02',
+  'desature': 'eq=contrast=1.06:saturation=0.55',
+  'punchy': 'eq=contrast=1.30:saturation=1.26,colorbalance=rs=-0.08:bs=0.06:rh=0.05',
+  'bright': 'eq=contrast=1.02:saturation=1.06:brightness=0.075',
+  'pop': 'eq=contrast=1.12:saturation=1.40:brightness=0.05,colorbalance=rm=0.06:bm=0.06:gh=-0.04',
+  'high-contrast': 'eq=contrast=1.42:saturation=1.05',
+  'creator': 'eq=contrast=1.14:saturation=1.20:brightness=0.04,colorbalance=rs=-0.05:bs=0.05:rh=0.07:bh=-0.03',
+  'lifestyle': 'eq=contrast=0.98:saturation=1.04:brightness=0.06,colorbalance=rs=0.08:gs=0.04:rm=0.06:bm=-0.05:bh=0.04',
+  'peau-naturelle': 'eq=contrast=1.05:saturation=1.03,colorbalance=rm=0.05:gm=0.02:bm=-0.04:rh=0.03',
+  'peau-chaude': 'eq=contrast=0.99:saturation=1.10:brightness=0.03,colorbalance=rm=0.16:gm=0.06:bm=-0.14:rs=0.06:bh=-0.04',
+  'portrait-doux': 'eq=contrast=0.96:saturation=0.98:brightness=0.03,colorbalance=rs=0.05:bs=0.03',
+  'peau-doree': 'eq=contrast=1.10:saturation=1.16:brightness=0.02,colorbalance=rm=0.08:gm=0.10:bm=-0.14:rh=0.10:gh=0.06:bh=-0.08',
+  'ete': 'eq=contrast=1.10:saturation=1.24:brightness=0.04,colorbalance=rh=0.05:gh=0.05:bh=-0.06:bs=0.05',
+  'heure-doree': 'eq=contrast=1.12:saturation=1.12,colorbalance=rm=0.16:gm=0.06:bm=-0.16:rh=0.10:bh=-0.10',
+  'tropical': 'eq=contrast=1.14:saturation=1.34,colorbalance=gm=0.12:bm=0.10:rs=-0.06:gh=0.08',
+  'nuit': 'eq=contrast=1.16:saturation=0.86:brightness=-0.05,colorbalance=rs=-0.06:bs=0.12:bm=0.08',
+  'urbain': 'eq=contrast=1.20:saturation=0.90,colorbalance=rs=-0.04:bs=0.06:gh=0.02',
+  'moody': 'eq=contrast=1.14:saturation=0.80:brightness=-0.04,colorbalance=rs=0.04:bs=0.06',
+  'vintage': 'eq=contrast=0.92:saturation=0.78:brightness=0.03,colorbalance=rs=0.10:gs=0.04:bs=-0.06:rh=0.06:bh=-0.08',
+  'retro': 'eq=contrast=1.02:saturation=0.88,colorbalance=rs=0.12:bs=-0.04:rm=0.04:bh=0.06',
+  'pastel': 'eq=contrast=0.90:saturation=0.82:brightness=0.06,colorbalance=rs=0.06:gs=0.04:bs=0.06',
+  'energie': 'eq=contrast=1.26:saturation=1.28,colorbalance=rh=0.06:bh=-0.04',
+  'puissance': 'eq=contrast=1.36:saturation=1.12:brightness=-0.02,colorbalance=rs=-0.04:rh=0.06',
+  'neon': 'eq=contrast=1.22:saturation=1.40,colorbalance=rs=0.06:bs=0.12:gh=0.04:bh=0.06',
 };
-
-const nb = (v) => Number(v.toFixed(3)).toFixed(3);
-
-/** La même chaîne de filtres que `filtreLook` à intensité 1. */
-function chaineFiltres(l) {
-  const morceaux = [];
-  const eq = [];
-  if (l.contraste !== 1) eq.push(`contrast=${nb(l.contraste)}`);
-  if (l.saturation !== 1) eq.push(`saturation=${nb(l.saturation)}`);
-  if (l.luminosite !== 0) eq.push(`brightness=${nb(l.luminosite)}`);
-  if (eq.length > 0) morceaux.push(`eq=${eq.join(':')}`);
-  const cb = [];
-  if (l.rm !== 0) cb.push(`rm=${nb(l.rm)}`);
-  if (l.bm !== 0) cb.push(`bm=${nb(l.bm)}`);
-  if (l.rh !== 0) cb.push(`rh=${nb(l.rh)}`);
-  if (l.bh !== 0) cb.push(`bh=${nb(l.bh)}`);
-  if (cb.length > 0) morceaux.push(`colorbalance=${cb.join(':')}`);
-  return morceaux.join(',');
-}
 
 /** L'identité, en pixels, dans l'ordre exact du `.cube`. */
 function identite() {
@@ -138,7 +152,7 @@ async function main() {
   await mkdir(dossier, { recursive: true });
 
   for (const [id, look] of Object.entries(LOOKS)) {
-    const filtres = chaineFiltres(look);
+    const filtres = look;
     const sortie = await transformer(ffmpeg, [
       '-hide_banner', '-v', 'error',
       '-f', 'rawvideo', '-pix_fmt', 'rgb24',

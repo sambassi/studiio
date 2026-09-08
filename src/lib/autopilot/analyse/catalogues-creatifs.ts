@@ -149,6 +149,8 @@ export function policeParId(id: unknown): PoliceAutorisee | undefined {
 // LUT — looks colorimetriques
 // ---------------------------------------------------------------------------
 
+import { LOOKS_CREATIFS } from '@/lib/creatif/looks';
+
 export interface LutAutorisee {
   id: string;
   nom: string;
@@ -175,24 +177,24 @@ export interface LutAutorisee {
  * couple compartiment/cle, pas par un identifiant grave ici.
  */
 /**
- * ⚠️ `ressourceServeur` N'EST PLUS `null` — ET C'EST TOUT LE LOT A_2.
+ * ⚠️ LE CATALOGUE N'EST PLUS ECRIT ICI — IL EST DERIVE (lot A_3a).
  *
- * Ces quatre `.cube` sont PRODUITS PAR LE DEPOT
- * (`scripts/lut/generer-luts.mjs`), a partir des coefficients de
- * `LOOKS_RENDUS` calcules par ffmpeg lui-meme. Aucune LUT tierce n'a ete
- * telechargee : leur provenance est la notre, leur licence celle du depot.
+ * Les looks vivent dans `src/lib/creatif/looks.ts`, avec leur categorie,
+ * leurs tags et leur description : c'est la bibliotheque que l'ecran
+ * parcourt. Les recopier ici en ferait deux verites, et la seconde
+ * divergerait au premier look ajoute — l'ecran en proposerait un que le
+ * validateur du profil refuserait, sans que rien ne le dise.
  *
- * `neutral` garde `null`, et ce n'est pas un oubli : « aucun look » ne
- * s'applique pas, il s'abstient. Lui donner une table identite ferait
- * traverser chaque image par une interpolation qui ne change rien.
+ * Ce module garde la FORME attendue par le profil (`LutAutorisee`), et rien
+ * de plus. `ressourceServeur` est un NOM DE FICHIER, jamais un chemin : la
+ * racine est fixee par `rendu-lut`.
  */
-export const LUTS_AUTORISEES: readonly LutAutorisee[] = [
-  { id: 'neutral', nom: 'Neutre', description: 'Aucune correction — l\'image du rush.', ressourceServeur: null },
-  { id: 'clean', nom: 'Clean', description: 'Contraste doux, peaux naturelles.', ressourceServeur: 'clean.cube' },
-  { id: 'vibrant', nom: 'Vibrant', description: 'Saturation soutenue, couleurs franches.', ressourceServeur: 'vibrant.cube' },
-  { id: 'cinema-warm', nom: 'Cinema chaud', description: 'Hautes lumieres ambrees, ombres denses.', ressourceServeur: 'cinema-warm.cube' },
-  { id: 'cinema-cool', nom: 'Cinema froid', description: 'Bleus profonds, rendu nocturne.', ressourceServeur: 'cinema-cool.cube' },
-];
+export const LUTS_AUTORISEES: readonly LutAutorisee[] = LOOKS_CREATIFS.map((l) => ({
+  id: l.id,
+  nom: l.nom,
+  description: l.description,
+  ressourceServeur: l.fichier,
+}));
 
 export const LUT_IDS: readonly string[] = LUTS_AUTORISEES.map((l) => l.id);
 

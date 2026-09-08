@@ -6,9 +6,7 @@ import {
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ColorWheel from '@/components/ui/ColorWheel';
-import {
-  LUTS_AUTORISEES, transitionParId,
-} from '@/lib/autopilot/analyse/catalogues-creatifs';
+import { transitionParId } from '@/lib/autopilot/analyse/catalogues-creatifs';
 import {
   ANCRES_TEXTE, BUCKETS_LOGO, PROFIL_CREATIF_DEFAUT, POSITIONS_LOGO,
   estProfilHistorique, normaliserProfilCreatif,
@@ -19,6 +17,7 @@ import {
   LONGUEURS_MAX, POLICES_RENDU, policeDe, type PoliceRendu,
 } from '@/lib/autopilot/analyse/rendu-texte';
 import ApercuStyleTexte from '@/components/creer/ApercuStyleTexte';
+import BibliothequeLooks from '@/components/creer/BibliothequeLooks';
 
 /**
  * LOT 2B ETAPE 3 — L'ECRAN « MON STYLE ».
@@ -107,9 +106,6 @@ function ChampTexte({
     </label>
   );
 }
-
-/** Les looks, dans l'ordre du catalogue. */
-const LOOKS = LUTS_AUTORISEES;
 
 const LIBELLES_POSITION_LOGO: Record<PositionLogo, string> = {
   'haut-gauche': 'Haut gauche',
@@ -200,6 +196,17 @@ export default function MonStylePanel({
 
   const aUnStyle = profilEnregistre !== null && !estProfilHistorique(profilEnregistre);
 
+  /*
+   * ⚠️ FAVORIS ET RÉCENTS VIVENT ICI, ET PAS ENCORE EN BASE.
+   *
+   * Les porter dans le profil demanderait de décider comment ils survivent
+   * aux quatre familles à venir — styles, animations, transitions — et cette
+   * décision mérite son propre lot. Tenus dans l'état du panneau, ils
+   * rendent déjà la grille utilisable, et rien de ce qui les remplacera ne
+   * sera contraint par ce choix.
+   */
+  const [favorisLooks, setFavorisLooks] = useState<string[]>([]);
+  const [recentsLooks, setRecentsLooks] = useState<string[]>([]);
   const [textesOuverts, setTextesOuverts] = useState(false);
   const [appel, setAppel] = useState<{ texte: string | null; destination: string | null }>(
     appelActionEnregistre ?? { texte: null, destination: null },
@@ -274,33 +281,31 @@ export default function MonStylePanel({
           {/* ── LOOK ──────────────────────────────────────────────────── */}
           <section>
             <p className="mb-1.5 text-[11px] font-medium text-gray-400">Look</p>
-            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-              {LOOKS.map((l) => {
-                const actif = l.id === 'neutral'
-                  ? !brouillon.lut.active
-                  : brouillon.lut.active && brouillon.lut.lutId === l.id;
-                return (
-                  <button
-                    key={l.id}
-                    type="button"
-                    data-mon-style-look={l.id}
-                    aria-pressed={actif}
-                    onClick={() => modifier({
-                      lut: l.id === 'neutral'
-                        ? { active: false, lutId: null, intensite: 1 }
-                        : { active: true, lutId: l.id, intensite: brouillon.lut.intensite || 1 },
-                    })}
-                    className={`rounded-lg border px-2.5 py-2 text-left transition ${
-                      actif
-                        ? 'border-purple-500/50 bg-gray-800'
-                        : 'border-gray-800 hover:border-gray-700'
-                    }`}
-                  >
-                    <span className="block text-[11px] font-medium text-gray-200">{l.nom}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* ⚠️ LA LISTE DE NOMS A LAISSÉ PLACE À DE VRAIS APERÇUS (A_3a).
+                Quatre boutons de texte suffisaient à quatre looks ; ils ne
+                suffisent plus à trente-quatre, et surtout ils ne disaient
+                rien de ce qu'un look FAIT. Chaque vignette est calculée par
+                le moteur, sur le rush choisi. */}
+            <BibliothequeLooks
+              lookActif={brouillon.lut.active ? brouillon.lut.lutId : 'neutral'}
+              favoris={favorisLooks}
+              recents={recentsLooks}
+              analyseApercuId={analyseApercuId}
+              onBasculerFavori={(id) => setFavorisLooks((f) => (
+                f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
+              ))}
+              onChoisir={(id) => {
+                modifier({
+                  lut: id === 'neutral'
+                    ? { active: false, lutId: null, intensite: 1 }
+                    : { active: true, lutId: id, intensite: brouillon.lut.intensite || 1 },
+                });
+                /* Les récents : le plus récent en tête, sans doublon, et
+                   bornés — une liste qui grandit sans fin cesse d'être une
+                   liste de récents. */
+                setRecentsLooks((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
+              }}
+            />
             {brouillon.lut.active && (
               <label className="mt-2 block text-[11px] text-gray-400">
                 Intensité <span className="text-gray-500">{Math.round(brouillon.lut.intensite * 100)} %</span>

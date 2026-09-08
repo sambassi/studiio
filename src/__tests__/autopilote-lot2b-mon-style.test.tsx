@@ -474,7 +474,15 @@ describe('15-18. l’ecran n’affiche que les transitions REELLEMENT rendues', 
     const envoyer = vi.fn(async () => true);
     render(<MonStylePanel profilEnregistre={null} onEnregistrer={envoyer} />);
     fireEvent.click(screen.getByRole('button', { name: /Configurer/ }));
-    fireEvent.click(document.querySelector('[data-mon-style-look="vibrant"]')!);
+    /* ⚠️ LE SELECTEUR A DEMENAGE (A_3a) : la liste de noms est devenue une
+       bibliotheque a vraies vignettes, `[data-look-carte]`. L'invariant, lui,
+       ne bouge pas — c'est le GESTE qui envoie, jamais le reglage.
+
+       Et le rayon « Tout » est ouvert d'abord : « Pour vous » n'en montre
+       que douze, ce qui est le but — trente-quatre vignettes d'entree
+       seraient un mur, pas une bibliotheque. */
+    fireEvent.click(document.querySelector('[data-looks-rayon="tout"]')!);
+    fireEvent.click(document.querySelector('[data-look-carte="vibrant"]')!);
     // Le reglage a change a l'ecran…
     expect(document.querySelector('[data-mon-style-look-intensite]')).not.toBeNull();
     // …et RIEN n'est parti.
