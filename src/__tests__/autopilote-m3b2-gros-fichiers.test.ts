@@ -794,6 +794,14 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
       // droit d'y faire — additif seulement, aucun `drop`, aucun `delete`,
       // aucun `grant`, et la clé étrangère historique laissée intacte.
       '2026-09-08-rush-montage-plan-sources.sql',
+      // A_7M2 est la quatrième exception NOMMÉE : elle corrige la RÈGLE DE
+      // SUPPRESSION des deux clés étrangères qui pointent vers
+      // `rush_clip_sets`, donc elle nomme forcément des tables `rush_*`. Elle
+      // ne crée rien, n'efface aucune ligne et n'installe aucune purge — sa
+      // garde vit dans `autopilote-a7m2-politique-suppression.test.ts`, qui
+      // borne ce qu'elle a le droit de faire et vérifie qu'elle ne touche ni
+      // au rendu, ni au rush, ni à l'analyse.
+      '2026-09-08-rush-montage-politique-suppression.sql',
     ]);
     const posterieures = fichiersMigration.filter(
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
