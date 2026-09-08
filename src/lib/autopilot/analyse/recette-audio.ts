@@ -115,6 +115,17 @@ export const BUCKET_MUSIQUE = 'audio' as const;
 export interface PisteMusicale {
   bucket: string;
   cle: string;
+  /**
+   * A_5 — L'EMPREINTE DES OCTETS, facultative.
+   *
+   * ⚠️ FACULTATIVE, ET C'EST CE QUI PRESERVE LES ANCIENNES EMPREINTES. Une
+   * recette qui n'en porte pas rend EXACTEMENT la chaine canonique d'avant ce
+   * lot : les rendus deja reussis restent reutilisables. Quand elle est la,
+   * elle distingue deux fichiers DIFFERENTS sous la MEME cle — un
+   * re-televersement — pour qu'un ancien montage ne ressorte pas avec la
+   * nouvelle musique dans son titre et l'ancienne dans son son.
+   */
+  version?: string;
 }
 
 export interface RecetteAudio {
@@ -161,7 +172,11 @@ export function arrondirVolume(v: number): number {
  * produiraient deux encodages.
  */
 export function normaliserRecette(r: RecetteAudio): RecetteAudio {
-  const musique = r.musique === null ? null : { bucket: r.musique.bucket, cle: r.musique.cle };
+  const musique = r.musique === null ? null : {
+    bucket: r.musique.bucket,
+    cle: r.musique.cle,
+    ...(r.musique.version ? { version: r.musique.version } : {}),
+  };
   return {
     musique,
     volumeMusique: musique === null
@@ -186,7 +201,9 @@ export function recetteCanonique(r: RecetteAudio): string {
     `version=${VERSION_RECETTE_AUDIO}`,
     n.musique === null
       ? 'musique=aucune'
-      : `musique=${n.musique.bucket}:${n.musique.cle}`,
+      // ⚠️ SANS VERSION, LA CHAINE EST CELLE D'AVANT CE LOT, AU CARACTERE PRES.
+      : `musique=${n.musique.bucket}:${n.musique.cle}${
+        n.musique.version ? `@${n.musique.version}` : ''}`,
     `volumeMusique=${n.volumeMusique.toFixed(d)}`,
     `sonOriginal=${n.sonOriginal ? 'oui' : 'non'}`,
     `volumeSonOriginal=${n.volumeSonOriginal.toFixed(d)}`,

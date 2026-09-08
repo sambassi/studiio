@@ -381,7 +381,8 @@ describe('7. Manuel et automatique partagent le même texte', () => {
        dont les choix variables ont ete resolus. Le message du CTA, lui, y est
        toujours — c'est ce que ce test tient. Passer la POLITIQUE au lieu des
        choix ferait deux videos aux looks differents sous la meme identite. */
-    expect(auto).toContain('methodeRendu(d.recette, profilEffectif, appelAction)');
+    // A_5 : la recette est effective elle aussi — la musique peut varier.
+    expect(auto).toContain('methodeRendu(recetteEffective, profilEffectif, appelAction)');
     expect(auto).toContain('profil: profilEffectif');
     expect(manuel).toContain('methodeRendu(recette, profil, appelAction)');
   });

@@ -32,6 +32,9 @@ import { ANIMATION_CONTENU_IDS } from './animations-contenu';
 import { TRANSITION_CREATIVE_IDS } from './transitions';
 import { CAPTION_IDS } from './captions';
 import {
+  MODES_AUDIO, type ModeAudio,
+} from '@/lib/autopilot/analyse/politique-audio';
+import {
   banqueAudioValide, BANQUE_AUDIO_VIDE, type BanqueAudio,
 } from './audio';
 import { presetsPersonnelsValides, type PresetPersonnel } from './presets';
@@ -152,6 +155,14 @@ export const VERSION_POLITIQUE_CREATIVE = 'politique-v1';
 
 export interface PolitiqueCreative {
   mode: ModeCreatif;
+  /**
+   * A_5 — CE QUE L'AUTOPILOTE FAIT DE LA MUSIQUE, INDEPENDAMMENT DES EFFETS.
+   *
+   * ⚠️ SEPARE DU MODE CREATIF, ET C'EST VOULU. Quelqu'un peut vouloir une
+   * marque strictement fixe ET des musiques qui tournent — ou l'inverse.
+   * Les lier aurait force un choix que personne ne demande.
+   */
+  audioMode: ModeAudio;
   /** Ce que l'Autopilote peut choisir, famille par famille. */
   autorises: FavorisCreatifs;
   /** Les presets entre lesquels il peut alterner. */
@@ -161,6 +172,7 @@ export interface PolitiqueCreative {
 
 export const POLITIQUE_STRICTE: PolitiqueCreative = Object.freeze({
   mode: 'marque-stricte',
+  audioMode: 'fixe',
   autorises: FAVORIS_VIDES,
   presetsAutorises: Object.freeze([]) as readonly string[],
   version: VERSION_POLITIQUE_CREATIVE,
@@ -181,14 +193,19 @@ export function politiqueValide(brut: unknown): PolitiqueCreative {
     ? [...new Set(o.presetsAutorises.filter((x): x is string => typeof x === 'string'))]
       .slice(0, FAVORIS_MAX_PAR_FAMILLE)
     : [];
+  const audioMode = typeof o.audioMode === 'string'
+    && (MODES_AUDIO as readonly string[]).includes(o.audioMode)
+    ? o.audioMode as ModeAudio : 'fixe';
   return {
-    mode, autorises, presetsAutorises, version: VERSION_POLITIQUE_CREATIVE,
+    mode, audioMode, autorises, presetsAutorises,
+    version: VERSION_POLITIQUE_CREATIVE,
   };
 }
 
 /** La politique ne demande-t-elle rien de plus que le défaut ? */
 export function politiqueVide(p: PolitiqueCreative): boolean {
   return p.mode === 'marque-stricte'
+    && p.audioMode === 'fixe'
     && p.presetsAutorises.length === 0
     && FAMILLES_BIBLIOTHEQUE.every((f) => p.autorises[f].length === 0);
 }

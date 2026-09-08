@@ -303,7 +303,11 @@ describe('5. L’anti-répétition', () => {
     const s = sansProse(lire('src/lib/autopilot/analyse/rendu-service.ts'));
     expect(s).toContain(".eq('user_id', userId)");
     expect(s).toContain('.limit(');
-    expect(sansProse(CHAINE)).toContain('historiqueDepuisUsages(await listerCreatifsRecents(userId))');
+    /* ⚠️ A_5 LIT L'HISTORIQUE UNE SEULE FOIS POUR LES DEUX POLITIQUES —
+       creative et audio. Deux lectures coûteraient deux requêtes pour la
+       même vérité. */
+    expect(sansProse(CHAINE)).toContain('await listerCreatifsRecents(userId)');
+    expect(sansProse(CHAINE)).toContain('historiqueDepuisUsages(historiqueUsages)');
   });
 
   it('5.6 sans historique lisible, on choisit quand même', () => {
@@ -369,8 +373,10 @@ describe('7. L’identité et la trace', () => {
 
   it('7.2 ⚠️ la chaîne passe les choix EFFECTIFS, pas la liste autorisée', () => {
     const c = sansProse(CHAINE);
-    expect(c).toContain('methodeRendu(d.recette, profilEffectif, appelAction)');
+    // A_5 : la RECETTE aussi est effective — la musique peut varier.
+    expect(c).toContain('methodeRendu(recetteEffective, profilEffectif, appelAction)');
     expect(c).toContain('profil: profilEffectif');
+    expect(c).toContain('recette: recetteEffective');
   });
 
   it('7.3 les choix effectifs et la version de politique sont persistés', () => {

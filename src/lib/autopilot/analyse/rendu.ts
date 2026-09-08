@@ -637,6 +637,8 @@ export async function produireMontage(
         captionStyleId: profil.captions.active ? profil.captions.styleId : null,
         // ⚠️ LA CLE, JAMAIS UNE URL — `usage` refuse d'ailleurs `://`.
         musicTrackId: musique !== null ? (recette.musique?.cle ?? null) : null,
+        // L'empreinte des OCTETS : deux fichiers sous la meme cle diffèrent.
+        musicAssetVersion: musique !== null ? (recette.musique?.version ?? null) : null,
         ...(demande.variation ? {
           politiqueVersion: demande.variation.politiqueVersion,
           raison: demande.variation.raison,

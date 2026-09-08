@@ -76,6 +76,9 @@ import {
   resoudreStyleEffectif, graineCreative, historiqueDepuisUsages,
   type ChoixCreatifs,
 } from '@/lib/autopilot/analyse/politique-creative';
+import {
+  resoudreMusiqueEffective, historiqueAudioDepuisUsages, type IssueAudio,
+} from '@/lib/autopilot/analyse/politique-audio';
 import { methodeRendu, type IdentiteRendu } from '@/lib/autopilot/analyse/rendu-contrat';
 import {
   creerRendu, lireRenduReussiIdentique, majRendu,
@@ -355,13 +358,19 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
   const biblio = await lireBibliothequeUtilisateur(userId);
   let profilEffectif = profil;
   let variation: { politiqueVersion: string; raison: string } | null = null;
-  if (biblio.automatisation.mode !== 'marque-stricte') {
-    let historique: ChoixCreatifs[] = [];
+  /* ⚠️ LU UNE SEULE FOIS POUR LES DEUX POLITIQUES. Deux lectures du meme
+     historique coûteraient deux requetes pour la meme verite. */
+  let historiqueUsages: Record<string, unknown>[] = [];
+  if (biblio.automatisation.mode !== 'marque-stricte'
+    || biblio.automatisation.audioMode !== 'fixe') {
     try {
-      historique = historiqueDepuisUsages(await listerCreatifsRecents(userId));
+      historiqueUsages = await listerCreatifsRecents(userId);
     } catch {
       // Sans historique, on choisit quand meme — sans eviter les repetitions.
     }
+  }
+  if (biblio.automatisation.mode !== 'marque-stricte') {
+    const historique: ChoixCreatifs[] = historiqueDepuisUsages(historiqueUsages);
     const issue = resoudreStyleEffectif(
       profil ?? PROFIL_CREATIF_DEFAUT,
       biblio.automatisation,
@@ -384,12 +393,37 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
      l'afficher. Le reprendre ici garantit que la video automatique affiche
      exactement l'appel a l'action que la personne a ecrit. */
   const appelAction = objectif.appelAction ?? null;
+  /* ── LA MUSIQUE DE CETTE VIDEO-CI ─────────────────────────────────────
+     ⚠️ EN MODE FIXE — LE DEFAUT — LA RECETTE PART TELLE QUELLE, et le graphe
+     emis est celui d'avant ce lot. La variation n'existe que si la personne
+     l'a demandee, et elle est DETERMINISTE : meme compte, meme plan, meme
+     politique, meme musique — sans quoi un cron qui reessaie changerait de
+     bande-son a chaque tentative, et l'identite du rendu avec elle. */
+  let recetteEffective = d.recette;
+  let variationAudio: IssueAudio | null = null;
+  if (biblio.automatisation.audioMode !== 'fixe' && d.recette) {
+    const issue = resoudreMusiqueEffective(
+      d.recette.musique,
+      biblio.automatisation.audioMode,
+      biblio.automatisation.autorises.audio,
+      biblio.audio.pistes,
+      {
+        graine: graineCreative(
+          userId, planId, planVersion, biblio.automatisation.version,
+        ),
+        historique: historiqueAudioDepuisUsages(historiqueUsages),
+      },
+    );
+    recetteEffective = { ...d.recette, musique: issue.musique };
+    variationAudio = issue;
+  }
+
   const identiteRendu: IdentiteRendu = {
     montagePlanId: planId,
     montagePlanVersion: planVersion,
     // ⚠️ LES CHOIX EFFECTIFS, PAS LA LISTE AUTORISEE : deux videos aux
     // looks differents doivent etre deux fichiers differents.
-    methodeRendu: methodeRendu(d.recette, profilEffectif, appelAction),
+    methodeRendu: methodeRendu(recetteEffective, profilEffectif, appelAction),
   };
   const renduDejaLa = await lireRenduReussiIdentique(userId, identiteRendu);
   if (renduDejaLa.motif === 'socle_absent') return echec('socle_absent');
@@ -417,9 +451,14 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
     {
       userId,
       plan,
-      recette: d.recette,
+      recette: recetteEffective,
       profil: profilEffectif,
-      variation,
+      /* ⚠️ LES DEUX RAISONS VOYAGENT ENSEMBLE. Le jour ou « pourquoi cette
+         musique ? » sera pose, la reponse est a cote de « pourquoi ce look ? ». */
+      variation: variationAudio === null ? variation : {
+        politiqueVersion: biblio.automatisation.version,
+        raison: [variation?.raison, variationAudio.raison].filter(Boolean).join(' '),
+      },
       /* ⚠️ PRÉPARÉE MÊME QUAND LES SOUS-TITRES SONT ÉTEINTS ? NON. La lecture
          coûte deux requêtes ; elle n'a lieu que si le profil les demande. */
       captions: profilEffectif?.captions.active
