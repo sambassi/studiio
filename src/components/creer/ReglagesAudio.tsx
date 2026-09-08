@@ -8,6 +8,7 @@ import MenuActions, { type ActionMenu } from '@/components/ui/MenuActions';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import BibliothequeAudio from '@/components/creer/BibliothequeAudio';
 import { useBanqueAudio } from '@/lib/hooks/useBanqueAudio';
+import { cleDepuisUrlMediatheque } from '@/lib/creatif/audio';
 import {
   BUCKET_MUSIQUE, RECETTE_AUDIO_DEFAUT, arrondirVolume, type RecetteAudio,
 } from '@/lib/autopilot/analyse/recette-audio';
@@ -103,11 +104,10 @@ export default function ReglagesAudio({
    * perimetre du compte.
    */
   const choisir = (url: string, nom: string) => {
-    const marque = `/storage/v1/object/public/${BUCKET_MUSIQUE}/`;
-    const i = url.indexOf(marque);
-    if (i < 0) return;
-    const cle = decodeURIComponent(url.slice(i + marque.length).split('?')[0]);
-    if (!cle) return;
+    // ⚠️ LA MEME EXTRACTION QUE L'AJOUT A LA BANQUE, ECRITE UNE SEULE FOIS.
+    // Deux versions divergeraient au premier caractere encode.
+    const cle = cleDepuisUrlMediatheque(url, BUCKET_MUSIQUE);
+    if (cle === null) return;
     setNomMusique(nom);
     majuscule({ musique: { bucket: BUCKET_MUSIQUE, cle } });
     setMediatheque(false);
@@ -116,6 +116,8 @@ export default function ReglagesAudio({
   /* La banque n'est demandee qu'a l'ouverture du panneau audio : une personne
      qui ne touche jamais a la musique ne paie pas une requete pour elle. */
   const banque = useBanqueAudio(!desactive);
+  const [ajoutBanque, setAjoutBanque] = useState(false);
+  const [retraitActive, setRetraitActive] = useState<string | null>(null);
 
   const nomAffiche = valeur.musique === null
     ? null
@@ -193,8 +195,10 @@ export default function ReglagesAudio({
           fichiers oblige a se souvenir d'un nom de fichier ; choisir dans une
           banque montre une duree, une ambiance, une forme d'onde, et laisse
           ecouter. La mediatheque reste le moyen d'AJOUTER, pas de choisir. */}
-      {banque.pistes.length > 0 && (
-        <BibliothequeAudio
+      {/* ⚠️ AFFICHEE MEME VIDE. C'est elle qui porte le bouton d'ajout : la
+          masquer quand la banque est vide laissait « Ta banque est vide »
+          sans le moindre moyen de la remplir. */}
+      <BibliothequeAudio
           pistes={banque.pistes}
           cleActive={valeur.musique?.cle ?? null}
           favoris={favorisAudio}
@@ -202,23 +206,75 @@ export default function ReglagesAudio({
           onBasculerFavori={onBasculerFavoriAudio}
           onRenommer={banque.renommer}
           onRetirer={(cle) => {
+            /* ⚠️ RETIRER LA PISTE ACTIVE SE CONFIRME. Elle disparait du
+               montage en cours ; le faire sans un mot donnerait une video
+               muette que personne n'a demandee. */
+            if (valeur.musique?.cle === cle) { setRetraitActive(cle); return; }
             banque.retirer(cle);
-            // Retirer la piste CHOISIE laisse le montage sans musique plutot
-            // qu'avec une reference morte.
-            if (valeur.musique?.cle === cle) {
-              setNomMusique(null);
-              majuscule({ musique: null });
-            }
           }}
           onChoisir={(cle) => {
             if (cle === null) { setNomMusique(null); majuscule({ musique: null }); return; }
             setNomMusique(banque.pistes.find((x) => x.cle === cle)?.nom ?? null);
             majuscule({ musique: { bucket: BUCKET_MUSIQUE, cle } });
           }}
+          enAnalyse={banque.enAnalyse}
+          onMoods={banque.moods}
+          onAjouter={() => setAjoutBanque(true)}
         />
-      )}
       {banque.erreur && (
         <p data-audio-banque-erreur className="text-[10px] text-amber-400">{banque.erreur}</p>
+      )}
+
+      {/* ⚠️ LE MEME SELECTEUR QUE PARTOUT, EN MODE AUDIO. Il filtre deja les
+          medias, cherche, et sait televerser avec sa progression reelle :
+          en ecrire un second aurait fait deux verites pour la meme chose. */}
+      <MediaLibrary
+        isOpen={ajoutBanque}
+        onClose={() => setAjoutBanque(false)}
+        mediaType="audio"
+        onSelect={(url, nom) => {
+          setAjoutBanque(false);
+          const cle = cleDepuisUrlMediatheque(url, BUCKET_MUSIQUE);
+          /* Un media hors du compartiment audio n'a rien a faire dans la
+             banque ; le serveur le refuserait, autant ne pas l'envoyer. */
+          if (cle !== null) void banque.ajouter(cle, nom);
+        }}
+      />
+
+      {retraitActive !== null && (
+        <div
+          role="alertdialog"
+          aria-label="Retirer la musique utilisée"
+          data-audio-confirmer-retrait
+          className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2"
+        >
+          <p className="text-[11px] text-amber-200">
+            Cette musique est utilisée dans ton style actuel. La retirer ?
+          </p>
+          <div className="mt-1.5 flex gap-1.5">
+            <button
+              type="button"
+              data-audio-confirmer-oui
+              onClick={() => {
+                banque.retirer(retraitActive);
+                setNomMusique(null);
+                majuscule({ musique: null });
+                setRetraitActive(null);
+              }}
+              className="rounded-lg border border-gray-800 px-2 py-1 text-[10px] text-gray-200"
+            >
+              Retirer
+            </button>
+            <button
+              type="button"
+              data-audio-confirmer-non
+              onClick={() => setRetraitActive(null)}
+              className="rounded-lg border border-gray-800 px-2 py-1 text-[10px] text-gray-400"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
       )}
 
       {/* La musique en une ligne : son nom, ou l'absence dite simplement. */}

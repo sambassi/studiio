@@ -255,10 +255,13 @@ describe('4. Le chargement', () => {
   it('4.5 ⚠️ LA BANQUE PASSE DEVANT LA MÉDIATHÈQUE', () => {
     // Choisir dans une liste de fichiers oblige à se souvenir d'un nom ;
     // choisir dans une banque montre une durée, une ambiance, une onde.
-    const i = REGLAGES.indexOf('BibliothequeAudio');
-    const j = REGLAGES.indexOf('MediaLibrary', i);
+    const i = REGLAGES.indexOf('<BibliothequeAudio');
+    const j = REGLAGES.indexOf('<MediaLibrary', i);
     expect(i).toBeGreaterThan(-1);
-    expect(REGLAGES).toContain('banque.pistes.length > 0');
     expect(j).toBeGreaterThan(i);
+    /* A_5d : elle est affichee MEME VIDE, parce que c'est elle qui porte le
+       bouton d'ajout — la masquer laissait « Ta banque est vide » sans le
+       moindre moyen de la remplir. */
+    expect(REGLAGES).not.toContain('banque.pistes.length > 0 && (');
   });
 });

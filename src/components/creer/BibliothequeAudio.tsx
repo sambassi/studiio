@@ -31,10 +31,13 @@
  * musique est cassée.
  */
 import { useMemo, useRef, useState } from 'react';
-import { Search, Heart, Play, Pause, Pencil, Trash2, Check } from 'lucide-react';
 import {
-  LIBELLES_MOOD, chercherPistes, dureeLisible, decoderFormeOnde,
-  moodsPresents, POINTS_FORME_ONDE, type PisteAudio, type MoodAudio,
+  Search, Heart, Play, Pause, Pencil, Trash2, Check, Plus, Loader2, Tags,
+} from 'lucide-react';
+import {
+  MOODS_AUDIO, LIBELLES_MOOD, chercherPistes, dureeLisible, decoderFormeOnde,
+  moodsPresents, POINTS_FORME_ONDE, PISTES_AUDIO_MAX, MOODS_PAR_PISTE_MAX,
+  type PisteAudio, type MoodAudio,
 } from '@/lib/creatif/audio';
 import { BUCKET_MUSIQUE } from '@/lib/autopilot/analyse/recette-audio';
 
@@ -65,6 +68,12 @@ export interface BibliothequeAudioProps {
   onBasculerFavori?: (cle: string) => void;
   onRenommer?: (cle: string, nom: string) => void;
   onRetirer?: (cle: string) => void;
+  /** Ouvre le sélecteur de médias. Absent = pas de bouton d'ajout. */
+  onAjouter?: () => void;
+  /** Les ambiances se règlent APRÈS l'ajout, sans réanalyser le fichier. */
+  onMoods?: (cle: string, moods: readonly MoodAudio[]) => void;
+  /** La clé en cours d'analyse, s'il y en a une. */
+  enAnalyse?: string | null;
 }
 
 type Rayon = 'pour-vous' | 'favoris' | 'recents' | MoodAudio | 'tout';
@@ -72,11 +81,13 @@ type Rayon = 'pour-vous' | 'favoris' | 'recents' | MoodAudio | 'tout';
 export default function BibliothequeAudio({
   pistes, cleActive, onChoisir,
   favoris = [], recents = [], onBasculerFavori, onRenommer, onRetirer,
+  onAjouter, onMoods, enAnalyse = null,
 }: BibliothequeAudioProps) {
   const [requete, setRequete] = useState('');
   const [rayon, setRayon] = useState<Rayon>('pour-vous');
   const [enLecture, setEnLecture] = useState<string | null>(null);
   const [renomme, setRenomme] = useState<string | null>(null);
+  const [reglageMoods, setReglageMoods] = useState<string | null>(null);
   const [nouveauNom, setNouveauNom] = useState('');
   // ⚠️ UN SEUL ÉLÉMENT AUDIO POUR TOUTE LA GRILLE.
   const lecteur = useRef<HTMLAudioElement | null>(null);
@@ -141,6 +152,40 @@ export default function BibliothequeAudio({
         onPause={() => setEnLecture(null)}
       />
 
+      {/* ⚠️ LE BOUTON EST TOUJOURS LA, PAS SEULEMENT QUAND LA BANQUE EST VIDE.
+          Une banque de trois morceaux se complete aussi souvent qu'une banque
+          vide se remplit. */}
+      {onAjouter && (
+        <button
+          type="button"
+          onClick={onAjouter}
+          disabled={enAnalyse !== null || pistes.length >= PISTES_AUDIO_MAX}
+          data-audio-ajouter
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border
+            border-dashed border-gray-700 px-2 py-1.5 text-[11px] text-gray-300 transition
+            hover:border-purple-500/50 hover:text-purple-200 disabled:opacity-40
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+        >
+          {enAnalyse !== null ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              Analyse de la musique…
+            </>
+          ) : (
+            <>
+              <Plus className="h-3 w-3" aria-hidden="true" />
+              Ajouter une musique
+            </>
+          )}
+        </button>
+      )}
+      {pistes.length >= PISTES_AUDIO_MAX && (
+        <p data-audio-limite className="text-[10px] text-amber-400">
+          Ta banque contient déjà le nombre maximum de musiques.
+          Retires-en une pour en ajouter.
+        </p>
+      )}
+
       <label className="relative block">
         <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5
           -translate-y-1/2 text-gray-500" aria-hidden="true" />
@@ -178,9 +223,12 @@ export default function BibliothequeAudio({
       </div>
 
       {pistes.length === 0 ? (
-        <p data-audio-banque-vide className="px-1 py-3 text-center text-[11px] text-gray-500">
-          Ta banque est vide. Ajoute une musique depuis ta médiathèque.
-        </p>
+        <div data-audio-banque-vide className="px-1 py-4 text-center">
+          <p className="text-[12px] text-gray-300">Ta banque musicale est vide</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">
+            Ajoute les musiques que tu veux utiliser dans tes vidéos.
+          </p>
+        </div>
       ) : visibles.length === 0 ? (
         <p data-audio-vide className="px-1 py-3 text-center text-[11px] text-gray-500">
           Aucune musique ne correspond.
@@ -275,6 +323,40 @@ export default function BibliothequeAudio({
                   </>
                 )}
 
+                {onMoods && reglageMoods === p.cle && (
+                  <span className="flex flex-wrap gap-1" data-audio-moods={p.cle}>
+                    {MOODS_AUDIO.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        aria-pressed={p.moods.includes(m)}
+                        data-audio-mood={`${p.cle}:${m}`}
+                        onClick={() => onMoods(p.cle, p.moods.includes(m)
+                          ? p.moods.filter((x) => x !== m)
+                          : [...p.moods, m].slice(-MOODS_PAR_PISTE_MAX))}
+                        className={`rounded-full px-1.5 py-0.5 text-[9px] leading-none ${
+                          p.moods.includes(m)
+                            ? 'bg-purple-500/20 text-purple-300'
+                            : 'bg-gray-800 text-gray-500'
+                        }`}
+                      >
+                        {LIBELLES_MOOD[m]}
+                      </button>
+                    ))}
+                  </span>
+                )}
+                {onMoods && (
+                  <button
+                    type="button"
+                    onClick={() => setReglageMoods(reglageMoods === p.cle ? null : p.cle)}
+                    aria-expanded={reglageMoods === p.cle}
+                    aria-label={`Ambiances de ${p.nom}`}
+                    data-audio-regler-moods={p.cle}
+                    className="shrink-0 rounded-full p-1 text-gray-400 hover:text-gray-200"
+                  >
+                    <Tags className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                )}
                 {onBasculerFavori && (
                   <button
                     type="button"

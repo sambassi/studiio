@@ -263,6 +263,26 @@ export function decoderFormeOnde(base64: string | undefined): number[] {
   }
 }
 
+/**
+ * La clé de stockage derrière une URL de médiathèque, ou `null`.
+ *
+ * ⚠️ ÉCRITE UNE SEULE FOIS, ET C'EST LE POINT. Le sélecteur de médias rend
+ * une URL publique parce qu'il a été écrit pour des `<img>` et des `<audio>` ;
+ * la banque, elle, ne stocke qu'une CLÉ. Deux extractions de cette clé
+ * divergeraient au premier caractère encodé, et l'une des deux enverrait au
+ * serveur une clé qu'il refuserait sans qu'on comprenne pourquoi.
+ *
+ * Le serveur revérifie de toute façon que la clé est dans le périmètre du
+ * compte : cette fonction met en forme, elle n'autorise rien.
+ */
+export function cleDepuisUrlMediatheque(url: string, bucket: string): string | null {
+  const marque = `/storage/v1/object/public/${bucket}/`;
+  const i = url.indexOf(marque);
+  if (i < 0) return null;
+  const cle = decodeURIComponent(url.slice(i + marque.length).split('?')[0]);
+  return cle.length > 0 ? cle : null;
+}
+
 /** Les ambiances qui portent au moins une piste — les rayons de la grille. */
 export function moodsPresents(pistes: readonly PisteAudio[]): readonly MoodAudio[] {
   const vus = new Set<MoodAudio>();
