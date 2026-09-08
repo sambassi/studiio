@@ -150,6 +150,7 @@ export function policeParId(id: unknown): PoliceAutorisee | undefined {
 // ---------------------------------------------------------------------------
 
 import { LOOKS_CREATIFS } from '@/lib/creatif/looks';
+import { ANIMATIONS_TEXTE } from '@/lib/creatif/animations-texte';
 
 export interface LutAutorisee {
   id: string;
@@ -250,19 +251,31 @@ export interface AnimationAutorisee {
   categorie: 'aucune' | 'fondu' | 'mouvement' | 'echelle';
 }
 
-export const ANIMATIONS_AUTORISEES: readonly AnimationAutorisee[] = [
-  { id: 'none', nom: 'Aucune', categorie: 'aucune' },
-  { id: 'fade', nom: 'Fondu', categorie: 'fondu' },
-  { id: 'slide-up', nom: 'Glisse vers le haut', categorie: 'mouvement' },
-  { id: 'scale', nom: 'Echelle', categorie: 'echelle' },
-  { id: 'pop', nom: 'Pop', categorie: 'echelle' },
-  { id: 'bounce-soft', nom: 'Rebond doux', categorie: 'mouvement' },
-];
+/**
+ * ⚠️ LE CATALOGUE D'ANIMATIONS EST DERIVE (lot A_3c), plus ecrit ici.
+ *
+ * Il vivait ici en six entrees decoratives — `none`, `fade`, `slide-up`,
+ * `scale`, `pop`, `bounce-soft` — qu'AUCUN rendu ne consommait. Les vraies
+ * animations, avec leur geste et leur duree, vivent dans
+ * `src/lib/creatif/animations-texte.ts`.
+ *
+ * ⚠️ LES ANCIENS IDENTIFIANTS NE SONT PAS REPRIS, ET C'EST VOULU. Un profil
+ * qui portait `fade` retombe sur « Aucune » — donc sur EXACTEMENT le rendu
+ * qu'il avait, puisque aucune de ces six valeurs n'etait rendue. Les
+ * remapper vers les nouvelles animations aurait anime des videos que
+ * personne n'a demande d'animer.
+ */
+export const ANIMATIONS_AUTORISEES: readonly AnimationAutorisee[] =
+  ANIMATIONS_TEXTE.map((a) => ({
+    id: a.id,
+    nom: a.nom,
+    categorie: a.categorie === 'sobre' && a.id === 'aucune' ? 'aucune' : 'mouvement',
+  })) as readonly AnimationAutorisee[];
 
 export const ANIMATION_IDS: readonly string[] = ANIMATIONS_AUTORISEES.map((a) => a.id);
 
 /** L'animation qui ne fait rien — le comportement d'avant ce lot. */
-export const ANIMATION_AUCUNE = 'none' as const;
+export const ANIMATION_AUCUNE = 'aucune' as const;
 
 export function animationParId(id: unknown): AnimationAutorisee | undefined {
   if (typeof id !== 'string') return undefined;

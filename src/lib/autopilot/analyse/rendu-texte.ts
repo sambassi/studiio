@@ -38,6 +38,9 @@
  */
 
 import { styleTexteParId } from '@/lib/creatif/styles-texte';
+import {
+  animationTexteParId, type ExpressionsAnimation,
+} from '@/lib/creatif/animations-texte';
 
 /** Les familles réellement présentes dans l'image (paquet `fonts-liberation`). */
 export const POLICES_RENDU = ['sans', 'serif', 'mono'] as const;
@@ -98,6 +101,14 @@ export interface CoucheTexte {
   finSecondes: number;
   /** L'habillage du style choisi. Absent = l'ombre douce historique. */
   habillage?: HabillageTexte;
+  /**
+   * L'animation choisie. Absente = le texte apparaît net, comme avant A_3c.
+   *
+   * ⚠️ UN IDENTIFIANT, JAMAIS UNE EXPRESSION. Les expressions ffmpeg sont
+   * fabriquées côté serveur à partir de ce nom ; en accepter une serait
+   * exécuter un langage reçu du navigateur.
+   */
+  animationId?: string;
 }
 
 /** L'habillage d'avant A_3b : l'ombre douce, et rien d'autre. */
@@ -172,6 +183,8 @@ export function filtreDrawtext(o: {
   debutSecondes: number;
   finSecondes: number;
   habillage?: HabillageTexte;
+  /** Les expressions déjà calculées par `expressionsAnimation`. */
+  animation?: ExpressionsAnimation;
 }): string {
   const hex = `0x${o.couleur.slice(1).toLowerCase()}`;
   /* `x=(w-text_w)/2` : centré horizontalement, calculé par ffmpeg sur la
@@ -206,9 +219,19 @@ export function filtreDrawtext(o: {
       Math.min(1, Math.max(0, h.fond.opacite)).toFixed(2)}`);
     morceaux.push(`boxborderw=${Math.max(0, Math.round(h.fond.marge))}`);
   }
+  /* ⚠️ LES EXPRESSIONS REMPLACENT LES CONSTANTES, elles ne s'y ajoutent pas.
+     `x`, `y` et `fontsize` sont déjà posés plus haut en valeurs fixes ;
+     écrire les deux ferait gagner la dernière occurrence, ce qui marcherait
+     par accident et casserait au premier réordonnancement. */
+  const anim = o.animation ?? { alpha: null, x: null, y: null, fontsize: null };
+  if (anim.fontsize) {
+    const i = morceaux.findIndex((m) => m.startsWith('fontsize='));
+    if (i >= 0) morceaux[i] = `fontsize=${anim.fontsize}`;
+  }
+  if (anim.alpha) morceaux.push(`alpha='${anim.alpha}'`);
   morceaux.push(
-    'x=(w-text_w)/2',
-    `y=${Math.round(o.y)}`,
+    anim.x ? `x='${anim.x}'` : 'x=(w-text_w)/2',
+    anim.y ? `y='${anim.y}'` : `y=${Math.round(o.y)}`,
     `enable='between(t\\,${o.debutSecondes.toFixed(3)}\\,${o.finSecondes.toFixed(3)})'`,
   );
   return morceaux.join(':');
@@ -262,6 +285,8 @@ export interface SourcesTexte {
     ctaVisuel: {
       actif: boolean; dureeSecondes: number; position: 'haut' | 'centre' | 'bas';
     };
+    /** Le bloc `animations` du profil. Absent = aucune animation. */
+    animations?: { texteId?: string | null };
   } | null;
   /**
    * Ce que le CTA DIT, et où il mène.
@@ -296,6 +321,10 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
   /* La casse s'applique au TEXTE, pas à son apparence : `drawtext` ne sait
      pas mettre en capitales, et le fichier doit donc déjà l'être. */
   const casser = (t: string) => (style.casse === 'majuscules' ? t.toLocaleUpperCase('fr') : t);
+  /* L'animation est GLOBALE au profil : une par couche demanderait quatre
+     réglages là où une personne en veut un, et le contrat pourra toujours
+     s'étendre sans casser celui-ci. */
+  const animationId = animationTexteParId(p.animations?.texteId).id;
   const taille = (base: number) => base * style.echelle;
   const couches: CoucheTexte[] = [];
   const duree = Number.isFinite(s.dureeTotaleSecondes) && s.dureeTotaleSecondes > 0
@@ -324,6 +353,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         graisse: style.graisse,
         taillePct: taille(TAILLE_PCT[nature]),
         habillage,
+        animationId,
         couleur: couleurTexte,
         ancre: p.texte.position,
         debutSecondes: debut,
@@ -345,6 +375,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         graisse: style.graisse,
         taillePct: taille(TAILLE_PCT.fin),
         habillage,
+        animationId,
         couleur: couleurTexte,
         ancre: 'centre',
         debutSecondes: depart,
@@ -372,6 +403,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         graisse: 'grasse',
         taillePct: taille(TAILLE_PCT.cta),
         habillage,
+        animationId,
         couleur: couleurTexte,
         ancre: p.ctaVisuel.position,
         debutSecondes: depart,
@@ -387,6 +419,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         graisse: 'normale',
         taillePct: taille(TAILLE_PCT.lien),
         habillage,
+        animationId,
         couleur: couleurAccent,
         ancre: p.ctaVisuel.position,
         debutSecondes: depart,
@@ -413,5 +446,7 @@ export function empreinteCouches(couches: readonly CoucheTexte[]): string {
     c.ancre, c.debutSecondes.toFixed(3), c.finSecondes.toFixed(3),
     // L'habillage change les pixels : il change donc l'empreinte.
     JSON.stringify(c.habillage ?? null),
+    // L'animation change les pixels image par image.
+    c.animationId ?? '',
   ].join('')).join('');
 }

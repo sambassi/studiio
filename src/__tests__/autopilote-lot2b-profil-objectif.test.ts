@@ -85,7 +85,12 @@ const PROFIL_AFROBOOST: ProfilCreatifPartiel = {
   lut: { active: true, lutId: 'cinema-warm', intensite: 0.7 },
   ctaVisuel: { actif: true, dureeSecondes: 3, position: 'bas' },
   transitions: { active: true, transitionId: 'zoom', dureeMs: 400, intensite: 0.6 },
-  animations: { texteId: 'fade', ctaId: 'pop', logoId: 'none' },
+  /* ⚠️ IDENTIFIANTS MIS A JOUR AU LOT A_3c. Les six anciens — `fade`,
+     `slide-up`, `none`… — etaient decoratifs : aucun rendu ne les
+     consommait. Le catalogue reel les remplace, et un profil qui portait
+     l'un d'eux retombe sur « Aucune », donc sur exactement le rendu qu'il
+     avait. */
+  animations: { texteId: 'fondu-entree', ctaId: 'pop', logoId: 'aucune' },
   margesSures: { hautPct: 12, basPct: 18 },
 };
 

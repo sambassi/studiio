@@ -76,6 +76,9 @@ import {
   type ProfilCreatifAutopilote, type AncreTexte, type PositionLogo,
 } from './profil-creatif';
 import { filtreDrawtext, positionY } from './rendu-texte';
+import {
+  animationTexteParId, expressionsAnimation,
+} from '@/lib/creatif/animations-texte';
 import { filtreLut3d } from './lut-cube';
 
 // ---------------------------------------------------------------------------
@@ -146,6 +149,10 @@ export interface TexteAPoser {
   ancre: 'haut' | 'centre' | 'bas';
   debutSecondes: number;
   finSecondes: number;
+  /** L'habillage du style, préparé par `rendu-texte`. */
+  habillage?: import('./rendu-texte').HabillageTexte;
+  /** L'identifiant d'animation, résolu ici en expressions. */
+  animationId?: string;
 }
 
 /**
@@ -574,6 +581,20 @@ export function construireStyle(
       haut: marges.haut, bas: marges.bas,
     });
     const sortie = `[styletexte${i}]`;
+    /* ⚠️ LES EXPRESSIONS SONT CALCULÉES ICI, où la géométrie du cadre et la
+       position finale sont connues. Les calculer plus tôt aurait obligé à
+       deviner la taille du cadre — et un déplacement pensé pour 1080×1920
+       traverserait l'écran en 16:9. */
+    const animation = t.animationId
+      ? expressionsAnimation(animationTexteParId(t.animationId), {
+        debutSecondes: t.debutSecondes,
+        finSecondes: t.finSecondes,
+        taillePx: taille,
+        largeurCadre: ctx.cible.largeur,
+        hauteurCadre: ctx.cible.hauteur,
+        y,
+      })
+      : undefined;
     etapes.push(`${courant}${filtreDrawtext({
       fichierTexte: t.fichierTexte,
       fichierPolice: t.fichierPolice,
@@ -582,6 +603,8 @@ export function construireStyle(
       y,
       debutSecondes: t.debutSecondes,
       finSecondes: t.finSecondes,
+      habillage: t.habillage,
+      animation,
     })}${sortie}`);
     courant = sortie;
   });

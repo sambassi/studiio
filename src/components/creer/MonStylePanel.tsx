@@ -17,6 +17,7 @@ import { LONGUEURS_MAX } from '@/lib/autopilot/analyse/rendu-texte';
 import ApercuStyleTexte from '@/components/creer/ApercuStyleTexte';
 import BibliothequeLooks from '@/components/creer/BibliothequeLooks';
 import BibliothequeStylesTexte from '@/components/creer/BibliothequeStylesTexte';
+import BibliothequeAnimationsTexte from '@/components/creer/BibliothequeAnimationsTexte';
 
 /**
  * Un champ de texte borne, avec son compteur.
@@ -162,6 +163,8 @@ export default function MonStylePanel({
    */
   const [favorisLooks, setFavorisLooks] = useState<string[]>([]);
   const [favorisStyles, setFavorisStyles] = useState<string[]>([]);
+  const [favorisAnimations, setFavorisAnimations] = useState<string[]>([]);
+  const [recentsAnimations, setRecentsAnimations] = useState<string[]>([]);
   const [recentsStyles, setRecentsStyles] = useState<string[]>([]);
   const [recentsLooks, setRecentsLooks] = useState<string[]>([]);
   const [textesOuverts, setTextesOuverts] = useState(false);
@@ -464,6 +467,27 @@ export default function MonStylePanel({
                     setRecentsStyles((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
                   }}
                 />
+                {/* ── L'ANIMATION, JUSTE APRÈS LE STYLE ──────────────────
+                    Elle anime la couche ; elle ne redéfinit ni la police, ni
+                    la couleur, ni le CTA. Les deux réglages se lisent donc à
+                    la suite, sans se contredire. */}
+                <BibliothequeAnimationsTexte
+                  animationActive={brouillon.animations.texteId}
+                  exemple={brouillon.texte.titre ?? undefined}
+                  couleur={brouillon.couleurs.texte ?? '#FFFFFF'}
+                  favoris={favorisAnimations}
+                  recents={recentsAnimations}
+                  onBasculerFavori={(id) => setFavorisAnimations((f) => (
+                    f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
+                  ))}
+                  onChoisir={(id) => {
+                    modifier({
+                      animations: { ...brouillon.animations, texteId: id },
+                    });
+                    setRecentsAnimations((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
+                  }}
+                />
+
                 <ColorWheel
                   color={brouillon.couleurs.texte ?? '#FFFFFF'}
                   onChange={(c) => modifier({

@@ -484,6 +484,8 @@ export async function produireMontage(
         ancre: c.ancre,
         debutSecondes: c.debutSecondes,
         finSecondes: c.finSecondes,
+        habillage: c.habillage,
+        animationId: c.animationId,
       });
     }
     if (textesNonRendus.length > 0) usage.textesNonRendus = textesNonRendus;
