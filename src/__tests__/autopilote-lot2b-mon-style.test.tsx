@@ -124,6 +124,8 @@ const { TRANSITIONS_RENDUES, TRANSITIONS_NON_RENDUES } =
 const { ALGORITHME_COUPES } = await import('@/lib/autopilot/analyse/coupe-contrat');
 const { ALGORITHME_PLAN } = await import('@/lib/autopilot/analyse/montage-contrat');
 const { TRANSITION_IDS } = await import('@/lib/autopilot/analyse/catalogues-creatifs');
+const { TRANSITIONS_CREATIVES, TRANSITION_CREATIVE_IDS } =
+  await import('@/lib/creatif/transitions');
 const { GET, PUT } = await import('@/app/api/autopilot/profil-creatif/route');
 const MonStylePanel = (await import('@/components/creer/MonStylePanel')).default;
 
@@ -427,29 +429,37 @@ describe('15-18. l’ecran n’affiche que les transitions REELLEMENT rendues', 
     );
   }
 
-  it('15-17. cut, crossfade et flash sont proposes', () => {
+  /* ⚠️ A_3d REMPLACE LES TROIS BOUTONS PAR UNE BIBLIOTHEQUE. L'exigence, elle,
+     ne change pas d'un mot : l'ecran ne propose que ce que le moteur rend.
+     Seul l'attribut a change de nom, parce que la carte porte desormais un
+     apercu et un favori en plus de son libelle. */
+  it('15-17. cut, crossfade et flash restent proposes', () => {
     monter();
     fireEvent.click(screen.getByRole('button', { name: /Configurer/ }));
+    /* « Pour vous » n'en montre que dix ; le rayon « Tout » les montre
+       toutes. C'est le rayon qu'il faut interroger pour verifier qu'une
+       transition est PROPOSEE, et non simplement mise en avant. */
+    fireEvent.click(document.querySelector('[data-transitions-rayon="tout"]') as HTMLElement);
     for (const id of ['cut', 'crossfade', 'flash']) {
-      expect(document.querySelector(`[data-mon-style-transition="${id}"]`)).not.toBeNull();
+      expect(document.querySelector(`[data-transition-carte="${id}"]`)).not.toBeNull();
     }
   });
 
-  it('18. zoom, slide, whip et blur ne sont PAS presentes comme actifs', () => {
+  it('18. zoom, slide, whip et blur ne sont PAS presentes', () => {
     monter();
     fireEvent.click(screen.getByRole('button', { name: /Configurer/ }));
+    fireEvent.click(document.querySelector('[data-transitions-rayon="tout"]') as HTMLElement);
     for (const id of TRANSITIONS_NON_RENDUES) {
-      expect(document.querySelector(`[data-mon-style-transition="${id}"]`)).toBeNull();
+      expect(document.querySelector(`[data-transition-carte="${id}"]`)).toBeNull();
+      // Ils restent VALIDES pour le contrat : un profil ancien se relit.
+      expect(TRANSITION_IDS).toContain(id);
     }
   });
 
-  it('la liste de l’ecran DERIVE du moteur — elle n’est pas une seconde liste', () => {
-    // Si un jour `zoom` devient rendu, il apparaitra sans qu'on touche a
-    // l'ecran ; et il ne peut pas apparaitre avant.
-    expect([...TRANSITIONS_RENDUES].sort())
-      .toEqual([...TRANSITIONS_RENDUES].filter((t) => TRANSITION_IDS.includes(t)).sort());
+  it('la liste de l’ecran DERIVE du catalogue — elle n’est pas une seconde liste', () => {
+    for (const t of TRANSITIONS_CREATIVES) expect(TRANSITION_IDS).toContain(t.id);
     for (const id of TRANSITIONS_NON_RENDUES) {
-      expect(TRANSITIONS_RENDUES as readonly string[]).not.toContain(id);
+      expect(TRANSITION_CREATIVE_IDS).not.toContain(id);
     }
   });
 

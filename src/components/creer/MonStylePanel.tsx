@@ -6,19 +6,32 @@ import {
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import ColorWheel from '@/components/ui/ColorWheel';
-import { transitionParId } from '@/lib/autopilot/analyse/catalogues-creatifs';
 import {
   ANCRES_TEXTE, BUCKETS_LOGO, PROFIL_CREATIF_DEFAUT, POSITIONS_LOGO,
   estProfilHistorique, normaliserProfilCreatif,
   type AncreTexte, type PositionLogo, type ProfilCreatifAutopilote,
 } from '@/lib/autopilot/analyse/profil-creatif';
-import { TRANSITIONS_RENDUES } from '@/lib/autopilot/analyse/rendu-style';
 import { LONGUEURS_MAX } from '@/lib/autopilot/analyse/rendu-texte';
 import ApercuStyleTexte from '@/components/creer/ApercuStyleTexte';
 import BibliothequeLooks from '@/components/creer/BibliothequeLooks';
 import BibliothequeStylesTexte from '@/components/creer/BibliothequeStylesTexte';
 import BibliothequeAnimationsTexte from '@/components/creer/BibliothequeAnimationsTexte';
 import BibliothequeAnimationsContenu from '@/components/creer/BibliothequeAnimationsContenu';
+import BibliothequeTransitions from '@/components/creer/BibliothequeTransitions';
+import { transitionCreativeParId } from '@/lib/creatif/transitions';
+
+/**
+ * ⚠️ « NORMAL » N'EST PAS UN NOMBRE, C'EST CELUI DE LA TRANSITION CHOISIE.
+ *
+ * Un iris de cinema et un flash de pixels n'ont pas le meme rythme naturel ;
+ * leur imposer la meme duree ferait paraitre l'un trainant et l'autre rate.
+ * « Rapide » et « Doux » sont, eux, deux ecarts fixes autour de ce rythme.
+ */
+const VITESSES_TRANSITION: readonly { libelle: string; ms: number | null }[] = [
+  { libelle: 'Rapide', ms: 250 },
+  { libelle: 'Normal', ms: null },
+  { libelle: 'Doux', ms: 700 },
+];
 
 /**
  * Un champ de texte borne, avec son compteur.
@@ -168,6 +181,8 @@ export default function MonStylePanel({
   const [recentsAnimations, setRecentsAnimations] = useState<string[]>([]);
   const [favorisContenu, setFavorisContenu] = useState<string[]>([]);
   const [recentsContenu, setRecentsContenu] = useState<string[]>([]);
+  const [favorisTransitions, setFavorisTransitions] = useState<string[]>([]);
+  const [recentsTransitions, setRecentsTransitions] = useState<string[]>([]);
   const [recentsStyles, setRecentsStyles] = useState<string[]>([]);
   const [recentsLooks, setRecentsLooks] = useState<string[]>([]);
   const [textesOuverts, setTextesOuverts] = useState(false);
@@ -693,47 +708,65 @@ export default function MonStylePanel({
           {/* ── TRANSITIONS ───────────────────────────────────────────── */}
           <section>
             <p className="mb-1.5 text-[11px] font-medium text-gray-400">Transitions</p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {TRANSITIONS_RENDUES.map((id) => {
-                const t = transitionParId(id);
-                const actif = id === 'cut'
-                  ? !brouillon.transitions.active
-                  : brouillon.transitions.active && brouillon.transitions.transitionId === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    data-mon-style-transition={id}
-                    aria-pressed={actif}
-                    onClick={() => modifier({
-                      transitions: id === 'cut'
-                        ? { ...brouillon.transitions, active: false, transitionId: 'cut' }
-                        : { ...brouillon.transitions, active: true, transitionId: id },
-                    })}
-                    className={`rounded-lg border px-2 py-1.5 text-[11px] transition ${
-                      actif
-                        ? 'border-purple-500/50 bg-gray-800 text-gray-200'
-                        : 'border-gray-800 text-gray-400 hover:border-gray-700'
-                    }`}
-                  >
-                    {t?.nom ?? id}
-                  </button>
-                );
-              })}
-            </div>
+            {/* ⚠️ CHAQUE CARTE MONTRE UN VRAI RENDU. Les trois boutons d'avant
+                offraient trois choix sur vingt-neuf effets que le moteur sait
+                produire, et sans montrer ce qu'ils font. */}
+            <BibliothequeTransitions
+              transitionActive={brouillon.transitions.active
+                ? brouillon.transitions.transitionId : 'cut'}
+              dureeMs={brouillon.transitions.dureeMs}
+              favoris={favorisTransitions}
+              recents={recentsTransitions}
+              onBasculerFavori={(id) => setFavorisTransitions((f) => (
+                f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
+              ))}
+              onChoisir={(id, dureeDefautMs) => {
+                /* La durée suit la transition choisie : chacune a son rythme,
+                   et personne ne devrait avoir à le régler pour que ce soit
+                   juste. Elle reste modifiable juste en dessous. */
+                modifier({
+                  transitions: id === 'cut'
+                    ? { ...brouillon.transitions, active: false, transitionId: 'cut' }
+                    : {
+                      ...brouillon.transitions, active: true, transitionId: id,
+                      dureeMs: dureeDefautMs,
+                    },
+                });
+                setRecentsTransitions((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
+              }}
+            />
             {brouillon.transitions.active && (
-              <label className="mt-2 block text-[11px] text-gray-400">
-                Durée <span className="text-gray-500">{brouillon.transitions.dureeMs} ms</span>
-                <input
-                  type="range" min={0} max={1000} step={50}
-                  value={brouillon.transitions.dureeMs}
-                  data-mon-style-transition-duree
-                  onChange={(e) => modifier({
-                    transitions: { ...brouillon.transitions, dureeMs: Number(e.target.value) },
+              <div className="mt-2">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  Vitesse
+                </p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {VITESSES_TRANSITION.map((v) => {
+                    const ms = v.ms ?? (transitionCreativeParId(
+                      brouillon.transitions.transitionId,
+                    )?.dureeDefautMs ?? 400);
+                    const actif = brouillon.transitions.dureeMs === ms;
+                    return (
+                      <button
+                        key={v.libelle}
+                        type="button"
+                        data-mon-style-transition-vitesse={v.libelle}
+                        aria-pressed={actif}
+                        onClick={() => modifier({
+                          transitions: { ...brouillon.transitions, dureeMs: ms },
+                        })}
+                        className={`rounded-lg border px-2 py-1.5 text-[11px] transition ${
+                          actif
+                            ? 'border-purple-500/50 bg-gray-800 text-gray-200'
+                            : 'border-gray-800 text-gray-400 hover:border-gray-700'
+                        }`}
+                      >
+                        {v.libelle}
+                      </button>
+                    );
                   })}
-                  className="mt-1 w-full accent-purple-500"
-                />
-              </label>
+                </div>
+              </div>
             )}
           </section>
 
