@@ -787,6 +787,13 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
       '2026-09-04-rush-clip-sets.sql',
       '2026-09-05-rush-montage-plans.sql',
       '2026-09-06-rush-montage-renders.sql',
+      // A_7M est la troisième exception NOMMÉE : elle ouvre la table des
+      // sources multi-rush, donc elle touche forcément `rush_montage_plans`
+      // et `rush_clip_sets`. Sa garde vit dans
+      // `autopilote-a7m-schema-multi-rush.test.ts`, qui borne ce qu'elle a le
+      // droit d'y faire — additif seulement, aucun `drop`, aucun `delete`,
+      // aucun `grant`, et la clé étrangère historique laissée intacte.
+      '2026-09-08-rush-montage-plan-sources.sql',
     ]);
     const posterieures = fichiersMigration.filter(
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),
