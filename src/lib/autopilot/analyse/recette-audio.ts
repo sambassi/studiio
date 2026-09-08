@@ -128,6 +128,15 @@ export interface PisteMusicale {
   version?: string;
 }
 
+/**
+ * A_6 — LA VOIX-OFF, DESIGNEE COMME LA MUSIQUE.
+ *
+ * ⚠️ UN COUPLE, PAS UNE URL, ET POUR LA MEME RAISON. Le fichier est produit
+ * par la synthese puis depose dans le compartiment du compte ; ce qui voyage
+ * est la cle, jamais une adresse.
+ */
+export type PisteVoix = PisteMusicale;
+
 export interface RecetteAudio {
   /** `null` = aucune musique. */
   musique: PisteMusicale | null;
@@ -137,6 +146,25 @@ export interface RecetteAudio {
   sonOriginal: boolean;
   /** Part appliquee au son des rushes, de 0 a 1. */
   volumeSonOriginal: number;
+  /**
+   * A_6 — LA VOIX-OFF. `null` = aucune, et c'est le defaut.
+   *
+   * ⚠️ ELLE NE BOUCLE JAMAIS. Une musique trop courte se repete ; une voix
+   * qui se repeterait redirait les memes phrases. Trop courte, elle s'arrete
+   * simplement — c'est ce que fait `amix=duration=first`.
+   */
+  voix?: PisteVoix | null;
+  /** Part appliquee a la voix, de 0 a 1. */
+  volumeVoix?: number;
+  /**
+   * Baisser la musique pendant que la voix parle.
+   *
+   * ⚠️ MESURE AVANT D'ETRE ECRIT. Sans ducking, le melange passe de 2895 a
+   * 4095 en valeur efficace pendant la voix — la musique s'ajoute et couvre.
+   * Avec, il reste a 3026, et le niveau HORS voix est identique au centieme
+   * pres : la musique n'est touchee que quand quelqu'un parle.
+   */
+  duckingVoix?: boolean;
 }
 
 /**
@@ -152,7 +180,16 @@ export const RECETTE_AUDIO_DEFAUT: RecetteAudio = Object.freeze({
   volumeMusique: 0.5,
   sonOriginal: true,
   volumeSonOriginal: 1,
+  /* ⚠️ AUCUNE VOIX PAR DEFAUT. Une voix enregistree ne veut pas dire que
+     toutes les videos doivent en porter une : les anciens profils rendent
+     exactement ce qu'ils rendaient. */
+  voix: null,
+  volumeVoix: 1,
+  duckingVoix: true,
 });
+
+/** Le volume de musique retenu quand une voix parle par-dessus. */
+export const VOLUME_MUSIQUE_SOUS_VOIX = 0.35;
 
 // ---------------------------------------------------------------------------
 // Normalisation et forme canonique
@@ -177,6 +214,11 @@ export function normaliserRecette(r: RecetteAudio): RecetteAudio {
     cle: r.musique.cle,
     ...(r.musique.version ? { version: r.musique.version } : {}),
   };
+  const voix = !r.voix ? null : {
+    bucket: r.voix.bucket,
+    cle: r.voix.cle,
+    ...(r.voix.version ? { version: r.voix.version } : {}),
+  };
   return {
     musique,
     volumeMusique: musique === null
@@ -186,6 +228,15 @@ export function normaliserRecette(r: RecetteAudio): RecetteAudio {
     volumeSonOriginal: r.sonOriginal
       ? arrondirVolume(r.volumeSonOriginal)
       : RECETTE_AUDIO_DEFAUT.volumeSonOriginal,
+    voix,
+    /* Sans voix, les deux reglages retombent au defaut : deux recettes
+       auditivement identiques ne doivent pas produire deux encodages. */
+    volumeVoix: voix === null
+      ? RECETTE_AUDIO_DEFAUT.volumeVoix
+      : arrondirVolume(r.volumeVoix ?? 1),
+    duckingVoix: voix === null
+      ? RECETTE_AUDIO_DEFAUT.duckingVoix
+      : (r.duckingVoix ?? true),
   };
 }
 
@@ -207,6 +258,17 @@ export function recetteCanonique(r: RecetteAudio): string {
     `volumeMusique=${n.volumeMusique.toFixed(d)}`,
     `sonOriginal=${n.sonOriginal ? 'oui' : 'non'}`,
     `volumeSonOriginal=${n.volumeSonOriginal.toFixed(d)}`,
+    /* ⚠️ SANS VOIX, AUCUN CHAMP N'EST AJOUTE, ET C'EST VITAL.
+       Les ecrire meme a vide changerait l'empreinte de TOUTES les recettes
+       existantes : les rendus audio deja reussis deviendraient introuvables,
+       et chaque compte reencoderait ses montages sans que rien n'ait change a
+       l'oreille. Un test compare cette chaine a une valeur ecrite en dur,
+       precisement pour empecher cet accident. */
+    ...(n.voix ? [
+      `voix=${n.voix.bucket}:${n.voix.cle}${n.voix.version ? `@${n.voix.version}` : ''}`,
+      `volumeVoix=${(n.volumeVoix ?? 1).toFixed(d)}`,
+      `duckingVoix=${n.duckingVoix ? 'oui' : 'non'}`,
+    ] : []),
   ].join('|');
 }
 
@@ -220,7 +282,10 @@ export function recetteCanonique(r: RecetteAudio): string {
 export function estRecetteHistorique(r: RecetteAudio | null | undefined): boolean {
   if (!r) return true;
   const n = normaliserRecette(r);
-  return n.musique === null && n.sonOriginal && n.volumeSonOriginal === 1;
+  // ⚠️ UNE VOIX SUFFIT A SORTIR DU CHEMIN HISTORIQUE : le graphe emis n'est
+  // alors plus celui d'avant, et le rendu ne doit pas se reutiliser.
+  return n.musique === null && !n.voix
+    && n.sonOriginal && n.volumeSonOriginal === 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,11 +298,13 @@ export const MOTIFS_RECETTE = [
   'musique_invalide',
   'volume_invalide',
   'son_original_invalide',
+  'voix_invalide',
 ] as const;
 export type MotifRecette = (typeof MOTIFS_RECETTE)[number];
 
 const CHAMPS_RECETTE = [
   'musique', 'volumeMusique', 'sonOriginal', 'volumeSonOriginal',
+  'voix', 'volumeVoix', 'duckingVoix',
 ] as const;
 const CHAMPS_MUSIQUE = ['bucket', 'cle'] as const;
 
@@ -349,6 +416,52 @@ export function lireRecetteAudio(brut: unknown): LectureRecette {
     musique = { bucket: BUCKET_MUSIQUE, cle: m.cle };
   }
 
+  // ── La voix-off ───────────────────────────────────────────────────────
+  let voix: PisteVoix | null = null;
+  if (o.voix !== undefined && o.voix !== null) {
+    const v = objet(o.voix);
+    if (v === null) {
+      return { ok: false, motif: 'voix_invalide', message: 'Voix invalide.' };
+    }
+    for (const cle of Object.keys(v)) {
+      if (!(CHAMPS_MUSIQUE as readonly string[]).includes(cle)) {
+        return {
+          ok: false, motif: 'champ_inconnu',
+          message: `Le champ « ${cle} » n'existe pas dans le choix de voix.`,
+        };
+      }
+    }
+    /* ⚠️ LE MEME COMPARTIMENT QUE LA MUSIQUE. La voix synthetisee est deposee
+       la ou vivent les fichiers audio du compte ; accepter un autre
+       compartiment ouvrirait une porte que `verifierMusique` ferme deja. */
+    if (v.bucket !== BUCKET_MUSIQUE) {
+      return {
+        ok: false, motif: 'voix_invalide',
+        message: 'Cette voix ne vient pas de ta mediatheque.',
+      };
+    }
+    if (!cleMusiqueValide(v.cle)) {
+      return { ok: false, motif: 'voix_invalide', message: 'Voix invalide.' };
+    }
+    voix = { bucket: BUCKET_MUSIQUE, cle: v.cle };
+  }
+
+  const vVoix = o.volumeVoix === undefined
+    ? RECETTE_AUDIO_DEFAUT.volumeVoix : volume(o.volumeVoix);
+  if (vVoix === null || vVoix === undefined) {
+    return {
+      ok: false, motif: 'volume_invalide',
+      message: 'Le volume de la voix doit etre compris entre 0 et 1.',
+    };
+  }
+
+  if (o.duckingVoix !== undefined && typeof o.duckingVoix !== 'boolean') {
+    return {
+      ok: false, motif: 'voix_invalide',
+      message: 'L\'attenuation de la musique s\'active ou se desactive, rien d\'autre.',
+    };
+  }
+
   // ── Les volumes et l'interrupteur ─────────────────────────────────────
   const vMus = o.volumeMusique === undefined
     ? RECETTE_AUDIO_DEFAUT.volumeMusique : volume(o.volumeMusique);
@@ -381,6 +494,7 @@ export function lireRecetteAudio(brut: unknown): LectureRecette {
     ok: true,
     recette: normaliserRecette({
       musique, volumeMusique: vMus, sonOriginal, volumeSonOriginal: vOrig,
+      voix, volumeVoix: vVoix, duckingVoix: o.duckingVoix ?? true,
     }),
   };
 }
@@ -405,6 +519,10 @@ export function recettePourUsage(r: RecetteAudio): Record<string, unknown> {
     volumeMusique: n.volumeMusique,
     sonOriginal: n.sonOriginal,
     volumeSonOriginal: n.volumeSonOriginal,
+    // ⚠️ LA CLE, JAMAIS UNE URL — `usage` refuse d'ailleurs `://`.
+    voix: n.voix ? n.voix.cle : null,
+    volumeVoix: n.volumeVoix ?? 1,
+    duckingVoix: n.duckingVoix ?? true,
     canonique: recetteCanonique(n),
   };
 }

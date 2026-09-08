@@ -167,7 +167,10 @@ describe('fetchCustomVoices — un seul point d entrée pour les sélecteurs', (
 
 describe('La route parle bien à ElevenLabs', () => {
   it('synthèse : POST /v1/text-to-speech/{voice_id}', () => {
-    expect(route).toContain('`${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}?output_format=${OUTPUT_FORMAT}`');
+    /* ⚠️ A_6 : L'IDENTIFIANT RÉSOLU, PAS CELUI REÇU. Réutiliser la valeur du
+       corps ferait que la vérification de périmètre n'aurait garanti que sa
+       forme — pas le fait que la voix appartienne au compte. */
+    expect(route).toContain('`${ELEVENLABS_BASE}/v1/text-to-speech/${perimetre.providerVoiceId}`');
     expect(route).toContain("const ELEVENLABS_BASE = 'https://api.elevenlabs.io';");
   });
 
@@ -218,9 +221,23 @@ describe('Les gardes de la route', () => {
   });
 
   it('le voice_id est validé — il part dans le CHEMIN de l URL', () => {
-    // Sans garde, une valeur comme « ../../ » fabriquerait une requête vers un
-    // tout autre endpoint de l'API.
-    expect(route).toContain('!/^[A-Za-z0-9_-]{8,64}$/.test(voiceId)');
+    /* Sans garde, une valeur comme « ../../ » fabriquerait une requête vers un
+       tout autre endpoint de l'API. A_6 a déplacé cette garde de forme dans
+       `perimetre.ts`, où elle précède le contrôle de PROPRIÉTÉ — la forme
+       seule ne disait rien de à qui la voix appartient. */
+    const perimetre = readFileSync(
+      resolve(process.cwd(), 'src/lib/voice/perimetre.ts'), 'utf8',
+    );
+    expect(perimetre).toContain('export const FORME_VOICE_ID = /^[A-Za-z0-9_-]{8,64}$/');
+    expect(perimetre).toContain('FORME_VOICE_ID.test(identifiantNu)');
+    /* Et la route la traverse AVANT d'appeler ElevenLabs — comparé sur le
+       CODE, jamais sur la prose : l'en-tête du module cite l'endpoint dans
+       son tableau de documentation, bien avant la première ligne exécutée. */
+    const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    const iGarde = code.indexOf('resoudreVoixElevenLabs(');
+    const iAppel = code.indexOf('/v1/text-to-speech/');
+    expect(iGarde).toBeGreaterThan(-1);
+    expect(iGarde).toBeLessThan(iAppel);
   });
 
   it('le préfixe est retiré avant l appel — ElevenLabs attend l id nu', () => {

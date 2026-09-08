@@ -390,6 +390,31 @@ export async function produireMontage(
       usage.octetsMusique = descente.octets;
     }
 
+    /* ── LA VOIX-OFF, S'IL Y EN A UNE ──────────────────────────────────
+       ⚠️ DESCENDUE PAR LE MEME CHEMIN, ET SONDEE DE LA MEME FAÇON. Un fichier
+       sans piste audio ferait echouer le graphe avec un diagnostic obscur.
+
+       ⚠️ MAIS SON BLANC DE DEPART N'EST PAS COUPE. Une musique commence quand
+       on veut ; une voix commence quand elle a ete ecrite pour commencer, et
+       le silence initial d'une voix-off est souvent voulu — le temps qu'un
+       plan s'installe. La couper deplacerait la parole par rapport aux
+       sous-titres, qui sont dates sur le fichier tel qu'il est. */
+    let voix: MusiqueLocale | null = null;
+    if (recette.voix) {
+      const cheminVoix = `${nomMusiqueLocale(dossier)}-voix`;
+      const descenteVoix = await descendreSource(
+        userId,
+        { ordre: 0, bucket: recette.voix.bucket, cle: recette.voix.cle },
+        dossier, 0, cheminVoix,
+      );
+      if (!descenteVoix.ok) return echec(descenteVoix.motif, usage);
+      const sondeVoix = await sonderSourceAudio(cheminVoix);
+      if (sondeVoix.motif !== null) return echec(sondeVoix.motif, usage);
+      if (!sondeVoix.aAudio) return echec('musique_illisible', usage);
+      voix = { chemin: cheminVoix };
+      usage.octetsVoix = descenteVoix.octets;
+    }
+
     // ── Le logo, s'il y en a un ────────────────────────────────────────
     //
     // ⚠️ DESCENDU PAR LE MEME CHEMIN QUE LA MUSIQUE ET LES CLIPS. Aucune URL
@@ -600,7 +625,12 @@ export async function produireMontage(
       fichierAss: join(dossier, 'textes.ass'),
       dossierPolices: dossierPolices,
       captions,
-      indicePremiereEntree: sources.length + (musique !== null ? 1 : 0),
+      /* ⚠️ LA VOIX COMPTE DANS LES ENTREES. Les entrees ffmpeg sont, dans
+         l'ordre : les clips, la musique s'il y en a une, puis la voix. Un
+         indice qui l'oublierait ferait pointer les entrees du style sur la
+         voix — un logo qui deviendrait une piste audio. */
+      indicePremiereEntree: sources.length
+        + (musique !== null ? 1 : 0) + (voix !== null ? 1 : 0),
     });
     /* ⚠️ LE DOCUMENT S'ECRIT AVANT ffmpeg, pas apres : le filtre le nomme
        deja. Sans ce fichier, `subtitles` echoue et le montage entier est
@@ -639,6 +669,8 @@ export async function produireMontage(
         musicTrackId: musique !== null ? (recette.musique?.cle ?? null) : null,
         // L'empreinte des OCTETS : deux fichiers sous la meme cle diffèrent.
         musicAssetVersion: musique !== null ? (recette.musique?.version ?? null) : null,
+        // A_6 : la voix employee, par sa CLE. Jamais son texte.
+        voiceTrackId: voix !== null ? (recette.voix?.cle ?? null) : null,
         ...(demande.variation ? {
           politiqueVersion: demande.variation.politiqueVersion,
           raison: demande.variation.raison,
@@ -653,7 +685,7 @@ export async function produireMontage(
     }
     const proc = await encoder(
       argumentsRendu(sources, cible, sortie, {
-        recette, musique, dureeSecondes: plan.dureeTotaleSecondes,
+        recette, musique, voix, dureeSecondes: plan.dureeTotaleSecondes,
       }, style),
       plan.dureeTotaleSecondes, dossier,
     );
@@ -676,7 +708,8 @@ export async function produireMontage(
     // musique s'il y en a une. Reecrire cette regle a la main ici, c'est la
     // faire diverger au premier lot suivant.
     if (!resultatConforme(
-      mesure, plan, rendraDeLAudio(sources, recette, musique !== null),
+      mesure, plan,
+      rendraDeLAudio(sources, recette, musique !== null, voix !== null),
       style.transition?.recoupementTotalSecondes ?? 0,
     )) {
       return echec('resultat_invalide', usage);

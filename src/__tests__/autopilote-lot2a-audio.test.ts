@@ -344,8 +344,23 @@ describe('Lot 2A — identite du rendu, et reutilisation du cache', () => {
     for (const champ of ['version', 'musique', 'volumeMusique', 'sonOriginal', 'volumeSonOriginal']) {
       expect(canon).toContain(`${champ}=`);
     }
+    /* ⚠️ A_6 : LES CHAMPS DE VOIX N'APPARAISSENT QUE S'IL Y A UNE VOIX.
+       Les ecrire meme a vide changerait l'empreinte de TOUTES les recettes
+       existantes — les rendus audio deja reussis deviendraient introuvables.
+       La garde de ce test reste donc entiere : un champ AJOUTE doit se
+       retrouver dans la chaine, et il s'y retrouve des qu'il est demande. */
+    expect(canon).not.toContain('voix=');
+    const avecVoix = recetteCanonique({
+      ...base, voix: { bucket: 'audio', cle: 'u/voix/1.mp3' },
+    });
+    for (const champ of ['voix', 'volumeVoix', 'duckingVoix']) {
+      expect(avecVoix).toContain(`${champ}=`);
+    }
     expect(Object.keys(RECETTE_AUDIO_DEFAUT).sort())
-      .toEqual(['musique', 'sonOriginal', 'volumeMusique', 'volumeSonOriginal']);
+      .toEqual([
+        'duckingVoix', 'musique', 'sonOriginal', 'voix',
+        'volumeMusique', 'volumeSonOriginal', 'volumeVoix',
+      ]);
   });
 });
 

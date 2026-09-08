@@ -22,6 +22,15 @@ export interface UserVoice {
   name: string;
   lang: string | null;
   created_at: string;
+  /**
+   * A_6 — LA PREUVE DATEE DU CONSENTEMENT.
+   *
+   * ⚠️ EXPOSEE PARCE QU'ELLE EST RELUE A CHAQUE SYNTHESE. La colonne est
+   * `not null` en base, mais la verifier a l'usage — et non seulement a la
+   * creation — est ce qui fait qu'une ligne ecrite par une version future,
+   * ou modifiee a la main, ne peut pas faire parler une voix sans preuve.
+   */
+  consent_at?: string | null;
 }
 
 /**

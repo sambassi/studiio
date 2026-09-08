@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import {
+  resoudreVoixElevenLabs, MESSAGES_VOIX,
+} from '@/lib/voice/perimetre';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } from '@/lib/types/voice';
 import { listUserVoices } from '@/lib/voice/store';
@@ -168,10 +171,25 @@ export async function POST(req: NextRequest) {
     const voiceId = typeof voice === 'string'
       ? voice.replace(new RegExp(`^${ELEVENLABS_VOICE_PREFIX}`), '').trim()
       : '';
-    // Le voice_id part dans le CHEMIN de l'URL : une valeur exotique y
-    // fabriquerait une requete vers un autre endpoint.
-    if (!voiceId || !/^[A-Za-z0-9_-]{8,64}$/.test(voiceId)) {
-      return NextResponse.json({ error: 'Invalid voice' }, { status: 400 });
+    /* ⚠️ LA FORME NE SUFFIT PAS, ET C'ETAIT LA FAILLE.
+       Le `voice_id` part dans le CHEMIN de l'URL : une valeur exotique y
+       fabriquerait une requete vers un autre endpoint — c'est ce que la forme
+       empeche, et elle reste necessaire.
+
+       Mais elle ne dit RIEN de la propriete. `GET` separe correctement les
+       voix du compte du catalogue partage, qui ecarte deja les categories
+       `cloned` et `professional` : personne ne VOIT la voix clonee d'un
+       autre. `POST`, lui, acceptait n'importe quel identifiant bien forme —
+       et ne pas afficher une voix n'est pas la meme chose que refuser de la
+       faire parler. Un identifiant obtenu autrement suffisait. */
+    const perimetre = await resoudreVoixElevenLabs(
+      session.user.id, voiceId, listCatalogVoices,
+    );
+    if (!perimetre.ok) {
+      return NextResponse.json(
+        { error: MESSAGES_VOIX[perimetre.motif] },
+        { status: perimetre.motif === 'voix_sans_consentement' ? 403 : 404 },
+      );
     }
 
     const controller = new AbortController();
@@ -180,7 +198,10 @@ export async function POST(req: NextRequest) {
     let upstream: Response;
     try {
       upstream = await fetch(
-        `${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}?output_format=${OUTPUT_FORMAT}`,
+        // ⚠️ L'IDENTIFIANT RESOLU, PAS CELUI RECU. Reutiliser la valeur du
+        // corps ferait que la verification n'aurait garanti que sa forme.
+        `${ELEVENLABS_BASE}/v1/text-to-speech/${perimetre.providerVoiceId}`
+        + `?output_format=${OUTPUT_FORMAT}`,
         {
           method: 'POST',
           headers: {

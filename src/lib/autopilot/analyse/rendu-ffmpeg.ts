@@ -273,9 +273,29 @@ export interface EntreeAudioRendu {
   recette: RecetteAudio;
   /** `null` quand la recette n'en demande pas, ou qu'elle a ete refusee. */
   musique: MusiqueLocale | null;
+  /**
+   * A_6 — LE FICHIER DE VOIX-OFF, deja descendu par le moteur.
+   *
+   * ⚠️ PREPARE AILLEURS, comme la musique. Ce module traduit une recette en
+   * arguments ; il ne synthetise rien, ne telecharge rien, et ne decide pas
+   * si une voix a le droit d'etre employee — `resoudreVoixElevenLabs` l'a
+   * fait bien avant, au moment de la synthese.
+   */
+  voix?: MusiqueLocale | null;
   /** La duree du montage, qui borne la musique. */
   dureeSecondes: number;
 }
+
+/**
+ * Les reglages du ducking — mesures, pas repris d'un tutoriel.
+ *
+ * `threshold` bas (0,03) : une voix parlee n'est pas forte, et un seuil plus
+ * haut ne declencherait qu'aux syllabes accentuees. `ratio=8` fait vraiment
+ * de la place. `attack=20` ms evite d'entendre la musique monter sur le
+ * premier mot ; `release=400` ms evite qu'elle remonte entre deux mots d'une
+ * meme phrase — c'est ce battement-la qu'un release trop court rend penible.
+ */
+const PARAMETRES_DUCKING = 'threshold=0.03:ratio=8:attack=20:release=400';
 
 /** Un volume, ecrit avec le pas du contrat. Jamais une expression ffmpeg. */
 function volumeFfmpeg(v: number): string {
@@ -290,6 +310,7 @@ export function argumentsRendu(
   const ordonnees = [...sources].sort((a, b) => a.ordre - b.ordre);
   const recette = audio?.recette ?? RECETTE_AUDIO_DEFAUT;
   const musique = audio?.musique ?? null;
+  const voix = audio?.voix ?? null;
   // ⚠️ `STYLE_NEUTRE` N'EST PAS UN DEFAUT DE CONFORT. C'est la garantie de
   // retro-compatibilite : sans profil, chaque fragment est vide, `post` est
   // vide, et le graphe emis est EXACTEMENT celui d'avant ce lot — donc le
@@ -313,7 +334,7 @@ export function argumentsRendu(
   // historique — tout le montage porte de l'audio, ou aucun — ne vaut qu'a
   // l'interieur du `concat`, et elle est conservee telle quelle.
   const garderOriginal = recette.sonOriginal && ordonnees.some((s) => s.aAudio);
-  const sortieAudio = garderOriginal || musique !== null;
+  const sortieAudio = garderOriginal || musique !== null || voix !== null;
 
   const entrees: string[] = [];
   const chaines: string[] = [];
@@ -410,6 +431,13 @@ export function argumentsRendu(
       + `${etiquetteVideo}${garderOriginal ? etiquetteConcat : ''}`;
   }
 
+  /* ⚠️ LA DUREE REELLE DU MONTAGE, NOMMEE UNE SEULE FOIS. Avec un
+     recouvrement d'A_3d, le film est plus court que le plan ; la musique ET la
+     voix doivent se caler dessus, et deux calculs de la meme chose finiraient
+     par diverger. */
+  const dureeReelleSecondes = Math.max(0,
+    (audio?.dureeSecondes ?? 0) - (st.transition?.recoupementTotalSecondes ?? 0));
+
   if (!historique) {
     const bus: string[] = [];
 
@@ -439,9 +467,8 @@ export function argumentsRendu(
          musique bornee sur la duree du plan depasserait la derniere image, et
          `amix=duration=first` la couperait net — juste apres le fondu de fin,
          qui serait alors tombe au mauvais endroit. */
-      const dureeReelle = Math.max(0,
-        (audio?.dureeSecondes ?? 0) - (st.transition?.recoupementTotalSecondes ?? 0));
-      const d = duree(dureeReelle);
+      const d = duree(dureeReelleSecondes);
+      const dureeReelle = dureeReelleSecondes;
       // Le debut du fondu est calcule ICI, en TypeScript, jamais par une
       // expression ffmpeg : la meme regle que `rectangleCrop`.
       const debutFondu = duree(Math.max(0, dureeReelle - FONDU_MUSIQUE_SECONDES));
@@ -454,12 +481,47 @@ export function argumentsRendu(
       bus.push('[amus]');
     }
 
-    if (bus.length === 2) {
+    if (voix !== null) {
+      /* ⚠️ LA VOIX NE BOUCLE JAMAIS. Une musique trop courte se repete ; une
+         voix qui se repeterait redirait les memes phrases. Pas de
+         `-stream_loop` ici, donc — et `apad` garantit que le bus dure
+         exactement le montage, pour qu'`amix=duration=first` reste juste quel
+         que soit l'ordre des bus. */
+      const indiceVoix = ordonnees.length + (musique !== null ? 1 : 0);
+      entrees.push('-i', voix.chemin);
+      const dv = duree(dureeReelleSecondes);
+      filtre += `;[${indiceVoix}:a]atrim=duration=${dv},asetpts=PTS-STARTPTS,`
+        + `aresample=${AUDIO_FREQUENCE_RENDU},`
+        + `aformat=sample_fmts=fltp:channel_layouts=stereo,`
+        + `volume=${volumeFfmpeg(recette.volumeVoix ?? 1)},`
+        + `apad=whole_dur=${dv}[avoix0]`;
+
+      if (recette.duckingVoix !== false && musique !== null) {
+        /* ⚠️ LE DUCKING EST MESURE, PAS SUPPOSE. Sans lui, le melange passe de
+           2895 a 4095 en valeur efficace pendant la voix : la musique s'ajoute
+           et la couvre. Avec, il reste a 3026 — et le niveau HORS voix est
+           identique au centieme pres, donc la musique n'est touchee que quand
+           quelqu'un parle.
+
+           `asplit` parce que le meme signal sert DEUX fois : une fois comme
+           declencheur, une fois comme son. Reutiliser l'etiquette sans la
+           dupliquer ferait echouer le graphe. */
+        filtre += `;[avoix0]asplit=2[avoix][avsc]`;
+        filtre += `;[amus][avsc]sidechaincompress=${PARAMETRES_DUCKING}[amusduck]`;
+        const i = bus.indexOf('[amus]');
+        if (i >= 0) bus[i] = '[amusduck]';
+      } else {
+        filtre += `;[avoix0]anull[avoix]`;
+      }
+      bus.push('[avoix]');
+    }
+
+    if (bus.length >= 2) {
       // ⚠️ `normalize=0`. Par defaut `amix` divise chaque entree par leur
       // nombre : deux sources a 1,00 sortiraient a 0,50 chacune, et le volume
       // demande ne serait pas celui rendu. `duration=first` cale la sortie sur
       // le son du montage, dont la duree EST celle du film.
-      filtre += `;${bus.join('')}amix=inputs=2:duration=first:normalize=0[aout]`;
+      filtre += `;${bus.join('')}amix=inputs=${bus.length}:duration=first:normalize=0[aout]`;
     } else if (bus.length === 1) {
       // Une seule source : on la renomme, sans la retoucher.
       filtre += `;${bus[0]}anull[aout]`;
@@ -504,10 +566,11 @@ export function argumentsRendu(
  * deux divergeaient, le rendu passerait pour reussi en ayant perdu son son.
  */
 export function rendraDeLAudio(
-  sources: readonly SourceLocale[], recette: RecetteAudio, avecMusique: boolean,
+  sources: readonly SourceLocale[], recette: RecetteAudio,
+  avecMusique: boolean, avecVoix = false,
 ): boolean {
   const garderOriginal = recette.sonOriginal && sources.some((s) => s.aAudio);
-  return garderOriginal || avecMusique;
+  return garderOriginal || avecMusique || avecVoix;
 }
 
 /** La sonde qui dit si une source porte de l'audio. Une passe, avant le graphe. */
