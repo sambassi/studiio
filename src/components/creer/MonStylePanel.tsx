@@ -19,6 +19,8 @@ import BibliothequeAnimationsTexte from '@/components/creer/BibliothequeAnimatio
 import BibliothequeAnimationsContenu from '@/components/creer/BibliothequeAnimationsContenu';
 import BibliothequeTransitions from '@/components/creer/BibliothequeTransitions';
 import { transitionCreativeParId } from '@/lib/creatif/transitions';
+import RechercheCreative from '@/components/creer/RechercheCreative';
+import { useBibliothequeCreative } from '@/lib/hooks/useBibliothequeCreative';
 
 /**
  * ⚠️ « NORMAL » N'EST PAS UN NOMBRE, C'EST CELUI DE LA TRANSITION CHOISIE.
@@ -175,16 +177,22 @@ export default function MonStylePanel({
    * rendent déjà la grille utilisable, et rien de ce qui les remplacera ne
    * sera contraint par ce choix.
    */
-  const [favorisLooks, setFavorisLooks] = useState<string[]>([]);
-  const [favorisStyles, setFavorisStyles] = useState<string[]>([]);
-  const [favorisAnimations, setFavorisAnimations] = useState<string[]>([]);
-  const [recentsAnimations, setRecentsAnimations] = useState<string[]>([]);
-  const [favorisContenu, setFavorisContenu] = useState<string[]>([]);
-  const [recentsContenu, setRecentsContenu] = useState<string[]>([]);
-  const [favorisTransitions, setFavorisTransitions] = useState<string[]>([]);
-  const [recentsTransitions, setRecentsTransitions] = useState<string[]>([]);
-  const [recentsStyles, setRecentsStyles] = useState<string[]>([]);
-  const [recentsLooks, setRecentsLooks] = useState<string[]>([]);
+  /* ⚠️ LES FAVORIS NE SONT PLUS DANS UN `useState` PAR FAMILLE. Dix etats
+     locaux disparaissaient au rechargement : le coeur etait un decor. Ils
+     vivent maintenant dans `design_style.bibliothequeCreative`, et les
+     « Recents » se deduisent des rendus reellement reussis. */
+  const biblio = useBibliothequeCreative();
+  const favorisLooks = biblio.bibliotheque.favoris.lut;
+  const favorisStyles = biblio.bibliotheque.favoris.styleTexte;
+  const favorisAnimations = biblio.bibliotheque.favoris.animationBloc;
+  const favorisContenu = biblio.bibliotheque.favoris.animationContenu;
+  const favorisTransitions = biblio.bibliotheque.favoris.transition;
+  const recentsLooks = biblio.recents.lut;
+  const recentsStyles = biblio.recents.styleTexte;
+  const recentsAnimations = biblio.recents.animationBloc;
+  const recentsContenu = biblio.recents.animationContenu;
+  const recentsTransitions = biblio.recents.transition;
+  const [rechercheGlobale, setRechercheGlobale] = useState('');
   const [textesOuverts, setTextesOuverts] = useState(false);
   const [appel, setAppel] = useState<{ texte: string | null; destination: string | null }>(
     appelActionEnregistre ?? { texte: null, destination: null },
@@ -269,9 +277,7 @@ export default function MonStylePanel({
               favoris={favorisLooks}
               recents={recentsLooks}
               analyseApercuId={analyseApercuId}
-              onBasculerFavori={(id) => setFavorisLooks((f) => (
-                f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
-              ))}
+              onBasculerFavori={(id) => biblio.basculer('lut', id)}
               onChoisir={(id) => {
                 modifier({
                   lut: id === 'neutral'
@@ -281,7 +287,6 @@ export default function MonStylePanel({
                 /* Les récents : le plus récent en tête, sans doublon, et
                    bornés — une liste qui grandit sans fin cesse d'être une
                    liste de récents. */
-                setRecentsLooks((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
               }}
             />
             {brouillon.lut.active && (
@@ -469,20 +474,53 @@ export default function MonStylePanel({
                     chaque vidéo. La bibliothèque les porte ensemble — et
                     c'est elle qui décide, sinon deux réglages
                     contradictoires cohabiteraient à l'écran. */}
+                {/* ── CHERCHER DANS TOUT LE STUDIO ────────────────────
+                    Cinq grilles, cinq recherches : trouver « cinema » obligeait
+                    a ouvrir les cinq. Celle-ci les interroge ensemble, et
+                    groupe ce qu'elle trouve pour qu'on sache de quoi il
+                    s'agit. */}
+                <RechercheCreative
+                  requete={rechercheGlobale}
+                  onRequete={setRechercheGlobale}
+                  favoris={biblio.bibliotheque.favoris}
+                  onBasculerFavori={(famille, id) => biblio.basculer(famille, id)}
+                  onChoisir={(famille, id) => {
+                    if (famille === 'lut') {
+                      modifier({ lut: { ...brouillon.lut, active: id !== 'neutral', lutId: id } });
+                    } else if (famille === 'styleTexte') {
+                      modifier({ typographie: { ...brouillon.typographie, styleTexteId: id } });
+                    } else if (famille === 'animationBloc') {
+                      modifier({ animations: { ...brouillon.animations, texteId: id } });
+                    } else if (famille === 'animationContenu') {
+                      modifier({ animations: { ...brouillon.animations, texteContenuId: id } });
+                    } else {
+                      const tr = transitionCreativeParId(id);
+                      modifier({
+                        transitions: id === 'cut'
+                          ? { ...brouillon.transitions, active: false, transitionId: 'cut' }
+                          : {
+                            ...brouillon.transitions, active: true, transitionId: id,
+                            dureeMs: tr?.dureeDefautMs ?? brouillon.transitions.dureeMs,
+                          },
+                      });
+                    }
+                  }}
+                />
+                {biblio.erreur && (
+                  <p data-biblio-erreur className="text-[10px] text-amber-400">{biblio.erreur}</p>
+                )}
+
                 <BibliothequeStylesTexte
                   styleActif={brouillon.typographie.styleTexteId}
                   exemple={brouillon.texte.titre ?? undefined}
                   couleur={brouillon.couleurs.texte ?? '#FFFFFF'}
                   favoris={favorisStyles}
                   recents={recentsStyles}
-                  onBasculerFavori={(id) => setFavorisStyles((f) => (
-                    f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
-                  ))}
+                  onBasculerFavori={(id) => biblio.basculer('styleTexte', id)}
                   onChoisir={(id) => {
                     modifier({
                       typographie: { ...brouillon.typographie, styleTexteId: id },
                     });
-                    setRecentsStyles((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
                   }}
                 />
                 {/* ── DEUX ANIMATIONS QUI NE FONT PAS LA MÊME CHOSE ────
@@ -499,14 +537,11 @@ export default function MonStylePanel({
                   couleur={brouillon.couleurs.texte ?? '#FFFFFF'}
                   favoris={favorisAnimations}
                   recents={recentsAnimations}
-                  onBasculerFavori={(id) => setFavorisAnimations((f) => (
-                    f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
-                  ))}
+                  onBasculerFavori={(id) => biblio.basculer('animationBloc', id)}
                   onChoisir={(id) => {
                     modifier({
                       animations: { ...brouillon.animations, texteId: id },
                     });
-                    setRecentsAnimations((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
                   }}
                 />
 
@@ -519,14 +554,11 @@ export default function MonStylePanel({
                   couleur={brouillon.couleurs.texte ?? '#FFFFFF'}
                   favoris={favorisContenu}
                   recents={recentsContenu}
-                  onBasculerFavori={(id) => setFavorisContenu((f) => (
-                    f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
-                  ))}
+                  onBasculerFavori={(id) => biblio.basculer('animationContenu', id)}
                   onChoisir={(id) => {
                     modifier({
                       animations: { ...brouillon.animations, texteContenuId: id },
                     });
-                    setRecentsContenu((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
                   }}
                 />
 
@@ -717,9 +749,7 @@ export default function MonStylePanel({
               dureeMs={brouillon.transitions.dureeMs}
               favoris={favorisTransitions}
               recents={recentsTransitions}
-              onBasculerFavori={(id) => setFavorisTransitions((f) => (
-                f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
-              ))}
+              onBasculerFavori={(id) => biblio.basculer('transition', id)}
               onChoisir={(id, dureeDefautMs) => {
                 /* La durée suit la transition choisie : chacune a son rythme,
                    et personne ne devrait avoir à le régler pour que ce soit
@@ -732,7 +762,6 @@ export default function MonStylePanel({
                       dureeMs: dureeDefautMs,
                     },
                 });
-                setRecentsTransitions((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
               }}
             />
             {brouillon.transitions.active && (

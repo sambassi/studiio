@@ -45,8 +45,11 @@ import {
   normaliserProfilCreatif, type ProfilCreatifAutopilote,
 } from './profil-creatif';
 import {
-  sanitizeDesignStyle, type AutopilotDesignStyle,
+  sanitizeDesignStyle, bibliothequeDepuisStyle, type AutopilotDesignStyle,
 } from '@/lib/autopilot/textStyle';
+import {
+  bibliothequeValide, type BibliothequeCreative,
+} from '@/lib/creatif/bibliotheque';
 
 /** Le nom de la table, ecrit une fois. */
 const TABLE = 'autopilot_config';
@@ -105,7 +108,7 @@ export function reinitialiserSondeStyle(): void {
  * enregistrements simultanes inoffensifs l'un pour l'autre.
  */
 export const CLES_DESIGN_STYLE_HORS_CONFIG = [
-  'profilCreatif', 'objectifParDefaut',
+  'profilCreatif', 'objectifParDefaut', 'bibliothequeCreative',
 ] as const;
 
 /**
@@ -372,6 +375,46 @@ export async function enregistrerProfilCreatifUtilisateur(
   if (!ok) return { ok: false, motif: 'ecriture_impossible' };
   return { ok: true, profil: normalise };
 }
+
+/**
+ * A_3e — LA BIBLIOTHEQUE CREATIVE DU COMPTE.
+ *
+ * ⚠️ SA PROPRE CLE, SON PROPRE ECRIVAIN. Elle ne relit ni ne reecrit
+ * `profilCreatif` : un coeur clique pendant qu'un style s'enregistre ne peut
+ * donc pas ecraser ce style, et l'inverse non plus.
+ */
+export async function lireBibliothequeUtilisateur(
+  userId: string,
+): Promise<BibliothequeCreative> {
+  const style = await lireStyleDuCompte(userId);
+  return bibliothequeDepuisStyle(style);
+}
+
+export type EcritureBibliotheque =
+  | { ok: true; bibliotheque: BibliothequeCreative }
+  | { ok: false; motif: 'store_indisponible' | 'ecriture_impossible' };
+
+export async function enregistrerBibliothequeUtilisateur(
+  userId: string, brut: unknown,
+): Promise<EcritureBibliotheque> {
+  if (!userId) return { ok: false, motif: 'ecriture_impossible' };
+  if (!(await styleDuCompteDisponible())) return { ok: false, motif: 'store_indisponible' };
+
+  // Normalise AVANT d'ecrire : la base ne doit jamais porter ce que la
+  // relecture jetterait — l'utilisateur verrait ses favoris disparaitre.
+  const normalisee = bibliothequeValide(brut);
+  const ok = await fusionnerDesignStyle(userId, { bibliothequeCreative: normalisee });
+  if (!ok) return { ok: false, motif: 'ecriture_impossible' };
+  return { ok: true, bibliotheque: normalisee };
+}
+
+export const MESSAGES_BIBLIOTHEQUE: Record<
+  'store_indisponible' | 'ecriture_impossible', string
+> = {
+  store_indisponible:
+    'Tes favoris ne peuvent pas encore être enregistrés : la mise à jour du serveur n’est pas terminée.',
+  ecriture_impossible: 'Tes favoris n’ont pas pu être enregistrés. Réessaie.',
+};
 
 export const MESSAGES_PROFIL_COMPTE: Record<
   'store_indisponible' | 'ecriture_impossible', string

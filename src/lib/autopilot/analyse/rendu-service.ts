@@ -287,6 +287,45 @@ export async function lireRenduReussiIdentique(
   return { rendu: renduDepuisLigne(data as Record<string, unknown>), motif: null };
 }
 
+/**
+ * A_3e1 — LES CHOIX CRÉATIFS DES DERNIERS MONTAGES RÉUSSIS.
+ *
+ * ---------------------------------------------------------------------------
+ * ⚠️ BORNÉE, FILTRÉE PAR COMPTE, ET RIEN QUE `usage`
+ * ---------------------------------------------------------------------------
+ *
+ * Elle sert deux choses : afficher les « Récents » d'une grille, et empêcher
+ * l'Autopilote de resservir la même combinaison. Les deux n'ont besoin que de
+ * quelques dizaines de lignes — jamais d'un parcours de table.
+ *
+ * `LIMIT` est donc obligatoire, `user_id` est dans la requête (pas dans un
+ * `if` que l'on pourrait oublier), et une seule colonne revient. Un rendu qui
+ * a échoué ne prouve rien : seuls les réussis comptent.
+ */
+export const RENDUS_RECENTS_MAX = 20;
+
+export async function listerCreatifsRecents(
+  userId: string, limite = RENDUS_RECENTS_MAX,
+): Promise<Record<string, unknown>[]> {
+  const { data, error } = await supabaseAdmin
+    .from('rush_montage_renders')
+    .select('usage')
+    .eq('user_id', userId)
+    .eq('etat', 'reussie')
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .limit(Math.max(1, Math.min(RENDUS_RECENTS_MAX, limite)));
+
+  if (error) {
+    // Sans socle, il n'y a pas d'historique : ce n'est pas une erreur, c'est
+    // un compte qui n'a encore rien rendu.
+    if (socleAbsent(error)) return [];
+    throw new Error(error.message || 'lecture des rendus recents impossible');
+  }
+  return (data ?? [])
+    .map((l) => (l as Record<string, unknown>).usage)
+    .filter((u): u is Record<string, unknown> => typeof u === 'object' && u !== null);
+}
+
 /** Le rendu encore actif de ce plan, s'il y en a un. */
 export async function lireRenduActif(
   userId: string, montagePlanId: string,

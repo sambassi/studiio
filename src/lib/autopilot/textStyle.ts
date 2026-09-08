@@ -15,6 +15,10 @@ import {
   OBJECTIF_DEFAUT, lireObjectif, normaliserObjectif,
   type ObjectifCommunication,
 } from '@/lib/autopilot/analyse/objectif-communication';
+import {
+  bibliothequeValide, bibliothequeVide, BIBLIOTHEQUE_VIDE,
+  type BibliothequeCreative,
+} from '@/lib/creatif/bibliotheque';
 
 /**
  * Le style de texte CONSTANT de l'Autopilote — police, taille, position,
@@ -195,6 +199,15 @@ export interface AutopilotDesignStyle {
    * chaque creation, et une video peut toujours declarer le sien.
    */
   objectifParDefaut?: ObjectifCommunication;
+  /**
+   * A_3e — LA BIBLIOTHEQUE CREATIVE PERSONNELLE : favoris, presets, politique.
+   *
+   * ⚠️ FRERE DE `profilCreatif`, ET SURTOUT PAS SON ENFANT.
+   * `profilCreatifCanonique` alimente l'identite du rendu : y ranger les
+   * favoris ferait qu'un coeur clique invaliderait tous les montages deja
+   * calcules du compte. Une preference d'affichage qui refait des videos.
+   */
+  bibliothequeCreative?: BibliothequeCreative;
   title?: AutopilotTextZone;
   /**
    * Sous-titre — police et taille SEULEMENT.
@@ -375,6 +388,16 @@ export function audioDepuisStyle(
 }
 
 /** Le profil relu, ou rien. Aucune valeur partielle n'est acceptee. */
+/** La bibliotheque relue, ou rien si elle ne demande rien. */
+function bibliothequeValideOuRien(brut: unknown): BibliothequeCreative | undefined {
+  if (brut === undefined || brut === null) return undefined;
+  const b = bibliothequeValide(brut);
+  /* ⚠️ VIDE = ABSENT. Ecrire `{favoris:{lut:[],...}}` pour un compte qui n'a
+     jamais clique un coeur ferait grossir chaque document de rien, et
+     `designStyleIsEmpty` cesserait de dire vrai. */
+  return bibliothequeVide(b) ? undefined : b;
+}
+
 function profilValide(brut: unknown): ProfilCreatifAutopilote | undefined {
   if (brut === undefined || brut === null) return undefined;
   const lecture = lireProfilCreatif(brut);
@@ -403,6 +426,13 @@ export function profilCreatifDepuisStyle(
   return style?.profilCreatif ?? PROFIL_CREATIF_DEFAUT;
 }
 
+/** La bibliotheque du compte, vide comprise. */
+export function bibliothequeDepuisStyle(
+  style: AutopilotDesignStyle | undefined | null,
+): BibliothequeCreative {
+  return style?.bibliothequeCreative ?? BIBLIOTHEQUE_VIDE;
+}
+
 /** L'objectif par defaut du compte, defaut compris. */
 export function objectifDepuisStyle(
   style: AutopilotDesignStyle | undefined | null,
@@ -428,6 +458,8 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
     // la meme dette que celle payee pour `montage` puis pour `audio`.
     profilCreatif: profilValide(o.profilCreatif),
     objectifParDefaut: objectifValide(o.objectifParDefaut),
+    // ⚠️ SANS CETTE LIGNE, LES FAVORIS SONT EFFACES a chaque enregistrement.
+    bibliothequeCreative: bibliothequeValideOuRien(o.bibliothequeCreative),
     title: zone(o.title, true),
     // La position du sous-titre est retirée par `zone(..., false)` : voir le
     // commentaire du champ.

@@ -540,6 +540,20 @@ export async function produireMontage(
       usage.dureeAttendueSecondes =
         plan.dureeTotaleSecondes - style.transition.recoupementTotalSecondes;
     }
+    /* ── LES CHOIX CRÉATIFS DE CE MONTAGE ─────────────────────────────
+       ⚠️ ÉCRITS ICI, PAS DÉDUITS PLUS TARD. Ce sont eux qui alimenteront les
+       « Récents » des grilles et la mémoire anti-répétition de l'Autopilote :
+       un rendu réussi est la seule preuve qu'un choix a servi. Ils tiennent
+       dans `usage`, qui est déjà du `jsonb` — aucune migration. */
+    if (profil) {
+      usage.creatif = {
+        lutId: profil.lut.active ? profil.lut.lutId : null,
+        styleTexteId: profil.typographie.styleTexteId,
+        animationBlocId: profil.animations.texteId,
+        animationContenuId: profil.animations.texteContenuId,
+        transitionId: profil.transitions.active ? profil.transitions.transitionId : 'cut',
+      };
+    }
     if (style.transitionsNonRendues.length > 0) {
       // Trace, jamais silence : la transition demandee est acceptee par le
       // contrat mais rendue comme `cut` tant que ce lot ne sait pas la faire
