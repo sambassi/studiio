@@ -107,6 +107,14 @@ interface Props {
    */
   variante?: 'compacte' | 'complete';
   /** Ouvre le tiroir d'analyse. Absent = le lien ne s'affiche pas. */
+  /**
+   * A_7d4 — LES RUSHES A ASSEMBLER, passe-plat jusqu'au bouton.
+   *
+   * ⚠️ MOINS DE DEUX = LE CHEMIN HISTORIQUE. Le composant ne decide rien : il
+   * transmet ce que la bande de rushes a coche, et c'est `creerVideo` qui
+   * aiguille sur le nombre.
+   */
+  rushIds?: readonly string[];
   onVoirAnalyse?: () => void;
 }
 
@@ -126,7 +134,7 @@ export default function PassagesSuggeres({
   analyseId, montage, audioDefaut, audioInitial, onAudioChange,
   avantAction, actionBloquee, onEnregistrerAudioDefaut, onVideoLancee,
   objectifCetteVideo,
-  variante = 'complete', onVoirAnalyse,
+  variante = 'complete', onVoirAnalyse, rushIds,
 }: Props) {
   // ⚠️ RESYNCHRONISE SUR LA VALEUR SERIALISEE, comme le fait deja le wizard
   // pour `designStyle` : l'objet change d'identite a chaque relecture de la
@@ -259,6 +267,10 @@ export default function PassagesSuggeres({
         // ⚠️ IDEM POUR L'OBJECTIF : il vaut pour cette video, et n'ecrit
         // rien. Absent, le serveur applique le defaut du compte.
         objectif: objectifCetteVideo ?? undefined,
+        /* ⚠️ TRANSMIS TEL QUEL. Le navigateur ne compte pas, ne trie pas et
+           ne resout aucune lignee : `creerVideo` aiguille sur le nombre, et
+           le serveur fait le reste. */
+        rushIds,
         signalerEtape: (etape) => {
           if (vivantRef.current) setChaine({ sorte: 'encours', etape });
         },

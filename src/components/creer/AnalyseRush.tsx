@@ -111,6 +111,15 @@ interface Props {
    * à renvoyer quand il n'a rien à dire.
    */
   objectifCetteVideo?: unknown;
+  /**
+   * A_7d4 — LES RUSHES A ASSEMBLER, passe-plat jusqu'au bouton.
+   *
+   * ⚠️ MOINS DE DEUX = LE CHEMIN HISTORIQUE. Le composant ne decide rien : il
+   * transmet ce que la bande de rushes a coche, et c'est `creerVideo` qui
+   * aiguille sur le nombre.
+   */
+  rushIds?: readonly string[];
+
 }
 
 /** Le plafond dur du moteur (`VIGNETTES_MAX`), redit ici pour l'affichage. */
@@ -125,7 +134,7 @@ interface Refus {
 export default function AnalyseRush({
   rushId, montage, onVideoLancee, audioDefaut, audioInitial, onAudioChange,
   avantAction, actionBloquee, onEnregistrerAudioDefaut,
-  variante = 'complete', onVoirAnalyse, relance, objectifCetteVideo,
+  variante = 'complete', onVoirAnalyse, relance, objectifCetteVideo, rushIds,
 }: Props) {
   const chaine = variante === 'chaine';
   const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
@@ -568,6 +577,7 @@ export default function AnalyseRush({
               onEnregistrerAudioDefaut={onEnregistrerAudioDefaut}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}
+              rushIds={rushIds}
               variante={chaine ? 'compacte' : 'complete'}
               onVoirAnalyse={onVoirAnalyse}
             />

@@ -723,6 +723,12 @@ export default function SessionsTournagePanel({
             <AnalyseRush
               key={rushActif.id}
               rushId={rushActif.id}
+              /* ⚠️ A_7d4 — L'ENSEMBLE MONTE, PAS SEULEMENT CELUI QU'ON REGARDE.
+                 Le rush regarde en fait toujours partie ; les autres sont ceux
+                 qui ont ete coches. Un seul au total = le chemin historique,
+                 et `creerVideo` s'en charge sans que cet ecran ait a le
+                 savoir. */
+              rushIds={[rushActif.id, ...rushesMontes.filter((x) => x !== rushActif.id)]}
               montage={montage}
               audioDefaut={audioDefaut}
               audioInitial={audioBrouillon}

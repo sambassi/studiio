@@ -203,6 +203,19 @@ export interface OptionsChaine {
   /** Le jeu de passages d'où l'on part. */
   candidateSetId: string;
   /**
+   * A_7d4 — LES RUSHES A ASSEMBLER, quand la personne en a coche plusieurs.
+   *
+   * ⚠️ MOINS DE DEUX = LE CHEMIN HISTORIQUE, A LA LIGNE PRES. C'est celui de
+   * tous les montages deja produits, et il ne bouge pas : decoupage des
+   * clips, plan mono-rush, rendu. Rien de ce qui suit ne s'execute.
+   *
+   * ⚠️ DES IDENTIFIANTS DE RUSH, ET RIEN D'AUTRE. Le navigateur ne construit
+   * ni jeu de clips, ni transcription, ni chemin de fichier : la lignee se
+   * resout cote serveur, par les services qui la connaissent. Lui faire
+   * porter davantage reviendrait a lui faire choisir quels octets monter.
+   */
+  rushIds?: readonly string[];
+  /**
    * Le format demandé. Omis = `FORMAT_VIDEO`.
    *
    * ⚠️ TRANSMIS TEL QUEL À M3-G, qui le REFUSE s'il sort de son vocabulaire.
@@ -266,6 +279,51 @@ export async function creerVideo(o: OptionsChaine): Promise<IssueChaine> {
     ?? ((ms: number) => new Promise<void>((r) => { setTimeout(r, ms); }));
   const maintenant = o.maintenant ?? (() => Date.now());
   const id = encodeURIComponent(o.candidateSetId);
+
+  /* ══ A_7d4 — L'AIGUILLAGE, ET IL N'Y EN A QU'UN ═══════════════════════════
+     Un seul bouton, deux chemins, et c'est le NOMBRE DE RUSHES qui tranche —
+     pas une seconde action « Creer multi-rush » que la personne devrait
+     comprendre avant de cliquer.
+
+     ⚠️ SEULES LES DEUX PREMIERES ETAPES CHANGENT. Le decoupage et le plan
+     mono-rush sont remplaces par UN appel serveur qui prepare les rushes,
+     planifie et ecrit le plan atomiquement. Le RENDU, lui, reste exactement le
+     meme appel : `/montages/{planId}/rendu` sait rendre un plan multi-source
+     depuis A_7c, et lui fournir ses sous-titres par source depuis A_7d1. */
+  const rushes = [...new Set(o.rushIds ?? [])];
+  if (rushes.length >= 2) {
+    o.signalerEtape?.('decoupage');
+    const multi = await appeler(fetcher, '/api/autopilot/montages/multi-rush', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rushIds: rushes,
+        format: o.format ?? FORMAT_VIDEO,
+        dureeCibleSecondes: o.dureeCibleSecondes ?? DUREE_CIBLE_SECONDES,
+        ...(o.objectif ? { objectif: o.objectif } : {}),
+      }),
+    });
+    if (!multi) return { sorte: 'echec', message: MESSAGE_RESEAU };
+
+    /* ⚠️ 409 `source_unique` N'EST PAS UN ECHEC : c'est un aiguillage. Une
+       seule source a survecu a la preparation ou au palier de qualite, et le
+       montage qui en sort est un montage MONO-rush. On repart donc sur le
+       chemin historique plutot que d'annoncer une panne — la video demandee
+       est faisable, simplement pas avec la matiere esperee. */
+    const versMono = multi.statut === 409
+      && texte(objet(multi.corps)?.motif) === 'source_unique';
+
+    if (!versMono) {
+      if (multi.statut !== 200 && multi.statut !== 201) {
+        return { sorte: 'echec', message: messageRefus(multi) };
+      }
+      const planMultiId = texte(objet(multi.corps?.plan)?.id);
+      if (!planMultiId) return { sorte: 'echec', message: MESSAGE_ILLISIBLE };
+      return rendre(fetcher, planMultiId, o);
+    }
+    /* Sinon on tombe dans le decoupage ci-dessous, avec le jeu de passages du
+       rush REGARDE — celui dont l'apercu montre l'image. */
+  }
 
   // ── 1. Le découpage ───────────────────────────────────────────────────
   o.signalerEtape?.('decoupage');
@@ -341,6 +399,21 @@ export async function creerVideo(o: OptionsChaine): Promise<IssueChaine> {
   // On ne SONDE PAS le rendu ici : `VideosPretes` le fait déjà, au niveau de
   // la session, avec ses phrases et ses messages d'échec. Le refaire ici
   // ferait deux boucles sur la même ligne.
+  return rendre(fetcher, planId, o);
+}
+
+/**
+ * Le lancement du rendu — UN SEUL, pour les deux chemins.
+ *
+ * ⚠️ EXTRAIT PLUTOT QUE RECOPIE PAR A_7d4. Un plan multi-rush EST un plan : il
+ * porte un identifiant, une version, des segments, et cette route sait le
+ * rendre depuis A_7c. Ecrire un second appel pour le multi aurait donne deux
+ * facons de lancer un rendu — et deux jeux de codes de retour a tenir
+ * d'accord.
+ */
+async function rendre(
+  fetcher: Fetcher, planId: string, o: OptionsChaine,
+): Promise<IssueChaine> {
   o.signalerEtape?.('rendu');
   const rendu = await appeler(
     fetcher, `/api/autopilot/montages/${encodeURIComponent(planId)}/rendu`,
