@@ -36,6 +36,7 @@ import {
   type ClipMaterialise,
 } from './clip-contrat';
 import { VIDEO_SIZE, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
+import { sourceValide, type SourceSegment } from './montage-source';
 
 // ───────────────────────────────────────────────────────────────────────────
 // L'identité de l'algorithme
@@ -384,6 +385,26 @@ export interface PlanMontage {
   largeurSource: number;
   hauteurSource: number;
   raccordEntrant: Raccord;
+  /**
+   * D'OU VIENT CE SEGMENT — A_7a.
+   *
+   * ⚠️ OPTIONNEL, ET IL DOIT LE RESTER. Tous les plans deja en base ont ete
+   * ecrits sans ce champ. Le rendre obligatoire invaliderait leur `jsonb` a
+   * la relecture, donc `planValide` les rejetterait, donc des montages dont
+   * le MP4 est deja rendu deviendraient illisibles. Son ABSENCE est la forme
+   * historique, pas une erreur : `normaliserPlanSourceAware` la resout avec
+   * le contexte du plan, en un seul endroit.
+   *
+   * ⚠️ SA PRESENCE, ELLE, EST UN ENGAGEMENT COMPLET. Une provenance a moitie
+   * ecrite serait crue sur parole alors qu'elle ne dit rien de sur — voir le
+   * controle dans `planValide`.
+   *
+   * Il porte la plage SOURCE, dans le rush. La plage MONTAGE reste
+   * `debutTimelineSecondes` / `dureeRetenueSecondes`, juste au-dessus : ce
+   * sont deux referentiels sans rapport, et les confondre est le bug qui ne
+   * se voit qu'a l'image.
+   */
+  source?: SourceSegment;
 }
 
 /**
@@ -485,6 +506,16 @@ export function planValide(v: unknown): v is PlanMontage {
     const n = nombreFini(r[c]);
     if (n === null || n < 0 || n > 1) return false;
   }
+  /* ⚠️ ABSENTE : VALIDE. PRESENTE : COMPLETE. PAS DE TROISIEME CAS — A_7a.
+
+     Un plan d'avant ce lot n'a pas de `source`, et doit continuer de passer :
+     c'est la forme historique, et l'adaptateur sait la lire. Mais un segment
+     qui annonce une provenance sans la tenir — un `rushId` sans `clipSetId`,
+     une version a zero, une plage inversee — est PIRE qu'un segment sans
+     provenance : le second se repare avec le contexte du plan, le premier a
+     l'air renseigne et sera cru. Le demi-contrat est donc refuse ici, au plus
+     pres de la lecture, plutot que corrige plus loin. */
+  if (p.source !== undefined && !sourceValide(p.source)) return false;
   return true;
 }
 

@@ -22,6 +22,7 @@ import {
   formatValide, planValide,
   type FormatMontage, type IdentitePlan, type MontagePlan, type PlanMontage,
 } from './montage-contrat';
+import { fusionnerJeuxSources, type JeuSource } from './montage-source';
 
 // ⚠️ UN SEUL LITTÉRAL, JAMAIS UNE CONCATÉNATION. `supabase-js` analyse cette
 // chaîne AU NIVEAU DES TYPES ; un `+` la ramène à `string`, et le client rend
@@ -227,4 +228,111 @@ export async function lirePlanParId(
   }
   if (!data) return { plan: null, motif: null };
   return { plan: planDepuisLigne(data as Record<string, unknown>), motif: null };
+}
+
+// ---------------------------------------------------------------------------
+// Les sources d'un plan — A_7a
+// ---------------------------------------------------------------------------
+
+/** Les colonnes de `rush_montage_plan_sources`, ouverte par A_7M. */
+export const COLONNES_SOURCES_PLAN =
+  'plan_id, user_id, ordinal, clip_set_id, clip_set_version';
+
+/**
+ * Les jeux de sources d'un plan, dans l'ordre, dedupliques.
+ *
+ * ⚠️ DEUX CHEMINS, UN SEUL RESULTAT. Un plan peut porter sa source de deux
+ * facons : la colonne scalaire `clip_set_id`, qui existe depuis M3-G, et une
+ * ligne dans `rush_montage_plan_sources`, ouverte par A_7M. La migration A_7M
+ * ayant BACKFILLE les plans historiques, la quasi-totalite d'entre eux
+ * portent maintenant LES DEUX — et disent la meme chose.
+ *
+ * Les additionner donnerait deux sources la ou il n'y en a qu'une, et un plan
+ * a deux sources recoit une empreinte, bascule sous l'index d'identite
+ * multi-rush, et perd les rendus deja reussis qui pointaient vers lui. La
+ * fusion n'est donc pas une commodite : c'est ce qui empeche le backfill de
+ * casser le passe.
+ *
+ * ⚠️ `socle_absent` PLUTOT QU'UNE ERREUR. La table n'existe pas tant que la
+ * migration n'est pas appliquee, ce qui est le cas EN PRODUCTION au moment ou
+ * ce code est ecrit. Le lecteur retombe alors sur la seule source scalaire,
+ * exactement comme avant A_7M.
+ */
+export async function lireSourcesPlan(
+  userId: string, plan: Pick<MontagePlan, 'id' | 'clipSetId' | 'clipSetVersion'>,
+): Promise<{ sources: JeuSource[]; motif: MotifPersistancePlan | null }> {
+  const scalaire: JeuSource | null = plan.clipSetId
+    ? { clipSetId: plan.clipSetId, clipSetVersion: plan.clipSetVersion }
+    : null;
+
+  const { data, error } = await supabaseAdmin
+    .from('rush_montage_plan_sources')
+    .select(COLONNES_SOURCES_PLAN)
+    .eq('plan_id', plan.id)
+    // ⚠️ LE COMPTE EST REVALIDE ICI AUSSI. La cle etrangere composite de A_7M
+    // garantit qu'une source appartient au meme compte que son plan ; elle ne
+    // dispense pas de filtrer, sans quoi un `planId` devine suffirait a lire
+    // la composition du montage d'autrui.
+    .eq('user_id', userId)
+    .order('ordinal', { ascending: true });
+
+  if (error) {
+    if (socleAbsent(error)) {
+      return { sources: scalaire ? [scalaire] : [], motif: 'socle_absent' };
+    }
+    throw new Error(error.message || 'lecture des sources impossible');
+  }
+
+  const lignes: JeuSource[] = (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      clipSetId: String(row.clip_set_id),
+      clipSetVersion: nombre(row.clip_set_version, 1),
+    };
+  });
+  return { sources: fusionnerJeuxSources(scalaire, lignes), motif: null };
+}
+
+/**
+ * Ecrit les sources d'un plan, dans l'ordre donne.
+ *
+ * ⚠️ UN SEUL `insert`, ET C'EST LA SEULE ATOMICITE QUE POSTGREST OFFRE. Un
+ * `insert` portant un tableau est UNE instruction, donc une transaction :
+ * trois sources entrent toutes les trois ou aucune. Un plan ne peut donc pas
+ * se retrouver avec deux sources sur trois.
+ *
+ * ⚠️ CE QUI N'EST PAS ATOMIQUE, ET QUI EST DIT PLUTOT QUE BRICOLE : la
+ * creation du PLAN et l'ecriture de ses SOURCES sont deux appels. Les rendre
+ * indivisibles demanderait une fonction SQL `rpc`, donc une migration — que
+ * ce lot n'ouvre pas, parce qu'il ne cree encore AUCUN plan multi-rush.
+ * Enchainer deux requetes en faisant comme si elles etaient transactionnelles
+ * serait la version silencieuse du meme probleme. A_7b, qui composera
+ * reellement des plans multi-sources, devra trancher ce point-la.
+ *
+ * `ordinal` suit l'ordre du tableau : c'est lui qui distingue `A,B,C` de
+ * `B,A,C`, et l'empreinte des sources en depend.
+ */
+export async function ecrireSourcesPlan(
+  userId: string, planId: string, sources: readonly JeuSource[],
+): Promise<{ ecrites: number; motif: MotifPersistancePlan | null }> {
+  if (sources.length === 0) return { ecrites: 0, motif: null };
+
+  const lignes = sources.map((s, i) => ({
+    plan_id: planId,
+    user_id: userId,
+    ordinal: i,
+    clip_set_id: s.clipSetId,
+    clip_set_version: s.clipSetVersion,
+  }));
+
+  const { error } = await supabaseAdmin
+    .from('rush_montage_plan_sources')
+    .insert(lignes);
+
+  if (error) {
+    if (socleAbsent(error)) return { ecrites: 0, motif: 'socle_absent' };
+    if (violationUnicite(error)) return { ecrites: 0, motif: 'plan_concurrent' };
+    throw new Error(error.message || 'ecriture des sources impossible');
+  }
+  return { ecrites: lignes.length, motif: null };
 }
