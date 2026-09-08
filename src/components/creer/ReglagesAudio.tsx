@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import MenuActions, { type ActionMenu } from '@/components/ui/MenuActions';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
+import BibliothequeAudio from '@/components/creer/BibliothequeAudio';
+import { useBanqueAudio } from '@/lib/hooks/useBanqueAudio';
 import {
   BUCKET_MUSIQUE, RECETTE_AUDIO_DEFAUT, arrondirVolume, type RecetteAudio,
 } from '@/lib/autopilot/analyse/recette-audio';
@@ -70,11 +72,16 @@ export interface ReglagesAudioProps {
   onChange: (recette: RecetteAudio) => void;
   /** Enregistre la recette comme defaut du compte. Absent = bouton masque. */
   onEnregistrerDefaut?: (recette: RecetteAudio) => Promise<boolean>;
+  /** Les favoris audio du compte — persistes par la bibliotheque creative. */
+  favorisAudio?: readonly string[];
+  recentsAudio?: readonly string[];
+  onBasculerFavoriAudio?: (cle: string) => void;
   desactive?: boolean;
 }
 
 export default function ReglagesAudio({
   valeur, onChange, onEnregistrerDefaut, desactive,
+  favorisAudio = [], recentsAudio = [], onBasculerFavoriAudio,
 }: ReglagesAudioProps) {
   const [mediatheque, setMediatheque] = useState(false);
   const [nomMusique, setNomMusique] = useState<string | null>(null);
@@ -105,6 +112,10 @@ export default function ReglagesAudio({
     majuscule({ musique: { bucket: BUCKET_MUSIQUE, cle } });
     setMediatheque(false);
   };
+
+  /* La banque n'est demandee qu'a l'ouverture du panneau audio : une personne
+     qui ne touche jamais a la musique ne paie pas une requete pour elle. */
+  const banque = useBanqueAudio(!desactive);
 
   const nomAffiche = valeur.musique === null
     ? null
@@ -176,6 +187,39 @@ export default function ReglagesAudio({
           />
         </span>
       </div>
+
+      {/* ── LA BANQUE AUDIO ───────────────────────────────────────────
+          ⚠️ ELLE PASSE DEVANT LA MEDIATHEQUE. Choisir dans une liste de
+          fichiers oblige a se souvenir d'un nom de fichier ; choisir dans une
+          banque montre une duree, une ambiance, une forme d'onde, et laisse
+          ecouter. La mediatheque reste le moyen d'AJOUTER, pas de choisir. */}
+      {banque.pistes.length > 0 && (
+        <BibliothequeAudio
+          pistes={banque.pistes}
+          cleActive={valeur.musique?.cle ?? null}
+          favoris={favorisAudio}
+          recents={recentsAudio}
+          onBasculerFavori={onBasculerFavoriAudio}
+          onRenommer={banque.renommer}
+          onRetirer={(cle) => {
+            banque.retirer(cle);
+            // Retirer la piste CHOISIE laisse le montage sans musique plutot
+            // qu'avec une reference morte.
+            if (valeur.musique?.cle === cle) {
+              setNomMusique(null);
+              majuscule({ musique: null });
+            }
+          }}
+          onChoisir={(cle) => {
+            if (cle === null) { setNomMusique(null); majuscule({ musique: null }); return; }
+            setNomMusique(banque.pistes.find((x) => x.cle === cle)?.nom ?? null);
+            majuscule({ musique: { bucket: BUCKET_MUSIQUE, cle } });
+          }}
+        />
+      )}
+      {banque.erreur && (
+        <p data-audio-banque-erreur className="text-[10px] text-amber-400">{banque.erreur}</p>
+      )}
 
       {/* La musique en une ligne : son nom, ou l'absence dite simplement. */}
       <p
