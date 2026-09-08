@@ -45,7 +45,7 @@ import {
   normaliserProfilCreatif, type ProfilCreatifAutopilote,
 } from './profil-creatif';
 import {
-  sanitizeDesignStyle, bibliothequeDepuisStyle, type AutopilotDesignStyle,
+  sanitizeDesignStyle, type AutopilotDesignStyle,
 } from '@/lib/autopilot/textStyle';
 import {
   bibliothequeValide, type BibliothequeCreative,
@@ -220,7 +220,10 @@ export async function fusionnerDesignStyle(
   // Moins sur — une ecriture voisine glissee entre la lecture et l'ecriture
   // se perd — mais il conserve les cles voisines, ce qui est deja l'essentiel.
   const existant = await lireStyleDuCompte(userId);
-  const fusionne = sanitizeDesignStyle({ ...existant, ...patch });
+  /* ⚠️ LE COMPTE EST TRANSMIS ICI AUSSI. Sans lui, le repli
+     lire-modifier-ecrire relirait la banque audio SANS savoir a qui elle
+     appartient — et la reecrirait vide. */
+  const fusionne = sanitizeDesignStyle({ ...existant, ...patch }, userId);
   try {
     const { error } = await supabaseAdmin
       .from(TABLE)
@@ -317,7 +320,7 @@ export async function lireStyleDuCompte(userId: string): Promise<AutopilotDesign
       .limit(1);
     if (error) return {};
     const ligne = (data?.[0] as Record<string, unknown> | undefined) ?? undefined;
-    return sanitizeDesignStyle(ligne?.design_style);
+    return sanitizeDesignStyle(ligne?.design_style, userId);
   } catch (err) {
     console.error(
       '[Autopilote] Lecture du style du compte impossible :',
@@ -386,8 +389,11 @@ export async function enregistrerProfilCreatifUtilisateur(
 export async function lireBibliothequeUtilisateur(
   userId: string,
 ): Promise<BibliothequeCreative> {
+  /* ⚠️ RELUE AVEC LE COMPTE. La banque audio designe des cles de stockage
+     dont le prefixe prouve la propriete : sans `userId`, elle revient vide
+     plutot que devinee. */
   const style = await lireStyleDuCompte(userId);
-  return bibliothequeDepuisStyle(style);
+  return bibliothequeValide(style.bibliothequeCreative, userId);
 }
 
 export type EcritureBibliotheque =
@@ -402,7 +408,7 @@ export async function enregistrerBibliothequeUtilisateur(
 
   // Normalise AVANT d'ecrire : la base ne doit jamais porter ce que la
   // relecture jetterait — l'utilisateur verrait ses favoris disparaitre.
-  const normalisee = bibliothequeValide(brut);
+  const normalisee = bibliothequeValide(brut, userId);
   const ok = await fusionnerDesignStyle(userId, { bibliothequeCreative: normalisee });
   if (!ok) return { ok: false, motif: 'ecriture_impossible' };
   return { ok: true, bibliotheque: normalisee };

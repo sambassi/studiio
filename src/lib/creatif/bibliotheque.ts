@@ -31,6 +31,9 @@ import { ANIMATION_TEXTE_IDS } from './animations-texte';
 import { ANIMATION_CONTENU_IDS } from './animations-contenu';
 import { TRANSITION_CREATIVE_IDS } from './transitions';
 import { CAPTION_IDS } from './captions';
+import {
+  banqueAudioValide, BANQUE_AUDIO_VIDE, type BanqueAudio,
+} from './audio';
 import { presetsPersonnelsValides, type PresetPersonnel } from './presets';
 
 /** Les cinq familles qu'une personne peut mettre en favori. */
@@ -38,6 +41,9 @@ export const FAMILLES_BIBLIOTHEQUE = [
   'lut', 'styleTexte', 'animationBloc', 'animationContenu', 'transition',
   // A_4 : les sous-titres s'aiment et se retrouvent comme le reste.
   'caption',
+  // A_5 : les musiques aussi — mais leurs identifiants sont des CLES du
+  // compte, pas un catalogue partage. Voir `favorisValides`.
+  'audio',
 ] as const;
 export type FamilleBibliotheque = (typeof FAMILLES_BIBLIOTHEQUE)[number];
 
@@ -49,6 +55,7 @@ export const LIBELLES_FAMILLE: Record<FamilleBibliotheque, string> = {
   animationContenu: 'Apparitions',
   transition: 'Transitions',
   caption: 'Sous-titres',
+  audio: 'Musiques',
 };
 
 /**
@@ -67,6 +74,10 @@ const IDS_PAR_FAMILLE: Record<FamilleBibliotheque, readonly string[]> = {
     ? ANIMATION_CONTENU_IDS : ['aucune', ...ANIMATION_CONTENU_IDS],
   transition: TRANSITION_CREATIVE_IDS,
   caption: CAPTION_IDS,
+  /* ⚠️ VIDE, ET CE N'EST PAS UN OUBLI. Les musiques n'ont pas de catalogue
+     partage : ce sont les fichiers DU COMPTE. `favorisValides` les traite a
+     part, et la banque elle-meme verifie la propriete par le prefixe. */
+  audio: [],
 };
 
 export function idsFamille(f: FamilleBibliotheque): readonly string[] {
@@ -91,6 +102,8 @@ export interface BibliothequeCreative {
   presets: readonly PresetPersonnel[];
   /** A_3e3 — ce que l'Autopilote a le droit de faire varier. */
   automatisation: PolitiqueCreative;
+  /** A_5 — la banque de musiques du compte. */
+  audio: BanqueAudio;
 }
 
 export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
@@ -100,6 +113,7 @@ export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
   animationContenu: Object.freeze([]) as readonly string[],
   transition: Object.freeze([]) as readonly string[],
   caption: Object.freeze([]) as readonly string[],
+  audio: Object.freeze([]) as readonly string[],
 }) as FavorisCreatifs;
 
 /**
@@ -184,6 +198,7 @@ export const BIBLIOTHEQUE_VIDE: BibliothequeCreative = Object.freeze({
   favoris: FAVORIS_VIDES,
   presets: Object.freeze([]) as readonly PresetPersonnel[],
   automatisation: POLITIQUE_STRICTE,
+  audio: BANQUE_AUDIO_VIDE,
 });
 
 /**
@@ -203,7 +218,15 @@ export function favorisValides(
   const sortie: string[] = [];
   for (const v of brut) {
     if (typeof v !== 'string' || vus.has(v)) continue;
-    if (!connus.includes(v)) continue;
+    /* ⚠️ LES MUSIQUES N'ONT PAS DE CATALOGUE A CONSULTER. Leur identifiant
+       est une CLE de stockage du compte : la comparer a une liste partagee
+       les refuserait toutes. Ce qui est verifie ici, c'est la FORME ; la
+       propriete l'est par le prefixe, dans `banqueAudioValide`. */
+    if (famille === 'audio') {
+      if (v.length > 400 || v.includes('..') || v.includes('\\') || v.includes('://')) {
+        continue;
+      }
+    } else if (!connus.includes(v)) continue;
     vus.add(v);
     sortie.push(v);
     if (sortie.length >= FAVORIS_MAX_PAR_FAMILLE) break;
@@ -212,7 +235,18 @@ export function favorisValides(
 }
 
 /** La bibliothèque complète, telle qu'on accepte de la relire. */
-export function bibliothequeValide(brut: unknown): BibliothequeCreative {
+/**
+ * ⚠️ `userId` EST NECESSAIRE POUR LA BANQUE AUDIO, ET POUR ELLE SEULE.
+ *
+ * Une piste est designee par une CLE de stockage, et c'est son prefixe qui
+ * prouve la propriete. Relire une banque sans savoir a qui elle appartient
+ * laisserait entrer la cle d'autrui dans un catalogue — ou elle serait
+ * affichee, cherchee, mise en favori, et finirait par ressembler a une piste
+ * legitime. Sans `userId`, la banque est donc VIDE, jamais devinee.
+ */
+export function bibliothequeValide(
+  brut: unknown, userId?: string,
+): BibliothequeCreative {
   if (!brut || typeof brut !== 'object') return BIBLIOTHEQUE_VIDE;
   const o = brut as Record<string, unknown>;
   const f = (o.favoris ?? {}) as Record<string, unknown>;
@@ -224,12 +258,14 @@ export function bibliothequeValide(brut: unknown): BibliothequeCreative {
     favoris,
     presets: presetsPersonnelsValides(o.presets),
     automatisation: politiqueValide(o.automatisation),
+    audio: userId ? banqueAudioValide(o.audio, userId) : BANQUE_AUDIO_VIDE,
   };
 }
 
 /** La bibliothèque ne demande-t-elle rien ? */
 export function bibliothequeVide(b: BibliothequeCreative): boolean {
-  return b.presets.length === 0
+  return b.audio.pistes.length === 0
+    && b.presets.length === 0
     && politiqueVide(b.automatisation)
     && FAMILLES_BIBLIOTHEQUE.every((f) => b.favoris[f].length === 0);
 }
@@ -277,6 +313,7 @@ export const CLE_USAGE_PAR_FAMILLE: Record<FamilleBibliotheque, string> = {
   animationContenu: 'animationContenuId',
   transition: 'transitionId',
   caption: 'captionStyleId',
+  audio: 'musicTrackId',
 };
 
 /**
@@ -300,8 +337,11 @@ export function recentsDepuisUsages(
       if (!creatif || typeof creatif !== 'object') continue;
       const v = (creatif as Record<string, unknown>)[cle];
       if (typeof v !== 'string' || vus.has(v)) continue;
-      // Un identifiant disparu du catalogue ne revient pas dans la grille.
-      if (!connus.includes(v)) continue;
+      /* ⚠️ MEME EXCEPTION QUE POUR LES FAVORIS. Les musiques n'ont pas de
+         catalogue partage : leur identifiant est une CLE du compte. La
+         comparer a une liste vide les rejetterait toutes, et « Recents »
+         resterait desesperement vide. */
+      if (famille !== 'audio' && !connus.includes(v)) continue;
       vus.add(v);
       liste.push(v);
       if (liste.length >= RECENTS_MAX_PAR_FAMILLE) break;

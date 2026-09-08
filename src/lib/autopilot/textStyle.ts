@@ -389,9 +389,11 @@ export function audioDepuisStyle(
 
 /** Le profil relu, ou rien. Aucune valeur partielle n'est acceptee. */
 /** La bibliotheque relue, ou rien si elle ne demande rien. */
-function bibliothequeValideOuRien(brut: unknown): BibliothequeCreative | undefined {
+function bibliothequeValideOuRien(
+  brut: unknown, userId?: string,
+): BibliothequeCreative | undefined {
   if (brut === undefined || brut === null) return undefined;
-  const b = bibliothequeValide(brut);
+  const b = bibliothequeValide(brut, userId);
   /* ⚠️ VIDE = ABSENT. Ecrire `{favoris:{lut:[],...}}` pour un compte qui n'a
      jamais clique un coeur ferait grossir chaque document de rien, et
      `designStyleIsEmpty` cesserait de dire vrai. */
@@ -440,7 +442,9 @@ export function objectifDepuisStyle(
   return style?.objectifParDefaut ?? OBJECTIF_DEFAUT;
 }
 
-export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
+export function sanitizeDesignStyle(
+  brut: unknown, userId?: string,
+): AutopilotDesignStyle {
   if (!brut || typeof brut !== 'object') return {};
   const o = brut as Record<string, unknown>;
   const sousTitre = zone(o.subtitle, false);
@@ -459,7 +463,7 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
     profilCreatif: profilValide(o.profilCreatif),
     objectifParDefaut: objectifValide(o.objectifParDefaut),
     // ⚠️ SANS CETTE LIGNE, LES FAVORIS SONT EFFACES a chaque enregistrement.
-    bibliothequeCreative: bibliothequeValideOuRien(o.bibliothequeCreative),
+    bibliothequeCreative: bibliothequeValideOuRien(o.bibliothequeCreative, userId),
     title: zone(o.title, true),
     // La position du sous-titre est retirée par `zone(..., false)` : voir le
     // commentaire du champ.

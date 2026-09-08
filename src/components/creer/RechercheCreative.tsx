@@ -29,6 +29,7 @@ import { ANIMATIONS_TEXTE } from '@/lib/creatif/animations-texte';
 import { ANIMATIONS_CONTENU } from '@/lib/creatif/animations-contenu';
 import { TRANSITIONS_CREATIVES } from '@/lib/creatif/transitions';
 import { STYLES_CAPTION } from '@/lib/creatif/captions';
+import { entreePiste, type PisteAudio } from '@/lib/creatif/audio';
 import { chercher, trierEntrees, type EntreeCreative } from '@/lib/creatif/catalogue-contrat';
 import {
   FAMILLES_BIBLIOTHEQUE, LIBELLES_FAMILLE,
@@ -38,7 +39,14 @@ import {
 /** Au-delà, la liste cesse d'aider : elle ne fait que défiler. */
 export const RESULTATS_MAX_PAR_FAMILLE = 6;
 
-const CATALOGUES: Record<FamilleBibliotheque, readonly EntreeCreative[]> = {
+/**
+ * ⚠️ LES MUSIQUES NE SONT PAS DANS CETTE TABLE, ET ELLES NE PEUVENT PAS L'ETRE.
+ *
+ * Les cinq autres familles sont des catalogues PARTAGES, connus a la
+ * compilation. Une musique appartient a UN compte : elle arrive par les
+ * proprietes du composant, jamais par une constante.
+ */
+const CATALOGUES: Record<Exclude<FamilleBibliotheque, 'audio'>, readonly EntreeCreative[]> = {
   lut: LOOKS_CREATIFS,
   styleTexte: STYLES_TEXTE,
   animationBloc: ANIMATIONS_TEXTE,
@@ -59,11 +67,15 @@ export interface GroupeResultats {
  * Une famille sans résultat n'apparaît pas : un titre suivi de rien est du
  * bruit.
  */
-export function grouperResultats(requete: string): GroupeResultats[] {
+export function grouperResultats(
+  requete: string, pistesAudio: readonly PisteAudio[] = [],
+): GroupeResultats[] {
   if (requete.trim() === '') return [];
   const groupes: GroupeResultats[] = [];
   for (const famille of FAMILLES_BIBLIOTHEQUE) {
-    const trouves = trierEntrees(chercher(CATALOGUES[famille], requete))
+    const catalogue = famille === 'audio'
+      ? pistesAudio.map(entreePiste) : CATALOGUES[famille];
+    const trouves = trierEntrees(chercher(catalogue, requete))
       .slice(0, RESULTATS_MAX_PAR_FAMILLE);
     if (trouves.length > 0) {
       groupes.push({ famille, libelle: LIBELLES_FAMILLE[famille], entrees: trouves });
@@ -78,12 +90,16 @@ export interface RechercheCreativeProps {
   favoris: FavorisCreatifs;
   onBasculerFavori: (famille: FamilleBibliotheque, id: string) => void;
   onChoisir: (famille: FamilleBibliotheque, id: string) => void;
+  /** Les musiques du compte — elles n'ont pas de catalogue partage. */
+  pistesAudio?: readonly PisteAudio[];
 }
 
 export default function RechercheCreative({
-  requete, onRequete, favoris, onBasculerFavori, onChoisir,
+  requete, onRequete, favoris, onBasculerFavori, onChoisir, pistesAudio = [],
 }: RechercheCreativeProps) {
-  const groupes = useMemo(() => grouperResultats(requete), [requete]);
+  const groupes = useMemo(
+    () => grouperResultats(requete, pistesAudio), [requete, pistesAudio],
+  );
   const total = groupes.reduce((n, g) => n + g.entrees.length, 0);
 
   return (

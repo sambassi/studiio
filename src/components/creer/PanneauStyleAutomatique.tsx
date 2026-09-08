@@ -37,9 +37,13 @@ import { STYLES_CAPTION } from '@/lib/creatif/captions';
 import type { EntreeCreative } from '@/lib/creatif/catalogue-contrat';
 
 /** Les familles que l'Autopilote peut reellement faire varier. */
-const FAMILLES_VARIABLES = FAMILLES_BIBLIOTHEQUE.filter((f) => f !== 'caption');
+/* ⚠️ NI LES SOUS-TITRES NI LES MUSIQUES. Les premiers sont un reglage de
+   lisibilite ; les secondes ont leur PROPRE politique — un fichier du compte
+   ne se regle pas comme un effet du catalogue. */
+const FAMILLES_VARIABLES = FAMILLES_BIBLIOTHEQUE
+  .filter((f) => f !== 'caption' && f !== 'audio');
 
-const CATALOGUES: Record<FamilleBibliotheque, readonly EntreeCreative[]> = {
+const CATALOGUES: Record<Exclude<FamilleBibliotheque, 'audio'>, readonly EntreeCreative[]> = {
   lut: LOOKS_CREATIFS,
   styleTexte: STYLES_TEXTE,
   animationBloc: ANIMATIONS_TEXTE,
@@ -50,6 +54,7 @@ const CATALOGUES: Record<FamilleBibliotheque, readonly EntreeCreative[]> = {
 
 /** Le nom d'un identifiant, ou l'identifiant si le catalogue ne le connaît plus. */
 export function nomEntree(famille: FamilleBibliotheque, id: string): string {
+  if (famille === 'audio') return id;
   return CATALOGUES[famille].find((x) => x.id === id)?.nom ?? id;
 }
 

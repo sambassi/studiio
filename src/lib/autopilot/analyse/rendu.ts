@@ -635,6 +635,8 @@ export async function produireMontage(
         animationContenuId: profil.animations.texteContenuId,
         transitionId: profil.transitions.active ? profil.transitions.transitionId : 'cut',
         captionStyleId: profil.captions.active ? profil.captions.styleId : null,
+        // ⚠️ LA CLE, JAMAIS UNE URL — `usage` refuse d'ailleurs `://`.
+        musicTrackId: musique !== null ? (recette.musique?.cle ?? null) : null,
         ...(demande.variation ? {
           politiqueVersion: demande.variation.politiqueVersion,
           raison: demande.variation.raison,

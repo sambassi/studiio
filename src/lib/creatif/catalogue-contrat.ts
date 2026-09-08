@@ -38,6 +38,9 @@ export const FAMILLES_CREATIVES = [
   // A_4 : un sous-titre n'est pas un texte de marque. Il partage ASS/libass
   // avec les textes, mais son CONTENU vient de la parole, pas de l'ecran.
   'caption',
+  // A_5 : une musique n'est pas un effet — c'est un FICHIER du compte. Elle
+  // se cherche et se met en favori comme le reste, d'ou sa place ici.
+  'audio',
 ] as const;
 export type FamilleCreative = (typeof FAMILLES_CREATIVES)[number];
 

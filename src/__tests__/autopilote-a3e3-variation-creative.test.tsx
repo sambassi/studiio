@@ -457,7 +457,9 @@ describe('9. L’écran', () => {
       /* ⚠️ LES SOUS-TITRES NE SONT PAS PROPOSES : c'est un reglage de
          lisibilite, pas d'ambiance. La famille existe pour les favoris et la
          recherche ; la variation la reconduit sans la choisir. */
-      if (f === 'caption') expect(present).toBeNull();
+      /* Les musiques ont leur PROPRE politique : un fichier du compte ne se
+         regle pas comme un effet du catalogue. */
+      if (f === 'caption' || f === 'audio') expect(present).toBeNull();
       else expect(present, f).not.toBeNull();
     }
   });

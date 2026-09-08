@@ -62,16 +62,19 @@ afterEach(() => { cleanup(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('1. Les favoris — validés, bornés, jamais morts', () => {
-  it('1.1 les six familles créatives ont chacune leurs favoris', () => {
-    // A_4 ajoute les sous-titres : ils s'aiment et se retrouvent comme le reste.
+  it('1.1 les sept familles créatives ont chacune leurs favoris', () => {
+    // A_4 ajoute les sous-titres, A_5 les musiques.
     expect([...FAMILLES_BIBLIOTHEQUE]).toEqual([
       'lut', 'styleTexte', 'animationBloc', 'animationContenu', 'transition',
-      'caption',
+      'caption', 'audio',
     ]);
     for (const f of FAMILLES_BIBLIOTHEQUE) {
       expect(BIBLIOTHEQUE_VIDE.favoris[f]).toEqual([]);
       expect(LIBELLES_FAMILLE[f].length).toBeGreaterThan(3);
-      expect(idsFamille(f).length).toBeGreaterThan(5);
+      /* ⚠️ LES MUSIQUES N'ONT PAS DE CATALOGUE PARTAGE : ce sont les fichiers
+         DU COMPTE. Leur liste d'identifiants est vide par construction. */
+      if (f === 'audio') expect(idsFamille(f).length).toBe(0);
+      else expect(idsFamille(f).length).toBeGreaterThan(5);
     }
   });
 
@@ -134,7 +137,7 @@ describe('2. La persistance', () => {
   it('2.2 ⚠️ sans cette ligne dans le sanitizer, les favoris seraient effacés', () => {
     // Le test qui aurait manqué pour `montage`, puis pour `audio`.
     expect(sansProse(lire('src/lib/autopilot/textStyle.ts')))
-      .toContain('bibliothequeCreative: bibliothequeValideOuRien(o.bibliothequeCreative)');
+      .toContain('bibliothequeCreative: bibliothequeValideOuRien(o.bibliothequeCreative, userId)');
   });
 
   it('2.3 vide = absent : un compte sans favori n’alourdit aucun document', () => {
@@ -169,7 +172,7 @@ describe('2. La persistance', () => {
 
   it('2.7 la route normalise AVANT d’écrire, jamais après', () => {
     const compte = sansProse(lire('src/lib/autopilot/analyse/profil-compte.ts'));
-    const iNorm = compte.indexOf('const normalisee = bibliothequeValide(brut)');
+    const iNorm = compte.indexOf('const normalisee = bibliothequeValide(brut, userId)');
     const iEcrit = compte.indexOf('bibliothequeCreative: normalisee');
     expect(iNorm).toBeGreaterThan(-1);
     expect(iNorm).toBeLessThan(iEcrit);
@@ -297,7 +300,7 @@ describe('4. Le cœur répond tout de suite, et revient s’il le faut', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('5. La recherche unifiée', () => {
-  it('5.1 elle interroge les cinq catalogues d’un coup', () => {
+  it('5.1 elle interroge les catalogues partagés d’un coup', () => {
     const g = grouperResultats('cinema');
     expect(g.length).toBeGreaterThanOrEqual(3);
     const familles = g.map((x) => x.famille);
