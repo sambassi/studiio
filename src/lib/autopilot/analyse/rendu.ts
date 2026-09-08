@@ -168,14 +168,22 @@ function planExecutable(plans: readonly PlanMontage[]): SourceLocale[] | null {
  */
 function resultatConforme(
   mesure: MesureRendu, plan: MontagePlan, avecAudio: boolean,
+  recoupementSecondes = 0,
 ): boolean {
   if (!resolutionConforme(
     mesure.largeur, mesure.hauteur, plan.largeurCible, plan.hauteurCible,
   )) return false;
   if (mesure.codecVideo !== 'h264') return false;
   if (mesure.pixelFormat !== PIXEL_FORMAT_RENDU) return false;
+  /* ⚠️ LA DUREE ATTENDUE EST CELLE DU PLAN MOINS LE RECOUVREMENT. Un montage
+     dont les plans se chevauchent est PLUS COURT que son plan, et c'est
+     exactement ce qui avait fait ecarter `xfade` : le fichier etait refuse.
+     Retirer le recouvrement ne relache pas la verification, elle la RENFORCE
+     — elle controle desormais que le recouvrement a bien eu lieu. */
   if (!dureeConforme(
-    mesure.dureeMesureeSecondes, plan.dureeTotaleSecondes, plan.fps, plan.plans.length,
+    mesure.dureeMesureeSecondes,
+    plan.dureeTotaleSecondes - recoupementSecondes,
+    plan.fps, plan.plans.length,
   )) return false;
   if (mesure.fpsMesure === null) return false;
   if (Math.abs(mesure.fpsMesure - plan.fps) > TOLERANCE_FPS) return false;
@@ -522,6 +530,16 @@ export async function produireMontage(
       await writeFile(join(dossier, 'textes.ass'), style.documentAss, 'utf8');
       usage.textesAnimes = style.documentAss.split('\nDialogue:').length - 1;
     }
+    /* ⚠️ L'ECART DE DUREE EST TRACE, JAMAIS CACHE. Le plan dit une duree, le
+       recouvrement en retire une part : c'est `usage` qui porte la difference,
+       pour que personne n'ait a la deviner en comparant deux nombres. */
+    if (style.transition !== null) {
+      usage.transitionRendue = style.transition.xfadeId;
+      usage.transitionDureeSecondes = style.transition.dureeSecondes;
+      usage.recoupementTotalSecondes = style.transition.recoupementTotalSecondes;
+      usage.dureeAttendueSecondes =
+        plan.dureeTotaleSecondes - style.transition.recoupementTotalSecondes;
+    }
     if (style.transitionsNonRendues.length > 0) {
       // Trace, jamais silence : la transition demandee est acceptee par le
       // contrat mais rendue comme `cut` tant que ce lot ne sait pas la faire
@@ -554,6 +572,7 @@ export async function produireMontage(
     // faire diverger au premier lot suivant.
     if (!resultatConforme(
       mesure, plan, rendraDeLAudio(sources, recette, musique !== null),
+      style.transition?.recoupementTotalSecondes ?? 0,
     )) {
       return echec('resultat_invalide', usage);
     }

@@ -79,6 +79,12 @@ import { filtreDrawtext, positionY, type PoliceRendu } from './rendu-texte';
 import { documentAss, filtreSousTitres, type CoucheAss } from './rendu-ass';
 import { animationContenuParId } from '@/lib/creatif/animations-contenu';
 import {
+  transitionCreativeParId, DUREE_TRANSITION_MIN_MS, DUREE_TRANSITION_MAX_MS,
+} from '@/lib/creatif/transitions';
+import {
+  planTransitions, PLAN_TRANSITIONS_COUPE, type PlanTransitions,
+} from './transition-plan';
+import {
   animationTexteParId, expressionsAnimation,
 } from '@/lib/creatif/animations-texte';
 import { filtreLut3d } from './lut-cube';
@@ -201,11 +207,36 @@ export interface StyleRendu {
    */
   documentAss: string | null;
   /**
+   * Le recouvrement a appliquer entre les plans, ou `null` pour une coupe.
+   *
+   * ⚠️ CE N'EST PAS UN FRAGMENT DE FILTRE. Un `xfade` ne s'insere pas DANS
+   * une branche : il remplace le `concat`, donc il change la façon meme
+   * d'assembler. Le moteur recoit donc des NOMBRES — un nom d'effet choisi
+   * dans le catalogue, une duree, des instants — et c'est lui qui ecrit la
+   * chaine.
+   */
+  transition: TransitionRendu | null;
+  /**
    * Transitions du catalogue que ce lot ne rend pas encore. Elles sont
    * acceptees par le contrat et rendues comme `cut` — jamais silencieusement :
    * cette liste remonte au moteur, qui la trace dans `usage`.
    */
   transitionsNonRendues: readonly string[];
+}
+
+/** Ce que le moteur doit savoir pour ecrire la chaine de recouvrement. */
+export interface TransitionRendu {
+  /**
+   * Le nom `xfade`. ⚠️ IL SORT DU CATALOGUE, jamais du profil : le profil ne
+   * porte qu'un identifiant Studiio, et `transitionCreativeParId` est le seul
+   * chemin qui mene d'un identifiant a un nom de filtre.
+   */
+  xfadeId: string;
+  dureeSecondes: number;
+  offsetsSecondes: readonly number[];
+  /** Ce que le montage perd : `(n-1) x duree`. */
+  recoupementTotalSecondes: number;
+  courbeAudio: 'tri' | 'exp';
 }
 
 /** Le style qui ne fait rien : le graphe historique, au caractere pres. */
@@ -214,6 +245,7 @@ export const STYLE_NEUTRE: StyleRendu = Object.freeze({
   entrees: Object.freeze([]) as readonly string[],
   post: '',
   documentAss: null,
+  transition: null,
   transitionsNonRendues: Object.freeze([]) as readonly string[],
 });
 
@@ -561,6 +593,36 @@ export function construireStyle(
     transitionsNonRendues.push(profil.transitions.transitionId);
   }
 
+  /* ── LE RECOUVREMENT ──────────────────────────────────────────────────
+     ⚠️ SEUL LE MOTEUR `xfade` RECOUVRE. `cut` n'assemble rien de special, et
+     les deux transitions historiques — `crossfade`, `flash` — sont des fondus
+     INTERNES a chaque plan : elles passent par `fragments`, ci-dessus, et la
+     duree du montage reste celle du plan, exactement comme avant ce lot. */
+  const creative = transitionCreativeParId(profil.transitions.transitionId);
+  let recouvrement: PlanTransitions = PLAN_TRANSITIONS_COUPE;
+  if (profil.transitions.active && creative?.moteur === 'xfade' && creative.xfadeId) {
+    /* La duree vient du profil, BORNEE ICI. Le contrat la borne deja plus
+       largement ; ce second bornage est celui du moteur de transition, et il
+       est ecrit la ou le filtre est ecrit. */
+    const ms = Math.min(DUREE_TRANSITION_MAX_MS,
+      Math.max(DUREE_TRANSITION_MIN_MS, profil.transitions.dureeMs));
+    recouvrement = planTransitions(ctx.clips.map((c) => c.dureeSecondes), ms / 1000);
+    if (recouvrement.abandonnee) {
+      // Trace, jamais silence : le plan etait trop court pour qu'on la voie.
+      transitionsNonRendues.push(profil.transitions.transitionId);
+    }
+  }
+  const transition: TransitionRendu | null = recouvrement.dureeSecondes > 0
+    && creative?.xfadeId
+    ? {
+      xfadeId: creative.xfadeId,
+      dureeSecondes: recouvrement.dureeSecondes,
+      offsetsSecondes: recouvrement.offsetsSecondes,
+      recoupementTotalSecondes: recouvrement.recoupementTotalSecondes,
+      courbeAudio: recouvrement.courbeAudio,
+    }
+    : null;
+
   // ── Le post-traitement, applique une fois sur le montage assemble ──────
   const entrees: string[] = [];
   const etapes: string[] = [];
@@ -687,6 +749,7 @@ export function construireStyle(
       entrees: [],
       post: '',
       documentAss: null,
+      transition,
       transitionsNonRendues,
     };
   }
@@ -697,6 +760,7 @@ export function construireStyle(
 
   return {
     documentAss: docAss,
+    transition,
     fragmentsParClip: fragments,
     entrees,
     post: etapes.join(';'),

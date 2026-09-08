@@ -783,18 +783,30 @@ describe('31-36. Ce que H3 ne fait pas', () => {
       expect(s).not.toContain('gardeDuree');
       expect(s).not.toContain('planifierMontage');
       expect(s).not.toContain('recadrer(');
-      // ⚠️ LE GARDE VISE LA DECISION EDITORIALE, PAS TOUT CE QUI CONTIENT
-      // « fade ». `xfade`, `zoompan` et `interpolate` fabriquent une
-      // transition ou un mouvement que le plan n'a pas demandes : ils
-      // resteront interdits. `afade`, lui, est une rampe de VOLUME sur la
-      // musique — il ne rejuge aucun plan, il evite qu'un morceau coupe net a
-      // la derniere image claque. Lot 2A.
-      expect(s).not.toMatch(/xfade|zoompan|interpolate/i);
-      // Le seul fondu tolere est celui-la, et il est audio.
+      /* ⚠️ LE GARDE VISE LA DECISION EDITORIALE, PAS TOUT CE QUI CONTIENT
+         « fade ». `zoompan` et `interpolate` fabriquent un MOUVEMENT que
+         personne n'a demande : ils restent interdits.
+
+         `xfade` etait dans cette liste tant qu'aucune transition n'etait
+         demandable. A_3d en fait un REGLAGE du profil creatif — donc une
+         propriete du rendu, comme le look ou le texte, et non une decision
+         que le moteur prendrait seul. Le garde change alors de forme : il ne
+         verifie plus l'ABSENCE du filtre, il verifie que son nom d'effet ne
+         peut pas etre ECRIT ICI. */
+      expect(s).not.toMatch(/zoompan|interpolate/i);
       for (const occurrence of s.match(/[a-z]*fade/gi) ?? []) {
-        expect(occurrence.toLowerCase()).toBe('afade');
+        expect(['afade', 'xfade', 'acrossfade']).toContain(occurrence.toLowerCase());
       }
     }
+    /* ⚠️ AUCUN NOM D'EFFET N'EST ECRIT DANS LE MOTEUR. Le seul `transition=`
+       du graphe est nourri par `tr.xfadeId`, qui vient du catalogue. Un nom
+       en dur ici serait une transition que le moteur choisirait lui-meme. */
+    const graphe = readFileSync(SRC.moteur, 'utf8');
+    for (const m of graphe.match(/transition=[^$][a-z]*/g) ?? []) {
+      throw new Error(`nom d'effet ecrit en dur : ${m}`);
+    }
+    expect(graphe).toContain('xfade=transition=${tr.xfadeId}');
+
     // Et le recadrage vient du plan, pas d'un calcul local.
     const moteur = readFileSync(SRC.orchestration, 'utf8');
     expect(moteur).toContain('rectangleCrop(p.largeurSource, p.hauteurSource, p.recadrage)');

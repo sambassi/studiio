@@ -152,6 +152,7 @@ export function policeParId(id: unknown): PoliceAutorisee | undefined {
 import { LOOKS_CREATIFS } from '@/lib/creatif/looks';
 import { ANIMATIONS_TEXTE } from '@/lib/creatif/animations-texte';
 import { ANIMATIONS_CONTENU } from '@/lib/creatif/animations-contenu';
+import { TRANSITIONS_CREATIVES, TRANSITIONS_HERITEES } from '@/lib/creatif/transitions';
 
 export interface LutAutorisee {
   id: string;
@@ -225,14 +226,37 @@ export interface TransitionAutorisee {
  * `ALGORITHME_PLAN`. C'est la meme separation que celle de la recette audio,
  * et elle est testee.
  */
+/**
+ * ⚠️ LE CATALOGUE DE TRANSITIONS EST DERIVE (lot A_3d), plus ecrit ici.
+ *
+ * Il vivait ici en sept entrees dont quatre — `zoom`, `slide`, `whip`,
+ * `blur` — n'etaient rendues par personne. Les transitions reelles, avec leur
+ * moteur et leur duree, vivent dans `src/lib/creatif/transitions.ts`.
+ *
+ * ⚠️ LES QUATRE ANCIENS IDENTIFIANTS RESTENT ACCEPTES, ET RESTENT RENDUS
+ * COMME AVANT — c'est-a-dire comme une coupe, tracee dans
+ * `usage.transitionsNonRendues`. Les faire pointer vers un vrai effet
+ * changerait la video de qui les avait choisis. Ils sortent de la GRILLE, ou
+ * ils etaient des cartes mortes ; ils ne sortent pas du CONTRAT.
+ */
+const CATEGORIE_HISTORIQUE: Readonly<Record<string, TransitionAutorisee['categorie']>> =
+  Object.freeze({ coupe: 'coupe', 'fondu-couleur': 'fondu', xfade: 'fondu' });
+
 export const TRANSITIONS_AUTORISEES: readonly TransitionAutorisee[] = [
-  { id: 'cut', nom: 'Coupe franche', categorie: 'coupe', parametres: [] },
-  { id: 'crossfade', nom: 'Fondu enchaine', categorie: 'fondu', parametres: ['dureeMs'] },
-  { id: 'zoom', nom: 'Zoom', categorie: 'mouvement', parametres: ['dureeMs', 'intensite'] },
-  { id: 'flash', nom: 'Flash', categorie: 'effet', parametres: ['dureeMs', 'intensite'] },
-  { id: 'slide', nom: 'Glissement', categorie: 'mouvement', parametres: ['dureeMs'] },
-  { id: 'blur', nom: 'Flou', categorie: 'effet', parametres: ['dureeMs', 'intensite'] },
-  { id: 'whip', nom: 'Whip pan', categorie: 'mouvement', parametres: ['dureeMs', 'intensite'] },
+  ...TRANSITIONS_CREATIVES.map((t) => ({
+    id: t.id,
+    nom: t.nom,
+    categorie: t.moteur === 'coupe'
+      ? 'coupe' as const
+      : (CATEGORIE_HISTORIQUE[t.moteur] ?? 'effet'),
+    parametres: (t.moteur === 'coupe' ? [] : ['dureeMs']) as readonly ('dureeMs' | 'intensite')[],
+  })),
+  ...TRANSITIONS_HERITEES.map((id) => ({
+    id,
+    nom: id,
+    categorie: 'effet' as const,
+    parametres: ['dureeMs', 'intensite'] as readonly ('dureeMs' | 'intensite')[],
+  })),
 ];
 
 export const TRANSITION_IDS: readonly string[] = TRANSITIONS_AUTORISEES.map((t) => t.id);

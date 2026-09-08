@@ -365,9 +365,50 @@ export function argumentsRendu(
   // Sans post-traitement, le `concat` ecrit directement `[vout]` : c'est le
   // graphe historique. Avec, il ecrit un bus que la chaine de style reprend.
   const etiquetteVideo = st.post.length > 0 ? '[vconcat]' : '[vout]';
-  let filtre = `${chaines.join(';')};${liens.join('')}`
-    + `concat=n=${ordonnees.length}:v=1:a=${garderOriginal ? 1 : 0}`
-    + `${etiquetteVideo}${garderOriginal ? etiquetteConcat : ''}`;
+
+  /* ── L'ASSEMBLAGE : `concat` BOUT A BOUT, OU `xfade` EN RECOUVREMENT ───
+     ⚠️ CE N'EST PAS UN FILTRE DE PLUS, C'EST UNE AUTRE FAÇON D'ASSEMBLER.
+     `concat` met les plans a la suite ; `xfade` les fait se chevaucher, donc
+     raccourcit le montage de `(n-1) x duree`. Les deux ne peuvent pas
+     cohabiter dans un meme graphe sans que la duree cesse d'etre calculable,
+     et c'est la duree que `resultatConforme` verifie. */
+  const recouvre = st.transition !== null && ordonnees.length >= 2;
+  let filtre: string;
+  if (recouvre) {
+    const tr = st.transition!;
+    const morceaux: string[] = [...chaines];
+    let entree = '[v0]';
+    for (let i = 1; i < ordonnees.length; i += 1) {
+      const dernier = i === ordonnees.length - 1;
+      const sortie = dernier ? etiquetteVideo : `[vt${i}]`;
+      /* ⚠️ L'OFFSET EST CUMULATIF, ET IL EST CALCULE EN TypeScript. Ecrire
+         « debut du plan i moins la duree » marche pour deux plans et se
+         decale d'un recouvrement de plus a chaque jonction suivante. */
+      morceaux.push(`${entree}[v${i}]xfade=transition=${tr.xfadeId}`
+        + `:duration=${duree(tr.dureeSecondes)}`
+        + `:offset=${duree(tr.offsetsSecondes[i - 1] ?? 0)}${sortie}`);
+      entree = sortie;
+    }
+    if (garderOriginal) {
+      /* ⚠️ LE FONDU AUDIO DURE EXACTEMENT COMME LE RECOUVREMENT VIDEO. Plus
+         court, la piste ne se raccourcirait pas d'autant et l'image glisserait
+         devant le son un peu plus a chaque jonction. C'est la COURBE qui
+         raccourcit le chevauchement percu, jamais la duree. */
+      let entreeA = '[a0]';
+      for (let i = 1; i < ordonnees.length; i += 1) {
+        const dernier = i === ordonnees.length - 1;
+        const sortie = dernier ? etiquetteConcat : `[at${i}]`;
+        morceaux.push(`${entreeA}[a${i}]acrossfade=d=${duree(tr.dureeSecondes)}`
+          + `:c1=${tr.courbeAudio}:c2=${tr.courbeAudio}${sortie}`);
+        entreeA = sortie;
+      }
+    }
+    filtre = morceaux.join(';');
+  } else {
+    filtre = `${chaines.join(';')};${liens.join('')}`
+      + `concat=n=${ordonnees.length}:v=1:a=${garderOriginal ? 1 : 0}`
+      + `${etiquetteVideo}${garderOriginal ? etiquetteConcat : ''}`;
+  }
 
   if (!historique) {
     const bus: string[] = [];
@@ -393,12 +434,17 @@ export function argumentsRendu(
       // fondu-enchaine a la jonction serait un lot a part.
       const indiceMusique = ordonnees.length;
       entrees.push('-stream_loop', '-1', '-i', musique.chemin);
-      const d = duree(audio?.dureeSecondes ?? 0);
+      /* ⚠️ LA MUSIQUE SUIT LA DUREE REELLE DU MONTAGE, PAS CELLE DU PLAN.
+         Avec un recouvrement, le film est plus court de `(n-1) x duree` : une
+         musique bornee sur la duree du plan depasserait la derniere image, et
+         `amix=duration=first` la couperait net — juste apres le fondu de fin,
+         qui serait alors tombe au mauvais endroit. */
+      const dureeReelle = Math.max(0,
+        (audio?.dureeSecondes ?? 0) - (st.transition?.recoupementTotalSecondes ?? 0));
+      const d = duree(dureeReelle);
       // Le debut du fondu est calcule ICI, en TypeScript, jamais par une
       // expression ffmpeg : la meme regle que `rectangleCrop`.
-      const debutFondu = duree(Math.max(
-        0, (audio?.dureeSecondes ?? 0) - FONDU_MUSIQUE_SECONDES,
-      ));
+      const debutFondu = duree(Math.max(0, dureeReelle - FONDU_MUSIQUE_SECONDES));
       filtre += `;[${indiceMusique}:a]atrim=duration=${d},asetpts=PTS-STARTPTS,`
         + `aresample=${AUDIO_FREQUENCE_RENDU},`
         + `aformat=sample_fmts=fltp:channel_layouts=stereo,`
