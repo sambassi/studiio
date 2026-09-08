@@ -580,8 +580,15 @@ describe('24-30. Ce que le contrat n’accepte ni n’importe', () => {
     // ⚠️ DES MOTS ENTIERS, PAS DES SOUS-CHAÎNES. « lut » vit dans
     // « resolution » et « absolute » ; chercher la sous-chaîne ferait rougir
     // le test sur du vocabulaire parfaitement légitime.
+    /* ⚠️ « lut » A QUITTE CETTE LISTE AU LOT A_2, ET SEULEMENT LUI.
+       L'interdit visait une ANTICIPATION : a l'epoque, aucune LUT n'etait
+       rendue, et en parler ici aurait ete promettre un habillage inexistant.
+       A_2 rend de vraies tables `lut3d`, et l'identite du rendu doit porter
+       le MODE de look — sans quoi un compte deja colore retrouverait le MP4
+       d'hier sous une identite reputee a jour. Tous les autres mots restent
+       interdits : eux n'existent toujours pas. */
     for (const interdit of ['sous-titre', 'subtitle', 'musicUrl', 'watermark',
-      'thumbnail', 'miniature', 'publish', 'publier', 'lut', 'scheduled']) {
+      'thumbnail', 'miniature', 'publish', 'publier', 'scheduled']) {
       const motEntier = new RegExp(`\\b${interdit.replace('-', '.')}\\b`, 'i');
       expect(src, `M3-H (H1) ne doit pas anticiper ${interdit}`).not.toMatch(motEntier);
     }

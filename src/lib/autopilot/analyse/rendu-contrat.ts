@@ -189,6 +189,15 @@ export function methodeRendu(
  * memes caracteres — une cle de musique se terminant par ce que le profil
  * commence — rendraient la meme empreinte pour deux rendus differents.
  */
+/**
+ * La version du moteur de LOOK — pas celle de la LUT, celle du MOYEN.
+ *
+ * A_2 remplace le preset `eq`+`colorbalance` par une vraie table `lut3d`
+ * generee depuis les memes coefficients. Les valeurs du profil n'ont pas
+ * bouge ; ce qu'elles produisent, si.
+ */
+export const VERSION_LOOK = 'lut3d-v1';
+
 export function empreinteRenduComplet(
   recette: RecetteAudio | null | undefined,
   profil: ProfilCreatifPartiel | ProfilCreatifAutopilote | null | undefined,
@@ -209,8 +218,24 @@ export function empreinteRenduComplet(
   const cta = appelAction
     ? `\n--\ncta:${appelAction.texte ?? ''}|${appelAction.destination ?? ''}`
     : '';
+  /* ⚠️ LE MODE DE LOOK ENTRE DANS L'IDENTITE, ET IL LE FAUT.
+     `lutId` et `intensite` etaient DEJA dans l'empreinte, via le profil.
+     Mais le lot A_2 change ce que ces memes valeurs PRODUISENT : hier un
+     preset `eq`+`colorbalance`, aujourd'hui une vraie table `lut3d`. Sans
+     ce marqueur, un compte ayant deja un look retrouverait le MP4 d'hier —
+     rendu par l'ancien moteur — sous une identite reputee a jour. La panne
+     qui ne se voit pas, encore.
+
+     Il n'est ajoute QUE si un look est actif : les comptes sans look
+     gardent exactement leur empreinte, et leurs rendus restent
+     reutilisables. */
+  const profilLu = profil as { lut?: { active?: boolean; lutId?: string | null } } | null
+    | undefined;
+  const look = profilLu?.lut?.active && profilLu.lut.lutId
+    ? `\n--\n${VERSION_LOOK}`
+    : '';
   return createHash('sha256')
-    .update(`${audio}\n--\n${style}${cta}`, 'utf8')
+    .update(`${audio}\n--\n${style}${cta}${look}`, 'utf8')
     .digest('hex')
     .slice(0, LONGUEUR_EMPREINTE);
 }

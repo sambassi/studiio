@@ -39,7 +39,9 @@ import {
 import type { MontagePlan, PlanMontage } from './montage-contrat';
 import type { ProfilCreatifAutopilote } from './profil-creatif';
 import { join } from 'node:path';
-import { writeFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
+import { resoudreLut } from './rendu-lut';
+import { lireCube, doserCube, ecrireCube } from './lut-cube';
 import { preparerCouches } from './rendu-texte';
 import { fichierPolice } from './rendu-polices';
 import type { TexteAPoser } from './rendu-style';
@@ -414,6 +416,45 @@ export async function produireMontage(
     // presence de la musique ; la lui faire deviner ferait pointer son
     // incrustation sur l'entree du voisin — un logo qui affiche le mauvais
     // flux ne leve aucune erreur.
+    /* ── LA LUT : RESOLUE, DOSEE, ECRITE ──────────────────────────────
+       ⚠️ LE DOSAGE SE FAIT SUR LA TABLE, PAS SUR L'IMAGE. `lut3d` n'a pas
+       d'opacite, et le look est insere dans une chaine LINEAIRE de filtres :
+       un `split`+`blend` demanderait de reecrire tout l'assemblage. Ramener
+       chaque entree vers l'identite donne exactement le meme resultat —
+       l'interpolation de `lut3d` est lineaire, donc l'interpolation d'un
+       melange EST le melange des interpolations.
+
+       Et si quoi que ce soit manque, on ne fait pas echouer le montage : on
+       retombe sur le preset historique et on TRACE le motif, comme le depot
+       le fait deja pour les transitions non rendues. */
+    let lutFichier: string | null = null;
+    const issueLut = resoudreLut(profil?.lut ?? null);
+    if (issueLut.sorte === 'appliquee') {
+      try {
+        const brut = await readFile(issueLut.lut.chemin, 'utf8');
+        const lu = lireCube(brut);
+        if (!lu.ok) {
+          usage.lutNonRendue = lu.motif;
+        } else {
+          const intensite = profil?.lut.intensite ?? 1;
+          const dose = doserCube(lu.cube, intensite);
+          lutFichier = join(dossier, 'look.cube');
+          await writeFile(
+            lutFichier,
+            ecrireCube(dose, `${issueLut.lut.id} a ${Math.round(intensite * 100)} %`),
+            'utf8',
+          );
+          usage.lut = { id: issueLut.lut.id, intensite };
+        }
+      } catch {
+        // Le message n'est PAS repris : il porterait un chemin.
+        usage.lutNonRendue = 'lecture_impossible';
+        lutFichier = null;
+      }
+    } else if (issueLut.motif !== 'inactive') {
+      usage.lutNonRendue = issueLut.motif;
+    }
+
     /* ── LE TEXTE : PREPARE, PUIS ECRIT SUR LE DISQUE ──────────────────
        ⚠️ AUCUNE VALEUR SAISIE N'ENTRE DANS LE GRAPHE DE FILTRES. Chaque
        texte part dans son propre fichier, et `drawtext` le lit par
@@ -458,6 +499,7 @@ export async function produireMontage(
         .map((s) => ({ dureeSecondes: s.dureeRetenueSecondes })),
       dureeTotaleSecondes: plan.dureeTotaleSecondes,
       logo,
+      lutFichier,
       textes: textesAPoser,
       indicePremiereEntree: sources.length + (musique !== null ? 1 : 0),
     });

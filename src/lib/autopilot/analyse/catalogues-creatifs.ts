@@ -174,12 +174,24 @@ export interface LutAutorisee {
  * elles vivront dans le stockage du compte, designees comme le logo : par un
  * couple compartiment/cle, pas par un identifiant grave ici.
  */
+/**
+ * ⚠️ `ressourceServeur` N'EST PLUS `null` — ET C'EST TOUT LE LOT A_2.
+ *
+ * Ces quatre `.cube` sont PRODUITS PAR LE DEPOT
+ * (`scripts/lut/generer-luts.mjs`), a partir des coefficients de
+ * `LOOKS_RENDUS` calcules par ffmpeg lui-meme. Aucune LUT tierce n'a ete
+ * telechargee : leur provenance est la notre, leur licence celle du depot.
+ *
+ * `neutral` garde `null`, et ce n'est pas un oubli : « aucun look » ne
+ * s'applique pas, il s'abstient. Lui donner une table identite ferait
+ * traverser chaque image par une interpolation qui ne change rien.
+ */
 export const LUTS_AUTORISEES: readonly LutAutorisee[] = [
   { id: 'neutral', nom: 'Neutre', description: 'Aucune correction — l\'image du rush.', ressourceServeur: null },
-  { id: 'clean', nom: 'Clean', description: 'Contraste doux, peaux naturelles.', ressourceServeur: null },
-  { id: 'vibrant', nom: 'Vibrant', description: 'Saturation soutenue, couleurs franches.', ressourceServeur: null },
-  { id: 'cinema-warm', nom: 'Cinema chaud', description: 'Hautes lumieres ambrees, ombres denses.', ressourceServeur: null },
-  { id: 'cinema-cool', nom: 'Cinema froid', description: 'Bleus profonds, rendu nocturne.', ressourceServeur: null },
+  { id: 'clean', nom: 'Clean', description: 'Contraste doux, peaux naturelles.', ressourceServeur: 'clean.cube' },
+  { id: 'vibrant', nom: 'Vibrant', description: 'Saturation soutenue, couleurs franches.', ressourceServeur: 'vibrant.cube' },
+  { id: 'cinema-warm', nom: 'Cinema chaud', description: 'Hautes lumieres ambrees, ombres denses.', ressourceServeur: 'cinema-warm.cube' },
+  { id: 'cinema-cool', nom: 'Cinema froid', description: 'Bleus profonds, rendu nocturne.', ressourceServeur: 'cinema-cool.cube' },
 ];
 
 export const LUT_IDS: readonly string[] = LUTS_AUTORISEES.map((l) => l.id);

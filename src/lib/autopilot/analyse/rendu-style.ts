@@ -76,6 +76,7 @@ import {
   type ProfilCreatifAutopilote, type AncreTexte, type PositionLogo,
 } from './profil-creatif';
 import { filtreDrawtext, positionY } from './rendu-texte';
+import { filtreLut3d } from './lut-cube';
 
 // ---------------------------------------------------------------------------
 // Le contexte que le moteur fournit
@@ -114,6 +115,14 @@ export interface ContexteStyle {
    * affiche simplement le mauvais flux.
    */
   indicePremiereEntree: number;
+  /**
+   * Le `.cube` DEJA prepare par le moteur, intensite comprise.
+   *
+   * ⚠️ PREPARE AILLEURS, comme les textes : ce module ne touche pas au
+   * disque. `null` — ou absent — et l'on retombe sur le preset historique,
+   * ce qui garde intact le rendu des comptes qui n'ont pas de LUT.
+   */
+  lutFichier?: string | null;
   /**
    * Les couches de texte, DEJA preparees et validees par `rendu-texte`.
    *
@@ -491,7 +500,13 @@ export function construireStyle(
 ): StyleRendu {
   if (!profil) return STYLE_NEUTRE;
 
-  const look = filtreLook(profil);
+  /* ⚠️ LA VRAIE LUT PASSE DEVANT LE PRESET. Le preset reste la, et sert
+     encore chaque fois qu'aucun fichier n'a pu etre prepare : machine sans
+     les `.cube`, identifiant inconnu, fichier absent. Le montage sort alors
+     avec le look d'hier plutot que sans look du tout. */
+  const look = ctx.lutFichier
+    ? filtreLut3d(ctx.lutFichier)
+    : filtreLook(profil);
   const total = ctx.clips.length;
   const fragments = ctx.clips.map((c, i) => {
     const transition = filtreTransition(profil, i, total, c.dureeSecondes);
