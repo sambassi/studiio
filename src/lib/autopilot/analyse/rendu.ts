@@ -45,7 +45,16 @@ import { lireCube, doserCube, ecrireCube } from './lut-cube';
 import { preparerCouches } from './rendu-texte';
 import { fichierPolice } from './rendu-polices';
 import type { TexteAPoser } from './rendu-style';
-import { construireStyle, type LogoLocal, type StyleRendu } from './rendu-style';
+import {
+  construireStyle, recouvrementTransition,
+  type LogoLocal, type StyleRendu,
+} from './rendu-style';
+import {
+  projeterMots, VERSION_MOTEUR_CAPTIONS,
+  type MotSource, type ClipProjection,
+} from './captions-timeline';
+import { documentCaptions } from './captions-ass';
+import { styleCaptionParId } from '@/lib/creatif/captions';
 import {
   PIXEL_FORMAT_RENDU, AUDIO_FREQUENCE_RENDU, TOLERANCE_FPS, MOTIF_RENDU_INTERROMPU,
   dureeConforme, planRendable, resolutionConforme,
@@ -92,6 +101,15 @@ export interface DemandeRendu {
    * personne a choisi elle-meme — et il n'y a alors rien a expliquer.
    */
   variation?: { politiqueVersion: string; raison: string } | null;
+  /**
+   * A_4 — LA PAROLE DU RUSH ET L'ORIGINE DE CHAQUE CLIP.
+   *
+   * ⚠️ LA MATIERE, PAS LE RESULTAT. L'appelant fournit les mots dates dans le
+   * RUSH et le debut de chaque clip ; c'est ce module qui les projette sur la
+   * timeline, parce que lui seul connait le recouvrement reellement applique.
+   * Absent = aucun sous-titre, ce qui est le comportement d'avant ce lot.
+   */
+  captions?: { mots: readonly MotSource[]; clips: readonly ClipProjection[] } | null;
   /**
    * Le profil creatif EFFECTIF, deja fusionne et deja VALIDE par la route.
    *
@@ -516,6 +534,57 @@ export async function produireMontage(
     if (textesNonRendus.length > 0) usage.textesNonRendus = textesNonRendus;
     if (textesAPoser.length > 0) usage.textesRendus = textesAPoser.length;
 
+    /* ── LES SOUS-TITRES ──────────────────────────────────────────────
+       ⚠️ PROJETES ICI, PARCE QUE LE RECOUVREMENT SE DECIDE ICI. Les mots
+       arrivent dates dans le RUSH ; le montage, lui, a coupe, reordonne, et
+       fait se chevaucher les plans. Projeter ailleurs obligerait a deviner de
+       combien chaque plan s'est decale. */
+    let captions: { fichier: string; document: string } | null = null;
+    if (profil?.captions.active && demande.captions) {
+      const styleCaption = styleCaptionParId(profil.captions.styleId);
+      const recouvrement = recouvrementTransition(
+        profil, plan.plans.map((p) => p.dureeRetenueSecondes),
+      );
+      const mots = projeterMots(
+        demande.captions.mots,
+        plan.plans.map((p) => ({
+          ordre: p.ordre,
+          rangClip: p.rangClip,
+          entreeSecondes: p.entreeSecondes,
+          dureeRetenueSecondes: p.dureeRetenueSecondes,
+        })),
+        demande.captions.clips,
+        recouvrement.dureeSecondes,
+      );
+      const doc = styleCaption === null ? null : documentCaptions(
+        mots,
+        { ...styleCaption, position: profil.captions.position as never },
+        {
+          largeur, hauteur,
+          margeHautPct: profil.margesSures.hautPct,
+          margeBasPct: profil.margesSures.basPct,
+        },
+        {
+          texte: profil.couleurs.texte ?? '#FFFFFF',
+          accent: profil.couleurs.accent ?? profil.couleurs.primaire ?? '#EC4899',
+        },
+      );
+      if (doc === null) {
+        /* ⚠️ AUCUN SOUS-TITRE VIDE. Un rush sans parole utile n'a rien a
+           afficher, et un fichier vide ferait echouer `subtitles`. */
+        usage.captionsNonRendues = 'aucune_parole';
+      } else {
+        captions = { fichier: join(dossier, 'captions.ass'), document: doc.contenu };
+        usage.captions = {
+          active: true, rendu: true, styleId: profil.captions.styleId,
+          blocs: doc.blocs, minutage: 'mot', moteur: VERSION_MOTEUR_CAPTIONS,
+        };
+      }
+    } else if (profil?.captions.active) {
+      // Actives, mais aucune transcription ne nous est parvenue.
+      usage.captionsNonRendues = 'transcription_absente';
+    }
+
     const style: StyleRendu = construireStyle(profil, {
       cible: { largeur, hauteur },
       // Les durees RETENUES, celles que le graphe met dans `trim` : un fondu
@@ -530,11 +599,15 @@ export async function produireMontage(
       textes: textesAPoser,
       fichierAss: join(dossier, 'textes.ass'),
       dossierPolices: dossierPolices,
+      captions,
       indicePremiereEntree: sources.length + (musique !== null ? 1 : 0),
     });
     /* ⚠️ LE DOCUMENT S'ECRIT AVANT ffmpeg, pas apres : le filtre le nomme
        deja. Sans ce fichier, `subtitles` echoue et le montage entier est
        perdu — alors que la couche de texte n'en est qu'une partie. */
+    if (style.documentCaptions !== null && captions) {
+      await writeFile(captions.fichier, style.documentCaptions, 'utf8');
+    }
     if (style.documentAss !== null) {
       await writeFile(join(dossier, 'textes.ass'), style.documentAss, 'utf8');
       usage.textesAnimes = style.documentAss.split('\nDialogue:').length - 1;

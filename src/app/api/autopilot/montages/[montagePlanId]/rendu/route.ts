@@ -36,6 +36,7 @@ import {
 } from '@/lib/autopilot/analyse/profil-creatif';
 import { objectifEffectifUtilisateur } from '@/lib/autopilot/analyse/objectif-compte';
 import { lireProfilCreatifUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
+import { preparerCaptions } from '@/lib/autopilot/analyse/captions-service';
 import { MESSAGES_LOGO, verifierLogo } from '@/lib/autopilot/analyse/logo-source';
 import { MESSAGES_MUSIQUE, verifierMusique } from '@/lib/autopilot/analyse/musique-source';
 import { diagnosticRendu } from '@/lib/autopilot/analyse/rendu-ffmpeg';
@@ -378,6 +379,12 @@ async function executerRendu(
     await rendreEtPublier(
       {
         userId, plan: plan!, recette, profil, appelAction,
+        /* ⚠️ LE MÊME PRÉPARATEUR QUE L'AUTOPILOTE. Deux préparations
+           divergeraient : l'une afficherait des sous-titres que l'autre ne
+           montre pas, sur le même profil. Et elle ne coûte deux requêtes que
+           si le profil les demande. */
+        captions: profil?.captions.active
+          ? await preparerCaptions(userId, plan!) : null,
         // Chaque frontière demande si la ligne existe encore. `rendu_absent`
         // est un ordre d'arrêt : on nettoie et on n'écrit plus rien.
         avancer: async (etape) => {

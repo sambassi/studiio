@@ -157,6 +157,15 @@ export interface ContexteStyle {
   fichierAss?: string | null;
   /** Le dossier des polices Liberation, pour fontconfig. */
   dossierPolices?: string | null;
+  /**
+   * Le document des SOUS-TITRES, deja fabrique, et ou l'ecrire.
+   *
+   * ⚠️ DEUX DOCUMENTS, DEUX FILTRES, ET C'EST VOULU. Les textes de marque
+   * disent ce que l'ecran a ecrit ; les sous-titres disent ce qui a ete
+   * prononce. Les fondre dans un seul document ferait qu'un reglage de hook
+   * deplacerait un sous-titre.
+   */
+  captions?: { fichier: string; document: string } | null;
 }
 
 /** Une couche prete a etre dessinee : le texte est deja sur le disque. */
@@ -216,6 +225,8 @@ export interface StyleRendu {
    * chaine.
    */
   transition: TransitionRendu | null;
+  /** Le document des sous-titres a ecrire, ou `null`. */
+  documentCaptions: string | null;
   /**
    * Transitions du catalogue que ce lot ne rend pas encore. Elles sont
    * acceptees par le contrat et rendues comme `cut` — jamais silencieusement :
@@ -246,6 +257,7 @@ export const STYLE_NEUTRE: StyleRendu = Object.freeze({
   post: '',
   documentAss: null,
   transition: null,
+  documentCaptions: null,
   transitionsNonRendues: Object.freeze([]) as readonly string[],
 });
 
@@ -560,6 +572,30 @@ export function couleurCta(profil: ProfilCreatifAutopilote): string | null {
 // ---------------------------------------------------------------------------
 
 /**
+ * Le recouvrement qu'un profil demande, pour un jeu de plans donne.
+ *
+ * ⚠️ EXPORTEE PARCE QUE LES SOUS-TITRES EN ONT BESOIN AVANT LE GRAPHE. Le
+ * mappeur de captions doit savoir de combien chaque plan se decale AVANT que
+ * le style ne soit construit. Recalculer ce decalage ailleurs ferait deux
+ * verites pour le meme nombre ; appeler la MEME fonction pure n'en fait
+ * qu'une.
+ */
+export function recouvrementTransition(
+  profil: ProfilCreatifAutopilote | null | undefined,
+  dureesClips: readonly number[],
+): PlanTransitions {
+  if (!profil?.transitions.active) return PLAN_TRANSITIONS_COUPE;
+  const creative = transitionCreativeParId(profil.transitions.transitionId);
+  if (creative?.moteur !== 'xfade' || !creative.xfadeId) return PLAN_TRANSITIONS_COUPE;
+  /* La duree vient du profil, BORNEE ICI. Le contrat la borne deja plus
+     largement ; ce second bornage est celui du moteur de transition, et il
+     est ecrit la ou le filtre est ecrit. */
+  const ms = Math.min(DUREE_TRANSITION_MAX_MS,
+    Math.max(DUREE_TRANSITION_MIN_MS, profil.transitions.dureeMs));
+  return planTransitions(dureesClips, ms / 1000);
+}
+
+/**
  * Traduit le profil EFFECTIF en fragments de graphe.
  *
  * Rend `STYLE_NEUTRE` — donc le graphe d'avant ce lot, au caractere pres —
@@ -599,14 +635,10 @@ export function construireStyle(
      INTERNES a chaque plan : elles passent par `fragments`, ci-dessus, et la
      duree du montage reste celle du plan, exactement comme avant ce lot. */
   const creative = transitionCreativeParId(profil.transitions.transitionId);
-  let recouvrement: PlanTransitions = PLAN_TRANSITIONS_COUPE;
+  const recouvrement: PlanTransitions = recouvrementTransition(
+    profil, ctx.clips.map((c) => c.dureeSecondes),
+  );
   if (profil.transitions.active && creative?.moteur === 'xfade' && creative.xfadeId) {
-    /* La duree vient du profil, BORNEE ICI. Le contrat la borne deja plus
-       largement ; ce second bornage est celui du moteur de transition, et il
-       est ecrit la ou le filtre est ecrit. */
-    const ms = Math.min(DUREE_TRANSITION_MAX_MS,
-      Math.max(DUREE_TRANSITION_MIN_MS, profil.transitions.dureeMs));
-    recouvrement = planTransitions(ctx.clips.map((c) => c.dureeSecondes), ms / 1000);
     if (recouvrement.abandonnee) {
       // Trace, jamais silence : le plan etait trop court pour qu'on la voie.
       transitionsNonRendues.push(profil.transitions.transitionId);
@@ -743,6 +775,16 @@ export function construireStyle(
     courant = sortie;
   }
 
+  /* ── LES SOUS-TITRES, EN DERNIER ──────────────────────────────────────
+     ⚠️ APRES LES TEXTES DE MARQUE. Un hook et un sous-titre qui se
+     croiseraient laissent le sous-titre au-dessus : c'est lui qu'on lit en
+     continu, et c'est lui qui doit rester lisible. */
+  if (ctx.captions?.document && ctx.captions.fichier) {
+    const sortie = '[stylecaptions]';
+    etapes.push(`${courant}${filtreSousTitres(ctx.captions.fichier, ctx.dossierPolices ?? null)}${sortie}`);
+    courant = sortie;
+  }
+
   if (etapes.length === 0) {
     return {
       fragmentsParClip: fragments,
@@ -750,6 +792,7 @@ export function construireStyle(
       post: '',
       documentAss: null,
       transition,
+      documentCaptions: null,
       transitionsNonRendues,
     };
   }
@@ -761,6 +804,7 @@ export function construireStyle(
   return {
     documentAss: docAss,
     transition,
+    documentCaptions: ctx.captions?.document ?? null,
     fragmentsParClip: fragments,
     entrees,
     post: etapes.join(';'),

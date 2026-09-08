@@ -70,6 +70,7 @@ import {
   lireProfilCreatifUtilisateur, lireBibliothequeUtilisateur,
 } from '@/lib/autopilot/analyse/profil-compte';
 import { listerCreatifsRecents } from '@/lib/autopilot/analyse/rendu-service';
+import { preparerCaptions } from '@/lib/autopilot/analyse/captions-service';
 import { PROFIL_CREATIF_DEFAUT } from '@/lib/autopilot/analyse/profil-creatif';
 import {
   resoudreStyleEffectif, graineCreative, historiqueDepuisUsages,
@@ -419,6 +420,10 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
       recette: d.recette,
       profil: profilEffectif,
       variation,
+      /* ⚠️ PRÉPARÉE MÊME QUAND LES SOUS-TITRES SONT ÉTEINTS ? NON. La lecture
+         coûte deux requêtes ; elle n'a lieu que si le profil les demande. */
+      captions: profilEffectif?.captions.active
+        ? await preparerCaptions(userId, plan) : null,
       appelAction,
       avancer: async (etape) => {
         const r = await majRendu(userId, renduId, {

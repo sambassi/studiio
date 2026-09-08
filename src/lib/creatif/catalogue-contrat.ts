@@ -35,6 +35,9 @@ export const FAMILLES_CREATIVES = [
   // A_3e : un preset n'est pas un effet, c'est une COMBINAISON d'effets. Il
   // se cherche et se trie comme les autres, d'ou sa place dans le contrat.
   'preset',
+  // A_4 : un sous-titre n'est pas un texte de marque. Il partage ASS/libass
+  // avec les textes, mais son CONTENU vient de la parole, pas de l'ecran.
+  'caption',
 ] as const;
 export type FamilleCreative = (typeof FAMILLES_CREATIVES)[number];
 

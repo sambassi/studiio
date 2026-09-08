@@ -80,6 +80,11 @@ import {
   PRESET_IDS, TRANSITION_IDS,
 } from './catalogues-creatifs';
 import { STYLE_TEXTE_IDS } from '@/lib/creatif/styles-texte';
+import {
+  CAPTION_IDS, POSITIONS_CAPTION, STYLE_CAPTION_DEFAUT,
+} from '@/lib/creatif/captions';
+
+const CAPTION_DEFAUT_ID = STYLE_CAPTION_DEFAUT.id;
 
 // ---------------------------------------------------------------------------
 // Le vocabulaire
@@ -237,6 +242,24 @@ export interface ProfilAnimations {
   logoId: string;
 }
 
+/**
+ * A_4 — LES SOUS-TITRES DU COMPTE.
+ *
+ * ⚠️ `active: false` PAR DEFAUT, ET C'EST STRUCTURANT. Un profil ecrit avant
+ * ce lot n'a pas ce bloc : il recoit le defaut, donc AUCUN sous-titre, donc
+ * exactement la video qu'il produisait hier.
+ *
+ * ⚠️ AUCUNE COULEUR ICI. Le texte et l'accent viennent de `couleurs` — la
+ * marque du compte. Un bloc `captions.couleurTexte` aurait fait deux endroits
+ * ou regler la meme chose, et le style de sous-titre aurait fini par repeindre
+ * une charte sans que personne ne l'ait demande.
+ */
+export interface ProfilCaptions {
+  active: boolean;
+  styleId: string;
+  position: string;
+}
+
 export interface ProfilMargesSures {
   hautPct: number;
   basPct: number;
@@ -263,6 +286,7 @@ export interface ProfilCreatifAutopilote {
   ctaVisuel: ProfilCtaVisuel;
   transitions: ProfilTransitions;
   animations: ProfilAnimations;
+  captions: ProfilCaptions;
   margesSures: ProfilMargesSures;
 }
 
@@ -331,6 +355,9 @@ export const PROFIL_CREATIF_DEFAUT: ProfilCreatifAutopilote = Object.freeze({
   animations: Object.freeze({
     texteId: ANIMATION_AUCUNE, texteContenuId: ANIMATION_AUCUNE,
     ctaId: ANIMATION_AUCUNE, logoId: ANIMATION_AUCUNE,
+  }),
+  captions: Object.freeze({
+    active: false, styleId: CAPTION_DEFAUT_ID, position: 'centre-bas',
   }),
   margesSures: Object.freeze({
     hautPct: 0, basPct: 0, gauchePct: 0, droitePct: 0,
@@ -538,6 +565,14 @@ export function normaliserProfilCreatif(
     logoId: dansListe(a.logoId, ANIMATION_IDS, D.animations.logoId),
   };
 
+  // -- Sous-titres -------------------------------------------------------
+  const sc = bloc('captions');
+  const captions: ProfilCaptions = {
+    active: typeof sc.active === 'boolean' ? sc.active : D.captions.active,
+    styleId: dansListe(sc.styleId, CAPTION_IDS, D.captions.styleId),
+    position: dansListe(sc.position, POSITIONS_CAPTION, D.captions.position),
+  };
+
   // -- Marges sures ------------------------------------------------------
   const g = bloc('margesSures');
   const margesSures: ProfilMargesSures = {
@@ -552,7 +587,7 @@ export function normaliserProfilCreatif(
     presetId: typeof p.presetId === 'string' && PRESET_IDS.includes(p.presetId)
       ? p.presetId : null,
     marque, typographie, couleurs, lut, texte, ctaVisuel,
-    transitions, animations, margesSures,
+    transitions, animations, captions, margesSures,
   };
 }
 
@@ -579,7 +614,15 @@ export const CLES_CANONIQUES_PROFIL: readonly string[] = [
   'texte.debut', 'texte.duree',
   'cta.actif', 'cta.modele', 'cta.duree', 'cta.position',
   'transitions.active', 'transitions.id', 'transitions.dureeMs', 'transitions.intensite',
-  'anim.texte', 'anim.cta', 'anim.logo',
+  /* ⚠️ CETTE LISTE EST PARALLELE A `valeurs`, ET RIEN NE LE VERIFIAIT.
+     `profilCreatifCanonique` zippe les deux par INDICE : une valeur ajoutee
+     sans sa cle fait tomber la DERNIERE de la chaine, en silence. C'est
+     arrive — `anim.texteContenu` avait ete ajoute a `valeurs` sans sa cle, et
+     `marges.droite` etait sorti de l'empreinte du rendu depuis. Un test
+     compare desormais les deux longueurs. */
+  'anim.texte', 'anim.texteContenu',
+  'captions.active', 'captions.style', 'captions.position',
+  'anim.cta', 'anim.logo',
   'marges.haut', 'marges.bas', 'marges.gauche', 'marges.droite',
 ];
 
@@ -639,6 +682,10 @@ export function profilCreatifCanonique(
     p.transitions.intensite.toFixed(d),
     p.animations.texteId,
     p.animations.texteContenuId,
+    // A_4 : deux videos, l'une sous-titree et l'autre non, sont deux fichiers.
+    oui(p.captions.active),
+    p.captions.styleId,
+    p.captions.position,
     p.animations.ctaId,
     p.animations.logoId,
     p.margesSures.hautPct.toFixed(d),
@@ -736,7 +783,7 @@ export type LectureProfil =
 
 const BLOCS_PROFIL = [
   'presetId', 'marque', 'typographie', 'couleurs', 'lut', 'texte',
-  'ctaVisuel', 'transitions', 'animations', 'margesSures',
+  'ctaVisuel', 'transitions', 'animations', 'captions', 'margesSures',
 ] as const;
 
 const CHAMPS_PAR_BLOC: Record<string, readonly string[]> = {
@@ -751,6 +798,7 @@ const CHAMPS_PAR_BLOC: Record<string, readonly string[]> = {
   ctaVisuel: ['actif', 'modeleId', 'dureeSecondes', 'position'],
   transitions: ['active', 'transitionId', 'dureeMs', 'intensite'],
   animations: ['texteId', 'texteContenuId', 'ctaId', 'logoId'],
+  captions: ['active', 'styleId', 'position'],
   margesSures: ['hautPct', 'basPct', 'gauchePct', 'droitePct'],
 };
 
@@ -879,6 +927,8 @@ export function lireProfilCreatif(brut: unknown): LectureProfil {
     ['animations', 'texteId', ANIMATION_IDS, 'Cette animation n\'existe pas.'],
     ['animations', 'texteContenuId', ANIMATION_CONTENU_IDS,
       'Cette animation de texte n\'existe pas.'],
+    ['captions', 'styleId', CAPTION_IDS, 'Ce style de sous-titre n\'existe pas.'],
+    ['captions', 'position', POSITIONS_CAPTION, 'Cette position n\'existe pas.'],
     ['animations', 'ctaId', ANIMATION_IDS, 'Cette animation n\'existe pas.'],
     ['animations', 'logoId', ANIMATION_IDS, 'Cette animation n\'existe pas.'],
   ];
