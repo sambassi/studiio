@@ -239,6 +239,12 @@ export function presetsPersonnelsValides(brut: unknown): readonly PresetPersonne
  */
 export interface BlocsCreatifs {
   lut: { active: boolean; lutId: string | null; intensite: number };
+  /**
+   * ⚠️ LU, JAMAIS ECRIT PAR UN PRESET. Les sous-titres sont un reglage de
+   * LISIBILITE ; un preset d'ambiance n'a pas a en changer. Il est ici pour
+   * que la variation puisse le RECONDUIRE, pas pour qu'elle le choisisse.
+   */
+  captions?: { styleId: string };
   typographie: { styleTexteId: string | null };
   animations: { texteId: string; texteContenuId: string };
   transitions: {

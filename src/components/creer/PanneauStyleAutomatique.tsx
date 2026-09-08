@@ -33,7 +33,11 @@ import { STYLES_TEXTE } from '@/lib/creatif/styles-texte';
 import { ANIMATIONS_TEXTE } from '@/lib/creatif/animations-texte';
 import { ANIMATIONS_CONTENU } from '@/lib/creatif/animations-contenu';
 import { TRANSITIONS_CREATIVES } from '@/lib/creatif/transitions';
+import { STYLES_CAPTION } from '@/lib/creatif/captions';
 import type { EntreeCreative } from '@/lib/creatif/catalogue-contrat';
+
+/** Les familles que l'Autopilote peut reellement faire varier. */
+const FAMILLES_VARIABLES = FAMILLES_BIBLIOTHEQUE.filter((f) => f !== 'caption');
 
 const CATALOGUES: Record<FamilleBibliotheque, readonly EntreeCreative[]> = {
   lut: LOOKS_CREATIFS,
@@ -41,6 +45,7 @@ const CATALOGUES: Record<FamilleBibliotheque, readonly EntreeCreative[]> = {
   animationBloc: ANIMATIONS_TEXTE,
   animationContenu: ANIMATIONS_CONTENU,
   transition: TRANSITIONS_CREATIVES,
+  caption: STYLES_CAPTION,
 };
 
 /** Le nom d'un identifiant, ou l'identifiant si le catalogue ne le connaît plus. */
@@ -113,7 +118,11 @@ export default function PanneauStyleAutomatique({
 
       {politique.mode === 'varier-elements' && (
         <div className="space-y-2" data-autorises>
-          {FAMILLES_BIBLIOTHEQUE.map((famille) => {
+          {/* ⚠️ LES SOUS-TITRES NE SONT PAS PROPOSES ICI. C'est un reglage de
+              LISIBILITE, pas d'ambiance : personne n'a demande que le style de
+              ses sous-titres change d'une video a l'autre. La famille existe
+              pour les favoris et la recherche ; la variation la reconduit. */}
+          {FAMILLES_VARIABLES.map((famille) => {
             const autorises = politique.autorises[famille];
             const mesFavoris = favoris[famille];
             return (

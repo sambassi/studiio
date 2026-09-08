@@ -30,11 +30,14 @@ import { STYLE_TEXTE_IDS } from './styles-texte';
 import { ANIMATION_TEXTE_IDS } from './animations-texte';
 import { ANIMATION_CONTENU_IDS } from './animations-contenu';
 import { TRANSITION_CREATIVE_IDS } from './transitions';
+import { CAPTION_IDS } from './captions';
 import { presetsPersonnelsValides, type PresetPersonnel } from './presets';
 
 /** Les cinq familles qu'une personne peut mettre en favori. */
 export const FAMILLES_BIBLIOTHEQUE = [
   'lut', 'styleTexte', 'animationBloc', 'animationContenu', 'transition',
+  // A_4 : les sous-titres s'aiment et se retrouvent comme le reste.
+  'caption',
 ] as const;
 export type FamilleBibliotheque = (typeof FAMILLES_BIBLIOTHEQUE)[number];
 
@@ -45,6 +48,7 @@ export const LIBELLES_FAMILLE: Record<FamilleBibliotheque, string> = {
   animationBloc: 'Mouvements',
   animationContenu: 'Apparitions',
   transition: 'Transitions',
+  caption: 'Sous-titres',
 };
 
 /**
@@ -62,6 +66,7 @@ const IDS_PAR_FAMILLE: Record<FamilleBibliotheque, readonly string[]> = {
   animationContenu: ANIMATION_CONTENU_IDS.includes('aucune')
     ? ANIMATION_CONTENU_IDS : ['aucune', ...ANIMATION_CONTENU_IDS],
   transition: TRANSITION_CREATIVE_IDS,
+  caption: CAPTION_IDS,
 };
 
 export function idsFamille(f: FamilleBibliotheque): readonly string[] {
@@ -94,6 +99,7 @@ export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
   animationBloc: Object.freeze([]) as readonly string[],
   animationContenu: Object.freeze([]) as readonly string[],
   transition: Object.freeze([]) as readonly string[],
+  caption: Object.freeze([]) as readonly string[],
 }) as FavorisCreatifs;
 
 /**
@@ -270,6 +276,7 @@ export const CLE_USAGE_PAR_FAMILLE: Record<FamilleBibliotheque, string> = {
   animationBloc: 'animationBlocId',
   animationContenu: 'animationContenuId',
   transition: 'transitionId',
+  caption: 'captionStyleId',
 };
 
 /**

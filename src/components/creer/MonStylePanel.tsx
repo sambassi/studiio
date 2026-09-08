@@ -21,6 +21,13 @@ import BibliothequeTransitions from '@/components/creer/BibliothequeTransitions'
 import { transitionCreativeParId } from '@/lib/creatif/transitions';
 import RechercheCreative from '@/components/creer/RechercheCreative';
 import PanneauPresets from '@/components/creer/PanneauPresets';
+import BibliothequeCaptions from '@/components/creer/BibliothequeCaptions';
+import { POSITIONS_CAPTION } from '@/lib/creatif/captions';
+
+/** Les quatre positions, nommees pour l'ecran. */
+const LIBELLES_POSITION_CAPTION: Record<string, string> = {
+  haut: 'Haut', centre: 'Centre', 'centre-bas': 'Bas centré', bas: 'Bas',
+};
 import {
   PRESETS_STUDIIO, PRESETS_PERSONNELS_MAX, appliquerPreset, styleDepuisProfil,
   nomPresetValide,
@@ -197,6 +204,8 @@ export default function MonStylePanel({
   const recentsAnimations = biblio.recents.animationBloc;
   const recentsContenu = biblio.recents.animationContenu;
   const recentsTransitions = biblio.recents.transition;
+  const favorisCaptions = biblio.bibliotheque.favoris.caption;
+  const recentsCaptions = biblio.recents.caption;
   const [rechercheGlobale, setRechercheGlobale] = useState('');
   /* ⚠️ « ACTIF » SE DEDUIT, IL NE SE STOCKE PAS. Retenir « le dernier preset
      clique » mentirait des que la personne change une transition juste
@@ -802,6 +811,71 @@ export default function MonStylePanel({
                   />
                 </label>
               </div>
+            )}
+          </section>
+
+          {/* ── SOUS-TITRES ───────────────────────────────────────────── */}
+          <section>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium text-gray-400">Sous-titres</p>
+              {/* ⚠️ ETEINTS PAR DEFAUT. Les allumer pour tout le monde
+                  changerait la video de comptes qui n'ont rien demande. */}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={brouillon.captions.active}
+                data-captions-actif
+                onClick={() => modifier({
+                  captions: { ...brouillon.captions, active: !brouillon.captions.active },
+                })}
+                className={`rounded-full px-2 py-1 text-[10px] leading-none transition ${
+                  brouillon.captions.active
+                    ? 'bg-purple-500/20 text-purple-300'
+                    : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                {brouillon.captions.active ? 'Affichés' : 'Masqués'}
+              </button>
+            </div>
+            {brouillon.captions.active ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-4 gap-1.5">
+                  {POSITIONS_CAPTION.map((pos) => (
+                    <button
+                      key={pos}
+                      type="button"
+                      aria-pressed={brouillon.captions.position === pos}
+                      data-captions-position={pos}
+                      onClick={() => modifier({
+                        captions: { ...brouillon.captions, position: pos },
+                      })}
+                      className={`rounded-lg border px-1 py-1 text-[10px] transition ${
+                        brouillon.captions.position === pos
+                          ? 'border-purple-500/50 bg-gray-800 text-gray-200'
+                          : 'border-gray-800 text-gray-400 hover:border-gray-700'
+                      }`}
+                    >
+                      {LIBELLES_POSITION_CAPTION[pos]}
+                    </button>
+                  ))}
+                </div>
+                <BibliothequeCaptions
+                  styleActif={brouillon.captions.styleId}
+                  position={brouillon.captions.position}
+                  couleurTexte={brouillon.couleurs.texte ?? '#FFFFFF'}
+                  couleurAccent={brouillon.couleurs.accent ?? '#EC4899'}
+                  favoris={favorisCaptions}
+                  recents={recentsCaptions}
+                  onBasculerFavori={(id) => biblio.basculer('caption', id)}
+                  onChoisir={(id) => modifier({
+                    captions: { ...brouillon.captions, styleId: id },
+                  })}
+                />
+              </div>
+            ) : (
+              <p className="text-[10px] text-gray-500">
+                Studiio écrira ce qui est dit dans ta vidéo, mot à mot.
+              </p>
             )}
           </section>
 

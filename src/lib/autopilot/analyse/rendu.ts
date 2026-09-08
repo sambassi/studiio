@@ -634,6 +634,7 @@ export async function produireMontage(
         animationBlocId: profil.animations.texteId,
         animationContenuId: profil.animations.texteContenuId,
         transitionId: profil.transitions.active ? profil.transitions.transitionId : 'cut',
+        captionStyleId: profil.captions.active ? profil.captions.styleId : null,
         ...(demande.variation ? {
           politiqueVersion: demande.variation.politiqueVersion,
           raison: demande.variation.raison,

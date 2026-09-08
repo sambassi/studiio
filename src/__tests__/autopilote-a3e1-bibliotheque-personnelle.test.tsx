@@ -62,9 +62,11 @@ afterEach(() => { cleanup(); });
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('1. Les favoris — validés, bornés, jamais morts', () => {
-  it('1.1 les cinq familles créatives ont chacune leurs favoris', () => {
+  it('1.1 les six familles créatives ont chacune leurs favoris', () => {
+    // A_4 ajoute les sous-titres : ils s'aiment et se retrouvent comme le reste.
     expect([...FAMILLES_BIBLIOTHEQUE]).toEqual([
       'lut', 'styleTexte', 'animationBloc', 'animationContenu', 'transition',
+      'caption',
     ]);
     for (const f of FAMILLES_BIBLIOTHEQUE) {
       expect(BIBLIOTHEQUE_VIDE.favoris[f]).toEqual([]);

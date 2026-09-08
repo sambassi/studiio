@@ -152,7 +152,10 @@ export function resoudreStyleEffectif<T extends BlocsCreatifs>(
   ctx: ContexteVariation,
 ): IssueVariation<T> {
   const courant = styleDepuisProfil(profil);
-  const choixCourant = choixDepuisStyle(courant);
+  /* ⚠️ LE SOUS-TITRE EST RECONDUIT, JAMAIS TIRE. Il est lu sur le profil,
+     recopie tel quel dans les choix, et aucune branche ne le modifie. */
+  const captionCourant = profil.captions?.styleId ?? '';
+  const choixCourant = choixDepuisStyle(courant, captionCourant);
 
   if (politique.mode === 'marque-stricte') {
     return {
@@ -167,13 +170,25 @@ export function resoudreStyleEffectif<T extends BlocsCreatifs>(
   return varierElements(profil, politique, ctx, choixCourant);
 }
 
-function choixDepuisStyle(style: StylePreset): ChoixCreatifs {
+/**
+ * ⚠️ LES SOUS-TITRES NE VARIENT PAS EN A_4, ET C'EST UN CHOIX ASSUME.
+ *
+ * Les faire varier obligerait a ajouter un champ a `StylePreset` — donc a
+ * refuser, en « tout ou rien », chaque preset personnel deja enregistre. Et
+ * personne n'a demande que le style de ses sous-titres change d'une video a
+ * l'autre : c'est un reglage de lisibilite, pas d'ambiance.
+ *
+ * La famille existe dans le contrat (favoris, recents, recherche) ; seule la
+ * VARIATION la laisse tranquille, en reconduisant le choix du compte.
+ */
+function choixDepuisStyle(style: StylePreset, caption: string): ChoixCreatifs {
   return {
     lut: style.lutId,
     styleTexte: style.styleTexteId,
     animationBloc: style.animationBlocId,
     animationContenu: style.animationContenuId,
     transition: style.transitionId,
+    caption,
   };
 }
 
@@ -212,7 +227,10 @@ function varierElements<T extends BlocsCreatifs>(
   for (; variante < VARIANTES_MAX; variante += 1) {
     const essai = {} as ChoixCreatifs;
     for (const f of FAMILLES_BIBLIOTHEQUE) {
-      essai[f] = meilleur(ctx.graine, variante, f, candidats[f], recents[f]);
+      // La famille `caption` ne varie pas : elle reconduit le choix du compte.
+      essai[f] = f === 'caption'
+        ? choixCourant.caption
+        : meilleur(ctx.graine, variante, f, candidats[f], recents[f]);
     }
     choix = essai;
     if (!vues.has(signatureCreative(essai))) break;
@@ -240,6 +258,7 @@ function varierPresets<T extends BlocsCreatifs>(
   presetsPersonnels: readonly PresetPersonnel[],
   ctx: ContexteVariation, choixCourant: ChoixCreatifs,
 ): IssueVariation<T> {
+  const captionCourant = choixCourant.caption;
   const styles: { id: string; style: StylePreset }[] = [];
   for (const id of politique.presetsAutorises) {
     const studiio = presetStudiioParId(id);
@@ -259,7 +278,7 @@ function varierPresets<T extends BlocsCreatifs>(
 
   const vues = new Set(ctx.historique.slice(0, HISTORIQUE_MAX).map(signatureCreative));
   const recentsPresets = ctx.historique
-    .map((h) => styles.find((s) => signatureCreative(choixDepuisStyle(s.style))
+    .map((h) => styles.find((s) => signatureCreative(choixDepuisStyle(s.style, h.caption))
       === signatureCreative(h))?.id)
     .filter((x): x is string => x !== undefined);
 
@@ -269,12 +288,12 @@ function varierPresets<T extends BlocsCreatifs>(
       ctx.graine, variante, 'lut', styles.map((s) => s.id), recentsPresets,
     );
     retenu = styles.find((s) => s.id === id) ?? styles[0];
-    if (!vues.has(signatureCreative(choixDepuisStyle(retenu.style)))) break;
+    if (!vues.has(signatureCreative(choixDepuisStyle(retenu.style, captionCourant)))) break;
   }
 
   return {
     profil: appliquerPreset(profil, retenu.style),
-    choix: choixDepuisStyle(retenu.style),
+    choix: choixDepuisStyle(retenu.style, captionCourant),
     varie: styles.length > 1,
     raison: `Choisi parmi ${styles.length} preset(s) autorisé(s).`,
   };
@@ -314,6 +333,7 @@ export function historiqueDepuisUsages(
       animationBloc: lu(o.animationBlocId),
       animationContenu: lu(o.animationContenuId),
       transition: lu(o.transitionId),
+      caption: lu(o.captionStyleId),
     });
   }
   return sortie;

@@ -28,6 +28,7 @@ import { STYLES_TEXTE } from '@/lib/creatif/styles-texte';
 import { ANIMATIONS_TEXTE } from '@/lib/creatif/animations-texte';
 import { ANIMATIONS_CONTENU } from '@/lib/creatif/animations-contenu';
 import { TRANSITIONS_CREATIVES } from '@/lib/creatif/transitions';
+import { STYLES_CAPTION } from '@/lib/creatif/captions';
 import { chercher, trierEntrees, type EntreeCreative } from '@/lib/creatif/catalogue-contrat';
 import {
   FAMILLES_BIBLIOTHEQUE, LIBELLES_FAMILLE,
@@ -43,6 +44,7 @@ const CATALOGUES: Record<FamilleBibliotheque, readonly EntreeCreative[]> = {
   animationBloc: ANIMATIONS_TEXTE,
   animationContenu: ANIMATIONS_CONTENU,
   transition: TRANSITIONS_CREATIVES,
+  caption: STYLES_CAPTION,
 };
 
 export interface GroupeResultats {

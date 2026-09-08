@@ -107,7 +107,8 @@ describe('1. La politique', () => {
       },
     });
     expect(style.bibliothequeCreative?.automatisation.mode).toBe('varier-elements');
-    expect(bibliothequeValide(style.bibliothequeCreative).autorises).toBeUndefined();
+    expect(bibliothequeValide(style.bibliothequeCreative).automatisation.autorises.lut)
+      .toEqual(['vibrant']);
   });
 
   it('1.5 ⚠️ FAVORI N’EST PAS AUTORISÉ : ce sont deux listes', () => {
@@ -134,7 +135,7 @@ describe('2. Marque stricte — il ne se passe rien', () => {
   it('2.2 ⚠️ la répétition n’est PAS une erreur en marque stricte', () => {
     const memes = Array.from({ length: 10 }, () => ({
       lut: 'neutral', styleTexte: 'defaut', animationBloc: 'aucune',
-      animationContenu: 'aucune', transition: 'cut',
+      animationContenu: 'aucune', transition: 'cut', caption: 'minimal-blanc',
     }));
     const r = resoudre(POLITIQUE_STRICTE, 'g', memes);
     expect(r.profil).toBe(PROFIL_CREATIF_DEFAUT);
@@ -162,7 +163,10 @@ describe('3. Le déterminisme', () => {
       transition: ['fondu', 'pixels', 'iris-noir'],
     });
     const g = graineCreative('u1', 'plan-42', 3, VERSION_POLITIQUE_CREATIVE);
-    const hist = [{ lut: 'noir', styleTexte: 'defaut', animationBloc: 'aucune', animationContenu: 'aucune', transition: 'fondu' }];
+    const hist = [{
+      lut: 'noir', styleTexte: 'defaut', animationBloc: 'aucune',
+      animationContenu: 'aucune', transition: 'fondu', caption: 'minimal-blanc',
+    }];
     const a = resoudre(pol, g, hist);
     const b = resoudre(pol, g, hist);
     expect(a.choix).toEqual(b.choix);
@@ -240,7 +244,7 @@ describe('4. Ce qui est autorisé, et rien d’autre', () => {
     const pol = varier({ lut: ['vibrant'] });
     const hist = Array.from({ length: 10 }, () => ({
       lut: 'vibrant', styleTexte: 'defaut', animationBloc: 'aucune',
-      animationContenu: 'aucune', transition: 'cut',
+      animationContenu: 'aucune', transition: 'cut', caption: 'minimal-blanc',
     }));
     const r = resoudre(pol, 'g', hist);
     expect(r.choix.lut).toBe('vibrant');
@@ -270,7 +274,7 @@ describe('5. L’anti-répétition', () => {
     const seul = resoudre(pol, g).choix.transition;
     const apres = resoudre(pol, g, [{
       lut: 'neutral', styleTexte: 'defaut', animationBloc: 'aucune',
-      animationContenu: 'aucune', transition: seul,
+      animationContenu: 'aucune', transition: seul, caption: 'minimal-blanc',
     }]).choix.transition;
     expect(apres).not.toBe(seul);
     expect(PENALITE_RECENCE).toBeGreaterThan(0);
@@ -445,11 +449,16 @@ describe('9. L’écran', () => {
     expect(recus[0].mode).toBe('varier-elements');
   });
 
-  it('9.4 en « Varier mon style », les cinq familles sont réglables', () => {
+  it('9.4 en « Varier mon style », les cinq familles VARIABLES sont réglables', () => {
     const { container } = monter(politique({ mode: 'varier-elements' }));
     expect(container.querySelector('[data-autorises]')).not.toBeNull();
     for (const f of FAMILLES_BIBLIOTHEQUE) {
-      expect(container.querySelector(`[data-autorise^="${f}:"]`)).not.toBeNull();
+      const present = container.querySelector(`[data-autorise^="${f}:"]`);
+      /* ⚠️ LES SOUS-TITRES NE SONT PAS PROPOSES : c'est un reglage de
+         lisibilite, pas d'ambiance. La famille existe pour les favoris et la
+         recherche ; la variation la reconduit sans la choisir. */
+      if (f === 'caption') expect(present).toBeNull();
+      else expect(present, f).not.toBeNull();
     }
   });
 
