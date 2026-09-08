@@ -68,7 +68,7 @@ import {
   couperSilenceInitialMusique,
   supprimerObjetRendu,
   televerserRendu,
-  type CibleRendu, type MesureRendu, type SourceLocale,
+  type CibleRendu, type MesureRendu, type SondeSource, type SourceLocale,
 } from './rendu-ffmpeg';
 
 export interface DemandeRendu {
@@ -109,7 +109,24 @@ export interface DemandeRendu {
    * timeline, parce que lui seul connait le recouvrement reellement applique.
    * Absent = aucun sous-titre, ce qui est le comportement d'avant ce lot.
    */
-  captions?: { mots: readonly MotSource[]; clips: readonly ClipProjection[] } | null;
+  captions?: {
+    mots: readonly MotSource[];
+    clips: readonly ClipProjection[];
+    /**
+     * A_7c — LA PAROLE DE CHAQUE RUSH, indexee par son jeu de clips.
+     *
+     * ⚠️ ABSENTE = LE CHEMIN HISTORIQUE. `mots` reste alors la seule matiere,
+     * et le repere de chaque plan se lit sur `clips`, comme avant ce lot.
+     *
+     * ⚠️ PRESENTE, ELLE FERME LA DERNIERE HYPOTHESE MONO-RUSH DU RENDERER.
+     * Le graphe ffmpeg ouvre deja une entree par segment, avec sa propre piste
+     * audio : l'image de B ne peut pas porter le son de A. Le TEXTE, lui, le
+     * pouvait — `mots` etait une liste unique, et un segment de B y trouvait
+     * les phrases de A. Un sous-titre faux ne se voit pas a la lecture d'un
+     * graphe : il se lit a l'ecran, sur la video publiee.
+     */
+    motsParSource?: ReadonlyMap<string, readonly MotSource[]> | null;
+  } | null;
   /**
    * A_6 — LES MOTS DE LA VOIX-OFF, DEJA DATES SUR LE MONTAGE.
    *
@@ -316,6 +333,26 @@ export async function produireMontage(
       return { ok: false, motif: null, abandonne: true, mesure: null, usage };
     }
     let octetsSources = 0;
+    /* ── UN ASSET, UN TELECHARGEMENT — A_7c ───────────────────────────────
+       ⚠️ LE MOTEUR OUVRE DEJA UNE ENTREE FFMPEG PAR SEGMENT, et c'est ce qui
+       rend le multi-rush possible sans nouveau graphe : chaque branche porte
+       son propre `trim`, son propre `crop`, sa propre piste audio. Ce qui
+       n'etait pas vrai, c'est le TELECHARGEMENT : un plan qui montre deux
+       fois le meme objet le descendait deux fois, payait deux transferts et
+       occupait deux fois la place sur un disque de trois gigaoctets.
+
+       ⚠️ LA CLE EST L'IDENTITE DE L'OBJET, PAS SON NOM DE FICHIER LOCAL.
+       Deduplique sur `nomSourceLocale`, deux objets distincts d'un meme rendu
+       se seraient ecrases l'un l'autre — le second segment aurait montre les
+       images du premier, sans la moindre erreur. `bucket` et `cle` designent
+       un objet et un seul ; le separateur `\u0000` ne peut apparaitre dans ni
+       l'un ni l'autre, donc deux paires differentes ne peuvent pas produire la
+       meme cle.
+
+       ⚠️ LA SONDE EST MEMORISEE AVEC LE FICHIER. La resonder couterait un
+       `ffprobe` par reutilisation pour rendre, par construction, exactement la
+       meme reponse — les octets n'ont pas change entre deux segments. */
+    const descendus = new Map<string, { chemin: string; sonde: SondeSource }>();
     for (const [i, s] of sources.entries()) {
       // ⚠️ PAR INDICE, ET NON PAR RECHERCHE. `planExecutable` construit
       // `sources` dans l'ordre de `plan.plans` : l'indice EST l'appariement.
@@ -323,15 +360,30 @@ export async function produireMontage(
       // invariant prouvé ailleurs — et cesserait de l'être le jour où la
       // construction changerait.
       const p = plan.plans[i];
-      const descente = await descendreSource(
-        userId, { ordre: s.ordre, bucket: p.bucket, cle: p.cle }, dossier, i,
-      );
-      if (!descente.ok) return echec(descente.motif, usage);
-      s.chemin = descente.chemin;
-      octetsSources += descente.octets;
+      const cleObjet = `${p.bucket}\u0000${p.cle}`;
+      const deja = descendus.get(cleObjet);
 
-      // Constaté par une sonde, jamais supposé.
-      const sonde = await sonderSource(s.chemin);
+      let sonde: SondeSource;
+      if (deja) {
+        s.chemin = deja.chemin;
+        sonde = deja.sonde;
+      } else {
+        /* ⚠️ LA PROPRIETE EST REVERIFIEE POUR CHAQUE OBJET, ET PAS UNE SEULE
+           FOIS POUR LE PLAN. `descendreSource` repose ses trois gardes —
+           compartiment autorise, cle sous le prefixe du compte — sur CETTE
+           cle-ci. Un plan multi-rush nomme plusieurs objets ; en valider un
+           seul laisserait les autres passer sur la foi du premier. */
+        const descente = await descendreSource(
+          userId, { ordre: s.ordre, bucket: p.bucket, cle: p.cle }, dossier, i,
+        );
+        if (!descente.ok) return echec(descente.motif, usage);
+        s.chemin = descente.chemin;
+        octetsSources += descente.octets;
+
+        // Constaté par une sonde, jamais supposé.
+        sonde = await sonderSource(s.chemin);
+        descendus.set(cleObjet, { chemin: descente.chemin, sonde });
+      }
       // ⚠️ UNE SONDE QUI ÉCHOUE N'EST PAS UNE SOURCE MUETTE. Traiter l'échec
       // comme « pas d'audio » ferait partir le graphe en `-an`, et le montage
       // serait déclaré RÉUSSI avec sa bande son perdue — sans un mot, puisque
@@ -355,8 +407,17 @@ export async function produireMontage(
         return echec('plan_non_conforme', usage);
       }
     }
-    usage.sourcesDescendues = sources.length;
+    usage.sourcesDescendues = descendus.size;
+    /* Le nombre de SEGMENTS reste dit a part : `sourcesDescendues` compte
+       desormais les objets, et les confondre ferait passer une deduplication
+       reussie pour un montage amputé. */
+    usage.segmentsMontes = sources.length;
     usage.octetsSources = octetsSources;
+    /* ⚠️ COMBIEN DE JEUX DE CLIPS DIFFERENTS ce montage assemble — A_7c. Un
+       plan mono-rush rend 1, comme avant. */
+    const jeux = new Set<string>();
+    for (const p of plan.plans) if (p.source) jeux.add(p.source.clipSetId);
+    if (jeux.size > 0) usage.sourcesMontage = jeux.size;
     // Le silence est déclaré plutôt qu'invisible — y compris quand il est
     // total, cas qu'une première rédaction ne traçait nulle part.
     const muets = sources.filter((s) => !s.aAudio).length;
@@ -601,9 +662,21 @@ export async function produireMontage(
             rangClip: p.rangClip,
             entreeSecondes: p.entreeSecondes,
             dureeRetenueSecondes: p.dureeRetenueSecondes,
+            /* ⚠️ TRANSMISE TELLE QUELLE, JAMAIS RECONSTRUITE. A_7a a deja
+               calcule la fenetre du segment DANS son rush ; la recalculer ici
+               depuis `clips` ferait un second calcul qui doit rester d'accord
+               avec le premier pour toujours. */
+            ...(p.source ? {
+              source: {
+                clipSetId: p.source.clipSetId,
+                debutSourceSecondes: p.source.debutSourceSecondes,
+                finSourceSecondes: p.source.finSourceSecondes,
+              },
+            } : {}),
           })),
           demande.captions.clips,
           recouvrement.dureeSecondes,
+          demande.captions.motsParSource ?? null,
         ) : []);
       const doc = styleCaption === null ? null : documentCaptions(
         mots,

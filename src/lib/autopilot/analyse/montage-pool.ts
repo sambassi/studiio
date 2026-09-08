@@ -646,24 +646,47 @@ export function planEstMultiSource(segments: readonly PlanMontage[]): boolean {
 }
 
 /**
- * Le renderer d'aujourd'hui peut-il rendre ce plan ?
+ * Le renderer peut-il rendre ce plan ? — GARDE LEVÉE PAR A_7c.
  *
- * ⚠️ REFUSER PLUTÔT QUE RETOMBER SUR LA PREMIÈRE SOURCE. Le renderer M3-H
- * prend UNE entrée ffmpeg. Servi d'un plan multi-rush, il monterait tous les
- * segments depuis le premier fichier : les bornes existeraient, la durée
- * serait juste, la vidéo sortirait — et montrerait autre chose que ce qui a
- * été décidé. Un plan non rendu se voit ; une vidéo fausse et facturée, non.
+ * ═════════════════════════════════════════════════════════════════════════
+ * POURQUOI ELLE EXISTAIT, ET POURQUOI ELLE N'A PLUS LIEU D'ÊTRE
+ * ═════════════════════════════════════════════════════════════════════════
  *
- * A_7c lèvera cette garde en apprenant au renderer à ouvrir plusieurs entrées.
+ * A_7b l'a posée sur une crainte précise : qu'un renderer mono-entrée, servi
+ * d'un plan multi-rush, monte tous les segments depuis le premier fichier —
+ * durée juste, vidéo produite, contenu faux, et facturé.
+ *
+ * ⚠️ CETTE CRAINTE ÉTAIT INFONDÉE, ET C'EST L'AUDIT D'A_7c QUI L'ÉTABLIT.
+ * `argumentsRendu` ouvre DÉJÀ une entrée ffmpeg PAR SEGMENT — `-i s.chemin`,
+ * une par `SourceLocale` — avec, dans chaque branche, son propre `trim`, son
+ * propre `crop` calculé sur `largeurSource`/`hauteurSource` DU SEGMENT, sa
+ * propre normalisation `scale`/`setsar`/`fps`, et son propre `[i:a]atrim`
+ * pris sur LA MÊME entrée `i`. Monter l'image de B avec le son de A est
+ * structurellement impossible : les deux pads sortent du même index.
+ *
+ * La raison en est architecturale et antérieure au lot : les objets montés ne
+ * sont pas les RUSHES mais les CLIPS matérialisés par M3-F — un fichier par
+ * passage, portant déjà son `bucket` et sa `cle`. Le renderer n'a jamais su de
+ * quel rush venait un clip, et n'a jamais eu besoin de le savoir.
+ *
+ * ⚠️ CE QUI RESTAIT VRAIMENT MONO-RUSH, C'ÉTAIT LE TEXTE. `projeterMots`
+ * recevait UNE liste de mots pour tout le montage : un segment de B y trouvait
+ * les phrases de A. C'est cela qu'A_7c a corrigé — `motsParSource` — et c'est
+ * la seule chose qui pouvait produire une vidéo fausse.
+ *
+ * La fonction est CONSERVÉE plutôt que supprimée : elle est le point où une
+ * future incapacité du renderer se déclarerait, et ses appelants n'auraient
+ * alors rien à réapprendre.
  */
 export const MOTIF_RENDU_MULTI_SOURCE = 'multi_rush_renderer_not_ready' as const;
 
 export function rendreEstPossible(
   segments: readonly PlanMontage[],
 ): { possible: boolean; motif: typeof MOTIF_RENDU_MULTI_SOURCE | null } {
-  if (planEstMultiSource(segments)) {
-    return { possible: false, motif: MOTIF_RENDU_MULTI_SOURCE };
-  }
+  /* ⚠️ `segments` RESTE DANS LA SIGNATURE. Le jour où une capacité manquera
+     — un codec, un format — c'est ici qu'elle se dira, et l'appel est déjà
+     posé au bon endroit dans la route de rendu. */
+  void segments;
   return { possible: true, motif: null };
 }
 

@@ -698,18 +698,19 @@ describe('A_7b — 10. le renderer refuse plutôt que de mentir', () => {
     expect(planEstMultiSource(r.resultat?.segments ?? [])).toBe(true);
   });
 
-  it('10.2 le rendu est REFUSÉ, jamais replié sur la première source', () => {
-    /* ⚠️ Servi d'un plan multi-rush, M3-H monterait tout depuis le premier
-       fichier : la durée serait juste, la vidéo sortirait, et montrerait autre
-       chose que ce qui a été décidé. Un plan non rendu se voit ; une vidéo
-       fausse et facturée, non. */
+  it('10.2 le rendu multi-source est AUTORISÉ depuis A_7c', () => {
+    /* ⚠️ LA GARDE D'A_7b A ÉTÉ LEVÉE, ET L'AUDIT D'A_7c DIT POURQUOI :
+       `argumentsRendu` ouvrait DÉJÀ une entrée ffmpeg par segment, chacune
+       avec son `trim`, son `crop` et son `[i:a]atrim` pris sur le même index.
+       Ce qui restait mono-rush, c'était le TEXTE — et `motsParSource` l'a
+       fermé. La preuve pixels et audio vit dans la suite A_7c. */
     const r = planifierMontageMultiRush({
       sources: [source(1, [clip(1, 0, 8, 90)]), source(2, [clip(1, 0, 8, 88)])],
       ...POOL_DEMANDE,
     });
     const garde = rendreEstPossible(r.resultat?.segments ?? []);
-    expect(garde.possible).toBe(false);
-    expect(garde.motif).toBe('multi_rush_renderer_not_ready');
+    expect(garde.possible).toBe(true);
+    expect(garde.motif).toBeNull();
   });
 
   it('10.3 un plan mono-rush historique reste rendable', () => {

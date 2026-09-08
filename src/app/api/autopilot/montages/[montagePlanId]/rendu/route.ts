@@ -279,8 +279,11 @@ export async function POST(
        existeraient, la durée serait juste, la vidéo sortirait — et montrerait
        autre chose que ce qui a été décidé, en facturant le rendu.
 
-       Un plan non rendu se voit ; une vidéo fausse, non. A_7c lèvera cette
-       garde en apprenant au renderer à ouvrir plusieurs entrées. */
+       ⚠️ A_7c A LEVÉ CETTE GARDE, et son audit a montré que la crainte était
+       infondée : `argumentsRendu` ouvrait DÉJÀ une entrée par segment, chacune
+       avec son propre `trim`, son propre `crop` et son propre `[i:a]atrim`.
+       L'appel reste posé ici — c'est le point où une future incapacité du
+       renderer se déclarerait, et il n'y aurait alors rien à rebrancher. */
     const gardeMulti = rendreEstPossible(plan.plans);
     if (!gardeMulti.possible) {
       return NextResponse.json({
