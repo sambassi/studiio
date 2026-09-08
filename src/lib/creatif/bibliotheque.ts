@@ -84,6 +84,8 @@ export interface BibliothequeCreative {
   favoris: FavorisCreatifs;
   /** A_3e2 — les combinaisons que la personne a nommées elle-même. */
   presets: readonly PresetPersonnel[];
+  /** A_3e3 — ce que l'Autopilote a le droit de faire varier. */
+  automatisation: PolitiqueCreative;
 }
 
 export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
@@ -94,9 +96,88 @@ export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
   transition: Object.freeze([]) as readonly string[],
 }) as FavorisCreatifs;
 
+/**
+ * A_3e3 — CE QUE L'AUTOPILOTE A LE DROIT DE CHOISIR.
+ *
+ * ⚠️ TROIS MODES QUI S'EXCLUENT, PAS TROIS INTERRUPTEURS. Un « varier les
+ * effets » ET un « varier les presets » tous deux allumés poseraient une
+ * question sans réponse : lequel gagne ? Un seul mode à la fois, et le
+ * comportement de chacun tient en une phrase.
+ */
+export const MODES_CREATIFS = [
+  'marque-stricte', 'varier-elements', 'varier-presets',
+] as const;
+export type ModeCreatif = (typeof MODES_CREATIFS)[number];
+
+export const LIBELLES_MODE: Record<ModeCreatif, string> = {
+  'marque-stricte': 'Marque stricte',
+  'varier-elements': 'Varier mon style',
+  'varier-presets': 'Varier parmi mes presets',
+};
+
+export const DESCRIPTIONS_MODE: Record<ModeCreatif, string> = {
+  'marque-stricte': 'Studiio conserve toujours les mêmes choix visuels.',
+  'varier-elements': 'Studiio varie les effets que tu autorises, sans sortir de ton univers.',
+  'varier-presets': 'Studiio alterne entre les presets que tu as choisis.',
+};
+
+/**
+ * ⚠️ LA VERSION DE LA POLITIQUE ENTRE DANS LA GRAINE.
+ *
+ * Changer la façon de choisir doit changer les choix — sinon une correction
+ * du sélecteur laisserait tous les comptes sur les combinaisons d'hier, et
+ * l'on ne saurait jamais si elle a servi.
+ */
+export const VERSION_POLITIQUE_CREATIVE = 'politique-v1';
+
+export interface PolitiqueCreative {
+  mode: ModeCreatif;
+  /** Ce que l'Autopilote peut choisir, famille par famille. */
+  autorises: FavorisCreatifs;
+  /** Les presets entre lesquels il peut alterner. */
+  presetsAutorises: readonly string[];
+  version: string;
+}
+
+export const POLITIQUE_STRICTE: PolitiqueCreative = Object.freeze({
+  mode: 'marque-stricte',
+  autorises: FAVORIS_VIDES,
+  presetsAutorises: Object.freeze([]) as readonly string[],
+  version: VERSION_POLITIQUE_CREATIVE,
+});
+
+export function politiqueValide(brut: unknown): PolitiqueCreative {
+  if (!brut || typeof brut !== 'object') return POLITIQUE_STRICTE;
+  const o = brut as Record<string, unknown>;
+  const mode = typeof o.mode === 'string'
+    && (MODES_CREATIFS as readonly string[]).includes(o.mode)
+    ? o.mode as ModeCreatif : 'marque-stricte';
+  const a = (o.autorises ?? {}) as Record<string, unknown>;
+  const autorises = {} as Record<FamilleBibliotheque, readonly string[]>;
+  for (const famille of FAMILLES_BIBLIOTHEQUE) {
+    autorises[famille] = favorisValides(a[famille], famille);
+  }
+  const presetsAutorises = Array.isArray(o.presetsAutorises)
+    ? [...new Set(o.presetsAutorises.filter((x): x is string => typeof x === 'string'))]
+      .slice(0, FAVORIS_MAX_PAR_FAMILLE)
+    : [];
+  return {
+    mode, autorises, presetsAutorises, version: VERSION_POLITIQUE_CREATIVE,
+  };
+}
+
+/** La politique ne demande-t-elle rien de plus que le défaut ? */
+export function politiqueVide(p: PolitiqueCreative): boolean {
+  return p.mode === 'marque-stricte'
+    && p.presetsAutorises.length === 0
+    && FAMILLES_BIBLIOTHEQUE.every((f) => p.autorises[f].length === 0);
+}
+
+
 export const BIBLIOTHEQUE_VIDE: BibliothequeCreative = Object.freeze({
   favoris: FAVORIS_VIDES,
   presets: Object.freeze([]) as readonly PresetPersonnel[],
+  automatisation: POLITIQUE_STRICTE,
 });
 
 /**
@@ -133,12 +214,17 @@ export function bibliothequeValide(brut: unknown): BibliothequeCreative {
   for (const famille of FAMILLES_BIBLIOTHEQUE) {
     favoris[famille] = favorisValides(f[famille], famille);
   }
-  return { favoris, presets: presetsPersonnelsValides(o.presets) };
+  return {
+    favoris,
+    presets: presetsPersonnelsValides(o.presets),
+    automatisation: politiqueValide(o.automatisation),
+  };
 }
 
 /** La bibliothèque ne demande-t-elle rien ? */
 export function bibliothequeVide(b: BibliothequeCreative): boolean {
   return b.presets.length === 0
+    && politiqueVide(b.automatisation)
     && FAMILLES_BIBLIOTHEQUE.every((f) => b.favoris[f].length === 0);
 }
 

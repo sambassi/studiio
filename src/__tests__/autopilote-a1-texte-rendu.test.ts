@@ -377,7 +377,12 @@ describe('7. Manuel et automatique partagent le même texte', () => {
   it('7.2 les deux passent le message dans l’identité', () => {
     const auto = lire('src/lib/autopilot/automatique/chaine-serveur.ts');
     const manuel = lire('src/app/api/autopilot/montages/[montagePlanId]/rendu/route.ts');
-    expect(auto).toContain('methodeRendu(d.recette, profil, appelAction)');
+    /* ⚠️ A_3e3 : LE CHEMIN AUTOMATIQUE PASSE LE PROFIL *EFFECTIF*, celui
+       dont les choix variables ont ete resolus. Le message du CTA, lui, y est
+       toujours — c'est ce que ce test tient. Passer la POLITIQUE au lieu des
+       choix ferait deux videos aux looks differents sous la meme identite. */
+    expect(auto).toContain('methodeRendu(d.recette, profilEffectif, appelAction)');
+    expect(auto).toContain('profil: profilEffectif');
     expect(manuel).toContain('methodeRendu(recette, profil, appelAction)');
   });
 

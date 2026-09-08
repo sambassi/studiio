@@ -66,7 +66,15 @@ import {
   ALGORITHME_PLAN, dimensionsCible, type IdentitePlan, type FormatMontage,
 } from '@/lib/autopilot/analyse/montage-contrat';
 import { creerPlan, lirePlanIdentique } from '@/lib/autopilot/analyse/montage-service';
-import { lireProfilCreatifUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
+import {
+  lireProfilCreatifUtilisateur, lireBibliothequeUtilisateur,
+} from '@/lib/autopilot/analyse/profil-compte';
+import { listerCreatifsRecents } from '@/lib/autopilot/analyse/rendu-service';
+import { PROFIL_CREATIF_DEFAUT } from '@/lib/autopilot/analyse/profil-creatif';
+import {
+  resoudreStyleEffectif, graineCreative, historiqueDepuisUsages,
+  type ChoixCreatifs,
+} from '@/lib/autopilot/analyse/politique-creative';
 import { methodeRendu, type IdentiteRendu } from '@/lib/autopilot/analyse/rendu-contrat';
 import {
   creerRendu, lireRenduReussiIdentique, majRendu,
@@ -332,6 +340,44 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
 
   // ── M3-H : le rendu ──────────────────────────────────────────────────
   const profil = await lireProfilCreatifUtilisateur(userId);
+
+  /* ── LE STYLE DE CETTE VIDEO-CI ───────────────────────────────────────
+     ⚠️ LE PROFIL PORTE CE QUI EST PERMIS ; ICI ON EN TIRE CE QUI EST FAIT.
+     En « Marque stricte » — le defaut — RIEN ne se passe : le profil part au
+     rendu tel quel, et le graphe emis est celui d'avant ce lot, au caractere
+     pres. La variation n'existe que si la personne l'a demandee.
+
+     ⚠️ AUCUN TIRAGE AU SORT. La graine tient au compte, au plan et a la
+     version de la politique : un cron qui reessaie le meme plan refait
+     EXACTEMENT la meme video, et `lireRenduReussiIdentique` la retrouve au
+     lieu de la recalculer. */
+  const biblio = await lireBibliothequeUtilisateur(userId);
+  let profilEffectif = profil;
+  let variation: { politiqueVersion: string; raison: string } | null = null;
+  if (biblio.automatisation.mode !== 'marque-stricte') {
+    let historique: ChoixCreatifs[] = [];
+    try {
+      historique = historiqueDepuisUsages(await listerCreatifsRecents(userId));
+    } catch {
+      // Sans historique, on choisit quand meme — sans eviter les repetitions.
+    }
+    const issue = resoudreStyleEffectif(
+      profil ?? PROFIL_CREATIF_DEFAUT,
+      biblio.automatisation,
+      biblio.presets,
+      {
+        graine: graineCreative(
+          userId, planId, planVersion, biblio.automatisation.version,
+        ),
+        historique,
+      },
+    );
+    profilEffectif = issue.profil;
+    variation = {
+      politiqueVersion: biblio.automatisation.version,
+      raison: issue.raison,
+    };
+  }
   /* ⚠️ LE MEME OBJECTIF QUE LE PLAN, RELU UNE SEULE FOIS. C'est lui qui porte
      le message du CTA — ce que le bandeau DIT, par opposition a la maniere de
      l'afficher. Le reprendre ici garantit que la video automatique affiche
@@ -340,7 +386,9 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
   const identiteRendu: IdentiteRendu = {
     montagePlanId: planId,
     montagePlanVersion: planVersion,
-    methodeRendu: methodeRendu(d.recette, profil, appelAction),
+    // ⚠️ LES CHOIX EFFECTIFS, PAS LA LISTE AUTORISEE : deux videos aux
+    // looks differents doivent etre deux fichiers differents.
+    methodeRendu: methodeRendu(d.recette, profilEffectif, appelAction),
   };
   const renduDejaLa = await lireRenduReussiIdentique(userId, identiteRendu);
   if (renduDejaLa.motif === 'socle_absent') return echec('socle_absent');
@@ -369,7 +417,8 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
       userId,
       plan,
       recette: d.recette,
-      profil,
+      profil: profilEffectif,
+      variation,
       appelAction,
       avancer: async (etape) => {
         const r = await majRendu(userId, renduId, {

@@ -8,6 +8,8 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import MonStylePanel from '@/components/creer/MonStylePanel';
+import PanneauStyleAutomatique from '@/components/creer/PanneauStyleAutomatique';
+import { useBibliothequeCreative } from '@/lib/hooks/useBibliothequeCreative';
 import MonObjectifPanel from '@/components/creer/MonObjectifPanel';
 import {
   OBJECTIF_DEFAUT, type ObjectifCommunication,
@@ -232,6 +234,10 @@ export default function AutopilotPanel({
    */
   onPatchReady?: (patch: (p: Partial<AutopilotConfig>) => void) => void;
 }) {
+  /* La bibliotheque creative — favoris, presets, politique de variation.
+     Elle est lue une fois pour tout le panneau : « Mon style » l'utilise pour
+     les coeurs, « Style automatique » pour ce que l'Autopilote peut varier. */
+  const biblioCreative = useBibliothequeCreative();
   const [config, setConfig] = useState<AutopilotConfig>(DEFAULT_CONFIG);
   const [ready, setReady] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -795,6 +801,22 @@ export default function AutopilotPanel({
               }}
             />
           </div></div>
+                  <div data-autonome-style>
+                    {/* ── STYLE AUTOMATIQUE ─────────────────────────────
+                        ⚠️ ICI, ET PAS AVANT « CREER MA VIDEO ». Ce reglage ne
+                        concerne QUE les videos que Studiio fabrique tout
+                        seul : le poser sur le chemin manuel demanderait
+                        « faut-il varier ? » a quelqu'un qui vient justement de
+                        choisir lui-meme. */}
+                    <PanneauStyleAutomatique
+                      politique={biblioCreative.bibliotheque.automatisation}
+                      favoris={biblioCreative.bibliotheque.favoris}
+                      presetsPersonnels={biblioCreative.bibliotheque.presets}
+                      onChanger={(suivante) => void biblioCreative.remplacer({
+                        ...biblioCreative.bibliotheque, automatisation: suivante,
+                      })}
+                    />
+                  </div>
                   <div data-autonome-affiches>
 {/* ── VOS AFFICHES ─────────────────────────────────────────────
               ⚠️ L'AUTOPILOTE CHOISISSAIT SEUL. Il cherche une photo chez

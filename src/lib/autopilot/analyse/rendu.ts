@@ -84,6 +84,15 @@ export interface DemandeRendu {
    */
   recette?: RecetteAudio | null;
   /**
+   * A_3e3 — POURQUOI CE STYLE, quand c'est l'Autopilote qui l'a choisi.
+   *
+   * ⚠️ UNE TRACE, JAMAIS UNE DECISION. Ce module n'en tire rien : il l'ecrit
+   * dans `usage` a cote des choix effectifs, pour que la question « pourquoi
+   * ce look ? » ait une reponse le jour ou elle sera posee. Absent quand la
+   * personne a choisi elle-meme — et il n'y a alors rien a expliquer.
+   */
+  variation?: { politiqueVersion: string; raison: string } | null;
+  /**
    * Le profil creatif EFFECTIF, deja fusionne et deja VALIDE par la route.
    *
    * ⚠️ IL N'EST PAS RELU ICI, exactement comme la recette audio. La route a
@@ -552,6 +561,10 @@ export async function produireMontage(
         animationBlocId: profil.animations.texteId,
         animationContenuId: profil.animations.texteContenuId,
         transitionId: profil.transitions.active ? profil.transitions.transitionId : 'cut',
+        ...(demande.variation ? {
+          politiqueVersion: demande.variation.politiqueVersion,
+          raison: demande.variation.raison,
+        } : {}),
       };
     }
     if (style.transitionsNonRendues.length > 0) {
