@@ -70,7 +70,7 @@ import {
   lireProfilCreatifUtilisateur, lireBibliothequeUtilisateur,
 } from '@/lib/autopilot/analyse/profil-compte';
 import { listerCreatifsRecents } from '@/lib/autopilot/analyse/rendu-service';
-import { preparerCaptions } from '@/lib/autopilot/analyse/captions-service';
+import { preparerCaptionsMultiSource } from '@/lib/autopilot/analyse/captions-service';
 import { PROFIL_CREATIF_DEFAUT } from '@/lib/autopilot/analyse/profil-creatif';
 import { BUCKET_MUSIQUE } from '@/lib/autopilot/analyse/recette-audio';
 import {
@@ -130,7 +130,12 @@ const echec = (motif: MotifM3, detail: string | null = null): IssueM3 =>
  * heurter ferait remonter un échec là où il n'y a qu'une attente. On rend
  * « ignoré », et le cycle suivant reprendra.
  */
-async function preparer(
+/**
+ * ⚠️ EXPORTEE PAR A_7d, ET NON RECOPIEE. Le montage multi-rush doit preparer
+ * plusieurs rushes ; en ecrire une seconde version donnerait deux facons
+ * d'analyser, et le jour ou l'une serait corrigee, l'autre continuerait.
+ */
+export async function preparerRush(
   userId: string, rushId: string,
   analysisId: string | null, candidateSetId: string | null,
 ): Promise<{ analysisId: string; candidateSetId: string } | IssueM3> {
@@ -189,16 +194,37 @@ async function preparer(
   return { analysisId: idAnalyse, candidateSetId: idCandidats };
 }
 
-export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
-  const { userId } = d;
-
-  /* ── La préparation, si le rush est brut ──────────────────────────────
-     ⚠️ C'EST CE QUI FAIT D'A_0b UN AUTOPILOTE. Avant ce lot, un rush sans
-     analyse faisait simplement ignorer le cycle : la production automatique
-     s'arrêtait à ce qu'un humain avait bien voulu préparer. */
-  const pret = await preparer(userId, d.rushId, d.analysisId, d.candidateSetId);
-  if ('sorte' in pret) return pret;
-
+/**
+ * D'UN RUSH PRET A UN JEU DE CLIPS MONTABLE — extraite par A_7d.
+ *
+ * ═════════════════════════════════════════════════════════════════════════
+ * ⚠️ EXTRAITE, PAS RECOPIEE, ET C'EST TOUT L'INTERET
+ * ═════════════════════════════════════════════════════════════════════════
+ *
+ * Ce bloc — lire la matiere, caler les coupes avec M3-E, materialiser les
+ * clips avec M3-F, ou reutiliser un jeu identique — vivait au milieu de
+ * `monterAvecM3`. Le montage multi-rush doit le faire pour CHAQUE source ; en
+ * ecrire une seconde version aurait donne deux facons de decouper, et le jour
+ * ou l'une aurait ete corrigee, l'autre aurait continue de produire des clips
+ * calcules autrement.
+ *
+ * `monterAvecM3` l'appelle desormais pour son unique rush : le chemin
+ * mono-rush parcourt donc exactement le meme code qu'avant, et les tests
+ * d'A_0 le verifient.
+ *
+ * ⚠️ LA REUTILISATION D'ABORD. M3-F est deterministe : refaire les memes
+ * bornes sur les memes octets couterait des minutes de CPU pour un fichier
+ * identique.
+ */
+export async function preparerJeuClips(
+  userId: string, analysisId: string, candidateSetId: string,
+): Promise<{
+  ok: true;
+  set: NonNullable<Awaited<ReturnType<typeof lireSetParId>>['set']>;
+  analyse: NonNullable<Awaited<ReturnType<typeof lireAnalyse>>['analyse']>;
+  rushId: string;
+} | IssueM3> {
+  const pret = { analysisId, candidateSetId };
   // ── La matière : génération, analyse, rush, transcription ────────────
   const { generation } = await lireGenerationParId(userId, pret.candidateSetId);
   if (!generation || generation.etat !== 'reussie') {
@@ -284,6 +310,23 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
   if (!set || set.etat !== 'reussie' || set.clips.length === 0) {
     return echec('clips_echoues', 'jeu de clips inexploitable');
   }
+
+  return { ok: true, set, analyse, rushId: generation.rushId };
+}
+
+export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
+  const { userId } = d;
+
+  /* ── La préparation, si le rush est brut ──────────────────────────────
+     ⚠️ C'EST CE QUI FAIT D'A_0b UN AUTOPILOTE. Avant ce lot, un rush sans
+     analyse faisait simplement ignorer le cycle : la production automatique
+     s'arrêtait à ce qu'un humain avait bien voulu préparer. */
+  const pret = await preparerRush(userId, d.rushId, d.analysisId, d.candidateSetId);
+  if ('sorte' in pret) return pret;
+
+  const prepare = await preparerJeuClips(userId, pret.analysisId, pret.candidateSetId);
+  if (!('ok' in prepare)) return prepare;
+  const { set, analyse, rushId: rushMonte } = prepare;
 
   // ── M3-G : le plan ───────────────────────────────────────────────────
   //
@@ -453,7 +496,7 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
       sorte: 'reussi',
       renduId: renduDejaLa.rendu.id,
       planId,
-      rushId: generation.rushId,
+      rushId: rushMonte,
       videoUrl: renduDejaLa.rendu.resultat.cle,
       vignetteUrl: null,
       dureeSecondes: renduDejaLa.rendu.resultat.dureeMesureeSecondes,
@@ -483,7 +526,7 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
       /* ⚠️ PRÉPARÉE MÊME QUAND LES SOUS-TITRES SONT ÉTEINTS ? NON. La lecture
          coûte deux requêtes ; elle n'a lieu que si le profil les demande. */
       captions: profilEffectif?.captions.active
-        ? await preparerCaptions(userId, plan) : null,
+        ? await preparerCaptionsMultiSource(userId, plan) : null,
       // Les mots de la voix-off sont deja dates sur le montage : ils passent
       // devant la parole du rush, et sans projection.
       captionsVoixOff: biblio.voixOff?.mots ?? null,
@@ -528,7 +571,7 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
     sorte: 'reussi',
     renduId,
     planId,
-    rushId: generation.rushId,
+    rushId: rushMonte,
     videoUrl: cle,
     vignetteUrl: null,
     // ⚠️ LA DURÉE MESURÉE PAR `ffprobe`, jamais celle demandée au plan.

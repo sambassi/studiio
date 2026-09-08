@@ -37,7 +37,7 @@ import {
 } from '@/lib/autopilot/analyse/profil-creatif';
 import { objectifEffectifUtilisateur } from '@/lib/autopilot/analyse/objectif-compte';
 import { lireProfilCreatifUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
-import { preparerCaptions } from '@/lib/autopilot/analyse/captions-service';
+import { preparerCaptionsMultiSource } from '@/lib/autopilot/analyse/captions-service';
 import { lireBibliothequeUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
 
 /**
@@ -439,8 +439,13 @@ async function executerRendu(
            divergeraient : l'une afficherait des sous-titres que l'autre ne
            montre pas, sur le même profil. Et elle ne coûte deux requêtes que
            si le profil les demande. */
+        /* ⚠️ A_7d — LE PREPARATEUR MULTI-SOURCE. Il delegue au chemin
+           historique des qu'aucun segment ne porte de provenance, et resout
+           sinon UNE transcription PAR jeu de clips reellement monte. Sans lui,
+           un plan multi-rush — dont `clipSetId` est NUL par decision d'A_7M —
+           sortait sans le moindre sous-titre. */
         captions: profil?.captions.active
-          ? await preparerCaptions(userId, plan!) : null,
+          ? await preparerCaptionsMultiSource(userId, plan!) : null,
         /* ⚠️ LES MOTS DE LA VOIX-OFF VIENNENT DU SERVEUR, PAS DU CORPS. Le
            navigateur choisit SI la voix parle ; ce qu'elle dit et quand elle
            le dit sont ce que la synthese a mesure, et rien d'autre. */

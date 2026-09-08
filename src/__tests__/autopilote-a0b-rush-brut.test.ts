@@ -130,17 +130,29 @@ describe('4. Un rush brut entre dans l’automatisation', () => {
   });
 
   it('4.3 la chaîne prépare avant de monter', () => {
-    const prep = CHAINE.indexOf('const pret = await preparer(');
-    const clips = CHAINE.indexOf('materialiserSet({');
+    /* ⚠️ L'ORDRE DES APPELS DANS `monterAvecM3`, PAS LEUR POSITION DANS LE
+       FICHIER. La première rédaction comparait deux `indexOf` sur tout le
+       module : elle a cassé quand A_7d a EXTRAIT la découpe des clips dans
+       `preparerJeuClips` — une fonction déclarée plus haut, appelée au même
+       endroit, pour le même résultat. Le test mesurait la mise en page, pas
+       l'invariant. Celui-ci est : dans le corps de `monterAvecM3`, la
+       préparation vient avant la matière. */
+    const corps = CHAINE.slice(CHAINE.indexOf('export async function monterAvecM3('));
+    const prep = corps.indexOf('await preparerRush(');
+    const clips = corps.indexOf('await preparerJeuClips(');
     expect(prep).toBeGreaterThan(-1);
     expect(clips).toBeGreaterThan(prep);
+    /* Et `preparerJeuClips` est bien ce qui matérialise : sans cette ligne,
+       renommer la fonction sans rien appeler passerait. */
+    expect(CHAINE.slice(CHAINE.indexOf('export async function preparerJeuClips(')))
+      .toContain('materialiserSet({');
   });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('5. Aucun fournisseur n’est rappelé pour rien', () => {
   it('5.1 l’analyse commence par une lecture', () => {
-    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparer('));
+    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparerRush('));
     const lecture = bloc.indexOf('lireDerniereAnalyse(userId, rushId)');
     const appel = bloc.indexOf('executerAnalyseRush(userId, rushId, rush)');
     expect(lecture).toBeGreaterThan(-1);
@@ -148,7 +160,7 @@ describe('5. Aucun fournisseur n’est rappelé pour rien', () => {
   });
 
   it('5.2 les candidats aussi', () => {
-    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparer('));
+    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparerRush('));
     const lecture = bloc.indexOf('lireDerniereGeneration(userId, idAnalyse)');
     const appel = bloc.indexOf('genererCandidatsPourAnalyse(userId, idAnalyse)');
     expect(lecture).toBeGreaterThan(-1);
@@ -187,7 +199,7 @@ describe('6. Rien n’est doublé quand un travail est en vol', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('7. Un échec arrête la chaîne, proprement', () => {
   it('7.1 une analyse échouée ne mène pas aux candidats', () => {
-    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparer('));
+    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparerRush('));
     const echec = bloc.indexOf("motif: 'analyse_echouee'");
     const candidats = bloc.indexOf('let idCandidats');
     expect(echec).toBeGreaterThan(-1);
@@ -199,7 +211,7 @@ describe('7. Un échec arrête la chaîne, proprement', () => {
 
   it('7.2 des candidats échoués ne mènent pas au montage', () => {
     expect(CHAINE).toContain("motif: 'candidats_echoues'");
-    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparer('));
+    const bloc = CHAINE.slice(CHAINE.indexOf('async function preparerRush('));
     const i = bloc.indexOf("motif: 'candidats_echoues'");
     expect(bloc.slice(i - 200, i)).toMatch(/return\s/);
   });

@@ -397,8 +397,8 @@ describe('5. Le branchement', () => {
   });
 
   it('5.3 le même préparateur pour les deux chemins', () => {
-    expect(sansProse(CHAINE)).toContain('preparerCaptions(userId, plan)');
-    expect(sansProse(ROUTE_MANUEL)).toContain('preparerCaptions(userId, plan!)');
+    expect(sansProse(CHAINE)).toContain('preparerCaptionsMultiSource(userId, plan)');
+    expect(sansProse(ROUTE_MANUEL)).toContain('preparerCaptionsMultiSource(userId, plan!)');
   });
 
   it('5.4 ⚠️ ON NE RETRANSCRIT JAMAIS AU RENDU', () => {
