@@ -79,6 +79,7 @@ import {
   ANIMATION_AUCUNE, ANIMATION_IDS, LUT_IDS, POLICE_IDS, PRESET_IDS,
   TRANSITION_IDS,
 } from './catalogues-creatifs';
+import { STYLE_TEXTE_IDS } from '@/lib/creatif/styles-texte';
 
 // ---------------------------------------------------------------------------
 // Le vocabulaire
@@ -155,6 +156,18 @@ export interface ProfilTypographie {
   tailleTitre: number;
   tailleTexte: number;
   graisse: Graisse;
+  /**
+   * Le style de texte choisi dans la bibliotheque (lot A_3b).
+   *
+   * ⚠️ `null` N'EST PAS UN OUBLI : c'est le rendu d'avant la bibliotheque,
+   * au pixel pres. Un compte qui n'a jamais ouvert la grille ne doit rien
+   * voir changer, et un identifiant inconnu retombe sur le meme defaut.
+   *
+   * Le style porte la POLICE et la GRAISSE : c'est ce qui fait de lui un
+   * preset et non un reglage de plus. `policeTitreId` et `policeTexteId`
+   * restent lus par les ecrans historiques, mais ne decident plus du rendu.
+   */
+  styleTexteId: string | null;
 }
 
 /** `null` = aucune couleur imposee. Une couleur est un `#RRGGBB` majuscule. */
@@ -291,6 +304,7 @@ export const PROFIL_CREATIF_DEFAUT: ProfilCreatifAutopilote = Object.freeze({
     tailleTitre: 1,
     tailleTexte: 1,
     graisse: 'normale',
+    styleTexteId: null,
   }),
   couleurs: Object.freeze({
     primaire: null, secondaire: null, accent: null, fond: null, texte: null,
@@ -439,6 +453,8 @@ export function normaliserProfilCreatif(
     tailleTitre: nombreOu(t.tailleTitre, D.typographie.tailleTitre, ECHELLE_MIN, ECHELLE_MAX),
     tailleTexte: nombreOu(t.tailleTexte, D.typographie.tailleTexte, ECHELLE_MIN, ECHELLE_MAX),
     graisse: dansListe(t.graisse, GRAISSES, D.typographie.graisse) as Graisse,
+    styleTexteId: typeof t.styleTexteId === 'string'
+      && STYLE_TEXTE_IDS.includes(t.styleTexteId) ? t.styleTexteId : null,
   };
 
   // -- Couleurs ----------------------------------------------------------
@@ -713,7 +729,8 @@ const BLOCS_PROFIL = [
 const CHAMPS_PAR_BLOC: Record<string, readonly string[]> = {
   marque: ['logoActif', 'logo', 'position', 'taillePct', 'opacite'],
   typographie: [
-    'policeId', 'policeTitreId', 'policeTexteId', 'tailleTitre', 'tailleTexte', 'graisse',
+    'policeId', 'policeTitreId', 'policeTexteId', 'tailleTitre', 'tailleTexte',
+    'graisse', 'styleTexteId',
   ],
   couleurs: ['primaire', 'secondaire', 'accent', 'fond', 'texte'],
   lut: ['active', 'lutId', 'intensite'],

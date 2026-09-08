@@ -25,6 +25,7 @@ import {
   PROFIL_CREATIF_DEFAUT, type ProfilCreatifAutopilote,
 } from '@/lib/autopilot/analyse/profil-creatif';
 import { LONGUEURS_MAX } from '@/lib/autopilot/analyse/rendu-texte';
+import { STYLES_TEXTE } from '@/lib/creatif/styles-texte';
 
 const MonStylePanel = (await import('@/components/creer/MonStylePanel')).default;
 const ApercuStyleTexte = (await import('@/components/creer/ApercuStyleTexte')).default;
@@ -219,26 +220,39 @@ describe('4. Le CTA : sa forme ici, son message dans l’objectif', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('5. Des choix contrôlés, jamais libres', () => {
-  it('5.1 trois polices, celles que le serveur porte', () => {
+  it('5.1 la typographie se choisit par STYLE, plus par réglages séparés', () => {
+    /* ⚠️ CE TEST A CHANGÉ DE SUJET AU LOT A_3b, ET C'EST LE POINT.
+       Il tenait « trois polices et deux graisses, dans des boutons ». Choisir
+       une police, puis une graisse, puis une taille, puis une ombre, c'est
+       reconstruire un style à chaque vidéo — et laisser deux réglages
+       contradictoires cohabiter à l'écran. La bibliothèque les porte
+       ensemble ; le choix reste tout aussi CONTRÔLÉ, il est juste devenu
+       utile. */
     monter();
     ouvrirPanneau();
     ouvrirTextes();
-    for (const f of ['sans', 'serif', 'mono']) {
-      expect(document.querySelector(`[data-mon-style-police="${f}"]`), f).not.toBeNull();
-    }
-    expect(document.body.textContent).toContain('Sans serif');
-    expect(document.body.textContent).toContain('Monospace');
+    expect(document.querySelector('[data-bibliotheque-styles]')).not.toBeNull();
+    expect(document.querySelector('[data-mon-style-police="serif"]')).toBeNull();
+    expect(document.querySelector('[data-mon-style-graisse="grasse"]')).toBeNull();
   });
 
-  it('5.2 choisir une police écrit l’identifiant que le moteur sait lire', () => {
-    /* ⚠️ ÉCRIRE CE QUE `policeDe` RENDRA. Sinon l'écran affiche une famille
-       que le rendu n'utilisera pas — un mensonge silencieux. */
+  it('5.2 choisir un style écrit un identifiant du catalogue', () => {
     const { enregistrer } = monter();
     ouvrirPanneau();
     ouvrirTextes();
-    fireEvent.click(document.querySelector('[data-mon-style-police="serif"]')!);
+    fireEvent.click(document.querySelector('[data-styles-rayon="tout"]')!);
+    fireEvent.click(document.querySelector('[data-style-carte="editorial"]')!);
     fireEvent.click(document.querySelector('[data-mon-style-enregistrer]')!);
-    expect(enregistrer.mock.calls[0][0].typographie.policeTitreId).toBe('serif');
+    expect(enregistrer.mock.calls[0][0].typographie.styleTexteId).toBe('editorial');
+  });
+
+  it('5.2bis chaque style ne porte que des valeurs que le moteur rend', () => {
+    // Police parmi les trois familles serveur, graisse parmi les deux que
+    // `drawtext` sait ouvrir : le catalogue ne peut pas inventer.
+    for (const st of STYLES_TEXTE) {
+      expect(['sans', 'serif', 'mono'], st.id).toContain(st.police);
+      expect(['normale', 'grasse'], st.id).toContain(st.graisse);
+    }
   });
 
   it('5.3 trois positions seulement — celles du contrat', () => {
@@ -250,12 +264,11 @@ describe('5. Des choix contrôlés, jamais libres', () => {
     expect(document.querySelector('[data-mon-style-texte-position="haut-gauche"]')).toBeNull();
   });
 
-  it('5.4 la graisse n’est exposée que parce que le moteur la rend', () => {
-    monter();
-    ouvrirPanneau();
-    ouvrirTextes();
-    expect(document.querySelector('[data-mon-style-graisse="grasse"]')).not.toBeNull();
-    expect(PANEL).toContain("graisse: g");
+  it('5.4 la graisse vit dans le style, et reste bornée', () => {
+    // Elle n'est plus un bouton à part : elle fait partie du preset, et
+    // n'accepte toujours que ce que le moteur sait ouvrir.
+    const graisses = new Set(STYLES_TEXTE.map((st) => st.graisse));
+    expect([...graisses].sort()).toEqual(['grasse', 'normale']);
   });
 
   it('5.5 le timing est en secondes, borné par des curseurs', () => {

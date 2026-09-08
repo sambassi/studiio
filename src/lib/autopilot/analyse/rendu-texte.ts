@@ -37,6 +37,8 @@
  * fichiers installés par `fonts-liberation` dans l'image — et rien d'autre.
  */
 
+import { styleTexteParId } from '@/lib/creatif/styles-texte';
+
 /** Les familles réellement présentes dans l'image (paquet `fonts-liberation`). */
 export const POLICES_RENDU = ['sans', 'serif', 'mono'] as const;
 export type PoliceRendu = (typeof POLICES_RENDU)[number];
@@ -73,6 +75,16 @@ export const LONGUEURS_MAX: Record<NatureTexte, number> = {
   hook: 80, titre: 80, cta: 60, lien: 60, fin: 60,
 };
 
+/** Ce qu'un style de texte ajoute à une couche. Toutes options réelles. */
+export interface HabillageTexte {
+  /** `borderw` + `bordercolor`. */
+  contour: { largeur: number; teinte: 'noir' | 'blanc' } | null;
+  /** `shadowx/y` + `shadowcolor`. */
+  ombre: { decalage: number; opacite: number; teinte: 'noir' | 'blanc' } | null;
+  /** `box` + `boxcolor` + `boxborderw`. */
+  fond: { opacite: number; marge: number; teinte: 'noir' | 'blanc' } | null;
+}
+
 export interface CoucheTexte {
   nature: NatureTexte;
   texte: string;
@@ -84,7 +96,18 @@ export interface CoucheTexte {
   ancre: 'haut' | 'centre' | 'bas';
   debutSecondes: number;
   finSecondes: number;
+  /** L'habillage du style choisi. Absent = l'ombre douce historique. */
+  habillage?: HabillageTexte;
 }
+
+/** L'habillage d'avant A_3b : l'ombre douce, et rien d'autre. */
+export const HABILLAGE_HISTORIQUE: HabillageTexte = {
+  contour: null,
+  ombre: { decalage: 2, opacite: 0.65, teinte: 'noir' },
+  fond: null,
+};
+
+const HEX_AIDE = { noir: '0x000000', blanc: '0xffffff' } as const;
 
 /** Une couleur `#rrggbb` — la seule forme que le profil produit. */
 export function couleurValide(v: unknown): v is string {
@@ -148,27 +171,47 @@ export function filtreDrawtext(o: {
   y: number;
   debutSecondes: number;
   finSecondes: number;
+  habillage?: HabillageTexte;
 }): string {
   const hex = `0x${o.couleur.slice(1).toLowerCase()}`;
   /* `x=(w-text_w)/2` : centré horizontalement, calculé par ffmpeg sur la
      largeur RÉELLE du texte rendu — la seule façon de centrer sans mesurer
      la police nous-mêmes. */
-  return [
+  const h = o.habillage ?? HABILLAGE_HISTORIQUE;
+  const morceaux = [
     `drawtext=textfile='${o.fichierTexte}'`,
     'expansion=none',
     `fontfile='${o.fichierPolice}'`,
     `fontsize=${Math.round(o.taillePx)}`,
     `fontcolor=${hex}`,
-    // ⚠️ LA LISIBILITÉ, SANS DEVINER LE FOND. Une ombre portée coûte deux
-    // paramètres et sauve un texte clair sur une image claire ; deviner la
-    // couleur du fond image par image serait un autre lot.
-    'shadowcolor=0x000000@0.65',
-    'shadowx=2',
-    'shadowy=2',
+  ];
+  /* ⚠️ TROIS AIDES À LA LISIBILITÉ, ET AUCUNE COULEUR DE MARQUE.
+     Contour, ombre et fond sont noirs ou blancs : ils servent à LIRE le
+     texte sur une image quelconque. La couleur du texte, elle, reste celle
+     du compte — un style qui la repeindrait ferait perdre son identité au
+     compte pour un choix de forme. */
+  if (h.contour) {
+    morceaux.push(`borderw=${Math.max(0, Math.round(h.contour.largeur))}`);
+    morceaux.push(`bordercolor=${HEX_AIDE[h.contour.teinte]}`);
+  }
+  if (h.ombre) {
+    const d = Math.max(0, Math.round(h.ombre.decalage));
+    morceaux.push(`shadowcolor=${HEX_AIDE[h.ombre.teinte]}@${
+      Math.min(1, Math.max(0, h.ombre.opacite)).toFixed(2)}`);
+    morceaux.push(`shadowx=${d}`, `shadowy=${d}`);
+  }
+  if (h.fond) {
+    morceaux.push('box=1');
+    morceaux.push(`boxcolor=${HEX_AIDE[h.fond.teinte]}@${
+      Math.min(1, Math.max(0, h.fond.opacite)).toFixed(2)}`);
+    morceaux.push(`boxborderw=${Math.max(0, Math.round(h.fond.marge))}`);
+  }
+  morceaux.push(
     'x=(w-text_w)/2',
     `y=${Math.round(o.y)}`,
     `enable='between(t\\,${o.debutSecondes.toFixed(3)}\\,${o.finSecondes.toFixed(3)})'`,
-  ].join(':');
+  );
+  return morceaux.join(':');
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -202,6 +245,13 @@ export interface SourcesTexte {
     typographie: {
       policeTitreId: string | null; policeTexteId: string | null;
       graisse: 'normale' | 'grasse';
+      /**
+       * Le style de texte choisi dans la bibliothèque.
+       *
+       * ⚠️ ABSENT = LE RENDU D'AVANT A_3b, au pixel près. Un compte qui n'a
+       * jamais ouvert la bibliothèque ne doit rien voir changer.
+       */
+      styleTexteId?: string | null;
     };
     couleurs: { primaire: string | null; accent: string | null; texte: string | null };
     texte: {
@@ -234,6 +284,19 @@ export interface SourcesTexte {
 export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
   const p = s.profil;
   if (!p) return [];
+  /* ⚠️ LE STYLE EST RÉSOLU UNE FOIS, ICI. L'écran et le moteur appellent
+     cette même fonction : un style qui serait relu ailleurs finirait par
+     être interprété deux fois, et l'aperçu montrerait autre chose que la
+     vidéo. Un identifiant inconnu retombe sur le style par défaut, qui
+     reproduit exactement le rendu d'avant ce lot. */
+  const style = styleTexteParId(p.typographie.styleTexteId);
+  const habillage: HabillageTexte = {
+    contour: style.contour, ombre: style.ombre, fond: style.fond,
+  };
+  /* La casse s'applique au TEXTE, pas à son apparence : `drawtext` ne sait
+     pas mettre en capitales, et le fichier doit donc déjà l'être. */
+  const casser = (t: string) => (style.casse === 'majuscules' ? t.toLocaleUpperCase('fr') : t);
+  const taille = (base: number) => base * style.echelle;
   const couches: CoucheTexte[] = [];
   const duree = Number.isFinite(s.dureeTotaleSecondes) && s.dureeTotaleSecondes > 0
     ? s.dureeTotaleSecondes : 0;
@@ -248,7 +311,7 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
   if (p.texte.actif) {
     const debut = Math.max(0, Math.min(p.texte.debutSecondes, duree));
     const fin = Math.max(debut, Math.min(debut + Math.max(0, p.texte.dureeSecondes), duree));
-    const police = policeDe(p.typographie.policeTitreId ?? p.typographie.policeTexteId);
+    const police = style.police;
     for (const [nature, brut] of [
       ['hook', p.texte.titre], ['titre', p.texte.sousTitre],
     ] as const) {
@@ -256,10 +319,11 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
       if (texte === null) continue;
       couches.push({
         nature,
-        texte,
+        texte: casser(texte),
         police,
-        graisse: p.typographie.graisse,
-        taillePct: TAILLE_PCT[nature],
+        graisse: style.graisse,
+        taillePct: taille(TAILLE_PCT[nature]),
+        habillage,
         couleur: couleurTexte,
         ancre: p.texte.position,
         debutSecondes: debut,
@@ -276,10 +340,11 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
       );
       couches.push({
         nature: 'fin',
-        texte: texteFin,
+        texte: casser(texteFin),
         police,
-        graisse: p.typographie.graisse,
-        taillePct: TAILLE_PCT.fin,
+        graisse: style.graisse,
+        taillePct: taille(TAILLE_PCT.fin),
+        habillage,
         couleur: couleurTexte,
         ancre: 'centre',
         debutSecondes: depart,
@@ -296,16 +361,17 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
   if (p.ctaVisuel.actif && s.appelAction) {
     const dureeCta = Math.max(0, Math.min(p.ctaVisuel.dureeSecondes, duree));
     const depart = Math.max(0, duree - dureeCta);
-    const police = policeDe(p.typographie.policeTexteId ?? p.typographie.policeTitreId);
+    const police = style.police;
 
     const texteCta = texteRetenu(s.appelAction.texte, 'cta');
     if (texteCta !== null) {
       couches.push({
         nature: 'cta',
-        texte: texteCta,
+        texte: casser(texteCta),
         police,
         graisse: 'grasse',
-        taillePct: TAILLE_PCT.cta,
+        taillePct: taille(TAILLE_PCT.cta),
+        habillage,
         couleur: couleurTexte,
         ancre: p.ctaVisuel.position,
         debutSecondes: depart,
@@ -319,7 +385,8 @@ export function preparerCouches(s: SourcesTexte): CoucheTexte[] {
         texte: lien,
         police,
         graisse: 'normale',
-        taillePct: TAILLE_PCT.lien,
+        taillePct: taille(TAILLE_PCT.lien),
+        habillage,
         couleur: couleurAccent,
         ancre: p.ctaVisuel.position,
         debutSecondes: depart,
@@ -344,5 +411,7 @@ export function empreinteCouches(couches: readonly CoucheTexte[]): string {
   return couches.map((c) => [
     c.nature, c.texte, c.police, c.graisse, String(c.taillePct), c.couleur,
     c.ancre, c.debutSecondes.toFixed(3), c.finSecondes.toFixed(3),
+    // L'habillage change les pixels : il change donc l'empreinte.
+    JSON.stringify(c.habillage ?? null),
   ].join('')).join('');
 }

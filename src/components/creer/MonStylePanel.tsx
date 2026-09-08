@@ -13,55 +13,10 @@ import {
   type AncreTexte, type PositionLogo, type ProfilCreatifAutopilote,
 } from '@/lib/autopilot/analyse/profil-creatif';
 import { TRANSITIONS_RENDUES } from '@/lib/autopilot/analyse/rendu-style';
-import {
-  LONGUEURS_MAX, POLICES_RENDU, policeDe, type PoliceRendu,
-} from '@/lib/autopilot/analyse/rendu-texte';
+import { LONGUEURS_MAX } from '@/lib/autopilot/analyse/rendu-texte';
 import ApercuStyleTexte from '@/components/creer/ApercuStyleTexte';
 import BibliothequeLooks from '@/components/creer/BibliothequeLooks';
-
-/**
- * LOT 2B ETAPE 3 — L'ECRAN « MON STYLE ».
- *
- * ---------------------------------------------------------------------------
- * ⚠️ IL N'AFFICHE QUE CE QUI EST REELLEMENT RENDU
- * ---------------------------------------------------------------------------
- *
- * Le contrat accepte sept transitions ; le moteur n'en rend que trois
- * (`TRANSITIONS_RENDUES`). Les quatre autres deviennent `cut`. Les proposer
- * ici donnerait un reglage choisi et sans effet — et l'utilisateur passerait
- * son temps a chercher pourquoi son whip pan ne se voit pas.
- *
- * La liste vient donc de `TRANSITIONS_RENDUES`, exportee par le moteur
- * lui-meme, et non d'une seconde liste ecrite a la main : le jour ou `zoom`
- * sera rendu, il apparaitra ici sans qu'on y touche. C'est le meme
- * raisonnement que `slugPolice`, qui derive du catalogue plutot que de le
- * recopier.
- *
- * Meme regle pour la TYPOGRAPHIE et le TEXTE du CTA : aucune commande n'est
- * proposee, parce que les 52 familles ont `licence: null` et
- * `ressourceServeur: null`. Un selecteur de police qui ne changerait rien au
- * MP4 serait un mensonge d'interface.
- *
- * ---------------------------------------------------------------------------
- * ⚠️ « ENREGISTRER » EST UN GESTE, PAS UN EFFET DE BORD
- * ---------------------------------------------------------------------------
- *
- * Rien ne part vers le serveur tant que le bouton n'est pas presse. Les
- * reglages vivent dans l'etat local ; un essai n'ecrit jamais le style du
- * compte.
- */
-
-/** Les trois familles serveur, nommees pour un humain. */
-const LIBELLES_POLICE: Record<PoliceRendu, string> = {
-  sans: 'Sans serif', serif: 'Serif', mono: 'Monospace',
-};
-
-/** L'approximation navigateur, pour que le bouton MONTRE la famille. */
-const APERCU_PILE: Record<PoliceRendu, string> = {
-  sans: 'Liberation Sans, Arial, Helvetica, sans-serif',
-  serif: 'Liberation Serif, Times New Roman, serif',
-  mono: 'Liberation Mono, Courier New, monospace',
-};
+import BibliothequeStylesTexte from '@/components/creer/BibliothequeStylesTexte';
 
 /**
  * Un champ de texte borne, avec son compteur.
@@ -206,6 +161,8 @@ export default function MonStylePanel({
    * sera contraint par ce choix.
    */
   const [favorisLooks, setFavorisLooks] = useState<string[]>([]);
+  const [favorisStyles, setFavorisStyles] = useState<string[]>([]);
+  const [recentsStyles, setRecentsStyles] = useState<string[]>([]);
   const [recentsLooks, setRecentsLooks] = useState<string[]>([]);
   const [textesOuverts, setTextesOuverts] = useState(false);
   const [appel, setAppel] = useState<{ texte: string | null; destination: string | null }>(
@@ -485,56 +442,28 @@ export default function MonStylePanel({
                 />
 
                 {/* ── Apparence ─────────────────────────────────────────── */}
-                <div className="grid grid-cols-3 gap-1.5">
-                  {POLICES_RENDU.map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      data-mon-style-police={f}
-                      aria-pressed={policeDe(brouillon.typographie.policeTitreId) === f}
-                      onClick={() => modifier({
-                        /* ⚠️ ON ÉCRIT L'IDENTIFIANT QUE LE MOTEUR SAIT LIRE.
-                           `policeDe` range n'importe quel nom dans l'une des
-                           trois familles serveur ; écrire ici la valeur qu'il
-                           rendra évite un aller-retour où l'écran affiche une
-                           police que le rendu n'utilisera pas. */
-                        typographie: {
-                          ...brouillon.typographie,
-                          policeTitreId: f,
-                          policeTexteId: f,
-                        },
-                      })}
-                      className={`rounded-lg border px-2 py-1.5 text-[11px] transition ${
-                        policeDe(brouillon.typographie.policeTitreId) === f
-                          ? 'border-purple-500/50 bg-gray-800 text-gray-200'
-                          : 'border-gray-800 text-gray-400 hover:border-gray-700'
-                      }`}
-                      style={{ fontFamily: APERCU_PILE[f] }}
-                    >
-                      {LIBELLES_POLICE[f]}
-                    </button>
+                {/* ⚠️ LES BOUTONS « POLICE » ET « GRAISSE » ONT CÉDÉ LA PLACE
+                    (A_3b). Choisir une police puis une graisse puis une
+                    taille puis une ombre, c'est reconstruire un style à
+                    chaque vidéo. La bibliothèque les porte ensemble — et
+                    c'est elle qui décide, sinon deux réglages
+                    contradictoires cohabiteraient à l'écran. */}
+                <BibliothequeStylesTexte
+                  styleActif={brouillon.typographie.styleTexteId}
+                  exemple={brouillon.texte.titre ?? undefined}
+                  couleur={brouillon.couleurs.texte ?? '#FFFFFF'}
+                  favoris={favorisStyles}
+                  recents={recentsStyles}
+                  onBasculerFavori={(id) => setFavorisStyles((f) => (
+                    f.includes(id) ? f.filter((x) => x !== id) : [...f, id]
                   ))}
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(['normale', 'grasse'] as const).map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      data-mon-style-graisse={g}
-                      aria-pressed={brouillon.typographie.graisse === g}
-                      onClick={() => modifier({
-                        typographie: { ...brouillon.typographie, graisse: g },
-                      })}
-                      className={`rounded-lg border px-2 py-1.5 text-[11px] transition ${
-                        brouillon.typographie.graisse === g
-                          ? 'border-purple-500/50 bg-gray-800 text-gray-200'
-                          : 'border-gray-800 text-gray-400 hover:border-gray-700'
-                      }`}
-                    >
-                      {g === 'grasse' ? 'Gras' : 'Normal'}
-                    </button>
-                  ))}
-                </div>
+                  onChoisir={(id) => {
+                    modifier({
+                      typographie: { ...brouillon.typographie, styleTexteId: id },
+                    });
+                    setRecentsStyles((r) => [id, ...r.filter((x) => x !== id)].slice(0, 8));
+                  }}
+                />
                 <ColorWheel
                   color={brouillon.couleurs.texte ?? '#FFFFFF'}
                   onChange={(c) => modifier({
