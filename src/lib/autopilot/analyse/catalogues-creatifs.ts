@@ -89,7 +89,42 @@ export interface PoliceAutorisee {
   ressourceServeur: string | null;
 }
 
-export const POLICES_AUTORISEES: readonly PoliceAutorisee[] = FONT_CATALOG.map((f) => ({
+/**
+ * LES TROIS FAMILLES QUE LE SERVEUR REND VRAIMENT.
+ *
+ * ⚠️ ELLES SONT EN TETE, ET ELLES SONT LES SEULES A PORTER UNE LICENCE ET UNE
+ * RESSOURCE. Les cinquante-deux familles Google qui suivent gardent leur
+ * `licence: null` et leur `ressourceServeur: null` — l'aveu reste entier.
+ * Celles-ci viennent du paquet `fonts-liberation` que le Dockerfile installe :
+ * leur licence autorise l'incrustation et la redistribution, et leurs fichiers
+ * existent dans l'image.
+ *
+ * Sans cette entree, le validateur du profil refusait `serif` et `mono` — donc
+ * l'ecran proposait des polices que le profil remettait aussitot a `null`, et
+ * le rendu retombait sur `sans` sans que rien ne le dise.
+ */
+const POLICES_SERVEUR: readonly PoliceAutorisee[] = [
+  {
+    id: 'sans', nom: 'Sans serif', famille: 'Liberation Sans',
+    poidsDisponibles: [400, 700], usage: 'text',
+    licence: 'SIL Open Font License 1.1',
+    ressourceServeur: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+  },
+  {
+    id: 'serif', nom: 'Serif', famille: 'Liberation Serif',
+    poidsDisponibles: [400, 700], usage: 'text',
+    licence: 'SIL Open Font License 1.1',
+    ressourceServeur: '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
+  },
+  {
+    id: 'mono', nom: 'Monospace', famille: 'Liberation Mono',
+    poidsDisponibles: [400, 700], usage: 'text',
+    licence: 'SIL Open Font License 1.1',
+    ressourceServeur: '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',
+  },
+];
+
+const POLICES_CATALOGUE: readonly PoliceAutorisee[] = FONT_CATALOG.map((f) => ({
   id: slugPolice(f.family),
   nom: f.family,
   famille: f.family,
@@ -98,6 +133,10 @@ export const POLICES_AUTORISEES: readonly PoliceAutorisee[] = FONT_CATALOG.map((
   licence: null,
   ressourceServeur: null,
 }));
+
+export const POLICES_AUTORISEES: readonly PoliceAutorisee[] = [
+  ...POLICES_SERVEUR, ...POLICES_CATALOGUE,
+];
 
 export const POLICE_IDS: readonly string[] = POLICES_AUTORISEES.map((p) => p.id);
 

@@ -9,7 +9,9 @@ import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import MonStylePanel from '@/components/creer/MonStylePanel';
 import MonObjectifPanel from '@/components/creer/MonObjectifPanel';
-import type { ObjectifCommunication } from '@/lib/autopilot/analyse/objectif-communication';
+import {
+  OBJECTIF_DEFAUT, type ObjectifCommunication,
+} from '@/lib/autopilot/analyse/objectif-communication';
 import type { ProfilCreatifAutopilote } from '@/lib/autopilot/analyse/profil-creatif';
 import { montageDepuisStyle, audioDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -278,6 +280,13 @@ export default function AutopilotPanel({
    * celui d'apres — la confusion exacte relevee en direct le 2026-09-07.
    */
   const [objectifEnEdition, setObjectifEnEdition] = useState(false);
+  /* Le tournage regarde, retenu ICI EN PLUS d'etre transmis au parent :
+     l'apercu du style a besoin du format et de la vignette du rush choisi,
+     et les redemander a l'ecran parent ferait remonter puis redescendre la
+     meme information. */
+  const [apercuTournage, setApercuTournage] = useState<{
+    format: string; analyseApercuId: string | null;
+  }>({ format: '9:16', analyseApercuId: null });
   /**
    * Quelle médiathèque est ouverte, et pour quoi.
    *
@@ -413,6 +422,25 @@ export default function AutopilotPanel({
    * ⚠️ APPELE PAR UN BOUTON, ET PAR LUI SEUL. Choisir un objectif « pour
    * cette video » ne passe jamais par ici : il reste dans l'etat local.
    */
+  /**
+   * Enregistre l'appel a l'action SANS toucher au reste de l'objectif.
+   *
+   * ⚠️ ON REPART DE L'OBJECTIF ENREGISTRE, jamais d'un objet neuf : la route
+   * remplace l'objectif entier, et envoyer un objet partiel effacerait le
+   * type, les priorites et les preuves que la personne a choisis dans le
+   * wizard.
+   */
+  const enregistrerAppelAction = useCallback(async (
+    appel: { texte: string | null; destination: string | null },
+  ) => {
+    const base = monObjectif ?? OBJECTIF_DEFAUT;
+    return enregistrerMonObjectif({
+      ...base,
+      appelAction: { ...base.appelAction, ...appel },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monObjectif]);
+
   const enregistrerMonObjectif = useCallback(async (objectif: ObjectifCommunication) => {
     setError(null);
     try {
@@ -897,7 +925,13 @@ export default function AutopilotPanel({
                 });
                 return true;
               }}
-              onSessionChange={onSessionChange}
+              onSessionChange={(etat) => {
+                setApercuTournage({
+                  format: etat.format,
+                  analyseApercuId: etat.analyseApercuId,
+                });
+                onSessionChange?.(etat);
+              }}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}
               /* ⚠️ LE BROUILLON REND L'OBJECTIF, IL NE LE DECIDE PAS. Le
@@ -926,6 +960,13 @@ export default function AutopilotPanel({
                     profilEnregistre={monStyle}
                     chargement={monStyleChargement}
                     onEnregistrer={enregistrerMonStyle}
+                    /* Le message du CTA vient de l'OBJECTIF : on le lit et on
+                       l'ecrit la-bas, meme s'il se regle ici. */
+                    appelActionEnregistre={monObjectif?.appelAction ?? null}
+                    onEnregistrerAppelAction={enregistrerAppelAction}
+                    format={apercuTournage.format}
+                    dureeMontageSecondes={montageDepuisStyle(config.designStyle).dureeSecondes}
+                    analyseApercuId={apercuTournage.analyseApercuId}
                   />
                 </>
               )}

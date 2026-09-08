@@ -427,10 +427,29 @@ describe('E. securite du contrat de profil', () => {
   });
 
   it('les identifiants de police derivent du catalogue, sans seconde liste', () => {
+    /* ⚠️ DEUX ORIGINES DESORMAIS, ET LA DISTINCTION EST LE SUJET (lot A_1b).
+       `POLICES_SERVEUR` — sans / serif / mono — sont les trois familles
+       `Liberation` que le Dockerfile installe : elles PORTENT une licence et
+       une ressource, parce que le rendu les ouvre vraiment. Les 52 familles
+       Google qui suivent gardent `licence: null` et `ressourceServeur: null`,
+       et l'aveu reste entier pour elles.
+
+       Sans cet ajout, le validateur du profil refusait `serif` et `mono` :
+       l'ecran proposait des polices que le profil remettait aussitot a
+       `null`, et le rendu retombait sur `sans` sans que rien ne le dise. */
     expect(POLICES_AUTORISEES.length).toBeGreaterThan(0);
+    const SERVEUR = new Set(['sans', 'serif', 'mono']);
     for (const p of POLICES_AUTORISEES) {
+      if (SERVEUR.has(p.id)) {
+        // Celles-la sont nommees a la main : leur licence et leur fichier
+        // sont le sujet, pas un slug derive.
+        expect(p.ressourceServeur, p.id).not.toBeNull();
+        expect(p.licence, p.id).toBeTruthy();
+        continue;
+      }
       expect(p.id).toBe(slugPolice(p.famille));
       expect(p.ressourceServeur).toBeNull();
+      expect(p.licence).toBeNull();
     }
     expect(POLICE_IDS).toContain('bebas-neue');
     expect(new Set(POLICE_IDS).size).toBe(POLICE_IDS.length);

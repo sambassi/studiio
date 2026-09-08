@@ -136,18 +136,45 @@ describe('3. les modules atteignables depuis une route serveur', () => {
     const code = sansCommentaires(
       source('src/lib/autopilot/analyse/catalogues-creatifs.ts'),
     );
-    expect(code).toMatch(/export const POLICES_AUTORISEES[\s\S]*FONT_CATALOG\.map\(/);
+    /* ⚠️ CE QUI COMPTE EST QUE LES 52 FAMILLES SOIENT DERIVEES, PAS RETAPEES.
+       Depuis A_1b, `POLICES_AUTORISEES` concatene les trois familles serveur
+       (nommees a la main, avec licence et fichier) et le catalogue derive.
+       C'est ce dernier qu'on verifie ici — le premier est court, relu, et sa
+       raison d'etre est justement de ne pas venir de Google Fonts. */
+    expect(code).toMatch(/const POLICES_CATALOGUE[\s\S]*FONT_CATALOG\.map\(/);
+    expect(code).toMatch(/POLICES_AUTORISEES[\s\S]*POLICES_SERVEUR[\s\S]*POLICES_CATALOGUE/);
   });
 });
 
 describe('4. ecran et serveur voient exactement les memes polices', () => {
   it('un identifiant par famille, sans perte ni doublon', () => {
-    expect(POLICES_AUTORISEES).toHaveLength(FONT_CATALOG.length);
+    /* ⚠️ DEUX ORIGINES DESORMAIS, ET LA DISTINCTION EST LE SUJET (lot A_1b).
+       `POLICES_SERVEUR` — sans / serif / mono — sont les trois familles
+       `Liberation` que le Dockerfile installe : elles PORTENT une licence et
+       une ressource, parce que le rendu les ouvre vraiment. Les 52 familles
+       Google qui suivent gardent `licence: null` et `ressourceServeur: null`,
+       et l'aveu reste entier pour elles.
+
+       Sans cet ajout, le validateur du profil refusait `serif` et `mono` :
+       l'ecran proposait des polices que le profil remettait aussitot a
+       `null`, et le rendu retombait sur `sans` sans que rien ne le dise. */
+    const SERVEUR = ['sans', 'serif', 'mono'];
+    expect(POLICES_AUTORISEES).toHaveLength(FONT_CATALOG.length + SERVEUR.length);
+    for (const id of SERVEUR) expect(POLICE_IDS, id).toContain(id);
+    // Aucun doublon : c'est cela qui empecherait un identifiant de designer
+    // deux familles selon l'ordre de lecture.
     expect(new Set(POLICE_IDS).size).toBe(POLICE_IDS.length);
   });
 
   it('chaque identifiant retrouve SA famille dans le catalogue', () => {
+    const SERVEUR = new Set(['sans', 'serif', 'mono']);
     for (const p of POLICES_AUTORISEES) {
+      // Les familles serveur ne viennent PAS du catalogue Google : les y
+      // chercher echouerait sur la seule chose qui les distingue.
+      if (SERVEUR.has(p.id)) {
+        expect(p.famille, p.id).toContain('Liberation');
+        continue;
+      }
       const def = findFont(p.famille);
       expect(def, p.famille).toBeDefined();
       expect(p.poidsDisponibles).toEqual(def!.weights);
