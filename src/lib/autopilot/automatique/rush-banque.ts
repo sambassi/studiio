@@ -106,3 +106,59 @@ export async function choisirRushMontable(
   }
   return bruts[0] ?? null;
 }
+
+/**
+ * A_7d — PLUSIEURS RUSHES POUR UNE SEULE VIDEO.
+ *
+ * ═════════════════════════════════════════════════════════════════════════
+ * ⚠️ ELLE NE CHOISIT PAS : ELLE LIT, PUIS DELEGUE
+ * ═════════════════════════════════════════════════════════════════════════
+ *
+ * Le CLASSEMENT est celui d'A_7b — `classerRushesEligibles` — et il n'est pas
+ * recopie ici. Deux classements divergeraient, et l'automatique choisirait
+ * autrement que ce que les tests d'A_7b prouvent. Ce module reste ce qu'il a
+ * toujours ete : une lecture de la banque canonique.
+ *
+ * ⚠️ ET LE PREMIER RENDU EST TOUJOURS `choisirRushMontable`. Un compte qui n'a
+ * qu'un rush eligible doit continuer de parcourir le chemin mono-rush, celui
+ * dont tous les rendus sont en base. La liste supplementaire est donc RENDUE A
+ * PART, et vide quand il n'y a rien a ajouter.
+ */
+export async function choisirRushesMontables(
+  userId: string,
+  options: { graine: string; max: number; historique?: readonly (readonly string[])[] },
+  evites: ReadonlySet<string> = new Set(),
+): Promise<{ principal: RushMontable | null; supplementaires: string[] }> {
+  const principal = await choisirRushMontable(userId, evites);
+  if (!principal || options.max <= 1) return { principal, supplementaires: [] };
+
+  const { classerRushesEligibles } = await import('@/lib/autopilot/analyse/montage-pool');
+
+  const verifies = (await rushesVerifies(userId))
+    .filter((r) => !evites.has(r.id) && r.id !== principal.rushId);
+
+  /* ⚠️ ON NE SONDE PAS CHAQUE RUSH POUR SAVOIR S'IL EST PRET. Lire l'analyse
+     et les candidats de cinquante rushes couterait cent requetes par cycle
+     pour classer trois places. L'ordre de la banque — du plus recemment
+     indexe au plus ancien — suffit a departager, et la preparation dira le
+     reste : un rush qui n'est pas pret sera prepare, ou ecarte proprement. */
+  const eligibles = verifies.map((r, i) => ({
+    rushId: r.id,
+    /* `clipSetId` inconnu a ce stade : la penalite de recence ne s'applique
+       donc qu'au principal, et les suivants sont departages par la banque
+       puis par la graine. C'est volontairement moins fin que le classement
+       complet d'A_7b — et cela ne coute aucune requete. */
+    clipSetId: null,
+    ordreBanque: i,
+    pret: false,
+  }));
+
+  const retenus = classerRushesEligibles(eligibles, {
+    graine: options.graine,
+    historique: options.historique,
+    // Le principal occupe deja une place.
+    max: Math.max(0, options.max - 1),
+  });
+
+  return { principal, supplementaires: retenus.map((r) => r.rushId) };
+}

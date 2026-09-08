@@ -294,7 +294,10 @@ describe('6. Le verrou est pris AVANT la première dépense', () => {
 describe('7. Ce que le verrou ne change pas', () => {
   it('7.1 A_0 et A_0b sont intacts', () => {
     expect(CRON).toContain('monterAvecM3');
-    expect(CRON).toContain('choisirRushMontable');
+    /* A_7d a elargi l'appel a plusieurs rushes ; le principal reste choisi par
+       `choisirRushMontable`, que `choisirRushesMontables` appelle. L'invariant
+       — le cron lit la banque canonique — n'a pas bouge. */
+    expect(CRON).toContain('choisirRushesMontables');
     expect(lire('src/lib/autopilot/automatique/chaine-serveur.ts'))
       .toContain('executerAnalyseRush');
   });

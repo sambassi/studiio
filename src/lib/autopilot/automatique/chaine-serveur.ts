@@ -314,7 +314,18 @@ export async function preparerJeuClips(
   return { ok: true, set, analyse, rushId: generation.rushId };
 }
 
-export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
+export async function monterAvecM3(
+  d: DemandeM3Automatique & {
+    /**
+     * A_7d — LES AUTRES RUSHES a assembler avec `rushId`.
+     *
+     * ⚠️ ABSENT OU VIDE = LE CHEMIN MONO-RUSH, A LA LIGNE PRES. C'est celui de
+     * tous les comptes qui n'ont rien demande, et de tous les cycles deja
+     * produits — il ne bouge pas.
+     */
+    rushIdsSupplementaires?: readonly string[];
+  },
+): Promise<IssueM3> {
   const { userId } = d;
 
   /* ── La préparation, si le rush est brut ──────────────────────────────
@@ -327,6 +338,38 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
   const prepare = await preparerJeuClips(userId, pret.analysisId, pret.candidateSetId);
   if (!('ok' in prepare)) return prepare;
   const { set, analyse, rushId: rushMonte } = prepare;
+
+  /* ══ A_7d — LE PLAN MULTI-RUSH, QUAND PLUSIEURS RUSHES SONT DEMANDES ══
+     ⚠️ SEULE LA SOURCE DU PLAN CHANGE. Tout ce qui suit — le profil, le
+     style, la graine, la recette audio, les sous-titres, le rendu, la
+     consignation — est le code d'avant, intouche. Un plan multi-rush est un
+     plan : il porte un identifiant, une version, des segments, et M3-H sait
+     deja le rendre depuis A_7c.
+
+     ⚠️ ET IL RETOMBE SUR LE MONO PLUTOT QUE D'ECHOUER. Si une seule source
+     survit a la preparation ou au palier de qualite d'A_7b, ce n'est PAS un
+     montage multi-rush : lui donner une empreinte le ferait basculer sous
+     l'index d'A_7M et rendrait introuvables des MP4 deja produits. Le code
+     poursuit alors sur le chemin historique, avec le rush deja prepare. */
+  const autres = (d.rushIdsSupplementaires ?? []).filter((id) => id !== d.rushId);
+  let planMulti: { id: string; version: number } | null = null;
+  if (autres.length > 0) {
+    const { monterMultiRush } = await import('./multi-rush');
+    const multi = await monterMultiRush({
+      userId,
+      rushIds: [d.rushId, ...autres],
+      format: d.format,
+      dureeCibleSecondes: d.dureeCibleSecondes,
+      objectif: await objectifEffectifUtilisateur(userId),
+    });
+    if (multi.plan) {
+      planMulti = { id: multi.plan.id, version: multi.plan.version };
+    } else if (multi.motif !== null && multi.motif !== 'source_unique') {
+      /* Une panne de persistance ou un plan impossible ne se contourne pas en
+         montant un seul rush : la demande portait sur plusieurs. */
+      return echec('plan_impossible', multi.motif);
+    }
+  }
 
   // ── M3-G : le plan ───────────────────────────────────────────────────
   //
@@ -350,11 +393,14 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
     dureeCibleSecondes: d.dureeCibleSecondes,
   };
 
-  let planId: string | null = null;
-  let planVersion = 0;
-  const planDejaLa = await lirePlanIdentique(userId, identitePlan);
+  let planId: string | null = planMulti?.id ?? null;
+  let planVersion = planMulti?.version ?? 0;
+  const planDejaLa = planMulti ? { plan: null, motif: null }
+    : await lirePlanIdentique(userId, identitePlan);
   if (planDejaLa.motif === 'socle_absent') return echec('socle_absent');
-  if (planDejaLa.plan) {
+  if (planMulti) {
+    // Le plan est deja ecrit — atomiquement, par la RPC d'A_7B0.
+  } else if (planDejaLa.plan) {
     planId = planDejaLa.plan.id;
     planVersion = planDejaLa.plan.version;
   } else {
@@ -385,6 +431,13 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
     planId = creation.plan.id;
     planVersion = creation.plan.version;
   }
+
+  /* ⚠️ SANS PLAN, PAS DE RENDU — et la garde est explicite plutot que deduite.
+     Les trois chemins ci-dessus (multi-rush, plan deja la, plan cree) posent
+     tous `planId` ; celui qui ne le poserait pas laisserait la suite rendre
+     sous un identifiant nul, et la consignation ecrirait un post pointant
+     vers rien. */
+  if (planId === null) return echec('plan_impossible', 'plan introuvable');
 
   // ── M3-H : le rendu ──────────────────────────────────────────────────
   const profil = await lireProfilCreatifUtilisateur(userId);

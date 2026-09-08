@@ -4,8 +4,9 @@ import { moteurDepuisConfig, repliDepuisConfig } from '@/lib/autopilot/automatiq
 import {
   nouveauJeton, reclamerCreneau, conclureCreneau,
 } from '@/lib/autopilot/automatique/creneau';
-import { choisirRushMontable } from '@/lib/autopilot/automatique/rush-banque';
+import { choisirRushesMontables } from '@/lib/autopilot/automatique/rush-banque';
 import { monterAvecM3 } from '@/lib/autopilot/automatique/chaine-serveur';
+import { maxRushesAutomatique } from '@/lib/autopilot/analyse/montage-pool';
 import { montageDepuisStyle, audioDepuisStyle } from '@/lib/autopilot/textStyle';
 import { formatValide } from '@/lib/autopilot/analyse/montage-contrat';
 import { getUserCredits } from '@/lib/credits/system';
@@ -374,7 +375,21 @@ export async function GET(req: NextRequest) {
              recoit exactement ce qu'il recevait hier. */
           if (moteurDepuisConfig(config.designStyle) === 'm3') {
             const montage = montageDepuisStyle(config.designStyle);
-            const choix = await choisirRushMontable(userId, rushesM3Utilises);
+            /* ⚠️ A_7d — PLUSIEURS RUSHES, DETERMINISTES ET BORNES.
+               La graine tient au compte et au creneau : un cron qui rejoue le
+               meme creneau redemande EXACTEMENT les memes rushes, sans quoi
+               `lirePlanIdentique` ne retrouverait jamais rien et chaque
+               reessai serait refacture. Le plafond vient d'A_7b et suit la
+               duree demandee : preparer cinq rushes pour quinze secondes
+               brulerait un budget pour de la matiere qu'on ne montrera pas. */
+            const { principal: choix, supplementaires } = await choisirRushesMontables(
+              userId,
+              {
+                graine: `${userId}|${jeton}|${montage.format}|${montage.dureeSecondes}`,
+                max: maxRushesAutomatique(montage.dureeSecondes),
+              },
+              rushesM3Utilises,
+            );
             /* ⚠️ LE FORMAT EST UNE CHAINE LIBRE COTE REGLAGES, et le contrat
                du moteur n'en accepte que trois. On le VALIDE au lieu de le
                forcer : un `as` ferait entrer « portrait » dans un vocabulaire
@@ -390,6 +405,9 @@ export async function GET(req: NextRequest) {
                   rushId: choix.rushId,
                   analysisId: choix.analysisId,
                   candidateSetId: choix.candidateSetId,
+                  /* ⚠️ VIDE = LE CHEMIN MONO-RUSH, INTACT. Un compte a un seul
+                     rush eligible parcourt exactement le code d'hier. */
+                  rushIdsSupplementaires: supplementaires,
                   format: montage.format,
                   dureeCibleSecondes: montage.dureeSecondes,
                   // La MEME recette que le parcours manuel : musique,
