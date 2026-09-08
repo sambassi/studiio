@@ -35,8 +35,11 @@ import {
   MODES_AUDIO, type ModeAudio,
 } from '@/lib/autopilot/analyse/politique-audio';
 import {
-  banqueAudioValide, BANQUE_AUDIO_VIDE, type BanqueAudio,
+  banqueAudioValide, cleAudioValide, BANQUE_AUDIO_VIDE, type BanqueAudio,
 } from './audio';
+import {
+  motsVoixValides, type MotVoix,
+} from '@/lib/voice/synthese';
 import { presetsPersonnelsValides, type PresetPersonnel } from './presets';
 
 /** Les cinq familles qu'une personne peut mettre en favori. */
@@ -107,6 +110,61 @@ export interface BibliothequeCreative {
   automatisation: PolitiqueCreative;
   /** A_5 — la banque de musiques du compte. */
   audio: BanqueAudio;
+  /** A_6 — la voix-off enregistree du compte, ou `null`. */
+  voixOff: VoixOffEnregistree | null;
+}
+
+/**
+ * A_6 — LA VOIX-OFF DU COMPTE.
+ *
+ * ⚠️ LE SCRIPT EST CELUI DE LA PERSONNE, ET IL EST GARDE. C'est ce qui permet
+ * a l'Autopilote de reutiliser SA voix sur SES mots, sans qu'une machine ait
+ * jamais a ecrire une phrase a sa place. Studiio ne genere aucun script.
+ *
+ * ⚠️ ET LES MOTS SONT DATES. Sans eux, A_4 refuse de sous-titrer — repartir un
+ * texte uniformement donnerait un minutage invente. Ils viennent de
+ * l'alignement rendu par la synthese, jamais d'une estimation.
+ */
+export interface VoixOffEnregistree {
+  /** La cle du fichier synthetise, dans le compartiment audio du compte. */
+  cle: string;
+  /** L'empreinte des octets — deux syntheses differentes, deux rendus. */
+  empreinte: string;
+  dureeMs: number;
+  /** Le texte prononce, tel que la personne l'a ecrit. */
+  script: string;
+  /** L'identifiant Studiio de la voix employee (prefixe fournisseur). */
+  voiceId: string;
+  /** Quand elle a ete synthetisee. ISO 8601. */
+  creeeLe: string;
+  mots: readonly MotVoix[];
+}
+
+export function voixOffValide(brut: unknown, userId: string): VoixOffEnregistree | null {
+  if (!brut || typeof brut !== 'object') return null;
+  const o = brut as Record<string, unknown>;
+  /* ⚠️ LA MEME GARDE DE CLE QUE LA BANQUE AUDIO. Le prefixe prouve la
+     propriete ; sans lui, une cle d'autrui entrerait dans un profil et
+     partirait au rendu. */
+  if (!cleAudioValide(o.cle, userId)) return null;
+  const script = typeof o.script === 'string' ? o.script.trim() : '';
+  const voiceId = typeof o.voiceId === 'string' ? o.voiceId : '';
+  const dureeMs = typeof o.dureeMs === 'number' && Number.isFinite(o.dureeMs)
+    ? Math.round(o.dureeMs) : 0;
+  if (script.length === 0 || script.length > 2000) return null;
+  if (!/^[A-Za-z0-9_-]{1,120}$/.test(voiceId)) return null;
+  if (dureeMs <= 0 || dureeMs > 15 * 60 * 1000) return null;
+  if (typeof o.empreinte !== 'string' || !/^[A-Za-z0-9._:-]{1,120}$/.test(o.empreinte)) {
+    return null;
+  }
+  if (typeof o.creeeLe !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(o.creeeLe)) return null;
+  const mots = motsVoixValides(o.mots);
+  // Sans mots dates, la voix reste utilisable — mais elle ne se sous-titrera
+  // pas. C'est un manque, pas une invalidite.
+  return {
+    cle: o.cle, empreinte: o.empreinte, dureeMs, script, voiceId,
+    creeeLe: o.creeeLe, mots,
+  };
 }
 
 export const FAVORIS_VIDES: FavorisCreatifs = Object.freeze({
@@ -216,6 +274,7 @@ export const BIBLIOTHEQUE_VIDE: BibliothequeCreative = Object.freeze({
   presets: Object.freeze([]) as readonly PresetPersonnel[],
   automatisation: POLITIQUE_STRICTE,
   audio: BANQUE_AUDIO_VIDE,
+  voixOff: null,
 });
 
 /**
@@ -276,12 +335,14 @@ export function bibliothequeValide(
     presets: presetsPersonnelsValides(o.presets),
     automatisation: politiqueValide(o.automatisation),
     audio: userId ? banqueAudioValide(o.audio, userId) : BANQUE_AUDIO_VIDE,
+    voixOff: userId ? voixOffValide(o.voixOff, userId) : null,
   };
 }
 
 /** La bibliothèque ne demande-t-elle rien ? */
 export function bibliothequeVide(b: BibliothequeCreative): boolean {
-  return b.audio.pistes.length === 0
+  return b.voixOff === null
+    && b.audio.pistes.length === 0
     && b.presets.length === 0
     && politiqueVide(b.automatisation)
     && FAMILLES_BIBLIOTHEQUE.every((f) => b.favoris[f].length === 0);

@@ -72,6 +72,7 @@ import {
 import { listerCreatifsRecents } from '@/lib/autopilot/analyse/rendu-service';
 import { preparerCaptions } from '@/lib/autopilot/analyse/captions-service';
 import { PROFIL_CREATIF_DEFAUT } from '@/lib/autopilot/analyse/profil-creatif';
+import { BUCKET_MUSIQUE } from '@/lib/autopilot/analyse/recette-audio';
 import {
   resoudreStyleEffectif, graineCreative, historiqueDepuisUsages,
   type ChoixCreatifs,
@@ -418,6 +419,26 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
     variationAudio = issue;
   }
 
+  /* ── LA VOIX-OFF DU COMPTE ────────────────────────────────────────────
+     ⚠️ ELLE EST REUTILISEE, ELLE N'EST PAS REECRITE. L'Autopilote fait dire a
+     la voix de la personne les mots QU'ELLE a ecrits une fois — jamais une
+     phrase qu'une machine aurait composee a sa place. Studiio ne genere aucun
+     script, et il n'y a rien a desactiver pour cela : ce chemin n'en contient
+     pas.
+
+     ⚠️ ET UN PROFIL D'HIER N'EN A PAS. `voixOff` vaut `null` tant que personne
+     n'a enregistre de voix : la video rendue est exactement celle d'avant. */
+  if (biblio.voixOff && recetteEffective) {
+    recetteEffective = {
+      ...recetteEffective,
+      voix: {
+        bucket: BUCKET_MUSIQUE,
+        cle: biblio.voixOff.cle,
+        version: biblio.voixOff.empreinte,
+      },
+    };
+  }
+
   const identiteRendu: IdentiteRendu = {
     montagePlanId: planId,
     montagePlanVersion: planVersion,
@@ -463,6 +484,9 @@ export async function monterAvecM3(d: DemandeM3Automatique): Promise<IssueM3> {
          coûte deux requêtes ; elle n'a lieu que si le profil les demande. */
       captions: profilEffectif?.captions.active
         ? await preparerCaptions(userId, plan) : null,
+      // Les mots de la voix-off sont deja dates sur le montage : ils passent
+      // devant la parole du rush, et sans projection.
+      captionsVoixOff: biblio.voixOff?.mots ?? null,
       appelAction,
       avancer: async (etape) => {
         const r = await majRendu(userId, renduId, {

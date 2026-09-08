@@ -56,6 +56,9 @@ export type IssueVoix =
   | { ok: true; providerVoiceId: string; clonee: boolean }
   | { ok: false; motif: MotifVoix };
 
+/** Le prefixe des identifiants ElevenLabs cote Studiio. */
+export const ELEVENLABS_PREFIXE = 'elevenlabs-';
+
 /** La forme d'un `voice_id` ElevenLabs. Rien d'exotique n'entre dans une URL. */
 export const FORME_VOICE_ID = /^[A-Za-z0-9_-]{8,64}$/;
 

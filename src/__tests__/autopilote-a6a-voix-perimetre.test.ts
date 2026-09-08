@@ -32,7 +32,7 @@
  * lui, n'est PAS atténué. C'est délibéré : baisser le son du tournage sous une
  * voix-off changerait le mixage déjà validé de tous les montages sonores.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -80,7 +80,6 @@ const graphe = (recette: RecetteAudio, avecMusique: boolean, avecVoix: boolean) 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('1. Une voix clonée appartient à quelqu’un', () => {
   const catalogue = async () => [{ id: 'elevenlabs-CATALOGUE1234' }];
-  const store = (voix: Record<string, unknown>[]) => vi.fn();
 
   it('1.1 la forme seule ne dit rien de la propriété', () => {
     expect(FORME_VOICE_ID.test('ABCdef12345678')).toBe(true);
@@ -111,7 +110,6 @@ describe('1. Une voix clonée appartient à quelqu’un', () => {
   it('1.4 sans compte, rien ne passe', async () => {
     const r = await resoudreVoixElevenLabs('', 'CATALOGUE1234', catalogue);
     expect(r.ok).toBe(false);
-    expect(store).toBeDefined();
   });
 
   it('1.5 ⚠️ LA ROUTE VÉRIFIE AVANT D’APPELER, ET UTILISE L’ID RÉSOLU', () => {

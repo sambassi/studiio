@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AudioLines, Music, Volume2, VolumeX, Check, Loader2, RotateCcw, Save, Trash2,
 } from 'lucide-react';
@@ -9,6 +9,7 @@ import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import BibliothequeAudio from '@/components/creer/BibliothequeAudio';
 import { useBanqueAudio } from '@/lib/hooks/useBanqueAudio';
 import { cleDepuisUrlMediatheque } from '@/lib/creatif/audio';
+import PanneauVoixOff, { type VoixOffEcran } from '@/components/creer/PanneauVoixOff';
 import {
   BUCKET_MUSIQUE, RECETTE_AUDIO_DEFAUT, arrondirVolume, type RecetteAudio,
 } from '@/lib/autopilot/analyse/recette-audio';
@@ -118,6 +119,18 @@ export default function ReglagesAudio({
   const banque = useBanqueAudio(!desactive);
   const [ajoutBanque, setAjoutBanque] = useState(false);
   const [retraitActive, setRetraitActive] = useState<string | null>(null);
+  /* La voix-off du compte, lue avec la bibliotheque creative — elle vit a
+     cote des favoris, pas dans la recette de cette video. */
+  const [voixOff, setVoixOff] = useState<VoixOffEcran | null>(null);
+  useEffect(() => {
+    if (desactive) return;
+    let vivant = true;
+    void fetch('/api/autopilot/bibliotheque-creative', { credentials: 'same-origin' })
+      .then((r) => r.json())
+      .then((j) => { if (vivant && j?.ok) setVoixOff(j.bibliotheque?.voixOff ?? null); })
+      .catch(() => {});
+    return () => { vivant = false; };
+  }, [desactive]);
 
   const nomAffiche = valeur.musique === null
     ? null
@@ -276,6 +289,27 @@ export default function ReglagesAudio({
           </div>
         </div>
       )}
+
+      {/* ── LA VOIX-OFF ───────────────────────────────────────────────
+          ⚠️ APRES LA MUSIQUE, ET DANS LE MEME PANNEAU. Les deux vivent dans
+          la meme recette et se melangent dans le meme graphe : les separer en
+          deux ecrans obligerait a regler un volume ici et l'autre ailleurs. */}
+      <PanneauVoixOff
+        voixOff={voixOff}
+        utilisee={valeur.voix != null}
+        desactive={desactive}
+        onEnregistree={(v) => {
+          setVoixOff(v);
+          // Une voix retiree ne peut plus etre employee : le montage repasse
+          // sans voix plutot que de porter une reference morte.
+          if (v === null && valeur.voix) majuscule({ voix: null });
+        }}
+        onUtiliser={(utiliser) => majuscule({
+          voix: utiliser && voixOff
+            ? { bucket: BUCKET_MUSIQUE, cle: voixOff.cle }
+            : null,
+        })}
+      />
 
       {/* La musique en une ligne : son nom, ou l'absence dite simplement. */}
       <p

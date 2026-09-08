@@ -37,6 +37,23 @@ import {
 import { objectifEffectifUtilisateur } from '@/lib/autopilot/analyse/objectif-compte';
 import { lireProfilCreatifUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
 import { preparerCaptions } from '@/lib/autopilot/analyse/captions-service';
+import { lireBibliothequeUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
+
+/**
+ * Les mots de la voix-off du compte, si la cle demandee est bien la sienne.
+ *
+ * ⚠️ LA CLE EST COMPAREE, PAS FAITE CONFIANCE. Un corps qui nommerait une
+ * autre voix ne recevrait pas les minutages d'une voix qui n'est pas la
+ * sienne — et `verifierMusique` refusera de toute facon la cle hors prefixe.
+ */
+async function motsVoixOffDuCompte(userId: string, cle: string) {
+  try {
+    const b = await lireBibliothequeUtilisateur(userId);
+    return b.voixOff && b.voixOff.cle === cle ? b.voixOff.mots : null;
+  } catch {
+    return null;
+  }
+}
 import { MESSAGES_LOGO, verifierLogo } from '@/lib/autopilot/analyse/logo-source';
 import { MESSAGES_MUSIQUE, verifierMusique } from '@/lib/autopilot/analyse/musique-source';
 import { diagnosticRendu } from '@/lib/autopilot/analyse/rendu-ffmpeg';
@@ -168,6 +185,22 @@ export async function POST(
     // la taille.
     if (recette?.musique) {
       const v = await verifierMusique(recette.musique, userId);
+      if (!v.ok) {
+        const statut = v.motif === 'stockage_injoignable' ? 503 : 422;
+        return NextResponse.json(
+          { ok: false, error: MESSAGES_MUSIQUE[v.motif], motif: v.motif }, { status: statut },
+        );
+      }
+    }
+
+    /* ── LA VOIX-OFF : LA MEME EXIGENCE QUE LA MUSIQUE ───────────────────
+       ⚠️ ELLE VIT DANS LE MEME COMPARTIMENT, ET ELLE SE VERIFIE PAREIL. Le
+       prefixe de propriete d'abord, le stockage ensuite. Une voix designee
+       par une cle qui n'est pas la sienne est refusee avant qu'on regarde si
+       le fichier existe — sinon la reponse elle-meme confirmerait son
+       existence. */
+    if (recette?.voix) {
+      const v = await verifierMusique(recette.voix, userId);
       if (!v.ok) {
         const statut = v.motif === 'stockage_injoignable' ? 503 : 422;
         return NextResponse.json(
@@ -385,6 +418,11 @@ async function executerRendu(
            si le profil les demande. */
         captions: profil?.captions.active
           ? await preparerCaptions(userId, plan!) : null,
+        /* ⚠️ LES MOTS DE LA VOIX-OFF VIENNENT DU SERVEUR, PAS DU CORPS. Le
+           navigateur choisit SI la voix parle ; ce qu'elle dit et quand elle
+           le dit sont ce que la synthese a mesure, et rien d'autre. */
+        captionsVoixOff: recette?.voix
+          ? await motsVoixOffDuCompte(userId, recette.voix.cle) : null,
         // Chaque frontière demande si la ligne existe encore. `rendu_absent`
         // est un ordre d'arrêt : on nettoie et on n'écrit plus rien.
         avancer: async (etape) => {

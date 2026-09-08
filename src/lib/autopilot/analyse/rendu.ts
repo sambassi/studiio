@@ -111,6 +111,20 @@ export interface DemandeRendu {
    */
   captions?: { mots: readonly MotSource[]; clips: readonly ClipProjection[] } | null;
   /**
+   * A_6 — LES MOTS DE LA VOIX-OFF, DEJA DATES SUR LE MONTAGE.
+   *
+   * ⚠️ AUCUNE PROJECTION NECESSAIRE, ET C'EST LA DIFFERENCE. La parole d'un
+   * rush est datee dans le RUSH : il faut la couper, la recaler, la
+   * reordonner. Une voix-off, elle, commence au debut du montage et ne suit
+   * aucun plan — ses minutages sont deja ceux du fichier final.
+   *
+   * ⚠️ ET ELLE PASSE DEVANT LA TRANSCRIPTION DU RUSH. Quand les deux
+   * existent, c'est la voix-off qu'on entend au premier plan : sous-titrer le
+   * son d'ambiance pendant qu'une voix parle par-dessus donnerait deux textes
+   * qui ne correspondent a rien de ce qu'on ecoute.
+   */
+  captionsVoixOff?: readonly { debutSecondes: number; finSecondes: number; texte: string }[] | null;
+  /**
    * Le profil creatif EFFECTIF, deja fusionne et deja VALIDE par la route.
    *
    * ⚠️ IL N'EST PAS RELU ICI, exactement comme la recette audio. La route a
@@ -565,22 +579,32 @@ export async function produireMontage(
        fait se chevaucher les plans. Projeter ailleurs obligerait a deviner de
        combien chaque plan s'est decale. */
     let captions: { fichier: string; document: string } | null = null;
-    if (profil?.captions.active && demande.captions) {
+    if (profil?.captions.active && (demande.captions || demande.captionsVoixOff?.length)) {
       const styleCaption = styleCaptionParId(profil.captions.styleId);
       const recouvrement = recouvrementTransition(
         profil, plan.plans.map((p) => p.dureeRetenueSecondes),
       );
-      const mots = projeterMots(
-        demande.captions.mots,
-        plan.plans.map((p) => ({
-          ordre: p.ordre,
-          rangClip: p.rangClip,
-          entreeSecondes: p.entreeSecondes,
-          dureeRetenueSecondes: p.dureeRetenueSecondes,
-        })),
-        demande.captions.clips,
-        recouvrement.dureeSecondes,
-      );
+      /* ⚠️ LA VOIX-OFF PASSE DEVANT LA PAROLE DU RUSH. Quand les deux
+         existent, c'est elle qu'on entend au premier plan : sous-titrer le son
+         d'ambiance pendant qu'une voix parle par-dessus donnerait deux textes
+         qui ne correspondent a rien de ce qu'on ecoute.
+
+         ⚠️ ET ELLE N'EST PAS PROJETEE. Ses minutages sont deja ceux du
+         montage final — elle commence a zero et ne suit aucun plan. */
+      const voixOff = demande.captionsVoixOff ?? [];
+      const mots = voixOff.length > 0
+        ? voixOff.map((m) => ({ ...m, ordrePlan: 1 }))
+        : (demande.captions ? projeterMots(
+          demande.captions.mots,
+          plan.plans.map((p) => ({
+            ordre: p.ordre,
+            rangClip: p.rangClip,
+            entreeSecondes: p.entreeSecondes,
+            dureeRetenueSecondes: p.dureeRetenueSecondes,
+          })),
+          demande.captions.clips,
+          recouvrement.dureeSecondes,
+        ) : []);
       const doc = styleCaption === null ? null : documentCaptions(
         mots,
         { ...styleCaption, position: profil.captions.position as never },
