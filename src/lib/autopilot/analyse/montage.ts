@@ -21,12 +21,54 @@ import {
   type FormatMontage, type GeometrieSource, type MotifPlan, type PlanMontage,
 } from './montage-contrat';
 import { arrondirSeconde, type ClipMaterialise } from './clip-contrat';
+import type { SourceSegment } from './montage-source';
 import {
   politiqueDePlan, palierDeQualite, PALIER_QUALITE, VERSION_SCORING,
   type PolitiquePlan,
 } from './objectif-score';
 import { VERSION_SIGNAUX } from './signaux-contrat';
 import type { ObjectifCommunication } from './objectif-communication';
+
+/**
+ * CE QUE LE MOTEUR SAIT D'UNE SOURCE — A_7b.
+ *
+ * ⚠️ TROIS CHOSES ÉTAIENT SCALAIRES DANS `m3g-v2`, ET NE POUVAIENT PAS L'ÊTRE
+ * PLUS LONGTEMPS :
+ *
+ *   • la GÉOMÉTRIE, qui décide du recadrage. Deux rushes n'ont aucune raison
+ *     d'avoir le même cadre ; en appliquer un seul recadrerait de travers
+ *     tout ce qui ne vient pas du premier ;
+ *   • la DURÉE DU RUSH, d'où sort le plafond de couverture. Montrer 60 % de
+ *     A et 60 % de B est légitime ; leur appliquer un plafond commun ne veut
+ *     rien dire ;
+ *   • les PLAGES DÉJÀ PRISES. « 15 s » dans A et « 15 s » dans B sont deux
+ *     images sans rapport. Les comparer ferait écarter le second comme un
+ *     doublon du premier — un montage silencieusement amputé.
+ *
+ * Chacune devient donc un attribut DE LA SOURCE. Avec une seule source, il y
+ * a une seule entrée, et le moteur se comporte exactement comme avant.
+ */
+export interface ContexteSourcePlan {
+  /** La clé de regroupement : le `clipSetId` de la source. */
+  cle: string;
+  geometrie: GeometrieSource;
+  /** Le plafond de couverture s'applique À CETTE source, et à elle seule. */
+  dureeRushSecondes?: number;
+  /** La provenance posée sur chaque segment issu de cette source — A_7a. */
+  source?: Omit<SourceSegment, 'rangClip' | 'debutSourceSecondes' | 'finSourceSecondes'>;
+}
+
+/** Un clip qui sait d'où il vient. La forme du pool multi-rush. */
+export interface ClipSource extends ClipMaterialise {
+  /** La clé de sa source, à retrouver dans `DemandePlan.contextes`. */
+  cleSource: string;
+  /** Son rang RÉEL dans son jeu — `rang` porte le rang GLOBAL du pool. */
+  rangDansJeu: number;
+}
+
+function cleDe(clip: ClipMaterialise): string {
+  return (clip as Partial<ClipSource>).cleSource ?? '';
+}
 
 export interface DemandePlan {
   /**
@@ -88,6 +130,20 @@ export interface DemandePlan {
    * résultat.
    */
   politique?: PolitiquePlan;
+  /**
+   * LES SOURCES DU POOL — A_7b.
+   *
+   * ⚠️ ABSENT = LE CHEMIN HISTORIQUE, À LA SECONDE PRÈS. Sans ce champ, tous
+   * les clips relèvent d'une source implicite unique, `geometrie` et
+   * `dureeRushSecondes` la décrivent, et le moteur suit exactement le code de
+   * `m3g-v2` — plafond commun, plages comparées entre elles, montage remis en
+   * ordre chronologique. Un test le vérifie sur une batterie de cas.
+   *
+   * ⚠️ PRÉSENT, IL NE REMPLACE PAS `geometrie` : il la RÉPARTIT. Chaque clip
+   * porte alors `cleSource`, et retrouve ici son cadre, sa durée de rush et
+   * sa provenance.
+   */
+  contextes?: readonly ContexteSourcePlan[];
 }
 
 export interface ResultatPlan {
@@ -140,6 +196,96 @@ function selonPolitique(
     const pb = position.get(b.rang) ?? Number.MAX_SAFE_INTEGER;
     return pa - pb || a.rang - b.rang;
   });
+}
+
+/**
+ * L'ORDRE D'UN MONTAGE MULTI-SOURCE — A_7b.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CE QUI SE PERD QUAND ON MÊLE DEUX RUSHES
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * `m3g-v2` remet les segments en ordre chronologique, et son commentaire dit
+ * pourquoi : sur UN rush, la source a une chronologie, et un montage qui
+ * saute en arrière surprend. Le même commentaire prévoyait ceci :
+ *
+ *   « Le jour où un montage mêlera plusieurs rushes, "avant" et "après"
+ *     cesseront d'avoir un sens entre deux fichiers, et cette règle devra
+ *     être reprise par le lot qui les mêlera. »
+ *
+ * C'est ce lot. Trier tous les segments sur `plage.debut` mêlerait deux
+ * horloges sans rapport : la 3ᵉ seconde de B passerait avant la 40ᵉ de A pour
+ * une raison qui n'existe pas.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * CE QUI RESTE VRAI, ET LA RÈGLE QUI EN DÉCOULE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Deux choses survivent au mélange :
+ *
+ *   1. la chronologie DANS chaque source. Un rush montré à rebours de
+ *      lui-même se remarque, même entrecoupé d'autre chose ;
+ *   2. l'intérêt d'ALTERNER. Montrer tout A puis tout B, c'est coller deux
+ *      plans-séquences, pas monter — et c'est exactement ce qu'un ordre par
+ *      blocs produirait.
+ *
+ * La règle tient donc les deux : chaque source garde son ordre interne, et on
+ * sert à chaque tour la source qui a le PLUS de segments restants, en évitant
+ * de reprendre celle qu'on vient de servir tant qu'une autre est disponible.
+ * Une source majoritaire revient donc souvent sans jamais monopoliser deux
+ * places de suite s'il existe une alternative.
+ *
+ * ⚠️ AUCUN TIRAGE AU SORT. À égalité de restant, c'est l'ordre de PREMIÈRE
+ * APPARITION qui tranche — celui-là même qui ordonne les sources du plan et
+ * nourrit `empreinteJeuxSources`. Deux appels identiques rendent le même
+ * montage, sans quoi l'identité du plan ne voudrait rien dire.
+ *
+ * Rend les INDICES d'entrée, dans l'ordre de montage.
+ */
+export function entrelacerSources(
+  segments: readonly { cle: string; debut: number }[],
+): number[] {
+  /* Chaque source, dans son ordre chronologique interne. L'ordre des groupes
+     est celui de première apparition dans la liste reçue. */
+  const groupes = new Map<string, number[]>();
+  for (let i = 0; i < segments.length; i += 1) {
+    const g = groupes.get(segments[i].cle);
+    if (g) g.push(i); else groupes.set(segments[i].cle, [i]);
+  }
+  for (const g of groupes.values()) {
+    g.sort((a, b) => segments[a].debut - segments[b].debut || a - b);
+  }
+
+  const cles = [...groupes.keys()];
+  const rangDeCle = new Map(cles.map((c, i) => [c, i]));
+  const restants = new Map(cles.map((c) => [c, 0]));
+
+  const sortie: number[] = [];
+  let precedente: string | null = null;
+
+  while (sortie.length < segments.length) {
+    const disponibles = cles.filter(
+      (c) => (restants.get(c) as number) < (groupes.get(c) as number[]).length,
+    );
+    if (disponibles.length === 0) break;
+
+    /* ⚠️ « AUTRE QUE LA PRÉCÉDENTE » N'EST PAS UNE INTERDICTION. Quand A est
+       seul à avoir encore de la matière, il reprend la main : refuser
+       reviendrait à jeter des segments retenus pour une règle de forme. */
+    const autres = disponibles.filter((c) => c !== precedente);
+    const choix = (autres.length > 0 ? autres : disponibles)
+      .sort((a, b) => {
+        const ra = (groupes.get(a) as number[]).length - (restants.get(a) as number);
+        const rb = (groupes.get(b) as number[]).length - (restants.get(b) as number);
+        return rb - ra || (rangDeCle.get(a) as number) - (rangDeCle.get(b) as number);
+      })[0];
+
+    const i = restants.get(choix) as number;
+    sortie.push((groupes.get(choix) as number[])[i]);
+    restants.set(choix, i + 1);
+    precedente = choix;
+  }
+  return sortie;
 }
 
 /**
@@ -234,8 +380,48 @@ export function planifierMontage(
     ? selonPolitique(demande.clips, politique.ordreRangs)
     : parRang(demande.clips);
 
-  const cadrage = recadrer(geometrie.largeur, geometrie.hauteur, format);
-  if (cadrage === null) return { resultat: null, motif: 'geometrie_inconnue' };
+  /* ── LE CADRE, PAR SOURCE ────────────────────────────────────────────
+     Une seule source : une seule entrée, calculée sur `geometrie` comme
+     avant. Plusieurs : chacune apporte la sienne, et une seule géométrie
+     illisible suffit à refuser le plan — recadrer de travers un rush pour
+     sauver les autres produirait un montage qui a l'air valide. */
+  const contextes: readonly ContexteSourcePlan[] = demande.contextes
+    ?? [{ cle: '', geometrie, dureeRushSecondes: demande.dureeRushSecondes }];
+  const parCle = new Map(contextes.map((c) => [c.cle, c]));
+
+  const cadrages = new Map<string, NonNullable<ReturnType<typeof recadrer>>>();
+  for (const c of contextes) {
+    const r = recadrer(c.geometrie.largeur, c.geometrie.hauteur, format);
+    if (r === null) return { resultat: null, motif: 'geometrie_inconnue' };
+    cadrages.set(c.cle, r);
+  }
+
+  const contexteDe = (clip: ClipMaterialise) => parCle.get(cleDe(clip)) ?? contextes[0];
+  const geometrieDe = (clip: ClipMaterialise) => contexteDe(clip).geometrie;
+  const cadrageDe = (clip: ClipMaterialise) =>
+    cadrages.get(cleDe(clip)) ?? cadrages.get(contextes[0].cle)!;
+
+  /**
+   * La provenance d'un segment, quand sa source la déclare.
+   *
+   * ⚠️ RIEN SUR LE CHEMIN HISTORIQUE. Une source implicite ne déclare aucun
+   * `source` : le `jsonb` d'un plan mono-rush reste donc identique à celui
+   * d'avant ce lot, et son empreinte avec lui. C'est A_7a qui résout la
+   * provenance de ces plans-là, à la lecture.
+   */
+  const provenanceDe = (clip: ClipMaterialise, debutSource: number, duree: number) => {
+    const base = contexteDe(clip).source;
+    if (!base) return null;
+    const rang = (clip as Partial<ClipSource>).rangDansJeu ?? clip.rang;
+    return {
+      source: {
+        ...base,
+        rangClip: rang,
+        debutSourceSecondes: arrondirSeconde(debutSource),
+        finSourceSecondes: arrondirSeconde(debutSource + duree),
+      } as SourceSegment,
+    };
+  };
 
   const cible = dimensionsCible(format);
   let cumul = 0;
@@ -249,20 +435,36 @@ export function planifierMontage(
    * d'une source on montre si on ignore combien elle dure ; refuser au
    * hasard serait pire que ne pas refuser.
    */
-  const dureeRush = nombreFiniPositif(demande.dureeRushSecondes);
-  const couvertureMax = dureeRush === null
-    ? Infinity
-    : arrondirSeconde(COUVERTURE_MAX_RUSH * dureeRush);
+  const dureeRushParCle = new Map<string, number | null>();
+  const couvertureMaxParCle = new Map<string, number>();
+  for (const c of contextes) {
+    const d = nombreFiniPositif(c.dureeRushSecondes);
+    dureeRushParCle.set(c.cle, d);
+    couvertureMaxParCle.set(
+      c.cle, d === null ? Infinity : arrondirSeconde(COUVERTURE_MAX_RUSH * d),
+    );
+  }
 
-  /** Ce qui est déjà pris dans la SOURCE, pour n'en rien montrer deux fois. */
-  const prises: Plage[] = [];
-  let couverture = 0;
+  /** Ce qui est déjà pris DANS CHAQUE SOURCE, pour n'en rien montrer deux fois. */
+  const prisesParCle = new Map<string, Plage[]>(contextes.map((c) => [c.cle, []]));
+  const couvertureParCle = new Map<string, number>(contextes.map((c) => [c.cle, 0]));
   const retenus: Array<{ clip: ClipMaterialise; plage: Plage; entree: number; duree: number; raccourci: boolean }> = [];
 
   for (const clip of ordonnes) {
     // Le plafond de M3-F vaut aussi ici : au plus autant de plans que de
     // clips matérialisables. Tout ce qui suit est écarté, et compté.
     if (retenus.length >= PLANS_MAX) { ecartes += 1; continue; }
+
+    /* ⚠️ L'ÉTAT SUIVI EST CELUI DE LA SOURCE DU CLIP. Un clip dont la source
+       n'est pas déclarée est écarté plutôt que rattaché à une autre : le
+       rattacher lui donnerait le cadre et le plafond d'un rush qui n'est pas
+       le sien, et le montage aurait l'air valide. */
+    const cle = cleDe(clip);
+    const prises = prisesParCle.get(cle);
+    const contexte = parCle.get(cle);
+    if (!prises || !contexte) { ecartes += 1; continue; }
+    const couvertureMax = couvertureMaxParCle.get(cle) ?? Infinity;
+    const couverture = couvertureParCle.get(cle) ?? 0;
 
     const disponible = dureeUtilisable(clip);
     if (disponible === null) { ecartes += 1; continue; }
@@ -282,7 +484,12 @@ export function planifierMontage(
      * ne le rogne pas pour prolonger la même scène.
      */
     const brute: Plage = { debut: clip.debutSecondes, fin: clip.finSecondes };
-    if (retenus.some((r) => ecart(brute, r.plage) < ECART_MOMENTS_MIN_SECONDES)) {
+    /* ⚠️ COMPARÉ AUX SEULS MOMENTS DE LA MÊME SOURCE. « 15 s » dans A et
+       « 15 s » dans B sont deux images sans rapport ; les confronter ferait
+       écarter le second comme la suite du premier, et le montage perdrait en
+       silence tout ce qui vient des rushes suivants. */
+    if (retenus.some((r) => cleDe(r.clip) === cle
+        && ecart(brute, r.plage) < ECART_MOMENTS_MIN_SECONDES)) {
       ecartes += 1;
       continue;
     }
@@ -335,7 +542,7 @@ export function planifierMontage(
       raccourci,
     });
     prises.push({ debut: morceau.debut, fin: arrondirSeconde(morceau.debut + retenue) });
-    couverture = arrondirSeconde(couverture + retenue);
+    couvertureParCle.set(cle, arrondirSeconde(couverture + retenue));
     cumul = arrondirSeconde(cumul + retenue);
   }
 
@@ -354,7 +561,25 @@ export function planifierMontage(
    * « avant » et « après » cesseront d'avoir un sens entre deux fichiers, et
    * cette règle devra être reprise par le lot qui les mêlera.
    */
-  retenus.sort((a, b) => a.plage.debut - b.plage.debut);
+  const multiSource = contextes.length > 1;
+  if (!multiSource) {
+    retenus.sort((a, b) => a.plage.debut - b.plage.debut);
+  } else {
+    /* ⚠️ LA RÈGLE CI-DESSUS EST REPRISE ICI, COMME SON COMMENTAIRE L'AVAIT
+       PRÉVU. « Avant » et « après » n'ont plus de sens entre deux fichiers :
+       trier tous les segments par `plage.debut` mêlerait les horloges de deux
+       rushes sans rapport et produirait un ordre qui n'a aucune raison d'être.
+
+       Ce qui reste vrai, c'est la chronologie DANS chaque source : un rush
+       montré à rebours de lui-même se remarque. `entrelacerSources` la tient
+       source par source, et alterne entre elles plutôt que de les servir en
+       blocs — un montage qui montre tout A puis tout B est deux plans-séquences
+       collés, pas un montage. */
+    const ordre = entrelacerSources(retenus.map((r) => ({ cle: cleDe(r.clip), debut: r.plage.debut })));
+    const reordonnes = ordre.map((i) => retenus[i]);
+    retenus.length = 0;
+    retenus.push(...reordonnes);
+  }
 
   const plans: PlanMontage[] = [];
   let timeline = 0;
@@ -368,12 +593,18 @@ export function planifierMontage(
       dureeRetenueSecondes: r.duree,
       debutTimelineSecondes: arrondirSeconde(timeline),
       raccourci: r.raccourci,
-      recadrage: cadrage.recadrage,
-      strategieRecadrage: cadrage.strategie,
-      largeurSource: geometrie.largeur,
-      hauteurSource: geometrie.hauteur,
+      recadrage: cadrageDe(r.clip).recadrage,
+      strategieRecadrage: cadrageDe(r.clip).strategie,
+      largeurSource: geometrieDe(r.clip).largeur,
+      hauteurSource: geometrieDe(r.clip).hauteur,
       // Coupe franche, toujours. Le fondu appartient à un lot ultérieur.
       raccordEntrant: RACCORD_DEFAUT,
+      /* ⚠️ LA PROVENANCE, QUAND LA SOURCE LA DÉCLARE — A_7a. Elle porte la
+         plage DANS LE RUSH : `morceau.debut` est déjà une seconde du rush, et
+         `r.duree` la part réellement montrée. La plage MONTAGE reste
+         `debutTimelineSecondes` / `dureeRetenueSecondes`, deux lignes plus
+         haut ; les confondre est le bug qui ne se voit qu'à l'image. */
+      ...(provenanceDe(r.clip, r.plage.debut, r.duree) ?? {}),
     });
     timeline = arrondirSeconde(timeline + r.duree);
   }
@@ -401,22 +632,49 @@ export function planifierMontage(
         ),
         largeurCible: cible.largeur,
         hauteurCible: cible.hauteur,
-        strategieRecadrage: cadrage.strategie,
+        strategieRecadrage: cadrages.get(contextes[0].cle)!.strategie,
         // Ce que la politique editoriale a decide, releve pour la relecture.
-        couvertureSecondes: couverture,
-        couvertureMaxSecondes: Number.isFinite(couvertureMax) ? couvertureMax : null,
-        couverturePart: dureeRush === null
+        /* ⚠️ CELLES DE LA PREMIÈRE SOURCE — c'est-à-dire LES SIENNES quand il
+           n'y en a qu'une, donc le relevé historique au caractère près. Le
+           détail par source, lui, est ajouté plus bas et seulement en
+           multi-rush : ajouter une clé sur le chemin mono rendrait
+           invérifiable la promesse « rien n'a changé ». */
+        couvertureSecondes: couvertureParCle.get(contextes[0].cle) ?? 0,
+        couvertureMaxSecondes: Number.isFinite(couvertureMaxParCle.get(contextes[0].cle))
+          ? couvertureMaxParCle.get(contextes[0].cle) : null,
+        couverturePart: dureeRushParCle.get(contextes[0].cle) == null
           ? null
-          : Math.round((couverture / dureeRush) * 1000) / 1000,
+          : Math.round(((couvertureParCle.get(contextes[0].cle) ?? 0)
+              / (dureeRushParCle.get(contextes[0].cle) as number)) * 1000) / 1000,
         ordreFinal: 'chronologique',
         ecartMomentsMin: ECART_MOMENTS_MIN_SECONDES,
         // Le plus petit trou entre deux moments montés : la mesure qui dit
         // si les coupes se voient. `null` quand il n'y a qu'un moment.
-        plusPetitTrouSecondes: retenus.length < 2 ? null : arrondirSeconde(
+        /* ⚠️ `null` EN MULTI-RUSH, ET CE N'EST PAS UNE OMISSION. Cette mesure
+           dit si deux moments montés viennent d'assez loin l'un de l'autre
+           pour que la coupe se voie. Entre deux rushes, la distance n'existe
+           pas : la calculer sur des horloges sans rapport rendrait un nombre
+           qui a l'air d'une mesure. Le détail par source, ci-dessous, dit ce
+           qui est réellement mesurable. */
+        plusPetitTrouSecondes: multiSource || retenus.length < 2 ? null : arrondirSeconde(
           Math.min(...retenus.slice(1).map(
             (r, i) => r.plage.debut - retenus[i].plage.fin,
           )),
         ),
+        ...(multiSource ? {
+          sources: contextes.map((c) => ({
+            cle: c.cle,
+            rushId: c.source?.rushId ?? null,
+            clipSetVersion: c.source?.clipSetVersion ?? null,
+            segments: retenus.filter((r) => cleDe(r.clip) === c.cle).length,
+            couvertureSecondes: couvertureParCle.get(c.cle) ?? 0,
+            couvertureMaxSecondes: Number.isFinite(couvertureMaxParCle.get(c.cle))
+              ? couvertureMaxParCle.get(c.cle) : null,
+            largeurSource: c.geometrie.largeur,
+            hauteurSource: c.geometrie.hauteur,
+          })),
+          ordreFinalMultiSource: 'alternance-chronologique-par-source',
+        } : {}),
         // ─────────────────────────────────────────────────────────────
         // L'EXPLICABILITÉ — AJOUTÉE SEULEMENT QUAND L'OBJECTIF A SERVI
         // ─────────────────────────────────────────────────────────────

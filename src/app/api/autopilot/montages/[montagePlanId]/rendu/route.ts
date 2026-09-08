@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { identifiantValide } from '@/lib/autopilot/analyse/clip-contrat';
 import { lirePlanParId } from '@/lib/autopilot/analyse/montage-service';
+import { rendreEstPossible } from '@/lib/autopilot/analyse/montage-pool';
 import { prendrePlaceRendu } from '@/lib/autopilot/analyse/capacite';
 import {
   BUDGET_RENDU_MAX_MS, CHAMPS_INTERDITS_RENDU, MOTIF_RENDU_INTERROMPU,
@@ -269,6 +270,25 @@ export async function POST(
     }
     if (!plan) {
       return NextResponse.json({ ok: false, error: 'Plan introuvable' }, { status: 404 });
+    }
+
+    /* ── LA GARDE MULTI-RUSH — A_7b ──────────────────────────────────────
+       ⚠️ REFUSER PLUTÔT QUE DE RETOMBER SUR LA PREMIÈRE SOURCE. M3-H ouvre
+       UNE entrée ffmpeg. Servi d'un plan dont les segments viennent de deux
+       rushes, il monterait TOUT depuis le premier fichier : les bornes
+       existeraient, la durée serait juste, la vidéo sortirait — et montrerait
+       autre chose que ce qui a été décidé, en facturant le rendu.
+
+       Un plan non rendu se voit ; une vidéo fausse, non. A_7c lèvera cette
+       garde en apprenant au renderer à ouvrir plusieurs entrées. */
+    const gardeMulti = rendreEstPossible(plan.plans);
+    if (!gardeMulti.possible) {
+      return NextResponse.json({
+        ok: false,
+        error: 'Ce montage assemble plusieurs rushes : le rendu multi-source '
+          + "n'est pas encore disponible.",
+        motif: gardeMulti.motif,
+      }, { status: 409 });
     }
 
     const identite: IdentiteRendu = {

@@ -549,3 +549,72 @@ export async function creerPlanMultiRushAtomique(
   const relu = await lirePlanParId(userId, planId);
   return { plan: relu.plan, issue, sources: [...sources], empreinte, motif: relu.motif };
 }
+
+/**
+ * LES SOURCES DES DERNIERS MONTAGES — A_7b.
+ *
+ * ═════════════════════════════════════════════════════════════════════════
+ * ⚠️ CETTE DONNÉE EXISTE DÉJÀ, ET C'EST LE BACKFILL D'A_7M QUI LA DONNE
+ * ═════════════════════════════════════════════════════════════════════════
+ *
+ * `rush_montage_plan_sources` porte une ligne par source de chaque plan, y
+ * compris pour les plans mono-rush historiques — A_7M leur a écrit la source
+ * qu'ils portaient déjà implicitement. La récence inter-vidéos n'est donc pas
+ * une promesse en l'air : elle se lit sur le parc réel dès la migration
+ * appliquée, sans attendre le premier montage multi-rush.
+ *
+ * ⚠️ BORNÉE, JAMAIS UN SCAN. Au-delà d'une dizaine de vidéos, ce qui a servi
+ * ne dit plus rien de ce qu'on vient de voir, et lire tout l'historique
+ * coûterait une requête qui grandit avec le compte pour un signal mort.
+ *
+ * ⚠️ UNE PANNE DE LECTURE N'EST PAS « AUCUN HISTORIQUE ». Rendre un tableau
+ * vide sur une erreur ferait croire à la diversité que toutes les sources sont
+ * fraîches, et le même rush reviendrait à chaque cycle sans que rien ne le
+ * signale. Le motif remonte, et l'appelant décide.
+ *
+ * Rendu du plus RÉCENT au plus ancien — l'ordre qu'attend
+ * `penaliteRecenceSource`.
+ */
+export async function lireHistoriqueSources(
+  userId: string, limite = 10,
+): Promise<{ historique: string[][]; motif: MotifPersistancePlan | null }> {
+  const n = Math.max(1, Math.min(50, Math.floor(limite)));
+
+  const { data: plans, error: erreurPlans } = await supabaseAdmin
+    .from('rush_montage_plans')
+    .select('id, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(n);
+
+  if (erreurPlans) {
+    if (socleAbsent(erreurPlans)) return { historique: [], motif: 'socle_absent' };
+    throw new Error(erreurPlans.message || 'lecture de l historique impossible');
+  }
+
+  const ids = (plans ?? []).map((p) => String((p as { id: unknown }).id));
+  if (ids.length === 0) return { historique: [], motif: null };
+
+  const { data: lignes, error } = await supabaseAdmin
+    .from('rush_montage_plan_sources')
+    .select(COLONNES_SOURCES_PLAN)
+    // ⚠️ LE COMPTE EST REFILTRÉ ICI AUSSI : la clé étrangère composite garantit
+    // l'appartenance, elle ne dispense pas de la demander.
+    .eq('user_id', userId)
+    .in('plan_id', ids);
+
+  if (error) {
+    if (socleAbsent(error)) return { historique: [], motif: 'socle_absent' };
+    throw new Error(error.message || 'lecture des sources impossible');
+  }
+
+  const parPlan = new Map<string, string[]>(ids.map((id) => [id, []]));
+  for (const l of lignes ?? []) {
+    const row = l as Record<string, unknown>;
+    parPlan.get(String(row.plan_id))?.push(String(row.clip_set_id));
+  }
+  /* L'ordre des plans fait foi : `ids` vient déjà du plus récent au plus
+     ancien. Un plan sans ligne de source garde son rang, vide — il occupe une
+     place dans la fenêtre de récence, et l'écraser décalerait les âges. */
+  return { historique: ids.map((id) => parPlan.get(id) ?? []), motif: null };
+}
