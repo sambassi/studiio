@@ -183,23 +183,60 @@ export async function lireRenduDeSession(
   const jeuIds = identifiants(jeux.data, 'id');
   if (jeuIds.length === 0) return AUCUN;
 
-  // ── 3. Les plans de montage de ces jeux ─────────────────────────────────
+  /* ── 2 bis. LES PLANS MULTI-RUSH, QUI NE PASSENT PAS PAR LE SCALAIRE ──────
+   *
+   * ⚠️ SANS CETTE LECTURE, AUCUN MONTAGE MULTI-RUSH N'ETAIT JAMAIS RENDU A
+   * L'UTILISATEUR. L'etape 3 retrouve les plans par `clip_set_id`, la colonne
+   * scalaire d'origine. A_7M l'a rendue NULLABLE, et les plans multi-source
+   * l'ecrivent NULL : leurs sources vivent dans `rush_montage_plan_sources`,
+   * une ligne par rush. Un `in('clip_set_id', …)` ne peut donc structurellement
+   * pas les voir — et l'ecran continuait d'afficher le dernier montage MONO,
+   * en silence, apres chaque creation multi-rush reussie.
+   *
+   * Constate le 2026-09-09 : quatre plans `m3g-v2+ms1` en base, tous avec
+   * `clip_set_id = NULL`, et le panneau montrait un rendu de la veille.
+   *
+   * ⚠️ LE SCALAIRE N'EST PAS REMPLI POUR AUTANT. Y ecrire un « rush principal »
+   * ferait mentir la donnee : un montage a deux sources n'en a pas une seule.
+   * La decision d'A_7M tient — c'est la LECTURE qui apprend les deux formes.
+   *
+   * Une requete de plus, et une seule, quel que soit le nombre de rushes.
+   */
+  const sources = await supabaseAdmin
+    .from('rush_montage_plan_sources')
+    .select('plan_id')
+    .eq('user_id', userId)
+    .in('clip_set_id', jeuIds);
+
+  if (sources.error && !socleAbsent(sources.error)) {
+    throw new Error(sources.error.message || 'lecture des sources de plan impossible');
+  }
+  /* ⚠️ UN SOCLE ABSENT N'EST PAS UNE PANNE ICI. La table est arrivee avec
+     A_7M ; sur un serveur qui ne l'a pas encore, les montages mono doivent
+     continuer de s'afficher exactement comme avant ce lot. */
+  const planIdsMulti = sources.error ? [] : identifiants(sources.data, 'plan_id');
+
+  /* ── 3. Les plans de montage — LES DEUX FORMES ───────────────────────────
+   *
+   * ⚠️ COLONNES ELARGIES, ET AUCUNE REQUETE PAR RUSH. Le plan sait ce qui a
+   * ete DEMANDE (`duree_cible_secondes`) et ce qui manque (`ecart_secondes`,
+   * `clips_ecartes`) ; l'ecran, lui, ne voyait que la duree obtenue. Demander
+   * 60 s et recevoir 13 s sans un mot fait croire a une panne la ou le moteur
+   * a simplement refuse de meubler.
+   *
+   * ⚠️ DEUX LECTURES PLUTOT QU'UN `or(…)`. La forme MONO se retrouve par
+   * `clip_set_id`, la MULTI par les identifiants deja collectes. Un `or`
+   * PostgREST aurait demande d'assembler a la main une chaine de filtre avec
+   * des listes d'UUID — une syntaxe fragile, qui produit `in.()` sur une liste
+   * vide et que tous les clients ne savent pas rejouer. Deux lectures simples
+   * disent la meme chose sans piege, et le nombre de requetes reste borne :
+   * il ne depend pas du nombre de rushes.
+   */
+  const COLONNES_PLAN = 'id, created_at, duree_cible_secondes, ecart_secondes, clips_ecartes';
+
   const plans = await supabaseAdmin
-    /**
-     * ⚠️ TROIS COLONNES DE PLUS, ET AUCUNE REQUETE DE PLUS.
-     *
-     * Cette lecture existait deja pour retrouver les plans de la session. Le
-     * plan sait ce qui a ete DEMANDE (`duree_cible_secondes`) et ce qui
-     * manque (`ecart_secondes`, `clips_ecartes`) ; l'ecran, lui, ne voyait
-     * que la duree obtenue. Demander 60 s et recevoir 13 s sans un mot fait
-     * croire a une panne la ou le moteur a simplement refuse de meubler.
-     *
-     * On elargit donc le `select` existant plutot que d'ajouter un aller-
-     * retour, et surtout plutot que de recalculer cote client une valeur que
-     * le serveur a deja ecrite.
-     */
     .from('rush_montage_plans')
-    .select('id, created_at, duree_cible_secondes, ecart_secondes, clips_ecartes')
+    .select(COLONNES_PLAN)
     .eq('user_id', userId)
     .in('clip_set_id', jeuIds)
     .order('created_at', { ascending: false });
@@ -208,7 +245,25 @@ export async function lireRenduDeSession(
     if (socleAbsent(plans.error)) return { rendu: null, motif: 'socle_absent' };
     throw new Error(plans.error.message || 'lecture des plans impossible');
   }
-  const planIds = identifiants(plans.data, 'id');
+
+  /* Les plans MULTI, s'il y en a. Aucune lecture quand la liste est vide : un
+     `in` sur rien ne rendrait rien, autant ne pas la poser. */
+  let lignesPlans: unknown[] = Array.isArray(plans.data) ? [...plans.data] : [];
+  if (planIdsMulti.length > 0) {
+    const multi = await supabaseAdmin
+      .from('rush_montage_plans')
+      .select(COLONNES_PLAN)
+      .eq('user_id', userId)
+      .in('id', planIdsMulti)
+      .order('created_at', { ascending: false });
+    if (multi.error) {
+      if (socleAbsent(multi.error)) return { rendu: null, motif: 'socle_absent' };
+      throw new Error(multi.error.message || 'lecture des plans impossible');
+    }
+    if (Array.isArray(multi.data)) lignesPlans = [...lignesPlans, ...multi.data];
+  }
+
+  const planIds = identifiants(lignesPlans, 'id');
   if (planIds.length === 0) return AUCUN;
 
   // ── 4. Le rendu le plus récent de ces plans ─────────────────────────────
@@ -234,7 +289,10 @@ export async function lireRenduDeSession(
   const rendu = renduDepuisLigne(ligne as Record<string, unknown>);
   // Le plan de CE rendu, retrouve dans la liste deja lue. Absent pour un
   // rendu ancien dont le plan aurait disparu : l'ecran s'en passe alors.
-  const ligneP = (plans.data ?? []).find(
+  /* ⚠️ CHERCHE DANS LES DEUX LISTES REUNIES. Ne regarder que la lecture MONO
+     laisserait un montage multi-rush sans sa duree demandee : l'ecran dirait
+     alors « 0:08 » sans jamais expliquer qu'on en avait demande 30. */
+  const ligneP = lignesPlans.find(
     (x) => (x as Record<string, unknown>).id === rendu?.montagePlanId,
   ) as Record<string, unknown> | undefined;
   return { rendu, plan: ligneP ? montageDemandeDepuisLigne(ligneP) : null, motif: null };
