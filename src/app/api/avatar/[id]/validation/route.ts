@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { validationPossible, MESSAGES_VALIDATION } from '@/lib/avatar/etats';
+import { apercuDuClone } from '@/lib/avatar/apercu';
 
 /**
  * A_8e — « JE VALIDE MON CLONE ».
@@ -82,25 +83,4 @@ export async function POST(
     );
   }
   return NextResponse.json({ ok: true, avatar: maj });
-}
-
-/**
- * L'apercu reel du clone, s'il en existe un.
- *
- * Aujourd'hui : la generation d'apercu n'existe pas encore, donc cette
- * fonction ne trouve rien et la validation reste fermee. Elle est ecrite pour
- * que A_8_FINAL n'ait qu'a la remplir, pas pour simuler un resultat.
- */
-async function apercuDuClone(userId: string, avatarId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from('avatar_generations')
-    .select('video_url')
-    .eq('user_id', userId)
-    .eq('user_avatar_id', avatarId)
-    .eq('status', 'completed')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const url = (data as { video_url?: unknown } | null)?.video_url;
-  return typeof url === 'string' && url.length > 0 ? url : null;
 }

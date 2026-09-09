@@ -245,9 +245,12 @@ describe('7. L’écran ne promet rien qu’il n’ait fait', () => {
 
     const promesse = PANNEAU.indexOf('Votre clone est prêt');
     expect(promesse).toBeGreaterThan(-1);
-    // La garde est calculée à partir du fournisseur, et elle précède la phrase.
+    /* La garde est calculée à partir du fournisseur, et elle précède la phrase.
+       Depuis A_8e elle exige DEUX faits, pas un : un entraînement terminé ET
+       un aperçu réellement produit. Un clone entraîné dont personne n'a encore
+       vu le résultat ne s'annonce donc pas comme prêt. */
     expect(PANNEAU).toContain('estEtatPret(statut)');
-    expect(PANNEAU.slice(0, promesse)).toMatch(/cloneEntraine\s*\?/);
+    expect(PANNEAU.slice(0, promesse)).toMatch(/cloneEntraine && apercuReel\s*\?/);
 
     expect(PANNEAU).toContain('Vidéo prête');
     expect(PANNEAU).toContain('L’entraînement sera');

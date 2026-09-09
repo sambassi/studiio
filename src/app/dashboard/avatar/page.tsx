@@ -65,6 +65,9 @@ export default function AvatarPage() {
      vignette plutot que de rejouer un 404 a chaque rendu. */
   const [sourceIndisponible, setSourceIndisponible] = useState(false);
   const [voices, setVoices] = useState<Voice[]>([]);
+  /* L'apercu REEL du clone, calcule par le serveur. `null` tant qu'aucune
+     generation n'existe — et l'ecran le dit plutot que de le combler. */
+  const [apercuClone, setApercuClone] = useState<string | null>(null);
 
   // Création
   const [kind, setKind] = useState<AvatarKind>('photo');
@@ -103,6 +106,7 @@ export default function AvatarPage() {
     if (!json.success) return null;
 
     setAvatar(json.data.avatar);
+    setApercuClone(typeof json.data.apercuUrl === 'string' ? json.data.apercuUrl : null);
 
     if (withVoices) {
       const list: Voice[] = json.data.voices || [];
@@ -260,6 +264,7 @@ export default function AvatarPage() {
         return;
       }
       setAvatar(json.data.avatar);
+    setApercuClone(typeof json.data.apercuUrl === 'string' ? json.data.apercuUrl : null);
       setNotice(
         kind === 'video'
           ? "Avatar vidéo créé. L'entraînement chez HeyGen prend plusieurs minutes — la page se met à jour toute seule."
@@ -383,6 +388,7 @@ export default function AvatarPage() {
         statut={avatar?.status ?? null}
         providerAvatarId={avatar?.provider_avatar_id ?? null}
         valideLe={avatar?.validated_at ?? null}
+        apercuUrl={apercuClone}
         onInscrit={() => { void loadAvatar(false); }}
       />
 

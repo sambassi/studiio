@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { BUCKET_AVATAR, cleSourceAvatar } from '@/lib/avatar/source';
 import { interrogerLeFournisseur } from '@/lib/avatar/etats';
+import { apercuDuClone } from '@/lib/avatar/apercu';
 import {
   uploadAsset,
   createAvatarFromAsset,
@@ -141,7 +142,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId } });
+    /* ⚠️ L'APERCU VIENT DE LA BASE, ET IL EST SOUVENT NULL — c'est le sens
+       meme du lot. Tant qu'aucune generation n'est rattachee au clone, l'ecran
+       n'a rien a montrer, et il doit le dire plutot que de combler le vide.
+       La MEME fonction repond a la route de validation : deux lectures
+       differentes finiraient par offrir « je valide » au-dessus d'un vide. */
+    const apercuUrl = avatar
+      ? await apercuDuClone(session.user.id, (avatar as { id: string }).id)
+      : null;
+
+    return NextResponse.json({
+      success: true, data: { avatar, voices, defaultVoiceId, apercuUrl },
+    });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);
     return NextResponse.json(

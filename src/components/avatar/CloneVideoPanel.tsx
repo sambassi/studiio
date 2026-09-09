@@ -61,6 +61,15 @@ interface Props {
   providerAvatarId?: string | null;
   /** La date d'acceptation par le propriétaire, si elle a eu lieu. */
   valideLe?: string | null;
+  /**
+   * L'aperçu RÉEL produit par le fournisseur, s'il existe.
+   *
+   * ⚠️ `null` N'AUTORISE AUCUN REMPLISSAGE. Ni mannequin, ni photo animée, ni
+   * vidéo d'exemple : quand il n'y a rien, l'écran dit qu'il n'y a rien. Cette
+   * entrée existe pour qu'A_8_FINAL n'ait qu'à la brancher — pas pour qu'on
+   * invente en attendant.
+   */
+  apercuUrl?: string | null;
   /** Rejoué après une inscription réussie, pour que la page se resynchronise. */
   onInscrit: () => void;
 }
@@ -72,7 +81,8 @@ const TAILLE_LISIBLE = (o: number) => (o < 1024 * 1024
   : `${(o / (1024 * 1024)).toFixed(1)} Mo`);
 
 export default function CloneVideoPanel({
-  avatarId, statut, providerAvatarId = null, valideLe = null, onInscrit,
+  avatarId, statut, providerAvatarId = null, valideLe = null,
+  apercuUrl = null, onInscrit,
 }: Props) {
   const [, setSource] = useState<Source>('aucune');
   const [fichier, setFichier] = useState<File | null>(null);
@@ -103,6 +113,8 @@ export default function CloneVideoPanel({
      faux clone à l'écran : un identifiant chez le fournisseur, ou rien. */
   const cloneChezFournisseur = typeof providerAvatarId === 'string' && providerAvatarId.length > 0;
   const cloneEntraine = cloneChezFournisseur && estEtatPret(statut);
+  /* Un aperçu, c'est une URL qui existe. Rien d'autre ne compte comme tel. */
+  const apercuReel = typeof apercuUrl === 'string' && apercuUrl.length > 0 ? apercuUrl : null;
   const valide = typeof valideLe === 'string' && valideLe.length > 0;
   const aUneInscription = prete || cloneChezFournisseur;
 
@@ -310,7 +322,7 @@ export default function CloneVideoPanel({
                 </p>
               </div>
             </div>
-          ) : cloneEntraine ? (
+          ) : cloneEntraine && apercuReel ? (
             <div
               className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-3"
               data-clone-a-valider
@@ -324,6 +336,15 @@ export default function CloneVideoPanel({
                   </p>
                 </div>
               </div>
+              {/* ⚠️ LE SEUL MÉDIA QUE CET ÉCRAN AFFICHE ICI EST CELUI QUE LE
+                  FOURNISSEUR A RÉELLEMENT PRODUIT. */}
+              <video
+                src={apercuReel}
+                controls
+                playsInline
+                data-clone-apercu
+                className="w-full rounded-xl bg-black aspect-video object-contain"
+              />
               <button
                 type="button"
                 onClick={valider}
@@ -334,6 +355,22 @@ export default function CloneVideoPanel({
                 {validation ? (<><Loader2 className="w-4 h-4 animate-spin" /> Enregistrement…</>)
                   : 'Je valide mon clone'}
               </button>
+            </div>
+          ) : cloneEntraine ? (
+            /* Entraîné, mais aucun aperçu produit : accepter sans avoir vu
+               serait signer pour ce qu'on n'a pas regardé. */
+            <div
+              className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+              data-clone-sans-apercu
+            >
+              <AlertTriangle className="w-5 h-5 text-amber-300 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium text-amber-200">Aperçu en attente</div>
+                <p className="text-amber-100/70 mt-0.5">
+                  Un aperçu de votre clone doit être généré avant que vous
+                  puissiez le valider.
+                </p>
+              </div>
             </div>
           ) : cloneChezFournisseur ? (
             <div

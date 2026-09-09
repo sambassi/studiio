@@ -94,6 +94,15 @@ describe('1. La page « Mon clone vidéo »', () => {
     expect(json.data.voices).toEqual([]);
     expect(json.data.avatar.status).toBe('source_ready');
   });
+
+  it('1.4 ⚠️ L’APERÇU EST NULL, ET C’EST LA BONNE RÉPONSE', async () => {
+    /* Aucune generation n'est rattachee a ce clone : la route rend `null`
+       plutot qu'une URL de remplacement. C'est sur cette valeur que l'ecran
+       decide de ne rien montrer. */
+    const json = await (await appeler('http://local/api/avatar/create')).json();
+    expect(json.data).toHaveProperty('apercuUrl');
+    expect(json.data.apercuUrl).toBeNull();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

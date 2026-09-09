@@ -291,8 +291,11 @@ describe('2. L’écran de clone ne montre que ce qui existe', () => {
     expect(container.querySelector('[data-clone-valider]')).toBeNull();
   });
 
-  it('2.4 un clone entraîné propose la validation, et l’envoie', async () => {
-    const { container } = monter({ statut: 'completed', providerAvatarId: 'hg_1' });
+  it('2.4 un clone entraîné AVEC APERÇU propose la validation, et l’envoie', async () => {
+    const { container } = monter({
+      statut: 'completed', providerAvatarId: 'hg_1',
+      apercuUrl: 'https://x/apercu.mp4',
+    });
     const bouton = container.querySelector('[data-clone-valider]') as HTMLButtonElement;
     expect(bouton).not.toBeNull();
     fireEvent.click(bouton);
@@ -307,15 +310,50 @@ describe('2. L’écran de clone ne montre que ce qui existe', () => {
       statut: 409,
       corps: { ok: false, motif: 'apercu_absent', error: 'Un aperçu de votre clone doit être généré avant validation.' },
     };
-    const { container } = monter({ statut: 'completed', providerAvatarId: 'hg_1' });
+    const { container } = monter({
+      statut: 'completed', providerAvatarId: 'hg_1',
+      apercuUrl: 'https://x/apercu.mp4',
+    });
     fireEvent.click(container.querySelector('[data-clone-valider]')!);
     await waitFor(() => expect(container.textContent)
       .toContain('Un aperçu de votre clone doit être généré avant validation.'));
   });
 
-  it('2.6 un clone déjà validé le dit, et ne redemande rien', () => {
+  it('2.6 ⚠️ ENTRAÎNÉ MAIS SANS APERÇU : PAS DE BOUTON, ET ON DIT POURQUOI', () => {
+    /* Accepter sans avoir vu, c'est signer pour ce qu'on n'a pas regardé. Le
+       serveur refuserait de toute façon — l'écran ne doit pas proposer un
+       geste dont il sait déjà qu'il sera rejeté. */
+    const { container } = monter({ statut: 'completed', providerAvatarId: 'hg_1' });
+    expect(container.querySelector('[data-clone-valider]')).toBeNull();
+    expect(container.querySelector('[data-clone-apercu]')).toBeNull();
+    expect(container.querySelector('[data-clone-sans-apercu]')).not.toBeNull();
+  });
+
+  it('2.7 ⚠️ L’APERÇU AFFICHÉ EST EXACTEMENT CELUI DU FOURNISSEUR', () => {
+    /* La seule vidéo montée dans cet état porte l'URL reçue du serveur — pas
+       une vignette de remplacement, pas la source de référence. */
+    const { container } = monter({
+      statut: 'completed', providerAvatarId: 'hg_1',
+      apercuUrl: 'https://x/apercu.mp4',
+    });
+    const videos = [...container.querySelectorAll('video')];
+    expect(videos).toHaveLength(1);
+    expect(videos[0].getAttribute('src')).toBe('https://x/apercu.mp4');
+    expect(videos[0].hasAttribute('data-clone-apercu')).toBe(true);
+  });
+
+  it('2.8 une URL vide n’est pas un aperçu', () => {
+    const { container } = monter({
+      statut: 'completed', providerAvatarId: 'hg_1', apercuUrl: '',
+    });
+    expect(container.querySelector('video')).toBeNull();
+    expect(container.querySelector('[data-clone-valider]')).toBeNull();
+  });
+
+  it('2.9 un clone déjà validé le dit, et ne redemande rien', () => {
     const { container } = monter({
       statut: 'completed', providerAvatarId: 'hg_1', valideLe: '2026-09-09T12:00:00Z',
+      apercuUrl: 'https://x/apercu.mp4',
     });
     expect(container.querySelector('[data-clone-valide]')).not.toBeNull();
     expect(container.querySelector('[data-clone-valider]')).toBeNull();
