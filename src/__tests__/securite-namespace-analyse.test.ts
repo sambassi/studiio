@@ -289,13 +289,21 @@ const FAMILLES: Famille[] = [
     fichier: 'src/app/api/upload/media/route.ts',
     marqueur: "formData.get('purpose') as string || 'general'",
   },
-  {
-    usage: 'source d avatar',
-    bucket: 'media', cle: `${UTILISATEUR}/avatar/source-${HORODATAGE}.png`,
-    type: 'image/png',
-    fichier: 'src/app/api/avatar/create/route.ts',
-    marqueur: '${userId}/avatar/source-${Date.now()}.${ext}',
-  },
+  /* ⚠️ « SOURCE D AVATAR » A QUITTÉ CETTE LISTE — A_8b, DÉLIBÉRÉMENT.
+
+     Elle y figurait comme une famille que le blocage ne devait PAS mordre. Ce
+     n'est plus vrai : `media/<userId>/avatar/…` est désormais refusé par le
+     relais public, au même titre que `analyse/`, et pour un motif plus fort
+     encore — ce qui vit là n'est pas une vignette, c'est le VISAGE de la
+     personne, et pour un clone vidéo ses deux à cinq minutes de footage.
+
+     Mesure du 2026-09-09 : cette famille revenait en 200, sans le moindre
+     cookie, derrière un lien permanent que personne ne pouvait révoquer.
+
+     Son seul accès légitime est `/api/avatar/[id]/source`, authentifié, qui
+     refait le contrôle de propriété. Le refus est vérifié par
+     `avatar-source-privee.test.ts` ; l'inscrire ici comme « famille servie »
+     ferait de ce fichier le gardien du défaut qu'A_8b corrige. */
   {
     usage: 'rendu serveur — le montage final',
     bucket: 'media', cle: `${UTILISATEUR}/rendus/rdu-77.webm`,

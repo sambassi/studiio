@@ -58,6 +58,7 @@ import { bucketAutorise } from '@/lib/storage/buckets';
 import {
   cleObjetValide, typeContenuDepuisCle, cleDansNamespaceAnalyse,
   cleDansNamespaceMontage,
+  cleDansNamespaceAvatar,
 } from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
@@ -189,6 +190,12 @@ function cibleRecevable(bucket: string, storagePath: string): boolean {
   // Le montage de l'Autopilote se lit par sa route authentifiée, jamais ici :
   // sinon le propriétaire pourrait en faire un lien public et permanent.
   if (cleDansNamespaceMontage(bucket, storagePath)) return false;
+  /* ⚠️ ET LA SOURCE D'UN AVATAR — A_8b. Ce que ce refus protege n'est pas un
+     fichier, c'est un visage : la photo, ou les deux a cinq minutes de footage,
+     de la personne elle-meme. Elle etait servie ici SANS SESSION, derriere un
+     lien permanent que personne ne pouvait revoquer. Son seul acces legitime
+     est `/api/avatar/[id]/source`, authentifie. */
+  if (cleDansNamespaceAvatar(bucket, storagePath)) return false;
   return true;
 }
 

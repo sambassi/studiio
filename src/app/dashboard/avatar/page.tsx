@@ -31,7 +31,14 @@ interface AvatarRow {
   status: string;
   avatar_type?: AvatarKind;
   training_error?: string | null;
+  /**
+   * ⚠️ HISTORIQUE SEULEMENT — A_8b. Elle porte une URL PUBLIQUE PERMANENTE sur
+   * les lignes creees avant ce lot. Plus aucune n'est ecrite, et l'apercu ne
+   * s'en sert plus : il passe par `/api/avatar/{id}/source`, authentifie.
+   */
   source_url: string | null;
+  /** La cle de l'objet prive. Presente des A_8b ; absente sur l'historique. */
+  source_object_key?: string | null;
   created_at: string;
 }
 
@@ -46,6 +53,9 @@ type GenStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 export default function AvatarPage() {
   const [loading, setLoading] = useState(true);
   const [avatar, setAvatar] = useState<AvatarRow | null>(null);
+  /* Une source illisible n'est demandee qu'une fois : la carte se passe de
+     vignette plutot que de rejouer un 404 a chaque rendu. */
+  const [sourceIndisponible, setSourceIndisponible] = useState(false);
   const [voices, setVoices] = useState<Voice[]>([]);
 
   // Création
@@ -515,20 +525,32 @@ export default function AvatarPage() {
         <div className="card-base p-6 space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              {avatar.source_url &&
+              {/* ⚠️ LA SOURCE PASSE PAR UNE ROUTE AUTHENTIFIEE — A_8b.
+                  Cet apercu lisait `avatar.source_url`, une URL PUBLIQUE
+                  PERMANENTE vers le visage de la personne : le relais public
+                  sert tout objet d'un compartiment autorise sans session. La
+                  meme image vient desormais d'une adresse de MEME ORIGINE qui
+                  exige la session et refait le controle de propriete.
+
+                  `sourceIndisponible` est le frein : une source absente ou
+                  refusee n'est demandee qu'UNE fois. Sans lui, un 404 couterait
+                  une requete a chaque rendu. */}
+              {avatar.source_object_key && !sourceIndisponible &&
                 (avatar.avatar_type === 'video' ? (
                   <video
-                    src={avatar.source_url}
+                    src={`/api/avatar/${avatar.id}/source`}
                     className="w-12 h-12 rounded-xl object-cover flex-shrink-0 bg-black"
                     muted
                     playsInline
+                    onError={() => setSourceIndisponible(true)}
                   />
                 ) : (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={avatar.source_url}
+                    src={`/api/avatar/${avatar.id}/source`}
                     alt="Votre avatar"
                     className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
+                    onError={() => setSourceIndisponible(true)}
                   />
                 ))}
               <div className="min-w-0">

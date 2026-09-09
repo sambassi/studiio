@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { BUCKET_AVATAR, cleSourceAvatar } from '@/lib/avatar/source';
 import {
   uploadAsset,
   createAvatarFromAsset,
@@ -32,6 +33,24 @@ const CONSENT_TEXT: Record<AvatarKind, string> = {
   video:
     "Je certifie etre la personne visible dans la video et j'autorise Studiio et HeyGen a l'utiliser pour entrainer un avatar a mon effigie.",
 };
+
+/**
+ * QUI L'AVATAR REPRESENTE — A_8 est SELF ONLY.
+ *
+ * ⚠️ CONSTANTE, PAS UN PARAMETRE. Un `subject_type` qui viendrait de la
+ * requete serait exactement la porte que cette regle ferme : personne ne doit
+ * pouvoir declarer creer le clone de quelqu'un d'autre.
+ */
+const SUJET_AVATAR = 'self';
+
+/**
+ * La version du texte de consentement accepte.
+ *
+ * Le texte peut evoluer ; ce qui a ete accepte un jour donne ne doit pas
+ * changer retroactivement. Le numero rend cette lecture possible sans comparer
+ * des phrases.
+ */
+const VERSION_CONSENTEMENT = 'a8b-2026-09-09';
 
 /** Statuts HeyGen consideres comme « avatar utilisable ». */
 const READY_STATUSES = ['completed', 'ready', 'success'];
@@ -196,9 +215,22 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // 1. Copie du fichier source sur notre stockage (tracabilite du consentement).
-    //    Non bloquant : si le stockage echoue, on cree quand meme l'avatar.
-    let sourceUrl: string | null = null;
+    /* 1. Copie du fichier source sur notre stockage (tracabilite du consentement).
+          Non bloquant : si le stockage echoue, on cree quand meme l'avatar.
+
+       ⚠️ UNE CLE, PLUS UNE URL PUBLIQUE — A_8b. Cette branche appelait
+       `getPublicUrl` et rangeait le resultat en base comme verite canonique.
+       Or le relais public sert tout objet d'un compartiment autorise SANS
+       SESSION : la photo — ou les deux a cinq minutes de footage — du visage de
+       la personne se retrouvait derriere un lien permanent que personne ne
+       pouvait revoquer.
+
+       Ce qui est persiste est desormais la CLE de l'objet, et rien d'autre.
+       Elle dit ou est la donnee ; la facon d'y acceder redevient une decision
+       du serveur, prise a chaque requete, apres controle du proprietaire —
+       `/api/avatar/[id]/source`. Le segment `avatar` place l'objet dans un
+       namespace que le relais public refuse desormais. */
+    let sourceObjectKey: string | null = null;
     try {
       const extByType: Record<string, string> = {
         'image/png': 'png',
@@ -209,13 +241,12 @@ export async function POST(req: NextRequest) {
         'video/quicktime': 'mov',
       };
       const ext = extByType[file.type] ?? (isVideo ? 'mp4' : 'jpg');
-      const storagePath = `${userId}/avatar/source-${Date.now()}.${ext}`;
+      const storagePath = cleSourceAvatar(userId, ext, Date.now());
       const { error: upErr } = await supabaseAdmin.storage
-        .from('media')
+        .from(BUCKET_AVATAR)
         .upload(storagePath, buffer, { contentType: file.type, upsert: true });
       if (!upErr) {
-        const { data: pub } = supabaseAdmin.storage.from('media').getPublicUrl(storagePath);
-        sourceUrl = pub?.publicUrl ?? null;
+        sourceObjectKey = storagePath;
       } else {
         console.warn('[Avatar] Source upload failed:', upErr.message);
       }
@@ -244,9 +275,14 @@ export async function POST(req: NextRequest) {
         provider_asset_id: asset.assetId,
         name,
         status: avatar.status,
-        source_url: sourceUrl,
+        /* ⚠️ `source_url` N'EST PLUS ECRITE — A_8b. Elle reste en base pour les
+           lignes anterieures, qui n'ont qu'elle pour retrouver leur source ; y
+           poser une URL publique de plus reintroduirait le defaut. */
+        source_object_key: sourceObjectKey,
+        subject_type: SUJET_AVATAR,
         consent_at: new Date().toISOString(),
         consent_text: CONSENT_TEXT[kind],
+        consent_version: VERSION_CONSENTEMENT,
       })
       .select()
       .single();

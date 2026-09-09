@@ -245,7 +245,13 @@ export function purposeAcceptable(valeur: unknown): boolean {
   if (typeof valeur !== 'string' || valeur.length === 0) return false;
   if (valeur.includes('/') || valeur.includes('\\')) return false;
   if (valeur.includes('..') || valeur.includes('://')) return false;
-  return valeur !== SEGMENT_NAMESPACE_ANALYSE;
+  /* ⚠️ ET `avatar` AUSSI — A_8b. Meme raisonnement, mot pour mot : les routes
+     d'envoi interpolent `purpose` tel quel dans la cle. Un appelant qui
+     demanderait `purpose: "avatar"` obtiendrait une cle `<userId>/avatar/…`
+     delivree par notre propre serveur, que le blocage en lecture rendrait
+     ensuite illisible — sans message et sans trace. On refuse a l'ecriture ce
+     qu'on refuse a la lecture, plutot que de documenter un trou. */
+  return valeur !== SEGMENT_NAMESPACE_ANALYSE && valeur !== SEGMENT_NAMESPACE_AVATAR;
 }
 
 /**
@@ -284,6 +290,34 @@ function contientSegment(cle: unknown, segment: string): boolean {
     }
     return false;
   });
+}
+
+/**
+ * LE DOMAINE DES SOURCES D'AVATAR — A_8b.
+ *
+ * ⚠️ CE QUE CE NAMESPACE PROTEGE N'EST PAS UN FICHIER, C'EST UN VISAGE.
+ *
+ * La source d'un avatar est la photo — ou, pour un clone video, les deux a
+ * cinq minutes de footage — de la personne elle-meme, son visage et sa voix.
+ * C'est la donnee la plus sensible que Studiio stocke.
+ *
+ * Elle etait pourtant servie par le relais public : `create` posait un
+ * `getPublicUrl`, et le relais rend tout objet d'un compartiment autorise SANS
+ * SESSION. Mesure du 2026-09-09 : 200 et 4,3 Mo sur un objet du meme regime,
+ * sans le moindre cookie. Le lien etait permanent et irrevocable.
+ *
+ * Le seul acces legitime est desormais `/api/avatar/[id]/source`, qui exige
+ * une session et refait le controle de propriete. Ici, c'est 404 — pas 401,
+ * pas 403 : un code distinct signalerait que le namespace existe.
+ *
+ * Meme geste que pour les vignettes d'analyse et les montages, meme motif.
+ */
+export const BUCKET_NAMESPACE_AVATAR = 'media';
+export const SEGMENT_NAMESPACE_AVATAR = 'avatar';
+
+export function cleDansNamespaceAvatar(bucket: unknown, cle: unknown): boolean {
+  if (bucket !== BUCKET_NAMESPACE_AVATAR) return false;
+  return contientSegment(cle, SEGMENT_NAMESPACE_AVATAR);
 }
 
 export function cleDansNamespaceAnalyse(bucket: unknown, cle: unknown): boolean {
