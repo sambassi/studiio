@@ -251,7 +251,13 @@ export function purposeAcceptable(valeur: unknown): boolean {
      delivree par notre propre serveur, que le blocage en lecture rendrait
      ensuite illisible — sans message et sans trace. On refuse a l'ecriture ce
      qu'on refuse a la lecture, plutot que de documenter un trou. */
-  return valeur !== SEGMENT_NAMESPACE_ANALYSE && valeur !== SEGMENT_NAMESPACE_AVATAR;
+  /* ⚠️ ET `lut` AUSSI — A_9b. Troisieme fois le meme raisonnement : on refuse
+     a l'ecriture ce qu'on refuse a la lecture. Un `purpose: "lut"` accepte ici
+     rendrait une cle `<userId>/lut/…` delivree par notre propre serveur, que le
+     relais public refuserait ensuite de servir — sans message et sans trace. */
+  return valeur !== SEGMENT_NAMESPACE_ANALYSE
+    && valeur !== SEGMENT_NAMESPACE_AVATAR
+    && valeur !== SEGMENT_NAMESPACE_LUT;
 }
 
 /**
@@ -318,6 +324,26 @@ export const SEGMENT_NAMESPACE_AVATAR = 'avatar';
 export function cleDansNamespaceAvatar(bucket: unknown, cle: unknown): boolean {
   if (bucket !== BUCKET_NAMESPACE_AVATAR) return false;
   return contientSegment(cle, SEGMENT_NAMESPACE_AVATAR);
+}
+
+/**
+ * A_9b — LES LOOKS IMPORTES SONT PRIVES, EUX AUSSI.
+ *
+ * ⚠️ MOINS SENSIBLE QU'UN VISAGE, ET POURTANT LA MEME REGLE. Un `.cube` est le
+ * travail d'etalonnage de quelqu'un — parfois achete, parfois vendu. Le servir
+ * sans session en ferait un catalogue de LUT en libre-service, telechargeable
+ * par quiconque devine deux identifiants.
+ *
+ * Et surtout : la garde est posee EN MEME TEMPS que le namespace. Ouvrir le
+ * rangement d'abord et le fermer ensuite laisse toujours une fenetre, et la
+ * fenetre est exactement ce qu'A_8b a du refermer.
+ */
+export const BUCKET_NAMESPACE_LUT = 'media';
+export const SEGMENT_NAMESPACE_LUT = 'lut';
+
+export function cleDansNamespaceLut(bucket: unknown, cle: unknown): boolean {
+  if (bucket !== BUCKET_NAMESPACE_LUT) return false;
+  return contientSegment(cle, SEGMENT_NAMESPACE_LUT);
 }
 
 export function cleDansNamespaceAnalyse(bucket: unknown, cle: unknown): boolean {

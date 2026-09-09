@@ -58,7 +58,7 @@ import { bucketAutorise } from '@/lib/storage/buckets';
 import {
   cleObjetValide, typeContenuDepuisCle, cleDansNamespaceAnalyse,
   cleDansNamespaceMontage,
-  cleDansNamespaceAvatar,
+  cleDansNamespaceAvatar, cleDansNamespaceLut,
 } from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
@@ -196,6 +196,9 @@ function cibleRecevable(bucket: string, storagePath: string): boolean {
      lien permanent que personne ne pouvait revoquer. Son seul acces legitime
      est `/api/avatar/[id]/source`, authentifie. */
   if (cleDansNamespaceAvatar(bucket, storagePath)) return false;
+  /* A_9b — meme refus pour les looks importes : le travail d'etalonnage de
+     quelqu'un ne se telecharge pas sans session. */
+  if (cleDansNamespaceLut(bucket, storagePath)) return false;
   return true;
 }
 
