@@ -42,6 +42,7 @@ import {
 } from '@/lib/voice/synthese';
 import { presetsPersonnelsValides, type PresetPersonnel } from './presets';
 import { prononciationsValides, type Prononciation } from '@/lib/voice/prononciations';
+import { lutsUtilisateurValides, type LutUtilisateur } from './lut-utilisateur';
 
 /** Les cinq familles qu'une personne peut mettre en favori. */
 export const FAMILLES_BIBLIOTHEQUE = [
@@ -123,6 +124,15 @@ export interface BibliothequeCreative {
    * migration pour ranger une liste de deux champs.
    */
   prononciations: readonly Prononciation[];
+  /**
+   * A_9b — LES LOOKS QUE LE COMPTE A IMPORTES.
+   *
+   * ⚠️ SŒUR DE `audio`, ET POUR LA MEME RAISON. Ce ne sont pas des entrees
+   * d'un catalogue partage : ce sont des FICHIERS du compte, designes par une
+   * cle dont le prefixe prouve la propriete. Les graver dans `looks.ts`
+   * ferait entrer le look d'une personne dans le code de tout le monde.
+   */
+  luts: readonly LutUtilisateur[];
 }
 
 /**
@@ -287,6 +297,7 @@ export const BIBLIOTHEQUE_VIDE: BibliothequeCreative = Object.freeze({
   audio: BANQUE_AUDIO_VIDE,
   voixOff: null,
   prononciations: Object.freeze([]) as readonly Prononciation[],
+  luts: Object.freeze([]) as readonly LutUtilisateur[],
 });
 
 /**
@@ -349,6 +360,11 @@ export function bibliothequeValide(
     audio: userId ? banqueAudioValide(o.audio, userId) : BANQUE_AUDIO_VIDE,
     voixOff: userId ? voixOffValide(o.voixOff, userId) : null,
     prononciations: prononciationsValides(o.prononciations),
+    /* ⚠️ MEME REGLE QUE LA BANQUE AUDIO : sans compte, on ne devine pas. Une
+       cle de LUT porte sa propriete dans son prefixe, et une bibliotheque
+       relue sans savoir a qui elle appartient laisserait entrer celle d'un
+       tiers. */
+    luts: userId ? lutsUtilisateurValides(o.luts, userId) : [],
   };
 }
 
@@ -356,6 +372,7 @@ export function bibliothequeValide(
 export function bibliothequeVide(b: BibliothequeCreative): boolean {
   return b.voixOff === null
     && b.prononciations.length === 0
+    && b.luts.length === 0
     && b.audio.pistes.length === 0
     && b.presets.length === 0
     && politiqueVide(b.automatisation)

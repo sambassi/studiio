@@ -42,6 +42,7 @@
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { lireConfigJumeau, type ConfigJumeauNumerique } from '@/lib/avatar/jumeau';
+import type { LutUtilisateur } from '@/lib/creatif/lut-utilisateur';
 import {
   normaliserProfilCreatif, type ProfilCreatifAutopilote,
 } from './profil-creatif';
@@ -429,6 +430,118 @@ export async function enregistrerJumeauUtilisateur(
   const ok = await fusionnerDesignStyle(userId, { jumeauNumerique: normalise });
   if (!ok) return { ok: false, motif: 'ecriture_impossible' };
   return { ok: true, jumeau: normalise };
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   A_9b — LES LOOKS IMPORTES : UNE ECRITURE QUI NE PERD RIEN
+
+   ⚠️ POURQUOI CE N'EST PAS `enregistrerBibliothequeUtilisateur`.
+
+   Celle-ci fusionne la cle `bibliothequeCreative` ENTIERE, calculee en memoire
+   depuis une lecture anterieure. Deux imports simultanes liraient donc la meme
+   bibliotheque et le second effacerait le premier — exactement le defaut que la
+   banque audio a paye, mesure et corrige au lot A_5.
+
+   ⚠️ ET POURQUOI PAS UNE RPC DEDIEE NON PLUS. Il en faudrait une par famille,
+   donc une migration par famille. Ici la garantie vient d'un ECHANGE COMPARE :
+   on relit `updated_at`, on ecrit SOUS CONDITION que personne ne l'ait bouge, et
+   on recommence sinon. La colonne existe depuis 2026-08-04, elle est `not null`,
+   et TOUS les ecrivains de `design_style` la remontent — la RPC de fusion
+   comprise. Aucune migration, et la meme garantie : la derniere ecriture ne peut
+   pas ecraser une lecture perimee, elle est refusee et rejouee.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/** Combien de fois on rejoue avant d'abandonner. */
+const TENTATIVES_ECHANGE_COMPARE = 8;
+
+export type MutationLut =
+  | { ok: true; issue: 'creee' | 'existante'; luts: readonly LutUtilisateur[] }
+  | { ok: false; motif: 'pleine' | 'ecriture_impossible' };
+
+/**
+ * Ajoute une LUT au catalogue du compte, sans jamais perdre une voisine.
+ *
+ * ⚠️ LE DOUBLON EST TRANCHE AVANT LE PLAFOND, ET L'ORDRE COMPTE. Reimporter un
+ * fichier deja present alors que la bibliotheque est pleine doit rendre
+ * « existante », pas « pleine » : rien n'est ajoute, donc rien ne deborde. Tester
+ * le plafond d'abord refuserait un geste qui ne consomme aucune place.
+ */
+export async function ajouterLutUtilisateur(
+  userId: string, lut: LutUtilisateur, max: number,
+): Promise<MutationLut> {
+  if (!userId) return { ok: false, motif: 'ecriture_impossible' };
+  const plafond = Math.max(0, Math.trunc(max));
+
+  for (let essai = 0; essai < TENTATIVES_ECHANGE_COMPARE; essai += 1) {
+    type LigneConfig = { design_style: unknown; updated_at: unknown };
+    let lu: LigneConfig | null = null;
+    try {
+      const { data, error } = await supabaseAdmin
+        .from(TABLE)
+        .select('design_style, updated_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (error) {
+        console.error('[Autopilote] Lecture du catalogue de looks :', error.message);
+        return { ok: false, motif: 'ecriture_impossible' };
+      }
+      lu = (data ?? null) as LigneConfig | null;
+    } catch (err) {
+      console.error(
+        '[Autopilote] Lecture du catalogue de looks impossible :',
+        err instanceof Error ? err.message : err,
+      );
+      return { ok: false, motif: 'ecriture_impossible' };
+    }
+
+    /* Aucune ligne : on la cree, puis on rejoue. `do nothing` en cas de course —
+       celui qui perd relira simplement la ligne de l'autre. */
+    if (!lu) {
+      const { error } = await supabaseAdmin
+        .from(TABLE)
+        .upsert({ user_id: userId }, { onConflict: 'user_id', ignoreDuplicates: true });
+      if (error) {
+        console.error('[Autopilote] Creation de la configuration :', error.message);
+        return { ok: false, motif: 'ecriture_impossible' };
+      }
+      continue;
+    }
+
+    const style = sanitizeDesignStyle(lu.design_style, userId);
+    const biblio = bibliothequeValide(style.bibliothequeCreative, userId);
+    const existante = biblio.luts.find((l) => l.empreinte === lut.empreinte);
+    if (existante) return { ok: true, issue: 'existante', luts: biblio.luts };
+    if (biblio.luts.length >= plafond) return { ok: false, motif: 'pleine' };
+
+    const suivantes = [...biblio.luts, lut];
+    const suivant = sanitizeDesignStyle(
+      { ...style, bibliothequeCreative: { ...biblio, luts: suivantes } }, userId,
+    );
+
+    /* ⚠️ LA CONDITION EST TOUTE LA GARANTIE. Sans `.eq('updated_at', …)`, cette
+       ecriture serait un lire-modifier-ecrire de plus, et la LUT d'a cote
+       disparaitrait sans un mot. */
+    const { data: majs, error: erreurMaj } = await supabaseAdmin
+      .from(TABLE)
+      .update({ design_style: suivant, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('updated_at', lu.updated_at as string)
+      .select('user_id');
+
+    if (erreurMaj) {
+      console.error('[Autopilote] Ecriture du catalogue de looks :', erreurMaj.message);
+      return { ok: false, motif: 'ecriture_impossible' };
+    }
+    /* Zero ligne touchee : quelqu'un a ecrit entre-temps. On relit et on rejoue
+       — jamais on n'ecrase. */
+    if (Array.isArray(majs) && majs.length > 0) {
+      const relue = bibliothequeValide(suivant.bibliothequeCreative, userId);
+      return { ok: true, issue: 'creee', luts: relue.luts };
+    }
+  }
+
+  console.error('[Autopilote] Catalogue de looks : trop de collisions d\'ecriture.');
+  return { ok: false, motif: 'ecriture_impossible' };
 }
 
 export type EcritureBibliotheque =
