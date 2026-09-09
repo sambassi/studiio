@@ -41,6 +41,7 @@ import {
   arrondirSeconde, nombreFini,
 } from './clip-contrat';
 import { DUREE_CIBLE_MAX_SECONDES, PLANS_MAX } from './montage-contrat';
+import type { IdentiteJumeau } from '@/lib/avatar/jumeau';
 
 // ───────────────────────────────────────────────────────────────────────────
 // L'identité de la méthode
@@ -117,6 +118,30 @@ export const PREFIXE_METHODE_MIX = 'x264-mix-v1-' as const;
  */
 export const PREFIXE_METHODE_PROFIL = 'x264-pc-v1-' as const;
 
+/**
+ * A_8f — LE PREFIXE DES RENDUS QUI PORTENT UNE PERSONNE NUMERIQUE.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ⚠️ UN QUATRIEME PREFIXE, POUR LA MEME RAISON QUE LE TROISIEME
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * La reutilisation d'un rendu reussi est STRUCTURELLE : l'index unique refuse
+ * le second, l'appelant relit le premier. Si l'identite de la personne
+ * n'entrait pas dans `methode_rendu`, reentrainer son clone — ou changer de
+ * voix — rendrait L'ANCIEN FICHIER, avec l'ancien visage, sans erreur et sans
+ * message. C'est la panne qui ne se voit pas, appliquee cette fois au visage
+ * de quelqu'un.
+ *
+ * ⚠️ ET LE PASSE RESTE INTACT, AU BIT PRES. Une generation sans personne
+ * numerique n'ajoute RIEN a la chaine hachee : les trois cas d'avant ce lot
+ * rendent exactement la meme valeur qu'hier, et aucun rendu deja reussi ne
+ * devient introuvable — donc rien n'est recalcule ni refacture.
+ *
+ * ⚠️ ONZE CARACTERES, COMME LES AUTRES. 11 + 24 = 35, sous la borne de 40 de
+ * `methode_rendu`, et un test la garde.
+ */
+export const PREFIXE_METHODE_JUMEAU = 'x264-dt-v1-' as const;
+
 /** La borne de la colonne, recopiee de la migration. Gardee par un test. */
 export const LONGUEUR_METHODE_RENDU_MAX = 40;
 
@@ -161,7 +186,14 @@ export function methodeRendu(
   recette: RecetteAudio | null | undefined,
   profil?: ProfilCreatifPartiel | ProfilCreatifAutopilote | null,
   appelAction?: { texte: string | null; destination: string | null } | null,
+  jumeau?: IdentiteJumeau | null,
 ): string {
+  /* ⚠️ LA PERSONNE NUMERIQUE D'ABORD, ET AU-DESSUS DE TOUT LE RESTE. Qui
+     apparait dans la video prime sur la maniere dont elle est montee : deux
+     videos identiques en tout sauf le clone sont deux videos differentes. */
+  if (jumeau) {
+    return `${PREFIXE_METHODE_JUMEAU}${empreinteRenduComplet(recette, profil, appelAction, jumeau)}`;
+  }
   // ⚠️ LE PROFIL D'ABORD. Un profil qui demande quelque chose l'emporte, meme
   // sur une recette audio historique : sinon une video sans musique mais avec
   // un CTA rendrait `METHODE_RENDU`, c'est-a-dire le fichier d'avant.
@@ -202,6 +234,7 @@ export function empreinteRenduComplet(
   recette: RecetteAudio | null | undefined,
   profil: ProfilCreatifPartiel | ProfilCreatifAutopilote | null | undefined,
   appelAction?: { texte: string | null; destination: string | null } | null,
+  jumeau?: IdentiteJumeau | null,
 ): string {
   const audio = recetteCanonique(recette ?? RECETTE_AUDIO_DEFAUT);
   const style = profilCreatifCanonique(profil);
@@ -234,8 +267,19 @@ export function empreinteRenduComplet(
   const look = profilLu?.lut?.active && profilLu.lut.lutId
     ? `\n--\n${VERSION_LOOK}`
     : '';
+  /* ⚠️ L'IDENTITE DE LA PERSONNE ENTRE ENTIEREMENT, VERSION COMPRISE.
+     `avatarId` seul ne suffirait pas : un reentrainement produit le meme
+     identifiant interne et une AUTRE personne numerique. Et la voix compte
+     autant que le visage — changer de voix change ce que la video dit
+     entendre.
+
+     Absente, elle n'ajoute RIEN a la chaine hachee : les rendus d'avant ce
+     lot gardent exactement leur empreinte, et restent reutilisables. */
+  const personne = jumeau
+    ? `\n--\ndt:${jumeau.avatarId}|${jumeau.avatarVersion}|${jumeau.userVoiceId}`
+    : '';
   return createHash('sha256')
-    .update(`${audio}\n--\n${style}${cta}${look}`, 'utf8')
+    .update(`${audio}\n--\n${style}${cta}${look}${personne}`, 'utf8')
     .digest('hex')
     .slice(0, LONGUEUR_EMPREINTE);
 }
