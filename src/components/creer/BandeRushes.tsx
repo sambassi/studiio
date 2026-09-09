@@ -32,8 +32,16 @@ import type { Rush } from '@/lib/autopilot/tournage/contrat';
  * L'analyse produit deja huit vignettes par rush et les sert par une route
  * qui recontrole la propriete a chaque requete. En generer d'autres serait
  * payer deux fois pour la meme image. La carte prend donc la vignette 0 de
- * l'analyse du rush, et retombe sur une pellicule quand il n'y en a pas
- * encore — un rush non analyse n'a legitimement pas d'image.
+ * l'analyse du rush.
+ *
+ * ⚠️ ET QUAND L'ANALYSE N'EN A PRODUIT AUCUNE — CREER_PREMIUM_3F. La carte
+ * montrait alors une pellicule grise, en confondant deux choses tres
+ * differentes : « ce rush n'a pas d'image » et « personne n'est encore alle la
+ * chercher ». Un rush lisible, mesure, present dans le stockage a forcement
+ * une image ; il manquait seulement un chemin. `/rushes/[id]/apercu` extrait
+ * cette image UNE fois cote serveur, l'ecrit a une cle deterministe, et la
+ * ressert ensuite. La pellicule reste, mais pour le seul cas qu'elle decrit
+ * honnetement : un media qu'on ne sait vraiment pas illustrer.
  */
 
 /** Ce que la bande sait d'une analyse, et rien de plus. */
@@ -268,12 +276,27 @@ export default function BandeRushes({
             const nom = nomCourt(r);
             const duree = a?.dureeSecondes ? formaterDuree(a.dureeSecondes) : null;
             const analyse = a?.etat === 'reussie';
-            /* ⚠️ ON NE DEMANDE PAS CE QU'ON SAIT ABSENT. `vignettes === 0`
-               est une réponse, pas une ignorance : la demander produirait un
-               404 par rush et par montage du composant. */
-            const image = a && !sansImage[r.id] && a.vignettes !== 0
-              ? `/api/autopilot/analyses/${a.id}/vignettes/0`
-              : null;
+            /* ⚠️ DEUX SOURCES, DANS CET ORDRE, ET UNE SEULE REQUETE.
+
+               1. La vignette de l'analyse quand elle en a : elle est deja
+                  produite, deja ecrite, deja payee.
+               2. Sinon l'apercu du rush lui-meme, extrait une fois cote
+                  serveur puis relu depuis le stockage.
+
+               `vignettes === 0` reste une reponse, pas une ignorance :
+               demander `/vignettes/0` a une analyse qui n'en a aucune
+               produisait un 404 par rush et par montage du composant. Mais une
+               ANALYSE sans image ne veut pas dire un MEDIA sans image — c'est
+               ce que le second recours va chercher, a la place de la pellicule
+               grise.
+
+               `sansImage` reste le frein : un rush reellement impossible a
+               illustrer n'est demande qu'UNE fois. */
+            const image = sansImage[r.id]
+              ? null
+              : a && a.vignettes !== 0
+                ? `/api/autopilot/analyses/${a.id}/vignettes/0`
+                : `/api/autopilot/rushes/${r.id}/apercu`;
             return (
               <div
                 key={r.id}

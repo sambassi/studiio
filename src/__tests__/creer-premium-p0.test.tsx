@@ -140,14 +140,33 @@ describe('P0 — le signal de tournage ne boucle plus', () => {
 // 2. LES VIGNETTES
 // ═══════════════════════════════════════════════════════════════════════════
 describe('P0 — plus de tempête de vignettes 404', () => {
-  it('une analyse SANS vignette ne déclenche aucune requête d image', () => {
-    /* ⚠️ `vignettes: 0` EST UNE RÉPONSE, PAS UNE IGNORANCE. La carte
-       demandait `/vignettes/0`, recevait 404, et ne l'apprenait qu'après —
-       une requête perdue par rush et par montage du composant. */
+  /* ⚠️ CE QUE CE BANC TIENT A CHANGÉ D'OBJET, PAS D'EXIGENCE —
+     CREER_PREMIUM_3F.
+
+     Il vérifiait qu'une analyse sans vignette ne déclenchait AUCUNE requête.
+     C'était la bonne réponse tant que la seule image possible était celle de
+     l'analyse : la demander revenait à collectionner des 404.
+
+     Mais « l'analyse n'a produit aucune image » n'est pas « ce média n'a pas
+     d'image ». Le rush est lisible ; une route sait désormais en extraire une
+     frame et la garder. La carte a donc quelque chose à demander — à une
+     adresse qui peut répondre.
+
+     L'exigence, elle, ne bouge pas d'un pouce : JAMAIS une requête dont on
+     sait déjà qu'elle échouera, JAMAIS deux requêtes pour la même carte, et
+     JAMAIS de seconde tentative après un échec constaté. C'est cela qui est
+     mesuré ci-dessous. */
+
+  it('une analyse sans vignette ne demande plus /vignettes/0', () => {
     poser({ [ID(1)]: { id: 'a1', etat: 'reussie', vignettes: 0 },
       [ID(2)]: { id: 'a2', etat: 'reussie', vignettes: 0 },
       [ID(3)]: null });
-    expect(images()).toHaveLength(0);
+    const srcs = images();
+    // Zéro requête vers l'adresse dont l'analyse dit déjà qu'elle est vide.
+    expect(srcs.filter((s) => s?.includes('/vignettes/'))).toHaveLength(0);
+    // Une image par carte, vers la seule adresse capable de répondre.
+    expect(srcs).toHaveLength(3);
+    expect(srcs.every((s) => s?.endsWith('/apercu'))).toBe(true);
   });
 
   it('une analyse AVEC vignettes en demande une, et une seule par rush', () => {
@@ -155,24 +174,33 @@ describe('P0 — plus de tempête de vignettes 404', () => {
       [ID(2)]: { id: 'a2', etat: 'reussie', vignettes: 3 },
       [ID(3)]: null });
     const srcs = images();
-    expect(srcs).toHaveLength(2);
+    // ⚠️ L'IMAGE DÉJÀ PRODUITE RESTE PRIORITAIRE : la reprendre ailleurs
+    // ferait payer deux fois la même vignette.
     expect(srcs[0]).toContain('/api/autopilot/analyses/a1/vignettes/0');
-    expect(new Set(srcs).size).toBe(2);
+    expect(srcs[1]).toContain('/api/autopilot/analyses/a2/vignettes/0');
+    // Le rush sans analyse a le sien, et il est distinct.
+    expect(srcs[2]).toContain(`/api/autopilot/rushes/${ID(3)}/apercu`);
+    expect(new Set(srcs).size).toBe(3);
   });
 
   it('un nombre INCONNU laisse tenter — le comportement d avant', () => {
     /* Les analyses écrites avant ce lot ne portent pas le compte : les priver
-       d'image serait une régression pour tout le parc. */
+       de leur vignette serait une régression pour tout le parc. */
     poser({ [ID(1)]: { id: 'a1', etat: 'reussie' }, [ID(2)]: null, [ID(3)]: null });
-    expect(images()).toHaveLength(1);
+    const srcs = images();
+    expect(srcs.filter((s) => s?.includes('/vignettes/'))).toHaveLength(1);
+    expect(srcs[0]).toContain('/api/autopilot/analyses/a1/vignettes/0');
   });
 
   it('un 404 constaté n est PLUS redemandé', async () => {
     poser({ [ID(1)]: { id: 'a1', etat: 'reussie', vignettes: 2 },
       [ID(2)]: null, [ID(3)]: null });
+    const avant = images().length;
     const img = document.querySelector('img') as HTMLImageElement;
     act(() => { fireEvent.error(img); });
-    await waitFor(() => expect(images()).toHaveLength(0));
+    // La carte en échec ne redemande rien ; les autres gardent la leur.
+    await waitFor(() => expect(images()).toHaveLength(avant - 1));
+    expect(images().some((s) => s?.includes('/analyses/a1/'))).toBe(false);
   });
 });
 
