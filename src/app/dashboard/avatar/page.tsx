@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Clapperboard,
 } from 'lucide-react';
+import CloneVideoPanel from '@/components/avatar/CloneVideoPanel';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 
 const AVATAR_VIDEO_COST = 40;
@@ -347,12 +348,21 @@ export default function AvatarPage() {
           <UserSquare2 className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Mon avatar qui parle</h1>
+          <h1 className="text-2xl font-bold">Mon clone vidéo</h1>
           <p className="text-sm text-gray-400">
-            Votre photo prend vie et prononce le texte de votre choix.
+            Filmez-vous une fois, et Studiio parlera avec votre visage.
           </p>
         </div>
       </div>
+
+      {/* ⚠️ LE PARCOURS PRINCIPAL — A_8c. Un clone credible s'entraine sur une
+          VRAIE video de la personne, pas sur une photo animee. Le mode photo
+          existe toujours, plus bas, comme un mode secondaire assume. */}
+      <CloneVideoPanel
+        avatarId={avatar?.id ?? null}
+        statut={avatar?.status ?? null}
+        onInscrit={() => { void loadAvatar(false); }}
+      />
 
       {error && (
         <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
