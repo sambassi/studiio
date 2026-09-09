@@ -215,12 +215,16 @@ describe('4. L’ordre du parcours — le bouton est la conclusion', () => {
     }
     expect(fin).toBeGreaterThan(debut);
     const creneau = panneau.slice(debut, fin);
-    expect(creneau).toContain('<MonObjectifPanel');
+    /* ⚠️ LE PANNEAU A CHANGE DE NOM, PAS DE PLACE — CREER_PREMIUM_3C. Le
+       parcours en trois etapes (`MonObjectifPanel`) est devenu un champ de
+       texte (`ObjectifLibrePanel`) ; l'invariant de ce banc — l'objectif vit
+       DANS le creneau, et une seule fois — ne bouge pas. */
+    expect(creneau).toContain('<ObjectifLibrePanel');
     expect(creneau).toContain('<MonStylePanel');
 
     // Et ils ne sont rendus qu'une seule fois dans tout le fichier.
     const dehors = panneau.slice(0, debut) + panneau.slice(fin);
-    expect(dehors).not.toContain('<MonObjectifPanel');
+    expect(dehors).not.toContain('<ObjectifLibrePanel');
     expect(dehors).not.toContain('<MonStylePanel');
   });
 

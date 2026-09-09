@@ -10,7 +10,7 @@ import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import MonStylePanel from '@/components/creer/MonStylePanel';
 import PanneauStyleAutomatique from '@/components/creer/PanneauStyleAutomatique';
 import { useBibliothequeCreative } from '@/lib/hooks/useBibliothequeCreative';
-import MonObjectifPanel from '@/components/creer/MonObjectifPanel';
+import ObjectifLibrePanel from '@/components/creer/ObjectifLibrePanel';
 import {
   OBJECTIF_DEFAUT, type ObjectifCommunication,
 } from '@/lib/autopilot/analyse/objectif-communication';
@@ -269,7 +269,7 @@ export default function AutopilotPanel({
    * affiche « Objectif general » et le montage reste celui d'avant ce lot.
    */
   const [monObjectif, setMonObjectif] = useState<ObjectifCommunication | null>(null);
-  const [monObjectifChargement, setMonObjectifChargement] = useState(true);
+  const [, setMonObjectifChargement] = useState(true);
   /**
    * L'objectif de la SEULE video en cours.
    *
@@ -285,7 +285,11 @@ export default function AutopilotPanel({
    * lancer un montage avec l'objectif d'AVANT pendant que l'ecran montre
    * celui d'apres — la confusion exacte relevee en direct le 2026-09-07.
    */
-  const [objectifEnEdition, setObjectifEnEdition] = useState(false);
+  /* ⚠️ LE VERROU D'EDITION A DISPARU AVEC LE PARCOURS — CREER_PREMIUM_3C.
+     Il existait parce qu'un parcours en trois etapes pouvait rester OUVERT
+     sans etre valide : partir alors aurait monte avec l'objectif d'AVANT
+     pendant que l'ecran montrait celui d'apres. Un champ de texte facultatif
+     n'a pas cet etat intermediaire — ce qu'on lit est ce qui s'applique. */
   /* Le tournage regarde, retenu ICI EN PLUS d'etre transmis au parent :
      l'apercu du style a besoin du format et de la vignette du rush choisi,
      et les redemander a l'ecran parent ferait remonter puis redescendre la
@@ -1001,12 +1005,19 @@ export default function AutopilotPanel({
                  ressemble. */
               decisions={(
                 <>
-                  <MonObjectifPanel
-                    objectifEnregistre={monObjectif}
-                    chargement={monObjectifChargement}
-                    onEnregistrerDefaut={enregistrerMonObjectif}
+                  {/* ⚠️ LE PARCOURS EN TROIS ETAPES A DISPARU — CREER_PREMIUM_3C.
+                      Il demandait un but, des priorites et une confirmation
+                      pour exprimer ce qu'une phrase suffit a dire, et tant
+                      qu'il restait ouvert sans etre valide, « Creer ma video »
+                      refusait de partir : une aide devenue un obstacle.
+
+                      Le moteur ne perd rien — `objectifDepuisTexte` rend le
+                      MEME `ObjectifCommunication`, et `politiqueDePlan` comme
+                      `objectif-score` sont intouches. Le verrou d'edition
+                      disparait avec le parcours : un champ facultatif ne peut
+                      pas etre « en cours de validation ». */}
+                  <ObjectifLibrePanel
                     onAppliquerACetteVideo={setObjectifCetteVideo}
-                    onEditionChange={setObjectifEnEdition}
                     objectifCetteVideo={objectifCetteVideo}
                   />
                   <MonStylePanel
@@ -1023,7 +1034,6 @@ export default function AutopilotPanel({
                   />
                 </>
               )}
-              actionBloquee={objectifEnEdition}
             />
           </div>
 
