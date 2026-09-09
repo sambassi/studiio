@@ -40,6 +40,8 @@ let bibliotheque: Record<string, unknown>;
 let ecritures: Record<string, unknown>[];
 /** Ce que la prochaine validation de clone répondra. */
 let reponseValidation: { statut: number; corps: Record<string, unknown> };
+/** Les voix clonées du compte. Vide par défaut : personne n'en a. */
+let voixClonees: { id: string; name: string }[];
 let appelsValidation: string[];
 
 beforeEach(() => {
@@ -51,6 +53,7 @@ beforeEach(() => {
   };
   ecritures = [];
   reponseValidation = { statut: 200, corps: { ok: true } };
+  voixClonees = [];
   appelsValidation = [];
 
   vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
@@ -62,6 +65,9 @@ beforeEach(() => {
         return { ok: true, json: async () => ({ ok: true, bibliotheque }) };
       }
       return { ok: true, json: async () => ({ ok: true, bibliotheque }) };
+    }
+    if (String(url).includes('/api/voice/clone')) {
+      return { ok: true, json: async () => ({ success: true, voices: voixClonees }) };
     }
     if (String(url).includes('/validation')) {
       appelsValidation.push(String(url));
@@ -219,6 +225,37 @@ describe('1. Gérer ses prononciations', () => {
       expect((document.querySelector(sel) as HTMLInputElement).maxLength)
         .toBe(PRONONCIATION_LONGUEUR_MAX);
     }
+  });
+
+  it('1.9 ⚠️ « ÉCOUTER » NE SUBSTITUE JAMAIS UNE VOIX GÉNÉRIQUE', async () => {
+    /* Sans voix clonée, le bouton reste inerte et l'écran dit ce qui manque.
+       Faire parler un catalogue en l'appelant « votre voix » serait un
+       mensonge que personne ne pourrait vérifier à l'oreille. */
+    render(<PrononciationsPanel />);
+    await attendreChargement();
+    await waitFor(() => expect(
+      document.querySelector('[data-prononciations-sans-voix]'),
+    ).not.toBeNull());
+
+    const bouton = document.querySelector('[data-prononciations-ecouter]') as HTMLButtonElement;
+    expect(bouton).not.toBeNull();
+    expect(bouton.disabled).toBe(true);
+    expect(document.querySelector('[data-prononciations-sans-voix]')!.textContent)
+      .toContain('Configurez votre voix');
+    expect(document.querySelector('[data-prononciations-avec-voix]')).toBeNull();
+  });
+
+  it('1.10 avec une voix clonée, c’est elle qui est nommée', async () => {
+    voixClonees = [{ id: 'elevenlabs-x', name: 'Bassi' }];
+    render(<PrononciationsPanel />);
+    await waitFor(() => expect(
+      document.querySelector('[data-prononciations-avec-voix]'),
+    ).not.toBeNull());
+    expect(document.querySelector('[data-prononciations-avec-voix]')!.textContent)
+      .toContain('Bassi');
+    // ⚠️ ET L'ÉCOUTE RESTE FERMÉE : aucun moteur n'est appelé dans ce lot.
+    expect((document.querySelector('[data-prononciations-ecouter]') as HTMLButtonElement).disabled)
+      .toBe(true);
   });
 });
 

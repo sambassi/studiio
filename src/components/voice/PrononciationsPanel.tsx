@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Trash2, Pencil, Check, X, Ear } from 'lucide-react';
+import { Loader2, Plus, Trash2, Pencil, Check, X, Ear, Volume2 } from 'lucide-react';
 import { texteParle } from '@/lib/voice/pipeline';
 import {
   PRONONCIATIONS_MAX, PRONONCIATION_LONGUEUR_MAX, type Prononciation,
@@ -24,6 +24,11 @@ import {
  *
  * ⚠️ AUCUN MOTEUR DE SYNTHÈSE N'EST APPELÉ ICI. L'aperçu est une fonction
  * pure ; l'afficher ne coûte rien et ne consomme aucun crédit.
+ *
+ * ⚠️ ET « ÉCOUTER » NE SUBSTITUE JAMAIS UNE VOIX. Tant qu'aucune voix clonée
+ * n'existe, le bouton reste inerte et dit ce qui manque. Faire parler une voix
+ * de catalogue en l'appelant « votre voix » serait un mensonge que personne ne
+ * pourrait vérifier à l'oreille.
  */
 
 const EXEMPLE = 'Rendez-vous chez Afroboost à 18h30, 25 CHF.';
@@ -39,6 +44,8 @@ export default function PrononciationsPanel() {
   const [spoken, setSpoken] = useState('');
   const [edite, setEdite] = useState<string | null>(null);
   const [spokenEdite, setSpokenEdite] = useState('');
+  /** La voix clonée du compte, si elle existe. `null` = aucune. */
+  const [voix, setVoix] = useState<{ name?: string } | null>(null);
 
   const charger = useCallback(async () => {
     try {
@@ -54,6 +61,22 @@ export default function PrononciationsPanel() {
   }, []);
 
   useEffect(() => { void charger(); }, [charger]);
+
+  /* Lecture seule, et purement locale : la route relit `user_voices` en base
+     et n'appelle aucun fournisseur. */
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      try {
+        const j = await (await fetch('/api/voice/clone')).json();
+        const liste = Array.isArray(j?.voices) ? j.voices : [];
+        if (!annule) setVoix(liste[0] ?? null);
+      } catch {
+        if (!annule) setVoix(null);
+      }
+    })();
+    return () => { annule = true; };
+  }, []);
 
   /**
    * ⚠️ LA BIBLIOTHÈQUE ENTIÈRE EST RELUE AVANT D'ÉCRIRE. La route existante
@@ -143,6 +166,27 @@ export default function PrononciationsPanel() {
           </div>
           <p className="text-gray-200" data-prononciations-exemple-spoken>{apercu}</p>
         </div>
+      </div>
+
+      {/* ── Écouter : préparé, et honnête sur ce qu'il ne fait pas encore ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled
+          data-prononciations-ecouter
+          className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Volume2 className="w-3.5 h-3.5" /> Écouter ma voix
+        </button>
+        {voix === null ? (
+          <span className="text-xs text-gray-500" data-prononciations-sans-voix>
+            Configurez votre voix pour écouter cet aperçu.
+          </span>
+        ) : (
+          <span className="text-xs text-gray-500" data-prononciations-avec-voix>
+            Sera dit avec votre voix : {voix.name}. L’écoute arrivera avec votre clone.
+          </span>
+        )}
       </div>
 
       {chargement ? (

@@ -420,7 +420,38 @@ describe('4. Remplacer sa vidéo, de bout en bout', () => {
     expect(retires).toEqual([]);
   });
 
-  it('4.6 ⚠️ L’INSCRIPTION SORT TOUJOURS SANS IDENTIFIANT FOURNISSEUR', async () => {
+  it('4.6 ⚠️ DEUX REMPLACEMENTS DE SUITE NE LAISSENT QU’UNE SOURCE', async () => {
+    /* A → B → C. À la fin, le stockage d'avatar ne doit contenir que C : ni B,
+       ni la source d'origine. Un seul remplacement testé laisserait passer le
+       cas où le nettoyage ne lit que la toute première ligne. */
+    const b = (await (await inscrireFichier()).json()).avatar.source_object_key as string;
+    // L'horodatage à la milliseconde peut se répéter : on force une seconde
+    // clé distincte plutôt que de dépendre de la vitesse de la machine.
+    tables.user_avatars[0].source_object_key = `${UID}/avatar/source-1700000009.mp4`;
+    objets.delete(b);
+    objets.add(`${UID}/avatar/source-1700000009.mp4`);
+
+    const c = (await (await inscrireFichier()).json()).avatar.source_object_key as string;
+
+    const restantes = [...objets].filter((o) => o.includes('/avatar/'));
+    expect(restantes).toEqual([c]);
+    expect(objets.has(MEDIATHEQUE)).toBe(true);
+  });
+
+  it('4.7 ⚠️ LES VIDÉOS DÉJÀ PRODUITES SURVIVENT AU REMPLACEMENT', async () => {
+    /* La clé étrangère est `set null` depuis A_8b précisément pour ça : refaire
+       sa source ne doit pas emporter l'historique des générations. */
+    tables.avatar_generations = [{
+      id: 'gen-1', user_id: UID, user_avatar_id: AVATAR, status: 'completed',
+      video_url: 'https://x/deja-produite.mp4', created_at: '2026-09-08T10:00:00Z',
+    }];
+    const res = await inscrireFichier();
+    expect(res.status).toBe(200);
+    expect(tables.avatar_generations).toHaveLength(1);
+    expect(tables.avatar_generations[0].video_url).toBe('https://x/deja-produite.mp4');
+  });
+
+  it('4.8 ⚠️ L’INSCRIPTION SORT TOUJOURS SANS IDENTIFIANT FOURNISSEUR', async () => {
     /* Le nettoyage ne doit pas avoir servi de pretexte a « finir » l'avatar :
        aucun entrainement n'est lance dans ce lot. */
     const json = await (await inscrireFichier()).json();
