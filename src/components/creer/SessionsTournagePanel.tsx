@@ -213,17 +213,30 @@ export default function SessionsTournagePanel({
   const [rushesMontes, setRushesMontes] = useState<string[]>([]);
 
   /** Coche ou décoche un rush SANS changer celui qu'on regarde. */
+  /**
+   * Ajoute ou retire un rush DU MONTAGE — CREER_PREMIUM_3.
+   *
+   * ⚠️ `rushesMontes` EST LA LISTE COMPLETE, rush regardé inclus. Elle ne
+   * l'était pas : le rush regardé en faisait partie par déduction, et cliquer
+   * un second rush déplaçait le regard — donc perdait le premier, qui
+   * n'existait que comme « regardé ». Un clic ajoutait, le suivant remplaçait :
+   * impossible d'en sélectionner deux.
+   *
+   * ⚠️ ET LE DERNIER NE SE RETIRE PAS. Une vidéo sans matière n'existe pas ;
+   * mieux vaut une carte qui reste cochée qu'un écran incohérent.
+   */
   const basculerRush = useCallback((rushId: string) => {
-    /* Le rush regardé ne se décoche pas : le retirer laisserait un aperçu
-       sans rush. On en change en cliquant la carte. */
-    if (rushId === rushChoisi) return;
-    setRushesMontes((v) => (v.includes(rushId)
-      ? v.filter((x) => x !== rushId)
+    setRushesMontes((v) => {
+      if (v.includes(rushId)) {
+        if (v.length <= 1) return v;
+        return v.filter((x) => x !== rushId);
+      }
       /* ⚠️ LE PLAFOND EST CELUI D'A_7b, JAMAIS UN SECOND. Deux limites
          divergeraient, et l'écran laisserait cocher ce que le serveur
-         refuserait ensuite. `rushChoisi` compte dans le total. */
-      : v.length + 1 >= MAX_RUSHES_MANUEL ? v : [...v, rushId]));
-  }, [rushChoisi]);
+         refuserait ensuite. */
+      return v.length >= MAX_RUSHES_MANUEL ? v : [...v, rushId];
+    });
+  }, []);
   const [analyses, setAnalyses] = useState<Record<string, AnalyseCarte | null>>({});
   const [tiroir, setTiroir] = useState<'analyse' | 'avance' | null>(null);
   const [relances, setRelances] = useState<Record<string, number>>({});
@@ -331,6 +344,26 @@ export default function SessionsTournagePanel({
   }, [rushes]);
 
   /**
+   * ── LE MONTAGE SUIT LA LISTE DES RUSHES ───────────────────────────────
+   *
+   * ⚠️ DEUX GARDES, POUR DEUX PANNES DIFFERENTES :
+   *
+   *   • un rush du montage qui n'existe plus dans ce tournage doit sortir —
+   *     coché sans carte, il serait invisible et pourtant envoyé au serveur ;
+   *   • un montage vide doit reprendre le rush regardé, sans quoi l'écran
+   *     n'aurait plus rien à monter alors qu'une carte est mise en avant.
+   */
+  useEffect(() => {
+    setRushesMontes((v) => {
+      const connus = v.filter((id) => rushes.some((r) => r.id === id));
+      if (connus.length > 0) {
+        return connus.length === v.length ? v : connus;
+      }
+      return rushChoisi ? [rushChoisi] : [];
+    });
+  }, [rushes, rushChoisi]);
+
+  /**
    * L'etat d'analyse de CHAQUE rush — pour la miniature et le ✓ des cartes.
    *
    * ⚠️ `GET` UNIQUEMENT, ET MOINS DE REQUETES QU'AVANT. Chaque rush verifie
@@ -413,9 +446,13 @@ export default function SessionsTournagePanel({
     /* ⚠️ RESTAURÉ, ET FILTRÉ SUR LA SESSION COURANTE. Un rush du brouillon qui
        n'existe plus dans la liste chargée serait coché sans carte : invisible,
        et pourtant envoyé au serveur. */
-    setRushesMontes((brouillon.sources ?? []).filter(
-      (id) => id !== rushChoisi && rushes.some((r) => r.id === id),
-    ));
+    /* La liste complète, rush regardé inclus : c'est elle qui fait foi. */
+    const restaurees = (brouillon.sources ?? []).filter(
+      (id) => rushes.some((r) => r.id === id),
+    );
+    setRushesMontes(restaurees.length > 0
+      ? restaurees
+      : (rushChoisi ? [rushChoisi] : []));
     onObjectifRestaure?.(brouillon.objectif);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rushChoisi]);
@@ -640,7 +677,8 @@ export default function SessionsTournagePanel({
         <>
           {/* ══ RUSHES ═══════════════════════════════════════════════════ */}
           <BandeRushes
-            supplementaires={rushesMontes}
+            /* La liste COMPLETE : le rush regardé n'est plus implicite. */
+            montesIds={rushesMontes}
             onBasculer={basculerRush}
             maxRushes={MAX_RUSHES_MANUEL}
             rushes={rushes}
@@ -729,7 +767,11 @@ export default function SessionsTournagePanel({
                  qui ont ete coches. Un seul au total = le chemin historique,
                  et `creerVideo` s'en charge sans que cet ecran ait a le
                  savoir. */
-              rushIds={[rushActif.id, ...rushesMontes.filter((x) => x !== rushActif.id)]}
+              /* ⚠️ LA LISTE COMPLETE, ET LE RUSH REGARDE EN TETE. Il porte
+                 les réglages et l'aperçu ; le reste suit dans l'ordre coché.
+                 `creerVideo` aiguille ensuite sur le NOMBRE. */
+              rushIds={[rushActif.id,
+                ...rushesMontes.filter((x) => x !== rushActif.id)]}
               montage={montage}
               audioDefaut={audioDefaut}
               audioInitial={audioBrouillon}

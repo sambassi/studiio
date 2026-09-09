@@ -67,17 +67,24 @@ interface Props {
   selection: string | null;
   onSelectionner: (rushId: string) => void;
   /**
-   * A_7d — LES AUTRES RUSHES RETENUS pour cette vidéo, hors `selection`.
+   * LES RUSHES MONTES — la liste COMPLETE, rush regardé INCLUS.
    *
-   * ⚠️ `selection` RESTE LE RUSH REGARDÉ, et c'est ce qui garde l'aperçu
-   * honnête : la colonne de droite montre UNE image, celle du dernier rush
-   * choisi. Confondre « celui qu'on regarde » et « ceux qu'on monte » ferait
-   * changer l'aperçu à chaque case cochée, ou pire, l'immobiliserait sur le
-   * premier pendant qu'on en ajoute quatre.
+   * ⚠️ ELLE S'APPELAIT `supplementaires` ET EXCLUAIT LE RUSH REGARDE. Le nom
+   * disait « les autres » ; l'ensemble monté se déduisait alors en y
+   * réunissant `selection`. Cliquer un second rush déplaçait le regard, et le
+   * premier — qui n'existait que comme « regardé » — sortait du montage sans
+   * un mot. Un clic ajoutait, le suivant remplaçait.
+   *
+   * Le nom porte désormais le contrat : ce que cette liste contient EST le
+   * montage.
+   *
+   * ⚠️ `selection` RESTE LE RUSH REGARDÉ, et les deux notions restent
+   * distinctes : la colonne de droite montre UNE image, celle du dernier rush
+   * choisi, pendant que le montage peut en assembler quatre.
    *
    * Absent, le composant se comporte exactement comme avant ce lot.
    */
-  supplementaires?: readonly string[];
+  montesIds?: readonly string[];
   /** Cocher/décocher un rush SANS changer celui qu'on regarde. */
   onBasculer?: (rushId: string) => void;
   /** Le plafond du compte — celui d'A_7b, jamais un second. */
@@ -96,16 +103,28 @@ function nomCourt(r: Rush): string {
 
 export default function BandeRushes({
   rushes, analyses, selection, onSelectionner, onVoirAnalyse, onReanalyser,
-  onAjouterFichiers, envois, supplementaires, onBasculer, maxRushes,
+  onAjouterFichiers, envois, montesIds, onBasculer, maxRushes,
 }: Props) {
   /* ⚠️ L'ENSEMBLE MONTÉ = LE RUSH REGARDÉ + LES AUTRES COCHÉS. `selection` en
      fait toujours partie : décocher celui qu'on regarde n'aurait aucun sens,
      puisque c'est lui que l'aperçu montre. */
+  /**
+   * ── L'ENSEMBLE MONTE EST DONNE, PLUS DEDUIT — CREER_PREMIUM_3 ──────────
+   *
+   * ⚠️ IL ETAIT LA REUNION DE `supplementaires` ET DU RUSH REGARDE, et c'est
+   * ce qui perdait la selection. Le rush regarde n'etait PAS dans la liste :
+   * il en faisait partie par deduction. Cliquer un second rush deplacait donc
+   * le regard — et le premier, qui n'existait que comme « regarde »,
+   * disparaissait du montage sans un mot.
+   *
+   * Le parent tient desormais la liste COMPLETE, rush regarde inclus. Une
+   * seule verite, et « selectionne » cesse de dependre de « regarde ».
+   */
   const montes = useMemo(() => {
-    const v = new Set<string>(supplementaires ?? []);
-    if (selection) v.add(selection);
-    return v;
-  }, [supplementaires, selection]);
+    if (onBasculer) return new Set<string>(montesIds ?? []);
+    // Mode historique : un seul rush, celui qu'on regarde.
+    return new Set<string>(selection ? [selection] : []);
+  }, [montesIds, selection, onBasculer]);
   const multi = onBasculer !== undefined;
   const plafond = maxRushes ?? Number.POSITIVE_INFINITY;
   const complet = montes.size >= plafond;
@@ -296,11 +315,17 @@ export default function BandeRushes({
                      plutot que de rendre l'ecran incoherent. */
                   onClick={() => {
                     if (!multi) { onSelectionner(r.id); return; }
+                    /* AJOUTER : le rush entre dans le montage ET devient
+                       celui qu'on regarde — c'est son image qu'on vient de
+                       demander. Les autres restent selectionnes. */
                     if (!montes.has(r.id)) {
-                      if (!complet) onBasculer?.(r.id);
+                      if (complet) return;
+                      onBasculer?.(r.id);
                       onSelectionner(r.id);
                       return;
                     }
+                    /* RETIRER : jamais le dernier — une video sans matiere
+                       n'existe pas. Le parent deplace le regard si besoin. */
                     if (montes.size > 1) onBasculer?.(r.id);
                   }}
                   aria-pressed={multi ? montes.has(r.id) : choisi}

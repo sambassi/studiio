@@ -9100,8 +9100,33 @@ export default function AssistantWizard() {
                  flottaison. `dvh` suit le viewport reellement visible — le
                  clavier ouvert, l'apercu maigrit, le champ gagne. Au-dessus
                  de 1024 px, la borne d'origine revient intacte. */
+              /* ── L'APERÇU TIENT ENTIER, IL NE SE FAIT PLUS COUPER ──────
+                 ⚠️ CE CONTENEUR BORNAIT LA HAUTEUR *ET* LAISSAIT DÉFILER. Un
+                 aperçu 9:16 est plus haut que large : sous cette hauteur, il
+                 débordait, et `overflow-y-auto` transformait le débordement en
+                 barre de défilement. Il fallait faire rouler la molette dans la
+                 colonne de droite pour voir le haut et le bas d'une image qui
+                 aurait dû tenir d'un coup.
+
+                 ⚠️ LA HAUTEUR NE SUFFIT PAS : IL FAUT BORNER LA LARGEUR. Le
+                 cadre se dimensionne sur la LARGEUR de son conteneur, puis
+                 déduit sa hauteur du ratio. Lui donner un plafond de hauteur ne
+                 le rétrécit donc pas — il déborde. C'est en plafonnant la
+                 LARGEUR à `hauteur × ratio` qu'il rentre entier, et c'est
+                 exactement ce que `geometrieApercu` fait déjà pour le cadre
+                 vidéo : la même règle, au même endroit du calcul.
+
+                 ⚠️ LA RÉSERVE EST MESURÉE, PAS ESTIMÉE. Relevé dans Chrome sur
+                 la vraie page : le cadre 9:16 fait 378 px de haut, et le bloc
+                 qui l'entoure 656 — soit 278 px d'en-tête, d'onglets, de marges
+                 et de la rangée d'actions sous l'aperçu. En y ajoutant les
+                 80 px du `sticky top-20`, le budget à retirer est de ~22rem.
+                 Une première tentative à `10rem` laissait 225 px hors écran :
+                 la hauteur seule ne suffisait pas, il fallait le bon chiffre. */
               <div
-                className="overflow-y-auto max-h-[38dvh] lg:max-h-[calc(100vh-6rem)]"
+                className="mx-auto w-full
+                  max-w-[calc((38dvh)*9/16)]
+                  lg:max-w-[calc((100dvh-22rem)*9/16)]"
                 data-autopilot-apercu-cadre
               >
                 <AutopilotPreview

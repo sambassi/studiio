@@ -60,6 +60,9 @@ function poser(over: Record<string, unknown> = {}) {
       envois={[]}
       onBasculer={onBasculer}
       maxRushes={MAX_RUSHES_MANUEL}
+      /* Par défaut, le rush regardé fait partie du montage — c'est le contrat
+         de `montesIds` depuis CREER_PREMIUM_3. */
+      montesIds={[ID(1)]}
       {...over}
     />,
   );
@@ -112,7 +115,7 @@ describe('A_7d2 — la sélection multiple', () => {
   });
 
   it('recliquer une carte déjà montée la RETIRE', () => {
-    const { onBasculer } = poser({ supplementaires: [ID(2)] });
+    const { onBasculer } = poser({ montesIds: [ID(1), ID(2)] });
     fireEvent.click(choisir(2));
     expect(onBasculer).toHaveBeenCalledWith(ID(2));
   });
@@ -126,7 +129,7 @@ describe('A_7d2 — la sélection multiple', () => {
   });
 
   it('les rushes montés sont marqués, les autres non', () => {
-    poser({ supplementaires: [ID(3)] });
+    poser({ montesIds: [ID(1), ID(3)] });
     expect(carte(1)?.getAttribute('data-bande-carte-montee')).toBe('1');
     expect(carte(3)?.getAttribute('data-bande-carte-montee')).toBe('1');
     expect(carte(2)?.getAttribute('data-bande-carte-montee')).toBeNull();
@@ -135,7 +138,7 @@ describe('A_7d2 — la sélection multiple', () => {
   it('le compte est DIT, parce que l aperçu n en montre qu un', () => {
     /* Sans cette ligne, rien ne dirait que la vidéo en assemblera trois, et la
        personne croirait monter le seul qu'elle voit. */
-    poser({ supplementaires: [ID(2), ID(3)] });
+    poser({ montesIds: [ID(1), ID(2), ID(3)] });
     const p = document.querySelector('[data-bande-compte]');
     expect(p?.getAttribute('data-bande-compte')).toBe('3');
     expect(p?.textContent).toContain('3');
@@ -149,13 +152,13 @@ describe('A_7d2 — la sélection multiple', () => {
 
   it('au plafond, le compte le DIT — pas une erreur technique', () => {
     const autres = [2, 3].map(ID);
-    poser({ supplementaires: autres, maxRushes: 3 });
+    poser({ montesIds: [ID(1), ...autres], maxRushes: 3 });
     const p = document.querySelector('[data-bande-compte]');
     expect(p?.textContent).toContain('maximum');
   });
 
   it('au plafond, cliquer un rush NON monté n en ajoute pas un de plus', () => {
-    const { onBasculer } = poser({ supplementaires: [ID(2)], maxRushes: 2 });
+    const { onBasculer } = poser({ montesIds: [ID(1), ID(2)], maxRushes: 2 });
     fireEvent.click(choisir(3));
     expect(onBasculer).not.toHaveBeenCalled();
   });

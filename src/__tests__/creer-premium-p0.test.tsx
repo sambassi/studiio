@@ -41,7 +41,7 @@ function poser(analyses: Record<string, AnalyseCarte | null>, over = {}) {
       rushes={RUSHES} analyses={analyses} selection={ID(1)}
       onSelectionner={onSelectionner} onVoirAnalyse={() => {}} onReanalyser={() => {}}
       onAjouterFichiers={() => {}} envois={[]}
-      onBasculer={onBasculer} maxRushes={8} {...over}
+      onBasculer={onBasculer} maxRushes={8} montesIds={[ID(1)]} {...over}
     />,
   );
   return { onBasculer, onSelectionner };
@@ -196,7 +196,7 @@ describe('P0 — la carte entière sélectionne', () => {
   });
 
   it('recliquer une carte montée la retire', () => {
-    const { onBasculer } = poser(A, { supplementaires: [ID(2)] });
+    const { onBasculer } = poser(A, { montesIds: [ID(1), ID(2)] });
     fireEvent.click(choisir(2));
     expect(onBasculer).toHaveBeenCalledWith(ID(2));
   });
@@ -208,7 +208,7 @@ describe('P0 — la carte entière sélectionne', () => {
   });
 
   it('le compte reste visible et exact', () => {
-    poser(A, { supplementaires: [ID(2), ID(3)] });
+    poser(A, { montesIds: [ID(1), ID(2), ID(3)] });
     expect(document.querySelector('[data-bande-compte]')?.getAttribute('data-bande-compte'))
       .toBe('3');
   });
