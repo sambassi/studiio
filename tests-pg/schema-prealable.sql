@@ -48,3 +48,22 @@ end $$;
 
 grant all on table public.users to public;
 grant all on table public.credit_transactions to public;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- `autopilot_config` — LA TABLE QUI PORTE `design_style`.
+--
+-- Elle PRE-EXISTE en production : la banque audio y vit depuis A_5, dans la
+-- colonne `design_style` (jsonb), sous la cle `bibliothequeCreative`. Elle est
+-- donc reconstituee ici comme les autres tables du prealable, avec le strict
+-- minimum dont les fonctions atomiques ont besoin — l'unicite de `user_id`,
+-- que leur `on conflict (user_id)` exige, en fait partie.
+-- ═══════════════════════════════════════════════════════════════════════════
+create table if not exists public.autopilot_config (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null unique references public.users(id) on delete cascade,
+  design_style jsonb not null default '{}'::jsonb,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
+grant all on table public.autopilot_config to public;

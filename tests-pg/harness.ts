@@ -128,6 +128,31 @@ export async function preparerBaseMontage(client: Client): Promise<void> {
   }
 }
 
+/**
+ * La migration des mutations atomiques de la banque audio — CREER_PREMIUM_3D_FIX.
+ *
+ * ⚠️ TENUE A PART DES AUTRES. Elle ne depend que d'`autopilot_config`, qui
+ * pre-existe (schema prealable) ; l'empiler sur le socle des credits et du
+ * montage ferait dependre ses tests d'un schema qui n'a rien a voir avec elle,
+ * et une panne du socle se lirait alors comme une panne de la banque audio.
+ */
+export const MIGRATION_BANQUE_AUDIO = join(
+  RACINE, 'migrations/2026-09-09-autopilot-banque-audio-atomique.sql',
+);
+
+/** Repose la base au strict necessaire de la banque audio. */
+export async function preparerBaseBanqueAudio(client: Client): Promise<void> {
+  await client.query('drop schema if exists public cascade; create schema public;');
+  await client.query(readFileSync(join(RACINE, 'tests-pg/schema-prealable.sql'), 'utf-8'));
+  if (!existsSync(MIGRATION_BANQUE_AUDIO)) {
+    throw new Error(
+      `Migration absente : ${MIGRATION_BANQUE_AUDIO}\n`
+      + "C'est le resultat attendu tant que le correctif n'est pas ecrit.",
+    );
+  }
+  await client.query(readFileSync(MIGRATION_BANQUE_AUDIO, 'utf-8'));
+}
+
 /** Applique un fichier de migration precis, tel qu'il partira en production. */
 export async function appliquerMigration(client: Client, fichier: string): Promise<void> {
   if (!existsSync(fichier)) throw new Error(`Migration absente : ${fichier}`);

@@ -50,6 +50,7 @@ import {
 import {
   bibliothequeValide, type BibliothequeCreative,
 } from '@/lib/creatif/bibliotheque';
+import { banqueAudioValide, type PisteAudio } from '@/lib/creatif/audio';
 
 /** Le nom de la table, ecrit une fois. */
 const TABLE = 'autopilot_config';
@@ -412,6 +413,141 @@ export async function enregistrerBibliothequeUtilisateur(
   const ok = await fusionnerDesignStyle(userId, { bibliothequeCreative: normalisee });
   if (!ok) return { ok: false, motif: 'ecriture_impossible' };
   return { ok: true, bibliotheque: normalisee };
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   LA BANQUE AUDIO — MUTATIONS ATOMIQUES
+
+   ⚠️ POURQUOI ELLES NE PASSENT PAS PAR `enregistrerBibliothequeUtilisateur`.
+
+   Celle-ci fusionne la cle `bibliothequeCreative` ENTIERE, calculee en memoire
+   depuis une lecture anterieure. C'est exact pour un reglage que l'on remplace,
+   et FAUX pour une liste que l'on rallonge : deux ajouts qui se croisent lisent
+   tous deux N pistes, ecrivent tous deux N+1, et le second efface le premier —
+   la fusion atomique s'appliquant fidelement a une valeur deja perimee. Observe
+   sur trois fichiers deposes en une seule selection.
+
+   Les deux RPC ci-dessous RELISENT la liste sous verrou, au moment ou elles
+   l'ecrivent. Voir migrations/2026-09-09-autopilot-banque-audio-atomique.sql.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Ce qu'une mutation de la banque peut repondre.
+ *
+ * ⚠️ `socle_absent` N'EST NI UNE PANNE NI UN SUCCES. La migration peut ne pas
+ * encore etre appliquee ; dans ce cas la banque REFUSE d'ecrire plutot que de
+ * retomber sur le chemin qui perd des pistes. C'est le meme choix que
+ * `fusionnerDesignStyleStrict` : un ecran qui annonce « importee » au-dessus
+ * d'une piste deja effacee est pire qu'un refus lisible.
+ */
+export type MutationBanqueAudio =
+  | {
+    ok: true;
+    issue: 'creee' | 'existante' | 'retiree' | 'renommee';
+    pistes: readonly PisteAudio[];
+  }
+  | { ok: false; motif: 'pleine' | 'absente' | 'socle_absent' | 'ecriture_impossible' };
+
+function lireMutationBanque(
+  data: unknown, userId: string,
+): { issue: string; pistes: readonly PisteAudio[] } {
+  const ligne = (Array.isArray(data) ? data[0] : data) as
+    { issue?: unknown; pistes?: unknown } | undefined;
+  const issue = typeof ligne?.issue === 'string' ? ligne.issue : '';
+  /* ⚠️ REVALIDE, MEME VENANT DE NOTRE PROPRE FONCTION. La regle est celle de
+     l'ecriture, dans l'autre sens : ne jamais RENDRE ce que la relecture
+     jetterait. Le compte est transmis — sans lui `banqueAudioValide` rend une
+     banque vide plutot qu'une banque devinee. */
+  return { issue, pistes: banqueAudioValide({ pistes: ligne?.pistes }, userId).pistes };
+}
+
+/**
+ * Ajoute — ou remplace — UNE piste, sans fenetre entre la lecture et l'ecriture.
+ *
+ * Capacite et doublon sont juges DANS la transaction : deux ajouts concurrents
+ * sur une banque a `max - 1` ne peuvent pas la faire deborder, et deux ajouts
+ * de la MEME cle ne creent jamais deux fiches.
+ */
+export async function ajouterPisteBanqueAudio(
+  userId: string, piste: PisteAudio, max: number,
+): Promise<MutationBanqueAudio> {
+  if (!userId) return { ok: false, motif: 'ecriture_impossible' };
+  try {
+    const { data, error } = await supabaseAdmin.rpc('autopilot_banque_audio_ajouter', {
+      p_user_id: userId, p_piste: piste, p_max: max,
+    });
+    if (error) {
+      if (ressembleAFonctionAbsente(error.message)) {
+        console.error(
+          `[Autopilote] Mutation atomique de la banque audio indisponible (${error.message})`
+          + " — la banque REFUSE d'ecrire plutot que de risquer une piste perdue."
+          + ' Appliquer migrations/2026-09-09-autopilot-banque-audio-atomique.sql'
+          + ' puis `docker kill -s SIGUSR1 studiio-postgrest`.',
+        );
+        return { ok: false, motif: 'socle_absent' };
+      }
+      console.error('[Autopilote] Ajout a la banque audio :', error.message);
+      return { ok: false, motif: 'ecriture_impossible' };
+    }
+    const { issue, pistes } = lireMutationBanque(data, userId);
+    if (issue === 'creee' || issue === 'existante') return { ok: true, issue, pistes };
+    if (issue === 'pleine') return { ok: false, motif: 'pleine' };
+    return { ok: false, motif: 'ecriture_impossible' };
+  } catch (err) {
+    console.error(
+      '[Autopilote] Ajout a la banque audio impossible :',
+      err instanceof Error ? err.message : err,
+    );
+    return { ok: false, motif: 'ecriture_impossible' };
+  }
+}
+
+/**
+ * Renomme — ou retire — UNE piste, sous le meme verrou.
+ *
+ * Le retrait nettoie favoris et autorisations DANS la meme transaction : les
+ * separer laisserait un instant ou un favori designe une fiche disparue.
+ */
+export async function muterPisteBanqueAudio(
+  userId: string,
+  cle: string,
+  mutation:
+    | { retirer: true }
+    | { retirer: false; nom: string | null; moods: readonly string[] | null },
+): Promise<MutationBanqueAudio> {
+  if (!userId) return { ok: false, motif: 'ecriture_impossible' };
+  try {
+    const { data, error } = await supabaseAdmin.rpc('autopilot_banque_audio_muter', {
+      p_user_id: userId,
+      p_cle: cle,
+      p_retirer: mutation.retirer,
+      p_nom: mutation.retirer ? null : mutation.nom,
+      p_moods: mutation.retirer ? null : mutation.moods,
+    });
+    if (error) {
+      if (ressembleAFonctionAbsente(error.message)) {
+        console.error(
+          `[Autopilote] Mutation atomique de la banque audio indisponible (${error.message})`
+          + " — la banque REFUSE d'ecrire. Appliquer"
+          + ' migrations/2026-09-09-autopilot-banque-audio-atomique.sql'
+          + ' puis `docker kill -s SIGUSR1 studiio-postgrest`.',
+        );
+        return { ok: false, motif: 'socle_absent' };
+      }
+      console.error('[Autopilote] Mutation de la banque audio :', error.message);
+      return { ok: false, motif: 'ecriture_impossible' };
+    }
+    const { issue, pistes } = lireMutationBanque(data, userId);
+    if (issue === 'retiree' || issue === 'renommee') return { ok: true, issue, pistes };
+    if (issue === 'absente') return { ok: false, motif: 'absente' };
+    return { ok: false, motif: 'ecriture_impossible' };
+  } catch (err) {
+    console.error(
+      '[Autopilote] Mutation de la banque audio impossible :',
+      err instanceof Error ? err.message : err,
+    );
+    return { ok: false, motif: 'ecriture_impossible' };
+  }
 }
 
 export const MESSAGES_BIBLIOTHEQUE: Record<

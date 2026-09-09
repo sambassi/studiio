@@ -40,8 +40,9 @@ import { auth } from '@/lib/auth/config';
 import { cheminFfmpeg, cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import { lecteurMinio, clientMinio } from '@/lib/storage/minio-client';
 import {
-  lireBibliothequeUtilisateur, enregistrerBibliothequeUtilisateur,
-  MESSAGES_BIBLIOTHEQUE,
+  lireBibliothequeUtilisateur,
+  ajouterPisteBanqueAudio, muterPisteBanqueAudio,
+  MESSAGES_BIBLIOTHEQUE, type MutationBanqueAudio,
 } from '@/lib/autopilot/analyse/profil-compte';
 import {
   cleAudioValide, nomPisteValide, moodsValides, pisteParCle,
@@ -66,6 +67,28 @@ const TIMEOUT_MS = 30_000;
 const refus = (motif: MotifImportAudio, statut = 400) => NextResponse.json(
   { ok: false, motif, error: MESSAGES_IMPORT_AUDIO[motif] }, { status: statut },
 );
+
+/**
+ * L'echec d'une mutation atomique, traduit en reponse HTTP.
+ *
+ * ⚠️ UN SEUL ENDROIT, POUR QUE `200` VEUILLE TOUJOURS DIRE « PERSISTE ». Avant
+ * la mutation atomique, la route repondait 200 apres une ecriture qu'une
+ * ecriture voisine pouvait avoir deja effacee. Desormais le succes de la RPC
+ * EST la persistance ; tout le reste passe par ici et sort en erreur.
+ */
+function echecMutation(motif: Extract<MutationBanqueAudio, { ok: false }>['motif']) {
+  if (motif === 'pleine') return refus('banque_pleine');
+  if (motif === 'absente') return refus('fichier_absent', 404);
+  return NextResponse.json(
+    {
+      ok: false,
+      error: motif === 'socle_absent'
+        ? MESSAGES_BIBLIOTHEQUE.store_indisponible
+        : MESSAGES_BIBLIOTHEQUE.ecriture_impossible,
+    },
+    { status: motif === 'socle_absent' ? 503 : 500 },
+  );
+}
 
 /** Le PCM mono, lu au fil de l'eau puis rassemblé — jamais le fichier entier. */
 function decoder(args: string[]): Promise<Buffer> {
@@ -115,6 +138,10 @@ export async function POST(req: NextRequest) {
      garder la date de cette affirmation. */
   if (corps.droitsConfirmes !== true) return refus('droits_non_confirmes');
 
+  /* ⚠️ CE PREMIER REGARD EST UNE ECONOMIE, PAS LA GARANTIE. Il evite de
+     descendre puis d'analyser un fichier pour une banque manifestement pleine.
+     La decision qui FAIT AUTORITE est prise dans la transaction, par la RPC :
+     entre cette lecture et l'ecriture, une piste voisine peut arriver. */
   const biblio = await lireBibliothequeUtilisateur(userId);
   const dejaLa = pisteParCle(biblio.audio, cle);
   if (!dejaLa && biblio.audio.pistes.length >= PISTES_AUDIO_MAX) {
@@ -186,24 +213,23 @@ export async function POST(req: NextRequest) {
       silenceInitialMs,
       octets,
       empreinte: empreinteAsset(octets, stat?.etag),
+      /* La date proposee ne sert que si la fiche n'existait pas : quand elle
+         existe, la RPC conserve la sienne — une declaration de droits atteste
+         un jour donne, la réécrire l'effacerait. */
       droitsConfirmesLe: dejaLa?.droitsConfirmesLe ?? new Date().toISOString(),
       ...(formeOnde ? { formeOnde } : {}),
     };
 
-    const pistes = dejaLa
-      ? biblio.audio.pistes.map((p) => (p.cle === cle ? piste : p))
-      : [...biblio.audio.pistes, piste];
-
-    const r = await enregistrerBibliothequeUtilisateur(userId, {
-      ...biblio, audio: { pistes },
-    });
-    if (!r.ok) {
-      return NextResponse.json(
-        { ok: false, error: MESSAGES_BIBLIOTHEQUE[r.motif] },
-        { status: r.motif === 'store_indisponible' ? 503 : 500 },
-      );
-    }
-    return NextResponse.json({ ok: true, piste });
+    /* ⚠️ NI LECTURE NI CALCUL DE LISTE ICI — C'EST TOUT LE CORRECTIF. La liste
+       est relue sous verrou par la RPC au moment ou elle l'ecrit ; deux imports
+       simultanes ne peuvent plus se recouvrir. Reconstituer `[...pistes, piste]`
+       en memoire, meme suivi d'une fusion atomique, ecrivait fidelement une
+       valeur perimee et effacait la piste voisine. */
+    const r = await ajouterPisteBanqueAudio(userId, piste, PISTES_AUDIO_MAX);
+    if (!r.ok) return echecMutation(r.motif);
+    /* `issue` distingue « ajoutee » de « deja la, fiche remise a jour » — et le
+       succes designe desormais un etat REELLEMENT persiste, pas une intention. */
+    return NextResponse.json({ ok: true, issue: r.issue, piste, pistes: r.pistes });
   } catch {
     // Le message n'est PAS repris : il porterait un chemin.
     return refus('analyse_impossible', 503);
@@ -226,42 +252,20 @@ export async function PATCH(req: NextRequest) {
   const cle = corps.cle;
   if (!cleAudioValide(cle, userId)) return refus('cle_hors_perimetre', 403);
 
-  const biblio = await lireBibliothequeUtilisateur(userId);
-  if (pisteParCle(biblio.audio, cle) === null) return refus('fichier_absent', 404);
-
+  /* ⚠️ LE MEME VERROU QUE L'AJOUT, ET POUR LA MEME RAISON. Reecrire la liste
+     depuis une lecture anterieure faisait disparaitre la piste qu'un import
+     voisin venait d'ajouter : un retrait et un ajout concurrents se perdaient
+     l'un l'autre. La RPC relit la liste au moment ou elle l'ecrit — et, quand
+     elle retire, nettoie favoris et autorisations DANS LA MEME TRANSACTION,
+     pour qu'aucun favori ne designe jamais une fiche disparue. */
   const retirer = corps.retirer === true;
-  const pistes = retirer
-    ? biblio.audio.pistes.filter((p) => p.cle !== cle)
-    : biblio.audio.pistes.map((p) => (p.cle === cle ? {
-      ...p,
-      nom: nomPisteValide(corps.nom) ?? p.nom,
-      moods: corps.moods === undefined ? p.moods : moodsValides(corps.moods),
-    } : p));
-
-  /* ⚠️ RETIRER UNE PISTE LA RETIRE PARTOUT OU ELLE EST NOMMEE. Un favori ou
-     une autorisation qui pointe vers une fiche disparue afficherait une carte
-     vide, et l'Autopilote choisirait une musique introuvable. */
-  const favoris = retirer
-    ? { ...biblio.favoris, audio: biblio.favoris.audio.filter((x) => x !== cle) }
-    : biblio.favoris;
-  const automatisation = retirer
-    ? {
-      ...biblio.automatisation,
-      autorises: {
-        ...biblio.automatisation.autorises,
-        audio: biblio.automatisation.autorises.audio.filter((x) => x !== cle),
-      },
-    }
-    : biblio.automatisation;
-
-  const r = await enregistrerBibliothequeUtilisateur(userId, {
-    ...biblio, favoris, automatisation, audio: { pistes },
-  });
-  if (!r.ok) {
-    return NextResponse.json(
-      { ok: false, error: MESSAGES_BIBLIOTHEQUE[r.motif] },
-      { status: r.motif === 'store_indisponible' ? 503 : 500 },
-    );
-  }
-  return NextResponse.json({ ok: true, pistes: r.bibliotheque.audio.pistes });
+  const r = retirer
+    ? await muterPisteBanqueAudio(userId, cle, { retirer: true })
+    : await muterPisteBanqueAudio(userId, cle, {
+      retirer: false,
+      nom: nomPisteValide(corps.nom) ?? null,
+      moods: corps.moods === undefined ? null : moodsValides(corps.moods),
+    });
+  if (!r.ok) return echecMutation(r.motif);
+  return NextResponse.json({ ok: true, issue: r.issue, pistes: r.pistes });
 }

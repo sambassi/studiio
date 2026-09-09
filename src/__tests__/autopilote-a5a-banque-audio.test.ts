@@ -388,9 +388,18 @@ describe('5. La route', () => {
   it('5.4 ⚠️ RETIRER DU CATALOGUE NE DÉTRUIT RIEN', () => {
     const r = sansProse(ROUTE);
     expect(r).not.toMatch(/removeObject|deleteObject/i);
-    // Mais la fiche part de partout où elle était nommée.
-    expect(r).toContain('biblio.favoris.audio.filter');
-    expect(r).toContain('autorises.audio.filter');
+    /* ⚠️ LE NETTOYAGE A DÉMÉNAGÉ, IL N'A PAS DISPARU. Il se faisait ici, en
+       réécrivant la bibliothèque entière depuis une lecture antérieure — ce qui
+       effaçait la piste qu'un import voisin venait d'ajouter. Il vit désormais
+       DANS la transaction, où favoris et autorisations sont nettoyés sous le
+       même verrou que le retrait. L'exigence est inchangée ; seul l'endroit qui
+       la tient a changé, et le test suit. */
+    const sql = lire('migrations/2026-09-09-autopilot-banque-audio-atomique.sql');
+    expect(r).toContain('muterPisteBanqueAudio');
+    expect(sql).toContain("jsonb_set(v_biblio, '{favoris}', v_favoris, true)");
+    expect(sql).toContain("jsonb_set(v_autom, '{autorises}', v_autoris, true)");
+    // Et retirer une fiche ne détruit toujours aucun octet dans le stockage.
+    expect(sql).not.toMatch(/removeObject|deleteObject/i);
   });
 
   it('5.5 la banque est bornée à l’ajout, pas seulement à la relecture', () => {

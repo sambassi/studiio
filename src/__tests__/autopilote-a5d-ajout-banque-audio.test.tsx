@@ -117,8 +117,16 @@ describe('2. L’analyse se voit, et ne se relance pas', () => {
   it('2.3 ⚠️ LA MÊME CLÉ REMPLACE, ELLE NE DOUBLE PAS', () => {
     const h = sansProse(HOOK);
     expect(h).toContain('p.some((x) => x.cle === cle)');
-    // Côté serveur aussi : une clé, une fiche.
-    expect(sansProse(ROUTE)).toContain('biblio.audio.pistes.map((p) => (p.cle === cle ? piste : p))');
+    /* ⚠️ CÔTÉ SERVEUR, LA DÉCISION A CHANGÉ D'ENDROIT — PAS DE SENS. Elle se
+       prenait en mémoire, sur une liste lue plus tôt : deux ajouts simultanés
+       de la même clé pouvaient donc en juger chacun de leur côté. Elle se prend
+       désormais DANS la transaction, sur la liste relue sous verrou, et rend
+       « existante » plutôt que d'écrire une seconde fiche. */
+    const sql = lire('migrations/2026-09-09-autopilot-banque-audio-atomique.sql');
+    expect(sansProse(ROUTE)).toContain('ajouterPisteBanqueAudio');
+    expect(sql).toContain("where v_pistes->(i - 1)->>'cle' = v_cle");
+    expect(sql).toContain("issue := 'existante'");
+    expect(sql).toContain('for update');
   });
 
   it('2.4 un échec est dit en français, sans détail technique', () => {
@@ -279,9 +287,17 @@ describe('7. Retirer', () => {
   });
 
   it('7.2 le favori et l’autorisation sont nettoyés en même temps', () => {
-    const r = sansProse(ROUTE);
-    expect(r).toContain('biblio.favoris.audio.filter');
-    expect(r).toContain('autorises.audio.filter');
+    /* « En même temps » est désormais littéral : les trois nettoyages tiennent
+       dans UNE transaction, sous le verrou du retrait. Les faire en mémoire
+       puis réécrire la bibliothèque entière laissait un instant où l'un des
+       états était vrai et l'autre non — et effaçait au passage toute piste
+       arrivée entre-temps. */
+    const sql = lire('migrations/2026-09-09-autopilot-banque-audio-atomique.sql');
+    expect(sansProse(ROUTE)).toContain('muterPisteBanqueAudio');
+    expect(sql).toContain("jsonb_set(v_biblio, '{favoris}', v_favoris, true)");
+    expect(sql).toContain("jsonb_set(v_biblio, '{automatisation}', v_autom, true)");
+    // Une seule écriture pour les trois : aucune fenêtre entre elles.
+    expect(sql.match(/update public\.autopilot_config/g) ?? []).toHaveLength(2);
   });
 
   it('7.3 ⚠️ RETIRER LA PISTE ACTIVE SE CONFIRME', () => {
