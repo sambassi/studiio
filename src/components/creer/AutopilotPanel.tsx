@@ -293,6 +293,43 @@ export default function AutopilotPanel({
   const [apercuTournage, setApercuTournage] = useState<{
     format: string; analyseApercuId: string | null;
   }>({ format: '9:16', analyseApercuId: null });
+
+  /**
+   * ── LE SIGNAL DU TOURNAGE REGARDÉ, ET LA BOUCLE QU'IL A CAUSÉE ─────────
+   *
+   * ⚠️ DEUX DÉFAUTS SE NOURRISSAIENT L'UN L'AUTRE, et aucun des deux seul
+   * n'aurait suffi :
+   *
+   *   1. cette fonction était écrite EN LIGNE dans le JSX. Elle changeait donc
+   *      d'identité à chaque rendu, et l'effet qui la surveille chez l'enfant
+   *      se redéclenchait à chaque rendu ;
+   *   2. `setApercuTournage` écrivait un OBJET NEUF à chaque appel. `Object.is`
+   *      échoue sur deux littéraux identiques : React re-rendait donc le
+   *      parent même quand rien n'avait changé — ce qui recréait la fonction
+   *      en ligne, ce qui redéclenchait l'effet, ce qui rappelait le parent.
+   *
+   * Résultat : `Maximum update depth exceeded`, et une tempête de requêtes de
+   * vignettes en prime.
+   *
+   * ⚠️ LES DEUX SONT CORRIGÉS, PAS UN SEUL. Stabiliser la fonction sans
+   * arrêter le churn d'état laisserait un re-rendu inutile à chaque signal ;
+   * arrêter le churn sans stabiliser la fonction laisserait l'effet se
+   * redéclencher à chaque rendu du parent. Ce sont deux défauts distincts qui
+   * se trouvaient composer une boucle.
+   */
+  const majApercuTournage = useCallback((etat: {
+    sessionId: string | null; aucunRush: boolean; format: string;
+    analyseApercuId: string | null;
+  }) => {
+    setApercuTournage((precedent) => (
+      precedent.format === etat.format
+        && precedent.analyseApercuId === etat.analyseApercuId
+        /* ⚠️ RENDRE L'OBJET PRÉCÉDENT, PAS UN CLONE ÉGAL. C'est ce retour-là
+           que React compare pour décider de ne PAS re-rendre. */
+        ? precedent
+        : { format: etat.format, analyseApercuId: etat.analyseApercuId }));
+    onSessionChange?.(etat);
+  }, [onSessionChange]);
   /**
    * Quelle médiathèque est ouverte, et pour quoi.
    *
@@ -947,13 +984,7 @@ export default function AutopilotPanel({
                 });
                 return true;
               }}
-              onSessionChange={(etat) => {
-                setApercuTournage({
-                  format: etat.format,
-                  analyseApercuId: etat.analyseApercuId,
-                });
-                onSessionChange?.(etat);
-              }}
+              onSessionChange={majApercuTournage}
               onVideoLancee={onVideoLancee}
               objectifCetteVideo={objectifCetteVideo}
               /* ⚠️ LE BROUILLON REND L'OBJECTIF, IL NE LE DECIDE PAS. Le

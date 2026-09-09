@@ -67,8 +67,11 @@ function poser(over: Record<string, unknown> = {}) {
 }
 
 const carte = (n: number) => document.querySelector(`[data-bande-carte="${ID(n)}"]`);
-const bascule = (n: number) =>
-  document.querySelector(`[data-bande-basculer="${ID(n)}"]`) as HTMLButtonElement | null;
+/** Le geste de sélection : la CARTE elle-même, depuis A_7H2. */
+const choisir = (n: number) =>
+  document.querySelector(`[data-bande-choisir="${ID(n)}"]`) as HTMLButtonElement;
+/** Le témoin ✓ — un état affiché, plus un bouton. */
+const temoin = (n: number) => document.querySelector(`[data-bande-monte="${ID(n)}"]`);
 
 describe('A_7d2 — la sélection multiple', () => {
   it('sans `onBasculer`, l écran est celui d avant le lot', () => {
@@ -84,26 +87,42 @@ describe('A_7d2 — la sélection multiple', () => {
         envois={[]}
       />,
     );
-    /* ⚠️ AUCUNE CASE À COCHER : le mode multi n'existe que si le parent le
-       demande, et la non-régression du chemin historique se lit ici. */
-    expect(bascule(2)).toBeNull();
+    /* ⚠️ AUCUN TÉMOIN : le mode multi n'existe que si le parent le demande,
+       et la non-régression du chemin historique se lit ici. */
+    expect(temoin(1)).toBeNull();
     expect(document.querySelector('[data-bande-compte]')).toBeNull();
   });
 
-  it('le rush REGARDÉ est monté, et sa case est verrouillée', () => {
+  it('le rush REGARDÉ est monté, et affiche son témoin', () => {
     poser();
-    /* Le retirer laisserait un aperçu sans rush. On en change en cliquant la
-       carte, pas en décochant. */
     expect(carte(1)?.getAttribute('data-bande-carte-montee')).toBe('1');
-    expect(bascule(1)?.disabled).toBe(true);
+    expect(temoin(1)).not.toBeNull();
   });
 
-  it('cocher un autre rush ne change pas celui qu on regarde', () => {
+  it('CLIQUER LA CARTE ajoute le rush — plus de petit « + » à viser', () => {
+    /* ⚠️ LE GESTE ÉVIDENT EST DE CLIQUER LA CARTE. Le « + » de 24 px
+       demandait de viser pour dire « celui-ci aussi » ; c'est ce que Bassi a
+       signalé comme non intuitif. */
     const { onBasculer, onSelectionner } = poser();
-    fireEvent.click(bascule(2) as HTMLButtonElement);
+    fireEvent.click(choisir(2));
     expect(onBasculer).toHaveBeenCalledWith(ID(2));
-    /* ⚠️ SI LA CASE CHANGEAIT L'APERÇU, il sauterait à chaque ajout. */
-    expect(onSelectionner).not.toHaveBeenCalled();
+    /* Le rush cliqué devient AUSSI celui qu'on regarde : c'est celui dont on
+       vient de demander l'image. */
+    expect(onSelectionner).toHaveBeenCalledWith(ID(2));
+  });
+
+  it('recliquer une carte déjà montée la RETIRE', () => {
+    const { onBasculer } = poser({ supplementaires: [ID(2)] });
+    fireEvent.click(choisir(2));
+    expect(onBasculer).toHaveBeenCalledWith(ID(2));
+  });
+
+  it('le DERNIER rush monté ne se retire pas', () => {
+    /* Une vidéo sans matière n'existe pas : mieux vaut une carte qui reste
+       sélectionnée qu'un écran incohérent. */
+    const { onBasculer } = poser();
+    fireEvent.click(choisir(1));
+    expect(onBasculer).not.toHaveBeenCalled();
   });
 
   it('les rushes montés sont marqués, les autres non', () => {
@@ -128,13 +147,17 @@ describe('A_7d2 — la sélection multiple', () => {
     expect(document.querySelector('[data-bande-compte]')).toBeNull();
   });
 
-  it('au plafond, les cases non cochées se ferment avec un motif lisible', () => {
-    /* ⚠️ PAS UNE ERREUR TECHNIQUE. La personne doit lire ce qui l'arrête. */
+  it('au plafond, le compte le DIT — pas une erreur technique', () => {
     const autres = [2, 3].map(ID);
     poser({ supplementaires: autres, maxRushes: 3 });
-    expect(bascule(2)?.disabled).toBe(false);
     const p = document.querySelector('[data-bande-compte]');
     expect(p?.textContent).toContain('maximum');
+  });
+
+  it('au plafond, cliquer un rush NON monté n en ajoute pas un de plus', () => {
+    const { onBasculer } = poser({ supplementaires: [ID(2)], maxRushes: 2 });
+    fireEvent.click(choisir(3));
+    expect(onBasculer).not.toHaveBeenCalled();
   });
 
   it('le plafond vient d A_7b, jamais d une seconde constante', () => {

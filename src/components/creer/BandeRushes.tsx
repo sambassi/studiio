@@ -41,6 +41,17 @@ export interface AnalyseCarte {
   id: string;
   etat: string;
   dureeSecondes?: number | null;
+  /**
+   * COMBIEN DE VIGNETTES CETTE ANALYSE PORTE — A_7H2.
+   *
+   * ⚠️ SANS CE NOMBRE, LA CARTE DEMANDAIT UNE IMAGE QU'ELLE SAVAIT ABSENTE.
+   * Une analyse peut réussir sans produire la moindre vignette ; la carte
+   * lançait quand même `/vignettes/0`, recevait 404, et n'apprenait qu'APRÈS
+   * coup — une requête perdue par rush, à chaque montage du composant.
+   *
+   * `undefined` = la source ne le dit pas : on tente, comme avant.
+   */
+  vignettes?: number;
 }
 
 export interface EnvoiEnCours {
@@ -238,7 +249,10 @@ export default function BandeRushes({
             const nom = nomCourt(r);
             const duree = a?.dureeSecondes ? formaterDuree(a.dureeSecondes) : null;
             const analyse = a?.etat === 'reussie';
-            const image = a && !sansImage[r.id]
+            /* ⚠️ ON NE DEMANDE PAS CE QU'ON SAIT ABSENT. `vignettes === 0`
+               est une réponse, pas une ignorance : la demander produirait un
+               404 par rush et par montage du composant. */
+            const image = a && !sansImage[r.id] && a.vignettes !== 0
               ? `/api/autopilot/analyses/${a.id}/vignettes/0`
               : null;
             return (
@@ -254,44 +268,42 @@ export default function BandeRushes({
                       ? 'border-purple-500/40 bg-purple-500/[0.03]'
                       : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
               >
-                {multi && (() => {
-                  const monte = montes.has(r.id);
-                  /* ⚠️ LE RUSH REGARDÉ NE SE DÉCOCHE PAS ICI. C'est lui que
-                     l'aperçu montre ; le retirer laisserait une image sans
-                     rush. On change de rush regardé en cliquant la carte. */
-                  const verrouille = choisi;
-                  const bloque = !monte && complet;
-                  return (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onBasculer?.(r.id); }}
-                      disabled={verrouille || bloque}
-                      aria-pressed={monte}
-                      data-bande-basculer={r.id}
-                      title={verrouille
-                        ? 'Ce rush est celui que vous regardez : il est toujours monté.'
-                        : bloque
-                          ? `Vous avez atteint ${plafond} rushes pour cette vidéo.`
-                          : monte ? 'Retirer de cette vidéo' : 'Ajouter à cette vidéo'}
-                      aria-label={monte
-                        ? `Retirer ${nom} de cette vidéo`
-                        : `Ajouter ${nom} à cette vidéo`}
-                      className={`absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center
-                        justify-center rounded-md border text-[0.7rem] font-semibold
-                        transition-colors disabled:cursor-not-allowed
-                        ${monte
-                          ? 'border-purple-400/70 bg-purple-500/80 text-white'
-                          : 'border-white/25 bg-black/50 text-white/60 hover:border-white/50'}
-                        ${bloque ? 'opacity-40' : ''}`}
-                    >
-                      {monte ? '✓' : '+'}
-                    </button>
-                  );
-                })()}
+                {multi && montes.has(r.id) && (
+                  /* ⚠️ UN TEMOIN, PLUS UN BOUTON. La selection se fait sur la
+                     carte ; ce badge dit seulement l'etat. Le laisser
+                     cliquable rouvrirait deux gestes pour une meme decision. */
+                  <span
+                    data-bande-monte={r.id}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-1.5 top-1.5 z-10 flex h-6 w-6
+                      items-center justify-center rounded-md border border-purple-400/70
+                      bg-purple-500/90 text-[0.7rem] font-semibold text-white"
+                  >
+                    ✓
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={() => onSelectionner(r.id)}
-                  aria-pressed={choisi}
+                  /* ⚠️ LA CARTE ENTIERE SELECTIONNE — A_7H2.
+                     Le petit « + » d'A_7d2 demandait de viser un carre de
+                     24 px pour dire « celui-ci aussi », alors que le geste
+                     evident est de cliquer la carte. Le clic principal ajoute
+                     ou retire donc le rush du montage, et un second clic sur
+                     un rush deja monte l'en retire.
+
+                     ⚠️ SAUF LE DERNIER. Retirer le seul rush monte laisserait
+                     une video sans matiere : la carte reste alors selectionnee
+                     plutot que de rendre l'ecran incoherent. */
+                  onClick={() => {
+                    if (!multi) { onSelectionner(r.id); return; }
+                    if (!montes.has(r.id)) {
+                      if (!complet) onBasculer?.(r.id);
+                      onSelectionner(r.id);
+                      return;
+                    }
+                    if (montes.size > 1) onBasculer?.(r.id);
+                  }}
+                  aria-pressed={multi ? montes.has(r.id) : choisi}
                   aria-label={choisi
                     ? `${nom} — rush sélectionné pour cette vidéo`
                     : `Utiliser ${nom} pour cette vidéo`}

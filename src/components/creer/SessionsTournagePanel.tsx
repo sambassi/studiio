@@ -341,7 +341,8 @@ export default function SessionsTournagePanel({
     const paires = await Promise.all(liste.map(async (r) => {
       const a = await lireAnalyse(r.id);
       const carte: AnalyseCarte | null = a.sorte === 'trouvee'
-        ? { id: a.analyse.id, etat: a.analyse.etat, dureeSecondes: a.analyse.dureeSecondes }
+        ? { id: a.analyse.id, etat: a.analyse.etat, dureeSecondes: a.analyse.dureeSecondes,
+          vignettes: a.analyse.vignettes?.nombre }
         : null;
       return [r.id, carte] as const;
     }));

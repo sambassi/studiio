@@ -253,7 +253,23 @@ export default function PassagesSuggeres({
     // `GET /analyses/[id]/candidats`, et ce que `generationDepuisReponse`
     // recopie dans `id`.
     const jeuPassages = generation?.id;
-    if (!jeuPassages) return;
+    /* ⚠️ AUCUNE SORTIE MUETTE — A_7H2.
+       Ce `return` etait NU : sans jeu de passages, le clic ne produisait
+       RIEN. Pas de message, pas de bouton qui bouge, pas d'erreur en console.
+       L'utilisateur clique, et l'ecran reste identique — le pire retour
+       possible, parce qu'il ne dit meme pas qu'il ne s'est rien passe.
+
+       C'est le seul chemin par lequel « Creer ma video » pouvait etre
+       silencieux : le verrou, lui, affiche deja « Preparation… ». */
+    if (!jeuPassages) {
+      setChaine({
+        sorte: 'dit',
+        texte: 'Les passages de ce rush ne sont pas encore prêts. '
+          + 'Relance l’analyse, puis réessaie.',
+        alerte: true,
+      });
+      return;
+    }
     verrouRef.current = true;
     setChaine({ sorte: 'encours', etape: 'decoupage' });
 
