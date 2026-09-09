@@ -156,3 +156,59 @@ describe('CREER_PREMIUM_3 — le mode historique ne bouge pas', () => {
     expect(onSelectionner).toHaveBeenCalledWith(ID(3));
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LA RESTAURATION DU BROUILLON — CREER_PREMIUM_3B
+// ═══════════════════════════════════════════════════════════════════════════
+describe('CREER_PREMIUM_3B — le brouillon ne doit pas écraser ce qu on compose', () => {
+  /**
+   * ⚠️ LA CAUSE RÉELLE, ET ELLE A RÉSISTÉ À DEUX CORRECTIONS.
+   *
+   * Le brouillon est stocké PAR RUSH, et l'effet qui le relit rejoue à chaque
+   * changement de rush regardé. Il restaurait la liste des rushes montés —
+   * celle, PÉRIMÉE, du rush qu'on venait de quitter. On cliquait ALPHA, puis
+   * BRAVO : le regard passait à BRAVO, le brouillon d'ALPHA disait
+   * « montage = [ALPHA] », et BRAVO disparaissait en moins de 100 ms.
+   *
+   * Les deux corrections précédentes visaient le clic, puis la représentation
+   * de la liste. Les tests unitaires passaient, et l'écran restait cassé :
+   * aucun des deux ne touchait la RESTAURATION. C'est la mesure dans Chrome
+   * qui l'a montrée — pas le raisonnement.
+   *
+   * La règle testée ici est celle du correctif : ce que l'utilisateur vient de
+   * composer passe avant ce qu'un brouillon se rappelle.
+   */
+  const restaurer = (
+    montesActuels: string[], sourcesDuBrouillon: string[], rushRegarde: string | null,
+  ): string[] => {
+    // La règle telle qu'elle est écrite dans `SessionsTournagePanel`.
+    if (montesActuels.length > 1) return montesActuels;
+    return sourcesDuBrouillon.length > 0
+      ? sourcesDuBrouillon
+      : (rushRegarde ? [rushRegarde] : montesActuels);
+  };
+
+  it('une composition en cours SURVIT au changement de rush regardé', () => {
+    /* Le défaut exact : [A,B] écrasé par le brouillon d'A qui dit [A]. */
+    expect(restaurer([ID(1), ID(2)], [ID(1)], ID(2))).toEqual([ID(1), ID(2)]);
+  });
+
+  it('trois rushes composés survivent aussi', () => {
+    expect(restaurer([ID(1), ID(2), ID(3)], [ID(1)], ID(3)))
+      .toEqual([ID(1), ID(2), ID(3)]);
+  });
+
+  it('au PREMIER chargement, le brouillon sème bien la liste', () => {
+    /* La restauration garde son utilité : elle ne disparaît pas, elle cède le
+       pas à une composition en cours. */
+    expect(restaurer([ID(1)], [ID(1), ID(2)], ID(1))).toEqual([ID(1), ID(2)]);
+  });
+
+  it('sans brouillon, le rush regardé sème la liste', () => {
+    expect(restaurer([], [], ID(2))).toEqual([ID(2)]);
+  });
+
+  it('sans brouillon ni rush regardé, rien n est inventé', () => {
+    expect(restaurer([], [], null)).toEqual([]);
+  });
+});

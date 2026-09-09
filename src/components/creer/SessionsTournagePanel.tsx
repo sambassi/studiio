@@ -443,16 +443,31 @@ export default function SessionsTournagePanel({
     setMontage(brouillon.montage);
     setAudioBrouillon(brouillon.audio);
     setAudioVideo(brouillon.audio);
-    /* ⚠️ RESTAURÉ, ET FILTRÉ SUR LA SESSION COURANTE. Un rush du brouillon qui
-       n'existe plus dans la liste chargée serait coché sans carte : invisible,
-       et pourtant envoyé au serveur. */
-    /* La liste complète, rush regardé inclus : c'est elle qui fait foi. */
+    /* ── LE MONTAGE NE SE RESTAURE QU'AU DEPART ────────────────────────
+     *
+     * ⚠️ LE BROUILLON EST PAR RUSH, ET CET EFFET REJOUE A CHAQUE CHANGEMENT
+     * DE RUSH REGARDE. Restaurer la liste ici l'ECRASAIT donc avec celle,
+     * PERIMEE, du rush qu'on vient de regarder : on cliquait ALPHA, puis
+     * BRAVO — le regard passait a BRAVO, le brouillon d'ALPHA disait
+     * « montage = [ALPHA] », et BRAVO disparaissait aussitot. Un clic
+     * ajoutait, le suivant remplacait, et la mesure dans Chrome montrait la
+     * bascule en moins de 100 ms.
+     *
+     * ⚠️ MESURE, PAS DEDUITE. Deux corrections precedentes visaient le clic et
+     * la representation de la liste ; les tests unitaires passaient, et
+     * l'ecran restait casse. La cause etait dans la RESTAURATION.
+     *
+     * On ne restaure donc que si l'utilisateur n'a encore rien compose. Ce
+     * qu'il vient de cocher passe avant ce qu'un brouillon se rappelle. */
     const restaurees = (brouillon.sources ?? []).filter(
       (id) => rushes.some((r) => r.id === id),
     );
-    setRushesMontes(restaurees.length > 0
-      ? restaurees
-      : (rushChoisi ? [rushChoisi] : []));
+    setRushesMontes((v) => {
+      if (v.length > 1) return v;
+      return restaurees.length > 0
+        ? restaurees
+        : (rushChoisi ? [rushChoisi] : v);
+    });
     onObjectifRestaure?.(brouillon.objectif);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rushChoisi]);
