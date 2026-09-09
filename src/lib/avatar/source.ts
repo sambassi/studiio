@@ -29,6 +29,7 @@
  */
 import { clientMinio, lecteurMinio, signeurInterne } from '@/lib/storage/minio-client';
 import { BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR } from '@/lib/storage/acces-objet';
+import type { MesureSourceAvatar } from './qualite';
 
 /** Le compartiment des sources d'avatar — celui des medias, deja en place. */
 export const BUCKET_AVATAR = BUCKET_NAMESPACE_AVATAR;
@@ -193,4 +194,100 @@ export async function preparerSourceAvatarPourProvider(
   } catch {
     return echec('stockage_injoignable');
   }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   LA SONDE — A_8c
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Les arguments ffprobe qui mesurent une source d'avatar.
+ *
+ * ⚠️ `side_data_list` EST DEMANDE, ET IL EST INDISPENSABLE. C'est la que vit
+ * la rotation d'un telephone : sans elle, une video portrait filmee a l'iPhone
+ * se lit `1920 x 1080` et se ferait classer paysage — un refus, ou pire, un
+ * cadrage faux, pour une video parfaitement valide.
+ */
+export function argumentsSondeAvatar(fichier: string): string[] {
+  return [
+    '-v', 'error',
+    '-show_entries',
+    'format=duration,size:stream=codec_type,codec_name,width,height,'
+    + 'avg_frame_rate,r_frame_rate:stream_side_data=rotation',
+    '-of', 'json', fichier,
+  ];
+}
+
+/** `avg_frame_rate` vient en fraction : « 30000/1001 ». */
+function fpsDepuisFraction(brut: unknown): number | null {
+  if (typeof brut !== 'string' || !brut.includes('/')) return null;
+  const [n, d] = brut.split('/').map(Number);
+  if (!Number.isFinite(n) || !Number.isFinite(d) || d === 0 || n === 0) return null;
+  return n / d;
+}
+
+/**
+ * La rotation declaree, ramenee a 0/90/180/270.
+ *
+ * ffprobe la rend tantot dans `side_data_list`, tantot negative (`-90`) :
+ * les deux designent le meme quart de tour.
+ */
+export function rotationNormalisee(brut: unknown): number {
+  const n = Number(brut);
+  if (!Number.isFinite(n)) return 0;
+  return ((Math.round(n) % 360) + 360) % 360;
+}
+
+/** Lit la sortie JSON de la sonde. Aucun champ n'est deduit d'un autre. */
+export function lireSondeAvatar(stdout: string): MesureSourceAvatar {
+  const vide: MesureSourceAvatar = {
+    dureeSecondes: null, largeur: null, hauteur: null, fps: null,
+    codecVideo: null, codecAudio: null, aAudio: false,
+    orientation: null, rotationDegres: 0, octets: 0, lisible: false,
+  };
+  let o: {
+    format?: { duration?: unknown; size?: unknown };
+    streams?: Array<Record<string, unknown>>;
+  };
+  try { o = JSON.parse(stdout) as typeof o; } catch { return vide; }
+
+  const flux = Array.isArray(o.streams) ? o.streams : [];
+  const video = flux.find((f) => f.codec_type === 'video');
+  const audio = flux.find((f) => f.codec_type === 'audio');
+  if (!video) return vide;
+
+  const largeurBrute = Number(video.width);
+  const hauteurBrute = Number(video.height);
+  const rotation = rotationNormalisee(
+    (Array.isArray(video.side_data_list)
+      ? (video.side_data_list as Array<Record<string, unknown>>)
+        .find((d) => d.rotation !== undefined)?.rotation
+      : undefined) ?? video.rotation,
+  );
+  /* ⚠️ UN QUART DE TOUR ECHANGE LES COTES. C'est la seule facon d'obtenir les
+     dimensions telles qu'un lecteur les AFFICHE, et donc l'orientation reelle. */
+  const pivote = rotation === 90 || rotation === 270;
+  const largeur = Number.isFinite(largeurBrute)
+    ? (pivote ? hauteurBrute : largeurBrute) : null;
+  const hauteur = Number.isFinite(hauteurBrute)
+    ? (pivote ? largeurBrute : hauteurBrute) : null;
+
+  const duree = Number(o.format?.duration);
+  const taille = Number(o.format?.size);
+
+  return {
+    dureeSecondes: Number.isFinite(duree) && duree > 0 ? duree : null,
+    largeur: Number.isFinite(largeur as number) ? (largeur as number) : null,
+    hauteur: Number.isFinite(hauteur as number) ? (hauteur as number) : null,
+    fps: fpsDepuisFraction(video.avg_frame_rate) ?? fpsDepuisFraction(video.r_frame_rate),
+    codecVideo: typeof video.codec_name === 'string' ? video.codec_name : null,
+    codecAudio: audio && typeof audio.codec_name === 'string' ? audio.codec_name : null,
+    aAudio: audio !== undefined,
+    orientation: largeur === null || hauteur === null ? null
+      : largeur === hauteur ? 'carre' : (hauteur as number) > (largeur as number)
+        ? 'portrait' : 'paysage',
+    rotationDegres: rotation,
+    octets: Number.isFinite(taille) ? taille : 0,
+    lisible: true,
+  };
 }
