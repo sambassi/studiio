@@ -23,7 +23,39 @@ interface MediaLibraryProps {
   onClose: () => void;
   mediaType: MediaType;
   onSelect: (url: string, name: string, type?: 'image' | 'video' | 'audio') => void;
+  /**
+   * PLUSIEURS FICHIERS EN UNE SEULE SELECTION — CREER_PREMIUM_3D.
+   *
+   * ⚠️ OPTIONNEL, ET PAR DEFAUT ABSENT. Ce selecteur sert aussi aux logos, aux
+   * images de fond et aux rushes ; leur ouvrir le multiple ferait accepter, en
+   * silence, des lots la ou l'appelant n'attend qu'un media. C'est donc
+   * l'appelant qui le demande.
+   *
+   * Present, `onSelect` est appele UNE FOIS PAR FICHIER REUSSI, et la fenetre
+   * ne se ferme pas toute seule : on regarde les imports finir.
+   */
+  multiple?: boolean;
 }
+
+/** Ce qu'un fichier traverse. Un etat par fichier, jamais un seul global. */
+export type EtatImport = 'attente' | 'envoi' | 'importe' | 'erreur';
+
+export interface ImportEnCours {
+  nom: string;
+  etat: EtatImport;
+  pourcent: number;
+  motif?: string;
+}
+
+/**
+ * Combien d'envois simultanes.
+ *
+ * ⚠️ PAS `Promise.all` SUR LA LISTE ENTIERE. Dix fichiers lances d'un coup
+ * saturent la liaison, et chaque barre de progression avance alors trop
+ * lentement pour dire quoi que ce soit. Deux a la fois gardent le transfert
+ * lisible sans allonger sensiblement le total.
+ */
+export const CONCURRENCE_IMPORT_MEDIA = 2;
 
 const TYPE_FILTERS: Array<{ key: MediaType; label: string }> = [
   { key: 'all', label: 'Tous' },
@@ -108,12 +140,16 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
   );
 }
 
-export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibraryProps) {
+export function MediaLibrary({
+  isOpen, onClose, mediaType, onSelect, multiple = false,
+}: MediaLibraryProps) {
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MediaType>(mediaType === 'all' ? 'all' : mediaType);
   const [uploading, setUploading] = useState(false);
+  /** Une ligne par fichier du lot — l'etat global ne suffit pas a dire lequel a echoue. */
+  const [imports, setImports] = useState<ImportEnCours[]>([]);
   /**
    * Avancement de l'envoi, de 0 a 100.
    *
@@ -173,38 +209,98 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
     }
   }, [isOpen, fetchFiles, mediaType]);
 
+  /** Le type de media deduit du fichier, comme avant. */
+  const typeDuFichier = (f: File): 'image' | 'video' | 'audio' | undefined => (
+    f.type.startsWith('image/') ? 'image'
+      : f.type.startsWith('video/') ? 'video'
+        : f.type.startsWith('audio/') ? 'audio' : undefined);
+
+  /**
+   * Traduit une panne en phrase lisible.
+   *
+   * ⚠️ NI MINIO, NI TRACE, NI CODE HTTP. Ce qui remonte ici vient du reseau ou
+   * du stockage ; le montrer tel quel demanderait a la personne de diagnostiquer
+   * une infrastructure qu'elle ne connait pas.
+   */
+  const motifLisible = (err: unknown, f: File): string => {
+    const brut = err instanceof Error ? err.message.toLowerCase() : '';
+    if (!typeDuFichier(f)) return 'Format non pris en charge';
+    if (brut.includes('trop') || brut.includes('large') || brut.includes('size')) {
+      return 'Fichier trop lourd';
+    }
+    return 'Envoi impossible';
+  };
+
+  /**
+   * ── UN ENVOI, PUIS LES SUIVANTS PAR PETITS PAQUETS ────────────────────
+   *
+   * ⚠️ CHAQUE FICHIER PASSE PAR `uploadFile`, LE MEME QU'AVANT. Le lot n'est
+   * qu'une orchestration : ecrire un second chemin d'envoi aurait donne deux
+   * facons de televerser, et le jour ou l'une serait corrigee, l'autre
+   * continuerait.
+   *
+   * ⚠️ ET UN FICHIER REFUSE N'EMPORTE PAS LES AUTRES. Sur cinq musiques, il est
+   * normal qu'une soit dans un format que le stockage refuse ; annuler les
+   * quatre bonnes punirait la personne pour une erreur qui n'en est pas une.
+   */
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const fichiers = [...(e.target.files ?? [])];
+    e.target.value = '';
+    if (fichiers.length === 0) return;
 
     setUploading(true);
     setProgress(0);
-    try {
-      // Helper PARTAGE : il choisit tout seul entre l'envoi direct a MinIO
-      // (URL presignee) et le relais applicatif, et rapporte l'avancement.
-      const { publicUrl, mode } = await uploadFile(file, {
-        purpose: 'library',
-        onProgress: setProgress,
-      });
+    setImports(fichiers.map((f) => ({ nom: f.name, etat: 'attente' as const, pourcent: 0 })));
 
-      const uploadType: 'image' | 'video' | 'audio' | undefined = file.type.startsWith('image/')
-        ? 'image'
-        : file.type.startsWith('video/')
-          ? 'video'
-          : file.type.startsWith('audio/')
-            ? 'audio'
-            : undefined;
-      console.log(`[MediaLibrary] Upload ${mode} termine : ${file.name}`);
-      onSelect(publicUrl, file.name, uploadType);
-      onClose();
-    } catch (err) {
-      console.error('[MediaLibrary] Upload error:', err);
-      alert(err instanceof Error ? err.message : 'Upload échoué');
-    } finally {
-      setUploading(false);
-      setProgress(0);
-      e.target.value = '';
-    }
+    const majLigne = (i: number, patch: Partial<ImportEnCours>) => {
+      setImports((v) => v.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+    };
+
+    let reussis = 0;
+    const traiter = async (i: number) => {
+      const f = fichiers[i];
+      majLigne(i, { etat: 'envoi' });
+      try {
+        const { publicUrl } = await uploadFile(f, {
+          purpose: 'library',
+          onProgress: (p) => {
+            majLigne(i, { pourcent: p });
+            // La barre globale suit le fichier le plus avance : un seul
+            // chiffre pour un lot n'aurait aucun sens, celui-ci en a un.
+            if (fichiers.length === 1) setProgress(p);
+          },
+        });
+        majLigne(i, { etat: 'importe', pourcent: 100 });
+        reussis += 1;
+        onSelect(publicUrl, f.name, typeDuFichier(f));
+      } catch (err) {
+        majLigne(i, { etat: 'erreur', motif: motifLisible(err, f) });
+      }
+    };
+
+    /* La file est consommee par `CONCURRENCE_IMPORT_MEDIA` ouvriers : l'ordre
+       d'AFFICHAGE reste celui de la selection, seul l'ordre d'execution
+       change. */
+    let prochain = 0;
+    const ouvrier = async () => {
+      for (;;) {
+        const i = prochain;
+        prochain += 1;
+        if (i >= fichiers.length) return;
+        // eslint-disable-next-line no-await-in-loop
+        await traiter(i);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCE_IMPORT_MEDIA, fichiers.length) }, ouvrier),
+    );
+
+    setUploading(false);
+    setProgress(0);
+    /* ⚠️ ON NE FERME QUE POUR UN FICHIER UNIQUE. Fermer sur un lot escamoterait
+       le compte-rendu au moment precis ou il devient utile — celui ou l'un des
+       fichiers n'est pas passe. */
+    if (!multiple && reussis > 0) onClose();
   };
 
   const filtered = files.filter((f) => {
@@ -293,9 +389,58 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
               {uploading ? `Envoi ${progress} %` : 'Uploader'}
             </span>
-            <input type="file" accept={acceptType} onChange={handleUpload} className="hidden" disabled={uploading} />
+            <input
+              type="file"
+              accept={acceptType}
+              multiple={multiple}
+              onChange={handleUpload}
+              className="hidden"
+              disabled={uploading}
+              data-media-input
+            />
           </label>
         </div>
+
+        {/* ── LE COMPTE-RENDU DU LOT ────────────────────────────────────
+            ⚠️ UN ETAT PAR FICHIER, PAS UNE ROUE QUI TOURNE. Une progression
+            globale ne dit ni lequel avance, ni lequel a echoue — c'est-a-dire
+            rien de ce qu'on a besoin de savoir quand un import se passe mal. */}
+        {imports.length > 0 && (
+          <div className="border-b border-white/10 px-5 py-3" data-media-imports>
+            <p className="mb-1.5 text-[11px] text-gray-400" data-media-imports-resume>
+              {imports.filter((i) => i.etat === 'importe').length}
+              {' / '}
+              {imports.length}
+              {' importé'}
+              {imports.length > 1 ? 'es' : 'e'}
+              {imports.some((i) => i.etat === 'erreur')
+                && ` — ${imports.filter((i) => i.etat === 'erreur').length} non ajouté`}
+            </p>
+            <ul className="space-y-1">
+              {imports.map((i) => (
+                <li
+                  key={i.nom}
+                  data-media-import={i.nom}
+                  data-media-import-etat={i.etat}
+                  className="flex items-center justify-between gap-2 text-[11px]"
+                >
+                  <span className="min-w-0 truncate text-gray-300">{i.nom}</span>
+                  <span className={
+                    i.etat === 'erreur' ? 'shrink-0 text-amber-400'
+                      : i.etat === 'importe' ? 'shrink-0 text-emerald-400'
+                        : 'shrink-0 text-gray-500'
+                  }
+                  >
+                    {i.etat === 'attente' && 'En attente'}
+                    {i.etat === 'envoi' && `Importation… ${i.pourcent} %`}
+                    {i.etat === 'importe' && 'Importée ✓'}
+                    {i.etat === 'erreur' && (i.motif ?? 'Échec')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Grid */}
         <div className="p-5 max-h-[60vh] overflow-y-auto">

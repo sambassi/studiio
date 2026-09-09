@@ -173,7 +173,12 @@ describe('La route multipart', () => {
 
 describe('La Médiathèque en profite sans rien changer', () => {
   it('elle passe toujours par le helper partagé', () => {
-    expect(library).toContain('await uploadFile(file, {');
-    expect(library).toContain('onProgress: setProgress,');
+    /* ⚠️ L'INTENTION, PAS L'EXPRESSION EXACTE — CREER_PREMIUM_3D. Ce banc
+       lisait `await uploadFile(file, {` : la variable s'appelle `f` depuis que
+       la Médiathèque traite un LOT, et la progression passe par une fermeture
+       qui sait à quelle ligne l'attribuer. Ce qui est vérifié reste le même —
+       l'envoi passe par le helper partagé, et l'avancement est rapporté. */
+    expect(library).toMatch(/await uploadFile\(\w+, \{/);
+    expect(library).toMatch(/onProgress:/);
   });
 });

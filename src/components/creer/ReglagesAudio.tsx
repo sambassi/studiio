@@ -245,8 +245,17 @@ export default function ReglagesAudio({
         isOpen={ajoutBanque}
         onClose={() => setAjoutBanque(false)}
         mediaType="audio"
+        /* ⚠️ PLUSIEURS MUSIQUES EN UNE SEULE SELECTION — CREER_PREMIUM_3D.
+           Il fallait ouvrir le Finder autant de fois qu'on avait de morceaux.
+           Le selecteur accepte desormais un lot ; il appelle ce rappel UNE FOIS
+           PAR FICHIER REUSSI, et chacun passe par `banque.ajouter` — le meme
+           chemin A_5d qu'avant, avec ses regles de doublon et de capacite. */
+        multiple
         onSelect={(url, nom) => {
-          setAjoutBanque(false);
+          /* ⚠️ ON NE FERME PLUS ICI. Fermer au premier fichier escamotait le
+             compte-rendu du lot au moment ou il devient utile : celui ou l'un
+             des morceaux n'est pas passe. Le selecteur reste ouvert, et la
+             personne le referme quand elle a lu. */
           const cle = cleDepuisUrlMediatheque(url, BUCKET_MUSIQUE);
           /* Un media hors du compartiment audio n'a rien a faire dans la
              banque ; le serveur le refuserait, autant ne pas l'envoyer. */

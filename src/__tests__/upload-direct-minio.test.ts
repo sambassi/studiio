@@ -172,15 +172,23 @@ describe('Le helper : XHR, parce que `fetch` ne sait pas', () => {
 
 describe('La Médiathèque — le point du bug', () => {
   it('elle passe par le helper partagé', () => {
+    /* ⚠️ L'INTENTION, PAS L'EXPRESSION EXACTE — CREER_PREMIUM_3D. Ce banc
+       lisait `await uploadFile(file, {` : la variable s'appelle `f` depuis que
+       la Médiathèque traite un LOT, et la progression passe par une fermeture
+       qui sait à quelle ligne l'attribuer. Ce qui est vérifié reste le même —
+       l'envoi passe par le helper partagé, et l'avancement est rapporté. */
     expect(library).toContain("from '@/lib/storage/uploadFile'");
-    expect(library).toContain('await uploadFile(file, {');
+    expect(library).toMatch(/await uploadFile\(\w+, \{/);
     // Plus de PUT écrit à la main.
     expect(library).not.toContain("await fetch(data.signedUrl, {");
   });
 
   it('elle affiche une barre ET le pourcentage', () => {
     expect(library).toContain('const [progress, setProgress] = useState(0);');
-    expect(library).toContain('onProgress: setProgress,');
+    // L'avancement est rapporté — par `setProgress`, directement ou via la
+    // fermeture qui sait à quelle ligne du lot il appartient.
+    expect(library).toMatch(/onProgress:/);
+    expect(library).toContain('setProgress(p)');
     expect(library).toContain('`Envoi ${progress} %`');
     expect(library).toContain('style={{ width: `${progress}%` }}');
   });
