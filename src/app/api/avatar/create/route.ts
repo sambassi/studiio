@@ -70,6 +70,11 @@ export async function GET(req: NextRequest) {
       .from('user_avatars')
       .select('*')
       .eq('user_id', session.user.id)
+      /* ⚠️ UNE PREPARATION SUPPRIMEE N'EXISTE PLUS — A_8f. `deleted_at` etait
+         ecrite par personne jusqu'a ce lot ; elle l'est maintenant, et tout
+         lecteur qui l'ignorerait ressusciterait a l'ecran ce que la personne
+         vient de retirer. */
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(1);
 

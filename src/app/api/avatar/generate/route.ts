@@ -66,7 +66,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Avatar de l'utilisateur — on verifie explicitement la propriete.
-    const query = supabaseAdmin.from('user_avatars').select('*').eq('user_id', userId);
+    /* ⚠️ ET JAMAIS UNE PREPARATION SUPPRIMEE — A_8f. Generer avec un avatar
+       que la personne a retire serait le faire parler apres coup. */
+    const query = supabaseAdmin.from('user_avatars').select('*')
+      .eq('user_id', userId).is('deleted_at', null);
     const { data: avatarRows } = avatarRowId
       ? await query.eq('id', avatarRowId).limit(1)
       : await query.order('created_at', { ascending: false }).limit(1);

@@ -96,6 +96,9 @@ export default function CloneVideoPanel({
   const [bibliothequeOuverte, setBibliothequeOuverte] = useState(false);
   const [remplacer, setRemplacer] = useState(false);
   const [validation, setValidation] = useState(false);
+  /* A_8f — la suppression demande un second geste : elle est definitive. */
+  const [confirmerSuppression, setConfirmerSuppression] = useState(false);
+  const [suppression, setSuppression] = useState(false);
 
   // ── L'enregistrement webcam ───────────────────────────────────────────
   const [camera, setCamera] = useState<MediaStream | null>(null);
@@ -274,6 +277,34 @@ export default function CloneVideoPanel({
     }
   };
 
+  /**
+   * « SUPPRIMER MA PRÉPARATION » — A_8f.
+   *
+   * ⚠️ LE MOT EST CHOISI. Tant qu'aucun clone n'existe chez le fournisseur, il
+   * n'y a qu'une vidéo de référence à retirer, et l'opération est entièrement
+   * locale. Le serveur REFUSE cette route dès qu'un vrai clone existe : il ne
+   * sait pas le supprimer là-bas, et dire le contraire ferait croire à
+   * quelqu'un que son visage a quitté un service où il resterait.
+   */
+  const supprimerPreparation = async () => {
+    setSuppression(true);
+    setErreur(null);
+    try {
+      const res = await fetch('/api/avatar/enrollment/suppression', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setErreur(json?.error ?? 'Votre préparation n’a pas pu être supprimée.');
+        return;
+      }
+      setConfirmerSuppression(false);
+      onInscrit();
+    } catch {
+      setErreur('Votre demande n’a pas pu être envoyée. Vérifiez votre connexion.');
+    } finally {
+      setSuppression(false);
+    }
+  };
+
   const aUneSource = fichier !== null || cheminMediatheque !== null;
 
   return (
@@ -422,6 +453,48 @@ export default function CloneVideoPanel({
             <p className="text-xs text-gray-500" data-clone-remplacement-avis>
               Votre nouvelle vidéo remplacera la précédente, qui sera supprimée.
             </p>
+          )}
+
+          {/* ── Supprimer sa préparation ────────────────────────────── */}
+          {!cloneChezFournisseur && (
+            confirmerSuppression ? (
+              <div
+                className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 space-y-2"
+                data-clone-suppression-confirmation
+              >
+                <p className="text-sm text-red-100/80">
+                  Votre vidéo de référence sera supprimée. Vos vidéos déjà
+                  produites et vos médias d’origine sont conservés.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={supprimerPreparation}
+                    disabled={suppression}
+                    data-clone-suppression-confirmer
+                    className="rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 px-3 py-1.5 text-xs font-medium"
+                  >
+                    {suppression ? 'Suppression…' : 'Supprimer'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmerSuppression(false)}
+                    className="text-xs text-gray-400 hover:text-gray-200"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setConfirmerSuppression(true); setErreur(null); }}
+                data-clone-supprimer
+                className="block text-sm text-gray-500 hover:text-red-300 underline underline-offset-4"
+              >
+                Supprimer ma préparation
+              </button>
+            )
           )}
         </div>
       )}

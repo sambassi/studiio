@@ -89,6 +89,10 @@ export async function GET(
       .select('id, source_object_key')
       .eq('id', params.id ?? '')
       .eq('user_id', userId)
+      /* ⚠️ UNE PREPARATION SUPPRIMEE NE SE SERT PLUS — A_8f. Sa cle est mise a
+         NULL au meme instant, donc la lecture echouerait de toute facon ; le
+         filtre le dit plutot que de le laisser dependre d'un effet de bord. */
+      .is('deleted_at', null)
       .maybeSingle();
 
     if (error) {
