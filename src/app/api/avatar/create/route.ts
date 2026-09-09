@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { BUCKET_AVATAR, cleSourceAvatar } from '@/lib/avatar/source';
+import { interrogerLeFournisseur } from '@/lib/avatar/etats';
 import {
   uploadAsset,
   createAvatarFromAsset,
@@ -52,9 +53,6 @@ const SUJET_AVATAR = 'self';
  */
 const VERSION_CONSENTEMENT = 'a8b-2026-09-09';
 
-/** Statuts HeyGen consideres comme « avatar utilisable ». */
-const READY_STATUSES = ['completed', 'ready', 'success'];
-
 /**
  * GET /api/avatar/create — avatar courant de l'utilisateur + voix disponibles.
  * Sert a l'affichage initial de la page : premiere visite (aucun avatar) vs
@@ -76,10 +74,19 @@ export async function GET() {
 
     let avatar = avatars?.[0] ?? null;
 
-    // Entrainement en cours ? On rafraichit le statut depuis HeyGen a chaque
-    // consultation, ce qui permet a l'UI de simplement re-interroger cette
-    // route pour suivre l'avancement — sans route supplementaire.
-    if (avatar && !READY_STATUSES.includes(avatar.status)) {
+    /* Entrainement en cours ? On rafraichit le statut depuis HeyGen a chaque
+       consultation, ce qui permet a l'UI de simplement re-interroger cette
+       route pour suivre l'avancement — sans route supplementaire.
+
+       ⚠️ MAIS SEULEMENT S'IL Y A QUELQUE CHOSE A DEMANDER — A_8c. La condition
+       etait « statut pas encore pret » ; depuis que la source peut etre prete
+       AVANT tout entrainement, une ligne `source_ready` sans identifiant
+       fournisseur y entrait et partait interroger HeyGen avec `null`. Une
+       requete inutile, en echec, a chaque affichage de la page.
+
+       `interrogerLeFournisseur` ne repond oui que si un identifiant existe
+       vraiment — c'est-a-dire si un entrainement a REELLEMENT ete lance. */
+    if (interrogerLeFournisseur(avatar)) {
       const training = await getAvatarTrainingStatus(avatar.provider_avatar_id);
       if (training && training.status !== avatar.status) {
         const patch: Record<string, unknown> = { status: training.status };
