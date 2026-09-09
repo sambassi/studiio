@@ -328,11 +328,17 @@ describe('5. Le cadre d’aperçu suit le format demandé', () => {
     ['16:9', '16 / 9'],
     ['1:1', '1 / 1'],
   ])('5.1 format %s → cadre %s', async (format, ratio) => {
+    /* ⚠️ UN RUSH EST DÉSORMAIS NÉCESSAIRE POUR QU'UN CADRE EXISTE —
+       CREER_PREMIUM_2B. Sans vignette à montrer, ce composant ne dessine plus
+       de cadre : il laisse la surface à l'aperçu du style, faute de quoi la
+       colonne de droite en portait deux. L'INTENTION de ce banc ne bouge pas —
+       le cadre suit le format demandé — seul son point de départ change. */
     render(
       <VideosPretes
         sessionId={SESSION}
         aucunRush={false}
         formatSouhaite={format}
+        analyseApercuId="aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
         fetcher={reponse({ ok: true, rendu: null })}
       />,
     );

@@ -3172,9 +3172,25 @@ export default function AssistantWizard() {
     }
   >({ sessionId: null, aucunRush: true, format: '9:16', analyseApercuId: null });
   const [relanceVideos, setRelanceVideos] = useState(0);
-  const [etatVideo, setEtatVideo] = useState<'vide' | 'en_cours' | 'prete' | 'echec'>('vide');
+  const [etatVideo, setEtatVideo] =
+    useState<'vide' | 'rush' | 'en_cours' | 'prete' | 'echec'>('vide');
   /** La vidéo prend la place de l'aperçu du projet dès qu'elle existe. */
-  const videoOccupeLApercu = etatVideo === 'en_cours' || etatVideo === 'prete';
+  /**
+   * ── UNE SEULE GRANDE SURFACE A DROITE — CREER_PREMIUM_2B ───────────────
+   *
+   * ⚠️ `rush` A REJOINT CETTE LISTE, ET C'EST TOUT LE CORRECTIF. `VideosPretes`
+   * dessine un cadre des qu'il a une vignette de rush a montrer, meme sans
+   * video rendue ; il rapportait pourtant « vide », et l'apercu du style se
+   * dessinait EN PLUS. La colonne portait alors deux grands cadres l'un sur
+   * l'autre, et rien ne disait lequel etait la video — c'est ce que Bassi a vu
+   * en comparant avec la production.
+   *
+   * Le composant dit maintenant s'il OCCUPE la surface ; l'apercu du style ne
+   * se montre que quand elle est libre. Les deux fonctionnalites restent :
+   * elles ne se superposent plus.
+   */
+  const videoOccupeLApercu = etatVideo === 'en_cours' || etatVideo === 'prete'
+    || etatVideo === 'rush';
   /**
    * L'enregistrement du panneau, emprunte par l'apercu.
    *

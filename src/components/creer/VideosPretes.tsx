@@ -126,7 +126,15 @@ interface Props {
    * parent a besoin de le savoir pour laisser, ou non, l'aperçu du projet à
    * sa place.
    */
-  onEtat?: (etat: 'vide' | 'en_cours' | 'prete' | 'echec') => void;
+  /**
+   * Ce que ce composant OCCUPE dans la colonne de droite — CREER_PREMIUM_2B.
+   *
+   * ⚠️ `rush` EST UN ETAT A PART. Il dit « aucune video, mais je dessine
+   * quand meme un cadre, celui de la vignette du rush ». Le parent doit alors
+   * s'abstenir d'afficher l'apercu du style — sans quoi la colonne porte deux
+   * grandes surfaces l'une sur l'autre.
+   */
+  onEtat?: (etat: 'vide' | 'rush' | 'en_cours' | 'prete' | 'echec') => void;
   /** Injectable pour les tests. Le défaut est le `fetch` du navigateur. */
   fetcher?: Fetcher;
 }
@@ -246,8 +254,17 @@ export default function VideosPretes({
 
   // Le parent n'a pas à deviner ce que ce composant montre : on le lui dit.
   const courant = etat.sorte === 'trouve' ? etat.rendu : null;
-  const sorteAffichee: 'vide' | 'en_cours' | 'prete' | 'echec' = (() => {
-    if (aucunRush || !courant) return 'vide';
+  const sorteAffichee: 'vide' | 'rush' | 'en_cours' | 'prete' | 'echec' = (() => {
+    /* ⚠️ « VIDE » ET « RUSH » NE SONT PAS LE MEME ETAT — CREER_PREMIUM_2B.
+       Sans video, ce composant dessine QUAND MEME un cadre s'il a une
+       vignette de rush a montrer. Le parent, lui, decidait d'afficher
+       l'apercu du style sur le seul mot « vide » : les deux cadres se
+       superposaient, et rien ne disait lequel etait la video.
+
+       Le composant dit donc desormais s'il OCCUPE la surface. `rush` = j'ai
+       une image et je la montre ; `vide` = je ne dessine aucun cadre, la
+       place est libre pour l'apercu du style. */
+    if (aucunRush || !courant) return apercu !== null ? 'rush' : 'vide';
     if (courant.etat === 'en_attente' || courant.etat === 'en_cours') return 'en_cours';
     return courant.video ? 'prete' : 'echec';
   })();
@@ -368,8 +385,10 @@ export default function VideosPretes({
   if (aucunRush) {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucun_rush">
-        <Titre texte="Votre vidéo" />
-        <CadreFormat />
+        {apercu !== null && <Titre texte="Votre vidéo" />}
+        {/* Pas de vignette : pas de cadre. L'apercu du style prend la place,
+            et la colonne ne porte qu'une seule grande surface. */}
+        {apercu !== null && <CadreFormat />}
         <p className="text-[11px] text-gray-500 leading-relaxed">
           Ajoute des rushes : Studiio en fera une vidéo.
         </p>
@@ -399,8 +418,8 @@ export default function VideosPretes({
   if (etat.sorte === 'aucun') {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucune_video">
-        <Titre texte="Votre vidéo" />
-        <CadreFormat />
+        {apercu !== null && <Titre texte="Votre vidéo" />}
+        {apercu !== null && <CadreFormat />}
         <p className="text-[11px] text-gray-500 leading-relaxed" data-videos-message>
           Aucune vidéo pour l’instant.
         </p>

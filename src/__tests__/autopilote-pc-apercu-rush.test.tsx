@@ -147,20 +147,43 @@ describe('3. Changer de rush change l’image', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('4. Rush sans vignette', () => {
-  it('4.1 sans analyse : une icône, pas une zone noire', async () => {
+  /**
+   * ⚠️ L'INTENTION EST TENUE, LE MOYEN A CHANGÉ — CREER_PREMIUM_2B.
+   *
+   * Ce banc exigeait « une icône, pas une zone noire » : sans vignette, le
+   * cadre restait, avec un pictogramme. C'était juste tant que ce cadre était
+   * seul. Il ne l'était pas : la colonne de droite affiche AUSSI l'aperçu du
+   * style, et les deux se superposaient — deux grands écrans, dont un vide.
+   *
+   * La zone noire est donc toujours proscrite, mais par l'absence de cadre :
+   * quand il n'y a rien à montrer, ce composant laisse la place, et l'aperçu
+   * du style occupe seul la surface.
+   */
+  it('4.1 sans analyse : AUCUN cadre — et donc aucune zone noire', async () => {
     monter({ analyseApercuId: null });
-    await waitFor(() => expect(cadre()).not.toBeNull());
+    await waitFor(() => expect(
+      document.querySelector('[data-videos-pretes]'),
+    ).not.toBeNull());
+    expect(cadre()).toBeNull();
     expect(image()).toBeNull();
-    expect(cadre()!.querySelector('svg')).not.toBeNull();
+    /* La phrase, elle, reste : elle dit quoi faire. */
+    expect(document.querySelector('[data-videos-pretes]')?.textContent ?? '')
+      .not.toHaveLength(0);
   });
 
-  it('4.2 vignette introuvable : le cadre retombe sur son icône', async () => {
+  /**
+   * Même bascule : une vignette qui répond 404 ne laisse plus un cadre à
+   * l'icône, elle rend la surface à l'aperçu du style. C'est exactement le cas
+   * de l'environnement local, où les analyses n'ont aucune vignette — et c'est
+   * là que les deux écrans se voyaient le mieux.
+   */
+  it('4.2 vignette introuvable : le cadre disparaît, il ne reste pas vide', async () => {
     monter({ analyseApercuId: ANALYSE_A });
     await waitFor(() => expect(image()).not.toBeNull());
     const img = image()!;
     await waitFor(() => { img.dispatchEvent(new Event('error')); });
     await waitFor(() => expect(image()).toBeNull());
-    expect(cadre()!.querySelector('svg')).not.toBeNull();
+    expect(cadre()).toBeNull();
   });
 
   it('4.3 l’échec ne se propage pas au rush suivant', () => {
