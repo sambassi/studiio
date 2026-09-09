@@ -67,8 +67,10 @@ import {
 } from '@/lib/autopilot/analyse/montage-contrat';
 import { creerPlan, lirePlanIdentique } from '@/lib/autopilot/analyse/montage-service';
 import {
-  lireProfilCreatifUtilisateur, lireBibliothequeUtilisateur,
+  lireProfilCreatifUtilisateur, lireBibliothequeUtilisateur, lireJumeauUtilisateur,
 } from '@/lib/autopilot/analyse/profil-compte';
+import { jumeauHistorique } from '@/lib/avatar/jumeau';
+import { resoudreJumeauDuCompte } from '@/lib/avatar/jumeau-serveur';
 import { listerCreatifsRecents } from '@/lib/autopilot/analyse/rendu-service';
 import { preparerCaptionsMultiSource } from '@/lib/autopilot/analyse/captions-service';
 import { PROFIL_CREATIF_DEFAUT } from '@/lib/autopilot/analyse/profil-creatif';
@@ -453,6 +455,28 @@ export async function monterAvecM3(
      EXACTEMENT la meme video, et `lireRenduReussiIdentique` la retrouve au
      lieu de la recalculer. */
   const biblio = await lireBibliothequeUtilisateur(userId);
+
+  /* ── LA PERSONNE NUMERIQUE, SI ELLE A ETE DEMANDEE — A_8f ────────────
+     ⚠️ ETEINTE, ELLE NE COUTE RIEN ET NE CHANGE RIEN. `jumeauHistorique`
+     sort immediatement pour l'immense majorite des comptes : le chemin
+     d'avant ce lot est strictement inchange, sans une requete de plus.
+
+     ⚠️ ALLUMEE, ELLE NE PEUT PAS ETRE IGNOREE. Le portail revalide TOUT sur
+     les lignes de la base — un clone valide il y a un mois a pu etre
+     supprime depuis, une voix a pu disparaitre. Et meme « pret » ne produit
+     rien aujourd'hui : l'integration du fournisseur appartient a A_8_FINAL,
+     et pretendre le contraire fabriquerait une video ordinaire que la
+     personne croirait etre la sienne. */
+  const configJumeau = await lireJumeauUtilisateur(userId);
+  if (!jumeauHistorique(configJumeau) && configJumeau.active) {
+    const { issue } = await resoudreJumeauDuCompte(userId, configJumeau);
+    if (issue.etat === 'bloque') {
+      return { sorte: 'ignore', motif: 'jumeau_non_pret' };
+    }
+    if (issue.etat === 'pret') {
+      return { sorte: 'ignore', motif: 'jumeau_indisponible' };
+    }
+  }
   let profilEffectif = profil;
   let variation: { politiqueVersion: string; raison: string } | null = null;
   /* ⚠️ LU UNE SEULE FOIS POUR LES DEUX POLITIQUES. Deux lectures du meme

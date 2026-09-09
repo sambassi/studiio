@@ -14,6 +14,7 @@ import {
   Clapperboard,
 } from 'lucide-react';
 import CloneVideoPanel from '@/components/avatar/CloneVideoPanel';
+import AutopiloteJumeauPanel from '@/components/avatar/AutopiloteJumeauPanel';
 import { estEtatLocal } from '@/lib/avatar/etats';
 import ApercuPrononciation from '@/components/voice/ApercuPrononciation';
 import PrononciationsPanel from '@/components/voice/PrononciationsPanel';
@@ -68,6 +69,8 @@ export default function AvatarPage() {
   /* L'apercu REEL du clone, calcule par le serveur. `null` tant qu'aucune
      generation n'existe — et l'ecran le dit plutot que de le combler. */
   const [apercuClone, setApercuClone] = useState<string | null>(null);
+  /* Les voix clonées du compte — lecture seule, aucune synthèse. */
+  const [voixClonees, setVoixClonees] = useState<{ id: string; name: string }[]>([]);
 
   // Création
   const [kind, setKind] = useState<AvatarKind>('photo');
@@ -121,6 +124,21 @@ export default function AvatarPage() {
       }
     }
     return json.data.avatar as AvatarRow | null;
+  }, []);
+
+  /* A_8f — les voix du compte, pour savoir si Autopilote pourra parler.
+     `GET /api/voice/clone` relit `user_voices` en base : aucun fournisseur. */
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      try {
+        const j = await (await fetch('/api/voice/clone')).json();
+        if (!annule) setVoixClonees(Array.isArray(j?.voices) ? j.voices : []);
+      } catch {
+        if (!annule) setVoixClonees([]);
+      }
+    })();
+    return () => { annule = true; };
   }, []);
 
   // ── Chargement initial ──────────────────────────────────────────────
@@ -789,6 +807,16 @@ export default function AvatarPage() {
           Il est donc affiche des la premiere visite, avant meme qu'un avatar
           existe. */}
       <PrononciationsPanel />
+
+      {/* A_8f — l'opt-in Autopilote vient APRÈS l'état du clone, la validation
+          et la voix : on ne propose d'utiliser que ce qui est déjà décrit. */}
+      <AutopiloteJumeauPanel
+        avatarId={avatar?.id ?? null}
+        statut={avatar?.status ?? null}
+        providerAvatarId={avatar?.provider_avatar_id ?? null}
+        valideLe={avatar?.validated_at ?? null}
+        voix={voixClonees}
+      />
 
       <VoiceCloneRecorder />
 

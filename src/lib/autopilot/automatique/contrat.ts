@@ -75,6 +75,15 @@ export const MOTIFS_M3 = [
   'plan_impossible',
   'rendu_echoue',
   'socle_absent',
+  /* ⚠️ A_8f — « LE CLONE ETAIT DEMANDE, ET IL N'A PAS PU SERVIR ».
+     Deux motifs, et non un repli silencieux vers une video ordinaire.
+     Quelqu'un qui a explicitement demande que son clone parle ne doit pas
+     recevoir autre chose sans l'apprendre : mieux vaut un creneau non
+     produit et nomme qu'une video qu'il croira etre la sienne. */
+  'jumeau_non_pret',
+  /* Configuration valide, mais l'integration du fournisseur n'est pas encore
+     livree. Ce n'est ni une panne ni une erreur de l'utilisateur. */
+  'jumeau_indisponible',
 ] as const;
 export type MotifM3 = (typeof MOTIFS_M3)[number];
 

@@ -233,11 +233,17 @@ describe('8. Le vocabulaire des issues', () => {
        réussite ni un échec, et « échouée » n'est pas « absente ». Sans cette
        distinction, une analyse lancée deux minutes plus tôt par un humain
        serait comptée comme une panne à chaque cycle. */
+    /* A_8f en ajoute deux, et l'ordre compte : la liste est comparee telle
+       quelle pour qu'un ajout soit un GESTE, jamais un effet de bord. « Le
+       clone etait demande et n'a pas pu servir » est un etat UTILISATEUR
+       normal — pas une panne —, d'ou un motif nomme plutot qu'un repli
+       silencieux vers une video ordinaire. */
     expect(MOTIFS_M3).toEqual([
       'aucun_rush_analyse', 'analyse_absente', 'analyse_en_cours',
       'analyse_echouee', 'candidats_absents', 'candidats_en_cours',
       'candidats_echoues', 'coupes_vides', 'clips_echoues', 'plan_impossible',
       'rendu_echoue', 'socle_absent',
+      'jumeau_non_pret', 'jumeau_indisponible',
     ]);
   });
 

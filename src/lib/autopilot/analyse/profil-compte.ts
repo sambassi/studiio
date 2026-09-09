@@ -41,6 +41,7 @@
  * fonction est reprise d'elle-meme des qu'elle apparait.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { lireConfigJumeau, type ConfigJumeauNumerique } from '@/lib/avatar/jumeau';
 import {
   normaliserProfilCreatif, type ProfilCreatifAutopilote,
 } from './profil-creatif';
@@ -395,6 +396,39 @@ export async function lireBibliothequeUtilisateur(
      plutot que devinee. */
   const style = await lireStyleDuCompte(userId);
   return bibliothequeValide(style.bibliothequeCreative, userId);
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   A_8f — LA PERSONNE NUMERIQUE DU COMPTE
+
+   ⚠️ SA PROPRE CLE, SON PROPRE ECRIVAIN, comme la bibliotheque. Activer son
+   clone ne doit pas pouvoir ecraser un style enregistre a la meme seconde,
+   ni l'inverse.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+export async function lireJumeauUtilisateur(
+  userId: string,
+): Promise<ConfigJumeauNumerique> {
+  const style = await lireStyleDuCompte(userId);
+  return lireConfigJumeau(style.jumeauNumerique);
+}
+
+export type EcritureJumeau =
+  | { ok: true; jumeau: ConfigJumeauNumerique }
+  | { ok: false; motif: 'store_indisponible' | 'ecriture_impossible' };
+
+export async function enregistrerJumeauUtilisateur(
+  userId: string, brut: unknown,
+): Promise<EcritureJumeau> {
+  if (!userId) return { ok: false, motif: 'ecriture_impossible' };
+  if (!(await styleDuCompteDisponible())) return { ok: false, motif: 'store_indisponible' };
+
+  // Normalise AVANT d'ecrire : la base ne doit jamais porter ce que la
+  // relecture jetterait — la personne verrait son reglage disparaitre.
+  const normalise = lireConfigJumeau(brut);
+  const ok = await fusionnerDesignStyle(userId, { jumeauNumerique: normalise });
+  if (!ok) return { ok: false, motif: 'ecriture_impossible' };
+  return { ok: true, jumeau: normalise };
 }
 
 export type EcritureBibliotheque =

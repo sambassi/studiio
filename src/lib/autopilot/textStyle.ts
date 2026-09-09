@@ -19,6 +19,9 @@ import {
   bibliothequeValide, bibliothequeVide, BIBLIOTHEQUE_VIDE,
   type BibliothequeCreative,
 } from '@/lib/creatif/bibliotheque';
+import {
+  lireConfigJumeau, jumeauHistorique, type ConfigJumeauNumerique,
+} from '@/lib/avatar/jumeau';
 
 /**
  * Le style de texte CONSTANT de l'Autopilote — police, taille, position,
@@ -208,6 +211,19 @@ export interface AutopilotDesignStyle {
    * calcules du compte. Une preference d'affichage qui refait des videos.
    */
   bibliothequeCreative?: BibliothequeCreative;
+  /**
+   * A_8f — LA PERSONNE NUMERIQUE DU COMPTE : « utiliser mon clone ».
+   *
+   * ⚠️ FRERE DE `profilCreatif`, ET SURTOUT PAS SON ENFANT. Le profil creatif
+   * dit a quoi les videos RESSEMBLENT ; ceci dit QUI y apparait. Les ranger
+   * ensemble ferait entrer l'identite d'une personne dans une empreinte de
+   * style, et un changement de couleur invaliderait le clone — ou l'inverse.
+   *
+   * ⚠️ ET C'EST UN REGLAGE DE COMPTE, PAS UNE AUTORISATION. Ce qui est
+   * REELLEMENT permis est reverifie a chaque generation sur les lignes de la
+   * base : ce champ dit ce que la personne a DEMANDE, jamais ce qui est vrai.
+   */
+  jumeauNumerique?: ConfigJumeauNumerique;
   title?: AutopilotTextZone;
   /**
    * Sous-titre — police et taille SEULEMENT.
@@ -442,6 +458,20 @@ export function objectifDepuisStyle(
   return style?.objectifParDefaut ?? OBJECTIF_DEFAUT;
 }
 
+/**
+ * La configuration de personne numerique, ou RIEN.
+ *
+ * ⚠️ « RIEN » PLUTOT QUE « ETEINT ». Un compte qui n'a jamais vu cet ecran ne
+ * doit pas voir apparaitre une cle dans son style : `compacter` la retirerait
+ * de toute facon, mais surtout, ecrire un objet la ou il n'y en avait pas
+ * ferait changer l'empreinte du rendu de tous les comptes historiques.
+ */
+function jumeauValideOuRien(brut: unknown): ConfigJumeauNumerique | undefined {
+  if (!brut || typeof brut !== 'object') return undefined;
+  const c = lireConfigJumeau(brut);
+  return jumeauHistorique(c) ? undefined : c;
+}
+
 export function sanitizeDesignStyle(
   brut: unknown, userId?: string,
 ): AutopilotDesignStyle {
@@ -464,6 +494,10 @@ export function sanitizeDesignStyle(
     objectifParDefaut: objectifValide(o.objectifParDefaut),
     // ⚠️ SANS CETTE LIGNE, LES FAVORIS SONT EFFACES a chaque enregistrement.
     bibliothequeCreative: bibliothequeValideOuRien(o.bibliothequeCreative, userId),
+    // ⚠️ SANS CETTE LIGNE, L'OPT-IN EST EFFACE a chaque enregistrement d'un
+    // reglage voisin : `compacter` ne garde que ce qui est nomme ici. C'est
+    // la meme dette que celle payee pour `montage`, `audio` puis les favoris.
+    jumeauNumerique: jumeauValideOuRien(o.jumeauNumerique),
     title: zone(o.title, true),
     // La position du sous-titre est retirée par `zone(..., false)` : voir le
     // commentaire du champ.
