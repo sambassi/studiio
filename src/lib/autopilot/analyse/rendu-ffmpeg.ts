@@ -267,6 +267,66 @@ function duree(v: number): string {
 export interface MusiqueLocale {
   /** Le fichier deja descendu dans le repertoire du rendu. */
   chemin: string;
+  /**
+   * LA DUREE DU FICHIER TEL QU'IL SERA LU — apres la coupe du blanc initial.
+   *
+   * ⚠️ ELLE DECIDE DU NOMBRE DE REPETITIONS, ET CE NOMBRE EST FINI. Voir
+   * `repetitionsMusique` : une entree infinie pouvait empecher le processus
+   * de se terminer.
+   *
+   * `null` quand la mesure n'a pas abouti : la musique est alors jouee UNE
+   * fois, sans repetition. Une mesure manquante ne doit jamais se traduire par
+   * une entree sans fin.
+   */
+  dureeSecondes?: number | null;
+}
+
+/**
+ * COMBIEN DE FOIS LA MUSIQUE SE REPETE — un nombre FINI, toujours.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE DEFAUT QUE CE CALCUL CORRIGE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le graphe posait `-stream_loop -1` : une entree SANS FIN, que `atrim`
+ * bornait dans le filtre. Cela paraissait suffisant — la sortie est bornee,
+ * donc le processus devrait finir. Il ne finissait pas.
+ *
+ * Mesure du 2026-09-09, montage de 8 s, meme graphe, seule la duree de la
+ * musique change :
+ *
+ *   1 s → BLOQUE      2,5 s → 0,5 s     5 s → 0,4 s
+ *   2 s → BLOQUE      3 s   → 0,4 s     8 s → 0,5 s
+ *   4 s → BLOQUE      1,5 s → 0,5 s    12 s → 0,5 s
+ *
+ * Ni `-shortest` ni `-t` en sortie n'y changeaient quoi que ce soit : le blocage
+ * est DANS le graphe, pas au muxeur — `atrim` coupe le flux sans que l'entree
+ * bouclee ne se termine jamais, et `amix` attend une fin qui ne vient pas.
+ * Un rendu sur trois environ tombait donc dans les 60 s de budget et
+ * ressortait en `delai_depasse`, sans une ligne de diagnostic.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POURQUOI UN COMPTE PLUTOT QU'UNE BORNE DE PLUS
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Une borne supplementaire aurait demande au graphe de bien vouloir s'arreter.
+ * Un compte FINI retire la question : l'entree se termine d'elle-meme apres
+ * `n + 1` passages, quoi que fasse `atrim` en aval. La terminaison cesse
+ * d'etre un comportement observe pour devenir une propriete de la commande.
+ *
+ * `atrim` reste, et garde son role : couper au bon endroit dans le dernier
+ * passage. Les deux repetitions suffisantes pour 8 s de montage avec 3 s de
+ * musique donnent 9 s de matiere, dont `atrim` garde 8.
+ */
+export function repetitionsMusique(
+  dureeMontageSecondes: number, dureeMusiqueSecondes: number | null | undefined,
+): number {
+  const montage = nombreFini(dureeMontageSecondes);
+  const musique = nombreFini(dureeMusiqueSecondes ?? null);
+  // Sans mesure fiable, on joue UNE fois. Le montage garde alors du silence
+  // apres la musique — c'est visible, verifiable, et cela ne bloque personne.
+  if (montage === null || musique === null || musique <= 0 || montage <= 0) return 0;
+  return Math.max(0, Math.ceil(montage / musique) - 1);
 }
 
 export interface EntreeAudioRendu {
@@ -453,15 +513,21 @@ export function argumentsRendu(
     }
 
     if (musique !== null) {
-      // ⚠️ `-stream_loop -1` EST UNE OPTION D'ENTREE, donc AVANT son `-i`.
-      // Elle rejoue le fichier indefiniment ; c'est `atrim` qui borne, et
-      // c'est ce couple qui rend le comportement deterministe des deux cotes :
-      // une musique plus courte que le montage se repete, une plus longue est
-      // coupee. La jonction de boucle est une repetition brute du fichier :
-      // elle s'entend si le morceau ne boucle pas naturellement, et un
-      // fondu-enchaine a la jonction serait un lot a part.
+      // ⚠️ `-stream_loop` EST UNE OPTION D'ENTREE, donc AVANT son `-i`.
+      // Une musique plus courte que le montage se repete, une plus longue est
+      // coupee par `atrim`. La jonction de boucle est une repetition brute du
+      // fichier : elle s'entend si le morceau ne boucle pas naturellement, et
+      // un fondu-enchaine a la jonction serait un lot a part.
+      //
+      // ⚠️ ET LE COMPTE EST FINI. Il valait `-1` — sans fin — et le processus
+      // pouvait alors ne jamais se terminer, `atrim` coupant le flux sans que
+      // l'entree ne s'acheve. Voir `repetitionsMusique` pour la mesure.
       const indiceMusique = ordonnees.length;
-      entrees.push('-stream_loop', '-1', '-i', musique.chemin);
+      entrees.push(
+        '-stream_loop',
+        String(repetitionsMusique(dureeReelleSecondes, musique.dureeSecondes)),
+        '-i', musique.chemin,
+      );
       /* ⚠️ LA MUSIQUE SUIT LA DUREE REELLE DU MONTAGE, PAS CELLE DU PLAN.
          Avec un recouvrement, le film est plus court de `(n-1) x duree` : une
          musique bornee sur la duree du plan depasserait la derniere image, et
@@ -796,22 +862,53 @@ export async function encoder(
  */
 export async function couperSilenceInitialMusique(
   source: string, destination: string,
-): Promise<{ chemin: string; coupeSecondes: number }> {
+): Promise<{ chemin: string; coupeSecondes: number; dureeSecondes: number | null }> {
   const mesure = await lancer(cheminFfmpeg(), [...argumentsMesureSilence(source)], {
     timeoutMs: TIMEOUT_MESURE_MS, maxSortie: SORTIE_MAX,
   });
-  if (mesure.introuvable || mesure.timeout) return { chemin: source, coupeSecondes: 0 };
+  const rendre = async (chemin: string, coupeSecondes: number) => ({
+    chemin,
+    coupeSecondes,
+    /* ⚠️ MESUREE SUR LE FICHIER RETENU, PAS SUR L'ORIGINAL. C'est lui que
+       ffmpeg lira, et c'est sa duree — blanc initial deja retire — qui decide
+       du nombre de repetitions. La mesurer avant la coupe ferait boucler une
+       fois de trop, ou une fois de trop peu. */
+    dureeSecondes: await dureeAudioLocale(chemin),
+  });
+  if (mesure.introuvable || mesure.timeout) return rendre(source, 0);
   const coupe = silenceInitialSecondes(mesure.stderr);
-  if (coupe <= 0) return { chemin: source, coupeSecondes: 0 };
+  if (coupe <= 0) return rendre(source, 0);
 
   const taille = await lancer(
     cheminFfmpeg(), [...argumentsCoupeSilence(source, destination, coupe)],
     { timeoutMs: TIMEOUT_MESURE_MS, maxSortie: SORTIE_MAX },
   );
   if (taille.code !== 0 || taille.timeout || taille.introuvable) {
-    return { chemin: source, coupeSecondes: 0 };
+    return rendre(source, 0);
   }
-  return { chemin: destination, coupeSecondes: coupe };
+  return rendre(destination, coupe);
+}
+
+/**
+ * La duree d'un fichier audio local, en secondes.
+ *
+ * `null` quand la mesure n'aboutit pas — outil absent, delai depasse, sortie
+ * illisible. L'appelant joue alors la musique une seule fois : voir
+ * `repetitionsMusique`. Un rendu ne doit pas echouer parce qu'une duree n'a
+ * pas pu etre lue, et il ne doit surtout pas repartir sur une entree sans fin.
+ */
+export async function dureeAudioLocale(fichier: string): Promise<number | null> {
+  const proc = await lancer(cheminFfprobe(), [
+    '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', fichier,
+  ], { timeoutMs: TIMEOUT_MESURE_MS, maxSortie: SORTIE_MAX });
+  if (proc.code !== 0 || proc.timeout || proc.introuvable) return null;
+  try {
+    const o = JSON.parse(proc.stdout.toString('utf8')) as { format?: { duration?: unknown } };
+    const d = nombreFini(Number(o.format?.duration));
+    return d !== null && d > 0 ? d : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface SondeSource {

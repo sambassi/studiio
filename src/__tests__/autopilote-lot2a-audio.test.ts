@@ -219,10 +219,17 @@ describe('Lot 2A — defaut du compte et reglage de la video', () => {
 describe('Lot 2A — duree de la musique et clips sans piste', () => {
   it('K. musique plus courte : elle boucle, de facon deterministe', () => {
     const args = rendre([source(1, true)], recette({ musique: MUSIQUE }), true);
-    // `-stream_loop -1` est une option d'ENTREE : elle precede son `-i`.
+    // `-stream_loop` est une option d'ENTREE : elle precede son `-i`.
     const i = args.indexOf('-stream_loop');
     expect(i).toBeGreaterThan(-1);
-    expect(args[i + 1]).toBe('-1');
+    /* ⚠️ « DETERMINISTE » EST DEVENU LITTERAL — A_7F. Le compte valait `-1`,
+       c'est-a-dire sans fin : `atrim` bornait la sortie, mais l'entree ne se
+       terminait jamais et ffmpeg pouvait rester bloque — mesure sur des
+       musiques de 1, 2 et 4 s pour un montage de 8 s. Un compte FINI retire la
+       question : l'entree s'acheve d'elle-meme, quoi que fasse le filtre. */
+    expect(args[i + 1]).not.toBe('-1');
+    expect(Number.isFinite(Number(args[i + 1]))).toBe(true);
+    expect(Number(args[i + 1])).toBeGreaterThanOrEqual(0);
     expect(args[i + 2]).toBe('-i');
     expect(args[i + 3]).toBe('/tmp/x/musique');
   });

@@ -345,12 +345,17 @@ describe('4. Le fix du silence initial est SACRÉ', () => {
        C'est exactement le bug que `-ss` + `-stream_loop` produirait, et c'est
        pourquoi la coupe écrit un VRAI fichier avant la boucle. */
     const moteur = sansProse(lire('src/lib/autopilot/analyse/rendu-ffmpeg.ts'));
-    expect(moteur).toContain("'-stream_loop', '-1'");
-    /* Le fichier bouclé est celui qui a DÉJÀ été coupé : la coupe écrit un
-       VRAI fichier, et c'est lui que `-stream_loop` rejoue. */
+    /* ⚠️ LE COMPTE DE BOUCLES A CHANGÉ, L'ORDRE NON. Il valait `-1` — sans
+       fin — et le rendu pouvait alors ne jamais se terminer (A_7F). Ce qui est
+       tenu ici reste identique : la coupe écrit un VRAI fichier, et c'est lui
+       que la boucle rejoue. Un `-ss` à l'entrée ramènerait le silence à chaque
+       tour, et c'est précisément ce qu'on interdit. */
+    expect(moteur).toContain("'-stream_loop',");
+    expect(moteur, 'une entrée sans fin peut bloquer le rendu')
+      .not.toContain("'-stream_loop', '-1'");
     expect(moteur).toContain('argumentsCoupeSilence');
     const iCoupe = moteur.indexOf('argumentsCoupeSilence');
-    const iBoucle = moteur.indexOf("'-stream_loop', '-1'");
+    const iBoucle = moteur.indexOf("'-stream_loop',");
     expect(iCoupe).toBeLessThan(iBoucle);
   });
 

@@ -460,7 +460,10 @@ export async function produireMontage(
       const coupee = await couperSilenceInitialMusique(
         cheminMusique, `${cheminMusique}-sans-blanc.wav`,
       );
-      musique = { chemin: coupee.chemin };
+      /* ⚠️ LA DUREE SUIT LE FICHIER. Mesuree sur celui qui sera lu — blanc
+         initial deja retire — elle borne le nombre de repetitions. Sans elle,
+         l'entree bouclait sans fin et le rendu pouvait ne jamais se terminer. */
+      musique = { chemin: coupee.chemin, dureeSecondes: coupee.dureeSecondes };
       usage.silenceMusiqueCoupeSecondes = coupee.coupeSecondes;
       usage.octetsMusique = descente.octets;
     }

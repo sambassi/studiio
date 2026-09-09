@@ -490,7 +490,13 @@ describe.skipIf(!AVEC_FFMPEG)('A_7c — la musique reste GLOBALE au-dessus des r
         {
           recette: { sonOriginal: false, volumeOriginal: 0, musique: null,
             volumeMusique: 1, ducking: false } as never,
-          musique: { chemin: musique },
+          /* ⚠️ LA DUREE ACCOMPAGNE LE FICHIER — A_7F. C'est elle qui borne le
+             nombre de repetitions. Le graphe posait autrefois une entree SANS
+             FIN (`-stream_loop -1`) : la musique couvrait bien le montage,
+             mais ffmpeg pouvait ne jamais rendre la main. Le moteur mesure
+             desormais le fichier apres la coupe du blanc et transmet sa duree ;
+             ce banc fait comme lui. */
+          musique: { chemin: musique, dureeSecondes: 1.5 },
           dureeSecondes: 4,
         } as never,
       ));
@@ -524,7 +530,13 @@ describe.skipIf(!AVEC_FFMPEG)('A_7c — la musique reste GLOBALE au-dessus des r
         {
           recette: { sonOriginal: false, volumeOriginal: 0, musique: null,
             volumeMusique: 1, ducking: false } as never,
-          musique: { chemin: musique },
+          /* ⚠️ LA DUREE ACCOMPAGNE LE FICHIER — A_7F. C'est elle qui borne le
+             nombre de repetitions. Le graphe posait autrefois une entree SANS
+             FIN (`-stream_loop -1`) : la musique couvrait bien le montage,
+             mais ffmpeg pouvait ne jamais rendre la main. Le moteur mesure
+             desormais le fichier apres la coupe du blanc et transmet sa duree ;
+             ce banc fait comme lui. */
+          musique: { chemin: musique, dureeSecondes: 1.5 },
           dureeSecondes: 6,
         } as never,
       ));
