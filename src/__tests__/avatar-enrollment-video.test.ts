@@ -233,8 +233,22 @@ describe('6. Rien n’est écrit tant que la vidéo n’est pas acceptée', () =
 // ═══════════════════════════════════════════════════════════════════════════
 describe('7. L’écran ne promet rien qu’il n’ait fait', () => {
   it('7.1 ⚠️ JAMAIS « CLONE CRÉÉ » SANS ENTRAÎNEMENT', () => {
-    /* Le pire retour possible est celui qui a l'air d'un succès. */
-    expect(PANNEAU).not.toMatch(/Clone créé|Votre clone est prêt|Clone entraîné/i);
+    /* Le pire retour possible est celui qui a l'air d'un succès.
+
+       A_8e a appris à l'écran une seconde phrase : « Votre clone est prêt »,
+       qui devient vraie le jour où un clone existe RÉELLEMENT chez le
+       fournisseur. La promesse n'a donc pas été relâchée — elle a été mise
+       SOUS GARDE, et c'est la garde qu'on vérifie ici. Le comportement, lui,
+       est tenu par `avatar-a8e-voix-ui.test.tsx`, qui monte l'écran avec un
+       simple `source_ready` et constate qu'aucune de ces phrases n'apparaît. */
+    expect(PANNEAU).not.toMatch(/Clone créé|Clone entraîné/i);
+
+    const promesse = PANNEAU.indexOf('Votre clone est prêt');
+    expect(promesse).toBeGreaterThan(-1);
+    // La garde est calculée à partir du fournisseur, et elle précède la phrase.
+    expect(PANNEAU).toContain('estEtatPret(statut)');
+    expect(PANNEAU.slice(0, promesse)).toMatch(/cloneEntraine\s*\?/);
+
     expect(PANNEAU).toContain('Vidéo prête');
     expect(PANNEAU).toContain('L’entraînement sera');
   });

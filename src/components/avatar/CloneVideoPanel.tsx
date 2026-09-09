@@ -8,6 +8,7 @@ import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { cleDepuisUrlMediatheque } from '@/lib/creatif/audio';
 import { CONSEILS_CAPTURE, type VerdictQualite } from '@/lib/avatar/qualite';
 import { TEXTE_CONSENTEMENT, ETAT_SOURCE_PRETE } from '@/lib/avatar/contrat';
+import { estEtatPret } from '@/lib/avatar/etats';
 
 /**
  * A_8c — CRÉER MON CLONE VIDÉO.
@@ -38,12 +39,28 @@ import { TEXTE_CONSENTEMENT, ETAT_SOURCE_PRETE } from '@/lib/avatar/contrat';
  *
  * L'écran s'arrête à « Vidéo prête ». Écrire « Clone créé » alors qu'aucun
  * modèle n'existe serait le pire des retours : celui qui a l'air d'un succès.
+ *
+ * ═════════════════════════════════════════════════════════════════════════
+ * A_8e — ⚠️ ET AUCUN APERÇU N'EST MONTRÉ TANT QU'IL N'EN EXISTE PAS
+ * ═════════════════════════════════════════════════════════════════════════
+ *
+ * La tentation, à cet endroit, est d'occuper le vide : un mannequin, une voix
+ * générique, une vignette « à titre indicatif ». Ce serait montrer à quelqu'un
+ * un visage qui n'est pas le sien en lui laissant croire que c'est le sien.
+ *
+ * Donc : la seule vidéo affichée ici est CELLE QUE LA PERSONNE VIENT DE
+ * FOURNIR. Tant que le fournisseur n'a rien produit, l'écran dit ce qui manque
+ * — et le bouton « Je valide mon clone » n'apparaît même pas.
  */
 
 interface Props {
   /** L'inscription déjà enregistrée, s'il y en a une. */
   avatarId: string | null;
   statut: string | null;
+  /** L'identifiant chez le fournisseur. `null` tant qu'aucun entraînement. */
+  providerAvatarId?: string | null;
+  /** La date d'acceptation par le propriétaire, si elle a eu lieu. */
+  valideLe?: string | null;
   /** Rejoué après une inscription réussie, pour que la page se resynchronise. */
   onInscrit: () => void;
 }
@@ -54,7 +71,9 @@ const TAILLE_LISIBLE = (o: number) => (o < 1024 * 1024
   ? `${Math.round(o / 1024)} Ko`
   : `${(o / (1024 * 1024)).toFixed(1)} Mo`);
 
-export default function CloneVideoPanel({ avatarId, statut, onInscrit }: Props) {
+export default function CloneVideoPanel({
+  avatarId, statut, providerAvatarId = null, valideLe = null, onInscrit,
+}: Props) {
   const [, setSource] = useState<Source>('aucune');
   const [fichier, setFichier] = useState<File | null>(null);
   const [cheminMediatheque, setCheminMediatheque] = useState<string | null>(null);
@@ -65,6 +84,8 @@ export default function CloneVideoPanel({ avatarId, statut, onInscrit }: Props) 
   const [verdict, setVerdict] = useState<VerdictQualite | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [bibliothequeOuverte, setBibliothequeOuverte] = useState(false);
+  const [remplacer, setRemplacer] = useState(false);
+  const [validation, setValidation] = useState(false);
 
   // ── L'enregistrement webcam ───────────────────────────────────────────
   const [camera, setCamera] = useState<MediaStream | null>(null);
@@ -77,6 +98,13 @@ export default function CloneVideoPanel({ avatarId, statut, onInscrit }: Props) 
   const fichierRef = useRef<HTMLInputElement>(null);
 
   const prete = statut === ETAT_SOURCE_PRETE && avatarId !== null;
+  /* ⚠️ « UN CLONE EXISTE » NE VEUT PAS DIRE « LA VIDÉO EST ENVOYÉE ». Ce sont
+     deux faits distincts, et les confondre est exactement ce qui produit un
+     faux clone à l'écran : un identifiant chez le fournisseur, ou rien. */
+  const cloneChezFournisseur = typeof providerAvatarId === 'string' && providerAvatarId.length > 0;
+  const cloneEntraine = cloneChezFournisseur && estEtatPret(statut);
+  const valide = typeof valideLe === 'string' && valideLe.length > 0;
+  const aUneInscription = prete || cloneChezFournisseur;
 
   /* ⚠️ LA CAMÉRA S'ARRÊTE QUAND L'ÉCRAN DISPARAÎT. Sans cela, la diode reste
      allumée après la navigation — et personne ne comprend pourquoi. */
@@ -197,11 +225,40 @@ export default function CloneVideoPanel({ avatarId, statut, onInscrit }: Props) 
         return;
       }
       reinitialiser();
+      setRemplacer(false);
       onInscrit();
     } catch {
       setErreur('Votre vidéo n’a pas pu être envoyée. Vérifiez votre connexion.');
     } finally {
       setEnvoi(false);
+    }
+  };
+
+  /**
+   * « JE VALIDE MON CLONE ».
+   *
+   * ⚠️ LE REFUS EST UNE RÉPONSE NORMALE, PAS UNE PANNE. Le serveur seul sait
+   * si un aperçu réel existe ; il répond 409 avec un motif nommé quand ce
+   * n'est pas le cas, et c'est ce motif que la personne lit. Décider ici,
+   * dans le navigateur, reviendrait à se fier à un état que n'importe qui
+   * peut réécrire.
+   */
+  const valider = async () => {
+    if (!avatarId) return;
+    setValidation(true);
+    setErreur(null);
+    try {
+      const res = await fetch(`/api/avatar/${avatarId}/validation`, { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json?.ok) {
+        setErreur(json?.error ?? 'Votre validation n’a pas pu être enregistrée.');
+        return;
+      }
+      onInscrit();
+    } catch {
+      setErreur('Votre validation n’a pas pu être envoyée. Vérifiez votre connexion.');
+    } finally {
+      setValidation(false);
     }
   };
 
@@ -237,19 +294,98 @@ export default function CloneVideoPanel({ avatarId, statut, onInscrit }: Props) 
         </ul>
       </div>
 
-      {prete && !aUneSource && (
-        <div
-          className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4"
-          data-clone-prete
-        >
-          <Check className="w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <div className="font-medium text-emerald-200">Vidéo prête</div>
-            <p className="text-emerald-100/70 mt-0.5">
-              Votre vidéo est prête pour créer votre clone. L’entraînement sera
-              activé prochainement.
+      {/* ── Où en est ce clone ─────────────────────────────────────── */}
+      {aUneInscription && !aUneSource && (
+        <div className="space-y-3" data-clone-etat>
+          {valide ? (
+            <div
+              className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4"
+              data-clone-valide
+            >
+              <Check className="w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium text-emerald-200">Clone validé</div>
+                <p className="text-emerald-100/70 mt-0.5">
+                  Vous avez accepté que ce clone parle à votre place.
+                </p>
+              </div>
+            </div>
+          ) : cloneEntraine ? (
+            <div
+              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 space-y-3"
+              data-clone-a-valider
+            >
+              <div className="flex items-start gap-3 text-sm">
+                <Check className="w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-medium text-emerald-200">Votre clone est prêt</div>
+                  <p className="text-emerald-100/70 mt-0.5">
+                    Regardez l’aperçu, puis dites-nous s’il vous ressemble.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={valider}
+                disabled={validation}
+                data-clone-valider
+                className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-2"
+              >
+                {validation ? (<><Loader2 className="w-4 h-4 animate-spin" /> Enregistrement…</>)
+                  : 'Je valide mon clone'}
+              </button>
+            </div>
+          ) : cloneChezFournisseur ? (
+            <div
+              className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+              data-clone-entrainement
+            >
+              <Loader2 className="w-5 h-5 text-amber-300 flex-shrink-0 mt-0.5 animate-spin" />
+              <div className="text-sm">
+                <div className="font-medium text-amber-200">Clone en cours de création</div>
+                <p className="text-amber-100/70 mt-0.5">
+                  Nous vous préviendrons dès qu’un aperçu sera disponible.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4"
+              data-clone-prete
+            >
+              <Check className="w-5 h-5 text-emerald-300 flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <div className="font-medium text-emerald-200">Vidéo prête</div>
+                <p className="text-emerald-100/70 mt-0.5">
+                  Votre vidéo est prête pour créer votre clone. L’entraînement sera
+                  activé prochainement.
+                </p>
+                {/* ⚠️ DIRE CE QUI MANQUE PLUTÔT QUE DE LE REMPLACER. Il n'y a
+                    pas d'aperçu, donc l'écran l'annonce — il n'invente ni
+                    visage ni voix pour occuper la place. */}
+                <p className="text-emerald-100/50 mt-2">
+                  Aucun aperçu de votre clone n’existe encore : rien ne sera
+                  affiché tant que votre vraie vidéo n’aura pas été générée.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!remplacer && (
+            <button
+              type="button"
+              onClick={() => { setRemplacer(true); setErreur(null); }}
+              data-clone-recommencer
+              className="text-sm text-gray-400 hover:text-gray-200 underline underline-offset-4"
+            >
+              Recommencer avec une autre vidéo
+            </button>
+          )}
+          {remplacer && (
+            <p className="text-xs text-gray-500" data-clone-remplacement-avis>
+              Votre nouvelle vidéo remplacera la précédente, qui sera supprimée.
             </p>
-          </div>
+          )}
         </div>
       )}
 
@@ -261,7 +397,7 @@ export default function CloneVideoPanel({ avatarId, statut, onInscrit }: Props) 
       )}
 
       {/* ── Les trois sources ───────────────────────────────────────── */}
-      {!aUneSource && !camera && (
+      {!aUneSource && !camera && (!aUneInscription || remplacer) && (
         <div className="grid sm:grid-cols-3 gap-3">
           <button
             type="button"

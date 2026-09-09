@@ -70,3 +70,54 @@ export function interrogerLeFournisseur(avatar: {
   if (estEtatLocal(avatar.status)) return false;
   return !estEtatPret(avatar.status);
 }
+
+/**
+ * CE CLONE PEUT-IL ETRE VALIDE PAR SON PROPRIETAIRE ?
+ *
+ * ⚠️ TROIS CONDITIONS, ET IL FAUT LES TROIS. Valider, c'est dire « j'accepte
+ * que ceci parle a ma place ». On ne peut l'accepter que si :
+ *
+ *   1. un avatar existe REELLEMENT chez le fournisseur — sans identifiant, il
+ *      n'y a rien a valider ;
+ *   2. son entrainement est termine — valider un modele en cours de calcul
+ *      n'aurait aucun sens ;
+ *   3. un apercu REEL a ete produit — accepter sans avoir vu, c'est signer
+ *      pour ce qu'on n'a pas regarde.
+ *
+ * `source_ready` echoue sur les trois : la video de reference est prete, et
+ * rien d'autre. C'est precisement pour cela que cette fonction existe.
+ */
+export type MotifValidationRefusee =
+  | 'aucun_clone'
+  | 'entrainement_en_cours'
+  | 'apercu_absent'
+  | 'deja_valide';
+
+export function validationPossible(avatar: {
+  status?: unknown;
+  provider_avatar_id?: unknown;
+  validated_at?: unknown;
+  apercuUrl?: unknown;
+} | null | undefined): { ok: true } | { ok: false; motif: MotifValidationRefusee } {
+  if (!avatar) return { ok: false, motif: 'aucun_clone' };
+  const identifiant = avatar.provider_avatar_id;
+  if (typeof identifiant !== 'string' || identifiant.length === 0) {
+    return { ok: false, motif: 'aucun_clone' };
+  }
+  if (typeof avatar.validated_at === 'string' && avatar.validated_at.length > 0) {
+    return { ok: false, motif: 'deja_valide' };
+  }
+  if (!estEtatPret(avatar.status)) return { ok: false, motif: 'entrainement_en_cours' };
+  if (typeof avatar.apercuUrl !== 'string' || avatar.apercuUrl.length === 0) {
+    return { ok: false, motif: 'apercu_absent' };
+  }
+  return { ok: true };
+}
+
+/** Ce que la personne lit quand la validation est refusee. */
+export const MESSAGES_VALIDATION: Record<MotifValidationRefusee, string> = {
+  aucun_clone: 'Votre clone n’a pas encore été créé.',
+  entrainement_en_cours: 'Votre clone est encore en cours de création.',
+  apercu_absent: 'Un aperçu de votre clone doit être généré avant validation.',
+  deja_valide: 'Vous avez déjà validé ce clone.',
+};
