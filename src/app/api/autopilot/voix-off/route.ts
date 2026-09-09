@@ -38,6 +38,7 @@ import { BUCKET_MUSIQUE } from '@/lib/autopilot/analyse/recette-audio';
 import {
   resoudreVoixElevenLabs, MESSAGES_VOIX, ELEVENLABS_PREFIXE,
 } from '@/lib/voice/perimetre';
+import { texteParle } from '@/lib/voice/pipeline';
 import {
   motsDepuisAlignement, scriptValide, dureeVoixSecondes, SCRIPT_MAX,
 } from '@/lib/voice/synthese';
@@ -131,7 +132,14 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({ text: script, model_id: MODELE }),
+        /* ⚠️ LE TEXTE PARLE, PAS LE TEXTE AFFICHE — A_8d. `script` reste ce
+           que la personne a ecrit : il est persiste tel quel plus bas, il
+           alimente les sous-titres et l'historique. Ce qui part au moteur de
+           synthese est une VUE de ce texte — « 25 CHF » devient « vingt-cinq
+           francs suisses » — fabriquee ici et jetee ensuite. */
+        body: JSON.stringify({ text: texteParle(script, {
+          prononciations: (await lireBibliothequeUtilisateur(userId)).prononciations,
+        }), model_id: MODELE }),
         signal: controleur.signal,
         cache: 'no-store',
       },

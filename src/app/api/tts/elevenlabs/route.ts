@@ -6,6 +6,8 @@ import {
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } from '@/lib/types/voice';
 import { listUserVoices } from '@/lib/voice/store';
+import { texteParle } from '@/lib/voice/pipeline';
+import { lireBibliothequeUtilisateur } from '@/lib/autopilot/analyse/profil-compte';
 
 /**
  * TTS ElevenLabs — synthese vocale, et liste des voix du compte.
@@ -209,7 +211,16 @@ export async function POST(req: NextRequest) {
             'Content-Type': 'application/json',
             Accept: 'audio/mpeg',
           },
-          body: JSON.stringify({ text, model_id: MODEL_ID }),
+          /* ⚠️ LE TEXTE PARLE, PAS CELUI QUI S'AFFICHE — A_8d. L'appelant
+             envoie ce que la personne a ecrit ; ce qui part au moteur est une
+             VUE de ce texte, ou « 18h30 » se dit « dix-huit heures trente ».
+             Rien n'est renvoye a l'appelant : sa copie reste la sienne. */
+          body: JSON.stringify({
+            text: texteParle(text, {
+              prononciations: (await lireBibliothequeUtilisateur(session.user.id)).prononciations,
+            }),
+            model_id: MODEL_ID,
+          }),
           signal: controller.signal,
           cache: 'no-store',
         },

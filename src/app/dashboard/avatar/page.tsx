@@ -14,6 +14,7 @@ import {
   Clapperboard,
 } from 'lucide-react';
 import CloneVideoPanel from '@/components/avatar/CloneVideoPanel';
+import ApercuPrononciation from '@/components/voice/ApercuPrononciation';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 
 const AVATAR_VIDEO_COST = 40;
@@ -624,6 +625,15 @@ export default function AvatarPage() {
               placeholder="Bonjour, je suis…"
               className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-3 text-sm resize-y"
             />
+
+            {/* ⚠️ CE QUE LA VOIX VA RÉELLEMENT DIRE — A_8d. « 25 CHF à 18h30 »
+                ne se prononce pas comme il s'écrit ; sans cet aperçu, on ne
+                le découvre qu'après avoir dépensé une génération. Aucun moteur
+                de synthèse n'est appelé : la normalisation est une fonction
+                pure. */}
+            <div className="mt-2">
+              <ApercuPrononciation displayScript={script} />
+            </div>
             <div className="mt-1 text-right text-xs text-gray-500">
               {script.length} / {MAX_SCRIPT_CHARS}
             </div>
