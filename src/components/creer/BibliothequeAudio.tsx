@@ -42,6 +42,23 @@ import {
 import { BUCKET_MUSIQUE } from '@/lib/autopilot/analyse/recette-audio';
 
 /**
+ * CE QUE LA LISTE DES MUSIQUES A LE DROIT D'OCCUPER — CREER_PREMIUM_3F.
+ *
+ * ⚠️ MESURÉE, PAS CHOISIE AU JUGÉ. Une ligne fait 64 px dans le navigateur
+ * (bouton d'écoute, nom, durée, forme d'onde) et l'écart vertical 4 px : six
+ * lignes tiennent donc dans 25 rem, et la septième est coupée en bas — ce qui
+ * est exactement le signal qu'il y en a d'autres.
+ *
+ * ⚠️ CE PLAFOND EST CE QUI TIENT L'INVARIANT DE LA PAGE. Sans lui, la hauteur
+ * du formulaire suit le nombre de musiques : la banque en accepte deux cents,
+ * et l'aperçu `sticky` de droite sortait de l'écran bien avant. La règle de la
+ * page Créer est que l'aperçu ne quitte JAMAIS la vue à cause de la longueur du
+ * formulaire ; une collection qui peut grandir sans limite défile donc chez
+ * elle.
+ */
+export const HAUTEUR_LISTE_AUDIO = '25rem';
+
+/**
  * L'adresse d'écoute — celle du proxy de stockage, qui gère déjà les
  * requêtes partielles. Aucune route de plus, aucune URL signée.
  */
@@ -234,7 +251,26 @@ export default function BibliothequeAudio({
           Aucune musique ne correspond.
         </p>
       ) : (
-        <ul className="space-y-1">
+        /* ⚠️ LA LISTE DEFILE DANS SA PROPRE ZONE — CREER_PREMIUM_3F.
+
+           Elle poussait le reste du formulaire vers le bas : huit musiques
+           faisaient deja 540 px, et la banque en accepte DEUX CENTS. L'apercu,
+           qui vit a droite en `sticky`, finissait hors de l'ecran — et
+           l'invariant de la page Creer est justement qu'il n'en sorte jamais a
+           cause de la longueur du formulaire.
+
+           `HAUTEUR_LISTE_AUDIO` vaut ~6 lignes mesurees (64 px + 4 px
+           d'ecart) : assez pour choisir sans defiler dans le cas courant, et
+           la ligne coupee en bas dit qu'il y en a d'autres. La barre de
+           recherche et les rayons restent AU-DESSUS, donc toujours atteignables
+           quelle que soit la position du defilement.
+
+           La barre elle-meme est deja fine et discrete : `globals.css` la pose
+           pour toute l'application, il n'y a rien a redefinir ici. */
+        <ul
+          data-audio-liste
+          style={{ maxHeight: HAUTEUR_LISTE_AUDIO }}
+          className="space-y-1 overflow-y-auto overscroll-contain pr-1">
           {visibles.map((p) => {
             const choisie = cleActive === p.cle;
             const favorite = favoris.includes(p.cle);
