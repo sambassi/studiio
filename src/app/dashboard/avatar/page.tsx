@@ -14,7 +14,9 @@ import {
   Clapperboard,
 } from 'lucide-react';
 import CloneVideoPanel from '@/components/avatar/CloneVideoPanel';
+import { estEtatLocal } from '@/lib/avatar/etats';
 import ApercuPrononciation from '@/components/voice/ApercuPrononciation';
+import PrononciationsPanel from '@/components/voice/PrononciationsPanel';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 
 const AVATAR_VIDEO_COST = 40;
@@ -33,6 +35,8 @@ interface AvatarRow {
   status: string;
   avatar_type?: AvatarKind;
   training_error?: string | null;
+  /** L'identifiant chez le fournisseur. `null` tant qu'aucun entrainement. */
+  provider_avatar_id?: string | null;
   /**
    * ⚠️ HISTORIQUE SEULEMENT — A_8b. Elle porte une URL PUBLIQUE PERMANENTE sur
    * les lignes creees avant ce lot. Plus aucune n'est ecrite, et l'apercu ne
@@ -41,6 +45,8 @@ interface AvatarRow {
   source_url: string | null;
   /** La cle de l'objet prive. Presente des A_8b ; absente sur l'historique. */
   source_object_key?: string | null;
+  /** La date d'acceptation par le proprietaire. `null` tant qu'il n'a rien vu. */
+  validated_at?: string | null;
   created_at: string;
 }
 
@@ -89,7 +95,10 @@ export default function AvatarPage() {
    * d'un avatar vidéo sans route dédiée.
    */
   const loadAvatar = useCallback(async (withVoices: boolean) => {
-    const res = await fetch('/api/avatar/create');
+    /* ⚠️ LES VOIX NE SONT DEMANDEES QUE SI ON EN A BESOIN — A_8e. Le
+       catalogue appartient au parcours photo historique ; la page « Mon clone
+       video » ne s'en sert pas et le chargeait pourtant a chaque affichage. */
+    const res = await fetch(`/api/avatar/create${withVoices ? '?voices=1' : ''}`);
     const json = await res.json();
     if (!json.success) return null;
 
@@ -115,7 +124,12 @@ export default function AvatarPage() {
     let cancelled = false;
     (async () => {
       try {
-        if (!cancelled) await loadAvatar(true);
+        /* ⚠️ SANS LES VOIX — A_8e. Le catalogue appartient au parcours photo
+           historique ; il n'est demande que lorsqu'un avatar existe REELLEMENT
+           chez le fournisseur, c'est-a-dire quand il peut servir. Le charger a
+           chaque ouverture faisait partir un appel pour rien. */
+        const a = cancelled ? null : await loadAvatar(false);
+        if (!cancelled && a?.provider_avatar_id) await loadAvatar(true);
       } catch {
         // La page reste utilisable : l'utilisateur pourra réessayer.
       } finally {
@@ -133,9 +147,14 @@ export default function AvatarPage() {
   // bloquée côté serveur (409) pendant ce temps.
   const training = !!avatar && !READY_STATUSES.includes(avatar.status);
   const trainingFailed = avatar?.status === 'failed';
+  /* ⚠️ « PAS ENCORE PRÊT » N'EST PAS « EN COURS D'ENTRAÎNEMENT » — A_8e. Une
+     inscription `source_ready` n'a jamais été envoyée nulle part : annoncer
+     « HeyGen entraîne votre avatar » décrirait un travail qui n'existe pas, et
+     la page attendrait indéfiniment un résultat que personne ne calcule. */
+  const enAttenteEntrainement = estEtatLocal(avatar?.status);
 
   useEffect(() => {
-    if (!training || trainingFailed) return;
+    if (!training || trainingFailed || enAttenteEntrainement) return;
     let cancelled = false;
 
     const tick = async () => {
@@ -152,7 +171,7 @@ export default function AvatarPage() {
       cancelled = true;
       if (trainingPollRef.current) clearTimeout(trainingPollRef.current);
     };
-  }, [training, trainingFailed, loadAvatar]);
+  }, [training, trainingFailed, enAttenteEntrainement, loadAvatar]);
 
   // Nettoyage du timer de polling au démontage — évite une fuite si
   // l'utilisateur quitte la page pendant une génération.
@@ -362,6 +381,8 @@ export default function AvatarPage() {
       <CloneVideoPanel
         avatarId={avatar?.id ?? null}
         statut={avatar?.status ?? null}
+        providerAvatarId={avatar?.provider_avatar_id ?? null}
+        valideLe={avatar?.validated_at ?? null}
         onInscrit={() => { void loadAvatar(false); }}
       />
 
@@ -568,7 +589,8 @@ export default function AvatarPage() {
                 <div className="font-semibold truncate">{avatar.name || 'Mon avatar'}</div>
                 <div className="text-xs text-gray-500">
                   {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
-                  {training ? ' — en préparation' : ' — prêt à parler'}
+                  {enAttenteEntrainement ? ' — vidéo prête, clone à créer'
+                    : training ? ' — en préparation' : ' — prêt à parler'}
                 </div>
               </div>
             </div>
@@ -587,8 +609,22 @@ export default function AvatarPage() {
             </button>
           </div>
 
+          {/* Aucun entraînement lancé — et l'écran le dit plutôt que de le feindre. */}
+          {enAttenteEntrainement && (
+            <div className="flex items-start gap-3 rounded-xl border border-gray-700 bg-gray-900/60 p-4 text-sm text-gray-300">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 text-gray-500" />
+              <div>
+                <div className="font-medium">Votre clone n’a pas encore été créé</div>
+                <div className="text-xs mt-1 text-gray-400">
+                  Votre vidéo de référence est enregistrée. L’entraînement sera
+                  activé prochainement ; rien n’a encore été envoyé.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Entraînement en cours — la génération reste bloquée (409 côté serveur) */}
-          {training && !trainingFailed && (
+          {training && !trainingFailed && !enAttenteEntrainement && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
               <Loader2 className="w-5 h-5 flex-shrink-0 mt-0.5 animate-spin" />
               <div>
@@ -687,6 +723,10 @@ export default function AvatarPage() {
                 <Loader2 className="w-4 h-4 animate-spin" />
                 {genStatus === 'pending' ? 'Lancement…' : 'Génération en cours…'}
               </>
+            ) : enAttenteEntrainement ? (
+              <>
+                <Sparkles className="w-4 h-4" /> Clone pas encore créé
+              </>
             ) : training ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" /> Avatar en préparation…
@@ -742,6 +782,8 @@ export default function AvatarPage() {
           selecteur de voix de TOUS les montages, pas seulement cette page.
           Il est donc affiche des la premiere visite, avant meme qu'un avatar
           existe. */}
+      <PrononciationsPanel />
+
       <VoiceCloneRecorder />
 
       {/* Aperçu du résultat */}

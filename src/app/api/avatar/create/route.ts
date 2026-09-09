@@ -58,7 +58,7 @@ const VERSION_CONSENTEMENT = 'a8b-2026-09-09';
  * Sert a l'affichage initial de la page : premiere visite (aucun avatar) vs
  * utilisateur deja equipe.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -109,7 +109,16 @@ export async function GET() {
     // Voix : non bloquant pour l'affichage, mais on renvoie explicitement une
     // voix par defaut. L'UI ne doit jamais proposer un choix "vide" : un
     // voice_id absent ou vide fait echouer /v3/videos en 400.
-    const allVoices = await listVoices();
+    /* ⚠️ LE CATALOGUE DE VOIX N'EST PLUS CHARGE A CHAQUE OUVERTURE — A_8e.
+       Il appartient au parcours PHOTO historique : la page « Mon clone video »
+       ne s'en sert pas, et le demandait pourtant a chaque affichage. Sans cle,
+       l'appel echouait proprement — mais il partait quand meme, et douze lignes
+       de journal disaient a chaque visite qu'un fournisseur n'etait pas
+       configure. Avec une cle, il aurait consomme du quota pour rien.
+
+       L'appelant demande donc explicitement ce dont il a besoin. */
+    const voulues = new URL(req.url).searchParams.get('voices') === '1';
+    const allVoices = voulues ? await listVoices() : [];
 
     const rank = (v: { language?: string }) => {
       const l = (v.language || '').toLowerCase();
@@ -123,9 +132,14 @@ export async function GET() {
     const voices = [...allVoices].sort((a, b) => rank(a) - rank(b)).slice(0, 80);
 
     const defaultVoiceId = pickDefaultVoice(voices)?.voiceId ?? null;
-    console.log(
-      `[Avatar][HeyGen] ${allVoices.length} voix chargees, ${voices.length} exposees, defaut=${defaultVoiceId ?? 'aucun'}`,
-    );
+    /* Le journal ne parle que si on a REELLEMENT demande le catalogue :
+       « 0 voix chargees » sur une visite qui n'en voulait aucune ressemble a
+       une panne, et fait chercher un incident qui n'existe pas. */
+    if (voulues) {
+      console.log(
+        `[Avatar][HeyGen] ${allVoices.length} voix chargees, ${voices.length} exposees, defaut=${defaultVoiceId ?? 'aucun'}`,
+      );
+    }
 
     return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId } });
   } catch (error) {
