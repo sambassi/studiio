@@ -289,8 +289,14 @@ describe('7. Le contrat de transmission — écrit, jamais appelé', () => {
 
   it('7.4 ⚠️ AUCUNE URL SIGNÉE N’EST ÉCRITE EN BASE', () => {
     /* La ranger la rendrait permanente par accident — c'est le défaut
-       d'origine sous un autre nom. */
-    expect(SOURCE).not.toMatch(/insert\(|update\(|supabaseAdmin/);
+       d'origine sous un autre nom.
+
+       ⚠️ CE QUI EST INTERDIT, C'EST D'ÉCRIRE UNE LIGNE, pas de connaître le
+       client. Depuis A_8e le module retire aussi une source remplacée, ce qui
+       passe par le même relais de stockage — une suppression d'OBJET, jamais
+       une écriture en base. L'assertion vise donc les écritures de table. */
+    expect(SOURCE).not.toMatch(/\.from\('user_avatars'\)|\.insert\(|\.update\(|\.upsert\(/);
+    expect(SOURCE).not.toMatch(/presignedGetObject[\s\S]{0,200}(insert|update)/);
     expect(CREATE).not.toContain('presigned');
   });
 

@@ -28,6 +28,7 @@
  * autre : il prepare un acces, il ne s'en sert pas. Le branchement est A_8c.
  */
 import { clientMinio, lecteurMinio, signeurInterne } from '@/lib/storage/minio-client';
+import { supabaseAdmin } from '@/lib/db/supabase';
 import { BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR } from '@/lib/storage/acces-objet';
 import type { MesureSourceAvatar } from './qualite';
 
@@ -290,4 +291,40 @@ export function lireSondeAvatar(stdout: string): MesureSourceAvatar {
     octets: Number.isFinite(taille) ? taille : 0,
     lisible: true,
   };
+}
+
+/**
+ * Retire une source d'avatar devenue inutile — A_8e.
+ *
+ * ⚠️ TROIS GARDES AVANT LE MOINDRE APPEL AU STOCKAGE, et elles ne sont pas
+ * decoratives :
+ *
+ *   1. la cle appartient au compte ET au namespace avatar. Une cle de
+ *      `library/` passerait sinon, et supprimer un media de la mediatheque
+ *      parce qu'on a remplace une video d'enrollment serait une perte de
+ *      donnee que rien n'annonce.
+ *   2. elle est differente de celle qu'on vient d'ecrire. Le meme horodatage
+ *      a la milliseconde effacerait la source qui vient d'etre acceptee.
+ *   3. l'echec est silencieux. Le remplacement, lui, a REUSSI : rendre une
+ *      erreur ici ferait croire le contraire, et l'utilisateur reprendrait une
+ *      operation deja faite.
+ *
+ * Rend `true` seulement si un objet a effectivement ete retire.
+ */
+export async function retirerSourceAvatar(
+  userId: string, cle: unknown, cleConservee?: string,
+): Promise<boolean> {
+  if (!cleSourceAvatarDuCompte(cle, userId)) return false;
+  if (cleConservee !== undefined && cle === cleConservee) return false;
+  try {
+    /* Le meme relais de stockage que partout ailleurs : `remove` prend une
+       LISTE, et ne connait que le compartiment qu'on lui a donne. */
+    const { error } = await supabaseAdmin.storage.from(BUCKET_AVATAR).remove([cle]);
+    return !error;
+  } catch {
+    /* Objet deja disparu, stockage injoignable : le remplacement reste bon.
+       Un orphelin coute quelques megaoctets ; une exception ici couterait la
+       confiance dans une operation qui a pourtant abouti. */
+    return false;
+  }
 }

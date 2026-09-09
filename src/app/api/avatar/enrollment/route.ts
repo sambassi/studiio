@@ -9,6 +9,7 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import {
   BUCKET_AVATAR, cleSourceAvatar, argumentsSondeAvatar, lireSondeAvatar,
+  retirerSourceAvatar,
 } from '@/lib/avatar/source';
 import { verdictQualiteSource } from '@/lib/avatar/qualite';
 import { ETAT_SOURCE_PRETE, SUJET_AVATAR, VERSION_CONSENTEMENT, TEXTE_CONSENTEMENT } from '@/lib/avatar/contrat';
@@ -162,6 +163,17 @@ export async function POST(req: NextRequest) {
        ⚠️ MAIS LES GENERATIONS SURVIVENT — la cle etrangere est `set null`
        depuis A_8b, precisement pour que refaire sa source n'efface pas les
        videos deja produites. */
+    /* ⚠️ L'ANCIENNE SOURCE EST RELUE AVANT D'ETRE OUBLIEE — A_8e. Sans cela,
+       remplacer sa video laissait le fichier precedent dans le stockage : pas
+       une fuite (le namespace est prive), mais un orphelin que plus rien ne
+       designait et que personne ne pouvait retrouver. */
+    const { data: precedents } = await supabaseAdmin
+      .from('user_avatars')
+      .select('source_object_key')
+      .eq('user_id', userId);
+    const anciennesCles = (precedents ?? [])
+      .map((p) => (p as { source_object_key?: unknown }).source_object_key);
+
     await supabaseAdmin.from('user_avatars').delete().eq('user_id', userId);
 
     const { data: ligne, error: erreurInsert } = await supabaseAdmin
@@ -187,6 +199,14 @@ export async function POST(req: NextRequest) {
 
     if (erreurInsert) {
       return refus('Votre vidéo a été enregistrée mais l’inscription a échoué. Réessayez.', 500);
+    }
+
+    /* ⚠️ LE NETTOYAGE VIENT APRES LE SUCCES, JAMAIS AVANT. Si l'insertion
+       avait echoue, on serait sorti plus haut — et l'ancienne source serait
+       restee, intacte, seule reference encore valable. Supprimer d'abord
+       aurait laisse un compte sans aucune video en cas d'echec. */
+    for (const ancienne of anciennesCles) {
+      await retirerSourceAvatar(userId, ancienne, cle);
     }
 
     return NextResponse.json({ success: true, avatar: ligne, verdict, mesure });
