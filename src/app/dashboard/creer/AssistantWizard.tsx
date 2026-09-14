@@ -111,6 +111,11 @@ import ColorWheel from '@/components/ui/ColorWheel';
 import FloatingPanel from '@/components/ui/FloatingPanel';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
 import {
+  importLutFile, decodeImageInBrowser, envoyerLutApi, listerLutsApi, LUT_ACCEPT,
+} from '@/lib/luts/import';
+import { supportDeLut, LIBELLES_SUPPORT } from '@/lib/luts/support';
+import type { Lut, LutRef } from '@/lib/luts/types';
+import {
   batchCost, distinctPhotoForIndex, distinctUrls,
   autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce,
 } from '@/lib/creer/batch';
@@ -768,6 +773,9 @@ export type PreviewFocus = 'all' | 'intro' | 'cards' | 'video' | 'cta';
 /** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
 const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
 
+/** Du moins capable au plus capable — pour choisir le statut prudent quand la nature est inconnue. */
+const ORDRE_SUPPORT = ['unsupported-render', 'preview-only', 'ready'] as const;
+
 /**
  * Onglets au-dessus de l'apercu, dans l'ordre des sequences du montage.
  *
@@ -788,7 +796,7 @@ const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
 ];
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
-type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences' | 'transition' | 'animation';
+type SectionId = 'format' | 'couleurs' | 'affiche' | 'ambiance' | 'texte' | 'sequences' | 'transition' | 'animation';
 
 /** Photo proposee par `/api/pexels` — Pexels comme Unsplash. */
 interface PosterPhoto {
@@ -3238,6 +3246,18 @@ export default function AssistantWizard() {
   // detection sur un extrait ne pouvait donc qu'echouer, sur un message
   // trompeur (« la video est peut-etre trop courte ou illisible »).
   const [rushIsClip, setRushIsClip] = useState(false);
+  // ── Filtre couleur (LUT) du rush ─────────────────────────────────────
+  // Seule la REFERENCE canonique vit ici (empreinte, nom, intensite) : la
+  // table validee a l'import n'est jamais conservee, les octets vivent dans
+  // la bibliotheque privee du compte. La nature (3D / 1D) sert au libelle de
+  // support ; elle n'est pas persistee, elle est relue de la bibliotheque.
+  // A ce stade ni l'apercu ni l'export ne lisent `lut` : sans filtre, le
+  // rendu est strictement celui d'avant cet ajout.
+  const [lut, setLut] = useState<LutRef | null>(null);
+  const [lutKind, setLutKind] = useState<Lut['kind'] | null>(null);
+  const [lutLoading, setLutLoading] = useState(false);
+  const [lutNotice, setLutNotice] = useState<string | null>(null);
+  const lutInputRef = useRef<HTMLInputElement>(null);
   const rushRunIdRef = useRef(0);
   // Rush soumis a la detection des temps forts. C'est l'IDENTITE de cet objet
   // qui pilote (re)lancement et fermeture du modal — meme contrat que
@@ -4015,6 +4035,86 @@ export default function AssistantWizard() {
       setPosterExporting(false);
     }
   }, [generated, posterExporting]);
+
+  /**
+   * Import d'un filtre couleur.
+   *
+   * Le fichier est PRE-VALIDE par le socle avant tout envoi (un `.cube`
+   * tronque ne coute aucun aller-retour), un PNG est canonicalise en `.cube`,
+   * puis l'API commune de la bibliotheque revalide, hache, range l'objet
+   * prive et rend la fiche. Le champ est remis a zero dans le `finally` —
+   * sans quoi reselectionner le meme fichier apres un echec ne declenche
+   * aucun `change`, et l'ecran parait fige.
+   */
+  const handleLutFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    setLutLoading(true);
+    setError(null);
+    setLutNotice(null);
+    try {
+      const { ref, asset, issue, avertissement } = await importLutFile(file, {
+        envoyer: envoyerLutApi,
+        decodeImage: decodeImageInBrowser,
+      });
+      setLut(ref);
+      setLutKind(asset.kind);
+      setLutNotice(
+        issue === 'existante'
+          ? `Ce filtre était déjà dans votre bibliothèque : « ${asset.nom} ».`
+          : avertissement ?? null,
+      );
+      console.log(`[Assistant] Filtre couleur importé : ${asset.nom} (${issue})`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Filtre illisible.');
+    } finally {
+      setLutLoading(false);
+      input.value = '';
+    }
+  };
+
+  /**
+   * Une reference relue d'un brouillon ne dit pas la nature du filtre, ni
+   * s'il existe encore dans la bibliotheque : on la relit une fois. Absente de
+   * la bibliotheque (supprimee entre-temps) → la reference est retiree, elle
+   * ne designe plus rien. Appel impossible → on garde la reference, sans rien
+   * en deduire.
+   */
+  useEffect(() => {
+    if (!lut || lutKind !== null) return;
+    let annule = false;
+    listerLutsApi().then((luts) => {
+      if (annule || !luts) return;
+      const fiche = luts.find((l) => l.empreinte === lut.empreinte);
+      if (fiche) {
+        setLutKind(fiche.kind);
+      } else {
+        console.warn('[Assistant] Filtre du brouillon absent de la bibliothèque, retiré.');
+        setLut(null);
+      }
+    });
+    return () => { annule = true; };
+    // `lutKind` volontairement hors dependances : c'est lui qu'on renseigne.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lut?.empreinte]);
+
+  /**
+   * Ce que le filtre fait AUJOURD'HUI, derive par le socle — jamais decide
+   * ici. Tant qu'aucun moteur ne consomme les LUT importees, le libelle le
+   * dit : l'interface ne laisse pas croire a un rendu qui n'existe pas.
+   */
+  const lutSupportLibelle = lut
+    ? LIBELLES_SUPPORT[
+        lutKind
+          ? supportDeLut(lutKind)
+          // Nature inconnue (bibliotheque injoignable) : le statut le MOINS
+          // capable des deux natures — jamais une promesse par defaut.
+          : (['3d', '1d'] as const)
+              .map((k) => supportDeLut(k))
+              .sort((a, b) => ORDRE_SUPPORT.indexOf(a) - ORDRE_SUPPORT.indexOf(b))[0]
+      ]
+    : null;
 
   /** Element retenu, s'il y en a un — la cible de la recoloration. */
   const selectedElement = freeElements.find((el) => el.id === selectedElementId) ?? null;
@@ -4934,6 +5034,9 @@ export default function AssistantWizard() {
     rushUrl: persistableDraftUrl(rushUrl),
     rushName,
     rushIsClip,
+    // La reference canonique seule. `undefined` sans filtre, pour qu'un
+    // brouillon sans ce champ se relise exactement comme avant.
+    lut: lut ?? undefined,
     scheduledDate,
     // Placement fait a la main. `undefined` quand rien n'a bouge : un
     // brouillon sans ces champs se relit exactement comme avant.
@@ -4957,7 +5060,7 @@ export default function AssistantWizard() {
     textAnimation,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited,
-    voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
+    voiceVolume, rushUrl, rushName, rushIsClip, lut, scheduledDate,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
@@ -5064,6 +5167,7 @@ export default function AssistantWizard() {
       setRushName(draft.rushName ?? '');
       setRushIsClip(!!draft.rushIsClip);
     }
+    if (draft.lut) setLut(draft.lut);
     if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
     // Placement : chaque champ absent laisse le defaut d'origine en place.
     if (draft.titlePos) setTitlePos(draft.titlePos);
@@ -7738,6 +7842,95 @@ export default function AssistantWizard() {
                         <p className="text-xs text-emerald-400">{aiNotice}</p>
                       )}
                     </div>
+                  </div>
+                </StyleSection>
+
+                {/* Filtre couleur — n'etalonnera QUE le rush. Le dire ici est
+                    la moitie de la fonctionnalite : sans cette phrase,
+                    l'utilisateur attend un etalonnage du montage entier. Et le
+                    libelle de support dit ce qui est reellement applique
+                    aujourd'hui — rien de plus. */}
+                <StyleSection
+                  id="ambiance"
+                  title="Ambiance"
+                  hint={lut ? `${lut.nom} · ${Math.round(lut.intensite * 100)}%` : 'Aucun filtre'}
+                  open={openSection === 'ambiance'}
+                  onToggle={toggleSection}
+                >
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">
+                      Un filtre couleur (LUT) s&apos;applique à la vidéo importée — le rush — et
+                      à elle seule. Les textes, le dégradé et l&apos;habillage gardent leurs
+                      couleurs. Formats acceptés : .cube (3D ou 1D) et .png (HALD).
+                    </p>
+
+                    {!lut ? (
+                      <button
+                        type="button"
+                        onClick={() => lutInputRef.current?.click()}
+                        disabled={lutLoading}
+                        className={`w-full rounded-xl bg-gray-900/60 px-3 py-2.5 text-sm text-gray-300 transition hover:bg-gray-800/70 ${DISABLED}`}
+                      >
+                        {lutLoading ? 'Lecture du filtre…' : 'Importer un filtre…'}
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 truncate text-sm text-white">{lut.nom}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setLut(null); setLutKind(null); setLutNotice(null); }}
+                            className="rounded-lg px-2 py-1 text-[11px] text-gray-500 transition hover:text-white"
+                          >
+                            Retirer
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-24 flex-shrink-0 text-[11px] text-gray-500">
+                            Intensité
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={lut.intensite}
+                            onChange={(e) =>
+                              setLut((prev) =>
+                                prev ? { ...prev, intensite: Number(e.target.value) } : prev,
+                              )
+                            }
+                            aria-label="Intensité du filtre"
+                            className="h-1 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-purple-500"
+                          />
+                          <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">
+                            {Math.round(lut.intensite * 100)}%
+                          </span>
+                        </div>
+                        {lutSupportLibelle && (
+                          <p className="text-[11px] text-gray-400" data-lut-support>
+                            {lutSupportLibelle}
+                          </p>
+                        )}
+                        {lutNotice && (
+                          <p className="text-[11px] text-emerald-400/90">{lutNotice}</p>
+                        )}
+                        {!rushUrl && (
+                          <p className="text-[11px] text-amber-400/80">
+                            Aucun rush pour l&apos;instant : le filtre n&apos;aura rien à
+                            étalonner tant qu&apos;une vidéo n&apos;est pas importée.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <input
+                      ref={lutInputRef}
+                      type="file"
+                      accept={LUT_ACCEPT}
+                      hidden
+                      onChange={handleLutFile}
+                    />
                   </div>
                 </StyleSection>
 

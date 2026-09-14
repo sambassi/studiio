@@ -355,3 +355,53 @@ describe('Structure du câblage', () => {
     expect(flush).toMatch(/if \(!draft\.started && !draft\.generated\) return;/);
   });
 });
+
+/**
+ * LUT — seule la RÉFÉRENCE CANONIQUE est conservée : empreinte, nom, intensité.
+ *
+ * Ni table, ni URL, ni clé de stockage : l'identité est l'empreinte, les
+ * octets vivent dans la bibliothèque privée du compte. Une ancienne forme
+ * `{ url, name, intensity }` ne désigne plus rien de sûr : elle est écartée,
+ * jamais « réparée ».
+ */
+describe('Brouillon — référence de LUT canonique', () => {
+  const E = 'b'.repeat(64);
+  const LUT = { empreinte: E, nom: 'teal', intensite: 0.6 };
+
+  it('conserve une référence canonique complète', () => {
+    expect(sanitizeDraft(valid({ lut: LUT }), DEPS)!.lut).toEqual(LUT);
+  });
+
+  it('un brouillon sans LUT se relit sans LUT — le cas de tous les brouillons antérieurs', () => {
+    expect(sanitizeDraft(valid(), DEPS)!.lut).toBeUndefined();
+    expect(sanitizeDraft(valid({ lut: null }), DEPS)!.lut).toBeUndefined();
+  });
+
+  it('⚠️ l’ancienne forme { url, name, intensity } est écartée, pas réparée', () => {
+    const ancien = { url: 'https://minio.example/luts/teal.cube', name: 'teal.cube', intensity: 1 };
+    expect(sanitizeDraft(valid({ lut: ancien }), DEPS)!.lut).toBeUndefined();
+  });
+
+  it('une empreinte invalide rend la référence inutilisable', () => {
+    expect(sanitizeDraft(valid({ lut: { ...LUT, empreinte: 'x' } }), DEPS)!.lut).toBeUndefined();
+    expect(sanitizeDraft(valid({ lut: { ...LUT, empreinte: 'B'.repeat(64) } }), DEPS)!.lut).toBeUndefined();
+    expect(sanitizeDraft(valid({ lut: { nom: 'x', intensite: 1 } }), DEPS)!.lut).toBeUndefined();
+  });
+
+  it('ramène une intensité hors plage à la pleine intensité', () => {
+    expect(sanitizeDraft(valid({ lut: { ...LUT, intensite: 4 } }), DEPS)!.lut!.intensite).toBe(1);
+    expect(sanitizeDraft(valid({ lut: { ...LUT, intensite: -2 } }), DEPS)!.lut!.intensite).toBe(1);
+    expect(sanitizeDraft(valid({ lut: { ...LUT, intensite: 'fort' } }), DEPS)!.lut!.intensite).toBe(1);
+  });
+
+  it('borne et nettoie le nom', () => {
+    expect(sanitizeDraft(valid({ lut: { ...LUT, nom: ' x'.repeat(200) } }), DEPS)!.lut!.nom).toHaveLength(100);
+    expect(sanitizeDraft(valid({ lut: { ...LUT, nom: 42 } }), DEPS)!.lut!.nom).toBe('');
+  });
+
+  it('⚠️ les propriétés étrangères sont éliminées : ni table, ni url, ni clé', () => {
+    const d = sanitizeDraft(valid({ lut: { ...LUT, table: [1, 2, 3], url: 'https://x', cle: 'u/lut/x.cube', publicUrl: 'https://y' } }), DEPS)!;
+    expect(d.lut).toEqual(LUT);
+    expect(Object.keys(d.lut!).sort()).toEqual(['empreinte', 'intensite', 'nom']);
+  });
+});

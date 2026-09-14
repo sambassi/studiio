@@ -173,8 +173,23 @@ depuis `origin/main`, A_9b du worktree Autopilote lu seulement)
       empreinte ×6 → 1 fiche ; sans le verrou, 3 runs sur 3 rouges), 25 sur
       les routes appelées pour de vrai. **Après application : `docker kill
       -s SIGUSR1 studiio-postgrest`.**
-- [ ] **PR B** : #384 adaptée — pré-validation + canonicalisation PNG côté
-      navigateur, POST vers l'API commune, `draft.lut: LutRef`, badge de support.
+- [x] **PR B — FAIT le 2026-09-14** (`feat/lut-wizard-import`, depuis
+      `4674eb8` ; #384 `6914c06` reprise comme référence fonctionnelle, non
+      mergée) : `src/lib/luts/import.ts` réécrit sur l'API commune —
+      pré-validation par le SEUL parseur du socle, PNG canonicalisé par
+      `ecrireCube` et envoyé en `.cube` avec `origine=png`, `POST
+      /api/creatif/luts` (plus aucun signed-url, plus aucune URL publique),
+      référence CANONIQUE `LutRef{empreinte,nom,intensite}` via
+      `refDeLutAsset`. `draft.ts` : `sanitizeLutRef = lutRefValide` (socle) —
+      l'ancienne forme `{url,name,intensity}` est écartée. Wizard : section
+      « Ambiance » (import, nom, intensité, retrait, avertissement sans rush,
+      note « déjà dans votre bibliothèque »), libellé de support dérivé de
+      `supportDeLut` (nature relue de la bibliothèque au rechargement ;
+      référence retirée si la LUT a disparu ; statut le plus prudent si
+      l'appel échoue) — l'UI ne prétend jamais à un rendu qui n'existe pas.
+      Tests : 16 import client, 7 brouillon, 20 sur le vrai wizard monté ;
+      mutations : sans pré-validation → 3 rouges, sans relecture → 6,
+      origine forcée → 2.
 - [ ] Trajectoire `lut-cube.ts` (branche Autopilote) : `lireCube` → `parseCube`,
       `doserCube`/`ecrireCube` → `serialize.ts`, à faire quand A_9b atterrit.
 
