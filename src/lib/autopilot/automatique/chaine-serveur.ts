@@ -70,7 +70,7 @@ import {
   lireProfilCreatifUtilisateur, lireBibliothequeUtilisateur, lireJumeauUtilisateur,
 } from '@/lib/autopilot/analyse/profil-compte';
 import { jumeauHistorique } from '@/lib/avatar/jumeau';
-import { resoudreJumeauDuCompte } from '@/lib/avatar/jumeau-serveur';
+import { preparerJumeauDuCompte } from '@/lib/avatar/jumeau-serveur';
 import { listerCreatifsRecents } from '@/lib/autopilot/analyse/rendu-service';
 import { preparerCaptionsMultiSource } from '@/lib/autopilot/analyse/captions-service';
 import { PROFIL_CREATIF_DEFAUT } from '@/lib/autopilot/analyse/profil-creatif';
@@ -469,11 +469,22 @@ export async function monterAvecM3(
      personne croirait etre la sienne. */
   const configJumeau = await lireJumeauUtilisateur(userId);
   if (!jumeauHistorique(configJumeau) && configJumeau.active) {
-    const { issue } = await resoudreJumeauDuCompte(userId, configJumeau);
-    if (issue.etat === 'bloque') {
+    /* ⚠️ LA VOIX ET LA PAROLE SONT RESOLUES ICI — A_8g. `preparerJumeauDuCompte`
+       relit l'avatar ET la voix sous le compte, puis fait passer le texte
+       ecrit par la personne (`voixOff.script`) par le pipeline parle A_8d
+       (%, CHF, heures, prononciations). Voix absente, etrangere, sans
+       consentement, texte absent : un motif nomme, jamais une autre voix. */
+    const preparation = await preparerJumeauDuCompte(userId, configJumeau, biblio);
+    if (preparation.etat === 'bloque') {
       return { sorte: 'ignore', motif: 'jumeau_non_pret' };
     }
-    if (issue.etat === 'pret') {
+    if (preparation.etat === 'pret') {
+      /* Le contrat est complet — identite versionnee, voix du compte, texte
+         parle. Ce qui manque est le moteur qui l'anime (A_8_FINAL) : on le dit
+         plutot que de rendre une video ordinaire sous le nom de la personne. */
+      console.log(
+        `[Autopilot][Jumeau] Pret pour ${userId} — avatar ${preparation.identite.avatarId} v${preparation.identite.avatarVersion}, voix ${preparation.parole.voix.userVoiceId} (${preparation.parole.langue}), ${preparation.parole.spokenScript.length} car. parles — moteur non branche.`,
+      );
       return { sorte: 'ignore', motif: 'jumeau_indisponible' };
     }
   }
