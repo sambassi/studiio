@@ -7,7 +7,7 @@
  * CE QUE CET ÉCRAN NE FAIT PAS
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Il ne LANCE rien. Pas de bouton « Créer ma vidéo », pas d'enchaînement
+ * Il ne LANCE rien. Pas de bouton « Générer une vidéo de ce rush », pas d'enchaînement
  * coupes → clips → plan → rendu, pas de relance. Il ne MODIFIE rien : pas de
  * bouton « Modifier », aucun post créé, aucun crédit touché. Il montre ce qui
  * existe déjà, et deux gestes dessus : regarder, télécharger.

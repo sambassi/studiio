@@ -53,15 +53,15 @@ function nomDeFichier(url: string): string {
  * trop.
  */
 const ETAPES = [
-  { titre: 'Thèmes', aide: 'Sur quoi parler' },
-  { titre: 'Vos rushes', aide: 'Les images à réutiliser' },
+  { titre: 'Thèmes', aide: 'Sur quoi parler', aFaire: 'Cochez les sujets que Studiio pourra traiter.' },
+  { titre: 'Vos rushes', aide: 'Les images à réutiliser', aFaire: 'Ajoutez au moins un rush à la banque, puis « Suivant ».' },
   // ⚠️ CETTE ETAPE EST CELLE DE CE QUI NE CHANGE PAS. Les trois autres
   // reglent ce que l'Autopilote fait VARIER ; celle-ci, l'identite que
   // toutes les videos partagent.
-  { titre: 'Style & médias', aide: 'Ce qui ne change jamais' },
-  { titre: 'Rythme & diffusion', aide: 'Quand et où' },
-  { titre: 'Options', aide: 'Voix et garde-fous' },
-  { titre: 'Récapitulatif', aide: 'Vérifier, puis activer' },
+  { titre: 'Style & médias', aide: 'Ce qui ne change jamais', aFaire: 'Réglez ce que toutes les vidéos partageront : couleurs, affiches, musique.' },
+  { titre: 'Rythme & diffusion', aide: 'Quand et où', aFaire: 'Choisissez la cadence, l’heure et les réseaux.' },
+  { titre: 'Options', aide: 'Voix et garde-fous', aFaire: 'Facultatif : voix off et seuil de crédits.' },
+  { titre: 'Récapitulatif', aide: 'Vérifier, puis lancer', aFaire: 'Vérifiez, puis lancez l’Autopilote.' },
 ] as const;
 
 /** « 80 % » — un niveau du mixeur, tel que l'utilisateur le lit. */
@@ -411,6 +411,12 @@ export default function AutopilotPanel({
         </p>
         <p className="text-[11px] text-gray-500">{ETAPES[etape].aide}</p>
       </div>
+      {/* UX : une seule phrase, la meme place a chaque etape — ce qu'il y a a
+          faire ICI, avant de chercher un bouton. */}
+      <p className="text-[11px] text-gray-400" data-autopilot-a-faire>
+        <span className="font-medium text-gray-300">À faire maintenant :</span>{' '}
+        {ETAPES[etape].aFaire}
+      </p>
 
       {/* ── Étape 1 · Thèmes ─────────────────────────────────────────── */}
       {etape === 0 && (
@@ -498,35 +504,12 @@ export default function AutopilotPanel({
       {/* ── Étape 2 · Vos rushes ─────────────────────────────────────── */}
       {etape === 1 && (
         <div className="space-y-3">
-{/* ── SESSIONS DE TOURNAGE ──────────────────────────────────────
-              Le socle M3-A, monte ICI plutot que dans une route de plus :
-              c'est l'etape ou l'on parle deja des rushes, et l'utilisateur
-              n'a pas a chercher ailleurs ce qui prolonge ce qu'il regarde.
-
-              La banque de rushes historique (`config.rushUrls`) reste juste
-              en dessous, INTACTE. Les deux coexistent : migrer l'une vers
-              l'autre est une decision de produit, pas un effet de bord de ce
-              lot. */}
-          <div className="rounded-xl border border-gray-800 bg-gray-900/30 p-3 space-y-2">
-            <p className="text-xs font-medium text-gray-300">Sessions de tournage</p>
-            <SessionsTournagePanel
-              montageDefaut={montageDepuisStyle(config.designStyle)}
-              onEnregistrerDefaut={(m) => enregistrer({
-                // ⚠️ FUSION, JAMAIS REMPLACEMENT : `designStyle` porte aussi
-                // les polices et les icônes de cartes. Les écraser ici les
-                // perdrait sans un mot.
-                designStyle: { ...config.designStyle, montage: m },
-              })}
-              onSessionChange={onSessionChange}
-              onVideoLancee={onVideoLancee}
-            />
-          </div>
-
 {/* ── Banque de rushes ─────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-medium text-gray-300">
-                Vos rushes <span className="text-gray-500">({config.rushUrls.length})</span>
+                Banque de rushes <span className="text-gray-500">({config.rushUrls.length})</span>
+                <span className="ml-1.5 rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] font-normal text-gray-400">requis</span>
               </p>
               <button
                 type="button"
@@ -539,8 +522,20 @@ export default function AutopilotPanel({
               </button>
             </div>
             <p className="text-[11px] text-gray-500 mb-2">
-              L’Autopilote y pioche à tour de rôle. Sans rush, il ne produit rien —
+              L’Autopilote y pioche à tour de rôle pour chaque vidéo. Sans rush, il ne produit rien —
               il vous le dira plutôt que de générer des montages sans image.
+            </p>
+            {/* L'etat, dit : ce qui est pret, ce qu'il reste a faire. */}
+            <p className="text-[11px] mb-2" data-autopilot-rushes-etat={config.rushUrls.length > 0 ? 'pret' : 'a-faire'}>
+              {config.rushUrls.length > 0 ? (
+                <span className="text-emerald-400">
+                  Prêt : {config.rushUrls.length} rush{config.rushUrls.length > 1 ? 'es' : ''} dans la banque. Vous pouvez passer à « Suivant ».
+                </span>
+              ) : (
+                <span className="text-amber-400">
+                  À faire : ajoutez au moins un rush avec « Ajouter » pour continuer.
+                </span>
+              )}
             </p>
             {/* ⚠️ LA LIMITE DU RUSH UNIQUE, DITE AVANT QU'ELLE SURPRENNE.
                 Avec un seul rush, la rotation n'a pas le choix : toutes les
@@ -588,6 +583,37 @@ export default function AutopilotPanel({
               }}
             />
           </div>
+
+{/* ── VIDEO PONCTUELLE A PARTIR D'UN RUSH (sessions de tournage) ───
+              Le socle M3-A, INTACT — mais repliee et nommee pour ce qu'elle
+              est : un parcours ponctuel (analyser un rush, choisir des
+              passages, produire UNE video), independant de la rotation de
+              l'Autopilote. Placee au-dessus de la banque, avec ses boutons
+              violets par rush, elle passait pour l'etape obligatoire. */}
+          <details className="rounded-xl border border-gray-800 bg-gray-900/30" data-autopilot-sessions>
+            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-300 hover:text-white">
+              Créer une vidéo à partir d’un seul rush
+              <span className="ml-1.5 font-normal text-gray-500">— facultatif, indépendant de l’Autopilote</span>
+            </summary>
+            <div className="px-3 pb-3 space-y-2">
+              <p className="text-[11px] text-gray-500">
+                Analysez un rush, laissez Studiio proposer les meilleurs passages, puis
+                générez une vidéo de ce rush. L’Autopilote, lui, n’a pas besoin de cette
+                étape : il pioche dans la banque ci-dessus.
+              </p>
+              <SessionsTournagePanel
+                montageDefaut={montageDepuisStyle(config.designStyle)}
+                onEnregistrerDefaut={(m) => enregistrer({
+                  // ⚠️ FUSION, JAMAIS REMPLACEMENT : `designStyle` porte aussi
+                  // les polices et les icônes de cartes. Les écraser ici les
+                  // perdrait sans un mot.
+                  designStyle: { ...config.designStyle, montage: m },
+                })}
+                onSessionChange={onSessionChange}
+                onVideoLancee={onVideoLancee}
+              />
+            </div>
+          </details>
 
 {/* ── VOS AFFICHES ─────────────────────────────────────────────
               ⚠️ L'AUTOPILOTE CHOISISSAIT SEUL. Il cherche une photo chez
@@ -1210,7 +1236,7 @@ export default function AutopilotPanel({
                   : { backgroundColor: accent, color: '#fff' }
               }
             >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : config.enabled ? 'Mettre en pause' : 'Activer'}
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : config.enabled ? 'Mettre en pause' : 'Lancer l’Autopilote'}
             </button>
           </div>
 
@@ -1236,17 +1262,24 @@ export default function AutopilotPanel({
           Précédent
         </button>
         {etape < ETAPES.length - 1 && (
-          <button
-            type="button"
-            onClick={() => setEtape((n) => Math.min(ETAPES.length - 1, n + 1))}
-            disabled={!ready || bloqueEtape}
-            data-autopilot-suivant
-            title={bloqueEtape ? 'Ajoutez au moins un rush pour continuer' : undefined}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
-            style={{ backgroundColor: accent }}
-          >
-            Suivant
-          </button>
+          <div className="flex items-center gap-2 min-w-0">
+            {bloqueEtape && (
+              <span className="text-[11px] text-amber-400 truncate" data-autopilot-suivant-bloque>
+                Ajoutez au moins un rush pour continuer
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setEtape((n) => Math.min(ETAPES.length - 1, n + 1))}
+              disabled={!ready || bloqueEtape}
+              data-autopilot-suivant
+              title={bloqueEtape ? 'Ajoutez au moins un rush pour continuer' : undefined}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+              style={{ backgroundColor: accent }}
+            >
+              Suivant
+            </button>
+          </div>
         )}
       </div>
 

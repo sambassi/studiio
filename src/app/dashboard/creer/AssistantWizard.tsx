@@ -773,6 +773,37 @@ export type PreviewFocus = 'all' | 'intro' | 'cards' | 'video' | 'cta';
 /** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
 const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
 
+/**
+ * Le parcours ouvert sur l'ecran d'entree, quand l'assistant n'a pas demarre.
+ *
+ * ⚠️ UX : l'ecran d'entree presentait « Creer avec l'assistant » ET le panneau
+ * complet de l'Autopilote (six etapes) l'un sous l'autre : deux parcours,
+ * plusieurs boutons violets, et personne ne savait lequel cliquer. Ici, on
+ * CHOISIT d'abord ; l'Autopilote ne se deplie qu'a la demande. Le panneau
+ * reste monte (masque par `hidden`) : ses reglages, sa configuration chargee
+ * et l'apercu de droite ne changent pas.
+ *
+ * Persiste dans `localStorage` : quelqu'un qui configure l'Autopilote et
+ * recharge la page doit le retrouver ouvert, pas revenir au choix.
+ */
+type ParcoursEntree = 'choix' | 'autopilote';
+const PARCOURS_KEY = 'studiio:creer:parcours';
+function lireParcours(): ParcoursEntree {
+  try {
+    return window.localStorage.getItem(PARCOURS_KEY) === 'autopilote' ? 'autopilote' : 'choix';
+  } catch {
+    return 'choix';
+  }
+}
+function ecrireParcours(p: ParcoursEntree): void {
+  try {
+    if (p === 'choix') window.localStorage.removeItem(PARCOURS_KEY);
+    else window.localStorage.setItem(PARCOURS_KEY, p);
+  } catch {
+    /* stockage indisponible : le choix ne survit pas au rechargement, rien de plus */
+  }
+}
+
 /** Du moins capable au plus capable — pour choisir le statut prudent quand la nature est inconnue. */
 const ORDRE_SUPPORT = ['unsupported-render', 'preview-only', 'ready'] as const;
 
@@ -3258,6 +3289,10 @@ export default function AssistantWizard() {
   const [lutLoading, setLutLoading] = useState(false);
   const [lutNotice, setLutNotice] = useState<string | null>(null);
   const lutInputRef = useRef<HTMLInputElement>(null);
+  // Parcours ouvert sur l'ecran d'entree — voir `ParcoursEntree`.
+  const [parcours, setParcoursState] = useState<ParcoursEntree>('choix');
+  useEffect(() => { setParcoursState(lireParcours()); }, []);
+  const setParcours = (p: ParcoursEntree) => { ecrireParcours(p); setParcoursState(p); };
   const rushRunIdRef = useRef(0);
   // Rush soumis a la detection des temps forts. C'est l'IDENTITE de cet objet
   // qui pilote (re)lancement et fermeture du modal — meme contrat que
@@ -7020,9 +7055,14 @@ export default function AssistantWizard() {
           </div>
         )}
 
-        {/* Choix du parcours */}
-        {!started && (
-          <>
+        {/* ── Choix du parcours ─────────────────────────────────────────
+            UNE action principale a l'ecran. Les deux parcours sont dits par
+            leur RESULTAT — « une video maintenant » / « plusieurs contenus
+            automatiquement » — pas par leur mecanique. L'Autopilote est
+            replie tant qu'on ne l'a pas choisi : son panneau reste monte
+            (`hidden`) pour ne rien perdre — reglages, apercu, tournages. */}
+        {!started && parcours === 'choix' && (
+          <div className="grid gap-4 sm:grid-cols-2" data-parcours-choix>
             <Card>
               <div className="flex items-start gap-4">
                 <div
@@ -7032,14 +7072,17 @@ export default function AssistantWizard() {
                   <Wand2 className="w-5 h-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <CardTitle className="text-lg">Créer avec l&apos;assistant</CardTitle>
+                  <CardTitle className="text-lg">Créer une vidéo</CardTitle>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Cinq étapes — sujet, style, audio, contenu, envoi. Le texte et les cartes
-                    sont générés pour vous.
+                    Je veux créer <strong className="text-gray-200">une vidéo maintenant</strong>,
+                    étape par étape. Le texte et les cartes sont générés pour vous.
                   </CardContent>
+                  <p className="mt-2 text-[11px] text-gray-500">
+                    Sujet → Style → Audio → Contenu → Envoi
+                  </p>
                   <div className="mt-4">
-                    <Button variant="primary" size="sm" onClick={() => setStarted(true)}>
-                      Commencer
+                    <Button variant="primary" size="sm" onClick={() => setStarted(true)} data-parcours-assistant>
+                      Créer une vidéo
                     </Button>
                   </div>
                 </div>
@@ -7069,11 +7112,53 @@ export default function AssistantWizard() {
                     </span>
                   </div>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Studiio produit et planifie vos contenus en continu à partir de vos objectifs.
+                    Je donne mes rushes et mes réglages, Studiio prépare
+                    automatiquement <strong className="text-gray-200">plusieurs contenus</strong>.
                   </CardContent>
-                  {/* Le bouton « Activer » était désarmé : la carte annonçait
-                      une fonctionnalité qui n'existait pas. Elle porte
-                      désormais son propre réglage. */}
+                  <p className="mt-2 text-[11px] text-gray-500">
+                    Pour produire plusieurs vidéos sans refaire les réglages à chaque fois.
+                  </p>
+                  <div className="mt-4">
+                    <Button variant="secondary" size="sm" onClick={() => setParcours('autopilote')} data-parcours-autopilote>
+                      Configurer l&apos;Autopilote
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ── Autopilote, une fois choisi ───────────────────────────────
+            L'autre parcours reste a un clic — un lien discret, pas une
+            seconde carte qui rouvrirait la concurrence entre les deux. */}
+        {!started && (
+          <div hidden={parcours !== 'autopilote'} data-parcours-autopilote-panneau>
+            <Card>
+              <div className="flex items-start gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ backgroundColor: '#EC489926', color: '#F9A8D4' }}
+                >
+                  <Rocket className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <CardTitle className="text-lg">Autopilote</CardTitle>
+                      <CardContent className="mt-1 text-sm text-gray-400">
+                        Réglez une fois ; Studiio prépare ensuite plusieurs contenus à partir de vos rushes.
+                      </CardContent>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setParcours('choix')}
+                      data-parcours-retour
+                      className="text-xs text-gray-500 underline underline-offset-2 hover:text-white transition flex-shrink-0"
+                    >
+                      Changer de parcours
+                    </button>
+                  </div>
                   <div className="mt-4">
                     <AutopilotPanel
                       accent={accent}
@@ -7086,7 +7171,7 @@ export default function AssistantWizard() {
                 </div>
               </div>
             </Card>
-          </>
+          </div>
         )}
 
         {/* Wizard */}

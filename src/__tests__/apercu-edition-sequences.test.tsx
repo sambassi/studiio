@@ -62,7 +62,7 @@ afterEach(() => {
 /** Ouvre l'assistant jusqu'à l'étape Style, où l'aperçu est peuplé. */
 async function ouvrirStyle() {
   render(<AssistantWizard />);
-  fireEvent.click(screen.getByText('Commencer'));
+  fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
   fireEvent.click(screen.getByText('Continuer'));
   await waitFor(() => expect(document.querySelector('[data-title-block]')).toBeTruthy());
 }

@@ -283,7 +283,7 @@ describe('E — l assistant « Créer simple » n est PAS touché', () => {
     render(<AssistantWizard />);
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
 
-    fireEvent.click(screen.getByText('Commencer'));
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeNull());
     // Son en-tête est bien revenu. Il dit « Aperçu du style » depuis P0-A :
     // il ne doit pas pouvoir être pris pour la vidéo réellement produite.

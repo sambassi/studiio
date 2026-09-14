@@ -48,7 +48,7 @@ interface Props {
 }
 
 /**
- * L'état du bouton « Créer ma vidéo ».
+ * L'état du bouton « Générer une vidéo de ce rush ».
  *
  * ⚠️ `encours` PORTE L'ÉTAPE, PAS UN POURCENTAGE. Aucune des trois routes ne
  * sait dire où elle en est dans son travail ; elle sait seulement lequel des
@@ -266,11 +266,17 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
         </ul>
       )}
 
-      {/* ── CRÉER MA VIDÉO ────────────────────────────────────────────
+      {/* ── GÉNÉRER UNE VIDÉO DE CE RUSH ──────────────────────────────
           Ici, et pas ailleurs : c'est l'écran où le jeu de passages existe,
           et c'est de LUI que part la chaîne. Le poser au niveau de la session
           obligerait à retrouver quel jeu utiliser — une décision que personne
-          n'a prise. */}
+          n'a prise.
+
+          ⚠️ UX : action SECONDAIRE, nommée par sa portée. Un bouton violet
+          « Créer ma vidéo » sous chaque rush passait pour l'étape obligatoire
+          de l'Autopilote — il ne l'est pas : il produit UNE vidéo ponctuelle
+          de CE rush, indépendamment de la rotation. La logique (`creer`) est
+          inchangée. */}
       {candidats.length > 0 && (
         <div className="space-y-1" data-chaine>
           <button
@@ -279,12 +285,18 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
             disabled={chaine.sorte === 'encours'}
             data-chaine-bouton
             data-chaine-etat={chaine.sorte}
-            className="w-full min-h-[36px] rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
+            data-action-secondaire
+            className="w-full min-h-[36px] rounded-lg border border-purple-500/40 bg-gray-900 px-3 py-2 text-xs font-medium text-purple-200 hover:border-purple-400 hover:text-white disabled:opacity-50 transition-colors"
           >
             {chaine.sorte === 'encours'
               ? phraseChaine(chaine.etape)
-              : 'Créer ma vidéo'}
+              : 'Générer une vidéo de ce rush'}
           </button>
+          {chaine.sorte === 'inactif' && (
+            <p className="text-[10px] text-gray-500 leading-relaxed" data-chaine-portee>
+              Vidéo ponctuelle, à partir de ce rush seulement. L’Autopilote n’en a pas besoin pour continuer.
+            </p>
+          )}
           {chaine.sorte === 'dit' && (
             <p
               className={`text-[10px] leading-relaxed ${chaine.alerte ? 'text-amber-400/80' : 'text-gray-400'}`}

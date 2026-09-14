@@ -70,7 +70,7 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
 
   it('6.1 apparaît dès qu’un jeu de passages existe', async () => {
     monter();
-    expect(await screen.findByText('Créer ma vidéo')).toBeInTheDocument();
+    expect(await screen.findByText('Générer une vidéo de ce rush')).toBeInTheDocument();
   });
 
   it('6.2 un clic lance la chaîne et prévient l’écran des vidéos', async () => {
@@ -78,7 +78,7 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
     const prevenu = vi.fn();
     monter(prevenu);
 
-    const bouton = await screen.findByText('Créer ma vidéo');
+    const bouton = await screen.findByText('Générer une vidéo de ce rush');
     await act(async () => { fireEvent.click(bouton); });
 
     expect(chaineMock.creerVideo).toHaveBeenCalledTimes(1);
@@ -96,7 +96,7 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
     );
     monter();
 
-    const bouton = await screen.findByText('Créer ma vidéo');
+    const bouton = await screen.findByText('Générer une vidéo de ce rush');
     await act(async () => {
       fireEvent.click(bouton);
       fireEvent.click(bouton);
@@ -119,7 +119,7 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
       return new Promise(() => {});
     });
     monter();
-    const bouton = await screen.findByText('Créer ma vidéo');
+    const bouton = await screen.findByText('Générer une vidéo de ce rush');
     await act(async () => { fireEvent.click(bouton); });
 
     const noeud = document.querySelector('[data-chaine-bouton]')!;
@@ -134,7 +134,7 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
     const prevenu = vi.fn();
     monter(prevenu);
 
-    const bouton = await screen.findByText('Créer ma vidéo');
+    const bouton = await screen.findByText('Générer une vidéo de ce rush');
     await act(async () => { fireEvent.click(bouton); });
 
     expect(await screen.findByText('Ce rush est illisible.')).toBeInTheDocument();
@@ -149,7 +149,7 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
     chaineMock.creerVideo.mockResolvedValue({ sorte: 'deja_prete' });
     const prevenu = vi.fn();
     monter(prevenu);
-    const bouton = await screen.findByText('Créer ma vidéo');
+    const bouton = await screen.findByText('Générer une vidéo de ce rush');
     await act(async () => { fireEvent.click(bouton); });
     expect(prevenu).toHaveBeenCalledTimes(1);
   });
@@ -160,6 +160,6 @@ describe('6. Le bouton « Créer ma vidéo »', () => {
     )) as never;
     monter();
     await screen.findByText(/Aucun passage proposé/i);
-    expect(screen.queryByText('Créer ma vidéo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Générer une vidéo de ce rush')).not.toBeInTheDocument();
   });
 });
