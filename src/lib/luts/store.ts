@@ -119,11 +119,14 @@ export type Ajout =
  *
  * L'ordre est celui de la fonction SQL : doublon d'abord (« existante »,
  * même bibliothèque pleine), plafond ensuite (« pleine »), insertion enfin.
+ * Le plafond n'est PAS transmis : il est écrit dans la base
+ * (`lut_assets_plafond()` = 40) et un déclencheur le fait respecter même à
+ * une insertion directe. `LUTS_MAX` ne sert ici qu'aux libellés.
  * La fiche rendue est relue depuis la base : ce que le serveur retourne est
  * ce qui est réellement rangé.
  */
 export async function ajouterLut(
-  userId: string, asset: Omit<LutAsset, 'importeeLe'>, max: number = LUTS_MAX,
+  userId: string, asset: Omit<LutAsset, 'importeeLe'>,
 ): Promise<Ajout> {
   if (!userId) return { ok: false, motif: 'ecriture_impossible' };
   const { data, error } = await supabaseAdmin.rpc('lut_assets_ajouter', {
@@ -138,7 +141,6 @@ export async function ajouterLut(
     p_octets: asset.octets,
     p_domain_min: asset.domainMin,
     p_domain_max: asset.domainMax,
-    p_max: max,
   });
   if (error) {
     if (socleAbsent(error)) return { ok: false, motif: 'socle_absent' };

@@ -18,6 +18,7 @@ import type { Client } from 'pg';
 import {
   connecter, preparerBase, rejouerMigration, creerUtilisateur, enConcurrence,
 } from './harness';
+import { LUTS_MAX } from '../src/lib/luts/bibliotheque';
 
 let db: Client;
 beforeAll(async () => { db = await connecter(); });
@@ -29,20 +30,22 @@ const cle = (u: string, e: string) => `${u}/lut/${e}.cube`;
 
 async function ajouter(
   client: Client, u: string, e: string, over: Partial<{
-    nom: string; kind: string; taille: number; max: number; cle: string;
+    nom: string; kind: string; taille: number; cle: string;
     octets: number; domainMin: number[]; domainMax: number[];
   }> = {},
 ) {
   const { rows } = await client.query<{ issue: string; id: string | null }>(
-    `select issue, id from public.lut_assets_ajouter($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    `select issue, id from public.lut_assets_ajouter($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       u, e, over.cle ?? cle(u, e), over.nom ?? 'Look', null,
       over.kind ?? '3d', 'cube', over.taille ?? 33, over.octets ?? 1000,
-      over.domainMin ?? [0, 0, 0], over.domainMax ?? [1, 1, 1], over.max ?? 40,
+      over.domainMin ?? [0, 0, 0], over.domainMax ?? [1, 1, 1],
     ],
   );
   return rows[0];
 }
+
+const SIGNATURE = 'uuid,text,text,text,text,text,text,integer,integer,double precision[],double precision[]';
 
 const compter = async (u: string) => Number(
   (await db.query('select count(*)::int as n from public.lut_assets where user_id = $1', [u])).rows[0].n,
@@ -66,13 +69,98 @@ describe('0. La migration', () => {
     await expect(rejouerMigration(db)).resolves.not.toThrow();
   });
 
-  it('la fonction est retirée à public — seul le propriétaire l’exécute', async () => {
+  it('⚠️ le plafond est écrit DANS LA BASE, à 40, et vaut LUTS_MAX', async () => {
+    const { rows } = await db.query('select public.lut_assets_plafond() as n');
+    expect(rows[0].n).toBe(40);
+    expect(rows[0].n).toBe(LUTS_MAX);
+  });
+
+  it('⚠️ il est IMPOSSIBLE de demander un plafond : la fonction n’a pas ce paramètre', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await expect(db.query(
+      `select * from public.lut_assets_ajouter($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [u, E(1), cle(u, E(1)), 'Look', null, '3d', 'cube', 33, 1000, [0, 0, 0], [1, 1, 1], 100],
+    )).rejects.toThrow(/does not exist|no function matches/i);
+    // Et l'ancienne signature n'existe sous aucune forme.
     const { rows } = await db.query(
-      `select has_function_privilege('role_navigateur',
-         'public.lut_assets_ajouter(uuid,text,text,text,text,text,text,integer,integer,double precision[],double precision[],integer)',
-         'execute') as peut`,
+      `select count(*)::int as n from pg_proc where proname = 'lut_assets_ajouter'`,
     );
-    expect(rows[0].peut).toBe(false);
+    expect(rows[0].n).toBe(1);
+  });
+
+  it('⚠️ même une insertion DIRECTE ne dépasse pas 40 — le déclencheur le refuse', async () => {
+    const u = await creerUtilisateur(db, 0);
+    for (let i = 1; i <= 40; i++) await ajouter(db, u, E(i));
+    await expect(insererBrut(u, { empreinte: E(41), cle: cle(u, E(41)) })).rejects.toThrow(/lut_assets_plafond/);
+    expect(await compter(u)).toBe(40);
+  });
+
+  it('⚠️ 39 fiches + 2 insertions DIRECTES concurrentes → exactement 40', async () => {
+    const u = await creerUtilisateur(db, 0);
+    for (let i = 1; i <= 39; i++) await ajouter(db, u, E(i));
+    const resultats = await enConcurrence(2, (client, i) => client.query(
+      `insert into public.lut_assets (user_id, empreinte, cle, nom, kind, origine, taille, octets)
+       values ($1,$2,$3,'Look','3d','cube',33,1000)`,
+      [u, E(300 + i), cle(u, E(300 + i))],
+    ));
+    expect(resultats.filter((r) => r.ok)).toHaveLength(1);
+    expect(resultats.filter((r) => !r.ok && /lut_assets_plafond/.test(r.erreur))).toHaveLength(1);
+    expect(await compter(u)).toBe(40);
+  });
+});
+
+describe('0b. Droits d’exécution — la politique de production, reproduite', () => {
+  /*
+   * Correspondance harnais ↔ production :
+   *   - `current_user` (studiio_ci, qui joue la migration) ↔ `studiio`, le rôle
+   *     de PGRST_DB_URI / PGRST_DB_ANON_ROLE / JWT `role=studiio`, seul rôle SQL
+   *     de production, qui joue aussi les migrations : PROPRIÉTAIRE.
+   *   - `role_navigateur`, `anon`, `authenticated` ↔ tout rôle qui ne serait
+   *     pas propriétaire (aucun n'existe en production aujourd'hui ; s'ils
+   *     apparaissaient, ils n'auraient rien).
+   */
+  beforeEach(async () => {
+    await db.query(`do $$ begin
+      if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon nologin; end if;
+      if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated nologin; end if;
+    end $$`);
+  });
+
+  const peut = async (role: string, fn = `public.lut_assets_ajouter(${SIGNATURE})`) => (
+    await db.query(`select has_function_privilege($1, $2, 'execute') as peut`, [role, fn])
+  ).rows[0].peut as boolean;
+
+  it('⚠️ public, role_navigateur, anon, authenticated → EXECUTE = false', async () => {
+    for (const role of ['role_navigateur', 'anon', 'authenticated']) {
+      expect(await peut(role), role).toBe(false);
+      expect(await peut(role, 'public.lut_assets_plafond()'), role).toBe(false);
+      expect(await peut(role, 'public.lut_assets_verifier_plafond()'), role).toBe(false);
+    }
+    const { rows } = await db.query(
+      `select proacl from pg_proc where proname = 'lut_assets_ajouter'`,
+    );
+    // Aucune entrée `=X/…` (grant à PUBLIC) dans l'ACL.
+    expect(String(rows[0].proacl ?? '')).not.toMatch(/(^|[{,])=X/);
+  });
+
+  it('⚠️ le rôle serveur (propriétaire, comme `studiio` en production) → EXECUTE = true', async () => {
+    const { rows } = await db.query('select current_user as r');
+    expect(await peut(rows[0].r)).toBe(true);
+    const { rows: prop } = await db.query(
+      `select pg_get_userbyid(proowner) = current_user as proprietaire, prosecdef
+         from pg_proc where proname = 'lut_assets_ajouter'`,
+    );
+    expect(prop[0].proprietaire).toBe(true);
+    expect(prop[0].prosecdef).toBe(true); // security definer
+  });
+
+  it('un rôle nommé `studiio` reçoit EXECUTE nommément, même s’il n’est pas propriétaire', async () => {
+    await db.query(`do $$ begin
+      if not exists (select 1 from pg_roles where rolname = 'studiio') then create role studiio nologin; end if;
+    end $$`);
+    await rejouerMigration(db);
+    expect(await peut('studiio')).toBe(true);
+    expect(await peut('role_navigateur')).toBe(false);
   });
 });
 

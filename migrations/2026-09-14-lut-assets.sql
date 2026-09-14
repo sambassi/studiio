@@ -14,10 +14,14 @@
 --
 --   - DEDUPLICATION : `unique (user_id, empreinte)`. Deux imports simultanes
 --     des memes octets ne peuvent pas produire deux fiches.
---   - PLAFOND : `lut_assets_ajouter` prend un verrou consultatif PAR COMPTE
---     avant de compter puis d'inserer. Un `count -> insert` en deux requetes
---     laisserait passer 41 fiches quand deux imports comptent 39 en meme
---     temps ; ici le second attend le premier, recompte, et est refuse.
+--   - PLAFOND : 40 fiches par compte, ET C'EST LA BASE QUI LE DIT. Le nombre
+--     est ecrit ici, dans `lut_assets_plafond()`, et nulle part ailleurs en
+--     SQL : aucun appelant ne peut demander 50. Un declencheur `before insert`
+--     prend un verrou consultatif PAR COMPTE puis compte : la voie normale
+--     (`lut_assets_ajouter`) comme une insertion directe passent par lui. Un
+--     `count -> insert` en deux requetes laisserait passer 41 fiches quand
+--     deux imports comptent 39 en meme temps ; ici le second attend le
+--     premier, recompte, et est refuse.
 --   - CONTRAT A1 : chaque `check` reprend une borne du socle. Une fiche que
 --     `lutAssetValide` rejetterait ne peut pas entrer en base.
 --   - PROPRIETE : la cle est EXACTEMENT `<user_id>/lut/<empreinte>.cube`. Une
@@ -92,7 +96,50 @@ comment on table public.lut_assets is
   'objet prive media/<user_id>/lut/<empreinte>.cube ; contrat LutAsset (src/lib/luts/types.ts).';
 
 -- ---------------------------------------------------------------------------
--- 3. L'AJOUT ATOMIQUE : dedoublonnage ET plafond sous le meme verrou
+-- 3. LE PLAFOND — une regle de la base, pas un parametre
+-- ---------------------------------------------------------------------------
+--
+-- `lut_assets_plafond()` est LA constante : 40. `LUTS_MAX` cote TypeScript
+-- sert aux libelles et aux reponses ; si les deux divergeaient, c'est la base
+-- qui aurait raison, et le test PG le rappellerait.
+--
+-- Le declencheur verrouille le compte AVANT de compter : deux insertions
+-- simultanees du meme compte se serialisent, la seconde voit la premiere.
+-- `pg_advisory_xact_lock` est reentrant dans la transaction : la fonction
+-- d'ajout, qui prend le meme verrou plus tot, ne se bloque pas elle-meme.
+
+create or replace function public.lut_assets_plafond()
+returns integer
+language sql
+immutable
+as $$ select 40 $$;
+
+create or replace function public.lut_assets_verifier_plafond()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_nombre integer;
+begin
+  perform pg_advisory_xact_lock(hashtext('lut_assets'), hashtext(new.user_id::text));
+  select count(*) into v_nombre from public.lut_assets a where a.user_id = new.user_id;
+  if v_nombre >= public.lut_assets_plafond() then
+    raise exception 'lut_assets_plafond: % LUT par compte au maximum', public.lut_assets_plafond()
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists lut_assets_plafond_trg on public.lut_assets;
+create trigger lut_assets_plafond_trg
+  before insert on public.lut_assets
+  for each row execute function public.lut_assets_verifier_plafond();
+
+-- ---------------------------------------------------------------------------
+-- 4. L'AJOUT ATOMIQUE : dedoublonnage ET plafond sous le meme verrou
 -- ---------------------------------------------------------------------------
 --
 -- `pg_advisory_xact_lock(cle1, cle2)` : verrou par COMPTE, libere avec la
@@ -118,8 +165,7 @@ create or replace function public.lut_assets_ajouter(
   p_taille     integer,
   p_octets     integer,
   p_domain_min double precision[],
-  p_domain_max double precision[],
-  p_max        integer
+  p_domain_max double precision[]
 )
 returns table (issue text, id uuid)
 language plpgsql
@@ -146,7 +192,7 @@ begin
   end if;
 
   select count(*) into v_nombre from public.lut_assets a where a.user_id = p_user_id;
-  if v_nombre >= greatest(0, coalesce(p_max, 0)) then
+  if v_nombre >= public.lut_assets_plafond() then
     return query select 'pleine'::text, null::uuid;
     return;
   end if;
@@ -172,21 +218,54 @@ exception
 end;
 $$;
 
-revoke all on function public.lut_assets_ajouter(
+-- L'ancienne signature (avec un plafond parametre) ne doit pas survivre :
+-- deux fonctions homonymes, l'une acceptant un plafond, seraient exactement
+-- la seconde source de verite qu'on refuse.
+drop function if exists public.lut_assets_ajouter(
   uuid, text, text, text, text, text, text, integer, integer,
   double precision[], double precision[], integer
-) from public;
+);
 
 -- ---------------------------------------------------------------------------
--- 4. AUCUN DROIT OUVERT
+-- 5. DROITS D'EXECUTION
 -- ---------------------------------------------------------------------------
 --
--- Pas de `grant`. Le role qui execute cette migration possede la table et la
--- fonction ; un `grant ... to public` les ouvrirait au role anonyme de
--- PostgREST. Le code passe par le role de service.
+-- `revoke ... from public` retire l'execution a tout le monde ; le
+-- proprietaire la garde. En production, PostgREST se connecte en `studiio`
+-- (`PGRST_DB_URI`, `PGRST_DB_ANON_ROLE`, JWT `role=studiio`), qui est aussi
+-- le role qui joue les migrations — donc le proprietaire : il n'a besoin
+-- d'aucun `grant`. Le `grant` conditionnel ci-dessous le nomme quand meme,
+-- pour le jour ou le role serveur ne serait plus proprietaire. Jamais a
+-- `public`, `anon` ou `authenticated`.
+
+revoke all on function public.lut_assets_ajouter(
+  uuid, text, text, text, text, text, text, integer, integer,
+  double precision[], double precision[]
+) from public;
+revoke all on function public.lut_assets_verifier_plafond() from public;
+revoke all on function public.lut_assets_plafond() from public;
+
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'studiio') then
+    grant execute on function public.lut_assets_ajouter(
+      uuid, text, text, text, text, text, text, integer, integer,
+      double precision[], double precision[]
+    ) to studiio;
+    grant execute on function public.lut_assets_plafond() to studiio;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 6. AUCUN DROIT OUVERT SUR LA TABLE
+-- ---------------------------------------------------------------------------
+--
+-- Pas de `grant` sur la table. Le role qui execute cette migration la
+-- possede ; un `grant ... to public` l'ouvrirait a tout role de PostgREST.
+-- Le code passe par le role de service.
 --
 -- ---------------------------------------------------------------------------
--- 5. OBJETS ORPHELINS — documente, pas traite ici
+-- 7. OBJETS ORPHELINS — documente, pas traite ici
 -- ---------------------------------------------------------------------------
 --
 -- Le stockage objet et PostgreSQL ne partagent pas de transaction. L'API ecrit
@@ -199,7 +278,7 @@ revoke all on function public.lut_assets_ajouter(
 -- (objets `<user_id>/lut/*.cube` sans fiche) est possible plus tard, hors ligne.
 --
 -- ---------------------------------------------------------------------------
--- 6. APRES APPLICATION
+-- 8. APRES APPLICATION
 -- ---------------------------------------------------------------------------
 --
 --   docker kill -s SIGUSR1 studiio-postgrest

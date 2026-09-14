@@ -77,7 +77,10 @@ vi.mock('@/lib/db/supabase', () => {
     const u = a.p_user_id as string;
     const deja = etat.lignes.find((l) => l.user_id === u && l.empreinte === a.p_empreinte);
     if (deja) return { data: [{ issue: 'existante', id: deja.id }], error: null };
-    if (etat.lignes.filter((l) => l.user_id === u).length >= (a.p_max as number)) {
+    // Le plafond est celui de la BASE, pas un paramètre : la doublure refuse
+    // qu'on lui en transmette un, comme la vraie fonction (signature sans p_max).
+    if ('p_max' in a) return { data: null, error: { code: 'PGRST202', message: 'no function matches' } };
+    if (etat.lignes.filter((l) => l.user_id === u).length >= 40) {
       return { data: [{ issue: 'pleine', id: null }], error: null };
     }
     const ligne: Ligne = {
