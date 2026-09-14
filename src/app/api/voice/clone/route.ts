@@ -229,6 +229,11 @@ export async function GET() {
       configured: !!apiKey(),
       voices: voices.map((v) => ({
         id: `${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`,
+        /* ⚠️ LA REFERENCE STUDIIO — A_8g. `id` ci-dessus est l'identifiant de
+           SYNTHESE (prefixe fournisseur) que le selecteur TTS attend ; le
+           jumeau, lui, designe la voix par sa ligne `user_voices.id`, la
+           seule qui dise a qui elle appartient. */
+        userVoiceId: v.id,
         name: v.name,
         lang: v.lang,
         createdAt: v.created_at,

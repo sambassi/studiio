@@ -134,7 +134,15 @@ export default function AvatarPage() {
     (async () => {
       try {
         const j = await (await fetch('/api/voice/clone')).json();
-        if (!annule) setVoixClonees(Array.isArray(j?.voices) ? j.voices : []);
+        /* ⚠️ LA REFERENCE STUDIIO, PAS CELLE DU FOURNISSEUR — A_8g. Le
+           panneau Autopilote range `user_voices.id` ; l'identifiant prefixe
+           du selecteur TTS ne resout vers aucune ligne du compte. */
+        const lignes = Array.isArray(j?.voices) ? j.voices : [];
+        if (!annule) {
+          setVoixClonees(lignes
+            .filter((v: { userVoiceId?: unknown }) => typeof v.userVoiceId === 'string')
+            .map((v: { userVoiceId: string; name: string }) => ({ id: v.userVoiceId, name: v.name })));
+        }
       } catch {
         if (!annule) setVoixClonees([]);
       }
@@ -851,7 +859,9 @@ export default function AvatarPage() {
         voix={voixClonees}
       />
 
-      <VoiceCloneRecorder />
+      <div id="ma-voix">
+        <VoiceCloneRecorder />
+      </div>
 
       {/* Aperçu du résultat */}
       {videoUrl && (

@@ -27,7 +27,10 @@ interface Props {
   statut: string | null;
   providerAvatarId?: string | null;
   valideLe?: string | null;
-  /** Les voix clonées du compte. Vide = aucune voix prête. */
+  /**
+   * Les voix clonées du compte — `id` est `user_voices.id`, la référence
+   * Studiio, jamais un identifiant de fournisseur. Vide = aucune voix prête.
+   */
   voix: readonly { id: string; name: string }[];
 }
 
@@ -39,6 +42,11 @@ export default function AutopiloteJumeauPanel({
   const [config, setConfig] = useState<ConfigJumeauNumerique | null>(null);
   const [etat, setEtat] = useState<Etat>('chargement');
   const [erreur, setErreur] = useState<string | null>(null);
+  /* ⚠️ « MA VOIX » — A_8g. La voix retenue est celle que la personne a CHOISIE
+     parmi ses propres voix clonées ; relue de la configuration, jamais
+     devinée. Une seule voix au compte est retenue d'office — c'est la
+     sienne, il n'y a rien à choisir. Plusieurs : le choix est explicite. */
+  const [voixChoisie, setVoixChoisie] = useState<string | null>(null);
 
   const charger = useCallback(async () => {
     try {
@@ -53,6 +61,13 @@ export default function AutopiloteJumeauPanel({
 
   useEffect(() => { void charger(); }, [charger]);
 
+  useEffect(() => {
+    if (etat === 'chargement') return;
+    const rangee = config?.userVoiceId ?? null;
+    if (rangee && voix.some((v) => v.id === rangee)) { setVoixChoisie(rangee); return; }
+    setVoixChoisie(voix.length === 1 ? voix[0].id : null);
+  }, [etat, config?.userVoiceId, voix]);
+
   const cloneChezFournisseur = typeof providerAvatarId === 'string' && providerAvatarId.length > 0;
   const cloneEntraine = cloneChezFournisseur && estEtatPret(statut);
   const valide = typeof valideLe === 'string' && valideLe.length > 0;
@@ -63,9 +78,11 @@ export default function AutopiloteJumeauPanel({
      vidéo ne partira tant qu'elle manque — et l'écran l'annonce. */
   const activable = avatarId !== null && cloneEntraine && valide;
   const actif = config?.active === true;
+  const voixRetenue = voix.find((v) => v.id === (config?.userVoiceId ?? null)) ?? null;
 
-  const basculer = async () => {
-    if (!activable || etat === 'envoi') return;
+  /** Une seule écriture pour l'interrupteur ET le choix de voix. */
+  const enregistrer = async (jumeau: { active: boolean; userVoiceId: string | null }) => {
+    if (etat === 'envoi') return;
     setEtat('envoi');
     setErreur(null);
     try {
@@ -74,10 +91,10 @@ export default function AutopiloteJumeauPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jumeau: {
-            active: !actif,
+            active: jumeau.active,
             avatarId,
             avatarVersion: config?.avatarVersion ?? null,
-            userVoiceId: voix[0]?.id ?? null,
+            userVoiceId: jumeau.userVoiceId,
           },
         }),
       });
@@ -92,6 +109,19 @@ export default function AutopiloteJumeauPanel({
     } finally {
       setEtat('pret');
     }
+  };
+
+  const basculer = async () => {
+    if (!activable) return;
+    await enregistrer({ active: !actif, userVoiceId: voixChoisie });
+  };
+
+  const choisirVoix = async (id: string) => {
+    const retenue = id.length > 0 ? id : null;
+    setVoixChoisie(retenue);
+    /* Le choix est persisté tout de suite, avec l'état courant de
+       l'interrupteur : il survit au rechargement et au prochain cycle. */
+    if (avatarId !== null) await enregistrer({ active: actif, userVoiceId: retenue });
   };
 
   /** Ce qui manque, dit avec le geste qui débloque. */
@@ -151,6 +181,32 @@ export default function AutopiloteJumeauPanel({
             <p className="text-xs text-gray-500" data-jumeau-empechement>{bloquant}</p>
           )}
 
+          {/* ── MA VOIX — A_8g ────────────────────────────────────────────
+              Uniquement les voix clonées DU COMPTE, désignées par leur nom.
+              Aucune voix de catalogue, aucun identifiant de fournisseur. */}
+          {voixPrete && (
+            <div className="space-y-1.5" data-jumeau-voix>
+              <label className="block text-sm font-medium" htmlFor="jumeau-voix">Ma voix</label>
+              <select
+                id="jumeau-voix"
+                value={voixChoisie ?? ''}
+                onChange={(e) => { void choisirVoix(e.target.value); }}
+                disabled={etat === 'envoi'}
+                data-jumeau-voix-choix
+                className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-cyan-500 outline-none p-2.5 text-sm disabled:opacity-50"
+              >
+                {voix.length > 1 && <option value="">Choisir ma voix</option>}
+                {voix.map((v) => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">
+                Autopilote fera parler votre clone avec cette voix — la vôtre,
+                clonée par vous. Aucune autre voix ne sera utilisée à sa place.
+              </p>
+            </div>
+          )}
+
           {/* ⚠️ ACTIVÉ SANS VOIX : ON LE DIT, ET ON DIT LA CONSÉQUENCE. */}
           {activable && !voixPrete && (
             <div
@@ -160,13 +216,21 @@ export default function AutopiloteJumeauPanel({
               <Mic className="w-4 h-4 text-amber-300 flex-shrink-0 mt-0.5" />
               <div className="text-amber-100/80">
                 <div className="font-medium text-amber-200">Voix à configurer</div>
-                Autopilote utilisera votre clone uniquement lorsque votre voix
-                sera prête.
+                Configurez votre voix avant d’utiliser votre clone. Autopilote
+                utilisera votre clone uniquement lorsque votre voix sera prête.{' '}
+                <a href="#ma-voix" className="underline text-amber-200">Enregistrer ma voix</a>
               </div>
             </div>
           )}
 
-          {actif && voixPrete && (
+          {activable && voixPrete && voixChoisie === null && (
+            <p className="text-xs text-amber-200/80" data-jumeau-voix-a-choisir>
+              Choisissez votre voix : Autopilote ne produira rien avec votre
+              clone tant qu’aucune voix n’est retenue.
+            </p>
+          )}
+
+          {actif && voixRetenue && (
             <div
               className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm"
               data-jumeau-pret
@@ -175,7 +239,7 @@ export default function AutopiloteJumeauPanel({
               <div className="text-emerald-100/80">
                 <div className="font-medium text-emerald-200">Prêt pour Autopilote</div>
                 Vos prochaines vidéos automatiques utiliseront votre clone et
-                votre voix.
+                votre voix « {voixRetenue.name} ».
               </div>
             </div>
           )}
