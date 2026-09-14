@@ -102,8 +102,23 @@ describe('parseCube — refus explicites', () => {
     expect(() => parseCube('0 0 0\n1 1 1\n')).toThrow(/LUT_3D_SIZE|LUT_1D_SIZE/);
   });
 
-  it('lève quand la taille dépasse le plafond de 64', () => {
-    expect(() => parseCube('LUT_3D_SIZE 128\n')).toThrow(/64/);
+  it('lève quand la taille dépasse le plafond de 65 (DaVinci Resolve exporte en 33 ou 65)', () => {
+    expect(() => parseCube('LUT_3D_SIZE 128\n')).toThrow(/65/);
+    expect(() => parseCube('LUT_3D_SIZE 66\n')).toThrow(/65/);
+  });
+
+  it('accepte un cube de 65 pas', () => {
+    const n = 65;
+    const lignes = [`LUT_3D_SIZE ${n}`];
+    for (let i = 0; i < n * n * n; i++) lignes.push('0 0 0');
+    expect(parseCube(`${lignes.join('\n')}\n`).size).toBe(65);
+  });
+
+  it('une 1D a son propre plafond : 1024 points passent, 4097 non', () => {
+    const lignes = ['LUT_1D_SIZE 1024'];
+    for (let i = 0; i < 1024; i++) lignes.push('0 0 0');
+    expect(parseCube(`${lignes.join('\n')}\n`).size).toBe(1024);
+    expect(() => parseCube('LUT_1D_SIZE 4097\n')).toThrow(/4096/);
   });
 
   it('lève quand la taille est absurde', () => {

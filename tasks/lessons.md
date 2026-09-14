@@ -841,3 +841,19 @@ les détails, et ce sont eux qui cassent en production.
   toute aide visuelle à un exemplaire par axe (ou par catégorie), et donner la
   priorité à ce qui est réellement ACTIF (la cible aimantée) sur ce qui est
   simplement constaté.
+
+## [2026-09-14] Une garde que la mutation ne fait pas tomber est du code mort — et son commentaire est faux
+
+**Ce qui a mal tourné** — Le module d'import serveur des LUT retirait le BOM
+UTF-8 « parce que le parseur lirait « ﻿LUT_3D_SIZE » comme une ligne de
+données ». Le test « BOM accepté » était vert. En retirant la ligne pour
+vérifier que le test la protège, il est resté vert : `String.prototype.trim()`
+enlève déjà U+FEFF, `parseCube` n'a jamais eu besoin de cette garde. La ligne
+était inutile et son commentaire décrivait un bug qui n'existait pas — le
+prochain lecteur l'aurait cru.
+
+**Règle** — Pour toute garde ajoutée « par prudence », retirer la ligne et
+relancer les tests AVANT de commiter. Si rien ne rougit : soit le test est
+décoratif (le renforcer), soit la garde est morte (la supprimer, et dire
+pourquoi le comportement tient sans elle). Un commentaire qui justifie une
+ligne morte est pire que la ligne.

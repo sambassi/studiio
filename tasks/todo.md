@@ -127,6 +127,36 @@ ni rendu serveur ni API. `COST` (`AssistantWizard.tsx:555`) reste inchangé.
 - [x] `npx vitest run` : 426/426. `npx tsc --noEmit` : 86 erreurs, **exactement
       la baseline de `main`** (vérifiée par `git stash`), zéro dans `src/lib/luts/`.
 
+**Architecture LUT commune — décidée le 2026-09-14** (table `lut_assets`,
+plafonds 65 / 8 Mio, type canonique `LutAsset`) — voir PR A1.
+
+**PR A1 — socle LUT commun** — **FAIT le 2026-09-14** (`feat/lut-a1-socle`,
+depuis `origin/main`, A_9b du worktree Autopilote lu seulement)
+- [x] `types.ts` : `LutAsset` (empreinte, clé privée, nom, titre, kind,
+      origine, taille, octets, domaine, importeeLe), `LutRef`
+      (empreinte, nom, intensite), `SupportLut`, `MAX_LUT_SIZE=65`,
+      `MAX_LUT_1D_SIZE=4096`, `MAX_LUT_BYTES=8 Mio`.
+- [x] `parse.ts` : plafond PAR NATURE — une 1D de 1024 points était refusée
+      comme un cube de 1024.
+- [x] `serialize.ts` : `ecrireCube` déterministe (point fixe, aller-retour
+      par le SEUL parseur), `doserLut` (mélange exact avec l'identité).
+- [x] `support.ts` : `supportDeLut(kind, capacites)` + `CAPACITES_ACTUELLES`
+      (toutes fausses aujourd'hui — un test confronte la constante au code).
+- [x] `import-utilisateur.ts` (serveur) : poids → binaire → `parseCube` →
+      canonicalisation → SHA-256 des octets canoniques. **1D acceptée.**
+- [x] `bibliotheque.ts` : clés, propriété par préfixe, bornes, relecture
+      `LutAsset` / `LutRef`, `LUTS_MAX=40`.
+- [x] Namespace privé `media/<userId>/lut/…` : refusé à l'écriture
+      (`purposeAcceptable`) et au relais public (route appelée pour de vrai).
+- [x] 93 tests LUT (dont 65 nouveaux) ; suite complète 5487/5487 ; `tsc` 89 =
+      baseline ; `next build` OK.
+- [ ] **PR A2** : migration `lut_assets`, store, `/api/creatif/luts` (GET,
+      POST multipart, GET octets authentifié, DELETE, PATCH nom), tests.
+- [ ] **PR B** : #384 adaptée — pré-validation + canonicalisation PNG côté
+      navigateur, POST vers l'API commune, `draft.lut: LutRef`, badge de support.
+- [ ] Trajectoire `lut-cube.ts` (branche Autopilote) : `lireCube` → `parseCube`,
+      `doserCube`/`ecrireCube` → `serialize.ts`, à faire quand A_9b atterrit.
+
 **Phase 1 — import dans le Mode simple**
 - [ ] Nouvelle section `StyleSection id="ambiance"` dans l'étape Style
       (`AssistantWizard.tsx:2500`, à la suite de `couleurs`) : bouton d'import,

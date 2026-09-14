@@ -245,7 +245,14 @@ export function purposeAcceptable(valeur: unknown): boolean {
   if (typeof valeur !== 'string' || valeur.length === 0) return false;
   if (valeur.includes('/') || valeur.includes('\\')) return false;
   if (valeur.includes('..') || valeur.includes('://')) return false;
-  return valeur !== SEGMENT_NAMESPACE_ANALYSE;
+  /* ⚠️ ET `lut` AUSSI. Même raisonnement : on refuse à l'écriture ce qu'on
+     refuse à la lecture. Les routes d'envoi interpolent `purpose` tel quel
+     dans la clé ; un `purpose: "lut"` accepté ici rendrait une clé
+     `<userId>/lut/…` délivrée par notre propre serveur, que le relais public
+     refuserait ensuite de servir — sans message et sans trace. Les LUT
+     importées n'entrent que par leur route dédiée, qui construit la clé
+     elle-même. */
+  return valeur !== SEGMENT_NAMESPACE_ANALYSE && valeur !== SEGMENT_NAMESPACE_LUT;
 }
 
 /**
@@ -268,6 +275,23 @@ export const SEGMENT_NAMESPACE_MONTAGE = 'montages';
 export function cleDansNamespaceMontage(bucket: unknown, cle: unknown): boolean {
   if (bucket !== BUCKET_NAMESPACE_MONTAGE) return false;
   return contientSegment(cle, SEGMENT_NAMESPACE_MONTAGE);
+}
+
+/**
+ * Le domaine des LUT IMPORTÉES, fermé pour la même raison que les montages.
+ *
+ * Un look étalonné à la main est un travail que la personne peut vouloir
+ * garder pour elle : le relais public en ferait un lien permanent que
+ * personne ne pourrait révoquer. Son seul accès légitime est la route
+ * authentifiée de la bibliothèque, qui refait le contrôle de propriété.
+ * Aucun code ne lit une LUT par ce relais : le fermer ne casse rien.
+ */
+export const BUCKET_NAMESPACE_LUT = 'media';
+export const SEGMENT_NAMESPACE_LUT = 'lut';
+
+export function cleDansNamespaceLut(bucket: unknown, cle: unknown): boolean {
+  if (bucket !== BUCKET_NAMESPACE_LUT) return false;
+  return contientSegment(cle, SEGMENT_NAMESPACE_LUT);
 }
 
 /** Le segment est-il ENTOURÉ d'autre chose, sous toutes ses formes décodées ? */
