@@ -544,7 +544,7 @@ describe('4. VideosPretes — les cinq états', () => {
     expect(screen.getByText('Télécharger')).toBeInTheDocument();
     expect(screen.getByText('Planifier la publication')).toBeInTheDocument();
     expect(screen.queryByText(/Modifier/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Créer ma vidéo/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Créer ma vidéo|Générer une vidéo de ce rush/i)).not.toBeInTheDocument();
   });
 
   it('4.6 aucune donnée technique n’apparaît à l’écran', async () => {

@@ -80,7 +80,7 @@ const settle = async () => {
 
 /** Démarre le parcours et pose un sujet — le minimum pour avoir du travail. */
 const startAndType = async (topic: string) => {
-  fireEvent.click(screen.getByText('Commencer'));
+  fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
   const input = screen.getByPlaceholderText(/Ex\. :/);
   fireEvent.change(input, { target: { value: topic } });
   await settle();
@@ -156,7 +156,7 @@ describe('Sans travail, pas de brouillon', () => {
 describe('Quand l’écriture a lieu', () => {
   it('attend la pause de frappe — pas une écriture par caractère', async () => {
     render(<AssistantWizard />);
-    fireEvent.click(screen.getByText('Commencer'));
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
     const input = screen.getByPlaceholderText(/Ex\. :/);
 
     const spy = vi.spyOn(Storage.prototype, 'setItem');
@@ -176,7 +176,7 @@ describe('Quand l’écriture a lieu', () => {
 
   it('écrit au démontage — la navigation interne ne lève pas `beforeunload`', async () => {
     render(<AssistantWizard />);
-    fireEvent.click(screen.getByText('Commencer'));
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
     fireEvent.change(screen.getByPlaceholderText(/Ex\. :/), { target: { value: 'juste avant' } });
     // On démonte AVANT la fin de la minuterie.
     cleanup();
@@ -185,7 +185,7 @@ describe('Quand l’écriture a lieu', () => {
 
   it('écrit sur `pagehide`', async () => {
     render(<AssistantWizard />);
-    fireEvent.click(screen.getByText('Commencer'));
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
     fireEvent.change(screen.getByPlaceholderText(/Ex\. :/), { target: { value: 'onglet fermé' } });
     window.dispatchEvent(new Event('pagehide'));
     expect(readKey(KEY).customTopic).toBe('onglet fermé');

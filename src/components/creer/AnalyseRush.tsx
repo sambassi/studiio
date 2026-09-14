@@ -66,7 +66,7 @@ interface Props {
    */
   montage?: AutopilotMontageStyle;
   /**
-   * Passe-plat vers `PassagesSuggeres`, qui porte le bouton « Créer ma
+   * Passe-plat vers `PassagesSuggeres`, qui porte le bouton « Générer une
    * vidéo ». Ce composant-ci ne lance rien et ne sait rien de la chaîne : il
    * transmet, c'est tout.
    */
