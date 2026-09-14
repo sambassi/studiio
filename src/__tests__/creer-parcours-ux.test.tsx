@@ -125,7 +125,7 @@ describe('Écran d’entrée — un choix, une action principale', () => {
     expect(primairesVisibles().map((b) => b.textContent)).not.toContain('Créer une vidéo');
     expect(window.localStorage.getItem('studiio:creer:parcours')).toBe('autopilote');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Changer de parcours' }));
+    fireEvent.click(screen.getByRole('button', { name: /Revenir au choix des modes/ }));
     await settle();
     expect(document.querySelector('[data-parcours-choix]')).not.toBeNull();
     expect(panneau.hidden).toBe(true);
@@ -138,6 +138,56 @@ describe('Écran d’entrée — un choix, une action principale', () => {
     await settle();
     expect(document.querySelector('[data-parcours-choix]')).toBeNull();
     expect((document.querySelector('[data-parcours-autopilote-panneau]') as HTMLElement).hidden).toBe(false);
+  });
+
+  it('⚠️ l’en-tête change avec le mode, et le retour au choix est un VRAI bouton, même place', async () => {
+    render(<AssistantWizard />);
+    await settle();
+    expect(document.querySelector('[data-creer-entete="choix"]')!.textContent).toContain('Créer du contenu');
+    expect(document.querySelector('[data-creer-retour-choix]')).toBeNull();
+    // L'éditeur avancé : une option secondaire, sur l'écran de choix seulement.
+    expect(document.querySelector('[data-editeur-avance]')!.textContent).toMatch(/Besoin de plus de contrôle/);
+
+    fireEvent.click(screen.getByRole('button', { name: /Configurer l.Autopilote/ }));
+    await settle();
+    expect(document.querySelector('[data-creer-entete="autopilote"]')!.textContent).toContain('Configurez une fois');
+    const retour = screen.getByRole('button', { name: /Revenir au choix des modes/ });
+    expect(retour.hasAttribute('data-creer-retour-choix')).toBe(true);
+    expect(document.querySelector('[data-editeur-avance]')).toBeNull();
+    // Un seul titre « Autopilote » : celui de l'en-tête.
+    expect(screen.getAllByText('Autopilote')).toHaveLength(1);
+
+    fireEvent.click(retour);
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
+    await settle();
+    expect(document.querySelector('[data-creer-entete="assistant"]')!.textContent).toContain('Une vidéo, étape par étape');
+    expect(screen.getByRole('button', { name: /Revenir au choix des modes/ })).toBeDefined();
+  });
+
+  it('⚠️ revenir au choix depuis l’assistant ne perd rien : le brouillon rouvre à la même étape', async () => {
+    render(<AssistantWizard />);
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
+    await settle();
+    fireEvent.change(screen.getByPlaceholderText(/récupération après le sport/), { target: { value: 'Mon sujet à moi' } });
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: /Revenir au choix des modes/ }));
+    await settle();
+    expect(document.querySelector('[data-parcours-choix]')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
+    await settle();
+    expect((screen.getByPlaceholderText(/récupération après le sport/) as HTMLInputElement).value).toBe('Mon sujet à moi');
+  });
+
+  it('l’assistant : les boutons disent où ils mènent, et l’aperçu vide dit quand il apparaîtra', async () => {
+    render(<AssistantWizard />);
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
+    await settle();
+    expect(screen.getByRole('button', { name: /Continuer vers Style/ })).toBeDefined();
+    expect(document.body.textContent).toMatch(/L.aperçu apparaîtra à l.étape Style/);
+    expect(screen.queryByText(/Générer le contenu/)).toBeNull();
   });
 
   it('« Créer une vidéo » démarre l’assistant : l’Autopilote disparaît, une seule action à la fois', async () => {
@@ -153,18 +203,137 @@ describe('Écran d’entrée — un choix, une action principale', () => {
 describe('Autopilote — guidage par étape', () => {
   async function monter() {
     render(<AutopilotPanel accent="#7C3AED" />);
-    await waitFor(() => expect(screen.getByText('Thèmes')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('De quoi Studiio doit-il parler ?')).toBeTruthy());
   }
   const allerEtape = (i: number) => fireEvent.click(document.querySelector(`[data-autopilot-etape="${i}"]`)!);
 
-  it('chaque étape dit « À faire maintenant »', async () => {
+  it('chaque étape pose UNE question (objectif) et UNE phrase courte, à la même place', async () => {
     await monter();
+    const attendu = [
+      ['De quoi Studiio doit-il parler ?', 'Choisissez un ou plusieurs sujets.'],
+      ['Ajoutez les vidéos que Studiio pourra utiliser', 'Au moins un rush est nécessaire.'],
+      ['À quoi ressembleront vos vidéos ?', 'Ces réglages valent pour toutes les futures vidéos.'],
+      ['Quand et où publier ?', 'Fréquence, validation, réseaux.'],
+      ['Options facultatives', 'Vous pouvez passer cette étape.'],
+      ['Tout est-il prêt ?', 'Vérifiez, puis lancez l’Autopilote.'],
+    ];
     for (let i = 0; i < 6; i++) {
       allerEtape(i);
-      const ligne = document.querySelector('[data-autopilot-a-faire]')!;
-      expect(ligne.textContent, `étape ${i}`).toMatch(/^À faire maintenant :/);
-      expect(ligne.textContent!.length, `étape ${i}`).toBeGreaterThan(25);
+      const bloc = document.querySelector('[data-autopilot-a-faire]')!;
+      expect(bloc.textContent, `étape ${i}`).toContain(attendu[i][0]);
+      expect(bloc.textContent, `étape ${i}`).toContain(attendu[i][1]);
     }
+  });
+
+  it('⚠️ le fil d’étapes porte les NOMS : où l’on est, ce qui est fait, ce qui vient', async () => {
+    await monter();
+    allerEtape(2);
+    const noms = Array.from(document.querySelectorAll('[data-autopilot-etapes-noms] li')).map((li) => li.textContent);
+    expect(noms).toEqual(['✓ Sujets', '✓ Rushes', '3. Style', '4. Publication', '5. Options', '6. Vérification']);
+    expect(document.querySelector('[data-autopilot-etapes-noms] li[aria-current="step"]')!.textContent).toBe('3. Style');
+    // Version compacte (mobile) : même information, une ligne.
+    const compact = document.querySelector('[data-autopilot-etapes-compact]')!.textContent!;
+    expect(compact).toContain('Étape 3 sur 6');
+    expect(compact).toContain('Style');
+    expect(compact).toContain('Prochaine : Publication');
+  });
+
+  it('⚠️ le bouton qui avance dit où il mène — jamais un « Suivant » nu', async () => {
+    rushUrls = ['https://x/rush.mp4'];
+    await monter();
+    const libelles: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      allerEtape(i);
+      libelles.push(document.querySelector('[data-autopilot-suivant]')!.textContent!.trim());
+    }
+    expect(libelles).toEqual([
+      'Continuer vers Rushes', 'Continuer vers Style', 'Continuer vers Publication',
+      'Continuer vers Options', 'Vérifier ma configuration',
+    ]);
+    expect(screen.queryByText('Suivant')).toBeNull();
+  });
+
+  it('étape Sujets : le compte de sujets sélectionnés est dit', async () => {
+    await monter();
+    expect(document.querySelector('[data-autopilot-topics-compte]')!.textContent).toMatch(/Aucun sujet choisi/);
+  });
+
+  it('⚠️ étape Rushes sans rush : « Ajouter des rushes » est LE bouton principal, « Continuer » attend', async () => {
+    await monter();
+    allerEtape(1);
+    const ajouter = document.querySelector('[data-autopilot-add-rush]')!;
+    expect(ajouter.textContent).toContain('Ajouter des rushes');
+    expect(ajouter.getAttribute('data-cta')).toBe('principal');
+    expect(document.querySelector('[data-autopilot-rushes-etat]')!.textContent).toMatch(/0 rush/);
+    expect((document.querySelector('[data-autopilot-suivant]') as HTMLButtonElement).disabled).toBe(true);
+    // Et les affiches ne sont plus dans cette étape : elle ne parle que des rushes.
+    expect(screen.queryByText('Affiches')).toBeNull();
+  });
+
+  it('étape Rushes avec rushes : « Continuer vers Style » redevient l’action principale', async () => {
+    rushUrls = ['https://x/a.mp4', 'https://x/b.mp4', 'https://x/c.mp4'];
+    await monter();
+    allerEtape(1);
+    expect(document.querySelector('[data-autopilot-add-rush]')!.getAttribute('data-cta')).toBe('secondaire');
+    expect(document.querySelector('[data-autopilot-rushes-etat]')!.textContent).toMatch(/3 rushes prêts/);
+    expect((document.querySelector('[data-autopilot-suivant]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('⚠️ étape Style : l’essentiel visible, les réglages avancés repliés avec leurs valeurs actuelles', async () => {
+    await monter();
+    allerEtape(2);
+    expect(document.querySelector('[data-autopilot-style-essentiel]')).not.toBeNull();
+    expect(screen.getByText('Affiches')).toBeDefined();
+    expect(screen.getByText('Couleurs des cartes')).toBeDefined();
+    const avance = document.querySelector('[data-autopilot-style-avance]') as HTMLDetailsElement;
+    expect(avance.open).toBe(false);
+    expect(avance.textContent).toMatch(/Réglages avancés/);
+    expect(document.querySelector('[data-autopilot-style-recommande]')!.textContent).toMatch(/Valeurs actuelles/);
+    // Rien n'a disparu : musique, voix, son du rush et mixeur sont dedans.
+    for (const t of ['Musique', 'Voix off clonée', 'Son du rush', 'Mixeur']) {
+      expect(avance.textContent, t).toContain(t);
+    }
+  });
+
+  it('⚠️ étape Publication : la phrase récapitulative se lit en direct', async () => {
+    await monter();
+    allerEtape(3);
+    const phrase = document.querySelector('[data-autopilot-phrase-diffusion]')!.textContent!;
+    expect(phrase).toMatch(/^\d+ vidéos? (chaque jour|un jour sur deux|chaque semaine) à \d\d:00, /);
+    expect(phrase).toMatch(/après votre validation|publiée automatiquement/);
+    for (const bloc of ['Fréquence', 'Validation', 'Réseaux']) expect(screen.getByText(bloc)).toBeDefined();
+  });
+
+  it('étape Options : facultative, voix off IA payante annoncée, protection des crédits', async () => {
+    await monter();
+    allerEtape(4);
+    expect(screen.getByText('Voix off IA')).toBeDefined();
+    expect(document.body.textContent).toMatch(/option payante/);
+    expect(document.body.textContent).toMatch(/Protection de mes crédits/);
+  });
+
+  it('⚠️ Vérification sans rush : la check-list dit ce qui manque, et le bouton n’a plus l’air « prêt »', async () => {
+    await monter();
+    allerEtape(5);
+    expect(document.querySelector('[data-autopilot-checklist]')!.getAttribute('data-autopilot-pret')).toBe('non');
+    expect(document.querySelector('[data-autopilot-check="rushes"]')!.getAttribute('data-autopilot-check-ok')).toBe('non');
+    expect(document.querySelector('[data-autopilot-verdict]')!.textContent).toMatch(/pas encore prêt.*au moins un rush/);
+    const toggle = document.querySelector('[data-autopilot-toggle]')!;
+    // Règle métier inchangée : activer sans rush reste possible (le moteur ne
+    // produit rien) — mais le bouton n'est plus le gros violet « tout est prêt ».
+    expect((toggle as HTMLButtonElement).disabled).toBe(false);
+    expect(toggle.getAttribute('data-cta')).toBe('secondaire');
+  });
+
+  it('Vérification avec rushes : tout est coché, « Lancer l’Autopilote » est l’action principale', async () => {
+    rushUrls = ['https://x/a.mp4'];
+    await monter();
+    allerEtape(5);
+    expect(document.querySelector('[data-autopilot-checklist]')!.getAttribute('data-autopilot-pret')).toBe('oui');
+    expect(document.querySelector('[data-autopilot-verdict]')!.textContent).toMatch(/est prêt/);
+    const toggle = document.querySelector('[data-autopilot-toggle]')!;
+    expect(toggle.textContent).toBe('Lancer l’Autopilote');
+    expect(toggle.getAttribute('data-cta')).toBe('principal');
   });
 
   it('⚠️ étape Rushes : la banque (requise) vient AVANT les sessions ponctuelles, repliées', async () => {
@@ -188,7 +357,7 @@ describe('Autopilote — guidage par étape', () => {
     allerEtape(1);
     const etat = document.querySelector('[data-autopilot-rushes-etat]')!;
     expect(etat.getAttribute('data-autopilot-rushes-etat')).toBe('a-faire');
-    expect(etat.textContent).toMatch(/ajoutez au moins un rush/i);
+    expect(etat.textContent).toMatch(/0 rush — au moins un est nécessaire/i);
     expect(document.querySelector('[data-autopilot-suivant-bloque]')).not.toBeNull();
     expect((document.querySelector('[data-autopilot-suivant]') as HTMLButtonElement).disabled).toBe(true);
   });

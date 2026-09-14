@@ -146,7 +146,7 @@ async function cliquer(motif: RegExp): Promise<boolean> {
  * l'ecran directement a « contenu »).
  */
 async function allerAEnvoi() {
-  for (const motif of [/^Continuer/, /Suivant : audio/, /Générer le contenu/, /^Continuer/]) {
+  for (const motif of [/^Continuer vers Style/, /Continuer vers Audio/, /Continuer vers Contenu/, /^Continuer vers Envoi/]) {
     // eslint-disable-next-line no-await-in-loop
     await cliquer(motif);
   }

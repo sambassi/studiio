@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Sparkles, SlidersHorizontal, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import AssistantWizard from './AssistantWizard';
 import { readEditTarget, LIEN_INCOMPLET } from '@/lib/creer/editTarget';
 import type { SearchParams } from '@/lib/routing/legacy-redirect';
@@ -42,34 +42,10 @@ export default function CreerPage({
   const cible = readEditTarget(searchParams);
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
-      {/* ── En-tête ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="flex items-center gap-4 min-w-0">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
-          >
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold">Créer</h1>
-            <p className="text-sm text-gray-400">
-              Un parcours guidé, sans réglages à connaître.
-            </p>
-          </div>
-        </div>
-
-        {/* Echappatoire discrete, volontairement pas un bascule symetrique :
-            l'editeur avance est une compatibilite, pas un mode a choisir. */}
-        <Link
-          href="/dashboard/creer-avance"
-          className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:text-gray-300 transition flex-shrink-0 self-start"
-          title="Ancien éditeur, conservé temporairement"
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          Éditeur avancé
-        </Link>
-      </div>
+      {/* L'en-tete vit dans le wizard (`CreerEntete`) : il change selon que
+          l'on est au choix des modes, dans l'assistant ou dans l'Autopilote,
+          et porte le retour au choix. L'editeur avance est propose sur
+          l'ecran de choix, comme option secondaire. */}
 
       {/* Corps : parcours a gauche, apercu a droite — tout est pilote par
           le wizard, qui doit partager son etat entre les deux colonnes.

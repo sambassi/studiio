@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -787,6 +788,56 @@ const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
  * recharge la page doit le retrouver ouvert, pas revenir au choix.
  */
 type ParcoursEntree = 'choix' | 'autopilote';
+
+/**
+ * L'en-tete de la page « Creer », selon OU l'on est.
+ *
+ * ⚠️ UX : « Creer — un parcours guide » restait affiche dans l'Autopilote, et
+ * « Changer de parcours » etait un lien gris perdu sous un titre. Ici :
+ * un titre et une phrase par mode, et le retour au choix des modes est un
+ * VRAI bouton, toujours au meme endroit (a droite de l'en-tete), visible des
+ * l'arrivee sur l'ecran, desktop comme mobile.
+ */
+function CreerEntete({
+  mode,
+  onRetour,
+}: {
+  mode: 'choix' | 'assistant' | 'autopilote';
+  /** Retour aux deux cartes. Aucun reglage n'est perdu : l'etat reste monte. */
+  onRetour: () => void;
+}) {
+  const texte = {
+    choix: { titre: 'Créer du contenu', sous: 'Choisissez comment vous voulez créer.' },
+    assistant: { titre: 'Créer une vidéo', sous: 'Une vidéo, étape par étape.' },
+    autopilote: { titre: 'Autopilote', sous: 'Configurez une fois, Studiio crée ensuite vos contenus.' },
+  }[mode];
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4" data-creer-entete={mode}>
+      <div className="flex items-center gap-4 min-w-0">
+        <div
+          className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)' }}
+        >
+          {mode === 'autopilote' ? <Rocket className="w-6 h-6 text-white" /> : <Sparkles className="w-6 h-6 text-white" />}
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold">{texte.titre}</h1>
+          <p className="text-sm text-gray-400">{texte.sous}</p>
+        </div>
+      </div>
+      {mode !== 'choix' && (
+        <button
+          type="button"
+          onClick={onRetour}
+          data-creer-retour-choix
+          className="inline-flex items-center gap-2 self-start rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-200 hover:border-gray-500 hover:text-white transition flex-shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4" /> Revenir au choix des modes
+        </button>
+      )}
+    </div>
+  );
+}
 const PARCOURS_KEY = 'studiio:creer:parcours';
 function lireParcours(): ParcoursEntree {
   try {
@@ -1766,12 +1817,19 @@ export function Preview({
           />
         )}
         {!generated ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-2">
-            <MonitorPlay className="w-8 h-8 text-gray-700" />
-            <p className="text-xs text-gray-600 leading-relaxed">
-              Votre visuel s&apos;affichera ici
+          /* ⚠️ DIMENSIONNE EN `uiPx` : ce bloc vit DANS le plateau, rendu a la
+             resolution video puis reduit — en `text-xs`, le message faisait
+             trois pixels a l'ecran, et l'apercu passait pour un rectangle vide. */
+          <div
+            className="absolute inset-0 flex flex-col items-center justify-center text-center"
+            style={{ gap: uiPx(10), padding: uiPx(24) }}
+            data-apercu-vide
+          >
+            <MonitorPlay style={{ width: uiPx(40), height: uiPx(40) }} className="text-gray-600" />
+            <p className="text-gray-400" style={{ fontSize: uiPx(15), lineHeight: 1.5 }}>
+              L&apos;aperçu apparaîtra à l&apos;étape Style,
               <br />
-              au fil des étapes.
+              une fois votre sujet choisi.
             </p>
           </div>
         ) : (
@@ -6925,6 +6983,17 @@ export default function AssistantWizard() {
   }
 
   return (
+    <div className="space-y-6">
+    <CreerEntete
+      mode={started ? 'assistant' : parcours === 'autopilote' ? 'autopilote' : 'choix'}
+      onRetour={() => {
+        // Assistant : on revient au choix SANS toucher au brouillon — etape,
+        // sujet, style, contenu restent ; « Creer une video » les rouvre.
+        // Autopilote : le panneau reste monte, seulement replie.
+        if (started) setStarted(false);
+        else setParcours('choix');
+      }}
+    />
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
       <div className="lg:col-span-3 space-y-4">
         {/* MODIFICATION — la seule porte de sortie vers le serveur.
@@ -7126,6 +7195,15 @@ export default function AssistantWizard() {
                 </div>
               </div>
             </Card>
+            {/* L'editeur avance : une option pour qui veut plus de controle,
+                dite comme telle — pas un troisieme parcours, et plus un lien
+                present pendant tout le reste. */}
+            <p className="sm:col-span-2 text-xs text-gray-500" data-editeur-avance>
+              Besoin de plus de contrôle ?{' '}
+              <Link href="/dashboard/creer-avance" className="underline underline-offset-2 hover:text-gray-300 transition">
+                Ouvrir l’éditeur avancé
+              </Link>
+            </p>
           </div>
         )}
 
@@ -7134,42 +7212,16 @@ export default function AssistantWizard() {
             seconde carte qui rouvrirait la concurrence entre les deux. */}
         {!started && (
           <div hidden={parcours !== 'autopilote'} data-parcours-autopilote-panneau>
+            {/* Pas de second titre « Autopilote » ici : l'en-tete de page le
+                porte deja, avec le retour au choix des modes. */}
             <Card>
-              <div className="flex items-start gap-4">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: '#EC489926', color: '#F9A8D4' }}
-                >
-                  <Rocket className="w-5 h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="min-w-0">
-                      <CardTitle className="text-lg">Autopilote</CardTitle>
-                      <CardContent className="mt-1 text-sm text-gray-400">
-                        Réglez une fois ; Studiio prépare ensuite plusieurs contenus à partir de vos rushes.
-                      </CardContent>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setParcours('choix')}
-                      data-parcours-retour
-                      className="text-xs text-gray-500 underline underline-offset-2 hover:text-white transition flex-shrink-0"
-                    >
-                      Changer de parcours
-                    </button>
-                  </div>
-                  <div className="mt-4">
-                    <AutopilotPanel
-                      accent={accent}
-                      onConfigChange={setAutopilotConfig}
-                      onPatchReady={(patch) => { autopilotPatchRef.current = patch; }}
-                      onSessionChange={setTournageRegarde}
-                      onVideoLancee={() => setRelanceVideos((n) => n + 1)}
-                    />
-                  </div>
-                </div>
-              </div>
+              <AutopilotPanel
+                accent={accent}
+                onConfigChange={setAutopilotConfig}
+                onPatchReady={(patch) => { autopilotPatchRef.current = patch; }}
+                onSessionChange={setTournageRegarde}
+                onVideoLancee={() => setRelanceVideos((n) => n + 1)}
+              />
             </Card>
           </div>
         )}
@@ -7284,7 +7336,7 @@ export default function AssistantWizard() {
                 <div className="flex justify-end pt-2">
                   <Button variant="primary" size="sm" onClick={goToStyle}>
                     <span className="flex items-center gap-2">
-                      Continuer <ArrowRight className="w-4 h-4" />
+                      Continuer vers Style <ArrowRight className="w-4 h-4" />
                     </span>
                   </Button>
                 </div>
@@ -8691,7 +8743,7 @@ export default function AssistantWizard() {
                   </Button>
                   <Button variant="primary" size="sm" onClick={() => setStep(S.audio)}>
                     <span className="flex items-center gap-2">
-                      <Music className="w-4 h-4" /> Suivant : audio
+                      <Music className="w-4 h-4" /> Continuer vers Audio
                     </span>
                   </Button>
                 </div>
@@ -8754,9 +8806,14 @@ export default function AssistantWizard() {
                       <ArrowLeft className="w-4 h-4" /> Retour
                     </span>
                   </Button>
+                  {/* ⚠️ Ce bouton ne GENERE rien de nouveau : le contenu est
+                      produit des l'entree dans Style (`goToStyle` →
+                      `ensureGenerated`), et `goToGeneration` ne le refait que
+                      si le sujet a change. « Generer le contenu » contredisait
+                      donc le fil d'etapes ; le libelle dit ou l'on va. */}
                   <Button variant="primary" size="sm" onClick={goToGeneration}>
                     <span className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4" /> Générer le contenu
+                      Continuer vers Contenu <ArrowRight className="w-4 h-4" />
                     </span>
                   </Button>
                 </div>
@@ -8881,7 +8938,7 @@ export default function AssistantWizard() {
                       className={DISABLED}
                     >
                       <span className="flex items-center gap-2">
-                        Continuer <ArrowRight className="w-4 h-4" />
+                        Continuer vers Envoi <ArrowRight className="w-4 h-4" />
                       </span>
                     </Button>
                   </div>
@@ -9872,6 +9929,7 @@ export default function AssistantWizard() {
           if (!failure) setClipSource(null);
         }}
       />
+    </div>
     </div>
   );
 }
