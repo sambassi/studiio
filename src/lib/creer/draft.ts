@@ -3,6 +3,8 @@
 import { findFont } from '@/lib/fonts/catalog';
 import { TRANSITION_KEYS } from '@/lib/video-composer';
 import { TEXT_ANIMATION_KEYS } from '@/lib/creer/textAnimation';
+import { lutRefValide } from '@/lib/luts/bibliotheque';
+import type { LutRef } from '@/lib/luts/types';
 
 /**
  * Brouillon de « Créer (simple) » — écriture, relecture, validation.
@@ -103,6 +105,14 @@ export interface Draft {
   rushUrl?: string;
   rushName?: string;
   rushIsClip?: boolean;
+  /**
+   * Filtre couleur (LUT) du rush — la RÉFÉRENCE canonique seule (empreinte,
+   * nom, intensité) : jamais la table, jamais une URL ni une clé de
+   * stockage. L'identité est l'empreinte ; les octets vivent dans la
+   * bibliothèque privée du compte (`/api/creatif/luts`). Absent = aucun
+   * filtre, le cas de tous les brouillons antérieurs.
+   */
+  lut?: LutRef;
   scheduledDate?: string;
   /**
    * Placement fait a la main. ABSENT = « rien n'a ete deplace », et c'est le
@@ -247,6 +257,18 @@ const pct = (v: unknown): number | null =>
  * placement d'ORIGINE. Restaurer un `x` valide avec un `y` invente poserait le
  * titre a un endroit que l'utilisateur n'a jamais choisi.
  */
+/**
+ * Référence de LUT relue — par le validateur du SOCLE, pas par une copie.
+ *
+ * Seul le contrat canonique passe : une empreinte SHA-256, un nom borné, une
+ * intensité dans [0,1] (sinon 1). Une ancienne forme `{ url, name, intensity }`
+ * ne désigne plus rien de sûr : elle est écartée, jamais « réparée ». Tout
+ * champ étranger (table, url, clé) est laissé de côté.
+ */
+export function sanitizeLutRef(raw: unknown): LutRef | undefined {
+  return lutRefValide(raw);
+}
+
 function sanitizePos(raw: unknown): { x: number; y: number } | undefined {
   if (!isObj(raw)) return undefined;
   const x = pct(raw.x);
@@ -522,6 +544,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     rushUrl: persistableUrl(raw.rushUrl as string),
     rushName: typeof raw.rushName === 'string' ? raw.rushName : '',
     rushIsClip: raw.rushIsClip === true,
+    lut: sanitizeLutRef(raw.lut),
     scheduledDate:
       typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)
         ? raw.scheduledDate
