@@ -42,10 +42,12 @@ export interface ConfigJumeauNumerique {
   /**
    * La version INTERNE du clone, pas un numero fournisseur.
    *
-   * ⚠️ ELLE NE BOUGE PAS QUAND ON REMPLACE SA VIDEO SOURCE. Une source prete
-   * n'est pas encore une version de personne numerique : ce sont des
-   * candidats. La version change quand un entrainement REEL produit une autre
-   * identite — ce que fera A_8_FINAL.
+   * ⚠️ ELLE N'EST INCREMENTEE QUE PAR `commencerNouvelleVersionAvatar`
+   * (`lib/avatar/version.ts`), qui remet `validated_at` a NULL dans la meme
+   * ecriture — A_8f. Remplacer sa video source insere aujourd'hui une nouvelle
+   * ligne (version 1, non validee par construction) ; le reentrainement d'une
+   * ligne existante, quand A_8_FINAL l'ecrira, passera par cette primitive et
+   * par elle seule.
    */
   avatarVersion: number | null;
   /**

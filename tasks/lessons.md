@@ -841,3 +841,5 @@ les détails, et ce sont eux qui cassent en production.
   toute aide visuelle à un exemplaire par axe (ou par catégorie), et donner la
   priorité à ce qui est réellement ACTIF (la cible aimantée) sur ce qui est
   simplement constaté.
+
+2026-09-14 | Pendant un test de mutation, `git checkout -- <fichier>` a servi à « annuler la mutation » — il a aussi effacé les modifications NON COMMITÉES du même fichier (le bloc `generationPossible` de `etats.ts`), qu'il a fallu réécrire. | Pour une mutation temporaire, copier le fichier avant (`cp f /tmp/f.bak`) et le restaurer par `cp`, jamais par `git checkout`, tant que le travail n'est pas commité. Vérifier ensuite `git status` : le fichier doit toujours apparaître modifié.
