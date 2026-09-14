@@ -151,8 +151,28 @@ depuis `origin/main`, A_9b du worktree Autopilote lu seulement)
       (`purposeAcceptable`) et au relais public (route appelée pour de vrai).
 - [x] 93 tests LUT (dont 65 nouveaux) ; suite complète 5487/5487 ; `tsc` 89 =
       baseline ; `next build` OK.
-- [ ] **PR A2** : migration `lut_assets`, store, `/api/creatif/luts` (GET,
-      POST multipart, GET octets authentifié, DELETE, PATCH nom), tests.
+- [x] **PR A2 — FAIT le 2026-09-14** (`feat/lut-a2-store-api`) : migration
+      `2026-09-14-lut-assets.sql` (unicité `(user_id, empreinte)`, `check`
+      du contrat A1, clé EXACTEMENT `<user_id>/lut/<empreinte>.cube`,
+      domaines à 3 valeurs par `cardinality` — `array_length('{}')` est NULL
+      et un CHECK NULL passe), **plafond 40 écrit dans la base** (`lut_assets_plafond()` +
+      déclencheur `before insert` sous verrou par compte : même une insertion
+      directe ne dépasse pas 40 ; aucun paramètre de plafond dans
+      `lut_assets_ajouter`), fonction `lut_assets_ajouter` (verrou
+      `pg_advisory_xact_lock` PAR COMPTE : doublon → plafond → insert, dans
+      une transaction ; `revoke from public`, `grant execute` nommément à
+      `studiio` — le rôle PostgREST/propriétaire de production), `src/lib/luts/store.ts` (seul module qui nomme la
+      table, toujours filtré par `user_id`), `/api/creatif/luts` (GET liste,
+      POST multipart : 8 Mio refusé AVANT `arrayBuffer`, socle A1, objet
+      privé PUIS fiche, 201/200 existante/409 pleine/413/422 par motif/503
+      socle absent) et `/api/creatif/luts/[empreinte]` (GET octets
+      authentifié no-store, PATCH nom, DELETE fiche d'abord puis objet
+      best-effort ; autrui → 404, jamais 403). Orphelins privés documentés
+      dans la migration (§5), pas de GC.
+      Tests : 18 PostgreSQL réels (39+2 concurrents → 40 ; 38+8 → 40 ; même
+      empreinte ×6 → 1 fiche ; sans le verrou, 3 runs sur 3 rouges), 25 sur
+      les routes appelées pour de vrai. **Après application : `docker kill
+      -s SIGUSR1 studiio-postgrest`.**
 - [ ] **PR B** : #384 adaptée — pré-validation + canonicalisation PNG côté
       navigateur, POST vers l'API commune, `draft.lut: LutRef`, badge de support.
 - [ ] Trajectoire `lut-cube.ts` (branche Autopilote) : `lireCube` → `parseCube`,

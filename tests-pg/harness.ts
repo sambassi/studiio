@@ -39,7 +39,10 @@ export const MIGRATIONS_SOCLE = [
  */
 export const MIGRATION_ANALYSES = join(RACINE, 'migrations/2026-09-01-rush-analyses.sql');
 
-export const MIGRATIONS = [...MIGRATIONS_SOCLE, MIGRATION_ANALYSES];
+/** A2 — la bibliotheque de LUT du compte. Sans dependance aux precedentes hormis `users`. */
+export const MIGRATION_LUT_ASSETS = join(RACINE, 'migrations/2026-09-14-lut-assets.sql');
+
+export const MIGRATIONS = [...MIGRATIONS_SOCLE, MIGRATION_ANALYSES, MIGRATION_LUT_ASSETS];
 
 /** La première, conservée pour les tests qui ne parlent que de crédits. */
 export const MIGRATION = MIGRATIONS[0];
