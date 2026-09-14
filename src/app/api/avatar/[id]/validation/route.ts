@@ -44,18 +44,20 @@ export async function POST(
      il n'y a rien a decider ensuite — et un 403 aurait confirme son existence. */
   const { data, error } = await supabaseAdmin
     .from('user_avatars')
-    .select('id, status, provider_avatar_id, validated_at')
+    .select('id, status, provider_avatar_id, validated_at, version')
     .eq('id', params.id ?? '')
     .eq('user_id', userId)
     .maybeSingle();
 
   if (error || !data) return introuvable();
 
-  /* ⚠️ L'APERCU N'EXISTE PAS ENCORE, ET C'EST VOULU. Il naitra avec le premier
-     entrainement reel (A_8_FINAL). Tant qu'aucune generation d'apercu n'est
-     rattachee au clone, la validation reste fermee — plutot que d'inventer une
-     image pour deverrouiller un bouton. */
-  const apercuUrl = await apercuDuClone(userId, (data as { id: string }).id);
+  /* ⚠️ L'APERCU EST CELUI DE LA VERSION COURANTE, ET D'ELLE SEULE — A_8f.
+     Tant qu'aucune generation d'apercu n'est rattachee a CETTE version du
+     clone, la validation reste fermee — plutot que d'inventer une image pour
+     deverrouiller un bouton, ou d'accepter la video d'une version precedente
+     pour une personne numerique qui n'est plus la meme. */
+  const ligne = data as { id: string; version?: unknown };
+  const apercuUrl = await apercuDuClone(userId, ligne.id, ligne.version);
 
   const verdict = validationPossible({ ...(data as Record<string, unknown>), apercuUrl });
   if (!verdict.ok) {

@@ -69,14 +69,12 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    if (!gen.provider_video_id) {
-      return NextResponse.json({
-        success: true,
-        data: { generationId: gen.id, status: gen.status, videoUrl: null },
-      });
-    }
-
     // Garde-fou : generation bloquee trop longtemps → echec + remboursement.
+    /* ⚠️ Y COMPRIS UNE RESERVATION SANS IDENTIFIANT — A_8f. La ligne est
+       ecrite AVANT l'appel au fournisseur ; si le processus meurt entre les
+       deux, elle reste `pending` sans video. Pour un apercu, elle occuperait
+       la place unique de sa version pour toujours : l'echec au bout du delai
+       la libere. */
     const ageMs = Date.now() - new Date(gen.created_at).getTime();
     if (ageMs > STALE_AFTER_MS) {
       await failAndRefund(gen, "La generation a depasse le delai maximum (30 minutes).");
@@ -87,6 +85,13 @@ export async function GET(req: NextRequest) {
           status: 'failed',
           error: 'La generation a depasse le delai maximum (30 minutes). Credits rembourses.',
         },
+      });
+    }
+
+    if (!gen.provider_video_id) {
+      return NextResponse.json({
+        success: true,
+        data: { generationId: gen.id, status: gen.status, videoUrl: null },
       });
     }
 

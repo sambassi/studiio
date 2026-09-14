@@ -121,3 +121,76 @@ export const MESSAGES_VALIDATION: Record<MotifValidationRefusee, string> = {
   apercu_absent: 'Un aperçu de votre clone doit être généré avant validation.',
   deja_valide: 'Vous avez déjà validé ce clone.',
 };
+
+/* ═════════════════════════════════════════════════════════════════════════
+   A_8f (correctif Gap-1) — CE CLONE PEUT-IL GENERER, ET DANS QUELLE INTENTION ?
+   ═════════════════════════════════════════════════════════════════════════
+
+   ⚠️ LA DECISION EST PURE, ET ELLE VIT ICI. La route de generation appelait le
+   fournisseur sans jamais lire `validated_at` : le portail Autopilote exigeait
+   la validation, la route directe non. Un appel direct contournait donc tout.
+
+   Deux intentions, deux politiques, UN pipeline :
+
+     apercu   — AVANT validation. Il faut un clone REEL (identifiant chez le
+                fournisseur, entrainement termine), une version connue, et
+                qu'aucun apercu non echoue n'existe deja pour CETTE version.
+                `validated_at` n'est pas exige : c'est l'apercu qui permet de
+                valider, il ne peut pas en dependre.
+
+     normale  — APRES validation seulement. Tout ce qui precede, plus
+                `validated_at` non nul. La validation appartient a une version
+                (Gap-2 la remet a NULL a chaque nouvelle version), donc
+                « validee » veut dire « cette version-ci, validee ».
+
+   `source_ready` echoue dans les deux cas : aucun clone n'existe. */
+
+export type MotifGenerationRefusee =
+  | 'aucun_clone'
+  | 'entrainement_en_cours'
+  | 'version_absente'
+  | 'apercu_deja_produit'
+  | 'clone_non_valide';
+
+export function generationPossible(entree: {
+  avatar: {
+    status?: unknown;
+    provider_avatar_id?: unknown;
+    validated_at?: unknown;
+    version?: unknown;
+  } | null | undefined;
+  intention: 'apercu' | 'normale';
+  /** Un apercu en cours ou termine existe-t-il deja pour la version courante ? */
+  apercuOccupe: boolean;
+}): { ok: true; version: number } | { ok: false; motif: MotifGenerationRefusee } {
+  const { avatar, intention, apercuOccupe } = entree;
+  if (!avatar) return { ok: false, motif: 'aucun_clone' };
+
+  const identifiant = avatar.provider_avatar_id;
+  if (typeof identifiant !== 'string' || identifiant.length === 0) {
+    return { ok: false, motif: 'aucun_clone' };
+  }
+  if (!estEtatPret(avatar.status)) return { ok: false, motif: 'entrainement_en_cours' };
+
+  const version = typeof avatar.version === 'number' && Number.isInteger(avatar.version)
+    && avatar.version >= 1 ? avatar.version : null;
+  if (version === null) return { ok: false, motif: 'version_absente' };
+
+  if (intention === 'apercu') {
+    if (apercuOccupe) return { ok: false, motif: 'apercu_deja_produit' };
+    return { ok: true, version };
+  }
+
+  const valide = typeof avatar.validated_at === 'string' && avatar.validated_at.length > 0;
+  if (!valide) return { ok: false, motif: 'clone_non_valide' };
+  return { ok: true, version };
+}
+
+/** Ce que la personne lit quand la generation est refusee. */
+export const MESSAGES_GENERATION: Record<MotifGenerationRefusee, string> = {
+  aucun_clone: 'Votre clone n’a pas encore été créé.',
+  entrainement_en_cours: 'Votre clone est encore en cours de création.',
+  version_absente: 'La version de votre clone est inconnue.',
+  apercu_deja_produit: 'Un aperçu existe déjà pour cette version de votre clone. Regardez-le, puis validez votre clone.',
+  clone_non_valide: 'Regardez l’aperçu et validez votre clone avant de générer une vidéo.',
+};

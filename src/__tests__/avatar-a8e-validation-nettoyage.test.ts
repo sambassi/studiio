@@ -186,7 +186,7 @@ function socle(avatar: Partial<Ligne> | null = {}, generations: Ligne[] = []) {
     user_avatars: avatar === null ? [] : [{
       id: AVATAR, user_id: UID, provider: 'heygen', avatar_type: 'video',
       provider_avatar_id: null, status: ETAT_SOURCE_PRETE,
-      source_object_key: ANCIENNE, validated_at: null,
+      source_object_key: ANCIENNE, validated_at: null, version: 1,
       created_at: '2026-09-09T10:00:00Z',
       ...avatar,
     }],
@@ -287,8 +287,12 @@ describe('2. La route de validation', () => {
   });
 
   it('2.4 ⚠️ UN CLONE ENTRAÎNÉ AVEC APERÇU EST VALIDÉ, ET LA DATE EST ÉCRITE', async () => {
+    /* ⚠️ UN APERÇU EST UNE GÉNÉRATION D'INTENTION `apercu`, DE LA VERSION
+       COURANTE — A_8f. Une génération normale, ou d'une autre version, ne
+       valide rien. */
     socle({ status: 'completed', provider_avatar_id: 'hg_1' }, [{
       user_id: UID, user_avatar_id: AVATAR, status: 'completed',
+      intention: 'apercu', avatar_version: 1,
       video_url: 'https://x/apercu.mp4', created_at: '2026-09-09T11:00:00Z',
     }]);
     const res = await valider();
@@ -300,8 +304,12 @@ describe('2. La route de validation', () => {
   it('2.5 ⚠️ UN SECOND CLIC NE RÉÉCRIT PAS LA DATE', async () => {
     /* Ce qui a ete accepte l'a ete a un instant donne : deux clics rapides ne
        doivent pas deplacer cette date. */
+    /* ⚠️ UN APERÇU EST UNE GÉNÉRATION D'INTENTION `apercu`, DE LA VERSION
+       COURANTE — A_8f. Une génération normale, ou d'une autre version, ne
+       valide rien. */
     socle({ status: 'completed', provider_avatar_id: 'hg_1' }, [{
       user_id: UID, user_avatar_id: AVATAR, status: 'completed',
+      intention: 'apercu', avatar_version: 1,
       video_url: 'https://x/apercu.mp4', created_at: '2026-09-09T11:00:00Z',
     }]);
     await valider();
@@ -315,6 +323,7 @@ describe('2. La route de validation', () => {
   it('2.6 une génération inachevée ne compte pas comme aperçu', async () => {
     socle({ status: 'completed', provider_avatar_id: 'hg_1' }, [{
       user_id: UID, user_avatar_id: AVATAR, status: 'processing',
+      intention: 'apercu', avatar_version: 1,
       video_url: null, created_at: '2026-09-09T11:00:00Z',
     }]);
     const res = await valider();

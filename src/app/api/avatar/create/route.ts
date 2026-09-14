@@ -153,7 +153,9 @@ export async function GET(req: NextRequest) {
        La MEME fonction repond a la route de validation : deux lectures
        differentes finiraient par offrir « je valide » au-dessus d'un vide. */
     const apercuUrl = avatar
-      ? await apercuDuClone(session.user.id, (avatar as { id: string }).id)
+      ? await apercuDuClone(
+        session.user.id, (avatar as { id: string }).id, (avatar as { version?: unknown }).version,
+      )
       : null;
 
     return NextResponse.json({

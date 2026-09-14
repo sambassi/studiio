@@ -16,6 +16,7 @@ import {
 import CloneVideoPanel from '@/components/avatar/CloneVideoPanel';
 import AutopiloteJumeauPanel from '@/components/avatar/AutopiloteJumeauPanel';
 import { estEtatLocal } from '@/lib/avatar/etats';
+import { INTENTION_APERCU, INTENTION_NORMALE, SCRIPT_APERCU } from '@/lib/avatar/contrat';
 import ApercuPrononciation from '@/components/voice/ApercuPrononciation';
 import PrononciationsPanel from '@/components/voice/PrononciationsPanel';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
@@ -317,6 +318,10 @@ export default function AvatarPage() {
         setProgress(100);
         setVideoUrl(url);
         setGenStatus('completed');
+        /* ⚠️ UN APERÇU TERMINÉ DÉVERROUILLE « JE VALIDE » — A_8f. L'aperçu
+           est relu côté serveur, à l'endroit même où la validation le lit ;
+           l'écran ne déduit rien de sa propre vidéo. */
+        loadAvatar(false).catch(() => {});
         return;
       }
       if (status === 'failed') {
@@ -333,10 +338,19 @@ export default function AvatarPage() {
     } catch {
       pollRef.current = setTimeout(() => poll(generationId), 8000);
     }
-  }, []);
+  }, [loadAvatar]);
+
+  /* ⚠️ DEUX INTENTIONS, DITES EN TOUTES LETTRES — A_8f. Avant validation, la
+     seule génération possible est l'APERÇU : une fois par version, sur le
+     script court de Studiio. Après validation, le texte libre. Le serveur ne
+     déduit rien : c'est lui qui refuse si l'intention ne correspond pas. */
+  const cloneValide = typeof avatar?.validated_at === 'string' && avatar.validated_at.length > 0;
+  const apercuRequis = !!avatar && !cloneValide;
+  const intention = apercuRequis ? INTENTION_APERCU : INTENTION_NORMALE;
 
   const handleGenerate = async () => {
-    if (!avatar || !script.trim() || genStatus === 'pending' || genStatus === 'processing') return;
+    if (!avatar || genStatus === 'pending' || genStatus === 'processing') return;
+    if (!apercuRequis && !script.trim()) return;
     setError(null);
     setNotice(null);
     setVideoUrl(null);
@@ -349,7 +363,8 @@ export default function AvatarPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           avatarId: avatar.id,
-          script: script.trim(),
+          intention,
+          script: apercuRequis ? undefined : script.trim(),
           voiceId: voiceId || undefined,
           aspectRatio: ratio,
         }),
@@ -676,6 +691,19 @@ export default function AvatarPage() {
             </div>
           )}
 
+          {apercuRequis ? (
+            <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-4 text-sm">
+              <div className="font-medium text-purple-200">Aperçu de votre clone</div>
+              <p className="mt-1 text-xs text-gray-300">
+                Avant de valider votre clone, Studiio génère un court aperçu sur ce
+                texte fixe — pour juger le visage, les expressions et la bouche.
+                Le texte libre sera disponible une fois votre clone validé.
+              </p>
+              <p className="mt-3 rounded-lg bg-gray-900/70 p-3 text-xs italic text-gray-200">
+                « {SCRIPT_APERCU} »
+              </p>
+            </div>
+          ) : (
           <div>
             <label className="block text-sm font-medium mb-2">Ce que dit votre avatar</label>
             <textarea
@@ -698,6 +726,7 @@ export default function AvatarPage() {
               {script.length} / {MAX_SCRIPT_CHARS}
             </div>
           </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -739,7 +768,7 @@ export default function AvatarPage() {
 
           <button
             onClick={handleGenerate}
-            disabled={!script.trim() || busy || training}
+            disabled={(!apercuRequis && !script.trim()) || busy || training}
             className="w-full button-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {busy ? (
@@ -754,6 +783,10 @@ export default function AvatarPage() {
             ) : training ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" /> Avatar en préparation…
+              </>
+            ) : apercuRequis ? (
+              <>
+                <Sparkles className="w-4 h-4" /> Générer l’aperçu ({AVATAR_VIDEO_COST} crédits)
               </>
             ) : (
               <>
