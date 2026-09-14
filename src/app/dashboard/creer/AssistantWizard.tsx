@@ -110,6 +110,8 @@ import IconPicker from '@/components/creer/IconPicker';
 import ColorWheel from '@/components/ui/ColorWheel';
 import FloatingPanel from '@/components/ui/FloatingPanel';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
+import { importLutFile, decodeImageInBrowser, uploadLutFile, LUT_ACCEPT } from '@/lib/luts/import';
+import type { LutRef } from '@/lib/luts/types';
 import {
   batchCost, distinctPhotoForIndex, distinctUrls,
   autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce,
@@ -788,7 +790,7 @@ const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
 ];
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
-type SectionId = 'format' | 'couleurs' | 'affiche' | 'texte' | 'sequences' | 'transition' | 'animation';
+type SectionId = 'format' | 'couleurs' | 'affiche' | 'ambiance' | 'texte' | 'sequences' | 'transition' | 'animation';
 
 /** Photo proposee par `/api/pexels` — Pexels comme Unsplash. */
 interface PosterPhoto {
@@ -3238,6 +3240,14 @@ export default function AssistantWizard() {
   // detection sur un extrait ne pouvait donc qu'echouer, sur un message
   // trompeur (« la video est peut-etre trop courte ou illisible »).
   const [rushIsClip, setRushIsClip] = useState(false);
+  // ── Filtre couleur (LUT) du rush ─────────────────────────────────────
+  // Seule la REFERENCE vit ici — la table parsee ne sert qu'a valider le
+  // fichier a l'import et n'est jamais conservee. A ce stade le reglage est
+  // enregistre et restaure, mais ni l'apercu ni l'export ne le lisent encore :
+  // sans filtre, le rendu est strictement celui d'avant cet ajout.
+  const [lut, setLut] = useState<LutRef | null>(null);
+  const [lutLoading, setLutLoading] = useState(false);
+  const lutInputRef = useRef<HTMLInputElement>(null);
   const rushRunIdRef = useRef(0);
   // Rush soumis a la detection des temps forts. C'est l'IDENTITE de cet objet
   // qui pilote (re)lancement et fermeture du modal — meme contrat que
@@ -4015,6 +4025,37 @@ export default function AssistantWizard() {
       setPosterExporting(false);
     }
   }, [generated, posterExporting]);
+
+  /**
+   * Import d'un filtre couleur.
+   *
+   * Le fichier est LU ET VALIDE avant d'etre televerse : un `.cube` tronque
+   * qui atteindrait le stockage donnerait a l'utilisateur un filtre visible
+   * dans son montage, et l'echec ne surviendrait qu'au rendu, loin de sa
+   * cause. Le champ est remis a zero dans le `finally` — sans quoi
+   * reselectionner le meme fichier apres un echec ne declenche aucun
+   * `change`, et l'ecran parait fige.
+   */
+  const handleLutFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    setLutLoading(true);
+    setError(null);
+    try {
+      const { ref } = await importLutFile(file, {
+        upload: uploadLutFile,
+        decodeImage: decodeImageInBrowser,
+      });
+      setLut(ref);
+      console.log(`[Assistant] Filtre couleur importé : ${ref.name}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Filtre illisible.');
+    } finally {
+      setLutLoading(false);
+      input.value = '';
+    }
+  };
 
   /** Element retenu, s'il y en a un — la cible de la recoloration. */
   const selectedElement = freeElements.find((el) => el.id === selectedElementId) ?? null;
@@ -4934,6 +4975,9 @@ export default function AssistantWizard() {
     rushUrl: persistableDraftUrl(rushUrl),
     rushName,
     rushIsClip,
+    // La reference seule : le fichier vit dans le stockage. `undefined` sans
+    // filtre, pour qu'un brouillon sans ce champ se relise exactement comme avant.
+    lut: lut ?? undefined,
     scheduledDate,
     // Placement fait a la main. `undefined` quand rien n'a bouge : un
     // brouillon sans ces champs se relit exactement comme avant.
@@ -4957,7 +5001,7 @@ export default function AssistantWizard() {
     textAnimation,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited,
-    voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
+    voiceVolume, rushUrl, rushName, rushIsClip, lut, scheduledDate,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
@@ -5064,6 +5108,7 @@ export default function AssistantWizard() {
       setRushName(draft.rushName ?? '');
       setRushIsClip(!!draft.rushIsClip);
     }
+    if (draft.lut) setLut(draft.lut);
     if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
     // Placement : chaque champ absent laisse le defaut d'origine en place.
     if (draft.titlePos) setTitlePos(draft.titlePos);
@@ -7738,6 +7783,86 @@ export default function AssistantWizard() {
                         <p className="text-xs text-emerald-400">{aiNotice}</p>
                       )}
                     </div>
+                  </div>
+                </StyleSection>
+
+                {/* Filtre couleur — n'etalonne QUE le rush. Le dire ici est
+                    la moitie de la fonctionnalite : sans cette phrase,
+                    l'utilisateur attend un etalonnage du montage entier et
+                    croit le filtre casse quand le titre garde ses couleurs. */}
+                <StyleSection
+                  id="ambiance"
+                  title="Ambiance"
+                  hint={lut ? `${lut.name} · ${Math.round(lut.intensity * 100)}%` : 'Aucun filtre'}
+                  open={openSection === 'ambiance'}
+                  onToggle={toggleSection}
+                >
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-500">
+                      Un filtre couleur (LUT) s&apos;applique à la vidéo importée — le rush — et
+                      à elle seule. Les textes, le dégradé et l&apos;habillage gardent leurs
+                      couleurs. Formats acceptés : .cube et .png.
+                    </p>
+
+                    {!lut ? (
+                      <button
+                        type="button"
+                        onClick={() => lutInputRef.current?.click()}
+                        disabled={lutLoading}
+                        className={`w-full rounded-xl bg-gray-900/60 px-3 py-2.5 text-sm text-gray-300 transition hover:bg-gray-800/70 ${DISABLED}`}
+                      >
+                        {lutLoading ? 'Lecture du filtre…' : 'Importer un filtre…'}
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 truncate text-sm text-white">{lut.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setLut(null)}
+                            className="rounded-lg px-2 py-1 text-[11px] text-gray-500 transition hover:text-white"
+                          >
+                            Retirer
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-24 flex-shrink-0 text-[11px] text-gray-500">
+                            Intensité
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={lut.intensity}
+                            onChange={(e) =>
+                              setLut((prev) =>
+                                prev ? { ...prev, intensity: Number(e.target.value) } : prev,
+                              )
+                            }
+                            aria-label="Intensité du filtre"
+                            className="h-1 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-purple-500"
+                          />
+                          <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">
+                            {Math.round(lut.intensity * 100)}%
+                          </span>
+                        </div>
+                        {!rushUrl && (
+                          <p className="text-[11px] text-amber-400/80">
+                            Aucun rush pour l&apos;instant : le filtre n&apos;aura rien à
+                            étalonner tant qu&apos;une vidéo n&apos;est pas importée.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <input
+                      ref={lutInputRef}
+                      type="file"
+                      accept={LUT_ACCEPT}
+                      hidden
+                      onChange={handleLutFile}
+                    />
                   </div>
                 </StyleSection>
 
