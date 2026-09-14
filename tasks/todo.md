@@ -127,20 +127,36 @@ ni rendu serveur ni API. `COST` (`AssistantWizard.tsx:555`) reste inchangé.
 - [x] `npx vitest run` : 426/426. `npx tsc --noEmit` : 86 erreurs, **exactement
       la baseline de `main`** (vérifiée par `git stash`), zéro dans `src/lib/luts/`.
 
-**Phase 1 — import dans le Mode simple**
-- [ ] Nouvelle section `StyleSection id="ambiance"` dans l'étape Style
-      (`AssistantWizard.tsx:2500`, à la suite de `couleurs`) : bouton d'import,
-      nom du fichier, curseur d'intensité (0-100 %, défaut 100), bouton retirer.
-      `SectionId` (`:1186`) à étendre.
-- [ ] **Upload obligatoire via `/api/upload/signed-url`** — jamais de data URL.
-      Un `.cube` de 6 Mo en base64 dans le brouillon ferait exploser le
-      `localStorage` (`QuotaExceededError` avalée en silence → l'auto-sauvegarde
-      cesse) et partirait dans le `metadata` de chaque post. C'est l'écart B déjà
-      documenté plus bas dans ce fichier ; ne pas le refaire.
-- [ ] Brouillon (`src/lib/creer/draft.ts`) : persister **la référence seule**
-      (`{ url, name, format, size, intensity }`), jamais la table parsée.
-- [ ] Erreurs nommées : format refusé, fichier trop gros, PNG de dimension
-      inconnue → toast explicite, état inchangé.
+**Phase 1 — import dans le wizard « Créer avec l'assistant »** — **FAIT le 2026-09-14**
+(branche `feat/lut-phase1-import`, créée depuis `origin/main` ; reprise manuelle
+de l'ancienne PR #383, sans merge / rebase / cherry-pick de l'ancienne lignée)
+- [x] `src/lib/luts/import.ts` — `importLutFile(file, deps)`. Les accès au monde
+      extérieur (décodage d'image, téléversement) sont **injectés** : le
+      navigateur fournit les vrais, les tests des doubles.
+- [x] **Validé AVANT téléversement** : un fichier illisible n'atteint jamais le
+      stockage. Un test le prouve en comptant les appels à `/api/upload/signed-url`.
+- [x] Téléversement par le flux partagé `uploadFile()` (`purpose: 'lut'`) —
+      jamais de data URL. **Cas particulier** : un `.cube` a un `file.type`
+      vide, que la route de signature refuse (400) → ré-emballé en
+      `application/octet-stream`.
+- [x] Section `StyleSection id="ambiance"` entre « Photo d'affiche » et
+      « Texte » : import, nom, curseur d'intensité, retrait, et la phrase qui
+      dit que le filtre ne touche **que le rush**. Avertissement quand aucun
+      rush n'est encore importé.
+- [x] Brouillon : `lut?: LutRef`, `sanitizeLutRef` (URL `blob:` rejetée,
+      intensité hors plage ramenée à 1, nom borné à 120, champs superflus écartés).
+- [x] 12 tests sur le **vrai wizard monté** + 13 sur l'import + 7 sur le brouillon.
+      Mutations vérifiées : téléverser avant de valider → 4 rouges ; ne plus
+      relire `lut` → 6 rouges.
+- [x] `npx vitest run` : 5454/5454. `npx tsc --noEmit` : 89 erreurs,
+      **exactement la baseline de `main`**.
+- [ ] ⚠️ **Le réglage n'a encore aucun effet visible** : ni l'aperçu (phase 2)
+      ni l'export (phase 3) ne lisent `lut`. Ne pas laisser cet état en
+      production plus longtemps que nécessaire.
+
+> Référence fonctionnelle pour les phases 2 et 3 : la branche **en lecture
+> seule** `feat/lut-etalonnage-rush` (commits `b03df6e` aperçu, `44e06c1`
+> export WebGL). À **relire**, jamais à fusionner.
 
 **Phase 2 — aperçu**
 - [ ] `Preview` (`:683`) : quand une LUT est active **et** que le rush est
