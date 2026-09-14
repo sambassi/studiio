@@ -1,5 +1,8 @@
 import { estEtatPret } from '@/lib/avatar/etats';
 import { SUJET_AVATAR } from '@/lib/avatar/contrat';
+import { voixJumeauUtilisable, type VoixPourJumeau } from '@/lib/avatar/voix-jumeau';
+
+export type { VoixPourJumeau };
 
 /**
  * A_8f — « UTILISER MON CLONE DANS AUTOPILOTE ».
@@ -149,14 +152,6 @@ export interface AvatarPourJumeau {
   version?: unknown;
 }
 
-/** Ce que le portail a besoin de savoir de la voix. */
-export interface VoixPourJumeau {
-  id?: unknown;
-  user_id?: unknown;
-  provider_voice_id?: unknown;
-  consent_at?: unknown;
-}
-
 /**
  * LA PERSONNE NUMERIQUE PEUT-ELLE SERVIR POUR CETTE GENERATION ?
  *
@@ -203,21 +198,17 @@ export function resoudreJumeauPourGeneration(entree: {
 
   /* ⚠️ SANS VOIX REELLE, RIEN NE PART. C'est la garde qui empeche la pire
      sortie possible : une video du visage de la personne, parlant avec une
-     voix qui n'est pas la sienne. */
-  if (!config.userVoiceId) return { etat: 'bloque', motif: 'voix_absente' };
-  if (!voix || voix.id !== config.userVoiceId) return { etat: 'bloque', motif: 'voix_absente' };
-  if (voix.user_id !== userId) return { etat: 'bloque', motif: 'voix_etrangere' };
-  const voixUtilisable = typeof voix.provider_voice_id === 'string'
-    && voix.provider_voice_id.length > 0
-    && typeof voix.consent_at === 'string' && voix.consent_at.length > 0;
-  if (!voixUtilisable) return { etat: 'bloque', motif: 'voix_absente' };
+     voix qui n'est pas la sienne. La decision vit dans `voixJumeauUtilisable`
+     (A_8g) — la meme que celle qui prepare la parole du jumeau. */
+  const issueVoix = voixJumeauUtilisable({ userId, userVoiceId: config.userVoiceId, voix });
+  if (!issueVoix.ok) return { etat: 'bloque', motif: issueVoix.motif };
 
   return {
     etat: 'pret',
     identite: {
       avatarId: config.avatarId,
       avatarVersion: v,
-      userVoiceId: config.userVoiceId,
+      userVoiceId: issueVoix.voix.userVoiceId,
     },
   };
 }

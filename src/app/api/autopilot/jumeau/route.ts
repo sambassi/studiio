@@ -77,8 +77,15 @@ export async function PUT(req: NextRequest) {
   const { issue, avatar, voix } = await resoudreJumeauDuCompte(userId, demande);
 
   /* La voix manquante est le SEUL blocage qui n'empeche pas de configurer :
-     l'ecran affiche « Voix a configurer », et la generation reste fermee. */
-  if (issue.etat === 'bloque' && issue.motif !== 'voix_absente') {
+     l'ecran affiche « Voix a configurer », et la generation reste fermee.
+
+     ⚠️ MAIS UNE VOIX DESIGNEE ET INTROUVABLE EST REFUSEE, PAS EFFACEE — A_8g.
+     Un `userVoiceId` qui ne resout pas sous CE compte — inexistant, ou a
+     quelqu'un d'autre — n'est pas « pas de voix » : c'est une demande qu'on
+     ne peut pas honorer, et on le dit. L'ecrire a NULL en silence laisserait
+     croire que le choix a ete pris. */
+  const voixDemandee = demande.userVoiceId !== null;
+  if (issue.etat === 'bloque' && (issue.motif !== 'voix_absente' || voixDemandee)) {
     return NextResponse.json(
       { ok: false, motif: issue.motif, error: MESSAGES_JUMEAU[issue.motif] },
       { status: 409 },

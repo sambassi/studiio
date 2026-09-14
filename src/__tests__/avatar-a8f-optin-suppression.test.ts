@@ -190,9 +190,15 @@ describe('1. On n’active pas ce qui ne pourrait pas servir', () => {
       consent_at: '2026-09-01T10:00:00Z',
     }];
     const res = await activer({ active: true, avatarId: AVATAR, userVoiceId: VOIX });
-    expect(res.status).toBe(200);
-    // Activée, mais SANS cette voix : Autopilote restera fermé.
-    expect((styleRange().jumeauNumerique as Ligne).userVoiceId).toBeNull();
+    /* ⚠️ REFUSÉE, PAS EFFACÉE — A_8g. Une voix désignée qui ne résout pas sous
+       ce compte est une demande qu'on ne peut pas honorer : 409, et rien
+       n'est écrit. L'ancien comportement (200 avec `userVoiceId: null`)
+       laissait croire que le choix avait été pris. Et le message ne dit pas
+       que la voix existe ailleurs : même motif qu'une voix absente. */
+    expect(res.status).toBe(409);
+    expect((await res.json()).motif).toBe('voix_absente');
+    expect((styleRange().jumeauNumerique as Ligne | undefined)?.active ?? false).toBe(false);
+    expect((styleRange().jumeauNumerique as Ligne | undefined)?.userVoiceId ?? null).toBeNull();
   });
 
   it('1.5 ⚠️ SANS VOIX, ON PEUT CONFIGURER — MAIS ON LE DIT', async () => {
