@@ -1,4 +1,4 @@
-import { Lut, MAX_LUT_SIZE } from './types';
+import { Lut, MAX_LUT_SIZE, MAX_LUT_1D_SIZE } from './types';
 
 /**
  * Parseur `.cube` (Adobe/IRIDAS).
@@ -35,9 +35,17 @@ export function parseCube(text: string): Lut {
       if (!Number.isInteger(size) || size < 2) {
         throw new Error(`Taille de LUT invalide (ligne ${i + 1}) : « ${line} ».`);
       }
-      if (size > MAX_LUT_SIZE) {
+      // Le plafond dépend de la nature : 65 pas pour un cube (choix Studiio,
+      // un 65³ pèse 7 Mo), 65536 points pour une 1D (la borne de la
+      // spécification). Rien n'est alloué d'après la taille DÉCLARÉE : les
+      // valeurs sont lues ligne à ligne, et le poids du fichier est gardé
+      // séparément, avant d'arriver ici.
+      const max = kind === '3d' ? MAX_LUT_SIZE : MAX_LUT_1D_SIZE;
+      if (size > max) {
         throw new Error(
-          `LUT trop grande : ${size} pas par axe, le maximum accepté est ${MAX_LUT_SIZE}.`,
+          kind === '3d'
+            ? `LUT trop grande : ${size} pas par axe, le maximum accepté est ${max}.`
+            : `LUT 1D trop grande : ${size} points, le maximum accepté est ${max}.`,
         );
       }
       continue;

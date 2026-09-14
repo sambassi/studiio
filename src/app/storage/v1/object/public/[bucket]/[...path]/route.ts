@@ -57,7 +57,7 @@ import { Readable } from 'stream';
 import { bucketAutorise } from '@/lib/storage/buckets';
 import {
   cleObjetValide, typeContenuDepuisCle, cleDansNamespaceAnalyse,
-  cleDansNamespaceMontage,
+  cleDansNamespaceMontage, cleDansNamespaceLut,
 } from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
@@ -189,6 +189,10 @@ function cibleRecevable(bucket: string, storagePath: string): boolean {
   // Le montage de l'Autopilote se lit par sa route authentifiée, jamais ici :
   // sinon le propriétaire pourrait en faire un lien public et permanent.
   if (cleDansNamespaceMontage(bucket, storagePath)) return false;
+  // Même refus pour les LUT importées : un look est un travail privé, il se
+  // lit par la route authentifiée de la bibliothèque, jamais par un lien
+  // public permanent.
+  if (cleDansNamespaceLut(bucket, storagePath)) return false;
   return true;
 }
 

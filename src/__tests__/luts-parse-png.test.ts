@@ -104,9 +104,9 @@ describe('parseLutPng — refus explicites', () => {
   });
 
   it('refuse un cube plus grand que le plafond', () => {
-    // Côté 1728 = 12³ → cube de 144, au-delà des 64 acceptés.
+    // Côté 1728 = 12³ → cube de 144, au-delà des 65 acceptés.
     const data = new Uint8ClampedArray(4);
-    expect(() => parseLutPng(data, 1728, 1728)).toThrow(/64/);
+    expect(() => parseLutPng(data, 1728, 1728)).toThrow(/65/);
   });
 
   it('refuse une image dont aucune disposition ne ressort — plutôt que de deviner', () => {
