@@ -54,6 +54,9 @@ import {
 } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
+import JumeauCreerPanel from '@/components/creer/JumeauCreerPanel';
+import { displayScriptJumeau } from '@/lib/creer/jumeauScript';
+import { messageJumeauCreer } from '@/lib/avatar/jumeau-creer';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import {
   SEQUENCE_KEYS, emptySequenceVoices, emptySequenceVoicesUserEdited, buildAutoFillText,
@@ -3635,6 +3638,9 @@ export default function AssistantWizard() {
    * l'interet du lot — obtenir N publications differentes sans rien cocher.
    */
   const [batchPhotoMode, setBatchPhotoMode] = useState<'auto' | 'manuel'>('auto');
+  /* A_8h — « Utiliser mon clone ». ETEINT par defaut sur chaque projet : le
+     consentement est donne par video, jamais deduit d'un clone existant. */
+  const [useDigitalTwin, setUseDigitalTwin] = useState(false);
   /** Emplacement en cours de remplacement, ou `null`. */
   const [slotCible, setSlotCible] = useState<number | null>(null);
   // Un recadrage vaut pour UNE photo : le garder en changeant d'affiche
@@ -4970,6 +4976,7 @@ export default function AssistantWizard() {
     batchCount,
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
     batchPhotoMode,
+    useDigitalTwin: useDigitalTwin || undefined,
   }), [
     started, step, themeId, customTopic, toneId, format, colors,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
@@ -4980,6 +4987,7 @@ export default function AssistantWizard() {
     sequenceVoices, sequenceVoicesUserEdited,
     voiceVolume, rushUrl, rushName, rushIsClip, scheduledDate,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
+    useDigitalTwin,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -5109,6 +5117,7 @@ export default function AssistantWizard() {
     if (draft.batchCount) setBatchCount(batchCountAutorise(draft.batchCount));
     if (draft.batchPhotoUrls) setBatchPhotoUrls(draft.batchPhotoUrls);
     if (draft.batchPhotoMode) setBatchPhotoMode(draft.batchPhotoMode);
+    if (draft.useDigitalTwin) setUseDigitalTwin(true);
     // Le contenu a ete regenere s'il vient du brouillon : la signature evite
     // qu'il soit remplace par un autre texte des la premiere navigation.
     if (draft.generated) genSigRef.current = `${draft.customTopic?.trim() || (THEMES.find((t) => t.id === draft.themeId) ?? THEMES[0]).topic}|${draft.toneId}`;
@@ -5769,6 +5778,32 @@ export default function AssistantWizard() {
    * second clic dans le meme tour est ignore. Sur une serie, il aurait lance
    * DEUX series completes, donc quatre tentatives serveur et quatre debits.
    */
+  /**
+   * A_8h — le contrat d'une creation avec le jumeau, demande au serveur.
+   * Le navigateur n'envoie que le texte affiche ; l'avatar et la voix sont
+   * ceux du compte, relus a l'instant. Rien n'est compose ici.
+   */
+  const preparerContratJumeau = async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const displayScript = displayScriptJumeau(sequences, sequenceVoices);
+    try {
+      const res = await fetch('/api/creer/jumeau', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayScript }),
+      });
+      const j = await res.json();
+      if (res.ok && j?.ok && j.etat === 'pret') {
+        console.log(
+          `[Creer][Jumeau] Contrat pret — avatar ${j.identite?.avatarId} v${j.identite?.avatarVersion}, voix ${j.parole?.voix?.nom ?? j.identite?.userVoiceId}, ${String(j.parole?.spokenScript ?? '').length} car. parles — moteur ${j.moteur}.`,
+        );
+        return { ok: true };
+      }
+      return { ok: false, message: typeof j?.error === 'string' ? j.error : messageJumeauCreer(String(j?.motif ?? '')) };
+    } catch {
+      return { ok: false, message: 'Votre clone n’a pas pu être vérifié. Vérifiez votre connexion.' };
+    }
+  };
+
   const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
     if (!prendre(VERROU.serie)) return;
     try { await runRenderInterne(destination); }
@@ -5799,6 +5834,18 @@ export default function AssistantWizard() {
     // nombre sans qu'aucun bouton ait ete touche.
     if (lotRefuse(batchCount)) {
       setError(BATCH_SERIE_REFUS);
+      return;
+    }
+
+    /* ── « Utiliser mon clone » — A_8h ──────────────────────────────────
+       ⚠️ AUCUNE VIDEO ORDINAIRE SOUS LE NOM DE LA PERSONNE. Le serveur
+       revalide le clone MAINTENANT (version courante, validation, voix du
+       compte) et prepare le contrat — identite + texte parle. Le moteur qui
+       l'anime n'existe pas encore (A_8_FINAL) : on le dit, nommement, et on
+       ne compose rien. Eteint, ce bloc n'existe pas : le parcours d'hier. */
+    if (useDigitalTwin) {
+      const contrat = await preparerContratJumeau();
+      setError(contrat.ok ? messageJumeauCreer('jumeau_indisponible') : contrat.message);
       return;
     }
 
@@ -7122,6 +7169,9 @@ export default function AssistantWizard() {
                     className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
                   />
                 </div>
+
+                {/* A_8h — le jumeau se choisit ici, par video, et jamais tout seul. */}
+                <JumeauCreerPanel actif={useDigitalTwin} onChange={setUseDigitalTwin} />
 
                 <div className="flex justify-end pt-2">
                   <Button variant="primary" size="sm" onClick={goToStyle}>

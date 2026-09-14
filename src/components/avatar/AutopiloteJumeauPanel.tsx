@@ -5,6 +5,7 @@ import { AlertTriangle, Bot, Check, Loader2, Mic } from 'lucide-react';
 import { estEtatPret } from '@/lib/avatar/etats';
 import { ETAT_SOURCE_PRETE } from '@/lib/avatar/contrat';
 import type { ConfigJumeauNumerique } from '@/lib/avatar/jumeau';
+import { EVENEMENT_VOIX_JUMEAU } from '@/lib/avatar/jumeau-creer';
 
 /**
  * A_8f — « UTILISER MON CLONE DANS AUTOPILOTE ».
@@ -104,6 +105,8 @@ export default function AutopiloteJumeauPanel({
         return;
       }
       setConfig(j.jumeau as ConfigJumeauNumerique);
+      // Les panneaux voisins (prononciation) renomment la voix sans recharger.
+      window.dispatchEvent(new Event(EVENEMENT_VOIX_JUMEAU));
     } catch {
       setErreur('Votre choix n’a pas pu être envoyé. Vérifiez votre connexion.');
     } finally {

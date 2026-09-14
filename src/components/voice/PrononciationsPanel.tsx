@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { EVENEMENT_VOIX_JUMEAU } from '@/lib/avatar/jumeau-creer';
 import { Loader2, Plus, Trash2, Pencil, Check, X, Ear, Volume2 } from 'lucide-react';
 import { texteParle } from '@/lib/voice/pipeline';
 import {
@@ -64,18 +65,34 @@ export default function PrononciationsPanel() {
 
   /* Lecture seule, et purement locale : la route relit `user_voices` en base
      et n'appelle aucun fournisseur. */
+  /* ⚠️ LA VOIX NOMMEE EST CELLE CHOISIE DANS « MA VOIX » — A_8h. Elle
+     etait la premiere du compte ; avec deux voix clonees, l'ecran annoncait
+     « Bassi studio » quand le jumeau devait parler avec « Bassi coach ». Le
+     choix vit a UN endroit — `jumeauNumerique.userVoiceId`, ecrit par le
+     panneau Autopilote — et il est relu ici, puis suivi quand il change.
+     Une seule voix au compte reste nommee d'office : c'est la sienne. */
   useEffect(() => {
     let annule = false;
-    (async () => {
+    const relire = async () => {
       try {
         const j = await (await fetch('/api/voice/clone')).json();
-        const liste = Array.isArray(j?.voices) ? j.voices : [];
-        if (!annule) setVoix(liste[0] ?? null);
+        const liste: { userVoiceId?: string; name?: string }[] = Array.isArray(j?.voices) ? j.voices : [];
+        let choisie: string | null = null;
+        try {
+          const c = await (await fetch('/api/autopilot/jumeau')).json();
+          choisie = typeof c?.jumeau?.userVoiceId === 'string' ? c.jumeau.userVoiceId : null;
+        } catch { /* sans configuration, une seule voix reste nommee d'office */ }
+        const retenue = liste.find((v) => v.userVoiceId && v.userVoiceId === choisie)
+          ?? (liste.length === 1 ? liste[0] : null);
+        if (!annule) setVoix(retenue ?? null);
       } catch {
         if (!annule) setVoix(null);
       }
-    })();
-    return () => { annule = true; };
+    };
+    void relire();
+    const suivre = () => { void relire(); };
+    window.addEventListener(EVENEMENT_VOIX_JUMEAU, suivre);
+    return () => { annule = true; window.removeEventListener(EVENEMENT_VOIX_JUMEAU, suivre); };
   }, []);
 
   /**

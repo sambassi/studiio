@@ -7,6 +7,9 @@ import {
 import { voixJumeauUtilisable, type IssueVoixJumeau } from '@/lib/avatar/voix-jumeau';
 import { preparerParoleJumeau, type ParoleJumeau } from '@/lib/avatar/parole-jumeau';
 import type { Prononciation } from '@/lib/voice/prononciations';
+import {
+  lireJumeauUtilisateur, lireBibliothequeUtilisateur,
+} from '@/lib/autopilot/analyse/profil-compte';
 
 /**
  * A_8f — LES LECTURES QUE LE PORTAIL EXIGE, FAITES UNE SEULE FOIS.
@@ -143,4 +146,102 @@ export async function preparerJumeauDuCompte(
   });
   if (!parole.ok) return { etat: 'bloque', motif: parole.motif };
   return { etat: 'pret', identite: issue.identite, parole: parole.parole };
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   A_8h — LE JUMEAU DANS « CREER » : LA MEME CONFIGURATION, SANS L'OPT-IN AUTOPILOTE
+   ═════════════════════════════════════════════════════════════════════════
+
+   Dans Autopilote, la personne numerique sert si elle a ete ACTIVEE une fois
+   pour toutes. Dans « Creer », le consentement est donne PAR VIDEO : c'est
+   l'interrupteur de la page, pas un reglage global. La configuration passee
+   au portail est donc construite ici, a chaque demande :
+
+     avatarId / avatarVersion  ← l'avatar VIVANT du compte, relu maintenant
+                                 (jamais un identifiant range hier) ;
+     userVoiceId               ← la voix choisie dans « Ma voix » (A_8g),
+                                 la seule source de ce choix ;
+     active                    ← true : l'opt-in, c'est l'interrupteur.
+
+   ⚠️ RIEN NE VIENT DU NAVIGATEUR. Il n'envoie ni avatar ni voix ; il dit
+   « utiliser mon clone », et le serveur decide avec quoi. Un identifiant
+   glisse dans le corps de la requete n'est jamais lu.
+
+   ⚠️ ET LA VERSION EST CELLE D'AUJOURD'HUI. Un brouillon d'hier ne porte que
+   l'intention ; si le clone est passe en version 2 depuis, c'est la version
+   2 — validee ou non — qui est jugee. Pas de version fantome. */
+
+/** La configuration de jumeau qu'une creation manuelle soumet au portail. */
+export async function configJumeauPourCreer(userId: string): Promise<{
+  config: ConfigJumeauNumerique;
+  avatar: AvatarPourJumeau | null;
+}> {
+  const [rangee, { data }] = await Promise.all([
+    lireJumeauUtilisateur(userId),
+    supabaseAdmin
+      .from('user_avatars')
+      .select(CHAMPS_AVATAR)
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1),
+  ]);
+  const avatar = (Array.isArray(data) ? data[0] : null) as AvatarPourJumeau | null ?? null;
+  const avatarId = typeof avatar?.id === 'string' ? avatar.id : null;
+  return {
+    avatar,
+    config: {
+      active: avatarId !== null,
+      avatarId,
+      avatarVersion: typeof avatar?.version === 'number' ? avatar.version : null,
+      userVoiceId: rangee.userVoiceId,
+    },
+  };
+}
+
+export type IssueJumeauCreer =
+  | { etat: 'bloque'; motif: MotifJumeau | 'script_absent' }
+  | { etat: 'pret'; identite: IdentiteJumeau; voix: { userVoiceId: string; nom: string | null } };
+
+/**
+ * L'ETAT DU JUMEAU POUR L'ECRAN « CREER » — sans texte, donc sans parole.
+ *
+ * Meme portail que l'activation Autopilote et que la generation : un clone
+ * que « Creer » dirait pret est un clone qu'Autopilote dirait pret.
+ */
+export async function etatJumeauPourCreer(userId: string): Promise<IssueJumeauCreer> {
+  const { config, avatar } = await configJumeauPourCreer(userId);
+  if (!avatar || !config.avatarId) return { etat: 'bloque', motif: 'avatar_absent' };
+  const { issue, voix } = await resoudreJumeauDuCompte(userId, config);
+  if (issue.etat === 'desactive') return { etat: 'bloque', motif: 'avatar_absent' };
+  if (issue.etat === 'bloque') return issue;
+  const issueVoix = voixJumeauUtilisable({ userId, userVoiceId: issue.identite.userVoiceId, voix });
+  if (!issueVoix.ok) return { etat: 'bloque', motif: issueVoix.motif };
+  return {
+    etat: 'pret',
+    identite: issue.identite,
+    voix: { userVoiceId: issueVoix.voix.userVoiceId, nom: issueVoix.voix.nom },
+  };
+}
+
+/**
+ * LE CONTRAT D'UNE CREATION MANUELLE AVEC LE JUMEAU : identite + parole.
+ *
+ * `displayScript` est le texte que la personne a ecrit pour sa video (les
+ * voix-off des sequences) ; il traverse le pipeline parle A_8d comme dans
+ * Autopilote — `preparerJumeauDuCompte`, la meme fonction, avec les
+ * prononciations du compte.
+ */
+export async function preparerJumeauPourCreer(
+  userId: string, displayScript: unknown,
+): Promise<IssuePreparationJumeau> {
+  const { config, avatar } = await configJumeauPourCreer(userId);
+  if (!avatar || !config.avatarId) return { etat: 'bloque', motif: 'avatar_absent' };
+  const biblio = await lireBibliothequeUtilisateur(userId);
+  const issue = await preparerJumeauDuCompte(userId, config, {
+    voixOff: { script: displayScript },
+    prononciations: biblio.prononciations,
+  });
+  if (issue.etat === 'desactive') return { etat: 'bloque', motif: 'avatar_absent' };
+  return issue;
 }

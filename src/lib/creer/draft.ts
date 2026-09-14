@@ -151,6 +151,12 @@ export interface Draft {
   batchPhotoUrls?: string[];
   /** Comment les affiches du lot sont attribuees. Absent = automatique. */
   batchPhotoMode?: 'auto' | 'manuel';
+  /**
+   * « Utiliser mon clone » (A_8h). Absent = eteint, le cas de tous les
+   * brouillons anterieurs et de tout nouveau projet. N'est qu'une INTENTION :
+   * l'avatar, sa version et la voix sont relus par le serveur a la creation.
+   */
+  useDigitalTwin?: boolean;
 }
 
 /** Nombre d'emplacements et de groupes relus au maximum — garde-fou anti-brouillon abime. */
@@ -594,6 +600,8 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     : undefined;
   if (out.batchPhotoUrls && out.batchPhotoUrls.length === 0) out.batchPhotoUrls = undefined;
   out.batchPhotoMode = raw.batchPhotoMode === 'manuel' ? 'manuel' : raw.batchPhotoMode === 'auto' ? 'auto' : undefined;
+  // Seul `true` allume ; tout le reste — absent, abime, ancien — laisse eteint.
+  out.useDigitalTwin = raw.useDigitalTwin === true ? true : undefined;
 
   // Sequence « Video » active mais rush disparu — URL `blob:` filtree a
   // l'ecriture, ou fichier expire depuis. La laisser active ferait sortir un
