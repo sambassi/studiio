@@ -53,16 +53,62 @@ function nomDeFichier(url: string): string {
  * trop.
  */
 const ETAPES = [
-  { titre: 'Thèmes', aide: 'Sur quoi parler', aFaire: 'Cochez les sujets que Studiio pourra traiter.' },
-  { titre: 'Vos rushes', aide: 'Les images à réutiliser', aFaire: 'Ajoutez au moins un rush à la banque, puis « Suivant ».' },
+  { titre: 'Sujets', question: 'De quoi Studiio doit-il parler ?', aide: 'Choisissez un ou plusieurs sujets.' },
+  { titre: 'Rushes', question: 'Ajoutez les vidéos que Studiio pourra utiliser', aide: 'Au moins un rush est nécessaire.' },
   // ⚠️ CETTE ETAPE EST CELLE DE CE QUI NE CHANGE PAS. Les trois autres
   // reglent ce que l'Autopilote fait VARIER ; celle-ci, l'identite que
   // toutes les videos partagent.
-  { titre: 'Style & médias', aide: 'Ce qui ne change jamais', aFaire: 'Réglez ce que toutes les vidéos partageront : couleurs, affiches, musique.' },
-  { titre: 'Rythme & diffusion', aide: 'Quand et où', aFaire: 'Choisissez la cadence, l’heure et les réseaux.' },
-  { titre: 'Options', aide: 'Voix et garde-fous', aFaire: 'Facultatif : voix off et seuil de crédits.' },
-  { titre: 'Récapitulatif', aide: 'Vérifier, puis lancer', aFaire: 'Vérifiez, puis lancez l’Autopilote.' },
+  { titre: 'Style', question: 'À quoi ressembleront vos vidéos ?', aide: 'Ces réglages valent pour toutes les futures vidéos.' },
+  { titre: 'Publication', question: 'Quand et où publier ?', aide: 'Fréquence, validation, réseaux.' },
+  { titre: 'Options', question: 'Options facultatives', aide: 'Vous pouvez passer cette étape.' },
+  { titre: 'Vérification', question: 'Tout est-il prêt ?', aide: 'Vérifiez, puis lancez l’Autopilote.' },
 ] as const;
+
+/**
+ * Le libelle du bouton qui fait avancer — jamais un « Suivant » nu : il dit
+ * ou il mene. La derniere etape n'en a pas, elle porte « Lancer ».
+ */
+function libelleContinuer(etape: number): string {
+  if (etape >= ETAPES.length - 1) return '';
+  if (etape === ETAPES.length - 2) return 'Vérifier ma configuration';
+  return `Continuer vers ${ETAPES[etape + 1].titre}`;
+}
+
+/**
+ * La phrase de diffusion, lue comme l'utilisateur la lira — « 1 vidéo, [la
+ * cadence], à [l'heure choisie], sur [les réseaux], après votre validation ».
+ * Calculee depuis la configuration — la meme source que le recapitulatif ;
+ * rien n'y est ecrit en dur.
+ */
+function phraseDiffusion(config: AutopilotConfig): string {
+  const n = config.countPerCycle;
+  const videos = `${n} vidéo${n > 1 ? 's' : ''}`;
+  const cadence = CADENCE_LABELS[config.cadence].toLowerCase();
+  const ou = config.platforms.length
+    ? `sur ${config.platforms.map((p) => PLATEFORMES.find((x) => x.id === p)?.label ?? p).join(', ')}`
+    : `gardée${n > 1 ? 's' : ''} dans le Calendrier (aucun réseau choisi)`;
+  const validation = config.mode === 'review' ? 'après votre validation' : 'publiée automatiquement';
+  return `${videos} ${cadence} à ${heureLisible(config.runHour)}, ${ou}, ${validation}.`;
+}
+
+/**
+ * La check-list de preparation. Chaque ligne vient de la configuration ; la
+ * seule condition BLOQUANTE pour la production est le rush (le moteur refuse
+ * de tourner sans : `shouldRun` → `sans-rush`). Le reste a toujours une
+ * valeur — recommandee ou choisie — et ne bloque rien.
+ */
+function checklistPreparation(config: AutopilotConfig): Array<{ cle: string; ok: boolean; texte: string; bloquant: boolean }> {
+  const n = config.rushUrls.length;
+  return [
+    { cle: 'sujets', ok: true, bloquant: false,
+      texte: config.topics.length === 0 ? 'Sujets : tous les thèmes, en rotation' : `Sujets : ${config.topics.length} choisi${config.topics.length > 1 ? 's' : ''}` },
+    { cle: 'rushes', ok: n > 0, bloquant: true,
+      texte: n === 0 ? 'Aucun rush — rien ne sera produit' : `${n} rush${n > 1 ? 'es' : ''} prêt${n > 1 ? 's' : ''}` },
+    { cle: 'style', ok: true, bloquant: false, texte: 'Style configuré (couleurs, affiche, son)' },
+    { cle: 'publication', ok: true, bloquant: false,
+      texte: config.platforms.length ? `Publication : ${config.platforms.length} réseau${config.platforms.length > 1 ? 'x' : ''}` : 'Publication : dans le Calendrier seulement (aucun réseau)' },
+  ];
+}
 
 /** « 80 % » — un niveau du mixeur, tel que l'utilisateur le lit. */
 function pourcent(v: number): string {
@@ -404,27 +450,39 @@ export default function AutopilotPanel({
           );
         })}
       </ol>
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-sm font-medium">
-          <span className="text-gray-500 text-xs mr-1.5">{etape + 1}/{ETAPES.length}</span>
-          {ETAPES[etape].titre}
-        </p>
-        <p className="text-[11px] text-gray-500">{ETAPES[etape].aide}</p>
-      </div>
-      {/* UX : une seule phrase, la meme place a chaque etape — ce qu'il y a a
-          faire ICI, avant de chercher un bouton. */}
-      <p className="text-[11px] text-gray-400" data-autopilot-a-faire>
-        <span className="font-medium text-gray-300">À faire maintenant :</span>{' '}
-        {ETAPES[etape].aFaire}
+      {/* Les NOMS des etapes, pas seulement des barres : ou l'on est, ce qui
+          est fait, ce qui vient. Sur mobile, une ligne compacte dit la meme
+          chose. */}
+      <ol className="hidden sm:flex items-center gap-1 text-[10px]" data-autopilot-etapes-noms>
+        {ETAPES.map((e, i) => (
+          <li
+            key={e.titre}
+            className={`flex-1 truncate ${i === etape ? 'text-white font-medium' : i < etape ? 'text-gray-400' : 'text-gray-600'}`}
+            aria-current={i === etape ? 'step' : undefined}
+          >
+            {i < etape ? '✓ ' : `${i + 1}. `}{e.titre}
+          </li>
+        ))}
+      </ol>
+      <p className="sm:hidden text-[11px] text-gray-400" data-autopilot-etapes-compact>
+        Étape {etape + 1} sur {ETAPES.length} · <span className="text-white">{ETAPES[etape].titre}</span>
+        {etape < ETAPES.length - 1 && <> — Prochaine : {ETAPES[etape + 1].titre}</>}
       </p>
+
+      {/* UX : CHAQUE ecran = un objectif (la question), une explication tres
+          courte, puis une action principale. Meme place, meme forme. */}
+      <div data-autopilot-a-faire>
+        <p className="text-sm font-medium text-white">{ETAPES[etape].question}</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">{ETAPES[etape].aide}</p>
+      </div>
 
       {/* ── Étape 1 · Thèmes ─────────────────────────────────────────── */}
       {etape === 0 && (
         <div className="space-y-3">
-          <p className="text-[11px] text-gray-500">
+          <p className="text-[11px] text-gray-400" data-autopilot-topics-compte>
             {config.topics.length === 0
-              ? 'Aucun choix : l’Autopilote fait tourner les douze thèmes. Cochez-en pour le restreindre.'
-              : `${config.topics.length} thème${config.topics.length > 1 ? 's' : ''} en rotation.`}
+              ? 'Aucun sujet choisi : Studiio fait tourner les douze thèmes. Cochez-en pour le restreindre.'
+              : `${config.topics.length} thème${config.topics.length > 1 ? 's' : ''} sélectionné${config.topics.length > 1 ? 's' : ''}.`}
           </p>
           <div className="grid grid-cols-2 gap-1.5">
             {THEMES.map((t) => {
@@ -506,36 +564,38 @@ export default function AutopilotPanel({
         <div className="space-y-3">
 {/* ── Banque de rushes ─────────────────────────────────────────── */}
           <div>
+            {/* L'etat en un mot, puis L'ACTION. Sans rush, « Ajouter des
+                rushes » est LE bouton principal de l'ecran ; avec, il
+                redevient secondaire et « Continuer vers Style » prend
+                la place. */}
             <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="text-xs font-medium text-gray-300">
-                Banque de rushes <span className="text-gray-500">({config.rushUrls.length})</span>
-                <span className="ml-1.5 rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] font-normal text-gray-400">requis</span>
+              <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={config.rushUrls.length > 0 ? 'pret' : 'a-faire'}>
+                Banque de rushes
+                <span className={`ml-1.5 ${config.rushUrls.length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {config.rushUrls.length === 0
+                    ? '0 rush — au moins un est nécessaire'
+                    : `${config.rushUrls.length} rush${config.rushUrls.length > 1 ? 'es' : ''} prêt${config.rushUrls.length > 1 ? 's' : ''}`}
+                </span>
               </p>
               <button
                 type="button"
                 onClick={() => setLibOpen('rush')}
                 disabled={!ready || saving}
                 data-autopilot-add-rush
-                className="flex items-center gap-1 rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+                data-cta={config.rushUrls.length === 0 ? 'principal' : 'secondaire'}
+                className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-40 ${
+                  config.rushUrls.length === 0
+                    ? 'text-white'
+                    : 'border border-gray-800 text-gray-300 hover:text-white hover:border-gray-700'
+                }`}
+                style={config.rushUrls.length === 0 ? { backgroundColor: accent } : undefined}
               >
-                <Plus className="w-3 h-3" /> Ajouter
+                <Plus className="w-3 h-3" /> Ajouter des rushes
               </button>
             </div>
             <p className="text-[11px] text-gray-500 mb-2">
               L’Autopilote y pioche à tour de rôle pour chaque vidéo. Sans rush, il ne produit rien —
               il vous le dira plutôt que de générer des montages sans image.
-            </p>
-            {/* L'etat, dit : ce qui est pret, ce qu'il reste a faire. */}
-            <p className="text-[11px] mb-2" data-autopilot-rushes-etat={config.rushUrls.length > 0 ? 'pret' : 'a-faire'}>
-              {config.rushUrls.length > 0 ? (
-                <span className="text-emerald-400">
-                  Prêt : {config.rushUrls.length} rush{config.rushUrls.length > 1 ? 'es' : ''} dans la banque. Vous pouvez passer à « Suivant ».
-                </span>
-              ) : (
-                <span className="text-amber-400">
-                  À faire : ajoutez au moins un rush avec « Ajouter » pour continuer.
-                </span>
-              )}
             </p>
             {/* ⚠️ LA LIMITE DU RUSH UNIQUE, DITE AVANT QU'ELLE SURPRENNE.
                 Avec un seul rush, la rotation n'a pas le choix : toutes les
@@ -592,7 +652,7 @@ export default function AutopilotPanel({
               violets par rush, elle passait pour l'etape obligatoire. */}
           <details className="rounded-xl border border-gray-800 bg-gray-900/30" data-autopilot-sessions>
             <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-300 hover:text-white">
-              Créer une vidéo à partir d’un seul rush
+              Créer une vidéo manuellement à partir d’un rush
               <span className="ml-1.5 font-normal text-gray-500">— facultatif, indépendant de l’Autopilote</span>
             </summary>
             <div className="px-3 pb-3 space-y-2">
@@ -615,6 +675,20 @@ export default function AutopilotPanel({
             </div>
           </details>
 
+        </div>
+      )}
+
+      {/* ── Étape 3 · Style & médias — L'IDENTITÉ CONSTANTE ───────────
+          Tout ce qui est réglé ici vaut pour TOUTES les futures vidéos. Le
+          reste du wizard décrit ce qui varie ; cette étape, ce qui reste. */}
+      {etape === 2 && (
+        <div className="space-y-4">
+          {/* ESSENTIEL : ce que l'utilisateur choisit vraiment. Le reste a une
+              valeur recommandee et vit replie plus bas. */}
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500" data-autopilot-style-essentiel>
+            Essentiel
+          </p>
+
 {/* ── VOS AFFICHES ─────────────────────────────────────────────
               ⚠️ L'AUTOPILOTE CHOISISSAIT SEUL. Il cherche une photo chez
               Pexels a partir du theme — un bon defaut, et ce n'en est qu'un :
@@ -623,7 +697,7 @@ export default function AutopilotPanel({
               Ici, et non dans une etape de plus : c'est la meme idee que la
               banque de rushes, au meme endroit. Le wizard reste a six
               etapes. */}
-          <div className="pt-3 border-t border-gray-800">
+          <div>
             <p className="text-xs font-medium text-gray-300 mb-2">Affiches</p>
             <div className="grid grid-cols-2 gap-1.5">
               {POSTER_MODES.map((m: AutopilotPosterMode) => (
@@ -724,19 +798,6 @@ export default function AutopilotPanel({
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* ── Étape 3 · Style & médias — L'IDENTITÉ CONSTANTE ───────────
-          Tout ce qui est réglé ici vaut pour TOUTES les futures vidéos. Le
-          reste du wizard décrit ce qui varie ; cette étape, ce qui reste. */}
-      {etape === 2 && (
-        <div className="space-y-4">
-          <p className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] text-gray-400">
-            Ces réglages s’appliquent à <span className="text-gray-200 font-medium">toutes
-            les futures vidéos</span>. L’affiche, les textes et le rush, eux, changent
-            à chaque fois.
-          </p>
 
 {/* ── Couleurs ─────────────────────────────────────────────────── */}
           <div>
@@ -823,6 +884,23 @@ export default function AutopilotPanel({
             </button>
           </div>
 
+{/* ── RÉGLAGES AVANCÉS ──────────────────────────────────────────
+              Musique, voix clonee, son du rush, mixeur : chacun a deja une
+              valeur recommandee. Replies : l'utilisateur ne doit pas croire
+              qu'il doit regler chaque curseur pour continuer. Rien n'est
+              retire — les memes reglages, les memes gestionnaires. */}
+          <details className="rounded-xl border border-gray-800 bg-gray-900/30" data-autopilot-style-avance>
+            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-300 hover:text-white">
+              Réglages avancés
+              <span className="ml-1.5 font-normal text-gray-500">— musique, voix, son du rush, mixeur</span>
+            </summary>
+            <div className="px-3 pb-3 space-y-4">
+              <p className="text-[11px] text-gray-500" data-autopilot-style-recommande>
+                Valeurs actuelles : {RECAP_CONSTANT(config, voixClonees)
+                  .filter(([cle]) => cle !== 'Couleurs' && cle !== 'Fond des cartes')
+                  .map(([cle, v]) => `${cle.toLowerCase()} ${v.toLowerCase()}`).join(' · ')}.
+                Vous pouvez les laisser telles quelles.
+              </p>
 {/* ── Musique ──────────────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">
@@ -1001,12 +1079,22 @@ export default function AutopilotPanel({
               ))}
             </div>
           </div>
+            </div>
+          </details>
         </div>
       )}
 
       {/* ── Étape 4 · Rythme & diffusion ─────────────────────────────── */}
       {etape === 3 && (
         <div className="space-y-4">
+          {/* La phrase que l'utilisateur doit pouvoir dire en lisant l'ecran,
+              recalculee a chaque reglage — depuis la meme configuration que
+              le recapitulatif. */}
+          <p className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs text-purple-100" data-autopilot-phrase-diffusion>
+            {phraseDiffusion(config)}
+          </p>
+
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fréquence</p>
           <div>
             <label htmlFor="autopilot-hour" className="block text-xs font-medium text-gray-300 mb-1.5">
               Heure de départ
@@ -1065,6 +1153,7 @@ export default function AutopilotPanel({
             </div>
           </div>
 {/* ── Mode ─────────────────────────────────────────────────────── */}
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Validation</p>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-2">Que fait Studiio des vidéos ?</p>
             <div className="space-y-1.5">
@@ -1089,6 +1178,7 @@ export default function AutopilotPanel({
             </div>
           </div>
 {/* ── Plateformes ──────────────────────────────────────────────── */}
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Réseaux</p>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-2">Où publier ?</p>
             <div className="flex flex-wrap gap-1.5">
@@ -1128,7 +1218,7 @@ export default function AutopilotPanel({
               d'office ferait payer une voix que personne n'a demandee. Le cout
               est ecrit dans l'etiquette, pas cache dans une aide au survol. */}
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Narration</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">Voix off IA</p>
             <button
               type="button"
               onClick={() => enregistrer({ voiceEnabled: !config.voiceEnabled })}
@@ -1168,7 +1258,7 @@ export default function AutopilotPanel({
 {/* ── Seuil de crédits ─────────────────────────────────────────── */}
           <div>
             <label htmlFor="autopilot-floor" className="block text-xs font-medium text-gray-300 mb-1.5">
-              Ne jamais descendre sous
+              Protection de mes crédits — ne jamais descendre sous
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -1195,6 +1285,39 @@ export default function AutopilotPanel({
       {/* ── Étape 6 · Récapitulatif & activation ─────────────────────── */}
       {etape === 5 && (
         <div className="space-y-3">
+          {/* CHECK-LIST DE PRÉPARATION. Le rush est la seule condition
+              bloquante pour la PRODUCTION (`shouldRun` → `sans-rush`) ; la
+              regle metier autorise d'activer sans rush — l'Autopilote reste
+              alors « actif, mais rien n'est produit ». On ne change pas cette
+              regle ici : on la DIT, et on retire au bouton son air de
+              « tout est pret » tant que ce n'est pas vrai. */}
+          {(() => {
+            const lignes = checklistPreparation(config);
+            const pret = lignes.every((l) => l.ok || !l.bloquant);
+            return (
+              <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-1.5" data-autopilot-checklist data-autopilot-pret={pret ? 'oui' : 'non'}>
+                <ul className="space-y-1 text-[11px]">
+                  {lignes.map((l) => (
+                    <li key={l.cle} className="flex items-start gap-2" data-autopilot-check={l.cle} data-autopilot-check-ok={l.ok ? 'oui' : 'non'}>
+                      <span className={`shrink-0 ${l.ok ? 'text-emerald-400' : 'text-amber-400'}`}>{l.ok ? '✓' : '✕'}</span>
+                      <span className={l.ok ? 'text-gray-300' : 'text-amber-300'}>{l.texte}</span>
+                    </li>
+                  ))}
+                </ul>
+                {pret ? (
+                  <p className="text-xs font-medium text-emerald-400 pt-1" data-autopilot-verdict="pret">
+                    Votre Autopilote est prêt.
+                  </p>
+                ) : (
+                  <p className="text-xs font-medium text-amber-300 pt-1" data-autopilot-verdict="pas-pret">
+                    Votre Autopilote n’est pas encore prêt — ajoutez au moins un rush.
+                    Vous pouvez l’activer dès maintenant : il démarrera au premier rush ajouté.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
           {([
             ['Ce qui change à chaque vidéo', RECAP_VARIABLE(config), 'variable'],
             ['Ce qui ne change jamais', RECAP_CONSTANT(config, voixClonees), 'constant'],
@@ -1229,11 +1352,16 @@ export default function AutopilotPanel({
               disabled={!ready || saving}
               aria-pressed={config.enabled}
               data-autopilot-toggle
+              data-cta={!config.enabled && config.rushUrls.length > 0 ? 'principal' : 'secondaire'}
               className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
               style={
                 config.enabled
                   ? { backgroundColor: '#1F2937', color: '#E5E7EB' }
-                  : { backgroundColor: accent, color: '#fff' }
+                  // Sans rush : le bouton reste actif (regle metier inchangee)
+                  // mais n'a plus l'air d'un « tout est pret ».
+                  : config.rushUrls.length === 0
+                    ? { backgroundColor: 'transparent', color: '#DDD6FE', boxShadow: `inset 0 0 0 1px ${accent}99` }
+                    : { backgroundColor: accent, color: '#fff' }
               }
             >
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : config.enabled ? 'Mettre en pause' : 'Lancer l’Autopilote'}
@@ -1277,7 +1405,7 @@ export default function AutopilotPanel({
               className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
               style={{ backgroundColor: accent }}
             >
-              Suivant
+              {libelleContinuer(etape)}
             </button>
           </div>
         )}

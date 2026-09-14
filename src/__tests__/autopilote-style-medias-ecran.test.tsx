@@ -53,9 +53,9 @@ afterEach(() => {
 /** Monte l'écran et se place sur l'étape « Style & médias » (la 3ᵉ). */
 async function ouvrirStyleEtMedias() {
   render(<AutopilotPanel accent="#7C3AED" />);
-  await waitFor(() => expect(screen.getByText('Thèmes')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('Sujets')).toBeTruthy());
   fireEvent.click(document.querySelector('[data-autopilot-etape="2"]') as Element);
-  await waitFor(() => expect(screen.getByText('Style & médias')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('À quoi ressembleront vos vidéos ?')).toBeTruthy());
 }
 
 /** Le dernier réglage envoyé au serveur. */
@@ -221,9 +221,9 @@ describe('E — la voix clonée', () => {
 describe('F — le récapitulatif sépare le fixe du variable', () => {
   it('il montre trois blocs, dont « ce qui ne change jamais »', async () => {
     render(<AutopilotPanel accent="#7C3AED" />);
-    await waitFor(() => expect(screen.getByText('Thèmes')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Sujets')).toBeTruthy());
     fireEvent.click(document.querySelector('[data-autopilot-etape="5"]') as Element);
-    await waitFor(() => expect(screen.getByText('Récapitulatif')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Tout est-il prêt ?')).toBeTruthy());
     expect(document.querySelector('[data-autopilot-recap="variable"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-recap="constant"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-recap="diffusion"]')).toBeTruthy();
@@ -232,7 +232,7 @@ describe('F — le récapitulatif sépare le fixe du variable', () => {
 
   it('il annonce le son du rush coupé et les cartes sur les couleurs', async () => {
     render(<AutopilotPanel accent="#7C3AED" />);
-    await waitFor(() => expect(screen.getByText('Thèmes')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Sujets')).toBeTruthy());
     fireEvent.click(document.querySelector('[data-autopilot-etape="5"]') as Element);
     await waitFor(() => expect(screen.getByText('Coupé')).toBeTruthy());
     expect(screen.getByText('Les couleurs choisies')).toBeTruthy();
@@ -241,7 +241,7 @@ describe('F — le récapitulatif sépare le fixe du variable', () => {
   it('avec un seul rush, il prévient qu il sera répété', async () => {
     configServeur = sanitizeConfig({ ...DEFAULT_CONFIG, rushUrls: ['https://x.test/a.mp4'] });
     render(<AutopilotPanel accent="#7C3AED" />);
-    await waitFor(() => expect(screen.getByText('Thèmes')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Sujets')).toBeTruthy());
     fireEvent.click(document.querySelector('[data-autopilot-etape="5"]') as Element);
     await waitFor(() => expect(screen.getByText(/il sera répété/)).toBeTruthy());
   });
@@ -261,7 +261,7 @@ describe('G — sans la migration, l écran ne ment pas', () => {
 
   it('migration appliquée, aucun avertissement', async () => {
     render(<AutopilotPanel accent="#7C3AED" />);
-    await waitFor(() => expect(screen.getByText('Thèmes')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Sujets')).toBeTruthy());
     expect(document.querySelector('[data-autopilot-identite-absente]')).toBeNull();
   });
 });

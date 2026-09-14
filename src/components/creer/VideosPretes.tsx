@@ -336,7 +336,14 @@ export default function VideosPretes({
 
   return (
     <section className="space-y-1.5" data-videos-pretes data-videos-etat="prete">
-      <Titre texte="Votre vidéo est prête" fort />
+      {/* UX : « Votre vidéo est prête » laissait croire, pendant la
+          configuration de l'Autopilote, que cette video en faisait partie.
+          Elle vient du parcours ponctuel « une video a partir d'un rush » :
+          on le dit. */}
+      <Titre texte="Dernière vidéo générée" fort />
+      <p className="text-[10px] text-gray-500 -mt-0.5" data-videos-provenance>
+        Vidéo ponctuelle, créée à partir d’un rush — indépendante de l’Autopilote.
+      </p>
       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 space-y-2">
         {lecture ? (
           <div className="space-y-1">

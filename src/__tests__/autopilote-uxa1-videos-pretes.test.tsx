@@ -534,7 +534,7 @@ describe('4. VideosPretes — les cinq états', () => {
 
     expect(await screen.findByText('0:28 · Vertical')).toBeInTheDocument();
     // Le titre DIT l'état, il ne nomme pas une rubrique.
-    expect(screen.getByText('Votre vidéo est prête')).toBeInTheDocument();
+    expect(screen.getByText('Dernière vidéo générée')).toBeInTheDocument();
 
     const bloc = document.querySelector('[data-videos-pretes]')!;
     // ⚠️ EXACTEMENT TROIS, et ce sont celles-là. Ni « Modifier », ni

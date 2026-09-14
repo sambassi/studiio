@@ -95,7 +95,7 @@ afterEach(() => {
 async function ouvrirStyle() {
   render(<AssistantWizard />);
   fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
-  fireEvent.click(screen.getByText('Continuer'));
+  fireEvent.click(screen.getByText('Continuer vers Style'));
   await waitFor(() => expect(document.querySelector('[data-card-id]')).toBeTruthy());
 }
 
