@@ -135,7 +135,8 @@ depuis `origin/main`, A_9b du worktree Autopilote lu seulement)
 - [x] `types.ts` : `LutAsset` (empreinte, clé privée, nom, titre, kind,
       origine, taille, octets, domaine, importeeLe), `LutRef`
       (empreinte, nom, intensite), `SupportLut`, `MAX_LUT_SIZE=65`,
-      `MAX_LUT_1D_SIZE=4096`, `MAX_LUT_BYTES=8 Mio`.
+      `MAX_LUT_1D_SIZE=65536` (borne de la spécification), `MAX_LUT_BYTES=8 Mio`
+      (garde de poids indépendante).
 - [x] `parse.ts` : plafond PAR NATURE — une 1D de 1024 points était refusée
       comme un cube de 1024.
 - [x] `serialize.ts` : `ecrireCube` déterministe (point fixe, aller-retour

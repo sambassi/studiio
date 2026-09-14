@@ -35,9 +35,11 @@ export function parseCube(text: string): Lut {
       if (!Number.isInteger(size) || size < 2) {
         throw new Error(`Taille de LUT invalide (ligne ${i + 1}) : « ${line} ».`);
       }
-      // Le plafond dépend de la nature : un cube de 65 pas pèse 7 Mo, une
-      // courbe 1D de 4096 points quelques kilo-octets. Un seul plafond
-      // refuserait presque toutes les 1D réelles.
+      // Le plafond dépend de la nature : 65 pas pour un cube (choix Studiio,
+      // un 65³ pèse 7 Mo), 65536 points pour une 1D (la borne de la
+      // spécification). Rien n'est alloué d'après la taille DÉCLARÉE : les
+      // valeurs sont lues ligne à ligne, et le poids du fichier est gardé
+      // séparément, avant d'arriver ici.
       const max = kind === '3d' ? MAX_LUT_SIZE : MAX_LUT_1D_SIZE;
       if (size > max) {
         throw new Error(

@@ -58,6 +58,21 @@ describe('lireLutAsset — ce qui est accepté', () => {
     expect(r.mesure.canonique.toString('utf8')).toContain('LUT_1D_SIZE 1024');
   });
 
+  it('une 1D de 4096 points — l’exemple fréquent — est acceptée', () => {
+    const r = lireLutAsset(octets(cube1d(4096)));
+    expect(r.ok && r.mesure.taille).toBe(4096);
+  });
+
+  it(`une 1D de ${MAX_LUT_1D_SIZE} points (borne de la spécification) est acceptée tant que le fichier tient sous ${MAX_LUT_BYTES / (1024 * 1024)} Mio`, () => {
+    const texte = cube1d(MAX_LUT_1D_SIZE);
+    expect(Buffer.byteLength(texte)).toBeLessThan(MAX_LUT_BYTES);
+    const r = lireLutAsset(octets(texte));
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.mesure.taille).toBe(MAX_LUT_1D_SIZE);
+    expect(r.mesure.octets).toBeLessThan(MAX_LUT_BYTES);
+  });
+
   it(`la taille ${MAX_LUT_SIZE} (DaVinci Resolve) est acceptée`, () => {
     const r = lireLutAsset(octets(cube3d(MAX_LUT_SIZE)));
     expect(r.ok).toBe(true);
@@ -108,9 +123,21 @@ describe('lireLutAsset — ce qui est refusé, et pourquoi', () => {
       .toEqual({ ok: false, motif: 'taille_hors_bornes' });
   });
 
-  it(`refuse une 1D de plus de ${MAX_LUT_1D_SIZE} points`, () => {
+  it(`refuse une 1D de ${MAX_LUT_1D_SIZE + 1} points — hors spécification`, () => {
     expect(lireLutAsset(octets(`LUT_1D_SIZE ${MAX_LUT_1D_SIZE + 1}\n0 0 0\n`)))
       .toEqual({ ok: false, motif: 'taille_hors_bornes' });
+  });
+
+  it('⚠️ le poids est une garde INDÉPENDANTE : une 1D structurellement valide mais trop lourde est refusée pour son poids', () => {
+    // 65536 points écrits avec une précision démesurée : la structure est
+    // valide, mais le fichier dépasse 8 Mio. Le refus vient du poids, AVANT
+    // toute lecture — et sans que la spécification du format soit réduite.
+    const lignes = ['LUT_1D_SIZE 65536'];
+    const v = '0.123456789012345678901234567890123456789012345';
+    for (let i = 0; i < 65536; i++) lignes.push(`${v} ${v} ${v}`);
+    const gros = octets(`${lignes.join('\n')}\n`);
+    expect(gros.length).toBeGreaterThan(MAX_LUT_BYTES);
+    expect(lireLutAsset(gros)).toEqual({ ok: false, motif: 'trop_volumineux' });
   });
 
   it('un .cube tronqué ou du texte quelconque : cube_invalide, sans écho du parseur', () => {

@@ -18,15 +18,25 @@
 export const MAX_LUT_SIZE = 65;
 
 /**
- * Nombre de points maximal d'une LUT 1D.
+ * Nombre de points maximal d'une LUT 1D — la borne de la SPÉCIFICATION.
  *
- * Une 1D est une courbe par canal, pas un cube : 1024 ou 4096 points sont
- * courants et ne coûtent que quelques kilo-octets. Lui appliquer le plafond
- * du cube refuserait presque toutes les 1D réelles.
+ * La « Cube LUT Specification 1.0 » (Adobe/IRIDAS) autorise `LUT_1D_SIZE`
+ * de 2 à 65536. Une 1D est une courbe par canal, pas un cube : lui
+ * appliquer le plafond du cube refuserait presque toutes les 1D réelles, et
+ * une borne « raisonnable » inventée ici transformerait un exemple fréquent
+ * (4096) en limite artificielle de Studiio. Aucune allocation du parseur ne
+ * dépend de la taille déclarée : le seul coût réel est le poids du fichier,
+ * gardé SÉPARÉMENT par `MAX_LUT_BYTES`.
  */
-export const MAX_LUT_1D_SIZE = 4096;
+export const MAX_LUT_1D_SIZE = 65536;
 
-/** Taille de fichier maximale acceptée à l'import, en octets (8 Mio). */
+/**
+ * Taille de fichier maximale acceptée à l'import, en octets (8 Mio).
+ *
+ * Garde INDÉPENDANTE de la validité structurelle : un fichier structurellement
+ * valide qui dépasse ce poids est refusé pour son poids, jamais en réduisant
+ * la spécification du format.
+ */
 export const MAX_LUT_BYTES = 8 * 1024 * 1024;
 
 /** Longueur d'une empreinte SHA-256 en hexadécimal. */
@@ -36,7 +46,7 @@ export interface Lut {
   /**
    * `'3d'` : cube complet, `size³` triplets.
    * `'1d'` : une courbe par canal, `size` triplets. Conservé tel quel plutôt
-   * qu'étendu en cube — une 1D de 4096 points ne rentre dans aucun cube.
+   * qu'étendu en cube — une 1D de 65536 points ne rentre dans aucun cube.
    */
   kind: '3d' | '1d';
   /** Nombre de pas par axe. */

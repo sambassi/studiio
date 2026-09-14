@@ -47,7 +47,7 @@ export const MESSAGES_IMPORT_LUT: Record<MotifImportLut, string> = {
   binaire: 'Ce fichier n’est pas une LUT .cube valide.',
   cube_invalide: 'Ce fichier n’est pas une LUT .cube valide.',
   taille_hors_bornes:
-    `Cette LUT déclare une taille hors des limites acceptées (2 à ${MAX_LUT_SIZE} pas par axe pour un cube, ${MAX_LUT_1D_SIZE} points pour une courbe 1D).`,
+    `Cette LUT déclare une taille hors des limites acceptées (2 à ${MAX_LUT_SIZE} pas par axe pour un cube, 2 à ${MAX_LUT_1D_SIZE} points pour une courbe 1D).`,
 };
 
 /**

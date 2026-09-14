@@ -114,11 +114,25 @@ describe('parseCube — refus explicites', () => {
     expect(parseCube(`${lignes.join('\n')}\n`).size).toBe(65);
   });
 
-  it('une 1D a son propre plafond : 1024 points passent, 4097 non', () => {
-    const lignes = ['LUT_1D_SIZE 1024'];
-    for (let i = 0; i < 1024; i++) lignes.push('0 0 0');
-    expect(parseCube(`${lignes.join('\n')}\n`).size).toBe(1024);
-    expect(() => parseCube('LUT_1D_SIZE 4097\n')).toThrow(/4096/);
+  it('une 1D a la borne de la spécification : 4096 et 65536 points passent, 65537 non', () => {
+    const courbe = (n: number) => {
+      const lignes = [`LUT_1D_SIZE ${n}`];
+      for (let i = 0; i < n; i++) lignes.push('0 0 0');
+      return `${lignes.join('\n')}\n`;
+    };
+    expect(parseCube(courbe(4096)).size).toBe(4096);
+    expect(parseCube(courbe(65536)).size).toBe(65536);
+    expect(() => parseCube('LUT_1D_SIZE 65537\n')).toThrow(/65536/);
+  });
+
+  it('une taille déclarée énorme avec un corps vide échoue vite, sans rien allouer d’après elle', () => {
+    // Le parseur lit les valeurs ligne à ligne : la taille déclarée ne
+    // dimensionne aucun tableau. Un `LUT_1D_SIZE 65536` sur trois lignes
+    // doit tomber sur « incomplet », pas remplir 65536 entrées.
+    const debut = performance.now();
+    expect(() => parseCube('LUT_1D_SIZE 65536\n0 0 0\n')).toThrow(/incomplet/);
+    expect(() => parseCube('LUT_3D_SIZE 65\n0 0 0\n')).toThrow(/incomplet/);
+    expect(performance.now() - debut).toBeLessThan(200);
   });
 
   it('lève quand la taille est absurde', () => {
