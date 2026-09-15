@@ -66,6 +66,29 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(JSON.stringify(brouillon)).not.toMatch(/providerAvatarId|providerVoiceId|hg-|pvid/);
   });
 
+  it('⚠️ avec l’option, la vidéo du jumeau est produite AVANT toute composition et placée par applyRush ; aucune composition « à côté »', () => {
+    const src = readFileSync(resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
+    const corps = src.slice(src.indexOf('const runRenderInterne = async'));
+    const iGarde = corps.indexOf('gardeJumeauAvantRendu(');
+    const iMoteur = corps.indexOf('genererEtAttendreVideoJumeau(');
+    const iRush = corps.indexOf('await applyRush(video.url');
+    // La première COMPOSITION en code (pas une mention dans un commentaire).
+    const iCompose = corps.search(/= await composerEtFacturer\(|await rendreEtFacturer\(\{/);
+    expect(iGarde).toBeGreaterThan(0);
+    expect(iMoteur).toBeGreaterThan(iGarde);
+    expect(iRush).toBeGreaterThan(iMoteur);
+    expect(iCompose).toBeGreaterThan(iRush);
+    // Le bloc jumeau se termine par `return` : jamais de composition dans le même passage.
+    const sansCommentaires = (t: string) => t.split('\n').filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join('\n');
+    const blocJumeau = sansCommentaires(corps.slice(iMoteur, corps.indexOf('setSending(true);', iMoteur)));
+    expect(blocJumeau).toMatch(/setUseDigitalTwin\(false\)/);
+    expect(blocJumeau).toMatch(/\n\s+return;\n\s+\}\n/);
+    // Aucun repli vers une vidéo ordinaire en cas d'échec : le catch pose l'erreur, point.
+    // Le catch ne fait QU'afficher l'erreur : aucun appel, aucun rendu de repli.
+    expect(blocJumeau).toMatch(/catch \(e\) \{\s*setError\([^;]*\);\s*\} finally \{\s*setSending\(false\);\s*\}/);
+    expect(blocJumeau).not.toMatch(/composerEtFacturer|rendreEtFacturer|composeAndUpload/);
+  });
+
   it('⚠️ le garde précède setSending, le solde, et toute composition dans runRenderInterne', () => {
     const src = readFileSync(resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
     const debut = src.indexOf('const runRenderInterne = async');
@@ -78,7 +101,7 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(iGarde).toBeLessThan(iSending);
     if (iSolde > 0) expect(iGarde).toBeLessThan(iSolde);
     // Le garde reçoit l'intention et les textes des séquences, jamais un identifiant.
-    expect(corps.slice(iGarde, iGarde + 400)).toMatch(/useDigitalTwin,/);
-    expect(corps.slice(iGarde, iGarde + 400)).toMatch(/sequenceVoices/);
+    expect(corps.slice(iGarde, iGarde + 200)).toMatch(/useDigitalTwin, textes: textesJumeau/);
+    expect(corps.slice(iGarde - 400, iGarde)).toMatch(/const textesJumeau = Object\.values\(sequenceVoices\)/);
   });
 });

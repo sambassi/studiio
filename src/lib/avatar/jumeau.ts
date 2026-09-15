@@ -108,10 +108,11 @@ export function scriptsDuJumeau(textes: readonly string[], prononciations: reado
 }
 
 /**
- * Le moteur vidéo « avatar animé + voix personnelle » : PAS ENCORE DISPONIBLE
- * sur cette version. `/api/avatar/generate` produit une vidéo HeyGen avec une
- * voix HeyGen — pas la voix personnelle ElevenLabs du compte — et rien ne
- * l'assemble dans un montage Créer. On le dit, on ne le simule pas.
+ * Le moteur vidéo « avatar animé + voix personnelle » vit dans
+ * `@/lib/avatar/moteur-jumeau`. Il n'est DISPONIBLE que si
+ * `JUMEAU_MOTEUR_ACTIVE=1` et que les deux fournisseurs sont configurés — le
+ * drapeau ne passe à 1 qu'après une génération réelle constatée sur un vrai
+ * compte. Tant qu'il est à zéro, on le dit ; on ne simule rien.
  */
-export const MOTEUR_JUMEAU_DISPONIBLE = false as const;
+export { moteurJumeauDisponible } from '@/lib/avatar/moteur-jumeau';
 export const MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE = 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.';

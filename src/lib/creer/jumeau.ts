@@ -57,3 +57,44 @@ export async function gardeJumeauAvantRendu(args: {
   if (!etat.moteurDisponible) return etat.messageMoteur || 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.';
   return null;
 }
+
+/**
+ * Lance la vidéo du jumeau et l'attend — par les routes existantes :
+ * POST /api/creer/jumeau/generer, puis GET /api/avatar/status?generationId=
+ * jusqu'à `completed` (URL re-hébergée) ou `failed`. Rend l'URL de la
+ * vidéo, ou lève avec le message à afficher. Aucune vidéo de repli.
+ */
+export async function genererEtAttendreVideoJumeau(args: {
+  textes: string[];
+  aspectRatio: string;
+  onEtape?: (message: string) => void;
+  fetchImpl?: typeof fetch;
+  attendreMs?: (ms: number) => Promise<void>;
+  maxAttenteMs?: number;
+}): Promise<{ url: string; generationId: string; avatarVersion: number }> {
+  const f = args.fetchImpl ?? fetch;
+  const dormir = args.attendreMs ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
+  args.onEtape?.('Génération de votre jumeau…');
+  const lancement = await f(`${JUMEAU_API}/generer`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ textes: args.textes, aspectRatio: args.aspectRatio }),
+  });
+  const lance = await lancement.json().catch(() => ({}));
+  if (!lancement.ok || !lance?.success) throw new Error(lance?.error || JUMEAU_INDISPONIBLE);
+  const generationId: string = lance.data.generationId;
+  const avatarVersion: number = lance.data.avatarVersion;
+  const debut = Date.now();
+  const limite = args.maxAttenteMs ?? 20 * 60 * 1000;
+  while (Date.now() - debut < limite) {
+    const res = await f(`/api/avatar/status?generationId=${encodeURIComponent(generationId)}`);
+    const json = await res.json().catch(() => ({}));
+    if (json?.success) {
+      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null };
+      if (d.status === 'completed' && d.videoUrl) return { url: d.videoUrl, generationId, avatarVersion };
+      if (d.status === 'failed') throw new Error(d.error || 'La génération de votre jumeau a échoué.');
+    }
+    args.onEtape?.('Votre jumeau est en cours de préparation…');
+    await dormir(5000);
+  }
+  throw new Error('La génération de votre jumeau prend trop de temps. Réessayez plus tard.');
+}

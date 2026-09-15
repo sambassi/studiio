@@ -149,7 +149,7 @@ import {
   politiqueAffichable, MENTION_AUCUN_CREDIT,
 } from '@/lib/facturation/libelles';
 import JumeauPanel from '@/components/creer/JumeauPanel';
-import { gardeJumeauAvantRendu } from '@/lib/creer/jumeau';
+import { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau } from '@/lib/creer/jumeau';
 import {
   DRAFT_VERSION,
   draftKey,
@@ -3298,6 +3298,8 @@ export default function AssistantWizard() {
   const [customTopic, setCustomTopic] = useState('');
   /** « Utiliser mon jumeau » — une intention ; le serveur relit tout avant d'y donner suite. */
   const [useDigitalTwin, setUseDigitalTwin] = useState(false);
+  /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
+  const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
   const [toneId, setToneId] = useState(TONES[0].id);
   const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
@@ -5990,12 +5992,40 @@ export default function AssistantWizard() {
     // (avatar validé dans sa version courante, voix du compte, choix) et dit
     // si le moteur vidéo du jumeau existe. Sinon on s'arrête ici — jamais une
     // vidéo ordinaire livrée sous ce nom.
-    const refusJumeau = await gardeJumeauAvantRendu({
-      useDigitalTwin,
-      textes: Object.values(sequenceVoices).map((v) => v.text).filter((t) => typeof t === 'string' && t.length > 0),
-    });
+    const textesJumeau = Object.values(sequenceVoices).map((v) => v.text).filter((t) => typeof t === 'string' && t.length > 0);
+    const refusJumeau = await gardeJumeauAvantRendu({ useDigitalTwin, textes: textesJumeau });
     if (refusJumeau) {
       setError(refusJumeau);
+      return;
+    }
+    // Le moteur est disponible et le jumeau prêt : LA vidéo du jumeau est
+    // produite d'abord (ElevenLabs sur MA voix + HeyGen sur MON avatar, par
+    // le serveur), puis placée comme rush de la séquence « Vidéo » —
+    // `applyRush`, le geste existant. Le montage se lance ensuite, au
+    // prochain envoi, avec ce rush en place : les états React ne sont pas
+    // relus au sein de ce même passage, on ne compose donc pas « à côté ».
+    // Une fois la vidéo en place, l'intention est levée : elle a été honorée.
+    if (useDigitalTwin) {
+      setSending(true);
+      setRenderTarget(destination);
+      setError(null);
+      setRenderProgress(5);
+      try {
+        const video = await genererEtAttendreVideoJumeau({
+          textes: textesJumeau,
+          aspectRatio: format,
+          onEtape: (m) => setRenderStage(m),
+        });
+        await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
+        setUseDigitalTwin(false);
+        setRenderStage('');
+        setRenderProgress(0);
+        setJumeauNotice('Votre jumeau est prêt et placé dans la séquence « Vidéo ». Vérifiez l’aperçu, puis lancez l’envoi.');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'La génération de votre jumeau a échoué.');
+      } finally {
+        setSending(false);
+      }
       return;
     }
 
@@ -7117,6 +7147,13 @@ export default function AssistantWizard() {
           <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {jumeauNotice && (
+          <div data-jumeau-notice className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+            <span>{jumeauNotice}</span>
+            <button onClick={() => setJumeauNotice(null)} className="ml-auto text-xs text-emerald-300 hover:text-white">OK</button>
           </div>
         )}
 
