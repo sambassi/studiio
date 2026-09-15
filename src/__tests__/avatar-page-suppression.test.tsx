@@ -64,7 +64,16 @@ describe('/dashboard/avatar — supprimer mon avatar', () => {
     render(<AvatarPage />);
     fireEvent.click(await waitFor(() => screen.getByRole('button', { name: /Supprimer mon avatar/ })));
     fireEvent.click(screen.getByRole('button', { name: /Confirmer la suppression/ }));
-    await waitFor(() => expect(document.body.textContent).toMatch(/sera retiré du stockage sous peu/));
+    const avis = await waitFor(() => {
+      const el = document.querySelector('[data-avatar-notice]');
+      expect(el).not.toBeNull();
+      return el!.textContent ?? '';
+    });
+    expect(avis).toMatch(/n'a pas pu être retiré automatiquement du stockage/);
+    expect(avis).toMatch(/n'est plus accessible via l'avatar supprimé/);
+    // Aucune promesse de nettoyage futur dans l'avis lui-même.
+    expect(avis).not.toMatch(/sous peu|bientôt|prochainement|sera retiré|plus tard|ultérieurement/);
+    expect(avis).not.toMatch(/fichier source a été retiré/);
   });
 
   it('échec serveur (409 remplacé) : l’avatar reste affiché, l’erreur est montrée, le bouton se désarme', async () => {

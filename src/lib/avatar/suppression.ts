@@ -105,12 +105,15 @@ async function retirerSourceDeLaLigneSupprimee(userId: string, ligne: LigneAvata
     console.warn(`[Avatar][suppression] Nettoyage differe : la source de ${ligne.id} n'a pas pu etre retiree, pointeur conserve.`);
     return false;
   }
-  // L'objet est parti : la ligne supprimée ne doit plus le désigner.
+  // L'objet est parti : la ligne supprimée ne doit plus le désigner — CETTE
+  // version-là seulement : une requête périmée ne blanchit jamais les
+  // pointeurs d'une version qu'elle n'a pas supprimée.
   const { error } = await supabaseAdmin
     .from('user_avatars')
     .update({ source_object_key: null, source_url: null })
     .eq('id', ligne.id)
     .eq('user_id', userId)
+    .eq('version', ligne.version)
     .not('deleted_at', 'is', null);
   if (error) console.warn(`[Avatar][suppression] Pointeurs non effaces pour ${ligne.id} : ${error.message}`);
   return true;
@@ -171,7 +174,10 @@ export async function supprimerAvatarActif(userId: string): Promise<ResultatSupp
     console.warn(`[Avatar][suppression] Nettoyage differe pour ${vivant.id} : ligne vivante illisible (${vivantMaintenant.erreur}).`);
     return { ok: true, avatarId: vivant.id, version: vivant.version, dejaSupprime, sourceRetiree: false, fournisseur: 'non_disponible' };
   }
-  const cleProtegee = vivantMaintenant.avatar?.source_object_key ?? null;
+  // La clé protégée est résolue comme toute source : canonique, sinon
+  // dérivée d'un `source_url` historique validé — une réinscription legacy
+  // est protégée au même titre.
+  const cleProtegee = vivantMaintenant.avatar ? cleSourceDe(vivantMaintenant.avatar, userId) : null;
   const sourceRetiree = await retirerSourceDeLaLigneSupprimee(userId, vivant, cleProtegee);
 
   if (vivant.provider_avatar_id) {

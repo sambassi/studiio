@@ -152,8 +152,8 @@ describe('DELETE /api/avatar — suppression normale', () => {
     expect(chrono.evenements).toEqual([`db:update:deleted_at:1`, `stockage:remove:${CLE}`, 'db:update:source_object_key,source_url:1']);
     // ⚠️ Le CAS porte id, user_id, version ET deleted_at is null — les quatre, toujours.
     expect(base.journal[1]).toBe('filtres:eq:id,eq:user_id,eq:version,is:deleted_at');
-    // L'effacement des pointeurs ne vise que la ligne SUPPRIMÉE du compte.
-    expect(base.journal[3]).toBe('filtres:eq:id,eq:user_id,not:deleted_at');
+    // L'effacement des pointeurs ne vise que la ligne SUPPRIMÉE du compte, dans SA version.
+    expect(base.journal[3]).toBe('filtres:eq:id,eq:user_id,eq:version,not:deleted_at');
   });
 
   it('source LEGACY (source_url seul) : la clé dérivée est retirée, source_url effacé', async () => {
@@ -255,6 +255,36 @@ describe('DELETE /api/avatar — concurrence', () => {
     // L'ancienne ligne est supprimée et garde son pointeur ; la nouvelle vit.
     expect(ligne().deleted_at).not.toBeNull();
     expect(ligne('11111111-1111-4111-8111-000000000002').deleted_at).toBeNull();
+  });
+});
+
+describe('DELETE /api/avatar — pointeurs et clé protégée, liés à la version', () => {
+  it('⚠️ une requête périmée ne blanchit pas les pointeurs d’une AUTRE version : entre le retrait et l’effacement, la ligne est passée en v3 supprimée', async () => {
+    const CLE_V3 = `${U}/avatar/source-1757000000009-${'d'.repeat(32)}.mp4`;
+    // Après notre deleted_at (update #1), la même ligne est réécrite en v3
+    // (remplacement + suppression par une autre requête) avec sa propre clé.
+    base.crochets.apresUpdate = (n) => { if (n === 1) Object.assign(ligne(), { version: 3, source_object_key: CLE_V3 }); };
+    const res = await DELETE();
+    expect(res.status).toBe(200);
+    // Notre objet v2 est retiré (c'était le nôtre), mais les pointeurs de v3 restent intacts.
+    expect(removes()).toEqual([CLE]);
+    expect(ligne().source_object_key).toBe(CLE_V3);
+    expect(base.journal.filter((j) => j.startsWith('update:source_object_key')).pop()).toMatch(/:0$/);
+  });
+
+  it('⚠️ réinscription LEGACY (source_url seul) apparue avant le retrait, même clé : protégée, aucun remove', async () => {
+    // L'ancienne ligne désigne une clé legacy ; la nouvelle ligne vivante la désigne par source_url.
+    base.avatars = [avatar({ source_object_key: null, source_url: URL_LEGACY })];
+    stockage.objets.add(CLE_LEGACY);
+    base.crochets.apresUpdate = (n) => {
+      if (n === 1) base.avatars.push(avatar({ id: '11111111-1111-4111-8111-000000000003', version: 1, source_object_key: null, source_url: URL_LEGACY, created_at: '2026-09-16T00:00:00.000Z' }));
+    };
+    const res = await DELETE();
+    expect(res.status).toBe(200);
+    expect((await res.json() as { data: { sourceRetiree: boolean } }).data.sourceRetiree).toBe(false);
+    expect(removes()).toEqual([]);
+    expect(stockage.objets.has(CLE_LEGACY)).toBe(true);
+    expect(ligne('11111111-1111-4111-8111-000000000003').deleted_at).toBeNull();
   });
 });
 

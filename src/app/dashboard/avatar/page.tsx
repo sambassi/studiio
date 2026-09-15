@@ -115,8 +115,11 @@ export default function AvatarPage() {
       const fournisseur = json.data?.fournisseur === 'non_disponible'
         ? " Votre clone n'est pas supprimé automatiquement chez notre fournisseur."
         : '';
+      // Strictement vrai, rien de plus : aucun nettoyage automatique n'existe
+      // aujourd'hui, on ne promet ni délai ni retrait futur. Ce qui est
+      // garanti : l'avatar supprimé ne donne plus accès au fichier.
       const source = json.data?.sourceRetiree === false
-        ? ' Votre fichier source sera retiré du stockage sous peu.'
+        ? " Votre fichier source n'a pas pu être retiré automatiquement du stockage ; il n'est plus accessible via l'avatar supprimé."
         : ' Votre fichier source a été retiré du stockage.';
       setNotice(`Avatar supprimé. Vos vidéos déjà générées sont conservées.${source}${fournisseur}`);
     } catch {
@@ -404,7 +407,7 @@ export default function AvatarPage() {
       {notice && (
         <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
           <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <span>{notice}</span>
+          <span data-avatar-notice>{notice}</span>
         </div>
       )}
 
