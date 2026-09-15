@@ -19,6 +19,14 @@
  *
  * Une vidéo générée, sous le même dossier, est `<generationId>.mp4` : le NOM
  * suffit à la distinguer, et c'est ce que ce module sait faire.
+ *
+ * Deux autres objets PRIVÉS vivent sous le même dossier depuis le fournisseur
+ * D-ID, et sont fermés au relais public au même titre qu'une source :
+ *
+ *   consent-<horodatage>-<nonce>.<ext>   la vidéo de CONSENTEMENT lue à la
+ *                                        caméra (un visage, une voix)
+ *   audio-<generationId>.mp3             l'audio de MA voix pour un aperçu
+ *                                        (donnée biométrique, jamais publique)
  */
 
 export const SEGMENT_SOURCE_AVATAR = 'avatar';
@@ -66,10 +74,40 @@ export function extensionSourceAvatar(nomFichier: string): string | null {
  * source n'est jamais publique, à qui qu'elle appartienne.
  */
 export function estCleSourceAvatar(cle: unknown): cle is string {
+  return nomSousDossierAvatar(cle, NOM_SOURCE_AVATAR);
+}
+
+/** Vidéo de consentement fournisseur : `consent-<horodatage>-<nonce>.<ext>` — formats vidéo seulement. */
+export const EXTENSIONS_CONSENTEMENT = ['mp4', 'mov'] as const;
+export const NOM_CONSENTEMENT_AVATAR = new RegExp(
+  `^consent-(\\d{1,16})-([0-9a-f]{${LONGUEUR_NONCE_SOURCE}})\\.(${EXTENSIONS_CONSENTEMENT.join('|')})$`,
+);
+export function estCleConsentementAvatar(cle: unknown): cle is string {
+  return nomSousDossierAvatar(cle, NOM_CONSENTEMENT_AVATAR);
+}
+
+/** Audio d'une génération (ma voix) : `audio-<generationId>.mp3`. */
+export const NOM_AUDIO_AVATAR = /^audio-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.mp3$/i;
+export function estCleAudioAvatar(cle: unknown): cle is string {
+  return nomSousDossierAvatar(cle, NOM_AUDIO_AVATAR);
+}
+
+/**
+ * Cette clé nomme-t-elle un objet PRIVÉ du dossier avatar — source,
+ * consentement ou audio ? C'est la question que pose le relais public : ces
+ * trois-là ne se servent jamais sans session, à qui qu'ils appartiennent.
+ * Une vidéo générée (`<uuid>.mp4`) n'en fait pas partie.
+ */
+export function estClePriveeAvatar(cle: unknown): cle is string {
+  return estCleSourceAvatar(cle) || estCleConsentementAvatar(cle) || estCleAudioAvatar(cle);
+}
+
+/** `<quelque chose>/avatar/<nom>`, exactement trois segments, le nom pris dans un motif fermé. */
+function nomSousDossierAvatar(cle: unknown, motif: RegExp): cle is string {
   if (typeof cle !== 'string') return false;
   const segments = cle.split('/');
   if (segments.length !== 3) return false;
   if (segments[0].length === 0) return false;
   if (segments[1] !== SEGMENT_SOURCE_AVATAR) return false;
-  return NOM_SOURCE_AVATAR.test(segments[2]);
+  return motif.test(segments[2]);
 }

@@ -33,6 +33,11 @@ export interface PatchNouvelleVersion {
   provider_avatar_id: null;
   provider_asset_id: null;
   training_error: null;
+  /** Le consentement FOURNISSEUR (D-ID) est propre à une source : il repart à zéro. */
+  provider_consent_id: null;
+  provider_consent_text: null;
+  provider_consent_status: null;
+  consent_object_key: null;
 }
 
 /**
@@ -59,6 +64,10 @@ export function patchNouvelleVersion(avatar: AvatarVersionnable): PatchNouvelleV
     provider_avatar_id: null,
     provider_asset_id: null,
     training_error: null,
+    provider_consent_id: null,
+    provider_consent_text: null,
+    provider_consent_status: null,
+    consent_object_key: null,
   };
 }
 
@@ -69,6 +78,8 @@ export function patchNouvelleVersion(avatar: AvatarVersionnable): PatchNouvelleV
  * `source_object_key` est son identité.
  */
 export interface ComplementNouvelleVersion {
+  /** Le fournisseur de CETTE version : une nouvelle source peut changer de fournisseur. */
+  provider?: 'heygen' | 'did';
   source_object_key?: string;
   consent_version?: string;
   consent_text?: string;
@@ -80,9 +91,10 @@ export interface ComplementNouvelleVersion {
 }
 
 const CLES_COMPLEMENT = new Set<keyof ComplementNouvelleVersion>([
-  'source_object_key', 'consent_version', 'consent_text', 'consent_at',
+  'provider', 'source_object_key', 'consent_version', 'consent_text', 'consent_at',
   'subject_type', 'avatar_type', 'name', 'source_url',
 ]);
+const FOURNISSEURS = new Set(['heygen', 'did']);
 
 /**
  * Seules les clés admises passent — `id`, `user_id`, `deleted_at`, ou
@@ -95,6 +107,7 @@ function complementAdmissible(complement: ComplementNouvelleVersion | undefined)
   for (const [cle, valeur] of Object.entries(complement ?? {})) {
     if (!CLES_COMPLEMENT.has(cle as keyof ComplementNouvelleVersion)) continue;
     if (cle === 'source_url' && valeur !== null) continue;
+    if (cle === 'provider' && !FOURNISSEURS.has(String(valeur))) continue;
     admis[cle] = valeur;
   }
   return admis as Partial<ComplementNouvelleVersion>;

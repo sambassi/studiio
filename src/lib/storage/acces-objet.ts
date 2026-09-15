@@ -39,7 +39,7 @@
  */
 
 /** Le type de repli : des octets, que le navigateur ne cherchera pas a lire. */
-import { estCleSourceAvatar } from '@/lib/avatar/source-cle';
+import { estClePriveeAvatar } from '@/lib/avatar/source-cle';
 
 export const TYPE_OCTETS = 'application/octet-stream';
 
@@ -341,7 +341,9 @@ export function cleDansNamespaceAvatar(bucket: unknown, cle: unknown): boolean {
  */
 export function cleSourceAvatarPrivee(bucket: unknown, cle: unknown): boolean {
   if (!cleDansNamespaceAvatar(bucket, cle)) return false;
-  return formesDecodees(cle as string).some((forme) => estCleSourceAvatar(forme));
+  // Source, vidéo de consentement, audio de ma voix : les trois objets
+  // privés du dossier (`estClePriveeAvatar`), jamais une vidéo générée.
+  return formesDecodees(cle as string).some((forme) => estClePriveeAvatar(forme));
 }
 
 /** Le segment est-il ENTOURÉ d'autre chose, sous toutes ses formes décodées ? */

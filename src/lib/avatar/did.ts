@@ -1,0 +1,436 @@
+/**
+ * L'AVATAR VIDÉO D-ID — dans la MÊME table, les MÊMES versions, la MÊME
+ * validation que l'avatar HeyGen. Ce module ne fait que ce que le
+ * fournisseur D-ID ajoute : un consentement tiré au sort, lu à la caméra,
+ * vérifié ; puis un V3 Instant Avatar entraîné ; puis un aperçu produit sur
+ * NOTRE voix (ElevenLabs personnelle, SPOKEN_SCRIPT), jamais sur un clone de
+ * voix D-ID.
+ *
+ * Ce qui est RÉUTILISÉ : `user_avatars` (provider = 'did'), `version` et le
+ * compare-and-set, `source_object_key` (la source privée, déposée par
+ * `/api/avatar/create` avec `provider=did`), `avatar_generations` (intention
+ * `apercu`, index unique « un aperçu vivant par version »), le suivi par
+ * `/api/avatar/status` (re-hébergement), `validated_at` (validation
+ * humaine, jamais automatique), la suppression douce.
+ *
+ * Ce qui n'est JAMAIS fait : une URL fournisseur persistée comme identité,
+ * un objet privé rendu public (le fournisseur reçoit une URL SIGNÉE et
+ * EXPIRANTE, `jeton-media.ts`), une validation automatique, un repli HeyGen.
+ *
+ * Idempotence : chaque étape avance par compare-and-set sur la ligne
+ * `(id, user_id, version)` et sur l'état exact qu'elle remplace. Deux clics
+ * simultanés : un seul consentement D-ID retenu, une seule vidéo déposée, un
+ * seul avatar D-ID créé, un seul aperçu (index unique).
+ */
+
+import { supabaseAdmin } from '@/lib/db/supabase';
+import { ETAT_SOURCE_PRETE, SCRIPT_APERCU, INTENTION_APERCU, etatAvatar, type AvatarLigne } from '@/lib/avatar/contrat';
+import { avatarVivantDuCompte, type AvatarVivant } from '@/lib/avatar/lecture';
+import {
+  BUCKET_AVATAR, cleConsentementAvatar, cleAudioAvatar, cleSourceAvatarDuCompte, retirerObjetPriveAvatar,
+} from '@/lib/avatar/source';
+import { urlMediaTemporaire } from '@/lib/avatar/jeton-media';
+import {
+  DidError, didVideoAvatarDisponible, didVideoAvatarConfigure, creerConsentement, deposerVideoConsentement,
+  lireConsentement, creerAvatarDid as creerAvatarChezDid, lireAvatarDid, supprimerAvatarDid,
+  creerSceneAudio, type DepsDid, type StatutAvatarDid, type StatutConsentementDid,
+} from '@/lib/providers/did/client';
+import { resoudreVoixDuCompte } from '@/lib/voice/profil';
+import { scripts } from '@/lib/voice/prononciations';
+import { synthetiserAvecVoix } from '@/lib/voice/synthese';
+
+export const FOURNISSEUR_DID = 'did';
+export const MESSAGE_DID_INDISPONIBLE = 'Avatar vidéo temporairement indisponible.';
+/** Ce que D-ID accepte en `source_url` : MP4 et QuickTime. WebM n'en fait pas partie. */
+export const TYPES_VIDEO_DID: Readonly<Record<string, 'mp4' | 'mov'>> = { 'video/mp4': 'mp4', 'video/quicktime': 'mov' };
+/** Limite documentée par D-ID pour une vidéo de consentement (« Video buffer size exceeds 50MB »). */
+export const MAX_VIDEO_CONSENTEMENT_OCTETS = 50 * 1024 * 1024;
+export const MAX_VIDEO_SOURCE_DID_OCTETS = 50 * 1024 * 1024;
+
+/** Les colonnes D-ID de `user_avatars`, en plus du contrat commun. */
+export interface AvatarDid extends AvatarVivant {
+  provider?: string | null;
+  provider_consent_id?: string | null;
+  provider_consent_text?: string | null;
+  provider_consent_status?: string | null;
+  consent_object_key?: string | null;
+}
+
+export type EtapeDid =
+  | 'consentement_a_demander'      // source déposée, aucun consentement fournisseur
+  | 'consentement_texte_pret'      // phrase reçue, vidéo de consentement à importer
+  | 'consentement_en_verification' // vidéo déposée, D-ID vérifie
+  | 'consentement_refuse'          // D-ID a refusé : réimporter
+  | 'consentement_accepte'         // prêt à créer l'avatar
+  | 'creation_en_cours'            // avatar D-ID en entraînement
+  | 'pret'                         // entraîné, à valider (aperçu)
+  | 'valide'
+  | 'echec';
+
+/** L'étape D-ID, DÉRIVÉE de la ligne — jamais stockée une seconde fois. */
+export function etapeDid(a: AvatarDid): EtapeDid {
+  const etat = etatAvatar(a);
+  if (etat === 'valide') return 'valide';
+  if (etat === 'entraine_non_valide') return 'pret';
+  if (etat === 'entrainement') return 'creation_en_cours';
+  if (etat === 'echec' && a.provider_avatar_id) return 'echec';
+  // Fournisseur jamais sollicité (ou échec avant création) : le consentement décide.
+  if (!a.provider_consent_id || !a.provider_consent_text) return 'consentement_a_demander';
+  const s = a.provider_consent_status;
+  if (s === 'done') return 'consentement_accepte';
+  if (s === 'error') return 'consentement_refuse';
+  if (s === 'created' || s === 'validating') return 'consentement_en_verification';
+  return 'consentement_texte_pret';
+}
+
+export type MotifDid =
+  | 'moteur_indisponible' | 'avatar_absent' | 'fournisseur_different' | 'source_absente'
+  | 'consentement_absent' | 'consentement_non_accepte' | 'consentement_en_verification' | 'consentement_deja_accepte'
+  | 'avatar_deja_cree' | 'avatar_non_pret' | 'concurrent' | 'format_invalide' | 'fichier_trop_lourd' | 'fichier_vide'
+  | 'voix_indisponible' | 'apercu_existant' | 'base';
+
+export type ResultatDid<T> = { ok: true } & T | { ok: false; motif: MotifDid; message: string; statut: number };
+
+const refus = <T>(motif: MotifDid, message: string, statut: number): ResultatDid<T> => ({ ok: false, motif, message, statut });
+
+const MESSAGES: Record<MotifDid, string> = {
+  moteur_indisponible: MESSAGE_DID_INDISPONIBLE,
+  avatar_absent: 'Importez d’abord votre vidéo.',
+  fournisseur_different: 'Votre avatar courant n’est pas un avatar vidéo.',
+  source_absente: 'Votre vidéo n’est plus disponible. Réimportez-la.',
+  consentement_absent: 'Obtenez d’abord votre phrase de consentement.',
+  consentement_non_accepte: 'Votre consentement n’a pas encore été accepté.',
+  consentement_en_verification: 'Votre vidéo de consentement est déjà en cours de vérification.',
+  consentement_deja_accepte: 'Votre consentement est déjà accepté.',
+  avatar_deja_cree: 'Votre avatar vidéo est déjà créé.',
+  avatar_non_pret: 'Votre avatar vidéo n’est pas encore prêt.',
+  concurrent: 'Une autre action vient de modifier votre avatar. Rechargez la page.',
+  format_invalide: 'Format vidéo non supporté. Utilisez MP4 ou MOV.',
+  fichier_trop_lourd: 'Vidéo trop lourde (50 Mo maximum).',
+  fichier_vide: 'Le fichier est vide.',
+  voix_indisponible: 'Configurez votre voix personnelle (« Ma voix ») pour générer l’aperçu.',
+  apercu_existant: 'Un aperçu est déjà en cours ou disponible pour cette version.',
+  base: 'Votre avatar n’a pas pu être lu ou enregistré. Réessayez.',
+};
+
+function disponibilite<T>(env: NodeJS.ProcessEnv): ResultatDid<T> | null {
+  if (didVideoAvatarDisponible(env)) return null;
+  // Drapeau levé mais clé absente : même phrase à l'écran, code distinct dans le journal.
+  if (env.DID_VIDEO_AVATAR_ACTIVE === '1' && !didVideoAvatarConfigure(env)) {
+    console.warn('[Avatar][D-ID] DID_VIDEO_AVATAR_ACTIVE=1 mais DID_API_KEY absente : avatar vidéo indisponible.');
+  }
+  return refus('moteur_indisponible', MESSAGES.moteur_indisponible, 503);
+}
+
+async function avatarDidDuCompte(userId: string): Promise<ResultatDid<{ avatar: AvatarDid }>> {
+  const lecture = await avatarVivantDuCompte(userId);
+  if (!lecture.ok) return refus('base', MESSAGES.base, 500);
+  if (!lecture.avatar) return refus('avatar_absent', MESSAGES.avatar_absent, 404);
+  const a = lecture.avatar as AvatarDid;
+  if (a.provider !== FOURNISSEUR_DID) return refus('fournisseur_different', MESSAGES.fournisseur_different, 409);
+  return { ok: true, avatar: a };
+}
+
+const messageFournisseur = (e: unknown, defaut: string) => (e instanceof DidError ? e.message : defaut);
+const statutFournisseur = (e: unknown) => (e instanceof DidError ? e.httpStatus : 502);
+
+/** D-ID → vocabulaire local de `user_avatars.status` (celui que `etatAvatar` lit). */
+export function statutLocalDid(statut: StatutAvatarDid): 'processing' | 'completed' | 'failed' {
+  if (statut === 'done') return 'completed';
+  if (statut === 'error' || statut === 'rejected') return 'failed';
+  return 'processing';
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 1. Le consentement : la phrase
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function demanderConsentementDid(
+  userId: string, deps: DepsDid = {},
+): Promise<ResultatDid<{ texte: string; etape: EtapeDid; deja: boolean }>> {
+  const env = deps.env ?? process.env;
+  const indispo = disponibilite<{ texte: string; etape: EtapeDid; deja: boolean }>(env);
+  if (indispo) return indispo;
+  const lu = await avatarDidDuCompte(userId);
+  if (!lu.ok) return lu;
+  const a = lu.avatar;
+  if (a.provider_avatar_id) return refus('avatar_deja_cree', MESSAGES.avatar_deja_cree, 409);
+  if (!cleSourceAvatarDuCompte(a.source_object_key, userId)) return refus('source_absente', MESSAGES.source_absente, 409);
+  // Déjà demandé, et pas refusé : la même phrase — aucun second consentement.
+  if (a.provider_consent_id && a.provider_consent_text && a.provider_consent_status !== 'error') {
+    return { ok: true, texte: a.provider_consent_text, etape: etapeDid(a), deja: true };
+  }
+
+  let consentement: { id: string; texte: string };
+  try {
+    consentement = await creerConsentement('French', deps);
+  } catch (e) {
+    return refus('base', messageFournisseur(e, 'Le fournisseur n’a pas pu créer le consentement.'), statutFournisseur(e));
+  }
+  // CAS sur l'état exact remplacé : aucun consentement, ou un consentement refusé.
+  let maj = supabaseAdmin
+    .from('user_avatars')
+    .update({ provider_consent_id: consentement.id, provider_consent_text: consentement.texte, provider_consent_status: null, consent_object_key: null })
+    .eq('id', a.id).eq('user_id', userId).eq('version', a.version).is('deleted_at', null).is('provider_avatar_id', null);
+  maj = a.provider_consent_id ? maj.eq('provider_consent_id', a.provider_consent_id) : maj.is('provider_consent_id', null);
+  const { data: touchees, error } = await maj.select('id');
+  if (error) return refus('base', MESSAGES.base, 500);
+  if (!touchees || touchees.length !== 1) {
+    // Une autre requête a gagné : on rend ce qu'elle a posé (le consentement qu'on vient de créer reste orphelin, sans coût).
+    const relu = await avatarDidDuCompte(userId);
+    if (relu.ok && relu.avatar.provider_consent_text && relu.avatar.version === a.version) {
+      return { ok: true, texte: relu.avatar.provider_consent_text, etape: etapeDid(relu.avatar), deja: true };
+    }
+    return refus('concurrent', MESSAGES.concurrent, 409);
+  }
+  return { ok: true, texte: consentement.texte, etape: 'consentement_texte_pret', deja: false };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 2. La vidéo de consentement
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface FichierRecu { buffer: Buffer; type: string; taille: number; nom: string }
+
+export async function deposerVideoConsentementDid(
+  userId: string, fichier: FichierRecu, deps: DepsDid = {},
+): Promise<ResultatDid<{ etape: EtapeDid }>> {
+  const env = deps.env ?? process.env;
+  const indispo = disponibilite<{ etape: EtapeDid }>(env);
+  if (indispo) return indispo;
+  const ext = TYPES_VIDEO_DID[fichier.type];
+  if (!ext) return refus('format_invalide', MESSAGES.format_invalide, 400);
+  if (fichier.taille <= 0 || fichier.buffer.length === 0) return refus('fichier_vide', MESSAGES.fichier_vide, 400);
+  if (fichier.taille > MAX_VIDEO_CONSENTEMENT_OCTETS) return refus('fichier_trop_lourd', MESSAGES.fichier_trop_lourd, 413);
+
+  const lu = await avatarDidDuCompte(userId);
+  if (!lu.ok) return lu;
+  const a = lu.avatar;
+  if (a.provider_avatar_id) return refus('avatar_deja_cree', MESSAGES.avatar_deja_cree, 409);
+  if (!a.provider_consent_id || !a.provider_consent_text) return refus('consentement_absent', MESSAGES.consentement_absent, 409);
+  const s = a.provider_consent_status;
+  if (s === 'created' || s === 'validating') return refus('consentement_en_verification', MESSAGES.consentement_en_verification, 409);
+  if (s === 'done') return refus('consentement_deja_accepte', MESSAGES.consentement_deja_accepte, 409);
+
+  // Le dépôt privé, AVANT la base : sans objet, rien d'autre.
+  const cle = cleConsentementAvatar(userId, ext);
+  const { error: upErr } = await supabaseAdmin.storage.from(BUCKET_AVATAR).upload(cle, fichier.buffer, { contentType: fichier.type, upsert: false });
+  if (upErr) return refus('base', 'Votre vidéo n’a pas pu être enregistrée. Réessayez.', 500);
+
+  // CAS sur l'état exact remplacé : pas de vidéo (statut NULL) ou vidéo refusée ('error').
+  let maj = supabaseAdmin
+    .from('user_avatars')
+    .update({ consent_object_key: cle, provider_consent_status: 'created' })
+    .eq('id', a.id).eq('user_id', userId).eq('version', a.version).is('deleted_at', null)
+    .eq('provider_consent_id', a.provider_consent_id);
+  maj = s === 'error' ? maj.eq('provider_consent_status', 'error') : maj.is('provider_consent_status', null);
+  const { data: touchees, error } = await maj.select('id');
+  if (error || !touchees || touchees.length !== 1) {
+    // Rien posé (ou incertain) : MA clé est retirée, jamais celle qu'une autre requête a posée.
+    const relu = await avatarDidDuCompte(userId);
+    const conservee = relu.ok ? relu.avatar.consent_object_key ?? null : null;
+    if (relu.ok) await retirerObjetPriveAvatar(userId, cle, conservee);
+    return refus(error ? 'base' : 'concurrent', error ? MESSAGES.base : MESSAGES.concurrent, error ? 500 : 409);
+  }
+  // L'ancienne vidéo refusée n'a plus de ligne qui la désigne.
+  if (a.consent_object_key && a.consent_object_key !== cle) await retirerObjetPriveAvatar(userId, a.consent_object_key, cle);
+
+  // Le fournisseur reçoit une URL signée, expirante — jamais l'objet public.
+  try {
+    await deposerVideoConsentement({ consentId: a.provider_consent_id, nom: a.name ?? 'Studiio', sourceUrl: urlMediaTemporaire(cle, {}, env) }, deps);
+  } catch (e) {
+    await supabaseAdmin.from('user_avatars').update({ provider_consent_status: 'error' })
+      .eq('id', a.id).eq('user_id', userId).eq('version', a.version).eq('consent_object_key', cle);
+    return refus('base', messageFournisseur(e, 'Le fournisseur n’a pas pu recevoir votre vidéo de consentement.'), statutFournisseur(e));
+  }
+  return { ok: true, etape: 'consentement_en_verification' };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 3. Le suivi du consentement (un poll par appel)
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function verifierConsentementDid(
+  userId: string, deps: DepsDid = {},
+): Promise<ResultatDid<{ etape: EtapeDid; texte: string | null; erreur: string | null }>> {
+  const lu = await avatarDidDuCompte(userId);
+  if (!lu.ok) return lu;
+  let a = lu.avatar;
+  let erreur: string | null = null;
+  if (a.provider_consent_id && (a.provider_consent_status === 'created' || a.provider_consent_status === 'validating') && !a.provider_avatar_id) {
+    if (!didVideoAvatarDisponible(deps.env ?? process.env)) return refus('moteur_indisponible', MESSAGES.moteur_indisponible, 503);
+    let distant: { statut: StatutConsentementDid; erreur: string | null };
+    try {
+      distant = await lireConsentement(a.provider_consent_id, deps);
+    } catch (e) {
+      // Transitoire : on rend l'état connu, le prochain appel retentera.
+      return { ok: true, etape: etapeDid(a), texte: a.provider_consent_text ?? null, erreur: e instanceof DidError ? e.message : null };
+    }
+    erreur = distant.erreur;
+    if (distant.statut !== a.provider_consent_status) {
+      const { data: touchees } = await supabaseAdmin
+        .from('user_avatars')
+        .update({ provider_consent_status: distant.statut })
+        .eq('id', a.id).eq('user_id', userId).eq('version', a.version).is('deleted_at', null)
+        .eq('provider_consent_id', a.provider_consent_id)
+        .select('*');
+      if (touchees && touchees.length === 1) a = touchees[0] as AvatarDid;
+    }
+  }
+  return { ok: true, etape: etapeDid(a), texte: a.provider_consent_text ?? null, erreur };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 4. L'avatar D-ID
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function creerAvatarVideoDid(
+  userId: string, deps: DepsDid = {},
+): Promise<ResultatDid<{ etape: EtapeDid; avatarId: string; version: number }>> {
+  const env = deps.env ?? process.env;
+  const indispo = disponibilite<{ etape: EtapeDid; avatarId: string; version: number }>(env);
+  if (indispo) return indispo;
+  const lu = await avatarDidDuCompte(userId);
+  if (!lu.ok) return lu;
+  const a = lu.avatar;
+  if (a.provider_avatar_id) return refus('avatar_deja_cree', MESSAGES.avatar_deja_cree, 409);
+  if (!cleSourceAvatarDuCompte(a.source_object_key, userId)) return refus('source_absente', MESSAGES.source_absente, 409);
+  if (!a.provider_consent_id) return refus('consentement_absent', MESSAGES.consentement_absent, 409);
+  if (a.provider_consent_status !== 'done') return refus('consentement_non_accepte', MESSAGES.consentement_non_accepte, 409);
+  if (a.status !== ETAT_SOURCE_PRETE && a.status !== 'failed') return refus('concurrent', MESSAGES.concurrent, 409);
+
+  // Réservation : `processing` posé en CAS sur l'état exact remplacé. Deux clics → un seul passe.
+  const { data: reservee, error: erreurReservation } = await supabaseAdmin
+    .from('user_avatars')
+    .update({ status: 'processing', training_error: null })
+    .eq('id', a.id).eq('user_id', userId).eq('version', a.version).is('deleted_at', null)
+    .is('provider_avatar_id', null).eq('status', a.status)
+    .select('id');
+  if (erreurReservation) return refus('base', MESSAGES.base, 500);
+  if (!reservee || reservee.length !== 1) return refus('concurrent', MESSAGES.concurrent, 409);
+
+  let cree: { id: string; statut: StatutAvatarDid };
+  try {
+    cree = await creerAvatarChezDid({
+      sourceUrl: urlMediaTemporaire(a.source_object_key, {}, env),
+      consentId: a.provider_consent_id,
+      nom: a.name ?? 'Mon avatar vidéo',
+    }, deps);
+  } catch (e) {
+    const message = messageFournisseur(e, 'Le fournisseur n’a pas pu créer votre avatar vidéo.');
+    await supabaseAdmin.from('user_avatars').update({ status: 'failed', training_error: message })
+      .eq('id', a.id).eq('user_id', userId).eq('version', a.version).is('provider_avatar_id', null).eq('status', 'processing');
+    return refus('base', message, statutFournisseur(e));
+  }
+  const { data: posees, error: erreurPose } = await supabaseAdmin
+    .from('user_avatars')
+    .update({ provider_avatar_id: cree.id, status: statutLocalDid(cree.statut), training_error: null })
+    .eq('id', a.id).eq('user_id', userId).eq('version', a.version).is('deleted_at', null)
+    .is('provider_avatar_id', null).eq('status', 'processing')
+    .select('*');
+  if (erreurPose || !posees || posees.length !== 1) {
+    // La version a bougé (ou la base n'a pas répondu) : l'avatar créé chez D-ID n'est
+    // à personne dans notre base. On le retire — c'est le nôtre, certain — sans
+    // jamais toucher à ce que la nouvelle version a pu créer.
+    if (!erreurPose) { try { await supprimerAvatarDid(cree.id, deps); } catch { /* orphelin fournisseur, journalisé */ console.warn(`[Avatar][D-ID] avatar ${cree.id} orphelin non retiré`); } }
+    return refus(erreurPose ? 'base' : 'concurrent', erreurPose ? MESSAGES.base : MESSAGES.concurrent, erreurPose ? 500 : 409);
+  }
+  return { ok: true, etape: etapeDid(posees[0] as AvatarDid), avatarId: a.id, version: a.version };
+}
+
+/**
+ * Rafraîchit l'entraînement D-ID — l'équivalent de la resynchronisation
+ * HeyGen de `GET /api/avatar/create`. Écrit UNIQUEMENT sur la version et
+ * l'identifiant interrogés. Rend la ligne à jour, ou `null` si rien n'a changé.
+ */
+export async function rafraichirEntrainementDid(a: AvatarDid, deps: DepsDid = {}): Promise<AvatarDid | null> {
+  if (a.provider !== FOURNISSEUR_DID || !a.provider_avatar_id) return null;
+  if (etatAvatar(a) !== 'entrainement') return null;
+  if (!didVideoAvatarConfigure(deps.env ?? process.env)) return null;
+  let distant: { statut: StatutAvatarDid; erreur: string | null };
+  try { distant = await lireAvatarDid(a.provider_avatar_id, deps); } catch { return null; }
+  const local = statutLocalDid(distant.statut);
+  if (local === a.status) return null;
+  const patch: Record<string, unknown> = { status: local };
+  if (local === 'failed') patch.training_error = distant.erreur ?? 'Le fournisseur n’a pas pu entraîner cet avatar.';
+  const { data: touchees } = await supabaseAdmin
+    .from('user_avatars')
+    .update(patch)
+    .eq('id', a.id).eq('user_id', a.user_id).eq('version', a.version).eq('provider_avatar_id', a.provider_avatar_id).is('deleted_at', null)
+    .select('*');
+  return touchees && touchees.length === 1 ? (touchees[0] as AvatarDid) : null;
+}
+
+/** Retire l'avatar chez D-ID — best effort, jamais bloquant, jamais sans identifiant certain. */
+export async function retirerAvatarChezDid(providerAvatarId: string | null | undefined, deps: DepsDid = {}): Promise<'retire' | 'non_retire' | 'sans_objet'> {
+  if (!providerAvatarId) return 'sans_objet';
+  if (!didVideoAvatarConfigure(deps.env ?? process.env)) return 'non_retire';
+  try { await supprimerAvatarDid(providerAvatarId, deps); return 'retire'; } catch { return 'non_retire'; }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 5. L'aperçu : MA voix (ElevenLabs, SPOKEN), audio privé, scène D-ID
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function lancerApercuDid(
+  userId: string, deps: DepsDid = {},
+): Promise<ResultatDid<{ generationId: string; display: string; spoken: string }>> {
+  const env = deps.env ?? process.env;
+  const indispo = disponibilite<{ generationId: string; display: string; spoken: string }>(env);
+  if (indispo) return indispo;
+  const lu = await avatarDidDuCompte(userId);
+  if (!lu.ok) return lu;
+  const a = lu.avatar;
+  if (etatAvatar(a) !== 'entraine_non_valide' || !a.provider_avatar_id) return refus('avatar_non_pret', MESSAGES.avatar_non_pret, 409);
+
+  // La voix personnelle, relue maintenant — jamais un clone de voix fournisseur.
+  const voix = await resoudreVoixDuCompte(userId);
+  if (!voix.ok) return refus('voix_indisponible', MESSAGES.voix_indisponible, 409);
+  const { display, spoken } = scripts(SCRIPT_APERCU, voix.prononciations);
+
+  // Réservation sous l'index « un aperçu vivant par (avatar, version) ».
+  const { data: reservee, error: erreurReservation } = await supabaseAdmin
+    .from('avatar_generations')
+    .insert({
+      user_id: userId, user_avatar_id: a.id, avatar_version: a.version, intention: INTENTION_APERCU, provider: FOURNISSEUR_DID,
+      provider_video_id: null, script: spoken, voice_id: `jumeau:${voix.voix.id}`, aspect_ratio: '9:16', status: 'pending', credits_charged: 0,
+    })
+    .select('id')
+    .single();
+  if (erreurReservation || !reservee) {
+    if (erreurReservation?.code === '23505') return refus('apercu_existant', MESSAGES.apercu_existant, 409);
+    return refus('base', "L'aperçu n'a pas pu être réservé. Réessayez.", 500);
+  }
+  const generationId = (reservee as { id: string }).id;
+  const echouer = async (message: string, statut: number, cleAudio?: string) => {
+    await supabaseAdmin.from('avatar_generations').update({ status: 'failed', error_message: message }).eq('id', generationId).eq('user_id', userId);
+    if (cleAudio) await retirerObjetPriveAvatar(userId, cleAudio);
+    return refus<{ generationId: string; display: string; spoken: string }>('base', message, statut);
+  };
+
+  const synthese = await synthetiserAvecVoix({ providerVoiceId: voix.providerVoiceId, texte: spoken }, { env, fetch: deps.fetch });
+  if (!synthese.ok) return echouer(synthese.motif === 'indisponible' ? 'La voix personnelle n’est pas disponible.' : 'Votre voix n’a pas pu être synthétisée.', 502);
+
+  const cleAudio = cleAudioAvatar(userId, generationId);
+  const { error: upErr } = await supabaseAdmin.storage.from(BUCKET_AVATAR).upload(cleAudio, synthese.audio, { contentType: synthese.contentType, upsert: false });
+  if (upErr) return echouer("L'audio de l'aperçu n'a pas pu être enregistré.", 500);
+
+  let scene: { id: string };
+  try {
+    scene = await creerSceneAudio({ avatarId: a.provider_avatar_id, audioUrl: urlMediaTemporaire(cleAudio, {}, env), nom: 'Aperçu Studiio' }, deps);
+  } catch (e) {
+    return echouer(messageFournisseur(e, "Le fournisseur n'a pas pu animer votre avatar."), statutFournisseur(e), cleAudio);
+  }
+  const { error: erreurMaj } = await supabaseAdmin
+    .from('avatar_generations')
+    .update({ provider_video_id: scene.id, status: 'processing' })
+    .eq('id', generationId).eq('user_id', userId);
+  if (erreurMaj) {
+    console.error(`[Avatar][D-ID] scène ${scene.id} lancée mais génération ${generationId} non mise à jour : ${erreurMaj.message}`);
+    return refus('base', 'Aperçu lancé mais non enregistré. Contactez le support.', 500);
+  }
+  return { ok: true, generationId, display, spoken };
+}
+
+/** Réexporté pour les routes : le type de ligne commun. */
+export type { AvatarLigne };

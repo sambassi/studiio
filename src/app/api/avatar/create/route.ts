@@ -11,11 +11,17 @@ import {
   HEYGEN_ASSET_MAX_BYTES,
   type AvatarKind,
 } from '@/lib/avatar/heygen';
-import { CONSENTEMENT_ENROLEMENT, ETAT_SOURCE_PRETE, SUJET_AVATAR, etatAvatar } from '@/lib/avatar/contrat';
+import { CONSENTEMENT_ENROLEMENT, CONSENTEMENT_ENROLEMENT_DID, ETAT_SOURCE_PRETE, SUJET_AVATAR, etatAvatar } from '@/lib/avatar/contrat';
 import {
   BUCKET_AVATAR, cleSourceAvatar, cleSourceDepuisUrlLegacy, retirerSourceAvatar,
 } from '@/lib/avatar/source';
 import { commencerNouvelleVersionAvatar } from '@/lib/avatar/version';
+import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
+import {
+  FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, etapeDid, rafraichirEntrainementDid, retirerAvatarChezDid,
+  type AvatarDid,
+} from '@/lib/avatar/did';
+import { retirerObjetPriveAvatar } from '@/lib/avatar/source';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -37,10 +43,23 @@ const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
  */
 const CONSENT_TEXT: Record<AvatarKind, string> = CONSENTEMENT_ENROLEMENT.textes;
 
-/** La ligne rendue a la page, sans `source_url` : la source se lit par `/api/avatar/source`. */
+/**
+ * La ligne rendue a la page, sans `source_url` (la source se lit par
+ * `/api/avatar/source`) ni les identifiants du consentement fournisseur et de
+ * sa video (`provider_consent_id`, `consent_object_key`) — et, pour un avatar
+ * D-ID, sans les identifiants fournisseur : ils restent cote serveur. La page
+ * recoit l'ETAPE derivee (`etape_did`) et la phrase de consentement, rien d'autre.
+ */
 function sansSourceUrl(avatar: Record<string, unknown>): Record<string, unknown> {
-  const { source_url: _sourceUrl, ...reste } = avatar;
-  void _sourceUrl;
+  const {
+    source_url: _sourceUrl, provider_consent_id: _consentId, consent_object_key: _consentKey, ...reste
+  } = avatar;
+  void _sourceUrl; void _consentId; void _consentKey;
+  if (reste.provider === FOURNISSEUR_DID) {
+    const { provider_avatar_id: _pa, provider_asset_id: _ps, ...sansIds } = reste;
+    void _pa; void _ps;
+    return { ...sansIds, etape_did: etapeDid(avatar as unknown as AvatarDid) };
+  }
   return reste;
 }
 
@@ -82,6 +101,9 @@ async function lireAvatarVivant(
   return { ok: true, avatar: ((data?.[0] as AvatarVivant | undefined) ?? null) };
 }
 
+const estCetteVersionDid = (v: AvatarVivant | null, avatarId: string, version: number, cle: string) =>
+  !!v && v.id === avatarId && v.version === version && v.source_object_key === cle;
+
 const erreurServeur = (message: string, code: string) =>
   NextResponse.json({ success: false, error: message, code }, { status: 500 });
 
@@ -119,7 +141,12 @@ export async function GET() {
     // ⚠️ Sans `provider_avatar_id` (source enregistree, fournisseur jamais
     // sollicite ou en echec), il n'y a RIEN a interroger : on n'appelle pas
     // HeyGen avec `null` dans l'URL.
-    if (avatar && avatar.provider_avatar_id && !READY_STATUSES.includes(avatar.status)) {
+    if (avatar && avatar.provider === FOURNISSEUR_DID) {
+      // D-ID : la resynchronisation de l'entrainement vit dans `lib/avatar/did`
+      // (memes garde-fous : ecriture sur la version et l'identifiant interroges).
+      const rafraichi = await rafraichirEntrainementDid(avatar as AvatarDid);
+      if (rafraichi) avatar = rafraichi;
+    } else if (avatar && avatar.provider_avatar_id && !READY_STATUSES.includes(avatar.status)) {
       const training = await getAvatarTrainingStatus(avatar.provider_avatar_id);
       if (training && training.status !== avatar.status) {
         const patch: Record<string, unknown> = { status: training.status };
@@ -190,7 +217,9 @@ export async function GET() {
       };
     }
 
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId } });
+    // `didVideoActif` : l'ecran ouvre « A partir d'une video » seulement si le
+    // serveur le dit — drapeau ET cle presents. Jamais la cle elle-meme.
+    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible() } });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);
     return NextResponse.json(
@@ -224,6 +253,19 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null;
     const consent = formData.get('consent');
     const name = (formData.get('name') as string | null) || 'Mon avatar';
+    // Le fournisseur DEMANDE : 'heygen' (defaut, inchange) ou 'did' (avatar
+    // video). Pour D-ID, cette route ne fait que deposer la source et poser la
+    // version : le consentement fournisseur, la creation et l'entrainement
+    // passent ensuite par `/api/avatar/did/*`. Aucun repli silencieux : un
+    // fournisseur inconnu ou inactif est refuse ici, avant tout depot.
+    const providerDemande = (formData.get('provider') as string | null) || 'heygen';
+    if (providerDemande !== 'heygen' && providerDemande !== FOURNISSEUR_DID) {
+      return NextResponse.json({ success: false, error: 'Fournisseur inconnu.', code: 'provider_unknown' }, { status: 400 });
+    }
+    const viaDid = providerDemande === FOURNISSEUR_DID;
+    if (viaDid && !didVideoAvatarDisponible()) {
+      return NextResponse.json({ success: false, error: 'Avatar vidéo temporairement indisponible.', code: 'did_unavailable' }, { status: 503 });
+    }
 
     if (consent !== 'true') {
       return NextResponse.json(
@@ -246,7 +288,25 @@ export async function POST(req: NextRequest) {
     const isVideo = file.type.startsWith('video/');
     const kind: AvatarKind = isVideo ? 'video' : 'photo';
 
-    if (isVideo) {
+    if (viaDid) {
+      // D-ID : une VIDEO obligatoirement, MP4 ou MOV (ce que le fournisseur
+      // accepte en `source_url` ; WebM n'en fait pas partie), 50 Mo maximum.
+      if (!isVideo || !TYPES_VIDEO_DID[file.type]) {
+        return NextResponse.json(
+          { success: false, error: 'Format vidéo non supporté pour l’avatar vidéo. Utilisez MP4 ou MOV.', code: 'did_bad_format' },
+          { status: 400 },
+        );
+      }
+      if (file.size > MAX_VIDEO_SOURCE_DID_OCTETS) {
+        return NextResponse.json(
+          { success: false, error: `Vidéo trop lourde (${Math.round(file.size / 1024 / 1024)} Mo). 50 Mo maximum — réduisez la durée ou la qualité.`, code: 'did_too_large' },
+          { status: 413 },
+        );
+      }
+      if (file.size === 0) {
+        return NextResponse.json({ success: false, error: 'Le fichier est vide.', code: 'did_empty' }, { status: 400 });
+      }
+    } else if (isVideo) {
       if (!ALLOWED_VIDEO_TYPES.includes(file.type)) {
         return NextResponse.json(
           { success: false, error: 'Format video non supporte. Utilisez MP4 ou WebM.' },
@@ -280,7 +340,7 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(
-      `[Avatar][HeyGen] Creation demandee par ${userId} — nature=${kind} type=${file.type} taille=${Math.round(file.size / 1024)} Ko`,
+      `[Avatar][${viaDid ? 'D-ID' : 'HeyGen'}] Creation demandee par ${userId} — nature=${kind} type=${file.type} taille=${Math.round(file.size / 1024)} Ko`,
     );
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -338,10 +398,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Le texte certifie nomme le fournisseur qui recoit reellement la video.
     const consentement = {
       consent_at: new Date().toISOString(),
-      consent_text: CONSENT_TEXT[kind],
-      consent_version: CONSENTEMENT_ENROLEMENT.version,
+      consent_text: viaDid ? CONSENTEMENT_ENROLEMENT_DID.texte : CONSENT_TEXT[kind],
+      consent_version: viaDid ? CONSENTEMENT_ENROLEMENT_DID.version : CONSENTEMENT_ENROLEMENT.version,
       subject_type: SUJET_AVATAR,
     };
 
@@ -371,7 +432,7 @@ export async function POST(req: NextRequest) {
         .from('user_avatars')
         .insert({
           user_id: userId,
-          provider: 'heygen',
+          provider: providerDemande,
           avatar_type: kind,
           provider_avatar_id: null,
           provider_asset_id: null,
@@ -422,6 +483,7 @@ export async function POST(req: NextRequest) {
           avatarId: actuel.id,
           versionAttendue: actuel.version,
           complement: {
+            provider: providerDemande,
             source_object_key: nouvelleCle,
             source_url: null,
             avatar_type: kind,
@@ -465,6 +527,26 @@ export async function POST(req: NextRequest) {
     // H. L'ancienne source n'a plus de ligne qui la designe : on la retire.
     //    APRES la transition, jamais avant — et jamais la nouvelle.
     if (ancienneCle) await retirerSourceAvatar(userId, ancienneCle, nouvelleCle);
+    //    Meme sort pour ce que l'ancienne version D-ID possedait : sa video de
+    //    consentement (notre objet) et son avatar chez le fournisseur —
+    //    `actuel` est l'instantane EXACT sur lequel le compare-and-set a
+    //    reussi, donc ces identifiants sont certainement ceux de l'ancienne
+    //    version, jamais ceux de la nouvelle. Best effort, jamais bloquant.
+    if (actuel && actuel.provider === FOURNISSEUR_DID) {
+      const ancien = actuel as unknown as AvatarDid;
+      if (ancien.consent_object_key) await retirerObjetPriveAvatar(userId, ancien.consent_object_key);
+      const retrait = await retirerAvatarChezDid(ancien.provider_avatar_id);
+      if (retrait === 'non_retire') console.warn(`[Avatar][D-ID] ancien avatar fournisseur de ${avatarId} v${actuel.version} non retire.`);
+    }
+
+    // I bis. D-ID : la source est deposee, la version posee — on s'arrete la.
+    //    Le fournisseur n'est PAS sollicite ici : il exige d'abord un
+    //    consentement lu a la camera (`/api/avatar/did/consentement`).
+    if (viaDid) {
+      const relu = await lireAvatarVivant(userId);
+      if (!relu.ok || !estCetteVersionDid(relu.avatar, avatarId, nouvelleVersion, nouvelleCle)) return conflit('avatar_superseded');
+      return NextResponse.json({ success: true, data: { avatar: sansSourceUrl(relu.avatar!) } });
+    }
 
     // I. Le fournisseur, a partir des octets recus (jamais d'une URL).
     //    Son resultat — succes comme echec — n'est ecrit QUE sur la version

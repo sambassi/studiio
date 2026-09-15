@@ -52,6 +52,17 @@ export const CONSENTEMENT_ENROLEMENT = {
   },
 } as const;
 
+/**
+ * Le texte certifié pour un avatar vidéo D-ID — le fournisseur nommé est celui
+ * qui reçoit réellement la vidéo. Sa propre version : changer un mot = changer
+ * la version.
+ */
+export const CONSENTEMENT_ENROLEMENT_DID = {
+  version: 'enrolement-did-2026-09-15',
+  texte:
+    "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et D-ID à l'utiliser pour entraîner un avatar à mon effigie.",
+} as const;
+
 export function estSujetAvatar(valeur: unknown): valeur is SujetAvatar {
   return typeof valeur === 'string' && (SUJETS_AVATAR as readonly string[]).includes(valeur);
 }
