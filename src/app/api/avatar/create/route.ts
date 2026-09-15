@@ -47,6 +47,50 @@ function sansSourceUrl(avatar: Record<string, unknown>): Record<string, unknown>
 /** Statuts HeyGen consideres comme « avatar utilisable ». */
 const READY_STATUSES = ['completed', 'ready', 'success'];
 
+/** Ce que les routes lisent d'un avatar vivant. */
+interface AvatarVivant {
+  id: string;
+  version: number;
+  source_object_key: string | null;
+  source_url: string | null;
+  status: string;
+  provider_avatar_id: string | null;
+  provider_asset_id: string | null;
+  training_error: string | null;
+  [colonne: string]: unknown;
+}
+
+/**
+ * L'avatar VIVANT du compte — ou la preuve qu'on ne sait pas.
+ *
+ * ⚠️ Une erreur de lecture n'est PAS « aucun avatar » : sur cette confusion,
+ * le POST enverrait une source, insererait, appellerait le fournisseur —
+ * pour un compte qui a peut-etre deja tout cela. On rend donc DEUX choses
+ * distinctes : `null` (lu, rien), et `ok: false` (pas lu).
+ */
+async function lireAvatarVivant(
+  userId: string,
+): Promise<{ ok: true; avatar: AvatarVivant | null } | { ok: false; erreur: string }> {
+  const { data, error } = await supabaseAdmin
+    .from('user_avatars')
+    .select('*')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error) return { ok: false, erreur: error.message };
+  return { ok: true, avatar: ((data?.[0] as AvatarVivant | undefined) ?? null) };
+}
+
+const erreurServeur = (message: string, code: string) =>
+  NextResponse.json({ success: false, error: message, code }, { status: 500 });
+
+const conflit = (code: 'avatar_concurrent' | 'avatar_superseded') =>
+  NextResponse.json(
+    { success: false, error: 'Un autre envoi vient de remplacer votre avatar. Rechargez la page.', code },
+    { status: 409 },
+  );
+
 /**
  * GET /api/avatar/create — avatar courant de l'utilisateur + voix disponibles.
  * Sert a l'affichage initial de la page : premiere visite (aucun avatar) vs
@@ -82,16 +126,31 @@ export async function GET() {
         if (training.status === 'failed' && training.error) {
           patch.training_error = training.error;
         }
-        const { data: updated } = await supabaseAdmin
+        // ⚠️ LE RESULTAT N'EST ECRIT QUE SUR LA VERSION INTERROGEE. Le
+        // remplacement conserve `id` : pendant l'appel HeyGen, le compte a pu
+        // passer en version+1 (fournisseur NULL, `source_ready`). Un
+        // « completed » pour l'ancien identifiant ne doit jamais se poser sur
+        // la nouvelle version. Zero ligne = instantane perime : on relit.
+        const { data: touchees, error: erreurSync } = await supabaseAdmin
           .from('user_avatars')
           .update(patch)
           .eq('id', avatar.id)
-          .select()
-          .single();
-        if (updated) avatar = updated;
-        console.log(
-          `[Avatar][HeyGen] Statut d'entrainement resynchronise pour ${avatar.provider_avatar_id}: ${training.status}`,
-        );
+          .eq('version', avatar.version)
+          .eq('provider_avatar_id', avatar.provider_avatar_id)
+          .is('deleted_at', null)
+          .select();
+        if (erreurSync) {
+          console.warn(`[Avatar][HeyGen] Statut non resynchronise pour ${avatar.provider_avatar_id} : ${erreurSync.message}`);
+        } else if (touchees && touchees.length === 1) {
+          avatar = touchees[0];
+          console.log(
+            `[Avatar][HeyGen] Statut d'entrainement resynchronise pour ${avatar.provider_avatar_id}: ${training.status}`,
+          );
+        } else {
+          console.log(`[Avatar][HeyGen] Instantane perime pour ${avatar.provider_avatar_id} : une version plus recente existe, relecture.`);
+          const relu = await lireAvatarVivant(session.user.id);
+          if (relu.ok) avatar = relu.avatar;
+        }
       }
     }
 
@@ -244,15 +303,14 @@ export async function POST(req: NextRequest) {
        ───────────────────────────────────────────────────────────────────── */
 
     // C. L'avatar vivant, et la source qu'il designe aujourd'hui.
-    const { data: vivants } = await supabaseAdmin
-      .from('user_avatars')
-      .select('id, version, source_object_key, source_url')
-      .eq('user_id', userId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1);
-    const actuel = (vivants?.[0] ?? null) as
-      { id: string; version: number; source_object_key: string | null; source_url: string | null } | null;
+    //    ⚠️ Une lecture en echec ARRETE tout, avant la moindre ecriture :
+    //    « je n'ai pas pu lire » n'est pas « il n'y a rien ».
+    const lecture = await lireAvatarVivant(userId);
+    if (!lecture.ok) {
+      console.error(`[Avatar] Lecture de l'avatar impossible pour ${userId} : ${lecture.erreur}`);
+      return erreurServeur("Votre avatar n'a pas pu etre lu. Reessayez.", 'avatar_read_failed');
+    }
+    const actuel = lecture.avatar;
     const ancienneCle = actuel
       ? (actuel.source_object_key ?? cleSourceDepuisUrlLegacy(actuel.source_url, userId))
       : null;
@@ -277,20 +335,22 @@ export async function POST(req: NextRequest) {
       subject_type: SUJET_AVATAR,
     };
 
-    // G. Le perdant d'une course : sa source, et rien d'autre.
-    const abandonner = async () => {
-      const { data: gagnants } = await supabaseAdmin
-        .from('user_avatars')
-        .select('source_object_key')
-        .eq('user_id', userId)
-        .is('deleted_at', null)
-        .limit(1);
-      const cleGagnante = (gagnants?.[0] as { source_object_key?: string | null } | undefined)?.source_object_key ?? null;
-      await retirerSourceAvatar(userId, nouvelleCle, cleGagnante);
-      return NextResponse.json(
-        { success: false, error: 'Un autre envoi vient de remplacer votre avatar. Rechargez la page.', code: 'avatar_concurrent' },
-        { status: 409 },
-      );
+    /* ── Le nettoyage de MA source, et de rien d'autre ─────────────────────
+       `cleConservee` est la cle que la ligne vivante designe MAINTENANT. Si
+       on ne peut pas la relire, on ne sait pas laquelle proteger : on ne
+       retire RIEN. Un objet orphelin se retrouve ; une source active
+       supprimee ne se retrouve pas. */
+    const retirerMaSource = async (vivant: AvatarVivant | null): Promise<void> => {
+      await retirerSourceAvatar(userId, nouvelleCle, vivant?.source_object_key ?? null);
+    };
+    const abandonner = async (code: 'avatar_concurrent' | 'avatar_superseded' = 'avatar_concurrent') => {
+      const relu = await lireAvatarVivant(userId);
+      if (!relu.ok) {
+        console.warn(`[Avatar] Nettoyage differe pour ${nouvelleCle} : gagnant inconnu (${relu.erreur}).`);
+        return conflit(code);
+      }
+      await retirerMaSource(relu.avatar);
+      return conflit(code);
     };
 
     // F. La transition.
@@ -317,36 +377,74 @@ export async function POST(req: NextRequest) {
         })
         .select('id, version')
         .single();
-      if (insertError || !inseree) {
-        // 23505 : l'index « un seul avatar vivant par compte » — une autre
-        // premiere inscription a gagne pendant qu'on deposait la source.
-        if (insertError?.code === '23505') return abandonner();
-        console.error('[Avatar] Insert failed:', insertError);
-        await retirerSourceAvatar(userId, nouvelleCle, ancienneCle);
-        return NextResponse.json(
-          { success: false, error: "Votre avatar n'a pas pu etre enregistre. Reessayez." },
-          { status: 500 },
-        );
+      if (inseree && !insertError) {
+        avatarId = inseree.id;
+        nouvelleVersion = inseree.version;
+      } else if (insertError?.code === '23505') {
+        // L'index « un seul avatar vivant par compte » : une autre premiere
+        // inscription a gagne pendant qu'on deposait la source. Certain.
+        return abandonner();
+      } else {
+        // ⚠️ ERREUR INCERTAINE : le serveur a pu commiter avant que la
+        // reponse ne se perde. On relit AVANT de toucher au stockage.
+        console.error('[Avatar] Insert incertain :', insertError?.message ?? 'reponse vide');
+        const relu = await lireAvatarVivant(userId);
+        if (!relu.ok) {
+          console.warn(`[Avatar] Nettoyage differe pour ${nouvelleCle} : relecture impossible (${relu.erreur}).`);
+          return erreurServeur("Votre avatar n'a pas pu etre enregistre. Reessayez.", 'avatar_insert_failed');
+        }
+        if (relu.avatar && relu.avatar.source_object_key === nouvelleCle && relu.avatar.version === 1) {
+          // L'insertion est bien la : on continue comme si elle avait repondu.
+          avatarId = relu.avatar.id;
+          nouvelleVersion = relu.avatar.version;
+        } else if (relu.avatar) {
+          return abandonner();
+        } else {
+          await retirerMaSource(null);
+          return erreurServeur("Votre avatar n'a pas pu etre enregistre. Reessayez.", 'avatar_insert_failed');
+        }
       }
-      avatarId = inseree.id;
-      nouvelleVersion = inseree.version;
     } else {
-      const transition = await commencerNouvelleVersionAvatar({
-        userId,
-        avatarId: actuel.id,
-        versionAttendue: actuel.version,
-        complement: {
-          source_object_key: nouvelleCle,
-          source_url: null,
-          avatar_type: kind,
-          name,
-          ...consentement,
-        },
-      });
+      let transition: Awaited<ReturnType<typeof commencerNouvelleVersionAvatar>>;
+      try {
+        transition = await commencerNouvelleVersionAvatar({
+          userId,
+          avatarId: actuel.id,
+          versionAttendue: actuel.version,
+          complement: {
+            source_object_key: nouvelleCle,
+            source_url: null,
+            avatar_type: kind,
+            name,
+            ...consentement,
+          },
+        });
+      } catch (erreurCas) {
+        // ⚠️ ERREUR INCERTAINE, meme regle : relire avant de nettoyer.
+        console.error('[Avatar] Transition incertaine :', erreurCas instanceof Error ? erreurCas.message : String(erreurCas));
+        const relu = await lireAvatarVivant(userId);
+        if (!relu.ok) {
+          console.warn(`[Avatar] Nettoyage differe pour ${nouvelleCle} : relecture impossible (${relu.erreur}).`);
+          return erreurServeur("Votre avatar n'a pas pu etre remplace. Reessayez.", 'avatar_replace_failed');
+        }
+        const v = relu.avatar;
+        if (v && v.id === actuel.id && v.version === actuel.version + 1 && v.source_object_key === nouvelleCle) {
+          transition = { ok: true, avatar: { id: v.id, user_id: userId, status: v.status, version: v.version, deleted_at: null, source_object_key: v.source_object_key } };
+        } else if (v && v.id === actuel.id && v.version === actuel.version && v.source_object_key === actuel.source_object_key) {
+          // Rien n'a bouge : notre mutation n'a pas ete appliquee.
+          await retirerMaSource(v);
+          return erreurServeur("Votre avatar n'a pas pu etre remplace. Reessayez.", 'avatar_replace_failed');
+        } else if (v) {
+          return abandonner();
+        } else {
+          await retirerMaSource(null);
+          return erreurServeur("Votre avatar n'a pas pu etre remplace. Reessayez.", 'avatar_replace_failed');
+        }
+      }
       if (!transition.ok) {
         if (transition.motif === 'source_invalide') {
-          await retirerSourceAvatar(userId, nouvelleCle, ancienneCle);
-          return NextResponse.json({ success: false, error: 'Source invalide.' }, { status: 500 });
+          await retirerMaSource(actuel);
+          return erreurServeur('Source invalide.', 'avatar_source_invalid');
         }
         return abandonner();
       }
@@ -360,8 +458,17 @@ export async function POST(req: NextRequest) {
 
     // I. Le fournisseur, a partir des octets recus (jamais d'une URL).
     //    Son resultat — succes comme echec — n'est ecrit QUE sur la version
-    //    qu'il concerne. Zero ligne touchee = une version plus recente existe :
-    //    cette reponse est perimee, on ne la fait pas parler pour l'autre.
+    //    qu'il concerne : `where id and version and source_object_key and
+    //    deleted_at is null`. Trois issues, tenues STRICTEMENT a part :
+    //      - ecrit, 1 ligne          → cette version, a jour ;
+    //      - pas d'erreur, 0 ligne   → une version plus recente existe :
+    //                                  cette reponse est perimee, 409 ;
+    //      - ERREUR de la base       → on ne sait pas : on relit et on
+    //                                  reconcilie. Une panne n'est pas une
+    //                                  concurrence, et ne se deguise pas en 409.
+    const estCetteVersion = (v: AvatarVivant | null) =>
+      !!v && v.id === avatarId && v.version === nouvelleVersion && v.source_object_key === nouvelleCle;
+
     const fallbackName = isVideo ? 'video.mp4' : 'photo.jpg';
     let chezFournisseur: { avatarId: string; assetId: string; status: string };
     try {
@@ -372,7 +479,7 @@ export async function POST(req: NextRequest) {
       const message = erreurFournisseur instanceof HeyGenError
         ? erreurFournisseur.message
         : "Le fournisseur n'a pas pu creer l'avatar.";
-      const { data: marquees } = await supabaseAdmin
+      const { data: marquees, error: erreurMarque } = await supabaseAdmin
         .from('user_avatars')
         .update({ status: 'failed', training_error: message })
         .eq('id', avatarId)
@@ -380,36 +487,65 @@ export async function POST(req: NextRequest) {
         .eq('source_object_key', nouvelleCle)
         .is('deleted_at', null)
         .select('id');
+      if (erreurMarque) {
+        console.error(`[Avatar] Echec fournisseur non persiste pour ${avatarId} v${nouvelleVersion} : ${erreurMarque.message}`);
+        const relu = await lireAvatarVivant(userId);
+        if (relu.ok && relu.avatar && !estCetteVersion(relu.avatar)) return conflit('avatar_superseded');
+        if (relu.ok && estCetteVersion(relu.avatar) && relu.avatar!.status === 'failed') throw erreurFournisseur;
+        return erreurServeur(
+          "Le fournisseur a refuse la source et l'echec n'a pas pu etre enregistre. Reessayez.",
+          'avatar_failure_persistence_failed',
+        );
+      }
       if (!marquees || marquees.length === 0) {
         console.warn(`[Avatar] Echec fournisseur perime pour ${avatarId} v${nouvelleVersion} : une version plus recente existe.`);
-        return NextResponse.json(
-          { success: false, error: 'Un autre envoi vient de remplacer votre avatar. Rechargez la page.', code: 'avatar_superseded' },
-          { status: 409 },
-        );
+        return conflit('avatar_superseded');
       }
       throw erreurFournisseur;
     }
 
-    const { data: rows } = await supabaseAdmin
+    const attendu = {
+      provider_avatar_id: chezFournisseur.avatarId,
+      provider_asset_id: chezFournisseur.assetId,
+      status: chezFournisseur.status,
+      training_error: null,
+    };
+    const { data: rows, error: erreurProvider } = await supabaseAdmin
       .from('user_avatars')
-      .update({
-        provider_avatar_id: chezFournisseur.avatarId,
-        provider_asset_id: chezFournisseur.assetId,
-        status: chezFournisseur.status,
-        training_error: null,
-      })
+      .update(attendu)
       .eq('id', avatarId)
       .eq('version', nouvelleVersion)
       .eq('source_object_key', nouvelleCle)
       .is('deleted_at', null)
       .select();
-    const row = rows?.[0];
-    if (!row) {
+    let row: AvatarVivant | undefined = rows?.[0];
+    if (erreurProvider) {
+      // Le fournisseur a bien cree l'avatar ; la base n'a pas repondu. On
+      // relit : ecrit malgre tout, perime, ou vraiment non persiste.
+      console.error(`[Avatar] Fournisseur non persiste pour ${avatarId} v${nouvelleVersion} : ${erreurProvider.message}`);
+      const relu = await lireAvatarVivant(userId);
+      if (!relu.ok) {
+        return erreurServeur(
+          "Votre avatar a ete cree chez le fournisseur mais n'a pas pu etre enregistre. Reessayez.",
+          'avatar_provider_persistence_failed',
+        );
+      }
+      if (relu.avatar && !estCetteVersion(relu.avatar)) return conflit('avatar_superseded');
+      if (
+        estCetteVersion(relu.avatar)
+        && relu.avatar!.provider_avatar_id === attendu.provider_avatar_id
+        && relu.avatar!.provider_asset_id === attendu.provider_asset_id
+      ) {
+        row = relu.avatar!;
+      } else {
+        return erreurServeur(
+          "Votre avatar a ete cree chez le fournisseur mais n'a pas pu etre enregistre. Reessayez.",
+          'avatar_provider_persistence_failed',
+        );
+      }
+    } else if (!row) {
       console.warn(`[Avatar] Reponse fournisseur perimee pour ${avatarId} v${nouvelleVersion} : une version plus recente existe.`);
-      return NextResponse.json(
-        { success: false, error: 'Un autre envoi vient de remplacer votre avatar. Rechargez la page.', code: 'avatar_superseded' },
-        { status: 409 },
-      );
+      return conflit('avatar_superseded');
     }
 
     return NextResponse.json({ success: true, data: { avatar: sansSourceUrl(row) } });
