@@ -101,6 +101,15 @@ export async function GET() {
       `[Avatar][HeyGen] ${allVoices.length} voix chargees, ${voices.length} exposees, defaut=${defaultVoiceId ?? 'aucun'}`,
     );
 
+    // ⚠️ `source_url` n'est plus renvoyé : c'est un localisateur interne
+    // (relais public fermé aux sources), la page lit `/api/avatar/source`.
+    // Le seul consommateur de cette réponse est `/dashboard/avatar`.
+    if (avatar) {
+      const { source_url: _sourceUrl, ...sansSourceUrl } = avatar as Record<string, unknown>;
+      void _sourceUrl;
+      avatar = sansSourceUrl;
+    }
+
     return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId } });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);

@@ -39,6 +39,8 @@
  */
 
 /** Le type de repli : des octets, que le navigateur ne cherchera pas a lire. */
+import { estCleSourceAvatar } from '@/lib/avatar/source-cle';
+
 export const TYPE_OCTETS = 'application/octet-stream';
 
 /**
@@ -323,6 +325,23 @@ export const SEGMENT_NAMESPACE_AVATAR = 'avatar';
 export function cleDansNamespaceAvatar(bucket: unknown, cle: unknown): boolean {
   if (bucket !== BUCKET_NAMESPACE_AVATAR) return false;
   return contientSegment(cle, SEGMENT_NAMESPACE_AVATAR);
+}
+
+/**
+ * Cette cible est-elle la SOURCE d'un avatar — le visage — et non une vidéo
+ * générée sous le même dossier ?
+ *
+ * C'est la question que pose le relais public, en GET comme en HEAD, avant
+ * tout appel au stockage. La forme est celle de `@/lib/avatar/source-cle`
+ * (module pur : aucune base, aucun stockage — c'est ce qui autorise l'import
+ * depuis ici sans cycle), appliquée à toutes les formes décodées comme le fait
+ * `contientSegment`. Les vidéos générées (`<userId>/avatar/<uuid>.mp4`)
+ * ne matchent pas : elles restent servies, à qui possède l'adresse, comme
+ * aujourd'hui.
+ */
+export function cleSourceAvatarPrivee(bucket: unknown, cle: unknown): boolean {
+  if (!cleDansNamespaceAvatar(bucket, cle)) return false;
+  return formesDecodees(cle as string).some((forme) => estCleSourceAvatar(forme));
 }
 
 /** Le segment est-il ENTOURÉ d'autre chose, sous toutes ses formes décodées ? */

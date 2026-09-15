@@ -25,39 +25,16 @@ import { clientMinio, lecteurMinio, type BorneReseau } from '@/lib/storage/minio
 import {
   BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR, cleDansNamespaceAvatar, cleObjetValide,
 } from '@/lib/storage/acces-objet';
+import {
+  TYPES_SOURCE_AUTORISES, estCleSourceAvatar, typeSourceAvatar, extensionSourceAvatar,
+} from '@/lib/avatar/source-cle';
+
+/* La FORME d'une clé vit dans `source-cle` (module pur, partagé avec le
+   relais public et la route privée) ; ce module y ajoute le compte, le
+   stockage et la base. Ré-exportés pour que les appelants n'aient qu'une porte. */
+export { TYPES_SOURCE_AUTORISES, typeSourceAvatar, extensionSourceAvatar };
 
 export const BUCKET_AVATAR = BUCKET_NAMESPACE_AVATAR;
-
-/** Les formats qu'une source peut avoir — ceux que le fournisseur accepte. */
-export const TYPES_SOURCE_AUTORISES: Readonly<Record<string, string>> = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-};
-
-const EXTENSIONS = Object.keys(TYPES_SOURCE_AUTORISES).join('|');
-
-/** `source-<horodatage>.<ext>` — le NOM d'une source, et de rien d'autre. */
-const NOM_SOURCE = new RegExp(`^source-(\\d{1,16})\\.(${EXTENSIONS})$`);
-
-/** Le type MIME d'une source d'après sa clé ; `null` si ce n'est pas une source. */
-export function typeSourceAvatar(cle: string): string | null {
-  const nom = cle.slice(cle.lastIndexOf('/') + 1);
-  const m = NOM_SOURCE.exec(nom);
-  return m ? TYPES_SOURCE_AUTORISES[m[2]] : null;
-}
-
-/** L'extension normalisée d'un nom de fichier, si c'est un format de source. */
-export function extensionSourceAvatar(nomFichier: string): string | null {
-  const point = nomFichier.lastIndexOf('.');
-  if (point < 0) return null;
-  const ext = nomFichier.slice(point + 1).toLowerCase();
-  return ext in TYPES_SOURCE_AUTORISES ? ext : null;
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,17 +64,43 @@ export function cleSourceAvatar(userId: string, extension: string, horodatage = 
  */
 export function cleSourceAvatarDuCompte(cle: unknown, userId: string): cle is string {
   if (!UUID.test(userId)) return false;
-  if (typeof cle !== 'string') return false;
   // Pas de `cleObjetValide` ici : la forme exigée — trois segments, le
   // premier ÉGAL à l'UUID, le deuxième ÉGAL à `avatar`, le troisième pris
   // dans un motif fermé — ne laisse passer ni `..`, ni `%2F`, ni `\`, ni
   // `://`, ni caractère de contrôle. Un garde de plus serait mort (et testé
   // comme tel : le retirer ne fait rougir aucun test).
-  const segments = cle.split('/');
-  if (segments.length !== 3) return false;
-  if (segments[0] !== userId) return false;
-  if (segments[1] !== SEGMENT_NAMESPACE_AVATAR) return false;
-  return NOM_SOURCE.test(segments[2]);
+  if (!estCleSourceAvatar(cle)) return false;
+  return cle.split('/')[0] === userId;
+}
+
+/**
+ * Le chemin que `getPublicUrl()` écrit devant la clé (`s3-client.ts`,
+ * `db/supabase.ts`) : `<PUBLIC_STORAGE_URL>/media/<clé>`, où l'URL de base est
+ * par défaut `<APP_URL>/storage/v1/object/public`. C'est la SEULE forme que
+ * `source_url` ait jamais prise pour une source d'avatar.
+ */
+const PREFIXE_URL_LEGACY = `/storage/v1/object/public/${BUCKET_NAMESPACE_AVATAR}/`;
+
+/**
+ * La clé d'une source à partir d'un `source_url` HISTORIQUE — les lignes
+ * d'avant `source_object_key`, et celles que `/api/avatar/create` écrit
+ * encore jusqu'à AVATAR-2A.
+ *
+ * Analyse STRICTE, pas un parseur d'URL : le chemin doit contenir exactement
+ * le préfixe connu du relais, une seule fois, suivi de la clé nue (sans
+ * `?`, `#`, ni encodage). Et la clé obtenue repasse par
+ * `cleSourceAvatarDuCompte` : une URL qui désigne autrui, un autre
+ * compartiment, un autre domaine ou une vidéo générée rend `null`.
+ * Lecture seule : rien n'est écrit en base ici.
+ */
+export function cleSourceDepuisUrlLegacy(url: unknown, userId: string): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  const debut = url.indexOf(PREFIXE_URL_LEGACY);
+  if (debut < 0) return null;
+  if (url.indexOf(PREFIXE_URL_LEGACY, debut + 1) >= 0) return null;
+  const cle = url.slice(debut + PREFIXE_URL_LEGACY.length);
+  if (cle.length === 0 || /[?#%]/.test(cle)) return null;
+  return cleSourceAvatarDuCompte(cle, userId) ? cle : null;
 }
 
 /** Cette clé vit-elle dans le domaine avatar de CE compte (source OU vidéo générée) ? */

@@ -289,12 +289,16 @@ const FAMILLES: Famille[] = [
     fichier: 'src/app/api/upload/media/route.ts',
     marqueur: "formData.get('purpose') as string || 'general'",
   },
+  /* ⚠️ La SOURCE d'avatar (`<userId>/avatar/source-<ts>.<ext>`, create/route.ts)
+     n'est PLUS une famille servie : c'est un visage, elle se lit par
+     `/api/avatar/source` (AVATAR-2B, `securite-source-avatar-relais.test.ts`).
+     La vidéo GÉNÉRÉE du même dossier, elle, reste servie. */
   {
-    usage: 'source d avatar',
-    bucket: 'media', cle: `${UTILISATEUR}/avatar/source-${HORODATAGE}.png`,
-    type: 'image/png',
-    fichier: 'src/app/api/avatar/create/route.ts',
-    marqueur: '${userId}/avatar/source-${Date.now()}.${ext}',
+    usage: 'vidéo générée par l avatar',
+    bucket: 'media', cle: `${UTILISATEUR}/avatar/11111111-1111-4111-8111-000000000009.mp4`,
+    type: 'video/mp4',
+    fichier: 'src/app/api/avatar/status/route.ts',
+    marqueur: '${userId}/avatar/${gen.id}.mp4',
   },
   {
     usage: 'rendu serveur — le montage final',

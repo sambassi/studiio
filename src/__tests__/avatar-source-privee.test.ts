@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 /**
  * AVATAR-1B — la source d'un clone vit en stockage PRIVÉ, sous une clé que
@@ -55,7 +57,9 @@ vi.mock('@/lib/storage/minio-client', () => ({
 import {
   cleSourceAvatar, cleSourceAvatarDuCompte, cleAvatarDuCompte, typeSourceAvatar, extensionSourceAvatar,
   retirerSourceAvatar, sourceAvatarPresente, ouvrirSourceAvatar, BUCKET_AVATAR, TYPES_SOURCE_AUTORISES,
+  cleSourceDepuisUrlLegacy,
 } from '@/lib/avatar/source';
+import * as pur from '@/lib/avatar/source-cle';
 import {
   cleDansNamespaceAvatar, cleDansNamespaceLut, cleDansNamespaceMontage, purposeAcceptable, clePossedeePar,
   BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR,
@@ -101,6 +105,62 @@ describe('cleSourceAvatar — construite par le serveur, dans la forme que main 
     expect(extensionSourceAvatar('Moi.MOV')).toBe('mov');
     expect(extensionSourceAvatar('moi.mp3')).toBeNull();
     expect(extensionSourceAvatar('sansextension')).toBeNull();
+  });
+});
+
+describe('source-cle — le module pur, seule définition de la forme', () => {
+  it('source.ts ré-exporte source-cle : une seule règle, pas deux', () => {
+    expect(typeSourceAvatar).toBe(pur.typeSourceAvatar);
+    expect(extensionSourceAvatar).toBe(pur.extensionSourceAvatar);
+    expect(TYPES_SOURCE_AUTORISES).toBe(pur.TYPES_SOURCE_AUTORISES);
+  });
+
+  it('estCleSourceAvatar : trois segments, `avatar`, nom source-<ts>.<ext> — pour n’importe quel compte', () => {
+    expect(pur.estCleSourceAvatar(`${U}/avatar/source-1.jpg`)).toBe(true);
+    expect(pur.estCleSourceAvatar(`${AUTRUI}/avatar/source-1.jpg`)).toBe(true);
+    expect(pur.estCleSourceAvatar(`${U}/avatar/${GEN}.mp4`)).toBe(false);
+    expect(pur.estCleSourceAvatar(`/avatar/source-1.jpg`)).toBe(false);
+    expect(pur.estCleSourceAvatar(`${U}/avatar/x/source-1.jpg`)).toBe(false);
+    expect(pur.estCleSourceAvatar(null)).toBe(false);
+  });
+
+  it('le module pur n’importe ni base ni stockage', () => {
+    expect(Object.keys(pur).sort()).toEqual([
+      'NOM_SOURCE_AVATAR', 'SEGMENT_SOURCE_AVATAR', 'TYPES_SOURCE_AUTORISES',
+      'estCleSourceAvatar', 'extensionSourceAvatar', 'typeSourceAvatar',
+    ]);
+  });
+});
+
+describe('cleSourceDepuisUrlLegacy — la forme exacte de getPublicUrl(), et la propriété', () => {
+  const RELAIS = 'https://studiio.pro/storage/v1/object/public/media';
+
+  it('extrait la clé d’un source_url du compte (absolu ou relatif)', () => {
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/avatar/source-1757000000000.jpg`, U)).toBe(`${U}/avatar/source-1757000000000.jpg`);
+    expect(cleSourceDepuisUrlLegacy(`/storage/v1/object/public/media/${U}/avatar/source-1.mp4`, U)).toBe(`${U}/avatar/source-1.mp4`);
+  });
+
+  it('⚠️ refuse : autre compte, autre bucket, autre namespace, vidéo générée', () => {
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${AUTRUI}/avatar/source-1.jpg`, U)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`https://studiio.pro/storage/v1/object/public/videos/${U}/avatar/source-1.jpg`, U)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/lut/source-1.jpg`, U)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/avatar/${GEN}.mp4`, U)).toBeNull();
+  });
+
+  it('refuse : domaine/chemin forgé, préfixe répété, query/fragment/encodage, malformé, vide', () => {
+    for (const url of [
+      `https://evil.example/${U}/avatar/source-1.jpg`,
+      `https://evil.example/x/storage/v1/object/public/media/${U}/avatar/source-1.jpg/../${AUTRUI}/avatar/source-1.jpg`,
+      `${RELAIS}/${U}/avatar/source-1.jpg?x=1`,
+      `${RELAIS}/${U}/avatar/source-1.jpg#f`,
+      `${RELAIS}/${U}%2Favatar%2Fsource-1.jpg`,
+      `${RELAIS}/x${RELAIS}/${U}/avatar/source-1.jpg`,
+      `${RELAIS}/`,
+      `${RELAIS}`,
+      'pas une url', '', null, undefined, 42,
+    ]) {
+      expect(cleSourceDepuisUrlLegacy(url, U), String(url)).toBeNull();
+    }
   });
 });
 
@@ -263,5 +323,18 @@ describe('sourceAvatarPresente / ouvrirSourceAvatar — après le contrôle de p
     expect(r).not.toBeNull();
     expect(r!.type).toBe('video/mp4');
     expect(r!.taille).toBe(2048);
+  });
+});
+
+describe('AVATAR-2B — le fournisseur ne dépend d’aucune URL publique', () => {
+  it('⚠️ HeyGen reçoit les octets en multipart (uploadAsset), jamais source_url', () => {
+    const heygen = readFileSync(resolve(__dirname, '../lib/avatar/heygen.ts'), 'utf8');
+    const create = readFileSync(resolve(__dirname, '../app/api/avatar/create/route.ts'), 'utf8');
+    expect(heygen).not.toMatch(/source_url|sourceUrl|getPublicUrl/);
+    // Le POST envoie le buffer reçu ; la seule URL publique produite ne part
+    // qu'en base (localisateur legacy), jamais vers le fournisseur.
+    expect(create).toMatch(/uploadAsset\(\s*new Blob\(\[buffer\]/);
+    expect(create).not.toMatch(/uploadAsset\([^)]*sourceUrl/);
+    expect(create).not.toMatch(/createAvatarFromAsset\([^)]*sourceUrl/);
   });
 });
