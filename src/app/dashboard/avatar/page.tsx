@@ -16,6 +16,7 @@ import {
   Play,
 } from 'lucide-react';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
+import MaVoixPanel from '@/components/voice/MaVoixPanel';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
@@ -987,6 +988,9 @@ export default function AvatarPage() {
           Il est donc affiche des la premiere visite, avant meme qu'un avatar
           existe. */}
       <VoiceCloneRecorder />
+      {/* Ma voix & prononciations — la voix utilisée, les prononciations,
+          l'aperçu affiché/prononcé, l'écoute réelle ou son indisponibilité. */}
+      <MaVoixPanel />
 
       {/* Aperçu du résultat */}
       {videoUrl && (

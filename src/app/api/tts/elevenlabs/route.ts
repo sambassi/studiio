@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } from '@/lib/types/voice';
 import { listUserVoices } from '@/lib/voice/store';
+import { voixUtilisable } from '@/lib/voice/profil';
 
 /**
  * TTS ElevenLabs — synthese vocale, et liste des voix du compte.
@@ -139,6 +140,29 @@ export async function GET() {
   }
 }
 
+/**
+ * Une voix est-elle AUTORISÉE pour ce compte ?
+ *
+ * ⚠️ LE `voice_id` VIENT DU NAVIGATEUR, ET LE COMPTE ELEVENLABS EST PARTAGÉ :
+ * la forme seule ne dit pas à qui la voix appartient. Deux familles, et
+ * rien d'autre :
+ *   A. une voix CLONÉE de CE compte — `user_voices` pour `user_id` de la
+ *      session, fournisseur ElevenLabs, `provider_voice_id` exact,
+ *      utilisable (`voixUtilisable`) ;
+ *   B. une voix du CATALOGUE partagé — présente dans `listCatalogVoices()`
+ *      (catégories publiques seulement : les voix clonées de tout le monde
+ *      en sont filtrées).
+ * La voix clonée d'autrui n'est dans aucune des deux : refusée, et le
+ * fournisseur n'est pas appelé. Le refus est un 404 uniforme — un 403
+ * confirmerait l'existence d'une voix qui n'est pas à vous.
+ */
+async function voixAutorisee(userId: string, voiceId: string): Promise<boolean> {
+  const miennes = await listUserVoices(userId);
+  if (miennes.some((v) => v.provider === 'elevenlabs' && v.provider_voice_id === voiceId && voixUtilisable(v))) return true;
+  const catalogue = await listCatalogVoices();
+  return catalogue.some((v) => v.id === `${ELEVENLABS_VOICE_PREFIX}${voiceId}`);
+}
+
 /** POST /api/tts/elevenlabs — `{ text, voice }` → audio brut. */
 export async function POST(req: NextRequest) {
   try {
@@ -172,6 +196,10 @@ export async function POST(req: NextRequest) {
     // fabriquerait une requete vers un autre endpoint.
     if (!voiceId || !/^[A-Za-z0-9_-]{8,64}$/.test(voiceId)) {
       return NextResponse.json({ error: 'Invalid voice' }, { status: 400 });
+    }
+    // ⚠️ AVANT tout appel de synthèse : la voix doit être la mienne ou publique.
+    if (!(await voixAutorisee(session.user.id, voiceId))) {
+      return NextResponse.json({ error: 'Unknown voice' }, { status: 404 });
     }
 
     const controller = new AbortController();

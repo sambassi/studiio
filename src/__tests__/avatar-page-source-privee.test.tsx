@@ -11,6 +11,7 @@ import { resolve } from 'path';
  */
 
 vi.mock('@/components/voice/VoiceCloneRecorder', () => ({ default: () => null }));
+vi.mock('@/components/voice/MaVoixPanel', () => ({ default: () => null }));
 
 import AvatarPage from '../app/dashboard/avatar/page';
 

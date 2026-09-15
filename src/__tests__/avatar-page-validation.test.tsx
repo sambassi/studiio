@@ -9,6 +9,7 @@ import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/re
  */
 
 vi.mock('@/components/voice/VoiceCloneRecorder', () => ({ default: () => null }));
+vi.mock('@/components/voice/MaVoixPanel', () => ({ default: () => null }));
 
 import AvatarPage from '../app/dashboard/avatar/page';
 
