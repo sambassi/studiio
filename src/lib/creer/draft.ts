@@ -58,6 +58,13 @@ export interface Draft {
   version: number;
   savedAt: number;
   started?: boolean;
+  /**
+   * « Utiliser mon jumeau ». Absent ou false = le parcours normal, celui de
+   * tous les brouillons anterieurs. `true` = demande explicite — et SEULEMENT
+   * une demande : le serveur relit l'avatar et la voix du compte avant de
+   * dire si le jumeau est utilisable ; rien d'autre n'est persiste ici.
+   */
+  useDigitalTwin?: boolean;
   step?: number;
   themeId?: string;
   customTopic?: string;
@@ -458,6 +465,8 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     version: DRAFT_VERSION,
     savedAt: typeof raw.savedAt === 'number' ? raw.savedAt : 0,
     started: raw.started === true,
+    // Seul le booleen `true` active le jumeau ; tout le reste = parcours normal.
+    useDigitalTwin: raw.useDigitalTwin === true,
     // L'écran d'envoi n'est jamais restauré : il annonce un rendu et un débit
     // qui n'ont pas eu lieu. Une étape au-delà est RAMENEE à la dernière sûre
     // — repartir de l'étape 1 ferait refaire tout le parcours.
