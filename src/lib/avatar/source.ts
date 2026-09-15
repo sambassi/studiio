@@ -20,13 +20,14 @@
  * (ffprobe), l'aperçu. Ce sont les lots suivants.
  */
 
+import { randomBytes } from 'node:crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { clientMinio, lecteurMinio, type BorneReseau } from '@/lib/storage/minio-client';
 import {
   BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR, cleDansNamespaceAvatar, cleObjetValide,
 } from '@/lib/storage/acces-objet';
 import {
-  TYPES_SOURCE_AUTORISES, estCleSourceAvatar, typeSourceAvatar, extensionSourceAvatar,
+  TYPES_SOURCE_AUTORISES, LONGUEUR_NONCE_SOURCE, estCleSourceAvatar, typeSourceAvatar, extensionSourceAvatar,
 } from '@/lib/avatar/source-cle';
 
 /* La FORME d'une clé vit dans `source-cle` (module pur, partagé avec le
@@ -38,19 +39,29 @@ export const BUCKET_AVATAR = BUCKET_NAMESPACE_AVATAR;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Un nonce SERVEUR, cryptographique : 16 octets, jamais du navigateur, jamais un aléa faible. */
+export function nonceSourceAvatar(): string {
+  return randomBytes(LONGUEUR_NONCE_SOURCE / 2).toString('hex');
+}
+
 /**
  * La clé d'une NOUVELLE source, construite ici et nulle part ailleurs.
  *
- * L'horodatage est l'identité de la version : deux sources du même compte ne
- * partagent jamais une clé, et remplacer une source n'écrase pas l'ancienne
- * (elle est retirée séparément, après que la base pointe la nouvelle).
+ * Horodatage + nonce sont l'identité de la version : deux requêtes du même
+ * compte dans la MÊME milliseconde ont deux clés — aucune n'écrase l'autre
+ * (`upsert`), aucune perdante ne peut retirer la gagnante. Remplacer une
+ * source n'écrase donc jamais l'ancienne : elle est retirée séparément, après
+ * que la base pointe la nouvelle.
  */
-export function cleSourceAvatar(userId: string, extension: string, horodatage = Date.now()): string {
+export function cleSourceAvatar(
+  userId: string, extension: string, horodatage = Date.now(), nonce = nonceSourceAvatar(),
+): string {
   if (!UUID.test(userId)) throw new Error('cleSourceAvatar: identifiant de compte invalide');
   const ext = extensionSourceAvatar(`x.${extension}`);
   if (!ext) throw new Error(`cleSourceAvatar: format non autorisé (${extension})`);
   if (!Number.isInteger(horodatage) || horodatage < 0) throw new Error('cleSourceAvatar: horodatage invalide');
-  return `${userId}/${SEGMENT_NAMESPACE_AVATAR}/source-${horodatage}.${ext}`;
+  if (!new RegExp(`^[0-9a-f]{${LONGUEUR_NONCE_SOURCE}}$`).test(nonce)) throw new Error('cleSourceAvatar: nonce invalide');
+  return `${userId}/${SEGMENT_NAMESPACE_AVATAR}/source-${horodatage}-${nonce}.${ext}`;
 }
 
 /**

@@ -125,6 +125,17 @@ describe('GET /api/avatar/source — accès', () => {
     expect(etat.requetes[0]).toContain('is:deleted_at');
   });
 
+  it('200 : une source au NOUVEAU format (nonce) est servie, comme l’ancien', async () => {
+    const cle = `${U}/avatar/source-1757900000000-${'d'.repeat(32)}.webm`;
+    etat.lignes = [ligne({ source_object_key: cle })];
+    etat.objets.set(cle, 777);
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('video/webm');
+    expect(res.headers.get('content-length')).toBe('777');
+    expect(etat.lectures).toEqual([cle]);
+  });
+
   it('200 : une photo legacy (source_url seul) est servie via la clé dérivée, en image/jpeg', async () => {
     const cle = `${U}/avatar/source-1757000000000.jpg`;
     etat.lignes = [ligne({ source_object_key: null, source_url: `${RELAIS}/${cle}` })];

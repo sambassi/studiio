@@ -35,6 +35,23 @@ export const TEXTE_CONSENTEMENT =
   + 'un clone vidéo de mon apparence pour générer des vidéos à ma demande. Je peux le '
   + 'supprimer à tout moment.';
 
+/**
+ * Les textes que `/api/avatar/create` fait certifier À CHAQUE ENVOI — un par
+ * nature d'avatar, MOT POUR MOT ceux que le POST affiche et stocke depuis
+ * F4b/F9.0 (2026-07-28). Ce sont eux que `consent_text` reçoit ; leur
+ * version est ce que `consent_version` reçoit. Changer un mot = changer la
+ * version. (Distinct de `TEXTE_CONSENTEMENT`, texte du lot historique A_8c.)
+ */
+export const CONSENTEMENT_ENROLEMENT = {
+  version: 'enrolement-2026-07-28',
+  textes: {
+    photo:
+      "Je certifie etre la personne visible sur l'image et j'autorise Studiio a en creer un avatar anime.",
+    video:
+      "Je certifie etre la personne visible dans la video et j'autorise Studiio et HeyGen a l'utiliser pour entrainer un avatar a mon effigie.",
+  },
+} as const;
+
 export function estSujetAvatar(valeur: unknown): valeur is SujetAvatar {
   return typeof valeur === 'string' && (SUJETS_AVATAR as readonly string[]).includes(valeur);
 }

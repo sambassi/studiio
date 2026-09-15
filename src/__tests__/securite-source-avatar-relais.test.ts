@@ -64,6 +64,8 @@ describe('cleSourceAvatarPrivee — la règle canonique, sur toutes les formes',
   it('reconnaît une source, pas une vidéo générée, pas un autre namespace, pas un autre bucket', () => {
     expect(cleSourceAvatarPrivee('media', `${U}/avatar/source-1757000000000.jpg`)).toBe(true);
     expect(cleSourceAvatarPrivee('media', `${U}/avatar/source-1.mp4`)).toBe(true);
+    expect(cleSourceAvatarPrivee('media', `${U}/avatar/source-1-${'c'.repeat(32)}.mp4`)).toBe(true);
+    expect(cleSourceAvatarPrivee('media', `${U}/avatar/source-1-${'c'.repeat(31)}.mp4`)).toBe(false);
     expect(cleSourceAvatarPrivee('media', `${U}/avatar/${GEN}.mp4`)).toBe(false);
     expect(cleSourceAvatarPrivee('media', `${U}/rush/source-1.mp4`)).toBe(false);
     expect(cleSourceAvatarPrivee('videos', `${U}/avatar/source-1.mp4`)).toBe(false);
@@ -83,8 +85,11 @@ describe('cleSourceAvatarPrivee — la règle canonique, sur toutes les formes',
 });
 
 describe('relais public — la source est refusée, GET et HEAD, avant MinIO', () => {
+  const NONCE = 'c'.repeat(32);
   const SOURCES = [
     ['source-1757000000000.jpg'], ['source-1757000000000.mp4'], ['source-7.webm'], ['source-7.png'],
+    // Le format AVATAR-2A, avec nonce : bloqué de la même façon.
+    [`source-1757000000000-${NONCE}.jpg`], [`source-1757000000000-${NONCE}.mp4`],
   ];
 
   it('⚠️ GET source-<ts>.<ext> → 404, MinIO jamais appelé', async () => {

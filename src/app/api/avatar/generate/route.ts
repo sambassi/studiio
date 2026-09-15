@@ -65,8 +65,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Avatar de l'utilisateur — on verifie explicitement la propriete.
-    const query = supabaseAdmin.from('user_avatars').select('*').eq('user_id', userId);
+    // Avatar de l'utilisateur — on verifie explicitement la propriete, et
+    // seul un avatar VIVANT (`deleted_at` NULL) peut parler.
+    const query = supabaseAdmin.from('user_avatars').select('*').eq('user_id', userId).is('deleted_at', null);
     const { data: avatarRows } = avatarRowId
       ? await query.eq('id', avatarRowId).limit(1)
       : await query.order('created_at', { ascending: false }).limit(1);
@@ -82,6 +83,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { success: false, error: 'Consentement manquant sur cet avatar.' },
         { status: 403 },
+      );
+    }
+    // Sans identifiant fournisseur, il n'y a pas de clone : la source est
+    // enregistree, mais rien ne peut parler. On ne sollicite jamais HeyGen
+    // avec `null` — ni pour le statut, ni pour une video.
+    if (!avatarRow.provider_avatar_id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Votre avatar n'est pas encore entraine. Renvoyez votre source depuis la page Avatar.",
+          code: 'avatar_no_provider',
+        },
+        { status: 409 },
       );
     }
 
@@ -182,6 +196,9 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id: userId,
         user_avatar_id: avatarRow.id,
+        // La version du clone qui parle : l'historique sait, plus tard, quelle
+        // source a produit cette video (NULL = anterieure au versioning).
+        avatar_version: avatarRow.version ?? null,
         provider_video_id: videoId,
         script,
         voice_id: resolvedVoiceId,

@@ -99,14 +99,45 @@ describe('commencerNouvelleVersionAvatar — compare-and-set sur la version', ()
     expect(l.created_at).toBe('2026-09-01T00:00:00Z');
   });
 
-  it('⚠️ le complément ne peut pas contredire le patch (version, statut, fournisseur)', async () => {
+  it('⚠️ le complément ne peut pas contredire le patch (version, statut, fournisseur) ni toucher id / user_id / deleted_at', async () => {
     await commencerNouvelleVersionAvatar({
       userId: U, avatarId: A, versionAttendue: 1,
-      complement: { version: 9, status: 'completed', provider_avatar_id: 'faux' } as never,
+      complement: {
+        version: 9, status: 'completed', provider_avatar_id: 'faux', validated_at: 'x',
+        id: 'autre', user_id: AUTRUI, deleted_at: '2026-09-15T00:00:00Z', source_url: 'https://evil/x',
+      } as never,
     });
-    expect(base.lignes[0].version).toBe(2);
-    expect(base.lignes[0].status).toBe(ETAT_SOURCE_PRETE);
-    expect(base.lignes[0].provider_avatar_id).toBeNull();
+    const l = base.lignes[0];
+    expect(l.version).toBe(2);
+    expect(l.status).toBe(ETAT_SOURCE_PRETE);
+    expect(l.provider_avatar_id).toBeNull();
+    expect(l.validated_at).toBeNull();
+    expect(l.id).toBe(A);
+    expect(l.user_id).toBe(U);
+    expect(l.deleted_at).toBeNull();
+    // `source_url` n'est admis qu'à null : une valeur est ignorée.
+    expect((l as Ligne & { source_url?: unknown }).source_url).toBeUndefined();
+    expect(base.journal[0]).not.toMatch(/deleted_at|user_id|\bid\b|source_url/);
+  });
+
+  it('le complément élargi (AVATAR-2A) réécrit nature, nom, sujet, consentement, et met source_url à NULL', async () => {
+    (base.lignes[0] as Ligne & { source_url?: string | null }).source_url = 'https://studiio.pro/x';
+    const r = await commencerNouvelleVersionAvatar({
+      userId: U, avatarId: A, versionAttendue: 1,
+      complement: {
+        source_object_key: `${U}/avatar/source-2-${'a'.repeat(32)}.mp4`, source_url: null,
+        avatar_type: 'video', name: 'Nouveau', subject_type: 'self',
+        consent_version: 'enrolement-2026-07-28', consent_text: 'texte', consent_at: '2026-09-15T00:00:00Z',
+      },
+    });
+    expect(r.ok).toBe(true);
+    const l = base.lignes[0] as Ligne & { avatar_type?: string; name?: string; subject_type?: string; source_url?: string | null };
+    expect(l.avatar_type).toBe('video');
+    expect(l.name).toBe('Nouveau');
+    expect(l.subject_type).toBe('self');
+    expect(l.source_url).toBeNull();
+    expect(l.consent_version).toBe('enrolement-2026-07-28');
+    expect(l.version).toBe(2);
   });
 
   it('⚠️ version concurrente : la seconde écriture ne touche rien et le dit', async () => {

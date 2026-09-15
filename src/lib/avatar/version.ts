@@ -62,6 +62,44 @@ export function patchNouvelleVersion(avatar: AvatarVersionnable): PatchNouvelleV
   };
 }
 
+/**
+ * Ce qu'une nouvelle version peut RÉÉCRIRE en plus du patch : la source, le
+ * consentement (renouvelé à chaque envoi), la nature et le nom, et
+ * `source_url` — à `null` seulement : une source AVATAR-2A n'a plus d'URL,
+ * `source_object_key` est son identité.
+ */
+export interface ComplementNouvelleVersion {
+  source_object_key?: string;
+  consent_version?: string;
+  consent_text?: string;
+  consent_at?: string;
+  subject_type?: 'self' | 'third_party';
+  avatar_type?: 'photo' | 'video';
+  name?: string;
+  source_url?: null;
+}
+
+const CLES_COMPLEMENT = new Set<keyof ComplementNouvelleVersion>([
+  'source_object_key', 'consent_version', 'consent_text', 'consent_at',
+  'subject_type', 'avatar_type', 'name', 'source_url',
+]);
+
+/**
+ * Seules les clés admises passent — `id`, `user_id`, `deleted_at`, ou
+ * n'importe quelle colonne glissée par un appelant, sont écartées ici, en
+ * plus des clés que le patch écrase de toute façon. `source_url` n'est admis
+ * qu'à `null`.
+ */
+function complementAdmissible(complement: ComplementNouvelleVersion | undefined): Partial<ComplementNouvelleVersion> {
+  const admis: Record<string, unknown> = {};
+  for (const [cle, valeur] of Object.entries(complement ?? {})) {
+    if (!CLES_COMPLEMENT.has(cle as keyof ComplementNouvelleVersion)) continue;
+    if (cle === 'source_url' && valeur !== null) continue;
+    admis[cle] = valeur;
+  }
+  return admis as Partial<ComplementNouvelleVersion>;
+}
+
 export type MotifNouvelleVersion = 'introuvable' | 'version_concurrente' | 'version_invalide' | 'source_invalide';
 
 export interface AvatarVersionne extends AvatarVersionnable {
@@ -93,7 +131,7 @@ export async function commencerNouvelleVersionAvatar(args: {
   userId: string;
   avatarId: string;
   versionAttendue: number;
-  complement?: { source_object_key?: string; consent_version?: string; consent_text?: string; consent_at?: string };
+  complement?: ComplementNouvelleVersion;
 }): Promise<{ ok: true; avatar: AvatarVersionne } | { ok: false; motif: MotifNouvelleVersion }> {
   const patch = patchNouvelleVersion({ version: args.versionAttendue, deleted_at: null });
   if (!patch) return { ok: false, motif: 'version_invalide' };
@@ -104,7 +142,7 @@ export async function commencerNouvelleVersionAvatar(args: {
 
   const { data, error } = await supabaseAdmin
     .from('user_avatars')
-    .update({ ...(args.complement ?? {}), ...patch })
+    .update({ ...complementAdmissible(args.complement), ...patch })
     .eq('id', args.avatarId)
     .eq('user_id', args.userId)
     .is('deleted_at', null)
