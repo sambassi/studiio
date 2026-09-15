@@ -432,6 +432,50 @@ export async function generateAvatarVideo(
   return { videoId, status: data?.status ?? 'pending' };
 }
 
+/**
+ * POST /v3/videos — AVEC UN AUDIO EXTERNE : l'avatar est animé sur un
+ * fichier audio déjà produit (la voix personnelle ElevenLabs du compte),
+ * jamais sur un `voice_id` HeyGen.
+ *
+ * Contrat documenté par HeyGen (developers.heygen.com, « Audio to Video »,
+ * lu le 2026-09-15) : même endpoint `/v3/videos`, `type: "avatar"` +
+ * `avatar_id` (jumeau numérique ou photo), et EXACTEMENT UNE source audio,
+ * exclusive de `script` : `audio_asset_id` (asset déposé par POST /v3/assets,
+ * MP3 ou WAV, ≤ 32 Mo, ≤ 30 min) ou `audio_url` (HTTPS public). On n'utilise
+ * QUE `audio_asset_id` : l'audio — une voix, donnée biométrique — ne sort
+ * jamais sur une URL publique ; il part au fournisseur par le même dépôt
+ * multipart que la source de l'avatar. Ni `script`, ni `voice_id` : le
+ * fournisseur ne doit rien synthétiser lui-même.
+ */
+export async function generateAvatarVideoFromAudio(params: {
+  avatarId: string;
+  audioAssetId: string;
+  aspectRatio?: AvatarAspectRatio;
+}): Promise<{ videoId: string; status: string }> {
+  const { avatarId, audioAssetId, aspectRatio = '9:16' } = params;
+  if (!audioAssetId || !audioAssetId.trim()) {
+    throw new HeyGenError("Aucun audio fourni pour animer l'avatar.", 400, 'no_audio_asset');
+  }
+  const body: Record<string, unknown> = {
+    type: 'avatar',
+    avatar_id: avatarId,
+    audio_asset_id: audioAssetId,
+    aspect_ratio: aspectRatio,
+    resolution: '720p',
+    output_format: 'mp4',
+  };
+  console.log('[Avatar][HeyGen] POST /v3/videos (audio externe) payload', JSON.stringify(body));
+  const data = await heygenFetch<{ video_id?: string; id?: string; status?: string }>(
+    '/v3/videos',
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 60_000 },
+  );
+  const videoId = data?.video_id ?? data?.id;
+  if (!videoId) {
+    throw new HeyGenError("HeyGen n'a pas retourne d'identifiant de video.", 502, 'no_video_id');
+  }
+  return { videoId, status: data?.status ?? 'pending' };
+}
+
 // ── 4. Statut de la video ─────────────────────────────────────────────────
 
 export type HeyGenVideoStatus = 'pending' | 'processing' | 'completed' | 'failed';

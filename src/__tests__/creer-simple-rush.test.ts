@@ -31,7 +31,9 @@ describe('Créer (simple) — import d’un rush', () => {
     // Conditionné à la séquence : un rush transmis alors que la séquence est
     // masquée force le rendu temps réel pour rien (`hasRushAudio`).
     expect(wizardSource).toMatch(
-      /videoUrl:\s*seqDuration\('video'\) > 0 \? rushUrl \|\| undefined : undefined/,
+      // `plateau` / `duree` : le rush et la duree lus pour CE passage — l'etat de
+      // l'ecran, ou la video du jumeau qui vient d'etre posee (un seul clic).
+      /videoUrl:\s*duree\('video'\) > 0 \? plateau\.rushUrl \|\| undefined : undefined/,
     );
   });
 
@@ -39,7 +41,7 @@ describe('Créer (simple) — import d’un rush', () => {
     // `regenerateMontage` (calendar/page.tsx) lit `meta.rushUrls?.[0]`. Sans
     // ce champ, une régénération produirait le même montage sans sa séquence
     // vidéo. Même condition que `videoUrl`.
-    expect(wizardSource).toMatch(/rushUrls:\s*\n?\s*seqDuration\('video'\) > 0 && persistableUrl\(rushUrl\)/);
+    expect(wizardSource).toMatch(/rushUrls:\s*\n?\s*duree\('video'\) > 0 && persistableUrl\(plateau\.rushUrl\)/);
   });
 
   it('déclare `hasAudio` quand le rush apporte sa propre piste', () => {
@@ -49,7 +51,7 @@ describe('Créer (simple) — import d’un rush', () => {
     expect(wizardSource).toMatch(
       // Les voix PAR SEQUENCE comptent aussi : sans elles dans ce calcul, le
       // Calendrier croirait le montage muet alors qu'il porte du son.
-      /hasAudio:\s*!!\(musicUrl \|\| voiceUrl \|\| sequenceVoiceUrls \|\| \(rushUrl && seqDuration\('video'\) > 0\)\)/,
+      /hasAudio:\s*!!\(musicUrl \|\| voiceUrl \|\| sequenceVoiceUrls \|\| \(plateau\.rushUrl && duree\('video'\) > 0\)\)/,
     );
   });
 

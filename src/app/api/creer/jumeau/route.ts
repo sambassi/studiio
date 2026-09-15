@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import {
-  resoudreJumeauDuCompte, scriptsDuJumeau, MOTEUR_JUMEAU_DISPONIBLE, MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE,
+  resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponible, MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE,
 } from '@/lib/avatar/jumeau';
 
 export const dynamic = 'force-dynamic';
@@ -22,6 +22,7 @@ const MAX_TEXTES = 20;
 const MAX_TEXTE = 2000;
 
 function reponse(r: Awaited<ReturnType<typeof resoudreJumeauDuCompte>>, extra: Record<string, unknown> = {}) {
+  const MOTEUR_JUMEAU_DISPONIBLE = moteurJumeauDisponible();
   if (r.ok) {
     return NextResponse.json({
       success: true,

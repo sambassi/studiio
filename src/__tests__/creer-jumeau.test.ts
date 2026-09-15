@@ -49,9 +49,9 @@ vi.mock('@/lib/db/supabase', () => {
 const session = vi.hoisted(() => ({ courante: { user: { id: 'aaaaaaaa-1111-4111-8111-111111111111' } } as unknown }));
 vi.mock('@/lib/auth/config', () => ({ auth: async () => session.courante }));
 
-const { resoudreJumeauDuCompte, scriptsDuJumeau, MOTEUR_JUMEAU_DISPONIBLE } = await import('@/lib/avatar/jumeau');
+const { resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponible } = await import('@/lib/avatar/jumeau');
 const { GET, POST } = await import('@/app/api/creer/jumeau/route');
-const { gardeJumeauAvantRendu, JUMEAU_INDISPONIBLE } = await import('@/lib/creer/jumeau');
+const { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, JUMEAU_INDISPONIBLE } = await import('@/lib/creer/jumeau');
 
 const avatar = (over: Ligne = {}): Ligne => ({
   id: A, user_id: U, status: 'completed', provider_avatar_id: 'hg-1', provider_asset_id: 'as-1',
@@ -133,8 +133,14 @@ describe('resoudreJumeauDuCompte — prêt seulement si TOUT est vrai', () => {
     expect(s).toEqual([{ display: 'Bienvenue chez Afroboost à Neuchâtel.', spoken: 'Bienvenue chez Afro-boust à Neu-cha-tel.' }]);
   });
 
-  it('⚠️ le moteur vidéo du jumeau n’est PAS disponible sur cette version — et on le dit', () => {
-    expect(MOTEUR_JUMEAU_DISPONIBLE).toBe(false);
+  it('⚠️ le moteur vidéo du jumeau n’est disponible QUE sur activation explicite + fournisseurs configurés — jamais par défaut', () => {
+    const env = (v: Record<string, string>) => v as unknown as NodeJS.ProcessEnv;
+    expect(moteurJumeauDisponible(env({}))).toBe(false);
+    expect(moteurJumeauDisponible(env({ HEYGEN_API_KEY: 'h', ELEVENLABS_API_KEY: 'e' }))).toBe(false);
+    expect(moteurJumeauDisponible(env({ JUMEAU_MOTEUR_ACTIVE: '1' }))).toBe(false);
+    expect(moteurJumeauDisponible(env({ JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'h' }))).toBe(false);
+    expect(moteurJumeauDisponible(env({ JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'h', ELEVENLABS_API_KEY: 'e' }))).toBe(true);
+    expect(moteurJumeauDisponible(env({ JUMEAU_MOTEUR_ACTIVE: 'true', HEYGEN_API_KEY: 'h', ELEVENLABS_API_KEY: 'e' }))).toBe(false);
   });
 });
 
@@ -184,5 +190,41 @@ describe('gardeJumeauAvantRendu — le garde côté navigateur', () => {
     const pret = { pret: true, motif: null, message: null, jumeau: null, moteurDisponible: false, messageMoteur: 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' };
     expect(await gardeJumeauAvantRendu({ useDigitalTwin: true, textes: [], verifier: async () => pret })).toBe(pret.messageMoteur);
     expect(await gardeJumeauAvantRendu({ useDigitalTwin: true, textes: [], verifier: async () => ({ ...pret, moteurDisponible: true, messageMoteur: null }) })).toBeNull();
+  });
+});
+
+describe('genererEtAttendreVideoJumeau — lancer, suivre par /api/avatar/status, rendre la vraie URL ou lever', () => {
+  const json = (status: number, body: unknown) => ({ ok: status < 400, status, json: async () => body } as unknown as Response);
+  const fetchAvec = (statuts: Array<{ status: string; videoUrl?: string | null; error?: string }>, lancement = json(200, { success: true, data: { generationId: 'g-1', status: 'pending', avatarVersion: 3 } })) => {
+    let i = 0;
+    const appels: string[] = [];
+    const f = vi.fn(async (url: unknown, init?: RequestInit) => {
+      const u = String(url); appels.push(`${init?.method ?? 'GET'} ${u}`);
+      if (u === '/api/creer/jumeau/generer') return lancement;
+      if (u.startsWith('/api/avatar/status?generationId=g-1')) return json(200, { success: true, data: statuts[Math.min(i++, statuts.length - 1)] });
+      throw new Error(`fetch inattendu ${u}`);
+    });
+    return { f: f as unknown as typeof fetch, appels };
+  };
+  const rapide = async () => {};
+
+  it('⚠️ pending → processing → completed : rend l’URL re-hébergée, la génération et la version ; les étapes sont annoncées', async () => {
+    const { f, appels } = fetchAvec([{ status: 'pending', videoUrl: null }, { status: 'processing', videoUrl: null }, { status: 'completed', videoUrl: '/storage/v1/object/public/media/u/avatar/g-1.mp4' }]);
+    const etapes: string[] = [];
+    const r = await genererEtAttendreVideoJumeau({ textes: ['Bonjour'], aspectRatio: '9:16', fetchImpl: f, attendreMs: rapide, onEtape: (m) => etapes.push(m) });
+    expect(r).toEqual({ url: '/storage/v1/object/public/media/u/avatar/g-1.mp4', generationId: 'g-1', avatarVersion: 3 });
+    expect(appels[0]).toBe('POST /api/creer/jumeau/generer');
+    expect(appels.filter((a) => a.includes('/api/avatar/status'))).toHaveLength(3);
+    expect(etapes[0]).toBe('Génération de votre jumeau…');
+  });
+
+  it('⚠️ failed → lève avec le message serveur ; lancement refusé (409/503/502) → lève, aucun polling ; jamais une URL sans completed', async () => {
+    const { f } = fetchAvec([{ status: 'failed', videoUrl: null, error: 'HeyGen a signale un echec. Credits rembourses.' }]);
+    await expect(genererEtAttendreVideoJumeau({ textes: ['x'], aspectRatio: '9:16', fetchImpl: f, attendreMs: rapide })).rejects.toThrow(/HeyGen a signale un echec/);
+    const refus = fetchAvec([], json(503, { success: false, error: 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' }));
+    await expect(genererEtAttendreVideoJumeau({ textes: ['x'], aspectRatio: '9:16', fetchImpl: refus.f, attendreMs: rapide })).rejects.toThrow(/pas encore disponible/);
+    expect(refus.appels.filter((a) => a.includes('/api/avatar/status'))).toEqual([]);
+    const jamais = fetchAvec([{ status: 'processing', videoUrl: '/x.mp4' }]);
+    await expect(genererEtAttendreVideoJumeau({ textes: ['x'], aspectRatio: '9:16', fetchImpl: jamais.f, attendreMs: rapide, maxAttenteMs: 1 })).rejects.toThrow(/trop de temps/);
   });
 });
