@@ -857,3 +857,23 @@ relancer les tests AVANT de commiter. Si rien ne rougit : soit le test est
 décoratif (le renforcer), soit la garde est morte (la supprimer, et dire
 pourquoi le comportement tient sans elle). Un commentaire qui justifie une
 ligne morte est pire que la ligne.
+
+## [2026-09-15] Un test ne doit jamais faire d'hypothèse sur une ressource GLOBALE partagée entre workers
+
+**Ce qui a mal tourné** — `autopilote-m3h-rendu-moteur` comptait tous les
+dossiers `studiio-m3h-*` de `tmpdir()` avant et après deux rendus, et exigeait
+le même nombre. Sur CI, Vitest exécute les fichiers en parallèle :
+`autopilote-m3h-finalisation` rend de vraies vidéos au même moment et possède
+légitimement son propre dossier à l'instant du second comptage. Le test
+rougissait (9 fois en deux jours, sur des PR qui ne touchaient pas ce module)
+sans qu'aucun nettoyage n'ait échoué — et bloquait la CI de `main`.
+Localement il ne tombait jamais : trop rapide pour que les rendus se
+chevauchent.
+
+**Règle** — Une assertion de nettoyage porte sur LA ressource créée par
+l'appel testé (chemin exact, journalisé par un wrapper de la fonction qui
+l'ouvre), jamais sur l'état global d'un répertoire ou d'un compteur partagé.
+Pour prouver la course, simuler « l'autre worker » (un dossier du même
+préfixe ouvert/fermé en boucle pendant le cas) : ancienne assertion 5/5
+rouge, nouvelle 0/5 — et une mutation du nettoyage de production doit
+toujours faire rougir la nouvelle assertion.
