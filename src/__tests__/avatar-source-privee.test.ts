@@ -57,7 +57,7 @@ vi.mock('@/lib/storage/minio-client', () => ({
 import {
   cleSourceAvatar, cleSourceAvatarDuCompte, cleAvatarDuCompte, typeSourceAvatar, extensionSourceAvatar,
   retirerSourceAvatar, sourceAvatarPresente, ouvrirSourceAvatar, BUCKET_AVATAR, TYPES_SOURCE_AUTORISES,
-  cleSourceDepuisUrlLegacy, basesUrlPubliqueStockage,
+  cleSourceDepuisUrlLegacy, basesUrlPubliqueStockage, nonceSourceAvatar,
 } from '@/lib/avatar/source';
 import * as pur from '@/lib/avatar/source-cle';
 import {
@@ -76,9 +76,11 @@ beforeEach(() => {
 });
 
 describe('cleSourceAvatar — construite par le serveur, dans la forme que main écrit déjà', () => {
-  it('⚠️ `<userId>/avatar/source-<horodatage>.<ext>` — mot pour mot create/route.ts:212', () => {
-    expect(cleSourceAvatar(U, 'mp4', 1757900000000)).toBe(`${U}/avatar/source-1757900000000.mp4`);
-    expect(cleSourceAvatar(U, 'JPG', 7)).toBe(`${U}/avatar/source-7.jpg`);
+  const NONCE = 'a'.repeat(32);
+
+  it('⚠️ `<userId>/avatar/source-<horodatage>-<nonce>.<ext>` — nonce serveur de 32 hexa', () => {
+    expect(cleSourceAvatar(U, 'mp4', 1757900000000, NONCE)).toBe(`${U}/avatar/source-1757900000000-${NONCE}.mp4`);
+    expect(cleSourceAvatar(U, 'JPG', 7, NONCE)).toBe(`${U}/avatar/source-7-${NONCE}.jpg`);
     expect(BUCKET_AVATAR).toBe('media');
     expect(BUCKET_NAMESPACE_AVATAR).toBe('media');
     expect(SEGMENT_NAMESPACE_AVATAR).toBe('avatar');
@@ -90,6 +92,36 @@ describe('cleSourceAvatar — construite par le serveur, dans la forme que main 
     expect(cleDansNamespaceAvatar('media', cle)).toBe(true);
     expect(clePossedeePar(cle, U)).toBe(true);
     expect(typeSourceAvatar(cle)).toBe('video/webm');
+  });
+
+  it('⚠️ CRYPTO : le nonce vient de crypto.randomBytes ; deux appels dans la même milliseconde → deux clés', () => {
+    const a = cleSourceAvatar(U, 'mp4', 1757900000000);
+    const b = cleSourceAvatar(U, 'mp4', 1757900000000);
+    expect(a).not.toBe(b);
+    expect(a).toMatch(new RegExp(`^${U}/avatar/source-1757900000000-[0-9a-f]{32}\\.mp4$`));
+    expect(nonceSourceAvatar()).toMatch(/^[0-9a-f]{32}$/);
+    expect(new Set(Array.from({ length: 200 }, () => nonceSourceAvatar())).size).toBe(200);
+    // Aucun Math.random dans la fabrique de clé.
+    const src = readFileSync(resolve(__dirname, '../lib/avatar/source.ts'), 'utf8');
+    expect(src).not.toMatch(/Math\.random/);
+    expect(src).toMatch(/randomBytes/);
+  });
+
+  it('⚠️ les DEUX formats sont des sources : historique `source-<ts>` et nouveau `source-<ts>-<nonce>`', () => {
+    const ancienne = `${U}/avatar/source-1757900000000.mp4`;
+    const nouvelle = `${U}/avatar/source-1757900000000-${NONCE}.mp4`;
+    for (const cle of [ancienne, nouvelle]) {
+      expect(cleSourceAvatarDuCompte(cle, U), cle).toBe(true);
+      expect(pur.estCleSourceAvatar(cle), cle).toBe(true);
+      expect(typeSourceAvatar(cle), cle).toBe('video/mp4');
+    }
+    // Nonce malformé : trop court, trop long, majuscules, non-hexa → pas une source.
+    for (const nom of [`source-1-${'a'.repeat(31)}.mp4`, `source-1-${'a'.repeat(33)}.mp4`, `source-1-${'A'.repeat(32)}.mp4`, `source-1-${'g'.repeat(32)}.mp4`, `source-1-.mp4`, `source--${NONCE}.mp4`]) {
+      expect(cleSourceAvatarDuCompte(`${U}/avatar/${nom}`, U), nom).toBe(false);
+    }
+    expect(() => cleSourceAvatar(U, 'mp4', 1, 'xyz')).toThrow(/nonce/);
+    // La vidéo générée reste distincte des deux formats.
+    expect(cleSourceAvatarDuCompte(`${U}/avatar/${GEN}.mp4`, U)).toBe(false);
   });
 
   it('refuse un compte non-UUID, un format inconnu, un horodatage invalide — rien n’est deviné', () => {
@@ -126,9 +158,11 @@ describe('source-cle — le module pur, seule définition de la forme', () => {
 
   it('le module pur n’importe ni base ni stockage', () => {
     expect(Object.keys(pur).sort()).toEqual([
-      'NOM_SOURCE_AVATAR', 'SEGMENT_SOURCE_AVATAR', 'TYPES_SOURCE_AUTORISES',
+      'LONGUEUR_NONCE_SOURCE', 'NOM_SOURCE_AVATAR', 'SEGMENT_SOURCE_AVATAR', 'TYPES_SOURCE_AUTORISES',
       'estCleSourceAvatar', 'extensionSourceAvatar', 'typeSourceAvatar',
     ]);
+    const src = readFileSync(resolve(__dirname, '../lib/avatar/source-cle.ts'), 'utf8');
+    expect(src).not.toMatch(/^import /m);
   });
 });
 

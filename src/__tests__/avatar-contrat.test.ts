@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  SUJET_AVATAR, SUJETS_AVATAR, VERSION_CONSENTEMENT, TEXTE_CONSENTEMENT, estSujetAvatar,
+  SUJET_AVATAR, SUJETS_AVATAR, VERSION_CONSENTEMENT, TEXTE_CONSENTEMENT, CONSENTEMENT_ENROLEMENT, estSujetAvatar,
   ETAT_SOURCE_PRETE, ETATS_PRETS, ETATS_FOURNISSEUR, ETATS_EN_COURS, estEtatLocal, estEtatPret, estEtatEnCours,
   INTENTION_APERCU, INTENTION_NORMALE, lireIntention,
   avatarLigneValide, etatAvatar, estActif, validationPossible, MESSAGES_VALIDATION,
@@ -33,6 +33,14 @@ describe('consentement et sujet — ce que la contrainte 1A accepte', () => {
     expect(estSujetAvatar('third_party')).toBe(true);
     expect(estSujetAvatar('moi')).toBe(false);
     expect(estSujetAvatar(null)).toBe(false);
+  });
+
+  it('⚠️ les textes d’enrôlement sont MOT POUR MOT ceux du POST create, versionnés, et certifient la personne visible', () => {
+    expect(CONSENTEMENT_ENROLEMENT.version).toBe('enrolement-2026-07-28');
+    expect(CONSENTEMENT_ENROLEMENT.textes.photo).toBe("Je certifie etre la personne visible sur l'image et j'autorise Studiio a en creer un avatar anime.");
+    expect(CONSENTEMENT_ENROLEMENT.textes.video).toBe("Je certifie etre la personne visible dans la video et j'autorise Studiio et HeyGen a l'utiliser pour entrainer un avatar a mon effigie.");
+    // Le motif du report 1A (`consent_text ilike 'Je certifie %tre la personne visible%'`) les reconnaît.
+    for (const t of Object.values(CONSENTEMENT_ENROLEMENT.textes)) expect(t).toMatch(/^Je certifie .tre la personne visible/);
   });
 
   it('⚠️ le texte de consentement certifie « être la personne visible » — ce que le report 1A reconnaît', () => {
