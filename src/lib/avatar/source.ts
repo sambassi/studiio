@@ -25,39 +25,16 @@ import { clientMinio, lecteurMinio, type BorneReseau } from '@/lib/storage/minio
 import {
   BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR, cleDansNamespaceAvatar, cleObjetValide,
 } from '@/lib/storage/acces-objet';
+import {
+  TYPES_SOURCE_AUTORISES, estCleSourceAvatar, typeSourceAvatar, extensionSourceAvatar,
+} from '@/lib/avatar/source-cle';
+
+/* La FORME d'une clé vit dans `source-cle` (module pur, partagé avec le
+   relais public et la route privée) ; ce module y ajoute le compte, le
+   stockage et la base. Ré-exportés pour que les appelants n'aient qu'une porte. */
+export { TYPES_SOURCE_AUTORISES, typeSourceAvatar, extensionSourceAvatar };
 
 export const BUCKET_AVATAR = BUCKET_NAMESPACE_AVATAR;
-
-/** Les formats qu'une source peut avoir — ceux que le fournisseur accepte. */
-export const TYPES_SOURCE_AUTORISES: Readonly<Record<string, string>> = {
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  mov: 'video/quicktime',
-};
-
-const EXTENSIONS = Object.keys(TYPES_SOURCE_AUTORISES).join('|');
-
-/** `source-<horodatage>.<ext>` — le NOM d'une source, et de rien d'autre. */
-const NOM_SOURCE = new RegExp(`^source-(\\d{1,16})\\.(${EXTENSIONS})$`);
-
-/** Le type MIME d'une source d'après sa clé ; `null` si ce n'est pas une source. */
-export function typeSourceAvatar(cle: string): string | null {
-  const nom = cle.slice(cle.lastIndexOf('/') + 1);
-  const m = NOM_SOURCE.exec(nom);
-  return m ? TYPES_SOURCE_AUTORISES[m[2]] : null;
-}
-
-/** L'extension normalisée d'un nom de fichier, si c'est un format de source. */
-export function extensionSourceAvatar(nomFichier: string): string | null {
-  const point = nomFichier.lastIndexOf('.');
-  if (point < 0) return null;
-  const ext = nomFichier.slice(point + 1).toLowerCase();
-  return ext in TYPES_SOURCE_AUTORISES ? ext : null;
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,17 +64,99 @@ export function cleSourceAvatar(userId: string, extension: string, horodatage = 
  */
 export function cleSourceAvatarDuCompte(cle: unknown, userId: string): cle is string {
   if (!UUID.test(userId)) return false;
-  if (typeof cle !== 'string') return false;
   // Pas de `cleObjetValide` ici : la forme exigée — trois segments, le
   // premier ÉGAL à l'UUID, le deuxième ÉGAL à `avatar`, le troisième pris
   // dans un motif fermé — ne laisse passer ni `..`, ni `%2F`, ni `\`, ni
   // `://`, ni caractère de contrôle. Un garde de plus serait mort (et testé
   // comme tel : le retirer ne fait rougir aucun test).
-  const segments = cle.split('/');
-  if (segments.length !== 3) return false;
-  if (segments[0] !== userId) return false;
-  if (segments[1] !== SEGMENT_NAMESPACE_AVATAR) return false;
-  return NOM_SOURCE.test(segments[2]);
+  if (!estCleSourceAvatar(cle)) return false;
+  return cle.split('/')[0] === userId;
+}
+
+/**
+ * Les BASES d'URL publique que `getPublicUrl()` a pu écrire devant
+ * `/media/<clé>` — reprises de `s3-client.ts` et `db/supabase.ts`, qui
+ * calculent toutes deux la même chose :
+ *
+ *   PUBLIC_STORAGE_URL                              si la variable est posée
+ *   <NEXT_PUBLIC_APP_URL>/storage/v1/object/public  sinon, si l'app a une origine
+ *   /storage/v1/object/public                       sinon (forme RELATIVE)
+ *
+ * Les trois sont rendues : une ligne historique a pu être écrite sous une
+ * configuration antérieure à la configuration courante. Rien d'autre —
+ * aucune origine n'est inventée, aucune n'est codée en dur.
+ */
+export function basesUrlPubliqueStockage(env: NodeJS.ProcessEnv = process.env): string[] {
+  const bases = new Set<string>();
+  const posee = env.PUBLIC_STORAGE_URL?.trim();
+  if (posee) bases.add(posee.replace(/\/+$/, ''));
+  const app = env.NEXT_PUBLIC_APP_URL?.trim();
+  if (app) bases.add(`${app.replace(/\/+$/, '')}/storage/v1/object/public`);
+  bases.add('/storage/v1/object/public');
+  return [...bases];
+}
+
+/** Le chemin (sans origine) d'une base configurée, sans barre finale. */
+function cheminDeBase(base: string): { origine: string | null; chemin: string } | null {
+  if (base.startsWith('/')) return { origine: null, chemin: base };
+  try {
+    const u = new URL(base);
+    if (u.username || u.password || u.search || u.hash) return null;
+    return { origine: u.origin, chemin: u.pathname.replace(/\/+$/, '') };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * La clé d'une source à partir d'un `source_url` HISTORIQUE — les lignes
+ * d'avant `source_object_key`, et celles que `/api/avatar/create` écrit
+ * encore jusqu'à AVATAR-2A.
+ *
+ * ⚠️ L'ORIGINE EST COMPARÉE, JAMAIS CHERCHÉE PAR SOUS-CHAÎNE. Une URL
+ * absolue est PARSÉE (`new URL`) et son `origin` — schéma, hôte, port —
+ * doit être EXACTEMENT celui d'une base configurée : `evil.example` avec le
+ * bon chemin, un sous-domaine forgé, un `user@` devant l'hôte, un autre port,
+ * sont refusés. Une URL relative n'est acceptée que si une base relative
+ * existe, et commence alors par son chemin exact. Dans les deux cas, le
+ * chemin doit être `<base>/media/<clé>` — bucket `media` seul — sans `?`,
+ * `#` ni encodage, et la clé repasse par `cleSourceAvatarDuCompte` : autrui,
+ * autre namespace, vidéo générée, traversée rendent `null`.
+ * Lecture seule : rien n'est écrit en base ici.
+ */
+export function cleSourceDepuisUrlLegacy(
+  url: unknown, userId: string, env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  if (/[?#%\s]/.test(url)) return null;
+
+  const estAbsolue = /^[a-z][a-z0-9+.-]*:/i.test(url);
+  let origine: string | null = null;
+  let chemin: string;
+  if (estAbsolue) {
+    let u: URL;
+    try { u = new URL(url); } catch { return null; }
+    if (u.username || u.password) return null;
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    origine = u.origin;
+    chemin = u.pathname;
+  } else {
+    // Une forme relative n'est comparée qu'à une base relative, par son
+    // chemin EXACT depuis le début : `//hote/…` ou `/x/storage/…` n'y
+    // correspondent jamais — pas de garde séparé, il serait mort.
+    chemin = url;
+  }
+
+  for (const base of basesUrlPubliqueStockage(env)) {
+    const b = cheminDeBase(base);
+    if (!b) continue;
+    if (b.origine !== origine) continue;
+    const prefixe = `${b.chemin}/${BUCKET_NAMESPACE_AVATAR}/`;
+    if (!chemin.startsWith(prefixe)) continue;
+    const cle = chemin.slice(prefixe.length);
+    return cleSourceAvatarDuCompte(cle, userId) ? cle : null;
+  }
+  return null;
 }
 
 /** Cette clé vit-elle dans le domaine avatar de CE compte (source OU vidéo générée) ? */

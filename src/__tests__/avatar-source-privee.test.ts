@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 /**
  * AVATAR-1B — la source d'un clone vit en stockage PRIVÉ, sous une clé que
@@ -55,7 +57,9 @@ vi.mock('@/lib/storage/minio-client', () => ({
 import {
   cleSourceAvatar, cleSourceAvatarDuCompte, cleAvatarDuCompte, typeSourceAvatar, extensionSourceAvatar,
   retirerSourceAvatar, sourceAvatarPresente, ouvrirSourceAvatar, BUCKET_AVATAR, TYPES_SOURCE_AUTORISES,
+  cleSourceDepuisUrlLegacy, basesUrlPubliqueStockage,
 } from '@/lib/avatar/source';
+import * as pur from '@/lib/avatar/source-cle';
 import {
   cleDansNamespaceAvatar, cleDansNamespaceLut, cleDansNamespaceMontage, purposeAcceptable, clePossedeePar,
   BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR,
@@ -101,6 +105,109 @@ describe('cleSourceAvatar — construite par le serveur, dans la forme que main 
     expect(extensionSourceAvatar('Moi.MOV')).toBe('mov');
     expect(extensionSourceAvatar('moi.mp3')).toBeNull();
     expect(extensionSourceAvatar('sansextension')).toBeNull();
+  });
+});
+
+describe('source-cle — le module pur, seule définition de la forme', () => {
+  it('source.ts ré-exporte source-cle : une seule règle, pas deux', () => {
+    expect(typeSourceAvatar).toBe(pur.typeSourceAvatar);
+    expect(extensionSourceAvatar).toBe(pur.extensionSourceAvatar);
+    expect(TYPES_SOURCE_AUTORISES).toBe(pur.TYPES_SOURCE_AUTORISES);
+  });
+
+  it('estCleSourceAvatar : trois segments, `avatar`, nom source-<ts>.<ext> — pour n’importe quel compte', () => {
+    expect(pur.estCleSourceAvatar(`${U}/avatar/source-1.jpg`)).toBe(true);
+    expect(pur.estCleSourceAvatar(`${AUTRUI}/avatar/source-1.jpg`)).toBe(true);
+    expect(pur.estCleSourceAvatar(`${U}/avatar/${GEN}.mp4`)).toBe(false);
+    expect(pur.estCleSourceAvatar(`/avatar/source-1.jpg`)).toBe(false);
+    expect(pur.estCleSourceAvatar(`${U}/avatar/x/source-1.jpg`)).toBe(false);
+    expect(pur.estCleSourceAvatar(null)).toBe(false);
+  });
+
+  it('le module pur n’importe ni base ni stockage', () => {
+    expect(Object.keys(pur).sort()).toEqual([
+      'NOM_SOURCE_AVATAR', 'SEGMENT_SOURCE_AVATAR', 'TYPES_SOURCE_AUTORISES',
+      'estCleSourceAvatar', 'extensionSourceAvatar', 'typeSourceAvatar',
+    ]);
+  });
+});
+
+describe('cleSourceDepuisUrlLegacy — origine EXACTE d’une base configurée, jamais une sous-chaîne', () => {
+  const env = (v: Record<string, string>) => v as unknown as NodeJS.ProcessEnv;
+  const ENV_APP = env({ NEXT_PUBLIC_APP_URL: 'https://studiio.pro' });
+  const RELAIS = 'https://studiio.pro/storage/v1/object/public/media';
+  const CLE = `${U}/avatar/source-1757000000000.jpg`;
+
+  it('les bases viennent de la configuration, comme getPublicUrl() : PUBLIC_STORAGE_URL, APP_URL + relais, relative', () => {
+    expect(basesUrlPubliqueStockage(env({}))).toEqual(['/storage/v1/object/public']);
+    expect(basesUrlPubliqueStockage(ENV_APP)).toEqual(['https://studiio.pro/storage/v1/object/public', '/storage/v1/object/public']);
+    expect(basesUrlPubliqueStockage(env({ PUBLIC_STORAGE_URL: 'https://cdn.studiio.pro/', NEXT_PUBLIC_APP_URL: 'https://studiio.pro/' })))
+      .toEqual(['https://cdn.studiio.pro', 'https://studiio.pro/storage/v1/object/public', '/storage/v1/object/public']);
+  });
+
+  it('origine légitime absolue (APP_URL) → acceptée ; forme relative → acceptée', () => {
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${CLE}`, U, ENV_APP)).toBe(CLE);
+    expect(cleSourceDepuisUrlLegacy(`/storage/v1/object/public/media/${U}/avatar/source-1.mp4`, U, ENV_APP)).toBe(`${U}/avatar/source-1.mp4`);
+    // Sans configuration : seule la forme relative existe.
+    expect(cleSourceDepuisUrlLegacy(`/storage/v1/object/public/media/${CLE}`, U, env({}))).toBe(CLE);
+  });
+
+  it('PUBLIC_STORAGE_URL posée (domaine MinIO public) → cette origine, et son chemin exact, sont acceptés', () => {
+    const cdn = env({ PUBLIC_STORAGE_URL: 'https://cdn.studiio.pro:8443/objets' });
+    expect(cleSourceDepuisUrlLegacy(`https://cdn.studiio.pro:8443/objets/media/${CLE}`, U, cdn)).toBe(CLE);
+    expect(cleSourceDepuisUrlLegacy(`https://cdn.studiio.pro/objets/media/${CLE}`, U, cdn)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`https://cdn.studiio.pro:8443/media/${CLE}`, U, cdn)).toBeNull();
+  });
+
+  it('⚠️ DOMAINE FORGÉ avec le chemin exact du relais → refusé, même pour la clé du compte', () => {
+    expect(cleSourceDepuisUrlLegacy(`https://evil.example/storage/v1/object/public/media/${U}/avatar/source-1.jpg`, U, ENV_APP)).toBeNull();
+  });
+
+  it('⚠️ sous-domaine forgé, userinfo, autre schéma, autre port, hôte à point final → refusés', () => {
+    for (const url of [
+      `https://studiio.pro.evil.example/storage/v1/object/public/media/${CLE}`,
+      `https://evil.studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `https://studiio.pro@evil.example/storage/v1/object/public/media/${CLE}`,
+      `https://user:pass@studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `http://studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `https://studiio.pro:8443/storage/v1/object/public/media/${CLE}`,
+      `https://studiio.pro./storage/v1/object/public/media/${CLE}`,
+      `ftp://studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `javascript:/storage/v1/object/public/media/${CLE}`,
+      `//studiio.pro/storage/v1/object/public/media/${CLE}`,
+    ]) {
+      expect(cleSourceDepuisUrlLegacy(url, U, ENV_APP), url).toBeNull();
+    }
+  });
+
+  it('⚠️ sans APP_URL configurée, l’absolu n’a aucune origine légitime : refusé', () => {
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${CLE}`, U, env({}))).toBeNull();
+  });
+
+  it('⚠️ refuse : autre compte, autre bucket, autre namespace, vidéo générée', () => {
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${AUTRUI}/avatar/source-1.jpg`, U, ENV_APP)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`https://studiio.pro/storage/v1/object/public/videos/${U}/avatar/source-1.jpg`, U, ENV_APP)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/lut/source-1.jpg`, U, ENV_APP)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/avatar/${GEN}.mp4`, U, ENV_APP)).toBeNull();
+  });
+
+  it('refuse : query, fragment, encodage, double préfixe, traversée, chemin relatif hors base, malformé, vide', () => {
+    for (const url of [
+      `${RELAIS}/${CLE}?x=1`,
+      `${RELAIS}/${CLE}#f`,
+      `${RELAIS}/${U}%2Favatar%2Fsource-1.jpg`,
+      `${RELAIS}/x${RELAIS}/${CLE}`,
+      `https://studiio.pro/x/storage/v1/object/public/media/${CLE}`,
+      `${RELAIS}/${U}/avatar/../${AUTRUI}/avatar/source-1.jpg`,
+      `/x/storage/v1/object/public/media/${CLE}`,
+      `storage/v1/object/public/media/${CLE}`,
+      `${RELAIS}/`,
+      `${RELAIS}`,
+      `${RELAIS}/${CLE} `,
+      'pas une url', 'https://', '', null, undefined, 42,
+    ]) {
+      expect(cleSourceDepuisUrlLegacy(url, U, ENV_APP), String(url)).toBeNull();
+    }
   });
 });
 
@@ -263,5 +370,18 @@ describe('sourceAvatarPresente / ouvrirSourceAvatar — après le contrôle de p
     expect(r).not.toBeNull();
     expect(r!.type).toBe('video/mp4');
     expect(r!.taille).toBe(2048);
+  });
+});
+
+describe('AVATAR-2B — le fournisseur ne dépend d’aucune URL publique', () => {
+  it('⚠️ HeyGen reçoit les octets en multipart (uploadAsset), jamais source_url', () => {
+    const heygen = readFileSync(resolve(__dirname, '../lib/avatar/heygen.ts'), 'utf8');
+    const create = readFileSync(resolve(__dirname, '../app/api/avatar/create/route.ts'), 'utf8');
+    expect(heygen).not.toMatch(/source_url|sourceUrl|getPublicUrl/);
+    // Le POST envoie le buffer reçu ; la seule URL publique produite ne part
+    // qu'en base (localisateur legacy), jamais vers le fournisseur.
+    expect(create).toMatch(/uploadAsset\(\s*new Blob\(\[buffer\]/);
+    expect(create).not.toMatch(/uploadAsset\([^)]*sourceUrl/);
+    expect(create).not.toMatch(/createAvatarFromAsset\([^)]*sourceUrl/);
   });
 });

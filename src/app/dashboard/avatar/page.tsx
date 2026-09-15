@@ -31,9 +31,22 @@ interface AvatarRow {
   status: string;
   avatar_type?: AvatarKind;
   training_error?: string | null;
-  source_url: string | null;
+  /**
+   * ⚠️ L'aperçu de la source ne passe PLUS par une URL de la ligne : la
+   * source (le visage) se lit par `/api/avatar/source`, authentifiée. Le
+   * serveur ne renvoie plus `source_url` ; le champ n'existe plus ici.
+   */
   created_at: string;
 }
+
+/**
+ * L'adresse de MA source. Le paramètre `v` ne sert qu'au cache du navigateur
+ * (changer d'avatar = nouvelle adresse) ; la route l'ignore et retrouve la
+ * clé par la session, jamais par ce qu'on lui envoie.
+ */
+const SOURCE_AVATAR_URL = '/api/avatar/source';
+const urlSourceAvatar = (avatar: Pick<AvatarRow, 'id'>) =>
+  `${SOURCE_AVATAR_URL}?v=${encodeURIComponent(avatar.id)}`;
 
 interface Voice {
   voiceId: string;
@@ -515,10 +528,12 @@ export default function AvatarPage() {
         <div className="card-base p-6 space-y-5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              {avatar.source_url &&
+              {avatar.id &&
                 (avatar.avatar_type === 'video' ? (
                   <video
-                    src={avatar.source_url}
+                    data-avatar-source-apercu="video"
+                    src={urlSourceAvatar(avatar)}
+                    onError={(e) => { e.currentTarget.hidden = true; }}
                     className="w-12 h-12 rounded-xl object-cover flex-shrink-0 bg-black"
                     muted
                     playsInline
@@ -526,7 +541,9 @@ export default function AvatarPage() {
                 ) : (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-                    src={avatar.source_url}
+                    data-avatar-source-apercu="image"
+                    src={urlSourceAvatar(avatar)}
+                    onError={(e) => { e.currentTarget.hidden = true; }}
                     alt="Votre avatar"
                     className="w-12 h-12 rounded-xl object-cover flex-shrink-0"
                   />

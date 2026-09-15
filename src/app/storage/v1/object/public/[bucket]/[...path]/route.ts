@@ -57,7 +57,7 @@ import { Readable } from 'stream';
 import { bucketAutorise } from '@/lib/storage/buckets';
 import {
   cleObjetValide, typeContenuDepuisCle, cleDansNamespaceAnalyse,
-  cleDansNamespaceMontage, cleDansNamespaceLut,
+  cleDansNamespaceMontage, cleDansNamespaceLut, cleSourceAvatarPrivee,
 } from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
@@ -193,6 +193,10 @@ function cibleRecevable(bucket: string, storagePath: string): boolean {
   // lit par la route authentifiée de la bibliothèque, jamais par un lien
   // public permanent.
   if (cleDansNamespaceLut(bucket, storagePath)) return false;
+  // La SOURCE d'un avatar — le visage de la personne — ne sort que par
+  // `/api/avatar/source`, authentifiée. Les vidéos générées du même dossier
+  // (`<userId>/avatar/<uuid>.mp4`) restent servies comme avant.
+  if (cleSourceAvatarPrivee(bucket, storagePath)) return false;
   return true;
 }
 
