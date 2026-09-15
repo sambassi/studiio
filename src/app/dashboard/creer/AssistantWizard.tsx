@@ -148,6 +148,8 @@ import type { Politique } from '@/lib/facturation/politique';
 import {
   politiqueAffichable, MENTION_AUCUN_CREDIT,
 } from '@/lib/facturation/libelles';
+import JumeauPanel from '@/components/creer/JumeauPanel';
+import { gardeJumeauAvantRendu } from '@/lib/creer/jumeau';
 import {
   DRAFT_VERSION,
   draftKey,
@@ -3294,6 +3296,8 @@ export default function AssistantWizard() {
 
   const [themeId, setThemeId] = useState(THEMES[0].id);
   const [customTopic, setCustomTopic] = useState('');
+  /** « Utiliser mon jumeau » — une intention ; le serveur relit tout avant d'y donner suite. */
+  const [useDigitalTwin, setUseDigitalTwin] = useState(false);
   const [toneId, setToneId] = useState(TONES[0].id);
   const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
@@ -5083,6 +5087,7 @@ export default function AssistantWizard() {
   const buildDraft = useCallback((): Draft => ({
     version: DRAFT_VERSION,
     savedAt: Date.now(),
+    useDigitalTwin,
     started,
     step,
     themeId,
@@ -5146,7 +5151,7 @@ export default function AssistantWizard() {
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
     batchPhotoMode,
   }), [
-    started, step, themeId, customTopic, toneId, format, colors,
+    started, step, themeId, customTopic, toneId, format, colors, useDigitalTwin,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     transition,
@@ -5219,6 +5224,7 @@ export default function AssistantWizard() {
     setCtaStyle(draft.ctaStyle as TextStyles['cta']);
     setWatermarkOverride(draft.watermarkOverride ?? null);
     setWatermarkEnabled(draft.watermarkEnabled !== false);
+    setUseDigitalTwin(draft.useDigitalTwin === true);
     setSequences(draft.sequences as typeof DEFAULT_SEQUENCES);
     // `sanitizeDraft` a deja valide la valeur contre la liste du
     // compositeur : un style inconnu est arrive ici a `undefined`.
@@ -5975,6 +5981,21 @@ export default function AssistantWizard() {
     // nombre sans qu'aucun bouton ait ete touche.
     if (lotRefuse(batchCount)) {
       setError(BATCH_SERIE_REFUS);
+      return;
+    }
+
+    // ── Jumeau numérique ────────────────────────────────────────────
+    // AVANT tout état de chargement, tout appel de solde, toute composition :
+    // si « Utiliser mon jumeau » est demandé, le SERVEUR revérifie tout
+    // (avatar validé dans sa version courante, voix du compte, choix) et dit
+    // si le moteur vidéo du jumeau existe. Sinon on s'arrête ici — jamais une
+    // vidéo ordinaire livrée sous ce nom.
+    const refusJumeau = await gardeJumeauAvantRendu({
+      useDigitalTwin,
+      textes: Object.values(sequenceVoices).map((v) => v.text).filter((t) => typeof t === 'string' && t.length > 0),
+    });
+    if (refusJumeau) {
+      setError(refusJumeau);
       return;
     }
 
@@ -7301,6 +7322,9 @@ export default function AssistantWizard() {
                     Choisissez un thème, ou saisissez votre propre sujet.
                   </p>
                 </div>
+
+                {/* Jumeau numérique — désactivé par défaut ; l'état vient du serveur. */}
+                <JumeauPanel actif={useDigitalTwin} onChange={setUseDigitalTwin} />
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {THEMES.map((t) => (
