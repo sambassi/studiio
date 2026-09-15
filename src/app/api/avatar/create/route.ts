@@ -11,7 +11,7 @@ import {
   HEYGEN_ASSET_MAX_BYTES,
   type AvatarKind,
 } from '@/lib/avatar/heygen';
-import { CONSENTEMENT_ENROLEMENT, ETAT_SOURCE_PRETE, SUJET_AVATAR } from '@/lib/avatar/contrat';
+import { CONSENTEMENT_ENROLEMENT, ETAT_SOURCE_PRETE, SUJET_AVATAR, etatAvatar } from '@/lib/avatar/contrat';
 import {
   BUCKET_AVATAR, cleSourceAvatar, cleSourceDepuisUrlLegacy, retirerSourceAvatar,
 } from '@/lib/avatar/source';
@@ -178,7 +178,17 @@ export async function GET() {
     // ⚠️ `source_url` n'est plus renvoyé : c'est un localisateur interne
     // (relais public fermé aux sources), la page lit `/api/avatar/source`.
     // Le seul consommateur de cette réponse est `/dashboard/avatar`.
-    if (avatar) avatar = sansSourceUrl(avatar);
+    if (avatar) {
+      // L'état DÉRIVÉ (entrainement | entraine_non_valide | valide | echec…),
+      // calculé au même endroit que la validation : l'écran ne le devine pas.
+      avatar = {
+        ...sansSourceUrl(avatar),
+        etat: etatAvatar({
+          status: avatar.status, provider_avatar_id: avatar.provider_avatar_id ?? null,
+          validated_at: avatar.validated_at ?? null, deleted_at: avatar.deleted_at ?? null,
+        }),
+      };
+    }
 
     return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId } });
   } catch (error) {

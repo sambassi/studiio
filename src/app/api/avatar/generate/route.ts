@@ -10,6 +10,7 @@ import {
   HeyGenError,
   type AvatarAspectRatio,
 } from '@/lib/avatar/heygen';
+import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,15 @@ const VALID_RATIOS: AvatarAspectRatio[] = ['9:16', '16:9', '1:1'];
 
 /** Statuts HeyGen consideres comme « avatar utilisable ». */
 const READY_STATUSES = ['completed', 'ready', 'success'];
+
+/** Une réservation d'aperçu qui n'ira pas plus loin : marquée en échec, la place est libre. */
+async function libererReservation(generationId: string, motif: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('avatar_generations')
+    .update({ status: 'failed', error_message: motif })
+    .eq('id', generationId);
+  if (error) console.error(`[Avatar][apercu] Reservation ${generationId} non liberee :`, error.message);
+}
 
 /**
  * POST /api/avatar/generate — lance une video ou l'avatar prononce un texte.
@@ -43,7 +53,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const avatarRowId: string | undefined = body?.avatarId;
-    const script: string = (body?.script ?? '').toString().trim();
+    // L'INTENTION : un APERÇU (texte fixe de Studiio, une fois par version,
+    // pour juger le clone avant de le valider) ou une génération NORMALE
+    // (texte libre). Tout inconnu est « normale », comme la colonne.
+    const intention = lireIntention(body?.intention);
+    const script: string = intention === INTENTION_APERCU
+      ? SCRIPT_APERCU
+      : (body?.script ?? '').toString().trim();
     const voiceId: string | undefined = body?.voiceId || undefined;
     const aspectRatio: AvatarAspectRatio = VALID_RATIOS.includes(body?.aspectRatio)
       ? body.aspectRatio
@@ -166,9 +182,60 @@ export async function POST(req: NextRequest) {
       `[Avatar][HeyGen] Requete a envoyer — avatar_id=${avatarRow.provider_avatar_id} voice_id=${resolvedVoiceId} ratio=${aspectRatio} script=${script.length} car.`,
     );
 
+    // 2b. APERÇU : une seule génération vivante par version, RÉSERVÉE AVANT
+    //     tout débit et tout appel — c'est l'index
+    //     `avatar_generations_apercu_unique` qui tranche deux clics
+    //     simultanés (23505 → 409, sans frais). Un aperçu n'a de sens que
+    //     pour un clone entraîné et pas encore validé.
+    let reservation: { id: string } | null = null;
+    if (intention === INTENTION_APERCU) {
+      const etat = etatAvatar({
+        status: avatarRow.status, provider_avatar_id: avatarRow.provider_avatar_id,
+        validated_at: avatarRow.validated_at ?? null, deleted_at: avatarRow.deleted_at ?? null,
+      });
+      if (etat !== 'entraine_non_valide') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: etat === 'valide' ? 'Votre avatar est déjà validé.' : "Votre avatar n'est pas encore prêt pour un aperçu.",
+            code: etat === 'valide' ? 'avatar_deja_valide' : 'avatar_not_ready',
+          },
+          { status: 409 },
+        );
+      }
+      const { data: reservee, error: erreurReservation } = await supabaseAdmin
+        .from('avatar_generations')
+        .insert({
+          user_id: userId,
+          user_avatar_id: avatarRow.id,
+          avatar_version: avatarRow.version,
+          intention: INTENTION_APERCU,
+          provider_video_id: null,
+          script,
+          voice_id: resolvedVoiceId,
+          aspect_ratio: aspectRatio,
+          status: 'pending',
+          credits_charged: 0,
+        })
+        .select('id')
+        .single();
+      if (erreurReservation || !reservee) {
+        if (erreurReservation?.code === '23505') {
+          return NextResponse.json(
+            { success: false, error: 'Un aperçu est déjà en cours ou disponible pour cette version.', code: 'apercu_existant' },
+            { status: 409 },
+          );
+        }
+        console.error('[Avatar][apercu] Reservation impossible :', erreurReservation?.message);
+        return NextResponse.json({ success: false, error: "L'aperçu n'a pas pu être réservé. Réessayez." }, { status: 500 });
+      }
+      reservation = reservee;
+    }
+
     // 3. Solde
     const credits = await getUserCredits(userId);
     if (credits < AVATAR_VIDEO_COST) {
+      if (reservation) await libererReservation(reservation.id, 'Credits insuffisants.');
       return NextResponse.json(
         {
           success: false,
@@ -184,12 +251,52 @@ export async function POST(req: NextRequest) {
     creditsDeducted = true;
 
     // 5. HeyGen
-    const { videoId, status } = await generateAvatarVideo({
-      avatarId: avatarRow.provider_avatar_id,
-      script,
-      voiceId: resolvedVoiceId,
-      aspectRatio,
-    });
+    let videoId: string;
+    let status: string;
+    try {
+      ({ videoId, status } = await generateAvatarVideo({
+        avatarId: avatarRow.provider_avatar_id,
+        script,
+        voiceId: resolvedVoiceId,
+        aspectRatio,
+      }));
+    } catch (erreurFournisseur) {
+      // L'aperçu réservé ne doit pas rester « pending » pour toujours : marqué
+      // en échec, il libère la place (l'index unique ignore `failed`).
+      if (reservation) {
+        await libererReservation(
+          reservation.id,
+          erreurFournisseur instanceof HeyGenError ? erreurFournisseur.message : "Le fournisseur n'a pas repondu.",
+        );
+      }
+      throw erreurFournisseur;
+    }
+
+    if (reservation) {
+      // La réservation devient la génération : identifiant fournisseur, statut, coût.
+      const { data: generation, error: majError } = await supabaseAdmin
+        .from('avatar_generations')
+        .update({
+          provider_video_id: videoId,
+          status: status === 'completed' ? 'processing' : 'pending',
+          credits_charged: AVATAR_VIDEO_COST,
+        })
+        .eq('id', reservation.id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      if (majError || !generation) {
+        console.error(`[Avatar][apercu] Generation lancee (video ${videoId}) mais reservation ${reservation.id} non mise a jour :`, majError);
+        return NextResponse.json(
+          { success: false, error: 'Aperçu lancé mais non enregistré. Contactez le support.' },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        data: { generationId: generation.id, status: generation.status, creditsCharged: AVATAR_VIDEO_COST, intention: INTENTION_APERCU },
+      });
+    }
 
     const { data: generation, error: insertError } = await supabaseAdmin
       .from('avatar_generations')
@@ -199,6 +306,7 @@ export async function POST(req: NextRequest) {
         // La version du clone qui parle : l'historique sait, plus tard, quelle
         // source a produit cette video (NULL = anterieure au versioning).
         avatar_version: avatarRow.version ?? null,
+        intention,
         provider_video_id: videoId,
         script,
         voice_id: resolvedVoiceId,
