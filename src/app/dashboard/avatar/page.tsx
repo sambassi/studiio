@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   Clapperboard,
   Trash2,
+  Play,
 } from 'lucide-react';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 
@@ -32,6 +33,10 @@ interface AvatarRow {
   status: string;
   avatar_type?: AvatarKind;
   training_error?: string | null;
+  /** L'état DÉRIVÉ par le serveur (`etatAvatar`) : l'écran ne le recalcule pas. */
+  etat?: 'supprime' | 'source_prete' | 'entrainement' | 'entraine_non_valide' | 'valide' | 'echec';
+  version?: number;
+  validated_at?: string | null;
   /**
    * ⚠️ L'aperçu de la source ne passe PLUS par une URL de la ligne : la
    * source (le visage) se lit par `/api/avatar/source`, authentifiée. Le
@@ -75,6 +80,21 @@ export default function AvatarPage() {
   const [ratio, setRatio] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  /**
+   * L'aperçu RÉEL du clone (une vraie génération HeyGen sur le texte fixe de
+   * Studiio) et la preuve de son ouverture. `jeton` n'existe qu'après
+   * « Voir mon avatar » ; c'est lui, et lui seul, qui ouvre « Valider ».
+   */
+  type Apercu = { statut: 'aucun' } | { statut: 'en_cours'; generationId: string } | { statut: 'echec'; generationId: string; erreur: string | null } | { statut: 'indisponible'; generationId: string } | { statut: 'pret'; generationId: string; url: string };
+  const [apercu, setApercu] = useState<Apercu | null>(null);
+  /** « Voir mon avatar » a été cliqué : la vraie vidéo est affichée — sans jeton encore. */
+  const [apercuVisible, setApercuVisible] = useState(false);
+  /** Le jeton n'existe qu'après le DÉMARRAGE RÉEL de la lecture (`onPlaying`). */
+  const [apercuOuvert, setApercuOuvert] = useState<{ jeton: string; version: number; generationId: string } | null>(null);
+  const ouvertureEnCoursRef = useRef(false);
+  const [apercuEnCours, setApercuEnCours] = useState(false);
+  const [validationEnCours, setValidationEnCours] = useState(false);
+  const apercuGenerationRef = useRef<string | null>(null);
   const [suppressionArmee, setSuppressionArmee] = useState(false);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -130,12 +150,108 @@ export default function AvatarPage() {
     }
   };
 
+  const loadApercu = useCallback(async () => {
+    try {
+      const res = await fetch('/api/avatar/apercu');
+      const json = await res.json();
+      if (!json.success) { setApercu(null); return null; }
+      setApercu(json.data.apercu as Apercu);
+      return json.data.apercu as Apercu;
+    } catch {
+      setApercu(null);
+      return null;
+    }
+  }, []);
+
+  /** « Générer l'aperçu » : une vraie génération HeyGen, une fois par version. */
+  const genererApercu = async () => {
+    if (!avatar || apercuEnCours) return;
+    setApercuEnCours(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/avatar/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setError(json.error || "L'aperçu n'a pas pu être lancé.");
+        await loadApercu();
+        return;
+      }
+      apercuGenerationRef.current = json.data.generationId;
+      setApercu({ statut: 'en_cours', generationId: json.data.generationId });
+      poll(json.data.generationId);
+    } catch {
+      setError("L'aperçu n'a pas pu être lancé.");
+    } finally {
+      setApercuEnCours(false);
+    }
+  };
+
+  /** « Voir mon avatar » : affiche la vraie vidéo. Rien d'autre — pas de jeton. */
+  const voirApercu = () => {
+    setError(null);
+    setApercuVisible(true);
+  };
+
+  /**
+   * La vidéo a RÉELLEMENT commencé à jouer (`onPlaying` du lecteur) : c'est
+   * maintenant, et seulement maintenant, que le serveur est sollicité pour
+   * le jeton d'ouverture — lié au compte, à l'avatar, à la version et à la
+   * génération. Sans lecture, pas de jeton ; sans jeton, pas de « Valider ».
+   */
+  const apercuEnLecture = async () => {
+    if (apercuOuvert || ouvertureEnCoursRef.current) return;
+    ouvertureEnCoursRef.current = true;
+    try {
+      const res = await fetch('/api/avatar/apercu/ouverture', { method: 'POST' });
+      const json = await res.json();
+      if (!json.success) { setError(json.error || "L'ouverture de l'aperçu n'a pas pu être enregistrée."); await loadApercu(); return; }
+      setApercuOuvert({ jeton: json.data.jeton, version: json.data.version, generationId: json.data.generationId });
+    } catch {
+      setError("L'ouverture de l'aperçu n'a pas pu être enregistrée.");
+    } finally {
+      ouvertureEnCoursRef.current = false;
+    }
+  };
+
+  /** « Valider mon avatar » : avec le jeton d'ouverture, sur la version courante. */
+  const validerAvatar = async () => {
+    if (!apercuOuvert || validationEnCours) return;
+    setValidationEnCours(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/avatar/validation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jeton: apercuOuvert.jeton }),
+      });
+      const json = await res.json();
+      if (!json.success) { setError(json.error || 'La validation a échoué.'); await loadAvatar(false); return; }
+      setNotice('Avatar validé.');
+      setApercuOuvert(null);
+      setApercuVisible(false);
+      await loadAvatar(false);
+    } catch {
+      setError('La validation a échoué.');
+    } finally {
+      setValidationEnCours(false);
+    }
+  };
+
   const loadAvatar = useCallback(async (withVoices: boolean) => {
     const res = await fetch('/api/avatar/create');
     const json = await res.json();
     if (!json.success) return null;
 
     setAvatar(json.data.avatar);
+    if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
+    else setApercu(null);
+    // Un jeton d'ouverture ne vaut que pour la version qui l'a délivré.
+    setApercuOuvert((o) => (o && o.version === json.data.avatar?.version && json.data.avatar?.etat === 'entraine_non_valide' ? o : null));
+    if (json.data.avatar?.etat !== 'entraine_non_valide') setApercuVisible(false);
 
     if (withVoices) {
       const list: Voice[] = json.data.voices || [];
@@ -150,7 +266,7 @@ export default function AvatarPage() {
       }
     }
     return json.data.avatar as AvatarRow | null;
-  }, []);
+  }, [loadApercu]);
 
   // ── Chargement initial ──────────────────────────────────────────────
   useEffect(() => {
@@ -315,6 +431,13 @@ export default function AvatarPage() {
 
       if (status === 'completed' && url) {
         setProgress(100);
+        if (apercuGenerationRef.current === generationId) {
+          // C'était l'aperçu : il vit dans son bloc, pas dans « votre vidéo ».
+          apercuGenerationRef.current = null;
+          setGenStatus('idle');
+          await loadApercu();
+          return;
+        }
         setVideoUrl(url);
         setGenStatus('completed');
         return;
@@ -322,6 +445,7 @@ export default function AvatarPage() {
       if (status === 'failed') {
         setGenStatus('failed');
         setError(errMsg || 'La génération a échoué.');
+        if (apercuGenerationRef.current === generationId) { apercuGenerationRef.current = null; await loadApercu(); }
         return;
       }
       // Pourcentage réel s'il existe un jour côté API : il prime sur l'estimation.
@@ -333,7 +457,7 @@ export default function AvatarPage() {
     } catch {
       pollRef.current = setTimeout(() => poll(generationId), 8000);
     }
-  }, []);
+  }, [loadApercu]);
 
   const handleGenerate = async () => {
     if (!avatar || !script.trim() || genStatus === 'pending' || genStatus === 'processing') return;
@@ -661,6 +785,87 @@ export default function AvatarPage() {
                   Utilisez « Changer de source » pour réessayer avec un autre fichier.
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── VALIDATION DU CLONE — l'aperçu RÉEL, puis « Valider » ─────────
+              Tout vient du serveur : l'état dérivé, l'existence de l'aperçu,
+              le jeton d'ouverture. Rien n'est affiché qui n'existe pas. */}
+          {avatar.etat === 'entrainement' && (
+            <div data-avatar-validation="entrainement" className="text-sm text-amber-200/90">
+              Votre avatar est en cours de préparation.
+            </div>
+          )}
+          {avatar.etat === 'valide' && (
+            <div data-avatar-validation="valide" className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+              <Check className="w-4 h-4" /> Avatar validé
+            </div>
+          )}
+          {avatar.etat === 'entraine_non_valide' && (
+            <div data-avatar-validation="a-valider" className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3">
+              <div className="text-sm font-medium">Votre avatar est prêt : regardez-le, puis validez-le</div>
+              {(!apercu || apercu.statut === 'aucun' || apercu.statut === 'echec') && (
+                <div className="space-y-2">
+                  {apercu?.statut === 'echec' && (
+                    <div className="text-xs text-red-200">L&apos;aperçu a échoué{apercu.erreur ? ` (${apercu.erreur})` : ''}. Vous pouvez le relancer.</div>
+                  )}
+                  <button
+                    data-avatar-apercu="generer"
+                    onClick={genererApercu}
+                    disabled={apercuEnCours || !apercu}
+                    className="button-primary flex items-center gap-2 disabled:opacity-40"
+                  >
+                    {apercuEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clapperboard className="w-4 h-4" />}
+                    Générer mon aperçu
+                  </button>
+                  <div className="text-xs text-gray-400">Aperçu de validation offert — une courte vidéo réelle de votre avatar, générée par notre fournisseur.</div>
+                </div>
+              )}
+              {apercu?.statut === 'en_cours' && (
+                <div data-avatar-apercu="en-cours" className="flex items-center gap-2 text-sm text-amber-200">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Votre aperçu est en cours de génération…
+                </div>
+              )}
+              {apercu?.statut === 'indisponible' && (
+                <div data-avatar-apercu="indisponible" className="text-sm text-gray-400">
+                  L&apos;aperçu réel de votre avatar n&apos;est pas encore disponible.
+                </div>
+              )}
+              {apercu?.statut === 'pret' && !apercuVisible && (
+                <button data-avatar-apercu="voir" onClick={voirApercu} className="button-primary flex items-center gap-2">
+                  <Play className="w-4 h-4" /> Voir mon avatar
+                </button>
+              )}
+              {apercu?.statut === 'pret' && apercuVisible && (
+                <div className="space-y-3">
+                  {/* La vidéo RÉELLE. Le jeton n'est demandé qu'à `onPlaying` :
+                      tant qu'elle n'a pas commencé à jouer, « Valider » n'existe pas. */}
+                  <video
+                    data-avatar-apercu="video"
+                    src={apercu.url}
+                    controls
+                    autoPlay
+                    playsInline
+                    onPlaying={apercuEnLecture}
+                    className="w-full max-w-sm rounded-xl bg-black"
+                  />
+                  {apercuOuvert && apercuOuvert.generationId === apercu.generationId ? (
+                    <button
+                      data-avatar-apercu="valider"
+                      onClick={validerAvatar}
+                      disabled={validationEnCours}
+                      className="button-primary flex items-center gap-2 disabled:opacity-40"
+                    >
+                      {validationEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      Valider mon avatar
+                    </button>
+                  ) : (
+                    <div data-avatar-apercu="en-attente-lecture" className="text-xs text-gray-400">
+                      Lancez la lecture de votre aperçu : le bouton de validation apparaîtra ensuite.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

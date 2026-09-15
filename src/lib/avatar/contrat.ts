@@ -101,6 +101,13 @@ export const INTENTION_NORMALE = 'normale';
 export const INTENTIONS_GENERATION = [INTENTION_APERCU, INTENTION_NORMALE] as const;
 export type IntentionGeneration = (typeof INTENTIONS_GENERATION)[number];
 
+/**
+ * Le texte de l'APERÇU — fixe, court, le même pour tout le monde. Un aperçu
+ * sert à juger le clone, pas à produire une vidéo : le texte n'est jamais
+ * celui du navigateur.
+ */
+export const SCRIPT_APERCU = 'Bonjour, je suis votre avatar. Voici à quoi je ressemble et comment je parle.';
+
 /** Lit une intention venue de la base ; tout inconnu (dont NULL) est « normale », comme la colonne. */
 export function lireIntention(valeur: unknown): IntentionGeneration {
   return valeur === INTENTION_APERCU ? INTENTION_APERCU : INTENTION_NORMALE;
