@@ -231,7 +231,8 @@ describe('Rétro-compatibilité : un seul montage = le parcours d avant', () => 
 
 describe('Câblage du lot', () => {
   it('le solde est vérifié pour le TOTAL avant de lancer', () => {
-    expect(wizard).toContain('const coutTotal = batchCost(cost, total);');
+    // Le jumeau, s'il est demande, s'ajoute au total : rien n'est produit sans couverture.
+    expect(wizard).toContain('const coutTotal = batchCost(cost, total) + (useDigitalTwin ? AVATAR_VIDEO_COST : 0);');
     expect(wizard).toContain('balance < coutTotal');
   });
 

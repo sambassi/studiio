@@ -150,6 +150,7 @@ import {
 } from '@/lib/facturation/libelles';
 import JumeauPanel from '@/components/creer/JumeauPanel';
 import { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau } from '@/lib/creer/jumeau';
+import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import {
   DRAFT_VERSION,
   draftKey,
@@ -379,6 +380,25 @@ const DEFAULT_SEQUENCES: Array<{ key: SeqKey; enabled: boolean }> = [
   { key: 'video', enabled: false },
   { key: 'cta', enabled: true },
 ];
+
+type Sequences = Array<{ key: SeqKey; enabled: boolean }>;
+
+/** Ordre effectif : sequences activees, dans l'ordre choisi. */
+const ordreActif = (seqs: Sequences): SeqKey[] => seqs.filter((s) => s.enabled).map((s) => s.key);
+
+/**
+ * Duree effective d'une sequence : 0 si elle est desactivee.
+ *
+ * Une sequence masquee a une duree NULLE — c'est ainsi que le compositeur
+ * l'exclut, et que le Calendrier la filtre (`dur > 0`). Passer par ce seul
+ * point evite que l'apercu, la video et le Calendrier divergent.
+ *
+ * Fonction pure, et non une lecture directe de l'etat : le rendu la
+ * reapplique a un plateau LOCAL quand le jumeau vient de poser son rush
+ * (voir `runRenderInterne`), sans attendre qu'un `setState` soit relu.
+ */
+const dureeDeSequence = (ordre: SeqKey[], durees: Record<SeqKey, number>) => (k: SeqKey): number =>
+  (ordre.includes(k) ? durees[k] : 0);
 
 /**
  * SPEC DE DESIGN PARTAGÉE — une seule définition pour l'aperçu, le
@@ -5432,7 +5452,7 @@ export default function AssistantWizard() {
   }, []);
 
   /** Ordre effectif : sequences activees, dans l'ordre choisi. */
-  const activeOrder = sequences.filter((s) => s.enabled).map((s) => s.key);
+  const activeOrder = ordreActif(sequences);
 
   /**
    * Ce que l'apercu MONTRE — la seule source des deux instances.
@@ -5568,10 +5588,7 @@ export default function AssistantWizard() {
    * l'exclut, et que le Calendrier la filtre (`dur > 0`). Passer par ce seul
    * point evite que l'apercu, la video et le Calendrier divergent.
    */
-  const seqDuration = (k: SeqKey): number => {
-    if (!activeOrder.includes(k)) return 0;
-    return { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration }[k];
-  };
+  const seqDuration = dureeDeSequence(activeOrder, { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration });
 
   /**
    * Pre-remplissage des textes de voix depuis le contenu genere.
@@ -5723,8 +5740,13 @@ export default function AssistantWizard() {
    * a zero (`videoDuration > 0`) : le rush serait televerse, affiche dans la
    * liste… et absent du montage. Les deux vont donc ensemble, ici, en un seul
    * point.
+   *
+   * Rend ce qu'il a pose — l'URL et la duree retenue — pour qu'un appelant
+   * qui doit composer DANS LA FOULEE (le jumeau, produit puis monte au meme
+   * clic) lise ces valeurs sans attendre le prochain rendu React. `null` si
+   * un autre import a pris le dessus pendant la sonde : rien n'a ete pose.
    */
-  const applyRush = async (url: string, name: string, isClip = false) => {
+  const applyRush = async (url: string, name: string, isClip = false): Promise<{ url: string; secondes: number } | null> => {
     // Jeton d'import : deux imports rapproches se resolvent dans l'ordre de
     // leur SONDE, pas de leur appel. Sans ce garde, le rush affiche pourrait
     // porter la duree de celui qu'il vient de remplacer.
@@ -5736,7 +5758,7 @@ export default function AssistantWizard() {
     setRushLoading(true);
     try {
       const probed = await probeRushDuration(url);
-      if (rushRunIdRef.current !== runId) return;
+      if (rushRunIdRef.current !== runId) return null;
       const seconds = probed
         ? Math.min(Math.max(Math.round(probed), RUSH_SECONDS.min), RUSH_SECONDS.max)
         : RUSH_SECONDS.fallback;
@@ -5744,6 +5766,7 @@ export default function AssistantWizard() {
       console.log(
         `[Assistant] Rush importé — durée source ${probed ? probed.toFixed(1) + 's' : 'illisible'}, séquence vidéo ${seconds}s`,
       );
+      return { url, secondes: seconds };
     } finally {
       if (rushRunIdRef.current === runId) setRushLoading(false);
     }
@@ -5998,36 +6021,9 @@ export default function AssistantWizard() {
       setError(refusJumeau);
       return;
     }
-    // Le moteur est disponible et le jumeau prêt : LA vidéo du jumeau est
-    // produite d'abord (ElevenLabs sur MA voix + HeyGen sur MON avatar, par
-    // le serveur), puis placée comme rush de la séquence « Vidéo » —
-    // `applyRush`, le geste existant. Le montage se lance ensuite, au
-    // prochain envoi, avec ce rush en place : les états React ne sont pas
-    // relus au sein de ce même passage, on ne compose donc pas « à côté ».
-    // Une fois la vidéo en place, l'intention est levée : elle a été honorée.
-    if (useDigitalTwin) {
-      setSending(true);
-      setRenderTarget(destination);
-      setError(null);
-      setRenderProgress(5);
-      try {
-        const video = await genererEtAttendreVideoJumeau({
-          textes: textesJumeau,
-          aspectRatio: format,
-          onEtape: (m) => setRenderStage(m),
-        });
-        await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
-        setUseDigitalTwin(false);
-        setRenderStage('');
-        setRenderProgress(0);
-        setJumeauNotice('Votre jumeau est prêt et placé dans la séquence « Vidéo ». Vérifiez l’aperçu, puis lancez l’envoi.');
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'La génération de votre jumeau a échoué.');
-      } finally {
-        setSending(false);
-      }
-      return;
-    }
+    // Le jumeau lui-meme est produit plus bas, apres le solde et avant la
+    // boucle du lot (« Jumeau numerique — la video » ) : UN clic, et le
+    // montage final sort avec sa video dedans.
 
     setSending(true);
     // Sert UNIQUEMENT a placer l'etat de chargement au bon endroit — dans le
@@ -6075,7 +6071,12 @@ export default function AssistantWizard() {
       setRenderTarget(null);
       return;
     }
-    const coutTotal = batchCost(cost, total);
+    // Le jumeau se paie a part, au tarif serveur d'une video avatar
+    // (AVATAR_VIDEO_COST, le meme que /api/avatar/generate) : compte ICI pour
+    // que le solde soit verifie sur le total AVANT de produire quoi que ce
+    // soit. Sans cela, la video du jumeau pouvait etre payee, puis le montage
+    // refuse pour solde insuffisant.
+    const coutTotal = batchCost(cost, total) + (useDigitalTwin ? AVATAR_VIDEO_COST : 0);
     const baseDate = scheduledDate ? new Date(`${scheduledDate}T12:00:00`) : new Date();
     const dates = batchDates(Number.isNaN(baseDate.getTime()) ? new Date() : baseDate, total);
 
@@ -6120,6 +6121,57 @@ export default function AssistantWizard() {
       } catch {
         // On continue : un échec de lecture du solde ne doit pas bloquer.
       }
+
+      // ── Le plateau de CE passage ───────────────────────────────────
+      // Ce que le montage lit du rush : son URL, la sequence « Video » et
+      // sa duree. Par defaut, l'etat de l'ecran — a la lettre ce que
+      // `activeOrder` et `seqDuration` calculent. Quand le jumeau est
+      // demande, sa video, produite a l'instant, REMPLACE ces trois valeurs
+      // pour ce passage : un etat pose par `setRushUrl` n'est pas relu dans
+      // la fonction qui l'a pose, et exiger un second clic n'est pas le
+      // parcours. Aucun second pipeline : les memes fonctions pures,
+      // appliquees a un plateau local.
+      let plateau = { rushUrl, sequences, videoDuration };
+
+      // ── Jumeau numerique — la video ────────────────────────────────
+      // Le garde a dit oui, le solde couvre le total. LA video du jumeau est
+      // produite par le serveur (ElevenLabs sur MA voix + HeyGen sur MON
+      // avatar), attendue, puis posee comme rush par `applyRush` — le geste
+      // existant, qui rend ce qu'il a pose. Le montage continue AVEC, dans
+      // ce meme clic. En cas d'echec : on s'arrete, message a l'ecran,
+      // jamais une video ordinaire livree sous ce nom.
+      if (useDigitalTwin) {
+        setRenderProgress(5);
+        let posee: Awaited<ReturnType<typeof applyRush>>;
+        try {
+          const video = await genererEtAttendreVideoJumeau({
+            textes: textesJumeau,
+            aspectRatio: format,
+            onEtape: (m) => setRenderStage(m),
+          });
+          posee = await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
+          setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'La génération de votre jumeau a échoué.');
+          return;
+        }
+        if (!posee) {
+          setError('Le rush a été remplacé pendant la génération de votre jumeau. Relancez l’envoi.');
+          return;
+        }
+        // L'intention est honoree : la video du jumeau EST le rush. Un
+        // prochain envoi montera ce rush, sans produire un second jumeau.
+        setUseDigitalTwin(false);
+        plateau = {
+          rushUrl: posee.url,
+          sequences: sequences.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)),
+          videoDuration: posee.secondes,
+        };
+        setRenderProgress(0);
+        setRenderStage('Préparation…');
+      }
+      const ordre = ordreActif(plateau.sequences);
+      const duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
 
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
@@ -6278,7 +6330,7 @@ export default function AssistantWizard() {
           // seule presence fait basculer le compositeur en rendu TEMPS REEL
           // (`hasRushAudio = !!videoEl`) — dix fois plus lent, pour une video
           // qui n'apparait nulle part dans le montage.
-          videoUrl: seqDuration('video') > 0 ? rushUrl || undefined : undefined,
+          videoUrl: duree('video') > 0 ? plateau.rushUrl || undefined : undefined,
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
           // filtre pareil (`dur > 0`).
@@ -6286,10 +6338,10 @@ export default function AssistantWizard() {
           // le compositeur retombe de toute facon sur le fondu, autant lui
           // dire explicitement ce que l'ecran annonce.
           transition,
-          introDuration: seqDuration('intro'),
-          cardsDuration: seqDuration('cards'),
-          videoDuration: seqDuration('video'),
-          ctaDuration: seqDuration('cta'),
+          introDuration: duree('intro'),
+          cardsDuration: duree('cards'),
+          videoDuration: duree('video'),
+          ctaDuration: duree('cta'),
           // Le compositeur bascule en mode « normal » (temps reel, audio mixe et
           // embarque) des qu'une de ces deux URL est fournie ; sans elles il
           // reste en mode « fast ».
@@ -6305,7 +6357,7 @@ export default function AssistantWizard() {
           // compositeur (musique, rush, voix). Absents tant que l'utilisateur
           // n'a rien reglé — donc aucun changement pour les montages existants.
           audioKeyframes: audioKeyframes.length > 0 ? audioKeyframes : undefined,
-          sequenceOrder: activeOrder,
+          sequenceOrder: ordre,
           accentColor: accent,
           // drawCTA lit `design.ctaMainText || watermarkText || 'AFROBOOST'` :
           // ces deux options seules ne suffisent pas, d'ou les champs `design`
@@ -6562,7 +6614,7 @@ export default function AssistantWizard() {
           // compositeur route et embarque dans le fichier
           // (`hasRushAudio = !!videoEl`). L'omettre faisait proposer par le
           // Calendrier « Ajouter du son » sur un montage qui en avait deja.
-          hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls || (rushUrl && seqDuration('video') > 0)),
+          hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls || (plateau.rushUrl && duree('video') > 0)),
           // Les URL `blob:` ne survivent pas au rechargement de la page. Le
           // panneau audio televerse normalement les pistes et renvoie une URL
           // publique, mais il retombe sur un blob local si le televersement de
@@ -6579,8 +6631,8 @@ export default function AssistantWizard() {
           // sa sequence est masquee ferait re-telecharger et re-decoder le
           // fichier a chaque regeneration depuis le Calendrier, en pure perte.
           rushUrls:
-            seqDuration('video') > 0 && persistableUrl(rushUrl)
-              ? [persistableUrl(rushUrl)!]
+            duree('video') > 0 && persistableUrl(plateau.rushUrl)
+              ? [persistableUrl(plateau.rushUrl)!]
               : undefined,
           renderedVideoUrl: composed.url,
           thumbnailUrl: composed.thumbnailUrl || undefined,
@@ -6593,12 +6645,12 @@ export default function AssistantWizard() {
           // Meme source que les durees passees au compositeur : l'apercu, la
           // video et le Calendrier suivent donc strictement le meme ordre.
           sequences: {
-            intro: seqDuration('intro'),
-            cards: seqDuration('cards'),
-            video: seqDuration('video'),
-            cta: seqDuration('cta'),
-            total: activeOrder.reduce((t, k) => t + seqDuration(k), 0),
-            order: activeOrder,
+            intro: duree('intro'),
+            cards: duree('cards'),
+            video: duree('video'),
+            cta: duree('cta'),
+            total: ordre.reduce((t, k) => t + duree(k), 0),
+            order: ordre,
           },
           branding: {
             accentColor: accent,
