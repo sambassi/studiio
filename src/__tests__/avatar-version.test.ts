@@ -144,6 +144,43 @@ describe('commencerNouvelleVersionAvatar — compare-and-set sur la version', ()
     expect(base.lignes[0].deleted_at).not.toBeNull();
   });
 
+  describe('⚠️ complement.source_object_key — vérifié DANS le helper, avant toute requête', () => {
+    const tenter = (source_object_key: string) =>
+      commencerNouvelleVersionAvatar({ userId: U, avatarId: A, versionAttendue: 1, complement: { source_object_key } });
+
+    it('la source de ce compte est acceptée et écrite', async () => {
+      const r = await tenter(`${U}/avatar/source-2.mp4`);
+      expect(r.ok).toBe(true);
+      expect(base.lignes[0].source_object_key).toBe(`${U}/avatar/source-2.mp4`);
+      expect(base.journal.filter((j) => j.startsWith('update:'))).toHaveLength(1);
+    });
+
+    it('sans source_object_key : le contrat actuel reste permis (rien n’est exigé)', async () => {
+      const r = await commencerNouvelleVersionAvatar({ userId: U, avatarId: A, versionAttendue: 1, complement: { consent_version: 'v2' } });
+      expect(r.ok).toBe(true);
+      expect(base.lignes[0].source_object_key).toBe(`${U}/avatar/source-1.mp4`);
+      expect(base.lignes[0].consent_version).toBe('v2');
+    });
+
+    for (const [libelle, cle] of [
+      ['la source d’un AUTRE compte', `${AUTRUI}/avatar/source-2.mp4`],
+      ['une vidéo GÉNÉRÉE du compte', `${U}/avatar/11111111-1111-4111-8111-000000000009.mp4`],
+      ['un autre namespace du compte', `${U}/lut/source-2.mp4`],
+      ['un préfixe partagé', 'converted/source-2.mp4'],
+      ['une traversée', `${U}/avatar/../${AUTRUI}/avatar/source-2.mp4`],
+      ['une clé malformée', `${U}/avatar/source-.mp4`],
+      ['une chaîne vide', ''],
+    ] as const) {
+      it(`${libelle} → source_invalide, AUCUNE écriture`, async () => {
+        expect(await tenter(cle)).toEqual({ ok: false, motif: 'source_invalide' });
+        expect(base.journal).toEqual([]);
+        expect(base.lignes[0].version).toBe(1);
+        expect(base.lignes[0].source_object_key).toBe(`${U}/avatar/source-1.mp4`);
+        expect(base.lignes[0].provider_avatar_id).toBe('hg-1');
+      });
+    }
+  });
+
   it('version attendue invalide : refus AVANT toute requête', async () => {
     expect(await commencerNouvelleVersionAvatar({ userId: U, avatarId: A, versionAttendue: 0 }))
       .toEqual({ ok: false, motif: 'version_invalide' });

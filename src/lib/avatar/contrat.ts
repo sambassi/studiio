@@ -50,8 +50,15 @@ export function estSujetAvatar(valeur: unknown): valeur is SujetAvatar {
 export const ETAT_SOURCE_PRETE = 'source_ready';
 export const ETATS_LOCAUX = [ETAT_SOURCE_PRETE] as const;
 
-/** Les statuts que `main` écrit aujourd'hui depuis les réponses HeyGen. */
-export const ETATS_FOURNISSEUR = ['processing', 'completed', 'ready', 'success', 'failed'] as const;
+/**
+ * Les statuts que `main` écrit aujourd'hui depuis les réponses HeyGen —
+ * bruts (`create/route.ts`, `patch.status = training.status`), d'où
+ * `pending_consent` (heygen.ts) à côté de `processing`.
+ */
+export const ETATS_FOURNISSEUR = ['processing', 'pending_consent', 'completed', 'ready', 'success', 'failed'] as const;
+
+/** Le fournisseur travaille encore : rien à valider, rien à générer. */
+export const ETATS_EN_COURS = ['processing', 'pending_consent'] as const;
 
 /** Trois orthographes fournisseur d'un seul fait : le modèle est entraîné. */
 export const ETATS_PRETS = ['completed', 'ready', 'success'] as const;
@@ -62,6 +69,10 @@ export function estEtatLocal(statut: unknown): boolean {
 
 export function estEtatPret(statut: unknown): boolean {
   return typeof statut === 'string' && (ETATS_PRETS as readonly string[]).includes(statut);
+}
+
+export function estEtatEnCours(statut: unknown): boolean {
+  return typeof statut === 'string' && (ETATS_EN_COURS as readonly string[]).includes(statut);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -150,7 +161,7 @@ export function etatAvatar(a: Pick<AvatarLigne, 'status' | 'provider_avatar_id' 
   if (a.provider_avatar_id === null) {
     return a.status === ETAT_SOURCE_PRETE ? 'source_prete' : 'echec';
   }
-  if (a.status === 'processing') return 'entrainement';
+  if (estEtatEnCours(a.status)) return 'entrainement';
   return 'echec';
 }
 

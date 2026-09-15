@@ -18,6 +18,7 @@
 
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { ETAT_SOURCE_PRETE } from '@/lib/avatar/contrat';
+import { cleSourceAvatarDuCompte } from '@/lib/avatar/source';
 
 export interface AvatarVersionnable {
   version: number;
@@ -61,7 +62,7 @@ export function patchNouvelleVersion(avatar: AvatarVersionnable): PatchNouvelleV
   };
 }
 
-export type MotifNouvelleVersion = 'introuvable' | 'version_concurrente' | 'version_invalide';
+export type MotifNouvelleVersion = 'introuvable' | 'version_concurrente' | 'version_invalide' | 'source_invalide';
 
 export interface AvatarVersionne extends AvatarVersionnable {
   id: string;
@@ -81,6 +82,12 @@ export interface AvatarVersionne extends AvatarVersionnable {
  * `complement` : les colonnes que l'appelant a le droit d'ajouter au patch
  * (typiquement `source_object_key`, `consent_version`). Il ne peut pas
  * contredire le patch : ses clés lui sont réservées.
+ *
+ * ⚠️ `source_object_key`, s'il est fourni, est vérifié ICI, avant toute
+ * requête : il doit être UNE SOURCE DE CE COMPTE au sens de
+ * `cleSourceAvatarDuCompte` — ni la clé d'autrui, ni une vidéo générée, ni
+ * un autre domaine, ni une traversée. C'est le point d'entrée d'une donnée
+ * biométrique en base ; on ne s'en remet pas à l'appelant.
  */
 export async function commencerNouvelleVersionAvatar(args: {
   userId: string;
@@ -90,6 +97,10 @@ export async function commencerNouvelleVersionAvatar(args: {
 }): Promise<{ ok: true; avatar: AvatarVersionne } | { ok: false; motif: MotifNouvelleVersion }> {
   const patch = patchNouvelleVersion({ version: args.versionAttendue, deleted_at: null });
   if (!patch) return { ok: false, motif: 'version_invalide' };
+  const cleSource = args.complement?.source_object_key;
+  if (cleSource !== undefined && !cleSourceAvatarDuCompte(cleSource, args.userId)) {
+    return { ok: false, motif: 'source_invalide' };
+  }
 
   const { data, error } = await supabaseAdmin
     .from('user_avatars')

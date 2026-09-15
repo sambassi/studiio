@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   SUJET_AVATAR, SUJETS_AVATAR, VERSION_CONSENTEMENT, TEXTE_CONSENTEMENT, estSujetAvatar,
-  ETAT_SOURCE_PRETE, ETATS_PRETS, estEtatLocal, estEtatPret,
+  ETAT_SOURCE_PRETE, ETATS_PRETS, ETATS_FOURNISSEUR, ETATS_EN_COURS, estEtatLocal, estEtatPret, estEtatEnCours,
   INTENTION_APERCU, INTENTION_NORMALE, lireIntention,
   avatarLigneValide, etatAvatar, estActif, validationPossible, MESSAGES_VALIDATION,
   type AvatarLigne,
@@ -107,6 +107,18 @@ describe('etatAvatar — dérivé, dans l’ordre des règles', () => {
       expect(etatAvatar(ligne({ provider_avatar_id: 'hg', status: s, validated_at: '2026-09-15T00:00:00Z' }))).toBe('valide');
     }
     expect(etatAvatar(ligne({ provider_avatar_id: 'hg', status: 'failed' }))).toBe('echec');
+  });
+
+  it('⚠️ pending_consent (statut HeyGen brut écrit par main) → entrainement, jamais echec, jamais valide', () => {
+    expect(ETATS_FOURNISSEUR).toContain('pending_consent');
+    expect([...ETATS_EN_COURS]).toEqual(['processing', 'pending_consent']);
+    expect(estEtatEnCours('pending_consent')).toBe(true);
+    expect(estEtatPret('pending_consent')).toBe(false);
+    const enAttente = ligne({ provider_avatar_id: 'hg', status: 'pending_consent' });
+    expect(etatAvatar(enAttente)).toBe('entrainement');
+    expect(etatAvatar({ ...enAttente, validated_at: '2026-09-15T00:00:00Z' })).toBe('entrainement');
+    expect(validationPossible(enAttente, true)).toEqual({ ok: false, motif: 'entrainement_en_cours' });
+    expect(validationPossible({ ...enAttente, validated_at: '2026-09-15T00:00:00Z' }, true)).toEqual({ ok: false, motif: 'entrainement_en_cours' });
   });
 
   it('⚠️ un validated_at sur un modèle NON prêt ne compte pas (nouvelle version en cours)', () => {
