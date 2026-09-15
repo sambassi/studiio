@@ -101,6 +101,15 @@ export async function POST(req: NextRequest) {
         { status: 403 },
       );
     }
+    // Cette route est HeyGen (script + voix HeyGen sur /v3/videos). Un avatar
+    // D-ID a son propre apercu (`/api/avatar/did/apercu`, sur MA voix) : on
+    // refuse ici, avant tout debit — jamais un identifiant D-ID chez HeyGen.
+    if (avatarRow.provider === 'did') {
+      return NextResponse.json(
+        { success: false, error: 'Cette generation n’est pas disponible pour un avatar video. Utilisez l’apercu de votre avatar video.', code: 'provider_did' },
+        { status: 409 },
+      );
+    }
     // Sans identifiant fournisseur, il n'y a pas de clone : la source est
     // enregistree, mais rien ne peut parler. On ne sollicite jamais HeyGen
     // avec `null` — ni pour le statut, ni pour une video.

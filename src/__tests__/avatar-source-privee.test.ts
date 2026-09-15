@@ -158,8 +158,9 @@ describe('source-cle — le module pur, seule définition de la forme', () => {
 
   it('le module pur n’importe ni base ni stockage', () => {
     expect(Object.keys(pur).sort()).toEqual([
-      'LONGUEUR_NONCE_SOURCE', 'NOM_SOURCE_AVATAR', 'SEGMENT_SOURCE_AVATAR', 'TYPES_SOURCE_AUTORISES',
-      'estCleSourceAvatar', 'extensionSourceAvatar', 'typeSourceAvatar',
+      'EXTENSIONS_CONSENTEMENT', 'LONGUEUR_NONCE_SOURCE', 'NOM_AUDIO_AVATAR', 'NOM_CONSENTEMENT_AVATAR', 'NOM_SOURCE_AVATAR',
+      'SEGMENT_SOURCE_AVATAR', 'TYPES_SOURCE_AUTORISES',
+      'estCleAudioAvatar', 'estCleConsentementAvatar', 'estClePriveeAvatar', 'estCleSourceAvatar', 'extensionSourceAvatar', 'typeSourceAvatar',
     ]);
     const src = readFileSync(resolve(__dirname, '../lib/avatar/source-cle.ts'), 'utf8');
     expect(src).not.toMatch(/^import /m);

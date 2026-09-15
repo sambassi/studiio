@@ -17,11 +17,14 @@ import {
 } from 'lucide-react';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 import MaVoixPanel from '@/components/voice/MaVoixPanel';
+import AvatarVideoDid, { type EtapeDid } from '@/components/avatar/AvatarVideoDid';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
 /** Limite imposée par HeyGen sur l'envoi d'un asset. */
 const MAX_VIDEO_MB = 32;
+/** Limite documentée par D-ID (« Video buffer size exceeds 50MB »). */
+const MAX_VIDEO_DID_MB = 50;
 
 type AvatarKind = 'photo' | 'video';
 
@@ -36,6 +39,11 @@ interface AvatarRow {
   training_error?: string | null;
   /** L'état DÉRIVÉ par le serveur (`etatAvatar`) : l'écran ne le recalcule pas. */
   etat?: 'supprime' | 'source_prete' | 'entrainement' | 'entraine_non_valide' | 'valide' | 'echec';
+  /** Le fournisseur de cet avatar : 'heygen' (photo/vidéo HeyGen) ou 'did' (avatar vidéo). */
+  provider?: 'heygen' | 'did' | string;
+  /** Avatar D-ID : l'étape DÉRIVÉE par le serveur et la phrase de consentement à lire. */
+  etape_did?: EtapeDid;
+  provider_consent_text?: string | null;
   version?: number;
   validated_at?: string | null;
   /**
@@ -67,6 +75,8 @@ export default function AvatarPage() {
   const [loading, setLoading] = useState(true);
   const [avatar, setAvatar] = useState<AvatarRow | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
+  /** « À partir d'une vidéo » n'est ouvert que si le serveur le dit (drapeau + clé D-ID). */
+  const [didVideoActif, setDidVideoActif] = useState(false);
 
   // Création
   const [kind, setKind] = useState<AvatarKind>('photo');
@@ -170,11 +180,14 @@ export default function AvatarPage() {
     setApercuEnCours(true);
     setError(null);
     try {
-      const res = await fetch('/api/avatar/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined }),
-      });
+      // Avatar D-ID : l'aperçu part sur MA voix (ElevenLabs) vers D-ID ; HeyGen sinon.
+      const res = avatar.provider === 'did'
+        ? await fetch('/api/avatar/did/apercu', { method: 'POST' })
+        : await fetch('/api/avatar/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined }),
+        });
       const json = await res.json();
       if (!json.success) {
         setError(json.error || "L'aperçu n'a pas pu être lancé.");
@@ -248,6 +261,7 @@ export default function AvatarPage() {
     if (!json.success) return null;
 
     setAvatar(json.data.avatar);
+    setDidVideoActif(json.data.didVideoActif === true);
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
     // Un jeton d'ouverture ne vaut que pour la version qui l'a délivré.
@@ -292,6 +306,8 @@ export default function AvatarPage() {
   // bloquée côté serveur (409) pendant ce temps.
   const training = !!avatar && !READY_STATUSES.includes(avatar.status);
   const trainingFailed = avatar?.status === 'failed';
+  /** Avatar vidéo D-ID : ses étapes (consentement, création, entraînement) ont leur propre panneau. */
+  const viaDid = avatar?.provider === 'did';
 
   useEffect(() => {
     if (!training || trainingFailed) return;
@@ -356,10 +372,19 @@ export default function AvatarPage() {
 
     // Contrôle côté client de la limite HeyGen : évite un upload de plusieurs
     // dizaines de Mo pour rien.
-    if (f.type.startsWith('video/') && f.size > MAX_VIDEO_MB * 1024 * 1024) {
+    const videoDid = kind === 'video' && didVideoActif;
+    const limiteMb = videoDid ? MAX_VIDEO_DID_MB : MAX_VIDEO_MB;
+    if (f.type.startsWith('video/') && f.size > limiteMb * 1024 * 1024) {
       setError(
-        `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). HeyGen limite l'envoi à ${MAX_VIDEO_MB} Mo — réduisez la durée ou la qualité.`,
+        videoDid
+          ? `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). ${MAX_VIDEO_DID_MB} Mo maximum — réduisez la durée ou la qualité.`
+          : `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). HeyGen limite l'envoi à ${MAX_VIDEO_MB} Mo — réduisez la durée ou la qualité.`,
       );
+      e.target.value = '';
+      return;
+    }
+    if (videoDid && f.type !== 'video/mp4' && f.type !== 'video/quicktime') {
+      setError('Format vidéo non supporté pour l’avatar vidéo. Utilisez MP4 ou MOV.');
       e.target.value = '';
       return;
     }
@@ -391,6 +416,9 @@ export default function AvatarPage() {
       fd.append('file', file);
       fd.append('consent', 'true');
       fd.append('name', kind === 'video' ? 'Mon avatar vidéo' : 'Mon avatar');
+      // L'avatar vidéo passe par D-ID quand le serveur l'a ouvert ; la photo
+      // reste HeyGen, à l'identique. Le serveur revérifie le drapeau.
+      if (kind === 'video' && didVideoActif) fd.append('provider', 'did');
 
       const res = await fetch('/api/avatar/create', { method: 'POST', body: fd });
       const json = await res.json();
@@ -401,9 +429,11 @@ export default function AvatarPage() {
       }
       setAvatar(json.data.avatar);
       setNotice(
-        kind === 'video'
-          ? "Avatar vidéo créé. L'entraînement chez HeyGen prend plusieurs minutes — la page se met à jour toute seule."
-          : "Avatar créé. HeyGen l'entraîne quelques minutes — vous pouvez déjà écrire votre texte.",
+        kind === 'video' && didVideoActif
+          ? 'Vidéo importée. Prochaine étape : votre phrase de consentement.'
+          : kind === 'video'
+            ? "Avatar vidéo créé. L'entraînement chez HeyGen prend plusieurs minutes — la page se met à jour toute seule."
+            : "Avatar créé. HeyGen l'entraîne quelques minutes — vous pouvez déjà écrire votre texte.",
       );
       setFile(null);
       if (preview) URL.revokeObjectURL(preview);
@@ -542,8 +572,9 @@ export default function AvatarPage() {
           <div>
             <h2 className="font-semibold mb-1">1. À partir de quoi ?</h2>
             <p className="text-sm text-gray-400">
-              Créez votre avatar à partir d’une photo. L’avatar vidéo (rendu encore plus réaliste)
-              arrive bientôt.
+              {didVideoActif
+                ? 'Créez votre avatar à partir d’une photo, ou d’une vidéo pour un rendu plus naturel.'
+                : 'Créez votre avatar à partir d’une photo. L’avatar vidéo (rendu encore plus réaliste) arrive bientôt.'}
             </p>
           </div>
 
@@ -562,7 +593,7 @@ export default function AvatarPage() {
                 Icon: Clapperboard,
                 title: 'À partir d’une vidéo',
                 sub: 'Plus réaliste, entraînement plus long',
-                soon: true,
+                soon: !didVideoActif,
               },
             ]).map(({ id, Icon, title, sub, soon }) => (
               <button
@@ -600,6 +631,14 @@ export default function AvatarPage() {
                 portrait net, de face, visage bien éclairé et non masqué. JPG, PNG ou WebP,
                 10 Mo maximum.
               </>
+            ) : didVideoActif ? (
+              <ul data-avatar-did-conseils className="list-disc pl-4 space-y-0.5">
+                <li><span className="text-gray-300 font-medium">Au moins 1 minute</span> de vidéo.</li>
+                <li>Parlez naturellement, regardez régulièrement la caméra.</li>
+                <li>Lumière stable, visage bien visible.</li>
+                <li>Évitez le montage et les coupures rapides.</li>
+                <li>MP4 ou MOV, <span className="text-gray-300">{MAX_VIDEO_DID_MB} Mo maximum</span>.</li>
+              </ul>
             ) : (
               <>
                 <span className="text-gray-300 font-medium">Pour un bon résultat :</span> visage
@@ -616,7 +655,7 @@ export default function AvatarPage() {
             type="file"
             accept={
               kind === 'video'
-                ? 'video/mp4,video/webm,video/quicktime'
+                ? (didVideoActif ? 'video/mp4,video/quicktime' : 'video/mp4,video/webm,video/quicktime')
                 : 'image/jpeg,image/png,image/webp'
             }
             onChange={handleFileChange}
@@ -663,9 +702,11 @@ export default function AvatarPage() {
               className="mt-0.5 w-4 h-4 flex-shrink-0 accent-purple-600"
             />
             <span className="text-sm text-gray-300">
-              {kind === 'video'
-                ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et HeyGen à l'utiliser pour entraîner un avatar à mon effigie."
-                : "Je certifie être la personne visible sur l'image et j'autorise Studiio à en créer un avatar animé."}
+              {kind === 'video' && didVideoActif
+                ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et D-ID à l'utiliser pour entraîner un avatar à mon effigie."
+                : kind === 'video'
+                  ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et HeyGen à l'utiliser pour entraîner un avatar à mon effigie."
+                  : "Je certifie être la personne visible sur l'image et j'autorise Studiio à en créer un avatar animé."}
             </span>
           </label>
 
@@ -682,7 +723,7 @@ export default function AvatarPage() {
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                {kind === 'video' ? 'Créer mon avatar vidéo' : 'Créer mon avatar'}
+                {kind === 'video' && didVideoActif ? 'Importer ma vidéo' : kind === 'video' ? 'Créer mon avatar vidéo' : 'Créer mon avatar'}
               </>
             )}
           </button>
@@ -761,7 +802,16 @@ export default function AvatarPage() {
           </div>
 
           {/* Entraînement en cours — la génération reste bloquée (409 côté serveur) */}
-          {training && !trainingFailed && (
+          {viaDid && avatar.etape_did && avatar.etape_did !== 'valide' && (
+            <AvatarVideoDid
+              etape={avatar.etape_did}
+              texteConsentement={avatar.provider_consent_text ?? null}
+              erreurEntrainement={avatar.training_error ?? null}
+              onChange={async () => { await loadAvatar(false); }}
+            />
+          )}
+
+          {!viaDid && training && !trainingFailed && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
               <Loader2 className="w-5 h-5 flex-shrink-0 mt-0.5 animate-spin" />
               <div>
@@ -775,7 +825,7 @@ export default function AvatarPage() {
             </div>
           )}
 
-          {trainingFailed && (
+          {!viaDid && trainingFailed && (
             <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
               <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <div>
@@ -792,7 +842,7 @@ export default function AvatarPage() {
           {/* ── VALIDATION DU CLONE — l'aperçu RÉEL, puis « Valider » ─────────
               Tout vient du serveur : l'état dérivé, l'existence de l'aperçu,
               le jeton d'ouverture. Rien n'est affiché qui n'existe pas. */}
-          {avatar.etat === 'entrainement' && (
+          {!viaDid && avatar.etat === 'entrainement' && (
             <div data-avatar-validation="entrainement" className="text-sm text-amber-200/90">
               Votre avatar est en cours de préparation.
             </div>
@@ -870,6 +920,15 @@ export default function AvatarPage() {
             </div>
           )}
 
+          {/* La génération de vidéos à la demande (texte + voix HeyGen) reste
+              HeyGen : un avatar vidéo D-ID n'y est pas encore branché — on le
+              dit, on ne l'offre pas. */}
+          {viaDid ? (
+            <div data-avatar-did-generation="indisponible" className="text-xs text-gray-400">
+              La génération de vidéos avec votre avatar vidéo arrive après sa validation. Pour l&apos;instant : aperçu et validation.
+            </div>
+          ) : (
+          <>
           <div>
             <label className="block text-sm font-medium mb-2">Ce que dit votre avatar</label>
             <textarea
@@ -978,6 +1037,8 @@ export default function AvatarPage() {
               La génération prend généralement 1 à 5 minutes. Vous pouvez laisser cette page
               ouverte.
             </p>
+          )}
+          </>
           )}
         </div>
       )}

@@ -72,6 +72,12 @@ export async function resoudreJumeauDuCompte(userId: string): Promise<Resolution
   if (!lecture.ok) return { ok: false, erreur: lecture.erreur };
   const a = lecture.avatar;
   if (!a) return { ok: false, motif: 'avatar_absent', message: MESSAGES_JUMEAU.avatar_absent };
+  // GARDE : le moteur du jumeau est câblé sur HeyGen (`audio_asset_id` sur
+  // /v3/videos). Un avatar D-ID n'y est pas encore branché : on le dit, on
+  // n'envoie JAMAIS un identifiant D-ID à HeyGen.
+  if ((a as { provider?: unknown }).provider === 'did') {
+    return { ok: false, motif: 'avatar_non_pret', message: 'Votre avatar vidéo n’est pas encore pris en charge par le jumeau numérique.' };
+  }
   // L'état est DÉRIVÉ, au même endroit que la validation : vivant, fournisseur
   // présent, entraînement réellement terminé, validated_at posé.
   const etat = etatAvatar(a);

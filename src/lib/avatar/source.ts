@@ -27,7 +27,8 @@ import {
   BUCKET_NAMESPACE_AVATAR, SEGMENT_NAMESPACE_AVATAR, cleDansNamespaceAvatar, cleObjetValide,
 } from '@/lib/storage/acces-objet';
 import {
-  TYPES_SOURCE_AUTORISES, LONGUEUR_NONCE_SOURCE, estCleSourceAvatar, typeSourceAvatar, extensionSourceAvatar,
+  TYPES_SOURCE_AUTORISES, LONGUEUR_NONCE_SOURCE, EXTENSIONS_CONSENTEMENT, estCleSourceAvatar, estCleConsentementAvatar,
+  estCleAudioAvatar, typeSourceAvatar, extensionSourceAvatar,
 } from '@/lib/avatar/source-cle';
 
 /* La FORME d'une clé vit dans `source-cle` (module pur, partagé avec le
@@ -176,6 +177,70 @@ export function cleAvatarDuCompte(cle: unknown, userId: string): cle is string {
   if (!cleObjetValide(cle)) return false;
   if (!cle.startsWith(`${userId}/`)) return false;
   return cleDansNamespaceAvatar(BUCKET_AVATAR, cle);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Les autres objets PRIVÉS du dossier : consentement fournisseur, audio
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * La clé de la vidéo de CONSENTEMENT (D-ID) : même dossier, même nonce que
+ * la source, nom `consent-…`. Formats vidéo seulement (mp4, mov) — ce que le
+ * fournisseur accepte en `source_url`.
+ */
+export function cleConsentementAvatar(
+  userId: string, extension: string, horodatage = Date.now(), nonce = nonceSourceAvatar(),
+): string {
+  if (!UUID.test(userId)) throw new Error('cleConsentementAvatar: identifiant de compte invalide');
+  const ext = extension.toLowerCase();
+  if (!(EXTENSIONS_CONSENTEMENT as readonly string[]).includes(ext)) throw new Error(`cleConsentementAvatar: format non autorisé (${extension})`);
+  if (!Number.isInteger(horodatage) || horodatage < 0) throw new Error('cleConsentementAvatar: horodatage invalide');
+  if (!new RegExp(`^[0-9a-f]{${LONGUEUR_NONCE_SOURCE}}$`).test(nonce)) throw new Error('cleConsentementAvatar: nonce invalide');
+  return `${userId}/${SEGMENT_NAMESPACE_AVATAR}/consent-${horodatage}-${nonce}.${ext}`;
+}
+
+/** Cette clé est-elle la vidéo de consentement de CE compte ? Même rigueur que `cleSourceAvatarDuCompte`. */
+export function cleConsentementAvatarDuCompte(cle: unknown, userId: string): cle is string {
+  if (!UUID.test(userId)) return false;
+  if (!estCleConsentementAvatar(cle)) return false;
+  return cle.split('/')[0] === userId;
+}
+
+/** La clé de l'audio d'une génération (ma voix, pour un aperçu D-ID) : `audio-<generationId>.mp3`. */
+export function cleAudioAvatar(userId: string, generationId: string): string {
+  if (!UUID.test(userId) || !UUID.test(generationId)) throw new Error('cleAudioAvatar: identifiant invalide');
+  return `${userId}/${SEGMENT_NAMESPACE_AVATAR}/audio-${generationId.toLowerCase()}.mp3`;
+}
+
+/** Source, consentement ou audio de CE compte : les trois objets que seule une session (ou un jeton signé) peut lire. */
+export function clePriveeAvatarDuCompte(cle: unknown, userId: string): cle is string {
+  if (!UUID.test(userId)) return false;
+  if (!(estCleSourceAvatar(cle) || estCleConsentementAvatar(cle) || estCleAudioAvatar(cle))) return false;
+  return cle.split('/')[0] === userId;
+}
+
+/** Le type MIME d'un objet privé du dossier, d'après son nom ; `null` si le nom n'est pas reconnu. */
+export function typeObjetPriveAvatar(cle: string): string | null {
+  // Les gardes rétrécissent leur argument ; on leur passe une valeur, pas la variable.
+  if (estCleAudioAvatar(cle as unknown)) return 'audio/mpeg';
+  if (estCleConsentementAvatar(cle as unknown)) return cle.endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
+  return typeSourceAvatar(cle);
+}
+
+/**
+ * Retire un objet privé PÉRIMÉ (consentement ou audio) du compte — jamais la
+ * clé conservée, jamais une source (qui a son propre retrait), jamais une
+ * vidéo générée. Ne lève jamais.
+ */
+export async function retirerObjetPriveAvatar(userId: string, cle: unknown, cleConservee?: string | null): Promise<boolean> {
+  if (!(cleConsentementAvatarDuCompte(cle, userId) || (estCleAudioAvatar(cle) && cle.split('/')[0] === userId))) return false;
+  if (cleConservee && cle === cleConservee) return false;
+  try {
+    const { error } = await supabaseAdmin.storage.from(BUCKET_AVATAR).remove([cle]);
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────

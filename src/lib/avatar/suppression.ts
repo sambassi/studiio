@@ -43,7 +43,8 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { cleSourceDepuisUrlLegacy, retirerSourceAvatar } from '@/lib/avatar/source';
+import { cleSourceDepuisUrlLegacy, retirerSourceAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
+import { retirerAvatarChezDid } from '@/lib/avatar/did';
 
 interface LigneAvatar {
   id: string;
@@ -53,9 +54,17 @@ interface LigneAvatar {
   source_object_key: string | null;
   source_url: string | null;
   provider_avatar_id: string | null;
+  provider?: string | null;
+  consent_object_key?: string | null;
 }
 
-export type NettoyageFournisseur = 'non_disponible';
+/**
+ * `non_disponible` : HeyGen (heygen.ts ne sait pas supprimer) ; `retire` /
+ * `non_retire` : D-ID, dont l'avatar est retiré chez le fournisseur en best
+ * effort APRÈS la suppression douce — sur l'identifiant de la ligne
+ * supprimée, jamais sur celui d'une ligne vivante.
+ */
+export type NettoyageFournisseur = 'non_disponible' | 'retire' | 'non_retire' | 'sans_objet';
 
 export type ResultatSuppression =
   | { ok: true; avatarId: string; version: number; dejaSupprime: boolean; sourceRetiree: boolean; fournisseur: NettoyageFournisseur }
@@ -66,7 +75,7 @@ export type ResultatSuppression =
 async function lireVivant(userId: string): Promise<{ ok: true; avatar: LigneAvatar | null } | { ok: false; erreur: string }> {
   const { data, error } = await supabaseAdmin
     .from('user_avatars')
-    .select('id, user_id, version, deleted_at, source_object_key, source_url, provider_avatar_id')
+    .select('id, user_id, version, deleted_at, source_object_key, source_url, provider_avatar_id, provider, consent_object_key')
     .eq('user_id', userId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -180,6 +189,18 @@ export async function supprimerAvatarActif(userId: string): Promise<ResultatSupp
   const cleProtegee = vivantMaintenant.avatar ? cleSourceDe(vivantMaintenant.avatar, userId) : null;
   const sourceRetiree = await retirerSourceDeLaLigneSupprimee(userId, vivant, cleProtegee);
 
+  if (vivant.provider === 'did') {
+    // La vidéo de consentement (notre objet) et l'avatar chez D-ID — sur les
+    // identifiants de la ligne supprimée, en protégeant ce qu'une nouvelle
+    // ligne vivante désigne déjà.
+    const consentProtegee = vivantMaintenant.avatar?.consent_object_key ?? null;
+    if (vivant.consent_object_key) await retirerObjetPriveAvatar(userId, vivant.consent_object_key, consentProtegee);
+    const fournisseur = vivantMaintenant.avatar?.provider_avatar_id === vivant.provider_avatar_id
+      ? 'sans_objet'
+      : await retirerAvatarChezDid(vivant.provider_avatar_id);
+    if (fournisseur === 'non_retire') console.warn(`[Avatar][suppression] avatar D-ID de ${vivant.id} non retiré chez le fournisseur.`);
+    return { ok: true, avatarId: vivant.id, version: vivant.version, dejaSupprime, sourceRetiree, fournisseur };
+  }
   if (vivant.provider_avatar_id) {
     console.warn(`[Avatar][suppression] Nettoyage fournisseur NON DISPONIBLE pour ${vivant.id} (heygen.ts ne sait pas supprimer) : le clone peut subsister chez le fournisseur.`);
   }

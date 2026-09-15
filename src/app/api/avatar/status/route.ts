@@ -3,6 +3,9 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { addCredits } from '@/lib/credits/system';
 import { getVideoStatus, downloadVideo, HeyGenError } from '@/lib/avatar/heygen';
+import { lireScene, telechargerResultat, DidError } from '@/lib/providers/did/client';
+import { FOURNISSEUR_DID } from '@/lib/avatar/did';
+import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -90,16 +93,21 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const remote = await getVideoStatus(gen.provider_video_id);
+    // Le fournisseur de CETTE generation (`avatar_generations.provider`) :
+    // HeyGen (defaut, inchange) ou D-ID. Meme forme de reponse, meme suite.
+    const viaDid = gen.provider === FOURNISSEUR_DID;
+    const remote = viaDid ? await lireScene(gen.provider_video_id) : await getVideoStatus(gen.provider_video_id);
 
     if (remote.status === 'failed') {
-      await failAndRefund(gen, remote.failureMessage || 'HeyGen a signale un echec.');
+      const nomFournisseur = viaDid ? 'D-ID' : 'HeyGen';
+      await failAndRefund(gen, remote.failureMessage || `${nomFournisseur} a signale un echec.`);
+      if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, gen.id));
       return NextResponse.json({
         success: true,
         data: {
           generationId: gen.id,
           status: 'failed',
-          error: `${remote.failureMessage || 'Echec HeyGen'}. Credits rembourses.`,
+          error: `${remote.failureMessage || `Echec ${nomFournisseur}`}.${gen.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
         },
       });
     }
@@ -121,7 +129,7 @@ export async function GET(req: NextRequest) {
     // Termine : rapatriement sur notre stockage.
     let finalUrl = remote.videoUrl;
     try {
-      const buffer = await downloadVideo(remote.videoUrl);
+      const buffer = viaDid ? await telechargerResultat(remote.videoUrl) : await downloadVideo(remote.videoUrl);
       const storagePath = `${userId}/avatar/${gen.id}.mp4`;
       const { error: upErr } = await supabaseAdmin.storage
         .from('media')
@@ -143,16 +151,23 @@ export async function GET(req: NextRequest) {
       .update({
         status: 'completed',
         video_url: finalUrl,
-        duration_seconds: remote.durationSeconds ?? null,
+        duration_seconds: ('durationSeconds' in remote ? remote.durationSeconds : null) ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', gen.id);
+    // D-ID : l'audio de ma voix ne sert plus a rien une fois la video rendue —
+    // on ne garde pas une donnee biometrique sans raison.
+    if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, gen.id));
 
     return NextResponse.json({
       success: true,
       data: { generationId: gen.id, status: 'completed', videoUrl: finalUrl },
     });
   } catch (error) {
+    if (error instanceof DidError) {
+      // Transitoire cote D-ID : meme regle que HeyGen, le prochain poll retentera.
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.httpStatus });
+    }
     if (error instanceof HeyGenError) {
       // Erreur transitoire cote HeyGen : on ne marque pas la generation en
       // echec, le prochain poll retentera.
