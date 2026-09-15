@@ -57,7 +57,7 @@ vi.mock('@/lib/storage/minio-client', () => ({
 import {
   cleSourceAvatar, cleSourceAvatarDuCompte, cleAvatarDuCompte, typeSourceAvatar, extensionSourceAvatar,
   retirerSourceAvatar, sourceAvatarPresente, ouvrirSourceAvatar, BUCKET_AVATAR, TYPES_SOURCE_AUTORISES,
-  cleSourceDepuisUrlLegacy,
+  cleSourceDepuisUrlLegacy, basesUrlPubliqueStockage,
 } from '@/lib/avatar/source';
 import * as pur from '@/lib/avatar/source-cle';
 import {
@@ -132,34 +132,81 @@ describe('source-cle — le module pur, seule définition de la forme', () => {
   });
 });
 
-describe('cleSourceDepuisUrlLegacy — la forme exacte de getPublicUrl(), et la propriété', () => {
+describe('cleSourceDepuisUrlLegacy — origine EXACTE d’une base configurée, jamais une sous-chaîne', () => {
+  const env = (v: Record<string, string>) => v as unknown as NodeJS.ProcessEnv;
+  const ENV_APP = env({ NEXT_PUBLIC_APP_URL: 'https://studiio.pro' });
   const RELAIS = 'https://studiio.pro/storage/v1/object/public/media';
+  const CLE = `${U}/avatar/source-1757000000000.jpg`;
 
-  it('extrait la clé d’un source_url du compte (absolu ou relatif)', () => {
-    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/avatar/source-1757000000000.jpg`, U)).toBe(`${U}/avatar/source-1757000000000.jpg`);
-    expect(cleSourceDepuisUrlLegacy(`/storage/v1/object/public/media/${U}/avatar/source-1.mp4`, U)).toBe(`${U}/avatar/source-1.mp4`);
+  it('les bases viennent de la configuration, comme getPublicUrl() : PUBLIC_STORAGE_URL, APP_URL + relais, relative', () => {
+    expect(basesUrlPubliqueStockage(env({}))).toEqual(['/storage/v1/object/public']);
+    expect(basesUrlPubliqueStockage(ENV_APP)).toEqual(['https://studiio.pro/storage/v1/object/public', '/storage/v1/object/public']);
+    expect(basesUrlPubliqueStockage(env({ PUBLIC_STORAGE_URL: 'https://cdn.studiio.pro/', NEXT_PUBLIC_APP_URL: 'https://studiio.pro/' })))
+      .toEqual(['https://cdn.studiio.pro', 'https://studiio.pro/storage/v1/object/public', '/storage/v1/object/public']);
+  });
+
+  it('origine légitime absolue (APP_URL) → acceptée ; forme relative → acceptée', () => {
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${CLE}`, U, ENV_APP)).toBe(CLE);
+    expect(cleSourceDepuisUrlLegacy(`/storage/v1/object/public/media/${U}/avatar/source-1.mp4`, U, ENV_APP)).toBe(`${U}/avatar/source-1.mp4`);
+    // Sans configuration : seule la forme relative existe.
+    expect(cleSourceDepuisUrlLegacy(`/storage/v1/object/public/media/${CLE}`, U, env({}))).toBe(CLE);
+  });
+
+  it('PUBLIC_STORAGE_URL posée (domaine MinIO public) → cette origine, et son chemin exact, sont acceptés', () => {
+    const cdn = env({ PUBLIC_STORAGE_URL: 'https://cdn.studiio.pro:8443/objets' });
+    expect(cleSourceDepuisUrlLegacy(`https://cdn.studiio.pro:8443/objets/media/${CLE}`, U, cdn)).toBe(CLE);
+    expect(cleSourceDepuisUrlLegacy(`https://cdn.studiio.pro/objets/media/${CLE}`, U, cdn)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`https://cdn.studiio.pro:8443/media/${CLE}`, U, cdn)).toBeNull();
+  });
+
+  it('⚠️ DOMAINE FORGÉ avec le chemin exact du relais → refusé, même pour la clé du compte', () => {
+    expect(cleSourceDepuisUrlLegacy(`https://evil.example/storage/v1/object/public/media/${U}/avatar/source-1.jpg`, U, ENV_APP)).toBeNull();
+  });
+
+  it('⚠️ sous-domaine forgé, userinfo, autre schéma, autre port, hôte à point final → refusés', () => {
+    for (const url of [
+      `https://studiio.pro.evil.example/storage/v1/object/public/media/${CLE}`,
+      `https://evil.studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `https://studiio.pro@evil.example/storage/v1/object/public/media/${CLE}`,
+      `https://user:pass@studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `http://studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `https://studiio.pro:8443/storage/v1/object/public/media/${CLE}`,
+      `https://studiio.pro./storage/v1/object/public/media/${CLE}`,
+      `ftp://studiio.pro/storage/v1/object/public/media/${CLE}`,
+      `javascript:/storage/v1/object/public/media/${CLE}`,
+      `//studiio.pro/storage/v1/object/public/media/${CLE}`,
+    ]) {
+      expect(cleSourceDepuisUrlLegacy(url, U, ENV_APP), url).toBeNull();
+    }
+  });
+
+  it('⚠️ sans APP_URL configurée, l’absolu n’a aucune origine légitime : refusé', () => {
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${CLE}`, U, env({}))).toBeNull();
   });
 
   it('⚠️ refuse : autre compte, autre bucket, autre namespace, vidéo générée', () => {
-    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${AUTRUI}/avatar/source-1.jpg`, U)).toBeNull();
-    expect(cleSourceDepuisUrlLegacy(`https://studiio.pro/storage/v1/object/public/videos/${U}/avatar/source-1.jpg`, U)).toBeNull();
-    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/lut/source-1.jpg`, U)).toBeNull();
-    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/avatar/${GEN}.mp4`, U)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${AUTRUI}/avatar/source-1.jpg`, U, ENV_APP)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`https://studiio.pro/storage/v1/object/public/videos/${U}/avatar/source-1.jpg`, U, ENV_APP)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/lut/source-1.jpg`, U, ENV_APP)).toBeNull();
+    expect(cleSourceDepuisUrlLegacy(`${RELAIS}/${U}/avatar/${GEN}.mp4`, U, ENV_APP)).toBeNull();
   });
 
-  it('refuse : domaine/chemin forgé, préfixe répété, query/fragment/encodage, malformé, vide', () => {
+  it('refuse : query, fragment, encodage, double préfixe, traversée, chemin relatif hors base, malformé, vide', () => {
     for (const url of [
-      `https://evil.example/${U}/avatar/source-1.jpg`,
-      `https://evil.example/x/storage/v1/object/public/media/${U}/avatar/source-1.jpg/../${AUTRUI}/avatar/source-1.jpg`,
-      `${RELAIS}/${U}/avatar/source-1.jpg?x=1`,
-      `${RELAIS}/${U}/avatar/source-1.jpg#f`,
+      `${RELAIS}/${CLE}?x=1`,
+      `${RELAIS}/${CLE}#f`,
       `${RELAIS}/${U}%2Favatar%2Fsource-1.jpg`,
-      `${RELAIS}/x${RELAIS}/${U}/avatar/source-1.jpg`,
+      `${RELAIS}/x${RELAIS}/${CLE}`,
+      `https://studiio.pro/x/storage/v1/object/public/media/${CLE}`,
+      `${RELAIS}/${U}/avatar/../${AUTRUI}/avatar/source-1.jpg`,
+      `/x/storage/v1/object/public/media/${CLE}`,
+      `storage/v1/object/public/media/${CLE}`,
       `${RELAIS}/`,
       `${RELAIS}`,
-      'pas une url', '', null, undefined, 42,
+      `${RELAIS}/${CLE} `,
+      'pas une url', 'https://', '', null, undefined, 42,
     ]) {
-      expect(cleSourceDepuisUrlLegacy(url, U), String(url)).toBeNull();
+      expect(cleSourceDepuisUrlLegacy(url, U, ENV_APP), String(url)).toBeNull();
     }
   });
 });

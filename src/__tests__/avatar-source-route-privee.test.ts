@@ -81,6 +81,11 @@ vi.mock('@/lib/storage/minio-client', async () => {
 const session = vi.hoisted(() => ({ courante: null as unknown }));
 vi.mock('@/lib/auth/config', () => ({ auth: async () => session.courante }));
 
+// La route lit la configuration au moment de l'appel : l'origine légitime
+// est celle de l'application, pas un hôte codé en dur.
+process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
+delete process.env.PUBLIC_STORAGE_URL;
+
 const { GET } = await import('@/app/api/avatar/source/route');
 
 const ligne = (over: Partial<Ligne> = {}): Ligne => ({
@@ -186,8 +191,18 @@ describe('GET /api/avatar/source — 404 uniforme, MinIO non consulté quand la 
     }
   });
 
-  it('⚠️ source_url forgé vers un autre compte, un autre bucket, un autre namespace, une génération → refusé', async () => {
+  it('⚠️ DOMAINE FORGÉ avec le chemin exact du relais → 404, sans appel MinIO', async () => {
+    etat.lignes = [ligne({ source_object_key: null, source_url: `https://evil.example/storage/v1/object/public/media/${U}/avatar/source-1.jpg` })];
+    etat.objets.set(`${U}/avatar/source-1.jpg`, 10);
+    await attendre404();
+  });
+
+  it('⚠️ source_url forgé : autre compte, autre bucket, autre namespace, génération, sous-domaine, userinfo, port, query → refusé', async () => {
     for (const url of [
+      `https://studiio.pro.evil.example/storage/v1/object/public/media/${U}/avatar/source-1.jpg`,
+      `https://studiio.pro@evil.example/storage/v1/object/public/media/${U}/avatar/source-1.jpg`,
+      `https://studiio.pro:8443/storage/v1/object/public/media/${U}/avatar/source-1.jpg`,
+      `http://studiio.pro/storage/v1/object/public/media/${U}/avatar/source-1.jpg`,
       `${RELAIS}/${AUTRUI}/avatar/source-1.jpg`,
       `https://studiio.pro/storage/v1/object/public/videos/${U}/avatar/source-1.jpg`,
       `${RELAIS}/${U}/lut/source-1.jpg`,

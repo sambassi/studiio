@@ -74,33 +74,89 @@ export function cleSourceAvatarDuCompte(cle: unknown, userId: string): cle is st
 }
 
 /**
- * Le chemin que `getPublicUrl()` écrit devant la clé (`s3-client.ts`,
- * `db/supabase.ts`) : `<PUBLIC_STORAGE_URL>/media/<clé>`, où l'URL de base est
- * par défaut `<APP_URL>/storage/v1/object/public`. C'est la SEULE forme que
- * `source_url` ait jamais prise pour une source d'avatar.
+ * Les BASES d'URL publique que `getPublicUrl()` a pu écrire devant
+ * `/media/<clé>` — reprises de `s3-client.ts` et `db/supabase.ts`, qui
+ * calculent toutes deux la même chose :
+ *
+ *   PUBLIC_STORAGE_URL                              si la variable est posée
+ *   <NEXT_PUBLIC_APP_URL>/storage/v1/object/public  sinon, si l'app a une origine
+ *   /storage/v1/object/public                       sinon (forme RELATIVE)
+ *
+ * Les trois sont rendues : une ligne historique a pu être écrite sous une
+ * configuration antérieure à la configuration courante. Rien d'autre —
+ * aucune origine n'est inventée, aucune n'est codée en dur.
  */
-const PREFIXE_URL_LEGACY = `/storage/v1/object/public/${BUCKET_NAMESPACE_AVATAR}/`;
+export function basesUrlPubliqueStockage(env: NodeJS.ProcessEnv = process.env): string[] {
+  const bases = new Set<string>();
+  const posee = env.PUBLIC_STORAGE_URL?.trim();
+  if (posee) bases.add(posee.replace(/\/+$/, ''));
+  const app = env.NEXT_PUBLIC_APP_URL?.trim();
+  if (app) bases.add(`${app.replace(/\/+$/, '')}/storage/v1/object/public`);
+  bases.add('/storage/v1/object/public');
+  return [...bases];
+}
+
+/** Le chemin (sans origine) d'une base configurée, sans barre finale. */
+function cheminDeBase(base: string): { origine: string | null; chemin: string } | null {
+  if (base.startsWith('/')) return { origine: null, chemin: base };
+  try {
+    const u = new URL(base);
+    if (u.username || u.password || u.search || u.hash) return null;
+    return { origine: u.origin, chemin: u.pathname.replace(/\/+$/, '') };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * La clé d'une source à partir d'un `source_url` HISTORIQUE — les lignes
  * d'avant `source_object_key`, et celles que `/api/avatar/create` écrit
  * encore jusqu'à AVATAR-2A.
  *
- * Analyse STRICTE, pas un parseur d'URL : le chemin doit contenir exactement
- * le préfixe connu du relais, une seule fois, suivi de la clé nue (sans
- * `?`, `#`, ni encodage). Et la clé obtenue repasse par
- * `cleSourceAvatarDuCompte` : une URL qui désigne autrui, un autre
- * compartiment, un autre domaine ou une vidéo générée rend `null`.
+ * ⚠️ L'ORIGINE EST COMPARÉE, JAMAIS CHERCHÉE PAR SOUS-CHAÎNE. Une URL
+ * absolue est PARSÉE (`new URL`) et son `origin` — schéma, hôte, port —
+ * doit être EXACTEMENT celui d'une base configurée : `evil.example` avec le
+ * bon chemin, un sous-domaine forgé, un `user@` devant l'hôte, un autre port,
+ * sont refusés. Une URL relative n'est acceptée que si une base relative
+ * existe, et commence alors par son chemin exact. Dans les deux cas, le
+ * chemin doit être `<base>/media/<clé>` — bucket `media` seul — sans `?`,
+ * `#` ni encodage, et la clé repasse par `cleSourceAvatarDuCompte` : autrui,
+ * autre namespace, vidéo générée, traversée rendent `null`.
  * Lecture seule : rien n'est écrit en base ici.
  */
-export function cleSourceDepuisUrlLegacy(url: unknown, userId: string): string | null {
+export function cleSourceDepuisUrlLegacy(
+  url: unknown, userId: string, env: NodeJS.ProcessEnv = process.env,
+): string | null {
   if (typeof url !== 'string' || url.length === 0) return null;
-  const debut = url.indexOf(PREFIXE_URL_LEGACY);
-  if (debut < 0) return null;
-  if (url.indexOf(PREFIXE_URL_LEGACY, debut + 1) >= 0) return null;
-  const cle = url.slice(debut + PREFIXE_URL_LEGACY.length);
-  if (cle.length === 0 || /[?#%]/.test(cle)) return null;
-  return cleSourceAvatarDuCompte(cle, userId) ? cle : null;
+  if (/[?#%\s]/.test(url)) return null;
+
+  const estAbsolue = /^[a-z][a-z0-9+.-]*:/i.test(url);
+  let origine: string | null = null;
+  let chemin: string;
+  if (estAbsolue) {
+    let u: URL;
+    try { u = new URL(url); } catch { return null; }
+    if (u.username || u.password) return null;
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    origine = u.origin;
+    chemin = u.pathname;
+  } else {
+    // Une forme relative n'est comparée qu'à une base relative, par son
+    // chemin EXACT depuis le début : `//hote/…` ou `/x/storage/…` n'y
+    // correspondent jamais — pas de garde séparé, il serait mort.
+    chemin = url;
+  }
+
+  for (const base of basesUrlPubliqueStockage(env)) {
+    const b = cheminDeBase(base);
+    if (!b) continue;
+    if (b.origine !== origine) continue;
+    const prefixe = `${b.chemin}/${BUCKET_NAMESPACE_AVATAR}/`;
+    if (!chemin.startsWith(prefixe)) continue;
+    const cle = chemin.slice(prefixe.length);
+    return cleSourceAvatarDuCompte(cle, userId) ? cle : null;
+  }
+  return null;
 }
 
 /** Cette clé vit-elle dans le domaine avatar de CE compte (source OU vidéo générée) ? */
