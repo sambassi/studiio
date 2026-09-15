@@ -252,7 +252,13 @@ export function purposeAcceptable(valeur: unknown): boolean {
      refuserait ensuite de servir — sans message et sans trace. Les LUT
      importées n'entrent que par leur route dédiée, qui construit la clé
      elle-même. */
-  return valeur !== SEGMENT_NAMESPACE_ANALYSE && valeur !== SEGMENT_NAMESPACE_LUT;
+  /* ⚠️ ET `avatar` — la source d'un clone (le VISAGE de la personne) n'entre
+     que par la route d'enrôlement, qui construit sa clé. Aucun appelant
+     n'envoie `purpose: "avatar"` aujourd'hui : ce refus ne casse rien, il
+     ferme une porte avant qu'on la découvre. */
+  return valeur !== SEGMENT_NAMESPACE_ANALYSE
+    && valeur !== SEGMENT_NAMESPACE_LUT
+    && valeur !== SEGMENT_NAMESPACE_AVATAR;
 }
 
 /**
@@ -292,6 +298,31 @@ export const SEGMENT_NAMESPACE_LUT = 'lut';
 export function cleDansNamespaceLut(bucket: unknown, cle: unknown): boolean {
   if (bucket !== BUCKET_NAMESPACE_LUT) return false;
   return contientSegment(cle, SEGMENT_NAMESPACE_LUT);
+}
+
+/**
+ * Le domaine des AVATARS — la source de référence d'un clone et les vidéos
+ * qu'il produit, sous `<userId>/avatar/…`.
+ *
+ * Ce qu'on protège ici n'est pas un fichier, c'est un visage : la photo ou la
+ * vidéo de référence de la personne elle-même (`source-<horodatage>.<ext>`,
+ * voir `@/lib/avatar/source`). Ce lot ferme l'ÉCRITURE par les routes
+ * génériques (`purposeAcceptable`) : une source n'entre que par la route
+ * d'enrôlement, qui construit sa clé.
+ *
+ * ⚠️ LA LECTURE PAR LE RELAIS PUBLIC N'EST PAS ENCORE FERMÉE. Aujourd'hui
+ * `main` sert par ce relais à la fois `source_url` (l'aperçu de la photo sur
+ * la page Avatar) et `video_url` (les vidéos générées). Refuser le segment ici
+ * casserait les deux sans rien offrir à la place. La fermeture viendra avec la
+ * route authentifiée de lecture de la source (AVATAR-2), et ne visera que la
+ * source — une vidéo générée est un livrable, pas une donnée biométrique.
+ */
+export const BUCKET_NAMESPACE_AVATAR = 'media';
+export const SEGMENT_NAMESPACE_AVATAR = 'avatar';
+
+export function cleDansNamespaceAvatar(bucket: unknown, cle: unknown): boolean {
+  if (bucket !== BUCKET_NAMESPACE_AVATAR) return false;
+  return contientSegment(cle, SEGMENT_NAMESPACE_AVATAR);
 }
 
 /** Le segment est-il ENTOURÉ d'autre chose, sous toutes ses formes décodées ? */
