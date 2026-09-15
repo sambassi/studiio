@@ -27,7 +27,7 @@
 import { describe, it, expect, beforeEach, beforeAll, afterAll, vi } from 'vitest';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
-import { createReadStream, mkdtempSync, rmSync, existsSync, readdirSync } from 'fs';
+import { createReadStream, mkdtempSync, rmSync, existsSync } from 'fs';
 import { readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
@@ -41,6 +41,33 @@ const execFileP = promisify(execFile);
 const objets = new Map<string, string>();
 let lectureCassee = false;
 const lecturesDemandees: Array<{ bucket: string; cle: string }> = [];
+
+/**
+ * Les répertoires temporaires ouverts par LE MOTEUR PENDANT CE FICHIER.
+ *
+ * ⚠️ POURQUOI ON LES ENREGISTRE. Le cas « LE RÉPERTOIRE TEMPORAIRE NE SURVIT
+ * À AUCUN CAS » comptait tous les `studiio-m3h-*` de `tmpdir()` avant et
+ * après : une hypothèse sur le répertoire temporaire GLOBAL, partagé par
+ * tous les workers Vitest. Sur CI, `autopilote-m3h-finalisation` rend de
+ * vraies vidéos en parallèle et possède légitimement son propre dossier au
+ * moment du second comptage → +1, et le test rougissait sans qu'aucun
+ * nettoyage n'ait échoué. On observe désormais les chemins EXACTS créés par
+ * les appels de ce fichier, et rien d'autre. Le comportement du moteur est
+ * l'original : seul l'appel est journalisé.
+ */
+const dossiersOuverts: string[] = [];
+
+vi.mock('@/lib/autopilot/analyse/rendu-ffmpeg', async (orig) => {
+  const actual = await orig<typeof import('@/lib/autopilot/analyse/rendu-ffmpeg')>();
+  return {
+    ...actual,
+    ouvrirDossierRendu: async () => {
+      const dossier = await actual.ouvrirDossierRendu();
+      if (dossier !== null) dossiersOuverts.push(dossier);
+      return dossier;
+    },
+  };
+});
 
 vi.mock('@/lib/storage/minio-client', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -701,16 +728,28 @@ describe.skipIf(!OUTILS)('20-30. Le vrai moteur, sur de vraies vidéos', () => {
   }, 300_000);
 
   it('LE RÉPERTOIRE TEMPORAIRE NE SURVIT À AUCUN CAS', async () => {
-    const avant = readdirSync(tmpdir()).filter((f) => f.startsWith('studiio-m3h-')).length;
-    await produireMontage({
+    // On ne compte pas `tmpdir()` — un autre worker peut y avoir SON dossier
+    // vivant, légitimement. On regarde les répertoires que CES deux appels
+    // ont ouverts, et chacun doit avoir disparu : après une réussite, et
+    // après un échec de lecture.
+    const depuis = dossiersOuverts.length;
+    const reussite = await produireMontage({
       userId: UID,
       plan: unMontage([unPlan({ ordre: 1, cle: fixtures[0].cle, dureeRetenueSecondes: 2 })]),
     });
     lectureCassee = true;
-    await produireMontage({ userId: UID, plan: unMontage([unPlan({ ordre: 1 })]) });
+    const echec = await produireMontage({ userId: UID, plan: unMontage([unPlan({ ordre: 1 })]) });
     lectureCassee = false;
-    expect(readdirSync(tmpdir()).filter((f) => f.startsWith('studiio-m3h-')).length)
-      .toBe(avant);
+
+    const ouverts = dossiersOuverts.slice(depuis);
+    expect(ouverts).toHaveLength(2);
+    for (const dossier of ouverts) {
+      expect(dossier.startsWith(join(tmpdir(), 'studiio-m3h-'))).toBe(true);
+      expect(existsSync(dossier), dossier).toBe(false);
+    }
+    // Et le moteur n'a pas eu à signaler un nettoyage en échec.
+    expect(reussite.usage.nettoyageTemporaire).not.toBe('echoue');
+    expect(echec.usage.nettoyageTemporaire).not.toBe('echoue');
   }, 300_000);
 });
 
