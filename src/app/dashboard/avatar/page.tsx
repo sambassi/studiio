@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Clapperboard,
+  Trash2,
 } from 'lucide-react';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 
@@ -74,6 +75,8 @@ export default function AvatarPage() {
   const [ratio, setRatio] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [suppressionArmee, setSuppressionArmee] = useState(false);
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +92,41 @@ export default function AvatarPage() {
    * d'entraînement côté HeyGen — c'est ce qui permet de suivre la préparation
    * d'un avatar vidéo sans route dédiée.
    */
+  /**
+   * Suppression logique : la ligne quitte l'écran, la source (le visage) est
+   * retirée du stockage, les vidéos déjà produites restent. Le serveur dit
+   * ce qu'il ne fait pas — le clone chez le fournisseur n'est pas supprimé
+   * automatiquement — et l'écran le répète mot pour mot.
+   */
+  const supprimerAvatar = async () => {
+    setSuppressionEnCours(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/avatar', { method: 'DELETE' });
+      const json = await res.json();
+      if (!json.success) {
+        setError(json.error || "La suppression de l'avatar a échoué.");
+        return;
+      }
+      setAvatar(null);
+      setVideoUrl(null);
+      setProgress(0);
+      setGenStatus('idle');
+      const fournisseur = json.data?.fournisseur === 'non_disponible'
+        ? " Votre clone n'est pas supprimé automatiquement chez notre fournisseur."
+        : '';
+      const source = json.data?.sourceRetiree === false
+        ? ' Votre fichier source sera retiré du stockage sous peu.'
+        : ' Votre fichier source a été retiré du stockage.';
+      setNotice(`Avatar supprimé. Vos vidéos déjà générées sont conservées.${source}${fournisseur}`);
+    } catch {
+      setError("La suppression de l'avatar a échoué.");
+    } finally {
+      setSuppressionEnCours(false);
+      setSuppressionArmee(false);
+    }
+  };
+
   const loadAvatar = useCallback(async (withVoices: boolean) => {
     const res = await fetch('/api/avatar/create');
     const json = await res.json();
@@ -556,19 +594,42 @@ export default function AvatarPage() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={() => {
-                setAvatar(null);
-                setVideoUrl(null);
-                setProgress(0);
-                setGenStatus('idle');
-                setError(null);
-                setNotice(null);
-              }}
-              className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 flex-shrink-0"
-            >
-              <RefreshCw className="w-3.5 h-3.5" /> Changer de source
-            </button>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setAvatar(null);
+                  setVideoUrl(null);
+                  setProgress(0);
+                  setGenStatus('idle');
+                  setError(null);
+                  setNotice(null);
+                }}
+                className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Changer de source
+              </button>
+              {/* Suppression : deux clics, sans dialogue navigateur. Le premier
+                  arme, le second confirme ; ailleurs, le bouton se désarme. */}
+              {suppressionArmee ? (
+                <button
+                  data-avatar-supprimer="confirmer"
+                  onClick={supprimerAvatar}
+                  disabled={suppressionEnCours}
+                  className="text-xs text-red-300 hover:text-red-200 flex items-center gap-1.5 disabled:opacity-40"
+                >
+                  {suppressionEnCours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                  Confirmer la suppression
+                </button>
+              ) : (
+                <button
+                  data-avatar-supprimer="armer"
+                  onClick={() => setSuppressionArmee(true)}
+                  className="text-xs text-gray-400 hover:text-red-300 flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Supprimer mon avatar
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Entraînement en cours — la génération reste bloquée (409 côté serveur) */}
