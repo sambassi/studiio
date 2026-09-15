@@ -394,38 +394,55 @@ describe('POST /api/avatar/generate — intention apercu', () => {
     expect(g.avatar_version).toBe(2);
     expect(g.script).toMatch(/^Bonjour, je suis votre avatar/);
     expect(g.provider_video_id).toBe('vid-1');
-    expect(g.credits_charged).toBe(40);
     expect(heygen.appels[0]).toMatch(/^videos:hg-1:Bonjour, je suis votre avatar/);
-    // Réservation (insert) AVANT le débit et l'appel.
+    // Réservation (insert) AVANT l'appel fournisseur.
     expect(base.journal.indexOf('avatar_generations:insert')).toBeLessThan(base.journal.findIndex((j) => j.startsWith('avatar_generations:update:credits_charged')));
-    expect(credits.journal).toEqual(['debit:40']);
+    // ⚠️ OFFERT : aucun débit, credits_charged = 0, la réponse le dit.
+    expect(credits.journal).toEqual([]);
+    expect(g.credits_charged).toBe(0);
+    expect((corps.data as unknown as { creditsCharged: number }).creditsCharged).toBe(0);
   });
 
-  it('⚠️ deux aperçus simultanés → un seul lancé, l’autre 409 sans frais (index unique)', async () => {
+  it('⚠️ aperçu offert même sans crédits : aucun contrôle de solde, aucun débit', async () => {
+    credits.solde = 0;
+    const res = await generer({ intention: 'apercu' });
+    expect(res.status).toBe(200);
+    expect(credits.journal).toEqual([]);
+    expect(base.generations[0].credits_charged).toBe(0);
+  });
+
+  it('⚠️ deux aperçus simultanés → un seul lancé chez le fournisseur, l’autre 409 (index unique), aucun débit', async () => {
     const [a, b] = await Promise.all([generer({ intention: 'apercu' }), generer({ intention: 'apercu' })]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     expect(heygen.appels.filter((x) => x.startsWith('videos:'))).toHaveLength(1);
-    expect(credits.journal).toEqual(['debit:40']);
+    expect(credits.journal).toEqual([]);
     expect(base.generations.filter((g) => g.intention === 'apercu' && g.status !== 'failed')).toHaveLength(1);
   });
 
-  it('HeyGen échoue → réservation marquée failed (place libre), crédits remboursés, aucun faux succès', async () => {
+  it('HeyGen échoue → réservation marquée failed (place libre), AUCUN débit ni remboursement fictif, aucun faux succès', async () => {
     heygen.echec = true;
     const res = await generer({ intention: 'apercu' });
     expect(res.status).toBe(422);
     const g = base.generations[0];
     expect(g.status).toBe('failed');
-    expect(credits.journal).toEqual(['debit:40', 'refund:40']);
+    expect(credits.journal).toEqual([]);
+    expect((await res.json() as { refunded: boolean }).refunded).toBe(false);
     // La place est libre : un nouvel aperçu peut être réservé.
     heygen.echec = false;
     expect((await generer({ intention: 'apercu' })).status).toBe(200);
   });
 
-  it('crédits insuffisants → 402, réservation libérée, aucun appel', async () => {
-    credits.solde = 10;
-    expect((await generer({ intention: 'apercu' })).status).toBe(402);
-    expect(base.generations[0].status).toBe('failed');
-    expect(heygen.appels.filter((x) => x.startsWith('videos:'))).toEqual([]);
+  it('génération NORMALE : coût inchangé (40, débité avant l’appel, remboursé si HeyGen échoue), 402 sans crédits', async () => {
+    const res = await generer({ script: 'Mon texte.' });
+    expect(res.status).toBe(200);
+    expect(credits.journal).toEqual(['debit:40']);
+    expect(base.generations[0].credits_charged).toBe(40);
+    credits.journal.length = 0; heygen.echec = true;
+    expect((await generer({ script: 'Mon texte.' })).status).toBe(422);
+    expect(credits.journal).toEqual(['debit:40', 'refund:40']);
+    credits.journal.length = 0; heygen.echec = false; credits.solde = 10;
+    expect((await generer({ script: 'Mon texte.' })).status).toBe(402);
+    expect(credits.journal).toEqual([]);
   });
 
   it('aperçu refusé si le clone est validé, en cours, ou sans fournisseur', async () => {

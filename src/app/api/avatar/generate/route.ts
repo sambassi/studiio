@@ -232,10 +232,13 @@ export async function POST(req: NextRequest) {
       reservation = reservee;
     }
 
-    // 3. Solde
-    const credits = await getUserCredits(userId);
-    if (credits < AVATAR_VIDEO_COST) {
-      if (reservation) await libererReservation(reservation.id, 'Credits insuffisants.');
+    // 3. Solde — un APERÇU de validation est OFFERT : il sert à vérifier son
+    //    clone, pas à produire une vidéo. Aucun contrôle de solde, aucun
+    //    débit, donc rien à rembourser s'il échoue. La génération normale
+    //    garde strictement son coût.
+    const coutUtilisateur = intention === INTENTION_APERCU ? 0 : AVATAR_VIDEO_COST;
+    const credits = coutUtilisateur > 0 ? await getUserCredits(userId) : 0;
+    if (coutUtilisateur > 0 && credits < coutUtilisateur) {
       return NextResponse.json(
         {
           success: false,
@@ -246,9 +249,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Debit avant appel externe
-    await deductCredits(userId, AVATAR_VIDEO_COST, 'avatar');
-    creditsDeducted = true;
+    // 4. Debit avant appel externe (jamais pour un aperçu)
+    if (coutUtilisateur > 0) {
+      await deductCredits(userId, coutUtilisateur, 'avatar');
+      creditsDeducted = true;
+    }
 
     // 5. HeyGen
     let videoId: string;
@@ -279,7 +284,7 @@ export async function POST(req: NextRequest) {
         .update({
           provider_video_id: videoId,
           status: status === 'completed' ? 'processing' : 'pending',
-          credits_charged: AVATAR_VIDEO_COST,
+          credits_charged: 0,
         })
         .eq('id', reservation.id)
         .eq('user_id', userId)
@@ -294,7 +299,7 @@ export async function POST(req: NextRequest) {
       }
       return NextResponse.json({
         success: true,
-        data: { generationId: generation.id, status: generation.status, creditsCharged: AVATAR_VIDEO_COST, intention: INTENTION_APERCU },
+        data: { generationId: generation.id, status: generation.status, creditsCharged: 0, intention: INTENTION_APERCU },
       });
     }
 
