@@ -40,7 +40,17 @@ vi.mock('@/lib/db/supabase', () => {
     let insertion: Ligne | null = null; let patch: Ligne | null = null;
     const projeter = (l: Ligne) => (colonnes ? Object.fromEntries(colonnes.map((c) => [c, l[c]])) : { ...l });
     const exec = () => {
-      if (insertion) { const l = { id: `55555555-5555-4555-8555-${String(++base.compteur).padStart(12, '0')}`, created_at: new Date(Date.now() + base.compteur).toISOString(), video_url: null, error_message: null, ...insertion }; source.push(l); return { data: [projeter(l)], error: null }; }
+      if (insertion) {
+        // L'index unique partiel de `2026-09-15-avatar-jumeau-en-vol.sql`, à
+        // la lettre : même prédicat, même clé, même erreur que PostgREST.
+        // (La preuve sur un VRAI Postgres est dans tests-pg/jumeau-idempotence.)
+        const i = insertion;
+        const enVol = (l: Ligne) => l.intention === 'normale' && String(l.voice_id ?? '').startsWith('jumeau:') && ['pending', 'processing'].includes(String(l.status));
+        if (source === base.generations && enVol(i) && source.some((l) => enVol(l) && ['user_id', 'user_avatar_id', 'avatar_version', 'voice_id', 'aspect_ratio', 'script'].every((k) => l[k] === i[k]))) {
+          return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "avatar_generations_jumeau_en_vol_uidx"' } };
+        }
+        const l = { id: `55555555-5555-4555-8555-${String(++base.compteur).padStart(12, '0')}`, created_at: new Date(Date.now() + base.compteur).toISOString(), video_url: null, error_message: null, ...i }; source.push(l); return { data: [projeter(l)], error: null };
+      }
       let rows = source.filter((l) => filtres.every((f) => f(l)));
       if (patch) { for (const l of rows) Object.assign(l, patch); return { data: rows.map(projeter), error: null }; }
       if (tri) rows = [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
@@ -56,7 +66,7 @@ vi.mock('@/lib/db/supabase', () => {
       in(k: string, vs: unknown[]) { filtres.push((l) => vs.includes(l[k])); return api; },
       order() { tri = true; return api; },
       async limit(n: number) { limite = n; return exec(); },
-      async single() { const r = exec(); const rows = r.data as unknown[]; return rows.length === 1 ? { data: rows[0], error: null } : { data: null, error: { message: 'no rows' } }; },
+      async single() { const r = exec(); if (r.error) return { data: null, error: r.error }; const rows = r.data as unknown[]; return rows.length === 1 ? { data: rows[0], error: null } : { data: null, error: { message: 'no rows' } }; },
       then(resolve: (v: unknown) => void, reject: (e: unknown) => void) { return Promise.resolve().then(exec).then(resolve, reject); },
     };
     return api;
@@ -65,7 +75,7 @@ vi.mock('@/lib/db/supabase', () => {
 });
 vi.mock('@/lib/credits/system', () => ({
   getUserCredits: async () => credits.solde,
-  deductCredits: async (_u: string, n: number) => { credits.journal.push(`debit:${n}`); credits.solde -= n; },
+  deductCredits: async (_u: string, n: number, _raison: string, reference?: string | null) => { credits.journal.push(`debit:${n}:${reference ?? 'sans-reference'}`); credits.solde -= n; },
   addCredits: async (_u: string, n: number) => { credits.journal.push(`refund:${n}`); credits.solde += n; },
 }));
 const session = vi.hoisted(() => ({ courante: { user: { id: 'aaaaaaaa-1111-4111-8111-111111111111' } } as unknown }));
@@ -151,8 +161,8 @@ describe('genererVideoJumeau — la chaîne réelle, fournisseurs interceptés a
     const g = base.generations[0];
     expect(g).toMatchObject({ user_id: U, user_avatar_id: A, avatar_version: 3, intention: 'normale', voice_id: `${PREFIXE_VOIX_JUMEAU}${V1}`, script: PRONONCE, provider_video_id: 'vid-jumeau-1', status: 'pending', credits_charged: 40 });
     expect(JSON.stringify(g)).not.toContain('pvid_perso');
-    // 5. Crédits : politique existante, débités une fois.
-    expect(credits.journal).toEqual(['debit:40']);
+    // 5. Crédits : politique existante, débités une fois, LIÉS à la génération gagnante.
+    expect(credits.journal).toEqual([`debit:40:jumeau:${g.id}`]);
   });
 
   it('⚠️ DISPLAY préservé : le résultat rend display intact et spoken distinct ; aucune prononciation → identiques', async () => {
@@ -205,18 +215,18 @@ describe('genererVideoJumeau — la chaîne réelle, fournisseurs interceptés a
     expect(r).toMatchObject({ ok: false, motif: 'fournisseur_voix' });
     expect(base.generations[0].status).toBe('failed');
     expect(appelsVers('https://api.heygen.com')).toEqual([]);
-    expect(credits.journal).toEqual(['debit:40', 'refund:40']);
+    expect(credits.journal.map((j) => j.replace(/:jumeau:[0-9a-f-]+$/, ''))).toEqual(['debit:40', 'refund:40']);
   });
 
   it('⚠️ HeyGen refuse l’asset ou l’audio → failed, remboursés, aucun succès ; pas de repli vers une voix HeyGen', async () => {
     reseau.heygenAssets = 400;
     expect(await generer()).toMatchObject({ ok: false, motif: 'fournisseur_avatar' });
-    expect(credits.journal).toEqual(['debit:40', 'refund:40']);
+    expect(credits.journal.map((j) => j.replace(/:jumeau:[0-9a-f-]+$/, ''))).toEqual(['debit:40', 'refund:40']);
     expect(appelsVers('https://api.heygen.com/v3/videos')).toEqual([]);
     base.generations = []; credits.journal.length = 0; reseau.appels.length = 0; reseau.heygenAssets = 200; reseau.heygenVideos = 400;
     expect(await generer()).toMatchObject({ ok: false, motif: 'fournisseur_avatar' });
     expect(base.generations[0].status).toBe('failed');
-    expect(credits.journal).toEqual(['debit:40', 'refund:40']);
+    expect(credits.journal.map((j) => j.replace(/:jumeau:[0-9a-f-]+$/, ''))).toEqual(['debit:40', 'refund:40']);
     expect(JSON.stringify(reseau.appels)).not.toMatch(/voice_id/);
   });
 
@@ -234,11 +244,44 @@ describe('genererVideoJumeau — la chaîne réelle, fournisseurs interceptés a
     expect(r2.ok && r2.dejaEnCours).toBe(true);
     expect(appelsVers('https://api.elevenlabs.io')).toHaveLength(1);
     expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
-    expect(credits.journal).toEqual(['debit:40']);
+    expect(credits.journal).toEqual([`debit:40:jumeau:${r1.ok ? r1.generationId : ''}`]);
     // Un texte différent → une autre génération.
     const r3 = await generer(['Autre texte.']);
     expect(r3.ok && r3.dejaEnCours).toBe(false);
     expect(base.generations).toHaveLength(2);
+    // Un autre FORMAT du même texte → une autre vidéo, donc une autre génération.
+    const r4 = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '16:9' });
+    expect(r4.ok && r4.dejaEnCours).toBe(false);
+    expect(base.generations).toHaveLength(3);
+    // Une génération ÉCHOUÉE libère la place : la relance produit une nouvelle génération.
+    base.generations[0].status = 'failed';
+    const r5 = await generer();
+    expect(r5.ok && r5.dejaEnCours).toBe(false);
+    expect(base.generations).toHaveLength(4);
+  });
+
+  it('⚠️ le perdant rend la génération EN VOL, jamais une plus récente échouée ; aucun fournisseur, aucun débit', async () => {
+    const identite = { user_id: U, user_avatar_id: A, avatar_version: 3, intention: 'normale', voice_id: `${PREFIXE_VOIX_JUMEAU}${V1}`, aspect_ratio: '9:16', script: PRONONCE, credits_charged: 0 };
+    base.generations = [
+      { id: 'gen-en-vol', created_at: '2026-09-15T10:00:00.000Z', status: 'processing', ...identite },
+      { id: 'gen-echouee', created_at: '2026-09-15T11:00:00.000Z', status: 'failed', ...identite },
+    ];
+    const r = await generer();
+    expect(r.ok && r.dejaEnCours && r.generationId).toBe('gen-en-vol');
+    expect(reseau.appels).toEqual([]); expect(credits.journal).toEqual([]);
+  });
+
+  it('⚠️ deux appels STRICTEMENT simultanés (Promise.all) : une réservation, une synthèse, un dépôt, une vidéo, un débit, le même generationId', async () => {
+    const [a, b] = await Promise.all([generer(), generer()]);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.generationId).toBe(b.generationId);
+    expect([a.dejaEnCours, b.dejaEnCours].sort()).toEqual([false, true]);
+    expect(appelsVers('https://api.elevenlabs.io')).toHaveLength(1);
+    expect(appelsVers('https://api.heygen.com/v3/assets')).toHaveLength(1);
+    expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
+    expect(credits.journal).toEqual([`debit:40:jumeau:${a.generationId}`]);
+    expect(base.generations.filter((g) => ['pending', 'processing'].includes(String(g.status)))).toHaveLength(1);
   });
 
   it('⚠️ le moteur ignore tout identifiant fournisseur glissé dans ses arguments : seuls ceux relus du compte partent', async () => {
