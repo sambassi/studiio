@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import {
   UserSquare2,
   Upload,
@@ -800,7 +800,10 @@ export default function AvatarPage() {
    * reste maître, rien n'est rogné). Sur mobile (une colonne) la hauteur
    * n'est pas contrainte.
    */
-  const cadreApercu = zone.ratio === '9 / 16' ? 'lg:max-w-[calc((100vh-11rem)*9/16)]' : zone.ratio === '16 / 9' ? 'lg:max-w-full' : 'lg:max-w-[calc(100vh-11rem)]';
+  // QA intégration : UNE seule règle de cadre pour toutes les pages — `.apercu-cadre`
+  // (globals.css, posée par ZoneApercu). Ici seul l'OFFSET change : l'en-tête de
+  // Mon avatar est plus haut que celui de Créer (11rem au lieu de 10rem).
+  const cadreApercu = { '--apercu-offset': '11rem' } as CSSProperties;
 
   if (loading) {
     return (
@@ -1083,9 +1086,9 @@ export default function AvatarPage() {
 
         {/* Sur mobile l'aperçu passe EN TÊTE (une colonne) ; sur grand écran il
             reste à droite, collant, et jamais plus haut que l'écran. */}
-        <ColonneApercu attributs={{ 'data-avatar-colonne': 'apercu' }} className="order-first lg:order-none">
+        <ColonneApercu attributs={{ 'data-avatar-colonne': 'apercu' }}>
           <div data-avatar-validation={cleValidation}>
-            <div data-avatar-apercu={cleApercu} data-avatar-apercu-cadre={zone.ratio} className={`w-full mx-auto ${cadreApercu}`}>
+            <div data-avatar-apercu={cleApercu} data-avatar-apercu-cadre={zone.ratio} className="w-full mx-auto" style={cadreApercu}>
               <ZoneApercu titre={zone.titre} etat={zone.etat} ratio={zone.ratio}>{zone.media}</ZoneApercu>
             </div>
           </div>

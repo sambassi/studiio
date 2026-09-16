@@ -174,7 +174,7 @@ describe('3. Sources de l affiche', () => {
 
 describe('4. AfficheIA', () => {
   it('génère, montre le résultat, régénère, et applique', async () => {
-    const onUtiliser = vi.fn(async () => {});
+    const onUtiliser = vi.fn(async (_url: string) => {});
     render(<AfficheIA suggestion="danse au bord du lac" onUtiliser={onUtiliser} />);
     expect(document.querySelector('[data-affiche-ia-resultat]')).toBeNull();
     // Sans consigne : la suggestion sert de consigne.

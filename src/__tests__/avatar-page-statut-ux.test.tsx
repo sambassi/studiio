@@ -12,7 +12,8 @@ import { render, cleanup, waitFor, fireEvent, act } from '@testing-library/react
  *   - AUCUN second CTA principal dans ce bloc (cahier #409 : un seul à la
  *     fois) — seulement un lien secondaire « Utiliser dans Créer » quand prêt ;
  *   - l'aperçu (colonne droite) borné en largeur à ce que la hauteur d'écran
- *     permet (ratio conservé), et rendu EN TÊTE sur mobile (`order-first`) ;
+ *     permet (ratio conservé) ; sur mobile l'ordre DOM (travail puis aperçu) est
+ *     la règle commune aux trois écrans (banc ux-layout-apercu) ;
  *   - le fil d'étapes : « Source » redevient atteignable quand un avatar
  *     existe, et y aller = changer de source (le geste existant) ;
  *   - la suppression reste en deux clics.
@@ -134,12 +135,13 @@ describe('B. L’aperçu — à droite, borné à l’écran, jamais coupé ; en
     // Sans avatar, choix « photo » → ratio 1:1.
     const cadre1 = q('[data-avatar-apercu-cadre]');
     expect(cadre1?.getAttribute('data-avatar-apercu-cadre')).toBe('1 / 1');
-    expect(cadre1?.className).toContain('lg:max-w-[calc(100vh-11rem)]');
+    expect((cadre1 as HTMLElement).style.getPropertyValue('--apercu-offset')).toBe('11rem');
     // Aperçu de validation → 9:16.
     avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'en_cours', generationId: G }; await monter();
     const cadre2 = q('[data-avatar-apercu-cadre]');
     expect(cadre2?.getAttribute('data-avatar-apercu-cadre')).toBe('9 / 16');
-    expect(cadre2?.className).toContain('lg:max-w-[calc((100vh-11rem)*9/16)]');
+    expect((cadre2 as HTMLElement).style.getPropertyValue('--apercu-offset')).toBe('11rem');
+    expect(cadre2?.querySelector('.apercu-cadre')).not.toBeNull();
     expect(cadre2?.className).toContain('mx-auto');
     // La zone d'aperçu conserve son ratio (aspect-ratio), rien n'est rogné.
     expect(q('[data-avatar-colonne="apercu"] [data-apercu-media], [data-avatar-colonne="apercu"] [style*="aspect-ratio"]')).not.toBeNull();
@@ -148,8 +150,8 @@ describe('B. L’aperçu — à droite, borné à l’écran, jamais coupé ; en
   it('la colonne d’aperçu passe en tête sur mobile et revient à droite sur grand écran', async () => {
     await monter();
     const col = q('[data-avatar-colonne="apercu"]');
-    expect(col?.className).toContain('order-first');
-    expect(col?.className).toContain('lg:order-none');
+    // Règle commune #410 : aucun order-* — l'empilement mobile suit l'ordre DOM.
+    expect(col?.className ?? '').not.toContain('order-first');
     expect(col?.className).toContain('lg:sticky');
   });
 });
