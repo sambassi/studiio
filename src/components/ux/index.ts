@@ -14,4 +14,6 @@ export type { ConsigneProps, PointChecklist } from './Consigne';
 export { default as ZoneApercu } from './ZoneApercu';
 export type { ZoneApercuProps, EtatApercu, ActionApercu } from './ZoneApercu';
 export { default as EnteteSection } from './EnteteSection';
+export { default as DeuxColonnes, ColonneTravail, ColonneApercu } from './DeuxColonnes';
+export type { DeuxColonnesProps } from './DeuxColonnes';
 export type { EnteteSectionProps, NiveauStatut } from './EnteteSection';

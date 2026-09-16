@@ -410,12 +410,14 @@ describe('7. Un seul endroit où regarder', () => {
     // La colonne d'aperçu reste visible pendant que la colonne centrale
     // défile : sans `sticky`, elle sortirait de l'écran dès que le panneau
     // s'allonge — et l'aperçu unique redeviendrait introuvable.
+    // La colonne collante est `ColonneApercu` (brique `DeuxColonnes`, classes
+    // `lg:sticky lg:top-20`), la même que Mon avatar.
     const avant = src.slice(0, src.indexOf('<VideosPretes'));
-    const depuisLaColonne = avant.slice(avant.lastIndexOf('lg:sticky'));
-    expect(avant).toContain('lg:sticky');
-    // Aucune AUTRE colonne ne s'ouvre entre le `sticky` et le lecteur : c'est
-    // donc bien la colonne collante qui le porte. La preuve visuelle, elle,
-    // est faite au navigateur — un test de source ne mesure aucun défilement.
-    expect(depuisLaColonne).not.toContain('lg:col-span');
+    const depuisLaColonne = avant.slice(avant.lastIndexOf('<ColonneApercu>'));
+    expect(avant).toContain('<ColonneApercu>');
+    // Aucune AUTRE colonne ne s'ouvre entre la colonne collante et le lecteur :
+    // c'est donc bien elle qui le porte. La preuve visuelle, elle, est faite
+    // au navigateur — un test de source ne mesure aucun défilement.
+    expect(depuisLaColonne).not.toContain('<ColonneTravail');
   });
 });

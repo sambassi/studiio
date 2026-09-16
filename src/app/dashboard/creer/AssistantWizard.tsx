@@ -179,6 +179,7 @@ import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePo
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
+import DeuxColonnes, { ColonneTravail, ColonneApercu } from '@/components/ux/DeuxColonnes';
 import { Button } from '@/components/ui/Button';
 
 /**
@@ -7097,8 +7098,8 @@ export default function AssistantWizard() {
         else setParcours('choix');
       }}
     />
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-      <div className="lg:col-span-3 space-y-4">
+    <DeuxColonnes nom={started ? 'assistant' : parcours}>
+      <ColonneTravail>
         {/* MODIFICATION — la seule porte de sortie vers le serveur.
             Visible uniquement quand on modifie : en creation, rien de tout ceci
             n'existe, et le parcours se termine comme avant. */}
@@ -7348,7 +7349,7 @@ export default function AssistantWizard() {
                 const cliquable = atteignable && i !== step;
                 const aller = () => { if (cliquable) setStep(i); };
                 return (
-                <div key={label} className="flex items-center gap-2 flex-1 last:flex-none">
+                <div key={label} className="flex items-center gap-2 flex-1 last:flex-none min-w-0">
                   {/* Puce cliquable — l'apparence ne change pas, seule
                       l'interactivite est ajoutee. */}
                   <div
@@ -9450,16 +9451,11 @@ export default function AssistantWizard() {
             )}
           </Card>
         )}
-      </div>
+      </ColonneTravail>
 
-      {/* Colonne d'apercu COLLEE : elle defilait avec les reglages et sortait
-          de l'ecran des que le panneau s'allongeait. `items-start` sur la
-          grille (deja present) est ce qui rend le `sticky` operant : sans lui
-          la colonne s'etire sur toute la hauteur et n'a plus rien a coller.
-          `top-20` et non `top-4` : la navbar est `fixed h-16`, un decalage
-          plus court glissait 48 px de la carte — en-tete et onglets compris —
-          sous cette barre. */}
-      <div className="lg:col-span-2 lg:sticky lg:top-20">
+      {/* Colonne d'apercu COLLEE — les classes (sticky, top-20, items-start
+          sur la grille) vivent dans `DeuxColonnes`, la même que Mon avatar. */}
+      <ColonneApercu>
         {/* ── AVANT DE COMMENCER : L'APERÇU DE L'AUTOPILOTE ─────────────
             L'assistant n'a rien généré tant qu'on n'a pas cliqué
             « Commencer » : sa colonne d'aperçu n'affichait donc qu'un cadre
@@ -9485,20 +9481,14 @@ export default function AssistantWizard() {
               />
             )}
             {!videoOccupeLApercu && (
-              /* ⚠️ MESURÉ, PAS SUPPOSÉ : sur une fenêtre de 724 px, cet aperçu
-                 en fait 812 — 88 px de trop, et le bas de l'affiche restait
-                 coupé tant qu'on n'avait pas fait défiler. Une hauteur bornée
-                 au viewport (moins la navbar `fixed h-16` et l'aération du
-                 `top-20`) plus un défilement INTERNE : la colonne ne dépasse
-                 plus, et ce qui déborde se retrouve à la molette, sur place.
-
-                 Rien d'autre ne change — ni la colonne collante, ni l'aperçu
-                 lui-même, ni le panneau vidéo qui, lui, tenait déjà. */
-              <div
-                className="overflow-y-auto"
-                style={{ maxHeight: 'calc(100vh - 6rem)' }}
-                data-autopilot-apercu-cadre
-              >
+              /* ⚠️ PLUS DE DÉFILEMENT INTERNE. L'ancienne boîte `overflow-y-auto`
+                 bornée à `100vh - 6rem` gardait son `scrollTop` une fois
+                 descendue : l'en-tête, les onglets et le haut de l'affiche
+                 restaient masqués — le « haut coupé » du choix et de
+                 l'Autopilote, que l'assistant, sans cette boîte, n'avait pas.
+                 Même règle que l'assistant : la colonne colle sous la navbar,
+                 et ce qui dépasse en bas se voit en faisant défiler la page. */
+              <div data-autopilot-apercu-cadre>
                 <AutopilotPreview
                   config={autopilotConfig}
                   accent={accent}
@@ -9906,7 +9896,7 @@ export default function AssistantWizard() {
         )}
         </>
         )}
-      </div>
+      </ColonneApercu>
 
       {/* ── PANNEAU FLOTTANT DE L'ELEMENT ─────────────────────────────
           Les reglages vivaient tout en bas de la colonne : il fallait
@@ -10042,7 +10032,7 @@ export default function AssistantWizard() {
           if (!failure) setClipSource(null);
         }}
       />
-    </div>
+    </DeuxColonnes>
     </div>
   );
 }
