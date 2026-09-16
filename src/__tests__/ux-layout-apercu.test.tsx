@@ -293,6 +293,20 @@ for (const ecran of ECRANS) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+describe('Le fil d’étapes ne déborde pas de l’écran', () => {
+  it('⚠️ chaque étape du wizard peut rétrécir (min-w-0) : mesuré au navigateur, sans lui la barre dépassait de 57 px à 390 px', async () => {
+    await monterAssistant();
+    const etapes = [...document.querySelectorAll<HTMLElement>('[data-step]')].map((e) => e.parentElement!);
+    expect(etapes.length).toBeGreaterThan(0);
+    for (const e of etapes) {
+      expect(tokens(e), decrire(e)).toContain('flex-1');
+      expect(tokens(e), `${decrire(e)} : un item flex sans min-w-0 refuse de rétrécir sous la largeur de son libellé`).toContain('min-w-0');
+    }
+    // La brique partagée suit la même règle.
+    for (const li of document.querySelectorAll<HTMLElement>('[data-fil-etapes] li')) expect(tokens(li)).toContain('min-w-0');
+  });
+});
+
 describe('Règle commune aux quatre écrans', () => {
   /** Monte chaque écran à son tour et relève ce qui compte. */
   async function releverTous<T>(lire: (g: HTMLElement, travail: HTMLElement, apercu: HTMLElement) => T): Promise<Array<{ nom: string; releve: T }>> {

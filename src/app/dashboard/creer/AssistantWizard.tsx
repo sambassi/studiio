@@ -7349,7 +7349,7 @@ export default function AssistantWizard() {
                 const cliquable = atteignable && i !== step;
                 const aller = () => { if (cliquable) setStep(i); };
                 return (
-                <div key={label} className="flex items-center gap-2 flex-1 last:flex-none">
+                <div key={label} className="flex items-center gap-2 flex-1 last:flex-none min-w-0">
                   {/* Puce cliquable — l'apparence ne change pas, seule
                       l'interactivite est ajoutee. */}
                   <div
