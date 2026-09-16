@@ -43,11 +43,11 @@ body {
  * conservée) et sans rognage du média.
  *
  * Variables : `--apercu-w` / `--apercu-h` (ratio, ex. 9 et 16),
- * `--apercu-offset` (hauteur retirée à la fenêtre, 10rem par défaut : navbar 4rem + top-20 + en-tête de carte).
+ * `--apercu-offset` (hauteur retirée à la fenêtre, 18rem par défaut : navbar + top-20 + en-tête de carte + sous-en-tête, mesuré en QA pour que le cadre tienne entier dès le premier écran, sans défiler).
  * Sous `lg` (une colonne), pleine largeur : rien ne change. */
 @media (min-width: 1024px) {
   .apercu-cadre {
-    width: min(100%, calc((100vh - var(--apercu-offset, 10rem)) * var(--apercu-w, 9) / var(--apercu-h, 16)));
+    width: min(100%, calc((100vh - var(--apercu-offset, 18rem)) * var(--apercu-w, 9) / var(--apercu-h, 16)));
     margin-inline: auto;
   }
 }
