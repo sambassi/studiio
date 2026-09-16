@@ -301,7 +301,7 @@ describe('D. La vidéo de consentement : consigne + checklist, envoi XHR avec le
     expect(info.querySelector('[data-notification-titre]')?.textContent).toBe('Votre avatar est en préparation.');
   });
 
-  it('⚠️ entraînement D-ID échoué : « L’entraînement de votre avatar n’a pas abouti. », motif replié, « Changer de vidéo » revient à l’import', async () => {
+  it('⚠️ entraînement D-ID échoué : « L’entraînement de votre avatar n’a pas abouti. », motif replié, « Changer de source » (une seule sortie) revient à l’import', async () => {
     avatarDid('echec', { status: 'failed', etat: 'echec', training_error: 'face not detected' });
     render(<AvatarPage />);
     await waitFor(() => expect(document.querySelector('[data-avatar-did-echec] [data-notification="erreur"]')).not.toBeNull());
@@ -309,7 +309,8 @@ describe('D. La vidéo de consentement : consigne + checklist, envoi XHR avec le
     expect(notif.querySelector('[data-notification-titre]')?.textContent).toBe("L'entraînement de votre avatar n'a pas abouti.");
     expect(notif.querySelector('[data-notification-motif]')?.textContent).toContain('face not detected');
     const action = notif.querySelector('[data-notification-action="principale"]') as HTMLButtonElement;
-    expect(action.textContent).toContain('Changer de vidéo');
+    expect(action.textContent).toContain('Changer de source');
+    expect(screen.getAllByRole('button', { name: /Changer de source/ })).toHaveLength(1);
     fireEvent.click(action);
     await waitFor(() => expect(screen.getByRole('button', { name: /À partir d’une vidéo/ })).toBeTruthy());
     expect(document.querySelector('[data-avatar-did-echec]')).toBeNull();

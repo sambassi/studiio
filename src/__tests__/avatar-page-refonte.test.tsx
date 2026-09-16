@@ -442,7 +442,7 @@ describe('F. La notification — une seule, sous l’en-tête, la plus récente 
     expect(q('[data-notification="avertissement"]')).toBeNull();
   });
 
-  it('⚠️ après validation : succès « Avatar validé. » avec l’action « Créer une vidéo », seule notification de la page', async () => {
+  it('⚠️ après validation : succès « Avatar validé. » avec l’action « Créer une vidéo » (secondaire : le CTA de l’écran est « Générer »), seule notification de la page', async () => {
     avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'pret', generationId: G, url: URL_APERCU };
     await monterEtLireFil();
     fireEvent.click(actionApercu(/^Voir mon aperçu$/)!);
@@ -454,14 +454,15 @@ describe('F. La notification — une seule, sous l’en-tête, la plus récente 
     const notif = notifsPage()[0];
     expect(notif.getAttribute('data-notification')).toBe('succes');
     expect(notif.querySelector('[data-notification-titre]')?.textContent).toBe('Avatar validé.');
-    expect(notif.querySelector('[data-notification-action="principale"]')?.textContent).toContain('Créer une vidéo');
+    expect(notif.querySelector('[data-notification-action="secondaire"]')?.textContent).toContain('Créer une vidéo');
+    expect(notif.querySelector('[data-notification-action="principale"]')).toBeNull();
     expect(precede(q('[data-entete]')!, notif)).toBe(true);
     expect(precede(notif, q('[data-avatar-colonnes]')!)).toBe(true);
     expect(etatsFil()).toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'terminee', apercu: 'terminee', validation: 'terminee' }));
     expect(q('[data-entete] [data-entete-statut]')?.textContent?.trim()).toBe('Prêt');
   });
 
-  it('⚠️ l’aperçu passe à prêt (suivi repris au montage, #406) : succès « Votre aperçu est prêt. » + « Voir mon aperçu », zone prête, sans clic ni nouveau POST', async () => {
+  it('⚠️ l’aperçu passe à prêt (suivi repris au montage, #406) : succès « Votre aperçu est prêt. » (information), UN SEUL « Voir mon aperçu » (dans la zone), sans clic ni nouveau POST', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
     avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'en_cours', generationId: G };
     render(<AvatarPage />);
@@ -477,7 +478,9 @@ describe('F. La notification — une seule, sous l’en-tête, la plus récente 
     const notif = notifsPage()[0];
     expect(notif.getAttribute('data-notification')).toBe('succes');
     expect(notif.querySelector('[data-notification-titre]')?.textContent).toBe('Votre aperçu est prêt.');
-    expect(notif.querySelector('[data-notification-action="principale"]')?.textContent).toContain('Voir mon aperçu');
+    expect(notif.querySelector('[data-notification-action]')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /Voir mon aperçu/ })).toHaveLength(1);
+    expect(q('[data-apercu="pret"]')!.contains(screen.getByRole('button', { name: /Voir mon aperçu/ }))).toBe(true);
     expect(appels.filter((a) => a.url === '/api/avatar/generate' || a.url === '/api/avatar/did/apercu')).toHaveLength(0);
     expect(etatsFil()).toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'terminee', apercu: 'terminee', validation: 'active' }));
   });
@@ -587,5 +590,96 @@ describe('H. Un seul CTA, aucune impasse (correctif #409)', () => {
     await act(async () => { fireEvent.click(sortie!); });
     await waitFor(() => expect(etatsFil()).toEqual(filAttendu({ source: 'active' })));
     expect(appels.filter((a) => a.method === 'POST')).toHaveLength(0);
+  });
+});
+
+describe('I. Un seul CTA principal visible à la fois — dans chaque état touché', () => {
+  /** Les `.button-primary` de la page (les panneaux Voix sont factices ici). */
+  const primaires = () => qa('.button-primary').filter((b) => !(b as HTMLButtonElement).hidden);
+
+  it('⚠️ aperçu prêt : exactement une action visible « Voir mon aperçu »', async () => {
+    avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'pret', generationId: G, url: URL_APERCU };
+    await monterEtLireFil();
+    expect(screen.getAllByRole('button', { name: /Voir mon aperçu/ })).toHaveLength(1);
+    expect(primaires()).toHaveLength(1);
+  });
+
+  it('⚠️ consentement refusé (sans vidéo, avec vidéo choisie) et phrase expirée : au plus un `.button-primary` ; « Envoyer » désactivé ne ressemble pas à un CTA', async () => {
+    avatarDidAvecPhrase('consentement_refuse', { provider_consent_status: 'error' });
+    await monterEtLireFil();
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Réenregistrer']);
+    const envoyer = q<HTMLButtonElement>('[data-avatar-did-action="video"]')!;
+    expect(envoyer.disabled).toBe(true);
+    expect(envoyer.className).not.toMatch(/button-primary/);
+    // Une vidéo choisie : c'est « Envoyer » qui devient LE geste ; « Réenregistrer » redevient secondaire.
+    const input = q<HTMLInputElement>('[data-avatar-did] input[type="file"]')!;
+    await act(async () => { fireEvent.change(input, { target: { files: [new File([new Uint8Array(10)], 'c.mp4', { type: 'video/mp4' })] } }); });
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Envoyer ma vidéo de consentement']);
+    expect(q('[data-avatar-did-refus]')).not.toBeNull();
+
+    // Phrase expirée : « Obtenir une nouvelle phrase » est le seul CTA ; « Envoyer » reste visible, désactivé, secondaire.
+    avatarDidAvecPhrase('consentement_texte_pret'); serveur.expireLe = new Date(Date.now() - 1000).toISOString();
+    await monterEtLireFil();
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Obtenir une nouvelle phrase']);
+    expect(q<HTMLButtonElement>('[data-avatar-did-action="video"]')!.disabled).toBe(true);
+    // Refusée ET expirée : toujours un seul.
+    avatarDidAvecPhrase('consentement_refuse', { provider_consent_status: 'error' }); serveur.expireLe = new Date(Date.now() - 1000).toISOString();
+    await monterEtLireFil();
+    expect(primaires()).toHaveLength(1);
+  });
+
+  it('⚠️ échec D-ID : une seule sortie « Changer de source » (la notification), pas de lien texte en double', async () => {
+    avatarDid('echec', { status: 'failed', etat: 'echec', training_error: 'x' });
+    await monterEtLireFil();
+    expect(screen.getAllByRole('button', { name: /Changer de source/ })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Changer de vidéo/ })).toBeNull();
+    expect(primaires()).toHaveLength(1);
+  });
+
+  it('⚠️ matrice : dans chaque état rendu par le chantier 3, au plus un `.button-primary`', async () => {
+    const cas: Array<[string, () => void]> = [
+      ['sans avatar', () => { serveur.avatar = null; }],
+      ['did a_demander', () => avatarDid('consentement_a_demander')],
+      ['did reutilisable', () => avatarDid('consentement_reutilisable')],
+      ['did texte_pret', () => avatarDidAvecPhrase('consentement_texte_pret')],
+      ['did en_verification', () => avatarDid('consentement_en_verification')],
+      ['did accepte', () => avatarDid('consentement_accepte', { consent_name: 'Henri Bassi', provider_consent_status: 'done' })],
+      ['did creation_en_cours', () => avatarDid('creation_en_cours', { status: 'processing', etat: 'entrainement' })],
+      ['did pret', () => { avatarDid('pret', { status: 'completed', etat: 'entraine_non_valide' }); serveur.apercu = { statut: 'aucun' }; }],
+      ['heygen entrainement', () => avatarHeygen('entrainement')],
+      ['heygen failed', () => avatarHeygen('echec', { training_error: 'x' })],
+      ['apercu aucun', () => { avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'aucun' }; }],
+      ['apercu en_cours', () => { avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'en_cours', generationId: G }; }],
+      ['apercu echec', () => { avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'echec', generationId: G, erreur: 'x' }; }],
+      ['apercu indisponible', () => { avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'indisponible', generationId: G }; }],
+      ['apercu pret', () => { avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'pret', generationId: G, url: URL_APERCU }; }],
+      ['valide', () => avatarHeygen('valide')],
+    ];
+    for (const [nom, poser] of cas) {
+      serveur.apercu = { statut: 'aucun' }; serveur.texte = null; serveur.nom = null; serveur.expireLe = null;
+      poser();
+      await monterEtLireFil();
+      expect(primaires().length, `${nom} : ${primaires().map((b) => b.textContent?.trim()).join(' | ')}`).toBeLessThanOrEqual(1);
+    }
+    // Voix manquante à l'étape Aperçu : « Configurer ma voix » est LE CTA ; « Générer » passe en secondaire.
+    avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'aucun' };
+    await monterEtLireFil();
+    await act(async () => { fireEvent.click(q('[data-avatar-apercu="generer"]')!); });
+    await waitFor(() => expect(q('[data-notification="avertissement"]')).not.toBeNull());
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Configurer ma voix']);
+    expect(q('[data-avatar-apercu="generer"]')).not.toBeNull();
+    // Aperçu prêt, lu : « Valider mon avatar » seul.
+    avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'pret', generationId: G, url: URL_APERCU };
+    await monterEtLireFil();
+    fireEvent.click(actionApercu(/^Voir mon aperçu$/)!);
+    const video = await waitFor(() => q<HTMLVideoElement>('video[data-avatar-apercu="video"]')!);
+    expect(primaires()).toHaveLength(0);
+    fireEvent.playing(video);
+    await waitFor(() => expect(q('[data-avatar-apercu="valider"]')).not.toBeNull());
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Valider mon avatar']);
+    // Validé, notification « Avatar validé. » affichée : « Générer » est le seul primaire.
+    await act(async () => { fireEvent.click(q('[data-avatar-apercu="valider"]')!); });
+    await waitFor(() => expect(etatsFil().validation).toBe('terminee'));
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Générer (40 crédits)']);
   });
 });

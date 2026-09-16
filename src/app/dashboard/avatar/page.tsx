@@ -129,7 +129,7 @@ export default function AvatarPage() {
    * plus récente remplace. Les anciens `error` / `notice` / « voix manquante »
    * passent tous par ce slot ; `setError(null)` n'efface qu'une erreur.
    */
-  type NotificationPage = { niveau: NiveauNotification; titre: string; detail?: string | string[]; motif?: string | null; action?: { libelle: string; onClick: () => void } };
+  type NotificationPage = { niveau: NiveauNotification; titre: string; detail?: string | string[]; motif?: string | null; action?: { libelle: string; onClick: () => void }; cle?: 'voix_manquante'; actionSecondaire?: boolean };
   const [notification, setNotification] = useState<NotificationPage | null>(null);
   const setError = (message: string | null) => {
     if (message) setNotification({ niveau: 'erreur', titre: message });
@@ -140,6 +140,7 @@ export default function AvatarPage() {
     else setNotification((n) => (n?.niveau === 'succes' ? null : n));
   };
   const signalerVoixManquante = () => setNotification({
+    cle: 'voix_manquante',
     niveau: 'avertissement',
     titre: "Votre voix personnelle est nécessaire pour l'aperçu.",
     detail: "L'aperçu fait parler votre avatar avec votre voix. Ajoutez ou choisissez-la dans « Ma voix ».",
@@ -282,7 +283,7 @@ export default function AvatarPage() {
       });
       const json = await res.json();
       if (!json.success) { setError(json.error || 'La validation a échoué.'); await loadAvatar(false); return; }
-      setNotification({ niveau: 'succes', titre: 'Avatar validé.', detail: 'Il est prêt pour vos vidéos.', action: { libelle: 'Créer une vidéo', onClick: () => window.location.assign('/dashboard/creer') } });
+      setNotification({ niveau: 'succes', titre: 'Avatar validé.', detail: 'Il est prêt pour vos vidéos.', action: { libelle: 'Créer une vidéo', onClick: () => window.location.assign('/dashboard/creer') }, actionSecondaire: true });
       setApercuOuvert(null);
       setApercuVisible(false);
       await loadAvatar(false);
@@ -527,11 +528,11 @@ export default function AvatarPage() {
           setGenStatus('idle');
           const suivant = await loadApercu();
           if (suivant?.statut === 'pret') {
+            // Information seulement : le CTA « Voir mon aperçu » est dans la zone d'aperçu, à côté de la vidéo.
             setNotification({
               niveau: 'succes',
               titre: 'Votre aperçu est prêt.',
               detail: 'Regardez-le jusqu’au bout : le bouton « Valider mon avatar » apparaît dès que la lecture démarre.',
-              action: { libelle: 'Voir mon aperçu', onClick: () => { setApercuVisible(true); } },
             });
           }
           return;
@@ -737,7 +738,7 @@ export default function AvatarPage() {
       return { titre: 'Votre avatar', ratio: ratioSource, etat: { statut: 'pret', legende: busy ? 'Avatar validé — votre vidéo est en cours de création.' : 'Avatar validé.' }, media: mediaSource };
     }
     if (etatEffectif === 'entraine_non_valide') {
-      const relance = { onClick: genererApercu, disabled: apercuEnCours || !apercu, attributs: { 'data-avatar-apercu': 'generer' } as const };
+      const relance = { onClick: genererApercu, disabled: apercuEnCours || !apercu, principale: notification?.cle !== 'voix_manquante', attributs: { 'data-avatar-apercu': 'generer' } as const };
       if (!apercu || apercu.statut === 'aucun') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'vide', message: 'Aperçu de validation offert — une courte vidéo réelle de votre avatar, avec votre voix.', action: { libelle: 'Générer mon aperçu', ...relance } } };
       if (apercu.statut === 'echec') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: "L'aperçu n'a pas pu être généré. Vous pouvez le relancer sans frais.", detail: apercu.erreur ?? undefined, action: { libelle: "Relancer l'aperçu", ...relance } } };
       if (apercu.statut === 'en_cours') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'chargement', message: 'Votre aperçu est en cours de génération…', detail: 'Cela prend généralement 1 à 5 minutes. Cette page se met à jour toute seule.' } };
@@ -789,7 +790,7 @@ export default function AvatarPage() {
           titre={notificationAffichee.titre}
           detail={notificationAffichee.detail}
           motif={notificationAffichee.motif ?? null}
-          actionPrincipale={notificationAffichee.action}
+          {...(notificationAffichee.actionSecondaire ? { actionSecondaire: notificationAffichee.action } : { actionPrincipale: notificationAffichee.action })}
           onFermer={() => setNotification(null)}
           className={notificationAffichee.niveau === 'erreur' ? '[&_[data-notification-titre]]:font-normal' : undefined}
         >
@@ -993,7 +994,7 @@ export default function AvatarPage() {
 
               {/* Actions secondaires : en texte, jamais au niveau du CTA. Suppression en deux clics. */}
               <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-white/5">
-                {!(notificationAffichee?.action?.libelle === 'Changer de source' || (zone.etat.statut === 'erreur' && zone.etat.action?.libelle === 'Changer de source')) && (
+                {!(notificationAffichee?.action?.libelle === 'Changer de source' || (zone.etat.statut === 'erreur' && zone.etat.action?.libelle === 'Changer de source') || (viaDid && avatar.etape_did === 'echec')) && (
                   <button onClick={changerDeSource} className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5">
                     <RefreshCw className="w-3.5 h-3.5" /> Changer de source
                   </button>

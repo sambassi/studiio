@@ -225,8 +225,9 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
                   'puis enregistrez une nouvelle vidéo.',
                 ]}
                 motif={erreurConsentement}
-                actionPrincipale={{ libelle: 'Réenregistrer', onClick: reenregistrer }}
-                actionSecondaire={{ libelle: 'Voir les consignes', onClick: ouvrirConsignes }}
+                {...(!fichier && !expiree
+                  ? { actionPrincipale: { libelle: 'Réenregistrer', onClick: reenregistrer }, actionSecondaire: { libelle: 'Voir les consignes', onClick: ouvrirConsignes } }
+                  : { actionSecondaire: { libelle: 'Voir les consignes', onClick: ouvrirConsignes } })}
               />
             </div>
           )}
@@ -278,7 +279,9 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
             <button onClick={() => inputRef.current?.click()} disabled={!!occupe} className="rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500 transition px-4 py-3 text-sm text-gray-300 flex items-center gap-2">
               <Upload className="w-4 h-4" /> {fichier ? `${fichier.name} — ${Math.round(fichier.size / 1024 / 1024)} Mo` : 'Choisir la vidéo de consentement'}
             </button>
-            <button data-avatar-did-action="video" onClick={envoyerVideoConsentement} disabled={!fichier || !!occupe || expiree} className="button-primary flex items-center gap-2 disabled:opacity-40">
+            {/* Primaire seulement quand l'envoi est possible (fichier choisi, phrase valide) :
+                désactivé, il reste visible mais ne ressemble pas à un second CTA. */}
+            <button data-avatar-did-action="video" onClick={envoyerVideoConsentement} disabled={!fichier || !!occupe || expiree} className={`${fichier && !expiree ? 'button-primary' : 'button-secondary'} flex items-center gap-2 disabled:opacity-40`}>
               {occupe === 'video' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Envoyer ma vidéo de consentement
             </button>
           </div>
@@ -342,7 +345,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
             titre="L'entraînement de votre avatar n'a pas abouti."
             detail="La vidéo source n'a pas permis de créer l'avatar. Réessayez avec une vidéo plus longue, mieux éclairée, visage face caméra."
             motif={erreurEntrainement ?? null}
-            {...(onChangerSource ? { actionPrincipale: { libelle: 'Changer de vidéo', onClick: onChangerSource } } : {})}
+            {...(onChangerSource ? { actionPrincipale: { libelle: 'Changer de source', onClick: onChangerSource } } : {})}
             actionSecondaire={{ libelle: 'Voir les consignes', onClick: ouvrirConsignes }}
           />
         </div>
