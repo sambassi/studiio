@@ -80,7 +80,7 @@ describe('/dashboard/avatar — validation du clone', () => {
   it('⚠️ aperçu prêt : « Voir » affiche la vraie vidéo SANS jeton ; le jeton et « Valider » n’arrivent qu’au DÉMARRAGE RÉEL de la lecture (playing)', async () => {
     etatServeur.apercu = { statut: 'pret', generationId: G, url: URL_APERCU };
     render(<AvatarPage />);
-    const voir = await waitFor(() => screen.getByRole('button', { name: /Voir mon avatar/ }));
+    const voir = await waitFor(() => screen.getByRole("button", { name: /Voir mon aperçu/ }));
     // Avant « Voir » : ni vidéo, ni « Valider ».
     expect(document.querySelector('video[data-avatar-apercu="video"]')).toBeNull();
     expect(document.querySelector('[data-avatar-apercu="valider"]')).toBeNull();
@@ -116,7 +116,7 @@ describe('/dashboard/avatar — validation du clone', () => {
   it('⚠️ lecture démarrée mais le serveur refuse le jeton (aperçu plus prêt / version changée) → aucun « Valider »', async () => {
     etatServeur.apercu = { statut: 'pret', generationId: G, url: URL_APERCU };
     render(<AvatarPage />);
-    fireEvent.click(await waitFor(() => screen.getByRole('button', { name: /Voir mon avatar/ })));
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: /Voir mon aperçu/ })));
     const video = await waitFor(() => document.querySelector('video[data-avatar-apercu="video"]') as HTMLVideoElement);
     // Entre-temps, côté serveur, l'aperçu n'est plus prêt (nouvelle version).
     etatServeur.apercu = { statut: 'aucun' };

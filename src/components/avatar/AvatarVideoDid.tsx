@@ -39,14 +39,6 @@ export interface AvatarVideoDidProps {
   fetchImpl?: typeof fetch;
 }
 
-const ETAPES_PIPELINE: Array<{ cle: string; libelle: string; atteinte: (e: EtapeDid) => boolean }> = [
-  { cle: 'telechargement', libelle: 'Téléchargement', atteinte: () => true },
-  { cle: 'verification', libelle: 'Vérification', atteinte: (e) => e !== 'consentement_a_demander' && e !== 'consentement_reutilisable' && e !== 'consentement_texte_pret' },
-  { cle: 'creation', libelle: 'Création', atteinte: (e) => ['creation_en_cours', 'pret', 'valide', 'echec'].includes(e) },
-  { cle: 'entrainement', libelle: 'Entraînement', atteinte: (e) => ['creation_en_cours', 'pret', 'valide'].includes(e) },
-  { cle: 'pret', libelle: 'Prêt', atteinte: (e) => e === 'pret' || e === 'valide' },
-];
-
 export default function AvatarVideoDid({ etape, texteConsentement, nomConsentement, nomProfil, expireLe, erreurEntrainement, onChange, onChangerSource, fetchImpl }: AvatarVideoDidProps) {
   const f = fetchImpl ?? fetch;
   const [occupe, setOccupe] = useState<null | 'phrase' | 'video' | 'creer' | 'reutiliser'>(null);
@@ -202,34 +194,17 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
   ];
 
   return (
-    <div data-avatar-did={etape} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
-      {/* Le pipeline : Téléchargement → Vérification → Création → Entraînement → Prêt
-          (pendant l'entraînement, c'est `ProgressStatus` qui porte les étapes) */}
-      {etape !== 'creation_en_cours' && (
-      <ol data-avatar-did-pipeline className="flex flex-wrap items-center gap-2 text-[11px]">
-        {ETAPES_PIPELINE.map((p, i) => {
-          const ok = p.atteinte(etape);
-          return (
-            <li key={p.cle} data-avatar-did-etape={p.cle} data-atteinte={ok ? '1' : '0'} className={`flex items-center gap-1 ${ok ? 'text-emerald-300' : 'text-gray-500'}`}>
-              {ok ? <Check className="w-3 h-3" /> : <span className="w-3 h-3 rounded-full border border-gray-600 inline-block" />}
-              {p.libelle}{i < ETAPES_PIPELINE.length - 1 && <span className="text-gray-600 ml-1">→</span>}
-            </li>
-          );
-        })}
-      </ol>
-      )}
-
+    // Plus de pipeline interne : le fil d'étapes unique de la page (FilEtapes)
+    // dit où l'on en est ; ici, seulement l'étape courante et ses gestes.
+    <div data-avatar-did={etape} className="space-y-4">
       {etape === 'consentement_a_demander' && (
         <div className="space-y-3">
-          <div className="text-sm font-medium">2. Obtenir ma phrase de consentement</div>
-          <p className="text-xs text-gray-400">Notre fournisseur tire au sort une phrase que vous lirez face caméra, avec votre nom : c&apos;est ce qui prouve que l&apos;avatar est bien le vôtre. Un consentement déjà validé pour la même personne est réutilisé.</p>
           {blocNomEtChoix}
         </div>
       )}
 
       {etape === 'consentement_reutilisable' && (
         <div className="space-y-3">
-          <div className="text-sm font-medium">2. Votre consentement</div>
           <p className="text-xs text-gray-400">Votre avatar précédent a été validé avec un consentement{nomConsentement ? ` au nom de ${nomConsentement}` : ''}. Pour cette nouvelle vidéo, réutilisez-le — ou indiquez un autre nom pour une nouvelle phrase.</p>
           {blocNomEtChoix}
         </div>
@@ -265,7 +240,6 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
               />
             </div>
           )}
-          <div className="text-sm font-medium">3. Importer ma vidéo de consentement</div>
           <Consigne
             key={consignes.cle}
             titre="Enregistrez-vous en lisant exactement cette phrase."
@@ -323,7 +297,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       )}
 
       {etape === 'consentement_en_verification' && (
-        <div data-avatar-did-verification className="flex items-center gap-2 text-sm text-amber-200">
+        <div data-avatar-did-verification className="flex items-center gap-2 text-sm text-gray-300">
           <Loader2 className="w-4 h-4 animate-spin" /> Vérification du consentement… Cette page se met à jour toute seule.
         </div>
       )}
@@ -338,7 +312,6 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
               actionPrincipale={{ libelle: 'Créer mon avatar', onClick: () => appeler('creer', '/api/avatar/did/creer') }}
             />
           </div>
-          <div className="text-sm font-medium">5. Créer mon avatar</div>
           <button data-avatar-did-action="creer" onClick={() => appeler('creer', '/api/avatar/did/creer')} disabled={!!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
             {occupe === 'creer' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Créer mon avatar
           </button>
@@ -378,7 +351,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       )}
 
       {etape === 'pret' && (
-        <div data-avatar-did-pret className="flex items-center gap-2 text-sm text-emerald-200"><Check className="w-4 h-4" /> Mon avatar vidéo est prêt.</div>
+        <div data-avatar-did-pret className="flex items-center gap-2 text-sm text-gray-300"><Check className="w-4 h-4 text-emerald-300" /> Mon avatar vidéo est prêt.</div>
       )}
 
       {erreur && (

@@ -13,7 +13,14 @@ import { Loader2, AlertTriangle, ImageOff } from 'lucide-react';
  * Le composant ne connaît aucun lecteur métier : il encadre.
  */
 
-export interface ActionApercu { libelle: string; onClick: () => void; principale?: boolean }
+export interface ActionApercu {
+  libelle: string;
+  onClick: () => void;
+  principale?: boolean;
+  disabled?: boolean;
+  /** Attributs `data-*` de l'appelant (ses propres repères de test), posés sur le bouton. */
+  attributs?: Record<`data-${string}`, string>;
+}
 
 export type EtatApercu =
   | { statut: 'vide'; message: string; action?: ActionApercu }
@@ -32,7 +39,7 @@ export interface ZoneApercuProps {
 }
 
 const Bouton = ({ a }: { a: ActionApercu }) => (
-  <button type="button" onClick={a.onClick} className={`${a.principale === false ? 'button-ghost' : 'button-primary'} text-[13px] px-3 py-1.5`} data-apercu-action={a.libelle}>
+  <button type="button" onClick={a.onClick} disabled={a.disabled} className={`${a.principale === false ? 'button-ghost' : 'button-primary'} text-[13px] px-3 py-1.5 disabled:opacity-40`} data-apercu-action={a.libelle} {...(a.attributs ?? {})}>
     {a.libelle}
   </button>
 );
