@@ -16,7 +16,7 @@ import { Loader2, Check, AlertTriangle, Upload, FileText, Sparkles } from 'lucid
  */
 
 export type EtapeDid =
-  | 'consentement_a_demander' | 'consentement_texte_pret' | 'consentement_en_verification'
+  | 'consentement_a_demander' | 'consentement_reutilisable' | 'consentement_texte_pret' | 'consentement_en_verification'
   | 'consentement_refuse' | 'consentement_accepte' | 'creation_en_cours' | 'pret' | 'valide' | 'echec';
 
 export interface AvatarVideoDidProps {
@@ -37,7 +37,7 @@ export interface AvatarVideoDidProps {
 
 const ETAPES_PIPELINE: Array<{ cle: string; libelle: string; atteinte: (e: EtapeDid) => boolean }> = [
   { cle: 'telechargement', libelle: 'Téléchargement', atteinte: () => true },
-  { cle: 'verification', libelle: 'Vérification', atteinte: (e) => e !== 'consentement_a_demander' && e !== 'consentement_texte_pret' },
+  { cle: 'verification', libelle: 'Vérification', atteinte: (e) => e !== 'consentement_a_demander' && e !== 'consentement_reutilisable' && e !== 'consentement_texte_pret' },
   { cle: 'creation', libelle: 'Création', atteinte: (e) => ['creation_en_cours', 'pret', 'valide', 'echec'].includes(e) },
   { cle: 'entrainement', libelle: 'Entraînement', atteinte: (e) => ['creation_en_cours', 'pret', 'valide'].includes(e) },
   { cle: 'pret', libelle: 'Prêt', atteinte: (e) => e === 'pret' || e === 'valide' },
@@ -45,8 +45,10 @@ const ETAPES_PIPELINE: Array<{ cle: string; libelle: string; atteinte: (e: Etape
 
 export default function AvatarVideoDid({ etape, texteConsentement, nomConsentement, nomProfil, expireLe, erreurEntrainement, onChange, fetchImpl }: AvatarVideoDidProps) {
   const f = fetchImpl ?? fetch;
-  const [occupe, setOccupe] = useState<null | 'phrase' | 'video' | 'creer'>(null);
+  const [occupe, setOccupe] = useState<null | 'phrase' | 'video' | 'creer' | 'reutiliser'>(null);
   const [nom, setNom] = useState<string>(nomConsentement ?? nomProfil ?? '');
+  /** Pour le nom saisi : un consentement VALIDÉ de la même personne existe-t-il ? (dit par le serveur) */
+  const [reutilisable, setReutilisable] = useState<{ nom: string } | null>(null);
   const expiree = !!expireLe && new Date(expireLe).getTime() <= Date.now();
   const [erreur, setErreur] = useState<string | null>(null);
   const [erreurConsentement, setErreurConsentement] = useState<string | null>(null);
@@ -76,7 +78,24 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
     return () => { annule = true; if (pollRef.current) clearTimeout(pollRef.current); };
   }, [etape, f, onChange]);
 
-  const appeler = async (quoi: 'phrase' | 'video' | 'creer', url: string, init?: RequestInit) => {
+  // Le serveur dit si un consentement validé existe pour EXACTEMENT ce nom — à chaque
+  // changement du nom (petite pause de frappe), tant qu'aucun défi n'est en cours.
+  const nomSaisi = nom.trim();
+  useEffect(() => {
+    if (etape !== 'consentement_a_demander' && etape !== 'consentement_reutilisable') { setReutilisable(null); return; }
+    if (nomSaisi.length < 2) { setReutilisable(null); return; }
+    let annule = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await f(`/api/avatar/did/consentement?nom=${encodeURIComponent(nomSaisi)}`);
+        const json = await res.json();
+        if (!annule) setReutilisable(json?.success && json.data?.reutilisable?.nom === nomSaisi ? { nom: nomSaisi } : null);
+      } catch { if (!annule) setReutilisable(null); }
+    }, 350);
+    return () => { annule = true; clearTimeout(t); };
+  }, [nomSaisi, etape, f]);
+
+  const appeler = async (quoi: 'phrase' | 'video' | 'creer' | 'reutiliser', url: string, init?: RequestInit) => {
     if (enCoursRef.current) return;
     enCoursRef.current = true;
     setOccupe(quoi);
@@ -105,6 +124,31 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
     body: JSON.stringify({ nom: nom.trim(), renouveler }),
   });
   const nomValide = nom.trim().length >= 2;
+  const reutiliser = () => appeler('reutiliser', '/api/avatar/did/consentement/reutiliser', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nom: nom.trim() }),
+  });
+  /** Le bloc « nom + réutiliser ou nouvelle phrase », partagé par les deux étapes d'entrée. */
+  const blocNomEtChoix = (
+    <>
+      <label className="block text-xs text-gray-400">
+        Votre nom, exactement comme vous le prononcerez
+        <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder="Prénom Nom" className="mt-1 w-full rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" />
+      </label>
+      {reutilisable && (
+        <div data-avatar-did-reutilisable className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
+          <div className="flex items-center gap-2 text-sm text-emerald-200"><Check className="w-4 h-4" /> Consentement déjà validé pour {reutilisable.nom}</div>
+          <p className="text-xs text-emerald-200/80">Aucune nouvelle phrase à lire : le consentement validé de cette personne sert à ce nouvel avatar.</p>
+          <button data-avatar-did-action="reutiliser" onClick={reutiliser} disabled={!!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
+            {occupe === 'reutiliser' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Réutiliser mon consentement
+          </button>
+        </div>
+      )}
+      <button data-avatar-did-action="phrase" onClick={() => demanderPhrase(false)} disabled={!!occupe || !nomValide} className={`${reutilisable ? 'text-xs text-gray-300 hover:text-white' : 'button-primary'} flex items-center gap-2 disabled:opacity-40`}>
+        {occupe === 'phrase' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} {reutilisable ? 'Obtenir plutôt une nouvelle phrase' : 'Obtenir ma phrase de consentement'}
+      </button>
+    </>
+  );
 
   const envoyerVideoConsentement = () => {
     if (!fichier) return;
@@ -131,14 +175,16 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       {etape === 'consentement_a_demander' && (
         <div className="space-y-3">
           <div className="text-sm font-medium">2. Obtenir ma phrase de consentement</div>
-          <p className="text-xs text-gray-400">Notre fournisseur tire au sort une phrase que vous lirez face caméra, avec votre nom : c&apos;est ce qui prouve que l&apos;avatar est bien le vôtre.</p>
-          <label className="block text-xs text-gray-400">
-            Votre nom, exactement comme vous le prononcerez
-            <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder="Prénom Nom" className="mt-1 w-full rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" />
-          </label>
-          <button data-avatar-did-action="phrase" onClick={() => demanderPhrase(false)} disabled={!!occupe || !nomValide} className="button-primary flex items-center gap-2 disabled:opacity-40">
-            {occupe === 'phrase' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Obtenir ma phrase de consentement
-          </button>
+          <p className="text-xs text-gray-400">Notre fournisseur tire au sort une phrase que vous lirez face caméra, avec votre nom : c&apos;est ce qui prouve que l&apos;avatar est bien le vôtre. Un consentement déjà validé pour la même personne est réutilisé.</p>
+          {blocNomEtChoix}
+        </div>
+      )}
+
+      {etape === 'consentement_reutilisable' && (
+        <div className="space-y-3">
+          <div className="text-sm font-medium">2. Votre consentement</div>
+          <p className="text-xs text-gray-400">Votre avatar précédent a été validé avec un consentement{nomConsentement ? ` au nom de ${nomConsentement}` : ''}. Pour cette nouvelle vidéo, réutilisez-le — ou indiquez un autre nom pour une nouvelle phrase.</p>
+          {blocNomEtChoix}
         </div>
       )}
 

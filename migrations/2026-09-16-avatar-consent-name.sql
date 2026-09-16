@@ -3,7 +3,7 @@
 -- ============================================================================
 --
 -- Depend de `2026-09-15-avatar-fournisseur-did.sql`. Migration ADDITIVE et
--- REJOUABLE : deux colonnes nullables sur `user_avatars`, rien d'autre.
+-- REJOUABLE : trois colonnes nullables sur `user_avatars`, rien d'autre.
 -- Aucune ligne modifiee, aucun backfill.
 --
 -- ---------------------------------------------------------------------------
@@ -32,10 +32,33 @@
 --                                             30 minutes apres sa creation ;
 --                                             sans cette heure, on ne peut ni
 --                                             prevenir ni proposer une
---                                             nouvelle phrase a temps
+--                                             nouvelle phrase a temps.
+--                                             ⚠️ Cette expiration ne concerne
+--                                             que le DEFI (avant validation) :
+--                                             un consentement `done` ne
+--                                             perime pas.
+--   user_avatars.provider_consent_version     la VERSION de l'avatar a laquelle
+--                                             ce consentement est rattache.
+--                                             D-ID confirme qu'un consentement
+--                                             VALIDE (`done`) sert a tous les
+--                                             futurs avatars de la meme
+--                                             personne : au changement de
+--                                             source (version + 1), un
+--                                             consentement `done` est CONSERVE
+--                                             sur la ligne, et cette colonne
+--                                             garde l'ancienne version — la
+--                                             personne confirme explicitement
+--                                             sa reutilisation (meme nom),
+--                                             le serveur la rattache alors a
+--                                             la version courante.
 --
 -- NULL pour tout avatar HeyGen, et pour les lignes D-ID anterieures — dont
 -- le consentement refuse est a refaire avec une nouvelle phrase.
+--
+-- L'HISTORIQUE des consentements valides vit dans `user_avatars` meme : les
+-- lignes supprimees (soft delete) gardent leurs colonnes de consentement, et
+-- une ligne remplacee (version + 1) garde un consentement `done`. Aucune
+-- table parallele.
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -52,6 +75,8 @@ alter table public.user_avatars
   add column if not exists consent_name text;
 alter table public.user_avatars
   add column if not exists provider_consent_created_at timestamptz;
+alter table public.user_avatars
+  add column if not exists provider_consent_version integer;
 
 -- ---------------------------------------------------------------------------
 -- 3. APRES APPLICATION — ETAPE OBLIGATOIRE
@@ -61,5 +86,5 @@ alter table public.user_avatars
 -- CONTROLE (lecture seule) :
 --   select column_name, data_type, is_nullable from information_schema.columns
 --    where table_schema = 'public' and table_name = 'user_avatars'
---      and column_name in ('consent_name', 'provider_consent_created_at');
+--      and column_name in ('consent_name', 'provider_consent_created_at', 'provider_consent_version');
 -- ---------------------------------------------------------------------------

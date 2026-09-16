@@ -19,7 +19,7 @@ vi.mock('@/components/voice/MaVoixPanel', () => ({ default: () => null }));
 import AvatarPage from '../app/dashboard/avatar/page';
 
 const A = '11111111-1111-4111-8111-000000000001';
-const serveur = { didVideoActif: true, avatar: null as Record<string, unknown> | null, etape: 'consentement_a_demander', texte: null as string | null, nom: null as string | null, expireLe: null as string | null, apercu: { statut: 'aucun' } as Record<string, unknown> };
+const serveur = { didVideoActif: true, avatar: null as Record<string, unknown> | null, etape: 'consentement_a_demander', texte: null as string | null, nom: null as string | null, expireLe: null as string | null, apercu: { statut: 'aucun' } as Record<string, unknown>, reutilisablePour: null as string | null };
 const TEMPLATE = 'Je soussigné(e), [user name], confirme détenir tous les droits. pomme vélo nuage';
 const appels: Array<{ url: string; method: string; body?: unknown }> = [];
 
@@ -42,7 +42,17 @@ function stubApi() {
       serveur.expireLe = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       return json(200, { success: true, data: { texte: serveur.texte, nom: serveur.nom, etape: serveur.etape, deja: false, expireLe: serveur.expireLe } });
     }
-    if (u === '/api/avatar/did/consentement') return json(200, { success: true, data: { etape: serveur.etape, texte: serveur.texte, nom: serveur.nom, expireLe: serveur.expireLe, erreur: null } });
+    if (u.startsWith('/api/avatar/did/consentement?nom=') || u === '/api/avatar/did/consentement') {
+      const nomDemande = u.includes('?nom=') ? decodeURIComponent(u.split('?nom=')[1]) : null;
+      const reutilisable = nomDemande && serveur.reutilisablePour === nomDemande ? { nom: nomDemande, origine: 'ligne_supprimee' } : null;
+      return json(200, { success: true, data: { etape: serveur.etape, texte: serveur.texte, nom: serveur.nom, expireLe: serveur.expireLe, erreur: null, reutilisable } });
+    }
+    if (u === '/api/avatar/did/consentement/reutiliser') {
+      const corps = JSON.parse(String(init?.body ?? '{}')) as { nom?: string };
+      if (serveur.reutilisablePour !== corps.nom) return json(409, { success: false, error: 'Aucun consentement validé n’est réutilisable pour ce nom. Obtenez une nouvelle phrase de consentement.', code: 'consentement_non_reutilisable' });
+      serveur.nom = corps.nom ?? null; serveur.etape = 'consentement_accepte';
+      return json(200, { success: true, data: { etape: serveur.etape, nom: serveur.nom, texte: 'x', origine: 'ligne_supprimee' } });
+    }
     if (u === '/api/avatar/did/consentement/video') { serveur.etape = 'consentement_en_verification'; return json(200, { success: true, data: { etape: serveur.etape } }); }
     if (u === '/api/avatar/did/creer') { serveur.etape = 'creation_en_cours'; serveur.avatar = { ...serveur.avatar, status: 'processing', etat: 'entrainement' }; return json(200, { success: true, data: { etape: serveur.etape, avatarId: A, version: 1 } }); }
     if (u === '/api/avatar/did/apercu') { serveur.apercu = { statut: 'en_cours', generationId: 'g1' }; return json(200, { success: true, data: { generationId: 'g1', display: 'x', spoken: 'x' } }); }
@@ -52,7 +62,7 @@ function stubApi() {
   }) as unknown as typeof fetch;
 }
 
-beforeEach(() => { appels.length = 0; window.localStorage.clear(); serveur.didVideoActif = true; serveur.avatar = null; serveur.etape = 'consentement_a_demander'; serveur.texte = null; serveur.nom = null; serveur.expireLe = null; serveur.apercu = { statut: 'aucun' }; stubApi(); });
+beforeEach(() => { appels.length = 0; window.localStorage.clear(); serveur.didVideoActif = true; serveur.avatar = null; serveur.etape = 'consentement_a_demander'; serveur.texte = null; serveur.nom = null; serveur.expireLe = null; serveur.apercu = { statut: 'aucun' }; serveur.reutilisablePour = null; stubApi(); });
 afterEach(() => { cleanup(); });
 
 const carteVideo = () => screen.getByRole('button', { name: /À partir d’une vidéo/ }) as HTMLButtonElement;
@@ -178,6 +188,46 @@ describe('/dashboard/avatar — « À partir d’une vidéo » (D-ID)', () => {
     await act(async () => { fireEvent.change(input, { target: { files: [new File([new Uint8Array(10)], 'c.mp4', { type: 'video/mp4' })] } }); });
     expect((document.querySelector('[data-avatar-did-action="video"]') as HTMLButtonElement).disabled).toBe(true);
     expect(appels.some((a) => a.url === '/api/avatar/did/consentement/video')).toBe(false);
+  });
+
+  it('⚠️ consentement déjà validé pour la personne : « ✓ Consentement déjà validé pour Henri Bassi » + « Réutiliser mon consentement » → aucune phrase, aucune vidéo, étape « Créer mon avatar » ; un autre nom ne le propose pas', async () => {
+    serveur.avatar = { id: A, name: 'Mon avatar vidéo', status: 'source_ready', avatar_type: 'video', provider: 'did', created_at: '2026-09-15T00:00:00Z', etat: 'source_prete', version: 1, validated_at: null };
+    serveur.reutilisablePour = 'Henri Bassi';
+    render(<AvatarPage />);
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-reutilisable]')).not.toBeNull(), { timeout: 3000 });
+    expect(document.body.textContent).toContain('Consentement déjà validé pour Henri Bassi');
+    // Le nom d'affichage de l'avatar n'apparaît jamais comme nom de personne.
+    expect(document.querySelector('[data-avatar-did-reutilisable]')!.textContent).not.toContain('Mon avatar vidéo');
+    // Un autre nom : la proposition disparaît, la phrase redevient le chemin.
+    fireEvent.change(document.querySelector('[data-avatar-did-nom]') as HTMLInputElement, { target: { value: 'Bassi Henri' } });
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-reutilisable]')).toBeNull(), { timeout: 3000 });
+    expect(document.body.textContent).toContain('Obtenir ma phrase de consentement');
+    fireEvent.change(document.querySelector('[data-avatar-did-nom]') as HTMLInputElement, { target: { value: 'Henri Bassi' } });
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-action="reutiliser"]')).not.toBeNull(), { timeout: 3000 });
+    await act(async () => { fireEvent.click(document.querySelector('[data-avatar-did-action="reutiliser"]') as HTMLButtonElement); });
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-action="creer"]')).not.toBeNull());
+    const reutilisations = appels.filter((a) => a.url === '/api/avatar/did/consentement/reutiliser');
+    expect(reutilisations).toHaveLength(1);
+    expect(JSON.parse(String(reutilisations[0].body))).toEqual({ nom: 'Henri Bassi' });
+    expect(appels.filter((a) => a.url === '/api/avatar/did/consentement' && a.method === 'POST')).toEqual([]);
+    expect(appels.filter((a) => a.url === '/api/avatar/did/consentement/video')).toEqual([]);
+    expect(document.body.textContent).toContain('Consentement accepté');
+  });
+
+  it('⚠️ étape héritée (« Changer de source » après un avatar validé) : le nom est pré-rempli, « Réutiliser » proposé ; le fournisseur ne le tient plus → retour propre à « Obtenir ma phrase »', async () => {
+    serveur.avatar = { id: A, name: 'Mon avatar vidéo', status: 'source_ready', avatar_type: 'video', provider: 'did', created_at: '2026-09-15T00:00:00Z', etat: 'source_prete', version: 2, validated_at: null };
+    serveur.etape = 'consentement_reutilisable'; serveur.nom = 'Henri Bassi'; serveur.reutilisablePour = 'Henri Bassi';
+    render(<AvatarPage />);
+    await waitFor(() => expect(document.querySelector('[data-avatar-did="consentement_reutilisable"]')).not.toBeNull());
+    expect((document.querySelector('[data-avatar-did-nom]') as HTMLInputElement).value).toBe('Henri Bassi');
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-action="reutiliser"]')).not.toBeNull(), { timeout: 3000 });
+    // Le fournisseur a lâché le consentement : 409 → l'écran montre l'erreur et garde « Obtenir plutôt une nouvelle phrase ».
+    serveur.reutilisablePour = null;
+    await act(async () => { fireEvent.click(document.querySelector('[data-avatar-did-action="reutiliser"]') as HTMLButtonElement); });
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-erreur]')).not.toBeNull());
+    expect(document.body.textContent).toContain('Aucun consentement validé n’est réutilisable');
+    expect(document.querySelector('[data-avatar-did-action="phrase"]')).not.toBeNull();
+    expect(appels.filter((a) => a.url === '/api/avatar/did/consentement' && a.method === 'POST')).toEqual([]);
   });
 
   it('⚠️ prêt : « Mon avatar vidéo est prêt » + le bloc de validation existant ; « Générer mon aperçu » appelle /api/avatar/did/apercu, pas HeyGen ; rien n’est validé tout seul', async () => {

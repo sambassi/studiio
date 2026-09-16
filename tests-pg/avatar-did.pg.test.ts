@@ -113,9 +113,14 @@ describe('1 bis. Le nom de consentement et l’heure de la phrase (2026-09-16)',
     await expect(appliquerMigration(db, MIGRATION_NOM)).resolves.not.toThrow();
     expect(await colonne('user_avatars', 'consent_name')).toMatchObject({ data_type: 'text', is_nullable: 'YES', column_default: null });
     expect(await colonne('user_avatars', 'provider_consent_created_at')).toMatchObject({ data_type: 'timestamp with time zone', is_nullable: 'YES', column_default: null });
+    expect(await colonne('user_avatars', 'provider_consent_version')).toMatchObject({ data_type: 'integer', is_nullable: 'YES', column_default: null });
     const apres = (await db.query('select * from public.user_avatars where id = $1', [id])).rows[0];
     for (const k of Object.keys(avant)) expect(apres[k], k).toEqual(avant[k]);
-    expect(apres).toMatchObject({ consent_name: null, provider_consent_created_at: null });
+    expect(apres).toMatchObject({ consent_name: null, provider_consent_created_at: null, provider_consent_version: null });
+    // L'historique d'un consentement validé survit à la suppression douce : la ligne garde ses colonnes.
+    await db.query("update public.user_avatars set provider = 'did', provider_consent_id = 'cst-1', provider_consent_text = 'phrase', provider_consent_status = 'done', consent_name = 'Henri Bassi', provider_consent_version = 1, deleted_at = now() where id = $1", [id]);
+    const h = (await db.query("select provider_consent_id, provider_consent_status, consent_name from public.user_avatars where user_id = $1 and provider = 'did' and provider_consent_status = 'done' and consent_name = 'Henri Bassi'", [u])).rows;
+    expect(h).toEqual([{ provider_consent_id: 'cst-1', provider_consent_status: 'done', consent_name: 'Henri Bassi' }]);
     // Le nom de la personne (accents, apostrophe typographique) s'écrit tel quel, distinct du nom de l'avatar.
     await db.query("update public.user_avatars set consent_name = $2, provider_consent_created_at = now(), name = 'Mon avatar vidéo' where id = $1", [id, 'Jean-Éric d\u2019Aubigné']);
     const l = (await db.query('select name, consent_name from public.user_avatars where id = $1', [id])).rows[0];
