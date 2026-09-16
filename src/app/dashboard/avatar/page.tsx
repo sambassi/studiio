@@ -15,7 +15,7 @@ import {
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 import MaVoixPanel from '@/components/voice/MaVoixPanel';
 import AvatarVideoDid, { type EtapeDid } from '@/components/avatar/AvatarVideoDid';
-import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneApercu, type EtapeProgression, type Etape, type EtatApercu, type NiveauNotification } from '@/components/ux';
+import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneApercu, DeuxColonnes, ColonneTravail, ColonneApercu, type EtapeProgression, type Etape, type EtatApercu, type NiveauNotification } from '@/components/ux';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 
 const AVATAR_VIDEO_COST = 40;
@@ -699,7 +699,7 @@ export default function AvatarPage() {
       data-avatar-source-apercu="video"
       src={urlSourceAvatar(avatar)}
       onError={(e) => { e.currentTarget.hidden = true; }}
-      className="w-full max-h-[420px] object-contain bg-black"
+      className="w-full h-full object-contain bg-black"
       muted
       playsInline
       controls
@@ -711,7 +711,7 @@ export default function AvatarPage() {
       src={urlSourceAvatar(avatar)}
       onError={(e) => { e.currentTarget.hidden = true; }}
       alt="Votre avatar"
-      className="w-full max-h-[420px] object-contain"
+      className="w-full h-full object-contain"
     />
   )) : null;
 
@@ -728,13 +728,13 @@ export default function AvatarPage() {
         titre: 'Votre source', ratio: ratioSource,
         etat: { statut: 'pret', legende: file ? `${file.name} — ${Math.round(file.size / 1024 / 1024)} Mo` : undefined },
         media: kind === 'video'
-          ? <video src={preview} className="w-full max-h-[420px] bg-black" muted playsInline controls />
+          ? <video src={preview} className="w-full h-full object-contain bg-black" muted playsInline controls />
           /* eslint-disable-next-line @next/next/no-img-element */
-          : <img src={preview} alt="Aperçu de votre photo" className="w-full max-h-[420px] object-contain" />,
+          : <img src={preview} alt="Aperçu de votre photo" className="w-full h-full object-contain" />,
       };
     }
     if (etatEffectif === 'valide') {
-      if (videoUrl) return { titre: 'Votre vidéo', ratio: '9 / 16', etat: { statut: 'pret', legende: 'Vidéo prête.' }, media: <video src={videoUrl} controls playsInline className="w-full bg-black" style={{ maxHeight: '70vh' }} /> };
+      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratio === '9:16' ? '9 / 16' : ratio === '16:9' ? '16 / 9' : '1 / 1', etat: { statut: 'pret', legende: 'Vidéo prête.' }, media: <video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /> };
       return { titre: 'Votre avatar', ratio: ratioSource, etat: { statut: 'pret', legende: busy ? 'Avatar validé — votre vidéo est en cours de création.' : 'Avatar validé.' }, media: mediaSource };
     }
     if (etatEffectif === 'entraine_non_valide') {
@@ -752,7 +752,7 @@ export default function AvatarPage() {
       const ouvert = !!apercuOuvert && apercuOuvert.generationId === apercu.generationId;
       return {
         titre: 'Aperçu de validation', ratio: '9 / 16',
-        media: <video data-avatar-apercu="video" src={apercu.url} controls autoPlay playsInline onPlaying={apercuEnLecture} className="w-full bg-black" style={{ maxHeight: '70vh' }} />,
+        media: <video data-avatar-apercu="video" src={apercu.url} controls autoPlay playsInline onPlaying={apercuEnLecture} className="w-full h-full object-contain bg-black" />,
         etat: ouvert
           ? { statut: 'pret', legende: 'Ça vous ressemble ?', actionSuivante: { libelle: 'Valider mon avatar', onClick: validerAvatar, disabled: validationEnCours, attributs: { 'data-avatar-apercu': 'valider' } } }
           : { statut: 'pret', legende: 'Lancez la lecture : le bouton de validation apparaîtra ensuite.' },
@@ -803,9 +803,10 @@ export default function AvatarPage() {
       {/* C. Le fil d'étapes (le pipeline interne D-ID a disparu à son profit) */}
       <FilEtapes etapes={filEtapes} />
 
-      {/* D. Deux colonnes : l'étape à gauche, l'aperçu à droite */}
-      <div data-avatar-colonnes className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
-        <div data-avatar-colonne="etape" className="lg:col-span-3 space-y-4">
+      {/* D. Deux colonnes — la même mise en page que Créer (`DeuxColonnes`) :
+          l'étape, ses gestes et la voix à gauche ; l'aperçu à droite. */}
+      <DeuxColonnes nom="avatar" attributs={{ 'data-avatar-colonnes': '' }}>
+        <ColonneTravail attributs={{ 'data-avatar-colonne': 'etape' }}>
           {consignePage && (
             <Consigne
               titre={consignePage.titre}
@@ -1021,9 +1022,21 @@ export default function AvatarPage() {
               </div>
             </div>
           )}
-        </div>
 
-        <div data-avatar-colonne="apercu" className="lg:col-span-2 lg:sticky lg:top-20 space-y-4">
+          {/* ── MA VOIX ──────────────────────────────────────────────────
+              Le clonage vocal est independant de l'avatar : il alimente le
+              selecteur de voix de TOUS les montages, pas seulement cette page.
+              Il est donc affiche des la premiere visite, avant meme qu'un avatar
+              existe — dans la colonne de travail, sous l'etape, face a l'apercu. */}
+          <VoiceCloneRecorder />
+          {/* Ma voix & prononciations — la voix utilisée, les prononciations,
+              l'aperçu affiché/prononcé, l'écoute réelle ou son indisponibilité. */}
+          <div ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none">
+            <MaVoixPanel />
+          </div>
+        </ColonneTravail>
+
+        <ColonneApercu attributs={{ 'data-avatar-colonne': 'apercu' }}>
           <div data-avatar-validation={cleValidation}>
             <div data-avatar-apercu={cleApercu}>
               <ZoneApercu titre={zone.titre} etat={zone.etat} ratio={zone.ratio}>{zone.media}</ZoneApercu>
@@ -1124,20 +1137,8 @@ export default function AvatarPage() {
               )}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* ── MA VOIX ──────────────────────────────────────────────────
-          Le clonage vocal est independant de l'avatar : il alimente le
-          selecteur de voix de TOUS les montages, pas seulement cette page.
-          Il est donc affiche des la premiere visite, avant meme qu'un avatar
-          existe. */}
-      <VoiceCloneRecorder />
-      {/* Ma voix & prononciations — la voix utilisée, les prononciations,
-          l'aperçu affiché/prononcé, l'écoute réelle ou son indisponibilité. */}
-      <div ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none">
-        <MaVoixPanel />
-      </div>
+        </ColonneApercu>
+      </DeuxColonnes>
     </div>
   );
 }

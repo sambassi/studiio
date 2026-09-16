@@ -51,7 +51,9 @@ export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = 
 
       {etat.statut === 'pret' ? (
         <div className="space-y-3">
-          <div data-apercu-media className="rounded-xl overflow-hidden bg-black">{children}</div>
+          {/* Le média remplit un cadre au ratio demandé (comme l'aperçu de Créer) :
+              pas de borne en px ni en vh, la page défile si l'écran est bas. */}
+          <div data-apercu-media className="w-full rounded-xl overflow-hidden bg-black" style={{ aspectRatio: ratio }}>{children}</div>
           {etat.legende && <p className="text-[12px] text-gray-400" data-apercu-legende>{etat.legende}</p>}
           {(etat.actionSuivante || (etat.actionsSecondaires && etat.actionsSecondaires.length > 0)) && (
             <div className="flex flex-wrap items-center gap-2" data-apercu-actions>
@@ -62,8 +64,8 @@ export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = 
         </div>
       ) : (
         <div
-          className="w-full max-w-sm mx-auto rounded-xl border border-dashed border-gray-700 bg-gray-900/40 flex flex-col items-center justify-center gap-2 p-6 text-center"
-          style={{ aspectRatio: ratio, maxHeight: 420 }}
+          className="w-full rounded-xl border border-dashed border-gray-700 bg-gray-900/40 flex flex-col items-center justify-center gap-2 p-6 text-center"
+          style={{ aspectRatio: ratio }}
           role={etat.statut === 'erreur' ? 'alert' : 'status'}
         >
           {etat.statut === 'vide' && <ImageOff className="w-6 h-6 text-gray-600" aria-hidden />}

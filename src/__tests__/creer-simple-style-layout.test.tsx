@@ -176,7 +176,11 @@ describe('Export — la photo part toujours de la composition complète', () => 
 
 describe('Disposition — l’aperçu ne disparaît plus', () => {
   it('la colonne d’aperçu est collée, sous la navbar et pas dessous', () => {
-    const col = /<div className="([^"]*lg:sticky[^"]*)">/.exec(wizardSource);
+    // Les classes de la colonne vivent dans la brique partagée `DeuxColonnes`
+    // (la même que Mon avatar) : le wizard la monte, il ne les recopie pas.
+    expect(wizardSource).toContain('<ColonneApercu>');
+    const colonnesSource = readFileSync(resolve(__dirname, '../components/ux/DeuxColonnes.tsx'), 'utf-8');
+    const col = /data-colonne="apercu"[^\n]*className=\{`([^`]*lg:sticky[^`]*)`\}/.exec(colonnesSource);
     expect(col).not.toBeNull();
     const classes = col![1].split(/\s+/);
     expect(classes).toContain('lg:sticky');
@@ -190,7 +194,8 @@ describe('Disposition — l’aperçu ne disparaît plus', () => {
     expect(Number(top!.replace('lg:top-', ''))).toBeGreaterThanOrEqual(16);
     // `items-start` rend le `sticky` opérant — il préexistait, on vérifie
     // seulement qu'il n'a pas été perdu en chemin.
-    expect(wizardSource).toMatch(/lg:grid-cols-5[^"]*items-start/);
+    expect(wizardSource).toContain('<DeuxColonnes ');
+    expect(colonnesSource).toMatch(/lg:grid-cols-5[^`]*items-start/);
   });
 
   it('une seule section ouverte à la fois', () => {
