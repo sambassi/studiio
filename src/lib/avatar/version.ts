@@ -23,6 +23,15 @@ import { cleSourceAvatarDuCompte } from '@/lib/avatar/source';
 export interface AvatarVersionnable {
   version: number;
   deleted_at: string | null;
+  /**
+   * Le statut du consentement FOURNISSEUR (D-ID) de la version remplacée.
+   * `done` : le consentement est celui de la PERSONNE, validé par le
+   * fournisseur et réutilisable pour ses futurs avatars — il est CONSERVÉ
+   * sur la ligne (rattaché à l'ancienne version, `provider_consent_version`
+   * inchangé), la personne confirmera sa réutilisation. Tout autre statut
+   * (défi non lu, en vérification, refusé) est propre à la source : remis à zéro.
+   */
+  provider_consent_status?: string | null;
 }
 
 /** Ce qu'une nouvelle version écrase — et rien d'autre. */
@@ -33,13 +42,15 @@ export interface PatchNouvelleVersion {
   provider_avatar_id: null;
   provider_asset_id: null;
   training_error: null;
-  /** Le consentement FOURNISSEUR (D-ID) est propre à une source : il repart à zéro. */
-  provider_consent_id: null;
-  provider_consent_text: null;
-  provider_consent_status: null;
+  /** La vidéo de consentement est propre à une source : toujours retirée de la ligne. */
   consent_object_key: null;
-  consent_name: null;
-  provider_consent_created_at: null;
+  /** Le consentement FOURNISSEUR (D-ID) repart à zéro — SAUF s'il est `done` (voir `AvatarVersionnable`). */
+  provider_consent_id?: null;
+  provider_consent_text?: null;
+  provider_consent_status?: null;
+  consent_name?: null;
+  provider_consent_created_at?: null;
+  provider_consent_version?: null;
 }
 
 /**
@@ -59,19 +70,24 @@ export interface PatchNouvelleVersion {
 export function patchNouvelleVersion(avatar: AvatarVersionnable): PatchNouvelleVersion | null {
   if (avatar.deleted_at !== null) return null;
   if (!Number.isInteger(avatar.version) || avatar.version < 1) return null;
-  return {
+  const base: PatchNouvelleVersion = {
     version: avatar.version + 1,
     status: ETAT_SOURCE_PRETE,
     validated_at: null,
     provider_avatar_id: null,
     provider_asset_id: null,
     training_error: null,
+    consent_object_key: null,
+  };
+  if (avatar.provider_consent_status === 'done') return base;
+  return {
+    ...base,
     provider_consent_id: null,
     provider_consent_text: null,
     provider_consent_status: null,
-    consent_object_key: null,
     consent_name: null,
     provider_consent_created_at: null,
+    provider_consent_version: null,
   };
 }
 
@@ -148,9 +164,11 @@ export async function commencerNouvelleVersionAvatar(args: {
   userId: string;
   avatarId: string;
   versionAttendue: number;
+  /** Le statut du consentement fournisseur de la version remplacée — `done` est conservé. */
+  consentementFournisseur?: string | null;
   complement?: ComplementNouvelleVersion;
 }): Promise<{ ok: true; avatar: AvatarVersionne } | { ok: false; motif: MotifNouvelleVersion }> {
-  const patch = patchNouvelleVersion({ version: args.versionAttendue, deleted_at: null });
+  const patch = patchNouvelleVersion({ version: args.versionAttendue, deleted_at: null, provider_consent_status: args.consentementFournisseur ?? null });
   if (!patch) return { ok: false, motif: 'version_invalide' };
   const cleSource = args.complement?.source_object_key;
   if (cleSource !== undefined && !cleSourceAvatarDuCompte(cleSource, args.userId)) {

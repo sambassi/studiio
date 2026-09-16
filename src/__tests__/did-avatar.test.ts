@@ -67,7 +67,7 @@ vi.mock('@/lib/db/supabase', () => {
         }
         // Les défauts de la base : les colonnes absentes d'un insert sont NULL (ou leur défaut).
         const defauts = table === 'user_avatars'
-          ? { provider: 'heygen', provider_consent_id: null, provider_consent_text: null, provider_consent_status: null, consent_object_key: null, consent_name: null, provider_consent_created_at: null, validated_at: null, deleted_at: null, training_error: null }
+          ? { provider: 'heygen', provider_consent_id: null, provider_consent_text: null, provider_consent_status: null, consent_object_key: null, consent_name: null, provider_consent_created_at: null, provider_consent_version: null, validated_at: null, deleted_at: null, training_error: null }
           : { video_url: null, error_message: null, credits_refunded: false, provider: 'heygen' };
         const l = { id: uuid(), created_at: new Date(Date.now() + base.compteur).toISOString(), ...defauts, ...i };
         source.push(l);
@@ -144,6 +144,7 @@ process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
 const create = await import('@/app/api/avatar/create/route');
 const consentement = await import('@/app/api/avatar/did/consentement/route');
 const consentementVideo = await import('@/app/api/avatar/did/consentement/video/route');
+const reutiliser = await import('@/app/api/avatar/did/consentement/reutiliser/route');
 const creer = await import('@/app/api/avatar/did/creer/route');
 const apercuDid = await import('@/app/api/avatar/did/apercu/route');
 const statut = await import('@/app/api/avatar/status/route');
@@ -153,6 +154,7 @@ const { apercuDuClone } = await import('@/lib/avatar/apercu');
 const { resoudreJumeauDuCompte } = await import('@/lib/avatar/jumeau');
 const { SCRIPT_APERCU, CONSENTEMENT_ENROLEMENT_DID, CONSENTEMENT_ENROLEMENT } = await import('@/lib/avatar/contrat');
 const { supprimerAvatarActif } = await import('@/lib/avatar/suppression');
+const { consentementReutilisableDuCompte } = await import('@/lib/avatar/did');
 
 const fichier = (nom: string, type: string, taille = 1024) => new File([new Uint8Array(taille)], nom, { type });
 const formulaire = (champs: Record<string, string | File>) => { const fd = new FormData(); for (const [k, v] of Object.entries(champs)) fd.append(k, v); return fd; };
@@ -161,6 +163,8 @@ const NOM = 'Henri Bassi';
 const PHRASE_TEMPLATE = 'Je soussigné(e), [user name], confirme détenir tous les droits pour créer un avatar. pomme vélo nuage';
 const PHRASE = PHRASE_TEMPLATE.replace('[user name]', NOM);
 const postConsentement = (corps: unknown = { nom: NOM }) => consentement.POST(new NextRequest('https://studiio.pro/api/avatar/did/consentement', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps) }));
+const getConsentement = (nom?: string) => consentement.GET(new NextRequest(`https://studiio.pro/api/avatar/did/consentement${nom ? `?nom=${encodeURIComponent(nom)}` : ''}`));
+const postReutiliser = (corps: unknown = { nom: NOM }) => reutiliser.POST(new NextRequest('https://studiio.pro/api/avatar/did/consentement/reutiliser', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps) }));
 const postVideoConsentement = (f: File) => consentementVideo.POST(new NextRequest('https://studiio.pro/api/avatar/did/consentement/video', { method: 'POST', body: formulaire({ file: f }) }));
 const getStatut = (g: string) => statut.GET(new NextRequest(`https://studiio.pro/api/avatar/status?generationId=${g}`));
 const appelsVers = (motif: RegExp | string, methode?: string) => reseau.appels.filter((a) => (typeof motif === 'string' ? a.url === motif : motif.test(a.url)) && (!methode || a.method === methode));
@@ -178,7 +182,7 @@ async function jusquAuConsentementAccepte(): Promise<Ligne> {
   expect((await (await postConsentement()).json()).success).toBe(true);
   expect((await postVideoConsentement(fichier('c.mp4', 'video/mp4', 2048))).status).toBe(200);
   reseau.statutConsentement = 'done';
-  const etat = await (await consentement.GET()).json();
+  const etat = await (await getConsentement()).json();
   expect(etat.data.etape).toBe('consentement_accepte');
   return vivant();
 }
@@ -228,7 +232,7 @@ describe('1. Garde-fous : drapeau, clé, session, propriété, formats', () => {
   it('⚠️ sans session → 401 partout ; l’avatar d’autrui est invisible (404)', async () => {
     session.courante = null;
     expect((await postConsentement()).status).toBe(401);
-    expect((await consentement.GET()).status).toBe(401);
+    expect((await getConsentement()).status).toBe(401);
     expect((await postVideoConsentement(fichier('c.mp4', 'video/mp4'))).status).toBe(401);
     expect((await creer.POST()).status).toBe(401);
     expect((await apercuDid.POST()).status).toBe(401);
@@ -345,10 +349,10 @@ describe('3. Le consentement fournisseur', () => {
     await deposerSourceDid();
     await postConsentement();
     await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
-    expect((await (await consentement.GET()).json()).data.etape).toBe('consentement_en_verification');
+    expect((await (await getConsentement()).json()).data.etape).toBe('consentement_en_verification');
     expect((await creer.POST()).status).toBe(409);
     reseau.statutConsentement = 'error';
-    const refus = await (await consentement.GET()).json();
+    const refus = await (await getConsentement()).json();
     expect(refus.data).toMatchObject({ etape: 'consentement_refuse', erreur: 'audio-text mismatch' });
     expect((await creer.POST()).status).toBe(409);
     const ancienne = String(vivant().consent_object_key);
@@ -357,7 +361,7 @@ describe('3. Le consentement fournisseur', () => {
     expect(vivant().consent_object_key).not.toBe(ancienne);
     expect(stockage.objets.has(ancienne)).toBe(false);
     reseau.statutConsentement = 'done';
-    expect((await (await consentement.GET()).json()).data.etape).toBe('consentement_accepte');
+    expect((await (await getConsentement()).json()).data.etape).toBe('consentement_accepte');
     expect(vivant().provider_consent_status).toBe('done');
   });
 
@@ -366,7 +370,7 @@ describe('3. Le consentement fournisseur', () => {
     await postConsentement();
     await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
     reseau.erreur = { chemin: /consents\/cst-1$/, statut: 503, corps: {} };
-    const res = await consentement.GET();
+    const res = await getConsentement();
     expect(res.status).toBe(200);
     expect((await res.json()).data.etape).toBe('consentement_en_verification');
   });
@@ -437,7 +441,7 @@ describe('3 bis. Le NOM de consentement — la personne, jamais l’avatar', () 
     await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
     expect((await postConsentement({ nom: NOM, renouveler: true })).status).toBe(409);
     reseau.statutConsentement = 'error';
-    await consentement.GET();
+    await getConsentement();
     const ancienne = String(vivant().consent_object_key);
     reseau.consentement = { id: 'cst-2', text: PHRASE_TEMPLATE };
     const r = await (await postConsentement({ nom: NOM, renouveler: true })).json();
@@ -447,7 +451,7 @@ describe('3 bis. Le NOM de consentement — la personne, jamais l’avatar', () 
     reseau.statutConsentement = 'validating';
     await postVideoConsentement(fichier('c2.mp4', 'video/mp4'));
     reseau.statutConsentement = 'done';
-    await consentement.GET();
+    await getConsentement();
     expect((await postConsentement({ nom: NOM, renouveler: true })).status).toBe(409);
   });
 
@@ -468,7 +472,150 @@ describe('3 bis. Le NOM de consentement — la personne, jamais l’avatar', () 
     avert.mockRestore();
     expect(vivant().provider_consent_status).toBe('error');
     // Le suivi rend l'étape « refusé » : la personne peut renouveler.
-    expect((await (await consentement.GET()).json()).data.etape).toBe('consentement_refuse');
+    expect((await (await getConsentement()).json()).data.etape).toBe('consentement_refuse');
+  });
+});
+
+describe('3 ter. RÉUTILISER un consentement VALIDÉ — la même personne, un nouvel avatar', () => {
+  /** Un avatar D-ID validé jusqu'au consentement `done`, puis créé, puis prêt. */
+  const avatarComplet = async () => { await jusquAPret(); expect(vivant()).toMatchObject({ provider_consent_status: 'done', provider_consent_version: 1, provider_avatar_id: 'avt-1' }); };
+
+  it('⚠️ (1) premier avatar : aucun consentement existant → rien de réutilisable, flux normal phrase + vidéo + validation', async () => {
+    await deposerSourceDid();
+    expect(await consentementReutilisableDuCompte(U, NOM)).toBeNull();
+    const etat = await (await getConsentement(NOM)).json();
+    expect(etat.data).toMatchObject({ etape: 'consentement_a_demander', reutilisable: null });
+    expect((await postReutiliser()).status).toBe(409);
+    expect((await (await postReutiliser()).json()).code).toBe('consentement_non_reutilisable');
+    expect(appelsVers(/d-id\.com/)).toEqual([]);
+    await jusquAuConsentementAccepte();
+    // Le consentement obtenu dans CETTE version lui est rattaché.
+    expect(vivant()).toMatchObject({ provider_consent_status: 'done', provider_consent_version: vivant().version });
+  });
+
+  it('⚠️ (2)(3)(5) « Changer de source » : le consentement done SURVIT à la version 2 (hérité, à confirmer) ; « Réutiliser » = aucun POST /consents, aucune phrase, aucune vidéo, même consent_id rattaché à la v2 ; l’ancien provider_avatar_id jamais repris ; puis création directe', async () => {
+    await avatarComplet();
+    reseau.avatar = { id: 'avt-2', status: 'created' };
+    const rendu = await deposerSourceDid();
+    const a = vivant();
+    expect(a).toMatchObject({ version: 2, provider: 'did', provider_avatar_id: null, provider_consent_id: 'cst-1', provider_consent_status: 'done', consent_name: NOM, provider_consent_version: 1, consent_object_key: null });
+    expect(rendu).toMatchObject({ etape_did: 'consentement_reutilisable', consent_name: NOM, consent_expire_le: null });
+    // L'ancien avatar D-ID est retiré chez le fournisseur ; le CONSENTEMENT, lui, n'est pas touché.
+    expect(appelsVers(/scenes\/avatars\/avt-1$/, 'DELETE')).toHaveLength(1);
+    expect(appelsVers(/consents\/cst-1$/, 'DELETE')).toEqual([]);
+    // Sans confirmation, la création est fermée.
+    expect((await creer.POST()).status).toBe(409);
+    const etat = await (await getConsentement(NOM)).json();
+    expect(etat.data).toMatchObject({ etape: 'consentement_reutilisable', reutilisable: { nom: NOM, origine: 'ligne_vivante' } });
+    const avantD = appelsVers(/d-id\.com/).length;
+    const r = await (await postReutiliser({ nom: NOM })).json();
+    expect(r).toMatchObject({ success: true, data: { etape: 'consentement_accepte', nom: NOM, texte: PHRASE, origine: 'ligne_vivante' } });
+    // Un seul appel fournisseur : la relecture GET /consents/cst-1 (done). Ni POST /consents, ni vidéo.
+    const apres = appelsVers(/d-id\.com/).slice(avantD);
+    expect(apres.map((x) => `${x.method} ${x.url}`)).toEqual(['GET https://api.d-id.com/consents/cst-1']);
+    expect(appelsVers('https://api.d-id.com/consents', 'POST')).toHaveLength(1);
+    expect(appelsVers(/consents\/cst-1$/, 'POST')).toHaveLength(1);
+    expect(vivant()).toMatchObject({ version: 2, provider_consent_id: 'cst-1', provider_consent_status: 'done', provider_consent_version: 2, consent_object_key: null, provider_avatar_id: null });
+    expect((await (await create.GET()).json()).data.avatar.etape_did).toBe('consentement_accepte');
+    // Création directe : nouvel avatar D-ID, avec le consent_id réutilisé, jamais l'ancien avatar.
+    expect((await creer.POST()).status).toBe(200);
+    const corps = appelsVers('https://api.d-id.com/scenes/avatars', 'POST')[1].body as Record<string, string>;
+    expect(corps.consent_id).toBe('cst-1');
+    expect(vivant().provider_avatar_id).toBe('avt-2');
+    expect(vivant().provider_avatar_id).not.toBe('avt-1');
+  });
+
+  it('⚠️ (4) ancien avatar soft-deleted : son consentement done est retrouvé pour le nouvel avatar (nouvelle ligne)', async () => {
+    await avatarComplet();
+    expect((await suppression.DELETE()).status).toBe(200);
+    reseau.avatar = { id: 'avt-3', status: 'created' };
+    await deposerSourceDid();
+    expect(base.avatars).toHaveLength(2);
+    expect(vivant()).toMatchObject({ version: 1, provider_consent_id: null });
+    expect(await consentementReutilisableDuCompte(U, NOM)).toMatchObject({ providerConsentId: 'cst-1', nom: NOM, origine: 'ligne_supprimee' });
+    const etat = await (await getConsentement(NOM)).json();
+    expect(etat.data).toMatchObject({ etape: 'consentement_a_demander', reutilisable: { nom: NOM, origine: 'ligne_supprimee' } });
+    const r = await (await postReutiliser()).json();
+    expect(r.data).toMatchObject({ etape: 'consentement_accepte', origine: 'ligne_supprimee' });
+    expect(vivant()).toMatchObject({ provider_consent_id: 'cst-1', provider_consent_status: 'done', provider_consent_version: 1, consent_name: NOM });
+    expect(appelsVers('https://api.d-id.com/consents', 'POST')).toHaveLength(1);
+    expect((await creer.POST()).status).toBe(200);
+    expect(vivant().provider_avatar_id).toBe('avt-3');
+  });
+
+  it('⚠️ (6) un autre nom → PAS de réutilisation : « Bassi Henri » exige une nouvelle phrase ; la réutilisation au mauvais nom est refusée', async () => {
+    await avatarComplet();
+    await deposerSourceDid();
+    expect(await consentementReutilisableDuCompte(U, 'Bassi Henri')).toBeNull();
+    expect((await (await getConsentement('Bassi Henri')).json()).data.reutilisable).toBeNull();
+    const avantGet = appelsVers(/consents\/cst-1$/, 'GET').length;
+    const refus = await postReutiliser({ nom: 'Bassi Henri' });
+    expect(refus.status).toBe(409);
+    expect((await refus.json()).code).toBe('consentement_non_reutilisable');
+    // Refusé AVANT tout appel fournisseur : le nom ne correspond pas, on ne relit rien.
+    expect(appelsVers(/consents\/cst-1$/, 'GET')).toHaveLength(avantGet);
+    // Nouvelle phrase pour la nouvelle personne : le consentement hérité quitte la ligne.
+    reseau.consentement = { id: 'cst-2', text: PHRASE_TEMPLATE };
+    const r = await (await postConsentement({ nom: 'Bassi Henri' })).json();
+    expect(r.data).toMatchObject({ deja: false, nom: 'Bassi Henri', texte: PHRASE_TEMPLATE.replace('[user name]', 'Bassi Henri') });
+    expect(vivant()).toMatchObject({ provider_consent_id: 'cst-2', provider_consent_status: null, consent_name: 'Bassi Henri', provider_consent_version: 2 });
+  });
+
+  it('⚠️ (7) un consentement created / validating / error n’est JAMAIS réutilisable', async () => {
+    await deposerSourceDid();
+    await postConsentement();
+    for (const statut of [null, 'created', 'validating', 'error']) {
+      vivant().provider_consent_status = statut;
+      expect(await consentementReutilisableDuCompte(U, NOM), String(statut)).toBeNull();
+    }
+    // Et une version remplacée garde un consentement NON validé ? Non : il est remis à zéro.
+    vivant().provider_consent_status = 'validating';
+    await deposerSourceDid();
+    expect(vivant()).toMatchObject({ version: 2, provider_consent_id: null, provider_consent_status: null, consent_name: null });
+  });
+
+  it('⚠️ (8) un consentement done vieux de plus de 30 minutes reste réutilisable ; l’expiration ne concerne que le défi', async () => {
+    await avatarComplet();
+    vivant().provider_consent_created_at = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
+    await deposerSourceDid();
+    expect((await (await create.GET()).json()).data.avatar).toMatchObject({ etape_did: 'consentement_reutilisable', consent_expire_le: null });
+    // Le suivi non plus n'annonce aucune expiration pour un consentement validé.
+    expect((await (await getConsentement(NOM)).json()).data).toMatchObject({ etape: 'consentement_reutilisable', expireLe: null, nom: NOM });
+    expect(await consentementReutilisableDuCompte(U, NOM)).toMatchObject({ providerConsentId: 'cst-1' });
+    expect((await postReutiliser()).status).toBe(200);
+    expect((await creer.POST()).status).toBe(200);
+  });
+
+  it('⚠️ (9) le fournisseur ne connaît plus le consentement (404) ou ne le tient plus pour done (error) → 409 propre, retour à « Obtenir ma phrase » ; rien n’est écrit', async () => {
+    await avatarComplet();
+    await deposerSourceDid();
+    reseau.erreur = { chemin: /consents\/cst-1$/, statut: 404, corps: { kind: 'NotFoundError', description: 'not found' } };
+    let res = await postReutiliser();
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('consentement_non_reutilisable');
+    expect(vivant().provider_consent_version).toBe(1);
+    reseau.erreur = null; reseau.statutConsentement = 'error';
+    res = await postReutiliser();
+    expect(res.status).toBe(409);
+    expect(vivant().provider_consent_version).toBe(1);
+    // Retour propre : une nouvelle phrase au même nom est possible (le fournisseur a lâché l'ancienne).
+    reseau.consentement = { id: 'cst-9', text: PHRASE_TEMPLATE };
+    reseau.statutConsentement = 'validating';
+    // Le serveur refuse d'abord (« réutilisez-le ») tant que l'historique dit done : la personne renouvelle explicitement.
+    const r = await (await postConsentement({ nom: NOM, renouveler: true })).json();
+    expect(r.success, JSON.stringify(r)).toBe(true);
+    expect(vivant()).toMatchObject({ provider_consent_id: 'cst-9', provider_consent_status: null, provider_consent_version: 2 });
+    // Fournisseur indisponible (5xx) : pas un « non réutilisable », une erreur transitoire.
+    await deposerSourceDid();
+  });
+
+  it('(12) suppression et remplacement hors consentement inchangés : l’ancien avatar D-ID retiré, la nouvelle version jamais ; HeyGen intact', async () => {
+    await avatarComplet();
+    await postCreate(formulaire({ file: fichier('moi2.jpg', 'image/jpeg'), consent: 'true' }));
+    expect(vivant()).toMatchObject({ version: 2, provider: 'heygen', provider_avatar_id: 'hg-1' });
+    expect(appelsVers(/scenes\/avatars\/avt-1$/, 'DELETE')).toHaveLength(1);
+    // Passé HeyGen, le consentement D-ID reste sur la ligne (historique de la personne) mais n'est pas une étape HeyGen.
+    expect((await (await create.GET()).json()).data.avatar).not.toHaveProperty('etape_did');
   });
 });
 

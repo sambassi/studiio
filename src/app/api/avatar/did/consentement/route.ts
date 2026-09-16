@@ -38,11 +38,13 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+/** GET ?nom=… — l'étape courante ; avec `nom`, dit aussi si un consentement VALIDÉ de la même personne est réutilisable. */
+export async function GET(req: NextRequest) {
   const c = await compteCourant();
   if ('reponse' in c) return c.reponse;
+  const nomReutilisation = req.nextUrl.searchParams.get('nom') ?? undefined;
   try {
-    return reponseDid(await verifierConsentementDid(c.userId));
+    return reponseDid(await verifierConsentementDid(c.userId, { nomReutilisation }));
   } catch (e) {
     console.error('[Avatar][D-ID] suivi du consentement :', e instanceof Error ? e.message : String(e));
     return NextResponse.json({ success: false, error: 'Le consentement n’a pas pu être vérifié.' }, { status: 500 });

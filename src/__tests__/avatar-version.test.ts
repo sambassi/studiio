@@ -67,10 +67,18 @@ describe('patchNouvelleVersion — la transition, pure', () => {
     expect(p).toEqual({
       version: 4, status: ETAT_SOURCE_PRETE, validated_at: null,
       provider_avatar_id: null, provider_asset_id: null, training_error: null,
-      // Le consentement FOURNISSEUR (D-ID) est propre à une source : remis à zéro aussi.
+      // Le consentement FOURNISSEUR (D-ID) non validé est propre à une source : remis à zéro aussi.
       provider_consent_id: null, provider_consent_text: null, provider_consent_status: null, consent_object_key: null,
-      consent_name: null, provider_consent_created_at: null,
+      consent_name: null, provider_consent_created_at: null, provider_consent_version: null,
     });
+    // Un consentement VALIDÉ (`done`) est celui de la personne : conservé, seule la vidéo de consentement est retirée.
+    expect(patchNouvelleVersion({ version: 3, deleted_at: null, provider_consent_status: 'done' })).toEqual({
+      version: 4, status: ETAT_SOURCE_PRETE, validated_at: null,
+      provider_avatar_id: null, provider_asset_id: null, training_error: null, consent_object_key: null,
+    });
+    for (const s of ['created', 'validating', 'error', null, undefined]) {
+      expect(patchNouvelleVersion({ version: 3, deleted_at: null, provider_consent_status: s }), String(s)).toHaveProperty('provider_consent_id', null);
+    }
     // Ce qui est conservé n'apparaît pas : consentement, source, identité.
     expect(Object.keys(p!)).not.toContain('consent_text');
     expect(Object.keys(p!)).not.toContain('source_object_key');

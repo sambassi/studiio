@@ -56,10 +56,11 @@ function sansSourceUrl(avatar: Record<string, unknown>): Record<string, unknown>
   } = avatar;
   void _sourceUrl; void _consentId; void _consentKey;
   if (reste.provider === FOURNISSEUR_DID) {
-    const { provider_avatar_id: _pa, provider_asset_id: _ps, provider_consent_created_at: creeLe, ...sansIds } = reste;
-    void _pa; void _ps;
-    // La fin de validité de la phrase (30 min, D-ID), calculée ici : l'écran n'a pas à connaître la règle.
-    const t = typeof creeLe === 'string' ? new Date(creeLe).getTime() : NaN;
+    const { provider_avatar_id: _pa, provider_asset_id: _ps, provider_consent_created_at: creeLe, provider_consent_version: _pcv, ...sansIds } = reste;
+    void _pa; void _ps; void _pcv;
+    // La fin de validité de la phrase (30 min, D-ID), calculée ici : l'écran n'a pas à
+    // connaître la règle. Elle ne concerne que le DÉFI : un consentement validé ne périme pas.
+    const t = typeof creeLe === 'string' && reste.provider_consent_status !== 'done' ? new Date(creeLe).getTime() : NaN;
     const consent_expire_le = Number.isFinite(t) ? new Date(t + DUREE_VALIDITE_CONSENTEMENT_MS).toISOString() : null;
     return { ...sansIds, etape_did: etapeDid(avatar as unknown as AvatarDid), consent_expire_le };
   }
@@ -486,6 +487,10 @@ export async function POST(req: NextRequest) {
           userId,
           avatarId: actuel.id,
           versionAttendue: actuel.version,
+          // Un consentement D-ID VALIDE survit au changement de source : il
+          // appartient a la personne, pas a la video (rattache a l'ancienne
+          // version ; la personne confirmera sa reutilisation).
+          consentementFournisseur: (actuel as { provider_consent_status?: string | null }).provider_consent_status ?? null,
           complement: {
             provider: providerDemande,
             source_object_key: nouvelleCle,
