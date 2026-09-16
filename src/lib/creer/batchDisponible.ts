@@ -25,16 +25,15 @@
  * ont ete ramenes sur ce meme socle.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * DEUX, ET PAS DIX
+ * JUSQU'A DIX
  * ─────────────────────────────────────────────────────────────────────────
  *
- * `BATCH_SERIE_MAX` vaut 2. Ce n'est pas une limite technique : le code du
- * lot sait faire dix. C'est une ouverture PILOTE — deux videos suffisent a
- * exercer tout ce qui distingue une serie d'un contenu unique (deux
- * tentatives independantes, deux confirmations, un echec partiel possible)
- * sans exposer un utilisateur a dix debits d'un coup au premier essai.
- *
- * Elever le pilote, c'est changer CE nombre, et rien d'autre.
+ * `BATCH_SERIE_MAX` a valu 2 pendant le pilote (deux videos suffisaient a
+ * exercer tout ce qui distingue une serie d'un contenu unique). Le socle
+ * des credits etant ferme et le pilote passe, le plafond rejoint la limite
+ * technique du lot, `MAX_BATCH` (10). C'est toujours CE nombre, et rien
+ * d'autre, qui borne l'ecran, la restauration d'un brouillon et le refus au
+ * lancement : le baisser a nouveau ne demande qu'une ligne.
  */
 
 import { MAX_BATCH } from './batch';
@@ -48,19 +47,20 @@ import { MAX_BATCH } from './batch';
 export const BATCH_SERIE_DISPONIBLE: boolean = true;
 
 /**
- * Le plafond du pilote. UN SEUL endroit.
+ * Le plafond de la serie. UN SEUL endroit.
  *
  * L'ecran, la normalisation d'un brouillon restaure et le refus au lancement
  * le lisent tous ici. Trois copies auraient fini par diverger, et c'est
  * precisement le genre de divergence qui se paie en credits.
+ * Jamais au-dessus de `MAX_BATCH` : c'est la limite technique du lot.
  */
-export const BATCH_SERIE_MAX = 2;
+export const BATCH_SERIE_MAX: number = Math.min(10, MAX_BATCH);
 
 /** Pastille de la carte « Serie ». */
-export const BATCH_SERIE_BADGE = 'Pilote';
+export const BATCH_SERIE_BADGE = `Jusqu’à ${BATCH_SERIE_MAX}`;
 
-/** Une ligne, sous la carte : ce que le pilote permet. */
-export const BATCH_SERIE_EXPLICATION = `${BATCH_SERIE_MAX} brouillons, un par jour`;
+/** Une ligne, sous la carte : ce que la serie permet. */
+export const BATCH_SERIE_EXPLICATION = `De 2 à ${BATCH_SERIE_MAX} brouillons, un par jour`;
 
 /**
  * Message affiche si un lot hors plafond est declenche malgre tout.
@@ -69,9 +69,9 @@ export const BATCH_SERIE_EXPLICATION = `${BATCH_SERIE_MAX} brouillons, un par jo
  * progressive. Et il dit ce qui n'a PAS eu lieu — ni composition, ni debit.
  */
 export const BATCH_SERIE_REFUS =
-  `La série est ouverte en pilote, à ${BATCH_SERIE_MAX} vidéos au maximum. `
+  `La série va de 2 à ${BATCH_SERIE_MAX} vidéos au maximum. `
   + 'Rien n’a été composé et aucun crédit n’a été débité. Relancez avec '
-  + `${BATCH_SERIE_MAX} vidéos, ou en « Un seul contenu ».`;
+  + `${BATCH_SERIE_MAX} vidéos au plus, ou en « Un seul contenu ».`;
 
 /**
  * Nombre de montages REELLEMENT autorise.
@@ -114,7 +114,7 @@ export function lotRefuse(batchCount: number): boolean {
 /**
  * Les nombres proposes par l'ecran.
  *
- * Sous le pilote, cette liste ne contient que `[2]`. Elle est construite ici
+ * De 2 a `BATCH_SERIE_MAX` (10). Elle est construite ici
  * plutot que dans le JSX pour que l'ecran ne puisse pas proposer autre chose
  * que ce que le lancement accepte.
  */

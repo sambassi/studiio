@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
+import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
@@ -947,6 +948,19 @@ export default function AutopilotPanel({
               }}
             />
           </div>
+
+{/* ── Mon jumeau ──────────────────────────────────────────────────
+              Le meme etat serveur que dans Creer une video. L'interrupteur
+              branche ce que le cron sait faire : la VOIX du jumeau (voiceEnabled
+              + voiceId) — la video de l'avatar reste un chemin de Creer une video,
+              et le bloc le dit. */}
+          <JumeauAutopilote
+            actif={config.voiceEnabled && !!config.voiceId && voixClonees.some((v) => v.id === config.voiceId)}
+            onChange={(actif, voixId) => {
+              if (actif && voixId) enregistrer({ voiceEnabled: true, voiceId: voixId });
+              else enregistrer({ voiceEnabled: false });
+            }}
+          />
 
 {/* ── Voix off clonée ──────────────────────────────────────────── */}
           <div>

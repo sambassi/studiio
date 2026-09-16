@@ -32,6 +32,26 @@ body {
   @apply bg-gray-900 border border-gray-800 rounded-xl p-6;
 }
 
+/* ── Cadre d'aperçu : ENTIÈREMENT VISIBLE ──────────────────────────────────
+ *
+ * Le cadre d'aperçu (Créer, Autopilote, Mon avatar) est collé sous la navbar
+ * (`ColonneApercu` : sticky top-20). À ratio 9:16 et pleine largeur de
+ * colonne, il dépasse la hauteur de la fenêtre : le bas restait coupé tant
+ * qu'on n'avait pas fait défiler toute la page. Ici la LARGEUR se déduit de
+ * la hauteur disponible (fenêtre − navbar − marges) et du ratio : le cadre
+ * tient toujours entièrement à l'écran, sans défilement interne (règle #410
+ * conservée) et sans rognage du média.
+ *
+ * Variables : `--apercu-w` / `--apercu-h` (ratio, ex. 9 et 16),
+ * `--apercu-offset` (hauteur retirée à la fenêtre, 18rem par défaut : navbar + top-20 + en-tête de carte + sous-en-tête, mesuré en QA pour que le cadre tienne entier dès le premier écran, sans défiler).
+ * Sous `lg` (une colonne), pleine largeur : rien ne change. */
+@media (min-width: 1024px) {
+  .apercu-cadre {
+    width: min(100%, calc((100vh - var(--apercu-offset, 18rem)) * var(--apercu-w, 9) / var(--apercu-h, 16)));
+    margin-inline: auto;
+  }
+}
+
 .input-base {
   @apply bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary;
 }

@@ -66,6 +66,8 @@ function formatRendu(p?: { format?: string | null } | null): 'reel' | 'tv' {
 }
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { useTranslations, useLocale } from '@/i18n/client';
+import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
+import { reseauDepuisLibelle } from '@/lib/social/etatReseaux';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
@@ -509,24 +511,11 @@ export default function CalendarPage() {
   const intlLocale = localeMap[locale] || 'fr-FR';
   const { branding } = useBranding();
 
-  // Disponibilite des canaux hors reseaux sociaux, decidee par le SERVEUR.
-  const [channelAvailability, setChannelAvailability] = useState<Record<string, boolean>>({});
-  useEffect(() => {
-    fetch('/api/social/status')
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d?.channels) return;
-        const map: Record<string, boolean> = {};
-        for (const [k, v] of Object.entries(d.channels as Record<string, { available?: boolean }>)) {
-          map[k] = !!v?.available;
-        }
-        setChannelAvailability(map);
-      })
-      .catch(() => {
-        // Endpoint injoignable : on garde les valeurs par defaut, donc
-        // « bientot disponible ». Jamais l'inverse.
-      });
-  }, []);
+  // Disponibilite des canaux hors reseaux sociaux, decidee par le SERVEUR —
+  // et etat des reseaux connectes, lus par la MEME regle que l'ecran
+  // « Reseaux sociaux » (une seule source, aucun doublon d'etat).
+  const etatReseaux = useEtatReseaux();
+  const channelAvailability = etatReseaux.canaux;
   const agentIAEnabled = useAgentIAEnabled();
   const [currentDate, setCurrentDate] = useState(new Date());
   /**
@@ -3245,9 +3234,16 @@ export default function CalendarPage() {
                   // Le serveur peut ouvrir un canal ; il ne peut jamais en fermer un
                   // qui ne dependait pas de configuration.
                   const soon = key ? !channelAvailability[key] : soonDefault;
+                  // Reseau social non connecte : grise, mais SELECTIONNABLE
+                  // (un brouillon peut viser un reseau qu'on connectera
+                  // ensuite) — le lien mene a l'ecran Reseaux, seule porte.
+                  const reseau = reseauDepuisLibelle(name);
+                  const etat = reseau && etatReseaux.reseaux ? etatReseaux.reseaux[reseau] : null;
+                  const nonConnecte = !!etat && etat.etat !== 'connecte';
+                  const selectionne = !!editFormData.platforms?.includes(name);
                   return (
+                  <span key={name} className="relative inline-flex flex-col items-start gap-0.5">
                   <button
-                    key={name}
                     onClick={() => {
                       if (soon) return;
                       const pls = editFormData.platforms || [];
@@ -3255,12 +3251,16 @@ export default function CalendarPage() {
                     }}
                     disabled={soon}
                     aria-disabled={soon}
+                    data-reseau-etat={etat ? etat.etat : undefined}
+                    title={nonConnecte ? t('editModal.networkNotConnected') : undefined}
                     className={`relative px-3 py-2 rounded-lg text-sm font-medium transition ${
                       soon
                         ? 'bg-gray-900/40 text-gray-500 opacity-60 cursor-not-allowed'
-                        : editFormData.platforms?.includes(name)
-                          ? `${platformColors[name]} text-white`
-                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                        : selectionne
+                          ? `${platformColors[name]} text-white${nonConnecte ? ' opacity-70 ring-1 ring-amber-400/60' : ''}`
+                          : nonConnecte
+                            ? 'bg-gray-800/60 text-gray-500 hover:bg-gray-700/60'
+                            : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                     }`}
                   >
                     {soon && (
@@ -3270,6 +3270,16 @@ export default function CalendarPage() {
                     )}
                     {name}
                   </button>
+                  {nonConnecte && !soon && (
+                    <a
+                      href="/dashboard/social"
+                      className="text-[10px] text-amber-400 hover:text-amber-300 underline underline-offset-2"
+                      data-lien-connecter={reseau ?? undefined}
+                    >
+                      {t('editModal.connectNetwork')}
+                    </a>
+                  )}
+                  </span>
                   );
                 })}
               </div>

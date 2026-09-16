@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 
 /**
  * LA mise en page « travail à gauche, aperçu à droite » de Studiio — la même
@@ -23,7 +23,14 @@ import type { ReactNode } from 'react';
  *
  * Sous `lg` : une colonne, ordre du DOM (travail puis aperçu), jamais de
  * `order-*`.
+ *
+ * `apercu={false}` : l'écran n'a PAS d'aperçu (le choix du mode de Créer
+ * n'a rien à prévisualiser) — une seule colonne, centrée, la colonne
+ * travail prend toute la largeur. L'appelant ne rend alors pas de
+ * `ColonneApercu`.
  */
+
+const PleineLargeur = createContext(false);
 
 type Attributs = Record<`data-${string}`, string | undefined>;
 
@@ -33,19 +40,27 @@ export interface DeuxColonnesProps {
   children: ReactNode;
   className?: string;
   attributs?: Attributs;
+  /** `false` = pas de colonne d'aperçu : une seule colonne centrée. */
+  apercu?: boolean;
 }
 
-export default function DeuxColonnes({ nom, children, className = '', attributs }: DeuxColonnesProps) {
+export default function DeuxColonnes({ nom, children, className = '', attributs, apercu = true }: DeuxColonnesProps) {
+  const grille = apercu
+    ? 'grid grid-cols-1 lg:grid-cols-5 gap-6 items-start'
+    : 'grid grid-cols-1 gap-6 items-start max-w-3xl mx-auto';
   return (
-    <div data-colonnes={nom} {...(attributs ?? {})} className={`grid grid-cols-1 lg:grid-cols-5 gap-6 items-start ${className}`}>
-      {children}
-    </div>
+    <PleineLargeur.Provider value={!apercu}>
+      <div data-colonnes={nom} data-apercu-colonne={apercu ? 'oui' : 'non'} {...(attributs ?? {})} className={`${grille} ${className}`}>
+        {children}
+      </div>
+    </PleineLargeur.Provider>
   );
 }
 
 export function ColonneTravail({ children, className = '', attributs }: { children: ReactNode; className?: string; attributs?: Attributs }) {
+  const pleine = useContext(PleineLargeur);
   return (
-    <div data-colonne="travail" {...(attributs ?? {})} className={`lg:col-span-3 space-y-4 ${className}`}>
+    <div data-colonne="travail" {...(attributs ?? {})} className={`${pleine ? '' : 'lg:col-span-3'} space-y-4 ${className}`}>
       {children}
     </div>
   );

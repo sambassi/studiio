@@ -326,6 +326,8 @@ describe('Bug 3 — le texte des cartes se règle', () => {
   });
 
   it('le panneau de carte de l Autopilote expose police, taille et format', async () => {
+    // LOT UX : le choix du mode n'a plus d'aperçu — on ouvre l'Autopilote, où il vit toujours.
+    window.localStorage.setItem('studiio:creer:parcours', 'autopilote');
     render(<AssistantWizard />);
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);

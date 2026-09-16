@@ -138,6 +138,8 @@ describe('Créer simple — chaque séquence s ouvre au double-clic', () => {
 // ─────────────────────────────────────────────────────────────────────────
 describe('Autopilote — le style est réglable, le contenu varie', () => {
   const monter = async () => {
+    // LOT UX : le choix du mode n'a plus d'aperçu — on ouvre l'Autopilote, où il vit toujours.
+    window.localStorage.setItem('studiio:creer:parcours', 'autopilote');
     render(<AssistantWizard />);
     return waitFor(() => document.querySelector('[data-autopilot-apercu]') as HTMLElement);
   };

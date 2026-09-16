@@ -469,12 +469,12 @@ describe('M3-A ne touche à rien d autre', () => {
     }
   });
 
-  it('le mode Série reste à 2 et /api/render/batch désactivée', async () => {
+  it('le mode Série reste à 10 et /api/render/batch désactivée', async () => {
     const { BATCH_SERIE_MAX, BATCH_SERIE_DISPONIBLE } =
       await import('@/lib/creer/batchDisponible');
     const { BATCH_RENDER_DESACTIVE } = await import('@/lib/render/batch-disabled');
     expect(BATCH_SERIE_DISPONIBLE).toBe(true);
-    expect(BATCH_SERIE_MAX).toBe(2);
+    expect(BATCH_SERIE_MAX).toBe(10); // LOT UX : la série va jusqu'à 10
     expect(BATCH_RENDER_DESACTIVE).toBe(true);
   });
 

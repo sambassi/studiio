@@ -929,6 +929,8 @@
       "cards": "cards"
     },
     "editModal": {
+      "networkNotConnected": "Network not connected — auto-publishing will wait for it",
+      "connectNetwork": "Connect",
       "title": "Edit Post",
       "titleField": "Title",
       "titlePlaceholder": "Post title",
@@ -1160,6 +1162,9 @@
       }
     },
     "status": {
+      "notConnected": "Not connected",
+      "reconnect": "Reconnection needed",
+      "reconnectHint": "authorization expired",
       "connected": "Connected",
       "ready": "Ready",
       "oauthNotConfigured": "OAuth not configured",
@@ -1186,7 +1191,19 @@
       "disconnectError": "Error during disconnection"
     },
     "comingSoonHint": "{platform} is coming soon. Connecting will reopen shortly.",
+    "voie": { "zernio": "your account" },
+    "zernio": {
+      "coupeCircuit": "Publishing to your own accounts is temporarily disabled.",
+      "optionAbsente": "Enable the Publishing option to connect your own accounts."
+    },
+    "confirmDisconnect": {
+      "title": "Disconnect {platform}?",
+      "direct": "Studiio will no longer publish to this account. You can reconnect it anytime.",
+      "zernio": "The account will be removed from Studiio and will no longer receive your posts. Its authorization can still be revoked from your {platform} settings.",
+      "cancel": "Cancel"
+    },
     "selfPublish": {
+      "introOption": "You can also publish to {platform} yourself, from your own account.",
       "title": "Publish it yourself",
       "intro": "Automatic publishing is waiting on {platform} approval. In the meantime, post from your own account in three steps.",
       "step1": "Download your video",

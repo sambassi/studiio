@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { useTranslations } from '@/i18n/client';
-import MesReseaux from '@/components/social/MesReseaux';
+import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
+import type { EtatDerive, Reseau, Voie } from '@/lib/social/etatReseaux';
 import {
   Instagram,
   Music2,
@@ -20,9 +21,11 @@ import {
   Hash,
   FileText,
   Bell,
-  ExternalLink,
   Clock,
   Download,
+  RefreshCw,
+  AlertTriangle,
+  Link2,
 } from 'lucide-react';
 
 interface SocialAccount {
@@ -108,6 +111,14 @@ export default function SocialPage() {
    * ne doit pas faire disparaitre les boutons de connexion.
    */
   const [availability, setAvailability] = useState<Record<string, boolean>>({});
+  /**
+   * ÉTAT UNIFIÉ des quatre réseaux — une seule règle (`etatReseaux.ts`) lit
+   * les DEUX sources (compte direct + compte Zernio de l'utilisateur). C'est
+   * cet état qui est rendu : plus deux listes, plus deux boutons par réseau.
+   */
+  const unifie = useEtatReseaux();
+  const [zernioEnCours, setZernioEnCours] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ reseau: Reseau; voie: Voie } | null>(null);
 
   // Initialize accounts and settings from API only (no stale localStorage)
   useEffect(() => {
@@ -376,10 +387,67 @@ export default function SocialPage() {
     }
   };
 
-  const connectedCount = Object.values(accounts).filter((a) => a?.connected).length;
+  const connecterZernio = async (reseau: Reseau) => {
+    setZernioEnCours(reseau);
+    try {
+      const res = await fetch('/api/social/zernio/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: reseau }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d?.authUrl) {
+        // On surface le message du serveur : « activez l'option » et « service
+        // coupé » n'appellent pas la même action de l'utilisateur.
+        showToast(d?.error || t('toasts.connectionError'), 'error');
+        setZernioEnCours(null);
+        return;
+      }
+      window.location.href = d.authUrl;
+    } catch {
+      showToast(t('toasts.connectionError'), 'error');
+      setZernioEnCours(null);
+    }
+  };
+
+  const deconnecterZernio = async (reseau: Reseau) => {
+    try {
+      const res = await fetch('/api/social/zernio/accounts', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: reseau }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d?.success) {
+        showToast(t('toasts.disconnectError'), 'error');
+        return;
+      }
+      showToast(t('toasts.disconnected', { platform: t(`platforms.${reseau}.name`) }), 'success');
+      unifie.recharger();
+    } catch {
+      showToast(t('toasts.disconnectError'), 'error');
+    }
+  };
+
+  /** Déconnexion : toujours après confirmation, quel que soit le chemin. */
+  const confirmerDeconnexion = async () => {
+    if (!confirmation) return;
+    const { reseau, voie } = confirmation;
+    setConfirmation(null);
+    if (voie === 'zernio') await deconnecterZernio(reseau);
+    else {
+      await handleDisconnect(reseau);
+      unifie.recharger();
+    }
+  };
+
+  const etats: EtatDerive[] = unifie.reseaux
+    ? PLATFORMS.map((p) => unifie.reseaux![p.id as Reseau])
+    : [];
+  const connectedCount = etats.filter((e) => e.etat === 'connecte').length;
   const hasConnectedPlatforms = connectedCount > 0;
 
-  if (isLoading) {
+  if (isLoading || unifie.chargement) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="animate-spin text-studiio-primary" size={32} />
@@ -387,17 +455,10 @@ export default function SocialPage() {
     );
   }
 
+  const zernioRefus = unifie.zernio && !unifie.zernio.autorise ? unifie.zernio.raison : null;
+
   return (
     <div className="space-y-8">
-      {/* ── MES RESEAUX (publication) ────────────────────────────────────
-          Les comptes que l'UTILISATEUR connecte lui-meme, via Zernio. A ne
-          pas confondre avec la section ci-dessous, qui gere les comptes que
-          Studiio detient en propre (chemin direct, historique) : les deux
-          coexistent, et l'administrateur choisit le sien. */}
-      <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-        <MesReseaux />
-      </div>
-
       {/* Toast Notifications */}
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md">
         {toasts.map((toast) => (
@@ -422,6 +483,34 @@ export default function SocialPage() {
         ))}
       </div>
 
+      {/* Confirmation de déconnexion — jamais un clic direct */}
+      {confirmation && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          data-testid="confirmation-deconnexion"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-gray-800 bg-gray-900 p-5 space-y-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="font-semibold text-white">{t('confirmDisconnect.title', { platform: t(`platforms.${confirmation.reseau}.name`) })}</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  {confirmation.voie === 'zernio' ? t('confirmDisconnect.zernio') : t('confirmDisconnect.direct')}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setConfirmation(null)}>{t('confirmDisconnect.cancel')}</Button>
+              <Button variant="primary" className="bg-red-600 hover:bg-red-500" onClick={confirmerDeconnexion}>
+                {t('actions.disconnect')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-white mb-2">{t('title')}</h1>
@@ -430,8 +519,8 @@ export default function SocialPage() {
         </p>
       </div>
 
-      {/* Connection Status Banner */}
-      {!hasConnectedPlatforms && (
+      {/* Une seule bannière d'état : aucun connecté, ou N connectés */}
+      {!hasConnectedPlatforms ? (
         <div className="bg-amber-900/30 border border-amber-500/50 rounded-lg p-4 flex items-start gap-3">
           <Bell size={20} className="text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
@@ -443,10 +532,7 @@ export default function SocialPage() {
             </p>
           </div>
         </div>
-      )}
-
-      {/* Summary Card */}
-      {hasConnectedPlatforms && (
+      ) : (
         <Card className="border-studiio-primary/20 bg-gradient-to-r from-studiio-primary/10 to-studiio-accent/10">
           <CardContent className="pt-6">
             <div className="flex items-center gap-4">
@@ -466,26 +552,46 @@ export default function SocialPage() {
         </Card>
       )}
 
-      {/* Platform Cards - 2x2 Grid */}
-      <div className="grid md:grid-cols-2 gap-6">
+      {/* Droit de publier sur ses propres comptes (Zernio) : dit une fois,
+          pas dans chaque carte. */}
+      {zernioRefus && zernioRefus !== 'zernio-absent' && (
+        <p className="flex items-start gap-2 text-xs text-amber-400" data-zernio-refus>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          {zernioRefus === 'coupe-circuit' ? t('zernio.coupeCircuit') : t('zernio.optionAbsente')}
+        </p>
+      )}
+
+      {/* Platform Cards - 2x2 Grid — UNE carte par réseau, un seul état */}
+      <div className="grid md:grid-cols-2 gap-6" data-testid="grille-reseaux">
         {PLATFORMS.map((platform) => {
           const Icon = platform.icon;
+          const e = unifie.reseaux![platform.id as Reseau];
           const account = accounts[platform.id];
-          const isConnecting = connecting === platform.id;
-          const isConnected = account?.connected ?? false;
+          const isConnecting = connecting === platform.id || zernioEnCours === platform.id;
+          const isConnected = e.etat === 'connecte';
           const hasOAuth = oauthStatus[platform.id] ?? false;
-          // Plateforme mise en attente cote serveur : on annonce « bientot
-          // disponible » plutot que de proposer une connexion qui n'aboutira
-          // pas. Un compte deja connecte garde son bouton de deconnexion —
-          // rien n'est retire dans son dos.
-          const comingSoon = !(availability[platform.id] ?? true);
+          // Plateforme mise en attente cote serveur ET sans autre chemin :
+          // on annonce « bientot disponible » plutot que de proposer une
+          // connexion qui n'aboutira pas. La regle unique (`etatReseaux.ts`)
+          // tranche : un utilisateur autorise a connecter SES comptes (Zernio)
+          // n'est pas bloque par la mise en attente du chemin direct, et un
+          // compte deja connecte garde sa deconnexion — rien n'est retire
+          // dans son dos. `availability` reste lu pour le badge.
+          const comingSoon = e.etat === 'bientot' && !(availability[platform.id] ?? true);
           const platformDescription = t(`platforms.${platform.id}.description`);
+          const libelleEtat =
+            e.etat === 'connecte' ? t('status.connected')
+            : e.etat === 'reconnexion' ? t('status.reconnect')
+            : e.etat === 'bientot' ? t('status.comingSoon')
+            : e.etat === 'non_configure' ? t('status.oauthNotConfigured')
+            : t('status.notConnected');
+          const lancer = (voie: Voie) => (voie === 'zernio' ? connecterZernio(platform.id as Reseau) : handleConnect(platform.id));
 
           return (
+            <div key={platform.id} data-testid={`reseau-${platform.id}`} data-etat={e.etat} className="min-w-0">
             <Card
-              key={platform.id}
               className={`card-base overflow-hidden transition ${
-                isConnected ? 'border-green-500/30 bg-green-500/5' : ''
+                isConnected ? 'border-green-500/30 bg-green-500/5' : e.etat === 'reconnexion' ? 'border-amber-500/30' : ''
               }`}
             >
               {/* Platform Header Gradient */}
@@ -499,35 +605,33 @@ export default function SocialPage() {
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-12 h-12 rounded-xl flex items-center justify-center transition ${
-                        isConnected
-                          ? 'bg-green-500/20'
-                          : hasOAuth
-                            ? 'bg-gray-800'
-                            : 'bg-gray-800/50'
+                        isConnected ? 'bg-green-500/20' : e.etat === 'reconnexion' ? 'bg-amber-500/15' : 'bg-gray-800'
                       }`}
                     >
                       <Icon
                         size={24}
-                        className={
-                          isConnected ? platform.color : hasOAuth ? 'text-gray-400' : 'text-gray-600'
-                        }
+                        className={isConnected ? platform.color : e.etat === 'reconnexion' ? 'text-amber-400' : 'text-gray-400'}
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h3 className="font-semibold text-white">
                         {platform.name}
                       </h3>
-                      {isConnected && account ? (
-                        <p className="text-sm text-green-400">
-                          @{account.username}
+                      {isConnected ? (
+                        <p className="text-sm text-green-400 truncate">
+                          {e.username ? `@${e.username.replace(/^@/, '')}` : t('status.connected')}
+                          {e.voie === 'zernio' && <span className="ml-1 text-[11px] text-gray-500">· {t('voie.zernio')}</span>}
+                          {e.voie === 'direct' && account?.connectedAt && (
+                            <span className="ml-1 text-[11px] text-gray-500">· {new Date(account.connectedAt).toLocaleDateString()}</span>
+                          )}
                         </p>
-                      ) : hasOAuth ? (
-                        <p className="text-sm text-gray-500">
-                          {platformDescription}
+                      ) : e.etat === 'reconnexion' ? (
+                        <p className="text-sm text-amber-400 truncate">
+                          {e.username ? `@${e.username.replace(/^@/, '')}` : platform.name} · {t('status.reconnectHint')}
                         </p>
                       ) : (
-                        <p className="text-sm text-amber-500">
-                          {t('status.oauthNotConfigured')}
+                        <p className="text-sm text-gray-500">
+                          {platformDescription}
                         </p>
                       )}
                     </div>
@@ -544,22 +648,26 @@ export default function SocialPage() {
                     >
                       <Check size={12} /> {t('status.connected')}
                     </Badge>
-                  ) : hasOAuth ? (
-                    <Badge className="flex items-center gap-1 bg-blue-500/20 text-blue-300 border-blue-500/30">
-                      {t('status.ready')}
+                  ) : e.etat === 'reconnexion' ? (
+                    <Badge className="flex items-center gap-1 bg-amber-500/20 text-amber-200 border-amber-500/30">
+                      <RefreshCw size={12} /> {libelleEtat}
                     </Badge>
-                  ) : null}
+                  ) : (
+                    <Badge className="flex items-center gap-1 bg-gray-700/40 text-gray-300 border-gray-600/40">
+                      {libelleEtat}
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Avertissement propre a la plateforme (ex. validation TikTok) */}
-                {!comingSoon && 'notice' in platform && platform.notice && (
+                {!comingSoon && 'notice' in platform && platform.notice && e.voie !== 'zernio' && (
                   <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
                     <p className="text-xs text-amber-300">{platform.notice}</p>
                   </div>
                 )}
 
-                {/* OAuth not configured info */}
-                {!comingSoon && !hasOAuth && !isConnected && (
+                {/* OAuth not configured info — seulement si AUCUN chemin ne permet de connecter */}
+                {!comingSoon && !hasOAuth && !isConnected && e.etat === 'non_configure' && (
                   <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
                     <p className="text-xs text-amber-300">
                       {t('oauthInfo', { platform: platform.name })}
@@ -567,44 +675,61 @@ export default function SocialPage() {
                   </div>
                 )}
 
-                {/* Action Buttons */}
+                {/* Action Buttons — dérivés de l'état, jamais un bouton qui n'aboutit pas */}
                 <div className="space-y-2">
                   {comingSoon ? (
                     <div className="flex items-center justify-center gap-2 rounded-lg border border-gray-800 bg-gray-900/50 px-3 py-2.5 text-xs text-gray-400">
                       <Clock size={14} className="flex-shrink-0 text-gray-500" />
                       {t('comingSoonHint', { platform: platform.name })}
                     </div>
-                  ) : (
-                  <Button
-                    variant={isConnected ? 'ghost' : 'primary'}
-                    className="w-full"
-                    disabled={isConnecting || (!hasOAuth && !isConnected)}
-                    onClick={() => handleConnect(platform.id)}
-                  >
-                    {isConnecting ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin mr-2" />
-                        {t('actions.connecting')}
-                      </>
-                    ) : isConnected ? (
-                      <>
-                        <ExternalLink size={16} className="mr-2" />
-                        {t('actions.reconnect')}
-                      </>
-                    ) : (
-                      <>
-                        <ExternalLink size={16} className="mr-2" />
-                        {t('actions.connect', { platform: platform.name })}
-                      </>
-                    )}
-                  </Button>
-                  )}
+                  ) : e.actions.connecter ? (
+                    <Button
+                      variant="primary"
+                      className="w-full"
+                      disabled={isConnecting}
+                      data-action="connecter"
+                      onClick={() => lancer(e.actions.connecter!)}
+                    >
+                      {isConnecting ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin mr-2" />
+                          {t('actions.connecting')}
+                        </>
+                      ) : (
+                        <>
+                          <Link2 size={16} className="mr-2" />
+                          {t('actions.connect', { platform: platform.name })}
+                        </>
+                      )}
+                    </Button>
+                  ) : e.actions.reconnecter ? (
+                    <Button
+                      variant={isConnected ? 'ghost' : 'primary'}
+                      className="w-full"
+                      disabled={isConnecting}
+                      data-action="reconnecter"
+                      onClick={() => lancer(e.actions.reconnecter!)}
+                    >
+                      {isConnecting ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin mr-2" />
+                          {t('actions.connecting')}
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw size={16} className="mr-2" />
+                          {t('actions.reconnect')}
+                        </>
+                      )}
+                    </Button>
+                  ) : null}
 
                   {isConnected && (
                     <Button
                       variant="ghost"
                       className="w-full text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      onClick={() => handleDisconnect(platform.id)}
+                      data-action="deconnecter"
+                      onClick={() => setConfirmation({ reseau: platform.id as Reseau, voie: e.actions.deconnecter ?? 'direct' })}
                     >
                       <X size={16} className="mr-2" />
                       {t('actions.disconnect')}
@@ -614,14 +739,17 @@ export default function SocialPage() {
                   {/* « Publier vous-même » — AJOUT, jamais un remplacement :
                       la connexion automatique (Facebook/Instagram) garde son
                       bouton juste au-dessus. Tant que la publication auto
-                      attend la validation des plateformes, ce chemin permet
-                      de publier quand même, depuis son propre compte. */}
-                  <div className="mt-3 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
-                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                      n'est pas opérationnelle sur ce réseau (non connecté,
+                      en attente, TikTok en brouillon privé), ce chemin permet
+                      de publier quand même, depuis son propre compte. Un
+                      réseau où l'auto-publication marche garde le bloc en
+                      version repliée : l'option existe, elle ne s'impose pas. */}
+                  <details className="mt-3 rounded-lg border border-gray-800 bg-gray-900/40 p-3" open={!e.autoPublication} data-self-publish={e.autoPublication ? 'option' : 'fallback'}>
+                    <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-wider text-gray-400">
                       {t('selfPublish.title')}
-                    </p>
-                    <p className="mb-2 text-[11px] leading-snug text-gray-500">
-                      {t('selfPublish.intro', { platform: platform.name })}
+                    </summary>
+                    <p className="mt-2 mb-2 text-[11px] leading-snug text-gray-500">
+                      {e.autoPublication ? t('selfPublish.introOption', { platform: platform.name }) : t('selfPublish.intro', { platform: platform.name })}
                     </p>
                     <ol className="mb-3 space-y-1">
                       {[
@@ -643,10 +771,11 @@ export default function SocialPage() {
                         {t('selfPublish.cta')}
                       </Button>
                     </Link>
-                  </div>
+                  </details>
                 </div>
               </CardContent>
             </Card>
+            </div>
           );
         })}
       </div>

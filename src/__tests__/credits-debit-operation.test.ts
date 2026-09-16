@@ -265,12 +265,12 @@ describe('Les comptes gardent exactement leur comportement', () => {
 });
 
 describe('Rien d autre n a bougé', () => {
-  it('le mode Série reste plafonné à deux', async () => {
+  it('le mode Série reste plafonné à dix', async () => {
     const { BATCH_SERIE_DISPONIBLE, BATCH_SERIE_MAX, batchCountAutorise } =
       await import('@/lib/creer/batchDisponible');
     expect(BATCH_SERIE_DISPONIBLE).toBe(true);
-    expect(BATCH_SERIE_MAX).toBe(2);
-    expect(batchCountAutorise(10)).toBe(2);
+    expect(BATCH_SERIE_MAX).toBe(10); // LOT UX : la série va jusqu'à 10
+    expect(batchCountAutorise(10)).toBe(10); expect(batchCountAutorise(20)).toBe(10);
   });
 
   it('/api/render/batch reste désactivée', async () => {

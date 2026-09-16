@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import {
   UserSquare2,
   Upload,
@@ -15,6 +15,7 @@ import {
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 import MaVoixPanel from '@/components/voice/MaVoixPanel';
 import AvatarVideoDid, { type EtapeDid } from '@/components/avatar/AvatarVideoDid';
+import StatutAvatar, { type StatutAvatarCle, type LienStatut } from '@/components/avatar/StatutAvatar';
 import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneApercu, DeuxColonnes, ColonneTravail, ColonneApercu, type EtapeProgression, type Etape, type EtatApercu, type NiveauNotification } from '@/components/ux';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 
@@ -764,6 +765,46 @@ export default function AvatarPage() {
   const cleValidation = !avatar ? undefined : etatEffectif === 'valide' ? 'valide' : etatEffectif === 'entraine_non_valide' ? 'a-valider' : !viaDid && etatEffectif === 'entrainement' ? 'entrainement' : undefined;
   const cleApercu = etatEffectif === 'entraine_non_valide' && (apercu?.statut === 'en_cours' || apercu?.statut === 'indisponible') ? (apercu.statut === 'en_cours' ? 'en-cours' : 'indisponible') : undefined;
 
+  /**
+   * LE STATUT GLOBAL, en un mot, en tête de la colonne de travail — dérivé
+   * des mêmes états serveur que le fil d'étapes, jamais recalculé à part.
+   * L'action principale est LE geste qui fait avancer ; ce sont les gestes
+   * existants (mêmes fonctions), rendus à l'endroit où l'on cherche quoi faire.
+   */
+  const statutGlobal: StatutAvatarCle = !avatar || !etatEffectif || etatEffectif === 'supprime' ? 'aucun'
+    : etatEffectif === 'valide' ? 'pret'
+      : filEtapes.some((e) => e.etat === 'correction') || (!viaDid && trainingFailed) ? 'erreur'
+        : etatEffectif === 'entraine_non_valide' ? 'a_valider'
+          : etapeCourante === 'consentement' ? 'consentement'
+            : 'entrainement';
+  /**
+   * Pas de second CTA principal ici : la page n'en montre qu'un à la fois
+   * (cahier #409), et il vit dans la zone d'aperçu ou l'étape. Le bloc de
+   * statut ne porte qu'un lien secondaire vers la suite, quand tout est prêt.
+   */
+  const lienStatut: LienStatut | null = statutGlobal === 'pret'
+    ? { libelle: 'Utiliser dans Créer', href: '/dashboard/creer', attributs: { 'data-avatar-action': 'utiliser-creer' } }
+    : null;
+  const texteStatut: string | undefined = (() => {
+    if (statutGlobal === 'aucun') return file ? 'Source choisie : certifiez le consentement, puis créez votre avatar.' : 'Commencez par choisir une photo ou une vidéo.';
+    if (statutGlobal === 'consentement') return 'Votre phrase de consentement, lue face caméra, prouve que cet avatar est le vôtre.';
+    if (statutGlobal === 'entrainement') return 'Plusieurs minutes. Cette page se met à jour toute seule.';
+    if (statutGlobal === 'a_valider') return apercu?.statut === 'en_cours' ? 'Votre aperçu est en cours de génération.' : 'Regardez votre aperçu, puis validez votre avatar.';
+    if (statutGlobal === 'pret') return busy ? 'Votre vidéo est en cours de création.' : 'Votre avatar est validé et utilisable dans vos créations.';
+    return "Quelque chose n'a pas abouti : changez de source et réessayez.";
+  })();
+
+  /**
+   * L'aperçu à droite ne doit JAMAIS être coupé : sur grand écran on borne sa
+   * LARGEUR à ce que la hauteur d'écran permet, ratio conservé (`aspect-ratio`
+   * reste maître, rien n'est rogné). Sur mobile (une colonne) la hauteur
+   * n'est pas contrainte.
+   */
+  // QA intégration : UNE seule règle de cadre pour toutes les pages — `.apercu-cadre`
+  // (globals.css, posée par ZoneApercu). Ici seul l'OFFSET change : l'en-tête de
+  // Mon avatar est plus haut que celui de Créer (11rem au lieu de 10rem).
+  const cadreApercu = { '--apercu-offset': '11rem' } as CSSProperties;
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -801,12 +842,19 @@ export default function AvatarPage() {
       )}
 
       {/* C. Le fil d'étapes (le pipeline interne D-ID a disparu à son profit) */}
-      <FilEtapes etapes={filEtapes} />
+      <FilEtapes
+        etapes={filEtapes}
+        atteignables={avatar && !suppressionEnCours ? ['source'] : []}
+        onAller={(cle) => { if (cle === 'source') changerDeSource(); }}
+      />
 
       {/* D. Deux colonnes — la même mise en page que Créer (`DeuxColonnes`) :
           l'étape, ses gestes et la voix à gauche ; l'aperçu à droite. */}
       <DeuxColonnes nom="avatar" attributs={{ 'data-avatar-colonnes': '' }}>
         <ColonneTravail attributs={{ 'data-avatar-colonne': 'etape' }}>
+          {/* 0. Le statut global et LE geste suivant — en un coup d'œil, comme dans Créer. */}
+          <StatutAvatar statut={statutGlobal} texte={texteStatut} lien={lienStatut} />
+
           {consignePage && (
             <Consigne
               titre={consignePage.titre}
@@ -1036,9 +1084,11 @@ export default function AvatarPage() {
           </div>
         </ColonneTravail>
 
+        {/* Sur mobile l'aperçu passe EN TÊTE (une colonne) ; sur grand écran il
+            reste à droite, collant, et jamais plus haut que l'écran. */}
         <ColonneApercu attributs={{ 'data-avatar-colonne': 'apercu' }}>
           <div data-avatar-validation={cleValidation}>
-            <div data-avatar-apercu={cleApercu}>
+            <div data-avatar-apercu={cleApercu} data-avatar-apercu-cadre={zone.ratio} className="w-full mx-auto" style={cadreApercu}>
               <ZoneApercu titre={zone.titre} etat={zone.etat} ratio={zone.ratio}>{zone.media}</ZoneApercu>
             </div>
           </div>

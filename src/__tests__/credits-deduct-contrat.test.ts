@@ -237,14 +237,14 @@ describe('Aucun effet de bord', () => {
 });
 
 describe('15 & 16 & 17. Le reste du système est intact', () => {
-  it('le mode Série est ouvert en PILOTE, et plafonné à 2', async () => {
+  it('le mode Série est ouvert, et plafonné à 10', async () => {
     // Il a ete rouvert une fois les credits securises. Ce qui doit rester
     // verifie ici, c'est le PLAFOND : le pilote ne va pas au-dela de deux.
     const { BATCH_SERIE_DISPONIBLE, BATCH_SERIE_MAX, batchCountAutorise } =
       await import('@/lib/creer/batchDisponible');
     expect(BATCH_SERIE_DISPONIBLE).toBe(true);
-    expect(BATCH_SERIE_MAX).toBe(2);
-    expect(batchCountAutorise(10)).toBe(2);
+    expect(BATCH_SERIE_MAX).toBe(10); // LOT UX : la série va jusqu'à 10
+    expect(batchCountAutorise(10)).toBe(10); expect(batchCountAutorise(20)).toBe(10);
   });
 
   it('/api/render/batch reste désactivée', async () => {

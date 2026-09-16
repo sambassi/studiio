@@ -145,6 +145,8 @@ describe('L aperçu de l Autopilote garde sa taille', () => {
     // Il n'était pas touché — il se monte en même temps que son cadre — mais
     // il partage désormais la MEME règle de mesure : le vérifier interdit de
     // corriger l'un en cassant l'autre.
+    // LOT UX : le choix du mode n'a plus d'aperçu — on ouvre l'Autopilote, où il vit toujours.
+    window.localStorage.setItem('studiio:creer:parcours', 'autopilote');
     render(<AssistantWizard />);
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
     await waitFor(() => expect(echelle()).toBeGreaterThan(0));
@@ -157,6 +159,8 @@ describe('L indice « double-clic » de l Autopilote se voit', () => {
     // ⚠️ LA PHRASE EXISTAIT DEJA, EN `text-gray-600` SOUS UN AUTRE
     // PARAGRAPHE GRIS. Personne ne la lisait, donc personne ne decouvrait le
     // double-clic, donc la fonctionnalite n'existait pas.
+    // LOT UX : le choix du mode n'a plus d'aperçu — on ouvre l'Autopilote, où il vit toujours.
+    window.localStorage.setItem('studiio:creer:parcours', 'autopilote');
     render(<AssistantWizard />);
     const aide = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu-aide]') as HTMLElement);
@@ -166,6 +170,8 @@ describe('L indice « double-clic » de l Autopilote se voit', () => {
   });
 
   it('c est un encart, pas une ligne noyee dans le gris', () => {
+    // LOT UX : le choix du mode n'a plus d'aperçu — on ouvre l'Autopilote, où il vit toujours.
+    window.localStorage.setItem('studiio:creer:parcours', 'autopilote');
     render(<AssistantWizard />);
     const aide = document.querySelector('[data-autopilot-apercu-aide]') as HTMLElement;
     expect(aide.className).toMatch(/border/);

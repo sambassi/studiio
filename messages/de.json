@@ -947,6 +947,8 @@
       "cards": "Karten"
     },
     "editModal": {
+      "networkNotConnected": "Netzwerk nicht verbunden — die automatische Veröffentlichung wartet darauf",
+      "connectNetwork": "Verbinden",
       "titleField": "Titel",
       "captionField": "Beschreibung",
       "generateCaption": "KI-Beschreibung generieren",
@@ -1180,6 +1182,9 @@
       }
     },
     "status": {
+      "notConnected": "Nicht verbunden",
+      "reconnect": "Erneute Verbindung nötig",
+      "reconnectHint": "Autorisierung abgelaufen",
       "connected": "Verbunden",
       "ready": "Bereit",
       "oauthNotConfigured": "OAuth nicht konfiguriert",
@@ -1206,7 +1211,19 @@
       "disconnectError": "Fehler beim Trennen"
     },
     "comingSoonHint": "{platform} ist demnächst verfügbar. Die Verbindung wird bald wieder möglich sein.",
+    "voie": { "zernio": "Ihr Konto" },
+    "zernio": {
+      "coupeCircuit": "Das Veröffentlichen auf eigenen Konten ist vorübergehend deaktiviert.",
+      "optionAbsente": "Aktivieren Sie die Option Veröffentlichung, um eigene Konten zu verbinden."
+    },
+    "confirmDisconnect": {
+      "title": "{platform} trennen?",
+      "direct": "Studiio veröffentlicht nicht mehr auf diesem Konto. Sie können es jederzeit erneut verbinden.",
+      "zernio": "Das Konto wird aus Studiio entfernt und erhält keine Beiträge mehr. Die Autorisierung kann in Ihren {platform}-Einstellungen widerrufen werden.",
+      "cancel": "Abbrechen"
+    },
     "selfPublish": {
+      "introOption": "Sie können auch selbst auf {platform} veröffentlichen, von Ihrem eigenen Konto aus.",
       "title": "Selbst veröffentlichen",
       "intro": "Die automatische Veröffentlichung wartet auf die Freigabe von {platform}. Veröffentlichen Sie so lange in drei Schritten über Ihr eigenes Konto.",
       "step1": "Laden Sie Ihr Video herunter",
