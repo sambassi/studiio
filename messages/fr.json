@@ -929,6 +929,8 @@
       "cards": "cartes"
     },
     "editModal": {
+      "networkNotConnected": "Réseau non connecté — la publication automatique attendra sa connexion",
+      "connectNetwork": "Connecter",
       "title": "Modifier le Post",
       "titleField": "Titre",
       "titlePlaceholder": "Titre du post",
@@ -1160,6 +1162,9 @@
       }
     },
     "status": {
+      "notConnected": "Non connecté",
+      "reconnect": "Reconnexion nécessaire",
+      "reconnectHint": "l'autorisation a expiré",
       "connected": "Connecté",
       "ready": "Prêt",
       "oauthNotConfigured": "OAuth non configuré",
@@ -1186,7 +1191,19 @@
       "disconnectError": "Erreur lors de la déconnexion"
     },
     "comingSoonHint": "{platform} sera bientôt disponible. La connexion rouvrira prochainement.",
+    "voie": { "zernio": "votre compte" },
+    "zernio": {
+      "coupeCircuit": "La publication sur vos propres comptes est momentanément désactivée.",
+      "optionAbsente": "Activez l'option Publication pour connecter vos propres comptes."
+    },
+    "confirmDisconnect": {
+      "title": "Déconnecter {platform} ?",
+      "direct": "Studiio ne publiera plus sur ce compte. Vous pourrez le reconnecter à tout moment.",
+      "zernio": "Le compte sera retiré de Studiio et ne recevra plus vos publications. Son autorisation reste à révoquer depuis vos réglages {platform} si vous le souhaitez.",
+      "cancel": "Annuler"
+    },
     "selfPublish": {
+      "introOption": "Vous pouvez aussi publier vous-même sur {platform}, depuis votre propre compte.",
       "title": "Publier vous-même",
       "intro": "La publication automatique attend la validation de {platform}. En attendant, publiez depuis votre compte en trois étapes.",
       "step1": "Téléchargez votre vidéo",
