@@ -264,3 +264,101 @@ Aucune règle métier, aucun contrat serveur, aucune route, aucune migration. Le
 Critères d'acceptation communs : à tout moment l'écran répond aux cinq questions (où j'en suis, quoi faire, ce qui bloque, comment corriger, prochaine étape) ; aucune erreur sans action ; aucun nom de fournisseur ni code dans un titre ; un seul CTA principal visible ; l'aperçu au même endroit sur les trois pages ; suites Vitest existantes vertes, tsc = baseline.
 
 Ordre recommandé : 1 → 2 → 3 → 4 → 5, une PR par ligne, GO explicite entre chaque.
+
+---
+
+## Annexe A — Progression temps réel (règle globale, ajoutée le 2026-09-16)
+
+> Règle : plus jamais « Traitement en cours… » sans contexte. Un pourcentage n'est affiché **que s'il vient d'une information réelle** ; un fournisseur qui ne donne qu'un statut donne une progression **indéterminée** + le temps écoulé + la progression du **workflow** (étapes réelles terminées), clairement distinguée.
+
+### A.1 Audit — ce que chaque opération longue sait réellement (main `623019f`)
+
+| Opération | Source de progression **réelle** disponible | Ce que l'écran affiche aujourd'hui | Verdict |
+|---|---|---|---|
+| **Créer · rendu du montage** | `composeVideo` → `onProgress(percent, stage)` : pourcentage réel du compositeur (frames rendues) + libellé d'étape (« Chargement des médias », « Préparation », « Rendu en cours ») | barre + % + `renderStage` | conforme, à porter dans le composant commun |
+| **Créer · téléversement du rendu** | `PUT` relais (`/api/render/jobs/{id}/upload`) via fetch : **aucune** progression | « Finalisation… » | **à corriger** : XHR `upload.onprogress` (octets) |
+| **Créer · jumeau (ElevenLabs + HeyGen)** | statuts serveur seulement (`pending`/`processing`/`completed`) par `/api/avatar/status` | « Génération de votre jumeau… » / « en cours de préparation… » | indéterminé honnête ; ajouter temps écoulé + étapes réelles (voix ✓ · audio déposé ✓ · vidéo fournisseur ●) |
+| **Créer/Autopilote · import de rushes** | `lib/storage/uploadFile.ts` : XHR `upload.onprogress`, **octets réels**, agrégé multi-parties | `SessionsTournagePanel` l'utilise déjà (pourcentage réel) | conforme, à afficher dans le composant commun avec « 34,2 Mo / 46,8 Mo » |
+| **Autopilote · analyse d'un rush** | le serveur expose des **ÉTAPES** (`etape`), volontairement pas de % (`passerelle.ts`, `AnalyseRush.tsx` : « 67 % serait une fiction ») ; le nombre de rushes traités / total est connu côté client | phrases par étape | conforme ; ajouter « Rush 11 sur 24 » + workflow % basé sur les étapes réelles, jamais un % intra-étape |
+| **Autopilote · montage/rendu serveur** | états `rendu-contrat.ts` (étapes nommées, pas de %) | phrases d'état | idem : étapes + temps écoulé |
+| **Avatar · import source / vidéo de consentement** | `fetch` + `FormData` vers `/api/avatar/create` et `/consentement/video` : **aucune** progression | bouton « Envoi de la vidéo… » (spinner) | **à corriger** : passer par XHR (progression octets) — sans changer la route |
+| **Avatar · entraînement HeyGen** | `GET /v2/avatar/…` : statut seulement | **pourcentage INVENTÉ** : `90 × (1 − e^(−t/45))` (page.tsx l.356–368) — exactement le cas interdit | **à retirer** |
+| **Avatar · entraînement D-ID** | `GET /scenes/avatars/{id}` : statut seulement (`created`…`training-started`…`done`) ; aucun champ de pourcentage dans le contrat | « Entraînement en cours chez notre fournisseur… Cela prend généralement plusieurs minutes. » | **à corriger** : indéterminé + écoulé + workflow % (étapes réelles) |
+| **Avatar · aperçu (scène D-ID / vidéo HeyGen)** | statut seulement + `pending_url` (D-ID) | « Votre aperçu est en cours de génération… » | indéterminé + écoulé |
+| **Voix · clonage ElevenLabs** | requête unique, pas de statut intermédiaire | spinner | indéterminé + écoulé (court) |
+
+Conclusions : **deux** vraies sources de pourcentage existent (compositeur, XHR d'upload) ; tout le reste est **à étapes**. Un seul faux pourcentage est en production (Avatar HeyGen) : il disparaît.
+
+### A.2 Le composant commun `ProgressStatus` (`src/components/ux/ProgressStatus.tsx`)
+
+```ts
+interface ProgressStatusProps {
+  titre: string;                       // « Entraînement de votre avatar »
+  statut: 'en_cours' | 'termine' | 'echec';
+  /** Pourcentage RÉEL de l'opération courante ; absent = indéterminé. Jamais dérivé du temps. */
+  pourcentage?: number;
+  /** Étapes réelles du workflow : ✓ terminées, ● courante, ○ à venir. */
+  etapes?: Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' | 'echouee' }>;
+  /** Détail de l'étape courante : « Rush 11 sur 24 », « 34,2 Mo / 46,8 Mo », « 12 clips sur 18 ». */
+  detail?: string;
+  /** Début réel de l'opération (serveur ou local) : le composant affiche « Durée écoulée : 01:42 ». */
+  debutLe?: string | number;
+  /** Estimation restante — SEULEMENT si elle vient d'une mesure (débit d'upload, vitesse du compositeur). */
+  resteEstime?: string;
+  /** En échec : où, pourquoi, quoi faire. */
+  echec?: { etape: string; motif: string; actions: Array<{ libelle: string; onClick: () => void; principale?: boolean }> };
+  /** Terminé : l'action suivante. */
+  suite?: Array<{ libelle: string; onClick: () => void; principale?: boolean }>;
+  compact?: boolean;                   // mobile : % + titre + étape sur trois lignes, barre fine
+}
+```
+
+Rendu et règles :
+- **Barre** : `role="progressbar"`, `aria-valuemin=0`, `aria-valuemax=100`, `aria-valuenow` seulement si `pourcentage` défini, `aria-label={titre}` ; sans `pourcentage` → animation indéterminée + `aria-busy`.
+- **Deux chiffres, jamais confondus** : « Entraînement : 67 % » (pourcentage réel de l'opération, s'il existe) et « Workflow : 80 % » (= étapes terminées / total, **calculé par le composant à partir de `etapes`**, libellé « Progression du workflow »). Si le fournisseur ne donne rien : seule la ligne workflow apparaît, avec « Entraînement fournisseur en cours — progression inconnue ».
+- **Temps écoulé** : reconstruit depuis `debutLe` (horodatage serveur : `created_at` de la génération, `provider_consent_created_at`, `updated_at` du passage en `processing`…), donc **stable au rechargement**.
+- **ETA** : uniquement si `resteEstime` est fourni par une mesure (upload : octets restants / débit moyen ; compositeur : frames restantes / vitesse moyenne). Jamais pour un fournisseur.
+- **Échec** : la barre reste à sa dernière valeur réelle (ou indéterminée figée), les étapes gardent ✓ sur les terminées, l'étape en cause passe en ✕, bloc « Échec à l'étape « … » · Progression avant interruption : 4/5 · Motif · [Réessayer] [Voir comment corriger] ».
+- **Terminé** : « ✓ Terminé — 100 % » puis `suite` (« Voir mon avatar », « Tester mon avatar »).
+- **Mobile** (`compact`) : `68 %` · titre · « Étape 4/6 » · barre fine ; pas de carte pleine hauteur.
+- Ne communique jamais l'état par la couleur seule : icône + texte pour ✓ ● ○ ✕.
+
+### A.3 Câblage par opération (aucune règle métier ne change)
+
+| Opération | `pourcentage` | `etapes` (workflow) | `detail` | `debutLe` | `resteEstime` |
+|---|---|---|---|---|---|
+| Créer · rendu | réel (`onProgress`) | Préparation · Capture · Rendu · Envoi · Confirmation · Post | `stage` du compositeur | clic Envoi | frames/vitesse si le compositeur l'expose (sinon absent) |
+| Créer · envoi du rendu | réel (XHR octets) | idem | « 12,4 Mo / 18,0 Mo » | début du PUT | octets/débit |
+| Créer · jumeau | — | Vérification ✓ · Voix ✓ · Audio déposé ✓ · Vidéo fournisseur ● · Prête ○ | statut fournisseur en clair | `created_at` de la génération | — |
+| Rushes · import | réel (XHR) | par fichier | « fichier 2/3 · 34,2 Mo / 46,8 Mo » | début | octets/débit |
+| Autopilote · analyse | — | étapes serveur (`etape`) | « Rush 11 sur 24 · Détection des meilleurs passages » | `created_at` de l'analyse | — |
+| Autopilote · montage | — | étapes serveur (`rendu-contrat`) | libellé d'état | `created_at` du rendu | — |
+| Avatar · import source / consentement | réel (XHR) | Téléchargement ● | octets | début | octets/débit |
+| Avatar · entraînement (HeyGen/D-ID) | **absent** | Source ✓ · Consentement ✓ · Création ✓ · Entraînement ● · Prêt ○ (→ workflow 60–80 % selon le fil) | « Entraînement fournisseur en cours — progression inconnue » | passage en `processing` (serveur) | — |
+| Avatar · aperçu | **absent** | Aperçu ● | statut fournisseur | `created_at` de la génération | — |
+| Voix · clonage | — | Envoi ● · Clonage ● | — | début | — |
+
+Le `debutLe` **serveur** est ce qui rend la progression stable au rechargement (§11) : l'écran relit l'état réel (`/api/avatar/create`, `/api/avatar/status`, `/api/creer/jumeau`, analyses) et reconstruit écoulé + étapes ; il ne relance jamais une tâche (les gardes d'idempotence existantes — index uniques, CAS — tiennent déjà le « ne pas doubler une génération fournisseur »). Notification globale « Votre avatar est prêt » : seulement via le système de notifications existant (`user_notifications`), pas de nouvelle architecture de jobs.
+
+### A.4 Tests à ajouter (composant + câblages)
+
+`ProgressStatus` : déterminé (0 %, 42 %, 100 %) ; indéterminé (pas d'`aria-valuenow`, `aria-busy`) ; workflow % = terminées/total, libellé distinct ; changement d'étape ; échec à une étape (barre figée, ✕, actions) ; terminé (suite) ; compact ; accessibilité (rôle, min/max, libellé). Câblages : Avatar sans faux % (le test source-scan interdit `Math.exp` / tout calcul depuis le temps écoulé dans la page), écoulé reconstruit depuis un horodatage serveur après re-rendu, upload avec progression réelle (XHR simulé : `loaded/total`), aucun double lancement fournisseur au rechargement (déjà couvert par les tests d'idempotence, à rejouer).
+
+### A.5 État des lieux vs cible (à reporter dans le rapport final du chantier)
+
+| Indicateur | Aujourd'hui | Cible |
+|---|---|---|
+| SHARED_PROGRESS_COMPONENT | NON | OUI (`ProgressStatus`) |
+| CREATE_PROGRESS_UNIFIED / AUTOPILOT_PROGRESS_UNIFIED / AVATAR_PROGRESS_UNIFIED | NON | OUI |
+| REAL_UPLOAD_PERCENT | partiel (rushes oui ; avatar, consentement, rendu non) | OUI partout |
+| REAL_RENDER_PERCENT | OUI (compositeur) | OUI |
+| REAL_ANALYSIS_PROGRESS | étapes oui, compteur de rushes non | étapes + « Rush n/N » |
+| AVATAR_WORKFLOW_PERCENT | NON | OUI (étapes réelles) |
+| DID_PROVIDER_REAL_PERCENT_AVAILABLE | **NON** (statut seulement, contrat vérifié) | NON — affiché comme indéterminé |
+| FAKE_PROVIDER_PERCENT_USED | **OUI** (Avatar HeyGen, courbe temporelle) | NON |
+| ELAPSED_TIME_SUPPORTED | NON | OUI |
+| ETA_SUPPORTED_WHERE_RELIABLE | NON | OUI (uploads ; compositeur si mesurable) |
+| RELOAD_RESUMES_REAL_STATE | partiel (états oui, écoulé non) | OUI |
+| LONG_RUNNING_ACTION_WITHOUT_CONTEXT_FOUND | OUI : entraînement HeyGen/D-ID (texte vague + faux %), aperçu avatar, jumeau dans Créer, envoi du rendu, imports avatar/consentement, clonage de voix | NON |
+
+Place dans le plan : la brique `ProgressStatus` entre dans le **chantier 1** (briques) ; le retrait du faux pourcentage Avatar et l'upload XHR avatar/consentement entrent dans le **chantier 2** (quick wins) ; le reste suit les chantiers 3 et 4.
