@@ -119,6 +119,8 @@ export default function AvatarPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const pollRef = useRef<NodeJS.Timeout | null>(null);
+  /** Vrai une fois la page démontée : plus aucun `setState` depuis une réponse tardive. */
+  const demonteRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const trainingPollRef = useRef<NodeJS.Timeout | null>(null);
@@ -336,12 +338,37 @@ export default function AvatarPage() {
   }, [training, trainingFailed, loadAvatar]);
 
   // Nettoyage du timer de polling au démontage — évite une fuite si
-  // l'utilisateur quitte la page pendant une génération.
+  // l'utilisateur quitte la page pendant une génération. `demonteRef` coupe
+  // aussi tout `setState` d'une réponse qui arriverait après le démontage.
   useEffect(() => {
+    demonteRef.current = false;
     return () => {
+      demonteRef.current = true;
       if (pollRef.current) clearTimeout(pollRef.current);
+      apercuGenerationRef.current = null;
     };
   }, []);
+
+  // ── Reprise du suivi d'un aperçu déjà EN COURS ──────────────────────
+  // Après un rechargement (ou un retour sur la page), `loadApercu` rend
+  // `en_cours` + generationId… et rien ne relançait `poll` : l'écran restait
+  // sur « en cours de génération » alors que le fournisseur avait fini — vu en
+  // production (aperçu D-ID `done`, statut local `processing`, jusqu'à un GET
+  // manuel de /api/avatar/status). Ici : la génération EXISTANTE est suivie,
+  // jamais relancée — aucun POST aperçu, aucun appel fournisseur.
+  // `apercuGenerationRef` est le verrou : un seul suivi par génération, que le
+  // lancement vienne d'un clic (`genererApercu` pose la ref avant `poll`) ou
+  // d'une relecture ; deux rendus (StrictMode) ne démarrent pas deux boucles.
+  useEffect(() => {
+    if (apercu?.statut !== 'en_cours') return;
+    const id = apercu.generationId;
+    if (apercuGenerationRef.current === id) return;
+    apercuGenerationRef.current = id;
+    void poll(id);
+    // `poll` est stable (useCallback sur loadApercu) ; il est déclaré plus bas
+    // mais n'est appelé qu'à l'exécution de l'effet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apercu]);
 
   // Libère l'URL d'objet de l'aperçu quand elle change ou au démontage.
   useEffect(() => {
@@ -457,6 +484,7 @@ export default function AvatarPage() {
     try {
       const res = await fetch(`/api/avatar/status?generationId=${generationId}`);
       const json = await res.json();
+      if (demonteRef.current) return;
 
       if (!json.success) {
         // Erreur transitoire : on retente, le serveur ne marque pas d'échec.
@@ -492,6 +520,7 @@ export default function AvatarPage() {
       setGenStatus('processing');
       pollRef.current = setTimeout(() => poll(generationId), 5000);
     } catch {
+      if (demonteRef.current) return;
       pollRef.current = setTimeout(() => poll(generationId), 8000);
     }
   }, [loadApercu]);
