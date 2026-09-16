@@ -29,7 +29,7 @@ function stubApi() {
     if (u === '/api/avatar/create') return json(200, { success: true, data: { avatar: etatServeur.avatar, voices: [{ voiceId: 'v1', name: 'Voix' }], defaultVoiceId: 'v1' } });
     if (u === '/api/avatar/apercu') return json(200, { success: true, data: { avatarId: A, version: 2, etat: etatServeur.avatar.etat, apercu: etatServeur.apercu } });
     if (u === '/api/avatar/apercu/ouverture') {
-      if (etatServeur.apercu.statut !== 'pret') return json(409, { success: false, error: "L'aperçu réel de votre avatar n'est pas encore disponible.", code: `apercu_${etatServeur.apercu.statut}` });
+      if (etatServeur.apercu.statut !== 'pret') return json(409, { success: false, error: "n'a pas pu être conservée", code: `apercu_${etatServeur.apercu.statut}` });
       return json(200, { success: true, data: { avatarId: A, version: 2, generationId: G, url: URL_APERCU, jeton: 'JETON-SERVEUR' } });
     }
     if (u === '/api/avatar/validation') {
@@ -71,7 +71,9 @@ describe('/dashboard/avatar — validation du clone', () => {
     etatServeur.apercu = { statut: 'indisponible', generationId: G };
     render(<AvatarPage />);
     await waitFor(() => expect(document.querySelector('[data-avatar-apercu="indisponible"]')).not.toBeNull());
-    expect(document.body.textContent).toMatch(/L’aperçu réel de votre avatar n’est pas encore disponible\.|L'aperçu réel de votre avatar n'est pas encore disponible\./);
+    // Pas de « pas encore » : rien ne viendra pour cette version — on le dit, avec la sortie.
+    expect(document.body.textContent).toMatch(/n['’]a pas pu être conservée/);
+    expect(document.body.textContent).not.toMatch(/pas encore disponible/);
     expect(document.querySelector('[data-avatar-apercu="voir"]')).toBeNull();
     expect(document.querySelector('[data-avatar-apercu="valider"]')).toBeNull();
     expect(document.querySelector('video[data-avatar-apercu="video"]')).toBeNull();

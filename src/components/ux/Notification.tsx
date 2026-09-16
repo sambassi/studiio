@@ -21,6 +21,8 @@ export type NiveauNotification = 'succes' | 'info' | 'avertissement' | 'erreur';
 export interface ActionNotification {
   libelle: string;
   onClick: () => void;
+  /** Pendant le geste (requête en vol) : le bouton ne rejoue rien. */
+  disabled?: boolean;
 }
 
 export interface NotificationProps {
@@ -80,7 +82,7 @@ export default function Notification({
         {(actionPrincipale || actionSecondaire) && (
           <div className="flex flex-wrap items-center gap-3 pt-1" data-notification-actions>
             {actionPrincipale && (
-              <button type="button" onClick={actionPrincipale.onClick} className="button-primary text-[13px] px-3 py-1.5" data-notification-action="principale">
+              <button type="button" onClick={actionPrincipale.onClick} disabled={actionPrincipale.disabled} className="button-primary text-[13px] px-3 py-1.5 disabled:opacity-40" data-notification-action="principale">
                 {actionPrincipale.libelle}
               </button>
             )}

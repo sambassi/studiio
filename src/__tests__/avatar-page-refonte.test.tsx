@@ -196,13 +196,16 @@ describe('A. Le fil d’étapes — dérivé de l’état serveur, et de lui seu
     expect(await monterEtLireFil(), 'did echec').toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'correction' }));
   });
 
-  it('⚠️ entraîné non validé : Aperçu active (aucun, en cours, indisponible), correction (échec) ; aperçu prêt → Aperçu terminée, Validation active', async () => {
-    for (const apercu of [{ statut: 'aucun' }, { statut: 'en_cours', generationId: G }, { statut: 'indisponible', generationId: G }]) {
+  it('⚠️ entraîné non validé : Aperçu active (aucun, en cours), correction (échec, indisponible) ; aperçu prêt → Aperçu terminée, Validation active', async () => {
+    for (const apercu of [{ statut: 'aucun' }, { statut: 'en_cours', generationId: G }]) {
       avatarHeygen('entraine_non_valide'); serveur.apercu = apercu;
       expect(await monterEtLireFil(), apercu.statut).toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'terminee', apercu: 'active' }));
     }
-    avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'echec', generationId: G, erreur: 'x' };
-    expect(await monterEtLireFil(), 'echec').toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'terminee', apercu: 'correction' }));
+    // `echec` et `indisponible` (vidéo non conservée, définitif pour la version) demandent une correction.
+    for (const apercu of [{ statut: 'echec', generationId: G, erreur: 'x' }, { statut: 'indisponible', generationId: G }]) {
+      avatarHeygen('entraine_non_valide'); serveur.apercu = apercu;
+      expect(await monterEtLireFil(), apercu.statut).toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'terminee', apercu: 'correction' }));
+    }
     avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'pret', generationId: G, url: URL_APERCU };
     expect(await monterEtLireFil(), 'pret').toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'terminee', apercu: 'terminee', validation: 'active' }));
     // Un avatar D-ID « prêt » suit la même règle : le fil ne dépend pas du fournisseur.
@@ -546,10 +549,43 @@ describe('G. Régressions à garder — ce qui était vrai reste vrai (indépend
     expect(JSON.parse(String(demandes[0].body))).toEqual({ nom: 'Henri Bassi', renouveler: false });
 
     avatarDid('consentement_accepte', { consent_name: 'Henri Bassi', provider_consent_status: 'done' });
-    await monterSur('[data-avatar-did-action="creer"]');
-    const creer = q<HTMLButtonElement>('[data-avatar-did-action="creer"]')!;
+    await monterSur('[data-avatar-did-accepte] [data-notification-action="principale"]');
+    const creer = q<HTMLButtonElement>('[data-avatar-did-accepte] [data-notification-action="principale"]')!;
     await act(async () => { fireEvent.click(creer); fireEvent.click(creer); });
     await waitFor(() => expect(q('[data-avatar-did-entrainement]')).not.toBeNull());
     expect(appels.filter((a) => a.url === '/api/avatar/did/creer')).toHaveLength(1);
+  });
+});
+
+describe('H. Un seul CTA, aucune impasse (correctif #409)', () => {
+  it('⚠️ consentement accepté : exactement UNE action visible « Créer mon avatar » ; un clic (même double) → exactement un POST /api/avatar/did/creer', async () => {
+    avatarDid('consentement_accepte', { consent_name: 'Henri Bassi', provider_consent_status: 'done' });
+    await monterSur('[data-avatar-did-accepte] [data-notification-action="principale"]');
+    const visibles = screen.getAllByRole('button', { name: /Créer mon avatar/ });
+    expect(visibles).toHaveLength(1);
+    expect(q('[data-avatar-did-action="creer"]'), 'plus de second bouton').toBeNull();
+    expect(qa('[data-avatar-did] .button-primary')).toHaveLength(1);
+    await act(async () => { fireEvent.click(visibles[0]); fireEvent.click(visibles[0]); });
+    await waitFor(() => expect(q('[data-avatar-did-entrainement]')).not.toBeNull());
+    expect(appels.filter((a) => a.url === '/api/avatar/did/creer' && a.method === 'POST')).toHaveLength(1);
+  });
+
+  it('⚠️ aperçu indisponible (vidéo non conservée) : message explicite, zone en erreur avec la seule sortie réelle « Changer de source » ; aucun POST fournisseur automatique ; le lien texte n’est pas dupliqué', async () => {
+    avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'indisponible', generationId: G };
+    await monterEtLireFil();
+    expect(q('[data-avatar-apercu="indisponible"]')).not.toBeNull();
+    const zone = q('[data-apercu]')!;
+    expect(zone.getAttribute('data-apercu')).toBe('erreur');
+    expect(zone.textContent).toContain("n'a pas pu être conservée");
+    expect(zone.textContent).not.toMatch(/pas encore disponible/);
+    const sortie = actionApercu(/^Changer de source$/);
+    expect(sortie, 'une sortie réelle').toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /Changer de source/ })).toHaveLength(1);
+    expect(q('[data-avatar-apercu="generer"]'), 'aucune relance possible pour cette version').toBeNull();
+    expect(appels.filter((a) => a.method === 'POST')).toHaveLength(0);
+    // La sortie ramène à l'import d'une nouvelle source — sans aucun appel fournisseur.
+    await act(async () => { fireEvent.click(sortie!); });
+    await waitFor(() => expect(etatsFil()).toEqual(filAttendu({ source: 'active' })));
+    expect(appels.filter((a) => a.method === 'POST')).toHaveLength(0);
   });
 });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, Check, Upload, FileText, Sparkles } from 'lucide-react';
+import { Loader2, Check, Upload, FileText } from 'lucide-react';
 import { Notification, ProgressStatus, Consigne, type EtapeProgression } from '@/components/ux';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 
@@ -309,12 +309,10 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
               niveau="succes"
               titre="Consentement accepté."
               detail="Vous pouvez maintenant créer votre avatar."
-              actionPrincipale={{ libelle: 'Créer mon avatar', onClick: () => appeler('creer', '/api/avatar/did/creer') }}
+              actionPrincipale={{ libelle: occupe === 'creer' ? 'Création en cours…' : 'Créer mon avatar', onClick: () => appeler('creer', '/api/avatar/did/creer'), disabled: !!occupe }}
             />
           </div>
-          <button data-avatar-did-action="creer" onClick={() => appeler('creer', '/api/avatar/did/creer')} disabled={!!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
-            {occupe === 'creer' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Créer mon avatar
-          </button>
+          {/* Un seul CTA : celui de la notification (verrou `enCoursRef` : un clic, un POST). */}
         </div>
       )}
 

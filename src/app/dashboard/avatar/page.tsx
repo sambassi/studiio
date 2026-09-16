@@ -645,7 +645,7 @@ export default function AvatarPage() {
     if (etatEffectif === 'valide') return E('terminee', 'terminee', 'terminee', 'terminee', 'terminee');
     if (etatEffectif === 'entraine_non_valide') {
       if (apercuPret) return E('terminee', 'terminee', 'terminee', 'terminee', 'active');
-      return E('terminee', 'terminee', 'terminee', apercu?.statut === 'echec' ? 'correction' : 'active', 'a_venir');
+      return E('terminee', 'terminee', 'terminee', apercu?.statut === 'echec' || apercu?.statut === 'indisponible' ? 'correction' : 'active', 'a_venir');
     }
     if (etapeDid && etapeDid.startsWith('consentement_')) {
       return E('terminee', etapeDid === 'consentement_refuse' ? 'correction' : 'active', 'a_venir', 'a_venir', 'a_venir');
@@ -741,7 +741,11 @@ export default function AvatarPage() {
       if (!apercu || apercu.statut === 'aucun') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'vide', message: 'Aperçu de validation offert — une courte vidéo réelle de votre avatar, avec votre voix.', action: { libelle: 'Générer mon aperçu', ...relance } } };
       if (apercu.statut === 'echec') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: "L'aperçu n'a pas pu être généré. Vous pouvez le relancer sans frais.", detail: apercu.erreur ?? undefined, action: { libelle: "Relancer l'aperçu", ...relance } } };
       if (apercu.statut === 'en_cours') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'chargement', message: 'Votre aperçu est en cours de génération…', detail: 'Cela prend généralement 1 à 5 minutes. Cette page se met à jour toute seule.' } };
-      if (apercu.statut === 'indisponible') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'vide', message: "L'aperçu réel de votre avatar n'est pas encore disponible." } };
+      // `indisponible` : la génération est terminée mais sa vidéo n'a pas pu être
+      // conservée (ré-hébergement échoué). Côté serveur c'est définitif pour cette
+      // version : relire ne répare rien, relancer est refusé. La seule sortie réelle
+      // est une nouvelle source (nouvelle version → nouvel aperçu, offert).
+      if (apercu.statut === 'indisponible') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: "L'aperçu a été généré, mais sa vidéo n'a pas pu être conservée. Il ne peut pas être relancé pour cette version.", detail: 'Importez une nouvelle source : un nouvel aperçu vous sera offert.', action: { libelle: 'Changer de source', onClick: changerDeSource } } };
       // `pret` : d'abord la source et « Voir mon aperçu » ; puis la VRAIE vidéo, et « Valider » seulement après le démarrage réel de la lecture.
       if (!apercuVisible) return { titre: 'Aperçu de validation', ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: 'Votre aperçu est prêt.', actionSuivante: { libelle: 'Voir mon aperçu', onClick: voirApercu, attributs: { 'data-avatar-apercu': 'voir' } } } };
       const ouvert = !!apercuOuvert && apercuOuvert.generationId === apercu.generationId;
@@ -989,7 +993,7 @@ export default function AvatarPage() {
 
               {/* Actions secondaires : en texte, jamais au niveau du CTA. Suppression en deux clics. */}
               <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-white/5">
-                {!(notificationAffichee?.action?.libelle === 'Changer de source') && (
+                {!(notificationAffichee?.action?.libelle === 'Changer de source' || (zone.etat.statut === 'erreur' && zone.etat.action?.libelle === 'Changer de source')) && (
                   <button onClick={changerDeSource} className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5">
                     <RefreshCw className="w-3.5 h-3.5" /> Changer de source
                   </button>
