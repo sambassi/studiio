@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Loader2, AlertTriangle, ImageOff } from 'lucide-react';
+import { Loader2, AlertTriangle, ImageOff, MonitorPlay } from 'lucide-react';
 
 /**
  * LA zone d'aperçu de Studiio — le même cadre, la même logique d'états sur
@@ -47,7 +47,11 @@ const Bouton = ({ a }: { a: ActionApercu }) => (
 export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = '9 / 16', className = '' }: ZoneApercuProps) {
   return (
     <section data-apercu={etat.statut} aria-label={titre} className={`card-base p-4 space-y-3 ${className}`}>
-      <h2 className="text-sm font-semibold text-white" data-apercu-titre>{titre}</h2>
+      {/* Même en-tête que le panneau d'aperçu de Créer : libellé discret en capitales. */}
+      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500" data-apercu-titre>
+        <MonitorPlay className="w-4 h-4" aria-hidden />
+        {titre}
+      </h2>
 
       {etat.statut === 'pret' ? (
         <div className="space-y-3">

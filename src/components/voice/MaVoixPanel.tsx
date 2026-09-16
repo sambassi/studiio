@@ -129,17 +129,18 @@ export default function MaVoixPanel() {
   };
 
   if (chargement) {
-    return <div className="card-base p-6 text-sm text-gray-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Chargement de votre voix…</div>;
+    return <div className="text-sm text-gray-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Chargement de votre voix…</div>;
   }
   if (!profil) {
-    return <div className="card-base p-6 text-sm text-red-200" data-voix-panel="erreur">{erreur ?? 'Profil vocal illisible.'}</div>;
+    return <div className="text-sm text-red-200" data-voix-panel="erreur">{erreur ?? 'Profil vocal illisible.'}</div>;
   }
 
   return (
-    <div className="card-base p-6 space-y-6" data-voix-panel>
-      {/* ── MA VOIX ─────────────────────────────────────────────────── */}
+    /* Sous-sections de « Ma voix » (la carte et le titre de section sont portés par la page). */
+    <div className="space-y-6" data-voix-panel>
+      {/* ── VOIX UTILISÉE ───────────────────────────────────────────── */}
       <section className="space-y-3">
-        <h2 className="font-semibold flex items-center gap-2"><Mic className="w-4 h-4" /> Ma voix</h2>
+        <h3 className="font-semibold flex items-center gap-2"><Mic className="w-4 h-4" /> Voix utilisée</h3>
         {profil.voixResolue ? (
           <div data-voix-selectionnee className="text-sm">
             Voix sélectionnée : <span className="font-medium">« Ma voix — {profil.voixResolue.nom} »</span>
@@ -169,7 +170,7 @@ export default function MaVoixPanel() {
 
       {/* ── PRONONCIATIONS ───────────────────────────────────────────── */}
       <section className="space-y-3">
-        <h2 className="font-semibold">Prononciations</h2>
+        <h3 className="font-semibold">Prononciations</h3>
         <ul data-prononciations className="space-y-2">
           {prononciations.length === 0 && <li className="text-sm text-gray-500">Aucune prononciation personnalisée.</li>}
           {prononciations.map((p) => (
@@ -202,7 +203,7 @@ export default function MaVoixPanel() {
 
       {/* ── APERÇU ───────────────────────────────────────────────────── */}
       <section className="space-y-3">
-        <h2 className="font-semibold">Aperçu</h2>
+        <h3 className="font-semibold">Aperçu du texte prononcé</h3>
         <textarea
           data-apercu-texte
           value={texte}

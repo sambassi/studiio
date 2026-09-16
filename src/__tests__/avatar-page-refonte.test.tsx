@@ -426,9 +426,10 @@ describe('F. La notification — une seule, sous l’en-tête, la plus récente 
     expect(avert.getAttribute('data-notification')).toBe('avertissement');
     expect(avert.querySelector('[data-notification-titre]')?.textContent).toMatch(/^Votre voix personnelle est nécessaire pour l['’]aperçu\.$/);
     expect(avert.querySelector('[data-notification-action="principale"]')?.textContent).toContain('Configurer ma voix');
-    // Sous l'en-tête, au-dessus des colonnes.
+    // Dans la carte principale, sous le fil d'étapes (chantier A : la notification concerne l'étape).
     expect(precede(q('[data-entete]')!, avert)).toBe(true);
-    expect(precede(avert, q('[data-avatar-colonnes]')!)).toBe(true);
+    expect(q('[data-avatar-carte-principale]')!.contains(avert)).toBe(true);
+    expect(precede(q('[data-fil-etapes]')!, avert)).toBe(true);
     // « Configurer ma voix » mène au panneau Ma voix.
     const zone = q('[data-avatar-ma-voix]')!;
     const defiler = vi.fn(); zone.scrollIntoView = defiler;
@@ -457,7 +458,8 @@ describe('F. La notification — une seule, sous l’en-tête, la plus récente 
     expect(notif.querySelector('[data-notification-action="secondaire"]')?.textContent).toContain('Créer une vidéo');
     expect(notif.querySelector('[data-notification-action="principale"]')).toBeNull();
     expect(precede(q('[data-entete]')!, notif)).toBe(true);
-    expect(precede(notif, q('[data-avatar-colonnes]')!)).toBe(true);
+    expect(q('[data-avatar-carte-principale]')!.contains(notif)).toBe(true);
+    expect(precede(q('[data-fil-etapes]')!, notif)).toBe(true);
     expect(etatsFil()).toEqual(filAttendu({ source: 'terminee', consentement: 'terminee', entrainement: 'terminee', apercu: 'terminee', validation: 'terminee' }));
     expect(q('[data-entete] [data-entete-statut]')?.textContent?.trim()).toBe('Prêt');
   });

@@ -42,6 +42,16 @@ vi.mock('@/lib/fonts/catalog', async () => {
 
 import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
+/** Le sélecteur de mode n'a pas d'aperçu : on choisit l'Autopilote (sauf si le parcours est déjà mémorisé). */
+async function choisirAutopilote() {
+  await waitFor(() => {
+    if (!document.querySelector('[data-autopilot-apercu]') && !document.querySelector('[data-parcours-autopilote]')) throw new Error('ni sélecteur de mode ni aperçu');
+  });
+  const carte = document.querySelector('[data-parcours-autopilote]');
+  if (carte) fireEvent.click(carte);
+}
+
+
 /** Largeur donnée à TOUT élément : la seule mesure que le code consulte. */
 const LARGEUR_CADRE = 400;
 
@@ -146,6 +156,7 @@ describe('L aperçu de l Autopilote garde sa taille', () => {
     // il partage désormais la MEME règle de mesure : le vérifier interdit de
     // corriger l'un en cassant l'autre.
     render(<AssistantWizard />);
+    await choisirAutopilote();
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
     await waitFor(() => expect(echelle()).toBeGreaterThan(0));
   });
@@ -158,6 +169,7 @@ describe('L indice « double-clic » de l Autopilote se voit', () => {
     // PARAGRAPHE GRIS. Personne ne la lisait, donc personne ne decouvrait le
     // double-clic, donc la fonctionnalite n'existait pas.
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const aide = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu-aide]') as HTMLElement);
     for (const mot of ['Double-cliquez', 'titre', 'CTA', 'carte', 'Glissez', 'coins']) {
@@ -165,9 +177,10 @@ describe('L indice « double-clic » de l Autopilote se voit', () => {
     }
   });
 
-  it('c est un encart, pas une ligne noyee dans le gris', () => {
+  it('c est un encart, pas une ligne noyee dans le gris', async () => {
     render(<AssistantWizard />);
-    const aide = document.querySelector('[data-autopilot-apercu-aide]') as HTMLElement;
+    await choisirAutopilote();
+    const aide = await waitFor(() => document.querySelector('[data-autopilot-apercu-aide]') as HTMLElement);
     expect(aide.className).toMatch(/border/);
     // Une icone lucide, jamais un emoji.
     expect(aide.querySelector('svg')).toBeTruthy();

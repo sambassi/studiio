@@ -215,14 +215,14 @@ type Ecran = { nom: string; monter: () => Promise<void> };
 const monterChoix = async () => {
   render(<CreerPage />);
   await waitFor(() => expect(q('[data-parcours-choix]')).not.toBeNull());
-  await waitFor(() => expect(q('[data-autopilot-apercu]')).not.toBeNull());
   await tourner();
 };
-/** Autopilote : depuis le choix, « Configurer l'Autopilote ». */
+/** Autopilote : depuis le choix, « Configurer l'Autopilote » — c'est là que l'aperçu d'exemple apparaît. */
 const monterAutopilote = async () => {
   await monterChoix();
   fireEvent.click(q('[data-parcours-autopilote]')!);
   await waitFor(() => expect(q('[data-parcours-autopilote-panneau]')?.hidden).toBe(false));
+  await waitFor(() => expect(q('[data-autopilot-apercu]')).not.toBeNull());
   await tourner();
 };
 /** Créer une vidéo (RÉFÉRENCE) : depuis le choix, « Créer une vidéo ». */
@@ -239,9 +239,10 @@ const monterAvatar = async () => {
   await tourner();
 };
 
+// Le sélecteur de mode « Créer du contenu » n'a plus de colonne d'aperçu (chantier A) :
+// il est couvert par ux-chantier-a-choix-avatar.test.tsx, pas par la règle des deux colonnes.
 const ECRANS: Ecran[] = [
   { nom: 'Créer une vidéo (référence)', monter: monterAssistant },
-  { nom: 'Créer du contenu (choix)', monter: monterChoix },
   { nom: 'Autopilote', monter: monterAutopilote },
   { nom: 'Mon avatar', monter: monterAvatar },
 ];

@@ -31,6 +31,16 @@ vi.mock('@/lib/fonts/catalog', async () => {
 
 import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
+/** Le sélecteur de mode n'a pas d'aperçu : on choisit l'Autopilote (sauf si le parcours est déjà mémorisé). */
+async function choisirAutopilote() {
+  await waitFor(() => {
+    if (!document.querySelector('[data-autopilot-apercu]') && !document.querySelector('[data-parcours-autopilote]')) throw new Error('ni sélecteur de mode ni aperçu');
+  });
+  const carte = document.querySelector('[data-parcours-autopilote]');
+  if (carte) fireEvent.click(carte);
+}
+
+
 /**
  * L'aperçu de l'Autopilote — un ÉCHANTILLON, pas une prédiction.
  *
@@ -182,14 +192,16 @@ describe('C — la portée de l affiche suit LE RENDU, pas une seconde règle', 
 
 // ─────────────────────────────────────────────────────────────────────────
 describe('D — à l écran', () => {
-  it('la colonne d aperçu n est plus vide avant de commencer', async () => {
+  it('la colonne d aperçu montre l exemple dès que l Autopilote est choisi (le sélecteur de mode, lui, n a pas d aperçu)', async () => {
     render(<AssistantWizard />);
+    await choisirAutopilote();
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
   });
 
   it('elle DIT que c est un exemple, et nomme le thème montré', async () => {
     // ⚠️ SANS CE LIBELLÉ, l'aperçu se lit comme une prédiction.
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const mention = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu-mention]') as HTMLElement);
     expect(mention.textContent).toContain('exemple');
@@ -202,6 +214,7 @@ describe('D — à l écran', () => {
     // montre le contenu qui partira au compositeur. Sous un échantillon, elle
     // promet exactement ce que l'Autopilote ne tient pas.
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     expect(apercu.textContent).not.toContain('seront exactement celles-ci');
@@ -209,6 +222,7 @@ describe('D — à l écran', () => {
 
   it('le contenu d exemple est réellement peint', async () => {
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     const attendu = buildAutopilotSample({ topics: [] });
@@ -219,6 +233,7 @@ describe('D — à l écran', () => {
     // Le pont `onConfigChange` : sans lui, l'aperçu resterait figé sur le
     // premier thème quoi que l'utilisateur choisisse.
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     await waitFor(() => expect(apercu.textContent).toContain(buildAutopilotSample({ topics: [] }).title));
@@ -233,6 +248,7 @@ describe('D — à l écran', () => {
     // attendait la réponse, il serait figé pendant tout le réglage — le seul
     // moment où il sert.
     render(<AssistantWizard />);
+    await choisirAutopilote();
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
     fireEvent.click(document.querySelector('[data-autopilot-etape="2"]') as Element);
 
@@ -253,6 +269,7 @@ describe('D — à l écran', () => {
     // onglet vide promettrait une séquence que le montage ne contient pas.
     configServeur = sanitizeConfig({ ...DEFAULT_CONFIG, rushUrls: ['https://x.test/a.mp4'] });
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     await waitFor(() => {
@@ -264,6 +281,7 @@ describe('D — à l écran', () => {
 
   it('sans rush, l onglet Vidéo reste hors d atteinte', async () => {
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     await waitFor(() => {
@@ -280,8 +298,16 @@ describe('E — l assistant « Créer simple » n est PAS touché', () => {
     // ⚠️ LE BASCULEMENT SE FAIT SUR `started`, ET SUR RIEN D'AUTRE. L'aperçu
     // de l'assistant porte ses poignées d'édition et les refs de l'export :
     // le remplacer une seule fois de trop casserait la capture des cartes.
+    // Le parcours mémorisé par un test précédent ramènerait directement l'Autopilote : on repart du sélecteur.
+    window.localStorage.removeItem('studiio:creer:parcours');
     render(<AssistantWizard />);
+    // Sélecteur de mode : aucun aperçu. L'Autopilote choisi : son exemple. Retour, puis l'assistant : le sien.
+    await waitFor(() => expect(document.querySelector('[data-parcours-choix]')).toBeTruthy());
+    expect(document.querySelector('[data-autopilot-apercu]')).toBeNull();
+    await choisirAutopilote();
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /Revenir au choix des modes/ }));
+    await waitFor(() => expect(document.querySelector('[data-parcours-choix]')).toBeTruthy());
 
     fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeNull());

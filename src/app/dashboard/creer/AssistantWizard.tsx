@@ -7099,7 +7099,10 @@ export default function AssistantWizard() {
       }}
     />
     <DeuxColonnes nom={started ? 'assistant' : parcours}>
-      <ColonneTravail>
+      {/* Le sélecteur de mode n'a rien à prévisualiser : pas de colonne d'aperçu,
+          la colonne de travail prend toute la largeur. L'aperçu revient dès qu'un
+          mode est choisi (Autopilote) ou que l'assistant démarre. */}
+      <ColonneTravail pleineLargeur={!started && parcours === 'choix'}>
         {/* MODIFICATION — la seule porte de sortie vers le serveur.
             Visible uniquement quand on modifie : en creation, rien de tout ceci
             n'existe, et le parcours se termine comme avant. */}
@@ -9454,7 +9457,9 @@ export default function AssistantWizard() {
       </ColonneTravail>
 
       {/* Colonne d'apercu COLLEE — les classes (sticky, top-20, items-start
-          sur la grille) vivent dans `DeuxColonnes`, la même que Mon avatar. */}
+          sur la grille) vivent dans `DeuxColonnes`, la même que Mon avatar.
+          Absente sur le sélecteur de mode : rien n'y est à prévisualiser. */}
+      {(started || parcours !== 'choix') && (
       <ColonneApercu>
         {/* ── AVANT DE COMMENCER : L'APERÇU DE L'AUTOPILOTE ─────────────
             L'assistant n'a rien généré tant qu'on n'a pas cliqué
@@ -9897,6 +9902,7 @@ export default function AssistantWizard() {
         </>
         )}
       </ColonneApercu>
+      )}
 
       {/* ── PANNEAU FLOTTANT DE L'ELEMENT ─────────────────────────────
           Les reglages vivaient tout en bas de la colonne : il fallait

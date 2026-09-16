@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Clapperboard,
   Trash2,
+  Mic,
 } from 'lucide-react';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 import MaVoixPanel from '@/components/voice/MaVoixPanel';
@@ -122,7 +123,7 @@ export default function AvatarPage() {
   const [progress, setProgress] = useState<number | null>(null);
   /** L'envoi de la source vers Studiio : octets réellement transférés (XHR), ou null hors envoi. */
   const [envoiSource, setEnvoiSource] = useState<ProgressionEnvoi | null>(null);
-  const maVoixRef = useRef<HTMLDivElement | null>(null);
+  const maVoixRef = useRef<HTMLElement | null>(null);
 
   /**
    * LA notification de la page (cahier UX, §2.3) : une seule à la fois, la
@@ -783,30 +784,32 @@ export default function AvatarPage() {
         data-entete="avatar"
       />
 
-      {/* B. LA notification (une seule ; la plus récente remplace) */}
-      {notificationAffichee && (
-        <Notification
-          niveau={notificationAffichee.niveau}
-          titre={notificationAffichee.titre}
-          detail={notificationAffichee.detail}
-          motif={notificationAffichee.motif ?? null}
-          {...(notificationAffichee.actionSecondaire ? { actionSecondaire: notificationAffichee.action } : { actionPrincipale: notificationAffichee.action })}
-          onFermer={() => setNotification(null)}
-          className={notificationAffichee.niveau === 'erreur' ? '[&_[data-notification-titre]]:font-normal' : undefined}
-        >
-          {notificationAffichee.niveau === 'succes' && (
-            <span data-avatar-notice className="sr-only">{[notificationAffichee.titre, ...(Array.isArray(notificationAffichee.detail) ? notificationAffichee.detail : [notificationAffichee.detail ?? ''])].join(' ').trim()}</span>
-          )}
-        </Notification>
-      )}
-
-      {/* C. Le fil d'étapes (le pipeline interne D-ID a disparu à son profit) */}
-      <FilEtapes etapes={filEtapes} />
-
       {/* D. Deux colonnes — la même mise en page que Créer (`DeuxColonnes`) :
           l'étape, ses gestes et la voix à gauche ; l'aperçu à droite. */}
       <DeuxColonnes nom="avatar" attributs={{ 'data-avatar-colonnes': '' }}>
         <ColonneTravail attributs={{ 'data-avatar-colonne': 'etape' }}>
+          {/* LA carte principale — comme la carte du wizard de Créer : le fil
+              d'étapes en tête, puis la notification (quand il y en a une),
+              la consigne, l'étape courante et ses gestes. */}
+          <div data-avatar-carte-principale className="card-base p-6 space-y-5">
+          <FilEtapes etapes={filEtapes} className="mb-1" />
+
+      {notificationAffichee && (
+            <Notification
+              niveau={notificationAffichee.niveau}
+              titre={notificationAffichee.titre}
+              detail={notificationAffichee.detail}
+              motif={notificationAffichee.motif ?? null}
+              {...(notificationAffichee.actionSecondaire ? { actionSecondaire: notificationAffichee.action } : { actionPrincipale: notificationAffichee.action })}
+              onFermer={() => setNotification(null)}
+              className={notificationAffichee.niveau === 'erreur' ? '[&_[data-notification-titre]]:font-normal' : undefined}
+            >
+              {notificationAffichee.niveau === 'succes' && (
+                <span data-avatar-notice className="sr-only">{[notificationAffichee.titre, ...(Array.isArray(notificationAffichee.detail) ? notificationAffichee.detail : [notificationAffichee.detail ?? ''])].join(' ').trim()}</span>
+              )}
+            </Notification>
+          )}
+
           {consignePage && (
             <Consigne
               titre={consignePage.titre}
@@ -828,7 +831,7 @@ export default function AvatarPage() {
 
           {/* ÉTAPE 1 — la source (première visite, ou « Changer de source ») */}
           {!avatar && (
-            <div className="card-base p-6 space-y-5">
+            <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {([
                   { id: 'photo' as const, Icon: ImageIcon, title: 'À partir d’une photo', sub: 'Prêt en quelques minutes', soon: false },
@@ -937,7 +940,7 @@ export default function AvatarPage() {
 
           {/* ÉTAPES 2–5 — l'étape courante, avec ses gestes */}
           {avatar && (
-            <div className="card-base p-6 space-y-5">
+            <div className="space-y-5">
               {/* Quand la zone d'aperçu montre autre chose que la source (aperçu de
                   validation, vidéo produite), la source reste visible ici, en petit. */}
               {zone.media !== mediaSource && (
@@ -1023,16 +1026,6 @@ export default function AvatarPage() {
             </div>
           )}
 
-          {/* ── MA VOIX ──────────────────────────────────────────────────
-              Le clonage vocal est independant de l'avatar : il alimente le
-              selecteur de voix de TOUS les montages, pas seulement cette page.
-              Il est donc affiche des la premiere visite, avant meme qu'un avatar
-              existe — dans la colonne de travail, sous l'etape, face a l'apercu. */}
-          <VoiceCloneRecorder />
-          {/* Ma voix & prononciations — la voix utilisée, les prononciations,
-              l'aperçu affiché/prononcé, l'écoute réelle ou son indisponibilité. */}
-          <div ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none">
-            <MaVoixPanel />
           </div>
         </ColonneTravail>
 
@@ -1139,6 +1132,31 @@ export default function AvatarPage() {
           )}
         </ColonneApercu>
       </DeuxColonnes>
+
+      {/* ── MA VOIX ──────────────────────────────────────────────────
+          Le clonage vocal est independant de l'avatar : il alimente le
+          selecteur de voix de TOUS les montages, pas seulement cette page.
+          Il est donc affiche des la premiere visite, avant meme qu'un avatar
+          existe — SOUS les deux colonnes (la voix n'allonge pas la colonne
+          de travail ; sur mobile elle vient apres l'apercu), en UNE section :
+          enregistrer, voix utilisee, prononciations, apercu prononce, ecoute. */}
+      <section ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none space-y-4">
+        <EnteteSection
+          titre="Ma voix"
+          sousTitre="Votre voix clonée, ses prononciations et son écoute — pour tous vos montages."
+          icone={<Mic className="w-6 h-6 text-white" />}
+          niveauTitre={2}
+          data-entete="ma-voix"
+        />
+        <div className="card-base p-6 space-y-8">
+          <VoiceCloneRecorder />
+          {/* Ma voix & prononciations — la voix utilisée, les prononciations,
+              l'aperçu affiché/prononcé, l'écoute réelle ou son indisponibilité. */}
+          <div className="border-t border-white/5 pt-6">
+            <MaVoixPanel />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

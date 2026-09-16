@@ -43,6 +43,16 @@ vi.mock('@/lib/fonts/catalog', async () => {
 
 import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
+/** Le sélecteur de mode n'a pas d'aperçu : on choisit l'Autopilote (sauf si le parcours est déjà mémorisé). */
+async function choisirAutopilote() {
+  await waitFor(() => {
+    if (!document.querySelector('[data-autopilot-apercu]') && !document.querySelector('[data-parcours-autopilote]')) throw new Error('ni sélecteur de mode ni aperçu');
+  });
+  const carte = document.querySelector('[data-parcours-autopilote]');
+  if (carte) fireEvent.click(carte);
+}
+
+
 const CARTES = [
   { id: 'c1', icon: 'Zap', title: 'Carte une', value: '10' },
   { id: 'c2', icon: 'Moon', title: 'Carte deux', value: '20' },
@@ -327,6 +337,7 @@ describe('Bug 3 — le texte des cartes se règle', () => {
 
   it('le panneau de carte de l Autopilote expose police, taille et format', async () => {
     render(<AssistantWizard />);
+    await choisirAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     fireEvent.doubleClick(apercu.querySelector('[data-card-id]') as Element);

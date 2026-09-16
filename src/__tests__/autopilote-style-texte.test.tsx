@@ -48,6 +48,16 @@ vi.mock('@/lib/fonts/catalog', async () => {
 
 import AssistantWizard from '@/app/dashboard/creer/AssistantWizard';
 
+/** Le sélecteur de mode n'a pas d'aperçu : on choisit l'Autopilote (sauf si le parcours est déjà mémorisé). */
+async function choisirAutopilote() {
+  await waitFor(() => {
+    if (!document.querySelector('[data-autopilot-apercu]') && !document.querySelector('[data-parcours-autopilote]')) throw new Error('ni sélecteur de mode ni aperçu');
+  });
+  const carte = document.querySelector('[data-parcours-autopilote]');
+  if (carte) fireEvent.click(carte);
+}
+
+
 const POST: PreparedPost = {
   title: 'sommeil',
   caption: '',
@@ -237,6 +247,8 @@ describe('C — l aperçu de l Autopilote est ÉDITABLE', () => {
 
   const monter = async () => {
     render(<AssistantWizard />);
+    // Le sélecteur de mode n'a pas d'aperçu : on choisit l'Autopilote d'abord.
+    await choisirAutopilote();
     return waitFor(() => document.querySelector('[data-autopilot-apercu]') as HTMLElement);
   };
 

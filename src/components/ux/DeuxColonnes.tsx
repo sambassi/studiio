@@ -43,9 +43,11 @@ export default function DeuxColonnes({ nom, children, className = '', attributs 
   );
 }
 
-export function ColonneTravail({ children, className = '', attributs }: { children: ReactNode; className?: string; attributs?: Attributs }) {
+export function ColonneTravail({ children, className = '', attributs, pleineLargeur = false }: { children: ReactNode; className?: string; attributs?: Attributs; pleineLargeur?: boolean }) {
   return (
-    <div data-colonne="travail" {...(attributs ?? {})} className={`lg:col-span-3 space-y-4 ${className}`}>
+    /* `pleineLargeur` : un écran sans aperçu (le sélecteur de mode) occupe les
+       cinq colonnes — aucun vide réservé à droite, même grille partout. */
+    <div data-colonne="travail" data-colonne-pleine-largeur={pleineLargeur ? '' : undefined} {...(attributs ?? {})} className={`${pleineLargeur ? 'lg:col-span-5' : 'lg:col-span-3'} space-y-4 ${className}`}>
       {children}
     </div>
   );
