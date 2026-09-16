@@ -44,6 +44,9 @@ interface AvatarRow {
   /** Avatar D-ID : l'étape DÉRIVÉE par le serveur et la phrase de consentement à lire. */
   etape_did?: EtapeDid;
   provider_consent_text?: string | null;
+  consent_name?: string | null;
+  /** Fin de validité de la phrase de consentement (ISO), calculée par le serveur. */
+  consent_expire_le?: string | null;
   version?: number;
   validated_at?: string | null;
   /**
@@ -77,6 +80,8 @@ export default function AvatarPage() {
   const [voices, setVoices] = useState<Voice[]>([]);
   /** « À partir d'une vidéo » n'est ouvert que si le serveur le dit (drapeau + clé D-ID). */
   const [didVideoActif, setDidVideoActif] = useState(false);
+  /** Le nom du profil (rendu par le serveur) ne sert qu'à PRÉ-REMPLIR le nom de consentement D-ID : la personne le corrige. */
+  const [nomProfil, setNomProfil] = useState<string | null>(null);
 
   // Création
   const [kind, setKind] = useState<AvatarKind>('photo');
@@ -262,6 +267,7 @@ export default function AvatarPage() {
 
     setAvatar(json.data.avatar);
     setDidVideoActif(json.data.didVideoActif === true);
+    setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
     // Un jeton d'ouverture ne vaut que pour la version qui l'a délivré.
@@ -806,6 +812,9 @@ export default function AvatarPage() {
             <AvatarVideoDid
               etape={avatar.etape_did}
               texteConsentement={avatar.provider_consent_text ?? null}
+              nomConsentement={avatar.consent_name ?? null}
+              nomProfil={nomProfil}
+              expireLe={avatar.consent_expire_le ?? null}
               erreurEntrainement={avatar.training_error ?? null}
               onChange={async () => { await loadAvatar(false); }}
             />

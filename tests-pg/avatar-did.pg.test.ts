@@ -24,6 +24,7 @@ const AVATAR_BASE = [
   join(RACINE, 'migrations/2026-09-15-avatar-jumeau-en-vol.sql'),
 ];
 const MIGRATION = join(RACINE, 'migrations/2026-09-15-avatar-fournisseur-did.sql');
+const MIGRATION_NOM = join(RACINE, 'migrations/2026-09-16-avatar-consent-name.sql');
 
 let db: Client;
 beforeAll(async () => { db = await connecter(); });
@@ -97,6 +98,28 @@ describe('1. La migration sur la base actuelle, avec des avatars HeyGen existant
     await expect(apercu()).rejects.toMatchObject({ code: '23505' });
     const { rows } = await db.query("select indexname from pg_indexes where schemaname = 'public' and indexname in ('avatar_generations_apercu_unique', 'avatar_generations_jumeau_en_vol_uidx', 'user_avatars_one_active_per_user_uidx') order by 1");
     expect(rows.map((r) => r.indexname)).toEqual(['avatar_generations_apercu_unique', 'avatar_generations_jumeau_en_vol_uidx', 'user_avatars_one_active_per_user_uidx']);
+  });
+});
+
+describe('1 bis. Le nom de consentement et l’heure de la phrase (2026-09-16)', () => {
+  it('⚠️ s’applique sur la base D-ID, se rejoue, deux colonnes nullables, lignes intactes ; refuse sans la migration D-ID', async () => {
+    await baseActuelle();
+    await expect(appliquerMigration(db, MIGRATION_NOM)).rejects.toThrow(/provider_consent_id absente/);
+    await appliquerMigration(db, MIGRATION);
+    const u = await creerUtilisateur(db, 100);
+    const id = await avatarHeygen(u);
+    const avant = (await db.query('select * from public.user_avatars where id = $1', [id])).rows[0];
+    await expect(appliquerMigration(db, MIGRATION_NOM)).resolves.not.toThrow();
+    await expect(appliquerMigration(db, MIGRATION_NOM)).resolves.not.toThrow();
+    expect(await colonne('user_avatars', 'consent_name')).toMatchObject({ data_type: 'text', is_nullable: 'YES', column_default: null });
+    expect(await colonne('user_avatars', 'provider_consent_created_at')).toMatchObject({ data_type: 'timestamp with time zone', is_nullable: 'YES', column_default: null });
+    const apres = (await db.query('select * from public.user_avatars where id = $1', [id])).rows[0];
+    for (const k of Object.keys(avant)) expect(apres[k], k).toEqual(avant[k]);
+    expect(apres).toMatchObject({ consent_name: null, provider_consent_created_at: null });
+    // Le nom de la personne (accents, apostrophe typographique) s'écrit tel quel, distinct du nom de l'avatar.
+    await db.query("update public.user_avatars set consent_name = $2, provider_consent_created_at = now(), name = 'Mon avatar vidéo' where id = $1", [id, 'Jean-Éric d\u2019Aubigné']);
+    const l = (await db.query('select name, consent_name from public.user_avatars where id = $1', [id])).rows[0];
+    expect(l).toEqual({ name: 'Mon avatar vidéo', consent_name: 'Jean-Éric d\u2019Aubigné' });
   });
 });
 

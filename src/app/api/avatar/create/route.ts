@@ -18,7 +18,7 @@ import {
 import { commencerNouvelleVersionAvatar } from '@/lib/avatar/version';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
 import {
-  FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, etapeDid, rafraichirEntrainementDid, retirerAvatarChezDid,
+  FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, DUREE_VALIDITE_CONSENTEMENT_MS, etapeDid, rafraichirEntrainementDid, retirerAvatarChezDid,
   type AvatarDid,
 } from '@/lib/avatar/did';
 import { retirerObjetPriveAvatar } from '@/lib/avatar/source';
@@ -56,9 +56,12 @@ function sansSourceUrl(avatar: Record<string, unknown>): Record<string, unknown>
   } = avatar;
   void _sourceUrl; void _consentId; void _consentKey;
   if (reste.provider === FOURNISSEUR_DID) {
-    const { provider_avatar_id: _pa, provider_asset_id: _ps, ...sansIds } = reste;
+    const { provider_avatar_id: _pa, provider_asset_id: _ps, provider_consent_created_at: creeLe, ...sansIds } = reste;
     void _pa; void _ps;
-    return { ...sansIds, etape_did: etapeDid(avatar as unknown as AvatarDid) };
+    // La fin de validité de la phrase (30 min, D-ID), calculée ici : l'écran n'a pas à connaître la règle.
+    const t = typeof creeLe === 'string' ? new Date(creeLe).getTime() : NaN;
+    const consent_expire_le = Number.isFinite(t) ? new Date(t + DUREE_VALIDITE_CONSENTEMENT_MS).toISOString() : null;
+    return { ...sansIds, etape_did: etapeDid(avatar as unknown as AvatarDid), consent_expire_le };
   }
   return reste;
 }
@@ -219,7 +222,8 @@ export async function GET() {
 
     // `didVideoActif` : l'ecran ouvre « A partir d'une video » seulement si le
     // serveur le dit — drapeau ET cle presents. Jamais la cle elle-meme.
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible() } });
+    // `nomProfil` : le nom du compte, pour PRÉ-REMPLIR le nom de consentement D-ID à l'écran. Rien d'autre du profil.
+    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), nomProfil: session.user.name ?? null } });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);
     return NextResponse.json(

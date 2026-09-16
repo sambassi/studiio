@@ -21,8 +21,14 @@ export type EtapeDid =
 
 export interface AvatarVideoDidProps {
   etape: EtapeDid;
-  /** La phrase à lire, telle que D-ID l'a rendue (présente dès `consentement_texte_pret`). */
+  /** La phrase à lire — celle de D-ID, avec le nom de la personne à la place de `[user name]`. */
   texteConsentement: string | null;
+  /** Le nom de la personne tel qu'enregistré avec la phrase (celui à prononcer, celui que D-ID reçoit). */
+  nomConsentement?: string | null;
+  /** Pré-remplissage du nom : le profil du compte. La personne le corrige si besoin. */
+  nomProfil?: string | null;
+  /** Fin de validité de la phrase (ISO) : D-ID fait expirer un consentement 30 minutes après sa création. */
+  expireLe?: string | null;
   erreurEntrainement?: string | null;
   /** Rappelé à chaque changement d'étape : la page relit l'avatar. */
   onChange: () => void | Promise<void>;
@@ -37,9 +43,11 @@ const ETAPES_PIPELINE: Array<{ cle: string; libelle: string; atteinte: (e: Etape
   { cle: 'pret', libelle: 'Prêt', atteinte: (e) => e === 'pret' || e === 'valide' },
 ];
 
-export default function AvatarVideoDid({ etape, texteConsentement, erreurEntrainement, onChange, fetchImpl }: AvatarVideoDidProps) {
+export default function AvatarVideoDid({ etape, texteConsentement, nomConsentement, nomProfil, expireLe, erreurEntrainement, onChange, fetchImpl }: AvatarVideoDidProps) {
   const f = fetchImpl ?? fetch;
   const [occupe, setOccupe] = useState<null | 'phrase' | 'video' | 'creer'>(null);
+  const [nom, setNom] = useState<string>(nomConsentement ?? nomProfil ?? '');
+  const expiree = !!expireLe && new Date(expireLe).getTime() <= Date.now();
   const [erreur, setErreur] = useState<string | null>(null);
   const [erreurConsentement, setErreurConsentement] = useState<string | null>(null);
   const [fichier, setFichier] = useState<File | null>(null);
@@ -82,7 +90,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, erreurEntrain
         if (res.status === 409) await onChange();
         return;
       }
-      if (quoi === 'video') { setFichier(null); if (inputRef.current) inputRef.current.value = ''; setErreurConsentement(null); }
+      if (quoi === 'video' || quoi === 'phrase') { setFichier(null); if (inputRef.current) inputRef.current.value = ''; setErreurConsentement(null); }
       await onChange();
     } catch {
       setErreur('Connexion impossible. Réessayez.');
@@ -91,6 +99,12 @@ export default function AvatarVideoDid({ etape, texteConsentement, erreurEntrain
       setOccupe(null);
     }
   };
+
+  const demanderPhrase = (renouveler: boolean) => appeler('phrase', '/api/avatar/did/consentement', {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nom: nom.trim(), renouveler }),
+  });
+  const nomValide = nom.trim().length >= 2;
 
   const envoyerVideoConsentement = () => {
     if (!fichier) return;
@@ -115,10 +129,14 @@ export default function AvatarVideoDid({ etape, texteConsentement, erreurEntrain
       </ol>
 
       {etape === 'consentement_a_demander' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="text-sm font-medium">2. Obtenir ma phrase de consentement</div>
-          <p className="text-xs text-gray-400">Notre fournisseur tire au sort une phrase que vous lirez face caméra : c&apos;est ce qui prouve que l&apos;avatar est bien le vôtre.</p>
-          <button data-avatar-did-action="phrase" onClick={() => appeler('phrase', '/api/avatar/did/consentement')} disabled={!!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
+          <p className="text-xs text-gray-400">Notre fournisseur tire au sort une phrase que vous lirez face caméra, avec votre nom : c&apos;est ce qui prouve que l&apos;avatar est bien le vôtre.</p>
+          <label className="block text-xs text-gray-400">
+            Votre nom, exactement comme vous le prononcerez
+            <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder="Prénom Nom" className="mt-1 w-full rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" />
+          </label>
+          <button data-avatar-did-action="phrase" onClick={() => demanderPhrase(false)} disabled={!!occupe || !nomValide} className="button-primary flex items-center gap-2 disabled:opacity-40">
             {occupe === 'phrase' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Obtenir ma phrase de consentement
           </button>
         </div>
@@ -129,20 +147,34 @@ export default function AvatarVideoDid({ etape, texteConsentement, erreurEntrain
           {etape === 'consentement_refuse' && (
             <div data-avatar-did-refus className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span>Votre vidéo de consentement n&apos;a pas été acceptée{erreurConsentement ? ` (${erreurConsentement})` : ''}. Relisez la phrase, bien audible, face caméra, puis réimportez.</span>
+              <span>Votre vidéo de consentement n&apos;a pas été acceptée{erreurConsentement ? ` — motif du fournisseur : ${erreurConsentement}` : ''}. Vérifiez votre nom ci-dessous, obtenez une nouvelle phrase si celle-ci a expiré, relisez-la exactement, bien audible, face caméra, puis réimportez.</span>
             </div>
           )}
           <div className="text-sm font-medium">3. Importer ma vidéo de consentement</div>
-          <div data-avatar-did-phrase className="rounded-xl bg-gray-900/60 p-4">
-            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Lisez exactement cette phrase, face caméra :</div>
+          <div data-avatar-did-phrase className="rounded-xl bg-gray-900/60 p-4 space-y-2">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Lisez exactement cette phrase, face caméra :</div>
             <div className="text-base text-white font-medium">{texteConsentement}</div>
+            {nomConsentement && (
+              <div data-avatar-did-nom-prononce className="text-xs text-gray-400">Votre nom, tel qu&apos;il doit être prononcé : <span className="text-gray-200">{nomConsentement}</span></div>
+            )}
+            {expireLe && (
+              <div data-avatar-did-expiration={expiree ? 'expiree' : 'valide'} className={`text-xs ${expiree ? 'text-amber-200' : 'text-gray-500'}`}>
+                {expiree ? 'Cette phrase a expiré (30 minutes). Obtenez une nouvelle phrase avant d’enregistrer.' : `Valable jusqu’à ${new Date(expireLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} (30 minutes).`}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder="Prénom Nom" className="rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" aria-label="Votre nom, exactement comme vous le prononcerez" />
+            <button data-avatar-did-action="renouveler" onClick={() => demanderPhrase(true)} disabled={!!occupe || !nomValide} className="text-xs text-gray-300 hover:text-white flex items-center gap-1.5 disabled:opacity-40">
+              {occupe === 'phrase' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />} Obtenir une nouvelle phrase
+            </button>
           </div>
           <input ref={inputRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={(e) => { setErreur(null); setFichier(e.target.files?.[0] ?? null); }} />
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={() => inputRef.current?.click()} disabled={!!occupe} className="rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500 transition px-4 py-3 text-sm text-gray-300 flex items-center gap-2">
               <Upload className="w-4 h-4" /> {fichier ? `${fichier.name} — ${Math.round(fichier.size / 1024 / 1024)} Mo` : 'Choisir la vidéo de consentement'}
             </button>
-            <button data-avatar-did-action="video" onClick={envoyerVideoConsentement} disabled={!fichier || !!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
+            <button data-avatar-did-action="video" onClick={envoyerVideoConsentement} disabled={!fichier || !!occupe || expiree} className="button-primary flex items-center gap-2 disabled:opacity-40">
               {occupe === 'video' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Envoyer ma vidéo de consentement
             </button>
           </div>

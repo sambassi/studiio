@@ -10,17 +10,28 @@
  * Aucune clé, aucun identifiant fournisseur ne sort : l'écran reçoit une
  * étape, une phrase, un éventuel message.
  */
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth/config';
 import { demanderConsentementDid, verifierConsentementDid } from '@/lib/avatar/did';
 import { compteCourant, reponseDid } from '../reponse';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+/**
+ * POST { nom?, renouveler? } — `nom` : le nom de la PERSONNE, tel qu'elle le
+ * prononcera (saisi à l'écran) ; à défaut, le nom du profil de la session.
+ * Jamais le nom de l'avatar. `renouveler` : une nouvelle phrase (expirée,
+ * ou nom changé).
+ */
+export async function POST(req: NextRequest) {
   const c = await compteCourant();
   if ('reponse' in c) return c.reponse;
+  let corps: { nom?: unknown; renouveler?: unknown } = {};
+  try { corps = (await req.json()) ?? {}; } catch { corps = {}; }
+  const session = await auth();
+  const nom = typeof corps.nom === 'string' && corps.nom.trim() ? corps.nom : session?.user?.name ?? undefined;
   try {
-    return reponseDid(await demanderConsentementDid(c.userId));
+    return reponseDid(await demanderConsentementDid(c.userId, { nom, renouveler: corps.renouveler === true }));
   } catch (e) {
     console.error('[Avatar][D-ID] consentement :', e instanceof Error ? e.message : String(e));
     return NextResponse.json({ success: false, error: 'Le consentement n’a pas pu être demandé.' }, { status: 500 });

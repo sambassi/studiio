@@ -69,6 +69,7 @@ describe('patchNouvelleVersion — la transition, pure', () => {
       provider_avatar_id: null, provider_asset_id: null, training_error: null,
       // Le consentement FOURNISSEUR (D-ID) est propre à une source : remis à zéro aussi.
       provider_consent_id: null, provider_consent_text: null, provider_consent_status: null, consent_object_key: null,
+      consent_name: null, provider_consent_created_at: null,
     });
     // Ce qui est conservé n'apparaît pas : consentement, source, identité.
     expect(Object.keys(p!)).not.toContain('consent_text');
