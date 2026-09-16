@@ -38,6 +38,8 @@ export interface PatchNouvelleVersion {
   provider_consent_text: null;
   provider_consent_status: null;
   consent_object_key: null;
+  consent_name: null;
+  provider_consent_created_at: null;
 }
 
 /**
@@ -68,6 +70,8 @@ export function patchNouvelleVersion(avatar: AvatarVersionnable): PatchNouvelleV
     provider_consent_text: null,
     provider_consent_status: null,
     consent_object_key: null,
+    consent_name: null,
+    provider_consent_created_at: null,
   };
 }
 

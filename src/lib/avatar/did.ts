@@ -54,6 +54,52 @@ export interface AvatarDid extends AvatarVivant {
   provider_consent_text?: string | null;
   provider_consent_status?: string | null;
   consent_object_key?: string | null;
+  /** Le nom de la PERSONNE qui consent — celui qu'elle prononce et que D-ID reçoit. Jamais le nom de l'avatar. */
+  consent_name?: string | null;
+  provider_consent_created_at?: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Le nom de consentement et la phrase
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * D-ID rend une phrase qui contient le marqueur `[user name]` (et un
+ * passcode de trois mots). La personne doit lire la phrase AVEC son nom à
+ * la place du marqueur, et ce même nom part dans `name` de
+ * `POST /consents/{id}` : c'est ce que D-ID compare à l'audio. Un nom
+ * différent — a fortiori « Mon avatar vidéo » — c'est « audio-text mismatch ».
+ */
+export const MARQUEUR_NOM_DID = /\[user[ _-]?name\]/gi;
+
+/** Un consentement D-ID expire 30 minutes après sa création (documentation D-ID). On prévient un peu avant. */
+export const DUREE_VALIDITE_CONSENTEMENT_MS = 30 * 60 * 1000;
+export const MARGE_EXPIRATION_CONSENTEMENT_MS = 2 * 60 * 1000;
+
+/**
+ * Le nom tel qu'il sera prononcé : lettres (accents compris), espaces,
+ * apostrophes, traits d'union ; 2 à 80 caractères ; espaces normalisés.
+ * `null` si rien d'utilisable — on ne fabrique pas un nom.
+ */
+export function nomConsentementValide(brut: unknown): string | null {
+  if (typeof brut !== 'string') return null;
+  const nom = brut.trim().replace(/\s+/g, ' ');
+  if (nom.length < 2 || nom.length > 80) return null;
+  // Lettres de toute écriture, marques (accents combinés), apostrophes droite et typographique, espace, point, trait d'union.
+  if (!/^[\p{L}][\p{L}\p{M}'\u2019 .-]*[\p{L}.]$/u.test(nom)) return null;
+  return nom;
+}
+
+/** La phrase À LIRE : le marqueur remplacé par le nom ; sans marqueur, la phrase telle quelle. */
+export function phraseConsentementAvecNom(texte: string, nom: string): string {
+  return texte.replace(MARQUEUR_NOM_DID, nom);
+}
+
+export function consentementExpire(creeLe: string | null | undefined, maintenant = Date.now()): boolean {
+  if (!creeLe) return true;
+  const t = new Date(creeLe).getTime();
+  if (!Number.isFinite(t)) return true;
+  return maintenant - t > DUREE_VALIDITE_CONSENTEMENT_MS - MARGE_EXPIRATION_CONSENTEMENT_MS;
 }
 
 export type EtapeDid =
@@ -87,7 +133,7 @@ export type MotifDid =
   | 'moteur_indisponible' | 'avatar_absent' | 'fournisseur_different' | 'source_absente'
   | 'consentement_absent' | 'consentement_non_accepte' | 'consentement_en_verification' | 'consentement_deja_accepte'
   | 'avatar_deja_cree' | 'avatar_non_pret' | 'concurrent' | 'format_invalide' | 'fichier_trop_lourd' | 'fichier_vide'
-  | 'voix_indisponible' | 'apercu_existant' | 'base';
+  | 'voix_indisponible' | 'apercu_existant' | 'nom_requis' | 'consentement_expire' | 'base';
 
 export type ResultatDid<T> = { ok: true } & T | { ok: false; motif: MotifDid; message: string; statut: number };
 
@@ -110,6 +156,8 @@ const MESSAGES: Record<MotifDid, string> = {
   fichier_vide: 'Le fichier est vide.',
   voix_indisponible: 'Configurez votre voix personnelle (« Ma voix ») pour générer l’aperçu.',
   apercu_existant: 'Un aperçu est déjà en cours ou disponible pour cette version.',
+  nom_requis: 'Indiquez votre nom tel que vous le prononcerez dans la vidéo de consentement.',
+  consentement_expire: 'Votre phrase de consentement a expiré (30 minutes). Obtenez une nouvelle phrase, puis réenregistrez-la.',
   base: 'Votre avatar n’a pas pu être lu ou enregistré. Réessayez.',
 };
 
@@ -145,32 +193,58 @@ export function statutLocalDid(statut: StatutAvatarDid): 'processing' | 'complet
 // 1. Le consentement : la phrase
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * La phrase à lire, pour CE nom.
+ *
+ * `nom` : le nom de la personne, tel qu'elle le prononcera (saisi à l'écran,
+ * pré-rempli du profil). `renouveler` : demander une nouvelle phrase même si
+ * une phrase valide existe (elle a expiré côté personne, ou le nom change).
+ * Une phrase est rendue telle quelle (`deja: true`) si elle existe, n'est ni
+ * refusée ni expirée, porte le même nom, et qu'on ne demande pas à renouveler.
+ * Un consentement en VÉRIFICATION ou ACCEPTÉ ne se remplace pas.
+ */
 export async function demanderConsentementDid(
-  userId: string, deps: DepsDid = {},
-): Promise<ResultatDid<{ texte: string; etape: EtapeDid; deja: boolean }>> {
+  userId: string, args: { nom?: unknown; renouveler?: boolean } = {}, deps: DepsDid = {},
+): Promise<ResultatDid<{ texte: string; nom: string; etape: EtapeDid; deja: boolean; expireLe: string | null }>> {
+  type R = { texte: string; nom: string; etape: EtapeDid; deja: boolean; expireLe: string | null };
   const env = deps.env ?? process.env;
-  const indispo = disponibilite<{ texte: string; etape: EtapeDid; deja: boolean }>(env);
+  const indispo = disponibilite<R>(env);
   if (indispo) return indispo;
   const lu = await avatarDidDuCompte(userId);
   if (!lu.ok) return lu;
   const a = lu.avatar;
   if (a.provider_avatar_id) return refus('avatar_deja_cree', MESSAGES.avatar_deja_cree, 409);
   if (!cleSourceAvatarDuCompte(a.source_object_key, userId)) return refus('source_absente', MESSAGES.source_absente, 409);
-  // Déjà demandé, et pas refusé : la même phrase — aucun second consentement.
-  if (a.provider_consent_id && a.provider_consent_text && a.provider_consent_status !== 'error') {
-    return { ok: true, texte: a.provider_consent_text, etape: etapeDid(a), deja: true };
+  const s = a.provider_consent_status;
+  if (s === 'created' || s === 'validating') return refus('consentement_en_verification', MESSAGES.consentement_en_verification, 409);
+  if (s === 'done') return refus('consentement_deja_accepte', MESSAGES.consentement_deja_accepte, 409);
+
+  const nom = nomConsentementValide(args.nom) ?? nomConsentementValide(a.consent_name);
+  if (!nom) return refus('nom_requis', MESSAGES.nom_requis, 400);
+  const expireLeDe = (cree: string | null | undefined) => (cree ? new Date(new Date(cree).getTime() + DUREE_VALIDITE_CONSENTEMENT_MS).toISOString() : null);
+
+  // Une phrase valide, non refusée, au même nom : la même — aucun second consentement.
+  if (!args.renouveler && a.provider_consent_id && a.provider_consent_text && s !== 'error'
+    && a.consent_name === nom && !consentementExpire(a.provider_consent_created_at)) {
+    return { ok: true, texte: a.provider_consent_text, nom, etape: etapeDid(a), deja: true, expireLe: expireLeDe(a.provider_consent_created_at) };
   }
 
   let consentement: { id: string; texte: string };
   try {
     consentement = await creerConsentement('French', deps);
   } catch (e) {
+    console.warn(`[Avatar][D-ID] consentement non créé pour l'avatar ${a.id} v${a.version} : ${e instanceof DidError ? `${e.code} — ${e.message}` : 'erreur inconnue'}`);
     return refus('base', messageFournisseur(e, 'Le fournisseur n’a pas pu créer le consentement.'), statutFournisseur(e));
   }
-  // CAS sur l'état exact remplacé : aucun consentement, ou un consentement refusé.
+  const phrase = phraseConsentementAvecNom(consentement.texte, nom);
+  const creeLe = new Date().toISOString();
+  // CAS sur l'état exact remplacé : le consentement précédent (ou aucun), jamais un consentement en vérification/accepté.
   let maj = supabaseAdmin
     .from('user_avatars')
-    .update({ provider_consent_id: consentement.id, provider_consent_text: consentement.texte, provider_consent_status: null, consent_object_key: null })
+    .update({
+      provider_consent_id: consentement.id, provider_consent_text: phrase, provider_consent_status: null, consent_object_key: null,
+      consent_name: nom, provider_consent_created_at: creeLe,
+    })
     .eq('id', a.id).eq('user_id', userId).eq('version', a.version).is('deleted_at', null).is('provider_avatar_id', null);
   maj = a.provider_consent_id ? maj.eq('provider_consent_id', a.provider_consent_id) : maj.is('provider_consent_id', null);
   const { data: touchees, error } = await maj.select('id');
@@ -178,12 +252,14 @@ export async function demanderConsentementDid(
   if (!touchees || touchees.length !== 1) {
     // Une autre requête a gagné : on rend ce qu'elle a posé (le consentement qu'on vient de créer reste orphelin, sans coût).
     const relu = await avatarDidDuCompte(userId);
-    if (relu.ok && relu.avatar.provider_consent_text && relu.avatar.version === a.version) {
-      return { ok: true, texte: relu.avatar.provider_consent_text, etape: etapeDid(relu.avatar), deja: true };
+    if (relu.ok && relu.avatar.provider_consent_text && relu.avatar.consent_name && relu.avatar.version === a.version) {
+      return { ok: true, texte: relu.avatar.provider_consent_text, nom: relu.avatar.consent_name, etape: etapeDid(relu.avatar), deja: true, expireLe: expireLeDe(relu.avatar.provider_consent_created_at) };
     }
     return refus('concurrent', MESSAGES.concurrent, 409);
   }
-  return { ok: true, texte: consentement.texte, etape: 'consentement_texte_pret', deja: false };
+  // L'ancienne vidéo de consentement (refusée) n'a plus de ligne qui la désigne.
+  if (a.consent_object_key) await retirerObjetPriveAvatar(userId, a.consent_object_key);
+  return { ok: true, texte: phrase, nom, etape: 'consentement_texte_pret', deja: false, expireLe: expireLeDe(creeLe) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -208,9 +284,13 @@ export async function deposerVideoConsentementDid(
   const a = lu.avatar;
   if (a.provider_avatar_id) return refus('avatar_deja_cree', MESSAGES.avatar_deja_cree, 409);
   if (!a.provider_consent_id || !a.provider_consent_text) return refus('consentement_absent', MESSAGES.consentement_absent, 409);
+  // Le nom de la PERSONNE, jamais celui de l'avatar : sans lui, la phrase n'a pas été obtenue par ce chemin.
+  const nomConsentement = nomConsentementValide(a.consent_name);
+  if (!nomConsentement) return refus('nom_requis', MESSAGES.nom_requis, 409);
   const s = a.provider_consent_status;
   if (s === 'created' || s === 'validating') return refus('consentement_en_verification', MESSAGES.consentement_en_verification, 409);
   if (s === 'done') return refus('consentement_deja_accepte', MESSAGES.consentement_deja_accepte, 409);
+  if (consentementExpire(a.provider_consent_created_at)) return refus('consentement_expire', MESSAGES.consentement_expire, 409);
 
   // Le dépôt privé, AVANT la base : sans objet, rien d'autre.
   const cle = cleConsentementAvatar(userId, ext);
@@ -237,8 +317,11 @@ export async function deposerVideoConsentementDid(
 
   // Le fournisseur reçoit une URL signée, expirante — jamais l'objet public.
   try {
-    await deposerVideoConsentement({ consentId: a.provider_consent_id, nom: a.name ?? 'Studiio', sourceUrl: urlMediaTemporaire(cle, {}, env) }, deps);
+    await deposerVideoConsentement({ consentId: a.provider_consent_id, nom: nomConsentement, sourceUrl: urlMediaTemporaire(cle, {}, env) }, deps);
   } catch (e) {
+    // Le refus fournisseur est JOURNALISÉ avec son code et sa description
+    // (jamais la clé) : un 400 doit pouvoir être diagnostiqué.
+    console.warn(`[Avatar][D-ID] vidéo de consentement refusée pour l'avatar ${a.id} v${a.version} (consentement ${a.provider_consent_id}) : ${e instanceof DidError ? `${e.code} — ${e.message}` : 'erreur inconnue'}`);
     await supabaseAdmin.from('user_avatars').update({ provider_consent_status: 'error' })
       .eq('id', a.id).eq('user_id', userId).eq('version', a.version).eq('consent_object_key', cle);
     return refus('base', messageFournisseur(e, 'Le fournisseur n’a pas pu recevoir votre vidéo de consentement.'), statutFournisseur(e));
@@ -252,7 +335,7 @@ export async function deposerVideoConsentementDid(
 
 export async function verifierConsentementDid(
   userId: string, deps: DepsDid = {},
-): Promise<ResultatDid<{ etape: EtapeDid; texte: string | null; erreur: string | null }>> {
+): Promise<ResultatDid<{ etape: EtapeDid; texte: string | null; nom: string | null; expireLe: string | null; erreur: string | null }>> {
   const lu = await avatarDidDuCompte(userId);
   if (!lu.ok) return lu;
   let a = lu.avatar;
@@ -264,9 +347,10 @@ export async function verifierConsentementDid(
       distant = await lireConsentement(a.provider_consent_id, deps);
     } catch (e) {
       // Transitoire : on rend l'état connu, le prochain appel retentera.
-      return { ok: true, etape: etapeDid(a), texte: a.provider_consent_text ?? null, erreur: e instanceof DidError ? e.message : null };
+      return { ok: true, etape: etapeDid(a), texte: a.provider_consent_text ?? null, nom: a.consent_name ?? null, expireLe: expirationDe(a), erreur: e instanceof DidError ? e.message : null };
     }
     erreur = distant.erreur;
+    if (distant.statut === 'error') console.warn(`[Avatar][D-ID] consentement ${a.provider_consent_id} refusé par le fournisseur : ${distant.erreur ?? 'sans description'}`);
     if (distant.statut !== a.provider_consent_status) {
       const { data: touchees } = await supabaseAdmin
         .from('user_avatars')
@@ -277,7 +361,13 @@ export async function verifierConsentementDid(
       if (touchees && touchees.length === 1) a = touchees[0] as AvatarDid;
     }
   }
-  return { ok: true, etape: etapeDid(a), texte: a.provider_consent_text ?? null, erreur };
+  return { ok: true, etape: etapeDid(a), texte: a.provider_consent_text ?? null, nom: a.consent_name ?? null, expireLe: expirationDe(a), erreur };
+}
+
+function expirationDe(a: AvatarDid): string | null {
+  if (!a.provider_consent_created_at) return null;
+  const t = new Date(a.provider_consent_created_at).getTime();
+  return Number.isFinite(t) ? new Date(t + DUREE_VALIDITE_CONSENTEMENT_MS).toISOString() : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

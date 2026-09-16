@@ -21,7 +21,7 @@ const stockage = vi.hoisted(() => ({ objets: new Map<string, { type: string; tai
 const session = vi.hoisted(() => ({ courante: { user: { id: 'aaaaaaaa-1111-4111-8111-111111111111' } } as unknown }));
 const reseau = vi.hoisted(() => ({
   appels: [] as Array<{ url: string; method: string; body: unknown }>,
-  consentement: { id: 'cst-1', text: 'pomme vélo nuage' },
+  consentement: { id: 'cst-1', text: 'Je soussigné(e), [user name], confirme détenir tous les droits pour créer un avatar. pomme vélo nuage' },
   statutConsentement: 'validating' as string,
   avatar: { id: 'avt-1', status: 'created' },
   statutAvatar: 'training-started' as string,
@@ -67,7 +67,7 @@ vi.mock('@/lib/db/supabase', () => {
         }
         // Les défauts de la base : les colonnes absentes d'un insert sont NULL (ou leur défaut).
         const defauts = table === 'user_avatars'
-          ? { provider: 'heygen', provider_consent_id: null, provider_consent_text: null, provider_consent_status: null, consent_object_key: null, validated_at: null, deleted_at: null, training_error: null }
+          ? { provider: 'heygen', provider_consent_id: null, provider_consent_text: null, provider_consent_status: null, consent_object_key: null, consent_name: null, provider_consent_created_at: null, validated_at: null, deleted_at: null, training_error: null }
           : { video_url: null, error_message: null, credits_refunded: false, provider: 'heygen' };
         const l = { id: uuid(), created_at: new Date(Date.now() + base.compteur).toISOString(), ...defauts, ...i };
         source.push(l);
@@ -157,6 +157,10 @@ const { supprimerAvatarActif } = await import('@/lib/avatar/suppression');
 const fichier = (nom: string, type: string, taille = 1024) => new File([new Uint8Array(taille)], nom, { type });
 const formulaire = (champs: Record<string, string | File>) => { const fd = new FormData(); for (const [k, v] of Object.entries(champs)) fd.append(k, v); return fd; };
 const postCreate = (fd: FormData) => create.POST(new NextRequest('https://studiio.pro/api/avatar/create', { method: 'POST', body: fd }));
+const NOM = 'Henri Bassi';
+const PHRASE_TEMPLATE = 'Je soussigné(e), [user name], confirme détenir tous les droits pour créer un avatar. pomme vélo nuage';
+const PHRASE = PHRASE_TEMPLATE.replace('[user name]', NOM);
+const postConsentement = (corps: unknown = { nom: NOM }) => consentement.POST(new NextRequest('https://studiio.pro/api/avatar/did/consentement', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps) }));
 const postVideoConsentement = (f: File) => consentementVideo.POST(new NextRequest('https://studiio.pro/api/avatar/did/consentement/video', { method: 'POST', body: formulaire({ file: f }) }));
 const getStatut = (g: string) => statut.GET(new NextRequest(`https://studiio.pro/api/avatar/status?generationId=${g}`));
 const appelsVers = (motif: RegExp | string, methode?: string) => reseau.appels.filter((a) => (typeof motif === 'string' ? a.url === motif : motif.test(a.url)) && (!methode || a.method === methode));
@@ -171,7 +175,7 @@ async function deposerSourceDid(): Promise<Ligne> {
 }
 async function jusquAuConsentementAccepte(): Promise<Ligne> {
   await deposerSourceDid();
-  expect((await (await consentement.POST()).json()).success).toBe(true);
+  expect((await (await postConsentement()).json()).success).toBe(true);
   expect((await postVideoConsentement(fichier('c.mp4', 'video/mp4', 2048))).status).toBe(200);
   reseau.statutConsentement = 'done';
   const etat = await (await consentement.GET()).json();
@@ -193,7 +197,7 @@ beforeEach(() => {
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: [{ affiche: 'avatar', prononce: 'a-va-tar' }] } } }];
   stockage.objets.clear(); stockage.journal.length = 0;
   reseau.appels.length = 0; reseau.erreur = null; reseau.eleven = 200;
-  reseau.consentement = { id: 'cst-1', text: 'pomme vélo nuage' }; reseau.statutConsentement = 'validating';
+  reseau.consentement = { id: 'cst-1', text: PHRASE_TEMPLATE }; reseau.statutConsentement = 'validating';
   reseau.avatar = { id: 'avt-1', status: 'created' }; reseau.statutAvatar = 'training-started';
   reseau.scene = { id: 'scn-1', status: 'created' }; reseau.statutScene = { status: 'started' };
   session.courante = { user: { id: U } };
@@ -208,14 +212,14 @@ describe('1. Garde-fous : drapeau, clé, session, propriété, formats', () => {
     expect(res.status).toBe(503);
     expect((await res.json()).code).toBe('did_unavailable');
     expect(stockage.journal).toEqual([]);
-    expect((await consentement.POST()).status).toBe(503);
+    expect((await postConsentement()).status).toBe(503);
     expect(appelsVers(/d-id\.com/)).toEqual([]);
   });
 
   it('⚠️ DID_API_KEY absente (drapeau levé) → indisponible, pas de 500, aucun appel réseau, clé jamais dans la réponse', async () => {
     delete process.env.DID_API_KEY;
     expect((await (await create.GET()).json()).data.didVideoActif).toBe(false);
-    const res = await consentement.POST();
+    const res = await postConsentement();
     expect(res.status).toBe(503);
     expect((await res.json()).error).toBe('Avatar vidéo temporairement indisponible.');
     expect(appelsVers(/d-id\.com/)).toEqual([]);
@@ -223,7 +227,7 @@ describe('1. Garde-fous : drapeau, clé, session, propriété, formats', () => {
 
   it('⚠️ sans session → 401 partout ; l’avatar d’autrui est invisible (404)', async () => {
     session.courante = null;
-    expect((await consentement.POST()).status).toBe(401);
+    expect((await postConsentement()).status).toBe(401);
     expect((await consentement.GET()).status).toBe(401);
     expect((await postVideoConsentement(fichier('c.mp4', 'video/mp4'))).status).toBe(401);
     expect((await creer.POST()).status).toBe(401);
@@ -231,7 +235,7 @@ describe('1. Garde-fous : drapeau, clé, session, propriété, formats', () => {
     session.courante = { user: { id: U } };
     await deposerSourceDid();
     session.courante = { user: { id: AUTRUI } };
-    expect((await consentement.POST()).status).toBe(404);
+    expect((await postConsentement()).status).toBe(404);
     expect((await creer.POST()).status).toBe(404);
     expect(appelsVers(/d-id\.com/)).toEqual([]);
   });
@@ -280,22 +284,28 @@ describe('2. La source D-ID par la route de création existante', () => {
 describe('3. Le consentement fournisseur', () => {
   it('⚠️ POST → POST /consents {language: French}, phrase stockée et rendue ; un second POST rend LA MÊME phrase sans nouvel appel', async () => {
     await deposerSourceDid();
-    const r1 = await (await consentement.POST()).json();
-    expect(r1).toMatchObject({ success: true, data: { texte: 'pomme vélo nuage', etape: 'consentement_texte_pret', deja: false } });
+    const r1 = await (await postConsentement()).json();
+    // `[user name]` est remplacé par le nom de la PERSONNE ; la phrase affichée est celle à prononcer.
+    expect(r1).toMatchObject({ success: true, data: { texte: PHRASE, nom: NOM, etape: 'consentement_texte_pret', deja: false } });
+    expect(r1.data.texte).not.toContain('[user name]');
+    expect(typeof r1.data.expireLe).toBe('string');
     expect(appelsVers('https://api.d-id.com/consents', 'POST')[0].body).toEqual({ language: 'French' });
-    expect(vivant()).toMatchObject({ provider_consent_id: 'cst-1', provider_consent_text: 'pomme vélo nuage', provider_consent_status: null });
-    const r2 = await (await consentement.POST()).json();
-    expect(r2.data).toMatchObject({ texte: 'pomme vélo nuage', deja: true });
+    expect(vivant()).toMatchObject({ provider_consent_id: 'cst-1', provider_consent_text: PHRASE, consent_name: NOM, provider_consent_status: null, name: 'Mon avatar vidéo' });
+    expect(typeof vivant().provider_consent_created_at).toBe('string');
+    const r2 = await (await postConsentement()).json();
+    expect(r2.data).toMatchObject({ texte: PHRASE, nom: NOM, deja: true });
     expect(appelsVers('https://api.d-id.com/consents', 'POST')).toHaveLength(1);
-    // La phrase est aussi dans la ligne rendue à la page, sans identifiant.
+    // La phrase, le nom et l'expiration sont dans la ligne rendue à la page, sans identifiant.
     const g = await (await create.GET()).json();
-    expect(g.data.avatar).toMatchObject({ etape_did: 'consentement_texte_pret', provider_consent_text: 'pomme vélo nuage' });
+    expect(g.data.avatar).toMatchObject({ etape_did: 'consentement_texte_pret', provider_consent_text: PHRASE, consent_name: NOM });
+    expect(typeof g.data.avatar.consent_expire_le).toBe('string');
     expect(g.data.avatar).not.toHaveProperty('provider_consent_id');
+    expect(g.data.avatar).not.toHaveProperty('provider_consent_created_at');
   });
 
   it('⚠️ deux POST simultanés → un seul consentement RETENU, la même phrase pour les deux', async () => {
     await deposerSourceDid();
-    const [a, b] = await Promise.all([consentement.POST(), consentement.POST()]);
+    const [a, b] = await Promise.all([postConsentement(), postConsentement()]);
     const ja = await a.json(); const jb = await b.json();
     expect(ja.success && jb.success).toBe(true);
     expect(ja.data.texte).toBe(jb.data.texte);
@@ -305,7 +315,7 @@ describe('3. Le consentement fournisseur', () => {
   it('⚠️ avant la phrase, la vidéo de consentement est refusée (409) ; mauvais format → 400 ; rien n’est déposé', async () => {
     await deposerSourceDid();
     expect((await postVideoConsentement(fichier('c.mp4', 'video/mp4'))).status).toBe(409);
-    await consentement.POST();
+    await postConsentement();
     expect((await postVideoConsentement(fichier('c.webm', 'video/webm'))).status).toBe(400);
     expect((await postVideoConsentement(fichier('c.mp4', 'video/mp4', 0))).status).toBe(400);
     expect(stockage.journal.filter((j) => j.includes('consent-'))).toEqual([]);
@@ -313,7 +323,7 @@ describe('3. Le consentement fournisseur', () => {
 
   it('⚠️ vidéo de consentement : dépôt PRIVÉ `consent-…`, POST /consents/{id} avec une URL SIGNÉE de notre média ; puis en vérification ; un second envoi → 409', async () => {
     await deposerSourceDid();
-    await consentement.POST();
+    await postConsentement();
     const res = await postVideoConsentement(fichier('c.mov', 'video/quicktime', 2048));
     expect((await res.json())).toMatchObject({ success: true, data: { etape: 'consentement_en_verification' } });
     const a = vivant();
@@ -321,7 +331,10 @@ describe('3. Le consentement fournisseur', () => {
     expect(a.provider_consent_status).toBe('created');
     expect(stockage.objets.get(String(a.consent_object_key))).toEqual({ type: 'video/quicktime', taille: 2048 });
     const depot = appelsVers(/consents\/cst-1$/, 'POST')[0].body as { name: string; source_url: string };
-    expect(depot.name).toBe('Mon avatar vidéo');
+    // ⚠️ Le nom envoyé à D-ID est celui de la PERSONNE — exactement celui de la phrase — jamais celui de l'avatar.
+    expect(depot.name).toBe(NOM);
+    expect(depot.name).not.toBe('Mon avatar vidéo');
+    expect(String(vivant().provider_consent_text)).toContain(depot.name);
     expect(depot.source_url).toMatch(/^https:\/\/studiio\.pro\/api\/avatar\/media\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\/consent-\d+-[0-9a-f]{32}\.mov$/);
     expect(depot.source_url).not.toContain('storage/v1/object/public');
     expect((await postVideoConsentement(fichier('c2.mp4', 'video/mp4'))).status).toBe(409);
@@ -330,7 +343,7 @@ describe('3. Le consentement fournisseur', () => {
 
   it('⚠️ suivi : validating → toujours en vérification ; done → accepté ; error → refusé, la vidéo se réimporte (ancienne retirée) ; jamais d’avatar créé sans `done`', async () => {
     await deposerSourceDid();
-    await consentement.POST();
+    await postConsentement();
     await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
     expect((await (await consentement.GET()).json()).data.etape).toBe('consentement_en_verification');
     expect((await creer.POST()).status).toBe(409);
@@ -350,12 +363,112 @@ describe('3. Le consentement fournisseur', () => {
 
   it('D-ID injoignable pendant le suivi → l’état connu est rendu (pas de 500), prochain appel retentera', async () => {
     await deposerSourceDid();
-    await consentement.POST();
+    await postConsentement();
     await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
     reseau.erreur = { chemin: /consents\/cst-1$/, statut: 503, corps: {} };
     const res = await consentement.GET();
     expect(res.status).toBe(200);
     expect((await res.json()).data.etape).toBe('consentement_en_verification');
+  });
+});
+
+describe('3 bis. Le NOM de consentement — la personne, jamais l’avatar', () => {
+  it('⚠️ sans nom (ni corps, ni profil) → 400 nom_requis, AUCUN consentement D-ID créé ; « Mon avatar vidéo » n’est jamais un nom de personne', async () => {
+    await deposerSourceDid();
+    const res = await postConsentement({});
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe('nom_requis');
+    expect(appelsVers('https://api.d-id.com/consents', 'POST')).toEqual([]);
+    expect(vivant().consent_name).toBeNull();
+    // Un nom invalide non plus.
+    for (const mauvais of ['H', 'x'.repeat(81), 'Henri <script>', '  ', 42, null]) {
+      expect((await postConsentement({ nom: mauvais })).status, String(mauvais)).toBe(400);
+    }
+    expect(appelsVers('https://api.d-id.com/consents', 'POST')).toEqual([]);
+  });
+
+  it('⚠️ le nom du PROFIL pré-remplit à défaut ; espaces normalisés ; accents, apostrophes et traits d’union passent tels quels dans la phrase ET dans `name`', async () => {
+    session.courante = { user: { id: U, name: '  Jean-Éric   d\u2019Aubigné ' } };
+    await deposerSourceDid();
+    const r = await (await postConsentement({})).json();
+    expect(r, JSON.stringify(r)).toMatchObject({ success: true });
+    expect(r.data.nom).toBe('Jean-Éric d\u2019Aubigné');
+    expect(r.data.texte).toBe(PHRASE_TEMPLATE.replace('[user name]', 'Jean-Éric d\u2019Aubigné'));
+    await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
+    expect((appelsVers(/consents\/cst-1$/, 'POST')[0].body as { name: string }).name).toBe('Jean-Éric d\u2019Aubigné');
+  });
+
+  it('⚠️ un autre nom → une NOUVELLE phrase (le nom change ce qu’il faut prononcer) ; le même nom → la même phrase', async () => {
+    await deposerSourceDid();
+    const r1 = await (await postConsentement({ nom: NOM })).json();
+    reseau.consentement = { id: 'cst-2', text: PHRASE_TEMPLATE.replace('pomme vélo nuage', 'lac herbe salade') };
+    const r2 = await (await postConsentement({ nom: 'Henri B.' })).json();
+    expect(r2.data.deja).toBe(false);
+    expect(r2.data.texte).toBe(PHRASE_TEMPLATE.replace('pomme vélo nuage', 'lac herbe salade').replace('[user name]', 'Henri B.'));
+    expect(vivant()).toMatchObject({ provider_consent_id: 'cst-2', consent_name: 'Henri B.' });
+    const r3 = await (await postConsentement({ nom: 'Henri B.' })).json();
+    expect(r3.data.deja).toBe(true);
+    expect(r3.data.texte).toBe(r2.data.texte);
+    expect(r1.data.texte).not.toBe(r2.data.texte);
+    expect(appelsVers('https://api.d-id.com/consents', 'POST')).toHaveLength(2);
+  });
+
+  it('⚠️ phrase expirée (30 min D-ID) : la vidéo est refusée AVANT tout envoi au fournisseur ; « renouveler » donne une nouvelle phrase ; puis la vidéo passe', async () => {
+    await deposerSourceDid();
+    await postConsentement();
+    vivant().provider_consent_created_at = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+    const res = await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe('consentement_expire');
+    expect(appelsVers(/consents\/cst-1$/, 'POST')).toEqual([]);
+    expect(stockage.journal.filter((j) => j.startsWith('upload:') && j.includes('consent-'))).toEqual([]);
+    // Une demande SANS renouveler sur une phrase expirée en donne aussi une nouvelle.
+    reseau.consentement = { id: 'cst-2', text: PHRASE_TEMPLATE };
+    const r = await (await postConsentement({ nom: NOM })).json();
+    expect(r.data.deja).toBe(false);
+    expect(vivant().provider_consent_id).toBe('cst-2');
+    expect((await postVideoConsentement(fichier('c.mp4', 'video/mp4'))).status).toBe(200);
+    expect((appelsVers(/consents\/cst-2$/, 'POST')[0].body as { name: string }).name).toBe(NOM);
+  });
+
+  it('⚠️ consentement REFUSÉ : nouvelle phrase possible (renouveler), l’ancienne vidéo retirée ; en vérification ou accepté : jamais remplacé', async () => {
+    await deposerSourceDid();
+    await postConsentement();
+    await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
+    expect((await postConsentement({ nom: NOM, renouveler: true })).status).toBe(409);
+    reseau.statutConsentement = 'error';
+    await consentement.GET();
+    const ancienne = String(vivant().consent_object_key);
+    reseau.consentement = { id: 'cst-2', text: PHRASE_TEMPLATE };
+    const r = await (await postConsentement({ nom: NOM, renouveler: true })).json();
+    expect(r.data).toMatchObject({ deja: false, texte: PHRASE });
+    expect(vivant()).toMatchObject({ provider_consent_id: 'cst-2', provider_consent_status: null, consent_object_key: null });
+    expect(stockage.objets.has(ancienne)).toBe(false);
+    reseau.statutConsentement = 'validating';
+    await postVideoConsentement(fichier('c2.mp4', 'video/mp4'));
+    reseau.statutConsentement = 'done';
+    await consentement.GET();
+    expect((await postConsentement({ nom: NOM, renouveler: true })).status).toBe(409);
+  });
+
+  it('⚠️ refus fournisseur (400) à l’envoi de la vidéo : la description D-ID est rendue et journalisée — jamais la clé', async () => {
+    await deposerSourceDid();
+    await postConsentement();
+    const avert = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    reseau.erreur = { chemin: /consents\/cst-1$/, statut: 400, corps: { kind: 'ValidationError', description: 'audio-text mismatch' } };
+    const res = await postVideoConsentement(fichier('c.mp4', 'video/mp4'));
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toContain('audio-text mismatch');
+    expect(JSON.stringify(json)).not.toContain('secretDID');
+    const journal = avert.mock.calls.map((c) => c.join(' ')).join('\n');
+    expect(journal).toContain('audio-text mismatch');
+    expect(journal).toContain('did_validationerror');
+    expect(journal).not.toContain('secretDID');
+    avert.mockRestore();
+    expect(vivant().provider_consent_status).toBe('error');
+    // Le suivi rend l'étape « refusé » : la personne peut renouveler.
+    expect((await (await consentement.GET()).json()).data.etape).toBe('consentement_refuse');
   });
 });
 
