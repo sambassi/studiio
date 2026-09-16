@@ -155,9 +155,9 @@ describe('/dashboard/avatar — « À partir d’une vidéo » (D-ID)', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
     // On force une relecture (le poll réel attend 8 s) en rejouant le chargement.
     cleanup(); render(<AvatarPage />);
-    await waitFor(() => expect(document.querySelector('[data-avatar-did-action="creer"]')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-accepte] [data-notification-action="principale"]')).not.toBeNull());
     expect(document.body.textContent).toContain('Consentement accepté');
-    await act(async () => { fireEvent.click(document.querySelector('[data-avatar-did-action="creer"]') as HTMLButtonElement); });
+    await act(async () => { fireEvent.click(document.querySelector('[data-avatar-did-accepte] [data-notification-action="principale"]') as HTMLButtonElement); });
     await waitFor(() => expect(document.querySelector('[data-avatar-did-entrainement]')).not.toBeNull());
     expect(appels.filter((a) => a.url === '/api/avatar/did/creer')).toHaveLength(1);
     // Pendant l'entraînement, c'est le ProgressStatus qui porte les étapes : Source ✓ Consentement ✓ Création ✓ Entraînement ● Prêt ○
@@ -213,7 +213,7 @@ describe('/dashboard/avatar — « À partir d’une vidéo » (D-ID)', () => {
     fireEvent.change(document.querySelector('[data-avatar-did-nom]') as HTMLInputElement, { target: { value: 'Henri Bassi' } });
     await waitFor(() => expect(document.querySelector('[data-avatar-did-action="reutiliser"]')).not.toBeNull(), { timeout: 3000 });
     await act(async () => { fireEvent.click(document.querySelector('[data-avatar-did-action="reutiliser"]') as HTMLButtonElement); });
-    await waitFor(() => expect(document.querySelector('[data-avatar-did-action="creer"]')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-avatar-did-accepte] [data-notification-action="principale"]')).not.toBeNull());
     const reutilisations = appels.filter((a) => a.url === '/api/avatar/did/consentement/reutiliser');
     expect(reutilisations).toHaveLength(1);
     expect(JSON.parse(String(reutilisations[0].body))).toEqual({ nom: 'Henri Bassi' });
