@@ -97,3 +97,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });
   }
 }
+
+/**
+ * Retire un compte Zernio de Studiio — SANS supprimer la ligne.
+ *
+ * Le statut passe à `disconnected` : le compte réapparaît comme « à
+ * reconnecter » et le cron ne le sert plus (il ne lit que `connected`).
+ * L'autorisation côté Zernio, elle, n'est pas révoquée d'ici : on le dit à
+ * l'écran plutôt que de le laisser croire.
+ */
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const corps = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const platform = corps.platform;
+    if (!isZernioPlatform(platform)) {
+      return NextResponse.json({ success: false, error: 'Plateforme inconnue.' }, { status: 400 });
+    }
+    const { error } = await supabaseAdmin
+      .from('zernio_accounts')
+      .update({ status: 'disconnected', updated_at: new Date().toISOString() })
+      .eq('user_id', session.user.id)
+      .eq('platform', platform);
+    if (error) {
+      console.error('[Zernio/Accounts] déconnexion :', error.message);
+      return NextResponse.json({ success: false, error: 'Déconnexion impossible.' }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error('[Zernio/Accounts]', err);
+    return NextResponse.json({ success: false, error: 'Déconnexion impossible.' }, { status: 500 });
+  }
+}

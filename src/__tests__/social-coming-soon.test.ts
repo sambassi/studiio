@@ -61,7 +61,12 @@ describe('L’interface ne masque jamais par accident', () => {
     // Un serveur plus ancien, ou une réponse partielle, ne doit pas faire
     // disparaître les boutons de connexion.
     expect(page).toMatch(/availableMap\[platform\] = info\.available \?\? true;/);
-    expect(page).toMatch(/const comingSoon = !\(availability\[platform\.id\] \?\? true\);/);
+    // Depuis l'état unifié, la règle vit dans `etatReseaux.ts` (pure) : sans
+    // information, `available ?? true` — et l'écran ne dit « bientôt » que si
+    // cette règle le dit ET que le serveur met la plateforme en attente.
+    const regle = src('lib/social/etatReseaux.ts');
+    expect(regle).toMatch(/direct\?\.available \?\? true/);
+    expect(page).toMatch(/const comingSoon = e\.etat === 'bientot' && !\(availability\[platform\.id\] \?\? true\);/);
   });
 
   it('remplace le bouton de connexion par le message d’attente', () => {

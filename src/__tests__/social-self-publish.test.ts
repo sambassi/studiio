@@ -48,7 +48,10 @@ describe('Bloc « Publier vous-même » dans la page Réseaux', () => {
       expect(page, key).toContain(`t('${key}'`);
     }
     expect(page).toContain('handleConnect(platform.id)');
-    expect(page).toContain('handleDisconnect(platform.id)');
+    // Depuis l'état unifié, la déconnexion directe passe par une CONFIRMATION
+    // (`confirmerDeconnexion`) — le chemin existe toujours, il n'est plus à un clic.
+    expect(page).toContain('await handleDisconnect(reseau)');
+    expect(page).toContain('data-action="deconnecter"');
   });
 
   it("s'affiche aussi pour une plateforme « bientôt disponible »", () => {
