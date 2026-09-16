@@ -32,6 +32,7 @@ import {
   BATCH_SERIE_DISPONIBLE, BATCH_SERIE_MAX, BATCH_SERIE_REFUS,
   batchCountAutorise, lotRefuse, nombresProposes,
 } from '@/lib/creer/batchDisponible';
+import { MAX_BATCH } from '@/lib/creer/batch';
 import { BATCH_RENDER_DESACTIVE } from '@/lib/render/batch-disabled';
 import { bilanSerie, repriseAutorisee } from '@/lib/creer/batchRun';
 
@@ -237,34 +238,37 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 // 1, 2, 3. Le pilote, sur des valeurs
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('2 & 3. Le plafond du pilote', () => {
-  it('la série est ouverte, et plafonnée à deux', () => {
+describe('2 & 3. Le plafond de la série (UX : jusqu à 10)', () => {
+  it('la série est ouverte, et plafonnée à dix — jamais au-dessus de la limite technique', () => {
     expect(BATCH_SERIE_DISPONIBLE).toBe(true);
-    expect(BATCH_SERIE_MAX).toBe(2);
+    expect(BATCH_SERIE_MAX).toBe(10);
+    expect(BATCH_SERIE_MAX).toBeLessThanOrEqual(MAX_BATCH);
   });
 
-  it('l écran ne propose que 2', () => {
-    expect(nombresProposes()).toEqual([2]);
+  it('l écran propose 2 à 10', () => {
+    expect(nombresProposes()).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
-  it('toute valeur au-dessus du pilote est ramenée à deux', () => {
-    for (const n of [3, 5, 10, 20, 999]) expect(batchCountAutorise(n)).toBe(2);
+  it('toute valeur au-dessus du plafond est ramenée à dix', () => {
+    for (const n of [11, 20, 999]) expect(batchCountAutorise(n)).toBe(10);
+    for (const n of [2, 5, 10]) expect(batchCountAutorise(n)).toBe(n);
   });
 
   it('et toute valeur aberrante à un', () => {
     for (const n of [0, -5, 1.4, NaN, Infinity, -Infinity]) expect(batchCountAutorise(n)).toBe(1);
   });
 
-  it('un lancement au-dessus du pilote est REFUSÉ, pas normalisé en silence', () => {
+  it('un lancement au-dessus du plafond est REFUSÉ, pas normalisé en silence', () => {
     // Normaliser ici lancerait un rendu que personne n'a demandé sous cette
     // forme : si la valeur a franchi l'entrée, c'est qu'elle l'a contournée.
     expect(lotRefuse(1)).toBe(false);
     expect(lotRefuse(2)).toBe(false);
-    for (const n of [3, 10, 20]) expect(lotRefuse(n)).toBe(true);
+    expect(lotRefuse(10)).toBe(false);
+    for (const n of [11, 20]) expect(lotRefuse(n)).toBe(true);
   });
 
   it('le refus dit ce qui n a PAS eu lieu', () => {
-    expect(BATCH_SERIE_REFUS).toContain('pilote');
+    expect(BATCH_SERIE_REFUS).toContain('2 à 10');
     expect(BATCH_SERIE_REFUS).toContain('aucun crédit');
     expect(BATCH_SERIE_REFUS).toContain('Rien n’a été composé');
   });
@@ -287,16 +291,17 @@ describe('1. Le mode unitaire reste sélectionné par défaut', () => {
     await allerAEnvoi();
     expect(document.querySelectorAll('[data-batch-count]')).toHaveLength(0);
     await choisirSerie();
-    expect(document.querySelectorAll('[data-batch-count]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-batch-count]')).toHaveLength(9);
     expect(document.querySelector('[data-batch-count="2"]')).not.toBeNull();
-    expect(document.querySelector('[data-batch-count="3"]')).toBeNull();
+    expect(document.querySelector('[data-batch-count="10"]')).not.toBeNull();
+    expect(document.querySelector('[data-batch-count="11"]')).toBeNull();
   });
 
-  it('un brouillon restauré à 10 redescend à deux, sans qu on clique', async () => {
-    installerFetch(); poser({ batchCount: 10, batchPhotoMode: 'auto' });
+  it('un brouillon restauré à 20 redescend au plafond (10), sans qu on clique', async () => {
+    installerFetch(); poser({ batchCount: 20, batchPhotoMode: 'auto' });
     await allerAEnvoi();
-    expect(document.querySelector('[data-serie-nombre]')?.textContent).toBe('2 vidéos');
-    expect(document.querySelectorAll('[data-batch-count]')).toHaveLength(1);
+    expect(document.querySelector('[data-serie-nombre]')?.textContent).toBe('10 vidéos');
+    expect(document.querySelectorAll('[data-batch-count]')).toHaveLength(9);
   });
 
   it('18. le mode unitaire compose UNE vidéo, comme avant', async () => {

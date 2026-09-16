@@ -236,6 +236,8 @@ describe('C — l aperçu de l Autopilote est ÉDITABLE', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   const monter = async () => {
+    // LOT UX : le choix du mode n'a plus d'aperçu — on ouvre l'Autopilote, où il vit toujours.
+    window.localStorage.setItem('studiio:creer:parcours', 'autopilote');
     render(<AssistantWizard />);
     return waitFor(() => document.querySelector('[data-autopilot-apercu]') as HTMLElement);
   };

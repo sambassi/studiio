@@ -3,7 +3,7 @@ import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react
 
 /**
  * UNE SEULE RÈGLE DE MISE EN PAGE pour les écrans « travail à gauche, aperçu à
- * droite » : Créer une vidéo (référence), le choix « Créer du contenu »,
+ * droite » : Créer une vidéo (référence),
  * l'Autopilote et Mon avatar.
  *
  * ⚠️ LE SYMPTÔME : sur desktop, l'aperçu vertical (9:16) de la colonne droite
@@ -208,14 +208,15 @@ function largeurFixe(el: HTMLElement): string[] {
 const JETONS_LAYOUT = new RegExp(`^${PREFIXE}(grid|grid-cols-|col-span-|col-start-|gap-|items-|justify-|self-|sticky|static|relative|absolute|fixed|top-|bottom-|order-|overflow-|h-|max-h-|min-h-|w-|max-w-|min-w-|flex|block|hidden)`);
 const jetonsLayout = (el: HTMLElement) => tokens(el).filter((t) => JETONS_LAYOUT.test(t)).sort();
 
-// ── Les quatre écrans ────────────────────────────────────────────────────
+// ── Les trois écrans à deux colonnes (+ le choix, à une) ────────────────────────────────────────────────────
 type Ecran = { nom: string; monter: () => Promise<void> };
 
-/** Créer du contenu (choix des parcours) : la page `/dashboard/creer` telle quelle. */
+/** Créer du contenu (choix des parcours) : la page `/dashboard/creer` telle quelle.
+ *  LOT UX : cet écran n'a PLUS d'aperçu — une seule colonne, vérifiée à part
+ *  (« L'écran de choix ») et exclue de la règle des deux colonnes. */
 const monterChoix = async () => {
   render(<CreerPage />);
   await waitFor(() => expect(q('[data-parcours-choix]')).not.toBeNull());
-  await waitFor(() => expect(q('[data-autopilot-apercu]')).not.toBeNull());
   await tourner();
 };
 /** Autopilote : depuis le choix, « Configurer l'Autopilote ». */
@@ -241,10 +242,26 @@ const monterAvatar = async () => {
 
 const ECRANS: Ecran[] = [
   { nom: 'Créer une vidéo (référence)', monter: monterAssistant },
-  { nom: 'Créer du contenu (choix)', monter: monterChoix },
   { nom: 'Autopilote', monter: monterAutopilote },
   { nom: 'Mon avatar', monter: monterAvatar },
 ];
+
+describe('L’écran de choix (Créer du contenu)', () => {
+  it('⚠️ n a PAS de colonne d aperçu : une seule colonne centrée, les deux cartes en évidence', async () => {
+    cleanup(); window.localStorage.clear(); stubApi();
+    await monterChoix();
+    const g = q('[data-colonnes="choix"]');
+    expect(g).not.toBeNull();
+    expect(g!.getAttribute('data-apercu-colonne')).toBe('non');
+    expect(tokens(g!)).not.toContain('lg:grid-cols-5');
+    expect(tokens(g!)).toContain('mx-auto');
+    expect(q('[data-colonne="apercu"]')).toBeNull();
+    expect(q('[data-autopilot-apercu]')).toBeNull();
+    expect(tokens(q('[data-colonne="travail"]')!)).not.toContain('lg:col-span-3');
+    expect(q('[data-parcours-assistant]')).not.toBeNull();
+    expect(q('[data-parcours-autopilote]')).not.toBeNull();
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────
 for (const ecran of ECRANS) {
@@ -307,7 +324,7 @@ describe('Le fil d’étapes ne déborde pas de l’écran', () => {
   });
 });
 
-describe('Règle commune aux quatre écrans', () => {
+describe('Règle commune aux trois écrans à deux colonnes', () => {
   /** Monte chaque écran à son tour et relève ce qui compte. */
   async function releverTous<T>(lire: (g: HTMLElement, travail: HTMLElement, apercu: HTMLElement) => T): Promise<Array<{ nom: string; releve: T }>> {
     const releves: Array<{ nom: string; releve: T }> = [];
@@ -337,7 +354,7 @@ describe('Règle commune aux quatre écrans', () => {
     }
   });
 
-  it('⚠️ les classes de mise en page de la grille et des deux colonnes sont IDENTIQUES sur les quatre écrans (référence : Créer une vidéo)', async () => {
+  it('⚠️ les classes de mise en page de la grille et des deux colonnes sont IDENTIQUES sur les trois écrans à deux colonnes (référence : Créer une vidéo)', async () => {
     const releves = await releverTous((g, travail, apercu) => ({
       grille: jetonsLayout(g), travail: jetonsLayout(travail), apercu: jetonsLayout(apercu),
     }));

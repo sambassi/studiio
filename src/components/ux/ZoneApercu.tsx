@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import type React from 'react';
 import { Loader2, AlertTriangle, ImageOff } from 'lucide-react';
 
 /**
@@ -44,7 +45,15 @@ const Bouton = ({ a }: { a: ActionApercu }) => (
   </button>
 );
 
+/** `'9 / 16'` → `{ w: 9, h: 16 }` — les variables du cadre `.apercu-cadre`. */
+export function ratioEnVariables(ratio: string): Record<'--apercu-w' | '--apercu-h', string> {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(ratio);
+  return { '--apercu-w': m ? m[1] : '9', '--apercu-h': m ? m[2] : '16' };
+}
+
 export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = '9 / 16', className = '' }: ZoneApercuProps) {
+  // Le cadre tient entierement dans la fenetre (voir `.apercu-cadre`, globals.css).
+  const cadre = { aspectRatio: ratio, ...ratioEnVariables(ratio) } as React.CSSProperties;
   return (
     <section data-apercu={etat.statut} aria-label={titre} className={`card-base p-4 space-y-3 ${className}`}>
       <h2 className="text-sm font-semibold text-white" data-apercu-titre>{titre}</h2>
@@ -53,7 +62,7 @@ export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = 
         <div className="space-y-3">
           {/* Le média remplit un cadre au ratio demandé (comme l'aperçu de Créer) :
               pas de borne en px ni en vh, la page défile si l'écran est bas. */}
-          <div data-apercu-media className="w-full rounded-xl overflow-hidden bg-black" style={{ aspectRatio: ratio }}>{children}</div>
+          <div data-apercu-media className="apercu-cadre w-full rounded-xl overflow-hidden bg-black" style={cadre}>{children}</div>
           {etat.legende && <p className="text-[12px] text-gray-400" data-apercu-legende>{etat.legende}</p>}
           {(etat.actionSuivante || (etat.actionsSecondaires && etat.actionsSecondaires.length > 0)) && (
             <div className="flex flex-wrap items-center gap-2" data-apercu-actions>
@@ -64,8 +73,8 @@ export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = 
         </div>
       ) : (
         <div
-          className="w-full rounded-xl border border-dashed border-gray-700 bg-gray-900/40 flex flex-col items-center justify-center gap-2 p-6 text-center"
-          style={{ aspectRatio: ratio }}
+          className="apercu-cadre w-full rounded-xl border border-dashed border-gray-700 bg-gray-900/40 flex flex-col items-center justify-center gap-2 p-6 text-center"
+          style={cadre}
           role={etat.statut === 'erreur' ? 'alert' : 'status'}
         >
           {etat.statut === 'vide' && <ImageOff className="w-6 h-6 text-gray-600" aria-hidden />}

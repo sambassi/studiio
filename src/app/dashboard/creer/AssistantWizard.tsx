@@ -38,6 +38,7 @@ import {
   Download,
   ImagePlus,
   Upload,
+  FolderOpen,
   Crop,
   Maximize2,
   Play,
@@ -77,6 +78,7 @@ import {
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
+import AfficheIA from '@/components/creer/AfficheIA';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import VideosPretes from '@/components/creer/VideosPretes';
 import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
@@ -180,6 +182,7 @@ import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import DeuxColonnes, { ColonneTravail, ColonneApercu } from '@/components/ux/DeuxColonnes';
+import { ratioEnVariables } from '@/components/ux/ZoneApercu';
 import { Button } from '@/components/ui/Button';
 
 /**
@@ -1621,9 +1624,13 @@ export function Preview({
           capture bien le plateau a sa resolution native. */}
       <div
         ref={frameRef}
-        className="w-full rounded-xl overflow-hidden relative"
+        // `.apercu-cadre` : la largeur se deduit de la hauteur de fenetre — le
+        // cadre est toujours ENTIEREMENT visible a droite (voir globals.css).
+        // Le ResizeObserver de `useFrameScale` suit cette largeur.
+        className="apercu-cadre w-full rounded-xl overflow-hidden relative"
         style={{
           aspectRatio: ASPECT_CSS[format],
+          ...ratioEnVariables(ASPECT_CSS[format]),
           border: generated ? 'none' : '1px dashed #1F2937',
           backgroundColor: DARK,
         }}
@@ -3718,6 +3725,10 @@ export default function AssistantWizard() {
   const [photosLoading, setPhotosLoading] = useState(false);
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
+  // Les deux autres chemins vers une affiche : la mediatheque (images deja
+  // envoyees) et la generation IA. Un seul ouvert a la fois.
+  const [afficheLibOpen, setAfficheLibOpen] = useState(false);
+  const [afficheIAOuvert, setAfficheIAOuvert] = useState(false);
   /** Recadrage de l'affiche. Neutre = le « cover » centre d'avant. */
   const [posterTransform, setPosterTransform] = useState<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
   const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
@@ -3986,6 +3997,36 @@ export default function AssistantWizard() {
 
   const [aiNotice, setAiNotice] = useState<string | null>(null);
 
+  /**
+   * Une image generee par l'IA arrive avec une URL TEMPORAIRE (Replicate).
+   * On la copie au stockage par le meme chemin que « Ma photo » : l'affiche
+   * survit au rechargement et reste reutilisable dans le projet. Si la copie
+   * echoue, l'image est quand meme appliquee, et l'ecran le dit.
+   */
+  const utiliserAfficheIA = useCallback(async (url: string) => {
+    setPhotosError(null);
+    let finale = url;
+    try {
+      const rep = await fetch(url);
+      if (rep.ok) {
+        const blob = await rep.blob();
+        const ext = blob.type.includes('png') ? 'png' : blob.type.includes('jpeg') ? 'jpg' : 'webp';
+        const envoye = await uploadPosterFile(new File([blob], `affiche-ia-${Date.now()}.${ext}`, { type: blob.type || 'image/webp' }));
+        if (envoye.url && !envoye.dataUrl) finale = envoye.url;
+        else setPhotosError('Affiche appliquée, mais non copiée au stockage : elle ne survivra pas au rechargement.');
+      } else {
+        setPhotosError('Affiche appliquée, mais non copiée au stockage : elle ne survivra pas au rechargement.');
+      }
+    } catch {
+      setPhotosError('Affiche appliquée, mais non copiée au stockage : elle ne survivra pas au rechargement.');
+    }
+    const perso: PosterPhoto = { id: `ia-${Date.now()}`, url: finale, small: finale, photographer: 'Générée par l’IA', source: 'upload' };
+    setPosterPhotos((prev) => [perso, ...prev]);
+    applyPhotoRef.current?.(finale);
+  }, []);
+
+  const applyPhotoRef = useRef<((url: string) => void) | null>(null);
+
   const applyPhoto = useCallback((url: string) => {
     const cle = seqBgKeyForFocus(previewFocusRef.current);
     if (!cle) {
@@ -3995,6 +4036,8 @@ export default function AssistantWizard() {
     // Nouveau fond = nouveau cadrage : le precedent visait une autre image.
     setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
   }, []);
+  // Le chemin IA (defini plus haut, sans dependance) applique via cette ref.
+  useEffect(() => { applyPhotoRef.current = applyPhoto; }, [applyPhoto]);
 
   /** Rend une sequence a l'affiche globale. */
   const resetSeqBackground = useCallback((cle: SeqBgKey) => {
@@ -7098,7 +7141,10 @@ export default function AssistantWizard() {
         else setParcours('choix');
       }}
     />
-    <DeuxColonnes nom={started ? 'assistant' : parcours}>
+    {/* Choix du mode : PAS d'aperçu a droite — rien n'est encore a
+        prévisualiser, et la colonne distrayait du choix. Une colonne centrée ;
+        l'assistant et l'Autopilote gardent les deux colonnes. */}
+    <DeuxColonnes nom={started ? 'assistant' : parcours} apercu={started || parcours !== 'choix'}>
       <ColonneTravail>
         {/* MODIFICATION — la seule porte de sortie vers le serveur.
             Visible uniquement quand on modifie : en creation, rien de tout ceci
@@ -7243,6 +7289,8 @@ export default function AssistantWizard() {
             (`hidden`) pour ne rien perdre — reglages, apercu, tournages. */}
         {!started && parcours === 'choix' && (
           <div className="grid gap-4 sm:grid-cols-2" data-parcours-choix>
+            {/* Ces deux cartes SONT la page : pas d'aperçu à côté, rien d'autre
+                à lire avant de choisir. */}
             <Card>
               <div className="flex items-start gap-4">
                 <div
@@ -7969,6 +8017,43 @@ export default function AssistantWizard() {
                         }}
                       />
                     </label>
+
+                    {/* Les deux autres chemins vers une affiche : une image deja
+                        dans la mediatheque, ou une image generee par l'IA. */}
+                    <div className="grid grid-cols-2 gap-1.5" data-affiche-sources>
+                      <button
+                        type="button"
+                        onClick={() => setAfficheLibOpen(true)}
+                        data-affiche-mediatheque
+                        className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
+                      >
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        Médiathèque
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAfficheIAOuvert((v) => !v)}
+                        aria-expanded={afficheIAOuvert}
+                        data-affiche-generer-ia
+                        className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs transition-colors ${
+                          afficheIAOuvert ? 'border-purple-500 text-white' : 'border-gray-800 text-gray-400 hover:border-gray-700 hover:text-white'
+                        }`}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Générer avec l’IA
+                      </button>
+                    </div>
+                    {afficheIAOuvert && (
+                      <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3">
+                        <AfficheIA suggestion={currentTopic} onUtiliser={utiliserAfficheIA} />
+                      </div>
+                    )}
+                    <MediaLibrary
+                      isOpen={afficheLibOpen}
+                      onClose={() => setAfficheLibOpen(false)}
+                      mediaType="image"
+                      onSelect={(url) => { applyPhoto(url); setAfficheLibOpen(false); }}
+                    />
 
                     {/* Recapitulatif : qui a son fond, qui herite. */}
                     <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3 space-y-1.5">
@@ -9182,14 +9267,13 @@ export default function AssistantWizard() {
                       <label className="block text-sm font-medium mb-2">
                         Combien de vidéos ?
                         <span className="ml-2 text-[11px] font-normal text-gray-500" data-serie-plafond>
-                          Pilote : {BATCH_SERIE_MAX} au maximum
+                          De 2 à {BATCH_SERIE_MAX}
                         </span>
                       </label>
                       <div className="flex flex-wrap gap-1.5">
                         {/* `nombresProposes()` et non une plage locale :
                             l'ecran ne doit pas pouvoir proposer un nombre que
-                            le lancement refuserait. Sous le pilote, la liste
-                            vaut exactement `[2]`. */}
+                            le lancement refuserait : de 2 a `BATCH_SERIE_MAX`. */}
                         {nombresProposes().map((n) => (
                           <button
                             key={n}
@@ -9454,7 +9538,9 @@ export default function AssistantWizard() {
       </ColonneTravail>
 
       {/* Colonne d'apercu COLLEE — les classes (sticky, top-20, items-start
-          sur la grille) vivent dans `DeuxColonnes`, la même que Mon avatar. */}
+          sur la grille) vivent dans `DeuxColonnes`, la même que Mon avatar.
+          Absente sur le choix du mode (voir `apercu` ci-dessus). */}
+      {(started || parcours !== 'choix') && (
       <ColonneApercu>
         {/* ── AVANT DE COMMENCER : L'APERÇU DE L'AUTOPILOTE ─────────────
             L'assistant n'a rien généré tant qu'on n'a pas cliqué
@@ -9897,6 +9983,7 @@ export default function AssistantWizard() {
         </>
         )}
       </ColonneApercu>
+      )}
 
       {/* ── PANNEAU FLOTTANT DE L'ELEMENT ─────────────────────────────
           Les reglages vivaient tout en bas de la colonne : il fallait

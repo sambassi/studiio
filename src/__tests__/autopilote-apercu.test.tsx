@@ -181,15 +181,30 @@ describe('C — la portée de l affiche suit LE RENDU, pas une seconde règle', 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+/**
+ * LOT UX (choix du mode sans aperçu) : l'aperçu de l'Autopilote n'apparaît
+ * plus sur l'écran de CHOIX — il n'y a rien à prévisualiser tant qu'on n'a
+ * pas choisi. Les vérifications ci-dessous entrent donc d'abord dans
+ * l'Autopilote, où cet aperçu vit toujours, inchangé.
+ */
+async function rendreDansAutopilote() {
+  // Le parcours choisi est mémorisé (localStorage) : on repart du choix.
+  window.localStorage.clear();
+  render(<AssistantWizard />);
+  await waitFor(() => expect(document.querySelector('[data-parcours-autopilote]')).not.toBeNull());
+  fireEvent.click(document.querySelector('[data-parcours-autopilote]')!);
+  await waitFor(() => expect(document.querySelector('[data-colonnes="autopilote"]')).not.toBeNull());
+}
+
 describe('D — à l écran', () => {
   it('la colonne d aperçu n est plus vide avant de commencer', async () => {
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
   });
 
   it('elle DIT que c est un exemple, et nomme le thème montré', async () => {
     // ⚠️ SANS CE LIBELLÉ, l'aperçu se lit comme une prédiction.
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     const mention = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu-mention]') as HTMLElement);
     expect(mention.textContent).toContain('exemple');
@@ -201,14 +216,14 @@ describe('D — à l écran', () => {
     // ⚠️ CETTE PHRASE EST CELLE DE L'ASSISTANT, et elle y est vraie : il
     // montre le contenu qui partira au compositeur. Sous un échantillon, elle
     // promet exactement ce que l'Autopilote ne tient pas.
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     expect(apercu.textContent).not.toContain('seront exactement celles-ci');
   });
 
   it('le contenu d exemple est réellement peint', async () => {
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     const attendu = buildAutopilotSample({ topics: [] });
@@ -218,7 +233,7 @@ describe('D — à l écran', () => {
   it('cocher un thème change le contenu montré', async () => {
     // Le pont `onConfigChange` : sans lui, l'aperçu resterait figé sur le
     // premier thème quoi que l'utilisateur choisisse.
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     await waitFor(() => expect(apercu.textContent).toContain(buildAutopilotSample({ topics: [] }).title));
@@ -232,7 +247,7 @@ describe('D — à l écran', () => {
     // ⚠️ LES COULEURS NE PARTENT AU SERVEUR QU'AU RELÂCHEMENT. Si l'aperçu
     // attendait la réponse, il serait figé pendant tout le réglage — le seul
     // moment où il sert.
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
     fireEvent.click(document.querySelector('[data-autopilot-etape="2"]') as Element);
 
@@ -252,7 +267,7 @@ describe('D — à l écran', () => {
     // Sans banque, le moteur produit titre → cartes → CTA : annoncer un
     // onglet vide promettrait une séquence que le montage ne contient pas.
     configServeur = sanitizeConfig({ ...DEFAULT_CONFIG, rushUrls: ['https://x.test/a.mp4'] });
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     await waitFor(() => {
@@ -263,7 +278,7 @@ describe('D — à l écran', () => {
   });
 
   it('sans rush, l onglet Vidéo reste hors d atteinte', async () => {
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     const apercu = await waitFor(() =>
       document.querySelector('[data-autopilot-apercu]') as HTMLElement);
     await waitFor(() => {
@@ -280,9 +295,11 @@ describe('E — l assistant « Créer simple » n est PAS touché', () => {
     // ⚠️ LE BASCULEMENT SE FAIT SUR `started`, ET SUR RIEN D'AUTRE. L'aperçu
     // de l'assistant porte ses poignées d'édition et les refs de l'export :
     // le remplacer une seule fois de trop casserait la capture des cartes.
-    render(<AssistantWizard />);
+    await rendreDansAutopilote();
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeTruthy());
-
+    // Retour au choix, puis « Créer une vidéo » : l'aperçu de l'Autopilote disparaît.
+    fireEvent.click(screen.getByRole('button', { name: /Retour|choix/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Créer une vidéo' })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
     await waitFor(() => expect(document.querySelector('[data-autopilot-apercu]')).toBeNull());
     // Son en-tête est bien revenu. Il dit « Aperçu du style » depuis P0-A :
