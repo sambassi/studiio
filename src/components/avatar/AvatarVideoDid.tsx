@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader2, Check, AlertTriangle, Upload, FileText, Sparkles } from 'lucide-react';
+import { Loader2, Check, Upload, FileText, Sparkles } from 'lucide-react';
+import { Notification, ProgressStatus, Consigne, type EtapeProgression } from '@/components/ux';
+import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 
 /**
  * L'avatar vidéo (D-ID), après le dépôt de la source : le consentement
@@ -32,6 +34,8 @@ export interface AvatarVideoDidProps {
   erreurEntrainement?: string | null;
   /** Rappelé à chaque changement d'étape : la page relit l'avatar. */
   onChange: () => void | Promise<void>;
+  /** « Changer de source » : le geste existant de la page, offert par la notification d'échec. */
+  onChangerSource?: () => void;
   fetchImpl?: typeof fetch;
 }
 
@@ -43,7 +47,7 @@ const ETAPES_PIPELINE: Array<{ cle: string; libelle: string; atteinte: (e: Etape
   { cle: 'pret', libelle: 'Prêt', atteinte: (e) => e === 'pret' || e === 'valide' },
 ];
 
-export default function AvatarVideoDid({ etape, texteConsentement, nomConsentement, nomProfil, expireLe, erreurEntrainement, onChange, fetchImpl }: AvatarVideoDidProps) {
+export default function AvatarVideoDid({ etape, texteConsentement, nomConsentement, nomProfil, expireLe, erreurEntrainement, onChange, onChangerSource, fetchImpl }: AvatarVideoDidProps) {
   const f = fetchImpl ?? fetch;
   const [occupe, setOccupe] = useState<null | 'phrase' | 'video' | 'creer' | 'reutiliser'>(null);
   const [nom, setNom] = useState<string>(nomConsentement ?? nomProfil ?? '');
@@ -53,6 +57,12 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
   const [erreur, setErreur] = useState<string | null>(null);
   const [erreurConsentement, setErreurConsentement] = useState<string | null>(null);
   const [fichier, setFichier] = useState<File | null>(null);
+  /** L'envoi de la vidéo de consentement : octets réellement transférés (XHR), ou null hors envoi. */
+  const [envoi, setEnvoi] = useState<ProgressionEnvoi | null>(null);
+  /** « Voir les consignes » : rouvre l'encart (remontage de la Consigne avec `ouvertParDefaut`). */
+  const [consignes, setConsignes] = useState<{ cle: number; ouvert: boolean }>({ cle: 0, ouvert: false });
+  /** « Votre avatar est en préparation. » — une fois, après le clic « Créer mon avatar ». */
+  const [lancementNotifie, setLancementNotifie] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Verrou SYNCHRONE : deux clics dans le même tour d'événements ne partent
@@ -110,6 +120,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
         return;
       }
       if (quoi === 'video' || quoi === 'phrase') { setFichier(null); if (inputRef.current) inputRef.current.value = ''; setErreurConsentement(null); }
+      if (quoi === 'creer') setLancementNotifie(true);
       await onChange();
     } catch {
       setErreur('Connexion impossible. Réessayez.');
@@ -150,16 +161,51 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
     </>
   );
 
-  const envoyerVideoConsentement = () => {
-    if (!fichier) return;
+  const envoyerVideoConsentement = async () => {
+    if (!fichier || enCoursRef.current) return;
+    enCoursRef.current = true;
+    setOccupe('video');
+    setErreur(null);
     const fd = new FormData();
     fd.append('file', fichier);
-    void appeler('video', '/api/avatar/did/consentement/video', { body: fd });
+    try {
+      // Les octets RÉELLEMENT transférés ; la vérification fournisseur qui suit
+      // n'a pas de pourcentage et n'en reçoit pas.
+      setEnvoi({ charges: 0, total: fichier.size, pourcentage: 0 });
+      const res = await envoyerFormulaire<{ success?: boolean; error?: string }>('/api/avatar/did/consentement/video', fd, { onProgression: setEnvoi });
+      setEnvoi(null);
+      const json = res.json ?? {};
+      if (!res.ok || !json.success) {
+        setErreur(json.error || 'La demande a échoué. Réessayez.');
+        if (res.status === 409) await onChange();
+        return;
+      }
+      setFichier(null); if (inputRef.current) inputRef.current.value = ''; setErreurConsentement(null);
+      await onChange();
+    } catch {
+      setErreur('Connexion impossible. Réessayez.');
+    } finally {
+      setEnvoi(null);
+      enCoursRef.current = false;
+      setOccupe(null);
+    }
   };
+  const ouvrirConsignes = () => setConsignes((c) => ({ cle: c.cle + 1, ouvert: true }));
+  const reenregistrer = () => { setFichier(null); if (inputRef.current) { inputRef.current.value = ''; inputRef.current.click(); } };
+  /** Les étapes RÉELLEMENT connues de Studiio pendant l'entraînement : rien n'est anticipé. */
+  const etapesEntrainement: EtapeProgression[] = [
+    { libelle: 'Source', etat: 'terminee' },
+    { libelle: 'Consentement', etat: 'terminee' },
+    { libelle: 'Création', etat: 'terminee' },
+    { libelle: 'Entraînement', etat: 'courante' },
+    { libelle: 'Prêt', etat: 'a_venir' },
+  ];
 
   return (
     <div data-avatar-did={etape} className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
-      {/* Le pipeline : Téléchargement → Vérification → Création → Entraînement → Prêt */}
+      {/* Le pipeline : Téléchargement → Vérification → Création → Entraînement → Prêt
+          (pendant l'entraînement, c'est `ProgressStatus` qui porte les étapes) */}
+      {etape !== 'creation_en_cours' && (
       <ol data-avatar-did-pipeline className="flex flex-wrap items-center gap-2 text-[11px]">
         {ETAPES_PIPELINE.map((p, i) => {
           const ok = p.atteinte(etape);
@@ -171,6 +217,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
           );
         })}
       </ol>
+      )}
 
       {etape === 'consentement_a_demander' && (
         <div className="space-y-3">
@@ -191,12 +238,49 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       {(etape === 'consentement_texte_pret' || etape === 'consentement_refuse') && (
         <div className="space-y-3">
           {etape === 'consentement_refuse' && (
-            <div data-avatar-did-refus className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-              <span>Votre vidéo de consentement n&apos;a pas été acceptée{erreurConsentement ? ` — motif du fournisseur : ${erreurConsentement}` : ''}. Vérifiez votre nom ci-dessous, obtenez une nouvelle phrase si celle-ci a expiré, relisez-la exactement, bien audible, face caméra, puis réimportez.</span>
+            <div data-avatar-did-refus>
+              <Notification
+                niveau="erreur"
+                titre="Votre vidéo de consentement n'a pas été acceptée."
+                detail={[
+                  'votre nom affiché est correct ;',
+                  'vous lisez la phrase exactement, y compris votre nom ;',
+                  'vous êtes face caméra, visage visible ;',
+                  'votre voix est claire et audible ;',
+                  'puis enregistrez une nouvelle vidéo.',
+                ]}
+                motif={erreurConsentement}
+                actionPrincipale={{ libelle: 'Réenregistrer', onClick: reenregistrer }}
+                actionSecondaire={{ libelle: 'Voir les consignes', onClick: ouvrirConsignes }}
+              />
+            </div>
+          )}
+          {expiree && (
+            <div data-avatar-did-expiree>
+              <Notification
+                niveau="avertissement"
+                titre="Votre phrase de consentement a expiré."
+                detail="Une phrase est valable 30 minutes. Obtenez-en une nouvelle, puis enregistrez-la sans attendre."
+                actionPrincipale={{ libelle: 'Obtenir une nouvelle phrase', onClick: () => demanderPhrase(true) }}
+              />
             </div>
           )}
           <div className="text-sm font-medium">3. Importer ma vidéo de consentement</div>
+          <Consigne
+            key={consignes.cle}
+            titre="Enregistrez-vous en lisant exactement cette phrase."
+            texte="Courte vidéo, face caméra, voix claire. Valable 30 minutes."
+            ouvertParDefaut={consignes.ouvert}
+            checklist={[
+              { libelle: 'visage bien visible' },
+              { libelle: 'face caméra' },
+              { libelle: 'bonne lumière' },
+              { libelle: 'voix claire' },
+              { libelle: 'phrase lue exactement, votre nom compris' },
+              { libelle: 'vidéo courte' },
+              { libelle: 'fond calme' },
+            ]}
+          />
           <div data-avatar-did-phrase className="rounded-xl bg-gray-900/60 p-4 space-y-2">
             <div className="text-[11px] uppercase tracking-wide text-gray-500">Lisez exactement cette phrase, face caméra :</div>
             <div className="text-base text-white font-medium">{texteConsentement}</div>
@@ -224,6 +308,16 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
               {occupe === 'video' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Envoyer ma vidéo de consentement
             </button>
           </div>
+          {envoi && (
+            <ProgressStatus
+              titre="Envoi de votre vidéo de consentement"
+              statut="en_cours"
+              pourcentage={envoi.pourcentage}
+              detail={detailEnvoi(envoi)}
+              note={envoi.pourcentage >= 100 ? 'Envoi terminé — Studiio transmet votre vidéo pour vérification.' : null}
+              compact
+            />
+          )}
           <p className="text-xs text-gray-500">MP4 ou MOV, 50 Mo maximum. Une courte vidéo suffit.</p>
         </div>
       )}
@@ -236,7 +330,14 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
 
       {etape === 'consentement_accepte' && (
         <div className="space-y-2">
-          <div data-avatar-did-accepte className="flex items-center gap-2 text-sm text-emerald-200"><Check className="w-4 h-4" /> Consentement accepté.</div>
+          <div data-avatar-did-accepte>
+            <Notification
+              niveau="succes"
+              titre="Consentement accepté."
+              detail="Vous pouvez maintenant créer votre avatar."
+              actionPrincipale={{ libelle: 'Créer mon avatar', onClick: () => appeler('creer', '/api/avatar/did/creer') }}
+            />
+          </div>
           <div className="text-sm font-medium">5. Créer mon avatar</div>
           <button data-avatar-did-action="creer" onClick={() => appeler('creer', '/api/avatar/did/creer')} disabled={!!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
             {occupe === 'creer' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Créer mon avatar
@@ -245,15 +346,34 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       )}
 
       {etape === 'creation_en_cours' && (
-        <div data-avatar-did-entrainement className="flex items-center gap-2 text-sm text-amber-200">
-          <Loader2 className="w-4 h-4 animate-spin" /> Entraînement en cours chez notre fournisseur… Cela prend généralement plusieurs minutes. Cette page se met à jour toute seule.
+        <div data-avatar-did-entrainement className="space-y-3">
+          {lancementNotifie && (
+            <Notification niveau="info" titre="Votre avatar est en préparation." detail="Cela prend généralement plusieurs minutes. Cette page se met à jour toute seule ; vous pouvez la laisser ouverte." onFermer={() => setLancementNotifie(false)} />
+          )}
+          {/* Le fournisseur ne rend qu'un statut : barre indéterminée, aucun pourcentage
+              inventé. Le workflow, lui, compte les étapes réellement connues. Pas de
+              durée écoulée : aucun horodatage serveur du passage en entraînement n'est
+              rendu à l'écran — on n'en fabrique pas. */}
+          <ProgressStatus
+            titre="Entraînement de votre avatar"
+            statut="en_cours"
+            etapes={etapesEntrainement}
+            detail="Entraînement en cours — progression exacte indisponible."
+            description="Cela prend généralement plusieurs minutes."
+          />
         </div>
       )}
 
       {etape === 'echec' && (
-        <div data-avatar-did-echec className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          <span>L&apos;entraînement a échoué{erreurEntrainement ? ` : ${erreurEntrainement}` : ''}. Utilisez « Changer de source » pour réessayer avec une autre vidéo.</span>
+        <div data-avatar-did-echec>
+          <Notification
+            niveau="erreur"
+            titre="L'entraînement de votre avatar n'a pas abouti."
+            detail="La vidéo source n'a pas permis de créer l'avatar. Réessayez avec une vidéo plus longue, mieux éclairée, visage face caméra."
+            motif={erreurEntrainement ?? null}
+            {...(onChangerSource ? { actionPrincipale: { libelle: 'Changer de vidéo', onClick: onChangerSource } } : {})}
+            actionSecondaire={{ libelle: 'Voir les consignes', onClick: ouvrirConsignes }}
+          />
         </div>
       )}
 
@@ -261,7 +381,11 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
         <div data-avatar-did-pret className="flex items-center gap-2 text-sm text-emerald-200"><Check className="w-4 h-4" /> Mon avatar vidéo est prêt.</div>
       )}
 
-      {erreur && <div data-avatar-did-erreur className="text-xs text-red-200">{erreur}</div>}
+      {erreur && (
+        <div data-avatar-did-erreur>
+          <Notification niveau="erreur" titre={erreur} onFermer={() => setErreur(null)} />
+        </div>
+      )}
     </div>
   );
 }

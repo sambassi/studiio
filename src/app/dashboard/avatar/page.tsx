@@ -6,7 +6,6 @@ import {
   Upload,
   Loader2,
   Sparkles,
-  AlertTriangle,
   Check,
   Download,
   RefreshCw,
@@ -18,6 +17,8 @@ import {
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 import MaVoixPanel from '@/components/voice/MaVoixPanel';
 import AvatarVideoDid, { type EtapeDid } from '@/components/avatar/AvatarVideoDid';
+import { Notification, ProgressStatus, type EtapeProgression } from '@/components/ux';
+import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
@@ -49,6 +50,8 @@ interface AvatarRow {
   consent_expire_le?: string | null;
   version?: number;
   validated_at?: string | null;
+  /** Horodatage RÉEL de l'import de la source (posé par le serveur à chaque version) : l'entraînement HeyGen démarre dans la même requête. */
+  consent_at?: string | null;
   /**
    * ⚠️ L'aperçu de la source ne passe PLUS par une URL de la ligne : la
    * source (le visage) se lit par `/api/avatar/source`, authentifiée. Le
@@ -113,7 +116,17 @@ export default function AvatarPage() {
   const apercuGenerationRef = useRef<string | null>(null);
   const [suppressionArmee, setSuppressionArmee] = useState(false);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
-  const [progress, setProgress] = useState(0);
+  /**
+   * Progression RÉELLE de la génération à la demande — uniquement si l'API
+   * en rend une (`progress`). Sinon `null` : barre indéterminée. Plus aucune
+   * estimation depuis le temps écoulé (cahier UX, Annexe A).
+   */
+  const [progress, setProgress] = useState<number | null>(null);
+  /** L'envoi de la source vers Studiio : octets réellement transférés (XHR), ou null hors envoi. */
+  const [envoiSource, setEnvoiSource] = useState<ProgressionEnvoi | null>(null);
+  /** L'aperçu a été refusé faute de voix personnelle : notification avec l'action « Configurer ma voix ». */
+  const [voixManquante, setVoixManquante] = useState(false);
+  const maVoixRef = useRef<HTMLDivElement | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -148,7 +161,7 @@ export default function AvatarPage() {
       }
       setAvatar(null);
       setVideoUrl(null);
-      setProgress(0);
+      setProgress(null);
       setGenStatus('idle');
       const fournisseur = json.data?.fournisseur === 'non_disponible'
         ? " Votre clone n'est pas supprimé automatiquement chez notre fournisseur."
@@ -197,10 +210,13 @@ export default function AvatarPage() {
         });
       const json = await res.json();
       if (!json.success) {
+        // Sans voix personnelle, l'aperçu ne peut pas parler : on le dit avec la sortie (« Ma voix »), pas une erreur sèche.
+        if (json.code === 'voix_indisponible') { setVoixManquante(true); await loadApercu(); return; }
         setError(json.error || "L'aperçu n'a pas pu être lancé.");
         await loadApercu();
         return;
       }
+      setVoixManquante(false);
       apercuGenerationRef.current = json.data.generationId;
       setApercu({ statut: 'en_cours', generationId: json.data.generationId });
       poll(json.data.generationId);
@@ -284,7 +300,7 @@ export default function AvatarPage() {
       setVoiceId(json.data.defaultVoiceId || list[0]?.voiceId || '');
       if (list.length === 0) {
         setNotice(
-          "Les voix HeyGen n'ont pas pu être chargées. La génération utilisera une voix de secours — le résultat peut ne pas être en français.",
+          "Les voix n'ont pas pu être chargées. La génération utilisera une voix de secours — le résultat peut ne pas être en français.",
         );
       }
     }
@@ -377,25 +393,11 @@ export default function AvatarPage() {
     };
   }, [preview]);
 
-  // Progression estimée pendant la génération.
-  //
-  // HeyGen ne renvoie qu'un statut (pending/processing/completed), pas de
-  // pourcentage. On monte donc de façon asymptotique vers 90 % : rapide au
-  // début, de plus en plus lente ensuite. La barre n'est jamais bloquée à 0 et
-  // n'atteint jamais 100 % avant la fin réelle. Si l'API expose un jour un
-  // pourcentage réel, poll() le prend en compte et il l'emporte.
-  useEffect(() => {
-    if (genStatus !== 'pending' && genStatus !== 'processing') return;
-    const startedAt = Date.now();
-    const id = setInterval(() => {
-      const elapsedSec = (Date.now() - startedAt) / 1000;
-      const estimated = 90 * (1 - Math.exp(-elapsedSec / 45));
-      // Math.max : la progression ne recule jamais, même quand le statut
-      // passe de "pending" à "processing" et relance cet effet.
-      setProgress((prev) => Math.max(prev, Math.min(90, estimated)));
-    }, 200);
-    return () => clearInterval(id);
-  }, [genStatus]);
+  // Aucune progression ESTIMÉE pendant la génération : le fournisseur ne
+  // rend qu'un statut, la barre est donc indéterminée (`ProgressStatus` sans
+  // `pourcentage`). Un pourcentage n'apparaît que si l'API en rend un réel
+  // (`progress`, lu dans `poll`). L'ancienne courbe asymptotique depuis le
+  // temps écoulé (90 × (1 − e^(−t/45))) a été retirée : elle mentait.
 
   // ── Création de l'avatar ────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -411,7 +413,7 @@ export default function AvatarPage() {
       setError(
         videoDid
           ? `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). ${MAX_VIDEO_DID_MB} Mo maximum — réduisez la durée ou la qualité.`
-          : `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). HeyGen limite l'envoi à ${MAX_VIDEO_MB} Mo — réduisez la durée ou la qualité.`,
+          : `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). ${MAX_VIDEO_MB} Mo maximum — réduisez la durée ou la qualité.`,
       );
       e.target.value = '';
       return;
@@ -453,10 +455,17 @@ export default function AvatarPage() {
       // reste HeyGen, à l'identique. Le serveur revérifie le drapeau.
       if (kind === 'video' && didVideoActif) fd.append('provider', 'did');
 
-      const res = await fetch('/api/avatar/create', { method: 'POST', body: fd });
-      const json = await res.json();
+      // Envoi avec les octets RÉELLEMENT transférés (XHR) : la progression
+      // affichée est celle de l'envoi vers Studiio, et s'arrête là — le
+      // traitement fournisseur qui suit n'a pas de pourcentage.
+      setEnvoiSource({ charges: 0, total: file.size, pourcentage: 0 });
+      const res = await envoyerFormulaire<{ success?: boolean; error?: string; data?: { avatar: AvatarRow } }>('/api/avatar/create', fd, {
+        onProgression: setEnvoiSource,
+      });
+      setEnvoiSource(null);
+      const json = res.json ?? {};
 
-      if (!json.success) {
+      if (!json.success || !json.data) {
         setError(json.error || "La création de l'avatar a échoué.");
         return;
       }
@@ -465,8 +474,8 @@ export default function AvatarPage() {
         kind === 'video' && didVideoActif
           ? 'Vidéo importée. Prochaine étape : votre phrase de consentement.'
           : kind === 'video'
-            ? "Avatar vidéo créé. L'entraînement chez HeyGen prend plusieurs minutes — la page se met à jour toute seule."
-            : "Avatar créé. HeyGen l'entraîne quelques minutes — vous pouvez déjà écrire votre texte.",
+            ? "Vidéo importée. L'entraînement de votre avatar prend plusieurs minutes — la page se met à jour toute seule."
+            : "Photo importée. Votre avatar est en préparation — vous pouvez déjà écrire votre texte.",
       );
       setFile(null);
       if (preview) URL.revokeObjectURL(preview);
@@ -475,6 +484,7 @@ export default function AvatarPage() {
     } catch {
       setError('Connexion impossible. Réessayez.');
     } finally {
+      setEnvoiSource(null);
       setCreating(false);
     }
   };
@@ -495,7 +505,7 @@ export default function AvatarPage() {
       const { status, videoUrl: url, error: errMsg, progress: realProgress } = json.data;
 
       if (status === 'completed' && url) {
-        setProgress(100);
+        setProgress(null);
         if (apercuGenerationRef.current === generationId) {
           // C'était l'aperçu : il vit dans son bloc, pas dans « votre vidéo ».
           apercuGenerationRef.current = null;
@@ -513,9 +523,9 @@ export default function AvatarPage() {
         if (apercuGenerationRef.current === generationId) { apercuGenerationRef.current = null; await loadApercu(); }
         return;
       }
-      // Pourcentage réel s'il existe un jour côté API : il prime sur l'estimation.
+      // Pourcentage RÉEL s'il existe un jour côté API — le seul qu'on affiche.
       if (typeof realProgress === 'number' && Number.isFinite(realProgress)) {
-        setProgress((prev) => Math.max(prev, Math.min(99, realProgress)));
+        setProgress(Math.min(99, Math.max(0, realProgress)));
       }
       setGenStatus('processing');
       pollRef.current = setTimeout(() => poll(generationId), 5000);
@@ -530,7 +540,7 @@ export default function AvatarPage() {
     setError(null);
     setNotice(null);
     setVideoUrl(null);
-    setProgress(0);
+    setProgress(null);
     setGenStatus('pending');
 
     try {
@@ -565,6 +575,31 @@ export default function AvatarPage() {
 
   const busy = genStatus === 'pending' || genStatus === 'processing';
 
+  /** « Changer de source » : le geste existant (retour à l'import), aussi offert par les notifications. */
+  const changerDeSource = () => {
+    setAvatar(null);
+    setVideoUrl(null);
+    setProgress(null);
+    setGenStatus('idle');
+    setError(null);
+    setNotice(null);
+  };
+
+  /**
+   * Les étapes RÉELLEMENT connues de Studiio pour un avatar photo en
+   * entraînement : la source est là, le consentement Studiio est certifié
+   * (à l'import), le fournisseur a bien reçu la source (`training` implique un
+   * identifiant fournisseur). L'entraînement est en cours ; « Prêt » vient
+   * après. Rien n'est marqué terminé par anticipation.
+   */
+  const etapesEntrainementHeygen: EtapeProgression[] = [
+    { libelle: 'Source', etat: 'terminee' },
+    { libelle: 'Consentement', etat: 'terminee' },
+    { libelle: 'Création', etat: 'terminee' },
+    { libelle: 'Entraînement', etat: 'courante' },
+    { libelle: 'Prêt', etat: 'a_venir' },
+  ];
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -589,16 +624,21 @@ export default function AvatarPage() {
       </div>
 
       {error && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
+        <Notification niveau="erreur" titre={error} onFermer={() => setError(null)} className="[&_[data-notification-titre]]:font-normal" />
       )}
       {notice && (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
-          <Check className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <span data-avatar-notice>{notice}</span>
-        </div>
+        <Notification niveau="succes" titre={notice} onFermer={() => setNotice(null)}>
+          <span data-avatar-notice className="sr-only">{notice}</span>
+        </Notification>
+      )}
+      {voixManquante && (
+        <Notification
+          niveau="avertissement"
+          titre="Votre voix personnelle est nécessaire pour l'aperçu."
+          detail="L'aperçu fait parler votre avatar avec votre voix. Ajoutez ou choisissez-la dans « Ma voix »."
+          actionPrincipale={{ libelle: 'Configurer ma voix', onClick: () => { maVoixRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); maVoixRef.current?.focus(); } }}
+          onFermer={() => setVoixManquante(false)}
+        />
       )}
 
       {/* ÉTAPE 1 — création (première visite uniquement) */}
@@ -680,7 +720,7 @@ export default function AvatarPage() {
                 de face, bien éclairé, en train de parler. Idéalement 1 à 2 minutes, arrière-plan
                 calme et peu de mouvement, cadrage stable. MP4 ou WebM,{' '}
                 <span className="text-gray-300">{MAX_VIDEO_MB} Mo maximum</span> — c&apos;est la
-                limite d&apos;envoi de HeyGen, pensez à compresser.
+                limite d&apos;envoi, pensez à compresser.
               </>
             )}
           </div>
@@ -745,6 +785,19 @@ export default function AvatarPage() {
             </span>
           </label>
 
+          {/* L'envoi vers Studiio, avec les octets RÉELLEMENT transférés. À 100 %,
+              le serveur prend le relais (et, pour la photo, sollicite le fournisseur) :
+              cette barre ne prétend rien de plus. */}
+          {envoiSource && (
+            <ProgressStatus
+              titre={kind === 'video' ? 'Envoi de votre vidéo' : 'Envoi de votre photo'}
+              statut="en_cours"
+              pourcentage={envoiSource.pourcentage}
+              detail={detailEnvoi(envoiSource)}
+              note={envoiSource.pourcentage >= 100 ? 'Envoi terminé — Studiio enregistre votre fichier.' : null}
+              compact
+            />
+          )}
           <button
             onClick={handleCreate}
             disabled={!file || !consent || creating}
@@ -753,7 +806,7 @@ export default function AvatarPage() {
             {creating ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                {kind === 'video' ? 'Envoi de la vidéo…' : 'Création…'}
+                {kind === 'video' ? 'Envoi de la vidéo…' : 'Envoi de la photo…'}
               </>
             ) : (
               <>
@@ -800,14 +853,7 @@ export default function AvatarPage() {
             </div>
             <div className="flex items-center gap-3 flex-shrink-0">
               <button
-                onClick={() => {
-                  setAvatar(null);
-                  setVideoUrl(null);
-                  setProgress(0);
-                  setGenStatus('idle');
-                  setError(null);
-                  setNotice(null);
-                }}
+                onClick={changerDeSource}
                 className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Changer de source
@@ -846,35 +892,34 @@ export default function AvatarPage() {
               expireLe={avatar.consent_expire_le ?? null}
               erreurEntrainement={avatar.training_error ?? null}
               onChange={async () => { await loadAvatar(false); }}
+              onChangerSource={changerDeSource}
             />
           )}
 
+          {/* Entraînement : le fournisseur ne rend qu'un statut → barre INDÉTERMINÉE,
+              aucun pourcentage inventé. Le workflow (étapes réellement connues de
+              Studiio) a son propre chiffre, nommé à part. La durée écoulée part de
+              `consent_at` : l'horodatage serveur de l'import, dans la même requête
+              que la sollicitation du fournisseur. */}
           {!viaDid && training && !trainingFailed && (
-            <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
-              <Loader2 className="w-5 h-5 flex-shrink-0 mt-0.5 animate-spin" />
-              <div>
-                <div className="font-medium">Entraînement en cours…</div>
-                <div className="text-xs mt-1 text-amber-200/80">
-                  {avatar.avatar_type === 'video'
-                    ? "HeyGen entraîne votre avatar vidéo à partir du footage. Cela prend généralement plusieurs minutes. Cette page se met à jour toute seule."
-                    : "HeyGen prépare votre avatar. Encore un instant — cette page se met à jour toute seule."}
-                </div>
-              </div>
-            </div>
+            <ProgressStatus
+              titre="Entraînement de votre avatar"
+              statut="en_cours"
+              etapes={etapesEntrainementHeygen}
+              detail="Entraînement en cours — progression exacte indisponible."
+              debutLe={avatar.consent_at ?? undefined}
+              description="Cela prend généralement plusieurs minutes."
+            />
           )}
 
           {!viaDid && trainingFailed && (
-            <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-              <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <div>
-                <div className="font-medium">L&apos;entraînement a échoué</div>
-                <div className="text-xs mt-1 text-red-200/80">
-                  {avatar.training_error ||
-                    "HeyGen n'a pas pu entraîner cet avatar."}{' '}
-                  Utilisez « Changer de source » pour réessayer avec un autre fichier.
-                </div>
-              </div>
-            </div>
+            <Notification
+              niveau="erreur"
+              titre="L'entraînement de votre avatar n'a pas abouti."
+              detail="La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé."
+              motif={avatar.training_error ?? null}
+              actionPrincipale={{ libelle: 'Changer de source', onClick: changerDeSource }}
+            />
           )}
 
           {/* ── VALIDATION DU CLONE — l'aperçu RÉEL, puis « Valider » ─────────
@@ -896,7 +941,12 @@ export default function AvatarPage() {
               {(!apercu || apercu.statut === 'aucun' || apercu.statut === 'echec') && (
                 <div className="space-y-2">
                   {apercu?.statut === 'echec' && (
-                    <div className="text-xs text-red-200">L&apos;aperçu a échoué{apercu.erreur ? ` (${apercu.erreur})` : ''}. Vous pouvez le relancer.</div>
+                    <Notification
+                      niveau="erreur"
+                      titre="L'aperçu n'a pas pu être généré."
+                      detail="Vous pouvez le relancer sans frais."
+                      motif={apercu.erreur ?? null}
+                    />
                   )}
                   <button
                     data-avatar-apercu="generer"
@@ -1040,41 +1090,19 @@ export default function AvatarPage() {
             )}
           </button>
 
-          {/* Barre de progression — masquée à l'état initial et en cas d'échec. */}
-          {(busy || genStatus === 'completed') && (
-            <div className="flex items-center gap-3">
-              <div
-                className="flex-1 rounded-full overflow-hidden"
-                style={{ height: 5, backgroundColor: '#1F2937' }}
-                role="progressbar"
-                aria-valuenow={Math.round(progress)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Progression de la génération"
-              >
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${progress}%`,
-                    background: 'linear-gradient(90deg, #7C3AED 0%, #EC4899 100%)',
-                    transition: 'width 300ms ease-out',
-                  }}
-                />
-              </div>
-              <span
-                className="text-xs font-medium text-gray-400 text-right"
-                style={{ minWidth: 34, fontVariantNumeric: 'tabular-nums' }}
-              >
-                {Math.round(progress)}%
-              </span>
-            </div>
-          )}
-
+          {/* Génération à la demande : le fournisseur ne rend qu'un statut → barre
+              indéterminée ; un pourcentage n'apparaît que si l'API en rend un réel. */}
           {busy && (
-            <p className="text-center text-xs text-gray-500">
-              La génération prend généralement 1 à 5 minutes. Vous pouvez laisser cette page
-              ouverte.
-            </p>
+            <ProgressStatus
+              titre="Création de votre vidéo"
+              statut="en_cours"
+              {...(progress !== null ? { pourcentage: progress } : {})}
+              detail={progress === null ? 'Génération en cours — progression exacte indisponible.' : undefined}
+              description="Cela prend généralement 1 à 5 minutes. Vous pouvez laisser cette page ouverte."
+            />
+          )}
+          {genStatus === 'completed' && (
+            <ProgressStatus titre="Vidéo prête" statut="succes" note={null} />
           )}
           </>
           )}
@@ -1089,7 +1117,9 @@ export default function AvatarPage() {
       <VoiceCloneRecorder />
       {/* Ma voix & prononciations — la voix utilisée, les prononciations,
           l'aperçu affiché/prononcé, l'écoute réelle ou son indisponibilité. */}
-      <MaVoixPanel />
+      <div ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none">
+        <MaVoixPanel />
+      </div>
 
       {/* Aperçu du résultat */}
       {videoUrl && (

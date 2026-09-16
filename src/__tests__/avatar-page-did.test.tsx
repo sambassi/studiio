@@ -17,6 +17,7 @@ vi.mock('@/components/voice/VoiceCloneRecorder', () => ({ default: () => null })
 vi.mock('@/components/voice/MaVoixPanel', () => ({ default: () => null }));
 
 import AvatarPage from '../app/dashboard/avatar/page';
+import { installerXhrDeTest, type XhrDeTest } from './aides/xhr-de-test';
 
 const A = '11111111-1111-4111-8111-000000000001';
 const serveur = { didVideoActif: true, avatar: null as Record<string, unknown> | null, etape: 'consentement_a_demander', texte: null as string | null, nom: null as string | null, expireLe: null as string | null, apercu: { statut: 'aucun' } as Record<string, unknown>, reutilisablePour: null as string | null };
@@ -62,8 +63,9 @@ function stubApi() {
   }) as unknown as typeof fetch;
 }
 
-beforeEach(() => { appels.length = 0; window.localStorage.clear(); serveur.didVideoActif = true; serveur.avatar = null; serveur.etape = 'consentement_a_demander'; serveur.texte = null; serveur.nom = null; serveur.expireLe = null; serveur.apercu = { statut: 'aucun' }; serveur.reutilisablePour = null; stubApi(); });
-afterEach(() => { cleanup(); });
+let xhr: XhrDeTest;
+beforeEach(() => { xhr = installerXhrDeTest(); appels.length = 0; window.localStorage.clear(); serveur.didVideoActif = true; serveur.avatar = null; serveur.etape = 'consentement_a_demander'; serveur.texte = null; serveur.nom = null; serveur.expireLe = null; serveur.apercu = { statut: 'aucun' }; serveur.reutilisablePour = null; stubApi(); });
+afterEach(() => { cleanup(); xhr.restaurer(); });
 
 const carteVideo = () => screen.getByRole('button', { name: /À partir d’une vidéo/ }) as HTMLButtonElement;
 
@@ -158,9 +160,15 @@ describe('/dashboard/avatar — « À partir d’une vidéo » (D-ID)', () => {
     await act(async () => { fireEvent.click(document.querySelector('[data-avatar-did-action="creer"]') as HTMLButtonElement); });
     await waitFor(() => expect(document.querySelector('[data-avatar-did-entrainement]')).not.toBeNull());
     expect(appels.filter((a) => a.url === '/api/avatar/did/creer')).toHaveLength(1);
-    // Le pipeline : Téléchargement ✓ Vérification ✓ Création ✓ Entraînement ✓ Prêt ✗
-    const atteintes = [...document.querySelectorAll('[data-avatar-did-etape]')].map((e) => `${e.getAttribute('data-avatar-did-etape')}=${e.getAttribute('data-atteinte')}`);
-    expect(atteintes).toEqual(['telechargement=1', 'verification=1', 'creation=1', 'entrainement=1', 'pret=0']);
+    // Pendant l'entraînement, c'est le ProgressStatus qui porte les étapes : Source ✓ Consentement ✓ Création ✓ Entraînement ● Prêt ○
+    // — barre INDÉTERMINÉE (le fournisseur ne rend qu'un statut), workflow compté séparément.
+    expect(document.querySelector('[data-avatar-did-pipeline]')).toBeNull();
+    const suivi = document.querySelector('[data-avatar-did-entrainement] [data-progress-status="en_cours"]') as HTMLElement;
+    expect(suivi).not.toBeNull();
+    expect(suivi.getAttribute('data-progress-determinee')).toBe('non');
+    expect([...suivi.querySelectorAll('[data-progress-etape-etat]')].map((e) => `${e.textContent!.replace(/^[^:]+: /, '')}=${e.getAttribute('data-progress-etape-etat')}`))
+      .toEqual(['Source=terminee', 'Consentement=terminee', 'Création=terminee', 'Entraînement=courante', 'Prêt=a_venir']);
+    expect(document.body.textContent).toContain('Votre avatar est en préparation.');
   });
 
   it('⚠️ sans nom, pas de demande possible ; « Obtenir une nouvelle phrase » renvoie renouveler:true avec le nom corrigé ; une phrase expirée bloque l’envoi de la vidéo', async () => {
