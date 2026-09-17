@@ -6,6 +6,7 @@ import {
 } from '@/lib/storage/cleanup';
 import { mergePostMetadata } from '@/lib/creer/postMetadata';
 import { PUT_ALLOWED_COLUMNS, parsePutPostPayload } from '@/lib/posts/put-payload';
+import { identiteServiceAfroboost, STATUT_IMPOSE_AFROBOOST } from '@/lib/afroboost/bridge';
 
 // GET /api/posts?month=2026-03
 export async function GET(req: NextRequest) {
@@ -43,20 +44,48 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/posts - Create a new post
+//
+// Deux appelants : la session NextAuth (l'utilisateur dans son Calendrier) et,
+// depuis le 16/09/2026, le service Afroboost (`Authorization: Bearer
+// AFROBOOST_SERVICE_TOKEN`, voir `@/lib/afroboost/bridge`). Pour ce dernier :
+// identite IMPOSEE (`AFROBOOST_STUDIIO_USER_ID`), statut IMPOSE (`draft`) quoi
+// que dise le corps, et idempotence par `metadata.afroboost_key` — Afroboost
+// peut rejouer son envoi sans dupliquer un brouillon.
 export async function POST(req: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const afroboost = identiteServiceAfroboost(req.headers.get('authorization'));
+    let userId: string | undefined = afroboost?.userId;
+    if (!userId) {
+      const session = await auth();
+      userId = session?.user?.id;
+    }
+    if (!userId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await req.json();
     const { title, caption, media_url, media_type, format, platforms, scheduled_date, scheduled_time, status, metadata } = body;
 
+    if (afroboost) {
+      const cle = metadata && typeof metadata.afroboost_key === 'string' ? metadata.afroboost_key : '';
+      if (cle) {
+        const { data: existant } = await supabase
+          .from('scheduled_posts')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('metadata->>afroboost_key', cle)
+          .limit(1)
+          .maybeSingle();
+        if (existant) {
+          return NextResponse.json({ success: true, post: existant, deja_present: true });
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from('scheduled_posts')
       .insert({
-        user_id: session.user.id,
+        user_id: userId,
         title: title || '',
         caption: caption || '',
         media_url,
@@ -65,8 +94,8 @@ export async function POST(req: NextRequest) {
         platforms: platforms || [],
         scheduled_date,
         scheduled_time: scheduled_time || '12:00',
-        status: status || 'draft',
-        ...(metadata ? { metadata } : {}),
+        status: afroboost ? STATUT_IMPOSE_AFROBOOST : (status || 'draft'),
+        ...(metadata ? { metadata: afroboost ? { ...metadata, source: 'afroboost' } : metadata } : (afroboost ? { metadata: { source: 'afroboost' } } : {})),
       })
       .select()
       .single();
