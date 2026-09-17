@@ -189,6 +189,38 @@ export async function enregistrerPrononciations(userId: string, liste: Prononcia
 }
 
 /**
+ * Résout un IDENTIFIANT DE VOIX reçu d'ailleurs (une configuration Autopilote,
+ * un réglage enregistré) vers le `provider_voice_id` d'une voix DU COMPTE.
+ *
+ * Deux formes sont reconnues, et seulement elles :
+ *   - `elevenlabs-<provider_voice_id>` — l'identifiant Studiio que le
+ *     navigateur manipule (GET /api/voice/clone) ;
+ *   - un UUID `user_voices.id` — ce qu'une configuration plus ancienne a pu
+ *     enregistrer (le Jumeau posait l'identifiant interne).
+ * Dans les deux cas la voix doit APPARTENIR à `userId` et être utilisable ;
+ * une voix d'un autre compte, un identifiant inconnu ou forgé rendent `null`.
+ * L'appelant ne parle alors PAS au fournisseur : il n'y a rien de vrai à dire.
+ */
+export async function resoudreVoixParIdentifiant(userId: string, voiceId: string | null | undefined): Promise<{ providerVoiceId: string; userVoiceId: string } | null> {
+  if (!UUID.test(userId)) return null;
+  const brut = (voiceId ?? '').trim();
+  if (!brut) return null;
+  const voix = await listUserVoices(userId);
+  let ligne: UserVoice | undefined;
+  if (brut.startsWith('elevenlabs-')) {
+    const nu = brut.slice('elevenlabs-'.length);
+    if (!PROVIDER_VOICE_ID.test(nu)) return null;
+    ligne = voix.find((v) => v.provider === 'elevenlabs' && v.provider_voice_id === nu);
+  } else if (UUID.test(brut)) {
+    ligne = voix.find((v) => v.id === brut);
+  } else {
+    return null;
+  }
+  if (!ligne || !voixUtilisable(ligne)) return null;
+  return { providerVoiceId: ligne.provider_voice_id, userVoiceId: ligne.id };
+}
+
+/**
  * LA voix qui parlera pour ce compte — relue à l'instant, jamais mise en
  * cache, jamais reçue du navigateur. Avec son `provider_voice_id`, que seul
  * le serveur voit. C'est ce que Créer et l'Autopilote appelleront.

@@ -55,6 +55,13 @@ beforeEach(() => {
     if (u.startsWith('/api/creer/jumeau')) {
       return { ok: true, json: async () => ({ success: jumeauServeur !== null, data: jumeauServeur }) };
     }
+    if (u === '/api/voice/clone') {
+      return { ok: true, json: async () => ({ success: true, configured: true, voices: [
+        // Même nom que la voix du jumeau, autre compte : la correspondance ne doit JAMAIS se faire par le nom.
+        { id: 'elevenlabs-ZZZ', accountVoiceId: 'voix-autre', name: 'Ma voix', lang: null, createdAt: '2026-09-01' },
+        { id: 'elevenlabs-AAA', accountVoiceId: 'voix-1', name: 'Ma voix', lang: null, createdAt: '2026-09-02' },
+      ] }) };
+    }
     if (u.startsWith('/api/ai/image')) {
       const body = JSON.parse(String(init?.body || '{}'));
       if (!body.prompt) return { ok: false, status: 400, json: async () => ({ success: false, error: 'prompt requis' }) };
@@ -206,23 +213,28 @@ describe('4. AfficheIA', () => {
 
 // ── 5. Mon jumeau dans l'Autopilote ─────────────────────────────────────────
 describe('5. JumeauAutopilote', () => {
-  it('jumeau prêt : interrupteur actif, la voix du jumeau est posée, la vidéo est dite non montée', async () => {
+  it('jumeau prêt : interrupteur actif, la voix du jumeau est posée par son identifiant Studiio (correspondance exacte de compte, jamais par le nom), la vidéo est dite non montée', async () => {
     jumeauServeur = { pret: true, motif: null, message: null, moteurDisponible: true, messageMoteur: null,
       jumeau: { avatar: { id: 'a', version: 3, nom: 'Bassi', valideLe: '2026-09-01' }, voix: { id: 'voix-1', nom: 'Ma voix' }, prononciations: 0 } };
     const onChange = vi.fn();
-    render(<JumeauAutopilote actif={false} onChange={onChange} />);
+    const voixCompte = [
+      { id: 'elevenlabs-ZZZ', accountVoiceId: 'voix-autre' },
+      { id: 'elevenlabs-AAA', accountVoiceId: 'voix-1' },
+    ];
+    render(<JumeauAutopilote actif={false} onChange={onChange} voixCompte={voixCompte} />);
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="pret"]')).not.toBeNull());
     const sw = document.querySelector('[data-jumeau-autopilote-interrupteur]') as HTMLInputElement;
     expect(sw.disabled).toBe(false);
     fireEvent.click(sw);
-    expect(onChange).toHaveBeenCalledWith(true, 'voix-1');
+    // L'identifiant du MOTEUR (`elevenlabs-…`), jamais l'identifiant de compte du contrat Jumeau.
+    expect(onChange).toHaveBeenCalledWith(true, 'elevenlabs-AAA');
     expect(document.querySelector('[data-jumeau-autopilote-video]')?.textContent).toContain('Créer une vidéo');
     expect((document.querySelector('[data-jumeau-autopilote-lien]') as HTMLAnchorElement).getAttribute('href')).toBe('/dashboard/avatar');
   });
 
   it('jumeau non prêt : interrupteur inerte, le motif et le lien vers Mon avatar', async () => {
     jumeauServeur = { pret: false, motif: 'avatar_absent', message: 'Aucun avatar validé.', moteurDisponible: false, messageMoteur: null, jumeau: null };
-    render(<JumeauAutopilote actif={true} onChange={() => {}} />);
+    render(<JumeauAutopilote actif={true} onChange={() => {}} voixCompte={[]} />);
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="avatar_absent"]')).not.toBeNull());
     const sw = document.querySelector('[data-jumeau-autopilote-interrupteur]') as HTMLInputElement;
     expect(sw.disabled).toBe(true);
@@ -232,7 +244,7 @@ describe('5. JumeauAutopilote', () => {
 
   it('serveur injoignable : « n a pas pu être vérifié », jamais un faux prêt', async () => {
     jumeauServeur = null;
-    render(<JumeauAutopilote actif={false} onChange={() => {}} />);
+    render(<JumeauAutopilote actif={false} onChange={() => {}} voixCompte={[]} />);
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="indisponible"]')).not.toBeNull());
     expect((document.querySelector('[data-jumeau-autopilote-interrupteur]') as HTMLInputElement).disabled).toBe(true);
   });
@@ -251,6 +263,8 @@ describe('5. JumeauAutopilote', () => {
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="pret"]')).not.toBeNull());
     await act(async () => { fireEvent.click(document.querySelector('[data-jumeau-autopilote-interrupteur]')!); });
     await waitFor(() => expect(configServeur.voiceEnabled).toBe(true));
-    expect(configServeur.voiceId).toBe('voix-1');
+    expect(configServeur.voiceId).toBe('elevenlabs-AAA');
+    // Et le switch RESTE allumé une fois la configuration relue.
+    await waitFor(() => expect((document.querySelector('[data-jumeau-autopilote-interrupteur]') as HTMLInputElement).checked).toBe(true));
   });
 });

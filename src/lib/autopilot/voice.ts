@@ -3,6 +3,7 @@ import {
 } from '@/lib/types/voice';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import type { PreparedPost } from '@/lib/autopilot/engine';
+import { resoudreVoixParIdentifiant } from '@/lib/voice/profil';
 
 /**
  * La voix off de l'Autopilote.
@@ -274,6 +275,22 @@ export async function buildAutopilotVoices(input: {
   voiceId?: string | null;
 }): Promise<VoixParSequence> {
   const provider = input.provider ?? SERVER_TTS_PROVIDER;
+
+  // ⚠️ AUCUNE CONFIANCE À `voiceId`. Une configuration enregistre un identifiant
+  // (préfixé `elevenlabs-…`, ou un UUID `user_voices.id` hérité du Jumeau) :
+  // avant de parler au fournisseur, on le résout POUR CE COMPTE. Une voix
+  // d'un autre utilisateur, inconnue ou forgée n'est ni envoyée ni remplacée
+  // par une autre voix personnelle : montage sans narration, et on le dit.
+  // Sans `voiceId`, rien ne change : la voix du serveur, comme avant.
+  let voixResolue: string | null | undefined = input.voiceId;
+  if ((input.voiceId ?? '').trim()) {
+    const compte = await resoudreVoixParIdentifiant(input.userId, input.voiceId);
+    if (!compte) {
+      console.warn(`[Autopilote/Voix] voix ${String(input.voiceId).slice(0, 12)}… inconnue pour ce compte : aucune narration, aucun appel au fournisseur`);
+      return {};
+    }
+    voixResolue = compte.providerVoiceId;
+  }
   const { writeFile, unlink } = await import('fs/promises');
   const os = await import('os');
   const path = await import('path');
@@ -285,7 +302,7 @@ export async function buildAutopilotVoices(input: {
   for (const cle of SEQUENCE_KEYS) {
     const texte = textes[cle];
     if (!texte) continue;
-    const mp3 = await synthetiser(texte, provider, input.voiceId);
+    const mp3 = await synthetiser(texte, provider, voixResolue);
     if (!mp3) continue;
 
     const local = path.join(os.tmpdir(), `studiio-voix-${input.jobId}-${cle}.mp3`);
