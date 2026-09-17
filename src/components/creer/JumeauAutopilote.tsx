@@ -15,12 +15,21 @@ import { lireEtatJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
  * que dans Creer une video. L'interrupteur branche donc la voix du jumeau
  * (reel), et l'ecran dit ou la video de l'avatar est disponible. Jamais une
  * option qui promet ce que le serveur ne produit pas.
+ *
+ * ⚠️ L'IDENTIFIANT ENREGISTRE EST CELUI DU MOTEUR. Le contrat Jumeau designe
+ * la voix par son identifiant DE COMPTE (`voix.id` = `user_voices.id`) — jamais
+ * un identifiant fournisseur. La configuration Autopilote, elle, attend
+ * l'identifiant Studiio `elevenlabs-…` des voix du compte (GET /api/voice/clone).
+ * Le bloc fait la correspondance EXACTE par `accountVoiceId` — jamais par le
+ * nom, deux voix pouvant s'appeler pareil — et n'active rien sans elle.
  */
 export default function JumeauAutopilote(props: {
   /** La voix du jumeau est-elle celle de l'Autopilote (voiceEnabled + voiceId) ? */
   actif: boolean;
-  /** Active/desactive la voix du jumeau ; `voixId` = la voix a poser. */
+  /** Active/desactive la voix du jumeau ; `voixId` = l'identifiant Studiio (`elevenlabs-…`) a poser. */
   onChange: (actif: boolean, voixId: string | null) => void;
+  /** Les voix du compte (GET /api/voice/clone) ; `null` tant qu'elles ne sont pas relues. */
+  voixCompte: Array<{ id: string; accountVoiceId?: string }> | null;
 }) {
   const [etat, setEtat] = useState<EtatJumeau | null | 'chargement'>('chargement');
   useEffect(() => {
@@ -29,9 +38,14 @@ export default function JumeauAutopilote(props: {
     return () => { vivant = false; };
   }, []);
 
-  const jumeau = etat !== 'chargement' && etat && etat.pret ? etat.jumeau : null;
-  const pret = !!jumeau;
-  const voixId = jumeau ? jumeau.voix.id : null;
+  const etatLu = etat !== 'chargement' && etat ? etat : null;
+  const jumeau = etatLu && etatLu.pret ? etatLu.jumeau : null;
+  // La voix du jumeau, retrouvée parmi celles du compte par son identifiant de
+  // compte (correspondance exacte). Sans elle, l'interrupteur reste inerte.
+  const voixReliee = jumeau && props.voixCompte ? props.voixCompte.find((v) => v.accountVoiceId === jumeau.voix.id) ?? null : null;
+  const voixEnAttente = !!jumeau && props.voixCompte === null;
+  const pret = !!jumeau && !!voixReliee;
+  const voixId = voixReliee ? voixReliee.id : null;
 
   return (
     <div data-jumeau-autopilote className="rounded-xl border border-white/10 bg-gray-900/60 p-4 space-y-3">
@@ -52,7 +66,7 @@ export default function JumeauAutopilote(props: {
         </label>
       </div>
 
-      {etat === 'chargement' && (
+      {(etat === 'chargement' || voixEnAttente) && (
         <div className="text-xs text-gray-500 flex items-center gap-1.5" data-jumeau-autopilote-etat="chargement">
           <Loader2 className="w-3.5 h-3.5 animate-spin" /> Vérification de votre jumeau…
         </div>
@@ -62,19 +76,29 @@ export default function JumeauAutopilote(props: {
           Votre jumeau n’a pas pu être vérifié pour le moment.
         </div>
       )}
-      {etat !== 'chargement' && etat && etat.pret && etat.jumeau && (
+      {jumeau && !voixEnAttente && !voixReliee && (
+        <div data-jumeau-autopilote-etat="voix_non_reliee" className="text-xs space-y-1">
+          <div className="text-amber-200 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> La voix de votre jumeau doit être vérifiée</div>
+          <div className="text-gray-300">
+            Votre jumeau est prêt, mais sa voix (« {jumeau.voix.nom} ») n’est pas dans la liste des voix clonées de votre compte :
+            l’Autopilote ne peut pas la poser. Rechargez la page ou vérifiez votre voix dans Mon avatar.
+          </div>
+        </div>
+      )}
+      {jumeau && voixReliee && (
         <div data-jumeau-autopilote-etat="pret" className="text-xs space-y-1">
           <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Votre jumeau est prêt</div>
-          <div className="text-gray-300">Avatar : validé (v{etat.jumeau.avatar.version}) · Voix : {etat.jumeau.voix.nom}</div>
+          <div className="text-gray-300">Avatar : validé (v{jumeau.avatar.version}) · Voix : {jumeau.voix.nom}</div>
           <div className="text-gray-400">
-            Dans l’Autopilote, votre jumeau parle : sa voix narre chaque vidéo produite.
+            Dans l’Autopilote, votre jumeau prête sa voix : la narration de chaque vidéo produite est dite avec elle.
+            Votre jumeau à l’image n’est pas monté par l’Autopilote.
           </div>
           <div className="flex items-start gap-1.5 text-gray-500" data-jumeau-autopilote-video>
             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
             <span>
-              {etat.moteurDisponible
+              {etatLu?.moteurDisponible
                 ? 'La vidéo de votre avatar n’est pas encore montée par l’Autopilote : pour une vidéo avec votre jumeau à l’image, passez par Créer une vidéo.'
-                : (etat.messageMoteur || 'La vidéo de votre avatar n’est pas disponible pour le moment.')}
+                : (etatLu?.messageMoteur || 'La vidéo de votre avatar n’est pas disponible pour le moment.')}
             </span>
           </div>
         </div>

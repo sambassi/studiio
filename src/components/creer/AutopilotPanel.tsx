@@ -21,9 +21,23 @@ import {
 
 /** Une voix clonée, telle que la rend `GET /api/voice/clone`. */
 interface VoixClonee {
+  /** L'identifiant Studiio (`elevenlabs-<provider_voice_id>`) — celui que la configuration enregistre. */
   id: string;
+  /** L'identifiant DU COMPTE (`user_voices.id`) — celui que le contrat Jumeau désigne. */
+  accountVoiceId?: string;
   name: string;
   lang: string | null;
+}
+
+/**
+ * La voix que désigne `config.voiceId` : par son identifiant Studiio, ou — pour
+ * une configuration plus ancienne où le Jumeau avait posé l'identifiant de
+ * compte — par `accountVoiceId`. Rien n'est réécrit à l'affichage : le prochain
+ * geste de l'utilisateur enregistre l'identifiant Studiio.
+ */
+function voixDeConfig(voix: VoixClonee[], voiceId: string | null): VoixClonee | undefined {
+  if (!voiceId) return undefined;
+  return voix.find((v) => v.id === voiceId || (!!v.accountVoiceId && v.accountVoiceId === voiceId));
 }
 
 /** Le nom d'un fichier, à partir de son adresse — pour ne pas afficher l'URL. */
@@ -197,7 +211,7 @@ function RECAP_CONSTANT(
   config: AutopilotConfig,
   voix: VoixClonee[],
 ): Array<[string, string]> {
-  const choisie = voix.find((v) => v.id === config.voiceId);
+  const choisie = voixDeConfig(voix, config.voiceId);
   return [
     ['Couleurs', `${config.cardGradientStart} → ${config.cardGradientEnd}, titre ${config.titleColor}`],
     ['Fond des cartes', config.cardsShowPoster ? 'L’affiche' : 'Les couleurs choisies'],
@@ -289,6 +303,8 @@ export default function AutopilotPanel({
   /** Les colonnes d'identité existent-elles en base ? Voir `brandingReady`. */
   const [identiteReady, setIdentiteReady] = useState(true);
   const [voixClonees, setVoixClonees] = useState<VoixClonee[]>([]);
+  /** La liste des voix a été relue (même vide) : le bloc Jumeau peut se prononcer. */
+  const [voixChargees, setVoixChargees] = useState(false);
 
   // ⚠️ UN SEUL POINT DE REMONTÉE, sur l'état lui-même. Le panneau écrit
   // `config` par une demi-douzaine de chemins — `enregistrer`, les roues
@@ -324,10 +340,11 @@ export default function AutopilotPanel({
     fetch('/api/voice/clone')
       .then((r) => r.json())
       .then((d) => {
-        if (cancelled || !d?.success || !Array.isArray(d.voices)) return;
-        setVoixClonees(d.voices as VoixClonee[]);
+        if (cancelled) return;
+        if (d?.success && Array.isArray(d.voices)) setVoixClonees(d.voices as VoixClonee[]);
+        setVoixChargees(true);
       })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setVoixChargees(true); });
     return () => { cancelled = true; };
   }, []);
 
@@ -955,8 +972,10 @@ export default function AutopilotPanel({
               + voiceId) — la video de l'avatar reste un chemin de Creer une video,
               et le bloc le dit. */}
           <JumeauAutopilote
-            actif={config.voiceEnabled && !!config.voiceId && voixClonees.some((v) => v.id === config.voiceId)}
+            actif={config.voiceEnabled && !!voixDeConfig(voixClonees, config.voiceId)}
+            voixCompte={voixChargees ? voixClonees : null}
             onChange={(actif, voixId) => {
+              // `voixId` est TOUJOURS l'identifiant Studiio (`elevenlabs-…`) résolu par le bloc.
               if (actif && voixId) enregistrer({ voiceEnabled: true, voiceId: voixId });
               else enregistrer({ voiceEnabled: false });
             }}
@@ -974,7 +993,7 @@ export default function AutopilotPanel({
               <>
                 <select
                   id="autopilot-voice-id"
-                  value={config.voiceId ?? ''}
+                  value={voixDeConfig(voixClonees, config.voiceId)?.id ?? ''}
                   onChange={(e) => enregistrer({ voiceId: e.target.value || null })}
                   disabled={!ready || saving}
                   data-autopilot-voice-id

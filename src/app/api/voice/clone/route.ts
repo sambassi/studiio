@@ -229,6 +229,10 @@ export async function GET() {
       configured: !!apiKey(),
       voices: voices.map((v) => ({
         id: `${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`,
+        // L'identifiant DU COMPTE (`user_voices.id`) : il permet au navigateur
+        // de retrouver la voix que le contrat Jumeau désigne (`voix.id`) sans
+        // qu'aucun identifiant fournisseur nu ne circule.
+        accountVoiceId: v.id,
         name: v.name,
         lang: v.lang,
         createdAt: v.created_at,
