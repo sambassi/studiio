@@ -37,16 +37,27 @@ export async function GET(req: NextRequest) {
     }
 
     const dbMap: Record<string, any> = {};
+    const maintenant = Date.now();
     dbAccounts?.forEach((acc) => {
       // Only trust accounts with real tokens (not demo_token)
-      if (acc.access_token && acc.access_token !== 'demo_token' && acc.access_token !== 'env_token') {
-        dbMap[acc.platform] = acc;
-      }
+      if (!acc.access_token || acc.access_token === 'demo_token' || acc.access_token === 'env_token') return;
+      // Un jeton périmé QUE l'on ne sait pas rafraîchir n'est pas « connecté » :
+      // YouTube et TikTok exigent un refresh_token pour se renouveler ; sans lui,
+      // la publication échouerait — on ne l'annonce pas comme connecté. Meta
+      // (Facebook/Instagram) : la date stockée est indicative (jeton de page
+      // non expirant, renouvelé à la publication) — on ne la traite pas.
+      const expire = !!acc.expires_at && new Date(acc.expires_at).getTime() < maintenant;
+      const renouvelable = acc.platform === 'youtube' || acc.platform === 'tiktok' ? !!acc.refresh_token : true;
+      if (expire && !renouvelable) return;
+      dbMap[acc.platform] = acc;
     });
 
-    // Check which platforms have OAuth configured (can initiate connection)
-    const hasInstagramOAuth = !!(process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID);
-    const hasFacebookOAuth = !!process.env.FACEBOOK_CLIENT_ID;
+    // Check which platforms have OAuth configured (can initiate connection).
+    // Meta : la route de connexion exige AUSSI `META_CONFIG_ID` (Facebook Login
+    // for Business) — sans lui, un bouton « Connecter » n'aboutirait pas.
+    const hasMetaConfig = !!process.env.META_CONFIG_ID;
+    const hasInstagramOAuth = !!(process.env.META_INSTAGRAM_APP_ID || process.env.FACEBOOK_CLIENT_ID) && hasMetaConfig;
+    const hasFacebookOAuth = !!process.env.FACEBOOK_CLIENT_ID && hasMetaConfig;
     const hasTiktokOAuth = !!process.env.TIKTOK_CLIENT_KEY;
     const hasYoutubeOAuth = !!(process.env.YOUTUBE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID);
 

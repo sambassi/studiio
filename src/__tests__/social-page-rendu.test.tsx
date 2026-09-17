@@ -106,9 +106,14 @@ describe('Écran Réseaux sociaux — rendu unifié', () => {
       expect(c.getAttribute('data-etat')).toBe('bientot');
       expect(c.querySelector('[data-action="connecter"]')).toBeNull();
       expect(c.textContent).toContain(messages.social.status.comingSoon);
-      // le repli « publier vous-même » est OUVERT (auto-publication indisponible)
-      expect(c.querySelector('details[data-self-publish="fallback"]')?.hasAttribute('open')).toBe(true);
     }
+    // le repli « publier vous-même » : UN bloc sous la grille, OUVERT (au moins un réseau sans auto-publication), nommant ces réseaux
+    const replis = document.querySelectorAll('details[data-self-publish]');
+    expect(replis).toHaveLength(1);
+    expect(replis[0].getAttribute('data-self-publish')).toBe('fallback');
+    expect(replis[0].hasAttribute('open')).toBe(true);
+    expect(replis[0].textContent).toContain('TikTok');
+    expect(replis[0].querySelector('a[href="/dashboard/library"]')).not.toBeNull();
     expect(document.querySelector('[data-zernio-refus]')?.textContent).toContain(messages.social.zernio.optionAbsente);
   });
 

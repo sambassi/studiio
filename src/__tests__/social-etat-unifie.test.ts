@@ -137,9 +137,11 @@ describe('L écran ne rend chaque réseau qu une fois', () => {
     expect(bloc).not.toContain('handleDisconnect(');
   });
 
-  it('le repli « publier vous-même » est ouvert seulement quand l auto-publication n est pas opérationnelle', () => {
-    expect(page).toContain('open={!e.autoPublication}');
-    expect(page).toContain("data-self-publish={e.autoPublication ? 'option' : 'fallback'}");
+  it('le repli « publier vous-même » : UN seul bloc pour la page, ouvert seulement quand un réseau n a pas la publication automatique', () => {
+    expect(page.split("t('selfPublish.title')").length - 1).toBe(1);
+    expect(page).toContain('const sansAuto = etats.filter((e) => !e.autoPublication);');
+    expect(page).toContain('open={fallback}');
+    expect(page).toContain("data-self-publish={fallback ? 'fallback' : 'option'}");
   });
 
   it('icônes lucide, aucun emoji dans la page', () => {
