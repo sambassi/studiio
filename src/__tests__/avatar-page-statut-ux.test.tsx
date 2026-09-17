@@ -91,8 +91,12 @@ describe('A. Le statut global — en tête de la colonne de travail, dérivé du
     expect(libelle()).toBe('Aucun avatar');
     expect(q('[data-avatar-statut-texte]')?.textContent).toMatch(/Commencez par choisir/);
     expect(q('[data-avatar-statut] .button-primary')).toBeNull();
-    // Le bloc est le PREMIER enfant de la colonne de travail.
-    expect(q('[data-avatar-colonne="etape"]')?.firstElementChild?.getAttribute('data-avatar-statut')).toBe('aucun');
+    // Le bloc vit dans la carte principale, juste sous le fil d'étapes.
+    const carte = q('[data-avatar-colonne="etape"] [data-avatar-carte-principale]');
+    expect(carte).not.toBeNull();
+    expect(carte?.querySelector('[data-avatar-statut]')?.getAttribute('data-avatar-statut')).toBe('aucun');
+    const fil = carte!.querySelector('[data-fil-etapes]')!;
+    expect(fil.compareDocumentPosition(carte!.querySelector('[data-avatar-statut]')!) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 
   it('entraînement HeyGen → « En entraînement » ; échec → « Erreur » ; à valider → « À valider »', async () => {
@@ -135,14 +139,14 @@ describe('B. L’aperçu — à droite, borné à l’écran, jamais coupé ; en
     // Sans avatar, choix « photo » → ratio 1:1.
     const cadre1 = q('[data-avatar-apercu-cadre]');
     expect(cadre1?.getAttribute('data-avatar-apercu-cadre')).toBe('1 / 1');
-    expect((cadre1 as HTMLElement).style.getPropertyValue('--apercu-offset')).toBe('11rem');
+    // Aucune surcharge par page : le décalage global (:root) s'applique tel quel.
+    expect((cadre1 as HTMLElement).style.getPropertyValue('--apercu-offset')).toBe('');
     // Aperçu de validation → 9:16.
     avatarHeygen('entraine_non_valide'); serveur.apercu = { statut: 'en_cours', generationId: G }; await monter();
     const cadre2 = q('[data-avatar-apercu-cadre]');
     expect(cadre2?.getAttribute('data-avatar-apercu-cadre')).toBe('9 / 16');
-    expect((cadre2 as HTMLElement).style.getPropertyValue('--apercu-offset')).toBe('11rem');
+    expect((cadre2 as HTMLElement).style.getPropertyValue('--apercu-offset')).toBe('');
     expect(cadre2?.querySelector('.apercu-cadre')).not.toBeNull();
-    expect(cadre2?.className).toContain('mx-auto');
     // La zone d'aperçu conserve son ratio (aspect-ratio), rien n'est rogné.
     expect(q('[data-avatar-colonne="apercu"] [data-apercu-media], [data-avatar-colonne="apercu"] [style*="aspect-ratio"]')).not.toBeNull();
   });

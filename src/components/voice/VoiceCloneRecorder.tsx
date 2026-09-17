@@ -213,10 +213,11 @@ export default function VoiceCloneRecorder({
   const pret = !!blob && name.trim().length > 0 && consent && !sending;
 
   return (
-    <div className="card-base p-5 space-y-4">
+    /* Sous-section de « Ma voix » (la carte et le titre de section sont portés par la page). */
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Mic className="w-4 h-4 text-purple-400" />
-        <h2 className="font-semibold">Ma voix</h2>
+        <h3 className="font-semibold">Enregistrer ma voix</h3>
       </div>
       <p className="text-sm text-gray-400">
         Enregistrez-vous pendant une minute environ, dans un endroit calme. Votre voix devient

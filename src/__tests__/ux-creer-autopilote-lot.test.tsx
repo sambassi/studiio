@@ -142,7 +142,9 @@ describe('2. Cadre d aperçu', () => {
     const css = readFileSync(resolve(process.cwd(), 'src/app/globals.css'), 'utf8');
     const bloc = css.slice(css.indexOf('.apercu-cadre'));
     expect(css).toMatch(/@media \(min-width: 1024px\) \{\s*\.apercu-cadre/);
-    expect(bloc).toContain('100vh - var(--apercu-offset, 10rem)');
+    // Une seule source : le décalage est un jeton de :root, sans repli caché dans le calc.
+    expect(css).toMatch(/:root\s*\{[^}]*--apercu-offset:\s*20rem/);
+    expect(bloc).toContain('100vh - var(--apercu-offset)');
     expect(bloc).toContain('var(--apercu-w, 9) / var(--apercu-h, 16)');
     // Aucun défilement interne (règle #410) : pas d'overflow dans la règle.
     expect(bloc.slice(0, bloc.indexOf('}'))).not.toContain('overflow');
