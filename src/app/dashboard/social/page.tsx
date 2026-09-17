@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Input } from '@/components/ui/Input';
 import { useTranslations } from '@/i18n/client';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
 import type { EtatDerive, Reseau, Voie } from '@/lib/social/etatReseaux';
@@ -17,9 +16,6 @@ import {
   Check,
   Loader2,
   X,
-  Settings,
-  Hash,
-  FileText,
   Bell,
   Clock,
   Download,
@@ -28,25 +24,10 @@ import {
   Link2,
 } from 'lucide-react';
 
-interface SocialAccount {
-  id: string;
-  platform: string;
-  username: string;
-  connected: boolean;
-  connectedAt: string;
-}
-
 interface Toast {
   id: string;
   message: string;
   type: 'success' | 'error' | 'info';
-}
-
-interface PublishingSettings {
-  autoPublish: boolean;
-  bestTimeToPublish: boolean;
-  defaultHashtags: string;
-  defaultDescription: string;
 }
 
 const PLATFORMS = [
@@ -85,22 +66,18 @@ const PLATFORMS = [
   },
 ];
 
-const STORAGE_KEY = 'studiio_social_accounts';
-const SETTINGS_KEY = 'studiio_publishing_settings';
+/**
+ * Clés localStorage HISTORIQUES : la page n'écrit plus rien dans le navigateur
+ * (l'état des comptes vient du serveur à chaque lecture ; les « paramètres de
+ * publication » n'étaient consommés par rien). On les purge au chargement.
+ */
+const CLES_LOCALES_HISTORIQUES = ['studiio_social_accounts', 'studiio_publishing_settings'];
 
 export default function SocialPage() {
   const t = useTranslations('social');
 
-  const [accounts, setAccounts] = useState<Record<string, SocialAccount | null>>({});
   const [connecting, setConnecting] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [settings, setSettings] = useState<PublishingSettings>({
-    autoPublish: true,
-    bestTimeToPublish: false,
-    defaultHashtags: '',
-    defaultDescription: '',
-  });
-  const [isLoading, setIsLoading] = useState(true);
 
   const [oauthStatus, setOauthStatus] = useState<Record<string, boolean>>({});
   /**
@@ -120,77 +97,27 @@ export default function SocialPage() {
   const [zernioEnCours, setZernioEnCours] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<{ reseau: Reseau; voie: Voie } | null>(null);
 
-  // Initialize accounts and settings from API only (no stale localStorage)
+  // Rien n'est jamais mis en cache côté navigateur : on purge l'historique.
   useEffect(() => {
-    const initializeData = async () => {
-      try {
-        // Load settings from localStorage (settings are safe to cache)
-        const savedSettings = localStorage.getItem(SETTINGS_KEY);
-        if (savedSettings) {
-          setSettings(JSON.parse(savedSettings));
-        }
-
-        // IMPORTANT: Clear any stale account data from localStorage
-        // Only trust the server API for connection status
-        localStorage.removeItem(STORAGE_KEY);
-
-        // Fetch real connection status from API
-        try {
-          const statusRes = await fetch('/api/social/status');
-          if (statusRes.ok) {
-            const statusData = await statusRes.json();
-            if (statusData.success && statusData.platforms) {
-              const accountsMap: Record<string, SocialAccount | null> = {};
-              const oauthMap: Record<string, boolean> = {};
-              const availableMap: Record<string, boolean> = {};
-              Object.entries(statusData.platforms).forEach(([platform, info]: [string, any]) => {
-                oauthMap[platform] = info.oauthAvailable ?? false;
-                // `?? true` : sans information, la plateforme reste
-                // connectable — on ne masque jamais par accident.
-                availableMap[platform] = info.available ?? true;
-                if (info.connected) {
-                  accountsMap[platform] = {
-                    id: `${platform}_oauth`,
-                    platform,
-                    username: info.username || `@${platform}`,
-                    connected: true,
-                    connectedAt: new Date().toISOString(),
-                  };
-                }
-              });
-              setAccounts(accountsMap);
-              setOauthStatus(oauthMap);
-              setAvailability(availableMap);
-            }
-          }
-        } catch (error) {
-          console.warn('Could not fetch social status:', error);
-          // Start with empty accounts — no fake connections
-          setAccounts({});
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initializeData();
+    for (const cle of CLES_LOCALES_HISTORIQUES) { try { localStorage.removeItem(cle); } catch { /* stockage indisponible */ } }
   }, []);
 
-  // Save settings to localStorage and API
+  // Disponibilité OAuth / mise en attente pour les badges et encarts : dérivées
+  // de la MÊME lecture de `/api/social/status` que l'état unifié (`unifie`),
+  // donc rafraîchies avec lui — jamais une seconde requête.
   useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-
-      // Try to save to API (fire and forget)
-      fetch('/api/social/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      }).catch(() => {
-        // Silently fail - localStorage is our fallback
-      });
-    }
-  }, [settings, isLoading]);
+    if (!unifie.plateformes) return;
+    const oauthMap: Record<string, boolean> = {};
+    const availableMap: Record<string, boolean> = {};
+    Object.entries(unifie.plateformes).forEach(([platform, info]: [string, any]) => {
+      oauthMap[platform] = info.oauthAvailable ?? false;
+      // `?? true` : sans information, la plateforme reste
+      // connectable — on ne masque jamais par accident.
+      availableMap[platform] = info.available ?? true;
+    });
+    setOauthStatus(oauthMap);
+    setAvailability(availableMap);
+  }, [unifie.plateformes]);
 
   const showToast = (
     message: string,
@@ -279,52 +206,41 @@ export default function SocialPage() {
         if (data.authUrl) {
           popup.location.href = data.authUrl;
 
-          if (!popup) {
-            showToast(t('toasts.popupsRequired'), 'error');
+          // Fin du parcours OAuth : la page de retour poste `social-oauth-success`
+          // (ou `-error`) puis se ferme ; on écoute ce message ET la fermeture
+          // du popup. `terminer` est idempotent : UN seul rechargement de
+          // l'état unifié (`unifie.recharger()`), la carte passe « Connecté »
+          // sans recharger la page — aucune boucle, aucune écriture locale.
+          let termine = false;
+          let pollInterval: ReturnType<typeof setInterval> | null = null;
+          let garde: ReturnType<typeof setTimeout> | null = null;
+          const onMessage = (ev: MessageEvent) => {
+            if (ev.origin !== window.location.origin) return;
+            const type = (ev.data as { type?: string } | null)?.type;
+            if (type === 'social-oauth-success') terminer(true);
+            else if (type === 'social-oauth-error') { showToast(t('toasts.connectionError'), 'error'); terminer(false, true); }
+          };
+          const terminer = (succes: boolean, silencieux = false) => {
+            if (termine) return;
+            termine = true;
+            if (pollInterval) clearInterval(pollInterval);
+            if (garde) clearTimeout(garde);
+            window.removeEventListener('message', onMessage);
             setConnecting(null);
-            return;
-          }
-
-          // Poll for window closure
-          const pollInterval = setInterval(() => {
-            if (popup.closed) {
-              clearInterval(pollInterval);
-              setConnecting(null);
-
-              // Refresh accounts after OAuth completes
-              setTimeout(() => {
-                fetch('/api/social/accounts')
-                  .then((res) => res.json())
-                  .then((data) => {
-                    if (data.success && data.accounts) {
-                      const accountsMap: Record<string, SocialAccount | null> =
-                        {};
-                      data.accounts.forEach((acc: SocialAccount) => {
-                        accountsMap[acc.platform] = acc;
-                      });
-                      setAccounts(accountsMap);
-                      localStorage.setItem(
-                        STORAGE_KEY,
-                        JSON.stringify(accountsMap)
-                      );
-                      showToast(
-                        t('toasts.connectionSuccess', { platform: platform.name }),
-                        'success'
-                      );
-                    }
-                  })
-                  .catch(() => {
-                    showToast(
-                      t('toasts.connectionInitiated', { platform: platform.name }),
-                      'success'
-                    );
-                  });
-              }, 1000);
+            unifie.recharger();
+            if (!silencieux) {
+              showToast(
+                succes
+                  ? t('toasts.connectionSuccess', { platform: platform.name })
+                  : t('toasts.connectionInitiated', { platform: platform.name }),
+                'success',
+              );
             }
-          }, 500);
-
-          // Clear interval after 5 minutes (safety timeout)
-          setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+          };
+          window.addEventListener('message', onMessage);
+          pollInterval = setInterval(() => { if (popup.closed) terminer(false); }, 500);
+          // Garde-fou : après 5 minutes, on cesse d'attendre (et on relit l'état).
+          garde = setTimeout(() => terminer(false, true), 5 * 60 * 1000);
         } else {
           // Successful response but no authUrl — should not happen with new API
           popup.close();
@@ -344,42 +260,23 @@ export default function SocialPage() {
     }
   };
 
+  /** Déconnexion directe : le serveur seul fait foi — aucun « succès » local. */
   const handleDisconnect = async (platformId: string) => {
+    const platform = PLATFORMS.find((p) => p.id === platformId);
     try {
-      const platform = PLATFORMS.find((p) => p.id === platformId);
-
-      // Try API disconnect
-      try {
-        const response = await fetch(
-          `/api/social/disconnect`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ platform: platformId }),
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            const updated = { ...accounts };
-            delete updated[platformId];
-            setAccounts(updated);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-            showToast(t('toasts.disconnected', { platform: platform?.name || platformId }), 'success');
-            return;
-          }
+      const response = await fetch(
+        `/api/social/disconnect`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ platform: platformId }),
         }
-      } catch (error) {
-        // Continue with localStorage removal if API fails
-        console.warn('API disconnect failed, removing from localStorage:', error);
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        showToast(t('toasts.disconnectError'), 'error');
+        return;
       }
-
-      // Fallback: remove from localStorage
-      const updated = { ...accounts };
-      delete updated[platformId];
-      setAccounts(updated);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       showToast(t('toasts.disconnected', { platform: platform?.name || platformId }), 'success');
     } catch (error) {
       console.error('Error disconnecting account:', error);
@@ -447,7 +344,7 @@ export default function SocialPage() {
   const connectedCount = etats.filter((e) => e.etat === 'connecte').length;
   const hasConnectedPlatforms = connectedCount > 0;
 
-  if (isLoading || unifie.chargement) {
+  if (unifie.chargement) {
     return (
       <div className="flex items-center justify-center h-screen">
         <Loader2 className="animate-spin text-studiio-primary" size={32} />
@@ -497,7 +394,9 @@ export default function SocialPage() {
               <div className="min-w-0">
                 <p className="font-semibold text-white">{t('confirmDisconnect.title', { platform: t(`platforms.${confirmation.reseau}.name`) })}</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  {confirmation.voie === 'zernio' ? t('confirmDisconnect.zernio') : t('confirmDisconnect.direct')}
+                  {confirmation.voie === 'zernio'
+                    ? t('confirmDisconnect.zernio', { platform: t(`platforms.${confirmation.reseau}.name`) })
+                    : t('confirmDisconnect.direct', { platform: t(`platforms.${confirmation.reseau}.name`) })}
                 </p>
               </div>
             </div>
@@ -566,7 +465,6 @@ export default function SocialPage() {
         {PLATFORMS.map((platform) => {
           const Icon = platform.icon;
           const e = unifie.reseaux![platform.id as Reseau];
-          const account = accounts[platform.id];
           const isConnecting = connecting === platform.id || zernioEnCours === platform.id;
           const isConnected = e.etat === 'connecte';
           const hasOAuth = oauthStatus[platform.id] ?? false;
@@ -619,11 +517,9 @@ export default function SocialPage() {
                       </h3>
                       {isConnected ? (
                         <p className="text-sm text-green-400 truncate">
-                          {e.username ? `@${e.username.replace(/^@/, '')}` : t('status.connected')}
+                          {/* Sans nom de compte : le réseau, jamais « @undefined » ni un état répété */}
+                          {e.username ? `@${e.username.replace(/^@/, '')}` : platform.name}
                           {e.voie === 'zernio' && <span className="ml-1 text-[11px] text-gray-500">· {t('voie.zernio')}</span>}
-                          {e.voie === 'direct' && account?.connectedAt && (
-                            <span className="ml-1 text-[11px] text-gray-500">· {new Date(account.connectedAt).toLocaleDateString()}</span>
-                          )}
                         </p>
                       ) : e.etat === 'reconnexion' ? (
                         <p className="text-sm text-amber-400 truncate">
@@ -639,14 +535,14 @@ export default function SocialPage() {
 
                   {comingSoon ? (
                     <Badge className="flex items-center gap-1 bg-purple-500/20 text-purple-200 border-purple-500/30">
-                      <Clock size={12} /> {t('status.comingSoon')}
+                      <Clock size={12} /> {libelleEtat}
                     </Badge>
                   ) : isConnected ? (
                     <Badge
                       variant="success"
                       className="flex items-center gap-1 bg-green-500/20 text-green-300 border-green-500/30"
                     >
-                      <Check size={12} /> {t('status.connected')}
+                      <Check size={12} /> {libelleEtat}
                     </Badge>
                   ) : e.etat === 'reconnexion' ? (
                     <Badge className="flex items-center gap-1 bg-amber-500/20 text-amber-200 border-amber-500/30">
@@ -736,42 +632,6 @@ export default function SocialPage() {
                     </Button>
                   )}
 
-                  {/* « Publier vous-même » — AJOUT, jamais un remplacement :
-                      la connexion automatique (Facebook/Instagram) garde son
-                      bouton juste au-dessus. Tant que la publication auto
-                      n'est pas opérationnelle sur ce réseau (non connecté,
-                      en attente, TikTok en brouillon privé), ce chemin permet
-                      de publier quand même, depuis son propre compte. Un
-                      réseau où l'auto-publication marche garde le bloc en
-                      version repliée : l'option existe, elle ne s'impose pas. */}
-                  <details className="mt-3 rounded-lg border border-gray-800 bg-gray-900/40 p-3" open={!e.autoPublication} data-self-publish={e.autoPublication ? 'option' : 'fallback'}>
-                    <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                      {t('selfPublish.title')}
-                    </summary>
-                    <p className="mt-2 mb-2 text-[11px] leading-snug text-gray-500">
-                      {e.autoPublication ? t('selfPublish.introOption', { platform: platform.name }) : t('selfPublish.intro', { platform: platform.name })}
-                    </p>
-                    <ol className="mb-3 space-y-1">
-                      {[
-                        t('selfPublish.step1'),
-                        t('selfPublish.step2', { platform: platform.name }),
-                        t('selfPublish.step3'),
-                      ].map((label, i) => (
-                        <li key={label} className="flex items-start gap-2 text-[11px] text-gray-300">
-                          <span className="mt-px flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-gray-800 text-[9px] font-semibold text-gray-400">
-                            {i + 1}
-                          </span>
-                          {label}
-                        </li>
-                      ))}
-                    </ol>
-                    <Link href="/dashboard/library" className="block">
-                      <Button variant="secondary" className="w-full">
-                        <Download size={14} className="mr-2" />
-                        {t('selfPublish.cta')}
-                      </Button>
-                    </Link>
-                  </details>
                 </div>
               </CardContent>
             </Card>
@@ -780,118 +640,54 @@ export default function SocialPage() {
         })}
       </div>
 
-      {/* Publishing Settings Section */}
-      <Card className="border-studiio-primary/20">
-        <CardHeader className="border-b border-gray-800">
-          <CardTitle className="flex items-center gap-2">
-            <Settings size={20} className="text-studiio-primary" />
-            {t('settings.title')}
-          </CardTitle>
-        </CardHeader>
+      {/* « Publier vous-même » — UN seul bloc pour la page, jamais un
+          remplacement : la connexion automatique garde son bouton dans chaque
+          carte. Tant qu'un réseau n'a pas de publication automatique
+          opérationnelle (non connecté, en attente, TikTok en brouillon
+          privé), ce chemin permet de publier quand même, depuis son propre
+          compte : le bloc est alors ouvert et nomme ces réseaux. Quand tout
+          est automatique, il reste disponible, replié. */}
+      {(() => {
+        const sansAuto = etats.filter((e) => !e.autoPublication);
+        const fallback = sansAuto.length > 0;
+        const noms = (fallback ? sansAuto : etats).map((e) => PLATFORMS.find((p) => p.id === e.reseau)?.name ?? e.reseau).join(', ');
+        return (
+          <details className="rounded-lg border border-gray-800 bg-gray-900/40 p-4" open={fallback} data-self-publish={fallback ? 'fallback' : 'option'}>
+            <summary className="cursor-pointer list-none text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              {t('selfPublish.title')}
+            </summary>
+            <p className="mt-2 mb-2 text-[11px] leading-snug text-gray-500">
+              {fallback ? t('selfPublish.intro', { platform: noms }) : t('selfPublish.introOption', { platform: noms })}
+            </p>
+            <ol className="mb-3 space-y-1">
+              {[
+                t('selfPublish.step1'),
+                t('selfPublish.step2', { platform: noms }),
+                t('selfPublish.step3'),
+              ].map((label, i) => (
+                <li key={label} className="flex items-start gap-2 text-[11px] text-gray-300">
+                  <span className="mt-px flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-gray-800 text-[9px] font-semibold text-gray-400">
+                    {i + 1}
+                  </span>
+                  {label}
+                </li>
+              ))}
+            </ol>
+            <Link href="/dashboard/library" className="inline-block">
+              <Button variant="secondary">
+                <Download size={14} className="mr-2" />
+                {t('selfPublish.cta')}
+              </Button>
+            </Link>
+          </details>
+        );
+      })()}
 
-        <CardContent className="pt-6">
-          <div className="space-y-6">
-            {/* Publication Automatique */}
-            <div className="flex items-start gap-4 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
-              <input
-                type="checkbox"
-                id="autoPublish"
-                checked={settings.autoPublish}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    autoPublish: e.target.checked,
-                  }))
-                }
-                className="w-4 h-4 mt-1 accent-studiio-primary cursor-pointer"
-              />
-              <div className="flex-1">
-                <label
-                  htmlFor="autoPublish"
-                  className="font-medium text-white cursor-pointer block"
-                >
-                  {t('settings.autoPublish.title')}
-                </label>
-                <p className="text-xs text-gray-400 mt-1">
-                  {t('settings.autoPublish.description')}
-                </p>
-              </div>
-            </div>
-
-            {/* Meilleur Moment pour Publier */}
-            <div className="flex items-start gap-4 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
-              <input
-                type="checkbox"
-                id="bestTime"
-                checked={settings.bestTimeToPublish}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    bestTimeToPublish: e.target.checked,
-                  }))
-                }
-                className="w-4 h-4 mt-1 accent-studiio-primary cursor-pointer"
-              />
-              <div className="flex-1">
-                <label
-                  htmlFor="bestTime"
-                  className="font-medium text-white cursor-pointer block"
-                >
-                  {t('settings.bestTime.title')}
-                </label>
-                <p className="text-xs text-gray-400 mt-1">
-                  {t('settings.bestTime.description')}
-                </p>
-              </div>
-            </div>
-
-            {/* Hashtags par défaut */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 font-medium text-white">
-                <Hash size={16} className="text-studiio-primary" />
-                {t('settings.defaultHashtags.title')}
-              </label>
-              <Input
-                placeholder={t('settings.defaultHashtags.placeholder')}
-                value={settings.defaultHashtags}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    defaultHashtags: e.target.value,
-                  }))
-                }
-                className="bg-gray-800/50 border-gray-700/50 text-white placeholder-gray-500"
-              />
-              <p className="text-xs text-gray-400">
-                {t('settings.defaultHashtags.example')}
-              </p>
-            </div>
-
-            {/* Description par défaut */}
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 font-medium text-white">
-                <FileText size={16} className="text-studiio-primary" />
-                {t('settings.defaultDescription.title')}
-              </label>
-              <textarea
-                placeholder={t('settings.defaultDescription.placeholder')}
-                value={settings.defaultDescription}
-                onChange={(e) =>
-                  setSettings((prev) => ({
-                    ...prev,
-                    defaultDescription: e.target.value,
-                  }))
-                }
-                rows={4}
-                className="w-full bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-studiio-primary/50 transition"
-              />
-              <p className="text-xs text-gray-400">
-                {t('settings.defaultDescription.info')}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Les « Paramètres de publication » (publication auto, meilleur moment,
+          hashtags et description par défaut) ne sont plus affichés : aucun
+          consommateur — ni le Calendrier, ni le cron, ni la publication ne les
+          lisaient. La route /api/social/settings et la colonne
+          user_settings.social_settings restent en place (historique). */}
     </div>
   );
 }

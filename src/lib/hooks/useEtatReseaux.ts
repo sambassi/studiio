@@ -22,6 +22,12 @@ export interface EtatReseauxCharge {
   zernio: EntreeZernio | null;
   /** Canaux hors réseaux (email, whatsapp…) — inchangé, pour le Calendrier. */
   canaux: Record<string, boolean>;
+  /**
+   * Les statuts DIRECTS bruts (`/api/social/status` → `platforms`), pour les
+   * badges « bientôt » / « OAuth non configuré » de l'écran Réseaux : la même
+   * lecture que la dérivation, jamais une seconde requête.
+   */
+  plateformes: Record<string, StatutDirect> | null;
   recharger: () => void;
 }
 
@@ -30,6 +36,7 @@ export function useEtatReseaux(): EtatReseauxCharge {
   const [reseaux, setReseaux] = useState<Record<Reseau, EtatDerive> | null>(null);
   const [zernio, setZernio] = useState<EntreeZernio | null>(null);
   const [canaux, setCanaux] = useState<Record<string, boolean>>({});
+  const [plateformes, setPlateformes] = useState<Record<string, StatutDirect> | null>(null);
   const [tick, setTick] = useState(0);
 
   const recharger = useCallback(() => setTick((t) => t + 1), []);
@@ -62,11 +69,12 @@ export function useEtatReseaux(): EtatReseauxCharge {
       } catch { /* idem */ }
       if (!vivant) return;
       setZernio(z ?? null);
+      setPlateformes(direct ?? null);
       setReseaux(deriverTousLesReseaux(direct, z));
       setChargement(false);
     })();
     return () => { vivant = false; };
   }, [tick]);
 
-  return { chargement, reseaux, zernio, canaux, recharger };
+  return { chargement, reseaux, zernio, canaux, plateformes, recharger };
 }
