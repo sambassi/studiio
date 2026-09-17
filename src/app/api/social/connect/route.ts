@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { signState } from '@/lib/social/oauth-state';
 
 const APP_URL = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-function generateState(userId: string): string {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).slice(2, 10);
-    return `${userId}:${timestamp}:${random}`;
-}
+// Le `state` est desormais SIGNE (4e segment). Voir src/lib/social/oauth-state.ts :
+// sans signature, forger `state=<id victime>:0:x` faisait rattacher le compte
+// social de l'attaquant au compte Studiio de la victime. Les trois premiers
+// segments gardent exactement leur format, la signature n'est qu'ajoutee.
+const generateState = signState;
 
 function getOAuthUrl(platform: string, state: string): string | null {
     switch (platform) {
