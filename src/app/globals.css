@@ -6,6 +6,8 @@
   /* Rayon commun aux contrôles. Les boutons le lisent via var(--radius) :
      un seul endroit à changer pour ajuster la douceur des coins partout. */
   --radius: 10px;
+  /* Décalage du cadre d'aperçu (voir `.apercu-cadre` plus bas) : la seule source. */
+  --apercu-offset: 20rem;
 }
 
 * {
@@ -42,12 +44,21 @@ body {
  * tient toujours entièrement à l'écran, sans défilement interne (règle #410
  * conservée) et sans rognage du média.
  *
- * Variables : `--apercu-w` / `--apercu-h` (ratio, ex. 9 et 16),
- * `--apercu-offset` (hauteur retirée à la fenêtre, 18rem par défaut : navbar + top-20 + en-tête de carte + sous-en-tête, mesuré en QA pour que le cadre tienne entier dès le premier écran, sans défiler).
+ * Variables : `--apercu-w` / `--apercu-h` (ratio, ex. 9 et 16) posées par le
+ * cadre ; `--apercu-offset` = la hauteur retirée à la fenêtre, définie UNE fois
+ * sur `:root` (en tête de ce fichier) — aucune page ne la surcharge.
+ *
+ * 20rem (320 px), mesuré au navigateur sur le DOM réel : au-dessus du cadre,
+ * navbar 64 + marge 56 + en-tête de page 52 + gap 24 + bordure/padding de
+ * carte 25 + en-tête d'aperçu 28 (+ 41 d'onglets sur l'Autopilote) = 249 à
+ * 290 px ; en dessous, padding 25 et une légende. À 20rem, cadre ET carte
+ * tiennent entiers à scroll 0 sur Créer, l'Autopilote et Mon avatar (dont la
+ * carte d'aperçu a le même en-tête que Créer). Sous 1280 px de large la
+ * colonne elle-même est plus étroite que cette borne : aucun effet.
  * Sous `lg` (une colonne), pleine largeur : rien ne change. */
 @media (min-width: 1024px) {
   .apercu-cadre {
-    width: min(100%, calc((100vh - var(--apercu-offset, 18rem)) * var(--apercu-w, 9) / var(--apercu-h, 16)));
+    width: min(100%, calc((100vh - var(--apercu-offset)) * var(--apercu-w, 9) / var(--apercu-h, 16)));
     margin-inline: auto;
   }
 }

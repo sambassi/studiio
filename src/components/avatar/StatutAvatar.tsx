@@ -43,7 +43,8 @@ const RENDU: Record<StatutAvatarCle, { libelle: string; icone: ReactNode; classe
 export default function StatutAvatar({ statut, texte, lien, children, className = '' }: StatutAvatarProps) {
   const r = RENDU[statut];
   return (
-    <div data-avatar-statut={statut} className={`card-base p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 ${className}`}>
+    /* Un encart DANS la carte principale (pas une carte dans la carte). */
+    <div data-avatar-statut={statut} className={`rounded-xl border border-gray-800 bg-gray-950/60 p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 ${className}`}>
       <div className="min-w-0 flex-1 space-y-1">
         <span data-avatar-statut-libelle className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${r.classe}`}>
           {r.icone}
