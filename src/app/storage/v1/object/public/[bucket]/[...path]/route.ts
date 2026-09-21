@@ -54,11 +54,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Client as MinioClient } from 'minio';
 import { Readable } from 'stream';
-import { bucketAutorise } from '@/lib/storage/buckets';
-import {
-  cleObjetValide, typeContenuDepuisCle, cleDansNamespaceAnalyse,
-  cleDansNamespaceMontage, cleDansNamespaceLut, cleSourceAvatarPrivee,
-} from '@/lib/storage/acces-objet';
+import { typeContenuDepuisCle, cibleRecevable } from '@/lib/storage/acces-objet';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
 // never be statically cached — Range requests must hit the handler every
@@ -166,39 +162,17 @@ function introuvable(): NextResponse {
 /**
  * La cible est-elle recevable, sans avoir rien demandé au stockage ?
  *
- * Trois refus, une seule réponse (`introuvable`) : compartiment hors liste,
- * chemin malformé, et — depuis M3-B3.2a — namespace privé des analyses.
+ * La composition vit désormais dans `lib/storage/acces-objet.ts`
+ * (`cibleRecevable`) : compartiment de la liste blanche, clé normalisée
+ * (`cleObjetValide`), puis les refus de namespace (vignettes d'analyse,
+ * montages, LUT, source d'avatar), dans cet ordre et sans aucun changement
+ * de comportement pour ce relais.
  *
- * L'ordre compte. La normalisation de chemin (`cleObjetValide` : `..`, antislash,
- * `://`, caractères de contrôle, sur la valeur brute ET décodée) passe AVANT
- * le refus du namespace, de sorte qu'aucune forme tordue ne puisse à la fois
- * échapper au motif `analyse/` et désigner malgré tout l'objet. Et la garde
- * de namespace relit elle-même les formes décodées, donc elle ne dépend pas
- * de l'ordre pour être juste — elle en dépend seulement pour rester lisible.
- *
- * ⚠️ `media/<userId>/analyse/<analysisId>/vignette-NN.jpg` est une clé
- * DEVINABLE (voir `lib/storage/acces-objet.ts`). Le seul accès légitime aux
- * vignettes est `/api/autopilot/analyses/[id]/vignettes/[n]`, authentifié.
- * Ici, c'est 404 — pas 401, pas 403 : un code distinct signalerait que le
- * namespace existe.
+ * Elle est partagée pour que la conversion MP4, la publication et le proxy
+ * refusent EXACTEMENT ce que ce relais refuse, sans recopier la liste. Le
+ * raisonnement complet (ordre des gardes, 404 plutôt que 403 sur une clé
+ * devinable) est documenté là-bas, avec la fonction.
  */
-function cibleRecevable(bucket: string, storagePath: string): boolean {
-  if (!bucketAutorise(bucket)) return false;
-  if (!cleObjetValide(storagePath)) return false;
-  if (cleDansNamespaceAnalyse(bucket, storagePath)) return false;
-  // Le montage de l'Autopilote se lit par sa route authentifiée, jamais ici :
-  // sinon le propriétaire pourrait en faire un lien public et permanent.
-  if (cleDansNamespaceMontage(bucket, storagePath)) return false;
-  // Même refus pour les LUT importées : un look est un travail privé, il se
-  // lit par la route authentifiée de la bibliothèque, jamais par un lien
-  // public permanent.
-  if (cleDansNamespaceLut(bucket, storagePath)) return false;
-  // La SOURCE d'un avatar — le visage de la personne — ne sort que par
-  // `/api/avatar/source`, authentifiée. Les vidéos générées du même dossier
-  // (`<userId>/avatar/<uuid>.mp4`) restent servies comme avant.
-  if (cleSourceAvatarPrivee(bucket, storagePath)) return false;
-  return true;
-}
 
 export async function GET(
   req: NextRequest,

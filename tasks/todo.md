@@ -2,6 +2,17 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
+## En cours — Sécurité convert-to-mp4 + fetch-media (`fix/convert-mp4-security`, base `b953e73`) — 2026-09-21
+
+Correction minimale, sans migration : auth + ownership strict + parser/validateur de cible partagés + streaming borné + erreurs muettes.
+
+- [x] C — acces-objet : `extraireCibleStockage` (parser unique), `cibleRecevable` exporté et consommé par le relais public, `cleDuCompteStrict`, `originesStockageConfigurees` ; `estAdressePrivee` exporté (+ ::ffff)
+- [x] B — fetch-media : `downloadMediaToFile(url, dest, { userId, maxBytes?, timeoutMs?, prefixesPartages? })` streaming (statObject → getObject → pipeline ; HTTP legacy allowlisté, redirect manual revalidé, compteur borné) ; suppression de `downloadMediaToBuffer`
+- [x] A — /api/convert/to-mp4 : auth 401, cible Studiio du compte uniquement (404 uniforme), non-webm après validation, sortie `<userId>/converted/<uuid>.mp4` upsert:false, tmp UUID, 413/504, erreurs sanitisées, logs sans URL
+- [x] D — cron publish : `userId: post.user_id` sur les 4 appels ; compat `converted/` explicite si prouvée nécessaire
+- [x] E — non-régression : tests existants (namespace-analyse, stockage-durcissement, cron, autopilote m3b2/m3b3), full Vitest, PG, tsc
+- [x] Coordination : PR draft, pas de merge
+
 ## En cours — Affiche IA durable et sûre (`fix/ai-poster-durable`, base `99fb85a`) — 2026-09-21
 
 Re-hébergement CÔTÉ SERVEUR de la sortie Replicate (generate-bg) ; plus jamais d'URL replicate.delivery vers le navigateur.
