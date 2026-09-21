@@ -811,7 +811,7 @@ describe('6. Remplacement, suppression, et ce qui reste HeyGen', () => {
       expect(j.prive.fournisseurAvatar).toBe('did');
       // Le moteur vidéo, lui, ne sait pas animer un avatar D-ID : dit, avec
       // ce qui marche déjà.
-      expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as NodeJS.ProcessEnv)).toMatchObject({ disponible: false });
+      expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv)).toMatchObject({ disponible: false });
       expect(moteurJumeauDisponiblePour('did').message).toContain('créés à partir d’une photo');
       expect(moteurJumeauDisponiblePour('did').message).toContain('voix reste utilisable');
     } else {
@@ -821,7 +821,7 @@ describe('6. Remplacement, suppression, et ce qui reste HeyGen', () => {
     }
     // Défense en profondeur : même moteur actif, un identifiant D-ID n'atteint
     // jamais HeyGen — refus avant tout débit.
-    const g = await genererVideoJumeau({ userId: U, textes: ['Bonjour'] }, { env: { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as NodeJS.ProcessEnv });
+    const g = await genererVideoJumeau({ userId: U, textes: ['Bonjour'] }, { env: { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv });
     expect(g.ok).toBe(false);
     expect(g.ok ? '' : g.motif).toMatch(/^(moteur_indisponible|voix_absente|choix_voix_requis|voix_inutilisable)$/);
     expect(appelsVers(/heygen/)).toEqual([]);

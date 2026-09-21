@@ -74,9 +74,10 @@ export interface JumeauPrive {
  * (`user_avatars.provider default 'heygen'`) et le seul fournisseur qui
  * existait avant D-ID. Toute autre valeur est inconnue — le moteur refuse.
  */
-function fournisseurDe(a: { provider?: unknown }): FournisseurAvatar | 'inconnu' {
-  if (a.provider === 'did') return 'did';
-  if (a.provider === 'heygen' || a.provider === undefined || a.provider === null) return 'heygen';
+function fournisseurDe(a: unknown): FournisseurAvatar | 'inconnu' {
+  const provider = (a as { provider?: unknown } | null)?.provider;
+  if (provider === 'did') return 'did';
+  if (provider === 'heygen' || provider === undefined || provider === null) return 'heygen';
   return 'inconnu';
 }
 

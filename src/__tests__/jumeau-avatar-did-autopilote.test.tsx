@@ -27,7 +27,7 @@ import {
  * avec tous les drapeaux et clés.
  */
 
-const ENV_MOTEUR_ACTIF = { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as NodeJS.ProcessEnv;
+const ENV_MOTEUR_ACTIF = { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv;
 
 describe('moteurJumeauDisponiblePour — le moteur se juge POUR un avatar', () => {
   it('D-ID : indisponible même moteur actif, avec le message qui dit quoi et pourquoi', () => {
@@ -41,7 +41,7 @@ describe('moteurJumeauDisponiblePour — le moteur se juge POUR un avatar', () =
 
   it('HeyGen : suit le drapeau global — actif → disponible ; absent → message générique qui rappelle que la voix marche', () => {
     expect(moteurJumeauDisponiblePour('heygen', ENV_MOTEUR_ACTIF)).toEqual({ disponible: true, message: null });
-    const sans = moteurJumeauDisponiblePour('heygen', {} as NodeJS.ProcessEnv);
+    const sans = moteurJumeauDisponiblePour('heygen', {} as unknown as NodeJS.ProcessEnv);
     expect(sans.disponible).toBe(false);
     expect(sans.message).toBe(MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE);
     expect(sans.message).toContain('voix reste utilisable');
