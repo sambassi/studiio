@@ -9,7 +9,8 @@ export interface TtsVoice {
   id: string;
   name: string;
   lang: string;
-  gender: 'Female' | 'Male';
+  /** `Neutral` = genre inconnu (voix clonee) : aucune lettre affichee. */
+  gender: 'Female' | 'Male' | 'Neutral';
   flag: string;
   /**
    * Optional. Absent = legacy Edge TTS (default).
@@ -17,6 +18,12 @@ export interface TtsVoice {
    * 'elevenlabs' to /api/tts/elevenlabs.
    */
   provider?: 'edge' | 'openai' | 'heygen' | 'elevenlabs';
+  /**
+   * Optional. `true` = voix CLONEE de l'utilisateur (listee a la volee par
+   * HeyGen ou ElevenLabs). Les selecteurs la proposent d'office quand aucun
+   * choix explicite n'a ete fait : c'est la voix que l'utilisateur cherche.
+   */
+  cloned?: boolean;
 }
 
 export const TTS_VOICES: TtsVoice[] = [
@@ -71,8 +78,9 @@ async function tryServerSynthesize(
   // ── HeyGen provider branch ─────────────────────────────────────────────
   // Les voix HeyGen sont listees dynamiquement (voix clonee comprise) : elles
   // n'existent pas dans TTS_VOICES, on route donc sur le prefixe de l'id.
-  // En cas d'echec on renvoie null — inutile de tenter Edge avec un id HeyGen,
-  // synthesize() enchaine directement sur le repli OpenAI.
+  // En cas d'echec on renvoie null — inutile de tenter Edge avec un id HeyGen.
+  // C'est une voix CLONEE : synthesize() n'y substitue aucune autre voix, il
+  // remonte une erreur explicite.
   if (isHeyGenVoiceId(voiceId)) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 50_000);
@@ -109,7 +117,8 @@ async function tryServerSynthesize(
   // le PREFIXE de l'id, pas sur une recherche dans la liste statique.
   //
   // On renvoie null plutot que de retomber sur Edge : Edge rejetterait un id
-  // `elevenlabs-*`, et synthesize() enchaine de toute facon sur ses replis.
+  // `elevenlabs-*`. Et c'est une voix CLONEE : synthesize() n'y substitue
+  // aucune autre voix, il remonte une erreur explicite.
   if (isElevenLabsVoiceId(voiceId)) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 50_000);
@@ -426,6 +435,12 @@ async function tryOpenAiFallback(text: string, edgeVoiceId: string): Promise<Blo
  *
  * Throws if both server paths fail. The caller (SequenceVoicesPanel /
  * AudioStudioPanel) catches and surfaces the error via showToast.
+ *
+ * ⚠️ Une voix CLONEE (`elevenlabs-*`, `heygen-*`) n'a AUCUN repli. Avant,
+ * un echec de son fournisseur retombait en silence sur OpenAI « nova », et
+ * le fichier obtenu etait etiquete « TTS — Bassi (ma voix) » : l'utilisateur
+ * entendait une inconnue sous son propre nom. Ici l'echec est une erreur
+ * explicite, et rien d'autre n'est appele.
  */
 export async function synthesize(
   text: string,
@@ -434,6 +449,18 @@ export async function synthesize(
 ): Promise<Blob> {
   // 1. Try server first (Edge or OpenAI based on voice ID)
   const serverBlob = await tryServerSynthesize(text, voiceId, options);
+
+  if (isElevenLabsVoiceId(voiceId) || isHeyGenVoiceId(voiceId)) {
+    // Pas de seuil « fichier suspect » ici : un mot lu par ElevenLabs pese
+    // moins de 8 000 octets, et il n'y a de toute facon rien pour le
+    // remplacer. La branche fournisseur a deja ecarte l'audio vide.
+    if (serverBlob) return serverBlob;
+    throw new Error(
+      'Votre voix clonée n’a pas pu être synthétisée (service vocal indisponible ou voix non autorisée). '
+      + 'Aucune voix de remplacement n’a été utilisée.',
+    );
+  }
+
   if (serverBlob && serverBlob.size >= 8000) return serverBlob;
   if (serverBlob) {
     console.warn('[TTS] Server returned suspiciously small blob:', serverBlob.size, 'bytes — trying fallback');

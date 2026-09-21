@@ -108,6 +108,14 @@ async function listCatalogVoices(): Promise<ElevenLabsTtsVoice[]> {
  * voix clonees, elles, ne le sont JAMAIS : un cache partage les ferait fuiter
  * d'un utilisateur a l'autre, ce que tout le reste de ce fichier s'emploie a
  * empecher.
+ *
+ * ⚠️ La cle API ne conditionne que le CATALOGUE — un appel reseau vers
+ * ElevenLabs. Les voix clonees sont une donnee locale (`user_voices`), lue
+ * quoi qu'il arrive : sans cela, la meme voix apparaissait dans l'Autopilote
+ * (qui lit `/api/voice/clone`, independant de la cle) et pas dans Creer, et
+ * l'utilisateur croyait sa voix perdue. `configured: false` dit seulement
+ * que la synthese n'est pas possible pour l'instant — pas que la voix
+ * n'existe pas.
  */
 export async function GET() {
   try {
@@ -115,28 +123,28 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (!apiKey()) {
-      // Pas une erreur : ElevenLabs est optionnel, le selecteur garde les
-      // voix Edge, OpenAI et HeyGen.
-      return NextResponse.json({ voices: [], configured: false });
-    }
     const [mine, catalogue] = await Promise.all([
       listUserVoices(session.user.id),
-      listCatalogVoices(),
+      // Sans cle, pas de catalogue : `listCatalogVoices` le sait deja, mais
+      // l'eviter ici epargne un appel inutile et rend l'intention lisible.
+      apiKey() ? listCatalogVoices() : Promise.resolve([] as ElevenLabsTtsVoice[]),
     ]);
     const clonees: ElevenLabsTtsVoice[] = mine.map((v) => ({
       id: `${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`,
       name: `${v.name} (ma voix)`,
       lang: v.lang || 'FR',
-      gender: 'Female',
+      // `user_voices` ne stocke pas le genre : on ne l'invente pas. Un
+      // « Female » en dur etait faux pour la moitie des comptes et s'affichait
+      // « F » a cote de la voix de l'utilisateur.
+      gender: 'Neutral',
       flag: '\u{1F3A4}',
       provider: 'elevenlabs',
       cloned: true,
     }));
-    return NextResponse.json({ voices: [...clonees, ...catalogue], configured: true });
+    return NextResponse.json({ voices: [...clonees, ...catalogue], configured: !!apiKey() });
   } catch (err) {
     console.error('[TTS/ElevenLabs] list error:', err instanceof Error ? err.message : err);
-    return NextResponse.json({ voices: [], configured: true }, { status: 200 });
+    return NextResponse.json({ voices: [], configured: !!apiKey() }, { status: 200 });
   }
 }
 

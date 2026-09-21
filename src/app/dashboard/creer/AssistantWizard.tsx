@@ -100,6 +100,12 @@ import SequenceCards, { type CardsTypography } from '@/components/creer/Sequence
 import SequenceTitle, { titleFrameStyle } from '@/components/creer/SequenceTitle';
 import SequenceCta, { ctaFrameStyle } from '@/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElementsLayer';
+import TextAnimationLayer from '@/components/creer/TextAnimationLayer';
+import TransitionMiniPreview from '@/components/creer/TransitionMiniPreview';
+import TextAnimationMiniPreview from '@/components/creer/TextAnimationMiniPreview';
+import SequencePlayback from '@/components/creer/SequencePlayback';
+import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
+import { useOptionPreview } from '@/lib/hooks/useOptionPreview';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
@@ -179,6 +185,8 @@ import {
 } from '@/lib/creer/postMetadata/from-wizard';
 import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
+import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
+import { RESEAUX, libelleCalendrier, type Reseau } from '@/lib/social/etatReseaux';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import DeuxColonnes, { ColonneTravail, ColonneApercu } from '@/components/ux/DeuxColonnes';
@@ -823,6 +831,28 @@ const ZONE_LABELS: Record<'title' | 'subtitle' | 'cta' | 'cards', string> = {
 const STEPS = ['Sujet', 'Style', 'Audio', 'Contenu', 'Envoi'] as const;
 
 /**
+ * Le fuseau dans lequel l'utilisateur SAISIT la date et l'heure d'envoi.
+ *
+ * C'est celui du navigateur : le champ `type="time"` n'en connait pas
+ * d'autre. Ecrit dans `metadata.timezone`, il est relu par le cron de
+ * publication pour decider qu'un post est du — sans lui, l'heure saisie est
+ * lue comme une heure de Paris. Repli sur Paris si `Intl` ne repond pas :
+ * exactement ce que le cron ferait de toute facon.
+ */
+function fuseauNavigateur(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Paris';
+  } catch {
+    return 'Europe/Paris';
+  }
+}
+
+/** Les reseaux tels que l'ecran les nomme — les identifiants restent ceux du cron. */
+const LIBELLE_RESEAU: Record<Reseau, string> = {
+  instagram: 'Instagram', tiktok: 'TikTok', facebook: 'Facebook', youtube: 'YouTube',
+};
+
+/**
  * Index des etapes, NOMMES.
  *
  * Ils etaient ecrits en chiffres en dur a onze endroits. Inserer « Audio » au
@@ -1290,6 +1320,494 @@ const TextResizeHandles: React.FC<{
 const EMPTY_GUIDES: ActiveGuide[] = [];
 const EMPTY_GAPS: GapBadge[] = [];
 
+/**
+ * Ce que le plateau CONTIENT, pour une sequence ou pour la composition.
+ *
+ * Extrait de `Preview` pour etre rendu DEUX fois par le meme code : par le
+ * plateau photographie (composition, aides d'edition) et par les calques de
+ * la lecture temporelle (`SequencePlayback`), sequence par sequence, avec
+ * l'animation du texte. Une seule ecriture du titre, des cartes, du CTA, des
+ * elements et du filigrane — le lecteur ne peut pas montrer autre chose que
+ * l'apercu.
+ *
+ * `textAnimation` / `progress` : absents, `TextAnimationLayer` rend ses
+ * enfants SANS enveloppe — le DOM du plateau est alors, noeud pour noeud,
+ * celui d'avant l'extraction. `edit` : les poignees et gestes d'edition ;
+ * absent, le contenu est inerte (calques de lecture).
+ */
+function PlateContent({
+  generated,
+  format,
+  focus,
+  activeOrder,
+  rushUrl = null,
+  onRushError,
+  text,
+  titlePos,
+  ctaPos,
+  cardBoxes = null,
+  cardStyle,
+  cardsTypography,
+  elements,
+  watermark,
+  accent,
+  gradEnd,
+  textAnimation,
+  progress = 1,
+  edit,
+}: {
+  generated: Generated;
+  format: Format;
+  focus: PreviewFocus;
+  activeOrder: string[];
+  /** Rush A MONTRER (le parent a deja decide), ou `null`. */
+  rushUrl?: string | null;
+  onRushError?: () => void;
+  text: TextStyles;
+  titlePos: Pos;
+  ctaPos: Pos;
+  cardBoxes?: Record<string, CardBox> | null;
+  cardStyle?: string;
+  cardsTypography?: CardsTypography;
+  elements?: FreeElement[];
+  watermark?: string;
+  accent: string;
+  gradEnd: string;
+  /** Animation d'apparition du texte — pour les calques de lecture. */
+  textAnimation?: TextAnimation;
+  /** Avancement de la sequence, de 0 a 1. Defaut 1 : texte entier, aucune enveloppe. */
+  progress?: number;
+  /** Aides d'edition du plateau. Absent : contenu inerte. */
+  edit?: {
+    cardsRef?: React.RefObject<HTMLDivElement>;
+    onCardDragStart?: (id: string, e: React.PointerEvent) => void;
+    onDragMove?: (e: React.PointerEvent) => void;
+    onDragEnd?: () => void;
+    draggingCard?: string | null;
+    selectedCards?: Set<string>;
+    groupedCards?: Record<string, string>;
+    capturing?: boolean;
+    uiPx?: (n: number) => number;
+    onCardDoubleClick?: (id: string) => void;
+    onCardResizeStart?: (id: string, e: React.PointerEvent) => void;
+    onDragStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+    dragging?: 'title' | 'cta' | null;
+    onTextDoubleClick?: (el: 'title' | 'subtitle' | 'cta') => void;
+    onTextResizeStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+    onElementDragStart?: (id: string, e: React.PointerEvent) => void;
+    onElementResizeStart?: (id: string, e: React.PointerEvent) => void;
+    onElementDelete?: (id: string) => void;
+    selectedElementId?: string | null;
+  };
+}) {
+  const vw = VIDEO_SIZE[format].w;
+  /**
+   * Disposition des cartes en GRILLE plutot qu'en colonne.
+   *
+   * Reservee au paysage, et pour une raison de place : le conteneur des cartes
+   * occupe 48 % de la hauteur video, alors que la taille des cartes suit la
+   * LARGEUR. En 16:9 les cartes sont donc presque deux fois plus grandes pour
+   * un conteneur presque deux fois plus court — cinq cartes empilees en
+   * colonne debordaient de 33 px en haut comme en bas.
+   *
+   * Trois colonnes, comme le compositeur en paysage (`cols = isReel ? 2 : 3`).
+   * Le carre garde la colonne : il tient, et le changer modifierait des
+   * montages existants sans necessite.
+   */
+  const landscapeCards = format === '16:9';
+  /** Une sequence est visible si elle est active ET mise en avant. */
+  const shows = (seq: 'intro' | 'cards' | 'cta') =>
+    activeOrder.includes(seq) && (focus === 'all' || focus === seq);
+
+  // Les aides d'edition, sous leurs noms d'origine : le JSX ci-dessous est
+  // celui de `Preview`, deplace tel quel.
+  const {
+    cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard = null, selectedCards,
+    groupedCards, capturing = false, onCardDoubleClick, onCardResizeStart, onDragStart,
+    dragging = null, onTextDoubleClick, onTextResizeStart, onElementDragStart,
+    onElementResizeStart, onElementDelete, selectedElementId = null,
+  } = edit ?? {};
+  const uiPx = edit?.uiPx ?? ((n: number) => n);
+
+  /**
+   * Bloc de texte survole — c'est lui qui montre ses poignees.
+   *
+   * ⚠️ ON LES GARDE PENDANT LE GESTE (`dragging`). Le pointeur est CAPTURE
+   * par la poignee : s'il sort du bloc, `pointerleave` tombe, la poignee se
+   * demonte et le redimensionnement s'interrompt au milieu.
+   */
+  const [survolTexte, setSurvolTexte] = useState<'title' | 'cta' | null>(null);
+  const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
+
+  return (
+    <>
+            {rushUrl && (
+              <video
+                src={rushUrl}
+                muted
+                loop
+                autoPlay
+                playsInline
+                preload="metadata"
+                onError={onRushError}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+              />
+            )}
+            <TextAnimationLayer style={textAnimation} progress={progress}>
+            {shows('intro') && (
+            /* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
+                drawIntro avec titleAlign:'left' et textBaseline:'top'.
+                L'ombre est appliquee en dur par le compositeur. */
+            <div
+              data-guide-key="title"
+              data-guide-label="Titre"
+              onPointerDown={(e) => onDragStart?.('title', e)}
+              onPointerMove={onDragMove}
+              onPointerUp={onDragEnd}
+              onPointerCancel={onDragEnd}
+              onLostPointerCapture={onDragEnd}
+              onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('title') : undefined}
+              onPointerEnter={onTextResizeStart ? () => setSurvolTexte('title') : undefined}
+              onPointerLeave={onTextResizeStart ? () => setSurvolTexte((v) => (v === 'title' ? null : v)) : undefined}
+              data-title-block
+              title={
+                onTextDoubleClick
+                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
+                  : onDragStart ? 'Glisser pour déplacer le titre' : undefined
+              }
+              style={{
+                // Cadre PARTAGE avec la composition Remotion : la position et
+                // la largeur viennent du meme helper, les aides d'edition
+                // s'ajoutent par-dessus.
+                ...titleFrameStyle(titlePos),
+                cursor: onDragStart ? (dragging === 'title' ? 'grabbing' : 'grab') : undefined,
+                // Au-dessus de la grille de cartes : sans cela, un titre
+                // depose sur la zone des cartes n'etait plus saisissable —
+                // la grille couvre le cadre meme quand elle est vide.
+                zIndex: onDragStart ? 2 : undefined,
+                touchAction: onDragStart ? 'none' : undefined,
+                outline: !capturing && dragging === 'title' ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)` : undefined,
+                outlineOffset: uiPx(2),
+              }}
+            >
+              {/* Titre et sous-titre : composant PARTAGE avec la composition
+                  Remotion (Phase 4). Le cadre et les aides d'edition restent
+                  ici — cote serveur, il n'y a ni pointeur ni glissement. */}
+              <SequenceTitle
+                title={generated.title}
+                subtitle={generated.subtitle}
+                onSubtitleDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('subtitle') : undefined}
+                typography={text.title}
+                subtitleTypography={text.subtitle}
+                format={format}
+                containerWidth={vw}
+              />
+              {/* Poignees de coin — agrandir le TEXTE. Elles arretent la
+                  propagation : sans cela, la prise deplacerait le bloc au
+                  lieu de le redimensionner. */}
+              <TextResizeHandles el="title" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+                visible={poigneesVisibles('title')}
+                onDragMove={onDragMove} onDragEnd={onDragEnd} />
+            </div>
+            )}
+            </TextAnimationLayer>
+
+            {/* Cartes — ce conteneur est PHOTOGRAPHIÉ (modern-screenshot) et
+                l'image est blittée telle quelle dans la vidéo par le
+                compositeur. C'est ce qui garantit que les cartes de l'aperçu
+                et celles du montage sont pixel pour pixel identiques.
+
+                Depuis la Phase 2 du rendu serveur, le rendu lui-même vit dans
+                `SequenceCards`, partagé avec la composition Remotion : le MÊME
+                composant produit la même image des deux côtés. Les aides
+                d'édition passent par `interaction`, absent côté serveur. */}
+            <TextAnimationLayer style={textAnimation} progress={progress}>
+            <SequenceCards
+              containerRef={cardsRef}
+              cards={shows('cards') ? generated.cards : []}
+              cardBoxes={cardBoxes}
+              containerWidth={vw}
+              landscape={landscapeCards}
+              valueColor={gradEnd}
+              interaction={{
+                onCardDragStart,
+                onDragMove,
+                onDragEnd,
+                draggingCard,
+                selectedCards,
+                groupedCards,
+                capturing,
+                uiPx,
+                groupTint: GROUP_TINT,
+                onCardDoubleClick,
+                onCardResizeStart,
+              }}
+              cardStyle={cardStyle}
+              typography={cardsTypography}
+            />
+            </TextAnimationLayer>
+
+            <TextAnimationLayer style={textAnimation} progress={progress}>
+            {shows('cta') && (
+            /* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :
+                drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
+                du bloc. Graisse 900 en dur cote compositeur. */
+            <div
+              data-guide-key="cta"
+              data-guide-label="CTA"
+              onPointerDown={(e) => onDragStart?.('cta', e)}
+              onPointerMove={onDragMove}
+              onPointerUp={onDragEnd}
+              onPointerCancel={onDragEnd}
+              onLostPointerCapture={onDragEnd}
+              onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('cta') : undefined}
+              onPointerEnter={onTextResizeStart ? () => setSurvolTexte('cta') : undefined}
+              onPointerLeave={onTextResizeStart ? () => setSurvolTexte((v) => (v === 'cta' ? null : v)) : undefined}
+              data-cta-block
+              title={
+                onTextDoubleClick
+                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
+                  : onDragStart ? 'Glisser pour déplacer le CTA' : undefined
+              }
+              style={{
+                ...ctaFrameStyle(ctaPos),
+                cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
+                zIndex: onDragStart ? 2 : undefined,
+                touchAction: onDragStart ? 'none' : undefined,
+                outline: !capturing && dragging === 'cta' ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)` : undefined,
+                outlineOffset: uiPx(2),
+              }}
+            >
+              {/* CTA : composant PARTAGE avec la composition Remotion. */}
+              <SequenceCta
+                text={generated.cta}
+                subText={generated.ctaSub}
+                typography={text.cta}
+                format={format}
+                containerWidth={vw}
+              />
+              <TextResizeHandles el="cta" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+                visible={poigneesVisibles('cta')}
+                onDragMove={onDragMove} onDragEnd={onDragEnd} />
+            </div>
+            )}
+            </TextAnimationLayer>
+
+            {/* ── ELEMENTS LIBRES ─────────────────────────────────────────
+                Poses sur le PLATEAU entier, et non dans le conteneur des
+                cartes : le compositeur les peint desormais lui-meme sur les
+                quatre sequences, ils n'ont donc plus a entrer dans la photo
+                des cartes — ils y seraient meme dessines deux fois.
+                Rendus quel que soit l'onglet d'apercu, comme dans la video.
+
+                Depuis la Phase 5 du rendu serveur, le rendu lui-meme vit dans
+                `FreeElementsLayer`, partage avec la composition Remotion : le
+                MEME composant produit la meme image des deux cotes. Les aides
+                d'edition passent par `interaction`, absent cote serveur. */}
+            <FreeElementsLayer
+              elements={elements ?? []}
+              containerWidth={vw}
+              interaction={{
+                onElementDragStart,
+                onDragMove,
+                onDragEnd,
+                selectedElementId,
+                capturing,
+                uiPx,
+                // Poignees et bouton de suppression : ils vivent dans le
+                // repere de l'element, mais restent ECRITS ici — cote
+                // serveur, `interaction` est absent et rien de tout cela
+                // n'existe.
+                renderChrome: (el) => (
+                  <>
+                    {/* Poignees de coin — redimensionnement a la souris.
+                        Elles arretent la propagation : sans cela, la prise
+                        deplacerait l'element au lieu de le redimensionner. */}
+                    {!capturing && onElementResizeStart && selectedElementId === el.id
+                      && ([
+                        { coin: 'nw', top: 0, left: 0 },
+                        { coin: 'ne', top: 0, left: '100%' },
+                        { coin: 'sw', top: '100%', left: 0 },
+                        { coin: 'se', top: '100%', left: '100%' },
+                      ] as const).map((p) => (
+                        <span
+                          key={p.coin}
+                          data-element-handle={p.coin}
+                          onPointerDown={(e) => { e.stopPropagation(); onElementResizeStart(el.id, e); }}
+                          onPointerMove={onDragMove}
+                          onPointerUp={onDragEnd}
+                          onPointerCancel={onDragEnd}
+                          onLostPointerCapture={onDragEnd}
+                          title="Tirer pour redimensionner"
+                          style={{
+                            position: 'absolute',
+                            top: p.top,
+                            left: p.left,
+                            width: uiPx(9),
+                            height: uiPx(9),
+                            marginTop: -uiPx(4.5),
+                            marginLeft: -uiPx(4.5),
+                            backgroundColor: '#FFFFFF',
+                            border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
+                            borderRadius: uiPx(2),
+                            cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
+                            touchAction: 'none',
+                            zIndex: 5,
+                          }}
+                        />
+                      ))}
+                    {!capturing && onElementDelete && selectedElementId === el.id && (
+                      <button
+                        type="button"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
+                        title="Supprimer l’élément"
+                        style={{
+                          position: 'absolute',
+                          top: -uiPx(10),
+                          right: -uiPx(10),
+                          width: uiPx(18),
+                          height: uiPx(18),
+                          borderRadius: '9999px',
+                          backgroundColor: '#DC2626',
+                          color: '#FFFFFF',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: 0,
+                        }}
+                      >
+                        <X style={{ width: uiPx(11), height: uiPx(11) }} />
+                      </button>
+                    )}
+                  </>
+                ),
+              }}
+            />
+
+            {/* Filigrane — le compositeur le peint sur CHAQUE sequence, au
+                centre a 95 % de la hauteur. Mêmes police, graisse et opacite
+                que le calque `siteText`, pour que l'apercu ne promette pas
+                autre chose que la video. */}
+            {watermark && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  // Cote canvas, `y` designe la LIGNE DE BASE. En CSS on
+                  // remonte le bloc d'une ascendante (~0,8 em avec
+                  // `lineHeight: 1`) pour que la base tombe au meme endroit —
+                  // un `translateY(-50%)` y centrerait le bloc, donc
+                  // descendrait le texte d'un tiers de cadratin.
+                  top: `${WATERMARK[format].y}%`,
+                  transform: 'translateY(-0.8em)',
+                  lineHeight: 1,
+                  textAlign: 'center',
+                  fontSize: vw * WATERMARK.fontRatio * WATERMARK[format].size,
+                  fontWeight: 700,
+                  color: WATERMARK.color,
+                  opacity: WATERMARK.opacity,
+                  // Contour noir + halo a la couleur d'accent : le compositeur
+                  // peint les deux (`fillTextWithOutline` + `shadowColor =
+                  // accentColor`). Sans le halo ici, regler l'accent ne se
+                  // voyait nulle part dans l'apercu.
+                  textShadow: [
+                    '0 1px 2px rgba(0,0,0,0.85)',
+                    '0 -1px 2px rgba(0,0,0,0.85)',
+                    `0 0 8px ${accent}`,
+                  ].join(', '),
+                }}
+              >
+                {watermark}
+              </div>
+            )}
+    </>
+  );
+}
+
+type PlateContentProps = Parameters<typeof PlateContent>[0];
+
+/**
+ * Un plateau COMPLET en lecture seule — fond, affiche, contenu d'UNE sequence.
+ *
+ * C'est le calque que `SequencePlayback` anime : le meme fond que le plateau
+ * d'edition (`backdropCSS`, photo puis voile — l'ordre du compositeur) et le
+ * meme contenu (`PlateContent`), rendu a la resolution video puis reduit par
+ * `displayScale`, comme le plateau. Aucune aide d'edition : `edit` absent.
+ *
+ * ⚠️ HORS DU PLATEAU PHOTOGRAPHIE. Il vit dans le slot `overlay` de
+ * `Preview`, jamais dans `previewRef` — sinon un calque de lecture finirait
+ * blitte dans le montage.
+ */
+function PlateauLecture({
+  displayScale,
+  gradStart,
+  gradientOpacity,
+  posterUrl = null,
+  posterTransform,
+  ...plate
+}: Omit<PlateContentProps, 'edit'> & {
+  displayScale: number;
+  gradStart: string;
+  gradientOpacity: number;
+  posterUrl?: string | null;
+  posterTransform?: PosterTransform;
+}) {
+  const { format, gradEnd } = plate;
+  return (
+    <div
+      data-plateau-lecture={plate.focus}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: VIDEO_SIZE[format].w,
+        height: VIDEO_SIZE[format].h,
+        transform: `scale(${displayScale})`,
+        transformOrigin: 'top left',
+        background: posterUrl ? DARK : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
+        fontFamily: 'var(--font-inter), Inter, sans-serif',
+        pointerEvents: 'none',
+      }}
+    >
+      {posterUrl && (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={posterUrl}
+            alt=""
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: `translate(${(posterTransform?.offsetX ?? 0) * 100}%, ${(posterTransform?.offsetY ?? 0) * 100}%) scale(${posterTransform?.scale ?? 1})`,
+              transformOrigin: 'center',
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: backdropVeilCSS(gradStart, gradEnd, gradientOpacity),
+            }}
+          />
+        </>
+      )}
+      <PlateContent {...plate} />
+    </div>
+  );
+}
+
 export function Preview({
   generated,
   format,
@@ -1551,22 +2069,9 @@ export function Preview({
    */
   activeOrder: string[];
 }) {
-  const vw = VIDEO_SIZE[format].w;
-
-  /**
-   * Disposition des cartes en GRILLE plutot qu'en colonne.
-   *
-   * Reservee au paysage, et pour une raison de place : le conteneur des cartes
-   * occupe 48 % de la hauteur video, alors que la taille des cartes suit la
-   * LARGEUR. En 16:9 les cartes sont donc presque deux fois plus grandes pour
-   * un conteneur presque deux fois plus court — cinq cartes empilees en
-   * colonne debordaient de 33 px en haut comme en bas.
-   *
-   * Trois colonnes, comme le compositeur en paysage (`cols = isReel ? 2 : 3`).
-   * Le carre garde la colonne : il tient, et le changer modifierait des
-   * montages existants sans necessite.
-   */
-  const landscapeCards = format === '16:9';
+  // La resolution video, la disposition des cartes et la visibilite des
+  // sequences vivent desormais dans `PlateContent`, rendu ici ET par les
+  // calques de lecture.
   /**
    * Les METRIQUES suivent le format ; la DISPOSITION suit aussi le mode libre.
    * Passer en mode libre ne doit pas changer la taille du texte des cartes.
@@ -1583,16 +2088,6 @@ export function Preview({
    * jamais photographiees : les grossir ne change rien a l'export.
    */
   const uiPx = (n: number) => n / (displayScale > 0 ? displayScale : 1);
-
-  /**
-   * Bloc de texte survole — c'est lui qui montre ses poignees.
-   *
-   * ⚠️ ON LES GARDE PENDANT LE GESTE (`dragging`). Le pointeur est CAPTURE
-   * par la poignee : s'il sort du bloc, `pointerleave` tombe, la poignee se
-   * demonte et le redimensionnement s'interrompt au milieu.
-   */
-  const [survolTexte, setSurvolTexte] = useState<'title' | 'cta' | null>(null);
-  const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
 
   // Rush illisible (fichier expire, format refuse par le navigateur) : on le
   // retire de l'apercu plutot que de laisser un rectangle noir. L'etat est
@@ -1616,11 +2111,6 @@ export function Preview({
   const showRush =
     !!rushUrl && !rushBroken && activeOrder.includes('video')
     && (focus === 'all' || focus === 'video');
-
-  /** Une sequence est visible si elle est active ET mise en avant. */
-  const shows = (seq: 'intro' | 'cards' | 'cta') =>
-    activeOrder.includes(seq) && (focus === 'all' || focus === seq);
-
 
   /**
    * Interlettrage : le compositeur multiplie la valeur saisie par `w / 320`
@@ -1904,24 +2394,6 @@ export function Preview({
             Il est peint EN PREMIER, donc sous le titre, les cartes et le
             CTA : dans la video ces sequences se succedent, l'apercu les
             empile — comme il le fait deja pour les trois autres. */}
-        {showRush && (
-          <video
-            src={rushUrl!}
-            muted
-            loop
-            autoPlay
-            playsInline
-            preload="metadata"
-            onError={() => setRushBroken(true)}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-            }}
-          />
-        )}
         {!generated ? (
           /* ⚠️ DIMENSIONNE EN `uiPx` : ce bloc vit DANS le plateau, rendu a la
              resolution video puis reduit — en `text-xs`, le message faisait
@@ -1939,271 +2411,30 @@ export function Preview({
             </p>
           </div>
         ) : (
-          <>
-            {shows('intro') && (
-            /* Titre — ancre au bord GAUCHE (x) et au bord HAUT (y), comme
-                drawIntro avec titleAlign:'left' et textBaseline:'top'.
-                L'ombre est appliquee en dur par le compositeur. */
-            <div
-              data-guide-key="title"
-              data-guide-label="Titre"
-              onPointerDown={(e) => onDragStart?.('title', e)}
-              onPointerMove={onDragMove}
-              onPointerUp={onDragEnd}
-              onPointerCancel={onDragEnd}
-              onLostPointerCapture={onDragEnd}
-              onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('title') : undefined}
-              onPointerEnter={onTextResizeStart ? () => setSurvolTexte('title') : undefined}
-              onPointerLeave={onTextResizeStart ? () => setSurvolTexte((v) => (v === 'title' ? null : v)) : undefined}
-              data-title-block
-              title={
-                onTextDoubleClick
-                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
-                  : onDragStart ? 'Glisser pour déplacer le titre' : undefined
-              }
-              style={{
-                // Cadre PARTAGE avec la composition Remotion : la position et
-                // la largeur viennent du meme helper, les aides d'edition
-                // s'ajoutent par-dessus.
-                ...titleFrameStyle(titlePos),
-                cursor: onDragStart ? (dragging === 'title' ? 'grabbing' : 'grab') : undefined,
-                // Au-dessus de la grille de cartes : sans cela, un titre
-                // depose sur la zone des cartes n'etait plus saisissable —
-                // la grille couvre le cadre meme quand elle est vide.
-                zIndex: onDragStart ? 2 : undefined,
-                touchAction: onDragStart ? 'none' : undefined,
-                outline: !capturing && dragging === 'title' ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)` : undefined,
-                outlineOffset: uiPx(2),
-              }}
-            >
-              {/* Titre et sous-titre : composant PARTAGE avec la composition
-                  Remotion (Phase 4). Le cadre et les aides d'edition restent
-                  ici — cote serveur, il n'y a ni pointeur ni glissement. */}
-              <SequenceTitle
-                title={generated.title}
-                subtitle={generated.subtitle}
-                onSubtitleDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('subtitle') : undefined}
-                typography={text.title}
-                subtitleTypography={text.subtitle}
-                format={format}
-                containerWidth={vw}
-              />
-              {/* Poignees de coin — agrandir le TEXTE. Elles arretent la
-                  propagation : sans cela, la prise deplacerait le bloc au
-                  lieu de le redimensionner. */}
-              <TextResizeHandles el="title" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
-                visible={poigneesVisibles('title')}
-                onDragMove={onDragMove} onDragEnd={onDragEnd} />
-            </div>
-            )}
-
-            {/* Cartes — ce conteneur est PHOTOGRAPHIÉ (modern-screenshot) et
-                l'image est blittée telle quelle dans la vidéo par le
-                compositeur. C'est ce qui garantit que les cartes de l'aperçu
-                et celles du montage sont pixel pour pixel identiques.
-
-                Depuis la Phase 2 du rendu serveur, le rendu lui-même vit dans
-                `SequenceCards`, partagé avec la composition Remotion : le MÊME
-                composant produit la même image des deux côtés. Les aides
-                d'édition passent par `interaction`, absent côté serveur. */}
-            <SequenceCards
-              containerRef={cardsRef}
-              cards={shows('cards') ? generated.cards : []}
-              cardBoxes={cardBoxes}
-              containerWidth={vw}
-              landscape={landscapeCards}
-              valueColor={gradEnd}
-              interaction={{
-                onCardDragStart,
-                onDragMove,
-                onDragEnd,
-                draggingCard,
-                selectedCards,
-                groupedCards,
-                capturing,
-                uiPx,
-                groupTint: GROUP_TINT,
-                onCardDoubleClick,
-                onCardResizeStart,
-              }}
-              cardStyle={cardStyle}
-              typography={cardsTypography}
-            />
-
-            {shows('cta') && (
-            /* CTA — ancre par le BAS a ctaPos.y, centre horizontalement :
-                drawCTA fait `curY = ctaPosY - blockH`, donc y designe le bas
-                du bloc. Graisse 900 en dur cote compositeur. */
-            <div
-              data-guide-key="cta"
-              data-guide-label="CTA"
-              onPointerDown={(e) => onDragStart?.('cta', e)}
-              onPointerMove={onDragMove}
-              onPointerUp={onDragEnd}
-              onPointerCancel={onDragEnd}
-              onLostPointerCapture={onDragEnd}
-              onDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('cta') : undefined}
-              onPointerEnter={onTextResizeStart ? () => setSurvolTexte('cta') : undefined}
-              onPointerLeave={onTextResizeStart ? () => setSurvolTexte((v) => (v === 'cta' ? null : v)) : undefined}
-              data-cta-block
-              title={
-                onTextDoubleClick
-                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
-                  : onDragStart ? 'Glisser pour déplacer le CTA' : undefined
-              }
-              style={{
-                ...ctaFrameStyle(ctaPos),
-                cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
-                zIndex: onDragStart ? 2 : undefined,
-                touchAction: onDragStart ? 'none' : undefined,
-                outline: !capturing && dragging === 'cta' ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)` : undefined,
-                outlineOffset: uiPx(2),
-              }}
-            >
-              {/* CTA : composant PARTAGE avec la composition Remotion. */}
-              <SequenceCta
-                text={generated.cta}
-                subText={generated.ctaSub}
-                typography={text.cta}
-                format={format}
-                containerWidth={vw}
-              />
-              <TextResizeHandles el="cta" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
-                visible={poigneesVisibles('cta')}
-                onDragMove={onDragMove} onDragEnd={onDragEnd} />
-            </div>
-            )}
-
-            {/* ── ELEMENTS LIBRES ─────────────────────────────────────────
-                Poses sur le PLATEAU entier, et non dans le conteneur des
-                cartes : le compositeur les peint desormais lui-meme sur les
-                quatre sequences, ils n'ont donc plus a entrer dans la photo
-                des cartes — ils y seraient meme dessines deux fois.
-                Rendus quel que soit l'onglet d'apercu, comme dans la video.
-
-                Depuis la Phase 5 du rendu serveur, le rendu lui-meme vit dans
-                `FreeElementsLayer`, partage avec la composition Remotion : le
-                MEME composant produit la meme image des deux cotes. Les aides
-                d'edition passent par `interaction`, absent cote serveur. */}
-            <FreeElementsLayer
-              elements={elements ?? []}
-              containerWidth={vw}
-              interaction={{
-                onElementDragStart,
-                onDragMove,
-                onDragEnd,
-                selectedElementId,
-                capturing,
-                uiPx,
-                // Poignees et bouton de suppression : ils vivent dans le
-                // repere de l'element, mais restent ECRITS ici — cote
-                // serveur, `interaction` est absent et rien de tout cela
-                // n'existe.
-                renderChrome: (el) => (
-                  <>
-                    {/* Poignees de coin — redimensionnement a la souris.
-                        Elles arretent la propagation : sans cela, la prise
-                        deplacerait l'element au lieu de le redimensionner. */}
-                    {!capturing && onElementResizeStart && selectedElementId === el.id
-                      && ([
-                        { coin: 'nw', top: 0, left: 0 },
-                        { coin: 'ne', top: 0, left: '100%' },
-                        { coin: 'sw', top: '100%', left: 0 },
-                        { coin: 'se', top: '100%', left: '100%' },
-                      ] as const).map((p) => (
-                        <span
-                          key={p.coin}
-                          data-element-handle={p.coin}
-                          onPointerDown={(e) => { e.stopPropagation(); onElementResizeStart(el.id, e); }}
-                          onPointerMove={onDragMove}
-                          onPointerUp={onDragEnd}
-                          onPointerCancel={onDragEnd}
-                          onLostPointerCapture={onDragEnd}
-                          title="Tirer pour redimensionner"
-                          style={{
-                            position: 'absolute',
-                            top: p.top,
-                            left: p.left,
-                            width: uiPx(9),
-                            height: uiPx(9),
-                            marginTop: -uiPx(4.5),
-                            marginLeft: -uiPx(4.5),
-                            backgroundColor: '#FFFFFF',
-                            border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
-                            borderRadius: uiPx(2),
-                            cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
-                            touchAction: 'none',
-                            zIndex: 5,
-                          }}
-                        />
-                      ))}
-                    {!capturing && onElementDelete && selectedElementId === el.id && (
-                      <button
-                        type="button"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
-                        title="Supprimer l’élément"
-                        style={{
-                          position: 'absolute',
-                          top: -uiPx(10),
-                          right: -uiPx(10),
-                          width: uiPx(18),
-                          height: uiPx(18),
-                          borderRadius: '9999px',
-                          backgroundColor: '#DC2626',
-                          color: '#FFFFFF',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          lineHeight: 0,
-                        }}
-                      >
-                        <X style={{ width: uiPx(11), height: uiPx(11) }} />
-                      </button>
-                    )}
-                  </>
-                ),
-              }}
-            />
-
-            {/* Filigrane — le compositeur le peint sur CHAQUE sequence, au
-                centre a 95 % de la hauteur. Mêmes police, graisse et opacite
-                que le calque `siteText`, pour que l'apercu ne promette pas
-                autre chose que la video. */}
-            {watermark && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  // Cote canvas, `y` designe la LIGNE DE BASE. En CSS on
-                  // remonte le bloc d'une ascendante (~0,8 em avec
-                  // `lineHeight: 1`) pour que la base tombe au meme endroit —
-                  // un `translateY(-50%)` y centrerait le bloc, donc
-                  // descendrait le texte d'un tiers de cadratin.
-                  top: `${WATERMARK[format].y}%`,
-                  transform: 'translateY(-0.8em)',
-                  lineHeight: 1,
-                  textAlign: 'center',
-                  fontSize: vw * WATERMARK.fontRatio * WATERMARK[format].size,
-                  fontWeight: 700,
-                  color: WATERMARK.color,
-                  opacity: WATERMARK.opacity,
-                  // Contour noir + halo a la couleur d'accent : le compositeur
-                  // peint les deux (`fillTextWithOutline` + `shadowColor =
-                  // accentColor`). Sans le halo ici, regler l'accent ne se
-                  // voyait nulle part dans l'apercu.
-                  textShadow: [
-                    '0 1px 2px rgba(0,0,0,0.85)',
-                    '0 -1px 2px rgba(0,0,0,0.85)',
-                    `0 0 8px ${accent}`,
-                  ].join(', '),
-                }}
-              >
-                {watermark}
-              </div>
-            )}
-          </>
+          <PlateContent
+            generated={generated}
+            format={format}
+            focus={focus}
+            activeOrder={activeOrder}
+            rushUrl={showRush ? rushUrl : null}
+            onRushError={() => setRushBroken(true)}
+            text={text}
+            titlePos={titlePos}
+            ctaPos={ctaPos}
+            cardBoxes={cardBoxes}
+            cardStyle={cardStyle}
+            cardsTypography={cardsTypography}
+            elements={elements}
+            watermark={watermark}
+            accent={accent}
+            gradEnd={gradEnd}
+            edit={{
+              cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard, selectedCards,
+              groupedCards, capturing, uiPx, onCardDoubleClick, onCardResizeStart, onDragStart,
+              dragging, onTextDoubleClick, onTextResizeStart, onElementDragStart,
+              onElementResizeStart, onElementDelete, selectedElementId,
+            }}
+          />
         )}
       </div>
 
@@ -2864,6 +3095,28 @@ function AutopilotPreview({ config, accent, onPatch }: {
   >(null);
   const [panneauPos, setPanneauPos] = useState({ x: 0, y: 0 });
 
+  /**
+   * La lecture des sequences est-elle en cours ? Le libelle sous l'apercu le
+   * dit : « vue de composition » (les trois sequences EMPILEES) ou « lecture
+   * des sequences » (l'ordre reel du montage).
+   */
+  const [lectureEnCours, setLectureEnCours] = useState(false);
+
+  /**
+   * Ce que l'Autopilote rend VRAIMENT : les durees par defaut du Mode simple
+   * (`DEFAULT_SEQUENCE_SECONDS`), le repli de duree du rush — il ne decode
+   * pas le fichier — et les transition / animation par defaut, codees en dur
+   * dans `buildAutopilotDesign`. Aucun reglage n'existe pour ces valeurs :
+   * les montrer autrement mentirait.
+   */
+  const etapesLecture = useMemo(
+    () => activeOrder.map((k) => ({
+      key: k,
+      seconds: k === 'video' ? RUSH_SEQUENCE_SECONDS.fallback : DEFAULT_SEQUENCE_SECONDS[k as keyof typeof DEFAULT_SEQUENCE_SECONDS],
+    })),
+    [activeOrder],
+  );
+
   const ouvrirPanneau = useCallback((suivant: typeof panneau) => {
     // Sous le curseur, borne a la fenetre : un panneau ouvert hors de l'ecran
     // est un panneau qu'on croit casse.
@@ -2921,6 +3174,45 @@ function AutopilotPreview({ config, accent, onPatch }: {
         // l'assistant et FAUX ici : ce sont celles d'un échantillon. La note
         // honnête de l'Autopilote la remplace, juste en dessous.
         hideFootnote
+        // ── LECTURE DES SÉQUENCES ──────────────────────────────────────
+        // « Tout » empile titre, cartes et CTA — une vue de COMPOSITION que
+        // l'utilisateur lisait comme le montage. Le lecteur les joue dans
+        // l'ordre réel, avec la transition et l'animation que l'Autopilote
+        // rend vraiment. À l'arrêt il ne couvre rien : le double-clic et le
+        // glissement continuent de marcher.
+        overlay={focus === 'all' ? (
+          <SequencePlayback
+            steps={etapesLecture}
+            transition={DEFAULT_TRANSITION}
+            frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale: displayScale }}
+            onPlayingChange={setLectureEnCours}
+            renderLayer={({ key, progress }) => (
+              <PlateauLecture
+                generated={generated}
+                format={format}
+                focus={key as PreviewFocus}
+                activeOrder={activeOrder}
+                rushUrl={key === 'video' ? (config.rushUrls[0] ?? null) : null}
+                displayScale={displayScale}
+                gradStart={config.cardGradientStart}
+                gradEnd={config.cardGradientEnd}
+                gradientOpacity={AUTOPILOT_GRADIENT_OPACITY}
+                // La MÊME règle que l'onglet : `samplePosterVisible` est
+                // `backgroundFor` côté Remotion.
+                posterUrl={samplePosterVisible(key as PreviewFocus, config.cardsShowPoster) ? posterUrl : null}
+                text={text}
+                titlePos={titlePos}
+                ctaPos={ctaPos}
+                cardStyle={style.cardStyle}
+                cardsTypography={style.cards}
+                watermark={AUTOPILOT_WATERMARK}
+                accent={accent}
+                textAnimation={DEFAULT_TEXT_ANIMATION}
+                progress={progress}
+              />
+            )}
+          />
+        ) : null}
       />
 
       {/* ── LE LIBELLÉ HONNÊTE ───────────────────────────────────────────
@@ -2936,6 +3228,16 @@ function AutopilotPreview({ config, accent, onPatch }: {
           Aperçu du projet — <span className="text-gray-400">exemple</span> sur le thème
           {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
           changent à chaque vidéo ; le style, non.
+          {/* Ce que l'onglet « Tout » montre : une composition ou le montage.
+              Sans cette phrase, les trois séquences empilées passent pour
+              l'image finale. */}
+          {focus === 'all' && (
+            <span data-autopilot-apercu-lecture={lectureEnCours ? 'lecture' : 'composition'}>
+              {lectureEnCours
+                ? ' Lecture des séquences : l’ordre réel du montage, avec ses transitions.'
+                : ' Vue de composition : titre, cartes et CTA sont superposés ici, mais se succèdent dans la vidéo — ▶ pour les lire dans l’ordre.'}
+            </span>
+          )}
         </span>
       </p>
 
@@ -3183,6 +3485,16 @@ export default function AssistantWizard() {
    * s'allonger indefiniment. `null` = tout replie.
    */
   const [openSection, setOpenSection] = useState<SectionId | null>('format');
+  /**
+   * Vignettes animées des grilles Transition et Animation du texte.
+   *
+   * Une instance par grille : épingler une transition ne doit pas faire
+   * jouer une animation de texte. La réduction des animations (réglage
+   * système) les fige toutes les deux.
+   */
+  const reduireAnimations = usePrefersReducedMotion();
+  const apercuTransitions = useOptionPreview<TransitionStyle>(reduireAnimations);
+  const apercuAnimations = useOptionPreview<TextAnimation>(reduireAnimations);
   /**
    * Element mis en avant dans l'apercu. Purement visuel : l'export force
    * `'all'` le temps de la photo des cartes (voir `sendToCalendar`).
@@ -3476,6 +3788,14 @@ export default function AssistantWizard() {
   const [musicName, setMusicName] = useState('');
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
   const [voiceName, setVoiceName] = useState('');
+  // Voix TTS des deux selecteurs (panneau audio et voix par sequence). Elle
+  // ne vivait que dans localStorage : le brouillon ne la connaissait pas, et
+  // la voix clonee choisie revenait en « Denise » au rechargement.
+  // `undefined` = aucun choix connu ici, les panneaux gardent leur regle
+  // historique (localStorage) — le comportement de tous les brouillons
+  // anterieurs. Ils remontent chaque choix, y compris la preselection de
+  // la voix clonee, et le brouillon l'ecrit.
+  const [ttsVoiceId, setTtsVoiceId] = useState<string | undefined>(undefined);
   const [musicVolume, setMusicVolume] = useState(0.5);
   const [voiceVolume, setVoiceVolume] = useState(1);
   // Niveaux du mixeur unifie (musique + voix off + son du rush). Tant que
@@ -3612,6 +3932,41 @@ export default function AssistantWizard() {
    * strictement les memes posts qu'avant.
    */
   const [scheduledTime, setScheduledTime] = useState('12:00');
+  /**
+   * Ce que l'envoi fait du post — l'intention, dite explicitement.
+   *
+   * `brouillon` par defaut : le post part en `draft`, sans plateforme —
+   * exactement ce que l'envoi a toujours fait. Aucun cron ne publie un
+   * brouillon (`/api/cron/publish` ne lit que `status = 'scheduled'`).
+   *
+   * `programmer` : le post part en `scheduled` avec les reseaux choisis
+   * ci-dessous, et c'est le cron de publication qui le diffuse a la date et
+   * l'heure saisies — le MEME mecanisme que « Programmer » dans le
+   * Calendrier, sans passer par lui.
+   *
+   * Le telechargement n'est pas une troisieme valeur : il ne cree aucun post
+   * (`runRender('bureau')`), il n'a donc rien a ecrire ici.
+   *
+   * Non persiste dans le brouillon local : a la reouverture, on repart en
+   * `brouillon` — le choix le plus sur, jamais une publication surprise.
+   */
+  const [envoiIntention, setEnvoiIntention] = useState<'brouillon' | 'programmer'>('brouillon');
+  /** Les reseaux (identifiants minuscules, ceux du cron et de l'Autopilote) vises par `programmer`. */
+  const [reseauxProgrammes, setReseauxProgrammes] = useState<Reseau[]>([]);
+  /**
+   * L'etat des reseaux du compte — la MEME lecture que l'ecran Reseaux et le
+   * Calendrier (`useEtatReseaux`). Seuls les reseaux `connecte` sont
+   * proposes a la programmation : programmer sur un reseau non connecte
+   * ferait un post que le cron marquerait « failed » a l'heure dite.
+   *
+   * Lue SEULEMENT a l'etape Envoi : le wizard est monte des « Sujet », et
+   * appeler `/api/social/*` a chaque ouverture pour un choix qui n'apparait
+   * qu'a la derniere etape serait du trafic pour rien.
+   */
+  const etatReseaux = useEtatReseaux(step === S.envoi);
+  const reseauxConnectes: Reseau[] = etatReseaux.reseaux
+    ? RESEAUX.filter((r) => etatReseaux.reseaux![r].etat === 'connecte')
+    : [];
   /**
    * La politique de facturation, telle que le SERVEUR l'a decidee.
    *
@@ -5290,6 +5645,9 @@ export default function AssistantWizard() {
     ),
     sequenceVoicesUserEdited,
     voiceName,
+    // `undefined` tant qu'aucun choix n'est remonte : un brouillon sans ce
+    // champ se relit exactement comme avant.
+    ttsVoiceId,
     musicVolume,
     voiceVolume,
     rushUrl: persistableDraftUrl(rushUrl),
@@ -5320,7 +5678,7 @@ export default function AssistantWizard() {
     transition,
     textAnimation,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
-    sequenceVoices, sequenceVoicesUserEdited,
+    sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, lut, scheduledDate,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
@@ -5422,6 +5780,9 @@ export default function AssistantWizard() {
     if (draft.sequenceVoicesUserEdited) {
       setSequenceVoicesUserEdited((prev) => ({ ...prev, ...draft.sequenceVoicesUserEdited }));
     }
+    // La voix restauree prime sur localStorage ET sur la preselection de la
+    // voix clonee : les panneaux ne remplacent jamais un choix hors defaut.
+    if (draft.ttsVoiceId) setTtsVoiceId(draft.ttsVoiceId);
     setMusicVolume(draft.musicVolume!);
     setVoiceVolume(draft.voiceVolume!);
     if (draft.rushUrl) {
@@ -5730,6 +6091,56 @@ export default function AssistantWizard() {
    * point evite que l'apercu, la video et le Calendrier divergent.
    */
   const seqDuration = dureeDeSequence(activeOrder, { intro: introDuration, cards: cardsDuration, video: videoDuration, cta: ctaDuration });
+
+  /* ── LECTURE DES SÉQUENCES, DANS LE CADRE ─────────────────────────────
+     « Tout » EMPILE titre, cartes et CTA : c'est une vue de COMPOSITION, pas
+     le montage. Ce lecteur les joue dans l'ordre réel, avec la transition et
+     l'animation de texte choisies — les MÊMES règles que le compositeur
+     (`sequenceClock`, `transitionLayerStyles`), sur les MÊMES composants que
+     le plateau (`PlateContent`). À l'arrêt il ne couvre rien : l'édition
+     continue.
+
+     ⚠️ CE N'EST PAS LE RENDU. « Voir le rendu » compose la vraie vidéo (voix,
+     rush, débit) et la joue à cette même place : quand elle existe ou se
+     compose, elle a la priorité (`renduDansLeCadre`). Sur les autres onglets,
+     rien — ils isolent un élément pour le régler. */
+  const lectureSequences = generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (
+    <SequencePlayback
+      steps={activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }))}
+      transition={transition}
+      frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale: displayScale }}
+      renderLayer={({ key, progress }) => {
+        // Le fond de CETTE séquence — la règle de l'onglet correspondant.
+        const fond = resolveBackground(key as PreviewFocus, seqBackgrounds, posterUrl, posterTransform);
+        return (
+          <PlateauLecture
+            generated={generated}
+            format={format}
+            focus={key as PreviewFocus}
+            activeOrder={activeOrder}
+            rushUrl={key === 'video' ? rushUrl : null}
+            displayScale={displayScale}
+            gradStart={gradStart}
+            gradEnd={gradEnd}
+            gradientOpacity={gradientOpacity}
+            posterUrl={fond.url}
+            posterTransform={fond.transform}
+            text={textStyles}
+            titlePos={titlePos}
+            ctaPos={ctaPos}
+            cardBoxes={effectiveCardBoxes}
+            cardStyle={cardStyle}
+            cardsTypography={cardsTypography}
+            elements={freeElements}
+            watermark={watermarkLabel}
+            accent={accent}
+            textAnimation={textAnimation}
+            progress={progress}
+          />
+        );
+      }}
+    />
+  ) : null;
 
   /**
    * Pre-remplissage des textes de voix depuis le contenu genere.
@@ -6866,6 +7277,10 @@ export default function AssistantWizard() {
           },
         };
 
+        // « Programmer » sans aucun reseau retenu ne programme rien : un post
+        // `scheduled` sans plateforme serait marque « failed » par le cron a
+        // l'heure dite. On retombe sur le brouillon, jamais sur un echec differe.
+        const programmationEffective = envoiIntention === 'programmer' && reseauxProgrammes.length > 0;
         const res = await fetch('/api/posts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -6877,11 +7292,27 @@ export default function AssistantWizard() {
             media_url: composed.url,
             media_type: 'video',
             format: renderFormat,
-            platforms: [],
+            // ⚠️ L'INTENTION DECIDE, ET ELLE SEULE. `brouillon` : aucune
+            // plateforme, `draft` — l'envoi historique, au caractere pres ;
+            // le cron de publication ne lit que `status = 'scheduled'`, un
+            // brouillon ne part jamais. `programmer` : les reseaux connectes
+            // choisis, `scheduled` — le meme mecanisme que « Programmer »
+            // dans le Calendrier, et c'est le cron qui publie a l'heure dite.
+            // La convention du Calendrier (« Instagram »), pas l'identifiant
+            // (« instagram ») : c'est le Calendrier qui relit et modifie ce
+            // post, et il compare ses libellés tels quels. Le cron accepte
+            // les deux.
+            platforms: programmationEffective ? reseauxProgrammes.map(libelleCalendrier) : [],
             scheduled_date: dates[b],
             scheduled_time: scheduledTime || '12:00',
-            status: 'draft',
-            metadata,
+            status: programmationEffective ? 'scheduled' : 'draft',
+            metadata: {
+              ...metadata,
+              // Le fuseau dans lequel la date et l'heure ont ete saisies :
+              // sans lui, le cron lit `scheduled_time` comme une heure de
+              // Paris. Les minutes, elles, arrivent telles quelles.
+              timezone: fuseauNavigateur(),
+            },
           }),
         });
 
@@ -7022,6 +7453,10 @@ export default function AssistantWizard() {
     genSigRef.current = '';
     setGenerated(null);
     setSent(false);
+    // Le contenu suivant repart en brouillon : une programmation heritee en
+    // silence du precedent serait une publication surprise.
+    setEnvoiIntention('brouillon');
+    setReseauxProgrammes([]);
     setError(null);
   };
 
@@ -8971,21 +9406,50 @@ export default function AssistantWizard() {
                             jouer — ou tairait ceux qu'il a gagnés. */}
                         {TRANSITION_KEYS.map((style) => {
                           const choisi = style === transition;
+                          // La vignette joue si l'option est choisie, survolée,
+                          // focalisée ou épinglée — jamais avec la réduction
+                          // des animations (voir `useOptionPreview`).
+                          const joue = apercuTransitions.isPlaying(style, choisi);
                           return (
+                            /* Deux boutons FRÈRES, jamais imbriqués : un bouton
+                               dans un bouton n'est pas du HTML valide, et le
+                               clavier n'atteindrait que l'extérieur. */
+                            <div key={style} className="relative">
                             <button
-                              key={style}
                               type="button"
                               onClick={() => setTransition(style)}
+                              {...apercuTransitions.bind(style)}
                               aria-pressed={choisi}
                               data-transition={style}
-                              className={`rounded-lg px-2.5 py-2 text-[11px] font-medium transition text-left ${
+                              className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-2 pr-7 text-[11px] font-medium transition text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 ${
                                 choisi
                                   ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
                                   : 'bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800/60'
                               }`}
                             >
-                              {TRANSITION_LABELS[style]}
+                              {/* La géométrie RÉELLE de l'effet, au format du
+                                  montage — `transitionLayerStyles` transcrit
+                                  `drawTransition`, pas une illustration. */}
+                              <TransitionMiniPreview style={style} playing={joue} aspect={ASPECT_CSS[format]} height={40} />
+                              <span className="min-w-0">{TRANSITION_LABELS[style]}</span>
                             </button>
+                            {/* Lecture explicite : mobile (pas de survol) et
+                                lecteurs d'écran. Épingle la vignette. */}
+                            <button
+                              type="button"
+                              onClick={() => apercuTransitions.togglePin(style)}
+                              aria-pressed={apercuTransitions.pinned === style}
+                              aria-label={`Lire l’aperçu de ${TRANSITION_LABELS[style]}`}
+                              data-transition-play={style}
+                              className={`absolute top-1 right-1 flex items-center justify-center w-5 h-5 rounded-md transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 ${
+                                apercuTransitions.pinned === style
+                                  ? 'bg-purple-600/60 text-white'
+                                  : 'bg-gray-800/70 text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <Play size={10} strokeWidth={2.2} />
+                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -9007,27 +9471,48 @@ export default function AssistantWizard() {
                         Apparition du texte
                       </label>
                       <p className="text-xs text-gray-500 mb-2">
-                        Jouée au début de chaque séquence. Visible à l&apos;export, pas dans
-                        l&apos;aperçu.
+                        Jouée au début de chaque séquence. Chaque option s’anime au survol ;
+                        le bouton ▶ de l’aperçu la rejoue dans le montage. Le rendu final
+                        suit la même règle.
                       </p>
                       <div className="grid grid-cols-2 gap-1.5">
                         {TEXT_ANIMATION_KEYS.map((style) => {
                           const choisi = style === textAnimation;
+                          const joue = apercuAnimations.isPlaying(style, choisi);
                           return (
+                            <div key={style} className="relative">
                             <button
-                              key={style}
                               type="button"
                               onClick={() => setTextAnimation(style)}
+                              {...apercuAnimations.bind(style)}
                               aria-pressed={choisi}
                               data-text-animation={style}
-                              className={`rounded-lg px-2.5 py-2 text-[11px] font-medium transition text-left ${
+                              className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-2 pr-7 text-[11px] font-medium transition text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 ${
                                 choisi
                                   ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
                                   : 'bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800/60'
                               }`}
                             >
-                              {TEXT_ANIMATION_LABELS[style]}
+                              {/* Le MÊME `TextAnimationLayer` que le rendu
+                                  serveur, sur un mot d'exemple. */}
+                              <TextAnimationMiniPreview style={style} playing={joue} height={40} />
+                              <span className="min-w-0">{TEXT_ANIMATION_LABELS[style]}</span>
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => apercuAnimations.togglePin(style)}
+                              aria-pressed={apercuAnimations.pinned === style}
+                              aria-label={`Lire l’aperçu de ${TEXT_ANIMATION_LABELS[style]}`}
+                              data-text-animation-play={style}
+                              className={`absolute top-1 right-1 flex items-center justify-center w-5 h-5 rounded-md transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 ${
+                                apercuAnimations.pinned === style
+                                  ? 'bg-purple-600/60 text-white'
+                                  : 'bg-gray-800/70 text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              <Play size={10} strokeWidth={2.2} />
+                            </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -9106,6 +9591,9 @@ export default function AssistantWizard() {
                   // Geometrie reelle (sequences masquees / reordonnees prises
                   // en compte) : sans elle le mixeur decrirait un autre montage.
                   mixLayout={mixLayout}
+                  // La voix TTS vit dans le wizard pour entrer au brouillon.
+                  voiceId={ttsVoiceId}
+                  onVoiceIdChange={setTtsVoiceId}
                 />
 
                 <div className="flex justify-between pt-2">
@@ -9217,6 +9705,21 @@ export default function AssistantWizard() {
                     hasVideoOverlay={!!rushUrl}
                     batchCount={batchCount}
                     onAudioError={(msg) => setError(msg)}
+                    // Meme voix que le panneau audio : les deux selecteurs
+                    // montrent celle que le brouillon restaure.
+                    voiceId={ttsVoiceId}
+                    onVoiceIdChange={setTtsVoiceId}
+                    onSequenceDurationChange={(key, seconds) => {
+                      // Action explicite de l'utilisateur : la meme table de
+                      // setters que le calage automatique a la generation.
+                      const setters: Record<SequenceKey, (n: number) => void> = {
+                        titre: setIntroDuration,
+                        cartes: setCardsDuration,
+                        video: setVideoDuration,
+                        cta: setCtaDuration,
+                      };
+                      setters[key](seconds);
+                    }}
                   />
                 )}
 
@@ -9267,14 +9770,25 @@ export default function AssistantWizard() {
                     </div>
                     <div>
                       <div className="font-semibold">Envoyé au calendrier</div>
-                      <p className="text-sm text-gray-400 mt-1">
-                        {batchCount > 1
-                          ? `Les ${batchCount} vidéos sont composées et les posts enregistrés en brouillon.`
-                          : 'La vidéo est composée et le post enregistré en brouillon.'}{' '}
-                        Le calendrier les lit telles quelles — aucun nouveau rendu n&apos;est
-                        nécessaire. Rien n&apos;est publié : la diffusion se déclenche depuis le
-                        calendrier, une fois le brouillon programmé.
-                      </p>
+                      {envoiIntention === 'programmer' && reseauxProgrammes.length > 0 ? (
+                        <p className="text-sm text-gray-400 mt-1" data-envoi-confirmation="programmer">
+                          {batchCount > 1
+                            ? `Les ${batchCount} vidéos sont composées et les posts programmés`
+                            : 'La vidéo est composée et le post programmé'}{' '}
+                          sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')}, à {scheduledTime}.
+                          La publication est automatique, à l&apos;heure dite — vous pouvez encore
+                          la modifier ou l&apos;annuler depuis le calendrier avant qu&apos;elle parte.
+                        </p>
+                      ) : (
+                        <p className="text-sm text-gray-400 mt-1" data-envoi-confirmation="brouillon">
+                          {batchCount > 1
+                            ? `Les ${batchCount} vidéos sont composées et les posts enregistrés en brouillon.`
+                            : 'La vidéo est composée et le post enregistré en brouillon.'}{' '}
+                          Le calendrier les lit telles quelles — aucun nouveau rendu n&apos;est
+                          nécessaire. Rien n&apos;est publié : la diffusion se déclenche depuis le
+                          calendrier, une fois le brouillon programmé.
+                        </p>
+                      )}
                     </div>
                     <div className="flex gap-2 justify-center flex-wrap">
                       <a href="/dashboard/calendar" className="button-primary px-4 py-2 text-sm">
@@ -9292,7 +9806,9 @@ export default function AssistantWizard() {
                       <p className="text-sm text-gray-400">
                         {batchCount > 1 ? 'Les vidéos sont composées' : 'La vidéo est composée'}{' '}
                         maintenant, exactement telle que l&apos;aperçu l&apos;affiche, puis
-                        enregistrée{batchCount > 1 ? 's' : ''} en brouillon.{' '}
+                        {envoiIntention === 'programmer' && reseauxProgrammes.length > 0
+                          ? ` programmée${batchCount > 1 ? 's' : ''} sur vos réseaux.`
+                          : ` enregistrée${batchCount > 1 ? 's' : ''} en brouillon.`}{' '}
                         <span className="text-gray-300" data-facturation-annonce>
                           {annonceCout(
                             politiqueFacturation, tarifsServeur,
@@ -9430,15 +9946,120 @@ export default function AssistantWizard() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium mb-2" htmlFor="lot-heure">Heure</label>
+                        {/* `step={60}` : la minute est explicite — « 18:45 »
+                            ou « 19:15 » se saisit et s'envoie tel quel
+                            (`scheduled_time`, colonne TIME ; le cron compare
+                            en HH:MM). Le fuseau de saisie part avec le post
+                            (`metadata.timezone`). */}
                         <input
                           id="lot-heure"
                           type="time"
+                          step={60}
                           value={scheduledTime}
                           onChange={(e) => setScheduledTime(e.target.value || '12:00')}
                           className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
                         />
                       </div>
                     </div>
+
+                    {/* ── TROIS INTENTIONS, DITES EXPLICITEMENT ──────────
+                        1. Brouillon : `draft`, aucune plateforme — l'envoi
+                           historique ; aucun cron ne publie un brouillon.
+                        2. Programmer : `scheduled` + reseaux CONNECTES
+                           choisis — le cron publie a la date et l'heure
+                           saisies. Meme mecanisme que « Programmer » dans
+                           le Calendrier.
+                        3. Telecharger : le bouton dedie plus bas — aucun
+                           post, aucune publication.
+                        Absent en modification : l'envoi n'y existe pas. */}
+                    {!editPostId && (
+                    <div data-envoi-intentions>
+                      <label className="block text-sm font-medium mb-2">Que faire de {batchCount > 1 ? 'ces vidéos' : 'cette vidéo'} ?</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          data-envoi-intention="brouillon"
+                          aria-pressed={envoiIntention === 'brouillon'}
+                          onClick={() => setEnvoiIntention('brouillon')}
+                          className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
+                            envoiIntention === 'brouillon'
+                              ? 'border-purple-500 text-white'
+                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                          }`}
+                        >
+                          <span className="block font-medium">Garder en brouillon</span>
+                          <span className="block text-[11px] text-gray-500 mt-0.5">
+                            Dans le calendrier, sans publication automatique.
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          data-envoi-intention="programmer"
+                          aria-pressed={envoiIntention === 'programmer'}
+                          disabled={reseauxConnectes.length === 0}
+                          aria-disabled={reseauxConnectes.length === 0}
+                          title={reseauxConnectes.length === 0
+                            ? 'Aucun réseau connecté : connectez-en un dans « Réseaux sociaux » pour programmer.'
+                            : undefined}
+                          onClick={() => setEnvoiIntention('programmer')}
+                          className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
+                            reseauxConnectes.length === 0
+                              ? 'border-gray-900 text-gray-600 opacity-50 cursor-not-allowed'
+                              : envoiIntention === 'programmer'
+                                ? 'border-purple-500 text-white'
+                                : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                          }`}
+                        >
+                          <span className="block font-medium">Programmer la publication</span>
+                          <span className="block text-[11px] text-gray-500 mt-0.5">
+                            Publiée automatiquement à la date et l’heure choisies, sur les réseaux sélectionnés.
+                          </span>
+                        </button>
+                      </div>
+                      {/* Aucun reseau connecte : on le dit, et on reste en
+                          brouillon — jamais un post « scheduled » que le
+                          cron marquerait « failed » a l'heure dite. */}
+                      {!etatReseaux.chargement && reseauxConnectes.length === 0 && (
+                        <p className="mt-2 text-xs text-gray-500" data-envoi-aucun-reseau>
+                          Aucun réseau connecté : la vidéo restera en brouillon.{' '}
+                          <Link href="/dashboard/social" className="text-purple-300 hover:text-white underline">
+                            Connecter un réseau
+                          </Link>
+                        </p>
+                      )}
+                      {envoiIntention === 'programmer' && reseauxConnectes.length > 0 && (
+                        <div className="mt-2" data-envoi-reseaux>
+                          <p className="text-xs text-gray-400 mb-1.5">Sur quels réseaux ?</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {reseauxConnectes.map((r) => {
+                              const retenu = reseauxProgrammes.includes(r);
+                              return (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  data-envoi-reseau={r}
+                                  aria-pressed={retenu}
+                                  onClick={() => setReseauxProgrammes((prev) => (
+                                    prev.includes(r) ? prev.filter((x) => x !== r) : [...prev, r]
+                                  ))}
+                                  className={`rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors ${
+                                    retenu ? 'border-purple-500/50 bg-gray-800 text-white' : 'border-gray-800 text-gray-400 hover:text-white'
+                                  }`}
+                                >
+                                  {LIBELLE_RESEAU[r]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {reseauxProgrammes.length === 0 && (
+                            <p className="mt-1.5 text-[11px] text-amber-400" data-envoi-reseaux-vides>
+                              Choisissez au moins un réseau — sinon la vidéo restera en brouillon.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    )}
 
                     {/* ── RECAPITULATIF AVANT CONFIRMATION ────────────────
                         Le nombre exact et le cout, en clair, juste au-dessus
@@ -9469,16 +10090,34 @@ export default function AssistantWizard() {
                       ) : (
                         <>{' · '}<span className="text-amber-400">choisissez une date</span></>
                       )}
-                      <span className="block mt-1 text-gray-500">
-                        Enregistré{batchCount > 1 ? 's' : ''} en brouillon. Aucune publication
-                        automatique : la diffusion reste déclenchée depuis le calendrier.
-                      </span>
+                      {/* La phrase suit l'intention : elle est la derniere
+                          chose lue avant de confirmer, elle doit dire ce qui
+                          va VRAIMENT se passer. */}
+                      {envoiIntention === 'programmer' && reseauxProgrammes.length > 0 ? (
+                        <span className="block mt-1 text-gray-500" data-envoi-recap="programmer">
+                          Programmé{batchCount > 1 ? 's' : ''}{scheduledDate ? ` le ${scheduledDate}` : ''} à {scheduledTime}
+                          {' '}sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')} — publication
+                          automatique par le cron, à l’heure dite ({fuseauNavigateur()}).
+                        </span>
+                      ) : (
+                        <span className="block mt-1 text-gray-500" data-envoi-recap="brouillon">
+                          Enregistré{batchCount > 1 ? 's' : ''} en brouillon. Aucune publication
+                          automatique : la diffusion reste déclenchée depuis le calendrier.
+                        </span>
+                      )}
                     </div>
 
                     {/* ── TÉLÉCHARGER SUR L'ORDINATEUR ────────────────────
-                        Rendu local : aucun post n'est créé. La facturation est
-                        celle du Calendrier — même rendu, même politique, donc
-                        aucun crédit non plus sous `partner_cost_only`.
+                        Rendu local : aucun post n'est créé, aucune
+                        publication. La facturation est celle du Calendrier —
+                        même rendu, même politique, donc aucun crédit non
+                        plus sous `partner_cost_only` — et elle est AFFICHÉE
+                        sur le bouton : c'est un rendu facturé, pas une
+                        simple sauvegarde. Le fichier passe par le circuit
+                        sécurisé d'export (`rendreEtFacturer`, clé attribuée
+                        par le serveur, confirmation) et le navigateur
+                        propose ensuite l'enregistrement : rien n'est
+                        déposé automatiquement dans un dossier de la machine.
 
                         Absent en modification : il compose et débite, comme
                         l'envoi. */}
@@ -9488,13 +10127,21 @@ export default function AssistantWizard() {
                       onClick={() => runRender('bureau')}
                       disabled={sending || actif(VERROU.serie)}
                       data-export-bureau
-                      title="Composer le montage et l’enregistrer sur votre ordinateur, sans créer de post"
+                      title="Composer le montage et l’enregistrer sur votre ordinateur, sans créer de post ni publier — rendu facturé"
                       className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
                       {batchCount > 1
                         ? `Télécharger les ${batchCount} vidéos (.zip)`
                         : 'Télécharger la vidéo'}
+                      <span className="text-gray-500">·</span>
+                      <span data-export-bureau-cout>
+                        {annonceCout(
+                          politiqueFacturation, tarifsServeur,
+                          format === '9:16' ? 'reel' : 'tv',
+                          batchCountAutorise(batchCount),
+                        )}
+                      </span>
                     </button>
                     )}
 
@@ -9512,8 +10159,14 @@ export default function AssistantWizard() {
                         variant="primary"
                         size="sm"
                         onClick={() => runRender('calendrier')}
-                        disabled={sending || actif(VERROU.serie) || !scheduledDate}
+                        // « Programmer » sans reseau retenu n'a rien a
+                        // programmer : le bouton attend le choix plutot que
+                        // d'envoyer un brouillon sous une etiquette qui dit
+                        // le contraire.
+                        disabled={sending || actif(VERROU.serie) || !scheduledDate
+                          || (envoiIntention === 'programmer' && reseauxProgrammes.length === 0)}
                         className={DISABLED}
+                        data-envoi-action={envoiIntention}
                       >
                         <span className="flex items-center gap-2">
                           {sending ? (
@@ -9523,7 +10176,9 @@ export default function AssistantWizard() {
                           ) : (
                             <>
                               <CalendarPlus className="w-4 h-4" />{' '}
-                              {batchCount > 1 ? `Composer et envoyer ${batchCount} vidéos` : 'Composer et envoyer'}
+                              {envoiIntention === 'programmer'
+                                ? (batchCount > 1 ? `Composer et programmer ${batchCount} vidéos` : 'Composer et programmer')
+                                : (batchCount > 1 ? `Composer et envoyer ${batchCount} vidéos` : 'Composer et envoyer')}
                             </>
                           )}
                         </span>
@@ -9738,7 +10393,9 @@ export default function AssistantWizard() {
           // que l'utilisateur attend d'un double-clic sur un element.
           onTextDoubleClick={ouvrirZone}
           onCardDoubleClick={() => ouvrirZone('cards')}
-          overlay={renduDansLeCadre}
+          // Le vrai rendu d'abord ; sinon la lecture des séquences (« Tout »
+          // seulement) ; sinon rien — le plateau nu.
+          overlay={renduDansLeCadre ?? lectureSequences}
         />
 
         {/* ── RÉGLAGES D'UNE SÉQUENCE, AU DOUBLE-CLIC ──────────────────

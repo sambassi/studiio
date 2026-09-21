@@ -151,6 +151,12 @@ function installerFetch(sc: Scenario = {}) {
       trace.push('post');
       return rep({ success: true, post: { id: 'p1' } });
     }
+    // L'etat des reseaux, LU a l'etape Envoi (`useEtatReseaux`) pour
+    // proposer « Programmer » : une lecture, pas une publication.
+    if (m === 'GET' && /\/api\/social\/(status|zernio\/accounts)$/.test(u.split('?')[0])) {
+      trace.push('reseaux');
+      return rep({ success: true, platforms: {}, channels: {}, autorise: false, comptes: [] });
+    }
     if (/publish|social/.test(u)) { trace.push('PUBLICATION'); return rep({ ok: true }); }
     trace.push(`autre:${m}:${u}`);
     return rep({ success: true });

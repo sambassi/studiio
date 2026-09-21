@@ -31,7 +31,14 @@ export interface EtatReseauxCharge {
   recharger: () => void;
 }
 
-export function useEtatReseaux(): EtatReseauxCharge {
+/**
+ * @param actif — `false` suspend la lecture : rien n'est appelé tant que
+ * l'écran n'a pas besoin de l'état des réseaux (l'étape « Envoi » de
+ * l'Assistant, par exemple, alors que le wizard est monté dès « Sujet »).
+ * `true` par défaut : l'écran Réseaux et le Calendrier lisent au montage,
+ * comme avant. Repasse à `true` → la lecture part alors.
+ */
+export function useEtatReseaux(actif: boolean = true): EtatReseauxCharge {
   const [chargement, setChargement] = useState(true);
   const [reseaux, setReseaux] = useState<Record<Reseau, EtatDerive> | null>(null);
   const [zernio, setZernio] = useState<EntreeZernio | null>(null);
@@ -42,6 +49,7 @@ export function useEtatReseaux(): EtatReseauxCharge {
   const recharger = useCallback(() => setTick((t) => t + 1), []);
 
   useEffect(() => {
+    if (!actif) return undefined;
     let vivant = true;
     (async () => {
       let direct: Record<string, StatutDirect> | undefined;
@@ -74,7 +82,7 @@ export function useEtatReseaux(): EtatReseauxCharge {
       setChargement(false);
     })();
     return () => { vivant = false; };
-  }, [tick]);
+  }, [tick, actif]);
 
   return { chargement, reseaux, zernio, canaux, plateformes, recharger };
 }

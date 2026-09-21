@@ -65,9 +65,11 @@ describe('Le calage de durée — la règle du Mode simple', () => {
   const avec = (s: number) => ({ titre: { url: 'u', seconds: s } });
 
   it('la séquence s allonge à la voix', () => {
-    // 7,2 s de parole → 8 s de séquence (arrondi supérieur + marge de 0,3 s).
+    // 7,2 s de parole → 7,5 s de séquence (marge de 0,3 s, au dixième
+    // supérieur — plus d'arrondi à la seconde, qui ajoutait jusqu'à 1,3 s
+    // de silence que l'indicateur signalait ensuite comme une erreur).
     expect(sequenceSecondsWithVoice(avec(7.2), 'titre', 4)).toBe(voiceSequenceSeconds(7.2));
-    expect(sequenceSecondsWithVoice(avec(7.2), 'titre', 4)).toBe(8);
+    expect(sequenceSecondsWithVoice(avec(7.2), 'titre', 4)).toBeCloseTo(7.5, 5);
   });
 
   it('mais ne RÉTRÉCIT jamais sous la durée voulue', () => {
@@ -87,9 +89,9 @@ describe('Le calage de durée — la règle du Mode simple', () => {
         cta: { url: 'c', seconds: 11 },
       },
     });
-    expect(d.introDuration).toBe(10);                                   // 9 s → 10
+    expect(d.introDuration).toBeCloseTo(9.3, 5);                        // 9 s → 9,3
     expect(d.cardsDuration).toBe(DEFAULT_SEQUENCE_SECONDS.cards);       // voix courte
-    expect(d.ctaDuration).toBe(12);                                     // 11 s → 12
+    expect(d.ctaDuration).toBeCloseTo(11.3, 5);                         // 11 s → 11,3
   });
 
   it('et transmet les URL au rendu serveur', () => {

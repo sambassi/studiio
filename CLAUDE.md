@@ -619,6 +619,10 @@ STRIPE_WEBHOOK_SECRET=whsec_xxx
 RESEND_API_KEY=re_xxx
 RESEND_FROM=Studiio <noreply@studiio.pro>
 
+# IA image (Affiche IA « Générer avec l'IA », retouches) — OBLIGATOIRE en prod,
+# sinon /api/ai/image répond 503 « Service IA non configuré » (Coolify → studiio-app → Environment Variables)
+REPLICATE_API_TOKEN=r8_xxx
+
 # Admin / Cron
 ADMIN_SECRET_KEY=xxx
 ADMIN_EMAIL=contact.artboost@gmail.com

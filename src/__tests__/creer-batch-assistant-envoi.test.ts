@@ -114,15 +114,47 @@ describe('Programmation', () => {
   });
 });
 
-describe('AUCUNE publication automatique', () => {
-  it('n envoie jamais de plateforme — un post sans plateforme n est pas diffuse', () => {
-    expect(wizard).toContain('platforms: [],');
+describe('Trois intentions — brouillon par defaut', () => {
+  it('brouillon par defaut : aucune plateforme, draft — l envoi historique, au caractere pres', () => {
+    // `useState<'brouillon' | 'programmer'>('brouillon')` : a l'ouverture
+    // comme apres `reset`, rien ne part sans un choix explicite.
+    expect(wizard).toContain("useState<'brouillon' | 'programmer'>('brouillon')");
+    expect(wizard).toContain("platforms: programmationEffective ? reseauxProgrammes.map(libelleCalendrier) : [],");
+    expect(wizard).toContain("status: programmationEffective ? 'scheduled' : 'draft',");
+    expect(wizard).toContain("setEnvoiIntention('brouillon');");
   });
 
-  it('cree toujours le post en brouillon', () => {
-    expect(wizard).toContain("status: 'draft',");
+  it('programmer : scheduled + reseaux CONNECTES choisis — et jamais scheduled sans reseau', () => {
+    // Un post `scheduled` sans plateforme serait marque « failed » par le
+    // cron a l'heure dite : « programmer » sans reseau retombe en brouillon.
+    expect(wizard).toContain("const programmationEffective = envoiIntention === 'programmer' && reseauxProgrammes.length > 0;");
+    // Les reseaux proposes sont ceux que `useEtatReseaux` dit `connecte` —
+    // la meme lecture que l'ecran Reseaux et le Calendrier.
+    expect(wizard).toContain("RESEAUX.filter((r) => etatReseaux.reseaux![r].etat === 'connecte')");
+    expect(wizard).toContain('data-envoi-intention="brouillon"');
+    expect(wizard).toContain('data-envoi-intention="programmer"');
+    expect(wizard).toContain('data-envoi-reseau={r}');
     expect(wizard).not.toContain("status: 'published'");
-    expect(wizard).not.toContain("status: 'scheduled'");
+  });
+
+  it('le fuseau de saisie part avec le post, minutes comprises', () => {
+    expect(wizard).toContain('timezone: fuseauNavigateur(),');
+    expect(wizard).toContain('step={60}');
+  });
+
+  it('le recapitulatif dit l intention choisie', () => {
+    expect(wizard).toContain('data-envoi-recap="programmer"');
+    expect(wizard).toContain('data-envoi-recap="brouillon"');
+    expect(wizard).toContain('publication\n                          automatique par le cron');
+  });
+
+  it('le telechargement affiche son cout, et ne cree aucun post', () => {
+    expect(wizard).toContain('data-export-bureau-cout');
+    expect(wizard).toContain('sans créer de post ni publier');
+    // Jamais « Bureau » dans un libelle : le navigateur propose un
+    // enregistrement, rien n'est depose quelque part automatiquement.
+    expect(wizard).not.toMatch(/(title|>)[^<{]*sur le Bureau/);
+    expect(wizard).toContain('sur votre ordinateur');
   });
 });
 

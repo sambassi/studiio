@@ -82,7 +82,11 @@ export interface ElevenLabsTtsVoice {
   id: string;
   name: string;
   lang: string;
-  gender: 'Female' | 'Male';
+  /**
+   * `Neutral` pour une voix clonee relue de `user_voices`, qui ne stocke pas
+   * le genre : on ne l'invente pas, le selecteur n'affiche alors pas de lettre.
+   */
+  gender: 'Female' | 'Male' | 'Neutral';
   flag: string;
   provider: 'elevenlabs';
   /** true = voix clonee, par opposition au catalogue. */
@@ -186,6 +190,25 @@ export async function fetchCustomVoices(): Promise<Array<HeyGenTtsVoice | Eleven
     fetchElevenLabsVoices(),
   ]);
   return [...heygen, ...elevenlabs];
+}
+
+/**
+ * La voix a proposer d'office quand aucun choix explicite n'a ete fait —
+ * c'est-a-dire quand la voix courante est encore le DEFAUT du selecteur :
+ * la premiere voix CLONEE du compte, celle que l'utilisateur cherche, pas
+ * Denise. `null` = ne rien changer.
+ *
+ * Un choix hors defaut n'est jamais ecrase : il peut venir de l'utilisateur
+ * ou d'un brouillon restaure, et dans les deux cas c'est lui qui fait foi.
+ */
+export function voixCloneeAProposer(
+  current: string,
+  defaultId: string,
+  voices: ReadonlyArray<{ id: string; cloned?: boolean }>,
+): string | null {
+  if (current !== defaultId) return null;
+  const clonee = voices.find((v) => v.cloned === true);
+  return clonee && clonee.id !== current ? clonee.id : null;
 }
 
 export type VoiceSource = 'tts' | 'record' | null;

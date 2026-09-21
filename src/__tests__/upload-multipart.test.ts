@@ -24,6 +24,7 @@ import {
 const helper = readFileSync(resolve(__dirname, '../lib/storage/uploadFile.ts'), 'utf-8');
 const route = readFileSync(resolve(__dirname, '../app/api/upload/multipart/route.ts'), 'utf-8');
 const library = readFileSync(resolve(__dirname, '../components/shared/MediaLibrary.tsx'), 'utf-8');
+const file = readFileSync(resolve(__dirname, '../lib/storage/useUploadQueue.ts'), 'utf-8');
 
 describe('Le découpage', () => {
   it('couvre le fichier ENTIER, sans trou ni chevauchement', () => {
@@ -173,7 +174,10 @@ describe('La route multipart', () => {
 
 describe('La Médiathèque en profite sans rien changer', () => {
   it('elle passe toujours par le helper partagé', () => {
-    expect(library).toContain('await uploadFile(file, {');
-    expect(library).toContain('onProgress: setProgress,');
+    // Depuis l'envoi groupé, c'est la file d'envoi (`useUploadQueue`) qui
+    // appelle le helper ; la Médiathèque passe par elle.
+    expect(library).toContain("from '@/lib/storage/useUploadQueue'");
+    expect(file).toContain('uploadFile(file, {');
+    expect(file).toContain('onProgress: (p) => modifier(index, {');
   });
 });

@@ -54,6 +54,19 @@ describe('La signature couvre TOUT ce qui part au compositeur', () => {
     expect(renderSignature(avant)).not.toBe(renderSignature(apres));
   });
 
+  it('une affiche IA appliquée après le Play PÉRIME le montage en cache : l envoi recompose au lieu de réutiliser', () => {
+    // `posterUrl` est une clé de premier niveau des options du compositeur
+    // (AssistantWizard `optionsRendu.posterUrl`) et n'est pas volatile :
+    // changer l'affiche change la signature, donc le rendu en cache n'est
+    // jamais réutilisé tel quel à l'envoi.
+    expect(VOLATILE_KEYS.has('posterUrl')).toBe(false);
+    const avant = { title: 'T', posterUrl: 'https://studiio.pro/storage/v1/object/public/media/u1/image/a.webp' };
+    const apres = { title: 'T', posterUrl: 'https://studiio.pro/storage/v1/object/public/media/u1/image/gen-affiche-ia.webp' };
+    expect(signatureMatches(renderSignature(avant), renderSignature(apres))).toBe(false);
+    // Le fond PAR SÉQUENCE aussi (l'affiche IA peut y être appliquée).
+    expect(renderSignature({ sequenceBackgrounds: { intro: 'a' } })).not.toBe(renderSignature({ sequenceBackgrounds: { intro: 'b' } }));
+  });
+
   it('un tableau réordonné change la signature — l ordre des séquences compte', () => {
     expect(renderSignature({ o: ['intro', 'cta'] })).not.toBe(renderSignature({ o: ['cta', 'intro'] }));
   });

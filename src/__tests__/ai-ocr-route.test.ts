@@ -33,6 +33,8 @@ vi.mock('@/lib/credits/system', () => ({
 
 vi.mock('@/lib/service-alerts', () => ({
   detectAndReportServiceError: (...a: unknown[]) => alertMock(...a),
+  // Le 503 « non configuré » alerte l'administrateur (nom de la variable).
+  reportServiceAlert: async () => {},
 }));
 
 const { POST } = await import('@/app/api/ai/image/route');

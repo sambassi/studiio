@@ -299,8 +299,12 @@ describe('Autopilote — guidage par étape', () => {
     await monter();
     allerEtape(3);
     const phrase = document.querySelector('[data-autopilot-phrase-diffusion]')!.textContent!;
-    expect(phrase).toMatch(/^\d+ vidéos? (chaque jour|un jour sur deux|chaque semaine) à \d\d:00, /);
-    expect(phrase).toMatch(/après votre validation|publiée automatiquement/);
+    // Deux heures, dites séparément : « produite à 08:00 » (production) et,
+    // selon l'intention, « le lendemain à 18:00 » (publication). L'ancienne
+    // phrase « chaque jour à 08:00 … publiée automatiquement » confondait
+    // les deux.
+    expect(phrase).toMatch(/^\d+ vidéos? (chaque jour|un jour sur deux|chaque semaine), produite à \d\d:00, /);
+    expect(phrase).toMatch(/rien ne part sans votre validation|publication automatique|à télécharger/);
     for (const bloc of ['Fréquence', 'Validation', 'Réseaux']) expect(screen.getByText(bloc)).toBeDefined();
   });
 

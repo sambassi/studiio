@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   compareVoiceToSequence,
   voiceFitMessage,
+  voiceSequenceSeconds,
   VOICE_FIT_TOLERANCE_S,
 } from '@/lib/creer/voiceFit';
 
@@ -32,12 +33,39 @@ describe('Comparaison voix / séquence', () => {
     expect(fit.deltaSec).toBeCloseTo(-3.5, 5);
   });
 
-  it('propose une durée de séquence entière, jamais inférieure à la voix', () => {
-    // L'éditeur règle les séquences en secondes entières : arrondir au
-    // supérieur évite de retomber sous la voix à cause de l'arrondi.
-    expect(compareVoiceToSequence(6.2, 4).suggestedSeqSec).toBe(7);
-    expect(compareVoiceToSequence(6.0, 4).suggestedSeqSec).toBe(6);
+  it('propose la durée voix + marge, au dixième, jamais inférieure à la voix', () => {
+    // Une SEULE règle avec `voiceSequenceSeconds` : la cible proposée est
+    // celle que « Adapter la durée à la voix » applique.
+    expect(compareVoiceToSequence(6.2, 4).suggestedSeqSec).toBe(voiceSequenceSeconds(6.2));
+    expect(compareVoiceToSequence(6.2, 4).suggestedSeqSec).toBeCloseTo(6.5, 5);
+    expect(compareVoiceToSequence(6.0, 4).suggestedSeqSec).toBeCloseTo(6.3, 5);
     expect(compareVoiceToSequence(0.4, 4).suggestedSeqSec).toBe(1); // jamais 0
+  });
+
+  it('cas de production : la cible proposée n est JAMAIS la durée déjà en place', () => {
+    // Observé en prod : « Voix 5,1 s < séquence 6 s : raccourcir de 0,9 s
+    // (séquence à 6 s pour coller) » — la cible était la valeur courante.
+    for (const [voix, seq] of [[5.1, 6], [34.0, 35], [1.5, 2]] as const) {
+      const fit = compareVoiceToSequence(voix, seq);
+      expect(fit.suggestedSeqSec, `${voix}/${seq}`).not.toBe(seq);
+      expect(fit.suggestedSeqSec, `${voix}/${seq}`).toBeGreaterThan(voix);
+      expect(fit.suggestedSeqSec, `${voix}/${seq}`).toBeLessThan(seq);
+    }
+    expect(compareVoiceToSequence(5.1, 6).suggestedSeqSec).toBeCloseTo(5.4, 5);
+  });
+
+  it('une séquence déjà calée à la voix (voix + marge) est OK, pas « à raccourcir »', () => {
+    // C'est ce que l'éditeur applique lui-même : il ne doit pas signaler
+    // son propre réglage comme une erreur.
+    expect(compareVoiceToSequence(5.1, voiceSequenceSeconds(5.1)).status).toBe('ok');
+    expect(compareVoiceToSequence(34, voiceSequenceSeconds(34)).status).toBe('ok');
+  });
+
+  it('sépare la gravité : seule la voix qui déborde est un avertissement', () => {
+    expect(compareVoiceToSequence(6.2, 4).severity).toBe('warning');
+    expect(compareVoiceToSequence(2.5, 6).severity).toBe('info');
+    expect(compareVoiceToSequence(4.1, 4).severity).toBe('ok');
+    expect(compareVoiceToSequence(undefined, 4).severity).toBe('ok');
   });
 
   it('reste muet quand il n y a rien à comparer', () => {
@@ -55,18 +83,26 @@ describe('Comparaison voix / séquence', () => {
 });
 
 describe('Message affiché', () => {
-  it('dit d ALLONGER, avec l écart chiffré', () => {
+  it('dit que la fin sera COUPÉE, avec l écart chiffré', () => {
     const msg = voiceFitMessage(compareVoiceToSequence(6.2, 4), 6.2, 4);
-    expect(msg).toContain('allonger');
+    expect(msg).toContain('coupée');
     expect(msg).toContain('2,2 s');   // virgule décimale française
     expect(msg).toContain('6,2 s');
     expect(msg).toContain('4 s');
   });
 
-  it('dit de RACCOURCIR, avec l écart chiffré', () => {
+  it('dit le SILENCE en fin de séquence, sans en faire une erreur', () => {
     const msg = voiceFitMessage(compareVoiceToSequence(2.5, 6), 2.5, 6);
-    expect(msg).toContain('raccourcir');
+    expect(msg).toContain('silence');
     expect(msg).toContain('3,5 s');
+    expect(msg).not.toContain('raccourcir');
+  });
+
+  it('la cible affichée est celle de l action « Adapter », pas la durée courante', () => {
+    const fit = compareVoiceToSequence(5.1, 6);
+    const msg = voiceFitMessage(fit, 5.1, 6);
+    expect(msg).toContain('5,4 s');
+    expect(msg).not.toMatch(/séquence à 6 s/);
   });
 
   it('confirme quand ça colle, sans chiffre d écart inutile', () => {

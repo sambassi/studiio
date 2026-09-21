@@ -211,6 +211,21 @@ describe('e. erreur serveur', () => {
     expect(btnGenerer().disabled).toBe(false);
   });
 
+  it('un « Régénérer » qui échoue garde l image précédente, non appliquée, à l écran', async () => {
+    let appel = 0;
+    stubFetch(() => (appel++ === 0
+      ? reponseOk()
+      : { ok: false, status: 503, json: async () => ({ success: false, error: 'Service IA non configuré sur le serveur' }) }));
+    render(<AfficheIA suggestion="lac au matin" onUtiliser={async () => {}} />);
+    fireEvent.click(btnGenerer());
+    await waitFor(() => expect(document.querySelector('[data-affiche-ia-resultat]')).not.toBeNull());
+    fireEvent.click(btnGenerer());
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Service IA non configuré'));
+    // Le média précédent est conservé : l'échec ne l'efface pas.
+    expect(document.querySelector('img')?.getAttribute('src')).toBe(URL_DURABLE);
+    expect(btnUtiliser()).not.toBeNull();
+  });
+
   it('reponse sans corps JSON → « Erreur <status> »', async () => {
     stubFetch(() => ({ ok: false, status: 503, json: async () => { throw new Error('pas de JSON'); } }));
     render(<AfficheIA suggestion="lac au matin" onUtiliser={async () => {}} />);

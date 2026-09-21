@@ -247,9 +247,17 @@ describe('Les gardes de la route', () => {
 });
 
 describe('Default-safe : sans clé, rien ne se dégrade', () => {
-  it('la liste répond « non configuré », pas une erreur', () => {
-    // Le sélecteur garde alors les voix Edge, OpenAI et HeyGen.
-    expect(route).toContain('return NextResponse.json({ voices: [], configured: false });');
+  it('la liste ne s arrête plus sur l absence de clé : les voix clonées du compte passent avant', () => {
+    // La clé ne conditionne que le CATALOGUE (un appel réseau). Les voix
+    // clonées sont une donnée locale (`user_voices`) : les cacher faisait
+    // croire à l'utilisateur que sa voix avait disparu de Créer alors que
+    // l'Autopilote la listait. Le comportement est prouvé sur des valeurs
+    // dans `tts-elevenlabs-liste-sans-cle.test.ts` ; ici on verrouille
+    // seulement que le court-circuit d'avant n'est pas revenu.
+    expect(route).not.toContain('return NextResponse.json({ voices: [], configured: false });');
+    const get = route.slice(route.indexOf('export async function GET'), route.indexOf('async function voixAutorisee'));
+    expect(get).toContain('listUserVoices(session.user.id)');
+    expect(get).toContain('configured: !!apiKey()');
   });
 
   it('la synthèse, elle, le dit franchement', () => {

@@ -58,8 +58,8 @@ describe('La durée reste celle du design', () => {
   it('la marge du calage reste celle de l éditeur', () => {
     // 0,3 s : sans elle la séquence changerait à l'instant précis où le
     // dernier mot se termine, et la coupure s'entendrait.
-    expect(voiceSequenceSeconds(4.2)).toBe(5);
-    expect(voiceSequenceSeconds(3.0)).toBe(4);
+    expect(voiceSequenceSeconds(4.2)).toBeCloseTo(4.5, 5);
+    expect(voiceSequenceSeconds(3.0)).toBeCloseTo(3.3, 5);
   });
 });
 

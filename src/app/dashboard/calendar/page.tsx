@@ -67,7 +67,7 @@ function formatRendu(p?: { format?: string | null } | null): 'reel' | 'tv' {
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
-import { reseauDepuisLibelle } from '@/lib/social/etatReseaux';
+import { reseauDepuisLibelle, normaliserPlateformesCalendrier } from '@/lib/social/etatReseaux';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
@@ -655,7 +655,9 @@ export default function CalendarPage() {
           media_url: p.media_url,
           media_type: p.media_type,
           format: p.format,
-          platforms: p.platforms || [],
+          // Les posts de l'Autopilote portent des identifiants (« instagram ») ;
+          // l'écran compare ses libellés (« Instagram »). Normalisé à la lecture.
+          platforms: normaliserPlateformesCalendrier(p.platforms),
           scheduled_date: p.scheduled_date,
           scheduled_time: p.scheduled_time,
           status: p.status,

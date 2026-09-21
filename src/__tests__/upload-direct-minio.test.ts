@@ -27,6 +27,10 @@ const route = readFileSync(
 );
 const helper = readFileSync(resolve(__dirname, '../lib/storage/uploadFile.ts'), 'utf-8');
 const library = readFileSync(resolve(__dirname, '../components/shared/MediaLibrary.tsx'), 'utf-8');
+// L'envoi groupé a déplacé l'appel au helper dans la file d'envoi : c'est
+// elle, désormais, qui tient `uploadFile` — la Médiathèque ne fait que
+// l'utiliser.
+const file = readFileSync(resolve(__dirname, '../lib/storage/useUploadQueue.ts'), 'utf-8');
 const relais = readFileSync(
   resolve(__dirname, '../app/api/storage/upload/route.ts'), 'utf-8',
 );
@@ -171,17 +175,22 @@ describe('Le helper : XHR, parce que `fetch` ne sait pas', () => {
 });
 
 describe('La Médiathèque — le point du bug', () => {
-  it('elle passe par le helper partagé', () => {
-    expect(library).toContain("from '@/lib/storage/uploadFile'");
-    expect(library).toContain('await uploadFile(file, {');
-    // Plus de PUT écrit à la main.
+  it('elle passe par le helper partagé, via la file d envoi', () => {
+    expect(library).toContain("from '@/lib/storage/useUploadQueue'");
+    expect(file).toContain("from '@/lib/storage/uploadFile'");
+    expect(file).toContain('uploadFile(file, {');
+    // Plus de PUT écrit à la main — ni dans l'une, ni dans l'autre.
     expect(library).not.toContain("await fetch(data.signedUrl, {");
+    expect(file).not.toContain("await fetch(data.signedUrl, {");
+    expect(library).not.toContain("fetch('/api/upload/signed-url'");
   });
 
   it('elle affiche une barre ET le pourcentage', () => {
-    expect(library).toContain('const [progress, setProgress] = useState(0);');
-    expect(library).toContain('onProgress: setProgress,');
-    expect(library).toContain('`Envoi ${progress} %`');
+    // La progression vient de la file (pondérée par la taille), pas d'un
+    // `useState` local : c'est elle qui alimente la barre et le libellé.
+    expect(library).toContain('const progress = envoi.progression.pourcent;');
+    expect(file).toContain('onProgress: (p) => modifier(index, {');
+    expect(library).toContain('· ${progress} %`');
     expect(library).toContain('style={{ width: `${progress}%` }}');
   });
 

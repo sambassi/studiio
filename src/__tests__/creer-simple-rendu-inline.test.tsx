@@ -172,8 +172,10 @@ describe('C — le câblage de l assistant', () => {
   const wizard = readFileSync(
     resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
 
-  it('l aperçu de l assistant reçoit le calque', () => {
-    expect(wizard).toContain('overlay={renduDansLeCadre}');
+  it('l aperçu de l assistant reçoit le calque — le rendu D ABORD', () => {
+    // Depuis la lecture des séquences, le slot est partagé : le vrai rendu
+    // (payé) garde la priorité, la lecture ne vient qu'en son absence.
+    expect(wizard).toContain('overlay={renduDansLeCadre ?? lectureSequences}');
   });
 
   it('le montage ne joue que sur l onglet « Tout »', () => {
@@ -202,14 +204,19 @@ describe('C — le câblage de l assistant', () => {
     expect(wizard.split('setRenderTarget(null)').length - 1).toBe(2);
   });
 
-  it('l aperçu de l Autopilote ne reçoit AUCUN calque', () => {
-    // Il partage `Preview` : le régresser ferait apparaître un lecteur dans
-    // un aperçu qui n'a rien à jouer.
+  it('l aperçu de l Autopilote ne reçoit JAMAIS le lecteur du rendu', () => {
+    // Il partage `Preview` : le régresser ferait apparaître le lecteur du
+    // montage composé dans un aperçu qui n'a rien de tel à jouer. Son calque
+    // à lui est la lecture des séquences (`SequencePlayback`), qui ne compose
+    // ni ne débite rien.
     const autopilote = wizard.slice(
       wizard.indexOf('function AutopilotPreview('),
       wizard.indexOf('export default function AssistantWizard()'),
     );
     expect(autopilote.length).toBeGreaterThan(0);
-    expect(autopilote).not.toContain('overlay=');
+    expect(autopilote).not.toContain('renduDansLeCadre');
+    expect(autopilote).not.toContain('data-play-lecteur');
+    expect(autopilote).not.toContain('previewUrl');
+    expect(autopilote).toContain('<SequencePlayback');
   });
 });

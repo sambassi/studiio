@@ -52,13 +52,74 @@ export const MODE_LABELS: Record<AutopilotMode, string> = {
 };
 
 export const MODE_HINTS: Record<AutopilotMode, string> = {
-  auto: 'Les vidéos partent sur vos réseaux à l’heure prévue, sans intervention.',
+  // « à l'heure de publication » et non « à l'heure prévue » : l'heure prévue
+  // se lisait comme l'heure de PRODUCTION (8 h), alors que la publication se
+  // fait le lendemain, à `publishTime`.
+  auto: 'Les vidéos sont programmées sur vos réseaux, le lendemain de leur production, à l’heure de publication choisie — sans intervention.',
   review: 'Les vidéos arrivent en brouillon dans le Calendrier. Rien ne part sans vous.',
 };
 
 /** Cadences et modes acceptés — la seule liste, pour l'écran comme pour la base. */
 export const CADENCES: readonly AutopilotCadence[] = Object.freeze(['daily', 'every_2_days', 'weekly']);
 export const MODES: readonly AutopilotMode[] = Object.freeze(['auto', 'review']);
+
+/**
+ * Ce que Studiio fait des vidéos — les trois intentions que l'écran présente.
+ *
+ * ⚠️ AUCUN NOUVEAU STATUT, AUCUNE NOUVELLE COLONNE. L'intention se DÉRIVE de
+ * `(mode, platforms)`, et s'y RAMÈNE : « produire seulement » n'est que
+ * `review` sans réseau — un brouillon dans le Calendrier, que l'on
+ * télécharge par l'export sécurisé. Un troisième mode en base aurait exigé
+ * que le cron, `statusForMode` et le Calendrier apprennent une valeur de plus
+ * pour un comportement qu'ils savent déjà produire.
+ *
+ *   publier  → mode `auto`,   réseaux requis   : posts `scheduled`, le cron publie ;
+ *   valider  → mode `review`, réseaux au choix : posts `draft`, à programmer soi-même ;
+ *   produire → mode `review`, aucun réseau     : posts `draft`, à télécharger.
+ */
+export type AutopilotIntention = 'publier' | 'valider' | 'produire';
+
+export const INTENTIONS: readonly AutopilotIntention[] = Object.freeze(['publier', 'valider', 'produire']);
+
+/** Le mode que chaque intention ÉCRIT. */
+export const INTENTION_MODE: Record<AutopilotIntention, AutopilotMode> = {
+  publier: 'auto',
+  valider: 'review',
+  produire: 'review',
+};
+
+export const INTENTION_LABELS: Record<AutopilotIntention, string> = {
+  publier: MODE_LABELS.auto,
+  valider: MODE_LABELS.review,
+  produire: 'Produire seulement — téléchargement',
+};
+
+export const INTENTION_HINTS: Record<AutopilotIntention, string> = {
+  publier: MODE_HINTS.auto,
+  valider: MODE_HINTS.review,
+  produire: 'Aucun réseau. Les vidéos arrivent en brouillon dans le Calendrier ; vous les téléchargez depuis l’export sécurisé (rendu facturé aux conditions habituelles).',
+};
+
+/** L'intention que dit une configuration — la lecture inverse de `patchPourIntention`. */
+export function intentionDiffusion(config: Pick<AutopilotConfig, 'mode' | 'platforms'>): AutopilotIntention {
+  if (config.mode === 'auto') return 'publier';
+  return config.platforms.length > 0 ? 'valider' : 'produire';
+}
+
+/**
+ * Ce qu'il faut ÉCRIRE pour passer à une intention — en UN seul enregistrement.
+ *
+ * « Produire seulement » vide les réseaux dans le MÊME patch que le mode :
+ * deux appels séparés laisseraient, entre les deux, une configuration
+ * `review` + réseaux que l'écran lirait « valider ». Les deux autres ne
+ * touchent pas aux réseaux : revenir de « produire » à « valider » rend le
+ * sélecteur, vide, à l'utilisateur.
+ */
+export function patchPourIntention(intention: AutopilotIntention): Partial<AutopilotConfig> {
+  return intention === 'produire'
+    ? { mode: 'review', platforms: [] }
+    : { mode: INTENTION_MODE[intention] };
+}
 
 /**
  * Seuil de crédits par défaut.
@@ -77,6 +138,34 @@ export const DEFAULT_RUN_HOUR = 8;
 
 /** Fuseau par défaut, et repli de tout fuseau illisible. */
 export const DEFAULT_TIMEZONE = 'Europe/Paris';
+
+/**
+ * Heure de PUBLICATION par défaut des posts produits — « HH:MM ».
+ *
+ * ⚠️ CE N'EST PAS `DEFAULT_RUN_HOUR`. L'Autopilote PRODUIT à `runHour`
+ * (8 h) et PROGRAMME la publication du lendemain à cette heure-ci. Les deux
+ * ont longtemps été confondues à l'écran (« chaque jour à 08:00 … publiée
+ * automatiquement ») alors que le moteur écrivait 18:00 en dur.
+ *
+ * Défini ICI, et le moteur l'importe : une seule source, sinon l'écran et le
+ * moteur finiraient par annoncer deux heures différentes.
+ */
+export const DEFAULT_PUBLISH_TIME = '18:00';
+
+/** « HH:MM », 24 h — la seule forme que `scheduled_time` (colonne TIME) et le cron relisent. */
+export const PUBLISH_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Heure de publication relue, ou son défaut.
+ *
+ * Les MINUTES sont conservées : « 18:45 » reste « 18:45 ». Une forme
+ * illisible (« 18h », « 25:00 », `undefined` d'une colonne encore absente)
+ * retombe sur 18:00 — l'heure qui était en dur, donc aucune configuration
+ * existante ne change de créneau.
+ */
+export function sanitizePublishTime(raw: unknown): string {
+  return typeof raw === 'string' && PUBLISH_TIME_RE.test(raw.trim()) ? raw.trim() : DEFAULT_PUBLISH_TIME;
+}
 
 /**
  * L'identité constante par défaut.
@@ -195,8 +284,18 @@ export interface AutopilotConfig {
    * différentes : « à quelle heure » et « tous les combien ».
    */
   runHour: number;
-  /** Fuseau dans lequel `runHour` se lit. */
+  /** Fuseau dans lequel `runHour` — et `publishTime` — se lisent. */
   runTimezone: string;
+  /**
+   * Heure de PUBLICATION des posts produits, « HH:MM », dans `runTimezone`.
+   *
+   * Distincte de `runHour` : celle-ci dit QUAND le moteur tourne, celle-là à
+   * quelle heure les vidéos produites sont programmées (le lendemain, puis
+   * un jour de plus par montage). Les minutes comptent : « 18:45 » est
+   * écrit tel quel dans `scheduled_time`, et le cron de publication compare
+   * en « HH:MM ».
+   */
+  publishTime: string;
   /**
    * Narration IA sur les montages produits.
    *
@@ -293,6 +392,9 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   // configuration existante ne change donc pas d'horaire.
   runHour: DEFAULT_RUN_HOUR,
   runTimezone: DEFAULT_TIMEZONE,
+  // 18:00 : l'heure que le moteur écrivait en dur. Aucune configuration
+  // existante ne change de créneau de publication.
+  publishTime: DEFAULT_PUBLISH_TIME,
   voiceEnabled: false,
   cardGradientStart: DEFAULT_BRANDING.cardGradientStart,
   cardGradientEnd: DEFAULT_BRANDING.cardGradientEnd,
@@ -503,6 +605,9 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     runTimezone: typeof o.runTimezone === 'string' && o.runTimezone.trim()
       ? o.runTimezone.trim()
       : DEFAULT_TIMEZONE,
+    // « HH:MM » strict, minutes conservées ; colonne absente ou valeur
+    // illisible → 18:00, l'heure jusqu'ici en dur dans le moteur.
+    publishTime: sanitizePublishTime(o.publishTime),
     // `=== true` et non un test de véracité : une colonne absente (migration
     // pas encore appliquée) vaut `undefined`, donc « pas de voix », donc
     // aucun appel facturé.

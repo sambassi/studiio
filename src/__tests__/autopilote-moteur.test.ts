@@ -156,9 +156,14 @@ describe('Les créneaux', () => {
     expect(slotDate(new Date(Date.parse('2026-08-30T09:00:00Z')), 1)).toBe('2026-09-01');
   });
 
-  it('l heure est la même pour tous', () => {
+  it('l heure est la même pour tous — celle de la configuration, 18:00 par défaut', () => {
     const p = preparePosts({ config: cfg(), topic: 'yoga', count: 2, now: T0 });
     expect(p.every((x) => x.scheduledTime === DEFAULT_SLOT_TIME)).toBe(true);
+    expect(DEFAULT_SLOT_TIME).toBe('18:00');
+    // Les minutes choisies sont conservées telles quelles (voir
+    // `autopilote-heure-publication.test.ts` pour le détail).
+    const q = preparePosts({ config: cfg({ publishTime: '18:45' }), topic: 'yoga', count: 2, now: T0 });
+    expect(q.every((x) => x.scheduledTime === '18:45')).toBe(true);
   });
 });
 

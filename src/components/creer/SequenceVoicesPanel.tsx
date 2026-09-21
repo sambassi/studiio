@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info, Check } from 'lucide-react';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
-import { compareVoiceToSequence, voiceFitMessage, estimateLabel } from '@/lib/creer/voiceFit';
+import { compareVoiceToSequence, voiceFitMessage, estimateLabel, VOICE_FIT_APPLY_LABEL } from '@/lib/creer/voiceFit';
 import {
   fetchCustomVoices,
   isHeyGenVoiceId,
+  isElevenLabsVoiceId,
+  voixCloneeAProposer,
   SEQUENCE_KEYS,
   type SequenceKey,
   type SequenceVoice,
@@ -164,6 +166,20 @@ interface Props {
   /** Optional toast bridge so audio playback errors surface to the user
    *  instead of dying silently in the console. */
   onAudioError?: (message: string) => void;
+  /**
+   * Action explicite « Adapter la duree a la voix » : ecrit la duree cible
+   * (`fit.suggestedSeqSec`) dans la sequence. Sans ce callback, le bouton
+   * n'est pas affiche. Un CLIC, jamais un effet : une duree reglee a la main
+   * est conservee tant que l'utilisateur n'applique pas l'action.
+   */
+  onSequenceDurationChange?: (key: SequenceKey, seconds: number) => void;
+  /**
+   * Voix TTS CONTROLEE par le parent — meme contrat que `AudioStudioPanel`,
+   * pour que les deux selecteurs de Creer montrent la meme voix, celle que
+   * le brouillon restaure. Absente : la regle historique (localStorage).
+   */
+  voiceId?: string;
+  onVoiceIdChange?: (id: string) => void;
 }
 
 export function SequenceVoicesPanel({
@@ -180,20 +196,31 @@ export function SequenceVoicesPanel({
   hasVideoOverlay,
   batchCount,
   onAudioError,
+  onSequenceDurationChange,
+  voiceId,
+  onVoiceIdChange,
 }: Props) {
   // Shared TTS voice picker (one voice for all sequences in this panel —
   // simpler UX than per-sequence voice selectors). Persists in localStorage
   // so the choice survives a refresh.
-  const [selectedTtsVoiceId, setSelectedTtsVoiceId] = useState<string>(() => {
+  const [localTtsVoiceId, setLocalTtsVoiceId] = useState<string>(() => {
     if (typeof window === 'undefined') return DEFAULT_VOICE_ID;
     try {
       const saved = window.localStorage.getItem(VOICE_STORAGE_KEY);
-      // Les voix HeyGen sont listees a la volee : on les accepte sur leur
-      // prefixe, sinon un rechargement perdrait la voix clonee choisie.
-      if (saved && (isHeyGenVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
+      // Les voix HeyGen et ElevenLabs sont listees a la volee : on les accepte
+      // sur leur prefixe, sinon un rechargement perdrait la voix clonee
+      // choisie — et l'effet ci-dessous reecrirait la cle avec Denise.
+      if (saved && (isHeyGenVoiceId(saved) || isElevenLabsVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
     } catch { /* ignore */ }
     return DEFAULT_VOICE_ID;
   });
+  // Controle : la valeur du parent prime des qu'elle existe. L'etat local
+  // suit quand meme chaque changement, pour que localStorage reste juste.
+  const selectedTtsVoiceId = voiceId ?? localTtsVoiceId;
+  const setSelectedTtsVoiceId = useCallback((id: string) => {
+    setLocalTtsVoiceId(id);
+    onVoiceIdChange?.(id);
+  }, [onVoiceIdChange]);
   useEffect(() => {
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedTtsVoiceId); } catch { /* ignore */ }
   }, [selectedTtsVoiceId]);
@@ -209,6 +236,17 @@ export function SequenceVoicesPanel({
     return () => { cancelled = true; };
   }, []);
   const allVoices: TtsVoice[] = [...customVoices, ...TTS_VOICES];
+  // Sans choix explicite (Denise = le defaut), la voix clonee du compte est
+  // proposee d'office une fois la liste arrivee — jamais avant (liste vide =
+  // source absente, l'etat restaure fait foi), jamais par-dessus un choix.
+  useEffect(() => {
+    if (customVoices.length === 0) return;
+    const clonee = voixCloneeAProposer(selectedTtsVoiceId, DEFAULT_VOICE_ID, customVoices);
+    if (clonee) setSelectedTtsVoiceId(clonee);
+    // Volontairement pas `selectedTtsVoiceId` : l'effet ne rejoue que quand
+    // la liste change, sinon revenir a Denise a la main serait impossible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customVoices]);
 
   // Per-sequence loading + recording state
   const [busy, setBusy] = useState<Record<SequenceKey, boolean>>({ titre: false, cartes: false, video: false, cta: false });
@@ -461,6 +499,7 @@ export function SequenceVoicesPanel({
         <select
           value={selectedTtsVoiceId}
           onChange={(e) => setSelectedTtsVoiceId(e.target.value)}
+          data-testid="seq-tts-voice-select"
           className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-white focus:border-purple-500 focus:outline-none"
         >
           {allVoices.map((v) => (
@@ -511,7 +550,10 @@ export function SequenceVoicesPanel({
                 <span className={`text-[10px] ${
                   overrun ? 'text-orange-300' : fit?.status === 'ok' ? 'text-emerald-300' : 'text-gray-400'
                 }`}>
-                  {seqDur}s {sv.audioUrl && `/ ${audioDur.toFixed(1)}s audio`}
+                  {/* Une duree au dixieme (« 5,4 s ») se lit telle quelle :
+                      pas de troncature a l'entier, qui mentirait sur ce
+                      qui sera exporte. */}
+                  {Number.isInteger(seqDur) ? seqDur : seqDur.toFixed(1)}s {sv.audioUrl && `/ ${audioDur.toFixed(1)}s audio`}
                   {/* Estimation AVANT generation : elle previent qu'un texte
                       est trop long sans avoir a depenser un appel TTS. Elle
                       s'efface des que la duree reelle est connue, qui seule
@@ -527,21 +569,34 @@ export function SequenceVoicesPanel({
               {fit && fit.status !== 'unknown' && (
                 <div
                   data-testid={`voice-fit-${key}`}
+                  data-severity={fit.severity}
                   className={`mb-1.5 flex items-start gap-1 rounded px-1.5 py-1 text-[10px] ${
-                    fit.status === 'ok'
+                    fit.severity === 'ok'
                       ? 'bg-emerald-500/10 text-emerald-300'
-                      : 'bg-orange-500/10 text-orange-300'
+                      : fit.severity === 'warning'
+                        ? 'bg-orange-500/10 text-orange-300'
+                        : 'bg-sky-500/10 text-sky-200'
                   }`}
                 >
-                  {fit.status === 'ok'
+                  {/* Trois gravites, trois icones : une voix qui deborde COUPE
+                      l'audio (avertissement) ; une voix plus courte laisse du
+                      silence (information, pas une erreur). */}
+                  {fit.severity === 'ok'
                     ? <Check size={10} className="mt-0.5 flex-shrink-0" />
-                    : <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />}
-                  <span>
-                    {voiceFitMessage(fit, audioDur, seqDur)}
-                    {fit.status !== 'ok' && (
-                      <span className="text-gray-400">
-                        {' '}(séquence à {fit.suggestedSeqSec} s pour coller)
-                      </span>
+                    : fit.severity === 'warning'
+                      ? <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />
+                      : <Info size={10} className="mt-0.5 flex-shrink-0" />}
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span>{voiceFitMessage(fit, audioDur, seqDur)}</span>
+                    {fit.status !== 'ok' && onSequenceDurationChange && (
+                      <button
+                        type="button"
+                        data-testid={`voice-fit-apply-${key}`}
+                        onClick={() => onSequenceDurationChange(key, fit.suggestedSeqSec)}
+                        className="rounded border border-current/40 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-white/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-current"
+                      >
+                        {VOICE_FIT_APPLY_LABEL} ({fit.suggestedSeqSec.toString().replace('.', ',')} s)
+                      </button>
                     )}
                   </span>
                 </div>
