@@ -254,3 +254,104 @@ export function sequenceClock(steps: readonly SequenceStep[], t: number): Sequen
     ended: false,
   };
 }
+
+// ── Extraits ───────────────────────────────────────────────────────────────
+
+/**
+ * Secondes de la séquence SORTANTE jouées avant la fenêtre de transition :
+ * on voit d'où l'on part, sans rejouer toute la séquence.
+ */
+export const EXTRACT_LEAD_SECONDS = 1;
+/** Secondes de la séquence ENTRANTE jouées après la fenêtre : on voit où l'on arrive. */
+export const EXTRACT_TAIL_SECONDS = 0.6;
+
+/** Un extrait du montage, en secondes du montage (l'horloge de `sequenceClock`). */
+export interface PlaybackExtract {
+  from: number;
+  to: number;
+  /**
+   * L'instant qui REPRÉSENTE l'effet, pour l'image figée quand l'utilisateur
+   * a demandé à réduire les animations : le milieu de la fenêtre.
+   */
+  still: number;
+  /** Séquence sortante (transition) ou séquence jouée (animation). */
+  sequence: string;
+  /** Séquence entrante — transition seulement. */
+  next?: string;
+}
+
+/** Les séquences que le lecteur joue — la même règle que `SequencePlayback`. */
+function jouables(steps: readonly SequenceStep[]): SequenceStep[] {
+  return steps.filter((s) => s.seconds > 0);
+}
+
+/** Début de chaque séquence jouable, en secondes. */
+function debuts(steps: readonly SequenceStep[]): number[] {
+  const out: number[] = [];
+  let cum = 0;
+  for (const st of steps) { out.push(cum); cum += st.seconds; }
+  return out;
+}
+
+/**
+ * L'extrait qui montre la transition APRÈS la séquence `key`.
+ *
+ * La fenêtre est celle de `sequenceClock` — donc de `drawFrame` : les
+ * `TRANSITION_DURATION_SECONDS` dernières secondes de la séquence sortante.
+ * L'extrait la précède d'`EXTRACT_LEAD_SECONDS` et la suit
+ * d'`EXTRACT_TAIL_SECONDS`, bornés au montage.
+ *
+ * `key` absente, inconnue ou DERNIÈRE (rien après elle) : la première paire
+ * du montage. Moins de deux séquences jouables : `null`, il n'y a pas de
+ * transition à montrer.
+ */
+export function transitionExtract(
+  steps: readonly SequenceStep[],
+  key: string | null | undefined,
+): PlaybackExtract | null {
+  const seqs = jouables(steps);
+  if (seqs.length < 2) return null;
+  let index = key ? seqs.findIndex((s) => s.key === key) : -1;
+  if (index < 0 || index >= seqs.length - 1) index = 0;
+  const starts = debuts(seqs);
+  const total = totalSeconds(seqs);
+  const fin = starts[index] + seqs[index].seconds;
+  const ouverture = Math.max(starts[index], fin - TRANSITION_DURATION_SECONDS);
+  return {
+    from: Math.max(starts[index], ouverture - EXTRACT_LEAD_SECONDS),
+    to: Math.min(total, fin + EXTRACT_TAIL_SECONDS),
+    still: (ouverture + fin) / 2,
+    sequence: seqs[index].key,
+    next: seqs[index + 1].key,
+  };
+}
+
+/**
+ * L'extrait qui montre l'animation du texte au DÉBUT de la séquence `key`.
+ *
+ * L'animation occupe la part `window` de la séquence (`INTRO_WINDOW` du
+ * compositeur) ; l'extrait la couvre puis tient `EXTRACT_TAIL_SECONDS` sur le
+ * texte entier, sans dépasser la séquence. `key` absente ou inconnue : la
+ * première séquence. Aucune séquence jouable : `null`.
+ */
+export function textAnimationExtract(
+  steps: readonly SequenceStep[],
+  key: string | null | undefined,
+  window: number,
+): PlaybackExtract | null {
+  const seqs = jouables(steps);
+  if (seqs.length === 0) return null;
+  let index = key ? seqs.findIndex((s) => s.key === key) : -1;
+  if (index < 0) index = 0;
+  const starts = debuts(seqs);
+  const debut = starts[index];
+  const duree = seqs[index].seconds;
+  const w = Number.isFinite(window) && window > 0 && window <= 1 ? window : 1;
+  const finFenetre = debut + duree * w;
+  return {
+    from: debut,
+    to: Math.min(debut + duree, finFenetre + EXTRACT_TAIL_SECONDS),
+    still: debut + (duree * w) / 2,
+    sequence: seqs[index].key,
+  };
+}

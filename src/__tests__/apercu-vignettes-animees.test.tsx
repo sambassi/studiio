@@ -5,7 +5,7 @@ import { TRANSITION_KEYS, TRANSITION_LABELS, TEXT_ANIMATION_KEYS, TEXT_ANIMATION
 import { REDUCED_MOTION_QUERY } from '@/lib/hooks/usePrefersReducedMotion';
 import TransitionMiniPreview from '@/components/creer/TransitionMiniPreview';
 import TextAnimationMiniPreview from '@/components/creer/TextAnimationMiniPreview';
-import SequencePlayback from '@/components/creer/SequencePlayback';
+import SequencePlayback, { type PlaybackRequest } from '@/components/creer/SequencePlayback';
 
 /**
  * Vignettes animées des transitions et des animations de texte, et lecteur
@@ -365,5 +365,162 @@ describe('D — le lecteur de séquences', () => {
   it('sans séquence jouable, rien n est rendu', () => {
     render(<SequencePlayback steps={[{ key: 'intro', seconds: 0 }]} transition="crossfade" frame={{ w: 1080, h: 1920 }} renderLayer={rendu} />);
     expect(document.querySelector('[data-sequence-playback]')).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+describe('E — le lecteur sur DEMANDE : un extrait, relançable, figeable', () => {
+  const steps = [{ key: 'intro', seconds: 4 }, { key: 'cards', seconds: 6 }, { key: 'cta', seconds: 4 }];
+  const rendu = vi.fn(({ key, progress, textAnimation }: { key: string; progress: number; textAnimation?: string }) => (
+    <div data-calque-test={key} data-calque-progress={progress.toFixed(3)} data-calque-animation={textAnimation ?? ''} />
+  ));
+  /** L'extrait intro → cartes, tel que `transitionExtract` le calcule. */
+  const extrait = { from: 2.2, to: 4.6, still: 3.6, sequence: 'intro', next: 'cards' };
+
+  function monter(demande: PlaybackRequest | null, onFin = vi.fn(), transition: 'crossfade' | 'slide' = 'crossfade') {
+    const ui = (d: PlaybackRequest | null) => (
+      <div style={{ position: 'relative', width: 400, height: 711 }}>
+        <SequencePlayback
+          steps={steps}
+          transition={transition}
+          frame={{ w: 1080, h: 1920, scale: 400 / 1080 }}
+          renderLayer={rendu}
+          demande={d}
+          onFin={onFin}
+        />
+      </div>
+    );
+    const r = render(ui(demande));
+    return { ...r, redemander: (d: PlaybackRequest | null) => r.rerender(ui(d)), onFin };
+  }
+  async function avancer(ms: number) {
+    await act(async () => { vi.advanceTimersByTime(ms); });
+  }
+  const pct = (el: HTMLElement) => Number(/translateX\((-?[\d.]+)%\)/.exec(el.style.transform)![1]);
+  const lecteur = () => document.querySelector('[data-sequence-playback]') as HTMLElement;
+
+  beforeEach(() => {
+    rendu.mockClear();
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance', 'setTimeout', 'clearTimeout', 'Date'] });
+  });
+
+  it('une demande `autoplay` joue l extrait de `from` à `to`, avec SA transition, puis prévient `onFin`', async () => {
+    const { onFin } = monter({ ...extrait, id: 1, autoplay: true, transition: 'slide' });
+    expect(lecteur().getAttribute('data-sequence-playing')).toBe('true');
+    expect(lecteur().getAttribute('data-sequence-extract')).toBe('intro>cards');
+    await avancer(16);
+    // Départ à 2,2 s : l'intro seule, presque finie.
+    expect(document.querySelector('[data-playback-layer="a"]')?.getAttribute('data-playback-sequence')).toBe('intro');
+    expect(document.querySelector('[data-playback-layer="b"]')).toBeNull();
+    expect(Number(document.querySelector('[data-calque-test="intro"]')?.getAttribute('data-calque-progress'))).toBeCloseTo(2.216 / 4, 2);
+    // 1,4 s plus tard, mi-fenêtre : `slide` (celui de la demande, pas le
+    // `crossfade` du parent) — translations, pas des alphas.
+    await avancer(1400 - 16);
+    const a = document.querySelector('[data-playback-layer="a"]') as HTMLElement;
+    expect(a.style.transform).toMatch(/^translateX\(-/);
+    // Images de 16 ms depuis 2,2 s : la mi-course à ±2 %.
+    expect(pct(a)).toBeGreaterThan(-53);
+    expect(pct(a)).toBeLessThan(-47);
+    expect(a.style.opacity).toBe('');
+    expect(onFin).not.toHaveBeenCalled();
+    // À 4,6 s : fini. La scène disparaît, `onFin` est appelé UNE fois.
+    await avancer(1300);
+    expect(document.querySelector('[data-playback-stage]')).toBeNull();
+    expect(lecteur().getAttribute('data-sequence-playing')).toBe('false');
+    expect(onFin).toHaveBeenCalledTimes(1);
+    // L'extrait reste armé : Lire et Rejouer le reprennent, ✕ le quitte.
+    expect(screen.getByRole('button', { name: 'Lire l’extrait' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Rejouer l’extrait' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Quitter l’extrait — revenir au plateau' })).toBeTruthy();
+  });
+
+  it('un nouvel `id` relance, même bornes ; une demande retirée (`null`) ne désarme rien', async () => {
+    const { redemander } = monter({ ...extrait, id: 1, autoplay: true });
+    await avancer(1000);
+    redemander({ ...extrait, id: 2, autoplay: true });
+    await avancer(16);
+    // De retour au début de l'extrait.
+    expect(Number(document.querySelector('[data-calque-test="intro"]')?.getAttribute('data-calque-progress'))).toBeCloseTo(2.216 / 4, 2);
+    redemander(null);
+    expect(lecteur().getAttribute('data-sequence-playing')).toBe('true');
+    expect(lecteur().getAttribute('data-sequence-extract')).toBe('intro>cards');
+  });
+
+  it('Rejouer repart du début de l extrait, même en pleine lecture ; Pause arrête sans rien couvrir', async () => {
+    monter({ ...extrait, id: 1, autoplay: true });
+    await avancer(1400);
+    expect(document.querySelector('[data-playback-layer="b"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Rejouer l’extrait' }));
+    await avancer(16);
+    expect(document.querySelector('[data-playback-layer="b"]')).toBeNull();
+    expect(Number(document.querySelector('[data-calque-test="intro"]')?.getAttribute('data-calque-progress'))).toBeCloseTo(2.216 / 4, 2);
+    fireEvent.click(screen.getByRole('button', { name: 'Mettre en pause la lecture des séquences' }));
+    expect(document.querySelector('[data-playback-stage]')).toBeNull();
+    // Lire reprend l'extrait là où il était.
+    fireEvent.click(screen.getByRole('button', { name: 'Lire l’extrait' }));
+    await avancer(16);
+    expect(document.querySelector('[data-playback-layer="a"]')?.getAttribute('data-playback-sequence')).toBe('intro');
+  });
+
+  it('`autoplay: false` : image FIGÉE à `still`, aucune horloge ; Lire joue depuis le DÉBUT de l extrait', async () => {
+    const { onFin } = monter({ ...extrait, id: 1, autoplay: false }, vi.fn(), 'slide');
+    expect(lecteur().getAttribute('data-sequence-playing')).toBe('false');
+    expect(lecteur().getAttribute('data-sequence-frozen')).toBe('true');
+    // La scène est là, à t = 0,5 de la fenêtre — la paire, immobile.
+    const a = document.querySelector('[data-playback-layer="a"]') as HTMLElement;
+    const b = document.querySelector('[data-playback-layer="b"]') as HTMLElement;
+    expect(a.getAttribute('data-playback-sequence')).toBe('intro');
+    expect(b.getAttribute('data-playback-sequence')).toBe('cards');
+    expect(pct(a)).toBeCloseTo(-50, 10);
+    expect(pct(b)).toBeCloseTo(50, 10);
+    expect(document.querySelector('[data-playback-label]')?.textContent).toBe('Titre → Cartes · image figée');
+    await avancer(2000);
+    expect(pct(document.querySelector('[data-playback-layer="a"]') as HTMLElement)).toBeCloseTo(-50, 10);
+    expect(onFin).not.toHaveBeenCalled();
+    // Lire : volontaire, depuis `from`, plus figé.
+    fireEvent.click(screen.getByRole('button', { name: 'Lire l’extrait' }));
+    expect(lecteur().getAttribute('data-sequence-frozen')).toBe('false');
+    await avancer(16);
+    expect(document.querySelector('[data-playback-layer="b"]')).toBeNull();
+  });
+
+  it('✕ quitte l extrait : plateau rendu, `onFin` prévenu, Lire rejoue le montage ENTIER', async () => {
+    const { onFin } = monter({ ...extrait, id: 1, autoplay: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Quitter l’extrait — revenir au plateau' }));
+    expect(document.querySelector('[data-playback-stage]')).toBeNull();
+    expect(onFin).toHaveBeenCalledTimes(1);
+    expect(lecteur().getAttribute('data-sequence-extract')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Lire les séquences dans l’ordre du montage' }));
+    await avancer(16);
+    expect(Number(document.querySelector('[data-calque-test="intro"]')?.getAttribute('data-calque-progress'))).toBeCloseTo(0.016 / 4, 2);
+  });
+
+  it('l animation imposée par la demande est transmise au calque ; sans elle, rien', async () => {
+    const { redemander } = monter({ ...extrait, id: 1, autoplay: true, textAnimation: 'pop' });
+    await avancer(16);
+    expect(document.querySelector('[data-calque-test="intro"]')?.getAttribute('data-calque-animation')).toBe('pop');
+    redemander({ ...extrait, id: 2, autoplay: true });
+    await avancer(16);
+    expect(document.querySelector('[data-calque-test="intro"]')?.getAttribute('data-calque-animation')).toBe('');
+  });
+
+  it('une demande hors du montage (séquence retirée entre-temps) est ignorée', () => {
+    monter({ from: 10, to: 30, still: 20, sequence: 'cta', id: 1, autoplay: true });
+    expect(lecteur().getAttribute('data-sequence-playing')).toBe('false');
+    expect(document.querySelector('[data-playback-stage]')).toBeNull();
+  });
+
+  it('les séquences changent sous l extrait : il tombe avec la lecture', async () => {
+    const onFin = vi.fn();
+    const { rerender } = render(
+      <SequencePlayback steps={steps} transition="crossfade" frame={{ w: 1080, h: 1920 }} renderLayer={rendu} demande={{ ...extrait, id: 1, autoplay: true }} onFin={onFin} />,
+    );
+    await avancer(500);
+    rerender(
+      <SequencePlayback steps={[{ key: 'intro', seconds: 5 }, { key: 'cta', seconds: 4 }]} transition="crossfade" frame={{ w: 1080, h: 1920 }} renderLayer={rendu} demande={{ ...extrait, id: 1, autoplay: true }} onFin={onFin} />,
+    );
+    expect(lecteur().getAttribute('data-sequence-playing')).toBe('false');
+    expect(lecteur().getAttribute('data-sequence-extract')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rejouer l’extrait' })).toBeNull();
   });
 });

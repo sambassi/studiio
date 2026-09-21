@@ -8,7 +8,9 @@ import {
   easeInOut, easeInOutCubic, bellCurve,
   BLUR_DISSOLVE_MAX_PX, WHIP_PAN_MAX_BLUR_PX, BLUR_MAX_OVERSCALE, ZOOM_AMPLITUDE,
   transitionLayerStyles, sequenceClock, totalSeconds,
+  transitionExtract, textAnimationExtract, EXTRACT_LEAD_SECONDS, EXTRACT_TAIL_SECONDS,
 } from '@/lib/creer/transitionPreview';
+import { INTRO_WINDOW, textAnimationState } from '@/lib/creer/textAnimation';
 
 /**
  * L'aperçu CSS des transitions — troisième moteur, mêmes règles.
@@ -236,5 +238,78 @@ describe('sequenceClock — la règle de `drawFrame`', () => {
     for (const style of TRANSITION_KEYS) {
       expect(transitionLayerStyles(style as TransitionStyle, 0.5, FRAME)).toHaveProperty('a');
     }
+  });
+});
+
+describe('extraits — ce que l aperçu rejoue quand on choisit un effet', () => {
+  const steps = [{ key: 'intro', seconds: 4 }, { key: 'cards', seconds: 6 }, { key: 'video', seconds: 0 }, { key: 'cta', seconds: 4 }];
+
+  it('la transition : la fenêtre de 0,8 s en FIN de séquence sortante — celle de `drawFrame`', () => {
+    const x = transitionExtract(steps, 'intro')!;
+    expect(x).toMatchObject({ sequence: 'intro', next: 'cards' });
+    // 1 s avant la fenêtre, 0,6 s après la fin de la sortante.
+    expect(x.from).toBeCloseTo(4 - TRANSITION_DURATION_SECONDS - EXTRACT_LEAD_SECONDS, 10);
+    expect(x.to).toBeCloseTo(4 + EXTRACT_TAIL_SECONDS, 10);
+    expect(EXTRACT_LEAD_SECONDS).toBe(1);
+    expect(EXTRACT_TAIL_SECONDS).toBe(0.6);
+    // L'instant figé est le MILIEU de la fenêtre : `sequenceClock` — donc
+    // `drawFrame` — y voit la transition intro → cartes à t = 0,5.
+    const c = sequenceClock(steps.filter((s) => s.seconds > 0), x.still);
+    expect(c).toMatchObject({ index: 0, inTransition: true, nextIndex: 1 });
+    expect(c.transitionProgress).toBeCloseTo(0.5, 10);
+    // Au début de l'extrait, PAS encore de transition ; à la fin, la
+    // séquence entrante a pris la main.
+    expect(sequenceClock(steps, x.from).inTransition).toBe(false);
+    expect(sequenceClock(steps, x.to - 1e-9)).toMatchObject({ index: 1, inTransition: false });
+    // Même règle que le compositeur, en toutes lettres.
+    expect(composer).toContain('const transitionDur = 0.8;');
+    expect(composer).toContain('const inTransition = seqIdx < sequences.length - 1 && seqElapsed > seq.duration - transitionDur;');
+  });
+
+  it('la séquence de l onglet courant est la sortante ; sans onglet, ou sur la dernière, la première paire', () => {
+    expect(transitionExtract(steps, 'cards')).toMatchObject({ sequence: 'cards', next: 'cta' });
+    expect(transitionExtract(steps, 'cards')!.still).toBeCloseTo(10 - 0.4, 10);
+    expect(transitionExtract(steps, null)).toMatchObject({ sequence: 'intro', next: 'cards' });
+    expect(transitionExtract(steps, 'cta')).toMatchObject({ sequence: 'intro', next: 'cards' });
+    // Une séquence à 0 s n'existe pas pour le lecteur : « video » est sautée.
+    expect(transitionExtract(steps, 'video')).toMatchObject({ sequence: 'intro', next: 'cards' });
+  });
+
+  it('borné au montage : une sortante plus courte que l amorce commence à son début', () => {
+    const courtes = [{ key: 'intro', seconds: 1.2 }, { key: 'cta', seconds: 4 }];
+    const x = transitionExtract(courtes, 'intro')!;
+    expect(x.from).toBe(0);
+    expect(x.to).toBeCloseTo(1.8, 10);
+  });
+
+  it('moins de deux séquences jouables : rien à montrer', () => {
+    expect(transitionExtract([{ key: 'intro', seconds: 4 }], 'intro')).toBeNull();
+    expect(transitionExtract([{ key: 'intro', seconds: 4 }, { key: 'cta', seconds: 0 }], null)).toBeNull();
+    expect(transitionExtract([], null)).toBeNull();
+  });
+
+  it('l animation : le DÉBUT de la séquence, sur la fenêtre `INTRO_WINDOW` du compositeur', () => {
+    const x = textAnimationExtract(steps, 'cards', INTRO_WINDOW)!;
+    expect(x).toMatchObject({ sequence: 'cards' });
+    expect(x.next).toBeUndefined();
+    expect(x.from).toBe(4);
+    // 22 % de 6 s = 1,32 s, puis 0,6 s sur le texte entier.
+    expect(x.to).toBeCloseTo(4 + 6 * INTRO_WINDOW + EXTRACT_TAIL_SECONDS, 10);
+    // L'instant figé est le milieu de la fenêtre : l'animation y est à
+    // mi-course — ni invisible, ni finie.
+    const progress = (x.still - 4) / 6;
+    expect(progress).toBeCloseTo(INTRO_WINDOW / 2, 10);
+    const fondu = textAnimationState('fade', progress);
+    expect(fondu.alpha).toBeGreaterThan(0);
+    expect(fondu.alpha).toBeLessThan(1);
+    // Sans onglet, ou onglet inconnu : la première séquence (le titre).
+    expect(textAnimationExtract(steps, null, INTRO_WINDOW)).toMatchObject({ sequence: 'intro', from: 0 });
+    expect(textAnimationExtract(steps, 'video', INTRO_WINDOW)).toMatchObject({ sequence: 'intro' });
+    expect(textAnimationExtract([], null, INTRO_WINDOW)).toBeNull();
+  });
+
+  it('l extrait d animation ne déborde jamais de sa séquence', () => {
+    const x = textAnimationExtract([{ key: 'intro', seconds: 0.5 }, { key: 'cta', seconds: 4 }], 'intro', INTRO_WINDOW)!;
+    expect(x.to).toBe(0.5);
   });
 });
