@@ -1,11 +1,27 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Search, Upload, Loader2, Music, X, Clock, ShieldCheck, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Search, Upload, Loader2, Music, X, Clock, ShieldCheck, Trash2, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { getExpiresAt, formatRemaining, getRetentionColor, getRetentionBgColor } from '@/lib/storage/retention';
-import { uploadFile } from '@/lib/storage/uploadFile';
+import { useUploadQueue, trierFichiersRecus, type ElementEnvoi, type FichierRefuse } from '@/lib/storage/useUploadQueue';
+import { urlPubliqueAbsolue } from '@/lib/creer/posterUpload';
 
 type MediaType = 'image' | 'video' | 'audio' | 'all';
+type TypeFichier = 'image' | 'video' | 'audio';
+
+/** Un fichier envoyé, tel que la Médiathèque le remet à l'appelant. */
+export interface FichierChoisi {
+  url: string;
+  name: string;
+  type?: TypeFichier;
+}
+
+function typeDeFichier(mime: string): TypeFichier | undefined {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  return undefined;
+}
 
 interface MediaFile {
   name: string;
@@ -23,6 +39,15 @@ interface MediaLibraryProps {
   onClose: () => void;
   mediaType: MediaType;
   onSelect: (url: string, name: string, type?: 'image' | 'video' | 'audio') => void;
+  /**
+   * Reçoit EN UN SEUL APPEL tous les fichiers d'un envoi groupé qui ont
+   * abouti (URL absolues). Un appelant qui se referme sur son état — la
+   * banque de rushes de l'Autopilote — perdrait tous les fichiers sauf le
+   * dernier s'il recevait N appels `onSelect` dans la même tâche.
+   *
+   * Absent, chaque fichier passe par `onSelect`, comme avant.
+   */
+  onSelectMany?: (items: FichierChoisi[]) => void;
 }
 
 const TYPE_FILTERS: Array<{ key: MediaType; label: string }> = [
@@ -108,20 +133,27 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
   );
 }
 
-export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibraryProps) {
+export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMany }: MediaLibraryProps) {
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<MediaType>(mediaType === 'all' ? 'all' : mediaType);
-  const [uploading, setUploading] = useState(false);
   /**
-   * Avancement de l'envoi, de 0 a 100.
+   * La file d'envoi — plusieurs fichiers, deux à la fois, un état par fichier.
    *
-   * Sur un rush de 75 Mo, un simple « Uploader… » laisse une minute d'ecran
-   * fige : impossible de distinguer un envoi lent d'un envoi mort. C'est
-   * exactement la plainte qui a mene a ce correctif.
+   * Sur un rush de 75 Mo, un simple « Uploader… » laissait une minute d'ecran
+   * fige : impossible de distinguer un envoi lent d'un envoi mort. C'est la
+   * plainte qui a mene a la barre de progression ; l'envoi groupé garde cette
+   * barre (pondérée par la taille) et y ajoute une ligne par fichier.
    */
-  const [progress, setProgress] = useState(0);
+  const envoi = useUploadQueue({ purpose: 'library' });
+  const uploading = envoi.enCours;
+  const progress = envoi.progression.pourcent;
+  /** Refusés AVANT l'envoi (type, taille) : signalés, jamais relancés. */
+  const [refuses, setRefuses] = useState<FichierRefuse[]>([]);
+  const [survolDepot, setSurvolDepot] = useState(false);
+  /** Les identifiants déjà remis à l'appelant — jamais deux fois le même. */
+  const livresRef = useRef<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
 
@@ -173,38 +205,91 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
     }
   }, [isOpen, fetchFiles, mediaType]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const acceptType = mediaType === 'image' ? 'image/*' : mediaType === 'video' ? 'video/*' : mediaType === 'audio' ? 'audio/*' : '*/*';
 
-    setUploading(true);
-    setProgress(0);
-    try {
-      // Helper PARTAGE : il choisit tout seul entre l'envoi direct a MinIO
-      // (URL presignee) et le relais applicatif, et rapporte l'avancement.
-      const { publicUrl, mode } = await uploadFile(file, {
-        purpose: 'library',
-        onProgress: setProgress,
-      });
+  /** Ferme et oublie l'envoi en cours d'affichage — la prochaine ouverture repart propre. */
+  const fermer = () => {
+    envoi.vider();
+    setRefuses([]);
+    livresRef.current = new Set();
+    onClose();
+  };
 
-      const uploadType: 'image' | 'video' | 'audio' | undefined = file.type.startsWith('image/')
-        ? 'image'
-        : file.type.startsWith('video/')
-          ? 'video'
-          : file.type.startsWith('audio/')
-            ? 'audio'
-            : undefined;
-      console.log(`[MediaLibrary] Upload ${mode} termine : ${file.name}`);
-      onSelect(publicUrl, file.name, uploadType);
-      onClose();
-    } catch (err) {
-      console.error('[MediaLibrary] Upload error:', err);
-      alert(err instanceof Error ? err.message : 'Upload échoué');
-    } finally {
-      setUploading(false);
-      setProgress(0);
-      e.target.value = '';
+  /**
+   * Envoie les fichiers reçus (sélecteur ou dépôt), puis remet à l'appelant
+   * ceux qui ont abouti.
+   *
+   * ⚠️ L'URL REMISE EST ABSOLUE. En production (`STORAGE_PROVIDER=s3`) la
+   * route `signed-url` répond une URL relative, que le filtre strict de
+   * l'Autopilote (`^https?://`) écarterait EN SILENCE : le rush serait
+   * « ajouté » à l'écran et absent de la configuration enregistrée. C'est le
+   * point unique `urlPubliqueAbsolue` qui tranche (cf. lessons 2026-09-21).
+   */
+  const livrer = (finaux: ElementEnvoi[], echecPrealable: boolean) => {
+    const choisis: FichierChoisi[] = [];
+    let echec = echecPrealable;
+    for (const e of finaux) {
+      if (e.statut !== 'ok' || !e.resultat || livresRef.current.has(e.id)) {
+        if (e.statut === 'erreur') echec = true;
+        continue;
+      }
+      const absolue = urlPubliqueAbsolue(e.resultat.publicUrl, window.location.origin);
+      if (!absolue) { echec = true; continue; }
+      livresRef.current.add(e.id);
+      console.log(`[MediaLibrary] Upload ${e.resultat.mode} termine : ${e.nom}`);
+      choisis.push({ url: absolue, name: e.nom, type: typeDeFichier(e.file.type) });
     }
+    if (choisis.length > 0) {
+      if (onSelectMany) onSelectMany(choisis);
+      else for (const c of choisis) onSelect(c.url, c.name, c.type);
+    }
+    // Un échec garde la fenêtre ouverte : la ligne en erreur et son
+    // « Réessayer » sont là, et rien n'a été perdu de ce qui a abouti.
+    if (!echec) fermer();
+  };
+
+  // Sans `onSelectMany`, l'appelant attend UN fichier (affiche, musique) :
+  // on n'en prend qu'un plutot que d'appeler `onSelect` N fois, ou le
+  // dernier « gagnerait » en silence.
+  const multiple = typeof onSelectMany === 'function';
+  const envoyerFichiers = async (recusBruts: File[]) => {
+    const recus = multiple ? recusBruts : recusBruts.slice(0, 1);
+    const { acceptes, refuses: horsJeu } = trierFichiersRecus(recus, acceptType);
+    setRefuses((prev) => [...prev, ...horsJeu]);
+    if (acceptes.length === 0) return;
+    const finaux = await envoi.ajouter(acceptes);
+    // La grille montre les nouveaux venus même si l'un d'eux a échoué.
+    await fetchFiles();
+    livrer(finaux, horsJeu.length > 0 || refuses.length > 0);
+  };
+
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const recus = Array.from(e.target.files ?? []);
+    // Vidé tout de suite : re-choisir le même fichier doit redéclencher `change`.
+    e.target.value = '';
+    if (recus.length === 0) return;
+    void envoyerFichiers(recus);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setSurvolDepot(false);
+    if (uploading) return;
+    const recus = Array.from(e.dataTransfer?.files ?? []);
+    if (recus.length === 0) return;
+    void envoyerFichiers(recus);
+  };
+
+  /** Relance les échecs — tous, ou un seul. Les réussites ne repartent pas. */
+  const reessayer = async (ids?: string[]) => {
+    const finaux = await envoi.reessayer(ids);
+    if (finaux.length === 0) return;
+    await fetchFiles();
+    // Même remise qu'au premier envoi — `livresRef` empêche un doublon. La
+    // fenêtre ne se ferme que si plus rien n'est en erreur, y compris ce
+    // qui n'a pas été relancé.
+    const autresEnErreur = envoi.elements.some((x) => x.statut === 'erreur' && !finaux.some((f) => f.id === x.id));
+    livrer(finaux, autresEnErreur || refuses.length > 0);
   };
 
   const filtered = files.filter((f) => {
@@ -214,21 +299,39 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
     return true;
   });
 
-  const acceptType = mediaType === 'image' ? 'image/*' : mediaType === 'video' ? 'video/*' : mediaType === 'audio' ? 'audio/*' : '*/*';
-
   if (!isOpen) return null;
 
+  const echecs = envoi.progression.echecs + refuses.length;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={fermer}>
       <div className="absolute inset-0 bg-black/60" />
-      <div className="relative w-full max-w-2xl mx-4 bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`relative w-full max-w-2xl mx-4 bg-gray-900 rounded-2xl border overflow-hidden transition-colors ${
+          survolDepot ? 'border-purple-500' : 'border-gray-700'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+        // Dépôt de plusieurs fichiers n'importe où sur la fenêtre. `preventDefault`
+        // sur `dragover` est ce qui autorise le `drop` — sans lui, le
+        // navigateur ouvre le fichier à la place.
+        onDragOver={(e) => { e.preventDefault(); if (!survolDepot) setSurvolDepot(true); }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSurvolDepot(false); }}
+        onDrop={handleDrop}
+        data-mediatheque-depot
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
           <h2 className="text-lg font-bold text-white">Médiathèque</h2>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white">
+          <button onClick={fermer} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white">
             <X size={18} />
           </button>
         </div>
+
+        {survolDepot && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-purple-600/20 text-sm font-semibold text-white">
+            Déposez vos fichiers ici
+          </div>
+        )}
 
         {/* Retention policy banner */}
         <div className="mx-5 mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
@@ -291,11 +394,80 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
             )}
             <span className="relative flex items-center gap-1.5">
               {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {uploading ? `Envoi ${progress} %` : 'Uploader'}
+              {uploading
+                ? `Envoi ${envoi.progression.termines}/${envoi.progression.total} · ${progress} %`
+                : 'Uploader'}
             </span>
-            <input type="file" accept={acceptType} onChange={handleUpload} className="hidden" disabled={uploading} />
+            <input
+              type="file"
+              accept={acceptType}
+              multiple={multiple}
+              onChange={handleUpload}
+              className="hidden"
+              disabled={uploading}
+              data-mediatheque-input
+            />
           </label>
         </div>
+
+        {/* Envois en cours ou terminés : une ligne par fichier. La liste
+            reste tant qu'un fichier est en erreur — c'est là qu'on relance. */}
+        {(envoi.elements.length > 0 || refuses.length > 0) && (
+          <div className="px-5 py-2 border-b border-gray-800 bg-gray-900/60" data-mediatheque-envois>
+            <ul className="space-y-1 max-h-32 overflow-y-auto">
+              {envoi.elements.map((e) => (
+                <li key={e.id} className="flex items-center gap-2 text-[11px]" data-mediatheque-envoi={e.statut}>
+                  {e.statut === 'erreur'
+                    ? <AlertTriangle size={12} className="text-amber-400 shrink-0" />
+                    : e.statut === 'ok'
+                      ? <CheckCircle2 size={12} className="text-emerald-400 shrink-0" />
+                      : <Loader2 size={12} className={`shrink-0 ${e.statut === 'envoi' ? 'animate-spin text-purple-400' : 'text-gray-600'}`} />}
+                  <span className="flex-1 truncate text-gray-300" title={e.nom}>{e.nom}</span>
+                  {e.statut === 'erreur' ? (
+                    <>
+                      <span className="truncate text-amber-400" title={e.erreur}>{e.erreur}</span>
+                      <button
+                        type="button"
+                        onClick={() => { void reessayer([e.id]); }}
+                        disabled={uploading}
+                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-800 text-gray-200 hover:text-white disabled:opacity-40"
+                        data-mediatheque-reessayer={e.id}
+                      >
+                        <RefreshCw size={10} /> Réessayer
+                      </button>
+                    </>
+                  ) : (
+                    <span className="tabular-nums text-gray-500">{e.statut === 'attente' ? 'En attente' : `${e.pourcent} %`}</span>
+                  )}
+                </li>
+              ))}
+              {refuses.map((r, i) => (
+                <li key={`refuse-${i}-${r.file.name}`} className="flex items-center gap-2 text-[11px]" data-mediatheque-envoi="refuse">
+                  <AlertTriangle size={12} className="text-amber-400 shrink-0" />
+                  <span className="flex-1 truncate text-gray-300" title={r.file.name}>{r.file.name}</span>
+                  <span className="truncate text-amber-400">{r.raison}</span>
+                </li>
+              ))}
+            </ul>
+            {echecs > 0 && !uploading && (
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-amber-400">
+                  {echecs} fichier{echecs > 1 ? 's' : ''} non envoyé{echecs > 1 ? 's' : ''} — les autres sont bien ajoutés.
+                </span>
+                {envoi.progression.echecs > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => { void reessayer(); }}
+                    className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap"
+                    data-mediatheque-reessayer-echecs
+                  >
+                    <RefreshCw size={10} /> Réessayer les échecs
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Grid */}
         <div className="p-5 max-h-[60vh] overflow-y-auto">
@@ -320,7 +492,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect }: MediaLibr
                   }`}
                   onClick={(e) => {
                     if (selected.size > 0) { e.stopPropagation(); toggleSelect(file.url); return; }
-                    onSelect(file.url, file.name, file.type); onClose();
+                    onSelect(file.url, file.name, file.type); fermer();
                   }}
                   onContextMenu={(e) => { e.preventDefault(); toggleSelect(file.url); }}
                 >
