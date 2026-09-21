@@ -1,28 +1,39 @@
 /**
- * LE MOTEUR VIDÉO DU JUMEAU — une seule chaîne, réutilisable par Créer
- * aujourd'hui et l'Autopilote ensuite.
+ * LE MOTEUR VIDÉO DU JUMEAU — une seule chaîne par fournisseur d'avatar,
+ * réutilisable par Créer aujourd'hui et l'Autopilote ensuite.
  *
  *   DISPLAY_SCRIPT ─ prononciations ─▶ SPOKEN_SCRIPT
  *        ─▶ ElevenLabs, MA voix (synthetiserAvecVoix)     → MP3 en mémoire
+ *   HeyGen (avatar créé à partir d'une photo) :
  *        ─▶ HeyGen POST /v3/assets (uploadAsset)          → audio_asset_id
  *        ─▶ HeyGen POST /v3/videos + audio_asset_id       → video_id
+ *   D-ID (avatar créé à partir d'une vidéo) — la chaîne de l'aperçu
+ *   (`animerAvatarDidSurMaVoix`, `@/lib/avatar/did`), intention `normale` :
+ *        ─▶ audio déposé en PRIVÉ (cleAudioAvatar)        → URL signée expirante
+ *        ─▶ D-ID POST /scenes { script: audio }           → scene id
+ *   puis, pour les deux :
  *        ─▶ suivi par GET /api/avatar/status (polling, re-hébergement,
- *           remboursement en cas d'échec : l'architecture existante)
+ *           remboursement en cas d'échec : l'architecture existante, qui
+ *           lit `avatar_generations.provider` pour interroger le bon
+ *           fournisseur)
  *
  * Ce qui est RELU à chaque génération : le jumeau du compte
  * (`resoudreJumeauDuCompte` : avatar vivant, version courante, validé,
  * fournisseur présent ; voix du compte, choix, identifiant). Le navigateur
  * n'apporte que les textes et le format.
  *
- * Ce qui n'est JAMAIS fait : une voix HeyGen à la place de la voix
+ * Ce qui n'est JAMAIS fait : une voix fournisseur à la place de la voix
  * personnelle, une vidéo ordinaire à la place du jumeau, un succès sans
- * identifiant de vidéo fournisseur, un audio déposé sur une URL publique.
+ * identifiant de vidéo fournisseur, un audio déposé sur une URL publique,
+ * un identifiant D-ID envoyé à HeyGen (ou l'inverse), un fournisseur
+ * inconnu animé par qui que ce soit.
  *
  * Crédits : la politique EXISTANTE d'une génération avatar
- * (AVATAR_VIDEO_COST), débitée avant les fournisseurs, remboursée si la
- * vidéo n'a pas été lancée (ElevenLabs, dépôt ou création HeyGen en échec)
- * — comme /api/avatar/generate. Une fois la vidéo lancée chez HeyGen, c'est
- * /api/avatar/status qui rembourse en cas d'échec fournisseur, comme pour
+ * (AVATAR_VIDEO_COST), la même pour les deux fournisseurs, débitée avant les
+ * fournisseurs, remboursée si la vidéo n'a pas été lancée (ElevenLabs, dépôt
+ * ou création fournisseur en échec) — comme /api/avatar/generate. Une fois
+ * la vidéo lancée chez le fournisseur, c'est /api/avatar/status qui
+ * rembourse en cas d'échec fournisseur (`credits_charged`), comme pour
  * toute génération.
  *
  * Idempotence — tenue par la BASE, pas par une lecture préalable : la
@@ -37,10 +48,14 @@
  * l'idempotence ne dépend pas des crédits : un compte exempté de débit est
  * tenu par le même index.
  *
- * Disponibilité : `moteurJumeauDisponible()` n'est vrai que si
- * JUMEAU_MOTEUR_ACTIVE=1 ET les deux clés fournisseur sont configurées. Le
- * drapeau reste à zéro tant que la chaîne n'a pas été vue fonctionner sur un
- * vrai compte : des tests doublés ne prouvent pas un fournisseur.
+ * Disponibilité — PAR FOURNISSEUR, jugée APRÈS relecture du jumeau (on ne
+ * sait pas quel moteur juger avant de savoir quel avatar) :
+ *   HeyGen : `moteurJumeauDisponible()` — JUMEAU_MOTEUR_ACTIVE=1 ET les deux
+ *     clés fournisseur. Le drapeau reste à zéro tant que la chaîne n'a pas
+ *     été vue fonctionner sur un vrai compte : des tests doublés ne prouvent
+ *     pas un fournisseur.
+ *   D-ID : `didVideoAvatarDisponible()` ET clé ElevenLabs — le gate de
+ *     l'aperçu déjà validé en production. Pas de drapeau global pour D-ID.
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
@@ -48,7 +63,8 @@ import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system'
 import { referenceOperation } from '@/lib/credits/atomique';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import { uploadAsset, generateAvatarVideoFromAudio, HeyGenError, type AvatarAspectRatio } from '@/lib/avatar/heygen';
-import { resoudreJumeauDuCompte, scriptsDuJumeau, MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO, type MotifJumeau } from '@/lib/avatar/jumeau';
+import { resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponiblePour, type MotifJumeau } from '@/lib/avatar/jumeau';
+import { animerAvatarDidSurMaVoix, FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { synthetiserAvecVoix, cleElevenLabs } from '@/lib/voice/synthese';
 
 /** Marqueur d'une génération de jumeau dans `avatar_generations.voice_id` : la voix INTERNE (user_voices.id), jamais le voice_id fournisseur. */
@@ -81,9 +97,6 @@ export async function genererVideoJumeau(
   deps: DepsMoteurJumeau = {},
 ): Promise<ResultatMoteurJumeau> {
   const env = deps.env ?? process.env;
-  if (!moteurJumeauDisponible(env)) {
-    return { ok: false, motif: 'moteur_indisponible', message: 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' };
-  }
 
   // 1. Le jumeau, relu maintenant.
   const jumeau = await resoudreJumeauDuCompte(args.userId);
@@ -92,11 +105,13 @@ export async function genererVideoJumeau(
     return { ok: false, motif: 'base', message: 'Votre jumeau n’a pas pu être vérifié.' };
   }
   const { avatar, voix } = jumeau.jumeau;
-  // GARDE, avant tout débit : le moteur est câblé sur HeyGen. Un identifiant
-  // d'un autre fournisseur (D-ID) n'est JAMAIS envoyé à HeyGen — même si le
-  // drapeau global est actif et que le jumeau est « prêt » (voix utilisable).
-  if (jumeau.prive.fournisseurAvatar !== 'heygen') {
-    return { ok: false, motif: 'moteur_indisponible', message: MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO };
+  // GARDE, avant tout débit : le moteur se juge POUR le fournisseur de CET
+  // avatar (HeyGen : drapeau global + clés ; D-ID : le gate de l'aperçu).
+  // Un fournisseur inconnu, ou non configuré, n'atteint aucun fournisseur.
+  const fournisseur = jumeau.prive.fournisseurAvatar;
+  const moteur = moteurJumeauDisponiblePour(fournisseur, env);
+  if (!moteur.disponible || (fournisseur !== 'heygen' && fournisseur !== FOURNISSEUR_DID)) {
+    return { ok: false, motif: 'moteur_indisponible', message: moteur.message ?? 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' };
   }
 
   // 2. Les textes : DISPLAY intact, SPOKEN pour la voix.
@@ -118,9 +133,11 @@ export async function genererVideoJumeau(
   const identite = { user_id: args.userId, user_avatar_id: avatar.id, avatar_version: avatar.version, voice_id: marqueVoix, aspect_ratio: aspectRatio, script: spoken };
   let generationId: string | null = null;
   for (let tentative = 0; tentative < 2 && !generationId; tentative += 1) {
+    // `provider` = le fournisseur de l'avatar : c'est lui que /api/avatar/status
+    // interroge (HeyGen ou D-ID) et rembourse en cas d'échec après lancement.
     const { data: reservee, error: erreurReservation } = await supabaseAdmin
       .from('avatar_generations')
-      .insert({ ...identite, intention: 'normale', provider_video_id: null, status: 'pending', credits_charged: 0 })
+      .insert({ ...identite, intention: 'normale', provider: fournisseur, provider_video_id: null, status: 'pending', credits_charged: 0 })
       .select('id')
       .single();
     if (!erreurReservation && reservee) { generationId = (reservee as { id: string }).id; break; }
@@ -161,6 +178,31 @@ export async function genererVideoJumeau(
     return echouer('credits_insuffisants', `Crédits insuffisants. Requis : ${AVATAR_VIDEO_COST}, disponible : ${credits}.`);
   }
   await deductCredits(args.userId, AVATAR_VIDEO_COST, 'avatar', referenceOperation('jumeau', generationId));
+
+  // 5-D. Avatar D-ID : LA chaîne de l'aperçu (ElevenLabs sur MA voix → audio
+  //      privé → scène D-ID sur URL signée), intention `normale`, sur le
+  //      SPOKEN de la vidéo. Même débit, même remboursement si rien n'est
+  //      lancé ; une fois la scène lancée, /api/avatar/status (provider
+  //      'did') suit, re-héberge, et rembourse en cas d'échec fournisseur.
+  //      Aucun appel HeyGen sur ce chemin.
+  if (fournisseur === FOURNISSEUR_DID) {
+    const anime = await animerAvatarDidSurMaVoix(
+      { userId: args.userId, generationId, providerAvatarId: jumeau.prive.providerAvatarId, providerVoiceId: jumeau.prive.providerVoiceId, spoken, nom: 'Jumeau Studiio' },
+      { env, fetch: deps.fetch },
+    );
+    if (!anime.ok) return echouer(anime.etape === 'voix' ? 'fournisseur_voix' : 'fournisseur_avatar', anime.message, anime.statut, true);
+    const { error: erreurMaj } = await supabaseAdmin
+      .from('avatar_generations')
+      .update({ provider_video_id: anime.sceneId, status: 'processing', credits_charged: AVATAR_VIDEO_COST })
+      .eq('id', generationId)
+      .eq('user_id', args.userId);
+    if (erreurMaj) {
+      // La scène est lancée et facturée : on ne rembourse pas, on trace.
+      console.error(`[Jumeau][D-ID] scène ${anime.sceneId} lancée mais génération ${generationId} non mise à jour :`, erreurMaj.message);
+      return { ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée. Contactez le support.' };
+    }
+    return { ok: true, generationId, status: 'processing', avatarVersion: avatar.version, dejaEnCours: false, display, spoken };
+  }
 
   // 5. MA voix, sur le texte DIT — en mémoire, jamais sur une URL.
   const synthese = await synthetiserAvecVoix({ providerVoiceId: jumeau.prive.providerVoiceId, texte: spoken }, { env, fetch: deps.fetch });

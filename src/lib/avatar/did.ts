@@ -595,7 +595,53 @@ export async function retirerAvatarChezDid(providerAvatarId: string | null | und
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// 5. L'aperçu : MA voix (ElevenLabs, SPOKEN), audio privé, scène D-ID
+// 5. LA chaîne D-ID sur MA voix : ElevenLabs (SPOKEN) → audio privé →
+//    scène D-ID sur URL signée. Commune à l'aperçu (Mon avatar) et au
+//    jumeau (Créer une vidéo) : une seule chaîne, jamais deux copies.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type ResultatAnimationDid =
+  | { ok: true; sceneId: string }
+  | { ok: false; etape: 'voix' | 'stockage' | 'fournisseur'; message: string; statut: number };
+
+/**
+ * Anime l'avatar D-ID `providerAvatarId` sur MA voix disant `spoken`, pour
+ * la génération `generationId` DÉJÀ RÉSERVÉE par l'appelant.
+ *
+ * Ce qui est fait ici, dans cet ordre : synthèse ElevenLabs sur la voix
+ * personnelle (en mémoire) → dépôt de l'audio en PRIVÉ sous
+ * `cleAudioAvatar(userId, generationId)` → `POST /scenes` chez D-ID avec une
+ * URL SIGNÉE et expirante vers cet audio. Rend l'identifiant de scène.
+ *
+ * Ce qui n'est PAS fait ici : la réservation, le débit, la mise à jour de
+ * la génération (statut, `provider_video_id`), le remboursement — chaque
+ * appelant garde sa politique (aperçu gratuit, jumeau payant). En cas
+ * d'échec, l'audio déposé est retiré : rien de biométrique ne reste.
+ */
+export async function animerAvatarDidSurMaVoix(
+  args: { userId: string; generationId: string; providerAvatarId: string; providerVoiceId: string; spoken: string; nom: string },
+  deps: DepsDid = {},
+): Promise<ResultatAnimationDid> {
+  const env = deps.env ?? process.env;
+  const synthese = await synthetiserAvecVoix({ providerVoiceId: args.providerVoiceId, texte: args.spoken }, { env, fetch: deps.fetch });
+  if (!synthese.ok) {
+    return { ok: false, etape: 'voix', message: synthese.motif === 'indisponible' ? 'La voix personnelle n’est pas disponible.' : 'Votre voix n’a pas pu être synthétisée.', statut: 502 };
+  }
+  const cleAudio = cleAudioAvatar(args.userId, args.generationId);
+  const { error: upErr } = await supabaseAdmin.storage.from(BUCKET_AVATAR).upload(cleAudio, synthese.audio, { contentType: synthese.contentType, upsert: false });
+  if (upErr) return { ok: false, etape: 'stockage', message: "L'audio de votre voix n'a pas pu être enregistré.", statut: 500 };
+  try {
+    const scene = await creerSceneAudio({ avatarId: args.providerAvatarId, audioUrl: urlMediaTemporaire(cleAudio, {}, env), nom: args.nom }, deps);
+    return { ok: true, sceneId: scene.id };
+  } catch (e) {
+    await retirerObjetPriveAvatar(args.userId, cleAudio);
+    return { ok: false, etape: 'fournisseur', message: messageFournisseur(e, "Le fournisseur n'a pas pu animer votre avatar."), statut: statutFournisseur(e) };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// 6. L'aperçu : la chaîne commune, réservée sous l'index « un aperçu vivant
+//    par version », à 0 crédit
 // ─────────────────────────────────────────────────────────────────────────
 
 export async function lancerApercuDid(
@@ -628,31 +674,23 @@ export async function lancerApercuDid(
     return refus('base', "L'aperçu n'a pas pu être réservé. Réessayez.", 500);
   }
   const generationId = (reservee as { id: string }).id;
-  const echouer = async (message: string, statut: number, cleAudio?: string) => {
+
+  // La chaîne commune ; en cas d'échec elle a déjà retiré l'audio déposé.
+  const anime = await animerAvatarDidSurMaVoix(
+    { userId, generationId, providerAvatarId: a.provider_avatar_id, providerVoiceId: voix.providerVoiceId, spoken, nom: 'Aperçu Studiio' },
+    deps,
+  );
+  if (!anime.ok) {
+    const message = anime.etape === 'stockage' ? "L'audio de l'aperçu n'a pas pu être enregistré." : anime.message;
     await supabaseAdmin.from('avatar_generations').update({ status: 'failed', error_message: message }).eq('id', generationId).eq('user_id', userId);
-    if (cleAudio) await retirerObjetPriveAvatar(userId, cleAudio);
-    return refus<{ generationId: string; display: string; spoken: string }>('base', message, statut);
-  };
-
-  const synthese = await synthetiserAvecVoix({ providerVoiceId: voix.providerVoiceId, texte: spoken }, { env, fetch: deps.fetch });
-  if (!synthese.ok) return echouer(synthese.motif === 'indisponible' ? 'La voix personnelle n’est pas disponible.' : 'Votre voix n’a pas pu être synthétisée.', 502);
-
-  const cleAudio = cleAudioAvatar(userId, generationId);
-  const { error: upErr } = await supabaseAdmin.storage.from(BUCKET_AVATAR).upload(cleAudio, synthese.audio, { contentType: synthese.contentType, upsert: false });
-  if (upErr) return echouer("L'audio de l'aperçu n'a pas pu être enregistré.", 500);
-
-  let scene: { id: string };
-  try {
-    scene = await creerSceneAudio({ avatarId: a.provider_avatar_id, audioUrl: urlMediaTemporaire(cleAudio, {}, env), nom: 'Aperçu Studiio' }, deps);
-  } catch (e) {
-    return echouer(messageFournisseur(e, "Le fournisseur n'a pas pu animer votre avatar."), statutFournisseur(e), cleAudio);
+    return refus('base', message, anime.statut);
   }
   const { error: erreurMaj } = await supabaseAdmin
     .from('avatar_generations')
-    .update({ provider_video_id: scene.id, status: 'processing' })
+    .update({ provider_video_id: anime.sceneId, status: 'processing' })
     .eq('id', generationId).eq('user_id', userId);
   if (erreurMaj) {
-    console.error(`[Avatar][D-ID] scène ${scene.id} lancée mais génération ${generationId} non mise à jour : ${erreurMaj.message}`);
+    console.error(`[Avatar][D-ID] scène ${anime.sceneId} lancée mais génération ${generationId} non mise à jour : ${erreurMaj.message}`);
     return refus('base', 'Aperçu lancé mais non enregistré. Contactez le support.', 500);
   }
   return { ok: true, generationId, display, spoken };

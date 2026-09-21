@@ -124,7 +124,7 @@ describe('Les crédits', () => {
   });
 
   it('le solde est vérifié pour le lot ENTIER avant de commencer', () => {
-    expect(rendu).toContain('const coutTotal = batchCost(cost, total) + (useDigitalTwin ? AVATAR_VIDEO_COST : 0);');
+    expect(rendu).toContain("const coutTotal = batchCost(cost, total) + (jumeauMode === 'avatar' ? AVATAR_VIDEO_COST : 0);");
     expect(rendu).toContain('balance < coutTotal');
   });
 

@@ -159,13 +159,31 @@ describe('/api/creer/jumeau', () => {
     expect(JSON.stringify(p)).not.toMatch(/hg-1|pvid_|provider/);
   });
 
-  it('⚠️ avatar D-ID validé + voix : PRÊT (la voix sert partout), moteur vidéo indisponible avec le message qui dit quoi et pourquoi', async () => {
+  it('⚠️ avatar D-ID validé + voix : PRÊT (la voix sert partout) ; sans D-ID configuré, le moteur est indisponible et le message NOMME la dépendance ; avec le gate de l’aperçu (DID + ElevenLabs, sans JUMEAU_MOTEUR_ACTIVE), le moteur est disponible', async () => {
     base.avatars = [avatar({ provider: 'did', provider_avatar_id: 'did-1' })];
-    const g = await (await GET()).json() as { data: Record<string, unknown> };
-    expect(g.data).toMatchObject({ pret: true, motif: null, moteurDisponible: false, jumeau: { avatar: { fournisseur: 'did' } } });
-    expect(String(g.data.messageMoteur)).toContain('créés à partir d’une photo');
-    expect(String(g.data.messageMoteur)).toContain('voix reste utilisable');
-    expect(JSON.stringify(g)).not.toMatch(/did-1|pvid_|provider|pas encore pris en charge/);
+    const sauvegarde = { DID_VIDEO_AVATAR_ACTIVE: process.env.DID_VIDEO_AVATAR_ACTIVE, DID_API_KEY: process.env.DID_API_KEY, ELEVENLABS_API_KEY: process.env.ELEVENLABS_API_KEY, JUMEAU_MOTEUR_ACTIVE: process.env.JUMEAU_MOTEUR_ACTIVE };
+    try {
+      delete process.env.DID_VIDEO_AVATAR_ACTIVE; delete process.env.DID_API_KEY; delete process.env.JUMEAU_MOTEUR_ACTIVE;
+      process.env.ELEVENLABS_API_KEY = 'e';
+      const g = await (await GET()).json() as { data: Record<string, unknown> };
+      expect(g.data).toMatchObject({ pret: true, motif: null, moteurDisponible: false, jumeau: { avatar: { fournisseur: 'did' } } });
+      expect(String(g.data.messageMoteur)).toContain('D-ID');
+      expect(String(g.data.messageMoteur)).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
+      expect(String(g.data.messageMoteur)).toContain('Aucun crédit n’est débité');
+      expect(String(g.data.messageMoteur)).toContain('voix reste utilisable');
+      expect(JSON.stringify(g)).not.toMatch(/did-1|pvid_|"provider"|pas encore pris en charge|créés à partir d’une photo/);
+      // Le gate de l'aperçu, tel qu'en prod : D-ID actif + clé, ElevenLabs — et PAS de drapeau HeyGen.
+      process.env.DID_VIDEO_AVATAR_ACTIVE = '1'; process.env.DID_API_KEY = 'user:secret';
+      const g2 = await (await GET()).json() as { data: Record<string, unknown> };
+      expect(g2.data).toMatchObject({ pret: true, moteurDisponible: true, messageMoteur: null, jumeau: { avatar: { fournisseur: 'did' } } });
+      // ElevenLabs absente → indisponible, et c'est ELLE qui est nommée.
+      delete process.env.ELEVENLABS_API_KEY;
+      const g3 = await (await GET()).json() as { data: Record<string, unknown> };
+      expect(g3.data).toMatchObject({ pret: true, moteurDisponible: false });
+      expect(String(g3.data.messageMoteur)).toContain('ELEVENLABS_API_KEY');
+    } finally {
+      for (const [k, v] of Object.entries(sauvegarde)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
   });
 
   it('non prêt → pret:false avec motif et message ; POST ne calcule aucun script', async () => {
@@ -183,25 +201,33 @@ describe('/api/creer/jumeau', () => {
   });
 });
 
-describe('gardeJumeauAvantRendu — le garde côté navigateur', () => {
-  it('sans « Utiliser mon jumeau » → aucun appel, parcours normal', async () => {
+describe('gardeJumeauAvantRendu — le garde côté navigateur, PAR MODE', () => {
+  it('mode aucun (ou valeur inconnue) → aucun appel, parcours normal', async () => {
     const verifier = vi.fn();
-    expect(await gardeJumeauAvantRendu({ useDigitalTwin: false, textes: ['x'], verifier })).toBeNull();
-    expect(await gardeJumeauAvantRendu({ useDigitalTwin: 'true' as unknown as boolean, textes: [], verifier })).toBeNull();
+    expect(await gardeJumeauAvantRendu({ mode: 'aucun', textes: ['x'], verifier })).toBeNull();
+    expect(await gardeJumeauAvantRendu({ mode: 'true' as unknown as 'aucun', textes: [], verifier })).toBeNull();
     expect(verifier).not.toHaveBeenCalled();
   });
 
-  it('⚠️ avec : le serveur est interrogé avec les textes ; non prêt → son message ; injoignable → message générique', async () => {
+  it('⚠️ mode avatar : le serveur est interrogé avec les textes ; non prêt → son message ; injoignable → message générique', async () => {
     const verifier = vi.fn(async () => ({ pret: false, motif: 'avatar_non_valide', message: 'Votre avatar doit être validé…', jumeau: null, moteurDisponible: false, messageMoteur: null }));
-    expect(await gardeJumeauAvantRendu({ useDigitalTwin: true, textes: ['a', 'b'], verifier })).toBe('Votre avatar doit être validé…');
+    expect(await gardeJumeauAvantRendu({ mode: 'avatar', textes: ['a', 'b'], verifier })).toBe('Votre avatar doit être validé…');
     expect(verifier).toHaveBeenCalledWith(['a', 'b']);
-    expect(await gardeJumeauAvantRendu({ useDigitalTwin: true, textes: [], verifier: async () => null })).toBe(JUMEAU_INDISPONIBLE);
+    expect(await gardeJumeauAvantRendu({ mode: 'avatar', textes: [], verifier: async () => null })).toBe(JUMEAU_INDISPONIBLE);
   });
 
-  it('⚠️ prêt mais moteur indisponible → arrêt avec le message du moteur ; prêt ET moteur → passe', async () => {
+  it('⚠️ mode avatar : prêt mais moteur indisponible → arrêt avec le message du moteur ; prêt ET moteur → passe', async () => {
     const pret = { pret: true, motif: null, message: null, jumeau: null, moteurDisponible: false, messageMoteur: 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' };
-    expect(await gardeJumeauAvantRendu({ useDigitalTwin: true, textes: [], verifier: async () => pret })).toBe(pret.messageMoteur);
-    expect(await gardeJumeauAvantRendu({ useDigitalTwin: true, textes: [], verifier: async () => ({ ...pret, moteurDisponible: true, messageMoteur: null }) })).toBeNull();
+    expect(await gardeJumeauAvantRendu({ mode: 'avatar', textes: [], verifier: async () => pret })).toBe(pret.messageMoteur);
+    expect(await gardeJumeauAvantRendu({ mode: 'avatar', textes: [], verifier: async () => ({ ...pret, moteurDisponible: true, messageMoteur: null }) })).toBeNull();
+  });
+
+  it('⚠️ mode voix : seulement la voix résolue — prêt → passe MÊME moteur vidéo indisponible ; non prêt (voix) → son message ; injoignable → générique', async () => {
+    const pret = { pret: true, motif: null, message: null, jumeau: null, moteurDisponible: false, messageMoteur: 'D-ID non configuré (DID_API_KEY).' };
+    expect(await gardeJumeauAvantRendu({ mode: 'voix', textes: ['a'], verifier: async () => pret })).toBeNull();
+    const verifier = vi.fn(async () => ({ pret: false, motif: 'choix_voix_requis', message: 'Sélectionnez la voix que votre jumeau doit utiliser.', jumeau: null, moteurDisponible: true, messageMoteur: null }));
+    expect(await gardeJumeauAvantRendu({ mode: 'voix', textes: ['a'], verifier })).toBe('Sélectionnez la voix que votre jumeau doit utiliser.');
+    expect(await gardeJumeauAvantRendu({ mode: 'voix', textes: [], verifier: async () => null })).toBe(JUMEAU_INDISPONIBLE);
   });
 });
 

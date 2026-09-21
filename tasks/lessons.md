@@ -1018,3 +1018,26 @@ Pour prouver la course, simuler « l'autre worker » (un dossier du même
 préfixe ouvert/fermé en boucle pendant le cas) : ancienne assertion 5/5
 rouge, nouvelle 0/5 — et une mutation du nettoyage de production doit
 toujours faire rougir la nouvelle assertion.
+
+## [2026-09-21] Un titre « prêt » au-dessus d'une ligne qui le dément, et une case « utiliser » qui cache deux intentions
+
+**Ce qui a mal tourné** — L'Autopilote affichait « Votre jumeau est prêt » puis,
+deux lignes plus bas, « Votre jumeau à l'image n'est pas monté par
+l'Autopilote » : le titre parlait de l'avatar, la ligne parlait de la voix.
+Dans Créer, une seule case « Utiliser mon jumeau » couvrait deux choses
+différentes (la voix clonée pour narrer ; l'avatar parlant à l'image, payant),
+et le moteur vidéo refusait TOUT avatar D-ID alors que la chaîne D-ID
+(`lancerApercuDid`) tournait déjà en prod pour l'aperçu.
+
+**Règle** — (1) Un titre d'état nomme CE QUI est prêt pour CET usage (« Voix du
+jumeau prête pour la narration »), jamais l'objet entier. (2) Deux effets
+différents = deux intentions explicites (`jumeauMode: 'voix' | 'avatar'`), chacune
+avec son garde, son coût, et une phrase « ce qui sera réellement dans la vidéo
+exportée » ; une case qui ne produit rien est inerte ET dit pourquoi (la
+dépendance, par son nom). (3) Quand une chaîne fournisseur existe déjà et a
+été vue fonctionner, on l'EXTRAIT (`animerAvatarDidSurMaVoix`) et on la
+réutilise avec le même gate qu'elle — on ne la réécrit pas, on ne la gate pas
+derrière le drapeau d'un autre fournisseur. (4) Un champ de brouillon
+remplacé par un autre plus expressif garde l'ancien comme DÉRIVÉ à l'écriture
+et comme repli à la lecture (`useDigitalTwin: true` → `'avatar'`), avec un
+test de relecture d'un ancien brouillon.

@@ -54,6 +54,9 @@ const MIGRATIONS_AVATAR = [
   join(RACINE, 'migrations/2026-08-04-user-voices.sql'),
   join(RACINE, 'migrations/2026-09-15-avatar-schema-foundation.sql'),
   join(RACINE, 'migrations/2026-09-15-avatar-one-active-per-user.sql'),
+  // `avatar_generations.provider` : le moteur l'écrit explicitement à la
+  // réservation (le fournisseur de l'avatar, que /api/avatar/status interroge).
+  join(RACINE, 'migrations/2026-09-15-avatar-fournisseur-did.sql'),
 ];
 const MIGRATION = join(RACINE, 'migrations/2026-09-15-avatar-jumeau-en-vol.sql');
 

@@ -87,18 +87,18 @@ export default function JumeauAutopilote(props: {
       )}
       {jumeau && voixReliee && (
         <div data-jumeau-autopilote-etat="pret" className="text-xs space-y-1">
-          <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Votre jumeau est prêt</div>
+          {/* Le titre dit CE QUI est prêt ici : la voix, pour la narration —
+              pas « votre jumeau », qui laisserait croire à l'avatar à l'image
+              que la ligne suivante dément. */}
+          <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Voix du jumeau prête pour la narration</div>
           <div className="text-gray-300">Avatar : validé (v{jumeau.avatar.version}) · Voix : {jumeau.voix.nom}</div>
           <div className="text-gray-400">
-            Dans l’Autopilote, votre jumeau prête sa voix : la narration de chaque vidéo produite est dite avec elle.
-            Votre jumeau à l’image n’est pas monté par l’Autopilote.
+            Avec l’interrupteur, la narration de chaque vidéo produite par l’Autopilote est dite avec cette voix.
           </div>
           <div className="flex items-start gap-1.5 text-gray-500" data-jumeau-autopilote-video>
             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
             <span>
-              {etatLu?.moteurDisponible
-                ? 'La vidéo de votre avatar n’est pas encore montée par l’Autopilote : pour une vidéo avec votre jumeau à l’image, passez par Créer une vidéo.'
-                : (etatLu?.messageMoteur || 'La vidéo de votre avatar n’est pas disponible pour le moment.')}
+              L’image de votre avatar n’est jamais montée par l’Autopilote — pour une vidéo avec votre avatar parlant, utilisez Créer une vidéo.
             </span>
           </div>
         </div>
