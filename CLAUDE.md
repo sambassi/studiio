@@ -1111,9 +1111,10 @@ Quand l'utilisateur demande un fix, un changement de code ou une correction de b
 
 ## Série / Batch (état à préserver — ne pas rouvrir sans lot dédié)
 
-- `BATCH_SERIE_DISPONIBLE = true` ; `BATCH_SERIE_MAX = 2` (**pilote**, pas l'objectif final) ; `BATCH_RENDER_DESACTIVE = true` (`/api/render/batch` reste **désactivée**) ; reprise après échec `autorisee = false` ; mode unitaire = défaut.
-- Ne JAMAIS, sans lot explicite + pré-flight + tests + validation : augmenter `BATCH_SERIE_MAX` ; réactiver `/api/render/batch` ; activer retry/reprise.
-- Objectif futur : monter progressivement à 3 / 5 / 7 / 10+ vidéos quand l'orchestration et les garanties sont validées.
+- `BATCH_SERIE_DISPONIBLE = true` ; `BATCH_SERIE_MAX = 10` (`src/lib/creer/batchDisponible.ts`, borné par `MAX_BATCH`) ; `BATCH_RENDER_DESACTIVE = true` (`/api/render/batch` reste **désactivée**, aucune activation implicite) ; reprise après échec `repriseAutorisee(...).autorisee = false` ; mode unitaire = défaut.
+- Orchestration de la Série = **rendus unitaires séquentiels côté client** : une boucle `for` dans `AssistantWizard.runRenderInterne`, N × (variation IA pour b > 0 → composition → `POST /api/render/jobs` → upload → confirm → `POST /api/posts`). N jobs distincts, facturation individuelle à chaque confirmation, N résultats distincts. Aucun `Promise.all` sur les rendus, aucun traitement parallèle, aucune deuxième architecture batch.
+- Échec partiel : la série s'arrête à l'élément fautif ; les précédents sont conservés, les suivants restent « jamais démarrés » (ni job, ni débit, ni post). Une variation IA échouée = élément échoué, jamais un doublon silencieux. Bilan canonique : `bilanSerie()` (`3 réussies · 1 échouée · 6 jamais démarrées`).
+- Ne JAMAIS, sans lot explicite + pré-flight + tests + validation : réactiver `/api/render/batch` ; activer retry/reprise ; ajouter une clé de lot en base.
 
 ## Architecture rendu (confirmée sur f765ffa — remplace l'ancien audit)
 

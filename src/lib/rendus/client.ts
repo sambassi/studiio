@@ -142,9 +142,42 @@ export async function rendreEtFacturer(params: {
   const json = await res.json().catch(() => null);
 
   if (!res.ok || !json?.ok) {
-    // Le serveur a deja clos la tentative s'il fallait. On ne livre pas.
-    return { ok: false, motif: json?.motif || 'confirmation', jobId: tentative.jobId };
+    // On ne livre pas. Et on ferme la tentative si elle est restee ouverte.
+    const motif: string = json?.motif || 'confirmation';
+    if (tentativeEncoreOuverte(json)) await abandonner(tentative.jobId, motif);
+    return { ok: false, motif, jobId: tentative.jobId };
   }
 
   return { ok: true, blob, url: tentative.publicUrl, jobId: tentative.jobId };
+}
+
+/**
+ * Apres un refus de confirmation, la tentative est-elle restee `reserved` ?
+ *
+ * Le serveur ne clot PAS toutes les tentatives qu'il refuse :
+ *
+ *   - `solde_insuffisant` (402) : `confirmer_rendu` annule sa transition et
+ *     rend `etat: 'reserved'`. Sans fermeture ici, la tentative resterait
+ *     ouverte alors que le navigateur connait l'issue. On la ferme.
+ *   - `objet_absent` / `trop_petit` / `type_refuse` (422) : la route l'a
+ *     deja close en `failed`, et ne renvoie pas d'etat. Rien a faire ; un
+ *     cancel ne recolterait qu'un 409.
+ *   - `stockage_injoignable` (503) : panne de NOTRE cote, la route la laisse
+ *     deliberement ouverte pour qu'une reprise reste possible. On ne la
+ *     ferme pas, meme si un etat `reserved` etait renvoye.
+ *   - `rendu_clos` : deja fermee.
+ *
+ * Aucun double debit n'est possible par ce chemin : `/cancel` passe par
+ * `clore_rendu`, dont le `where etat = 'reserved'` ignore toute tentative
+ * confirmee (migration 2026-08-28-rendus-preuve-serveur.sql). Une reponse
+ * `ok: true` n'arrive jamais ici.
+ *
+ * Si l'appel de confirmation lui-meme leve (reseau coupe), l'exception
+ * remonte a l'appelant sans fermeture : la confirmation a peut-etre abouti
+ * cote serveur, et rien n'est livre de toute facon. Comportement inchange.
+ */
+function tentativeEncoreOuverte(json: { etat?: string; motif?: string } | null): boolean {
+  if (!json) return false;
+  if (json.motif === 'stockage_injoignable') return false;
+  return json.etat === 'reserved' || json.motif === 'solde_insuffisant';
 }

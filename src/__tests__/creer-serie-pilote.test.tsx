@@ -93,18 +93,49 @@ interface Scenario {
   echecAu?: { rang: number; etape: 'reservation' | 'televersement' | 'confirmation' };
   /** Ralentit la réservation, pour rendre observable l'instant « pendant ». */
   lent?: number;
+  /**
+   * Rang (1-based) de la VIDÉO dont la variation doit échouer : l'appel à
+   * `/api/content/ai-generate` correspondant répond `{ success: false }`.
+   * La première vidéo garde le contenu affiché et n'appelle jamais l'IA :
+   * la valeur utile commence donc à 2.
+   */
+  variationEchoue?: number;
 }
 
 let trace: string[];
 let jobs: string[];
 let postsCrees: Array<Record<string, unknown>>;
+/** Nombre d'appels à l'IA de variation — un par vidéo à partir de la seconde. */
+let variations: number;
 const ETAPES = ['reservation', 'televersement', 'confirmation', 'annulation', 'post', 'DEBIT_APRES_COUP', 'PUBLICATION', 'BATCH'];
 const parcours = () => trace.filter((t) => ETAPES.includes(t));
+
+/**
+ * Une variation VALIDE et DISTINCTE par appel.
+ *
+ * Le contrat de la série refuse le doublon : sans variation, l'élément est
+ * marqué échoué et la série s'arrête. Le repli générique (`content: {}`)
+ * simulait donc un échec de l'IA à chaque vidéo à partir de la seconde.
+ */
+const variationValide = (n: number) => ({
+  success: true,
+  content: {
+    title: `Variation ${n}`,
+    subtitle: 'sous-titre',
+    cta: 'Go',
+    ctaSub: '',
+    cards: [
+      { icon: 'Heart', label: `A${n}`, description: 'd', value: '1' },
+      { icon: 'Zap', label: `B${n}`, description: 'd', value: '2' },
+    ],
+  },
+});
 
 function installerFetch(sc: Scenario = {}) {
   trace = [];
   jobs = [];
   postsCrees = [];
+  variations = 0;
   let rang = 0;
   globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
     const u = String(url);
@@ -123,6 +154,13 @@ function installerFetch(sc: Scenario = {}) {
         : rep({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } });
     }
     if (u.includes('/api/render/batch')) { trace.push('BATCH'); return rep({ disabled: true }, 503); }
+    if (u.includes('/api/content/ai-generate') && m === 'POST') {
+      variations += 1;
+      trace.push('variation');
+      // Le n-ième appel prépare la vidéo n+1 : la première ne varie pas.
+      if (sc.variationEchoue === variations + 1) return rep({ success: false });
+      return rep(variationValide(variations));
+    }
 
     if (u.endsWith('/api/render/jobs') && m === 'POST') {
       rang += 1;
@@ -548,6 +586,43 @@ describe('14. La SECONDE échoue : le premier brouillon est conservé', () => {
     expect(postsCrees).toHaveLength(1);
     expect(postsCrees[0].media_url).toBe(cleServeur('job-1'));
     expect(trace).not.toContain('PUBLICATION');
+  });
+});
+
+describe('14 bis. La VARIATION de la seconde échoue : pas de doublon, rien de réservé pour elle', () => {
+  it('une seule tentative, un seul brouillon, et la seconde n a rien coûté', async () => {
+    installerFetch({ variationEchoue: 2 }); poser();
+    await allerAEnvoi();
+    await choisirSerie();
+    await envoyer();
+    // L'IA a été sollicitée une fois, pour la seconde vidéo — et a refusé.
+    expect(variations).toBe(1);
+    // La série ne recompose PAS le premier contenu à sa place : la seconde
+    // n'ouvre aucune tentative, ne compose rien, ne crée rien.
+    expect(trace.filter((t) => t === 'reservation')).toHaveLength(1);
+    expect(composeVideoSpy).toHaveBeenCalledTimes(1);
+    expect(trace.filter((t) => t === 'post')).toHaveLength(1);
+    expect(postsCrees[0].media_url).toBe(cleServeur('job-1'));
+    expect(trace).not.toContain('DEBIT_APRES_COUP');
+  });
+
+  it('le bilan annonce « 1 réussie · 1 échouée », et l écran ne prétend pas avoir réussi', async () => {
+    installerFetch({ variationEchoue: 2 }); poser();
+    await allerAEnvoi();
+    await choisirSerie();
+    await envoyer();
+    expect(document.querySelector('[data-serie-bilan]')?.textContent)
+      .toBe('1 réussie · 1 échouée');
+    expect(document.body.textContent).not.toContain('Envoyé au calendrier');
+  });
+
+  it('les variations réussies portent chacune leur propre titre', async () => {
+    installerFetch(); poser();
+    await allerAEnvoi();
+    await choisirSerie();
+    await envoyer();
+    expect(variations).toBe(1);
+    expect(postsCrees.map((p) => String(p.title))).toEqual(['YOGA DU MATIN', 'VARIATION 1']);
   });
 });
 
