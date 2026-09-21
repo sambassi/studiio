@@ -178,7 +178,10 @@ describe('Les métadonnées portent le fuseau que le cron de publication relit',
   });
 
   it('le cron de l Autopilote le transmet, et le cron de publication le lit', () => {
-    const route = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
+    const route = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8')
+      // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
+      // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
+      + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
     expect(route).toContain('timezone: config.runTimezone,');
     expect(route).toContain('publishTime: ligne.publish_time,');
     const publish = readFileSync(resolve(__dirname, '../app/api/cron/publish/route.ts'), 'utf-8');

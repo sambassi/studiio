@@ -13,6 +13,16 @@
 import {
   sanitizeDesignStyle, type AutopilotDesignStyle,
 } from '@/lib/autopilot/textStyle';
+import { sanitizeBrief, type VideoBrief } from '@/lib/creer/brief';
+
+/**
+ * Le brief RÉCURRENT, relu et écrit par ce module comme par l'écran.
+ *
+ * Réexporté d'un module pur partagé avec le brouillon de « Créer » : une
+ * seule règle de nettoyage (chaînes rognées, ≤ 300 caractères, clés vides
+ * absentes) pour les deux parcours.
+ */
+export { sanitizeBrief, type VideoBrief };
 
 export type AutopilotMode = 'auto' | 'review';
 
@@ -167,6 +177,177 @@ export function sanitizePublishTime(raw: unknown): string {
   return typeof raw === 'string' && PUBLISH_TIME_RE.test(raw.trim()) ? raw.trim() : DEFAULT_PUBLISH_TIME;
 }
 
+/** « YYYY-MM-DD » strict — la forme qu'échangent `<input type="date">` et une colonne `date`. */
+export const START_DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+/**
+ * Date de début relue, ou `null`.
+ *
+ * `null` veut dire « dès le prochain passage » — le comportement d'avant,
+ * donc celui de toute configuration existante et de toute ligne relue avant
+ * la migration (`start_date` absent → `undefined` → `null`).
+ *
+ * La forme ne suffit pas : « 2026-02-30 » passe la regex et n'existe pas.
+ * On refait le tour par `Date.UTC` et on vérifie que les champs reviennent
+ * intacts — une date qui « déborde » (30 février → 2 mars) est rejetée, pas
+ * corrigée : corriger en silence programmerait une production à une date
+ * que personne n'a saisie.
+ */
+export function sanitizeStartDate(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!START_DATE_RE.test(s)) return null;
+  const [y, m, j] = s.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1, j));
+  if (d.getUTCFullYear() !== y || d.getUTCMonth() !== m - 1 || d.getUTCDate() !== j) return null;
+  return s;
+}
+
+/**
+ * Date qu'il est chez l'utilisateur, « YYYY-MM-DD ».
+ *
+ * Même politique de repli que `localHour` : un fuseau illisible ne doit pas
+ * interrompre le cycle, on retombe sur Paris, puis sur l'UTC.
+ */
+export function localDate(now: number, timezone: string): string {
+  try {
+    return lireDateLocale(now, timezone || DEFAULT_TIMEZONE);
+  } catch { /* fuseau illisible : repli ci-dessous */ }
+  try {
+    return lireDateLocale(now, DEFAULT_TIMEZONE);
+  } catch {
+    return new Date(now).toISOString().slice(0, 10);
+  }
+}
+
+/** La date « YYYY-MM-DD » dans un fuseau — LÈVE si le fuseau est illisible. */
+function lireDateLocale(now: number, tz: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(now));
+  const champ = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const s = `${champ('year')}-${champ('month')}-${champ('day')}`;
+  if (!START_DATE_RE.test(s)) throw new Error(`date illisible : ${s}`);
+  return s;
+}
+
+/**
+ * Créneau d'une production IMMÉDIATE : « aujourd'hui, à l'heure courante
+ * arrondie », chez l'utilisateur.
+ *
+ * ⚠️ CE N'EST PAS L'HEURE DE PUBLICATION CONFIGURÉE. `publishTime` est
+ * l'heure des posts que le CRON programme pour le lendemain ; un brouillon
+ * demandé « maintenant » se dépose à maintenant — sinon l'écran le rangerait
+ * à 18:00 demain, et l'utilisateur chercherait sa vidéo au mauvais jour.
+ * Un brouillon ne part de toute façon jamais seul : la date ne commande
+ * aucune publication.
+ *
+ * L'instant est arrondi AU-DESSUS au multiple de `pasMinutes` (5 min par
+ * défaut) après `delaiMinutes` : deux clics dans la même fenêtre tombent sur
+ * le MÊME créneau, et c'est ce jeton commun qui refuse la seconde
+ * production. Arrondir l'INSTANT (UTC) puis lire l'heure locale garde les
+ * minutes exactes dans tout fuseau à décalage multiple de 5 min — tous ceux
+ * que `Intl` connaît — et passe minuit sans arithmétique de date.
+ */
+export function creneauImmediat(
+  now: number,
+  timezone: string,
+  delaiMinutes = 5,
+  pasMinutes = 5,
+): { date: string; time: string } {
+  const pas = Math.max(1, pasMinutes) * 60_000;
+  const t = Math.ceil((now + Math.max(0, delaiMinutes) * 60_000) / pas) * pas;
+  const date = localDate(t, timezone);
+  const lire = (tz: string) => {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date(t));
+    const champ = (k: string) => parts.find((p) => p.type === k)?.value ?? '';
+    // `en-GB` rend « 24 » pour minuit dans certains moteurs : on le ramène.
+    const h = champ('hour') === '24' ? '00' : champ('hour');
+    const s = `${h}:${champ('minute')}`;
+    if (!PUBLISH_TIME_RE.test(s)) throw new Error(`heure illisible : ${s}`);
+    return s;
+  };
+  let time: string;
+  try {
+    time = lire(timezone || DEFAULT_TIMEZONE);
+  } catch {
+    try {
+      time = lire(DEFAULT_TIMEZONE);
+    } catch {
+      const d = new Date(t);
+      time = `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    }
+  }
+  return { date, time };
+}
+
+/** « YYYY-MM-DD » + `jours`, par arithmétique de CHAMPS — jamais de millisecondes. */
+export function ajouterJours(date: string, jours: number): string {
+  const [y, m, j] = date.split('-').map(Number);
+  // `Date.UTC` normalise les débordements de mois et d'année, et l'UTC ne
+  // connaît aucune heure d'été : un jour y fait toujours 24 h.
+  const d = new Date(Date.UTC(y, m - 1, j + jours));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** La date locale du SERVEUR, « YYYY-MM-DD » — le repli historique de `slotDate`. */
+function dateServeur(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Date du n-ième montage du cycle.
+ *
+ * ⚠️ RÈGLE DE LA DATE DE DÉBUT. Le premier montage part de « demain » —
+ * ou de `startDate` si elle est plus tard : la première publication est
+ * programmée AU PLUS TÔT le jour choisi. Une date de début déjà passée, ou
+ * égale à aujourd'hui, ne change rien : c'est « demain », comme avant. Une
+ * date de début absente non plus.
+ *
+ *   premier = max(demain, startDate) ; n-ième = premier + n.
+ *
+ * ⚠️ « DEMAIN » SE LIT DANS LE FUSEAU DE L'UTILISATEUR quand `timezone` est
+ * donné. Sans lui, c'est la date LOCALE DU SERVEUR — le comportement
+ * historique, conservé pour les appels existants. Un compte à Nouméa dont le
+ * cron tourne à 8 h locales est déjà « demain » pour un serveur à Paris :
+ * lire la date serveur lui programmait sa vidéo le jour même, à une heure
+ * déjà passée, donc publiée immédiatement par le cron.
+ *
+ * L'arithmétique se fait sur les CHAMPS de la date (année, mois, jour), pas
+ * sur des millisecondes : un jour de changement d'heure fait 23 ou 25 h, et
+ * « + 24 h » y tombe sur le mauvais jour. Comparer deux « YYYY-MM-DD » en
+ * chaînes est exact : la forme est à largeur fixe.
+ *
+ * Vit ICI, avec les autres règles pures, parce que l'écran l'applique aussi
+ * pour annoncer la prochaine publication — la même fonction que le moteur,
+ * et non une seconde estimation. `engine.ts` la réexporte pour ses lecteurs.
+ */
+export function slotDate(
+  base: Date,
+  index: number,
+  timezone?: string,
+  startDate?: string | null,
+): string {
+  // Fuseau illisible : la date serveur, comme avant — et non un cycle
+  // interrompu pour tous les comptes suivants. (Lecture STRICTE et non
+  // `localDate` : celle-ci retomberait sur Paris, ce qui changerait le repli
+  // historique des appels existants.)
+  let aujourdHui: string;
+  try {
+    aujourdHui = timezone ? lireDateLocale(base.getTime(), timezone) : dateServeur(base);
+  } catch {
+    aujourdHui = dateServeur(base);
+  }
+  // Demain, puis un jour de plus par montage : deux publications le même jour
+  // se feraient concurrence dans le fil de l'utilisateur.
+  const demain = ajouterJours(aujourdHui, 1);
+  const debut = sanitizeStartDate(startDate);
+  const premier = debut && debut > demain ? debut : demain;
+  return ajouterJours(premier, Math.max(0, Math.floor(index) || 0));
+}
+
 /**
  * L'identité constante par défaut.
  *
@@ -297,6 +478,21 @@ export interface AutopilotConfig {
    */
   publishTime: string;
   /**
+   * Date de DÉBUT de la programmation, « YYYY-MM-DD » dans `runTimezone`.
+   *
+   * `null` = dès le prochain passage — le comportement d'avant, celui de
+   * toute configuration existante. Deux effets, et deux seulement :
+   *
+   *   1. le moteur REFUSE de produire avant ce jour (`decideRun` →
+   *      `avant-la-date-de-debut`, silencieux comme `pas-encore`) ;
+   *   2. la première publication est programmée AU PLUS TÔT ce jour
+   *      (`slotDate` part de `startDate` quand elle est après « demain »).
+   *
+   * Ni l'heure de production ni l'heure de publication n'en dépendent :
+   * c'est une date, elles restent des heures.
+   */
+  startDate: string | null;
+  /**
    * Narration IA sur les montages produits.
    *
    * ⚠️ FAUX PAR DÉFAUT, ET CE N'EST PAS UNE PRUDENCE DE PRINCIPE. La voix
@@ -375,6 +571,17 @@ export interface AutopilotConfig {
    * ⚠️ `'auto'` PAR DÉFAUT — le comportement actuel, à l'identique.
    */
   posterMode: AutopilotPosterMode;
+  /**
+   * Le brief RÉCURRENT — objectif, message, public, CTA — commun à toutes
+   * les vidéos produites. À distinguer du SCRIPT de chaque vidéo, qui est
+   * généré à sa production à partir de ce brief et du sujet du jour.
+   *
+   * ⚠️ `{}` EST LE COMPORTEMENT ACTUEL : sans brief, le cron génère les
+   * textes exactement comme avant. Colonne `brief jsonb`, absente tant que
+   * `2026-09-21-autopilot-brief.sql` n'est pas appliquée : `sanitizeBrief`
+   * rend alors `{}`.
+   */
+  brief: VideoBrief;
 }
 
 export const DEFAULT_CONFIG: AutopilotConfig = {
@@ -395,6 +602,8 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   // 18:00 : l'heure que le moteur écrivait en dur. Aucune configuration
   // existante ne change de créneau de publication.
   publishTime: DEFAULT_PUBLISH_TIME,
+  // Aucune date de début : dès le prochain passage, comme avant.
+  startDate: null,
   voiceEnabled: false,
   cardGradientStart: DEFAULT_BRANDING.cardGradientStart,
   cardGradientEnd: DEFAULT_BRANDING.cardGradientEnd,
@@ -413,6 +622,8 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   posterUrls: [],
   // Le comportement actuel : Studiio cherche l'affiche par thème.
   posterMode: 'auto',
+  // Aucun brief : les textes sont generes comme avant.
+  brief: {},
 };
 
 /** Statut du post créé, selon le mode choisi. */
@@ -450,8 +661,18 @@ export type SkipReason =
   | 'pas-encore'
   /** Ce n'est pas l'heure choisie — cas NORMAL, silencieux comme `pas-encore`. */
   | 'pas-l-heure'
+  /** La date de début n'est pas atteinte — cas NORMAL, silencieux comme `pas-encore`. */
+  | 'avant-la-date-de-debut'
   | 'credits'
   | 'sans-rush';
+
+/** Est-on, chez l'utilisateur, avant la date de début choisie ? Sans date : jamais. */
+export function isBeforeStartDate(config: Pick<AutopilotConfig, 'startDate' | 'runTimezone'>, now: number): boolean {
+  const debut = sanitizeStartDate(config.startDate);
+  if (!debut) return false;
+  // Comparaison de deux « YYYY-MM-DD » : exacte, la forme est à largeur fixe.
+  return localDate(now, config.runTimezone) < debut;
+}
 
 export type RunDecision =
   | { run: true; count: number; status: 'scheduled' | 'draft' }
@@ -487,6 +708,14 @@ export function decideRun(input: {
 
   if (!config.rushUrls.length && !input.allowWithoutRush) {
     return { run: false, reason: 'sans-rush' };
+  }
+
+  // La date de début se lit comme un JOUR chez l'utilisateur : la veille au
+  // soir, même à l'heure de production, on ne produit pas. Refus APRÈS les
+  // crédits et les rushes — ce que l'utilisateur peut lever se dit même
+  // avant la date — et AVANT l'heure : une jauge de plus, silencieuse.
+  if (isBeforeStartDate(config, now)) {
+    return { run: false, reason: 'avant-la-date-de-debut' };
   }
 
   // ⚠️ DEUX JAUGES, DEUX QUESTIONS. `isRunHour` répond « est-ce l'heure ? »,
@@ -554,7 +783,13 @@ export function statusMessage(
     return 'Actif, mais aucun rush dans la banque — ajoutez-en pour lancer la production.';
   }
   const prochain = nextRunAt(config.cadence, config.lastRunAt, now);
-  const quand = prochain.getTime() <= now ? 'au prochain passage' : formatDate(prochain);
+  // La date de début prime sur la cadence : « au prochain passage » serait
+  // faux tant qu'elle n'est pas atteinte. Elle est posée à MIDI UTC : un
+  // libellé de date sans heure, que n'importe quel fuseau à ±12 h lit le
+  // bon jour.
+  const quand = isBeforeStartDate(config, now)
+    ? `à partir du ${formatDate(new Date(`${config.startDate}T12:00:00Z`))}`
+    : prochain.getTime() <= now ? 'au prochain passage' : formatDate(prochain);
   const n = config.rushUrls.length;
   return `Actif · prochaine génération ${quand} · ${n} rush${n > 1 ? 'es' : ''} disponible${n > 1 ? 's' : ''}`;
 }
@@ -608,6 +843,10 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     // « HH:MM » strict, minutes conservées ; colonne absente ou valeur
     // illisible → 18:00, l'heure jusqu'ici en dur dans le moteur.
     publishTime: sanitizePublishTime(o.publishTime),
+    // « YYYY-MM-DD » valide, ou `null` = dès le prochain passage. Colonne
+    // absente (migration du 21 septembre non appliquée) → `undefined` →
+    // `null` : aucune configuration existante n'attend une date.
+    startDate: sanitizeStartDate(o.startDate),
     // `=== true` et non un test de véracité : une colonne absente (migration
     // pas encore appliquée) vaut `undefined`, donc « pas de voix », donc
     // aucun appel facturé.
@@ -646,5 +885,8 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     posterMode: POSTER_MODES.includes(o.posterMode as AutopilotPosterMode)
       ? (o.posterMode as AutopilotPosterMode)
       : 'auto',
+    // Chaines rognees, bornees a 300 caracteres, cles vides absentes ;
+    // colonne absente ou valeur illisible → `{}`, aucun changement de texte.
+    brief: sanitizeBrief(o.brief),
   };
 }

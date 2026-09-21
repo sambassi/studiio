@@ -1,6 +1,7 @@
 import { generateSmartContent } from '@/lib/smart-content';
 import {
-  pickRush, statusForMode, sanitizePublishTime, DEFAULT_PUBLISH_TIME, type AutopilotConfig,
+  pickRush, statusForMode, sanitizePublishTime, DEFAULT_PUBLISH_TIME, sanitizeBrief, slotDate,
+  type AutopilotConfig, type VideoBrief,
 } from '@/lib/autopilot/rules';
 
 /**
@@ -48,6 +49,13 @@ export interface PreparedPost {
   rushUrl: string | null;
   /** Contenu prêt pour le compositeur — cartes, CTA. */
   content: ReturnType<typeof generateSmartContent>;
+  /**
+   * Le brief récurrent de la configuration, recopié sur chaque montage.
+   *
+   * C'est lui — et non le sujet seul — qui dit à la narration ce que la
+   * vidéo doit transmettre (`voiceTexts`). Absent ou `{}` : textes d'avant.
+   */
+  brief?: VideoBrief;
 }
 
 /**
@@ -64,47 +72,15 @@ export function slotKey(userId: string, date: string, time: string): string {
 }
 
 /**
- * Date du n-ième montage du cycle, en repartant de demain.
+ * Date du n-ième montage du cycle, en repartant de demain — ou de la date
+ * de début si elle est plus tard.
  *
- * ⚠️ « DEMAIN » SE LIT DANS LE FUSEAU DE L'UTILISATEUR quand `timezone` est
- * donné. Sans lui, c'est la date LOCALE DU SERVEUR — le comportement
- * historique, conservé pour les appels existants. Un compte à Nouméa dont le
- * cron tourne à 8 h locales est déjà « demain » pour un serveur à Paris :
- * lire la date serveur lui programmait sa vidéo le jour même, à une heure
- * déjà passée, donc publiée immédiatement par le cron.
- *
- * L'arithmétique se fait sur les CHAMPS de la date (année, mois, jour), pas
- * sur des millisecondes : un jour de changement d'heure fait 23 ou 25 h, et
- * « + 24 h » y tombe sur le mauvais jour.
+ * ⚠️ DÉFINIE DANS `rules.ts`, RÉEXPORTÉE ICI. L'écran annonce la prochaine
+ * publication avec la MÊME fonction que le moteur ; la garder dans un
+ * module pur évite une seconde estimation qui finirait par diverger. Les
+ * lecteurs existants (`engine.slotDate`) restent servis.
  */
-export function slotDate(base: Date, index: number, timezone?: string): string {
-  let y: number;
-  let m: number;
-  let j: number;
-  if (timezone) {
-    try {
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
-      }).formatToParts(base);
-      const lire = (t: string) => Number(parts.find((p) => p.type === t)?.value);
-      y = lire('year'); m = lire('month'); j = lire('day');
-    } catch {
-      // Fuseau illisible : la date serveur, comme avant — et non un cycle
-      // interrompu pour tous les comptes suivants.
-      y = base.getFullYear(); m = base.getMonth() + 1; j = base.getDate();
-    }
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(j)) {
-      y = base.getFullYear(); m = base.getMonth() + 1; j = base.getDate();
-    }
-  } else {
-    y = base.getFullYear(); m = base.getMonth() + 1; j = base.getDate();
-  }
-  // Demain, puis un jour de plus par montage : deux publications le même jour
-  // se feraient concurrence dans le fil de l'utilisateur. `Date.UTC` sur les
-  // champs normalise les débordements de mois sans aucune heure d'été.
-  const d = new Date(Date.UTC(y, m - 1, j + 1 + index));
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-}
+export { slotDate };
 
 /**
  * Sujet envoyé au générateur pour le n-ième montage.
@@ -144,6 +120,9 @@ export function preparePosts(input: {
   // parce qu'une configuration construite à la main (tests, anciens appels)
   // peut ne pas porter le champ : on retombe alors sur 18:00, comme avant.
   const heure = sanitizePublishTime(config.publishTime);
+  // Relu ici aussi : une configuration construite à la main (tests, anciens
+  // appels) peut ne pas porter le champ — `{}` alors, comme avant.
+  const brief = sanitizeBrief(config.brief);
   const out: PreparedPost[] = [];
   for (let i = 0; i < count; i += 1) {
     // Le sujet du rang, ou le dernier disponible : jamais `undefined`, qui
@@ -156,13 +135,15 @@ export function preparePosts(input: {
     out.push({
       title: topic,
       caption: [content.subtitle, content.tagLine].filter(Boolean).join('\n\n'),
-      // « Demain » chez l'utilisateur, pas chez le serveur ; et l'heure de
-      // publication choisie, pas 18:00 en dur.
-      scheduledDate: slotDate(base, i, config.runTimezone),
+      // « Demain » chez l'utilisateur, pas chez le serveur — ou la date de
+      // début si elle est plus tard ; et l'heure de publication choisie, pas
+      // 18:00 en dur.
+      scheduledDate: slotDate(base, i, config.runTimezone, config.startDate),
       scheduledTime: heure,
       platforms: config.platforms,
       rushUrl: pickRush(config.rushUrls, config.lastRushUrl, i),
       content,
+      brief,
     });
   }
   return out;
@@ -185,6 +166,13 @@ export function toPostRow(input: {
   config: AutopilotConfig;
   videoUrl: string;
   metadata: Record<string, unknown>;
+  /**
+   * Jeton de créneau à écrire, quand l'appelant en a un qui n'est PAS celui
+   * du cycle — la production manuelle (`manuel:…`), qui ne doit ni compter
+   * comme un créneau du cron ni être bloquée par lui. Absent : le jeton du
+   * cycle, comme avant.
+   */
+  slotKey?: string;
 }) {
   const { userId, post, config, videoUrl, metadata } = input;
   return {
@@ -206,7 +194,7 @@ export function toPostRow(input: {
       ...metadata,
       // Jeton de créneau : relu avant insertion pour ne pas produire deux
       // fois le même montage si un passage a échoué à mi-course.
-      slotKey: slotKey(userId, post.scheduledDate, post.scheduledTime),
+      slotKey: input.slotKey ?? slotKey(userId, post.scheduledDate, post.scheduledTime),
     } as Record<string, unknown>,
   };
 }

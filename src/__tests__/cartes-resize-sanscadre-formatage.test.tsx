@@ -388,7 +388,10 @@ describe('Affiches personnalisées', () => {
   it('« mes photos » sur une banque VIDE retombe sur la recherche par thème', () => {
     // ⚠️ SINON LE MONTAGE SORTIRAIT SANS AFFICHE : un réglage à moitié posé
     // ne doit pas dégrader le résultat.
-    const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
+    const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8')
+      // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
+      // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
+      + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
     expect(cron).toContain("config.posterMode === 'custom' && config.posterUrls.length > 0");
     expect(cron).toContain('pickPosterUrl(post.title');
   });

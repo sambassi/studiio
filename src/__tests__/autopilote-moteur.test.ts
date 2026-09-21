@@ -32,7 +32,10 @@ import { buildAutopilotDesign, buildAutopilotMetadata } from '@/lib/autopilot/de
  */
 
 const engine = readFileSync(resolve(__dirname, '../lib/autopilot/engine.ts'), 'utf-8');
-const route = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
+const route = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8')
+  // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
+  // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
+  + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
 const publish = readFileSync(resolve(__dirname, '../app/api/cron/publish/route.ts'), 'utf-8');
 
 const T0 = Date.parse('2026-08-04T09:00:00.000Z');

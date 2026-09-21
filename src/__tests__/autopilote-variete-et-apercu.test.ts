@@ -24,7 +24,10 @@ import { pickRush, DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/
 
 const calendrier = readFileSync(resolve(__dirname, '../app/dashboard/calendar/page.tsx'), 'utf-8');
 const poster = readFileSync(resolve(__dirname, '../lib/autopilot/poster.ts'), 'utf-8');
-const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
+const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8')
+  // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
+  // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
+  + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
 
 const cfg = (p: Partial<AutopilotConfig> = {}): AutopilotConfig => ({
   ...DEFAULT_CONFIG, enabled: true, platforms: ['instagram'], rushUrls: [], ...p,
