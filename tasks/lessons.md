@@ -387,6 +387,26 @@ comportemental (pas seulement une regex sur le source), (4) figure dans
 `.env.example`. Vérifier la présence en prod se fait par NOM (Coolify), sans
 jamais lire la valeur.
 
+## [2026-09-21] Une présélection « quand rien n'est choisi » ne répare pas un mauvais choix déjà fait
+
+**Ce qui a mal tourné** — #418 présélectionnait la voix clonée SEULEMENT si la
+voix courante était le défaut (Denise). En prod, `localStorage['tts.voiceId']`
+valait Henri (un choix ancien, hors défaut) : la présélection ne s'appliquait
+pas, et « Bassi (ma voix) » restait noyée parmi ~130 options d'un `<select>`
+plat. L'utilisateur voyait Henri et concluait que sa voix clonée n'était pas
+dans Créer — alors que l'API la servait en tête de liste.
+
+**Règle** — (1) Une ressource propre au compte (voix clonée, avatar) mérite un
+bloc DÉDIÉ et visible (« Ma voix clonée » + « Utiliser ma voix »), pas
+seulement une entrée dans une liste ; l'Autopilote l'avait, Créer non, d'où la
+différence perçue entre les deux parcours. (2) Un sélecteur long se GROUPE
+(`<optgroup>`), ressource du compte en tête, sans changer les ids.
+(3) Un artefact généré (audio TTS) garde ce avec quoi il a été produit
+(`ttsVoice`, `textAtGeneration`) pour être signalé « périmé » quand la voix
+ou le texte change — signalé, jamais supprimé ni régénéré tout seul (appel
+payant). (4) La reproduction en test pose l'état de prod EXACT (localStorage
+hors défaut + brouillon sans le champ), pas l'état neuf.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :

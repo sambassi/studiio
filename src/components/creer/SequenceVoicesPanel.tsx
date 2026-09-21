@@ -9,6 +9,8 @@ import {
   isHeyGenVoiceId,
   isElevenLabsVoiceId,
   voixCloneeAProposer,
+  grouperVoixPourSelecteur,
+  audioSequencePerime,
   SEQUENCE_KEYS,
   type SequenceKey,
   type SequenceVoice,
@@ -236,6 +238,8 @@ export function SequenceVoicesPanel({
     return () => { cancelled = true; };
   }, []);
   const allVoices: TtsVoice[] = [...customVoices, ...TTS_VOICES];
+  // Groupes du selecteur (voix clonee en tete) : les ids sont inchanges.
+  const voiceGroups = grouperVoixPourSelecteur(allVoices);
   // Sans choix explicite (Denise = le defaut), la voix clonee du compte est
   // proposee d'office une fois la liste arrivee — jamais avant (liste vide =
   // source absente, l'etat restaure fait foi), jamais par-dessus un choix.
@@ -397,6 +401,9 @@ export function SequenceVoicesPanel({
         source: 'tts',
         ttsVoice: selectedTtsVoiceId,
         duration,
+        // Le texte lu, tel quel : c'est lui qui permet de dire « périmé »
+        // si l'utilisateur le retouche ensuite.
+        textAtGeneration: text,
       });
     } catch (err) {
       console.error('[SequenceVoices] TTS error for', key, err);
@@ -444,7 +451,9 @@ export function SequenceVoicesPanel({
         try {
           const { url } = await uploadAudioBlob(blob);
           const duration = await probeDuration(url);
-          onChange(key, { audioUrl: url, source: 'record', ttsVoice: undefined, duration });
+          // Un enregistrement ne lit pas le texte : pas de `textAtGeneration`,
+          // sinon une retouche du texte le signalerait perime a tort.
+          onChange(key, { audioUrl: url, source: 'record', ttsVoice: undefined, duration, textAtGeneration: undefined });
         } finally {
           setBusy((b) => ({ ...b, [key]: false }));
         }
@@ -471,7 +480,7 @@ export function SequenceVoicesPanel({
   };
 
   const removeAudio = (key: SequenceKey) => {
-    onChange(key, { audioUrl: null, source: null, ttsVoice: undefined, duration: undefined });
+    onChange(key, { audioUrl: null, source: null, ttsVoice: undefined, duration: undefined, textAtGeneration: undefined });
   };
 
   const handleTextChange = (key: SequenceKey, value: string) => {
@@ -502,10 +511,16 @@ export function SequenceVoicesPanel({
           data-testid="seq-tts-voice-select"
           className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-white focus:border-purple-500 focus:outline-none"
         >
-          {allVoices.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.flag} {v.name} ({v.lang})
-            </option>
+          {/* Groupes, voix clonee en tete — memes groupes que le panneau
+              audio. Les valeurs (ids) sont inchangees. */}
+          {voiceGroups.map((g) => (
+            <optgroup key={g.key} label={g.label}>
+              {g.voices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.flag} {v.name} ({v.lang})
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         <button
@@ -542,6 +557,10 @@ export function SequenceVoicesPanel({
           const overrun = fit?.status === 'over';
           const isRecordingThis = recording === key;
           const isBusy = busy[key];
+          // Audio genere avec une autre voix, ou depuis un autre texte : on
+          // le dit, on ne le supprime pas et on ne regenere rien tout seul.
+          const perime = audioSequencePerime(sv, selectedTtsVoiceId);
+          const voixDeGeneration = sv.ttsVoice ? allVoices.find((v) => v.id === sv.ttsVoice)?.name ?? sv.ttsVoice : null;
 
           return (
             <div key={key} className={`rounded-md border p-2 ${SEQUENCE_ACCENT[key]}`}>
@@ -654,13 +673,35 @@ export function SequenceVoicesPanel({
               </div>
 
               {sv.audioUrl && (
-                <div className="mt-1.5">
+                <div className="mt-1.5 space-y-1">
                   <PreviewPlayer
                     src={sv.audioUrl}
                     label={SEQUENCE_LABELS[key]}
                     onDelete={() => removeAudio(key)}
                     onError={onAudioError}
                   />
+                  {perime.perime && (
+                    <div
+                      data-voice-stale={key}
+                      data-voice-stale-motif={perime.motif ?? ''}
+                      className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-200"
+                    >
+                      <AlertTriangle size={10} className="flex-shrink-0 text-amber-400" />
+                      <span className="flex-1 min-w-0 truncate">
+                        Audio périmé — régénérer
+                        {perime.motif === 'voix' && voixDeGeneration ? ` (généré avec ${voixDeGeneration})` : ''}
+                        {perime.motif === 'texte' ? ' (le texte a changé)' : ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => generateTts(key)}
+                        disabled={isBusy || !sv.text.trim() || isRecordingThis}
+                        className="rounded border border-current/40 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Régénérer
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
