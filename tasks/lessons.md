@@ -266,6 +266,33 @@ trois routes M3-F/G/H refusent bien les doublons (index uniques en base), mais
 les trois requêtes partent quand même et c'est le REFUS qui s'affiche : la
 personne lit « déjà en cours » après avoir cliqué une fois de trop.
 
+## [2026-09-21] Un repli « quand même appliqué » sur une ressource tierce temporaire est un faux succès
+
+**Ce qui a mal tourné** — L'affiche IA recevait une URL `replicate.delivery`
+temporaire ; le navigateur la re-téléchargeait (dépendance CORS invérifiable)
+puis la copiait au stockage. Sur tout échec, le code appliquait *quand même*
+l'URL temporaire avec un message gris « appliquée, mais non copiée » — et
+l'URL entrait dans le brouillon, `metadata.posterUrl` et les N posts d'un lot,
+pour mourir à l'expiration. Pire : en prod (`STORAGE_PROVIDER=s3`) la route
+`signed-url` renvoie une URL **relative** que `sanitizeDraft` (`^https?://`)
+écartait à la restauration — « Ma photo » et les affiches de Série étaient
+perdues au rechargement, sans qu'aucun test ne l'exerce (mocks toujours
+`https://cdn/…`).
+
+**Règle** — (1) Une ressource produite par un fournisseur tiers se
+re-héberge **côté serveur**, dans la même requête, à partir des octets que
+le SDK tient déjà (`FileOutput`), jamais via une URL renvoyée au navigateur.
+(2) Non stocké = non appliqué : aucun repli sur l'URL tierce, l'échec est une
+erreur visible dans le composant qui a demandé l'action. (3) Le débit vient
+APRÈS la preuve de stockage (upload attendu + URL exploitable), avec une
+référence serveur (`referenceOperation`). (4) Toute URL qui sort d'un helper
+d'upload doit être **absolue** (point unique `posterUpload.ts`), et le
+filtre strict du brouillon ne se relâche pas. (5) Les mocks de stockage
+doivent aussi rejouer la forme RELATIVE que la prod renvoie réellement.
+(6) Jamais `console.error(…, erreurSDK)` : les `ApiError` portent la
+`Request` avec `Authorization: Bearer …` — logger une représentation
+sanitisée, et tester avec un faux token que rien ne fuit.
+
 ## [2026-09-21] Un effet « auto » qui tourne au montage efface ce que le brouillon vient de restaurer
 
 **Ce qui a mal tourné** — Dans `/creer`, l'attribution automatique des affiches

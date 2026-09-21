@@ -176,8 +176,17 @@ describe('3. Sources de l affiche', () => {
     expect(src).toContain('data-affiche-mediatheque');
     expect(src).toContain('data-affiche-generer-ia');
     expect(src).toMatch(/<MediaLibrary[\s\S]{0,200}mediaType="image"[\s\S]{0,200}applyPhoto\(url\)/);
-    // La persistance : l'URL temporaire est recopiée par le MÊME chemin que « Ma photo ».
-    expect(src).toMatch(/utiliserAfficheIA[\s\S]{0,800}uploadPosterFile\(new File/);
+    // La persistance : le SERVEUR enregistre l'image et renvoie une URL
+    // durable. Le navigateur ne télécharge jamais l'URL du fournisseur et
+    // n'envoie rien au stockage depuis ce chemin ; une URL non durable est
+    // refusée, et l'image durable rejoint la grille en tête.
+    const debut = src.indexOf('const utiliserAfficheIA = useCallback(');
+    expect(debut).toBeGreaterThan(-1);
+    const corps = src.slice(debut, src.indexOf('}, []);', debut) + '}, []);'.length);
+    expect(corps).not.toContain('fetch(url)');
+    expect(corps).not.toContain('uploadPosterFile(');
+    expect(corps).toContain('estAfficheDurable(');
+    expect(corps).toContain('setPosterPhotos((prev) => [perso, ...prev])');
   });
 });
 

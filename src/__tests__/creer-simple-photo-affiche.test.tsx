@@ -5,6 +5,7 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/draft';
+import { urlPubliqueAbsolue } from '@/lib/creer/posterUpload';
 
 /**
  * Photo d'affiche — Mode simple.
@@ -261,5 +262,22 @@ describe('Persistance', () => {
     const reset = wizard.slice(wizard.indexOf('const reset = ()'), wizard.indexOf('const reset = ()') + 1100);
     expect(reset).toContain('setPosterUrl(null)');
     expect(reset).toContain('setPosterPhotos([])');
+  });
+
+  /**
+   * En production le stockage (S3/MinIO) repond une `publicUrl` RELATIVE.
+   * Le filtre `^https?://` du brouillon est strict, et doit le rester : c'est
+   * ce qui tient `data:` et `blob:` hors du localStorage. La bonne correction
+   * est donc en amont, dans `uploadPosterFile` : l'URL rendue absolue sur
+   * l'origine de Studiio survit a la relecture.
+   */
+  it('une URL relative du stockage, rendue absolue a l envoi, survit a la relecture du brouillon', () => {
+    const relative = '/storage/v1/object/public/media/u1/image/1-a.jpg';
+    // Telle quelle, elle serait perdue : c'est le bug.
+    expect(lire({ posterUrl: relative }).posterUrl).toBeUndefined();
+
+    const absolue = urlPubliqueAbsolue(relative, 'https://studiio.pro');
+    expect(absolue).toBe('https://studiio.pro/storage/v1/object/public/media/u1/image/1-a.jpg');
+    expect(lire({ posterUrl: absolue }).posterUrl).toBe(absolue);
   });
 });

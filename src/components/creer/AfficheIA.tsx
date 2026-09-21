@@ -1,77 +1,152 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Loader2, RotateCcw, Sparkles, Check } from 'lucide-react';
 
 /**
  * Photo d'affiche GENEREE PAR L'IA — le troisieme chemin, a cote de « Ma
  * photo » (envoi) et de la mediatheque.
  *
- * Reutilise l'action `generate-bg` de `/api/ai/image` (texte → image, 9:16,
- * la meme que la « Retouche IA »). Le composant ne fait que le tour de
- * l'utilisateur : consigne → Generer (etat visible) → resultat → Regenerer
- * ou « Utiliser comme affiche ». C'est l'appelant qui range l'image dans le
- * brouillon (`onUtiliser`), car l'URL renvoyee par le modele est temporaire :
- * il la copie au stockage, comme une photo envoyee.
+ * Reutilise l'action `generate-bg` de `/api/ai/image` (texte → image, au
+ * format de la video : 9:16, 1:1 ou 16:9). Le serveur copie lui-meme l'image
+ * produite dans le stockage Studiio et renvoie une URL DURABLE (`resultUrl`)
+ * — le composant ne fait que le tour de l'utilisateur : consigne → Generer
+ * (etat visible) → resultat → Regenerer ou « Utiliser comme affiche ». C'est
+ * l'appelant qui range l'URL dans le brouillon (`onUtiliser`) ; il n'a plus
+ * rien a recopier.
+ *
+ * Garde-fous cote client :
+ *  - un verrou synchrone (`enVolRef`) : deux clics quasi simultanes ne
+ *    lancent qu'UNE requete (donc un seul debit de credits) ;
+ *  - un delai de 100 s (`AbortController`), juste au-dessus des ~90 s du
+ *    serveur, pour que l'erreur serveur — qui dit la verite sur le debit —
+ *    l'emporte normalement ; passe ce delai, le bouton est rendu ;
+ *  - « Regenerer » est une nouvelle requete (5 credits) — jamais de reprise
+ *    automatique.
  */
+
+export type AfficheIAFormat = '9:16' | '1:1' | '16:9';
+
+/** Ratio CSS (`aspect-ratio`) de l'apercu, par format. */
+const ASPECT_RATIO: Record<AfficheIAFormat, string> = {
+  '9:16': '9 / 16',
+  '1:1': '1 / 1',
+  '16:9': '16 / 9',
+};
+
+/** Delai client, un peu au-dessus des ~90 s que peut prendre le serveur. */
+export const AFFICHE_IA_TIMEOUT_MS = 100_000;
+
+export const AFFICHE_IA_MESSAGE_DELAI =
+  'La génération a pris trop de temps. Réessayez — aucun crédit n’est débité si l’image n’a pas été produite.';
 
 export interface AfficheIAProps {
   /** Suggestion de consigne (sujet de la video). */
   suggestion?: string;
   /** L'image retenue — l'appelant la persiste et l'applique. */
   onUtiliser: (url: string) => Promise<void> | void;
+  /** Format de la video : dicte le format de l'image demandee et de l'apercu. */
+  format?: AfficheIAFormat;
   disabled?: boolean;
 }
 
 type Etat =
   | { statut: 'repos' }
   | { statut: 'generation' }
-  | { statut: 'resultat'; url: string }
+  | { statut: 'resultat'; url: string; creditsRemaining?: number }
   | { statut: 'application'; url: string }
   | { statut: 'erreur'; message: string; url?: string };
 
-export default function AfficheIA({ suggestion = '', onUtiliser, disabled }: AfficheIAProps) {
+class DelaiDepasse extends Error {
+  constructor() {
+    super(AFFICHE_IA_MESSAGE_DELAI);
+    this.name = 'DelaiDepasse';
+  }
+}
+
+export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16', disabled }: AfficheIAProps) {
   const [prompt, setPrompt] = useState('');
   const [etat, setEtat] = useState<Etat>({ statut: 'repos' });
+  /**
+   * Verrou SYNCHRONE : `disabled` ne suffit pas, React ne re-rend pas entre
+   * deux clics du meme tour d'evenements. Pose au tout debut de l'action,
+   * leve dans `finally`.
+   */
+  const enVolRef = useRef(false);
 
   const generer = useCallback(async () => {
-    const consigne = (prompt.trim() || suggestion).trim();
-    if (!consigne) {
-      setEtat({ statut: 'erreur', message: 'Décrivez l’image souhaitée.' });
-      return;
-    }
-    setEtat({ statut: 'generation' });
+    if (enVolRef.current) return;
+    enVolRef.current = true;
     try {
-      const res = await fetch('/api/ai/image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate-bg', prompt: consigne }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.success || !data.resultUrl) {
-        throw new Error(data?.error || `Erreur ${res.status}`);
+      const consigne = (prompt.trim() || suggestion).trim();
+      if (!consigne) {
+        setEtat({ statut: 'erreur', message: 'Décrivez l’image souhaitée.' });
+        return;
       }
-      setEtat({ statut: 'resultat', url: data.resultUrl });
-    } catch (err) {
-      setEtat({ statut: 'erreur', message: err instanceof Error ? err.message : 'Génération impossible.' });
+      setEtat({ statut: 'generation' });
+
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const delai = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new DelaiDepasse());
+        }, AFFICHE_IA_TIMEOUT_MS);
+      });
+
+      try {
+        const res = await Promise.race([
+          fetch('/api/ai/image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'generate-bg', prompt: consigne, format }),
+            signal: controller.signal,
+          }),
+          delai,
+        ]);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.success || !data.resultUrl) {
+          throw new Error(data?.error || `Erreur ${res.status}`);
+        }
+        setEtat({
+          statut: 'resultat',
+          url: data.resultUrl,
+          creditsRemaining: typeof data.creditsRemaining === 'number' ? data.creditsRemaining : undefined,
+        });
+      } catch (err) {
+        const message =
+          err instanceof DelaiDepasse || (err instanceof Error && err.name === 'AbortError')
+            ? AFFICHE_IA_MESSAGE_DELAI
+            : err instanceof Error ? err.message : 'Génération impossible.';
+        setEtat({ statut: 'erreur', message });
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    } finally {
+      enVolRef.current = false;
     }
-  }, [prompt, suggestion]);
+  }, [prompt, suggestion, format]);
 
   const utiliser = useCallback(async (url: string) => {
+    if (enVolRef.current) return;
+    enVolRef.current = true;
     setEtat({ statut: 'application', url });
     try {
       await onUtiliser(url);
       setEtat({ statut: 'resultat', url });
     } catch (err) {
       setEtat({ statut: 'erreur', message: err instanceof Error ? err.message : 'Image non appliquée.', url });
+    } finally {
+      enVolRef.current = false;
     }
   }, [onUtiliser]);
 
   const enCours = etat.statut === 'generation' || etat.statut === 'application';
   const url = 'url' in etat ? etat.url : null;
+  const creditsRemaining = etat.statut === 'resultat' ? etat.creditsRemaining : undefined;
 
   return (
-    <div className="space-y-2" data-affiche-ia>
+    <div className="space-y-2" data-affiche-ia data-affiche-ia-format={format}>
       <label className="block text-xs text-gray-400">
         Décrivez l’affiche (ambiance, lieu, lumière…)
         <textarea
@@ -88,7 +163,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, disabled }: Aff
       <div className="flex items-center gap-2">
         <button
           type="button"
-          onClick={generer}
+          onClick={() => void generer()}
           disabled={disabled || enCours}
           data-affiche-ia-generer
           className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/50 bg-purple-600/15 px-3 py-1.5 text-xs text-white hover:bg-purple-600/25 disabled:opacity-40 transition-colors"
@@ -98,7 +173,12 @@ export default function AfficheIA({ suggestion = '', onUtiliser, disabled }: Aff
             : url ? <RotateCcw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
           {etat.statut === 'generation' ? 'Génération…' : url ? 'Régénérer' : 'Générer'}
         </button>
-        <span className="text-[11px] text-gray-500">5 crédits par image</span>
+        <span className="text-[11px] text-gray-500">
+          5 crédits par image
+          {creditsRemaining !== undefined && (
+            <span data-affiche-ia-credits-restants> · {creditsRemaining} restants</span>
+          )}
+        </span>
       </div>
 
       {etat.statut === 'generation' && (
@@ -113,8 +193,12 @@ export default function AfficheIA({ suggestion = '', onUtiliser, disabled }: Aff
 
       {url && (
         <div className="space-y-2" data-affiche-ia-resultat>
-          {/* Le resultat, au ratio de la video, sans rognage. */}
-          <div className="w-full max-w-[220px] rounded-xl overflow-hidden bg-black border border-gray-800" style={{ aspectRatio: '9 / 16' }}>
+          {/* Le resultat, au ratio de la video (meme format que la demande), sans rognage. */}
+          <div
+            className="w-full max-w-[220px] rounded-xl overflow-hidden bg-black border border-gray-800"
+            style={{ aspectRatio: ASPECT_RATIO[format] }}
+            data-affiche-ia-apercu
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={url} alt="Affiche générée" className="w-full h-full object-contain" />
           </div>
