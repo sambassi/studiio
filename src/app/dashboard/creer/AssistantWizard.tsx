@@ -186,7 +186,7 @@ import {
 import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
-import { RESEAUX, type Reseau } from '@/lib/social/etatReseaux';
+import { RESEAUX, libelleCalendrier, type Reseau } from '@/lib/social/etatReseaux';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import DeuxColonnes, { ColonneTravail, ColonneApercu } from '@/components/ux/DeuxColonnes';
@@ -7298,7 +7298,11 @@ export default function AssistantWizard() {
             // brouillon ne part jamais. `programmer` : les reseaux connectes
             // choisis, `scheduled` — le meme mecanisme que « Programmer »
             // dans le Calendrier, et c'est le cron qui publie a l'heure dite.
-            platforms: programmationEffective ? [...reseauxProgrammes] : [],
+            // La convention du Calendrier (« Instagram »), pas l'identifiant
+            // (« instagram ») : c'est le Calendrier qui relit et modifie ce
+            // post, et il compare ses libellés tels quels. Le cron accepte
+            // les deux.
+            platforms: programmationEffective ? reseauxProgrammes.map(libelleCalendrier) : [],
             scheduled_date: dates[b],
             scheduled_time: scheduledTime || '12:00',
             status: programmationEffective ? 'scheduled' : 'draft',

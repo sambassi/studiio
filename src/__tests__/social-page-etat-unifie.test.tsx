@@ -449,7 +449,7 @@ describe('⚠️ Réseaux sociaux — une carte, une action, un état', () => {
     }
     expect(reseauDepuisLibelle('Email')).toBeNull();
     expect(sourceCalendrier).toMatch(/import \{ useEtatReseaux \} from '@\/lib\/hooks\/useEtatReseaux'/);
-    expect(sourceCalendrier).toMatch(/import \{ reseauDepuisLibelle \} from '@\/lib\/social\/etatReseaux'/);
+    expect(sourceCalendrier).toMatch(/import \{ reseauDepuisLibelle(, normaliserPlateformesCalendrier)? \} from '@\/lib\/social\/etatReseaux'/);
     expect(sourceCalendrier).toContain('useEtatReseaux()');
     expect(sourceCalendrier).not.toContain("fetch('/api/social/status')");
     expect(sourceCalendrier).not.toContain('fetch("/api/social/status")');

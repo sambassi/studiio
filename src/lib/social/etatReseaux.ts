@@ -157,6 +157,44 @@ export function deriverTousLesReseaux(
   return out;
 }
 
+/**
+ * Identifiant de réseau → nom d'affichage du Calendrier.
+ *
+ * ⚠️ DEUX CONVENTIONS COEXISTENT dans `scheduled_posts.platforms` : le
+ * Calendrier écrit ses libellés (« Instagram »), l'Autopilote ses
+ * identifiants (« instagram »). Le cron accepte les deux (il abaisse la
+ * casse), mais le Calendrier compare ses libellés tels quels : un post
+ * programmé avec « instagram » n'y apparaissait ni sélectionné ni coloré.
+ * Tout ce qui ÉCRIT depuis un écran passe donc par ce libellé, et le
+ * Calendrier normalise ce qu'il LIT.
+ */
+export const LIBELLES_CALENDRIER: Record<Reseau, string> = {
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+};
+
+export function libelleCalendrier(reseau: Reseau): string {
+  return LIBELLES_CALENDRIER[reseau];
+}
+
+/**
+ * Plateformes d'un post telles que le Calendrier les affiche : les
+ * identifiants de réseau deviennent des libellés, les autres canaux
+ * (Email, WhatsApp, Afroboost.com…) restent tels quels, sans doublon.
+ */
+export function normaliserPlateformesCalendrier(platforms: readonly unknown[] | null | undefined): string[] {
+  const out: string[] = [];
+  for (const p of platforms ?? []) {
+    if (typeof p !== 'string') continue;
+    const r = reseauDepuisLibelle(p);
+    const v = r ? libelleCalendrier(r) : p;
+    if (!out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
 /** Nom d'affichage (Calendrier) → identifiant de réseau, ou `null` hors réseaux. */
 export function reseauDepuisLibelle(libelle: string): Reseau | null {
   const l = libelle.trim().toLowerCase();

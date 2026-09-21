@@ -218,7 +218,7 @@ describe('Intention 2 — programmer', () => {
     await envoyer();
     expect(postsCrees).toHaveLength(1);
     expect(postsCrees[0].status).toBe('scheduled');
-    expect(postsCrees[0].platforms).toEqual(['instagram', 'tiktok']);
+    expect(postsCrees[0].platforms).toEqual(['Instagram', 'TikTok']);
     expect(postsCrees[0].scheduled_time).toBe('19:15');
     // Aucune publication depuis l'écran : c'est le cron, plus tard.
     expect(publications).toEqual([]);

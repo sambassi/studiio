@@ -119,7 +119,7 @@ describe('Trois intentions — brouillon par defaut', () => {
     // `useState<'brouillon' | 'programmer'>('brouillon')` : a l'ouverture
     // comme apres `reset`, rien ne part sans un choix explicite.
     expect(wizard).toContain("useState<'brouillon' | 'programmer'>('brouillon')");
-    expect(wizard).toContain("platforms: programmationEffective ? [...reseauxProgrammes] : [],");
+    expect(wizard).toContain("platforms: programmationEffective ? reseauxProgrammes.map(libelleCalendrier) : [],");
     expect(wizard).toContain("status: programmationEffective ? 'scheduled' : 'draft',");
     expect(wizard).toContain("setEnvoiIntention('brouillon');");
   });
