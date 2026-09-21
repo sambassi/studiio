@@ -5,6 +5,8 @@ import { TRANSITION_KEYS } from '@/lib/video-composer';
 import { TEXT_ANIMATION_KEYS } from '@/lib/creer/textAnimation';
 import { lutRefValide } from '@/lib/luts/bibliotheque';
 import type { LutRef } from '@/lib/luts/types';
+import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
+import { estJumeauMode, type JumeauMode } from '@/lib/creer/jumeau';
 
 /**
  * Brouillon de « Créer (simple) » — écriture, relecture, validation.
@@ -59,15 +61,31 @@ export interface Draft {
   savedAt: number;
   started?: boolean;
   /**
-   * « Utiliser mon jumeau ». Absent ou false = le parcours normal, celui de
-   * tous les brouillons anterieurs. `true` = demande explicite — et SEULEMENT
-   * une demande : le serveur relit l'avatar et la voix du compte avant de
-   * dire si le jumeau est utilisable ; rien d'autre n'est persiste ici.
+   * L'intention « jumeau », en clair : 'aucun' (parcours normal), 'voix'
+   * (narration avec ma voix clonée), 'avatar' (mon avatar parlant dans la
+   * séquence « Vidéo », à l'envoi). SEULEMENT une intention : le serveur
+   * relit l'avatar et la voix du compte avant d'y donner suite ; rien
+   * d'autre n'est persisté ici. Absent = 'aucun' — sauf rétro-compat
+   * ci-dessous.
+   */
+  jumeauMode?: JumeauMode;
+  /**
+   * Champ HISTORIQUE, conservé pour les brouillons antérieurs et les lecteurs
+   * qui le lisent encore : `true` = l'avatar (ancienne unique intention). À
+   * la relecture, `jumeauMode` explicite fait foi ; sans lui,
+   * `useDigitalTwin: true` → 'avatar'. À l'écriture, il est DÉRIVÉ
+   * (`jumeauMode === 'avatar'`), jamais une seconde source.
    */
   useDigitalTwin?: boolean;
   step?: number;
   themeId?: string;
   customTopic?: string;
+  /**
+   * Brief de la video — objectif, message, public, CTA. Absent = aucun brief,
+   * comme tous les brouillons anterieurs ; seuls les champs renseignes sont
+   * ecrits (`sanitizeBrief`).
+   */
+  brief?: VideoBrief;
   toneId?: string;
   format?: string;
   colors?: { accent: string; gradStart: string; gradEnd: string; gradientOpacity: number } | null;
@@ -103,8 +121,12 @@ export interface Draft {
    * mesuree sur l'audio a chaque chargement, et une valeur relue d'un
    * brouillon pourrait ne plus correspondre au fichier — ce qui calerait la
    * sequence sur une duree fausse.
+   *
+   * `textAtGeneration` (texte au moment de la generation) est relu : c'est
+   * lui qui permet de signaler « audio perime » apres rechargement quand le
+   * texte a ete retouche. Absent = audio anterieur au champ, rien a signaler.
    */
-  sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string }>;
+  sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string; textAtGeneration?: string }>;
   /** Textes que l'utilisateur a repris a la main : le pre-remplissage les respecte. */
   sequenceVoicesUserEdited?: Record<string, boolean>;
   /**
@@ -410,6 +432,10 @@ function sanitizeSequenceVoices(raw: unknown): Draft['sequenceVoices'] {
       // `source` sans `audioUrl` n'aurait aucun sens : l'un ne va pas sans l'autre.
       ...(audioUrl ? { audioUrl, source: source ?? 'tts' } : {}),
       ...(typeof v.ttsVoice === 'string' && v.ttsVoice ? { ttsVoice: v.ttsVoice } : {}),
+      // Sans audio, ce texte ne decrit rien : il n'est relu qu'avec l'URL.
+      ...(audioUrl && typeof v.textAtGeneration === 'string'
+        ? { textAtGeneration: v.textAtGeneration.slice(0, 2000) }
+        : {}),
     };
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -469,12 +495,15 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       }
     : null;
 
+  const jumeauMode: JumeauMode = estJumeauMode(raw.jumeauMode) ? raw.jumeauMode : raw.useDigitalTwin === true ? 'avatar' : 'aucun';
   const out: Draft = {
     version: DRAFT_VERSION,
     savedAt: typeof raw.savedAt === 'number' ? raw.savedAt : 0,
     started: raw.started === true,
-    // Seul le booleen `true` active le jumeau ; tout le reste = parcours normal.
-    useDigitalTwin: raw.useDigitalTwin === true,
+    // `jumeauMode` explicite fait foi ; sans lui, seul le booléen `true` de
+    // l'ancien champ vaut 'avatar' ; tout le reste = parcours normal.
+    jumeauMode,
+    useDigitalTwin: jumeauMode === 'avatar',
     // L'écran d'envoi n'est jamais restauré : il annonce un rendu et un débit
     // qui n'ont pas eu lieu. Une étape au-delà est RAMENEE à la dernière sûre
     // — repartir de l'étape 1 ferait refaire tout le parcours.
@@ -484,6 +513,9 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
         : 0,
     themeId: str(raw.themeId, deps.themeIds, d.themeId),
     customTopic: typeof raw.customTopic === 'string' ? raw.customTopic.slice(0, 300) : '',
+    // Chaines rognees et bornees a 300 caracteres ; `undefined` quand rien
+    // n'est renseigne, pour qu'un brouillon sans brief se relise a l'identique.
+    brief: briefRempli(sanitizeBrief(raw.brief)) ? sanitizeBrief(raw.brief) : undefined,
     toneId: str(raw.toneId, deps.toneIds, d.toneId),
     format: str(raw.format, deps.formats, d.format),
     colors,
