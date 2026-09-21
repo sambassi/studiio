@@ -35,6 +35,10 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     topics: row.topics,
     runHour: row.run_hour,
     runTimezone: row.run_timezone,
+    // Heure de publication, minutes comprises. Colonne ABSENTE tant que
+    // `2026-09-21-autopilot-publish-time.sql` n'est pas appliquee :
+    // `sanitizeConfig` rend alors 18:00, l'ancienne valeur en dur.
+    publishTime: row.publish_time,
     // ── L'identite constante ────────────────────────────────────────────
     // Colonnes ABSENTES tant que `2026-08-07-autopilot-branding.sql` n'est
     // pas appliquee : `sanitizeConfig` retombe alors sur les defauts, qui
@@ -144,6 +148,13 @@ const styleReady = () => colonneReady(
   + 'migrations/2026-08-07-autopilot-text-style.sql',
 );
 
+/** L'heure de publication (minutes comprises) est-elle enregistrable ? */
+const publishTimeReady = () => colonneReady(
+  'publish_time',
+  'heure de publication NON enregistrée. Appliquer '
+  + 'migrations/2026-09-21-autopilot-publish-time.sql',
+);
+
 export async function GET() {
   try {
     const session = await auth();
@@ -154,7 +165,8 @@ export async function GET() {
       // Pas une erreur : l'ecran s'affiche en lecture seule et dit ce qui
       // manque, au lieu de laisser un formulaire qui n'enregistrerait rien.
       return NextResponse.json({
-        success: true, ready: false, brandingReady: false, styleReady: false, config: DEFAULT_CONFIG,
+        success: true, ready: false, brandingReady: false, styleReady: false,
+        publishTimeReady: false, config: DEFAULT_CONFIG,
       });
     }
     const { data } = await supabaseAdmin
@@ -168,12 +180,14 @@ export async function GET() {
       brandingReady: await brandingReady(),
       styleReady: await styleReady(),
       postersReady: await postersReady(),
+      publishTimeReady: await publishTimeReady(),
       config: fromRow((data?.[0] as Record<string, unknown>) ?? null),
     });
   } catch (err) {
     console.error('[Autopilote] lecture :', err instanceof Error ? err.message : err);
     return NextResponse.json({
-      success: true, ready: false, brandingReady: false, styleReady: false, config: DEFAULT_CONFIG,
+      success: true, ready: false, brandingReady: false, styleReady: false,
+      publishTimeReady: false, config: DEFAULT_CONFIG,
     });
   }
 }
@@ -198,6 +212,7 @@ export async function PUT(req: NextRequest) {
     const avecIdentite = await brandingReady();
     const avecStyle = await styleReady();
     const avecAffiches = await postersReady();
+    const avecHeurePublication = await publishTimeReady();
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(
@@ -242,6 +257,11 @@ export async function PUT(req: NextRequest) {
             poster_urls: propre.posterUrls,
             poster_mode: propre.posterMode,
           } : null),
+          // Sondee a part, comme les autres : ecrire `publish_time` avant la
+          // migration du 21 septembre ferait echouer l'upsert ENTIER. Tant
+          // qu'elle manque, l'ecran le dit (`publishTimeReady: false`) et le
+          // moteur publie a 18:00, comme avant.
+          ...(avecHeurePublication ? { publish_time: propre.publishTime } : null),
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
           // en boucle en remettant la date a zero.
@@ -258,6 +278,7 @@ export async function PUT(req: NextRequest) {
       brandingReady: avecIdentite,
       styleReady: avecStyle,
       postersReady: avecAffiches,
+      publishTimeReady: avecHeurePublication,
       config: propre,
     });
   } catch (err) {

@@ -256,14 +256,24 @@ export function buildAutopilotMetadata(input: {
   videoUrl: string;
   thumbnailUrl?: string | null;
   mode: string;
+  /**
+   * Fuseau dans lequel `scheduled_date` / `scheduled_time` se lisent —
+   * `config.runTimezone`. Facultatif : absent, le cron de publication retombe
+   * sur Europe/Paris, comme il l'a toujours fait.
+   */
+  timezone?: string | null;
 }): Record<string, unknown> {
-  const { post, design, videoUrl, thumbnailUrl, mode } = input;
+  const { post, design, videoUrl, thumbnailUrl, mode, timezone } = input;
   const taille = VIDEO_SIZE[AUTOPILOT_FORMAT];
   const total = (design.introDuration ?? 0) + (design.cardsDuration ?? 0)
     + (design.videoDuration ?? 0) + (design.ctaDuration ?? 0);
   return {
     source: 'autopilote',
     autopilotMode: mode,
+    // ⚠️ SANS CE CHAMP, LE CRON PUBLIE À L'HEURE DE PARIS. `/api/cron/publish`
+    // lit `metadata.timezone` pour décider qu'un post est dû ; un compte à
+    // New York réglé sur 18:00 voyait sa vidéo partir à midi.
+    ...(timezone ? { timezone } : null),
     // Le montage EST rendu : plus rien n'attend le navigateur. Le champ reste
     // écrit — à `false` — parce que l'écran l'a lu tant qu'il valait `true`,
     // et qu'un champ disparu se lit `undefined`, donc faux par accident

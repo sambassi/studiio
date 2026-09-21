@@ -222,6 +222,11 @@ export async function GET(req: NextRequest) {
         topics: ligne.topics,
         runHour: ligne.run_hour,
         runTimezone: ligne.run_timezone,
+        // Heure de PUBLICATION des posts produits, minutes comprises.
+        // Colonne absente tant que la migration du 21 septembre n'est pas
+        // appliquee : `sanitizeConfig` retombe sur 18:00, l'ancienne valeur
+        // en dur.
+        publishTime: ligne.publish_time,
         lastRunAt: ligne.last_run_at,
         lastRushUrl: ligne.last_rush_url,
         voiceEnabled: ligne.voice_enabled,
@@ -380,6 +385,9 @@ export async function GET(req: NextRequest) {
 
           const metadata = buildAutopilotMetadata({
             post: postUtilise, design, videoUrl, thumbnailUrl, mode: config.mode,
+            // Le fuseau de l'utilisateur : sans lui, le cron de publication
+            // lirait l'heure programmee comme une heure de Paris.
+            timezone: config.runTimezone,
           });
           const { error: insertError } = await supabaseAdmin
             .from('scheduled_posts')

@@ -1,5 +1,7 @@
 import { generateSmartContent } from '@/lib/smart-content';
-import { pickRush, statusForMode, type AutopilotConfig } from '@/lib/autopilot/rules';
+import {
+  pickRush, statusForMode, sanitizePublishTime, DEFAULT_PUBLISH_TIME, type AutopilotConfig,
+} from '@/lib/autopilot/rules';
 
 /**
  * Ce que l'Autopilote prépare à chaque passage.
@@ -28,8 +30,14 @@ import { pickRush, statusForMode, type AutopilotConfig } from '@/lib/autopilot/r
  *   pas parce que rien n'était rendu.
  */
 
-/** Créneau de publication par défaut — début de soirée. */
-export const DEFAULT_SLOT_TIME = '18:00';
+/**
+ * Créneau de publication par défaut — début de soirée.
+ *
+ * ⚠️ RÉEXPORTÉ DEPUIS LES RÈGLES, PAS REDÉFINI. L'écran lit la même
+ * constante pour annoncer l'heure ; deux valeurs auraient fini par diverger.
+ * Le nom historique reste pour les lecteurs existants (tests, route).
+ */
+export const DEFAULT_SLOT_TIME = DEFAULT_PUBLISH_TIME;
 
 export interface PreparedPost {
   title: string;
@@ -55,13 +63,47 @@ export function slotKey(userId: string, date: string, time: string): string {
   return `${userId}|${date}|${time}`;
 }
 
-/** Date du n-ième montage du cycle, en repartant de demain. */
-export function slotDate(base: Date, index: number): string {
-  const d = new Date(base.getTime());
+/**
+ * Date du n-ième montage du cycle, en repartant de demain.
+ *
+ * ⚠️ « DEMAIN » SE LIT DANS LE FUSEAU DE L'UTILISATEUR quand `timezone` est
+ * donné. Sans lui, c'est la date LOCALE DU SERVEUR — le comportement
+ * historique, conservé pour les appels existants. Un compte à Nouméa dont le
+ * cron tourne à 8 h locales est déjà « demain » pour un serveur à Paris :
+ * lire la date serveur lui programmait sa vidéo le jour même, à une heure
+ * déjà passée, donc publiée immédiatement par le cron.
+ *
+ * L'arithmétique se fait sur les CHAMPS de la date (année, mois, jour), pas
+ * sur des millisecondes : un jour de changement d'heure fait 23 ou 25 h, et
+ * « + 24 h » y tombe sur le mauvais jour.
+ */
+export function slotDate(base: Date, index: number, timezone?: string): string {
+  let y: number;
+  let m: number;
+  let j: number;
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(base);
+      const lire = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+      y = lire('year'); m = lire('month'); j = lire('day');
+    } catch {
+      // Fuseau illisible : la date serveur, comme avant — et non un cycle
+      // interrompu pour tous les comptes suivants.
+      y = base.getFullYear(); m = base.getMonth() + 1; j = base.getDate();
+    }
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(j)) {
+      y = base.getFullYear(); m = base.getMonth() + 1; j = base.getDate();
+    }
+  } else {
+    y = base.getFullYear(); m = base.getMonth() + 1; j = base.getDate();
+  }
   // Demain, puis un jour de plus par montage : deux publications le même jour
-  // se feraient concurrence dans le fil de l'utilisateur.
-  d.setDate(d.getDate() + 1 + index);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // se feraient concurrence dans le fil de l'utilisateur. `Date.UTC` sur les
+  // champs normalise les débordements de mois sans aucune heure d'été.
+  const d = new Date(Date.UTC(y, m - 1, j + 1 + index));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 /**
@@ -98,6 +140,10 @@ export function preparePosts(input: {
   const { config, count, now } = input;
   const sujets = Array.isArray(input.topic) ? input.topic : [input.topic];
   const base = new Date(now);
+  // L'heure choisie, minutes comprises — relue par `sanitizePublishTime`
+  // parce qu'une configuration construite à la main (tests, anciens appels)
+  // peut ne pas porter le champ : on retombe alors sur 18:00, comme avant.
+  const heure = sanitizePublishTime(config.publishTime);
   const out: PreparedPost[] = [];
   for (let i = 0; i < count; i += 1) {
     // Le sujet du rang, ou le dernier disponible : jamais `undefined`, qui
@@ -110,8 +156,10 @@ export function preparePosts(input: {
     out.push({
       title: topic,
       caption: [content.subtitle, content.tagLine].filter(Boolean).join('\n\n'),
-      scheduledDate: slotDate(base, i),
-      scheduledTime: DEFAULT_SLOT_TIME,
+      // « Demain » chez l'utilisateur, pas chez le serveur ; et l'heure de
+      // publication choisie, pas 18:00 en dur.
+      scheduledDate: slotDate(base, i, config.runTimezone),
+      scheduledTime: heure,
       platforms: config.platforms,
       rushUrl: pickRush(config.rushUrls, config.lastRushUrl, i),
       content,

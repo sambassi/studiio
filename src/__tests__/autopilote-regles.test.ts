@@ -324,7 +324,10 @@ describe('L écran', () => {
   });
 
   it('les libellés viennent du module, jamais recopiés', () => {
-    expect(panneau).toContain('{MODE_LABELS[m]}');
+    // Les trois intentions (publier / valider / produire seulement) portent
+    // les libellés du module : les deux premières SONT `MODE_LABELS`.
+    expect(panneau).toContain('{INTENTION_LABELS[i]}');
+    expect(panneau).toContain('{INTENTION_HINTS[i]}');
     expect(panneau).toContain('{CADENCE_LABELS[c]}');
   });
 

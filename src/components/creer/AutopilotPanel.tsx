@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
   Sparkles,
@@ -8,15 +8,22 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
+import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
 import { THEMES, themeLabel, isCustomTopic } from '@/lib/themes';
+import { urlPubliqueAbsolue } from '@/lib/creer/posterUpload';
+import { dedupeParCleObjet } from '@/lib/storage/cle-objet-client';
+import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
+import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import {
-  sanitizeConfig, statusMessage, DEFAULT_CONFIG, MAX_PER_CYCLE,
-  CADENCES, CADENCE_LABELS, MODES, MODE_LABELS, MODE_HINTS,
+  sanitizeConfig, statusMessage, DEFAULT_CONFIG, MAX_PER_CYCLE, pickRush,
+  CADENCES, CADENCE_LABELS,
+  INTENTIONS, INTENTION_LABELS, INTENTION_HINTS, INTENTION_MODE,
+  intentionDiffusion, patchPourIntention, sanitizePublishTime,
   POSTER_MODES, POSTER_MODE_LABELS, POSTER_MODE_HINTS, type AutopilotPosterMode,
-  type AutopilotConfig, type AutopilotCadence, type AutopilotMode,
+  type AutopilotConfig, type AutopilotCadence, type AutopilotIntention,
 } from '@/lib/autopilot/rules';
 
 /** Une voix clonée, telle que la rend `GET /api/voice/clone`. */
@@ -89,21 +96,43 @@ function libelleContinuer(etape: number): string {
   return `Continuer vers ${ETAPES[etape + 1].titre}`;
 }
 
+/** « Instagram, TikTok » — les réseaux choisis, par leur nom. */
+function nomsReseaux(platforms: string[]): string {
+  return platforms.map((p) => PLATEFORMES.find((x) => x.id === p)?.label ?? p).join(', ');
+}
+
 /**
- * La phrase de diffusion, lue comme l'utilisateur la lira — « 1 vidéo, [la
- * cadence], à [l'heure choisie], sur [les réseaux], après votre validation ».
- * Calculee depuis la configuration — la meme source que le recapitulatif ;
- * rien n'y est ecrit en dur.
+ * La phrase de diffusion, lue comme l'utilisateur la lira — « 1 vidéo chaque
+ * jour, produite à 08:00, programmée le lendemain à 18:45 sur Instagram —
+ * publication automatique ». Calculee depuis la configuration — la meme
+ * source que le recapitulatif ; rien n'y est ecrit en dur.
+ *
+ * ⚠️ DEUX HEURES, DITES SÉPARÉMENT. La phrase disait « [cadence] à 08:00 …
+ * publiée automatiquement » : 08:00 est l'heure de PRODUCTION, et la
+ * publication se faisait à 18:00 le lendemain, en dur. Confondre les deux
+ * faisait attendre une vidéo à une heure où rien ne partait.
  */
 function phraseDiffusion(config: AutopilotConfig): string {
   const n = config.countPerCycle;
-  const videos = `${n} vidéo${n > 1 ? 's' : ''}`;
+  const s = n > 1 ? 's' : '';
+  const videos = `${n} vidéo${s}`;
   const cadence = CADENCE_LABELS[config.cadence].toLowerCase();
-  const ou = config.platforms.length
-    ? `sur ${config.platforms.map((p) => PLATEFORMES.find((x) => x.id === p)?.label ?? p).join(', ')}`
-    : `gardée${n > 1 ? 's' : ''} dans le Calendrier (aucun réseau choisi)`;
-  const validation = config.mode === 'review' ? 'après votre validation' : 'publiée automatiquement';
-  return `${videos} ${cadence} à ${heureLisible(config.runHour)}, ${ou}, ${validation}.`;
+  const production = `produite${s} à ${heureLisible(config.runHour)}`;
+  const heure = heurePublicationLisible(config);
+  let suite: string;
+  switch (intentionDiffusion(config)) {
+    case 'publier':
+      suite = config.platforms.length
+        ? `programmée${s} le lendemain à ${heure} sur ${nomsReseaux(config.platforms)} — publication automatique`
+        : `programmée${s} le lendemain à ${heure} — mais AUCUN réseau choisi : rien ne partira`;
+      break;
+    case 'valider':
+      suite = `déposée${s} en brouillon dans le Calendrier pour ${nomsReseaux(config.platforms)}, le lendemain à ${heure} — rien ne part sans votre validation`;
+      break;
+    default:
+      suite = `déposée${s} en brouillon dans le Calendrier, sans réseau — à télécharger`;
+  }
+  return `${videos} ${cadence}, ${production}, ${suite}.`;
 }
 
 /**
@@ -130,9 +159,21 @@ function pourcent(v: number): string {
   return `${Math.round(v * 100)} %`;
 }
 
-/** « 08:00 » — l'heure telle que l'utilisateur la lit. */
+/** « 08:00 » — l'heure de PRODUCTION (entière) telle que l'utilisateur la lit. */
 function heureLisible(h: number): string {
   return `${String(h).padStart(2, '0')}:00`;
+}
+
+/**
+ * « 18:45 » — l'heure de PUBLICATION, minutes comprises.
+ *
+ * Relue par `sanitizePublishTime` plutôt qu'affichée telle quelle : l'état
+ * local est déjà assaini, mais une valeur vide pendant la saisie (le
+ * navigateur rend `''` sur un champ `time` incomplet) s'afficherait comme un
+ * trou dans la phrase.
+ */
+function heurePublicationLisible(config: Pick<AutopilotConfig, 'publishTime'>): string {
+  return sanitizePublishTime(config.publishTime);
 }
 
 /**
@@ -224,14 +265,20 @@ function RECAP_CONSTANT(
 }
 
 function RECAP_DIFFUSION(config: AutopilotConfig): Array<[string, string]> {
+  const intention = intentionDiffusion(config);
   return [
     ['Rythme', CADENCE_LABELS[config.cadence]],
+    // Deux lignes, deux heures : la production et la publication ne sont
+    // pas le même moment, et le récapitulatif les confondait.
     ['Heure de départ', `${heureLisible(config.runHour)} (${config.runTimezone})`],
+    ['Heure de publication', `${heurePublicationLisible(config)} (${config.runTimezone}), le lendemain de la production`],
     ['Par cycle', `${config.countPerCycle} vidéo${config.countPerCycle > 1 ? 's' : ''}`],
-    ['Diffusion', MODE_LABELS[config.mode]],
+    ['Diffusion', INTENTION_LABELS[intention]],
     ['Plateformes', config.platforms.length
       ? config.platforms.join(', ')
-      : 'Aucune — les vidéos restent dans le Calendrier'],
+      : intention === 'produire'
+        ? 'Aucune — brouillons à télécharger depuis le Calendrier'
+        : 'Aucune — les vidéos restent dans le Calendrier'],
     ['Seuil de crédits', `${config.creditFloor} crédits`],
   ];
 }
@@ -299,9 +346,32 @@ export default function AutopilotPanel({
    */
   const [libOpen, setLibOpen] = useState<null | 'rush' | 'musique' | 'affiche'>(null);
   const [etape, setEtape] = useState(0);
+  /**
+   * Les « Réglages avancés » de l'étape Style sont-ils dépliés ? Le lecteur
+   * du mixage n'existe QUE dépliés : replier le bloc doit couper le son, pas
+   * le laisser jouer derrière un résumé.
+   */
+  const [avanceOuvert, setAvanceOuvert] = useState(false);
   const [themePerso, setThemePerso] = useState('');
   /** Les colonnes d'identité existent-elles en base ? Voir `brandingReady`. */
   const [identiteReady, setIdentiteReady] = useState(true);
+  /** La colonne `publish_time` existe-t-elle ? Voir `publishTimeReady` dans la route. */
+  const [heurePublicationReady, setHeurePublicationReady] = useState(true);
+  /**
+   * La carte d'intention que l'utilisateur a CLIQUÉE — `null` tant qu'il n'a
+   * rien cliqué : on lit alors l'intention que dit la configuration.
+   *
+   * ⚠️ SANS CET ÉTAT, LE SÉLECTEUR DE RÉSEAUX DISPARAÎT POUR TOUJOURS.
+   * L'intention se DÉRIVE de `(mode, platforms)` : `review` sans réseau se
+   * lit « produire seulement », et c'est aussi la configuration PAR DÉFAUT.
+   * Masquer les réseaux sur cette seule lecture rendrait impossible d'en
+   * choisir un : cliquer « me laisser valider » n'écrit que `mode: review`,
+   * qui ne change rien, et la lecture resterait « produire ». La carte
+   * cliquée gouverne donc l'AFFICHAGE (carte en surbrillance, bloc des
+   * réseaux) ; la configuration reste la seule vérité pour la phrase et le
+   * récapitulatif.
+   */
+  const [intentionCliquee, setIntentionCliquee] = useState<AutopilotIntention | null>(null);
   const [voixClonees, setVoixClonees] = useState<VoixClonee[]>([]);
   /** La liste des voix a été relue (même vide) : le bloc Jumeau peut se prononcer. */
   const [voixChargees, setVoixChargees] = useState(false);
@@ -322,6 +392,7 @@ export default function AutopilotPanel({
         if (cancelled) return;
         setReady(data?.ready !== false);
         setIdentiteReady(data?.brandingReady !== false);
+        setHeurePublicationReady(data?.publishTimeReady !== false);
         if (data?.config) setConfig(sanitizeConfig(data.config));
       } catch {
         if (!cancelled) setReady(false);
@@ -370,6 +441,9 @@ export default function AutopilotPanel({
         throw new Error(data?.error || `Erreur ${res.status}`);
       }
       if (data.config) setConfig(sanitizeConfig(data.config));
+      // Le serveur dit s'il a pu écrire l'heure de publication : sans la
+      // colonne, l'écran doit continuer à l'annoncer non conservée.
+      if (typeof data.publishTimeReady === 'boolean') setHeurePublicationReady(data.publishTimeReady);
       setNotice('Enregistré.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement impossible.');
@@ -386,6 +460,65 @@ export default function AutopilotPanel({
 
   const etat = statusMessage(config, Date.now(), (d) =>
     d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }));
+
+  /**
+   * Ajoute des rushes à la banque — en UN enregistrement.
+   *
+   * Absolues d'abord : en production la Médiathèque peut recevoir une URL
+   * relative du stockage, que `sanitizeConfig` (`^https?://`) écarterait
+   * sans un mot. Dédoublonnées ensuite par clé d'objet : le même fichier
+   * arrive en relatif par l'envoi et en absolu par la grille, et deux
+   * écritures du même rush feraient tomber deux rangs de la rotation sur la
+   * même vidéo.
+   */
+  const ajouterRushes = useCallback((urls: string[]) => {
+    const absolues = urls
+      .map((u) => urlPubliqueAbsolue(u, window.location.origin))
+      .filter((u): u is string => !!u);
+    if (absolues.length === 0) return;
+    const banque = dedupeParCleObjet([...config.rushUrls, ...absolues]);
+    // Rien de nouveau (le même rush re-choisi) : pas d'enregistrement pour rien.
+    const avant = dedupeParCleObjet(config.rushUrls);
+    if (banque.length === avant.length && banque.every((u, i) => u === avant[i])) return;
+    enregistrer({ rushUrls: banque });
+  }, [config.rushUrls, enregistrer]);
+
+  /**
+   * Ce que l'écoute du mixage doit rendre — LA MÊME CHOSE QUE LE RENDU.
+   *
+   * Le cron (`buildAutopilotDesign`) transmet trois volumes statiques et
+   * `rushMuted: !keepRushAudio`, sans image-clé ; le serveur (`mixAt`) les
+   * lit tels quels. Le lecteur, lui, ne connaît que des images-clés : une
+   * seule, à t=0, portant ces mêmes valeurs, et le rush à 0 quand son son
+   * est coupé — c'est ainsi que `rushMuted` s'entend. Un test de parité
+   * vérifie que `mixAt(0, …)` donne les mêmes nombres.
+   *
+   * ⚠️ MÉMORISÉ : le lecteur redémarre à chaque changement d'IDENTITÉ du
+   * tableau — un tableau neuf à chaque rendu le ferait repartir en boucle.
+   */
+  const imagesClesMixage = useMemo<AudioKeyframe[]>(() => [{
+    id: 'autopilote-0',
+    time: 0,
+    musicVolume: config.musicVolume,
+    rushVolume: config.keepRushAudio ? config.rushVolume : 0,
+    voiceVolume: config.voiceVolume,
+  }], [config.musicVolume, config.rushVolume, config.voiceVolume, config.keepRushAudio]);
+
+  /**
+   * Le rush que l'écoute fait entendre : celui que le cron prendrait au
+   * prochain passage (`pickRush`, même règle) — et seulement si son son est
+   * gardé. Aucune voix : elle n'existe pas avant le rendu payant
+   * (`buildAutopilotVoices` ne tourne que dans le cron) et l'écoute ne
+   * déclenche jamais une génération.
+   */
+  const rushEcoute = config.keepRushAudio
+    ? (pickRush(config.rushUrls, config.lastRushUrl, 0) ?? null)
+    : null;
+  const dureesEcoute = useMemo(() => {
+    const video = config.rushUrls.length > 0 ? RUSH_SEQUENCE_SECONDS.fallback : 0;
+    const { intro, cards, cta } = DEFAULT_SEQUENCE_SECONDS;
+    return { intro, cards, cta, video, videoStart: intro + cards, total: intro + cards + video + cta };
+  }, [config.rushUrls.length]);
 
   /** Ajoute ou retire un theme de la rotation. */
   const basculerTheme = useCallback((topic: string) => {
@@ -651,14 +784,20 @@ export default function AutopilotPanel({
                 ))}
               </ul>
             )}
+            {/* ⚠️ UN SEUL `enregistrer` POUR TOUT LE LOT. `enregistrer` se
+                referme sur `config` : N appels dans la même tâche liraient
+                tous la MÊME banque de départ, et seul le dernier rush
+                survivrait. `onSelectMany` livre le lot en un appel. Le clic
+                sur la grille (`onSelect`) reste le chemin d'un rush à la fois. */}
             <MediaLibrary
               isOpen={libOpen === 'rush'}
               onClose={() => setLibOpen(null)}
               mediaType="video"
               onSelect={(url) => {
                 setLibOpen(null);
-                if (url) enregistrer({ rushUrls: [...config.rushUrls, url] });
+                if (url) ajouterRushes([url]);
               }}
+              onSelectMany={(items) => ajouterRushes(items.map((i) => i.url))}
             />
           </div>
 
@@ -907,7 +1046,14 @@ export default function AutopilotPanel({
               valeur recommandee. Replies : l'utilisateur ne doit pas croire
               qu'il doit regler chaque curseur pour continuer. Rien n'est
               retire — les memes reglages, les memes gestionnaires. */}
-          <details className="rounded-xl border border-gray-800 bg-gray-900/30" data-autopilot-style-avance>
+          <details
+            className="rounded-xl border border-gray-800 bg-gray-900/30"
+            data-autopilot-style-avance
+            open={avanceOuvert}
+            // `toggle` est l'événement natif du <details> : il part au clic
+            // sur le résumé comme à une ouverture programmée.
+            onToggle={(e) => setAvanceOuvert((e.currentTarget as HTMLDetailsElement).open)}
+          >
             <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-300 hover:text-white">
               Réglages avancés
               <span className="ml-1.5 font-normal text-gray-500">— musique, voix, son du rush, mixeur</span>
@@ -1112,6 +1258,48 @@ export default function AutopilotPanel({
               ))}
             </div>
           </div>
+
+{/* ── Écouter le mixage ────────────────────────────────────────────
+              Le même lecteur que Créer une vidéo, sur les niveaux du mixeur
+              ci-dessus. Rendu SEULEMENT quand le bloc est déplié : replier
+              le démonte, et le démonter coupe le son (nettoyage complet
+              de `AudioMixPreview`). Changer d'étape le démonte aussi. */}
+          {avanceOuvert && (
+            <div data-autopilot-ecoute-mixage>
+              <p className="text-xs font-medium text-gray-300 mb-1">Écoute</p>
+              {(config.musicUrl || rushEcoute) ? (
+                <>
+                  <p className="text-[11px] text-gray-500">
+                    Les niveaux du mixeur, sur {config.musicUrl ? 'votre musique' : ''}
+                    {config.musicUrl && rushEcoute ? ' et ' : ''}
+                    {rushEcoute ? 'le prochain rush de la rotation' : ''}.
+                  </p>
+                  <AudioMixPreview
+                    audioKeyframes={imagesClesMixage}
+                    musicUrl={config.musicUrl}
+                    voiceUrl={null}
+                    rushUrl={rushEcoute}
+                    introDuration={dureesEcoute.intro}
+                    cardsDuration={dureesEcoute.cards}
+                    ctaDuration={dureesEcoute.cta}
+                    totalDuration={dureesEcoute.total}
+                    videoSeqStart={dureesEcoute.videoStart}
+                    videoSeqDuration={dureesEcoute.video}
+                  />
+                </>
+              ) : (
+                <p className="text-[11px] text-gray-500" data-autopilot-ecoute-vide>
+                  Ajoutez une musique ou gardez le son du rush pour écouter le mixage.
+                </p>
+              )}
+              {config.voiceEnabled && (
+                <p className="flex items-start gap-1.5 text-[11px] text-gray-500 mt-1.5" data-autopilot-ecoute-voix>
+                  <Mic className="w-3 h-3 mt-0.5 shrink-0" />
+                  Voix off non incluse dans l’écoute : elle est générée au moment du rendu (option payante).
+                </p>
+              )}
+            </div>
+          )}
             </div>
           </details>
         </div>
@@ -1145,9 +1333,48 @@ export default function AutopilotPanel({
               ))}
             </select>
             <p className="text-[11px] text-gray-500 mt-1">
-              Heure de {config.runTimezone.replace('_', ' ')}. La fréquence
-              ci-dessous décide de l’espacement ; celle-ci, du moment.
+              Heure de {config.runTimezone.replace('_', ' ')} à laquelle Studiio
+              PRODUIT les vidéos. La fréquence ci-dessous décide de
+              l’espacement ; celle-ci, du moment.
             </p>
+          </div>
+
+{/* ── Heure de publication ─────────────────────────────────────
+              DISTINCTE de l'heure de depart : celle-ci est l'heure a laquelle
+              les posts produits sont PROGRAMMES (le lendemain de la
+              production). Un champ `time` et non une liste de 24 heures :
+              les minutes comptent, et elles sont conservees telles quelles
+              (« 18:45 »), jusqu'a `scheduled_time` et au cron. */}
+          <div>
+            <label htmlFor="autopilot-publish-time" className="block text-xs font-medium text-gray-300 mb-1.5">
+              Heure de publication
+            </label>
+            <input
+              id="autopilot-publish-time"
+              type="time"
+              step={60}
+              value={config.publishTime}
+              // Le navigateur rend `''` sur une saisie incomplete : on ne
+              // l'enregistre pas — `sanitizePublishTime` la ramenerait a
+              // 18:00 et ecraserait l'heure en cours de frappe.
+              onChange={(e) => { if (e.target.value) enregistrer({ publishTime: e.target.value }); }}
+              disabled={!ready || saving}
+              data-autopilot-publish-time
+              className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
+            />
+            <p className="text-[11px] text-gray-500 mt-1">
+              Heure de {config.runTimezone.replace('_', ' ')} ; les minutes sont
+              conservées. Chaque vidéo est programmée le lendemain de sa
+              production, à cette heure.
+            </p>
+            {ready && !heurePublicationReady && (
+              <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mt-1" data-autopilot-publish-time-absente>
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                L’heure de publication n’est pas encore conservée : la migration
+                <code className="mx-1">2026-09-21-autopilot-publish-time</code> n’a pas été
+                appliquée. Les vidéos restent programmées à 18:00.
+              </p>
+            )}
           </div>
 
 {/* ── Cadence et nombre ────────────────────────────────────────── */}
@@ -1185,33 +1412,65 @@ export default function AutopilotPanel({
               </select>
             </div>
           </div>
-{/* ── Mode ─────────────────────────────────────────────────────── */}
+{/* ── Intention ────────────────────────────────────────────────
+              TROIS cartes, DEUX modes en base. « Produire seulement » n'est
+              que `review` sans reseau : aucun statut, aucune colonne de plus
+              (voir `intentionDiffusion` / `patchPourIntention`). Le choix
+              s'ecrit en UN `enregistrer` — mode ET reseaux — pour ne jamais
+              laisser, entre deux appels, une configuration qui se lirait
+              autrement. */}
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Validation</p>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-2">Que fait Studiio des vidéos ?</p>
             <div className="space-y-1.5">
-              {MODES.map((m: AutopilotMode) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => enregistrer({ mode: m })}
-                  disabled={!ready || saving}
-                  aria-pressed={config.mode === m}
-                  data-autopilot-mode={m}
-                  className={`w-full text-left rounded-lg border px-3 py-2 transition disabled:opacity-40 ${
-                    config.mode === m
-                      ? 'border-purple-500/50 bg-gray-800'
-                      : 'border-gray-800 hover:border-gray-700'
-                  }`}
-                >
-                  <span className="text-xs font-medium">{MODE_LABELS[m]}</span>
-                  <span className="block text-[11px] text-gray-500 mt-0.5">{MODE_HINTS[m]}</span>
-                </button>
-              ))}
+              {INTENTIONS.map((i: AutopilotIntention) => {
+                const intention = intentionCliquee ?? intentionDiffusion(config);
+                const choisie = intention === i;
+                // Publier sans reseau : le cron marquerait chaque post
+                // « failed » (aucune plateforme). On le dit, et on ne laisse
+                // pas y entrer — sauf si la configuration y est DEJA, qu'il
+                // faut pouvoir afficher telle qu'elle est.
+                const sansReseau = i === 'publier' && config.platforms.length === 0 && !choisie;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setIntentionCliquee(i); enregistrer(patchPourIntention(i)); }}
+                    disabled={!ready || saving || sansReseau}
+                    aria-pressed={choisie}
+                    data-autopilot-intention={i}
+                    data-autopilot-mode={INTENTION_MODE[i]}
+                    title={sansReseau ? 'Choisissez d’abord au moins un réseau (« Préparer et me laisser valider », puis les réseaux).' : undefined}
+                    className={`w-full text-left rounded-lg border px-3 py-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                      choisie
+                        ? 'border-purple-500/50 bg-gray-800'
+                        : 'border-gray-800 hover:border-gray-700'
+                    }`}
+                  >
+                    <span className="text-xs font-medium">{INTENTION_LABELS[i]}</span>
+                    <span className="block text-[11px] text-gray-500 mt-0.5">{INTENTION_HINTS[i]}</span>
+                    {sansReseau && (
+                      <span className="block text-[11px] text-amber-400 mt-0.5" data-autopilot-intention-bloquee>
+                        Aucun réseau choisi : rien ne partirait. Choisissez d’abord vos réseaux.
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
-{/* ── Plateformes ──────────────────────────────────────────────── */}
+{/* ── Plateformes ──────────────────────────────────────────────
+              Masquees sous « produire seulement » : l'intention VIENT de
+              l'absence de reseau, en proposer un ici la contredirait. Le
+              bloc revient des qu'une autre intention est choisie. */}
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Réseaux</p>
+          {(intentionCliquee ?? intentionDiffusion(config)) === 'produire' ? (
+            <p className="text-[11px] text-gray-500" data-autopilot-reseaux-masques>
+              Aucun réseau : les vidéos arrivent en brouillon dans le Calendrier,
+              à télécharger depuis l’export sécurisé. Choisissez « {INTENTION_LABELS.valider} »
+              pour sélectionner des réseaux.
+            </p>
+          ) : (
           <div>
             <p className="text-xs font-medium text-gray-300 mb-2">Où publier ?</p>
             <div className="flex flex-wrap gap-1.5">
@@ -1239,6 +1498,7 @@ export default function AutopilotPanel({
               })}
             </div>
           </div>
+          )}
         </div>
       )}
 
@@ -1404,9 +1664,10 @@ export default function AutopilotPanel({
           {config.enabled && (
             <p className="flex items-start gap-1.5 text-[11px] text-gray-400" data-autopilot-depart>
               <Rocket className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              Départ à {heureLisible(config.runHour)} ({config.runTimezone}),
+              Production à {heureLisible(config.runHour)} ({config.runTimezone}),
               {' '}{CADENCE_LABELS[config.cadence].toLowerCase()}.
-              Prochain départ : {prochainDepart(config.runHour, config.runTimezone)}.
+              Prochaine production : {prochainDepart(config.runHour, config.runTimezone)}.
+              {' '}Publication des vidéos produites : le lendemain à {heurePublicationLisible(config)}.
             </p>
           )}
         </div>

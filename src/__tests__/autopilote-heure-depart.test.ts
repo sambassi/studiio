@@ -132,15 +132,32 @@ describe('Rétro-compatibilité', () => {
 });
 
 describe('L écran', () => {
-  it('propose les 24 heures, et les enregistre', () => {
+  it('propose les 24 heures de PRODUCTION, et les enregistre', () => {
     expect(panneau).toContain('data-autopilot-hour');
     expect(panneau).toContain('enregistrer({ runHour: Number(e.target.value) })');
     expect(panneau).toContain('Array.from({ length: 24 }');
   });
 
-  it('le récapitulatif annonce l heure choisie, plus « 08:00 » en dur', () => {
+  it('et une heure de PUBLICATION à la minute, distincte', () => {
+    // Un champ `time` (minutes comprises), pas une seconde liste d'heures
+    // entières : « 18:45 » doit pouvoir s'écrire et se conserver.
+    expect(panneau).toContain('id="autopilot-publish-time"');
+    expect(panneau).toContain('data-autopilot-publish-time');
+    expect(panneau).toContain('step={60}');
+    expect(panneau).toContain('value={config.publishTime}');
+    expect(panneau).toContain("enregistrer({ publishTime: e.target.value })");
+    expect(panneau).toContain('les minutes sont');
+  });
+
+  it('le récapitulatif annonce les DEUX heures, plus « 08:00 » en dur', () => {
     expect(panneau).toContain("['Heure de départ', `${heureLisible(config.runHour)}");
+    expect(panneau).toContain("['Heure de publication', `${heurePublicationLisible(config)}");
     expect(panneau).not.toContain('chaque jour à 08:00');
+  });
+
+  it('dit quand la colonne publish_time manque, au lieu d un champ sans effet', () => {
+    expect(panneau).toContain('data-autopilot-publish-time-absente');
+    expect(panneau).toContain('2026-09-21-autopilot-publish-time');
   });
 
   it('le prochain départ cherche l INSTANT, pas l heure', () => {

@@ -150,7 +150,11 @@ describe('Le wizard', () => {
     // fuseau de l'utilisateur, pas sur un 06:00 UTC en dur.
     expect(panneau).toContain('function prochainDepart(');
     expect(panneau).toContain('timeZone: timezone,');
-    expect(panneau).toContain('Prochain départ');
+    // « Prochaine production », plus « Prochain départ » : c'est l'heure à
+    // laquelle le moteur PRODUIT, et la publication se fait le lendemain à
+    // l'heure de publication — dite juste après, séparément.
+    expect(panneau).toContain('Prochaine production');
+    expect(panneau).toContain('Publication des vidéos produites : le lendemain à {heurePublicationLisible(config)}');
     // L'ancienne notice ne dit plus vrai : le déclencheur est configuré.
     expect(panneau).not.toContain('démarre une fois le déclencheur planifié');
   });
