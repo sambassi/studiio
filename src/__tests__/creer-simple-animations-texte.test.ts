@@ -212,8 +212,24 @@ describe('Le menu', () => {
     expect(wizard).toContain('hint={TEXT_ANIMATION_LABELS[textAnimation]}');
   });
 
-  it('l écran dit où l effet se voit — pas dans l aperçu', () => {
-    expect(wizard).toContain('Visible à l&apos;export, pas dans');
+  it('l écran dit où l effet se voit — dans les vignettes et la lecture, comme au rendu', () => {
+    // L'ancienne phrase disait « pas dans l'aperçu » : c'était vrai tant que
+    // « Tout » n'était qu'une image figée. Depuis les vignettes animées et la
+    // lecture des séquences, la dire encore serait faux — et l'utilisateur ne
+    // chercherait pas l'aperçu qu'on lui donne.
+    expect(wizard).not.toContain('Visible à l&apos;export, pas dans');
+    expect(wizard).toContain('Chaque option s’anime au survol');
+    expect(wizard).toContain('Le rendu final');
+  });
+
+  it('chaque option porte sa vignette, animée par le MÊME composant que le rendu serveur', () => {
+    // `TextAnimationMiniPreview` enveloppe un mot d'exemple dans
+    // `TextAnimationLayer` — pas une seconde implémentation de l'effet.
+    expect(wizard).toContain('<TextAnimationMiniPreview style={style} playing={joue} height={40} />');
+    const mini = readFileSync(resolve(__dirname, '../components/creer/TextAnimationMiniPreview.tsx'), 'utf-8');
+    expect(mini).toContain("import TextAnimationLayer from '@/components/creer/TextAnimationLayer';");
+    expect(mini).toContain('<TextAnimationLayer style={style} progress={progress}>');
+    expect(mini).toContain('revealText(EXEMPLE, reveal)');
   });
 
   it('la limite de la machine à écrire sur les cartes est DITE', () => {
