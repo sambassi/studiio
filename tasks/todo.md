@@ -2,6 +2,27 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
+## En cours — Parcours Créer + Autopilote : 8 points utilisateur (`fix/creer-autopilote-parcours`, base `1e11373`) — 2026-09-21
+
+Corrections minimales vérifiables, chacune classée (défaut reproduit / configuration manquante / fonctionnalité désactivée / amélioration). Pas de merge, pas de déploiement, pas de secret.
+
+- [x] 1 — Affiche IA « Service IA non configuré » = **configuration manquante** : `REPLICATE_API_TOKEN` absente de Coolify (vérifié par nom, valeur jamais lue). Route : alerte admin + message qui nomme la clé, 503 sans débit ; `.env.example`/CLAUDE.md ; vignette précédente conservée sur échec ; signature du rendu couvre l'affiche (jamais un rendu périmé réutilisé)
+- [x] 2 — Voix clonée dans Créer : liste sans court-circuit sur la clé, relecture des ids `elevenlabs-…`, aucun repli silencieux OpenAI, présélection, persistance brouillon
+- [x] 3 — Durées voix/séquence : une règle (voix + 0,3 s au dixième), gravité info/warning, action « Adapter la durée à la voix », step 0.1
+- [x] 4 — Mini-aperçus transitions/animations (moteur réel, réduction des animations) ; « Tout » = lecture temporelle des séquences (Créer et Autopilote)
+- [x] 5 — Médiathèque : import multiple (file d'attente, concurrence 2, erreurs isolées, reprise des échecs, URL absolues, dédup par clé de stockage)
+- [x] 6 — Jumeau : avatar D-ID prêt (voix utilisable) ; seul le moteur VIDÉO le refuse, en le disant ; `JUMEAU_MOTEUR_ACTIVE` absent en prod (constaté, non activé)
+- [x] 7 — Autopilote : « Écouter le mixage » (AudioMixPreview réutilisé, mêmes valeurs que `mixAt`, voix non générée)
+- [x] 8 — Heure de publication HH:MM Autopilote (migration `publish_time`, sondée), trois intentions dans les deux parcours, coût affiché sur le téléchargement, cron inchangé
+- [x] Coordination : full Vitest 269 fichiers / 6667 verts, PG 260/260, tsc 89 = baseline (contenu identique), PR draft — **pas de merge, pas de déploiement**
+
+### À lancer sur le serveur (après merge + déploiement)
+```
+psql -U studiio -d studiio -f migrations/2026-09-21-autopilot-publish-time.sql
+docker kill -s SIGUSR1 studiio-postgrest
+```
+Variable Coolify manquante (studiio-app) : `REPLICATE_API_TOKEN` (Affiche IA). `JUMEAU_MOTEUR_ACTIVE` volontairement non posée.
+
 ## En cours — Sécurité convert-to-mp4 + fetch-media (`fix/convert-mp4-security`, base `b953e73`) — 2026-09-21
 
 Correction minimale, sans migration : auth + ownership strict + parser/validateur de cible partagés + streaming borné + erreurs muettes.

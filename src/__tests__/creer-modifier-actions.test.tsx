@@ -97,6 +97,14 @@ function installerFetch() {
         json: async () => ({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } }),
       } as Response;
     }
+    // L'etat des reseaux, lu au montage par l'etape Envoi (`useEtatReseaux`) :
+    // meme regle que le solde, il ne doit pas consommer la file des posts.
+    if (u.includes('/api/social/')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ success: true, platforms: {}, channels: {}, autorise: false, comptes: [] }),
+      } as Response;
+    }
     const r = reponses.length > 1 ? reponses.shift()! : reponses[0];
     if (r.reseau) throw new Error('offline');
     return {

@@ -342,6 +342,51 @@ check » : 12 tests `tests-pg` rouges pour rien. Démarrer avec
 `-c lc_messages=C` (et `unix_socket_directories=''` si le chemin du
 scratchpad dépasse 103 octets). `DATABASE_URL=postgresql://studiio_ci:studiio_ci@127.0.0.1:5499/studiio_ci npm run test:pg`.
 
+## [2026-09-21] Deux règles pour la même grandeur finissent par se contredire à l'écran
+
+**Ce qui a mal tourné** — Le calage automatique posait la séquence à
+`ceil(voix + 0,3)` (entier) ; l'indicateur comparait à `ceil(voix)` sans marge
+avec une tolérance de 0,3 s — plus étroite que l'arrondi à la seconde. Résultat
+vu en prod : « Voix 5,1 s < séquence 6 s : raccourcir de 0,9 s (séquence à 6 s
+pour coller) » — l'application signalait son propre réglage comme une erreur et
+proposait la valeur déjà en place.
+
+**Règle** — (1) Une cible calculée par l'UI doit être produite par LA fonction
+qui l'applique (`voiceSequenceSeconds`), jamais recalculée à côté. (2) La
+tolérance d'un contrôle doit être ≥ la résolution du réglage qu'il contrôle,
+sinon il rougit sur ses propres arrondis. (3) Un test « cas de prod » verrouille
+que la cible proposée n'est JAMAIS la valeur courante. (4) Une voix plus courte
+laisse du silence : information, pas avertissement — seule la coupure (voix qui
+déborde) mérite l'orange.
+
+## [2026-09-21] Une garde « pas encore pris en charge » posée trop haut désactive ce qui marche
+
+**Ce qui a mal tourné** — La garde D-ID du jumeau rendait le jumeau « non prêt »
+pour tout avatar D-ID, donc l'interrupteur de l'Autopilote inerte — alors que
+l'Autopilote n'utilise que la VOIX du jumeau, indépendante du fournisseur de
+l'avatar. Le message ne disait ni quoi ni pourquoi.
+
+**Règle** — Une limitation propre à UN moteur (vidéo HeyGen) se juge dans la
+disponibilité de CE moteur pour CET avatar (`moteurJumeauDisponiblePour`), pas
+dans l'état « prêt » qui sert à d'autres usages. La défense reste au plus près
+du danger (le moteur refuse tout fournisseur ≠ HeyGen avant tout débit), et le
+message nomme ce qui manque ET ce qui marche déjà. On n'active jamais un
+drapeau global pour faire disparaître un message.
+
+## [2026-09-21] Un 503 « non configuré » qui n'alerte personne est une panne silencieuse
+
+**Ce qui a mal tourné** — `REPLICATE_API_TOKEN` absente en prod : « Service IA
+non configuré » sous le bouton Générer pendant des jours, sans alerte, parce que
+la branche sortait AVANT le `catch` qui appelle `detectAndReportServiceError`.
+La variable n'était ni dans `.env.example` ni dans CLAUDE.md.
+
+**Règle** — Toute branche « configuration manquante » (1) alerte l'admin en
+nommant la VARIABLE (jamais une valeur), (2) rend un message utilisateur qui dit
+que c'est côté serveur et qu'aucun crédit n'est débité, (3) a un test
+comportemental (pas seulement une regex sur le source), (4) figure dans
+`.env.example`. Vérifier la présence en prod se fait par NOM (Coolify), sans
+jamais lire la valeur.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :
