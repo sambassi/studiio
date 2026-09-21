@@ -16,12 +16,10 @@ Corrections minimales vérifiables, chacune classée (défaut reproduit / config
 - [x] 8 — Heure de publication HH:MM Autopilote (migration `publish_time`, sondée), trois intentions dans les deux parcours, coût affiché sur le téléchargement, cron inchangé
 - [x] Coordination : full Vitest 269 fichiers / 6667 verts, PG 260/260, tsc 89 = baseline (contenu identique), PR draft — **pas de merge, pas de déploiement**
 
-### À lancer sur le serveur (après merge + déploiement)
-```
-psql -U studiio -d studiio -f migrations/2026-09-21-autopilot-publish-time.sql
-docker kill -s SIGUSR1 studiio-postgrest
-```
-Variable Coolify manquante (studiio-app) : `REPLICATE_API_TOKEN` (Affiche IA). `JUMEAU_MOTEUR_ACTIVE` volontairement non posée.
+### Livré en production le 2026-09-21 (PR #418 → `980d6cd`, déploiement Coolify `a9obsbnefqak53ytiqr3fjg2`)
+- [x] Migration `2026-09-21-autopilot-publish-time.sql` appliquée (sauvegardes `/root/backups/studiio-pre-publish-time-*.dump` + `autopilot_config-pre-publish-time-*.sql`), PostgREST rechargé (SIGUSR1), colonne servie.
+- [ ] Variable Coolify manquante (studiio-app) : `REPLICATE_API_TOKEN` (Affiche IA) — aucune clé disponible localement, à saisir par le propriétaire. `JUMEAU_MOTEUR_ACTIVE` volontairement non posée.
+- [ ] Connexion Google locale impossible sans URI `http://localhost:<port>/api/auth/callback/google` dans la console Google (refus `redirect_uri_mismatch`) ; `.env.local` pointe `NEXTAUTH_URL` sur studiio.pro → callback sur prod → `InvalidCheck: pkceCodeVerifier`.
 
 ## En cours — Sécurité convert-to-mp4 + fetch-media (`fix/convert-mp4-security`, base `b953e73`) — 2026-09-21
 
