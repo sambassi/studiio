@@ -36,12 +36,17 @@ const composer = readFileSync(resolve(__dirname, '../lib/video-composer.ts'), 'u
 const panel = readFileSync(resolve(__dirname, '../components/creer/SequenceVoicesPanel.tsx'), 'utf-8');
 
 describe('voiceSequenceSeconds — la durée qui contient la voix', () => {
-  it('ajoute la marge et arrondit au-DESSUS', () => {
+  it('ajoute la marge et arrondit au dixième au-DESSUS', () => {
     // Arrondir au plus proche pourrait retomber sous la voix : la fin du
     // texte serait coupée, ce que toute la mécanique cherche à éviter.
-    expect(voiceSequenceSeconds(4.0)).toBe(5);
-    expect(voiceSequenceSeconds(4.5)).toBe(5);
-    expect(voiceSequenceSeconds(4.8)).toBe(6);
+    // Au dixième, pas à la seconde : l'arrondi entier laissait jusqu'à
+    // 1,3 s de silence, que l'indicateur signalait ensuite « à raccourcir »
+    // vers la valeur déjà en place.
+    expect(voiceSequenceSeconds(4.0)).toBeCloseTo(4.3, 5);
+    expect(voiceSequenceSeconds(4.5)).toBeCloseTo(4.8, 5);
+    expect(voiceSequenceSeconds(4.8)).toBeCloseTo(5.1, 5);
+    expect(voiceSequenceSeconds(5.1)).toBeCloseTo(5.4, 5);
+    expect(voiceSequenceSeconds(4.37)).toBeCloseTo(4.7, 5);
   });
 
   it('la durée obtenue contient TOUJOURS la voix', () => {

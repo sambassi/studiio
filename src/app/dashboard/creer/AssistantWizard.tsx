@@ -9217,6 +9217,17 @@ export default function AssistantWizard() {
                     hasVideoOverlay={!!rushUrl}
                     batchCount={batchCount}
                     onAudioError={(msg) => setError(msg)}
+                    onSequenceDurationChange={(key, seconds) => {
+                      // Action explicite de l'utilisateur : la meme table de
+                      // setters que le calage automatique a la generation.
+                      const setters: Record<SequenceKey, (n: number) => void> = {
+                        titre: setIntroDuration,
+                        cartes: setCardsDuration,
+                        video: setVideoDuration,
+                        cta: setCtaDuration,
+                      };
+                      setters[key](seconds);
+                    }}
                   />
                 )}
 

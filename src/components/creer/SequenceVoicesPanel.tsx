@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info, Check } from 'lucide-react';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
-import { compareVoiceToSequence, voiceFitMessage, estimateLabel } from '@/lib/creer/voiceFit';
+import { compareVoiceToSequence, voiceFitMessage, estimateLabel, VOICE_FIT_APPLY_LABEL } from '@/lib/creer/voiceFit';
 import {
   fetchCustomVoices,
   isHeyGenVoiceId,
@@ -164,6 +164,13 @@ interface Props {
   /** Optional toast bridge so audio playback errors surface to the user
    *  instead of dying silently in the console. */
   onAudioError?: (message: string) => void;
+  /**
+   * Action explicite « Adapter la duree a la voix » : ecrit la duree cible
+   * (`fit.suggestedSeqSec`) dans la sequence. Sans ce callback, le bouton
+   * n'est pas affiche. Un CLIC, jamais un effet : une duree reglee a la main
+   * est conservee tant que l'utilisateur n'applique pas l'action.
+   */
+  onSequenceDurationChange?: (key: SequenceKey, seconds: number) => void;
 }
 
 export function SequenceVoicesPanel({
@@ -180,6 +187,7 @@ export function SequenceVoicesPanel({
   hasVideoOverlay,
   batchCount,
   onAudioError,
+  onSequenceDurationChange,
 }: Props) {
   // Shared TTS voice picker (one voice for all sequences in this panel —
   // simpler UX than per-sequence voice selectors). Persists in localStorage
@@ -511,7 +519,10 @@ export function SequenceVoicesPanel({
                 <span className={`text-[10px] ${
                   overrun ? 'text-orange-300' : fit?.status === 'ok' ? 'text-emerald-300' : 'text-gray-400'
                 }`}>
-                  {seqDur}s {sv.audioUrl && `/ ${audioDur.toFixed(1)}s audio`}
+                  {/* Une duree au dixieme (« 5,4 s ») se lit telle quelle :
+                      pas de troncature a l'entier, qui mentirait sur ce
+                      qui sera exporte. */}
+                  {Number.isInteger(seqDur) ? seqDur : seqDur.toFixed(1)}s {sv.audioUrl && `/ ${audioDur.toFixed(1)}s audio`}
                   {/* Estimation AVANT generation : elle previent qu'un texte
                       est trop long sans avoir a depenser un appel TTS. Elle
                       s'efface des que la duree reelle est connue, qui seule
@@ -527,21 +538,34 @@ export function SequenceVoicesPanel({
               {fit && fit.status !== 'unknown' && (
                 <div
                   data-testid={`voice-fit-${key}`}
+                  data-severity={fit.severity}
                   className={`mb-1.5 flex items-start gap-1 rounded px-1.5 py-1 text-[10px] ${
-                    fit.status === 'ok'
+                    fit.severity === 'ok'
                       ? 'bg-emerald-500/10 text-emerald-300'
-                      : 'bg-orange-500/10 text-orange-300'
+                      : fit.severity === 'warning'
+                        ? 'bg-orange-500/10 text-orange-300'
+                        : 'bg-sky-500/10 text-sky-200'
                   }`}
                 >
-                  {fit.status === 'ok'
+                  {/* Trois gravites, trois icones : une voix qui deborde COUPE
+                      l'audio (avertissement) ; une voix plus courte laisse du
+                      silence (information, pas une erreur). */}
+                  {fit.severity === 'ok'
                     ? <Check size={10} className="mt-0.5 flex-shrink-0" />
-                    : <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />}
-                  <span>
-                    {voiceFitMessage(fit, audioDur, seqDur)}
-                    {fit.status !== 'ok' && (
-                      <span className="text-gray-400">
-                        {' '}(séquence à {fit.suggestedSeqSec} s pour coller)
-                      </span>
+                    : fit.severity === 'warning'
+                      ? <AlertTriangle size={10} className="mt-0.5 flex-shrink-0" />
+                      : <Info size={10} className="mt-0.5 flex-shrink-0" />}
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span>{voiceFitMessage(fit, audioDur, seqDur)}</span>
+                    {fit.status !== 'ok' && onSequenceDurationChange && (
+                      <button
+                        type="button"
+                        data-testid={`voice-fit-apply-${key}`}
+                        onClick={() => onSequenceDurationChange(key, fit.suggestedSeqSec)}
+                        className="rounded border border-current/40 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-white/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-current"
+                      >
+                        {VOICE_FIT_APPLY_LABEL} ({fit.suggestedSeqSec.toString().replace('.', ',')} s)
+                      </button>
                     )}
                   </span>
                 </div>

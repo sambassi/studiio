@@ -821,7 +821,7 @@ export function AudioStudioPanel({
               <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-amber-500/[0.12]"><ImageIcon size={10} className="text-amber-500" fill="currentColor" /></span>
               Titre
             </label>
-            <input type="number" min={1} max={30} value={introDuration} onChange={(e) => onIntroDurationChange(Number(e.target.value))}
+            <input type="number" min={1} max={30} step={0.1} value={introDuration} onChange={(e) => onIntroDurationChange(Number(e.target.value))}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
           </div>
           <div>
@@ -829,7 +829,7 @@ export function AudioStudioPanel({
               <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-pink-500/[0.12]"><LayoutGrid size={10} className="text-pink-500" fill="currentColor" /></span>
               Cartes
             </label>
-            <input type="number" min={1} max={30} value={cardsDuration} onChange={(e) => onCardsDurationChange(Number(e.target.value))}
+            <input type="number" min={1} max={30} step={0.1} value={cardsDuration} onChange={(e) => onCardsDurationChange(Number(e.target.value))}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
           </div>
           {hasRush && (
@@ -838,7 +838,7 @@ export function AudioStudioPanel({
                 <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-emerald-500/[0.12]"><Film size={10} className="text-emerald-500" fill="currentColor" /></span>
                 Vidéo
               </label>
-              <input type="number" min={1} max={30} value={videoDuration} onChange={(e) => onVideoDurationChange(Number(e.target.value))}
+              <input type="number" min={1} max={30} step={0.1} value={videoDuration} onChange={(e) => onVideoDurationChange(Number(e.target.value))}
                 className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
             </div>
           )}
@@ -847,7 +847,7 @@ export function AudioStudioPanel({
               <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-blue-500/[0.12]"><Megaphone size={10} className="text-blue-500" fill="currentColor" /></span>
               CTA
             </label>
-            <input type="number" min={1} max={30} value={ctaDuration} onChange={(e) => onCtaDurationChange(Number(e.target.value))}
+            <input type="number" min={1} max={30} step={0.1} value={ctaDuration} onChange={(e) => onCtaDurationChange(Number(e.target.value))}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
           </div>
         </div>
