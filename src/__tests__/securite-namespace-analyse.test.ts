@@ -308,11 +308,11 @@ const FAMILLES: Famille[] = [
     marqueur: '${userId}/rendus/${id}.webm',
   },
   {
-    usage: 'conversion partagée, sans identifiant de compte',
-    bucket: 'media', cle: `converted/${HORODATAGE}-montage.mp4`,
+    usage: 'conversion MP4 à la demande — sous le compte, nom unique (UUID)',
+    bucket: 'media', cle: `${UTILISATEUR}/converted/11111111-1111-4111-8111-00000000000c.mp4`,
     type: 'video/mp4',
     fichier: 'src/app/api/convert/to-mp4/route.ts',
-    marqueur: 'converted/${fileName}',
+    marqueur: '${userId}/converted/${fileName}',
   },
   // ── `audio` ─────────────────────────────────────────────────────────────
   {

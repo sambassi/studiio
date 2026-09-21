@@ -306,7 +306,12 @@ describe('DURCI — le compartiment passe par la liste blanche', () => {
   });
 
   it('la route importe désormais la liste blanche du projet', () => {
-    expect(CODE_ROUTE).toContain('bucketAutorise');
+    // La liste blanche est appliquee par `cibleRecevable`, composition
+    // partagee (relais public, conversion MP4, publication) qui vit dans
+    // `lib/storage/acces-objet.ts` : le relais l'importe, et elle-meme appelle
+    // `bucketAutorise`.
+    expect(CODE_ROUTE).toContain('cibleRecevable');
+    expect(source('src/lib/storage/acces-objet.ts')).toContain('bucketAutorise(bucket)');
   });
 
   it('la liste blanche, elle, existe bien — et compte quatre compartiments', async () => {
@@ -724,7 +729,7 @@ const SIGNAUX_DURCISSEMENT: Array<[string, (code: string) => boolean]> = [
   (c) => c.includes('@/lib/auth/config')],
   ['une LISTE BLANCHE DE COMPARTIMENT : le nom vient du navigateur sans filtre '
     + '(attendu : `bucketAutorise` de `@/lib/storage/buckets`)',
-  (c) => /bucketAutorise|ALLOWED_BUCKETS/.test(c)],
+  (c) => /bucketAutorise|ALLOWED_BUCKETS|cibleRecevable/.test(c)],
   ['une VÉRIFICATION DE PROPRIÉTÉ : rien ne rattache la clé à un utilisateur '
     + '(attendu : un préfixe `userId` comparé à la session)',
   (c) => /user_id|userId/.test(c)],
@@ -1083,8 +1088,11 @@ describe('NON-RÉGRESSION — les producteurs de cette URL, et ce qui les casser
   it('le rendu serveur court-circuite la route et lit MinIO en direct', () => {
     const code = source('src/lib/storage/fetch-media.ts');
     expect(code).toContain("const STORAGE_PROXY_PREFIX = '/storage/v1/object/public/'");
-    expect(code).toContain('downloadFromMinioInternal');
-    expect(sansCommentaires(code)).toContain("require('minio')");
+    // Le client MinIO n'est plus construit ici : la lecture passe par les
+    // briques bornees `clientMinio` / `lecteurMinio` de `minio-client.ts`,
+    // en flux vers le disque, apres les memes refus que ce relais.
+    expect(sansCommentaires(code)).toContain('lecteurMinio(');
+    expect(sansCommentaires(code)).toContain('cibleRecevable(');
   });
 
   /**

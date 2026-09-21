@@ -490,7 +490,7 @@ export async function GET(req: NextRequest) {
           console.log(`[CRON] Post a des pistes audio séparées — tentative de muxage`);
           console.log(`[CRON]   musicUrl: ${meta.musicUrl ? 'OUI' : 'NON'}, voiceUrl: ${meta.voiceUrl ? 'OUI' : 'NON'}`);
           try {
-            const muxedUrl = await muxAudioIntoVideo(videoData.video_url, meta.musicUrl, meta.voiceUrl);
+            const muxedUrl = await muxAudioIntoVideo(videoData.video_url, meta.musicUrl, meta.voiceUrl, post.user_id);
             if (muxedUrl) {
               videoData.video_url = muxedUrl;
               videoUrl = muxedUrl;
@@ -703,7 +703,7 @@ export async function GET(req: NextRequest) {
 
             switch (platform.toLowerCase()) {
               case 'instagram':
-                result = await publishToInstagram(authedAccount, videoData, post.caption);
+                result = await publishToInstagram(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'facebook':
                 result = await publishToFacebook(authedAccount, videoData, post.caption);
@@ -822,7 +822,24 @@ export async function GET(req: NextRequest) {
 // WEBM → MP4 CONVERSION (Instagram/TikTok require H.264 MP4)
 // ══════════════════════════════════════════════════════════════
 
-async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
+// Codes types de `downloadMediaToFile` (src/lib/storage/fetch-media.ts).
+// Dans les journaux, on ecrit le CODE et jamais l'URL : une URL de stockage
+// forgee par un tiers ne doit pas se retrouver dans les logs de l'hebergeur.
+const CODES_TELECHARGEMENT = new Set([
+  'cible_invalide', 'acces_refuse', 'introuvable', 'trop_volumineux', 'delai', 'reseau', 'stockage',
+]);
+
+/** Motif journalisable : le code type du telechargement s'il y en a un, sinon le message. */
+function motifErreur(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && CODES_TELECHARGEMENT.has(code)) return `telechargement:${code}`;
+  return err instanceof Error ? err.message : String(err);
+}
+
+// `userId` = proprietaire du post : le telechargement refuse tout objet qui
+// n'est pas sous `<userId>/…` (voir fetch-media.ts). Aucun prefixe partage
+// n'est passe : la source d'une conversion n'est jamais un `converted/…`.
+async function convertToMp4IfNeeded(videoUrl: string, userId: string): Promise<string> {
   // Only convert if the URL contains .webm or webm in the path
   const urlLower = videoUrl.toLowerCase();
   if (!urlLower.includes('.webm') && !urlLower.includes('/webm')) {
@@ -844,7 +861,7 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
   try {
     // Step 1: Download the WebM — internal storage paths go direct to MinIO
     console.log(`[CONVERT] Downloading WebM...`);
-    const { sizeBytes: dlBytes } = await downloadMediaToFile(videoUrl, inputPath);
+    const { sizeBytes: dlBytes } = await downloadMediaToFile(videoUrl, inputPath, { userId });
     console.log(`[CONVERT] Downloaded ${(dlBytes / 1024 / 1024).toFixed(1)}MB to ${inputPath}`);
 
     // Step 2: Convert via the shared ladder helper (1080p → 720p → 540p
@@ -881,9 +898,10 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
     console.log(`[CONVERT] MP4 uploaded: ${publicUrl.substring(0, 80)}...`);
     return publicUrl;
   } catch (error) {
-    console.error(`[CONVERT] Conversion failed:`, error);
+    const motif = motifErreur(error);
+    console.error(`[CONVERT] Conversion failed: ${motif}`);
     // Return original URL as fallback (will likely fail on Instagram but worth trying)
-    throw new Error(`WebM→MP4 conversion failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`WebM→MP4 conversion failed: ${motif}`);
   } finally {
     // Cleanup temp files
     try { await unlink(inputPath); } catch {}
@@ -898,8 +916,9 @@ async function convertToMp4IfNeeded(videoUrl: string): Promise<string> {
 
 async function muxAudioIntoVideo(
   videoUrl: string,
-  musicUrl?: string | null,
-  voiceUrl?: string | null,
+  musicUrl: string | null | undefined,
+  voiceUrl: string | null | undefined,
+  userId: string,
 ): Promise<string | null> {
   if (!musicUrl && !voiceUrl) return null;
 
@@ -915,7 +934,7 @@ async function muxAudioIntoVideo(
   try {
     // Étape 1 : Télécharger la vidéo (direct MinIO si chemin interne)
     console.log(`[MUX] Téléchargement vidéo...`);
-    await downloadMediaToFile(videoUrl, videoPath);
+    await downloadMediaToFile(videoUrl, videoPath, { userId });
 
     // Étape 2 : Télécharger les fichiers audio
     const inputArgs: string[] = ['-i', videoPath];
@@ -924,19 +943,19 @@ async function muxAudioIntoVideo(
     if (musicUrl) {
       console.log(`[MUX] Téléchargement musique...`);
       try {
-        await downloadMediaToFile(musicUrl, musicPath);
+        await downloadMediaToFile(musicUrl, musicPath, { userId });
         inputArgs.push('-i', musicPath);
         audioInputCount++;
-      } catch (e) { console.warn(`[MUX] Téléchargement musique échoué:`, e); }
+      } catch (e) { console.warn(`[MUX] Téléchargement musique échoué: ${motifErreur(e)}`); }
     }
 
     if (voiceUrl) {
       console.log(`[MUX] Téléchargement voix...`);
       try {
-        await downloadMediaToFile(voiceUrl, voicePath);
+        await downloadMediaToFile(voiceUrl, voicePath, { userId });
         inputArgs.push('-i', voicePath);
         audioInputCount++;
-      } catch (e) { console.warn(`[MUX] Téléchargement voix échoué:`, e); }
+      } catch (e) { console.warn(`[MUX] Téléchargement voix échoué: ${motifErreur(e)}`); }
     }
 
     if (audioInputCount <= 1) {
@@ -996,7 +1015,7 @@ async function muxAudioIntoVideo(
     console.log(`[MUX] ✅ MP4 avec audio uploadé: ${publicUrl.substring(0, 80)}...`);
     return publicUrl;
   } catch (err) {
-    console.error(`[MUX] Erreur:`, err);
+    console.error(`[MUX] Erreur: ${motifErreur(err)}`);
     return null;
   } finally {
     // Nettoyage des fichiers temporaires
@@ -1032,7 +1051,8 @@ async function ensurePublicUrl(url: string): Promise<string> {
 async function publishToInstagram(
   account: any,
   video: any,
-  caption?: string,
+  caption: string | null | undefined,
+  userId: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
   const igAccountId = account.account_id;
@@ -1055,7 +1075,7 @@ async function publishToInstagram(
     let publishableVideoUrl = video.video_url;
     if (video.video_url && video.video_url.toLowerCase().includes('webm')) {
       console.log(`[CRON][IG] Video is WebM format — converting to MP4 for Instagram...`);
-      publishableVideoUrl = await convertToMp4IfNeeded(video.video_url);
+      publishableVideoUrl = await convertToMp4IfNeeded(video.video_url, userId);
       console.log(`[CRON][IG] Using converted MP4: ${publishableVideoUrl.substring(0, 80)}...`);
     }
     publishableVideoUrl = await ensurePublicUrl(publishableVideoUrl);

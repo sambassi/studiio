@@ -298,12 +298,21 @@ describe('5-12. L’atomicité : les quatre issues, et leurs compensations', () 
     // Un autre compartiment, ou une clé sans le segment, ne sont pas visés.
     expect(cleDansNamespaceMontage('media', cleRendu(UID, RID))).toBe(false);
     expect(cleDansNamespaceMontage('videos', `${UID}/autopilote/clips/x.mp4`)).toBe(false);
-    // Et le relais l'applique.
-    const relais = readFileSync(
+    // Et le relais l'applique — via `cibleRecevable`, qui vit désormais dans
+    // `lib/storage/acces-objet.ts` et que le relais appelle. On lit le CODE,
+    // jamais un commentaire qui citerait l'ancienne ligne.
+    const sansCommentaires = (code: string) => code
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    const accesObjet = sansCommentaires(readFileSync(
+      resolve(process.cwd(), 'src/lib/storage/acces-objet.ts'), 'utf8',
+    ));
+    expect(accesObjet).toContain('if (cleDansNamespaceMontage(bucket, cle)) return false;');
+    const relais = sansCommentaires(readFileSync(
       resolve(process.cwd(), 'src/app/storage/v1/object/public/[bucket]/[...path]/route.ts'),
       'utf8',
-    );
-    expect(relais).toContain('if (cleDansNamespaceMontage(bucket, storagePath)) return false;');
+    ));
+    expect(relais).toContain('if (!cibleRecevable(bucket, storagePath)) return introuvable();');
   });
 
   it('CAS C — la base refuse : l’objet est RETIRÉ', async () => {

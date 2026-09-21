@@ -40,6 +40,7 @@
 
 /** Le type de repli : des octets, que le navigateur ne cherchera pas a lire. */
 import { estClePriveeAvatar } from '@/lib/avatar/source-cle';
+import { bucketAutorise } from '@/lib/storage/buckets';
 
 export const TYPE_OCTETS = 'application/octet-stream';
 
@@ -147,6 +148,169 @@ export function clePossedeePar(cle: unknown, userId: string): boolean {
   if (!cleObjetValide(cle)) return false;
   if (cle.startsWith(`${userId}/`)) return true;
   return PREFIXES_PARTAGES.some((prefixe) => cle.startsWith(prefixe));
+}
+
+/**
+ * Cette cle appartient-elle a ce compte, SANS aucun prefixe partage ?
+ *
+ * La version stricte de `clePossedeePar` : `converted/…` n'y passe pas. A
+ * utiliser partout ou l'objet designe va etre LU PAR LE SERVEUR puis renvoye
+ * ou transforme au nom du compte (conversion MP4, publication) — la ou un
+ * prefixe commun a tous les comptes n'est pas une preuve de propriete.
+ *
+ * `userId` doit etre une chaine non vide sans `/` : un identifiant qui porte
+ * lui-meme un separateur pourrait fabriquer un prefixe de deux segments et
+ * matcher la cle d'un autre compte. La cle passe par `cleObjetValide`, donc
+ * ni `..`, ni antislash, ni schema, ni echappement invalide.
+ *
+ * `u1x/…` n'appartient pas a `u1` : le separateur fait partie du prefixe.
+ */
+export function cleDuCompteStrict(cle: unknown, userId: unknown): boolean {
+  if (typeof userId !== 'string' || userId.length === 0) return false;
+  if (userId.includes('/')) return false;
+  if (!cleObjetValide(cle)) return false;
+  return cle.startsWith(`${userId}/`);
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * D'UNE URL A UNE CIBLE (compartiment + cle) — UN SEUL PARSEUR
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Plusieurs routes recoivent une URL de media ecrite par un navigateur et
+ * doivent en tirer `{ bucket, cle }` avant de lire l'objet. Chacune avait sa
+ * propre lecture de `/storage/v1/object/public/<bucket>/<cle>`, avec ses
+ * propres oublis : l'une acceptait n'importe quelle origine, l'autre gardait
+ * la chaine de requete, une troisieme ne decodait pas. Le parseur est ecrit
+ * ICI, une fois, et ne fait QUE parser : il ne juge pas la cle
+ * (`cibleRecevable` s'en charge) et ne verifie pas la propriete
+ * (`cleDuCompteStrict`).
+ *
+ * L'origine d'une URL absolue doit etre EXACTEMENT l'une des origines
+ * configurees (`originesStockageConfigurees`) — jamais l'en-tete `Host`, qui
+ * est fourni par l'appelant. Une URL vers un autre hote n'est pas « notre
+ * stockage », meme si son chemin ressemble au notre.
+ */
+export const PREFIXE_RELAIS_PUBLIC = '/storage/v1/object/public/';
+
+export interface CibleStockage { bucket: string; cle: string }
+
+/** `http(s)` seulement : les seuls schemas qui ont une origine comparable. */
+function origineHttp(valeur: unknown): string | null {
+  if (typeof valeur !== 'string') return null;
+  const brut = valeur.trim();
+  if (brut.length === 0) return null;
+  let url: URL;
+  try { url = new URL(brut); } catch { return null; }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  // `.origin` : hote en minuscules, port par defaut retire, jamais de `/` final.
+  return url.origin;
+}
+
+/**
+ * Les origines sous lesquelles NOTRE stockage peut etre designe, d'apres la
+ * configuration : l'application (`NEXT_PUBLIC_APP_URL`, `NEXTAUTH_URL`), le
+ * CDN eventuel (`PUBLIC_STORAGE_URL`, dont on ne garde que l'origine) et
+ * l'URL Supabase historique (`NEXT_PUBLIC_SUPABASE_URL`). Sans doublon, sans
+ * barre oblique finale, `http(s)` seulement. Jamais le `Host` de la requete.
+ */
+export function originesStockageConfigurees(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  const origines: string[] = [];
+  for (const brut of [
+    env.NEXT_PUBLIC_APP_URL,
+    env.NEXTAUTH_URL,
+    env.PUBLIC_STORAGE_URL,
+    env.NEXT_PUBLIC_SUPABASE_URL,
+  ]) {
+    const origine = origineHttp(brut);
+    if (origine && !origines.includes(origine)) origines.push(origine);
+  }
+  return origines;
+}
+
+/**
+ * `{ bucket, cle }` depuis une URL de relais public, ou `null`.
+ *
+ * Accepte :
+ *   - un chemin relatif `/storage/v1/object/public/<bucket>/<cle…>` ;
+ *   - une URL absolue `http(s)` dont l'ORIGINE est exactement l'une de
+ *     `options.origines` (comparaison de `new URL(x).origin` : hote sans
+ *     casse, port par defaut normalise) et dont le chemin porte ce prefixe.
+ *
+ * Refuse tout le reste : autre origine, `//hote/…` (relatif de protocole),
+ * schema non `http(s)` (`data:`, `file:`, `ftp:`, `javascript:`, `blob:`),
+ * identifiants (`user:pass@`), chaine de requete ou fragment, antislash,
+ * compartiment ou cle vides, echappement invalide, valeur qui n'est pas une
+ * chaine, blanc de tete ou de queue (il masque un schema).
+ *
+ * ⚠️ LE CHEMIN EST LU SUR LA CHAINE BRUTE, PAS SUR `url.pathname`. L'analyseur
+ * WHATWG normalise `..` ET `%2e%2e` en remontant d'un segment : il aurait
+ * transforme `media/u1/%2e%2e/x.mp4` en `media/x.mp4` — une traversee
+ * blanchie avant que `cibleRecevable` puisse la voir. `new URL` ne sert ici
+ * qu'a juger le schema, l'origine, les identifiants, la requete et le
+ * fragment.
+ *
+ * Le compartiment et la cle sont decodes UNE fois (`decodeURIComponent`) :
+ * c'est ce que fait Next.js pour les segments du relais, donc la cle rendue
+ * ici est celle que le relais verrait. Un compartiment qui contient `/` apres
+ * decodage (`media%2Fx`) est refuse : ce n'est plus un nom de compartiment.
+ *
+ * Ne valide PAS le contenu : `..`, namespaces prives, compartiment hors liste
+ * sont le travail de `cibleRecevable`, a appeler ensuite.
+ */
+export function extraireCibleStockage(
+  valeur: unknown,
+  options: { origines: readonly string[] },
+): CibleStockage | null {
+  if (typeof valeur !== 'string' || valeur.length === 0) return null;
+  if (valeur !== valeur.trim()) return null;
+  // `?` et `#` n'ont rien a faire dans une adresse d'objet ; `\` non plus —
+  // l'analyseur le lirait comme `/`, et une cle S3 n'en porte jamais.
+  if (valeur.includes('?') || valeur.includes('#') || valeur.includes('\\')) return null;
+
+  let cheminBrut: string;
+  if (valeur.startsWith('/')) {
+    // `//hote/…` est une URL relative au PROTOCOLE : une autre origine.
+    if (valeur.startsWith('//')) return null;
+    cheminBrut = valeur;
+  } else {
+    // `https:hote/x` (sans `//`) est accepte par l'analyseur ; pas ici.
+    if (!/^https?:\/\//i.test(valeur)) return null;
+    let url: URL;
+    try { url = new URL(valeur); } catch { return null; }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    if (url.username || url.password) return null;
+    if (url.search || url.hash) return null;
+    const admises = options.origines
+      .map((o) => origineHttp(o))
+      .filter((o): o is string => o !== null);
+    if (!admises.includes(url.origin)) return null;
+    // Sans identifiant, sans `\`, sans `?` ni `#` : le chemin commence au
+    // premier `/` qui suit l'autorite.
+    const debut = valeur.indexOf('/', valeur.indexOf('//') + 2);
+    if (debut < 0) return null;
+    cheminBrut = valeur.slice(debut);
+  }
+
+  if (!cheminBrut.startsWith(PREFIXE_RELAIS_PUBLIC)) return null;
+  const reste = cheminBrut.slice(PREFIXE_RELAIS_PUBLIC.length);
+  const separateur = reste.indexOf('/');
+  if (separateur <= 0) return null;
+
+  let bucket: string;
+  let cle: string;
+  try {
+    bucket = decodeURIComponent(reste.slice(0, separateur));
+    cle = decodeURIComponent(reste.slice(separateur + 1));
+  } catch {
+    // Sequence d'echappement invalide : on ne devine pas ce qu'elle voulait dire.
+    return null;
+  }
+  if (bucket.length === 0 || bucket.includes('/')) return null;
+  if (cle.length === 0) return null;
+  return { bucket, cle };
 }
 
 /**
@@ -382,4 +546,47 @@ export function cleDansNamespaceAnalyse(bucket: unknown, cle: unknown): boolean 
     }
     return false;
   });
+}
+
+/**
+ * La cible est-elle recevable, sans avoir rien demandé au stockage ?
+ *
+ * Trois refus, une seule réponse (`introuvable`) : compartiment hors liste,
+ * chemin malformé, et — depuis M3-B3.2a — namespace privé des analyses.
+ *
+ * L'ordre compte. La normalisation de chemin (`cleObjetValide` : `..`, antislash,
+ * `://`, caractères de contrôle, sur la valeur brute ET décodée) passe AVANT
+ * le refus du namespace, de sorte qu'aucune forme tordue ne puisse à la fois
+ * échapper au motif `analyse/` et désigner malgré tout l'objet. Et la garde
+ * de namespace relit elle-même les formes décodées, donc elle ne dépend pas
+ * de l'ordre pour être juste — elle en dépend seulement pour rester lisible.
+ *
+ * ⚠️ `media/<userId>/analyse/<analysisId>/vignette-NN.jpg` est une clé
+ * DEVINABLE (voir plus haut). Le seul accès légitime aux vignettes est
+ * `/api/autopilot/analyses/[id]/vignettes/[n]`, authentifié. Sur le relais,
+ * c'est 404 — pas 401, pas 403 : un code distinct signalerait que le
+ * namespace existe.
+ *
+ * Cette composition vivait dans le relais public
+ * (`app/storage/v1/object/public/[bucket]/[...path]/route.ts`). Elle est
+ * ici pour que TOUTE route qui lit un objet au nom d'une URL fournie par un
+ * navigateur — conversion MP4, publication, proxy — applique EXACTEMENT les
+ * mêmes refus que le relais, sans en recopier la liste.
+ */
+export function cibleRecevable(bucket: string, cle: string): boolean {
+  if (!bucketAutorise(bucket)) return false;
+  if (!cleObjetValide(cle)) return false;
+  if (cleDansNamespaceAnalyse(bucket, cle)) return false;
+  // Le montage de l'Autopilote se lit par sa route authentifiée, jamais ici :
+  // sinon le propriétaire pourrait en faire un lien public et permanent.
+  if (cleDansNamespaceMontage(bucket, cle)) return false;
+  // Même refus pour les LUT importées : un look est un travail privé, il se
+  // lit par la route authentifiée de la bibliothèque, jamais par un lien
+  // public permanent.
+  if (cleDansNamespaceLut(bucket, cle)) return false;
+  // La SOURCE d'un avatar — le visage de la personne — ne sort que par
+  // `/api/avatar/source`, authentifiée. Les vidéos générées du même dossier
+  // (`<userId>/avatar/<uuid>.mp4`) restent servies comme avant.
+  if (cleSourceAvatarPrivee(bucket, cle)) return false;
+  return true;
 }

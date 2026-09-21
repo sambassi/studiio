@@ -266,6 +266,32 @@ trois routes M3-F/G/H refusent bien les doublons (index uniques en base), mais
 les trois requêtes partent quand même et c'est le REFUS qui s'affiche : la
 personne lit « déjà en cours » après avoir cliqué une fois de trop.
 
+## [2026-09-21] Un helper « interne » qui contourne le relais public est une porte dérobée
+
+**Ce qui a mal tourné** — `fetch-media.ts` reconnaissait `/storage/v1/object/public/…`
+et lisait MinIO « en direct » (perf, évitement de la boucle Traefik) — mais SANS
+aucune des gardes du relais public (`bucketAutorise`, `cleObjetValide`, refus des
+namespaces privés), avec les identifiants root, sans propriétaire, et tout autre
+URL partait dans un `fetch()` nu (SSRF), le tout chargé en RAM. Appelé par
+`/api/convert/to-mp4` qui n'exigeait aucune session et republiait le résultat
+sous une clé partagée `converted/` lisible par tous. Trois audits successifs
+l'avaient noté « connu » sans le fermer.
+
+**Règle** — (1) Un chemin d'accès au stockage qui contourne une route publique
+doit appliquer EXACTEMENT la même composition de gardes, importée du même
+module (`cibleRecevable` dans `acces-objet.ts`) — jamais une copie, jamais
+« moins parce que c'est interne ». (2) Toute URL entrante se réduit d'abord à
+une cible `{bucket, clé}` par UN parser partagé (`extraireCibleStockage`) sur
+une allowlist d'ORIGINES configurées ; ce qui ne s'y réduit pas n'est pas
+téléchargé — pas de blacklist d'IP comme défense principale. (3) Un
+téléchargement serveur passe toujours par `userId` explicite + ownership
+strict (`cleDuCompteStrict`, pas `clePossedeePar` qui tolère le legacy),
+plafond de taille vérifié AVANT lecture (`statObject.size`, `Content-Length`)
+puis compteur en flux vers le disque, timeout borné, et unlink du partiel.
+(4) Les sorties sont sous `<userId>/…/<uuid>`, `upsert:false`. (5) Une PR de
+sécurité se prouve par MUTATION : retirer chaque garde doit faire échouer un
+test nommé — sinon le test est décoratif.
+
 ## [2026-09-21] Un repli « quand même appliqué » sur une ressource tierce temporaire est un faux succès
 
 **Ce qui a mal tourné** — L'affiche IA recevait une URL `replicate.delivery`

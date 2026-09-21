@@ -116,22 +116,88 @@ const HOTES_INTERNES = new Set([
   '169.254.169.254', 'metadata.google.internal',
 ]);
 
-/** Plages privees, en notation litterale. Un nom DNS n'est pas resolu ici. */
-function estAdressePrivee(hote: string): boolean {
-  if (HOTES_INTERNES.has(hote)) return true;
-  // Suffixes de reseau interne.
-  if (/\.(local|internal|localdomain|home|lan)$/.test(hote)) return true;
-  // IPv6 locale unique (fc00::/7) ou lien-local (fe80::/10).
-  if (/^\[?(f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i.test(hote)) return true;
-  const v4 = hote.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!v4) return false;
-  const [a, b] = [Number(v4[1]), Number(v4[2])];
+/**
+ * Une IPv4 en notation pointee : `[a, b, c, d]`, ou `null`.
+ *
+ * Un octet au-dela de 255 n'est pas filtre ici, a dessein : il tombe dans
+ * `a >= 224` de la regle IPv4 et se retrouve refuse — une adresse malformee
+ * n'est pas une adresse publique. C'est le comportement d'origine.
+ */
+function octetsIpv4(valeur: string): number[] | null {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(valeur);
+  return m ? m.slice(1, 5).map(Number) : null;
+}
+
+/** La regle IPv4 seule : boucle, prive, lien-local, multicast et reserve. */
+function ipv4Privee(octets: number[]): boolean {
+  const [a, b] = octets;
   if (a === 10 || a === 127 || a === 0) return true;
   if (a === 192 && b === 168) return true;
   if (a === 172 && b >= 16 && b <= 31) return true;
   if (a === 169 && b === 254) return true;
   if (a >= 224) return true; // multicast et reserve
   return false;
+}
+
+/**
+ * L'IPv4 que porte une IPv6 « mappee » (`::ffff:a.b.c.d`, RFC 4291 §2.5.5.2),
+ * ou `null` si l'hote n'en est pas une.
+ *
+ * Deux ecritures coexistent pour la meme adresse : pointee (`::ffff:127.0.0.1`)
+ * et hexadecimale par paire (`::ffff:7f00:1`). Le prefixe peut lui-meme etre
+ * abrege (`::ffff:`) ou developpe (`0:0:0:0:0:ffff:`). Sans ce deballage, un
+ * `[::ffff:127.0.0.1]` passe toutes les regles IPv4 et designe pourtant la
+ * boucle locale — la pile reseau, elle, le sait tres bien.
+ */
+function ipv4Mappee(hote: string): number[] | null {
+  const m = /^(?:::|(?:0{1,4}:){5})ffff:(.+)$/.exec(hote);
+  if (!m) return null;
+  const reste = m[1];
+  const pointee = octetsIpv4(reste);
+  if (pointee) return pointee;
+  const hexa = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(reste);
+  if (!hexa) return null;
+  const haut = parseInt(hexa[1], 16);
+  const bas = parseInt(hexa[2], 16);
+  return [haut >> 8, haut & 0xff, bas >> 8, bas & 0xff];
+}
+
+/**
+ * Plages privees, en notation litterale. Un nom DNS n'est pas resolu ici.
+ *
+ * L'entree est normalisee avant tout : blancs retires, minuscules, point
+ * final retire (`localhost.` est `localhost` pour le resolveur), crochets
+ * d'IPv6 retires (`[::1]` et `::1` sont la meme adresse). Un hote vide est
+ * refuse : il ne designe rien qu'on puisse publier.
+ *
+ * Exportee pour que tout chemin qui fait sortir une requete depuis NOTRE
+ * serveur vers une URL fournie par un tiers applique la meme regle.
+ */
+export function estAdressePrivee(hote: string): boolean {
+  let h = typeof hote === 'string' ? hote.trim().toLowerCase().replace(/\.$/, '') : '';
+  if (h.startsWith('[') && h.endsWith(']')) h = h.slice(1, -1);
+  if (h.length === 0) return true;
+  if (HOTES_INTERNES.has(h)) return true;
+  // `localhost` et tout ce qui se termine par `.localhost` (RFC 6761).
+  if (/(^|\.)localhost$/.test(h)) return true;
+  // Suffixes de reseau interne.
+  if (/\.(local|internal|localdomain|home|lan)$/.test(h)) return true;
+  // IPv6 locale unique (fc00::/7) ou lien-local (fe80::/10).
+  if (/^\[?(f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i.test(h)) return true;
+  if (h.includes(':')) {
+    // `::` (adresse non specifiee) et toutes ses formes developpees ; `::1`
+    // (boucle locale) developpee ou non.
+    if (/^[0:]+$/.test(h)) return true;
+    if (/^(?:0{0,4}:){2,7}0{0,3}1$/.test(h)) return true;
+    // IPv4 mappee (`::ffff:…`) ou compatible (`::a.b.c.d`) : la regle IPv4
+    // s'applique a l'adresse deballee.
+    const mappee = ipv4Mappee(h) ?? (h.startsWith('::') ? octetsIpv4(h.slice(2)) : null);
+    if (mappee) return ipv4Privee(mappee);
+    return false;
+  }
+  const v4 = octetsIpv4(h);
+  if (!v4) return false;
+  return ipv4Privee(v4);
 }
 
 /**
