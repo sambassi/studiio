@@ -107,6 +107,14 @@ export interface Draft {
   sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string }>;
   /** Textes que l'utilisateur a repris a la main : le pre-remplissage les respecte. */
   sequenceVoicesUserEdited?: Record<string, boolean>;
+  /**
+   * Voix TTS choisie dans les selecteurs (`fr-FR-DeniseNeural`,
+   * `elevenlabs-…`, `heygen-…`). Absente = aucun choix enregistre dans le
+   * brouillon : les panneaux gardent leur regle historique (localStorage),
+   * le cas de tous les brouillons anterieurs. Un identifiant est opaque : on
+   * ne verifie que sa forme, la liste des voix n'est connue qu'a l'ecran.
+   */
+  ttsVoiceId?: string;
   musicVolume?: number;
   voiceVolume?: number;
   rushUrl?: string;
@@ -548,6 +556,13 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     voiceName: typeof raw.voiceName === 'string' ? raw.voiceName : '',
     sequenceVoices: sanitizeSequenceVoices(raw.sequenceVoices),
     sequenceVoicesUserEdited: sanitizeVoicesUserEdited(raw.sequenceVoicesUserEdited),
+    // Forme d'identifiant seulement : lettres, chiffres, `_ . -`, borne. Ce
+    // qui n'y ressemble pas (un ancien nom de voix navigateur, un objet) est
+    // oublie plutot que pousse dans un selecteur.
+    ttsVoiceId:
+      typeof raw.ttsVoiceId === 'string' && raw.ttsVoiceId.length <= 120 && /^[A-Za-z0-9_.-]+$/.test(raw.ttsVoiceId)
+        ? raw.ttsVoiceId
+        : undefined,
     musicVolume: num(raw.musicVolume, 0, 1, 0.5),
     voiceVolume: num(raw.voiceVolume, 0, 1, 1),
     rushUrl: persistableUrl(raw.rushUrl as string),

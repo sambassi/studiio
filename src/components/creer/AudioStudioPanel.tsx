@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone, SlidersHorizontal, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
-import { fetchCustomVoices, isHeyGenVoiceId } from '@/lib/types/voice';
+import { fetchCustomVoices, isHeyGenVoiceId, isElevenLabsVoiceId, voixCloneeAProposer } from '@/lib/types/voice';
 import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { analyseRushForDucking, detectVoiceSpeech, applyVoiceDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
@@ -18,9 +18,10 @@ function loadInitialVoiceId(): string {
     const saved = window.localStorage.getItem(VOICE_STORAGE_KEY);
     // Reject anything not in TTS_VOICES (e.g., legacy SpeechSynthesisVoice
     // names from before this lib was wired up). Silent fallback to Denise.
-    // Les voix HeyGen sont listees a la volee : on les accepte sur leur
-    // prefixe, sinon un rechargement perdrait la voix clonee choisie.
-    if (saved && (isHeyGenVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
+    // Les voix HeyGen et ElevenLabs sont listees a la volee : on les accepte
+    // sur leur prefixe, sinon un rechargement perdrait la voix clonee choisie
+    // — et l'effet de persistance reecrirait aussitot la cle avec Denise.
+    if (saved && (isHeyGenVoiceId(saved) || isElevenLabsVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
   } catch { /* ignore */ }
   return DEFAULT_VOICE_ID;
 }
@@ -145,6 +146,14 @@ interface AudioStudioPanelProps {
     videoSeqStart: number;
     videoSeqDuration: number;
   };
+  /**
+   * Voix TTS CONTROLEE par le parent (le wizard la tient pour l'ecrire dans
+   * le brouillon et la restaurer au rechargement). Fournie, elle prime sur
+   * l'etat local ; absente, le panneau garde sa regle historique —
+   * localStorage `tts.voiceId` — pour les appelants qui ne la passent pas.
+   */
+  voiceId?: string;
+  onVoiceIdChange?: (id: string) => void;
 }
 
 export function AudioStudioPanel({
@@ -156,9 +165,17 @@ export function AudioStudioPanel({
   onIntroDurationChange, onCardsDurationChange, onVideoDurationChange, onCtaDurationChange,
   hasRush, contentTheme,
   rushUrl = null, audioKeyframes, onAudioKeyframesChange, mixLayout,
+  voiceId, onVoiceIdChange,
 }: AudioStudioPanelProps) {
   const [ttsText, setTtsText] = useState('');
-  const [selectedVoiceId, setSelectedVoiceId] = useState<string>(loadInitialVoiceId);
+  const [localVoiceId, setLocalVoiceId] = useState<string>(loadInitialVoiceId);
+  // Controle : la valeur du parent prime des qu'elle existe. L'etat local
+  // suit quand meme chaque changement, pour que localStorage reste juste.
+  const selectedVoiceId = voiceId ?? localVoiceId;
+  const setSelectedVoiceId = useCallback((id: string) => {
+    setLocalVoiceId(id);
+    onVoiceIdChange?.(id);
+  }, [onVoiceIdChange]);
   const [ttsLoading, setTtsLoading] = useState(false);
   const [ttsError, setTtsError] = useState('');
   const [ttsSuggestLoading, setTtsSuggestLoading] = useState(false);
@@ -176,6 +193,19 @@ export function AudioStudioPanel({
   useEffect(() => {
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedVoiceId); } catch { /* ignore */ }
   }, [selectedVoiceId]);
+  // Sans choix explicite (Denise = le defaut), la voix clonee du compte est
+  // proposee d'office une fois la liste arrivee. Un choix hors defaut — y
+  // compris restaure par le parent — n'est jamais ecrase : ne rien toucher
+  // tant que la source n'est pas la (liste vide), c'est l'etat restaure qui
+  // fait foi.
+  useEffect(() => {
+    if (customVoices.length === 0) return;
+    const clonee = voixCloneeAProposer(selectedVoiceId, DEFAULT_VOICE_ID, customVoices);
+    if (clonee) setSelectedVoiceId(clonee);
+    // Volontairement pas `selectedVoiceId` : l'effet ne rejoue que quand la
+    // liste change, sinon revenir a Denise a la main serait impossible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customVoices]);
   const [musicMuted, setMusicMuted] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
   const [mediaLibOpen, setMediaLibOpen] = useState(false);
@@ -757,10 +787,11 @@ export function AudioStudioPanel({
           className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none" rows={3} />
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}
+            data-testid="tts-voice-select"
             className="flex-1 min-w-[140px] rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white">
             {allVoices.map((v) => (
               <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.lang}, {v.gender === 'Female' ? 'F' : 'M'})
+                {v.flag} {v.name} ({v.lang}{v.gender === 'Female' ? ', F' : v.gender === 'Male' ? ', M' : ''})
               </option>
             ))}
           </select>

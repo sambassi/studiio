@@ -7,6 +7,8 @@ import { compareVoiceToSequence, voiceFitMessage, estimateLabel, VOICE_FIT_APPLY
 import {
   fetchCustomVoices,
   isHeyGenVoiceId,
+  isElevenLabsVoiceId,
+  voixCloneeAProposer,
   SEQUENCE_KEYS,
   type SequenceKey,
   type SequenceVoice,
@@ -171,6 +173,13 @@ interface Props {
    * est conservee tant que l'utilisateur n'applique pas l'action.
    */
   onSequenceDurationChange?: (key: SequenceKey, seconds: number) => void;
+  /**
+   * Voix TTS CONTROLEE par le parent — meme contrat que `AudioStudioPanel`,
+   * pour que les deux selecteurs de Creer montrent la meme voix, celle que
+   * le brouillon restaure. Absente : la regle historique (localStorage).
+   */
+  voiceId?: string;
+  onVoiceIdChange?: (id: string) => void;
 }
 
 export function SequenceVoicesPanel({
@@ -188,20 +197,30 @@ export function SequenceVoicesPanel({
   batchCount,
   onAudioError,
   onSequenceDurationChange,
+  voiceId,
+  onVoiceIdChange,
 }: Props) {
   // Shared TTS voice picker (one voice for all sequences in this panel —
   // simpler UX than per-sequence voice selectors). Persists in localStorage
   // so the choice survives a refresh.
-  const [selectedTtsVoiceId, setSelectedTtsVoiceId] = useState<string>(() => {
+  const [localTtsVoiceId, setLocalTtsVoiceId] = useState<string>(() => {
     if (typeof window === 'undefined') return DEFAULT_VOICE_ID;
     try {
       const saved = window.localStorage.getItem(VOICE_STORAGE_KEY);
-      // Les voix HeyGen sont listees a la volee : on les accepte sur leur
-      // prefixe, sinon un rechargement perdrait la voix clonee choisie.
-      if (saved && (isHeyGenVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
+      // Les voix HeyGen et ElevenLabs sont listees a la volee : on les accepte
+      // sur leur prefixe, sinon un rechargement perdrait la voix clonee
+      // choisie — et l'effet ci-dessous reecrirait la cle avec Denise.
+      if (saved && (isHeyGenVoiceId(saved) || isElevenLabsVoiceId(saved) || TTS_VOICES.some((v) => v.id === saved))) return saved;
     } catch { /* ignore */ }
     return DEFAULT_VOICE_ID;
   });
+  // Controle : la valeur du parent prime des qu'elle existe. L'etat local
+  // suit quand meme chaque changement, pour que localStorage reste juste.
+  const selectedTtsVoiceId = voiceId ?? localTtsVoiceId;
+  const setSelectedTtsVoiceId = useCallback((id: string) => {
+    setLocalTtsVoiceId(id);
+    onVoiceIdChange?.(id);
+  }, [onVoiceIdChange]);
   useEffect(() => {
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedTtsVoiceId); } catch { /* ignore */ }
   }, [selectedTtsVoiceId]);
@@ -217,6 +236,17 @@ export function SequenceVoicesPanel({
     return () => { cancelled = true; };
   }, []);
   const allVoices: TtsVoice[] = [...customVoices, ...TTS_VOICES];
+  // Sans choix explicite (Denise = le defaut), la voix clonee du compte est
+  // proposee d'office une fois la liste arrivee — jamais avant (liste vide =
+  // source absente, l'etat restaure fait foi), jamais par-dessus un choix.
+  useEffect(() => {
+    if (customVoices.length === 0) return;
+    const clonee = voixCloneeAProposer(selectedTtsVoiceId, DEFAULT_VOICE_ID, customVoices);
+    if (clonee) setSelectedTtsVoiceId(clonee);
+    // Volontairement pas `selectedTtsVoiceId` : l'effet ne rejoue que quand
+    // la liste change, sinon revenir a Denise a la main serait impossible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customVoices]);
 
   // Per-sequence loading + recording state
   const [busy, setBusy] = useState<Record<SequenceKey, boolean>>({ titre: false, cartes: false, video: false, cta: false });
@@ -469,6 +499,7 @@ export function SequenceVoicesPanel({
         <select
           value={selectedTtsVoiceId}
           onChange={(e) => setSelectedTtsVoiceId(e.target.value)}
+          data-testid="seq-tts-voice-select"
           className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-white focus:border-purple-500 focus:outline-none"
         >
           {allVoices.map((v) => (
