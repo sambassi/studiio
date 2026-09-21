@@ -1,6 +1,7 @@
 'use client';
 
 import { X } from 'lucide-react';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 interface ModalProps {
   isOpen: boolean;
@@ -28,7 +29,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       <div className={`${sizeClass} w-full card-base animate-fade-in max-h-[90vh] flex flex-col`}>
         <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-gray-800 flex-shrink-0">
           <h2 className="text-xl font-bold text-white">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition">
+          <button onClick={onClose} aria-label="Fermer" className={`text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}>
             <X size={20} />
           </button>
         </div>

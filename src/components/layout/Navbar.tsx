@@ -6,6 +6,7 @@ import { signOut, useSession } from 'next-auth/react';
 import { Bell, User, LogOut, Shield, Zap, AlertTriangle } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
 
@@ -129,7 +130,7 @@ export function Navbar() {
           {credits !== null && (
             <button
               onClick={() => router.push('/dashboard/billing')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 transition text-sm font-semibold"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND}`}
               title="Crédits restants"
             >
               <Zap size={14} className="text-purple-300" />
@@ -148,7 +149,7 @@ export function Navbar() {
           {isAdmin && (
             <button
               onClick={() => router.push('/admin')}
-              className="text-yellow-400 hover:text-yellow-300 transition"
+              className={`text-yellow-400 hover:text-yellow-300 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
               title={t('admin')}
             >
               <Shield size={20} />
@@ -167,7 +168,7 @@ export function Navbar() {
               aria-expanded={clocheOuverte}
               aria-label={nonLues > 0 ? `${nonLues} notification(s) non lue(s)` : 'Notifications'}
               data-notifications-bell
-              className="text-gray-400 hover:text-white transition relative"
+              className={`text-gray-400 hover:text-white relative rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               <Bell size={20} />
               {nonLues > 0 && (
@@ -226,14 +227,14 @@ export function Navbar() {
           </div>
           <button
             onClick={() => router.push('/dashboard/settings')}
-            className="text-gray-400 hover:text-white transition"
+            className={`text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
             title={t('profile')}
           >
             <User size={20} />
           </button>
           <button
             onClick={handleLogout}
-            className="text-gray-400 hover:text-red-400 transition"
+            className={`text-gray-400 hover:text-red-400 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
             title={t('logout')}
           >
             <LogOut size={20} />

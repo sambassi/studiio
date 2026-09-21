@@ -1189,7 +1189,10 @@ export default function AvatarPage() {
           existe — SOUS les deux colonnes (la voix n'allonge pas la colonne
           de travail ; sur mobile elle vient apres l'apercu), en UNE section :
           enregistrer, voix utilisee, prononciations, apercu prononce, ecoute. */}
-      <section ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none space-y-4">
+      {/* `id="ma-voix"` : cible du lien « Gérer / cloner ma voix » de
+          Créer > Audio (`/dashboard/avatar#ma-voix`) — le navigateur y
+          descend seul, sans état ni paramètre à relire. */}
+      <section id="ma-voix" ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none space-y-4">
         <EnteteSection
           titre="Ma voix"
           sousTitre="Votre voix clonée, ses prononciations et son écoute — pour tous vos montages."

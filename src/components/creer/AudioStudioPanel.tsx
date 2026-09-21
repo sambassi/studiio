@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone, SlidersHorizontal, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
-import { fetchCustomVoices, isHeyGenVoiceId, isElevenLabsVoiceId, voixCloneeAProposer } from '@/lib/types/voice';
+import { fetchCustomVoices, isHeyGenVoiceId, isElevenLabsVoiceId, voixCloneeAProposer, grouperVoixPourSelecteur } from '@/lib/types/voice';
+import MaVoixClonee from '@/components/creer/MaVoixClonee';
 import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { analyseRushForDucking, detectVoiceSpeech, applyVoiceDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
@@ -154,7 +155,16 @@ interface AudioStudioPanelProps {
    */
   voiceId?: string;
   onVoiceIdChange?: (id: string) => void;
+  /**
+   * Affiche la carte « Ma voix clonée » au-dessus du bloc TTS. `false` par
+   * defaut : les autres appelants (creer-avance) gardent leur ecran tel
+   * quel ; seul le wizard de Creer l'active.
+   */
+  clonedVoiceCard?: boolean;
 }
+
+/** Prefixe du nom de voix off pose par `generateTTS` — sert a relire la voix apres rechargement. */
+const TTS_NAME_PREFIX = 'TTS — ';
 
 export function AudioStudioPanel({
   musicUrl, musicName, voiceUrl, voiceName,
@@ -166,6 +176,7 @@ export function AudioStudioPanel({
   hasRush, contentTheme,
   rushUrl = null, audioKeyframes, onAudioKeyframesChange, mixLayout,
   voiceId, onVoiceIdChange,
+  clonedVoiceCard = false,
 }: AudioStudioPanelProps) {
   const [ttsText, setTtsText] = useState('');
   const [localVoiceId, setLocalVoiceId] = useState<string>(loadInitialVoiceId);
@@ -182,17 +193,44 @@ export function AudioStudioPanel({
   // Voix listees a la volee — HeyGen et ElevenLabs, voix clonee comprise.
   // Echec ou fournisseur non configure → liste vide, le selecteur ne change pas.
   const [customVoices, setCustomVoices] = useState<TtsVoice[]>([]);
+  // `true` jusqu'a la reponse : la carte « Ma voix clonée » distingue
+  // « on cherche » de « aucune voix clonee », sinon elle afficherait
+  // « aucune » pendant la latence, puis la voix apparaitrait — un mensonge.
+  const [customVoicesLoading, setCustomVoicesLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
     fetchCustomVoices().then((voices) => {
-      if (!cancelled) setCustomVoices(voices);
+      if (!cancelled) { setCustomVoices(voices); setCustomVoicesLoading(false); }
     });
     return () => { cancelled = true; };
   }, []);
   const allVoices: TtsVoice[] = [...customVoices, ...TTS_VOICES];
+  // Groupes du selecteur (voix clonee en tete) : les ids sont inchanges.
+  const voiceGroups = grouperVoixPourSelecteur(allVoices);
   useEffect(() => {
     try { window.localStorage.setItem(VOICE_STORAGE_KEY, selectedVoiceId); } catch { /* ignore */ }
   }, [selectedVoiceId]);
+  /**
+   * Avec quoi la voix off TTS courante a ete generee. En session, c'est
+   * l'identifiant exact et le texte ; apres rechargement, seul le nom de
+   * la voix survit — dans `voiceName` (« TTS — Bassi (ma voix) »). Sert au
+   * badge « généré avec … » et a signaler un audio perime quand la voix
+   * change ensuite. On signale, on ne regenere jamais tout seul.
+   */
+  const [ttsGeneratedWith, setTtsGeneratedWith] = useState<{ url: string; voiceId: string; voiceName: string; text: string } | null>(null);
+  // Ce qu'on sait ne vaut que pour CE fichier : remplace par un import, un
+  // micro ou la mediatheque, la voix off n'est plus celle qu'on a generee.
+  const generatedHere = ttsGeneratedWith && ttsGeneratedWith.url === voiceUrl ? ttsGeneratedWith : null;
+  const ttsVoiceOffLabel = generatedHere
+    ? generatedHere.voiceName
+    : (voiceUrl && voiceName && voiceName.startsWith(TTS_NAME_PREFIX) ? voiceName.slice(TTS_NAME_PREFIX.length) : null);
+  const currentVoiceName = allVoices.find((v) => v.id === selectedVoiceId)?.name ?? null;
+  const ttsVoiceOffStale = !!voiceUrl && ttsVoiceOffLabel !== null && (
+    generatedHere
+      ? (generatedHere.voiceId !== selectedVoiceId || generatedHere.text.trim() !== ttsText.trim())
+      // Apres rechargement : comparaison par nom, le seul indice qui reste.
+      : (currentVoiceName !== null && currentVoiceName !== ttsVoiceOffLabel)
+  );
   // Sans choix explicite (Denise = le defaut), la voix clonee du compte est
   // proposee d'office une fois la liste arrivee. Un choix hors defaut — y
   // compris restaure par le parent — n'est jamais ecrase : ne rien toucher
@@ -537,13 +575,15 @@ export function AudioStudioPanel({
           await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
           setTtsProgress(100);
           setTtsStage('done');
-          onVoiceChange(uploadData.publicUrl, `TTS — ${voiceLabel}`);
+          setTtsGeneratedWith({ url: uploadData.publicUrl, voiceId: selectedVoiceId, voiceName: voiceLabel, text: ttsText });
+          onVoiceChange(uploadData.publicUrl, `${TTS_NAME_PREFIX}${voiceLabel}`);
           return;
         }
       } catch { /* fall through to local URL */ }
       setTtsProgress(100);
       setTtsStage('done');
-      onVoiceChange(localUrl, `TTS — ${voiceLabel}`);
+      setTtsGeneratedWith({ url: localUrl, voiceId: selectedVoiceId, voiceName: voiceLabel, text: ttsText });
+      onVoiceChange(localUrl, `${TTS_NAME_PREFIX}${voiceLabel}`);
     } catch (err: any) {
       console.error('[AudioPanel] TTS error:', err);
       setTtsError(err.message || 'Erreur de synthèse vocale');
@@ -645,6 +685,24 @@ export function AudioStudioPanel({
               </button>
             </div>
             <MiniPlayer src={voiceUrl} onDelete={() => onVoiceChange(null, '')} volume={voiceMuted ? 0 : mixVoiceVolume} />
+            {/* Avec quelle voix cette voix off a ete generee — et « perime »
+                si la voix ou le texte a change depuis. Signal seulement :
+                rien n'est supprime ni regenere sans un clic (appel payant). */}
+            {ttsVoiceOffLabel !== null && (
+              <div
+                data-voice-generated-with={ttsVoiceOffLabel}
+                data-voice-stale={ttsVoiceOffStale ? 'true' : 'false'}
+                className={`flex items-center gap-1.5 rounded px-2 py-1 text-[10px] ${
+                  ttsVoiceOffStale ? 'bg-amber-500/10 text-amber-200' : 'bg-gray-800/60 text-gray-400'
+                }`}
+              >
+                {ttsVoiceOffStale && <AlertTriangle size={10} className="flex-shrink-0 text-amber-400" />}
+                <span className="truncate">
+                  Généré avec {ttsVoiceOffLabel}
+                  {ttsVoiceOffStale && ' — Audio périmé, régénérer'}
+                </span>
+              </div>
+            )}
             {/* Idem musique : un seul endroit pour les niveaux quand le
                 mixeur unifie est branche. */}
             {!mixerEnabled && (
@@ -769,6 +827,18 @@ export function AudioStudioPanel({
         </div>
       )}
 
+      {/* ── Ma voix clonée ── */}
+      {clonedVoiceCard && (
+        <MaVoixClonee
+          voices={customVoices}
+          loading={customVoicesLoading}
+          voiceId={selectedVoiceId}
+          // Une seule voix pour tout : le choix remonte au wizard, qui le
+          // passe aussi au panneau des voix par sequence.
+          onVoiceIdChange={setSelectedVoiceId}
+        />
+      )}
+
       {/* ── TTS ── */}
       <div>
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center justify-between">
@@ -789,10 +859,16 @@ export function AudioStudioPanel({
           <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}
             data-testid="tts-voice-select"
             className="flex-1 min-w-[140px] rounded-lg bg-gray-800 border border-gray-700 px-2 py-1.5 text-xs text-white">
-            {allVoices.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.flag} {v.name} ({v.lang}{v.gender === 'Female' ? ', F' : v.gender === 'Male' ? ', M' : ''})
-              </option>
+            {/* Groupes, voix clonee en tete : sans eux elle etait noyee
+                parmi ~130 entrees. Les valeurs (ids) sont inchangees. */}
+            {voiceGroups.map((g) => (
+              <optgroup key={g.key} label={g.label}>
+                {g.voices.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.flag} {v.name} ({v.lang}{v.gender === 'Female' ? ', F' : v.gender === 'Male' ? ', M' : ''})
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
           <button onClick={generateTTS} disabled={ttsLoading || !ttsText.trim()}

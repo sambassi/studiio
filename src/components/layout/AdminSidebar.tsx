@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Users, CreditCard, Zap, Film, Settings, FileText, Mail, Shield, ArrowLeft, Globe } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 export function AdminSidebar() {
   const pathname = usePathname();
@@ -36,7 +37,8 @@ export function AdminSidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition ${
+              aria-current={isActive ? 'page' : undefined}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg ${ETAT_INTERACTIF_SANS_FOND} ${
                 isActive
                   ? 'bg-orange-500/10 text-orange-500 border border-orange-500/30'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800'
@@ -51,7 +53,7 @@ export function AdminSidebar() {
 
       <Link
         href="/dashboard"
-        className="flex items-center gap-3 px-4 py-3 rounded-lg transition text-gray-400 hover:text-white hover:bg-gray-800 border-t border-gray-800 pt-4 mt-4"
+        className={`flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 border-t border-gray-800 pt-4 mt-4 ${ETAT_INTERACTIF_SANS_FOND}`}
       >
         <ArrowLeft size={20} />
         <span className="font-medium">{t('backToSite')}</span>

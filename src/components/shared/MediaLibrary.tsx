@@ -5,6 +5,8 @@ import { Search, Upload, Loader2, Music, X, Clock, ShieldCheck, Trash2, AlertTri
 import { getExpiresAt, formatRemaining, getRetentionColor, getRetentionBgColor } from '@/lib/storage/retention';
 import { useUploadQueue, trierFichiersRecus, type ElementEnvoi, type FichierRefuse } from '@/lib/storage/useUploadQueue';
 import { urlPubliqueAbsolue } from '@/lib/creer/posterUpload';
+import { OptionBouton } from '@/components/ui/OptionBouton';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 type MediaType = 'image' | 'video' | 'audio' | 'all';
 type TypeFichier = 'image' | 'video' | 'audio';
@@ -322,7 +324,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
           <h2 className="text-lg font-bold text-white">Médiathèque</h2>
-          <button onClick={fermer} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white">
+          <button onClick={fermer} aria-label="Fermer" className={`rounded-lg p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white ${ETAT_INTERACTIF_SANS_FOND}`}>
             <X size={18} />
           </button>
         </div>
@@ -355,18 +357,11 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
           </div>
           {mediaType === 'all' && (
             <div className="flex gap-1">
+              {/* Filtre = option persistante : coche + aria-pressed + violet. */}
               {TYPE_FILTERS.map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setFilter(t.key)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                    filter === t.key
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-800 text-gray-400 hover:text-white'
-                  }`}
-                >
+                <OptionBouton key={t.key} selected={filter === t.key} onSelect={() => setFilter(t.key)}>
                   {t.label}
-                </button>
+                </OptionBouton>
               ))}
             </div>
           )}
@@ -376,7 +371,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
                 if (selected.size === filtered.length) setSelected(new Set());
                 else setSelected(new Set(filtered.map((f) => f.url)));
               }}
-              className="rounded-lg px-2 py-1.5 text-[10px] font-medium bg-gray-800 text-gray-400 hover:text-white transition whitespace-nowrap"
+              className={`rounded-lg px-2 py-1.5 text-[10px] font-medium bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 whitespace-nowrap ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               {selected.size === filtered.length ? 'Désélectionner' : 'Tout sélectionner'}
             </button>
@@ -430,7 +425,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
                         type="button"
                         onClick={() => { void reessayer([e.id]); }}
                         disabled={uploading}
-                        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-800 text-gray-200 hover:text-white disabled:opacity-40"
+                        className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-800 text-gray-200 hover:text-white hover:bg-gray-700 ${ETAT_INTERACTIF_SANS_FOND}`}
                         data-mediatheque-reessayer={e.id}
                       >
                         <RefreshCw size={10} /> Réessayer
@@ -458,7 +453,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
                   <button
                     type="button"
                     onClick={() => { void reessayer(); }}
-                    className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap"
+                    className={`flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap ${ETAT_INTERACTIF_SANS_FOND}`}
                     data-mediatheque-reessayer-echecs
                   >
                     <RefreshCw size={10} /> Réessayer les échecs
@@ -569,7 +564,8 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
             <button
               onClick={deleteSelected}
               disabled={deleting}
-              className="flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50 transition"
+              aria-busy={deleting || undefined}
+              className={`flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-2 text-xs font-semibold text-white ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
               Supprimer

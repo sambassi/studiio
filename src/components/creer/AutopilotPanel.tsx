@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { classesCarteOption } from '@/lib/ui/etats';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
-  Sparkles,
+  Sparkles, Clapperboard, CalendarDays,
 } from 'lucide-react';
+import { annonceCout } from '@/lib/facturation/annonce';
+import { politiqueAffichable } from '@/lib/facturation/libelles';
+import type { Politique } from '@/lib/facturation/politique';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
+import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
@@ -22,6 +27,7 @@ import {
   CADENCES, CADENCE_LABELS,
   INTENTIONS, INTENTION_LABELS, INTENTION_HINTS, INTENTION_MODE,
   intentionDiffusion, patchPourIntention, sanitizePublishTime,
+  sanitizeStartDate, localDate, slotDate,
   POSTER_MODES, POSTER_MODE_LABELS, POSTER_MODE_HINTS, type AutopilotPosterMode,
   type AutopilotConfig, type AutopilotCadence, type AutopilotIntention,
 } from '@/lib/autopilot/rules';
@@ -117,7 +123,10 @@ function phraseDiffusion(config: AutopilotConfig): string {
   const s = n > 1 ? 's' : '';
   const videos = `${n} vidéo${s}`;
   const cadence = CADENCE_LABELS[config.cadence].toLowerCase();
-  const production = `produite${s} à ${heureLisible(config.runHour)}`;
+  // La date de début, quand elle est encore à venir : la phrase dirait
+  // sinon « chaque jour » pour un Autopilote qui ne fera rien avant lundi.
+  const debut = dateDebutAVenir(config) ? ` à partir du ${dateLisible(config.startDate!)}` : '';
+  const production = `produite${s} à ${heureLisible(config.runHour)}${debut}`;
   const heure = heurePublicationLisible(config);
   let suite: string;
   switch (intentionDiffusion(config)) {
@@ -177,19 +186,47 @@ function heurePublicationLisible(config: Pick<AutopilotConfig, 'publishTime'>): 
 }
 
 /**
- * Prochain depart, dans le fuseau de l'utilisateur.
+ * « lundi 5 octobre 2026 » — une date « YYYY-MM-DD », sans heure.
+ *
+ * Posée à MIDI UTC et lue en UTC : un jour civil n'a pas de fuseau, et la
+ * lire dans celui du navigateur ferait reculer d'un jour toute date affichée
+ * à l'ouest de Greenwich.
+ */
+function dateLisible(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('fr-FR', {
+    timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
+/** La date de début est-elle encore à venir, chez l'utilisateur ? */
+function dateDebutAVenir(
+  config: Pick<AutopilotConfig, 'startDate' | 'runTimezone'>,
+  maintenant: Date = new Date(),
+): boolean {
+  const debut = sanitizeStartDate(config.startDate);
+  return !!debut && localDate(maintenant.getTime(), config.runTimezone) < debut;
+}
+
+/**
+ * L'INSTANT du prochain depart, dans le fuseau de l'utilisateur.
  *
  * ⚠️ ON CHERCHE L'INSTANT, PAS L'HEURE. Ajouter « runHour heures » a minuit
  * local supposerait des journees de 24 h : les jours de changement d'heure
  * elles en font 23 ou 25, et l'annonce se decalerait. On avance donc heure
  * par heure jusqu'a ce que l'horloge du fuseau affiche l'heure voulue — au
  * plus 48 essais, ce qui couvre tous les cas.
+ *
+ * ⚠️ LA DATE DE DÉBUT, QUAND ELLE EST À VENIR, DÉPLACE LE POINT DE DÉPART :
+ * la recherche repart de la veille de ce jour (le moteur refuse de produire
+ * avant, `avant-la-date-de-debut`), et le même balayage heure par heure
+ * trouve l'instant où l'horloge locale affiche `runHour` le jour dit.
  */
-function prochainDepart(
+function prochainDepartInstant(
   runHour: number,
   timezone: string,
   maintenant: Date = new Date(),
-): string {
+  startDate: string | null = null,
+): Date {
   const heureLocale = (d: Date) => {
     try {
       return Number(new Intl.DateTimeFormat('en-GB', {
@@ -199,27 +236,73 @@ function prochainDepart(
       return d.getUTCHours();
     }
   };
+  const debut = sanitizeStartDate(startDate);
   const d = new Date(maintenant);
   d.setMinutes(0, 0, 0);
   // Toujours STRICTEMENT dans le futur : a l'heure pile, le passage courant
   // est deja fait ou en cours.
   d.setHours(d.getHours() + 1);
+  if (debut && localDate(d.getTime(), timezone) < debut) {
+    // La veille du jour de début, à midi UTC : au plus 36 h à balayer
+    // jusqu'à `runHour` le jour dit, dans n'importe quel fuseau.
+    d.setTime(Date.parse(`${debut}T12:00:00Z`) - 24 * 3_600_000);
+    d.setMinutes(0, 0, 0);
+    for (let i = 0; i < 72 && localDate(d.getTime(), timezone) < debut; i += 1) {
+      d.setHours(d.getHours() + 1);
+    }
+  }
   for (let i = 0; i < 48 && heureLocale(d) !== runHour; i += 1) {
     d.setHours(d.getHours() + 1);
   }
+  return d;
+}
+
+/** « lundi 5 octobre 2026 à 08:00 » — un instant, lu dans le fuseau demandé. */
+function instantLisible(d: Date, timezone: string): string {
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  };
   try {
-    return d.toLocaleString('fr-FR', {
-      timeZone: timezone,
-      weekday: 'long', day: 'numeric', month: 'long',
-      hour: '2-digit', minute: '2-digit',
-    });
+    return d.toLocaleString('fr-FR', { timeZone: timezone, ...options });
   } catch {
-    return d.toLocaleString('fr-FR', {
-      timeZone: 'Europe/Paris',
-      weekday: 'long', day: 'numeric', month: 'long',
-      hour: '2-digit', minute: '2-digit',
-    });
+    return d.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', ...options });
   }
+}
+
+/** Prochain depart, en toutes lettres — voir `prochainDepartInstant`. */
+function prochainDepart(
+  runHour: number,
+  timezone: string,
+  maintenant: Date = new Date(),
+  startDate: string | null = null,
+): string {
+  return instantLisible(prochainDepartInstant(runHour, timezone, maintenant, startDate), timezone);
+}
+
+/**
+ * Les deux prochaines échéances : la PRODUCTION (l'instant où le moteur
+ * tourne) et la PUBLICATION (le créneau du premier post qu'il déposera).
+ *
+ * ⚠️ LA PUBLICATION EST CALCULÉE PAR LA RÈGLE DU MOTEUR, `slotDate` : le
+ * lendemain de la production chez l'utilisateur — ou la date de début si
+ * elle est plus tard — à `publishTime`, minutes comprises. Une seconde
+ * estimation écrite ici aurait fini par annoncer autre chose que ce que le
+ * cron écrit dans `scheduled_date` / `scheduled_time`.
+ */
+function prochainesEcheances(
+  config: Pick<AutopilotConfig, 'runHour' | 'runTimezone' | 'publishTime' | 'startDate'>,
+  maintenant: Date = new Date(),
+): { production: string; publicationDate: string; publicationTime: string; publication: string } {
+  const instant = prochainDepartInstant(config.runHour, config.runTimezone, maintenant, config.startDate);
+  const publicationDate = slotDate(instant, 0, config.runTimezone, config.startDate);
+  const publicationTime = heurePublicationLisible(config);
+  return {
+    production: `${instantLisible(instant, config.runTimezone)} (${config.runTimezone})`,
+    publicationDate,
+    publicationTime,
+    publication: `${dateLisible(publicationDate)} à ${publicationTime} (${config.runTimezone})`,
+  };
 }
 
 /**
@@ -268,6 +351,9 @@ function RECAP_DIFFUSION(config: AutopilotConfig): Array<[string, string]> {
   const intention = intentionDiffusion(config);
   return [
     ['Rythme', CADENCE_LABELS[config.cadence]],
+    // La date de début : « dès le prochain passage » sans date — le
+    // comportement d'avant, dit tel quel plutôt que laissé vide.
+    ['Date de début', config.startDate ? dateLisible(config.startDate) : 'Dès le prochain passage'],
     // Deux lignes, deux heures : la production et la publication ne sont
     // pas le même moment, et le récapitulatif les confondait.
     ['Heure de départ', `${heureLisible(config.runHour)} (${config.runTimezone})`],
@@ -357,6 +443,43 @@ export default function AutopilotPanel({
   const [identiteReady, setIdentiteReady] = useState(true);
   /** La colonne `publish_time` existe-t-elle ? Voir `publishTimeReady` dans la route. */
   const [heurePublicationReady, setHeurePublicationReady] = useState(true);
+  /** La colonne `start_date` existe-t-elle ? Voir `startDateReady` dans la route. */
+  const [dateDebutReady, setDateDebutReady] = useState(true);
+  /**
+   * « Produire un brouillon maintenant » — où en est-on.
+   *
+   *   repos → confirmation (le coût est affiché, rien n'est parti)
+   *         → en-cours (UN POST en vol) → fait | erreur → repos.
+   */
+  const [produire, setProduire] = useState<
+    | { etat: 'repos' }
+    | { etat: 'confirmation' }
+    | { etat: 'en-cours' }
+    | { etat: 'fait'; postId: string | null; date: string; time: string; timezone: string; calendrierUrl: string }
+    | { etat: 'erreur'; message: string }
+  >({ etat: 'repos' });
+  /**
+   * ⚠️ VERROU SYNCHRONE CONTRE LE DOUBLE CLIC. `disabled` suit l'état React,
+   * qui n'est pas encore rendu quand le second clic arrive dans la même
+   * tâche ; la ref, elle, est lue et posée dans le gestionnaire lui-même.
+   * Un seul `fetch` part, quoi qu'il arrive — et le serveur a son propre
+   * verrou (409) derrière.
+   */
+  const produireEnVolRef = useRef(false);
+  /**
+   * Le DEVIS : le coût que le serveur débitera, tel qu'il le dit lui-même
+   * (`GET /api/autopilot/produire-maintenant`). `null` tant qu'il n'a pas
+   * répondu : l'écran écrit alors « Tarif confirmé au rendu » plutôt qu'un
+   * nombre qu'il aurait inventé.
+   */
+  const [devis, setDevis] = useState<{ politique: Politique; cout: number; solde: number | null } | null>(null);
+  /** La colonne `brief` existe-t-elle ? Voir `briefReady` dans la route. */
+  const [briefReady, setBriefReady] = useState(true);
+  /**
+   * Le brief tel qu'il a été ENREGISTRÉ — pour n'envoyer un PUT à la perte
+   * du focus que si quelque chose a changé, pas à chaque passage de champ.
+   */
+  const [briefEnregistre, setBriefEnregistre] = useState<string>('');
   /**
    * La carte d'intention que l'utilisateur a CLIQUÉE — `null` tant qu'il n'a
    * rien cliqué : on lit alors l'intention que dit la configuration.
@@ -393,7 +516,13 @@ export default function AutopilotPanel({
         setReady(data?.ready !== false);
         setIdentiteReady(data?.brandingReady !== false);
         setHeurePublicationReady(data?.publishTimeReady !== false);
-        if (data?.config) setConfig(sanitizeConfig(data.config));
+        setDateDebutReady(data?.startDateReady !== false);
+        setBriefReady(data?.briefReady !== false);
+        if (data?.config) {
+          const propre = sanitizeConfig(data.config);
+          setConfig(propre);
+          setBriefEnregistre(JSON.stringify(propre.brief));
+        }
       } catch {
         if (!cancelled) setReady(false);
       } finally {
@@ -444,6 +573,9 @@ export default function AutopilotPanel({
       // Le serveur dit s'il a pu écrire l'heure de publication : sans la
       // colonne, l'écran doit continuer à l'annoncer non conservée.
       if (typeof data.publishTimeReady === 'boolean') setHeurePublicationReady(data.publishTimeReady);
+      if (typeof data.startDateReady === 'boolean') setDateDebutReady(data.startDateReady);
+      if (typeof data.briefReady === 'boolean') setBriefReady(data.briefReady);
+      setBriefEnregistre(JSON.stringify(suivant.brief));
       setNotice('Enregistré.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement impossible.');
@@ -541,10 +673,212 @@ export default function AutopilotPanel({
   /** Thèmes écrits à la main — affichés en puces retirables. */
   const persos = config.topics.filter(isCustomTopic);
 
+  /**
+   * Le brief récurrent : la frappe ne fait que mettre l'état à jour ; la
+   * perte de focus ENREGISTRE — et seulement si le brief a changé. Un PUT par
+   * frappe aurait écrit la configuration entière des dizaines de fois par
+   * phrase.
+   */
+  const poserBrief = useCallback((brief: AutopilotConfig['brief']) => {
+    setConfig((c) => ({ ...c, brief }));
+  }, []);
+  const enregistrerBrief = useCallback((brief: AutopilotConfig['brief']) => {
+    const propre = sanitizeConfig({ ...config, brief }).brief;
+    if (JSON.stringify(propre) === briefEnregistre) return;
+    enregistrer({ brief: propre });
+  }, [config, briefEnregistre, enregistrer]);
+
   // L'etape des rushes est la seule qui BLOQUE : sans rush, l'Autopilote ne
   // produit rien, et le laisser avancer serait promettre une production qui
   // n'aura pas lieu.
   const bloqueEtape = etape === 1 && config.rushUrls.length === 0;
+
+  /**
+   * Le devis de « Produire un brouillon maintenant » — demandé UNE fois, à
+   * l'ouverture de la confirmation, pas au montage : la plupart des visites
+   * ne cliquent pas. Un échec laisse `devis` à `null` : « Tarif confirmé au
+   * rendu », jamais un chiffre deviné.
+   */
+  useEffect(() => {
+    if (produire.etat !== 'confirmation' || devis) return;
+    let vivant = true;
+    fetch('/api/autopilot/produire-maintenant')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!vivant || !d?.success || typeof d.cout !== 'number') return;
+        setDevis({
+          politique: politiqueAffichable(d.politique),
+          cout: d.cout,
+          solde: typeof d.solde === 'number' ? d.solde : null,
+        });
+      })
+      .catch(() => { /* « Tarif confirmé au rendu » */ });
+    return () => { vivant = false; };
+  }, [produire.etat, devis]);
+
+  /**
+   * Lance UNE production manuelle — brouillon forcé, aucun réseau.
+   *
+   * ⚠️ LA REF EST LUE ET POSÉE ICI, SYNCHRONEMENT, avant tout `await` : deux
+   * clics dans la même tâche ne peuvent pas passer tous les deux. Le
+   * `disabled` du bouton est un confort visuel ; c'est la ref qui garantit
+   * qu'un seul POST part.
+   */
+  const produireMaintenant = useCallback(async () => {
+    if (produireEnVolRef.current) return;
+    produireEnVolRef.current = true;
+    setProduire({ etat: 'en-cours' });
+    setError(null);
+    try {
+      const res = await fetch('/api/autopilot/produire-maintenant', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || `Erreur ${res.status}`);
+      }
+      setProduire({
+        etat: 'fait',
+        postId: typeof data.postId === 'string' ? data.postId : null,
+        date: String(data.scheduledDate ?? ''),
+        time: String(data.scheduledTime ?? ''),
+        timezone: String(data.timezone ?? config.runTimezone),
+        calendrierUrl: typeof data.calendrierUrl === 'string' ? data.calendrierUrl : '/dashboard/calendar',
+      });
+      // Le solde a bougé : le prochain devis le relit.
+      setDevis(null);
+    } catch (err) {
+      setProduire({ etat: 'erreur', message: err instanceof Error ? err.message : 'Production impossible.' });
+    } finally {
+      produireEnVolRef.current = false;
+    }
+  }, [config.runTimezone]);
+
+  /**
+   * Le bloc « prochaines échéances » + « Produire un brouillon maintenant »,
+   * rendu à l'étape Publication ET à l'étape Vérification. Une fonction et
+   * non un composant : il lit l'état du panneau (devis, production) et n'a
+   * pas d'état propre — un composant aurait demandé huit props pour le même
+   * résultat.
+   */
+  const rendreProchaines = () => {
+    const echeances = prochainesEcheances(config);
+    const sansRush = config.rushUrls.length === 0;
+    return (
+      <div className="space-y-2">
+        {/* ── Les DEUX prochaines échéances, une par ligne ───────────────
+            Production = l'instant où le moteur tourne ; publication = le
+            créneau du premier post, calculé par la règle du moteur
+            (`slotDate`). Deux lignes, parce que ce sont deux moments. */}
+        <dl
+          className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] space-y-1"
+          data-autopilot-prochaines
+        >
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-gray-500 shrink-0">Prochaine production</dt>
+            <dd className="text-right text-gray-200" data-autopilot-prochaine-production>{echeances.production}</dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <dt className="text-gray-500 shrink-0">Prochaine publication</dt>
+            <dd
+              className="text-right text-gray-200"
+              data-autopilot-prochaine-publication
+              data-date={echeances.publicationDate}
+              data-time={echeances.publicationTime}
+            >
+              {echeances.publication}
+            </dd>
+          </div>
+          {!config.enabled && (
+            <p className="text-[10px] text-gray-500 pt-0.5">
+              En pause : ces échéances valent une fois l’Autopilote lancé.
+            </p>
+          )}
+        </dl>
+
+        {/* ── Produire un brouillon MAINTENANT ───────────────────────────
+            Ni l'heure de production ni celle de publication ne sont des
+            commandes : ce bouton, seul, produit tout de suite. Brouillon
+            forcé, aucun réseau, coût annoncé AVANT — et un seul POST, quoi
+            qu'on clique. */}
+        {produire.etat === 'repos' || produire.etat === 'fait' || produire.etat === 'erreur' ? (
+          <button
+            type="button"
+            onClick={() => setProduire({ etat: 'confirmation' })}
+            disabled={!ready || sansRush}
+            title={sansRush ? 'Ajoutez au moins un rush pour produire.' : undefined}
+            data-autopilot-produire-maintenant
+            className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-200 hover:border-gray-700 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <Clapperboard className="w-3.5 h-3.5" />
+            Produire un brouillon maintenant
+          </button>
+        ) : null}
+        {produire.etat === 'confirmation' && (
+          <div
+            className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 space-y-2 text-xs"
+            data-autopilot-produire-confirmation
+          >
+            <p className="text-purple-100">
+              Une vidéo est rendue tout de suite avec vos rushes et votre style,
+              puis déposée en <strong>brouillon</strong> dans le Calendrier, sans
+              aucun réseau : rien ne sera publié.
+            </p>
+            <p className="text-purple-100" data-autopilot-produire-cout>
+              Coût : <strong>{devis
+                ? annonceCout(devis.politique, { reel: devis.cout, tv: devis.cout }, 'reel', 1)
+                : annonceCout('credits', null, 'reel', 1)}</strong>
+              {devis?.solde !== null && devis?.solde !== undefined && devis.politique === 'credits'
+                ? ` · solde actuel : ${devis.solde} crédits`
+                : ''}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => { void produireMaintenant(); }}
+                disabled={!ready || sansRush}
+                data-autopilot-produire-confirmer
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
+                style={{ backgroundColor: accent }}
+              >
+                Lancer le rendu
+              </button>
+              <button
+                type="button"
+                onClick={() => setProduire({ etat: 'repos' })}
+                data-autopilot-produire-annuler
+                className="rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+        {produire.etat === 'en-cours' && (
+          <p className="flex items-center gap-1.5 text-xs text-gray-300" data-autopilot-produire-en-cours>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Rendu en cours — quelques minutes. Vous pouvez continuer à régler l’Autopilote.
+          </p>
+        )}
+        {produire.etat === 'fait' && (
+          <p className="flex items-start gap-1.5 text-xs text-emerald-400" data-autopilot-produire-resultat data-post-id={produire.postId ?? ''}>
+            <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>
+              Brouillon déposé dans le Calendrier le {produire.date ? dateLisible(produire.date) : 'aujourd’hui'}
+              {produire.time ? ` à ${produire.time}` : ''} ({produire.timezone}).
+              {' '}
+              <a href={produire.calendrierUrl} className="underline hover:text-white" data-autopilot-produire-lien>
+                <CalendarDays className="inline w-3.5 h-3.5 mr-0.5 align-text-bottom" />Ouvrir le Calendrier
+              </a>
+            </span>
+          </p>
+        )}
+        {produire.etat === 'erreur' && (
+          <p className="flex items-start gap-1.5 text-xs text-red-400" data-autopilot-produire-erreur>
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {produire.message}
+          </p>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -646,9 +980,7 @@ export default function AutopilotPanel({
                   disabled={!ready || saving}
                   aria-pressed={retenu}
                   data-autopilot-topic={t.id}
-                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition disabled:opacity-40 ${
-                    retenu ? 'border-purple-500/50 bg-gray-800' : 'border-gray-800 hover:border-gray-700'
-                  }`}
+                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left ${classesCarteOption(retenu)}`}
                 >
                   <CardIcon name={t.icon} size={14} color={retenu ? accent : '#9CA3AF'} className="" />
                   <span className="text-[11px] leading-tight">{t.label}</span>
@@ -707,6 +1039,29 @@ export default function AutopilotPanel({
               </div>
             )}
           </div>
+
+          {/* ── BRIEF RÉCURRENT ──────────────────────────────────────
+              Le sujet dit DE QUOI parle chaque vidéo ; le brief dit ce
+              qu'elles doivent toutes transmettre, à qui, et vers quoi. Il
+              est commun à toutes les vidéos ; le script de chacune est
+              généré à sa production. Rien n'est généré ni facturé ici. */}
+          {ready && !briefReady && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-400" data-autopilot-brief-absent>
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              Le brief ne sera pas conservé : la migration
+              <code className="mx-1">2026-09-21-autopilot-brief</code> n’a pas été appliquée.
+            </p>
+          )}
+          <BriefVideo
+            brief={config.brief}
+            onChange={poserBrief}
+            onCommit={enregistrerBrief}
+            disabled={!ready || saving}
+            titre="Brief récurrent"
+            aide="Commun à toutes les vidéos produites. Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
+            idPrefix="autopilot-brief"
+          />
+          <BriefRecurrentRecap brief={config.brief} />
         </div>
       )}
 
@@ -1315,37 +1670,84 @@ export default function AutopilotPanel({
             {phraseDiffusion(config)}
           </p>
 
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fréquence</p>
-          <div>
-            <label htmlFor="autopilot-hour" className="block text-xs font-medium text-gray-300 mb-1.5">
-              Heure de départ
-            </label>
-            <select
-              id="autopilot-hour"
-              value={config.runHour}
-              onChange={(e) => enregistrer({ runHour: Number(e.target.value) })}
-              disabled={!ready || saving}
-              data-autopilot-hour
-              className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
-            >
-              {Array.from({ length: 24 }, (_, h) => (
-                <option key={h} value={h}>{heureLisible(h)}</option>
-              ))}
-            </select>
-            <p className="text-[11px] text-gray-500 mt-1">
-              Heure de {config.runTimezone.replace('_', ' ')} à laquelle Studiio
-              PRODUIT les vidéos. La fréquence ci-dessous décide de
-              l’espacement ; celle-ci, du moment.
+{/* ── PRODUCTION ───────────────────────────────────────────────
+              Deux blocs, deux moments. PRODUCTION = quand le moteur tourne
+              (une date de debut, une heure) ; PUBLICATION = quand les posts
+              produits sont programmes (une heure, le lendemain). La capture
+              de l'utilisateur les montrait cote a cote sans les nommer, et
+              une heure de publication se lisait comme un ordre de
+              production. */}
+          <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-3" data-autopilot-bloc-production>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              Production — quand Studiio fabrique les vidéos
             </p>
+            <div>
+              <label htmlFor="autopilot-start-date" className="block text-xs font-medium text-gray-300 mb-1.5">
+                Date de début
+              </label>
+              <input
+                id="autopilot-start-date"
+                type="date"
+                value={config.startDate ?? ''}
+                // Vide = « dès le prochain passage » : c'est un choix, pas
+                // une saisie incomplete, et il s'enregistre (`null`). Une
+                // date partielle rend aussi `''` dans certains navigateurs :
+                // elle efface alors la date — on ne peut pas distinguer les
+                // deux, et effacer est le moins surprenant.
+                onChange={(e) => enregistrer({ startDate: e.target.value ? e.target.value : null })}
+                disabled={!ready || saving}
+                data-autopilot-start-date
+                className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                {config.startDate
+                  ? `Rien n’est produit avant le ${dateLisible(config.startDate)} ; la première publication est programmée au plus tôt ce jour-là.`
+                  : 'Vide : dès le prochain passage. Choisissez un jour pour différer le départ.'}
+              </p>
+              {ready && !dateDebutReady && (
+                <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mt-1" data-autopilot-start-date-absente>
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                  La date de début n’est pas encore conservée : la migration
+                  <code className="mx-1">2026-09-21-autopilot-start-date</code> n’a pas été
+                  appliquée. L’Autopilote part dès le prochain passage.
+                </p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="autopilot-hour" className="block text-xs font-medium text-gray-300 mb-1.5">
+                Heure de production
+              </label>
+              <select
+                id="autopilot-hour"
+                value={config.runHour}
+                onChange={(e) => enregistrer({ runHour: Number(e.target.value) })}
+                disabled={!ready || saving}
+                data-autopilot-hour
+                className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>{heureLisible(h)}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Heure de {config.runTimezone.replace('_', ' ')} à laquelle Studiio
+                PRODUIT les vidéos. Ce n’est pas une heure de publication, et ce
+                n’est pas une commande immédiate : pour tester tout de suite,
+                utilisez « Produire un brouillon maintenant » ci-dessous.
+              </p>
+            </div>
           </div>
 
-{/* ── Heure de publication ─────────────────────────────────────
-              DISTINCTE de l'heure de depart : celle-ci est l'heure a laquelle
-              les posts produits sont PROGRAMMES (le lendemain de la
+{/* ── PUBLICATION ──────────────────────────────────────────────
+              DISTINCTE de l'heure de production : celle-ci est l'heure a
+              laquelle les posts produits sont PROGRAMMES (le lendemain de la
               production). Un champ `time` et non une liste de 24 heures :
               les minutes comptent, et elles sont conservees telles quelles
               (« 18:45 »), jusqu'a `scheduled_time` et au cron. */}
-          <div>
+          <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-3" data-autopilot-bloc-publication>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              Publication — quand les vidéos produites sont programmées
+            </p>
             <label htmlFor="autopilot-publish-time" className="block text-xs font-medium text-gray-300 mb-1.5">
               Heure de publication
             </label>
@@ -1377,6 +1779,11 @@ export default function AutopilotPanel({
             )}
           </div>
 
+          {/* Les deux prochaines échéances + « Produire un brouillon
+              maintenant » — le même bloc qu'à l'étape Vérification. */}
+          {rendreProchaines()}
+
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fréquence</p>
 {/* ── Cadence et nombre ────────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1441,11 +1848,7 @@ export default function AutopilotPanel({
                     data-autopilot-intention={i}
                     data-autopilot-mode={INTENTION_MODE[i]}
                     title={sansReseau ? 'Choisissez d’abord au moins un réseau (« Préparer et me laisser valider », puis les réseaux).' : undefined}
-                    className={`w-full text-left rounded-lg border px-3 py-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
-                      choisie
-                        ? 'border-purple-500/50 bg-gray-800'
-                        : 'border-gray-800 hover:border-gray-700'
-                    }`}
+                    className={`w-full text-left rounded-lg border px-3 py-2 ${classesCarteOption(choisie)}`}
                   >
                     <span className="text-xs font-medium">{INTENTION_LABELS[i]}</span>
                     <span className="block text-[11px] text-gray-500 mt-0.5">{INTENTION_HINTS[i]}</span>
@@ -1666,10 +2069,14 @@ export default function AutopilotPanel({
               <Rocket className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               Production à {heureLisible(config.runHour)} ({config.runTimezone}),
               {' '}{CADENCE_LABELS[config.cadence].toLowerCase()}.
-              Prochaine production : {prochainDepart(config.runHour, config.runTimezone)}.
+              Prochaine production : {prochainDepart(config.runHour, config.runTimezone, new Date(), config.startDate)}.
               {' '}Publication des vidéos produites : le lendemain à {heurePublicationLisible(config)}.
             </p>
           )}
+
+          {/* Les deux prochaines échéances, datées — et « Produire un
+              brouillon maintenant » pour tester sans attendre le passage. */}
+          {rendreProchaines()}
         </div>
       )}
 

@@ -198,6 +198,12 @@ describe('Mon jumeau dans l’Autopilote — la voix posée est celle du moteur'
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="pret"]')).not.toBeNull());
     await waitFor(() => expect(interrupteur().disabled).toBe(false));
     expect(sw.checked).toBe(false);
+    // Ce qui est prêt ici, c'est la VOIX (narration) — pas « votre jumeau »,
+    // que l'Autopilote ne monte jamais à l'image ; la ligne suivante le dit.
+    const bloc = document.querySelector('[data-jumeau-autopilote]')!.textContent!;
+    expect(bloc).toContain('Voix du jumeau prête pour la narration');
+    expect(bloc).not.toContain('Votre jumeau est prêt');
+    expect(document.querySelector('[data-jumeau-autopilote-video]')!.textContent).toContain('jamais montée par l’Autopilote');
     await act(async () => { fireEvent.click(interrupteur()); });
     await waitFor(() => expect(envois.length).toBeGreaterThan(0));
     const dernier = envois[envois.length - 1];

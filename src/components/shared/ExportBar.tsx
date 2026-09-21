@@ -1,6 +1,7 @@
 'use client';
 
 import { Calendar, Download, Loader2 } from 'lucide-react';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 interface ExportBarProps {
   onSchedule: () => void;
@@ -46,7 +47,7 @@ export function ExportBar({
           <button
             onClick={onSchedule}
             disabled={disabled || isProcessing}
-            className="flex items-center gap-2 rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            className={`flex items-center gap-2 rounded-xl bg-gray-800 border border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-200 hover:bg-gray-700 hover:border-purple-500/40 ${ETAT_INTERACTIF_SANS_FOND}`}
           >
             <Calendar size={16} />
             Planifier
@@ -54,7 +55,8 @@ export function ExportBar({
           <button
             onClick={onDownload}
             disabled={disabled || isProcessing}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2.5 text-sm font-bold text-white hover:from-purple-700 hover:to-pink-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            aria-busy={isProcessing || undefined}
+            className={`flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2.5 text-sm font-bold text-white hover:from-purple-700 hover:to-pink-700 ${ETAT_INTERACTIF_SANS_FOND}`}
           >
             {isProcessing ? (
               <Loader2 size={16} className="animate-spin" />

@@ -796,34 +796,58 @@ describe('6. Remplacement, suppression, et ce qui reste HeyGen', () => {
     expect(appelsVers(/scenes\/avatars\/avt-1$/, 'DELETE')).toHaveLength(1);
   });
 
-  it('⚠️ un avatar D-ID n’est JAMAIS envoyé à HeyGen : /api/avatar/generate refuse (409) ; le jumeau est PRÊT (voix utilisable) mais son moteur vidéo refuse avant tout débit', async () => {
+  it('⚠️ un avatar D-ID n’est JAMAIS envoyé à HeyGen : /api/avatar/generate refuse (409) ; le jumeau est PRÊT et son moteur vidéo passe par D-ID (la chaîne de l’aperçu, intention normale), jamais par HeyGen', async () => {
     await jusquAPret();
     base.avatars[0].validated_at = '2026-09-15T00:00:00Z';
     const res = await generate.POST(new NextRequest('https://studiio.pro/api/avatar/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ script: 'Bonjour', voiceId: 'v-fr' }) }));
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('provider_did');
     // « Prêt » = avatar validé + voix nommée : la voix sert partout (narration
-    // Autopilote, voix par séquence). Refuser ici privait l'Autopilote d'une
-    // voix qui marche.
+    // Autopilote, voix par séquence).
     const j = await resoudreJumeauDuCompte(U);
-    if (j.ok) {
-      expect(j.jumeau.avatar.fournisseur).toBe('did');
-      expect(j.prive.fournisseurAvatar).toBe('did');
-      // Le moteur vidéo, lui, ne sait pas animer un avatar D-ID : dit, avec
-      // ce qui marche déjà.
-      expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv)).toMatchObject({ disponible: false });
-      expect(moteurJumeauDisponiblePour('did').message).toContain('créés à partir d’une photo');
-      expect(moteurJumeauDisponiblePour('did').message).toContain('voix reste utilisable');
-    } else {
-      // Sans voix personnelle dans la fixture, le seul motif admissible est
-      // celui de la voix — jamais le fournisseur de l'avatar.
-      expect('motif' in j ? j.motif : '').toMatch(/^voix_|^choix_voix_requis$/);
-    }
-    // Défense en profondeur : même moteur actif, un identifiant D-ID n'atteint
-    // jamais HeyGen — refus avant tout débit.
-    const g = await genererVideoJumeau({ userId: U, textes: ['Bonjour'] }, { env: { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv });
-    expect(g.ok).toBe(false);
-    expect(g.ok ? '' : g.motif).toMatch(/^(moteur_indisponible|voix_absente|choix_voix_requis|voix_inutilisable)$/);
+    expect(j.ok).toBe(true);
+    if (!j.ok) return;
+    expect(j.jumeau.avatar.fournisseur).toBe('did');
+    expect(j.prive.fournisseurAvatar).toBe('did');
+    // Le moteur se juge POUR cet avatar : le drapeau HeyGen ne dit rien d'un
+    // avatar D-ID ; c'est le gate de l'aperçu (D-ID + ElevenLabs) qui compte.
+    const envDid = { DID_VIDEO_AVATAR_ACTIVE: '1', DID_API_KEY: 'user:secretDID', ELEVENLABS_API_KEY: 'cle-eleven', NEXT_PUBLIC_APP_URL: 'https://studiio.pro', AUTH_SECRET: 'secret-de-test-tres-long' } as unknown as NodeJS.ProcessEnv;
+    expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv)).toMatchObject({ disponible: false });
+    expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv).message).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
+    expect(moteurJumeauDisponiblePour('did', envDid)).toEqual({ disponible: true, message: null });
+    // La chaîne : ElevenLabs sur MA voix (SPOKEN) → audio privé → scène D-ID
+    // sur URL signée, intention `normale`, provider 'did'. Aucun appel HeyGen.
+    reseau.appels.length = 0;
+    const g = await genererVideoJumeau({ userId: U, textes: ['Bonjour mon avatar'] }, { env: envDid });
+    expect(g.ok, JSON.stringify(g)).toBe(true);
+    if (!g.ok) return;
+    expect(g.spoken).toBe('Bonjour mon a-va-tar');
     expect(appelsVers(/heygen/)).toEqual([]);
+    expect(appelsVers(/elevenlabs\.io\/v1\/text-to-speech\/pvid_perso_0001/)).toHaveLength(1);
+    const scene = appelsVers('https://api.d-id.com/scenes', 'POST')[0].body as Record<string, unknown>;
+    expect(scene.avatar_id).toBe('avt-1');
+    expect(String((scene.script as { audio_url: string }).audio_url)).toMatch(new RegExp(`^https://studiio\\.pro/api/avatar/media/[^/]+/audio-${g.generationId}\\.mp3$`));
+    expect(base.generations.find((x) => x.id === g.generationId)).toMatchObject({ intention: 'normale', provider: 'did', provider_video_id: 'scn-1', status: 'processing', credits_charged: 40, voice_id: `jumeau:${V1}` });
+    // Même moteur HeyGen actif, un identifiant D-ID n'atteint toujours pas HeyGen.
+    reseau.appels.length = 0;
+    const g2 = await genererVideoJumeau({ userId: U, textes: ['Autre texte'] }, { env: { ...envDid, JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv });
+    expect(g2.ok).toBe(true);
+    expect(appelsVers(/heygen/)).toEqual([]);
+    expect(appelsVers('https://api.d-id.com/scenes', 'POST')).toHaveLength(1);
+  });
+
+  it('⚠️ jumeau D-ID suivi par /api/avatar/status : scène done → vidéo re-hébergée sous media/<u>/avatar/<gen>.mp4, audio retiré — la même forme que l’aperçu', async () => {
+    await jusquAPret();
+    base.avatars[0].validated_at = '2026-09-15T00:00:00Z';
+    const g = await genererVideoJumeau({ userId: U, textes: ['Bonjour'] });
+    expect(g.ok).toBe(true);
+    if (!g.ok) return;
+    let s = await (await getStatut(g.generationId)).json();
+    expect(s.data).toMatchObject({ status: 'processing', videoUrl: null });
+    reseau.statutScene = { status: 'done', result_url: 'https://d-id-results.example/scn-1.mp4' };
+    s = await (await getStatut(g.generationId)).json();
+    const attendue = `https://studiio.pro/storage/v1/object/public/media/${U}/avatar/${g.generationId}.mp4`;
+    expect(s.data).toMatchObject({ status: 'completed', videoUrl: attendue });
+    expect(stockage.objets.has(`${U}/avatar/audio-${g.generationId}.mp3`)).toBe(false);
   });
 });

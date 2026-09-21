@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { shortenForCard } from '@/lib/smart-content';
+import { briefPourPrompt } from '@/lib/creer/brief';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 
 // Fast model for card generation. Haiku 4.5 is 5-10× faster than Sonnet on
@@ -96,6 +97,10 @@ export async function POST(req: NextRequest) {
     console.log('[AI-Generate] body received:', JSON.stringify(body).slice(0, 400));
     let topic: string = typeof body?.topic === 'string' ? body.topic.trim() : '';
     const { locale = 'fr', cardCount = 3, existingCards = [], existingTitles = [], videoOverlayOnly = false, fieldType, variationNonce } = body;
+    // Le brief de la video — objectif, message, public, CTA. `''` sans brief :
+    // le prompt reste alors EXACTEMENT celui d'avant, pour tous les appels
+    // qui n'en envoient pas.
+    const briefContext = briefPourPrompt(body?.brief);
 
     // Coerce missing/invalid topic to a usable default for single-field
     // calls (title/subtitle/cta/etc.) so the user who just clicked a
@@ -122,7 +127,10 @@ export async function POST(req: NextRequest) {
         tts: `Génère un script voix-off court (2-3 phrases, ~30 mots) pour une vidéo sur "${topic}". Ton engageant et motivant. En ${locale === 'fr' ? 'français' : 'anglais'}. Réponse JSON: {"text":"..."}`,
         salesPhraseRewrite: `Reformule cette phrase de vente pour la rendre plus accrocheuse et concise (max 120 caractères). Garde l'idée principale mais améliore le punch : "${topic}". Réponds UNIQUEMENT en JSON: {"text":"..."}`,
       };
-      const prompt = fieldPrompts[fieldType] || fieldPrompts.title;
+      // Le brief vient APRES la consigne de format : on la repete donc, pour
+      // que la derniere ligne lue par le modele reste la forme attendue.
+      const prompt = (fieldPrompts[fieldType] || fieldPrompts.title)
+        + (briefContext ? `${briefContext}\nRéponds UNIQUEMENT en JSON: {"text":"..."}` : '');
       // Try primary model first; if it returns a non-200 (commonly a
       // transient 400/529 on Haiku under load) retry once on Sonnet.
       const callModel = async (model: string) => {
@@ -332,7 +340,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans commenta
 
 Le contenu doit être 100% axé sur "${topic}" — pas de contenu générique fitness.
 Chaque carte = un vrai fait/chiffre sur "${topic}".
-Les phrases de vente doivent promouvoir "${topic}" avec Afroboost.${existingCardsContext}${existingTitlesContext}
+Les phrases de vente doivent promouvoir "${topic}" avec Afroboost.${existingCardsContext}${existingTitlesContext}${briefContext}
 
 JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
 {

@@ -50,9 +50,10 @@ export interface JumeauPublic {
     id: string; version: number; nom: string | null; valideLe: string;
     /**
      * Le FOURNISSEUR (pas son identifiant) : l'écran en a besoin pour dire
-     * honnêtement ce que le moteur vidéo sait faire de cet avatar. Un avatar
-     * D-ID (créé à partir d'une vidéo) a une voix utilisable partout, mais
-     * pas encore de moteur vidéo — voir `moteurJumeauDisponiblePour`.
+     * honnêtement ce que le moteur vidéo sait faire de cet avatar, et le
+     * nommer (« créé à partir d'une vidéo (D-ID) » / « d'une photo (HeyGen) »).
+     * La disponibilité du moteur se juge par fournisseur — voir
+     * `moteurJumeauDisponiblePour`.
      */
     fournisseur: FournisseurAvatar | 'inconnu';
   };
@@ -102,8 +103,9 @@ export async function resoudreJumeauDuCompte(userId: string): Promise<Resolution
   // + voix nommée — et la voix, elle, sert partout (narration Autopilote,
   // voix par séquence). Ce que le moteur VIDÉO sait animer est une autre
   // question, répondue par `moteurJumeauDisponiblePour(fournisseur)` ; le
-  // moteur lui-même refuse tout identifiant qui n'est pas HeyGen, avant tout
-  // débit. Un identifiant D-ID n'est donc JAMAIS envoyé à HeyGen.
+  // moteur lui-même route chaque fournisseur vers SA chaîne (HeyGen ou D-ID)
+  // et refuse tout fournisseur inconnu, avant tout débit. Un identifiant
+  // D-ID n'est donc JAMAIS envoyé à HeyGen, ni l'inverse.
   // L'état est DÉRIVÉ, au même endroit que la validation : vivant, fournisseur
   // présent, entraînement réellement terminé, validated_at posé.
   const etat = etatAvatar(a);
@@ -141,33 +143,60 @@ export function scriptsDuJumeau(textes: readonly string[], prononciations: reado
 
 /**
  * Le moteur vidéo « avatar animé + voix personnelle » vit dans
- * `@/lib/avatar/moteur-jumeau`. Il n'est DISPONIBLE que si
- * `JUMEAU_MOTEUR_ACTIVE=1` et que les deux fournisseurs sont configurés — le
- * drapeau ne passe à 1 qu'après une génération réelle constatée sur un vrai
- * compte. Tant qu'il est à zéro, on le dit ; on ne simule rien.
+ * `@/lib/avatar/moteur-jumeau`. Sa disponibilité se juge PAR FOURNISSEUR
+ * d'avatar (`moteurJumeauDisponiblePour`) :
+ *
+ *   HeyGen (avatar créé à partir d'une photo) — `JUMEAU_MOTEUR_ACTIVE=1` ET
+ *     `HEYGEN_API_KEY` ET `ELEVENLABS_API_KEY` : le drapeau ne passe à 1
+ *     qu'après une génération réelle constatée sur un vrai compte
+ *     (`moteurJumeauDisponible`, inchangé).
+ *   D-ID (avatar créé à partir d'une vidéo) — EXACTEMENT le gate de l'aperçu
+ *     déjà validé en production : `didVideoAvatarDisponible`
+ *     (`DID_VIDEO_AVATAR_ACTIVE=1` + `DID_API_KEY`) ET `ELEVENLABS_API_KEY`.
+ *     Aucun drapeau global n'est posé pour D-ID : la chaîne est celle de
+ *     l'aperçu (`lancerApercuDid`), qui a déjà produit des vidéos réelles.
+ *
+ * Quand ce n'est pas disponible, le message NOMME la dépendance manquante,
+ * dit que c'est côté serveur et qu'aucun crédit n'est débité, et rappelle
+ * que la voix reste utilisable pour la narration. Jamais un « pas encore
+ * pris en charge » sans dire quoi ni pourquoi.
  */
 import { moteurJumeauDisponible } from '@/lib/avatar/moteur-jumeau';
+import { didVideoAvatarDisponible, didVideoAvatarConfigure } from '@/lib/providers/did/client';
+import { cleElevenLabs } from '@/lib/voice/synthese';
 export { moteurJumeauDisponible };
 export const MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE = 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible — votre voix reste utilisable pour la narration.';
-/**
- * Un avatar D-ID (créé à partir d'une vidéo) : le moteur vidéo du jumeau est
- * câblé sur HeyGen (`audio_asset_id` sur /v3/videos) et ne sait pas encore
- * l'animer. On dit exactement ce qui manque et ce qui marche déjà — jamais
- * « pas pris en charge » sans dire quoi ni pourquoi.
- */
-export const MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO = 'Votre avatar est prêt et votre voix est enregistrée, mais la génération de vidéos avec votre jumeau n’est disponible que pour les avatars créés à partir d’une photo. Votre voix reste utilisable pour la narration, et vous pouvez générer un aperçu dans Mon avatar.';
+const SUITE_INDISPONIBLE = 'Aucun crédit n’est débité. Votre voix reste utilisable pour la narration.';
+/** D-ID : le fournisseur d'avatar vidéo n'est pas activé/configuré sur ce serveur. */
+export const MESSAGE_MOTEUR_JUMEAU_DID_NON_CONFIGURE = `Votre avatar (créé à partir d’une vidéo) est prêt, mais le fournisseur d’avatar vidéo D-ID n’est pas configuré sur ce serveur (DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY). ${SUITE_INDISPONIBLE}`;
+/** D-ID : la synthèse de la voix personnelle n'est pas configurée sur ce serveur. */
+export const MESSAGE_MOTEUR_JUMEAU_VOIX_NON_CONFIGUREE = `Votre avatar est prêt, mais la synthèse de votre voix personnelle (ElevenLabs, ELEVENLABS_API_KEY) n’est pas configurée sur ce serveur. ${SUITE_INDISPONIBLE}`;
+/** Fournisseur d'avatar inconnu du contrat : rien n'est envoyé nulle part. */
+export const MESSAGE_MOTEUR_JUMEAU_FOURNISSEUR_INCONNU = `Le fournisseur de votre avatar n’est pas reconnu : la génération vidéo avec votre jumeau n’est pas possible. ${SUITE_INDISPONIBLE}`;
 
 /**
- * Le moteur vidéo peut-il animer CET avatar ? Le drapeau global ne suffit
- * pas : il dit que le moteur HeyGen est actif, pas qu'il sait animer un
- * avatar d'un autre fournisseur.
+ * Le moteur vidéo peut-il animer CET avatar, sur ce serveur ? Le drapeau
+ * global HeyGen ne dit rien d'un avatar D-ID, et réciproquement.
  */
 export function moteurJumeauDisponiblePour(
   fournisseur: FournisseurAvatar | 'inconnu',
   env: NodeJS.ProcessEnv = process.env,
 ): { disponible: boolean; message: string | null } {
-  if (fournisseur !== 'heygen') return { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO };
-  return moteurJumeauDisponible(env)
-    ? { disponible: true, message: null }
-    : { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE };
+  if (fournisseur === 'heygen') {
+    return moteurJumeauDisponible(env)
+      ? { disponible: true, message: null }
+      : { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE };
+  }
+  if (fournisseur === 'did') {
+    if (!didVideoAvatarDisponible(env)) {
+      if (env.DID_VIDEO_AVATAR_ACTIVE === '1' && !didVideoAvatarConfigure(env)) {
+        // Drapeau levé mais clé absente : l'admin doit le savoir par le NOM de la variable.
+        console.warn('[Jumeau][D-ID] DID_VIDEO_AVATAR_ACTIVE=1 mais DID_API_KEY absente : moteur du jumeau indisponible pour les avatars D-ID.');
+      }
+      return { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_DID_NON_CONFIGURE };
+    }
+    if (cleElevenLabs(env) === null) return { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_VOIX_NON_CONFIGUREE };
+    return { disponible: true, message: null };
+  }
+  return { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_FOURNISSEUR_INCONNU };
 }

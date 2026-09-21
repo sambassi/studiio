@@ -39,6 +39,12 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     // `2026-09-21-autopilot-publish-time.sql` n'est pas appliquee :
     // `sanitizeConfig` rend alors 18:00, l'ancienne valeur en dur.
     publishTime: row.publish_time,
+    // Date de debut, « YYYY-MM-DD ». Colonne ABSENTE tant que
+    // `2026-09-21-autopilot-start-date.sql` n'est pas appliquee :
+    // `sanitizeConfig` rend alors `null` — des le prochain passage, comme
+    // avant. PostgREST rend une colonne `date` en « YYYY-MM-DD », la forme
+    // exacte que l'ecran et le moteur relisent.
+    startDate: row.start_date,
     // ── L'identite constante ────────────────────────────────────────────
     // Colonnes ABSENTES tant que `2026-08-07-autopilot-branding.sql` n'est
     // pas appliquee : `sanitizeConfig` retombe alors sur les defauts, qui
@@ -56,6 +62,10 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     designStyle: row.design_style,
     posterUrls: row.poster_urls,
     posterMode: row.poster_mode,
+    // Brief recurrent. Colonne ABSENTE tant que
+    // `2026-09-21-autopilot-brief.sql` n'est pas appliquee : `sanitizeConfig`
+    // rend alors `{}`, et les textes sont generes comme avant.
+    brief: row.brief,
   });
 }
 
@@ -155,6 +165,20 @@ const publishTimeReady = () => colonneReady(
   + 'migrations/2026-09-21-autopilot-publish-time.sql',
 );
 
+/** La date de debut est-elle enregistrable ? */
+const startDateReady = () => colonneReady(
+  'start_date',
+  'date de debut NON enregistree. Appliquer '
+  + 'migrations/2026-09-21-autopilot-start-date.sql',
+);
+
+/** Le brief recurrent est-il enregistrable ? */
+const briefReady = () => colonneReady(
+  'brief',
+  'brief recurrent (objectif, message, public, CTA) NON enregistre. Appliquer '
+  + 'migrations/2026-09-21-autopilot-brief.sql',
+);
+
 export async function GET() {
   try {
     const session = await auth();
@@ -166,7 +190,7 @@ export async function GET() {
       // manque, au lieu de laisser un formulaire qui n'enregistrerait rien.
       return NextResponse.json({
         success: true, ready: false, brandingReady: false, styleReady: false,
-        publishTimeReady: false, config: DEFAULT_CONFIG,
+        publishTimeReady: false, startDateReady: false, briefReady: false, config: DEFAULT_CONFIG,
       });
     }
     const { data } = await supabaseAdmin
@@ -181,13 +205,15 @@ export async function GET() {
       styleReady: await styleReady(),
       postersReady: await postersReady(),
       publishTimeReady: await publishTimeReady(),
+      startDateReady: await startDateReady(),
+      briefReady: await briefReady(),
       config: fromRow((data?.[0] as Record<string, unknown>) ?? null),
     });
   } catch (err) {
     console.error('[Autopilote] lecture :', err instanceof Error ? err.message : err);
     return NextResponse.json({
       success: true, ready: false, brandingReady: false, styleReady: false,
-      publishTimeReady: false, config: DEFAULT_CONFIG,
+      publishTimeReady: false, startDateReady: false, briefReady: false, config: DEFAULT_CONFIG,
     });
   }
 }
@@ -213,6 +239,8 @@ export async function PUT(req: NextRequest) {
     const avecStyle = await styleReady();
     const avecAffiches = await postersReady();
     const avecHeurePublication = await publishTimeReady();
+    const avecDateDebut = await startDateReady();
+    const avecBrief = await briefReady();
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(
@@ -262,6 +290,16 @@ export async function PUT(req: NextRequest) {
           // qu'elle manque, l'ecran le dit (`publishTimeReady: false`) et le
           // moteur publie a 18:00, comme avant.
           ...(avecHeurePublication ? { publish_time: propre.publishTime } : null),
+          // Sondee a part, comme les autres : ecrire `start_date` avant sa
+          // migration ferait echouer l'upsert ENTIER. Tant qu'elle manque,
+          // l'ecran le dit (`startDateReady: false`) et le moteur part des
+          // le prochain passage, comme avant. `null` = pas de date de debut.
+          ...(avecDateDebut ? { start_date: propre.startDate } : null),
+          // Sondee a part, comme les autres : ecrire `brief` avant sa
+          // migration ferait echouer l'upsert ENTIER. Tant qu'elle manque,
+          // l'ecran le dit (`briefReady: false`) et le cron genere les
+          // textes sans brief, comme avant.
+          ...(avecBrief ? { brief: propre.brief } : null),
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
           // en boucle en remettant la date a zero.
@@ -279,6 +317,8 @@ export async function PUT(req: NextRequest) {
       styleReady: avecStyle,
       postersReady: avecAffiches,
       publishTimeReady: avecHeurePublication,
+      startDateReady: avecDateDebut,
+      briefReady: avecBrief,
       config: propre,
     });
   } catch (err) {

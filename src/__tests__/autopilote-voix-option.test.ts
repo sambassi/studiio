@@ -24,7 +24,10 @@ import { sanitizeConfig, DEFAULT_CONFIG } from '@/lib/autopilot/rules';
  */
 
 const voix = readFileSync(resolve(__dirname, '../lib/autopilot/voice.ts'), 'utf-8');
-const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
+const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8')
+  // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
+  // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
+  + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
 const panneau = readFileSync(resolve(__dirname, '../components/creer/AutopilotPanel.tsx'), 'utf-8');
 const migration = readFileSync(
   resolve(__dirname, '../../migrations/2026-08-05-autopilot-voice-enabled.sql'), 'utf-8',
@@ -91,7 +94,9 @@ describe('Fix 2 — la voix est une option payante, décochée', () => {
 
   it('le moteur n appelle AUCUN TTS quand c est désactivé', () => {
     // Sans ce garde, chaque montage déclencherait quatre synthèses payantes.
-    expect(cron).toContain('config.voiceEnabled\n            ? await buildAutopilotVoices(');
+    // Les arguments, pas leur mise en page : le bloc a change de fichier et
+    // d'indentation sans qu'aucun comportement n'ait bouge.
+    expect(cron).toMatch(/config\.voiceEnabled\s*\?\s*await buildAutopilotVoices\(/);
     expect(cron).toContain(': {};');
   });
 

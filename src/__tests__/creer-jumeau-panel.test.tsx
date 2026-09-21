@@ -1,15 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
+import { render, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { sanitizeDraft, DRAFT_VERSION, type SanitizeDeps } from '@/lib/creer/draft';
 import JumeauPanel from '../components/creer/JumeauPanel';
 
 /**
  * Le bloc « Jumeau numérique » de l'étape Sujet, et le champ de brouillon.
  *
- * Désactivé par défaut ; l'état vient du serveur ; quand ce n'est pas prêt,
- * l'interrupteur est inerte et l'écran dit quoi faire ; les anciens
- * brouillons (sans `useDigitalTwin`) restent en mode normal ; seul `true`
- * active.
+ * DEUX intentions explicites (`jumeauMode`) : « Utiliser ma voix clonée »
+ * (narration : pose la voix `elevenlabs-…` du compte, correspondance exacte
+ * par `accountVoiceId`) et « Faire apparaître mon avatar parlant » (séquence
+ * « Vidéo » à l'envoi, activable seulement si le moteur est disponible POUR
+ * cet avatar — sinon le message nomme la dépendance et la case est inerte).
+ * 'aucun' par défaut ; l'état vient du serveur ; quand ce n'est pas prêt,
+ * l'écran dit quoi faire. Brouillon : `jumeauMode` explicite fait foi ; les
+ * anciens brouillons `useDigitalTwin: true` → 'avatar' ; tout le reste →
+ * 'aucun'.
  */
 
 const DEPS: SanitizeDeps = {
@@ -25,108 +30,198 @@ const DEPS: SanitizeDeps = {
 };
 const lire = (extra: Record<string, unknown>) => sanitizeDraft({ version: DRAFT_VERSION, savedAt: 1, ...extra }, DEPS)!;
 
-describe('Brouillon Créer — useDigitalTwin', () => {
-  it('⚠️ absent (ancien brouillon) → false ; false → false ; seul le booléen true active ; "true", 1, objet → false', () => {
+describe('Brouillon Créer — jumeauMode (rétro-compat useDigitalTwin)', () => {
+  it('⚠️ absent (ancien brouillon) → aucun ; useDigitalTwin:true → avatar ; jumeauMode explicite fait foi ; valeurs inconnues → aucun', () => {
+    expect(lire({}).jumeauMode).toBe('aucun');
     expect(lire({}).useDigitalTwin).toBe(false);
-    expect(lire({ useDigitalTwin: false }).useDigitalTwin).toBe(false);
+    expect(lire({ useDigitalTwin: false }).jumeauMode).toBe('aucun');
+    expect(lire({ useDigitalTwin: true }).jumeauMode).toBe('avatar');
     expect(lire({ useDigitalTwin: true }).useDigitalTwin).toBe(true);
-    for (const v of ['true', 1, {}, [], 'oui']) expect(lire({ useDigitalTwin: v }).useDigitalTwin, String(v)).toBe(false);
+    for (const v of ['true', 1, {}, [], 'oui']) expect(lire({ useDigitalTwin: v }).jumeauMode, String(v)).toBe('aucun');
+    expect(lire({ jumeauMode: 'voix' }).jumeauMode).toBe('voix');
+    expect(lire({ jumeauMode: 'voix' }).useDigitalTwin).toBe(false);
+    expect(lire({ jumeauMode: 'avatar' }).useDigitalTwin).toBe(true);
+    // Explicite > historique, dans les deux sens.
+    expect(lire({ jumeauMode: 'aucun', useDigitalTwin: true }).jumeauMode).toBe('aucun');
+    expect(lire({ jumeauMode: 'voix', useDigitalTwin: true }).jumeauMode).toBe('voix');
+    for (const v of ['AVATAR', 'video', 1, true, {}, null]) expect(lire({ jumeauMode: v }).jumeauMode, String(v)).toBe('aucun');
   });
 
   it('⚠️ aucun objet avatar/voix du navigateur n’est persisté comme autorité', () => {
-    const d = lire({ useDigitalTwin: true, jumeau: { avatarId: 'x', providerAvatarId: 'y' }, voix: { providerVoiceId: 'z' } });
+    const d = lire({ jumeauMode: 'avatar', jumeau: { avatarId: 'x', providerAvatarId: 'y' }, voix: { providerVoiceId: 'z' } });
     expect(Object.keys(d)).not.toContain('jumeau');
     expect(Object.keys(d)).not.toContain('voix');
     expect(JSON.stringify(d)).not.toMatch(/providerAvatarId|providerVoiceId/);
   });
 });
 
-const PRET = { pret: true, motif: null, message: null, jumeau: { avatar: { id: 'a', version: 2, nom: 'Bassi', valideLe: '2026-09-03' }, voix: { id: 'v', nom: 'Bassi' }, prononciations: 2 }, moteurDisponible: false, messageMoteur: 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' };
+const MSG_DID = 'Votre avatar (créé à partir d’une vidéo) est prêt, mais le fournisseur d’avatar vidéo D-ID n’est pas configuré sur ce serveur (DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY). Aucun crédit n’est débité. Votre voix reste utilisable pour la narration.';
+const MSG_HEYGEN = 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible — votre voix reste utilisable pour la narration.';
+const PRET = { pret: true, motif: null, message: null, jumeau: { avatar: { id: 'a', version: 2, nom: 'Bassi', valideLe: '2026-09-03', fournisseur: 'heygen' }, voix: { id: 'v', nom: 'Bassi' }, prononciations: 2 }, moteurDisponible: false, messageMoteur: MSG_HEYGEN };
+const PRET_DID = { ...PRET, jumeau: { ...PRET.jumeau, avatar: { ...PRET.jumeau.avatar, fournisseur: 'did' } } };
+const VOIX_COMPTE = [{ id: 'elevenlabs-zzz', accountVoiceId: 'autre', name: 'Bassi' }, { id: 'elevenlabs-abc', accountVoiceId: 'v', name: 'Bassi' }];
 
-function stub(etat: unknown, ok = true) {
-  globalThis.fetch = vi.fn(async () => ({ ok, status: ok ? 200 : 500, json: async () => (ok ? { success: true, data: etat } : { success: false }) } as unknown as Response)) as unknown as typeof fetch;
+function stub(etat: unknown, ok = true, voix: unknown[] = VOIX_COMPTE) {
+  globalThis.fetch = vi.fn(async (url: unknown) => {
+    const u = String(url);
+    if (u === '/api/voice/clone') return { ok: true, status: 200, json: async () => ({ success: true, voices: voix }) } as unknown as Response;
+    return { ok, status: ok ? 200 : 500, json: async () => (ok ? { success: true, data: etat } : { success: false }) } as unknown as Response;
+  }) as unknown as typeof fetch;
 }
+const TEXTES = { titre: 'Bienvenue chez Afroboost', cartes: 'Trois conseils pour bien dormir', cta: 'Rejoignez-nous' };
+const choix = (m: string) => document.querySelector(`[data-jumeau-choix="${m}"]`) as HTMLInputElement;
+const monter = (props: Partial<Parameters<typeof JumeauPanel>[0]> = {}) => {
+  const onModeChange = vi.fn(); const onVoixJumeau = vi.fn();
+  render(<JumeauPanel mode="aucun" onModeChange={onModeChange} onVoixJumeau={onVoixJumeau} textes={TEXTES} coutAvatar={40} {...props} />);
+  return { onModeChange, onVoixJumeau };
+};
+const attendrePret = () => waitFor(() => expect(document.querySelector('[data-jumeau-etat="pret"]')).not.toBeNull());
 
 beforeEach(() => { window.localStorage.clear(); });
 afterEach(() => { cleanup(); });
 
-describe('JumeauPanel', () => {
-  it('⚠️ CAS 1 prêt : « Votre jumeau est prêt », Avatar : Validé, Voix : Ma voix — Bassi ; interrupteur actif, désactivé par défaut', async () => {
+describe('JumeauPanel — deux intentions, dites en clair', () => {
+  it('⚠️ prêt (HeyGen, moteur indisponible) : avatar nommé « créé à partir d’une photo (HeyGen) », voix, CE QU’IL DIRA, mode aucun par défaut ; « ma voix clonée » activable et pose elevenlabs-abc (par accountVoiceId, jamais par le nom) ; « avatar parlant » inerte avec le message', async () => {
     stub(PRET);
-    const onChange = vi.fn();
-    render(<JumeauPanel actif={false} onChange={onChange} />);
-    await waitFor(() => expect(document.querySelector('[data-jumeau-etat="pret"]')).not.toBeNull());
-    const t = document.querySelector('[data-jumeau-panel]')!.textContent!;
+    const { onModeChange, onVoixJumeau } = monter();
+    await attendrePret();
+    const panneau = document.querySelector('[data-jumeau-panel]')!;
+    expect(panneau.getAttribute('data-jumeau-mode')).toBe('aucun');
+    const t = panneau.textContent!;
     expect(t).toContain('Votre jumeau est prêt');
-    expect(t).toContain('Avatar : Validé');
+    expect(t).toContain('Avatar : Bassi (v2), validé — créé à partir d’une photo (HeyGen)');
     expect(t).toContain('Voix : Ma voix — Bassi');
-    expect(t).toContain('Votre avatar et votre voix personnelle seront utilisés pour présenter cette vidéo.');
-    const sw = screen.getByRole('switch', { name: 'Utiliser mon jumeau' }) as HTMLInputElement;
-    expect(sw.checked).toBe(false);
-    expect(sw.disabled).toBe(false);
-    fireEvent.click(sw);
-    expect(onChange).toHaveBeenCalledWith(true);
+    expect(t).toContain('2 prononciations personnalisées');
+    // Ce qu'il dira : les textes de narration, séquence par séquence.
+    const dira = document.querySelector('[data-jumeau-dira]')!.textContent!;
+    expect(dira).toContain('Titre : Bienvenue chez Afroboost');
+    expect(dira).toContain('Cartes : Trois conseils pour bien dormir');
+    expect(dira).toContain('CTA : Rejoignez-nous');
+    expect(dira).toContain('Modifiable dans le panneau des voix par séquence');
+    expect(document.querySelector('[data-jumeau-dira-sequence="video"]')).toBeNull();
+    // Les trois choix.
+    expect(choix('aucun').checked).toBe(true);
+    expect(choix('voix').disabled).toBe(false);
+    expect(choix('avatar').disabled).toBe(true);
+    expect(document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent).toContain(MSG_HEYGEN);
+    expect(t).toContain('40 crédits en plus du rendu');
+    fireEvent.click(choix('voix'));
+    expect(onVoixJumeau).toHaveBeenCalledWith('elevenlabs-abc');
+    expect(onVoixJumeau).not.toHaveBeenCalledWith('elevenlabs-zzz');
+    expect(onModeChange).toHaveBeenCalledWith('voix');
+    // La case inerte ne pose rien, même cliquée (jsdom déclenche onChange sur un disabled).
+    fireEvent.click(choix('avatar'));
+    expect(onModeChange).not.toHaveBeenCalledWith('avatar');
   });
 
-  it('moteur indisponible : la phrase honnête est affichée sous l’état prêt — activé ou non', async () => {
-    stub(PRET);
-    render(<JumeauPanel actif onChange={() => {}} />);
-    await waitFor(() => expect(document.querySelector('[data-jumeau-moteur="indisponible"]')).not.toBeNull());
-    expect(document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent).toBe(PRET.messageMoteur);
+  it('⚠️ avatar D-ID + moteur disponible : « créé à partir d’une vidéo (D-ID) », avatar parlant ACTIVABLE ; en mode avatar le récap dit séquence « Vidéo », votre voix, le coût', async () => {
+    stub({ ...PRET_DID, moteurDisponible: true, messageMoteur: null });
+    const { onModeChange, onVoixJumeau } = monter();
+    await attendrePret();
+    expect(document.querySelector('[data-jumeau-avatar]')!.textContent).toContain('créé à partir d’une vidéo (D-ID)');
+    expect(choix('avatar').disabled).toBe(false);
+    expect(document.querySelector('[data-jumeau-moteur="indisponible"]')).toBeNull();
+    fireEvent.click(choix('avatar'));
+    expect(onModeChange).toHaveBeenCalledWith('avatar');
+    // Le mode avatar ne touche pas à la voix TTS des autres séquences.
+    expect(onVoixJumeau).not.toHaveBeenCalled();
     cleanup();
-    // Avant d'activer aussi : on sait ce que l'interrupteur produira.
+    stub({ ...PRET_DID, moteurDisponible: true, messageMoteur: null });
+    monter({ mode: 'avatar', voixCourante: 'fr-FR-DeniseNeural' });
+    await attendrePret();
+    expect(document.querySelector('[data-jumeau-panel]')!.getAttribute('data-jumeau-mode')).toBe('avatar');
+    expect(choix('avatar').checked).toBe(true);
+    const recap = document.querySelector('[data-jumeau-recap]')!.textContent!;
+    expect(recap).toContain('la séquence « Vidéo » montre votre avatar (v2) disant ces textes avec votre voix (Bassi)');
+    expect(recap).toContain('dite avec la voix choisie dans Audio');
+    expect(recap).toContain('Coût : 40 crédits en plus du rendu');
+    expect(document.querySelector('[data-jumeau-sequences]')!.textContent).toContain('séquence « Vidéo »');
+  });
+
+  it('⚠️ avatar D-ID + moteur INDISPONIBLE : le message nomme la dépendance (D-ID / variables), la case avatar est inerte, la voix reste activable ; une intention avatar posée retombe à aucun', async () => {
+    stub({ ...PRET_DID, moteurDisponible: false, messageMoteur: MSG_DID });
+    const { onModeChange } = monter({ mode: 'avatar' });
+    await attendrePret();
+    expect(choix('avatar').disabled).toBe(true);
+    const moteur = document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent!;
+    expect(moteur).toContain('D-ID');
+    expect(moteur).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
+    expect(moteur).toContain('Aucun crédit n’est débité');
+    expect(moteur).not.toContain('pas encore pris en charge');
+    expect(choix('voix').disabled).toBe(false);
+    await waitFor(() => expect(onModeChange).toHaveBeenCalledWith('aucun'));
+  });
+
+  it('⚠️ mode voix : récap « Titre, Cartes et CTA … avec votre voix », avatar pas à l’image, aucun coût ; voix courante = celle du jumeau reconnue', async () => {
     stub(PRET);
-    render(<JumeauPanel actif={false} onChange={() => {}} />);
-    await waitFor(() => expect(document.querySelector('[data-jumeau-moteur="indisponible"]')).not.toBeNull());
+    monter({ mode: 'voix', voixCourante: 'elevenlabs-abc' });
+    await attendrePret();
+    expect(choix('voix').checked).toBe(true);
+    const recap = document.querySelector('[data-jumeau-recap]')!.textContent!;
+    expect(recap).toContain('les séquences Titre, Cartes et CTA sont dites avec votre voix (Bassi)');
+    expect(recap).toContain('Votre avatar n’apparaît pas à l’image');
+    expect(recap).toContain('Aucun coût avatar');
+    expect(document.querySelector('[data-jumeau-sequences]')!.textContent).toContain('Titre, Cartes, CTA');
+    // Mode aucun : dit honnêtement qu'aucune des deux choses n'est dans la vidéo, avec la voix réellement utilisée.
+    cleanup();
+    stub(PRET);
+    monter({ mode: 'aucun', voixCourante: 'elevenlabs-abc' });
+    await attendrePret();
+    expect(document.querySelector('[data-jumeau-recap]')!.textContent).toContain('ni votre voix ni votre avatar — la narration est dite avec votre voix (Bassi)');
   });
 
-  it('⚠️ avatar D-ID (créé à partir d’une vidéo) : PRÊT, interrupteur actif, et le moteur dit exactement ce qui manque', async () => {
-    stub({
-      ...PRET,
-      jumeau: { ...PRET.jumeau, avatar: { ...PRET.jumeau.avatar, fournisseur: 'did' } },
-      moteurDisponible: false,
-      messageMoteur: 'Votre avatar est prêt et votre voix est enregistrée, mais la génération de vidéos avec votre jumeau n’est disponible que pour les avatars créés à partir d’une photo. Votre voix reste utilisable pour la narration, et vous pouvez générer un aperçu dans Mon avatar.',
-    });
-    render(<JumeauPanel actif={false} onChange={() => {}} />);
-    await waitFor(() => expect(document.querySelector('[data-jumeau-etat="pret"]')).not.toBeNull());
-    const sw = screen.getByRole('switch', { name: 'Utiliser mon jumeau' }) as HTMLInputElement;
-    expect(sw.disabled).toBe(false);
-    const t = document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent!;
-    expect(t).toContain('créés à partir d’une photo');
-    expect(t).toContain('voix reste utilisable');
-    expect(t).not.toContain('pas encore pris en charge');
+  it('⚠️ voix du jumeau sans correspondance dans /api/voice/clone : « ma voix clonée » inerte, le message dit pourquoi, rien n’est posé ; une intention voix posée retombe', async () => {
+    stub(PRET, true, [{ id: 'elevenlabs-zzz', accountVoiceId: 'autre', name: 'Bassi' }]);
+    const { onModeChange, onVoixJumeau } = monter({ mode: 'voix' });
+    await attendrePret();
+    expect(choix('voix').disabled).toBe(true);
+    const msg = document.querySelector('[data-jumeau-voix-non-reliee]')!.textContent!;
+    expect(msg).toContain('« Bassi »');
+    expect(msg).toContain('n’est pas dans la liste des voix clonées de votre compte');
+    fireEvent.click(choix('voix'));
+    expect(onVoixJumeau).not.toHaveBeenCalled();
+    expect(onModeChange).not.toHaveBeenCalledWith('voix');
+    await waitFor(() => expect(onModeChange).toHaveBeenCalledWith('aucun'));
   });
 
-  it('⚠️ CAS 2 avatar non validé : message + « Gérer mon avatar » → /dashboard/avatar ; interrupteur inerte ; une intention active retombe', async () => {
+  it('textes vides : « Ce qu’il dira » renvoie à l’étape Contenu ; un texte vidéo non vide est listé', async () => {
+    stub(PRET);
+    monter({ textes: {} });
+    await attendrePret();
+    expect(document.querySelector('[data-jumeau-dira]')!.textContent).toContain('seront ceux générés à l’étape Contenu');
+    cleanup();
+    stub(PRET);
+    monter({ textes: { ...TEXTES, video: 'Regardez bien' } });
+    await attendrePret();
+    expect(document.querySelector('[data-jumeau-dira-sequence="video"]')!.textContent).toContain('Vidéo : Regardez bien');
+  });
+
+  it('⚠️ CAS non prêt : avatar non validé → message + « Gérer mon avatar » ; voix absente → « Configurer ma voix » ; choix requis ; serveur injoignable → aucun choix, intention retombée', async () => {
     stub({ pret: false, motif: 'avatar_non_valide', message: 'Votre avatar doit être validé avant de pouvoir utiliser votre jumeau.', jumeau: null, moteurDisponible: false, messageMoteur: null });
-    const onChange = vi.fn();
-    render(<JumeauPanel actif onChange={onChange} />);
+    let r = monter({ mode: 'avatar' });
     await waitFor(() => expect(document.querySelector('[data-jumeau-etat="avatar_non_valide"]')).not.toBeNull());
     expect(document.body.textContent).toContain('Votre avatar doit être validé avant de pouvoir utiliser votre jumeau.');
     const lien = document.querySelector('[data-jumeau-action]') as HTMLAnchorElement;
     expect(lien.textContent).toBe('Gérer mon avatar');
     expect(lien.getAttribute('href')).toBe('/dashboard/avatar');
-    expect((screen.getByRole('switch') as HTMLInputElement).disabled).toBe(true);
-    expect(onChange).toHaveBeenCalledWith(false);
+    expect(document.querySelector('[data-jumeau-choix="avatar"]')).toBeNull();
+    await waitFor(() => expect(r.onModeChange).toHaveBeenCalledWith('aucun'));
     expect(document.querySelector('[data-jumeau-etat="pret"]')).toBeNull();
-  });
-
-  it('CAS 3 voix absente → « Configurer ma voix » ; CAS 4 plusieurs voix sans choix → « Sélectionnez la voix… » ; CAS 5 serveur injoignable → inerte', async () => {
+    cleanup();
     stub({ pret: false, motif: 'voix_absente', message: 'Ajoutez ou sélectionnez votre voix personnelle avant d’utiliser votre jumeau.', jumeau: null, moteurDisponible: false, messageMoteur: null });
-    render(<JumeauPanel actif={false} onChange={() => {}} />);
+    monter();
     await waitFor(() => expect(document.querySelector('[data-jumeau-etat="voix_absente"]')).not.toBeNull());
     expect(document.querySelector('[data-jumeau-action]')!.textContent).toBe('Configurer ma voix');
     cleanup();
     stub({ pret: false, motif: 'choix_voix_requis', message: 'Sélectionnez la voix que votre jumeau doit utiliser.', jumeau: null, moteurDisponible: false, messageMoteur: null });
-    render(<JumeauPanel actif={false} onChange={() => {}} />);
+    monter();
     await waitFor(() => expect(document.querySelector('[data-jumeau-etat="choix_voix_requis"]')).not.toBeNull());
     expect(document.body.textContent).toContain('Sélectionnez la voix que votre jumeau doit utiliser.');
-    expect((screen.getByRole('switch') as HTMLInputElement).disabled).toBe(true);
     cleanup();
     stub(null, false);
-    render(<JumeauPanel actif={false} onChange={() => {}} />);
+    r = monter({ mode: 'voix' });
     await waitFor(() => expect(document.querySelector('[data-jumeau-etat="indisponible"]')).not.toBeNull());
-    expect((screen.getByRole('switch') as HTMLInputElement).disabled).toBe(true);
-    expect(document.querySelector('[data-jumeau-etat="pret"]')).toBeNull();
+    expect(document.querySelector('[data-jumeau-choix="voix"]')).toBeNull();
+    await waitFor(() => expect(r.onModeChange).toHaveBeenCalledWith('aucun'));
   });
 });

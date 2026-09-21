@@ -106,32 +106,41 @@ body {
      il donne un violet plus profond (#6532C1 environ) au lieu du violet vif
      d'origine, qui était l'élément le plus criard de chaque écran. Le contraste
      du texte blanc reste à ~6:1, bien au-dessus du seuil AA. Le survol le
-     ravive légèrement — c'est la seule récompense d'interaction, sans ombre. */
+     ravive légèrement, l'appui le porte à 100 % — sans ombre. */
   .button-primary {
     @apply button-base bg-studiio-primary/[0.82] text-white
-           border-[0.5px] border-white/10 hover:bg-studiio-primary/95;
+           border-[0.5px] border-white/10 hover:bg-studiio-primary/95
+           active:bg-studiio-primary;
   }
 
-  /* Action secondaire — contour fin sur fond transparent, survol à peine posé.
-     Le contour est tenu à 24 % de blanc : plus bas, il tombait sous le
-     contraste de l'ancien `border-gray-700` (1,9:1) et le bouton cessait
-     d'être perceptible comme un contrôle. */
+  /* Action secondaire — contour fin sur fond transparent. Le contour est tenu
+     à 24 % de blanc : plus bas, il tombait sous le contraste de l'ancien
+     `border-gray-700` (1,9:1) et le bouton cessait d'être perceptible comme un
+     contrôle. Le survol passe au violet (fond 10 %, contour 60 %) : le blanc à
+     5 % d'avant n'était pas perçu comme un retour. L'appui densifie à 20 %.
+     L'élévation, la réduction à l'appui et l'anneau de focus viennent de
+     `@/lib/ui/etats` via le composant `<Button>`. */
   .button-secondary {
     @apply button-base bg-transparent text-gray-100
-           border-[0.5px] border-white/[0.24] hover:bg-white/[0.05] hover:border-white/40;
+           border-[0.5px] border-white/[0.24]
+           hover:bg-studiio-primary/10 hover:border-studiio-primary/60
+           active:bg-studiio-primary/20;
   }
 
   /* Tertiaire — même dessin, plus effacé, mais jamais invisible :
      18 % reste au-dessus du contour d'origine. */
   .button-ghost {
     @apply button-base bg-transparent text-gray-300
-           border-[0.5px] border-white/[0.18] hover:bg-white/[0.04] hover:text-white;
+           border-[0.5px] border-white/[0.18]
+           hover:bg-studiio-primary/10 hover:border-studiio-primary/40 hover:text-white
+           active:bg-studiio-primary/20;
   }
 
   /* Réservé aux mises en avant (offres, paiement) — même retenue que primary. */
   .button-accent {
     @apply button-base bg-studiio-accent/[0.82] text-white
-           border-[0.5px] border-white/10 hover:bg-studiio-accent/95;
+           border-[0.5px] border-white/10 hover:bg-studiio-accent/95
+           active:bg-studiio-accent;
   }
 }
 

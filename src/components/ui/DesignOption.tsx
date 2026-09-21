@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { CARD_STYLES } from '@/lib/creer/cardStyles';
+import { FOCUS_CLAVIER, RETOUR_APPUI } from '@/lib/ui/etats';
 
 // ─── SVG PATHS for design option icons ───
 const DESIGN_ICON_PATHS: Record<string, string> = {
@@ -57,9 +58,12 @@ export function DesignOption({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={isActive}
+      data-selected={isActive ? 'true' : undefined}
       className={`
         group relative flex items-center gap-2.5 rounded-[14px]
         transition-all duration-250 ease-out overflow-hidden
+        ${FOCUS_CLAVIER} ${RETOUR_APPUI}
         ${isActive
           ? ''
           : 'bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.07] hover:border-white/[0.15] hover:-translate-y-px'

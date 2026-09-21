@@ -212,7 +212,10 @@ describe('D — le câblage du cron et de la cloche', () => {
   // Ces quatre-là sont des vérifications de CÂBLAGE : elles constatent que
   // les pièces testées plus haut sont bien reliées entre elles. Le
   // comportement, lui, est vérifié par les sections A à C.
-  const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
+  const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8')
+    // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
+    // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
+    + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
   const navbar = readFileSync(resolve(__dirname, '../components/layout/Navbar.tsx'), 'utf-8');
   const migration = readFileSync(
     resolve(__dirname, '../../migrations/2026-08-07-user-notifications.sql'), 'utf-8',
@@ -226,7 +229,8 @@ describe('D — le câblage du cron et de la cloche', () => {
 
   it('un rush introuvable est retiré de la banque ET signalé', () => {
     expect(cron).toContain('rushEncorePresent');
-    expect(cron).toContain('rushesMorts.add(rushUrl)');
+    // Le cron est prevenu DES la detection (`onRushMort`), avant le rendu.
+    expect(cron).toContain('onRushMort: (url) => { rushesMorts.add(url); }');
     expect(cron).toContain('rush_urls: banquePropre');
     expect(cron).toContain('NOTIFICATION_KINDS.autopiloteRushIntrouvable');
   });

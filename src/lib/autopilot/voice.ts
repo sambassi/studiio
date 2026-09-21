@@ -150,6 +150,9 @@ export function voiceTexts(post: PreparedPost): Partial<Record<SequenceKey, stri
       label: c.title, value: c.value, description: c.description,
     })),
     ctaMainText: post.content.tagLine,
+    // Le brief récurrent : son message s'ajoute à la narration du titre, son
+    // CTA remplace la phrase générique. Sans brief, rien ne change.
+    brief: post.brief ?? null,
   });
   const out: Partial<Record<SequenceKey, string>> = {};
   for (const cle of SEQUENCE_KEYS) {

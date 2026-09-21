@@ -139,10 +139,15 @@ function installerFetch(sc: Scenario = {}) {
   }) as unknown as typeof fetch;
 }
 
-const poser = (useDigitalTwin: boolean) => {
+/**
+ * Le brouillon est pose sous la forme HISTORIQUE (`useDigitalTwin: true`,
+ * sans `jumeauMode`) : c'est la preuve de retro-compat — il est relu en mode
+ * 'avatar'. `extra` permet de poser un `jumeauMode` explicite.
+ */
+const poser = (useDigitalTwin: boolean, extra: Record<string, unknown> = {}) => {
   window.localStorage.setItem(CLE, JSON.stringify({
     version: DRAFT_VERSION, savedAt: 1, started: true, step: 4, useDigitalTwin,
-    customTopic: 'yoga du matin', generated: CONTENU, scheduledDate: '2026-09-01',
+    customTopic: 'yoga du matin', generated: CONTENU, scheduledDate: '2026-09-01', ...extra,
   }));
 };
 
@@ -178,7 +183,7 @@ const optionsCompositeur = () => (composeVideoSpy.mock.calls[0] as unknown[])[0]
 beforeEach(() => { window.localStorage.clear(); composeVideoSpy.mockClear(); composeAndUploadSpy.mockClear(); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-describe('useDigitalTwin=true — un seul clic jusqu’au montage final', () => {
+describe('mode avatar (ancien brouillon useDigitalTwin=true, relu en jumeauMode=avatar) — un seul clic jusqu’au montage final', () => {
   it('⚠️ garde → generer → status → reservation → composition → televersement → confirmation → post, dans CE clic', async () => {
     installerFetch(); poser(true);
     await allerAEnvoi();
@@ -221,6 +226,7 @@ describe('useDigitalTwin=true — un seul clic jusqu’au montage final', () => 
     // L'intention est honoree et levee : le brouillon ne la porte plus, le rush reste.
     await pauseDeFrappe();
     const brouillon = JSON.parse(window.localStorage.getItem(CLE)!);
+    expect(brouillon.jumeauMode).toBe('aucun');
     expect(brouillon.useDigitalTwin).toBe(false);
     expect(brouillon.rushUrl).toBe(URL_JUMEAU);
   });
@@ -246,6 +252,7 @@ describe('useDigitalTwin=true — un seul clic jusqu’au montage final', () => 
     expect(document.body.textContent).not.toContain('Envoyé au calendrier');
     // L'intention reste posee : rien n'a ete honore.
     await pauseDeFrappe();
+    expect(JSON.parse(window.localStorage.getItem(CLE)!).jumeauMode).toBe('avatar');
     expect(JSON.parse(window.localStorage.getItem(CLE)!).useDigitalTwin).toBe(true);
   });
 
@@ -261,7 +268,7 @@ describe('useDigitalTwin=true — un seul clic jusqu’au montage final', () => 
   });
 });
 
-describe('useDigitalTwin=false — le parcours normal, inchange', () => {
+describe('mode aucun — le parcours normal, inchange', () => {
   it('⚠️ aucun appel jumeau ; reservation → composition → televersement → confirmation → post ; pas de rush', async () => {
     installerFetch(); poser(false);
     await allerAEnvoi();
@@ -273,5 +280,43 @@ describe('useDigitalTwin=false — le parcours normal, inchange', () => {
     expect(o.videoUrl).toBeUndefined();
     expect(o.videoDuration).toBe(0);
     expect(o.sequenceOrder).not.toContain('video');
+  });
+});
+
+describe('mode voix — la voix clonee narre, aucune video d’avatar', () => {
+  it('⚠️ le garde verifie le jumeau (voix resolue) mais AUCUN generer, AUCUN status : reservation → composition → post, sans rush ; l’intention reste (rien a lever) ; le solde n’inclut pas le cout avatar', async () => {
+    installerFetch({ moteurIndisponible: true }); poser(false, { jumeauMode: 'voix', ttsVoiceId: 'elevenlabs-abc' });
+    await allerAEnvoi();
+    await envoyerUneFois();
+    // Moteur video indisponible n'arrete PAS le mode voix : seule la voix compte.
+    expect(parcours()).toEqual(['jumeau:verif', 'reservation', 'televersement', 'confirmation', 'post']);
+    expect(composeVideoSpy).toHaveBeenCalledTimes(1);
+    const o = optionsCompositeur();
+    expect(o.videoUrl).toBeUndefined();
+    expect(o.sequenceOrder).not.toContain('video');
+    expect(document.body.textContent).toContain('Envoyé au calendrier');
+    await pauseDeFrappe();
+    const brouillon = JSON.parse(window.localStorage.getItem(CLE)!);
+    expect(brouillon.jumeauMode).toBe('voix');
+    expect(brouillon.useDigitalTwin).toBe(false);
+    expect(brouillon.ttsVoiceId).toBe('elevenlabs-abc');
+  });
+
+  it('⚠️ voix non resolue cote serveur → arret au garde, rien n’est compose', async () => {
+    installerFetch(); poser(false, { jumeauMode: 'voix', ttsVoiceId: 'elevenlabs-abc' });
+    const f = globalThis.fetch;
+    globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+      if (String(url) === '/api/creer/jumeau' && String(init?.method ?? 'GET').toUpperCase() === 'POST') {
+        trace.push('jumeau:verif');
+        return { ok: true, status: 200, json: async () => ({ success: true, data: { pret: false, motif: 'choix_voix_requis', message: 'Sélectionnez la voix que votre jumeau doit utiliser.', jumeau: null, moteurDisponible: false, messageMoteur: null } }) } as Response;
+      }
+      return f(url as string, init);
+    }) as unknown as typeof fetch;
+    await allerAEnvoi();
+    await envoyerUneFois();
+    expect(parcours()).toEqual(['jumeau:verif']);
+    expect(composeVideoSpy).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Sélectionnez la voix que votre jumeau doit utiliser.');
+    expect(document.body.textContent).not.toContain('Envoyé au calendrier');
   });
 });

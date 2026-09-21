@@ -26,7 +26,10 @@ import { DEFAULT_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
  */
 
 const voix = readFileSync(resolve(__dirname, '../lib/autopilot/voice.ts'), 'utf-8');
-const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
+const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8')
+  // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
+  // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
+  + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
 
 const T0 = Date.parse('2026-08-05T09:00:00.000Z');
 const cfg = (p: Partial<AutopilotConfig> = {}): AutopilotConfig => ({
@@ -127,7 +130,9 @@ describe('Rien ne peut faire échouer un cycle', () => {
   });
 
   it('la voix est générée AVANT le design — ce sont ses durées qui calent', () => {
-    const bloc = cron.slice(cron.indexOf('const jobId ='));
+    // Dans le corps de `produireUnMontage` (le montage extrait du cron), pas
+    // dans ses imports.
+    const bloc = cron.slice(cron.indexOf('export async function produireUnMontage'));
     expect(bloc.indexOf('buildAutopilotVoices')).toBeLessThan(bloc.indexOf('buildAutopilotDesign'));
   });
 });

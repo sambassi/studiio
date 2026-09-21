@@ -211,6 +211,51 @@ export function voixCloneeAProposer(
   return clonee && clonee.id !== current ? clonee.id : null;
 }
 
+// ── Groupes du selecteur ─────────────────────────────────────────────────
+
+/** Libelles des `<optgroup>` des deux selecteurs de voix de Creer. */
+export const VOICE_GROUP_LABELS = {
+  cloned: 'Ma voix clonée',
+  elevenlabs: 'Voix ElevenLabs',
+  heygen: 'Voix HeyGen',
+  openai: 'Voix OpenAI',
+  edge: 'Voix standard (Edge)',
+} as const;
+
+export type VoiceGroupKey = keyof typeof VOICE_GROUP_LABELS;
+
+export interface VoiceGroup<V extends { id: string }> {
+  key: VoiceGroupKey;
+  label: string;
+  voices: V[];
+}
+
+/**
+ * Repartit une liste de voix en groupes pour le selecteur, la voix clonee
+ * EN TETE. Vu en prod : ~130 entrees a plat (22 ElevenLabs + 100 HeyGen +
+ * Edge) ou « Bassi (ma voix) » etait noyee. Les identifiants ne changent
+ * pas — seul l'affichage est regroupe — et les groupes vides sont omis.
+ *
+ * L'ordre a l'interieur d'un groupe est celui de la liste recue : les deux
+ * selecteurs construisent `[...customVoices, ...TTS_VOICES]`, qui reste
+ * l'ordre de reference.
+ */
+export function grouperVoixPourSelecteur<V extends { id: string; provider?: string; cloned?: boolean }>(
+  voices: ReadonlyArray<V>,
+): Array<VoiceGroup<V>> {
+  const seaux: Record<VoiceGroupKey, V[]> = { cloned: [], elevenlabs: [], heygen: [], openai: [], edge: [] };
+  for (const v of voices) {
+    if (v.cloned === true) seaux.cloned.push(v);
+    else if (v.provider === 'elevenlabs') seaux.elevenlabs.push(v);
+    else if (v.provider === 'heygen') seaux.heygen.push(v);
+    else if (v.provider === 'openai') seaux.openai.push(v);
+    else seaux.edge.push(v);
+  }
+  return (Object.keys(seaux) as VoiceGroupKey[])
+    .filter((k) => seaux[k].length > 0)
+    .map((k) => ({ key: k, label: VOICE_GROUP_LABELS[k], voices: seaux[k] }));
+}
+
 export type VoiceSource = 'tts' | 'record' | null;
 
 export interface SequenceVoice {
@@ -225,6 +270,35 @@ export interface SequenceVoice {
   /** Audio duration in seconds, populated after generation/recording so the UI
    *  can flag overruns vs the sequence's configured length. */
   duration?: number;
+  /**
+   * Texte tel qu'il etait au moment ou `audioUrl` a ete produit. Sert a
+   * signaler un audio perime quand le texte a change depuis — sans lui, un
+   * texte retouche apres generation partait a l'export avec l'ancien audio,
+   * sans un mot. Absent pour les audios anterieurs a ce champ.
+   */
+  textAtGeneration?: string;
+}
+
+/**
+ * « Audio perime » : l'audio d'une sequence a ete genere avec une autre voix
+ * que la voix courante, ou a partir d'un autre texte que le texte courant.
+ *
+ * Signaler seulement, jamais supprimer ni regenerer : une generation coute
+ * un appel TTS (payant chez ElevenLabs/HeyGen), c'est l'utilisateur qui
+ * decide. La voix n'est comparee que pour un audio TTS — un enregistrement
+ * au micro n'en a pas ; le texte n'est compare que si `textAtGeneration`
+ * est connu (audio anterieur a ce champ → pas de faux positif).
+ */
+export function audioSequencePerime(
+  sv: Pick<SequenceVoice, 'audioUrl' | 'source' | 'ttsVoice' | 'text' | 'textAtGeneration'>,
+  currentVoiceId: string,
+): { perime: boolean; motif: 'voix' | 'texte' | null } {
+  if (!sv.audioUrl) return { perime: false, motif: null };
+  if (sv.source === 'tts' && sv.ttsVoice && sv.ttsVoice !== currentVoiceId) return { perime: true, motif: 'voix' };
+  if (typeof sv.textAtGeneration === 'string' && sv.textAtGeneration.trim() !== sv.text.trim()) {
+    return { perime: true, motif: 'texte' };
+  }
+  return { perime: false, motif: null };
 }
 
 export type SequenceVoices = Record<SequenceKey, SequenceVoice>;
@@ -264,8 +338,25 @@ export function buildAutoFillText(input: {
   videoOverlayText?: string;
   ctaMainText?: string;
   ctaSubText?: string;
+  /**
+   * Le brief de la video (`@/lib/creer/brief`), s'il existe.
+   *
+   * Deux effets, et pas un de plus : le MESSAGE a transmettre s'ajoute a la
+   * narration du titre (apres titre et sous-titre), et le CTA du brief
+   * REMPLACE le CTA generique (texte + sous-texte). L'objectif et le public
+   * n'entrent pas dans la narration : ils guident la generation du contenu,
+   * pas ce que la voix dit. Absent ou vide : les textes d'avant, a
+   * l'identique.
+   */
+  brief?: { message?: string; cta?: string } | null;
 }): Record<SequenceKey, string> {
-  const titre = [input.title, input.subtitle].filter((s) => s && s.trim().length > 0).join('. ').trim();
+  const messageBrief = (input.brief?.message ?? '').trim();
+  const ctaBrief = (input.brief?.cta ?? '').trim();
+
+  const titre = [input.title, input.subtitle, messageBrief]
+    .filter((s) => s && s.trim().length > 0)
+    .join('. ')
+    .trim();
 
   const cartes = input.cards
     .map((c) => [c.label, c.description, c.value].filter((s) => s && String(s).trim().length > 0).join('. '))
@@ -275,7 +366,8 @@ export function buildAutoFillText(input: {
 
   const video = (input.videoOverlayText || '').trim();
 
-  const cta = [input.ctaMainText, input.ctaSubText].filter((s) => s && s.trim().length > 0).join('. ').trim();
+  const cta = ctaBrief
+    || [input.ctaMainText, input.ctaSubText].filter((s) => s && s.trim().length > 0).join('. ').trim();
 
   return { titre, cartes, video, cta };
 }

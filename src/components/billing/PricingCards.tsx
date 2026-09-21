@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Check, Loader2 } from 'lucide-react';
+import { Check } from 'lucide-react';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 function centsToFr(cents: number): string {
   if (cents === 0) return '0 CHF';
@@ -63,12 +64,17 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
     <div className="space-y-6">
       <div className="flex justify-center">
         <div className="inline-flex bg-gray-800 rounded-full p-1">
-          <button onClick={() => setBillingCycle('monthly')}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${billingCycle === 'monthly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white'}`}>
+          {/* Bascule persistante : `aria-pressed` + coche, l'accent rose est
+              volontaire (mise en avant tarifaire), les retours d'interaction
+              viennent du module partagé. */}
+          <button type="button" onClick={() => setBillingCycle('monthly')} aria-pressed={billingCycle === 'monthly'}
+            className={`inline-flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND} ${billingCycle === 'monthly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+            {billingCycle === 'monthly' && <Check size={14} aria-hidden />}
             Mensuel
           </button>
-          <button onClick={() => setBillingCycle('yearly')}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition ${billingCycle === 'yearly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white'}`}>
+          <button type="button" onClick={() => setBillingCycle('yearly')} aria-pressed={billingCycle === 'yearly'}
+            className={`inline-flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND} ${billingCycle === 'yearly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+            {billingCycle === 'yearly' && <Check size={14} aria-hidden />}
             Annuel <span className="text-xs text-green-400 ml-1">-17%</span>
           </button>
         </div>
@@ -114,8 +120,9 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
               </CardContent>
               <CardFooter>
                 <Button variant={isPopular ? 'primary' : 'secondary'} className="w-full"
-                  disabled={isCurrent || loading === plan.key} onClick={() => handleSubscribe(plan.key)}>
-                  {loading === plan.key ? <Loader2 className="w-4 h-4 animate-spin" /> : cta}
+                  etat={loading === plan.key ? 'chargement' : 'repos'}
+                  disabled={isCurrent} onClick={() => handleSubscribe(plan.key)}>
+                  {cta}
                 </Button>
               </CardFooter>
             </Card>

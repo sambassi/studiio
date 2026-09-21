@@ -1,13 +1,35 @@
 /**
  * Côté navigateur : l'intention « utiliser mon jumeau », et le garde avant
  * tout rendu. Le navigateur ne décide rien : il DEMANDE au serveur.
+ *
+ * DEUX intentions distinctes, jamais confondues (`JumeauMode`) :
+ *   'voix'   — narration seulement : la voix clonée du jumeau devient la voix
+ *              TTS des séquences (Titre, Cartes, CTA). Aucune vidéo d'avatar,
+ *              aucun coût avatar. Ne dépend pas du fournisseur de l'avatar.
+ *   'avatar' — présence vidéo réelle : la vidéo du jumeau (avatar animé sur
+ *              ma voix, produite par le serveur) devient la séquence « Vidéo »
+ *              à l'envoi. Exige le moteur vidéo disponible POUR cet avatar
+ *              et coûte AVATAR_VIDEO_COST en plus du rendu.
+ *   'aucun'  — le parcours normal, celui de tous les brouillons antérieurs.
  */
+
+export type JumeauMode = 'aucun' | 'voix' | 'avatar';
+export const JUMEAU_MODES: readonly JumeauMode[] = ['aucun', 'voix', 'avatar'];
+export const estJumeauMode = (v: unknown): v is JumeauMode => v === 'aucun' || v === 'voix' || v === 'avatar';
+
+/** Le fournisseur de l'avatar, en clair pour l'écran. */
+export type FournisseurAvatarPublic = 'heygen' | 'did' | 'inconnu';
+export function libelleFournisseurAvatar(f: FournisseurAvatarPublic | undefined): string {
+  if (f === 'did') return 'créé à partir d’une vidéo (D-ID)';
+  if (f === 'heygen') return 'créé à partir d’une photo (HeyGen)';
+  return 'fournisseur inconnu';
+}
 
 export interface EtatJumeau {
   pret: boolean;
   motif: string | null;
   message: string | null;
-  jumeau: { avatar: { id: string; version: number; nom: string | null; valideLe: string }; voix: { id: string; nom: string }; prononciations: number } | null;
+  jumeau: { avatar: { id: string; version: number; nom: string | null; valideLe: string; fournisseur?: FournisseurAvatarPublic }; voix: { id: string; nom: string }; prononciations: number } | null;
   moteurDisponible: boolean;
   messageMoteur: string | null;
   scripts?: Array<{ display: string; spoken: string }>;
@@ -40,20 +62,25 @@ export async function verifierJumeauAvantRendu(textes: string[], fetchImpl: type
 
 /**
  * LE GARDE. Rend `null` si le rendu peut continuer, sinon le message qui
- * l'arrête. Sans « Utiliser mon jumeau », rien ne change au parcours normal.
- * Avec : le serveur DOIT confirmer que le jumeau est prêt (revérification
- * complète), puis que le moteur vidéo du jumeau existe — sinon on s'arrête,
- * sans jamais produire une vidéo ordinaire sous ce nom.
+ * l'arrête. Mode 'aucun' : rien ne change au parcours normal, aucun appel.
+ *   'avatar' — le serveur DOIT confirmer que le jumeau est prêt
+ *              (revérification complète), PUIS que le moteur vidéo existe
+ *              pour cet avatar — sinon on s'arrête, sans jamais produire une
+ *              vidéo ordinaire sous ce nom.
+ *   'voix'   — seulement la voix résolue : le serveur confirme que le jumeau
+ *              (donc sa voix) est prêt ; le moteur vidéo n'entre pas en jeu,
+ *              aucune vidéo d'avatar n'est demandée.
  */
 export async function gardeJumeauAvantRendu(args: {
-  useDigitalTwin: boolean;
+  mode: JumeauMode;
   textes: string[];
   verifier?: (textes: string[]) => Promise<EtatJumeau | null>;
 }): Promise<string | null> {
-  if (args.useDigitalTwin !== true) return null;
+  if (args.mode !== 'avatar' && args.mode !== 'voix') return null;
   const etat = await (args.verifier ?? verifierJumeauAvantRendu)(args.textes);
   if (!etat) return JUMEAU_INDISPONIBLE;
   if (!etat.pret) return etat.message || JUMEAU_INDISPONIBLE;
+  if (args.mode === 'voix') return null;
   if (!etat.moteurDisponible) return etat.messageMoteur || 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.';
   return null;
 }

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 interface FloatingPanelProps {
   title: string;
@@ -209,7 +210,8 @@ export default function FloatingPanel({
           </div>
           <button
             onClick={onClose}
-            className="flex h-5 w-5 items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+            aria-label="Fermer"
+            className={`flex h-5 w-5 items-center justify-center rounded-full hover:bg-white/10 ${ETAT_INTERACTIF_SANS_FOND}`}
           >
             <X size={12} className="text-gray-400" />
           </button>
