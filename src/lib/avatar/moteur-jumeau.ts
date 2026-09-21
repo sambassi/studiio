@@ -48,7 +48,7 @@ import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system'
 import { referenceOperation } from '@/lib/credits/atomique';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import { uploadAsset, generateAvatarVideoFromAudio, HeyGenError, type AvatarAspectRatio } from '@/lib/avatar/heygen';
-import { resoudreJumeauDuCompte, scriptsDuJumeau, type MotifJumeau } from '@/lib/avatar/jumeau';
+import { resoudreJumeauDuCompte, scriptsDuJumeau, MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO, type MotifJumeau } from '@/lib/avatar/jumeau';
 import { synthetiserAvecVoix, cleElevenLabs } from '@/lib/voice/synthese';
 
 /** Marqueur d'une génération de jumeau dans `avatar_generations.voice_id` : la voix INTERNE (user_voices.id), jamais le voice_id fournisseur. */
@@ -92,6 +92,12 @@ export async function genererVideoJumeau(
     return { ok: false, motif: 'base', message: 'Votre jumeau n’a pas pu être vérifié.' };
   }
   const { avatar, voix } = jumeau.jumeau;
+  // GARDE, avant tout débit : le moteur est câblé sur HeyGen. Un identifiant
+  // d'un autre fournisseur (D-ID) n'est JAMAIS envoyé à HeyGen — même si le
+  // drapeau global est actif et que le jumeau est « prêt » (voix utilisable).
+  if (jumeau.prive.fournisseurAvatar !== 'heygen') {
+    return { ok: false, motif: 'moteur_indisponible', message: MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO };
+  }
 
   // 2. Les textes : DISPLAY intact, SPOKEN pour la voix.
   const display = args.textes.filter((t) => typeof t === 'string' && t.trim().length > 0).map((t) => t.trim()).join('\n\n');

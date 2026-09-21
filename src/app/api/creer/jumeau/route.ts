@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import {
-  resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponible, MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE,
+  resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponible, moteurJumeauDisponiblePour, MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE,
 } from '@/lib/avatar/jumeau';
 
 export const dynamic = 'force-dynamic';
@@ -24,9 +24,12 @@ const MAX_TEXTE = 2000;
 function reponse(r: Awaited<ReturnType<typeof resoudreJumeauDuCompte>>, extra: Record<string, unknown> = {}) {
   const MOTEUR_JUMEAU_DISPONIBLE = moteurJumeauDisponible();
   if (r.ok) {
+    // Le moteur se juge POUR cet avatar : un avatar D-ID est « prêt » (voix
+    // utilisable) mais le moteur vidéo ne sait pas encore l'animer.
+    const moteur = moteurJumeauDisponiblePour(r.jumeau.avatar.fournisseur);
     return NextResponse.json({
       success: true,
-      data: { pret: true, motif: null, message: null, jumeau: r.jumeau, moteurDisponible: MOTEUR_JUMEAU_DISPONIBLE, messageMoteur: MOTEUR_JUMEAU_DISPONIBLE ? null : MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE, ...extra },
+      data: { pret: true, motif: null, message: null, jumeau: r.jumeau, moteurDisponible: moteur.disponible, messageMoteur: moteur.message, ...extra },
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   }
   if ('motif' in r) {

@@ -69,7 +69,11 @@ export default function JumeauPanel(props: { actif: boolean; onChange: (actif: b
           {etat.jumeau.prononciations > 0 && (
             <div className="text-gray-500">{etat.jumeau.prononciations} prononciation{etat.jumeau.prononciations > 1 ? 's' : ''} personnalisée{etat.jumeau.prononciations > 1 ? 's' : ''} seront appliquées au texte prononcé.</div>
           )}
-          {props.actif && !etat.moteurDisponible && etat.messageMoteur && (
+          {/* Dite AVANT d'activer, pas seulement apres : l'utilisateur doit
+              savoir ce que « Utiliser mon jumeau » produira (ou pas) avec
+              SON avatar — un avatar D-ID a une voix utilisable mais pas
+              encore de moteur video. */}
+          {!etat.moteurDisponible && etat.messageMoteur && (
             <div data-jumeau-moteur="indisponible" className="text-amber-200 mt-1">{etat.messageMoteur}</div>
           )}
         </div>

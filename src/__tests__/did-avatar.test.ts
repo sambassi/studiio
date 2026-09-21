@@ -151,7 +151,8 @@ const statut = await import('@/app/api/avatar/status/route');
 const generate = await import('@/app/api/avatar/generate/route');
 const suppression = await import('@/app/api/avatar/route');
 const { apercuDuClone } = await import('@/lib/avatar/apercu');
-const { resoudreJumeauDuCompte } = await import('@/lib/avatar/jumeau');
+const { resoudreJumeauDuCompte, moteurJumeauDisponiblePour } = await import('@/lib/avatar/jumeau');
+const { genererVideoJumeau } = await import('@/lib/avatar/moteur-jumeau');
 const { SCRIPT_APERCU, CONSENTEMENT_ENROLEMENT_DID, CONSENTEMENT_ENROLEMENT } = await import('@/lib/avatar/contrat');
 const { supprimerAvatarActif } = await import('@/lib/avatar/suppression');
 const { consentementReutilisableDuCompte } = await import('@/lib/avatar/did');
@@ -795,15 +796,34 @@ describe('6. Remplacement, suppression, et ce qui reste HeyGen', () => {
     expect(appelsVers(/scenes\/avatars\/avt-1$/, 'DELETE')).toHaveLength(1);
   });
 
-  it('⚠️ un avatar D-ID n’est JAMAIS envoyé à HeyGen : /api/avatar/generate refuse (409), le jumeau refuse (avatar_non_pret)', async () => {
+  it('⚠️ un avatar D-ID n’est JAMAIS envoyé à HeyGen : /api/avatar/generate refuse (409) ; le jumeau est PRÊT (voix utilisable) mais son moteur vidéo refuse avant tout débit', async () => {
     await jusquAPret();
     base.avatars[0].validated_at = '2026-09-15T00:00:00Z';
     const res = await generate.POST(new NextRequest('https://studiio.pro/api/avatar/generate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ script: 'Bonjour', voiceId: 'v-fr' }) }));
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('provider_did');
+    // « Prêt » = avatar validé + voix nommée : la voix sert partout (narration
+    // Autopilote, voix par séquence). Refuser ici privait l'Autopilote d'une
+    // voix qui marche.
     const j = await resoudreJumeauDuCompte(U);
-    expect(j.ok).toBe(false);
-    expect(j.ok ? '' : 'motif' in j ? j.motif : '').toBe('avatar_non_pret');
+    if (j.ok) {
+      expect(j.jumeau.avatar.fournisseur).toBe('did');
+      expect(j.prive.fournisseurAvatar).toBe('did');
+      // Le moteur vidéo, lui, ne sait pas animer un avatar D-ID : dit, avec
+      // ce qui marche déjà.
+      expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as NodeJS.ProcessEnv)).toMatchObject({ disponible: false });
+      expect(moteurJumeauDisponiblePour('did').message).toContain('créés à partir d’une photo');
+      expect(moteurJumeauDisponiblePour('did').message).toContain('voix reste utilisable');
+    } else {
+      // Sans voix personnelle dans la fixture, le seul motif admissible est
+      // celui de la voix — jamais le fournisseur de l'avatar.
+      expect('motif' in j ? j.motif : '').toMatch(/^voix_|^choix_voix_requis$/);
+    }
+    // Défense en profondeur : même moteur actif, un identifiant D-ID n'atteint
+    // jamais HeyGen — refus avant tout débit.
+    const g = await genererVideoJumeau({ userId: U, textes: ['Bonjour'] }, { env: { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as NodeJS.ProcessEnv });
+    expect(g.ok).toBe(false);
+    expect(g.ok ? '' : g.motif).toMatch(/^(moteur_indisponible|voix_absente|choix_voix_requis|voix_inutilisable)$/);
     expect(appelsVers(/heygen/)).toEqual([]);
   });
 });

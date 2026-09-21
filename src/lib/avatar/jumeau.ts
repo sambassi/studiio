@@ -41,9 +41,21 @@ export const MESSAGES_JUMEAU: Record<MotifJumeau, string> = {
   voix_inutilisable: 'La voix choisie ne peut pas être utilisée. Vérifiez votre voix personnelle.',
 };
 
+/** Fournisseurs d'avatar connus du contrat ; tout autre est traité comme inconnu. */
+export type FournisseurAvatar = 'heygen' | 'did';
+
 /** Ce que l'écran reçoit : de quoi dire « prêt » et nommer les choses. Rien de plus. */
 export interface JumeauPublic {
-  avatar: { id: string; version: number; nom: string | null; valideLe: string };
+  avatar: {
+    id: string; version: number; nom: string | null; valideLe: string;
+    /**
+     * Le FOURNISSEUR (pas son identifiant) : l'écran en a besoin pour dire
+     * honnêtement ce que le moteur vidéo sait faire de cet avatar. Un avatar
+     * D-ID (créé à partir d'une vidéo) a une voix utilisable partout, mais
+     * pas encore de moteur vidéo — voir `moteurJumeauDisponiblePour`.
+     */
+    fournisseur: FournisseurAvatar | 'inconnu';
+  };
   voix: { id: string; nom: string };
   prononciations: number;
 }
@@ -51,8 +63,21 @@ export interface JumeauPublic {
 /** Ce que le moteur vidéo recevra — jamais le navigateur. */
 export interface JumeauPrive {
   providerAvatarId: string;
+  /** Le fournisseur de `providerAvatarId` : le moteur refuse tout ce qu'il ne sait pas animer. */
+  fournisseurAvatar: FournisseurAvatar | 'inconnu';
   providerVoiceId: string;
   prononciations: Prononciation[];
+}
+
+/**
+ * `provider` absent ou nul = HeyGen : c'est le défaut de la colonne
+ * (`user_avatars.provider default 'heygen'`) et le seul fournisseur qui
+ * existait avant D-ID. Toute autre valeur est inconnue — le moteur refuse.
+ */
+function fournisseurDe(a: { provider?: unknown }): FournisseurAvatar | 'inconnu' {
+  if (a.provider === 'did') return 'did';
+  if (a.provider === 'heygen' || a.provider === undefined || a.provider === null) return 'heygen';
+  return 'inconnu';
 }
 
 export type ResolutionJumeau =
@@ -72,12 +97,12 @@ export async function resoudreJumeauDuCompte(userId: string): Promise<Resolution
   if (!lecture.ok) return { ok: false, erreur: lecture.erreur };
   const a = lecture.avatar;
   if (!a) return { ok: false, motif: 'avatar_absent', message: MESSAGES_JUMEAU.avatar_absent };
-  // GARDE : le moteur du jumeau est câblé sur HeyGen (`audio_asset_id` sur
-  // /v3/videos). Un avatar D-ID n'y est pas encore branché : on le dit, on
-  // n'envoie JAMAIS un identifiant D-ID à HeyGen.
-  if ((a as { provider?: unknown }).provider === 'did') {
-    return { ok: false, motif: 'avatar_non_pret', message: 'Votre avatar vidéo n’est pas encore pris en charge par le jumeau numérique.' };
-  }
+  // Un avatar D-ID n'est PLUS refusé ici. « Prêt » veut dire : avatar validé
+  // + voix nommée — et la voix, elle, sert partout (narration Autopilote,
+  // voix par séquence). Ce que le moteur VIDÉO sait animer est une autre
+  // question, répondue par `moteurJumeauDisponiblePour(fournisseur)` ; le
+  // moteur lui-même refuse tout identifiant qui n'est pas HeyGen, avant tout
+  // débit. Un identifiant D-ID n'est donc JAMAIS envoyé à HeyGen.
   // L'état est DÉRIVÉ, au même endroit que la validation : vivant, fournisseur
   // présent, entraînement réellement terminé, validated_at posé.
   const etat = etatAvatar(a);
@@ -100,11 +125,11 @@ export async function resoudreJumeauDuCompte(userId: string): Promise<Resolution
   return {
     ok: true,
     jumeau: {
-      avatar: { id: a.id, version: a.version, nom: a.name ?? null, valideLe: a.validated_at },
+      avatar: { id: a.id, version: a.version, nom: a.name ?? null, valideLe: a.validated_at, fournisseur: fournisseurDe(a) },
       voix: { id: voix.voix.id, nom: voix.voix.nom },
       prononciations: voix.prononciations.length,
     },
-    prive: { providerAvatarId: a.provider_avatar_id, providerVoiceId: voix.providerVoiceId, prononciations: voix.prononciations },
+    prive: { providerAvatarId: a.provider_avatar_id, fournisseurAvatar: fournisseurDe(a), providerVoiceId: voix.providerVoiceId, prononciations: voix.prononciations },
   };
 }
 
@@ -120,5 +145,28 @@ export function scriptsDuJumeau(textes: readonly string[], prononciations: reado
  * drapeau ne passe à 1 qu'après une génération réelle constatée sur un vrai
  * compte. Tant qu'il est à zéro, on le dit ; on ne simule rien.
  */
-export { moteurJumeauDisponible } from '@/lib/avatar/moteur-jumeau';
-export const MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE = 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.';
+import { moteurJumeauDisponible } from '@/lib/avatar/moteur-jumeau';
+export { moteurJumeauDisponible };
+export const MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE = 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible — votre voix reste utilisable pour la narration.';
+/**
+ * Un avatar D-ID (créé à partir d'une vidéo) : le moteur vidéo du jumeau est
+ * câblé sur HeyGen (`audio_asset_id` sur /v3/videos) et ne sait pas encore
+ * l'animer. On dit exactement ce qui manque et ce qui marche déjà — jamais
+ * « pas pris en charge » sans dire quoi ni pourquoi.
+ */
+export const MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO = 'Votre avatar est prêt et votre voix est enregistrée, mais la génération de vidéos avec votre jumeau n’est disponible que pour les avatars créés à partir d’une photo. Votre voix reste utilisable pour la narration, et vous pouvez générer un aperçu dans Mon avatar.';
+
+/**
+ * Le moteur vidéo peut-il animer CET avatar ? Le drapeau global ne suffit
+ * pas : il dit que le moteur HeyGen est actif, pas qu'il sait animer un
+ * avatar d'un autre fournisseur.
+ */
+export function moteurJumeauDisponiblePour(
+  fournisseur: FournisseurAvatar | 'inconnu',
+  env: NodeJS.ProcessEnv = process.env,
+): { disponible: boolean; message: string | null } {
+  if (fournisseur !== 'heygen') return { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_AVATAR_VIDEO };
+  return moteurJumeauDisponible(env)
+    ? { disponible: true, message: null }
+    : { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE };
+}

@@ -68,11 +68,33 @@ describe('JumeauPanel', () => {
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
-  it('activé et moteur indisponible : la phrase honnête est affichée sous l’état prêt', async () => {
+  it('moteur indisponible : la phrase honnête est affichée sous l’état prêt — activé ou non', async () => {
     stub(PRET);
     render(<JumeauPanel actif onChange={() => {}} />);
     await waitFor(() => expect(document.querySelector('[data-jumeau-moteur="indisponible"]')).not.toBeNull());
     expect(document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent).toBe(PRET.messageMoteur);
+    cleanup();
+    // Avant d'activer aussi : on sait ce que l'interrupteur produira.
+    stub(PRET);
+    render(<JumeauPanel actif={false} onChange={() => {}} />);
+    await waitFor(() => expect(document.querySelector('[data-jumeau-moteur="indisponible"]')).not.toBeNull());
+  });
+
+  it('⚠️ avatar D-ID (créé à partir d’une vidéo) : PRÊT, interrupteur actif, et le moteur dit exactement ce qui manque', async () => {
+    stub({
+      ...PRET,
+      jumeau: { ...PRET.jumeau, avatar: { ...PRET.jumeau.avatar, fournisseur: 'did' } },
+      moteurDisponible: false,
+      messageMoteur: 'Votre avatar est prêt et votre voix est enregistrée, mais la génération de vidéos avec votre jumeau n’est disponible que pour les avatars créés à partir d’une photo. Votre voix reste utilisable pour la narration, et vous pouvez générer un aperçu dans Mon avatar.',
+    });
+    render(<JumeauPanel actif={false} onChange={() => {}} />);
+    await waitFor(() => expect(document.querySelector('[data-jumeau-etat="pret"]')).not.toBeNull());
+    const sw = screen.getByRole('switch', { name: 'Utiliser mon jumeau' }) as HTMLInputElement;
+    expect(sw.disabled).toBe(false);
+    const t = document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent!;
+    expect(t).toContain('créés à partir d’une photo');
+    expect(t).toContain('voix reste utilisable');
+    expect(t).not.toContain('pas encore pris en charge');
   });
 
   it('⚠️ CAS 2 avatar non validé : message + « Gérer mon avatar » → /dashboard/avatar ; interrupteur inerte ; une intention active retombe', async () => {

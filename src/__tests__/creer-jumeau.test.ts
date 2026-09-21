@@ -74,7 +74,10 @@ describe('resoudreJumeauDuCompte — prêt seulement si TOUT est vrai', () => {
   it('⚠️ avatar validé (version courante, fournisseur présent) + une voix utilisable → prêt ; le privé est séparé du public', async () => {
     const r = await resoudreJumeauDuCompte(U);
     expect(r).toMatchObject({ ok: true, jumeau: { avatar: { id: A, version: 2, nom: 'Bassi', valideLe: '2026-09-03T00:00:00Z' }, voix: { id: V1, nom: 'Voix 1' }, prononciations: 0 } });
-    expect(r.ok && r.prive).toEqual({ providerAvatarId: 'hg-1', providerVoiceId: 'pvid_0001_abcd', prononciations: [] });
+    expect(r.ok && r.prive).toEqual({ providerAvatarId: 'hg-1', fournisseurAvatar: 'heygen', providerVoiceId: 'pvid_0001_abcd', prononciations: [] });
+    // Le fournisseur (pas son identifiant) sort côté public : l'écran en a
+    // besoin pour dire ce que le moteur vidéo sait faire de cet avatar.
+    expect(r.ok && r.jumeau.avatar.fournisseur).toBe('heygen');
     expect(JSON.stringify(r.ok && r.jumeau)).not.toMatch(/hg-1|pvid_/);
   });
 
@@ -154,6 +157,15 @@ describe('/api/creer/jumeau', () => {
     const p = await (await post({ textes: ['Bonjour'] })).json() as { data: Record<string, unknown> };
     expect(p.data).toMatchObject({ pret: true, scripts: [{ display: 'Bonjour', spoken: 'Bonjour' }] });
     expect(JSON.stringify(p)).not.toMatch(/hg-1|pvid_|provider/);
+  });
+
+  it('⚠️ avatar D-ID validé + voix : PRÊT (la voix sert partout), moteur vidéo indisponible avec le message qui dit quoi et pourquoi', async () => {
+    base.avatars = [avatar({ provider: 'did', provider_avatar_id: 'did-1' })];
+    const g = await (await GET()).json() as { data: Record<string, unknown> };
+    expect(g.data).toMatchObject({ pret: true, motif: null, moteurDisponible: false, jumeau: { avatar: { fournisseur: 'did' } } });
+    expect(String(g.data.messageMoteur)).toContain('créés à partir d’une photo');
+    expect(String(g.data.messageMoteur)).toContain('voix reste utilisable');
+    expect(JSON.stringify(g)).not.toMatch(/did-1|pvid_|provider|pas encore pris en charge/);
   });
 
   it('non prêt → pret:false avec motif et message ; POST ne calcule aucun script', async () => {
