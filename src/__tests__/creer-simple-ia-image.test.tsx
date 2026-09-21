@@ -213,8 +213,9 @@ describe('Le débit est affaire du SERVEUR', () => {
     expect(debit).toBeGreaterThan(extraction);
   });
 
-  it('un token absent répond 503 avec un message clair', () => {
-    expect(route).toContain("{ success: false, error: 'Service IA non configuré' }, { status: 503 }");
+  it('un token absent répond 503 avec un message clair (comportement testé dans ai-generate-bg-route)', () => {
+    expect(route).toContain("code: 'ia_non_configuree',");
+    expect(route).toContain('{ status: 503 }');
   });
 
   it('le client n implémente AUCUN débit de son côté', () => {

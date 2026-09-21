@@ -193,6 +193,31 @@ describe('generate-bg — nominal : l\'affiche est stockee chez nous, puis factu
   });
 });
 
+describe('generate-bg — REPLICATE_API_TOKEN absent (vu en prod : « Service IA non configuré »)', () => {
+  it('503 nomme la configuration manquante, alerte l\'administrateur, ne touche ni Replicate ni le stockage ni le solde', async () => {
+    delete process.env.REPLICATE_API_TOKEN;
+    runMock.mockResolvedValue([fileOutput(octetsWebp())]);
+
+    const { status, body } = await post({ action: 'generate-bg', prompt: 'salle de sport neon' });
+
+    expect(status).toBe(503);
+    expect(body.success).toBe(false);
+    expect(body.code).toBe('ia_non_configuree');
+    expect(String(body.error)).toContain('Service IA non configuré');
+    expect(String(body.error)).toContain('Aucun crédit débité');
+    // L'alerte nomme la VARIABLE — jamais une valeur (il n'y en a pas).
+    expect(reportAlertMock).toHaveBeenCalledTimes(1);
+    const [service, severite, titre, details] = reportAlertMock.mock.calls[0] as [string, string, string, string];
+    expect(service).toBe('replicate');
+    expect(severite).toBe('critical');
+    expect(`${titre} ${details}`).toContain('REPLICATE_API_TOKEN');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(uploadMock).not.toHaveBeenCalled();
+    expect(deductCreditsMock).not.toHaveBeenCalled();
+    expect(alertMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('generate-bg — le fournisseur echoue : rien n\'est ecrit, rien n\'est facture', () => {
   it('provider throws → erreur, pas d\'upload, pas de debit, pas d\'URL temporaire', async () => {
     runMock.mockRejectedValue(new Error('Prediction failed: boom'));

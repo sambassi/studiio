@@ -77,6 +77,9 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
   const generer = useCallback(async () => {
     if (enVolRef.current) return;
     enVolRef.current = true;
+    // Le dernier resultat, pas encore applique : un « Regenerer » qui echoue
+    // ne doit pas le faire disparaitre — l'utilisateur garde ce qu'il avait.
+    const precedente = etat.statut === 'resultat' || etat.statut === 'erreur' ? etat.url : undefined;
     try {
       const consigne = (prompt.trim() || suggestion).trim();
       if (!consigne) {
@@ -118,14 +121,14 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           err instanceof DelaiDepasse || (err instanceof Error && err.name === 'AbortError')
             ? AFFICHE_IA_MESSAGE_DELAI
             : err instanceof Error ? err.message : 'Génération impossible.';
-        setEtat({ statut: 'erreur', message });
+        setEtat({ statut: 'erreur', message, url: precedente });
       } finally {
         if (timer) clearTimeout(timer);
       }
     } finally {
       enVolRef.current = false;
     }
-  }, [prompt, suggestion, format]);
+  }, [prompt, suggestion, format, etat]);
 
   const utiliser = useCallback(async (url: string) => {
     if (enVolRef.current) return;

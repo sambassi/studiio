@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth/config';
 import { deductCredits, getUserCredits } from '@/lib/credits/system';
 import { referenceOperation } from '@/lib/credits/atomique';
-import { detectAndReportServiceError } from '@/lib/service-alerts';
+import { detectAndReportServiceError, reportServiceAlert } from '@/lib/service-alerts';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import Replicate from 'replicate';
 import { extractText } from '@/lib/ai/extract-text';
@@ -346,7 +346,22 @@ export async function POST(req: NextRequest) {
 
     // Validate REPLICATE_API_TOKEN
     if (!process.env.REPLICATE_API_TOKEN) {
-      return NextResponse.json({ success: false, error: 'Service IA non configuré' }, { status: 503 });
+      // Vu en prod : « Service IA non configuré » sous le bouton Generer,
+      // sans qu'aucun administrateur en soit averti — cette branche sort
+      // AVANT le `catch` general qui alerte. Le message utilisateur dit ce
+      // qu'il manque cote serveur ; l'alerte nomme la variable (jamais sa
+      // valeur, il n'y en a pas). Aucun credit n'est touche.
+      reportServiceAlert(
+        'replicate',
+        'critical',
+        '🔑 Replicate — REPLICATE_API_TOKEN absent',
+        'La variable REPLICATE_API_TOKEN n’est pas definie sur le serveur (Coolify → studiio-app → Environment Variables). L’Affiche IA et les retouches IA repondent 503 tant qu’elle manque.',
+      );
+      return NextResponse.json({
+        success: false,
+        error: 'Service IA non configuré sur le serveur (clé Replicate absente). Aucun crédit débité — contactez l’administrateur.',
+        code: 'ia_non_configuree',
+      }, { status: 503 });
     }
 
     const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
