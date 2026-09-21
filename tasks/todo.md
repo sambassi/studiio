@@ -13,7 +13,7 @@ Reproduit en prod (session réelle) : `/api/tts/elevenlabs` sert bien « Bassi (
 - [x] P5 — date de début (migration `start_date` sondée), production ≠ publication, prochaines échéances, « Produire un brouillon maintenant » (route verrouillée, brouillon forcé, coût affiché)
 - [ ] P6 — `REPLICATE_API_TOKEN` : absente partout (conteneur, autres conteneurs, .env Coolify, Shared Variables, local) — à saisir par le propriétaire
 - [x] P7 — états d'interaction partagés (survol/appui/focus/sélection/chargement/succès/erreur) + câblage des grilles Créer/Autopilote
-- [ ] Coordination : gates, PR, fusion, déploiement, migrations prod, vérification en prod avec la session
+- [x] Coordination : PR #419 → `8256f73` fusionnée et déployée (Coolify `a320dyym13y7cwih6qalrgmj`), migrations `brief`/`start_date` appliquées (sauvegarde `/root/backups/studiio-pre-brief-startdate-*.dump`), PostgREST rechargé, parcours vérifiés en prod avec la session (voix clonée, jumeau, brief, extraits, Autopilote)
 
 ### À lancer sur le serveur (après déploiement)
 ```
