@@ -608,6 +608,53 @@ const TRANSITION_HINTS: Record<TransitionStyle, string> = {
 const WATERMARK_SEQUENCES = ['titre', 'cartes', 'video', 'cta'] as const;
 
 /**
+ * Nouvelle attribution automatique des affiches du lot, a partir de resultats
+ * de recherche FRAIS.
+ *
+ * Regle, la plus simple qui ne degrade jamais un lot pret :
+ *
+ *   1. Si les resultats fournissent a eux seuls `count` affiches distinctes,
+ *      ils REMPLACENT le lot — c'est le sens d'une nouvelle recherche ou du
+ *      bouton « Autres photos ».
+ *   2. Sinon, ils COMPLETENT le lot existant : les affiches deja retenues
+ *      gardent leur rang, les manquantes sont prises dans les resultats,
+ *      toujours sans doublon et jamais au-dela de `count`.
+ *
+ * Un lot pret le reste donc quoi que rende la recherche ; un lot incomplet
+ * ne peut que gagner des affiches. Aucune image n'est jamais reutilisee pour
+ * atteindre le nombre : `autoAssignPhotos` dedoublonne, et l'envoi refuse un
+ * lot incomplet plutot que de recycler.
+ */
+export function reattribuerAffichesAuto(
+  existantes: string[],
+  candidates: Array<string | undefined | null>,
+  count: number,
+): string[] {
+  const fraiches = autoAssignPhotos(candidates, count);
+  if (batchPhotosReady(fraiches, count)) return fraiches;
+  return autoAssignPhotos([...(existantes || []), ...candidates], count);
+}
+
+/**
+ * Refus d'un lot sans une affiche distincte par video — dit ce qu'il FAUT
+ * faire, selon le mode.
+ *
+ * En automatique, « repassez en mode automatique » n'aurait aucun sens : les
+ * affiches viennent de la recherche, c'est elle qu'il faut relancer. En
+ * manuel, c'est a l'utilisateur de completer — ou de laisser l'automatique
+ * le faire.
+ */
+export function messageAffichesManquantes(
+  mode: 'auto' | 'manuel',
+  retenues: number,
+  total: number,
+): string {
+  return mode === 'auto'
+    ? `Recherchez d’autres photos pour obtenir ${total} affiches distinctes (${retenues} sur ${total}).`
+    : `Choisissez autant de photos que de vidéos (${retenues} sur ${total}), ou repassez en mode automatique.`;
+}
+
+/**
  * Position et taille de la fenetre d'apercu agrandi.
  *
  * `localStorage` et non `sessionStorage` : c'est un reglage d'ergonomie, il
@@ -3900,10 +3947,28 @@ export default function AssistantWizard() {
    * Relancee quand les resultats de recherche ou la taille du lot changent :
    * une modification manuelle d'un emplacement tient donc jusqu'a la
    * prochaine recherche, ce qui est la lecture la plus previsible.
+   *
+   * Sans resultat de recherche (montage, brouillon restaure, recherche vide),
+   * on ne touche a rien : l'effet tournait au montage avec une liste vide et
+   * ecrasait les affiches restaurees depuis le brouillon — un lot de dix
+   * revenait sans aucune photo et etait refuse au depart. Les resultats de
+   * recherche ne sont PAS enregistres dans le brouillon, les affiches
+   * retenues le sont : au rechargement, ce sont elles qui font foi.
+   *
+   * Avec des resultats, la regle est celle de `reattribuerAffichesAuto` : une
+   * recherche qui fournit assez de photos distinctes remplace le lot (c'est
+   * le sens du bouton « Autres photos ») ; une recherche qui n'en fournit
+   * pas assez COMPLETE le lot existant sans jamais le degrader.
+   *
+   * Forme fonctionnelle de `setBatchPhotoUrls` : lire `batchPhotoUrls` par
+   * les dependances relancerait l'effet a chaque remplacement manuel d'un
+   * emplacement, et l'ecraserait.
    */
   useEffect(() => {
     if (batchPhotoMode !== 'auto' || batchCount < 2) return;
-    setBatchPhotoUrls(autoAssignPhotos(posterPhotos.map((p) => p.url), batchCount));
+    if (posterPhotos.length === 0) return;
+    const candidates = posterPhotos.map((p) => p.url);
+    setBatchPhotoUrls((prev) => reattribuerAffichesAuto(prev, candidates, batchCount));
   }, [batchPhotoMode, batchCount, posterPhotos]);
 
   /** Affiches distinctes disponibles — ce qui borne l'attribution auto. */
@@ -3911,6 +3976,13 @@ export default function AssistantWizard() {
 
   /** Le lot peut-il partir ? Une affiche par video, toutes differentes. */
   const affichesCompletes = batchPhotosReady(batchPhotoUrls, batchCount);
+
+  /**
+   * Affiches reellement posees. `filter(Boolean)` et non `.length` : un
+   * echange d'emplacements (`assignerAffiche`) laisse une chaine vide, qui
+   * n'est pas une affiche.
+   */
+  const affichesRetenues = batchPhotoUrls.filter(Boolean).length;
 
   /** Pose une affiche sur un emplacement precis, sans creer de doublon. */
   const assignerAffiche = useCallback((slot: number, url: string) => {
@@ -5926,8 +5998,11 @@ export default function AssistantWizard() {
    * un angle tournant, un jeton de variation, et les titres deja produits pour
    * qu'elle ne se repete pas.
    *
-   * Rend `null` en cas d'echec : l'appelant garde alors le contenu courant.
-   * Mieux vaut une video de plus au meme texte qu'un lot interrompu.
+   * Rend `null` en cas d'echec (reponse non-ok, delai depasse, contenu
+   * invalide). L'appelant REFUSE alors le doublon : reprendre le contenu
+   * courant livrait une video identique a la premiere, presentee comme une
+   * variation. La serie s'arrete sur cet element, avant toute composition et
+   * tout debit — les suivants restent en attente.
    */
   const generateBatchVariation = useCallback(async (
     index: number,
@@ -6105,9 +6180,7 @@ export default function AssistantWizard() {
     // le lot existe precisement pour eviter. On refuse plutot que de dupliquer
     // en silence.
     if (total > 1 && !batchPhotosReady(batchPhotoUrls, total)) {
-      setError(
-        `Choisissez autant de photos que de vidéos (${batchPhotoUrls.filter(Boolean).length} sur ${total}), ou repassez en mode automatique.`,
-      );
+      setError(messageAffichesManquantes(batchPhotoMode, affichesRetenues, total));
       setSending(false);
       // ⚠️ CE RETOUR EST HORS DU `try`, donc hors du `finally` qui remet
       // l'indicateur a zero. L'oublier ici laisserait le cadre bloque sur
@@ -6235,10 +6308,17 @@ export default function AssistantWizard() {
           if (total > 1 && b > 0) {
             setRenderStage(`Variation ${b + 1}/${total}…`);
             const variation = await generateBatchVariation(b, titresDejaVus);
-            if (variation) {
-              contenu = variation;
-              if (variation.title) titresDejaVus.push(variation.title);
+            // Pas de variation : on n'en fait pas un doublon en silence. On
+            // leve AVANT la capture, la reservation et la composition — le
+            // `catch` global marque cet element « echoue » et laisse les
+            // suivants « en attente ». Rien n'est reserve ni debite.
+            if (!variation) {
+              throw new Error(
+                `La variation du contenu ${b + 1}/${total} a échoué : rien n’a été composé ni débité pour ce contenu.`,
+              );
             }
+            contenu = variation;
+            if (variation.title) titresDejaVus.push(variation.title);
           }
           // L'apercu EST la source de la photo des cartes : il doit porter le
           // contenu de cette iteration avant qu'on le photographie.
@@ -6372,7 +6452,10 @@ export default function AssistantWizard() {
           // Conditionne a la sequence : un rush transmis alors que la sequence
           // « Video » est masquee etait quand meme telecharge et decode, et sa
           // seule presence fait basculer le compositeur en rendu TEMPS REEL
-          // (`hasRushAudio = !!videoEl`) — dix fois plus lent, pour une video
+          // (`hasRushAudio = !!videoEl`). Le mode fast est lui aussi cadence
+          // a l'horloge murale (video-composer.ts, boucle `doFrame` sur
+          // `performance.now()`), donc pas plus rapide : la difference est
+          // le telechargement et le decodage du rush, inutiles pour une video
           // qui n'apparait nulle part dans le montage.
           videoUrl: duree('video') > 0 ? plateau.rushUrl || undefined : undefined,
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
@@ -7847,7 +7930,7 @@ export default function AssistantWizard() {
 
                         {!affichesCompletes && (
                           <p className="text-xs text-gray-500">
-                            {batchPhotoUrls.filter(Boolean).length} / {batchCount} — l’envoi est
+                            {affichesRetenues} / {batchCount} — l’envoi est
                             bloqué tant que chaque vidéo n’a pas sa propre affiche.
                           </p>
                         )}
@@ -7952,14 +8035,15 @@ export default function AssistantWizard() {
                             );
                           })}
                         </div>
+                        {/* Plus de « les manquantes reprendront les
+                            précédentes » : c'est faux depuis que l'envoi
+                            refuse un lot incomplet plutot que de recycler
+                            une affiche. */}
                         {batchCount > 1 && batchPhotoMode === 'manuel' && (
                           <p className="text-xs text-gray-500">
-                            {batchPhotoUrls.length} / {batchCount} affiche
-                            {batchPhotoUrls.length > 1 ? 's' : ''} retenue
-                            {batchPhotoUrls.length > 1 ? 's' : ''}
-                            {batchPhotoUrls.length > 0 && batchPhotoUrls.length < batchCount
-                              ? ' — les manquantes reprendront les précédentes.'
-                              : ''}
+                            {affichesRetenues} / {batchCount} affiche
+                            {affichesRetenues > 1 ? 's' : ''} retenue
+                            {affichesRetenues > 1 ? 's' : ''}
                           </p>
                         )}
                         <button
@@ -9293,9 +9377,17 @@ export default function AssistantWizard() {
                       <p className="mt-2 text-xs text-gray-500">
                         Chaque vidéo reçoit un angle différent et sa propre date, un jour après
                         l’autre. La première garde le contenu affiché ci-contre.
-                        {batchPhotoUrls.length > 0
-                          ? ` ${batchPhotoUrls.length} affiche${batchPhotoUrls.length > 1 ? 's' : ''} retenue${batchPhotoUrls.length > 1 ? 's' : ''}.`
-                          : ' Choisissez plusieurs photos dans « Photo d’affiche » pour les varier.'}
+                        {/* Les attributs disent l'etat que la garde d'envoi
+                            lira : combien d'affiches sont posees, et si le
+                            lot peut partir. */}
+                        <span
+                          data-batch-photos-count={affichesRetenues}
+                          data-batch-photos-ready={affichesCompletes ? 'true' : 'false'}
+                        >
+                          {affichesRetenues > 0
+                            ? ` ${affichesRetenues} affiche${affichesRetenues > 1 ? 's' : ''} retenue${affichesRetenues > 1 ? 's' : ''}.`
+                            : ' Choisissez plusieurs photos dans « Photo d’affiche » pour les varier.'}
+                        </span>
                       </p>
                     </div>
                     )}

@@ -173,7 +173,10 @@ describe('La grille', () => {
   it('l attribution automatique du LOT hérite de la validation', () => {
     // Elle lisait `posterPhotos` brut : une entrée sans URL y entrait comme
     // affiche d'une des vidéos du lot.
-    expect(wizard).toContain('autoAssignPhotos(posterPhotos.map((p) => p.url), batchCount)');
+    // Les candidates passent par `reattribuerAffichesAuto`, qui repose sur
+    // `autoAssignPhotos` : la validation est heritee du meme point.
+    expect(wizard).toContain('const candidates = posterPhotos.map((p) => p.url);');
+    expect(wizard).toContain('setBatchPhotoUrls((prev) => reattribuerAffichesAuto(prev, candidates, batchCount));');
     expect(wizard).toContain('setPosterPhotos(sanitizePhotos(data.photos));');
   });
 

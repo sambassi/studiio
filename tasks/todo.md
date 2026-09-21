@@ -2,6 +2,17 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
+## En cours — Série 10 fiable (`fix/creer-serie-10-fiable`, base `fb00928`) — 2026-09-21
+
+Architecture inchangée : boucle client séquentielle × rendu unitaire. `/api/render/batch` reste désactivée, reprise reste refusée.
+
+- [x] A — AssistantWizard : photos auto survivent au reload ; 10 distinctes exigées ; variation IA échouée = élément échoué (pas de doublon) + test reload
+- [x] B — batch.ts : `batchDates` progression calendaire (mois, février, bissextile, année) + tests
+- [x] C — `/api/videos/[id]/export` : accepte un `scheduled_post` du même compte ; refus cross-user ; 404 inconnu + tests
+- [x] D — tests N=10 complet mocké + échec 4/10 + adaptation `creer-serie-pilote`
+- [x] E — `rendus/client.ts` : cancel de la tentative sur `solde_insuffisant` + tests
+- [x] Coordination : CLAUDE.md (BATCH_SERIE_MAX = 10), full Vitest, PostgreSQL, tsc vs baseline (89), PR draft, pas de merge
+
 ## En cours — Import et application de LUTs, Mode simple `/dashboard/creer-simple` — 2026-07-30
 
 > **Arbitrages validés par l'utilisateur le 2026-07-30 :**

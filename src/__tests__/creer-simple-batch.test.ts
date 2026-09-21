@@ -187,20 +187,18 @@ describe('batchDates — un jour après l autre', () => {
     expect(batchDates(new Date(2026, 7, 3, 12), 1)).toEqual(['2026-08-03']);
   });
 
-  it('repart vers l arrière plutôt que de déborder du mois', () => {
-    // Le 30 août + 3 sortirait de septembre : les débordements reculent.
+  it('franchit la fin du mois vers l avant, sans jamais reculer', () => {
+    // Le 30 août + 3 déborde sur septembre : on y va. L'ancienne règle
+    // repartait en arrière (28, 27), ce qui rendait le lot non consécutif et
+    // pouvait poser des dates dans le passé.
     const d = batchDates(new Date(2026, 7, 30, 12), 4);
-    expect(d[0]).toBe('2026-08-30');
-    expect(d[1]).toBe('2026-08-31');
-    expect(d[2]).toBe('2026-08-28');
-    expect(d[3]).toBe('2026-08-27');
-    // Aucune date ne quitte le mois de départ.
-    for (const jour of d) expect(jour.startsWith('2026-08')).toBe(true);
+    expect(d).toEqual(['2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02']);
   });
 
-  it('toutes les dates sont distinctes', () => {
+  it('toutes les dates sont distinctes et croissantes', () => {
     const d = batchDates(new Date(2026, 7, 30, 12), 6);
     expect(new Set(d).size).toBe(d.length);
+    expect([...d].sort()).toEqual(d);
   });
 });
 
@@ -247,10 +245,13 @@ describe('Câblage du lot', () => {
     expect(wizard).toContain('titresDejaVus.push(variation.title)');
   });
 
-  it("une variation qui échoue n'interrompt pas le lot", () => {
-    // Mieux vaut une vidéo de plus au même texte qu'un lot arrêté au milieu.
-    expect(wizard).toContain('if (variation) {');
-    expect(wizard).toContain('return null;');
+  it("une variation qui échoue arrête la série AVANT toute composition ou débit", () => {
+    // Ancienne règle : on réutilisait le contenu précédent en silence — un
+    // doublon facturé. Nouvelle règle (série fiable) : on lève avant la
+    // capture, la réservation et la composition ; rien n'est débité.
+    expect(wizard).toContain('if (!variation) {');
+    expect(wizard).toContain('a échoué : rien n’a été composé ni débité pour ce contenu.');
+    expect(wizard).not.toContain('if (variation) {');
   });
 
   it('la progression du lot est affichée', () => {
@@ -328,8 +329,13 @@ describe('Attribution des affiches — auto ou manuel', () => {
     expect(wizard).toContain("useState<'auto' | 'manuel'>('auto')");
   });
 
-  it("l'attribution auto se rejoue quand les résultats ou le lot changent", () => {
-    expect(wizard).toContain('setBatchPhotoUrls(autoAssignPhotos(posterPhotos.map((p) => p.url), batchCount));');
+  it("l'attribution auto se rejoue quand les résultats ou le lot changent — sans jamais dégrader un lot prêt", () => {
+    // Forme fonctionnelle : le lot restauré du brouillon est la base, les
+    // résultats de recherche le complètent ou le remplacent (voir
+    // `reattribuerAffichesAuto`). Sans résultat, on ne touche à rien : au
+    // rechargement, `posterPhotos` est vide et le lot du brouillon fait foi.
+    expect(wizard).toContain('if (posterPhotos.length === 0) return;');
+    expect(wizard).toContain('setBatchPhotoUrls((prev) => reattribuerAffichesAuto(prev, candidates, batchCount));');
     expect(wizard).toContain('}, [batchPhotoMode, batchCount, posterPhotos]);');
   });
 

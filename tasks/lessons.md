@@ -266,6 +266,29 @@ trois routes M3-F/G/H refusent bien les doublons (index uniques en base), mais
 les trois requêtes partent quand même et c'est le REFUS qui s'affiche : la
 personne lit « déjà en cours » après avoir cliqué une fois de trop.
 
+## [2026-09-21] Un effet « auto » qui tourne au montage efface ce que le brouillon vient de restaurer
+
+**Ce qui a mal tourné** — Dans `/creer`, l'attribution automatique des affiches
+du lot (`useEffect` sur `[batchPhotoMode, batchCount, posterPhotos]`) se
+rejouait au montage avec `posterPhotos = []` (les résultats de recherche ne
+sont pas persistés) et écrasait les `batchPhotoUrls` que le brouillon venait de
+restaurer. Un lot de 10 revenait sans affiche et était refusé au départ — sans
+erreur, juste un état vide « normal ».
+
+**Règle** — (1) Tout effet qui DÉRIVE un état persisté d'un état non persisté
+doit d'abord vérifier que sa source est réellement disponible (`length === 0`
+→ ne rien toucher) : au rechargement, c'est l'état persisté qui fait foi.
+(2) Ne jamais dégrader un état complet en état incomplet par une dérivation
+automatique — compléter ou remplacer, jamais réduire (`reattribuerAffichesAuto`).
+(3) Un test de « reload » doit `cleanup()` puis re-monter le composant réel avec
+le localStorage posé, et lire le DOM — pas une regex sur le source.
+
+**Corollaire — tests PostgreSQL en local** — Un Postgres local en locale
+française rend « la nouvelle ligne de la relation… » au lieu de « violates
+check » : 12 tests `tests-pg` rouges pour rien. Démarrer avec
+`-c lc_messages=C` (et `unix_socket_directories=''` si le chemin du
+scratchpad dépasse 103 octets). `DATABASE_URL=postgresql://studiio_ci:studiio_ci@127.0.0.1:5499/studiio_ci npm run test:pg`.
+
 ## Pré-merge : checklist obligatoire
 
 À cocher MENTALEMENT avant chaque merge (et écrire dans le PR body si non trivial) :

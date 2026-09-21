@@ -125,23 +125,31 @@ export function photosToFetch(count: number): number {
 }
 
 /**
- * Dates du lot, etalees d'un jour a partir de `base`.
+ * Dates du lot, etalees d'un jour a partir de `base`, TOUJOURS vers l'avant.
  *
- * Le lot va vers l'AVANT, sauf s'il franchit la fin du mois : les iterations
- * qui deborderaient repartent alors vers l'arriere. C'est la regle de
- * l'editeur avance, conservee telle quelle pour que les deux parcours
- * remplissent le calendrier de la meme facon.
+ * Vraie progression calendaire : la fin du mois, de fevrier (bissextile ou
+ * non) et de l'annee est franchie naturellement, le constructeur `Date`
+ * reportant un jour hors limites sur le mois suivant.
+ *
+ * L'ancienne regle « de l'editeur avance » (repartir en ARRIERE des qu'une date
+ * sortait du mois de depart) est abandonnee : un lot de 10 lance le 25 d'un
+ * mois de 30 jours donnait 25..30 puis 19, 18, 17, 16 — un lot non consecutif,
+ * et des dates potentiellement dans le passe, donc jamais publiees.
+ *
+ * Chaque cible est construite a MIDI LOCAL a partir des seuls champs civils de
+ * `base` (annee, mois, jour), sans recopier son heure : une base proche de
+ * minuit (l'appelant retombe sur `new Date()` quand aucune date n'est choisie)
+ * ne peut donc pas glisser d'un jour lors d'un changement d'heure — midi
+ * n'est jamais une heure inexistante ni ambigue.
+ *
+ * Format `YYYY-MM-DD` en heure LOCALE (pas UTC) : l'appelant relit ces dates
+ * avec `new Date(`${d}T12:00:00`)`, midi local, pour eviter les bascules DST.
  */
 export function batchDates(base: Date, count: number): string[] {
   const total = clampBatchCount(count);
   const out: string[] = [];
   for (let i = 0; i < total; i += 1) {
-    const target = new Date(base.getTime());
-    target.setDate(base.getDate() + i);
-    if (target.getMonth() !== base.getMonth()) {
-      target.setTime(base.getTime());
-      target.setDate(base.getDate() - i);
-    }
+    const target = new Date(base.getFullYear(), base.getMonth(), base.getDate() + i, 12);
     out.push(
       `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}-${String(target.getDate()).padStart(2, '0')}`,
     );
