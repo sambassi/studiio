@@ -2,6 +2,26 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
+## En cours — Voix clonée, jumeau et aperçus dans Créer (`feat/creer-voix-jumeau-apercus`, base `980d6cd`) — 2026-09-21
+
+Reproduit en prod (session réelle) : `/api/tts/elevenlabs` sert bien « Bassi (ma voix) », mais Créer > Audio affichait Henri (localStorage non défaut) et la voix clonée était noyée dans ~130 entrées.
+
+- [x] P1 — carte « Ma voix clonée » (Utiliser ma voix → TTS global + par séquence, lien Gérer/cloner `#ma-voix`), optgroups, audio périmé signalé, persistance brouillon/reload
+- [x] P2 — JumeauPanel : « Utiliser ma voix clonée » / « Faire apparaître mon avatar parlant », avatar/voix/ce qu'il dira/où/ce qui sera exporté/coût ; D-ID raccordé au moteur (chaîne de l'aperçu, gate DID_* + ElevenLabs, sans drapeau global) ; JumeauAutopilote sans contradiction
+- [x] P3 — Brief (objectif, message, public, CTA) dans Créer et Autopilote (migration `brief` sondée), transmis à la narration et au prompt IA ; « Ce que la vidéo dira » ; démonstration étiquetée
+- [x] P4 — choisir une transition/animation la rejoue dans le grand aperçu sur le contenu du projet (extrait, Rejouer/Pause/✕, reduced-motion figé, aucun rendu payant)
+- [x] P5 — date de début (migration `start_date` sondée), production ≠ publication, prochaines échéances, « Produire un brouillon maintenant » (route verrouillée, brouillon forcé, coût affiché)
+- [ ] P6 — `REPLICATE_API_TOKEN` : absente partout (conteneur, autres conteneurs, .env Coolify, Shared Variables, local) — à saisir par le propriétaire
+- [x] P7 — états d'interaction partagés (survol/appui/focus/sélection/chargement/succès/erreur) + câblage des grilles Créer/Autopilote
+- [ ] Coordination : gates, PR, fusion, déploiement, migrations prod, vérification en prod avec la session
+
+### À lancer sur le serveur (après déploiement)
+```
+psql -U studiio -d studiio -f migrations/2026-09-21-autopilot-brief.sql
+psql -U studiio -d studiio -f migrations/2026-09-21-autopilot-start-date.sql
+docker kill -s SIGUSR1 studiio-postgrest
+```
+
 ## En cours — Parcours Créer + Autopilote : 8 points utilisateur (`fix/creer-autopilote-parcours`, base `1e11373`) — 2026-09-21
 
 Corrections minimales vérifiables, chacune classée (défaut reproduit / configuration manquante / fonctionnalité désactivée / amélioration). Pas de merge, pas de déploiement, pas de secret.

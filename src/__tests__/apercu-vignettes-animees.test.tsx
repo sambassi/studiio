@@ -161,8 +161,8 @@ describe('A — les vignettes vivent DANS chaque option, sans en changer le cont
 
   it('les options gardent un anneau de focus visible', async () => {
     await ouvrirStyle();
-    expect((document.querySelector('[data-transition="zoom"]') as HTMLElement).className).toContain('focus-visible:ring-1');
-    expect((document.querySelector('[data-text-animation="fade"]') as HTMLElement).className).toContain('focus-visible:ring-1');
+    expect((document.querySelector('[data-transition="zoom"]') as HTMLElement).className).toMatch(/focus-visible:ring-[12]/);
+    expect((document.querySelector('[data-text-animation="fade"]') as HTMLElement).className).toMatch(/focus-visible:ring-[12]/);
   });
 });
 

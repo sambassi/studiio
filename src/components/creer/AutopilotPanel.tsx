@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { classesCarteOption } from '@/lib/ui/etats';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
   Sparkles, Clapperboard, CalendarDays,
@@ -979,9 +980,7 @@ export default function AutopilotPanel({
                   disabled={!ready || saving}
                   aria-pressed={retenu}
                   data-autopilot-topic={t.id}
-                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition disabled:opacity-40 ${
-                    retenu ? 'border-purple-500/50 bg-gray-800' : 'border-gray-800 hover:border-gray-700'
-                  }`}
+                  className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left ${classesCarteOption(retenu)}`}
                 >
                   <CardIcon name={t.icon} size={14} color={retenu ? accent : '#9CA3AF'} className="" />
                   <span className="text-[11px] leading-tight">{t.label}</span>
@@ -1849,11 +1848,7 @@ export default function AutopilotPanel({
                     data-autopilot-intention={i}
                     data-autopilot-mode={INTENTION_MODE[i]}
                     title={sansReseau ? 'Choisissez d’abord au moins un réseau (« Préparer et me laisser valider », puis les réseaux).' : undefined}
-                    className={`w-full text-left rounded-lg border px-3 py-2 transition disabled:opacity-40 disabled:cursor-not-allowed ${
-                      choisie
-                        ? 'border-purple-500/50 bg-gray-800'
-                        : 'border-gray-800 hover:border-gray-700'
-                    }`}
+                    className={`w-full text-left rounded-lg border px-3 py-2 ${classesCarteOption(choisie)}`}
                   >
                     <span className="text-xs font-medium">{INTENTION_LABELS[i]}</span>
                     <span className="block text-[11px] text-gray-500 mt-0.5">{INTENTION_HINTS[i]}</span>

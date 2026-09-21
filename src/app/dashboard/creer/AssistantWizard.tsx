@@ -56,6 +56,8 @@ import {
 } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
+import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
+import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import {
   SEQUENCE_KEYS, emptySequenceVoices, emptySequenceVoicesUserEdited, buildAutoFillText,
@@ -103,7 +105,9 @@ import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElem
 import TextAnimationLayer from '@/components/creer/TextAnimationLayer';
 import TransitionMiniPreview from '@/components/creer/TransitionMiniPreview';
 import TextAnimationMiniPreview from '@/components/creer/TextAnimationMiniPreview';
-import SequencePlayback from '@/components/creer/SequencePlayback';
+import SequencePlayback, { type PlaybackRequest } from '@/components/creer/SequencePlayback';
+import { transitionExtract, textAnimationExtract, type PlaybackExtract } from '@/lib/creer/transitionPreview';
+import { INTRO_WINDOW } from '@/lib/creer/textAnimation';
 import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { useOptionPreview } from '@/lib/hooks/useOptionPreview';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
@@ -157,7 +161,7 @@ import {
   politiqueAffichable, MENTION_AUCUN_CREDIT,
 } from '@/lib/facturation/libelles';
 import JumeauPanel from '@/components/creer/JumeauPanel';
-import { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau } from '@/lib/creer/jumeau';
+import { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, type JumeauMode } from '@/lib/creer/jumeau';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import {
   DRAFT_VERSION,
@@ -187,6 +191,7 @@ import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePo
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
 import { RESEAUX, libelleCalendrier, type Reseau } from '@/lib/social/etatReseaux';
+import { classesCarteOption, classesOnglet } from '@/lib/ui/etats';
 import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import DeuxColonnes, { ColonneTravail, ColonneApercu } from '@/components/ux/DeuxColonnes';
@@ -2168,13 +2173,11 @@ export function Preview({
                   ? 'Séquence masquée — activez-la dans Séquences'
                   : undefined
               }
-              className={`flex-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition disabled:opacity-30 disabled:cursor-not-allowed ${
-                focus === t.id
-                  ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-              }`}
+              className={`flex-1 justify-center text-[11px] disabled:opacity-30 ${classesOnglet(focus === t.id)}`}
             >
               {t.label}
+              {/* Marqueur de forme, pas seulement la couleur : barre sous l'onglet actif. */}
+              {focus === t.id && <span aria-hidden="true" data-barre className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-purple-400" />}
             </button>
           ))}
         </div>
@@ -3228,6 +3231,12 @@ function AutopilotPreview({ config, accent, onPatch }: {
           Aperçu du projet — <span className="text-gray-400">exemple</span> sur le thème
           {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
           changent à chaque vidéo ; le style, non.
+          {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
+              est généré à chaque production, à partir du brief récurrent. */}
+          <span data-autopilot-script-exemple>
+            {' '}Exemple de démonstration — le script de chaque vidéo est généré à sa
+            production à partir de votre brief.
+          </span>
           {/* Ce que l'onglet « Tout » montre : une composition ou le montage.
               Sans cette phrase, les trois séquences empilées passent pour
               l'image finale. */}
@@ -3712,8 +3721,19 @@ export default function AssistantWizard() {
 
   const [themeId, setThemeId] = useState(THEMES[0].id);
   const [customTopic, setCustomTopic] = useState('');
-  /** « Utiliser mon jumeau » — une intention ; le serveur relit tout avant d'y donner suite. */
-  const [useDigitalTwin, setUseDigitalTwin] = useState(false);
+  /**
+   * Brief de la video — objectif, message, public, CTA. `{}` = aucun brief :
+   * generation et narration se comportent alors exactement comme avant.
+   */
+  const [brief, setBrief] = useState<VideoBrief>({});
+  /**
+   * L'intention « jumeau » : 'aucun' (parcours normal), 'voix' (ma voix
+   * clonée narre Titre/Cartes/CTA — posée dans `ttsVoiceId` par le bloc),
+   * 'avatar' (mon avatar parlant devient la séquence « Vidéo » à l'envoi,
+   * AVATAR_VIDEO_COST en plus). Une intention seulement : le serveur relit
+   * tout avant d'y donner suite.
+   */
+  const [jumeauMode, setJumeauMode] = useState<JumeauMode>('aucun');
   /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
   const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
   const [toneId, setToneId] = useState(TONES[0].id);
@@ -5605,11 +5625,16 @@ export default function AssistantWizard() {
   const buildDraft = useCallback((): Draft => ({
     version: DRAFT_VERSION,
     savedAt: Date.now(),
-    useDigitalTwin,
+    jumeauMode,
+    // Champ historique, DÉRIVÉ : les anciens lecteurs y lisent « avatar demandé ».
+    useDigitalTwin: jumeauMode === 'avatar',
     started,
     step,
     themeId,
     customTopic,
+    // Seuls les champs renseignes ; `undefined` sans brief, pour qu'un
+    // brouillon sans ce champ se relise exactement comme avant.
+    brief: briefRempli(brief) ? sanitizeBrief(brief) : undefined,
     toneId,
     format,
     colors,
@@ -5641,6 +5666,9 @@ export default function AssistantWizard() {
         audioUrl: persistableDraftUrl(sequenceVoices[k].audioUrl),
         source: sequenceVoices[k].source ?? undefined,
         ttsVoice: sequenceVoices[k].ttsVoice,
+        // Texte au moment de la generation : sert au badge « audio perime »
+        // apres rechargement, quand le texte a ete retouche.
+        textAtGeneration: sequenceVoices[k].textAtGeneration,
       }]),
     ),
     sequenceVoicesUserEdited,
@@ -5672,7 +5700,7 @@ export default function AssistantWizard() {
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
     batchPhotoMode,
   }), [
-    started, step, themeId, customTopic, toneId, format, colors, useDigitalTwin,
+    started, step, themeId, customTopic, brief, toneId, format, colors, jumeauMode,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     transition,
@@ -5737,6 +5765,7 @@ export default function AssistantWizard() {
     setStep(draft.step ?? 0);
     setThemeId(draft.themeId!);
     setCustomTopic(draft.customTopic ?? '');
+    setBrief(draft.brief ?? {});
     setToneId(draft.toneId!);
     setFormat(draft.format as Format);
     setColors(draft.colors ?? null);
@@ -5745,7 +5774,9 @@ export default function AssistantWizard() {
     setCtaStyle(draft.ctaStyle as TextStyles['cta']);
     setWatermarkOverride(draft.watermarkOverride ?? null);
     setWatermarkEnabled(draft.watermarkEnabled !== false);
-    setUseDigitalTwin(draft.useDigitalTwin === true);
+    // `sanitizeDraft` a déjà tranché : `jumeauMode` explicite, sinon l'ancien
+    // `useDigitalTwin: true` → 'avatar', sinon 'aucun'.
+    setJumeauMode(draft.jumeauMode ?? 'aucun');
     setSequences(draft.sequences as typeof DEFAULT_SEQUENCES);
     // `sanitizeDraft` a deja valide la valeur contre la liste du
     // compositeur : un style inconnu est arrive ici a `undefined`.
@@ -5771,6 +5802,7 @@ export default function AssistantWizard() {
             // Sans audio, pas de source : les deux vont ensemble.
             source: v.audioUrl ? ((v.source as 'tts' | 'record') ?? 'tts') : null,
             ttsVoice: v.ttsVoice,
+            textAtGeneration: v.textAtGeneration,
             // Duree volontairement absente : elle sera remesuree.
           };
         }
@@ -6104,12 +6136,82 @@ export default function AssistantWizard() {
      rush, débit) et la joue à cette même place : quand elle existe ou se
      compose, elle a la priorité (`renduDansLeCadre`). Sur les autres onglets,
      rien — ils isolent un élément pour le régler. */
+  /** Les séquences que le lecteur joue — durées du montage, par `seqDuration`. */
+  const etapesLecture = activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }));
+
+  /* ── L'EXTRAIT À LA DEMANDE ───────────────────────────────────────────
+     Choisir une transition ou une animation dans une grille la joue TOUT DE
+     SUITE dans le grand aperçu, sur le vrai contenu : la transition entre la
+     séquence courante et la suivante, ou le début de la séquence courante
+     avec l'animation. Un extrait court (`transitionExtract`,
+     `textAnimationExtract`), pas le montage entier.
+
+     Le lecteur ne vit que sur « Tout » : depuis un autre onglet, on y bascule
+     le temps de l'extrait, puis on REVIENT (`finExtrait`). Avec la réduction
+     des animations, rien ne se lance — l'image figée au milieu de l'effet
+     est montrée, Lire reste un geste volontaire (`autoplay`).
+
+     ⚠️ AUCUN RENDU. C'est le même lecteur que le bouton ▶ du cadre : rien
+     n'est composé, rien n'est débité — `runRender` n'est pas concerné. */
+  const [extraitDemande, setExtraitDemande] = useState<PlaybackRequest | null>(null);
+  /** Compteur des demandes : chaque clic relance, même effet, mêmes bornes. */
+  const extraitNo = useRef(0);
+  /** L'onglet d'où l'extrait est parti — `null` : « Tout », rien à rendre. */
+  const focusAvantExtrait = useRef<PreviewFocus | null>(null);
+
+  const demanderExtrait = useCallback((
+    extrait: PlaybackExtract | null,
+    essai: { transition?: TransitionStyle; textAnimation?: TextAnimation },
+  ) => {
+    // Rien à jouer, ou le cadre est pris par le rendu (composition en cours,
+    // montage rendu affiché) : le lecteur n'y est pas.
+    if (!extrait || !generated || previewUrl || rendPourApercu) return;
+    extraitNo.current += 1;
+    if (previewFocus !== 'all') {
+      focusAvantExtrait.current = previewFocus;
+      setPreviewFocus('all');
+    } else {
+      focusAvantExtrait.current = null;
+    }
+    setExtraitDemande({ ...extrait, ...essai, id: extraitNo.current, autoplay: !reduireAnimations });
+  }, [generated, previewUrl, rendPourApercu, previewFocus, reduireAnimations]);
+
+  /** Transition `style` entre la séquence de l'onglet courant et la suivante. */
+  const jouerTransition = useCallback((style: TransitionStyle) => {
+    demanderExtrait(transitionExtract(etapesLecture, previewFocus), { transition: style });
+    // `etapesLecture` est recalculé à chaque rendu : ses valeurs, pas sa
+    // référence, comptent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demanderExtrait, previewFocus, activeOrder, seqDuration]);
+
+  /** Animation `style` au début de la séquence de l'onglet courant (Titre par défaut). */
+  const jouerAnimation = useCallback((style: TextAnimation) => {
+    demanderExtrait(textAnimationExtract(etapesLecture, previewFocus, INTRO_WINDOW), { textAnimation: style });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demanderExtrait, previewFocus, activeOrder, seqDuration]);
+
+  /** L'extrait est fini ou quitté : la demande est consommée, l'onglet rendu. */
+  const finExtrait = useCallback(() => {
+    setExtraitDemande(null);
+    const retour = focusAvantExtrait.current;
+    focusAvantExtrait.current = null;
+    if (retour && retour !== 'all') setPreviewFocus(retour);
+  }, []);
+
+  // Quitter « Tout » (à la main, ou par `finExtrait`) démonte le lecteur :
+  // une demande laissée là se rejouerait toute seule au retour sur l'onglet.
+  useEffect(() => {
+    if (previewFocus !== 'all') setExtraitDemande(null);
+  }, [previewFocus]);
+
   const lectureSequences = generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (
     <SequencePlayback
-      steps={activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }))}
+      steps={etapesLecture}
       transition={transition}
       frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale: displayScale }}
-      renderLayer={({ key, progress }) => {
+      demande={extraitDemande}
+      onFin={finExtrait}
+      renderLayer={({ key, progress, textAnimation: animationExtrait }) => {
         // Le fond de CETTE séquence — la règle de l'onglet correspondant.
         const fond = resolveBackground(key as PreviewFocus, seqBackgrounds, posterUrl, posterTransform);
         return (
@@ -6134,7 +6236,10 @@ export default function AssistantWizard() {
             elements={freeElements}
             watermark={watermarkLabel}
             accent={accent}
-            textAnimation={textAnimation}
+            // L'animation de l'ÉTAT — celle qui part au rendu — sauf pendant
+            // l'essai d'une option par son bouton ▶, qui la montre sans la
+            // choisir.
+            textAnimation={animationExtrait ?? textAnimation}
             progress={progress}
           />
         );
@@ -6166,6 +6271,10 @@ export default function AssistantWizard() {
       })),
       ctaMainText: generated.cta,
       ctaSubText: generated.ctaSub,
+      // Le brief : son message s'ajoute a la narration du titre, son CTA
+      // remplace le CTA generique. Un texte repris a la main (`userEdited`)
+      // n'est pas touche — et aucun audio n'est regenere ici.
+      brief: briefRempli(brief) ? brief : null,
     });
     setSequenceVoices((prev) => {
       let change = false;
@@ -6179,7 +6288,7 @@ export default function AssistantWizard() {
       }
       return change ? next : prev;
     });
-  }, [generated, sequenceVoicesUserEdited]);
+  }, [generated, sequenceVoicesUserEdited, brief]);
 
   /**
    * Duree de chaque sequence calee sur la duree REELLE de sa voix.
@@ -6460,6 +6569,9 @@ export default function AssistantWizard() {
           cardCount: generated?.cards.length ?? 5,
           variationNonce: variationNonce(index, Date.now()),
           existingTitles: priorTitles,
+          // Le brief n'est envoye que s'il est renseigne : un appel sans
+          // brief garde exactement le corps d'avant.
+          ...(briefRempli(brief) ? { brief: sanitizeBrief(brief) } : null),
         }),
         signal: controller.signal,
       });
@@ -6484,7 +6596,7 @@ export default function AssistantWizard() {
     } catch {
       return null;
     }
-  }, [customTopic, themeId, generated]);
+  }, [customTopic, themeId, generated, brief]);
 
   /**
    * Rend le montage — vers le CALENDRIER, ou vers le disque de l'utilisateur.
@@ -6571,7 +6683,7 @@ export default function AssistantWizard() {
     // si le moteur vidéo du jumeau existe. Sinon on s'arrête ici — jamais une
     // vidéo ordinaire livrée sous ce nom.
     const textesJumeau = Object.values(sequenceVoices).map((v) => v.text).filter((t) => typeof t === 'string' && t.length > 0);
-    const refusJumeau = await gardeJumeauAvantRendu({ useDigitalTwin, textes: textesJumeau });
+    const refusJumeau = await gardeJumeauAvantRendu({ mode: jumeauMode, textes: textesJumeau });
     if (refusJumeau) {
       setError(refusJumeau);
       return;
@@ -6629,7 +6741,7 @@ export default function AssistantWizard() {
     // que le solde soit verifie sur le total AVANT de produire quoi que ce
     // soit. Sans cela, la video du jumeau pouvait etre payee, puis le montage
     // refuse pour solde insuffisant.
-    const coutTotal = batchCost(cost, total) + (useDigitalTwin ? AVATAR_VIDEO_COST : 0);
+    const coutTotal = batchCost(cost, total) + (jumeauMode === 'avatar' ? AVATAR_VIDEO_COST : 0);
     const baseDate = scheduledDate ? new Date(`${scheduledDate}T12:00:00`) : new Date();
     const dates = batchDates(Number.isNaN(baseDate.getTime()) ? new Date() : baseDate, total);
 
@@ -6692,8 +6804,9 @@ export default function AssistantWizard() {
       // avatar), attendue, puis posee comme rush par `applyRush` — le geste
       // existant, qui rend ce qu'il a pose. Le montage continue AVEC, dans
       // ce meme clic. En cas d'echec : on s'arrete, message a l'ecran,
-      // jamais une video ordinaire livree sous ce nom.
-      if (useDigitalTwin) {
+      // jamais une video ordinaire livree sous ce nom. Le mode 'voix' ne passe
+      // pas ici : sa voix est deja posee dans `ttsVoiceId`, rien a produire.
+      if (jumeauMode === 'avatar') {
         setRenderProgress(5);
         let posee: Awaited<ReturnType<typeof applyRush>>;
         try {
@@ -6714,7 +6827,7 @@ export default function AssistantWizard() {
         }
         // L'intention est honoree : la video du jumeau EST le rush. Un
         // prochain envoi montera ce rush, sans produire un second jumeau.
-        setUseDigitalTwin(false);
+        setJumeauMode('aucun');
         plateau = {
           rushUrl: posee.url,
           sequences: sequences.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)),
@@ -8004,8 +8117,18 @@ export default function AssistantWizard() {
                   </p>
                 </div>
 
-                {/* Jumeau numérique — désactivé par défaut ; l'état vient du serveur. */}
-                <JumeauPanel actif={useDigitalTwin} onChange={setUseDigitalTwin} />
+                {/* Jumeau numérique — 'aucun' par défaut ; l'état vient du serveur.
+                    Deux intentions : ma voix clonée (pose `ttsVoiceId`), ou mon
+                    avatar parlant (séquence « Vidéo » à l'envoi). Les textes qu'il
+                    dira sont ceux des voix par séquence, modifiables à l'étape Audio. */}
+                <JumeauPanel
+                  mode={jumeauMode}
+                  onModeChange={setJumeauMode}
+                  textes={{ titre: sequenceVoices.titre.text, cartes: sequenceVoices.cartes.text, video: sequenceVoices.video.text, cta: sequenceVoices.cta.text }}
+                  voixCourante={ttsVoiceId}
+                  onVoixJumeau={setTtsVoiceId}
+                  coutAvatar={AVATAR_VIDEO_COST}
+                />
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {THEMES.map((t) => (
@@ -8037,6 +8160,23 @@ export default function AssistantWizard() {
                     className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
                   />
                 </div>
+
+                {/* ── BRIEF DE LA VIDÉO ─────────────────────────────────
+                    « Danse » ne dit pas ce que le jumeau dira. Objectif,
+                    message, public et CTA guident la generation du contenu
+                    (variations du lot) et le pre-remplissage des narrations.
+                    Persiste dans le brouillon ; rien n'est genere ici. */}
+                <BriefVideo brief={brief} onChange={setBrief} />
+
+                {/* Le texte EXACT de la narration, par sequence — celui de
+                    SequenceVoicesPanel, modifiable a l'etape Contenu. */}
+                <NarrationRecap
+                  textes={generated
+                    ? Object.fromEntries(SEQUENCE_KEYS.map((k) => [k, sequenceVoices[k].text]))
+                    : null}
+                  onModifier={goToGeneration}
+                  brief={brief}
+                />
 
                 <div className="flex justify-end pt-2">
                   <Button variant="primary" size="sm" onClick={goToStyle}>
@@ -9398,7 +9538,8 @@ export default function AssistantWizard() {
                         Entre chaque séquence
                       </label>
                       <p className="text-xs text-gray-500 mb-2">
-                        Un seul style pour tout le montage.
+                        Un seul style pour tout le montage. Le choisir le rejoue aussitôt
+                        dans l’aperçu, sur votre contenu.
                       </p>
                       <div className="grid grid-cols-2 gap-1.5">
                         {/* La liste vient du compositeur : recopiée ici, elle
@@ -9417,27 +9558,30 @@ export default function AssistantWizard() {
                             <div key={style} className="relative">
                             <button
                               type="button"
-                              onClick={() => setTransition(style)}
+                              // Choisir, ET voir tout de suite : l'extrait
+                              // joue la transition sur le vrai contenu, dans
+                              // le grand aperçu. Le style joué est celui de
+                              // l'état — le même qui part au rendu.
+                              onClick={() => { setTransition(style); jouerTransition(style); }}
                               {...apercuTransitions.bind(style)}
                               aria-pressed={choisi}
                               data-transition={style}
-                              className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-2 pr-7 text-[11px] font-medium transition text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 ${
-                                choisi
-                                  ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
-                                  : 'bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800/60'
-                              }`}
+                              className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-2 pr-7 text-[11px] font-medium text-left ${classesCarteOption(choisi)}`}
                             >
                               {/* La géométrie RÉELLE de l'effet, au format du
                                   montage — `transitionLayerStyles` transcrit
                                   `drawTransition`, pas une illustration. */}
                               <TransitionMiniPreview style={style} playing={joue} aspect={ASPECT_CSS[format]} height={40} />
                               <span className="min-w-0">{TRANSITION_LABELS[style]}</span>
+                              {choisi && <Check size={12} aria-hidden="true" data-coche className="ml-auto shrink-0 text-purple-300" />}
                             </button>
                             {/* Lecture explicite : mobile (pas de survol) et
-                                lecteurs d'écran. Épingle la vignette. */}
+                                lecteurs d'écran. Épingle la vignette, et joue
+                                l'extrait dans le grand aperçu — avec CE style,
+                                sans le choisir. */}
                             <button
                               type="button"
-                              onClick={() => apercuTransitions.togglePin(style)}
+                              onClick={() => { apercuTransitions.togglePin(style); jouerTransition(style); }}
                               aria-pressed={apercuTransitions.pinned === style}
                               aria-label={`Lire l’aperçu de ${TRANSITION_LABELS[style]}`}
                               data-transition-play={style}
@@ -9472,7 +9616,7 @@ export default function AssistantWizard() {
                       </label>
                       <p className="text-xs text-gray-500 mb-2">
                         Jouée au début de chaque séquence. Chaque option s’anime au survol ;
-                        le bouton ▶ de l’aperçu la rejoue dans le montage. Le rendu final
+                        la choisir la rejoue aussitôt dans l’aperçu, sur votre texte. Le rendu final
                         suit la même règle.
                       </p>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -9483,24 +9627,25 @@ export default function AssistantWizard() {
                             <div key={style} className="relative">
                             <button
                               type="button"
-                              onClick={() => setTextAnimation(style)}
+                              // Choisir, ET voir : le début de la séquence
+                              // courante rejoue avec l'animation de l'état.
+                              onClick={() => { setTextAnimation(style); jouerAnimation(style); }}
                               {...apercuAnimations.bind(style)}
                               aria-pressed={choisi}
                               data-text-animation={style}
-                              className={`w-full flex items-center gap-2 rounded-lg px-2.5 py-2 pr-7 text-[11px] font-medium transition text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 ${
-                                choisi
-                                  ? 'bg-gray-800 text-white ring-1 ring-purple-500/40'
-                                  : 'bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800/60'
-                              }`}
+                              className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-2 pr-7 text-[11px] font-medium text-left ${classesCarteOption(choisi)}`}
                             >
                               {/* Le MÊME `TextAnimationLayer` que le rendu
                                   serveur, sur un mot d'exemple. */}
                               <TextAnimationMiniPreview style={style} playing={joue} height={40} />
                               <span className="min-w-0">{TEXT_ANIMATION_LABELS[style]}</span>
+                              {choisi && <Check size={12} aria-hidden="true" data-coche className="ml-auto shrink-0 text-purple-300" />}
                             </button>
                             <button
                               type="button"
-                              onClick={() => apercuAnimations.togglePin(style)}
+                              // Épingle la vignette et joue l'extrait dans le
+                              // grand aperçu — avec CETTE animation, sans la choisir.
+                              onClick={() => { apercuAnimations.togglePin(style); jouerAnimation(style); }}
                               aria-pressed={apercuAnimations.pinned === style}
                               aria-label={`Lire l’aperçu de ${TEXT_ANIMATION_LABELS[style]}`}
                               data-text-animation-play={style}
@@ -9594,6 +9739,10 @@ export default function AssistantWizard() {
                   // La voix TTS vit dans le wizard pour entrer au brouillon.
                   voiceId={ttsVoiceId}
                   onVoiceIdChange={setTtsVoiceId}
+                  // Carte « Ma voix clonée » : ce que l'Autopilote a et que
+                  // Créer n'avait pas. « Utiliser ma voix » passe par
+                  // `setTtsVoiceId`, donc aussi par les voix par séquence.
+                  clonedVoiceCard
                 />
 
                 <div className="flex justify-between pt-2">
@@ -9981,11 +10130,7 @@ export default function AssistantWizard() {
                           data-envoi-intention="brouillon"
                           aria-pressed={envoiIntention === 'brouillon'}
                           onClick={() => setEnvoiIntention('brouillon')}
-                          className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
-                            envoiIntention === 'brouillon'
-                              ? 'border-purple-500 text-white'
-                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
-                          }`}
+                          className={`rounded-lg border px-3 py-2.5 text-sm text-left ${classesCarteOption(envoiIntention === 'brouillon')}`}
                         >
                           <span className="block font-medium">Garder en brouillon</span>
                           <span className="block text-[11px] text-gray-500 mt-0.5">
@@ -10002,13 +10147,7 @@ export default function AssistantWizard() {
                             ? 'Aucun réseau connecté : connectez-en un dans « Réseaux sociaux » pour programmer.'
                             : undefined}
                           onClick={() => setEnvoiIntention('programmer')}
-                          className={`rounded-lg border px-3 py-2.5 text-sm text-left transition-colors ${
-                            reseauxConnectes.length === 0
-                              ? 'border-gray-900 text-gray-600 opacity-50 cursor-not-allowed'
-                              : envoiIntention === 'programmer'
-                                ? 'border-purple-500 text-white'
-                                : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
-                          }`}
+                          className={`rounded-lg border px-3 py-2.5 text-sm text-left ${classesCarteOption(envoiIntention === 'programmer')}`}
                         >
                           <span className="block font-medium">Programmer la publication</span>
                           <span className="block text-[11px] text-gray-500 mt-0.5">

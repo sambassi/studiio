@@ -109,6 +109,18 @@ export function classesOnglet(selected: boolean): string {
     : `${base} ${ETAT_INTERACTIF} text-gray-400 hover:text-white`;
 }
 
+/**
+ * Carte ou option à GÉOMÉTRIE LIBRE (le composant garde ses paddings, sa grille
+ * et son contenu) : seules les couleurs et les retours d'état sont partagés.
+ * Sélectionnée → fond violet doux + anneau ; le composant rend aussi un
+ * marqueur de forme (coche) et `aria-pressed`.
+ */
+export function classesCarteOption(selected: boolean): string {
+  return selected
+    ? `${SELECTION_INTERACTIVE} ${ETAT_SELECTION}`
+    : `${ETAT_INTERACTIF} ${ETAT_REPOS}`;
+}
+
 export type EtatAction = 'repos' | 'chargement' | 'succes' | 'erreur';
 
 /** Libellés lus par les lecteurs d'écran (et affichables) pour chaque état. */

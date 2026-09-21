@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useState } from 'react';
+import { ETAT_INTERACTIF, classesAction } from '@/lib/ui/etats';
 import {
   Eraser, Wand2, Paintbrush, ArrowUpCircle, Video, Image as ImageIcon,
   Layers, Maximize, ScanText, Loader2,
@@ -165,7 +166,10 @@ export default function AiImageTools({
                   ? 'Choisissez d’abord une photo d’affiche'
                   : `${tool.label} — ${tool.credits} crédits`
               }
-              className="flex items-center justify-between gap-1 rounded-lg border border-gray-800 px-2 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              aria-busy={loading === tool.action || undefined}
+              // Une ACTION ponctuelle : survol, appui, focus et chargement
+              // partagés — jamais l'état « sélectionné » d'une option.
+              className={`flex items-center justify-between gap-1 rounded-lg border border-gray-800 px-2 py-1.5 text-[11px] text-gray-300 hover:text-white ${ETAT_INTERACTIF} ${classesAction(loading === tool.action ? 'chargement' : 'repos')}`}
             >
               <span className="flex items-center gap-1.5 min-w-0">
                 {loading === tool.action ? <Loader2 size={11} className="animate-spin" /> : tool.icon}
