@@ -2,6 +2,16 @@
 
 _Fichier vivant. Claude y écrit les plans en cours et coche les étapes au fur et à mesure._
 
+## En cours — Affiche IA durable et sûre (`fix/ai-poster-durable`, base `99fb85a`) — 2026-09-21
+
+Re-hébergement CÔTÉ SERVEUR de la sortie Replicate (generate-bg) ; plus jamais d'URL replicate.delivery vers le navigateur.
+
+- [x] A — /api/ai/image generate-bg : FileOutput → octets → magic bytes (png/jpeg/webp, ≤10 Mo) → stockage media `<userId>/image/<generationId>-affiche-ia.<ext>` → preuve → débit referenceOperation('ia:generate-bg', generationId) → URL absolue ; 402 honnête ; erreur provider sanitisée (jamais le token) ; timeout ; format allowlist
+- [x] B — AfficheIA : prop `format`, aperçu au ratio, verrou useRef anti double clic, sortie propre du timeout
+- [x] C — posterUpload : URL absolue si relative (corrige aussi « Ma photo ») + tests
+- [x] D — AssistantWizard.utiliserAfficheIA : plus de fetch/upload, refus si URL non durable, aucun faux succès ; test brouillon/reload ; Série 10 verte
+- [x] Coordination : full Vitest, PostgreSQL, tsc vs baseline, PR draft, pas de merge
+
 ## En cours — Série 10 fiable (`fix/creer-serie-10-fiable`, base `fb00928`) — 2026-09-21
 
 Architecture inchangée : boucle client séquentielle × rendu unitaire. `/api/render/batch` reste désactivée, reprise reste refusée.

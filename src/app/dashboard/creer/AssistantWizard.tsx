@@ -841,6 +841,35 @@ const S = { sujet: 0, style: 1, audio: 2, contenu: 3, envoi: 4 } as const;
 const persistableUrl = (url: string | null): string | undefined =>
   url && !url.startsWith('blob:') ? url : undefined;
 
+/**
+ * Une affiche generee par l'IA n'est appliquee que si son URL est DURABLE :
+ * enregistree dans le stockage Studiio par le serveur, jamais l'URL
+ * temporaire du fournisseur (Replicate, qui expire en une heure).
+ *
+ * La regle, sur des valeurs :
+ *  - une URL absolue `http(s)` qui se parse ;
+ *  - dont l'hote n'est PAS `replicate.delivery` (ni un sous-domaine) ;
+ *  - dont le chemin passe par `/storage/v1/object/public/` — le relais
+ *    Studiio (`https://studiio.pro/storage/v1/object/public/media/…`) comme
+ *    l'ancien chemin public Supabase repondent a cette forme.
+ *
+ * Une URL relative, `data:`, `blob:` ou `javascript:` est refusee : elle ne
+ * survivrait pas au brouillon, ou n'en est pas une.
+ */
+export function estAfficheDurable(url: string): boolean {
+  if (typeof url !== 'string' || !url) return false;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  const hote = u.hostname.toLowerCase();
+  if (hote === 'replicate.delivery' || hote.endsWith('.replicate.delivery')) return false;
+  return u.pathname.includes('/storage/v1/object/public/');
+}
+
 /** Sequence mise en avant dans l'apercu, ou `'all'` pour la composition entiere. */
 export type PreviewFocus = 'all' | 'intro' | 'cards' | 'video' | 'cta';
 
@@ -4070,31 +4099,27 @@ export default function AssistantWizard() {
   const [aiNotice, setAiNotice] = useState<string | null>(null);
 
   /**
-   * Une image generee par l'IA arrive avec une URL TEMPORAIRE (Replicate).
-   * On la copie au stockage par le meme chemin que « Ma photo » : l'affiche
-   * survit au rechargement et reste reutilisable dans le projet. Si la copie
-   * echoue, l'image est quand meme appliquee, et l'ecran le dit.
+   * Une image generee par l'IA arrive DEJA enregistree : le serveur
+   * (`/api/ai/image`, action `generate-bg`) copie lui-meme l'image produite
+   * dans le stockage Studiio et renvoie une URL durable. Le navigateur ne
+   * telecharge jamais une URL du fournisseur, et n'envoie rien au stockage.
+   *
+   * Une image qui n'est pas enregistree n'est PAS appliquee : on refuse
+   * (l'erreur remonte a `AfficheIA`, qui l'affiche) plutot que de ranger dans
+   * le brouillon une URL qui mourra en une heure. Rien n'est touche dans ce
+   * cas — ni `posterUrl`, ni la grille des photos.
+   *
+   * Si elle l'est : elle rejoint la grille en tete, puis `applyPhoto` la
+   * pose (affiche globale, ou fond de la sequence affichee). L'attribution
+   * aux videos d'une serie reste l'affaire de `reattribuerAffichesAuto`.
    */
   const utiliserAfficheIA = useCallback(async (url: string) => {
-    setPhotosError(null);
-    let finale = url;
-    try {
-      const rep = await fetch(url);
-      if (rep.ok) {
-        const blob = await rep.blob();
-        const ext = blob.type.includes('png') ? 'png' : blob.type.includes('jpeg') ? 'jpg' : 'webp';
-        const envoye = await uploadPosterFile(new File([blob], `affiche-ia-${Date.now()}.${ext}`, { type: blob.type || 'image/webp' }));
-        if (envoye.url && !envoye.dataUrl) finale = envoye.url;
-        else setPhotosError('Affiche appliquée, mais non copiée au stockage : elle ne survivra pas au rechargement.');
-      } else {
-        setPhotosError('Affiche appliquée, mais non copiée au stockage : elle ne survivra pas au rechargement.');
-      }
-    } catch {
-      setPhotosError('Affiche appliquée, mais non copiée au stockage : elle ne survivra pas au rechargement.');
+    if (!estAfficheDurable(url)) {
+      throw new Error('Cette affiche n’a pas été enregistrée dans le stockage : elle n’a pas été appliquée.');
     }
-    const perso: PosterPhoto = { id: `ia-${Date.now()}`, url: finale, small: finale, photographer: 'Générée par l’IA', source: 'upload' };
+    const perso: PosterPhoto = { id: `ia-${Date.now()}`, url, small: url, photographer: 'Générée par l’IA', source: 'upload' };
     setPosterPhotos((prev) => [perso, ...prev]);
-    applyPhotoRef.current?.(finale);
+    applyPhotoRef.current?.(url);
   }, []);
 
   const applyPhotoRef = useRef<((url: string) => void) | null>(null);
@@ -8129,7 +8154,7 @@ export default function AssistantWizard() {
                     </div>
                     {afficheIAOuvert && (
                       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3">
-                        <AfficheIA suggestion={currentTopic} onUtiliser={utiliserAfficheIA} />
+                        <AfficheIA suggestion={currentTopic} onUtiliser={utiliserAfficheIA} format={format} />
                       </div>
                     )}
                     <MediaLibrary
