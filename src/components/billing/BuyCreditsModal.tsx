@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Loader2 } from 'lucide-react';
 
 interface Pack {
   key: string; name: string; amount: number; price_cents: number; popular?: boolean;
@@ -60,8 +59,8 @@ export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
               <div className="text-2xl font-bold text-white mt-2">{centsToFr(pkg.price_cents)}</div>
               <div className="text-xs text-gray-400 mt-1">{unitLabel}</div>
               <Button variant={pkg.popular ? 'primary' : 'secondary'} className="w-full mt-4"
-                onClick={() => buy(pkg.key)} disabled={loading === pkg.key}>
-                {loading === pkg.key ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Acheter'}
+                etat={loading === pkg.key ? 'chargement' : 'repos'} onClick={() => buy(pkg.key)}>
+                Acheter
               </Button>
             </div>
           );

@@ -7,6 +7,7 @@ import { useSession } from 'next-auth/react';
 import { LayoutDashboard, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2, Wand2, Clapperboard } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { ETAT_INTERACTIF_SANS_FOND, ETAT_SELECTION } from '@/lib/ui/etats';
 
 const menuKeys = [
   { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard', color: '#7C3AED' },
@@ -79,12 +80,15 @@ export function Sidebar() {
               key={href}
               href={href}
               onClick={handleNavClick}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${
+              aria-current={isActive ? 'page' : undefined}
+              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl ${ETAT_INTERACTIF_SANS_FOND} ${
                 isActive
-                  ? 'bg-white/10 text-white'
+                  ? ETAT_SELECTION
                   : 'text-gray-400 hover:text-white hover:bg-white/5'
               }`}
             >
+              {/* Barre à gauche de l'entrée active : la forme double la couleur. */}
+              {isActive && <span aria-hidden data-barre className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-purple-400" />}
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                 style={{ backgroundColor: `${color}20`, color }}
@@ -100,12 +104,14 @@ export function Sidebar() {
           <Link
             href="/admin"
             onClick={handleNavClick}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition ${
+            aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
+            className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl ${ETAT_INTERACTIF_SANS_FOND} ${
               pathname.startsWith('/admin')
-                ? 'bg-white/10 text-white'
+                ? ETAT_SELECTION
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
+            {pathname.startsWith('/admin') && <span aria-hidden data-barre className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-purple-400" />}
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F59E0B20', color: '#F59E0B' }}>
               <Shield size={18} />
             </div>
@@ -146,7 +152,7 @@ export function Sidebar() {
       {/* Mobile Hamburger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-0 left-0 z-50 p-4 text-gray-400 hover:text-white transition mt-4"
+        className={`lg:hidden fixed top-0 left-0 z-50 p-4 text-gray-400 hover:text-white mt-4 rounded-lg ${ETAT_INTERACTIF_SANS_FOND}`}
         title="Menu"
       >
         <Menu size={24} />
@@ -169,7 +175,7 @@ export function Sidebar() {
         {/* Close Button */}
         <button
           onClick={() => setIsOpen(false)}
-          className="absolute top-6 right-6 text-gray-400 hover:text-white transition"
+          className={`absolute top-6 right-6 text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
           title="Close"
         >
           <X size={24} />

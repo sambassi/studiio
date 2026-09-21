@@ -5,6 +5,10 @@ const config: Config = {
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    // Les classes d'état partagées (`ETAT_INTERACTIF`, `ETAT_SELECTION`…)
+    // vivent dans un module pur hors `components/` : sans cette entrée, elles
+    // seraient purgées en production et le survol/focus disparaîtrait.
+    './src/lib/ui/**/*.ts',
   ],
   theme: {
     extend: {

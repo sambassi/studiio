@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { AlertTriangle, X } from 'lucide-react';
+import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
 
@@ -84,13 +85,14 @@ export default function ServiceAlertBanner() {
             </div>
             <button
               onClick={() => setExpanded(expanded === alert.id ? null : alert.id)}
-              className="text-xs underline opacity-80 hover:opacity-100 shrink-0"
+              aria-expanded={expanded === alert.id}
+              className={`text-xs underline opacity-80 hover:opacity-100 shrink-0 rounded ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               {expanded === alert.id ? 'Moins' : 'Détails'}
             </button>
             <button
               onClick={() => dismissAlert(alert.id)}
-              className="hover:bg-white/20 rounded p-1 shrink-0"
+              className={`hover:bg-white/20 rounded p-1 shrink-0 ${ETAT_INTERACTIF_SANS_FOND}`}
               title="Masquer cette alerte"
             >
               <X size={14} />
@@ -111,13 +113,15 @@ export default function ServiceAlertBanner() {
             </div>
             <button
               onClick={() => setExpanded(expanded === alert.id ? null : alert.id)}
-              className="text-xs underline opacity-70 hover:opacity-100 shrink-0"
+              aria-expanded={expanded === alert.id}
+              className={`text-xs underline opacity-70 hover:opacity-100 shrink-0 rounded ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               {expanded === alert.id ? 'Moins' : 'Détails'}
             </button>
             <button
               onClick={() => dismissAlert(alert.id)}
-              className="hover:bg-black/10 rounded p-1 shrink-0"
+              title="Masquer cette alerte"
+              className={`hover:bg-black/10 rounded p-1 shrink-0 ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               <X size={14} />
             </button>
