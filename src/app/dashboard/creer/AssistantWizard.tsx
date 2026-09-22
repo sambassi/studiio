@@ -8933,7 +8933,7 @@ export default function AssistantWizard() {
                     </div>
                     {afficheIAOuvert && (
                       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3">
-                        <AfficheIA suggestion={currentTopic} onUtiliser={utiliserAfficheIA} format={format} />
+                        <AfficheIA suggestion={currentTopic} onUtiliser={utiliserAfficheIA} format={format} referenceUrl={fondAffiche?.url ?? null} />
                       </div>
                     )}
                     <MediaLibrary

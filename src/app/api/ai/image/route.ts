@@ -241,7 +241,15 @@ async function lireOctetsSortie(output: unknown): Promise<Uint8Array> {
  * ci-dessous : le handler repond au bout de DELAI_GENERATION_MS quoi qu'il
  * arrive ; la promesse du SDK finit sa requete en cours puis annule.
  */
-async function genererAvecDelai(replicate: Replicate, input: Record<string, unknown>): Promise<unknown> {
+async function genererAvecDelai(
+  replicate: Replicate,
+  input: Record<string, unknown>,
+  // Modèle à exécuter. Défaut : `generate-bg` (flux-schnell, texte → image).
+  // `image-edit` (flux-kontext-pro) est le chemin « partir de ma photo » : une
+  // image de référence + une consigne, pour préserver le sujet (visage,
+  // vêtements, identité). Même délai, même rapatriement durable, même débit.
+  modelKey: 'generate-bg' | 'image-edit' = 'generate-bg',
+): Promise<unknown> {
   const ctrl = new AbortController();
   let timer: NodeJS.Timeout | undefined;
   const delai = new Promise<never>((_, reject) => {
@@ -252,7 +260,7 @@ async function genererAvecDelai(replicate: Replicate, input: Record<string, unkn
   });
   try {
     return await Promise.race([
-      replicate.run(MODELS['generate-bg'], { input, signal: ctrl.signal }),
+      replicate.run(MODELS[modelKey], { input, signal: ctrl.signal }),
       delai,
     ]);
   } finally {
@@ -462,13 +470,28 @@ export async function POST(req: NextRequest) {
         let key: string | null = null;
 
         try {
-          const output = await genererAvecDelai(replicate, {
-            prompt: `${promptAfficheIA}, high quality, professional background, ${formatAfficheIA} aspect ratio`,
-            num_outputs: 1,
-            aspect_ratio: formatAfficheIA,
-            output_format: 'webp',
-            output_quality: 90,
-          });
+          // « Partir de ma photo » : si une image de référence est fournie, on
+          // passe par flux-kontext-pro (image + consigne → image), qui préserve
+          // le sujet (visage, vêtements, identité). Sinon, texte → image comme
+          // avant. MÊME suite : validation, rapatriement durable, débit.
+          const reference = typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl.trim() : null;
+          const output = reference
+            ? await genererAvecDelai(replicate, {
+              input_image: reference,
+              prompt: translateFrPromptToEn(promptAfficheIA),
+              // La sortie prend le FORMAT de la vidéo (9:16…), pas celui de la
+              // photo de référence — l'affiche doit tenir dans le montage.
+              aspect_ratio: formatAfficheIA,
+              output_format: 'webp',
+              safety_tolerance: 2,
+            }, 'image-edit')
+            : await genererAvecDelai(replicate, {
+              prompt: `${promptAfficheIA}, high quality, professional background, ${formatAfficheIA} aspect ratio`,
+              num_outputs: 1,
+              aspect_ratio: formatAfficheIA,
+              output_format: 'webp',
+              output_quality: 90,
+            });
 
           // Octets cote serveur, bornes, puis signature : une page d'erreur,
           // un GIF ou du JSON n'entrent jamais dans le stockage.

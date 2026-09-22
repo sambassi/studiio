@@ -47,6 +47,14 @@ export interface AfficheIAProps {
   onUtiliser: (url: string) => Promise<void> | void;
   /** Format de la video : dicte le format de l'image demandee et de l'apercu. */
   format?: AfficheIAFormat;
+  /**
+   * Photo de RÉFÉRENCE de l'utilisateur (son affiche/photo courante). Quand
+   * elle existe et que « Partir de ma photo » est coché, la génération part de
+   * cette image (modèle flux-kontext-pro) pour préserver le sujet — visage,
+   * vêtements, identité — au lieu de partir d'un texte seul. Absente : l'option
+   * reste proposée mais inerte, avec une consigne pour choisir d'abord une photo.
+   */
+  referenceUrl?: string | null;
   disabled?: boolean;
 }
 
@@ -64,9 +72,13 @@ class DelaiDepasse extends Error {
   }
 }
 
-export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16', disabled }: AfficheIAProps) {
+export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16', referenceUrl = null, disabled }: AfficheIAProps) {
   const [prompt, setPrompt] = useState('');
   const [etat, setEtat] = useState<Etat>({ statut: 'repos' });
+  // « Partir de ma photo » : génération à partir de la photo de référence, pour
+  // préserver le sujet. N'a d'effet que si `referenceUrl` existe.
+  const [modeReference, setModeReference] = useState(false);
+  const partirDeMaPhoto = modeReference && !!referenceUrl;
   /**
    * Verrou SYNCHRONE : `disabled` ne suffit pas, React ne re-rend pas entre
    * deux clics du meme tour d'evenements. Pose au tout debut de l'action,
@@ -102,7 +114,14 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           fetch('/api/ai/image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'generate-bg', prompt: consigne, format }),
+            body: JSON.stringify({
+              action: 'generate-bg',
+              prompt: consigne,
+              format,
+              // « Partir de ma photo » : la référence part au serveur, qui
+              // bascule alors sur le modèle qui préserve le sujet.
+              ...(partirDeMaPhoto ? { imageUrl: referenceUrl } : null),
+            }),
             signal: controller.signal,
           }),
           delai,
@@ -128,7 +147,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
     } finally {
       enVolRef.current = false;
     }
-  }, [prompt, suggestion, format, etat]);
+  }, [prompt, suggestion, format, etat, partirDeMaPhoto, referenceUrl]);
 
   const utiliser = useCallback(async (url: string) => {
     if (enVolRef.current) return;
@@ -163,11 +182,36 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
         />
       </label>
 
+      {/* « Partir de ma photo » : préserve le sujet (visage, vêtements) à
+          partir de la photo/affiche courante, au lieu d'un texte seul. */}
+      <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer" data-affiche-ia-mode-reference>
+        <input
+          type="checkbox"
+          checked={modeReference}
+          onChange={(e) => setModeReference(e.target.checked)}
+          disabled={disabled || enCours}
+          className="h-3.5 w-3.5 accent-purple-500"
+        />
+        Partir de ma photo (préserve mon visage / mes vêtements)
+      </label>
+      {modeReference && !referenceUrl && (
+        <p className="text-[11px] text-amber-300" data-affiche-ia-reference-manquante>
+          Choisissez d’abord une photo ou une affiche : elle servira de référence.
+        </p>
+      )}
+      {partirDeMaPhoto && (
+        <div className="flex items-center gap-2 text-[11px] text-gray-400" data-affiche-ia-reference-ok>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={referenceUrl ?? ''} alt="Référence" className="h-8 w-8 rounded object-cover border border-gray-700" />
+          Référence : votre photo actuelle.
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <button
           type="button"
           onClick={() => void generer()}
-          disabled={disabled || enCours}
+          disabled={disabled || enCours || (modeReference && !referenceUrl)}
           data-affiche-ia-generer
           className="inline-flex items-center gap-1.5 rounded-lg border border-purple-500/50 bg-purple-600/15 px-3 py-1.5 text-xs text-white hover:bg-purple-600/25 disabled:opacity-40 transition-colors"
         >
