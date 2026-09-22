@@ -224,7 +224,12 @@ describe('Non-regression — le chemin image des autres outils est inchange', ()
     const [model, options] = runMock.mock.calls[0];
     // Communautaire lui aussi : sans hash, Replicate repond 422.
     expect(model).toBe('cjwbw/rembg:fb8af171cfa1616ddcf1242c093f9c46bcada5ad4cf6f2fbe8b81b330ec5c003');
-    expect(options).toEqual({ input: { image: 'https://cdn.test/a.png' } });
+    // Modele + champ d'entree inchanges…
+    expect((options as { input: unknown }).input).toEqual({ image: 'https://cdn.test/a.png' });
+    // …et l'appel passe DESORMAIS par le helper poll (Racine A) : `wait: poll`
+    // + `signal` de delai, pour attendre la fin plutot que rendre null.
+    expect((options as { wait?: unknown }).wait).toEqual({ mode: 'poll' });
+    expect((options as { signal?: unknown }).signal).toBeDefined();
   });
 
   it('magic-eraser exige un prompt : sinon 400, sans appel ni debit', async () => {
