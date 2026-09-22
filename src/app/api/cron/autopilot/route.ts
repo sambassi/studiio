@@ -9,6 +9,9 @@ import { pickTopics } from '@/lib/autopilot/topics';
 import {
   produireUnMontage, sujetsRecents, creneauxExistants, COST_PER_VIDEO,
 } from '@/lib/autopilot/produire';
+import {
+  lancerJumeauMontage, creneauxJumeauEnAttente, finaliserJumeauxPrets,
+} from '@/lib/autopilot/jumeau-async';
 
 /**
  * Moteur de l'Autopilote — un passage par appel.
@@ -132,6 +135,19 @@ export async function GET(req: NextRequest) {
   const now = Date.now();
   const rapport: RapportUtilisateur[] = [];
 
+  // ── D'ABORD : finaliser les montages dont le jumeau est prêt ─────────────
+  // Une génération D-ID lancée à une passe précédente a pu se terminer : on
+  // rend ces montages maintenant (borné, pour tenir dans le budget de 300 s).
+  // Best-effort — un échec ici n'emporte pas le reste du cycle.
+  try {
+    const fin = await finaliserJumeauxPrets({ max: 3 });
+    if (fin.examines > 0) {
+      console.log(`[Autopilote/Cron] jumeaux : ${fin.rendus} rendu(s), ${fin.encore} en cours, ${fin.echecs} échec(s)`);
+    }
+  } catch (e) {
+    console.error('[Autopilote/Cron] finalisation des jumeaux :', e instanceof Error ? e.message : e);
+  }
+
   try {
     const { data: lignes, error } = await supabaseAdmin
       .from('autopilot_config')
@@ -235,6 +251,12 @@ export async function GET(req: NextRequest) {
 
       const posts = preparePosts({ config, topic: topics, count: decision.count, now });
       const dejaFaits = await creneauxExistants(userId);
+      // Les créneaux déjà EN FILE pour leur jumeau comptent comme faits : sans
+      // ça, chaque passe du cron relancerait une génération d'avatar (facturée)
+      // tant que la précédente n'a pas fini de rendre.
+      if (config.jumeauAvatar) {
+        for (const s of await creneauxJumeauEnAttente(userId)) dejaFaits.add(s);
+      }
 
       let reussis = 0;
       let echecs = 0;
@@ -273,6 +295,28 @@ export async function GET(req: NextRequest) {
         // televersement echouer. Rien de tout cela ne doit emporter le reste
         // du cycle.
         try {
+          // ── JUMEAU : on LANCE, on ne rend pas ici ──────────────────────
+          // La génération D-ID prend des minutes, la requête est bornée à
+          // 300 s : on met le montage en file (`lancerJumeauMontage`), le
+          // finaliseur le rendra à une passe suivante, dès la vidéo prête.
+          // `jobId` DÉTERMINISTE par créneau : le débit du rendu (plus tard)
+          // reste idempotent.
+          if (config.jumeauAvatar) {
+            const jobId = `autopilote-${userId}-${post.scheduledDate}-${post.scheduledTime.replace(':', '')}`;
+            const lancement = await lancerJumeauMontage({
+              userId, config, post, rang: posts.indexOf(post), now, jobId, slotKey: jeton,
+              journal: '[Autopilote/Cron]',
+            });
+            if (!lancement.ok) {
+              echecs += 1;
+              console.error(`[Autopilote/Cron] ${userId} — jumeau non lancé (${lancement.motif}) : ${lancement.message}`);
+            } else {
+              dejaFaits.add(jeton);
+              reussis += 1; // lancé : le finaliseur montera
+            }
+            continue;
+          }
+
           // Tout le montage — rush encore present ?, affiche (banque de
           // l'utilisateur AVANT Pexels), voix si demandee, design, rendu
           // Remotion, depot du post, debit idempotent par `jobId` — vit dans

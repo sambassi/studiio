@@ -92,9 +92,11 @@ describe('JumeauAutopilote avec un avatar D-ID', () => {
   beforeEach(() => { stub(false); });
   afterEach(() => { cleanup(); globalThis.fetch = fetchOriginal; });
 
-  it('⚠️ la voix du jumeau est activable (c’est la seule chose que l’Autopilote en fait) ; le titre dit « voix prête », jamais « jumeau prêt » ; l’image est dite jamais montée, avec le renvoi vers Créer une vidéo', async () => {
+  it('moteur vidéo INDISPONIBLE : la voix reste activable, et le bloc dit honnêtement que la vidéo n’est pas disponible (le message serveur), sans rien promettre', async () => {
     const onChange = vi.fn();
-    render(<JumeauAutopilote actif={false} onChange={onChange} voixCompte={[{ id: 'elevenlabs-xyz', accountVoiceId: 'v-compte' }]} />);
+    // `onAvatarChange` fourni, mais le moteur est indisponible (stub(false)) :
+    // l'interrupteur vidéo ne doit PAS apparaître.
+    render(<JumeauAutopilote actif={false} onChange={onChange} onAvatarChange={() => {}} jumeauReady voixCompte={[{ id: 'elevenlabs-xyz', accountVoiceId: 'v-compte' }]} />);
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="pret"]')).not.toBeNull());
     const sw = screen.getByRole('switch', { name: 'Utiliser mon jumeau' }) as HTMLInputElement;
     expect(sw.disabled).toBe(false);
@@ -102,20 +104,33 @@ describe('JumeauAutopilote avec un avatar D-ID', () => {
     expect(onChange).toHaveBeenCalledWith(true, 'elevenlabs-xyz');
     const bloc = document.querySelector('[data-jumeau-autopilote]')!.textContent!;
     expect(bloc).toContain('Voix du jumeau prête pour la narration');
-    expect(bloc).not.toContain('Votre jumeau est prêt');
     expect(bloc).not.toContain('pas encore pris en charge');
-    const video = document.querySelector('[data-jumeau-autopilote-video]')!.textContent!;
-    expect(video).toContain('L’image de votre avatar n’est jamais montée par l’Autopilote');
-    expect(video).toContain('utilisez Créer une vidéo');
+    // Pas d'interrupteur vidéo quand le moteur est indisponible.
+    expect(document.querySelector('[data-jumeau-autopilote-avatar]')).toBeNull();
+    // Le bloc vidéo affiche le message serveur (D-ID non configuré), sans promesse.
+    const video = document.querySelector('[data-jumeau-autopilote-video="indisponible"]')!.textContent!;
+    expect(video).toContain('n’est pas configuré sur ce serveur');
   });
 
-  it('⚠️ même moteur vidéo disponible pour cet avatar, l’Autopilote ne promet pas l’image : la même ligne, sans condition', async () => {
+  it('moteur vidéo DISPONIBLE + migration appliquée : l’interrupteur « Monter la vidéo de mon jumeau » apparaît et le clic l’active', async () => {
     stub(true);
-    render(<JumeauAutopilote actif={false} onChange={() => {}} voixCompte={[{ id: 'elevenlabs-xyz', accountVoiceId: 'v-compte' }]} />);
+    const onAvatarChange = vi.fn();
+    render(<JumeauAutopilote actif={false} onChange={() => {}} onAvatarChange={onAvatarChange} avatarActif={false} jumeauReady voixCompte={[{ id: 'elevenlabs-xyz', accountVoiceId: 'v-compte' }]} />);
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="pret"]')).not.toBeNull());
-    const video = document.querySelector('[data-jumeau-autopilote-video]')!.textContent!;
-    expect(video).toContain('jamais montée par l’Autopilote');
-    expect(video).toContain('Créer une vidéo');
-    expect(document.querySelector('[data-jumeau-autopilote]')!.textContent).not.toContain('Votre jumeau est prêt');
+    const bloc = document.querySelector('[data-jumeau-autopilote]')!.textContent!;
+    expect(bloc).toContain('Monter la vidéo de mon jumeau');
+    const sw = screen.getByRole('switch', { name: 'Monter la vidéo de mon jumeau' }) as HTMLInputElement;
+    expect(sw).not.toBeNull();
+    fireEvent.click(sw);
+    expect(onAvatarChange).toHaveBeenCalledWith(true);
+  });
+
+  it('moteur DISPONIBLE mais migration ABSENTE (jumeauReady=false) : pas d’interrupteur, un message qui nomme la migration', async () => {
+    stub(true);
+    render(<JumeauAutopilote actif={false} onChange={() => {}} onAvatarChange={() => {}} avatarActif={false} jumeauReady={false} voixCompte={[{ id: 'elevenlabs-xyz', accountVoiceId: 'v-compte' }]} />);
+    await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="pret"]')).not.toBeNull());
+    expect(document.querySelector('[data-jumeau-autopilote-avatar]')).toBeNull();
+    const video = document.querySelector('[data-jumeau-autopilote-video="migration"]')!.textContent!;
+    expect(video).toContain('2026-09-23-autopilot-jumeau.sql');
   });
 });

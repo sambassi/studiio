@@ -1,27 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { addCredits } from '@/lib/credits/system';
-import { getVideoStatus, downloadVideo, HeyGenError } from '@/lib/avatar/heygen';
-import { lireScene, telechargerResultat, DidError } from '@/lib/providers/did/client';
-import { FOURNISSEUR_DID } from '@/lib/avatar/did';
-import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
+import { HeyGenError } from '@/lib/avatar/heygen';
+import { DidError } from '@/lib/providers/did/client';
+import { avancerStatutGeneration } from '@/lib/avatar/statut';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 /**
- * Au-dela de cette duree, on considere la generation perdue et on rembourse.
- * HeyGen rend generalement une video courte en 1 a 5 minutes.
- */
-const STALE_AFTER_MS = 30 * 60 * 1000; // 30 min
-
-/**
  * GET /api/avatar/status?generationId=uuid
  *
- * Un seul poll par appel (le client rappelle en boucle). Quand HeyGen a fini,
- * la video est telechargee et re-hebergee sur notre stockage : l'URL HeyGen
- * expire, la notre non.
+ * Un seul poll par appel (le client rappelle en boucle). Quand le fournisseur
+ * a fini, la video est telechargee et re-hebergee sur notre stockage : l'URL
+ * fournisseur expire, la notre non.
+ *
+ * ⚠️ LA LOGIQUE VIT DANS `@/lib/avatar/statut` (`avancerStatutGeneration`),
+ * PARTAGÉE avec le finaliseur de l'Autopilote — un cron sans navigateur qui
+ * doit faire avancer la MÊME génération jusqu'à la vidéo re-hébergée. Une
+ * seule chaîne : Créer (ce navigateur) et l'Autopilote (le serveur) ne peuvent
+ * pas diverger sur le poll, le rapatriement ou le remboursement.
  *
  * Sans `generationId`, renvoie les 10 dernieres generations de l'utilisateur.
  */
@@ -45,135 +43,32 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: { generations: history ?? [] } });
     }
 
-    const { data: gen } = await supabaseAdmin
-      .from('avatar_generations')
-      .select('*')
-      .eq('id', generationId)
-      .eq('user_id', userId) // propriete verifiee cote requete
-      .single();
+    const r = await avancerStatutGeneration(userId, generationId);
 
-    if (!gen) {
+    if (r.status === 'introuvable') {
       return NextResponse.json(
         { success: false, error: 'Generation introuvable.' },
         { status: 404 },
       );
     }
-
-    // Etats terminaux : rien a re-interroger.
-    if (gen.status === 'completed' || gen.status === 'failed') {
+    if (r.status === 'failed') {
       return NextResponse.json({
         success: true,
-        data: {
-          generationId: gen.id,
-          status: gen.status,
-          videoUrl: gen.video_url,
-          error: gen.error_message,
-        },
+        data: { generationId, status: 'failed', videoUrl: null, error: r.error },
       });
     }
-
-    if (!gen.provider_video_id) {
+    if (r.status === 'completed') {
+      // `error: null` conservé — une génération terminée n'en a pas, et
+      // l'ancienne branche « état terminal » le renvoyait déjà (forme stable
+      // pour les lecteurs qui comparent l'objet entier).
       return NextResponse.json({
         success: true,
-        data: { generationId: gen.id, status: gen.status, videoUrl: null },
+        data: { generationId, status: 'completed', videoUrl: r.videoUrl, error: null },
       });
     }
-
-    // ⚠️ ON INTERROGE LE FOURNISSEUR AVANT LE GARDE STALE.
-    //
-    // Le fournisseur de CETTE generation (`avatar_generations.provider`) :
-    // HeyGen (defaut, inchange) ou D-ID. Meme forme de reponse, meme suite.
-    //
-    // L'ordre compte. Une scene REELLEMENT terminee chez le fournisseur, mais
-    // sondee plus de 30 min apres son lancement — parce que l'onglet a ete
-    // ferme puis rouvert plus tard — doit etre FINALISEE (re-hebergee), pas
-    // marquee `failed` et remboursee comme perdue. Le garde stale ne concerne
-    // donc QUE les generations encore en cours cote fournisseur, plus bas ;
-    // une scene `done` n'atteint jamais ce garde, quel que soit son age.
-    const viaDid = gen.provider === FOURNISSEUR_DID;
-    const remote = viaDid ? await lireScene(gen.provider_video_id) : await getVideoStatus(gen.provider_video_id);
-
-    if (remote.status === 'failed') {
-      const nomFournisseur = viaDid ? 'D-ID' : 'HeyGen';
-      await failAndRefund(gen, remote.failureMessage || `${nomFournisseur} a signale un echec.`);
-      if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, gen.id));
-      return NextResponse.json({
-        success: true,
-        data: {
-          generationId: gen.id,
-          status: 'failed',
-          error: `${remote.failureMessage || `Echec ${nomFournisseur}`}.${gen.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
-        },
-      });
-    }
-
-    if (remote.status !== 'completed' || !remote.videoUrl) {
-      // Toujours en cours cote fournisseur. C'est SEULEMENT ici, une fois le
-      // fournisseur consulte et la video confirmee ABSENTE, que le garde stale
-      // s'applique : une generation qui n'a jamais abouti et qui traine depuis
-      // plus de 30 min est consideree perdue → echec + remboursement.
-      const ageMs = Date.now() - new Date(gen.created_at).getTime();
-      if (ageMs > STALE_AFTER_MS) {
-        await failAndRefund(gen, 'La generation a depasse le delai maximum (30 minutes).');
-        if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, gen.id));
-        return NextResponse.json({
-          success: true,
-          data: {
-            generationId: gen.id,
-            status: 'failed',
-            error: `La generation a depasse le delai maximum (30 minutes).${gen.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
-          },
-        });
-      }
-      // Toujours en cours — on met a jour l'etat intermediaire.
-      if (gen.status !== 'processing') {
-        await supabaseAdmin
-          .from('avatar_generations')
-          .update({ status: 'processing', updated_at: new Date().toISOString() })
-          .eq('id', gen.id);
-      }
-      return NextResponse.json({
-        success: true,
-        data: { generationId: gen.id, status: 'processing', videoUrl: null },
-      });
-    }
-
-    // Termine : rapatriement sur notre stockage.
-    let finalUrl = remote.videoUrl;
-    try {
-      const buffer = viaDid ? await telechargerResultat(remote.videoUrl) : await downloadVideo(remote.videoUrl);
-      const storagePath = `${userId}/avatar/${gen.id}.mp4`;
-      const { error: upErr } = await supabaseAdmin.storage
-        .from('media')
-        .upload(storagePath, buffer, { contentType: 'video/mp4', upsert: true });
-
-      if (upErr) {
-        // On garde l'URL HeyGen (temporaire) plutot que de perdre la video.
-        console.warn('[Avatar] Upload MinIO echoue, URL HeyGen conservee:', upErr.message);
-      } else {
-        const { data: pub } = supabaseAdmin.storage.from('media').getPublicUrl(storagePath);
-        if (pub?.publicUrl) finalUrl = pub.publicUrl;
-      }
-    } catch (e) {
-      console.warn('[Avatar] Rapatriement video echoue, URL HeyGen conservee:', e);
-    }
-
-    await supabaseAdmin
-      .from('avatar_generations')
-      .update({
-        status: 'completed',
-        video_url: finalUrl,
-        duration_seconds: ('durationSeconds' in remote ? remote.durationSeconds : null) ?? null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', gen.id);
-    // D-ID : l'audio de ma voix ne sert plus a rien une fois la video rendue —
-    // on ne garde pas une donnee biometrique sans raison.
-    if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, gen.id));
-
     return NextResponse.json({
       success: true,
-      data: { generationId: gen.id, status: 'completed', videoUrl: finalUrl },
+      data: { generationId, status: 'processing', videoUrl: null },
     });
   } catch (error) {
     if (error instanceof DidError) {
@@ -194,48 +89,4 @@ export async function GET(req: NextRequest) {
       { status: 500 },
     );
   }
-}
-
-/**
- * Marque une generation en echec et rembourse les credits une seule fois
- * (le drapeau credits_refunded empeche tout double remboursement si plusieurs
- * polls arrivent en parallele).
- */
-async function failAndRefund(
-  gen: { id: string; user_id: string; credits_charged: number; credits_refunded: boolean },
-  reason: string,
-): Promise<void> {
-  const shouldRefund = !gen.credits_refunded && gen.credits_charged > 0;
-
-  if (shouldRefund) {
-    // On pose le drapeau AVANT de crediter : en cas de polls concurrents, la
-    // condition `.eq('credits_refunded', false)` ne laisse passer qu'un seul
-    // update, donc un seul remboursement.
-    const { data: claimed } = await supabaseAdmin
-      .from('avatar_generations')
-      .update({
-        status: 'failed',
-        error_message: reason,
-        credits_refunded: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', gen.id)
-      .eq('credits_refunded', false)
-      .select();
-
-    if (claimed && claimed.length > 0) {
-      try {
-        await addCredits(gen.user_id, gen.credits_charged, 'refund');
-        console.log(`[Avatar] ${gen.credits_charged} credits rembourses a ${gen.user_id}`);
-      } catch (e) {
-        console.error('[Avatar] REMBOURSEMENT ECHOUE pour', gen.user_id, e);
-      }
-    }
-    return;
-  }
-
-  await supabaseAdmin
-    .from('avatar_generations')
-    .update({ status: 'failed', error_message: reason, updated_at: new Date().toISOString() })
-    .eq('id', gen.id);
 }

@@ -32,6 +32,9 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     lastRunAt: row.last_run_at,
     lastRushUrl: row.last_rush_url,
     voiceEnabled: row.voice_enabled,
+    // Colonne ABSENTE tant que `2026-09-23-autopilot-jumeau.sql` n'est pas
+    // appliquee : `sanitizeConfig` rend alors `false` (pas de jumeau video).
+    jumeauAvatar: row.jumeau_avatar,
     topics: row.topics,
     runHour: row.run_hour,
     runTimezone: row.run_timezone,
@@ -179,6 +182,12 @@ const briefReady = () => colonneReady(
   + 'migrations/2026-09-21-autopilot-brief.sql',
 );
 
+const jumeauReady = () => colonneReady(
+  'jumeau_avatar',
+  'reglage « video du jumeau » NON enregistre. Appliquer '
+  + 'migrations/2026-09-23-autopilot-jumeau.sql',
+);
+
 export async function GET() {
   try {
     const session = await auth();
@@ -207,6 +216,7 @@ export async function GET() {
       publishTimeReady: await publishTimeReady(),
       startDateReady: await startDateReady(),
       briefReady: await briefReady(),
+      jumeauReady: await jumeauReady(),
       config: fromRow((data?.[0] as Record<string, unknown>) ?? null),
     });
   } catch (err) {
@@ -241,6 +251,7 @@ export async function PUT(req: NextRequest) {
     const avecHeurePublication = await publishTimeReady();
     const avecDateDebut = await startDateReady();
     const avecBrief = await briefReady();
+    const avecJumeau = await jumeauReady();
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(
@@ -300,6 +311,10 @@ export async function PUT(req: NextRequest) {
           // l'ecran le dit (`briefReady: false`) et le cron genere les
           // textes sans brief, comme avant.
           ...(avecBrief ? { brief: propre.brief } : null),
+          // Sondee a part : ecrire `jumeau_avatar` avant sa migration ferait
+          // echouer l'upsert ENTIER. Tant qu'elle manque, l'ecran le dit
+          // (`jumeauReady: false`) et aucun montage-jumeau n'est produit.
+          ...(avecJumeau ? { jumeau_avatar: propre.jumeauAvatar } : null),
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
           // en boucle en remettant la date a zero.
@@ -319,6 +334,7 @@ export async function PUT(req: NextRequest) {
       publishTimeReady: avecHeurePublication,
       startDateReady: avecDateDebut,
       briefReady: avecBrief,
+      jumeauReady: avecJumeau,
       config: propre,
     });
   } catch (err) {
