@@ -498,6 +498,17 @@ export default function AutopilotPanel({
   const [voixClonees, setVoixClonees] = useState<VoixClonee[]>([]);
   /** La liste des voix a été relue (même vide) : le bloc Jumeau peut se prononcer. */
   const [voixChargees, setVoixChargees] = useState(false);
+  /**
+   * L'accessibilité de chaque rush de la banque : `true` accessible, `false`
+   * expiré (404/410 au stockage), absent = pas encore vérifié.
+   *
+   * ⚠️ SIGNALER, JAMAIS EFFACER. Un rush sous la rétention de 24 h reste
+   * écrit dans `rush_urls` alors que le fichier a disparu — l'utilisateur
+   * croit alors « qu'il ne sert pas ». On le DIT ici (« expiré — réimportez-le »)
+   * et on ne le retire que sur clic, via l'`enregistrer` habituel. Rien n'est
+   * supprimé automatiquement.
+   */
+  const [rushAccessible, setRushAccessible] = useState<Record<string, boolean>>({});
 
   // ⚠️ UN SEUL POINT DE REMONTÉE, sur l'état lui-même. Le panneau écrit
   // `config` par une demi-douzaine de chemins — `enregistrer`, les roues
@@ -531,6 +542,41 @@ export default function AutopilotPanel({
     })();
     return () => { cancelled = true; };
   }, []);
+
+  /**
+   * Vérifie l'accessibilité des rushes de la banque — HEAD côté serveur, via
+   * `POST /api/autopilot/rush/verifier`. Silencieux en cas d'échec : le
+   * contrôle est un CONFORT, pas une condition ; sans lui, l'écran reste
+   * exactement celui d'avant. Le serveur ne HEAD que les rushes du compte.
+   */
+  const verifierRushes = useCallback(async (urls: string[]) => {
+    if (urls.length === 0) { setRushAccessible({}); return; }
+    try {
+      const res = await fetch('/api/autopilot/rush/verifier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.success && data.resultats && typeof data.resultats === 'object') {
+        setRushAccessible(data.resultats as Record<string, boolean>);
+      }
+    } catch {
+      // Réseau indisponible : on n'affiche aucun état plutôt qu'un faux
+      // « expiré » — le doute profite au rush, comme côté serveur.
+    }
+  }, []);
+
+  // ⚠️ REVÉRIFIE À CHAQUE CHANGEMENT DE LA BANQUE, pas seulement au montage :
+  // un rush ajouté doit être contrôlé, et un rush retiré doit disparaître de
+  // l'état. La clé jointe évite de relancer sur un rendu qui ne touche pas la
+  // banque. Attend que la configuration soit lue (`ready`, `!loading`).
+  const cleRushes = config.rushUrls.join('\n');
+  useEffect(() => {
+    if (loading || !ready) return;
+    verifierRushes(config.rushUrls);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleRushes, loading, ready, verifierRushes]);
 
   // Les voix clonées du compte. Silencieux en cas d'échec : le sélecteur
   // reste vide et l'Autopilote retombe sur la voix par défaut du serveur —
@@ -651,6 +697,15 @@ export default function AutopilotPanel({
     const { intro, cards, cta } = DEFAULT_SEQUENCE_SECONDS;
     return { intro, cards, cta, video, videoStart: intro + cards, total: intro + cards + video + cta };
   }, [config.rushUrls.length]);
+
+  /**
+   * Les rushes reconnus expirés, et ceux qui restent — dérivés de l'état
+   * d'accessibilité. `false` = 404/410 au stockage ; tout le reste (accessible
+   * OU non encore vérifié) est traité comme vivant : on ne retire jamais un
+   * rush sur un doute.
+   */
+  const rushExpires = config.rushUrls.filter((u) => rushAccessible[u] === false);
+  const rushVivants = config.rushUrls.filter((u) => rushAccessible[u] !== false);
 
   /** Ajoute ou retire un theme de la rotation. */
   const basculerTheme = useCallback((topic: string) => {
@@ -1115,28 +1170,73 @@ export default function AutopilotPanel({
                 second pour qu’ils alternent.
               </p>
             )}
+            {/* ⚠️ RETRAIT DES EXPIRÉS EN UN CLIC, ET EN UN SEUL `enregistrer`.
+                Un rush « expiré » a disparu du stockage (rétention 24 h) mais
+                traîne encore dans la banque ; l'utilisateur ne peut pas le
+                deviner. Le bouton retire TOUS les expirés d'un coup —
+                `rushVivants` est calculé sur l'état d'accessibilité, jamais
+                une suppression automatique. */}
+            {rushExpires.length > 0 && (
+              <div className="flex items-start justify-between gap-2 mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2 py-1.5" data-autopilot-rush-expire-lot>
+                <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
+                  <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                  {rushExpires.length === 1
+                    ? '1 rush a expiré (rétention 24 h) et n’est plus utilisé — réimportez-le.'
+                    : `${rushExpires.length} rushes ont expiré (rétention 24 h) et ne sont plus utilisés — réimportez-les.`}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => enregistrer({ rushUrls: rushVivants })}
+                  disabled={saving}
+                  data-autopilot-retirer-expires
+                  className="shrink-0 rounded-lg border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+                >
+                  Retirer {rushExpires.length > 1 ? 'les expirés' : 'l’expiré'}
+                </button>
+              </div>
+            )}
             {config.rushUrls.length > 0 && (
               <ul className="space-y-1">
-                {config.rushUrls.map((url) => (
-                  <li
-                    key={url}
-                    className="flex items-center justify-between gap-2 rounded-lg bg-gray-900 border border-gray-800 px-2 py-1.5"
-                  >
-                    <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-gray-300">
-                      <Film className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{url.split('/').pop()}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => enregistrer({ rushUrls: config.rushUrls.filter((u) => u !== url) })}
-                      disabled={saving}
-                      aria-label="Retirer ce rush"
-                      className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                {config.rushUrls.map((url) => {
+                  const expire = rushAccessible[url] === false;
+                  const verifie = url in rushAccessible;
+                  return (
+                    <li
+                      key={url}
+                      className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 border ${
+                        expire ? 'bg-amber-500/5 border-amber-500/40' : 'bg-gray-900 border-gray-800'
+                      }`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </li>
-                ))}
+                      <span className="flex flex-col min-w-0">
+                        <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-gray-300">
+                          <Film className="w-3 h-3 shrink-0" />
+                          <span className="truncate">{url.split('/').pop()}</span>
+                        </span>
+                        {/* L'état, sous le nom : « accessible » ou « expiré ». Tant que
+                            la vérification n'a pas répondu, on n'affiche rien plutôt
+                            qu'un état faux. */}
+                        {expire ? (
+                          <span className="ml-5 text-[10px] text-amber-400" data-autopilot-rush-expire={url}>
+                            Expiré (rétention 24 h) — réimportez-le
+                          </span>
+                        ) : verifie ? (
+                          <span className="ml-5 text-[10px] text-emerald-500/80" data-autopilot-rush-accessible={url}>
+                            Accessible
+                          </span>
+                        ) : null}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => enregistrer({ rushUrls: config.rushUrls.filter((u) => u !== url) })}
+                        disabled={saving}
+                        aria-label="Retirer ce rush"
+                        className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
             {/* ⚠️ UN SEUL `enregistrer` POUR TOUT LE LOT. `enregistrer` se

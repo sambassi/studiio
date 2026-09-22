@@ -787,6 +787,10 @@ describe('M3-B2 n ajoute AUCUNE migration', () => {
       '2026-09-04-rush-clip-sets.sql',
       '2026-09-05-rush-montage-plans.sql',
       '2026-09-06-rush-montage-renders.sql',
+      // Sans rapport avec le pipeline d'analyse M3 : protège les rushes
+      // d'un brouillon Créer contre la rétention 24 h (table
+      // `creer_draft_rushes`). Nommée ici pour ne pas déclencher la garde.
+      '2026-09-22-creer-draft-rushes.sql',
     ]);
     const posterieures = fichiersMigration.filter(
       (f) => f > '2026-09-01-rush-analyses.sql' && !AUTORISEES.has(f),

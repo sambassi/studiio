@@ -86,21 +86,61 @@ export async function gardeJumeauAvantRendu(args: {
 }
 
 /**
+ * ATTEND une génération DÉJÀ lancée — le cœur de polling, partagé par le
+ * lancement en un clic et la REPRISE au montage : GET /api/avatar/status?
+ * generationId= jusqu'à `completed` (URL re-hébergée) ou `failed`. Rend l'URL
+ * de la vidéo, ou lève avec le message à afficher. Aucune vidéo de repli.
+ *
+ * Cette fonction ne lance RIEN : elle sonde un identifiant existant. Elle est
+ * donc sûre à rappeler pour une génération orpheline (l'onglet a été fermé
+ * pendant les 5-20 min de rendu) — le serveur, lui, finalise la scène `done`
+ * quel que soit son âge (voir `avatar/status/route.ts`).
+ */
+export async function attendreStatutJumeau(args: {
+  generationId: string;
+  onEtape?: (message: string) => void;
+  fetchImpl?: typeof fetch;
+  attendreMs?: (ms: number) => Promise<void>;
+  maxAttenteMs?: number;
+}): Promise<{ url: string }> {
+  const f = args.fetchImpl ?? fetch;
+  const dormir = args.attendreMs ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
+  const debut = Date.now();
+  const limite = args.maxAttenteMs ?? 20 * 60 * 1000;
+  while (Date.now() - debut < limite) {
+    const res = await f(`/api/avatar/status?generationId=${encodeURIComponent(args.generationId)}`);
+    const json = await res.json().catch(() => ({}));
+    if (json?.success) {
+      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null };
+      if (d.status === 'completed' && d.videoUrl) return { url: d.videoUrl };
+      if (d.status === 'failed') throw new Error(d.error || 'La génération de votre jumeau a échoué.');
+    }
+    args.onEtape?.('Votre jumeau est en cours de préparation…');
+    await dormir(5000);
+  }
+  throw new Error('La génération de votre jumeau prend trop de temps. Réessayez plus tard.');
+}
+
+/**
  * Lance la vidéo du jumeau et l'attend — par les routes existantes :
- * POST /api/creer/jumeau/generer, puis GET /api/avatar/status?generationId=
- * jusqu'à `completed` (URL re-hébergée) ou `failed`. Rend l'URL de la
- * vidéo, ou lève avec le message à afficher. Aucune vidéo de repli.
+ * POST /api/creer/jumeau/generer, puis `attendreStatutJumeau`. Rend l'URL de
+ * la vidéo, ou lève avec le message à afficher. Aucune vidéo de repli.
+ *
+ * `onLancee` est appelé DÈS que le serveur a accepté la génération (avant tout
+ * polling) : c'est le point où l'appelant persiste `generationId`, pour qu'une
+ * page fermée pendant le rendu puisse REPRENDRE la même génération au retour
+ * plutôt que d'en payer une seconde.
  */
 export async function genererEtAttendreVideoJumeau(args: {
   textes: string[];
   aspectRatio: string;
+  onLancee?: (generationId: string, avatarVersion: number) => void;
   onEtape?: (message: string) => void;
   fetchImpl?: typeof fetch;
   attendreMs?: (ms: number) => Promise<void>;
   maxAttenteMs?: number;
 }): Promise<{ url: string; generationId: string; avatarVersion: number }> {
   const f = args.fetchImpl ?? fetch;
-  const dormir = args.attendreMs ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
   args.onEtape?.('Génération de votre jumeau…');
   const lancement = await f(`${JUMEAU_API}/generer`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -110,18 +150,16 @@ export async function genererEtAttendreVideoJumeau(args: {
   if (!lancement.ok || !lance?.success) throw new Error(lance?.error || JUMEAU_INDISPONIBLE);
   const generationId: string = lance.data.generationId;
   const avatarVersion: number = lance.data.avatarVersion;
-  const debut = Date.now();
-  const limite = args.maxAttenteMs ?? 20 * 60 * 1000;
-  while (Date.now() - debut < limite) {
-    const res = await f(`/api/avatar/status?generationId=${encodeURIComponent(generationId)}`);
-    const json = await res.json().catch(() => ({}));
-    if (json?.success) {
-      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null };
-      if (d.status === 'completed' && d.videoUrl) return { url: d.videoUrl, generationId, avatarVersion };
-      if (d.status === 'failed') throw new Error(d.error || 'La génération de votre jumeau a échoué.');
-    }
-    args.onEtape?.('Votre jumeau est en cours de préparation…');
-    await dormir(5000);
-  }
-  throw new Error('La génération de votre jumeau prend trop de temps. Réessayez plus tard.');
+  // Persister l'identifiant AVANT d'attendre : si l'onglet se ferme pendant le
+  // rendu, la reprise au montage le retrouvera. Après ce point, `généré` et
+  // `abandonné` ne se distinguent que par cet identifiant.
+  args.onLancee?.(generationId, avatarVersion);
+  const { url } = await attendreStatutJumeau({
+    generationId,
+    onEtape: args.onEtape,
+    fetchImpl: args.fetchImpl,
+    attendreMs: args.attendreMs,
+    maxAttenteMs: args.maxAttenteMs,
+  });
+  return { url, generationId, avatarVersion };
 }
