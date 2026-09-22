@@ -9,6 +9,14 @@ import {
   pickPosterUrl, pickCustomPoster, probeRushSeconds, rushEncorePresent,
 } from '@/lib/autopilot/poster';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
+import { genererAfficheReference } from '@/lib/ai/affiche-reference';
+
+/**
+ * Coût d'une affiche générée à partir d'une photo de référence, en crédits.
+ * ⚠️ LE MÊME que l'action « generate-bg » de `/api/ai/image` (5) : générer une
+ * affiche coûte pareil, qu'on parte d'un texte (Créer) ou d'une photo (ici).
+ */
+const COST_AFFICHE_REFERENCE = 5;
 
 /**
  * Produire UN montage d'Autopilote — la pièce commune au cron et à la
@@ -219,28 +227,68 @@ export async function produireUnMontage(input: {
   }
   const postUtilise = rushUrl === post.rushUrl ? post : { ...post, rushUrl };
 
-  // Les deux sondages RÉSEAU, avant la fabrique de design qui reste pure.
-  // Aucun des deux ne peut faire échouer le montage : ils rendent `null` et
-  // le montage sort comme avant.
-  // ⚠️ LA BANQUE DE L'UTILISATEUR PASSE AVANT PEXELS — mais SEULEMENT si
-  // elle contient quelque chose. Un mode « mes photos » sur une banque vide
-  // retomberait sinon sur un montage sans affiche, alors que la recherche
-  // par thème, elle, en produit toujours une.
-  const afficheCustom: string | null = config.posterMode === 'custom' && config.posterUrls.length > 0
-    ? pickCustomPoster(config.posterUrls, dernierePosterUrl, rang)
-    : null;
-  const [posterUrl, rushSeconds, jumeauSeconds] = await Promise.all([
-    // La variante fait tourner le tirage : deux montages du même thème
-    // n'ont pas la même affiche.
-    afficheCustom
-      ? Promise.resolve(afficheCustom)
-      : pickPosterUrl(post.title, rang + Math.floor(now / 3_600_000)),
+  // Les sondages RÉSEAU des durées, avant la fabrique de design qui reste pure.
+  const [rushSeconds, jumeauSeconds] = await Promise.all([
     rushUrl ? probeRushSeconds(rushUrl) : Promise.resolve(null),
     // La durée du jumeau cale la séquence « Vidéo » : la parole doit tenir
     // entière. Illisible (`null`) → durée par défaut, posée à la fabrique du design.
     jumeauActif ? probeRushSeconds(input.jumeauVideoUrl as string) : Promise.resolve(null),
   ]);
-  if (afficheCustom) input.onAfficheCustom?.(afficheCustom);
+
+  // ── L'AFFICHE : automatique (Pexels), mes photos, ou mes photos EN RÉFÉRENCE IA ──
+  // ⚠️ LA BANQUE DE L'UTILISATEUR PASSE AVANT PEXELS — mais seulement si elle
+  // contient quelque chose (sinon, retour à la recherche par thème).
+  let posterUrl: string | null = null;
+  let posterMeta: Record<string, unknown> = {};
+  // La photo SOURCE de l'utilisateur réellement employée (custom, ou référence
+  // de l'affiche IA), pour le journal/retour — `null` en mode automatique.
+  let afficheCustom: string | null = null;
+  const aDesPhotos = config.posterUrls.length > 0;
+
+  if (config.posterMode === 'reference' && aDesPhotos) {
+    // UNE de mes photos sert de RÉFÉRENCE : l'IA en fait une affiche qui
+    // préserve mon visage/mes vêtements. La rotation porte sur la photo SOURCE,
+    // pour que deux montages ne repartent pas de la même.
+    const reference = pickCustomPoster(config.posterUrls, dernierePosterUrl, rang);
+    if (reference) {
+      afficheCustom = reference;
+      input.onAfficheCustom?.(reference);
+      const prompt = [
+        'cinematic promotional poster, keep the subject (face, clothes) from the reference photo',
+        post.title,
+        postUtilise.brief?.message,
+      ].filter(Boolean).join(', ').slice(0, 500);
+      const gen = await genererAfficheReference({
+        userId, jobId, referenceUrl: reference, prompt, aspectRatio: AUTOPILOT_FORMAT,
+      });
+      if (gen.ok) {
+        posterUrl = gen.url;
+        // Débit de l'affiche IA — APRÈS coup, best-effort (comme le rendu) :
+        // l'image est déjà produite et facturée chez le fournisseur ; un débit
+        // manqué ne la retire pas, il est dit fort.
+        try {
+          await deductCredits(userId, COST_AFFICHE_REFERENCE, 'ai', referenceOperation('autopilote-affiche', jobId));
+        } catch (e) {
+          console.error(`${journal} ${userId} — débit affiche IA manqué (${COST_AFFICHE_REFERENCE} crédits) :`, e instanceof Error ? e.message : e);
+        }
+      } else {
+        // ── PAS DE PEXELS EN SILENCE ──────────────────────────────────────
+        // L'IA a échoué : on garde MA photo telle quelle (mon contenu) en
+        // affiche, et on l'ÉCRIT dans les métadonnées. Jamais une banque
+        // d'images à ma place — exigence utilisateur.
+        console.warn(`${journal} ${userId} — affiche IA échouée, photo gardée : ${gen.motif}`);
+        posterUrl = reference;
+        posterMeta = { posterReferenceEchec: true, posterReferenceMotif: gen.motif };
+      }
+    }
+  } else if (config.posterMode === 'custom' && aDesPhotos) {
+    posterUrl = pickCustomPoster(config.posterUrls, dernierePosterUrl, rang);
+    if (posterUrl) { afficheCustom = posterUrl; input.onAfficheCustom?.(posterUrl); }
+  } else {
+    // Automatique : recherche par thème (Pexels). La variante fait tourner le
+    // tirage — deux montages du même thème n'ont pas la même affiche.
+    posterUrl = await pickPosterUrl(post.title, rang + Math.floor(now / 3_600_000));
+  }
 
   // La voix AVANT le design : ce sont ses durées qui calent les séquences.
   // Un échec de TTS rend `{}` et le montage sort muet.
@@ -291,6 +339,9 @@ export async function produireUnMontage(input: {
     // le lit pour l'annoncer, et pour ne pas proposer une régénération
     // navigateur qui écraserait la vidéo de l'avatar.
     ...(jumeauActif ? { jumeau: true } : null),
+    // Affiche IA à partir d'une photo de référence : si elle a échoué, la photo
+    // de l'utilisateur a été gardée telle quelle — on l'ÉCRIT (jamais silencieux).
+    ...posterMeta,
     ...(input.metadataSupplement ?? null),
   };
   const { data: insere, error: insertError } = await supabaseAdmin

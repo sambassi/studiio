@@ -1348,11 +1348,11 @@ export default function AutopilotPanel({
               {POSTER_MODE_HINTS[config.posterMode]}
             </p>
 
-            {config.posterMode === 'custom' && (
+            {(config.posterMode === 'custom' || config.posterMode === 'reference') && (
               <div className="mt-2">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <p className="text-[11px] text-gray-400">
-                    Vos affiches <span className="text-gray-500">({config.posterUrls.length})</span>
+                    {config.posterMode === 'reference' ? 'Vos photos de référence' : 'Vos affiches'} <span className="text-gray-500">({config.posterUrls.length})</span>
                   </p>
                   <button
                     type="button"

@@ -392,7 +392,11 @@ describe('Affiches personnalisées', () => {
       // + le montage lui-même (rush, affiche, voix, design, rendu, dépôt, débit),
       // extrait du cron dans `produireUnMontage`, partagé avec la production manuelle.
       + readFileSync(resolve(__dirname, '../lib/autopilot/produire.ts'), 'utf-8');
-    expect(cron).toContain("config.posterMode === 'custom' && config.posterUrls.length > 0");
+    // « mes photos » (custom) n'est honoré que si la banque n'est pas vide
+    // (`aDesPhotos`) ; sinon on retombe dans la branche automatique `pickPosterUrl`.
+    // (Le mode « référence IA » suit la même règle : `aDesPhotos` d'abord.)
+    expect(cron).toContain('const aDesPhotos = config.posterUrls.length > 0');
+    expect(cron).toContain("config.posterMode === 'custom' && aDesPhotos");
     expect(cron).toContain('pickPosterUrl(post.title');
   });
 

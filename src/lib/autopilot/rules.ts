@@ -29,18 +29,24 @@ export type AutopilotMode = 'auto' | 'review';
 export type AutopilotCadence = 'daily' | 'every_2_days' | 'weekly';
 
 /** D'où vient la photo d'affiche d'un montage. */
-export type AutopilotPosterMode = 'auto' | 'custom';
+export type AutopilotPosterMode = 'auto' | 'custom' | 'reference';
 
-export const POSTER_MODES: readonly AutopilotPosterMode[] = Object.freeze(['auto', 'custom']);
+export const POSTER_MODES: readonly AutopilotPosterMode[] = Object.freeze(['auto', 'custom', 'reference']);
 
 export const POSTER_MODE_LABELS: Record<AutopilotPosterMode, string> = {
   auto: 'Automatique',
   custom: 'Mes photos',
+  reference: 'Mes photos comme référence IA',
 };
 
 export const POSTER_MODE_HINTS: Record<AutopilotPosterMode, string> = {
   auto: 'Studiio cherche une photo qui colle au thème de chaque vidéo.',
   custom: 'Vos photos, en rotation — comme la banque de rushes.',
+  // ⚠️ CHAQUE MONTAGE GÉNÈRE ALORS UNE IMAGE (facturée) à partir d'UNE de vos
+  // photos, avec le modèle qui préserve votre visage/vos vêtements. En cas
+  // d'échec, votre photo est gardée telle quelle — jamais remplacée par une
+  // banque d'images.
+  reference: 'Une affiche IA est créée à partir de vos photos (visage/tenue préservés), une par vidéo.',
 };
 
 /** Combien de jours séparent deux générations. */
