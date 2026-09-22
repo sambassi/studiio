@@ -66,23 +66,27 @@ describe('menu latéral', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-describe('aucun lien d’édition n’atteint le parcours guidé', () => {
-  it('les trois deeplinks du Calendrier visent l’éditeur qui sait les traiter', () => {
+describe('tous les liens d’édition du Calendrier passent par le parcours guidé', () => {
+  it('les trois deeplinks du Calendrier visent le nouveau parcours `/dashboard/creer`', () => {
     const cibles = [...calendrier.matchAll(/\/dashboard\/creer[a-z-]*\?postId=/g)].map((m) => m[0]);
     expect(cibles).toHaveLength(3);
-    expect(new Set(cibles)).toEqual(new Set(['/dashboard/creer-avance?postId=']));
+    expect(new Set(cibles)).toEqual(new Set(['/dashboard/creer?postId=']));
   });
 
-  it('le Calendrier ne pointe plus jamais `postId` vers le parcours guidé', () => {
-    expect(calendrier).not.toContain('/dashboard/creer?postId=');
+  it('le Calendrier ne renvoie plus jamais `postId` vers l’ancien éditeur', () => {
+    expect(calendrier).not.toContain('/dashboard/creer-avance?postId=');
   });
 
-  it('les deux boutons « ajouter audio » gardent leur onglet', () => {
-    const audio = [...calendrier.matchAll(/\/dashboard\/creer-avance\?postId=\$\{[^}]+\}&tab=audio/g)];
-    expect(audio).toHaveLength(2);
+  it('les boutons « ajouter audio » passent aussi par le parcours guidé, sans onglet forcé', () => {
+    // Le parcours guidé lit `postId` SEULEMENT (voir editTarget.ts) : plus de
+    // `&tab=audio` à traîner. Il restaure l'audio du post et laisse l'ajouter.
+    expect(calendrier).not.toContain('&tab=audio');
+    const audio = [...calendrier.matchAll(/window\.location\.href = `\/dashboard\/creer\?postId=\$\{[^}]+\}`;/g)];
+    // Les deux boutons audio + le bouton « Modifier le montage » = trois entrées.
+    expect(audio.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('le bouton « Modifier » de la Bibliothèque vise l’éditeur avancé', () => {
+  it('le bouton « Modifier » de la Bibliothèque vise encore l’éditeur avancé (paramètre `id`, hors périmètre)', () => {
     expect(bibliotheque).toContain('/dashboard/creer-avance?id=${video.id}');
     expect(bibliotheque).not.toContain('/dashboard/creator?id=');
   });

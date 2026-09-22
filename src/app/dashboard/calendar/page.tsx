@@ -964,16 +964,18 @@ export default function CalendarPage() {
   };
 
   /**
-   * Rouvre le montage dans l'éditeur, prêt à être modifié.
+   * Rouvre le montage dans le parcours de création, prêt à être modifié.
    *
-   * ⚠️ SANS `&tab=audio`. La seule entrée existante vers ce deeplink était le
-   * bouton audio, qui atterrissait sur l'étape du son : pour changer une
-   * carte ou un titre, il fallait deviner qu'on passait par « ajouter de
-   * l'audio », puis revenir en arrière.
+   * ⚠️ Cible le NOUVEAU parcours `/dashboard/creer` (l'assistant), et non plus
+   * l'ancien éditeur `/dashboard/creer-avance`. Le passage à `?postId=` déclenche
+   * son mode « modification » : il charge le post via `GET /api/posts/[id]`
+   * (vérifié côté serveur contre la session — le contenu d'un autre utilisateur
+   * ressort en 404), restaure le design, et retient l'identifiant.
    *
-   * L'éditeur restaure le design complet (titre, sous-titre, cartes, affiche,
-   * rush, audio) et retient `editingPostId` : ré-exporter met à jour CE
-   * post — plus de doublon.
+   * Enregistrer fait alors un `PATCH /api/posts/[id]` sur CE post — donc pas de
+   * doublon, et un diff qui n'écrit que ce qui a changé : le montage déjà rendu
+   * (`renderedVideoUrl`, média) reste intact. Ouvrir ne rend rien, ne débite
+   * aucun crédit et ne publie rien.
    */
   const rouvrirDansEditeur = (post: Post) => {
     // Un post déjà publié : le média en ligne ne changera pas. Le dire avant,
@@ -985,7 +987,7 @@ export default function CalendarPage() {
       );
       if (!suite) return;
     }
-    window.location.href = `/dashboard/creer-avance?postId=${post.id}`;
+    window.location.href = `/dashboard/creer?postId=${post.id}`;
   };
 
   const handleEditPost = (post?: Post) => {
@@ -3069,7 +3071,7 @@ export default function CalendarPage() {
                                 <button onClick={() => handleExportPost(post)} disabled={actif(VERROU.exporter)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition disabled:opacity-50" title={t('actions.export')}><Download className="w-3 h-3" /></button>
                               )}
                               {!post.metadata?.hasAudio && post.media_type === 'video' && (
-                                <button onClick={() => { window.location.href = `/dashboard/creer-avance?postId=${post.id}&tab=audio`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
+                                <button onClick={() => { window.location.href = `/dashboard/creer?postId=${post.id}`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
                               )}
                               {post.status === 'failed' && (
                                 <button onClick={() => handleRetryPost(post)} className="p-1 rounded bg-orange-600 hover:bg-orange-700 text-white transition" title="Réessayer la publication"><RefreshCw className="w-3 h-3" /></button>
@@ -4532,7 +4534,7 @@ export default function CalendarPage() {
                 )}
                 {!meta?.hasAudio && fullPreviewPost.media_type === 'video' && (
                   <button
-                    onClick={() => { window.location.href = `/dashboard/creer-avance?postId=${fullPreviewPost.id}&tab=audio`; }}
+                    onClick={() => { window.location.href = `/dashboard/creer?postId=${fullPreviewPost.id}`; }}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 border border-purple-500 rounded-lg text-sm font-medium text-white transition"
                   >
                     <Volume2 size={14} /> {t('actions.addAudio')}
