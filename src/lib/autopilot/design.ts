@@ -147,16 +147,36 @@ export function buildAutopilotDesign(
      * ancien — obtient donc le montage d'avant, à l'octet près.
      */
     config?: AutopilotConfig;
+    /**
+     * Vidéo du jumeau numérique (avatar animé sur la voix clonée), déjà
+     * générée et re-hébergée, à MONTER comme séquence « Vidéo ».
+     *
+     * ⚠️ ABSENTE = LE MONTAGE D'AVANT, à l'octet près. Présente, elle
+     * REMPLACE le rush pour cette séquence : la vidéo du jumeau porte déjà la
+     * voix clonée, donc son audio est CONSERVÉ (jamais coupé) et les voix off
+     * par séquence sont retirées — le jumeau est alors la seule voix du
+     * montage, ce qui évite toute répétition ou superposition. Sa durée cale
+     * la séquence « Vidéo » pour que la parole tienne entière.
+     */
+    jumeau?: { videoUrl: string; seconds: number } | null;
   } = {},
 ): CreerSimpleRenderInput {
-  const voix = options.voices ?? {};
+  const jumeau = options.jumeau ?? null;
+  // La vidéo du jumeau porte DÉJÀ la voix clonée : elle devient la seule voix
+  // du montage. On retire donc toute voix off par séquence — ni répétition,
+  // ni deux voix en même temps.
+  const voix = jumeau ? {} : (options.voices ?? {});
   const identite = options.config ?? DEFAULT_CONFIG;
   const style = identite.designStyle ?? {};
   // La séquence vidéo suit le rush ; si elle est narrée, elle suit aussi sa
   // voix — la plus longue des deux gagne, pour ne couper ni l'un ni l'autre.
-  const video = sequenceSecondsWithVoice(
-    voix, 'video', autopilotVideoSeconds(post.rushUrl, options.rushSeconds),
-  );
+  // Avec le jumeau, c'est SA durée qui cale la séquence : la parole de
+  // l'avatar doit tenir en entier, jamais coupée.
+  const video = jumeau
+    ? Math.max(DEFAULT_SEQUENCE_SECONDS.video, Math.ceil(jumeau.seconds))
+    : sequenceSecondsWithVoice(
+      voix, 'video', autopilotVideoSeconds(post.rushUrl, options.rushSeconds),
+    );
   return {
     title: post.title.toUpperCase(),
     subtitle: post.content.subtitle,
@@ -183,7 +203,8 @@ export function buildAutopilotDesign(
     // le rendu d'aujourd'hui.
     ...(style.cards ? { cardsTypography: style.cards } : null),
     ctaText: post.content.tagLine,
-    videoUrl: post.rushUrl,
+    // Le jumeau, s'il est monté, REMPLACE le rush pour la séquence « Vidéo ».
+    videoUrl: jumeau ? jumeau.videoUrl : post.rushUrl,
     // La photo d'affiche du Mode simple : le MÊME champ, rendu au même
     // endroit par `CreerSimpleMontage` — un `<Img>` en fond de séquence,
     // sous le titre, les cartes et le CTA. Absente, le dégradé reprend sa
@@ -228,7 +249,10 @@ export function buildAutopilotDesign(
     // transmis même quand le son est coupé : rallumer « garder le son du
     // rush » doit rendre le niveau que l'utilisateur avait réglé, pas un
     // niveau perdu en route.
-    rushMuted: !identite.keepRushAudio,
+    // La vidéo du jumeau porte la voix clonée : son audio est TOUJOURS gardé,
+    // sinon l'avatar parlerait sans qu'on l'entende. Un rush ordinaire suit,
+    // lui, le choix `keepRushAudio` du compte.
+    rushMuted: jumeau ? false : !identite.keepRushAudio,
     watermark: AUTOPILOT_WATERMARK,
     transition: DEFAULT_TRANSITION,
     textAnimation: DEFAULT_TEXT_ANIMATION,

@@ -3793,6 +3793,13 @@ export default function AssistantWizard() {
   // detection sur un extrait ne pouvait donc qu'echouer, sur un message
   // trompeur (« la video est peut-etre trop courte ou illisible »).
   const [rushIsClip, setRushIsClip] = useState(false);
+  // Le rush courant a-t-il ÉCHOUÉ à être protégé contre la rétention 24 h ?
+  // `POST /api/creer/rush/keep` enregistre sa clé pour l'exempter du nettoyage.
+  // S'il répond 500/503 (table de protection absente, base indisponible), le
+  // rush n'est PAS protégé : sans ce signal, l'import « réussit » à l'écran
+  // mais la vidéo disparaîtra du montage au bout d'un jour, en silence. On le
+  // dit. (400/401 restent silencieux : cible non éligible, attendu.)
+  const [rushNonProtege, setRushNonProtege] = useState(false);
   // ── Filtre couleur (LUT) du rush ─────────────────────────────────────
   // Seule la REFERENCE canonique vit ici (empreinte, nom, intensite) : la
   // table validee a l'import n'est jamais conservee, les octets vivent dans
@@ -6450,11 +6457,22 @@ export default function AssistantWizard() {
     // écarte de lui-même ce qui n'est pas une cible de stockage du compte
     // (clip local, jumeau…), donc l'appeler pour tout rush ne coûte rien et
     // ne bloque jamais l'import.
+    setRushNonProtege(false);
     void fetch('/api/creer/rush/keep', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
-    }).catch(() => {});
+    })
+      .then((r) => {
+        // 400/401 = cible non éligible (clip local, jumeau…) ou session
+        // absente : attendu, silencieux. 500/503 = un rush DU COMPTE n'a pas
+        // pu être enregistré (table de protection absente, base indisponible) :
+        // ce rush n'est PAS protégé contre la suppression 24 h. Un import qui
+        // « réussit » à l'écran mais dont la protection échoue en base n'est
+        // pas une correction terminée — on le rend visible.
+        if (!r.ok && r.status !== 400 && r.status !== 401) setRushNonProtege(true);
+      })
+      .catch(() => setRushNonProtege(true));
     setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)));
     setRushLoading(true);
     try {
@@ -9602,6 +9620,20 @@ export default function AssistantWizard() {
                                 <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? rushName : undefined}>
                                   {isVideo && rushUrl ? rushName || 'Rush importé' : meta.hint}
                                 </div>
+                                {/* La protection anti-rétention a échoué en base : le rush
+                                    risque d'être supprimé sous 24 h. Rendu VISIBLE — un import
+                                    qui « réussit » à l'écran mais dont l'enregistrement échoue
+                                    n'est pas une correction terminée. */}
+                                {isVideo && rushUrl && rushNonProtege && (
+                                  <div
+                                    data-rush-non-protege
+                                    className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-400"
+                                    title="La protection de ce rush contre le nettoyage automatique n'a pas pu être enregistrée côté serveur."
+                                  >
+                                    <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">Rush non protégé — risque de suppression sous 24 h. Ré-importez-le.</span>
+                                  </div>
+                                )}
                               </div>
                               <span className="text-[11px] text-gray-500 flex-shrink-0">
                                 {seq.enabled ? `${seqDuration(seq.key)}s` : ''}
