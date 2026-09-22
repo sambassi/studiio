@@ -244,11 +244,12 @@ async function lireOctetsSortie(output: unknown): Promise<Uint8Array> {
 async function genererAvecDelai(
   replicate: Replicate,
   input: Record<string, unknown>,
-  // Modèle à exécuter. Défaut : `generate-bg` (flux-schnell, texte → image).
-  // `image-edit` (flux-kontext-pro) est le chemin « partir de ma photo » : une
-  // image de référence + une consigne, pour préserver le sujet (visage,
-  // vêtements, identité). Même délai, même rapatriement durable, même débit.
-  modelKey: 'generate-bg' | 'image-edit' = 'generate-bg',
+  // Modèle à exécuter (toute clé de `MODELS`). Défaut : `generate-bg`
+  // (flux-schnell, texte → image). `image-edit` (flux-kontext-pro) est le
+  // chemin « partir de ma photo » ET la base des retouches (édition, gomme,
+  // transfert de style, calques). MÊME chaîne pour tous : attente réelle de la
+  // fin, même délai, même distinction des erreurs.
+  modelKey: 'generate-bg' | 'image-edit' | 'remove-bg' | 'upscale' = 'generate-bg',
 ): Promise<unknown> {
   const ctrl = new AbortController();
   let timer: NodeJS.Timeout | undefined;
@@ -260,7 +261,22 @@ async function genererAvecDelai(
   });
   try {
     return await Promise.race([
-      replicate.run(MODELS[modelKey], { input, signal: ctrl.signal }),
+      // ⚠️ `wait: { mode: 'poll' }` — LE CORRECTIF DE LA RACINE A.
+      //
+      // Par défaut, le SDK 1.4.0 utilise `wait: { mode: 'block' }` (`Prefer:
+      // wait`, tenu ~60 s). Passé ce délai, l'API rend la prédiction ENCORE
+      // `processing` avec `output = null`, et `run()` la considère TERMINÉE
+      // (`isDone = block && status !== 'starting'`) : il ne sonde pas et rend
+      // `null`. L'app lisait alors « aucune image » sur un job pourtant vivant.
+      //
+      // En mode `poll`, `run()` SONDE jusqu'à un état terminal
+      // (`succeeded` → média ; `failed` → `run()` LÈVE « Prediction failed »,
+      // erreur fournisseur distincte ; `canceled` → seulement via notre
+      // `abort` de délai, et la course a alors déjà rendu l'erreur 504). Un
+      // `output` nul ne peut donc plus signifier « job encore en cours » : il
+      // ne reste que le cas réel « terminé sans média ». Le garde de délai
+      // applicatif (`DELAI_GENERATION_MS`) borne l'attente et annule le job.
+      replicate.run(MODELS[modelKey], { input, wait: { mode: 'poll' }, signal: ctrl.signal }),
       delai,
     ]);
   } finally {
@@ -380,9 +396,7 @@ export async function POST(req: NextRequest) {
       // ── 1. Remove Background ──
       case 'remove-bg': {
         if (!imageUrl) return NextResponse.json({ success: false, error: 'imageUrl requis' }, { status: 400 });
-        output = await replicate.run(MODELS['remove-bg'], {
-          input: { image: imageUrl },
-        });
+        output = await genererAvecDelai(replicate, { image: imageUrl }, 'remove-bg');
         break;
       }
 
@@ -399,15 +413,13 @@ export async function POST(req: NextRequest) {
         //  2. CIBLE précise
         //  3. PRÉSERVATION du reste (anti-régression sur la composition)
         //  4. INPAINT pixel-level (anti-flat-fill)
-        output = await replicate.run(MODELS['image-edit'], {
-          input: {
-            input_image: imageUrl,
-            prompt: `Erase only the ${target} from this image. Keep the subject, background, lighting, and overall composition exactly identical. Inpaint the erased area to seamlessly continue the surrounding pixels — do NOT replace the background.`,
-            aspect_ratio: 'match_input_image',
-            output_format: 'png',
-            safety_tolerance: 2,
-          },
-        });
+        output = await genererAvecDelai(replicate, {
+          input_image: imageUrl,
+          prompt: `Erase only the ${target} from this image. Keep the subject, background, lighting, and overall composition exactly identical. Inpaint the erased area to seamlessly continue the surrounding pixels — do NOT replace the background.`,
+          aspect_ratio: 'match_input_image',
+          output_format: 'png',
+          safety_tolerance: 2,
+        }, 'image-edit');
         if (Array.isArray(output)) output = output[0];
         break;
       }
@@ -417,15 +429,13 @@ export async function POST(req: NextRequest) {
         if (!imageUrl || !prompt) return NextResponse.json({ success: false, error: 'imageUrl et prompt requis' }, { status: 400 });
         // Same translation pour les prompts français
         const editPrompt = translateFrPromptToEn(prompt);
-        output = await replicate.run(MODELS['image-edit'], {
-          input: {
-            input_image: imageUrl,
-            prompt: editPrompt,
-            aspect_ratio: 'match_input_image',
-            output_format: 'png',
-            safety_tolerance: 2,
-          },
-        });
+        output = await genererAvecDelai(replicate, {
+          input_image: imageUrl,
+          prompt: editPrompt,
+          aspect_ratio: 'match_input_image',
+          output_format: 'png',
+          safety_tolerance: 2,
+        }, 'image-edit');
         if (Array.isArray(output)) output = output[0];
         break;
       }
@@ -433,13 +443,11 @@ export async function POST(req: NextRequest) {
       // ── 4. Upscale (Real-ESRGAN) ──
       case 'upscale': {
         if (!imageUrl) return NextResponse.json({ success: false, error: 'imageUrl requis' }, { status: 400 });
-        output = await replicate.run(MODELS['upscale'], {
-          input: {
-            image: imageUrl,
-            scale: 2,
-            face_enhance: true,
-          },
-        });
+        output = await genererAvecDelai(replicate, {
+          image: imageUrl,
+          scale: 2,
+          face_enhance: true,
+        }, 'upscale');
         break;
       }
 
@@ -569,24 +577,20 @@ export async function POST(req: NextRequest) {
       // ── 7. Magic Layers (Segment + Remove BG — rembg) ──
       case 'magic-layers': {
         if (!imageUrl) return NextResponse.json({ success: false, error: 'imageUrl requis' }, { status: 400 });
-        output = await replicate.run(MODELS['remove-bg'], {
-          input: { image: imageUrl },
-        });
+        output = await genererAvecDelai(replicate, { image: imageUrl }, 'remove-bg');
         break;
       }
 
       // ── 8. Style Transfer (FLUX Kontext Pro) ──
       case 'style-transfer': {
         if (!imageUrl || !style) return NextResponse.json({ success: false, error: 'imageUrl et style requis' }, { status: 400 });
-        output = await replicate.run(MODELS['image-edit'], {
-          input: {
-            input_image: imageUrl,
-            prompt: `Transform this image into ${style} style. Make it artistic and professional while keeping the same composition and subject.`,
-            aspect_ratio: 'match_input_image',
-            output_format: 'png',
-            safety_tolerance: 2,
-          },
-        });
+        output = await genererAvecDelai(replicate, {
+          input_image: imageUrl,
+          prompt: `Transform this image into ${style} style. Make it artistic and professional while keeping the same composition and subject.`,
+          aspect_ratio: 'match_input_image',
+          output_format: 'png',
+          safety_tolerance: 2,
+        }, 'image-edit');
         if (Array.isArray(output)) output = output[0];
         break;
       }
