@@ -96,7 +96,12 @@ describe('Fix 2 — la voix est une option payante, décochée', () => {
     // Sans ce garde, chaque montage déclencherait quatre synthèses payantes.
     // Les arguments, pas leur mise en page : le bloc a change de fichier et
     // d'indentation sans qu'aucun comportement n'ait bouge.
-    expect(cron).toMatch(/config\.voiceEnabled\s*\?\s*await buildAutopilotVoices\(/);
+    //
+    // ⚠️ SECOND GARDE : `!jumeauActif`. Quand la vidéo du jumeau est montée,
+    // elle porte déjà la voix clonée — aucune voix off par séquence n'est
+    // synthétisée (ni seconde voix, ni coût). Les DEUX conditions gardent le
+    // même appel.
+    expect(cron).toMatch(/config\.voiceEnabled\s*&&\s*!jumeauActif\)\s*\?\s*await buildAutopilotVoices\(/);
     expect(cron).toContain(': {};');
   });
 

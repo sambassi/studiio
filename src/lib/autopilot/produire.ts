@@ -173,10 +173,31 @@ export async function produireUnMontage(input: {
   onRushMort?: (url: string) => void;
   /** Prévenu dès qu'une affiche de la banque est piochée — même règle. */
   onAfficheCustom?: (url: string) => void;
+  /**
+   * Vidéo du JUMEAU numérique, DÉJÀ générée et re-hébergée (avatar animé sur
+   * la voix clonée du compte), à monter comme séquence « Vidéo ».
+   *
+   * ⚠️ L'APPELANT L'A VALIDÉE. Cette valeur ne vient jamais crue du
+   * navigateur : la route qui produit ce montage confirme, en base
+   * (`avatar_generations`), que cette URL est bien une génération TERMINÉE
+   * appartenant à ce compte, avant de la passer ici — sinon on monterait la
+   * vidéo d'un autre, ou une adresse forgée.
+   *
+   * Présente, elle REMPLACE le rush pour ce montage : elle porte déjà la voix
+   * clonée, donc aucune voix off par séquence n'est synthétisée (ni coût
+   * ElevenLabs, ni répétition, ni deux voix), et son audio est conservé. Le
+   * jumeau est facturé à SA génération (AVATAR_VIDEO_COST, en amont), pas ici :
+   * ce montage ne débite que le rendu, comme tout montage.
+   */
+  jumeauVideoUrl?: string | null;
 }): Promise<MontageProduit> {
   const {
     userId, config, post, rang, now, jobId, dernierePosterUrl = null, journal = '[Autopilote]',
   } = input;
+
+  // Le jumeau tient la séquence « Vidéo » : on n'utilise alors AUCUN rush pour
+  // ce montage — l'avatar est la vidéo, et la seule voix.
+  const jumeauActif = typeof input.jumeauVideoUrl === 'string' && input.jumeauVideoUrl.length > 0;
 
   // ── Le rush existe-t-il encore ? ───────────────────────────────────────
   // Un rush supprimé — rétention du stockage, ménage de l'utilisateur —
@@ -185,7 +206,10 @@ export async function produireUnMontage(input: {
   // ressort au cycle suivant. Le rush est LÂCHÉ pour ce montage (qui sort en
   // titre/cartes/CTA, un montage valide) et signalé à l'appelant, qui le
   // retire de la banque.
-  let rushUrl = post.rushUrl;
+  //
+  // ⚠️ IGNORÉ QUAND LE JUMEAU EST MONTÉ : ce montage-là ne porte pas de rush,
+  // donc rien à sonder ni à déclarer mort.
+  let rushUrl = jumeauActif ? null : post.rushUrl;
   let rushMort: string | null = null;
   if (rushUrl && !(await rushEncorePresent(rushUrl))) {
     console.warn(`${journal} ${userId} — rush introuvable, ignoré : ${rushUrl}`);
@@ -205,13 +229,16 @@ export async function produireUnMontage(input: {
   const afficheCustom: string | null = config.posterMode === 'custom' && config.posterUrls.length > 0
     ? pickCustomPoster(config.posterUrls, dernierePosterUrl, rang)
     : null;
-  const [posterUrl, rushSeconds] = await Promise.all([
+  const [posterUrl, rushSeconds, jumeauSeconds] = await Promise.all([
     // La variante fait tourner le tirage : deux montages du même thème
     // n'ont pas la même affiche.
     afficheCustom
       ? Promise.resolve(afficheCustom)
       : pickPosterUrl(post.title, rang + Math.floor(now / 3_600_000)),
     rushUrl ? probeRushSeconds(rushUrl) : Promise.resolve(null),
+    // La durée du jumeau cale la séquence « Vidéo » : la parole doit tenir
+    // entière. Illisible (`null`) → durée par défaut, posée à la fabrique du design.
+    jumeauActif ? probeRushSeconds(input.jumeauVideoUrl as string) : Promise.resolve(null),
   ]);
   if (afficheCustom) input.onAfficheCustom?.(afficheCustom);
 
@@ -225,14 +252,21 @@ export async function produireUnMontage(input: {
   // La voix CLONÉE du compte, la même sur toutes les séquences de toutes les
   // vidéos : c'est le point de l'identité constante. Sans choix, la voix par
   // défaut du serveur.
-  const voices: VoixParSequence = config.voiceEnabled
+  //
+  // ⚠️ AUCUNE VOIX OFF QUAND LE JUMEAU EST MONTÉ. La vidéo du jumeau porte
+  // déjà la voix clonée : synthétiser en plus les séquences ferait une
+  // seconde voix (superposée sur la séquence vidéo, répétée sur les autres)
+  // et un coût ElevenLabs inutile. Le jumeau est la seule voix.
+  const voices: VoixParSequence = (config.voiceEnabled && !jumeauActif)
     ? await buildAutopilotVoices({ userId, jobId, post: postUtilise, voiceId: config.voiceId })
     : {};
   // `config` porte l'identité CONSTANTE — couleurs, fond des cartes, musique,
   // niveaux du mixeur, son du rush. L'affiche, les textes et le rush, eux,
-  // varient et arrivent par `post` et `posterUrl`.
+  // varient et arrivent par `post` et `posterUrl`. Le jumeau, s'il est monté,
+  // tient la séquence « Vidéo » à la place du rush.
   const design = buildAutopilotDesign(postUtilise, {
     posterUrl, rushSeconds, voices, config,
+    jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
   });
   const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
 
@@ -253,6 +287,10 @@ export async function produireUnMontage(input: {
     // s'est révélé absent (404/410) : la condition « il avait des rushes » est
     // donc déjà remplie.
     ...(rushMort ? { rushIgnore: true, rushIgnoreMotif: 'rush expiré' } : null),
+    // Le montage porte le JUMEAU en séquence « Vidéo » : le Calendrier/récap
+    // le lit pour l'annoncer, et pour ne pas proposer une régénération
+    // navigateur qui écraserait la vidéo de l'avatar.
+    ...(jumeauActif ? { jumeau: true } : null),
     ...(input.metadataSupplement ?? null),
   };
   const { data: insere, error: insertError } = await supabaseAdmin

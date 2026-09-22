@@ -97,11 +97,27 @@ export async function GET() {
   });
 }
 
-export async function POST() {
+export async function POST(req?: Request) {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // ── La vidéo du jumeau, si le navigateur en a produit une ───────────────
+  // Le navigateur (qui SEUL peut attendre les 5-20 min d'une génération D-ID,
+  // comme dans Créer) génère la vidéo du jumeau, PUIS appelle cette route avec
+  // son URL. On ne la croit pas sur parole : elle est revalidée en base plus
+  // bas. Corps illisible ou champ absent = montage ordinaire, comme avant.
+  // `req` est optionnel : Next.js le fournit toujours, mais un appel direct
+  // (tests) peut s'en passer — c'est alors un montage ordinaire.
+  let jumeauVideoUrl: string | null = null;
+  if (req) {
+    try {
+      const corps = await req.json().catch(() => null);
+      const v = (corps as { jumeauVideoUrl?: unknown } | null)?.jumeauVideoUrl;
+      if (typeof v === 'string' && v.trim()) jumeauVideoUrl = v.trim();
+    } catch { /* pas de corps : montage ordinaire */ }
   }
 
   // ── Verrou 1 : un seul en vol par utilisateur ──────────────────────────
@@ -129,8 +145,33 @@ export async function POST() {
     // Ligne absente : les défauts — sans rush, donc refus juste en dessous.
     const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
 
+    // ── La vidéo du jumeau, REVALIDÉE en base ───────────────────────────
+    // Jamais montée sur la seule parole du navigateur : on confirme que cette
+    // URL est bien une génération d'avatar TERMINÉE de CE compte
+    // (`avatar_generations`, re-hébergée par /api/avatar/status). Un lien
+    // forgé, expiré, ou d'un autre compte ne passe pas — et rien n'est débité.
+    let jumeauValide: string | null = null;
+    if (jumeauVideoUrl) {
+      const { data: gen } = await supabaseAdmin
+        .from('avatar_generations')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('video_url', jumeauVideoUrl)
+        .eq('status', 'completed')
+        .limit(1);
+      if (!gen || gen.length === 0) {
+        return NextResponse.json(
+          { success: false, error: 'La vidéo de votre jumeau n’a pas pu être vérifiée. Régénérez votre jumeau.', code: 'jumeau-invalide' },
+          { status: 400 },
+        );
+      }
+      jumeauValide = jumeauVideoUrl;
+    }
+
     // ── Refus SANS DÉBIT ────────────────────────────────────────────────
-    if (config.rushUrls.length === 0) {
+    // Le jumeau tient la séquence « Vidéo » : un montage avec jumeau n'a PAS
+    // besoin de rush. Le refus « sans rush » ne vaut donc que sans jumeau.
+    if (!jumeauValide && config.rushUrls.length === 0) {
       return NextResponse.json(
         { success: false, error: 'Aucun rush dans la banque : ajoutez au moins une vidéo.', code: 'sans-rush' },
         { status: 422 },
@@ -197,6 +238,9 @@ export async function POST() {
       slotKey: jeton,
       journal: '[Autopilote/Manuel]',
       metadataSupplement: { production: 'manuelle' },
+      // La vidéo du jumeau (revalidée) devient la séquence « Vidéo » et la
+      // seule voix. Absente : montage ordinaire.
+      jumeauVideoUrl: jumeauValide,
     });
 
     return NextResponse.json({
@@ -215,6 +259,8 @@ export async function POST() {
       videoUrl: rendu.videoUrl,
       thumbnailUrl: rendu.thumbnailUrl,
       title: post.title,
+      // Le montage porte-t-il le jumeau en séquence « Vidéo » ?
+      jumeau: !!jumeauValide,
     });
   } catch (err) {
     console.error('[Autopilote/Manuel]', err instanceof Error ? err.message : err);
