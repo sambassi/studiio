@@ -77,6 +77,65 @@ export async function autopilotRushKeys(): Promise<Set<string> | null> {
 }
 
 /**
+ * Fenêtre de fraîcheur d'un rush de brouillon, en millisecondes.
+ *
+ * Un rush qu'aucun brouillon n'a rouvert (ré-enregistré) depuis 30 jours
+ * n'est plus protégé : `POST /api/creer/rush/keep` réécrit `updated_at` à
+ * chaque import et à chaque re-sélection, donc un brouillon vivant reste
+ * au-dessus du seuil ; un brouillon abandonné finit par redescendre et son
+ * rush redevient éligible à la rétention normale.
+ */
+export const DRAFT_RUSH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Clés des rushes qu'un BROUILLON de Créer utilise activement.
+ *
+ * ⚠️ POURQUOI CETTE SOURCE MANQUAIT. Un rush importé dans Créer via la
+ * Médiathèque vit sous `media/<userId>/library/…mp4` — classe VIDÉO, donc
+ * rétention 24 h. Il n'est référencé QUE dans le brouillon `localStorage` du
+ * navigateur : ni `scheduled_posts`, ni `autopilot_config.rush_urls`, ni le
+ * socle du tournage ne le connaissent. Le cron le supprimait au bout d'un
+ * jour, l'URL du brouillon devenait 404, et la séquence « Vidéo » du montage
+ * disparaissait en silence. `POST /api/creer/rush/keep` enregistre ici la clé
+ * du rush choisi, et cette fonction la rend au nettoyage.
+ *
+ * ⚠️ MÊME CONTRAT QUE `autopilotRushKeys` : `null`, ET NON UN ENSEMBLE VIDE,
+ * dès qu'on ne peut pas lire — table absente (migration non appliquée) ou
+ * base injoignable. Un ensemble vide se lirait « aucun rush de brouillon à
+ * protéger » et laisserait le cron supprimer. Rendre `null` fait répondre 503
+ * au cron : on ne supprime alors RIEN de plus qu'aujourd'hui — jamais
+ * l'inverse. Un nettoyage manqué se rattrape au passage suivant ; un rush
+ * supprimé ne revient pas.
+ *
+ * Seules les entrées récentes (`updated_at > now() - 30 j`) protègent : le
+ * filtre est poussé en base pour que la fenêtre ne balaie pas toute la table.
+ */
+export async function draftRushKeys(): Promise<Set<string> | null> {
+  const out = new Set<string>();
+  const seuil = new Date(Date.now() - DRAFT_RUSH_TTL_MS).toISOString();
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('creer_draft_rushes')
+      .select('object_key')
+      .gt('updated_at', seuil);
+    if (error) {
+      // Table absente OU base injoignable : dans les deux cas on ne sait pas,
+      // donc on ne supprime rien de plus. `null`, jamais un ensemble vide.
+      console.error('[Storage] brouillons de rushes illisibles :', error.message);
+      return null;
+    }
+    for (const ligne of data ?? []) {
+      const k = (ligne as { object_key?: unknown }).object_key;
+      if (typeof k === 'string' && k.length > 0) out.add(k);
+    }
+  } catch (err) {
+    console.error('[Storage] brouillons de rushes illisibles :', err);
+    return null;
+  }
+  return out;
+}
+
+/**
  * Clés des rushes INDEXÉS et des vignettes d'analyse — le socle du tournage.
  *
  * ⚠️ POURQUOI CETTE FONCTION EXISTE, ET POURQUOI ELLE EST URGENTE.

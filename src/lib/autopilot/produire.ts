@@ -243,6 +243,16 @@ export async function produireUnMontage(input: {
       // l'heure programmée comme une heure de Paris.
       timezone: config.runTimezone,
     }),
+    // ── PAS DE REMPLACEMENT SILENCIEUX ─────────────────────────────────────
+    // L'utilisateur avait un rush pour ce montage (`post.rushUrl`), mais il a
+    // expiré du stockage : le montage sort SANS séquence vidéo. On l'ÉCRIT
+    // dans les métadonnées plutôt que de laisser croire que « mes rushes »
+    // ont été honorés — exigence utilisateur : ne pas remplacer ses rushes en
+    // silence, expliquer le problème. Le Calendrier/récap lit `rushIgnore`
+    // pour l'afficher. `rushMort` n'est posé QUE quand un rush existait et
+    // s'est révélé absent (404/410) : la condition « il avait des rushes » est
+    // donc déjà remplie.
+    ...(rushMort ? { rushIgnore: true, rushIgnoreMotif: 'rush expiré' } : null),
     ...(input.metadataSupplement ?? null),
   };
   const { data: insere, error: insertError } = await supabaseAdmin

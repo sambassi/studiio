@@ -49,9 +49,11 @@ describe('Créer (simple) — import d’un rush', () => {
     // (`hasRushAudio = !!videoEl`). Sans ce terme, le Calendrier proposait
     // « Ajouter du son » sur un montage qui en avait déjà.
     expect(wizardSource).toMatch(
-      // Les voix PAR SEQUENCE comptent aussi : sans elles dans ce calcul, le
-      // Calendrier croirait le montage muet alors qu'il porte du son.
-      /hasAudio:\s*!!\(musicUrl \|\| voiceUrl \|\| sequenceVoiceUrls \|\| \(plateau\.rushUrl && duree\('video'\) > 0\)\)/,
+      // Les voix PAR SEQUENCE comptent aussi (`voixSequencesRendu` = la liste
+      // du rendu, dont la voix off de la séquence 'video' est retirée en mode
+      // avatar) : sans elles dans ce calcul, le Calendrier croirait le montage
+      // muet alors qu'il porte du son.
+      /hasAudio:\s*!!\(musicUrl \|\| voiceUrl \|\| voixSequencesRendu \|\| \(plateau\.rushUrl && duree\('video'\) > 0\)\)/,
     );
   });
 

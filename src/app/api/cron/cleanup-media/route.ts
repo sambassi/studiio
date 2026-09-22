@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getFileType, getExpiresAt } from '@/lib/storage/retention';
-import { storageKey, autopilotRushKeys, clesTournageEtAnalyses } from '@/lib/storage/cleanup';
+import { storageKey, autopilotRushKeys, clesTournageEtAnalyses, draftRushKeys } from '@/lib/storage/cleanup';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -138,15 +138,33 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
+  // ⚠️ QUATRIÈME SOURCE D'EXEMPTION : les rushes d'un BROUILLON de Créer.
+  //
+  // Un rush importé via la Médiathèque vit dans `media/<userId>/library/…` —
+  // classe VIDÉO, rétention 24 h — et n'est référencé QUE dans le brouillon
+  // `localStorage` du navigateur, invisible au serveur. Aucune des trois
+  // sources précédentes ne le connaît, si bien qu'il disparaissait au bout
+  // d'un jour et que la séquence « Vidéo » du montage devenait un 404. Même
+  // contrat que les autres : `null` = illisible (table absente ou base
+  // injoignable) = on ne supprime RIEN.
+  const brouillonsLus = await draftRushKeys();
+  if (!brouillonsLus) {
+    return NextResponse.json(
+      { success: false, error: 'Rushes de brouillon illisibles — aucune suppression tentée.' },
+      { status: 503 },
+    );
+  }
   const rushKeys: Set<string> = banqueLue;
   // Lié à une constante non-nullable : `processFile` est une fonction
   // imbriquée, et TypeScript ne propage pas le rétrécissement d'un `let`
   // au travers d'une fermeture.
   const clesTournage: Set<string> = tournageLu;
+  const clesBrouillon: Set<string> = brouillonsLus;
   const now = new Date();
   let exemptesPosts = 0;
   let exemptesRushes = 0;
   let exemptesTournage = 0;
+  let exemptesBrouillons = 0;
   let candidats = 0;
   const buckets = ['media', 'audio'];
   const breakdown = { video: 0, audio: 0, image: 0 };
@@ -247,6 +265,15 @@ export async function GET(req: NextRequest) {
       preserved++;
       return;
     }
+    // Rush qu'un brouillon de Créer utilise activement. Même principe : la
+    // protection suit la RÉFÉRENCE (l'entrée `creer_draft_rushes` récente),
+    // elle ne marque pas le fichier. Un brouillon oublié depuis 30 jours ne
+    // protège plus (filtre d'âge dans `draftRushKeys`).
+    if (clesBrouillon.has(cle)) {
+      exemptesBrouillons++;
+      preserved++;
+      return;
+    }
     if (protection(publicUrl, protectedUrls, rushKeys)) {
       exemptesPosts++;
       preserved++;
@@ -280,8 +307,9 @@ export async function GET(req: NextRequest) {
     + `(video=${breakdown.video}, audio=${breakdown.audio}, image=${breakdown.image}) `
     + `conserves=${kept} exemptes=${preserved} `
     + `(posts=${exemptesPosts}, rushes-autopilote=${exemptesRushes}, `
-    + `tournage=${exemptesTournage}) `
-    + `| banque=${rushKeys.size} cles, tournage=${clesTournage.size} cles`,
+    + `tournage=${exemptesTournage}, brouillons=${exemptesBrouillons}) `
+    + `| banque=${rushKeys.size} cles, tournage=${clesTournage.size} cles, `
+    + `brouillons=${clesBrouillon.size} cles`,
   );
 
   return NextResponse.json({
@@ -297,8 +325,10 @@ export async function GET(req: NextRequest) {
       posts: exemptesPosts,
       rushesAutopilote: exemptesRushes,
       tournage: exemptesTournage,
+      brouillons: exemptesBrouillons,
       banque: rushKeys.size,
       clesTournage: clesTournage.size,
+      clesBrouillon: clesBrouillon.size,
     },
     breakdown,
     errors: errors.length > 0 ? errors : undefined,

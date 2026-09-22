@@ -77,6 +77,16 @@ export interface Draft {
    * (`jumeauMode === 'avatar'`), jamais une seconde source.
    */
   useDigitalTwin?: boolean;
+  /**
+   * Identifiant de la génération vidéo du jumeau EN COURS. Écrit dès le
+   * lancement (mode 'avatar'), effacé une fois la vidéo posée comme rush.
+   * Sa seule présence après rechargement signale une génération orpheline à
+   * REPRENDRE : la page a été fermée pendant les 5-20 min de rendu D-ID/HeyGen.
+   * Absent = aucune génération en attente, le cas de tous les brouillons
+   * antérieurs. Forme d'identifiant seulement (`/^[A-Za-z0-9-]+$/`, ≤ 64) :
+   * ce qui n'y ressemble pas est oublié plutôt que poussé dans un poll.
+   */
+  jumeauGenerationId?: string;
   step?: number;
   themeId?: string;
   customTopic?: string;
@@ -504,6 +514,13 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     // l'ancien champ vaut 'avatar' ; tout le reste = parcours normal.
     jumeauMode,
     useDigitalTwin: jumeauMode === 'avatar',
+    // Forme d'identifiant seulement : lettres, chiffres, `-`, borne à 64. Ce
+    // qui n'y ressemble pas (un objet, une URL) est oublié plutôt que poussé
+    // dans un poll de statut.
+    jumeauGenerationId:
+      typeof raw.jumeauGenerationId === 'string' && raw.jumeauGenerationId.length <= 64 && /^[A-Za-z0-9-]+$/.test(raw.jumeauGenerationId)
+        ? raw.jumeauGenerationId
+        : undefined,
     // L'écran d'envoi n'est jamais restauré : il annonce un rendu et un débit
     // qui n'ont pas eu lieu. Une étape au-delà est RAMENEE à la dernière sûre
     // — repartir de l'étape 1 ferait refaire tout le parcours.

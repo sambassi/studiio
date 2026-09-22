@@ -161,7 +161,7 @@ import {
   politiqueAffichable, MENTION_AUCUN_CREDIT,
 } from '@/lib/facturation/libelles';
 import JumeauPanel from '@/components/creer/JumeauPanel';
-import { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, type JumeauMode } from '@/lib/creer/jumeau';
+import { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, type JumeauMode } from '@/lib/creer/jumeau';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import {
   DRAFT_VERSION,
@@ -3736,6 +3736,22 @@ export default function AssistantWizard() {
   const [jumeauMode, setJumeauMode] = useState<JumeauMode>('aucun');
   /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
   const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
+  /**
+   * Génération vidéo du jumeau EN COURS — l'identifiant serveur, persisté au
+   * lancement et effacé une fois la vidéo posée. Sa présence après un
+   * rechargement déclenche la REPRISE : la page a été quittée pendant le rendu.
+   */
+  const [jumeauGenerationId, setJumeauGenerationId] = useState<string | null>(null);
+  /**
+   * État de la REPRISE d'une génération orpheline au montage : 'inactif' (rien
+   * en attente), 'encours' (on sonde, l'utilisateur peut quitter et revenir),
+   * 'echec' (le fournisseur a échoué — un bouton « Réessayer » relance).
+   */
+  const [jumeauReprise, setJumeauReprise] = useState<'inactif' | 'encours' | 'echec'>('inactif');
+  /** Un seul poll de reprise à la fois ; remis à faux sur échec pour permettre « Réessayer ». */
+  const jumeauRepriseFaite = useRef(false);
+  /** Vrai pendant que le clic d'envoi gère lui-même la génération : la reprise ne double pas. */
+  const jumeauRenduEnCours = useRef(false);
   const [toneId, setToneId] = useState(TONES[0].id);
   const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
@@ -5628,6 +5644,10 @@ export default function AssistantWizard() {
     jumeauMode,
     // Champ historique, DÉRIVÉ : les anciens lecteurs y lisent « avatar demandé ».
     useDigitalTwin: jumeauMode === 'avatar',
+    // Génération vidéo du jumeau en attente : persistée pour permettre la
+    // reprise si la page se ferme pendant le rendu. `undefined` = rien en
+    // attente, comme tous les brouillons antérieurs.
+    jumeauGenerationId: jumeauGenerationId ?? undefined,
     started,
     step,
     themeId,
@@ -5700,7 +5720,7 @@ export default function AssistantWizard() {
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
     batchPhotoMode,
   }), [
-    started, step, themeId, customTopic, brief, toneId, format, colors, jumeauMode,
+    started, step, themeId, customTopic, brief, toneId, format, colors, jumeauMode, jumeauGenerationId,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     transition,
@@ -5777,6 +5797,14 @@ export default function AssistantWizard() {
     // `sanitizeDraft` a déjà tranché : `jumeauMode` explicite, sinon l'ancien
     // `useDigitalTwin: true` → 'avatar', sinon 'aucun'.
     setJumeauMode(draft.jumeauMode ?? 'aucun');
+    // BUG B — génération orpheline : un identifiant persisté signale une vidéo
+    // de jumeau lancée mais jamais montée (page fermée pendant le rendu). On
+    // REPREND son suivi ici, sans en lancer une seconde ; si le rush porte déjà
+    // cette génération, `reprendreJumeau` n'a rien à faire.
+    if (draft.jumeauGenerationId) {
+      setJumeauGenerationId(draft.jumeauGenerationId);
+      reprendreJumeauRef.current(draft.jumeauGenerationId, draft.rushUrl);
+    }
     setSequences(draft.sequences as typeof DEFAULT_SEQUENCES);
     // `sanitizeDraft` a deja valide la valeur contre la liste du
     // compositeur : un style inconnu est arrive ici a `undefined`.
@@ -6415,6 +6443,18 @@ export default function AssistantWizard() {
     setRushUrl(url);
     setRushName(name);
     setRushIsClip(isClip);
+    // Protège ce rush contre la rétention 24 h. Un rush de brouillon n'est
+    // référencé que dans le `localStorage` du navigateur ; sans ce signal, le
+    // cron de nettoyage le supprime au bout d'un jour et la séquence « Vidéo »
+    // du montage devient un 404. Fire-and-forget, silencieux : le serveur
+    // écarte de lui-même ce qui n'est pas une cible de stockage du compte
+    // (clip local, jumeau…), donc l'appeler pour tout rush ne coûte rien et
+    // ne bloque jamais l'import.
+    void fetch('/api/creer/rush/keep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    }).catch(() => {});
     setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)));
     setRushLoading(true);
     try {
@@ -6444,6 +6484,80 @@ export default function AssistantWizard() {
     setRushIsClip(false);
     setVideoDuration(0);
     setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: false } : s)));
+  };
+
+  /**
+   * REPRISE d'une génération orpheline, au montage.
+   *
+   * BUG B : la vidéo du jumeau était produite DANS le clic d'envoi, par une
+   * boucle de polling de 5-20 min. Fermer la page pendant ce temps laissait la
+   * génération orpheline — jamais montée, aucune reprise. Désormais
+   * l'identifiant est persisté dès le lancement (`jumeauGenerationId`) ; ici,
+   * au montage, on REPREND le suivi de cette génération sans en lancer une
+   * seconde. Le serveur, lui, finalise une scène `done` quel que soit son âge
+   * (voir `avatar/status/route.ts`, BUG A) : une génération terminée pendant
+   * l'absence est donc récupérée, pas perdue.
+   *
+   * `rushUrlActuel` (celui du brouillon restauré) : si le rush porte déjà cette
+   * génération, la vidéo est en place — rien à reprendre, on efface le drapeau.
+   */
+  const reprendreJumeau = (generationId: string, rushUrlActuel?: string | null) => {
+    if (rushUrlActuel && rushUrlActuel.includes(generationId)) { setJumeauGenerationId(null); return; }
+    if (jumeauRepriseFaite.current || jumeauRenduEnCours.current) return;
+    jumeauRepriseFaite.current = true;
+    setJumeauReprise('encours');
+    void (async () => {
+      try {
+        const { url } = await attendreStatutJumeau({ generationId });
+        const posee = await applyRush(url, 'Mon jumeau', false);
+        setJumeauMode('aucun');
+        setJumeauGenerationId(null);
+        setJumeauReprise('inactif');
+        if (posee) setJumeauNotice('Votre jumeau est prêt : il est monté dans la séquence « Vidéo ».');
+      } catch {
+        // Le fournisseur a échoué (ou le délai est dépassé) : on le dit, et le
+        // bouton « Réessayer » relance une génération (voir `relancerJumeau`).
+        setJumeauReprise('echec');
+        setJumeauNotice(null);
+        // Rouvre la porte à un nouvel essai.
+        jumeauRepriseFaite.current = false;
+      }
+    })();
+  };
+  /** Appelée par la restauration (définie plus haut) sans dépendance de portée. */
+  const reprendreJumeauRef = useRef(reprendreJumeau);
+  reprendreJumeauRef.current = reprendreJumeau;
+
+  /**
+   * « Réessayer » après un échec de reprise : relance une génération EN FOND
+   * (pas dans le clic d'envoi) et pose le rush quand elle aboutit. L'envoi
+   * suivant se contentera alors du rush déjà posé — aucun second débit.
+   */
+  const relancerJumeau = () => {
+    if (jumeauRepriseFaite.current || jumeauRenduEnCours.current) return;
+    const textes = Object.values(sequenceVoices)
+      .map((v) => v.text)
+      .filter((t): t is string => typeof t === 'string' && t.length > 0);
+    jumeauRepriseFaite.current = true;
+    setJumeauReprise('encours');
+    setJumeauNotice(null);
+    void (async () => {
+      try {
+        const video = await genererEtAttendreVideoJumeau({
+          textes,
+          aspectRatio: format,
+          onLancee: (id) => setJumeauGenerationId(id),
+        });
+        const posee = await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
+        setJumeauMode('aucun');
+        setJumeauGenerationId(null);
+        setJumeauReprise('inactif');
+        if (posee) setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
+      } catch {
+        setJumeauReprise('echec');
+        jumeauRepriseFaite.current = false;
+      }
+    })();
   };
 
   const theme = THEMES.find((t) => t.id === themeId) ?? THEMES[0];
@@ -6688,6 +6802,13 @@ export default function AssistantWizard() {
       setError(refusJumeau);
       return;
     }
+    // Une génération orpheline est déjà en cours de reprise (page rouverte
+    // pendant le rendu) : on ne lance pas une SECONDE génération par-dessus —
+    // ce serait un double débit. On attend qu'elle aboutisse d'elle-même.
+    if (jumeauMode === 'avatar' && jumeauReprise === 'encours') {
+      setError('Votre jumeau se prépare encore. Patientez quelques instants, puis renvoyez.');
+      return;
+    }
     // Le jumeau lui-meme est produit plus bas, apres le solde et avant la
     // boucle du lot (« Jumeau numerique — la video » ) : UN clic, et le
     // montage final sort avec sa video dedans.
@@ -6796,7 +6917,10 @@ export default function AssistantWizard() {
       // la fonction qui l'a pose, et exiger un second clic n'est pas le
       // parcours. Aucun second pipeline : les memes fonctions pures,
       // appliquees a un plateau local.
-      let plateau = { rushUrl, sequences, videoDuration };
+      // `avatarVideo` : vrai quand la séquence « Vidéo » est la vidéo du jumeau
+      // parlant, qui porte déjà la voix — elle exclut alors toute voix off TTS
+      // de séquence 'video' (pas de double narration). Faux pour un rush ordinaire.
+      let plateau = { rushUrl, sequences, videoDuration, avatarVideo: false };
 
       // ── Jumeau numerique — la video ────────────────────────────────
       // Le garde a dit oui, le solde couvre le total. LA video du jumeau est
@@ -6808,11 +6932,18 @@ export default function AssistantWizard() {
       // pas ici : sa voix est deja posee dans `ttsVoiceId`, rien a produire.
       if (jumeauMode === 'avatar') {
         setRenderProgress(5);
+        // Ce clic gère lui-même la génération : la reprise au montage ne doit
+        // pas la doubler tant qu'elle tourne.
+        jumeauRenduEnCours.current = true;
         let posee: Awaited<ReturnType<typeof applyRush>>;
         try {
           const video = await genererEtAttendreVideoJumeau({
             textes: textesJumeau,
             aspectRatio: format,
+            // Persister l'identifiant DÈS le lancement : si la page se ferme
+            // pendant les 5-20 min de rendu, la reprise au montage retrouvera
+            // cette génération au lieu d'en payer une seconde.
+            onLancee: (id) => setJumeauGenerationId(id),
             onEtape: (m) => setRenderStage(m),
           });
           posee = await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
@@ -6828,16 +6959,40 @@ export default function AssistantWizard() {
         // L'intention est honoree : la video du jumeau EST le rush. Un
         // prochain envoi montera ce rush, sans produire un second jumeau.
         setJumeauMode('aucun');
+        // La génération est aboutie et posée : plus rien à reprendre.
+        setJumeauGenerationId(null);
         plateau = {
           rushUrl: posee.url,
           sequences: sequences.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)),
           videoDuration: posee.secondes,
+          // La vidéo du jumeau porte DÉJÀ la voix (l'avatar dit le script) : la
+          // séquence « Vidéo » ne doit pas recevoir en plus une voix off TTS.
+          avatarVideo: true,
         };
         setRenderProgress(0);
         setRenderStage('Préparation…');
       }
       const ordre = ordreActif(plateau.sequences);
       const duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
+
+      // ── Voix de la séquence « Vidéo » — pas de double narration ─────
+      // La vidéo du jumeau parlant PORTE DÉJÀ la voix (l'avatar dit le script
+      // sur ma voix, et le compositeur route la piste du rush,
+      // `hasRushAudio = !!videoEl`). Lui superposer une voix off TTS de
+      // séquence 'video' ferait dire le texte DEUX fois. On la retire donc
+      // quand la séquence « Vidéo » est l'avatar — signalé par le drapeau du
+      // plateau (envoi en un clic) OU par l'URL du rush (avatar déjà posé, y
+      // compris après une reprise), les vidéos d'avatar vivant sous
+      // `.../avatar/<gen>.mp4`. Un rush ordinaire garde sa voix off, inchangé.
+      const videoEstAvatar = plateau.avatarVideo || (!!plateau.rushUrl && /\/avatar\/[^/]+\.mp4/.test(plateau.rushUrl));
+      const voixSequencesRendu = ((): typeof sequenceVoiceUrls => {
+        if (!videoEstAvatar || !sequenceVoiceUrls || !sequenceVoiceUrls.video) return sequenceVoiceUrls;
+        const reste: NonNullable<typeof sequenceVoiceUrls> = {};
+        if (sequenceVoiceUrls.titre) reste.titre = sequenceVoiceUrls.titre;
+        if (sequenceVoiceUrls.cartes) reste.cartes = sequenceVoiceUrls.cartes;
+        if (sequenceVoiceUrls.cta) reste.cta = sequenceVoiceUrls.cta;
+        return Object.keys(reste).length ? reste : undefined;
+      })();
 
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
@@ -7025,8 +7180,10 @@ export default function AssistantWizard() {
           voiceUrl: voiceUrl || undefined,
           // Voix PAR SEQUENCE : chaque clip est joue au debut de sa sequence
           // et coupe a sa fin. `voiceUrl` reste le repli quand il n'y en a
-          // aucune — c'est le cas de tous les montages anterieurs.
-          sequenceVoiceUrls,
+          // aucune — c'est le cas de tous les montages anterieurs. En mode
+          // avatar, la voix off de la séquence 'video' est retirée en amont
+          // (`voixSequencesRendu`) : l'avatar porte déjà sa voix.
+          sequenceVoiceUrls: voixSequencesRendu,
           musicVolume,
           voiceVolume,
           // Mixeur unifie : ces keyframes pilotent les trois bus audio du
@@ -7290,7 +7447,7 @@ export default function AssistantWizard() {
           // compositeur route et embarque dans le fichier
           // (`hasRushAudio = !!videoEl`). L'omettre faisait proposer par le
           // Calendrier « Ajouter du son » sur un montage qui en avait deja.
-          hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls || (plateau.rushUrl && duree('video') > 0)),
+          hasAudio: !!(musicUrl || voiceUrl || voixSequencesRendu || (plateau.rushUrl && duree('video') > 0)),
           // Les URL `blob:` ne survivent pas au rechargement de la page. Le
           // panneau audio televerse normalement les pistes et renvoie une URL
           // publique, mais il retombe sur un blob local si le televersement de
@@ -7298,7 +7455,10 @@ export default function AssistantWizard() {
           // reference morte dans le post.
           musicUrl: persistableUrl(musicUrl),
           voiceUrl: persistableUrl(voiceUrl),
-          sequenceVoiceUrls,
+          // La même liste que celle du rendu : en mode avatar, sans la voix off
+          // de la séquence 'video', pour que le Calendrier ne rejoue pas une
+          // double narration à la régénération.
+          sequenceVoiceUrls: voixSequencesRendu,
           // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
           // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
           // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une
@@ -7522,6 +7682,9 @@ export default function AssistantWizard() {
     } finally {
       setSending(false);
       setRenderTarget(null);
+      // Le clic a fini de gérer sa génération : la reprise au montage peut de
+      // nouveau prendre la main si une génération orpheline subsiste.
+      jumeauRenduEnCours.current = false;
     }
   };
 
@@ -7909,6 +8072,29 @@ export default function AssistantWizard() {
           <div data-jumeau-notice className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
             <span>{jumeauNotice}</span>
             <button onClick={() => setJumeauNotice(null)} className="ml-auto text-xs text-emerald-300 hover:text-white">OK</button>
+          </div>
+        )}
+
+        {/* Reprise d'une génération de jumeau orpheline (BUG B). En cours : un
+            indicateur discret qui dit qu'on peut quitter. En échec : le motif
+            et un bouton « Réessayer » qui relance une génération en fond. */}
+        {jumeauReprise === 'encours' && (
+          <div data-jumeau-reprise="encours" className="flex items-center gap-3 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-[13px] text-purple-200">
+            <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
+            <span>Votre jumeau se prépare… (vous pouvez quitter cette page et revenir plus tard)</span>
+          </div>
+        )}
+        {jumeauReprise === 'echec' && (
+          <div data-jumeau-erreur className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span className="flex-1">La génération de votre jumeau n’a pas abouti.</span>
+            <button
+              type="button"
+              onClick={relancerJumeau}
+              className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-100 hover:bg-amber-500/20 transition"
+            >
+              Réessayer
+            </button>
           </div>
         )}
 

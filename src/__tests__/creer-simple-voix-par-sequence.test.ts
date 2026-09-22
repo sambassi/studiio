@@ -111,7 +111,23 @@ describe('Le compositeur reçoit ce qu il attend VRAIMENT', () => {
     expect(composer).toContain('if (options.sequenceVoiceUrls) {');
     expect(wizard).toContain('const sequenceVoiceUrls = useMemo(');
     const appel = wizard.slice(wizard.indexOf('const optionsRendu: ComposerOptions = {'));
-    expect(appel.slice(0, 3000)).toContain('sequenceVoiceUrls,');
+    // En mode avatar, la voix off de la séquence « Vidéo » est retirée en amont
+    // (`voixSequencesRendu`) pour ne pas doubler la voix de l'avatar ; hors
+    // avatar, c'est exactement `sequenceVoiceUrls`.
+    expect(appel.slice(0, 3000)).toContain('sequenceVoiceUrls: voixSequencesRendu,');
+  });
+
+  it('en mode avatar, la voix off de la séquence « Vidéo » est retirée (pas de double narration)', () => {
+    // La vidéo du jumeau parlant porte DÉJÀ la voix : lui superposer une voix
+    // off TTS de séquence 'video' ferait dire le texte deux fois.
+    const bloc = wizard.slice(
+      wizard.indexOf('const videoEstAvatar ='),
+      wizard.indexOf('const videoEstAvatar =') + 700,
+    );
+    expect(bloc).toContain('plateau.avatarVideo');
+    // Détecté aussi par l'URL du rush : les vidéos d'avatar vivent sous /avatar/.
+    expect(bloc).toContain('.mp4/.test(plateau.rushUrl)');
+    expect(bloc).toContain('sequenceVoiceUrls.video');
   });
 
   it('aucune voix par séquence → `undefined`, donc repli sur la voix unique', () => {
@@ -123,13 +139,15 @@ describe('Le compositeur reçoit ce qu il attend VRAIMENT', () => {
   it('le montage est déclaré sonore quand seules les voix par séquence existent', () => {
     // Sans cela, le Calendrier croirait le montage muet.
     expect(wizard).toContain(
-      "hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls || (plateau.rushUrl && duree('video') > 0)),",
+      "hasAudio: !!(musicUrl || voiceUrl || voixSequencesRendu || (plateau.rushUrl && duree('video') > 0)),",
     );
   });
 
   it('les métadonnées du post les conservent', () => {
     const meta = wizard.slice(wizard.indexOf('voiceUrl: persistableUrl(voiceUrl),'));
-    expect(meta.slice(0, 200)).toContain('sequenceVoiceUrls,');
+    // Même liste que le rendu (`voixSequencesRendu`) : le Calendrier ne doit pas
+    // rejouer une voix off là où l'avatar porte déjà la sienne.
+    expect(meta.slice(0, 400)).toContain('sequenceVoiceUrls: voixSequencesRendu,');
   });
 });
 

@@ -79,22 +79,17 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Garde-fou : generation bloquee trop longtemps → echec + remboursement.
-    const ageMs = Date.now() - new Date(gen.created_at).getTime();
-    if (ageMs > STALE_AFTER_MS) {
-      await failAndRefund(gen, "La generation a depasse le delai maximum (30 minutes).");
-      return NextResponse.json({
-        success: true,
-        data: {
-          generationId: gen.id,
-          status: 'failed',
-          error: 'La generation a depasse le delai maximum (30 minutes). Credits rembourses.',
-        },
-      });
-    }
-
+    // ⚠️ ON INTERROGE LE FOURNISSEUR AVANT LE GARDE STALE.
+    //
     // Le fournisseur de CETTE generation (`avatar_generations.provider`) :
     // HeyGen (defaut, inchange) ou D-ID. Meme forme de reponse, meme suite.
+    //
+    // L'ordre compte. Une scene REELLEMENT terminee chez le fournisseur, mais
+    // sondee plus de 30 min apres son lancement — parce que l'onglet a ete
+    // ferme puis rouvert plus tard — doit etre FINALISEE (re-hebergee), pas
+    // marquee `failed` et remboursee comme perdue. Le garde stale ne concerne
+    // donc QUE les generations encore en cours cote fournisseur, plus bas ;
+    // une scene `done` n'atteint jamais ce garde, quel que soit son age.
     const viaDid = gen.provider === FOURNISSEUR_DID;
     const remote = viaDid ? await lireScene(gen.provider_video_id) : await getVideoStatus(gen.provider_video_id);
 
@@ -113,6 +108,23 @@ export async function GET(req: NextRequest) {
     }
 
     if (remote.status !== 'completed' || !remote.videoUrl) {
+      // Toujours en cours cote fournisseur. C'est SEULEMENT ici, une fois le
+      // fournisseur consulte et la video confirmee ABSENTE, que le garde stale
+      // s'applique : une generation qui n'a jamais abouti et qui traine depuis
+      // plus de 30 min est consideree perdue → echec + remboursement.
+      const ageMs = Date.now() - new Date(gen.created_at).getTime();
+      if (ageMs > STALE_AFTER_MS) {
+        await failAndRefund(gen, 'La generation a depasse le delai maximum (30 minutes).');
+        if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, gen.id));
+        return NextResponse.json({
+          success: true,
+          data: {
+            generationId: gen.id,
+            status: 'failed',
+            error: `La generation a depasse le delai maximum (30 minutes).${gen.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
+          },
+        });
+      }
       // Toujours en cours — on met a jour l'etat intermediaire.
       if (gen.status !== 'processing') {
         await supabaseAdmin
