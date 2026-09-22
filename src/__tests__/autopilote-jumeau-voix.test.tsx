@@ -199,11 +199,12 @@ describe('Mon jumeau dans l’Autopilote — la voix posée est celle du moteur'
     await waitFor(() => expect(interrupteur().disabled).toBe(false));
     expect(sw.checked).toBe(false);
     // Ce qui est prêt ici, c'est la VOIX (narration) — pas « votre jumeau »,
-    // que l'Autopilote ne monte jamais à l'image ; la ligne suivante le dit.
+    // Ici la VOIX est prête. Le moteur vidéo du jumeau étant indisponible dans
+    // ce contexte, le bloc vidéo le dit honnêtement — sans rien promettre.
     const bloc = document.querySelector('[data-jumeau-autopilote]')!.textContent!;
     expect(bloc).toContain('Voix du jumeau prête pour la narration');
     expect(bloc).not.toContain('Votre jumeau est prêt');
-    expect(document.querySelector('[data-jumeau-autopilote-video]')!.textContent).toContain('jamais montée par l’Autopilote');
+    expect(document.querySelector('[data-jumeau-autopilote-video]')!.textContent).toContain('pas encore disponible');
     await act(async () => { fireEvent.click(interrupteur()); });
     await waitFor(() => expect(envois.length).toBeGreaterThan(0));
     const dernier = envois[envois.length - 1];
@@ -380,7 +381,7 @@ describe('Aucun identifiant fournisseur ne sort ; le moteur vidéo reste hors de
     expect(src).toMatch(/export interface JumeauPrive \{[^}]*providerVoiceId: string/);
   });
 
-  it('⚠️ 11. JUMEAU_MOTEUR_ACTIVE absent → moteur indisponible ; l’Autopilote et son cron ne touchent pas au moteur jumeau', () => {
+  it('⚠️ 11. le jumeau vidéo passe par la porte GATÉE (genererVideoJumeau), jamais par le flux NAVIGATEUR', () => {
     const sansDrapeau = { HEYGEN_API_KEY: 'h', ELEVENLABS_API_KEY: 'e' } as unknown as NodeJS.ProcessEnv;
     expect(moteurJumeauDisponible(sansDrapeau)).toBe(false);
     const sauvegarde = process.env.JUMEAU_MOTEUR_ACTIVE;
@@ -391,6 +392,14 @@ describe('Aucun identifiant fournisseur ne sort ; le moteur vidéo reste hors de
       if (sauvegarde !== undefined) process.env.JUMEAU_MOTEUR_ACTIVE = sauvegarde;
     }
 
+    // Le lot « jumeau dans l'Autopilote » a inversé l'ancienne règle : le
+    // montage de l'avatar EXISTE désormais côté serveur, sans navigateur. Ce
+    // qui reste vrai, et compte, c'est PAR OÙ il passe :
+    //   - le flux NAVIGATEUR (`genererEtAttendreVideoJumeau`, qui poll depuis
+    //     l'onglet) n'a rien à faire côté serveur : il reste banni ;
+    //   - la seule porte autorisée est `genererVideoJumeau`, la fonction GATÉE
+    //     (relit le jumeau, revérifie le moteur POUR le fournisseur, débite de
+    //     façon idempotente) — et elle vit dans le module async dédié.
     const fichiers: string[] = [];
     const parcourir = (dossier: string) => {
       for (const nom of readdirSync(dossier)) {
@@ -404,8 +413,16 @@ describe('Aucun identifiant fournisseur ne sort ; le moteur vidéo reste hors de
     expect(fichiers.length).toBeGreaterThan(5);
     for (const f of fichiers) {
       const src = readFileSync(f, 'utf8');
-      expect(src, f).not.toContain('moteur-jumeau');
+      // Le flux navigateur reste banni côté serveur.
       expect(src, f).not.toContain('genererEtAttendreVideoJumeau');
+      // Le moteur vidéo n'est touché QUE par le module async dédié (la porte
+      // gatée), jamais ailleurs dans l'Autopilote.
+      if (src.includes('moteur-jumeau')) {
+        expect(f).toContain('jumeau-async');
+      }
     }
+    // Et le module async passe bien par la fonction gatée.
+    const async = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/jumeau-async.ts'), 'utf8');
+    expect(async).toContain('genererVideoJumeau');
   });
 });

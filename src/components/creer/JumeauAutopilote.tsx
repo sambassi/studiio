@@ -30,6 +30,15 @@ export default function JumeauAutopilote(props: {
   onChange: (actif: boolean, voixId: string | null) => void;
   /** Les voix du compte (GET /api/voice/clone) ; `null` tant qu'elles ne sont pas relues. */
   voixCompte: Array<{ id: string; accountVoiceId?: string }> | null;
+  /**
+   * La VIDÉO du jumeau est-elle montée dans les montages (config.jumeauAvatar) ?
+   * Distinct de la voix : c'est l'avatar À L'IMAGE, généré côté serveur.
+   */
+  avatarActif?: boolean;
+  /** La colonne `jumeau_avatar` existe-t-elle (migration appliquée) ? */
+  jumeauReady?: boolean;
+  /** Active/désactive la vidéo du jumeau dans les montages. Absent : option masquée. */
+  onAvatarChange?: (actif: boolean) => void;
 }) {
   const [etat, setEtat] = useState<EtatJumeau | null | 'chargement'>('chargement');
   useEffect(() => {
@@ -46,6 +55,9 @@ export default function JumeauAutopilote(props: {
   const voixEnAttente = !!jumeau && props.voixCompte === null;
   const pret = !!jumeau && !!voixReliee;
   const voixId = voixReliee ? voixReliee.id : null;
+  // Le moteur VIDÉO du jumeau est-il disponible sur ce serveur POUR cet avatar ?
+  // (D-ID configuré + voix ElevenLabs — voir `moteurJumeauDisponiblePour`.)
+  const moteurVideo = !!etatLu?.moteurDisponible;
 
   return (
     <div data-jumeau-autopilote className="rounded-xl border border-white/10 bg-gray-900/60 p-4 space-y-3">
@@ -95,12 +107,47 @@ export default function JumeauAutopilote(props: {
           <div className="text-gray-400">
             Avec l’interrupteur, la narration de chaque vidéo produite par l’Autopilote est dite avec cette voix.
           </div>
-          <div className="flex items-start gap-1.5 text-gray-500" data-jumeau-autopilote-video>
-            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
-            <span>
-              L’image de votre avatar n’est jamais montée par l’Autopilote — pour une vidéo avec votre avatar parlant, utilisez Créer une vidéo.
-            </span>
-          </div>
+
+          {/* ── La VIDÉO du jumeau, montée dans les montages ─────────────── */}
+          {props.onAvatarChange && moteurVideo && props.jumeauReady && (
+            <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2.5 space-y-1.5" data-jumeau-autopilote-video="disponible">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  data-jumeau-autopilote-avatar
+                  aria-label="Monter la vidéo de mon jumeau"
+                  checked={!!props.avatarActif}
+                  onChange={(e) => props.onAvatarChange?.(e.target.checked)}
+                  className="h-4 w-4 accent-purple-500"
+                />
+                <span className="text-emerald-200 font-medium">Monter la vidéo de mon jumeau</span>
+              </label>
+              <div className="text-gray-400">
+                Votre avatar parlant (sur votre voix clonée) devient la séquence « Vidéo » des montages produits — « Produire maintenant » et les générations programmées, même page fermée.
+              </div>
+              <div className="text-gray-500">
+                Chaque montage génère alors un avatar (facturé en plus du rendu) et arrive dans le Calendrier quelques minutes après. En cas d’échec, le montage sort sans l’avatar et le signale.
+              </div>
+            </div>
+          )}
+          {props.onAvatarChange && moteurVideo && props.jumeauReady === false && (
+            <div className="flex items-start gap-1.5 text-gray-500" data-jumeau-autopilote-video="migration">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
+              <span>
+                La vidéo du jumeau est disponible sur le serveur, mais le réglage n’est pas encore enregistrable (migration <code>2026-09-23-autopilot-jumeau.sql</code> à appliquer).
+              </span>
+            </div>
+          )}
+          {!moteurVideo && (
+            <div className="flex items-start gap-1.5 text-gray-500" data-jumeau-autopilote-video="indisponible">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
+              <span>
+                {etatLu?.messageMoteur
+                  || 'La vidéo de votre avatar n’est pas disponible sur ce serveur pour le moment — la voix reste utilisable pour la narration.'}
+              </span>
+            </div>
+          )}
         </div>
       )}
       {etat !== 'chargement' && etat && !etat.pret && (

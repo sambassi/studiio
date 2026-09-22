@@ -297,8 +297,11 @@ const FAMILLES: Famille[] = [
     usage: 'vidéo générée par l avatar',
     bucket: 'media', cle: `${UTILISATEUR}/avatar/11111111-1111-4111-8111-000000000009.mp4`,
     type: 'video/mp4',
-    fichier: 'src/app/api/avatar/status/route.ts',
-    marqueur: '${userId}/avatar/${gen.id}.mp4',
+    // Le rapatriement (poll + re-hébergement) a été EXTRAIT dans un module
+    // partagé, pour que l'Autopilote (sans navigateur) fasse avancer la même
+    // génération. La forme de la clé vit désormais là.
+    fichier: 'src/lib/avatar/statut.ts',
+    marqueur: '${userId}/avatar/${g.id}.mp4',
   },
   {
     usage: 'rendu serveur — le montage final',

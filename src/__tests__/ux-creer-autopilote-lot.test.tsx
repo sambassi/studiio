@@ -222,22 +222,28 @@ describe('4. AfficheIA', () => {
 
 // ── 5. Mon jumeau dans l'Autopilote ─────────────────────────────────────────
 describe('5. JumeauAutopilote', () => {
-  it('jumeau prêt : interrupteur actif, la voix du jumeau est posée par son identifiant Studiio (correspondance exacte de compte, jamais par le nom), la vidéo est dite non montée', async () => {
+  it('jumeau prêt : la voix est posée par son identifiant Studiio (exact, jamais par le nom) et, moteur vidéo dispo + migration, l interrupteur « Monter la vidéo de mon jumeau » apparaît', async () => {
     jumeauServeur = { pret: true, motif: null, message: null, moteurDisponible: true, messageMoteur: null,
       jumeau: { avatar: { id: 'a', version: 3, nom: 'Bassi', valideLe: '2026-09-01' }, voix: { id: 'voix-1', nom: 'Ma voix' }, prononciations: 0 } };
     const onChange = vi.fn();
+    const onAvatarChange = vi.fn();
     const voixCompte = [
       { id: 'elevenlabs-ZZZ', accountVoiceId: 'voix-autre' },
       { id: 'elevenlabs-AAA', accountVoiceId: 'voix-1' },
     ];
-    render(<JumeauAutopilote actif={false} onChange={onChange} voixCompte={voixCompte} />);
+    render(<JumeauAutopilote actif={false} onChange={onChange} onAvatarChange={onAvatarChange} avatarActif={false} jumeauReady voixCompte={voixCompte} />);
     await waitFor(() => expect(document.querySelector('[data-jumeau-autopilote-etat="pret"]')).not.toBeNull());
     const sw = document.querySelector('[data-jumeau-autopilote-interrupteur]') as HTMLInputElement;
     expect(sw.disabled).toBe(false);
     fireEvent.click(sw);
     // L'identifiant du MOTEUR (`elevenlabs-…`), jamais l'identifiant de compte du contrat Jumeau.
     expect(onChange).toHaveBeenCalledWith(true, 'elevenlabs-AAA');
-    expect(document.querySelector('[data-jumeau-autopilote-video]')?.textContent).toContain('Créer une vidéo');
+    // Moteur vidéo disponible : l'interrupteur de montage de l'avatar apparaît et s'active.
+    const avatar = document.querySelector('[data-jumeau-autopilote-avatar]') as HTMLInputElement;
+    expect(avatar).not.toBeNull();
+    fireEvent.click(avatar);
+    expect(onAvatarChange).toHaveBeenCalledWith(true);
+    expect(document.querySelector('[data-jumeau-autopilote-video="disponible"]')?.textContent).toContain('Monter la vidéo de mon jumeau');
     expect((document.querySelector('[data-jumeau-autopilote-lien]') as HTMLAnchorElement).getAttribute('href')).toBe('/dashboard/avatar');
   });
 

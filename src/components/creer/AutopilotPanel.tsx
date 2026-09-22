@@ -476,6 +476,13 @@ export default function AutopilotPanel({
   /** La colonne `brief` existe-t-elle ? Voir `briefReady` dans la route. */
   const [briefReady, setBriefReady] = useState(true);
   /**
+   * La colonne `jumeau_avatar` existe-t-elle ? Voir `jumeauReady` dans la route.
+   * Défaut `true` (optimiste) : l'interrupteur vidéo du jumeau ne s'affiche que
+   * si, EN PLUS, le moteur vidéo est disponible — donc jamais une option qui ne
+   * pourrait pas s'enregistrer.
+   */
+  const [jumeauReady, setJumeauReady] = useState(true);
+  /**
    * Le brief tel qu'il a été ENREGISTRÉ — pour n'envoyer un PUT à la perte
    * du focus que si quelque chose a changé, pas à chaque passage de champ.
    */
@@ -529,6 +536,7 @@ export default function AutopilotPanel({
         setHeurePublicationReady(data?.publishTimeReady !== false);
         setDateDebutReady(data?.startDateReady !== false);
         setBriefReady(data?.briefReady !== false);
+        setJumeauReady(data?.jumeauReady !== false);
         if (data?.config) {
           const propre = sanitizeConfig(data.config);
           setConfig(propre);
@@ -621,6 +629,7 @@ export default function AutopilotPanel({
       if (typeof data.publishTimeReady === 'boolean') setHeurePublicationReady(data.publishTimeReady);
       if (typeof data.startDateReady === 'boolean') setDateDebutReady(data.startDateReady);
       if (typeof data.briefReady === 'boolean') setBriefReady(data.briefReady);
+      if (typeof data.jumeauReady === 'boolean') setJumeauReady(data.jumeauReady);
       setBriefEnregistre(JSON.stringify(suivant.brief));
       setNotice('Enregistré.');
     } catch (err) {
@@ -1568,10 +1577,11 @@ export default function AutopilotPanel({
           </div>
 
 {/* ── Mon jumeau ──────────────────────────────────────────────────
-              Le meme etat serveur que dans Creer une video. L'interrupteur
-              branche ce que le cron sait faire : la VOIX du jumeau (voiceEnabled
-              + voiceId) — la video de l'avatar reste un chemin de Creer une video,
-              et le bloc le dit. */}
+              Le meme etat serveur que dans Creer une video. DEUX interrupteurs :
+              la VOIX du jumeau (narration : voiceEnabled + voiceId) et, quand le
+              moteur video est disponible, la VIDEO du jumeau montee dans les
+              montages (jumeauAvatar) — « Produire maintenant » ET le cron
+              programme, sans navigateur ouvert. */}
           <JumeauAutopilote
             actif={config.voiceEnabled && !!voixDeConfig(voixClonees, config.voiceId)}
             voixCompte={voixChargees ? voixClonees : null}
@@ -1580,6 +1590,9 @@ export default function AutopilotPanel({
               if (actif && voixId) enregistrer({ voiceEnabled: true, voiceId: voixId });
               else enregistrer({ voiceEnabled: false });
             }}
+            avatarActif={config.jumeauAvatar}
+            jumeauReady={jumeauReady}
+            onAvatarChange={(actif) => enregistrer({ jumeauAvatar: actif })}
           />
 
 {/* ── Voix off clonée ──────────────────────────────────────────── */}

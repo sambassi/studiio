@@ -502,6 +502,25 @@ export interface AutopilotConfig {
    */
   voiceEnabled: boolean;
 
+  /**
+   * Monter la VIDÉO de mon jumeau (avatar animé sur ma voix clonée) dans les
+   * montages produits — « Produire maintenant » ET le cron programmé.
+   *
+   * ⚠️ FAUX PAR DÉFAUT, et ce n'est pas une prudence de principe : chaque
+   * montage avec jumeau lance une génération D-ID facturée (AVATAR_VIDEO_COST)
+   * en plus du rendu. On ne l'active jamais à la place de l'utilisateur. Une
+   * colonne absente (migration pas encore appliquée) vaut `undefined` → faux :
+   * aucune configuration existante ne se met à générer un avatar sans l'avoir
+   * demandé.
+   *
+   * Vrai : la vidéo du jumeau tient la séquence « Vidéo » et porte la voix
+   * clonée (seule voix du montage) ; le rush n'est pas utilisé pour ces
+   * montages. La disponibilité RÉELLE du moteur (D-ID configuré) est
+   * revérifiée au lancement — un drapeau à vrai ne force jamais une génération
+   * que le serveur ne sait pas produire.
+   */
+  jumeauAvatar: boolean;
+
   // ── L'identité CONSTANTE ────────────────────────────────────────────────
   //
   // ⚠️ CE BLOC EST CE QUI NE VARIE PAS. L'affiche, les textes et le rush
@@ -605,6 +624,8 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   // Aucune date de début : dès le prochain passage, comme avant.
   startDate: null,
   voiceEnabled: false,
+  // Jumeau vidéo désactivé : aucune génération D-ID facturée sans demande.
+  jumeauAvatar: false,
   cardGradientStart: DEFAULT_BRANDING.cardGradientStart,
   cardGradientEnd: DEFAULT_BRANDING.cardGradientEnd,
   titleColor: DEFAULT_BRANDING.titleColor,
@@ -851,6 +872,10 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     // pas encore appliquée) vaut `undefined`, donc « pas de voix », donc
     // aucun appel facturé.
     voiceEnabled: o.voiceEnabled === true,
+    // `=== true` : colonne absente (migration pas encore appliquée) → faux,
+    // donc aucune génération d'avatar facturée sans que l'utilisateur l'ait
+    // demandé. Même politique que `voiceEnabled`.
+    jumeauAvatar: o.jumeauAvatar === true,
 
     // ── L'identité constante ─────────────────────────────────────────────
     cardGradientStart: sanitizeHexColor(o.cardGradientStart, DEFAULT_BRANDING.cardGradientStart),
