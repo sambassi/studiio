@@ -618,6 +618,9 @@ export default function InfographiePage() {
             console.warn('[Export] Montage video URL is null — upload may have failed');
           }
 
+          // Id du post de CE lot : la ligne `videos` créée juste après le
+          // désigne (`post_id`), et le serveur pose `scheduled_posts.video_id`.
+          let batchPostId: string | null = null;
           try {
             const postRes = await fetch('/api/posts', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -644,6 +647,7 @@ export default function InfographiePage() {
               const createdId = postData.post?.id || postData.data?.id || null;
               console.log('[Export] Created post ID:', createdId);
               if (createdId) {
+                batchPostId = createdId;
                 allCreatedPostIds.push(createdId);
                 if (b === 0) firstCreatedPostId = createdId;
               }
@@ -659,6 +663,7 @@ export default function InfographiePage() {
                 title: bTitle,
                 format: isReel ? 'reel' : 'tv',
                 type: 'infographic',
+                ...(batchPostId ? { post_id: batchPostId } : {}),
                 status: renderedVideoUrl ? 'completed' : 'draft',
                 video_url: renderedVideoUrl || null,
                 thumbnail_url: bMediaUrl || null,
