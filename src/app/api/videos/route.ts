@@ -4,6 +4,7 @@ import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { ApiResponse, PaginatedResponse } from '@/lib/types/api';
 import { parsePostVideoPayload, VIDEO_POST_FORCED_STATUS } from '@/lib/videos/post-payload';
 import { resolveMontageUrl } from '@/lib/videos/playable-url';
+import { linkedPostIdByVideo } from '@/lib/videos/editable-post';
 
 type LibraryItem = {
   id: string;
@@ -15,6 +16,8 @@ type LibraryItem = {
   video_url?: string | null;
   thumbnail_url?: string | null;
   metadata?: Record<string, any> | null;
+  /** Vidéos seulement : le post qui la rend modifiable (`scheduled_posts.video_id`). */
+  linked_post_id?: string | null;
 };
 
 export async function GET(req: NextRequest): Promise<NextResponse<PaginatedResponse<any>>> {
@@ -48,6 +51,10 @@ export async function GET(req: NextRequest): Promise<NextResponse<PaginatedRespo
     if (videosRes.error) throw videosRes.error;
     if (postsRes.error) throw postsRes.error;
 
+    // Calculé sur les posts DÉJÀ lus pour cet utilisateur : aucun post d'autrui
+    // ne peut s'y glisser, et aucune requête de plus.
+    const linkedPostIds = linkedPostIdByVideo(postsRes.data || []);
+
     const videos: LibraryItem[] = (videosRes.data || []).map((v: any) => ({
       id: v.id,
       title: v.title,
@@ -61,6 +68,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<PaginatedRespo
       video_url: resolveMontageUrl(v),
       thumbnail_url: v.thumbnail_url ?? null,
       metadata: v.metadata ?? null,
+      linked_post_id: linkedPostIds.get(v.id) ?? null,
     }));
 
     const posts: LibraryItem[] = (postsRes.data || []).map((p: any) => {
@@ -149,6 +157,22 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse<a
       .single();
 
     if (error) throw error;
+
+    // Contenus neufs : l'appelant qui vient de créer le post jumeau le désigne
+    // par `post_id` (hors liste blanche, jamais écrit sur `videos`). Le lien est
+    // posé côté serveur, owner-scopé, et seulement sur un post encore NON relié
+    // — un post existant n'est jamais re-pointé. Un échec ici laisse la vidéo
+    // créée, comme avant : le lien manque, rien n'est perdu.
+    const postId = (body as Record<string, unknown>).post_id;
+    if (typeof postId === 'string' && postId && data?.id) {
+      const { error: linkError } = await supabase
+        .from('scheduled_posts')
+        .update({ video_id: data.id })
+        .eq('id', postId)
+        .eq('user_id', session.user.id)
+        .is('video_id', null);
+      if (linkError) console.error('Liaison post → vidéo échouée:', linkError);
+    }
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

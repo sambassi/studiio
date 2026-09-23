@@ -112,6 +112,14 @@ function construire(table: string) {
         ? { data: rows[0], error: null }
         : { data: null, error: { code: 'PGRST116', message: `JSON object requested, multiple (or no) rows returned (${rows.length})` } };
     },
+    async maybeSingle() {
+      // PostgREST : 0 ligne → `data: null` SANS erreur ; plusieurs → PGRST116.
+      const r = await exec();
+      if (r.error) return { data: null, error: r.error };
+      const rows = r.data ?? [];
+      if (rows.length > 1) return { data: null, error: { code: 'PGRST116', message: `multiple rows returned (${rows.length})` } };
+      return { data: rows[0] ?? null, error: null };
+    },
     then(resolve: (v: unknown) => void, reject: (e: unknown) => void) { return exec().then(resolve, reject); },
   };
   return api;

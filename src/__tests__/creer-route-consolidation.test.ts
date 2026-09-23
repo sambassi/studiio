@@ -86,9 +86,11 @@ describe('tous les liens d’édition du Calendrier passent par le parcours guid
     expect(audio.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('le bouton « Modifier » de la Bibliothèque passe par `libraryEditHref`', () => {
-    // Le partage post / vidéo est testé dans `bibliotheque-modifier-routage`.
-    expect(bibliotheque).toContain('href={libraryEditHref(video)}');
+  it('le bouton « Modifier » de la Bibliothèque passe par `libraryEditAction`', () => {
+    // Le partage post / vidéo reliée / vidéo seule est testé dans
+    // `bibliotheque-modifier-routage` et `bibliotheque-video-post-modifiable`.
+    expect(bibliotheque).toContain('libraryEditAction(video)');
+    expect(bibliotheque).not.toContain('/dashboard/creer-avance');
     expect(bibliotheque).not.toContain('/dashboard/creer-avance?id=${video.id}');
     expect(bibliotheque).not.toContain('/dashboard/creator?id=');
   });
