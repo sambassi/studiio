@@ -74,7 +74,7 @@ import {
 import SmartGuides from '@/components/creer/SmartGuides';
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
-  duplicateCards, duplicateBoxes, maxCards,
+  duplicateCards, duplicateBoxes, maxCards, updateCard,
   groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, newElementId, MIN_GROUP,
   type CardGroup,
 } from '@/lib/creer/selection';
@@ -161,6 +161,7 @@ import {
   politiqueAffichable, MENTION_AUCUN_CREDIT,
 } from '@/lib/facturation/libelles';
 import JumeauPanel from '@/components/creer/JumeauPanel';
+import CartesEditeur from '@/components/creer/CartesEditeur';
 import {
   gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, type JumeauMode,
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
@@ -10116,7 +10117,8 @@ export default function AssistantWizard() {
                 <div>
                   <h3 className="font-semibold mb-1">Votre contenu</h3>
                   <p className="text-sm text-gray-400">
-                    Relancez si le résultat ne vous convient pas.
+                    Ajustez le texte des cartes ici — l&apos;aperçu suit. Relancez
+                    si le résultat ne vous convient pas.
                   </p>
                 </div>
 
@@ -10136,28 +10138,22 @@ export default function AssistantWizard() {
                       <div className="text-xs text-gray-400 mt-1">{generated.subtitle}</div>
                     </div>
 
-                    <div className="space-y-1.5">
-                      {(activeOrder.includes('cards') ? generated.cards : []).map((c) => (
-                        <div
-                          key={c.id}
-                          className="flex items-start gap-3 rounded-xl bg-gray-900/60 p-3"
-                        >
-                          <CardIcon name={c.icon} size={16} color="#C4B5FD" className="" />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium truncate">{c.title}</div>
-                            <div className="text-xs text-gray-500 mt-0.5">{c.description}</div>
-                          </div>
-                          {c.value && (
-                            <span
-                              className="text-xs font-bold flex-shrink-0"
-                              style={{ color: gradEnd }}
-                            >
-                              {c.value}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+                    {/* ── CARTES : texte modifiable (portage PR 1) ─────────────
+                        Titre, valeur, description des cartes EXISTANTES. La mise
+                        à jour passe par l'identifiant (`updateCard`) : case du
+                        mode libre, groupes et carte d'origine d'un post suivent.
+                        Ni ajout ni suppression ici. La voix des cartes se
+                        réécrit d'elle-même (effet `buildAutoFillText`), et un
+                        audio déjà généré est alors signalé périmé. */}
+                    {activeOrder.includes('cards') && (
+                      <CartesEditeur
+                        cards={generated.cards}
+                        couleurValeur={gradEnd}
+                        onChange={(id, patch) =>
+                          setGenerated((g) => (g ? { ...g, cards: updateCard(g.cards, id, patch) } : g))
+                        }
+                      />
+                    )}
 
                     <div className="rounded-xl bg-gray-900/60 p-3">
                       <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
