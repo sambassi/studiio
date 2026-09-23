@@ -235,10 +235,16 @@ export function cartesPourEnregistrement(
 
     // Carte RELUE : l'original fait foi pour tout ce que l'ecran ne regle pas.
     const suivaitAccent = origine.color === undefined || origine.color === accentCharge;
+    // Icone CHANGEE depuis l'ecran (choix lucide, PR 3) : l'editeur avance ne
+    // dessine un SVG que si `iconType === 'svg'`, et afficherait sinon le nom
+    // (« Rocket ») en texte — un `iconType: 'emoji'` d'origine survivait au
+    // spread. Inchangee : la carte d'origine traverse telle quelle.
+    const iconeChangee = c.icon !== origine.emoji;
     return {
       ...origine,
       ...reglesParLEcran,
       ...(suivaitAccent ? { color: accent } : null),
+      ...(iconeChangee ? { iconType: 'svg' } : null),
     };
   });
 }

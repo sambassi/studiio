@@ -26,6 +26,7 @@ import { setCardIcon } from '../lib/creer/selection';
 import { ALL_LUCIDE_NAMES } from '../lib/icons/library';
 import { CARD_ICON_MAP } from '../components/ui/CardIcon';
 import CartesEditeur from '../components/creer/CartesEditeur';
+import { indexerCartesOrigine, cartesPourEnregistrement } from '../lib/creer/postMetadata/cartes';
 
 const CARTES = [
   { id: 'c-1', icon: 'Heart', title: 'Alpha', description: 'da', value: '1' },
@@ -48,6 +49,25 @@ describe('setCardIcon — logique pure', () => {
   it('identifiant inconnu ou icône identique : même tableau', () => {
     expect(setCardIcon(CARTES, 'absente', 'Rocket')).toBe(CARTES);
     expect(setCardIcon(CARTES, 'c-1', 'Heart')).toBe(CARTES);
+  });
+});
+
+describe('enregistrement — une icône CHOISIE reste une icône dans l’éditeur avancé', () => {
+  it('⚠️ carte relue dont l’icône change : iconType passe à « svg » (sinon creer-avance affiche le nom en texte)', () => {
+    const origines = indexerCartesOrigine({ cards: [
+      { id: 'k-1', emoji: '🔥', iconType: 'emoji', label: 'A' },
+      { id: 'k-2', emoji: 'Heart', label: 'B' },
+    ] });
+    const out = cartesPourEnregistrement(
+      [
+        { id: 'k-1', icon: 'Rocket', title: 'A', value: '', description: '' },
+        { id: 'k-2', icon: 'Heart', title: 'B', value: '', description: '' },
+      ],
+      origines, '#A', '#A',
+    );
+    expect(out[0]).toMatchObject({ emoji: 'Rocket', iconType: 'svg' });
+    // Icône INCHANGÉE : la carte d'origine traverse telle quelle (pas d'iconType ajouté).
+    expect('iconType' in out[1]).toBe(false);
   });
 });
 
