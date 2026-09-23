@@ -1,22 +1,22 @@
 const STUDIIO_KNOWLEDGE = `
 === FONCTIONNALITÉS STUDIIO ===
 
-1. CRÉATION (/dashboard/creer — parcours guidé ; les réglages détaillés ci-dessous vivent sur /dashboard/creer-avance)
-- Barre du haut : Thème, Modèles, Éléments, Texte, Cartes, Médias, Audio, Paramètres
-- Thème du contenu : 20+ options (Sommeil&Sport, Nutrition&Danse, Énergie&Cardio, Beauté, Finance, Coding, Crypto, Gaming, Food, Animaux, Auto, Immobilier, Éducation, Astrologie, Motivation, Personnalisé)
-- IA génère 5 cartes d'info basées sur le thème choisi
-- Personnalisation : polices (Anton, Syne, Bebas Neue, Poppins, Space Grotesk, Montserrat, Oswald, Playfair Display, Raleway, Roboto Condensed, Lora, Dancing Script, Permanent Marker), couleurs (theme + accent/gradient), typo (letter-spacing, line-height, bold, italic)
-- Double-clic sur un élément (titre, carte, CTA, overlay, logo) = panneau d'édition flottant avec ColorWheel
-- Rush vidéo uploadable + overlay texte personnalisable
-- Photo d'affiche : Pexels ou custom
+1. CRÉATION (/dashboard/creer — parcours guidé en 5 étapes : Sujet, Style, Audio, Contenu, Envoi)
+- Sujet : thème du contenu (20+ options : Sommeil&Sport, Nutrition&Danse, Énergie&Cardio, Beauté, Finance, Coding, Crypto, Gaming, Food, Animaux, Auto, Immobilier, Éducation, Astrologie, Motivation, Personnalisé) ou sujet libre ; option Jumeau numérique
+- L'IA génère le titre, les cartes d'info et le CTA à partir du sujet
+- Style : couleurs (thème + accent/dégradé), polices (Anton, Syne, Bebas Neue, Poppins, Space Grotesk, Montserrat, Oswald, Playfair Display, Raleway, Roboto Condensed, Lora, Dancing Script, Permanent Marker), typographie (espacement, interligne, gras, italique)
+- Aperçu à droite, onglets Titre / Cartes / Vidéo / CTA / Tout ; titre, CTA et cartes se déplacent et se redimensionnent directement dans l'aperçu
+- Rush vidéo uploadable ; photo d'affiche : Pexels, photo perso ou affiche IA
+- Modifier un contenu existant : bouton « Modifier » du Calendrier ou de la Bibliothèque (ouvre Créer sur ce contenu)
+- Pour des réglages très fins, un éditeur avancé reste accessible depuis Créer : lien « Ouvrir l'éditeur avancé »
 
-2. AUDIO (panneau Audio dans /creer)
+2. AUDIO (étape Audio de /dashboard/creer)
 - Upload musique (mp3, wav, m4a)
-- Voix off : TTS (synthèse vocale navigateur) ou upload audio perso ou enregistrement direct micro
+- Voix off : synthèse vocale par séquence, upload audio perso, enregistrement micro, ou voix clonée
 - Durées séquences : Titre (~4s), Cartes (~6s), Vidéo rush (variable), CTA (~4s)
 
-3. EXPORT
-- Bouton vertical à droite : 3 destinations (Calendrier, Bureau, Les deux)
+3. EXPORT (étape Envoi de /dashboard/creer)
+- Destinations : Aperçu, Bureau (téléchargement), Calendrier
 - Coût : 25 crédits par montage
 - Batch x1/x3/x5/x10 pour générer plusieurs variations
 
