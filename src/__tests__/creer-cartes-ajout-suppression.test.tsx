@@ -55,7 +55,10 @@ describe('B1 — identifiants de carte PERSISTANTS', () => {
   });
 
   it('cartesPourEnregistrement ÉCRIT l’id de chaque carte — relue comme neuve — sans perdre les champs inconnus', () => {
-    const origines = indexerCartesOrigine({ cards: [{ label: 'A', color: '#111', position: { x: 1, y: 2 }, inconnu: 'garde' }] });
+    // Icône d'origine identique à l'écran : on vérifie l'id et les champs
+    // inconnus, pas le changement d'icône (qui pose `iconType: 'svg'`, cf.
+    // creer-icone-carte).
+    const origines = indexerCartesOrigine({ cards: [{ emoji: 'Heart', label: 'A', color: '#111', position: { x: 1, y: 2 }, inconnu: 'garde' }] });
     const out = cartesPourEnregistrement(
       [
         { id: 'card-lu-0', icon: 'Heart', title: 'A', value: '1', description: 'd' },

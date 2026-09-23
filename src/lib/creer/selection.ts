@@ -8,6 +8,7 @@
  */
 
 import type { CardBox, Pos } from './dragPosition';
+import { ALL_LUCIDE_NAMES } from '../icons/library';
 
 /**
  * Etat suivant de la selection apres un appui sur `id`.
@@ -201,6 +202,29 @@ export function removeBox(boxes: Record<string, CardBox>, id: string): Record<st
   if (!(id in boxes)) return boxes;
   const out = { ...boxes };
   delete out[id];
+  return out;
+}
+
+/** Noms acceptes pour l'icone d'une carte : la bibliotheque lucide, rien d'autre. */
+const ICONES_CARTE = new Set(ALL_LUCIDE_NAMES);
+
+/**
+ * Change l'ICONE d'une carte existante (portage cartes PR 3).
+ *
+ * - SVG LUCIDE UNIQUEMENT : seul un nom de `ICON_LIBRARY` est accepte (la
+ *   grille `IconPicker` n'en propose pas d'autre) — un emoji, un nom inconnu
+ *   ou vide ne change rien. Regle absolue du depot : jamais d'emoji.
+ * - l'identifiant, le texte et tout le reste de la carte sont conserves ;
+ * - identifiant inconnu ou icone identique : le MEME tableau.
+ *
+ * Distinct de `updateCard`, qui ne touche volontairement jamais l'icone.
+ */
+export function setCardIcon<T extends Identified & { icon: string }>(cards: T[], id: string, icon: string): T[] {
+  if (!ICONES_CARTE.has(icon)) return cards;
+  const index = cards.findIndex((c) => c.id === id);
+  if (index < 0 || cards[index].icon === icon) return cards;
+  const out = cards.slice();
+  out[index] = { ...cards[index], icon };
   return out;
 }
 
