@@ -38,6 +38,7 @@
 import { DRAFT_VERSION, type Draft } from '../draft';
 import { resoudreTextes } from '../textesCanoniques';
 import { fromPostMetadata } from './from-post';
+import { idsCartesLues } from './cartes';
 import type { CanonicalDesign } from './types';
 
 /** Le post tel que le serveur le rend. */
@@ -82,16 +83,15 @@ const FORMATS: Array<{ w: number; h: number; nom: string }> = [
 /**
  * Identité des cartes relues.
  *
- * La metadata enregistrée ne porte pas l'`id` des cartes (le wizard écrit
- * `emoji`/`label`/`value`/`description`). Un identifiant est donc recréé à la
- * lecture : il sert aux groupes et au réordonnancement DANS la session, et
- * repartira dans la metadata sous la même forme qu'avant.
+ * L'`id` enregistré dans `metadata.cards` fait foi ; un post qui n'en porte
+ * pas reçoit `card-lu-N`. La dérivation vit dans `postMetadata/cartes.ts`
+ * (`idsCartesLues`), PARTAGÉE avec l'enregistrement : deux calculs
+ * divergents recolleraient une carte sur une autre, ou un groupe sur la
+ * mauvaise carte.
  *
  * Sans `Date.now()` ni aléa : deux lectures du même post donnent les mêmes
  * identifiants, ce qui rend la traduction reproductible et testable.
  */
-const idCarte = (index: number) => `card-lu-${index}`;
-
 /** Le format nommé correspondant aux dimensions, ou `undefined`. */
 function formatDepuis(videoSize: unknown): string | undefined {
   if (!estObjet(videoSize)) return undefined;
@@ -137,6 +137,7 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // vaut `null` seulement si rien ne la portait : `''` reste une extinction
   // volontaire, jamais un defaut.
   const textes = resoudreTextes(post?.metadata);
+  const idsLus = Array.isArray(cartesLues) ? idsCartesLues(cartesLues) : [];
   draft.generated = {
     title: typeof post?.title === 'string' ? post.title : '',
     subtitle: typeof presence(meta, 'subtitle') === 'string' ? (meta.subtitle as string) : '',
@@ -146,7 +147,7 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
       ? cartesLues.map((c, i) => {
           const carte = estObjet(c) ? c : {};
           return {
-            id: idCarte(i),
+            id: idsLus[i],
             icon: typeof carte.emoji === 'string' ? carte.emoji : '',
             title: typeof carte.label === 'string' ? carte.label : '',
             value: typeof carte.value === 'string' ? carte.value : '',

@@ -166,6 +166,12 @@ export interface ValeursWizard {
   audioKeyframes?: unknown;
   cardGroups?: unknown[];
   hasAudio?: boolean;
+  /**
+   * `design.cardCustomIcons` REALIGNE sur les cartes de l'ecran
+   * (`iconesPersoRealignees`). Envoye seulement s'il change — c'est-a-dire
+   * quand une carte a ete ajoutee, supprimee ou deplacee.
+   */
+  cardCustomIcons?: Record<string, string>;
 }
 
 /**
@@ -221,6 +227,10 @@ export function metadataPourEnregistrement(
   designChange = poserSiChange(design, 'gradientColor2', valeurs.gradientColor2, ref.gradientColor2)
     || designChange;
   designChange = poserSiChange(design, 'gradientOpacity', valeurs.gradientOpacity, ref.gradientOpacity)
+    || designChange;
+  // Rangees par POSITION : realignees par l'appelant, posees seulement si elles
+  // ont bouge. Le reste de `design` part de l'existant (`designBase`).
+  designChange = poserSiChange(design, 'cardCustomIcons', valeurs.cardCustomIcons, ref.cardCustomIcons)
     || designChange;
 
   // `positions` est lui-meme imbrique : meme regle, un cran plus bas. Ecraser

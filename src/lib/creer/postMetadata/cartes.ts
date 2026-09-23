@@ -33,11 +33,14 @@
  *
  *   1. APPARIEMENT PAR `id`, JAMAIS PAR INDEX. Une suppression, un ajout ou un
  *      reordonnancement decalent les index : apparier par rang recollerait la
- *      `position` d'une carte sur une autre. Les identifiants relus sont
- *      deterministes (`to-wizard.ts`, `card-lu-N`) et survivent a
- *      l'hydratation, ce qui rend l'identite fiable.
- *   2. UNE CARTE NEUVE GARDE LE COMPORTEMENT ACTUEL, mot pour mot. La creation
- *      est le parcours majoritaire : elle ne doit rien voir changer.
+ *      `position` d'une carte sur une autre.
+ *   2. L'`id` EST PERSISTE. Chaque carte ecrite porte son `id` (`idsCartesLues`
+ *      le relit, repli `card-lu-N` pour les posts qui n'en ont pas). Sans cela,
+ *      la relecture renumerotait les cartes par POSITION alors que
+ *      `cardGroups` gardait les identifiants de la session : apres une
+ *      suppression, un groupe designait une AUTRE carte. Les lecteurs de
+ *      `metadata.cards` (Calendrier, compositeur, rendu serveur, editeur
+ *      avance) ignorent cette cle, ou la relisent (`c.id || …`).
  *   3. L'ACCENT NE REPEINT QUE CE QUI LE SUIVAIT DEJA. Un post de l'Assistant
  *      a ses cartes a la couleur d'accent et doit continuer de suivre le
  *      selecteur ; un post de l'editeur avance a des couleurs PROPRES, que
@@ -59,15 +62,28 @@ export interface CarteEcran {
 const estObjet = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
-/**
- * L'identifiant que `to-wizard` donne a la carte de rang `index`.
- *
- * Duplique volontairement la convention plutot que de l'importer : `to-wizard`
- * importe le resolveur et le brouillon, et le faire dependre d'ici creerait un
- * couplage inutile entre lecture et ecriture. La constante est figee par le
- * test `« l'index d'origine est retrouve »`.
- */
+/** Repli pour une carte relue SANS `id` enregistre (posts anterieurs). */
 const ID_CARTE_LUE = (index: number) => `card-lu-${index}`;
+
+/**
+ * Les identifiants des cartes RELUES — LA source unique, partagee par
+ * `to-wizard` (l'ecran) et `indexerCartesOrigine` (l'enregistrement). Deux
+ * derivations divergentes recolleraient une carte sur une autre.
+ *
+ * - l'`id` enregistre fait foi (chaine non vide, pas deja pris) ;
+ * - sinon `card-lu-N`, le repli historique — rendu unique s'il est deja pris.
+ */
+export function idsCartesLues(cartes: readonly unknown[]): string[] {
+  const vus = new Set<string>();
+  return cartes.map((carte, i) => {
+    const enregistre = estObjet(carte) && typeof carte.id === 'string' && carte.id ? carte.id : null;
+    let id = enregistre && !vus.has(enregistre) ? enregistre : ID_CARTE_LUE(i);
+    let n = 1;
+    while (vus.has(id)) { id = `${ID_CARTE_LUE(i)}-${n}`; n += 1; }
+    vus.add(id);
+    return id;
+  });
+}
 
 /**
  * Table `id de l'ecran -> carte D'ORIGINE`, batie a l'hydratation.
@@ -80,10 +96,55 @@ export function indexerCartesOrigine(metadata: unknown): ReadonlyMap<string, Rec
   if (!estObjet(metadata)) return table;
   const cartes = metadata.cards;
   if (!Array.isArray(cartes)) return table;
+  const ids = idsCartesLues(cartes);
   cartes.forEach((carte, i) => {
-    if (estObjet(carte)) table.set(ID_CARTE_LUE(i), carte);
+    if (estObjet(carte)) table.set(ids[i], carte);
   });
   return table;
+}
+
+/**
+ * Table `id de l'ecran -> RANG d'origine`, batie a l'hydratation.
+ *
+ * Sert aux donnees rangees par POSITION dans la metadata — aujourd'hui
+ * `design.cardCustomIcons` (`{'0': url}`), lu ainsi par le Calendrier.
+ */
+export function indexerRangsOrigine(metadata: unknown): ReadonlyMap<string, number> {
+  const table = new Map<string, number>();
+  if (!estObjet(metadata) || !Array.isArray(metadata.cards)) return table;
+  idsCartesLues(metadata.cards).forEach((id, i) => table.set(id, i));
+  return table;
+}
+
+/**
+ * `design.cardCustomIcons`, REALIGNE sur les cartes de l'ecran.
+ *
+ * L'objet est range par POSITION (`{'0': url, '1': url}`) : supprimer ou
+ * inserer une carte decalait les icones sur la carte voisine. Chaque icone
+ * suit desormais SA carte (retrouvee par son rang d'origine) :
+ * - carte supprimee → son icone disparait ;
+ * - carte neuve → aucune icone ;
+ * - cle NON numerique (ancien format de l'editeur avance) → gardee telle quelle.
+ *
+ * `undefined` s'il n'y avait pas d'icones : rien a envoyer, rien a creer.
+ */
+export function iconesPersoRealignees(
+  icones: unknown,
+  cartes: readonly { id: string }[],
+  rangsOrigine: ReadonlyMap<string, number>,
+): Record<string, string> | undefined {
+  if (!estObjet(icones)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [cle, valeur] of Object.entries(icones)) {
+    if (!/^\d+$/.test(cle) && typeof valeur === 'string') out[cle] = valeur;
+  }
+  cartes.forEach((c, j) => {
+    const rang = rangsOrigine.get(c.id);
+    if (rang === undefined) return;
+    const url = icones[String(rang)];
+    if (typeof url === 'string') out[String(j)] = url;
+  });
+  return out;
 }
 
 /**
@@ -104,6 +165,8 @@ export function cartesPourEnregistrement(
 ): Record<string, unknown>[] {
   return cartes.map((c) => {
     const reglesParLEcran = {
+      // L'identifiant PERSISTE : voir la regle 2 en tete de module.
+      id: c.id,
       emoji: c.icon,
       label: c.title,
       value: c.value,
