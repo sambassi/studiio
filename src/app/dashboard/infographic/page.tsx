@@ -726,15 +726,25 @@ export default function InfographiePage() {
 
       setExportProgress(100);
       if (destination === 'studio') {
-        console.log('[Export] Studio redirect — allCreatedPostIds:', allCreatedPostIds);
-        setExportToast({ message: t('export.redirectingStudio'), type: 'success' });
+        // Le Studio Son vit dans Créer (étape Audio). L'ancienne page Studio
+        // Son ignorait la liste de plusieurs posts : un export de plusieurs
+        // posts arrivait sur un Créer vide. Désormais :
+        // - UN post → Créer le rouvre (`?postId=`), audio compris ;
+        // - PLUSIEURS → le Calendrier, où chacun a son bouton « Modifier »
+        //   (qui ouvre Créer sur CE post) — Créer n'édite qu'un post à la fois ;
+        // - aucun → Créer, nouvelle création.
+        setExportToast({
+          message: allCreatedPostIds.length > 1
+            ? t('export.successCalendar', { count: String(allCreatedPostIds.length) })
+            : t('export.redirectingStudio'),
+          type: 'success',
+        });
         await new Promise((r) => setTimeout(r, 1000));
         const studioUrl = allCreatedPostIds.length > 1
-          ? `/dashboard/audio-studio?postIds=${allCreatedPostIds.join(',')}`
+          ? '/dashboard/calendar'
           : allCreatedPostIds.length === 1
-            ? `/dashboard/audio-studio?postId=${allCreatedPostIds[0]}`
-            : '/dashboard/audio-studio';
-        console.log('[Export] Redirecting to:', studioUrl);
+            ? `/dashboard/creer?postId=${encodeURIComponent(allCreatedPostIds[0])}`
+            : '/dashboard/creer';
         router.push(studioUrl);
       } else if (destination === 'calendar' || destination === 'both') {
         if (successCount > 0) {

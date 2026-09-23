@@ -3,12 +3,17 @@
  *
  * Trois chemins historiques mènent aujourd'hui à la création :
  * `/dashboard/creer-simple`, `/dashboard/creator` et `/dashboard/infographie`.
- * Après l'unification, deux pages seulement subsistent :
+ * Après l'unification, ils mènent à :
  *
  * - `/dashboard/creer` — le parcours guidé : NOUVELLE création, et
  *   modification d'un post (`?postId=`, relu par `lib/creer/editTarget`) ;
- * - `/dashboard/creer-avance` — l'ancien éditeur, conservé pour les liens
- *   qu'aucun autre écran ne sait interpréter (`?id=`, voir `LEGACY_ONLY_PARAMS`).
+ * - `/dashboard/library` — pour un lien `?id=` (un `videos.id`, voir
+ *   `LIBRARY_ONLY_PARAMS`) : c'est là qu'une vidéo se modifie (#430).
+ *
+ * `/dashboard/creer-avance` (l'ancien éditeur) existe toujours, mais n'est
+ * plus la cible d'AUCUNE redirection : il ne lit que `postId` et `tab`, et un
+ * lien `?id=` y ouvrait un éditeur vide (son brouillon local, pas la vidéo).
+ * On n'y arrive plus que volontairement (« Ouvrir l'éditeur avancé »).
  *
  * Ce module ne fait que CALCULER une cible. Il ne redirige pas lui-même, ne
  * lit aucune base et n'interprète aucun identifiant : transporter un paramètre
@@ -25,34 +30,35 @@ export type SearchParams = Record<string, string | string[] | undefined>;
 /** Parcours guidé — toute nouvelle création. */
 export const CREER_ROUTE = '/dashboard/creer';
 
-/** Ancien éditeur — destination des seuls liens `?id=` (voir `LEGACY_ONLY_PARAMS`). */
+/** Ancien éditeur — conservé, accessible par son lien volontaire ; plus une cible de redirection. */
 export const CREER_AVANCE_ROUTE = '/dashboard/creer-avance';
+
+/** Bibliothèque — destination des liens `?id=` (un `videos.id`). */
+export const LIBRARY_ROUTE = '/dashboard/library';
 
 /**
  * Paramètres qui désignent un contenu à MODIFIER.
  *
- * `postId` est lu par les deux éditeurs ; `id` ne l'est encore par personne,
- * mais il est porté par le bouton « Modifier » de la Bibliothèque pour une
- * vidéo. Les deux sont des intentions d'édition — où chacune peut aller est
- * décidé par `LEGACY_ONLY_PARAMS`.
+ * `postId` est relu par le parcours guidé. `id` (un `videos.id`, porté par
+ * d'anciens liens « Modifier » de la Bibliothèque) n'est relu par AUCUN
+ * éditeur : où il mène est décidé par `LIBRARY_ONLY_PARAMS`.
  */
 export const EDIT_PARAMS = ['postId', 'id'] as const;
 
 /**
- * Paramètres d'édition que SEUL l'ancien éditeur reçoit.
+ * Paramètres d'édition qui mènent à la BIBLIOTHÈQUE.
  *
- * `postId` n'y figure plus : c'est un `scheduled_posts.id`, que le parcours
- * guidé relit depuis PR #426 (chargement owner-scopé par `GET /api/posts/[id]`,
- * enregistrement `PATCH` sur le MÊME post). Un lien historique `?postId=` y va
- * donc, comme les boutons « Modifier » du Calendrier.
+ * `id` est un `videos.id`. Aucun éditeur ne le relit : ni le parcours guidé
+ * (qui ouvrirait une création vierge), ni l'ancien éditeur (qui ne lit que
+ * `postId` et `tab` — il ouvrait son brouillon local). Le convertir en
+ * `postId` serait inventer un lien entre deux tables. La Bibliothèque, elle,
+ * sait modifier une vidéo : elle ouvre le post relié, ou propose d'en créer un
+ * (`POST /api/videos/[id]/editable-post`, #430).
  *
- * `id` reste ici : c'est un `videos.id` (Bibliothèque), que le parcours guidé
- * ignore — le lui envoyer ouvrirait un montage vierge. Le convertir en
- * `postId` serait inventer un lien entre deux tables qui n'en ont pas. Un lien
- * qui porte les DEUX reste aussi sur l'ancien éditeur : ambigu, il garde son
- * comportement d'avant.
+ * `postId` reste prioritaire : un lien qui porte les DEUX va au parcours
+ * guidé, qui modifie ce post (et ignore `id`).
  */
-export const LEGACY_ONLY_PARAMS = ['id'] as const;
+export const LIBRARY_ONLY_PARAMS = ['id'] as const;
 
 /**
  * Reconstruit la query string à partir de `searchParams`.
@@ -106,26 +112,33 @@ export function hasEditTarget(searchParams?: SearchParams): boolean {
 }
 
 /**
- * Le lien doit-il encore passer par l'ancien éditeur ?
+ * Le lien désigne-t-il une VIDÉO (et doit-il aller à la Bibliothèque) ?
  *
  * Même règle de présence que `hasEditTarget` (une clé vide compte), limitée à
- * `LEGACY_ONLY_PARAMS`. Un `postId` vide ou répété part sur le parcours guidé,
- * qui l'affiche comme « lien incomplet » au lieu d'ouvrir une création.
+ * `LIBRARY_ONLY_PARAMS` — sauf si un `postId` est présent : lui est relu par
+ * le parcours guidé, qui passe donc en premier. Un `postId` vide ou répété
+ * part sur le parcours guidé, qui l'affiche comme « lien incomplet ».
  */
-export function needsLegacyEditor(searchParams?: SearchParams): boolean {
+export function pointsToLibraryVideo(searchParams?: SearchParams): boolean {
   if (!searchParams) return false;
-  return LEGACY_ONLY_PARAMS.some((key) => searchParams[key] !== undefined);
+  if (searchParams.postId !== undefined) return false;
+  return LIBRARY_ONLY_PARAMS.some((key) => searchParams[key] !== undefined);
 }
 
 /**
  * Cible d'une redirection depuis une ancienne route, query comprise.
  *
- * Le chemin retourné est TOUJOURS l'une des deux constantes de ce module,
- * suivie d'une query encodée par `URLSearchParams`. Aucune valeur reçue ne
- * peut donc produire une destination externe : ni l'hôte ni le schéma ne
- * proviennent de l'entrée.
+ * - lien de vidéo (`?id=` sans `postId`) → la Bibliothèque, SANS query :
+ *   elle ne lit pas `id`, et le transporter laisserait croire qu'il est
+ *   compris ;
+ * - tout le reste → le parcours guidé, query transportée intacte.
+ *
+ * Le chemin retourné est TOUJOURS l'une des constantes de ce module, suivie
+ * d'une query encodée par `URLSearchParams`. Aucune valeur reçue ne peut donc
+ * produire une destination externe : ni l'hôte ni le schéma ne proviennent de
+ * l'entrée.
  */
 export function creerRedirectTarget(searchParams?: SearchParams): string {
-  const route = needsLegacyEditor(searchParams) ? CREER_AVANCE_ROUTE : CREER_ROUTE;
-  return `${route}${buildQuery(searchParams)}`;
+  if (pointsToLibraryVideo(searchParams)) return LIBRARY_ROUTE;
+  return `${CREER_ROUTE}${buildQuery(searchParams)}`;
 }

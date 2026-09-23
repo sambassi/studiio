@@ -156,11 +156,19 @@ describe('Plus aucune carte n’est rendue par son index', () => {
       resolve(__dirname, '../components/creer/SequenceCards.tsx'),
       'utf-8',
     );
+    // Et le récapitulatif de l'étape Contenu, devenu éditable, vit dans
+    // `CartesEditeur` (portage de l'édition des cartes) — clé par `id` lui aussi.
+    const editeurSource = readFileSync(
+      resolve(__dirname, '../components/creer/CartesEditeur.tsx'),
+      'utf-8',
+    );
     const byId = [
       ...(wizardSource.match(/key=\{c\.id\}/g) ?? []),
       ...(cardsSource.match(/key=\{c\.id\}/g) ?? []),
+      ...(editeurSource.match(/key=\{c\.id\}/g) ?? []),
     ];
     expect(byId).toHaveLength(2);
+    expect(editeurSource).toMatch(/key=\{c\.id\}/);
   });
 
   it('l’identité a une seule source', () => {

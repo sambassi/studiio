@@ -1,55 +1,36 @@
 import { test, expect } from 'playwright/test';
 
-test.describe('Batch x10 Creator → Audio Studio → Calendar', () => {
-
-  test('should load creator page', async ({ page }) => {
+/**
+ * `/dashboard/creator` est une ANCIENNE route : elle ne rend plus d'écran, elle
+ * redirige (`lib/routing/legacy-redirect.ts`, `creerRedirectTarget`).
+ *
+ * Cette spécification attendait autrefois que l'URL RESTE sur
+ * `/dashboard/creator` : faux depuis l'unification, et les cas suivants se
+ * sautaient alors en silence. Elle vérifie désormais la destination réelle.
+ * Sans session, le middleware envoie d'abord sur `/auth/login` — accepté.
+ */
+test.describe('Ancienne route /dashboard/creator → parcours unifié', () => {
+  test('sans paramètre : redirige vers /dashboard/creer', async ({ page }) => {
     await page.goto('/dashboard/creator');
     await page.waitForTimeout(2000);
-
-    const url = page.url();
-    expect(url).toMatch(/\/(dashboard\/creator|auth\/login)/);
+    expect(page.url()).toMatch(/\/(dashboard\/creer(\?|$)|auth\/login)/);
+    expect(page.url()).not.toMatch(/\/dashboard\/creator/);
   });
 
-  test('should have step navigation', async ({ page }) => {
-    await page.goto('/dashboard/creator');
+  test('?postId= : transporté vers /dashboard/creer', async ({ page }) => {
+    await page.goto('/dashboard/creator?postId=p-1');
     await page.waitForTimeout(2000);
-
-    if (page.url().includes('/dashboard/creator')) {
-      // Should have step indicators
-      const body = await page.textContent('body');
-      expect(body).toBeTruthy();
+    if (page.url().includes('/dashboard/')) {
+      expect(page.url()).toMatch(/\/dashboard\/creer\?postId=p-1/);
     }
   });
 
-  test('should have format options (Reel and TV)', async ({ page }) => {
-    await page.goto('/dashboard/creator');
+  test('?id= (une vidéo) : la Bibliothèque, jamais un éditeur vide', async ({ page }) => {
+    await page.goto('/dashboard/creator?id=v-1');
     await page.waitForTimeout(2000);
-
-    if (page.url().includes('/dashboard/creator')) {
-      const body = await page.textContent('body');
-      // Should contain format-related text
-      expect(body).toMatch(/9:16|16:9|[Rr]eel|TV/);
-    }
-  });
-
-  test('should have batch count selector', async ({ page }) => {
-    await page.goto('/dashboard/creator');
-    await page.waitForTimeout(2000);
-
-    if (page.url().includes('/dashboard/creator')) {
-      // Look for batch count options (x1, x2, x3, x5, x10)
-      const body = await page.textContent('body');
-      expect(body).toMatch(/x[0-9]+|batch/i);
-    }
-  });
-
-  test('should have export destination options including Studio Son', async ({ page }) => {
-    await page.goto('/dashboard/creator');
-    await page.waitForTimeout(2000);
-
-    if (page.url().includes('/dashboard/creator')) {
-      const body = await page.textContent('body');
-      expect(body).toBeTruthy();
+    if (page.url().includes('/dashboard/')) {
+      expect(page.url()).toMatch(/\/dashboard\/library$/);
+      expect(page.url()).not.toMatch(/creer-avance/);
     }
   });
 });

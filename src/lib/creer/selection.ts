@@ -105,6 +105,46 @@ export function maxCards(format: string): number {
   return format === '9:16' ? 5 : 6;
 }
 
+/**
+ * Longueurs maximales des champs d'une carte, a la saisie.
+ *
+ * Valeur 24 et description 200 : les bornes de l'editeur avance (qui ne les
+ * posait chacune que dans UN de ses deux editeurs). Titre 120 : l'avance n'en
+ * posait aucune, et un titre sans limite deborde de sa carte a l'ecran.
+ */
+export const CARTE_LIMITES = { title: 120, value: 24, description: 200 } as const;
+
+/** Les SEULS champs qu'on modifie sur une carte existante (portage PR 1). */
+export type CarteTexte = { title: string; value: string; description: string };
+
+/**
+ * Modifie le texte d'UNE carte existante, designee par son identifiant.
+ *
+ * - l'`id` et l'icone ne changent jamais : seuls titre, valeur et description
+ *   sont lus dans `patch` (une autre cle est ignoree). C'est l'identifiant qui
+ *   relie la carte a sa case en mode libre, a ses groupes, et — a
+ *   l'enregistrement — a la carte d'origine du post (`cartesPourEnregistrement`) ;
+ * - les longueurs sont bornees (`CARTE_LIMITES`) ;
+ * - un identifiant inconnu rend le MEME tableau : rien a re-rendre ;
+ * - les autres cartes gardent leur reference.
+ */
+export function updateCard<T extends Identified & CarteTexte>(
+  cards: T[],
+  id: string,
+  patch: Partial<CarteTexte>,
+): T[] {
+  const index = cards.findIndex((c) => c.id === id);
+  if (index < 0) return cards;
+  const next: Partial<CarteTexte> = {};
+  for (const cle of ['title', 'value', 'description'] as const) {
+    const v = patch[cle];
+    if (typeof v === 'string') next[cle] = v.slice(0, CARTE_LIMITES[cle]);
+  }
+  const out = cards.slice();
+  out[index] = { ...cards[index], ...next };
+  return out;
+}
+
 /** Une carte, vue par les regles de duplication : seul l'`id` compte ici. */
 export interface Identified {
   id: string;
