@@ -486,7 +486,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
 
         const postMediaUrl = renderedVideoUrl || posterUrl || null;
         if (!renderedVideoUrl) console.warn('[Agent IA] Montage URL is null — upload may have failed');
-        await fetch('/api/posts', {
+        const postRes = await fetch('/api/posts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -535,6 +535,11 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             },
           }),
         });
+        // Id du post qui vient d'être créé : la ligne `videos` le désigne
+        // (`post_id`), et le serveur pose `scheduled_posts.video_id`. Illisible
+        // → pas de lien, exactement comme avant.
+        const postBody = await postRes.json().catch(() => null);
+        const createdPostId: unknown = postBody?.post?.id ?? postBody?.data?.id;
         try {
           await fetch('/api/videos', {
             method: 'POST',
@@ -543,6 +548,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
               title: bTitle,
               format: 'reel',
               type: 'creator',
+              ...(typeof createdPostId === 'string' && createdPostId ? { post_id: createdPostId } : {}),
               status: renderedVideoUrl ? 'completed' : 'draft',
               video_url: renderedVideoUrl || null,
               thumbnail_url: posterUrl || null,

@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { libraryEditHref } from '@/lib/routing/library-edit';
+import { libraryEditAction, editPostHref } from '@/lib/routing/library-edit';
 
 interface Video {
   id: string;
@@ -26,6 +26,8 @@ interface Video {
   format: string;
   status: string;
   type?: string;
+  /** Vidéos seulement : le post qui la rend modifiable, s'il existe. */
+  linked_post_id?: string | null;
   created_at: string;
   video_url?: string;
   thumbnail_url?: string;
@@ -67,6 +69,9 @@ export default function LibraryPage() {
     videoTitle: null,
   });
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  // Vidéo sans post relié : « Modifier » demande d'abord la création explicite
+  // d'un post modifiable, au lieu d'ouvrir un éditeur vide.
+  const [editableConfirm, setEditableConfirm] = useState<{ videoId: string; title: string } | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -192,6 +197,26 @@ export default function LibraryPage() {
     } finally {
       setActionInProgress(null);
     }
+  };
+
+  const handleCreateEditable = async () => {
+    if (!editableConfirm) return;
+    const { videoId } = editableConfirm;
+    setActionInProgress(`editable-${videoId}`);
+    try {
+      const res = await fetch(`/api/videos/${videoId}/editable-post`, { method: 'POST' });
+      const body = await res.json().catch(() => null);
+      if (res.ok && body?.success && typeof body.postId === 'string') {
+        window.location.assign(editPostHref(body.postId));
+        return;
+      }
+      setToast({ message: 'Impossible de créer le post modifiable. Réessayez.', type: 'error' });
+    } catch (error) {
+      console.error('Error creating editable post:', error);
+      setToast({ message: 'Impossible de créer le post modifiable. Réessayez.', type: 'error' });
+    }
+    setActionInProgress(null);
+    setEditableConfirm(null);
   };
 
   const handleDelete = async () => {
@@ -402,10 +427,26 @@ export default function LibraryPage() {
                       )}
                       <span className="text-[10px]">{t('actions.export')}</span>
                     </button>
-                    <Link href={libraryEditHref(video)} className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition">
-                      <Edit size={16} />
-                      <span className="text-[10px]">{t('actions.edit')}</span>
-                    </Link>
+                    {(() => {
+                      const edition = libraryEditAction(video);
+                      return edition.kind === 'open' ? (
+                        <Link href={edition.href} className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition">
+                          <Edit size={16} />
+                          <span className="text-[10px]">{t('actions.edit')}</span>
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => setEditableConfirm({ videoId: edition.videoId, title: video.title })}
+                          disabled={actionInProgress !== null}
+                          data-library-create-editable
+                          className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition disabled:opacity-50"
+                          title="Créer un post modifiable depuis cette vidéo"
+                        >
+                          <Edit size={16} />
+                          <span className="text-[10px]">{t('actions.edit')}</span>
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={() => handleDuplicate(video.id)}
                       disabled={actionInProgress !== null}
@@ -551,6 +592,43 @@ export default function LibraryPage() {
                   {tc('download')}
                 </Button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vidéo sans post relié : création explicite d'un post modifiable */}
+      {editableConfirm && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-gray-900 rounded-lg p-6 max-w-sm w-full border border-gray-800" data-library-editable-dialog>
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Rendre « {editableConfirm.title} » modifiable
+            </h3>
+            <p className="text-gray-400 mb-6 text-sm leading-relaxed">
+              Cette vidéo n’est reliée à aucun post. Studiio va créer un brouillon
+              modifiable à partir d’elle, puis l’ouvrir. Aucun rendu, aucun
+              crédit : la vidéo d’origine reste telle quelle.
+            </p>
+            <div className="flex gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setEditableConfirm(null)}
+                disabled={actionInProgress !== null}
+                className="flex-1"
+              >
+                {tc('cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleCreateEditable}
+                disabled={actionInProgress !== null}
+                className="flex-1"
+              >
+                {actionInProgress === `editable-${editableConfirm.videoId}` && (
+                  <Loader2 size={16} className="mr-2 animate-spin" />
+                )}
+                Créer un post modifiable depuis cette vidéo
+              </Button>
             </div>
           </div>
         </div>
