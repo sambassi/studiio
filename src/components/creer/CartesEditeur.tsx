@@ -1,7 +1,9 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { ImageIcon, Plus, Trash2 } from 'lucide-react';
 import { CardIcon } from '@/components/ui/CardIcon';
+import IconPicker from '@/components/creer/IconPicker';
 import { CARTE_LIMITES, type CarteTexte } from '@/lib/creer/selection';
 
 export { CARTE_LIMITES };
@@ -13,10 +15,13 @@ export { CARTE_LIMITES };
  * jamais par index) : titre, valeur, description — et, quand le parent les
  * fournit, AJOUT et SUPPRESSION (PR 2). Ces deux-là ne sont sûrs que parce
  * que l'identifiant des cartes est désormais persisté (groupes stables) et
- * que les icônes personnalisées sont réalignées à l'enregistrement. Pas de
- * duplication ici (elle existe sous l'aperçu), pas d'icône.
+ * que les icônes personnalisées sont réalignées à l'enregistrement. Et, si le
+ * parent fournit `onIconChange`, le CHOIX DE L'ICÔNE (PR 3) — par la grille
+ * partagée `IconPicker`, donc SVG lucide uniquement. Pas de duplication ici
+ * (elle existe sous l'aperçu).
  *
- * Le composant n'a aucun état : chaque saisie remonte `(id, champ)` et le
+ * Seul état local : quelle carte a sa grille d'icônes ouverte. Chaque saisie
+ * remonte `(id, champ)` et le
  * parent (l'assistant) met à jour `generated.cards` — l'aperçu, la voix des
  * cartes et l'enregistrement lisent tous cette même source.
  */
@@ -41,13 +46,24 @@ export interface CartesEditeurProps {
   canRemove?: boolean;
   /** Nombre maximal de cartes du format, pour le libellé. */
   max?: number;
+  /** Choix de l'icône (nom lucide). Absent : aucun bouton d'icône. */
+  onIconChange?: (id: string, icon: string) => void;
+  /**
+   * Cartes dont une IMAGE personnalisée (`design.cardCustomIcons`, éditeur
+   * avancé) s'affiche à la place de l'icône dans le Calendrier : on le dit,
+   * plutôt que de laisser croire que l'icône choisie y apparaîtra.
+   */
+  iconesMasquees?: ReadonlySet<string>;
 }
 
 const CHAMP = 'w-full rounded-lg border border-gray-800 bg-gray-950/60 px-2.5 py-1.5 text-sm text-white placeholder:text-gray-600 focus:border-purple-500/60 focus:outline-none';
 
 export default function CartesEditeur({
   cards, onChange, couleurValeur = '#C4B5FD', onAdd, onRemove, canAdd = true, canRemove = true, max,
+  onIconChange, iconesMasquees,
 }: CartesEditeurProps) {
+  /** La carte dont la grille d'icônes est ouverte — une seule à la fois. */
+  const [iconeOuverte, setIconeOuverte] = useState<string | null>(null);
   return (
     <div className="space-y-2" data-cartes-editeur>
       {cards.map((c, i) => (
@@ -57,7 +73,23 @@ export default function CartesEditeur({
           className="rounded-xl bg-gray-900/60 p-3 space-y-2"
         >
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-gray-500">
-            <CardIcon name={c.icon} size={14} color="#C4B5FD" className="" />
+            {onIconChange ? (
+              <button
+                type="button"
+                onClick={() => setIconeOuverte((o) => (o === c.id ? null : c.id))}
+                aria-label={`Changer l’icône de la carte ${i + 1}`}
+                aria-expanded={iconeOuverte === c.id}
+                title="Changer l’icône"
+                data-carte-icone={c.id}
+                className={`rounded-md border p-1 transition-colors ${
+                  iconeOuverte === c.id ? 'border-purple-500 bg-gray-800' : 'border-gray-800 hover:border-purple-500/60'
+                }`}
+              >
+                <CardIcon name={c.icon} size={14} color="#C4B5FD" className="" />
+              </button>
+            ) : (
+              <CardIcon name={c.icon} size={14} color="#C4B5FD" className="" />
+            )}
             <span className="flex-1">Carte {i + 1}</span>
             {onRemove && (
               <button
@@ -73,6 +105,25 @@ export default function CartesEditeur({
               </button>
             )}
           </div>
+          {onIconChange && iconeOuverte === c.id && (
+            <div className="rounded-lg border border-gray-800 bg-gray-950/60 p-2" data-carte-icone-grille={c.id}>
+              <IconPicker
+                dense
+                autoFocus
+                selected={c.icon}
+                onPick={(nom) => {
+                  onIconChange(c.id, nom);
+                  setIconeOuverte(null);
+                }}
+              />
+            </div>
+          )}
+          {iconesMasquees?.has(c.id) && (
+            <p className="flex items-start gap-1.5 text-[11px] text-amber-200/90" data-carte-icone-masquee>
+              <ImageIcon size={12} className="mt-0.5 flex-shrink-0" />
+              Cette carte a une image personnalisée : dans le Calendrier, elle s’affiche à la place de l’icône.
+            </p>
+          )}
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <label className="block min-w-0">
               <span className="sr-only">Titre de la carte {i + 1}</span>

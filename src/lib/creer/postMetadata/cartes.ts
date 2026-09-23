@@ -180,6 +180,28 @@ export function iconesPersoRealignees(
 }
 
 /**
+ * Les cartes (par identifiant) qui ont une IMAGE personnalisee d'origine dans
+ * `design.cardCustomIcons` — le Calendrier l'affiche a la place de l'icone.
+ * Retrouvees par leur rang d'origine : une carte deplacee garde son image
+ * (`iconesPersoRealignees`), une carte neuve n'en a pas.
+ */
+export function cartesAvecImagePerso(
+  cartes: readonly { id: string }[],
+  icones: unknown,
+  rangsOrigine: ReadonlyMap<string, number>,
+): Set<string> {
+  const out = new Set<string>();
+  if (!estObjet(icones)) return out;
+  for (const c of cartes) {
+    const rang = rangsOrigine.get(c.id);
+    if (rang === undefined) continue;
+    const url = icones[String(rang)];
+    if (typeof url === 'string' && url.length > 0) out.add(c.id);
+  }
+  return out;
+}
+
+/**
  * Les cartes a envoyer au serveur.
  *
  * @param cartes        ce que l'ecran porte maintenant
