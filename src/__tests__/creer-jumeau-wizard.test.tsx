@@ -137,7 +137,9 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(bloc).toMatch(/videoDuration: posee\.secondes/);
     // Les deux seules sorties : l'echec du moteur, et un rush remplace entre-temps.
     expect(bloc.match(/\breturn;/g)).toHaveLength(2);
-    expect(bloc).toMatch(/catch \(e\) \{\s*setError\([^;]*\);\s*return;\s*\}/);
+    // (Seule ligne tolérée avant `setError` : l'oubli d'une génération 404,
+    // introuvable — la garder ferait boucler la reprise à chaque ouverture.)
+    expect(bloc).toMatch(/catch \(e\) \{\s*(if \(e instanceof ErreurAttenteJumeau && e\.code === 'introuvable'\) setJumeauGenerationId\(null\);\s*)?setError\([^;]*\);\s*return;\s*\}/);
     expect(bloc).not.toMatch(/composerEtFacturer|rendreEtFacturer|composeAndUpload|setJumeauNotice\([^)]*lancez/);
     // Le montage lit le plateau du passage, jamais l'etat React pose a l'instant.
     const montage = code.slice(iBoucle, code.indexOf('const reset = () => {'));

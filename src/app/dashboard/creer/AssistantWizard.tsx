@@ -161,7 +161,11 @@ import {
   politiqueAffichable, MENTION_AUCUN_CREDIT,
 } from '@/lib/facturation/libelles';
 import JumeauPanel from '@/components/creer/JumeauPanel';
-import { gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, type JumeauMode } from '@/lib/creer/jumeau';
+import {
+  gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, type JumeauMode,
+  type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
+} from '@/lib/creer/jumeau';
+import ProgressStatus from '@/components/ux/ProgressStatus';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import {
   DRAFT_VERSION,
@@ -3748,10 +3752,26 @@ export default function AssistantWizard() {
    * 'echec' (le fournisseur a échoué — un bouton « Réessayer » relance).
    */
   const [jumeauReprise, setJumeauReprise] = useState<'inactif' | 'encours' | 'echec'>('inactif');
+  /**
+   * Le motif RÉEL d'un échec de reprise, et la suite qu'il autorise :
+   * `reprendreId` non nul = le suivi s'est coupé (réseau, session, délai) mais
+   * la génération continue — on la REPREND au lieu d'en payer une seconde.
+   */
+  const [jumeauRepriseErreur, setJumeauRepriseErreur] = useState<{ message: string; reprendreId: string | null } | null>(null);
   /** Un seul poll de reprise à la fois ; remis à faux sur échec pour permettre « Réessayer ». */
   const jumeauRepriseFaite = useRef(false);
   /** Vrai pendant que le clic d'envoi gère lui-même la génération : la reprise ne double pas. */
   const jumeauRenduEnCours = useRef(false);
+  /**
+   * L'ÉTAPE RÉELLE du jumeau en cours (clic d'envoi, reprise ou « Réessayer »)
+   * et l'instant de son lancement — ce que l'écran affiche À LA PLACE d'un
+   * pourcentage : aucun fournisseur n'en donne un (voir `PhaseJumeau`).
+   * `null` hors génération : l'affichage habituel du rendu reprend la main.
+   */
+  const [jumeauPhase, setJumeauPhase] = useState<{ phase: PhaseJumeau; debutLe: number } | null>(null);
+  const avancerJumeau = useCallback((phase: PhaseJumeau) => {
+    setJumeauPhase((s) => ({ phase, debutLe: s?.debutLe ?? Date.now() }));
+  }, []);
   const [toneId, setToneId] = useState(TONES[0].id);
   const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
@@ -6076,6 +6096,25 @@ export default function AssistantWizard() {
   const rendPourApercu = sending && renderTarget === 'apercu';
   const renduJoue = !!previewUrl && previewFocus === 'all';
 
+  /* ── SUIVI DU JUMEAU — des étapes réelles, jamais un faux pourcentage ──
+     Pendant que le fournisseur anime l'avatar, il n'existe AUCUN pourcentage
+     (ni D-ID ni HeyGen n'en donnent) : barre indéterminée, étape courante,
+     temps écoulé. Seule l'étape « Rendu » (composition du montage) porte un
+     pourcentage, parce que celui-là est mesuré frame par frame. */
+  const suiviJumeau = (compact: boolean) => jumeauPhase ? (
+    <ProgressStatus
+      titre="Génération de votre jumeau"
+      statut="en_cours"
+      etapes={etapesJumeau(jumeauPhase.phase)}
+      {...(jumeauPhase.phase === 'rendu' ? { pourcentage: renderProgress } : {})}
+      detail={jumeauPhase.phase === 'rendu' && renderStage ? renderStage : DETAIL_PHASE_JUMEAU[jumeauPhase.phase]}
+      debutLe={jumeauPhase.debutLe}
+      compact={compact}
+      note={compact ? null : 'Vous pouvez quitter cette page : votre jumeau continue côté serveur et sera repris à votre retour.'}
+      className="w-full text-left"
+    />
+  ) : null;
+
   const renduDansLeCadre = !generated ? null : rendPourApercu ? (
     // ── Composition en cours, DANS le cadre ────────────────────────────
     // L'attente se passait sous l'aperçu, dans un bouton qui disait
@@ -6084,6 +6123,9 @@ export default function AssistantWizard() {
       className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 backdrop-blur-sm"
       data-play-chargement
     >
+      {jumeauPhase ? (
+        <div className="w-5/6" data-jumeau-suivi="cadre">{suiviJumeau(true)}</div>
+      ) : (<>
       <Loader2 className="w-6 h-6 animate-spin text-purple-300" />
       <p className="text-xs text-gray-300">Composition du montage…</p>
       <div className="w-2/3 h-1 rounded-full bg-gray-800 overflow-hidden">
@@ -6097,6 +6139,7 @@ export default function AssistantWizard() {
         />
       </div>
       {renderStage && <p className="text-[11px] text-gray-500">{renderStage}</p>}
+      </>)}
     </div>
   ) : renduJoue ? (
     <div className="absolute inset-0 bg-black" data-play-lecteur>
@@ -6519,30 +6562,65 @@ export default function AssistantWizard() {
    * `rushUrlActuel` (celui du brouillon restauré) : si le rush porte déjà cette
    * génération, la vidéo est en place — rien à reprendre, on efface le drapeau.
    */
+  /**
+   * La vidéo du jumeau (reprise ou relancée) est posée : l'écran la MONTRE.
+   * Un montage déjà composé avec l'ANCIEN rush ne peut plus servir — sa
+   * signature porte l'ancienne URL, `reutilisable` le refuserait à l'envoi —
+   * mais il restait joué sur « Tout » et masquait la nouvelle vidéo. On le
+   * retire, puis on bascule sur l'onglet « Vidéo », où le jumeau apparaît.
+   */
+  const montrerJumeauPose = () => {
+    setPreviewRender(null, null);
+    setPreviewFocus('video');
+  };
+  /** Fin d'une attente de jumeau en échec : le motif réel, et la bonne suite. */
+  const echecRepriseJumeau = (e: unknown, generationId: string | null) => {
+    const code = e instanceof ErreurAttenteJumeau ? e.code : null;
+    // 404 : rien à reprendre — l'identifiant est oublié, sinon chaque
+    // ouverture de la page reboucherait dessus.
+    if (code === 'introuvable') setJumeauGenerationId(null);
+    // Réseau, session, délai : l'ATTENTE s'est arrêtée, pas la génération.
+    // La relancer paierait une seconde vidéo : on propose de REPRENDRE le
+    // suivi du même identifiant (une simple lecture de statut, gratuite).
+    const reprenable = !!generationId && (code === 'connexion' || code === 'session' || code === 'delai');
+    setJumeauRepriseErreur({
+      message: e instanceof Error && e.message ? e.message : 'La génération de votre jumeau n’a pas abouti.',
+      reprendreId: reprenable ? generationId : null,
+    });
+    setJumeauReprise('echec');
+    setJumeauPhase(null);
+  };
+
   const reprendreJumeau = (generationId: string, rushUrlActuel?: string | null) => {
     if (rushUrlActuel && rushUrlActuel.includes(generationId)) { setJumeauGenerationId(null); return; }
     if (jumeauRepriseFaite.current || jumeauRenduEnCours.current) return;
     jumeauRepriseFaite.current = true;
     setJumeauReprise('encours');
+    setJumeauRepriseErreur(null);
+    setJumeauPhase({ phase: 'traitement', debutLe: Date.now() });
     void (async () => {
       try {
-        const { url } = await attendreStatutJumeau({ generationId });
+        const { url } = await attendreStatutJumeau({ generationId, onPhase: avancerJumeau });
         const posee = await applyRush(url, 'Mon jumeau', false);
         setJumeauMode('aucun');
         setJumeauGenerationId(null);
         setJumeauReprise('inactif');
-        if (posee) setJumeauNotice('Votre jumeau est prêt : il est monté dans la séquence « Vidéo ».');
-      } catch {
-        // Le fournisseur a échoué (ou le délai est dépassé) : on le dit, et le
-        // bouton « Réessayer » relance une génération (voir `relancerJumeau`).
-        setJumeauReprise('echec');
+        setJumeauPhase(null);
+        if (posee) {
+          setJumeauNotice('Votre jumeau est prêt : il est monté dans la séquence « Vidéo ».');
+          montrerJumeauPose();
+        }
+      } catch (e) {
+        // Le fournisseur a échoué, la génération est introuvable, ou le suivi
+        // est coupé : on le dit, avec la suite adaptée (voir `echecRepriseJumeau`).
+        echecRepriseJumeau(e, generationId);
         setJumeauNotice(null);
+      } finally {
         // Rouvre la porte à un nouvel essai.
         jumeauRepriseFaite.current = false;
       }
     })();
   };
-  /** Appelée par la restauration (définie plus haut) sans dépendance de portée. */
   const reprendreJumeauRef = useRef(reprendreJumeau);
   reprendreJumeauRef.current = reprendreJumeau;
 
@@ -6558,21 +6636,30 @@ export default function AssistantWizard() {
       .filter((t): t is string => typeof t === 'string' && t.length > 0);
     jumeauRepriseFaite.current = true;
     setJumeauReprise('encours');
+    setJumeauRepriseErreur(null);
     setJumeauNotice(null);
+    setJumeauPhase({ phase: 'envoi', debutLe: Date.now() });
+    let lancee: string | null = null;
     void (async () => {
       try {
         const video = await genererEtAttendreVideoJumeau({
           textes,
           aspectRatio: format,
-          onLancee: (id) => setJumeauGenerationId(id),
+          onLancee: (id) => { lancee = id; setJumeauGenerationId(id); },
+          onPhase: avancerJumeau,
         });
         const posee = await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
         setJumeauMode('aucun');
         setJumeauGenerationId(null);
         setJumeauReprise('inactif');
-        if (posee) setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
-      } catch {
-        setJumeauReprise('echec');
+        setJumeauPhase(null);
+        if (posee) {
+          setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
+          montrerJumeauPose();
+        }
+      } catch (e) {
+        echecRepriseJumeau(e, lancee);
+      } finally {
         jumeauRepriseFaite.current = false;
       }
     })();
@@ -6949,7 +7036,10 @@ export default function AssistantWizard() {
       // jamais une video ordinaire livree sous ce nom. Le mode 'voix' ne passe
       // pas ici : sa voix est deja posee dans `ttsVoiceId`, rien a produire.
       if (jumeauMode === 'avatar') {
-        setRenderProgress(5);
+        // Plus de `setRenderProgress(5)` : ce chiffre restait figé pendant
+        // tout le rendu fournisseur (5 à 30 min) sans rien mesurer. L'écran
+        // affiche l'ÉTAPE réelle, une barre indéterminée et le temps écoulé.
+        setJumeauPhase({ phase: 'preparation', debutLe: Date.now() });
         // Ce clic gère lui-même la génération : la reprise au montage ne doit
         // pas la doubler tant qu'elle tourne.
         jumeauRenduEnCours.current = true;
@@ -6963,10 +7053,16 @@ export default function AssistantWizard() {
             // cette génération au lieu d'en payer une seconde.
             onLancee: (id) => setJumeauGenerationId(id),
             onEtape: (m) => setRenderStage(m),
+            onPhase: avancerJumeau,
           });
           posee = await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
           setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
         } catch (e) {
+          // 404 : la génération n'existe pas pour ce compte — la garder dans le
+          // brouillon ferait boucler la reprise à chaque ouverture. Tout autre
+          // arrêt de l'ATTENTE (réseau, session, délai) garde l'identifiant :
+          // la génération continue côté serveur et sera reprise au retour.
+          if (e instanceof ErreurAttenteJumeau && e.code === 'introuvable') setJumeauGenerationId(null);
           setError(e instanceof Error ? e.message : 'La génération de votre jumeau a échoué.');
           return;
         }
@@ -6987,6 +7083,9 @@ export default function AssistantWizard() {
           // séquence « Vidéo » ne doit pas recevoir en plus une voix off TTS.
           avatarVideo: true,
         };
+        // Le jumeau est posé ; place au montage, dont le pourcentage est RÉEL
+        // (frames composées) et s'affiche dans l'étape « Rendu ».
+        avancerJumeau('rendu');
         setRenderProgress(0);
         setRenderStage('Préparation…');
       }
@@ -7410,6 +7509,12 @@ export default function AssistantWizard() {
           setPreviewRender(composed.blob, signature, vignetteApercu, renduConfirme);
           setRenderProgress(100);
           setRenderStage('Prêt.');
+          if (plateau.avatarVideo) avancerJumeau('pret');
+          // Le montage n'est joué QUE sur l'onglet « Tout » (`renduJoue`), et
+          // la capture vient de restaurer l'onglet d'avant : sans cette
+          // bascule, un aperçu prêt — et payé — restait caché derrière
+          // l'onglet d'édition jusqu'à un clic sur « Revoir le rendu ».
+          setPreviewFocus('all');
           return;
         }
 
@@ -7703,6 +7808,7 @@ export default function AssistantWizard() {
       // Le clic a fini de gérer sa génération : la reprise au montage peut de
       // nouveau prendre la main si une génération orpheline subsiste.
       jumeauRenduEnCours.current = false;
+      setJumeauPhase(null);
     }
   };
 
@@ -8097,15 +8203,35 @@ export default function AssistantWizard() {
             indicateur discret qui dit qu'on peut quitter. En échec : le motif
             et un bouton « Réessayer » qui relance une génération en fond. */}
         {jumeauReprise === 'encours' && (
-          <div data-jumeau-reprise="encours" className="flex items-center gap-3 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-[13px] text-purple-200">
-            <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
-            <span>Votre jumeau se prépare… (vous pouvez quitter cette page et revenir plus tard)</span>
+          <div data-jumeau-reprise="encours" className="space-y-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-[13px] text-purple-200">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
+              <span>Votre jumeau se prépare… (vous pouvez quitter cette page et revenir plus tard)</span>
+            </div>
+            {jumeauPhase && <div data-jumeau-suivi="reprise">{suiviJumeau(true)}</div>}
           </div>
         )}
         {jumeauReprise === 'echec' && (
           <div data-jumeau-erreur className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            <span className="flex-1">La génération de votre jumeau n’a pas abouti.</span>
+            <span className="flex-1">
+              La génération de votre jumeau n’a pas abouti.
+              {jumeauRepriseErreur?.message && (
+                <span data-jumeau-erreur-motif className="block text-[12px] text-amber-100/90 mt-0.5">{jumeauRepriseErreur.message}</span>
+              )}
+            </span>
+            {jumeauRepriseErreur?.reprendreId ? (
+              // Le suivi s'est coupé, pas la génération : on la REPREND
+              // (lecture de statut, gratuite) — jamais une seconde génération.
+              <button
+                type="button"
+                data-jumeau-reprendre
+                onClick={() => { const id = jumeauRepriseErreur.reprendreId; if (id) reprendreJumeau(id); }}
+                className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-100 hover:bg-amber-500/20 transition"
+              >
+                Reprendre le suivi
+              </button>
+            ) : (
             <button
               type="button"
               onClick={relancerJumeau}
@@ -8113,6 +8239,7 @@ export default function AssistantWizard() {
             >
               Réessayer
             </button>
+            )}
           </div>
         )}
 
@@ -10543,8 +10670,20 @@ export default function AssistantWizard() {
                       )}
                     </div>
 
+                    {/* Jumeau en cours : ses étapes réelles, pas un pourcentage inventé */}
+                    {sending && jumeauPhase && (
+                      <div data-jumeau-suivi="envoi" className="space-y-2">
+                        {suiviJumeau(false)}
+                        {batchProgress && batchProgress.total > 1 && (
+                          <p className="text-center text-xs text-gray-400">
+                            Vidéo {batchProgress.done + 1} / {batchProgress.total}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Progression du rendu — même barre fine que la page avatar */}
-                    {sending && (
+                    {sending && !jumeauPhase && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-3">
                           <div

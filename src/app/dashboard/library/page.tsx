@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
+import { libraryEditHref } from '@/lib/routing/library-edit';
 
 interface Video {
   id: string;
@@ -401,7 +402,7 @@ export default function LibraryPage() {
                       )}
                       <span className="text-[10px]">{t('actions.export')}</span>
                     </button>
-                    <Link href={`/dashboard/creer-avance?id=${video.id}`} className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition">
+                    <Link href={libraryEditHref(video)} className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition">
                       <Edit size={16} />
                       <span className="text-[10px]">{t('actions.edit')}</span>
                     </Link>
