@@ -185,6 +185,10 @@ export async function GET(req: NextRequest) {
         // appliquee : `sanitizeConfig` retombe sur 18:00, l'ancienne valeur
         // en dur.
         publishTime: ligne.publish_time,
+        // Date de début. ⚠️ ELLE MANQUAIT ICI : « Produire maintenant » la
+        // lisait (`configDepuisLigne`), pas le cron — qui produisait donc
+        // avant la date choisie et datait les posts de « demain ».
+        startDate: ligne.start_date,
         lastRunAt: ligne.last_run_at,
         lastRushUrl: ligne.last_rush_url,
         voiceEnabled: ligne.voice_enabled,
@@ -294,15 +298,19 @@ export async function GET(req: NextRequest) {
         // Chromium peut refuser de demarrer, un rush etre illisible, un
         // televersement echouer. Rien de tout cela ne doit emporter le reste
         // du cycle.
+        // `jobId` DÉTERMINISTE par créneau, jumeau ou non. Il nomme les
+        // fichiers ET les références de débit (`autopilote:<jobId>`,
+        // `autopilote-affiche:<jobId>`) : un créneau rejoué après un rendu
+        // raté réécrit les mêmes fichiers et ne peut pas être débité deux
+        // fois. Il portait `Date.now()` : chaque rejeu était un job neuf.
+        const jobId = `autopilote-${userId}-${post.scheduledDate}-${post.scheduledTime.replace(':', '')}`;
+
         try {
           // ── JUMEAU : on LANCE, on ne rend pas ici ──────────────────────
           // La génération D-ID prend des minutes, la requête est bornée à
           // 300 s : on met le montage en file (`lancerJumeauMontage`), le
           // finaliseur le rendra à une passe suivante, dès la vidéo prête.
-          // `jobId` DÉTERMINISTE par créneau : le débit du rendu (plus tard)
-          // reste idempotent.
           if (config.jumeauAvatar) {
-            const jobId = `autopilote-${userId}-${post.scheduledDate}-${post.scheduledTime.replace(':', '')}`;
             const lancement = await lancerJumeauMontage({
               userId, config, post, rang: posts.indexOf(post), now, jobId, slotKey: jeton,
               journal: '[Autopilote/Cron]',
@@ -323,7 +331,6 @@ export async function GET(req: NextRequest) {
           // `produireUnMontage`, partage avec la production manuelle. Le
           // statut suit `config.mode`, les reseaux suivent `post.platforms` :
           // rien n'est force ici.
-          const jobId = `autopilote-${userId}-${post.scheduledDate}-${Date.now()}`;
           const rendu = await produireUnMontage({
             userId, config, post, rang: posts.indexOf(post), now, jobId,
             dernierePosterUrl,

@@ -674,6 +674,12 @@ export function nextRunAt(
   return new Date(dernier + jours * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * Avance tolérée sur la cadence : une période du déclencheur, qui passe
+ * toutes les heures. Voir `decideRun`.
+ */
+export const TOLERANCE_DECLENCHEUR_MS = 60 * 60 * 1000;
+
 /** Est-il temps de générer ? */
 export function isDue(
   cadence: AutopilotCadence,
@@ -753,7 +759,15 @@ export function decideRun(input: {
     return { run: false, reason: 'pas-l-heure' };
   }
 
-  if (!isDue(config.cadence, config.lastRunAt, now)) {
+  // ⚠️ `now + TOLERANCE_DECLENCHEUR_MS`, PAS `now`. `last_run_at` est
+  // l'instant de départ du passage précédent ; le déclencheur part à la
+  // minute près, pas à la seconde près. Parti à 08:00:05 hier et à 08:00:02
+  // aujourd'hui, il trouvait « 24 h moins 3 s » → `pas-encore`, puis l'heure
+  // passait et `isRunHour` fermait la journée : une cadence quotidienne
+  // produisait un jour sur deux, une hebdomadaire sautait une semaine
+  // entière. Une période de déclencheur d'avance est acceptée — et jamais
+  // deux cycles le même jour : l'heure de départ ne s'ouvre qu'une fois.
+  if (!isDue(config.cadence, config.lastRunAt, now + TOLERANCE_DECLENCHEUR_MS)) {
     return { run: false, reason: 'pas-encore' };
   }
 

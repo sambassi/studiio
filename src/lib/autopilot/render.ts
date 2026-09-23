@@ -42,12 +42,21 @@ export interface RenderedMontage {
   durationFrames: number;
 }
 
-/** Chemin du binaire ffmpeg — paquet embarqué, sinon celui du système. */
+/**
+ * Chemin du binaire ffmpeg — paquet embarqué, sinon celui du système.
+ *
+ * ⚠️ `require('ffmpeg-static')` rend un CHEMIN même quand le binaire n'a
+ * jamais été téléchargé (installation sans scripts, image qui ne l'a pas
+ * copié) : la vignette échouait alors en ENOENT alors que le ffmpeg système
+ * était là. Sans vignette, le Calendrier propose une régénération navigateur
+ * qui écrase le montage serveur — d'où le contrôle d'existence.
+ */
 function ffmpegPath(): string {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const p = require('ffmpeg-static');
-    if (p) return p as string;
+    const p = require('ffmpeg-static') as string | null;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    if (p && require('fs').existsSync(p)) return p;
   } catch { /* paquet absent : on tente le binaire système */ }
   return 'ffmpeg';
 }
