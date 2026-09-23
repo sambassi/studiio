@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { isCronAuthorized } from '@/lib/cron/auth';
 import { getFileType, getExpiresAt } from '@/lib/storage/retention';
 import { storageKey, autopilotRushKeys, clesTournageEtAnalyses, draftRushKeys } from '@/lib/storage/cleanup';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+// Secret absent ou vide → refus total (voir `isCronAuthorized`).
 function verifyCronSecret(req: NextRequest): boolean {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader) return false;
-  return authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  return isCronAuthorized(req.headers.get('authorization'), process.env.CRON_SECRET);
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   canUnsubscribe,
 } from '@/lib/email/unsubscribe';
 import { isAdmin } from '@/lib/admin';
+import { isCronAuthorized } from '@/lib/cron/auth';
 
 const execFileAsync = promisify(execFile);
 
@@ -60,10 +61,9 @@ export const maxDuration = 300;
 
 // Verifie que l'appel vient du planificateur (Coolify Scheduled Task
 // `publish-cron`, chaque minute) ou d'un declenchement manuel authentifie.
+// Secret absent ou vide → refus total (voir `isCronAuthorized`).
 function verifyCronSecret(req: NextRequest): boolean {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader) return false;
-  return authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  return isCronAuthorized(req.headers.get('authorization'), process.env.CRON_SECRET);
 }
 
 // GET /api/cron/publish - Automatically publish scheduled posts whose time has passed

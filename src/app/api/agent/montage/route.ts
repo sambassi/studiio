@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { auth, DEV_AUTH_BYPASS } from '@/lib/auth/config';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
     let userId: string;
-    if (process.env.DEV_AUTH_BYPASS === '1') {
+    // Garde centrale : jamais active en production (voir isDevAuthBypassEnabled).
+    if (DEV_AUTH_BYPASS) {
       userId = 'dev-user';
     } else {
       const session = await auth();
