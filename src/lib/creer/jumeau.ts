@@ -86,39 +86,161 @@ export async function gardeJumeauAvantRendu(args: {
 }
 
 /**
+ * LES ÉTAPES RÉELLES du jumeau, dans l'ordre où elles se produisent — la
+ * seule progression affichée pendant sa génération. Aucun pourcentage : ni
+ * D-ID ni HeyGen n'en fournissent, et `/api/avatar/status` ne rend que
+ * `processing | completed | failed`. L'ancien `setRenderProgress(5)` figeait
+ * « 5 % » à l'écran pendant 5 à 30 min : un chiffre qui ne mesurait rien.
+ *
+ *   preparation — garde serveur + solde (navigateur)
+ *   envoi       — POST /generer : voix synthétisée + dépôt chez le fournisseur
+ *   traitement  — le fournisseur anime l'avatar (polling du statut)
+ *   stockage    — vidéo rapatriée sur notre stockage, posée dans « Vidéo »
+ *   rendu       — composition du montage (là, le pourcentage est RÉEL : frames)
+ *   pret        — le montage est livré
+ */
+export type PhaseJumeau = 'preparation' | 'envoi' | 'traitement' | 'stockage' | 'rendu' | 'pret';
+export const PHASES_JUMEAU: ReadonlyArray<{ phase: PhaseJumeau; libelle: string }> = [
+  { phase: 'preparation', libelle: 'Préparation' },
+  { phase: 'envoi', libelle: 'Envoi' },
+  { phase: 'traitement', libelle: 'Traitement' },
+  { phase: 'stockage', libelle: 'Stockage' },
+  { phase: 'rendu', libelle: 'Rendu' },
+  { phase: 'pret', libelle: 'Prêt' },
+];
+
+/** Ce que dit chaque étape pendant qu'elle tourne — une phrase, pas un chiffre. */
+export const DETAIL_PHASE_JUMEAU: Record<PhaseJumeau, string> = {
+  preparation: 'Vérification de votre jumeau et de votre solde…',
+  envoi: 'Envoi de votre voix et de votre avatar au fournisseur…',
+  traitement: 'Votre jumeau est animé par le fournisseur (5 à 20 min).',
+  stockage: 'Vidéo du jumeau reçue — mise en place dans la séquence « Vidéo »…',
+  rendu: 'Composition du montage…',
+  pret: 'Prêt.',
+};
+
+/** Les étapes au format `ProgressStatus` : terminées avant, courante, à venir après. */
+export function etapesJumeau(phase: PhaseJumeau, echec = false): Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' | 'echouee' }> {
+  const i = PHASES_JUMEAU.findIndex((p) => p.phase === phase);
+  return PHASES_JUMEAU.map((p, k) => ({
+    libelle: p.libelle,
+    etat: k < i || (phase === 'pret' && k === i) ? 'terminee' : k === i ? (echec ? 'echouee' : 'courante') : 'a_venir',
+  }));
+}
+
+/**
+ * Délai d'attente CLIENT. Le serveur (`STALE_AFTER_MS`, `lib/avatar/statut.ts`)
+ * déclare une génération perdue — et la rembourse — après 30 min comptées
+ * depuis sa création. Le client attendait 20 min seulement : il annonçait un
+ * échec que le serveur n'avait pas prononcé, pendant que la vidéo pouvait
+ * encore aboutir (et être débitée). On attend donc 30 min + une marge, pour
+ * que ce soit TOUJOURS le verdict serveur (`failed`, remboursé) qui s'affiche.
+ */
+export const JUMEAU_ATTENTE_MAX_MS = 32 * 60 * 1000;
+/** Intervalle nominal entre deux lectures du statut. */
+export const JUMEAU_POLL_MS = 5000;
+/**
+ * Échecs CONSÉCUTIFS tolérés (réseau coupé, 5xx, proxy, erreur transitoire
+ * fournisseur relayée en 4xx) avant d'abandonner l'ATTENTE — jamais la
+ * génération : elle continue côté serveur et reste reprenable au retour
+ * (l'identifiant est persisté). Une réponse valide remet le compteur à zéro.
+ * Chaque relance est une simple LECTURE de statut : aucun nouveau lancement,
+ * aucun débit.
+ */
+export const JUMEAU_ECHECS_MAX = 6;
+const attenteApresEchec = (n: number) => Math.min(30_000, JUMEAU_POLL_MS * 2 ** (n - 1));
+
+export const JUMEAU_INTROUVABLE = 'Cette génération de jumeau est introuvable. Relancez-la si besoin.';
+export const JUMEAU_CONNEXION_PERDUE = 'Connexion perdue pendant la préparation de votre jumeau. Il continue côté serveur : rouvrez cette page pour le retrouver.';
+export const JUMEAU_SESSION_EXPIREE = 'Votre session a expiré. Reconnectez-vous : votre jumeau continue côté serveur et sera repris.';
+export const JUMEAU_TROP_LONG = 'La génération de votre jumeau prend trop de temps. Réessayez plus tard.';
+
+/**
+ * Erreur TERMINALE d'une attente de jumeau. `code` dit à l'appelant quoi faire
+ * de l'identifiant persisté :
+ *   'introuvable' — 404 : la génération n'existe pas (ou pas pour ce compte).
+ *                   L'identifiant est à OUBLIER : le reprendre bouclerait.
+ *   'echec'       — le serveur a dit `failed` (déjà remboursé côté serveur).
+ *   'session' / 'connexion' / 'delai' — l'attente s'arrête, PAS la génération :
+ *                   l'identifiant est à GARDER pour la reprise au retour.
+ */
+export class ErreurAttenteJumeau extends Error {
+  constructor(message: string, readonly code: 'introuvable' | 'echec' | 'session' | 'connexion' | 'delai') {
+    super(message);
+    this.name = 'ErreurAttenteJumeau';
+  }
+}
+
+/**
  * ATTEND une génération DÉJÀ lancée — le cœur de polling, partagé par le
  * lancement en un clic et la REPRISE au montage : GET /api/avatar/status?
  * generationId= jusqu'à `completed` (URL re-hébergée) ou `failed`. Rend l'URL
- * de la vidéo, ou lève avec le message à afficher. Aucune vidéo de repli.
+ * de la vidéo, ou lève `ErreurAttenteJumeau`. Aucune vidéo de repli.
  *
  * Cette fonction ne lance RIEN : elle sonde un identifiant existant. Elle est
  * donc sûre à rappeler pour une génération orpheline (l'onglet a été fermé
- * pendant les 5-20 min de rendu) — le serveur, lui, finalise la scène `done`
- * quel que soit son âge (voir `avatar/status/route.ts`).
+ * pendant le rendu) — le serveur, lui, finalise la scène `done` quel que soit
+ * son âge (voir `avatar/status/route.ts`).
+ *
+ * Contrat de la route, lu tel quel :
+ *   200 success + completed/videoUrl → fin, URL rendue
+ *   200 success + failed             → fin, message serveur
+ *   200 success + processing         → on relit dans JUMEAU_POLL_MS
+ *   404                              → fin, génération introuvable (terminal)
+ *   401                              → fin, session expirée (terminal)
+ *   autre / JSON illisible / réseau  → transitoire, relance bornée (JUMEAU_ECHECS_MAX)
  */
 export async function attendreStatutJumeau(args: {
   generationId: string;
   onEtape?: (message: string) => void;
+  onPhase?: (phase: PhaseJumeau) => void;
   fetchImpl?: typeof fetch;
   attendreMs?: (ms: number) => Promise<void>;
   maxAttenteMs?: number;
+  maintenant?: () => number;
 }): Promise<{ url: string }> {
   const f = args.fetchImpl ?? fetch;
   const dormir = args.attendreMs ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
-  const debut = Date.now();
-  const limite = args.maxAttenteMs ?? 20 * 60 * 1000;
-  while (Date.now() - debut < limite) {
-    const res = await f(`/api/avatar/status?generationId=${encodeURIComponent(args.generationId)}`);
-    const json = await res.json().catch(() => ({}));
-    if (json?.success) {
-      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null };
-      if (d.status === 'completed' && d.videoUrl) return { url: d.videoUrl };
-      if (d.status === 'failed') throw new Error(d.error || 'La génération de votre jumeau a échoué.');
+  const horloge = args.maintenant ?? Date.now;
+  const debut = horloge();
+  const limite = args.maxAttenteMs ?? JUMEAU_ATTENTE_MAX_MS;
+  let echecs = 0;
+  let derniereCause: 'connexion' | 'serveur' = 'serveur';
+  args.onPhase?.('traitement');
+  while (horloge() - debut < limite) {
+    let res: Response | null = null;
+    try {
+      res = await f(`/api/avatar/status?generationId=${encodeURIComponent(args.generationId)}`);
+    } catch {
+      res = null; // réseau coupé, DNS, onglet en veille… : transitoire
     }
-    args.onEtape?.('Votre jumeau est en cours de préparation…');
-    await dormir(5000);
+    if (res && res.status === 404) throw new ErreurAttenteJumeau(JUMEAU_INTROUVABLE, 'introuvable');
+    if (res && res.status === 401) throw new ErreurAttenteJumeau(JUMEAU_SESSION_EXPIREE, 'session');
+    const json = res ? await res.json().catch(() => null) : null;
+    if (res?.ok && json?.success) {
+      echecs = 0;
+      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null };
+      if (d.status === 'completed' && d.videoUrl) {
+        args.onPhase?.('stockage');
+        return { url: d.videoUrl };
+      }
+      if (d.status === 'failed') throw new ErreurAttenteJumeau(d.error || 'La génération de votre jumeau a échoué.', 'echec');
+      args.onEtape?.(DETAIL_PHASE_JUMEAU.traitement);
+      await dormir(JUMEAU_POLL_MS);
+      continue;
+    }
+    echecs += 1;
+    derniereCause = res ? 'serveur' : 'connexion';
+    if (echecs >= JUMEAU_ECHECS_MAX) {
+      throw new ErreurAttenteJumeau(
+        derniereCause === 'connexion' ? JUMEAU_CONNEXION_PERDUE : 'Le suivi de votre jumeau est momentanément indisponible. Il continue côté serveur : rouvrez cette page pour le retrouver.',
+        'connexion',
+      );
+    }
+    args.onEtape?.('Connexion instable — nouvelle tentative de lecture du statut…');
+    await dormir(attenteApresEchec(echecs));
   }
-  throw new Error('La génération de votre jumeau prend trop de temps. Réessayez plus tard.');
+  throw new ErreurAttenteJumeau(JUMEAU_TROP_LONG, 'delai');
 }
 
 /**
@@ -136,11 +258,13 @@ export async function genererEtAttendreVideoJumeau(args: {
   aspectRatio: string;
   onLancee?: (generationId: string, avatarVersion: number) => void;
   onEtape?: (message: string) => void;
+  onPhase?: (phase: PhaseJumeau) => void;
   fetchImpl?: typeof fetch;
   attendreMs?: (ms: number) => Promise<void>;
   maxAttenteMs?: number;
 }): Promise<{ url: string; generationId: string; avatarVersion: number }> {
   const f = args.fetchImpl ?? fetch;
+  args.onPhase?.('envoi');
   args.onEtape?.('Génération de votre jumeau…');
   const lancement = await f(`${JUMEAU_API}/generer`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -157,6 +281,7 @@ export async function genererEtAttendreVideoJumeau(args: {
   const { url } = await attendreStatutJumeau({
     generationId,
     onEtape: args.onEtape,
+    onPhase: args.onPhase,
     fetchImpl: args.fetchImpl,
     attendreMs: args.attendreMs,
     maxAttenteMs: args.maxAttenteMs,
