@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslations, useFormattedDate } from '@/i18n/client';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -72,6 +72,7 @@ export default function LibraryPage() {
   // Vidéo sans post relié : « Modifier » demande d'abord la création explicite
   // d'un post modifiable, au lieu d'ouvrir un éditeur vide.
   const [editableConfirm, setEditableConfirm] = useState<{ videoId: string; title: string } | null>(null);
+  const creationEnCoursRef = useRef(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
@@ -200,7 +201,11 @@ export default function LibraryPage() {
   };
 
   const handleCreateEditable = async () => {
-    if (!editableConfirm) return;
+    // Garde SYNCHRONE : deux clics dans la même frame passaient tous deux
+    // avant que `actionInProgress` ne désactive le bouton. Le serveur ne crée
+    // de toute façon qu'un post, mais on n'envoie pas de seconde requête.
+    if (!editableConfirm || creationEnCoursRef.current) return;
+    creationEnCoursRef.current = true;
     const { videoId } = editableConfirm;
     setActionInProgress(`editable-${videoId}`);
     try {
@@ -215,6 +220,7 @@ export default function LibraryPage() {
       console.error('Error creating editable post:', error);
       setToast({ message: 'Impossible de créer le post modifiable. Réessayez.', type: 'error' });
     }
+    creationEnCoursRef.current = false;
     setActionInProgress(null);
     setEditableConfirm(null);
   };
@@ -609,7 +615,13 @@ export default function LibraryPage() {
               modifiable à partir d’elle, puis l’ouvrir. Aucun rendu, aucun
               crédit : la vidéo d’origine reste telle quelle.
             </p>
-            <div className="flex gap-3">
+            <p className="text-gray-500 mb-6 -mt-4 text-xs leading-relaxed" data-library-editable-limite>
+              Le brouillon reprend le titre, les textes, l’affiche, les rushs et la
+              musique enregistrés avec la vidéo. Les cartes et la mise en page ne
+              sont pas récupérables. Il apparaîtra aussi dans le Calendrier, en
+              brouillon, sans publication.
+            </p>
+            <div className="flex flex-col-reverse sm:flex-row gap-3">
               <Button
                 variant="secondary"
                 onClick={() => setEditableConfirm(null)}

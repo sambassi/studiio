@@ -44,9 +44,13 @@ function builder(db: FakeDb, table: string) {
 
   const rows = () => (db.tables[table] ??= []);
 
-  const run = (): { data: Row[]; error: null } => {
+  const run = (): { data: Row[]; error: { code?: string; message: string } | null } => {
     if (op === 'insert') {
       db.beforeInsert?.(table);
+      // Clé primaire, comme Postgres : un `id` déjà présent est refusé en `23505`.
+      if (payload && typeof payload.id === 'string' && rows().some((r) => r.id === payload!.id)) {
+        return { data: [], error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+      }
       const row: Row = {
         id: `gen-${++seq}`,
         created_at: new Date(Date.UTC(2026, 8, 23, 0, 0, seq)).toISOString(),
@@ -88,7 +92,8 @@ function builder(db: FakeDb, table: string) {
     order: (col: string, o?: { ascending?: boolean }) => { orderBy.push({ col, asc: o?.ascending !== false }); return api; },
     limit: (n: number) => { lim = n; return api; },
     single: async () => {
-      const { data } = run();
+      const { data, error } = run();
+      if (error) return { data: null, error };
       return data.length === 1 ? { data: data[0], error: null } : { data: null, error: { message: 'not single' } };
     },
     maybeSingle: async () => {

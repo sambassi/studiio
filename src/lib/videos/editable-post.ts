@@ -13,6 +13,36 @@
  *
  * Ce module est PUR : il ne lit ni n'écrit aucune base.
  */
+import { createHash } from 'crypto';
+
+/**
+ * Espace de noms fixe des identifiants de « post modifiable » (UUID v5).
+ * NE JAMAIS LE CHANGER : un post déjà créé ne serait plus reconnu, et le même
+ * clic en créerait un second.
+ */
+const EDITABLE_POST_NAMESPACE = '6f1c2b7e-3d54-4a8e-9b0f-2c6d8e4a1f37';
+
+/**
+ * L'identifiant — DÉTERMINISTE — du post modifiable d'une vidéo.
+ *
+ * C'est lui qui garantit « au plus UN post » sans migration : deux requêtes
+ * concurrentes insèrent la MÊME clé primaire, et Postgres n'en laisse passer
+ * qu'une (l'autre reçoit `23505`). Aucune contrainte à ajouter : la clé
+ * primaire de `scheduled_posts` existe déjà. L'ancien schéma « insérer, relire,
+ * le plus ancien gagne » laissait survivre deux posts quand l'insert daté le
+ * premier était validé le dernier (`created_at` = début de transaction).
+ *
+ * `userId` entre dans la dérivation : deux comptes ne peuvent pas viser la
+ * même clé. Aucune route ne laisse un client choisir l'`id` d'un post.
+ */
+export function editablePostId(userId: string, videoId: string): string {
+  const ns = Buffer.from(EDITABLE_POST_NAMESPACE.replace(/-/g, ''), 'hex');
+  const h = createHash('sha1').update(ns).update(`${userId}:${videoId}`).digest();
+  h[6] = (h[6] & 0x0f) | 0x50; // version 5
+  h[8] = (h[8] & 0x3f) | 0x80; // variante RFC 4122
+  const x = h.subarray(0, 16).toString('hex');
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
+}
 
 interface LinkedCandidate {
   id: string;
@@ -23,9 +53,10 @@ interface LinkedCandidate {
  * Le post qui fait foi quand plusieurs pointent la même vidéo.
  *
  * Aucune contrainte d'unicité n'existe sur `video_id` (et on n'en ajoute pas).
- * Deux clics concurrents peuvent donc insérer deux posts ; la règle doit être
- * DÉTERMINISTE pour que chaque requête désigne le même gagnant et supprime le
- * sien s'il a perdu : le plus ANCIEN, puis le plus petit `id`.
+ * Ce flux n'en crée qu'un (`editablePostId`), mais un post relié par un autre
+ * chemin (création de contenu, `PATCH`) peut coexister : la règle de lecture
+ * doit rester DÉTERMINISTE — le plus ANCIEN, puis le plus petit `id` — pour que
+ * la Bibliothèque et cette route désignent toujours le même.
  */
 export function pickLinkedPost<T extends LinkedCandidate>(posts: readonly T[]): T | null {
   let best: T | null = null;
@@ -115,6 +146,13 @@ export function buildEditablePostRow(
   mediaUrl: string | null = null,
 ) {
   const metadata = toPostMetadata(video.metadata);
+  // Le format de la vidéo, sous la forme que relit le parcours guidé
+  // (`toWizardDraft` lit `videoSize`, la Bibliothèque lit `format`). Sans lui,
+  // une vidéo 16:9 s'ouvrait en 9:16. Posé seulement quand la vidéo le dit.
+  if (video.format === 'tv' || video.format === 'reel') {
+    metadata.format = video.format;
+    metadata.videoSize = video.format === 'tv' ? { w: 1920, h: 1080 } : { w: 1080, h: 1920 };
+  }
   return {
     user_id: userId,
     video_id: video.id,

@@ -25,9 +25,22 @@ vi.mock('@/lib/db/supabase', () => ({
   get supabase() { return db; },
 }));
 
+// Aucun fournisseur, aucun crédit, aucun rendu : si la route y touchait, ces
+// espions le verraient.
+const deductSpy = vi.fn();
+const addSpy = vi.fn();
+const renderSpy = vi.fn();
+vi.mock('@/lib/credits/system', () => ({
+  deductCredits: (...a: unknown[]) => deductSpy(...a),
+  addCredits: (...a: unknown[]) => addSpy(...a),
+  getUserCredits: async () => 100,
+  getVideoRenderCost: () => 10,
+}));
+vi.mock('@remotion/renderer', () => ({ renderMedia: (...a: unknown[]) => renderSpy(...a), selectComposition: (...a: unknown[]) => renderSpy(...a) }));
+
 const { POST } = await import('@/app/api/videos/[id]/editable-post/route');
 const videosRoute = await import('@/app/api/videos/route');
-const { pickLinkedPost, buildEditablePostRow, linkedPostIdByVideo } = await import('@/lib/videos/editable-post');
+const { pickLinkedPost, buildEditablePostRow, linkedPostIdByVideo, editablePostId } = await import('@/lib/videos/editable-post');
 
 const MOI = 'user-moi';
 const AUTRE = 'user-autre';
@@ -128,8 +141,33 @@ describe('POST /api/videos/[id]/editable-post — création', () => {
     expect(posts().filter((p) => p.video_id === 'vid-1')).toHaveLength(1);
   });
 
-  it('deux clics concurrents convergent vers UN seul post', async () => {
-    // Pendant le premier insert, un « autre onglet » insère son propre post.
+  it('⚠️ deux requêtes SIMULTANÉES (Promise.all) : UN seul post, même postId, une seule création', async () => {
+    const [a, b] = await Promise.all([appeler(), appeler()]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(a.body.postId).toBe(b.body.postId);
+    expect([a.body.created, b.body.created].filter(Boolean)).toHaveLength(1);
+    expect(posts().filter((p) => p.video_id === 'vid-1')).toHaveLength(1);
+    expect(posts()[0].id).toBe(editablePostId(MOI, 'vid-1'));
+  });
+
+  it('⚠️ cinq requêtes simultanées : toujours UN seul post', async () => {
+    const rs = await Promise.all([1, 2, 3, 4, 5].map(() => appeler()));
+    expect(new Set(rs.map((r) => r.body.postId)).size).toBe(1);
+    expect(rs.filter((r) => r.body.created)).toHaveLength(1);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it('⚠️ collision de clé (23505) : la requête perdante renvoie la ligne existante, sans erreur ni suppression', async () => {
+    // Le post modifiable existe déjà, mais n'est plus relié (video_id retiré).
+    db.tables.scheduled_posts = [{ id: editablePostId(MOI, 'vid-1'), user_id: MOI, video_id: null, created_at: '2026-09-02T00:00:00Z' }];
+    const r = await appeler();
+    expect(r.body).toMatchObject({ success: true, postId: editablePostId(MOI, 'vid-1'), created: false });
+    expect(posts()).toHaveLength(1);
+    expect(db.writes.some((w) => w.op === 'delete')).toBe(false);
+  });
+
+  it('post relié par un AUTRE chemin pendant le clic : c’est lui qui fait foi (le plus ancien), rien n’est supprimé', async () => {
     let rival = true;
     db.beforeInsert = (table) => {
       if (table !== 'scheduled_posts' || !rival) return;
@@ -138,7 +176,21 @@ describe('POST /api/videos/[id]/editable-post — création', () => {
     };
     const r = await appeler();
     expect(r.body).toMatchObject({ postId: 'aaa-rival', created: false });
-    expect(posts().filter((p) => p.video_id === 'vid-1').map((p) => p.id)).toEqual(['aaa-rival']);
+    // Ce flux n'a créé qu'UNE ligne (la sienne, clé déterministe) ; il ne
+    // supprime jamais : une ligne rendue à un autre onglet ne disparaît pas.
+    expect(db.writes.filter((w) => w.table === 'scheduled_posts' && w.op === 'insert')).toHaveLength(1);
+    expect(db.writes.some((w) => w.op === 'delete')).toBe(false);
+  });
+
+  it('aucun fournisseur, aucun crédit, aucun rendu — ni à la création, ni sur un post existant', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await appeler();
+    await appeler();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(deductSpy).not.toHaveBeenCalled();
+    expect(addSpy).not.toHaveBeenCalled();
+    expect(renderSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
   it('ne modifie PAS la vidéo (statut compris), ni crédits, ni rendu', async () => {
@@ -192,7 +244,16 @@ describe('logique pure', () => {
       '2026-09-23',
     );
     expect(row).toMatchObject({ user_id: MOI, video_id: 'v', format: 'tv', scheduled_date: '2026-09-23', status: 'draft' });
-    expect(row.metadata).toEqual({});
+    // Seul le format est posé — pour que le parcours guidé ouvre bien du 16:9.
+    expect(row.metadata).toEqual({ format: 'tv', videoSize: { w: 1920, h: 1080 } });
+  });
+
+  it('editablePostId : UUID v5, déterministe, distinct par compte et par vidéo', () => {
+    const id = editablePostId(MOI, 'vid-1');
+    expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(editablePostId(MOI, 'vid-1')).toBe(id);
+    expect(editablePostId(AUTRE, 'vid-1')).not.toBe(id);
+    expect(editablePostId(MOI, 'vid-2')).not.toBe(id);
   });
 });
 

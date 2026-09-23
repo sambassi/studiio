@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { resolveExportableUrl } from '@/lib/videos/playable-url';
-import { buildEditablePostRow, parisToday, pickLinkedPost } from '@/lib/videos/editable-post';
+import { buildEditablePostRow, editablePostId, parisToday, pickLinkedPost } from '@/lib/videos/editable-post';
 
 /**
  * POST /api/videos/[id]/editable-post — le post modifiable d'une vidéo.
@@ -14,10 +14,11 @@ import { buildEditablePostRow, parisToday, pickLinkedPost } from '@/lib/videos/e
  * Garanties :
  * - owner-scopé : la vidéo ET le post sont lus avec `user_id` de la session ;
  * - idempotent : un post relié existant est renvoyé tel quel, sans écriture ;
- * - au plus UN post : sans contrainte d'unicité en base, deux requêtes
- *   concurrentes peuvent insérer chacune le sien. Après l'insert, chacune relit
- *   les posts reliés et désigne le même gagnant (`pickLinkedPost`,
- *   déterministe) ; celle qui a perdu supprime SA ligne, et seulement elle ;
+ * - au plus UN post, même en concurrence : le post est inséré sous une clé
+ *   primaire DÉTERMINISTE (`editablePostId(user, vidéo)`). Deux requêtes
+ *   simultanées visent la même clé ; Postgres n'en valide qu'une, l'autre reçoit
+ *   `23505` et renvoie la ligne existante. Aucune migration, aucune suppression ;
+ * - relu après création : la réponse vient de la base, pas de l'insert ;
  * - la vidéo n'est jamais modifiée (contrairement à `repost`, qui la passe en
  *   `published`) ; aucun rendu, aucun crédit, aucun fournisseur.
  */
@@ -55,22 +56,34 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ success: true, postId: existing.id, created: false });
     }
 
-    const row = buildEditablePostRow(video, userId, parisToday(), resolveExportableUrl(video));
-    const { data: created, error: insertError } = await supabase
+    const postId = editablePostId(userId, video.id);
+    const row = { id: postId, ...buildEditablePostRow(video, userId, parisToday(), resolveExportableUrl(video)) };
+    const { error: insertError } = await supabase
       .from('scheduled_posts')
       .insert(row)
       .select('id')
       .single();
-    if (insertError || !created) throw insertError ?? new Error('insert sans ligne');
+    // `23505` : une requête concurrente (double clic, second onglet) a inséré
+    // la même clé juste avant — c'est le post qu'on cherchait, pas une erreur.
+    const collision = insertError?.code === '23505';
+    if (insertError && !collision) throw insertError;
 
+    // Relecture APRÈS création : la base fait foi.
     const winner = pickLinkedPost(await linkedPosts(video.id, userId));
-    if (winner && winner.id !== created.id) {
-      // Une requête concurrente a gagné : on retire NOTRE ligne, rien d'autre.
-      await supabase.from('scheduled_posts').delete().eq('id', created.id).eq('user_id', userId);
-      return NextResponse.json({ success: true, postId: winner.id, created: false });
+    if (winner) {
+      return NextResponse.json({ success: true, postId: winner.id, created: !collision && winner.id === postId });
     }
-
-    return NextResponse.json({ success: true, postId: created.id, created: true });
+    // Collision sur une ligne qui n'est plus reliée à la vidéo (son `video_id`
+    // a été retiré depuis) : c'est tout de même le post modifiable de CETTE
+    // vidéo pour CE compte — on le rend plutôt que d'en créer un autre.
+    const { data: propre } = await supabase
+      .from('scheduled_posts')
+      .select('id')
+      .eq('id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (propre) return NextResponse.json({ success: true, postId: propre.id, created: false });
+    return NextResponse.json({ success: false, error: 'Editable post conflict' }, { status: 409 });
   } catch (error) {
     console.error('Error creating editable post from video:', error);
     return NextResponse.json({ success: false, error: 'Failed to create editable post' }, { status: 500 });
