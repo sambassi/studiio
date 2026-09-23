@@ -137,15 +137,17 @@ describe('cartes — une modification simple ne perd rien', () => {
     ]);
   });
 
-  it('7. sans aucune modification, la sortie est identique a la source', () => {
-    expect(sortie(ECRAN)).toStrictEqual(META_AVANCE.cards);
+  it('7. sans aucune modification, la sortie est identique a la source (+ l\'id, desormais persiste)', () => {
+    // Depuis l'ajout/suppression de cartes, chaque carte ecrite porte son `id`
+    // (groupes stables apres rechargement) ; rien d'autre ne change.
+    expect(sortie(ECRAN)).toStrictEqual(META_AVANCE.cards.map((c, i) => ({ id: `card-lu-${i}`, ...c })));
   });
 
   it('9. modifier une carte n\'a AUCUN effet sur les autres', () => {
     const modifie = ECRAN.map((c) => (c.id === 'card-lu-0' ? { ...c, title: 'SEULE A CHANGE' } : c));
     const r = sortie(modifie);
-    expect(r[1]).toStrictEqual(META_AVANCE.cards[1]);
-    expect(r[2]).toStrictEqual(META_AVANCE.cards[2]);
+    expect(r[1]).toStrictEqual({ id: 'card-lu-1', ...META_AVANCE.cards[1] });
+    expect(r[2]).toStrictEqual({ id: 'card-lu-2', ...META_AVANCE.cards[2] });
   });
 });
 
@@ -163,20 +165,20 @@ describe('cartes — appariement par id, jamais par index', () => {
   it('une suppression laisse les restantes intactes', () => {
     const r = sortie([ECRAN[0], ECRAN[2]]);
     expect(r).toHaveLength(2);
-    expect(r[0]).toStrictEqual(META_AVANCE.cards[0]);
-    expect(r[1]).toStrictEqual(META_AVANCE.cards[2]);
+    expect(r[0]).toStrictEqual({ id: 'card-lu-0', ...META_AVANCE.cards[0] });
+    expect(r[1]).toStrictEqual({ id: 'card-lu-2', ...META_AVANCE.cards[2] });
   });
 
-  it('une carte NEUVE garde le comportement d\'aujourd\'hui : cinq champs, couleur d\'accent', () => {
+  it('une carte NEUVE garde le comportement d\'aujourd\'hui : cinq champs (+ son id), couleur d\'accent', () => {
     const neuve: CarteEcran = {
       id: 'card-zx9-4', icon: 'Star', title: 'Neuve', value: '10', description: 'D',
     };
     const r = sortie([neuve, ...ECRAN]);
     expect(r[0]).toStrictEqual({
-      emoji: 'Star', label: 'Neuve', value: '10', description: 'D', color: ACCENT_CHARGE,
+      id: 'card-zx9-4', emoji: 'Star', label: 'Neuve', value: '10', description: 'D', color: ACCENT_CHARGE,
     });
     // Et les cartes relues ne sont pas contaminees.
-    expect(r[1]).toStrictEqual(META_AVANCE.cards[0]);
+    expect(r[1]).toStrictEqual({ id: 'card-lu-0', ...META_AVANCE.cards[0] });
   });
 });
 
@@ -215,7 +217,7 @@ describe('cartes — purete', () => {
   it('une metadata sans cartes donne un index vide, et la sortie reste celle d\'aujourd\'hui', () => {
     const r = cartesPourEnregistrement(ECRAN, indexerCartesOrigine({}), '#111111', '#111111');
     expect(r).toStrictEqual(ECRAN.map((c) => ({
-      emoji: c.icon, label: c.title, value: c.value, description: c.description, color: '#111111',
+      id: c.id, emoji: c.icon, label: c.title, value: c.value, description: c.description, color: '#111111',
     })));
   });
 

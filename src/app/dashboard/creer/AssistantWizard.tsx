@@ -74,7 +74,7 @@ import {
 import SmartGuides from '@/components/creer/SmartGuides';
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
-  duplicateCards, duplicateBoxes, maxCards, updateCard,
+  duplicateCards, duplicateBoxes, maxCards, updateCard, addCard, removeCard, boxForNewCard, removeBox,
   groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, newElementId, MIN_GROUP,
   type CardGroup,
 } from '@/lib/creer/selection';
@@ -187,7 +187,7 @@ import {
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
-  indexerCartesOrigine, cartesPourEnregistrement,
+  indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees,
 } from '@/lib/creer/postMetadata/cartes';
 import {
   metadataPourEnregistrement, type ValeursWizard,
@@ -3968,6 +3968,14 @@ export default function AssistantWizard() {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<Generated | null>(null);
   /**
+   * Le contenu COURANT, lisible dans un gestionnaire sans attendre le rendu :
+   * deux clics rapides sur « Ajouter » ou « Supprimer » partaient sinon de la
+   * meme fermeture, et le second ecrasait le premier. Resynchronise a chaque
+   * rendu, et avance a la main par ces deux gestes.
+   */
+  const generatedRef = useRef<Generated | null>(generated);
+  generatedRef.current = generated;
+  /**
    * Zone ouverte au double-clic sur l'apercu — assistant.
    *
    * ⚠️ ICI LE CONTENU EST EDITABLE, contrairement a l'Autopilote. L'assistant
@@ -5371,6 +5379,65 @@ export default function AssistantWizard() {
     );
   }, [generated, selectedCards, format]);
 
+  /**
+   * AJOUTE une carte vide, a la fin (portage PR 2).
+   *
+   * En mode libre, son emplacement est cree dans le MEME geste : une carte sans
+   * emplacement invaliderait le mode libre, et toute la disposition de
+   * l'utilisateur serait effacee (`validFree`).
+   */
+  const ajouterCarte = useCallback(() => {
+    // L'etat COURANT (et non la fermeture) : deux clics rapides ajoutent deux
+    // cartes. L'identifiant est tire UNE fois, hors des fonctions de mise a
+    // jour, qui restent pures (React peut les rejouer).
+    const courant = generatedRef.current;
+    if (!courant) return;
+    const max = maxCards(format);
+    const carte: GeneratedCard = { id: newCardId(), icon: 'Star', title: '', value: '', description: '' };
+    const res = addCard(courant.cards, carte, max);
+    if (!res.added) return;
+    const derniere = courant.cards[courant.cards.length - 1]?.id;
+    generatedRef.current = { ...courant, cards: res.cards };
+    setGenerated((g) => (g ? { ...g, cards: addCard(g.cards, carte, max).cards } : g));
+    setCardBoxes((prev) => {
+      if (!prev) return prev;
+      const next = { format: prev.format, boxes: { ...prev.boxes, [carte.id]: boxForNewCard(prev.boxes, derniere) } };
+      cardBoxesRef.current = next;
+      return next;
+    });
+  }, [format]);
+
+  /**
+   * RETIRE une carte (jamais la derniere) — et tout ce qui la designe :
+   * son emplacement (un emplacement orphelin invalide le brouillon au
+   * rechargement), la selection, son appartenance aux groupes. Rien n'est
+   * rendu ni debite ; la voix des cartes se reecrit d'elle-meme.
+   */
+  const supprimerCarte = useCallback((id: string) => {
+    // Meme regle que l'ajout : l'etat COURANT, pour que deux suppressions
+    // rapides retirent bien deux cartes.
+    const courant = generatedRef.current;
+    if (!courant) return;
+    const res = removeCard(courant.cards, id);
+    if (!res.removed) return;
+    generatedRef.current = { ...courant, cards: res.cards };
+    setGenerated((g) => (g ? { ...g, cards: removeCard(g.cards, id).cards } : g));
+    setCardBoxes((prev) => {
+      if (!prev) return prev;
+      const next = { format: prev.format, boxes: removeBox(prev.boxes, id) };
+      cardBoxesRef.current = next;
+      return next;
+    });
+    setSelectedCards((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    const restants = new Set(res.cards.map((c) => c.id));
+    setCardGroups((prev) => pruneGroups(prev, [...restants]));
+  }, []);
+
   const groupSelection = useCallback(() => {
     if (selectedCards.size < MIN_GROUP) return;
     setCardGroups((prev) => groupCards(prev, [...selectedCards], newGroupId));
@@ -5612,6 +5679,13 @@ export default function AssistantWizard() {
   const cartesOrigine = useRef<ReadonlyMap<string, Record<string, unknown>>>(new Map());
   /** L'accent EN PLACE AU CHARGEMENT : il dit quelles cartes le suivaient. */
   const accentCharge = useRef<string | undefined>(undefined);
+  /**
+   * `id` -> rang d'origine, et `design.cardCustomIcons` tel que charge : les
+   * icones personnalisees sont rangees par POSITION, et doivent suivre leur
+   * carte quand on en ajoute ou en retire une (`iconesPersoRealignees`).
+   */
+  const rangsOrigine = useRef<ReadonlyMap<string, number>>(new Map());
+  const iconesPersoOrigine = useRef<unknown>(undefined);
 
   /** Etat du dernier enregistrement demande. `repos` = rien en cours. */
   const [enregistrement, setEnregistrement] = useState<
@@ -5928,6 +6002,9 @@ export default function AssistantWizard() {
       // ou leur rang correspond encore a celui de la metadata. Ensuite
       // l'utilisateur peut en ajouter, en retirer ou les deplacer.
       cartesOrigine.current = indexerCartesOrigine(postCharge.current?.metadata);
+      rangsOrigine.current = indexerRangsOrigine(postCharge.current?.metadata);
+      iconesPersoOrigine.current = (postCharge.current?.metadata as
+        { design?: { cardCustomIcons?: unknown } } | undefined)?.design?.cardCustomIcons;
       const brandingCharge = (postCharge.current?.metadata as
         { branding?: { accentColor?: unknown } } | undefined)?.branding;
       accentCharge.current = typeof brandingCharge?.accentColor === 'string'
@@ -7944,6 +8021,11 @@ export default function AssistantWizard() {
       rushUrls: rushUrl && seqDuration('video') > 0 ? [rushUrl] : undefined,
       audioKeyframes,
       cardGroups,
+      // Realignees sur les cartes de l'ecran ; identiques au chargement tant
+      // qu'aucune carte n'a ete ajoutee, retiree ou deplacee — donc non envoyees.
+      cardCustomIcons: generated
+        ? iconesPersoRealignees(iconesPersoOrigine.current, generated.cards, rangsOrigine.current)
+        : undefined,
       hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls
                    || (rushUrl && seqDuration('video') > 0)),
     };
@@ -10142,13 +10224,19 @@ export default function AssistantWizard() {
                         Titre, valeur, description des cartes EXISTANTES. La mise
                         à jour passe par l'identifiant (`updateCard`) : case du
                         mode libre, groupes et carte d'origine d'un post suivent.
-                        Ni ajout ni suppression ici. La voix des cartes se
-                        réécrit d'elle-même (effet `buildAutoFillText`), et un
-                        audio déjà généré est alors signalé périmé. */}
+                        Ajout et suppression (PR 2) : `ajouterCarte` /
+                        `supprimerCarte`. La voix des cartes se réécrit
+                        d'elle-même (effet `buildAutoFillText`), et un audio
+                        déjà généré est alors signalé périmé. */}
                     {activeOrder.includes('cards') && (
                       <CartesEditeur
                         cards={generated.cards}
                         couleurValeur={gradEnd}
+                        onAdd={ajouterCarte}
+                        onRemove={supprimerCarte}
+                        canAdd={generated.cards.length < limiteCartes}
+                        canRemove={generated.cards.length > 1}
+                        max={limiteCartes}
                         onChange={(id, patch) =>
                           setGenerated((g) => (g ? { ...g, cards: updateCard(g.cards, id, patch) } : g))
                         }

@@ -145,6 +145,65 @@ export function updateCard<T extends Identified & CarteTexte>(
   return out;
 }
 
+/**
+ * Ajoute UNE carte a la fin, dans la limite du format (`maxCards`).
+ *
+ * A la fin et non apres la selection : la carte neuve est vide, l'utilisateur
+ * la remplit dans la liste — la placer au milieu decalerait tout ce qu'il a
+ * sous les yeux. Refusee au-dela du maximum : le compositeur tronquerait en
+ * silence les cartes en trop.
+ */
+export function addCard<T extends { id: string }>(cards: T[], card: T, max: number): { cards: T[]; added: boolean } {
+  if (cards.length >= max) return { cards, added: false };
+  return { cards: [...cards, card], added: true };
+}
+
+/**
+ * Retire UNE carte par identifiant — jamais la derniere.
+ *
+ * Zero carte n'est pas un etat que le montage sait rendre de facon verifiee
+ * (sequence « Cartes » vide) : on garde au moins une carte. Identifiant
+ * inconnu : rien ne bouge.
+ */
+export function removeCard<T extends { id: string }>(cards: T[], id: string): { cards: T[]; removed: boolean } {
+  if (cards.length <= 1 || !cards.some((c) => c.id === id)) return { cards, removed: false };
+  return { cards: cards.filter((c) => c.id !== id), removed: true };
+}
+
+/** Case par defaut d'une carte neuve sans voisine mesuree : centree, lisible. */
+const BOX_PAR_DEFAUT: CardBox = { x: 30, y: 40, w: 40, h: 15 };
+
+/**
+ * Emplacement d'une carte NEUVE en mode libre.
+ *
+ * Sans emplacement, le mode libre n'est plus valide et TOUTE la disposition de
+ * l'utilisateur serait effacee (`validFree`). La carte neuve est posee en
+ * decale de la derniere carte — meme regle que la duplication (visible, pas
+ * superposee) — ou, a defaut, au centre.
+ */
+export function boxForNewCard(boxes: Record<string, CardBox>, lastId: string | undefined, offset = 3): CardBox {
+  const src = lastId ? boxes[lastId] : undefined;
+  if (!src) return { ...BOX_PAR_DEFAUT };
+  return {
+    ...src,
+    x: Math.min(Math.max(0, 100 - src.w), src.x + offset),
+    y: Math.min(Math.max(0, 100 - src.h), src.y + offset),
+  };
+}
+
+/**
+ * Retire l'emplacement d'une carte supprimee.
+ *
+ * Un emplacement ORPHELIN invalide le brouillon au rechargement
+ * (`sanitizeCardBoxes` : tout ou rien) — la disposition entiere serait perdue.
+ */
+export function removeBox(boxes: Record<string, CardBox>, id: string): Record<string, CardBox> {
+  if (!(id in boxes)) return boxes;
+  const out = { ...boxes };
+  delete out[id];
+  return out;
+}
+
 /** Une carte, vue par les regles de duplication : seul l'`id` compte ici. */
 export interface Identified {
   id: string;

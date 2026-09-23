@@ -218,12 +218,12 @@ describe('assistant — création : l’étape Contenu devient éditable', () =>
     expect(appels.filter((a) => /tts|voice|render|credits\/deduct/.test(a.url) && a.method === 'POST')).toEqual([]);
   });
 
-  it('⚠️ ni ajout, ni suppression de carte dans l’assistant (PR 1)', async () => {
+  it('ajout et suppression sont désormais proposés (PR 2 — voir creer-cartes-ajout-suppression)', async () => {
     poserBrouillon();
     render(<AssistantWizard />);
     await laisserTourner();
-    expect(screen.queryByRole('button', { name: /Ajouter une carte/i })).toBeNull();
-    expect(document.querySelector('[data-carte-editeur] button')).toBeNull();
+    expect(screen.queryAllByRole('button', { name: /Ajouter une carte/i }).length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('[data-carte-supprimer]')).toHaveLength(2);
   });
 });
 
@@ -277,6 +277,7 @@ describe('assistant — modification d’un post : PATCH du même post, rien d�
     const cartes = meta.cards as Array<Record<string, unknown>>;
     expect(cartes).toHaveLength(2);
     expect(cartes[0]).toEqual({
+      id: 'card-lu-0',
       emoji: 'Heart', label: 'Respirer', value: '+30%', description: 'Trois minutes',
       color: '#123456', position: { x: 10, y: 20 }, textOnly: true, champInconnu: 'garde-moi',
     });
