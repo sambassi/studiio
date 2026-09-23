@@ -100,9 +100,28 @@ describe('B2 — icônes personnalisées réalignées par identifiant', () => {
       .toEqual({ '0': 'c.png', '2': 'a.png', 'custom-99': 'z.png' });
   });
 
-  it('rien ne change : résultat identique ; pas d’icônes au départ : undefined (rien à envoyer)', () => {
-    expect(iconesPersoRealignees(icones, [{ id: 'card-lu-0' }, { id: 'card-lu-1' }, { id: 'card-lu-2' }], rangs)).toEqual(icones);
+  it('⚠️ structure INCHANGÉE (mêmes cartes, même ordre) : undefined — rien n’est envoyé ni réécrit', () => {
+    expect(iconesPersoRealignees(icones, [{ id: 'card-lu-0' }, { id: 'card-lu-1' }, { id: 'card-lu-2' }], rangs)).toBeUndefined();
     expect(iconesPersoRealignees(undefined, [{ id: 'card-lu-0' }], rangs)).toBeUndefined();
+  });
+
+  it('⚠️ suppression : les métadonnées NON associées aux cartes restent intactes (orpheline numérique, clé inconnue, valeur non textuelle)', () => {
+    const riches = { '0': 'a.png', '1': 'b.png', '2': 'c.png', '7': 'orph.png', 'custom-x': 'u.png', '01': 'n.png', '5': null, '1x': 3 };
+    expect(iconesPersoRealignees(riches, [{ id: 'card-lu-0' }, { id: 'card-lu-2' }], rangs)).toEqual({
+      '0': 'a.png', '1': 'c.png', '7': 'orph.png', 'custom-x': 'u.png', '01': 'n.png', '5': null, '1x': 3,
+    });
+  });
+
+  it('une valeur non textuelle attachée à une carte SUIT sa carte, intacte', () => {
+    expect(iconesPersoRealignees({ '0': 'a.png', '1': { v: 1 }, '2': 'c.png' }, [{ id: 'card-lu-1' }, { id: 'card-lu-2' }], rangs))
+      .toEqual({ '0': { v: 1 }, '1': 'c.png' });
+  });
+
+  it('⚠️ ajout sur une position occupée par une orpheline : la carte neuve n’hérite de RIEN, l’orpheline est conservée sous une clé non lue', () => {
+    const r = iconesPersoRealignees({ '0': 'a.png', '1': 'b.png', '2': 'c.png', '3': 'o3.png' },
+      [{ id: 'card-lu-0' }, { id: 'card-lu-1' }, { id: 'card-lu-2' }, { id: 'neuve' }], rangs)!;
+    expect(r['3']).toBeUndefined();
+    expect(r).toEqual({ '0': 'a.png', '1': 'b.png', '2': 'c.png', 'orphelin-3': 'o3.png' });
   });
 
   it('from-wizard : envoyé seulement s’il change, DANS design, sans perdre le reste de design', () => {
@@ -286,6 +305,118 @@ describe('assistant — création : ajouter / supprimer à l’étape Contenu', 
     await laisserTourner();
     expect(appels.filter((a) => a.method === 'POST'
       && /\/api\/render|credits|\/api\/tts|\/api\/voice|\/api\/content|replicate|heygen|d-id|\/api\/avatar/i.test(a.url))).toEqual([]);
+  });
+});
+
+describe('assistant — sélection et double clic', () => {
+  const CARTES3 = [
+    { id: 'c-1', icon: 'Heart', title: 'Alpha', description: 'da', value: '1' },
+    { id: 'c-2', icon: 'Zap', title: 'Beta', description: 'db', value: '2' },
+    { id: 'c-3', icon: 'Star', title: 'Gamma', description: 'dc', value: '3' },
+  ];
+  const poser = () => window.localStorage.setItem(draftKey('a@b.c'), JSON.stringify({
+    version: DRAFT_VERSION, savedAt: 1, started: true, step: 3, format: '9:16',
+    generated: { title: 'Yoga', subtitle: 'Matin', cards: CARTES3, cta: 'Go', ctaSub: '' },
+  }));
+
+  it('⚠️ supprimer la carte SÉLECTIONNÉE laisse une sélection valide (vide, sans fantôme)', async () => {
+    poser();
+    render(<AssistantWizard />);
+    await laisserTourner();
+    const carte = document.querySelector('[data-card-id="c-2"]') as HTMLElement;
+    expect(carte).not.toBeNull();
+    await act(async () => { fireEvent.pointerDown(carte, { button: 0, isPrimary: true, pointerId: 1 }); });
+    await laisserTourner();
+    expect(document.body.textContent).toContain('1 carte sélectionnée');
+    await cliquer(/Supprimer la carte 2/i);
+    await laisserTourner();
+    expect(editeurs()).toEqual(['c-1', 'c-3']);
+    expect(document.body.textContent).not.toContain('sélectionnée');
+  });
+
+  it('⚠️ double clic sur « Ajouter » : DEUX cartes, aucune écrasée', async () => {
+    poser();
+    render(<AssistantWizard />);
+    await laisserTourner();
+    const ajouter = screen.getAllByRole('button', { name: /Ajouter une carte/i })[0];
+    await act(async () => { fireEvent.click(ajouter); fireEvent.click(ajouter); });
+    await laisserTourner();
+    expect(editeurs()).toHaveLength(5);
+    expect(new Set(editeurs()).size).toBe(5);
+  });
+
+  it('⚠️ deux suppressions rapides : les DEUX cartes partent, aucune ne revient', async () => {
+    poser();
+    render(<AssistantWizard />);
+    await laisserTourner();
+    const s1 = screen.getAllByRole('button', { name: /Supprimer la carte 1/i })[0];
+    const s2 = screen.getAllByRole('button', { name: /Supprimer la carte 2/i })[0];
+    await act(async () => { fireEvent.click(s1); fireEvent.click(s2); });
+    await laisserTourner();
+    expect(editeurs()).toEqual(['c-3']);
+  });
+});
+
+describe('assistant — enregistrement SANS changement de structure : icônes intactes', () => {
+  const ICONES = { '0': 'a.png', '1': 'b.png', '7': 'orph.png', 'custom-x': 'u.png', '5': null };
+  beforeEach(() => {
+    postServeur = {
+      id: 'post-42', title: 'YOGA', caption: 'l', status: 'draft', scheduled_date: '2026-09-01', platforms: [],
+      metadata: {
+        cards: [
+          { emoji: 'Heart', label: 'Alpha', value: '1', description: 'da' },
+          { emoji: 'Zap', label: 'Beta', value: '2', description: 'db' },
+        ],
+        design: { titleFont: 'Anton', cardCustomIcons: ICONES },
+      },
+    };
+  });
+
+  async function ouvrirContenu() {
+    urlQuery = new URLSearchParams('postId=post-42');
+    render(<AssistantWizard />);
+    await laisserTourner(6);
+    for (const m of [/^Continuer vers Style/, /Continuer vers Audio/, /Continuer vers Contenu/]) {
+      // eslint-disable-next-line no-await-in-loop
+      await cliquer(m);
+    }
+    await laisserTourner();
+  }
+
+  it('⚠️ aucune carte ajoutée, supprimée ni déplacée (texte seulement) : cardCustomIcons n’est PAS réécrit', async () => {
+    await ouvrirContenu();
+    const champ = document.querySelector('[data-carte-editeur="card-lu-1"] [data-carte-champ="value"]') as HTMLInputElement;
+    await act(async () => { fireEvent.change(champ, { target: { value: '+30%' } }); });
+    await laisserTourner();
+    await cliquer(/Enregistrer les modifications/i);
+    await laisserTourner(6);
+    const meta = (appels.find((a) => a.method === 'PATCH')!.body as { metadata: Record<string, unknown> }).metadata;
+    // `design` peut partir pour une AUTRE raison (défaut antérieur des CTA) ; si
+    // c'est le cas, les icônes y sont EXACTEMENT celles de la base.
+    if ('design' in meta) expect((meta.design as Record<string, unknown>).cardCustomIcons).toEqual(ICONES);
+  });
+
+  it('⚠️ enregistrer sans rien toucher : cardCustomIcons exactement conservé', async () => {
+    await ouvrirContenu();
+    await cliquer(/Enregistrer les modifications/i);
+    await laisserTourner(6);
+    const patch = appels.find((a) => a.method === 'PATCH');
+    if (patch) {
+      const meta = (patch.body as { metadata: Record<string, unknown> }).metadata;
+      if ('design' in meta) expect((meta.design as Record<string, unknown>).cardCustomIcons).toEqual(ICONES);
+    }
+  });
+
+  it('⚠️ suppression dans l’assistant : orpheline, clé inconnue et valeur non textuelle intactes', async () => {
+    await ouvrirContenu();
+    await cliquer(/Supprimer la carte 1/i);
+    await laisserTourner();
+    await cliquer(/Enregistrer les modifications/i);
+    await laisserTourner(6);
+    const meta = (appels.find((a) => a.method === 'PATCH')!.body as { metadata: Record<string, unknown> }).metadata;
+    expect((meta.design as Record<string, unknown>).cardCustomIcons).toEqual({
+      '0': 'b.png', '7': 'orph.png', 'custom-x': 'u.png', '5': null,
+    });
   });
 });
 

@@ -171,7 +171,7 @@ export interface ValeursWizard {
    * (`iconesPersoRealignees`). Envoye seulement s'il change — c'est-a-dire
    * quand une carte a ete ajoutee, supprimee ou deplacee.
    */
-  cardCustomIcons?: Record<string, string>;
+  cardCustomIcons?: Record<string, unknown>;
 }
 
 /**

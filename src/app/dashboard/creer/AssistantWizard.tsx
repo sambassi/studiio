@@ -3968,6 +3968,14 @@ export default function AssistantWizard() {
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState<Generated | null>(null);
   /**
+   * Le contenu COURANT, lisible dans un gestionnaire sans attendre le rendu :
+   * deux clics rapides sur « Ajouter » ou « Supprimer » partaient sinon de la
+   * meme fermeture, et le second ecrasait le premier. Resynchronise a chaque
+   * rendu, et avance a la main par ces deux gestes.
+   */
+  const generatedRef = useRef<Generated | null>(generated);
+  generatedRef.current = generated;
+  /**
    * Zone ouverte au double-clic sur l'apercu — assistant.
    *
    * ⚠️ ICI LE CONTENU EST EDITABLE, contrairement a l'Autopilote. L'assistant
@@ -5379,19 +5387,25 @@ export default function AssistantWizard() {
    * l'utilisateur serait effacee (`validFree`).
    */
   const ajouterCarte = useCallback(() => {
-    if (!generated) return;
+    // L'etat COURANT (et non la fermeture) : deux clics rapides ajoutent deux
+    // cartes. L'identifiant est tire UNE fois, hors des fonctions de mise a
+    // jour, qui restent pures (React peut les rejouer).
+    const courant = generatedRef.current;
+    if (!courant) return;
+    const max = maxCards(format);
     const carte: GeneratedCard = { id: newCardId(), icon: 'Star', title: '', value: '', description: '' };
-    const res = addCard(generated.cards, carte, maxCards(format));
+    const res = addCard(courant.cards, carte, max);
     if (!res.added) return;
-    const derniere = generated.cards[generated.cards.length - 1]?.id;
-    setGenerated({ ...generated, cards: res.cards });
+    const derniere = courant.cards[courant.cards.length - 1]?.id;
+    generatedRef.current = { ...courant, cards: res.cards };
+    setGenerated((g) => (g ? { ...g, cards: addCard(g.cards, carte, max).cards } : g));
     setCardBoxes((prev) => {
       if (!prev) return prev;
       const next = { format: prev.format, boxes: { ...prev.boxes, [carte.id]: boxForNewCard(prev.boxes, derniere) } };
       cardBoxesRef.current = next;
       return next;
     });
-  }, [generated, format]);
+  }, [format]);
 
   /**
    * RETIRE une carte (jamais la derniere) — et tout ce qui la designe :
@@ -5400,10 +5414,14 @@ export default function AssistantWizard() {
    * rendu ni debite ; la voix des cartes se reecrit d'elle-meme.
    */
   const supprimerCarte = useCallback((id: string) => {
-    if (!generated) return;
-    const res = removeCard(generated.cards, id);
+    // Meme regle que l'ajout : l'etat COURANT, pour que deux suppressions
+    // rapides retirent bien deux cartes.
+    const courant = generatedRef.current;
+    if (!courant) return;
+    const res = removeCard(courant.cards, id);
     if (!res.removed) return;
-    setGenerated({ ...generated, cards: res.cards });
+    generatedRef.current = { ...courant, cards: res.cards };
+    setGenerated((g) => (g ? { ...g, cards: removeCard(g.cards, id).cards } : g));
     setCardBoxes((prev) => {
       if (!prev) return prev;
       const next = { format: prev.format, boxes: removeBox(prev.boxes, id) };
@@ -5416,8 +5434,9 @@ export default function AssistantWizard() {
       next.delete(id);
       return next;
     });
-    setCardGroups((prev) => pruneGroups(prev, res.cards.map((c) => c.id)));
-  }, [generated]);
+    const restants = new Set(res.cards.map((c) => c.id));
+    setCardGroups((prev) => pruneGroups(prev, [...restants]));
+  }, []);
 
   const groupSelection = useCallback(() => {
     if (selectedCards.size < MIN_GROUP) return;
@@ -10205,9 +10224,10 @@ export default function AssistantWizard() {
                         Titre, valeur, description des cartes EXISTANTES. La mise
                         à jour passe par l'identifiant (`updateCard`) : case du
                         mode libre, groupes et carte d'origine d'un post suivent.
-                        Ni ajout ni suppression ici. La voix des cartes se
-                        réécrit d'elle-même (effet `buildAutoFillText`), et un
-                        audio déjà généré est alors signalé périmé. */}
+                        Ajout et suppression (PR 2) : `ajouterCarte` /
+                        `supprimerCarte`. La voix des cartes se réécrit
+                        d'elle-même (effet `buildAutoFillText`), et un audio
+                        déjà généré est alors signalé périmé. */}
                     {activeOrder.includes('cards') && (
                       <CartesEditeur
                         cards={generated.cards}

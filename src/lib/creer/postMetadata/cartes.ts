@@ -117,32 +117,64 @@ export function indexerRangsOrigine(metadata: unknown): ReadonlyMap<string, numb
 }
 
 /**
- * `design.cardCustomIcons`, REALIGNE sur les cartes de l'ecran.
+ * `design.cardCustomIcons`, REALIGNE sur les cartes de l'ecran — et SEULEMENT
+ * si la structure des cartes a change.
  *
- * L'objet est range par POSITION (`{'0': url, '1': url}`) : supprimer ou
- * inserer une carte decalait les icones sur la carte voisine. Chaque icone
- * suit desormais SA carte (retrouvee par son rang d'origine) :
- * - carte supprimee → son icone disparait ;
- * - carte neuve → aucune icone ;
- * - cle NON numerique (ancien format de l'editeur avance) → gardee telle quelle.
+ * L'objet est range par POSITION (`{'0': url, '1': url}`), lu ainsi par le
+ * Calendrier : supprimer ou inserer une carte decalait les icones sur la carte
+ * voisine.
  *
- * `undefined` s'il n'y avait pas d'icones : rien a envoyer, rien a creer.
+ * Regles :
+ * - STRUCTURE INCHANGEE (memes cartes, meme ordre qu'au chargement) →
+ *   `undefined` : rien n'est envoye, la metadata reste EXACTEMENT celle de la
+ *   base. Sans cette garde, l'empreinte de chargement (prise trop tot, defaut
+ *   anterieur) faisait reecrire l'objet a chaque enregistrement.
+ * - Une cle « attachee a une carte » est EXACTEMENT `String(i)` pour une carte
+ *   d'origine `i` : sa valeur — quel que soit son type — suit SA carte ;
+ *   celle d'une carte supprimee disparait ; une carte neuve n'en recoit aucune.
+ * - Tout le reste (cle numerique orpheline, cle inconnue, `'01'`, valeur non
+ *   textuelle hors carte) est conserve TEL QUEL.
+ * - Seule exception, sans perte : une orpheline dont la position est desormais
+ *   occupee par une carte (une carte neuve en herite sinon). Elle est gardee
+ *   sous `orphelin-<cle>`, qu'aucun lecteur ne lit.
+ *
+ * `undefined` aussi s'il n'y avait pas d'icones : rien a envoyer, rien a creer.
  */
 export function iconesPersoRealignees(
   icones: unknown,
   cartes: readonly { id: string }[],
   rangsOrigine: ReadonlyMap<string, number>,
-): Record<string, string> | undefined {
+): Record<string, unknown> | undefined {
   if (!estObjet(icones)) return undefined;
-  const out: Record<string, string> = {};
+
+  const idsOrigine = [...rangsOrigine.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+  const structureInchangee = idsOrigine.length === cartes.length
+    && cartes.every((c, j) => c.id === idsOrigine[j]);
+  if (structureInchangee) return undefined;
+
+  const clesDeCartes = new Set(idsOrigine.map((_, i) => String(i)));
+  const out: Record<string, unknown> = {};
+  // 1. Tout ce qui n'est attache a AUCUNE carte d'origine traverse tel quel.
   for (const [cle, valeur] of Object.entries(icones)) {
-    if (!/^\d+$/.test(cle) && typeof valeur === 'string') out[cle] = valeur;
+    if (!clesDeCartes.has(cle)) out[cle] = valeur;
   }
+  // 2. Une position desormais occupee par une carte ne peut garder une
+  //    orpheline : elle deviendrait l'icone de cette carte. On la met de cote.
+  cartes.forEach((_, j) => {
+    const cle = String(j);
+    if (!(cle in out)) return;
+    let abri = `orphelin-${cle}`;
+    let n = 1;
+    while (abri in out) { abri = `orphelin-${cle}-${n}`; n += 1; }
+    out[abri] = out[cle];
+    delete out[cle];
+  });
+  // 3. Les valeurs attachees aux cartes suivent LEUR carte.
   cartes.forEach((c, j) => {
     const rang = rangsOrigine.get(c.id);
     if (rang === undefined) return;
-    const url = icones[String(rang)];
-    if (typeof url === 'string') out[String(j)] = url;
+    const cle = String(rang);
+    if (cle in icones) out[String(j)] = (icones as Record<string, unknown>)[cle];
   });
   return out;
 }
