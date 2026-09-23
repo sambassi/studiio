@@ -3,61 +3,62 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 /**
- * Rouvrir un brouillon dans l'éditeur.
+ * Rouvrir un post du Calendrier pour le modifier.
  *
- * ⚠️ LE MÉCANISME EXISTAIT, L'ENTRÉE MANQUAIT. Le deeplink
- * `/dashboard/creer-avance?postId=` restaure déjà tout le design. Sa seule entrée
- * était le bouton **audio**, qui forçait `&tab=audio` : pour changer une
- * carte ou un titre, il fallait passer par « ajouter de l'audio » puis
- * revenir en arrière.
+ * ⚠️ BASCULE VERS LE NOUVEAU PARCOURS. Le Calendrier n'envoie plus vers l'ancien
+ * éditeur `/dashboard/creer-avance` mais vers `/dashboard/creer?postId=` :
+ * l'assistant lit `postId` SEULEMENT (voir `lib/creer/editTarget.ts`), charge le
+ * post via `GET /api/posts/[id]` — vérifié côté serveur contre la session, donc
+ * 404 pour le contenu d'autrui — restaure le design, puis enregistre par
+ * `PATCH /api/posts/[id]` sur CE post. Conséquences prouvées ailleurs et
+ * inchangées ici :
+ *   - même post mis à jour, aucun doublon (`creer-modifier-enregistrement`,
+ *     `creer-modifier-actions`, `posts-patch-route`) ;
+ *   - montage déjà rendu (`renderedVideoUrl`) et champs non réglés préservés
+ *     (`creer-modifier-enregistrement`) ;
+ *   - ouvrir ne rend rien, ne débite aucun crédit et ne publie rien
+ *     (`creer-modifier-chargement`, `creer-modifier-wizard`) ;
+ *   - le contenu d'un autre utilisateur est refusé sans fuite
+ *     (`creer-modifier-chargement`, `posts-patch-route`).
  *
- * ⚠️ ET RÉ-EXPORTER CRÉAIT UN DOUBLON. `editingPostId` était bien posé par le
- * deeplink, mais l'export faisait toujours `POST /api/posts` : on repartait
- * avec deux versions du même montage, sans savoir laquelle partirait. C'est
- * le défaut le plus coûteux des deux — il ne se voit qu'après coup, dans le
- * Calendrier.
+ * Ce fichier-ci ne garde qu'une chose : que le CALENDRIER pointe désormais vers
+ * ce parcours, et plus vers l'ancien éditeur.
  */
 
 const calendrier = readFileSync(resolve(__dirname, '../app/dashboard/calendar/page.tsx'), 'utf-8');
-const editeur = readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8');
 
-describe('Ré-exporter MET À JOUR le post', () => {
-  it('l export vise `editingPostId` quand il existe', () => {
-    expect(editeur).toContain('const cibleEdition = b === 0 ? editingPostId : null;');
-    expect(editeur).toContain('cibleEdition ? `/api/posts/${cibleEdition}` : "/api/posts"');
-    expect(editeur).toContain('method: cibleEdition ? "PATCH" : "POST"');
+describe('Le Calendrier ouvre le NOUVEAU parcours de création', () => {
+  it('« Modifier le montage » vise `/dashboard/creer?postId=`', () => {
+    expect(calendrier).toContain('window.location.href = `/dashboard/creer?postId=${post.id}`;');
   });
 
-  it('seul le PREMIER élément d un lot vise le post d origine', () => {
-    // Les suivants sont de nouvelles vidéos : elles méritent leurs propres
-    // entrées, pas d'écraser la même ligne cinq fois.
-    expect(editeur).toContain('b === 0 ? editingPostId : null');
+  it('plus AUCUNE navigation du Calendrier ne vise l’ancien éditeur', () => {
+    // Ni la réouverture du montage, ni les boutons audio.
+    expect(calendrier).not.toContain('window.location.href = `/dashboard/creer-avance');
+    expect(calendrier).not.toContain('/dashboard/creer-avance?postId=');
   });
 
-  it('les deux formes de réponse sont lues', () => {
-    // `POST` rend `{ post }`, `PATCH` rend `{ data }` : sans les deux, une
-    // mise à jour réussie passerait pour un échec.
-    expect(editeur).toContain('const ligne = postData.post || postData.data;');
-  });
-
-  it('le deeplink pose bien `editingPostId`', () => {
-    expect(editeur).toContain('setEditingPostId(post.id);');
+  it('les trois entrées d’édition pointent bien vers `/dashboard/creer?postId=`', () => {
+    const cibles = [...calendrier.matchAll(/\/dashboard\/creer[a-z-]*\?postId=/g)].map((m) => m[0]);
+    expect(cibles).toHaveLength(3);
+    expect(new Set(cibles)).toEqual(new Set(['/dashboard/creer?postId=']));
   });
 });
 
-describe('Le bouton, aux deux endroits', () => {
+describe('Les boutons audio suivent la bascule', () => {
+  it('ils passent par le parcours guidé, sans forcer d’onglet', () => {
+    // `editTarget` lit `postId` SEULEMENT : `&tab=audio` n'a plus de sens.
+    expect(calendrier).not.toContain('&tab=audio');
+  });
+
+  it('mais le bouton audio existe toujours — on n’en retire aucun', () => {
+    expect(calendrier).toContain('<Volume2');
+  });
+});
+
+describe('Le bouton « Modifier le montage », aux deux endroits', () => {
   it('dans la liste du jour ET dans l aperçu', () => {
     expect(calendrier.match(/data-post-remodifier/g)).toHaveLength(2);
-  });
-
-  it('il ouvre l éditeur SANS forcer l étape audio', () => {
-    expect(calendrier).toContain('window.location.href = `/dashboard/creer-avance?postId=${post.id}`;');
-  });
-
-  it('le bouton audio existant est intact', () => {
-    // On ajoute une entrée, on n'en retire aucune.
-    expect(calendrier).toContain('&tab=audio');
-    expect(calendrier).toContain('<Volume2');
   });
 });
 
