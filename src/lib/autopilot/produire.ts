@@ -227,6 +227,22 @@ export async function produireUnMontage(input: {
   }
   const postUtilise = rushUrl === post.rushUrl ? post : { ...post, rushUrl };
 
+  // ── La musique existe-t-elle encore ? ──────────────────────────────────
+  // Même règle que le rush, même sonde. L'adresse vit dans `autopilot_config`
+  // (et, figée, dans la file du jumeau) mais le fichier peut avoir disparu du
+  // stockage. Remotion échouait alors en 404 au téléchargement, AVANT toute
+  // image : aucun montage, et le finaliseur du jumeau relançait le même rendu
+  // voué à l'échec à chaque passe. La musique est un habillage : le montage
+  // sort SANS elle, et on l'ÉCRIT dans les métadonnées — jamais en silence.
+  // Réseau muet ou 405 : la sonde répond « présent », comme pour le rush.
+  let configUtilisee = config;
+  let musiqueIntrouvable = false;
+  if (config.musicUrl && !(await rushEncorePresent(config.musicUrl))) {
+    console.warn(`${journal} ${userId} — musique introuvable, montage sans musique : ${config.musicUrl}`);
+    configUtilisee = { ...config, musicUrl: null };
+    musiqueIntrouvable = true;
+  }
+
   // Les sondages RÉSEAU des durées, avant la fabrique de design qui reste pure.
   const [rushSeconds, jumeauSeconds] = await Promise.all([
     rushUrl ? probeRushSeconds(rushUrl) : Promise.resolve(null),
@@ -311,7 +327,7 @@ export async function produireUnMontage(input: {
   // varient et arrivent par `post` et `posterUrl`. Le jumeau, s'il est monté,
   // tient la séquence « Vidéo » à la place du rush.
   const design = buildAutopilotDesign(postUtilise, {
-    posterUrl, rushSeconds, voices, config,
+    posterUrl, rushSeconds, voices, config: configUtilisee,
     jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
   });
   const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
@@ -333,6 +349,8 @@ export async function produireUnMontage(input: {
     // s'est révélé absent (404/410) : la condition « il avait des rushes » est
     // donc déjà remplie.
     ...(rushMort ? { rushIgnore: true, rushIgnoreMotif: 'rush expiré' } : null),
+    // Même exigence pour la musique configurée mais disparue du stockage.
+    ...(musiqueIntrouvable ? { musiqueIgnoree: true, musiqueIgnoreeMotif: 'musique introuvable' } : null),
     // Le montage porte le JUMEAU en séquence « Vidéo » : le Calendrier/récap
     // le lit pour l'annoncer, et pour ne pas proposer une régénération
     // navigateur qui écraserait la vidéo de l'avatar.
@@ -390,7 +408,7 @@ export async function produireUnMontage(input: {
     + `, cartes ${config.cardsShowPoster ? 'sur affiche' : 'sur couleurs'}`
     + `, rush ${rushSeconds ? `${rushSeconds.toFixed(1)}s` : 'non sonde'}`
     + `, son du rush ${config.keepRushAudio ? `${Math.round(config.rushVolume * 100)}%` : 'coupe'}`
-    + `, musique ${config.musicUrl ? `${Math.round(config.musicVolume * 100)}%` : 'aucune'}`
+    + `, musique ${configUtilisee.musicUrl ? `${Math.round(config.musicVolume * 100)}%` : 'aucune'}`
     + `, voix ${config.voiceEnabled ? `${Object.keys(voices).length}/4` : 'desactivee'}`
     + `) : ${videoUrl}`,
   );

@@ -93,7 +93,7 @@ vi.mock('@/lib/autopilot/produire', () => ({
 }));
 
 import {
-  scriptJumeauMontage, lancerJumeauMontage, finaliserJumeauxPrets,
+  scriptJumeauMontage, lancerJumeauMontage, finaliserJumeauxPrets, estMediaIntrouvable,
 } from '@/lib/autopilot/jumeau-async';
 
 const post = {
@@ -198,5 +198,64 @@ describe('finaliserJumeauxPrets', () => {
     expect(res.encore).toBe(1);
     expect(produireUnMontage).not.toHaveBeenCalled();
     expect(rows[0].statut).toBe('en_attente');
+  });
+});
+
+describe('Média introuvable (404) : échec DÉFINITIF, jamais une boucle', () => {
+  beforeEach(() => { rows = []; vi.clearAllMocks(); });
+
+  /** Message observé en production, à l'identifiant près. */
+  const ERREUR_404 = 'Error while downloading https://studiio.pro/storage/v1/object/public/audio/u1/music/'
+    + '1785349032107-black_attacka.mp3: HTTP 404 {"error":"not found"}';
+
+  it('jumeau prêt mais musique 404 : ligne close en « echec », une seule tentative', async () => {
+    enFile();
+    avancer.mockResolvedValue({ status: 'completed', videoUrl: 'https://minio/u1/avatar/gen-1.mp4' });
+    produireUnMontage.mockRejectedValueOnce(new Error(ERREUR_404));
+
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res).toEqual({ examines: 1, rendus: 0, encore: 0, echecs: 1 });
+    expect(rows[0].statut).toBe('echec');
+    expect(String(rows[0].motif)).toContain('404');
+    expect(rows[0].tentatives).toBe(1);
+    // Le jumeau prêt a été RÉUTILISÉ : aucune nouvelle génération.
+    expect(genererVideoJumeau).not.toHaveBeenCalled();
+    expect((produireUnMontage.mock.calls[0][0] as Record<string, unknown>).jumeauVideoUrl)
+      .toBe('https://minio/u1/avatar/gen-1.mp4');
+  });
+
+  it('la passe suivante ne reprend PAS la ligne : ni poll, ni rendu, ni post', async () => {
+    enFile();
+    avancer.mockResolvedValue({ status: 'completed', videoUrl: 'https://minio/u1/avatar/gen-1.mp4' });
+    produireUnMontage.mockRejectedValueOnce(new Error(ERREUR_404));
+    await finaliserJumeauxPrets({ max: 5 });
+    vi.clearAllMocks();
+
+    for (let i = 0; i < 3; i += 1) {
+      const res = await finaliserJumeauxPrets({ max: 5 });
+      expect(res.examines).toBe(0);
+    }
+    expect(avancer).not.toHaveBeenCalled();
+    expect(produireUnMontage).not.toHaveBeenCalled();
+    expect(rows[0].tentatives).toBe(1);
+  });
+
+  it('une panne réseau du rendu reste transitoire : la ligne est rouverte', async () => {
+    enFile();
+    avancer.mockResolvedValue({ status: 'completed', videoUrl: 'https://minio/u1/avatar/gen-1.mp4' });
+    produireUnMontage.mockRejectedValueOnce(new Error('Error while downloading https://x/a.mp3: ECONNRESET'));
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.encore).toBe(1);
+    expect(rows[0].statut).toBe('en_attente');
+  });
+
+  it('classement : 404/410 au téléchargement seulement', () => {
+    expect(estMediaIntrouvable(ERREUR_404)).toBe(true);
+    expect(estMediaIntrouvable('Error while downloading https://x/v.mp4: Received a status code of 410')).toBe(true);
+    // Pas un téléchargement.
+    expect(estMediaIntrouvable('D-ID 404')).toBe(false);
+    // Téléchargement, mais « 404 » fondu dans un identifiant.
+    expect(estMediaIntrouvable('Error while downloading https://x/u/music/1404-a.mp3: ETIMEDOUT')).toBe(false);
+    expect(estMediaIntrouvable('Error while downloading https://x/a.mp3: HTTP 503')).toBe(false);
   });
 });
