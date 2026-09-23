@@ -12,10 +12,10 @@ import { resolve } from 'path';
  * Ce que ces tests verrouillent :
  *
  * 1. **Un seul « Créer » dans le menu**, et `creer-avance` n'y figure pas.
- * 2. **Aucun lien d'édition ne peut atteindre le parcours guidé.** Un lien
- *    porteur d'un identifiant qui arriverait sur le wizard afficherait un
- *    montage vierge : l'utilisateur croirait son contenu perdu, sans la
- *    moindre erreur à l'écran. C'est le risque central de cette bascule.
+ * 2. **Aucun lien d'édition n'atteint le parcours guidé avec un identifiant
+ *    qu'il ne sait pas relire.** `postId` (un post) y va ; `id` (une vidéo)
+ *    reste sur l'éditeur avancé — sur le wizard il afficherait un montage
+ *    vierge, et l'utilisateur croirait son contenu perdu.
  * 3. **Les trois routes historiques passent par le mécanisme partagé** et
  *    transportent leur query intégralement.
  */
@@ -86,8 +86,10 @@ describe('tous les liens d’édition du Calendrier passent par le parcours guid
     expect(audio.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('le bouton « Modifier » de la Bibliothèque vise encore l’éditeur avancé (paramètre `id`, hors périmètre)', () => {
-    expect(bibliotheque).toContain('/dashboard/creer-avance?id=${video.id}');
+  it('le bouton « Modifier » de la Bibliothèque passe par `libraryEditHref`', () => {
+    // Le partage post / vidéo est testé dans `bibliotheque-modifier-routage`.
+    expect(bibliotheque).toContain('href={libraryEditHref(video)}');
+    expect(bibliotheque).not.toContain('/dashboard/creer-avance?id=${video.id}');
     expect(bibliotheque).not.toContain('/dashboard/creator?id=');
   });
 
@@ -111,9 +113,9 @@ describe('routes historiques : redirection et transport', () => {
     expect(h.cibles).toEqual(['/dashboard/creer']);
   });
 
-  it.each(pages)('/dashboard/%s avec `postId` mène à l’éditeur avancé', (_nom, Page) => {
+  it.each(pages)('/dashboard/%s avec `postId` mène au parcours guidé', (_nom, Page) => {
     Page({ searchParams: { postId: 'p1' } });
-    expect(h.cibles).toEqual(['/dashboard/creer-avance?postId=p1']);
+    expect(h.cibles).toEqual(['/dashboard/creer?postId=p1']);
   });
 
   it.each(pages)('/dashboard/%s avec `id` mène à l’éditeur avancé', (_nom, Page) => {
