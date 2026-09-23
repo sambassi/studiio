@@ -243,6 +243,8 @@ export async function produireUnMontage(input: {
   // La photo SOURCE de l'utilisateur réellement employée (custom, ou référence
   // de l'affiche IA), pour le journal/retour — `null` en mode automatique.
   let afficheCustom: string | null = null;
+  /** Affiche IA réellement produite : débitée seulement si le montage est livré. */
+  let afficheIaADebiter = false;
   const aDesPhotos = config.posterUrls.length > 0;
 
   if (config.posterMode === 'reference' && aDesPhotos) {
@@ -263,14 +265,10 @@ export async function produireUnMontage(input: {
       });
       if (gen.ok) {
         posterUrl = gen.url;
-        // Débit de l'affiche IA — APRÈS coup, best-effort (comme le rendu) :
-        // l'image est déjà produite et facturée chez le fournisseur ; un débit
-        // manqué ne la retire pas, il est dit fort.
-        try {
-          await deductCredits(userId, COST_AFFICHE_REFERENCE, 'ai', referenceOperation('autopilote-affiche', jobId));
-        } catch (e) {
-          console.error(`${journal} ${userId} — débit affiche IA manqué (${COST_AFFICHE_REFERENCE} crédits) :`, e instanceof Error ? e.message : e);
-        }
+        // Débitée plus bas, AVEC le rendu — pas ici : un rendu raté ensuite
+        // laissait 5 crédits pris pour une vidéo qui n'existe pas, alors que
+        // « Produire maintenant » répondait « Rien n'a été débité ».
+        afficheIaADebiter = true;
       } else {
         // ── PAS DE PEXELS EN SILENCE ──────────────────────────────────────
         // L'IA a échoué : on garde MA photo telle quelle (mon contenu) en
@@ -373,6 +371,16 @@ export async function produireUnMontage(input: {
       `${journal} debit manque pour ${userId} (${COST_PER_VIDEO} credits) :`,
       e instanceof Error ? e.message : e,
     );
+  }
+
+  // L'affiche IA, même règle : après le dépôt, best-effort, référence stable
+  // par `jobId` — un créneau rejoué ne la débite pas deux fois.
+  if (afficheIaADebiter) {
+    try {
+      await deductCredits(userId, COST_AFFICHE_REFERENCE, 'ai', referenceOperation('autopilote-affiche', jobId));
+    } catch (e) {
+      console.error(`${journal} ${userId} — débit affiche IA manqué (${COST_AFFICHE_REFERENCE} crédits) :`, e instanceof Error ? e.message : e);
+    }
   }
 
   console.log(

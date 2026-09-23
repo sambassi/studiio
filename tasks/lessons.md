@@ -1041,3 +1041,23 @@ derrière le drapeau d'un autre fournisseur. (4) Un champ de brouillon
 remplacé par un autre plus expressif garde l'ancien comme DÉRIVÉ à l'écriture
 et comme repli à la lecture (`useDigitalTwin: true` → `'avatar'`), avec un
 test de relecture d'un ancien brouillon.
+
+## [2026-09-23] Une cadence comparée à la seconde près contre un déclencheur à la minute près saute des jours entiers
+
+**Ce qui a mal tourné** — Le cron Autopilote écrivait `last_run_at = now`
+(départ du passage) et exigeait `last_run_at + 24 h <= now` le lendemain.
+Le déclencheur Coolify part à la minute près, pas à la seconde près : parti à
+08:00:05 la veille et 08:00:02 le jour même, il trouvait « 24 h moins 3 s »
+→ `pas-encore`, puis `isRunHour` fermait la journée. Une cadence quotidienne
+produisait environ un jour sur deux ; une hebdomadaire pouvait sauter une
+semaine. Aucun échec, aucun journal : juste des vidéos qui n'arrivent pas, et
+un cron « OK » dans Coolify. Au même endroit, la config du cron était
+recopiée champ par champ et avait oublié `start_date` (et `jumeau_avatar`).
+
+**Règle** — (1) Une échéance testée par un déclencheur périodique tolère une
+période de ce déclencheur, et un test simule un déclencheur parti quelques
+secondes plus tôt que la veille. (2) Toute liste de champs recopiée à la main
+depuis une ligne de base est suspecte : comparer avec le lecteur canonique
+(`configDepuisLigne`) avant de conclure qu'un réglage « est appliqué ».
+(3) Un débit accessoire (affiche IA) se fait APRÈS la livraison, avec la même
+référence stable que le rendu — jamais avant un rendu qui peut échouer.
