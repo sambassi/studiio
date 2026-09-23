@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { isCronAuthorized } from '@/lib/cron/auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -25,9 +26,9 @@ export const maxDuration = 300;
  * CRON_SECRET pattern used by /api/cron/publish + cleanup-media.
  */
 
+// Secret absent ou vide → refus total (voir `isCronAuthorized`).
 function verifyCronSecret(req: NextRequest): boolean {
-  const authHeader = req.headers.get('authorization');
-  return !!authHeader && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  return isCronAuthorized(req.headers.get('authorization'), process.env.CRON_SECRET);
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

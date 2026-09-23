@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
+import { auth, DEV_AUTH_BYPASS } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
-  if (process.env.DEV_AUTH_BYPASS !== '1') {
+  // Garde centrale : jamais active en production (voir isDevAuthBypassEnabled).
+  if (!DEV_AUTH_BYPASS) {
     const session = await auth();
     if (!session?.user?.email || !['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'].includes(session.user.email)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

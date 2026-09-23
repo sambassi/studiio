@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth/config';
 
 // POST /api/content/generate-icon
 // Body: { prompt: string }
@@ -8,6 +9,11 @@ import { NextRequest, NextResponse } from 'next/server';
 // emoji dans le contenu genere. Le nom retourne est valide contre une liste
 // blanche ; toute reponse hors liste retombe sur 'Sparkles', jamais un emoji.
 export async function POST(req: NextRequest) {
+  // Session obligatoire AVANT tout : chaque appel consomme notre cle Anthropic.
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   try {
     const { prompt } = await req.json();
     if (!prompt || typeof prompt !== 'string') {
