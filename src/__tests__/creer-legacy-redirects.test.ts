@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   buildQuery,
   hasEditTarget,
+  needsLegacyEditor,
+  LEGACY_ONLY_PARAMS,
   creerRedirectTarget,
   CREER_ROUTE,
   CREER_AVANCE_ROUTE,
@@ -18,10 +20,9 @@ import {
  * Ce que ces tests verrouillent :
  *
  * 1. **Le triage.** Un lien qui porte `postId` ou `id` désigne un contenu
- *    EXISTANT. L'envoyer au parcours guidé afficherait un montage vierge :
- *    l'utilisateur croirait son contenu perdu, sans la moindre erreur à
- *    l'écran. Ces liens doivent aller sur l'ancien éditeur tant que le
- *    parcours guidé ne sait pas relire un contenu.
+ *    EXISTANT. `postId` (un post) va au parcours guidé, qui le relit depuis
+ *    PR #426. `id` (une vidéo) reste sur l'ancien éditeur : le parcours guidé
+ *    l'ignorerait et afficherait un montage vierge, sans la moindre erreur.
  * 2. **Le transport intégral.** Redirections actuelles perdent la query en
  *    silence (`redirect('/dashboard/creer')` sans `searchParams`). Chaque
  *    paramètre — connu ou non — doit traverser tel quel.
@@ -38,9 +39,9 @@ describe('triage entre nouvelle création et modification', () => {
     expect(creerRedirectTarget({})).toBe('/dashboard/creer');
   });
 
-  it('avec `postId` seul, vise l’éditeur avancé', () => {
+  it('avec `postId` seul, vise le parcours guidé, qui relit le post', () => {
     expect(creerRedirectTarget({ postId: 'abc123' }))
-      .toBe('/dashboard/creer-avance?postId=abc123');
+      .toBe('/dashboard/creer?postId=abc123');
   });
 
   it('avec `id` seul, vise l’éditeur avancé', () => {
@@ -49,10 +50,11 @@ describe('triage entre nouvelle création et modification', () => {
   });
 
   it('un identifiant VIDE reste une intention de modification', () => {
-    // Un lien d'édition abîmé ne doit pas se muer en création : le pire cas
-    // acceptable est une page qui ne trouve rien, jamais un montage vierge.
+    // Un lien d'édition abîmé ne doit pas se muer en création. `?postId=` est
+    // transporté tel quel : le parcours guidé l'affiche « lien incomplet »
+    // (editTarget → `invalid`) au lieu d'ouvrir un montage vierge.
     expect(creerRedirectTarget({ postId: '' }))
-      .toBe('/dashboard/creer-avance?postId=');
+      .toBe('/dashboard/creer?postId=');
     expect(creerRedirectTarget({ id: '' }))
       .toBe('/dashboard/creer-avance?id=');
   });
@@ -77,9 +79,9 @@ describe('triage entre nouvelle création et modification', () => {
       .toBe('/dashboard/creer?panneau=autopilote');
   });
 
-  it('`postId` combiné à d’autres paramètres les emmène tous sur l’avancé', () => {
+  it('`postId` combiné à d’autres paramètres les emmène tous sur le parcours guidé', () => {
     expect(creerRedirectTarget({ postId: 'p1', tab: 'audio', source: 'drive' }))
-      .toBe('/dashboard/creer-avance?postId=p1&tab=audio&source=drive');
+      .toBe('/dashboard/creer?postId=p1&tab=audio&source=drive');
   });
 
   it('`id` combiné à `tab` part aussi sur l’avancé', () => {
@@ -90,6 +92,20 @@ describe('triage entre nouvelle création et modification', () => {
   it('les deux identifiants ensemble ne cassent rien', () => {
     expect(creerRedirectTarget({ postId: 'p', id: 'v' }))
       .toBe('/dashboard/creer-avance?postId=p&id=v');
+  });
+
+  it('seul `id` (videos.id) retient encore un lien sur l’éditeur avancé', () => {
+    expect([...LEGACY_ONLY_PARAMS]).toEqual(['id']);
+    expect(needsLegacyEditor({ postId: 'p' })).toBe(false);
+    expect(needsLegacyEditor({ id: 'v' })).toBe(true);
+    expect(needsLegacyEditor({ id: '' })).toBe(true);
+    expect(needsLegacyEditor({ id: undefined })).toBe(false);
+    expect(needsLegacyEditor(undefined)).toBe(false);
+  });
+
+  it('un `postId` répété part sur le parcours guidé, qui le refuse explicitement', () => {
+    expect(creerRedirectTarget({ postId: ['a', 'b'] }))
+      .toBe('/dashboard/creer?postId=a&postId=b');
   });
 
   it('la liste des paramètres d’édition est exactement `postId` et `id`', () => {
@@ -175,12 +191,12 @@ describe('aucune interprétation métier', () => {
     expect(relu.get('vide')).toBe('');
   });
 
-  it('le triage ne dépend QUE de la présence des identifiants', () => {
-    // Même jeu de paramètres, `postId` en moins : la cible bascule.
-    expect(creerRedirectTarget({ tab: 'audio', source: 'drive' }))
-      .toBe('/dashboard/creer?tab=audio&source=drive');
+  it('le triage ne dépend QUE de la présence de `id`', () => {
+    // Même jeu de paramètres, `id` en plus : la cible bascule.
     expect(creerRedirectTarget({ tab: 'audio', source: 'drive', postId: 'p' }))
-      .toBe('/dashboard/creer-avance?tab=audio&source=drive&postId=p');
+      .toBe('/dashboard/creer?tab=audio&source=drive&postId=p');
+    expect(creerRedirectTarget({ tab: 'audio', source: 'drive', id: 'v' }))
+      .toBe('/dashboard/creer-avance?tab=audio&source=drive&id=v');
   });
 });
 
@@ -211,13 +227,13 @@ describe('aucune destination externe possible', () => {
 });
 
 describe('mécanisme partagé', () => {
-  it('`creerRedirectTarget` se compose de `hasEditTarget` et `buildQuery`', () => {
+  it('`creerRedirectTarget` se compose de `needsLegacyEditor` et `buildQuery`', () => {
     const cas: SearchParams[] = [
       {}, { postId: 'p' }, { id: 'v' }, { tab: 'audio' },
       { tag: ['a', 'b'] }, { postId: 'p', tag: ['a', 'b'] },
     ];
     for (const entree of cas) {
-      const attendu = (hasEditTarget(entree) ? CREER_AVANCE_ROUTE : CREER_ROUTE) + buildQuery(entree);
+      const attendu = (needsLegacyEditor(entree) ? CREER_AVANCE_ROUTE : CREER_ROUTE) + buildQuery(entree);
       expect(creerRedirectTarget(entree)).toBe(attendu);
     }
   });
