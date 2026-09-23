@@ -31,7 +31,7 @@ const A = '11111111-1111-4111-8111-000000000001';
 const V1 = '44444444-4444-4444-8444-000000000001';
 
 type Ligne = Record<string, unknown>;
-const base = vi.hoisted(() => ({ avatars: [] as Ligne[], voices: [] as Ligne[], settings: [] as Ligne[], generations: [] as Ligne[], compteur: 0 }));
+const base = vi.hoisted(() => ({ avatars: [] as Ligne[], voices: [] as Ligne[], settings: [] as Ligne[], generations: [] as Ligne[], transactions: [] as Ligne[], compteur: 0 }));
 const stockage = vi.hoisted(() => ({ objets: new Map<string, { type: string; taille: number }>(), journal: [] as string[] }));
 const credits = vi.hoisted(() => ({ solde: 1000, journal: [] as string[] }));
 const reseau = vi.hoisted(() => ({
@@ -42,7 +42,7 @@ const reseau = vi.hoisted(() => ({
 
 vi.mock('@/lib/db/supabase', () => {
   const from = (table: string) => {
-    const source = table === 'user_avatars' ? base.avatars : table === 'user_voices' ? base.voices : table === 'user_settings' ? base.settings : table === 'avatar_generations' ? base.generations : null;
+    const source = table === 'user_avatars' ? base.avatars : table === 'user_voices' ? base.voices : table === 'user_settings' ? base.settings : table === 'avatar_generations' ? base.generations : table === 'credit_transactions' ? base.transactions : null;
     if (!source) throw new Error(`table inattendue ${table}`);
     const filtres: Array<(l: Ligne) => boolean> = [];
     let colonnes: string[] | null = null; let tri = false; let limite: number | undefined;
@@ -95,7 +95,7 @@ vi.mock('@/lib/db/supabase', () => {
 });
 vi.mock('@/lib/credits/system', () => ({
   getUserCredits: async () => credits.solde,
-  deductCredits: async (_u: string, n: number, _raison: string, reference?: string | null) => { credits.journal.push(`debit:${n}:${reference ?? 'sans-reference'}`); credits.solde -= n; },
+  deductCredits: async (_u: string, n: number, _raison: string, reference?: string | null) => { credits.journal.push(`debit:${n}:${reference ?? 'sans-reference'}`); credits.solde -= n; base.transactions.push({ user_id: _u, reference_id: reference ?? null, amount: -n }); },
   addCredits: async (_u: string, n: number) => { credits.journal.push(`refund:${n}`); credits.solde += n; },
 }));
 const session = vi.hoisted(() => ({ courante: { user: { id: 'aaaaaaaa-1111-4111-8111-111111111111' } } as unknown }));
@@ -144,7 +144,7 @@ const appelsVers = (motif: RegExp) => reseau.appels.filter((a) => motif.test(a.u
 const sansReference = () => credits.journal.map((j) => j.replace(/:jumeau:[0-9a-f-]+$/, ''));
 
 beforeEach(() => {
-  base.avatars = [avatar()]; base.voices = [voix()]; base.generations = []; base.compteur = 0;
+  base.avatars = [avatar()]; base.voices = [voix()]; base.generations = []; base.transactions = []; base.compteur = 0;
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: [{ affiche: 'Afroboost', prononce: 'Afro-boust' }] } } }];
   credits.solde = 1000; credits.journal.length = 0;
   stockage.objets.clear(); stockage.journal.length = 0;

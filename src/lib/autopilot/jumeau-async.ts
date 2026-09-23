@@ -37,9 +37,9 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
-import { genererVideoJumeau } from '@/lib/avatar/moteur-jumeau';
+import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
-import { produireUnMontage } from '@/lib/autopilot/produire';
+import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
 
 /** Format vertical de l'Autopilote — la génération du jumeau le suit. */
 const RATIO_AUTOPILOTE = '9:16';
@@ -81,6 +81,12 @@ export type ResultatLancement =
  * du jumeau (ajoutée à la finalisation). Sérialisé tel quel dans la file.
  */
 interface SnapshotMontage {
+  /**
+   * Génération ACCEPTÉE par le fournisseur mais dont l'identifiant n'a pas pu
+   * être écrit sur `avatar_generations` : le finaliseur le rattache (voir
+   * `reconcilierLancement`) au lieu de laisser une génération payée sans suivi.
+   */
+  reconciliation?: { providerVideoId: string };
   config: AutopilotConfig;
   post: PreparedPost;
   rang: number;
@@ -189,6 +195,28 @@ export async function lancerJumeauMontage(input: {
     console.error(`${journal} ${input.userId} — lancement du jumeau en erreur :`, message);
     return { ok: false, motif: 'base', message: 'Le lancement du jumeau a échoué.' };
   }
+  if (!gen.ok && 'lance' in gen && gen.lance) {
+    // ── LANCÉE mais NON ENREGISTRÉE ─────────────────────────────────────
+    // Le fournisseur a accepté (et la génération est débitée) : rendre la
+    // réservation ferait relancer — et payer — une seconde génération au
+    // passage suivant. On GARDE le créneau, on rattache la génération, et on
+    // conserve l'identifiant fournisseur pour que le finaliseur réconcilie.
+    const { error: errGarde } = await supabaseAdmin
+      .from('autopilot_jumeau_attente')
+      .update({
+        generation_id: gen.generationId,
+        statut: 'en_attente',
+        snapshot: { ...snapshot, reconciliation: { providerVideoId: gen.providerVideoId } },
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', attenteId)
+      .eq('statut', STATUT_RESERVE);
+    console.error(
+      `${journal} ${input.userId} — jumeau LANCÉ (${gen.providerVideoId}) mais non enregistré ; créneau gardé pour réconciliation`
+      + (errGarde ? ` — ET file non mise à jour : ${errGarde.message}` : ''),
+    );
+    return { ok: true, generationId: gen.generationId, attenteId, dejaEnFile: false };
+  }
   if (!gen.ok) {
     await libererReservation(attenteId);
     console.warn(`${journal} ${input.userId} — lancement refusé (${gen.motif}) : ${gen.message}`);
@@ -276,6 +304,10 @@ interface LigneAttente {
  */
 export async function finaliserJumeauxPrets(opts: { userId?: string; max?: number } = {}): Promise<ResultatFinalisation> {
   const max = Math.max(1, opts.max ?? 5);
+  // D'abord, reprendre les lignes ABANDONNÉES en `en_cours` (crash, redémarrage
+  // du conteneur, déploiement pendant un rendu) — sinon elles le restaient
+  // pour toujours, le finaliseur ne relisant que `en_attente`.
+  await reprendreLignesAbandonnees(opts.userId);
   let q = supabaseAdmin
     .from('autopilot_jumeau_attente')
     .select('*')
@@ -302,6 +334,13 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
 
     const ligne = brute;
     try {
+      // Génération lancée mais jamais enregistrée : on la rattache AVANT de la
+      // suivre. Sans identifiant fournisseur, le suivi dirait « en cours » à
+      // chaque passe jusqu'au plafond de tentatives.
+      const reco = ligne.snapshot?.reconciliation;
+      if (reco?.providerVideoId) {
+        await reconcilierLancement(ligne.generation_id, ligne.user_id, reco.providerVideoId);
+      }
       const statut = await avancerStatutGeneration(ligne.user_id, ligne.generation_id);
 
       if (statut.status === 'processing') {
@@ -389,8 +428,76 @@ async function echouer(ligne: LigneAttente, motif: string): Promise<void> {
     .eq('id', ligne.id);
 }
 
+/**
+ * Un post existe-t-il DÉJÀ pour ce créneau ? Cas d'un rendu terminé dont le
+ * statut n'a pas été écrit (crash juste après l'insertion, écriture refusée) :
+ * la ligne est close en `rendu` au lieu de rendre — et déposer — une seconde
+ * fois. Le débit du rendu, lui, est de toute façon idempotent par `job_id`.
+ */
+async function dejaRendu(ligne: LigneAttente): Promise<boolean> {
+  const faits = await creneauxExistants(ligne.user_id);
+  if (!faits.has(ligne.slot_key)) return false;
+  await supabaseAdmin
+    .from('autopilot_jumeau_attente')
+    .update({ statut: 'rendu', updated_at: new Date().toISOString() })
+    .eq('id', ligne.id);
+  console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — créneau ${ligne.slot_key} déjà rendu, ligne close sans nouveau rendu`);
+  return true;
+}
+
+/**
+ * Au-delà, une ligne `en_cours` est tenue pour ABANDONNÉE.
+ *
+ * Un rendu dure quelques minutes (sept, mesuré en production sous charge) ;
+ * trois quarts d'heure laissent une marge large sans jamais reprendre un rendu
+ * encore vivant. `updated_at` est posé au claim : c'est l'âge du rendu.
+ */
+export const DELAI_ABANDON_EN_COURS_MS = 45 * 60 * 1000;
+
+/**
+ * Reprend les lignes restées `en_cours` au-delà du délai d'abandon.
+ *
+ * Deux issues, aucune ne rappelle le fournisseur ni ne débite :
+ *   - un post existe déjà pour le créneau → le rendu avait abouti : `rendu` ;
+ *   - sinon → `en_attente`, le finaliseur la reprend au claim suivant (qui
+ *     compte une tentative : la reprise reste BORNÉE par `MAX_TENTATIVES`).
+ * Le passage `en_cours` → `en_attente` est conditionnel (statut ET âge) : deux
+ * finaliseurs simultanés ne rouvrent qu'une fois, et le claim atomique ne
+ * laisse qu'un seul rendu partir.
+ */
+async function reprendreLignesAbandonnees(userId?: string): Promise<void> {
+  const limite = new Date(Date.now() - DELAI_ABANDON_EN_COURS_MS).toISOString();
+  let q = supabaseAdmin
+    .from('autopilot_jumeau_attente')
+    .select('*')
+    .eq('statut', 'en_cours')
+    .lt('updated_at', limite)
+    .limit(10);
+  if (userId) q = q.eq('user_id', userId);
+  const { data: abandonnees, error } = await q;
+  if (error) {
+    console.error('[Autopilote/Jumeau] lignes en cours illisibles :', error.message);
+    return;
+  }
+  for (const ligne of (abandonnees ?? []) as LigneAttente[]) {
+    try {
+      if (await dejaRendu(ligne)) continue;
+      await supabaseAdmin
+        .from('autopilot_jumeau_attente')
+        .update({ statut: 'en_attente', updated_at: new Date().toISOString() })
+        .eq('id', ligne.id)
+        .eq('statut', 'en_cours')
+        .lt('updated_at', limite);
+      console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — ligne ${ligne.id} abandonnée en cours de rendu, reprise`);
+    } catch (e) {
+      console.error('[Autopilote/Jumeau] reprise impossible :', ligne.id, e instanceof Error ? e.message : e);
+    }
+  }
+}
+
 /** Rend le montage AVEC la vidéo du jumeau, dépose le post, débite le rendu. */
 async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promise<void> {
+  if (await dejaRendu(ligne)) return;
   const s = ligne.snapshot;
   const rendu = await produireUnMontage({
     userId: ligne.user_id,
@@ -419,6 +526,7 @@ async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promi
 async function rendreSansJumeau(ligne: LigneAttente, motif: string): Promise<void> {
   const s = ligne.snapshot;
   try {
+    if (await dejaRendu(ligne)) return;
     await produireUnMontage({
       userId: ligne.user_id,
       config: s.config,

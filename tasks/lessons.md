@@ -1096,3 +1096,23 @@ au fournisseur ; il doit rougir si l'ordre verrou → action est inversé.
 (3) Troisième occurrence du même oubli dans la config recopiée du cron
 (`start_date`, `jumeau_avatar`) : tout nouveau champ de `autopilot_config`
 doit être ajouté ET couvert par un test du cron.
+
+## [2026-09-23] Un remboursement sans verrou ni preuve de débit est un robinet ouvert
+
+**Ce qui a mal tourné** — `genererVideoJumeau` remboursait les échecs par
+`addCredits`, sans référence ni verrou : rejouée, l'opération rendait deux
+fois. Elle remboursait aussi un administrateur jamais débité — et `addCredits`
+réécrivait alors sa colonne `credits` depuis le solde fictif illimité. Le
+débit, lui, levait hors de tout `try` et laissait une génération `pending`
+orpheline dans l'index « en vol ». Côté file, une génération ACCEPTÉE par le
+fournisseur mais non enregistrée était traitée comme un échec : la
+réservation était rendue, et le passage suivant aurait payé une seconde
+génération. Enfin, une ligne `en_cours` restait bloquée à vie après un crash.
+
+**Règle** — (1) Un remboursement exige la PREUVE du débit (la transaction de
+référence existe) et la POSE atomique d'un drapeau `false → true` avant de
+rendre quoi que ce soit. (2) Toute écriture de crédit peut lever : elle est
+dans un `try`, et son échec ne déclenche jamais un nouvel appel fournisseur.
+(3) « Le fournisseur a accepté » n'est jamais un échec à rejouer : on garde
+l'identifiant et on réconcilie. (4) Tout statut « en cours » a un délai
+d'abandon ; la reprise vérifie d'abord que le travail n'a pas déjà abouti.

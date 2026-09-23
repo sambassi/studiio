@@ -35,6 +35,8 @@ vi.mock('@/lib/db/supabase', () => {
       select: () => q,
       eq: (k: string, v: unknown) => { f.push((r) => r[k] === v); return q; },
       in: (k: string, vs: unknown[]) => { f.push((r) => vs.includes(r[k])); return q; },
+      lt: (k: string, v: string) => { f.push((r) => String(r[k] ?? '') < v); return q; },
+      is: (k: string, v: unknown) => { f.push((r) => (r[k] ?? null) === v); return q; },
       order: () => q,
       limit: (n: number) => { borne = n; return q; },
       single: async () => { const r = executer(); return { data: (r.data as Ligne[] | null)?.[0] ?? null, error: null }; },
