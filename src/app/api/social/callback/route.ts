@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toJsStringLiteral, escapeHtml } from '@/lib/social/html-escape';
+import { verifyState } from '@/lib/social/oauth-state';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
@@ -20,16 +22,24 @@ export async function GET(req: NextRequest) {
               return redirectWithMessage('error', 'Parametres manquants');
       }
 
-      // Validate state (CSRF protection)
-      // State format: userId:timestamp:random
-      if (!state) {
+      // Validation du `state` (protection CSRF).
+      //
+      // Le `userId` lu ici designe le compte Studiio auquel le compte social
+      // va etre rattache. Il etait pris TEL QUEL dans un parametre d'URL :
+      // appeler cette route avec `state=<id victime>:0:x` rattachait le compte
+      // social de l'appelant au compte Studiio de la victime.
+      //
+      // On exige donc maintenant la signature posee par /api/social/connect.
+      // Un `state` herite (3 segments, non signe) est refuse : l'accepter
+      // laisserait la faille entiere, un attaquant n'ayant qu'a omettre la
+      // signature. Seul un flux OAuth deja en vol au moment du deploiement
+      // peut tomber sur ce refus — l'utilisateur relance « Connecter ».
+      const verified = verifyState(state);
+      if (!verified.valid || !verified.userId) {
+              console.warn('[SOCIAL_CALLBACK] state refuse', { platform, reason: verified.reason });
               return redirectWithMessage('error', 'State invalide');
       }
-
-      const [userId] = state.split(':');
-          if (!userId) {
-                  return redirectWithMessage('error', 'State invalide');
-          }
+      const userId = verified.userId;
 
       let tokenData: { accessToken: string; refreshToken?: string; accountId: string; accountName: string; expiresAt?: string };
 
@@ -118,12 +128,19 @@ export async function GET(req: NextRequest) {
 
 function redirectWithMessage(type: string, message: string): NextResponse {
     const isSuccess = type === 'success';
-    const safeMessage = message.replace(/'/g, "\\'").replace(/</g, '&lt;');
+    // Deux contextes, deux echappements — les confondre est une XSS.
+    //
+    // L'ancien `replace(/'/g, "\\'")` ne tenait pas : un antislash final
+    // (`...\`) devenait `...\'` et fermait la chaine JS, permettant d'injecter
+    // du script. Or `message` transporte `error_description`, un parametre
+    // d'URL entierement controle par l'appelant.
+    const jsMessage = toJsStringLiteral(message);
+    const safeMessage = escapeHtml(message);
     const html = isSuccess
       ? `<!DOCTYPE html><html><head><title>Connexion reussie</title></head><body style="font-family:sans-serif;padding:40px;text-align:center">
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-success', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-success', message: ${jsMessage} }, '*');
   }
   setTimeout(() => window.close(), 800);
 </script>
@@ -137,12 +154,12 @@ function redirectWithMessage(type: string, message: string): NextResponse {
 <button onclick="window.close()" style="padding:10px 20px;background:#333;color:#fff;border:0;border-radius:6px;cursor:pointer">Fermer</button>
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-error', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-error', message: ${jsMessage} }, '*');
   }
 </script>
 </body></html>`;
     return new NextResponse(html, {
-      headers: { 'Content-Type': 'text/html' },
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'X-Content-Type-Options': 'nosniff' },
     });
 }
 
