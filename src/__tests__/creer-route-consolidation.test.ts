@@ -100,6 +100,27 @@ describe('tous les liens d’édition du Calendrier passent par le parcours guid
       expect(source).not.toContain('/dashboard/creer-simple');
     }
   });
+
+  it('⚠️ l’accueil n’envoie plus sur /dashboard/audio-studio : la tuile « Studio Son » ouvre Créer', () => {
+    const accueil = lire('../app/dashboard/page.tsx');
+    expect(accueil).not.toContain("href: '/dashboard/audio-studio'");
+    expect(accueil).toMatch(/\{ href: '\/dashboard\/creer', icon: Music,/);
+    // Deux tuiles mènent à Créer : la clé React ne peut plus être `href`.
+    expect(accueil).toContain('key={label}');
+  });
+
+  it('⚠️ l’export « Studio Son » de /dashboard/infographic ouvre Créer (un post) ou le Calendrier (plusieurs), jamais audio-studio', () => {
+    const infographic = lire('../app/dashboard/infographic/page.tsx');
+    expect(infographic).not.toContain('/dashboard/audio-studio');
+    expect(infographic).toContain('`/dashboard/creer?postId=${encodeURIComponent(allCreatedPostIds[0])}`');
+    expect(infographic).not.toContain('postIds=');
+  });
+
+  it('⚠️ l’assistant de chat ne cite plus /dashboard/creer-avance comme chemin', () => {
+    const prompts = lire('../lib/chat/system-prompts.ts');
+    expect(prompts).not.toContain('/dashboard/creer-avance');
+    expect(prompts).toContain('Ouvrir l\'éditeur avancé');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -120,9 +141,9 @@ describe('routes historiques : redirection et transport', () => {
     expect(h.cibles).toEqual(['/dashboard/creer?postId=p1']);
   });
 
-  it.each(pages)('/dashboard/%s avec `id` mène à l’éditeur avancé', (_nom, Page) => {
+  it.each(pages)('/dashboard/%s avec `id` (une vidéo) mène à la Bibliothèque, pas à un éditeur vide', (_nom, Page) => {
     Page({ searchParams: { id: 'v9' } });
-    expect(h.cibles).toEqual(['/dashboard/creer-avance?id=v9']);
+    expect(h.cibles).toEqual(['/dashboard/library']);
   });
 
   it.each(pages)('/dashboard/%s conserve les paramètres répétés', (_nom, Page) => {
@@ -158,8 +179,11 @@ describe('les deux parcours sont bien à leur place', () => {
     const avance = lire('../app/dashboard/creer-avance/page.tsx');
     // Repere de taille : l'editeur ne doit pas avoir ete ampute par la bascule.
     expect(avance.split('\n').length).toBeGreaterThan(12000);
-    // Et il reste seul a savoir relire un contenu existant.
+    // Il relit toujours `postId` et `tab` (le parcours guidé relit aussi
+    // `postId` depuis #426) — et JAMAIS `id` : c'est pourquoi aucune
+    // redirection ne l'y envoie plus (`legacy-redirect.ts`).
     expect(avance).toContain("searchParams?.get('postId')");
+    expect(avance).not.toMatch(/searchParams\?\.get\('id'\)/);
     expect(avance).toContain("searchParams?.get('tab')");
   });
 

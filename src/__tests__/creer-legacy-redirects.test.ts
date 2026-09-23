@@ -2,11 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   buildQuery,
   hasEditTarget,
-  needsLegacyEditor,
-  LEGACY_ONLY_PARAMS,
+  pointsToLibraryVideo,
+  LIBRARY_ONLY_PARAMS,
   creerRedirectTarget,
   CREER_ROUTE,
   CREER_AVANCE_ROUTE,
+  LIBRARY_ROUTE,
   EDIT_PARAMS,
   type SearchParams,
 } from '../lib/routing/legacy-redirect';
@@ -21,8 +22,9 @@ import {
  *
  * 1. **Le triage.** Un lien qui porte `postId` ou `id` désigne un contenu
  *    EXISTANT. `postId` (un post) va au parcours guidé, qui le relit depuis
- *    PR #426. `id` (une vidéo) reste sur l'ancien éditeur : le parcours guidé
- *    l'ignorerait et afficherait un montage vierge, sans la moindre erreur.
+ *    PR #426. `id` (une vidéo) va à la Bibliothèque, qui sait modifier une
+ *    vidéo (#430) : l'ancien éditeur, lui, ne lit pas `id` et ouvrait un
+ *    éditeur vide — il n'est plus la cible d'aucune redirection.
  * 2. **Le transport intégral.** Redirections actuelles perdent la query en
  *    silence (`redirect('/dashboard/creer')` sans `searchParams`). Chaque
  *    paramètre — connu ou non — doit traverser tel quel.
@@ -44,9 +46,8 @@ describe('triage entre nouvelle création et modification', () => {
       .toBe('/dashboard/creer?postId=abc123');
   });
 
-  it('avec `id` seul, vise l’éditeur avancé', () => {
-    expect(creerRedirectTarget({ id: 'v-42' }))
-      .toBe('/dashboard/creer-avance?id=v-42');
+  it('avec `id` seul (une vidéo), vise la Bibliothèque — plus jamais l’éditeur avancé vide', () => {
+    expect(creerRedirectTarget({ id: 'v-42' })).toBe('/dashboard/library');
   });
 
   it('un identifiant VIDE reste une intention de modification', () => {
@@ -55,8 +56,8 @@ describe('triage entre nouvelle création et modification', () => {
     // (editTarget → `invalid`) au lieu d'ouvrir un montage vierge.
     expect(creerRedirectTarget({ postId: '' }))
       .toBe('/dashboard/creer?postId=');
-    expect(creerRedirectTarget({ id: '' }))
-      .toBe('/dashboard/creer-avance?id=');
+    // `?id=` vide : un lien de vidéo abîmé — la Bibliothèque, pas une création.
+    expect(creerRedirectTarget({ id: '' })).toBe('/dashboard/library');
   });
 
   it('une clé à `undefined` ne déclenche pas la modification', () => {
@@ -84,23 +85,28 @@ describe('triage entre nouvelle création et modification', () => {
       .toBe('/dashboard/creer?postId=p1&tab=audio&source=drive');
   });
 
-  it('`id` combiné à `tab` part aussi sur l’avancé', () => {
-    expect(creerRedirectTarget({ id: 'v9', tab: 'audio' }))
-      .toBe('/dashboard/creer-avance?id=v9&tab=audio');
+  it('`id` combiné à `tab` va aussi à la Bibliothèque, sans query (elle ne lit ni l’un ni l’autre)', () => {
+    expect(creerRedirectTarget({ id: 'v9', tab: 'audio' })).toBe('/dashboard/library');
   });
 
-  it('les deux identifiants ensemble ne cassent rien', () => {
+  it('les deux identifiants ensemble : `postId` prime, le parcours guidé modifie ce post', () => {
     expect(creerRedirectTarget({ postId: 'p', id: 'v' }))
-      .toBe('/dashboard/creer-avance?postId=p&id=v');
+      .toBe('/dashboard/creer?postId=p&id=v');
   });
 
-  it('seul `id` (videos.id) retient encore un lien sur l’éditeur avancé', () => {
-    expect([...LEGACY_ONLY_PARAMS]).toEqual(['id']);
-    expect(needsLegacyEditor({ postId: 'p' })).toBe(false);
-    expect(needsLegacyEditor({ id: 'v' })).toBe(true);
-    expect(needsLegacyEditor({ id: '' })).toBe(true);
-    expect(needsLegacyEditor({ id: undefined })).toBe(false);
-    expect(needsLegacyEditor(undefined)).toBe(false);
+  it('seul `id` sans `postId` mène à la Bibliothèque', () => {
+    expect([...LIBRARY_ONLY_PARAMS]).toEqual(['id']);
+    expect(pointsToLibraryVideo({ postId: 'p' })).toBe(false);
+    expect(pointsToLibraryVideo({ id: 'v' })).toBe(true);
+    expect(pointsToLibraryVideo({ id: '' })).toBe(true);
+    expect(pointsToLibraryVideo({ id: 'v', postId: 'p' })).toBe(false);
+    expect(pointsToLibraryVideo({ id: undefined })).toBe(false);
+    expect(pointsToLibraryVideo(undefined)).toBe(false);
+  });
+
+  it('⚠️ aucune entrée ne mène plus à l’éditeur avancé (il ne lit pas `id`)', () => {
+    const cas: SearchParams[] = [{}, { id: 'v' }, { id: '' }, { postId: 'p', id: 'v' }, { id: 'v', tab: 'audio' }, { tab: 'audio' }];
+    for (const entree of cas) expect(creerRedirectTarget(entree)).not.toContain('creer-avance');
   });
 
   it('un `postId` répété part sur le parcours guidé, qui le refuse explicitement', () => {
@@ -191,12 +197,12 @@ describe('aucune interprétation métier', () => {
     expect(relu.get('vide')).toBe('');
   });
 
-  it('le triage ne dépend QUE de la présence de `id`', () => {
-    // Même jeu de paramètres, `id` en plus : la cible bascule.
+  it('le triage ne dépend QUE de la présence de `id` (et de l’absence de `postId`)', () => {
+    // Même jeu de paramètres, `id` à la place de `postId` : la cible bascule.
     expect(creerRedirectTarget({ tab: 'audio', source: 'drive', postId: 'p' }))
       .toBe('/dashboard/creer?tab=audio&source=drive&postId=p');
     expect(creerRedirectTarget({ tab: 'audio', source: 'drive', id: 'v' }))
-      .toBe('/dashboard/creer-avance?tab=audio&source=drive&id=v');
+      .toBe('/dashboard/library');
   });
 });
 
@@ -212,8 +218,7 @@ describe('aucune destination externe possible', () => {
 
   it.each(hostiles)('reste sur une route interne : %o', (entree) => {
     const cible = creerRedirectTarget(entree);
-    expect(cible.startsWith(`${CREER_ROUTE}?`) || cible === CREER_ROUTE
-      || cible.startsWith(`${CREER_AVANCE_ROUTE}?`) || cible === CREER_AVANCE_ROUTE).toBe(true);
+    expect(cible.startsWith(`${CREER_ROUTE}?`) || cible === CREER_ROUTE || cible === LIBRARY_ROUTE).toBe(true);
     expect(cible.startsWith('//')).toBe(false);
     expect(cible).not.toMatch(/^[a-zA-Z][a-zA-Z0-9+.-]*:/);
     // Résolue contre n'importe quelle origine, la cible y reste.
@@ -222,18 +227,20 @@ describe('aucune destination externe possible', () => {
 
   it('les deux seules routes possibles sont les constantes du module', () => {
     expect(CREER_ROUTE).toBe('/dashboard/creer');
+    expect(LIBRARY_ROUTE).toBe('/dashboard/library');
+    // L'éditeur avancé existe toujours (lien volontaire), mais n'est plus une cible.
     expect(CREER_AVANCE_ROUTE).toBe('/dashboard/creer-avance');
   });
 });
 
 describe('mécanisme partagé', () => {
-  it('`creerRedirectTarget` se compose de `needsLegacyEditor` et `buildQuery`', () => {
+  it('`creerRedirectTarget` se compose de `pointsToLibraryVideo` et `buildQuery`', () => {
     const cas: SearchParams[] = [
       {}, { postId: 'p' }, { id: 'v' }, { tab: 'audio' },
       { tag: ['a', 'b'] }, { postId: 'p', tag: ['a', 'b'] },
     ];
     for (const entree of cas) {
-      const attendu = (needsLegacyEditor(entree) ? CREER_AVANCE_ROUTE : CREER_ROUTE) + buildQuery(entree);
+      const attendu = pointsToLibraryVideo(entree) ? LIBRARY_ROUTE : CREER_ROUTE + buildQuery(entree);
       expect(creerRedirectTarget(entree)).toBe(attendu);
     }
   });

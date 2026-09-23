@@ -61,13 +61,16 @@ export default function DashboardPage() {
           {[
             { href: '/dashboard/creer', icon: Sparkles, color: '#F59E0B', label: t('directAccess.create'), desc: t('directAccess.createDesc') },
             { href: '/dashboard/calendar', icon: Calendar, color: '#3B82F6', label: t('directAccess.calendar'), desc: t('directAccess.calendarDesc') },
-            { href: '/dashboard/audio-studio', icon: Music, color: '#EC4899', label: t('directAccess.audioStudio'), desc: t('directAccess.audioStudioDesc') },
+            // Le Studio Son est intégré à Créer (étape Audio) : l'ancienne page
+            // `/dashboard/audio-studio` n'était plus qu'un panneau d'orientation.
+            { href: '/dashboard/creer', icon: Music, color: '#EC4899', label: t('directAccess.audioStudio'), desc: t('directAccess.audioStudioDesc') },
             { href: '/dashboard/library', icon: Library, color: '#8B5CF6', label: t('directAccess.library'), desc: t('directAccess.libraryDesc') },
             { href: '/dashboard/social', icon: Share2, color: '#06B6D4', label: t('directAccess.social'), desc: t('directAccess.socialDesc') },
             { href: '/dashboard/settings', icon: Settings, color: '#6B7280', label: t('directAccess.settings'), desc: t('directAccess.settingsDesc') },
           ].map(({ href, icon: Icon, color, label, desc }) => (
             <Link
-              key={href}
+              // `label` et non `href` : deux tuiles mènent désormais à Créer.
+              key={label}
               href={href}
               className="group card-base p-4 hover:bg-white/5 transition-colors flex flex-col gap-3 min-h-[120px]"
             >
