@@ -85,6 +85,8 @@ interface PostBranding {
 
 interface PostMetadata {
   type?: 'creator' | 'infographic';
+  /** Montage rendu par le serveur (Remotion) : pas de régénération navigateur. */
+  serverRendered?: boolean;
   subtitle?: string;
   salesPhrase?: string;
   objective?: string;
@@ -97,7 +99,7 @@ interface PostMetadata {
   ttsVoice?: string;
   ttsText?: string;
   textCards?: { text: string; color?: string }[];
-  cards?: { emoji: string; label: string; value: string; color?: string }[];
+  cards?: { emoji: string; label: string; value: string; color?: string; iconType?: string }[];
   posterUrl?: string;
   pexelsUrl?: string;
   videoUrl?: string;
@@ -197,12 +199,14 @@ interface PostMetadata {
       position?: 'top' | 'bottom' | 'left' | 'right' | 'both';
     }>;
     typography?: {
-      title?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };
+      title?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean; textGradient?: boolean; gradColor1?: string; gradColor2?: string };
       cta?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };
       overlay?: { letterSpacing?: number; lineHeight?: number; bold?: boolean; italic?: boolean };
     };
     cardCustomIcons?: Record<string, string>;
     overlayColor?: string;
+    /** Position du logo par séquence — même forme que `DesignOptions.logoPositions`. */
+    logoPositions?: Record<string, { x?: number; y?: number }>;
   };
 }
 
@@ -598,8 +602,7 @@ export default function CalendarPage() {
   // without having videoPlayable in its dependency array (which would reset the
   // timer every time the video finishes loading mid-sequence).
   const videoPlayableRef = useRef<boolean>(false);
-  const [montageProgress, setMontageProgress] = useState(0); // only used for non-CSS fallback
-  const montageProgressRef = useRef<NodeJS.Timeout | null>(null);
+  const [, setMontageProgress] = useState(0); // only used for non-CSS fallback
   const seqDurationRef = useRef<number>(5000); // current sequence duration in ms for CSS animation
 
   // Export rendering state (for on-the-fly montage composition)
@@ -1580,7 +1583,7 @@ export default function CalendarPage() {
     // IMPORTANT: Always use the full seqOrder (including video) to avoid index shifts
     // when videoPlayable changes mid-playback. If video isn't playable, we skip it
     // instantly rather than removing it from the array.
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s as 'intro' | 'cards' | 'video' | 'cta']; return dur === undefined || dur > 0; }))];
     const seqs = (meta?.sequences || {}) as Record<string, number>;
     const currentSeq = seqOrder[infoSeqIndex] || 'intro';
 
@@ -1647,7 +1650,7 @@ export default function CalendarPage() {
     // Only use raw rush video — never rendered montage (has CTA baked in)
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s as 'intro' | 'cards' | 'video' | 'cta']; return dur === undefined || dur > 0; }))];
     const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
     const currentSeq = seqOrder[safeIdx] || 'intro';
 
@@ -1798,7 +1801,7 @@ export default function CalendarPage() {
     const videoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0];
     if (!videoSrc) return;
 
-    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+    const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s as 'intro' | 'cards' | 'video' | 'cta']; return dur === undefined || dur > 0; }))];
     const currentSeq = seqOrder[infoSeqIndex] || 'intro';
 
     const vid = document.getElementById('preview-video-infographic') as HTMLVideoElement | null;
@@ -3494,7 +3497,6 @@ export default function CalendarPage() {
         // Convertir les pixels éditeur en unités dvh : editorPx / 320 * 39.375 (reel) ou editorPx / 512 * 70 (tv)
         const editorPxToDvh = (editorPx: number) => `${(editorPx * (isReelFormat ? 0.123 : 0.137)).toFixed(2)}dvh`;
         // Convertir les pixels du canvas 1080px en dvh : canvasPx / 1080 * 39.375 = canvasPx * 0.03646
-        const canvasPxToDvh = (canvasPx: number) => `${(canvasPx * (isReelFormat ? 0.03646 : 0.02917)).toFixed(2)}dvh`;
 
         // Tronque une chaîne sur la dernière frontière de mot avant la limite
         // et ajoute une ellipse. MÊME implémentation que creer/page.tsx et
@@ -3659,7 +3661,7 @@ export default function CalendarPage() {
               ) : hasMontage ? (() => {
                 // Legacy HTML montage rebuild — used only for posts without renderedVideoUrl.
                 // Use stable sequence order (always includes video) to prevent index shifts
-                const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))];
+                const seqOrder: string[] = [...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s as 'intro' | 'cards' | 'video' | 'cta']; return dur === undefined || dur > 0; }))];
                 const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
                 const safeIdx = infoSeqIndex < seqOrder.length ? infoSeqIndex : 0;
                 const currentSeq = seqOrder[safeIdx] || 'intro';
@@ -3860,7 +3862,7 @@ export default function CalendarPage() {
                         }}>
                           {(() => {
                             const displayCards = meta?.cards?.length > 0
-                              ? meta.cards.map((c: { emoji: string; label: string; value: string; description?: string; color?: string }) => c)
+                              ? meta.cards.map((c: { emoji: string; label: string; value: string; description?: string; color?: string; iconType?: string }) => c)
                               : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color }));
                             // ── Cards-specific scale multiplier (parité /creer) ──
                             // /creer's editor multiplies card fonts by BOTH textScale AND
@@ -3903,7 +3905,7 @@ export default function CalendarPage() {
                             // whiteSpace: 'nowrap' on Full Width clipped both sides on long
                             // descriptions).
                             const textFlow = { whiteSpace: 'pre-wrap' as const, overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const };
-                            return displayCards.slice(0, isReelFormat ? 5 : 6).map((card: { emoji: string; label: string; value: string; description?: string; color?: string }, i: number) => {
+                            return displayCards.slice(0, isReelFormat ? 5 : 6).map((card: { emoji: string; label: string; value: string; description?: string; color?: string; iconType?: string }, i: number) => {
                               const cardIcon = designCardCustomIcons?.[String(i)] || undefined;
                               const animStyle = {
                                 transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
@@ -4292,7 +4294,6 @@ export default function CalendarPage() {
                 {(() => {
                   const posterImgSrc = meta?.pexelsUrl || meta?.posterUrl || meta?.characterUrl || null;
                   // Use raw rush video for background ONLY (never the rendered montage)
-                  const rawVideoSrc = meta?.rawVideoUrl || meta?.rushUrls?.[0] || null;
                   // Fallback: media_url ONLY if it's NOT a rendered montage (avoid loading corrupted WebM)
                   const isRenderedMontage = fullPreviewPost.media_url && meta?.renderedVideoUrl && fullPreviewPost.media_url === meta.renderedVideoUrl;
                   const bgVideoSrc = !isRenderedMontage && fullPreviewPost.media_type === 'video' && fullPreviewPost.media_url
@@ -4472,7 +4473,7 @@ export default function CalendarPage() {
                 )}
                 {hasMontage && (
                   <div className="flex items-center gap-2 text-xs text-purple-400">
-                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String([...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s]; return dur === undefined || dur > 0; }))].length) })} • {meta?.sequences?.total || 30}s
+                    <Film className="w-3 h-3" /> {t('fullPreview.sequences', { count: String([...new Set((meta?.sequences?.order || ['intro', 'cards', 'video']).map((s: string) => ({ titre: 'intro', cartes: 'cards', video: 'video', cta: 'cta' }[s] || s)).filter((s: string) => { const dur = meta?.sequences?.[s as 'intro' | 'cards' | 'video' | 'cta']; return dur === undefined || dur > 0; }))].length) })} • {meta?.sequences?.total || 30}s
                   </div>
                 )}
                 {meta?.videoUrl && !hasMontage && (
