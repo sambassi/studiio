@@ -29,10 +29,6 @@ import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 // son propre bundle, sans la feuille CSS de l'application, et les classes n'y
 // produisaient rien. Les assertions visent donc le style calcule.
 const spec = readFileSync(resolve(__dirname, '../lib/creer/designSpec.ts'), 'utf-8');
-const wizard = readFileSync(
-  resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
-  'utf-8',
-);
 const composer = readFileSync(resolve(__dirname, '../lib/video-composer.ts'), 'utf-8');
 
 const generated = {

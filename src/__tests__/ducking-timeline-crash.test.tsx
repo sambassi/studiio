@@ -43,7 +43,7 @@ describe('Bloc « Avancé » — plus de crash sur un keyframe abîmé', () => {
   it('rend avec chaque champ numérique manquant, un par un', () => {
     for (const missing of ['time', 'musicVolume', 'rushVolume', 'voiceVolume'] as const) {
       const kf = ok();
-      delete (kf as Record<string, unknown>)[missing];
+      delete (kf as unknown as Record<string, unknown>)[missing];
       renderTimeline([kf]);
       expect(() => openAdvanced(), missing).not.toThrow();
       cleanup();

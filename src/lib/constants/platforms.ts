@@ -11,8 +11,8 @@
 export interface SafeZoneArea {
   /** Label displayed on the overlay */
   label: string;
-  /** Top position as percentage */
-  top: string;
+  /** Top position as percentage (optional : les zones du bas n'ont que `bottom`) */
+  top?: string;
   /** Right position as percentage (optional) */
   right?: string;
   /** Left position as percentage (optional) */

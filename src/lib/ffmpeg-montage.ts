@@ -22,6 +22,8 @@ export interface MontageSpec {
   totalDuration: number;
   format: '9:16' | '16:9';
   theme: string;
+  /** Réseaux choisis dans l'Agent IA, recopiés sur le post programmé. */
+  platforms?: string[];
 }
 
 async function getFFmpeg(onLog: (msg: string) => void): Promise<FFmpeg> {
@@ -124,7 +126,9 @@ export async function renderMontage(
   onProgress(95, 'Lecture du fichier final...');
 
   const outputData = await ffmpeg.readFile('final.mp4');
-  const blob = new Blob([outputData], { type: 'video/mp4' });
+  // `readFile` sans encodage rend un `Uint8Array` : le cast ne fait que lever
+  // l'ambiguïté `SharedArrayBuffer` des types de TS 5.7+, sans copie.
+  const blob = new Blob([outputData as Uint8Array<ArrayBuffer>], { type: 'video/mp4' });
 
   for (const f of trimmedInputs) { try { await ffmpeg.deleteFile(f); } catch {} }
   try { await ffmpeg.deleteFile('concat.mp4'); } catch {}

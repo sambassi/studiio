@@ -2608,6 +2608,7 @@ function InfographicPageInner() {
       const t = setTimeout(() => startPlayback(), 500);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [configLoaded, startPlayback, isPlaying]);
 
   // Video overlay text position (draggable)
@@ -3255,7 +3256,7 @@ function InfographicPageInner() {
     setToast({ message, type });
 
   // ── Fetch Pexels photos based on theme ──────────────────────
-  const [pexelsPage, setPexelsPage] = useState(1);
+  const [, setPexelsPage] = useState(1);
 
   const pexelsPageRef = useRef(1);
   const fetchPexelsPhotos = useCallback(
@@ -4803,7 +4804,6 @@ function InfographicPageInner() {
 
         // Determine media type based on whether video is present
         const hasVideo = !!rushUrl;
-        const mediaType = hasVideo ? "video" : "image";
 
         if (destination === "draft" || destination === "both") {
           // Spread within the current month so all batch posts stay visible on
@@ -5815,10 +5815,6 @@ function InfographicPageInner() {
   };
 
   // ── Preview helpers ─────────────────────────────────────────
-  const activeColorTheme =
-    colorTheme === "custom"
-      ? { id: "custom", name: "Custom", bg: "", accent: customAccent }
-      : COLOR_THEMES.find((ct) => ct.id === colorTheme) || COLOR_THEMES[1];
   // Explicit `< 0` guard — `pexelsPhotos[-1]` already yields `undefined` but
   // we keep this defensive so the "Sans affiche" button (which sets the index
   // to -1) can never accidentally render the previously-selected poster.

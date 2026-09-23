@@ -534,7 +534,6 @@ export default function InfographiePage() {
       let successCount = 0;
       let lastError = '';
       let savedBlobForExport: Blob | null = null;
-      let firstCreatedPostId: string | null = null;
       const allCreatedPostIds: string[] = [];
 
       if (destination === 'calendar' || destination === 'both' || destination === 'studio') {
@@ -649,7 +648,6 @@ export default function InfographiePage() {
               if (createdId) {
                 batchPostId = createdId;
                 allCreatedPostIds.push(createdId);
-                if (b === 0) firstCreatedPostId = createdId;
               }
             }
             else { lastError = postData.error || 'Unknown error'; console.error('[Export] Post creation failed:', postData); }

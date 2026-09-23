@@ -15,6 +15,14 @@ export interface BrandingSettings {
   gradientColor2: string;
   /** Opacite du calque de degrade, 0 a 1. */
   gradientOpacity: number;
+  /**
+   * Champs lus par l'ancienne page Infographie. Ils ne sont pas dans les
+   * défauts : présents seulement si un réglage enregistré les porte (le
+   * chargement étale les données relues). Absents : la page n'envoie rien.
+   */
+  font?: string;
+  titleColor?: string;
+  ctaSubColor?: string;
 }
 
 /**

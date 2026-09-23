@@ -66,7 +66,7 @@ export function useDesignHistory<T>(
     }
     // Skip no-op commits (identical to the last snapshot).
     const last = stackRef.current[stackRef.current.length - 1];
-    if (last !== undefined && isSameSnapshot(last, snapshot)) return;
+    if (last !== undefined && isSameSnapshot<T>(last, snapshot)) return;
     stackRef.current.push(deepClone(snapshot));
     if (stackRef.current.length > maxSize) {
       const overflow = stackRef.current.length - maxSize;
