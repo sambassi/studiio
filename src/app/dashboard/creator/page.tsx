@@ -6,8 +6,8 @@
  * identifiant arriverait sinon dépouillé, sans erreur, et le parcours
  * repartirait de zéro.
  *
- * Le calcul de la cible — et notamment le fait qu'un lien portant `postId`
- * ou `id` désigne un contenu EXISTANT et doit aller sur l'éditeur avancé —
+ * Le calcul de la cible — `postId` (un post) vers le parcours guidé qui sait
+ * le relire, `id` (une vidéo) encore vers l'éditeur avancé —
  * appartient à `legacy-redirect`, partagé par les trois routes.
  *
  * TODO: supprimer ce fichier une fois qu'aucun signet n'en dépend plus.

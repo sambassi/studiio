@@ -1,9 +1,26 @@
-'use client';
-
 import Link from 'next/link';
 import { ArrowRight, Music } from 'lucide-react';
+import { readEditTarget } from '@/lib/creer/editTarget';
+import type { SearchParams } from '@/lib/routing/legacy-redirect';
 
-export default function AudioStudioLegacyRedirect() {
+/**
+ * Ancien Studio Son — page d'orientation vers Créer.
+ *
+ * L'export « studio » de `/dashboard/infographic` arrive ici avec le
+ * `?postId=` du post qu'il vient de créer. Un `postId` unique et exploitable
+ * est transmis au parcours guidé, qui rouvre CE post (et l'enregistre sur lui,
+ * sans doublon) ; sinon — aucun, plusieurs (`postIds=`), ou abîmé — le lien
+ * reste une simple entrée dans Créer, comme avant.
+ */
+export default function AudioStudioLegacyRedirect({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
+  const cible = readEditTarget(searchParams);
+  const href = cible.kind === 'edit'
+    ? `/dashboard/creer?postId=${encodeURIComponent(cible.postId)}`
+    : '/dashboard/creer';
   return (
     <div className="min-h-[80vh] flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center">
@@ -17,7 +34,7 @@ export default function AudioStudioLegacyRedirect() {
           onglet <span className="text-white font-semibold">Audio</span>.
         </p>
         <Link
-          href="/dashboard/creer"
+          href={href}
           className="inline-flex items-center justify-center gap-2 w-full px-5 py-3 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 font-bold transition"
         >
           Aller sur Créer
