@@ -65,12 +65,25 @@ function insertQuery(data: Record<string, unknown>) {
   };
 }
 
+function deleteQuery() {
+  const filtres: Record<string, unknown> = {};
+  const api: Record<string, unknown> = {
+    eq: (k: string, v: unknown) => { filtres[k] = v; return api; },
+    then: (resolve: (v: unknown) => void) => {
+      rows = rows.filter((r) => !matches(r, filtres));
+      resolve({ data: null, error: null });
+    },
+  };
+  return api;
+}
+
 vi.mock('@/lib/db/supabase', () => ({
   supabaseAdmin: {
     from: () => ({
       select: () => selectQuery(),
       update: (patch: Record<string, unknown>) => updateQuery(patch),
       insert: (data: Record<string, unknown>) => insertQuery(data),
+      delete: () => deleteQuery(),
     }),
   },
   supabase: { from: () => ({}) },
@@ -94,6 +107,7 @@ vi.mock('@/lib/autopilot/produire', () => ({
 
 import {
   scriptJumeauMontage, lancerJumeauMontage, finaliserJumeauxPrets, estMediaIntrouvable,
+  creneauxJumeauEnAttente, STATUT_RESERVE, GENERATION_RESERVEE,
 } from '@/lib/autopilot/jumeau-async';
 
 const post = {
@@ -257,5 +271,65 @@ describe('Média introuvable (404) : échec DÉFINITIF, jamais une boucle', () =
     // Téléchargement, mais « 404 » fondu dans un identifiant.
     expect(estMediaIntrouvable('Error while downloading https://x/u/music/1404-a.mp3: ETIMEDOUT')).toBe(false);
     expect(estMediaIntrouvable('Error while downloading https://x/a.mp3: HTTP 503')).toBe(false);
+  });
+});
+
+describe('Réserver le créneau AVANT le fournisseur — jamais deux générations', () => {
+  beforeEach(() => { rows = []; vi.clearAllMocks(); });
+  const lancer = (slotKey = 'slot-1') => lancerJumeauMontage({
+    userId: 'u1', config: {} as never, post, rang: 0, now: 1, jobId: 'job-1', slotKey,
+  });
+
+  it('au moment de l appel fournisseur, le créneau est DÉJÀ réservé', async () => {
+    let vuPendantLAppel: Array<Record<string, unknown>> = [];
+    genererVideoJumeau.mockImplementation(async () => {
+      vuPendantLAppel = rows.map((r) => ({ ...r }));
+      return { ok: true, generationId: 'gen-9' };
+    });
+    await lancer();
+    expect(vuPendantLAppel).toHaveLength(1);
+    expect(vuPendantLAppel[0]).toMatchObject({ statut: STATUT_RESERVE, generation_id: GENERATION_RESERVEE });
+    // Puis la génération est rattachée : la ligne entre en file.
+    expect(rows[0]).toMatchObject({ statut: 'en_attente', generation_id: 'gen-9' });
+  });
+
+  it('deux passes SIMULTANÉES sur le même créneau : UN seul appel fournisseur', async () => {
+    genererVideoJumeau.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      return { ok: true, generationId: 'gen-9' };
+    });
+    const [a, b] = await Promise.all([lancer(), lancer()]);
+    expect(genererVideoJumeau).toHaveBeenCalledTimes(1);
+    expect(rows).toHaveLength(1);
+    expect([a.ok && a.dejaEnFile, b.ok && b.dejaEnFile].filter(Boolean)).toHaveLength(1);
+  });
+
+  it('créneau déjà rendu ou en échec : jamais relancé', async () => {
+    for (const statut of ['rendu', 'echec']) {
+      rows = [];
+      enFile({ slot_key: 'slot-1', statut });
+      const r = await lancer();
+      expect(r).toMatchObject({ ok: true, dejaEnFile: true });
+    }
+    expect(genererVideoJumeau).not.toHaveBeenCalled();
+  });
+
+  it('exception du moteur : réservation RENDUE, rien en file', async () => {
+    genererVideoJumeau.mockRejectedValue(new Error('Insufficient credits'));
+    const r = await lancer();
+    expect(r).toMatchObject({ ok: false, motif: 'base' });
+    expect(rows).toHaveLength(0);
+  });
+
+  it('le cron compte une réservation comme un créneau fait', async () => {
+    enFile({ slot_key: 'slot-r', statut: STATUT_RESERVE });
+    expect((await creneauxJumeauEnAttente('u1')).has('slot-r')).toBe(true);
+  });
+
+  it('le finaliseur ignore une réservation (aucun poll, aucun rendu)', async () => {
+    enFile({ statut: STATUT_RESERVE, generation_id: GENERATION_RESERVEE });
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.examines).toBe(0);
+    expect(avancer).not.toHaveBeenCalled();
   });
 });

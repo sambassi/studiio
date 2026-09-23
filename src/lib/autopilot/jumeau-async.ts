@@ -127,14 +127,6 @@ export async function lancerJumeauMontage(input: {
     return { ok: false, motif: 'texte_absent', message: 'Aucun texte à faire dire à votre jumeau pour ce montage.' };
   }
 
-  // Lance la génération D-ID (idempotente, facturée AVATAR_VIDEO_COST). Le
-  // moteur est revérifié POUR le fournisseur de l'avatar ici même.
-  const gen = await genererVideoJumeau({ userId: input.userId, textes: [script], aspectRatio: RATIO_AUTOPILOTE });
-  if (!gen.ok) {
-    console.warn(`${journal} ${input.userId} — lancement refusé (${gen.motif}) : ${gen.message}`);
-    return { ok: false, motif: gen.motif, message: gen.message };
-  }
-
   const snapshot: SnapshotMontage = {
     config: input.config,
     post: input.post,
@@ -144,25 +136,31 @@ export async function lancerJumeauMontage(input: {
     journal,
   };
 
-  const { data: inseree, error } = await supabaseAdmin
+  // ── 1. RÉSERVER LE CRÉNEAU, AVANT TOUT APPEL FOURNISSEUR ────────────────
+  // ⚠️ L'ORDRE ÉTAIT INVERSE : génération PUIS insertion. Deux passes
+  // simultanées sur le même créneau passaient toutes deux le SELECT ci-dessus
+  // et lançaient chacune une génération ; l'`unique (user_id, slot_key)` ne
+  // tranchait qu'APRÈS, et la génération perdante restait lancée et payée.
+  // L'index « en vol » de `genererVideoJumeau` ne couvre que des entrées
+  // IDENTIQUES — or le script de deux passes peut différer (graine à la
+  // minute). On réserve donc d'abord : seule la passe qui insère lance.
+  const { data: reservee, error: errReserve } = await supabaseAdmin
     .from('autopilot_jumeau_attente')
     .insert({
       user_id: input.userId,
-      generation_id: gen.generationId,
+      generation_id: GENERATION_RESERVEE,
       slot_key: input.slotKey,
       job_id: input.jobId,
-      statut: 'en_attente',
+      statut: STATUT_RESERVE,
       snapshot,
     })
     .select('id')
     .single();
 
-  if (error) {
-    // Conflit d'unicité : une passe concurrente a inséré entre le SELECT et
-    // l'INSERT. La génération est lancée (idempotente, pas de second débit) ;
-    // on relit la ligne gagnante.
-    const conflit = error.code === '23505' || (error.message ?? '').toLowerCase().includes('duplicate');
+  if (errReserve) {
+    const conflit = errReserve.code === '23505' || (errReserve.message ?? '').toLowerCase().includes('duplicate');
     if (conflit) {
+      // Une passe concurrente a réservé ce créneau : c'est ELLE qui lance.
       const { data: gagnante } = await supabaseAdmin
         .from('autopilot_jumeau_attente')
         .select('id, generation_id')
@@ -172,13 +170,71 @@ export async function lancerJumeauMontage(input: {
       const l = gagnante?.[0] as { id: string; generation_id: string } | undefined;
       if (l) return { ok: true, generationId: l.generation_id, attenteId: l.id, dejaEnFile: true };
     }
-    console.error(`${journal} ${input.userId} — mise en file impossible :`, error.message);
+    console.error(`${journal} ${input.userId} — réservation du créneau impossible :`, errReserve.message);
     return { ok: false, motif: 'base', message: 'La mise en file du montage a échoué.' };
   }
+  const attenteId = (reservee as { id: string }).id;
 
-  const attenteId = (inseree as { id: string }).id;
+  // ── 2. LANCER — seule la passe qui a réservé arrive ici ─────────────────
+  // (idempotente, facturée AVATAR_VIDEO_COST ; le moteur est revérifié pour le
+  // fournisseur de l'avatar ici même). Refus ou exception : la génération n'a
+  // pas démarré (ou a été remboursée par le moteur) — la réservation est
+  // RENDUE, pour qu'un passage ultérieur puisse réessayer ce créneau.
+  let gen: Awaited<ReturnType<typeof genererVideoJumeau>>;
+  try {
+    gen = await genererVideoJumeau({ userId: input.userId, textes: [script], aspectRatio: RATIO_AUTOPILOTE });
+  } catch (e) {
+    await libererReservation(attenteId);
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`${journal} ${input.userId} — lancement du jumeau en erreur :`, message);
+    return { ok: false, motif: 'base', message: 'Le lancement du jumeau a échoué.' };
+  }
+  if (!gen.ok) {
+    await libererReservation(attenteId);
+    console.warn(`${journal} ${input.userId} — lancement refusé (${gen.motif}) : ${gen.message}`);
+    return { ok: false, motif: gen.motif, message: gen.message };
+  }
+
+  // ── 3. ATTACHER la génération à la réservation → en file pour le finaliseur ──
+  const { error: errAttache } = await supabaseAdmin
+    .from('autopilot_jumeau_attente')
+    .update({ generation_id: gen.generationId, statut: 'en_attente', updated_at: new Date().toISOString() })
+    .eq('id', attenteId)
+    .eq('statut', STATUT_RESERVE);
+  if (errAttache) {
+    // La génération EST lancée (et facturée) : le créneau reste réservé — jamais
+    // relancé — et on le dit fort pour qu'un humain rattache la génération.
+    console.error(
+      `${journal} ${input.userId} — jumeau lancé (${gen.generationId}) mais NON rattaché à la file ${attenteId} :`,
+      errAttache.message,
+    );
+  }
+
   console.log(`${journal} ${input.userId} — jumeau lancé (${gen.generationId}), montage en file ${attenteId}`);
   return { ok: true, generationId: gen.generationId, attenteId, dejaEnFile: false };
+}
+
+/**
+ * Statut d'une ligne dont le créneau est RÉSERVÉ mais dont la génération n'est
+ * pas encore attachée. Le finaliseur l'ignore (il ne lit que `en_attente`) ;
+ * le cron la compte comme faite (`creneauxJumeauEnAttente`).
+ */
+export const STATUT_RESERVE = 'reserve';
+
+/**
+ * `generation_id` est `not null` : une réservation porte l'UUID nul le temps
+ * du lancement. Aucune génération réelle n'a cet identifiant.
+ */
+export const GENERATION_RESERVEE = '00000000-0000-0000-0000-000000000000';
+
+/** Rend un créneau réservé dont le lancement n'a pas abouti. */
+async function libererReservation(id: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from('autopilot_jumeau_attente')
+    .delete()
+    .eq('id', id)
+    .eq('statut', STATUT_RESERVE);
+  if (error) console.error('[Autopilote/Jumeau] réservation non rendue :', id, error.message);
 }
 
 /** Les créneaux d'un compte DÉJÀ en file jumeau — pour que le cron ne les relance pas. */
@@ -187,7 +243,7 @@ export async function creneauxJumeauEnAttente(userId: string): Promise<Set<strin
     .from('autopilot_jumeau_attente')
     .select('slot_key, statut')
     .eq('user_id', userId)
-    .in('statut', ['en_attente', 'en_cours']);
+    .in('statut', [STATUT_RESERVE, 'en_attente', 'en_cours']);
   const out = new Set<string>();
   for (const l of (data ?? []) as Array<{ slot_key?: string }>) {
     if (typeof l.slot_key === 'string') out.add(l.slot_key);

@@ -1076,3 +1076,23 @@ média à télécharger est DÉFINITIF et clôt la ligne avec sa cause. (2) Tout
 média optionnel référencé par une configuration (rush, musique…) est sondé
 avant le rendu ; absent, il est retiré du montage ET écrit dans les
 métadonnées (`rushIgnore`, `musiqueIgnoree`), jamais en silence.
+
+## [2026-09-23] Réserver AVANT d'appeler un fournisseur payant — l'unicité en fin de course arrive trop tard
+
+**Ce qui a mal tourné** — `lancerJumeauMontage` vérifiait la file, lançait la
+génération D-ID (payante), PUIS insérait la ligne. Deux passes simultanées du
+cron passaient toutes deux la vérification et lançaient chacune une
+génération ; l'`unique (user_id, slot_key)` ne rejetait la seconde
+qu'après, sa génération restant lancée et payée. L'index « en vol » du moteur
+ne dédoublonne que des entrées IDENTIQUES, or le script dépend de la minute.
+Au même endroit, le cron recopiait la config champ par champ et avait oublié
+`jumeau_avatar` : le choix explicite de l'utilisateur était ignoré.
+
+**Règle** — (1) Toute action qui coûte (fournisseur, débit) est précédée de la
+PRISE d'un verrou persistant — insertion sous contrainte d'unicité — et seule
+la passe qui l'a obtenu agit ; échec avant l'action = verrou rendu. (2) Un
+test de concurrence lance deux passes avec `Promise.all` et compte les appels
+au fournisseur ; il doit rougir si l'ordre verrou → action est inversé.
+(3) Troisième occurrence du même oubli dans la config recopiée du cron
+(`start_date`, `jumeau_avatar`) : tout nouveau champ de `autopilot_config`
+doit être ajouté ET couvert par un test du cron.
