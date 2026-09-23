@@ -6,6 +6,7 @@ import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rule
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { pickTopics } from '@/lib/autopilot/topics';
+import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import {
   produireUnMontage, sujetsRecents, creneauxExistants, COST_PER_VIDEO,
 } from '@/lib/autopilot/produire';
@@ -220,10 +221,27 @@ export async function GET(req: NextRequest) {
         // tant que `2026-09-21-autopilot-brief.sql` n'est pas appliquee :
         // `sanitizeBrief` rend `{}`, les textes sont ceux d'avant.
         brief: ligne.brief,
+        // ── Le JUMEAU à l'image — choix EXPLICITE de l'utilisateur ────────
+        // ⚠️ IL MANQUAIT ICI, et c'était tout le problème : `sanitizeConfig`
+        // retombait sur `false`, si bien qu'un compte ayant coché « Monter la
+        // vidéo de mon jumeau » était traité comme s'il ne l'avait pas fait —
+        // la branche `lancerJumeauMontage` ci-dessous n'était jamais prise.
+        // Colonne `not null default false` : aucun compte ne bascule sans
+        // l'avoir coché, et `=== true` dans `sanitizeConfig` rejette tout le
+        // reste.
+        jumeauAvatar: ligne.jumeau_avatar,
       });
 
+      // Avec le jumeau, un montage coûte DEUX choses : la génération de
+      // l'avatar (débitée à son lancement) PUIS le rendu (à la finalisation).
+      // Le nombre de montages du cycle est borné par ce que le solde paie
+      // réellement — même calcul que « Produire maintenant ». Et le jumeau
+      // tient la séquence « Vidéo » : une banque de rushes vide ne bloque pas.
+      const coutMontage = config.jumeauAvatar ? AVATAR_VIDEO_COST + COST_PER_VIDEO : COST_PER_VIDEO;
       const credits = await getUserCredits(userId).catch(() => 0);
-      const decision = decideRun({ config, credits, costPerVideo: COST_PER_VIDEO, now });
+      const decision = decideRun({
+        config, credits, costPerVideo: coutMontage, now, allowWithoutRush: config.jumeauAvatar,
+      });
 
       if (!decision.run) {
         // « pas encore » est le cas NORMAL entre deux cycles : on ne

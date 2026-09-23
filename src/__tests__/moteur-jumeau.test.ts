@@ -24,8 +24,8 @@ const A = '11111111-1111-4111-8111-000000000001';
 const V1 = '44444444-4444-4444-8444-000000000001';
 
 type Ligne = Record<string, unknown>;
-const base = vi.hoisted(() => ({ avatars: [] as Ligne[], voices: [] as Ligne[], settings: [] as Ligne[], generations: [] as Ligne[], compteur: 0 }));
-const credits = vi.hoisted(() => ({ solde: 1000, journal: [] as string[] }));
+const base = vi.hoisted(() => ({ avatars: [] as Ligne[], voices: [] as Ligne[], settings: [] as Ligne[], generations: [] as Ligne[], transactions: [] as Ligne[], compteur: 0 }));
+const credits = vi.hoisted(() => ({ solde: 1000, journal: [] as string[], leve: null as null | { message: string; apresEcriture: boolean }, admin: false, majEchoue: false }));
 const reseau = vi.hoisted(() => ({
   appels: [] as Array<{ url: string; method: string; body: unknown; contentType: string | null }>,
   eleven: 200 as number, heygenAssets: 200 as number, heygenVideos: 200 as number,
@@ -33,7 +33,7 @@ const reseau = vi.hoisted(() => ({
 
 vi.mock('@/lib/db/supabase', () => {
   const from = (table: string) => {
-    const source = table === 'user_avatars' ? base.avatars : table === 'user_voices' ? base.voices : table === 'user_settings' ? base.settings : table === 'avatar_generations' ? base.generations : null;
+    const source = table === 'user_avatars' ? base.avatars : table === 'user_voices' ? base.voices : table === 'user_settings' ? base.settings : table === 'avatar_generations' ? base.generations : table === 'credit_transactions' ? base.transactions : null;
     if (!source) throw new Error(`table inattendue ${table}`);
     const filtres: Array<(l: Ligne) => boolean> = [];
     let colonnes: string[] | null = null; let tri = false; let limite: number | undefined;
@@ -49,9 +49,10 @@ vi.mock('@/lib/db/supabase', () => {
         if (source === base.generations && enVol(i) && source.some((l) => enVol(l) && ['user_id', 'user_avatar_id', 'avatar_version', 'voice_id', 'aspect_ratio', 'script'].every((k) => l[k] === i[k]))) {
           return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "avatar_generations_jumeau_en_vol_uidx"' } };
         }
-        const l = { id: `55555555-5555-4555-8555-${String(++base.compteur).padStart(12, '0')}`, created_at: new Date(Date.now() + base.compteur).toISOString(), video_url: null, error_message: null, ...i }; source.push(l); return { data: [projeter(l)], error: null };
+        const l = { id: `55555555-5555-4555-8555-${String(++base.compteur).padStart(12, '0')}`, created_at: new Date(Date.now() + base.compteur).toISOString(), video_url: null, error_message: null, credits_refunded: false, ...i }; source.push(l); return { data: [projeter(l)], error: null };
       }
       let rows = source.filter((l) => filtres.every((f) => f(l)));
+      if (patch && credits.majEchoue && 'provider_video_id' in patch) return { data: null, error: { message: 'panne base' } };
       if (patch) { for (const l of rows) Object.assign(l, patch); return { data: rows.map(projeter), error: null }; }
       if (tri) rows = [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
       if (limite !== undefined) rows = rows.slice(0, limite);
@@ -75,7 +76,15 @@ vi.mock('@/lib/db/supabase', () => {
 });
 vi.mock('@/lib/credits/system', () => ({
   getUserCredits: async () => credits.solde,
-  deductCredits: async (_u: string, n: number, _raison: string, reference?: string | null) => { credits.journal.push(`debit:${n}:${reference ?? 'sans-reference'}`); credits.solde -= n; },
+  deductCredits: async (_u: string, n: number, _raison: string, reference?: string | null) => {
+    // Admin : exemption existante — aucun décrément, aucune ligne de journal.
+    if (credits.admin) return true;
+    if (credits.leve && !credits.leve.apresEcriture) throw new Error(credits.leve.message);
+    credits.journal.push(`debit:${n}:${reference ?? 'sans-reference'}`); credits.solde -= n; base.transactions.push({ user_id: _u, reference_id: reference ?? null, amount: -n });
+    // Débit ÉCRIT puis erreur (réponse perdue) : le cas où il faut rembourser.
+    if (credits.leve?.apresEcriture) throw new Error(credits.leve.message);
+    return true;
+  },
   addCredits: async (_u: string, n: number) => { credits.journal.push(`refund:${n}`); credits.solde += n; },
 }));
 const session = vi.hoisted(() => ({ courante: { user: { id: 'aaaaaaaa-1111-4111-8111-111111111111' } } as unknown }));
@@ -108,7 +117,7 @@ process.env.ELEVENLABS_API_KEY = 'cle-eleven-test';
 process.env.JUMEAU_MOTEUR_ACTIVE = '1';
 process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
 
-const { genererVideoJumeau, moteurJumeauDisponible, PREFIXE_VOIX_JUMEAU } = await import('@/lib/avatar/moteur-jumeau');
+const { genererVideoJumeau, moteurJumeauDisponible, PREFIXE_VOIX_JUMEAU, rembourserGenerationUneFois, reconcilierLancement } = await import('@/lib/avatar/moteur-jumeau');
 const { POST } = await import('@/app/api/creer/jumeau/generer/route');
 
 const avatar = (over: Ligne = {}): Ligne => ({
@@ -123,9 +132,9 @@ const generer = (textes: string[] = [TEXTE]) => genererVideoJumeau({ userId: U, 
 const appelsVers = (prefixe: string) => reseau.appels.filter((a) => a.url.startsWith(prefixe));
 
 beforeEach(() => {
-  base.avatars = [avatar()]; base.voices = [voix()]; base.generations = []; base.compteur = 0;
+  base.avatars = [avatar()]; base.voices = [voix()]; base.generations = []; base.transactions = []; base.compteur = 0;
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: [{ affiche: 'Afroboost', prononce: 'Afro-boust' }, { affiche: 'Neuchâtel', prononce: 'Neu-cha-tel' }] } } }];
-  credits.solde = 1000; credits.journal.length = 0;
+  credits.solde = 1000; credits.journal.length = 0; credits.leve = null; credits.admin = false; credits.majEchoue = false;
   reseau.appels.length = 0; reseau.eleven = 200; reseau.heygenAssets = 200; reseau.heygenVideos = 200;
   process.env.JUMEAU_MOTEUR_ACTIVE = '1';
   session.courante = { user: { id: U } };
@@ -168,7 +177,7 @@ describe('genererVideoJumeau — la chaîne réelle, fournisseurs interceptés a
   it('⚠️ DISPLAY préservé : le résultat rend display intact et spoken distinct ; aucune prononciation → identiques', async () => {
     const r = await generer();
     expect(r.ok && r.display).toBe(TEXTE);
-    base.generations = []; base.settings = []; reseau.appels.length = 0;
+    base.generations = []; base.transactions = []; base.settings = []; reseau.appels.length = 0;
     const r2 = await generer();
     expect(r2.ok && r2.spoken).toBe(TEXTE);
   });
@@ -223,7 +232,7 @@ describe('genererVideoJumeau — la chaîne réelle, fournisseurs interceptés a
     expect(await generer()).toMatchObject({ ok: false, motif: 'fournisseur_avatar' });
     expect(credits.journal.map((j) => j.replace(/:jumeau:[0-9a-f-]+$/, ''))).toEqual(['debit:40', 'refund:40']);
     expect(appelsVers('https://api.heygen.com/v3/videos')).toEqual([]);
-    base.generations = []; credits.journal.length = 0; reseau.appels.length = 0; reseau.heygenAssets = 200; reseau.heygenVideos = 400;
+    base.generations = []; base.transactions = []; credits.journal.length = 0; reseau.appels.length = 0; reseau.heygenAssets = 200; reseau.heygenVideos = 400;
     expect(await generer()).toMatchObject({ ok: false, motif: 'fournisseur_avatar' });
     expect(base.generations[0].status).toBe('failed');
     expect(credits.journal.map((j) => j.replace(/:jumeau:[0-9a-f-]+$/, ''))).toEqual(['debit:40', 'refund:40']);
@@ -314,9 +323,9 @@ describe('POST /api/creer/jumeau/generer', () => {
     expect((await post({ textes: [TEXTE] })).status).toBe(409);
     base.avatars = [avatar()]; credits.solde = 0;
     expect((await post({ textes: [TEXTE] })).status).toBe(402);
-    credits.solde = 1000; base.generations = []; reseau.eleven = 500;
+    credits.solde = 1000; base.generations = []; base.transactions = []; reseau.eleven = 500;
     expect((await post({ textes: [TEXTE] })).status).toBe(502);
-    reseau.eleven = 200; base.generations = [];
+    reseau.eleven = 200; base.generations = []; base.transactions = [];
     const res = await post({ textes: [TEXTE], aspectRatio: '16:9', providerAvatarId: 'PIRATE', providerVoiceId: 'PIRATE', avatarVersion: 99, userVoiceId: 'PIRATE' });
     expect(res.status).toBe(200);
     const corps = await res.json() as { data: { generationId: string; avatarVersion: number; spoken: string } };
@@ -326,5 +335,73 @@ describe('POST /api/creer/jumeau/generer', () => {
     const videos = appelsVers('https://api.heygen.com/v3/videos');
     expect(videos.pop()!.body).toMatchObject({ avatar_id: 'hg-avatar-1', aspect_ratio: '16:9' });
     expect(appelsVers('https://api.elevenlabs.io').pop()!.url).toContain('pvid_perso_0001');
+  });
+});
+
+describe('Durcissement : débit, remboursement, génération lancée non enregistrée', () => {
+  const remboursements = () => credits.journal.filter((j) => j.startsWith('refund:'));
+
+  it('le DÉBIT lève (rien écrit) : génération close, AUCUN fournisseur, AUCUN remboursement', async () => {
+    credits.leve = { message: 'debit refuse : socle_absent', apresEcriture: false };
+    const r = await generer();
+    expect(r).toMatchObject({ ok: false, motif: 'base' });
+    expect(base.generations[0].status).toBe('failed');
+    expect(reseau.appels).toHaveLength(0);
+    expect(remboursements()).toHaveLength(0);
+  });
+
+  it('le débit lève APRÈS avoir été écrit : remboursé UNE fois, aucun fournisseur', async () => {
+    credits.leve = { message: 'reponse perdue', apresEcriture: true };
+    const r = await generer();
+    expect(r.ok).toBe(false);
+    expect(reseau.appels).toHaveLength(0);
+    expect(remboursements()).toEqual(['refund:40']);
+  });
+
+  it('solde passé sous le seuil au débit : motif crédits, rien lancé', async () => {
+    credits.leve = { message: 'Insufficient credits', apresEcriture: false };
+    const r = await generer();
+    expect(r).toMatchObject({ ok: false, motif: 'credits_insuffisants' });
+    expect(reseau.appels).toHaveLength(0);
+  });
+
+  it('remboursement exécuté DEUX fois : un seul crédit rendu', async () => {
+    reseau.eleven = 429;
+    const r = await generer();
+    expect(r.ok).toBe(false);
+    expect(remboursements()).toEqual(['refund:40']);
+    const id = String(base.generations[0].id);
+    expect(await rembourserGenerationUneFois(U, id)).toBe(false);
+    expect(await rembourserGenerationUneFois(U, id)).toBe(false);
+    expect(remboursements()).toEqual(['refund:40']);
+  });
+
+  it('jamais débité → jamais remboursé (administrateur exempté)', async () => {
+    credits.admin = true;
+    reseau.eleven = 429;
+    const r = await generer();
+    expect(r.ok).toBe(false);
+    expect(remboursements()).toHaveLength(0);
+  });
+
+  it('fournisseur ACCEPTÉ puis écriture ratée : lance=true, identifiants rendus, ni remboursement ni échec', async () => {
+    credits.majEchoue = true;
+    const r = await generer();
+    expect(r).toMatchObject({ ok: false, lance: true, providerVideoId: 'vid-jumeau-1', generationId: base.generations[0].id });
+    expect(base.generations[0].status).not.toBe('failed');
+    expect(remboursements()).toHaveLength(0);
+    expect(credits.journal.filter((j) => j.startsWith('debit:'))).toHaveLength(1);
+  });
+
+  it('réconciliation : rattache l identifiant, sans jamais écraser une génération déjà suivie', async () => {
+    credits.majEchoue = true;
+    await generer();
+    credits.majEchoue = false;
+    const id = String(base.generations[0].id);
+    expect(await reconcilierLancement(id, U, 'vid-jumeau-1')).toBe(true);
+    expect(base.generations[0]).toMatchObject({ provider_video_id: 'vid-jumeau-1', status: 'processing' });
+    base.generations[0].status = 'completed';
+    await reconcilierLancement(id, U, 'AUTRE');
+    expect(base.generations[0]).toMatchObject({ provider_video_id: 'vid-jumeau-1', status: 'completed' });
   });
 });

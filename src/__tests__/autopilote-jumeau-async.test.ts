@@ -20,13 +20,16 @@ function matches(r: Record<string, unknown>, filtres: Record<string, unknown>, d
 
 function selectQuery() {
   const filtres: Record<string, unknown> = {};
+  const avant: Record<string, string> = {};
+  const avantOk = (r: Record<string, unknown>) => Object.entries(avant).every(([k, v]) => String(r[k] ?? '') < v);
   let dansStatut: string[] | undefined;
   const api: Record<string, unknown> = {
     select: () => api,
     eq: (k: string, v: unknown) => { filtres[k] = v; return api; },
     in: (k: string, vals: string[]) => { if (k === 'statut') dansStatut = vals; return api; },
     order: () => api,
-    limit: (n: number) => ({ data: rows.filter((r) => matches(r, filtres, dansStatut)).slice(0, n), error: null }),
+    lt: (k: string, v: string) => { avant[k] = v; return api; },
+    limit: (n: number) => ({ data: rows.filter((r) => matches(r, filtres, dansStatut) && avantOk(r)).slice(0, n), error: null }),
     then: (resolve: (v: unknown) => void) => resolve({ data: rows.filter((r) => matches(r, filtres, dansStatut)), error: null }),
   };
   return api;
@@ -34,15 +37,17 @@ function selectQuery() {
 
 function updateQuery(patch: Record<string, unknown>) {
   const filtres: Record<string, unknown> = {};
+  const avant: Record<string, string> = {};
   let dansStatut: string[] | undefined;
   const appliquer = () => {
-    const hit = rows.filter((r) => matches(r, filtres, dansStatut));
+    const hit = rows.filter((r) => matches(r, filtres, dansStatut) && Object.entries(avant).every(([k, v]) => String(r[k] ?? '') < v));
     hit.forEach((r) => Object.assign(r, patch));
     return hit;
   };
   const api: Record<string, unknown> = {
     eq: (k: string, v: unknown) => { filtres[k] = v; return api; },
     in: (k: string, vals: string[]) => { if (k === 'statut') dansStatut = vals; return api; },
+    lt: (k: string, v: string) => { avant[k] = v; return api; },
     select: () => ({ data: appliquer().map((r) => ({ id: r.id })), error: null }),
     then: (resolve: (v: unknown) => void) => { appliquer(); resolve({ data: null, error: null }); },
   };
@@ -65,12 +70,25 @@ function insertQuery(data: Record<string, unknown>) {
   };
 }
 
+function deleteQuery() {
+  const filtres: Record<string, unknown> = {};
+  const api: Record<string, unknown> = {
+    eq: (k: string, v: unknown) => { filtres[k] = v; return api; },
+    then: (resolve: (v: unknown) => void) => {
+      rows = rows.filter((r) => !matches(r, filtres));
+      resolve({ data: null, error: null });
+    },
+  };
+  return api;
+}
+
 vi.mock('@/lib/db/supabase', () => ({
   supabaseAdmin: {
     from: () => ({
       select: () => selectQuery(),
       update: (patch: Record<string, unknown>) => updateQuery(patch),
       insert: (data: Record<string, unknown>) => insertQuery(data),
+      delete: () => deleteQuery(),
     }),
   },
   supabase: { from: () => ({}) },
@@ -78,8 +96,10 @@ vi.mock('@/lib/db/supabase', () => ({
 
 // ── Dépendances doublées ────────────────────────────────────────────────────
 const genererVideoJumeau = vi.fn<(...a: unknown[]) => Promise<unknown>>();
+const reconcilierLancement = vi.fn(async (..._a: unknown[]) => true);
 vi.mock('@/lib/avatar/moteur-jumeau', () => ({
   genererVideoJumeau: (...a: unknown[]) => genererVideoJumeau(...a),
+  reconcilierLancement: (...a: unknown[]) => reconcilierLancement(...a),
 }));
 
 const avancer = vi.fn<(...a: unknown[]) => Promise<unknown>>();
@@ -88,12 +108,16 @@ vi.mock('@/lib/avatar/statut', () => ({
 }));
 
 const produireUnMontage = vi.fn(async (_a: Record<string, unknown>) => ({ postId: 'post-1' }));
+/** Créneaux ayant DÉJÀ un post (simule `scheduled_posts`). */
+let creneauxAvecPost: Set<string> = new Set();
 vi.mock('@/lib/autopilot/produire', () => ({
   produireUnMontage: (...a: unknown[]) => produireUnMontage(...(a as [Record<string, unknown>])),
+  creneauxExistants: async () => creneauxAvecPost,
 }));
 
 import {
   scriptJumeauMontage, lancerJumeauMontage, finaliserJumeauxPrets, estMediaIntrouvable,
+  creneauxJumeauEnAttente, STATUT_RESERVE, GENERATION_RESERVEE, DELAI_ABANDON_EN_COURS_MS,
 } from '@/lib/autopilot/jumeau-async';
 
 const post = {
@@ -257,5 +281,151 @@ describe('Média introuvable (404) : échec DÉFINITIF, jamais une boucle', () =
     // Téléchargement, mais « 404 » fondu dans un identifiant.
     expect(estMediaIntrouvable('Error while downloading https://x/u/music/1404-a.mp3: ETIMEDOUT')).toBe(false);
     expect(estMediaIntrouvable('Error while downloading https://x/a.mp3: HTTP 503')).toBe(false);
+  });
+});
+
+describe('Réserver le créneau AVANT le fournisseur — jamais deux générations', () => {
+  beforeEach(() => { rows = []; vi.clearAllMocks(); });
+  const lancer = (slotKey = 'slot-1') => lancerJumeauMontage({
+    userId: 'u1', config: {} as never, post, rang: 0, now: 1, jobId: 'job-1', slotKey,
+  });
+
+  it('au moment de l appel fournisseur, le créneau est DÉJÀ réservé', async () => {
+    let vuPendantLAppel: Array<Record<string, unknown>> = [];
+    genererVideoJumeau.mockImplementation(async () => {
+      vuPendantLAppel = rows.map((r) => ({ ...r }));
+      return { ok: true, generationId: 'gen-9' };
+    });
+    await lancer();
+    expect(vuPendantLAppel).toHaveLength(1);
+    expect(vuPendantLAppel[0]).toMatchObject({ statut: STATUT_RESERVE, generation_id: GENERATION_RESERVEE });
+    // Puis la génération est rattachée : la ligne entre en file.
+    expect(rows[0]).toMatchObject({ statut: 'en_attente', generation_id: 'gen-9' });
+  });
+
+  it('deux passes SIMULTANÉES sur le même créneau : UN seul appel fournisseur', async () => {
+    genererVideoJumeau.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      return { ok: true, generationId: 'gen-9' };
+    });
+    const [a, b] = await Promise.all([lancer(), lancer()]);
+    expect(genererVideoJumeau).toHaveBeenCalledTimes(1);
+    expect(rows).toHaveLength(1);
+    expect([a.ok && a.dejaEnFile, b.ok && b.dejaEnFile].filter(Boolean)).toHaveLength(1);
+  });
+
+  it('créneau déjà rendu ou en échec : jamais relancé', async () => {
+    for (const statut of ['rendu', 'echec']) {
+      rows = [];
+      enFile({ slot_key: 'slot-1', statut });
+      const r = await lancer();
+      expect(r).toMatchObject({ ok: true, dejaEnFile: true });
+    }
+    expect(genererVideoJumeau).not.toHaveBeenCalled();
+  });
+
+  it('exception du moteur : réservation RENDUE, rien en file', async () => {
+    genererVideoJumeau.mockRejectedValue(new Error('Insufficient credits'));
+    const r = await lancer();
+    expect(r).toMatchObject({ ok: false, motif: 'base' });
+    expect(rows).toHaveLength(0);
+  });
+
+  it('le cron compte une réservation comme un créneau fait', async () => {
+    enFile({ slot_key: 'slot-r', statut: STATUT_RESERVE });
+    expect((await creneauxJumeauEnAttente('u1')).has('slot-r')).toBe(true);
+  });
+
+  it('le finaliseur ignore une réservation (aucun poll, aucun rendu)', async () => {
+    enFile({ statut: STATUT_RESERVE, generation_id: GENERATION_RESERVEE });
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.examines).toBe(0);
+    expect(avancer).not.toHaveBeenCalled();
+  });
+});
+
+describe('Durcissement : ligne en cours abandonnée, génération non enregistrée, finaliseurs concurrents', () => {
+  beforeEach(() => { rows = []; creneauxAvecPost = new Set(); vi.clearAllMocks(); });
+  const VIEUX = () => new Date(Date.now() - DELAI_ABANDON_EN_COURS_MS - 60_000).toISOString();
+  const RECENT = () => new Date(Date.now() - 60_000).toISOString();
+  const pret = () => avancer.mockResolvedValue({ status: 'completed', videoUrl: 'https://minio/u1/avatar/gen-1.mp4' });
+
+  it('crash pendant le rendu : la ligne en_cours ABANDONNÉE est reprise et rendue, une fois', async () => {
+    enFile({ statut: 'en_cours', updated_at: VIEUX(), tentatives: 3 });
+    pret();
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.rendus).toBe(1);
+    expect(produireUnMontage).toHaveBeenCalledTimes(1);
+    expect(rows[0].statut).toBe('rendu');
+    expect(rows[0].tentatives).toBe(4); // la reprise compte : bornée par MAX_TENTATIVES
+    expect(genererVideoJumeau).not.toHaveBeenCalled();
+  });
+
+  it('rendu encore VIVANT (en_cours récent) : jamais repris — pas deux rendus concurrents', async () => {
+    enFile({ statut: 'en_cours', updated_at: RECENT() });
+    pret();
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.examines).toBe(0);
+    expect(produireUnMontage).not.toHaveBeenCalled();
+    expect(rows[0].statut).toBe('en_cours');
+  });
+
+  it('rendu terminé mais statut jamais écrit : le post existe → ligne close, AUCUN nouveau rendu', async () => {
+    enFile({ statut: 'en_cours', updated_at: VIEUX() });
+    creneauxAvecPost = new Set(['manuel:u1|2026-08-05|09:00']);
+    pret();
+    await finaliserJumeauxPrets({ max: 5 });
+    expect(rows[0].statut).toBe('rendu');
+    expect(produireUnMontage).not.toHaveBeenCalled();
+    expect(avancer).not.toHaveBeenCalled();
+  });
+
+  it('au claim, un post déjà déposé pour le créneau suffit : pas de second post', async () => {
+    enFile();
+    creneauxAvecPost = new Set(['manuel:u1|2026-08-05|09:00']);
+    pret();
+    await finaliserJumeauxPrets({ max: 5 });
+    expect(produireUnMontage).not.toHaveBeenCalled();
+    expect(rows[0].statut).toBe('rendu');
+  });
+
+  it('deux finaliseurs SIMULTANÉS : un seul rendu', async () => {
+    enFile();
+    pret();
+    await Promise.all([finaliserJumeauxPrets({ max: 5 }), finaliserJumeauxPrets({ max: 5 })]);
+    expect(produireUnMontage).toHaveBeenCalledTimes(1);
+  });
+
+  it('fournisseur ACCEPTÉ mais écriture ratée : créneau gardé, génération rattachée, identifiant conservé', async () => {
+    genererVideoJumeau.mockResolvedValue({
+      ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée.', lance: true,
+      generationId: 'gen-7', providerVideoId: 'scene-7',
+    });
+    const r = await lancerJumeauMontage({
+      userId: 'u1', config: {} as never, post, rang: 0, now: 1, jobId: 'job-1', slotKey: 'slot-7',
+    });
+    expect(r).toMatchObject({ ok: true, generationId: 'gen-7' });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ statut: 'en_attente', generation_id: 'gen-7' });
+    expect((rows[0].snapshot as Record<string, unknown>).reconciliation).toEqual({ providerVideoId: 'scene-7' });
+  });
+
+  it('… et le passage suivant : 0 nouveau fournisseur, la génération est réconciliée puis suivie', async () => {
+    genererVideoJumeau.mockResolvedValue({
+      ok: false, motif: 'base', message: 'x', lance: true, generationId: 'gen-7', providerVideoId: 'scene-7',
+    });
+    const lancer = () => lancerJumeauMontage({
+      userId: 'u1', config: {} as never, post, rang: 0, now: 1, jobId: 'job-1', slotKey: 'slot-7',
+    });
+    await lancer();
+    const rejeu = await lancer();
+    expect(rejeu).toMatchObject({ ok: true, dejaEnFile: true });
+    expect(genererVideoJumeau).toHaveBeenCalledTimes(1);
+
+    avancer.mockResolvedValue({ status: 'processing', videoUrl: null });
+    await finaliserJumeauxPrets({ max: 5 });
+    expect(reconcilierLancement).toHaveBeenCalledWith('gen-7', 'u1', 'scene-7');
+    expect(reconcilierLancement.mock.invocationCallOrder[0]).toBeLessThan(avancer.mock.invocationCallOrder[0]);
+    expect(genererVideoJumeau).toHaveBeenCalledTimes(1);
   });
 });

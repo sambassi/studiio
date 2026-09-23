@@ -85,7 +85,15 @@ export function moteurJumeauDisponible(env: NodeJS.ProcessEnv = process.env): bo
 export type ResultatMoteurJumeau =
   | { ok: true; generationId: string; status: string; avatarVersion: number; dejaEnCours: boolean; display: string; spoken: string }
   | { ok: false; motif: 'moteur_indisponible' | 'texte_absent' | 'texte_trop_long' | 'credits_insuffisants' | MotifJumeau; message: string }
-  | { ok: false; motif: 'fournisseur_voix' | 'fournisseur_avatar' | 'base'; message: string; statut?: number };
+  | { ok: false; motif: 'fournisseur_voix' | 'fournisseur_avatar' | 'base'; message: string; statut?: number }
+  /**
+   * Le fournisseur a ACCEPTÉ la génération (elle est lancée, et débitée), mais
+   * son identifiant n'a pas pu être écrit sur `avatar_generations`. Ce n'est
+   * PAS un échec à rejouer : relancer paierait une seconde génération.
+   * L'appelant garde `generationId` et `providerVideoId` pour réconcilier.
+   * (Créer lit `ok: false` et affiche le message, comme avant.)
+   */
+  | { ok: false; motif: 'base'; message: string; lance: true; generationId: string; providerVideoId: string };
 
 export interface DepsMoteurJumeau {
   env?: NodeJS.ProcessEnv;
@@ -162,12 +170,14 @@ export async function genererVideoJumeau(
   }
   if (!generationId) return { ok: false, motif: 'base', message: 'La génération n’a pas pu être réservée. Réessayez.' };
 
-  const echouer = async (motif: 'fournisseur_voix' | 'fournisseur_avatar' | 'credits_insuffisants', message: string, statut?: number, rembourser = false) => {
-    await supabaseAdmin.from('avatar_generations').update({ status: 'failed', error_message: message }).eq('id', generationId);
-    if (rembourser) {
-      try { await addCredits(args.userId, AVATAR_VIDEO_COST, 'refund'); } catch (e) { console.error('[Jumeau] remboursement échoué :', e); }
-    }
-    return { ok: false as const, motif, message, statut };
+  const gid = generationId;
+  const echouer = async (motif: 'fournisseur_voix' | 'fournisseur_avatar' | 'credits_insuffisants' | 'base', message: string, statut?: number, rembourser = false) => {
+    await supabaseAdmin.from('avatar_generations').update({ status: 'failed', error_message: message }).eq('id', gid);
+    if (rembourser) await rembourserGenerationUneFois(args.userId, gid);
+    const refus: ResultatMoteurJumeau = motif === 'credits_insuffisants'
+      ? { ok: false, motif, message }
+      : { ok: false, motif, message, statut };
+    return refus;
   };
 
   // 4. Crédits — la politique existante d'une génération avatar, débitée
@@ -177,7 +187,25 @@ export async function genererVideoJumeau(
   if (credits < AVATAR_VIDEO_COST) {
     return echouer('credits_insuffisants', `Crédits insuffisants. Requis : ${AVATAR_VIDEO_COST}, disponible : ${credits}.`);
   }
-  await deductCredits(args.userId, AVATAR_VIDEO_COST, 'avatar', referenceOperation('jumeau', generationId));
+  // ⚠️ LE DÉBIT PEUT LEVER (solde passé sous le seuil entre la lecture et le
+  // débit, socle absent, base indisponible). Il levait jusqu'ici HORS de tout
+  // `try` : la génération restait `pending` sans fournisseur, dans l'index
+  // « en vol » — et toute demande identique recevait ensuite `dejaEnCours` sur
+  // une génération qui ne partirait jamais. Aucun fournisseur n'est appelé
+  // sur ce chemin ; la génération est close, et remboursée SI un débit a
+  // réellement été enregistré (le débit a pu passer avant l'erreur).
+  try {
+    await deductCredits(args.userId, AVATAR_VIDEO_COST, 'avatar', referenceOperation('jumeau', generationId));
+  } catch (e) {
+    const insuffisant = e instanceof Error && e.message === 'Insufficient credits';
+    console.error(`[Jumeau] débit de la génération ${generationId} en erreur :`, e instanceof Error ? e.message : e);
+    return echouer(
+      insuffisant ? 'credits_insuffisants' : 'base',
+      insuffisant ? `Crédits insuffisants. Requis : ${AVATAR_VIDEO_COST}.` : 'Le débit de la génération a échoué. Rien n’a été lancé.',
+      undefined,
+      true,
+    );
+  }
 
   // 5-D. Avatar D-ID : LA chaîne de l'aperçu (ElevenLabs sur MA voix → audio
   //      privé → scène D-ID sur URL signée), intention `normale`, sur le
@@ -191,15 +219,12 @@ export async function genererVideoJumeau(
       { env, fetch: deps.fetch },
     );
     if (!anime.ok) return echouer(anime.etape === 'voix' ? 'fournisseur_voix' : 'fournisseur_avatar', anime.message, anime.statut, true);
-    const { error: erreurMaj } = await supabaseAdmin
-      .from('avatar_generations')
-      .update({ provider_video_id: anime.sceneId, status: 'processing', credits_charged: AVATAR_VIDEO_COST })
-      .eq('id', generationId)
-      .eq('user_id', args.userId);
+    const erreurMaj = await enregistrerLancement(generationId, args.userId, anime.sceneId, 'processing');
     if (erreurMaj) {
-      // La scène est lancée et facturée : on ne rembourse pas, on trace.
-      console.error(`[Jumeau][D-ID] scène ${anime.sceneId} lancée mais génération ${generationId} non mise à jour :`, erreurMaj.message);
-      return { ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée. Contactez le support.' };
+      // La scène est lancée et facturée : on ne rembourse pas, on trace — et
+      // on RAPPORTE l'identifiant, pour que l'appelant ne relance jamais.
+      console.error(`[Jumeau][D-ID] scène ${anime.sceneId} lancée mais génération ${generationId} non mise à jour :`, erreurMaj);
+      return { ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée. Contactez le support.', lance: true, generationId, providerVideoId: anime.sceneId };
     }
     return { ok: true, generationId, status: 'processing', avatarVersion: avatar.version, dejaEnCours: false, display, spoken };
   }
@@ -214,19 +239,125 @@ export async function genererVideoJumeau(
   try {
     const asset = await uploadAsset(new Blob([new Uint8Array(synthese.audio)], { type: synthese.contentType }), 'jumeau.mp3');
     const video = await generateAvatarVideoFromAudio({ avatarId: jumeau.prive.providerAvatarId, audioAssetId: asset.assetId, aspectRatio });
-    const { error: erreurMaj } = await supabaseAdmin
-      .from('avatar_generations')
-      .update({ provider_video_id: video.videoId, status: video.status === 'completed' ? 'processing' : 'pending', credits_charged: AVATAR_VIDEO_COST })
-      .eq('id', generationId)
-      .eq('user_id', args.userId);
+    const erreurMaj = await enregistrerLancement(generationId, args.userId, video.videoId, video.status === 'completed' ? 'processing' : 'pending');
     if (erreurMaj) {
-      // La vidéo est lancée et facturée : on ne rembourse pas, on trace.
-      console.error(`[Jumeau] video ${video.videoId} lancée mais génération ${generationId} non mise à jour :`, erreurMaj.message);
-      return { ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée. Contactez le support.' };
+      // La vidéo est lancée et facturée : on ne rembourse pas, on trace — et
+      // on RAPPORTE l'identifiant, pour que l'appelant ne relance jamais.
+      console.error(`[Jumeau] video ${video.videoId} lancée mais génération ${generationId} non mise à jour :`, erreurMaj);
+      return { ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée. Contactez le support.', lance: true, generationId, providerVideoId: video.videoId };
     }
     return { ok: true, generationId, status: video.status === 'completed' ? 'processing' : 'pending', avatarVersion: avatar.version, dejaEnCours: false, display, spoken };
   } catch (e) {
     const message = e instanceof HeyGenError ? e.message : "Le fournisseur n'a pas pu animer votre avatar.";
     return echouer('fournisseur_avatar', message, e instanceof HeyGenError ? e.httpStatus : undefined, true);
   }
+}
+
+/**
+ * Écrit l'identifiant fournisseur d'une génération LANCÉE — avec UN nouvel
+ * essai : l'écriture qui échoue ici laisse une génération payée sans suivi.
+ * Rend le message d'erreur, ou `null` si c'est écrit.
+ *
+ * Exportée pour la réconciliation de la file Autopilote, qui rejoue cette même
+ * écriture à partir de l'identifiant qu'elle a conservé.
+ */
+export async function enregistrerLancement(
+  generationId: string,
+  userId: string,
+  providerVideoId: string,
+  status: 'pending' | 'processing',
+): Promise<string | null> {
+  let derniere: string | null = null;
+  for (let essai = 0; essai < 2; essai += 1) {
+    const { error } = await supabaseAdmin
+      .from('avatar_generations')
+      .update({ provider_video_id: providerVideoId, status, credits_charged: AVATAR_VIDEO_COST })
+      .eq('id', generationId)
+      .eq('user_id', userId);
+    if (!error) return null;
+    derniere = error.message ?? 'erreur inconnue';
+  }
+  return derniere;
+}
+
+/**
+ * Rembourse une génération de jumeau AU PLUS UNE FOIS — et seulement si elle a
+ * réellement été débitée.
+ *
+ * ⚠️ `addCredits` n'a ni référence ni verrou : rejouée, elle rendait les
+ * crédits deux fois. Deux gardes, sans nouveau schéma :
+ *
+ *   1. le débit `jumeau:<generationId>` doit EXISTER dans `credit_transactions`
+ *      — un administrateur n'est jamais débité (exemption existante), donc
+ *      jamais « remboursé » : `addCredits` réécrivait sinon sa colonne
+ *      `credits` à partir du solde fictif illimité ;
+ *   2. le drapeau `credits_refunded` est POSÉ atomiquement (false → true)
+ *      avant de rendre quoi que ce soit — le même que `failAndRefund` du
+ *      suivi : les deux chemins ne peuvent pas rembourser chacun leur tour.
+ */
+export async function rembourserGenerationUneFois(userId: string, generationId: string): Promise<boolean> {
+  try {
+    return await rembourserSiDebitee(userId, generationId);
+  } catch (e) {
+    // Jamais d'exception vers l'appelant : un remboursement manqué se dit, il
+    // n'emporte pas la clôture de la génération.
+    console.error(`[Jumeau] remboursement de ${generationId} impossible :`, e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+async function rembourserSiDebitee(userId: string, generationId: string): Promise<boolean> {
+  const reference = referenceOperation('jumeau', generationId);
+  const { data: debits, error: erreurDebit } = await supabaseAdmin
+    .from('credit_transactions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('reference_id', reference)
+    .limit(1);
+  if (erreurDebit) {
+    console.error(`[Jumeau] débit de ${generationId} illisible — remboursement différé :`, erreurDebit.message);
+    return false;
+  }
+  if (!debits || debits.length === 0) return false; // rien n'a été débité
+
+  const { data: pose } = await supabaseAdmin
+    .from('avatar_generations')
+    .update({ credits_refunded: true })
+    .eq('id', generationId)
+    .eq('credits_refunded', false)
+    .select('id');
+  if (!pose || pose.length === 0) return false; // déjà remboursée
+
+  try {
+    await addCredits(userId, AVATAR_VIDEO_COST, 'refund');
+    return true;
+  } catch (e) {
+    console.error(`[Jumeau] REMBOURSEMENT ÉCHOUÉ pour la génération ${generationId} :`, e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
+/**
+ * Rattache après coup l'identifiant fournisseur d'une génération LANCÉE dont
+ * l'écriture avait échoué (voir `lance: true`). N'écrit que si la génération
+ * n'a TOUJOURS pas d'identifiant : une génération déjà suivie (ou terminée)
+ * n'est jamais ramenée en arrière. Rend `true` si la génération porte
+ * désormais un identifiant fournisseur.
+ */
+export async function reconcilierLancement(
+  generationId: string,
+  userId: string,
+  providerVideoId: string,
+): Promise<boolean> {
+  const { error } = await supabaseAdmin
+    .from('avatar_generations')
+    .update({ provider_video_id: providerVideoId, status: 'processing', credits_charged: AVATAR_VIDEO_COST })
+    .eq('id', generationId)
+    .eq('user_id', userId)
+    .is('provider_video_id', null);
+  if (error) {
+    console.error(`[Jumeau] réconciliation de ${generationId} impossible :`, error.message);
+    return false;
+  }
+  return true;
 }
