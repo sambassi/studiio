@@ -1,0 +1,104 @@
+# Image Docker de STAGING, construite hors du serveur Hetzner.
+#
+# Pourquoi : le serveur de production (4 CPU, 7,7 Go de RAM, swap déjà très
+# sollicité) héberge aussi d'autres services ; y compiler une seconde image
+# Next.js ralentirait studiio.pro. Ici, GitHub construit et pousse l'image ;
+# un environnement de staging n'a plus qu'à la TÉLÉCHARGER.
+#
+# Ce que ce workflow fait, et rien d'autre :
+#   - déclenchement MANUEL uniquement, sur un SHA complet et explicite ;
+#   - checkout de CE SHA exactement (vérifié après coup) ;
+#   - build du `Dockerfile` du dépôt, push vers GHCR, tag `staging-<sha>`.
+#
+# Ce qu'il ne fait jamais : aucun secret applicatif (le build n'en demande
+# aucun — les variables `NEXT_PUBLIC_*` y sont des placeholders, les vraies
+# valeurs sont injectées au RUNTIME par l'environnement qui lance l'image),
+# aucun appel à une base, à un fournisseur ou à Coolify, aucun déploiement,
+# aucune publication. Le seul jeton utilisé est le `GITHUB_TOKEN` éphémère du
+# job, limité à `packages: write` pour pousser l'image.
+
+name: Build staging image
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'SHA complet (40 caractères) du commit à construire'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: staging-image-${{ inputs.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build & push staging image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # L'entrée passe par `env`, jamais interpolée dans le script : une valeur
+      # fournie à la main ne peut pas injecter de commande.
+      - name: Valider le SHA
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::SHA invalide : 40 caractères hexadécimaux minuscules attendus."
+            exit 1
+          fi
+
+      - name: Checkout du SHA demandé
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - name: Vérifier le commit extrait
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$HEAD_SHA" != "$SHA" ]; then
+            echo "::error::HEAD=$HEAD_SHA ne correspond pas au SHA demandé $SHA."
+            exit 1
+          fi
+
+      - name: Préparer Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Connexion à GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}:staging-${{ inputs.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ inputs.sha }}
+            org.opencontainers.image.description=Studiio staging image (aucun secret embarqué)
+
+      - name: Résumé
+        env:
+          SHA: ${{ inputs.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          {
+            echo "### Image staging"
+            echo ""
+            echo "\`ghcr.io/${REPO}:staging-${SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
