@@ -1061,3 +1061,18 @@ depuis une ligne de base est suspecte : comparer avec le lecteur canonique
 (`configDepuisLigne`) avant de conclure qu'un réglage « est appliqué ».
 (3) Un débit accessoire (affiche IA) se fait APRÈS la livraison, avec la même
 référence stable que le rendu — jamais avant un rendu qui peut échouer.
+
+## [2026-09-23] Un « réessayer plus tard » sans classement des erreurs transforme un 404 en boucle de 40 rendus
+
+**Ce qui a mal tourné** — Le finaliseur du jumeau Autopilote traitait TOUTE
+exception du rendu comme transitoire. La musique configurée (`music_url`,
+figée dans la file du jumeau) n'existait plus au stockage : Remotion échouait
+en 404 avant la première image, la ligne était rouverte, et le même rendu
+repartait à chaque passe du cron — bundle + Chromium à chaque fois — jusqu'à
+40 tentatives. Le rush avait déjà sa sonde de présence ; la musique, non.
+
+**Règle** — (1) Toute boucle de réessai classe l'erreur : un 404/410 sur un
+média à télécharger est DÉFINITIF et clôt la ligne avec sa cause. (2) Tout
+média optionnel référencé par une configuration (rush, musique…) est sondé
+avant le rendu ; absent, il est retiré du montage ET écrit dans les
+métadonnées (`rushIgnore`, `musiqueIgnoree`), jamais en silence.

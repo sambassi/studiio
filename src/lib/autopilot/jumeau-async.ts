@@ -275,10 +275,23 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
       await rendreSansJumeau(ligne, 'jumeau en échec');
       res.echecs += 1;
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      // ── Échec DÉFINITIF : un média du montage n'existe plus ─────────────
+      // Un 404/410 au téléchargement ne se résout pas en réessayant : le
+      // même rendu échouait à chaque passe, jusqu'à MAX_TENTATIVES. On clôt
+      // tout de suite, avec la cause. Rien à rembourser ici : le jumeau est
+      // produit (sa génération a abouti), et le rendu n'est débité qu'après
+      // succès. Aucun rappel fournisseur : on ne relance rien.
+      if (estMediaIntrouvable(message)) {
+        console.error(`[Autopilote/Jumeau] ${ligne.user_id} — média introuvable, montage abandonné sans réessai : ${message}`);
+        await echouer(ligne, `Un média du montage est introuvable (404) : ${message.slice(0, 300)}`);
+        res.echecs += 1;
+        continue;
+      }
       // Erreur transitoire (fournisseur, réseau, ou rendu qui a échoué) : on
       // rouvre pour réessayer — sauf si on a déjà trop insisté, pour ne pas
       // boucler indéfiniment sur une ligne coincée.
-      console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — passe en échec transitoire, on réessaiera :`, e instanceof Error ? e.message : e);
+      console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — passe en échec transitoire, on réessaiera :`, message);
       if (ligne.tentatives + 1 >= MAX_TENTATIVES) {
         await echouer(ligne, 'La finalisation du montage-jumeau a échoué de façon répétée.');
         res.echecs += 1;
@@ -290,6 +303,20 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
   }
 
   return res;
+}
+
+/**
+ * L'erreur dit-elle qu'un média à TÉLÉCHARGER n'existe pas (404/410) ?
+ *
+ * Forme observée en production (Remotion) :
+ * `Error while downloading https://…/music/….mp3 … 404 {"error":"not found"}`.
+ * Il faut les DEUX indices — un téléchargement, et un code 404/410 isolé —
+ * pour ne pas prendre pour définitif un « 404 » apparu ailleurs dans un
+ * message (identifiant, durée). Tout le reste reste transitoire.
+ */
+export function estMediaIntrouvable(message: string): boolean {
+  if (!/download/i.test(message)) return false;
+  return /(?<![\w.-])(404|410)(?![\w.-])/.test(message);
 }
 
 async function rouvrir(id: string): Promise<void> {
