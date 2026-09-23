@@ -1061,3 +1061,58 @@ depuis une ligne de base est suspecte : comparer avec le lecteur canonique
 (`configDepuisLigne`) avant de conclure qu'un réglage « est appliqué ».
 (3) Un débit accessoire (affiche IA) se fait APRÈS la livraison, avec la même
 référence stable que le rendu — jamais avant un rendu qui peut échouer.
+
+## [2026-09-23] Un « réessayer plus tard » sans classement des erreurs transforme un 404 en boucle de 40 rendus
+
+**Ce qui a mal tourné** — Le finaliseur du jumeau Autopilote traitait TOUTE
+exception du rendu comme transitoire. La musique configurée (`music_url`,
+figée dans la file du jumeau) n'existait plus au stockage : Remotion échouait
+en 404 avant la première image, la ligne était rouverte, et le même rendu
+repartait à chaque passe du cron — bundle + Chromium à chaque fois — jusqu'à
+40 tentatives. Le rush avait déjà sa sonde de présence ; la musique, non.
+
+**Règle** — (1) Toute boucle de réessai classe l'erreur : un 404/410 sur un
+média à télécharger est DÉFINITIF et clôt la ligne avec sa cause. (2) Tout
+média optionnel référencé par une configuration (rush, musique…) est sondé
+avant le rendu ; absent, il est retiré du montage ET écrit dans les
+métadonnées (`rushIgnore`, `musiqueIgnoree`), jamais en silence.
+
+## [2026-09-23] Réserver AVANT d'appeler un fournisseur payant — l'unicité en fin de course arrive trop tard
+
+**Ce qui a mal tourné** — `lancerJumeauMontage` vérifiait la file, lançait la
+génération D-ID (payante), PUIS insérait la ligne. Deux passes simultanées du
+cron passaient toutes deux la vérification et lançaient chacune une
+génération ; l'`unique (user_id, slot_key)` ne rejetait la seconde
+qu'après, sa génération restant lancée et payée. L'index « en vol » du moteur
+ne dédoublonne que des entrées IDENTIQUES, or le script dépend de la minute.
+Au même endroit, le cron recopiait la config champ par champ et avait oublié
+`jumeau_avatar` : le choix explicite de l'utilisateur était ignoré.
+
+**Règle** — (1) Toute action qui coûte (fournisseur, débit) est précédée de la
+PRISE d'un verrou persistant — insertion sous contrainte d'unicité — et seule
+la passe qui l'a obtenu agit ; échec avant l'action = verrou rendu. (2) Un
+test de concurrence lance deux passes avec `Promise.all` et compte les appels
+au fournisseur ; il doit rougir si l'ordre verrou → action est inversé.
+(3) Troisième occurrence du même oubli dans la config recopiée du cron
+(`start_date`, `jumeau_avatar`) : tout nouveau champ de `autopilot_config`
+doit être ajouté ET couvert par un test du cron.
+
+## [2026-09-23] Un remboursement sans verrou ni preuve de débit est un robinet ouvert
+
+**Ce qui a mal tourné** — `genererVideoJumeau` remboursait les échecs par
+`addCredits`, sans référence ni verrou : rejouée, l'opération rendait deux
+fois. Elle remboursait aussi un administrateur jamais débité — et `addCredits`
+réécrivait alors sa colonne `credits` depuis le solde fictif illimité. Le
+débit, lui, levait hors de tout `try` et laissait une génération `pending`
+orpheline dans l'index « en vol ». Côté file, une génération ACCEPTÉE par le
+fournisseur mais non enregistrée était traitée comme un échec : la
+réservation était rendue, et le passage suivant aurait payé une seconde
+génération. Enfin, une ligne `en_cours` restait bloquée à vie après un crash.
+
+**Règle** — (1) Un remboursement exige la PREUVE du débit (la transaction de
+référence existe) et la POSE atomique d'un drapeau `false → true` avant de
+rendre quoi que ce soit. (2) Toute écriture de crédit peut lever : elle est
+dans un `try`, et son échec ne déclenche jamais un nouvel appel fournisseur.
+(3) « Le fournisseur a accepté » n'est jamais un échec à rejouer : on garde
+l'identifiant et on réconcilie. (4) Tout statut « en cours » a un délai
+d'abandon ; la reprise vérifie d'abord que le travail n'a pas déjà abouti.
