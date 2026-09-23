@@ -103,7 +103,10 @@ vi.mock('@/lib/ai/affiche-reference', () => ({
 }));
 
 // ── Rendu : un VRAI fichier MP4, fabriqué par ffmpeg ────────────────────
-const ffmpeg = require('ffmpeg-static') as string;
+// Le binaire embarqué s'il a été téléchargé, sinon celui du système — la CI
+// installe le second, pas le premier.
+const ffmpegStatic = require('ffmpeg-static') as string | null;
+const ffmpeg = ffmpegStatic && existsSync(ffmpegStatic) ? ffmpegStatic : 'ffmpeg';
 const racine = mkdtempSync(join(tmpdir(), 'studiio-preuve-autopilote-'));
 const stockage = join(racine, 'minio');
 const journal: string[] = [];
