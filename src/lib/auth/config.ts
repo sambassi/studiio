@@ -1,4 +1,4 @@
-import NextAuth from 'next-auth';
+import NextAuth, { type NextAuthConfig } from 'next-auth';
 import Google from 'next-auth/providers/google';
 import Facebook from 'next-auth/providers/facebook';
 import { supabaseAdmin } from '@/lib/db/supabase';
@@ -41,7 +41,12 @@ async function resolveSupabaseUserId(
       .order('created_at', { ascending: true })
       .limit(5);
     if (lookupErr) {
+      // Base injoignable ou en erreur : on NE tente PAS d'INSERT. Une
+      // lecture en échec ne prouve pas l'absence du compte ; créer une ligne
+      // ici fabriquerait un doublon à 10 crédits dès que l'écriture repasse.
+      // `null` laisse l'appelant réessayer plus tard.
       console.error('[auth] users lookup error:', lookupErr);
+      return null;
     }
     if (matches && matches.length > 0) {
       if (matches.length > 1) {
@@ -133,6 +138,114 @@ if (DEV_AUTH_BYPASS) {
   );
 }
 
+/**
+ * Callbacks Auth.js, exportés pour être testés sans base réelle.
+ */
+export const authCallbacks = {
+  async jwt({ token, user, account }) {
+    // First-login branch: sync user to Supabase and store its UUID on
+    // the token. After this, subsequent requests reuse the same token
+    // (which already has `id`) without hitting Supabase again.
+    if (user && account) {
+      token.accessToken = account.access_token;
+
+      const resolved = await resolveSupabaseUserId(
+        user.email!,
+        user.name,
+        user.image,
+      );
+      if (resolved) {
+        token.id = resolved.id;
+        if (resolved.isNew) {
+          // Brand-new account → fire-and-forget welcome email
+          sendWelcomeEmailDirect(user.email!, user.name || 'Utilisateur', 10);
+        } else {
+          // Existing account → refresh name/avatar best-effort
+          supabaseAdmin
+            .from('users')
+            .update({
+              name: user.name || '',
+              avatar_url: user.image || '',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', resolved.id)
+            .then(({ error }) => {
+              if (error) console.error('[auth] users update error:', error);
+            });
+        }
+      } else {
+        // Résolution impossible (base injoignable…). On NE pose PAS
+        // `token.id = user.id` : sans adaptateur, Auth.js fabrique ce
+        // `user.id` avec `crypto.randomUUID()`. Cet identifiant fantôme
+        // passe `UUID_RE`, le callback `session` le croirait valide et ne
+        // relancerait jamais la récupération par e-mail — 0 crédit et
+        // créations en échec jusqu'à une reconnexion. Sans `token.id`, le
+        // passage suivant de `jwt` et le callback `session` réessaient.
+        console.error(
+          '[auth] CRITICAL: could not resolve supabase user.id, will retry on next request',
+          { email: user.email },
+        );
+        delete token.id;
+      }
+    } else if (!token.id && typeof token.email === 'string' && token.email) {
+      // Rattrapage d'une première connexion dont la résolution a échoué :
+      // on réessaie par e-mail et, en cas de succès, l'identifiant est
+      // persisté dans le jeton (plus aucune relecture ensuite).
+      const resolved = await resolveSupabaseUserId(
+        token.email,
+        typeof token.name === 'string' ? token.name : null,
+        typeof token.picture === 'string' ? token.picture : null,
+      );
+      if (resolved) token.id = resolved.id;
+    }
+    return token;
+  },
+  async session({ session, token }) {
+    if (!session.user) return session;
+
+    // Primary path: token already has a valid Supabase UUID.
+    let resolvedId: string | undefined =
+      typeof token.id === 'string' && UUID_RE.test(token.id)
+        ? token.id
+        : undefined;
+
+    // Recovery path: legacy JWTs (issued before the jwt-callback fix)
+    // may have an invalid or missing `token.id`. Re-lookup by email so
+    // existing sessions self-heal without forcing a logout/login.
+    if (!resolvedId && session.user.email) {
+      const supa = await resolveSupabaseUserId(
+        session.user.email,
+        session.user.name,
+        session.user.image,
+      );
+      if (supa) resolvedId = supa.id;
+    }
+
+    if (resolvedId) {
+      session.user.id = resolvedId;
+      try {
+        const { data: u } = await supabaseAdmin
+          .from('users')
+          .select('plan, role')
+          .eq('id', resolvedId)
+          .maybeSingle();
+        (session.user as any).plan = u?.plan || 'free';
+        // Le role sert a AFFICHER (libelle de facturation). Il ne DECIDE
+        // rien : chaque chemin de facturation le relit en base, parce
+        // qu'une session vit des heures et qu'un role peut etre retire.
+        (session.user as any).role = typeof u?.role === 'string' ? u.role : null;
+      } catch {
+        (session.user as any).plan = 'free';
+        (session.user as any).role = null;
+      }
+    } else {
+      (session.user as any).plan = 'free';
+      (session.user as any).role = null;
+    }
+    return session;
+  },
+} satisfies NonNullable<NextAuthConfig['callbacks']>;
+
 const nextAuth = NextAuth({
   providers: [
     Google({
@@ -149,94 +262,7 @@ const nextAuth = NextAuth({
   session: {
     strategy: 'jwt',
   },
-  callbacks: {
-    async jwt({ token, user, account }) {
-      // First-login branch: sync user to Supabase and store its UUID on
-      // the token. After this, subsequent requests reuse the same token
-      // (which already has `id`) without hitting Supabase again.
-      if (user && account) {
-        token.accessToken = account.access_token;
-
-        const resolved = await resolveSupabaseUserId(
-          user.email!,
-          user.name,
-          user.image,
-        );
-        if (resolved) {
-          token.id = resolved.id;
-          if (resolved.isNew) {
-            // Brand-new account → fire-and-forget welcome email
-            sendWelcomeEmailDirect(user.email!, user.name || 'Utilisateur', 10);
-          } else {
-            // Existing account → refresh name/avatar best-effort
-            supabaseAdmin
-              .from('users')
-              .update({
-                name: user.name || '',
-                avatar_url: user.image || '',
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', resolved.id)
-              .then(({ error }) => {
-                if (error) console.error('[auth] users update error:', error);
-              });
-          }
-        } else {
-          // Last-resort fallback so the session is not completely broken.
-          console.error(
-            '[auth] CRITICAL: could not resolve supabase user.id, falling back to NextAuth user.id',
-            { email: user.email },
-          );
-          token.id = user.id;
-        }
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (!session.user) return session;
-
-      // Primary path: token already has a valid Supabase UUID.
-      let resolvedId: string | undefined =
-        typeof token.id === 'string' && UUID_RE.test(token.id)
-          ? token.id
-          : undefined;
-
-      // Recovery path: legacy JWTs (issued before the jwt-callback fix)
-      // may have an invalid or missing `token.id`. Re-lookup by email so
-      // existing sessions self-heal without forcing a logout/login.
-      if (!resolvedId && session.user.email) {
-        const supa = await resolveSupabaseUserId(
-          session.user.email,
-          session.user.name,
-          session.user.image,
-        );
-        if (supa) resolvedId = supa.id;
-      }
-
-      if (resolvedId) {
-        session.user.id = resolvedId;
-        try {
-          const { data: u } = await supabaseAdmin
-            .from('users')
-            .select('plan, role')
-            .eq('id', resolvedId)
-            .maybeSingle();
-          (session.user as any).plan = u?.plan || 'free';
-          // Le role sert a AFFICHER (libelle de facturation). Il ne DECIDE
-          // rien : chaque chemin de facturation le relit en base, parce
-          // qu'une session vit des heures et qu'un role peut etre retire.
-          (session.user as any).role = typeof u?.role === 'string' ? u.role : null;
-        } catch {
-          (session.user as any).plan = 'free';
-          (session.user as any).role = null;
-        }
-      } else {
-        (session.user as any).plan = 'free';
-        (session.user as any).role = null;
-      }
-      return session;
-    },
-  },
+  callbacks: authCallbacks,
   pages: {
     signIn: '/auth/login',
   },
