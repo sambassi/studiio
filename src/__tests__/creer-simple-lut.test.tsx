@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, act, waitFor, within } from '@testing-library/react';
-import { LIBELLES_SUPPORT, supportDeLut } from '@/lib/luts/support';
+import { LIBELLES_SUPPORT, supportDeLut, CAPACITES_ACTUELLES } from '@/lib/luts/support';
 import type { LutAsset } from '@/lib/luts/types';
 
 /**
@@ -202,8 +202,9 @@ describe('Import d’un filtre couleur', () => {
     await waitFor(() => expect(section().getByText('teal')).toBeDefined());
     const libelle = document.querySelector('[data-lut-support]')!.textContent;
     expect(libelle).toBe(LIBELLES_SUPPORT[supportDeLut('3d')]);
-    // Aujourd'hui aucun moteur ne consomme une LUT importée : pas de « appliquée au montage ».
-    expect(libelle).not.toMatch(/^Appliquée au montage/);
+    // « Appliquée au montage » si, et seulement si, le rendu 3D est câblé
+    // (garde : `luts-support.test.ts`, qui exige un appelant transmettant la LUT).
+    expect(/^Appliquée au montage/.test(libelle ?? '')).toBe(CAPACITES_ACTUELLES.rendu3d);
   });
 
   it('« existante » : la fiche de la bibliothèque et son nom sont repris, avec une note', async () => {

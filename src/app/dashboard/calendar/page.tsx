@@ -47,6 +47,7 @@ import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
 import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { CLE_MONTAGE_PERIME, montageEstPerime } from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
+import { chargerLutPourRendu } from '@/lib/luts/charger';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 
 /**
@@ -94,6 +95,8 @@ interface PostMetadata {
   mode?: string;
   theme?: string;
   rushUrls?: string[];
+  /** Filtre couleur du rush : reference (`LutRef`), validee a la lecture. */
+  lut?: unknown;
   musicUrl?: string;
   characterUrl?: string;
   voiceMode?: string;
@@ -760,6 +763,9 @@ export default function CalendarPage() {
       // rendu, il ouvre une tentative serveur et n'est livre qu'une fois
       // l'objet vu a la cle attribuee. `composerEtFacturer` LEVE sinon, et
       // le `catch` de cette fonction affiche l'erreur sans rien enregistrer.
+      // Filtre couleur du rush (`metadata.lut`, reference seule). Absent ou
+      // illisible : rendu sans etalonnage, comme avant.
+      const rushLut = hasRush ? await chargerLutPourRendu(meta.lut) : null;
       const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composerEtFacturer('calendrier', formatRendu(post), {
         // Dimensions reelles du montage quand le post les porte : sans
         // elles, un carre se recomposait en 1920x1080.
@@ -773,6 +779,7 @@ export default function CalendarPage() {
           : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
         posterUrl: meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null,
         videoUrl: meta.rushUrls?.[0] || null,
+        ...(rushLut ? { rushLut } : {}),
         logoUrl: meta.logoUrl || designMeta.logoUrl || null,
         musicUrl: meta.musicUrl || null,
         voiceUrl: meta.voiceUrl || null,
@@ -1221,6 +1228,7 @@ export default function CalendarPage() {
       try {
         const posterUrl = meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null;
         const videoUrl = meta.rushUrls?.[0] || null;
+        const rushLut = videoUrl ? await chargerLutPourRendu(meta.lut) : null;
         const musicUrl = meta.musicUrl || null;
         const voiceUrl = meta.voiceUrl || null;
         const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
@@ -1243,6 +1251,7 @@ export default function CalendarPage() {
             : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
           posterUrl,
           videoUrl,
+          ...(rushLut ? { rushLut } : {}),
           logoUrl,
           musicUrl,
           voiceUrl,
@@ -1873,6 +1882,7 @@ export default function CalendarPage() {
         try {
           const posterUrl = meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null;
           const videoUrl = meta.rushUrls?.[0] || null;
+          const rushLut = videoUrl ? await chargerLutPourRendu(meta.lut) : null;
           const musicUrl = meta.musicUrl || null;
           const voiceUrl = meta.voiceUrl || null;
           const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
@@ -1900,6 +1910,7 @@ export default function CalendarPage() {
               : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
             posterUrl,
             videoUrl,
+            ...(rushLut ? { rushLut } : {}),
             logoUrl,
             musicUrl,
             voiceUrl,
@@ -2389,6 +2400,7 @@ export default function CalendarPage() {
     try {
       const posterUrl = meta?.posterUrl || meta?.pexelsUrl || meta?.characterUrl || null;
       const videoUrl = meta?.rushUrls?.[0] || null;
+      const rushLut = videoUrl ? await chargerLutPourRendu(meta?.lut) : null;
       const musicUrl = meta?.musicUrl || null;
       const voiceUrl = meta?.voiceUrl || null;
       const logoUrl = meta?.logoUrl || meta?.design?.logoUrl || null;
@@ -2428,6 +2440,7 @@ export default function CalendarPage() {
           : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
         posterUrl,
         videoUrl,
+        ...(rushLut ? { rushLut } : {}),
         logoUrl,
         musicUrl,
         voiceUrl,

@@ -56,7 +56,7 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
   /**
    * Le compositeur SAIT étalonner le rush (`rushLut` → `createLutGrader`),
    * mais une LUT importée n'est « appliquée au montage » que si un appelant
-   * la lui TRANSMET. Tant qu'aucun ne le fait, `rendu3d` reste false : sinon
+   * la lui TRANSMET. Sans appelant, `rendu3d` doit rester false : sinon
    * l'interface promettrait « Appliquée au montage » pour un rendu brut.
    */
   const composer = src('src/lib/video-composer.ts');
@@ -83,12 +83,50 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
     expect(CAPACITES_ACTUELLES.rendu3d).toBe(composerEtalonne && appelantsRushLut.length > 0);
   });
 
-  it('aujourd’hui : le moteur sait étalonner, mais aucun appelant ne transmet la LUT', () => {
-    // Si ce test échoue parce qu'un appelant transmet `rushLut`, c'est voulu :
-    // passer `rendu3d` à true dans `support.ts`, puis mettre ce test à jour.
+  it('aujourd’hui : le wizard Créer et le Calendrier sont les SEULS appelants, et rendu3d le dit', () => {
+    // Un nouvel appelant doit être ajouté ICI en connaissance de cause : il
+    // hérite de la promesse « Appliquée au montage ».
     expect(composerEtalonne).toBe(true);
-    expect(appelantsRushLut).toEqual([]);
-    expect(CAPACITES_ACTUELLES.rendu3d).toBe(false);
+    expect([...appelantsRushLut].sort()).toEqual([
+      'src/app/dashboard/calendar/page.tsx',
+      'src/app/dashboard/creer/AssistantWizard.tsx',
+    ]);
+    expect(CAPACITES_ACTUELLES.rendu3d).toBe(true);
+  });
+
+  it('chaque appelant transmet une LUT RÉELLEMENT lue, et rien sans elle', () => {
+    // `rendu3d` ne vaut que si la table transmise vient de la bibliothèque du
+    // compte — pas d'une valeur inventée — et la clé est absente sans filtre
+    // (default-safe : options identiques à l'avant-LUT).
+    for (const rel of appelantsRushLut) {
+      const code = src(rel);
+      const lectures = code.match(/const rushLut = [^;\n]*;/g) ?? [];
+      expect(lectures.length, rel).toBeGreaterThan(0);
+      for (const l of lectures) expect(l, rel).toMatch(/await chargerLutPourRendu\(/);
+      // Toute transmission passe par la forme conditionnelle, et seulement elle.
+      const transmissions = code.match(/\brushLut\s*[:,}]/g) ?? [];
+      const conditionnelles = code.match(/\.\.\.\(rushLut \? \{ rushLut \} : \{\}\)/g) ?? [];
+      expect(transmissions.length, rel).toBe(conditionnelles.length);
+    }
+    const wizard = src('src/app/dashboard/creer/AssistantWizard.tsx');
+    expect(wizard).toMatch(/const rushLut = [^;]*await chargerLutPourRendu\(lut\)/);
+  });
+
+  it('le Calendrier étalonne sur ses QUATRE chemins de rendu', () => {
+    // Régénérer, Planifier, Publier, Exporter : un chemin oublié rendrait une
+    // vidéo sans le filtre, sans le moindre message.
+    const cal = src('src/app/dashboard/calendar/page.tsx');
+    const rendus = cal.match(/composerEtFacturer\(/g) ?? [];
+    const transmissions = cal.match(/\.\.\.\(rushLut \? \{ rushLut \} : \{\}\)/g) ?? [];
+    expect(rendus.length).toBe(4);
+    expect(transmissions.length).toBe(rendus.length);
+    expect(cal.match(/chargerLutPourRendu\(meta\??\.lut\)/g)?.length).toBe(4);
+  });
+
+  it('le compositeur libère l’étalonneur quel que soit le règlement du montage', () => {
+    // Les deux boucles (fast et temps réel) : sinon `rendu3d` promettrait un
+    // montage qui laisse fuir un contexte WebGL par export.
+    expect(composer.match(/\}\)\.finally\(libererEtalonneur\);/g)?.length).toBe(2);
   });
 
   it('le compositeur n’étalonne jamais sur CPU et ne charge aucune LUT lui-même', () => {

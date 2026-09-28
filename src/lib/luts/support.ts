@@ -27,13 +27,15 @@ export interface CapacitesLut {
  *
  * - `apercu` : aucun aperçu étalonné n'est branché sur `main` (phase aperçu
  *   du chantier LUT, à venir).
- * - `rendu3d` / `rendu1d` : le filtre `lut3d` existe pour le catalogue de
- *   looks de l'Autopilote, mais aucun moteur ne consomme encore une LUT
- *   IMPORTÉE ; `lut1d` n'est pas câblé.
+ * - `rendu3d` : le wizard Créer lit la LUT importée (`chargerLutPourRendu`)
+ *   et la transmet au compositeur (`rushLut`), qui étalonne le rush sur GPU.
+ * - `rendu1d` : une 1D n'est rendue que si elle tient en cube (≤ 65 points) ;
+ *   au-delà le rush reste brut. Tant que ce n'est pas vrai pour TOUTES les
+ *   1D, on ne l'annonce pas.
  */
 export const CAPACITES_ACTUELLES: Readonly<CapacitesLut> = Object.freeze({
   apercu: false,
-  rendu3d: false,
+  rendu3d: true,
   rendu1d: false,
 });
 
