@@ -6,6 +6,9 @@ import { verifyOAuthState } from '@/lib/social/oauth-state';
 // GET /api/social/callback?platform=xxx&code=xxx&state=xxx
 // OAuth callback handler for all social platforms
 export async function GET(req: NextRequest) {
+    const openerOrigin = resolveOpenerOrigin(req.url);
+    const redirectWithMessage = (type: string, message: string) =>
+      renderResultPage(type, message, openerOrigin);
     try {
           const { searchParams } = new URL(req.url);
           const platform = searchParams.get('platform');
@@ -92,42 +95,88 @@ export async function GET(req: NextRequest) {
           details: (dbError as any).details,
           hint: (dbError as any).hint,
         });
-        const detail = `${(dbError as any).code || '?'} ${(dbError as any).message || ''}${(dbError as any).hint ? ' — hint: ' + (dbError as any).hint : ''}`.trim();
-        return redirectWithMessage('error', `Erreur de sauvegarde: ${detail}`);
+        // Le detail (code, message, hint Postgres) reste dans les logs serveur :
+        // il decrit la structure de la base et n'a rien a faire cote utilisateur.
+        return redirectWithMessage('error', 'Erreur de sauvegarde du compte, reessayez dans quelques instants');
       }
       console.log('[SOCIAL_CALLBACK] saved successfully', { platform });
 
       return redirectWithMessage('success', `${platform} connecte avec succes!`);
     } catch (error: any) {
-          const msg = error?.message || String(error) || 'Erreur inconnue';
-          const stack = error?.stack ? error.stack.split('\n').slice(0, 3).join(' | ') : '';
-          console.error('[SOCIAL_CALLBACK_ERROR]', { platform: req.nextUrl.searchParams.get('platform'), msg, stack });
-          return redirectWithMessage('error', msg + (stack ? ' — ' + stack : ''));
+          // Detail complet (message + stack) cote serveur uniquement.
+          console.error('[SOCIAL_CALLBACK_ERROR]', {
+            platform: new URL(req.url).searchParams.get('platform'),
+            msg: error?.message || String(error),
+            stack: error?.stack,
+          });
+          // Cote utilisateur : seuls les messages rediges pour lui passent
+          // (UserFacingError) ; tout le reste devient un message generique.
+          return redirectWithMessage(
+            'error',
+            error instanceof UserFacingError ? error.message : GENERIC_ERROR_MESSAGE,
+          );
     }
 }
 
-function redirectWithMessage(type: string, message: string): NextResponse {
+const GENERIC_ERROR_MESSAGE = 'Une erreur est survenue pendant la connexion. Reessayez dans quelques instants.';
+
+/** Erreur dont le message a ete redige pour l'utilisateur et peut lui etre affiche. */
+class UserFacingError extends Error {}
+
+/**
+ * Origine de l'application, cible du postMessage vers la fenetre parente.
+ * Meme source que /api/social/connect (qui construit le redirect_uri menant ici) :
+ * NEXTAUTH_URL, puis NEXT_PUBLIC_APP_URL, puis l'origine de la requete.
+ */
+function resolveOpenerOrigin(reqUrl: string): string {
+    for (const candidate of [process.env.NEXTAUTH_URL, process.env.NEXT_PUBLIC_APP_URL]) {
+      if (!candidate) continue;
+      try {
+        return new URL(candidate).origin;
+      } catch {
+        // valeur mal formee : on passe a la source suivante
+      }
+    }
+    return new URL(reqUrl).origin;
+}
+
+/** Litteral JS sur dans un <script> : JSON + neutralisation de `<` (pas de `</script>`). */
+function jsLiteral(value: string): string {
+    return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
+function escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+}
+
+function renderResultPage(type: string, message: string, targetOrigin: string): NextResponse {
     const isSuccess = type === 'success';
-    const safeMessage = message.replace(/'/g, "\\'").replace(/</g, '&lt;');
+    const htmlMessage = escapeHtml(message);
+    const jsMessage = jsLiteral(message);
+    const jsOrigin = jsLiteral(targetOrigin);
     const html = isSuccess
       ? `<!DOCTYPE html><html><head><title>Connexion reussie</title></head><body style="font-family:sans-serif;padding:40px;text-align:center">
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-success', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-success', message: ${jsMessage} }, ${jsOrigin});
   }
   setTimeout(() => window.close(), 800);
 </script>
-<p>✓ ${safeMessage}</p>
+<p>✓ ${htmlMessage}</p>
 <p style="color:#888">Cette fenetre va se fermer automatiquement.</p>
 </body></html>`
       : `<!DOCTYPE html><html><head><title>Erreur de connexion</title></head><body style="font-family:sans-serif;padding:40px;max-width:600px;margin:auto">
 <h2 style="color:#c00">Echec de la connexion</h2>
-<p style="background:#fee;padding:16px;border-radius:8px;border:1px solid #fcc"><strong>Detail :</strong> ${safeMessage}</p>
-<p style="color:#555">Copiez le message ci-dessus et renvoyez-le pour diagnostic.</p>
+<p style="background:#fee;padding:16px;border-radius:8px;border:1px solid #fcc">${htmlMessage}</p>
 <button onclick="window.close()" style="padding:10px 20px;background:#333;color:#fff;border:0;border-radius:6px;cursor:pointer">Fermer</button>
 <script>
   if (window.opener) {
-    window.opener.postMessage({ type: 'social-oauth-error', message: '${safeMessage}' }, '*');
+    window.opener.postMessage({ type: 'social-oauth-error', message: ${jsMessage} }, ${jsOrigin});
   }
 </script>
 </body></html>`;
@@ -223,11 +272,11 @@ async function exchangeMetaToken(code: string, platform: string) {
         if (!igAccountId) {
           // Hard fail — storing the wrong ID causes Graph API error #100 "does not exist"
           console.error('[OAuth/Instagram] No Instagram Business Account found on any Page. User must (1) have a Business/Creator IG account, (2) link it to a FB Page they admin, (3) grant instagram_basic + instagram_content_publish.');
-          throw new Error('Aucun compte Instagram Business trouvé. Vérifiez que votre compte IG est en mode Business/Creator et lié à une Page Facebook que vous administrez.');
+          throw new UserFacingError('Aucun compte Instagram Business trouvé. Vérifiez que votre compte IG est en mode Business/Creator et lié à une Page Facebook que vous administrez.');
         }
         if (!pageAccessToken) {
           console.error('[OAuth/Instagram] Found IG Business Account but no Page Access Token returned. Check pages_show_list scope.');
-          throw new Error('Token de page Facebook manquant. Vérifiez les permissions pages_show_list et pages_read_engagement.');
+          throw new UserFacingError('Token de page Facebook manquant. Vérifiez les permissions pages_show_list et pages_read_engagement.');
         }
 
         accountId = igAccountId;          // IG Business Account ID (17841...)
@@ -257,7 +306,7 @@ async function exchangeMetaToken(code: string, platform: string) {
           const page = pages[0];
           if (!page.access_token) {
             console.error('[OAuth/Facebook] Page found but no Page Access Token returned. Check pages_show_list scope.');
-            throw new Error('Token de page Facebook manquant. Vérifiez les permissions pages_show_list et pages_manage_posts.');
+            throw new UserFacingError('Token de page Facebook manquant. Vérifiez les permissions pages_show_list et pages_manage_posts.');
           }
           accountId = page.id;              // Page ID (not user ID!) — used as /{page_id}/videos target
           accountName = page.name || 'facebook_page';
@@ -266,7 +315,7 @@ async function exchangeMetaToken(code: string, platform: string) {
         } else {
           // Hard fail — no Page means publishing is impossible
           console.error('[OAuth/Facebook] No Facebook Pages found on this account.');
-          throw new Error('Aucune Page Facebook trouvée sur ce compte. Vous devez administrer au moins une Page Facebook pour publier.');
+          throw new UserFacingError('Aucune Page Facebook trouvée sur ce compte. Vous devez administrer au moins une Page Facebook pour publier.');
         }
   }
 
