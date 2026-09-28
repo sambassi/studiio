@@ -5665,8 +5665,13 @@ export default function AssistantWizard() {
    * posts venus de l'editeur avance disparaissait.
    */
   const valeursChargees = useRef<ValeursWizard | null>(null);
-  /** Leve a la fin de l'hydratation ; l'empreinte est prise au rendu suivant. */
-  const aCapturer = useRef(false);
+  /**
+   * Leve a la fin de l'hydratation ; l'empreinte est prise au rendu suivant.
+   * Un ETAT, pas une ref : une ref levee dans l'effet d'hydratation etait lue,
+   * dans le MEME commit, par l'effet de capture — qui photographiait alors
+   * l'ecran d'AVANT l'hydratation (tout `undefined`).
+   */
+  const [aCapturer, setACapturer] = useState(false);
   /**
    * Les cartes D'ORIGINE, indexees par l'identifiant que l'ecran leur donne.
    *
@@ -5997,7 +6002,7 @@ export default function AssistantWizard() {
     if (editPostId) {
       // Le prochain rendu portera le contenu du serveur : c'est LUI qu'il faut
       // photographier pour savoir, plus tard, ce que l'utilisateur a change.
-      aCapturer.current = true;
+      setACapturer(true);
       // Meme instant, meme raison : l'index des cartes n'est fiable qu'ICI,
       // ou leur rang correspond encore a celui de la metadata. Ensuite
       // l'utilisateur peut en ajouter, en retirer ou les deplacer.
@@ -7986,6 +7991,7 @@ export default function AssistantWizard() {
   const construireValeurs = useCallback((): ValeursWizard => {
     const taille = VIDEO_SIZE[format];
     return {
+      title: generated?.title,
       subtitle: generated?.subtitle,
       theme: themeId,
       // Les cartes partent de leur ORIGINAL : voir `postMetadata/cartes.ts`.
@@ -8040,10 +8046,10 @@ export default function AssistantWizard() {
    * lire l'etat trop tot photographierait l'ecran d'avant.
    */
   useEffect(() => {
-    if (!aCapturer.current) return;
-    aCapturer.current = false;
+    if (!aCapturer) return;
+    setACapturer(false);
     valeursChargees.current = construireValeurs();
-  }, [construireValeurs]);
+  }, [aCapturer, construireValeurs]);
 
   const enregistrer = useCallback(async () => {
     if (!editPostId || enregistrement.etat === 'encours') return;
@@ -8067,6 +8073,10 @@ export default function AssistantWizard() {
       // envoye. Sans cela, deux enregistrements de suite rejoueraient la
       // metadata d'origine et pourraient defaire le premier.
       if (r.post) postCharge.current = r.post as typeof postCharge.current;
+      // Meme regle pour la reference de comparaison : sans elle, un champ passe
+      // de A a B, enregistre, puis remis a A serait juge « inchange » face au
+      // PREMIER chargement — et resterait a B en base.
+      valeursChargees.current = valeurs;
       setEnregistrement({ etat: 'ok' });
     } else {
       setEnregistrement({ etat: 'echec', issue: r.kind });
