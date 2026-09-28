@@ -1,19 +1,23 @@
 /**
  * Branchement de la persistance et de la configuration PawaPay de Studiio.
  *
- * INTERRUPTEUR GLOBAL : `PAWAPAY_ENABLED === "true"`, sinon :
+ * INTERRUPTEUR GLOBAL : `PAWAPAY_ENABLED === "true"`, sinon `obtenirStore()`
+ * renvoie `null` et :
  * - l'initiation (`/api/pawapay/deposit`) répond 503 ;
  * - le rattrapage (`/api/cron/pawapay-reconcile`) répond « désactivé » ;
- * - le statut (`/api/pawapay/status/[id]`) renvoie l'état LOCAL, sans relire
- *   PawaPay ni créditer ;
+ * - le statut (`/api/pawapay/status/[id]`) répond 503 (sans store, il ne
+ *   peut pas lire l'état local) ;
  * - le callback facultatif répond 404.
  *
- * TODO(migration pawapay_deposits) : la table `pawapay_deposits` et la RPC
- * atomique `crediter_depot_pawapay` n'existent pas encore (voir le TODO de
- * `creerStoreMemoire` dans `confirmation.ts`). Tant qu'elles ne sont pas
- * créées, `obtenirStore()` renvoie `null` et aucune route ne peut créditer :
- * initiation et statut répondent 503, le rattrapage « désactivé ».
+ * PERSISTANCE : table `pawapay_deposits` et RPC atomique
+ * `crediter_depot_pawapay` (migrations/2026-09-28-pawapay-deposits.sql), via
+ * PostgREST et le rôle serveur (`supabaseAdmin`). `obtenirStore()` ne renvoie
+ * ce store QUE si l'interrupteur est posé ; sinon `null`, comme avant la
+ * migration : aucune route ne lit ni n'écrit la table. La migration doit donc
+ * être appliquée (et PostgREST rechargé) AVANT de poser `PAWAPAY_ENABLED`.
  */
+import { supabaseAdmin } from '@/lib/db/supabase';
+import { creerStorePostgrest } from './store-postgrest';
 import { analyserTauxChf, type TauxChf } from './tarifs';
 import type { DepotsStore } from './types';
 
@@ -21,8 +25,12 @@ export function pawapayActif(): boolean {
   return process.env.PAWAPAY_ENABLED === 'true';
 }
 
+let storeMemo: DepotsStore | null = null;
+
 export function obtenirStore(): DepotsStore | null {
-  return null;
+  if (!pawapayActif()) return null;
+  if (!storeMemo) storeMemo = creerStorePostgrest(supabaseAdmin);
+  return storeMemo;
 }
 
 /**
@@ -48,7 +56,7 @@ export async function obtenirTauxChf(): Promise<TauxChf | null> {
   return analyse.taux;
 }
 
-/** Le store, ou `null` tant que la persistance n'existe pas. */
+/** Le store, ou `null` tant que PawaPay est désactivé. */
 export function obtenirDependances(): { store: DepotsStore } | null {
   const store = obtenirStore();
   return store ? { store } : null;
