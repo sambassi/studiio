@@ -17,6 +17,7 @@ import { NextRequest } from 'next/server';
 type Ligne = Record<string, any>;
 const base: Record<string, Ligne[]> = { scheduled_posts: [], social_accounts: [] };
 const resets: string[][] = [];
+let echecEcritureFailed = false;
 
 /** Valeur d'une colonne, y compris `metadata->>cle`. */
 function valeur(l: Ligne, col: string): unknown {
@@ -33,6 +34,10 @@ function chaine(table: string) {
   let maj: Ligne | null = null;
   let limite = Infinity;
   const executer = () => {
+    // Panne simulee de l'ecriture `failed` : rien n'est ecrit.
+    if (maj && echecEcritureFailed && table === 'scheduled_posts' && (maj as Ligne).status === 'failed') {
+      return { data: null, error: { message: 'panne simulee' } };
+    }
     const lignes = (base[table] ?? []).filter((l) => filtres.every((f) => f(l)));
     if (maj) {
       for (const l of lignes) Object.assign(l, maj);
@@ -136,6 +141,7 @@ beforeEach(() => {
   base.scheduled_posts = [];
   base.social_accounts = [];
   resets.length = 0;
+  echecEcritureFailed = false;
   createPost.mockClear();
   comptesConnectes.mockClear();
   comptesConnectes.mockImplementation(async () => [{ platform: 'instagram', accountId: 'acc-ig' }]);
@@ -227,5 +233,29 @@ describe('Cron — default safe', () => {
     base.scheduled_posts = [post('p1', { metadata: { renderedVideoUrl: 'x', montagePerime: 'true' } })];
     await lancerCron(true);
     expect(createPost).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Cron — montage serveur et ecriture en echec', () => {
+  it('un montage SERVEUR perime recoit le message qui nomme « Garder la video actuelle »', async () => {
+    base.scheduled_posts = [post('p1', { metadata: { renderedVideoUrl: 'x', montagePerime: true, serverRendered: true } })];
+    await lancerCron(true);
+    expect(createPost).not.toHaveBeenCalled();
+    expect(base.scheduled_posts[0].status).toBe('failed');
+    expect(base.scheduled_posts[0].metadata.error).toContain('Garder la vidéo actuelle');
+    expect(base.scheduled_posts[0].metadata.error).not.toContain('Régénère-la');
+  });
+
+  it('l ecriture `failed` en echec est journalisee, et rien ne part', async () => {
+    echecEcritureFailed = true;
+    base.scheduled_posts = [post('p1', { metadata: { renderedVideoUrl: 'x', montagePerime: true } })];
+    await lancerCron(true);
+    expect(createPost).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    const erreurs = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => c.join(' '));
+    expect(erreurs.some((e) => e.includes('p1') && e.includes('panne simulee'))).toBe(true);
+    // Reste a `publishing` (le claim a eu lieu) : le reset le rendra, le
+    // passage suivant le bloquera de nouveau.
+    expect(base.scheduled_posts[0].status).toBe('publishing');
   });
 });

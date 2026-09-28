@@ -146,7 +146,11 @@ function cibleTexte(base: unknown, champ: ChampTexte, valeur: string): CleTexte 
 // Drapeau « montage périmé » : défini dans un module PUR partagé avec le
 // serveur (cron, route de publication). Réexporté ici pour les appelants
 // existants.
-export { CLE_MONTAGE_PERIME, montageEstPerime, MESSAGE_MONTAGE_PERIME } from '../montage-perime';
+export {
+  CLE_MONTAGE_PERIME, montageEstPerime, MESSAGE_MONTAGE_PERIME,
+  MESSAGE_MONTAGE_PERIME_SERVEUR, messageMontagePerime, montageRenduServeur,
+  estErreurMontagePerime, leverMontagePerime,
+} from '../montage-perime';
 
 /**
  * Clés écrites qui NE changent PAS la vidéo rendue.

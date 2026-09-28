@@ -1128,3 +1128,8 @@ n'existe : un post modifié partait avec l'ANCIEN montage, sans signal.
 envoie ce média à un tiers, serveur d'abord (cron → `failed` terminal, route
 manuelle → 409), client ensuite. Le prédicat vit dans un module PUR
 (`src/lib/creer/montage-perime.ts`) importable des deux côtés.
+(2) Tout blocage doit avoir une issue VISIBLE pour chaque catégorie de post :
+un post Autopilote (`serverRendered`) n'a pas « Régénérer » (#313), il lui
+fallait « Garder la vidéo actuelle ». Avant de bloquer, lister les variantes
+d'affichage (ici l'aperçu serveur est un lecteur nu) et prouver par un test
+qu'un bouton lève le blocage dans chacune.

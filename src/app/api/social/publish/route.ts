@@ -4,10 +4,11 @@ import { getValidToken } from '@/lib/social/token-refresh';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, formatBroadcastFailures } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { resolvePublishableUrl } from '@/lib/videos/playable-url';
-import { montageEstPerime, MESSAGE_MONTAGE_PERIME } from '@/lib/creer/montage-perime';
+import { montageEstPerime, messageMontagePerime } from '@/lib/creer/montage-perime';
 
 /**
- * Le montage a publier est-il perime ? `true`, `false`, ou `'inconnu'` si la
+ * Le montage a publier est-il perime ? Renvoie le message a montrer (il
+ * nomme l'issue disponible pour CE post), `false`, ou `'inconnu'` si la
  * lecture a echoue — l'appelant refuse alors, par prudence.
  *
  * Deux requetes separees plutot qu'un `.or(...)` : les identifiants viennent
@@ -19,8 +20,8 @@ async function montagePerimePourPublication(
   videoId: string,
   videoMetadata: unknown,
   scheduledPostId: unknown,
-): Promise<boolean | 'inconnu'> {
-  if (montageEstPerime(videoMetadata)) return true;
+): Promise<string | false | 'inconnu'> {
+  if (montageEstPerime(videoMetadata)) return messageMontagePerime(videoMetadata);
   const lectures = [
     supabase.from('scheduled_posts').select('id, metadata').eq('user_id', userId).eq('video_id', videoId),
   ];
@@ -31,7 +32,11 @@ async function montagePerimePourPublication(
   }
   const resultats = await Promise.all(lectures);
   if (resultats.some((r) => r.error)) return 'inconnu';
-  return resultats.some((r) => (r.data || []).some((p: { metadata?: unknown }) => montageEstPerime(p?.metadata)));
+  for (const r of resultats) {
+    const perime = (r.data || []).find((p: { metadata?: unknown }) => montageEstPerime(p?.metadata));
+    if (perime) return messageMontagePerime(perime.metadata);
+  }
+  return false;
 }
 
 // POST /api/social/publish - Publish a video to social platforms
@@ -99,7 +104,7 @@ export async function POST(req: NextRequest) {
     if (perime !== false) {
       return perime === 'inconnu'
         ? NextResponse.json({ success: false, error: 'Failed to check post state' }, { status: 500 })
-        : NextResponse.json({ success: false, error: MESSAGE_MONTAGE_PERIME }, { status: 409 });
+        : NextResponse.json({ success: false, error: perime }, { status: 409 });
     }
 
     // Get user's connected social accounts

@@ -120,6 +120,14 @@ describe('Route de publication manuelle — montage perime', () => {
     expect(res.status).not.toBe(409);
   });
 
+  it('montage SERVEUR perime : 409 avec le message qui nomme l issue « Garder la video actuelle »', async () => {
+    postsCalendrier = [{ id: 'sp1', user_id: 'user-1', video_id: 'v1', metadata: { montagePerime: true, serverRendered: true } }];
+    const res = await publier({ videoId: 'v1', platforms: ['instagram'] });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Garder la vidéo actuelle');
+    expect(requetes).toEqual([]);
+  });
+
   it('lecture des posts en echec : refus (500), rien ne part', async () => {
     erreurPosts = true;
     const res = await publier({ videoId: 'v1', platforms: ['instagram'] });
@@ -141,5 +149,18 @@ describe('Route de publication manuelle — default safe', () => {
     const res = await publier({ videoId: 'v1', platforms: ['instagram'], scheduledPostId: 'sp1' });
     expect(res.status).not.toBe(409);
     expect(requetes.length).toBeGreaterThan(0);
+  });
+});
+
+describe('leverMontagePerime — ne retire que l erreur du blocage', () => {
+  it('erreur du blocage (navigateur ou serveur) → retiree', async () => {
+    const m = await import('@/lib/creer/montage-perime');
+    expect(m.leverMontagePerime({ error: m.MESSAGE_MONTAGE_PERIME })).toEqual({ montagePerime: false, error: null });
+    expect(m.leverMontagePerime({ error: m.MESSAGE_MONTAGE_PERIME_SERVEUR })).toEqual({ montagePerime: false, error: null });
+  });
+  it('autre erreur ou aucune → seul le drapeau change', async () => {
+    const m = await import('@/lib/creer/montage-perime');
+    expect(m.leverMontagePerime({ error: 'Instagram: jeton expire' })).toEqual({ montagePerime: false });
+    expect(m.leverMontagePerime(null)).toEqual({ montagePerime: false });
   });
 });

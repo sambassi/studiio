@@ -230,3 +230,100 @@ describe('Calendrier — publication d’un montage périmé', () => {
     expect(corps.metadata.renderedVideoUrl).toBe(nouveau);
   });
 });
+
+const MESSAGE_SERVEUR = 'Cette vidéo a été modifiée après son rendu automatique et ne peut pas être régénérée ici. '
+  + 'Ouvre-la dans le Calendrier et choisis « Garder la vidéo actuelle » pour la publier sans tes modifications.';
+const garder = () => document.querySelector('[data-garder-montage]') as HTMLButtonElement | null;
+
+describe('Calendrier — montage SERVEUR périmé (Autopilote) : jamais d’impasse', () => {
+  it('« Régénérer » reste masqué (#313) mais « Garder la vidéo actuelle » est visible', async () => {
+    post = postAJour({ montagePerime: true, serverRendered: true });
+    installerFetch();
+    await ouvrirApercu();
+    expect(regenerer()).toBeNull();
+    expect(garder()).not.toBeNull();
+  });
+
+  it('« Réessayer » (post en échec) est bloqué avec un message qui nomme l’issue réelle', async () => {
+    post = { ...postAJour({ montagePerime: true, serverRendered: true, error: MESSAGE_SERVEUR }), status: 'failed' };
+    installerFetch();
+    await ouvrirApercu();
+    appels.length = 0;
+    const reessayer = bouton('Réessayer la publication');
+    expect(reessayer).toBeTruthy();
+    await act(async () => { fireEvent.click(reessayer!); });
+    await attendre(20);
+    expect(alertes).toContain(MESSAGE_SERVEUR);
+    expect(alertes).not.toContain(MESSAGE);
+    expect(ecrituresDePublication()).toEqual([]);
+  });
+
+  it('« Garder la vidéo actuelle » lève le blocage (après confirmation), sans rendu, puis la publication passe', async () => {
+    post = { ...postAJour({ montagePerime: true, serverRendered: true, error: MESSAGE_SERVEUR }), status: 'failed' };
+    installerFetch();
+    await ouvrirApercu();
+    appels.length = 0;
+    await act(async () => { fireEvent.click(garder()!); });
+    await attendre(20);
+    expect(patchs).toHaveLength(1);
+    expect(patchs[0]).toEqual({ metadata: { montagePerime: false, error: null } });
+    expect(appels.some((a) => a.url.includes('/api/render/jobs'))).toBe(false);
+    // Le bouton disparaît : le post n'est plus périmé.
+    expect(garder()).toBeNull();
+
+    appels.length = 0;
+    alertes = [];
+    await act(async () => { fireEvent.click(bouton('Réessayer la publication')!); });
+    await attendre(20);
+    expect(alertes).not.toContain(MESSAGE_SERVEUR);
+    const puts = appels.filter((a) => a.url.includes('/api/posts') && a.methode === 'PUT');
+    expect(puts).toHaveLength(1);
+    const corps = JSON.parse(puts[0].corps);
+    expect(corps.status).toBe('scheduled');
+    expect(corps.metadata.montagePerime).toBe(false);
+    // Aucun rendu navigateur : le mp4 serveur est conservé.
+    expect(appels.some((a) => a.url.includes('/api/render/jobs'))).toBe(false);
+  });
+
+  it('confirmation refusée : rien n’est écrit, le blocage reste', async () => {
+    post = postAJour({ montagePerime: true, serverRendered: true });
+    installerFetch();
+    await ouvrirApercu();
+    window.confirm = () => false;
+    await act(async () => { fireEvent.click(garder()!); });
+    await attendre(10);
+    expect(patchs).toHaveLength(0);
+    expect(garder()).not.toBeNull();
+  });
+
+  it('un post navigateur périmé n’a PAS le bouton « Garder » (Régénérer suffit)', async () => {
+    post = postAJour({ montagePerime: true });
+    installerFetch();
+    await ouvrirApercu();
+    expect(garder()).toBeNull();
+    expect(regenerer()).not.toBeNull();
+  });
+});
+
+describe('Calendrier — « Régénérer » retire l’erreur du blocage, et elle seule', () => {
+  it('erreur = message de blocage → retirée', async () => {
+    post = postAJour({ montagePerime: true, error: MESSAGE });
+    installerFetch();
+    await ouvrirApercu();
+    await act(async () => { fireEvent.click(regenerer()!); });
+    await attendre(80);
+    const meta = patchs[0].metadata as Record<string, unknown>;
+    expect(meta.montagePerime).toBe(false);
+    expect(meta.error).toBeNull();
+  });
+
+  it('une autre erreur est conservée', async () => {
+    post = postAJour({ montagePerime: true, error: 'Instagram: jeton expiré' });
+    installerFetch();
+    await ouvrirApercu();
+    await act(async () => { fireEvent.click(regenerer()!); });
+    await attendre(80);
+    const meta = patchs[0].metadata as Record<string, unknown>;
+    expect(meta.error).toBe('Instagram: jeton expiré');
+  });
+});
