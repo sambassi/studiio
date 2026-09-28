@@ -17,6 +17,8 @@ import {
   SEQ_NAME_MAP as SPEC_SEQ_NAME_MAP,
   SEQ_NAME_REVERSE as SPEC_SEQ_NAME_REVERSE,
 } from '@/lib/creer/designSpec';
+import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
+import type { Lut } from '@/lib/luts/types';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -542,6 +544,19 @@ export interface ComposerOptions {
    * la fin de celle-ci que la transition se joue.
    */
   sequenceTransitions?: Record<string, TransitionStyle>;
+  /**
+   * Filtre couleur (LUT) applique AU RUSH, et a lui seul : ni les textes, ni
+   * le degrade, ni le logo, ni le filigrane. Etalonner l'habillage serait un
+   * bug, pas un look.
+   *
+   * La table arrive DEJA LUE : le compositeur ne va chercher aucune LUT
+   * lui-meme (elles sont privees, servies par une route authentifiee).
+   *
+   * Absent = rendu strictement identique a celui d'avant cet ajout. Un echec
+   * GPU (pas de WebGL, texture trop grande, frame refusee) retombe sur le rush
+   * brut plutot que de faire echouer le montage.
+   */
+  rushLut?: { lut: Lut; intensity: number } | null;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2641,11 +2656,24 @@ function drawVideoSeq(
   seqBgImg: HTMLImageElement | null = null,
   /** Per-sequence background opacity (0-1). */
   seqBgOpacity: number = 1,
+  /**
+   * Filtre couleur du rush, ou `null`. Applique QU'ICI : c'est le seul
+   * endroit du montage ou le rush est peint. Les textes, le degrade et le
+   * logo, dessines apres, ne le voient jamais.
+   */
+  lutGrader: LutGrader | null = null,
 ) {
   const fontFamily = design?.font || 'sans-serif';
-  const backgroundSource: HTMLVideoElement | HTMLImageElement | null = videoEl || videoImageEl || null;
+  const rawSource: HTMLVideoElement | HTMLImageElement | null = videoEl || videoImageEl || null;
   const srcW = videoEl ? videoEl.videoWidth : (videoImageEl?.naturalWidth || 0);
   const srcH = videoEl ? videoEl.videoHeight : (videoImageEl?.naturalHeight || 0);
+  // Etalonnage aux dimensions de la SOURCE : le cadrage ci-dessous travaille
+  // sur une image de meme taille et reste inchange. `null` (echec GPU) =
+  // rush brut.
+  const backgroundSource: CanvasImageSource | null =
+    rawSource && lutGrader && srcW && srcH
+      ? lutGrader.grade(rawSource, srcW, srcH) ?? rawSource
+      : rawSource;
   if (backgroundSource && srcW && srcH) {
     const t = rushTransform || {};
     const userScale = t.scale || 1;
@@ -3663,6 +3691,20 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     throw new Error(`Impossible de charger l'image de fond (poster). Vérifiez que l'URL est accessible: ${posterUrl.substring(0, 80)}`);
   }
 
+  // ── Filtre couleur (LUT) du rush ──────────────────────────────────────
+  // Cree UNE fois, apres le dernier abandon possible (poster) pour ne jamais
+  // laisser de contexte WebGL orphelin, et seulement s'il y a un rush a
+  // etalonner. `null` = rendu du rush brut, identique a l'avant-LUT.
+  const lutGrader: LutGrader | null =
+    options.rushLut && (videoEl || videoImageEl)
+      ? createLutGrader(options.rushLut.lut, options.rushLut.intensity)
+      : null;
+  if (options.rushLut) {
+    console.log(
+      `[Composer] LUT rush ${lutGrader ? 'active' : 'ignoree (rien a etalonner ou GPU indisponible)'} — ${options.rushLut.lut.kind}, ${options.rushLut.lut.size} pas, intensite ${options.rushLut.intensity}`,
+    );
+  }
+
   // Build sequences. Callers (editor, calendar regenerate) signal an
   // invisible sequence by passing its duration as 0 — e.g. a user who
   // toggled the CTA off sends ctaDuration: 0. We must NOT push those
@@ -3909,7 +3951,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         case 'video': {
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
-          drawVideoSeq(target, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity);
+          drawVideoSeq(target, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
           break;
         }
         case 'cta': drawCTA(target, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
@@ -4314,6 +4356,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         document.removeEventListener('visibilitychange', onVisibilityChange);
         releaseWakeLock();
         try { document.body.removeChild(canvas); } catch {}
+        lutGrader?.dispose();
         onProgress?.(100, 'Terminé !');
         resolve({ video: blob, thumbnail: thumbnailBlob });
       };
@@ -4323,6 +4366,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         stopTicker();
         document.removeEventListener('visibilitychange', onVisibilityChange);
         releaseWakeLock();
+        lutGrader?.dispose();
         reject(new Error('Recording failed'));
       };
 
@@ -4429,6 +4473,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
       try { document.body.removeChild(canvas); } catch {}
+      lutGrader?.dispose();
       onProgress?.(100, 'Terminé !');
       resolve({ video: blob, thumbnail: thumbnailBlob });
       // Only close AudioContext if we created it (NOT shared in batch mode)
@@ -4440,6 +4485,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       stopRtTicker();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
+      lutGrader?.dispose();
       reject(new Error('Recording failed'));
     };
 
