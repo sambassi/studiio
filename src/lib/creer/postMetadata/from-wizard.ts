@@ -84,6 +84,7 @@
  */
 
 import { resoudreTextes, ecrireTexte, type ChampTexte, type CleTexte } from '../textesCanoniques';
+import { CLE_MONTAGE_PERIME } from '../montage-perime';
 
 const estObjet = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -142,20 +143,10 @@ function cibleTexte(base: unknown, champ: ChampTexte, valeur: string): CleTexte 
   return resoudreTextes(ecrireTexte(base, champ, valeur))[champ].cle;
 }
 
-/**
- * Drapeau « le montage rendu ne correspond plus à la metadata ».
- *
- * Posé par `metadataPourEnregistrement` quand un enregistrement change le
- * rendu ; retiré (`false`) par tout chemin qui écrit un nouveau
- * `renderedVideoUrl`. Absent — tous les posts antérieurs — il vaut « à jour » :
- * le comportement d'avant est inchangé.
- */
-export const CLE_MONTAGE_PERIME = 'montagePerime';
-
-/** Le montage rendu de ce post est-il périmé par un enregistrement ? */
-export function montageEstPerime(metadata: unknown): boolean {
-  return estObjet(metadata) && metadata[CLE_MONTAGE_PERIME] === true;
-}
+// Drapeau « montage périmé » : défini dans un module PUR partagé avec le
+// serveur (cron, route de publication). Réexporté ici pour les appelants
+// existants.
+export { CLE_MONTAGE_PERIME, montageEstPerime, MESSAGE_MONTAGE_PERIME } from '../montage-perime';
 
 /**
  * Clés écrites qui NE changent PAS la vidéo rendue.

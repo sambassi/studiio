@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { comptesConnectes, droitDePublier } from '@/lib/social/publishing';
 import { publierViaZernio, etatPreuveZernio, sansPreuveZernio } from '@/lib/social/publishViaZernio';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { montageEstPerime, MESSAGE_MONTAGE_PERIME } from '@/lib/creer/montage-perime';
 import { execFile } from 'child_process';
 import { readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
@@ -403,6 +404,25 @@ export async function GET(req: NextRequest) {
       }
       if (!claimed || claimed.length === 0) {
         console.log(`[CRON] Post ${post.id} already claimed by another invocation (status moved to publishing/published/failed) — skip`);
+        continue;
+      }
+
+      // ── MONTAGE PERIME : on ne publie RIEN ───────────────────────────
+      // Le post a ete modifie (Modifier → Enregistrer) sans etre re-rendu :
+      // `renderedVideoUrl` montre l'ANCIENNE version. La publier enverrait
+      // chez un tiers une video qui ne correspond plus a l'ecran — ce qui ne
+      // se rattrape pas. Aucune URL ne part, ni vers Zernio ni vers un
+      // reseau. `failed` est terminal : la selection ne relit que
+      // `scheduled`, et le reset des posts bloques ne touche que
+      // `publishing`. Seul un nouveau rendu (« Regenerer ») remet le drapeau
+      // a `false`, et c'est l'utilisateur qui reprogramme ensuite.
+      if (montageEstPerime(post.metadata)) {
+        console.warn(`[CRON] Post ${post.id} : montage perime (modifie depuis le rendu) — publication bloquee`);
+        await supabase
+          .from('scheduled_posts')
+          .update({ status: 'failed', metadata: { ...(post.metadata || {}), error: MESSAGE_MONTAGE_PERIME } })
+          .eq('id', post.id);
+        results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details: MESSAGE_MONTAGE_PERIME });
         continue;
       }
 

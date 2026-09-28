@@ -45,7 +45,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
 import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
-import { CLE_MONTAGE_PERIME, montageEstPerime } from '@/lib/creer/postMetadata/from-wizard';
+import { CLE_MONTAGE_PERIME, montageEstPerime, MESSAGE_MONTAGE_PERIME } from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
 import { chargerLutPourRendu } from '@/lib/luts/charger';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
@@ -1168,6 +1168,9 @@ export default function CalendarPage() {
     const warnings: string[] = [];
     if (noPlatform.length > 0) warnings.push(`${noPlatform.length} post(s) sans réseau social`);
     if (noMedia.length > 0) warnings.push(`${noMedia.length} post(s) sans média/vidéo`);
+    // Montages périmés : ignorés, jamais programmés avec l'ancienne vidéo.
+    const perimes = selectedPosts.filter(p => montageEstPerime(p.metadata));
+    if (perimes.length > 0) warnings.push(`${perimes.length} post(s) modifié(s) à régénérer — ignoré(s). ${MESSAGE_MONTAGE_PERIME}`);
     const msg = warnings.length > 0
       ? `Planifier ${selectedPosts.length} post(s) à ${bulkScheduleTime} ?\n\n⚠️ Attention :\n${warnings.join('\n')}\nCes posts risquent d'échouer à la publication.`
       : `Planifier ${selectedPosts.length} post(s) à ${bulkScheduleTime} ?`;
@@ -1175,6 +1178,7 @@ export default function CalendarPage() {
     setSaving(true);
     try {
       for (const post of selectedPosts) {
+        if (montageEstPerime(post.metadata)) continue;
         // Update time first
         await fetch(`/api/posts/${post.id}`, {
           method: 'PATCH',
@@ -1204,6 +1208,18 @@ export default function CalendarPage() {
       metadata: { ...post.metadata, error: null, cron_publish_results: null },
     };
     await handlePublishPost(cleanPost);
+  };
+
+  /**
+   * Refuse Planifier / Publier maintenant sur un montage périmé
+   * (`metadata.montagePerime === true`, posé par Modifier → Enregistrer).
+   * Absent ou `false` : rien ne change. Le cron refuse aussi côté serveur ;
+   * ceci évite seulement à l'utilisateur un échec différé.
+   */
+  const bloquerSiMontagePerime = (post: Post | Partial<Post>): boolean => {
+    if (!montageEstPerime(post?.metadata)) return false;
+    alert(MESSAGE_MONTAGE_PERIME);
+    return true;
   };
 
   const handleSchedulePostInterne = async (post: Post) => {
@@ -1393,6 +1409,10 @@ export default function CalendarPage() {
 
   /** Verrou synchrone : voir `handleExportPost`. */
   const handleSchedulePost = async (post: Post) => {
+    // Montage périmé : Planifier programmerait l'ANCIEN `renderedVideoUrl`
+    // (aucune recomposition quand une vidéo existe déjà). On bloque AVANT
+    // tout verrou, fetch ou rendu — seul « Régénérer » remet le post à jour.
+    if (bloquerSiMontagePerime(post)) return;
     if (!prendre(VERROU.programmer)) return;
     try { await handleSchedulePostInterne(post); }
     finally { rendre(VERROU.programmer); }
@@ -1405,6 +1425,12 @@ export default function CalendarPage() {
       alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un canal avant de planifier.');
       return;
     }
+
+    // PASSER en « programmé » un post dont le montage est périmé : refusé.
+    // Un post déjà programmé reste éditable (légende, etc.) : le cron le
+    // refusera de toute façon côté serveur.
+    if (editTab === 'scheduled' && editFormData.id && editFormData.status !== 'scheduled'
+        && bloquerSiMontagePerime(editFormData)) return;
 
     // If scheduling an existing infographic post, use handleSchedulePost to compose the montage first
     if (editTab === 'scheduled' && editFormData.id) {
@@ -2071,6 +2097,9 @@ export default function CalendarPage() {
 
   /** Verrou synchrone : voir `handleExportPost`. */
   const handlePublishPost = async (post: Post) => {
+    // Même règle que Planifier : jamais l'ancien montage, jamais de rendu
+    // implicite, aucun crédit engagé.
+    if (bloquerSiMontagePerime(post)) return;
     if (!prendre(VERROU.publier)) return;
     try { await handlePublishPostInterne(post); }
     finally { rendre(VERROU.publier); }
