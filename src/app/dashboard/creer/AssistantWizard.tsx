@@ -74,7 +74,7 @@ import {
 import SmartGuides from '@/components/creer/SmartGuides';
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
-  duplicateCards, duplicateBoxes, maxCards, updateCard, addCard, removeCard, boxForNewCard, removeBox,
+  duplicateCards, duplicateBoxes, maxCards, updateCard, setCardIcon, addCard, removeCard, boxForNewCard, removeBox,
   groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, newElementId, MIN_GROUP,
   type CardGroup,
 } from '@/lib/creer/selection';
@@ -187,7 +187,7 @@ import {
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
-  indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees,
+  indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees, cartesAvecImagePerso,
 } from '@/lib/creer/postMetadata/cartes';
 import {
   metadataPourEnregistrement, type ValeursWizard,
@@ -10237,6 +10237,14 @@ export default function AssistantWizard() {
                         canAdd={generated.cards.length < limiteCartes}
                         canRemove={generated.cards.length > 1}
                         max={limiteCartes}
+                        // Icône d'une carte (PR 3) : SVG lucide uniquement
+                        // (`setCardIcon` refuse tout le reste). Ne touche pas
+                        // `design.cardCustomIcons` — les images de l'éditeur
+                        // avancé, signalées ci-dessous, restent en place.
+                        onIconChange={(id, icon) =>
+                          setGenerated((g) => (g ? { ...g, cards: setCardIcon(g.cards, id, icon) } : g))
+                        }
+                        iconesMasquees={cartesAvecImagePerso(generated.cards, iconesPersoOrigine.current, rangsOrigine.current)}
                         onChange={(id, patch) =>
                           setGenerated((g) => (g ? { ...g, cards: updateCard(g.cards, id, patch) } : g))
                         }
