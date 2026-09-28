@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   supportDeLut, CAPACITES_ACTUELLES, LIBELLES_SUPPORT,
@@ -53,9 +53,53 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
     expect(/applyLutToPixels|GradedVideo|gradeFrame/.test(wizard)).toBe(CAPACITES_ACTUELLES.apercu);
   });
 
-  it('le compositeur client n’applique aucune LUT au rendu', () => {
-    const composer = src('src/lib/video-composer.ts');
-    expect(/applyLutToPixels|createLutGrader|loadLut/.test(composer)).toBe(CAPACITES_ACTUELLES.rendu3d);
+  /**
+   * Le compositeur SAIT étalonner le rush (`rushLut` → `createLutGrader`),
+   * mais une LUT importée n'est « appliquée au montage » que si un appelant
+   * la lui TRANSMET. Tant qu'aucun ne le fait, `rendu3d` reste false : sinon
+   * l'interface promettrait « Appliquée au montage » pour un rendu brut.
+   */
+  const composer = src('src/lib/video-composer.ts');
+  const composerEtalonne = /createLutGrader/.test(composer) && /rushLut/.test(composer);
+
+  /** Fichiers applicatifs (hors tests, hors compositeur) qui passent `rushLut`. */
+  const appelantsRushLut = (() => {
+    const found: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(join(process.cwd(), dir), { withFileTypes: true })) {
+        const rel = `${dir}/${e.name}`;
+        if (e.isDirectory()) {
+          if (e.name !== '__tests__') walk(rel);
+        } else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) && rel !== 'src/lib/video-composer.ts') {
+          if (/\brushLut\s*[:,}]/.test(src(rel))) found.push(rel);
+        }
+      }
+    };
+    walk('src');
+    return found;
+  })();
+
+  it('rendu3d = le compositeur étalonne ET un appelant lui transmet la LUT', () => {
+    expect(CAPACITES_ACTUELLES.rendu3d).toBe(composerEtalonne && appelantsRushLut.length > 0);
+  });
+
+  it('aujourd’hui : le moteur sait étalonner, mais aucun appelant ne transmet la LUT', () => {
+    // Si ce test échoue parce qu'un appelant transmet `rushLut`, c'est voulu :
+    // passer `rendu3d` à true dans `support.ts`, puis mettre ce test à jour.
+    expect(composerEtalonne).toBe(true);
+    expect(appelantsRushLut).toEqual([]);
+    expect(CAPACITES_ACTUELLES.rendu3d).toBe(false);
+  });
+
+  it('le compositeur n’étalonne jamais sur CPU et ne charge aucune LUT lui-même', () => {
+    // CPU : des centaines de ms par frame en 1080×1920, le montage temps réel
+    // perdrait ses frames. Chargement : les LUT sont privées, servies par une
+    // route authentifiée — la table doit arriver déjà lue.
+    expect(/applyLutToPixels|loadLut|\/api\/creatif\/luts/.test(composer)).toBe(false);
+  });
+
+  it('la 1D n’est pas annoncée au rendu tant que le 3D ne l’est pas', () => {
+    expect(CAPACITES_ACTUELLES.rendu1d && !CAPACITES_ACTUELLES.rendu3d).toBe(false);
   });
 
   it('par défaut, supportDeLut lit CAPACITES_ACTUELLES', () => {
