@@ -60,6 +60,10 @@ export interface DepotAttendu {
   montant: string;
   devise: string;
   statut: StatutDepotLocal;
+  /** Pays ISO alpha-3 choisi à l'initiation. */
+  pays?: string;
+  /** Horodatage ISO de création de la ligne (avant l'appel PawaPay). */
+  creeLe: string;
 }
 
 /** Verdict pur de `evaluerDepot`. */
@@ -91,7 +95,18 @@ export type IssueConfirmation =
  * crédit.
  */
 export interface DepotsStore {
+  /**
+   * Enregistre un dépôt `en_attente` AVANT l'appel à PawaPay : si le réseau
+   * lâche après l'envoi, cette ligne est la seule trace permettant au
+   * rattrapage de retrouver le dépôt.
+   */
+  enregistrer(depot: DepotAttendu): Promise<void>;
   lire(depositId: string): Promise<DepotAttendu | null>;
+  /**
+   * Dépôts `en_attente` créés avant `avant` (ISO), les plus anciens d'abord,
+   * au plus `limite` — pour le rattrapage par interrogation.
+   */
+  listerEnAttente(options: { avant: string; limite: number }): Promise<DepotAttendu[]>;
   marquerCrediteSiNonCredite(depositId: string): Promise<boolean>;
   /**
    * Rend le verrou si le crédit a échoué APRÈS sa prise, pour qu'un rejeu du

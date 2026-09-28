@@ -3,11 +3,15 @@
  *
  * Règle unique : on ne crédite QUE si la relecture chez PawaPay dit
  * `COMPLETED` avec un montant ET une devise strictement égaux à ce que Studiio
- * attendait. Le corps du callback ne sert qu'à savoir QUAND relire.
+ * attendait.
+ *
+ * Trois déclencheurs partagent CE code : la route de statut (chemin normal,
+ * par interrogation), le cron de rattrapage, et le callback facultatif. Aucun
+ * ne transmet de statut : tous relisent le dépôt chez PawaPay.
  *
  * Anti double crédit : le crédit n'est appelé que si
  * `store.marquerCrediteSiNonCredite` renvoie `true` — ce qui n'arrive qu'une
- * fois par `depositId`, callbacks rejoués ou concurrents compris.
+ * fois par `depositId`, déclencheurs concurrents compris.
  */
 import type {
   DependancesConfirmation,
@@ -121,9 +125,20 @@ export function creerStoreMemoire(initial: DepotAttendu[] = []): DepotsStore & {
 } {
   const lignes = new Map<string, DepotAttendu>(initial.map((d) => [d.depositId, { ...d }]));
   return {
+    async enregistrer(d) {
+      if (lignes.has(d.depositId)) throw new Error(`depositId déjà enregistré : ${d.depositId}`);
+      lignes.set(d.depositId, { ...d });
+    },
     async lire(id) {
       const l = lignes.get(id);
       return l ? { ...l } : null;
+    },
+    async listerEnAttente({ avant, limite }) {
+      return [...lignes.values()]
+        .filter((l) => l.statut === 'en_attente' && l.creeLe <= avant)
+        .sort((a, b) => a.creeLe.localeCompare(b.creeLe))
+        .slice(0, Math.max(0, limite))
+        .map((l) => ({ ...l }));
     },
     async marquerCrediteSiNonCredite(id) {
       const l = lignes.get(id);

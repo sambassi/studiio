@@ -1,24 +1,28 @@
 /**
- * POST /api/pawapay/callback — callback PawaPay PROPRE À STUDIIO.
+ * POST /api/pawapay/callback — déclencheur FACULTATIF, propre à Studiio.
  *
- * PawaPay POSTe ici l'état final d'un dépôt (URL déclarée dans le tableau de
- * bord du compte PawaPay de Studiio). Le corps n'est JAMAIS cru sur parole :
- * on n'en extrait que le `depositId`, on relit le dépôt chez PawaPay, puis
- * `confirmerDepot` décide.
+ * Le compte PawaPay est partagé et son URL de callback pointe vers un autre
+ * site : Studiio n'en dépend PAS. Ses paiements sont confirmés par
+ * interrogation directe (`/api/pawapay/status/[id]`) et par le rattrapage
+ * (`/api/cron/pawapay-reconcile`). Cette route n'existe que pour qu'un appel
+ * reçu, quelle qu'en soit l'origine, déclenche la MÊME confirmation — sans
+ * jamais croire le corps : on n'en extrait que le `depositId`, on relit le
+ * dépôt chez PawaPay, puis `confirmerDepot` décide. Un dépôt inconnu de
+ * Studiio n'entraîne aucune relecture.
  *
- * Codes de réponse (PawaPay rejoue pendant 15 min tant qu'il n'a pas de 200) :
+ * Codes de réponse :
  * - 404 : PawaPay désactivé et persistance absente ;
  * - 503 : PawaPay activé mais persistance absente (table non migrée), ou
- *         dépôt pas encore final à la relecture → rejeu souhaité ;
+ *         dépôt pas encore final à la relecture ;
  * - 400 : `depositId` absent ou invalide ;
- * - 502 : relecture PawaPay impossible → rejeu ;
- * - 500 : erreur de persistance ou de crédit → rejeu ;
+ * - 502 : relecture PawaPay impossible ;
+ * - 500 : erreur de persistance ou de crédit ;
  * - 200 : issue définitive (crédité, déjà crédité, échec, inconnu…).
  */
 import { NextResponse } from 'next/server';
 import { confirmerDepot } from '@/lib/payment/pawapay/confirmation';
 import { estDepositIdValide, lireDepot } from '@/lib/payment/pawapay/client';
-import { obtenirCrediteur, obtenirStore } from '@/lib/payment/pawapay/store';
+import { obtenirDependances } from '@/lib/payment/pawapay/store';
 import { PawapayErreur } from '@/lib/payment/pawapay/types';
 
 export const dynamic = 'force-dynamic';
@@ -34,9 +38,8 @@ function extraireDepositId(corps: unknown): unknown {
 
 export async function POST(req: Request) {
   const actif = process.env.PAWAPAY_ENABLED === 'true';
-  const store = obtenirStore();
-  const crediter = obtenirCrediteur();
-  if (!store || !crediter) {
+  const deps = obtenirDependances();
+  if (!deps) {
     return NextResponse.json(
       { status: 'unavailable' },
       { status: actif ? 503 : 404 },
@@ -56,8 +59,8 @@ export async function POST(req: Request) {
 
   try {
     const { issue } = await confirmerDepot(depositId, {
-      store,
-      crediter,
+      store: deps.store,
+      crediter: deps.crediter,
       lireDepotDistant: lireDepot,
     });
     if (issue === 'en_attente') {

@@ -20,6 +20,9 @@ const mocksStore = vi.hoisted(() => ({
 vi.mock('@/lib/payment/pawapay/store', () => ({
   obtenirStore: () => mocksStore.store,
   obtenirCrediteur: () => mocksStore.crediter,
+  obtenirTauxChf: async () => null,
+  obtenirDependances: () => (mocksStore.store && mocksStore.crediter
+    ? { store: mocksStore.store, crediter: mocksStore.crediter } : null),
 }));
 
 import {
@@ -50,6 +53,7 @@ function attendu(p: Partial<DepotAttendu> = {}): DepotAttendu {
     montant: '38645',
     devise: 'XOF',
     statut: 'en_attente',
+    creeLe: '2026-09-28T10:00:00.000Z',
     ...p,
   };
 }
@@ -419,6 +423,9 @@ describe('garde — Studiio est indépendant', () => {
   const fichiers = [
     ...readdirSync(path.join(racine, 'lib/payment/pawapay')).map((f) => path.join(racine, 'lib/payment/pawapay', f)),
     path.join(racine, 'app/api/pawapay/callback/route.ts'),
+    path.join(racine, 'app/api/pawapay/deposit/route.ts'),
+    path.join(racine, 'app/api/pawapay/status/[id]/route.ts'),
+    path.join(racine, 'app/api/cron/pawapay-reconcile/route.ts'),
   ];
 
   it.each(fichiers.map((f) => [path.relative(racine, f), f]))('%s ne contient aucune URL afroboost', (_nom, f) => {
