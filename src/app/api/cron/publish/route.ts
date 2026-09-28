@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { comptesConnectes, droitDePublier } from '@/lib/social/publishing';
 import { publierViaZernio, etatPreuveZernio, sansPreuveZernio } from '@/lib/social/publishViaZernio';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
+import { montageEstPerime, messageMontagePerime } from '@/lib/creer/montage-perime';
 import { execFile } from 'child_process';
 import { readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
@@ -403,6 +404,33 @@ export async function GET(req: NextRequest) {
       }
       if (!claimed || claimed.length === 0) {
         console.log(`[CRON] Post ${post.id} already claimed by another invocation (status moved to publishing/published/failed) — skip`);
+        continue;
+      }
+
+      // ── MONTAGE PERIME : on ne publie RIEN ───────────────────────────
+      // Le post a ete modifie (Modifier → Enregistrer) sans etre re-rendu :
+      // `renderedVideoUrl` montre l'ANCIENNE version. La publier enverrait
+      // chez un tiers une video qui ne correspond plus a l'ecran — ce qui ne
+      // se rattrape pas. Aucune URL ne part, ni vers Zernio ni vers un
+      // reseau. `failed` est terminal : la selection ne relit que
+      // `scheduled`, et le reset des posts bloques ne touche que
+      // `publishing`. Seul un geste explicite de l'utilisateur remet le
+      // drapeau a `false` (« Regenerer », ou « Garder la video actuelle »
+      // pour un montage serveur), puis il reprogramme.
+      if (montageEstPerime(post.metadata)) {
+        const message = messageMontagePerime(post.metadata);
+        console.warn(`[CRON] Post ${post.id} : montage perime (modifie depuis le rendu) — publication bloquee`);
+        const { error: echecErr } = await supabase
+          .from('scheduled_posts')
+          .update({ status: 'failed', metadata: { ...(post.metadata || {}), error: message } })
+          .eq('id', post.id);
+        if (echecErr) {
+          // Le post reste a `publishing` : le reset des bloques le rendra a
+          // `scheduled`, et le passage suivant le bloquera de nouveau. Jamais
+          // publie entre-temps.
+          console.error(`[CRON] Post ${post.id} : ecriture du statut failed (montage perime) en echec :`, echecErr.message);
+        }
+        results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details: message });
         continue;
       }
 

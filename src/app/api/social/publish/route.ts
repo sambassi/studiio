@@ -4,6 +4,40 @@ import { getValidToken } from '@/lib/social/token-refresh';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, formatBroadcastFailures } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { resolvePublishableUrl } from '@/lib/videos/playable-url';
+import { montageEstPerime, messageMontagePerime } from '@/lib/creer/montage-perime';
+
+/**
+ * Le montage a publier est-il perime ? Renvoie le message a montrer (il
+ * nomme l'issue disponible pour CE post), `false`, ou `'inconnu'` si la
+ * lecture a echoue — l'appelant refuse alors, par prudence.
+ *
+ * Deux requetes separees plutot qu'un `.or(...)` : les identifiants viennent
+ * du corps de la requete et ne doivent jamais etre interpoles dans un filtre
+ * PostgREST. Le filtre `user_id` borne la lecture aux posts de l'appelant.
+ */
+async function montagePerimePourPublication(
+  userId: string,
+  videoId: string,
+  videoMetadata: unknown,
+  scheduledPostId: unknown,
+): Promise<string | false | 'inconnu'> {
+  if (montageEstPerime(videoMetadata)) return messageMontagePerime(videoMetadata);
+  const lectures = [
+    supabase.from('scheduled_posts').select('id, metadata').eq('user_id', userId).eq('video_id', videoId),
+  ];
+  if (typeof scheduledPostId === 'string' && scheduledPostId) {
+    lectures.push(
+      supabase.from('scheduled_posts').select('id, metadata').eq('user_id', userId).eq('id', scheduledPostId),
+    );
+  }
+  const resultats = await Promise.all(lectures);
+  if (resultats.some((r) => r.error)) return 'inconnu';
+  for (const r of resultats) {
+    const perime = (r.data || []).find((p: { metadata?: unknown }) => montageEstPerime(p?.metadata));
+    if (perime) return messageMontagePerime(perime.metadata);
+  }
+  return false;
+}
 
 // POST /api/social/publish - Publish a video to social platforms
 export async function POST(req: NextRequest) {
@@ -56,6 +90,21 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'Video has no output URL. Complete rendering first.' },
         { status: 400 }
       );
+    }
+
+    // ── Montage perime : 409, rien ne part ───────────────────────────
+    // Le drapeau vit sur le post du Calendrier (`scheduled_posts.metadata`),
+    // pose par Modifier → Enregistrer. On le lit sur la video elle-meme, sur
+    // le post nomme par l'appelant ET sur tout post relie a cette video
+    // (`video_id`) : le `renderedVideoUrl` publie ici est le meme montage.
+    // Lecture en echec = refus : on ne publie pas sans savoir.
+    const perime = await montagePerimePourPublication(
+      session.user.id, videoId, video.metadata, scheduledPostId,
+    );
+    if (perime !== false) {
+      return perime === 'inconnu'
+        ? NextResponse.json({ success: false, error: 'Failed to check post state' }, { status: 500 })
+        : NextResponse.json({ success: false, error: perime }, { status: 409 });
     }
 
     // Get user's connected social accounts

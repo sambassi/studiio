@@ -1116,3 +1116,20 @@ dans un `try`, et son échec ne déclenche jamais un nouvel appel fournisseur.
 (3) « Le fournisseur a accepté » n'est jamais un échec à rejouer : on garde
 l'identifiant et on réconcilie. (4) Tout statut « en cours » a un délai
 d'abandon ; la reprise vérifie d'abord que le travail n'a pas déjà abouti.
+
+## [2026-09-28] Un drapeau « périmé » que seul l'affichage lit ne protège rien
+
+**Ce qui a mal tourné** — #454 posait `metadata.montagePerime` et montrait
+« Régénérer », mais le cron publiait toujours `renderedVideoUrl` en priorité,
+et « Planifier » / « Publier maintenant » ne recomposent que si AUCUNE vidéo
+n'existe : un post modifié partait avec l'ANCIEN montage, sans signal.
+
+**Règle** — Tout drapeau qui invalide un média est lu par CHAQUE chemin qui
+envoie ce média à un tiers, serveur d'abord (cron → `failed` terminal, route
+manuelle → 409), client ensuite. Le prédicat vit dans un module PUR
+(`src/lib/creer/montage-perime.ts`) importable des deux côtés.
+(2) Tout blocage doit avoir une issue VISIBLE pour chaque catégorie de post :
+un post Autopilote (`serverRendered`) n'a pas « Régénérer » (#313), il lui
+fallait « Garder la vidéo actuelle ». Avant de bloquer, lister les variantes
+d'affichage (ici l'aperçu serveur est un lecteur nu) et prouver par un test
+qu'un bouton lève le blocage dans chacune.

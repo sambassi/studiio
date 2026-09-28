@@ -45,7 +45,9 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
 import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
-import { CLE_MONTAGE_PERIME, montageEstPerime } from '@/lib/creer/postMetadata/from-wizard';
+import {
+  montageEstPerime, messageMontagePerime, leverMontagePerime,
+} from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
 import { chargerLutPourRendu } from '@/lib/luts/charger';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
@@ -880,8 +882,9 @@ export default function CalendarPage() {
         ...meta,
         renderedVideoUrl: renderedUrl,
         videoUrl: renderedUrl,
-        // Le montage est de nouveau celui de la metadata.
-        [CLE_MONTAGE_PERIME]: false,
+        // Le montage est de nouveau celui de la metadata : drapeau a false,
+        // et l'erreur « modifiee, regenere-la » du cron retiree (elle seule).
+        ...leverMontagePerime(meta),
         thumbnailUrl: freshThumb || meta.thumbnailUrl,
         composerVersion: freshVersion,
       };
@@ -928,6 +931,48 @@ export default function CalendarPage() {
     try { await regenerateMontageInterne(post); }
     finally { rendre(VERROU.regenerer); }
   }, [regenerateMontageInterne, prendre, rendre]);
+
+  /**
+   * « Garder la vidéo actuelle » — la SEULE issue d'un montage rendu côté
+   * serveur (`serverRendered`, Autopilote) devenu périmé.
+   *
+   * « Régénérer » n'est jamais proposé pour ces posts : il recompose dans le
+   * navigateur et remplaçait le mp4 serveur par un WebM illisible (#313). Sans
+   * ce bouton, un post Autopilote modifié dans l'assistant resterait bloqué à
+   * vie. L'utilisateur choisit ici, EXPLICITEMENT et après confirmation, de
+   * publier la vidéo déjà rendue, sans ses modifications. Aucun rendu, aucun
+   * débit : seule la metadata change (drapeau à false, erreur du blocage
+   * retirée).
+   */
+  const [gardeEnCours, setGardeEnCours] = useState(false);
+  const garderMontageActuel = async (post: Post) => {
+    if (gardeEnCours || !montageEstPerime(post.metadata)) return;
+    if (!confirm(
+      'Ce montage automatique ne peut pas être régénéré ici.\n\n'
+      + 'Publier la vidéo actuelle, SANS les modifications enregistrées depuis son rendu ?',
+    )) return;
+    setGardeEnCours(true);
+    try {
+      const patch = leverMontagePerime(post.metadata);
+      const res = await fetch(`/api/posts/${post.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ metadata: patch }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        alert(`Impossible de lever le blocage : ${data?.error || 'erreur inconnue'}`);
+        return;
+      }
+      const maj: Post = { ...post, metadata: { ...(post.metadata || {}), ...patch } as Post['metadata'] };
+      setFullPreviewPost(maj);
+      setPosts(prev => prev.map(p => p.id === post.id ? maj : p));
+    } catch (err) {
+      alert(`Erreur réseau : ${err instanceof Error ? err.message : 'inconnue'}`);
+    } finally {
+      setGardeEnCours(false);
+    }
+  };
 
 
   // Stats
@@ -1168,6 +1213,9 @@ export default function CalendarPage() {
     const warnings: string[] = [];
     if (noPlatform.length > 0) warnings.push(`${noPlatform.length} post(s) sans réseau social`);
     if (noMedia.length > 0) warnings.push(`${noMedia.length} post(s) sans média/vidéo`);
+    // Montages périmés : ignorés, jamais programmés avec l'ancienne vidéo.
+    const perimes = selectedPosts.filter(p => montageEstPerime(p.metadata));
+    if (perimes.length > 0) warnings.push(`${perimes.length} post(s) modifié(s) depuis leur rendu — ignoré(s). Ouvre-les pour régénérer la vidéo (ou garder la vidéo actuelle d'un montage automatique).`);
     const msg = warnings.length > 0
       ? `Planifier ${selectedPosts.length} post(s) à ${bulkScheduleTime} ?\n\n⚠️ Attention :\n${warnings.join('\n')}\nCes posts risquent d'échouer à la publication.`
       : `Planifier ${selectedPosts.length} post(s) à ${bulkScheduleTime} ?`;
@@ -1175,6 +1223,7 @@ export default function CalendarPage() {
     setSaving(true);
     try {
       for (const post of selectedPosts) {
+        if (montageEstPerime(post.metadata)) continue;
         // Update time first
         await fetch(`/api/posts/${post.id}`, {
           method: 'PATCH',
@@ -1204,6 +1253,18 @@ export default function CalendarPage() {
       metadata: { ...post.metadata, error: null, cron_publish_results: null },
     };
     await handlePublishPost(cleanPost);
+  };
+
+  /**
+   * Refuse Planifier / Publier maintenant sur un montage périmé
+   * (`metadata.montagePerime === true`, posé par Modifier → Enregistrer).
+   * Absent ou `false` : rien ne change. Le cron refuse aussi côté serveur ;
+   * ceci évite seulement à l'utilisateur un échec différé.
+   */
+  const bloquerSiMontagePerime = (post: Post | Partial<Post>): boolean => {
+    if (!montageEstPerime(post?.metadata)) return false;
+    alert(messageMontagePerime(post?.metadata));
+    return true;
   };
 
   const handleSchedulePostInterne = async (post: Post) => {
@@ -1348,7 +1409,7 @@ export default function CalendarPage() {
               ...meta,
               renderedVideoUrl: renderedUrl,
               videoUrl: renderedUrl,
-              [CLE_MONTAGE_PERIME]: false,
+              ...leverMontagePerime(meta),
             },
           };
           console.log('[Schedule] Montage composed and uploaded:', renderedUrl);
@@ -1393,6 +1454,10 @@ export default function CalendarPage() {
 
   /** Verrou synchrone : voir `handleExportPost`. */
   const handleSchedulePost = async (post: Post) => {
+    // Montage périmé : Planifier programmerait l'ANCIEN `renderedVideoUrl`
+    // (aucune recomposition quand une vidéo existe déjà). On bloque AVANT
+    // tout verrou, fetch ou rendu — seul « Régénérer » remet le post à jour.
+    if (bloquerSiMontagePerime(post)) return;
     if (!prendre(VERROU.programmer)) return;
     try { await handleSchedulePostInterne(post); }
     finally { rendre(VERROU.programmer); }
@@ -1405,6 +1470,12 @@ export default function CalendarPage() {
       alert(t('validation.noPlatforms') || 'Veuillez sélectionner au moins un canal avant de planifier.');
       return;
     }
+
+    // PASSER en « programmé » un post dont le montage est périmé : refusé.
+    // Un post déjà programmé reste éditable (légende, etc.) : le cron le
+    // refusera de toute façon côté serveur.
+    if (editTab === 'scheduled' && editFormData.id && editFormData.status !== 'scheduled'
+        && bloquerSiMontagePerime(editFormData)) return;
 
     // If scheduling an existing infographic post, use handleSchedulePost to compose the montage first
     if (editTab === 'scheduled' && editFormData.id) {
@@ -2011,7 +2082,7 @@ export default function CalendarPage() {
                 ...meta,
                 renderedVideoUrl: renderedUrl,
                 videoUrl: renderedUrl,
-                [CLE_MONTAGE_PERIME]: false,
+                ...leverMontagePerime(meta),
               },
             };
             console.log('[Publish] Montage composed:', renderedUrl);
@@ -2071,6 +2142,9 @@ export default function CalendarPage() {
 
   /** Verrou synchrone : voir `handleExportPost`. */
   const handlePublishPost = async (post: Post) => {
+    // Même règle que Planifier : jamais l'ancien montage, jamais de rendu
+    // implicite, aucun crédit engagé.
+    if (bloquerSiMontagePerime(post)) return;
     if (!prendre(VERROU.publier)) return;
     try { await handlePublishPostInterne(post); }
     finally { rendre(VERROU.publier); }
@@ -2635,7 +2709,7 @@ export default function CalendarPage() {
                 ...meta,
                 renderedVideoUrl: renderedUrl,
                 videoUrl: renderedUrl,
-                [CLE_MONTAGE_PERIME]: false,
+                ...leverMontagePerime(meta),
               },
             }),
           });
@@ -3448,6 +3522,32 @@ export default function CalendarPage() {
                 className="max-h-[90vh] max-w-full rounded-xl shadow-2xl"
                 style={{ aspectRatio: '9 / 16' }}
               />
+              {/* Montage SERVEUR périmé : « Régénérer » est interdit sur ces
+                  posts (#313, recomposition navigateur → WebM illisible), et
+                  le garde de publication les bloque. Sans ce bouton, le post
+                  resterait bloqué à vie. C'est ici que s'ouvre un post
+                  Autopilote, donc ici que l'issue doit être visible. */}
+              {montageEstPerime(meta) && (
+                <div
+                  className="fixed top-4 left-4 z-[60] max-w-sm rounded-xl bg-gray-900/90 border border-amber-500/60 p-3 text-white shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="text-xs text-amber-200 mb-2">
+                    Ce montage a été modifié après son rendu automatique et ne peut pas être régénéré ici.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => garderMontageActuel(fullPreviewPost)}
+                    disabled={gardeEnCours}
+                    data-garder-montage
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-600 hover:bg-amber-500 disabled:opacity-70 disabled:cursor-wait text-sm font-semibold"
+                    title="Publier la vidéo déjà rendue, sans les modifications"
+                  >
+                    <AlertTriangle size={14} />
+                    {gardeEnCours ? 'Enregistrement…' : 'Garder la vidéo actuelle'}
+                  </button>
+                </div>
+              )}
             </div>
           );
         }
