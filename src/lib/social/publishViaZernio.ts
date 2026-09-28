@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { droitDePublier, comptesConnectes, mediaPubliable } from '@/lib/social/publishing';
 import { createPost, uploadMedia, ZernioError } from '@/lib/social/zernio';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 
 /**
  * Publier un post Studiio sur les réseaux de l'utilisateur, via Zernio.
@@ -71,7 +72,12 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
   // ⚠️ LE GARDE MEDIA, AVANT TOUT APPEL RESEAU. Un WebM « mode rapide » est
   // accepte par certains reseaux puis rejete des heures plus tard, ou publie
   // illisible : le refuser ici est la seule facon de le dire a temps.
-  const media = mediaPubliable(post.mediaUrl);
+  // ⚠️ URL ABSOLUE AVANT LE GARDE. Sous MinIO, la `publicUrl` enregistree est
+  // RELATIVE : le garde la refusait (« pas d'adresse publique ») et le
+  // telechargement cote serveur ne pourrait pas la lire. Une URL deja
+  // absolue ressort inchangee.
+  const mediaSource = post.mediaUrl ? toAbsoluteMediaUrl(post.mediaUrl) : post.mediaUrl;
+  const media = mediaPubliable(mediaSource);
   if (!media.ok) {
     return { ok: false, motif: media.motif!, reessayable: false };
   }
@@ -93,7 +99,7 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
     // Le téléversement se fait MAINTENANT : l'URL présignée de Zernio ne vaut
     // qu'une heure, et son fichier temporaire sept jours.
     const mediaUrl = await uploadMedia(
-      post.mediaUrl!,
+      mediaSource!,
       `studiio-${post.id}.mp4`,
       'video/mp4',
     );

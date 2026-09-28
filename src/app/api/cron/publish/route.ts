@@ -1041,8 +1041,14 @@ async function muxAudioIntoVideo(
 
 // Resolve a publicly-fetchable URL for the Graph API / platform fetchers.
 // If the URL is a private Supabase path, create a 1h signed URL.
+//
+// ⚠️ ABSOLUE D'ABORD. Sous MinIO, `/api/upload/signed-url` ecrit une
+// `publicUrl` RELATIVE (`/storage/v1/object/public/…`). Meta et TikTok vont
+// chercher le fichier eux-memes : un chemin sans hote leur est inutilisable.
+// Une URL deja absolue ressort inchangee de `toAbsoluteMediaUrl`.
 async function ensurePublicUrl(url: string): Promise<string> {
   if (!url) return url;
+  url = toAbsoluteMediaUrl(url);
   if (url.includes('/storage/v1/object/public/')) return url;
   if (!url.includes('/storage/v1/object/')) return url;
   try {
@@ -1270,6 +1276,9 @@ async function publishToTikTok(
   }
 
   try {
+    // TikTok tire le fichier lui-meme (PULL_FROM_URL) : il lui faut une URL
+    // absolue et publique, comme a Meta.
+    const publicVideoUrl = await ensurePublicUrl(video.video_url);
     const initRes = await fetch(
       'https://open.tiktokapis.com/v2/post/publish/video/init/',
       {
@@ -1288,7 +1297,7 @@ async function publishToTikTok(
           },
           source_info: {
             source: 'PULL_FROM_URL',
-            video_url: video.video_url,
+            video_url: publicVideoUrl,
           },
         }),
       }
