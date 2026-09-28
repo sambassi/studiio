@@ -102,6 +102,8 @@ let rushesIllisibles = new Set<string>();
 let rushesCrash = new Set<string>();
 /** Tous les rendus plantent (Chromium qui ne démarre pas). */
 let crashGeneral = false;
+const CRASH_CHROMIUM = 'Browser crashed while rendering frame 212 (Target closed)';
+let messageCrash = CRASH_CHROMIUM;
 /** Action exécutée PENDANT le rendu — simule l'utilisateur qui agit en parallèle. */
 let pendantLeRendu: (() => void) | null = null;
 const renderAndUpload = vi.fn(async (i: { jobId: string; design: Ligne }) => {
@@ -112,7 +114,7 @@ const renderAndUpload = vi.fn(async (i: { jobId: string; design: Ligne }) => {
     throw new Error(`Error in <OffthreadVideo> src=${src}: Invalid data found when processing input`);
   }
   if (crashGeneral || rushesCrash.has(src)) {
-    throw new Error('Browser crashed while rendering frame 212 (Target closed)');
+    throw new Error(messageCrash);
   }
   return {
     videoUrl: 'https://minio.test/videos/u1/rendu.mp4', thumbnailUrl: 'https://minio.test/images/v.jpg', durationFrames: 900,
@@ -172,6 +174,7 @@ beforeEach(() => {
   rushesIllisibles = new Set();
   rushesCrash = new Set();
   crashGeneral = false;
+  messageCrash = CRASH_CHROMIUM;
   pendantLeRendu = null;
   vi.clearAllMocks();
   avancer.mockImplementation(async () => ({ status: 'processing', videoUrl: null }));
@@ -219,7 +222,10 @@ describe('1. Un rush qui fait échouer le rendu ne bloque plus la rotation', () 
   it('rush MORT puis rendu raté → la rotation garde sa place (ne repart pas du début)', async () => {
     tables.autopilot_config = [config({ rush_urls: [A, B, C], last_rush_url: A })];
     absentes.add(B);
+    // Le pire cas : l'erreur a la forme d'un média illisible (ici, la musique)
+    // — sans la garde « rush mort », B serait noté puis effacé à l'écriture.
     crashGeneral = true;
+    messageCrash = 'Error while rendering music track: Invalid data found when processing input';
     await passage();
     expect(ligne().rush_urls).toEqual([A, C]);
     expect(ligne().last_rush_url).toBe(A);

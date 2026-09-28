@@ -247,16 +247,18 @@ describe('La route', () => {
 
   it('la cadence avance après un passage réussi, et la rotation se souvient', () => {
     expect(route).toContain('last_run_at: new Date(now).toISOString()');
-    // Le dernier rush TENTÉ, réussi ou non : un rush dont le rendu échoue
-    // était sinon repris à chaque passage, et l'Autopilote restait bloqué
-    // dessus pour toujours (preuve comportementale :
+    // Le dernier rush réussi, ou en échec IMPUTABLE au rush : un rush dont le
+    // rendu échoue était sinon repris à chaque passage, et l'Autopilote
+    // restait bloqué dessus pour toujours ; un échec transitoire, lui, ne
+    // fait sauter aucun rush (preuve comportementale :
     // `autopilote-cron-echecs.test.ts`). Un rush retiré de la banque parce
     // qu'il a disparu du stockage, lui, n'est jamais mémorisé — il ferait
     // repartir `pickRush` d'un `indexOf` à -1, donc toujours du premier.
     expect(route).toContain('last_rush_url: rushAEcrire');
     expect(route).toContain('rushesMorts.has(dernierRush)');
     expect(route).toContain('dernierRush = rushUrl ?? dernierRush;');
-    expect(route).toContain('if (post.rushUrl) dernierRush = post.rushUrl;');
+    expect(route).toContain('doitPasserLeRush({ userId, rushUrl: post.rushUrl, message })');
+    expect(route).toContain('!rushesMorts.has(post.rushUrl)');
   });
 
   it('chaque montage est isolé — un échec n emporte pas le cycle', () => {
