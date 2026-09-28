@@ -1,12 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Chrome, Facebook, Loader2 } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
+import { normaliserPlan, normaliserFacturation, destinationApresConnexion } from '@/lib/billing/plan-choisi';
 
-export default function LoginPage() {
+function LoginContent() {
+  const searchParams = useSearchParams();
+  // Un visiteur venu de la landing avec un plan (via « Se connecter » sur
+  // l'inscription) garde son choix : plan connu → facturation présélectionnée.
+  const planKey = normaliserPlan(searchParams.get('plan'));
+  const billing = normaliserFacturation(searchParams.get('billing'));
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
   const t = useTranslations('auth');
@@ -14,7 +21,7 @@ export default function LoginPage() {
   const handleOAuthSignIn = (provider: string) => {
     setLoading(provider);
     setError('');
-    signIn(provider, { callbackUrl: '/dashboard' });
+    signIn(provider, { callbackUrl: destinationApresConnexion(planKey, billing) });
   };
 
   return (
@@ -54,7 +61,10 @@ export default function LoginPage() {
           <div className="text-center">
             <p className="text-gray-400">
               {t('login.noAccount')}{' '}
-              <Link href="/auth/signup" className="text-studiio-primary hover:text-purple-400 font-semibold">
+              <Link
+                href={planKey ? `/auth/signup?plan=${planKey}&billing=${billing}` : '/auth/signup'}
+                className="text-studiio-primary hover:text-purple-400 font-semibold"
+              >
                 {t('login.signup')}
               </Link>
             </p>
@@ -62,5 +72,17 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-studiio-dark flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }

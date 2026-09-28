@@ -6,6 +6,13 @@ import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Chrome, Facebook, Loader2, Check, Zap } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
+import {
+  normaliserPlan,
+  normaliserFacturation,
+  destinationApresConnexion,
+  resumePlan,
+  centimesEnFrancs,
+} from '@/lib/billing/plan-choisi';
 
 function SignupContent() {
   const searchParams = useSearchParams();
@@ -21,33 +28,42 @@ function SignupContent() {
   }, [guidedParam]);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const t = useTranslations('auth');
 
-  // Fetch CMS plans to display the selected plan info
+  // Plan choisi sur la landing, ramené à une clé connue (liste fermée) : un
+  // `?plan=` inconnu est ignoré, jamais recopié dans une URL ni dans la page.
+  const planKey = normaliserPlan(planParam);
+  const billing = normaliserFacturation(billingParam);
+
+  // Résumé lu dans les constantes publiques, puis aligné sur les prix vivants
+  // de `/api/pricing` (route publique, la même que la landing). L'ancien appel
+  // à la route admin du CMS landing était bloqué par le middleware pour un
+  // visiteur non connecté.
+  const [livePlan, setLivePlan] = useState<{ price_cents?: number; yearly_price_cents?: number; credits?: number } | null>(null);
   useEffect(() => {
-    if (!planParam) return;
-    fetch('/api/admin/landing')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.content?.plans) {
-          const found = data.content.plans.find((p: any) =>
-            p.name.toLowerCase().replace(/\s+/g, '-') === planParam
-          );
-          if (found) setSelectedPlan(found);
-        }
+    if (!planKey) return;
+    fetch('/api/pricing', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        const found = Array.isArray(d?.plans) ? d.plans.find((p: any) => p?.key === planKey) : null;
+        if (found) setLivePlan(found);
       })
       .catch(() => {});
-  }, [planParam]);
+  }, [planKey]);
+
+  const selectedPlan = planKey ? resumePlan(planKey) : null;
+  const credits = livePlan?.credits ?? selectedPlan?.credits ?? 0;
+  const prixCentimes = !selectedPlan
+    ? 0
+    : billing === 'yearly'
+      ? (livePlan?.yearly_price_cents ?? selectedPlan.prixAnnuelMensuelCentimes)
+      : (livePlan?.price_cents ?? selectedPlan.prixMensuelCentimes);
 
   const handleOAuthSignIn = (provider: string) => {
     setLoading(provider);
     setError('');
-    // Pass plan info to callback so it can be stored after signup
-    const callbackUrl = planParam
-      ? `/dashboard?plan=${planParam}&billing=${billingParam}`
-      : '/dashboard';
-    signIn(provider, { callbackUrl });
+    // Plan connu → facturation avec le plan présélectionné (aucun paiement lancé).
+    signIn(provider, { callbackUrl: destinationApresConnexion(planKey, billing) });
   };
 
   return (
@@ -61,19 +77,20 @@ function SignupContent() {
 
           {/* Show selected plan if any */}
           {selectedPlan && (
-            <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl p-4">
+            <div data-plan-choisi={selectedPlan.cle} className="bg-violet-500/10 border border-violet-500/30 rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Zap size={16} className="text-violet-400" />
                 <span className="text-sm font-bold text-violet-300">{t('signup.selectedPlan')}</span>
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-white">{selectedPlan.name}</h3>
-                  <p className="text-xs text-gray-400">{selectedPlan.credits?.toLocaleString()} {t('signup.creditsPerMonth')}</p>
+                  <h3 className="text-lg font-bold text-white">{selectedPlan.nom}</h3>
+                  <p className="text-xs text-gray-400">{credits.toLocaleString()} {t('signup.creditsPerMonth')}</p>
                 </div>
                 <div className="text-right">
+                  {/* Même devise et même format que la landing et `PricingCards`. */}
                   <span className="text-2xl font-black text-white">
-                    {billingParam === 'yearly' ? selectedPlan.yearlyPrice : selectedPlan.price}€
+                    {centimesEnFrancs(prixCentimes)} CHF
                   </span>
                   <span className="text-gray-500 text-xs">/{t('signup.month')}</span>
                 </div>
@@ -91,14 +108,6 @@ function SignupContent() {
                   )}
                 </ul>
               )}
-            </div>
-          )}
-
-          {!selectedPlan && planParam && (
-            <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl p-4 text-center">
-              <Zap size={16} className="text-violet-400 mx-auto mb-1" />
-              <p className="text-sm text-violet-300 font-medium">{t('signup.planSelected', { plan: planParam })}</p>
-              <p className="text-xs text-gray-400 mt-1">{t('signup.planFinalize')}</p>
             </div>
           )}
 
@@ -139,7 +148,9 @@ function SignupContent() {
           <div className="text-center">
             <p className="text-gray-400">
               {t('signup.hasAccount')}{' '}
-              <Link href="/auth/login" className="text-studiio-primary hover:text-purple-400 font-semibold">
+              <Link
+                href={planKey ? `/auth/login?plan=${planKey}&billing=${billing}` : '/auth/login'}
+                className="text-studiio-primary hover:text-purple-400 font-semibold">
                 {t('signup.login')}
               </Link>
             </p>
