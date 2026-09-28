@@ -103,6 +103,14 @@ export async function genererAfficheReference(input: {
         output_format: 'webp',
         safety_tolerance: 2,
       },
+      // ⚠️ `wait: { mode: 'poll' }` — MÊME correctif que la « Racine A » de
+      // `/api/ai/image` (#425). Par défaut le SDK 1.4.0 attend en `block`
+      // (`Prefer: wait`, ~60 s) : passé ce délai, la prédiction revient
+      // ENCORE `processing` avec `output = null`, `run()` la croit finie et
+      // rend `null` → « sans image exploitable » sur un job pourtant vivant.
+      // En `poll`, `run()` sonde jusqu'à un état terminal ; `DELAI_MS` borne
+      // l'attente et annule la prédiction via `signal`.
+      wait: { mode: 'poll' },
       signal: ctrl.signal,
     });
   } catch (e) {
