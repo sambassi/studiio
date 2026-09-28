@@ -25,6 +25,19 @@ async function planFromPriceId(priceId: string): Promise<{ plan: PlanKey; billin
   return null;
 }
 
+/**
+ * Quota mensuel de credits d'un plan : table `plans` d'abord, repli sur
+ * STRIPE_PLANS. Source unique pour le premier mois ET le renouvellement.
+ */
+async function monthlyCreditsForPlan(plan: PlanKey): Promise<number> {
+  let monthly = (STRIPE_PLANS as any)[plan]?.credits ?? 0;
+  try {
+    const { data: dbPlan } = await supabase.from('plans').select('credits').eq('key', plan).single();
+    if (dbPlan?.credits) monthly = dbPlan.credits;
+  } catch {}
+  return monthly;
+}
+
 async function alreadyProcessed(eventId: string, type: string): Promise<boolean> {
   try {
     const { data } = await supabase.from('stripe_events').select('event_id').eq('event_id', eventId).single();
@@ -140,21 +153,47 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       case 'invoice.payment_succeeded': {
         const inv = event.data.object as any;
         if (inv.billing_reason === 'subscription_cycle') {
+          // Renouvellement : comportement historique inchange (le solde est
+          // REMPLACE par le quota du plan). Hors perimetre de ce correctif.
           const subId = inv.subscription;
           const { data: subRow } = await supabase.from('subscriptions').select('user_id, plan').eq('stripe_subscription_id', subId).single();
           const userId = subRow?.user_id;
           const plan = (subRow?.plan || 'free') as PlanKey;
-          let monthly = (STRIPE_PLANS as any)[plan]?.credits ?? 0;
-          try {
-            const { data: dbPlan } = await supabase.from('plans').select('credits').eq('key', plan).single();
-            if (dbPlan?.credits) monthly = dbPlan.credits;
-          } catch {}
+          const monthly = await monthlyCreditsForPlan(plan);
           if (userId && monthly > 0) {
             await supabase.from('users').update({ credits: monthly }).eq('id', userId);
             await supabase.from('credit_transactions').insert({
               user_id: userId, amount: monthly, type: 'subscription',
               created_at: new Date().toISOString(),
             });
+          }
+        } else if (inv.billing_reason === 'subscription_create') {
+          // Premier mois : SEULE source de credit de l'abonnement
+          // (checkout.session.completed ne credite pas en mode subscription).
+          // Le quota du plan est AJOUTE au solde : les credits deja detenus
+          // (credits gratuits de depart, packs achetes) ne sont pas perdus.
+          //
+          // Stripe ne garantit pas l'ordre des evenements : cette facture peut
+          // arriver avant checkout.session.completed, donc avant la ligne
+          // `subscriptions`. Repli sur les metadonnees posees par
+          // create-checkout (subscription_data.metadata), que Stripe recopie
+          // dans invoice.subscription_details.metadata.
+          const subId = inv.subscription;
+          const { data: subRow } = await supabase.from('subscriptions').select('user_id, plan').eq('stripe_subscription_id', subId).single();
+          const subMeta = inv.subscription_details?.metadata || {};
+          const userId = subRow?.user_id || subMeta.userId;
+          const plan = (subRow?.plan || subMeta.plan || 'free') as PlanKey;
+          const monthly = await monthlyCreditsForPlan(plan);
+          if (userId && monthly > 0) {
+            const { data: u } = await supabase.from('users').select('credits').eq('id', userId).single();
+            const current = u?.credits ?? 0;
+            await supabase.from('users').update({ credits: current + monthly }).eq('id', userId);
+            await supabase.from('credit_transactions').insert({
+              user_id: userId, amount: monthly, type: 'subscription',
+              created_at: new Date().toISOString(),
+            });
+          } else {
+            console.warn('[webhook] subscription_create sans credit', inv.id, { hasUser: !!userId, plan });
           }
         }
         break;
