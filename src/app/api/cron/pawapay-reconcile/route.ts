@@ -41,6 +41,14 @@ const LIMITE_DEFAUT = 20;
 const LIMITE_ANCIENS_DEFAUT = 5;
 const LIMITE_MAX = 100;
 const SEUIL_ANCIEN_HEURES = 24;
+/**
+ * Budget de temps d'un passage. Chaque appel PawaPay est déjà borné
+ * (`DELAI_APPEL_PAWAPAY_MS`) ; ce budget borne le passage entier, pour que
+ * deux passages planifiés ne se chevauchent pas. Une fois dépassé, aucun
+ * nouveau dépôt n'est entamé : les restants seront servis au passage suivant
+ * (ils n'ont pas été vérifiés, ils restent donc en tête de file).
+ */
+const BUDGET_PASSAGE_MS = 60_000;
 
 // Secret absent ou vide → refus total (voir `isCronAuthorized`).
 function verifyCronSecret(req: NextRequest): boolean {
@@ -92,7 +100,18 @@ export async function GET(req: NextRequest) {
   const bloques: string[] = [];
 
   // Séquentiel : un passage ne martèle pas l'API PawaPay.
+  let traites = 0;
+  let interrompu = false;
   for (const depot of enAttente) {
+    if (Date.now() - maintenant >= BUDGET_PASSAGE_MS) {
+      interrompu = true;
+      console.warn(
+        `[PAWAPAY_RATTRAPAGE] Budget de ${BUDGET_PASSAGE_MS / 1000} s atteint : `
+        + `${enAttente.length - traites} dépôt(s) reporté(s) au passage suivant`,
+      );
+      break;
+    }
+    traites++;
     try {
       const { issue } = await confirmerDepot(depot.depositId, {
         store: deps.store,
@@ -116,7 +135,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const corps = { status: 'ok', lot: anciens ? 'anciens' : 'normal', examines: enAttente.length, bilan, bloques };
+  const corps = {
+    status: 'ok',
+    lot: anciens ? 'anciens' : 'normal',
+    examines: traites,
+    reportes: enAttente.length - traites,
+    interrompu,
+    bilan,
+    bloques,
+  };
   // Une erreur n'est jamais avalée : le passage suivant réessaiera, mais la
   // supervision voit un 500.
   return NextResponse.json(corps, { status: bilan.erreur ? 500 : 200 });

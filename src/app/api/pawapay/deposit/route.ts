@@ -18,30 +18,12 @@
  */
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { creerPagePaiement, genererDepositId, paysActifs } from '@/lib/payment/pawapay/client';
-import { obtenirDependances, obtenirTauxChf, pawapayActif } from '@/lib/payment/pawapay/store';
-import { DeviseSansTauxErreur, PACKS_PAWAPAY, estPackId, prixLocal } from '@/lib/payment/pawapay/tarifs';
+import { creerPagePaiement, genererDepositId } from '@/lib/payment/pawapay/client';
+import { calculerDevis, urlDeBaseConfiguree } from '@/lib/payment/pawapay/devis';
+import { obtenirDependances, pawapayActif } from '@/lib/payment/pawapay/store';
 import { PawapayErreur } from '@/lib/payment/pawapay/types';
 
 export const dynamic = 'force-dynamic';
-
-const PAYS_RX = /^[A-Z]{3}$/;
-
-/**
- * Base de l'URL de retour, CONFIGURÉE côté serveur uniquement. Jamais
- * l'en-tête Host de la requête : il est contrôlé par le client. `null` si ni
- * `NEXTAUTH_URL` ni `NEXT_PUBLIC_APP_URL` n'est une URL http(s) valide.
- */
-function urlDeBase(): string | null {
-  for (const brut of [process.env.NEXTAUTH_URL, process.env.NEXT_PUBLIC_APP_URL]) {
-    if (!brut) continue;
-    try {
-      const u = new URL(brut);
-      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
-    } catch { /* suivante */ }
-  }
-  return null;
-}
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -55,7 +37,7 @@ export async function POST(req: Request) {
   if (!deps) {
     return NextResponse.json({ error: 'Paiement Mobile Money indisponible' }, { status: 503 });
   }
-  const base = urlDeBase();
+  const base = urlDeBaseConfiguree();
   if (!base) {
     console.error('[PAWAPAY_DEPOT] NEXTAUTH_URL / NEXT_PUBLIC_APP_URL absents : URL de retour impossible');
     return NextResponse.json({ error: 'Paiement Mobile Money indisponible' }, { status: 503 });
@@ -69,40 +51,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'JSON invalide' }, { status: 400 });
   }
 
-  const { pack, pays, devise: deviseDemandee, telephone } = corps;
-  if (!estPackId(pack)) return NextResponse.json({ error: 'Pack invalide' }, { status: 400 });
-  if (typeof pays !== 'string' || !PAYS_RX.test(pays)) {
-    return NextResponse.json({ error: 'Pays invalide' }, { status: 400 });
+  const { telephone } = corps;
+  // Même calcul que `/api/pawapay/quote` : le prix affiché est le prix encaissé.
+  const resultat = await calculerDevis({ pack: corps.pack, pays: corps.pays, devise: corps.devise });
+  if (!resultat.ok) {
+    return NextResponse.json(
+      { error: resultat.erreur, ...(resultat.devises ? { devises: resultat.devises } : {}) },
+      { status: resultat.status },
+    );
   }
-
-  const taux = await obtenirTauxChf();
-  if (!taux) return NextResponse.json({ error: 'Taux de change indisponibles' }, { status: 503 });
-
-  let devise: string;
-  let montant: string;
-  try {
-    const actif = (await paysActifs()).find((p) => p.pays === pays);
-    if (!actif) return NextResponse.json({ error: 'Pays non disponible' }, { status: 400 });
-    if (typeof deviseDemandee === 'string' && deviseDemandee) {
-      if (!actif.devises.includes(deviseDemandee)) {
-        return NextResponse.json({ error: 'Devise non disponible pour ce pays' }, { status: 400 });
-      }
-      devise = deviseDemandee;
-    } else if (actif.devises.length === 1) {
-      devise = actif.devises[0];
-    } else {
-      return NextResponse.json({ error: 'Devise à préciser', devises: actif.devises }, { status: 400 });
-    }
-    montant = prixLocal(pack, devise, taux);
-  } catch (e) {
-    if (e instanceof DeviseSansTauxErreur) {
-      return NextResponse.json({ error: 'Devise non disponible' }, { status: 400 });
-    }
-    console.error('[PAWAPAY_DEPOT] Configuration du compte illisible :', (e as Error)?.message);
-    return NextResponse.json({ error: 'Service Mobile Money injoignable' }, { status: 502 });
-  }
-
-  const { credits } = PACKS_PAWAPAY[pack];
+  const { pack, pays, devise, montant, credits } = resultat.devis;
   const depositId = genererDepositId();
 
   // 1) La trace d'abord.
