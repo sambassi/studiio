@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { comptesConnectes, droitDePublier } from '@/lib/social/publishing';
-import { publierViaZernio } from '@/lib/social/publishViaZernio';
+import { publierViaZernio, etatPreuveZernio, sansPreuveZernio } from '@/lib/social/publishViaZernio';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { execFile } from 'child_process';
 import { readFile, unlink, access } from 'fs/promises';
@@ -258,17 +258,40 @@ export async function GET(req: NextRequest) {
     // volontairement le post a `publishing` en attendant le webhook
     // `post.published`. Les remettre a `scheduled` les ferait reclamer au
     // passage suivant et republier : double publication sur les reseaux de
-    // l'utilisateur. `metadata.zernioPostId` est la preuve que Zernio a
-    // accepte le post ; sans elle (metadata nulle ou cle absente), le reset
-    // s'applique comme avant.
+    // l'utilisateur. La preuve est lue par `etatPreuveZernio`, la meme
+    // fonction que `publierViaZernio` :
+    // - `valide` (preuve de CE post)       → exclu du reset ;
+    // - `ancienne` (sans zernioForPostId)  → exclu aussi : on ne peut pas
+    //   savoir si CE post est parti, et une double publication ne se
+    //   rattrape pas ;
+    // - `etrangere` (copie via Dupliquer) ou `absente` → reset comme avant.
+    // La comparaison entre deux cles JSON ne s'exprime pas en filtre
+    // PostgREST : lecture, tri en JS, puis mise a jour des seuls ids retenus
+    // (en re-verifiant statut et anciennete, pour ne pas ecraser une ligne
+    // qui aurait bouge entre-temps).
     const stuckThreshold = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
-    const { data: stuckPosts, error: stuckErr } = await supabase
+    const { data: stuckCandidates, error: stuckReadErr } = await supabase
       .from('scheduled_posts')
-      .update({ status: 'scheduled' })
+      .select('id, metadata')
       .eq('status', 'publishing')
-      .lt('updated_at', stuckThreshold)
-      .is('metadata->>zernioPostId', null)
-      .select('id, title, updated_at');
+      .lt('updated_at', stuckThreshold);
+    const stuckIds = (stuckCandidates || [])
+      .filter((p: any) => {
+        const preuve = etatPreuveZernio(p.metadata, p.id);
+        return preuve === 'absente' || preuve === 'etrangere';
+      })
+      .map((p: any) => p.id as string);
+    const { data: stuckPosts, error: stuckErr } = stuckReadErr
+      ? { data: null, error: stuckReadErr }
+      : stuckIds.length === 0
+        ? { data: [], error: null }
+        : await supabase
+            .from('scheduled_posts')
+            .update({ status: 'scheduled' })
+            .in('id', stuckIds)
+            .eq('status', 'publishing')
+            .lt('updated_at', stuckThreshold)
+            .select('id, title, updated_at');
     if (stuckErr) {
       console.error('[CRON] stuck-reset query failed:', stuckErr.message);
     } else if (stuckPosts && stuckPosts.length > 0) {
@@ -416,7 +439,7 @@ export async function GET(req: NextRequest) {
                 // `post.published` de Zernio qui confirmera. Marquer publie
                 // ici annoncerait un succes qu'on ne connait pas encore.
                 ? { status: 'publishing' }
-                : { status: 'failed', metadata: { ...post.metadata, error: resultat.motif } })
+                : { status: 'failed', metadata: { ...metaEchecZernio(post.metadata, resultat), error: resultat.motif } })
               .eq('id', post.id);
             console.log(`[CRON] Zernio post ${post.id} : ${resultat.ok ? `remis a ${resultat.comptes} compte(s)` : `refus — ${resultat.motif}`}`);
             results.push({
@@ -1038,6 +1061,15 @@ async function muxAudioIntoVideo(
 // ══════════════════════════════════════════════════════════════
 // FONCTIONS DE PUBLICATION PAR PLATEFORME (identique à /api/social/publish)
 // ══════════════════════════════════════════════════════════════
+
+// Metadonnees d'un echec Zernio. Une preuve « ancienne » (sans
+// zernioForPostId) est retiree : le post finit `failed` avec un motif
+// lisible, et c'est la reprogrammation EXPLICITE de l'utilisateur qui
+// republiera. La valeur est gardee sous `zernioPostIdAncien` pour diagnostic.
+function metaEchecZernio(metadata: any, resultat: { preuveAncienne?: boolean }): Record<string, unknown> {
+  if (!resultat.preuveAncienne) return { ...(metadata || {}) };
+  return { ...sansPreuveZernio(metadata), zernioPostIdAncien: metadata?.zernioPostId ?? null };
+}
 
 // Resolve a publicly-fetchable URL for the Graph API / platform fetchers.
 // If the URL is a private Supabase path, create a 1h signed URL.

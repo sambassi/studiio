@@ -21,7 +21,48 @@ import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 export type ResultatPublication =
   /** `dejaEnvoye` : Zernio avait deja accepte ce post, rien n'a ete recree. */
   | { ok: true; zernioPostId: string; comptes: number; dejaEnvoye?: boolean }
-  | { ok: false; motif: string; reessayable: boolean };
+  /**
+   * `preuveAncienne` : le post porte un `zernioPostId` sans `zernioForPostId`
+   * (ecrit avant ce correctif). L'appelant doit retirer cette preuve en
+   * marquant le post `failed`, pour qu'une reprogrammation EXPLICITE
+   * republie. Voir `etatPreuveZernio`.
+   */
+  | { ok: false; motif: string; reessayable: boolean; preuveAncienne?: boolean };
+
+/**
+ * La preuve qu'une tentative a ete remise a Zernio, lue dans `metadata`.
+ *
+ * ⚠️ ELLE EST LIEE AU POST QUI L'A ECRITE. `metadata` voyage : « Dupliquer »
+ * dans le Calendrier recopie tout, `zernioPostId` compris. Sans
+ * `zernioForPostId`, la copie se croirait deja publiee et resterait bloquee a
+ * `publishing` pour toujours.
+ *
+ * - `valide`    : `zernioPostId` + `zernioForPostId === postId` → deja envoye.
+ * - `etrangere` : `zernioForPostId` designe un AUTRE post → une copie, a publier.
+ * - `ancienne`  : `zernioPostId` sans `zernioForPostId` (ecrit avant ce
+ *                 correctif). Impossible de distinguer l'original d'une copie :
+ *                 on ne publie PAS (une double publication ne se rattrape
+ *                 pas), on echoue EXPLICITEMENT (jamais un blocage muet).
+ * - `absente`   : rien → a publier.
+ */
+export type EtatPreuveZernio = 'valide' | 'etrangere' | 'ancienne' | 'absente';
+
+export function etatPreuveZernio(
+  metadata: Record<string, unknown> | null | undefined,
+  postId: string,
+): EtatPreuveZernio {
+  const id = metadata?.zernioPostId;
+  if (typeof id !== 'string' || id.length === 0) return 'absente';
+  const pour = metadata?.zernioForPostId;
+  if (typeof pour !== 'string' || pour.length === 0) return 'ancienne';
+  return pour === postId ? 'valide' : 'etrangere';
+}
+
+/** Les metadonnees sans preuve Zernio — pour autoriser une reprogrammation. */
+export function sansPreuveZernio(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  const { zernioPostId: _id, zernioForPostId: _pour, ...reste } = metadata ?? {};
+  return reste;
+}
 
 export interface PostAPublier {
   id: string;
@@ -50,18 +91,29 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
   // `createPost` le publierait une deuxieme fois sur les reseaux de
   // l'utilisateur. La preuve est relue EN BASE, jamais prise de l'appelant :
   // sa copie du post peut dater d'avant le premier envoi.
-  let dejaEnvoye: string | null;
+  let meta: Record<string, unknown> | null;
   try {
-    dejaEnvoye = await zernioPostIdExistant(post.id);
+    meta = await metadataEnBase(post.id);
   } catch (e) {
     // Sans pouvoir verifier, on ne publie pas : un echec se rejoue, une
     // double publication ne se rattrape pas.
     console.error(`[Zernio/Publication] post ${post.id} : verification d'idempotence impossible :`, e);
     return { ok: false, motif: 'Publication impossible.', reessayable: true };
   }
-  if (dejaEnvoye) {
+  const preuve = etatPreuveZernio(meta, post.id);
+  if (preuve === 'valide') {
+    const dejaEnvoye = String(meta!.zernioPostId);
     console.warn(`[Zernio/Publication] post ${post.id} deja remis a Zernio (${dejaEnvoye}) — pas de nouvel envoi.`);
     return { ok: true, zernioPostId: dejaEnvoye, comptes: 0, dejaEnvoye: true };
+  }
+  if (preuve === 'ancienne') {
+    console.warn(`[Zernio/Publication] post ${post.id} : preuve Zernio sans zernioForPostId — envoi refuse par prudence.`);
+    return {
+      ok: false,
+      motif: 'Ce post a peut-être déjà été publié. Vérifiez vos réseaux, puis reprogrammez-le pour le publier à nouveau.',
+      reessayable: false,
+      preuveAncienne: true,
+    };
   }
 
   const droit = await droitDePublier(post.userId, post.email);
@@ -129,7 +181,9 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       const meta = ((data?.[0] as { metadata?: Record<string, unknown> } | undefined)?.metadata) ?? {};
       await supabaseAdmin
         .from('scheduled_posts')
-        .update({ metadata: { ...meta, zernioPostId: zernio._id } })
+        // `zernioForPostId` lie la preuve a CE post : une copie qui la
+        // recopierait sera reconnue comme etrangere, donc publiee.
+        .update({ metadata: { ...meta, zernioPostId: zernio._id, zernioForPostId: post.id } })
         .eq('id', post.id);
     } catch (e) {
       // Le post EST parti : ne pas le compter en echec pour une note de
@@ -159,12 +213,10 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
   }
 }
 
-/** `metadata.zernioPostId` du post, relu en base. Leve si la lecture echoue. */
-async function zernioPostIdExistant(postId: string): Promise<string | null> {
+/** `metadata` du post, relue en base. Leve si la lecture echoue. */
+async function metadataEnBase(postId: string): Promise<Record<string, unknown> | null> {
   const { data, error } = await supabaseAdmin
     .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
   if (error) throw new Error(error.message);
-  const meta = (data?.[0] as { metadata?: Record<string, unknown> | null } | undefined)?.metadata;
-  const id = meta?.zernioPostId;
-  return typeof id === 'string' && id.length > 0 ? id : null;
+  return (data?.[0] as { metadata?: Record<string, unknown> | null } | undefined)?.metadata ?? null;
 }

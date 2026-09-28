@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { sansPreuveZernio } from '@/lib/social/publishViaZernio';
 
 /**
  * Webhook Zernio — un seul point d'entrée, routage interne.
@@ -127,6 +128,29 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
     const postId = typeof meta.studiioPostId === 'string' ? meta.studiioPostId : null;
     if (!postId) return;
     const statut = type === 'post.published' ? 'published' : 'failed';
+
+    // ⚠️ `post.failed` EFFACE LA PREUVE D'ENVOI. Sinon, un post reprogramme
+    // apres un echec serait pris pour « deja envoye » par le cron et
+    // resterait a `publishing` sans jamais partir. Relecture puis fusion : un
+    // `update` direct de `metadata` ecraserait sequences, design et URLs.
+    // `post.partial` GARDE la preuve : une partie des reseaux a publie, et
+    // republier en doublerait certains.
+    if (type === 'post.failed') {
+      const { data: lignes, error: lectureErr } = await supabaseAdmin
+        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
+      if (!lectureErr && lignes && lignes.length > 0) {
+        const actuelle = (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata;
+        await supabaseAdmin
+          .from('scheduled_posts')
+          .update({ status: statut, metadata: sansPreuveZernio(actuelle) })
+          .eq('id', postId);
+        return;
+      }
+      // Lecture impossible : on ne reecrit PAS `metadata` a l'aveugle (ce
+      // serait tout effacer). Le statut passe quand meme a `failed`.
+      console.error(`[Zernio/Webhook] post ${postId} : metadata illisible, preuve d'envoi conservee.`);
+    }
+
     await supabaseAdmin
       .from('scheduled_posts')
       .update({ status: statut })

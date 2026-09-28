@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NextRequest } from 'next/server';
+import { createHmac } from 'crypto';
 
 // ── Base en memoire, qui EVALUE les filtres PostgREST utilises ────────────
 type Ligne = Record<string, any>;
@@ -50,6 +51,7 @@ function chaine(table: string) {
     eq: (c: string, v: unknown) => { filtres.push((l) => valeur(l, c) === v); return b; },
     lt: (c: string, v: string) => { filtres.push((l) => String(valeur(l, c)) < v); return b; },
     is: (c: string, v: null) => { filtres.push((l) => valeur(l, c) === v); return b; },
+    in: (c: string, v: unknown[]) => { filtres.push((l) => v.includes(valeur(l, c))); return b; },
     // Les posts du test sont tous anciens : la fenetre horaire les couvre.
     or: () => b,
     order: () => b,
@@ -150,8 +152,29 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const preuve = (id: string, pour: string) => ({ zernioPostId: id, zernioForPostId: pour });
+
+async function webhook(evenement: Record<string, unknown>) {
+  const { POST } = await import('@/app/api/social/zernio/webhook/route');
+  const corps = JSON.stringify(evenement);
+  const signature = createHmac('sha256', 'secret-webhook').update(corps, 'utf8').digest('hex');
+  return POST(new NextRequest('http://localhost:3000/api/social/zernio/webhook', {
+    method: 'POST', body: corps, headers: { 'x-zernio-signature': signature },
+  }));
+}
+
 describe('Reset des posts bloques a `publishing`', () => {
-  it('un post deja remis a Zernio n est PAS remis a `scheduled`', async () => {
+  it('un post deja remis a Zernio (preuve de CE post) n est PAS remis a `scheduled`', async () => {
+    base.scheduled_posts = [
+      post('zernio', { status: 'publishing', updated_at: IL_Y_A_UNE_HEURE(), metadata: preuve('z-1', 'zernio') }),
+    ];
+    await lancerCron();
+    expect(resets.flat()).not.toContain('zernio');
+    expect(base.scheduled_posts[0].status).toBe('publishing');
+    expect(createPost).not.toHaveBeenCalled();
+  });
+
+  it('une preuve ANCIENNE (sans zernioForPostId) n est pas remise a `scheduled` non plus', async () => {
     base.scheduled_posts = [
       post('zernio', { status: 'publishing', updated_at: IL_Y_A_UNE_HEURE(), metadata: { zernioPostId: 'z-1' } }),
     ];
@@ -163,12 +186,14 @@ describe('Reset des posts bloques a `publishing`', () => {
 
   it('un post bloque SANS zernioPostId est toujours remis a `scheduled` (comportement inchange)', async () => {
     base.scheduled_posts = [
-      post('zernio', { status: 'publishing', updated_at: IL_Y_A_UNE_HEURE(), metadata: { zernioPostId: 'z-1' } }),
+      post('zernio', { status: 'publishing', updated_at: IL_Y_A_UNE_HEURE(), metadata: preuve('z-1', 'zernio') }),
       post('bloque', { status: 'publishing', updated_at: IL_Y_A_UNE_HEURE(), metadata: {} }),
       post('sans-meta', { status: 'publishing', updated_at: IL_Y_A_UNE_HEURE(), metadata: null }),
+      // Copie bloquee : la preuve recopiee designe l'original, pas elle.
+      post('copie', { status: 'publishing', updated_at: IL_Y_A_UNE_HEURE(), metadata: preuve('z-1', 'zernio') }),
     ];
     await lancerCron();
-    expect(resets[0]).toEqual(['bloque', 'sans-meta']);
+    expect(resets[0]).toEqual(['bloque', 'sans-meta', 'copie']);
   });
 
   it('un post recent a `publishing` n est pas touche', async () => {
@@ -187,6 +212,7 @@ describe('Deux passages du cron — un seul envoi a Zernio', () => {
     expect(createPost).toHaveBeenCalledTimes(1);
     expect(base.scheduled_posts[0].status).toBe('publishing');
     expect(base.scheduled_posts[0].metadata.zernioPostId).toBe('zernio-post-1');
+    expect(base.scheduled_posts[0].metadata.zernioForPostId).toBe('p1');
     // Les metadonnees existantes sont conservees.
     expect(base.scheduled_posts[0].metadata.renderedVideoUrl).toBe('https://cdn.example/rendus/montage.mp4');
 
@@ -200,14 +226,73 @@ describe('Deux passages du cron — un seul envoi a Zernio', () => {
   });
 });
 
+describe('Preuve recopiee ou effacee — la publication repart', () => {
+  it('une copie (Dupliquer) portant la preuve d un AUTRE post est bien publiee', async () => {
+    base.scheduled_posts = [post('copie', { metadata: { renderedVideoUrl: 'x', ...preuve('z-original', 'original') } })];
+    const r = await lancerCron(true);
+    expect(r.results[0]).toMatchObject({ success: true, details: 'Zernio' });
+    expect(createPost).toHaveBeenCalledTimes(1);
+    // La preuve est remplacee par celle de la copie.
+    expect(base.scheduled_posts[0].metadata).toMatchObject(preuve('zernio-post-1', 'copie'));
+    expect(base.scheduled_posts[0].metadata.renderedVideoUrl).toBe('x');
+  });
+
+  it('un post en echec (webhook post.failed) puis reprogramme est republie', async () => {
+    process.env.ZERNIO_WEBHOOK_SECRET = 'secret-webhook';
+    base.scheduled_posts = [post('p1')];
+    await lancerCron(true);
+    expect(createPost).toHaveBeenCalledTimes(1);
+
+    await webhook({ event: 'post.failed', data: { _id: 'zernio-post-1', metadata: { studiioPostId: 'p1' } } });
+    const apresEchec = base.scheduled_posts[0];
+    expect(apresEchec.status).toBe('failed');
+    expect(apresEchec.metadata).not.toHaveProperty('zernioPostId');
+    expect(apresEchec.metadata).not.toHaveProperty('zernioForPostId');
+    // Les autres cles sont conservees.
+    expect(apresEchec.metadata.renderedVideoUrl).toBe('https://cdn.example/rendus/montage.mp4');
+
+    // L'utilisateur reprogramme.
+    apresEchec.status = 'scheduled';
+    const r = await lancerCron(true);
+    expect(r.results[0].success).toBe(true);
+    expect(createPost).toHaveBeenCalledTimes(2);
+    delete process.env.ZERNIO_WEBHOOK_SECRET;
+  });
+
+  it('post.partial GARDE la preuve (certains reseaux ont publie)', async () => {
+    process.env.ZERNIO_WEBHOOK_SECRET = 'secret-webhook';
+    base.scheduled_posts = [post('p1', { status: 'publishing', metadata: { a: 1, ...preuve('z', 'p1') } })];
+    await webhook({ event: 'post.partial', data: { metadata: { studiioPostId: 'p1' } } });
+    expect(base.scheduled_posts[0].metadata).toMatchObject({ a: 1, ...preuve('z', 'p1') });
+    delete process.env.ZERNIO_WEBHOOK_SECRET;
+  });
+
+  it('une preuve ANCIENNE bloque l envoi EXPLICITEMENT, et la reprogrammation republie', async () => {
+    base.scheduled_posts = [post('p1', { metadata: { renderedVideoUrl: 'x', zernioPostId: 'z-legacy' } })];
+    const r1 = await lancerCron(true);
+    expect(createPost).not.toHaveBeenCalled();
+    expect(r1.results[0].success).toBe(false);
+    const ligne = base.scheduled_posts[0];
+    expect(ligne.status).toBe('failed');
+    expect(String(ligne.metadata.error)).toContain('reprogrammez');
+    expect(ligne.metadata).not.toHaveProperty('zernioPostId');
+    expect(ligne.metadata.zernioPostIdAncien).toBe('z-legacy');
+
+    ligne.status = 'scheduled';
+    const r2 = await lancerCron(true);
+    expect(r2.results[0].success).toBe(true);
+    expect(createPost).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('publierViaZernio — idempotence', () => {
   const entree = {
     id: 'p1', userId: 'user-1', caption: 'x',
     mediaUrl: 'https://cdn.example/rendus/montage.mp4', platforms: ['instagram'],
   };
 
-  it('ne recree pas le post si metadata.zernioPostId existe deja', async () => {
-    base.scheduled_posts = [post('p1', { status: 'publishing', metadata: { zernioPostId: 'z-existant' } })];
+  it('ne recree pas le post si la preuve de CE post existe deja', async () => {
+    base.scheduled_posts = [post('p1', { status: 'publishing', metadata: preuve('z-existant', 'p1') })];
     const { publierViaZernio } = await import('@/lib/social/publishViaZernio');
     const r = await publierViaZernio(entree);
     expect(r).toMatchObject({ ok: true, zernioPostId: 'z-existant', dejaEnvoye: true });
