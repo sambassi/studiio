@@ -194,8 +194,9 @@ import {
   metadataPourEnregistrement, type ValeursWizard,
 } from '@/lib/creer/postMetadata/from-wizard';
 import {
-  fondsPourMetadata, recadrageValide, photoCartesPourMetadata, type PhotoCartes,
+  fondsPourMetadata, recadrageValide, type PhotoCartes,
 } from '@/lib/creer/postMetadata/rendu-fidele';
+import { televerserPhotoCartes } from '@/lib/creer/photoCartes';
 import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
@@ -7804,21 +7805,11 @@ export default function AssistantWizard() {
         // (repli `data:` de `uploadPosterFile`) laisse simplement le post sans
         // photo, et le Calendrier redessine comme avant. L'empreinte decrit
         // la metadata ENVOYEE : un « Modifier » des cartes l'invalide.
-        let photoCartes: PhotoCartes | undefined;
-        if (cardsSnapshotCanvas && cardsSnapshotRect) {
-          try {
-            const blob = await new Promise<Blob | null>((resolve) => {
-              const timer = setTimeout(() => resolve(null), 10000);
-              cardsSnapshotCanvas!.toBlob((b) => { clearTimeout(timer); resolve(b); }, 'image/png');
-            });
-            if (blob) {
-              const envoi = await uploadPosterFile(new File([blob], 'cartes.png', { type: 'image/png' }));
-              if (!envoi.dataUrl) photoCartes = photoCartesPourMetadata(envoi.url, cardsSnapshotRect, metadata);
-            }
-          } catch (err) {
-            console.warn('[Assistant] Photo des cartes non enregistree (non bloquant):', err);
-          }
-        }
+        // BORNE a 10 s (`televerserPhotoCartes`) : le montage est deja debite,
+        // un stockage bloque ne doit jamais empecher la creation du post.
+        const photoCartes: PhotoCartes | undefined = cardsSnapshotCanvas && cardsSnapshotRect
+          ? await televerserPhotoCartes(cardsSnapshotCanvas, cardsSnapshotRect, metadata)
+          : undefined;
 
         // « Programmer » sans aucun reseau retenu ne programme rien : un post
         // `scheduled` sans plateforme serait marque « failed » par le cron a

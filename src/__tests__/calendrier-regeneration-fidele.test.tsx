@@ -54,7 +54,10 @@ vi.mock('@/lib/video-composer', async () => {
   };
 });
 
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
+import { televerserPhotoCartes, DELAI_PHOTO_CARTES_MS } from '../lib/creer/photoCartes';
 import { draftKey, DRAFT_VERSION, sanitizeDraft } from '../lib/creer/draft';
 import { toWizardDraft } from '../lib/creer/postMetadata/to-wizard';
 import { metadataPourEnregistrement, CLE_MONTAGE_PERIME } from '../lib/creer/postMetadata/from-wizard';
@@ -674,5 +677,100 @@ describe('DEFAULT SAFE — un ancien post donne les MÊMES options qu’avant, s
     expect(vues.planifier).toEqual(vues.regenerer);
     expect(vues.publier).toEqual(vues.regenerer);
     expect(vues.exporter).toEqual([{ emoji: 'Heart', label: 'l', value: 'v', color: '#fff' }]);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// POSTS RÉELS ACTUELS — changement de rendu ASSUMÉ
+//
+// `main` écrit DÉJÀ `design.textAnimation`, `design.cardsFont`,
+// `design.cardsTextStyle`, `design.positions.elements` (parcours Créer) et
+// `design.transition` / `design.textAnimation` (Autopilote,
+// `autopilot/design.ts`). Jusqu'ici, les quatre chemins du Calendrier les
+// ignoraient ; désormais ils les appliquent. C'est plus fidèle au montage
+// d'origine, mais c'est un CHANGEMENT DE RENDU pour ces posts existants —
+// documenté ici, pas caché derrière le « default safe ».
+// ══════════════════════════════════════════════════════════════════════════
+describe('POSTS RÉELS ACTUELS — les champs déjà écrits par main sont désormais appliqués', () => {
+  const postCreerActuel = {
+    title: 'YOGA', format: 'reel', metadata: {
+      source: 'assistant-simple',
+      cards: [{ emoji: 'Heart', label: 'a', value: '1', description: 'd', color: '#fff' }],
+      sequences: { intro: 5, cards: 6, video: 0, cta: 5, order: ['intro', 'cards', 'cta'] },
+      design: {
+        textAnimation: 'pop', cardsFont: 'Poppins', cardsTextStyle: { font: 'Poppins', scale: 1 },
+        positions: { title: { x: 8, y: 10 }, elements: ELEMENTS },
+      },
+    },
+  };
+  const postAutopiloteActuel = {
+    title: 'AUTO', format: 'reel', metadata: {
+      serverRendered: true, renderedVideoUrl: `${S}/autopilote-j1.mp4`,
+      design: { textAnimation: 'fade', transition: 'zoom', titleAlign: 'left' },
+    },
+  };
+
+  it('post Créer actuel : animation, police et style des cartes, éléments — appliqués sur les 4 chemins', async () => {
+    for (const chemin of ['regenerer', 'planifier', 'publier', 'exporter'] as CheminCalendrier[]) {
+      const o = await preparerOptionsRendu(postCreerActuel, chemin, undefined, depsDoublees());
+      expect(o.design?.textAnimation, chemin).toBe('pop');
+      expect(o.design?.cardsFont, chemin).toBe('Poppins');
+      expect(o.design?.cardsTextStyle, chemin).toEqual({ font: 'Poppins', scale: 1 });
+      expect(o.design?.elements, chemin).toHaveLength(1);
+    }
+  });
+
+  it('post Autopilote actuel : transition et animation appliquées SI un chemin le recompose (export Bureau)', async () => {
+    const o = await preparerOptionsRendu(postAutopiloteActuel, 'exporter', undefined, depsDoublees());
+    expect(o.transition).toBe('zoom');
+    expect(o.design?.textAnimation).toBe('fade');
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+describe('PHOTO DES CARTES — téléversement BORNÉ (le montage est déjà débité)', () => {
+  const canvas = { toBlob: (cb: (b: Blob | null) => void) => cb(new Blob(['png'], { type: 'image/png' })) } as unknown as HTMLCanvasElement;
+  const RECT = { x: 1, y: 2, width: 50, height: 40 };
+
+  it('stockage bloqué : rend `undefined` au délai, sans attendre indéfiniment', async () => {
+    const debut = Date.now();
+    const photo = await televerserPhotoCartes(canvas, RECT, {}, {
+      upload: () => new Promise(() => {}), // ne répond jamais
+      delaiMs: 30,
+    });
+    expect(photo).toBeUndefined();
+    expect(Date.now() - debut).toBeLessThan(2000);
+  });
+
+  it('le délai par défaut est de 10 s', () => {
+    expect(DELAI_PHOTO_CARTES_MS).toBe(10_000);
+  });
+
+  it('encodage bloqué (toBlob muet) : même délai', async () => {
+    const muet = { toBlob: () => {} } as unknown as HTMLCanvasElement;
+    expect(await televerserPhotoCartes(muet, RECT, {}, { upload: async () => ({ url: `${S}/c.png`, dataUrl: false }), delaiMs: 30 }))
+      .toBeUndefined();
+  });
+
+  it('repli `data:` ou erreur d’envoi : pas de photo', async () => {
+    expect(await televerserPhotoCartes(canvas, RECT, {}, { upload: async () => ({ url: 'data:image/png;base64,AA', dataUrl: true }) }))
+      .toBeUndefined();
+    expect(await televerserPhotoCartes(canvas, RECT, {}, { upload: async () => { throw new Error('x'); } }))
+      .toBeUndefined();
+  });
+
+  it('succès : URL durable, rectangle et empreinte de la metadata envoyée', async () => {
+    const meta = { cards: [{ label: 'a' }] };
+    const photo = await televerserPhotoCartes(canvas, RECT, meta, { upload: async () => ({ url: `${S}/c.png`, dataUrl: false }) });
+    expect(photo).toEqual({ url: `${S}/c.png`, rect: RECT, empreinte: empreinteCartes(meta) });
+  });
+
+  it('le parcours Créer passe par la version bornée, jamais par `uploadPosterFile` en direct', () => {
+    const wizard = readFileSync(resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
+    const debut = wizard.indexOf('const photoCartes: PhotoCartes | undefined');
+    expect(debut).toBeGreaterThan(0);
+    const bloc = wizard.slice(debut, wizard.indexOf("fetch('/api/posts'", debut));
+    expect(bloc).toContain('await televerserPhotoCartes(');
+    expect(bloc).not.toContain('uploadPosterFile(');
   });
 });

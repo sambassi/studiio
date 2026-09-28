@@ -308,6 +308,19 @@ export function collectStorageUrlsFromPost(meta: Record<string, unknown> | null 
   pushIfString((meta as { audioMusicUrl?: unknown }).audioMusicUrl);
   pushIfString((meta as { audioVoiceUrl?: unknown }).audioVoiceUrl);
 
+  // Photo des cartes et fonds par séquence (parcours Créer). Collectés ici,
+  // ils sont AUSSI protégés : `clesReferenceesParAutresPosts` relit chaque
+  // autre post par cette même fonction, donc un fond partagé entre deux
+  // posts n'est jamais supprimé avec l'un d'eux.
+  const photo = (meta as { cardsSnapshot?: unknown }).cardsSnapshot;
+  if (photo && typeof photo === 'object') pushIfString((photo as { url?: unknown }).url);
+  const fonds = (meta as { seqBackgrounds?: unknown }).seqBackgrounds;
+  if (fonds && typeof fonds === 'object' && !Array.isArray(fonds)) {
+    for (const f of Object.values(fonds as Record<string, unknown>)) {
+      if (f && typeof f === 'object') pushIfString((f as { url?: unknown }).url);
+    }
+  }
+
   // rushUrls is an array of objects { url, name, ... } in some posts and
   // a flat array of strings in others. Handle both.
   const rushUrls = (meta as { rushUrls?: unknown }).rushUrls;
