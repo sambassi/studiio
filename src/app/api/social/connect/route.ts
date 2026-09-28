@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { createOAuthState } from '@/lib/social/oauth-state';
 
 const APP_URL = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-function generateState(userId: string): string {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).slice(2, 10);
-    return `${userId}:${timestamp}:${random}`;
-}
 
 function getOAuthUrl(platform: string, state: string): string | null {
     switch (platform) {
@@ -68,7 +64,9 @@ export async function POST(req: NextRequest) {
                       );
       }
 
-      const state = generateState(session.user.id);
+      // `state` signé (HMAC AUTH_SECRET, 15 min) : le callback le vérifie et
+      // exige en plus que la session corresponde. Plus jamais d'identifiant en clair.
+      const state = createOAuthState(session.user.id);
           const authUrl = getOAuthUrl(platform, state);
 
       if (authUrl) {
