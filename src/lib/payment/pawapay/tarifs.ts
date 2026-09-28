@@ -74,6 +74,40 @@ function lireTaux(devise: string, brut: unknown): { entier: bigint; echelle: big
 
 const CODE_DEVISE_RX = /^[A-Z]{3}$/;
 
+/**
+ * Bornes de PLAUSIBILITÉ par devise, en unités locales pour 1 CHF. Ce ne sont
+ * PAS des taux : ce sont des garde-fous volontairement très larges (de l'ordre
+ * de ÷5 à ×5 autour des ordres de grandeur connus) contre une faute de frappe
+ * dans `PAWAPAY_RATES` — un zéro en trop ou en moins, une virgule déplacée.
+ * Hors bornes, la devise est refusée (journal sans la valeur).
+ *
+ * Une devise ABSENTE de cette table est acceptée sans contrôle de
+ * plausibilité : seul le contrôle de forme (> 0, décimale simple) s'applique.
+ */
+export const BORNES_TAUX_CHF: Readonly<Record<string, readonly [number, number]>> = Object.freeze({
+  XOF: [100, 2000],
+  XAF: [100, 2000],
+  GHS: [1, 100],
+  KES: [20, 1000],
+  NGN: [100, 20000],
+  UGX: [500, 20000],
+  RWF: [200, 10000],
+  TZS: [500, 20000],
+  ZMW: [1, 200],
+  CDF: [500, 20000],
+  MWK: [200, 10000],
+  MZN: [10, 500],
+  SLE: [2, 300],
+});
+
+/** Le taux (déjà valide en forme) est-il dans les bornes de sa devise ? */
+function tauxPlausible(devise: string, brut: unknown): boolean {
+  const bornes = BORNES_TAUX_CHF[devise];
+  if (!bornes) return true;
+  const { entier, echelle } = lireTaux(devise, brut);
+  return entier >= BigInt(bornes[0]) * echelle && entier <= BigInt(bornes[1]) * echelle;
+}
+
 /** Un taux est-il exploitable ? Nombre fini > 0, ou chaîne décimale simple > 0. */
 function tauxValide(devise: string, brut: unknown): boolean {
   try {
@@ -87,8 +121,10 @@ function tauxValide(devise: string, brut: unknown): boolean {
 export interface AnalyseTaux {
   /** Taux retenus, clés en majuscules. `null` si la configuration est refusée. */
   taux: TauxChf | null;
-  /** Codes de devise écartés (taux invalide) — jamais les valeurs. */
+  /** Codes de devise écartés (taux invalide ou hors bornes) — jamais les valeurs. */
   devisesRefusees: string[];
+  /** Sous-ensemble de `devisesRefusees` écarté parce que hors `BORNES_TAUX_CHF`. */
+  devisesHorsBornes: string[];
   /** Nombre de clés ignorées car ce ne sont pas des codes ISO à 3 lettres. */
   clesIgnorees: number;
   /** Raison d'un refus global, sans jamais citer la valeur. */
@@ -102,14 +138,15 @@ export interface AnalyseTaux {
  *   refusée en bloc (`taux: null`).
  * - Clés normalisées en majuscules (espaces retirés) ; une clé qui n'est pas
  *   un code ISO à 3 lettres est ignorée.
- * - Un taux ≤ 0, NaN, Infinity ou non numérique écarte SA devise seulement ;
+ * - Un taux ≤ 0, NaN, Infinity, non numérique, ou hors des bornes de
+ *   plausibilité de sa devise (`BORNES_TAUX_CHF`) écarte SA devise seulement ;
  *   les autres restent utilisables. Si aucune devise ne reste, la
  *   configuration est refusée en bloc.
  * - Une clé en double après normalisation (ex. « xof » et « XOF ») est
  *   ambiguë : la devise est écartée.
  */
 export function analyserTauxChf(brut: string | undefined): AnalyseTaux {
-  const vide: AnalyseTaux = { taux: null, devisesRefusees: [], clesIgnorees: 0 };
+  const vide: AnalyseTaux = { taux: null, devisesRefusees: [], devisesHorsBornes: [], clesIgnorees: 0 };
   if (brut === undefined || brut.trim() === '') return { ...vide, erreur: 'absente' };
   let objet: unknown;
   try {
@@ -122,6 +159,7 @@ export function analyserTauxChf(brut: string | undefined): AnalyseTaux {
   }
   const taux: TauxChf = {};
   const refusees = new Set<string>();
+  const horsBornes = new Set<string>();
   const vues = new Set<string>();
   let clesIgnorees = 0;
   for (const [cle, valeur] of Object.entries(objet as Record<string, unknown>)) {
@@ -130,15 +168,19 @@ export function analyserTauxChf(brut: string | undefined): AnalyseTaux {
     if (vues.has(code)) { refusees.add(code); delete taux[code]; continue; }
     vues.add(code);
     if (typeof valeur === 'number' || typeof valeur === 'string') {
-      if (tauxValide(code, valeur)) { taux[code] = valeur; continue; }
+      if (tauxValide(code, valeur)) {
+        if (tauxPlausible(code, valeur)) { taux[code] = valeur; continue; }
+        horsBornes.add(code);
+      }
     }
     refusees.add(code);
   }
   const devisesRefusees = [...refusees].sort();
+  const devisesHorsBornes = [...horsBornes].filter((c) => refusees.has(c)).sort();
   if (Object.keys(taux).length === 0) {
-    return { taux: null, devisesRefusees, clesIgnorees, erreur: 'aucun_taux_valide' };
+    return { taux: null, devisesRefusees, devisesHorsBornes, clesIgnorees, erreur: 'aucun_taux_valide' };
   }
-  return { taux, devisesRefusees, clesIgnorees };
+  return { taux, devisesRefusees, devisesHorsBornes, clesIgnorees };
 }
 
 /**

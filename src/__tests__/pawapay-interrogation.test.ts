@@ -474,6 +474,85 @@ describe('URL de retour configurée côté serveur', () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
+describe('rattrapage — relectures en échec permanent et budget de temps', () => {
+  const uuid = (i: number) => `${String(i).padStart(8, '0')}-0000-4000-9000-000000000000`;
+
+  it('25 dépôts dont la relecture échoue toujours + 1 COMPLETED → crédité en au plus 2 passages de 20', async () => {
+    const enPanne = Array.from({ length: 25 }, (_, i) => depot({
+      depositId: uuid(i + 1), creeLe: new Date(T0 - (23 - i * 0.5) * 3_600_000).toISOString(),
+    }));
+    const { crediter, store } = brancher([...enPanne, depot({ creeLe: new Date(T0 - 15 * 60_000).toISOString() })]);
+    for (const d of enPanne) distants.set(d.depositId, 'PANNE');
+    distants.set(ID, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+
+    let passages = 0;
+    while (crediter.mock.calls.length === 0 && passages < 2) {
+      vi.setSystemTime(T0 + passages * 5 * 60_000);
+      await rattraper(reqCron(`Bearer ${SECRET}`, '?limite=20'));
+      passages++;
+    }
+    expect(crediter).toHaveBeenCalledTimes(1);
+    expect(passages).toBeLessThanOrEqual(2);
+    // Les dépôts en panne ont bien été datés, et restent en attente sans crédit.
+    expect(enPanne.slice(0, 20).every((d) => store.etat(d.depositId)?.verifieLe)).toBe(true);
+    expect(enPanne.every((d) => store.etat(d.depositId)?.statut === 'en_attente')).toBe(true);
+  });
+
+  it('budget de 60 s par passage : arrêt propre, reste reporté au passage suivant', async () => {
+    const lot = Array.from({ length: 20 }, (_, i) => depot({
+      depositId: uuid(i + 200), creeLe: new Date(T0 - (60 + i) * 60_000).toISOString(),
+    }));
+    const { crediter } = brancher(lot);
+    for (const d of lot) distants.set(d.depositId, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+    // Chaque relecture « prend » 25 s.
+    const base = fetchPawapay.getMockImplementation()!;
+    fetchPawapay.mockImplementation(async (entree: unknown, init?: RequestInit) => {
+      vi.setSystemTime(Date.now() + 25_000);
+      return base(entree, init);
+    });
+
+    const r1 = await rattraper(reqCron(`Bearer ${SECRET}`));
+    const c1 = await r1.json();
+    expect(r1.status).toBe(200);
+    expect(c1).toMatchObject({ interrompu: true, examines: 3, reportes: 17 });
+    expect(crediter).toHaveBeenCalledTimes(3);
+
+    const c2 = await (await rattraper(reqCron(`Bearer ${SECRET}`))).json();
+    expect(c2.examines).toBe(3);
+    expect(crediter).toHaveBeenCalledTimes(6);
+    fetchPawapay.mockImplementation(base);
+  });
+});
+
+describe('verifieLe — écriture secondaire, jamais bloquante', () => {
+  it('relecture en échec → verifieLe noté quand même, erreur d’origine propagée', async () => {
+    const { store } = brancher([depot()]);
+    distants.set(ID, 'PANNE');
+    expect((await appelerStatut(ID)).status).toBe(502);
+    expect(store.etat(ID)?.verifieLe).toBe(new Date(T0).toISOString());
+  });
+
+  it('noterVerification qui échoue ne bloque pas le crédit', async () => {
+    const { store, crediter } = brancher([depot()]);
+    store.noterVerification = async () => { throw new Error('écriture secondaire en panne'); };
+    distants.set(ID, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+    expect(await (await appelerStatut(ID)).json()).toEqual({ status: 'credited' });
+    expect(crediter).toHaveBeenCalledTimes(1);
+  });
+
+  it('relecture ET noterVerification en échec → c’est l’erreur de relecture qui remonte', async () => {
+    const { store } = brancher([depot()]);
+    store.noterVerification = async () => { throw new Error('écriture secondaire en panne'); };
+    distants.set(ID, 'PANNE');
+    const r = await appelerStatut(ID);
+    expect(r.status).toBe(502);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('Vérification impossible'), expect.stringContaining('ECONNRESET'),
+    );
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 describe('parcours complet SANS aucun callback', () => {
   it('initiation → statut pending → PawaPay COMPLETED → rattrapage crédite → statut credited', async () => {
     const { crediter, store } = brancher();

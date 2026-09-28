@@ -82,9 +82,27 @@ export async function confirmerDepot(
   if (!local) return { issue: 'inconnu_local', depositId };
   if (local.statut === 'credite') return { issue: 'deja_credite', depositId };
 
-  const distant = await deps.lireDepotDistant(depositId);
-  const maintenant = (deps.maintenant ?? (() => new Date()))();
-  await deps.store.noterVerification(depositId, maintenant.toISOString());
+  // `verifieLe` est noté après CHAQUE tentative, réussie ou non : un dépôt
+  // dont la relecture échoue en permanence passe lui aussi en fin de file du
+  // rattrapage. Cette écriture est secondaire : son échec est journalisé mais
+  // ne bloque jamais le crédit, ni ne masque l'erreur de relecture.
+  const noterSansBloquer = async () => {
+    const quand = (deps.maintenant ?? (() => new Date()))().toISOString();
+    try {
+      await deps.store.noterVerification(depositId, quand);
+    } catch (e) {
+      console.error(`[PAWAPAY] verifieLe non noté pour ${depositId} :`, (e as Error)?.message);
+    }
+  };
+
+  let distant: DepotDistant;
+  try {
+    distant = await deps.lireDepotDistant(depositId);
+  } catch (e) {
+    await noterSansBloquer();
+    throw e;
+  }
+  await noterSansBloquer();
 
   const verdict = evaluerDepot(local, distant);
   switch (verdict) {
