@@ -18,7 +18,8 @@ import { createPost, uploadMedia, ZernioError } from '@/lib/social/zernio';
  */
 
 export type ResultatPublication =
-  | { ok: true; zernioPostId: string; comptes: number }
+  /** `dejaEnvoye` : Zernio avait deja accepte ce post, rien n'a ete recree. */
+  | { ok: true; zernioPostId: string; comptes: number; dejaEnvoye?: boolean }
   | { ok: false; motif: string; reessayable: boolean };
 
 export interface PostAPublier {
@@ -44,6 +45,24 @@ export interface PostAPublier {
  * transfert pour rien.
  */
 export async function publierViaZernio(post: PostAPublier): Promise<ResultatPublication> {
+  // ⚠️ IDEMPOTENCE, AVANT TOUT. Si Zernio a deja accepte ce post, un second
+  // `createPost` le publierait une deuxieme fois sur les reseaux de
+  // l'utilisateur. La preuve est relue EN BASE, jamais prise de l'appelant :
+  // sa copie du post peut dater d'avant le premier envoi.
+  let dejaEnvoye: string | null;
+  try {
+    dejaEnvoye = await zernioPostIdExistant(post.id);
+  } catch (e) {
+    // Sans pouvoir verifier, on ne publie pas : un echec se rejoue, une
+    // double publication ne se rattrape pas.
+    console.error(`[Zernio/Publication] post ${post.id} : verification d'idempotence impossible :`, e);
+    return { ok: false, motif: 'Publication impossible.', reessayable: true };
+  }
+  if (dejaEnvoye) {
+    console.warn(`[Zernio/Publication] post ${post.id} deja remis a Zernio (${dejaEnvoye}) — pas de nouvel envoi.`);
+    return { ok: true, zernioPostId: dejaEnvoye, comptes: 0, dejaEnvoye: true };
+  }
+
   const droit = await droitDePublier(post.userId, post.email);
   if (!droit.autorise) {
     return { ok: false, motif: droit.raison ?? 'option-absente', reessayable: false };
@@ -132,4 +151,14 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
     console.error(`[Zernio/Publication] post ${post.id} :`, err);
     return { ok: false, motif: 'Publication impossible.', reessayable: true };
   }
+}
+
+/** `metadata.zernioPostId` du post, relu en base. Leve si la lecture echoue. */
+async function zernioPostIdExistant(postId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
+  if (error) throw new Error(error.message);
+  const meta = (data?.[0] as { metadata?: Record<string, unknown> | null } | undefined)?.metadata;
+  const id = meta?.zernioPostId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
 }

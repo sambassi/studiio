@@ -253,12 +253,21 @@ export async function GET(req: NextRequest) {
     // "scheduled posts stop publishing entirely". Reset any post that
     // has been stuck at 'publishing' for more than 10 min so the next
     // candidate fetch can re-claim it.
+    //
+    // ⚠️ SAUF LES POSTS DEJA REMIS A ZERNIO. Le chemin Zernio laisse
+    // volontairement le post a `publishing` en attendant le webhook
+    // `post.published`. Les remettre a `scheduled` les ferait reclamer au
+    // passage suivant et republier : double publication sur les reseaux de
+    // l'utilisateur. `metadata.zernioPostId` est la preuve que Zernio a
+    // accepte le post ; sans elle (metadata nulle ou cle absente), le reset
+    // s'applique comme avant.
     const stuckThreshold = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
     const { data: stuckPosts, error: stuckErr } = await supabase
       .from('scheduled_posts')
       .update({ status: 'scheduled' })
       .eq('status', 'publishing')
       .lt('updated_at', stuckThreshold)
+      .is('metadata->>zernioPostId', null)
       .select('id, title, updated_at');
     if (stuckErr) {
       console.error('[CRON] stuck-reset query failed:', stuckErr.message);
