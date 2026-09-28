@@ -45,6 +45,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
 import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { CLE_MONTAGE_PERIME, montageEstPerime } from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 
@@ -117,6 +118,8 @@ interface PostMetadata {
   /** Composer version that produced `renderedVideoUrl`. Used to detect stale
    *  videos that need regeneration after a composer bug fix. */
   composerVersion?: string;
+  /** `true` : modifie et enregistre depuis le rendu (voir `montageEstPerime`). */
+  montagePerime?: boolean;
   hasAudio?: boolean;
   /** Texte incruste sur la sequence video. */
   videoOverlayText?: string;
@@ -867,6 +870,8 @@ export default function CalendarPage() {
         ...meta,
         renderedVideoUrl: renderedUrl,
         videoUrl: renderedUrl,
+        // Le montage est de nouveau celui de la metadata.
+        [CLE_MONTAGE_PERIME]: false,
         thumbnailUrl: freshThumb || meta.thumbnailUrl,
         composerVersion: freshVersion,
       };
@@ -1331,6 +1336,7 @@ export default function CalendarPage() {
               ...meta,
               renderedVideoUrl: renderedUrl,
               videoUrl: renderedUrl,
+              [CLE_MONTAGE_PERIME]: false,
             },
           };
           console.log('[Schedule] Montage composed and uploaded:', renderedUrl);
@@ -1991,6 +1997,7 @@ export default function CalendarPage() {
                 ...meta,
                 renderedVideoUrl: renderedUrl,
                 videoUrl: renderedUrl,
+                [CLE_MONTAGE_PERIME]: false,
               },
             };
             console.log('[Publish] Montage composed:', renderedUrl);
@@ -2604,6 +2611,7 @@ export default function CalendarPage() {
                 ...meta,
                 renderedVideoUrl: renderedUrl,
                 videoUrl: renderedUrl,
+                [CLE_MONTAGE_PERIME]: false,
               },
             }),
           });
@@ -3589,6 +3597,7 @@ export default function CalendarPage() {
                 - missing renderedVideoUrl  → never got a montage
                 - missing thumbnailUrl      → legacy post pre-thumbnail feature
                 - composerVersion outdated  → rendered by an older/buggy composer
+                - montagePerime             → edited and saved since the render
               Freshly exported posts (all three present + matching version)
               hide the button so the UI stays clean. Also shown while a
               regeneration is in progress so the progress label is readable.
@@ -3605,7 +3614,10 @@ export default function CalendarPage() {
           {postHasVisualSource(fullPreviewPost) && !meta?.serverRendered && (regenerating
             || !meta?.renderedVideoUrl
             || !meta?.thumbnailUrl
-            || meta?.composerVersion !== CURRENT_COMPOSER_VERSION) && (
+            || meta?.composerVersion !== CURRENT_COMPOSER_VERSION
+            // Enregistre depuis « Modifier » apres le rendu : la video en
+            // ligne ne correspond plus a la metadata.
+            || montageEstPerime(meta)) && (
             <button
               onClick={(e) => { e.stopPropagation(); regenerateMontage(fullPreviewPost); }}
               disabled={regenerating || actif(VERROU.regenerer)}
