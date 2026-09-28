@@ -11,10 +11,13 @@ import {
  * Tout ce qui touche à l'argent est décidé CÔTÉ SERVEUR :
  * - les packs (crédits et prix CHF déjà formaté) et les pays arrivent en
  *   props, préparés par le serveur ;
- * - le navigateur n'envoie QUE `{ pack, pays }` à `POST /api/pawapay/deposit`
- *   — jamais de montant, de devise, de taux ni de crédits ;
- * - aucun prix, taux ou montant local n'est calculé ici. Le montant en devise
- *   locale n'est connu qu'une fois le dépôt créé, sur la page PawaPay.
+ * - le navigateur n'envoie QUE `{ pack, pays, devise? }` à
+ *   `GET /api/pawapay/quote` et `POST /api/pawapay/deposit` — jamais de
+ *   montant, de prix ni de crédits. `devise` n'est transmise que si le pays en
+ *   propose plusieurs, et seulement une valeur de la liste renvoyée par le
+ *   serveur ;
+ * - le montant local et sa devise sont AFFICHÉS tels que le devis serveur les
+ *   renvoie : aucun calcul ici.
  *
  * Au retour (`/dashboard/billing?pawapay=<depositId>`), le panneau interroge
  * `GET /api/pawapay/status/<id>` à intervalle régulier jusqu'à un état final
@@ -44,6 +47,14 @@ export type EtatMobileMoney =
   | 'introuvable'
   | 'indisponible';
 
+interface DevisServeur {
+  prixChf: string;
+  montant: string;
+  devise: string;
+}
+
+type EtatDevis = 'vide' | 'chargement' | 'ok' | 'devise' | 'erreur';
+
 export const INTERVALLE_INTERROGATION_MS = 4000;
 export const DUREE_MAX_INTERROGATION_MS = 3 * 60 * 1000;
 
@@ -67,6 +78,12 @@ export function MobileMoneyPanel({
   );
   const [pack, setPack] = useState<PackMobileMoney['id'] | ''>('');
   const [paysChoisi, setPaysChoisi] = useState('');
+  const [devise, setDevise] = useState('');
+  const [devisesProposees, setDevisesProposees] = useState<string[]>([]);
+  const [devis, setDevis] = useState<DevisServeur | null>(null);
+  const [etatDevis, setEtatDevis] = useState<EtatDevis>('vide');
+  const [erreurDevis, setErreurDevis] = useState('');
+  const requeteDevis = useRef(0);
   const [erreur, setErreur] = useState('');
   const [avertissement, setAvertissement] = useState('');
   const [solde, setSolde] = useState<number | null>(null);
@@ -131,22 +148,67 @@ export function MobileMoneyPanel({
     return arreter;
   }, [depositRetour, demarrerInterrogation, arreter]);
 
+  // Devis serveur à chaque changement de pack, de pays ou de devise.
+  const indisponible = etat === 'indisponible';
+  useEffect(() => {
+    if (!pack || !paysChoisi || indisponible) {
+      setDevis(null); setEtatDevis('vide'); return;
+    }
+    const numero = ++requeteDevis.current;
+    setDevis(null);
+    setEtatDevis('chargement');
+    setErreurDevis('');
+    const params = new URLSearchParams({ pack, pays: paysChoisi });
+    if (devise) params.set('devise', devise);
+    (async () => {
+      try {
+        const r = await fetch(`/api/pawapay/quote?${params.toString()}`, { cache: 'no-store' });
+        if (!actif.current || numero !== requeteDevis.current) return;
+        if (r.status === 503) { setEtat('indisponible'); return; }
+        const d = await r.json().catch(() => ({}));
+        if (!actif.current || numero !== requeteDevis.current) return;
+        if (r.ok && typeof d?.montant === 'string' && typeof d?.devise === 'string' && typeof d?.prixChf === 'string') {
+          setDevis({ prixChf: d.prixChf, montant: d.montant, devise: d.devise });
+          setEtatDevis('ok');
+          return;
+        }
+        if (r.status === 400 && Array.isArray(d?.devises) && d.devises.length > 0) {
+          setDevisesProposees(d.devises.filter((x: unknown): x is string => typeof x === 'string'));
+          if (!devise) { setEtatDevis('devise'); return; }
+        }
+        setErreurDevis(typeof d?.error === 'string' && d.error ? d.error : 'Devis indisponible.');
+        setEtatDevis('erreur');
+      } catch {
+        if (!actif.current || numero !== requeteDevis.current) return;
+        setErreurDevis('Erreur de connexion');
+        setEtatDevis('erreur');
+      }
+    })();
+  }, [pack, paysChoisi, devise, indisponible]);
+
+  const changerPays = (valeur: string) => {
+    setPaysChoisi(valeur);
+    setDevise('');
+    setDevisesProposees([]);
+  };
+
   const payer = async () => {
-    if (!pack || !paysChoisi) return;
+    if (!pack || !paysChoisi || etatDevis !== 'ok') return;
     setEtat('envoi');
     setErreur('');
     try {
       const r = await fetch('/api/pawapay/deposit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pack, pays: paysChoisi }),
+        body: JSON.stringify(devise ? { pack, pays: paysChoisi, devise } : { pack, pays: paysChoisi }),
       });
       if (r.status === 503) { setEtat('indisponible'); return; }
       const d = await r.json().catch(() => ({}));
       const url = typeof d?.redirectUrl === 'string' ? d.redirectUrl : '';
       if (r.ok && url.startsWith('https://')) { naviguer(url); return; }
-      if (Array.isArray(d?.devises)) {
-        setErreur('Ce pays propose plusieurs devises : le paiement Mobile Money n\'y est pas encore disponible.');
+      if (Array.isArray(d?.devises) && d.devises.length > 0) {
+        setDevisesProposees(d.devises.filter((x: unknown): x is string => typeof x === 'string'));
+        setErreur('Choisissez la devise de paiement.');
       } else {
         setErreur(typeof d?.error === 'string' && d.error ? d.error : 'Impossible de démarrer le paiement.');
       }
@@ -195,7 +257,7 @@ export function MobileMoneyPanel({
             <select
               id="mobile-money-pays"
               value={paysChoisi}
-              onChange={(e) => setPaysChoisi(e.target.value)}
+              onChange={(e) => changerPays(e.target.value)}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
             >
               <option value="">Choisir un pays</option>
@@ -205,14 +267,45 @@ export function MobileMoneyPanel({
             </select>
           </div>
 
-          {packChoisi && (
-            <div data-recap className="rounded-lg bg-gray-800/60 p-3 text-sm text-gray-300 space-y-1">
+          {devisesProposees.length > 1 && (
+            <div className="space-y-2">
+              <label htmlFor="mobile-money-devise" className="block text-sm font-semibold text-gray-300">Devise</label>
+              <select
+                id="mobile-money-devise"
+                value={devise}
+                onChange={(e) => setDevise(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
+              >
+                <option value="">Choisir une devise</option>
+                {devisesProposees.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {packChoisi && paysChoisi && (
+            <div data-recap={etatDevis} className="rounded-lg bg-gray-800/60 p-3 text-sm text-gray-300 space-y-1">
               <p>
-                Prix : <strong className="text-white">{packChoisi.prixChf} CHF</strong>
+                Prix : <strong className="text-white">{devis ? devis.prixChf : packChoisi.prixChf} CHF</strong>
               </p>
-              <p className="text-gray-400">
-                Le montant en devise locale sera affiché sur la page de paiement sécurisée PawaPay.
-              </p>
+              {etatDevis === 'chargement' && (
+                <p className="flex items-center gap-2 text-gray-400">
+                  <Loader2 size={14} className="animate-spin" />
+                  Calcul du montant local...
+                </p>
+              )}
+              {etatDevis === 'ok' && devis && (
+                <p data-montant-local>
+                  Montant à payer : <strong className="text-white">{devis.montant} {devis.devise}</strong>
+                </p>
+              )}
+              {etatDevis === 'devise' && (
+                <p className="text-amber-400">Ce pays propose plusieurs devises : choisissez-en une.</p>
+              )}
+              {etatDevis === 'erreur' && (
+                <p role="alert" className="text-red-400">{erreurDevis}</p>
+              )}
             </div>
           )}
 
@@ -221,7 +314,7 @@ export function MobileMoneyPanel({
           <button
             type="button"
             onClick={payer}
-            disabled={!pack || !paysChoisi || etat === 'envoi'}
+            disabled={!pack || !paysChoisi || etatDevis !== 'ok' || etat === 'envoi'}
             className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition disabled:opacity-50"
           >
             {etat === 'envoi' && <Loader2 size={18} className="animate-spin" />}
