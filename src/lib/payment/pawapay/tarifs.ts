@@ -1,21 +1,28 @@
 /**
  * Packs de crédits vendus en Mobile Money — SOURCE CANONIQUE EN CHF.
  *
- * La conversion vers la devise locale se fait CÔTÉ SERVEUR, avec des taux
- * PASSÉS EN PARAMÈTRE : aucun taux (XOF ou autre) n'est figé ici. Une devise
- * sans taux est refusée — jamais de repli silencieux.
+ * SERVEUR UNIQUEMENT. Le CHF est la devise de référence. La conversion vers
+ * la devise locale se fait côté serveur, avec des taux FIXES lus dans la
+ * variable d'environnement `PAWAPAY_RATES` (voir `analyserTauxChf` et
+ * `obtenirTauxChf` dans `store.ts`) puis PASSÉS EN PARAMÈTRE à `prixLocal`.
+ * Aucun taux n'est écrit dans le code, aucune API de taux n'est appelée.
+ * Une devise sans taux valide est refusée — jamais de repli silencieux.
+ * Le client n'envoie ni prix, ni crédits, ni taux : il choisit un pack.
  *
  * Calcul sans flottant : les prix sont en centimes CHF (entiers), les taux en
  * chaînes décimales, et le produit est fait en `BigInt`.
+ *   montant local = plafond(prix en centimes CHF × taux / 100)
  *
- * ARRONDIS PAR DEVISE
- * - Par défaut : unité ENTIÈRE, arrondie AU SUPÉRIEUR (Studiio ne perd jamais
- *   sur la conversion). La plupart des opérateurs Mobile Money n'acceptent
- *   pas de décimales (`decimalsInAmount: NONE` dans `/v2/active-conf`).
- * - `PAS_ARRONDI` permet un pas plus grossier par devise (ex. arrondir au
- *   multiple de 5 ou de 100 supérieur). Il est vide aujourd'hui : un pas se
- *   choisit en connaissance du marché, pas par défaut.
+ * RÈGLE D'ARRONDI (inchangée, testée)
+ * - Unité ENTIÈRE de la devise locale, arrondie AU SUPÉRIEUR : 38 701,463 →
+ *   38 702. Studiio ne perd jamais sur la conversion, et la plupart des
+ *   opérateurs Mobile Money n'acceptent pas de décimales
+ *   (`decimalsInAmount: NONE` dans `/v2/active-conf`).
  * - Minimum : 1 unité.
+ * - `PAS_ARRONDI` permettrait un pas plus grossier par devise (ex. multiple de
+ *   5 ou de 25 pour le XOF). Il est VIDE : ce choix, comme le respect des
+ *   minimums et maximums par opérateur (`minTransactionLimit` /
+ *   `maxTransactionLimit`), reste une décision métier non tranchée.
  */
 
 export interface PackPawapay {
@@ -63,6 +70,75 @@ function lireTaux(devise: string, brut: unknown): { entier: bigint; echelle: big
   const entier = BigInt(m[1] + fraction);
   if (entier <= 0n) throw new DeviseSansTauxErreur(devise);
   return { entier, echelle: 10n ** BigInt(fraction.length) };
+}
+
+const CODE_DEVISE_RX = /^[A-Z]{3}$/;
+
+/** Un taux est-il exploitable ? Nombre fini > 0, ou chaîne décimale simple > 0. */
+function tauxValide(devise: string, brut: unknown): boolean {
+  try {
+    lireTaux(devise, brut);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface AnalyseTaux {
+  /** Taux retenus, clés en majuscules. `null` si la configuration est refusée. */
+  taux: TauxChf | null;
+  /** Codes de devise écartés (taux invalide) — jamais les valeurs. */
+  devisesRefusees: string[];
+  /** Nombre de clés ignorées car ce ne sont pas des codes ISO à 3 lettres. */
+  clesIgnorees: number;
+  /** Raison d'un refus global, sans jamais citer la valeur. */
+  erreur?: 'absente' | 'json_invalide' | 'pas_un_objet' | 'aucun_taux_valide';
+}
+
+/**
+ * Analyse `PAWAPAY_RATES` (JSON `{"XOF": 655.957, "XAF": 655.957}`).
+ *
+ * - Absente, JSON invalide, ou autre chose qu'un objet → configuration
+ *   refusée en bloc (`taux: null`).
+ * - Clés normalisées en majuscules (espaces retirés) ; une clé qui n'est pas
+ *   un code ISO à 3 lettres est ignorée.
+ * - Un taux ≤ 0, NaN, Infinity ou non numérique écarte SA devise seulement ;
+ *   les autres restent utilisables. Si aucune devise ne reste, la
+ *   configuration est refusée en bloc.
+ * - Une clé en double après normalisation (ex. « xof » et « XOF ») est
+ *   ambiguë : la devise est écartée.
+ */
+export function analyserTauxChf(brut: string | undefined): AnalyseTaux {
+  const vide: AnalyseTaux = { taux: null, devisesRefusees: [], clesIgnorees: 0 };
+  if (brut === undefined || brut.trim() === '') return { ...vide, erreur: 'absente' };
+  let objet: unknown;
+  try {
+    objet = JSON.parse(brut);
+  } catch {
+    return { ...vide, erreur: 'json_invalide' };
+  }
+  if (typeof objet !== 'object' || objet === null || Array.isArray(objet)) {
+    return { ...vide, erreur: 'pas_un_objet' };
+  }
+  const taux: TauxChf = {};
+  const refusees = new Set<string>();
+  const vues = new Set<string>();
+  let clesIgnorees = 0;
+  for (const [cle, valeur] of Object.entries(objet as Record<string, unknown>)) {
+    const code = cle.trim().toUpperCase();
+    if (!CODE_DEVISE_RX.test(code)) { clesIgnorees++; continue; }
+    if (vues.has(code)) { refusees.add(code); delete taux[code]; continue; }
+    vues.add(code);
+    if (typeof valeur === 'number' || typeof valeur === 'string') {
+      if (tauxValide(code, valeur)) { taux[code] = valeur; continue; }
+    }
+    refusees.add(code);
+  }
+  const devisesRefusees = [...refusees].sort();
+  if (Object.keys(taux).length === 0) {
+    return { taux: null, devisesRefusees, clesIgnorees, erreur: 'aucun_taux_valide' };
+  }
+  return { taux, devisesRefusees, clesIgnorees };
 }
 
 /**
