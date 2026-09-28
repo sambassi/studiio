@@ -56,7 +56,7 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
   /**
    * Le compositeur SAIT étalonner le rush (`rushLut` → `createLutGrader`),
    * mais une LUT importée n'est « appliquée au montage » que si un appelant
-   * la lui TRANSMET. Tant qu'aucun ne le fait, `rendu3d` reste false : sinon
+   * la lui TRANSMET. Sans appelant, `rendu3d` doit rester false : sinon
    * l'interface promettrait « Appliquée au montage » pour un rendu brut.
    */
   const composer = src('src/lib/video-composer.ts');
@@ -83,12 +83,27 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
     expect(CAPACITES_ACTUELLES.rendu3d).toBe(composerEtalonne && appelantsRushLut.length > 0);
   });
 
-  it('aujourd’hui : le moteur sait étalonner, mais aucun appelant ne transmet la LUT', () => {
-    // Si ce test échoue parce qu'un appelant transmet `rushLut`, c'est voulu :
-    // passer `rendu3d` à true dans `support.ts`, puis mettre ce test à jour.
+  it('aujourd’hui : le wizard Créer est le SEUL appelant, et rendu3d le dit', () => {
+    // Un nouvel appelant doit être ajouté ICI en connaissance de cause : il
+    // hérite de la promesse « Appliquée au montage ».
     expect(composerEtalonne).toBe(true);
-    expect(appelantsRushLut).toEqual([]);
-    expect(CAPACITES_ACTUELLES.rendu3d).toBe(false);
+    expect(appelantsRushLut).toEqual(['src/app/dashboard/creer/AssistantWizard.tsx']);
+    expect(CAPACITES_ACTUELLES.rendu3d).toBe(true);
+  });
+
+  it('l’appelant transmet une LUT RÉELLEMENT lue, et rien sans elle', () => {
+    // `rendu3d` ne vaut que si la table transmise vient de la bibliothèque du
+    // compte — pas d'une valeur inventée — et la clé est absente sans filtre
+    // (default-safe : options identiques à l'avant-LUT).
+    const wizard = src('src/app/dashboard/creer/AssistantWizard.tsx');
+    expect(wizard).toMatch(/const rushLut = [^;]*await chargerLutPourRendu\(lut\)/);
+    expect(wizard).toContain('...(rushLut ? { rushLut } : {})');
+  });
+
+  it('le compositeur libère l’étalonneur quel que soit le règlement du montage', () => {
+    // Les deux boucles (fast et temps réel) : sinon `rendu3d` promettrait un
+    // montage qui laisse fuir un contexte WebGL par export.
+    expect(composer.match(/\}\)\.finally\(libererEtalonneur\);/g)?.length).toBe(2);
   });
 
   it('le compositeur n’étalonne jamais sur CPU et ne charge aucune LUT lui-même', () => {

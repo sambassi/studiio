@@ -3692,18 +3692,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   }
 
   // ── Filtre couleur (LUT) du rush ──────────────────────────────────────
-  // Cree UNE fois, apres le dernier abandon possible (poster) pour ne jamais
-  // laisser de contexte WebGL orphelin, et seulement s'il y a un rush a
-  // etalonner. `null` = rendu du rush brut, identique a l'avant-LUT.
-  const lutGrader: LutGrader | null =
-    options.rushLut && (videoEl || videoImageEl)
-      ? createLutGrader(options.rushLut.lut, options.rushLut.intensity)
-      : null;
-  if (options.rushLut) {
-    console.log(
-      `[Composer] LUT rush ${lutGrader ? 'active' : 'ignoree (rien a etalonner ou GPU indisponible)'} — ${options.rushLut.lut.kind}, ${options.rushLut.lut.size} pas, intensite ${options.rushLut.intensity}`,
-    );
-  }
+  // Declare ici (lu par `drawFrame`), mais CREE plus bas, juste avant la
+  // boucle d'enregistrement : entre ici et la, l'installation audio, le
+  // `captureStream` et `new MediaRecorder` peuvent encore lever. Un contexte
+  // WebGL cree avant eux fuirait a chaque export rate — et le navigateur n'en
+  // tolere qu'une poignee. `null` = rendu du rush brut, identique a l'avant-LUT.
+  let lutGrader: LutGrader | null = null;
 
   // Build sequences. Callers (editor, calendar regenerate) signal an
   // invisible sequence by passing its duration as 0 — e.g. a user who
@@ -4313,6 +4307,23 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   };
   document.addEventListener('visibilitychange', onVisibilityChange);
 
+  // ── Creation de l'etalonneur : APRES le dernier abandon possible ──────
+  // Plus rien ne peut lever d'ici aux promesses ci-dessous, et chacune libere
+  // l'etalonneur quand elle se regle (`.finally`), quel que soit le chemin :
+  // fin normale, erreur du MediaRecorder, echec au demarrage. `dispose` est
+  // idempotent : les liberations explicites de `onstop`/`onerror` et celle du
+  // `.finally` peuvent se cumuler sans effet.
+  lutGrader =
+    options.rushLut && (videoEl || videoImageEl)
+      ? createLutGrader(options.rushLut.lut, options.rushLut.intensity)
+      : null;
+  if (options.rushLut) {
+    console.log(
+      `[Composer] LUT rush ${lutGrader ? 'active' : 'ignoree (rien a etalonner ou GPU indisponible)'} — ${options.rushLut.lut.kind}, ${options.rushLut.lut.size} pas, intensite ${options.rushLut.intensity}`,
+    );
+  }
+  const libererEtalonneur = () => { lutGrader?.dispose(); };
+
   // ═══════════════════════════════════════════════════════════
   // UNIFIED MODE: Both with and without audio use the same render loop.
   // captureStream(fps) handles frame timing — we just draw each frame
@@ -4356,7 +4367,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         document.removeEventListener('visibilitychange', onVisibilityChange);
         releaseWakeLock();
         try { document.body.removeChild(canvas); } catch {}
-        lutGrader?.dispose();
+        libererEtalonneur();
         onProgress?.(100, 'Terminé !');
         resolve({ video: blob, thumbnail: thumbnailBlob });
       };
@@ -4366,7 +4377,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         stopTicker();
         document.removeEventListener('visibilitychange', onVisibilityChange);
         releaseWakeLock();
-        lutGrader?.dispose();
+        libererEtalonneur();
         reject(new Error('Recording failed'));
       };
 
@@ -4376,9 +4387,21 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       // The canvas must already contain the intro (title, poster, etc.)
       // when the MediaRecorder starts, otherwise the first captured frame
       // is blank/black and the title only appears ~1s into the video.
-      drawFrame(0);
-
-      recorder.start(200);
+      // Un echec ICI (frame 0 qui leve, `start` refuse) laissait la promesse
+      // rejetee sans rien liberer : ticker, ecouteur, wake lock, canvas.
+      try {
+        drawFrame(0);
+        recorder.start(200);
+      } catch (err) {
+        console.error('[Composer] Demarrage de l\'enregistrement impossible:', err);
+        stopTicker();
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        releaseWakeLock();
+        try { document.body.removeChild(canvas); } catch {}
+        libererEtalonneur();
+        reject(err);
+        return;
+      }
       console.log('[Composer] Recording started for', totalDuration.toFixed(1), 's at', fps, 'fps');
 
       const startTime = performance.now();
@@ -4434,13 +4457,19 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       // Kick off the loop (frame 0 already drawn above). The ticker also drives
       // it, but fire once immediately so we never wait a full interval.
       requestAnimationFrame(doFrame);
-    });
+    }).finally(libererEtalonneur);
   }
 
   // ═══════════════════════════════════════════════════════════
   // REAL-TIME MODE: With audio → must render in sync with audio
   // ═══════════════════════════════════════════════════════════
-  return new Promise<{ video: Blob; thumbnail: Blob | null }>(async (resolve, reject) => {
+  // Un executeur `async` avale ses exceptions : une erreur avant la boucle
+  // (frame 0, demarrage audio) laissait la promesse PENDANTE pour toujours —
+  // bouton d'export fige, contexte WebGL jamais libere. Le corps est donc une
+  // fonction async dont l'echec REJETTE la promesse et nettoie.
+  let arreterRtTicker = () => {};
+  return new Promise<{ video: Blob; thumbnail: Blob | null }>((resolve, reject) => {
+  const executerTempsReel = async () => {
     // ── Worker-driven ticker (anti-throttling arrière-plan) ──
     // Same defense as the FAST loop: a backgrounded tab throttles BOTH
     // requestAnimationFrame and main-thread setInterval/setTimeout to ~1 Hz.
@@ -4457,6 +4486,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       rtTicker = new Worker(URL.createObjectURL(new Blob([tickCode], { type: 'application/javascript' })));
     } catch { rtTicker = null; }
     const stopRtTicker = () => { try { rtTicker?.postMessage('stop'); rtTicker?.terminate(); } catch {} rtTicker = null; };
+    arreterRtTicker = stopRtTicker;
     console.log('[Composer] REAL-TIME loop driver:', rtTicker ? 'Web Worker (background-proof)' : 'requestAnimationFrame (fallback)');
 
     recorder.onstop = () => {
@@ -4473,7 +4503,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
       try { document.body.removeChild(canvas); } catch {}
-      lutGrader?.dispose();
+      libererEtalonneur();
       onProgress?.(100, 'Terminé !');
       resolve({ video: blob, thumbnail: thumbnailBlob });
       // Only close AudioContext if we created it (NOT shared in batch mode)
@@ -4485,7 +4515,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       stopRtTicker();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
-      lutGrader?.dispose();
+      libererEtalonneur();
       reject(new Error('Recording failed'));
     };
 
@@ -4745,7 +4775,24 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // The ticker also drives it, but fire once immediately so we never wait a
     // full interval for the first frame.
     requestAnimationFrame(doFrame);
+  };
+  executerTempsReel().catch((err) => {
+    console.error('[Composer] Rendu temps reel interrompu:', err);
+    reject(err);
+    if (recorder.state !== 'inactive') {
+      // `onstop` fait le menage complet (audio, ticker, canvas, etalonneur) ;
+      // son `resolve` arrive apres ce `reject` et reste sans effet.
+      try { recorder.stop(); } catch {}
+    } else {
+      arreterRtTicker();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      releaseWakeLock();
+      try { document.body.removeChild(canvas); } catch {}
+      libererEtalonneur();
+      if (audioCtx && !isSharedCtx) { audioCtx.close().catch(() => {}); }
+    }
   });
+  }).finally(libererEtalonneur);
 }
 
 // ═══════════════════════════════════════════════════════════

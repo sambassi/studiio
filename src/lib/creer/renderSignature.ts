@@ -33,6 +33,17 @@ export const VOLATILE_KEYS = new Set([
   'elements',
 ]);
 
+/** FNV-1a 32 bits sur les octets d'une vue — rapide, et suffisant pour comparer. */
+function empreinteOctets(vue: ArrayBufferView): string {
+  const octets = new Uint8Array(vue.buffer, vue.byteOffset, vue.byteLength);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < octets.length; i++) {
+    h ^= octets[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16);
+}
+
 /**
  * Projection stable et sérialisable des options.
  *
@@ -54,6 +65,12 @@ function stable(value: unknown, profondeur = 0): unknown {
   // que son genre, jamais son identité — elle change à chaque rendu.
   if (typeof Node !== 'undefined' && value instanceof Node) return '[node]';
   if (value instanceof Blob) return `[blob:${value.size}]`;
+  // Tableau type (table d'une LUT : jusqu'a 65^3 x 3 flottants). Parcouru
+  // cle par cle, il ferait une signature de plusieurs Mo ; reduit a sa
+  // taille, deux filtres differents se confondraient et l'export
+  // reutiliserait un montage etalonne avec l'ancien. On garde une empreinte
+  // de son CONTENU.
+  if (ArrayBuffer.isView(value)) return `[octets:${value.byteLength}:${empreinteOctets(value)}]`;
 
   if (Array.isArray(value)) return value.map((v) => stable(v, profondeur + 1));
 

@@ -127,6 +127,7 @@ import {
   importLutFile, decodeImageInBrowser, envoyerLutApi, listerLutsApi, LUT_ACCEPT,
 } from '@/lib/luts/import';
 import { supportDeLut, LIBELLES_SUPPORT } from '@/lib/luts/support';
+import { chargerLutPourRendu } from '@/lib/luts/charger';
 import type { Lut, LutRef } from '@/lib/luts/types';
 import {
   batchCost, distinctPhotoForIndex, distinctUrls,
@@ -3826,8 +3827,8 @@ export default function AssistantWizard() {
   // table validee a l'import n'est jamais conservee, les octets vivent dans
   // la bibliotheque privee du compte. La nature (3D / 1D) sert au libelle de
   // support ; elle n'est pas persistee, elle est relue de la bibliotheque.
-  // A ce stade ni l'apercu ni l'export ne lisent `lut` : sans filtre, le
-  // rendu est strictement celui d'avant cet ajout.
+  // Le rendu (Play et export) le lit via `chargerLutPourRendu` ; l'apercu
+  // HTML, non. Sans filtre, le rendu est strictement celui d'avant cet ajout.
   const [lut, setLut] = useState<LutRef | null>(null);
   const [lutKind, setLutKind] = useState<Lut['kind'] | null>(null);
   const [lutLoading, setLutLoading] = useState(false);
@@ -7189,6 +7190,12 @@ export default function AssistantWizard() {
         return Object.keys(reste).length ? reste : undefined;
       })();
 
+      // Filtre couleur du rush, lu UNE fois pour tout le lot. `null` sans
+      // filtre, sans rush a l'ecran, ou si la LUT est illisible : le montage
+      // part alors brut, jamais en echec — et sans cle `rushLut`, les options
+      // sont exactement celles d'avant.
+      const rushLut = duree('video') > 0 && plateau.rushUrl ? await chargerLutPourRendu(lut) : null;
+
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
       // Le contenu courant sert TOUJOURS a la premiere — l'utilisateur vient
@@ -7357,6 +7364,7 @@ export default function AssistantWizard() {
           // le telechargement et le decodage du rush, inutiles pour une video
           // qui n'apparait nulle part dans le montage.
           videoUrl: duree('video') > 0 ? plateau.rushUrl || undefined : undefined,
+          ...(rushLut ? { rushLut } : {}),
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
           // filtre pareil (`dur > 0`).
