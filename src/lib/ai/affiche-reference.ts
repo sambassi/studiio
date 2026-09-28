@@ -24,8 +24,15 @@ import { uploadToStorage } from '@/lib/storage/upload';
 
 /** = `MODELS['image-edit']` de `/api/ai/image` — flux-kontext-pro (image + texte → image). */
 const MODELE_REFERENCE = 'black-forest-labs/flux-kontext-pro';
-/** Un peu au-dessus du temps d'une génération kontext (~3-6 s), marge réseau. */
+/**
+ * Attente maximale d'une génération kontext, file d'attente Replicate
+ * comprise (démarrage à froid, charge). Au-delà, la prédiction est ANNULÉE
+ * (`signal`) et l'échec est rendu comme « délai dépassé », pas comme une
+ * sortie vide.
+ */
 const DELAI_MS = 90_000;
+/** Motif rendu quand le délai a annulé la prédiction. */
+export const MOTIF_DELAI_DEPASSE = 'délai dépassé : la génération a pris trop de temps et a été annulée';
 /** Au-delà, la sortie n'est pas une image raisonnable : on refuse. */
 const MAX_OCTETS = 20 * 1024 * 1024;
 
@@ -86,13 +93,13 @@ export async function genererAfficheReference(input: {
   prompt: string;
   /** Format de la vidéo (« 9:16 », « 1:1 », « 16:9 »). */
   aspectRatio: string;
-}): Promise<ResultatAffiche> {
+}, deps: { delaiMs?: number } = {}): Promise<ResultatAffiche> {
   const cle = process.env.REPLICATE_API_TOKEN?.trim();
   if (!cle) return { ok: false, motif: 'service IA non configuré (REPLICATE_API_TOKEN absent)' };
 
   const replicate = new Replicate({ auth: cle });
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), DELAI_MS);
+  const timer = setTimeout(() => ctrl.abort(), deps.delaiMs ?? DELAI_MS);
   let output: unknown;
   try {
     output = await replicate.run(MODELE_REFERENCE, {
@@ -114,12 +121,17 @@ export async function genererAfficheReference(input: {
       signal: ctrl.signal,
     });
   } catch (e) {
+    if (ctrl.signal.aborted) return { ok: false, motif: MOTIF_DELAI_DEPASSE };
     return { ok: false, motif: e instanceof Error ? e.message.slice(0, 140) : 'génération refusée par le fournisseur' };
   } finally {
     clearTimeout(timer);
   }
 
   const urlBrute = extraireUrl(output);
+  // Délai atteint : le SDK a annulé la prédiction (`canceled`) et rend
+  // `output = null`. Ce n'est PAS une « sortie vide » du fournisseur. (Une
+  // image arrivée juste avant l'annulation reste, elle, utilisée.)
+  if (!urlBrute && ctrl.signal.aborted) return { ok: false, motif: MOTIF_DELAI_DEPASSE };
   if (!urlBrute) return { ok: false, motif: 'le fournisseur a répondu, mais sans image exploitable' };
 
   try {

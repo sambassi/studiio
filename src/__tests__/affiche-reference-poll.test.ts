@@ -18,7 +18,7 @@ vi.mock('@/lib/storage/upload', () => ({
   uploadToStorage: (o: { storagePath: string }) => uploadToStorage(o),
 }));
 
-import { genererAfficheReference } from '@/lib/ai/affiche-reference';
+import { genererAfficheReference, MOTIF_DELAI_DEPASSE } from '@/lib/ai/affiche-reference';
 
 const MEDIA = 'https://replicate.delivery/xyz/affiche.webp';
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -28,7 +28,7 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
-function fetchDouble() {
+function fetchDouble(getRend: Record<string, unknown> = { status: 'succeeded', output: MEDIA }) {
   const appels: Array<{ method: string; url: string }> = [];
   const f = vi.fn(async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const u = String(typeof url === 'object' && 'url' in url ? (url as Request).url : url);
@@ -37,7 +37,7 @@ function fetchDouble() {
     if (u.startsWith(MEDIA)) return new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
     if (method === 'POST' && u.includes('/cancel')) return json({ id: 'p1', urls: URLS, status: 'canceled', output: null });
     if (method === 'POST' && u.includes('predictions')) return json({ id: 'p1', urls: URLS, status: 'processing', output: null });
-    if (method === 'GET' && u.includes('/predictions/p1')) return json({ id: 'p1', urls: URLS, status: 'succeeded', output: MEDIA });
+    if (method === 'GET' && u.includes('/predictions/p1')) return json({ id: 'p1', urls: URLS, ...getRend });
     return json({ detail: 'not found' }, 404);
   });
   return { f, appels };
@@ -74,4 +74,17 @@ describe('genererAfficheReference — attente réelle de la fin du job Replicate
     expect(appels.some((a) => a.method === 'GET' && a.url.includes('/predictions/p1'))).toBe(true);
     expect(uploadToStorage).toHaveBeenCalledTimes(1);
   });
+
+  it('délai dépassé → prédiction annulée, motif « délai dépassé » (pas « sans image exploitable »), rien stocké', async () => {
+    // Le job reste `processing` indéfiniment : seul le délai l'arrête.
+    const { f, appels } = fetchDouble({ status: 'processing', output: null });
+    vi.stubGlobal('fetch', f);
+
+    const r = await genererAfficheReference(ARGS, { delaiMs: 20 });
+
+    expect(r).toEqual({ ok: false, motif: MOTIF_DELAI_DEPASSE });
+    // La prédiction a bien été annulée chez Replicate (on arrête de payer).
+    expect(appels.some((a) => a.method === 'POST' && a.url.includes('/cancel'))).toBe(true);
+    expect(uploadToStorage).not.toHaveBeenCalled();
+  }, 10_000);
 });
