@@ -133,11 +133,73 @@ async function refreshTikTokToken(account: any): Promise<string> {
   return data.access_token;
 }
 
+/**
+ * Meta (Facebook / Instagram).
+ *
+ * Le callback OAuth stocke un jeton de PAGE (`/me/accounts` -> `access_token`),
+ * jamais le jeton utilisateur : c'est lui qui publie sur `/{page-id}/videos`
+ * et `/{ig-user-id}/media`. Derive d'un jeton utilisateur long, un jeton de
+ * page n'expire pas ; le `expires_at` a +60 jours ecrit par le callback est
+ * celui du jeton UTILISATEUR, pas le sien.
+ *
+ * L'ancien code passait ce jeton de page a `fb_exchange_token` (reserve aux
+ * jetons utilisateur) puis ECRASAIT `access_token` avec la reponse : au mieux
+ * une erreur a chaque publication, au pire un jeton utilisateur a la place du
+ * jeton de page, et Facebook/Instagram cassaient jusqu'a reconnexion.
+ *
+ * On demande donc d'abord a Meta la nature du jeton (`debug_token`) :
+ *  - PAGE valide  -> on ne touche PAS au jeton, on corrige seulement
+ *                    `expires_at` (null = n'expire pas) ;
+ *  - invalide     -> erreur explicite (reconnexion necessaire), rien ecrit ;
+ *  - USER         -> seul cas ou l'echange `fb_exchange_token` a un sens.
+ * Tout echec de diagnostic leve SANS rien ecrire : les appelants gardent alors
+ * le jeton stocke.
+ */
 async function refreshMetaToken(account: any): Promise<string> {
-  // Meta long-lived tokens last 60 days and can be refreshed
   const appId = process.env.FACEBOOK_CLIENT_ID;
   const appSecret = process.env.FACEBOOK_CLIENT_SECRET;
+  const appToken = `${appId}|${appSecret}`;
 
+  const debugRes = await fetch(
+    `https://graph.facebook.com/v24.0/debug_token?` +
+    `input_token=${encodeURIComponent(account.access_token)}&access_token=${encodeURIComponent(appToken)}`
+  );
+  const debugJson = await debugRes.json();
+  const info = debugJson?.data;
+
+  if (debugJson?.error || !info) {
+    throw new Error(
+      `Meta token inspection failed: ${debugJson?.error?.message || 'no data'}`
+    );
+  }
+
+  if (info.is_valid === false) {
+    throw new Error(
+      `Meta token invalid (${info.type || 'unknown'}): reconnexion du compte necessaire`
+    );
+  }
+
+  if (info.type !== 'USER') {
+    // Jeton de PAGE (ou autre jeton non echangeable) : on le garde tel quel.
+    // `expires_at: 0` = n'expire jamais -> null, et getValidToken ne
+    // redeclenchera plus de rafraichissement inutile.
+    const expiresAt =
+      typeof info.expires_at === 'number' && info.expires_at > 0
+        ? new Date(info.expires_at * 1000).toISOString()
+        : null;
+
+    await supabaseAdmin
+      .from('social_accounts')
+      .update({
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', account.id);
+
+    return account.access_token;
+  }
+
+  // Jeton UTILISATEUR : l'echange long-lived est le flux documente par Meta.
   const res = await fetch(
     `https://graph.facebook.com/v24.0/oauth/access_token?` +
     `grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${account.access_token}`
