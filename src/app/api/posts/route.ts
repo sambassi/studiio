@@ -28,7 +28,12 @@ export async function GET(req: NextRequest) {
     if (month) {
       const [year, m] = month.split('-').map(Number);
       const startDate = `${year}-${String(m).padStart(2, '0')}-01`;
-      const endDate = `${year}-${String(m + 1 > 12 ? 1 : m + 1).padStart(2, '0')}-01`;
+      // Borne haute exclusive = 1er du mois suivant. En decembre, le mois
+      // suivant est janvier de l'ANNEE SUIVANTE : sans ce passage d'annee,
+      // `2026-12` donnait `< 2026-01-01` et le calendrier restait vide.
+      const ny = m === 12 ? year + 1 : year;
+      const nm = m === 12 ? 1 : m + 1;
+      const endDate = `${ny}-${String(nm).padStart(2, '0')}-01`;
       query = query.gte('scheduled_date', startDate).lt('scheduled_date', endDate);
     }
 
