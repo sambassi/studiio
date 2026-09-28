@@ -54,6 +54,34 @@ function verifyCronSecret(req: NextRequest): boolean {
 /** Où l'utilisateur va regler ce qui bloque. */
 const LIEN_AUTOPILOTE = '/dashboard/creer?panneau=autopilote';
 
+/**
+ * Famille de notification « montage(s) non produit(s) ».
+ *
+ * Ecrite ici plutot que dans `NOTIFICATION_KINDS` : `notifyOnce` accepte une
+ * chaine libre, et l'anti-doublon (une par jour) porte sur cette valeur.
+ */
+const KIND_AUTOPILOTE_ECHEC = 'autopilote-echec';
+
+/**
+ * Le texte d'un cycle rate — une seule source pour la cloche ET l'email.
+ *
+ * ⚠️ IL NE PROMET QUE CE QUI EST VRAI. `produireUnMontage` leve AVANT tout
+ * debit, et un jumeau non lance n'est pas facture : « aucun credit » est
+ * exact. « Nouvel essai au prochain passage » ne l'est que si RIEN n'a ete
+ * produit — c'est alors seulement que `last_run_at` n'avance pas.
+ */
+function messageEchec(echecs: number, reussis: number): { title: string; body: string } {
+  const pluriel = echecs > 1;
+  return {
+    title: `Autopilote : ${echecs} montage${pluriel ? 's' : ''} non produit${pluriel ? 's' : ''}`,
+    body: `${pluriel ? 'Des montages n’ont' : 'Un montage n’a'} pas pu être rendu. Aucun crédit n’a été débité pour ${pluriel ? 'eux' : 'lui'}. `
+      + (reussis > 0
+        ? 'Les autres montages sont dans votre Calendrier. '
+        : 'L’Autopilote réessaiera au prochain passage, avec le rush suivant de votre banque. ')
+      + 'Vous pouvez aussi « Produire un brouillon maintenant ».',
+  };
+}
+
 /** Ce qu'on annonce, par cause. Un seul texte pour la cloche ET pour l'email. */
 const MESSAGES: Partial<Record<SkipReason, {
   kind: string;
@@ -366,6 +394,14 @@ export async function GET(req: NextRequest) {
           reussis += 1;
         } catch (err) {
           echecs += 1;
+          // ⚠️ LA ROTATION AVANCE AUSSI SUR UN ECHEC. `last_rush_url`
+          // n'avancait qu'apres un succes : un rush qui fait echouer le rendu
+          // (fichier corrompu, codec refuse) etait donc repris par `pickRush`
+          // a CHAQUE passage — l'Autopilote restait bloque dessus pour
+          // toujours, sans rien produire ni rien dire. Le rush tente est
+          // note : le passage suivant repart du suivant de la banque. Un rush
+          // mort (404) est de toute facon exclu a l'ecriture, plus bas.
+          if (post.rushUrl) dernierRush = post.rushUrl;
           console.error(
             `[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} echoue :`,
             err instanceof Error ? err.message : err,
@@ -377,8 +413,21 @@ export async function GET(req: NextRequest) {
       // Laisser une adresse morte dans la banque ferait retomber dessus a
       // chaque cycle, et l'utilisateur verrait des montages amputes de leur
       // sequence video sans jamais savoir pourquoi.
-      const banquePropre = config.rushUrls.filter((u) => !rushesMorts.has(u));
+      let banquePropre = config.rushUrls.filter((u) => !rushesMorts.has(u));
       if (rushesMorts.size > 0) {
+        // ⚠️ RELUE MAINTENANT, PAS AU DEBUT DU CYCLE. Entre les deux, plusieurs
+        // rendus de quelques minutes : un rush ajoute par l'utilisateur
+        // pendant ce temps etait EFFACE par l'ecriture de la banque lue au
+        // depart. Lecture impossible : la banque du debut, comme avant.
+        const { data: actuelle, error: relectureError } = await supabaseAdmin
+          .from('autopilot_config')
+          .select('rush_urls')
+          .eq('user_id', userId)
+          .limit(1);
+        const relue = (actuelle?.[0] as { rush_urls?: unknown } | undefined)?.rush_urls;
+        if (!relectureError && Array.isArray(relue)) {
+          banquePropre = relue.filter((u): u is string => typeof u === 'string' && !rushesMorts.has(u));
+        }
         const { error: nettoyageError } = await supabaseAdmin
           .from('autopilot_config')
           .update({ rush_urls: banquePropre, updated_at: new Date(now).toISOString() })
@@ -421,19 +470,44 @@ export async function GET(req: NextRequest) {
       // `last_run_at` n'avance que si QUELQUE CHOSE a ete produit : un cycle
       // entierement rate doit pouvoir etre rattrape au passage suivant,
       // plutot que saute d'une cadence entiere.
-      if (reussis > 0) {
+      //
+      // `last_rush_url`, lui, avance des qu'un rush a ete TENTE — reussi ou
+      // non (voir le `catch` ci-dessus) : sans ca, un cycle entierement rate
+      // repartait du meme rush, et echouait de la meme facon, indefiniment.
+      // Un rush retire de la banque n'est jamais ecrit, sinon `pickRush`
+      // repartirait d'un `indexOf` a -1, donc toujours du premier.
+      const rushAEcrire = dernierRush && !rushesMorts.has(dernierRush) ? dernierRush : null;
+      if (reussis > 0 || rushAEcrire !== config.lastRushUrl) {
         await supabaseAdmin
           .from('autopilot_config')
           .update({
-            last_run_at: new Date(now).toISOString(),
-            // Le dernier rush reellement utilise : la rotation repartira du
-            // suivant. Un rush dont le rendu a echoue ne compte pas — et un
-            // rush retire de la banque non plus, sinon `pickRush` repartirait
-            // d'un `indexOf` a -1, donc toujours du premier.
-            last_rush_url: dernierRush && !rushesMorts.has(dernierRush) ? dernierRush : null,
+            ...(reussis > 0 ? { last_run_at: new Date(now).toISOString() } : null),
+            last_rush_url: rushAEcrire,
             updated_at: new Date(now).toISOString(),
           })
           .eq('user_id', userId);
+      }
+
+      // ── Un montage rate se DIT ─────────────────────────────────────────
+      // Il n'etait ecrit que dans les journaux du serveur : l'utilisateur
+      // voyait un Calendrier vide sans savoir pourquoi. Une notification par
+      // jour au plus (anti-doublon de `notifyOnce`), email best-effort
+      // seulement si elle a ete creee. Jamais bloquant pour le cycle.
+      if (echecs > 0) {
+        try {
+          const m = messageEchec(echecs, reussis);
+          const { created } = await notifyOnce({
+            userId, kind: KIND_AUTOPILOTE_ECHEC, title: m.title, body: m.body, href: LIEN_AUTOPILOTE,
+          });
+          if (created) {
+            const { data: u } = await supabaseAdmin
+              .from('users').select('email').eq('id', userId).limit(1);
+            const email = (u?.[0] as { email?: string } | undefined)?.email;
+            if (email) sendEmailSilent({ to: email, subject: m.title, html: `<p>${m.body}</p>` });
+          }
+        } catch (e) {
+          console.error(`[Autopilote/Cron] ${userId} — notification d'echec impossible :`, e instanceof Error ? e.message : e);
+        }
       }
 
       rapport.push({

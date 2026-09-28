@@ -40,6 +40,7 @@ import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
+import { notifyOnce } from '@/lib/notifications/store';
 
 /** Format vertical de l'Autopilote — la génération du jumeau le suit. */
 const RATIO_AUTOPILOTE = '9:16';
@@ -426,7 +427,26 @@ async function echouer(ligne: LigneAttente, motif: string): Promise<void> {
     .from('autopilot_jumeau_attente')
     .update({ statut: 'echec', motif, updated_at: new Date().toISOString() })
     .eq('id', ligne.id);
+  // ── L'échec se DIT, pas seulement dans la file ──────────────────────────
+  // `motif` n'était lu par personne : un montage-jumeau abandonné (média
+  // introuvable, fournisseur muet) laissait un créneau vide sans un mot. Une
+  // notification par jour au plus ; jamais bloquante pour la finalisation.
+  try {
+    await notifyOnce({
+      userId: ligne.user_id,
+      kind: KIND_JUMEAU_ECHEC,
+      title: 'Autopilote : votre jumeau n’a pas pu être monté',
+      body: `${motif.slice(0, 200)} Les crédits du jumeau sont remboursés s’il n’a pas été produit ; `
+        + 'le rendu n’est débité que pour un montage livré.',
+      href: '/dashboard/creer?panneau=autopilote',
+    });
+  } catch (e) {
+    console.error('[Autopilote/Jumeau] notification d’échec impossible :', e instanceof Error ? e.message : e);
+  }
 }
+
+/** Famille de notification d'un montage-jumeau abandonné (anti-doublon par jour). */
+export const KIND_JUMEAU_ECHEC = 'autopilote-jumeau-echec';
 
 /**
  * Un post existe-t-il DÉJÀ pour ce créneau ? Cas d'un rendu terminé dont le
