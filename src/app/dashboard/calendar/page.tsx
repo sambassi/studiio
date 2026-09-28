@@ -50,6 +50,7 @@ import {
 } from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
 import { montageSize, preparerOptionsRendu } from '@/lib/rendus/options-depuis-metadata';
+import { decisionExportBureau } from '@/lib/rendus/export-bureau';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 import { creneauImmediat, DEFAULT_TIMEZONE } from '@/lib/autopilot/rules';
 
@@ -2012,10 +2013,33 @@ export default function CalendarPage() {
   // If renderedVideoUrl exists, download it. Otherwise, compose on-the-fly using metadata.
   const handleExportPostInterne = async (post: Post) => {
     const meta = post.metadata;
+    const decision = decisionExportBureau(meta);
+
+    // Montage perime : on ne livre pas l'ancien fichier en silence (#459).
+    if (decision === 'bloque') {
+      bloquerSiMontagePerime(post);
+      return;
+    }
+
+    // Rendu final SERVEUR (Autopilote, `autopilote-<job>.mp4`) : il est deja
+    // lisible et deja paye. Telechargement direct — ni recomposition dans le
+    // navigateur, ni debit. Il tombait avant dans la case « .mp4 navigateur
+    // corrompu » ci-dessous et etait recompose, et facture.
+    if (decision === 'telecharger' && meta?.renderedVideoUrl) {
+      const a = document.createElement('a');
+      a.href = meta.renderedVideoUrl;
+      a.download = `${(post.title || 'video').replace(/[^a-zA-Z0-9-_]+/g, '_')}.mp4`;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
 
     // If we already have a rendered montage URL in WebM format, convert server-side to MP4 then download
     // NEVER reuse old .mp4 montages — Chrome MediaRecorder produces corrupted MP4 in fast mode
-    if (meta?.renderedVideoUrl && !meta.renderedVideoUrl.endsWith('.mp4')) {
+    if (decision === 'convertir' && meta?.renderedVideoUrl) {
       setExportRendering(true);
       setExportRenderProgress(10);
       setExportRenderStage('Vérification de la vidéo source...');
