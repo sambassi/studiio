@@ -14,6 +14,18 @@ import { PawapayErreur, type DepotDistant } from './types';
 
 const BASE_PAR_DEFAUT = 'https://api.sandbox.pawapay.io';
 
+/**
+ * Délai maximal de CHAQUE appel à PawaPay. Sans lui, un PawaPay muet bloque
+ * un appel ~300 s (délai par défaut d'undici) et le rattrapage séquentiel
+ * peut durer des heures. Au-delà, l'appel lève une `PawapayErreur` : aucune
+ * conclusion n'en est tirée, le dépôt reste en attente.
+ */
+export const DELAI_APPEL_PAWAPAY_MS = 10_000;
+
+function signalDelai(): AbortSignal {
+  return AbortSignal.timeout(DELAI_APPEL_PAWAPAY_MS);
+}
+
 interface ConfigPawapay {
   token: string;
   base: string;
@@ -110,6 +122,7 @@ export async function lireDepot(depositId: string): Promise<DepotDistant> {
     r = await fetch(`${base}/v2/deposits/${encodeURIComponent(depositId)}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
+      signal: signalDelai(),
     });
   } catch (e) {
     throw new PawapayErreur(`PawaPay injoignable : ${(e as Error)?.message ?? e}`);
@@ -177,6 +190,7 @@ async function posterPagePaiement(base: string, token: string, payload: Record<s
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: signalDelai(),
     });
   } catch (e) {
     throw new PawapayErreur(`PawaPay injoignable : ${(e as Error)?.message ?? e}`);
@@ -280,6 +294,7 @@ export async function paysActifs(maintenant: number = Date.now()): Promise<PaysA
     r = await fetch(`${base}/v2/active-conf`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
+      signal: signalDelai(),
     });
   } catch (e) {
     throw new PawapayErreur(`PawaPay injoignable : ${(e as Error)?.message ?? e}`);

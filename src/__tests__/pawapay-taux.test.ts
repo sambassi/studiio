@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { creerStoreMemoire } from '@/lib/payment/pawapay/confirmation';
-import { DeviseSansTauxErreur, analyserTauxChf, prixLocal } from '@/lib/payment/pawapay/tarifs';
+import { BORNES_TAUX_CHF, DeviseSansTauxErreur, analyserTauxChf, prixLocal } from '@/lib/payment/pawapay/tarifs';
 
 // Store réel (obtenirTauxChf lit vraiment l'environnement) ; seule la
 // persistance est remplacée, puisqu'elle n'existe pas encore.
@@ -133,6 +133,33 @@ describe('obtenirTauxChf — lecture stricte de PAWAPAY_RATES', () => {
     vi.stubEnv('PAWAPAY_RATES', '{"XOF":-1,"XAF":"NaN"}');
     expect(await obtenirTauxChf()).toBeNull();
     expect(analyserTauxChf('{"XOF":-1,"XAF":"NaN"}').erreur).toBe('aucun_taux_valide');
+  });
+
+  it.each([
+    ['trop bas (zéro oublié)', 12.3],
+    ['trop haut (zéro en trop)', 12300],
+    ['juste sous la borne', '99.99'],
+    ['juste au-dessus de la borne', '2000.01'],
+  ])('XOF %s → hors bornes, devise refusée, valeur jamais journalisée', async (_n, valeur) => {
+    const brut = JSON.stringify({ XOF: valeur, XAF: 123 });
+    vi.stubEnv('PAWAPAY_RATES', brut);
+    const taux = await obtenirTauxChf();
+    expect(taux).toEqual({ XAF: 123 });
+    expect(analyserTauxChf(brut).devisesHorsBornes).toEqual(['XOF']);
+    expect(journaux()).toContain('XOF');
+    expect(journaux()).not.toContain(String(valeur));
+  });
+
+  it('bornes XOF/XAF incluses (100 et 2000 acceptés)', () => {
+    expect(analyserTauxChf('{"XOF":100,"XAF":"2000"}').taux).toEqual({ XOF: 100, XAF: '2000' });
+    expect(BORNES_TAUX_CHF.XOF).toEqual([100, 2000]);
+    expect(BORNES_TAUX_CHF.XAF).toEqual([100, 2000]);
+  });
+
+  it('devise sans bornes connues → acceptée sur sa seule forme (documenté)', () => {
+    const a = analyserTauxChf('{"XOF":123,"ABC":"0.001","XYZ":999999}');
+    expect(a.taux).toEqual({ XOF: 123, ABC: '0.001', XYZ: 999999 });
+    expect(a.devisesHorsBornes).toEqual([]);
   });
 
   it('clés normalisées en majuscules, limitées aux codes ISO à 3 lettres', () => {

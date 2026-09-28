@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import type { DepotAttendu, DepotDistant } from '@/lib/payment/pawapay/types';
+import { PawapayErreur, type DepotAttendu, type DepotDistant } from '@/lib/payment/pawapay/types';
 
 const mocksStore = vi.hoisted(() => ({
   store: null as unknown,
@@ -31,6 +31,7 @@ import {
 } from '@/lib/payment/pawapay/confirmation';
 import {
   type ArgsPagePaiement,
+  DELAI_APPEL_PAWAPAY_MS,
   creerPagePaiement,
   lireDepot,
   paysActifs,
@@ -339,6 +340,33 @@ describe('client — liste blanche des hôtes PawaPay', () => {
     await expect(creerPagePaiement({
       depositId: ID, montant: '1', devise: 'XOF', urlRetour: 'https://studiio.pro/x',
     })).rejects.toThrow(/sans URL PawaPay valide/);
+  });
+});
+
+describe('client — délai maximal sur chaque appel PawaPay', () => {
+  it('chaque fetch porte un AbortSignal de délai (relecture, Payment Page, active-conf)', async () => {
+    expect(DELAI_APPEL_PAWAPAY_MS).toBe(10_000);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/v2/active-conf')) return reponseJson({ countries: [] });
+      if (url.endsWith('/v2/paymentpage')) return reponseJson({ redirectUrl: 'https://paywith.pawapay.io/?t=1' });
+      return reponseJson({ status: 'NOT_FOUND' });
+    });
+    await lireDepot(ID);
+    await creerPagePaiement({ depositId: ID, montant: '1', devise: 'XOF', urlRetour: 'https://studiio.pro/x' });
+    await paysActifs();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal.aborted).toBe(false);
+    }
+  });
+
+  it('délai dépassé (TimeoutError) → PawapayErreur, jamais un verdict', async () => {
+    fetchMock.mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    await expect(lireDepot(ID)).rejects.toBeInstanceOf(PawapayErreur);
+    await expect(paysActifs()).rejects.toBeInstanceOf(PawapayErreur);
+    await expect(creerPagePaiement({ depositId: ID, montant: '1', devise: 'XOF', urlRetour: 'https://studiio.pro/x' }))
+      .rejects.toBeInstanceOf(PawapayErreur);
   });
 });
 
