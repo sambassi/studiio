@@ -138,7 +138,12 @@ vi.mock('@/lib/social/publishing', () => ({
   comptesConnectes: async () => [],
   droitDePublier: async () => ({ autorise: false }),
 }));
-vi.mock('@/lib/social/publishViaZernio', () => ({ publierViaZernio: vi.fn() }));
+// Les helpers purs de preuve Zernio (`etatPreuveZernio`…) restent reels : le
+// reset des posts bloques s'en sert. Seul l'envoi est simule.
+vi.mock('@/lib/social/publishViaZernio', async (orig) => ({
+  ...(await orig<typeof import('@/lib/social/publishViaZernio')>()),
+  publierViaZernio: vi.fn(),
+}));
 vi.mock('@/lib/social/token-refresh', () => ({ getValidToken: async () => 'jeton-test' }));
 vi.mock('@/lib/email/resend', () => ({ sendEmail: vi.fn(async () => ({ success: true })) }));
 vi.mock('@/lib/social/whatsapp', () => ({

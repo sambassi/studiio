@@ -28,7 +28,12 @@ export async function GET(req: NextRequest) {
     if (month) {
       const [year, m] = month.split('-').map(Number);
       const startDate = `${year}-${String(m).padStart(2, '0')}-01`;
-      const endDate = `${year}-${String(m + 1 > 12 ? 1 : m + 1).padStart(2, '0')}-01`;
+      // Borne haute exclusive = 1er du mois suivant. En decembre, le mois
+      // suivant est janvier de l'ANNEE SUIVANTE : sans ce passage d'annee,
+      // `2026-12` donnait `< 2026-01-01` et le calendrier restait vide.
+      const ny = m === 12 ? year + 1 : year;
+      const nm = m === 12 ? 1 : m + 1;
+      const endDate = `${ny}-${String(nm).padStart(2, '0')}-01`;
       query = query.gte('scheduled_date', startDate).lt('scheduled_date', endDate);
     }
 
@@ -293,10 +298,27 @@ export async function DELETE(req: NextRequest) {
           : []
         ).map((u) => storageKey(typeof u === 'string' ? u : null)).filter(Boolean) as string[],
       );
+      // ⚠️ UN MEDIA PEUT APPARTENIR A PLUSIEURS POSTS. « Dupliquer » recopie
+      // les metadonnees telles quelles : l'original et sa copie designent les
+      // MEMES fichiers. Supprimer l'un emportait le montage, le poster et
+      // l'audio de l'autre. On epargne donc toute cle encore referencee par
+      // un autre post du meme compte.
+      // `null` = posts illisibles : on ne supprime AUCUN fichier. Un fichier
+      // orphelin se rattrape au nettoyage suivant ; un fichier supprime ne
+      // revient pas.
+      const partagees = await clesReferenceesParAutresPosts(session.user.id, id);
+      if (!partagees) {
+        console.error(`[POST DELETE id=${id}] posts du compte illisibles — aucun media supprime`);
+        return NextResponse.json({ success: true });
+      }
       const urls = toutes.filter((u) => {
         const k = storageKey(u);
         if (k && (banque ? banque.has(k) : rushesDuPost.has(k))) {
           console.log(`[POST DELETE id=${id}] rush de la banque Autopilote conserve : ${k}`);
+          return false;
+        }
+        if (k && partagees.has(k)) {
+          console.log(`[POST DELETE id=${id}] media partage avec un autre post conserve : ${k}`);
           return false;
         }
         return true;
@@ -316,5 +338,63 @@ export async function DELETE(req: NextRequest) {
   } catch (error) {
     console.error('Error deleting post:', error);
     return NextResponse.json({ success: false, error: 'Failed to delete post' }, { status: 500 });
+  }
+}
+
+const PAGE_POSTS = 1000;
+const POSTS_MAX = 100_000;
+
+/**
+ * Cles de stockage (`<bucket>/<chemin>`) encore referencees par les AUTRES
+ * posts du compte : `media_url` + tout ce que `collectStorageUrlsFromPost`
+ * extrait des metadonnees — la meme extraction que la suppression, pour que
+ * les deux ensembles se comparent terme a terme.
+ *
+ * Lecture PAGINEE : PostgREST tronque silencieusement au-dela de
+ * `db-max-rows`, et une liste tronquee ferait supprimer un fichier partage.
+ *
+ * Rend `null`, et non un ensemble vide, des que la lecture est impossible ou
+ * incomplete : l'appelant ne supprime alors rien.
+ */
+async function clesReferenceesParAutresPosts(
+  userId: string, exclureId: string,
+): Promise<Set<string> | null> {
+  const out = new Set<string>();
+  const ajouter = (u: unknown) => {
+    const k = storageKey(typeof u === 'string' ? u : null);
+    if (k) out.add(k);
+  };
+  try {
+    for (let debut = 0; ; debut += PAGE_POSTS) {
+      // eslint-disable-next-line no-await-in-loop
+      const { data, error } = await supabase
+        .from('scheduled_posts')
+        .select('id, media_url, metadata')
+        .eq('user_id', userId)
+        .neq('id', exclureId)
+        .order('id', { ascending: true })
+        .range(debut, debut + PAGE_POSTS - 1);
+      if (error) {
+        console.error('[POST DELETE] posts du compte illisibles :', error.message);
+        return null;
+      }
+      const lot = (data ?? []) as Array<{ media_url?: unknown; metadata?: unknown }>;
+      for (const p of lot) {
+        ajouter(p.media_url);
+        const meta = p.metadata && typeof p.metadata === 'object'
+          ? (p.metadata as Record<string, unknown>)
+          : null;
+        for (const u of collectStorageUrlsFromPost(meta)) ajouter(u);
+      }
+      // Une page plus courte que demandee est la seule fin de table honnete.
+      if (lot.length < PAGE_POSTS) return out;
+      if (debut + PAGE_POSTS >= POSTS_MAX) {
+        console.error(`[POST DELETE] plus de ${POSTS_MAX} posts — lecture abandonnee`);
+        return null;
+      }
+    }
+  } catch (err) {
+    console.error('[POST DELETE] posts du compte illisibles :', err);
+    return null;
   }
 }

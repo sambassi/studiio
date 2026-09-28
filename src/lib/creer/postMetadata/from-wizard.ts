@@ -75,6 +75,9 @@
  * Le montage déjà rendu (`renderedVideoUrl`, `thumbnailUrl`, `composerVersion`)
  * n'est JAMAIS touché : modifier des textes ne produit pas une nouvelle vidéo,
  * et y toucher ferait pointer le post vers un fichier qui ne lui correspond pas.
+ * En revanche, dès qu'une modification change le rendu, l'envoi porte
+ * `montagePerime: true` (voir `CLE_MONTAGE_PERIME`) : le Calendrier propose
+ * alors « Régénérer », et le rendu suivant retire le drapeau.
  *
  * Ce module ne fait aucun appel réseau, ne déclenche aucun rendu et ne modifie
  * pas ses arguments.
@@ -139,8 +142,43 @@ function cibleTexte(base: unknown, champ: ChampTexte, valeur: string): CleTexte 
   return resoudreTextes(ecrireTexte(base, champ, valeur))[champ].cle;
 }
 
+/**
+ * Drapeau « le montage rendu ne correspond plus à la metadata ».
+ *
+ * Posé par `metadataPourEnregistrement` quand un enregistrement change le
+ * rendu ; retiré (`false`) par tout chemin qui écrit un nouveau
+ * `renderedVideoUrl`. Absent — tous les posts antérieurs — il vaut « à jour » :
+ * le comportement d'avant est inchangé.
+ */
+export const CLE_MONTAGE_PERIME = 'montagePerime';
+
+/** Le montage rendu de ce post est-il périmé par un enregistrement ? */
+export function montageEstPerime(metadata: unknown): boolean {
+  return estObjet(metadata) && metadata[CLE_MONTAGE_PERIME] === true;
+}
+
+/**
+ * Clés écrites qui NE changent PAS la vidéo rendue.
+ *
+ * ⚠️ Liste d'EXCLUSION, et non d'inclusion — même raison que
+ * `renderSignature.ts` : une liste des champs visuels écrite à la main serait
+ * fausse au premier champ ajouté sans y penser, et son échec serait SILENCIEUX
+ * (une vidéo publiée qui ne correspond plus à l'écran). Ici, tout nouveau champ
+ * envoyé périme le montage par défaut ; le pire cas est un « Régénérer » de
+ * trop, jamais une vidéo périmée publiée sans signal.
+ *
+ * `hasAudio` n'est qu'un résumé des champs audio, qui périment eux-mêmes.
+ */
+const CLES_SANS_EFFET_SUR_LE_RENDU: ReadonlySet<string> = new Set(['hasAudio']);
+
 /** Ce que le parcours guidé sait produire sans rendre de vidéo. */
 export interface ValeursWizard {
+  /**
+   * Le titre part dans la colonne `title`, jamais dans la metadata. Il n'est
+   * lu ici que pour savoir si le montage devient périmé : il est peint dans
+   * la vidéo.
+   */
+  title?: string;
   subtitle?: string;
   theme?: string;
   cards?: unknown[];
@@ -293,6 +331,16 @@ export function metadataPourEnregistrement(
 
   if (brandingChange) envoi.branding = branding;
   if (designChange) envoi.design = design;
+
+  // ── Montage périmé ──────────────────────────────────────────────────
+  //
+  // Le montage rendu n'est pas touché (voir l'en-tête), mais il ne correspond
+  // plus : on le DIT, pour que le Calendrier propose de le régénérer. Rien
+  // n'a changé, rien n'est posé — ouvrir puis enregistrer n'écrit toujours
+  // rien.
+  const titreChange = valeurs.title !== undefined && !memeValeur(valeurs.title, ref.title);
+  const renduChange = Object.keys(envoi).some((cle) => !CLES_SANS_EFFET_SUR_LE_RENDU.has(cle));
+  if (titreChange || renduChange) envoi[CLE_MONTAGE_PERIME] = true;
 
   return envoi;
 }
