@@ -215,9 +215,14 @@ const MAX_BOXES = 24;
 const MAX_GROUPS = 12;
 const MAX_ELEMENTS = 24;
 
-/** URL conservable — jamais un `blob:`, qui meurt avec l'onglet. */
+/**
+ * URL conservable : absolue `http(s)`, ou chemin relatif du stockage
+ * (`/storage/v1/object/public/…`, la forme que rend `signed-url` sous MinIO).
+ * Jamais `blob:` (meurt avec l'onglet) ni `data:` (le repli d'un envoi
+ * d'affiche échoué : plusieurs Mo de base64 dans la metadata du post).
+ */
 export const persistableUrl = (url: string | null | undefined): string | undefined =>
-  url && !url.startsWith('blob:') ? url : undefined;
+  url && (/^https?:\/\//i.test(url) || (url.startsWith('/') && !url.startsWith('//'))) ? url : undefined;
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);

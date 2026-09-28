@@ -877,10 +877,11 @@ const S = { sujet: 0, style: 1, audio: 2, contenu: 3, envoi: 4 } as const;
  *
  * Une URL `blob:` n'existe que dans l'onglet qui l'a creee : elle est parfaite
  * pour composer la video (tout se passe dans le navigateur) mais morte des le
- * rechargement de la page. On ne la persiste donc pas.
+ * rechargement de la page. Une URL `data:` (repli d'un envoi d'affiche
+ * echoue) pese plusieurs Mo. Aucune des deux n'est persistee : meme regle que
+ * le brouillon (`@/lib/creer/draft`).
  */
-const persistableUrl = (url: string | null): string | undefined =>
-  url && !url.startsWith('blob:') ? url : undefined;
+const persistableUrl = (url: string | null): string | undefined => persistableDraftUrl(url);
 
 /**
  * Une affiche generee par l'IA n'est appliquee que si son URL est DURABLE :
@@ -8041,13 +8042,13 @@ export default function AssistantWizard() {
       videoSize: { w: taille.w, h: taille.h },
       // `?? undefined` et non `?? ''` : une valeur absente ne doit pas etre
       // ENVOYEE, sinon elle effacerait ce que l'editeur avance y avait mis.
-      posterUrl: posterUrl ?? undefined,
-      musicUrl: musicUrl ?? undefined,
-      voiceUrl: voiceUrl ?? undefined,
+      posterUrl: persistableUrl(posterUrl),
+      musicUrl: persistableUrl(musicUrl),
+      voiceUrl: persistableUrl(voiceUrl),
       musicVolume,
       voiceVolume,
       sequenceVoiceUrls,
-      rushUrls: rushUrl && seqDuration('video') > 0 ? [rushUrl] : undefined,
+      rushUrls: persistableUrl(rushUrl) && seqDuration('video') > 0 ? [rushUrl!] : undefined,
       audioKeyframes,
       cardGroups,
       // Realignees sur les cartes de l'ecran ; identiques au chargement tant

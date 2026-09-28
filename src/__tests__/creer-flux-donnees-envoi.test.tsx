@@ -57,8 +57,14 @@ vi.mock('@/lib/video-composer', async () => {
   };
 });
 
+let reponseEnvoiAffiche: { url: string; dataUrl: boolean; reason?: string } | null = null;
+vi.mock('@/lib/creer/posterUpload', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/creer/posterUpload')>('@/lib/creer/posterUpload');
+  return { ...actual, uploadPosterFile: async () => reponseEnvoiAffiche! };
+});
+
 import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
-import { draftKey, DRAFT_VERSION, sanitizeDraft } from '../lib/creer/draft';
+import { draftKey, DRAFT_VERSION, sanitizeDraft, persistableUrl } from '../lib/creer/draft';
 import { toWizardDraft } from '../lib/creer/postMetadata/to-wizard';
 
 const CLE = draftKey('a@b.c');
@@ -137,17 +143,36 @@ const attendre = async (tours = 60) => {
   }
 };
 
-const envoyerAuCalendrier = async () => {
+const envoyerAuCalendrier = async (afficheTeleversee?: boolean) => {
   urlQuery = new URLSearchParams('');
+  if (afficheTeleversee) {
+    // L'affiche se choisit à l'étape « Style » : on y rouvre le brouillon.
+    const brouillon = JSON.parse(window.localStorage.getItem(CLE)!);
+    delete brouillon.posterUrl;
+    window.localStorage.setItem(CLE, JSON.stringify({ ...brouillon, step: 1 }));
+  }
   render(<AssistantWizard />);
   await attendre(4);
+  let afficheFaite = !afficheTeleversee;
   for (let i = 0; i < 4; i += 1) {
+    const section = document.querySelector('[aria-controls="section-affiche"]');
+    if (!afficheFaite && section && section.getAttribute('aria-expanded') !== 'true') {
+      await act(async () => { fireEvent.click(section); });
+    }
+    const champ = document.querySelector('[data-poster-upload]') as HTMLInputElement | null;
+    if (!afficheFaite && champ) {
+      const fichier = new File(['x'], 'ma-photo.jpg', { type: 'image/jpeg' });
+      await act(async () => { fireEvent.change(champ, { target: { files: [fichier] } }); });
+      await attendre(10);
+      afficheFaite = true;
+    }
     if (document.querySelector('[data-batch-mode="unique"]')) break;
     const suivant = screen.queryAllByRole('button', { name: /^Continuer/ })[0];
     if (!suivant) break;
     await act(async () => { fireEvent.click(suivant); await Promise.resolve(); });
   }
   await attendre(4);
+  expect(afficheFaite, 'le champ « Ma photo » doit avoir été trouvé').toBe(true);
   const bouton = document.querySelector('[data-envoi-action]') as HTMLButtonElement;
   expect(bouton.disabled).toBe(false);
   await act(async () => { fireEvent.click(bouton); });
@@ -245,5 +270,36 @@ describe('sanitizeDraft — keyframes du mixeur', () => {
       { t: 4, music: 0.1, voice: 0.6, rush: 0.2 },
     ] }, deps as never)!;
     expect(d.audioKeyframes).toEqual([{ id: 'kf-0', time: 4, musicVolume: 0.1, rushVolume: 0.2, voiceVolume: 0.6 }]);
+  });
+});
+
+describe('AFFICHE téléversée — seule une URL durable est écrite dans le post', () => {
+  it('⚠️ repli `data:` (envoi au stockage échoué) : jamais écrit dans la metadata', async () => {
+    const DATA = `data:image/jpeg;base64,${'A'.repeat(5000)}`;
+    reponseEnvoiAffiche = { url: DATA, dataUrl: true, reason: 'PUT 500' };
+    const post = await envoyerAuCalendrier(true);
+    // Le montage, lui, a bien été composé avec la photo.
+    expect(optionsComposees[0].posterUrl).toBe(DATA);
+    const meta = post.metadata as Record<string, unknown>;
+    expect(meta.posterUrl).toBeUndefined();
+    expect(JSON.stringify(post)).not.toContain('data:image');
+  });
+
+  it('URL durable relative du stockage (MinIO) : écrite telle quelle', async () => {
+    const MINIO = '/storage/v1/object/public/media/u1/ma-photo.jpg';
+    reponseEnvoiAffiche = { url: MINIO, dataUrl: false };
+    const post = await envoyerAuCalendrier(true);
+    expect((post.metadata as Record<string, unknown>).posterUrl).toBe(MINIO);
+  });
+});
+
+describe('persistableUrl — la règle unique (brouillon, post, « Enregistrer »)', () => {
+  it('accepte http(s) et un chemin relatif du stockage, rejette blob:, data: et //hôte', () => {
+    expect(persistableUrl('https://cdn/x.jpg')).toBe('https://cdn/x.jpg');
+    expect(persistableUrl('/storage/v1/object/public/media/x.jpg')).toBe('/storage/v1/object/public/media/x.jpg');
+    expect(persistableUrl('data:image/png;base64,AAAA')).toBeUndefined();
+    expect(persistableUrl('blob:http://localhost/abcd')).toBeUndefined();
+    expect(persistableUrl('//evil.com/x.jpg')).toBeUndefined();
+    expect(persistableUrl('')).toBeUndefined();
   });
 });
