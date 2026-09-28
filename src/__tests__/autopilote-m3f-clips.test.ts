@@ -355,8 +355,28 @@ function post(id = CS, corps?: unknown) {
     { params: { candidateSetId: id } },
   );
 }
-/** Laisse le travail détaché s'exécuter. */
-const attendre = () => new Promise((r) => setTimeout(r, 30));
+/**
+ * Attend que le travail détaché soit TERMINÉ — plus aucun jeu `en_attente`
+ * ni `en_cours`.
+ *
+ * ⚠️ PAS UN DÉLAI FIXE. C'était `setTimeout(r, 30)` : le travail fait de vraies
+ * E/S (`mkdtemp`, `stat`, `readFile`, `rm` par clip), et sur une machine
+ * chargée — suite complète, CI — 30 ms ne suffisaient pas : la ligne était
+ * encore `en_cours` et le test rougissait par hasard. On attend l'ÉTAT, pas
+ * l'horloge ; la borne n'est là que pour qu'un travail bloqué échoue lisiblement.
+ *
+ * Un POST réutilisé ou refusé n'insère rien : la condition est vraie tout de
+ * suite. Un POST qui lancerait un travail par erreur insère d'abord sa ligne
+ * `en_attente` (la route écrit AVANT de détacher) : on l'attend donc aussi.
+ */
+const attendre = async () => {
+  await vi.waitFor(() => {
+    expect((tables.rush_clip_sets ?? []).filter((l) => actif(l.etat))).toEqual([]);
+  }, { timeout: 10_000, interval: 5 });
+  // La place est rendue dans le `finally` du travail, quelques micro-tâches
+  // APRÈS la dernière écriture : un tour de boucle les laisse toutes passer.
+  await new Promise((r) => setImmediate(r));
+};
 
 beforeEach(() => {
   tables = {
