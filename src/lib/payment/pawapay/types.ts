@@ -64,6 +64,12 @@ export interface DepotAttendu {
   pays?: string;
   /** Horodatage ISO de création de la ligne (avant l'appel PawaPay). */
   creeLe: string;
+  /**
+   * Horodatage ISO de la dernière relecture réussie chez PawaPay (`null` ou
+   * absent = jamais relu). Le rattrapage sert d'abord les moins récemment
+   * vérifiés : des dépôts abandonnés ne peuvent pas monopoliser un lot.
+   */
+  verifieLe?: string | null;
 }
 
 /** Verdict pur de `evaluerDepot`. */
@@ -86,13 +92,23 @@ export type IssueConfirmation =
   | 'introuvable'
   | 'inconnu_local';
 
+/** Demande de crédit atomique. */
+export interface DemandeCredit {
+  depositId: string;
+  userId: string;
+  credits: number;
+  /** `'pawapay:' + depositId` — référence UNIQUE de la transaction de crédit. */
+  referenceId: string;
+}
+
 /**
  * Persistance des dépôts Studiio.
  *
- * ⚠️ `marquerCrediteSiNonCredite` DOIT être atomique (UPDATE … WHERE statut
- * <> 'credite' RETURNING, ou RPC) : il ne renvoie `true` qu'UNE fois pour un
- * même `depositId`, même sous appels concurrents. C'est le verrou anti double
- * crédit.
+ * ⚠️ `crediterSiNonCredite` est le SEUL chemin de crédit et il DOIT être
+ * atomique : marquer le dépôt `credite` ET écrire le crédit (solde +
+ * `credit_transactions` avec `reference_id` UNIQUE) dans UNE même
+ * transaction SQL. Aucun état « crédité sans crédit » n'est donc possible :
+ * soit tout est écrit, soit rien ne l'est et l'appel lève.
  */
 export interface DepotsStore {
   /**
@@ -103,32 +119,28 @@ export interface DepotsStore {
   enregistrer(depot: DepotAttendu): Promise<void>;
   lire(depositId: string): Promise<DepotAttendu | null>;
   /**
-   * Dépôts `en_attente` créés avant `avant` (ISO), les plus anciens d'abord,
-   * au plus `limite` — pour le rattrapage par interrogation.
+   * Dépôts `en_attente` créés dans `[creeApres, creeAvant]` (ISO ;
+   * `creeApres` facultatif), triés par `verifieLe` croissant — jamais
+   * vérifiés d'abord, puis par `creeLe` — au plus `limite`.
    */
-  listerEnAttente(options: { avant: string; limite: number }): Promise<DepotAttendu[]>;
-  marquerCrediteSiNonCredite(depositId: string): Promise<boolean>;
+  listerEnAttente(options: { creeAvant: string; creeApres?: string; limite: number }): Promise<DepotAttendu[]>;
+  /** Note une relecture réussie chez PawaPay (`verifieLe = quand`). */
+  noterVerification(depositId: string, quand: string): Promise<void>;
   /**
-   * Rend le verrou si le crédit a échoué APRÈS sa prise, pour qu'un rejeu du
-   * callback puisse créditer. Sûr seulement parce que `crediter` est
-   * idempotent sur sa `referenceId`.
+   * Crédite UNE fois, atomiquement (voir plus haut). `'credite'` : cet appel
+   * a crédité ; `'deja_credite'` : c'était déjà fait. Lève si rien n'a pu
+   * être écrit — le dépôt reste alors non crédité et sera re-tenté.
    */
-  relacherCredit(depositId: string): Promise<void>;
+  crediterSiNonCredite(demande: DemandeCredit): Promise<'credite' | 'deja_credite'>;
   /** Passe en `echec` — sans effet sur un dépôt déjà crédité. */
   marquerEchec(depositId: string): Promise<void>;
 }
 
-/**
- * Crédite l'utilisateur. DOIT être idempotent sur `referenceId`
- * (`'pawapay:' + depositId`), par exemple via une contrainte d'unicité sur
- * la référence de la transaction de crédit.
- */
-export type Crediteur = (userId: string, credits: number, referenceId: string) => Promise<void>;
-
 export interface DependancesConfirmation {
   store: DepotsStore;
   lireDepotDistant: (depositId: string) => Promise<DepotDistant>;
-  crediter: Crediteur;
+  /** Horloge injectable (tests). */
+  maintenant?: () => Date;
 }
 
 /** Erreur de dialogue avec PawaPay (réseau, HTTP, réponse illisible). */

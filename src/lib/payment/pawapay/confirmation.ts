@@ -9,12 +9,16 @@
  * par interrogation), le cron de rattrapage, et le callback facultatif. Aucun
  * ne transmet de statut : tous relisent le dépôt chez PawaPay.
  *
- * Anti double crédit : le crédit n'est appelé que si
- * `store.marquerCrediteSiNonCredite` renvoie `true` — ce qui n'arrive qu'une
- * fois par `depositId`, déclencheurs concurrents compris.
+ * Anti double crédit ET anti « crédité sans crédit » : le crédit passe par UN
+ * SEUL appel atomique du store, `crediterSiNonCredite`, qui marque le dépôt
+ * et écrit la transaction dans la même transaction SQL (référence UNIQUE
+ * `pawapay:<depositId>`). Il n'y a plus de verrou posé avant un crédit
+ * séparé, donc plus de fenêtre où un processus qui meurt laisserait un dépôt
+ * « crédité » sans aucun crédit.
  */
 import type {
   DependancesConfirmation,
+  DemandeCredit,
   DepotAttendu,
   DepotDistant,
   DepotsStore,
@@ -65,10 +69,10 @@ export interface ResultatConfirmation {
 }
 
 /**
- * Relit le dépôt chez PawaPay et agit.
+ * Relit le dépôt chez PawaPay, note la vérification, puis agit.
  *
  * Toute exception (relecture, store, crédit) REMONTE : l'appelant répond 5xx
- * et PawaPay rejoue. Rien n'est avalé.
+ * et le prochain passage réessaiera. Rien n'est avalé.
  */
 export async function confirmerDepot(
   depositId: string,
@@ -79,22 +83,19 @@ export async function confirmerDepot(
   if (local.statut === 'credite') return { issue: 'deja_credite', depositId };
 
   const distant = await deps.lireDepotDistant(depositId);
-  const verdict = evaluerDepot(local, distant);
+  const maintenant = (deps.maintenant ?? (() => new Date()))();
+  await deps.store.noterVerification(depositId, maintenant.toISOString());
 
+  const verdict = evaluerDepot(local, distant);
   switch (verdict) {
     case 'crediter': {
-      const pris = await deps.store.marquerCrediteSiNonCredite(depositId);
-      if (!pris) return { issue: 'deja_credite', depositId };
-      try {
-        await deps.crediter(local.userId, local.credits, referenceCredit(depositId));
-      } catch (e) {
-        // Le verrou est rendu pour qu'un rejeu puisse créditer ; `crediter`
-        // est idempotent sur la référence, donc un crédit partiel ne se
-        // doublera pas.
-        await deps.store.relacherCredit(depositId);
-        throw e;
-      }
-      return { issue: 'credite', depositId };
+      const r = await deps.store.crediterSiNonCredite({
+        depositId,
+        userId: local.userId,
+        credits: local.credits,
+        referenceId: referenceCredit(depositId),
+      });
+      return { issue: r === 'credite' ? 'credite' : 'deja_credite', depositId };
     }
     case 'echec':
       await deps.store.marquerEchec(depositId);
@@ -111,19 +112,43 @@ export async function confirmerDepot(
 // Store en mémoire — POUR LES TESTS UNIQUEMENT
 // ─────────────────────────────────────────────────────────────────────────
 
+export interface TransactionMemoire {
+  referenceId: string;
+  userId: string;
+  credits: number;
+}
+
+export interface OptionsStoreMemoire {
+  /** Simule une panne de la base au moment du crédit (rien n'est écrit). */
+  echouerCredit?: () => boolean;
+}
+
 /**
- * Store en mémoire. La vérification et la pose du drapeau se font sans
- * `await` intermédiaire : sur la boucle d'événements JS, c'est atomique.
+ * Store en mémoire, atomique comme le sera la RPC : dans
+ * `crediterSiNonCredite`, la vérification, le marquage et l'écriture de la
+ * transaction se font sans `await` intermédiaire (atomique sur la boucle
+ * d'événements JS), et une panne lève AVANT toute écriture.
  *
  * TODO(migration pawapay_deposits) : l'implémentation Postgres viendra avec
- * la migration (table `pawapay_deposits` + RPC atomique qui pose `credite` ET
- * inscrit la transaction de crédit dans une seule transaction SQL). Elle
- * n'existe pas encore : `obtenirStore()` renvoie `null` d'ici là.
+ * la migration — table `pawapay_deposits` (dont `verifie_le`, index sur
+ * `(statut, verifie_le)`) et RPC `crediter_depot_pawapay(deposit_id,
+ * user_id, credits, reference_id)` qui, dans UNE transaction :
+ *   1. `UPDATE pawapay_deposits SET statut = 'credite' WHERE deposit_id = $1
+ *       AND statut <> 'credite' RETURNING …` — aucune ligne → 'deja_credite' ;
+ *   2. incrémente `users.credits` et insère dans `credit_transactions` avec
+ *      `reference_id` (contrainte UNIQUE `credit_transactions_reference_unique`,
+ *      déjà en place) ;
+ *   3. renvoie 'credite'. Toute erreur annule les deux écritures.
  */
-export function creerStoreMemoire(initial: DepotAttendu[] = []): DepotsStore & {
+export function creerStoreMemoire(
+  initial: DepotAttendu[] = [],
+  options: OptionsStoreMemoire = {},
+): DepotsStore & {
   etat(depositId: string): DepotAttendu | undefined;
+  transactions(): TransactionMemoire[];
 } {
   const lignes = new Map<string, DepotAttendu>(initial.map((d) => [d.depositId, { ...d }]));
+  const transactions = new Map<string, TransactionMemoire>();
   return {
     async enregistrer(d) {
       if (lignes.has(d.depositId)) throw new Error(`depositId déjà enregistré : ${d.depositId}`);
@@ -133,22 +158,33 @@ export function creerStoreMemoire(initial: DepotAttendu[] = []): DepotsStore & {
       const l = lignes.get(id);
       return l ? { ...l } : null;
     },
-    async listerEnAttente({ avant, limite }) {
+    async listerEnAttente({ creeAvant, creeApres, limite }) {
       return [...lignes.values()]
-        .filter((l) => l.statut === 'en_attente' && l.creeLe <= avant)
-        .sort((a, b) => a.creeLe.localeCompare(b.creeLe))
+        .filter((l) => l.statut === 'en_attente' && l.creeLe <= creeAvant
+          && (creeApres === undefined || l.creeLe >= creeApres))
+        .sort((a, b) => {
+          const va = a.verifieLe ?? '';
+          const vb = b.verifieLe ?? '';
+          return va !== vb ? va.localeCompare(vb) : a.creeLe.localeCompare(b.creeLe);
+        })
         .slice(0, Math.max(0, limite))
         .map((l) => ({ ...l }));
     },
-    async marquerCrediteSiNonCredite(id) {
+    async noterVerification(id, quand) {
       const l = lignes.get(id);
-      if (!l || l.statut === 'credite') return false;
-      l.statut = 'credite';
-      return true;
+      if (l) l.verifieLe = quand;
     },
-    async relacherCredit(id) {
-      const l = lignes.get(id);
-      if (l && l.statut === 'credite') l.statut = 'en_attente';
+    async crediterSiNonCredite(demande: DemandeCredit) {
+      const l = lignes.get(demande.depositId);
+      if (!l) throw new Error(`Dépôt inconnu : ${demande.depositId}`);
+      if (l.statut === 'credite') return 'deja_credite';
+      if (options.echouerCredit?.()) throw new Error('Panne de la base pendant le crédit');
+      if (transactions.has(demande.referenceId)) throw new Error('Violation UNIQUE reference_id');
+      transactions.set(demande.referenceId, {
+        referenceId: demande.referenceId, userId: demande.userId, credits: demande.credits,
+      });
+      l.statut = 'credite';
+      return 'credite';
     },
     async marquerEchec(id) {
       const l = lignes.get(id);
@@ -157,6 +193,9 @@ export function creerStoreMemoire(initial: DepotAttendu[] = []): DepotsStore & {
     etat(id) {
       const l = lignes.get(id);
       return l ? { ...l } : undefined;
+    },
+    transactions() {
+      return [...transactions.values()];
     },
   };
 }

@@ -19,7 +19,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { creerPagePaiement, genererDepositId, paysActifs } from '@/lib/payment/pawapay/client';
-import { obtenirDependances, obtenirTauxChf } from '@/lib/payment/pawapay/store';
+import { obtenirDependances, obtenirTauxChf, pawapayActif } from '@/lib/payment/pawapay/store';
 import { DeviseSansTauxErreur, PACKS_PAWAPAY, estPackId, prixLocal } from '@/lib/payment/pawapay/tarifs';
 import { PawapayErreur } from '@/lib/payment/pawapay/types';
 
@@ -27,9 +27,20 @@ export const dynamic = 'force-dynamic';
 
 const PAYS_RX = /^[A-Z]{3}$/;
 
-function urlDeBase(req: Request): string {
-  const configuree = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
-  return (configuree || new URL(req.url).origin).replace(/\/+$/, '');
+/**
+ * Base de l'URL de retour, CONFIGURÉE côté serveur uniquement. Jamais
+ * l'en-tête Host de la requête : il est contrôlé par le client. `null` si ni
+ * `NEXTAUTH_URL` ni `NEXT_PUBLIC_APP_URL` n'est une URL http(s) valide.
+ */
+function urlDeBase(): string | null {
+  for (const brut of [process.env.NEXTAUTH_URL, process.env.NEXT_PUBLIC_APP_URL]) {
+    if (!brut) continue;
+    try {
+      const u = new URL(brut);
+      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
+    } catch { /* suivante */ }
+  }
+  return null;
 }
 
 export async function POST(req: Request) {
@@ -37,8 +48,16 @@ export async function POST(req: Request) {
   const userId = session?.user?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  if (!pawapayActif()) {
+    return NextResponse.json({ error: 'Paiement Mobile Money indisponible' }, { status: 503 });
+  }
   const deps = obtenirDependances();
   if (!deps) {
+    return NextResponse.json({ error: 'Paiement Mobile Money indisponible' }, { status: 503 });
+  }
+  const base = urlDeBase();
+  if (!base) {
+    console.error('[PAWAPAY_DEPOT] NEXTAUTH_URL / NEXT_PUBLIC_APP_URL absents : URL de retour impossible');
     return NextResponse.json({ error: 'Paiement Mobile Money indisponible' }, { status: 503 });
   }
 
@@ -112,7 +131,7 @@ export async function POST(req: Request) {
       devise,
       pays,
       motif: `Studiio - ${credits} credits`,
-      urlRetour: `${urlDeBase(req)}/dashboard/billing?pawapay=${depositId}`,
+      urlRetour: `${base}/dashboard/billing?pawapay=${depositId}`,
       telephone: typeof telephone === 'string' ? telephone : undefined,
       metadata: [{ app: 'studiio' }, { pack }],
     });

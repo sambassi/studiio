@@ -11,8 +11,8 @@
  * Studiio n'entraîne aucune relecture.
  *
  * Codes de réponse :
- * - 404 : PawaPay désactivé et persistance absente ;
- * - 503 : PawaPay activé mais persistance absente (table non migrée), ou
+ * - 404 : PawaPay désactivé (`PAWAPAY_ENABLED` ≠ "true") ;
+ * - 503 : persistance absente (table non migrée), ou
  *         dépôt pas encore final à la relecture ;
  * - 400 : `depositId` absent ou invalide ;
  * - 502 : relecture PawaPay impossible ;
@@ -22,7 +22,7 @@
 import { NextResponse } from 'next/server';
 import { confirmerDepot } from '@/lib/payment/pawapay/confirmation';
 import { estDepositIdValide, lireDepot } from '@/lib/payment/pawapay/client';
-import { obtenirDependances } from '@/lib/payment/pawapay/store';
+import { obtenirDependances, pawapayActif } from '@/lib/payment/pawapay/store';
 import { PawapayErreur } from '@/lib/payment/pawapay/types';
 
 export const dynamic = 'force-dynamic';
@@ -37,14 +37,10 @@ function extraireDepositId(corps: unknown): unknown {
 }
 
 export async function POST(req: Request) {
-  const actif = process.env.PAWAPAY_ENABLED === 'true';
+  // Interrupteur global : désactivé → 404, quel que soit l'état du store.
+  if (!pawapayActif()) return NextResponse.json({ status: 'unavailable' }, { status: 404 });
   const deps = obtenirDependances();
-  if (!deps) {
-    return NextResponse.json(
-      { status: 'unavailable' },
-      { status: actif ? 503 : 404 },
-    );
-  }
+  if (!deps) return NextResponse.json({ status: 'unavailable' }, { status: 503 });
 
   let corps: unknown;
   try {
@@ -60,7 +56,6 @@ export async function POST(req: Request) {
   try {
     const { issue } = await confirmerDepot(depositId, {
       store: deps.store,
-      crediter: deps.crediter,
       lireDepotDistant: lireDepot,
     });
     if (issue === 'en_attente') {

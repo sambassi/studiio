@@ -1,23 +1,27 @@
 /**
- * Branchement de la persistance PawaPay de Studiio.
+ * Branchement de la persistance et de la configuration PawaPay de Studiio.
+ *
+ * INTERRUPTEUR GLOBAL : `PAWAPAY_ENABLED === "true"`, sinon :
+ * - l'initiation (`/api/pawapay/deposit`) répond 503 ;
+ * - le rattrapage (`/api/cron/pawapay-reconcile`) répond « désactivé » ;
+ * - le statut (`/api/pawapay/status/[id]`) renvoie l'état LOCAL, sans relire
+ *   PawaPay ni créditer ;
+ * - le callback facultatif répond 404.
  *
  * TODO(migration pawapay_deposits) : la table `pawapay_deposits` et la RPC
- * atomique de crédit n'existent pas encore. Tant qu'elles ne sont pas
- * créées (migration soumise à validation), ces fonctions renvoient `null` :
- * - l'initiation (`/api/pawapay/deposit`) répond 503 sans appeler PawaPay ;
- * - le statut (`/api/pawapay/status/[id]`) répond 503 ;
- * - le rattrapage (`/api/cron/pawapay-reconcile`) répond « désactivé » ;
- * - le callback facultatif répond 503 (activé) ou 404 (désactivé).
- * Aucun crédit ne peut donc être accordé.
+ * atomique `crediter_depot_pawapay` n'existent pas encore (voir le TODO de
+ * `creerStoreMemoire` dans `confirmation.ts`). Tant qu'elles ne sont pas
+ * créées, `obtenirStore()` renvoie `null` et aucune route ne peut créditer :
+ * initiation et statut répondent 503, le rattrapage « désactivé ».
  */
 import { analyserTauxChf, type TauxChf } from './tarifs';
-import type { Crediteur, DepotsStore } from './types';
+import type { DepotsStore } from './types';
 
-export function obtenirStore(): DepotsStore | null {
-  return null;
+export function pawapayActif(): boolean {
+  return process.env.PAWAPAY_ENABLED === 'true';
 }
 
-export function obtenirCrediteur(): Crediteur | null {
+export function obtenirStore(): DepotsStore | null {
   return null;
 }
 
@@ -44,9 +48,8 @@ export async function obtenirTauxChf(): Promise<TauxChf | null> {
   return analyse.taux;
 }
 
-/** Store + crédit, ou `null` si l'un manque : un seul point de décision. */
-export function obtenirDependances(): { store: DepotsStore; crediter: Crediteur } | null {
+/** Le store, ou `null` tant que la persistance n'existe pas. */
+export function obtenirDependances(): { store: DepotsStore } | null {
   const store = obtenirStore();
-  const crediter = obtenirCrediteur();
-  return store && crediter ? { store, crediter } : null;
+  return store ? { store } : null;
 }

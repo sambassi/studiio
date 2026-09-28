@@ -10,12 +10,15 @@
  * le dépôt existe.
  *
  * Réponse : `{ status: 'pending' | 'credited' | 'failed' }`.
+ *
+ * PawaPay désactivé (`PAWAPAY_ENABLED` ≠ "true") : l'état LOCAL est renvoyé
+ * tel quel, sans relire PawaPay ni créditer.
  */
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { estDepositIdValide, lireDepot } from '@/lib/payment/pawapay/client';
 import { confirmerDepot } from '@/lib/payment/pawapay/confirmation';
-import { obtenirDependances } from '@/lib/payment/pawapay/store';
+import { obtenirDependances, pawapayActif } from '@/lib/payment/pawapay/store';
 import type { IssueConfirmation } from '@/lib/payment/pawapay/types';
 
 export const dynamic = 'force-dynamic';
@@ -48,10 +51,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     }
     if (local.statut === 'credite') return NextResponse.json({ status: 'credited' });
     if (local.statut === 'echec') return NextResponse.json({ status: 'failed' });
+    if (!pawapayActif()) return NextResponse.json({ status: 'pending' });
 
     const { issue } = await confirmerDepot(depositId, {
       store: deps.store,
-      crediter: deps.crediter,
       lireDepotDistant: lireDepot,
     });
     if (issue === 'montant_invalide' || issue === 'devise_invalide') {

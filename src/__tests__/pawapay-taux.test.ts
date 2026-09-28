@@ -53,6 +53,7 @@ beforeEach(() => {
   vi.stubEnv('PAWAPAY_API_TOKEN', 'jeton-de-test');
   vi.stubEnv('PAWAPAY_BASE_URL', API);
   vi.stubEnv('NEXTAUTH_URL', 'https://studiio.pro');
+  vi.stubEnv('PAWAPAY_ENABLED', 'true');
   etat.session = { user: { id: 'alice' } };
   etat.deps = null;
   viderCachePays();
@@ -170,7 +171,7 @@ describe('calcul CHF → devise locale (arrondi à l’unité supérieure)', () 
 describe('route deposit — le client ne peut rien falsifier', () => {
   function brancher() {
     const store = creerStoreMemoire();
-    etat.deps = { store, crediter: vi.fn() };
+    etat.deps = { store };
     return store;
   }
   const req = (corps: unknown) => new Request('http://localhost/api/pawapay/deposit', {

@@ -16,17 +16,15 @@ import type { DepotAttendu } from '@/lib/payment/pawapay/types';
 const etat = vi.hoisted(() => ({
   session: null as null | { user: { id: string } },
   store: null as unknown,
-  crediter: null as unknown,
   taux: null as null | Record<string, string>,
 }));
 
 vi.mock('@/lib/auth/config', () => ({ auth: async () => etat.session }));
 vi.mock('@/lib/payment/pawapay/store', () => ({
+  pawapayActif: () => process.env.PAWAPAY_ENABLED === 'true',
   obtenirStore: () => etat.store,
-  obtenirCrediteur: () => etat.crediter,
   obtenirTauxChf: async () => etat.taux,
-  obtenirDependances: () => (etat.store && etat.crediter
-    ? { store: etat.store, crediter: etat.crediter } : null),
+  obtenirDependances: () => (etat.store ? { store: etat.store } : null),
 }));
 
 import { POST as initier } from '@/app/api/pawapay/deposit/route';
@@ -88,11 +86,20 @@ function depot(p: Partial<DepotAttendu> = {}): DepotAttendu {
   };
 }
 
-function brancher(depots: DepotAttendu[] = []) {
-  const store = creerStoreMemoire(depots);
-  const crediter = vi.fn(async (_u: string, _c: number, _r: string) => {});
+/**
+ * Store en mémoire + espion `crediter`, appelé À CHAQUE crédit réellement
+ * écrit par `crediterSiNonCredite` (userId, credits, referenceId).
+ */
+function brancher(depots: DepotAttendu[] = [], options: Parameters<typeof creerStoreMemoire>[1] = {}) {
+  const store = creerStoreMemoire(depots, options);
+  const crediter = vi.fn((_u: string, _c: number, _r: string) => {});
+  const original = store.crediterSiNonCredite.bind(store);
+  store.crediterSiNonCredite = async (d) => {
+    const r = await original(d);
+    if (r === 'credite') crediter(d.userId, d.credits, d.referenceId);
+    return r;
+  };
   etat.store = store;
-  etat.crediter = crediter;
   return { store, crediter };
 }
 
@@ -120,9 +127,9 @@ beforeEach(() => {
   vi.stubEnv('PAWAPAY_BASE_URL', API);
   vi.stubEnv('NEXTAUTH_URL', 'https://studiio.pro');
   vi.stubEnv('CRON_SECRET', SECRET);
+  vi.stubEnv('PAWAPAY_ENABLED', 'true');
   etat.session = { user: { id: 'alice' } };
   etat.store = null;
-  etat.crediter = null;
   etat.taux = { XOF: '655' };
   viderCachePays();
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -324,11 +331,12 @@ describe('GET /api/cron/pawapay-reconcile — rattrapage', () => {
     expect(crediter).toHaveBeenCalledTimes(2); // ID (2 min) toujours ignoré
   });
 
-  it('un dépôt non final après 24 h est journalisé et LAISSÉ en attente', async () => {
+  it('un dépôt non final après 24 h sort du lot normal, passe au lot « anciens », est journalisé et LAISSÉ en attente', async () => {
     const { crediter, store } = brancher([depot()]);
     distants.set(ID, { status: 'PROCESSING', amount: '38645', currency: 'XOF' });
     vi.setSystemTime(T0 + 25 * 3_600_000);
-    const r = await rattraper(reqCron(`Bearer ${SECRET}`));
+    expect((await (await rattraper(reqCron(`Bearer ${SECRET}`))).json()).examines).toBe(0);
+    const r = await rattraper(reqCron(`Bearer ${SECRET}`, '?lot=anciens'));
     expect((await r.json()).bloques).toEqual([ID]);
     expect(console.warn).toHaveBeenCalled();
     expect(store.etat(ID)?.statut).toBe('en_attente');
@@ -345,6 +353,123 @@ describe('GET /api/cron/pawapay-reconcile — rattrapage', () => {
     expect(r.status).toBe(500);
     expect((await r.json()).bilan).toEqual({ erreur: 1, credite: 1 });
     expect(crediter).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+describe('rattrapage — des dépôts abandonnés ne bloquent pas un vrai paiement', () => {
+  const uuid = (i: number) => `${String(i).padStart(8, '0')}-0000-4000-8000-000000000000`;
+
+  it('25 dépôts NOT_FOUND (< 24 h) + 1 COMPLETED récent → crédité en au plus 2 passages de 20', async () => {
+    const abandonnes = Array.from({ length: 25 }, (_, i) => depot({
+      depositId: uuid(i + 1), creeLe: new Date(T0 - (23 - i * 0.5) * 3_600_000).toISOString(),
+    }));
+    const { crediter, store } = brancher([...abandonnes, depot({ creeLe: new Date(T0 - 15 * 60_000).toISOString() })]);
+    distants.set(ID, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+    // Les 25 autres : NOT_FOUND (aucune entrée dans `distants`).
+
+    let passages = 0;
+    while (crediter.mock.calls.length === 0 && passages < 2) {
+      vi.setSystemTime(T0 + passages * 5 * 60_000);
+      await rattraper(reqCron(`Bearer ${SECRET}`, '?limite=20'));
+      passages++;
+    }
+    expect(crediter).toHaveBeenCalledTimes(1);
+    expect(crediter.mock.calls[0][2]).toBe(`pawapay:${ID}`);
+    expect(passages).toBeLessThanOrEqual(2);
+    // Les abandonnés restent en attente, jamais crédités ni marqués en échec.
+    expect(abandonnes.every((a) => store.etat(a.depositId)?.statut === 'en_attente')).toBe(true);
+  });
+
+  it('25 dépôts NOT_FOUND de plus de 24 h → exclus du lot normal, le COMPLETED passe au 1er passage', async () => {
+    const vieux = Array.from({ length: 25 }, (_, i) => depot({
+      depositId: uuid(i + 100), creeLe: new Date(T0 - (48 + i) * 3_600_000).toISOString(),
+    }));
+    const { crediter } = brancher([...vieux, depot({ creeLe: new Date(T0 - 15 * 60_000).toISOString() })]);
+    distants.set(ID, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+    const r = await (await rattraper(reqCron(`Bearer ${SECRET}`))).json();
+    expect(r.examines).toBe(1);
+    expect(crediter).toHaveBeenCalledTimes(1);
+  });
+
+  it('le lot trie par dernière vérification : les jamais vérifiés d’abord', async () => {
+    const a = uuid(501);
+    const b = uuid(502);
+    const { store } = brancher([
+      depot({ depositId: a, creeLe: new Date(T0 - 60 * 60_000).toISOString(), verifieLe: new Date(T0 - 60_000).toISOString() }),
+      depot({ depositId: b, creeLe: new Date(T0 - 30 * 60_000).toISOString() }),
+    ]);
+    const lot = await store.listerEnAttente({ creeAvant: new Date(T0).toISOString(), limite: 1 });
+    expect(lot.map((d) => d.depositId)).toEqual([b]);
+  });
+});
+
+describe('crédit atomique vu des routes', () => {
+  it('base en panne au crédit → statut 502, dépôt NON crédité, aucune transaction ; puis crédité', async () => {
+    let panne = true;
+    const { store } = brancher([depot()], { echouerCredit: () => panne });
+    distants.set(ID, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+    expect((await appelerStatut(ID)).status).toBe(502);
+    expect(store.etat(ID)?.statut).toBe('en_attente');
+    expect(store.transactions()).toHaveLength(0);
+    // Le rattrapage ne l'ignore donc pas :
+    vi.setSystemTime(T0 + 15 * 60_000);
+    panne = false;
+    const r = await (await rattraper(reqCron(`Bearer ${SECRET}`))).json();
+    expect(r.bilan).toEqual({ credite: 1 });
+    expect(await (await appelerStatut(ID)).json()).toEqual({ status: 'credited' });
+    expect(store.transactions()).toHaveLength(1);
+  });
+});
+
+describe('interrupteur global PAWAPAY_ENABLED', () => {
+  beforeEach(() => { vi.stubEnv('PAWAPAY_ENABLED', 'false'); });
+
+  it('deposit → 503 sans rien enregistrer ni appeler PawaPay', async () => {
+    const { store } = brancher();
+    expect((await initier(reqInitier({ pack: 'small', pays: 'CIV' }))).status).toBe(503);
+    expect(fetchPawapay).not.toHaveBeenCalled();
+    expect(await store.listerEnAttente({ creeAvant: '9999', limite: 10 })).toHaveLength(0);
+  });
+
+  it('cron → 200 « désactivé », rien fait', async () => {
+    const { crediter } = brancher([depot()]);
+    distants.set(ID, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+    vi.setSystemTime(T0 + 15 * 60_000);
+    const r = await rattraper(reqCron(`Bearer ${SECRET}`));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ status: 'desactive' });
+    expect(fetchPawapay).not.toHaveBeenCalled();
+    expect(crediter).not.toHaveBeenCalled();
+  });
+
+  it('statut → état local, sans relire PawaPay ni créditer', async () => {
+    const autre = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    const encore = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const { crediter } = brancher([
+      depot(), depot({ depositId: autre, statut: 'credite' }), depot({ depositId: encore, statut: 'echec' }),
+    ]);
+    distants.set(ID, { status: 'COMPLETED', amount: '38645', currency: 'XOF' });
+    expect(await (await appelerStatut(ID)).json()).toEqual({ status: 'pending' });
+    expect(await (await appelerStatut(autre)).json()).toEqual({ status: 'credited' });
+    expect(await (await appelerStatut(encore)).json()).toEqual({ status: 'failed' });
+    expect(fetchPawapay).not.toHaveBeenCalled();
+    expect(crediter).not.toHaveBeenCalled();
+  });
+});
+
+describe('URL de retour configurée côté serveur', () => {
+  it('ni NEXTAUTH_URL ni NEXT_PUBLIC_APP_URL → 503, rien enregistré, en-tête Host jamais utilisé', async () => {
+    vi.stubEnv('NEXTAUTH_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
+    const { store } = brancher();
+    const r = await initier(new Request('http://hote-du-client.example/api/pawapay/deposit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pack: 'small', pays: 'CIV' }),
+    }));
+    expect(r.status).toBe(503);
+    expect(pagesDemandees).toHaveLength(0);
+    expect(await store.listerEnAttente({ creeAvant: '9999', limite: 10 })).toHaveLength(0);
   });
 });
 

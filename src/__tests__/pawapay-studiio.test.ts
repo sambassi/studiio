@@ -15,14 +15,12 @@ import type { DepotAttendu, DepotDistant } from '@/lib/payment/pawapay/types';
 
 const mocksStore = vi.hoisted(() => ({
   store: null as unknown,
-  crediter: null as unknown,
 }));
 vi.mock('@/lib/payment/pawapay/store', () => ({
+  pawapayActif: () => process.env.PAWAPAY_ENABLED === 'true',
   obtenirStore: () => mocksStore.store,
-  obtenirCrediteur: () => mocksStore.crediter,
   obtenirTauxChf: async () => null,
-  obtenirDependances: () => (mocksStore.store && mocksStore.crediter
-    ? { store: mocksStore.store, crediter: mocksStore.crediter } : null),
+  obtenirDependances: () => (mocksStore.store ? { store: mocksStore.store } : null),
 }));
 
 import {
@@ -74,7 +72,6 @@ beforeEach(() => {
   vi.stubEnv('PAWAPAY_API_TOKEN', 'jeton-de-test');
   vi.stubEnv('PAWAPAY_BASE_URL', 'https://api.sandbox.pawapay.io');
   mocksStore.store = null;
-  mocksStore.crediter = null;
   viderCachePays();
 });
 
@@ -124,20 +121,26 @@ describe('evaluerDepot — verdict pur', () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-describe('confirmerDepot — anti double crédit', () => {
+describe('confirmerDepot — anti double crédit, crédit atomique', () => {
   function deps(statut: string, store = creerStoreMemoire([attendu()])) {
-    const crediter = vi.fn(async () => {});
     const lireDepotDistant = vi.fn(async () => distant(statut));
-    return { store, crediter, lireDepotDistant };
+    const maintenant = () => new Date('2026-09-28T12:00:00.000Z');
+    return { store, lireDepotDistant, maintenant };
+  }
+  /** Invariant : un dépôt « credite » a TOUJOURS sa transaction, et réciproquement. */
+  function coherent(store: ReturnType<typeof creerStoreMemoire>, id = ID) {
+    const aTransaction = store.transactions().some((t) => t.referenceId === `pawapay:${id}`);
+    expect(store.etat(id)?.statut === 'credite').toBe(aTransaction);
   }
 
-  it('COMPLETED → crédite une fois, avec la référence pawapay:<id>', async () => {
+  it('COMPLETED → crédite une fois, avec la référence pawapay:<id>, et note la vérification', async () => {
     const d = deps('COMPLETED');
     const r = await confirmerDepot(ID, d);
     expect(r.issue).toBe('credite');
-    expect(d.crediter).toHaveBeenCalledTimes(1);
-    expect(d.crediter).toHaveBeenCalledWith('user-1', 500, `pawapay:${ID}`);
+    expect(d.store.transactions()).toEqual([{ referenceId: `pawapay:${ID}`, userId: 'user-1', credits: 500 }]);
     expect(d.store.etat(ID)?.statut).toBe('credite');
+    expect(d.store.etat(ID)?.verifieLe).toBe('2026-09-28T12:00:00.000Z');
+    coherent(d.store);
   });
 
   it.each([
@@ -147,21 +150,21 @@ describe('confirmerDepot — anti double crédit', () => {
   ])('%s ne crédite pas (%s)', async (statut, issue) => {
     const d = deps(statut);
     expect((await confirmerDepot(ID, d)).issue).toBe(issue);
-    expect(d.crediter).not.toHaveBeenCalled();
+    expect(d.store.transactions()).toHaveLength(0);
+    expect(d.store.etat(ID)?.verifieLe).toBeTruthy();
   });
 
   it('NOT_FOUND ne crédite pas', async () => {
     const d = deps('COMPLETED');
     d.lireDepotDistant.mockResolvedValue({ trouve: false, depositId: ID });
     expect((await confirmerDepot(ID, d)).issue).toBe('introuvable');
-    expect(d.crediter).not.toHaveBeenCalled();
+    expect(d.store.transactions()).toHaveLength(0);
   });
 
   it('dépôt inconnu de Studiio → aucun crédit, aucune relecture', async () => {
     const d = deps('COMPLETED', creerStoreMemoire([]));
     expect((await confirmerDepot(ID, d)).issue).toBe('inconnu_local');
     expect(d.lireDepotDistant).not.toHaveBeenCalled();
-    expect(d.crediter).not.toHaveBeenCalled();
   });
 
   it('montant ou devise incorrects → refusés, sans crédit', async () => {
@@ -170,14 +173,14 @@ describe('confirmerDepot — anti double crédit', () => {
     expect((await confirmerDepot(ID, d)).issue).toBe('montant_invalide');
     d.lireDepotDistant.mockResolvedValueOnce(distant('COMPLETED', { devise: 'GHS' }));
     expect((await confirmerDepot(ID, d)).issue).toBe('devise_invalide');
-    expect(d.crediter).not.toHaveBeenCalled();
+    expect(d.store.transactions()).toHaveLength(0);
   });
 
   it('même depositId confirmé deux fois de suite → un seul crédit', async () => {
     const d = deps('COMPLETED');
     expect((await confirmerDepot(ID, d)).issue).toBe('credite');
     expect((await confirmerDepot(ID, d)).issue).toBe('deja_credite');
-    expect(d.crediter).toHaveBeenCalledTimes(1);
+    expect(d.store.transactions()).toHaveLength(1);
   });
 
   it('même depositId confirmé en Promise.all concurrent → un seul crédit', async () => {
@@ -185,16 +188,31 @@ describe('confirmerDepot — anti double crédit', () => {
     const r = await Promise.all(Array.from({ length: 8 }, () => confirmerDepot(ID, d)));
     expect(r.filter((x) => x.issue === 'credite')).toHaveLength(1);
     expect(r.filter((x) => x.issue === 'deja_credite')).toHaveLength(7);
-    expect(d.crediter).toHaveBeenCalledTimes(1);
+    expect(d.store.transactions()).toHaveLength(1);
+    coherent(d.store);
   });
 
-  it('crédit en échec → verrou rendu et erreur propagée, un rejeu crédite', async () => {
-    const d = deps('COMPLETED');
-    d.crediter.mockRejectedValueOnce(new Error('base indisponible'));
-    await expect(confirmerDepot(ID, d)).rejects.toThrow('base indisponible');
-    expect(d.store.etat(ID)?.statut).toBe('en_attente');
+  it('base en panne pendant le crédit → erreur propagée, AUCUN état « crédité sans crédit », un rejeu crédite', async () => {
+    let panne = true;
+    const store = creerStoreMemoire([attendu()], { echouerCredit: () => panne });
+    const d = deps('COMPLETED', store);
+    await expect(confirmerDepot(ID, d)).rejects.toThrow(/Panne/);
+    expect(store.etat(ID)?.statut).toBe('en_attente');
+    expect(store.transactions()).toHaveLength(0);
+    coherent(store);
+    panne = false;
     expect((await confirmerDepot(ID, d)).issue).toBe('credite');
-    expect(d.crediter).toHaveBeenCalledTimes(2);
+    expect(store.transactions()).toHaveLength(1);
+    coherent(store);
+  });
+
+  it('pannes intermittentes sous concurrence → jamais d’incohérence, au plus un crédit', async () => {
+    let n = 0;
+    const store = creerStoreMemoire([attendu()], { echouerCredit: () => (n++ % 2 === 0) });
+    const d = deps('COMPLETED', store);
+    await Promise.allSettled(Array.from({ length: 10 }, () => confirmerDepot(ID, d)));
+    expect(store.transactions().length).toBeLessThanOrEqual(1);
+    coherent(store);
   });
 });
 
@@ -286,6 +304,44 @@ describe('client — creerPagePaiement', () => {
   });
 });
 
+describe('client — liste blanche des hôtes PawaPay', () => {
+  it.each([
+    'https://evil.example',
+    'https://api.pawapay.io.evil.example',
+    'http://api.pawapay.io',
+    'https://user:pw@api.pawapay.io',
+    'https://api.pawapay.io/proxy',
+    'https://api.pawapay.io?x=1',
+    'pas une url',
+  ])('PAWAPAY_BASE_URL=%s → refusée, le jeton ne part jamais', async (base) => {
+    vi.stubEnv('PAWAPAY_BASE_URL', base);
+    await expect(lireDepot(ID)).rejects.toThrow(/PAWAPAY_BASE_URL refusée/);
+    await expect(paysActifs()).rejects.toThrow(/PAWAPAY_BASE_URL refusée/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['https://api.pawapay.io', 'https://api.sandbox.pawapay.io/', 'https://API.PAWAPAY.IO'])(
+    'PAWAPAY_BASE_URL=%s → acceptée', async (base) => {
+      vi.stubEnv('PAWAPAY_BASE_URL', base);
+      fetchMock.mockResolvedValue(reponseJson({ status: 'NOT_FOUND' }));
+      await lireDepot(ID);
+      expect(String(fetchMock.mock.calls[0][0])).toMatch(/^https:\/\/api(\.sandbox)?\.pawapay\.io\/v2\/deposits\//);
+    },
+  );
+
+  it.each([
+    'https://evil.example/?token=x',
+    'https://pawapay.io.evil.example/',
+    'http://paywith.pawapay.io/?token=x',
+    'javascript:alert(1)',
+  ])('redirectUrl %s → refusée', async (url) => {
+    fetchMock.mockResolvedValue(reponseJson({ redirectUrl: url }));
+    await expect(creerPagePaiement({
+      depositId: ID, montant: '1', devise: 'XOF', urlRetour: 'https://studiio.pro/x',
+    })).rejects.toThrow(/sans URL PawaPay valide/);
+  });
+});
+
 describe('client — paysActifs', () => {
   it('lit /v2/active-conf et met en cache', async () => {
     fetchMock.mockImplementation(async () => reponseJson({
@@ -329,6 +385,7 @@ describe('tarifs — CHF canonique, taux passés en paramètre', () => {
 
 // ───────────────────────────────────────────────────────────────────────────
 describe('route POST /api/pawapay/callback', () => {
+  beforeEach(() => { vi.stubEnv('PAWAPAY_ENABLED', 'true'); });
   function requete(corps: unknown) {
     return new Request('http://localhost/api/pawapay/callback', {
       method: 'POST',
@@ -344,18 +401,17 @@ describe('route POST /api/pawapay/callback', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('store absent + PawaPay désactivé → 404', async () => {
+  it('PawaPay désactivé → 404, même avec un store, sans relecture', async () => {
     vi.stubEnv('PAWAPAY_ENABLED', 'false');
-    const r = await POST(requete({ depositId: ID, status: 'COMPLETED' }));
-    expect(r.status).toBe(404);
+    expect((await POST(requete({ depositId: ID, status: 'COMPLETED' }))).status).toBe(404);
+    mocksStore.store = creerStoreMemoire([attendu()]);
+    expect((await POST(requete({ depositId: ID, status: 'COMPLETED' }))).status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('ignore un « COMPLETED » dans le corps quand la relecture dit FAILED', async () => {
     const store = creerStoreMemoire([attendu()]);
-    const crediter = vi.fn(async () => {});
     mocksStore.store = store;
-    mocksStore.crediter = crediter;
     fetchMock.mockResolvedValue(reponseJson({
       status: 'FOUND',
       data: { depositId: ID, status: 'FAILED', amount: '38645', currency: 'XOF' },
@@ -363,27 +419,24 @@ describe('route POST /api/pawapay/callback', () => {
     const r = await POST(requete({ depositId: ID, status: 'COMPLETED', amount: '38645', currency: 'XOF' }));
     expect(r.status).toBe(200);
     expect((await r.json()).status).toBe('echec');
-    expect(crediter).not.toHaveBeenCalled();
+    expect(store.transactions()).toHaveLength(0);
     expect(store.etat(ID)?.statut).toBe('echec');
   });
 
   it('relecture COMPLETED → crédite une seule fois malgré deux callbacks', async () => {
     const store = creerStoreMemoire([attendu()]);
-    const crediter = vi.fn(async () => {});
     mocksStore.store = store;
-    mocksStore.crediter = crediter;
     fetchMock.mockImplementation(async () => reponseJson({
       status: 'FOUND',
       data: { depositId: ID, status: 'COMPLETED', amount: '38645.00', currency: 'XOF' },
     }));
     const [a, b] = await Promise.all([POST(requete({ depositId: ID })), POST(requete({ depositId: ID }))]);
     expect([a.status, b.status]).toEqual([200, 200]);
-    expect(crediter).toHaveBeenCalledTimes(1);
+    expect(store.transactions()).toHaveLength(1);
   });
 
   it('relecture en échec → 5xx, jamais 200', async () => {
     mocksStore.store = creerStoreMemoire([attendu()]);
-    mocksStore.crediter = vi.fn(async () => {});
     fetchMock.mockRejectedValue(new Error('ECONNRESET'));
     const r = await POST(requete({ depositId: ID }));
     expect(r.status).toBeGreaterThanOrEqual(500);
@@ -394,14 +447,12 @@ describe('route POST /api/pawapay/callback', () => {
 
   it('dépôt pas encore final à la relecture → 503 (rejeu)', async () => {
     mocksStore.store = creerStoreMemoire([attendu()]);
-    mocksStore.crediter = vi.fn(async () => {});
     fetchMock.mockResolvedValue(reponseJson({ status: 'FOUND', data: { status: 'PROCESSING', amount: '1', currency: 'XOF' } }));
     expect((await POST(requete({ depositId: ID }))).status).toBe(503);
   });
 
   it('depositId absent ou invalide → 400', async () => {
     mocksStore.store = creerStoreMemoire([attendu()]);
-    mocksStore.crediter = vi.fn(async () => {});
     expect((await POST(requete({ status: 'COMPLETED' }))).status).toBe(400);
     expect((await POST(requete({ depositId: '../admin' }))).status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -409,7 +460,6 @@ describe('route POST /api/pawapay/callback', () => {
 
   it('dépôt inconnu de Studiio → 200 ignoré, aucune relecture', async () => {
     mocksStore.store = creerStoreMemoire([attendu()]);
-    mocksStore.crediter = vi.fn(async () => {});
     const r = await POST(requete({ depositId: ID2 }));
     expect(r.status).toBe(200);
     expect((await r.json()).status).toBe('inconnu_local');

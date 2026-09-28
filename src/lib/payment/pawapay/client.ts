@@ -19,12 +19,44 @@ interface ConfigPawapay {
   base: string;
 }
 
+/**
+ * Seules origines autorisées pour `PAWAPAY_BASE_URL` (prod et sandbox). Toute
+ * autre valeur est refusée AVANT le moindre appel : le jeton ne part jamais
+ * vers un hôte inconnu.
+ */
+const BASES_AUTORISEES = new Set(['https://api.pawapay.io', 'https://api.sandbox.pawapay.io']);
+
+/** Origine normalisée si autorisée, sinon `null`. */
+export function baseAutorisee(brut: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(brut.trim());
+  } catch {
+    return null;
+  }
+  if (url.username || url.password || url.search || url.hash) return null;
+  if (url.pathname !== '/' && url.pathname !== '') return null;
+  return BASES_AUTORISEES.has(url.origin) ? url.origin : null;
+}
+
 /** Lue à CHAQUE appel : un test ou un redémarrage ne garde pas une vieille valeur. */
 function lireConfig(): ConfigPawapay {
   const token = process.env.PAWAPAY_API_TOKEN || '';
   if (!token) throw new PawapayErreur('PawaPay non configuré (PAWAPAY_API_TOKEN absent)');
-  const base = (process.env.PAWAPAY_BASE_URL || BASE_PAR_DEFAUT).replace(/\/+$/, '');
+  const base = baseAutorisee(process.env.PAWAPAY_BASE_URL || BASE_PAR_DEFAUT);
+  if (!base) throw new PawapayErreur('PAWAPAY_BASE_URL refusée : hôte hors liste blanche');
   return { token, base };
+}
+
+/** L'URL de paiement renvoyée doit être en https sur un hôte `*.pawapay.io`. */
+function estUrlPaiementPawapay(v: unknown): v is string {
+  if (typeof v !== 'string') return false;
+  try {
+    const u = new URL(v);
+    return u.protocol === 'https:' && u.hostname.endsWith('.pawapay.io');
+  } catch {
+    return false;
+  }
 }
 
 export function pawapayConfigure(): boolean {
@@ -204,13 +236,15 @@ export async function creerPagePaiement(args: ArgsPagePaiement): Promise<{ redir
     throw new PawapayErreur(`Payment Page refusée (${detail})`, r.status, echec?.code);
   }
 
+  // Seule une URL https sur `*.pawapay.io` est acceptée : le navigateur de
+  // l'utilisateur ne doit jamais être envoyé ailleurs.
   for (const champ of CHAMPS_URL) {
     const v = d[champ];
-    if (typeof v === 'string' && /^https:\/\//i.test(v)) return { redirectUrl: v };
+    if (estUrlPaiementPawapay(v)) return { redirectUrl: v };
   }
   // Les NOMS des champs seulement : une URL de paiement porte un jeton de session.
   throw new PawapayErreur(
-    `Payment Page sans URL (champs reçus : ${Object.keys(d).sort().join(', ')})`,
+    `Payment Page sans URL PawaPay valide (champs reçus : ${Object.keys(d).sort().join(', ')})`,
     r.status,
   );
 }

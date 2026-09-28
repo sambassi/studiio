@@ -3,34 +3,44 @@
  *
  * Filet de sécurité du chemin par interrogation : un client qui ferme son
  * navigateur avant le retour ne doit pas perdre ses crédits. Le cron relit
- * chez PawaPay chaque dépôt `en_attente` plus vieux que `minutes` (10 par
- * défaut), au plus `limite` par passage (20 par défaut), et appelle
- * `confirmerDepot` — le même code que la route de statut.
+ * chez PawaPay des dépôts `en_attente` et appelle `confirmerDepot` — le même
+ * code que la route de statut.
  *
- * Un dépôt toujours non final (ou introuvable) après `SEUIL_BLOQUE_HEURES`
- * est journalisé et LAISSÉ en attente : jamais crédité, jamais marqué en
- * échec sans preuve de PawaPay.
+ * DEUX LOTS, pour qu'aucun dépôt abandonné ne bloque un vrai paiement :
+ * - lot normal (défaut) : dépôts créés il y a plus de `minutes` (10) et moins
+ *   de `SEUIL_ANCIEN_HEURES` (24 h), au plus `limite` (20) ;
+ * - lot « anciens » (`?lot=anciens`) : dépôts de plus de 24 h, au plus
+ *   `limite` (5 par défaut), à planifier à faible fréquence.
+ * Dans chaque lot, le store sert d'abord les dépôts JAMAIS vérifiés, puis les
+ * moins récemment vérifiés (`verifieLe`) : des dépôts qui restent NOT_FOUND
+ * passent en fin de file au lieu d'occuper chaque passage.
+ *
+ * Un dépôt ancien toujours non final (ou introuvable) est journalisé et
+ * LAISSÉ en attente : jamais crédité, jamais marqué en échec sans preuve.
  *
  * Autorisation : `Authorization: Bearer <CRON_SECRET>`, même mécanisme que
- * les autres crons (`isCronAuthorized`).
+ * les autres crons (`isCronAuthorized`). `PAWAPAY_ENABLED` ≠ "true" ou store
+ * absent → 200 « désactivé », rien fait.
  *
- * Planification (non branchée dans cette PR) : Coolify Scheduled Task, par
- * exemple toutes les 5 minutes, `curl -fsS -H "Authorization: Bearer
- * $CRON_SECRET" https://studiio.pro/api/cron/pawapay-reconcile`.
+ * Planification (non branchée dans cette PR) : Coolify Scheduled Tasks,
+ *   toutes les 5 min : curl -fsS -H "Authorization: Bearer $CRON_SECRET" \
+ *     https://studiio.pro/api/cron/pawapay-reconcile
+ *   toutes les heures : … /api/cron/pawapay-reconcile?lot=anciens
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { isCronAuthorized } from '@/lib/cron/auth';
 import { lireDepot } from '@/lib/payment/pawapay/client';
 import { confirmerDepot } from '@/lib/payment/pawapay/confirmation';
-import { obtenirDependances } from '@/lib/payment/pawapay/store';
+import { obtenirDependances, pawapayActif } from '@/lib/payment/pawapay/store';
 import type { IssueConfirmation } from '@/lib/payment/pawapay/types';
 
 export const dynamic = 'force-dynamic';
 
 const MINUTES_DEFAUT = 10;
 const LIMITE_DEFAUT = 20;
+const LIMITE_ANCIENS_DEFAUT = 5;
 const LIMITE_MAX = 100;
-const SEUIL_BLOQUE_HEURES = 24;
+const SEUIL_ANCIEN_HEURES = 24;
 
 // Secret absent ou vide → refus total (voir `isCronAuthorized`).
 function verifyCronSecret(req: NextRequest): boolean {
@@ -49,20 +59,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  if (!pawapayActif()) return NextResponse.json({ status: 'desactive' }, { status: 200 });
   const deps = obtenirDependances();
   if (!deps) return NextResponse.json({ status: 'desactive' }, { status: 200 });
 
   const params = req.nextUrl.searchParams;
-  const minutes = entierBorne(params.get('minutes'), MINUTES_DEFAUT, 1, 7 * 24 * 60);
-  const limite = entierBorne(params.get('limite'), LIMITE_DEFAUT, 1, LIMITE_MAX);
+  const anciens = params.get('lot') === 'anciens';
   const maintenant = Date.now();
-  const avant = new Date(maintenant - minutes * 60_000).toISOString();
+  const seuilAncien = new Date(maintenant - SEUIL_ANCIEN_HEURES * 3_600_000).toISOString();
+  const limite = entierBorne(
+    params.get('limite'), anciens ? LIMITE_ANCIENS_DEFAUT : LIMITE_DEFAUT, 1, LIMITE_MAX,
+  );
+  const fenetre = anciens
+    ? { creeAvant: seuilAncien, limite }
+    : {
+      creeAvant: new Date(
+        maintenant - entierBorne(params.get('minutes'), MINUTES_DEFAUT, 1, SEUIL_ANCIEN_HEURES * 60) * 60_000,
+      ).toISOString(),
+      creeApres: seuilAncien,
+      limite,
+    };
 
   let enAttente;
   try {
-    enAttente = await deps.store.listerEnAttente({ avant, limite });
+    enAttente = await deps.store.listerEnAttente(fenetre);
   } catch (e) {
-    console.error('[PAWAPAY_RATTRAPAGE] Lecture des dépôts impossible :', e);
+    console.error('[PAWAPAY_RATTRAPAGE] Lecture des dépôts impossible :', (e as Error)?.message);
     return NextResponse.json({ error: 'Lecture des dépôts impossible' }, { status: 500 });
   }
 
@@ -74,12 +96,11 @@ export async function GET(req: NextRequest) {
     try {
       const { issue } = await confirmerDepot(depot.depositId, {
         store: deps.store,
-        crediter: deps.crediter,
         lireDepotDistant: lireDepot,
       });
       bilan[issue] = (bilan[issue] ?? 0) + 1;
       const ageHeures = (maintenant - Date.parse(depot.creeLe)) / 3_600_000;
-      if ((issue === 'en_attente' || issue === 'introuvable') && ageHeures > SEUIL_BLOQUE_HEURES) {
+      if ((issue === 'en_attente' || issue === 'introuvable') && ageHeures > SEUIL_ANCIEN_HEURES) {
         bloques.push(depot.depositId);
         console.warn(
           `[PAWAPAY_RATTRAPAGE] Dépôt ${depot.depositId} non final après ${Math.floor(ageHeures)} h `
@@ -95,7 +116,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const corps = { status: 'ok', examines: enAttente.length, bilan, bloques };
+  const corps = { status: 'ok', lot: anciens ? 'anciens' : 'normal', examines: enAttente.length, bilan, bloques };
   // Une erreur n'est jamais avalée : le passage suivant réessaiera, mais la
   // supervision voit un 500.
   return NextResponse.json(corps, { status: bilan.erreur ? 500 : 200 });
