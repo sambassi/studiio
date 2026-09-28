@@ -39,6 +39,7 @@ import { DRAFT_VERSION, type Draft } from '../draft';
 import { resoudreTextes } from '../textesCanoniques';
 import { fromPostMetadata } from './from-post';
 import { idsCartesLues } from './cartes';
+import { lutRefValide } from '@/lib/luts/bibliotheque';
 import type { CanonicalDesign } from './types';
 
 /** Le post tel que le serveur le rend. */
@@ -252,6 +253,12 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
     }
     if (Object.keys(out).length > 0) draft.sequenceVoices = out;
   }
+
+  // ── Filtre couleur du rush ──────────────────────────────────────────
+  // La reference seule, validee comme celle d'un brouillon. Invalide ou
+  // absente : aucun filtre, comme avant.
+  const lut = lutRefValide(presence(meta, 'lut'));
+  if (lut) draft.lut = lut;
 
   // ── Groupes de cartes ───────────────────────────────────────────────
   const groupes = presence(meta, 'cardGroups');

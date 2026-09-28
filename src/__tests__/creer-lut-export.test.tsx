@@ -73,9 +73,11 @@ LUT_3D_SIZE 2
 
 interface Scenario { lut?: 'ok' | 'illisible' | '404' | 'reseau' }
 let lecturesLut: string[];
+let corpsPost: { metadata?: Record<string, unknown> } | null;
 
 function installerFetch(sc: Scenario = {}) {
   lecturesLut = [];
+  corpsPost = null;
   globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
     const u = String(url);
     const m = String(init?.method ?? 'GET').toUpperCase();
@@ -107,7 +109,10 @@ function installerFetch(sc: Scenario = {}) {
     }
     if (u.includes('/jobs/job-1/upload') && m === 'PUT') return rep({});
     if (u.includes('/api/render/jobs/job-1/confirm')) return rep({ ok: true, politique: 'credits', balance: 4990 });
-    if (u.includes('/api/posts') && m === 'POST') return rep({ success: true, post: { id: 'p1' } });
+    if (u.includes('/api/posts') && m === 'POST') {
+      corpsPost = JSON.parse(String(init?.body));
+      return rep({ success: true, post: { id: 'p1' } });
+    }
     if (u.includes('/api/upload/signed-url')) {
       return rep({ success: true, signedUrl: 'https://minio/vignette', publicUrl: 'https://cdn/v.jpg' });
     }
@@ -178,6 +183,16 @@ describe('filtre couleur → montage', () => {
     expect(Array.from(o.rushLut!.lut.table.slice(0, 3))).toEqual([1, 1, 1]);
   });
 
+  it('⚠️ la RÉFÉRENCE du filtre est écrite dans la metadata du post — jamais la table', async () => {
+    installerFetch({ lut: 'ok' }); poser(true, 0.6);
+    await allerAEnvoi();
+    await envoyer();
+
+    // Sans elle, « Régénérer » dans le Calendrier rendait la vidéo SANS filtre.
+    expect(corpsPost?.metadata?.lut).toEqual({ empreinte: E, nom: 'inverse', intensite: 0.6 });
+    expect(JSON.stringify(corpsPost?.metadata?.lut)).not.toMatch(/table|cle|url/i);
+  });
+
   it('⚠️ sans filtre : aucune clé rushLut, aucune lecture de LUT', async () => {
     installerFetch({ lut: 'ok' }); poser(false);
     await allerAEnvoi();
@@ -190,6 +205,9 @@ describe('filtre couleur → montage', () => {
     // d'avant (et leur signature de cache aussi).
     expect('rushLut' in (o as object)).toBe(false);
     expect(lecturesLut).toEqual([]);
+    // Et la metadata du post n'a pas de clé `lut` : identique à avant.
+    expect(corpsPost?.metadata).toBeDefined();
+    expect('lut' in (corpsPost!.metadata as object)).toBe(false);
   });
 
   it.each([

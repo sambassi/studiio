@@ -210,6 +210,12 @@ export interface ValeursWizard {
    * quand une carte a ete ajoutee, supprimee ou deplacee.
    */
   cardCustomIcons?: Record<string, unknown>;
+  /**
+   * Filtre couleur du rush : la REFERENCE (`LutRef` : empreinte, nom,
+   * intensite), jamais la table. `null` = filtre retire. Change le rendu :
+   * hors de la liste d'exclusion, il pose donc `montagePerime`.
+   */
+  lut?: { empreinte: string; nom: string; intensite: number } | null;
 }
 
 /**
@@ -243,6 +249,8 @@ export function metadataPourEnregistrement(
   poserSiChange(envoi, 'cardGroups', valeurs.cardGroups, ref.cardGroups);
   poserSiChange(envoi, 'hasAudio', valeurs.hasAudio, ref.hasAudio);
   poserSiChange(envoi, 'sequences', valeurs.sequences, ref.sequences);
+  // `ref.lut ?? null` : un post charge SANS filtre compare `null` a `null`.
+  poserSiChange(envoi, 'lut', valeurs.lut, ref.lut === undefined ? null : ref.lut);
 
   // ── `branding` : recomposé SUR l'existant, et seulement s'il bouge ───
   //

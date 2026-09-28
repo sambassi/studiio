@@ -1,7 +1,7 @@
-import { empreinteValide } from './bibliotheque';
+import { lutRefValide } from './bibliotheque';
 import { LUT_API } from './import';
 import { parseCube } from './parse';
-import type { Lut, LutRef } from './types';
+import type { Lut } from './types';
 
 /**
  * Ce que le compositeur attend pour étalonner le rush : la table DÉJÀ LUE et
@@ -28,15 +28,21 @@ export interface ChargerLutDeps {
  * BRUT. Un export qui échoue à cause d'un filtre serait pire qu'une vidéo aux
  * couleurs d'origine.
  *
+ * Accepte une valeur BRUTE (`LutRef` du wizard, ou `metadata.lut` d'un post) :
+ * elle est validée par `lutRefValide` avant toute requête.
+ *
  * Le parseur est celui du socle (`parseCube`) : les octets stockés sont
  * toujours un `.cube` canonique, un PNG importé ayant été converti à l'import.
  */
 export async function chargerLutPourRendu(
-  ref: LutRef | null | undefined,
+  brut: unknown,
   deps: ChargerLutDeps = {},
 ): Promise<LutPourRendu | null> {
-  if (!ref || !empreinteValide(ref.empreinte)) return null;
-  const intensity = Number.isFinite(ref.intensite) ? Math.max(0, Math.min(1, ref.intensite)) : 1;
+  // Validee ICI : la reference peut venir d'une metadata de post (`jsonb`),
+  // donc de n'importe ou. Empreinte invalide = rien, jamais une URL construite.
+  const ref = lutRefValide(brut);
+  if (!ref) return null;
+  const intensity = ref.intensite;
   // Intensité nulle : le rendu est le rush brut, inutile de télécharger.
   if (intensity === 0) return null;
 

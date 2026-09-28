@@ -7684,6 +7684,11 @@ export default function AssistantWizard() {
             duree('video') > 0 && persistableUrl(plateau.rushUrl)
               ? [persistableUrl(plateau.rushUrl)!]
               : undefined,
+          // Filtre couleur du rush : la REFERENCE seule (empreinte, nom,
+          // intensite), jamais la table. C'est elle que le Calendrier relit
+          // pour regenerer, planifier, publier ou exporter avec le meme
+          // etalonnage. Absente sans filtre : metadata identique a avant.
+          lut: lut ? { empreinte: lut.empreinte, nom: lut.nom, intensite: lut.intensite } : undefined,
           renderedVideoUrl: composed.url,
           thumbnailUrl: composed.thumbnailUrl || undefined,
           composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
@@ -8042,11 +8047,14 @@ export default function AssistantWizard() {
         : undefined,
       hasAudio: !!(musicUrl || voiceUrl || sequenceVoiceUrls
                    || (rushUrl && seqDuration('video') > 0)),
+      // `null` = aucun filtre : identique au chargement pour un post qui n'en
+      // avait pas, donc jamais envoye ; retirer un filtre envoie `null`.
+      lut: lut ? { empreinte: lut.empreinte, nom: lut.nom, intensite: lut.intensite } : null,
     };
   }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
       gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
       posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
-      rushUrl, audioKeyframes, cardGroups]);
+      rushUrl, audioKeyframes, cardGroups, lut]);
 
   /**
    * Prend l'empreinte sur le rendu qui SUIT l'hydratation : les `setState` de
