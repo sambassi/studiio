@@ -256,7 +256,24 @@ describe('createLutGrader — rendu', () => {
     grader.dispose();
     grader.dispose();
     expect(gl.loseContext).toHaveBeenCalledTimes(1);
+    // Le contexte est RENDU au navigateur (extension dédiée), pas laissé au
+    // ramasse-miettes : sinon ~16 exports d'affilée épuisent les contextes.
+    expect(gl.getExtension).toHaveBeenCalledWith('WEBGL_lose_context');
     expect(gl.deleteProgram).toHaveBeenCalledTimes(1);
     expect(grader.grade(source, 10, 10)).toBeNull();
+  });
+
+  it('dispose ne lève jamais, même si loseContext lève ou si l’extension manque', () => {
+    const gl = fakeGl();
+    gl.loseContext.mockImplementation(() => { throw new Error('contexte déjà perdu'); });
+    const grader = createLutGrader(identityCube(4), 1, { createCanvas: () => canvasWith(gl) })!;
+    expect(() => grader.dispose()).not.toThrow();
+    expect(() => grader.dispose()).not.toThrow();
+    expect(gl.loseContext).toHaveBeenCalledTimes(1);
+
+    const sansExtension = fakeGl();
+    const g2 = createLutGrader(identityCube(4), 1, { createCanvas: () => canvasWith(sansExtension) })!;
+    sansExtension.getExtension.mockImplementation(() => null);
+    expect(() => g2.dispose()).not.toThrow();
   });
 });
