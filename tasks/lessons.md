@@ -1151,3 +1151,23 @@ reste de la metadata est écrit dans le post, sous la clé que relisent
 garde la forme du type qu'il nourrit (`AudioKeyframe`) ; un test fait
 l'aller-retour complet : état → `composeVideo` → `POST /api/posts` →
 `toWizardDraft` → `sanitizeDraft` (`creer-flux-donnees-envoi.test.tsx`).
+
+## [2026-09-28] Quatre copies d'un même bloc de traduction divergent en silence
+
+**Ce qui a mal tourné** — « Régénérer », « Planifier », « Publier » et
+l'export Bureau du Calendrier recopiaient chacun ~90 lignes metadata ->
+compositeur. Aucun ne transmettait le mixage, la transition, l'animation du
+texte, les éléments libres, les fonds par séquence, le recadrage de l'affiche
+ni la photo des cartes — et les deux derniers n'étaient même pas écrits dans
+le post. L'export avait en plus perdu neuf champs de `design` que les trois
+autres gardaient. Un montage régénéré ne ressemblait plus à celui payé.
+
+**Règle** — (1) Une traduction metadata -> options de rendu vit dans UNE
+fonction (`optionsRenduDepuisMetadata`), appelée par chaque chemin ; un test
+compare ses options à celles du parcours qui a créé le post, champ par champ,
+avec un message qui nomme le champ. (2) Avant de fusionner des copies, les
+anciennes sont RECOPIÉES dans le test comme référence : un ancien post doit
+donner exactement les mêmes options sur chaque chemin (`toStrictEqual`) — les
+écarts historiques entre chemins sont gardés et nommés, pas corrigés en
+passant. (3) Un artefact dérivé (photo des cartes) n'est relu que s'il porte
+l'empreinte de ce qu'il représente ; sinon on retombe sur le rendu d'avant.

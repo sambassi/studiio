@@ -4,6 +4,14 @@ import { resolve } from 'path';
 import { render, screen, cleanup } from '@testing-library/react';
 import { Preview } from '../app/dashboard/creer/AssistantWizard';
 
+/** Sources du Calendrier et de la fonction partagee qui construit ses options de rendu. */
+function sourcesRendu() {
+  return {
+    calendarSource: readFileSync(resolve(__dirname, '../app/dashboard/calendar/page.tsx'), 'utf-8'),
+    optionsSource: readFileSync(resolve(__dirname, '../lib/rendus/options-depuis-metadata.ts'), 'utf-8'),
+  };
+}
+
 /**
  * Chantier 3, point 5 — réglages typographiques par zone dans
  * « Créer (simple) », incrément 1.
@@ -175,15 +183,16 @@ describe('Sous-titre — sa typographie propre', () => {
     // Persistés mais relus nulle part, les trois champs se perdaient : un
     // sous-titre Poppins bleu à 140 % se régénérait dans la police du titre,
     // blanc à 80 %, taille 100 %.
-    const calendarSource = readFileSync(
-      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
-      'utf-8',
-    );
+    // Les quatre chemins du Calendrier passent par UNE fonction partagee
+    // (`optionsRenduDepuisMetadata`) : chaque champ y est lu une fois, et le
+    // Calendrier l'appelle quatre fois.
+    const { calendarSource, optionsSource } = sourcesRendu();
+    expect(calendarSource.match(/preparerOptionsRendu\(post, '/g)).toHaveLength(4);
     for (const field of ['subtitleFont', 'subtitleColor', 'subtitleScale']) {
-      const uses = calendarSource.match(
-        new RegExp(`${field}: (designMeta|calDesign\\?)\\.${field}`, 'g'),
+      const uses = optionsSource.match(
+        new RegExp(`${field}: designMeta\\.${field}`, 'g'),
       );
-      expect(uses).toHaveLength(4); // les 4 appels a composeAndUpload
+      expect(uses).toHaveLength(1);
     }
   });
 
@@ -317,12 +326,9 @@ describe('Export — les mêmes valeurs partent au compositeur', () => {
     // plat `titleTypography` / `ctaTypography` : sans cette seconde forme,
     // gras, italique et interligne disparaissaient à la régénération et dans
     // l'aperçu du Calendrier.
-    const calendarSource = readFileSync(
-      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
-      'utf-8',
-    );
-    expect(calendarSource).toMatch(/titleTypography: designMeta\.typography\?\.title/);
-    expect(calendarSource).toMatch(/ctaTypography: designMeta\.typography\?\.cta/);
+    const { optionsSource } = sourcesRendu();
+    expect(optionsSource).toMatch(/titleTypography: designMeta\.typography\?\.title/);
+    expect(optionsSource).toMatch(/ctaTypography: designMeta\.typography\?\.cta/);
     const block = wizardSource.slice(
       wizardSource.indexOf('const textDesign = {'),
       wizardSource.indexOf('const [started, setStarted]'),
@@ -334,13 +340,11 @@ describe('Export — les mêmes valeurs partent au compositeur', () => {
   it('fait suivre la police choisie à la régénération', () => {
     // Le Calendrier ne relisait AUCUNE police par élément : un titre réglé sur
     // Anton se régénérait en Inter.
-    const calendarSource = readFileSync(
-      resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
-      'utf-8',
-    );
-    // Les quatre appels à composeAndUpload du Calendrier.
-    expect(calendarSource.match(/titleFont: (designMeta|calDesign\?)\.titleFont/g)).toHaveLength(4);
-    expect(calendarSource.match(/watermarkFont: (designMeta|calDesign\?)\.watermarkFont/g)).toHaveLength(4);
+    // Les quatre chemins du Calendrier, par la fonction partagée.
+    const { calendarSource, optionsSource } = sourcesRendu();
+    expect(calendarSource.match(/preparerOptionsRendu\(post, '/g)).toHaveLength(4);
+    expect(optionsSource.match(/titleFont: designMeta\.titleFont/g)).toHaveLength(1);
+    expect(optionsSource.match(/watermarkFont: designMeta\.watermarkFont/g)).toHaveLength(1);
   });
 
   it('empêche la taille du titre de grossir les cartes', () => {

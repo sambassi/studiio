@@ -56,7 +56,14 @@
  *
  * Prealable a toute reintroduction : un test de PARITE
  * `metadata.design -> ComposerOptions` compare aux quatre blocs de traduction
- * de `calendar/page.tsx`. Ce test n'existe aujourd'hui nulle part.
+ * de `calendar/page.tsx`.
+ *
+ * MISE A JOUR : les quatre blocs sont desormais UNE fonction,
+ * `optionsRenduDepuisMetadata` (`@/lib/rendus/options-depuis-metadata`), et
+ * ce test de parite existe (`calendrier-regeneration-fidele.test.tsx`) : il
+ * garde les quatre anciens blocs comme reference sur des posts anciens, et
+ * compare la regeneration aux options du parcours Creer. D1 et D2 y sont
+ * respectes (duree video a 0 sans rush, aucun repli `videoUrl`).
  */
 
 export {

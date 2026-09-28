@@ -83,14 +83,19 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
     expect(CAPACITES_ACTUELLES.rendu3d).toBe(composerEtalonne && appelantsRushLut.length > 0);
   });
 
+  /** Les options des QUATRE chemins du Calendrier : une fonction partagée. */
+  const OPTIONS_CALENDRIER = 'src/lib/rendus/options-depuis-metadata.ts';
+
   it('aujourd’hui : le wizard Créer et le Calendrier sont les SEULS appelants, et rendu3d le dit', () => {
     // Un nouvel appelant doit être ajouté ICI en connaissance de cause : il
-    // hérite de la promesse « Appliquée au montage ».
+    // hérite de la promesse « Appliquée au montage ». Le Calendrier transmet
+    // la LUT par sa fonction partagée, qu'il appelle sur ses quatre chemins.
     expect(composerEtalonne).toBe(true);
     expect([...appelantsRushLut].sort()).toEqual([
-      'src/app/dashboard/calendar/page.tsx',
       'src/app/dashboard/creer/AssistantWizard.tsx',
+      OPTIONS_CALENDRIER,
     ]);
+    expect(src('src/app/dashboard/calendar/page.tsx').match(/preparerOptionsRendu\(post, '/g)).toHaveLength(4);
     expect(CAPACITES_ACTUELLES.rendu3d).toBe(true);
   });
 
@@ -98,29 +103,34 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
     // `rendu3d` ne vaut que si la table transmise vient de la bibliothèque du
     // compte — pas d'une valeur inventée — et la clé est absente sans filtre
     // (default-safe : options identiques à l'avant-LUT).
-    for (const rel of appelantsRushLut) {
-      const code = src(rel);
-      const lectures = code.match(/const rushLut = [^;\n]*;/g) ?? [];
-      expect(lectures.length, rel).toBeGreaterThan(0);
-      for (const l of lectures) expect(l, rel).toMatch(/await chargerLutPourRendu\(/);
-      // Toute transmission passe par la forme conditionnelle, et seulement elle.
-      const transmissions = code.match(/\brushLut\s*[:,}]/g) ?? [];
-      const conditionnelles = code.match(/\.\.\.\(rushLut \? \{ rushLut \} : \{\}\)/g) ?? [];
-      expect(transmissions.length, rel).toBe(conditionnelles.length);
-    }
     const wizard = src('src/app/dashboard/creer/AssistantWizard.tsx');
+    const lectures = wizard.match(/const rushLut = [^;\n]*;/g) ?? [];
+    expect(lectures.length).toBeGreaterThan(0);
+    for (const l of lectures) expect(l).toMatch(/await chargerLutPourRendu\(/);
+    const transmissions = wizard.match(/\brushLut\s*[:,}]/g) ?? [];
+    const conditionnelles = wizard.match(/\.\.\.\(rushLut \? \{ rushLut \} : \{\}\)/g) ?? [];
+    expect(transmissions.length).toBe(conditionnelles.length);
     expect(wizard).toMatch(/const rushLut = [^;]*await chargerLutPourRendu\(lut\)/);
+
+    // Calendrier : lue UNE fois, seulement avec un rush, puis posée sous la
+    // forme conditionnelle — la clé est absente sans filtre.
+    const options = src(OPTIONS_CALENDRIER);
+    expect(options.match(/await d\.chargerLutPourRendu\(meta\.lut\)/g)).toHaveLength(1);
+    expect(options).toMatch(/const rushLut = meta\.rushUrls\?\.\[0\] \? await d\.chargerLutPourRendu\(meta\.lut\) : null;/);
+    expect(options.match(/\.\.\.\(prep\.rushLut \? \{ rushLut: prep\.rushLut \} : \{\}\)/g)).toHaveLength(1);
   });
 
   it('le Calendrier étalonne sur ses QUATRE chemins de rendu', () => {
     // Régénérer, Planifier, Publier, Exporter : un chemin oublié rendrait une
-    // vidéo sans le filtre, sans le moindre message.
+    // vidéo sans le filtre, sans le moindre message. Chacun construit ses
+    // options par `preparerOptionsRendu`, qui lit la LUT.
     const cal = src('src/app/dashboard/calendar/page.tsx');
     const rendus = cal.match(/composerEtFacturer\(/g) ?? [];
-    const transmissions = cal.match(/\.\.\.\(rushLut \? \{ rushLut \} : \{\}\)/g) ?? [];
+    const preparations = cal.match(/await preparerOptionsRendu\(post, '(regenerer|planifier|publier|exporter)'/g) ?? [];
     expect(rendus.length).toBe(4);
-    expect(transmissions.length).toBe(rendus.length);
-    expect(cal.match(/chargerLutPourRendu\(meta\??\.lut\)/g)?.length).toBe(4);
+    expect(new Set(preparations).size).toBe(4);
+    // Aucune lecture en direct : une seule source de vérité.
+    expect(cal).not.toMatch(/chargerLutPourRendu\(/);
   });
 
   it('le compositeur libère l’étalonneur quel que soit le règlement du montage', () => {

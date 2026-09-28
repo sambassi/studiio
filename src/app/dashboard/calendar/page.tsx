@@ -49,7 +49,7 @@ import {
   montageEstPerime, messageMontagePerime, leverMontagePerime,
 } from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
-import { chargerLutPourRendu } from '@/lib/luts/charger';
+import { montageSize, preparerOptionsRendu } from '@/lib/rendus/options-depuis-metadata';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 import { creneauImmediat, DEFAULT_TIMEZONE } from '@/lib/autopilot/rules';
 
@@ -69,7 +69,6 @@ import { creneauImmediat, DEFAULT_TIMEZONE } from '@/lib/autopilot/rules';
 function formatRendu(p?: { format?: string | null } | null): 'reel' | 'tv' {
   return p?.format === 'reel' ? 'reel' : 'tv';
 }
-import { preRenderCardIcons } from '@/lib/icons/prerender';
 import { useTranslations, useLocale } from '@/i18n/client';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
 import { reseauDepuisLibelle, normaliserPlateformesCalendrier } from '@/lib/social/etatReseaux';
@@ -271,21 +270,11 @@ interface Post {
  * ratio 16/9.
  */
 /**
- * Dimensions a recomposer pour un post.
- *
- * `format` ne connait que deux resolutions : un montage carre recompose
- * d'apres lui ressortait en 1920x1080, dans un cadre annonce 1:1. Quand le
- * post porte ses dimensions reelles, ce sont elles qui font foi.
+ * Dimensions a recomposer pour un post — deplacee dans
+ * `@/lib/rendus/options-depuis-metadata`, qui construit les options des
+ * quatre chemins de rendu. Re-exportee ici pour les appelants existants.
  */
-export function montageSize(
-  videoSize: { w: number; h: number } | undefined,
-  format: 'reel' | 'tv',
-): { width: number; height: number } {
-  if (videoSize && videoSize.w > 0 && videoSize.h > 0) {
-    return { width: videoSize.w, height: videoSize.h };
-  }
-  return format === 'reel' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
-}
+export { montageSize };
 
 export function montageFrame(
   videoSize: { w: number; h: number } | undefined,
@@ -702,7 +691,6 @@ export default function CalendarPage() {
   const regenerateMontageInterne = useCallback(async (post: Post) => {
     if (regenerating) return;
     const meta: any = post.metadata || {};
-    const brand = meta.branding;
     const designMeta: any = meta.design || {};
     const hasRush = !!meta.rushUrls?.[0];
 
@@ -714,18 +702,9 @@ export default function CalendarPage() {
       return;
     }
 
-    // Sanity-clamp durations: a stored `sequences.video = 1` (or any sub-2s value)
-    // is almost certainly corrupted metadata from an old export and would produce
-    // the "1 second flash" bug. Fall back to the editor defaults.
-    // `0` est une valeur VOULUE : elle signifie « sequence masquee ». Sans ce
-    // cas explicite, safeDuration(0, 6) renvoyait 6 et ressuscitait la
-    // sequence a la regeneration. Le bug preexistait, mais depuis que l'ordre
-    // est transmis au compositeur la sequence ressuscitee — absente de
-    // `order` — se retrouvait reléguee APRES le CTA au lieu de sa place
-    // canonique. Le fallback ne doit s'appliquer qu'aux valeurs absentes ou
-    // aberrantes, jamais a un 0 explicite.
-    const safeDuration = (val: unknown, fallback: number, min = 2) =>
-      val === 0 ? 0 : ((typeof val === 'number' && val >= min) ? val : fallback);
+    // Durees bornees (valeur < 2 s = metadata corrompue -> defaut ; `0` =
+    // sequence masquee, conservee) : la regle vit desormais dans
+    // `optionsRenduDepuisMetadata` (chemin 'regenerer').
 
     console.log('[Regenerate] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('[Regenerate] Starting montage regeneration for post:', post.id);
@@ -768,106 +747,12 @@ export default function CalendarPage() {
       // rendu, il ouvre une tentative serveur et n'est livre qu'une fois
       // l'objet vu a la cle attribuee. `composerEtFacturer` LEVE sinon, et
       // le `catch` de cette fonction affiche l'erreur sans rien enregistrer.
-      // Filtre couleur du rush (`metadata.lut`, reference seule). Absent ou
-      // illisible : rendu sans etalonnage, comme avant.
-      const rushLut = hasRush ? await chargerLutPourRendu(meta.lut) : null;
-      const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composerEtFacturer('calendrier', formatRendu(post), {
-        // Dimensions reelles du montage quand le post les porte : sans
-        // elles, un carre se recomposait en 1920x1080.
-        ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
-        fps: 30,
-        title: post.title || 'Vidéo',
-        subtitle: meta.subtitle || undefined,
-        salesPhrase: meta.salesPhrase || undefined,
-        cards: meta.cards?.length > 0
-          ? await preRenderCardIcons(meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })))
-          : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
-        posterUrl: meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null,
-        videoUrl: meta.rushUrls?.[0] || null,
-        ...(rushLut ? { rushLut } : {}),
-        logoUrl: meta.logoUrl || designMeta.logoUrl || null,
-        musicUrl: meta.musicUrl || null,
-        voiceUrl: meta.voiceUrl || null,
-        sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
-        // Ordre de sequences stocke : sans lui la video repartait toujours
-        // en intro->cards->video->cta, divergeant de l'apercu.
-        sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
-        introDuration: safeDuration(meta.sequences?.intro, 5),
-        cardsDuration: (meta.cards?.length > 0 || meta.textCards?.length > 0)
-          ? safeDuration(meta.sequences?.cards, 6)
-          : 0,
-        videoDuration: hasRush ? safeDuration(meta.sequences?.video, 12) : 0,
-        ctaDuration: safeDuration(meta.sequences?.cta, 5),
-        accentColor: brand?.accentColor || '#D91CD2',
-        ctaText: brand?.ctaText || "CHAT POUR PLUS D'INFOS",
-        ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
-        watermarkText: brand?.watermarkText || undefined,
-        siteText: designMeta.siteText || undefined,
-        design: {
-          font: designMeta.font || undefined,
-          titleColor: designMeta.titleColor || undefined,
-          gradientColor1: designMeta.gradientColor1 || undefined,
-          gradientColor2: designMeta.gradientColor2 || undefined,
-          gradientOpacity: designMeta.gradientOpacity ?? undefined,
-          ctaSubColor: designMeta.ctaSubColor || brand?.ctaSubColor || undefined,
-          ctaColor: designMeta.ctaColor || undefined,
-          logoSequences: designMeta.logoSequences || undefined,
-          logoPosition: designMeta.positions?.logo || undefined,
-          logoPositions: designMeta.logoPositions || undefined,
-          logoScale: designMeta.logoScale || undefined,
-          overlayText: meta.videoOverlayText || undefined,
-          overlayColor: designMeta.overlayColor || undefined,
-          overlayTextScale: meta.overlayTextScale,
-          overlayStartTime: meta.overlayStartTime,
-          overlayEndTime: meta.overlayEndTime,
-          // Extra overlays saved per-post so each one keeps its own
-          // position/timing/style when the calendar re-composes.
-          overlays: Array.isArray(meta.overlays) ? meta.overlays : undefined,
-          textScale: designMeta.textScale || undefined,
-          // Polices par element et echelle des cartes : le Calendrier ne les
-          // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
-          // Inter, et que `textScale` regrossissait le texte des cartes sans son
-          // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
-          // champs se comportent exactement comme avant.
-          titleFont: designMeta.titleFont || undefined,
-          // Typographie du sous-titre : sans elle, un sous-titre regle en
-          // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
-          subtitleFont: designMeta.subtitleFont || undefined,
-          subtitleColor: designMeta.subtitleColor || undefined,
-          subtitleScale: designMeta.subtitleScale ?? undefined,
-          ctaFont: designMeta.ctaFont || undefined,
-          watermarkFont: designMeta.watermarkFont || undefined,
-          cardsTextScale: designMeta.cardsTextScale ?? undefined,
-          ctaTextScale: designMeta.ctaTextScale || undefined,
-          cardStyle: designMeta.cardStyle || undefined,
-          titlePosition: designMeta.positions?.title || undefined,
-          // undefined pour tout post existant -> le compositeur retombe sur 'center'
-          titleAlign: (designMeta as any).titleAlign || undefined,
-          cardsPosition: designMeta.positions?.cards || undefined,
-          cardsSize: designMeta.sizes?.cards || undefined,
-          ctaMainText: designMeta.ctaMainText || undefined,
-          ctaSubTextDesign: designMeta.ctaSubText || undefined,
-          titleTypography: designMeta.typography?.title || undefined,
-          watermarkPosition: designMeta.positions?.watermark || undefined,
-          watermarkSize: designMeta.sizes?.watermark || undefined,
-          overlayPosition: meta.overlayPosition || designMeta.positions?.overlay || undefined,
-          titleSize: designMeta.sizes?.title || undefined,
-          ctaTypography: designMeta.typography?.cta || undefined,
-          overlayTypography: designMeta.typography?.overlay || undefined,
-          seqGradients: designMeta.seqGradients || undefined,
-          noColorBg: designMeta.noColorBg || undefined,
-          noColorSequences: designMeta.noColorSequences || undefined,
-          filter: designMeta.filter || undefined,
-          cardsTypography: ((designMeta as any).typography?.cards) || ((designMeta as any).cardsTypography) || undefined,
-          extraTitle: (designMeta as any).extraTitle || undefined,
-          extraSubtitle: (designMeta as any).extraSubtitle || undefined,
-          extraTitlePosition: (designMeta as any).extraTitlePosition || undefined,
-          extraSubtitlePosition: (designMeta as any).extraSubtitlePosition || undefined,
-          extraTitleTypography: (designMeta as any).extraTitleTypography || undefined,
-          extraSubtitleTypography: (designMeta as any).extraSubtitleTypography || undefined,
-        },
-        onProgress: (pct, stage) => { setRegenProgress(pct); setRegenStage(stage); },
-      });
+      // Options construites depuis la metadata par la fonction partagee des
+      // quatre chemins : mixage, transition, animation du texte, elements,
+      // fonds par sequence, recadrage de l'affiche et photo des cartes
+      // compris — le montage regenere est celui du parcours Creer.
+      const { url: renderedUrl, thumbnailUrl: freshThumb, composerVersion: freshVersion } = await composerEtFacturer('calendrier', formatRendu(post),
+        await preparerOptionsRendu(post, 'regenerer', (pct, stage) => { setRegenProgress(pct); setRegenStage(stage); }));
 
       if (!renderedUrl) {
         throw new Error('Le montage a été rendu mais l\'upload a échoué.');
@@ -1290,114 +1175,13 @@ export default function CalendarPage() {
       setExportRenderStage('Rendu du montage...');
 
       try {
-        const posterUrl = meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null;
-        const videoUrl = meta.rushUrls?.[0] || null;
-        const rushLut = videoUrl ? await chargerLutPourRendu(meta.lut) : null;
-        const musicUrl = meta.musicUrl || null;
-        const voiceUrl = meta.voiceUrl || null;
-        const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
-        const seq = meta.sequences;
-        const brand = meta.branding;
-
-        const designMeta = meta.design || {};
         // Composition automatique avant programmation : meme contrat.
         // Un echec fait `return` plus bas — le post n'est jamais programme.
-        const { url: renderedUrl } = await composerEtFacturer('calendrier', formatRendu(post), {
-          // Dimensions reelles du montage quand le post les porte : sans
-          // elles, un carre se recomposait en 1920x1080.
-          ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
-          fps: 30,
-          title: post.title || 'Vidéo',
-          subtitle: meta.subtitle || undefined,
-          salesPhrase: meta.salesPhrase || undefined,
-          cards: meta.cards?.length > 0
-            ? await preRenderCardIcons(meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })))
-            : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
-          posterUrl,
-          videoUrl,
-          ...(rushLut ? { rushLut } : {}),
-          logoUrl,
-          musicUrl,
-          voiceUrl,
-          sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
-          // Ordre de sequences stocke : sans lui la video repartait toujours
-          // en intro->cards->video->cta, divergeant de l'apercu.
-          sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
-          introDuration: seq?.intro ?? 5,
-          cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
-          videoDuration: seq?.video ?? 12,
-          ctaDuration: seq?.cta ?? 5,
-          accentColor: brand?.accentColor || '#D91CD2',
-          ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
-          ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
-          watermarkText: brand?.watermarkText || undefined,
-          siteText: designMeta.siteText || undefined,
-          design: {
-            font: designMeta.font || undefined,
-            titleColor: designMeta.titleColor || undefined,
-            gradientColor1: designMeta.gradientColor1 || undefined,
-            gradientColor2: designMeta.gradientColor2 || undefined,
-            gradientOpacity: designMeta.gradientOpacity ?? undefined,
-            ctaSubColor: designMeta.ctaSubColor || brand?.ctaSubColor || undefined,
-            ctaColor: designMeta.ctaColor || undefined,
-            logoSequences: designMeta.logoSequences || undefined,
-            logoPosition: designMeta.positions?.logo || undefined,
-            logoPositions: designMeta.logoPositions || undefined,
-            logoScale: designMeta.logoScale || undefined,
-            overlayText: meta.videoOverlayText || undefined,
-            overlayColor: designMeta.overlayColor || undefined,
-            overlayTextScale: (meta as any).overlayTextScale,
-            overlayStartTime: (meta as any).overlayStartTime,
-            overlayEndTime: (meta as any).overlayEndTime,
-            overlays: Array.isArray((meta as any).overlays) ? (meta as any).overlays : undefined,
-            textScale: designMeta.textScale || undefined,
-            // Polices par element et echelle des cartes : le Calendrier ne les
-            // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
-            // Inter, et que `textScale` regrossissait le texte des cartes sans son
-            // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
-            // champs se comportent exactement comme avant.
-            titleFont: designMeta.titleFont || undefined,
-            // Typographie du sous-titre : sans elle, un sous-titre regle en
-            // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
-            subtitleFont: designMeta.subtitleFont || undefined,
-            subtitleColor: designMeta.subtitleColor || undefined,
-            subtitleScale: designMeta.subtitleScale ?? undefined,
-            ctaFont: designMeta.ctaFont || undefined,
-            watermarkFont: designMeta.watermarkFont || undefined,
-            cardsTextScale: designMeta.cardsTextScale ?? undefined,
-            ctaTextScale: designMeta.ctaTextScale || undefined,
-            cardStyle: designMeta.cardStyle || undefined,
-            titlePosition: designMeta.positions?.title || undefined,
-          // undefined pour tout post existant -> le compositeur retombe sur 'center'
-          titleAlign: (designMeta as any).titleAlign || undefined,
-            cardsPosition: designMeta.positions?.cards || undefined,
-            cardsSize: designMeta.sizes?.cards || undefined,
-            ctaMainText: designMeta.ctaMainText || undefined,
-            ctaSubTextDesign: designMeta.ctaSubText || undefined,
-            titleTypography: designMeta.typography?.title || undefined,
-            watermarkPosition: designMeta.positions?.watermark || undefined,
-            watermarkSize: designMeta.sizes?.watermark || undefined,
-            overlayPosition: (meta as any).overlayPosition || designMeta.positions?.overlay || undefined,
-            titleSize: designMeta.sizes?.title || undefined,
-            ctaTypography: designMeta.typography?.cta || undefined,
-            overlayTypography: designMeta.typography?.overlay || undefined,
-            seqGradients: (designMeta as any).seqGradients || undefined,
-            noColorBg: (designMeta as any).noColorBg || undefined,
-            noColorSequences: (designMeta as any).noColorSequences || undefined,
-            filter: designMeta.filter || undefined,
-            cardsTypography: ((designMeta as any).typography?.cards) || ((designMeta as any).cardsTypography) || undefined,
-            extraTitle: (designMeta as any).extraTitle || undefined,
-            extraSubtitle: (designMeta as any).extraSubtitle || undefined,
-            extraTitlePosition: (designMeta as any).extraTitlePosition || undefined,
-            extraSubtitlePosition: (designMeta as any).extraSubtitlePosition || undefined,
-            extraTitleTypography: (designMeta as any).extraTitleTypography || undefined,
-            extraSubtitleTypography: (designMeta as any).extraSubtitleTypography || undefined,
-          },
-          onProgress: (pct, stage) => {
+        const { url: renderedUrl } = await composerEtFacturer('calendrier', formatRendu(post),
+          await preparerOptionsRendu(post, 'planifier', (pct, stage) => {
             setExportRenderProgress(pct);
             setExportRenderStage(stage);
-          },
-        });
+          }));
 
         if (renderedUrl) {
           // Update post metadata with rendered video URL
@@ -1956,13 +1740,8 @@ export default function CalendarPage() {
         try {
           const posterUrl = meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null;
           const videoUrl = meta.rushUrls?.[0] || null;
-          const rushLut = videoUrl ? await chargerLutPourRendu(meta.lut) : null;
           const musicUrl = meta.musicUrl || null;
-          const voiceUrl = meta.voiceUrl || null;
           const logoUrl = meta.logoUrl || meta.design?.logoUrl || null;
-          const seq = meta.sequences;
-          const brand = meta.branding;
-          const designMeta = meta.design || {};
 
           console.log('[Publish] Media URLs:', { posterUrl: posterUrl?.substring(0, 60), videoUrl: videoUrl?.substring(0, 60), logoUrl: logoUrl?.substring(0, 30), musicUrl: musicUrl?.substring(0, 60) });
 
@@ -1971,102 +1750,11 @@ export default function CalendarPage() {
           // passe par le cron, apres passage en `scheduled` : elle ne peut
           // donc commencer qu'apres la confirmation, puisqu'un echec sort
           // par le `catch` avant tout enregistrement.
-          const composePromise = composerEtFacturer('calendrier', formatRendu(post), {
-            // Dimensions reelles du montage quand le post les porte : sans
-            // elles, un carre se recomposait en 1920x1080.
-            ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
-            fps: 30,
-            title: post.title || 'Vidéo',
-            subtitle: meta.subtitle || undefined,
-            salesPhrase: meta.salesPhrase || undefined,
-            cards: meta.cards?.length > 0
-              ? await preRenderCardIcons(meta.cards.map((c: any) => ({ emoji: c.emoji, label: c.label, value: c.value, description: c.description, color: c.color })))
-              : (meta.textCards || []).map((tCard: any) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
-            posterUrl,
-            videoUrl,
-            ...(rushLut ? { rushLut } : {}),
-            logoUrl,
-            musicUrl,
-            voiceUrl,
-            sequenceVoiceUrls: (meta as any).sequenceVoiceUrls || undefined,
-            // Ordre de sequences stocke : sans lui la video repartait toujours
-            // en intro->cards->video->cta, divergeant de l'apercu.
-            sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
-            introDuration: seq?.intro ?? 5,
-            cardsDuration: seq?.cards ?? ((meta.cards?.length > 0 || meta.textCards?.length > 0) ? 6 : 0),
-            videoDuration: seq?.video ?? 12,
-            ctaDuration: seq?.cta ?? 5,
-            accentColor: brand?.accentColor || '#D91CD2',
-            ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
-            ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
-            watermarkText: brand?.watermarkText || undefined,
-            siteText: designMeta.siteText || undefined,
-            design: {
-              font: designMeta.font || undefined,
-              titleColor: designMeta.titleColor || undefined,
-              gradientColor1: designMeta.gradientColor1 || undefined,
-              gradientColor2: designMeta.gradientColor2 || undefined,
-              gradientOpacity: designMeta.gradientOpacity ?? undefined,
-              ctaSubColor: designMeta.ctaSubColor || brand?.ctaSubColor || undefined,
-              ctaColor: designMeta.ctaColor || undefined,
-              logoSequences: designMeta.logoSequences || undefined,
-              logoPosition: designMeta.positions?.logo || undefined,
-              logoPositions: designMeta.logoPositions || undefined,
-              logoScale: designMeta.logoScale || undefined,
-              overlayText: meta.videoOverlayText || undefined,
-              overlayColor: designMeta.overlayColor || undefined,
-              overlayTextScale: (meta as any).overlayTextScale,
-              overlayStartTime: (meta as any).overlayStartTime,
-              overlayEndTime: (meta as any).overlayEndTime,
-              overlays: Array.isArray((meta as any).overlays) ? (meta as any).overlays : undefined,
-              textScale: designMeta.textScale || undefined,
-              // Polices par element et echelle des cartes : le Calendrier ne les
-              // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
-              // Inter, et que `textScale` regrossissait le texte des cartes sans son
-              // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
-              // champs se comportent exactement comme avant.
-              titleFont: designMeta.titleFont || undefined,
-              // Typographie du sous-titre : sans elle, un sous-titre regle en
-              // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
-              subtitleFont: designMeta.subtitleFont || undefined,
-              subtitleColor: designMeta.subtitleColor || undefined,
-              subtitleScale: designMeta.subtitleScale ?? undefined,
-              ctaFont: designMeta.ctaFont || undefined,
-              watermarkFont: designMeta.watermarkFont || undefined,
-              cardsTextScale: designMeta.cardsTextScale ?? undefined,
-              ctaTextScale: designMeta.ctaTextScale || undefined,
-              cardStyle: designMeta.cardStyle || undefined,
-              titlePosition: designMeta.positions?.title || undefined,
-          // undefined pour tout post existant -> le compositeur retombe sur 'center'
-          titleAlign: (designMeta as any).titleAlign || undefined,
-              cardsPosition: designMeta.positions?.cards || undefined,
-              cardsSize: designMeta.sizes?.cards || undefined,
-              ctaMainText: designMeta.ctaMainText || undefined,
-              ctaSubTextDesign: designMeta.ctaSubText || undefined,
-              titleTypography: designMeta.typography?.title || undefined,
-              watermarkPosition: designMeta.positions?.watermark || undefined,
-              watermarkSize: designMeta.sizes?.watermark || undefined,
-              overlayPosition: (meta as any).overlayPosition || designMeta.positions?.overlay || undefined,
-              titleSize: designMeta.sizes?.title || undefined,
-              ctaTypography: designMeta.typography?.cta || undefined,
-              overlayTypography: designMeta.typography?.overlay || undefined,
-              seqGradients: (designMeta as any).seqGradients || undefined,
-              noColorBg: (designMeta as any).noColorBg || undefined,
-              noColorSequences: (designMeta as any).noColorSequences || undefined,
-              filter: designMeta.filter || undefined,
-              cardsTypography: ((designMeta as any).typography?.cards) || ((designMeta as any).cardsTypography) || undefined,
-              extraTitle: (designMeta as any).extraTitle || undefined,
-              extraSubtitle: (designMeta as any).extraSubtitle || undefined,
-              extraTitlePosition: (designMeta as any).extraTitlePosition || undefined,
-              extraSubtitlePosition: (designMeta as any).extraSubtitlePosition || undefined,
-              extraTitleTypography: (designMeta as any).extraTitleTypography || undefined,
-              extraSubtitleTypography: (designMeta as any).extraSubtitleTypography || undefined,
-            },
-            onProgress: (pct, stage) => {
+          const composePromise = composerEtFacturer('calendrier', formatRendu(post),
+            await preparerOptionsRendu(post, 'publier', (pct, stage) => {
               setExportRenderProgress(pct);
               setExportRenderStage(stage);
-            },
-          });
+            }));
           const timeoutPromise = new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('Composition timeout after 3 minutes')), 180_000)
           );
@@ -2485,12 +2173,8 @@ export default function CalendarPage() {
     try {
       const posterUrl = meta?.posterUrl || meta?.pexelsUrl || meta?.characterUrl || null;
       const videoUrl = meta?.rushUrls?.[0] || null;
-      const rushLut = videoUrl ? await chargerLutPourRendu(meta?.lut) : null;
       const musicUrl = meta?.musicUrl || null;
       const voiceUrl = meta?.voiceUrl || null;
-      const logoUrl = meta?.logoUrl || meta?.design?.logoUrl || null;
-      const seq = meta?.sequences;
-      const brand = meta?.branding;
 
       // If no media at all, the recompose has nothing to draw with — bail
       // out cleanly instead of letting le compositeur throw on a useless
@@ -2506,98 +2190,15 @@ export default function CalendarPage() {
         return;
       }
 
-      // Read site text config from design metadata
-      const calDesign = meta?.design;
-      const calSiteText = calDesign?.siteText;
-
       // Recomposition a la volee pour TELECHARGEMENT : le montage part sur
       // le disque de l'utilisateur, c'est l'operation `bureau`.
-      const { blob, url: renderedUrl } = await composerEtFacturer('bureau', formatRendu(post), {
-        // Dimensions reelles du montage quand le post les porte : sans
-        // elles, un carre se recomposait en 1920x1080.
-        ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
-        fps: 30,
-        title: post.title || 'Vidéo',
-        subtitle: meta?.subtitle || undefined,
-        salesPhrase: meta?.salesPhrase || undefined,
-        cards: meta?.cards?.length > 0
-          ? await preRenderCardIcons(meta.cards.map((c: { emoji: string; label: string; value: string; color?: string }) => ({ emoji: c.emoji, label: c.label, value: c.value, color: c.color })))
-          : (meta?.textCards || []).map((tCard: { text: string; color?: string }) => ({ emoji: 'FileText', label: tCard.text, value: tCard.text, color: tCard.color })),
-        posterUrl,
-        videoUrl,
-        ...(rushLut ? { rushLut } : {}),
-        logoUrl,
-        musicUrl,
-        voiceUrl,
-        sequenceVoiceUrls: (meta as any)?.sequenceVoiceUrls || undefined,
-        // Ordre de sequences stocke : sans lui la video repartait toujours
-        // en intro->cards->video->cta, divergeant de l'apercu.
-        sequenceOrder: (meta?.sequences?.order as string[] | undefined) || undefined,
-        introDuration: seq?.intro ?? 5,
-        cardsDuration: seq?.cards ?? ((meta?.cards?.length > 0 || meta?.textCards?.length > 0) ? 6 : 0),
-        videoDuration: seq?.video ?? 12,
-        ctaDuration: seq?.cta ?? 5,
-        accentColor: brand?.accentColor || '#D91CD2',
-        ctaText: brand?.ctaText || 'CHAT POUR PLUS D\'INFOS',
-        ctaSubText: brand?.ctaSubText || 'LIEN EN BIO',
-        watermarkText: brand?.watermarkText || undefined,
-        siteText: calSiteText || undefined,
-        design: {
-          font: calDesign?.font || undefined,
-          titleColor: calDesign?.titleColor || undefined,
-          gradientColor1: calDesign?.gradientColor1 || undefined,
-          gradientColor2: calDesign?.gradientColor2 || undefined,
-          gradientOpacity: calDesign?.gradientOpacity ?? undefined,
-          ctaSubColor: calDesign?.ctaSubColor || brand?.ctaSubColor || undefined,
-          ctaColor: calDesign?.ctaColor || undefined,
-          logoSequences: calDesign?.logoSequences || undefined,
-          logoPosition: calDesign?.positions?.logo || undefined,
-          logoPositions: calDesign?.logoPositions || undefined,
-          logoScale: calDesign?.logoScale || undefined,
-          overlayText: meta?.videoOverlayText || undefined,
-          overlayColor: calDesign?.overlayColor || undefined,
-          overlayTextScale: (meta as any)?.overlayTextScale,
-          overlayStartTime: (meta as any)?.overlayStartTime,
-          overlayEndTime: (meta as any)?.overlayEndTime,
-          overlays: Array.isArray((meta as any)?.overlays) ? (meta as any).overlays : undefined,
-          overlayPosition: (meta as any)?.overlayPosition || calDesign?.positions?.overlay || undefined,
-          textScale: calDesign?.textScale || undefined,
-          // Polices par element et echelle des cartes : le Calendrier ne les
-          // relisait pas, si bien qu'un titre regle sur Anton se regenerait en
-          // Inter, et que `textScale` regrossissait le texte des cartes sans son
-          // facteur compensateur. `|| undefined` : les posts qui n'ont pas ces
-          // champs se comportent exactement comme avant.
-          titleFont: calDesign?.titleFont || undefined,
-          // Typographie du sous-titre : sans elle, un sous-titre regle en
-          // Poppins bleu se regenerait dans la police du titre, blanc a 80 %.
-          subtitleFont: calDesign?.subtitleFont || undefined,
-          subtitleColor: calDesign?.subtitleColor || undefined,
-          subtitleScale: calDesign?.subtitleScale ?? undefined,
-          ctaFont: calDesign?.ctaFont || undefined,
-          watermarkFont: calDesign?.watermarkFont || undefined,
-          cardsTextScale: calDesign?.cardsTextScale ?? undefined,
-          ctaTextScale: calDesign?.ctaTextScale || undefined,
-          cardStyle: calDesign?.cardStyle || undefined,
-          titlePosition: calDesign?.positions?.title || undefined,
-          titleAlign: (calDesign as any)?.titleAlign || undefined,
-          cardsPosition: calDesign?.positions?.cards || undefined,
-          cardsSize: calDesign?.sizes?.cards || undefined,
-          ctaMainText: calDesign?.ctaMainText || undefined,
-          ctaSubTextDesign: calDesign?.ctaSubText || undefined,
-          titleTypography: calDesign?.typography?.title || undefined,
-          cardsTypography: ((calDesign as any)?.typography?.cards) || ((calDesign as any)?.cardsTypography) || undefined,
-          extraTitle: (calDesign as any)?.extraTitle || undefined,
-          extraSubtitle: (calDesign as any)?.extraSubtitle || undefined,
-          extraTitlePosition: (calDesign as any)?.extraTitlePosition || undefined,
-          extraSubtitlePosition: (calDesign as any)?.extraSubtitlePosition || undefined,
-          extraTitleTypography: (calDesign as any)?.extraTitleTypography || undefined,
-          extraSubtitleTypography: (calDesign as any)?.extraSubtitleTypography || undefined,
-        },
-        onProgress: (pct, stage) => {
+      const { blob, url: renderedUrl } = await composerEtFacturer('bureau', formatRendu(post),
+        // Options construites depuis la metadata, comme les trois autres
+        // chemins (`@/lib/rendus/options-depuis-metadata`).
+        await preparerOptionsRendu(post, 'exporter', (pct, stage) => {
           setExportRenderProgress(pct);
           setExportRenderStage(stage);
-        },
-      });
+        }));
 
       // Download the composed video — use server-side conversion for proper MP4
       if (blob && blob.size > 0) {

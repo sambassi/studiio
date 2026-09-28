@@ -41,6 +41,7 @@ import { fromPostMetadata } from './from-post';
 import { idsCartesLues } from './cartes';
 import { lutRefValide } from '@/lib/luts/bibliotheque';
 import type { CanonicalDesign } from './types';
+import { fondsPourMetadata, recadrageValide } from './rendu-fidele';
 
 /** Le post tel que le serveur le rend. */
 interface PostLu {
@@ -203,6 +204,10 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // ── Animation, placements, éléments libres ──────────────────────────
   const anim = presence(design, 'textAnimation');
   if (typeof anim === 'string') draft.textAnimation = anim;
+  // Même clé que l'écriture du parcours et que l'Autopilote. `sanitizeDraft`
+  // écarte ensuite un nom de transition inconnu.
+  const transition = presence(design, 'transition');
+  if (typeof transition === 'string') draft.transition = transition;
 
   const positions = presence(design, 'positions');
   if (estObjet(positions)) {
@@ -223,6 +228,14 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // ── Médias ──────────────────────────────────────────────────────────
   const poster = presence(meta, 'posterUrl');
   if (typeof poster === 'string') draft.posterUrl = poster;
+  // Recadrage de l'affiche et fonds par séquence : relus tels qu'écrits,
+  // bornés et filtrés ensuite par `sanitizeDraft`. Sans eux, « Modifier »
+  // rouvrait le post cadré au centre et sans ses fonds propres — et un
+  // enregistrement les aurait effacés du montage suivant.
+  const recadrage = recadrageValide(presence(meta, 'posterTransform'));
+  if (recadrage) draft.posterTransform = recadrage;
+  const fonds = fondsPourMetadata(presence(meta, 'seqBackgrounds'));
+  if (Object.keys(fonds).length > 0) draft.seqBackgrounds = fonds;
 
   // `rushUrls[0]` UNIQUEMENT. Aucun repli sur `metadata.videoUrl` : sur les
   // posts anciens cette clé porte le MONTAGE, pas un rush — le Calendrier

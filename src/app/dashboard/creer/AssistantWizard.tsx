@@ -193,6 +193,9 @@ import {
 import {
   metadataPourEnregistrement, type ValeursWizard,
 } from '@/lib/creer/postMetadata/from-wizard';
+import {
+  fondsPourMetadata, recadrageValide, photoCartesPourMetadata, type PhotoCartes,
+} from '@/lib/creer/postMetadata/rendu-fidele';
 import { enregistrerModification, type Enregistrement } from '@/lib/creer/savePost';
 import { useBranding, NEUTRAL_BRANDING } from '@/lib/hooks/useBranding';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
@@ -7246,6 +7249,9 @@ export default function AssistantWizard() {
         //    l'aperçu et la vidéo strictement identiques.
         let cardsSnapshot: HTMLImageElement | undefined;
         let cardsSnapshotRect: { x: number; y: number; width: number; height: number } | undefined;
+        // Le canvas de la photo, gardé pour la TÉLÉVERSER avec le post : le
+        // Calendrier la reblitte à la régénération au lieu de redessiner.
+        let cardsSnapshotCanvas: HTMLCanvasElement | undefined;
         // Les onglets de l'apercu n'affichent qu'un element a la fois. La photo,
         // elle, doit TOUJOURS partir de la composition complete : prise depuis
         // l'onglet « Titre », elle aurait fige des cartes vides dans la video.
@@ -7313,6 +7319,7 @@ export default function AssistantWizard() {
             });
             if (img.naturalWidth > 0 && img.naturalHeight > 0) {
               cardsSnapshot = img;
+              cardsSnapshotCanvas = canvas;
               const pRect = previewEl.getBoundingClientRect();
               const cRect = cardsEl.getBoundingClientRect();
               cardsSnapshotRect = {
@@ -7684,6 +7691,15 @@ export default function AssistantWizard() {
           // Calendrier régénère avec `meta.posterUrl` et « Modifier » la
           // relit : sans elle, un montage régénéré perdait sa photo de fond.
           posterUrl: persistableUrl(affiche ?? null),
+          // Recadrage de CETTE affiche, tel que passe au compositeur. Ecrit
+          // seulement avec l'affiche : sans elle, il ne cadrerait rien.
+          posterTransform: persistableUrl(affiche ?? null) ? recadrageValide(posterTransform) : undefined,
+          // Fonds par sequence (forme du brouillon), URL durables seulement :
+          // une photo `data:` ou `blob:` est ecartee, la sequence retombe alors
+          // sur l'affiche globale a la regeneration. Absent sans fond propre.
+          seqBackgrounds: Object.keys(fondsPourMetadata(seqBackgrounds)).length
+            ? fondsPourMetadata(seqBackgrounds)
+            : undefined,
           // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
           // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
           // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une
@@ -7729,6 +7745,9 @@ export default function AssistantWizard() {
           design: {
             textAnimation,
             cardStyle,
+            // Transition entre sequences, passee au compositeur : meme cle que
+            // l'Autopilote. « Regenerer » et « Modifier » la relisent ici.
+            transition,
             // ⚠️ LA PHOTO DES CARTES PORTE DEJA CES REGLAGES : le conteneur
             // est capture puis blitte, donc le rendu est acquis. On les ecrit
             // quand meme sur les champs QUE LE COMPOSITEUR CONNAIT DEJA
@@ -7780,6 +7799,27 @@ export default function AssistantWizard() {
           },
         };
 
+        // Photo des cartes : televersee pour que « Regenerer » la reblitte au
+        // lieu de redessiner les cartes. NON bloquant — un echec d'envoi
+        // (repli `data:` de `uploadPosterFile`) laisse simplement le post sans
+        // photo, et le Calendrier redessine comme avant. L'empreinte decrit
+        // la metadata ENVOYEE : un « Modifier » des cartes l'invalide.
+        let photoCartes: PhotoCartes | undefined;
+        if (cardsSnapshotCanvas && cardsSnapshotRect) {
+          try {
+            const blob = await new Promise<Blob | null>((resolve) => {
+              const timer = setTimeout(() => resolve(null), 10000);
+              cardsSnapshotCanvas!.toBlob((b) => { clearTimeout(timer); resolve(b); }, 'image/png');
+            });
+            if (blob) {
+              const envoi = await uploadPosterFile(new File([blob], 'cartes.png', { type: 'image/png' }));
+              if (!envoi.dataUrl) photoCartes = photoCartesPourMetadata(envoi.url, cardsSnapshotRect, metadata);
+            }
+          } catch (err) {
+            console.warn('[Assistant] Photo des cartes non enregistree (non bloquant):', err);
+          }
+        }
+
         // « Programmer » sans aucun reseau retenu ne programme rien : un post
         // `scheduled` sans plateforme serait marque « failed » par le cron a
         // l'heure dite. On retombe sur le brouillon, jamais sur un echec differe.
@@ -7811,6 +7851,7 @@ export default function AssistantWizard() {
             status: programmationEffective ? 'scheduled' : 'draft',
             metadata: {
               ...metadata,
+              ...(photoCartes ? { cardsSnapshot: photoCartes } : null),
               // Le fuseau dans lequel la date et l'heure ont ete saisies :
               // sans lui, le cron lit `scheduled_time` comme une heure de
               // Paris. Les minutes, elles, arrivent telles quelles.
@@ -8061,11 +8102,19 @@ export default function AssistantWizard() {
       // `null` = aucun filtre : identique au chargement pour un post qui n'en
       // avait pas, donc jamais envoye ; retirer un filtre envoie `null`.
       lut: lut ? { empreinte: lut.empreinte, nom: lut.nom, intensite: lut.intensite } : null,
+      // Memes formes que l'ecriture a la creation, pour que « Regenerer »
+      // relise ce que « Modifier » enregistre. Identiques au chargement tant
+      // que rien n'a bouge — donc jamais envoyes sans changement.
+      transition,
+      posterTransform: recadrageValide(posterTransform),
+      // Toujours un objet (vide sans fond) : retirer le dernier fond propre
+      // doit partir, `undefined` voudrait dire « ne rien envoyer ».
+      seqBackgrounds: fondsPourMetadata(seqBackgrounds),
     };
   }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
       gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
       posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
-      rushUrl, audioKeyframes, cardGroups, lut]);
+      rushUrl, audioKeyframes, cardGroups, lut, transition, posterTransform, seqBackgrounds]);
 
   /**
    * Prend l'empreinte sur le rendu qui SUIT l'hydratation : les `setState` de
