@@ -49,6 +49,7 @@ import { CLE_MONTAGE_PERIME, montageEstPerime } from '@/lib/creer/postMetadata/f
 import { composerEtFacturer } from '@/lib/rendus/composer';
 import { chargerLutPourRendu } from '@/lib/luts/charger';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
+import { creneauImmediat, DEFAULT_TIMEZONE } from '@/lib/autopilot/rules';
 
 /**
  * Le format tarifaire d'un post.
@@ -89,6 +90,8 @@ interface PostMetadata {
   type?: 'creator' | 'infographic';
   /** Montage rendu par le serveur (Remotion) : pas de régénération navigateur. */
   serverRendered?: boolean;
+  /** Fuseau IANA dans lequel le cron lit `scheduled_date`/`scheduled_time` (défaut Europe/Paris). */
+  timezone?: string;
   subtitle?: string;
   salesPhrase?: string;
   objective?: string;
@@ -2039,9 +2042,17 @@ export default function CalendarPage() {
 
       // Set status to 'scheduled' with current date/time so the cron publishes it
       // within the next minute. We can't call the cron directly from the client.
-      const now = new Date();
-      const scheduledDate = now.toISOString().split('T')[0]; // YYYY-MM-DD
-      const scheduledTime = now.toTimeString().substring(0, 5); // HH:MM
+      // Date ET heure lues dans le fuseau que le cron applique à CE post
+      // (`metadata.timezone`, à défaut Europe/Paris) — jamais un mélange
+      // UTC / heure du navigateur : entre 0 h et 2 h à Paris, la date UTC
+      // rangeait le post la veille. L'instant est tronqué à la minute, puis
+      // lu sans délai ni arrondi : le post est dû dès le prochain passage.
+      const { date: scheduledDate, time: scheduledTime } = creneauImmediat(
+        Math.floor(Date.now() / 60_000) * 60_000,
+        updatedPost.metadata?.timezone || DEFAULT_TIMEZONE,
+        0,
+        1,
+      );
       await fetch('/api/posts', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
