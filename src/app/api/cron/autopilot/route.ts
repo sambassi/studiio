@@ -13,6 +13,7 @@ import {
 import {
   lancerJumeauMontage, creneauxJumeauEnAttente, finaliserJumeauxPrets,
 } from '@/lib/autopilot/jumeau-async';
+import { doitPasserLeRush, rushReussi } from '@/lib/autopilot/echec-rush';
 
 /**
  * Moteur de l'Autopilote — un passage par appel.
@@ -391,20 +392,31 @@ export async function GET(req: NextRequest) {
 
           dejaFaits.add(jeton);
           dernierRush = rushUrl ?? dernierRush;
+          rushReussi(userId, rushUrl);
           reussis += 1;
         } catch (err) {
           echecs += 1;
-          // ⚠️ LA ROTATION AVANCE AUSSI SUR UN ECHEC. `last_rush_url`
-          // n'avancait qu'apres un succes : un rush qui fait echouer le rendu
-          // (fichier corrompu, codec refuse) etait donc repris par `pickRush`
-          // a CHAQUE passage — l'Autopilote restait bloque dessus pour
-          // toujours, sans rien produire ni rien dire. Le rush tente est
-          // note : le passage suivant repart du suivant de la banque. Un rush
-          // mort (404) est de toute facon exclu a l'ecriture, plus bas.
-          if (post.rushUrl) dernierRush = post.rushUrl;
+          const message = err instanceof Error ? err.message : String(err);
+          // ⚠️ LA ROTATION N'AVANCE SUR UN ECHEC QUE SI LE RUSH EN EST LA
+          // CAUSE. Sans avancer jamais, un rush qui fait echouer le rendu
+          // (fichier corrompu, codec refuse) etait repris a CHAQUE passage :
+          // Autopilote bloque a vie. En avancant toujours, un crash passager
+          // (Chromium, televersement, insertion) sautait un rush valide.
+          // Critere (`lib/autopilot/echec-rush.ts`) : erreur qui accuse le
+          // rush, OU trop d'echecs consecutifs sur lui. Sinon : transitoire,
+          // rotation inchangee, meme rush au prochain essai.
+          //
+          // Un rush MORT (404) n'est jamais note : il est retire de la banque
+          // en fin de cycle, et le noter ferait repartir `pickRush` du debut
+          // (`indexOf` a -1). Le montage a alors ete tente SANS rush : son
+          // echec n'est pas celui du rush.
+          if (post.rushUrl && !rushesMorts.has(post.rushUrl)
+            && doitPasserLeRush({ userId, rushUrl: post.rushUrl, message })) {
+            dernierRush = post.rushUrl;
+          }
           console.error(
             `[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} echoue :`,
-            err instanceof Error ? err.message : err,
+            message,
           );
         }
       }
@@ -471,11 +483,12 @@ export async function GET(req: NextRequest) {
       // entierement rate doit pouvoir etre rattrape au passage suivant,
       // plutot que saute d'une cadence entiere.
       //
-      // `last_rush_url`, lui, avance des qu'un rush a ete TENTE — reussi ou
-      // non (voir le `catch` ci-dessus) : sans ca, un cycle entierement rate
-      // repartait du meme rush, et echouait de la meme facon, indefiniment.
+      // `last_rush_url`, lui, avance sur un succes, ou sur un echec IMPUTABLE
+      // au rush (voir le `catch` ci-dessus) : sans ca, un cycle entierement
+      // rate sur un rush illisible repartait du meme rush, indefiniment.
       // Un rush retire de la banque n'est jamais ecrit, sinon `pickRush`
-      // repartirait d'un `indexOf` a -1, donc toujours du premier.
+      // repartirait d'un `indexOf` a -1, donc toujours du premier : c'est
+      // alors l'ancienne valeur qui reste.
       const rushAEcrire = dernierRush && !rushesMorts.has(dernierRush) ? dernierRush : null;
       if (reussis > 0 || rushAEcrire !== config.lastRushUrl) {
         await supabaseAdmin

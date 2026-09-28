@@ -427,6 +427,7 @@ async function echouer(ligne: LigneAttente, motif: string): Promise<void> {
     .from('autopilot_jumeau_attente')
     .update({ statut: 'echec', motif, updated_at: new Date().toISOString() })
     .eq('id', ligne.id);
+  console.error(`[Autopilote/Jumeau] ${ligne.user_id} — montage ${ligne.id} en échec : ${motif}`);
   // ── L'échec se DIT, pas seulement dans la file ──────────────────────────
   // `motif` n'était lu par personne : un montage-jumeau abandonné (média
   // introuvable, fournisseur muet) laissait un créneau vide sans un mot. Une
@@ -436,7 +437,10 @@ async function echouer(ligne: LigneAttente, motif: string): Promise<void> {
       userId: ligne.user_id,
       kind: KIND_JUMEAU_ECHEC,
       title: 'Autopilote : votre jumeau n’a pas pu être monté',
-      body: `${motif.slice(0, 200)} Les crédits du jumeau sont remboursés s’il n’a pas été produit ; `
+      // Le motif technique (message fournisseur, URL, code HTTP) reste dans
+      // la file et les journaux : l'utilisateur lit une phrase claire.
+      body: 'Le montage prévu avec votre jumeau n’a pas pu être produit. '
+        + 'Les crédits du jumeau sont remboursés s’il n’a pas été généré ; '
         + 'le rendu n’est débité que pour un montage livré.',
       href: '/dashboard/creer?panneau=autopilote',
     });

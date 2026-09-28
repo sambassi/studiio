@@ -98,12 +98,21 @@ vi.mock('@/lib/avatar/statut', () => ({ avancerStatutGeneration: (...a: unknown[
 // ── Rendu et fournisseurs : SIMULÉS ──────────────────────────────────────
 /** Rushes dont le rendu échoue (fichier corrompu, codec refusé par Chromium…). */
 let rushesIllisibles = new Set<string>();
+/** Rushes sur lesquels le rendu plante sans accuser le média (panne passagère). */
+let rushesCrash = new Set<string>();
+/** Tous les rendus plantent (Chromium qui ne démarre pas). */
+let crashGeneral = false;
 /** Action exécutée PENDANT le rendu — simule l'utilisateur qui agit en parallèle. */
 let pendantLeRendu: (() => void) | null = null;
 const renderAndUpload = vi.fn(async (i: { jobId: string; design: Ligne }) => {
   pendantLeRendu?.();
-  if (rushesIllisibles.has(String(i.design.videoUrl))) {
-    throw new Error('Error while rendering: le décodeur a refusé le rush');
+  const src = String(i.design.videoUrl);
+  if (rushesIllisibles.has(src)) {
+    // Forme réelle d'une erreur Remotion sur une source illisible.
+    throw new Error(`Error in <OffthreadVideo> src=${src}: Invalid data found when processing input`);
+  }
+  if (crashGeneral || rushesCrash.has(src)) {
+    throw new Error('Browser crashed while rendering frame 212 (Target closed)');
   }
   return {
     videoUrl: 'https://minio.test/videos/u1/rendu.mp4', thumbnailUrl: 'https://minio.test/images/v.jpg', durationFrames: 900,
@@ -161,6 +170,8 @@ beforeEach(() => {
   solde = 1000;
   absentes = new Set();
   rushesIllisibles = new Set();
+  rushesCrash = new Set();
+  crashGeneral = false;
   pendantLeRendu = null;
   vi.clearAllMocks();
   avancer.mockImplementation(async () => ({ status: 'processing', videoUrl: null }));
@@ -181,6 +192,37 @@ describe('1. Un rush qui fait échouer le rendu ne bloque plus la rotation', () 
     expect(rushRendus()).toEqual([A, B]);
     expect(r2.rendus).toBe(1);
     expect(posts()).toHaveLength(1);
+  });
+
+  it('échec TRANSITOIRE sur B → B n est pas sauté : retenté au passage suivant', async () => {
+    tables.autopilot_config = [config({ rush_urls: [A, B, C], last_rush_url: A })];
+    rushesCrash.add(B);
+    await passage();
+    expect(rushRendus()).toEqual([B]);
+    expect(ligne().last_rush_url).toBe(A);
+    rushesCrash.clear();
+    await passage(PASSAGE + JOUR);
+    expect(rushRendus()).toEqual([B, B]);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it('échec répété NON classé sur A → sauté après 3 échecs, jamais bloqué à vie', async () => {
+    rushesCrash.add(A);
+    for (let j = 0; j < 3; j += 1) await passage(PASSAGE + j * JOUR);
+    expect(rushRendus()).toEqual([A, A, A]);
+    expect(ligne().last_rush_url).toBe(A);
+    await passage(PASSAGE + 3 * JOUR);
+    expect(rushRendus()).toEqual([A, A, A, B]);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it('rush MORT puis rendu raté → la rotation garde sa place (ne repart pas du début)', async () => {
+    tables.autopilot_config = [config({ rush_urls: [A, B, C], last_rush_url: A })];
+    absentes.add(B);
+    crashGeneral = true;
+    await passage();
+    expect(ligne().rush_urls).toEqual([A, C]);
+    expect(ligne().last_rush_url).toBe(A);
   });
 
   it('succès → comportement inchangé : last_run_at et last_rush_url avancent', async () => {
@@ -246,7 +288,9 @@ describe('4. Un montage-jumeau abandonné est DIT à l utilisateur', () => {
       .map((c) => c[0] as Record<string, string>)
       .find((n) => n.kind === 'autopilote-jumeau-echec');
     expect(echec).toBeDefined();
-    expect(echec!.body).toContain('Le fournisseur a refusé la vidéo.');
+    // Le motif technique reste aux journaux : l'utilisateur lit une phrase claire.
+    expect(echec!.body).not.toContain('Le fournisseur a refusé la vidéo.');
+    expect(echec!.body).toMatch(/n’a pas pu être produit/);
     // Le créneau ne reste pas vide : montage de repli SANS jumeau, dit en métadonnées.
     expect(posts()).toHaveLength(1);
     expect((posts()[0].metadata as Ligne).jumeauIgnore).toBe(true);
