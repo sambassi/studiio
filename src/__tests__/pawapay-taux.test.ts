@@ -23,6 +23,7 @@ vi.mock('@/lib/payment/pawapay/store', async (importOriginal) => {
 
 import { obtenirTauxChf } from '@/lib/payment/pawapay/store';
 import { POST as initier } from '@/app/api/pawapay/deposit/route';
+import { GET as devis } from '@/app/api/pawapay/quote/route';
 import { viderCachePays } from '@/lib/payment/pawapay/client';
 
 const API = 'https://api.sandbox.pawapay.io';
@@ -248,6 +249,83 @@ describe('route deposit — le client ne peut rien falsifier', () => {
     brancher();
     expect((await initier(req({ pack: 'small', pays: 'CIV' }))).status).toBe(503);
     expect(fetchPawapay).not.toHaveBeenCalled();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+describe('GET /api/pawapay/quote — même calcul que deposit', () => {
+  const reqDevis = (qs: string) => new Request(`http://localhost/api/pawapay/quote?${qs}`);
+  const reqDepot = (corps: unknown) => new Request('http://localhost/api/pawapay/deposit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps),
+  });
+
+  it.each([
+    ['small', 'CIV'], ['medium', 'CIV'], ['large', 'CMR'], ['xlarge', 'CMR'],
+  ])('%s / %s : montant du devis identique à celui du dépôt', async (pack, pays) => {
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":"123.457","XAF":150}');
+    etat.deps = { store: creerStoreMemoire() };
+    const q = await devis(reqDevis(`pack=${pack}&pays=${pays}`));
+    expect(q.status).toBe(200);
+    const corpsDevis = await q.json();
+    const d = await (await initier(reqDepot({ pack, pays }))).json();
+    expect(corpsDevis.montant).toBe(d.montant);
+    expect(corpsDevis.devise).toBe(d.devise);
+    expect(corpsDevis.credits).toBe(d.credits);
+    expect(Object.keys(corpsDevis).sort()).toEqual(['credits', 'devise', 'montant', 'pack', 'prixChf']);
+  });
+
+  it('réponse attendue, sans store', async () => {
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":123}');
+    etat.deps = null; // le devis ne dépend pas du store
+    const r = await devis(reqDevis('pack=large&pays=CIV'));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ pack: 'large', credits: 500, prixChf: '59.00', montant: '7257', devise: 'XOF' });
+  });
+
+  it('les paramètres de prix envoyés par le client sont ignorés', async () => {
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":123}');
+    const r = await devis(reqDevis('pack=small&pays=CIV&montant=1&prix=1&prixChf=0.01&credits=99999&taux=1&rates=%7B%22XOF%22%3A1%7D'));
+    expect(await r.json()).toEqual({ pack: 'small', credits: 50, prixChf: '9.00', montant: '1107', devise: 'XOF' });
+  });
+
+  it('401 sans session, sans appel PawaPay', async () => {
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":123}');
+    etat.session = null;
+    expect((await devis(reqDevis('pack=small&pays=CIV'))).status).toBe(401);
+    expect(fetchPawapay).not.toHaveBeenCalled();
+  });
+
+  it('503 quand PawaPay est désactivé, sans taux ou sans URL d’application', async () => {
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":123}');
+    vi.stubEnv('PAWAPAY_ENABLED', 'false');
+    expect((await devis(reqDevis('pack=small&pays=CIV'))).status).toBe(503);
+    vi.stubEnv('PAWAPAY_ENABLED', 'true');
+    vi.stubEnv('PAWAPAY_RATES', '');
+    expect((await devis(reqDevis('pack=small&pays=CIV'))).status).toBe(503);
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":123}');
+    vi.stubEnv('NEXTAUTH_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', '');
+    expect((await devis(reqDevis('pack=small&pays=CIV'))).status).toBe(503);
+    expect(fetchPawapay).not.toHaveBeenCalled();
+  });
+
+  it('400 : pack invalide, pays indisponible, devise sans taux', async () => {
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":123}');
+    expect((await devis(reqDevis('pack=gratuit&pays=CIV'))).status).toBe(400);
+    expect((await devis(reqDevis('pays=CIV'))).status).toBe(400);
+    expect((await devis(reqDevis('pack=small&pays=ZZZ'))).status).toBe(400);
+    expect((await devis(reqDevis('pack=small&pays=civ'))).status).toBe(400);
+    expect((await devis(reqDevis('pack=small&pays=GHA'))).status).toBe(400);
+  });
+
+  it('400 si le pays a plusieurs devises et qu’aucune n’est choisie', async () => {
+    vi.stubEnv('PAWAPAY_RATES', '{"XOF":123,"XAF":123}');
+    fetchPawapay.mockImplementationOnce(async () => new Response(JSON.stringify({ countries: [
+      { country: 'CIV', providers: [{ currencies: [{ currency: 'XOF' }] }, { currencies: [{ currency: 'XAF' }] }] },
+    ] }), { status: 200 }));
+    const r = await devis(reqDevis('pack=small&pays=CIV'));
+    expect(r.status).toBe(400);
+    expect((await r.json()).devises).toEqual(['XAF', 'XOF']);
   });
 });
 

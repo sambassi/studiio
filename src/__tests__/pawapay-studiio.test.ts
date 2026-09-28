@@ -502,6 +502,7 @@ describe('garde — Studiio est indépendant', () => {
     ...readdirSync(path.join(racine, 'lib/payment/pawapay')).map((f) => path.join(racine, 'lib/payment/pawapay', f)),
     path.join(racine, 'app/api/pawapay/callback/route.ts'),
     path.join(racine, 'app/api/pawapay/deposit/route.ts'),
+    path.join(racine, 'app/api/pawapay/quote/route.ts'),
     path.join(racine, 'app/api/pawapay/status/[id]/route.ts'),
     path.join(racine, 'app/api/cron/pawapay-reconcile/route.ts'),
   ];
