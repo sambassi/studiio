@@ -586,15 +586,22 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     videoDuration: num(raw.videoDuration, 0, 60, d.durations.video),
     ctaDuration: num(raw.ctaDuration, 0, 60, d.durations.cta),
     generated: sanitizeGenerated(raw.generated),
+    // La forme est celle du mixeur ET du compositeur (`AudioKeyframe` :
+    // `id`, `time`, `musicVolume`, `rushVolume`, `voiceVolume`). Ce
+    // filtre en inventait une autre (`t`, `music`, `voice`, `rush`) : après un
+    // rechargement ou « Modifier », le compositeur recevait `time` indéfini et
+    // appelait `setValueAtTime(undefined, NaN)`. Les anciens brouillons
+    // écrits sous cette forme sont relus vers la bonne.
     audioKeyframes: Array.isArray(raw.audioKeyframes)
       ? raw.audioKeyframes
           .filter(isObj)
           .slice(0, 200)
-          .map((k) => ({
-            t: num(k.t, 0, 3600, 0),
-            music: num(k.music, 0, 1, 0.5),
-            voice: num(k.voice, 0, 1, 1),
-            rush: num(k.rush, 0, 1, 1),
+          .map((k, i) => ({
+            id: typeof k.id === 'string' && k.id ? k.id : `kf-${i}`,
+            time: num(k.time ?? k.t, 0, 3600, 0),
+            musicVolume: num(k.musicVolume ?? k.music, 0, 1, 0.5),
+            rushVolume: num(k.rushVolume ?? k.rush, 0, 1, 1),
+            voiceVolume: num(k.voiceVolume ?? k.voice, 0, 1, 1),
           }))
       : undefined,
     // Ces URL sont relues telles quelles : elles ont été filtrées A L'ECRITURE

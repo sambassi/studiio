@@ -7673,6 +7673,16 @@ export default function AssistantWizard() {
           // de la séquence 'video', pour que le Calendrier ne rejoue pas une
           // double narration à la régénération.
           sequenceVoiceUrls: voixSequencesRendu,
+          // Le mixage passé au compositeur, écrit là où « Modifier »
+          // (`toWizardDraft`) le relit. Absent, le post rouvrait aux volumes
+          // par défaut, sans ses keyframes.
+          musicVolume,
+          voiceVolume,
+          audioKeyframes: audioKeyframes.length > 0 ? audioKeyframes : undefined,
+          // L'affiche de CE montage (celle de l'emplacement en série). Le
+          // Calendrier régénère avec `meta.posterUrl` et « Modifier » la
+          // relit : sans elle, un montage régénéré perdait sa photo de fond.
+          posterUrl: persistableUrl(affiche ?? null),
           // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
           // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
           // regenerer (`videoUrl: meta.rushUrls?.[0]`). Sans lui, une

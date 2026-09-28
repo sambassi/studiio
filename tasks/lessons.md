@@ -1133,3 +1133,21 @@ un post Autopilote (`serverRendered`) n'a pas « Régénérer » (#313), il lui
 fallait « Garder la vidéo actuelle ». Avant de bloquer, lister les variantes
 d'affichage (ici l'aperçu serveur est un lecteur nu) et prouver par un test
 qu'un bouton lève le blocage dans chacune.
+
+## [2026-09-28] Ce qui part au compositeur doit aussi partir dans le post — et revenir à l'identique
+
+**Ce qui a mal tourné** — Le parcours Créer passait l'affiche et le mixage
+(`posterUrl`, `musicVolume`, `voiceVolume`, `audioKeyframes`) au compositeur,
+mais ne les écrivait pas dans la metadata du post. « Régénérer » (Calendrier,
+`meta.posterUrl`) sortait un montage sans sa photo de fond, et « Modifier »
+rouvrait le post sans affiche ni mixage. Au même endroit, `sanitizeDraft`
+réécrivait les keyframes sous une forme inventée (`t`, `music`…) que ni le
+mixeur ni le compositeur ne lisent : après un rechargement, `time` était
+indéfini.
+
+**Règle** — (1) Tout champ des options de rendu qui n'est pas dérivable du
+reste de la metadata est écrit dans le post, sous la clé que relisent
+`toWizardDraft` ET la régénération du Calendrier. (2) Un filtre de relecture
+garde la forme du type qu'il nourrit (`AudioKeyframe`) ; un test fait
+l'aller-retour complet : état → `composeVideo` → `POST /api/posts` →
+`toWizardDraft` → `sanitizeDraft` (`creer-flux-donnees-envoi.test.tsx`).
