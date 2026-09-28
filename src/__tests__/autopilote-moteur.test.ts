@@ -240,20 +240,23 @@ describe('La route', () => {
 
   it('un cycle ENTIÈREMENT raté ne fait PAS avancer la cadence', () => {
     // Sinon l'utilisateur perdrait un cycle entier sur une panne passagère.
-    expect(route).toContain('if (reussis > 0) {');
-    const bloc = route.slice(route.indexOf('if (reussis > 0) {'));
-    expect(bloc).toContain('last_run_at:');
+    // `last_run_at` n'est écrit QUE s'il y a eu un succès (comportement
+    // prouvé par `autopilote-cron-echecs.test.ts`, qui passe par la route).
+    expect(route).toContain('...(reussis > 0 ? { last_run_at: new Date(now).toISOString() } : null),');
   });
 
   it('la cadence avance après un passage réussi, et la rotation se souvient', () => {
-    expect(route).toContain('last_run_at: new Date(now).toISOString(),');
-    // Le dernier rush RÉELLEMENT utilisé : un rush dont le rendu a échoué ne
-    // doit pas faire avancer la rotation. Un rush retiré de la banque parce
-    // qu'il a disparu du stockage non plus — le mémoriser ferait repartir
-    // `pickRush` d'un `indexOf` à -1, donc toujours du premier.
-    expect(route).toContain('last_rush_url: dernierRush');
+    expect(route).toContain('last_run_at: new Date(now).toISOString()');
+    // Le dernier rush TENTÉ, réussi ou non : un rush dont le rendu échoue
+    // était sinon repris à chaque passage, et l'Autopilote restait bloqué
+    // dessus pour toujours (preuve comportementale :
+    // `autopilote-cron-echecs.test.ts`). Un rush retiré de la banque parce
+    // qu'il a disparu du stockage, lui, n'est jamais mémorisé — il ferait
+    // repartir `pickRush` d'un `indexOf` à -1, donc toujours du premier.
+    expect(route).toContain('last_rush_url: rushAEcrire');
     expect(route).toContain('rushesMorts.has(dernierRush)');
     expect(route).toContain('dernierRush = rushUrl ?? dernierRush;');
+    expect(route).toContain('if (post.rushUrl) dernierRush = post.rushUrl;');
   });
 
   it('chaque montage est isolé — un échec n emporte pas le cycle', () => {
