@@ -2,6 +2,9 @@
 -- USERS — contraintes d'identite indispensables au lancement.
 --
 -- PREPAREE, PAS APPLIQUEE. Ordre imperatif en production :
+--   0. deployer D'ABORD le code de src/lib/auth/config.ts de ce lot (rattrapage
+--      casse-insensible) : sans lui, apres l'index, une connexion avec une
+--      variante de casse verrait son INSERT refuse et bouclerait sans compte ;
 --   1. `2026-09-29-users-contraintes.diagnostic.sql` (lecture seule) ;
 --   2. si ses requetes 1 a 4 renvoient 0 ligne → cette migration ;
 --   3. `grant` inutile (aucune table creee), mais recharger PostgREST
