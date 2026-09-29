@@ -43,13 +43,25 @@ export async function createCustomer(
   return customer;
 }
 
+/**
+ * Portail client. `STRIPE_PORTAL_CONFIGURATION_ID` désigne une configuration
+ * propre à Studiio, SANS changement de plan (`subscription_update`) : un
+ * changement de plan ou de cycle via le portail crédite mal (0 crédit en
+ * mensuel → annuel, double crédit en annuel → mensuel). Le compte Stripe est
+ * partagé : la configuration par défaut appartient à tous les sites.
+ */
 export async function createBillingPortalSession(
   customerId: string,
   returnUrl: string
 ) {
+  const configuration = process.env.STRIPE_PORTAL_CONFIGURATION_ID?.trim() || undefined;
+  if (!configuration) {
+    console.warn('[stripe] STRIPE_PORTAL_CONFIGURATION_ID absente : portail par defaut du compte (changement de plan possible, credits non geres)');
+  }
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url: returnUrl,
+    ...(configuration ? { configuration } : {}),
   });
 
   return session;

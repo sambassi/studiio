@@ -114,6 +114,9 @@ function rpc(base: FausseBase, nom: string, args: any): Promise<{ data: any; err
   const maintenant = Date.now();
   if (nom === 'stripe_event_claim') {
     if (base.reclamationForcee) return Promise.resolve({ data: base.reclamationForcee, error: null });
+    if (!(args.p_lease_seconds >= 1 && args.p_lease_seconds <= 86400)) {
+      return Promise.resolve({ data: null, error: { code: '22023', message: 'p_lease_seconds hors de [1, 86400]' } });
+    }
     const ev = evs.find((e) => e.event_id === args.p_event_id);
     if (!ev) {
       evs.push({ event_id: args.p_event_id, type: args.p_type, status: 'processing', attempts: 1, lease_until: maintenant + args.p_lease_seconds * 1000 });
@@ -128,12 +131,14 @@ function rpc(base: FausseBase, nom: string, args: any): Promise<{ data: any; err
   }
   if (nom === 'stripe_event_complete') {
     const ev = evs.find((e) => e.event_id === args.p_event_id);
-    if (ev) { ev.status = 'processed'; ev.lease_until = null; }
+    if (!ev) return Promise.resolve({ data: null, error: { code: 'P0002', message: `evenement ${args.p_event_id} inconnu` } });
+    ev.status = 'processed'; ev.lease_until = null;
     return Promise.resolve({ data: null, error: null });
   }
   if (nom === 'stripe_event_fail') {
     const ev = evs.find((e) => e.event_id === args.p_event_id);
-    if (ev) { ev.status = 'failed'; ev.last_error = args.p_error; ev.lease_until = null; }
+    // Ne rétrograde jamais un `processed` (comme le SQL de #471).
+    if (ev && ev.status !== 'processed') { ev.status = 'failed'; ev.last_error = String(args.p_error).slice(0, 2000); ev.lease_until = null; }
     return Promise.resolve({ data: null, error: null });
   }
   return Promise.resolve({ data: null, error: { code: 'PGRST202', message: `rpc inconnue ${nom}` } });
@@ -149,8 +154,12 @@ function crediter(base: FausseBase, a: any): { data: any; error: Erreur } {
   const u = base.tables.users.find((l) => l.id === a.p_user_id);
   if (!u) return refus('utilisateur_inconnu');
   const tx = base.tables.credit_transactions;
-  if (tx.some((t) => t.user_id === a.p_user_id && t.reference_id === a.p_reference)) {
-    return { data: [{ ok: true, solde: u.credits ?? 0, deja_credite: true, motif: null }], error: null };
+  const titulaire = tx.find((t) => t.reference_id === a.p_reference);
+  if (titulaire) {
+    // Une référence stripe:* ne crédite qu'une fois, tous comptes confondus.
+    return titulaire.user_id === a.p_user_id
+      ? { data: [{ ok: true, solde: u.credits ?? 0, deja_credite: true, motif: null }], error: null }
+      : { data: [{ ok: false, solde: u.credits ?? 0, deja_credite: false, motif: 'reference_autre_compte' }], error: null };
   }
   u.credits = a.p_mode === 'ajouter' ? (u.credits ?? 0) + a.p_montant : a.p_montant;
   tx.push({ user_id: a.p_user_id, amount: a.p_montant, type: a.p_type, reference_id: a.p_reference, description: a.p_description });

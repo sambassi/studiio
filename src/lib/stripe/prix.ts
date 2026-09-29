@@ -21,7 +21,7 @@
  * erreur.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { STRIPE_PLANS } from '@/lib/stripe/constants';
+import { STRIPE_PLANS, CREDIT_PACKAGES, totalAnnuelCentimes } from '@/lib/stripe/constants';
 
 export type PlanPayant = 'starter' | 'pro' | 'enterprise';
 export type PlanKey = PlanPayant | 'free';
@@ -29,6 +29,21 @@ export type Cycle = 'monthly' | 'yearly';
 
 export const PLANS_PAYANTS: readonly PlanPayant[] = ['starter', 'pro', 'enterprise'];
 export const DEVISE = 'chf';
+/** Marqueur posé sur toute session / tout abonnement créé par Studiio. */
+export const MARQUEUR_APP = 'studiio';
+export type PackKey = keyof typeof CREDIT_PACKAGES;
+export const PACKS: readonly PackKey[] = Object.keys(CREDIT_PACKAGES) as PackKey[];
+
+/** Montant attendu (centimes CHF) d'un prix d'abonnement : les tarifs décidés. */
+export function montantAttenduPlan(plan: PlanPayant, cycle: Cycle): number {
+  const p = STRIPE_PLANS[plan];
+  return cycle === 'yearly' ? totalAnnuelCentimes(p.yearlyPrice) : p.price;
+}
+
+/** Montant attendu (centimes CHF) d'un pack. */
+export function montantAttenduPack(pack: PackKey): number {
+  return CREDIT_PACKAGES[pack].price;
+}
 
 export function envPrixPlan(plan: PlanPayant, cycle: Cycle): string | undefined {
   const v = process.env[`STRIPE_PRICE_ID_${plan.toUpperCase()}_${cycle.toUpperCase()}`];
@@ -87,6 +102,38 @@ export async function planDepuisPrix(priceId: string | null | undefined): Promis
   return null;
 }
 
+/** Pack d'un identifiant de prix — variables d'abord, base ensuite. */
+export async function packDepuisPrix(priceId: string | null | undefined): Promise<PackKey | null> {
+  if (!priceId) return null;
+  for (const pack of PACKS) if (envPrixPack(pack) === priceId) return pack;
+  try {
+    const { data } = await supabaseAdmin.from('credit_packs').select('key').eq('stripe_price_id', priceId).single();
+    if (data?.key && (PACKS as readonly string[]).includes(data.key)) return data.key as PackKey;
+  } catch {}
+  return null;
+}
+
+/**
+ * Écart entre les crédits en base (ce que la page affiche) et les tarifs
+ * décidés. Un écart bloque la vente (503) : on ne vend pas 600 crédits
+ * affichés 1000, ni l'inverse. `null` si tout concorde (ou si la base n'a
+ * pas de ligne : les constantes s'appliquent).
+ */
+export async function ecartCredits(table: 'plans' | 'credit_packs', cle: string): Promise<string | null> {
+  const attendu = table === 'plans'
+    ? (STRIPE_PLANS as any)[cle]?.credits
+    : (CREDIT_PACKAGES as any)[cle]?.amount;
+  const colonne = table === 'plans' ? 'credits' : 'amount';
+  try {
+    const { data } = await supabaseAdmin.from(table).select(colonne).eq('key', cle).single();
+    const enBase = (data as any)?.[colonne];
+    if (typeof enBase === 'number' && enBase !== attendu) {
+      return `${table}.${colonne} pour ${cle} = ${enBase}, attendu ${attendu}`;
+    }
+  } catch {}
+  return null;
+}
+
 /**
  * Quota MENSUEL de crédits d'un plan : table `plans` (ce que la page de
  * tarifs affiche), repli sur `STRIPE_PLANS`. Le même nombre sert à
@@ -117,13 +164,13 @@ export async function creditsPourFacture(plan: PlanKey, cycle: Cycle): Promise<n
 
 /**
  * Vérifie un prix auprès de Stripe avant d'ouvrir un checkout : actif, en
- * CHF, et du bon type. Un identifiant périmé (ancien compte, EUR) produit
+ * CHF, au montant décidé, et du bon type. Un identifiant périmé (ancien compte, EUR) produit
  * une erreur lisible au lieu d'un paiement dans la mauvaise devise.
  */
 export async function verifierPrix(
   stripe: { prices: { retrieve: (id: string) => Promise<any> } },
   priceId: string,
-  attendu: { recurrent: 'month' | 'year' | null },
+  attendu: { recurrent: 'month' | 'year' | null; montant: number },
 ): Promise<void> {
   let prix: any;
   try {
@@ -134,6 +181,9 @@ export async function verifierPrix(
   if (!prix?.active) throw new ErreurPrix(`prix Stripe inactif (${priceId})`);
   if (String(prix.currency || '').toLowerCase() !== DEVISE) {
     throw new ErreurPrix(`prix Stripe en ${String(prix.currency || '?').toUpperCase()} au lieu de CHF (${priceId})`);
+  }
+  if (prix.unit_amount !== attendu.montant) {
+    throw new ErreurPrix(`prix Stripe à ${prix.unit_amount} centimes au lieu de ${attendu.montant} (${priceId})`);
   }
   const intervalle = prix.recurring?.interval ?? null;
   if (attendu.recurrent === null && intervalle) {

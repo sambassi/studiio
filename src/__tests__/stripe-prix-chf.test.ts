@@ -19,6 +19,7 @@ vi.mock('@/lib/db/supabase', () => ({
 
 const prixStripe: Record<string, any> = {};
 const sessionsCreees: any[] = [];
+const abonnementsClient: any[] = [];
 vi.mock('@/lib/stripe/client', () => ({
   stripe: {
     prices: {
@@ -28,6 +29,7 @@ vi.mock('@/lib/stripe/client', () => ({
       }),
     },
     customers: { retrieve: vi.fn(async (id: string) => ({ id })) },
+    subscriptions: { list: vi.fn(async () => ({ data: abonnementsClient.splice(0) })) },
     checkout: {
       sessions: {
         create: vi.fn(async (p: any) => { sessionsCreees.push(p); return { url: 'https://checkout.test/s' }; }),
@@ -58,9 +60,11 @@ beforeEach(() => {
   base.tables.credit_packs.push({ key: 'medium', amount: 200, stripe_price_id: 'price_ANCIEN_pack' });
   for (const k of Object.keys(prixStripe)) delete prixStripe[k];
   sessionsCreees.length = 0;
-  prixStripe.price_pro_m = { id: 'price_pro_m', active: true, currency: 'chf', recurring: { interval: 'month' } };
-  prixStripe.price_pack_m = { id: 'price_pack_m', active: true, currency: 'chf', recurring: null };
-  prixStripe.price_ANCIEN_eur = { id: 'price_ANCIEN_eur', active: true, currency: 'eur', recurring: { interval: 'month' } };
+  abonnementsClient.length = 0;
+  prixStripe.price_pro_m = { id: 'price_pro_m', active: true, currency: 'chf', unit_amount: 4900, recurring: { interval: 'month' } };
+  prixStripe.price_pro_y = { id: 'price_pro_y', active: true, currency: 'chf', unit_amount: 49000, recurring: { interval: 'year' } };
+  prixStripe.price_pack_m = { id: 'price_pack_m', active: true, currency: 'chf', unit_amount: 2900, recurring: null };
+  prixStripe.price_ANCIEN_eur = { id: 'price_ANCIEN_eur', active: true, currency: 'eur', unit_amount: 7999, recurring: { interval: 'month' } };
 });
 
 afterEach(() => {
@@ -99,13 +103,23 @@ describe('résolution des prix', () => {
 
   it('verifierPrix refuse EUR, inactif, mauvais intervalle, récurrent pour un pack', async () => {
     const s = (await import('@/lib/stripe/client')).stripe as any;
-    await expect(prix.verifierPrix(s, 'price_ANCIEN_eur', { recurrent: 'month' })).rejects.toThrow(/EUR/);
-    await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: 'year' })).rejects.toThrow(/intervalle/);
-    await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: null })).rejects.toThrow(/récurrent/);
+    await expect(prix.verifierPrix(s, 'price_ANCIEN_eur', { recurrent: 'month', montant: 7999 })).rejects.toThrow(/EUR/);
+    await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: 'year', montant: 4900 })).rejects.toThrow(/intervalle/);
+    await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: null, montant: 4900 })).rejects.toThrow(/récurrent/);
     prixStripe.price_off = { active: false, currency: 'chf' };
-    await expect(prix.verifierPrix(s, 'price_off', { recurrent: null })).rejects.toThrow(/inactif/);
-    await expect(prix.verifierPrix(s, 'absent', { recurrent: null })).rejects.toThrow(/introuvable/);
-    await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: 'month' })).resolves.toBeUndefined();
+    await expect(prix.verifierPrix(s, 'price_off', { recurrent: null, montant: 0 })).rejects.toThrow(/inactif/);
+    await expect(prix.verifierPrix(s, 'absent', { recurrent: null, montant: 0 })).rejects.toThrow(/introuvable/);
+    await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: 'month', montant: 4900 })).resolves.toBeUndefined();
+  });
+
+  it('I7 — verifierPrix exige le montant décidé (mensuel, annuel arrondi, pack)', async () => {
+    const s = (await import('@/lib/stripe/client')).stripe as any;
+    expect(prix.montantAttenduPlan('pro', 'monthly')).toBe(4900);
+    expect(prix.montantAttenduPlan('pro', 'yearly')).toBe(49000);
+    expect(prix.montantAttenduPlan('starter', 'yearly')).toBe(19000);
+    expect(prix.montantAttenduPack('xlarge')).toBe(17900);
+    prixStripe.price_pro_faux = { active: true, currency: 'chf', unit_amount: 7999, recurring: { interval: 'month' } };
+    await expect(prix.verifierPrix(s, 'price_pro_faux', { recurrent: 'month', montant: 4900 })).rejects.toThrow(/7999 centimes au lieu de 4900/);
   });
 });
 
@@ -117,8 +131,8 @@ describe('routes de checkout', () => {
     expect(sessionsCreees[0]).toMatchObject({
       mode: 'subscription',
       line_items: [{ price: 'price_pro_m', quantity: 1 }],
-      metadata: { userId: 'user-1', plan: 'pro', billingCycle: 'monthly' },
-      subscription_data: { metadata: { userId: 'user-1', plan: 'pro', billingCycle: 'monthly' } },
+      metadata: { app: 'studiio', userId: 'user-1', plan: 'pro', billingCycle: 'monthly' },
+      subscription_data: { metadata: { app: 'studiio', userId: 'user-1', plan: 'pro', billingCycle: 'monthly' } },
     });
     expect(JSON.stringify(sessionsCreees[0])).not.toContain('price_data');
   });
@@ -142,7 +156,8 @@ describe('routes de checkout', () => {
     expect(sessionsCreees[0]).toMatchObject({
       mode: 'payment',
       line_items: [{ price: 'price_pack_m', quantity: 1 }],
-      metadata: { userId: 'user-1', packKey: 'medium', creditAmount: '200' },
+      metadata: { app: 'studiio', userId: 'user-1', packKey: 'medium', creditAmount: '200' },
+      payment_intent_data: { metadata: { app: 'studiio', userId: 'user-1', packKey: 'medium', creditAmount: '200' } },
     });
   });
 
@@ -150,6 +165,53 @@ describe('routes de checkout', () => {
     const res = await packRoute.POST(post({ pack: 'medium' }));
     expect(res.status).toBe(503);
     expect(sessionsCreees).toHaveLength(0);
+  });
+
+  it('I2 — déjà abonné (ligne active) → 409 renvoyant au portail, aucune session', async () => {
+    process.env.STRIPE_PRICE_ID_PRO_MONTHLY = 'price_pro_m';
+    base.tables.subscriptions.push({ user_id: 'user-1', status: 'past_due', plan: 'pro' });
+    const res = await checkoutRoute.POST(post({ plan: 'pro', billingCycle: 'monthly' }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/Gérer mon abonnement/);
+    expect(sessionsCreees).toHaveLength(0);
+  });
+
+  it('I2 — base en retard mais abonnement actif chez Stripe → 409', async () => {
+    process.env.STRIPE_PRICE_ID_PRO_YEARLY = 'price_pro_y';
+    abonnementsClient.push({ id: 'sub_1', status: 'trialing' });
+    const res = await checkoutRoute.POST(post({ plan: 'pro', billingCycle: 'yearly' }));
+    expect(res.status).toBe(409);
+    expect(sessionsCreees).toHaveLength(0);
+  });
+
+  it('I2 — ancien abonnement annulé → checkout autorisé (annuel, 490 CHF)', async () => {
+    process.env.STRIPE_PRICE_ID_PRO_YEARLY = 'price_pro_y';
+    base.tables.subscriptions.push({ user_id: 'user-1', status: 'canceled', plan: 'pro' });
+    const res = await checkoutRoute.POST(post({ plan: 'pro', billingCycle: 'yearly' }));
+    expect(res.status).toBe(200);
+  });
+
+  it('I7 — crédits du plan en base ≠ tarifs → 503', async () => {
+    process.env.STRIPE_PRICE_ID_PRO_MONTHLY = 'price_pro_m';
+    base.tables.plans[0].credits = 1000;
+    const res = await checkoutRoute.POST(post({ plan: 'pro', billingCycle: 'monthly' }));
+    expect(res.status).toBe(503);
+    expect(sessionsCreees).toHaveLength(0);
+  });
+
+  it('I7 — crédits du pack en base ≠ tarifs → 503', async () => {
+    process.env.STRIPE_PRICE_ID_PACK_MEDIUM = 'price_pack_m';
+    base.tables.credit_packs[0].amount = 150;
+    const res = await packRoute.POST(post({ pack: 'medium' }));
+    expect(res.status).toBe(503);
+    expect(sessionsCreees).toHaveLength(0);
+  });
+
+  it('I7 — prix de pack au mauvais montant → 503', async () => {
+    process.env.STRIPE_PRICE_ID_PACK_MEDIUM = 'price_pack_m';
+    prixStripe.price_pack_m.unit_amount = 1999;
+    const res = await packRoute.POST(post({ pack: 'medium' }));
+    expect(res.status).toBe(503);
   });
 
   it('/api/credits/purchase est retirée (410)', async () => {
