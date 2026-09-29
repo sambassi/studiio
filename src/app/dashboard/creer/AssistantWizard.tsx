@@ -188,6 +188,9 @@ import {
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
+  planRushs, dureeMultiRush, deplacer, retirer, type RushItem,
+} from '@/lib/creer/multi-rush';
+import {
   indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees, cartesAvecImagePerso,
 } from '@/lib/creer/postMetadata/cartes';
 import {
@@ -3827,6 +3830,23 @@ export default function AssistantWizard() {
   // mais la vidéo disparaîtra du montage au bout d'un jour, en silence. On le
   // dit. (400/401 restent silencieux : cible non éligible, attendu.)
   const [rushNonProtege, setRushNonProtege] = useState(false);
+  // ── MULTI-RUSH (`src/lib/creer/multi-rush.ts`) ────────────────────────
+  // Le rush principal reste porte par `rushUrl` / `rushName` / `rushIsClip`
+  // (inchanges) ; les rushes 2..n, dans l'ordre, par `rushSuivants`. Liste
+  // vide = un seul rush, l'ecran et le montage d'avant a la lettre.
+  // `rushSecondes` : duree retenue du rush principal (sa part de la sequence).
+  const [rushSecondes, setRushSecondes] = useState<number | null>(null);
+  const [rushSuivants, setRushSuivants] = useState<RushItem[]>([]);
+  const rushSuivantsRef = useRef<RushItem[]>([]);
+  rushSuivantsRef.current = rushSuivants;
+  const rushSecondesRef = useRef<number | null>(null);
+  rushSecondesRef.current = rushSecondes;
+  // La mediatheque ouverte par « Ajouter » AJOUTE ; ouverte par
+  // « Importer / Changer », elle REMPLACE le rush principal, comme avant.
+  const rushAjoutRef = useRef(false);
+  // Jeton de la LISTE : un ajout dont la sonde se resout apres un retrait ou
+  // un reordonnancement ne doit pas ressusciter une liste perimee.
+  const rushListeGenRef = useRef(0);
   // ── Filtre couleur (LUT) du rush ─────────────────────────────────────
   // Seule la REFERENCE canonique vit ici (empreinte, nom, intensite) : la
   // table validee a l'import n'est jamais conservee, les octets vivent dans
@@ -5814,6 +5834,11 @@ export default function AssistantWizard() {
     rushUrl: persistableDraftUrl(rushUrl),
     rushName,
     rushIsClip,
+    // Multi-rush : absents avec un seul rush — brouillon identique a avant.
+    rushSecondes: rushSuivants.length ? rushSecondes ?? undefined : undefined,
+    rushSuivants: rushSuivants.length
+      ? rushSuivants.filter((r) => persistableDraftUrl(r.url))
+      : undefined,
     // La reference canonique seule. `undefined` sans filtre, pour qu'un
     // brouillon sans ce champ se relise exactement comme avant.
     lut: lut ?? undefined,
@@ -5840,7 +5865,7 @@ export default function AssistantWizard() {
     textAnimation,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
-    voiceVolume, rushUrl, rushName, rushIsClip, lut, scheduledDate,
+    voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, lut, scheduledDate,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
@@ -5962,6 +5987,9 @@ export default function AssistantWizard() {
       setRushUrl(draft.rushUrl);
       setRushName(draft.rushName ?? '');
       setRushIsClip(!!draft.rushIsClip);
+      // Multi-rush : absent sur tout brouillon / post a un seul rush.
+      setRushSecondes(draft.rushSecondes ?? null);
+      setRushSuivants(draft.rushSuivants ?? []);
     }
     if (draft.lut) setLut(draft.lut);
     if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
@@ -6613,7 +6641,10 @@ export default function AssistantWizard() {
       const seconds = probed
         ? Math.min(Math.max(Math.round(probed), RUSH_SECONDS.min), RUSH_SECONDS.max)
         : RUSH_SECONDS.fallback;
-      setVideoDuration(seconds);
+      setRushSecondes(seconds);
+      const suivants = rushSuivantsRef.current;
+      if (suivants.length === 0) setVideoDuration(seconds);
+      else setVideoDuration(dureeMultiRush([seconds, ...suivants.map((r) => r.secondes)], RUSH_SECONDS.fallback));
       console.log(
         `[Assistant] Rush importé — durée source ${probed ? probed.toFixed(1) + 's' : 'illisible'}, séquence vidéo ${seconds}s`,
       );
@@ -6632,8 +6663,74 @@ export default function AssistantWizard() {
     setRushUrl(null);
     setRushName('');
     setRushIsClip(false);
+    rushListeGenRef.current++;
+    setRushSecondes(null);
+    setRushSuivants([]);
     setVideoDuration(0);
     setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: false } : s)));
+  };
+
+  /**
+   * MULTI-RUSH — la liste ORDONNEE complete : le rush principal puis les
+   * suivants. Un seul element quand l'utilisateur n'a rien ajoute.
+   */
+  const rushListe: RushItem[] = rushUrl
+    ? [{ url: rushUrl, name: rushName, isClip: rushIsClip, secondes: rushSecondes }, ...rushSuivants]
+    : [];
+
+  /**
+   * Pose une liste reordonnee ou amputee : le premier devient le rush
+   * principal, la duree de la sequence « Video » redevient la somme des
+   * durees retenues (la duree du rush restant s'il n'en reste qu'un).
+   */
+  const poserListeRushs = (liste: RushItem[]) => {
+    if (liste.length === 0) { clearRush(); return; }
+    rushListeGenRef.current++;
+    const [premier, ...suivants] = liste;
+    setRushUrl(premier.url);
+    setRushName(premier.name);
+    setRushIsClip(!!premier.isClip);
+    setRushSecondes(premier.secondes ?? null);
+    setRushSuivants(suivants);
+    if (suivants.length === 0) {
+      if (premier.secondes) setVideoDuration(premier.secondes);
+    } else {
+      setVideoDuration(dureeMultiRush(liste.map((r) => r.secondes), RUSH_SECONDS.fallback));
+    }
+  };
+
+  /** Ajoute un rush EN FIN de liste (sans rush principal : c'est un import). */
+  const ajouterRush = async (url: string, name: string) => {
+    if (!rushUrl) { void applyRush(url, name); return; }
+    const gen = rushListeGenRef.current;
+    // Rush principal d'un ancien post / brouillon : sa part est la duree
+    // deja reglee de la sequence, celle qu'il jouait seul.
+    const premierSecondes = rushSecondesRef.current
+      ?? (videoDuration > 0 ? videoDuration : RUSH_SECONDS.fallback);
+    setRushSecondes(premierSecondes);
+    // Meme protection anti-retention que le rush principal (`applyRush`).
+    void fetch('/api/creer/rush/keep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+      .then((r) => { if (!r.ok && r.status !== 400 && r.status !== 401) setRushNonProtege(true); })
+      .catch(() => setRushNonProtege(true));
+    setSequences((prev) => prev.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)));
+    setRushLoading(true);
+    try {
+      const probed = await probeRushDuration(url);
+      if (rushListeGenRef.current !== gen) return;
+      const secondes = probed
+        ? Math.min(Math.max(Math.round(probed), RUSH_SECONDS.min), RUSH_SECONDS.max)
+        : RUSH_SECONDS.fallback;
+      const suivants = [...rushSuivantsRef.current, { url, name, secondes }];
+      rushSuivantsRef.current = suivants;
+      setRushSuivants(suivants);
+      setVideoDuration(dureeMultiRush([premierSecondes, ...suivants.map((r) => r.secondes)], RUSH_SECONDS.fallback));
+    } finally {
+      setRushLoading(false);
+    }
   };
 
   /**
@@ -7114,7 +7211,12 @@ export default function AssistantWizard() {
       // `avatarVideo` : vrai quand la séquence « Vidéo » est la vidéo du jumeau
       // parlant, qui porte déjà la voix — elle exclut alors toute voix off TTS
       // de séquence 'video' (pas de double narration). Faux pour un rush ordinaire.
-      let plateau = { rushUrl, sequences, videoDuration, avatarVideo: false };
+      // `rushs` : la liste multi-rush (>= 2), `null` avec un seul rush — le
+      // montage d'avant a la lettre. Le jumeau la remplace par SON rush.
+      let plateau: {
+        rushUrl: string | null; sequences: typeof sequences; videoDuration: number;
+        avatarVideo: boolean; rushs: RushItem[] | null;
+      } = { rushUrl, sequences, videoDuration, avatarVideo: false, rushs: rushListe.length >= 2 ? rushListe : null };
 
       // ── Jumeau numerique — la video ────────────────────────────────
       // Le garde a dit oui, le solde couvre le total. LA video du jumeau est
@@ -7171,6 +7273,7 @@ export default function AssistantWizard() {
           // La vidéo du jumeau porte DÉJÀ la voix (l'avatar dit le script) : la
           // séquence « Vidéo » ne doit pas recevoir en plus une voix off TTS.
           avatarVideo: true,
+          rushs: null,
         };
         // Le jumeau est posé ; place au montage, dont le pourcentage est RÉEL
         // (frames composées) et s'affiche dans l'étape « Rendu ».
@@ -7205,6 +7308,9 @@ export default function AssistantWizard() {
       // part alors brut, jamais en echec — et sans cle `rushLut`, les options
       // sont exactement celles d'avant.
       const rushLut = duree('video') > 0 && plateau.rushUrl ? await chargerLutPourRendu(lut) : null;
+      // Multi-rush : les rushes DURABLES de la liste (jamais une `blob:`), ce
+      // que la metadata du post peut porter. Vide avec un seul rush.
+      const rushsDurables = (plateau.rushs ?? []).filter((r) => !!persistableUrl(r.url));
 
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
@@ -7378,6 +7484,11 @@ export default function AssistantWizard() {
           // le telechargement et le decodage du rush, inutiles pour une video
           // qui n'apparait nulle part dans le montage.
           videoUrl: duree('video') > 0 ? plateau.rushUrl || undefined : undefined,
+          // Multi-rush : les rushes s'enchainent dans la sequence « Video ».
+          // Absent avec un seul rush — options identiques a avant.
+          ...(duree('video') > 0 && plateau.rushs
+            ? { rushs: plateau.rushs.map((r) => ({ url: r.url, secondes: r.secondes ?? null })) }
+            : {}),
           ...(rushLut ? { rushLut } : {}),
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
@@ -7709,8 +7820,17 @@ export default function AssistantWizard() {
           // sa sequence est masquee ferait re-telecharger et re-decoder le
           // fichier a chaque regeneration depuis le Calendrier, en pure perte.
           rushUrls:
-            duree('video') > 0 && persistableUrl(plateau.rushUrl)
+            duree('video') > 0 && rushsDurables.length >= 2
+              ? rushsDurables.map((r) => r.url)
+              : duree('video') > 0 && persistableUrl(plateau.rushUrl)
               ? [persistableUrl(plateau.rushUrl)!]
+              : undefined,
+          // Multi-rush : la place de chaque rush dans la sequence « Video ».
+          // C'est CE champ (jamais `rushUrls.length`) qui dit a « Regenerer »
+          // et a « Modifier » d'enchainer. Absent avec un seul rush.
+          rushSegments:
+            duree('video') > 0 && rushsDurables.length >= 2
+              ? planRushs(rushsDurables, duree('video'))
               : undefined,
           // Filtre couleur du rush : la REFERENCE seule (empreinte, nom,
           // intensite), jamais la table. C'est elle que le Calendrier relit
@@ -8046,6 +8166,7 @@ export default function AssistantWizard() {
    */
   const construireValeurs = useCallback((): ValeursWizard => {
     const taille = VIDEO_SIZE[format];
+    const rushsDurablesEcran = rushSuivants.length ? rushListe.filter((r) => !!persistableUrl(r.url)) : [];
     return {
       title: generated?.title,
       subtitle: generated?.subtitle,
@@ -8080,7 +8201,15 @@ export default function AssistantWizard() {
       musicVolume,
       voiceVolume,
       sequenceVoiceUrls,
-      rushUrls: persistableUrl(rushUrl) && seqDuration('video') > 0 ? [rushUrl!] : undefined,
+      rushUrls: rushsDurablesEcran.length >= 2 && seqDuration('video') > 0
+        ? rushsDurablesEcran.map((r) => r.url)
+        : persistableUrl(rushUrl) && seqDuration('video') > 0 ? [rushUrl!] : undefined,
+      // Multi-rush : `null` avec un seul rush — identique au chargement d'un
+      // post mono-rush, donc jamais envoye ; efface les segments d'un post
+      // redevenu mono-rush.
+      rushSegments: rushsDurablesEcran.length >= 2 && seqDuration('video') > 0
+        ? planRushs(rushsDurablesEcran, seqDuration('video'))
+        : null,
       audioKeyframes,
       cardGroups,
       // Realignees sur les cartes de l'ecran ; identiques au chargement tant
@@ -8105,7 +8234,7 @@ export default function AssistantWizard() {
   }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
       gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
       posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
-      rushUrl, audioKeyframes, cardGroups, lut, transition, posterTransform, seqBackgrounds]);
+      rushUrl, rushSecondes, rushSuivants, audioKeyframes, cardGroups, lut, transition, posterTransform, seqBackgrounds]);
 
   /**
    * Prend l'empreinte sur le rendu qui SUIT l'hydratation : les `setState` de
@@ -9905,7 +10034,9 @@ export default function AssistantWizard() {
                               <div className="min-w-0 flex-1">
                                 <div className="text-sm font-medium truncate">{meta.label}</div>
                                 <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? rushName : undefined}>
-                                  {isVideo && rushUrl ? rushName || 'Rush importé' : meta.hint}
+                                  {isVideo && rushUrl
+                                    ? (rushSuivants.length ? `${rushListe.length} rushes enchaînés` : rushName || 'Rush importé')
+                                    : meta.hint}
                                 </div>
                                 {/* La protection anti-rétention a échoué en base : le rush
                                     risque d'être supprimé sous 24 h. Rendu VISIBLE — un import
@@ -9932,7 +10063,7 @@ export default function AssistantWizard() {
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   <button
                                     type="button"
-                                    onClick={() => setRushLibOpen(true)}
+                                    onClick={() => { rushAjoutRef.current = false; setRushLibOpen(true); }}
                                     disabled={rushLoading}
                                     title={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
                                     aria-label={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
@@ -10012,6 +10143,68 @@ export default function AssistantWizard() {
                           );
                         })}
                       </div>
+                      {/* MULTI-RUSH — liste ordonnee, visible des 2 rushes. Avec un
+                          seul rush, seul le lien « Ajouter un rush » apparait. */}
+                      {rushListe.length >= 2 && (
+                        <div data-multi-rush className="mt-2 rounded-xl bg-gray-900/40 ring-1 ring-emerald-500/20 p-2 space-y-1">
+                          <div className="text-[11px] text-gray-400 px-1">
+                            Rushes de la séquence Vidéo, joués dans cet ordre
+                          </div>
+                          {rushListe.map((r, i) => (
+                            <div key={`${r.url}-${i}`} data-rush-item className="flex items-center gap-2 rounded-lg px-2 py-1 bg-gray-900/60">
+                              <span className="text-[10px] font-bold text-emerald-300 w-4 text-center flex-shrink-0">{i + 1}</span>
+                              <span className="min-w-0 flex-1 truncate text-[11px] text-gray-300" title={r.name || r.url}>
+                                {r.name || `Rush ${i + 1}`}
+                              </span>
+                              <span className="text-[10px] text-gray-500 flex-shrink-0">
+                                {r.secondes ? `${r.secondes}s` : ''}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => poserListeRushs(deplacer(rushListe, i, -1))}
+                                disabled={i === 0 || rushLoading}
+                                title="Monter"
+                                aria-label={`Monter le rush ${i + 1}`}
+                                className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
+                              >
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => poserListeRushs(deplacer(rushListe, i, 1))}
+                                disabled={i === rushListe.length - 1 || rushLoading}
+                                title="Descendre"
+                                aria-label={`Descendre le rush ${i + 1}`}
+                                className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
+                              >
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => poserListeRushs(retirer(rushListe, i))}
+                                disabled={rushLoading}
+                                title="Retirer ce rush"
+                                aria-label={`Retirer le rush ${i + 1}`}
+                                className="text-gray-500 hover:text-red-400 disabled:opacity-30 transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {rushUrl && (
+                        <button
+                          type="button"
+                          data-ajouter-rush
+                          onClick={() => { rushAjoutRef.current = true; setRushLibOpen(true); }}
+                          disabled={rushLoading}
+                          className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Ajouter un rush
+                        </button>
+                      )}
                       {rushUrl && (
                         <p className="text-[11px] text-gray-500 mt-2">
                           Le rush est intégré au montage à la place qu&apos;occupe la séquence
@@ -10026,7 +10219,12 @@ export default function AssistantWizard() {
                         isOpen={rushLibOpen}
                         onClose={() => setRushLibOpen(false)}
                         mediaType="video"
-                        onSelect={(url, name) => { void applyRush(url, name); }}
+                        onSelect={(url, name) => {
+                          // « Ajouter un rush » ajoute en fin de liste ;
+                          // « Importer / Changer » remplace le rush principal.
+                          if (rushAjoutRef.current) { rushAjoutRef.current = false; void ajouterRush(url, name); }
+                          else void applyRush(url, name);
+                        }}
                       />
                     </div>
                 </StyleSection>

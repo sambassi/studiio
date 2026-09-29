@@ -196,6 +196,12 @@ export interface ValeursWizard {
   voiceVolume?: number;
   sequenceVoiceUrls?: Record<string, string>;
   rushUrls?: string[];
+  /**
+   * MULTI-RUSH (`src/lib/creer/multi-rush.ts`) : place de chaque rush dans la
+   * séquence « Vidéo ». `null` = un seul rush (efface d'anciens segments s'il
+   * y en avait) ; `undefined` = ne rien envoyer.
+   */
+  rushSegments?: { url: string; debut: number; fin: number }[] | null;
   audioKeyframes?: unknown;
   cardGroups?: unknown[];
   hasAudio?: boolean;
@@ -253,6 +259,9 @@ export function metadataPourEnregistrement(
   poserSiChange(envoi, 'voiceVolume', valeurs.voiceVolume, ref.voiceVolume);
   poserSiChange(envoi, 'sequenceVoiceUrls', valeurs.sequenceVoiceUrls, ref.sequenceVoiceUrls);
   poserSiChange(envoi, 'rushUrls', valeurs.rushUrls, ref.rushUrls);
+  // `ref ?? null` : un post chargé SANS segments compare `null` à `null` —
+  // un post mono-rush enregistré sans changement n'écrit rien de nouveau.
+  poserSiChange(envoi, 'rushSegments', valeurs.rushSegments, ref.rushSegments ?? null);
   poserSiChange(envoi, 'audioKeyframes', valeurs.audioKeyframes, ref.audioKeyframes);
   poserSiChange(envoi, 'cardGroups', valeurs.cardGroups, ref.cardGroups);
   poserSiChange(envoi, 'hasAudio', valeurs.hasAudio, ref.hasAudio);
