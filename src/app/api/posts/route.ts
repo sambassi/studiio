@@ -1,3 +1,4 @@
+import { estMediaDeBibliotheque } from '@/lib/storage/bibliotheque';
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
@@ -319,6 +320,16 @@ export async function DELETE(req: NextRequest) {
         }
         if (k && partagees.has(k)) {
           console.log(`[POST DELETE id=${id}] media partage avec un autre post conserve : ${k}`);
+          return false;
+        }
+        // ⚠️ LA BIBLIOTHEQUE N'APPARTIENT PAS AU POST. Musique, voix et rushes
+        // importes sont reutilises par le brouillon Creer en cours (stocke
+        // dans le navigateur, invisible du serveur) : les supprimer ici
+        // livrait le montage suivant sans musique, en silence. Seuls les
+        // produits du post (rendu, vignette, cartes…) partent ; la
+        // bibliotheque suit sa retention normale (cron cleanup-media).
+        if (k && estMediaDeBibliotheque(k)) {
+          console.log(`[POST DELETE id=${id}] media de bibliotheque conserve : ${k}`);
           return false;
         }
         return true;

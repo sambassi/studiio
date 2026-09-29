@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { mediasIntrouvables } from '@/lib/creer/medias-introuvables';
 import Link from 'next/link';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
@@ -7218,6 +7219,29 @@ export default function AssistantWizard() {
         avatarVideo: boolean; rushs: RushItem[] | null;
       } = { rushUrl, sequences, videoDuration, avatarVideo: false, rushs: rushListe.length >= 2 ? rushListe : null };
 
+      // ── Garde-fous AVANT tout rendu (donc avant tout débit, jumeau compris) ─
+      // 1. Un rush choisi ne doit JAMAIS disparaître en silence : la
+      //    metadata n'écrit `rushUrls` que si la séquence « Vidéo » dure
+      //    plus de 0 s. Séquence masquée ou à 0 s = montage sans rush, sans
+      //    que l'écran l'ait dit.
+      const videoActive = plateau.sequences.some((q) => q.key === 'video' && q.enabled);
+      if (jumeauMode !== 'avatar' && plateau.rushUrl && (!videoActive || plateau.videoDuration <= 0)) {
+        setError("Un rush est choisi mais la séquence Vidéo est désactivée ou à 0 s : réactivez-la (œil) ou retirez le rush avant d'envoyer.");
+        return;
+      }
+      // 2. Un fichier du montage supprimé entre-temps (post supprimé,
+      //    médiathèque) était ignoré par le compositeur : vidéo sans
+      //    musique, sans voix ou sans rush, sans aucun message.
+      const introuvables = await mediasIntrouvables([
+        musicUrl, voiceUrl,
+        ...Object.values(sequenceVoiceUrls ?? {}),
+        plateau.rushUrl, ...rushSuivants.map((r) => r.url),
+      ]);
+      if (introuvables.length > 0) {
+        setError(`Fichier introuvable (supprimé ?) : ${introuvables.join(', ')}. Choisissez-le de nouveau avant d'envoyer.`);
+        return;
+      }
+
       // ── Jumeau numerique — la video ────────────────────────────────
       // Le garde a dit oui, le solde couvre le total. LA video du jumeau est
       // produite par le serveur (ElevenLabs sur MA voix + HeyGen sur MON
@@ -7283,6 +7307,7 @@ export default function AssistantWizard() {
       }
       const ordre = ordreActif(plateau.sequences);
       const duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
+
 
       // ── Voix de la séquence « Vidéo » — pas de double narration ─────
       // La vidéo du jumeau parlant PORTE DÉJÀ la voix (l'avatar dit le script
@@ -10217,7 +10242,9 @@ export default function AssistantWizard() {
                           les videos. */}
                       <MediaLibrary
                         isOpen={rushLibOpen}
-                        onClose={() => setRushLibOpen(false)}
+                        // Fermer sans choisir annule l'intention « Ajouter » :
+                        // le prochain choix (Importer / Changer) remplace.
+                        onClose={() => { rushAjoutRef.current = false; setRushLibOpen(false); }}
                         mediaType="video"
                         onSelect={(url, name) => {
                           // « Ajouter un rush » ajoute en fin de liste ;
@@ -10425,7 +10452,10 @@ export default function AssistantWizard() {
                   ctaDuration={ctaDuration}
                   onIntroDurationChange={setIntroDuration}
                   onCardsDurationChange={setCardsDuration}
-                  onVideoDurationChange={setVideoDuration}
+                  // Avec un rush, la sequence « Video » ne descend jamais a 0 s :
+                  // a 0 s le rush etait ecarte du montage sans aucun message.
+                  onVideoDurationChange={(v) => setVideoDuration(rushUrl ? Math.max(1, v || 0) : v)}
+                  onError={(msg) => setError(msg)}
                   onCtaDurationChange={setCtaDuration}
                   // Sans rush, le champ « durée de la séquence Vidéo » reste
                   // masqué : il n'y aurait rien à cadencer.
