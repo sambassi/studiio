@@ -42,7 +42,7 @@ PSU="$(envde "$DB" POSTGRES_USER)"; PSU="${PSU:-$DU}"; [[ "$PSU" =~ ^[A-Za-z0-9.
 q(){ docker exec -i "$DB" psql -X -q -v ON_ERROR_STOP=1 -U "$PSU" -d "$DN" -At -c "$1" </dev/null; }
 PGPORT="$(envde "$PG" PGRST_SERVER_PORT)"; PGPORT="${PGPORT:-3000}"
 PGURL="http://studiio-staging-postgrest:$PGPORT"
-PXURL="$(envde "$APP" SUPABASE_URL)"; PXURL="${PXURL%/}"
+PXURL="$(envde "$APP" SUPABASE_URL)"; PXURL="${PXURL%/}/rest/v1"
 echo "STAGING : app=$APP postgrest=$PG proxy=$PROXY db=$DB user_uri=$DU base=$DN"
 # curl depuis staging-net ; n'affiche que le code HTTP. $1=methode $2=url, reste = options curl
 hc(){ local m="$1" u="$2" r; shift 2; r="$(docker run --rm -i --network "$NET" "$CURLIMG" -s -o /dev/null -w '%{http_code}' --max-time 15 -X "$m" "$@" "$u" </dev/null 2>/dev/null || true)"; echo "${r:-000}"; }
@@ -108,7 +108,7 @@ done
 done
 [ "$A_direct_users" = "$A_proxy_users" ] || ko "proxy ($A_proxy_users) et direct ($A_direct_users) divergent : le proxy injecte-t-il un jeton ?"
 for h in $PXHOSTS; do
-  c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$h/users?select=id&limit=1" || true)"
+  c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$h/rest/v1/users?select=id&limit=1" || true)"
   case "${c:-000}" in 401|403) ok "public https://$h anonyme -> $c";; *) ko "public https://$h anonyme -> ${c:-000}";; esac
 done
 [ "$(q "select count(*) from public.credit_transactions")" = "$NBCT0" ] && ok "credit_transactions inchangee" || ko "credit_transactions a change !"

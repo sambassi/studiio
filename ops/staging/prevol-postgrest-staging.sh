@@ -42,7 +42,7 @@ PSU="$(envde "$DB" POSTGRES_USER)"; PSU="${PSU:-$DU}"; [[ "$PSU" =~ ^[A-Za-z0-9.
 q(){ docker exec -i "$DB" psql -X -q -v ON_ERROR_STOP=1 -U "$PSU" -d "$DN" -At -c "$1" </dev/null; }
 PGPORT="$(envde "$PG" PGRST_SERVER_PORT)"; PGPORT="${PGPORT:-3000}"
 PGURL="http://studiio-staging-postgrest:$PGPORT"
-PXURL="$(envde "$APP" SUPABASE_URL)"; PXURL="${PXURL%/}"
+PXURL="$(envde "$APP" SUPABASE_URL)"; PXURL="${PXURL%/}/rest/v1"
 echo "STAGING : app=$APP postgrest=$PG proxy=$PROXY db=$DB user_uri=$DU base=$DN"
 # curl depuis staging-net ; n'affiche que le code HTTP. $1=methode $2=url, reste = options curl
 hc(){ local m="$1" u="$2" r; shift 2; r="$(docker run --rm -i --network "$NET" "$CURLIMG" -s -o /dev/null -w '%{http_code}' --max-time 15 -X "$m" "$@" "$u" </dev/null 2>/dev/null || true)"; echo "${r:-000}"; }
@@ -131,7 +131,7 @@ NBCT0="$(q "select count(*) from public.credit_transactions")"
 echo " direct postgrest ($PGURL) :"; anon_batterie "$PGURL" direct
 echo " via proxy ($PXURL) :";        anon_batterie "$PXURL" proxy
 for h in $PXHOSTS; do
-  c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$h/users?select=id&limit=1" || true)"; echo "  public https://$h GET /users -> ${c:-000}"
+  c="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$h/rest/v1/users?select=id&limit=1" || true)"; echo "  public https://$h GET /users -> ${c:-000}"
 done
 [ "$(q "select count(*) from public.credit_transactions")" = "$NBCT0" ] && ok "credit_transactions inchangee ($NBCT0 lignes)" || fail "credit_transactions a change pendant le pre-vol !"
 if [ "$A_direct_users" = 200 ] || [ "$A_proxy_users" = 200 ]; then warn "FAILLE CONFIRMEE : anonyme lit /users (200) — attendu avant bascule"; else info "anonyme deja refuse sur /users"; fi

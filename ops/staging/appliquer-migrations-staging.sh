@@ -63,7 +63,7 @@ echo "══ STUDIIO STAGING — lot migrations partie $PARTIE — $TS ══"
 
 # ── 0. Fichiers SQL embarques (identiques aux PR, verifies par sha256) ────────
 ( umask 077; base64 -d > "$W/lot.tgz" <<'FIN_BLOB'
-H4sIAPeeu2oAA+29zXIjyZUu2Gs+hS86DYAKBH/yp9SkWH2RJCqLKiZBAWBJulIZEASCzKgEEKgI
+H4sIAH2fu2oAA+29zXIjyZUu2Gs+hS86DYAKBH/yp9SkWH2RJCqLKiZBAWBJulIZEASCzKgEEKgI
 BCtTt++YbBa9nbFrms3YLGbVs+gXGDPt6lHqBeYV5nznHPfwCAT4k8msuqZMmFQJBiI8/Of48fP7
 nVl0lQTLKJ6nW//0oT7b29ufP31q+N9n8i997L/yx87T3afPPt95+mT3sdneefJke/ufzNMP1iPv
 k6XLIKGuBJdJfBHH6XLNfT+8CsPpDe0UB2U+QE8/yGeWr/+Tz3c202USLcLN8DqcL9NWEk+nF8H4
@@ -459,7 +459,7 @@ for v in "$H" "$DU" "$DN"; do [[ "$v" =~ ^[A-Za-z0-9._-]+$ ]] || fail "PGRST_DB_
 DB="$(alias_on "$NET" "$H")"; un "base staging (hote $H)" "$DB"
 case "$DB" in studiio-db|studiio-db-*) fail "la base resolue s'appelle $DB = PRODUCTION";; esac
 for c in $PG $PROXY $APP; do case "$c" in studiio-postgrest|studiio-pgrst-proxy|studiio-app|studiio-minio) fail "conteneur de PRODUCTION resolu ($c)";; esac; done
-SBU="$(envde "$APP" SUPABASE_URL)"; SBU="${SBU%/}"
+SBU="$(envde "$APP" SUPABASE_URL)"; SBU="${SBU%/}/rest/v1"
 ok "staging : app=$APP postgrest=$PG proxy=$PROXY db=$DB user=$DU base=$DN"
 info "PGRST_DB_ANON_ROLE actuel = $(envde "$PG" PGRST_DB_ANON_ROLE)   (nom de role, pas un secret)"
 SC="$(envde "$APP" SOURCE_COMMIT || true)"; info "commit deploye sur l'app staging (SOURCE_COMMIT Coolify) : ${SC:-inconnu}"
@@ -486,7 +486,7 @@ sante(){
   # App -> PostgREST avec SA cle serveur (lue dans le conteneur, jamais affichee) : code HTTP seul.
   c="$(docker exec "$APP" node -e '
     const k=process.env.SUPABASE_SERVICE_KEY||process.env.SUPABASE_SERVICE_ROLE_KEY||"";
-    const u=(process.env.SUPABASE_URL||"").replace(/\/$/,"")+"/users?select=id&limit=1";
+    const u=(process.env.SUPABASE_URL||"").replace(/\/$/,"")+"/rest/v1/users?select=id&limit=1";
     fetch(u,{headers:{apikey:k,Authorization:"Bearer "+k}}).then(r=>console.log(r.status)).catch(()=>console.log("000"));' 2>/dev/null || echo 000)"
   [ "$c" = 200 ] || fail "app -> PostgREST (cle serveur) /users -> $c (apres $1)"
   ok "sante apres $1 : $HEALTH_URL 200, app->PostgREST cle serveur 200"
