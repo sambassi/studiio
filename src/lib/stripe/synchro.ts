@@ -4,8 +4,11 @@
  * But : remplir la base (qui fait autorité, cf. `lib/stripe/prix`) sans SQL
  * manuel, à partir des produits Studiio du compte Afroboosteur.
  *
- * Pour chaque offre, le produit est `stripe_product_id` en base s'il existe,
- * sinon la constante `PRODUITS_STRIPE_*`. Ses prix ACTIFS en CHF sont lus :
+ * Pour chaque offre, le produit est résolu par `resoudreProduit` (base, puis
+ * variable `STRIPE_PRODUCT_ID_*`, puis constante LIVE avec une clé live
+ * seulement), puis relu chez Stripe : son `livemode` — et celui de chacun de
+ * ses prix — doit correspondre au mode de la clé ; un `metadata.app` présent
+ * doit valoir `studiio`. Ses prix ACTIFS en CHF sont lus :
  *   - plan : exactement un récurrent mensuel ET un récurrent annuel ;
  *   - pack : exactement un paiement unique.
  * Zéro ou plusieurs candidats → erreur pour cette offre. Rien n'est choisi
@@ -15,11 +18,12 @@
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { STRIPE_PLANS, CREDIT_PACKAGES } from '@/lib/stripe/constants';
-import { PRODUITS_STRIPE_PLANS, PRODUITS_STRIPE_PACKS } from '@/lib/stripe/produits';
-import { DEVISE, PLANS_PAYANTS, PACKS } from '@/lib/stripe/prix';
+import { modeStripe, resoudreProduit, type ModeStripe } from '@/lib/stripe/produits';
+import { DEVISE, PLANS_PAYANTS, PACKS, MARQUEUR_APP } from '@/lib/stripe/prix';
 
 type StripeLecture = {
   prices: { list: (p: any) => Promise<{ data: any[]; has_more?: boolean }> };
+  products: { retrieve: (id: string) => Promise<any> };
 };
 
 export interface Changement<T> { avant: T; apres: T }
@@ -35,8 +39,53 @@ export interface LigneSynchro {
 }
 
 export interface ResultatSynchro {
+  mode: ModeStripe;
   lignes: LigneSynchro[];
   erreurs: string[];
+}
+
+const SOURCES = { base: 'stripe_product_id en base', variable: 'variable', constante: 'constante LIVE' } as const;
+
+/**
+ * Produit d'une offre, vérifié chez Stripe dans le mode de la clé. `null`
+ * (et une erreur ajoutée) si rien d'utilisable : un id en base incohérent
+ * n'est JAMAIS remplacé en silence par une variable ou une constante.
+ */
+async function produitVerifie(
+  stripe: StripeLecture, table: 'plans' | 'credit_packs', key: string,
+  valeurBase: string | null | undefined, mode: ModeStripe, quoi: string, erreurs: string[],
+): Promise<string | null> {
+  const r = resoudreProduit(table, key, valeurBase, mode);
+  if (r.id === null) { erreurs.push(`${quoi} : ${r.erreur}`); return null; }
+  const origine = `${r.id}, ${SOURCES[r.source]}`;
+  let produit: any;
+  try {
+    produit = await stripe.products.retrieve(r.id);
+  } catch (e: any) {
+    if (e?.code === 'resource_missing' || e?.statusCode === 404) {
+      erreurs.push(`${quoi} : produit introuvable en mode ${mode} (${origine}) — corrigez-le${r.source === 'base' ? ` en base (${table}.stripe_product_id)` : ''}`);
+      return null;
+    }
+    throw e;
+  }
+  if (produit?.livemode !== (mode === 'live')) {
+    erreurs.push(`${quoi} : produit ${produit?.livemode ? 'LIVE' : 'TEST'} alors que la clé est en mode ${mode} (${origine}) — corrigez-le`);
+    return null;
+  }
+  const app = produit?.metadata?.app;
+  if (app !== undefined && app !== null && app !== '' && app !== MARQUEUR_APP) {
+    erreurs.push(`${quoi} : produit marqué app=${app}, pas ${MARQUEUR_APP} (${origine})`);
+    return null;
+  }
+  return r.id;
+}
+
+/** Vrai si tous les prix sont du mode de la clé ; erreur ajoutée sinon. */
+function prixDuMode(prix: any[], mode: ModeStripe, quoi: string, erreurs: string[]): boolean {
+  const hors = prix.filter((p) => p?.livemode !== (mode === 'live'));
+  if (hors.length === 0) return true;
+  erreurs.push(`${quoi} : prix hors mode ${mode} (${hors.map((p) => p.id).join(', ')})`);
+  return false;
 }
 
 async function prixActifs(stripe: StripeLecture, produit: string): Promise<any[]> {
@@ -69,6 +118,7 @@ function champ<T>(champs: LigneSynchro['champs'], nom: string, avant: T, apres: 
 }
 
 export async function calculerSynchro(stripe: StripeLecture): Promise<ResultatSynchro> {
+  const mode = modeStripe();
   const erreurs: string[] = [];
   const lignes: LigneSynchro[] = [];
 
@@ -79,8 +129,10 @@ export async function calculerSynchro(stripe: StripeLecture): Promise<ResultatSy
 
   for (const key of PLANS_PAYANTS) {
     const row = (plans ?? []).find((r: any) => r.key === key) ?? null;
-    const produit = row?.stripe_product_id || PRODUITS_STRIPE_PLANS[key];
+    const produit = await produitVerifie(stripe, 'plans', key, row?.stripe_product_id, mode, `plan ${key}`, erreurs);
+    if (!produit) continue;
     const actifs = await prixActifs(stripe, produit);
+    if (!prixDuMode(actifs, mode, `plan ${key} (${produit})`, erreurs)) continue;
     const m = unSeul(actifs.filter(mensuel), `plan ${key} mensuel (${produit})`, erreurs);
     const y = unSeul(actifs.filter(annuel), `plan ${key} annuel (${produit})`, erreurs);
     if (!m || !y) continue;
@@ -101,8 +153,10 @@ export async function calculerSynchro(stripe: StripeLecture): Promise<ResultatSy
 
   for (const key of PACKS) {
     const row = (packs ?? []).find((r: any) => r.key === key) ?? null;
-    const produit = row?.stripe_product_id || PRODUITS_STRIPE_PACKS[key];
+    const produit = await produitVerifie(stripe, 'credit_packs', key, row?.stripe_product_id, mode, `pack ${key}`, erreurs);
+    if (!produit) continue;
     const actifs = await prixActifs(stripe, produit);
+    if (!prixDuMode(actifs, mode, `pack ${key} (${produit})`, erreurs)) continue;
     const p = unSeul(actifs.filter(unique), `pack ${key} (${produit})`, erreurs);
     if (!p) continue;
     const champs: LigneSynchro['champs'] = {};
@@ -117,7 +171,7 @@ export async function calculerSynchro(stripe: StripeLecture): Promise<ResultatSy
     });
   }
 
-  return { lignes, erreurs };
+  return { mode, lignes, erreurs };
 }
 
 /** Écrit le diff. Lève à la première erreur d'écriture. */

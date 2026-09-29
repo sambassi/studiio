@@ -21,6 +21,7 @@
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { STRIPE_PLANS, CREDIT_PACKAGES } from '@/lib/stripe/constants';
+import { modeStripe } from '@/lib/stripe/produits';
 
 export type PlanPayant = 'starter' | 'pro' | 'enterprise';
 export type PlanKey = PlanPayant | 'free';
@@ -175,8 +176,9 @@ export async function creditsPourFacture(plan: PlanKey, cycle: Cycle): Promise<n
 }
 
 /**
- * Vérifie un prix auprès de Stripe avant d'ouvrir un checkout : actif, en
- * CHF, au montant enregistré en base, et du bon type.
+ * Vérifie un prix auprès de Stripe avant d'ouvrir un checkout : du mode
+ * (TEST/LIVE) de la clé, actif, en CHF, au montant enregistré en base, et du
+ * bon type.
  */
 export async function verifierPrix(
   stripe: { prices: { retrieve: (id: string) => Promise<any> } },
@@ -188,6 +190,11 @@ export async function verifierPrix(
     prix = await stripe.prices.retrieve(priceId);
   } catch (e: any) {
     throw new ErreurPrix(`prix Stripe introuvable (${priceId}) : ${e?.message || 'erreur'}`);
+  }
+  let mode;
+  try { mode = modeStripe(); } catch (e: any) { throw new ErreurPrix(e.message); }
+  if (prix?.livemode !== (mode === 'live')) {
+    throw new ErreurPrix(`prix Stripe ${prix?.livemode ? 'LIVE' : 'TEST'} alors que la clé est en mode ${mode} (${priceId})`);
   }
   if (!prix?.active) throw new ErreurPrix(`prix Stripe inactif (${priceId})`);
   if (String(prix.currency || '').toLowerCase() !== DEVISE) {
