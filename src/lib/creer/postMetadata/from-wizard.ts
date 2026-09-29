@@ -211,6 +211,19 @@ export interface ValeursWizard {
    * hors de la liste d'exclusion, il pose donc `montagePerime`.
    */
   lut?: { empreinte: string; nom: string; intensite: number } | null;
+  /**
+   * Transition entre séquences — écrite sous `design.transition` (la clé
+   * que relisent « Régénérer » et l'Autopilote).
+   */
+  transition?: string;
+  /** Recadrage de l'affiche (`posterTransform`), déjà validé par l'appelant. */
+  posterTransform?: { scale: number; offsetX: number; offsetY: number };
+  /**
+   * Fonds par séquence (`seqBackgrounds`), URL durables seulement
+   * (`fondsPourMetadata`). `{}` = aucun fond propre : c'est une VALEUR, qui
+   * part quand l'utilisateur retire le dernier.
+   */
+  seqBackgrounds?: Record<string, unknown>;
 }
 
 /**
@@ -246,6 +259,11 @@ export function metadataPourEnregistrement(
   poserSiChange(envoi, 'sequences', valeurs.sequences, ref.sequences);
   // `ref.lut ?? null` : un post charge SANS filtre compare `null` a `null`.
   poserSiChange(envoi, 'lut', valeurs.lut, ref.lut === undefined ? null : ref.lut);
+  // Recadrage et fonds par séquence : ils changent le rendu, donc hors de la
+  // liste d'exclusion — un changement pose `montagePerime`, un
+  // enregistrement sans changement n'écrit rien.
+  poserSiChange(envoi, 'posterTransform', valeurs.posterTransform, ref.posterTransform);
+  poserSiChange(envoi, 'seqBackgrounds', valeurs.seqBackgrounds, ref.seqBackgrounds);
 
   // ── `branding` : recomposé SUR l'existant, et seulement s'il bouge ───
   //
@@ -262,6 +280,8 @@ export function metadataPourEnregistrement(
   const design: Record<string, unknown> = { ...designBase };
   let designChange = false;
   designChange = poserSiChange(design, 'textAnimation', valeurs.textAnimation, ref.textAnimation)
+    || designChange;
+  designChange = poserSiChange(design, 'transition', valeurs.transition, ref.transition)
     || designChange;
   designChange = poserSiChange(design, 'gradientColor1', valeurs.gradientColor1, ref.gradientColor1)
     || designChange;

@@ -147,6 +147,24 @@ describe('DELETE /api/posts — medias partages', () => {
     expect(removedPaths()).toEqual(['media/u/poster.jpg']);
   });
 
+  it('photo des cartes et fonds par sequence : supprimes avec le post, conserves si partages', async () => {
+    postRow = {
+      metadata: {
+        cardsSnapshot: { url: `${base}/u/cartes.png`, rect: { x: 0, y: 0, width: 1, height: 1 }, empreinte: 'e' },
+        seqBackgrounds: {
+          titre: { url: `${base}/u/fond-titre.jpg`, transform: { scale: 1, offsetX: 0, offsetY: 0 } },
+          cta: { url: `${base}/u/fond-cta.jpg`, transform: { scale: 1, offsetX: 0, offsetY: 0 } },
+        },
+      },
+    };
+    // Un autre post (une copie) utilise encore le fond du CTA.
+    autresPages = [[
+      { id: 'copie', media_url: null, metadata: { seqBackgrounds: { cta: { url: `${base}/u/fond-cta.jpg` } } } },
+    ]];
+    await del();
+    expect(removedPaths()).toEqual(['media/u/cartes.png', 'media/u/fond-titre.jpg']);
+  });
+
   it('la lecture est restreinte au compte de session et exclut le post supprime', async () => {
     await del();
     const lecture = calls.find((c) => c.table === 'scheduled_posts' && c.range);
