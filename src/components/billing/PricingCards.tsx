@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/componen
 import { Button } from '@/components/ui/Button';
 import { Check } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { totalAnnuelCentimes } from '@/lib/stripe/constants';
 
 function centsToFr(cents: number): string {
   if (cents === 0) return '0 CHF';
@@ -105,7 +106,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
                   <span className="text-gray-400 text-sm">{period}</span>
                 </div>
                 {billingCycle === 'yearly' && plan.key !== 'free' && plan.yearly_price_cents > 0 && (
-                  <p className="text-xs text-gray-500 mt-1">{centsToFr((plan.yearly_price_cents || 0) * 12)} facturé annuellement</p>
+                  <p className="text-xs text-gray-500 mt-1">{centsToFr(totalAnnuelCentimes(plan.yearly_price_cents || 0))} facturé annuellement</p>
                 )}
               </CardHeader>
               <CardContent className="pt-6">

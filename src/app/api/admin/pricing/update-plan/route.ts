@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { stripe } from '@/lib/stripe/client';
 import { invalidatePricingCache } from '@/lib/pricing/fetch';
+import { totalAnnuelCentimes } from '@/lib/stripe/constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,8 @@ export async function POST(req: NextRequest) {
 
     // Yearly price changed?
     if (yearly_price_cents !== current?.yearly_price_cents) {
-      const yearlyUnitAmount = (yearly_price_cents || 0) * 12;
+      // Total annuel arrondi au franc (15,83 × 12 = 189,96 → 190 CHF).
+      const yearlyUnitAmount = totalAnnuelCentimes(yearly_price_cents || 0);
       const newYearlyPrice = await stripe.prices.create({
         product: productId,
         unit_amount: yearlyUnitAmount,

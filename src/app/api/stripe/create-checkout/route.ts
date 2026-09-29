@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { stripe, createCustomer } from '@/lib/stripe/client';
+import { stripe } from '@/lib/stripe/client';
+import { clientStripeUtilisateur } from '@/lib/stripe/client-utilisateur';
 import { STRIPE_PLANS } from '@/lib/stripe/constants';
-import { supabaseAdmin } from '@/lib/db/supabase';
+import { prixPlan, verifierPrix } from '@/lib/stripe/prix';
 
 type PlanKey = 'starter' | 'pro' | 'enterprise';
 type Billing = 'monthly' | 'yearly';
@@ -20,34 +21,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid plan' }, { status: 400 });
     }
 
-    // Resolve priceId: DB first, env var fallback
-    let priceId: string | undefined;
-    try {
-      const { data: dbPlan } = await supabaseAdmin.from('plans').select('stripe_price_id, stripe_yearly_price_id').eq('key', plan).single();
-      priceId = (billingCycle === 'yearly' ? dbPlan?.stripe_yearly_price_id : dbPlan?.stripe_price_id) || undefined;
-    } catch {}
+    // Variables d'environnement d'abord, base en repli (cf. lib/stripe/prix).
+    const priceId = await prixPlan(plan, billingCycle);
     if (!priceId) {
-      const envKey = `STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`;
-      priceId = process.env[envKey];
+      console.error(`[checkout] prix non configure : STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`);
+      return NextResponse.json({ error: `Offre ${plan} (${billingCycle === 'yearly' ? 'annuelle' : 'mensuelle'}) indisponible : prix non configuré` }, { status: 503 });
     }
-    if (!priceId) {
-      return NextResponse.json({ error: `price not configured for ${plan}/${billingCycle}` }, { status: 400 });
+    try {
+      await verifierPrix(stripe, priceId, { recurrent: billingCycle === 'yearly' ? 'year' : 'month' });
+    } catch (e: any) {
+      console.error('[checkout]', e?.message);
+      return NextResponse.json({ error: 'Offre indisponible : prix Stripe invalide' }, { status: 503 });
     }
 
-    let customerId: string | undefined;
-    try {
-      const { data } = await supabaseAdmin.from('users').select('stripe_customer_id').eq('id', session.user.id).single();
-      customerId = (data as any)?.stripe_customer_id || undefined;
-    } catch {}
-    if (!customerId) {
-      const customer = await createCustomer(session.user.email, session.user.name || 'User');
-      customerId = customer.id;
-      try { await supabaseAdmin.from('users').update({ stripe_customer_id: customerId }).eq('id', session.user.id); } catch {}
-    }
+    const customerId = await clientStripeUtilisateur(session.user.id, session.user.email, session.user.name || 'User');
 
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
     const checkout = await stripe.checkout.sessions.create({
       customer: customerId,
+      client_reference_id: session.user.id,
       mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],

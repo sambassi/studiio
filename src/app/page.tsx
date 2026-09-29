@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { STRIPE_PLANS, CREDIT_PACKAGES } from '@/lib/stripe/constants';
 
 // Dynamic content from admin CMS
 interface DynamicContent {
@@ -51,10 +52,12 @@ const SOCIAL_NETWORKS = [
 const STAT_ICONS = [Video, Users, Star, Clock];
 const STAT_VALUES = ["50K+", "12K+", "98%", "<60s"];
 
+// Repli quand /api/pricing ne répond pas : les constantes CHF, jamais les
+// anciens prix EUR des fichiers de traduction.
 const PLAN_DEFAULTS = [
-  { credits: 300, popular: false, color: "border-gray-700 hover:border-violet-500" },
-  { credits: 1000, popular: true, color: "border-violet-500 border-2" },
-  { credits: 5000, popular: false, color: "border-gray-700 hover:border-violet-500" },
+  { credits: STRIPE_PLANS.starter.credits, popular: false, color: "border-gray-700 hover:border-violet-500" },
+  { credits: STRIPE_PLANS.pro.credits, popular: true, color: "border-violet-500 border-2" },
+  { credits: STRIPE_PLANS.enterprise.credits, popular: false, color: "border-gray-700 hover:border-violet-500" },
 ];
 
 const PLAN_KEYS = ['starter', 'pro', 'enterprise'] as const;
@@ -595,8 +598,8 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {(cmsPlans || PLAN_KEYS.map((key, i) => ({
               name: t(`pricing.plans.${key}.name`),
-              price: t(`pricing.plans.${key}.price`),
-              yearlyPrice: t(`pricing.plans.${key}.yearlyPrice`),
+              price: centsToChf(STRIPE_PLANS[key].price),
+              yearlyPrice: centsToChf(STRIPE_PLANS[key].yearlyPrice),
               desc: t(`pricing.plans.${key}.desc`),
               credits: PLAN_DEFAULTS[i].credits,
               features: (() => {
@@ -674,11 +677,7 @@ export default function LandingPage() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
               {(apiPacks.length > 0
                 ? apiPacks.map(p => ({ credits: p.amount, price: centsToChf(p.price_cents) }))
-                : [
-                    { credits: 50, price: "9,99" },
-                    { credits: 150, price: "19,99" },
-                    { credits: 500, price: "49,99" },
-                  ]
+                : Object.values(CREDIT_PACKAGES).map(p => ({ credits: p.amount, price: centsToChf(p.price) }))
               ).map((pack, i) => (
                 <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-xl px-6 py-3 text-sm hover:border-violet-500/30 transition cursor-pointer sm:w-auto w-full sm:inline-block">
                   <span className="font-bold text-white">{pack.credits} {tc('credits')}</span>
