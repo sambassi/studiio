@@ -27,35 +27,9 @@ export async function createCheckoutSession(
   return session;
 }
 
-export async function createOneTimeCheckout(
-  customerId: string,
-  amount: number,
-  description: string,
-  successUrl: string,
-  cancelUrl: string
-) {
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    payment_method_types: ['card'],
-    line_items: [
-      {
-        price_data: {
-          currency: 'chf',
-          product_data: {
-            name: description,
-          },
-          unit_amount: amount,
-        },
-        quantity: 1,
-      },
-    ],
-    mode: 'payment',
-    success_url: successUrl,
-    cancel_url: cancelUrl,
-  });
-
-  return session;
-}
+// `createOneTimeCheckout` (montant libre, `price_data` fabriqué à la volée)
+// a été retiré : tout paiement passe par un identifiant de prix Stripe
+// configuré (CHF), résolu par `@/lib/stripe/prix`.
 
 export async function createCustomer(
   email: string,
@@ -69,13 +43,20 @@ export async function createCustomer(
   return customer;
 }
 
+/**
+ * Session de portail client. `configuration` : la configuration dédiée
+ * Studiio résolue par `lib/stripe/portail` — jamais celle par défaut du
+ * compte, partagée avec d'autres sites.
+ */
 export async function createBillingPortalSession(
   customerId: string,
-  returnUrl: string
+  returnUrl: string,
+  configuration?: string,
 ) {
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url: returnUrl,
+    ...(configuration ? { configuration } : {}),
   });
 
   return session;

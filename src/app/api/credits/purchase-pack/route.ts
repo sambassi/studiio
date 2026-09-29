@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { stripe, createCustomer } from '@/lib/stripe/client';
+import { stripe } from '@/lib/stripe/client';
+import { clientStripeUtilisateur } from '@/lib/stripe/client-utilisateur';
 import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
-import { supabaseAdmin } from '@/lib/db/supabase';
+import {
+  prixPack, verifierPrix, offrePack, MARQUEUR_APP, type PackKey,
+} from '@/lib/stripe/prix';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,48 +14,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const { pack } = await req.json();
-    if (!pack || !(pack in CREDIT_PACKAGES)) {
+    if (!pack || !Object.prototype.hasOwnProperty.call(CREDIT_PACKAGES, pack)) {
       return NextResponse.json({ error: 'invalid pack' }, { status: 400 });
     }
+    const cle = pack as PackKey;
 
-    // Resolve priceId + amount from DB first, fallback to env/constants
-    let priceId: string | undefined;
-    let creditAmount: number;
-    try {
-      const { data: dbPack } = await supabaseAdmin.from('credit_packs').select('stripe_price_id, amount').eq('key', pack).single();
-      priceId = dbPack?.stripe_price_id || undefined;
-      creditAmount = dbPack?.amount || (CREDIT_PACKAGES as any)[pack].amount;
-    } catch {
-      creditAmount = (CREDIT_PACKAGES as any)[pack].amount;
+    // L'offre en base (éditée par l'admin) fait autorité : ce qui est
+    // affiché est ce qui est vendu et crédité.
+    const offre = await offrePack(cle);
+    if (!(offre.amount > 0) || !(offre.price_cents > 0)) {
+      console.error('[purchase-pack] offre invalide en base', cle, offre);
+      return NextResponse.json({ error: 'Pack indisponible : tarif à vérifier' }, { status: 503 });
     }
+    const creditAmount = offre.amount;
+
+    // Prix : base d'abord, variable en repli (cf. lib/stripe/prix).
+    const priceId = await prixPack(cle);
     if (!priceId) {
-      const envKey = `STRIPE_PRICE_ID_PACK_${String(pack).toUpperCase()}`;
-      priceId = process.env[envKey];
+      console.error(`[purchase-pack] prix non configure : STRIPE_PRICE_ID_PACK_${cle.toUpperCase()}`);
+      return NextResponse.json({ error: `Pack ${cle} indisponible : prix non configuré` }, { status: 503 });
     }
-    if (!priceId) {
-      return NextResponse.json({ error: `price not configured for pack ${pack}` }, { status: 400 });
-    }
-
-    let customerId: string | undefined;
     try {
-      const { data } = await supabaseAdmin.from('users').select('stripe_customer_id').eq('id', session.user.id).single();
-      customerId = (data as any)?.stripe_customer_id || undefined;
-    } catch {}
-    if (!customerId) {
-      const customer = await createCustomer(session.user.email, session.user.name || 'User');
-      customerId = customer.id;
-      try { await supabaseAdmin.from('users').update({ stripe_customer_id: customerId }).eq('id', session.user.id); } catch {}
+      await verifierPrix(stripe, priceId, { recurrent: null, montant: offre.price_cents });
+    } catch (e: any) {
+      console.error('[purchase-pack]', e?.message);
+      return NextResponse.json({ error: 'Pack indisponible : prix Stripe invalide' }, { status: 503 });
     }
 
+    const customerId = await clientStripeUtilisateur(session.user.id, session.user.email, session.user.name || 'User');
+
+    const metadata = { app: MARQUEUR_APP, userId: session.user.id, packKey: cle, creditAmount: String(creditAmount) };
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
     const checkout = await stripe.checkout.sessions.create({
       customer: customerId,
+      client_reference_id: session.user.id,
       mode: 'payment',
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${baseUrl}/dashboard/billing?success=true`,
       cancel_url: `${baseUrl}/dashboard/billing?canceled=true`,
-      metadata: { userId: session.user.id, packKey: String(pack), creditAmount: String(creditAmount) },
+      metadata,
+      // Le marqueur suit le paiement : un remboursement ou un litige sur la
+      // charge sera reconnu comme Studiio.
+      payment_intent_data: { metadata },
     });
 
     return NextResponse.json({ url: checkout.url });

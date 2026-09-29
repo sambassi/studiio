@@ -1,14 +1,15 @@
 // Pricing tiers — 2026 revision
-// Free / Starter 19€ / Pro 49€ (flagship) / Enterprise 149€
+// Free / Starter 19 CHF / Pro 49 CHF (flagship) / Enterprise 149 CHF
+// Devise unique : CHF (compte Stripe Afroboosteur, Suisse).
 // Annual = 2 months free (~ -17%)
 
 export const STRIPE_PLANS = {
   free: {
     name: 'Gratuit',
     price: 0,
-    priceFr: '0€',
+    priceFr: '0 CHF',
     yearlyPrice: 0,
-    yearlyPriceFr: '0€',
+    yearlyPriceFr: '0 CHF',
     credits: 10,
     watermark: true,
     maxSocials: 1,
@@ -23,11 +24,11 @@ export const STRIPE_PLANS = {
   starter: {
     name: 'Starter',
     price: 1900,
-    priceFr: '19€',
+    priceFr: '19 CHF',
     yearlyPrice: 1583,
-    yearlyPriceFr: '15,83€',
+    yearlyPriceFr: '15,83 CHF',
     yearlyTotal: 19000,
-    yearlyTotalFr: '190€',
+    yearlyTotalFr: '190 CHF',
     credits: 150,
     watermark: false,
     maxSocials: 3,
@@ -42,11 +43,11 @@ export const STRIPE_PLANS = {
   pro: {
     name: 'Pro',
     price: 4900,
-    priceFr: '49€',
+    priceFr: '49 CHF',
     yearlyPrice: 4083,
-    yearlyPriceFr: '40,83€',
+    yearlyPriceFr: '40,83 CHF',
     yearlyTotal: 49000,
-    yearlyTotalFr: '490€',
+    yearlyTotalFr: '490 CHF',
     credits: 600,
     watermark: false,
     maxSocials: Infinity,
@@ -64,11 +65,11 @@ export const STRIPE_PLANS = {
   enterprise: {
     name: 'Enterprise',
     price: 14900,
-    priceFr: '149€',
+    priceFr: '149 CHF',
     yearlyPrice: 12417,
-    yearlyPriceFr: '124,17€',
+    yearlyPriceFr: '124,17 CHF',
     yearlyTotal: 149000,
-    yearlyTotalFr: '1490€',
+    yearlyTotalFr: '1490 CHF',
     credits: 2500,
     watermark: false,
     maxSocials: Infinity,
@@ -85,11 +86,26 @@ export const STRIPE_PLANS = {
 };
 
 export const CREDIT_PACKAGES = {
-  small: { name: '50 crédits', amount: 50, price: 900, priceFr: '9€', unitPrice: '0,18€/crédit' },
-  medium: { name: '200 crédits', amount: 200, price: 2900, priceFr: '29€', unitPrice: '0,15€/crédit', popular: true },
-  large: { name: '500 crédits', amount: 500, price: 5900, priceFr: '59€', unitPrice: '0,12€/crédit' },
-  xlarge: { name: '2 000 crédits', amount: 2000, price: 17900, priceFr: '179€', unitPrice: '0,09€/crédit' },
+  small: { name: '50 crédits', amount: 50, price: 900, priceFr: '9 CHF', unitPrice: '0,18 CHF/crédit' },
+  medium: { name: '200 crédits', amount: 200, price: 2900, priceFr: '29 CHF', unitPrice: '0,15 CHF/crédit', popular: true },
+  large: { name: '500 crédits', amount: 500, price: 5900, priceFr: '59 CHF', unitPrice: '0,12 CHF/crédit' },
+  xlarge: { name: '2 000 crédits', amount: 2000, price: 17900, priceFr: '179 CHF', unitPrice: '0,09 CHF/crédit' },
 };
+
+/**
+ * Montant annuel réellement facturé, en centimes, depuis le prix « par mois »
+ * de l'offre annuelle (`yearlyPrice`, `plans.yearly_price_cents`).
+ *
+ * `yearlyPrice` est un équivalent mensuel arrondi au centime (15,83 CHF) :
+ * ×12 donnerait 189,96 CHF alors que le tarif décidé est 190 CHF. Les tarifs
+ * annuels sont des francs entiers, on arrondit donc au franc. Source unique
+ * pour l'affichage « facturé annuellement » ET la création du prix Stripe
+ * annuel depuis l'administration.
+ */
+export function totalAnnuelCentimes(yearlyMonthlyCents: number): number {
+  const brut = Math.max(0, Number(yearlyMonthlyCents) || 0) * 12;
+  return Math.round(brut / 100) * 100;
+}
 
 export const RENDER_COSTS = { reel: 10, tv: 15 };
 export const FREE_CREDITS = 10;

@@ -1,20 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { stripe } from '@/lib/stripe/client';
 import { invalidatePricingCache } from '@/lib/pricing/fetch';
+import { requireAdmin, logAdminAction } from '@/lib/admin';
+import { MARQUEUR_APP, DEVISE } from '@/lib/stripe/prix';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Édition d'un pack. Ordre SÛR : créer le nouveau prix (CHF, marqueur app),
+ * écrire en base en vérifiant l'erreur, PUIS désactiver l'ancien prix.
+ */
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.email || !['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'].includes(session.user.email)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const garde = await requireAdmin();
+  if (garde.error) return garde.error;
 
   const body = await req.json();
   const { key, name, amount, price_cents, popular, active } = body;
   if (!key) return NextResponse.json({ error: 'Missing key' }, { status: 400 });
+  if (!(Number(amount) > 0) || !(Number(price_cents) > 0)) {
+    return NextResponse.json({ success: false, error: 'Crédits et prix doivent être > 0' }, { status: 400 });
+  }
 
   const { data: current } = await supabaseAdmin.from('credit_packs').select('*').eq('key', key).single();
 
@@ -23,30 +29,32 @@ export async function POST(req: NextRequest) {
     updated_at: new Date().toISOString(),
   };
 
+  let nouveauPrix: string | undefined;
   try {
     let productId = current?.stripe_product_id;
     if (!productId) {
       const product = await stripe.products.create({
         name: `Studiio Credits — ${name}`,
-        metadata: { pack_key: key },
+        metadata: { app: MARQUEUR_APP, pack_key: key },
       });
       productId = product.id;
     } else {
-      await stripe.products.update(productId, { name: `Studiio Credits — ${name}` });
+      await stripe.products.update(productId, {
+        name: `Studiio Credits — ${name}`,
+        metadata: { app: MARQUEUR_APP, pack_key: key },
+      });
     }
     patch.stripe_product_id = productId;
 
-    if (price_cents !== current?.price_cents) {
-      const newPrice = await stripe.prices.create({
+    if (price_cents !== current?.price_cents || !current?.stripe_price_id) {
+      const p = await stripe.prices.create({
         product: productId,
         unit_amount: price_cents,
-        currency: 'chf',
-        metadata: { pack_key: key, credits: String(amount) },
+        currency: DEVISE,
+        metadata: { app: MARQUEUR_APP, pack_key: key, credits: String(amount) },
       });
-      if (current?.stripe_price_id) {
-        try { await stripe.prices.update(current.stripe_price_id, { active: false }); } catch {}
-      }
-      patch.stripe_price_id = newPrice.id;
+      nouveauPrix = p.id;
+      patch.stripe_price_id = p.id;
     }
   } catch (stripeErr: any) {
     console.error('[update-pack] Stripe error:', stripeErr.message);
@@ -54,7 +62,20 @@ export async function POST(req: NextRequest) {
   }
 
   const { error } = await supabaseAdmin.from('credit_packs').update(patch).eq('key', key);
-  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[update-pack] ecriture en base impossible, ancien prix conserve', error.message);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+
+  if (nouveauPrix && current?.stripe_price_id && current.stripe_price_id !== nouveauPrix) {
+    try {
+      await stripe.prices.update(current.stripe_price_id, { active: false });
+    } catch (e: any) {
+      console.error('[update-pack] desactivation de l\'ancien prix impossible', current.stripe_price_id, e?.message);
+    }
+  }
+
   invalidatePricingCache();
+  await logAdminAction({ adminEmail: garde.session!.user!.email!, action: 'pricing.update_pack', targetType: 'credit_pack', targetId: key, details: patch });
   return NextResponse.json({ success: true });
 }

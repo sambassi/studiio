@@ -544,9 +544,9 @@ export default function SettingsPage() {
                 label={t('settings.newPlan')}
                 options={[
                   { value: 'free', label: t('users.plans.free') },
-                  { value: 'starter', label: 'Starter - 29,99 EUR' },
-                  { value: 'pro', label: 'Pro - 79,99 EUR' },
-                  { value: 'enterprise', label: 'Enterprise - 299,99 EUR' },
+                  { value: 'starter', label: 'Starter - 19 CHF' },
+                  { value: 'pro', label: 'Pro - 49 CHF' },
+                  { value: 'enterprise', label: 'Enterprise - 149 CHF' },
                 ]}
                 value={newPlan}
                 onChange={(e) => setNewPlan(e.target.value)}

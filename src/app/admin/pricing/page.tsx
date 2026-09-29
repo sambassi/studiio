@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Save, Download } from 'lucide-react';
+import { Loader2, Save, Download, RefreshCw } from 'lucide-react';
 
 interface Plan {
   key: string; name: string; price_cents: number; yearly_price_cents: number;
@@ -19,6 +19,45 @@ export default function PricingAdminPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [toast, setToast] = useState('');
+  const [synchro, setSynchro] = useState<null | { lignes: any[]; erreurs: string[]; aEcrire: number }>(null);
+  const [synchronising, setSynchronising] = useState(false);
+
+  // 1er clic : diff proposé (rien n'est écrit). 2e clic : confirmation.
+  const previsualiserSynchro = async () => {
+    setSynchronising(true);
+    try {
+      const res = await fetch('/api/admin/pricing/sync-stripe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok && !data.lignes) {
+        setToast(`Erreur: ${data.error || 'synchronisation'}`);
+        setTimeout(() => setToast(''), 4000);
+        return;
+      }
+      setSynchro({ lignes: data.lignes || [], erreurs: data.erreurs || [], aEcrire: data.aEcrire || 0 });
+    } finally {
+      setSynchronising(false);
+    }
+  };
+
+  const confirmerSynchro = async () => {
+    setSynchronising(true);
+    try {
+      const res = await fetch('/api/admin/pricing/sync-stripe', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: true }),
+      });
+      const data = await res.json();
+      setToast(data.success ? `Synchronisé : ${data.ecrites} ligne(s) mise(s) à jour` : `Erreur: ${data.error || 'synchronisation'}`);
+      setTimeout(() => setToast(''), 4000);
+      if (data.success) {
+        setSynchro(null);
+        await loadPricing();
+      }
+    } finally {
+      setSynchronising(false);
+    }
+  };
 
   const loadPricing = async () => {
     const res = await fetch('/api/pricing', { cache: 'no-store' });
@@ -93,6 +132,58 @@ export default function PricingAdminPage() {
       <div>
         <h1 className="text-3xl font-bold text-white mb-1">Tarification</h1>
         <p className="text-gray-400 text-sm">Gérez les plans et packs de crédits.</p>
+      </div>
+
+      <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-purple-300">Synchroniser depuis Stripe</p>
+            <p className="text-xs text-purple-400/80 mt-0.5">Lit les prix actifs en CHF des produits Studiio et propose de remplir les identifiants et montants. Rien n'est écrit avant confirmation.</p>
+          </div>
+          <button
+            onClick={previsualiserSynchro}
+            disabled={synchronising}
+            className="flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 whitespace-nowrap"
+          >
+            {synchronising ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Synchroniser depuis Stripe
+          </button>
+        </div>
+        {synchro && (
+          <div className="space-y-2">
+            {synchro.erreurs.length > 0 && (
+              <ul className="text-xs text-red-400 list-disc pl-4">
+                {synchro.erreurs.map((e) => <li key={e}>{e}</li>)}
+              </ul>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-gray-300">
+                <thead><tr className="text-gray-500"><th className="text-left p-1">Offre</th><th className="text-left p-1">Crédits</th><th className="text-left p-1">Champ</th><th className="text-left p-1">Avant</th><th className="text-left p-1">Après</th></tr></thead>
+                <tbody>
+                  {synchro.lignes.flatMap((l: any) => Object.entries(l.champs).map(([nom, c]: [string, any]) => (
+                    <tr key={`${l.table}-${l.key}-${nom}`} className={c.avant !== c.apres ? 'text-amber-300' : 'text-gray-500'}>
+                      <td className="p-1">{l.table === 'plans' ? 'Plan' : 'Pack'} {l.key}{l.existe ? '' : ' (nouveau)'}</td>
+                      <td className="p-1">{l.credits}</td>
+                      <td className="p-1">{nom}</td>
+                      <td className="p-1 font-mono">{String(c.avant ?? '—')}</td>
+                      <td className="p-1 font-mono">{String(c.apres ?? '—')}</td>
+                    </tr>
+                  )))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={confirmerSynchro}
+                disabled={synchronising || synchro.erreurs.length > 0 || synchro.aEcrire === 0}
+                className="rounded-lg bg-green-600 hover:bg-green-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Confirmer ({synchro.aEcrire} ligne(s))
+              </button>
+              <button onClick={() => setSynchro(null)} className="rounded-lg border border-gray-600 px-4 py-2 text-sm text-gray-300">Annuler</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {plans.length === 0 && packs.length === 0 && (

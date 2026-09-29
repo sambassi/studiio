@@ -43,7 +43,10 @@ export interface Subscription {
   id: string;
   user_id: string;
   plan: 'starter' | 'pro' | 'enterprise';
-  status: 'active' | 'canceled' | 'expired' | 'past_due';
+  // Aligné sur la contrainte `subscriptions.status` (#470) et les statuts Stripe.
+  status:
+    | 'active' | 'canceled' | 'incomplete' | 'incomplete_expired' | 'past_due'
+    | 'paused' | 'trialing' | 'unpaid' | 'expired';
   stripe_subscription_id: string;
   stripe_customer_id?: string;
   current_period_start: string;

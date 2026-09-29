@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { stripe, createCustomer } from '@/lib/stripe/client';
+import { stripe } from '@/lib/stripe/client';
+import { clientStripeUtilisateur } from '@/lib/stripe/client-utilisateur';
 import { STRIPE_PLANS } from '@/lib/stripe/constants';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import {
+  prixPlan, verifierPrix, montantAttenduPlan, offrePlan, MARQUEUR_APP,
+} from '@/lib/stripe/prix';
 
 type PlanKey = 'starter' | 'pro' | 'enterprise';
 type Billing = 'monthly' | 'yearly';
+
+/** Statuts qui interdisent d'ouvrir un second abonnement. */
+const STATUTS_EN_COURS = new Set(['active', 'trialing', 'past_due']);
+
+const MESSAGE_DEJA_ABONNE =
+  'Vous avez déjà un abonnement. Pour changer de plan ou de facturation, passez par « Gérer mon abonnement ».';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,41 +30,69 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'invalid plan' }, { status: 400 });
     }
 
-    // Resolve priceId: DB first, env var fallback
-    let priceId: string | undefined;
-    try {
-      const { data: dbPlan } = await supabaseAdmin.from('plans').select('stripe_price_id, stripe_yearly_price_id').eq('key', plan).single();
-      priceId = (billingCycle === 'yearly' ? dbPlan?.stripe_yearly_price_id : dbPlan?.stripe_price_id) || undefined;
-    } catch {}
-    if (!priceId) {
-      const envKey = `STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`;
-      priceId = process.env[envKey];
+    // Un seul abonnement à la fois : un second checkout créerait un second
+    // abonnement facturé en parallèle. Les changements passent par le portail.
+    const { data: lignes, error: errSubs } = await supabaseAdmin
+      .from('subscriptions').select('status').eq('user_id', session.user.id);
+    if (errSubs) {
+      console.error('[checkout] lecture subscriptions impossible', errSubs.message);
+      return NextResponse.json({ error: 'Abonnement momentanément indisponible' }, { status: 503 });
     }
-    if (!priceId) {
-      return NextResponse.json({ error: `price not configured for ${plan}/${billingCycle}` }, { status: 400 });
+    if ((lignes ?? []).some((l: any) => STATUTS_EN_COURS.has(l.status))) {
+      return NextResponse.json({ error: MESSAGE_DEJA_ABONNE, portal: '/api/stripe/create-portal' }, { status: 409 });
     }
 
-    let customerId: string | undefined;
-    try {
-      const { data } = await supabaseAdmin.from('users').select('stripe_customer_id').eq('id', session.user.id).single();
-      customerId = (data as any)?.stripe_customer_id || undefined;
-    } catch {}
-    if (!customerId) {
-      const customer = await createCustomer(session.user.email, session.user.name || 'User');
-      customerId = customer.id;
-      try { await supabaseAdmin.from('users').update({ stripe_customer_id: customerId }).eq('id', session.user.id); } catch {}
+    // L'offre en base (éditée par l'admin) fait autorité ; seules des
+    // valeurs absurdes bloquent la vente.
+    const offre = await offrePlan(plan);
+    const prixAffiche = billingCycle === 'yearly' ? offre.yearly_price_cents : offre.price_cents;
+    if (!(offre.credits > 0) || !(prixAffiche > 0)) {
+      console.error('[checkout] offre invalide en base', plan, billingCycle, offre);
+      return NextResponse.json({ error: 'Offre indisponible : tarif à vérifier' }, { status: 503 });
     }
 
+    // Base d'abord, variables en repli (cf. lib/stripe/prix).
+    const priceId = await prixPlan(plan, billingCycle);
+    if (!priceId) {
+      console.error(`[checkout] prix non configure : STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`);
+      return NextResponse.json({ error: `Offre ${plan} (${billingCycle === 'yearly' ? 'annuelle' : 'mensuelle'}) indisponible : prix non configuré` }, { status: 503 });
+    }
+    try {
+      await verifierPrix(stripe, priceId, {
+        recurrent: billingCycle === 'yearly' ? 'year' : 'month',
+        ...montantAttenduPlan(offre, billingCycle),
+      });
+    } catch (e: any) {
+      console.error('[checkout]', e?.message);
+      return NextResponse.json({ error: 'Offre indisponible : prix Stripe invalide' }, { status: 503 });
+    }
+
+    const customerId = await clientStripeUtilisateur(session.user.id, session.user.email, session.user.name || 'User');
+
+    // Double contrôle chez Stripe : la table peut être en retard sur un
+    // webhook pas encore reçu. Dans le doute, on refuse.
+    try {
+      const existants = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 });
+      if ((existants?.data ?? []).some((s: any) => STATUTS_EN_COURS.has(s.status))) {
+        return NextResponse.json({ error: MESSAGE_DEJA_ABONNE, portal: '/api/stripe/create-portal' }, { status: 409 });
+      }
+    } catch (e: any) {
+      console.error('[checkout] subscriptions.list impossible', e?.message);
+      return NextResponse.json({ error: 'Abonnement momentanément indisponible' }, { status: 503 });
+    }
+
+    const metadata = { app: MARQUEUR_APP, userId: session.user.id, plan, billingCycle };
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
     const checkout = await stripe.checkout.sessions.create({
       customer: customerId,
+      client_reference_id: session.user.id,
       mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${baseUrl}/dashboard/billing?success=true`,
       cancel_url: `${baseUrl}/dashboard/billing?canceled=true`,
-      metadata: { userId: session.user.id, plan, billingCycle },
-      subscription_data: { metadata: { userId: session.user.id, plan, billingCycle } },
+      metadata,
+      subscription_data: { metadata },
     });
 
     return NextResponse.json({ url: checkout.url });
