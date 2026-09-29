@@ -96,6 +96,8 @@ function MiniPlayer({ src, onDelete, volume = 1 }: { src: string; onDelete: () =
 }
 
 interface AudioStudioPanelProps {
+  /** Erreur a montrer a l'utilisateur (envoi audio echoue…). Facultatif. */
+  onError?: (message: string) => void;
   musicUrl: string | null;
   musicName: string;
   voiceUrl: string | null;
@@ -177,6 +179,7 @@ export function AudioStudioPanel({
   rushUrl = null, audioKeyframes, onAudioKeyframesChange, mixLayout,
   voiceId, onVoiceIdChange,
   clonedVoiceCard = false,
+  onError,
 }: AudioStudioPanelProps) {
   const [ttsText, setTtsText] = useState('');
   const [localVoiceId, setLocalVoiceId] = useState<string>(loadInitialVoiceId);
@@ -494,6 +497,13 @@ export function AudioStudioPanel({
       }
       const putRes = await fetch(data.signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
       console.log('[AudioPanel] PUT to storage:', putRes.status);
+      // L'URL n'est posée QUE si le fichier est réellement stocké : sinon le
+      // montage pointerait vers une musique/voix inexistante, ignorée en
+      // silence au rendu et muette à l'écoute du mixage.
+      if (!putRes.ok) {
+        onError?.(`Envoi du fichier audio échoué (${putRes.status}). Réessayez.`);
+        return;
+      }
       if (target === 'music') onMusicChange(data.publicUrl, file.name);
       else onVoiceChange(data.publicUrl, file.name);
     } catch (err) {

@@ -1178,3 +1178,5 @@ l'empreinte de ce qu'il représente ; sinon on retombe sur le rendu d'avant.
 attend son délai. | Toute lib serveur qui ouvre un WebSocket (`ws`) va dans
 `serverComponentsExternalPackages` + externals webpack ; diagnostiquer en
 chargeant le chunk RÉELLEMENT déployé, pas la lib depuis npm.
+
+[2026-09-29] | Test réel staging : un rush affiché et une musique choisie ont disparu du montage SANS message (séquence Vidéo à 0 s → rushUrls non écrit ; musique supprimée avec un post et relue en 404, ignorée par le compositeur). | Aucune donnée choisie par l'utilisateur ne doit être écartée en silence : bloquer l'envoi avec un message (avant tout débit) plutôt que dégrader le rendu ; supprimer un post n'emporte jamais la bibliothèque (musique, voix, rushes importés).
