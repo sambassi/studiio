@@ -5,7 +5,7 @@ import { clientStripeUtilisateur } from '@/lib/stripe/client-utilisateur';
 import { STRIPE_PLANS } from '@/lib/stripe/constants';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
-  prixPlan, verifierPrix, montantAttenduPlan, ecartCredits, MARQUEUR_APP,
+  prixPlan, verifierPrix, montantAttenduPlan, offrePlan, MARQUEUR_APP,
 } from '@/lib/stripe/prix';
 
 type PlanKey = 'starter' | 'pro' | 'enterprise';
@@ -42,13 +42,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: MESSAGE_DEJA_ABONNE, portal: '/api/stripe/create-portal' }, { status: 409 });
     }
 
-    const ecart = await ecartCredits('plans', plan);
-    if (ecart) {
-      console.error('[checkout] credits en base differents des tarifs :', ecart);
-      return NextResponse.json({ error: 'Offre indisponible : crédits du plan à vérifier' }, { status: 503 });
+    // L'offre en base (éditée par l'admin) fait autorité ; seules des
+    // valeurs absurdes bloquent la vente.
+    const offre = await offrePlan(plan);
+    const prixAffiche = billingCycle === 'yearly' ? offre.yearly_price_cents : offre.price_cents;
+    if (!(offre.credits > 0) || !(prixAffiche > 0)) {
+      console.error('[checkout] offre invalide en base', plan, billingCycle, offre);
+      return NextResponse.json({ error: 'Offre indisponible : tarif à vérifier' }, { status: 503 });
     }
 
-    // Variables d'environnement d'abord, base en repli (cf. lib/stripe/prix).
+    // Base d'abord, variables en repli (cf. lib/stripe/prix).
     const priceId = await prixPlan(plan, billingCycle);
     if (!priceId) {
       console.error(`[checkout] prix non configure : STRIPE_PRICE_ID_${plan.toUpperCase()}_${billingCycle.toUpperCase()}`);
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
     try {
       await verifierPrix(stripe, priceId, {
         recurrent: billingCycle === 'yearly' ? 'year' : 'month',
-        montant: montantAttenduPlan(plan, billingCycle),
+        ...montantAttenduPlan(offre, billingCycle),
       });
     } catch (e: any) {
       console.error('[checkout]', e?.message);

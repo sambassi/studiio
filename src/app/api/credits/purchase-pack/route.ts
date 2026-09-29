@@ -4,7 +4,7 @@ import { stripe } from '@/lib/stripe/client';
 import { clientStripeUtilisateur } from '@/lib/stripe/client-utilisateur';
 import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
 import {
-  prixPack, verifierPrix, montantAttenduPack, ecartCredits, MARQUEUR_APP, type PackKey,
+  prixPack, verifierPrix, offrePack, MARQUEUR_APP, type PackKey,
 } from '@/lib/stripe/prix';
 
 export async function POST(req: NextRequest) {
@@ -19,23 +19,23 @@ export async function POST(req: NextRequest) {
     }
     const cle = pack as PackKey;
 
-    // Crédits vendus = tarifs décidés. Un écart avec la base (ce que la
-    // page affiche) bloque la vente plutôt que de livrer autre chose.
-    const ecart = await ecartCredits('credit_packs', cle);
-    if (ecart) {
-      console.error('[purchase-pack] credits en base differents des tarifs :', ecart);
-      return NextResponse.json({ error: 'Pack indisponible : crédits du pack à vérifier' }, { status: 503 });
+    // L'offre en base (éditée par l'admin) fait autorité : ce qui est
+    // affiché est ce qui est vendu et crédité.
+    const offre = await offrePack(cle);
+    if (!(offre.amount > 0) || !(offre.price_cents > 0)) {
+      console.error('[purchase-pack] offre invalide en base', cle, offre);
+      return NextResponse.json({ error: 'Pack indisponible : tarif à vérifier' }, { status: 503 });
     }
-    const creditAmount = CREDIT_PACKAGES[cle].amount;
+    const creditAmount = offre.amount;
 
-    // Prix : variable d'environnement d'abord, base en repli (cf. lib/stripe/prix).
+    // Prix : base d'abord, variable en repli (cf. lib/stripe/prix).
     const priceId = await prixPack(cle);
     if (!priceId) {
       console.error(`[purchase-pack] prix non configure : STRIPE_PRICE_ID_PACK_${cle.toUpperCase()}`);
       return NextResponse.json({ error: `Pack ${cle} indisponible : prix non configuré` }, { status: 503 });
     }
     try {
-      await verifierPrix(stripe, priceId, { recurrent: null, montant: montantAttenduPack(cle) });
+      await verifierPrix(stripe, priceId, { recurrent: null, montant: offre.price_cents });
     } catch (e: any) {
       console.error('[purchase-pack]', e?.message);
       return NextResponse.json({ error: 'Pack indisponible : prix Stripe invalide' }, { status: 503 });

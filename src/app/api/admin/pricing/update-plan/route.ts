@@ -1,35 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { stripe } from '@/lib/stripe/client';
 import { invalidatePricingCache } from '@/lib/pricing/fetch';
 import { totalAnnuelCentimes } from '@/lib/stripe/constants';
+import { requireAdmin, logAdminAction } from '@/lib/admin';
+import { MARQUEUR_APP, DEVISE } from '@/lib/stripe/prix';
 
 export const dynamic = 'force-dynamic';
 
 async function ensureProduct(key: string, name: string, existingProductId?: string | null): Promise<string> {
   if (existingProductId) {
-    await stripe.products.update(existingProductId, { name: `Studiio ${name}` });
+    await stripe.products.update(existingProductId, {
+      name: `Studiio ${name}`,
+      metadata: { app: MARQUEUR_APP, plan_key: key },
+    });
     return existingProductId;
   }
   const product = await stripe.products.create({
     name: `Studiio ${name}`,
-    metadata: { plan_key: key },
+    metadata: { app: MARQUEUR_APP, plan_key: key },
   });
   return product.id;
 }
 
-export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.email || !['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'].includes(session.user.email)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+/** Désactive un ancien prix APRÈS l'écriture en base ; un échec est journalisé, pas bloquant. */
+async function desactiver(priceId: string | null | undefined, remplacePar: string | undefined): Promise<void> {
+  if (!priceId || priceId === remplacePar) return;
+  try {
+    await stripe.prices.update(priceId, { active: false });
+  } catch (e: any) {
+    console.error('[update-plan] desactivation de l\'ancien prix impossible', priceId, e?.message);
   }
+}
+
+/**
+ * Édition d'un plan. Ordre SÛR pour chaque prix modifié :
+ *   1. créer le nouveau prix Stripe (CHF, marqueur app) ;
+ *   2. écrire en base et vérifier l'erreur ;
+ *   3. seulement ensuite désactiver l'ancien prix.
+ * Un échec en 2 laisse l'ancien prix actif et référencé : les checkouts
+ * continuent de fonctionner (le nouveau prix orphelin est inoffensif).
+ */
+export async function POST(req: NextRequest) {
+  const garde = await requireAdmin();
+  if (garde.error) return garde.error;
 
   const body = await req.json();
   const { key, name, price_cents, yearly_price_cents, credits, features, popular, active, watermark } = body;
   if (!key) return NextResponse.json({ error: 'Missing key' }, { status: 400 });
 
-  // Read current state from DB
   const { data: current } = await supabaseAdmin.from('plans').select('*').eq('key', key).single();
 
   const patch: Record<string, any> = {
@@ -46,46 +65,45 @@ export async function POST(req: NextRequest) {
     const { error } = await supabaseAdmin.from('plans').update(patch).eq('key', key);
     if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     invalidatePricingCache();
+    await logAdminAction({ adminEmail: garde.session!.user!.email!, action: 'pricing.update_plan', targetType: 'plan', targetId: key, details: patch });
     return NextResponse.json({ success: true });
   }
 
-  // Paid plans: handle Stripe prices
+  if (!(Number(credits) > 0) || !(Number(price_cents) > 0) || !(Number(yearly_price_cents) > 0)) {
+    return NextResponse.json({ success: false, error: 'Crédits et prix doivent être > 0' }, { status: 400 });
+  }
+
+  let nouveauMensuel: string | undefined;
+  let nouvelAnnuel: string | undefined;
   try {
     const productId = await ensureProduct(key, name, current?.stripe_product_id);
     patch.stripe_product_id = productId;
     patch.price_cents = price_cents;
     patch.yearly_price_cents = yearly_price_cents;
 
-    // Monthly price changed?
-    if (price_cents !== current?.price_cents) {
-      const newPrice = await stripe.prices.create({
+    if (price_cents !== current?.price_cents || !current?.stripe_price_id) {
+      const p = await stripe.prices.create({
         product: productId,
         unit_amount: price_cents,
-        currency: 'chf',
+        currency: DEVISE,
         recurring: { interval: 'month' },
-        metadata: { plan_key: key, cycle: 'monthly' },
+        metadata: { app: MARQUEUR_APP, plan_key: key, cycle: 'monthly' },
       });
-      if (current?.stripe_price_id) {
-        try { await stripe.prices.update(current.stripe_price_id, { active: false }); } catch {}
-      }
-      patch.stripe_price_id = newPrice.id;
+      nouveauMensuel = p.id;
+      patch.stripe_price_id = p.id;
     }
 
-    // Yearly price changed?
-    if (yearly_price_cents !== current?.yearly_price_cents) {
+    if (yearly_price_cents !== current?.yearly_price_cents || !current?.stripe_yearly_price_id) {
       // Total annuel arrondi au franc (15,83 × 12 = 189,96 → 190 CHF).
-      const yearlyUnitAmount = totalAnnuelCentimes(yearly_price_cents || 0);
-      const newYearlyPrice = await stripe.prices.create({
+      const p = await stripe.prices.create({
         product: productId,
-        unit_amount: yearlyUnitAmount,
-        currency: 'chf',
+        unit_amount: totalAnnuelCentimes(yearly_price_cents || 0),
+        currency: DEVISE,
         recurring: { interval: 'year' },
-        metadata: { plan_key: key, cycle: 'yearly' },
+        metadata: { app: MARQUEUR_APP, plan_key: key, cycle: 'yearly' },
       });
-      if (current?.stripe_yearly_price_id) {
-        try { await stripe.prices.update(current.stripe_yearly_price_id, { active: false }); } catch {}
-      }
-      patch.stripe_yearly_price_id = newYearlyPrice.id;
+      nouvelAnnuel = p.id;
+      patch.stripe_yearly_price_id = p.id;
     }
   } catch (stripeErr: any) {
     console.error('[update-plan] Stripe error:', stripeErr.message);
@@ -93,7 +111,16 @@ export async function POST(req: NextRequest) {
   }
 
   const { error } = await supabaseAdmin.from('plans').update(patch).eq('key', key);
-  if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  if (error) {
+    // Les anciens prix restent actifs et référencés : rien n'est cassé.
+    console.error('[update-plan] ecriture en base impossible, anciens prix conserves', error.message);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+
+  if (nouveauMensuel) await desactiver(current?.stripe_price_id, nouveauMensuel);
+  if (nouvelAnnuel) await desactiver(current?.stripe_yearly_price_id, nouvelAnnuel);
+
   invalidatePricingCache();
+  await logAdminAction({ adminEmail: garde.session!.user!.email!, action: 'pricing.update_plan', targetType: 'plan', targetId: key, details: patch });
   return NextResponse.json({ success: true });
 }

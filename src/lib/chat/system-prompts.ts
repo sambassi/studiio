@@ -37,7 +37,8 @@ const STUDIIO_KNOWLEDGE = `
 - Fichiers protégés si utilisés dans un post planifié
 
 7. CRÉDITS ET PLANS
-- Starter 19€/mois (150 crédits), Pro 49€/mois (600 crédits), Enterprise 149€/mois (2500 crédits)
+- Plans payants Starter, Pro et Enterprise, facturés en CHF (mensuel ou annuel), avec un quota de crédits par mois
+- Les montants et quotas sont modifiables par l'administration : ne cite JAMAIS un prix de mémoire, renvoie vers la page Abonnement (/dashboard/billing) qui affiche les tarifs à jour
 - Plan gratuit : 10 crédits, watermark "Studiio" sur export
 - Packs crédits one-shot : 50, 200, 500, 2000
 

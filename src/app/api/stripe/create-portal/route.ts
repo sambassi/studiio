@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { createBillingPortalSession } from '@/lib/stripe/client';
+import { configurationPortailStudiio } from '@/lib/stripe/portail';
 import { supabaseAdmin } from '@/lib/db/supabase';
 
 export async function POST(_req: NextRequest) {
@@ -22,7 +23,9 @@ export async function POST(_req: NextRequest) {
     if (!customerId) return NextResponse.json({ error: 'no customer' }, { status: 400 });
 
     const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL;
-    const portal = await createBillingPortalSession(customerId, `${baseUrl}/dashboard/billing`);
+    // Configuration dédiée Studiio (jamais celle par défaut du compte partagé).
+    const configuration = await configurationPortailStudiio();
+    const portal = await createBillingPortalSession(customerId, `${baseUrl}/dashboard/billing`, configuration);
     return NextResponse.json({ url: portal.url });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'portal failed' }, { status: 500 });
