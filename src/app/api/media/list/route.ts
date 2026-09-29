@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { referencesUtilisateur, motifProtection } from '@/lib/storage/references';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ export async function GET(req: NextRequest) {
       type: 'image' | 'video' | 'audio';
       size: number;
       createdAt: string;
+      preserved?: boolean;
     }> = [];
 
     for (const bucket of buckets) {
@@ -89,8 +91,20 @@ export async function GET(req: NextRequest) {
     }
 
     files.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const page = files.slice(0, 100);
 
-    return NextResponse.json({ success: true, files: files.slice(0, 100) });
+    // « Protégé » plutôt qu'un compte à rebours trompeur : un fichier utilisé
+    // par un contenu n'expire pas (le cron l'exempte) et ne peut pas être
+    // supprimé (`/api/media/delete` refuse). Références illisibles → aucun
+    // marquage : la liste reste servie, comme avant.
+    const refs = await referencesUtilisateur(userId);
+    if (refs) {
+      for (const f of page) {
+        if (motifProtection(f.bucket, f.path, refs)) f.preserved = true;
+      }
+    }
+
+    return NextResponse.json({ success: true, files: page });
   } catch (error) {
     console.error('[MediaList] Error:', error);
     return NextResponse.json({ success: false, error: 'Failed to list media' }, { status: 500 });

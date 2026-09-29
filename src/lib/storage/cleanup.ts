@@ -275,7 +275,7 @@ export async function clesTournageEtAnalyses(): Promise<Set<string> | null> {
 }
 
 /** Codes PostgREST qui signifient « la table n'existe pas ». */
-function tableAbsente(erreur: { code?: string; message?: string } | null): boolean {
+export function tableAbsente(erreur: { code?: string; message?: string } | null): boolean {
   if (!erreur) return false;
   const code = erreur.code ?? '';
   const message = (erreur.message ?? '').toLowerCase();

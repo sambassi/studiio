@@ -114,10 +114,16 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
     return () => clearInterval(id);
   }, []);
 
+  // Utilisé par un contenu : le cron ne le supprime pas et la suppression
+  // manuelle est refusée — un compte à rebours serait trompeur.
   if (file.preserved) {
     return (
-      <span className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 border border-green-500/30 px-1.5 py-0.5 text-[9px] font-medium text-green-400">
-        <ShieldCheck size={9} /> Préservé
+      <span
+        className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 border border-green-500/30 px-1.5 py-0.5 text-[9px] font-medium text-green-400"
+        title="Protégé : utilisé par un contenu (brouillon, programmé ou publié)"
+        data-mediatheque-protege
+      >
+        <ShieldCheck size={9} /> Protégé
       </span>
     );
   }
@@ -158,6 +164,8 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
   const livresRef = useRef<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
+  /** Refus ou échec de suppression — affiché dans la fenêtre, jamais en console seule. */
+  const [erreurSuppression, setErreurSuppression] = useState<string | null>(null);
 
   const toggleSelect = (url: string) => {
     setSelected((prev) => {
@@ -168,22 +176,64 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
     });
   };
 
+  /**
+   * Suppression groupée — UNE requête. Seuls les fichiers que le serveur
+   * confirme supprimés quittent la liste : un fichier refusé (utilisé par un
+   * contenu) ou en échec reste affiché, et le motif est montré.
+   */
   const deleteSelected = async () => {
     if (!window.confirm(`Supprimer ${selected.size} fichier(s) ?`)) return;
     setDeleting(true);
+    setErreurSuppression(null);
     const toDelete = files.filter((f) => selected.has(f.url));
-    await Promise.allSettled(
-      toDelete.map((f) =>
-        fetch('/api/media/delete', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bucket: f.bucket, path: f.path }),
-        }),
-      ),
-    );
-    setFiles((prev) => prev.filter((f) => !selected.has(f.url)));
-    setSelected(new Set());
-    setDeleting(false);
+    try {
+      const res = await fetch('/api/media/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: toDelete.map((f) => ({ bucket: f.bucket, path: f.path })) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const partis = new Set<string>(
+        (Array.isArray(data?.supprimes) ? data.supprimes : [])
+          .map((c: { bucket?: string; path?: string }) => `${c.bucket}/${c.path}`),
+      );
+      setFiles((prev) => prev.filter((f) => !partis.has(`${f.bucket}/${f.path}`)));
+      const nonSupprimes = toDelete.length - partis.size;
+      if (nonSupprimes > 0) {
+        const motif = typeof data?.error === 'string' ? data.error : `suppression impossible (${res.status})`;
+        setErreurSuppression(
+          toDelete.length > 1
+            ? `${nonSupprimes} fichier${nonSupprimes > 1 ? 's' : ''} non supprimé${nonSupprimes > 1 ? 's' : ''} — ${motif}`
+            : motif,
+        );
+      }
+      // Les refusés restent sélectionnés : l'utilisateur voit lesquels.
+      setSelected(new Set(toDelete.filter((f) => !partis.has(`${f.bucket}/${f.path}`)).map((f) => f.url)));
+    } catch {
+      setErreurSuppression('Suppression impossible : réseau indisponible.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /** Suppression d'UN fichier : retiré de la liste seulement si le serveur confirme. */
+  const deleteOne = async (file: MediaFile) => {
+    setErreurSuppression(null);
+    try {
+      const res = await fetch('/api/media/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bucket: file.bucket, path: file.path }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setErreurSuppression(typeof data?.error === 'string' ? data.error : `Suppression impossible (${res.status})`);
+        return;
+      }
+      setFiles((prev) => prev.filter((f) => f.url !== file.url));
+    } catch {
+      setErreurSuppression('Suppression impossible : réseau indisponible.');
+    }
   };
 
   const fetchFiles = useCallback(async () => {
@@ -464,6 +514,27 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
           </div>
         )}
 
+        {erreurSuppression && (
+          <div
+            className="flex items-start justify-between gap-3 px-5 py-2 border-b border-gray-800 bg-red-500/10 text-[11px] text-red-300"
+            role="alert"
+            data-mediatheque-erreur-suppression
+          >
+            <span className="flex items-start gap-1.5">
+              <AlertTriangle size={12} className="mt-0.5 shrink-0 text-red-400" />
+              {erreurSuppression}
+            </span>
+            <button
+              type="button"
+              onClick={() => setErreurSuppression(null)}
+              className="shrink-0 text-red-300/80 hover:text-red-200"
+              aria-label="Fermer"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {/* Grid */}
         <div className="p-5 max-h-[60vh] overflow-y-auto">
           {loading ? (
@@ -512,13 +583,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
                     onClick={(e) => {
                       e.stopPropagation();
                       if (!window.confirm('Supprimer ce fichier ?')) return;
-                      fetch('/api/media/delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ bucket: file.bucket, path: file.path }),
-                      }).then(() => {
-                        setFiles((prev) => prev.filter((f) => f.url !== file.url));
-                      }).catch(() => {});
+                      void deleteOne(file);
                     }}
                     className="absolute top-1 left-1 z-10 rounded-lg bg-red-600/80 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
                     title="Supprimer"
