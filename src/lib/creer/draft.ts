@@ -215,9 +215,14 @@ const MAX_BOXES = 24;
 const MAX_GROUPS = 12;
 const MAX_ELEMENTS = 24;
 
-/** URL conservable — jamais un `blob:`, qui meurt avec l'onglet. */
+/**
+ * URL conservable : absolue `http(s)`, ou chemin relatif du stockage
+ * (`/storage/v1/object/public/…`, la forme que rend `signed-url` sous MinIO).
+ * Jamais `blob:` (meurt avec l'onglet) ni `data:` (le repli d'un envoi
+ * d'affiche échoué : plusieurs Mo de base64 dans la metadata du post).
+ */
 export const persistableUrl = (url: string | null | undefined): string | undefined =>
-  url && !url.startsWith('blob:') ? url : undefined;
+  url && (/^https?:\/\//i.test(url) || (url.startsWith('/') && !url.startsWith('//'))) ? url : undefined;
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -586,15 +591,22 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     videoDuration: num(raw.videoDuration, 0, 60, d.durations.video),
     ctaDuration: num(raw.ctaDuration, 0, 60, d.durations.cta),
     generated: sanitizeGenerated(raw.generated),
+    // La forme est celle du mixeur ET du compositeur (`AudioKeyframe` :
+    // `id`, `time`, `musicVolume`, `rushVolume`, `voiceVolume`). Ce
+    // filtre en inventait une autre (`t`, `music`, `voice`, `rush`) : après un
+    // rechargement ou « Modifier », le compositeur recevait `time` indéfini et
+    // appelait `setValueAtTime(undefined, NaN)`. Les anciens brouillons
+    // écrits sous cette forme sont relus vers la bonne.
     audioKeyframes: Array.isArray(raw.audioKeyframes)
       ? raw.audioKeyframes
           .filter(isObj)
           .slice(0, 200)
-          .map((k) => ({
-            t: num(k.t, 0, 3600, 0),
-            music: num(k.music, 0, 1, 0.5),
-            voice: num(k.voice, 0, 1, 1),
-            rush: num(k.rush, 0, 1, 1),
+          .map((k, i) => ({
+            id: typeof k.id === 'string' && k.id ? k.id : `kf-${i}`,
+            time: num(k.time ?? k.t, 0, 3600, 0),
+            musicVolume: num(k.musicVolume ?? k.music, 0, 1, 0.5),
+            rushVolume: num(k.rushVolume ?? k.rush, 0, 1, 1),
+            voiceVolume: num(k.voiceVolume ?? k.voice, 0, 1, 1),
           }))
       : undefined,
     // Ces URL sont relues telles quelles : elles ont été filtrées A L'ECRITURE
