@@ -41,7 +41,9 @@ describe('Créer (simple) — import d’un rush', () => {
     // `regenerateMontage` (calendar/page.tsx) lit `meta.rushUrls?.[0]`. Sans
     // ce champ, une régénération produirait le même montage sans sa séquence
     // vidéo. Même condition que `videoUrl`.
-    expect(wizardSource).toMatch(/rushUrls:\s*\n?\s*duree\('video'\) > 0 && persistableUrl\(plateau\.rushUrl\)/);
+    // Mono-rush : `[rushUrl]` comme avant ; la liste entière seulement en
+    // multi-rush (≥ 2, voir creer-multi-rush.test.tsx).
+    expect(wizardSource).toMatch(/: duree\('video'\) > 0 && persistableUrl\(plateau\.rushUrl\)\s*\n?\s*\? \[persistableUrl\(plateau\.rushUrl\)!\]/);
   });
 
   it('déclare `hasAudio` quand le rush apporte sa propre piste', () => {
@@ -94,7 +96,9 @@ describe('Créer (simple) — import d’un rush', () => {
   it('ouvre la médiathèque filtrée sur les vidéos', () => {
     expect(wizardSource).toContain("import { MediaLibrary } from '@/components/shared/MediaLibrary'");
     expect(wizardSource).toMatch(/mediaType="video"/);
-    expect(wizardSource).toMatch(/onSelect=\{\(url, name\) => \{ void applyRush\(url, name\); \}\}/);
+    // « Importer / Changer » remplace (applyRush) ; « Ajouter un rush » ajoute.
+    expect(wizardSource).toMatch(/else void applyRush\(url, name\);/);
+    expect(wizardSource).toMatch(/if \(rushAjoutRef\.current\) \{ rushAjoutRef\.current = false; void ajouterRush\(url, name\); \}/);
   });
 
   it('déclare enfin un rush au panneau audio (durée de séquence réglable)', () => {

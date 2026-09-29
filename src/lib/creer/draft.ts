@@ -152,6 +152,14 @@ export interface Draft {
   rushUrl?: string;
   rushName?: string;
   rushIsClip?: boolean;
+  /** Durée retenue (s) du rush principal — sert au multi-rush. Absente = inconnue. */
+  rushSecondes?: number;
+  /**
+   * MULTI-RUSH : rushes 2..n de la séquence « Vidéo », dans l'ordre
+   * (`src/lib/creer/multi-rush.ts`). Absent = un seul rush, le cas de tous les
+   * brouillons antérieurs.
+   */
+  rushSuivants?: { url: string; name: string; isClip?: boolean; secondes?: number | null }[];
   /**
    * Filtre couleur (LUT) du rush — la RÉFÉRENCE canonique seule (empreinte,
    * nom, intensité) : jamais la table, jamais une URL ni une clé de
@@ -214,6 +222,25 @@ export interface Draft {
 const MAX_BOXES = 24;
 const MAX_GROUPS = 12;
 const MAX_ELEMENTS = 24;
+
+/** Rushes 2..n relus : URL durables seulement, forme bornée. `undefined` si vide. */
+function sanitizeRushSuivants(v: unknown): Draft['rushSuivants'] {
+  if (!Array.isArray(v)) return undefined;
+  const out: NonNullable<Draft['rushSuivants']> = [];
+  for (const r of v.slice(0, 20)) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    const url = persistableUrl(typeof o.url === 'string' ? o.url : null);
+    if (!url) continue;
+    out.push({
+      url,
+      name: typeof o.name === 'string' ? o.name : '',
+      ...(o.isClip === true ? { isClip: true } : {}),
+      secondes: typeof o.secondes === 'number' && Number.isFinite(o.secondes) && o.secondes > 0 ? o.secondes : null,
+    });
+  }
+  return out.length ? out : undefined;
+}
 
 /**
  * URL conservable : absolue `http(s)`, ou chemin relatif du stockage
@@ -629,6 +656,10 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     rushUrl: persistableUrl(raw.rushUrl as string),
     rushName: typeof raw.rushName === 'string' ? raw.rushName : '',
     rushIsClip: raw.rushIsClip === true,
+    rushSecondes: typeof raw.rushSecondes === 'number' && Number.isFinite(raw.rushSecondes) && raw.rushSecondes > 0
+      ? raw.rushSecondes
+      : undefined,
+    rushSuivants: sanitizeRushSuivants(raw.rushSuivants),
     lut: sanitizeLutRef(raw.lut),
     scheduledDate:
       typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)

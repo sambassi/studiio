@@ -35,6 +35,7 @@
  * rendu et ne modifie jamais son argument.
  */
 
+import { rushSegmentsDepuisMetadata, rushsDepuisSegments } from '@/lib/creer/multi-rush';
 import { DRAFT_VERSION, type Draft } from '../draft';
 import { resoudreTextes } from '../textesCanoniques';
 import { fromPostMetadata } from './from-post';
@@ -242,6 +243,15 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // l'ignore volontairement, et le repli réinjecterait une vidéo finale en fond.
   const rushs = presence(meta, 'rushUrls');
   if (Array.isArray(rushs) && typeof rushs[0] === 'string') draft.rushUrl = rushs[0];
+  // Multi-rush : la liste ORDONNEE n'est relue que depuis `rushSegments`
+  // (écrit par Créer), jamais depuis `rushUrls` seul — l'Agent IA y range sa
+  // banque. Sans segments : `rushUrls[0]` seul, comme avant.
+  const segments = rushSegmentsDepuisMetadata(presence(meta, 'rushSegments'));
+  if (segments) {
+    draft.rushUrl = segments[0].url;
+    draft.rushSecondes = Math.round((segments[0].fin - segments[0].debut) * 1000) / 1000;
+    draft.rushSuivants = rushsDepuisSegments(segments.slice(1)).map((r) => ({ url: r.url, name: '', secondes: r.secondes }));
+  }
 
   // ── Audio ───────────────────────────────────────────────────────────
   const musique = presence(meta, 'musicUrl');

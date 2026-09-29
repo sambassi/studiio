@@ -1,7 +1,8 @@
 import React from 'react';
 import {
-  AbsoluteFill, Audio, OffthreadVideo, Img, useVideoConfig, useCurrentFrame,
+  AbsoluteFill, Audio, OffthreadVideo, Img, Sequence, useVideoConfig, useCurrentFrame,
 } from 'remotion';
+import { planRushs } from '../src/lib/creer/multi-rush';
 import {
   buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
   gradientOverlayCss, DEFAULT_COLORS,
@@ -88,6 +89,13 @@ export interface CreerSimpleMontageProps {
   /** Fond propre à une séquence — prioritaire sur l'affiche. */
   sequenceBackgrounds?: Partial<Record<'titre' | 'cartes' | 'video' | 'cta', string | null>>;
   videoUrl?: string | null;
+  /**
+   * MULTI-RUSH (`src/lib/creer/multi-rush.ts`) : rushes enchaînés dans la
+   * séquence « Vidéo », dans l'ordre. Lu seulement à partir de 2 entrées ;
+   * absent ou à une entrée, seul `videoUrl` compte — rendu identique.
+   * L'Autopilote ne le passe pas.
+   */
+  rushs?: ReadonlyArray<{ url: string; secondes?: number | null }> | null;
   musicUrl?: string | null;
   gradientStart?: string;
   gradientEnd?: string;
@@ -430,10 +438,42 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         // chevauchement qui la fait demarrer plus tot. Sert au volume du
         // rush, dont la fonction recoit une frame relative a sa sequence.
         const departSerie = (i: number) => (i === 0 ? 0 : offsets[i] - tFrames);
+        // Multi-rush : durée de la séquence « Vidéo » et écart entre le début
+        // de sa séquence dans la série et son début NOMINAL.
+        const iVideo = sequences.findIndex((s) => s.type === 'video');
+        const plusieursRushs = (props.rushs?.filter((r) => r?.url).length ?? 0) >= 2 && iVideo >= 0;
+        const dureeVideo = iVideo >= 0 ? sequences[iVideo].duration : 0;
+        const avance = (depart: number) => (iVideo >= 0 ? Math.max(0, offsets[iVideo] - depart) : 0);
 
         const contenu = (type: string, anim: AnimationCourante, depart: number) => (
           <AbsoluteFill>
-            {type === 'video' && props.videoUrl ? (
+            {type === 'video' && props.videoUrl && plusieursRushs ? (
+              // Multi-rush : un `Sequence` par rush. Le premier démarre avec la
+              // séquence (comme le rush unique, dès le raccord) ; les suivants
+              // à leur place NOMINALE, `avance` frames après le début de la
+              // série. Le dernier court jusqu'au bout (raccord sortant compris).
+              <>
+                {planRushs(props.rushs!, dureeVideo).map((seg, k, plan) => {
+                  const from = k === 0 ? 0 : avance(depart) + Math.round(seg.debut * fps);
+                  const fin = avance(depart) + Math.round(seg.fin * fps);
+                  return (
+                    <Sequence
+                      key={`rush-${k}`}
+                      from={from}
+                      {...(k < plan.length - 1 ? { durationInFrames: Math.max(1, fin - from) } : {})}
+                    >
+                      <OffthreadVideo
+                        src={seg.url}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        volume={(f) => (
+                          props.rushMuted ? 0 : mixAt((depart + from + f) / fps, mixOptions).rush
+                        )}
+                      />
+                    </Sequence>
+                  );
+                })}
+              </>
+            ) : type === 'video' && props.videoUrl ? (
               <OffthreadVideo
                 src={props.videoUrl}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}

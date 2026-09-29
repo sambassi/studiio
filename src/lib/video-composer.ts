@@ -19,6 +19,7 @@ import {
 } from '@/lib/creer/designSpec';
 import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import type { Lut } from '@/lib/luts/types';
+import { planRushs, segmentA } from '@/lib/creer/multi-rush';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -557,6 +558,14 @@ export interface ComposerOptions {
    * brut plutot que de faire echouer le montage.
    */
   rushLut?: { lut: Lut; intensity: number } | null;
+  /**
+   * MULTI-RUSH — la liste ORDONNEE des rushes a enchainer dans la sequence
+   * « Video » (`src/lib/creer/multi-rush.ts`). Lue seulement a partir de 2
+   * entrees : chaque rush joue sa part de la sequence (proportionnelle a
+   * `secondes`), LUT et audio du rush appliques a chacun. Absente ou a une
+   * entree : seul `videoUrl` compte — rendu strictement identique a avant.
+   */
+  rushs?: ReadonlyArray<{ url: string; secondes?: number | null }> | null;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3545,12 +3554,28 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const effectiveVideoImageUrl = !videoUrl && videoImageUrl ? videoImageUrl : null;
   console.log('[Composer] Loading media:', { poster: posterUrl?.substring(0, 60) || 'NONE', logo: logoUrl?.substring(0, 30) || 'NONE', video: videoUrl?.substring(0, 60) || 'NONE', videoImage: effectiveVideoImageUrl?.substring(0, 60) || 'NONE' });
   const mediaLoadStart = performance.now();
-  const [posterImg, logoImg, videoEl, videoImageEl] = await Promise.all([
+  // Multi-rush : a partir de 2 rushes seulement, et seulement si un rush est
+  // demande (`videoUrl`) — un appelant qui masque la sequence ne le passe pas.
+  const rushsDemandes = videoUrl && options.rushs && options.rushs.filter((r) => r?.url).length >= 2
+    ? options.rushs.filter((r) => r?.url)
+    : null;
+  const [posterImg, logoImg, videoElPrincipal, videoImageEl, rushsCharges] = await Promise.all([
     posterUrl ? loadImage(posterUrl).catch((err) => { console.error('[Composer] ❌ Poster load FAILED:', err.message); return null; }) : null,
     logoUrl ? loadImage(logoUrl).catch((err) => { console.error('[Composer] ❌ Logo load FAILED:', err.message); return null; }) : null,
-    videoUrl ? loadVideo(videoUrl).catch((err) => { console.error('[Composer] ❌ Video load FAILED:', err.message); return null; }) : null,
+    videoUrl && !rushsDemandes ? loadVideo(videoUrl).catch((err) => { console.error('[Composer] ❌ Video load FAILED:', err.message); return null; }) : null,
     effectiveVideoImageUrl ? loadImage(effectiveVideoImageUrl).catch((err) => { console.error('[Composer] ❌ Video still image load FAILED:', err.message); return null; }) : null,
+    rushsDemandes
+      ? Promise.all(rushsDemandes.map((r) => loadVideo(r.url)
+          .then((el) => ({ el, url: r.url, secondes: r.secondes ?? null }))
+          .catch((err) => { console.error('[Composer] ❌ Rush load FAILED:', r.url.substring(0, 60), err.message); return null; })))
+      : null,
   ]);
+  // Rushes effectivement charges, dans l'ordre. Un rush illisible est saute :
+  // les autres se partagent la sequence plutot que de laisser un trou noir.
+  const rushsLus = (rushsCharges ?? []).filter((r): r is { el: HTMLVideoElement; url: string; secondes: number | null } => !!r);
+  // `videoEl` reste LE rush de reference (audio, bascule temps reel) : le
+  // premier charge en multi-rush, l'unique sinon.
+  const videoEl: HTMLVideoElement | null = rushsDemandes ? (rushsLus[0]?.el ?? null) : videoElPrincipal;
   console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl} videoImage:${!!videoImageEl}`);
 
   // Recadrage de l'affiche, applique UNE fois : le resultat sert ensuite de
@@ -3734,6 +3759,20 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const seqStarts: number[] = [];
   let cumTime = 0;
   for (const seq of sequences) { seqStarts.push(cumTime); cumTime += seq.duration; }
+
+  // ── Plan multi-rush ───────────────────────────────────────────────────
+  // `null` hors multi-rush : tous les chemins ci-dessous gardent alors le
+  // `videoEl` unique, a la lettre comme avant.
+  const videoSeqPlan = sequences.find((s) => s.type === 'video');
+  const rushPlan: { el: HTMLVideoElement; debut: number; fin: number }[] | null =
+    rushsLus.length >= 2 && videoSeqPlan
+      ? planRushs(rushsLus, videoSeqPlan.duration).map((seg, i) => ({ el: rushsLus[i].el, debut: seg.debut, fin: seg.fin }))
+      : null;
+  if (rushPlan) {
+    console.log('[Composer] Multi-rush :', rushPlan.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s`).join(' | '));
+  }
+  // Tous les elements video du rush (un seul hors multi-rush).
+  const rushEls: HTMLVideoElement[] = rushPlan ? rushPlan.map((s) => s.el) : (videoEl ? [videoEl] : []);
 
   console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
@@ -3945,7 +3984,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         case 'video': {
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
-          drawVideoSeq(target, width, height, videoEl, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
+          const rushCourant = rushPlan ? (segmentA(rushPlan, secondsIn)?.el ?? videoEl) : videoEl;
+          drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
           break;
         }
         case 'cta': drawCTA(target, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
@@ -4190,13 +4230,17 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         // to avoid speaker bleed during loading). Unmute right before routing
         // — the speaker output gets bypassed automatically once the source is
         // connected to the WebAudio graph, so no double playback.
-        videoEl.muted = false;
-        const rushSource = audioCtx.createMediaElementSource(videoEl);
         const rushGain = audioCtx.createGain();
         // No keyframes (rush-only montage) → full volume since there's nothing
         // to duck against; with a music/voice mix keep the legacy 0.5 default.
         rushGain.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? (hasMixAudio ? 0.5 : 1.0);
-        rushSource.connect(rushGain);
+        // Multi-rush : chaque rush passe par le MEME gain (meme reglage, meme
+        // ducking). Un seul element hors multi-rush — le chemin d'avant.
+        for (const el of rushEls) {
+          el.muted = false;
+          const rushSource = audioCtx.createMediaElementSource(el);
+          rushSource.connect(rushGain);
+        }
         rushGain.connect(audioDest);
         rushGainNode = rushGain;
         console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted, '| ctx.state:', audioCtx.state);
@@ -4498,7 +4542,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       if (voiceEl) { voiceEl.pause(); voiceEl.currentTime = 0; }
       try { musicBufferSource?.stop(); } catch {}
       try { voiceBufferSource?.stop(); } catch {}
-      if (videoEl) videoEl.pause();
+      for (const el of rushEls) el.pause();
       stopRtTicker();
       document.removeEventListener('visibilitychange', onVisibilityChange);
       releaseWakeLock();
@@ -4675,7 +4719,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
 
     // START video element
-    if (videoEl) { videoEl.currentTime = 0; videoEl.pause(); }
+    for (const el of rushEls) { el.currentTime = 0; el.pause(); }
 
     // ── CRITICAL: draw frame 0 BEFORE starting the recorder ──
     // Same fix as fast mode: the canvas must already show the intro
@@ -4725,7 +4769,21 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       const t = Math.min(elapsed, totalDuration - 0.001);
 
       // Gérer l'élément vidéo
-      if (videoEl) {
+      if (rushPlan) {
+        // Multi-rush : chaque rush joue dans SA fenetre de la sequence video,
+        // depuis son debut ; tous les autres sont en pause.
+        const videoSeq = sequences.find(s => s.type === 'video');
+        if (videoSeq) {
+          const vs = seqStarts[sequences.indexOf(videoSeq)];
+          for (const seg of rushPlan) {
+            const a = vs + seg.debut;
+            const b = vs + seg.fin;
+            if (t >= a && t < b) {
+              if (seg.el.paused) { seg.el.currentTime = t - a; seg.el.play().catch(() => {}); }
+            } else if (!seg.el.paused) { seg.el.pause(); }
+          }
+        }
+      } else if (videoEl) {
         const videoSeq = sequences.find(s => s.type === 'video');
         if (videoSeq) {
           const vs = seqStarts[sequences.indexOf(videoSeq)];

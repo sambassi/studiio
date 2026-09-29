@@ -36,6 +36,7 @@ import {
   type TransitionStyle,
 } from '@/lib/video-composer';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
+import { rushSegmentsDepuisMetadata, rushsDepuisSegments } from '@/lib/creer/multi-rush';
 import {
   elementsLibresDepuisMetadata,
   fondsPourMetadata,
@@ -271,6 +272,11 @@ export function optionsRenduDepuisMetadata(
     cards: prep.cards,
     posterUrl: meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null,
     videoUrl: meta.rushUrls?.[0] || null,
+    // Multi-rush : seulement si Créer l'a écrit (`rushSegments`, ≥ 2). Jamais
+    // déduit de `rushUrls.length` — l'Agent IA y range sa banque entière.
+    ...(rushSegmentsDepuisMetadata(meta.rushSegments)
+      ? { rushs: rushsDepuisSegments(rushSegmentsDepuisMetadata(meta.rushSegments)!) }
+      : {}),
     ...(prep.rushLut ? { rushLut: prep.rushLut } : {}),
     logoUrl: meta.logoUrl || designMeta.logoUrl || null,
     musicUrl: meta.musicUrl || null,
