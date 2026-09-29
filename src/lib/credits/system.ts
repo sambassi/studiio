@@ -2,20 +2,31 @@ import { randomUUID } from 'crypto';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { debiterOperationAtomique } from '@/lib/credits/atomique';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
-import { isAdmin } from '@/lib/admin';
+import { politiqueDeLUtilisateur, consommeDesCredits } from '@/lib/facturation/politique';
 
 const ADMIN_BALANCE = 999_999_999;
+
+/**
+ * Une seule règle d'exemption pour tout le produit : le rôle `admin` lu EN
+ * BASE (`politiqueDeLUtilisateur`), comme pour les rendus. L'ancienne liste
+ * d'e-mails de `lib/admin.ts` ne décide plus de la facturation : un compte
+ * listé mais sans rôle admin paie comme les autres.
+ */
+async function estExempte(userId: string): Promise<boolean> {
+  const { politique } = await politiqueDeLUtilisateur(userId);
+  return !consommeDesCredits(politique);
+}
 
 export async function getUserCredits(userId: string): Promise<number> {
   const { data, error } = await supabase
     .from('users')
-    .select('credits, email')
+    .select('credits')
     .eq('id', userId)
     .single();
 
   if (error) throw new Error('Failed to fetch user credits');
-  // Admin = solde illimité (jamais bloqué par les checks de crédits).
-  if (data?.email && isAdmin(data.email)) return ADMIN_BALANCE;
+  // Exemption = rôle admin EN BASE (même règle que les rendus), et non plus l'e-mail.
+  if (await estExempte(userId)) return ADMIN_BALANCE;
   return data?.credits || 0;
 }
 
@@ -51,12 +62,10 @@ export async function getUserCredits(userId: string): Promise<number> {
  * CE QUI N'A PAS CHANGÉ, ET POURQUOI
  * ─────────────────────────────────────────────────────────────────────────
  *
- * L'exemption administrateur reste ce qu'elle était : une liste d'e-mails
- * (`lib/admin.ts`), distincte de la politique par rôle qui gouverne les
- * rendus. Les deux mécanismes coexistent, et ce lot ne les unifie pas — les
- * quatre parcours qui passent ici (IA image, avatar, autopilote, ajustement
- * admin) n'ont jamais connu que celui-ci, et les fusionner changerait ce que
- * paient des comptes réels.
+ * L'exemption administrateur suit désormais le rôle `admin` en base
+ * (`estExempte`), la même règle que les rendus — décision produit du
+ * 2026-09-29. La liste d'e-mails de `lib/admin.ts` ne sert plus qu'aux accès
+ * admin, plus à la facturation.
  *
  * Le `type` reste `'render'` : la colonne porte un CHECK fermé sur cinq
  * valeurs, dont ni `avatar` ni `ia` ne font partie. La raison de l'appel,
@@ -79,13 +88,8 @@ export async function deductCredits(
   reason: string = 'render',
   reference?: string | null,
 ): Promise<boolean> {
-  // Admin = pas de décrément. On retourne true sans toucher à la DB.
-  const { data: u } = await supabase
-    .from('users')
-    .select('email')
-    .eq('id', userId)
-    .single();
-  if (u?.email && isAdmin(u.email)) return true;
+  // Exempté (rôle admin en base) = pas de décrément.
+  if (await estExempte(userId)) return true;
 
   // Une référence jetable reste une référence : elle nourrit l'index et rend
   // la ligne traçable. Ce qu'elle ne fait pas, c'est reconnaître un rejeu.
