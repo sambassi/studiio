@@ -1171,3 +1171,10 @@ donner exactement les mêmes options sur chaque chemin (`toStrictEqual`) — les
 écarts historiques entre chemins sont gardés et nommés, pas corrigés en
 passant. (3) Un artefact dérivé (photo des cartes) n'est relu que s'il porte
 l'empreinte de ce qu'il représente ; sinon on retombe sur le rendu d'avant.
+
+[2026-09-29] | TTS Edge en 504 sur staging alors que le réseau vers Microsoft
+était sain : webpack avait bundlé `ws` (via msedge-tts), qui lève
+`t.mask is not a function` hors promesse — aucune trame ne part, la route
+attend son délai. | Toute lib serveur qui ouvre un WebSocket (`ws`) va dans
+`serverComponentsExternalPackages` + externals webpack ; diagnostiquer en
+chargeant le chunk RÉELLEMENT déployé, pas la lib depuis npm.
