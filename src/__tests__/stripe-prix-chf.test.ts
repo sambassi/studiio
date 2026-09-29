@@ -56,6 +56,8 @@ const post = (body: any) => new Request('http://localhost/x', {
 }) as any;
 
 beforeEach(() => {
+  // Préfixe seul : clé factice, jamais utilisée (Stripe est mocké).
+  process.env.STRIPE_SECRET_KEY = 'sk_live_factice';
   base = nouvelleBase();
   base.tables.users.push({ id: 'user-1', credits: 10, stripe_customer_id: 'cus_1' });
   // Ligne en base, synchronisée depuis Stripe : 4900 / (49000 / 12 = 4083).
@@ -67,11 +69,11 @@ beforeEach(() => {
   for (const k of Object.keys(prixStripe)) delete prixStripe[k];
   sessionsCreees.length = 0;
   abonnementsClient.length = 0;
-  prixStripe.price_pro_m = { id: 'price_pro_m', active: true, currency: 'chf', unit_amount: 4900, recurring: { interval: 'month' } };
-  prixStripe.price_pro_y = { id: 'price_pro_y', active: true, currency: 'chf', unit_amount: 49000, recurring: { interval: 'year' } };
-  prixStripe.price_pack_m = { id: 'price_pack_m', active: true, currency: 'chf', unit_amount: 2900, recurring: null };
-  prixStripe.price_env = { id: 'price_env', active: true, currency: 'chf', unit_amount: 4900, recurring: { interval: 'month' } };
-  prixStripe.price_ANCIEN_eur = { id: 'price_ANCIEN_eur', active: true, currency: 'eur', unit_amount: 4900, recurring: { interval: 'month' } };
+  prixStripe.price_pro_m = { livemode: true, id: 'price_pro_m', active: true, currency: 'chf', unit_amount: 4900, recurring: { interval: 'month' } };
+  prixStripe.price_pro_y = { livemode: true, id: 'price_pro_y', active: true, currency: 'chf', unit_amount: 49000, recurring: { interval: 'year' } };
+  prixStripe.price_pack_m = { livemode: true, id: 'price_pack_m', active: true, currency: 'chf', unit_amount: 2900, recurring: null };
+  prixStripe.price_env = { livemode: true, id: 'price_env', active: true, currency: 'chf', unit_amount: 4900, recurring: { interval: 'month' } };
+  prixStripe.price_ANCIEN_eur = { livemode: true, id: 'price_ANCIEN_eur', active: true, currency: 'eur', unit_amount: 4900, recurring: { interval: 'month' } };
 });
 
 afterEach(() => {
@@ -117,7 +119,7 @@ describe('résolution des prix : la base fait autorité', () => {
     await expect(prix.verifierPrix(s, 'price_ANCIEN_eur', { recurrent: 'month', montant: 4900 })).rejects.toThrow(/EUR/);
     await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: 'year', montant: 4900 })).rejects.toThrow(/intervalle/);
     await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: null, montant: 4900 })).rejects.toThrow(/récurrent/);
-    prixStripe.price_off = { active: false, currency: 'chf' };
+    prixStripe.price_off = { livemode: true, active: false, currency: 'chf' };
     await expect(prix.verifierPrix(s, 'price_off', { recurrent: null, montant: 0 })).rejects.toThrow(/inactif/);
     await expect(prix.verifierPrix(s, 'absent', { recurrent: null, montant: 0 })).rejects.toThrow(/introuvable/);
     await expect(prix.verifierPrix(s, 'price_pro_m', { recurrent: 'month', montant: 4900 })).resolves.toBeUndefined();
@@ -129,7 +131,7 @@ describe('résolution des prix : la base fait autorité', () => {
     expect(prix.montantAttenduPlan(offre, 'monthly')).toEqual({ montant: 4900, tolerance: 0 });
     expect(prix.montantAttenduPlan(offre, 'yearly')).toEqual({ montant: 4083 * 12, tolerance: 50 });
     await expect(prix.verifierPrix(s, 'price_pro_y', { recurrent: 'year', ...prix.montantAttenduPlan(offre, 'yearly') })).resolves.toBeUndefined();
-    prixStripe.price_pro_faux = { active: true, currency: 'chf', unit_amount: 7999, recurring: { interval: 'month' } };
+    prixStripe.price_pro_faux = { livemode: true, active: true, currency: 'chf', unit_amount: 7999, recurring: { interval: 'month' } };
     await expect(prix.verifierPrix(s, 'price_pro_faux', { recurrent: 'month', montant: 4900 })).rejects.toThrow(/7999 centimes au lieu de 4900/);
   });
 });

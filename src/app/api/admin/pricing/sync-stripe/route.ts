@@ -13,6 +13,8 @@ export const dynamic = 'force-dynamic';
  * proposé sans rien écrire. Avec `confirm: true`, écrit — et seulement si
  * aucune offre n'est en erreur (prix manquant ou ambigu chez Stripe).
  * Lecture Stripe seule : aucun prix ni produit n'est créé ou modifié.
+ * Mode TEST/LIVE déduit de la clé : un produit ou prix de l'autre mode est
+ * une erreur, donc bloque toute écriture (cf. `lib/stripe/produits`).
  */
 export async function POST(req: NextRequest) {
   const garde = await requireAdmin();
@@ -32,16 +34,16 @@ export async function POST(req: NextRequest) {
     console.error('[sync-stripe]', e?.message);
     return NextResponse.json({ success: false, error: e?.message || 'lecture impossible' }, { status: 502 });
   }
-  const { lignes, erreurs } = resultat;
+  const { mode, lignes, erreurs } = resultat;
   const aEcrire = lignes.filter((l) => l.modifie).length;
 
   if (!confirm) {
-    await logAdminAction({ adminEmail, action: 'pricing.sync_stripe.dry_run', details: { aEcrire, erreurs } });
-    return NextResponse.json({ success: erreurs.length === 0, dryRun: true, lignes, erreurs, aEcrire });
+    await logAdminAction({ adminEmail, action: 'pricing.sync_stripe.dry_run', details: { mode, aEcrire, erreurs } });
+    return NextResponse.json({ success: erreurs.length === 0, dryRun: true, mode, lignes, erreurs, aEcrire });
   }
 
   if (erreurs.length > 0) {
-    return NextResponse.json({ success: false, dryRun: false, lignes, erreurs, error: 'Synchronisation refusée : erreurs à corriger dans Stripe' }, { status: 422 });
+    return NextResponse.json({ success: false, dryRun: false, mode, lignes, erreurs, error: 'Synchronisation refusée : erreurs à corriger dans Stripe' }, { status: 422 });
   }
 
   try {
@@ -49,9 +51,9 @@ export async function POST(req: NextRequest) {
     invalidatePricingCache();
     await logAdminAction({
       adminEmail, action: 'pricing.sync_stripe',
-      details: { ecrites, lignes: lignes.filter((l) => l.modifie).map((l) => ({ table: l.table, key: l.key, champs: l.champs })) },
+      details: { mode, ecrites, lignes: lignes.filter((l) => l.modifie).map((l) => ({ table: l.table, key: l.key, champs: l.champs })) },
     });
-    return NextResponse.json({ success: true, dryRun: false, lignes, erreurs, ecrites });
+    return NextResponse.json({ success: true, dryRun: false, mode, lignes, erreurs, ecrites });
   } catch (e: any) {
     console.error('[sync-stripe] ecriture', e?.message);
     return NextResponse.json({ success: false, error: e?.message || 'écriture impossible' }, { status: 500 });

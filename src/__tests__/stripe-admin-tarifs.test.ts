@@ -34,6 +34,7 @@ vi.mock('@/lib/stripe/client', () => ({
       }),
     },
     products: {
+      retrieve: vi.fn(async (id: string) => ({ id, livemode: true, metadata: { app: 'studiio' } })),
       create: vi.fn(async (p: any) => { produits.push(p); return { id: 'prod_new' }; }),
       update: vi.fn(async (id: string, p: any) => { produits.push({ id, ...p }); return { id }; }),
     },
@@ -59,9 +60,9 @@ const post = (body: any) => new Request('http://localhost/x', {
   method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
 }) as any;
 
-const prixM = (id: string, montant: number, extra: any = {}) => ({ id, active: true, currency: 'chf', unit_amount: montant, recurring: { interval: 'month', interval_count: 1 }, ...extra });
-const prixY = (id: string, montant: number) => ({ id, active: true, currency: 'chf', unit_amount: montant, recurring: { interval: 'year', interval_count: 1 } });
-const prixU = (id: string, montant: number) => ({ id, active: true, currency: 'chf', unit_amount: montant, recurring: null });
+const prixM = (id: string, montant: number, extra: any = {}) => ({ id, livemode: true, active: true, currency: 'chf', unit_amount: montant, recurring: { interval: 'month', interval_count: 1 }, ...extra });
+const prixY = (id: string, montant: number) => ({ id, livemode: true, active: true, currency: 'chf', unit_amount: montant, recurring: { interval: 'year', interval_count: 1 } });
+const prixU = (id: string, montant: number) => ({ id, livemode: true, active: true, currency: 'chf', unit_amount: montant, recurring: null });
 
 function stripeComplet() {
   prixParProduit = {
@@ -76,6 +77,8 @@ function stripeComplet() {
 }
 
 beforeEach(() => {
+  // Préfixe seul : clé factice, jamais utilisée (Stripe est mocké).
+  process.env.STRIPE_SECRET_KEY = 'sk_live_factice';
   base = nouvelleBase();
   estAdmin = true;
   journal.length = 0; crees.length = 0; desactives.length = 0; produits.length = 0;
