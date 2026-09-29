@@ -29,11 +29,11 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    // Plus de `*.supabase.co` : aucun composant n'utilise `next/image`, et le
+    // stockage est MinIO, servi par l'application elle-meme. Ce joker ouvrait
+    // l'optimiseur d'images (`/_next/image`) a N'IMPORTE QUEL projet Supabase
+    // — pas seulement le notre — sans aucun usage en contrepartie.
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '*.supabase.co',
-      },
       {
         protocol: 'https',
         hostname: 'lh3.googleusercontent.com',

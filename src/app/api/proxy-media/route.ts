@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { bucketAutorise } from '@/lib/storage/buckets';
-import { clePossedeePar } from '@/lib/storage/acces-objet';
+import { clePossedeePar, origineSupabaseHistorique } from '@/lib/storage/acces-objet';
 
 /**
  * Proxy media files (audio/images) from Supabase storage
@@ -63,7 +63,12 @@ export async function GET(req: NextRequest) {
     // Les chemins relatifs (`/storage/...` du compositeur) sont résolus
     // contre l'origine CONFIGURÉE (NEXT_PUBLIC_APP_URL), pas le header Host
     // (qui est spoofable), pour empêcher la redirection vers un hôte interne.
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    //
+    // Supabase Cloud n'est plus qu'une origine HISTORIQUE (anciens contenus) :
+    // `origineSupabaseHistorique` la lit a l'execution, et jamais depuis
+    // `SUPABASE_URL` — cote serveur, c'est le PostgREST interne, qu'un repli
+    // aurait ouvert a ce relais.
+    const supabaseUrl = origineSupabaseHistorique() || '';
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || '';
     const hostOf = (u: string): string => {
       try { return new URL(u).hostname.toLowerCase().replace(/\.$/, ''); } catch { return ''; }
@@ -74,8 +79,10 @@ export async function GET(req: NextRequest) {
       'images.pexels.com', 'www.pexels.com', 'images.unsplash.com', 'plus.unsplash.com',
     ]);
 
-    // Résolution : base = origine configurée (jamais le header Host).
-    const base = appUrl || supabaseUrl || undefined;
+    // Résolution : base = origine configurée de l'APPLICATION (jamais le
+    // header Host). Un chemin relatif `/storage/…` désigne le relais MinIO de
+    // l'application — jamais Supabase Cloud, qui n'a pas ces objets.
+    const base = appUrl || undefined;
     let parsed: URL;
     try { parsed = new URL(url, base); } catch {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
