@@ -208,10 +208,41 @@ function origineHttp(valeur: unknown): string | null {
 }
 
 /**
+ * L'origine du stockage Supabase Cloud HISTORIQUE, ou `null`.
+ *
+ * Elle ne sert plus qu'a relire les anciens contenus : des URL absolues
+ * `https://<projet>.supabase.co/storage/v1/object/public/…` persistees en base
+ * avant la migration MinIO. Aucun contenu neuf n'y est ecrit.
+ *
+ *   - `SUPABASE_LEGACY_STORAGE_URL` (serveur seulement) fait autorite des
+ *     qu'elle est DEFINIE. Vide ou invalide → aucune origine historique :
+ *     c'est l'interrupteur de coupure, une fois le backfill termine.
+ *   - Sinon, repli sur `NEXT_PUBLIC_SUPABASE_URL` : le comportement d'avant,
+ *     inchange tant que la nouvelle variable n'est pas posee.
+ *
+ * ⚠️ JAMAIS `SUPABASE_URL` : cote serveur elle designe le PostgREST
+ * auto-heberge (reseau Docker interne), pas un stockage. L'admettre ici
+ * ouvrirait un hote interne aux relais de lecture.
+ *
+ * ⚠️ LECTURE PAR `env.X`, JAMAIS PAR `process.env.NEXT_PUBLIC_…` LITTERAL :
+ * Next remplace ce litteral par sa valeur AU BUILD (client ET serveur), et le
+ * Dockerfile y pose `https://placeholder.supabase.co`. Lue ainsi, la valeur
+ * est celle de l'environnement d'execution (Coolify).
+ */
+export function origineSupabaseHistorique(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  if (env.SUPABASE_LEGACY_STORAGE_URL !== undefined) {
+    return origineHttp(env.SUPABASE_LEGACY_STORAGE_URL);
+  }
+  return origineHttp(env.NEXT_PUBLIC_SUPABASE_URL);
+}
+
+/**
  * Les origines sous lesquelles NOTRE stockage peut etre designe, d'apres la
  * configuration : l'application (`NEXT_PUBLIC_APP_URL`, `NEXTAUTH_URL`), le
  * CDN eventuel (`PUBLIC_STORAGE_URL`, dont on ne garde que l'origine) et
- * l'URL Supabase historique (`NEXT_PUBLIC_SUPABASE_URL`). Sans doublon, sans
+ * l'URL Supabase historique (`origineSupabaseHistorique`). Sans doublon, sans
  * barre oblique finale, `http(s)` seulement. Jamais le `Host` de la requete.
  */
 export function originesStockageConfigurees(
@@ -222,7 +253,7 @@ export function originesStockageConfigurees(
     env.NEXT_PUBLIC_APP_URL,
     env.NEXTAUTH_URL,
     env.PUBLIC_STORAGE_URL,
-    env.NEXT_PUBLIC_SUPABASE_URL,
+    origineSupabaseHistorique(env) ?? undefined,
   ]) {
     const origine = origineHttp(brut);
     if (origine && !origines.includes(origine)) origines.push(origine);

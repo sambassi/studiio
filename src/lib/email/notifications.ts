@@ -12,28 +12,21 @@ import {
   accountBanned,
   creditsAdded,
 } from './templates';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/db/supabase';
 
-// Client Supabase pour les recherches d'utilisateurs.
+// Recherche d'utilisateurs : le client serveur COMMUN (`supabaseAdmin`).
 //
-// Construit PARESSEUSEMENT, jamais a l'import : `createClient('')` leve
-// « supabaseUrl is required ». Ce module est atteint depuis
-// `lib/auth/config.ts`, donc depuis quasiment toutes les routes : construit a
-// l'import, il faisait echouer `next build` des que les cles Supabase etaient
-// absentes de l'environnement (« Failed to collect page data for /api/... »),
-// alors qu'aucune requete n'est faite pendant le build.
+// Ce module construisait son propre client sur `NEXT_PUBLIC_SUPABASE_URL`
+// (+ `SUPABASE_SERVICE_ROLE_KEY`) : la variable CLIENT, qui designe encore le
+// projet Supabase Cloud — et que Next remplace au build par la valeur du
+// Dockerfile (`placeholder.supabase.co`). La base est desormais le PostgREST
+// auto-heberge (`SUPABASE_URL`), que `supabaseAdmin` vise deja.
 //
-// Memes variables d'environnement et meme client qu'avant : quand les cles
-// sont presentes (prod), le comportement est strictement identique.
-let _supabase: SupabaseClient | null = null;
-function getSupabase(): SupabaseClient {
-  if (!_supabase) {
-    _supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-    );
-  }
-  return _supabase;
+// `supabaseAdmin` reste paresseux : ce module est atteint depuis
+// `lib/auth/config.ts`, et son import ne doit toujours rien construire
+// (cf. `supabase-lazy-init.test.ts`).
+function getSupabase() {
+  return supabaseAdmin;
 }
 
 /**
