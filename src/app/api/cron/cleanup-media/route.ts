@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { isCronAuthorized } from '@/lib/cron/auth';
 import { getFileType, getExpiresAt } from '@/lib/storage/retention';
-import { storageKey, autopilotRushKeys, clesTournageEtAnalyses, draftRushKeys } from '@/lib/storage/cleanup';
+import {
+  storageKey, autopilotRushKeys, clesTournageEtAnalyses, draftRushKeys, collectStorageUrlsFromPost,
+} from '@/lib/storage/cleanup';
+import { clesDepuisUrl } from '@/lib/storage/references';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -11,6 +14,19 @@ export const maxDuration = 120;
 function verifyCronSecret(req: NextRequest): boolean {
   return isCronAuthorized(req.headers.get('authorization'), process.env.CRON_SECRET);
 }
+
+/**
+ * Médias des posts : les URL brutes (repli historique) ET leurs clés.
+ *
+ * ⚠️ LES CLÉS NE DÉPENDENT PAS DE L'HÔTE. Le rapprochement par URL compare
+ * l'URL stockée à celle que rend `getPublicUrl` — donc à l'hôte de
+ * `NEXT_PUBLIC_APP_URL`. Une URL enregistrée sous un autre hôte (staging vs
+ * prod, www vs apex, ancienne URL Supabase) ne se reconnaissait plus, et le
+ * média du post partait après sa rétention. La clé `<bucket>/<chemin>` est la
+ * même partout. L'ancien rapprochement reste en repli : on ne protège jamais
+ * MOINS qu'avant.
+ */
+interface MediasProteges { urls: Set<string>; cles: Set<string> }
 
 /**
  * Fichiers que le nettoyage ne doit JAMAIS supprimer.
@@ -28,8 +44,10 @@ function verifyCronSecret(req: NextRequest): boolean {
  * Retirer un rush de la banque le rend de nouveau éligible : la protection
  * suit la référence, elle ne marque pas le fichier.
  */
-async function getProtectedUrls(): Promise<Set<string> | null> {
+async function getProtectedUrls(): Promise<MediasProteges | null> {
   const urls = new Set<string>();
+  const cles = new Set<string>();
+  const ajouterCles = (u: unknown) => { for (const k of clesDepuisUrl(u)) cles.add(k); };
 
   // ⚠️ L'ERREUR ÉTAIT IGNORÉE, ET UN ENSEMBLE VIDE RENDU À SA PLACE.
   //
@@ -54,9 +72,13 @@ async function getProtectedUrls(): Promise<Set<string> | null> {
 
   for (const post of posts) {
     if (post.media_url) urls.add(post.media_url);
+    ajouterCles(post.media_url);
 
     const meta = post.metadata as Record<string, any> | null;
     if (!meta) continue;
+    // Les mêmes champs, plus ceux que la suppression en cascade connaît
+    // (fonds par séquence, photo des cartes, rushes en objets `{ url }`…).
+    for (const u of collectStorageUrlsFromPost(meta)) ajouterCles(u);
 
     const urlFields = [
       'videoUrl', 'rawVideoUrl', 'posterUrl',
@@ -64,15 +86,17 @@ async function getProtectedUrls(): Promise<Set<string> | null> {
     ];
     for (const field of urlFields) {
       if (meta[field]) urls.add(meta[field]);
+      ajouterCles(meta[field]);
     }
     if (Array.isArray(meta.rushUrls)) {
       for (const u of meta.rushUrls) {
         if (u) urls.add(u);
+        ajouterCles(u);
       }
     }
   }
 
-  return urls;
+  return { urls, cles };
 }
 
 /**
@@ -85,12 +109,18 @@ async function getProtectedUrls(): Promise<Set<string> | null> {
  */
 function protection(
   publicUrl: string,
-  protectedUrls: Set<string>,
+  proteges: MediasProteges,
   rushKeys: Set<string>,
+  cleObjet?: string,
 ): 'post' | 'rush' | null {
   const cle = storageKey(publicUrl);
   if (cle && rushKeys.has(cle)) return 'rush';
-  return isProtected(publicUrl, protectedUrls) ? 'post' : null;
+  // Par CLÉ d'abord — celle reconstruite depuis bucket + chemin, puis celle
+  // de l'URL publique — indépendamment de l'hôte.
+  if (cleObjet && proteges.cles.has(cleObjet)) return 'post';
+  if (cle && proteges.cles.has(cle)) return 'post';
+  // Repli historique : rapprochement d'URL brutes.
+  return isProtected(publicUrl, proteges.urls) ? 'post' : null;
 }
 
 function isProtected(publicUrl: string, protectedUrls: Set<string>): boolean {
@@ -240,7 +270,7 @@ export async function GET(req: NextRequest) {
     path: string,
     file: any,
     now: Date,
-    protectedUrls: Set<string>,
+    protectedUrls: MediasProteges,
     breakdown: Record<string, number>,
     errors: string[],
   ) {
@@ -274,7 +304,7 @@ export async function GET(req: NextRequest) {
       preserved++;
       return;
     }
-    if (protection(publicUrl, protectedUrls, rushKeys)) {
+    if (protection(publicUrl, protectedUrls, rushKeys, cle)) {
       exemptesPosts++;
       preserved++;
       return;

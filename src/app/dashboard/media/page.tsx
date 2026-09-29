@@ -66,8 +66,11 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
 
   if (file.preserved) {
     return (
-      <span className="inline-flex items-center gap-0.5 rounded-full border border-green-500/30 bg-green-500/15 px-1.5 py-0.5 text-[9px] font-medium text-green-400">
-        <ShieldCheck size={9} /> Préservé
+      <span
+        className="inline-flex items-center gap-0.5 rounded-full border border-green-500/30 bg-green-500/15 px-1.5 py-0.5 text-[9px] font-medium text-green-400"
+        title="Protégé : utilisé par un contenu (brouillon, programmé ou publié)"
+      >
+        <ShieldCheck size={9} /> Protégé (utilisé par un contenu)
       </span>
     );
   }
