@@ -21,11 +21,62 @@ const UUID_RE =
  */
 type ResolvedUser = { id: string; isNew: boolean };
 
+/**
+ * Clé de comparaison d'une adresse : espaces de bord retirés, minuscules.
+ * C'est exactement l'expression de l'index `users_email_lower_unique`
+ * (`lower(btrim(email))`, migrations/2026-09-29-users-contraintes.sql).
+ */
+export function cleEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Motif ILIKE qui ne correspond QU'À l'adresse donnée, casse ignorée :
+ * `%`, `_` et `\` sont échappés. `*` (joker PostgREST) est traité par
+ * l'appelant, qui refiltre de toute façon les lignes côté serveur.
+ */
+export function motifEmailExact(email: string): string {
+  return email.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * Compte existant dont l'adresse ne diffère QUE par la casse / les espaces.
+ *
+ * N'est appelé que lorsque la recherche exacte n'a rien trouvé : le cas
+ * nominal ne change pas. Sans ce rattrapage, une adresse `Coach@x.com`
+ * (Facebook) face à `coach@x.com` (Google) créait un second compte — et,
+ * une fois l'index `users_email_lower_unique` posé, l'INSERT échouerait et
+ * la connexion bouclerait sans compte.
+ *
+ * Les lignes renvoyées sont REFILTRÉES ici sur `cleEmail` : même si un
+ * caractère échappait au motif, aucun autre compte ne peut être rattaché.
+ */
+async function chercherCompteCasseInsensible(email: string) {
+  const cle = cleEmail(email);
+  if (!cle || cle.includes('*')) return { rows: [] as any[], error: null };
+  const { data, error } = await supabaseAdmin
+    .from('users')
+    .select('id, email, credits, created_at')
+    .ilike('email', motifEmailExact(cle))
+    .order('credits', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: true })
+    .limit(5);
+  const rows = (data || []).filter(
+    (r: any) => typeof r?.email === 'string' && cleEmail(r.email) === cle,
+  );
+  return { rows, error };
+}
+
 async function resolveSupabaseUserId(
-  email: string,
+  rawEmail: string,
   fallbackName?: string | null,
   fallbackAvatar?: string | null,
 ): Promise<ResolvedUser | null> {
+  // Espaces de bord retirés (jamais présents chez Google/Facebook : sans
+  // effet sur les comptes existants). La CASSE est conservée à l'insertion :
+  // d'autres routes relisent encore le compte par `.eq('email',
+  // session.user.email)` exact (api/user/profile, api/social/status).
+  const email = rawEmail.trim();
   try {
     // Lookup with explicit list (NOT .single/.maybeSingle) because
     // historical data may contain DUPLICATES with the same email — the
@@ -47,6 +98,21 @@ async function resolveSupabaseUserId(
       // `null` laisse l'appelant réessayer plus tard.
       console.error('[auth] users lookup error:', lookupErr);
       return null;
+    }
+    if (!matches || matches.length === 0) {
+      const insensible = await chercherCompteCasseInsensible(email);
+      if (insensible.error) {
+        // Même règle que ci-dessus : une lecture en échec ne prouve rien.
+        console.error('[auth] users case-insensitive lookup error:', insensible.error);
+        return null;
+      }
+      if (insensible.rows.length > 0) {
+        console.warn('[auth] account matched by email case only', {
+          picked: insensible.rows[0].id,
+          count: insensible.rows.length,
+        });
+        return { id: insensible.rows[0].id, isNew: false };
+      }
     }
     if (matches && matches.length > 0) {
       if (matches.length > 1) {
@@ -87,6 +153,12 @@ async function resolveSupabaseUserId(
       .limit(1);
     if (retryRows && retryRows.length > 0) {
       return { id: retryRows[0].id, isNew: false };
+    }
+    // …ou une variante de casse l'a créé entre-temps : l'index
+    // `users_email_lower_unique` a refusé l'INSERT, le compte existe.
+    const retryInsensible = await chercherCompteCasseInsensible(email);
+    if (retryInsensible.rows.length > 0) {
+      return { id: retryInsensible.rows[0].id, isNew: false };
     }
   } catch (err) {
     console.error('[auth] resolveSupabaseUserId threw:', err);

@@ -24,6 +24,7 @@ function requete() {
   const q: any = {
     select: () => q,
     eq: () => q,
+    ilike: () => q,
     order: () => q,
     limit: () => q,
     maybeSingle: () => q,
@@ -152,6 +153,7 @@ describe('Cas nominal inchangé', () => {
   it('première connexion : compte absent → création puis identifiant créé', async () => {
     reponses = [
       { data: [], error: null },
+      { data: [], error: null }, // aucune variante de casse (users-contraintes)
       { data: { id: REEL }, error: null },
     ];
     const token = await premiereConnexion();
