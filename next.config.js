@@ -14,7 +14,13 @@ const nextConfig = {
     // minio SDK utilise des imports `node:fs`, `node:stream` etc. que
     // webpack ne sait pas bundler. On le marque comme external pour qu'il
     // soit require() au runtime depuis node_modules.
-    serverComponentsExternalPackages: ['minio'],
+    //
+    // msedge-tts (TTS Edge) : même traitement, pour une autre raison. Il
+    // embarque `ws` ; bundlé par webpack, `ws` perd son masquage de trames
+    // (`TypeError: t.mask is not a function`, levée hors promesse) : aucune
+    // trame ne part, Microsoft ne répond rien, la route attend son délai et
+    // rend 504. Chargé depuis node_modules, il fonctionne.
+    serverComponentsExternalPackages: ['minio', 'msedge-tts'],
   },
   typescript: {
     ignoreBuildErrors: true,
@@ -72,6 +78,8 @@ const nextConfig = {
         'esbuild': 'commonjs esbuild',
         // minio utilise des imports node:* non bundlables
         'minio': 'commonjs minio',
+        // ws embarqué par webpack casse le masquage des trames (voir plus haut)
+        'msedge-tts': 'commonjs msedge-tts',
       });
     }
     return config;
