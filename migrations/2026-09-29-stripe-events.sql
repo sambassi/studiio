@@ -69,6 +69,46 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- 0 bis. UNE REFERENCE STRIPE, UN SEUL CREDIT — TOUS COMPTES CONFONDUS
+--
+-- L'index du 27 aout porte `(user_id, reference_id)`. Pour les references
+-- Stripe ce n'est pas assez : si un checkout et sa facture resolvent deux
+-- comptes differents (metadata vs table `subscriptions`), deux credits
+-- partiraient pour un seul paiement. Index unique PARTIEL et GLOBAL sur
+-- `reference_id like 'stripe:%'` : les debits (`rendu:`, `op:`) et les
+-- lignes historiques (`reference_id` nul) n'en sont pas touches.
+--
+-- GARDE : s'il existe DEJA des doublons, la migration s'arrete ici avec leur
+-- decompte, AVANT toute ecriture (le fichier s'execute en une transaction :
+-- rien de ce qui precede n'est garde non plus). Les doublons sont un
+-- probleme de donnees a regarder, pas a effacer en silence.
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  v_refs   bigint;
+  v_lignes bigint;
+begin
+  select count(*), coalesce(sum(n), 0) into v_refs, v_lignes
+    from (
+      select reference_id, count(*) as n
+        from public.credit_transactions
+       where reference_id like 'stripe:%'
+       group by reference_id
+      having count(*) > 1
+    ) d;
+  if v_refs > 0 then
+    raise exception
+      'credit_transactions : % reference(s) stripe en doublon (% lignes) — migration arretee, rien n a ete modifie',
+      v_refs, v_lignes
+      using errcode = '23505';
+  end if;
+end $$;
+
+create unique index if not exists credit_transactions_stripe_reference_unique
+  on public.credit_transactions (reference_id)
+  where reference_id like 'stripe:%';
+
+-- ---------------------------------------------------------------------------
 -- 1. LA TABLE
 --
 -- Elle a pu etre creee a la main en production (le code l'utilise depuis
@@ -329,8 +369,10 @@ $$;
 --   * increment RELATIF sous verrou de ligne, jamais une valeur lue puis
 --     reecrite en JavaScript ;
 --   * journal ecrit dans la MEME transaction, avec `reference_id` ;
---   * une reference ne peut crediter qu'une fois par utilisateur : l'index
---     unique `(user_id, reference_id)` le tient, meme sous concurrence.
+--   * une reference ne peut crediter qu'UNE fois, tous comptes confondus :
+--     l'index `credit_transactions_stripe_reference_unique` le tient, meme
+--     sous concurrence. Deja utilisee par le meme compte -> rejeu
+--     (`deja_credite`) ; par un autre -> refus `reference_autre_compte`.
 --
 -- La reference DOIT commencer par `stripe:` : elle partage l'index avec les
 -- debits (`rendu:...`, `op:...`), et l'espace de noms empeche qu'un debit
@@ -347,7 +389,8 @@ $$;
 --                         va dans la description.
 --
 -- Motifs de refus (ok=false, rien n'est ecrit) : reference_invalide,
--- montant_invalide, type_invalide, mode_invalide, utilisateur_inconnu.
+-- montant_invalide, type_invalide, mode_invalide, utilisateur_inconnu,
+-- reference_autre_compte.
 -- Rejeu : ok=true, deja_credite=true, solde courant, rien n'est ecrit.
 -- ---------------------------------------------------------------------------
 create or replace function public.crediter_credits_stripe(
@@ -367,6 +410,7 @@ declare
   v_solde     integer;
   v_precedent integer;
   v_desc      text;
+  v_titulaire uuid;
 begin
   if p_reference is null
      or length(btrim(p_reference, E' \t\n\r')) = 0
@@ -377,7 +421,8 @@ begin
   end if;
 
   -- Plafond de securite : le plus gros octroi connu est l'abonnement
-  -- Enterprise (5000). Il borne ce qu'une erreur de code peut donner.
+  -- Enterprise ANNUEL (30 000 credits), sous ce plafond de 100 000. Il borne
+  -- ce qu'une erreur de code peut donner.
   if p_montant is null or p_montant <= 0 or p_montant > 100000 then
     return query select false, 0, false, 'montant_invalide'::text;
     return;
@@ -400,11 +445,19 @@ begin
   end if;
 
   -- Rejeu sequentiel : le cas courant (Stripe relivre APRES un 200 perdu).
-  if exists (
-    select 1 from public.credit_transactions
-     where user_id = p_user_id and reference_id = p_reference
-  ) then
-    return query select true, coalesce(v_solde, 0), true, null::text;
+  -- La reference est GLOBALE (index `credit_transactions_stripe_reference_unique`) :
+  -- deja utilisee par CE compte -> rejeu ; par un AUTRE compte -> refus
+  -- explicite, jamais un second credit.
+  select user_id into v_titulaire
+    from public.credit_transactions
+   where reference_id = p_reference
+   limit 1;
+  if found then
+    if v_titulaire = p_user_id then
+      return query select true, coalesce(v_solde, 0), true, null::text;
+    else
+      return query select false, coalesce(v_solde, 0), false, 'reference_autre_compte'::text;
+    end if;
     return;
   end if;
 
@@ -431,8 +484,16 @@ begin
     values (p_user_id, p_montant, p_type, p_reference, v_desc);
 
   exception when unique_violation then
+    -- Course perdue : le savepoint annule NOTRE increment. Le gagnant est-il
+    -- ce compte (rejeu) ou un autre (refus) ?
     select credits into v_solde from public.users where id = p_user_id;
-    return query select true, coalesce(v_solde, 0), true, null::text;
+    select user_id into v_titulaire
+      from public.credit_transactions where reference_id = p_reference limit 1;
+    if v_titulaire is distinct from p_user_id then
+      return query select false, coalesce(v_solde, 0), false, 'reference_autre_compte'::text;
+    else
+      return query select true, coalesce(v_solde, 0), true, null::text;
+    end if;
     return;
   end;
 
@@ -515,4 +576,27 @@ end $$;
 --   delete from public.stripe_events where event_id = 'evt_controle_migration';
 --   select has_function_privilege('public', 'public.stripe_event_claim(text,text,int)', 'EXECUTE');
 --     -- attendu : false
+--   select indexdef from pg_indexes where indexname = 'credit_transactions_stripe_reference_unique';
+--     -- attendu : une ligne, ... (reference_id) WHERE reference_id LIKE 'stripe:%'
+--
+--   L'upsert `subscriptions ... onConflict: 'stripe_subscription_id'` du
+--   webhook exige une contrainte (ou un index) UNIQUE non partiel sur cette
+--   seule colonne ; sinon PostgREST renvoie 42P10. Lecture seule :
+--   select c.conname, c.contype, pg_get_constraintdef(c.oid)
+--     from pg_constraint c
+--    where c.conrelid = 'public.subscriptions'::regclass
+--      and c.contype in ('u', 'p')
+--      and c.conkey = array[(select attnum from pg_attribute
+--                             where attrelid = 'public.subscriptions'::regclass
+--                               and attname = 'stripe_subscription_id')]::int2[]
+--   union all
+--   select i.indexrelid::regclass::text, 'i', pg_get_indexdef(i.indexrelid)
+--     from pg_index i
+--    where i.indrelid = 'public.subscriptions'::regclass
+--      and i.indisunique and i.indpred is null and i.indnkeyatts = 1
+--      and i.indkey[0] = (select attnum from pg_attribute
+--                          where attrelid = 'public.subscriptions'::regclass
+--                            and attname = 'stripe_subscription_id');
+--     -- attendu : au moins une ligne. Aucune -> NE PAS deployer le webhook,
+--     -- le signaler (lot `subscriptions`, agent C).
 -- ═══════════════════════════════════════════════════════════════════════════

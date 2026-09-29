@@ -25,6 +25,10 @@ drop function if exists public.stripe_event_complete(text);
 drop function if exists public.stripe_event_fail(text, text);
 drop function if exists public.crediter_credits_stripe(uuid, integer, text, text, text, text);
 
+-- L'index global des references Stripe. Le retirer ne supprime aucune ligne ;
+-- l'index du 27 aout `(user_id, reference_id)` reste en place.
+drop index if exists public.credit_transactions_stripe_reference_unique;
+
 -- L'ancien webhook, s'il tourne avec un role non proprietaire, a besoin de
 -- lire et d'inserer. A decommenter en nommant le role reel (jamais `public`) :
 --   grant select, insert on table public.stripe_events to <role_serveur>;

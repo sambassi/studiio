@@ -109,6 +109,56 @@ describe('1. Table absente', () => {
   });
 });
 
+describe('1 bis. Garde M4 : doublons de référence Stripe déjà présents', () => {
+  beforeEach(async () => { await preparerBase(db); });
+
+  it('la migration s arrête avec le décompte, et rien n est modifié', async () => {
+    // Doublons possibles aujourd'hui : l'index du 27 août n'interdit la
+    // même référence que pour un MÊME compte.
+    const a = await creerUtilisateur(db, 10);
+    const b = await creerUtilisateur(db, 20);
+    const c = await creerUtilisateur(db, 30);
+    await db.query(
+      `insert into public.credit_transactions (user_id, amount, type, reference_id) values
+         ($1, 5, 'purchase', 'stripe:cs:double'), ($2, 5, 'purchase', 'stripe:cs:double'),
+         ($1, 7, 'subscription', 'stripe:in:triple'), ($2, 7, 'subscription', 'stripe:in:triple'),
+         ($3, 7, 'subscription', 'stripe:in:triple'),
+         ($1, 1, 'render', 'rendu:partage'), ($2, 1, 'render', 'rendu:partage')`,
+      [a, b, c],
+    );
+    const avant = (await db.query(
+      'select user_id, amount, reference_id from public.credit_transactions order by user_id, reference_id',
+    )).rows;
+
+    await expect(appliquerMigration(db, MIGRATION)).rejects.toMatchObject({
+      code: '23505',
+      message: expect.stringContaining('2 reference(s) stripe en doublon (5 lignes)'),
+    });
+
+    // Rien : ni table, ni fonction, ni index, ni ligne modifiée.
+    expect((await db.query("select to_regclass('public.stripe_events') as t")).rows[0].t).toBeNull();
+    expect((await db.query("select to_regclass('public.credit_transactions_stripe_reference_unique') as t")).rows[0].t).toBeNull();
+    expect((await db.query("select count(*)::int as n from pg_proc where proname = 'crediter_credits_stripe'")).rows[0].n).toBe(0);
+    expect((await db.query(
+      'select user_id, amount, reference_id from public.credit_transactions order by user_id, reference_id',
+    )).rows).toEqual(avant);
+    expect(await solde(db, a)).toBe(10);
+  });
+
+  it('les références de débit partagées ne déclenchent pas la garde', async () => {
+    const a = await creerUtilisateur(db, 10);
+    const b = await creerUtilisateur(db, 20);
+    await db.query(
+      `insert into public.credit_transactions (user_id, amount, type, reference_id) values
+         ($1, -1, 'render', 'rendu:partage'), ($2, -1, 'render', 'rendu:partage')`,
+      [a, b],
+    );
+    await appliquerMigration(db, MIGRATION);
+    expect((await db.query("select to_regclass('public.credit_transactions_stripe_reference_unique') as t")).rows[0].t)
+      .not.toBeNull();
+  });
+});
+
 describe('2. Table minimale créée à la main, avec des lignes', () => {
   beforeEach(async () => {
     await preparerBase(db);
@@ -373,11 +423,52 @@ describe('7. crediter_credits_stripe', () => {
     expect(await solde(db, u)).toBe(600);
   });
 
-  it('la même référence pour deux comptes crédite chacun', async () => {
+  it('M4. la même référence Stripe pour deux comptes : un seul crédit, refus explicite', async () => {
     const a = await creerUtilisateur(db, 0);
     const b = await creerUtilisateur(db, 0);
-    expect((await crediter(db, a, 50, 'stripe:cs:partage')).deja_credite).toBe(false);
-    expect((await crediter(db, b, 50, 'stripe:cs:partage')).deja_credite).toBe(false);
+    expect((await crediter(db, a, 50, 'stripe:in:partage')).deja_credite).toBe(false);
+    const r = await crediter(db, b, 50, 'stripe:in:partage');
+    expect(r).toEqual({ ok: false, solde: 0, deja_credite: false, motif: 'reference_autre_compte' });
+    expect(await solde(db, b)).toBe(0);
+    expect(await transactions(db, b)).toHaveLength(0);
+    // Le rejeu du titulaire reste un rejeu.
+    expect((await crediter(db, a, 50, 'stripe:in:partage')).deja_credite).toBe(true);
+  });
+
+  it('M4. deux comptes en course sur la même référence : un seul crédit au total', async () => {
+    const comptes = [];
+    for (let i = 0; i < 10; i += 1) comptes.push(await creerUtilisateur(db, 0));
+    const res = await enConcurrence(10, (c, i) => crediter(c, comptes[i], 300, 'stripe:in:course'));
+    expect(res.every((r) => r.ok)).toBe(true);
+    const valeurs = res.map((r) => (r.ok ? r.valeur : null));
+    expect(valeurs.filter((v) => v?.ok && !v.deja_credite)).toHaveLength(1);
+    expect(valeurs.filter((v) => v?.motif === 'reference_autre_compte')).toHaveLength(9);
+    const { rows } = await db.query(
+      "select count(*)::int as n, sum(amount)::int as s from public.credit_transactions where reference_id = 'stripe:in:course'",
+    );
+    expect(rows[0]).toEqual({ n: 1, s: 300 });
+    let total = 0;
+    for (const u of comptes) total += await solde(db, u);
+    expect(total).toBe(300);
+  });
+
+  it('M4. l index global est posé, partiel, et ne gêne pas les débits', async () => {
+    const { rows } = await db.query(
+      "select indexdef from pg_indexes where indexname = 'credit_transactions_stripe_reference_unique'",
+    );
+    expect(rows[0].indexdef).toMatch(/UNIQUE INDEX .* \(reference_id\) WHERE .*reference_id.* ~~ 'stripe:%'/);
+    // Deux comptes peuvent toujours porter la même référence de DÉBIT.
+    const a = await creerUtilisateur(db, 100);
+    const b = await creerUtilisateur(db, 100);
+    expect((await debiterOperation(db, a, 10, 'rendu:meme')).deja_debite).toBe(false);
+    expect((await debiterOperation(db, b, 10, 'rendu:meme')).deja_debite).toBe(false);
+    // Et l'index refuse un doublon écrit à la main, hors fonction.
+    await db.query(
+      "insert into public.credit_transactions (user_id, amount, type, reference_id) values ($1, 1, 'bonus', 'stripe:cs:main')", [a],
+    );
+    await expect(db.query(
+      "insert into public.credit_transactions (user_id, amount, type, reference_id) values ($1, 1, 'bonus', 'stripe:cs:main')", [b],
+    )).rejects.toMatchObject({ code: '23505' });
   });
 
   it('refus explicites, rien n est écrit', async () => {
@@ -524,6 +615,8 @@ describe('9. Rollback', () => {
         ('stripe_event_claim','stripe_event_complete','stripe_event_fail','crediter_credits_stripe')`,
     );
     expect(rows[0].n).toBe(0);
+    expect((await db.query("select to_regclass('public.credit_transactions_stripe_reference_unique') as t")).rows[0].t).toBeNull();
+    expect((await db.query("select to_regclass('public.credit_transactions_reference_unique') as t")).rows[0].t).not.toBeNull();
     expect((await ligne(db, 'evt_r'))?.status).toBe('processed');
 
     await appliquerMigration(db, MIGRATION);
