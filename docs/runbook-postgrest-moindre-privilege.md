@@ -101,20 +101,62 @@ studiio        inchangé : propriétaire, superuser, rôle des migrations (psql 
 
 ## 6. Procédure — staging d'abord
 
-La mémoire `staging-isole-etat` indique qu'**aucun staging n'existe encore**. La répétition se
-fait donc sur une **copie jetable** : la sauvegarde de 03h00 est restaurée dans un conteneur
-`postgres:16-alpine` sans réseau Coolify, avec un PostgREST jetable. On y déroule les étapes 2 à
-5, puis la production.
+**Le staging existe.** C'est un projet Coolify séparé, sur le réseau Docker `staging-net`, avec
+les alias `studiio-staging-postgrest`, `studiio-staging-pgrst-proxy` et `studiio-staging-minio`.
+L'app staging (`g4e2bclxt0wqob84ws9j2kza`) répond sur https://staging.studiio.pro. On y déroule
+d'abord les étapes 0 à 5 complètes, **puis** la production (étape 6).
 
 Conventions de toutes les commandes : on n'affiche jamais une valeur de secret, et
 `umask 077` s'applique avant d'écrire un fichier.
 
+### Identifier les conteneurs — STAGING (toujours par alias réseau, jamais par nom)
+
+Les conteneurs staging se retrouvent par **alias sur `staging-net`**, comme dans `stg2.sh`. On ne
+les cherche **jamais** par nom : un `grep studiio-db` ou `grep studiio-postgrest` peut attraper la
+**production**. La base se déduit de l'hôte de `PGRST_DB_URI` du PostgREST staging, et le script
+s'arrête s'il retombe sur `studiio-db`.
+
 ```bash
-PG=$(docker ps --format '{{.Names}}' | grep -m1 studiio-postgrest)
-APP=$(docker ps --format '{{.Names}}' | grep -m1 studiio-app)
-PROXY=$(docker ps --format '{{.Names}}' | grep -m1 studiio-pgrst-proxy)
-DB=$(docker ps --format '{{.Names}}' | grep -m1 studiio-db)
+set -euo pipefail
+NET=staging-net
+envde(){ docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n "s/^$2=//p"; }
+alias_on(){ local c; for c in $(docker ps --format '{{.Names}}'); do
+  docker inspect "$c" --format "{{with index .NetworkSettings.Networks \"$1\"}}{{range .Aliases}}{{println .}}{{end}}{{end}}" 2>/dev/null \
+    | grep -qx "$2" && echo "$c"; done; return 0; }
+un(){ [ "$(printf '%s\n' $2 | grep -c .)" = 1 ] || { echo "STOP : $1 introuvable ou ambigu [$2]"; exit 1; }; }
+
+docker network inspect "$NET" >/dev/null
+PG="$(alias_on "$NET" studiio-staging-postgrest)";      un postgrest "$PG"
+PROXY="$(alias_on "$NET" studiio-staging-pgrst-proxy)"; un proxy "$PROXY"
+APP=""; for c in $(docker ps --format '{{.Names}}'); do
+  envde "$c" SUPABASE_URL | grep -qE '^http://studiio-staging-(pgrst-proxy|postgrest)(:[0-9]+)?/?$' && APP="${APP:+$APP }$c"; done
+un app "$APP"
+H="$(envde "$PG" PGRST_DB_URI | sed -nE 's#^[a-z]+://[^@]*@([^:/?]+).*#\1#p')"   # hote seulement
+DB="$(alias_on "$NET" "$H")"; un db "$DB"
+case "$DB" in studiio-db|studiio-db-*) echo "STOP : db = PRODUCTION"; exit 1;; esac
+DBU="$(envde "$PG" PGRST_DB_URI | sed -nE 's#^[a-z]+://([^:@/]+).*#\1#p')"       # utilisateur, sans mot de passe
+DBN="$(envde "$PG" PGRST_DB_URI | sed -nE 's#^[a-z]+://[^/]*/([^?]+).*#\1#p')"   # nom de base
+echo "STAGING : app=$APP postgrest=$PG proxy=$PROXY db=$DB user=$DBU base=$DBN"
 ```
+
+Sur le staging, les commandes `psql -U studiio -d studiio` des étapes suivantes deviennent
+`psql -U "$DBU" -d "$DBN"`. L'URL publique de contrôle (0.e) est
+`https://staging.studiio.pro`, plus l'éventuel domaine du proxy staging trouvé en 0.d.
+
+### Identifier les conteneurs — PRODUCTION (étape 6 seulement)
+
+Après le succès complet sur le staging, on reprend la même méthode sur le réseau de production.
+Le nom du réseau se lit dans `docker inspect <conteneur studiio-app de prod> --format '{{json .NetworkSettings.Networks}}'`.
+Les alias attendus sont `studiio-postgrest`, `studiio-pgrst-proxy` et `studiio-db`. Il faut
+vérifier explicitement que **`APP` n'est pas l'app staging** : son `SUPABASE_URL` ne doit pas
+contenir `staging`.
+
+### Option : répétition sur une restauration jetable
+
+Elle reste possible en plus du staging, par exemple pour rejouer la migration sur les **données
+de production** sans toucher au staging. On restaure la sauvegarde de 03h00 dans un conteneur
+`postgres:16-alpine` sans réseau Coolify ni port publié, avec un PostgREST jetable et des secrets
+de test. On y déroule les étapes 2 à 5, puis on détruit les deux conteneurs.
 
 ### Étape 0 — Pré-vol, lecture seule
 
@@ -312,7 +354,10 @@ Rollback : remettre l'ancien `PGRST_DB_URI`, puis redémarrer. On peut ensuite r
 
 ### Étape 6 — Production
 
-Mêmes étapes 0 à 5, dans le même ordre, en dehors du créneau du cron de publication.
+Uniquement après le succès complet des étapes 0 à 5 sur le staging, avec §7 vert sur
+https://staging.studiio.pro. On ré-identifie les conteneurs de production (§6, par alias),
+puis on reprend les mêmes étapes 0 à 5 dans le même ordre, en dehors du créneau du cron de
+publication.
 
 - Surveiller l'historique des Scheduled Tasks Coolify, en particulier `publish-cron` à la minute.
 - Surveiller les logs `studiio-app` pendant 30 min après chaque bascule.
@@ -365,7 +410,7 @@ Elle **remplace** « Donne les droits au role PostgREST : `grant all on table pu
 | Tables historiques avec RLS | `service_role` BYPASSRLS : comportement actuel conservé (section H) |
 | `revoke usage on schema public from public` affecte un autre rôle LOGIN | 0.a : aucun attendu, sinon `grant usage` nommé |
 | Rotation de `PGRST_JWT_SECRET` | Hors périmètre, chantier séparé |
-| Staging inexistant | Répétition sur une restauration jetable de la sauvegarde (§6) |
+| Confusion staging / production | Conteneurs identifiés par alias réseau, jamais par nom ; STOP si la base staging résout vers `studiio-db` (§6) |
 
 ## 10. Rollback complet
 
