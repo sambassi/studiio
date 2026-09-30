@@ -215,7 +215,11 @@ describe('La composition pilote l animation à l image', () => {
   });
 
   it('le titre et le CTA, si', () => {
-    expect(composition.match(/reveal=\{anim\.reveal\}/g)).toHaveLength(2);
+    // V3 : les blocs titre / CTA sont écrits une fois (`blocTitre`, `blocCta`)
+    // et reçoivent la révélation de la séquence ; en surimpression, 1.
+    expect(composition.match(/reveal=\{reveal\}/g)).toHaveLength(2);
+    expect(composition).toContain('{blocTitre(anim.reveal)}');
+    expect(composition).toContain('{blocCta(anim.reveal)}');
   });
 });
 

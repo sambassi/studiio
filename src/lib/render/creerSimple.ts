@@ -52,6 +52,8 @@ export interface CreerSimpleRenderInput {
    * produit par le moteur de Créer (`smart-montage.ts`). Absent : rendu d'avant.
    */
   montage?: ReadonlyArray<RushSegment> | null;
+  /** V3 : titre / cartes / CTA en surimpression sur la vidéo continue. */
+  surimpressions?: import('@/lib/creer/overlays').OverlaysMontage | null;
   musicUrl?: string | null;
   gradientStart?: string;
   gradientEnd?: string;

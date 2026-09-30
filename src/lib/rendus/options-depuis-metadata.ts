@@ -36,6 +36,7 @@ import {
   type TransitionStyle,
 } from '@/lib/video-composer';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
+import { overlaysDepuisMetadata } from '@/lib/creer/overlays';
 import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan } from '@/lib/creer/multi-rush';
 import {
   elementsLibresDepuisMetadata,
@@ -281,6 +282,10 @@ export function optionsRenduDepuisMetadata(
       : rushSegmentsDepuisMetadata(meta.rushSegments)
       ? { rushs: rushsDepuisSegments(rushSegmentsDepuisMetadata(meta.rushSegments)!) }
       : {}),
+    // V3 : surimpressions écrites par l'Autopilote (profils dynamiques). Clé
+    // `surimpressions` et non `overlays` : l'éditeur avancé utilise déjà
+    // `overlays` pour ses calques vidéo supplémentaires.
+    ...(overlaysDepuisMetadata(meta.surimpressions) ? { surimpressions: overlaysDepuisMetadata(meta.surimpressions) } : {}),
     ...(prep.rushLut ? { rushLut: prep.rushLut } : {}),
     logoUrl: meta.logoUrl || designMeta.logoUrl || null,
     musicUrl: meta.musicUrl || null,
