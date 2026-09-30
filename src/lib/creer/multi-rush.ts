@@ -54,6 +54,16 @@ export interface RushSegment {
   pertinence?: number | null;
   /** Pourquoi l'extrait a été retenu, lisible. */
   raison?: string;
+  /** V3 : phase narrative (HOOK, BUILD, PEAK, FOCUS, CTA). */
+  phase?: string;
+  /** V3 : différence visuelle avec le plan précédent 0..1. */
+  differenceVisuelle?: number;
+  /** V3 : temps fort de la musique visé par la coupe de fin (s), sinon null. */
+  beatCible?: number | null;
+  /** V3 : effet appliqué ('ralenti'), sinon null. */
+  effet?: string | null;
+  /** V3 : vitesse de lecture (1 = normale, 0.6 = ralenti). */
+  vitesse?: number;
 }
 
 const arrondi = (n: number) => Math.round(n * 1000) / 1000;
@@ -124,7 +134,7 @@ export function rushSegmentsDepuisMetadata(valeur: unknown): RushSegment[] | nul
   const out: RushSegment[] = [];
   for (const v of valeur) {
     if (!v || typeof v !== 'object') return null;
-    const { url, debut, fin, depuis, score, jusqua, qualite, pertinence, raison } = v as Record<string, unknown>;
+    const { url, debut, fin, depuis, score, jusqua, qualite, pertinence, raison, phase, differenceVisuelle, beatCible, effet, vitesse } = v as Record<string, unknown>;
     if (typeof url !== 'string' || !url) return null;
     if (typeof debut !== 'number' || typeof fin !== 'number' || !Number.isFinite(debut) || !Number.isFinite(fin) || fin <= debut) return null;
     out.push({
@@ -135,6 +145,11 @@ export function rushSegmentsDepuisMetadata(valeur: unknown): RushSegment[] | nul
       ...(typeof qualite === 'number' && Number.isFinite(qualite) ? { qualite } : {}),
       ...(typeof pertinence === 'number' && Number.isFinite(pertinence) ? { pertinence } : pertinence === null ? { pertinence: null } : {}),
       ...(typeof raison === 'string' && raison ? { raison: raison.slice(0, 400) } : {}),
+      ...(typeof phase === 'string' && phase ? { phase: phase.slice(0, 16) } : {}),
+      ...(typeof differenceVisuelle === 'number' && Number.isFinite(differenceVisuelle) ? { differenceVisuelle } : {}),
+      ...(typeof beatCible === 'number' && Number.isFinite(beatCible) ? { beatCible } : {}),
+      ...(effet === 'ralenti' ? { effet } : {}),
+      ...(typeof vitesse === 'number' && vitesse >= 0.25 && vitesse <= 2 && vitesse !== 1 ? { vitesse } : {}),
     });
   }
   return out;

@@ -74,6 +74,12 @@ export interface OptionsMontage {
   contexte?: ContexteMontage | null;
   /** Plages montées dans d'AUTRES vidéos du cycle : pénalisées, pas interdites. */
   plagesExclues?: PlagesUtilisees | null;
+  /** Rythme de la musique, recalé sur la séquence « Vidéo » (V3). */
+  rythme?: { beats: number[]; forts: number[]; drop: number | null } | null;
+  /** Profil imposé (sinon déduit du contexte). */
+  profil?: ProfilMontage;
+  /** Interne : nombre de passages recalés sur la durée réellement disponible. */
+  recale?: number;
 }
 
 const arrondi = (n: number) => Math.round(n * 1000) / 1000;
@@ -267,10 +273,165 @@ const ecartEmpreinte = (a: number[], b: number[]) => {
 const chevauche = (a: number, b: number, plages: ReadonlyArray<[number, number]> | undefined, marge: number) =>
   (plages ?? []).some(([x, y]) => a < y + marge && b > x - marge);
 
+// ═══════════════════════════════════════════════════════════════════════
+// SMART MONTAGE V3 — PROFILS DE MONTAGE, PHASES, COUPES SUR LE RYTHME
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Le plan n'est plus « les meilleurs extraits à la suite » : il est MONTÉ
+// selon un profil (déduit du thème / titre / brief / textes, ou imposé) :
+//
+//   HOOK → BUILD → PEAK → FOCUS → CTA
+//
+// Chaque phase a sa durée de plan ; les coupes se calent sur les temps
+// forts de la musique quand elle est analysée (`rythme-musique.ts`), sans
+// couper sur chaque temps ; le drop, s'il existe, ouvre le PEAK.
+//
+// ⚠️ CE QUE LE MOTEUR NE SAIT PAS : il ne reconnaît ni un cadrage (large,
+// gros plan), ni un visage, ni des pieds. La « variété visuelle » est
+// mesurée par la DIFFÉRENCE d'empreinte avec le plan précédent, et la
+// pertinence par le profil d'activité (mouvement, énergie audio). Les
+// descriptions de plans (vision IA, plus tard) s'y ajoutent sans changer
+// l'architecture.
+
+export type ProfilMontage = 'CARDIO_DANCE' | 'LIFESTYLE_BRAND' | 'TUTORIAL_EDUCATION' | 'EVENT_IMMERSIVE' | 'STANDARD';
+export type PhaseMontage = 'HOOK' | 'BUILD' | 'PEAK' | 'FOCUS' | 'CTA';
+
+interface RegleProfil {
+  /** Durée d'un plan par phase [min, max] (s). */
+  phases: Record<PhaseMontage, [number, number]>;
+  softMax: number;
+  hardMax: number;
+  /** Ralenti ponctuel autorisé sur un geste fort. */
+  ralenti: boolean;
+  /** Titres / cartes / CTA en SURIMPRESSION sur le rush (recommandation). */
+  overlay: boolean;
+  /** Profil d'activité utilisé pour la pertinence. */
+  activite: NomProfil | null;
+}
+
+export const REGLES_PROFILS: Record<Exclude<ProfilMontage, 'STANDARD'>, RegleProfil> = {
+  CARDIO_DANCE: {
+    phases: { HOOK: [1.5, 2.5], BUILD: [1.2, 2], PEAK: [0.7, 1.5], FOCUS: [1.2, 1.8], CTA: [2, 3] },
+    softMax: 1.8, hardMax: 3, ralenti: true, overlay: true, activite: 'activite',
+  },
+  EVENT_IMMERSIVE: {
+    phases: { HOOK: [1.5, 2.5], BUILD: [1.5, 2.5], PEAK: [0.8, 1.6], FOCUS: [1.5, 2.2], CTA: [2, 3] },
+    softMax: 2.2, hardMax: 3.5, ralenti: true, overlay: true, activite: 'activite',
+  },
+  LIFESTYLE_BRAND: {
+    phases: { HOOK: [1.5, 2.5], BUILD: [1.5, 3], PEAK: [1.5, 2.5], FOCUS: [1.5, 3], CTA: [2, 3] },
+    softMax: 2.5, hardMax: 3.5, ralenti: false, overlay: true, activite: 'calme',
+  },
+  TUTORIAL_EDUCATION: {
+    phases: { HOOK: [2, 3], BUILD: [2.5, 5], PEAK: [2.5, 5], FOCUS: [2.5, 5], CTA: [2, 3] },
+    softMax: 5, hardMax: 8, ralenti: false, overlay: false, activite: 'parole',
+  },
+};
+
+const LEXIQUE_PROFILS: Record<Exclude<ProfilMontage, 'STANDARD'>, string[]> = {
+  CARDIO_DANCE: LEXIQUE.activite,
+  EVENT_IMMERSIVE: [
+    'evenement', 'event', 'soiree', 'concert', 'festival', 'show', 'spectacle', 'battle', 'stage', 'dj',
+    'gala', 'salon', 'ambiance', 'public', 'foule', 'live', 'party',
+  ],
+  LIFESTYLE_BRAND: [
+    'mode', 'marque', 'produit', 'chaussure', 'sac', 'bijou', 'style', 'elegance', 'elegant', 'collection',
+    'boutique', 'beaute', 'cosmetique', 'lifestyle', 'luxe', 'design', 'tenue', 'accessoire',
+  ],
+  TUTORIAL_EDUCATION: LEXIQUE.parole,
+};
+
+/** Profil de montage déduit du contexte (ou `STANDARD`). Pur. */
+export function profilMontageDuContexte(contexte?: ContexteMontage | null): { profil: ProfilMontage; indices: string[] } {
+  if (!contexte) return { profil: 'STANDARD', indices: [] };
+  const liste = mots([contexte.theme, contexte.sujet, contexte.objectif, contexte.texte].filter(Boolean).join(' '));
+  let meilleur: { profil: ProfilMontage; indices: string[] } = { profil: 'STANDARD', indices: [] };
+  for (const profil of ['CARDIO_DANCE', 'EVENT_IMMERSIVE', 'LIFESTYLE_BRAND', 'TUTORIAL_EDUCATION'] as const) {
+    const indices = Array.from(new Set(liste.filter((m) => LEXIQUE_PROFILS[profil].some((k) => m.startsWith(k)))));
+    if (indices.length > meilleur.indices.length) meilleur = { profil, indices };
+  }
+  return meilleur;
+}
+
+const PHASES: Array<[PhaseMontage, number]> = [['HOOK', 0.1], ['BUILD', 0.33], ['PEAK', 0.67], ['FOCUS', 0.9], ['CTA', 1]];
+
+/** Découpe la durée en plans : phase, bornes, temps fort visé. Pur. */
+export function grilleDeCoupes(
+  cible: number, regle: RegleProfil, rythme?: { beats: number[]; forts: number[]; drop: number | null } | null,
+): Array<{ debut: number; fin: number; phase: PhaseMontage; beat: number | null }> {
+  // Le drop, s'il tombe entre 20 % et 60 %, ouvre le PEAK.
+  const bornes = PHASES.map(([p, f]) => [p, f * cible] as [PhaseMontage, number]);
+  if (rythme?.drop !== null && rythme?.drop !== undefined && rythme.drop > 0.2 * cible && rythme.drop < 0.6 * cible) {
+    bornes[1][1] = rythme.drop;
+  }
+  const phaseA = (t: number) => (bornes.find(([, fin]) => t < fin - 1e-6)?.[0] ?? 'CTA');
+  const out: Array<{ debut: number; fin: number; phase: PhaseMontage; beat: number | null }> = [];
+  let t = 0;
+  while (t < cible - 0.3) {
+    const phase = phaseA(t);
+    const [mn, mx] = regle.phases[phase];
+    const vise = t + (mn + mx) / 2;
+    const dans = (b: number) => b >= t + mn && b <= t + mx;
+    const pres = (l: number[]) => l.filter(dans).sort((a, b) => Math.abs(a - vise) - Math.abs(b - vise))[0];
+    const beat = rythme ? (pres(rythme.forts) ?? pres(rythme.beats) ?? null) : null;
+    let fin = Math.min(beat ?? vise, cible);
+    if (cible - fin < mn * 0.6) fin = cible;
+    out.push({ debut: arrondi(t), fin: arrondi(fin), phase, beat: beat !== null && fin === beat ? arrondi(beat) : null });
+    t = fin;
+  }
+  return out;
+}
+
+interface StatsRush { mouvHaut: number; mouvMoyen: number; mouvMediane: number; netMediane: number; audioMax: number; coupes: number[] }
+
+function statsRush(a: AnalyseRush): StatsRush {
+  const mouvements = a.echantillons.map((e) => e.mouvement);
+  const mouvMoyen = moyenne(mouvements) || 1e-6;
+  return {
+    mouvHaut: quantile(mouvements, 0.9) || 1e-6,
+    mouvMoyen,
+    mouvMediane: quantile(mouvements, 0.5) || 1e-6,
+    netMediane: quantile(a.echantillons.map((e) => e.nettete), 0.5) || 1e-6,
+    audioMax: Math.max(1e-6, ...a.echantillons.map((e) => e.audio)),
+    coupes: a.echantillons.filter((e) => e.mouvement > mouvMoyen * SEUILS.coupeRelative).map((e) => e.t),
+  };
+}
+
+/** Mesures d'une fenêtre [s, e] d'un rush (échantillon le plus proche si aucun dedans). */
+function mesuresFenetre(a: AnalyseRush, st: StatsRush, s: number, e: number) {
+  let dedans = a.echantillons.filter((x) => x.t >= s && x.t < e);
+  if (dedans.length === 0) {
+    const m = (s + e) / 2;
+    const proche = a.echantillons.reduce((p, x) => (Math.abs(x.t - m) < Math.abs(p.t - m) ? x : p), a.echantillons[0]);
+    dedans = [proche];
+  }
+  const lum = moyenne(dedans.map((x) => x.luminosite));
+  const net = moyenne(dedans.map((x) => x.nettete));
+  const ratees = dedans.filter((x) =>
+    x.luminosite < SEUILS.noir || x.luminosite > SEUILS.crame || x.nettete < st.netMediane * SEUILS.flouRelatif,
+  ).length / dedans.length;
+  const mouvBrut = moyenne(dedans.map((x) => x.mouvement));
+  const pic = Math.max(...dedans.map((x) => x.mouvement));
+  const audioBrut = moyenne(dedans.map((x) => x.audio));
+  return {
+    ratees,
+    mouvRel: borne(mouvBrut / st.mouvHaut, 0, 1),
+    mouvAbs: borne(mouvBrut / SEUILS.mouvementReference, 0, 1),
+    nettete: borne(net / (st.netMediane * 2), 0, 1),
+    audio: borne(audioBrut / st.audioMax, 0, 1),
+    audioAbs: borne(audioBrut, 0, 1),
+    expo: 1 - Math.abs(lum - 0.5) * 2,
+    geste: pic >= st.mouvMediane * 2.2 && pic / SEUILS.mouvementReference >= 0.5,
+    coupeMilieu: st.coupes.some((c) => c > s + 0.2 && c < e - 0.2),
+    empreinte: dedans[Math.floor(dedans.length / 2)]?.empreinte ?? null,
+  };
+}
+
 /**
- * Plan de montage : ~`cible` secondes des meilleurs extraits UNIQUES, en
- * alternant les rushes. `null` si moins de 2 extraits possibles depuis au
- * moins 2 rushes — l'appelant garde l'enchaînement simple ET le signale.
+ * Plan de montage V3 : ~`cible` secondes MONTÉES selon le profil (phases,
+ * durée de plan, coupes sur le rythme, variété visuelle, ralenti ponctuel),
+ * extraits UNIQUES. `null` si moins de 2 extraits possibles depuis au moins
+ * 2 rushes — l'appelant garde l'enchaînement simple ET le signale.
  */
 export function planMontage(
   analyses: ReadonlyArray<AnalyseRush>,
@@ -278,91 +439,140 @@ export function planMontage(
   options: OptionsMontage = {},
 ): RushSegment[] | null {
   if (!(cible > 0)) return null;
+  const detection = options.profil
+    ? { profil: options.profil, indices: ['choisi'] }
+    : profilMontageDuContexte(options.contexte);
   const L = options.longueurExtrait ?? borne(cible / 6, 1.5, 4);
-  const marge = Math.max(SEUILS.margeMin, L / 2);
+  const regle: RegleProfil = detection.profil === 'STANDARD'
+    ? { phases: { HOOK: [L, L], BUILD: [L, L], PEAK: [L, L], FOCUS: [L, L], CTA: [L, L] }, softMax: L, hardMax: L, ralenti: false, overlay: false, activite: null }
+    : REGLES_PROFILS[detection.profil];
+  const activite = regle.activite ? { nom: regle.activite, indices: detection.indices } : profilDuContexte(options.contexte);
+  const motsContexte = options.contexte
+    ? new Set(mots([options.contexte.theme, options.contexte.sujet, options.contexte.objectif, options.contexte.texte].filter(Boolean).join(' ')))
+    : new Set<string>();
   const exclues = options.plagesExclues ?? {};
 
-  // Un même fichier présent deux fois (URL relative ET absolue, ou ajouté
-  // deux fois) n'est analysé et monté qu'UNE fois.
+  // Un même fichier présent deux fois n'est monté qu'une fois.
   const vus = new Set<string>();
-  const uniques = analyses.filter((a) => { const k = cleSource(a.url); if (vus.has(k)) return false; vus.add(k); return true; });
+  const rushs = analyses
+    .filter((a) => { const k = cleSource(a.url); if (vus.has(k) || !(a.duree > 0) || !a.echantillons.length) return false; vus.add(k); return true; })
+    .map((a) => ({ a, cle: cleSource(a.url), st: statsRush(a) }));
+  if (rushs.length < 2) return null;
 
-  const parRush = uniques
-    .map((a) => ({
-      cle: cleSource(a.url),
-      candidats: candidatsDuRush(a, L, options.contexte).map((c) => (
-        chevauche(c.depuis, c.jusqua, exclues[c.cle], 0)
-          ? { ...c, score: arrondi(c.score * SEUILS.penaliteDejaUtilise), raison: `${c.raison} · déjà monté dans une autre vidéo du cycle` }
-          : c
-      )).sort((x, y) => y.score - x.score || x.depuis - y.depuis),
-    }))
-    .filter((r) => r.candidats.length > 0);
-  if (parRush.length < 2) return null;
-
-  // USED_SOURCE_RANGES : global à la vidéo, par fichier source.
+  const grille = grilleDeCoupes(cible, regle, options.rythme ?? null);
   const utilisees: PlagesUtilisees = {};
-  const choisis: Candidat[][] = parRush.map(() => []);
-  const tous = () => choisis.flat();
-  const acceptable = (c: Candidat) =>
-    !chevauche(c.depuis, c.jusqua, utilisees[c.cle], marge)
-    && !(c.empreinte && tous().some((p) => p.empreinte && ecartEmpreinte(c.empreinte!, p.empreinte) < SEUILS.similaire));
-  let total = 0;
-  const prendre = (k: number, c: Candidat) => {
-    choisis[k].push(c);
-    (utilisees[c.cle] ??= []).push([c.depuis, c.jusqua]);
-    total += c.jusqua - c.depuis;
-  };
-
-  // 1er passage : à tour de rôle (alternance), aucun rush au-delà de sa part
-  // maximale, et seulement des extraits proches du meilleur disponible — un
-  // plan hors sujet n'entre pas au nom de l'alternance.
-  const meilleurRestant = () => Math.max(0, ...parRush.map((r) => r.candidats.find(acceptable)?.score ?? 0));
-  let progres = true;
-  while (total < cible - 1e-6 && progres) {
-    progres = false;
-    for (let k = 0; k < parRush.length && total < cible - 1e-6; k++) {
-      const deja = choisis[k].reduce((t, c) => t + (c.jusqua - c.depuis), 0);
-      if (deja >= cible * SEUILS.partMaxRush - 1e-6) continue;
-      const c = parRush[k].candidats.find(acceptable);
-      if (!c || c.score < SEUILS.scoreRelatifMin * meilleurRestant()) continue;
-      prendre(k, c);
-      progres = true;
-    }
-  }
-  // 2e passage : le meilleur extrait restant, d'où qu'il vienne — part levée,
-  // unicité et marge jamais.
-  while (total < cible - 1e-6) {
-    let meilleur: { k: number; c: Candidat } | null = null;
-    parRush.forEach((r, k) => {
-      const c = r.candidats.find(acceptable);
-      if (c && (!meilleur || c.score > meilleur.c.score)) meilleur = { k, c };
-    });
-    if (!meilleur) break;
-    prendre((meilleur as { k: number; c: Candidat }).k, (meilleur as { k: number; c: Candidat }).c);
-  }
-
-  // Ordre : chaque rush chronologique, rushes entrelacés (A1 B1 C1 A2 …).
-  const files = choisis.map((l) => [...l].sort((a, b) => a.depuis - b.depuis));
-  const ordre: Candidat[] = [];
-  for (let rang = 0; files.some((f) => rang < f.length); rang++) {
-    files.forEach((f) => { if (rang < f.length) ordre.push(f[rang]); });
-  }
-
-  // Placement : total = cible, ou la matière disponible si elle est plus
-  // courte. Le dernier extrait est seulement COUPÉ, jamais allongé.
+  const partRush = new Map<string, number>();
   const plan: RushSegment[] = [];
-  let t = 0;
-  for (const c of ordre) {
-    if (t >= cible - 1e-6) break;
-    const d = Math.min(c.jusqua - c.depuis, cible - t);
-    if (d < 0.5) break;
-    plan.push({
-      url: c.url, debut: arrondi(t), fin: arrondi(t + d), depuis: c.depuis, jusqua: arrondi(c.depuis + d),
-      score: c.score, qualite: c.qualite, pertinence: c.pertinence, raison: c.raison,
-    });
-    t += d;
+  let ralentis = 0;
+  let precedent = null as { cle: string; empreinte: number[] | null } | null;
+  const empreintesChoisies: number[][] = [];
+  const partJuste = 1 / rushs.length;
+
+  for (const creneau of grille) {
+    const d = creneau.fin - creneau.debut;
+    const prec: { cle: string; empreinte: number[] | null } | null = precedent;
+    type Choix = { seg: RushSegment; score: number; cle: string; empreinte: number[] | null; source: number };
+    // Jamais 3 plans de suite du même rush quand un autre rush a de quoi.
+    const interdit = plan.length >= 2 && cleSource(plan[plan.length - 1].url) === cleSource(plan[plan.length - 2].url)
+      ? cleSource(plan[plan.length - 1].url) : null;
+    const chercher = (exclu: string | null): Choix | null => {
+    let meilleur: Choix | null = null;
+    for (const { a, cle, st } of rushs) {
+      if (cle === exclu) continue;
+      const marge = Math.max(SEUILS.margeMin, d / 2);
+      const debutMin = Math.min(0.5, a.duree * 0.05);
+      for (let s = debutMin; s + d <= a.duree - 0.05 + 1e-6; s += 0.5) {
+        const m = mesuresFenetre(a, st, s, s + d);
+        if (m.ratees > SEUILS.rateesMax) continue;
+        // Ralenti : seulement sur un geste fort, peu de fois, profils dynamiques.
+        const ralenti = regle.ralenti && ralentis < 2 && (creneau.phase === 'PEAK' || creneau.phase === 'HOOK') && m.geste;
+        const vitesse = ralenti ? 0.6 : 1;
+        const e = s + d * vitesse;
+        if (chevauche(s, e, utilisees[cle], marge)) continue;
+        if (m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
+
+        // QUALITÉ / PERTINENCE (comme V2)
+        const mouv = 0.5 * m.mouvRel + 0.5 * m.mouvAbs;
+        let qualite = 0.4 * mouv + 0.3 * m.nettete + 0.15 * m.expo + 0.15 * m.audio;
+        if (m.mouvRel < SEUILS.statiqueRelatif || m.mouvAbs < SEUILS.statiqueRelatif) qualite *= 0.4;
+        if (m.coupeMilieu) qualite *= 0.7;
+        let pertinence: number | null = null;
+        if (activite) {
+          pertinence = activite.nom === 'activite'
+            ? 0.7 * m.mouvAbs + 0.3 * m.audioAbs
+            : activite.nom === 'parole'
+            ? 0.6 * m.audioAbs + 0.4 * (1 - m.mouvAbs)
+            : 0.6 * (1 - m.mouvAbs) + 0.4 * m.nettete;
+        }
+        const desc = (a.descriptions ?? []).filter((x) => x.fin > s && x.debut < e);
+        let parDescription = false;
+        if (desc.length && motsContexte.size) {
+          const communs = new Set(desc.flatMap((x) => mots(x.texte)).filter((w) => motsContexte.has(w)));
+          if (communs.size) { pertinence = Math.max(pertinence ?? 0, borne(0.5 + 0.1 * communs.size, 0, 1)); parDescription = true; }
+        }
+        let score = pertinence === null ? qualite : 0.45 * qualite + 0.55 * pertinence;
+        // Rôle de la phase
+        if (creneau.phase === 'HOOK' || creneau.phase === 'PEAK') score += 0.25 * m.mouvAbs;
+        if (creneau.phase === 'FOCUS') score += 0.15 * m.nettete;
+        if (creneau.phase === 'CTA') score += 0.2 * qualite;
+        // Variété visuelle : différent du plan précédent
+        const diff: number = prec?.empreinte && m.empreinte ? borne(ecartEmpreinte(m.empreinte, prec.empreinte) / 0.25, 0, 1) : 1;
+        if (prec && diff < 0.3) continue; // quasi le même plan que juste avant
+        score += 0.2 * diff;
+        if (prec?.cle === cle) score -= 0.2;
+        // Diversité des rushes, jamais au prix d'un mauvais plan
+        const part = (partRush.get(cle) ?? 0) / Math.max(1e-6, cible);
+        if (part > partJuste * 1.4) score -= 0.3 * (part - partJuste * 1.4) / partJuste;
+        if (chevauche(s, e, exclues[cle], 0)) score *= SEUILS.penaliteDejaUtilise;
+        if (!meilleur || score > meilleur.score) {
+          const raisons = [
+            `${creneau.phase}`,
+            m.mouvAbs > 0.6 ? 'plan très actif' : m.mouvAbs > 0.3 ? 'plan actif' : 'plan posé',
+            diff > 0.6 ? 'différent du plan précédent' : 'proche du plan précédent',
+            creneau.beat !== null ? `cut sur un temps fort (${creneau.beat}s)` : options.rythme ? 'aucun temps fort dans la fenêtre' : 'sans musique analysée',
+            ralenti ? 'ralenti sur un geste fort' : null,
+            parDescription ? 'description du plan' : activite ? `profil « ${activite.nom} »` : 'aucune information thématique exploitable : qualité seule',
+          ].filter(Boolean);
+          meilleur = {
+            score, cle, empreinte: m.empreinte, source: e - s,
+            seg: {
+              url: a.url, debut: creneau.debut, fin: creneau.fin, depuis: arrondi(s), jusqua: arrondi(e),
+              phase: creneau.phase, qualite: arrondi2(qualite), pertinence: pertinence === null ? null : arrondi2(pertinence),
+              differenceVisuelle: arrondi2(diff), beatCible: creneau.beat, effet: ralenti ? 'ralenti' : null,
+              ...(vitesse !== 1 ? { vitesse } : {}),
+              score: arrondi(score), raison: raisons.join(' · '),
+            },
+          };
+        }
+      }
+    }
+    return meilleur;
+    };
+    const meilleur = chercher(interdit) ?? (interdit ? chercher(null) : null);
+    // Plus de matière exploitable : la vidéo s'arrête là (jamais d'étirement).
+    if (!meilleur) break;
+    plan.push(meilleur.seg);
+    (utilisees[meilleur.cle] ??= []).push([meilleur.seg.depuis ?? 0, meilleur.seg.jusqua ?? 0]);
+    partRush.set(meilleur.cle, (partRush.get(meilleur.cle) ?? 0) + (creneau.fin - creneau.debut));
+    if (meilleur.empreinte) empreintesChoisies.push(meilleur.empreinte);
+    if (meilleur.seg.effet === 'ralenti') ralentis += 1;
+    precedent = { cle: meilleur.cle, empreinte: meilleur.empreinte };
   }
-  return plan.length >= 2 ? plan : null;
+  if (plan.length < 2 || new Set(plan.map((s) => cleSource(s.url))).size < 2) return null;
+  // Matière épuisée avant la cible : la vidéo est plus courte (jamais
+  // étirée), mais sa NARRATION doit rester complète — on remonte le plan
+  // une fois sur la durée réellement disponible, pour garder HOOK → CTA.
+  const obtenu = plan[plan.length - 1].fin;
+  const passes = options.recale ?? 0;
+  if (passes < 3 && obtenu < cible - 0.5 && detection.profil !== 'STANDARD') {
+    return planMontage(analyses, obtenu, { ...options, profil: detection.profil, recale: passes + 1 }) ?? plan;
+  }
+  return plan;
+}
+
+/** Recommandation de mise en page du profil (titres/cartes en surimpression). */
+export function miseEnPageDuProfil(profil: ProfilMontage): { overlay: boolean } {
+  return { overlay: profil !== 'STANDARD' && REGLES_PROFILS[profil].overlay };
 }
 
 /** Plages sources d'un plan, à cumuler entre les vidéos d'un même cycle. */

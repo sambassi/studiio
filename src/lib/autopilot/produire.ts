@@ -12,7 +12,8 @@ import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voic
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
 import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
-import { analyserRushServeurCache } from '@/lib/creer/analyse-rush-serveur';
+import { analyserRushServeurCache, analyserMusiqueServeur } from '@/lib/creer/analyse-rush-serveur';
+import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -403,6 +404,12 @@ export async function produireUnMontage(input: {
   // niveaux du mixeur, son du rush. L'affiche, les textes et le rush, eux,
   // varient et arrivent par `post` et `posterUrl`. Le jumeau, s'il est monté,
   // tient la séquence « Vidéo » à la place du rush.
+  const designBase = buildAutopilotDesign(postUtilise, {
+    posterUrl, rushSeconds, voices, config: configUtilisee,
+    jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
+  });
+  // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
+  // est celle du plan (jamais plus courte que la voix de la séquence).
   // ── PLAN (smart montage V2) : pertinence selon le thème / brief / textes,
   // plages déjà montées dans ce cycle évitées, durée couvrant la voix de la
   // séquence « Vidéo » sans dépasser la matière disponible.
@@ -412,7 +419,12 @@ export async function produireUnMontage(input: {
     const t2 = Date.now();
     const voixVideo = (voices as Record<string, { seconds?: number } | undefined>).video?.seconds ?? 0;
     const cible = Math.min(disponible, Math.max(dureeCibleMontage(disponible), Math.ceil(voixVideo)));
+    // V3 : coupes calées sur le rythme de la musique, lue à partir du début
+    // de la séquence « Vidéo » (après titre et cartes).
+    const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl) : null;
+    const debutVideo = (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
     planMontageRushs = planMontage(analysesRushs, cible, {
+      rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null,
       contexte: {
         theme: post.title,
         sujet: post.content?.subtitle ?? null,
@@ -431,12 +443,6 @@ export async function produireUnMontage(input: {
     }
   }
 
-  const designBase = buildAutopilotDesign(postUtilise, {
-    posterUrl, rushSeconds, voices, config: configUtilisee,
-    jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
-  });
-  // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
-  // est celle du plan (jamais plus courte que la voix de la séquence).
   // Le plan couvre déjà la voix (cible) : la séquence dure EXACTEMENT le plan,
   // rien n'est étiré (un extrait étiré rejouerait la matière d'un autre).
   const design = planMontageRushs

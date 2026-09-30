@@ -475,6 +475,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                         src={seg.url}
                         // Smart montage : l'extrait commence à `depuis` dans son rush.
                         {...(seg.depuis ? { trimBefore: Math.round(seg.depuis * fps) } : {})}
+                        // V3 : ralenti ponctuel sur un geste fort.
+                        {...(seg.vitesse && seg.vitesse !== 1 ? { playbackRate: seg.vitesse } : {})}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         volume={(f) => (
                           props.rushMuted ? 0 : mixAt((depart + from + f) / fps, mixOptions).rush

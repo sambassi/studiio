@@ -3782,9 +3782,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // lus (jamais un trou noir au milieu du montage).
   const elParUrl = new Map(rushsLus.map((r) => [r.url, r.el] as const));
   const montageLu = montageDemande && montageDemande.every((m) => elParUrl.has(m.url)) ? montageDemande : null;
-  const rushPlan: { el: HTMLVideoElement; debut: number; fin: number; depuis: number }[] | null =
+  const rushPlan: { el: HTMLVideoElement; debut: number; fin: number; depuis: number; vitesse?: number }[] | null =
     montageLu && videoSeqPlan
-      ? ajusterPlan(montageLu, videoSeqPlan.duration).map((seg) => ({ el: elParUrl.get(seg.url)!, debut: seg.debut, fin: seg.fin, depuis: seg.depuis ?? 0 }))
+      ? ajusterPlan(montageLu, videoSeqPlan.duration).map((seg) => ({ el: elParUrl.get(seg.url)!, debut: seg.debut, fin: seg.fin, depuis: seg.depuis ?? 0, vitesse: seg.vitesse ?? 1 }))
       : rushsLus.length >= 2 && videoSeqPlan
       ? planRushs(rushsLus, videoSeqPlan.duration).map((seg, i) => ({ el: rushsLus[i].el, debut: seg.debut, fin: seg.fin, depuis: 0 }))
       : null;
@@ -4806,7 +4806,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           for (const el of rushEls) {
             if (actif && el === actif.el) {
               if (el.paused || k !== extraitCourant) {
-                el.currentTime = actif.depuis + (t - (vs + actif.debut));
+                // V3 : un extrait peut être ralenti (`vitesse` < 1).
+                const vitesse = actif.vitesse ?? 1;
+                el.playbackRate = vitesse;
+                el.currentTime = actif.depuis + (t - (vs + actif.debut)) * vitesse;
                 if (el.paused) el.play().catch(() => {});
               }
             } else if (!el.paused) { el.pause(); }
