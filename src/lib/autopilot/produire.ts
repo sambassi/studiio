@@ -289,7 +289,8 @@ export async function produireUnMontage(input: {
   // L'ANALYSE (technique, indépendante du thème) se fait ici, en parallèle
   // et en cache ; le PLAN vient après la voix, dont il doit couvrir la durée.
   const chrono = { debut: Date.now(), preparation: 0, analyse: 0, selection: 0, rendu: 0, envoi: 0 };
-  let analysesRushs: AnalyseRush[] = [];
+  const analysesRushs: AnalyseRush[] = [];
+  const analysesEchouees: string[] = [];
   let disponible = 0;
   let secondesParRush = new Map<string, number | null>();
   if (rushUrl && !jumeauActif) {
@@ -304,13 +305,16 @@ export async function produireUnMontage(input: {
       chrono.preparation = Date.now() - t0;
       input.onProgression?.('analyse', 0.1);
       const t1 = Date.now();
-      let faits = 0;
-      const resultats = await Promise.all(liste.map((u, i) => analyserRushServeurCache(u, secondes[i]).then((r) => {
-        faits += 1;
-        input.onProgression?.('analyse', faits / liste.length);
-        return r;
-      })));
-      analysesRushs = resultats.filter((r): r is AnalyseRush => !!r);
+      // UN rush après l'autre : en parallèle, trois décodages se disputaient
+      // le processeur du serveur et TOUS dépassaient leur délai (test réel
+      // du 30/09 : RUSH_ANALYSIS_MS=120041, aucun plan). Un rush en échec
+      // n'empêche pas le montage des autres.
+      for (const [i, u] of liste.entries()) {
+        const r = await analyserRushServeurCache(u, secondes[i]);
+        if (r) analysesRushs.push(r);
+        else analysesEchouees.push(u.split('/').pop() ?? u);
+        input.onProgression?.('analyse', (i + 1) / liste.length);
+      }
       chrono.analyse = Date.now() - t1;
     }
   }
@@ -488,6 +492,8 @@ export async function produireUnMontage(input: {
       : null),
     // Analyse impossible : montage simple — jamais en silence.
     ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
+    // Rushes dont l'analyse a échoué (délai, fichier illisible) : dit.
+    ...(analysesEchouees.length ? { analysesEchouees } : null),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
     ...(Object.values(voices).some((v) => v?.repli === 'edge') ? { voixRepliEdge: true } : null),
     // Durées par étape (diagnostic performance, temporaire).
