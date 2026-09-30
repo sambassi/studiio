@@ -8,6 +8,7 @@
  * plus. Toute erreur rend `null` : l'appelant garde alors l'enchaînement
  * classique, jamais un montage cassé.
  */
+import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
 import { mesurerImage, ANALYSE_L as L, ANALYSE_H as H, type AnalyseRush, type EchantillonRush } from '@/lib/creer/smart-montage';
 
 /** Au-delà, on n'échantillonne pas plus finement (≈ 240 images par rush). */
@@ -110,5 +111,22 @@ export async function analyserRush(
     return null;
   } finally {
     if (video) { video.removeAttribute('src'); video.load(); }
+  }
+}
+
+/**
+ * Rythme de la musique, dans le navigateur (Créer) — même analyse que le
+ * serveur (`rythme-musique.ts`). `null` si la musique est illisible.
+ */
+export async function analyserMusiqueNavigateur(url: string): Promise<RythmeMusique | null> {
+  try {
+    const rep = await fetch(url);
+    if (!rep.ok) return null;
+    const Ctx = (window as unknown as { OfflineAudioContext?: typeof OfflineAudioContext }).OfflineAudioContext;
+    if (!Ctx) return null;
+    const buf = await new Ctx(1, 1, 11025).decodeAudioData(await rep.arrayBuffer());
+    return analyserRythme(buf.getChannelData(0), buf.sampleRate);
+  } catch {
+    return null;
   }
 }

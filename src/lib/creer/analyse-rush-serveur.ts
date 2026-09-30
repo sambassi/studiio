@@ -14,6 +14,7 @@ import { spawn } from 'child_process';
 import {
   mesurerImage, ANALYSE_L, ANALYSE_H, type AnalyseRush, type EchantillonRush,
 } from '@/lib/creer/smart-montage';
+import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
 
 /** Au-delà, on n'analyse pas (coût serveur) : les extraits viennent du début. */
 const DUREE_ANALYSEE_MAX = 180;
@@ -166,4 +167,29 @@ export function analyserRushServeurCache(url: string, dureeSecondes: number | nu
   cache.set(cle, { at: Date.now(), analyse });
   while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
   return analyse;
+}
+
+// ── Musique : rythme analysé UNE fois par fichier (cache) ────────────────
+const cacheMusique = new Map<string, { at: number; rythme: Promise<RythmeMusique | null> }>();
+const MUSIQUE_HZ = 11025;
+const MUSIQUE_MAX_S = 240;
+
+/** Rythme d'une musique (serveur, ffmpeg), avec cache. `null` si illisible. */
+export function analyserMusiqueServeur(url: string): Promise<RythmeMusique | null> {
+  const hit = cacheMusique.get(url);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rythme;
+  const rythme = executer([
+    '-hide_banner', '-loglevel', 'error', '-t', String(MUSIQUE_MAX_S), '-i', url,
+    '-vn', '-ac', '1', '-ar', String(MUSIQUE_HZ), '-f', 'f32le', 'pipe:1',
+  ]).then(({ stdout }) => {
+    const signal = new Float32Array(stdout.buffer, stdout.byteOffset, Math.floor(stdout.byteLength / 4));
+    return signal.length > MUSIQUE_HZ ? analyserRythme(signal, MUSIQUE_HZ) : null;
+  }).catch((err) => {
+    console.warn('[SmartMontage/serveur] rythme de la musique illisible :', err instanceof Error ? err.message : err);
+    cacheMusique.delete(url);
+    return null;
+  });
+  cacheMusique.set(url, { at: Date.now(), rythme });
+  while (cacheMusique.size > 20) cacheMusique.delete(cacheMusique.keys().next().value as string);
+  return rythme;
 }

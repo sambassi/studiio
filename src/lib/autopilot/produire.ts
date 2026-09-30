@@ -10,9 +10,11 @@ import {
 } from '@/lib/autopilot/poster';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
-import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
-import { analyserRushServeurCache } from '@/lib/creer/analyse-rush-serveur';
+import { analyserRushServeurCache, analyserMusiqueServeur } from '@/lib/creer/analyse-rush-serveur';
+import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
+import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -403,24 +405,52 @@ export async function produireUnMontage(input: {
   // niveaux du mixeur, son du rush. L'affiche, les textes et le rush, eux,
   // varient et arrivent par `post` et `posterUrl`. Le jumeau, s'il est monté,
   // tient la séquence « Vidéo » à la place du rush.
+  const designBase = buildAutopilotDesign(postUtilise, {
+    posterUrl, rushSeconds, voices, config: configUtilisee,
+    jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
+  });
+  // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
+  // est celle du plan (jamais plus courte que la voix de la séquence).
   // ── PLAN (smart montage V2) : pertinence selon le thème / brief / textes,
   // plages déjà montées dans ce cycle évitées, durée couvrant la voix de la
   // séquence « Vidéo » sans dépasser la matière disponible.
   let planMontageRushs: RushSegment[] | null = null;
   let montageSimpleMotif: string | null = null;
+  let enSurimpression = false;
+  let overlays: OverlaysMontage | null = null;
   if (analysesRushs.length > 0 || secondesParRush.size > 1) {
     const t2 = Date.now();
-    const voixVideo = (voices as Record<string, { seconds?: number } | undefined>).video?.seconds ?? 0;
-    const cible = Math.min(disponible, Math.max(dureeCibleMontage(disponible), Math.ceil(voixVideo)));
+    const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
+    const contexteMontage = {
+      theme: post.title,
+      sujet: post.content?.subtitle ?? null,
+      objectif: [postUtilise.brief?.objectif, postUtilise.brief?.message].filter(Boolean).join(' ') || null,
+      texte: (post.content?.cards ?? []).map((c) => `${c.title ?? ''} ${c.description ?? ''}`).join(' ') || null,
+    };
+    // V3 : profils dynamiques = textes EN SURIMPRESSION, la vidéo est tout le
+    // montage. Elle doit alors porter TOUTES les voix, l'une après l'autre.
+    enSurimpression = profilEnSurimpression(profilMontageDuContexte(contexteMontage).profil);
+    const voixAPorter = enSurimpression
+      ? ['titre', 'cartes', 'video', 'cta'].reduce((t, k) => t + (secondesVoix(k) ? secondesVoix(k) + 0.2 : 0), 0)
+      : secondesVoix('video');
+    const cible = Math.min(disponible, Math.max(dureeCibleMontage(disponible), Math.ceil(voixAPorter)));
+    // V3 : coupes calées sur le rythme de la musique, lue à partir du début
+    // de la séquence « Vidéo » (0 en surimpression, après titre et cartes sinon).
+    const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl) : null;
+    const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
     planMontageRushs = planMontage(analysesRushs, cible, {
-      contexte: {
-        theme: post.title,
-        sujet: post.content?.subtitle ?? null,
-        objectif: [postUtilise.brief?.objectif, postUtilise.brief?.message].filter(Boolean).join(' ') || null,
-        texte: (post.content?.cards ?? []).map((c) => `${c.title ?? ''} ${c.description ?? ''}`).join(' ') || null,
-      },
+      rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null,
+      contexte: contexteMontage,
       plagesExclues: input.plagesCycle ?? null,
     });
+    if (planMontageRushs && enSurimpression) {
+      overlays = planOverlays({
+        duree: dureePlan(planMontageRushs),
+        nbCartes: designBase.cards?.length ?? 0,
+        finHook: planMontageRushs.filter((x) => x.phase === 'HOOK').at(-1)?.fin ?? null,
+        voix: { titre: secondesVoix('titre'), cartes: secondesVoix('cartes'), video: secondesVoix('video'), cta: secondesVoix('cta') },
+      });
+    }
     chrono.selection = Date.now() - t2;
     if (!planMontageRushs) {
       montageSimpleMotif = 'analyse intelligente indisponible';
@@ -431,12 +461,6 @@ export async function produireUnMontage(input: {
     }
   }
 
-  const designBase = buildAutopilotDesign(postUtilise, {
-    posterUrl, rushSeconds, voices, config: configUtilisee,
-    jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
-  });
-  // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
-  // est celle du plan (jamais plus courte que la voix de la séquence).
   // Le plan couvre déjà la voix (cible) : la séquence dure EXACTEMENT le plan,
   // rien n'est étiré (un extrait étiré rejouerait la matière d'un autre).
   const design = planMontageRushs
@@ -445,6 +469,9 @@ export async function produireUnMontage(input: {
       montage: planMontageRushs,
       rushs: rushsDuPlan(planMontageRushs),
       videoDuration: dureePlan(planMontageRushs),
+      // Surimpression : plus d'écran titre, cartes ni CTA — la vidéo continue
+      // porte les textes (`overlays`). Les durées à 0 retirent ces séquences.
+      ...(overlays ? { surimpressions: overlays, introDuration: 0, cardsDuration: 0, ctaDuration: 0 } : {}),
     }
     : designBase;
   input.onProgression?.('composition', 0);
@@ -492,6 +519,8 @@ export async function produireUnMontage(input: {
       : null),
     // Analyse impossible : montage simple — jamais en silence.
     ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
+    // Textes en surimpression sur la vidéo continue (V3) : relus au rendu.
+    ...(overlays ? { surimpressions: overlays } : null),
     // Rushes dont l'analyse a échoué (délai, fichier illisible) : dit.
     ...(analysesEchouees.length ? { analysesEchouees } : null),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.

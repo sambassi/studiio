@@ -70,12 +70,13 @@ describe('planMontage — 2 rushes, vrai montage', () => {
     expect(parRush('A.mp4').length >= 2 || parRush('B.mp4').length >= 2).toBe(true);
   });
 
-  it('alterne les rushes, chronologique dans chaque rush', () => {
-    expect(plan[0].url).not.toBe(plan[1].url);
-    for (const u of ['A.mp4', 'B.mp4']) {
-      const d = plan.filter((s) => s.url === u).map((s) => s.depuis ?? 0);
-      expect(d).toEqual([...d].sort((x, y) => x - y));
-    }
+  it('V3 : les deux rushes sont montés ; l ordre suit la narration (phases)', () => {
+    // V3 monte par phases (HOOK → CTA) : l'ordre suit la narration, plus la
+    // chronologie du rush ; la qualité prime sur l'alternance stricte. Trois
+    // plans de suite d'un même rush ne sont permis que si l'autre est épuisé
+    // (ici B, dont 5–9 s est flou).
+    expect(new Set(plan.map((s) => s.url)).size).toBe(2);
+    expect(plan[0].phase).toBe('HOOK');
   });
 
   it('ne dépasse jamais la durée cible, extraits contigus (V2 : unicité avant remplissage)', () => {
@@ -164,7 +165,7 @@ describe('câblage des rendus', () => {
   it('compositeur : un extrait joue depuis son point d entrée, cut interne repositionné', () => {
     const c = src('src/lib/video-composer.ts');
     expect(c).toContain('montage?: ReadonlyArray<RushSegment> | null;');
-    expect(c).toContain('el.currentTime = actif.depuis + (t - (vs + actif.debut));');
+    expect(c).toContain('el.currentTime = actif.depuis + (t - (vs + actif.debut)) * vitesse;');
     expect(c).toContain('if (el.paused || k !== extraitCourant) {');
   });
 

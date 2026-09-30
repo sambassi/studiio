@@ -4,6 +4,7 @@ import {
 } from 'remotion';
 import { planRushs, type RushSegment } from '../src/lib/creer/multi-rush';
 import { ajusterPlan } from '../src/lib/creer/smart-montage';
+import type { OverlaysMontage } from '../src/lib/creer/overlays';
 import {
   buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
   gradientOverlayCss, DEFAULT_COLORS,
@@ -103,6 +104,12 @@ export interface CreerSimpleMontageProps {
    * (chaque extrait joue depuis `depuis` dans son rush). Absent : `rushs`.
    */
   montage?: ReadonlyArray<RushSegment> | null;
+  /**
+   * SURIMPRESSIONS (V3, profils dynamiques) : la vidéo est la SEULE séquence
+   * et titre / cartes / CTA passent par-dessus, aux instants donnés ; les
+   * voix off partent aux départs `voix`. Absent : rendu d'avant.
+   */
+  surimpressions?: OverlaysMontage | null;
   musicUrl?: string | null;
   gradientStart?: string;
   gradientEnd?: string;
@@ -355,6 +362,33 @@ const Filigrane: React.FC<{ texte?: string; echelle: number }> = ({ texte, echel
     </div>
   ) : null;
 
+/**
+ * Un texte en SURIMPRESSION sur le rush : entrée / sortie courtes (0,3 s,
+ * fondu + léger glissement), voile dégradé haut et bas pour la lisibilité
+ * sans masquer le sujet au centre.
+ */
+const CoucheOverlay: React.FC<{ from: number; durationInFrames: number; children: React.ReactNode }> = ({ from, durationInFrames, children }) => (
+  <Sequence from={from} durationInFrames={durationInFrames}>
+    <CoucheOverlayAnimee duree={durationInFrames}>{children}</CoucheOverlayAnimee>
+  </Sequence>
+);
+
+const CoucheOverlayAnimee: React.FC<{ duree: number; children: React.ReactNode }> = ({ duree, children }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const bord = Math.max(1, Math.round(0.3 * fps));
+  const entree = Math.min(1, frame / bord);
+  const opacite = Math.max(0, Math.min(entree, (duree - frame) / bord));
+  return (
+    <AbsoluteFill style={{ opacity: opacite }}>
+      <AbsoluteFill
+        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 32%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.55) 100%)' }}
+      />
+      <AbsoluteFill style={{ transform: `translateY(${Math.round((1 - entree) * 24)}px)` }}>{children}</AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
+
 export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => {
   const { fps, width, height } = useVideoConfig();
   const sequences = planFromProps(props);
@@ -416,7 +450,25 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           volume={(f) => mixAt(f / fps, mixOptions).music}
         />
       )}
-      {voixParSequence && sequences.map((seq, i) => {
+      {/* Surimpressions : les voix partent à LEURS départs dans la vidéo
+          continue (plus de séquences titre / cartes / CTA pour les porter). */}
+      {voixParSequence && props.surimpressions && SEQ_VOICE_KEYS.map((cle) => {
+        const url = props.sequenceVoiceUrls?.[cle];
+        const depart = props.surimpressions?.voix[cle];
+        if (!url || typeof depart !== 'number') return null;
+        const from = Math.round(depart * fps);
+        if (from >= totalFrames) return null;
+        return (
+          <VoixDeSequence
+            key={`voix-overlay-${cle}`}
+            src={url}
+            from={from}
+            durationInFrames={totalFrames - from}
+            volume={(f) => mixAt((from + f) / fps, mixOptions).voice}
+          />
+        );
+      })}
+      {voixParSequence && !props.surimpressions && sequences.map((seq, i) => {
         const cle = SEQ_TO_EDITOR[seq.type];
         const url = cle ? props.sequenceVoiceUrls?.[cle] : null;
         if (!url) return null;
@@ -454,6 +506,86 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         const planVideo: RushSegment[] = montage ? ajusterPlan(montage, dureeVideo) : plusieursRushs ? planRushs(props.rushs!, dureeVideo) : [];
         const avance = (depart: number) => (iVideo >= 0 ? Math.max(0, offsets[iVideo] - depart) : 0);
 
+        // Les trois blocs de texte, écrits UNE fois : plein écran (séquences
+        // titre / cartes / CTA) ou en SURIMPRESSION sur le rush (V3).
+        const blocTitre = (reveal: number) => (
+              <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos)}>
+                <SequenceTitle
+                  title={props.title}
+                  subtitle={props.subtitle}
+                  typography={{
+                    font: props.titleFont || 'Inter',
+                    color: titleColor,
+                    scale: props.titleScale ?? 1,
+                    bold: props.titleBold ?? true,
+                    italic: props.titleItalic ?? false,
+                    letterSpacing: props.titleLetterSpacing ?? 0,
+                    lineHeight: props.titleLineHeight ?? 1.1,
+                    // Absents = le rendu d'avant : capitales, aligne a
+                    // gauche, sans decoration.
+                    textCase: props.titleCase,
+                    align: props.titleAlign,
+                    underline: props.titleUnderline,
+                    strike: props.titleStrike,
+                  }}
+                  subtitleTypography={{
+                    font: props.subtitleFont ?? null,
+                    color: props.subtitleColor ?? null,
+                    scale: props.subtitleScale ?? 1,
+                    textCase: props.subtitleCase,
+                    align: props.subtitleAlign,
+                    underline: props.subtitleUnderline,
+                    strike: props.subtitleStrike,
+                  }}
+                  format={format}
+                  containerWidth={width}
+                  reveal={reveal}
+                />
+              </div>
+        );
+        const blocCartes = (liste: NonNullable<CreerSimpleMontageProps['cards']>) => (
+              <SequenceCards
+                cards={liste.map((c, i) => ({
+                  id: (c as { id?: string }).id ?? `c${i}`,
+                  icon: c.icon ?? 'Sparkles',
+                  title: c.title ?? c.label ?? '',
+                  value: c.value,
+                }))}
+                cardBoxes={props.cardBoxes ?? null}
+                containerWidth={width}
+                landscape={!isReel}
+                valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
+                // Absent = le cadre, comme depuis toujours.
+                cardStyle={props.cardStyle}
+                typography={props.cardsTypography}
+              />
+        );
+        const blocCta = (reveal: number) => (
+              <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos)}>
+                <SequenceCta
+                  text={props.ctaText ?? ''}
+                  subText={props.ctaSubText}
+                  typography={{
+                    font: props.ctaFont || 'Inter',
+                    color: props.ctaColor ?? '#FFFFFF',
+                    subColor: props.ctaSubColor ?? '#EC4899',
+                    scale: props.ctaScale ?? 1,
+                    bold: props.ctaBold ?? true,
+                    italic: props.ctaItalic ?? false,
+                    letterSpacing: props.ctaLetterSpacing ?? 0,
+                    lineHeight: props.ctaLineHeight ?? 1.2,
+                    textCase: props.ctaCase,
+                    align: props.ctaAlign,
+                    underline: props.ctaUnderline,
+                    strike: props.ctaStrike,
+                  }}
+                  format={format}
+                  containerWidth={width}
+                  reveal={reveal}
+                />
+              </div>
+        );
+
         const contenu = (type: string, anim: AnimationCourante, depart: number) => (
           <AbsoluteFill>
             {type === 'video' && props.videoUrl && plusieursRushs ? (
@@ -475,6 +607,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                         src={seg.url}
                         // Smart montage : l'extrait commence à `depuis` dans son rush.
                         {...(seg.depuis ? { trimBefore: Math.round(seg.depuis * fps) } : {})}
+                        // V3 : ralenti ponctuel sur un geste fort.
+                        {...(seg.vitesse && seg.vitesse !== 1 ? { playbackRate: seg.vitesse } : {})}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         volume={(f) => (
                           props.rushMuted ? 0 : mixAt((depart + from + f) / fps, mixOptions).rush
@@ -516,39 +650,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               <TextAnimationLayer style={animation} progress={anim.progress}>
               {/* Le MEME composant que l'apercu, et le MEME cadre : la
                   position vient de `titlePos`, comme a l'ecran. */}
-              <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos)}>
-                <SequenceTitle
-                  title={props.title}
-                  subtitle={props.subtitle}
-                  typography={{
-                    font: props.titleFont || 'Inter',
-                    color: titleColor,
-                    scale: props.titleScale ?? 1,
-                    bold: props.titleBold ?? true,
-                    italic: props.titleItalic ?? false,
-                    letterSpacing: props.titleLetterSpacing ?? 0,
-                    lineHeight: props.titleLineHeight ?? 1.1,
-                    // Absents = le rendu d'avant : capitales, aligne a
-                    // gauche, sans decoration.
-                    textCase: props.titleCase,
-                    align: props.titleAlign,
-                    underline: props.titleUnderline,
-                    strike: props.titleStrike,
-                  }}
-                  subtitleTypography={{
-                    font: props.subtitleFont ?? null,
-                    color: props.subtitleColor ?? null,
-                    scale: props.subtitleScale ?? 1,
-                    textCase: props.subtitleCase,
-                    align: props.subtitleAlign,
-                    underline: props.subtitleUnderline,
-                    strike: props.subtitleStrike,
-                  }}
-                  format={format}
-                  containerWidth={width}
-                  reveal={anim.reveal}
-                />
-              </div>
+              {blocTitre(anim.reveal)}
               </TextAnimationLayer>
             )}
 
@@ -563,50 +665,49 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               {/* Le MEME composant que l'apercu, a la resolution de la
                   composition. C'est ce qui rend la parite structurelle :
                   aucune seconde implementation a recaler. */}
-              <SequenceCards
-                cards={(props.cards ?? []).map((c, i) => ({
-                  id: (c as { id?: string }).id ?? `c${i}`,
-                  icon: c.icon ?? 'Sparkles',
-                  title: c.title ?? c.label ?? '',
-                  value: c.value,
-                }))}
-                cardBoxes={props.cardBoxes ?? null}
-                containerWidth={width}
-                landscape={!isReel}
-                valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
-                // Absent = le cadre, comme depuis toujours.
-                cardStyle={props.cardStyle}
-                typography={props.cardsTypography}
-              />
+              {blocCartes(props.cards ?? [])}
               </TextAnimationLayer>
             )}
 
             {type === 'cta' && (
               <TextAnimationLayer style={animation} progress={anim.progress}>
-              <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos)}>
-                <SequenceCta
-                  text={props.ctaText ?? ''}
-                  subText={props.ctaSubText}
-                  typography={{
-                    font: props.ctaFont || 'Inter',
-                    color: props.ctaColor ?? '#FFFFFF',
-                    subColor: props.ctaSubColor ?? '#EC4899',
-                    scale: props.ctaScale ?? 1,
-                    bold: props.ctaBold ?? true,
-                    italic: props.ctaItalic ?? false,
-                    letterSpacing: props.ctaLetterSpacing ?? 0,
-                    lineHeight: props.ctaLineHeight ?? 1.2,
-                    textCase: props.ctaCase,
-                    align: props.ctaAlign,
-                    underline: props.ctaUnderline,
-                    strike: props.ctaStrike,
-                  }}
-                  format={format}
-                  containerWidth={width}
-                  reveal={anim.reveal}
-                />
-              </div>
+              {blocCta(anim.reveal)}
               </TextAnimationLayer>
+            )}
+
+            {/* SURIMPRESSIONS (V3) : le rush continue, les textes passent
+                par-dessus, avec un voile dégradé pour la lisibilité. */}
+            {type === 'video' && props.surimpressions && (
+              <>
+                {props.surimpressions.titre && (
+                  <CoucheOverlay
+                    from={avance(depart) + Math.round(props.surimpressions.titre[0] * fps)}
+                    durationInFrames={Math.max(1, Math.round((props.surimpressions.titre[1] - props.surimpressions.titre[0]) * fps))}
+                  >
+                    {blocTitre(1)}
+                  </CoucheOverlay>
+                )}
+                {props.surimpressions.cartes.map((c) => {
+                  const carte = (props.cards ?? [])[c.index];
+                  return carte ? (
+                    <CoucheOverlay
+                      key={`carte-${c.index}`}
+                      from={avance(depart) + Math.round(c.debut * fps)}
+                      durationInFrames={Math.max(1, Math.round((c.fin - c.debut) * fps))}
+                    >
+                      {blocCartes([carte])}
+                    </CoucheOverlay>
+                  ) : null;
+                })}
+                {props.surimpressions.cta && (
+                  <CoucheOverlay
+                    from={avance(depart) + Math.round(props.surimpressions.cta[0] * fps)}
+                    durationInFrames={Math.max(1, Math.round((props.surimpressions.cta[1] - props.surimpressions.cta[0]) * fps))}
+                  >
+                    {blocCta(1)}
+                  </CoucheOverlay>
+                )}
+              </>
             )}
 
             {/* Elements libres — le MEME composant que l'apercu, sur les

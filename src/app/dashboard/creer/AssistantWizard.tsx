@@ -192,7 +192,8 @@ import {
   planRushs, dureeMultiRush, deplacer, retirer, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
 import { planMontage, dureeCibleMontage, dureePlan, cleMontage, type AnalyseRush } from '@/lib/creer/smart-montage';
-import { analyserRush } from '@/lib/creer/analyse-rush';
+import { analyserRush, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
+import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import {
   indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees, cartesAvecImagePerso,
 } from '@/lib/creer/postMetadata/cartes';
@@ -7365,8 +7366,13 @@ export default function AssistantWizard() {
           if (a) analyses.push(a);
         }
         const cibleEcran = duree('video');
+        // V3 : coupes calées sur le rythme de la musique, lue à partir du
+        // début de la séquence « Vidéo » (somme des séquences qui la précèdent).
+        const rythme = musicUrl ? await analyserMusiqueNavigateur(musicUrl) : null;
+        const debutVideo = ordre.slice(0, Math.max(0, ordre.indexOf('video'))).reduce((t, k) => t + duree(k), 0);
         // V2 : la pertinence des extraits suit le thème, le titre et le brief.
         planMontageRushs = planMontage(analyses, cibleEcran, {
+          rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null,
           contexte: {
             theme: currentTopic,
             sujet: generated?.title ?? null,
