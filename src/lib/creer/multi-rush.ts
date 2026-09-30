@@ -39,6 +39,13 @@ export interface RushSegment {
   url: string;
   debut: number;
   fin: number;
+  /**
+   * SMART MONTAGE (`smart-montage.ts`) : point d'entrée DANS le rush (s).
+   * Absent = 0, le rush joue depuis son début — l'enchaînement d'avant.
+   */
+  depuis?: number;
+  /** Score de l'extrait (smart montage), informatif. */
+  score?: number;
 }
 
 const arrondi = (n: number) => Math.round(n * 1000) / 1000;
@@ -109,10 +116,14 @@ export function rushSegmentsDepuisMetadata(valeur: unknown): RushSegment[] | nul
   const out: RushSegment[] = [];
   for (const v of valeur) {
     if (!v || typeof v !== 'object') return null;
-    const { url, debut, fin } = v as Record<string, unknown>;
+    const { url, debut, fin, depuis, score } = v as Record<string, unknown>;
     if (typeof url !== 'string' || !url) return null;
     if (typeof debut !== 'number' || typeof fin !== 'number' || !Number.isFinite(debut) || !Number.isFinite(fin) || fin <= debut) return null;
-    out.push({ url, debut, fin });
+    out.push({
+      url, debut, fin,
+      ...(typeof depuis === 'number' && Number.isFinite(depuis) && depuis > 0 ? { depuis } : {}),
+      ...(typeof score === 'number' && Number.isFinite(score) ? { score } : {}),
+    });
   }
   return out;
 }
@@ -120,4 +131,22 @@ export function rushSegmentsDepuisMetadata(valeur: unknown): RushSegment[] | nul
 /** Liste « rendu » (url + durée retenue) depuis des segments relus. */
 export function rushsDepuisSegments(segments: ReadonlyArray<RushSegment>): { url: string; secondes: number }[] {
   return segments.map((s) => ({ url: s.url, secondes: arrondi(s.fin - s.debut) }));
+}
+
+/**
+ * Vrai si les segments sont un PLAN DE MONTAGE (smart montage) et non un
+ * simple enchaînement : un point d'entrée non nul ou un rush repris.
+ */
+export function estPlanMontage(segments: ReadonlyArray<RushSegment> | null | undefined): boolean {
+  if (!segments || segments.length < 2) return false;
+  const urls = new Set(segments.map((s) => s.url));
+  return urls.size < segments.length || segments.some((s) => typeof s.depuis === 'number' && s.depuis > 0);
+}
+
+/** Les rushes d'un plan, sans doublon, dans l'ordre de première apparition. */
+export function rushsDuPlan(segments: ReadonlyArray<RushSegment>): { url: string; secondes: null }[] {
+  const vus = new Set<string>();
+  const out: { url: string; secondes: null }[] = [];
+  for (const s of segments) if (!vus.has(s.url)) { vus.add(s.url); out.push({ url: s.url, secondes: null }); }
+  return out;
 }

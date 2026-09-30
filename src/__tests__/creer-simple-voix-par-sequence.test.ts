@@ -114,7 +114,7 @@ describe('Le compositeur reçoit ce qu il attend VRAIMENT', () => {
     // En mode avatar, la voix off de la séquence « Vidéo » est retirée en amont
     // (`voixSequencesRendu`) pour ne pas doubler la voix de l'avatar ; hors
     // avatar, c'est exactement `sequenceVoiceUrls`.
-    expect(appel.slice(0, 3000)).toContain('sequenceVoiceUrls: voixSequencesRendu,');
+    expect(appel.slice(0, 3200)).toContain('sequenceVoiceUrls: voixSequencesRendu,');
   });
 
   it('en mode avatar, la voix off de la séquence « Vidéo » est retirée (pas de double narration)', () => {

@@ -189,8 +189,10 @@ import {
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
-  planRushs, dureeMultiRush, deplacer, retirer, type RushItem,
+  planRushs, dureeMultiRush, deplacer, retirer, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
+import { planMontage, dureeCibleMontage, cleMontage, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { analyserRush } from '@/lib/creer/analyse-rush';
 import {
   indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees, cartesAvecImagePerso,
 } from '@/lib/creer/postMetadata/cartes';
@@ -4136,6 +4138,10 @@ export default function AssistantWizard() {
   // Rendu du montage
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStage, setRenderStage] = useState('');
+  // SMART MONTAGE : dernier plan d'extraits calculé à l'envoi, avec
+  // l'empreinte (rushes + durée) de l'écran pour lequel il vaut. Un
+  // enregistrement sans rendu le réécrit tel quel ; écran changé = plan caduc.
+  const planMontageRef = useRef<{ cle: string; plan: RushSegment[] } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
 
@@ -6645,7 +6651,7 @@ export default function AssistantWizard() {
       setRushSecondes(seconds);
       const suivants = rushSuivantsRef.current;
       if (suivants.length === 0) setVideoDuration(seconds);
-      else setVideoDuration(dureeMultiRush([seconds, ...suivants.map((r) => r.secondes)], RUSH_SECONDS.fallback));
+      else setVideoDuration(dureeCibleMontage(dureeMultiRush([seconds, ...suivants.map((r) => r.secondes)], RUSH_SECONDS.fallback)));
       console.log(
         `[Assistant] Rush importé — durée source ${probed ? probed.toFixed(1) + 's' : 'illisible'}, séquence vidéo ${seconds}s`,
       );
@@ -6696,7 +6702,7 @@ export default function AssistantWizard() {
     if (suivants.length === 0) {
       if (premier.secondes) setVideoDuration(premier.secondes);
     } else {
-      setVideoDuration(dureeMultiRush(liste.map((r) => r.secondes), RUSH_SECONDS.fallback));
+      setVideoDuration(dureeCibleMontage(dureeMultiRush(liste.map((r) => r.secondes), RUSH_SECONDS.fallback)));
     }
   };
 
@@ -6728,7 +6734,7 @@ export default function AssistantWizard() {
       const suivants = [...rushSuivantsRef.current, { url, name, secondes }];
       rushSuivantsRef.current = suivants;
       setRushSuivants(suivants);
-      setVideoDuration(dureeMultiRush([premierSecondes, ...suivants.map((r) => r.secondes)], RUSH_SECONDS.fallback));
+      setVideoDuration(dureeCibleMontage(dureeMultiRush([premierSecondes, ...suivants.map((r) => r.secondes)], RUSH_SECONDS.fallback)));
     } finally {
       setRushLoading(false);
     }
@@ -7337,6 +7343,27 @@ export default function AssistantWizard() {
       // que la metadata du post peut porter. Vide avec un seul rush.
       const rushsDurables = (plateau.rushs ?? []).filter((r) => !!persistableUrl(r.url));
 
+      // ── SMART MONTAGE : analyse locale des rushes → plan d'extraits ──────
+      // Seulement quand TOUS les rushes sont durables (une `blob:` ne se
+      // persiste pas) et que la séquence « Vidéo » joue. Analyse impossible
+      // ou < 2 rushes exploitables : `null`, l'enchaînement d'avant s'applique.
+      let planMontageRushs: RushSegment[] | null = null;
+      if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length === (plateau.rushs ?? []).length) {
+        setRenderStage('Analyse des rushes…');
+        const analyses: AnalyseRush[] = [];
+        for (let i = 0; i < rushsDurables.length; i++) {
+          const a = await analyserRush(rushsDurables[i].url, (f) => setRenderProgress(Math.round(((i + f) / rushsDurables.length) * 10)));
+          if (a) analyses.push(a);
+        }
+        planMontageRushs = planMontage(analyses, duree('video'));
+        planMontageRef.current = planMontageRushs
+          ? { cle: cleMontage(rushsDurables.map((r) => r.url), duree('video')), plan: planMontageRushs }
+          : null;
+        console.log('[SmartMontage] plan :', planMontageRushs
+          ? planMontageRushs.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | ')
+          : 'aucun (enchaînement classique)');
+      }
+
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
       // Le contenu courant sert TOUJOURS a la premiere — l'utilisateur vient
@@ -7514,6 +7541,7 @@ export default function AssistantWizard() {
           ...(duree('video') > 0 && plateau.rushs
             ? { rushs: plateau.rushs.map((r) => ({ url: r.url, secondes: r.secondes ?? null })) }
             : {}),
+          ...(duree('video') > 0 && planMontageRushs ? { montage: planMontageRushs } : {}),
           ...(rushLut ? { rushLut } : {}),
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
@@ -7855,7 +7883,7 @@ export default function AssistantWizard() {
           // et a « Modifier » d'enchainer. Absent avec un seul rush.
           rushSegments:
             duree('video') > 0 && rushsDurables.length >= 2
-              ? planRushs(rushsDurables, duree('video'))
+              ? planMontageRushs ?? planRushs(rushsDurables, duree('video'))
               : undefined,
           // Filtre couleur du rush : la REFERENCE seule (empreinte, nom,
           // intensite), jamais la table. C'est elle que le Calendrier relit
@@ -8233,7 +8261,9 @@ export default function AssistantWizard() {
       // post mono-rush, donc jamais envoye ; efface les segments d'un post
       // redevenu mono-rush.
       rushSegments: rushsDurablesEcran.length >= 2 && seqDuration('video') > 0
-        ? planRushs(rushsDurablesEcran, seqDuration('video'))
+        ? (planMontageRef.current?.cle === cleMontage(rushsDurablesEcran.map((r) => r.url), seqDuration('video'))
+          ? planMontageRef.current.plan
+          : planRushs(rushsDurablesEcran, seqDuration('video')))
         : null,
       audioKeyframes,
       cardGroups,

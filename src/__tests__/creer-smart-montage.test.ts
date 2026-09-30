@@ -1,0 +1,170 @@
+/**
+ * SMART MONTAGE V1 — plan de montage à partir de 2 rushes (analyses
+ * synthétiques, ≥ 10 s chacun). Exigences du test minimum :
+ *  - plusieurs extraits découpés, jamais rush 1 entier puis rush 2 entier ;
+ *  - au moins un cut interne dans un rush ;
+ *  - alternance des rushes, ordre chronologique dans chaque rush ;
+ *  - durée totale = durée cible ;
+ *  - passages noirs / flous / statiques écartés.
+ */
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import {
+  planMontage, candidatsDuRush, ajusterPlan, dureeCibleMontage, cleMontage,
+  type AnalyseRush, type EchantillonRush,
+} from '@/lib/creer/smart-montage';
+import { estPlanMontage, rushsDuPlan, rushSegmentsDepuisMetadata, planRushs } from '@/lib/creer/multi-rush';
+
+const PAS = 0.5;
+/** Rush synthétique : `profil(t)` donne les mesures de chaque instant. */
+function rush(url: string, duree: number, profil: (t: number) => Partial<EchantillonRush>): AnalyseRush {
+  const echantillons: EchantillonRush[] = [];
+  for (let t = 0; t < duree; t += PAS) {
+    echantillons.push({ t, mouvement: 0.05, luminosite: 0.5, nettete: 0.1, audio: 0.2, ...profil(t) });
+  }
+  return { url, duree, echantillons };
+}
+
+// Rush A (12 s) : 0-3 s noir (raté), 3-7 s actif, 7-12 s statique.
+const A = rush('A.mp4', 12, (t) => (t < 3 ? { luminosite: 0.02, mouvement: 0 } : t < 7 ? { mouvement: 0.2, audio: 0.6 } : { mouvement: 0.001 }));
+// Rush B (14 s) : 2-5 s bon, 5-9 s flou, 9-13 s très bon.
+const B = rush('B.mp4', 14, (t) => (t >= 5 && t < 9 ? { nettete: 0.005 } : (t >= 2 && t < 5) || (t >= 9 && t < 13) ? { mouvement: 0.25, audio: 0.7 } : {}));
+
+describe('candidats et score', () => {
+  it('écarte les passages noirs et flous', () => {
+    const ca = candidatsDuRush(A, 2);
+    expect(ca.every((c) => c.depuis >= 3 - 1e-6)).toBe(true); // 0-3 s noir rejeté
+    const cb = candidatsDuRush(B, 2);
+    expect(cb.some((c) => c.depuis >= 5 && c.jusqua <= 9)).toBe(false); // 5-9 s flou rejeté
+  });
+
+  it('le passage actif bat le passage statique', () => {
+    const ca = candidatsDuRush(A, 2).sort((x, y) => y.score - x.score);
+    expect(ca[0].depuis).toBeGreaterThanOrEqual(3);
+    expect(ca[0].jusqua).toBeLessThanOrEqual(7.01);
+  });
+});
+
+describe('planMontage — 2 rushes, vrai montage', () => {
+  const cible = 12;
+  const plan = planMontage([A, B], cible)!;
+
+  it('produit un plan de plusieurs extraits', () => {
+    expect(plan).not.toBeNull();
+    expect(plan.length).toBeGreaterThanOrEqual(4);
+    expect(estPlanMontage(plan)).toBe(true);
+  });
+
+  it("n'enchaîne pas simplement rush 1 entier puis rush 2 entier", () => {
+    for (const s of plan) {
+      const r = s.url === 'A.mp4' ? A : B;
+      expect(s.fin - s.debut).toBeLessThan(r.duree);
+    }
+    const urls = plan.map((s) => s.url);
+    expect(urls.join(',')).not.toBe([...urls].sort().join(','));
+  });
+
+  it('contient au moins un cut interne dans un rush', () => {
+    const parRush = (u: string) => plan.filter((s) => s.url === u);
+    expect(parRush('A.mp4').length >= 2 || parRush('B.mp4').length >= 2).toBe(true);
+  });
+
+  it('alterne les rushes, chronologique dans chaque rush', () => {
+    expect(plan[0].url).not.toBe(plan[1].url);
+    for (const u of ['A.mp4', 'B.mp4']) {
+      const d = plan.filter((s) => s.url === u).map((s) => s.depuis ?? 0);
+      expect(d).toEqual([...d].sort((x, y) => x - y));
+    }
+  });
+
+  it('respecte exactement la durée cible, extraits contigus', () => {
+    expect(plan[0].debut).toBe(0);
+    expect(plan[plan.length - 1].fin).toBeCloseTo(cible, 3);
+    plan.slice(1).forEach((s, i) => expect(s.debut).toBeCloseTo(plan[i].fin, 3));
+  });
+
+  it('les extraits d un même rush ne se chevauchent pas', () => {
+    for (const u of ['A.mp4', 'B.mp4']) {
+      const l = plan.filter((s) => s.url === u).map((s) => [s.depuis ?? 0, (s.depuis ?? 0) + s.fin - s.debut]).sort((x, y) => x[0] - y[0]);
+      l.slice(1).forEach((x, i) => expect(x[0]).toBeGreaterThanOrEqual(l[i][1] - 1e-6));
+    }
+  });
+
+  it('écarte les passages ratés de A (noir 0-3 s)', () => {
+    plan.filter((s) => s.url === 'A.mp4').forEach((s) => expect(s.depuis ?? 0).toBeGreaterThanOrEqual(3 - 1e-6));
+  });
+});
+
+describe('repli et compatibilité', () => {
+  it('moins de 2 rushes exploitables : null (enchaînement classique)', () => {
+    const noir = rush('N.mp4', 10, () => ({ luminosite: 0.01 }));
+    expect(planMontage([A, noir], 10)).toBeNull();
+    expect(planMontage([A], 10)).toBeNull();
+  });
+
+  it('matière insuffisante : les extraits s allongent jusqu à la cible', () => {
+    const court1 = rush('C1.mp4', 4, () => ({ mouvement: 0.2 }));
+    const court2 = rush('C2.mp4', 4, () => ({ mouvement: 0.2 }));
+    const p = planMontage([court1, court2], 7)!;
+    expect(p[p.length - 1].fin).toBeCloseTo(7, 3);
+  });
+
+  it('un enchaînement classique n est pas un plan de montage', () => {
+    expect(estPlanMontage(planRushs([{ url: 'a', secondes: 5 }, { url: 'b', secondes: 5 }], 10))).toBe(false);
+  });
+
+  it('metadata : depuis/score relus, rushes sans doublon', () => {
+    const lus = rushSegmentsDepuisMetadata([
+      { url: 'a', debut: 0, fin: 2, depuis: 3, score: 0.8 },
+      { url: 'b', debut: 2, fin: 4, depuis: 1 },
+      { url: 'a', debut: 4, fin: 6, depuis: 8 },
+    ])!;
+    expect(lus[0]).toEqual({ url: 'a', debut: 0, fin: 2, depuis: 3, score: 0.8 });
+    expect(estPlanMontage(lus)).toBe(true);
+    expect(rushsDuPlan(lus).map((r) => r.url)).toEqual(['a', 'b']);
+    // Ancien format (sans depuis) : relu à l'identique.
+    expect(rushSegmentsDepuisMetadata([{ url: 'a', debut: 0, fin: 5 }, { url: 'b', debut: 5, fin: 9 }]))
+      .toEqual([{ url: 'a', debut: 0, fin: 5 }, { url: 'b', debut: 5, fin: 9 }]);
+  });
+
+  it('ajusterPlan garde les points d entrée', () => {
+    const p = ajusterPlan([{ url: 'a', debut: 0, fin: 5, depuis: 2 }, { url: 'b', debut: 5, fin: 10, depuis: 4 }], 20);
+    expect(p).toEqual([{ url: 'a', debut: 0, fin: 10, depuis: 2 }, { url: 'b', debut: 10, fin: 20, depuis: 4 }]);
+  });
+
+  it('durée par défaut plafonnée, empreinte stable', () => {
+    expect(dureeCibleMontage(40)).toBe(15);
+    expect(dureeCibleMontage(9)).toBe(9);
+    expect(cleMontage(['a', 'b'], 12)).toBe('a|b@12');
+  });
+});
+
+describe('câblage des rendus', () => {
+  const src = (f: string) => readFileSync(join(process.cwd(), f), 'utf-8');
+
+  it('compositeur : un extrait joue depuis son point d entrée, cut interne repositionné', () => {
+    const c = src('src/lib/video-composer.ts');
+    expect(c).toContain('montage?: ReadonlyArray<RushSegment> | null;');
+    expect(c).toContain('el.currentTime = actif.depuis + (t - (vs + actif.debut));');
+    expect(c).toContain('if (el.paused || k !== extraitCourant) {');
+  });
+
+  it('Remotion : trimBefore sur le point d entrée', () => {
+    const r = src('remotion/CreerSimpleMontage.tsx');
+    expect(r).toContain('trimBefore: Math.round(seg.depuis * fps)');
+    expect(r).toContain('ajusterPlan(montage, dureeVideo)');
+  });
+
+  it('Calendrier / régénération : le plan part en `montage`', () => {
+    const o = src('src/lib/rendus/options-depuis-metadata.ts');
+    expect(o).toContain('montage: rushSegmentsDepuisMetadata(meta.rushSegments)!');
+  });
+
+  it('Créer : analyse avant rendu, plan persisté dans rushSegments', () => {
+    const w = src('src/app/dashboard/creer/AssistantWizard.tsx');
+    expect(w).toContain("setRenderStage('Analyse des rushes…');");
+    expect(w).toContain("? planMontageRushs ?? planRushs(rushsDurables, duree('video'))");
+    expect(w).toContain('...(duree(\'video\') > 0 && planMontageRushs ? { montage: planMontageRushs } : {}),');
+  });
+});

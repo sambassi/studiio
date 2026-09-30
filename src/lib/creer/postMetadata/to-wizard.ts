@@ -35,7 +35,7 @@
  * rendu et ne modifie jamais son argument.
  */
 
-import { rushSegmentsDepuisMetadata, rushsDepuisSegments } from '@/lib/creer/multi-rush';
+import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan } from '@/lib/creer/multi-rush';
 import { DRAFT_VERSION, type Draft } from '../draft';
 import { resoudreTextes } from '../textesCanoniques';
 import { fromPostMetadata } from './from-post';
@@ -247,7 +247,13 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // (écrit par Créer), jamais depuis `rushUrls` seul — l'Agent IA y range sa
   // banque. Sans segments : `rushUrls[0]` seul, comme avant.
   const segments = rushSegmentsDepuisMetadata(presence(meta, 'rushSegments'));
-  if (segments) {
+  if (segments && estPlanMontage(segments)) {
+    // Smart montage : l'écran liste les RUSHES (sans doublon), pas les
+    // extraits — le plan est recalculé au prochain envoi.
+    const [premier, ...suivants] = rushsDuPlan(segments);
+    draft.rushUrl = premier.url;
+    draft.rushSuivants = suivants.map((r) => ({ url: r.url, name: '', secondes: null }));
+  } else if (segments) {
     draft.rushUrl = segments[0].url;
     draft.rushSecondes = Math.round((segments[0].fin - segments[0].debut) * 1000) / 1000;
     draft.rushSuivants = rushsDepuisSegments(segments.slice(1)).map((r) => ({ url: r.url, name: '', secondes: r.secondes }));
