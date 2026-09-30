@@ -139,6 +139,26 @@ async function chargerRoute() {
   return import('@/app/api/autopilot/produire-maintenant/route');
 }
 
+/**
+ * Le rendu tourne EN ARRIÈRE-PLAN (202) : on attend son résultat, relu
+ * comme le fait l'écran, et on le rend sous forme de réponse (200 / 500).
+ * Une réponse autre que 202 (refus, 409…) est rendue telle quelle.
+ */
+async function attendreResultat(): Promise<Response> {
+  const { lireResultat } = await import('@/lib/autopilot/progression');
+  for (let i = 0; i < 400; i += 1) {
+    const r = lireResultat('u1');
+    if (r) return new Response(JSON.stringify(r), { status: r.success ? 200 : 500 });
+    await new Promise((ok) => setTimeout(ok, 5));
+  }
+  throw new Error('rendu en arrière-plan jamais terminé');
+}
+
+async function produire(POST: () => Promise<Response>): Promise<Response> {
+  const res = await POST();
+  return res.status === 202 ? attendreResultat() : res;
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(MAINTENANT);
@@ -160,7 +180,7 @@ describe('Les refus — sans rien débiter ni rendre', () => {
   it('sans session : 401', async () => {
     authMock.mockResolvedValue(null);
     const { POST } = await chargerRoute();
-    expect((await POST()).status).toBe(401);
+    expect((await produire(POST)).status).toBe(401);
     expect(renderAndUpload).not.toHaveBeenCalled();
     expect(deductCredits).not.toHaveBeenCalled();
   });
@@ -168,7 +188,7 @@ describe('Les refus — sans rien débiter ni rendre', () => {
   it('sans rush : 422', async () => {
     configEnBase = { ...configComplete(), rush_urls: [] };
     const { POST } = await chargerRoute();
-    const res = await POST();
+    const res = await produire(POST);
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe('sans-rush');
     expect(renderAndUpload).not.toHaveBeenCalled();
@@ -178,13 +198,13 @@ describe('Les refus — sans rien débiter ni rendre', () => {
   it('sans configuration du tout : 422 aussi (les défauts n ont pas de rush)', async () => {
     configEnBase = null;
     const { POST } = await chargerRoute();
-    expect((await POST()).status).toBe(422);
+    expect((await produire(POST)).status).toBe(422);
   });
 
   it('crédits insuffisants : 402, avec le montant', async () => {
     credits = 4;
     const { POST } = await chargerRoute();
-    const res = await POST();
+    const res = await produire(POST);
     expect(res.status).toBe(402);
     const corps = await res.json();
     expect(corps.code).toBe('credits');
@@ -198,7 +218,7 @@ describe('Les refus — sans rien débiter ni rendre', () => {
   it('un rendu qui échoue : 500, rien débité', async () => {
     renderAndUpload.mockRejectedValueOnce(new Error('Chromium absent'));
     const { POST } = await chargerRoute();
-    const res = await POST();
+    const res = await produire(POST);
     expect(res.status).toBe(500);
     expect(deductCredits).not.toHaveBeenCalled();
     expect(insertions).toHaveLength(0);
@@ -208,7 +228,7 @@ describe('Les refus — sans rien débiter ni rendre', () => {
 describe('Le brouillon forcé', () => {
   it('statut draft, aucun réseau, quoi que dise la configuration', async () => {
     const { POST } = await chargerRoute();
-    const res = await POST();
+    const res = await produire(POST);
     expect(res.status).toBe(200);
     const corps = await res.json();
     expect(corps.success).toBe(true);
@@ -230,7 +250,7 @@ describe('Le brouillon forcé', () => {
 
   it('le créneau est « aujourd hui, maintenant arrondi » chez l utilisateur — PAS l heure de publication', async () => {
     const { POST } = await chargerRoute();
-    const corps = await (await POST()).json();
+    const corps = await (await produire(POST)).json();
     const attendu = creneauImmediat(MAINTENANT, 'Europe/Paris');
     expect(attendu).toEqual({ date: '2026-08-04', time: '11:10' });
     expect(corps.scheduledDate).toBe('2026-08-04');
@@ -244,14 +264,14 @@ describe('Le brouillon forcé', () => {
 
   it('le jeton de créneau est distinct de ceux du cron — préfixe `manuel:`', async () => {
     const { POST } = await chargerRoute();
-    await POST();
+    await produire(POST);
     const meta = insertions[0].metadata as Record<string, unknown>;
     expect(meta.slotKey).toBe(`manuel:${slotKey('u1', '2026-08-04', '11:10')}`);
   });
 
   it('rend UNE vidéo, la débite UNE fois, au coût annoncé, avec une référence stable', async () => {
     const { POST } = await chargerRoute();
-    const corps = await (await POST()).json();
+    const corps = await (await produire(POST)).json();
     expect(renderAndUpload).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledWith(
@@ -271,13 +291,13 @@ describe('Le brouillon forcé', () => {
       return { videoUrl: 'https://cdn.test/rendu.mp4', thumbnailUrl: null, durationFrames: 1 };
     });
     const { POST } = await chargerRoute();
-    await POST();
+    await produire(POST);
     expect(ordre).toEqual(['rendu', 'debit']);
   });
 
   it('aucune voix quand elle n est pas demandée, et AUCUN appel de publication', async () => {
     const { POST } = await chargerRoute();
-    await POST();
+    await produire(POST);
     expect(buildAutopilotVoices).not.toHaveBeenCalled();
     expect(publication).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -286,7 +306,7 @@ describe('Le brouillon forcé', () => {
   it('la production ne consulte pas la décision du cron — en pause, avant la date de début : elle produit quand même', async () => {
     configEnBase = { ...configComplete(), enabled: false, start_date: '2030-01-01' };
     const { POST } = await chargerRoute();
-    expect((await POST()).status).toBe(200);
+    expect((await produire(POST)).status).toBe(200);
   });
 });
 
@@ -297,9 +317,11 @@ describe('Un clic = un rendu = un débit', () => {
     const { POST } = await chargerRoute();
     const [a, b] = await Promise.all([POST(), POST()]);
     const statuts = [a.status, b.status].sort();
-    expect(statuts).toEqual([200, 409]);
+    // 202 : le premier est lancé en arrière-plan ; le second, refusé.
+    expect(statuts).toEqual([202, 409]);
     const refuse = a.status === 409 ? a : b;
     expect((await refuse.json()).code).toBe('en-cours');
+    expect((await attendreResultat()).status).toBe(200);
     expect(renderAndUpload).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(insertions).toHaveLength(1);
@@ -307,8 +329,8 @@ describe('Un clic = un rendu = un débit', () => {
 
   it('un second appel dans le MÊME créneau, après coup : 409, rien de plus', async () => {
     const { POST } = await chargerRoute();
-    expect((await POST()).status).toBe(200);
-    const res = await POST();
+    expect((await produire(POST)).status).toBe(200);
+    const res = await produire(POST);
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('deja-produit');
     expect(renderAndUpload).toHaveBeenCalledTimes(1);
@@ -318,15 +340,15 @@ describe('Un clic = un rendu = un débit', () => {
   it('le verrou est relâché après une erreur — on peut réessayer', async () => {
     renderAndUpload.mockRejectedValueOnce(new Error('Chromium absent'));
     const { POST } = await chargerRoute();
-    expect((await POST()).status).toBe(500);
-    expect((await POST()).status).toBe(200);
+    expect((await produire(POST)).status).toBe(500);
+    expect((await produire(POST)).status).toBe(200);
   });
 
   it('un créneau plus tard est un nouveau brouillon', async () => {
     const { POST } = await chargerRoute();
-    expect((await POST()).status).toBe(200);
+    expect((await produire(POST)).status).toBe(200);
     vi.setSystemTime(MAINTENANT + 10 * 60_000);
-    expect((await POST()).status).toBe(200);
+    expect((await produire(POST)).status).toBe(200);
     expect(insertions).toHaveLength(2);
     expect(insertions[1].scheduled_time).toBe('11:20');
   });
@@ -356,7 +378,8 @@ describe('Le moteur partagé', () => {
     const route = readFileSync(resolve(__dirname, '../app/api/autopilot/produire-maintenant/route.ts'), 'utf-8');
     for (const src of [cron, route]) {
       expect(src).toContain("from '@/lib/autopilot/produire'");
-      expect(src).toContain('await produireUnMontage({');
+      // Le cron attend le montage ; la route le lance en arrière-plan.
+      expect(src).toMatch(/(await|void) produireUnMontage\(\{/);
       // Aucun des deux ne rend, n'insère ni ne débite lui-même.
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
       for (const interdit of ['renderAndUpload(', "from('scheduled_posts')", 'deductCredits(', 'buildAutopilotDesign(']) {
@@ -402,5 +425,43 @@ describe('Le moteur partagé', () => {
     expect(configDepuisLigne(ligne).startDate).toBe('2027-01-01');
     expect(configDepuisLigne(ligne).publishTime).toBe('18:45');
     expect(configDepuisLigne(null)).toEqual(DEFAULT_CONFIG);
+  });
+});
+
+describe('1 clic = 1 rendu : la production tourne en ARRIÈRE-PLAN', () => {
+  it('réponse immédiate 202 ; tant que le rendu tourne, un nouvel appel est refusé (409 en-cours)', async () => {
+    delaiRendu = 60;
+    vi.useRealTimers();
+    const { POST } = await chargerRoute();
+    const premier = await POST();
+    expect(premier.status).toBe(202);
+    expect((await premier.json()).enCours).toBe(true);
+    // Le rendu n'est pas fini : un deuxième clic (ou une requête rejouée
+    // après une coupure) ne lance RIEN.
+    const second = await POST();
+    expect(second.status).toBe(409);
+    expect((await second.json()).code).toBe('en-cours');
+    expect((await attendreResultat()).status).toBe(200);
+    expect(renderAndUpload).toHaveBeenCalledTimes(1);
+    expect(insertions).toHaveLength(1);
+  });
+
+  it('l écran relit avancement puis résultat par /progression', async () => {
+    const { POST } = await chargerRoute();
+    expect((await POST()).status).toBe(202);
+    await attendreResultat();
+    const { GET } = await import('@/app/api/autopilot/produire-maintenant/progression/route');
+    const corps = await (await GET()).json();
+    expect(corps.progression).toBeNull();
+    expect(corps.resultat.success).toBe(true);
+    expect(corps.resultat.postId).toBeDefined();
+  });
+
+  it('le panneau suit le rendu lancé et le retrouve après un rechargement', () => {
+    const { readFileSync } = require('fs') as typeof import('fs');
+    const panel = readFileSync(require('path').resolve(process.cwd(), 'src/components/creer/AutopilotPanel.tsx'), 'utf-8');
+    expect(panel).toContain("if (res.status === 202 || data?.code === 'en-cours') return;");
+    expect(panel).toContain(".then((d) => { if (actif && d?.progression) setProduire({ etat: 'en-cours' }); })");
+    expect(panel).toContain('if (!p && r) appliquerResultat(r);');
   });
 });

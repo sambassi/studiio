@@ -11,7 +11,7 @@ import {
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
-import { noterProgression, effacerProgression } from '@/lib/autopilot/progression';
+import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
 
 /**
  * « Produire un brouillon maintenant » — UNE vidéo, tout de suite, pour le
@@ -117,6 +117,8 @@ export async function POST() {
     );
   }
   enVol.add(userId);
+  effacerResultat(userId);
+  let delegue = false;
   try {
     const { data: lignes, error } = await supabaseAdmin
       .from('autopilot_config')
@@ -237,8 +239,16 @@ export async function POST() {
       });
     }
 
+    // ── Rendu EN ARRIÈRE-PLAN ────────────────────────────────────────────
+    // Réponse immédiate (202), rendu qui continue, résultat relu par l'écran
+    // (`/progression`). La requête ne reste plus ouverte 10 minutes : une
+    // coupure réseau ou un rechargement ne fait plus croire à un échec — ce
+    // qui laissait relancer une DEUXIÈME production (staging 30/09 : créneaux
+    // 21:10 puis 21:45, un seul post voulu). Le verrou `enVol` tient jusqu'à
+    // la FIN du rendu, pas jusqu'à la fin de la requête.
     noterProgression(userId, 'analyse', 0);
-    const rendu = await produireUnMontage({
+    delegue = true;
+    void produireUnMontage({
       onProgression: (etape, avancement) => noterProgression(userId, etape, avancement),
       userId,
       config: configBrouillon,
@@ -249,26 +259,41 @@ export async function POST() {
       slotKey: jeton,
       journal: '[Autopilote/Manuel]',
       metadataSupplement: { production: 'manuelle' },
+    }).then((rendu) => {
+      noterResultat(userId, {
+        success: true,
+        postId: rendu.postId,
+        // Le Calendrier ne lit pas de paramètre d'URL : le lien mène à la page,
+        // et la date dit où regarder.
+        calendrierUrl: '/dashboard/calendar',
+        scheduledDate: date,
+        scheduledTime: time,
+        timezone: config.runTimezone,
+        status: 'draft',
+        platforms: [],
+        avertissements: rendu.avertissements,
+        cout: COST_PER_VIDEO,
+        debite: rendu.debite,
+        videoUrl: rendu.videoUrl,
+        thumbnailUrl: rendu.thumbnailUrl,
+        title: post.title,
+      });
+    }).catch((err) => {
+      console.error('[Autopilote/Manuel]', err instanceof Error ? err.message : err);
+      noterResultat(userId, { success: false, error: 'Production impossible. Rien n’a été débité.' });
+    }).finally(() => {
+      enVol.delete(userId);
     });
 
     return NextResponse.json({
       success: true,
-      postId: rendu.postId,
-      // Le Calendrier ne lit pas de paramètre d'URL : le lien mène à la page,
-      // et la date dit où regarder.
-      calendrierUrl: '/dashboard/calendar',
+      enCours: true,
+      jobId,
       scheduledDate: date,
       scheduledTime: time,
       timezone: config.runTimezone,
-      status: 'draft',
-      platforms: [],
-      avertissements: rendu.avertissements,
-      cout: COST_PER_VIDEO,
-      debite: rendu.debite,
-      videoUrl: rendu.videoUrl,
-      thumbnailUrl: rendu.thumbnailUrl,
       title: post.title,
-    });
+    }, { status: 202 });
   } catch (err) {
     console.error('[Autopilote/Manuel]', err instanceof Error ? err.message : err);
     return NextResponse.json(
@@ -276,7 +301,10 @@ export async function POST() {
       { status: 500 },
     );
   } finally {
-    enVol.delete(userId);
-    effacerProgression(userId);
+    // Rendu délégué : c'est LUI qui libère le verrou, à sa fin.
+    if (!delegue) {
+      enVol.delete(userId);
+      effacerProgression(userId);
+    }
   }
 }

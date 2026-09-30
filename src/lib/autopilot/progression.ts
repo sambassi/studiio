@@ -57,3 +57,30 @@ export function lireProgression(userId: string): Progression | null {
 export function effacerProgression(userId: string): void {
   parUtilisateur.delete(userId);
 }
+
+// ── Résultat d'une production lancée EN ARRIÈRE-PLAN ────────────────────
+// « Produire maintenant » ne tient plus la requête HTTP ouverte pendant tout
+// le rendu : il répond tout de suite, le rendu continue, et l'écran relit
+// avancement puis résultat. Un rechargement de page retrouve donc l'état,
+// et le bouton reste bloqué tant que le rendu tourne (1 clic = 1 rendu).
+
+export type ResultatProduction = { success: boolean } & Record<string, unknown>;
+
+const resultats = new Map<string, { at: number; resultat: ResultatProduction }>();
+const RESULTAT_TTL_MS = 30 * 60_000;
+
+export function noterResultat(userId: string, resultat: ResultatProduction): void {
+  parUtilisateur.delete(userId);
+  resultats.set(userId, { at: Date.now(), resultat });
+}
+
+export function lireResultat(userId: string): ResultatProduction | null {
+  const r = resultats.get(userId);
+  if (!r) return null;
+  if (Date.now() - r.at > RESULTAT_TTL_MS) { resultats.delete(userId); return null; }
+  return r.resultat;
+}
+
+export function effacerResultat(userId: string): void {
+  resultats.delete(userId);
+}
