@@ -5,6 +5,7 @@ import { toPostRow, slotKey, type PreparedPost } from '@/lib/autopilot/engine';
 import { sanitizeConfig, type AutopilotConfig } from '@/lib/autopilot/rules';
 import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '@/lib/autopilot/design';
 import { renderAndUpload } from '@/lib/autopilot/render';
+import { urlRenduPourRush } from '@/lib/render/proxy-rendu';
 import {
   pickPosterUrl, pickCustomPoster, probeRushSeconds, rushEncorePresent,
 } from '@/lib/autopilot/poster';
@@ -481,11 +482,36 @@ export async function produireUnMontage(input: {
       ...(overlays ? { surimpressions: overlays, introDuration: 0, cardsDuration: 0, ctaDuration: 0 } : {}),
     }
     : designBase;
+  // ── PROXYS DE RENDU : un rush 4K / 60 i/s est rendu depuis sa copie
+  // 1080p 30 i/s (créée une fois, en cache). Le plan et les métadonnées
+  // gardent les URL ORIGINALES ; seule l'entrée du rendu change.
+  const tProxy = Date.now();
+  const urlsRush = Array.from(new Set([
+    ...(design.montage ?? []).map((s) => s.url),
+    ...(design.rushs ?? []).map((r) => r.url),
+    ...(design.videoUrl && !jumeauActif ? [design.videoUrl] : []),
+  ]));
+  const proxys = new Map<string, string>();
+  let proxysCrees = 0;
+  let proxysReutilises = 0;
+  for (const u of urlsRush) {
+    const p = await urlRenduPourRush(u);
+    if (p.proxy) { proxys.set(u, p.url); if (p.cree) proxysCrees += 1; else proxysReutilises += 1; }
+  }
+  const versRendu = (u: string) => proxys.get(u) ?? u;
+  const designRendu = proxys.size === 0 ? design : {
+    ...design,
+    ...(design.videoUrl ? { videoUrl: versRendu(design.videoUrl) } : {}),
+    ...(design.montage ? { montage: design.montage.map((s) => ({ ...s, url: versRendu(s.url) })) } : {}),
+    ...(design.rushs ? { rushs: design.rushs.map((r) => ({ ...r, url: versRendu(r.url) })) } : {}),
+  };
+  const proxyMs = Date.now() - tProxy;
+
   input.onProgression?.('composition', 0);
   const t3 = Date.now();
   let t4 = 0;
   const { videoUrl, thumbnailUrl, durationFrames, audio } = await renderAndUpload({
-    userId, jobId, design,
+    userId, jobId, design: designRendu,
     onComposition: (f) => input.onProgression?.('composition', f),
     onEnvoi: () => { t4 = Date.now(); input.onProgression?.('envoi', 0); },
   });
@@ -495,6 +521,9 @@ export async function produireUnMontage(input: {
     RUSH_PREPARATION_MS: chrono.preparation,
     RUSH_ANALYSIS_MS: chrono.analyse,
     SMART_SELECTION_MS: chrono.selection,
+    RENDER_PROXY_MS: proxyMs,
+    RENDER_PROXIES_CREES: proxysCrees,
+    RENDER_PROXIES_REUTILISES: proxysReutilises,
     REMOTION_RENDER_MS: chrono.rendu,
     FINAL_UPLOAD_MS: chrono.envoi,
     TOTAL_MS: Date.now() - chrono.debut,
