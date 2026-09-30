@@ -18,7 +18,7 @@ import {
 /** Au-delà, on n'analyse pas (coût serveur) : les extraits viennent du début. */
 const DUREE_ANALYSEE_MAX = 180;
 const ECHANTILLONS_MAX = 240;
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 90_000;
 const AUDIO_HZ = 8000;
 
 function ffmpegPath(): string {
@@ -31,20 +31,31 @@ function ffmpegPath(): string {
   return 'ffmpeg';
 }
 
-/** Lance ffmpeg et rend sa sortie standard complète (bornée en temps). */
-function executer(args: string[]): Promise<Buffer> {
+/** Lance ffmpeg ; rend sa sortie standard et son journal (bornés en temps). */
+function executer(args: string[]): Promise<{ stdout: Buffer; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const p = spawn(ffmpegPath(), args, { stdio: ['ignore', 'pipe', 'ignore'] });
+    const p = spawn(ffmpegPath(), args, { stdio: ['ignore', 'pipe', 'pipe'] });
     const morceaux: Buffer[] = [];
+    let stderr = '';
     const minuteur = setTimeout(() => { p.kill('SIGKILL'); reject(new Error('analyse : délai dépassé')); }, TIMEOUT_MS);
     p.stdout.on('data', (b: Buffer) => morceaux.push(b));
+    p.stderr.on('data', (b: Buffer) => { if (stderr.length < 4_000_000) stderr += b.toString(); });
     p.on('error', (e) => { clearTimeout(minuteur); reject(e); });
     p.on('close', (code) => {
       clearTimeout(minuteur);
-      if (code === 0) resolve(Buffer.concat(morceaux));
+      if (code === 0) resolve({ stdout: Buffer.concat(morceaux), stderr });
       else reject(new Error(`ffmpeg code ${code}`));
     });
   });
+}
+
+/** Instants (s) des images émises, lus dans le journal `showinfo`. Pur, testable. */
+export function instantsShowinfo(journal: string): number[] {
+  const out: number[] = [];
+  const re = /pts_time:\s*(-?[\d.]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(journal))) out.push(Number(m[1]));
+  return out;
 }
 
 /** Découpe une sortie brute en images grises (0..1). Pure, testable. */
@@ -85,27 +96,50 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
   const fs = await import('fs/promises');
   const audioTmp = path.join(os.tmpdir(), `studiio-analyse-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.pcm`);
   try {
-    // UN SEUL décodage (donc un seul téléchargement) pour l'image ET le son :
-    // l'image part sur la sortie standard, le son dans un fichier temporaire.
-    // `-skip_loop_filter all` : décodage plus rapide, sans effet sur des
-    // mesures faites en 64×36.
-    const brut = await executer([
-      '-hide_banner', '-loglevel', 'error', '-threads', '0', '-skip_loop_filter', 'all',
+    // ⚠️ IMAGES-CLÉS SEULEMENT (`-skip_frame nokey`). Décoder chaque image
+    // d'un rush 4K 60 i/s de 40 s dépassait le délai de 120 s sur le serveur
+    // de staging : AUCUNE analyse n'aboutissait, et l'Autopilote retombait
+    // en montage simple (test réel du 30/09, 13:43). Les images-clés (une
+    // toutes les 0,5–2 s sur un téléphone) suffisent à des mesures en 64×36,
+    // pour environ 7× moins de calcul. `select` borne leur densité à 1 / `pas`
+    // (vidéos tout-intra). Les instants réels viennent de `showinfo`.
+    // UN SEUL passage pour l'image ET le son.
+    const argsImages = (clesSeules: boolean, avecSon = true) => [
+      '-hide_banner', '-loglevel', 'info', '-nostats', '-threads', '0',
+      ...(clesSeules ? ['-skip_frame', 'nokey'] : ['-skip_loop_filter', 'all']),
       '-t', String(duree), '-i', url,
-      '-map', '0:v:0', '-vf', `fps=${1 / pas},scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray`,
-      '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1',
-      '-map', '0:a:0?', '-ac', '1', '-ar', String(AUDIO_HZ), '-f', 's16le', '-y', audioTmp,
-    ]);
+      '-map', '0:v:0',
+      '-vf', clesSeules
+        ? `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${pas})',scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray,showinfo`
+        : `fps=${1 / pas},scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray,showinfo`,
+      '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1',
+      ...(avecSon ? ['-map', '0:a:0?', '-ac', '1', '-ar', String(AUDIO_HZ), '-f', 's16le', '-y', audioTmp] : []),
+    ];
+    // Un rush SANS piste audio laisse la sortie son vide, et ffmpeg refuse
+    // alors tout le passage : on relance sans elle (énergie audio à 0).
+    const lancer = (clesSeules: boolean) => executer(argsImages(clesSeules))
+      .catch((e) => (String(e?.message).includes('délai') ? Promise.reject(e) : executer(argsImages(clesSeules, false))));
+    let { stdout: brut, stderr } = await lancer(true);
+    // Images-clés trop rares (vidéo courte, ou encodée avec une seule
+    // image-clé — fréquent sur les vidéos générées) : décodage complet,
+    // peu coûteux justement sur ces fichiers-là.
+    if (imagesDepuisBrut(brut).length < Math.max(3, Math.floor(duree / 4))) {
+      ({ stdout: brut, stderr } = await lancer(false));
+    }
     const pcm = await fs.readFile(audioTmp).catch(() => Buffer.alloc(0));
     const images = imagesDepuisBrut(brut);
     if (images.length < 2) return null;
-    const audio = energieDepuisPcm(pcm, pas, images.length);
+    const instants = instantsShowinfo(stderr);
+    const t0 = instants[0] ?? 0;
+    // Énergie audio par demi-seconde, relue à l'instant de chaque image.
+    const audio = energieDepuisPcm(pcm, 0.5, Math.ceil(duree / 0.5) + 1);
     const echantillons: EchantillonRush[] = [];
     let prec: Float32Array | null = null;
     images.forEach((g, i) => {
       const m = mesurerImage(g, prec);
       prec = g;
-      echantillons.push({ t: Math.round(i * pas * 1000) / 1000, ...m, audio: audio[i] ?? 0 });
+      const t = Math.max(0, (instants[i] ?? i * pas) - t0);
+      echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, audio: audio[Math.floor(t / 0.5)] ?? 0 });
     });
     return { url, duree, echantillons };
   } catch (err) {
