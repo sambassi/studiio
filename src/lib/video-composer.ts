@@ -19,7 +19,8 @@ import {
 } from '@/lib/creer/designSpec';
 import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import type { Lut } from '@/lib/luts/types';
-import { planRushs, segmentA } from '@/lib/creer/multi-rush';
+import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
+import { ajusterPlan } from '@/lib/creer/smart-montage';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -566,6 +567,13 @@ export interface ComposerOptions {
    * entree : seul `videoUrl` compte — rendu strictement identique a avant.
    */
   rushs?: ReadonlyArray<{ url: string; secondes?: number | null }> | null;
+  /**
+   * SMART MONTAGE (`src/lib/creer/smart-montage.ts`) — plan de montage : des
+   * EXTRAITS `{ url, debut, fin, depuis }` et non des rushes entiers. Lu
+   * seulement a partir de 2 extraits ; il remplace alors `rushs`. Absent :
+   * enchainement de `rushs` a la lettre comme avant.
+   */
+  montage?: ReadonlyArray<RushSegment> | null;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3556,7 +3564,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const mediaLoadStart = performance.now();
   // Multi-rush : a partir de 2 rushes seulement, et seulement si un rush est
   // demande (`videoUrl`) — un appelant qui masque la sequence ne le passe pas.
-  const rushsDemandes = videoUrl && options.rushs && options.rushs.filter((r) => r?.url).length >= 2
+  const montageDemande = videoUrl && options.montage && options.montage.filter((m) => m?.url).length >= 2
+    ? options.montage.filter((m) => m?.url)
+    : null;
+  const rushsDemandes = montageDemande
+    ? rushsDuPlan(montageDemande)
+    : videoUrl && options.rushs && options.rushs.filter((r) => r?.url).length >= 2
     ? options.rushs.filter((r) => r?.url)
     : null;
   const [posterImg, logoImg, videoElPrincipal, videoImageEl, rushsCharges] = await Promise.all([
@@ -3764,15 +3777,23 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // `null` hors multi-rush : tous les chemins ci-dessous gardent alors le
   // `videoEl` unique, a la lettre comme avant.
   const videoSeqPlan = sequences.find((s) => s.type === 'video');
-  const rushPlan: { el: HTMLVideoElement; debut: number; fin: number }[] | null =
-    rushsLus.length >= 2 && videoSeqPlan
-      ? planRushs(rushsLus, videoSeqPlan.duration).map((seg, i) => ({ el: rushsLus[i].el, debut: seg.debut, fin: seg.fin }))
+  // Smart montage : les extraits du plan, ramenes a la duree reelle de la
+  // sequence. Un rush du plan illisible = retour a l'enchainement des rushes
+  // lus (jamais un trou noir au milieu du montage).
+  const elParUrl = new Map(rushsLus.map((r) => [r.url, r.el] as const));
+  const montageLu = montageDemande && montageDemande.every((m) => elParUrl.has(m.url)) ? montageDemande : null;
+  const rushPlan: { el: HTMLVideoElement; debut: number; fin: number; depuis: number }[] | null =
+    montageLu && videoSeqPlan
+      ? ajusterPlan(montageLu, videoSeqPlan.duration).map((seg) => ({ el: elParUrl.get(seg.url)!, debut: seg.debut, fin: seg.fin, depuis: seg.depuis ?? 0 }))
+      : rushsLus.length >= 2 && videoSeqPlan
+      ? planRushs(rushsLus, videoSeqPlan.duration).map((seg, i) => ({ el: rushsLus[i].el, debut: seg.debut, fin: seg.fin, depuis: 0 }))
       : null;
   if (rushPlan) {
-    console.log('[Composer] Multi-rush :', rushPlan.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s`).join(' | '));
+    console.log(montageLu ? '[Composer] Smart montage :' : '[Composer] Multi-rush :', rushPlan.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s@${s.depuis.toFixed(1)}`).join(' | '));
   }
   // Tous les elements video du rush (un seul hors multi-rush).
-  const rushEls: HTMLVideoElement[] = rushPlan ? rushPlan.map((s) => s.el) : (videoEl ? [videoEl] : []);
+  // Un element par RUSH (un plan de montage reprend le meme rush plusieurs fois).
+  const rushEls: HTMLVideoElement[] = rushPlan ? Array.from(new Set(rushPlan.map((s) => s.el))) : (videoEl ? [videoEl] : []);
 
   console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
@@ -4719,7 +4740,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
 
     // START video element
-    for (const el of rushEls) { el.currentTime = 0; el.pause(); }
+    // Chaque rush pre-positionne sur son premier extrait (0 hors smart montage).
+    for (const el of rushEls) { el.currentTime = rushPlan?.find((s) => s.el === el)?.depuis ?? 0; el.pause(); }
 
     // ── CRITICAL: draw frame 0 BEFORE starting the recorder ──
     // Same fix as fast mode: the canvas must already show the intro
@@ -4748,6 +4770,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     let animStopped = false;
     let lastAnimTime = performance.now(); // Pour détecter si rAF est en pause
 
+    // Extrait du plan multi-rush en cours de lecture (-1 : aucun).
+    let extraitCourant = -1;
     const doFrame = () => {
       if (animStopped) return;
       lastAnimTime = performance.now();
@@ -4770,18 +4794,24 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
       // Gérer l'élément vidéo
       if (rushPlan) {
-        // Multi-rush : chaque rush joue dans SA fenetre de la sequence video,
-        // depuis son debut ; tous les autres sont en pause.
+        // Multi-rush / smart montage : l'extrait actif joue depuis son point
+        // d'entree (`depuis`) ; tous les autres rushes sont en pause. Un
+        // changement d'extrait sur le MEME rush (cut interne) repositionne
+        // la lecture meme si l'element n'a pas ete mis en pause.
         const videoSeq = sequences.find(s => s.type === 'video');
         if (videoSeq) {
           const vs = seqStarts[sequences.indexOf(videoSeq)];
-          for (const seg of rushPlan) {
-            const a = vs + seg.debut;
-            const b = vs + seg.fin;
-            if (t >= a && t < b) {
-              if (seg.el.paused) { seg.el.currentTime = t - a; seg.el.play().catch(() => {}); }
-            } else if (!seg.el.paused) { seg.el.pause(); }
+          const k = rushPlan.findIndex((seg) => t >= vs + seg.debut && t < vs + seg.fin);
+          const actif = k >= 0 ? rushPlan[k] : null;
+          for (const el of rushEls) {
+            if (actif && el === actif.el) {
+              if (el.paused || k !== extraitCourant) {
+                el.currentTime = actif.depuis + (t - (vs + actif.debut));
+                if (el.paused) el.play().catch(() => {});
+              }
+            } else if (!el.paused) { el.pause(); }
           }
+          extraitCourant = k;
         }
       } else if (videoEl) {
         const videoSeq = sequences.find(s => s.type === 'video');

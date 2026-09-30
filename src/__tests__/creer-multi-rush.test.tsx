@@ -197,13 +197,15 @@ describe('câblage (sources)', () => {
   it('le compositeur n’active le multi-rush qu’à partir de 2 rushes et garde le chemin mono-rush', () => {
     expect(composer).toMatch(/options\.rushs\.filter\(\(r\) => r\?\.url\)\.length >= 2/);
     expect(composer).toMatch(/rushsLus\.length >= 2 && videoSeqPlan/);
-    expect(composer).toMatch(/const rushEls: HTMLVideoElement\[\] = rushPlan \? rushPlan\.map\(\(s\) => s\.el\) : \(videoEl \? \[videoEl\] : \[\]\)/);
+    // Un element par rush : un plan de montage (smart montage) reprend le même rush.
+    expect(composer).toMatch(/const rushEls: HTMLVideoElement\[\] = rushPlan \? Array\.from\(new Set\(rushPlan\.map\(\(s\) => s\.el\)\)\) : \(videoEl \? \[videoEl\] : \[\]\)/);
     // LUT : le même étalonneur reçoit le rush courant.
     expect(composer).toMatch(/drawVideoSeq\(target, width, height, rushCourant,[^\n]*lutGrader\)/);
   });
 
   it('le wizard écrit rushSegments seulement avec ≥ 2 rushes', () => {
-    expect(wizard).toMatch(/rushsDurables\.length >= 2\s*\?\s*planRushs\(rushsDurables, duree\('video'\)\)/);
+    // Smart montage : le plan d'extraits s'il existe, l'enchaînement sinon.
+    expect(wizard).toMatch(/rushsDurables\.length >= 2\s*\?\s*planMontageRushs \?\? planRushs\(rushsDurables, duree\('video'\)\)/);
     expect(wizard).toMatch(/rushs: rushListe\.length >= 2 \? rushListe : null/);
   });
 });

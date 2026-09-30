@@ -36,7 +36,7 @@ import {
   type TransitionStyle,
 } from '@/lib/video-composer';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
-import { rushSegmentsDepuisMetadata, rushsDepuisSegments } from '@/lib/creer/multi-rush';
+import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan } from '@/lib/creer/multi-rush';
 import {
   elementsLibresDepuisMetadata,
   fondsPourMetadata,
@@ -274,7 +274,11 @@ export function optionsRenduDepuisMetadata(
     videoUrl: meta.rushUrls?.[0] || null,
     // Multi-rush : seulement si Créer l'a écrit (`rushSegments`, ≥ 2). Jamais
     // déduit de `rushUrls.length` — l'Agent IA y range sa banque entière.
-    ...(rushSegmentsDepuisMetadata(meta.rushSegments)
+    // Smart montage : un PLAN d'extraits (points d'entrée, rushes repris)
+    // part tel quel en `montage` ; les rushes, sans doublon, en `rushs`.
+    ...(estPlanMontage(rushSegmentsDepuisMetadata(meta.rushSegments))
+      ? { montage: rushSegmentsDepuisMetadata(meta.rushSegments)!, rushs: rushsDuPlan(rushSegmentsDepuisMetadata(meta.rushSegments)!) }
+      : rushSegmentsDepuisMetadata(meta.rushSegments)
       ? { rushs: rushsDepuisSegments(rushSegmentsDepuisMetadata(meta.rushSegments)!) }
       : {}),
     ...(prep.rushLut ? { rushLut: prep.rushLut } : {}),

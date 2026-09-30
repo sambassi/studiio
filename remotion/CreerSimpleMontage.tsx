@@ -2,7 +2,8 @@ import React from 'react';
 import {
   AbsoluteFill, Audio, OffthreadVideo, Img, Sequence, useVideoConfig, useCurrentFrame,
 } from 'remotion';
-import { planRushs } from '../src/lib/creer/multi-rush';
+import { planRushs, type RushSegment } from '../src/lib/creer/multi-rush';
+import { ajusterPlan } from '../src/lib/creer/smart-montage';
 import {
   buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
   gradientOverlayCss, DEFAULT_COLORS,
@@ -96,6 +97,12 @@ export interface CreerSimpleMontageProps {
    * L'Autopilote ne le passe pas.
    */
   rushs?: ReadonlyArray<{ url: string; secondes?: number | null }> | null;
+  /**
+   * SMART MONTAGE (`src/lib/creer/smart-montage.ts`) : plan d'EXTRAITS
+   * `{ url, debut, fin, depuis }`. À partir de 2 extraits il remplace `rushs`
+   * (chaque extrait joue depuis `depuis` dans son rush). Absent : `rushs`.
+   */
+  montage?: ReadonlyArray<RushSegment> | null;
   musicUrl?: string | null;
   gradientStart?: string;
   gradientEnd?: string;
@@ -441,8 +448,10 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         // Multi-rush : durée de la séquence « Vidéo » et écart entre le début
         // de sa séquence dans la série et son début NOMINAL.
         const iVideo = sequences.findIndex((s) => s.type === 'video');
-        const plusieursRushs = (props.rushs?.filter((r) => r?.url).length ?? 0) >= 2 && iVideo >= 0;
+        const montage = (props.montage?.filter((m) => m?.url).length ?? 0) >= 2 ? props.montage!.filter((m) => m?.url) : null;
+        const plusieursRushs = (montage !== null || (props.rushs?.filter((r) => r?.url).length ?? 0) >= 2) && iVideo >= 0;
         const dureeVideo = iVideo >= 0 ? sequences[iVideo].duration : 0;
+        const planVideo: RushSegment[] = montage ? ajusterPlan(montage, dureeVideo) : plusieursRushs ? planRushs(props.rushs!, dureeVideo) : [];
         const avance = (depart: number) => (iVideo >= 0 ? Math.max(0, offsets[iVideo] - depart) : 0);
 
         const contenu = (type: string, anim: AnimationCourante, depart: number) => (
@@ -453,7 +462,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               // à leur place NOMINALE, `avance` frames après le début de la
               // série. Le dernier court jusqu'au bout (raccord sortant compris).
               <>
-                {planRushs(props.rushs!, dureeVideo).map((seg, k, plan) => {
+                {planVideo.map((seg, k, plan) => {
                   const from = k === 0 ? 0 : avance(depart) + Math.round(seg.debut * fps);
                   const fin = avance(depart) + Math.round(seg.fin * fps);
                   return (
@@ -464,6 +473,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                     >
                       <OffthreadVideo
                         src={seg.url}
+                        // Smart montage : l'extrait commence à `depuis` dans son rush.
+                        {...(seg.depuis ? { trimBefore: Math.round(seg.depuis * fps) } : {})}
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                         volume={(f) => (
                           props.rushMuted ? 0 : mixAt((depart + from + f) / fps, mixOptions).rush
