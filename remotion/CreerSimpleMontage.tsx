@@ -110,6 +110,12 @@ export interface CreerSimpleMontageProps {
    * voix off partent aux départs `voix`. Absent : rendu d'avant.
    */
   surimpressions?: OverlaysMontage | null;
+  /**
+   * RENDU HYBRIDE : ne dessiner qu'UN élément de surimpression, sur fond
+   * TRANSPARENT, pour une image fixe (`renderStill`) que ffmpeg pose ensuite
+   * sur la vidéo. Mêmes composants que le rendu complet — donc même design.
+   */
+  stillSurimpression?: 'voile' | 'titre' | 'cta' | 'filigrane' | { carte: number } | null;
   musicUrl?: string | null;
   gradientStart?: string;
   gradientEnd?: string;
@@ -373,6 +379,9 @@ const CoucheOverlay: React.FC<{ from: number; durationInFrames: number; children
   </Sequence>
 );
 
+/** Voile dégradé des surimpressions — le même en rendu complet et hybride. */
+export const VOILE_SURIMPRESSION = 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 32%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.55) 100%)';
+
 const CoucheOverlayAnimee: React.FC<{ duree: number; children: React.ReactNode }> = ({ duree, children }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -382,7 +391,7 @@ const CoucheOverlayAnimee: React.FC<{ duree: number; children: React.ReactNode }
   return (
     <AbsoluteFill style={{ opacity: opacite }}>
       <AbsoluteFill
-        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 32%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.55) 100%)' }}
+        style={{ background: VOILE_SURIMPRESSION }}
       />
       <AbsoluteFill style={{ transform: `translateY(${Math.round((1 - entree) * 24)}px)` }}>{children}</AbsoluteFill>
     </AbsoluteFill>
@@ -434,7 +443,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
     // filigrane sortait en Times. La police WEB elle-meme (Inter) n'est pas
     // encore embarquee dans le bundle : c'est un point de Phase 2.
     // La pile de police vient de `fontStack` — la MEME fonction que l'ecran.
-    <AbsoluteFill style={{ backgroundColor: DEFAULT_COLORS.dark, fontFamily: fontStack('Inter') }}>
+    <AbsoluteFill style={{ backgroundColor: props.stillSurimpression ? 'transparent' : DEFAULT_COLORS.dark, fontFamily: fontStack('Inter') }}>
       {/* ── AUDIO ────────────────────────────────────────────────────────
           Musique et voix vivent a la RACINE, pas dans les
           `TransitionSeries.Sequence` : depuis la Phase 6, une sequence autre
@@ -442,7 +451,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           Une voix posee dedans partirait 0,8 s trop tot, et le decalage
           s'accumulerait a chaque transition. Ici, `sequenceFrameOffsets`
           donne le debut NOMINAL, celui que le canvas utilise aussi. */}
-      {props.musicUrl && (
+      {props.musicUrl && !props.stillSurimpression && (
         <MusiqueEnBoucle
           src={props.musicUrl}
           fps={fps}
@@ -452,7 +461,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
       )}
       {/* Surimpressions : les voix partent à LEURS départs dans la vidéo
           continue (plus de séquences titre / cartes / CTA pour les porter). */}
-      {voixParSequence && props.surimpressions && SEQ_VOICE_KEYS.map((cle) => {
+      {voixParSequence && props.surimpressions && !props.stillSurimpression && SEQ_VOICE_KEYS.map((cle) => {
         const url = props.sequenceVoiceUrls?.[cle];
         const depart = props.surimpressions?.voix[cle];
         if (!url || typeof depart !== 'number') return null;
@@ -468,7 +477,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           />
         );
       })}
-      {voixParSequence && !props.surimpressions && sequences.map((seq, i) => {
+      {voixParSequence && !props.surimpressions && !props.stillSurimpression && sequences.map((seq, i) => {
         const cle = SEQ_TO_EDITOR[seq.type];
         const url = cle ? props.sequenceVoiceUrls?.[cle] : null;
         if (!url) return null;
@@ -485,7 +494,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           />
         );
       })}
-      {voixUnique && (
+      {voixUnique && !props.stillSurimpression && (
         // Repli historique : une seule voix, dès la première image.
         <Audio src={voixUnique} volume={(f) => mixAt(f / fps, mixOptions).voice} />
       )}
@@ -727,6 +736,17 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         // deux sequences, chaque sequence sauf la premiere porte la duree de
         // transition en plus : le chevauchement la consomme, et le total
         // retombe sur la somme des durees voulues.
+        // Image fixe du rendu hybride : l'élément seul, rien d'autre.
+        if (props.stillSurimpression) {
+          const e = props.stillSurimpression;
+          if (e === 'voile') return <AbsoluteFill style={{ background: VOILE_SURIMPRESSION }} />;
+          if (e === 'filigrane') return <Filigrane texte={props.watermark} echelle={echelle} />;
+          if (e === 'titre') return <AbsoluteFill>{blocTitre(1)}</AbsoluteFill>;
+          if (e === 'cta') return <AbsoluteFill>{blocCta(1)}</AbsoluteFill>;
+          const carte = (props.cards ?? [])[e.carte];
+          return carte ? <AbsoluteFill>{blocCartes([carte])}</AbsoluteFill> : null;
+        }
+
         const durees = seriesSequenceFrames(base, tFrames);
         const style = resolveStyle(props.transition);
         const animation = resolveAnimation(props.textAnimation);

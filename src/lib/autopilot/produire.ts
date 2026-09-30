@@ -510,7 +510,7 @@ export async function produireUnMontage(input: {
   input.onProgression?.('composition', 0);
   const t3 = Date.now();
   let t4 = 0;
-  const { videoUrl, thumbnailUrl, durationFrames, audio } = await renderAndUpload({
+  const { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride } = await renderAndUpload({
     userId, jobId, design: designRendu,
     onComposition: (f) => input.onProgression?.('composition', f),
     onEnvoi: () => { t4 = Date.now(); input.onProgression?.('envoi', 0); },
@@ -525,6 +525,12 @@ export async function produireUnMontage(input: {
     RENDER_PROXIES_CREES: proxysCrees,
     RENDER_PROXIES_REUTILISES: proxysReutilises,
     REMOTION_RENDER_MS: chrono.rendu,
+    MOTEUR_RENDU: moteur ?? 'remotion',
+    ...(mesuresHybride ? {
+      HYBRID_STILLS_MS: mesuresHybride.stillsMs,
+      HYBRID_COPY_MS: mesuresHybride.copieMs,
+      HYBRID_FFMPEG_MS: mesuresHybride.ffmpegMs,
+    } : {}),
     FINAL_UPLOAD_MS: chrono.envoi,
     TOTAL_MS: Date.now() - chrono.debut,
   };
