@@ -12,7 +12,7 @@ import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voic
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
 import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
-import { analyserRushServeurCache, analyserMusiqueServeur } from '@/lib/creer/analyse-rush-serveur';
+import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre } from '@/lib/creer/analyse-rush-serveur';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
@@ -314,7 +314,14 @@ export async function produireUnMontage(input: {
       for (const [i, u] of liste.entries()) {
         const r = await analyserRushServeurCache(u, secondes[i]);
         if (r) analysesRushs.push(r);
-        else analysesEchouees.push(u.split('/').pop() ?? u);
+        else {
+          // Mesure impossible : le rush reste MONTABLE (mesures neutres) au
+          // lieu de disparaître — sans lui, le plan retombait sur deux rushes
+          // de 8 s (5,8 s, A → B → A → B). Dit dans les métadonnées.
+          const s = secondes[i];
+          if (s && s >= 1) analysesRushs.push(analyseNeutre(u, s));
+          analysesEchouees.push(`${u.split('/').pop() ?? u}${s && s >= 1 ? ' (monté sans mesure)' : ''}`);
+        }
         input.onProgression?.('analyse', (i + 1) / liste.length);
       }
       chrono.analyse = Date.now() - t1;

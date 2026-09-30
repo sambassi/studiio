@@ -87,6 +87,48 @@ export function energieDepuisPcm(pcm: Uint8Array, pas: number, n: number, hz = A
   return out;
 }
 
+/** Bucket + clé d'une URL publique du stockage Studiio, sinon `null`. Pur. */
+export function objetDeUrlPublique(url: string): { bucket: string; cle: string } | null {
+  const m = /\/storage\/v1\/object\/public\/([^/?#]+)\/([^?#]+)/.exec(url);
+  return m ? { bucket: m[1], cle: decodeURIComponent(m[2]) } : null;
+}
+
+/**
+ * URL que ffmpeg LIT : signée INTERNE (MinIO en direct, réseau Docker) quand
+ * le fichier est dans notre stockage.
+ *
+ * ⚠️ Test réel staging 30/09 16:00 : lu par son adresse PUBLIQUE, le rush
+ * `lv_0` (4K, 234 Mo) traversait le proxy puis l'application, et l'analyse
+ * dépassait son délai → plan bâti sur deux rushes de 8 s → 4 extraits, 5,8 s,
+ * A → B → A → B. Même fichier lu en direct : ~0,6 s d'analyse.
+ */
+export async function urlDeLecture(url: string): Promise<string> {
+  const objet = objetDeUrlPublique(url);
+  if (!objet) return url;
+  try {
+    const { signeurInterne } = await import('@/lib/storage/minio-client');
+    const signeur = signeurInterne();
+    if (!signeur) return url;
+    const interne = await signeur.presignedGetObject(objet.bucket, objet.cle, 600);
+    return typeof interne === 'string' && /^https?:\/\//.test(interne) ? interne : url;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Analyse NEUTRE d'un rush dont la mesure a échoué : il reste montable
+ * (matière disponible) sans rien prétendre de son contenu — mouvement moyen,
+ * exposition correcte, aucune empreinte, aucun son mesuré.
+ */
+export function analyseNeutre(url: string, duree: number): AnalyseRush {
+  const echantillons: EchantillonRush[] = [];
+  for (let t = 0; t < duree; t += 0.5) {
+    echantillons.push({ t: Math.round(t * 1000) / 1000, mouvement: 0.03, luminosite: 0.5, nettete: 0.1, audio: 0 });
+  }
+  return { url, duree, echantillons };
+}
+
 /** Analyse un rush dont la durée est connue (sondée par l'appelant). */
 export async function analyserRushServeur(url: string, dureeSecondes: number | null): Promise<AnalyseRush | null> {
   if (!(typeof dureeSecondes === 'number' && dureeSecondes >= 1)) return null;
@@ -95,6 +137,7 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
   const os = await import('os');
   const path = await import('path');
   const fs = await import('fs/promises');
+  const source = await urlDeLecture(url);
   const audioTmp = path.join(os.tmpdir(), `studiio-analyse-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.pcm`);
   try {
     // ⚠️ IMAGES-CLÉS SEULEMENT (`-skip_frame nokey`). Décoder chaque image
@@ -108,7 +151,7 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
     const argsImages = (clesSeules: boolean, avecSon = true) => [
       '-hide_banner', '-loglevel', 'info', '-nostats', '-threads', '0',
       ...(clesSeules ? ['-skip_frame', 'nokey'] : ['-skip_loop_filter', 'all']),
-      '-t', String(duree), '-i', url,
+      '-t', String(duree), '-i', source,
       '-map', '0:v:0',
       '-vf', clesSeules
         ? `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${pas})',scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray,showinfo`
@@ -178,10 +221,10 @@ const MUSIQUE_MAX_S = 240;
 export function analyserMusiqueServeur(url: string): Promise<RythmeMusique | null> {
   const hit = cacheMusique.get(url);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rythme;
-  const rythme = executer([
-    '-hide_banner', '-loglevel', 'error', '-t', String(MUSIQUE_MAX_S), '-i', url,
+  const rythme = urlDeLecture(url).then((source) => executer([
+    '-hide_banner', '-loglevel', 'error', '-t', String(MUSIQUE_MAX_S), '-i', source,
     '-vn', '-ac', '1', '-ar', String(MUSIQUE_HZ), '-f', 'f32le', 'pipe:1',
-  ]).then(({ stdout }) => {
+  ])).then(({ stdout }) => {
     const signal = new Float32Array(stdout.buffer, stdout.byteOffset, Math.floor(stdout.byteLength / 4));
     return signal.length > MUSIQUE_HZ ? analyserRythme(signal, MUSIQUE_HZ) : null;
   }).catch((err) => {
