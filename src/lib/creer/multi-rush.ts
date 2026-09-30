@@ -46,6 +46,14 @@ export interface RushSegment {
   depuis?: number;
   /** Score de l'extrait (smart montage), informatif. */
   score?: number;
+  /** Fin de l'extrait DANS le rush (s) — smart montage V2. */
+  jusqua?: number;
+  /** Qualité technique 0..1 (netteté, exposition, mouvement). */
+  qualite?: number;
+  /** Pertinence 0..1 pour le thème / l'objectif ; `null` = aucune information. */
+  pertinence?: number | null;
+  /** Pourquoi l'extrait a été retenu, lisible. */
+  raison?: string;
 }
 
 const arrondi = (n: number) => Math.round(n * 1000) / 1000;
@@ -116,13 +124,17 @@ export function rushSegmentsDepuisMetadata(valeur: unknown): RushSegment[] | nul
   const out: RushSegment[] = [];
   for (const v of valeur) {
     if (!v || typeof v !== 'object') return null;
-    const { url, debut, fin, depuis, score } = v as Record<string, unknown>;
+    const { url, debut, fin, depuis, score, jusqua, qualite, pertinence, raison } = v as Record<string, unknown>;
     if (typeof url !== 'string' || !url) return null;
     if (typeof debut !== 'number' || typeof fin !== 'number' || !Number.isFinite(debut) || !Number.isFinite(fin) || fin <= debut) return null;
     out.push({
       url, debut, fin,
       ...(typeof depuis === 'number' && Number.isFinite(depuis) && depuis > 0 ? { depuis } : {}),
       ...(typeof score === 'number' && Number.isFinite(score) ? { score } : {}),
+      ...(typeof jusqua === 'number' && Number.isFinite(jusqua) ? { jusqua } : {}),
+      ...(typeof qualite === 'number' && Number.isFinite(qualite) ? { qualite } : {}),
+      ...(typeof pertinence === 'number' && Number.isFinite(pertinence) ? { pertinence } : pertinence === null ? { pertinence: null } : {}),
+      ...(typeof raison === 'string' && raison ? { raison: raison.slice(0, 400) } : {}),
     });
   }
   return out;

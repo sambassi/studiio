@@ -10,9 +10,9 @@ import {
 } from '@/lib/autopilot/poster';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
-import { planMontage, dureeCibleMontage, dureePlan, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
-import { analyserRushServeur } from '@/lib/creer/analyse-rush-serveur';
+import { analyserRushServeurCache } from '@/lib/creer/analyse-rush-serveur';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -160,6 +160,20 @@ export interface MontageProduit {
   postId: string | null;
   /** Le débit a-t-il été enregistré ? Faux = montage livré, débit manqué (journalisé). */
   debite: boolean;
+  /** Ce que l'utilisateur doit savoir de CE montage (musique perdue, son absent…). */
+  avertissements: string[];
+}
+
+/** Avertissements lisibles d'un montage. Pure, testable. */
+export function avertissementsMontage(m: {
+  musiqueIntrouvable: boolean; audioSilencieux: boolean; voixRepliEdge: boolean; montageSimple: boolean;
+}): string[] {
+  const out: string[] = [];
+  if (m.musiqueIntrouvable) out.push('Musique introuvable dans le stockage : la vidéo est sortie sans musique. Rechoisissez-la dans l’Autopilote.');
+  if (m.voixRepliEdge) out.push('Voix clonée indisponible : la voix off standard (gratuite) a été utilisée.');
+  if (m.montageSimple) out.push('Analyse intelligente indisponible — montage simple utilisé.');
+  if (m.audioSilencieux) out.push('Le fichier final ne contient aucun son audible (ni musique, ni voix, ni son des rushes).');
+  return out;
 }
 
 /**
@@ -202,6 +216,8 @@ export async function produireUnMontage(input: {
   onRushMort?: (url: string) => void;
   /** Progression réelle par étape (production manuelle). Absent : rien ne change. */
   onProgression?: (etape: EtapeProduction, avancement?: number) => void;
+  /** Plages déjà montées dans ce cycle (cron) : complétées par ce montage. */
+  plagesCycle?: PlagesUtilisees;
   /** Prévenu dès qu'une affiche de la banque est piochée — même règle. */
   onAfficheCustom?: (url: string) => void;
   /**
@@ -266,42 +282,43 @@ export async function produireUnMontage(input: {
     musiqueIntrouvable = true;
   }
 
-  // ── SMART MONTAGE : plusieurs rushes de la banque, montés par le MÊME
+  // ── SMART MONTAGE V2 : plusieurs rushes de la banque, montés par le MÊME
   // moteur que Créer (`planMontage`). Le rush du créneau ouvre la liste ;
   // jusqu'à deux autres rushes de la banque le rejoignent, par rotation.
   // Un seul rush dans la banque : chemin mono-rush d'avant, à l'identique.
-  // Analyse impossible : montage simple, ÉCRIT dans les métadonnées.
-  let planMontageRushs: RushSegment[] | null = null;
-  let montageSimpleMotif: string | null = null;
+  // L'ANALYSE (technique, indépendante du thème) se fait ici, en parallèle
+  // et en cache ; le PLAN vient après la voix, dont il doit couvrir la durée.
+  const chrono = { debut: Date.now(), preparation: 0, analyse: 0, selection: 0, rendu: 0, envoi: 0 };
+  let analysesRushs: AnalyseRush[] = [];
+  let disponible = 0;
+  let secondesParRush = new Map<string, number | null>();
   if (rushUrl && !jumeauActif) {
+    const t0 = Date.now();
     const autres = rushsCompagnons(config.rushUrls, rushUrl, rang, RUSHS_MONTAGE_MAX - 1);
-    const compagnons: string[] = [];
-    for (const u of autres) if (await rushEncorePresent(u)) compagnons.push(u);
-    if (compagnons.length > 0) {
-      const liste = [rushUrl, ...compagnons];
-      const analyses: AnalyseRush[] = [];
-      let disponible = 0;
-      for (const [k, u] of liste.entries()) {
-        input.onProgression?.('analyse', k / liste.length);
-        const secondes = await probeRushSeconds(u);
-        if (secondes) disponible += secondes;
-        const a = await analyserRushServeur(u, secondes);
-        if (a) analyses.push(a);
-      }
-      planMontageRushs = planMontage(analyses, dureeCibleMontage(disponible));
-      if (!planMontageRushs) {
-        montageSimpleMotif = 'analyse intelligente indisponible';
-        console.warn(`${journal} ${userId} — Analyse intelligente indisponible — montage simple utilisé`);
-      } else {
-        console.log(`${journal} ${userId} — smart montage : ${planMontageRushs.length} extraits, ${dureePlan(planMontageRushs)}s`);
-      }
+    const presents = await Promise.all(autres.map((u) => rushEncorePresent(u)));
+    const liste = [rushUrl, ...autres.filter((_, i) => presents[i])];
+    if (liste.length > 1) {
+      const secondes = await Promise.all(liste.map((u) => probeRushSeconds(u)));
+      secondesParRush = new Map(liste.map((u, i) => [u, secondes[i]]));
+      disponible = secondes.reduce<number>((t, x) => t + (x ?? 0), 0);
+      chrono.preparation = Date.now() - t0;
+      input.onProgression?.('analyse', 0.1);
+      const t1 = Date.now();
+      let faits = 0;
+      const resultats = await Promise.all(liste.map((u, i) => analyserRushServeurCache(u, secondes[i]).then((r) => {
+        faits += 1;
+        input.onProgression?.('analyse', faits / liste.length);
+        return r;
+      })));
+      analysesRushs = resultats.filter((r): r is AnalyseRush => !!r);
+      chrono.analyse = Date.now() - t1;
     }
   }
 
   input.onProgression?.('preparation', 0);
   // Les sondages RÉSEAU des durées, avant la fabrique de design qui reste pure.
   const [rushSeconds, jumeauSeconds] = await Promise.all([
-    rushUrl ? probeRushSeconds(rushUrl) : Promise.resolve(null),
+    rushUrl ? (secondesParRush.has(rushUrl) ? Promise.resolve(secondesParRush.get(rushUrl) ?? null) : probeRushSeconds(rushUrl)) : Promise.resolve(null),
     // La durée du jumeau cale la séquence « Vidéo » : la parole doit tenir
     // entière. Illisible (`null`) → durée par défaut, posée à la fabrique du design.
     jumeauActif ? probeRushSeconds(input.jumeauVideoUrl as string) : Promise.resolve(null),
@@ -382,26 +399,69 @@ export async function produireUnMontage(input: {
   // niveaux du mixeur, son du rush. L'affiche, les textes et le rush, eux,
   // varient et arrivent par `post` et `posterUrl`. Le jumeau, s'il est monté,
   // tient la séquence « Vidéo » à la place du rush.
+  // ── PLAN (smart montage V2) : pertinence selon le thème / brief / textes,
+  // plages déjà montées dans ce cycle évitées, durée couvrant la voix de la
+  // séquence « Vidéo » sans dépasser la matière disponible.
+  let planMontageRushs: RushSegment[] | null = null;
+  let montageSimpleMotif: string | null = null;
+  if (analysesRushs.length > 0 || secondesParRush.size > 1) {
+    const t2 = Date.now();
+    const voixVideo = (voices as Record<string, { seconds?: number } | undefined>).video?.seconds ?? 0;
+    const cible = Math.min(disponible, Math.max(dureeCibleMontage(disponible), Math.ceil(voixVideo)));
+    planMontageRushs = planMontage(analysesRushs, cible, {
+      contexte: {
+        theme: post.title,
+        sujet: post.content?.subtitle ?? null,
+        objectif: [postUtilise.brief?.objectif, postUtilise.brief?.message].filter(Boolean).join(' ') || null,
+        texte: (post.content?.cards ?? []).map((c) => `${c.title ?? ''} ${c.description ?? ''}`).join(' ') || null,
+      },
+      plagesExclues: input.plagesCycle ?? null,
+    });
+    chrono.selection = Date.now() - t2;
+    if (!planMontageRushs) {
+      montageSimpleMotif = 'analyse intelligente indisponible';
+      console.warn(`${journal} ${userId} — Analyse intelligente indisponible — montage simple utilisé`);
+    } else {
+      if (input.plagesCycle) plagesDuPlan(planMontageRushs, input.plagesCycle);
+      console.log(`${journal} ${userId} — smart montage : ${planMontageRushs.length} extraits, ${dureePlan(planMontageRushs)}s`);
+    }
+  }
+
   const designBase = buildAutopilotDesign(postUtilise, {
     posterUrl, rushSeconds, voices, config: configUtilisee,
     jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
   });
   // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
   // est celle du plan (jamais plus courte que la voix de la séquence).
+  // Le plan couvre déjà la voix (cible) : la séquence dure EXACTEMENT le plan,
+  // rien n'est étiré (un extrait étiré rejouerait la matière d'un autre).
   const design = planMontageRushs
     ? {
       ...designBase,
       montage: planMontageRushs,
       rushs: rushsDuPlan(planMontageRushs),
-      videoDuration: Math.max(dureePlan(planMontageRushs), designBase.videoDuration ?? 0),
+      videoDuration: dureePlan(planMontageRushs),
     }
     : designBase;
   input.onProgression?.('composition', 0);
-  const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({
+  const t3 = Date.now();
+  let t4 = 0;
+  const { videoUrl, thumbnailUrl, durationFrames, audio } = await renderAndUpload({
     userId, jobId, design,
     onComposition: (f) => input.onProgression?.('composition', f),
-    onEnvoi: () => input.onProgression?.('envoi', 0),
+    onEnvoi: () => { t4 = Date.now(); input.onProgression?.('envoi', 0); },
   });
+  chrono.rendu = (t4 || Date.now()) - t3;
+  chrono.envoi = t4 ? Date.now() - t4 : 0;
+  const mesures = {
+    RUSH_PREPARATION_MS: chrono.preparation,
+    RUSH_ANALYSIS_MS: chrono.analyse,
+    SMART_SELECTION_MS: chrono.selection,
+    REMOTION_RENDER_MS: chrono.rendu,
+    FINAL_UPLOAD_MS: chrono.envoi,
+    TOTAL_MS: Date.now() - chrono.debut,
+  };
+  console.log(`${journal} ${userId} — mesures ${JSON.stringify(mesures)}`);
   input.onProgression?.('finalisation', 0);
 
   const metadata = {
@@ -428,6 +488,13 @@ export async function produireUnMontage(input: {
       : null),
     // Analyse impossible : montage simple — jamais en silence.
     ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
+    // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
+    ...(Object.values(voices).some((v) => v?.repli === 'edge') ? { voixRepliEdge: true } : null),
+    // Durées par étape (diagnostic performance, temporaire).
+    mesuresRendu: mesures,
+    // Le fichier FINAL a-t-il du son ? Mesuré sur le MP4 (ffmpeg), pas supposé.
+    ...(audio ? { audioFinal: audio } : null),
+    ...(audio && audio.silencieux ? { audioSilencieux: true } : null),
         // Même exigence pour la musique configurée mais disparue du stockage.
     ...(musiqueIntrouvable ? { musiqueIgnoree: true, musiqueIgnoreeMotif: 'musique introuvable' } : null),
     // Le montage porte le JUMEAU en séquence « Vidéo » : le Calendrier/récap
@@ -495,5 +562,11 @@ export async function produireUnMontage(input: {
   return {
     videoUrl, thumbnailUrl, durationFrames, posterUrl, rushSeconds, rushUrl, rushMort,
     afficheCustom, voices, postId, debite,
+    avertissements: avertissementsMontage({
+      musiqueIntrouvable,
+      audioSilencieux: !!audio?.silencieux,
+      voixRepliEdge: Object.values(voices).some((v) => v?.repli === 'edge'),
+      montageSimple: !!montageSimpleMotif,
+    }),
   };
 }

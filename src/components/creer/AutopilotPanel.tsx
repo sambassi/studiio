@@ -455,7 +455,7 @@ export default function AutopilotPanel({
     | { etat: 'repos' }
     | { etat: 'confirmation' }
     | { etat: 'en-cours' }
-    | { etat: 'fait'; postId: string | null; date: string; time: string; timezone: string; calendrierUrl: string }
+    | { etat: 'fait'; postId: string | null; date: string; time: string; timezone: string; calendrierUrl: string; avertissements?: string[] }
     | { etat: 'erreur'; message: string }
   >({ etat: 'repos' });
   /**
@@ -788,6 +788,19 @@ export default function AutopilotPanel({
    * `disabled` du bouton est un confort visuel ; c'est la ref qui garantit
    * qu'un seul POST part.
    */
+  // La musique configurée existe-t-elle encore ? Une musique supprimée du
+  // stockage faisait sortir les vidéos SANS SON, sans rien afficher ici.
+  const [musiqueIntrouvable, setMusiqueIntrouvable] = useState(false);
+  useEffect(() => {
+    setMusiqueIntrouvable(false);
+    if (!config.musicUrl) return;
+    let actif = true;
+    fetch(config.musicUrl, { headers: { Range: 'bytes=0-0' }, cache: 'no-store' })
+      .then((r) => { if (actif) setMusiqueIntrouvable(r.status === 404 || r.status === 410); })
+      .catch(() => { /* réseau : aucune conclusion */ });
+    return () => { actif = false; };
+  }, [config.musicUrl]);
+
   // Progression réelle de « Produire maintenant », relue toutes les 2 s tant
   // que le rendu est en cours (`/api/autopilot/produire-maintenant/progression`).
   const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string } | null>(null);
@@ -826,6 +839,7 @@ export default function AutopilotPanel({
         time: String(data.scheduledTime ?? ''),
         timezone: String(data.timezone ?? config.runTimezone),
         calendrierUrl: typeof data.calendrierUrl === 'string' ? data.calendrierUrl : '/dashboard/calendar',
+        avertissements: Array.isArray(data.avertissements) ? data.avertissements.map(String) : [],
       });
       // Le solde a bougé : le prochain devis le relit.
       setDevis(null);
@@ -953,6 +967,11 @@ export default function AutopilotPanel({
             </p>
             <p className="text-[11px] text-gray-500">Vous pouvez continuer à régler l’Autopilote.</p>
           </div>
+        )}
+        {produire.etat === 'fait' && (produire.avertissements ?? []).length > 0 && (
+          <ul className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200" data-autopilot-produire-avertissements>
+            {(produire.avertissements ?? []).map((a) => <li key={a}>{a}</li>)}
+          </ul>
         )}
         {produire.etat === 'fait' && (
           <p className="flex items-start gap-1.5 text-xs text-emerald-400" data-autopilot-produire-resultat data-post-id={produire.postId ?? ''}>
@@ -1580,6 +1599,9 @@ export default function AutopilotPanel({
                 <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-gray-300">
                   <Music className="w-3 h-3 shrink-0" />
                   <span className="truncate">{nomDeFichier(config.musicUrl)}</span>
+                  {musiqueIntrouvable && (
+                    <span className="ml-2 text-red-400" data-autopilot-musique-introuvable>Fichier introuvable — rechoisissez une musique</span>
+                  )}
                 </span>
                 <button
                   type="button"

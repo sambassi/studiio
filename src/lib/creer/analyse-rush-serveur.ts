@@ -80,19 +80,23 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
   if (!(typeof dureeSecondes === 'number' && dureeSecondes >= 1)) return null;
   const duree = Math.min(dureeSecondes, DUREE_ANALYSEE_MAX);
   const pas = Math.max(0.5, duree / ECHANTILLONS_MAX);
+  const os = await import('os');
+  const path = await import('path');
+  const fs = await import('fs/promises');
+  const audioTmp = path.join(os.tmpdir(), `studiio-analyse-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.pcm`);
   try {
-    const [brut, pcm] = await Promise.all([
-      executer([
-        '-hide_banner', '-loglevel', 'error', '-t', String(duree), '-i', url,
-        '-vf', `fps=${1 / pas},scale=${ANALYSE_L}:${ANALYSE_H},format=gray`,
-        '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1',
-      ]),
-      // Pas de piste audio : ffmpeg échoue, énergie à 0 — pas bloquant.
-      executer([
-        '-hide_banner', '-loglevel', 'error', '-t', String(duree), '-i', url,
-        '-vn', '-ac', '1', '-ar', String(AUDIO_HZ), '-f', 's16le', 'pipe:1',
-      ]).catch(() => Buffer.alloc(0)),
+    // UN SEUL décodage (donc un seul téléchargement) pour l'image ET le son :
+    // l'image part sur la sortie standard, le son dans un fichier temporaire.
+    // `-skip_loop_filter all` : décodage plus rapide, sans effet sur des
+    // mesures faites en 64×36.
+    const brut = await executer([
+      '-hide_banner', '-loglevel', 'error', '-threads', '0', '-skip_loop_filter', 'all',
+      '-t', String(duree), '-i', url,
+      '-map', '0:v:0', '-vf', `fps=${1 / pas},scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray`,
+      '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1',
+      '-map', '0:a:0?', '-ac', '1', '-ar', String(AUDIO_HZ), '-f', 's16le', '-y', audioTmp,
     ]);
+    const pcm = await fs.readFile(audioTmp).catch(() => Buffer.alloc(0));
     const images = imagesDepuisBrut(brut);
     if (images.length < 2) return null;
     const audio = energieDepuisPcm(pcm, pas, images.length);
@@ -107,5 +111,25 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
   } catch (err) {
     console.warn('[SmartMontage/serveur] analyse impossible :', err instanceof Error ? err.message : err);
     return null;
+  } finally {
+    await fs.unlink(audioTmp).catch(() => {});
   }
+}
+
+// ── Cache : l'analyse TECHNIQUE d'un rush ne dépend pas du thème ─────────
+// Calculée une fois, réutilisée par toutes les vidéos d'un cycle et les
+// productions suivantes ; seule la sélection (pertinence) change.
+const CACHE_TTL_MS = 12 * 3600_000;
+const CACHE_MAX = 60;
+const cache = new Map<string, { at: number; analyse: Promise<AnalyseRush | null> }>();
+
+/** Analyse avec cache par rush (clé = URL, durée). Une erreur n'est pas mise en cache. */
+export function analyserRushServeurCache(url: string, dureeSecondes: number | null): Promise<AnalyseRush | null> {
+  const cle = `${url}@${dureeSecondes ?? ''}`;
+  const hit = cache.get(cle);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.analyse;
+  const analyse = analyserRushServeur(url, dureeSecondes).then((a) => { if (!a) cache.delete(cle); return a; });
+  cache.set(cle, { at: Date.now(), analyse });
+  while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
+  return analyse;
 }
