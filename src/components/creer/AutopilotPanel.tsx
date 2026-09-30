@@ -788,6 +788,26 @@ export default function AutopilotPanel({
    * `disabled` du bouton est un confort visuel ; c'est la ref qui garantit
    * qu'un seul POST part.
    */
+  // Progression réelle de « Produire maintenant », relue toutes les 2 s tant
+  // que le rendu est en cours (`/api/autopilot/produire-maintenant/progression`).
+  const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string } | null>(null);
+  useEffect(() => {
+    if (produire.etat !== 'en-cours') { setProgressionProduction(null); return; }
+    let actif = true;
+    const lire = () => {
+      fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          const p = d?.progression;
+          if (actif && p && typeof p.pourcent === 'number') setProgressionProduction({ pourcent: p.pourcent, libelle: String(p.libelle ?? '') });
+        })
+        .catch(() => { /* la barre garde sa dernière valeur */ });
+    };
+    lire();
+    const minuteur = setInterval(lire, 2000);
+    return () => { actif = false; clearInterval(minuteur); };
+  }, [produire.etat]);
+
   const produireMaintenant = useCallback(async () => {
     if (produireEnVolRef.current) return;
     produireEnVolRef.current = true;
@@ -917,10 +937,22 @@ export default function AutopilotPanel({
           </div>
         )}
         {produire.etat === 'en-cours' && (
-          <p className="flex items-center gap-1.5 text-xs text-gray-300" data-autopilot-produire-en-cours>
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            Rendu en cours — quelques minutes. Vous pouvez continuer à régler l’Autopilote.
-          </p>
+          <div className="space-y-1.5" data-autopilot-produire-en-cours>
+            {/* Progression RÉELLE du pipeline (étapes serveur), jamais un minuteur. */}
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${progressionProduction?.pourcent ?? 0}%`, backgroundColor: accent }}
+                data-autopilot-produire-barre
+              />
+            </div>
+            <p className="flex items-center gap-1.5 text-xs text-gray-300">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span className="tabular-nums font-medium">{progressionProduction?.pourcent ?? 0} %</span>
+              <span>{progressionProduction?.libelle ?? 'Démarrage…'}</span>
+            </p>
+            <p className="text-[11px] text-gray-500">Vous pouvez continuer à régler l’Autopilote.</p>
+          </div>
         )}
         {produire.etat === 'fait' && (
           <p className="flex items-start gap-1.5 text-xs text-emerald-400" data-autopilot-produire-resultat data-post-id={produire.postId ?? ''}>
@@ -1571,7 +1603,11 @@ export default function AutopilotPanel({
               mediaType="audio"
               onSelect={(url) => {
                 setLibOpen(null);
-                if (url) enregistrer({ musicUrl: url });
+                // ABSOLUE, comme les rushes : la Médiathèque rend une URL
+                // relative du stockage, que `sanitizeConfig` (`^https?://`)
+                // effaçait — la vidéo sortait alors SANS musique, sans un mot.
+                const absolue = url ? urlPubliqueAbsolue(url, window.location.origin) : null;
+                if (absolue) enregistrer({ musicUrl: absolue });
               }}
             />
           </div>

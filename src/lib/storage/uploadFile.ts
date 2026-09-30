@@ -334,12 +334,16 @@ export async function uploadFile(
   const mode: UploadMode = data.mode === 'direct' ? 'direct' : 'proxy';
 
   // Même en un bloc, on ré-essaie : une micro-coupure ne doit pas annuler un
-  // envoi qui allait aboutir.
-  await avecReprise(() => putAvecProgression(data.signedUrl, file, contentTypeFichier, {
+  // envoi qui allait aboutir. SAUF un gros fichier : le ré-essayer, c'est le
+  // renvoyer EN ENTIER depuis 0 %, en boucle — l'erreur remonte à l'écran,
+  // qui propose « Réessayer ».
+  const envoi = () => putAvecProgression(data.signedUrl, file, contentTypeFichier, {
     withCredentials: mode === 'proxy',
     onProgress: options.onProgress,
     signal: options.signal,
-  }), 'envoi');
+  });
+  if (file.size > MULTIPART_THRESHOLD) await envoi();
+  else await avecReprise(envoi, 'envoi');
 
   return {
     publicUrl: data.publicUrl,

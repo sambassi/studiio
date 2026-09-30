@@ -108,6 +108,10 @@ export async function renderAndUpload(input: {
   userId: string;
   jobId: string;
   design: CreerSimpleRenderInput;
+  /** Avancement réel de la composition (0..1). Facultatif. */
+  onComposition?: (fraction: number) => void;
+  /** Début du dépôt de la vidéo. Facultatif. */
+  onEnvoi?: () => void;
 }): Promise<RenderedMontage> {
   const { renderCreerSimple } = await import('@/lib/render/creerSimple');
   const { uploadToStorage } = await import('@/lib/storage/upload');
@@ -115,7 +119,12 @@ export async function renderAndUpload(input: {
   const { outputPath, durationFrames } = await renderCreerSimple({
     jobId: input.jobId,
     design: input.design,
+    // Le worker rapporte 20 → 95 % pendant `renderMedia` : ramené à 0..1.
+    onProgress: input.onComposition
+      ? ({ progress }) => input.onComposition!(Math.min(1, Math.max(0, (progress - 20) / 75)))
+      : undefined,
   });
+  input.onEnvoi?.();
 
   // La vignette AVANT le téléversement de la vidéo : `uploadToStorage`
   // supprime le fichier temporaire une fois en ligne, et il n'y aurait plus

@@ -8,10 +8,8 @@
  * plus. Toute erreur rend `null` : l'appelant garde alors l'enchaînement
  * classique, jamais un montage cassé.
  */
-import type { AnalyseRush, EchantillonRush } from '@/lib/creer/smart-montage';
+import { mesurerImage, ANALYSE_L as L, ANALYSE_H as H, type AnalyseRush, type EchantillonRush } from '@/lib/creer/smart-montage';
 
-const L = 64;
-const H = 36;
 /** Au-delà, on n'échantillonne pas plus finement (≈ 240 images par rush). */
 const ECHANTILLONS_MAX = 240;
 /** Au-delà, l'audio n'est pas décodé (mémoire) : énergie audio à 0. */
@@ -95,26 +93,10 @@ export async function analyserRush(
       ctx.drawImage(video, 0, 0, L, H);
       const px = ctx.getImageData(0, 0, L, H).data; // lève si le rush n'est pas CORS : → null
       const gris = new Float32Array(L * H);
-      let lum = 0;
       for (let p = 0, q = 0; p < px.length; p += 4, q++) {
         gris[q] = (px[p] * 0.299 + px[p + 1] * 0.587 + px[p + 2] * 0.114) / 255;
-        lum += gris[q];
       }
-      lum /= gris.length;
-      // Netteté : contraste local moyen (laplacien 4-voisins).
-      let net = 0;
-      for (let y = 1; y < H - 1; y++) {
-        for (let x = 1; x < L - 1; x++) {
-          const c = y * L + x;
-          net += Math.abs(4 * gris[c] - gris[c - 1] - gris[c + 1] - gris[c - L] - gris[c + L]);
-        }
-      }
-      net /= (L - 2) * (H - 2);
-      let mouv = 0;
-      if (prec) {
-        for (let q = 0; q < gris.length; q++) mouv += Math.abs(gris[q] - prec[q]);
-        mouv /= gris.length;
-      }
+      const { luminosite: lum, nettete: net, mouvement: mouv } = mesurerImage(gris, prec);
       prec = gris;
       echantillons.push({ t: Math.round(t * 1000) / 1000, mouvement: mouv, luminosite: lum, nettete: net, audio: 0 });
       onProgress?.(Math.min(0.95, (i + 1) / Math.max(1, total)));
