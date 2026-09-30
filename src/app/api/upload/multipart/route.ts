@@ -57,6 +57,25 @@ function clientPublic(): MinioClient | null {
   });
 }
 
+/**
+ * Client INTERNE (réseau Docker). Sert quand l'endpoint public n'existe pas :
+ * initiate / complete / abort se font côté serveur, et chaque morceau passe
+ * par le relais `/api/upload/multipart/part` — des requêtes de 8 Mio, que le
+ * proxy ne coupe pas, au lieu d'un seul PUT de tout le fichier.
+ */
+function clientInterne(): MinioClient | null {
+  const secretKey = process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || '';
+  if (!secretKey) return null;
+  return new MinioClient({
+    endPoint: process.env.MINIO_ENDPOINT || 'studiio-minio',
+    port: parseInt(process.env.MINIO_PORT || '9000', 10),
+    useSSL: process.env.MINIO_USE_SSL === 'true',
+    accessKey: process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER || 'studiio',
+    secretKey,
+    region: process.env.MINIO_REGION || 'us-east-1',
+  });
+}
+
 /** Le chemin demandé appartient-il bien à l'appelant ? */
 function cheminAutorise(storagePath: string, userId: string): boolean {
   return storagePath.startsWith(`${userId}/`) && !storagePath.includes('..');
@@ -68,11 +87,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const client = clientPublic();
+  // Sans endpoint public, l'envoi découpé passe par le RELAIS applicatif,
+  // morceau par morceau. Il retombait avant sur un PUT unique de tout le
+  // fichier au travers de l'application : coupé par le proxy (502) sur les
+  // gros rushes, puis recommencé depuis zéro.
+  const publicClient = clientPublic();
+  const relais = !publicClient;
+  const client = publicClient ?? clientInterne();
   if (!client) {
-    // Sans endpoint public, le multipart presigné n'a pas de sens : le
-    // navigateur ne peut pas écrire dans MinIO. L'appelant retombe sur
-    // l'envoi en un bloc, qui garde sa propre reprise.
     return NextResponse.json(
       { success: false, error: 'multipart indisponible', unsupported: true },
       { status: 501 },
@@ -135,9 +157,11 @@ export async function POST(req: NextRequest) {
       if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10_000) {
         return NextResponse.json({ success: false, error: 'partNumber invalide' }, { status: 400 });
       }
-      const url = await client.presignedUrl('PUT', bucket, key, PART_URL_TTL_S, {
-        uploadId, partNumber: String(partNumber),
-      });
+      const url = relais
+        ? `/api/upload/multipart/part?${new URLSearchParams({ bucket, key, uploadId, partNumber: String(partNumber) })}`
+        : await client.presignedUrl('PUT', bucket, key, PART_URL_TTL_S, {
+          uploadId, partNumber: String(partNumber),
+        });
       return NextResponse.json({ success: true, url });
     }
 

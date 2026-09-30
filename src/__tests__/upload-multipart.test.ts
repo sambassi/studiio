@@ -97,7 +97,19 @@ describe('La reprise', () => {
 
   it('elle couvre AUSSI l envoi en un bloc', () => {
     // Les petits fichiers subissaient les mêmes micro-coupures.
-    expect(helper).toContain("), 'envoi');");
+    expect(helper).toContain("else await avecReprise(envoi, 'envoi');");
+  });
+
+  it('un GROS fichier en un bloc n est jamais renvoyé en entier automatiquement', () => {
+    expect(helper).toContain('if (file.size > MULTIPART_THRESHOLD) await envoi();');
+  });
+
+  it('sans endpoint public, les morceaux passent par le relais (plus de PUT unique coupé en 502)', () => {
+    expect(route).toContain('const client = publicClient ?? clientInterne();');
+    expect(route).toContain('`/api/upload/multipart/part?${new URLSearchParams({ bucket, key, uploadId, partNumber: String(partNumber) })}`');
+    const relaisPart = readFileSync(resolve(process.cwd(), 'src/app/api/upload/multipart/part/route.ts'), 'utf-8');
+    expect(relaisPart).toContain("if (!key.startsWith(`${session.user.id}/`) || key.includes('..'))");
+    expect(relaisPart).toContain('headers: { ETag: etag }');
   });
 
   it('un morceau raté est ré-essayé sans tout recommencer', () => {

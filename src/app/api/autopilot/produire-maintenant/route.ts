@@ -11,6 +11,7 @@ import {
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
+import { noterProgression, effacerProgression } from '@/lib/autopilot/progression';
 
 /**
  * « Produire un brouillon maintenant » — UNE vidéo, tout de suite, pour le
@@ -236,7 +237,9 @@ export async function POST() {
       });
     }
 
+    noterProgression(userId, 'analyse', 0);
     const rendu = await produireUnMontage({
+      onProgression: (etape, avancement) => noterProgression(userId, etape, avancement),
       userId,
       config: configBrouillon,
       post,
@@ -273,5 +276,6 @@ export async function POST() {
     );
   } finally {
     enVol.delete(userId);
+    effacerProgression(userId);
   }
 }

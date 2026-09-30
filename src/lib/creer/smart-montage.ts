@@ -240,3 +240,36 @@ export function dureePlan(plan: ReadonlyArray<RushSegment>): number {
 export function cleMontage(urls: ReadonlyArray<string>, duree: number): string {
   return `${urls.join('|')}@${duree}`;
 }
+
+/** Taille des images d'analyse (niveaux de gris). Partagée navigateur / serveur. */
+export const ANALYSE_L = 64;
+export const ANALYSE_H = 36;
+
+/**
+ * Mesures d'UNE image d'analyse (gris 0..1, `ANALYSE_L`×`ANALYSE_H`) —
+ * la MÊME arithmétique pour l'analyseur navigateur (canvas) et l'analyseur
+ * serveur (ffmpeg) : un seul moteur, quel que soit le chemin.
+ */
+export function mesurerImage(
+  gris: Float32Array, prec: Float32Array | null,
+): { luminosite: number; nettete: number; mouvement: number } {
+  const L = ANALYSE_L; const H = ANALYSE_H;
+  let lum = 0;
+  for (let q = 0; q < gris.length; q++) lum += gris[q];
+  lum /= gris.length;
+  // Netteté : contraste local moyen (laplacien 4-voisins).
+  let net = 0;
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < L - 1; x++) {
+      const c = y * L + x;
+      net += Math.abs(4 * gris[c] - gris[c - 1] - gris[c + 1] - gris[c - L] - gris[c + L]);
+    }
+  }
+  net /= (L - 2) * (H - 2);
+  let mouv = 0;
+  if (prec) {
+    for (let q = 0; q < gris.length; q++) mouv += Math.abs(gris[q] - prec[q]);
+    mouv /= gris.length;
+  }
+  return { luminosite: lum, nettete: net, mouvement: mouv };
+}

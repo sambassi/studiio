@@ -10,6 +10,27 @@ import {
 } from '@/lib/autopilot/poster';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
+import { planMontage, dureeCibleMontage, dureePlan, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
+import { analyserRushServeur } from '@/lib/creer/analyse-rush-serveur';
+import type { EtapeProduction } from '@/lib/autopilot/progression';
+
+/** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
+export const RUSHS_MONTAGE_MAX = 3;
+
+/**
+ * Rushes qui rejoignent celui du créneau : les suivants de la banque, par
+ * rotation à partir du rang — deux montages voisins ne réunissent pas les
+ * mêmes. Pure, testable.
+ */
+export function rushsCompagnons(banque: ReadonlyArray<string>, principal: string, rang: number, n: number): string[] {
+  const autres = Array.from(new Set(banque.filter((u) => typeof u === 'string' && u && u !== principal)));
+  if (autres.length === 0 || n <= 0) return [];
+  const depart = ((rang % autres.length) + autres.length) % autres.length;
+  const out: string[] = [];
+  for (let k = 0; k < Math.min(n, autres.length); k++) out.push(autres[(depart + k) % autres.length]);
+  return out;
+}
 
 /**
  * Coût d'une affiche générée à partir d'une photo de référence, en crédits.
@@ -179,6 +200,8 @@ export async function produireUnMontage(input: {
    * ressuscite pas un fichier absent.
    */
   onRushMort?: (url: string) => void;
+  /** Progression réelle par étape (production manuelle). Absent : rien ne change. */
+  onProgression?: (etape: EtapeProduction, avancement?: number) => void;
   /** Prévenu dès qu'une affiche de la banque est piochée — même règle. */
   onAfficheCustom?: (url: string) => void;
   /**
@@ -243,6 +266,39 @@ export async function produireUnMontage(input: {
     musiqueIntrouvable = true;
   }
 
+  // ── SMART MONTAGE : plusieurs rushes de la banque, montés par le MÊME
+  // moteur que Créer (`planMontage`). Le rush du créneau ouvre la liste ;
+  // jusqu'à deux autres rushes de la banque le rejoignent, par rotation.
+  // Un seul rush dans la banque : chemin mono-rush d'avant, à l'identique.
+  // Analyse impossible : montage simple, ÉCRIT dans les métadonnées.
+  let planMontageRushs: RushSegment[] | null = null;
+  let montageSimpleMotif: string | null = null;
+  if (rushUrl && !jumeauActif) {
+    const autres = rushsCompagnons(config.rushUrls, rushUrl, rang, RUSHS_MONTAGE_MAX - 1);
+    const compagnons: string[] = [];
+    for (const u of autres) if (await rushEncorePresent(u)) compagnons.push(u);
+    if (compagnons.length > 0) {
+      const liste = [rushUrl, ...compagnons];
+      const analyses: AnalyseRush[] = [];
+      let disponible = 0;
+      for (const [k, u] of liste.entries()) {
+        input.onProgression?.('analyse', k / liste.length);
+        const secondes = await probeRushSeconds(u);
+        if (secondes) disponible += secondes;
+        const a = await analyserRushServeur(u, secondes);
+        if (a) analyses.push(a);
+      }
+      planMontageRushs = planMontage(analyses, dureeCibleMontage(disponible));
+      if (!planMontageRushs) {
+        montageSimpleMotif = 'analyse intelligente indisponible';
+        console.warn(`${journal} ${userId} — Analyse intelligente indisponible — montage simple utilisé`);
+      } else {
+        console.log(`${journal} ${userId} — smart montage : ${planMontageRushs.length} extraits, ${dureePlan(planMontageRushs)}s`);
+      }
+    }
+  }
+
+  input.onProgression?.('preparation', 0);
   // Les sondages RÉSEAU des durées, avant la fabrique de design qui reste pure.
   const [rushSeconds, jumeauSeconds] = await Promise.all([
     rushUrl ? probeRushSeconds(rushUrl) : Promise.resolve(null),
@@ -326,11 +382,27 @@ export async function produireUnMontage(input: {
   // niveaux du mixeur, son du rush. L'affiche, les textes et le rush, eux,
   // varient et arrivent par `post` et `posterUrl`. Le jumeau, s'il est monté,
   // tient la séquence « Vidéo » à la place du rush.
-  const design = buildAutopilotDesign(postUtilise, {
+  const designBase = buildAutopilotDesign(postUtilise, {
     posterUrl, rushSeconds, voices, config: configUtilisee,
     jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
   });
-  const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({ userId, jobId, design });
+  // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
+  // est celle du plan (jamais plus courte que la voix de la séquence).
+  const design = planMontageRushs
+    ? {
+      ...designBase,
+      montage: planMontageRushs,
+      rushs: rushsDuPlan(planMontageRushs),
+      videoDuration: Math.max(dureePlan(planMontageRushs), designBase.videoDuration ?? 0),
+    }
+    : designBase;
+  input.onProgression?.('composition', 0);
+  const { videoUrl, thumbnailUrl, durationFrames } = await renderAndUpload({
+    userId, jobId, design,
+    onComposition: (f) => input.onProgression?.('composition', f),
+    onEnvoi: () => input.onProgression?.('envoi', 0),
+  });
+  input.onProgression?.('finalisation', 0);
 
   const metadata = {
     ...buildAutopilotMetadata({
@@ -349,7 +421,14 @@ export async function produireUnMontage(input: {
     // s'est révélé absent (404/410) : la condition « il avait des rushes » est
     // donc déjà remplie.
     ...(rushMort ? { rushIgnore: true, rushIgnoreMotif: 'rush expiré' } : null),
-    // Même exigence pour la musique configurée mais disparue du stockage.
+    // Smart montage : le plan relu par le Calendrier (régénération, Modifier),
+    // et les rushes réellement montés.
+    ...(planMontageRushs
+      ? { rushSegments: planMontageRushs, rushUrls: rushsDuPlan(planMontageRushs).map((r) => r.url) }
+      : null),
+    // Analyse impossible : montage simple — jamais en silence.
+    ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
+        // Même exigence pour la musique configurée mais disparue du stockage.
     ...(musiqueIntrouvable ? { musiqueIgnoree: true, musiqueIgnoreeMotif: 'musique introuvable' } : null),
     // Le montage porte le JUMEAU en séquence « Vidéo » : le Calendrier/récap
     // le lit pour l'annoncer, et pour ne pas proposer une régénération

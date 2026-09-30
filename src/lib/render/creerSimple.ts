@@ -26,6 +26,8 @@ import type { CardsTypography } from '@/components/creer/SequenceCards';
  */
 
 /** Sous-ensemble du design qui suffit au rendu serveur de Phase 1. */
+import type { RushSegment } from '@/lib/creer/multi-rush';
+
 export interface CreerSimpleRenderInput {
   title: string;
   subtitle?: string;
@@ -43,6 +45,13 @@ export interface CreerSimpleRenderInput {
   posterOnAllSequences?: boolean;
   sequenceBackgrounds?: Record<string, string | null>;
   videoUrl?: string | null;
+  /** Multi-rush : rushes enchaînés (voir `multi-rush.ts`). Absent : `videoUrl` seul. */
+  rushs?: ReadonlyArray<{ url: string; secondes?: number | null }> | null;
+  /**
+   * SMART MONTAGE : plan d'extraits `{ url, debut, fin, depuis, score }`,
+   * produit par le moteur de Créer (`smart-montage.ts`). Absent : rendu d'avant.
+   */
+  montage?: ReadonlyArray<RushSegment> | null;
   musicUrl?: string | null;
   gradientStart?: string;
   gradientEnd?: string;
