@@ -132,6 +132,11 @@ export interface VoixDeSequence {
   url: string;
   /** Durée mesurée du clip, en secondes. */
   seconds: number;
+  /**
+   * `edge` : la voix demandée (ElevenLabs) était indisponible et la voix
+   * GRATUITE du serveur a pris le relais — dit dans les métadonnées.
+   */
+  repli?: 'edge';
 }
 
 export type VoixParSequence = Partial<Record<SequenceKey, VoixDeSequence>>;
@@ -277,7 +282,8 @@ export async function buildAutopilotVoices(input: {
    */
   voiceId?: string | null;
 }): Promise<VoixParSequence> {
-  const provider = input.provider ?? SERVER_TTS_PROVIDER;
+  let provider = input.provider ?? SERVER_TTS_PROVIDER;
+  let voixForceeEdge = false;
 
   // ⚠️ AUCUNE CONFIANCE À `voiceId`. Une configuration enregistre un identifiant
   // (préfixé `elevenlabs-…`, ou un UUID `user_voices.id` hérité du Jumeau) :
@@ -289,10 +295,15 @@ export async function buildAutopilotVoices(input: {
   if ((input.voiceId ?? '').trim()) {
     const compte = await resoudreVoixParIdentifiant(input.userId, input.voiceId);
     if (!compte) {
-      console.warn(`[Autopilote/Voix] voix ${String(input.voiceId).slice(0, 12)}… inconnue pour ce compte : aucune narration, aucun appel au fournisseur`);
-      return {};
+      // Jamais une voix d'un autre compte : l'identifiant n'est PAS envoyé.
+      // Mais plus de montage muet : la voix gratuite du serveur narre.
+      console.warn(`[Autopilote/Voix] voix ${String(input.voiceId).slice(0, 12)}… inconnue pour ce compte : voix Edge du serveur, aucun appel ElevenLabs`);
+      voixResolue = undefined;
+      provider = 'edge';
+      voixForceeEdge = true;
+    } else {
+      voixResolue = compte.providerVoiceId;
     }
-    voixResolue = compte.providerVoiceId;
   }
   const { writeFile, unlink } = await import('fs/promises');
   const os = await import('os');
@@ -305,7 +316,16 @@ export async function buildAutopilotVoices(input: {
   for (const cle of SEQUENCE_KEYS) {
     const texte = textes[cle];
     if (!texte) continue;
-    const mp3 = await synthetiser(texte, provider, voixResolue);
+    let mp3 = await synthetiser(texte, provider, voixResolue);
+    // ElevenLabs absent (clé non configurée) ou en échec : la voix gratuite
+    // (Edge) plutôt qu'un montage muet. Test réel staging : sans clé
+    // ElevenLabs, aucune voix, et le MP4 final sortait silencieux.
+    let repli = voixForceeEdge;
+    if (!mp3 && provider === 'elevenlabs') {
+      mp3 = await synthetiser(texte, 'edge');
+      repli = !!mp3;
+      if (repli) console.warn(`[Autopilote/Voix] ${cle} : ElevenLabs indisponible, voix Edge utilisée`);
+    }
     if (!mp3) continue;
 
     const local = path.join(os.tmpdir(), `studiio-voix-${input.jobId}-${cle}.mp3`);
@@ -319,7 +339,7 @@ export async function buildAutopilotVoices(input: {
         bucket: 'audio',
         storagePath: `${input.userId}/autopilote-${input.jobId}-${cle}.mp3`,
       });
-      if (seconds) out[cle] = { url, seconds };
+      if (seconds) out[cle] = repli ? { url, seconds, repli: 'edge' } : { url, seconds };
       else {
         // Sans durée mesurée, on ne peut pas caler la séquence : la voix
         // serait coupée. On préfère ne pas l'utiliser.

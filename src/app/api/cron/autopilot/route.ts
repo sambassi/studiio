@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits } from '@/lib/credits/system';
 import { sendEmailSilent } from '@/lib/email/resend';
@@ -322,6 +323,8 @@ export async function GET(req: NextRequest) {
        * rotation suffit a ne pas repeter deux vidéos d'affilee.
        */
       let dernierePosterUrl: string | null = null;
+      /** Plages de rushes déjà montées dans CE cycle (smart montage). */
+      const plagesCycle: PlagesUtilisees = {};
       /**
        * Rushes reference dans la banque mais introuvables au stockage.
        *
@@ -387,6 +390,9 @@ export async function GET(req: NextRequest) {
             // du cycle.
             onRushMort: (url) => { rushesMorts.add(url); },
             onAfficheCustom: (url) => { dernierePosterUrl = url; },
+            // Smart montage : les extraits déjà montés dans ce cycle sont
+            // évités par les vidéos suivantes (tant qu'il reste mieux).
+            plagesCycle,
           });
           const { rushUrl } = rendu;
 

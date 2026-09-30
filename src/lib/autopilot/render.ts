@@ -40,6 +40,8 @@ export interface RenderedMontage {
   thumbnailUrl: string | null;
   /** Nombre d'images rendues — utile au journal du cycle. */
   durationFrames: number;
+  /** Son réellement mesuré dans le MP4 final ; `null` si la mesure a échoué. */
+  audio?: import('@/lib/render/audio-fichier').MesureAudioFichier | null;
 }
 
 /**
@@ -130,6 +132,12 @@ export async function renderAndUpload(input: {
   // supprime le fichier temporaire une fois en ligne, et il n'y aurait plus
   // rien à photographier ensuite.
   const thumbnailUrl = await extraireVignette(outputPath, input.userId, input.jobId);
+  // Le son RÉEL du fichier rendu, avant qu'il ne quitte le disque.
+  const { mesurerAudioFichier } = await import('@/lib/render/audio-fichier');
+  const audio = await mesurerAudioFichier(outputPath, ffmpegPath());
+  if (audio?.silencieux) {
+    console.warn(`[Autopilote/Rendu] ${input.jobId} — fichier final SANS SON audible (piste ${audio.piste ? 'présente' : 'absente'}, crête ${audio.maxDb} dB)`);
+  }
 
   // `uploadToStorage` supprime le fichier temporaire une fois en ligne : sans
   // ça, un cron quotidien remplirait le disque du serveur en quelques mois.
@@ -139,5 +147,5 @@ export async function renderAndUpload(input: {
     storagePath: `${input.userId}/autopilote-${input.jobId}.mp4`,
   });
 
-  return { videoUrl, thumbnailUrl, durationFrames };
+  return { videoUrl, thumbnailUrl, durationFrames, audio };
 }

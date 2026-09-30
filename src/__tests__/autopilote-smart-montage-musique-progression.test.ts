@@ -26,8 +26,8 @@ describe('Autopilote : plusieurs rushes réunis', () => {
 
   it('produire : plan du moteur de Créer, passé au rendu et aux métadonnées', () => {
     const p = src('src/lib/autopilot/produire.ts');
-    expect(p).toContain("import { planMontage, dureeCibleMontage, dureePlan, type AnalyseRush } from '@/lib/creer/smart-montage';");
-    expect(p).toContain('planMontageRushs = planMontage(analyses, dureeCibleMontage(disponible));');
+    expect(p).toContain("from '@/lib/creer/smart-montage';");
+    expect(p).toContain('planMontageRushs = planMontage(analysesRushs, cible, {');
     expect(p).toContain('montage: planMontageRushs,');
     expect(p).toContain("{ rushSegments: planMontageRushs, rushUrls: rushsDuPlan(planMontageRushs).map((r) => r.url) }");
     // Jamais de repli silencieux.

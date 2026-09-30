@@ -7365,7 +7365,15 @@ export default function AssistantWizard() {
           if (a) analyses.push(a);
         }
         const cibleEcran = duree('video');
-        planMontageRushs = planMontage(analyses, cibleEcran);
+        // V2 : la pertinence des extraits suit le thème, le titre et le brief.
+        planMontageRushs = planMontage(analyses, cibleEcran, {
+          contexte: {
+            theme: currentTopic,
+            sujet: generated?.title ?? null,
+            objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
+            texte: (generated?.cards ?? []).map((c) => `${c.title ?? ''} ${c.description ?? ''}`).join(' ') || null,
+          },
+        });
         if (!planMontageRushs) {
           // Jamais de repli SILENCIEUX sur « rush 1 puis rush 2 ».
           setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');

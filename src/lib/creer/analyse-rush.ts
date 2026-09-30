@@ -96,9 +96,9 @@ export async function analyserRush(
       for (let p = 0, q = 0; p < px.length; p += 4, q++) {
         gris[q] = (px[p] * 0.299 + px[p + 1] * 0.587 + px[p + 2] * 0.114) / 255;
       }
-      const { luminosite: lum, nettete: net, mouvement: mouv } = mesurerImage(gris, prec);
+      const m = mesurerImage(gris, prec);
       prec = gris;
-      echantillons.push({ t: Math.round(t * 1000) / 1000, mouvement: mouv, luminosite: lum, nettete: net, audio: 0 });
+      echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, audio: 0 });
       onProgress?.(Math.min(0.95, (i + 1) / Math.max(1, total)));
     }
     const audio = await audioP;

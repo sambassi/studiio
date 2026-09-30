@@ -262,6 +262,7 @@ export async function POST() {
       timezone: config.runTimezone,
       status: 'draft',
       platforms: [],
+      avertissements: rendu.avertissements,
       cout: COST_PER_VIDEO,
       debite: rendu.debite,
       videoUrl: rendu.videoUrl,

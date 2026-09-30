@@ -78,9 +78,11 @@ describe('planMontage — 2 rushes, vrai montage', () => {
     }
   });
 
-  it('respecte exactement la durée cible, extraits contigus', () => {
+  it('ne dépasse jamais la durée cible, extraits contigus (V2 : unicité avant remplissage)', () => {
     expect(plan[0].debut).toBe(0);
-    expect(plan[plan.length - 1].fin).toBeCloseTo(cible, 3);
+    const fin = plan[plan.length - 1].fin;
+    expect(fin).toBeLessThanOrEqual(cible + 1e-6);
+    expect(fin).toBeGreaterThanOrEqual(8);
     plan.slice(1).forEach((s, i) => expect(s.debut).toBeCloseTo(plan[i].fin, 3));
   });
 
@@ -117,7 +119,9 @@ describe('repli et compatibilité', () => {
     const long1 = rush('L1.mp4', 45, (t) => ({ mouvement: 0.1 + (t % 7) / 50 }));
     const long2 = rush('L2.mp4', 45, (t) => ({ mouvement: 0.1 + (t % 5) / 40 }));
     for (const cible of [15, 30, 45]) {
-      expect(dureePlan(planMontage([long1, long2], cible)!)).toBeCloseTo(cible, 3);
+      const d = dureePlan(planMontage([long1, long2], cible)!);
+      expect(d).toBeLessThanOrEqual(cible + 1e-6);
+      expect(d).toBeGreaterThanOrEqual(cible - 2);
     }
   });
 
@@ -139,9 +143,11 @@ describe('repli et compatibilité', () => {
       .toEqual([{ url: 'a', debut: 0, fin: 5 }, { url: 'b', debut: 5, fin: 9 }]);
   });
 
-  it('ajusterPlan garde les points d entrée', () => {
-    const p = ajusterPlan([{ url: 'a', debut: 0, fin: 5, depuis: 2 }, { url: 'b', debut: 5, fin: 10, depuis: 4 }], 20);
-    expect(p).toEqual([{ url: 'a', debut: 0, fin: 10, depuis: 2 }, { url: 'b', debut: 10, fin: 20, depuis: 4 }]);
+  it('ajusterPlan garde les points d entrée et n étire jamais (V2)', () => {
+    const plus = ajusterPlan([{ url: 'a', debut: 0, fin: 5, depuis: 2 }, { url: 'b', debut: 5, fin: 10, depuis: 4 }], 20);
+    expect(plus).toEqual([{ url: 'a', debut: 0, fin: 5, depuis: 2 }, { url: 'b', debut: 5, fin: 20, depuis: 4 }]);
+    const moins = ajusterPlan([{ url: 'a', debut: 0, fin: 5, depuis: 2 }, { url: 'b', debut: 5, fin: 10, depuis: 4 }], 5);
+    expect(moins).toEqual([{ url: 'a', debut: 0, fin: 2.5, depuis: 2 }, { url: 'b', debut: 2.5, fin: 5, depuis: 4 }]);
   });
 
   it('durée par défaut plafonnée, empreinte stable', () => {
