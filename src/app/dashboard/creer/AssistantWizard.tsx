@@ -191,7 +191,7 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, deplacer, retirer, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { planMontage, dureeCibleMontage, cleMontage, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, cleMontage, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { analyserRush } from '@/lib/creer/analyse-rush';
 import {
   indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees, cartesAvecImagePerso,
@@ -3753,6 +3753,9 @@ export default function AssistantWizard() {
   const [jumeauMode, setJumeauMode] = useState<JumeauMode>('aucun');
   /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
   const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
+  // Smart montage : repli sur l'enchaînement simple, ou séquence raccourcie —
+  // toujours DIT à l'écran, jamais silencieux.
+  const [montageNotice, setMontageNotice] = useState<string | null>(null);
   /**
    * Génération vidéo du jumeau EN COURS — l'identifiant serveur, persisté au
    * lancement et effacé une fois la vidéo posée. Sa présence après un
@@ -7312,7 +7315,9 @@ export default function AssistantWizard() {
         setRenderStage('Préparation…');
       }
       const ordre = ordreActif(plateau.sequences);
-      const duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
+      // `let` : le smart montage raccourcit la séquence « Vidéo » quand les
+      // rushes n'offrent pas assez de matière exploitable (jamais rallongée).
+      let duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
 
 
       // ── Voix de la séquence « Vidéo » — pas de double narration ─────
@@ -7348,6 +7353,10 @@ export default function AssistantWizard() {
       // persiste pas) et que la séquence « Vidéo » joue. Analyse impossible
       // ou < 2 rushes exploitables : `null`, l'enchaînement d'avant s'applique.
       let planMontageRushs: RushSegment[] | null = null;
+      setMontageNotice(null);
+      if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length !== (plateau.rushs ?? []).length) {
+        setMontageNotice('Analyse intelligente indisponible (un rush n’est pas encore enregistré) — montage simple utilisé.');
+      }
       if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length === (plateau.rushs ?? []).length) {
         setRenderStage('Analyse des rushes…');
         const analyses: AnalyseRush[] = [];
@@ -7355,9 +7364,19 @@ export default function AssistantWizard() {
           const a = await analyserRush(rushsDurables[i].url, (f) => setRenderProgress(Math.round(((i + f) / rushsDurables.length) * 10)));
           if (a) analyses.push(a);
         }
-        planMontageRushs = planMontage(analyses, duree('video'));
+        const cibleEcran = duree('video');
+        planMontageRushs = planMontage(analyses, cibleEcran);
+        if (!planMontageRushs) {
+          // Jamais de repli SILENCIEUX sur « rush 1 puis rush 2 ».
+          setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');
+        } else if (dureePlan(planMontageRushs) < duree('video') - 0.05) {
+          const dispo = Math.round(dureePlan(planMontageRushs) * 10) / 10;
+          setMontageNotice(`Matière exploitable dans les rushes : ${dispo} s — séquence Vidéo ramenée à ${dispo} s (extraits jamais rallongés).`);
+          plateau = { ...plateau, videoDuration: dureePlan(planMontageRushs) };
+          duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
+        }
         planMontageRef.current = planMontageRushs
-          ? { cle: cleMontage(rushsDurables.map((r) => r.url), duree('video')), plan: planMontageRushs }
+          ? { cle: cleMontage(rushsDurables.map((r) => r.url), cibleEcran), plan: planMontageRushs }
           : null;
         console.log('[SmartMontage] plan :', planMontageRushs
           ? planMontageRushs.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | ')
@@ -8533,6 +8552,14 @@ export default function AssistantWizard() {
           <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {montageNotice && (
+          <div data-montage-notice className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span>{montageNotice}</span>
+            <button onClick={() => setMontageNotice(null)} className="ml-auto text-xs text-amber-300 hover:text-white">OK</button>
           </div>
         )}
 

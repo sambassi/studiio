@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
-  planMontage, candidatsDuRush, ajusterPlan, dureeCibleMontage, cleMontage,
+  planMontage, candidatsDuRush, ajusterPlan, dureeCibleMontage, cleMontage, dureePlan,
   type AnalyseRush, type EchantillonRush,
 } from '@/lib/creer/smart-montage';
 import { estPlanMontage, rushsDuPlan, rushSegmentsDepuisMetadata, planRushs } from '@/lib/creer/multi-rush';
@@ -103,11 +103,22 @@ describe('repli et compatibilité', () => {
     expect(planMontage([A], 10)).toBeNull();
   });
 
-  it('matière insuffisante : les extraits s allongent jusqu à la cible', () => {
-    const court1 = rush('C1.mp4', 4, () => ({ mouvement: 0.2 }));
-    const court2 = rush('C2.mp4', 4, () => ({ mouvement: 0.2 }));
-    const p = planMontage([court1, court2], 7)!;
-    expect(p[p.length - 1].fin).toBeCloseTo(7, 3);
+  it('matière insuffisante : montage plus court, extraits jamais rallongés', () => {
+    const court1 = rush('C1.mp4', 6, () => ({ mouvement: 0.2 }));
+    const court2 = rush('C2.mp4', 6, () => ({ mouvement: 0.2 }));
+    const p = planMontage([court1, court2], 30)!;
+    expect(dureePlan(p)).toBeLessThanOrEqual(12);
+    expect(dureePlan(p)).toBeGreaterThan(6);
+    const L = 4; // longueur d'extrait pour une cible de 30 s
+    p.forEach((s) => expect(s.fin - s.debut).toBeLessThanOrEqual(L + 1e-6));
+  });
+
+  it('suit la cible utilisateur quand la matière suffit (15 s, 30 s, 45 s)', () => {
+    const long1 = rush('L1.mp4', 45, (t) => ({ mouvement: 0.1 + (t % 7) / 50 }));
+    const long2 = rush('L2.mp4', 45, (t) => ({ mouvement: 0.1 + (t % 5) / 40 }));
+    for (const cible of [15, 30, 45]) {
+      expect(dureePlan(planMontage([long1, long2], cible)!)).toBeCloseTo(cible, 3);
+    }
   });
 
   it('un enchaînement classique n est pas un plan de montage', () => {
@@ -134,8 +145,9 @@ describe('repli et compatibilité', () => {
   });
 
   it('durée par défaut plafonnée, empreinte stable', () => {
-    expect(dureeCibleMontage(40)).toBe(15);
-    expect(dureeCibleMontage(9)).toBe(9);
+    // 30 s par défaut (Reel), jamais plus que la matière disponible.
+    expect(dureeCibleMontage(90)).toBe(30);
+    expect(dureeCibleMontage(22)).toBe(22);
     expect(cleMontage(['a', 'b'], 12)).toBe('a|b@12');
   });
 });
@@ -159,6 +171,13 @@ describe('câblage des rendus', () => {
   it('Calendrier / régénération : le plan part en `montage`', () => {
     const o = src('src/lib/rendus/options-depuis-metadata.ts');
     expect(o).toContain('montage: rushSegmentsDepuisMetadata(meta.rushSegments)!');
+  });
+
+  it('Créer : repli sur montage simple TOUJOURS affiché, séquence raccourcie si peu de matière', () => {
+    const w = src('src/app/dashboard/creer/AssistantWizard.tsx');
+    expect(w).toContain("setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');");
+    expect(w).toContain('{montageNotice && (');
+    expect(w).toContain('plateau = { ...plateau, videoDuration: dureePlan(planMontageRushs) };');
   });
 
   it('Créer : analyse avant rendu, plan persisté dans rushSegments', () => {

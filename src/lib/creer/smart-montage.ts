@@ -17,7 +17,8 @@
  *   une fenêtre statique ou à cheval sur un changement de plan ;
  * - sélection à tour de rôle entre les rushes (alternance), extraits d'un
  *   même rush jamais voisins (pas deux plans quasi identiques) ;
- * - durée totale = durée cible, exactement.
+ * - durée totale = durée cible, ou la matière disponible si elle est plus
+ *   courte — jamais d'extrait rallongé artificiellement.
  *
  * Aucune dépendance navigateur : testable avec des échantillons synthétiques.
  */
@@ -163,22 +164,23 @@ export function planMontage(
     }
   }
 
-  // Pas assez de matière : on allonge les extraits dans le rush (vers l'avant
-  // puis l'arrière) sans chevaucher les autres, jusqu'à la cible.
-  for (let k = 0; k < parRush.length && total < cible - 1e-6; k++) {
-    const pris = choisis[k].sort((a, b) => a.depuis - b.depuis);
-    pris.forEach((c, i) => {
-      if (total >= cible - 1e-6) return;
-      const plafond = i + 1 < pris.length ? pris[i + 1].depuis : parRush[k].duree;
-      const gain = Math.min(plafond - c.jusqua, cible - total);
-      if (gain > 0) { c.jusqua = arrondi(c.jusqua + gain); total += gain; }
-    });
-    pris.forEach((c, i) => {
-      if (total >= cible - 1e-6) return;
-      const plancher = i > 0 ? pris[i - 1].jusqua : 0;
-      const gain = Math.min(c.depuis - plancher, cible - total);
-      if (gain > 0) { c.depuis = arrondi(c.depuis - gain); total += gain; }
-    });
+  // Pas assez de matière : second passage sans écart minimal entre extraits
+  // d'un même rush (des extraits RÉELS en plus, jamais un extrait rallongé).
+  // Toujours court : le montage durera ce qui est disponible, pas plus.
+  if (total < cible - 1e-6) {
+    const libreSansEcart = (k: number, c: Candidat) =>
+      choisis[k].every((p) => c.jusqua <= p.depuis + 1e-6 || c.depuis >= p.jusqua - 1e-6);
+    progres = true;
+    while (total < cible - 1e-6 && progres) {
+      progres = false;
+      for (let k = 0; k < parRush.length && total < cible - 1e-6; k++) {
+        const c = parRush[k].candidats.find((x) => libreSansEcart(k, x));
+        if (!c) continue;
+        choisis[k].push(c);
+        total += c.jusqua - c.depuis;
+        progres = true;
+      }
+    }
   }
 
   // Ordre : chaque rush dans l'ordre chronologique de ses extraits, les rushes
@@ -189,19 +191,18 @@ export function planMontage(
     files.forEach((f) => { if (rang < f.length) ordre.push(f[rang]); });
   }
 
-  // Placement dans la séquence, total ramené EXACTEMENT à la cible.
+  // Placement dans la séquence : total = cible, ou la matière disponible si
+  // elle est plus courte. Le dernier extrait est seulement COUPÉ, jamais allongé.
   const plan: RushSegment[] = [];
   let t = 0;
   for (const c of ordre) {
     if (t >= cible - 1e-6) break;
     const d = Math.min(c.jusqua - c.depuis, cible - t);
-    if (d < 0.5 && plan.length > 0) { plan[plan.length - 1].fin = arrondi(cible); t = cible; break; }
+    if (d < 0.5) break;
     plan.push({ url: c.url, debut: arrondi(t), fin: arrondi(t + d), depuis: c.depuis, score: c.score });
     t += d;
   }
-  if (plan.length === 0) return null;
-  plan[plan.length - 1].fin = arrondi(Math.max(plan[plan.length - 1].fin, cible));
-  return plan;
+  return plan.length >= 2 ? plan : null;
 }
 
 /**
@@ -220,14 +221,19 @@ export function ajusterPlan(plan: ReadonlyArray<RushSegment>, duree: number): Ru
 }
 
 /**
- * Durée par défaut de la séquence « Vidéo » d'un montage multi-rush : la
- * somme des rushes, plafonnée — un montage sélectionne les meilleurs
- * passages, il ne rejoue pas tout. Réglable ensuite à l'écran.
+ * Durée par défaut de la séquence « Vidéo » d'un montage multi-rush : 30 s
+ * (un Reel), jamais plus que la durée réellement disponible dans les rushes.
+ * L'utilisateur la règle ensuite librement à l'écran ; le plan suit ce réglage.
  */
-export const CIBLE_MONTAGE_DEFAUT = 15;
+export const CIBLE_MONTAGE_DEFAUT = 30;
 
 export function dureeCibleMontage(sommeRushs: number): number {
   return Math.min(sommeRushs, CIBLE_MONTAGE_DEFAUT);
+}
+
+/** Durée totale d'un plan (fin du dernier extrait). */
+export function dureePlan(plan: ReadonlyArray<RushSegment>): number {
+  return plan.length ? plan[plan.length - 1].fin : 0;
 }
 
 /** Empreinte (rushes + durée) qui valide un plan calculé pour l'écran courant. */
