@@ -84,7 +84,7 @@ const CONTENU = {
   ],
 };
 const DIX = 10;
-const DATE_DEPART = '2026-09-01';
+const DATE_DEPART = '2099-09-01'; // futur : une date passée n'est plus reprise (dateBrouillonReprise)
 /** Dix affiches DISTINCTES : la série refuse de partir avec moins. */
 const AFFICHES = Array.from({ length: DIX }, (_, i) => `https://cdn/affiche-${i + 1}.jpg`);
 
