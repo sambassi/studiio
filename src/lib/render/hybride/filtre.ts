@@ -30,9 +30,14 @@ export interface SegmentHybride {
   vitesse?: number;
 }
 
+/** Zone non transparente d'une image fixe (px de la vidéo) : x, y, largeur, hauteur. */
+export type BoiteImage = [number, number, number, number];
+
 export interface FenetreSurimpression {
   /** Image fixe du TEXTE (glisse à l'entrée). */
   texte: string;
+  /** Zone utile du texte : seule elle est animée et posée (le reste est transparent). */
+  boite?: BoiteImage | null;
   debut: number;
   fin: number;
 }
@@ -48,6 +53,8 @@ export interface EntreeHybride {
   voile: string | null;
   /** Filigrane, présent tout du long. */
   filigrane: string | null;
+  /** Zone utile du filigrane. */
+  boiteFiligrane?: BoiteImage | null;
   surimpressions: FenetreSurimpression[];
   musique: { source: string; volume: number } | null;
   voix: Array<{ source: string; depart: number; volume: number }>;
@@ -84,7 +91,10 @@ export function argumentsHybride(e: EntreeHybride): string[] {
     args.push('-ss', f3(Math.max(0, s.depuis)), '-t', f3(besoinSource), '-i', s.source);
     filtres.push(
       `[${n}:v]setpts=(PTS-STARTPTS)/${vitesse},`
-      + `scale=${W}:${H}:force_original_aspect_ratio=increase:flags=bicubic,crop=${W}:${H},setsar=1,`
+      // Recadrage « cover » centré, COUPÉ AVANT la mise à l'échelle : une
+      // source 16:9 n'est plus agrandie à 3413×1920 pour en jeter les deux
+      // tiers. Même cadre (centré, à moins d'un pixel près).
+      + `crop='min(iw\\,ih*${W}/${H})':'min(ih\\,iw*${H}/${W})',scale=${W}:${H}:flags=bicubic,setsar=1,`
       + `fps=${fps},tpad=stop_mode=clone:stop=${images},trim=end_frame=${images},setpts=PTS-STARTPTS[v${k}]`,
     );
     etiquettesVideo.push(`[v${k}]`);
@@ -101,21 +111,28 @@ export function argumentsHybride(e: EntreeHybride): string[] {
   const bord = Math.max(1, Math.round(0.3 * fps));
   let courant = 'base0';
   let etape = 0;
-  const poser = (image: string, debutImg: number, dureeImg: number, glisse: boolean) => {
+  // ⚠️ Chaque image fixe est DÉCODÉE UNE FOIS puis répétée (`loop`) : avec
+  // `-loop 1` à l'entrée, le PNG 1080×1920 était redécodé à CHAQUE image de
+  // sa fenêtre. Et seule sa zone utile (`boite`) est animée et posée : le
+  // reste est transparent, le poser ne change rien. Mesuré sur le plan DANSE.
+  const fixe = (i: number, nbImages: number, boite: BoiteImage | null | undefined) => (
+    `[${i}:v]format=rgba${boite ? `,crop=${boite[2]}:${boite[3]}:${boite[0]}:${boite[1]}` : ''},`
+    + `loop=loop=${Math.max(0, nbImages - 1)}:size=1:start=0,setpts=N/(${fps}*TB)`
+  );
+  const poser = (image: string, debutImg: number, dureeImg: number, glisse: boolean, boite?: BoiteImage | null) => {
     const i = n;
-    // L'image n'est lue QUE pendant sa fenêtre (décoder 1080×1920 à chaque
-    // image de toute la vidéo coûterait plus que le montage lui-même), puis
-    // décalée à son instant.
-    args.push('-loop', '1', '-framerate', String(fps), '-t', f3(dureeImg / fps), '-i', image);
+    args.push('-i', image);
     n += 1;
     // Opacité : entrée et sortie de `bord` images — `CoucheOverlayAnimee`.
     const sortie = Math.max(0, dureeImg - bord);
     filtres.push(
-      `[${i}:v]format=rgba,fade=t=in:start_frame=0:nb_frames=${bord}:alpha=1,`
+      `${fixe(i, dureeImg, boite)},fade=t=in:start_frame=0:nb_frames=${bord}:alpha=1,`
       + `fade=t=out:start_frame=${sortie}:nb_frames=${bord}:alpha=1,setpts=PTS-STARTPTS+${debutImg}/(${fps}*TB)[s${etape}]`,
     );
-    const y = glisse ? `'round((1-min(1\\,max(0\\,(n-${debutImg})/${bord})))*24)'` : '0';
-    filtres.push(`[${courant}][s${etape}]overlay=x=0:y=${y}:eof_action=pass:format=auto[base${etape + 1}]`);
+    const x = boite ? boite[0] : 0;
+    const y0 = boite ? boite[1] : 0;
+    const y = glisse ? `'${y0}+round((1-min(1\\,max(0\\,(n-${debutImg})/${bord})))*24)'` : String(y0);
+    filtres.push(`[${courant}][s${etape}]overlay=x=${x}:y=${y}:eof_action=pass:format=auto[base${etape + 1}]`);
     courant = `base${etape + 1}`;
     etape += 1;
   };
@@ -123,13 +140,15 @@ export function argumentsHybride(e: EntreeHybride): string[] {
     const debutImg = Math.round(o.debut * fps);
     const dureeImg = Math.max(1, Math.round((o.fin - o.debut) * fps));
     if (e.voile) poser(e.voile, debutImg, dureeImg, false);
-    poser(o.texte, debutImg, dureeImg, true);
+    poser(o.texte, debutImg, dureeImg, true, o.boite);
   }
   if (e.filigrane) {
     const i = n;
-    args.push('-loop', '1', '-framerate', String(fps), '-t', f3(e.duree), '-i', e.filigrane);
+    args.push('-i', e.filigrane);
     n += 1;
-    filtres.push(`[${courant}][${i}:v]overlay=0:0:format=auto[base${etape + 1}]`);
+    const b = e.boiteFiligrane;
+    filtres.push(`${fixe(i, totalImages, b)}[fil]`);
+    filtres.push(`[${courant}][fil]overlay=${b ? b[0] : 0}:${b ? b[1] : 0}:format=auto[base${etape + 1}]`);
     courant = `base${etape + 1}`;
     etape += 1;
   }

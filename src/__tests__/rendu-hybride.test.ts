@@ -40,8 +40,17 @@ describe('commande ffmpeg (pure)', () => {
   it('positionnement avant -i, ralenti par setpts, recadrage cover 9:16', () => {
     expect(args.join(' ')).toContain('-ss 4.5 -t 2.833 -i a.mp4');
     expect(fc).toContain('setpts=(PTS-STARTPTS)/0.6');
-    expect(fc).toContain('scale=1080:1920:force_original_aspect_ratio=increase');
-    expect(fc).toContain('crop=1080:1920');
+    // Recadrage cover centré COUPÉ AVANT la mise à l'échelle (perf).
+    expect(fc).toContain("crop='min(iw\\,ih*1080/1920)':'min(ih\\,iw*1920/1080)',scale=1080:1920:flags=bicubic");
+  });
+
+  it('image fixe décodée UNE fois puis répétée ; zone utile seule posée', () => {
+    expect(args.filter((x) => x === '-loop')).toEqual([]);
+    expect(fc).toContain('loop=loop=59:size=1:start=0,setpts=N/(30*TB)');
+    const avecBoite = argumentsHybride({ ...base(), surimpressions: [{ texte: 't.png', debut: 0, fin: 2, boite: [52, 150, 890, 124] }] })
+      .join(' ');
+    expect(avecBoite).toContain('crop=890:124:52:150,loop=');
+    expect(avecBoite).toContain("overlay=x=52:y='150+round(");
   });
 
   it('surimpressions : fondu de 9 images, texte qui glisse de 24 px, fenêtre à son instant', () => {
@@ -60,6 +69,17 @@ describe('commande ffmpeg (pure)', () => {
   it('horodatage régulier en sortie (pas de doublon / saut d image)', () => {
     expect(fc).toContain('setpts=N/(30*TB)[vout]');
     expect(args).toContain('passthrough');
+  });
+});
+
+describe('zone utile d\'une image fixe', () => {
+  it('rectangle des pixels non transparents, bornes paires, marge', async () => {
+    const { boiteAlpha } = await import('@/lib/render/hybride/rendu');
+    const L = 40; const H = 30;
+    const px = new Uint8Array(L * H * 4);
+    for (let y = 11; y < 17; y++) for (let x = 7; x < 21; x++) px[(y * L + x) * 4 + 3] = 200;
+    expect(boiteAlpha(px, L, H)).toEqual([4, 8, 20, 12]);
+    expect(boiteAlpha(new Uint8Array(L * H * 4), L, H)).toBeNull();
   });
 });
 
@@ -119,6 +139,39 @@ describe('ffmpeg réel', () => {
     expect(domine(pixel(20, 100))).toBe('R');   // hors fenêtre : pas de surimpression
     const vol = execFileSync('ffmpeg', ['-hide_banner', '-i', out, '-vn', '-af', 'volumedetect', '-f', 'null', '-'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
     expect(vol).not.toContain('max_volume: -91');
+  }, 120_000);
+});
+
+describe('ffmpeg réel — optimisation des surimpressions', () => {
+  it.skipIf(!ffmpegOk)('poser la seule zone utile donne la même vidéo que poser l\'image entière (écarts d\'arrondi seulement)', async () => {
+    const { boiteAlpha } = await import('@/lib/render/hybride/rendu');
+    const d = mkdtempSync(join(tmpdir(), 'studiio-boite-'));
+    const src = join(d, 's.mp4');
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=25:d=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-y', src]);
+    const png = join(d, 't.png');
+    // Texte : bande opaque + bord semi-transparent, le reste transparent.
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=white@1.0:s=1080x1920,format=rgba', '-vf',
+      "geq=r=255:g=40:b=200:a='if(between(Y,300,360)*between(X,100,900),255,if(between(Y,296,364)*between(X,96,904),90,0))'", '-frames:v', '1', '-y', png]);
+    const rgba = execFileSync('ffmpeg', ['-v', 'error', '-i', png, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { maxBuffer: 64e6 });
+    const boite = boiteAlpha(rgba, 1080, 1920);
+    expect(boite).toEqual([94, 294, 814, 74]);
+    const rendre = (b: typeof boite, nom: string) => {
+      const out = join(d, nom);
+      execFileSync('ffmpeg', argumentsHybride({
+        segments: [{ source: src, debut: 0, fin: 1.5, depuis: 0 }, { source: src, debut: 1.5, fin: 2.5, depuis: 1 }],
+        duree: 2.5, fps: 30, largeur: 1080, hauteur: 1920, voile: null, filigrane: png, boiteFiligrane: b,
+        surimpressions: [{ texte: png, debut: 0.4, fin: 2.2, boite: b }], musique: null, voix: [], sortie: out,
+      }));
+      return out;
+    };
+    const entiere = rendre(null, 'entiere.mp4');
+    const zone = rendre(boite, 'zone.mp4');
+    const n = (f: string) => Number(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', f]).toString().trim());
+    expect(n(zone)).toBe(n(entiere));
+    // PSNR minimal par image : > 50 dB = au plus un niveau d'écart (arrondis).
+    const journal = execFileSync('sh', ['-c', `ffmpeg -hide_banner -i "${zone}" -i "${entiere}" -lavfi psnr -f null - 2>&1 | grep -o 'min:[0-9.inf]*'`]).toString().trim();
+    const min = journal === 'min:inf' ? Infinity : Number(journal.replace('min:', ''));
+    expect(min).toBeGreaterThan(50);
   }, 120_000);
 });
 

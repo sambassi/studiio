@@ -21,7 +21,7 @@ import { spawn } from 'child_process';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
-import { argumentsHybride, type FenetreSurimpression, type EntreeHybride } from '@/lib/render/hybride/filtre';
+import { argumentsHybride, type BoiteImage, type FenetreSurimpression, type EntreeHybride } from '@/lib/render/hybride/filtre';
 import { urlDeLecture } from '@/lib/creer/analyse-rush-serveur';
 import { VIDEO_SIZE } from '@/lib/creer/designSpec';
 import type { ElementLisibilite } from '@/lib/creer/conseiller/lisibilite';
@@ -79,6 +79,37 @@ function lancerFfmpeg(args: string[], totalSecondes: number, onFraction?: (f: nu
       clearTimeout(minuteur);
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg code ${code} : ${journal.split('\n').filter((l) => l && !/=/.test(l)).slice(-3).join(' | ')}`));
+    });
+  });
+}
+
+/** Rectangle des pixels non transparents (alpha > 0) d'une image RVBA. Pur. */
+export function boiteAlpha(rgba: ArrayLike<number>, largeur: number, hauteur: number, marge = 2): BoiteImage | null {
+  let x0 = largeur; let y0 = hauteur; let x1 = -1; let y1 = -1;
+  for (let y = 0; y < hauteur; y++) {
+    for (let x = 0; x < largeur; x++) {
+      if (rgba[(y * largeur + x) * 4 + 3] === 0) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+  // Bornes PAIRES (format 4:2:0 de la vidéo) et une petite marge.
+  const a = Math.max(0, (x0 - marge) & ~1); const b = Math.max(0, (y0 - marge) & ~1);
+  const c = Math.min(largeur, (x1 + 1 + marge + 1) & ~1); const d = Math.min(hauteur, (y1 + 1 + marge + 1) & ~1);
+  return [a, b, c - a, d - b];
+}
+
+/** Zone utile d'une image fixe, lue en pleine taille. `null` = poser l'image entière. */
+async function boiteUtile(png: string, largeur: number, hauteur: number): Promise<BoiteImage | null> {
+  return new Promise((resolve) => {
+    const p = spawn(ffmpegPath(), ['-hide_banner', '-loglevel', 'error', '-i', png, '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const morceaux: Buffer[] = [];
+    p.stdout.on('data', (b: Buffer) => morceaux.push(b));
+    p.on('error', () => resolve(null));
+    p.on('close', (code) => {
+      const brut = Buffer.concat(morceaux);
+      resolve(code === 0 && brut.length === largeur * hauteur * 4 ? boiteAlpha(brut, largeur, hauteur) : null);
     });
   });
 }
@@ -171,6 +202,9 @@ export async function rendreHybride(input: {
   if (s.titre) noter('accroche', [d.title, d.subtitle].filter(Boolean).join(' — ') || null, { texte: image('titre'), debut: s.titre[0], fin: s.titre[1] });
   for (const c of s.cartes) noter(`carte:${c.index}`, carteTexte(c.index), { texte: image({ carte: c.index }), debut: c.debut, fin: c.fin });
   if (s.cta) noter('cta', d.ctaText ?? null, { texte: image('cta'), debut: s.cta[0], fin: s.cta[1] });
+  // Zone utile de chaque texte : ffmpeg n'anime et ne pose qu'elle.
+  await Promise.all(fenetres.map(async (f) => { f.boite = await boiteUtile(f.texte, taille.w, taille.h); }));
+  const boiteFiligrane = d.watermark ? await boiteUtile(image('filigrane'), taille.w, taille.h) : null;
 
   // ── 2. Audio : volumes CONSTANTS, comme `mixAt` sans images-clés ──
   const voixUrls = d.sequenceVoiceUrls ?? {};
@@ -204,6 +238,7 @@ export async function rendreHybride(input: {
     hauteur: taille.h,
     voile: image('voile'),
     filigrane: d.watermark ? image('filigrane') : null,
+    boiteFiligrane,
     surimpressions: fenetres,
     musique: d.musicUrl ? { source: local(d.musicUrl), volume: d.musicVolume ?? volumeMusiqueParDefaut(avecVoix) } : null,
     voix,
