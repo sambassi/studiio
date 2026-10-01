@@ -519,6 +519,8 @@ export interface ComposerOptions {
   siteText?: SiteTextConfig;
   /** Design options to match HTML preview styling */
   design?: DesignOptions;
+  /** Avertissement non bloquant (ex. affiche introuvable) — à montrer à l'utilisateur. */
+  onAvertissement?: (message: string) => void;
   onProgress?: (percent: number, stage: string) => void;
   /** Shared AudioContext for batch mode — avoids creating/closing multiple contexts */
   sharedAudioCtx?: AudioContext;
@@ -3785,9 +3787,15 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const hasAudio = hasMixAudio || hasRushAudio;
   console.log('[Composer] Audio — musicBuffer:', !!options.musicBuffer, 'voiceBuffer:', !!validVoiceBuffer, 'musicEl:', !!musicEl, 'voiceEl:', !!voiceEl, 'seqVoices:', hasAnySeqVoice, 'rushAudio:', hasRushAudio, 'hasAudio:', hasAudio);
 
-  // Critical check: if poster is needed but failed to load, abort early with clear error
+  // ⚠️ L'AFFICHE EST FACULTATIVE : introuvable (404, fichier supprimé, URL
+  // vide), elle n'arrête PLUS le rendu. Chaque séquence retombe sur son fond
+  // dégradé (`paintSeqBackdrop`), comme un montage sans affiche — et c'est
+  // DIT (`onAvertissement`), jamais silencieux. Test réel staging 01/10 :
+  // une affiche à l'URL vide faisait échouer tout le montage, rushes prêts.
   if (posterUrl && !posterImg) {
-    throw new Error(`Impossible de charger l'image de fond (poster). Vérifiez que l'URL est accessible: ${posterUrl.substring(0, 80)}`);
+    const message = 'Affiche introuvable : la vidéo est rendue sans affiche (fond dégradé).';
+    console.warn(`[Composer] ${message} ${posterUrl.substring(0, 120)}`);
+    options.onAvertissement?.(message);
   }
 
   // ── Filtre couleur (LUT) du rush ──────────────────────────────────────

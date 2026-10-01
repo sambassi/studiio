@@ -7796,6 +7796,8 @@ export default function AssistantWizard() {
             setRenderProgress(Math.max(0, Math.min(100, Math.round(pct))));
             if (stage) setRenderStage(stage);
           },
+          // Affiche introuvable : le rendu continue, l'utilisateur est prévenu.
+          onAvertissement: (message) => setMontageNotice(message),
         };
 
         // Meme objet d'options pour les deux destinations — seule change la
