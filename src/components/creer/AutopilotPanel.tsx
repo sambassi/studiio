@@ -801,6 +801,25 @@ export default function AutopilotPanel({
     return () => { actif = false; };
   }, [config.musicUrl]);
 
+  /** Le résultat d'une production (réponse directe, ou relu en arrière-plan). */
+  const appliquerResultat = useCallback((data: Record<string, unknown>) => {
+    if (!data?.success) {
+      setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.') });
+      return;
+    }
+    setProduire({
+      etat: 'fait',
+      postId: typeof data.postId === 'string' ? data.postId : null,
+      date: String(data.scheduledDate ?? ''),
+      time: String(data.scheduledTime ?? ''),
+      timezone: String(data.timezone ?? config.runTimezone),
+      calendrierUrl: typeof data.calendrierUrl === 'string' ? data.calendrierUrl : '/dashboard/calendar',
+      avertissements: Array.isArray(data.avertissements) ? data.avertissements.map(String) : [],
+    });
+    // Le solde a bougé : le prochain devis le relit.
+    setDevis(null);
+  }, [config.runTimezone]);
+
   // Progression réelle de « Produire maintenant », relue toutes les 2 s tant
   // que le rendu est en cours (`/api/autopilot/produire-maintenant/progression`).
   const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string } | null>(null);
@@ -811,15 +830,31 @@ export default function AutopilotPanel({
       fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
+          if (!actif) return;
           const p = d?.progression;
-          if (actif && p && typeof p.pourcent === 'number') setProgressionProduction({ pourcent: p.pourcent, libelle: String(p.libelle ?? '') });
+          if (p && typeof p.pourcent === 'number') setProgressionProduction({ pourcent: p.pourcent, libelle: String(p.libelle ?? '') });
+          // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici.
+          const r = d?.resultat;
+          if (!p && r) appliquerResultat(r);
         })
         .catch(() => { /* la barre garde sa dernière valeur */ });
     };
     lire();
     const minuteur = setInterval(lire, 2000);
     return () => { actif = false; clearInterval(minuteur); };
-  }, [produire.etat]);
+  }, [produire.etat, appliquerResultat]);
+
+  // Au montage du panneau : une production lancée avant un rechargement de
+  // page tourne peut-être encore. On la RETROUVE (barre + bouton bloqué)
+  // au lieu de proposer d'en lancer une seconde.
+  useEffect(() => {
+    let actif = true;
+    fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => { if (actif && d?.progression) setProduire({ etat: 'en-cours' }); })
+      .catch(() => { /* rien à reprendre */ });
+    return () => { actif = false; };
+  }, []);
 
   const produireMaintenant = useCallback(async () => {
     if (produireEnVolRef.current) return;
@@ -829,26 +864,19 @@ export default function AutopilotPanel({
     try {
       const res = await fetch('/api/autopilot/produire-maintenant', { method: 'POST' });
       const data = await res.json().catch(() => ({}));
+      // 202 : le rendu est lancé en arrière-plan ; 409 « en-cours » : un
+      // rendu tourne déjà — dans les deux cas on SUIT celui qui tourne.
+      if (res.status === 202 || data?.code === 'en-cours') return;
       if (!res.ok || !data?.success) {
         throw new Error(data?.error || `Erreur ${res.status}`);
       }
-      setProduire({
-        etat: 'fait',
-        postId: typeof data.postId === 'string' ? data.postId : null,
-        date: String(data.scheduledDate ?? ''),
-        time: String(data.scheduledTime ?? ''),
-        timezone: String(data.timezone ?? config.runTimezone),
-        calendrierUrl: typeof data.calendrierUrl === 'string' ? data.calendrierUrl : '/dashboard/calendar',
-        avertissements: Array.isArray(data.avertissements) ? data.avertissements.map(String) : [],
-      });
-      // Le solde a bougé : le prochain devis le relit.
-      setDevis(null);
+      appliquerResultat(data);
     } catch (err) {
       setProduire({ etat: 'erreur', message: err instanceof Error ? err.message : 'Production impossible.' });
     } finally {
       produireEnVolRef.current = false;
     }
-  }, [config.runTimezone]);
+  }, [appliquerResultat]);
 
   /**
    * Le bloc « prochaines échéances » + « Produire un brouillon maintenant »,
