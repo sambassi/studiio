@@ -157,12 +157,48 @@ describe('ffmpeg réel — conseiller', () => {
   }, 120_000);
 });
 
+describe('imports compatibles webpack (serveur Next)', () => {
+  it('aucun import DYNAMIQUE d\'un module Node qui est une fonction (stream, events) dans le code serveur', () => {
+    // Compilé par webpack, `await import('stream')` n'expose QUE `default` :
+    // `Readable` valait undefined en staging et tout rendu hybride retombait
+    // sur Remotion (« reading 'fromWeb' », 01/10).
+    const { execFileSync } = require('child_process') as typeof import('child_process');
+    let sortie = '';
+    // grep rend le code 1 quand il ne trouve rien : c'est le cas attendu.
+    try { sortie = execFileSync('grep', ['-rnE', "import\\(['\"](node:)?(stream|events)['\"]\\)", 'src/lib', 'src/app'], { encoding: 'utf-8' }); } catch { sortie = ''; }
+    const trouves = sortie
+      .split('\n').filter(Boolean)
+      // Les commentaires qui expliquent le piège ne comptent pas.
+      .filter((l) => !/^[^:]+:\d+:\s*(\/\/|\*)/.test(l));
+    expect(trouves).toEqual([]);
+  });
+
+  it('la copie des sources utilise des imports statiques', () => {
+    const r = readFileSync(resolve(process.cwd(), 'src/lib/render/hybride/rendu.ts'), 'utf-8');
+    expect(r).toContain("import { Readable } from 'stream';");
+    expect(r).toContain("import { pipeline } from 'stream/promises';");
+  });
+});
+
+describe('repli jamais muet', () => {
+  it('chaque condition non remplie est nommée', async () => {
+    const { raisonNonEligibleHybride } = await import('@/lib/render/hybride/rendu');
+    const ok = { montage: [{}, {}], surimpressions: {}, rushMuted: true, introDuration: 0, cardsDuration: 0, ctaDuration: 0 } as never;
+    expect(raisonNonEligibleHybride(ok)).toBeNull();
+    expect(raisonNonEligibleHybride({ ...(ok as object), rushMuted: false, rushVolume: 0.5 } as never)).toBe('son des rushes conservé');
+    expect(raisonNonEligibleHybride({ ...(ok as object), surimpressions: null } as never)).toMatch(/surimpression/);
+  });
+});
+
 describe('câblage Autopilote', () => {
   it('hybride d abord, rendu Remotion en secours, moteur mesuré', () => {
     const r = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/render.ts'), 'utf-8');
-    expect(r).toContain('if (estEligibleHybride(input.design)) {');
+    expect(r).toContain('let hybrideRaison = raisonNonEligibleHybride(input.design);');
+    expect(r).toContain("moteur = 'REMOTION_FALLBACK';");
+    expect(r).toContain('MOTEUR_RENDU=REMOTION_FALLBACK — HYBRID_FALLBACK_REASON=');
     expect(r).toContain('rendu = await renderCreerSimple({ jobId: input.jobId, design: input.design, onProgress });');
     const p = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/produire.ts'), 'utf-8');
-    expect(p).toContain("MOTEUR_RENDU: moteur ?? 'remotion',");
+    expect(p).toContain("MOTEUR_RENDU: moteur ?? 'REMOTION',");
+    expect(p).toContain('HYBRID_FALLBACK_REASON: hybrideRaison');
   });
 });
