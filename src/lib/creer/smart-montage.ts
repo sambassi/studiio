@@ -30,8 +30,10 @@
  * Aucune dépendance navigateur : testable avec des échantillons synthétiques.
  */
 import type { RushSegment } from '@/lib/creer/multi-rush';
+import { FORCE_PERCUSSION_FORTE } from '@/lib/creer/rythme-musique';
+import { planOverlays, profilEnSurimpression } from '@/lib/creer/overlays';
 import {
-  ecartEmpreinte, similariteVisuelle, memeScene, estNoirEtBlanc, ECART_AMBIANCE, COHERENCE_PROFILS,
+  ecartEmpreinte, similariteVisuelle, memeScene, estNoirEtBlanc, ECART_AMBIANCE, COHERENCE_PROFILS, carteEnergique, SEUIL_ENERGIE_CALME,
   type FenetreSource, type MesureSegment,
 } from '@/lib/creer/smart-montage-regles';
 
@@ -72,6 +74,8 @@ export interface ContexteMontage {
   objectif?: string | null;
   /** Texte de la voix off / des cartes. */
   texte?: string | null;
+  /** Titres des cartes, dans l'ordre : match carte / image (#496). */
+  cartes?: string[] | null;
 }
 
 /** Plages sources déjà montées, par fichier (clé de stockage). */
@@ -84,7 +88,7 @@ export interface OptionsMontage {
   /** Plages montées dans d'AUTRES vidéos du cycle : pénalisées, pas interdites. */
   plagesExclues?: PlagesUtilisees | null;
   /** Rythme de la musique, recalé sur la séquence « Vidéo » (V3). */
-  rythme?: { beats: number[]; forts: number[]; drop: number | null } | null;
+  rythme?: { beats: number[]; forts: number[]; drop: number | null; impacts?: Array<{ t: number; force: number }> } | null;
   /** Profil imposé (sinon déduit du contexte). */
   profil?: ProfilMontage;
   /** Interne : nombre de passages recalés sur la durée réellement disponible. */
@@ -311,6 +315,8 @@ interface RegleProfil {
   overlay: boolean;
   /** Profil d'activité utilisé pour la pertinence. */
   activite: NomProfil | null;
+  /** Coupes sur les percussions fortes RÉELLES (sinon la grille de temps). */
+  percussions?: boolean;
 }
 
 export const REGLES_PROFILS: Record<Exclude<ProfilMontage, 'STANDARD'>, RegleProfil> = {
@@ -318,11 +324,11 @@ export const REGLES_PROFILS: Record<Exclude<ProfilMontage, 'STANDARD'>, ReglePro
   // plus de 2 s hors CTA (plus posé) ; cuts sur les temps de la musique.
   CARDIO_DANCE: {
     phases: { HOOK: [0.8, 1.2], BUILD: [1, 2], PEAK: [0.8, 1.5], FOCUS: [1, 2], CTA: [2, 3] },
-    softMax: 1.8, hardMax: 2, ralenti: true, overlay: true, activite: 'activite',
+    softMax: 1.8, hardMax: 2, ralenti: true, overlay: true, activite: 'activite', percussions: true,
   },
   EVENT_IMMERSIVE: {
     phases: { HOOK: [1.5, 2.5], BUILD: [1.5, 2.5], PEAK: [0.8, 1.6], FOCUS: [1.5, 2.2], CTA: [2, 3] },
-    softMax: 2.2, hardMax: 3.5, ralenti: true, overlay: true, activite: 'activite',
+    softMax: 2.2, hardMax: 3.5, ralenti: true, overlay: true, activite: 'activite', percussions: true,
   },
   LIFESTYLE_BRAND: {
     phases: { HOOK: [1.5, 2.5], BUILD: [1.5, 3], PEAK: [1.5, 2.5], FOCUS: [1.5, 3], CTA: [2, 3] },
@@ -363,7 +369,7 @@ const PHASES: Array<[PhaseMontage, number]> = [['HOOK', 0.1], ['BUILD', 0.33], [
 
 /** Découpe la durée en plans : phase, bornes, temps fort visé. Pur. */
 export function grilleDeCoupes(
-  cible: number, regle: RegleProfil, rythme?: { beats: number[]; forts: number[]; drop: number | null } | null,
+  cible: number, regle: RegleProfil, rythme?: { beats: number[]; forts: number[]; drop: number | null; impacts?: Array<{ t: number; force: number }> } | null,
 ): Array<{ debut: number; fin: number; phase: PhaseMontage; beat: number | null }> {
   // Le drop, s'il tombe entre 20 % et 60 %, ouvre le PEAK.
   const bornes = PHASES.map(([p, f]) => [p, f * cible] as [PhaseMontage, number]);
@@ -379,7 +385,18 @@ export function grilleDeCoupes(
     const vise = t + (mn + mx) / 2;
     const dans = (b: number) => b >= t + mn && b <= t + mx;
     const pres = (l: number[]) => l.filter(dans).sort((a, b) => Math.abs(a - vise) - Math.abs(b - vise))[0];
-    const beat = rythme ? (pres(rythme.forts) ?? pres(rythme.beats) ?? null) : null;
+    // Profils énergiques : la PERCUSSION FORTE réelle (kick, snare, impact)
+    // la plus intéressante de la fenêtre — force, puis proximité du milieu.
+    // Aucune : la grille de temps, comme avant (cut naturel).
+    const impact = regle.percussions && rythme?.impacts
+      ? rythme.impacts
+        // Tolérance de ±0,15 s autour de la fenêtre de la phase : une vraie
+        // percussion vaut mieux qu'un temps théorique, sans plan trop court.
+        .filter((i) => i.force >= FORCE_PERCUSSION_FORTE && i.t >= t + Math.max(mn - 0.15, mn * 0.8) && i.t <= t + mx + 0.15)
+        .map((i) => ({ t: i.t, note: i.force - Math.abs(i.t - vise) / Math.max(0.2, mx - mn) }))
+        .sort((a, b) => b.note - a.note)[0]?.t ?? null
+      : null;
+    const beat = rythme ? (impact ?? pres(rythme.forts) ?? pres(rythme.beats) ?? null) : null;
     let fin = Math.min(beat ?? vise, cible);
     if (cible - fin < mn * 0.6) fin = cible;
     out.push({ debut: arrondi(t), fin: arrondi(fin), phase, beat: beat !== null && fin === beat ? arrondi(beat) : null });
@@ -421,6 +438,7 @@ function mesuresFenetre(a: AnalyseRush, st: StatsRush, s: number, e: number) {
   const audioBrut = moyenne(dedans.map((x) => x.audio));
   return {
     ratees,
+    mouvBrut,
     mouvRel: borne(mouvBrut / st.mouvHaut, 0, 1),
     mouvAbs: borne(mouvBrut / SEUILS.mouvementReference, 0, 1),
     nettete: borne(net / (st.netMediane * 2), 0, 1),
@@ -443,6 +461,8 @@ function mesuresFenetre(a: AnalyseRush, st: StatsRush, s: number, e: number) {
  */
 export function mesuresSegments(plan: ReadonlyArray<RushSegment>, analyses: ReadonlyArray<AnalyseRush>): MesureSegment[] | null {
   const parCle = new Map(analyses.filter((a) => a.echantillons.length).map((a) => [cleSource(a.url), a]));
+  // Même échelle d'énergie que `planMontage` : le haut de TOUTE la matière.
+  const mouvHautGlobal = quantile(analyses.flatMap((a) => a.echantillons.map((x) => x.mouvement)), 0.9) || 1e-6;
   const out: MesureSegment[] = [];
   for (const seg of plan) {
     const a = parCle.get(cleSource(seg.url));
@@ -452,7 +472,7 @@ export function mesuresSegments(plan: ReadonlyArray<RushSegment>, analyses: Read
     const m = mesuresFenetre(a, statsRush(a), depuis, jusqua);
     out.push({
       cle: cleSource(seg.url), depuis, jusqua, debut: seg.debut, fin: seg.fin, phase: seg.phase ?? null,
-      empreinte: m.empreinte, saturation: m.saturation, luminosite: arrondi2(m.luminosite), energie: arrondi2(m.mouvAbs),
+      empreinte: m.empreinte, saturation: m.saturation, luminosite: arrondi2(m.luminosite), energie: arrondi2(borne(m.mouvBrut / mouvHautGlobal, 0, 1)),
     });
   }
   return out;
@@ -501,9 +521,26 @@ export function planMontage(
   const coh = COHERENCE_PROFILS[detection.profil];
   // Extraits déjà montés : anti-répétition sur TOUT le plan, pas seulement le précédent.
   const choisis: FenetreSource[] = [];
+  // Durée (s) de la série de plans noir et blanc en cours (0 si le dernier est en couleur).
+  let serieNoirBlanc = 0;
   // Style dominant de la MATIÈRE : couleur si la majorité des images mesurées l'est.
+  // ÉNERGIE comparable d'un rush à l'autre : le mouvement rapporté au « haut »
+  // (90e centile) de TOUTE la matière. `mouvAbs` sature sur des rushes de
+  // danse (tout vaut 1) et ne distingue plus un plan calme d'un plan explosif.
+  const mouvHautGlobal = quantile(rushs.flatMap(({ a }) => a.echantillons.map((x) => x.mouvement)), 0.9) || 1e-6;
   const sats = rushs.flatMap(({ a }) => a.echantillons.map((x) => x.saturation)).filter((x): x is number => typeof x === 'number');
   const matiereCouleur = sats.length ? sats.filter((x) => !estNoirEtBlanc(x)).length >= sats.length / 2 : null;
+  // MATCH CARTE / IMAGE : les fenêtres où une carte « énergique » sera à
+  // l'écran (MÊMES fenêtres que les surimpressions, `planOverlays`).
+  const titresCartes = options.contexte?.cartes ?? [];
+  const fenetresEnergiques = coh.matchCarte > 0 && titresCartes.length && profilEnSurimpression(detection.profil)
+    ? planOverlays({
+      duree: cible,
+      nbCartes: titresCartes.length,
+      finHook: grille.filter((c) => c.phase === 'HOOK').at(-1)?.fin ?? null,
+      profil: detection.profil,
+    }).cartes.filter((c) => carteEnergique(titresCartes[c.index]))
+    : [];
   const partJuste = 1 / rushs.length;
 
   for (const creneau of grille) {
@@ -565,11 +602,20 @@ export function planMontage(
         if (scene) score -= coh.memeScene;
         // COHÉRENCE VISUELLE (pénalités, jamais d'exclusion d'un rush).
         const noirBlanc = estNoirEtBlanc(m.saturation);
-        const calme = coh.planCalmeEnMontee > 0 && (creneau.phase === 'HOOK' || creneau.phase === 'BUILD' || creneau.phase === 'PEAK') && m.mouvAbs < 0.3;
+        const energie = borne(m.mouvBrut / mouvHautGlobal, 0, 1);
+        const calme = coh.planCalmeEnMontee > 0 && (creneau.phase === 'HOOK' || creneau.phase === 'BUILD' || creneau.phase === 'PEAK') && energie < SEUIL_ENERGIE_CALME;
         const rupture = prec?.luminosite != null && Math.abs(m.luminosite - prec.luminosite) > ECART_AMBIANCE;
         const bascule = m.saturation !== null && prec?.saturation != null && estNoirEtBlanc(m.saturation) !== estNoirEtBlanc(prec.saturation);
+        const serieTropLongue = coh.serieNoirBlancMaxS > 0 && estNoirEtBlanc(m.saturation) && serieNoirBlanc >= coh.serieNoirBlancMaxS;
+        // Danse : jamais une série noir et blanc de plusieurs secondes. Plus de
+        // couleur utilisable ? La vidéo s'arrête là (jamais rallongée).
+        if (serieTropLongue && matiereCouleur) continue;
+        // Sous une carte énergique : tout plan visible pendant la carte compte.
+        const sousCarte = fenetresEnergiques.some((f) => creneau.debut < f.fin && creneau.fin > f.debut);
+        if (sousCarte) score += coh.matchCarte * (energie - 0.5) - (energie < SEUIL_ENERGIE_CALME ? coh.matchCarte : 0);
         const coherence = 1
           - (bascule ? coh.ruptureCouleur : 0)
+          - (serieTropLongue ? coh.serieNoirBlanc : 0)
           - (matiereCouleur && noirBlanc ? coh.noirBlancDansCouleur : 0)
           - (calme ? coh.planCalmeEnMontee : 0)
           - (rupture ? coh.ruptureAmbiance : 0);
@@ -590,6 +636,8 @@ export function planMontage(
             parDescription ? 'description du plan' : activite ? `profil « ${activite.nom} »` : 'aucune information thématique exploitable : qualité seule',
             matiereCouleur && noirBlanc ? 'noir et blanc dans une vidéo en couleur (pénalisé)' : null,
             bascule ? 'passage couleur ↔ noir et blanc (pénalisé)' : null,
+            serieTropLongue ? 'série noir et blanc trop longue (pénalisé)' : null,
+            sousCarte ? (energie >= 0.5 ? 'plan dynamique sous une carte énergique' : 'plan peu dynamique sous une carte énergique (pénalisé)') : null,
             calme ? 'plan calme dans une montée d\'énergie (pénalisé)' : null,
             scene ? 'même scène qu\'un plan déjà monté (pénalisé)' : simMax > 0.6 ? 'ressemble à un plan déjà monté (pénalisé)' : null,
           ].filter(Boolean);
@@ -599,7 +647,7 @@ export function planMontage(
               url: a.url, debut: creneau.debut, fin: creneau.fin, depuis: arrondi(s), jusqua: arrondi(e),
               phase: creneau.phase, qualite: arrondi2(qualite), pertinence: pertinence === null ? null : arrondi2(pertinence),
               differenceVisuelle: arrondi2(diff), beatCible: creneau.beat, effet: ralenti ? 'ralenti' : null,
-              energie: arrondi2(m.mouvAbs), similariteVisuelle: arrondi2(simMax), coherenceVisuelle: arrondi2(coherence),
+              energie: arrondi2(energie), similariteVisuelle: arrondi2(simMax), coherenceVisuelle: arrondi2(coherence),
               beatOffsetMs: creneau.beat !== null ? Math.round(Math.abs(creneau.fin - creneau.beat) * 1000) : null,
               ...(vitesse !== 1 ? { vitesse } : {}),
               score: arrondi(score), raison: raisons.join(' · '),
@@ -623,8 +671,12 @@ export function planMontage(
     if (meilleur.seg.effet === 'ralenti') ralentis += 1;
     precedent = { cle: meilleur.cle, empreinte: meilleur.empreinte, luminosite: meilleur.luminosite, saturation: meilleur.saturation };
     choisis.push({ cle: meilleur.cle, depuis: meilleur.seg.depuis ?? 0, jusqua: meilleur.seg.jusqua ?? 0, empreinte: meilleur.empreinte });
+    serieNoirBlanc = estNoirEtBlanc(meilleur.saturation) ? serieNoirBlanc + (creneau.fin - creneau.debut) : 0;
   }
-  if (plan.length < 2 || new Set(plan.map((s) => cleSource(s.url))).size < 2) return null;
+  // Un plan d'UN seul rush (les autres écartés pour incohérence, #496) reste
+  // un vrai montage : le refuser renvoyait à l'enchaînement brut de TOUS les
+  // rushes — noir et blanc compris, le pire résultat.
+  if (plan.length < 2) return null;
   // Matière épuisée avant la cible : la vidéo est plus courte (jamais
   // étirée), mais sa NARRATION doit rester complète — on remonte le plan
   // une fois sur la durée réellement disponible, pour garder HOOK → CTA.

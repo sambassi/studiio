@@ -8,6 +8,7 @@
  * s'applique, il n'y a pas de proposition plutôt qu'une invention.
  */
 import type { Conseil } from '@/lib/creer/conseiller/types';
+import { coherenceCarte } from '@/lib/creer/coherence-chiffres';
 
 export interface TextesVideo {
   profil: string;
@@ -157,6 +158,23 @@ export function conseilsTextes(t: TextesVideo): Conseil[] {
     if (/\bet\b|,|\+ /i.test(c.titre ?? '') && nb > 2) problemes.push('Elle porte deux idées à la fois.');
     if (aff !== null && aff < R.carteDureeMin) problemes.push(`Elle ne reste que ${aff.toFixed(1).replace('.', ',')} s.`);
     if (aff !== null && lecture > aff) problemes.push(`Il faut environ ${lecture.toFixed(1).replace('.', ',')} s pour la lire.`);
+    // Sens du libellé et signe de la valeur (règle partagée, #496).
+    const coherence = coherenceCarte(c.titre, c.valeur);
+    if (!coherence.ok) {
+      out.push({
+        id: `texte:carte-chiffre:${i}`,
+        section: 'Textes',
+        priorite: 'IMPORTANTE',
+        cible: `carte:${i}`,
+        texteActuel: texte,
+        probleme: `${coherence.probleme} Le spectateur ne sait plus si c'est une bonne ou une mauvaise nouvelle.`,
+        conseil: 'Accorde le libellé au chiffre : une baisse se dit avec un mot de baisse (« risque réduit », « moins de… »), une hausse avec un chiffre positif.',
+        propositionReecrite: coherence.proposition,
+        placementRecommande: null,
+        dureeRecommandee: null,
+        mesures: { valeur: c.valeur ?? null },
+      });
+    }
     if (!problemes.length) return;
     out.push({
       id: `texte:carte:${i}`,

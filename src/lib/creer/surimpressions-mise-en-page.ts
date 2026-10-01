@@ -39,10 +39,12 @@ export interface MiseEnPageSurimpression {
 /** Profils dynamiques : la vidéo continue, les textes passent par-dessus. */
 const DYNAMIQUE: MiseEnPageSurimpression = {
   titlePos: { x: 8, y: 7 },
-  titleScale: 2.2,
+  // #496 : l'accroche ne doit pas couvrir le sujet — bloc ≤ ~15 % de la
+  // hauteur (mesuré sur DANSE : 18 % → voir les tests). Titre toujours net.
+  titleScale: 1.9,
   // ⚠️ `SequenceTitle` MULTIPLIE la taille du sous-titre par celle du titre :
-  // 0,65 × 2,2 ≈ 1,4 — la phrase grandit, mais reste sous l'accroche.
-  subtitleScale: 0.65,
+  // 0,7 × 1,9 ≈ 1,33 — la phrase reste lisible, sous l'accroche.
+  subtitleScale: 0.7,
   // Bas-centre de la ligne CTA : 76 % de la hauteur — plus central que 92 %,
   // sous les corps (mesuré sur DANSE : le sol est la zone la plus calme).
   ctaPos: { x: 50, y: 76 },
