@@ -191,7 +191,9 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, deplacer, retirer, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { planMontage, dureeCibleMontage, dureePlan, cleMontage, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
+import { conseillerVideo } from '@/lib/creer/conseiller';
 import { analyserRush, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import {
@@ -7354,6 +7356,14 @@ export default function AssistantWizard() {
       // persiste pas) et que la séquence « Vidéo » joue. Analyse impossible
       // ou < 2 rushes exploitables : `null`, l'enchaînement d'avant s'applique.
       let planMontageRushs: RushSegment[] | null = null;
+      // Profil, mesures et matière du plan — les MÊMES que l'Autopilote
+      // (`smart-montage-regles.ts`), écrits dans la metadata du post.
+      let montageInfos: {
+        profil: ReturnType<typeof profilMontageDuContexte>['profil'];
+        rapport: ReturnType<typeof rapportPlan> | null;
+        analyses: AnalyseRush[];
+        rythme: { beats: number[]; forts: number[]; drop: number | null } | null;
+      } | null = null;
       setMontageNotice(null);
       if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length !== (plateau.rushs ?? []).length) {
         setMontageNotice('Analyse intelligente indisponible (un rush n’est pas encore enregistré) — montage simple utilisé.');
@@ -7371,15 +7381,23 @@ export default function AssistantWizard() {
         const rythme = musicUrl ? await analyserMusiqueNavigateur(musicUrl) : null;
         const debutVideo = ordre.slice(0, Math.max(0, ordre.indexOf('video'))).reduce((t, k) => t + duree(k), 0);
         // V2 : la pertinence des extraits suit le thème, le titre et le brief.
-        planMontageRushs = planMontage(analyses, cibleEcran, {
-          rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null,
-          contexte: {
-            theme: currentTopic,
-            sujet: generated?.title ?? null,
-            objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
-            texte: (generated?.cards ?? []).map((c) => `${c.title ?? ''} ${c.description ?? ''}`).join(' ') || null,
-          },
+        // MÊME préparation que l'Autopilote (`contexteMontageDepuis`) : même
+        // thème + mêmes textes = même profil (ex. CARDIO_DANCE), mêmes règles.
+        const contexteMontage = contexteMontageDepuis({
+          theme: currentTopic,
+          titre: generated?.title ?? null,
+          sousTitre: generated?.subtitle ?? null,
+          objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
+          cartes: generated?.cards ?? [],
         });
+        const rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null;
+        planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });
+        if (planMontageRushs) {
+          const profil = profilMontageDuContexte(contexteMontage).profil;
+          const ms = mesuresSegments(planMontageRushs, analyses);
+          montageInfos = { profil, rapport: ms ? rapportPlan(profil, ms, rythmeVideo) : null, analyses, rythme: rythmeVideo };
+          console.log(`[SmartMontage] MONTAGE_PROFILE=${profil}`, montageInfos.rapport);
+        }
         if (!planMontageRushs) {
           // Jamais de repli SILENCIEUX sur « rush 1 puis rush 2 ».
           setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');
@@ -7918,6 +7936,36 @@ export default function AssistantWizard() {
             duree('video') > 0 && rushsDurables.length >= 2
               ? planMontageRushs ?? planRushs(rushsDurables, duree('video'))
               : undefined,
+          // Profil, mesures du plan et conseils : les MÊMES que l'Autopilote.
+          // Taille et contraste des textes ne sont pas mesurés ici (pas de
+          // rendu hybride) : le conseiller le dit, il ne devine pas.
+          ...(duree('video') > 0 && planMontageRushs && montageInfos
+            ? {
+              profilMontage: montageInfos.profil,
+              ...(montageInfos.rapport ? { montageRapport: montageInfos.rapport } : {}),
+              conseils: (() => {
+                try {
+                  return conseillerVideo({
+                    profil: montageInfos.profil,
+                    textes: {
+                      profil: montageInfos.profil,
+                      theme: currentTopic,
+                      objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
+                      titre: contenu.title ?? null,
+                      sousTitre: contenu.subtitle ?? null,
+                      cartes: (contenu.cards ?? []).map((c) => ({ titre: c.title ?? null, valeur: c.value ?? null })),
+                      cta: contenu.cta ?? null,
+                      fenetres: null,
+                    },
+                    plan: planMontageRushs,
+                    analyses: montageInfos.analyses,
+                    rythme: montageInfos.rythme,
+                    lisibilite: null,
+                  });
+                } catch { return undefined; }
+              })(),
+            }
+            : {}),
           // Filtre couleur du rush : la REFERENCE seule (empreinte, nom,
           // intensite), jamais la table. C'est elle que le Calendrier relit
           // pour regenerer, planifier, publier ou exporter avec le meme
