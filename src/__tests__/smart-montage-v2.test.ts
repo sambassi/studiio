@@ -99,7 +99,10 @@ describe('pertinence : le thème décide QUEL plan, pas seulement la qualité', 
   it('thème « danse » : les plans actifs sont préférés au plan net statique', () => {
     const p = planMontage([statiqueNet, danse], 12, { contexte: { theme: 'Danser active plus de muscles que la plupart des sports' } })!;
     const dureeDanse = p.filter((s) => s.url === 'danse.mp4').reduce((t, s) => t + s.fin - s.debut, 0);
-    expect(dureeDanse).toBeGreaterThan(dureePlan(p) / 2);
+    // L'accroche est 100 % active ; au total ≥ 45 % (l'anti-répétition
+    // partagée laisse respirer la vidéo plutôt que de revenir sur la même scène).
+    expect(p.filter((s) => s.phase === 'HOOK').every((s) => s.url === 'danse.mp4')).toBe(true);
+    expect(dureeDanse).toBeGreaterThanOrEqual(dureePlan(p) * 0.45);
     expect(p.find((s) => s.url === 'danse.mp4')!.raison).toMatch(/profil « activite »/);
     expect(p[0].pertinence).not.toBeNull();
   });

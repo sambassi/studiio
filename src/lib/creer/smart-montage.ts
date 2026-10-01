@@ -30,6 +30,10 @@
  * Aucune dépendance navigateur : testable avec des échantillons synthétiques.
  */
 import type { RushSegment } from '@/lib/creer/multi-rush';
+import {
+  ecartEmpreinte, similariteVisuelle, memeScene, estNoirEtBlanc, ECART_AMBIANCE, COHERENCE_PROFILS,
+  type FenetreSource, type MesureSegment,
+} from '@/lib/creer/smart-montage-regles';
 
 /** Mesures d'un instant du rush (toutes normalisées 0..1). */
 export interface EchantillonRush {
@@ -267,13 +271,8 @@ export function candidatsDuRush(analyse: AnalyseRush, longueur: number, contexte
   return out;
 }
 
-export const ecartEmpreinte = (a: number[], b: number[]) => {
-  const n = Math.min(a.length, b.length);
-  if (!n) return 1;
-  let d = 0;
-  for (let i = 0; i < n; i++) d += Math.abs(a[i] - b[i]);
-  return d / n;
-};
+// Ressemblance de deux images : règle PARTAGÉE (`smart-montage-regles.ts`).
+export { ecartEmpreinte };
 
 const chevauche = (a: number, b: number, plages: ReadonlyArray<[number, number]> | undefined, marge: number) =>
   (plages ?? []).some(([x, y]) => a < y + marge && b > x - marge);
@@ -315,9 +314,11 @@ interface RegleProfil {
 }
 
 export const REGLES_PROFILS: Record<Exclude<ProfilMontage, 'STANDARD'>, RegleProfil> = {
+  // Danse / cardio : accroche nerveuse (0,8–1,2 s), corps 1–2 s, jamais
+  // plus de 2 s hors CTA (plus posé) ; cuts sur les temps de la musique.
   CARDIO_DANCE: {
-    phases: { HOOK: [1.5, 2.5], BUILD: [1.2, 2], PEAK: [0.7, 1.5], FOCUS: [1.2, 1.8], CTA: [2, 3] },
-    softMax: 1.8, hardMax: 3, ralenti: true, overlay: true, activite: 'activite',
+    phases: { HOOK: [0.8, 1.2], BUILD: [1, 2], PEAK: [0.8, 1.5], FOCUS: [1, 2], CTA: [2, 3] },
+    softMax: 1.8, hardMax: 2, ralenti: true, overlay: true, activite: 'activite',
   },
   EVENT_IMMERSIVE: {
     phases: { HOOK: [1.5, 2.5], BUILD: [1.5, 2.5], PEAK: [0.8, 1.6], FOCUS: [1.5, 2.2], CTA: [2, 3] },
@@ -429,7 +430,32 @@ function mesuresFenetre(a: AnalyseRush, st: StatsRush, s: number, e: number) {
     geste: pic >= st.mouvMediane * 2.2 && pic / SEUILS.mouvementReference >= 0.5,
     coupeMilieu: st.coupes.some((c) => c > s + 0.2 && c < e - 0.2),
     empreinte: dedans[Math.floor(dedans.length / 2)]?.empreinte ?? null,
+    luminosite: lum,
+    // Saturation (couleur / noir et blanc) : seulement si TOUTES les images la portent.
+    saturation: dedans.every((x) => typeof x.saturation === 'number') ? moyenne(dedans.map((x) => x.saturation as number)) : null,
   };
+}
+
+/**
+ * Mesures de chaque extrait d'un plan, relues dans l'analyse de son rush —
+ * pour le rapport de plan et le conseiller (Créer ET Autopilote). `null` si
+ * un rush du plan n'a pas d'analyse.
+ */
+export function mesuresSegments(plan: ReadonlyArray<RushSegment>, analyses: ReadonlyArray<AnalyseRush>): MesureSegment[] | null {
+  const parCle = new Map(analyses.filter((a) => a.echantillons.length).map((a) => [cleSource(a.url), a]));
+  const out: MesureSegment[] = [];
+  for (const seg of plan) {
+    const a = parCle.get(cleSource(seg.url));
+    if (!a) return null;
+    const depuis = seg.depuis ?? 0;
+    const jusqua = seg.jusqua ?? depuis + (seg.fin - seg.debut);
+    const m = mesuresFenetre(a, statsRush(a), depuis, jusqua);
+    out.push({
+      cle: cleSource(seg.url), depuis, jusqua, debut: seg.debut, fin: seg.fin, phase: seg.phase ?? null,
+      empreinte: m.empreinte, saturation: m.saturation, luminosite: arrondi2(m.luminosite), energie: arrondi2(m.mouvAbs),
+    });
+  }
+  return out;
 }
 
 /**
@@ -469,14 +495,21 @@ export function planMontage(
   const partRush = new Map<string, number>();
   const plan: RushSegment[] = [];
   let ralentis = 0;
-  let precedent = null as { cle: string; empreinte: number[] | null } | null;
+  let precedent = null as { cle: string; empreinte: number[] | null; luminosite: number | null; saturation: number | null } | null;
   const empreintesChoisies: number[][] = [];
+  // Règles de cohérence du profil (`smart-montage-regles.ts`, partagées).
+  const coh = COHERENCE_PROFILS[detection.profil];
+  // Extraits déjà montés : anti-répétition sur TOUT le plan, pas seulement le précédent.
+  const choisis: FenetreSource[] = [];
+  // Style dominant de la MATIÈRE : couleur si la majorité des images mesurées l'est.
+  const sats = rushs.flatMap(({ a }) => a.echantillons.map((x) => x.saturation)).filter((x): x is number => typeof x === 'number');
+  const matiereCouleur = sats.length ? sats.filter((x) => !estNoirEtBlanc(x)).length >= sats.length / 2 : null;
   const partJuste = 1 / rushs.length;
 
   for (const creneau of grille) {
     const d = creneau.fin - creneau.debut;
-    const prec: { cle: string; empreinte: number[] | null } | null = precedent;
-    type Choix = { seg: RushSegment; score: number; cle: string; empreinte: number[] | null; source: number };
+    const prec: { cle: string; empreinte: number[] | null; luminosite: number | null; saturation: number | null } | null = precedent;
+    type Choix = { seg: RushSegment; score: number; cle: string; empreinte: number[] | null; luminosite: number; saturation: number | null; source: number };
     // Jamais 3 plans de suite du même rush quand un autre rush a de quoi.
     const interdit = plan.length >= 2 && cleSource(plan[plan.length - 1].url) === cleSource(plan[plan.length - 2].url)
       ? cleSource(plan[plan.length - 1].url) : null;
@@ -524,7 +557,25 @@ export function planMontage(
         const diff: number = prec?.empreinte && m.empreinte ? borne(ecartEmpreinte(m.empreinte, prec.empreinte) / 0.25, 0, 1) : 1;
         if (prec && diff < 0.3) continue; // quasi le même plan que juste avant
         score += 0.2 * diff;
+        // ANTI-RÉPÉTITION sur tout le plan : un plan visuellement nouveau,
+        // même un peu moins bien noté, bat un excellent plan répétitif.
+        const simMax = Math.max(0, ...choisis.map((c) => similariteVisuelle(m.empreinte, c.empreinte) ?? 0));
+        const scene = choisis.some((c) => memeScene({ cle, depuis: s, jusqua: e, empreinte: m.empreinte }, c));
+        score -= coh.ressemblance * Math.max(0, simMax - 0.4) / 0.6;
+        if (scene) score -= coh.memeScene;
+        // COHÉRENCE VISUELLE (pénalités, jamais d'exclusion d'un rush).
+        const noirBlanc = estNoirEtBlanc(m.saturation);
+        const calme = coh.planCalmeEnMontee > 0 && (creneau.phase === 'HOOK' || creneau.phase === 'BUILD' || creneau.phase === 'PEAK') && m.mouvAbs < 0.3;
+        const rupture = prec?.luminosite != null && Math.abs(m.luminosite - prec.luminosite) > ECART_AMBIANCE;
+        const bascule = m.saturation !== null && prec?.saturation != null && estNoirEtBlanc(m.saturation) !== estNoirEtBlanc(prec.saturation);
+        const coherence = 1
+          - (bascule ? coh.ruptureCouleur : 0)
+          - (matiereCouleur && noirBlanc ? coh.noirBlancDansCouleur : 0)
+          - (calme ? coh.planCalmeEnMontee : 0)
+          - (rupture ? coh.ruptureAmbiance : 0);
+        score -= 1 - coherence;
         if (prec?.cle === cle) score -= 0.2;
+        if (cle === interdit) score -= coh.troisiemeMemeRush;
         // Diversité des rushes, jamais au prix d'un mauvais plan
         const part = (partRush.get(cle) ?? 0) / Math.max(1e-6, cible);
         if (part > partJuste * 1.4) score -= 0.3 * (part - partJuste * 1.4) / partJuste;
@@ -537,13 +588,19 @@ export function planMontage(
             creneau.beat !== null ? `cut sur un temps fort (${creneau.beat}s)` : options.rythme ? 'aucun temps fort dans la fenêtre' : 'sans musique analysée',
             ralenti ? 'ralenti sur un geste fort' : null,
             parDescription ? 'description du plan' : activite ? `profil « ${activite.nom} »` : 'aucune information thématique exploitable : qualité seule',
+            matiereCouleur && noirBlanc ? 'noir et blanc dans une vidéo en couleur (pénalisé)' : null,
+            bascule ? 'passage couleur ↔ noir et blanc (pénalisé)' : null,
+            calme ? 'plan calme dans une montée d\'énergie (pénalisé)' : null,
+            scene ? 'même scène qu\'un plan déjà monté (pénalisé)' : simMax > 0.6 ? 'ressemble à un plan déjà monté (pénalisé)' : null,
           ].filter(Boolean);
           meilleur = {
-            score, cle, empreinte: m.empreinte, source: e - s,
+            score, cle, empreinte: m.empreinte, luminosite: m.luminosite, saturation: m.saturation, source: e - s,
             seg: {
               url: a.url, debut: creneau.debut, fin: creneau.fin, depuis: arrondi(s), jusqua: arrondi(e),
               phase: creneau.phase, qualite: arrondi2(qualite), pertinence: pertinence === null ? null : arrondi2(pertinence),
               differenceVisuelle: arrondi2(diff), beatCible: creneau.beat, effet: ralenti ? 'ralenti' : null,
+              energie: arrondi2(m.mouvAbs), similariteVisuelle: arrondi2(simMax), coherenceVisuelle: arrondi2(coherence),
+              beatOffsetMs: creneau.beat !== null ? Math.round(Math.abs(creneau.fin - creneau.beat) * 1000) : null,
               ...(vitesse !== 1 ? { vitesse } : {}),
               score: arrondi(score), raison: raisons.join(' · '),
             },
@@ -553,7 +610,10 @@ export function planMontage(
     }
     return meilleur;
     };
-    const meilleur = chercher(interdit) ?? (interdit ? chercher(null) : null);
+    // Un 3e plan de suite du même rush est PÉNALISÉ (`coh.troisiemeMemeRush`),
+    // plus interdit : interdit, il forçait un plan incohérent (noir et blanc
+    // au milieu de la couleur) dès que les autres rushes l'étaient tous.
+    const meilleur = chercher(null);
     // Plus de matière exploitable : la vidéo s'arrête là (jamais d'étirement).
     if (!meilleur) break;
     plan.push(meilleur.seg);
@@ -561,7 +621,8 @@ export function planMontage(
     partRush.set(meilleur.cle, (partRush.get(meilleur.cle) ?? 0) + (creneau.fin - creneau.debut));
     if (meilleur.empreinte) empreintesChoisies.push(meilleur.empreinte);
     if (meilleur.seg.effet === 'ralenti') ralentis += 1;
-    precedent = { cle: meilleur.cle, empreinte: meilleur.empreinte };
+    precedent = { cle: meilleur.cle, empreinte: meilleur.empreinte, luminosite: meilleur.luminosite, saturation: meilleur.saturation };
+    choisis.push({ cle: meilleur.cle, depuis: meilleur.seg.depuis ?? 0, jusqua: meilleur.seg.jusqua ?? 0, empreinte: meilleur.empreinte });
   }
   if (plan.length < 2 || new Set(plan.map((s) => cleSource(s.url))).size < 2) return null;
   // Matière épuisée avant la cible : la vidéo est plus courte (jamais

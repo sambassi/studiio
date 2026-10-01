@@ -7,32 +7,33 @@
  * (large / serré) : ces avertissements-là ne sont pas émis.
  */
 import type { RushSegment } from '@/lib/creer/multi-rush';
-import { cleSource, ecartEmpreinte, type AnalyseRush, type EchantillonRush } from '@/lib/creer/smart-montage';
+import { cleSource, REGLES_PROFILS, type AnalyseRush, type EchantillonRush } from '@/lib/creer/smart-montage';
+import {
+  ecartEmpreinte, ECHELLE_DIFFERENCE, SEUIL_NOIR_BLANC, ECART_AMBIANCE, MEME_SCENE,
+} from '@/lib/creer/smart-montage-regles';
 import type { Conseil } from '@/lib/creer/conseiller/types';
 
+/**
+ * Seuils du conseiller. Ceux qui sont aussi des RÈGLES DE MONTAGE viennent
+ * du module partagé (`smart-montage-regles.ts`, `REGLES_PROFILS`) : le
+ * conseiller juge le plan avec les mêmes règles que le moteur qui l'a fait.
+ */
 export const REGLES_MONTAGE = {
-  /** Saturation moyenne sous laquelle une image est en noir et blanc (mesuré : N&B ≈ 0,014, couleur terne ≥ 0,036). */
-  saturationNoirBlanc: 0.025,
-  /** Écart de luminosité moyenne (0..1) entre deux rushes : ambiances différentes. */
-  ecartAmbiance: 0.18,
+  saturationNoirBlanc: SEUIL_NOIR_BLANC,
+  ecartAmbiance: ECART_AMBIANCE,
   /** Écart d'empreinte sous lequel deux extraits montrent quasiment la même image. */
   quasiIdentique: 0.08,
-  /** Même rush, à moins de cet écart (s) dans la prise : la même scène qui continue… */
-  memeSceneEcartS: 4,
-  /** …si les images se ressemblent encore (empreinte). */
-  memeSceneEmpreinte: 0.15,
+  memeSceneEcartS: MEME_SCENE.ecartS,
+  memeSceneEmpreinte: MEME_SCENE.empreinte,
   /** Part de la durée venant d'un seul rush au-delà de laquelle on le signale. */
   partDominante: 0.6,
-  /** Normalisation du score de différence visuelle (même échelle que le plan). */
-  echelleDifference: 0.25,
+  echelleDifference: ECHELLE_DIFFERENCE,
   /** Mouvement d'un extrait sous cette part de la médiane du montage : plan statique. */
   statiqueRelatif: 0.35,
   /** Distance (s) entre une coupe et un temps de la musique pour la dire « sur le temps ». */
   toleranceBeat: 0.08,
-  /** CARDIO_DANCE : premiers plans de l'accroche (s). */
-  accrocheMax: 1.2,
-  /** Au-delà, un plan doit avoir une raison éditoriale. */
-  planLong: 3,
+  /** CARDIO_DANCE : premiers plans de l'accroche (s) — la règle du moteur. */
+  accrocheMax: REGLES_PROFILS.CARDIO_DANCE.phases.HOOK[1],
 } as const;
 
 const PROFILS_DYNAMIQUES = new Set(['CARDIO_DANCE', 'EVENT_IMMERSIVE']);
@@ -273,7 +274,9 @@ export function conseilsMontage(input: {
         mesures: { plansAccroche: accroche.length, dureeMax: r2(Math.max(...accroche.map(d))) },
       });
     }
-    const longs = plan.filter((s) => d(s) > R.planLong && s.phase !== 'CTA');
+    // Limite du PROFIL (moteur partagé) : danse 2 s, sinon sa propre règle, 3 s par défaut.
+    const limite = profil in REGLES_PROFILS ? REGLES_PROFILS[profil as keyof typeof REGLES_PROFILS].hardMax : 3;
+    const longs = plan.filter((s) => d(s) > limite + 0.05 && s.phase !== 'CTA');
     if (longs.length) {
       out.push({
         id: 'rythme:plans-longs',
@@ -281,11 +284,11 @@ export function conseilsMontage(input: {
         priorite: dynamique ? 'MOYENNE' : 'FAIBLE',
         cible: longs.map((s) => `extrait:${plan.indexOf(s)}`).join(','),
         texteActuel: null,
-        probleme: `${longs.length} plan${longs.length > 1 ? 's' : ''} de plus de 3 s.`,
-        conseil: 'Au-delà de 3 s, un plan doit montrer quelque chose qui se passe : sinon, coupe-le en deux.',
+        probleme: `${longs.length} plan${longs.length > 1 ? 's' : ''} de plus de ${virgule(limite, 0)} s.`,
+        conseil: `Au-delà de ${virgule(limite, 0)} s, un plan doit montrer quelque chose qui se passe : sinon, coupe-le en deux.`,
         propositionReecrite: null,
         placementRecommande: null,
-        dureeRecommandee: '1,2 à 2 s',
+        dureeRecommandee: '1 à 2 s',
       });
     }
   }

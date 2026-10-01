@@ -109,7 +109,10 @@ describe('plan CARDIO_DANCE sur 3 rushes', () => {
   it('12–20 extraits courts, 3 rushes', () => {
     expect(plan.length).toBeGreaterThanOrEqual(12);
     expect(plan.length).toBeLessThanOrEqual(24);
-    expect(Math.max(...durees)).toBeLessThanOrEqual(REGLES_PROFILS.CARDIO_DANCE.hardMax + 1e-6);
+    // Danse : jamais plus de 2 s hors CTA ; le CTA peut être plus posé (≤ 3 s).
+    const horsCta = plan.filter((s) => s.phase !== 'CTA').map((s) => s.fin - s.debut);
+    expect(Math.max(...horsCta)).toBeLessThanOrEqual(REGLES_PROFILS.CARDIO_DANCE.hardMax + 1e-6);
+    expect(Math.max(...durees)).toBeLessThanOrEqual(REGLES_PROFILS.CARDIO_DANCE.phases.CTA[1] + 1e-6);
     expect(new Set(plan.map((s) => s.url)).size).toBe(3);
   });
 
@@ -156,7 +159,8 @@ describe('câblage', () => {
   it('Autopilote et Créer passent le rythme de la musique au moteur', () => {
     expect(src('src/lib/autopilot/produire.ts')).toContain('rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;');
     expect(src('src/lib/autopilot/produire.ts')).toContain('rythme: rythmeVideo,');
-    expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null,');
+    expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('const rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null;');
+    expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
   });
   it('le ralenti est rendu par Remotion et par le compositeur', () => {
     expect(src('remotion/CreerSimpleMontage.tsx')).toContain('playbackRate: seg.vitesse');

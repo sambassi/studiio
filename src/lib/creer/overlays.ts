@@ -12,6 +12,8 @@
  * se chevaucher. Module PUR : testable, partagé par le rendu et les métadonnées.
  */
 
+import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
+
 export type CleVoix = 'titre' | 'cartes' | 'video' | 'cta';
 
 export interface OverlaysMontage {
@@ -32,6 +34,11 @@ export function profilEnSurimpression(profil: string | null | undefined): boolea
 export function planOverlays(input: {
   /** Durée de la vidéo continue (le plan de montage). */
   duree: number;
+  /**
+   * Profil de montage : ses règles de TEXTES (`TEXTES_PROFILS`, partagées
+   * Créer / Autopilote). Absent : les durées d'avant (cartes 1,5–3 s).
+   */
+  profil?: NomProfilMontage | null;
   nbCartes: number;
   /** Fin du HOOK dans le plan (s), si connue. */
   finHook?: number | null;
@@ -41,26 +48,32 @@ export function planOverlays(input: {
   const { duree, nbCartes } = input;
   const voix = input.voix ?? {};
   if (!(duree > 0)) return { titre: null, cartes: [], cta: null, voix: {} };
+  const regles = input.profil ? TEXTES_PROFILS[input.profil] : null;
+  // Moins de 30 s : les durées minimales se réduisent en proportion.
+  const echelle = Math.min(1, duree / 30);
+  const carteMin = regles ? Math.max(1.5, regles.cartes.dureeMin * echelle) : 1.5;
+  const carteMax = regles ? regles.cartes.dureeMax : 3;
+  const titreMax = regles ? regles.accroche.dureeMax : 4;
 
-  // Titre : pendant le HOOK, lisible (≥ 2,5 s), jamais plus de 4 s — ou la
-  // durée de sa voix si elle est plus longue (dans la limite de 25 %).
-  const finTitre = Math.min(duree * 0.25, Math.max(2.5, Math.min(4, input.finHook ?? 3), voix.titre ?? 0));
+  // Titre : pendant le HOOK, lisible (≥ 2,5 s), jamais plus de `titreMax` —
+  // ou la durée de sa voix si elle est plus longue (dans la limite de 25 %).
+  const finTitre = Math.min(duree * 0.25, Math.max(2.5, Math.min(titreMax, input.finHook ?? 3), voix.titre ?? 0));
   const titre: [number, number] = [0, r(finTitre)];
 
   // CTA : les 2–3 dernières secondes (plus si sa voix l'exige, ≤ 25 %).
   const dureeCta = Math.min(duree * 0.25, Math.max(2.5, Math.min(3, voix.cta ?? 2.5), voix.cta ?? 0));
   const cta: [number, number] = [r(duree - dureeCta), r(duree)];
 
-  // Cartes : entre le titre et le CTA, une à la fois, 1,5–3 s chacune, avec
-  // un court répit entre deux. Trop peu de place : on en montre moins.
+  // Cartes : entre le titre et le CTA, une à la fois (`carteMin`–`carteMax`),
+  // avec un court répit entre deux. Trop peu de place : on en montre moins.
   const cartes: OverlaysMontage['cartes'] = [];
   const debutZone = titre[1] + 0.4;
   const finZone = cta[0] - 0.4;
   const place = finZone - debutZone;
-  if (nbCartes > 0 && place >= 1.5) {
-    const n = Math.min(nbCartes, Math.floor((place + 0.4) / (1.5 + 0.4)));
+  if (nbCartes > 0 && place >= carteMin) {
+    const n = Math.min(nbCartes, Math.floor((place + 0.4) / (carteMin + 0.4)));
     const creneau = place / n;
-    const dureeCarte = Math.min(3, Math.max(1.5, creneau - 0.4));
+    const dureeCarte = Math.min(carteMax, Math.max(carteMin, creneau - 0.4));
     for (let i = 0; i < n; i++) {
       const debut = debutZone + i * creneau + (creneau - dureeCarte) / 2;
       cartes.push({ index: i, debut: r(debut), fin: r(debut + dureeCarte) });

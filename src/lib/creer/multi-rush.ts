@@ -58,6 +58,14 @@ export interface RushSegment {
   phase?: string;
   /** V3 : différence visuelle avec le plan précédent 0..1. */
   differenceVisuelle?: number;
+  /** Énergie (mouvement) de l'extrait 0..1. */
+  energie?: number;
+  /** Ressemblance maximale avec un extrait déjà monté 0..1 (VISUAL_SIMILARITY). */
+  similariteVisuelle?: number;
+  /** Cohérence avec la vidéo (couleur, énergie, ambiance) 0..1 (VISUAL_COHERENCE). */
+  coherenceVisuelle?: number;
+  /** Écart (ms) entre la coupe et le temps de la musique visé, sinon null. */
+  beatOffsetMs?: number | null;
   /** V3 : temps fort de la musique visé par la coupe de fin (s), sinon null. */
   beatCible?: number | null;
   /** V3 : effet appliqué ('ralenti'), sinon null. */

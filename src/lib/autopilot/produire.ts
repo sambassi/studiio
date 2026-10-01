@@ -11,12 +11,13 @@ import {
 } from '@/lib/autopilot/poster';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
-import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre } from '@/lib/creer/analyse-rush-serveur';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
+import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -428,22 +429,26 @@ export async function produireUnMontage(input: {
   let enSurimpression = false;
   let overlays: OverlaysMontage | null = null;
   // Conseiller : ce que le plan a utilisé (profil, temps de la musique).
-  let profilVideo = 'STANDARD';
+  let profilVideo: ReturnType<typeof profilMontageDuContexte>['profil'] = 'STANDARD';
+  let montageRapport: ReturnType<typeof rapportPlan> | null = null;
   let rythmeVideo: { beats: number[]; forts: number[]; drop: number | null } | null = null;
   let contexteConseil: { theme: string | null; objectif: string | null } = { theme: null, objectif: null };
   if (analysesRushs.length > 0 || secondesParRush.size > 1) {
     const t2 = Date.now();
     const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
-    const contexteMontage = {
+    // MÊME préparation que Créer (`contexteMontageDepuis`) : même thème +
+    // mêmes textes = même profil, mêmes pertinences.
+    const contexteMontage = contexteMontageDepuis({
       theme: post.title,
-      sujet: post.content?.subtitle ?? null,
+      titre: post.title,
+      sousTitre: post.content?.subtitle ?? null,
       objectif: [postUtilise.brief?.objectif, postUtilise.brief?.message].filter(Boolean).join(' ') || null,
-      texte: (post.content?.cards ?? []).map((c) => `${c.title ?? ''} ${c.description ?? ''}`).join(' ') || null,
-    };
+      cartes: post.content?.cards ?? [],
+    });
     // V3 : profils dynamiques = textes EN SURIMPRESSION, la vidéo est tout le
     // montage. Elle doit alors porter TOUTES les voix, l'une après l'autre.
     profilVideo = profilMontageDuContexte(contexteMontage).profil;
-    contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif };
+    contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif ?? null };
     enSurimpression = profilEnSurimpression(profilVideo);
     const voixAPorter = enSurimpression
       ? ['titre', 'cartes', 'video', 'cta'].reduce((t, k) => t + (secondesVoix(k) ? secondesVoix(k) + 0.2 : 0), 0)
@@ -462,6 +467,7 @@ export async function produireUnMontage(input: {
     if (planMontageRushs && enSurimpression) {
       overlays = planOverlays({
         duree: dureePlan(planMontageRushs),
+        profil: profilVideo,
         nbCartes: designBase.cards?.length ?? 0,
         finHook: planMontageRushs.filter((x) => x.phase === 'HOOK').at(-1)?.fin ?? null,
         voix: { titre: secondesVoix('titre'), cartes: secondesVoix('cartes'), video: secondesVoix('video'), cta: secondesVoix('cta') },
@@ -474,6 +480,12 @@ export async function produireUnMontage(input: {
     } else {
       if (input.plagesCycle) plagesDuPlan(planMontageRushs, input.plagesCycle);
       console.log(`${journal} ${userId} — smart montage : ${planMontageRushs.length} extraits, ${dureePlan(planMontageRushs)}s`);
+      // Rapport du plan : les MÊMES mesures que Créer (`rapportPlan`).
+      const ms = mesuresSegments(planMontageRushs, analysesRushs);
+      if (ms) {
+        montageRapport = rapportPlan(profilVideo, ms, rythmeVideo);
+        console.log(`${journal} ${userId} — MONTAGE_PROFILE=${profilVideo} ${JSON.stringify(montageRapport)}`);
+      }
     }
   }
 
@@ -598,6 +610,9 @@ export async function produireUnMontage(input: {
     ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
     // Textes en surimpression sur la vidéo continue (V3) : relus au rendu.
     ...(overlays ? { surimpressions: overlays } : null),
+    // Profil et mesures du plan — les mêmes champs que Créer.
+    ...(planMontageRushs ? { profilMontage: profilVideo } : null),
+    ...(montageRapport ? { montageRapport } : null),
     // Rushes dont l'analyse a échoué (délai, fichier illisible) : dit.
     ...(analysesEchouees.length ? { analysesEchouees } : null),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
