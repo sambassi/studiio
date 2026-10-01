@@ -19,6 +19,8 @@
  *   - musique en boucle, volumes CONSTANTS (`mixAt` sans images-clés).
  */
 
+import { BASE_L, BASE_H, BASE_FPS } from '@/lib/creer/conseiller/lisibilite';
+
 export interface SegmentHybride {
   /** Fichier lisible par ffmpeg (proxy / URL interne). */
   source: string;
@@ -50,6 +52,12 @@ export interface EntreeHybride {
   musique: { source: string; volume: number } | null;
   voix: Array<{ source: string; depart: number; volume: number }>;
   sortie: string;
+  /**
+   * CONSEILLER : écrit AUSSI la vidéo de base (sans textes) en petit
+   * (`BASE_L`×`BASE_H` gris, `BASE_FPS` i/s) dans ce fichier, dans le même
+   * passage. Absent : rien de plus.
+   */
+  analyseBase?: string | null;
 }
 
 const f3 = (n: number) => (Math.round(n * 1000) / 1000).toString();
@@ -82,7 +90,12 @@ export function argumentsHybride(e: EntreeHybride): string[] {
     etiquettesVideo.push(`[v${k}]`);
     n += 1;
   });
-  filtres.push(`${etiquettesVideo.join('')}concat=n=${e.segments.length}:v=1:a=0,format=yuva420p[base0]`);
+  if (e.analyseBase) {
+    filtres.push(`${etiquettesVideo.join('')}concat=n=${e.segments.length}:v=1:a=0,format=yuva420p,split=2[base0][analyse0]`);
+    filtres.push(`[analyse0]fps=${BASE_FPS},scale=${BASE_L}:${BASE_H}:flags=area,format=gray[analyse]`);
+  } else {
+    filtres.push(`${etiquettesVideo.join('')}concat=n=${e.segments.length}:v=1:a=0,format=yuva420p[base0]`);
+  }
 
   // ── 2. Surimpressions : voile (fixe) + texte (glisse), fondu 0,3 s ──
   const bord = Math.max(1, Math.round(0.3 * fps));
@@ -158,5 +171,6 @@ export function argumentsHybride(e: EntreeHybride): string[] {
     '-movflags', '+faststart',
     e.sortie,
   );
+  if (e.analyseBase) args.push('-map', '[analyse]', '-f', 'rawvideo', '-pix_fmt', 'gray', '-y', e.analyseBase);
   return args;
 }

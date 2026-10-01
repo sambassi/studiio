@@ -44,6 +44,11 @@ export interface EchantillonRush {
   audio: number;
   /** Vignette 8×8 en gris (64 valeurs 0..1) : détecte les plans quasi identiques. */
   empreinte?: number[];
+  /**
+   * Saturation moyenne 0..1 (max − min des composantes RVB). ≈ 0 : image en
+   * noir et blanc. Absente des analyses antérieures : « non mesurée ».
+   */
+  saturation?: number;
 }
 
 /** Description d'un passage (vision, transcription…) — facultative. */
@@ -262,7 +267,7 @@ export function candidatsDuRush(analyse: AnalyseRush, longueur: number, contexte
   return out;
 }
 
-const ecartEmpreinte = (a: number[], b: number[]) => {
+export const ecartEmpreinte = (a: number[], b: number[]) => {
   const n = Math.min(a.length, b.length);
   if (!n) return 1;
   let d = 0;
@@ -665,4 +670,19 @@ export function mesurerImage(
     }
   }
   return { luminosite: lum, nettete: net, mouvement: mouv, empreinte };
+}
+
+/** Taille des images d'analyse COULEUR (saturation seulement). */
+export const COULEUR_L = 16;
+export const COULEUR_H = 9;
+
+/** Saturation moyenne (0..1) d'une image RVB brute (3 octets par pixel). Pure. */
+export function saturationRgb(px: ArrayLike<number>, pas = 3): number {
+  let s = 0; let n = 0;
+  for (let i = 0; i + 2 < px.length; i += pas) {
+    const r = px[i]; const g = px[i + 1]; const b = px[i + 2];
+    s += Math.max(r, g, b) - Math.min(r, g, b);
+    n += 1;
+  }
+  return n ? Math.round((s / n / 255) * 1000) / 1000 : 0;
 }

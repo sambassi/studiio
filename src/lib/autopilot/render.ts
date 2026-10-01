@@ -46,6 +46,8 @@ export interface RenderedMontage {
   moteur?: 'hybride' | 'remotion';
   /** Durées du rendu hybride (images fixes, copie des sources, ffmpeg). */
   mesuresHybride?: Record<string, number> | null;
+  /** Conseiller : taille, fond et zones mesurés des textes (rendu hybride seulement). */
+  mesuresTextes?: import('@/lib/creer/conseiller/lisibilite').ElementLisibilite[] | null;
 }
 
 /**
@@ -134,12 +136,14 @@ export async function renderAndUpload(input: {
   let rendu: { outputPath: string; durationFrames: number } | null = null;
   let moteur: 'hybride' | 'remotion' = 'remotion';
   let mesuresHybride: Record<string, number> | null = null;
+  let mesuresTextes: RenderedMontage['mesuresTextes'] = null;
   if (estEligibleHybride(input.design)) {
     try {
       const h = await rendreHybride({ jobId: input.jobId, design: input.design, onProgress });
       rendu = h;
       moteur = 'hybride';
       mesuresHybride = { ...h.mesures };
+      mesuresTextes = h.textes;
     } catch (err) {
       console.warn(`[Autopilote/Rendu] ${input.jobId} — rendu hybride impossible, rendu Remotion complet :`, err instanceof Error ? err.message : err);
     }
@@ -169,5 +173,5 @@ export async function renderAndUpload(input: {
     storagePath: `${input.userId}/autopilote-${input.jobId}.mp4`,
   });
 
-  return { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride };
+  return { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride, mesuresTextes };
 }
