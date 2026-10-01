@@ -136,6 +136,8 @@ describe('source unique, aucune règle recopiée', () => {
     expect(w).toContain('<PlateauSurimpression ref={plateauSurimpRef} {...plateauSurimp} />');
     expect(w).toContain('...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),');
     expect(w).not.toMatch(/carteFond\s*:|titleScale:\s*2\.2|ctaPos:\s*\{\s*x:\s*50,\s*y:\s*76/);
+    // « Modifier » retrouve les durées de l'éditeur, pas les 0 du rendu en surimpression.
+    expect(w).toContain("intro: (surimpressionsItem ? dureePleinEcran : duree)('intro'),");
   });
   it('Remotion lit le fond et la couleur de valeur des cartes', () => {
     const r = src('remotion/CreerSimpleMontage.tsx');

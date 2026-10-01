@@ -8068,11 +8068,16 @@ export default function AssistantWizard() {
           videoSize: { w: size.w, h: size.h },
           // Meme source que les durees passees au compositeur : l'apercu, la
           // video et le Calendrier suivent donc strictement le meme ordre.
+          // ⚠️ SURIMPRESSIONS : titre / cartes / CTA gardent les durées de
+          // l'ÉDITEUR (rendues à 0, posées sur la vidéo) — « Modifier » les
+          // retrouve, et une régénération Calendrier (qui ne sait pas poser
+          // les surimpressions) les remet en plein écran plutôt que de les
+          // perdre. `total` reste la durée RÉELLE de la vidéo.
           sequences: {
-            intro: duree('intro'),
-            cards: duree('cards'),
+            intro: (surimpressionsItem ? dureePleinEcran : duree)('intro'),
+            cards: (surimpressionsItem ? dureePleinEcran : duree)('cards'),
             video: duree('video'),
-            cta: duree('cta'),
+            cta: (surimpressionsItem ? dureePleinEcran : duree)('cta'),
             total: ordre.reduce((t, k) => t + duree(k), 0),
             order: ordre,
           },
