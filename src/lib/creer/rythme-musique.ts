@@ -17,7 +17,17 @@ export interface RythmeMusique {
   beats: number[];
   forts: number[];
   drop: number | null;
+  /**
+   * Percussions RÉELLES (pics de l'enveloppe d'attaques) : instant exact et
+   * force 0..1 (relative à la plus forte du morceau). Kick, snare, impact :
+   * ce sont elles que les coupes visent d'abord (`grilleDeCoupes`). Absent
+   * des analyses antérieures : la grille de temps sert seule, comme avant.
+   */
+  impacts?: Array<{ t: number; force: number }>;
 }
+
+/** Force (0..1) à partir de laquelle une percussion est « forte ». */
+export const FORCE_PERCUSSION_FORTE = 0.5;
 
 const HOP_S = 0.02; // 20 ms
 
@@ -39,7 +49,7 @@ export function enveloppeAttaques(signal: Float32Array, hz: number): Float32Arra
 export function analyserRythme(signal: Float32Array, hz: number): RythmeMusique {
   const env = enveloppeAttaques(signal, hz);
   const n = env.length;
-  if (n < 50) return { bpm: null, beats: [], forts: [], drop: null };
+  if (n < 50) return { bpm: null, beats: [], forts: [], drop: null, impacts: [] };
 
   // ── Tempo : autocorrélation de l'enveloppe, 70–180 BPM ──
   const lagMin = Math.round(60 / 180 / HOP_S);
@@ -107,7 +117,11 @@ export function analyserRythme(signal: Float32Array, hz: number): RythmeMusique 
   const moyRms = rms.reduce((a, b) => a + b, 0) / Math.max(1, rms.length);
   if (saut < moyRms * 0.35) drop = null; // pas de montée nette : pas de drop annoncé
 
-  return { bpm, beats, forts, drop };
+  // Percussions réelles, force relative à la plus forte du morceau.
+  const forceMax = Math.max(1e-6, ...attaques.map((a) => a.force));
+  const impacts = attaques.map((a) => ({ t: Math.round(a.t * 1000) / 1000, force: Math.round((a.force / forceMax) * 100) / 100 }));
+
+  return { bpm, beats, forts, drop, impacts };
 }
 
 /** Recale un rythme sur une fenêtre de la musique [debut, debut+duree]. Pure. */
@@ -119,5 +133,6 @@ export function rythmeSurFenetre(r: RythmeMusique, debut: number, duree: number)
     beats: r.beats.filter(dans).map(decale),
     forts: r.forts.filter(dans).map(decale),
     drop: r.drop !== null && dans(r.drop) ? decale(r.drop) : null,
+    ...(r.impacts ? { impacts: r.impacts.filter((i) => dans(i.t)).map((i) => ({ t: decale(i.t), force: i.force })) } : {}),
   };
 }

@@ -100,7 +100,7 @@ export function conseilsMontage(input: {
   plan: ReadonlyArray<RushSegment>;
   analyses: ReadonlyArray<AnalyseRush>;
   /** Temps de la musique dans le temps de la VIDÉO (déjà recalés). */
-  rythme?: { beats: number[]; forts: number[] } | null;
+  rythme?: { beats: number[]; forts: number[]; impacts?: Array<{ t: number; force: number }> } | null;
 }): { conseils: Conseil[]; couleur: boolean; repetition: boolean; rythme: boolean; score: number | null } {
   const R = REGLES_MONTAGE;
   const { profil, plan } = input;
@@ -295,7 +295,9 @@ export function conseilsMontage(input: {
 
   // ── RYTHME : les coupes tombent-elles VRAIMENT sur la musique ? ──
   let rythmeMesure = false;
-  const beats = input.rythme?.beats ?? [];
+  // Une coupe sur une PERCUSSION FORTE réelle compte comme une coupe sur le
+  // temps (#496 : le moteur les vise en priorité, hors de la grille théorique).
+  const beats = [...(input.rythme?.beats ?? []), ...(input.rythme?.impacts ?? []).filter((i) => i.force >= 0.5).map((i) => i.t)];
   if (beats.length >= 4 && plan.length >= 2) {
     rythmeMesure = true;
     const coupes = plan.slice(0, -1).map((s) => s.fin);

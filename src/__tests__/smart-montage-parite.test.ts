@@ -65,10 +65,11 @@ describe('parité Créer / Autopilote (DANSE réel)', () => {
     for (let i = 0; i < fen.length; i++) for (let j = i + 1; j < fen.length; j++) expect(memeTimecode(fen[i], fen[j])).toBe(false);
   });
 
-  it('BEAT_SYNC : toutes les coupes sur un temps de la musique', () => {
+  it('BEAT_SYNC (#496) : les coupes visent les PERCUSSIONS FORTES réelles — moitié à ≤ 80 ms, moins de la moitié au-delà de 120 ms', () => {
     const r = rapport(CREATE_PLAN);
-    expect(r.BEAT_SYNC_RATIO).toBe(1);
-    expect(r.MAX_BEAT_OFFSET_MS).toBe(0);
+    expect(r.CUTS_LE_80MS! / r.CUTS_TOTAL).toBeGreaterThanOrEqual(0.5);
+    expect(r.CUTS_GT_120MS! / r.CUTS_TOTAL).toBeLessThan(0.5);
+    expect(r.CUTS_LE_80MS! + r.CUTS_80_120MS! + r.CUTS_GT_120MS!).toBe(r.CUTS_TOTAL);
   });
 
   it('VISUAL_COHERENCE : le noir et blanc n\'alterne plus avec la couleur (10 bascules → ≤ 2)', () => {

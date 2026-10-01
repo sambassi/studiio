@@ -100,10 +100,14 @@ describe('planMontage — 2 rushes, vrai montage', () => {
 });
 
 describe('repli et compatibilité', () => {
-  it('moins de 2 rushes exploitables : null (enchaînement classique)', () => {
-    const noir = rush('N.mp4', 10, () => ({ luminosite: 0.01 }));
-    expect(planMontage([A, noir], 10)).toBeNull();
+  it('un seul rush fourni : null (enchaînement classique) ; un rush inutilisable : montage du rush valable SEUL', () => {
     expect(planMontage([A], 10)).toBeNull();
+    // #496 : avant, le rush noir faisait renvoyer null — et l'enchaînement
+    // brut montrait alors l'écran noir. Désormais : le rush valable seul.
+    const noir = rush('N.mp4', 10, () => ({ luminosite: 0.01 }));
+    const p = planMontage([A, noir], 10)!;
+    expect(p.length).toBeGreaterThanOrEqual(2);
+    expect(p.every((s) => s.url === A.url)).toBe(true);
   });
 
   it('matière insuffisante : montage plus court, extraits jamais rallongés', () => {

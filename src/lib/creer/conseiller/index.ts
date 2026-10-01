@@ -22,7 +22,7 @@ export function conseillerVideo(input: {
   textes: TextesVideo;
   plan?: ReadonlyArray<RushSegment> | null;
   analyses?: ReadonlyArray<AnalyseRush> | null;
-  rythme?: { beats: number[]; forts: number[] } | null;
+  rythme?: { beats: number[]; forts: number[]; impacts?: Array<{ t: number; force: number }> } | null;
   /** Mesures du rendu hybride ; `null` = non mesurées (rendu complet). */
   lisibilite?: ReadonlyArray<ElementLisibilite> | null;
 }): RapportConseils {

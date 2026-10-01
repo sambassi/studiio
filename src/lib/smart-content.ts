@@ -394,7 +394,7 @@ const KNOWLEDGE_BASE: Record<string, TopicData[]> = {
       tagLine: "LE SPORT LE PLUS COMPLET",
       cards: [
         { icon: "muscle", title: "300+ MUSCLES", description: "La danse sollicite plus de 300 muscles. Course à pied : seulement 100", value: "300+" },
-        { icon: "brain", title: "MÉMOIRE BOOSTÉE", description: "Apprendre des chorégraphies stimule ta mémoire et réduit le risque d'Alzheimer de 76%", value: "-76%" },
+        { icon: "brain", title: "RISQUE RÉDUIT", description: "Apprendre des chorégraphies stimule ta mémoire et réduit le risque d'Alzheimer de 76%", value: "-76%" },
         { icon: "heart", title: "CARDIO COMPLET", description: "La danse combine cardio, renforcement et souplesse en une seule activité", value: "3-en-1" },
         { icon: "bone", title: "OS RENFORCÉS", description: "Les impacts de la danse augmentent ta densité osseuse de 2% par an", value: "+2%/an" },
         { icon: "sparkle", title: "ANTI-ÂGE", description: "Les danseurs réguliers vieillissent biologiquement 10 ans moins vite. Étude NEJM", value: "-10 ans" },

@@ -55,6 +55,9 @@ export function memeTimecode(a: FenetreSource, b: FenetreSource): boolean {
 export const SEUIL_NOIR_BLANC = 0.025;
 export const estNoirEtBlanc = (saturation: number | null | undefined) => typeof saturation === 'number' && saturation < SEUIL_NOIR_BLANC;
 
+/** Énergie (0..1, relative à toute la matière) sous laquelle un plan est « calme ». */
+export const SEUIL_ENERGIE_CALME = 0.4;
+
 /** Écart de luminosité moyenne (0..1) d'un plan au suivant : changement d'ambiance. */
 export const ECART_AMBIANCE = 0.18;
 
@@ -80,14 +83,25 @@ export interface RegleCoherence {
    * l'ancienne interdiction (comportement inchangé).
    */
   troisiemeMemeRush: number;
+  /** Durée (s) au-delà de laquelle une série de plans noir et blanc est pénalisée (0 = jamais). */
+  serieNoirBlancMaxS: number;
+  /** Pénalité d'un plan qui prolonge une série noir et blanc au-delà de `serieNoirBlancMaxS`. */
+  serieNoirBlanc: number;
+  /**
+   * Poids du MATCH carte / image : pendant une carte « énergique », les plans
+   * à fort mouvement sont favorisés, les plans calmes pénalisés (0 = aucun).
+   */
+  matchCarte: number;
 }
 
 export const COHERENCE_PROFILS: Record<NomProfilMontage, RegleCoherence> = {
-  CARDIO_DANCE: { noirBlancDansCouleur: 0.6, planCalmeEnMontee: 0.25, ruptureAmbiance: 0.15, ruptureCouleur: 0.5, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35 },
-  EVENT_IMMERSIVE: { noirBlancDansCouleur: 0.4, planCalmeEnMontee: 0.2, ruptureAmbiance: 0.15, ruptureCouleur: 0.4, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35 },
-  LIFESTYLE_BRAND: { noirBlancDansCouleur: 0.3, planCalmeEnMontee: 0, ruptureAmbiance: 0.2, ruptureCouleur: 0.3, ressemblance: 0.4, memeScene: 0.35, troisiemeMemeRush: 10 },
-  TUTORIAL_EDUCATION: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.1, ressemblance: 0.2, memeScene: 0.15, troisiemeMemeRush: 10 },
-  STANDARD: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.2, ressemblance: 0.3, memeScene: 0.3, troisiemeMemeRush: 10 },
+  // Danse (#496) : le noir et blanc ne sert que faute de couleur utilisable,
+  // jamais en alternance, jamais en longue série.
+  CARDIO_DANCE: { noirBlancDansCouleur: 1.2, planCalmeEnMontee: 0.25, ruptureAmbiance: 0.15, ruptureCouleur: 0.8, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 2, serieNoirBlanc: 0.8, matchCarte: 0.5 },
+  EVENT_IMMERSIVE: { noirBlancDansCouleur: 0.4, planCalmeEnMontee: 0.2, ruptureAmbiance: 0.15, ruptureCouleur: 0.4, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0.4 },
+  LIFESTYLE_BRAND: { noirBlancDansCouleur: 0.3, planCalmeEnMontee: 0, ruptureAmbiance: 0.2, ruptureCouleur: 0.3, ressemblance: 0.4, memeScene: 0.35, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0 },
+  TUTORIAL_EDUCATION: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.1, ressemblance: 0.2, memeScene: 0.15, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0 },
+  STANDARD: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.2, ressemblance: 0.3, memeScene: 0.3, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0 },
 };
 
 /** Règles de TEXTES par profil — communes à Créer et à l'Autopilote. */
@@ -111,6 +125,35 @@ export const TEXTES_PROFILS: Record<NomProfilMontage, RegleTextes> = {
   STANDARD: { accroche: { positions: ['haut'], dureeMax: 4 }, cartes: { position: 'centre', dureeMin: 1.5, dureeMax: 3 }, cta: { position: 'centre', dureeMin: 2.5 } },
 };
 
+// ── Match carte / image (proxy MESURÉ : le mouvement, pas la sémantique) ──
+const MOTS_ENERGIQUES = /cardio|muscl|energ|endurance|puissan|force|calor|brul|intens|explos|souffle|tonus|vitesse|rythme|sport|danse|sueur|transpir|actif/;
+
+/** Une carte « énergique » appelle des plans dynamiques dessous. Lexical, pur. */
+export function carteEnergique(titre: string | null | undefined): boolean {
+  return MOTS_ENERGIQUES.test((titre ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase());
+}
+
+/**
+ * TEXT_IMAGE_MATCH : énergie moyenne (0..1, pondérée par le temps) des plans
+ * VISIBLES pendant chaque carte — tous, pas seulement le premier.
+ */
+export function matchCartesImages(
+  segs: ReadonlyArray<Pick<MesureSegment, 'debut' | 'fin' | 'energie'>>,
+  fenetres: ReadonlyArray<{ index: number; debut: number; fin: number }>,
+  titres: ReadonlyArray<string | null | undefined>,
+): Array<{ index: number; titre: string; energique: boolean; energie: number | null; plans: number }> {
+  return fenetres.map((f) => {
+    let poids = 0; let somme = 0; let plans = 0;
+    for (const s of segs) {
+      const recouvre = Math.min(s.fin, f.fin) - Math.max(s.debut, f.debut);
+      if (recouvre <= 0 || typeof s.energie !== 'number') continue;
+      poids += recouvre; somme += recouvre * s.energie; plans += 1;
+    }
+    const titre = titres[f.index] ?? '';
+    return { index: f.index, titre, energique: carteEnergique(titre), energie: poids ? Math.round((somme / poids) * 100) / 100 : null, plans };
+  });
+}
+
 // ── Entrées : UNE fonction pour Créer et l'Autopilote ───────────────────
 /**
  * Contexte du montage à partir de ce que l'utilisateur a choisi. Créer et
@@ -126,11 +169,13 @@ export function contexteMontageDepuis(e: {
 }): ContexteMontage {
   const sujet = [e.titre, e.sousTitre].filter((x) => x && x.trim()).join(' ');
   const texte = (e.cartes ?? []).map((c) => `${c.title ?? ''} ${c.description ?? ''}`.trim()).filter(Boolean).join(' ');
+  const titres = (e.cartes ?? []).map((c) => c.title ?? '');
   return {
     theme: e.theme?.trim() || e.titre?.trim() || null,
     sujet: sujet || null,
     objectif: e.objectif?.trim() || null,
     texte: texte || null,
+    ...(titres.length ? { cartes: titres } : {}),
   };
 }
 
@@ -151,6 +196,12 @@ export interface RapportPlan {
   ENERGY_BREAKS: number | null;
   SCENE_STYLE_BREAKS: number | null;
   SHOTS_OVER_2S: number;
+  /** Plus longue série continue de plans noir et blanc (s). */
+  LONGEST_BW_SEQUENCE_S: number | null;
+  /** Écart de chaque coupe à la PERCUSSION FORTE réelle la plus proche. */
+  CUTS_LE_80MS: number | null;
+  CUTS_80_120MS: number | null;
+  CUTS_GT_120MS: number | null;
 }
 
 export interface MesureSegment {
@@ -169,7 +220,11 @@ export interface MesureSegment {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export function rapportPlan(profil: string, segs: ReadonlyArray<MesureSegment>, rythme?: { beats: number[]; forts: number[] } | null): RapportPlan {
+export function rapportPlan(
+  profil: string,
+  segs: ReadonlyArray<MesureSegment>,
+  rythme?: { beats: number[]; forts: number[]; impacts?: Array<{ t: number; force: number }> } | null,
+): RapportPlan {
   const coupes = segs.slice(0, -1).map((s) => s.fin);
   const beats = rythme?.beats ?? [];
   const forts = rythme?.forts ?? [];
@@ -193,7 +248,7 @@ export function rapportPlan(profil: string, segs: ReadonlyArray<MesureSegment>, 
   const dynamique = profil === 'CARDIO_DANCE' || profil === 'EVENT_IMMERSIVE';
   const energies = segs.map((s) => s.energie);
   const ruptEnergie = energies.every((e) => typeof e === 'number')
-    ? segs.filter((s, i) => dynamique && i > 0 && ['HOOK', 'BUILD', 'PEAK'].includes(s.phase ?? '') && (s.energie as number) < 0.3).length
+    ? segs.filter((s, i) => dynamique && i > 0 && ['HOOK', 'BUILD', 'PEAK'].includes(s.phase ?? '') && (s.energie as number) < SEUIL_ENERGIE_CALME).length
     : null;
   const lums = segs.map((s) => s.luminosite);
   const ruptScene = lums.every((l) => typeof l === 'number')
@@ -201,7 +256,7 @@ export function rapportPlan(profil: string, segs: ReadonlyArray<MesureSegment>, 
     : null;
   // Cohérence : part des plans qui ne rompent ni la couleur dominante, ni l'énergie.
   const coherence = couleurMesuree && ruptEnergie !== null
-    ? r2(segs.filter((s, i) => !(majoriteCouleur && nb[i]) && !(dynamique && ['HOOK', 'BUILD', 'PEAK'].includes(s.phase ?? '') && (s.energie as number) < 0.3)).length / Math.max(1, segs.length))
+    ? r2(segs.filter((s, i) => !(majoriteCouleur && nb[i]) && !(dynamique && ['HOOK', 'BUILD', 'PEAK'].includes(s.phase ?? '') && (s.energie as number) < SEUIL_ENERGIE_CALME)).length / Math.max(1, segs.length))
     : null;
   return {
     profil,
@@ -219,5 +274,21 @@ export function rapportPlan(profil: string, segs: ReadonlyArray<MesureSegment>, 
     ENERGY_BREAKS: ruptEnergie,
     SCENE_STYLE_BREAKS: ruptScene,
     SHOTS_OVER_2S: segs.filter((s) => s.fin - s.debut > 2.05 && s.phase !== 'CTA').length,
+    LONGEST_BW_SEQUENCE_S: couleurMesuree
+      ? r2(segs.reduce((acc, s, i) => {
+        const run = nb[i] ? acc.run + (s.fin - s.debut) : 0;
+        return { run, max: Math.max(acc.max, run) };
+      }, { run: 0, max: 0 }).max)
+      : null,
+    ...(() => {
+      const fortes = (rythme?.impacts ?? []).filter((i) => i.force >= 0.5).map((i) => i.t);
+      if (!fortes.length || !coupes.length) return { CUTS_LE_80MS: null, CUTS_80_120MS: null, CUTS_GT_120MS: null };
+      const ecarts = coupes.map((c) => Math.min(...fortes.map((t) => Math.abs(t - c))));
+      return {
+        CUTS_LE_80MS: ecarts.filter((e) => e <= 0.08 + 1e-9).length,
+        CUTS_80_120MS: ecarts.filter((e) => e > 0.08 + 1e-9 && e <= 0.12 + 1e-9).length,
+        CUTS_GT_120MS: ecarts.filter((e) => e > 0.12 + 1e-9).length,
+      };
+    })(),
   };
 }
