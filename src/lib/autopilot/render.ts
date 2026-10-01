@@ -42,6 +42,10 @@ export interface RenderedMontage {
   durationFrames: number;
   /** Son réellement mesuré dans le MP4 final ; `null` si la mesure a échoué. */
   audio?: import('@/lib/render/audio-fichier').MesureAudioFichier | null;
+  /** Moteur réellement utilisé : `hybride` (ffmpeg) ou `remotion` (complet). */
+  moteur?: 'hybride' | 'remotion';
+  /** Durées du rendu hybride (images fixes, copie des sources, ffmpeg). */
+  mesuresHybride?: Record<string, number> | null;
 }
 
 /**
@@ -118,14 +122,32 @@ export async function renderAndUpload(input: {
   const { renderCreerSimple } = await import('@/lib/render/creerSimple');
   const { uploadToStorage } = await import('@/lib/storage/upload');
 
-  const { outputPath, durationFrames } = await renderCreerSimple({
-    jobId: input.jobId,
-    design: input.design,
-    // Le worker rapporte 20 → 95 % pendant `renderMedia` : ramené à 0..1.
-    onProgress: input.onComposition
-      ? ({ progress }) => input.onComposition!(Math.min(1, Math.max(0, (progress - 20) / 75)))
-      : undefined,
-  });
+  // Le worker rapporte 20 → 95 % : ramené à 0..1.
+  const onProgress = input.onComposition
+    ? ({ progress }: { progress: number }) => input.onComposition!(Math.min(1, Math.max(0, (progress - 20) / 75)))
+    : undefined;
+
+  // ── RENDU HYBRIDE d'abord (ffmpeg + images fixes), quand il s'applique ──
+  // Même plan, mêmes textes, même musique ; Chromium ne voit plus la vidéo.
+  // Au moindre échec : le rendu Remotion complet, comme avant.
+  const { estEligibleHybride, rendreHybride } = await import('@/lib/render/hybride/rendu');
+  let rendu: { outputPath: string; durationFrames: number } | null = null;
+  let moteur: 'hybride' | 'remotion' = 'remotion';
+  let mesuresHybride: Record<string, number> | null = null;
+  if (estEligibleHybride(input.design)) {
+    try {
+      const h = await rendreHybride({ jobId: input.jobId, design: input.design, onProgress });
+      rendu = h;
+      moteur = 'hybride';
+      mesuresHybride = { ...h.mesures };
+    } catch (err) {
+      console.warn(`[Autopilote/Rendu] ${input.jobId} — rendu hybride impossible, rendu Remotion complet :`, err instanceof Error ? err.message : err);
+    }
+  }
+  if (!rendu) {
+    rendu = await renderCreerSimple({ jobId: input.jobId, design: input.design, onProgress });
+  }
+  const { outputPath, durationFrames } = rendu;
   input.onEnvoi?.();
 
   // La vignette AVANT le téléversement de la vidéo : `uploadToStorage`
@@ -147,5 +169,5 @@ export async function renderAndUpload(input: {
     storagePath: `${input.userId}/autopilote-${input.jobId}.mp4`,
   });
 
-  return { videoUrl, thumbnailUrl, durationFrames, audio };
+  return { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride };
 }
