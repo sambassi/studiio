@@ -175,6 +175,10 @@ export interface CreerSimpleMontageProps {
   sequenceOrder?: string[];
   /** Positions libres des cartes, ou absent pour la disposition en flux. */
   cardBoxes?: Record<string, { x: number; y: number; w: number; h: number }> | null;
+  /** Fond du cadre des cartes (surimpressions : sombre). Absent = le voile blanc d'avant. */
+  cardBackground?: string | null;
+  /** Couleur de la valeur des cartes (surimpressions : accent éclairci). Absente = `gradientEnd`. */
+  cardValueColor?: string | null;
   /** Durée totale, en images — calculée par `calculateMetadata`. */
   totalDurationFrames?: number;
   // ── Phases suivantes : acceptés, non rendus ────────────────────────────
@@ -563,10 +567,11 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 cardBoxes={props.cardBoxes ?? null}
                 containerWidth={width}
                 landscape={!isReel}
-                valueColor={props.gradientEnd || DEFAULT_COLORS.gradientEnd}
+                valueColor={props.cardValueColor || props.gradientEnd || DEFAULT_COLORS.gradientEnd}
                 // Absent = le cadre, comme depuis toujours.
                 cardStyle={props.cardStyle}
                 typography={props.cardsTypography}
+                fond={props.cardBackground ?? null}
               />
         );
         const blocCta = (reveal: number) => (

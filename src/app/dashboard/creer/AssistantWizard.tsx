@@ -194,6 +194,10 @@ import {
 import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { conseillerVideo } from '@/lib/creer/conseiller';
+import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
+import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
+import type { SurimpressionsComposer } from '@/lib/video-composer';
 import { analyserRush, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import {
@@ -4892,6 +4896,43 @@ export default function AssistantWizard() {
    * doit y paraitre, et rien ne doit pouvoir en modifier l'etat.
    */
   const [capturing, setCapturing] = useState(false);
+  // ── SURIMPRESSIONS (profils dynamiques) : un plateau CACHÉ, photographié
+  // élément par élément — mêmes composants et même mise en page que
+  // l'Autopilote (`PlateauSurimpression`, `surimpressions-mise-en-page.ts`).
+  const [plateauSurimp, setPlateauSurimp] = useState<PlateauSurimpressionProps | null>(null);
+  const plateauSurimpRef = useRef<HTMLDivElement>(null);
+  const capturerSurimpressions = async (
+    base: Omit<PlateauSurimpressionProps, 'element'>,
+    fenetres: OverlaysMontage,
+  ): Promise<SurimpressionsComposer['images'] | null> => {
+    const { domToCanvas } = await import('modern-screenshot');
+    try { await (document as unknown as { fonts?: FontFaceSet }).fonts?.ready; } catch { /* ignore */ }
+    const prendre = async (element: PlateauSurimpressionProps['element']): Promise<HTMLCanvasElement | null> => {
+      flushSync(() => setPlateauSurimp({ ...base, element }));
+      // Une frame de peinture, bornée (un onglet en arrière-plan gèle rAF).
+      await new Promise<void>((r) => {
+        const timer = setTimeout(r, 300);
+        requestAnimationFrame(() => requestAnimationFrame(() => { clearTimeout(timer); r(); }));
+      });
+      const el = plateauSurimpRef.current;
+      if (!el) return null;
+      return domToCanvas(el, { backgroundColor: undefined, scale: 1, width: base.largeur, height: base.hauteur });
+    };
+    try {
+      const images: SurimpressionsComposer['images'] = { titre: null, cartes: {}, cta: null };
+      if (fenetres.titre) images.titre = await prendre('titre');
+      for (const c of fenetres.cartes) {
+        const img = await prendre({ carte: c.index });
+        if (!img) return null;
+        images.cartes[c.index] = img;
+      }
+      if (fenetres.cta) images.cta = await prendre('cta');
+      if ((fenetres.titre && !images.titre) || (fenetres.cta && !images.cta)) return null;
+      return images;
+    } finally {
+      flushSync(() => setPlateauSurimp(null));
+    }
+  };
 
   const [layoutDropped, setLayoutDropped] = useState(false);
   useEffect(() => {
@@ -7415,6 +7456,27 @@ export default function AssistantWizard() {
           : 'aucun (enchaînement classique)');
       }
 
+      // ── SURIMPRESSIONS : même logique que l'Autopilote ─────────────────
+      // Profil dynamique (CARDIO_DANCE…) + plan Smart Montage : la vidéo
+      // continue, titre / cartes / CTA passent PAR-DESSUS (fenêtres de
+      // `planOverlays`, mêmes règles de textes). Pas avec des voix de
+      // séquence titre / cartes / CTA : le compositeur les joue au début de
+      // LEUR séquence, qui disparaît en surimpression — mode d'avant gardé.
+      const dureePleinEcran = duree;
+      let dureeSurimpression = duree;
+      let overlaysCreer: OverlaysMontage | null = null;
+      const voixDeTextes = !!(voixSequencesRendu?.titre || voixSequencesRendu?.cartes || voixSequencesRendu?.cta);
+      if (duree('video') > 0 && planMontageRushs && montageInfos && profilEnSurimpression(montageInfos.profil) && !voixDeTextes) {
+        const dureeVideo = dureePlan(planMontageRushs);
+        overlaysCreer = planOverlays({
+          duree: dureeVideo,
+          nbCartes: (generated?.cards ?? []).length,
+          finHook: planMontageRushs.filter((x) => x.phase === 'HOOK').at(-1)?.fin ?? null,
+          profil: montageInfos.profil,
+        });
+        dureeSurimpression = dureeDeSequence(ordre, { intro: 0, cards: 0, video: dureeVideo, cta: 0 });
+      }
+
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
       // Le contenu courant sert TOUJOURS a la premiere — l'utilisateur vient
@@ -7453,6 +7515,26 @@ export default function AssistantWizard() {
           const affiche = total > 1
             ? distinctPhotoForIndex(batchPhotoUrls, b)
             : (posterUrl ?? undefined);
+
+        // 1 bis. Surimpressions : photos du titre, de chaque carte et du CTA
+        //    de CE contenu. Échec : le mode plein écran d'avant, dit à l'écran.
+        let surimpressionsItem: SurimpressionsComposer | null = null;
+        const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil) : null;
+        if (overlaysCreer && miseEnPage) {
+          setRenderStage('Textes sur la vidéo…');
+          const images = await capturerSurimpressions({
+            miseEnPage,
+            format,
+            largeur: size.w,
+            hauteur: size.h,
+            titre: { title: contenu.title || 'Infographie', subtitle: contenu.subtitle || undefined, typography: textStyles.title, subtitleTypography: textStyles.subtitle },
+            cartes: { cards: (contenu.cards ?? []).map((c) => ({ icon: c.icon, title: c.title, value: c.value })), cardStyle, typography: cardsTypography, valueColor: gradEnd },
+            cta: { text: contenu.cta || '', subText: contenu.ctaSub || undefined, typography: textStyles.cta },
+          }, overlaysCreer).catch((err) => { console.warn('[Surimpressions] capture impossible :', err); return null; });
+          if (images) surimpressionsItem = { fenetres: overlaysCreer, images };
+          else setMontageNotice('Textes sur la vidéo indisponibles pour ce rendu — titre, cartes et CTA en plein écran.');
+        }
+        duree = surimpressionsItem ? dureeSurimpression : dureePleinEcran;
 
         // 2. Photo des cartes de l'aperçu (WYSIWYG). Le compositeur blitte cette
         //    image au lieu de redessiner les cartes lui-même — c'est ce qui rend
@@ -7593,6 +7675,7 @@ export default function AssistantWizard() {
             ? { rushs: plateau.rushs.map((r) => ({ url: r.url, secondes: r.secondes ?? null })) }
             : {}),
           ...(duree('video') > 0 && planMontageRushs ? { montage: planMontageRushs } : {}),
+          ...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),
           ...(rushLut ? { rushLut } : {}),
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
@@ -7936,6 +8019,8 @@ export default function AssistantWizard() {
             duree('video') > 0 && rushsDurables.length >= 2
               ? planMontageRushs ?? planRushs(rushsDurables, duree('video'))
               : undefined,
+          // Textes en surimpression (mêmes fenêtres que l'Autopilote).
+          ...(surimpressionsItem ? { surimpressions: overlaysCreer } : {}),
           // Profil, mesures du plan et conseils : les MÊMES que l'Autopilote.
           // Taille et contraste des textes ne sont pas mesurés ici (pas de
           // rendu hybride) : le conseiller le dit, il ne devine pas.
@@ -7955,7 +8040,9 @@ export default function AssistantWizard() {
                       sousTitre: contenu.subtitle ?? null,
                       cartes: (contenu.cards ?? []).map((c) => ({ titre: c.title ?? null, valeur: c.value ?? null })),
                       cta: contenu.cta ?? null,
-                      fenetres: null,
+                      fenetres: surimpressionsItem && overlaysCreer
+                        ? { titre: overlaysCreer.titre, cartes: overlaysCreer.cartes, cta: overlaysCreer.cta }
+                        : null,
                     },
                     plan: planMontageRushs,
                     analyses: montageInfos.analyses,
@@ -7981,11 +8068,16 @@ export default function AssistantWizard() {
           videoSize: { w: size.w, h: size.h },
           // Meme source que les durees passees au compositeur : l'apercu, la
           // video et le Calendrier suivent donc strictement le meme ordre.
+          // ⚠️ SURIMPRESSIONS : titre / cartes / CTA gardent les durées de
+          // l'ÉDITEUR (rendues à 0, posées sur la vidéo) — « Modifier » les
+          // retrouve, et une régénération Calendrier (qui ne sait pas poser
+          // les surimpressions) les remet en plein écran plutôt que de les
+          // perdre. `total` reste la durée RÉELLE de la vidéo.
           sequences: {
-            intro: duree('intro'),
-            cards: duree('cards'),
+            intro: (surimpressionsItem ? dureePleinEcran : duree)('intro'),
+            cards: (surimpressionsItem ? dureePleinEcran : duree)('cards'),
             video: duree('video'),
-            cta: duree('cta'),
+            cta: (surimpressionsItem ? dureePleinEcran : duree)('cta'),
             total: ordre.reduce((t, k) => t + duree(k), 0),
             order: ordre,
           },
@@ -8499,6 +8591,13 @@ export default function AssistantWizard() {
 
   return (
     <div className="space-y-6">
+    {/* Plateau des surimpressions, HORS écran : seulement le temps de le
+        photographier au rendu (profils dynamiques). */}
+    {plateauSurimp && (
+      <div aria-hidden style={{ position: 'fixed', left: -100000, top: 0, pointerEvents: 'none' }}>
+        <PlateauSurimpression ref={plateauSurimpRef} {...plateauSurimp} />
+      </div>
+    )}
     <CreerEntete
       mode={started ? 'assistant' : parcours === 'autopilote' ? 'autopilote' : 'choix'}
       onRetour={() => {
