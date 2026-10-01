@@ -12,7 +12,7 @@
  */
 import { spawn } from 'child_process';
 import {
-  mesurerImage, ANALYSE_L, ANALYSE_H, type AnalyseRush, type EchantillonRush,
+  mesurerImage, saturationRgb, ANALYSE_L, ANALYSE_H, COULEUR_L, COULEUR_H, type AnalyseRush, type EchantillonRush,
 } from '@/lib/creer/smart-montage';
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
 
@@ -68,6 +68,17 @@ export function imagesDepuisBrut(brut: Uint8Array): Float32Array[] {
     for (let i = 0; i < taille; i++) g[i] = brut[o + i] / 255;
     out.push(g);
   }
+  return out;
+}
+
+/**
+ * Saturation de chaque image d'une sortie RVB brute `COULEUR_L`×`COULEUR_H`.
+ * Pure, testable. Sert au conseiller (noir et blanc ↔ couleur).
+ */
+export function saturationsDepuisBrut(brut: Uint8Array): number[] {
+  const taille = COULEUR_L * COULEUR_H * 3;
+  const out: number[] = [];
+  for (let o = 0; o + taille <= brut.length; o += taille) out.push(saturationRgb(brut.subarray(o, o + taille)));
   return out;
 }
 
@@ -138,7 +149,9 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
   const path = await import('path');
   const fs = await import('fs/promises');
   const source = await urlDeLecture(url);
-  const audioTmp = path.join(os.tmpdir(), `studiio-analyse-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.pcm`);
+  const base = path.join(os.tmpdir(), `studiio-analyse-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const audioTmp = `${base}.pcm`;
+  const couleurTmp = `${base}.rgb`;
   try {
     // ⚠️ IMAGES-CLÉS SEULEMENT (`-skip_frame nokey`). Décoder chaque image
     // d'un rush 4K 60 i/s de 40 s dépassait le délai de 120 s sur le serveur
@@ -148,15 +161,21 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
     // pour environ 7× moins de calcul. `select` borne leur densité à 1 / `pas`
     // (vidéos tout-intra). Les instants réels viennent de `showinfo`.
     // UN SEUL passage pour l'image ET le son.
+    // Même sélection d'images pour le gris (mesures) et la couleur
+    // (saturation, en 16×9 : quelques octets par image, coût négligeable).
+    const selection = (clesSeules: boolean) => (clesSeules
+      ? `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${pas})'`
+      : `fps=${1 / pas}`);
     const argsImages = (clesSeules: boolean, avecSon = true) => [
       '-hide_banner', '-loglevel', 'info', '-nostats', '-threads', '0',
       ...(clesSeules ? ['-skip_frame', 'nokey'] : ['-skip_loop_filter', 'all']),
       '-t', String(duree), '-i', source,
       '-map', '0:v:0',
-      '-vf', clesSeules
-        ? `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${pas})',scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray,showinfo`
-        : `fps=${1 / pas},scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray,showinfo`,
+      '-vf', `${selection(clesSeules)},scale=${ANALYSE_L}:${ANALYSE_H}:flags=fast_bilinear,format=gray,showinfo`,
       '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1',
+      '-map', '0:v:0',
+      '-vf', `${selection(clesSeules)},scale=${COULEUR_L}:${COULEUR_H}:flags=fast_bilinear,format=rgb24`,
+      '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-y', couleurTmp,
       ...(avecSon ? ['-map', '0:a:0?', '-ac', '1', '-ar', String(AUDIO_HZ), '-f', 's16le', '-y', audioTmp] : []),
     ];
     // Un rush SANS piste audio laisse la sortie son vide, et ffmpeg refuse
@@ -171,6 +190,7 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
       ({ stdout: brut, stderr } = await lancer(false));
     }
     const pcm = await fs.readFile(audioTmp).catch(() => Buffer.alloc(0));
+    const saturations = saturationsDepuisBrut(await fs.readFile(couleurTmp).catch(() => Buffer.alloc(0)));
     const images = imagesDepuisBrut(brut);
     if (images.length < 2) return null;
     const instants = instantsShowinfo(stderr);
@@ -183,7 +203,11 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
       const m = mesurerImage(g, prec);
       prec = g;
       const t = Math.max(0, (instants[i] ?? i * pas) - t0);
-      echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, audio: audio[Math.floor(t / 0.5)] ?? 0 });
+      echantillons.push({
+        t: Math.round(t * 1000) / 1000, ...m, audio: audio[Math.floor(t / 0.5)] ?? 0,
+        // Même nombre d'images que le gris : sinon, pas de saturation (non mesurée).
+        ...(saturations.length === images.length ? { saturation: saturations[i] } : {}),
+      });
     });
     return { url, duree, echantillons };
   } catch (err) {
@@ -191,6 +215,7 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
     return null;
   } finally {
     await fs.unlink(audioTmp).catch(() => {});
+    await fs.unlink(couleurTmp).catch(() => {});
   }
 }
 

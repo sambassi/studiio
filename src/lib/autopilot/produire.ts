@@ -16,6 +16,7 @@ import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre } from '@/lib/creer/analyse-rush-serveur';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
+import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -426,6 +427,10 @@ export async function produireUnMontage(input: {
   let montageSimpleMotif: string | null = null;
   let enSurimpression = false;
   let overlays: OverlaysMontage | null = null;
+  // Conseiller : ce que le plan a utilisé (profil, temps de la musique).
+  let profilVideo = 'STANDARD';
+  let rythmeVideo: { beats: number[]; forts: number[]; drop: number | null } | null = null;
+  let contexteConseil: { theme: string | null; objectif: string | null } = { theme: null, objectif: null };
   if (analysesRushs.length > 0 || secondesParRush.size > 1) {
     const t2 = Date.now();
     const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
@@ -437,7 +442,9 @@ export async function produireUnMontage(input: {
     };
     // V3 : profils dynamiques = textes EN SURIMPRESSION, la vidéo est tout le
     // montage. Elle doit alors porter TOUTES les voix, l'une après l'autre.
-    enSurimpression = profilEnSurimpression(profilMontageDuContexte(contexteMontage).profil);
+    profilVideo = profilMontageDuContexte(contexteMontage).profil;
+    contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif };
+    enSurimpression = profilEnSurimpression(profilVideo);
     const voixAPorter = enSurimpression
       ? ['titre', 'cartes', 'video', 'cta'].reduce((t, k) => t + (secondesVoix(k) ? secondesVoix(k) + 0.2 : 0), 0)
       : secondesVoix('video');
@@ -446,8 +453,9 @@ export async function produireUnMontage(input: {
     // de la séquence « Vidéo » (0 en surimpression, après titre et cartes sinon).
     const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl) : null;
     const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
+    rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
     planMontageRushs = planMontage(analysesRushs, cible, {
-      rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null,
+      rythme: rythmeVideo,
       contexte: contexteMontage,
       plagesExclues: input.plagesCycle ?? null,
     });
@@ -510,7 +518,7 @@ export async function produireUnMontage(input: {
   input.onProgression?.('composition', 0);
   const t3 = Date.now();
   let t4 = 0;
-  const { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride } = await renderAndUpload({
+  const { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride, mesuresTextes } = await renderAndUpload({
     userId, jobId, design: designRendu,
     onComposition: (f) => input.onProgression?.('composition', f),
     onEnvoi: () => { t4 = Date.now(); input.onProgression?.('envoi', 0); },
@@ -536,6 +544,30 @@ export async function produireUnMontage(input: {
   };
   console.log(`${journal} ${userId} — mesures ${JSON.stringify(mesures)}`);
   input.onProgression?.('finalisation', 0);
+
+  // ── CONSEILS (lecture seule) : ne modifient rien, ne bloquent jamais ──
+  let conseils: RapportConseils | null = null;
+  try {
+    conseils = conseillerVideo({
+      profil: profilVideo,
+      textes: {
+        profil: profilVideo,
+        theme: contexteConseil.theme,
+        objectif: contexteConseil.objectif,
+        titre: design.title ?? null,
+        sousTitre: design.subtitle ?? null,
+        cartes: (design.cards ?? []).map((c) => ({ titre: c.title ?? c.label ?? null, valeur: c.value ?? null })),
+        cta: design.ctaText ?? null,
+        fenetres: overlays ? { titre: overlays.titre, cartes: overlays.cartes, cta: overlays.cta } : null,
+      },
+      plan: planMontageRushs,
+      analyses: analysesRushs,
+      rythme: rythmeVideo,
+      lisibilite: mesuresTextes ?? null,
+    });
+  } catch (err) {
+    console.warn(`${journal} ${userId} — conseils impossibles :`, err instanceof Error ? err.message : err);
+  }
 
   const metadata = {
     ...buildAutopilotMetadata({
@@ -569,6 +601,8 @@ export async function produireUnMontage(input: {
     ...(Object.values(voices).some((v) => v?.repli === 'edge') ? { voixRepliEdge: true } : null),
     // Durées par étape (diagnostic performance, temporaire).
     mesuresRendu: mesures,
+    // « Conseils pour améliorer cette vidéo » : mesurés, rien n'est appliqué.
+    ...(conseils ? { conseils } : null),
     // Le fichier FINAL a-t-il du son ? Mesuré sur le MP4 (ffmpeg), pas supposé.
     ...(audio ? { audioFinal: audio } : null),
     ...(audio && audio.silencieux ? { audioSilencieux: true } : null),

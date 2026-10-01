@@ -81,7 +81,8 @@ describe('câblage', () => {
 
   it('Autopilote : profils dynamiques → séquences statiques retirées', () => {
     const p = src('src/lib/autopilot/produire.ts');
-    expect(p).toContain('enSurimpression = profilEnSurimpression(profilMontageDuContexte(contexteMontage).profil);');
+    expect(p).toContain('profilVideo = profilMontageDuContexte(contexteMontage).profil;');
+    expect(p).toContain('enSurimpression = profilEnSurimpression(profilVideo);');
     expect(p).toContain('...(overlays ? { surimpressions: overlays, introDuration: 0, cardsDuration: 0, ctaDuration: 0 } : {}),');
     expect(p).toContain('const debutVideo = enSurimpression ? 0 :');
     expect(p).toContain('...(overlays ? { surimpressions: overlays } : null),');

@@ -16,6 +16,7 @@ import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 import { argumentsHybride, type FenetreSurimpression, type EntreeHybride } from '@/lib/render/hybride/filtre';
 import { urlDeLecture } from '@/lib/creer/analyse-rush-serveur';
 import { VIDEO_SIZE } from '@/lib/creer/designSpec';
+import type { ElementLisibilite } from '@/lib/creer/conseiller/lisibilite';
 
 const FPS = 30;
 const TIMEOUT_MS = 10 * 60_000;
@@ -118,7 +119,7 @@ export async function rendreHybride(input: {
   jobId: string;
   design: CreerSimpleRenderInput;
   onProgress?: (p: { progress: number; stage: string }) => void;
-}): Promise<{ outputPath: string; durationFrames: number; mesures: MesuresHybride }> {
+}): Promise<{ outputPath: string; durationFrames: number; mesures: MesuresHybride; textes: ElementLisibilite[] | null }> {
   const d = input.design;
   if (!estEligibleHybride(d)) throw new Error('rendu hybride non applicable à ce montage');
   const plan = d.montage!;
@@ -141,9 +142,13 @@ export async function rendreHybride(input: {
   const stillsMs = Date.now() - t0;
 
   const fenetres: FenetreSurimpression[] = [];
-  if (s.titre) fenetres.push({ texte: image('titre'), debut: s.titre[0], fin: s.titre[1] });
-  for (const c of s.cartes) fenetres.push({ texte: image({ carte: c.index }), debut: c.debut, fin: c.fin });
-  if (s.cta) fenetres.push({ texte: image('cta'), debut: s.cta[0], fin: s.cta[1] });
+  // Conseiller : quel texte porte chaque image (mesures de lisibilité).
+  const textes: Array<{ cible: string; texte: string | null; image: string; debut: number; fin: number }> = [];
+  const noter = (cible: string, texte: string | null, f: FenetreSurimpression) => { fenetres.push(f); textes.push({ cible, texte, image: f.texte, debut: f.debut, fin: f.fin }); };
+  const carteTexte = (i: number) => { const c = d.cards?.[i]; return c ? [c.title ?? c.label, c.value].filter(Boolean).join(' · ') || null : null; };
+  if (s.titre) noter('accroche', [d.title, d.subtitle].filter(Boolean).join(' — ') || null, { texte: image('titre'), debut: s.titre[0], fin: s.titre[1] });
+  for (const c of s.cartes) noter(`carte:${c.index}`, carteTexte(c.index), { texte: image({ carte: c.index }), debut: c.debut, fin: c.fin });
+  if (s.cta) noter('cta', d.ctaText ?? null, { texte: image('cta'), debut: s.cta[0], fin: s.cta[1] });
 
   // ── 2. Audio : volumes CONSTANTS, comme `mixAt` sans images-clés ──
   const voixUrls = d.sequenceVoiceUrls ?? {};
@@ -181,6 +186,7 @@ export async function rendreHybride(input: {
     musique: d.musicUrl ? { source: local(d.musicUrl), volume: d.musicVolume ?? volumeMusiqueParDefaut(avecVoix) } : null,
     voix,
     sortie: path.join(os.tmpdir(), `studiio-render-${input.jobId}.mp4`),
+    analyseBase: path.join(dossier, 'base.gray'),
   };
 
   // ── 3. UN passage ffmpeg ──
@@ -188,7 +194,10 @@ export async function rendreHybride(input: {
   input.onProgress?.({ progress: 25, stage: 'Montage...' });
   await lancerFfmpeg(argumentsHybride(entree), duree, (f) => input.onProgress?.({ progress: 25 + f * 70, stage: 'Montage...' }));
   const ffmpegMs = Date.now() - t1;
+  // Conseiller : mesures des textes (best-effort, n'arrête jamais le rendu).
+  const { mesurerTextes } = await import('@/lib/render/hybride/mesures-textes');
+  const mesuresTextes = await mesurerTextes({ ffmpeg: ffmpegPath(), baseBrute: entree.analyseBase!, textes });
   fs.rmSync(dossier, { recursive: true, force: true });
   input.onProgress?.({ progress: 98, stage: 'Finalisation...' });
-  return { outputPath: entree.sortie, durationFrames: Math.round(duree * FPS), mesures: { stillsMs, ffmpegMs, copieMs } };
+  return { outputPath: entree.sortie, durationFrames: Math.round(duree * FPS), mesures: { stillsMs, ffmpegMs, copieMs }, textes: mesuresTextes };
 }

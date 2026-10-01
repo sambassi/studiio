@@ -75,6 +75,7 @@ import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
 import { reseauDepuisLibelle, normaliserPlateformesCalendrier } from '@/lib/social/etatReseaux';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
+import { ConseilsVideo } from '@/components/creer/ConseilsVideo';
 import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
 
 interface PostBranding {
@@ -4269,6 +4270,8 @@ export default function CalendarPage() {
                   )}
                 </div>
               </div>
+
+              <ConseilsVideo postId={fullPreviewPost.id} metadata={fullPreviewPost.metadata} />
 
               <div className="space-y-2 mt-auto">
                 <button

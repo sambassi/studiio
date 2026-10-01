@@ -154,7 +154,8 @@ describe('plan CARDIO_DANCE sur 3 rushes', () => {
 describe('câblage', () => {
   const src = (f: string) => readFileSync(resolve(process.cwd(), f), 'utf-8');
   it('Autopilote et Créer passent le rythme de la musique au moteur', () => {
-    expect(src('src/lib/autopilot/produire.ts')).toContain('rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null,');
+    expect(src('src/lib/autopilot/produire.ts')).toContain('rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;');
+    expect(src('src/lib/autopilot/produire.ts')).toContain('rythme: rythmeVideo,');
     expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('rythme: rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null,');
   });
   it('le ralenti est rendu par Remotion et par le compositeur', () => {

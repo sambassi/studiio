@@ -122,6 +122,41 @@ describe('ffmpeg réel', () => {
   }, 120_000);
 });
 
+describe('ffmpeg réel — conseiller', () => {
+  it.skipIf(!ffmpegOk)('le MÊME passage écrit la vidéo de base sans textes en petit ; les textes sont mesurés dessus', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'studiio-hybride-base-'));
+    const src = (nom: string, couleur: string) => {
+      const f = join(d, nom);
+      execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', `color=c=${couleur}:s=640x360:r=25:d=6`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-y', f]);
+      return f;
+    };
+    const blanc = src('blanc.mp4', 'white');
+    const noir = src('noir.mp4', 'black');
+    const png = join(d, 'texte.png');
+    execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=white@1.0:s=1080x1920,format=rgba', '-vf', "geq=r=255:g=255:b=255:a='if(between(Y,100,180),255,0)'", '-frames:v', '1', '-y', png]);
+    const out = join(d, 'out.mp4');
+    const base = join(d, 'base.gray');
+    execFileSync('ffmpeg', argumentsHybride({
+      segments: [{ source: blanc, debut: 0, fin: 2, depuis: 0 }, { source: noir, debut: 2, fin: 3.5, depuis: 0 }],
+      duree: 3.5, fps: 30, largeur: 1080, hauteur: 1920, voile: null, filigrane: null,
+      surimpressions: [{ texte: png, debut: 0.5, fin: 3 }], musique: null, voix: [], sortie: out, analyseBase: base,
+    }));
+    const n = Number(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', out]).toString().trim());
+    expect(n).toBe(105); // la vidéo finale n'est pas touchée
+    const brut = readFileSync(base);
+    expect(brut.length).toBe(14 * 72 * 128); // 3,5 s à 4 images/s, 72×128
+    // Base SANS textes : blanc puis noir, la bande de texte n'y est pas.
+    expect(brut[1 * 72 * 128 + 10 * 72 + 36]).toBeGreaterThan(230);
+    expect(brut[12 * 72 * 128 + 10 * 72 + 36]).toBeLessThan(25);
+    const { mesurerTextes } = await import('@/lib/render/hybride/mesures-textes');
+    const m = await mesurerTextes({ ffmpeg: 'ffmpeg', baseBrute: base, textes: [{ cible: 'accroche', texte: 'x', image: png, debut: 0.5, fin: 3 }] });
+    expect(m).toHaveLength(1);
+    expect(m![0].geometrie.lignesPx[0]).toBeGreaterThanOrEqual(76);
+    expect(m![0].geometrie.lignesPx[0]).toBeLessThanOrEqual(84);
+    expect(m![0].fond[1]).toBeGreaterThan(0.5); // fond blanc derrière (voile compris) pendant l'affichage
+  }, 120_000);
+});
+
 describe('câblage Autopilote', () => {
   it('hybride d abord, rendu Remotion en secours, moteur mesuré', () => {
     const r = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/render.ts'), 'utf-8');

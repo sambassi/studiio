@@ -9,7 +9,7 @@
  * classique, jamais un montage cassé.
  */
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
-import { mesurerImage, ANALYSE_L as L, ANALYSE_H as H, type AnalyseRush, type EchantillonRush } from '@/lib/creer/smart-montage';
+import { mesurerImage, saturationRgb, ANALYSE_L as L, ANALYSE_H as H, type AnalyseRush, type EchantillonRush } from '@/lib/creer/smart-montage';
 
 /** Au-delà, on n'échantillonne pas plus finement (≈ 240 images par rush). */
 const ECHANTILLONS_MAX = 240;
@@ -99,7 +99,7 @@ export async function analyserRush(
       }
       const m = mesurerImage(gris, prec);
       prec = gris;
-      echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, audio: 0 });
+      echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, saturation: saturationRgb(px, 4), audio: 0 });
       onProgress?.(Math.min(0.95, (i + 1) / Math.max(1, total)));
     }
     const audio = await audioP;
