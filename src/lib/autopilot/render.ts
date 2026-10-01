@@ -42,8 +42,14 @@ export interface RenderedMontage {
   durationFrames: number;
   /** Son réellement mesuré dans le MP4 final ; `null` si la mesure a échoué. */
   audio?: import('@/lib/render/audio-fichier').MesureAudioFichier | null;
-  /** Moteur réellement utilisé : `hybride` (ffmpeg) ou `remotion` (complet). */
-  moteur?: 'hybride' | 'remotion';
+  /**
+   * Moteur réellement utilisé : `HYBRID` (ffmpeg + images fixes),
+   * `REMOTION_FALLBACK` (hybride tenté, échoué, Remotion complet) ou
+   * `REMOTION` (hybride non applicable à ce montage).
+   */
+  moteur?: 'HYBRID' | 'REMOTION_FALLBACK' | 'REMOTION';
+  /** Pourquoi le rendu hybride n'a pas servi (échec exact ou non-applicabilité). */
+  hybrideRaison?: string | null;
   /** Durées du rendu hybride (images fixes, copie des sources, ffmpeg). */
   mesuresHybride?: Record<string, number> | null;
   /** Conseiller : taille, fond et zones mesurés des textes (rendu hybride seulement). */
@@ -132,21 +138,28 @@ export async function renderAndUpload(input: {
   // ── RENDU HYBRIDE d'abord (ffmpeg + images fixes), quand il s'applique ──
   // Même plan, mêmes textes, même musique ; Chromium ne voit plus la vidéo.
   // Au moindre échec : le rendu Remotion complet, comme avant.
-  const { estEligibleHybride, rendreHybride } = await import('@/lib/render/hybride/rendu');
+  const { raisonNonEligibleHybride, rendreHybride } = await import('@/lib/render/hybride/rendu');
   let rendu: { outputPath: string; durationFrames: number } | null = null;
-  let moteur: 'hybride' | 'remotion' = 'remotion';
   let mesuresHybride: Record<string, number> | null = null;
   let mesuresTextes: RenderedMontage['mesuresTextes'] = null;
-  if (estEligibleHybride(input.design)) {
+  let hybrideRaison = raisonNonEligibleHybride(input.design);
+  let moteur: NonNullable<RenderedMontage['moteur']> = 'REMOTION';
+  if (hybrideRaison === null) {
+    const t0 = Date.now();
     try {
       const h = await rendreHybride({ jobId: input.jobId, design: input.design, onProgress });
       rendu = h;
-      moteur = 'hybride';
+      moteur = 'HYBRID';
       mesuresHybride = { ...h.mesures };
       mesuresTextes = h.textes;
     } catch (err) {
-      console.warn(`[Autopilote/Rendu] ${input.jobId} — rendu hybride impossible, rendu Remotion complet :`, err instanceof Error ? err.message : err);
+      moteur = 'REMOTION_FALLBACK';
+      hybrideRaison = (err instanceof Error ? err.message : String(err)).slice(0, 500);
+      mesuresHybride = { tentativeMs: Date.now() - t0 };
+      console.warn(`[Autopilote/Rendu] ${input.jobId} — MOTEUR_RENDU=REMOTION_FALLBACK — HYBRID_FALLBACK_REASON=${hybrideRaison}`);
     }
+  } else {
+    console.log(`[Autopilote/Rendu] ${input.jobId} — MOTEUR_RENDU=REMOTION — hybride non applicable : ${hybrideRaison}`);
   }
   if (!rendu) {
     rendu = await renderCreerSimple({ jobId: input.jobId, design: input.design, onProgress });
@@ -173,5 +186,5 @@ export async function renderAndUpload(input: {
     storagePath: `${input.userId}/autopilote-${input.jobId}.mp4`,
   });
 
-  return { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride, mesuresTextes };
+  return { videoUrl, thumbnailUrl, durationFrames, audio, moteur, hybrideRaison, mesuresHybride, mesuresTextes };
 }

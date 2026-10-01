@@ -12,6 +12,14 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { spawn } from 'child_process';
+// ⚠️ IMPORTS STATIQUES, jamais `await import('stream')` : `stream` est une
+// FONCTION (le constructeur Stream). Compilé par webpack (serveur Next), un
+// import DYNAMIQUE en fait un faux espace de noms qui n'a QUE `default` :
+// `Readable` y valait `undefined`, la copie des sources levait « Cannot read
+// properties of undefined (reading 'fromWeb') » et TOUT rendu hybride
+// retombait sur Remotion (test réel staging 01/10, 12 min au lieu de ~2).
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 import { argumentsHybride, type FenetreSurimpression, type EntreeHybride } from '@/lib/render/hybride/filtre';
 import { urlDeLecture } from '@/lib/creer/analyse-rush-serveur';
@@ -24,16 +32,25 @@ const TIMEOUT_MS = 10 * 60_000;
 /** Volumes par défaut du mixage — `remotion/audio.tsx` (`defaultMusicVolume`). */
 const volumeMusiqueParDefaut = (avecVoix: boolean) => (avecVoix ? 0.5 : 0.8);
 
+/**
+ * Pourquoi le rendu hybride ne s'applique PAS à ce montage (`null` = il
+ * s'applique). Écrit tel quel dans les métadonnées : jamais de repli muet.
+ */
+export function raisonNonEligibleHybride(d: CreerSimpleRenderInput): string | null {
+  const x = d as CreerSimpleRenderInput & { audioKeyframes?: unknown[]; rushLut?: unknown };
+  if ((x.montage?.length ?? 0) < 2) return 'pas de plan Smart Montage (moins de 2 extraits)';
+  if (!x.surimpressions) return 'textes en séquences plein écran (pas de surimpression)';
+  if (x.introDuration && x.introDuration > 0) return 'séquence titre plein écran';
+  if (x.cardsDuration && x.cardsDuration > 0) return 'séquence cartes plein écran';
+  if (x.ctaDuration && x.ctaDuration > 0) return 'séquence CTA plein écran';
+  if (!(x.rushMuted === true || x.rushVolume === 0)) return 'son des rushes conservé';
+  if (Array.isArray(x.audioKeyframes) && x.audioKeyframes.length > 0) return 'images-clés de mixage audio';
+  if (x.rushLut) return 'filtre couleur (LUT) sur le rush';
+  return null;
+}
+
 export function estEligibleHybride(d: CreerSimpleRenderInput): boolean {
-  const x = d as CreerSimpleRenderInput & { audioKeyframes?: unknown[]; rushLut?: unknown; sequenceBackgrounds?: unknown };
-  return (x.montage?.length ?? 0) >= 2
-    && !!x.surimpressions
-    && !(x.introDuration && x.introDuration > 0)
-    && !(x.cardsDuration && x.cardsDuration > 0)
-    && !(x.ctaDuration && x.ctaDuration > 0)
-    && (x.rushMuted === true || x.rushVolume === 0)
-    && !(Array.isArray(x.audioKeyframes) && x.audioKeyframes.length > 0)
-    && !x.rushLut;
+  return raisonNonEligibleHybride(d) === null;
 }
 
 function ffmpegPath(): string {
@@ -104,13 +121,18 @@ async function rendreStills(design: CreerSimpleRenderInput, elements: ElementSti
  */
 async function copieLocale(url: string, dossier: string, k: number): Promise<string> {
   if (!/^https?:\/\//.test(url)) return url;
-  const { Readable } = await import('stream');
-  const { pipeline } = await import('stream/promises');
   const rep = await fetch(url);
   if (!rep.ok || !rep.body) throw new Error(`source illisible (${rep.status})`);
   const sortie = path.join(dossier, `source-${k}${path.extname(new URL(url).pathname) || '.bin'}`);
   await pipeline(Readable.fromWeb(rep.body as never), fs.createWriteStream(sortie));
   return sortie;
+}
+
+/** Exécute une étape ; une erreur dit QUELLE étape a échoué. */
+async function etape<T>(nom: string, f: () => Promise<T>): Promise<T> {
+  try { return await f(); } catch (err) {
+    throw new Error(`${nom} : ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 export interface MesuresHybride { stillsMs: number; ffmpegMs: number; copieMs: number }
@@ -137,7 +159,7 @@ export async function rendreHybride(input: {
   s.cartes.forEach((c) => elements.push({ carte: c.index }));
   if (s.cta) elements.push('cta');
   if (d.watermark) elements.push('filigrane');
-  const stills = await rendreStills(d, elements, dossier);
+  const stills = await etape('images fixes (Remotion renderStill)', () => rendreStills(d, elements, dossier));
   const image = (e: ElementStill) => stills[elements.findIndex((x) => JSON.stringify(x) === JSON.stringify(e))];
   const stillsMs = Date.now() - t0;
 
@@ -165,7 +187,7 @@ export async function rendreHybride(input: {
   const locales = new Map<string, string>();
   let k = 0;
   for (const u of Array.from(new Set([...plan.map((x) => x.url), ...(d.musicUrl ? [d.musicUrl] : []), ...voix.map((v) => v.source)]))) {
-    locales.set(u, await copieLocale(await urlDeLecture(u), dossier, k));
+    locales.set(u, await etape(`copie de la source ${k + 1}`, async () => copieLocale(await urlDeLecture(u), dossier, k)));
     k += 1;
   }
   const local = (u: string) => locales.get(u) ?? u;
@@ -192,7 +214,7 @@ export async function rendreHybride(input: {
   // ── 3. UN passage ffmpeg ──
   const t1 = Date.now();
   input.onProgress?.({ progress: 25, stage: 'Montage...' });
-  await lancerFfmpeg(argumentsHybride(entree), duree, (f) => input.onProgress?.({ progress: 25 + f * 70, stage: 'Montage...' }));
+  await etape('ffmpeg', () => lancerFfmpeg(argumentsHybride(entree), duree, (f) => input.onProgress?.({ progress: 25 + f * 70, stage: 'Montage...' })));
   const ffmpegMs = Date.now() - t1;
   // Conseiller : mesures des textes (best-effort, n'arrête jamais le rendu).
   const { mesurerTextes } = await import('@/lib/render/hybride/mesures-textes');

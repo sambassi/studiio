@@ -518,7 +518,7 @@ export async function produireUnMontage(input: {
   input.onProgression?.('composition', 0);
   const t3 = Date.now();
   let t4 = 0;
-  const { videoUrl, thumbnailUrl, durationFrames, audio, moteur, mesuresHybride, mesuresTextes } = await renderAndUpload({
+  const { videoUrl, thumbnailUrl, durationFrames, audio, moteur, hybrideRaison, mesuresHybride, mesuresTextes } = await renderAndUpload({
     userId, jobId, design: designRendu,
     onComposition: (f) => input.onProgression?.('composition', f),
     onEnvoi: () => { t4 = Date.now(); input.onProgression?.('envoi', 0); },
@@ -533,8 +533,11 @@ export async function produireUnMontage(input: {
     RENDER_PROXIES_CREES: proxysCrees,
     RENDER_PROXIES_REUTILISES: proxysReutilises,
     REMOTION_RENDER_MS: chrono.rendu,
-    MOTEUR_RENDU: moteur ?? 'remotion',
-    ...(mesuresHybride ? {
+    MOTEUR_RENDU: moteur ?? 'REMOTION',
+    // Jamais de repli muet : la raison exacte (échec, ou non applicable).
+    ...(hybrideRaison ? { HYBRID_FALLBACK_REASON: hybrideRaison } : {}),
+    ...(mesuresHybride?.tentativeMs !== undefined ? { HYBRID_ATTEMPT_MS: mesuresHybride.tentativeMs } : {}),
+    ...(mesuresHybride && mesuresHybride.tentativeMs === undefined ? {
       HYBRID_STILLS_MS: mesuresHybride.stillsMs,
       HYBRID_COPY_MS: mesuresHybride.copieMs,
       HYBRID_FFMPEG_MS: mesuresHybride.ffmpegMs,
