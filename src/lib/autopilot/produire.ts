@@ -18,6 +18,7 @@ import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
+import { appliquerMiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -491,7 +492,7 @@ export async function produireUnMontage(input: {
 
   // Le plan couvre déjà la voix (cible) : la séquence dure EXACTEMENT le plan,
   // rien n'est étiré (un extrait étiré rejouerait la matière d'un autre).
-  const design = planMontageRushs
+  let design = planMontageRushs
     ? {
       ...designBase,
       montage: planMontageRushs,
@@ -502,6 +503,9 @@ export async function produireUnMontage(input: {
       ...(overlays ? { surimpressions: overlays, introDuration: 0, cardsDuration: 0, ctaDuration: 0 } : {}),
     }
     : designBase;
+  // Surimpressions : position, taille et fond des textes — la MÊME mise en
+  // page que Créer (`surimpressions-mise-en-page.ts`).
+  if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo);
   // ── PROXYS DE RENDU : un rush 4K / 60 i/s est rendu depuis sa copie
   // 1080p 30 i/s (créée une fois, en cache). Le plan et les métadonnées
   // gardent les URL ORIGINALES ; seule l'entrée du rendu change.

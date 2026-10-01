@@ -21,6 +21,7 @@ import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import type { Lut } from '@/lib/luts/types';
 import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import { ajusterPlan } from '@/lib/creer/smart-montage';
+import type { OverlaysMontage } from '@/lib/creer/overlays';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -574,6 +575,66 @@ export interface ComposerOptions {
    * enchainement de `rushs` a la lettre comme avant.
    */
   montage?: ReadonlyArray<RushSegment> | null;
+  /**
+   * SURIMPRESSIONS (profils dynamiques, Créer = Autopilote) : titre, cartes
+   * et CTA posés SUR le rush, pendant leurs fenêtres (`planOverlays`). Les
+   * images sont des photos plein cadre, transparentes, des MÊMES composants
+   * que Remotion (`PlateauSurimpression`) ; le compositeur les pose avec le
+   * même fondu (0,3 s), le même glissement (24 px) et le même voile que
+   * `CoucheOverlayAnimee`. Absent : rendu strictement identique à avant.
+   */
+  surimpressions?: SurimpressionsComposer | null;
+}
+
+export interface SurimpressionsComposer {
+  fenetres: OverlaysMontage;
+  images: {
+    titre?: CanvasImageSource | null;
+    cartes: Record<number, CanvasImageSource>;
+    cta?: CanvasImageSource | null;
+  };
+}
+
+/** Voile des surimpressions — les arrêts de `VOILE_SURIMPRESSION` (Remotion). */
+function peindreVoileSurimpression(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, 'rgba(0,0,0,0.45)');
+  g.addColorStop(0.32, 'rgba(0,0,0,0)');
+  g.addColorStop(0.62, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/**
+ * Pose les surimpressions actives à `secondes` (temps DANS la séquence
+ * Vidéo). Mêmes règles que `CoucheOverlayAnimee` : opacité = min(entrée,
+ * sortie) sur round(0,3·fps) images, texte glissant de 24 px à l'entrée,
+ * voile fixe. Exportée pour les tests.
+ */
+export function dessinerSurimpressions(
+  ctx: CanvasRenderingContext2D, w: number, h: number, secondes: number, s: SurimpressionsComposer, fps = 30,
+) {
+  const bord = Math.max(1, Math.round(0.3 * fps));
+  const image = Math.round(secondes * fps);
+  const couche = (debut: number, fin: number, img: CanvasImageSource | null | undefined) => {
+    if (!img) return;
+    const f = image - Math.round(debut * fps);
+    const duree = Math.max(1, Math.round((fin - debut) * fps));
+    if (f < 0 || f >= duree) return;
+    const entree = Math.min(1, f / bord);
+    const opacite = Math.max(0, Math.min(entree, (duree - f) / bord));
+    if (opacite <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = opacite;
+    peindreVoileSurimpression(ctx, w, h);
+    ctx.drawImage(img, 0, Math.round((1 - entree) * 24), w, h);
+    ctx.restore();
+  };
+  const f = s.fenetres;
+  if (f.titre) couche(f.titre[0], f.titre[1], s.images.titre);
+  for (const c of f.cartes) couche(c.debut, c.fin, s.images.cartes[c.index]);
+  if (f.cta) couche(f.cta[0], f.cta[1], s.images.cta);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4007,6 +4068,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
           const rushCourant = rushPlan ? (segmentA(rushPlan, secondsIn)?.el ?? videoEl) : videoEl;
           drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
+          // Surimpressions (profils dynamiques) : posées sur le rush qui continue.
+          if (options.surimpressions) dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps);
           break;
         }
         case 'cta': drawCTA(target, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;

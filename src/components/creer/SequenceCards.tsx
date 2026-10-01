@@ -139,6 +139,12 @@ export interface SequenceCardsProps {
   valueColor: string;
   /** Typographie du texte des cartes. Absente = le rendu d'aujourd'hui. */
   typography?: CardsTypography;
+  /**
+   * Fond du cadre de la carte. Absent = le voile blanc d'aujourd'hui
+   * (`rgba(255,255,255,0.08)`). Les SURIMPRESSIONS passent un fond sombre :
+   * sur un rush clair, le texte blanc ne se détachait pas (mesuré).
+   */
+  fond?: string | null;
   interaction?: CardsInteraction;
   containerRef?: React.RefObject<HTMLDivElement>;
 }
@@ -151,6 +157,7 @@ export default function SequenceCards({
   valueColor,
   cardStyle,
   typography,
+  fond = null,
   interaction,
   containerRef,
 }: SequenceCardsProps) {
@@ -270,7 +277,7 @@ export default function SequenceCards({
                     textAlign: 'center' as const,
                   }
                 : { alignItems: 'center' }),
-              backgroundColor: sansCadre ? undefined : 'rgba(255,255,255,0.08)',
+              backgroundColor: sansCadre ? undefined : (fond ?? 'rgba(255,255,255,0.08)'),
               gap: vw * CR.gap,
               borderRadius: sansCadre ? undefined : vw * CR.radius,
               padding: sansCadre ? `${vw * CR.padY}px 0` : `${vw * CR.padY}px ${vw * CR.padX}px`,

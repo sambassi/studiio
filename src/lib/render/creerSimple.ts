@@ -43,6 +43,12 @@ export interface CreerSimpleRenderInput {
    * canvas (`posterOnAllSequences`).
    */
   posterOnAllSequences?: boolean;
+  /** Emplacements libres des cartes (% du cadre des cartes). */
+  cardBoxes?: Record<string, { x: number; y: number; w: number; h: number }> | null;
+  /** Fond du cadre des cartes (surimpressions). Absent = le voile blanc d'avant. */
+  cardBackground?: string | null;
+  /** Couleur de la valeur des cartes (surimpressions). Absente = `gradientEnd`. */
+  cardValueColor?: string | null;
   sequenceBackgrounds?: Record<string, string | null>;
   videoUrl?: string | null;
   /** Multi-rush : rushes enchaînés (voir `multi-rush.ts`). Absent : `videoUrl` seul. */
