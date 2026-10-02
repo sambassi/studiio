@@ -132,7 +132,7 @@ import { chargerLutPourRendu } from '@/lib/luts/charger';
 import type { Lut, LutRef } from '@/lib/luts/types';
 import {
   batchCost, distinctPhotoForIndex, distinctUrls,
-  autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce,
+  autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce, dateBrouillonReprise,
 } from '@/lib/creer/batch';
 import {
   batchRunId, batchItemId, initialBatchItems, setItemState, batchSummary,
@@ -6046,7 +6046,9 @@ export default function AssistantWizard() {
       setRushSuivants(draft.rushSuivants ?? []);
     }
     if (draft.lut) setLut(draft.lut);
-    if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);
+    // Une date déjà passée n'est pas reprise (sinon : posts datés d'hier,
+    // invisibles dans le Calendrier du mois courant) — `dateBrouillonReprise`.
+    if (draft.scheduledDate) setScheduledDate(dateBrouillonReprise(draft.scheduledDate));
     // Placement : chaque champ absent laisse le defaut d'origine en place.
     if (draft.titlePos) setTitlePos(draft.titlePos);
     if (draft.ctaPos) setCtaPos(draft.ctaPos);

@@ -145,6 +145,20 @@ export function photosToFetch(count: number): number {
  * Format `YYYY-MM-DD` en heure LOCALE (pas UTC) : l'appelant relit ces dates
  * avec `new Date(`${d}T12:00:00`)`, midi local, pour eviter les bascules DST.
  */
+/**
+ * Date de publication d'un BROUILLON au moment de le reprendre.
+ *
+ * ⚠️ Une date passée n'est PAS reprise : un brouillon de la veille datait
+ * les nouveaux posts d'hier — rangés dans le mois précédent, invisibles dans
+ * le Calendrier ouvert sur le mois courant (test staging 01/10 : trois posts
+ * Créer réussis, datés du 30/09, « 0 total » à l'écran). Vide = aujourd'hui.
+ */
+export function dateBrouillonReprise(enregistree: string | null | undefined, maintenant: Date = new Date()): string {
+  if (!enregistree || !/^\d{4}-\d{2}-\d{2}$/.test(enregistree)) return '';
+  const aujourdHui = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
+  return enregistree < aujourdHui ? '' : enregistree;
+}
+
 export function batchDates(base: Date, count: number): string[] {
   const total = clampBatchCount(count);
   const out: string[] = [];

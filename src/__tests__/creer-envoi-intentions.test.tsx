@@ -109,7 +109,7 @@ function installerFetch() {
 const poser = () => {
   window.localStorage.setItem(CLE, JSON.stringify({
     version: DRAFT_VERSION, savedAt: 1, started: true, step: 4,
-    customTopic: 'yoga du matin', generated: CONTENU, scheduledDate: '2026-09-01',
+    customTopic: 'yoga du matin', generated: CONTENU, scheduledDate: '2099-09-01', // futur : une date passée n'est plus reprise (dateBrouillonReprise)
   }));
 };
 
@@ -164,7 +164,7 @@ describe('L heure', () => {
     await envoyer();
     expect(postsCrees).toHaveLength(1);
     expect(postsCrees[0].scheduled_time).toBe('18:45');
-    expect(postsCrees[0].scheduled_date).toBe('2026-09-01');
+    expect(postsCrees[0].scheduled_date).toBe('2099-09-01');
   });
 
   it('le fuseau de saisie accompagne le post', async () => {
