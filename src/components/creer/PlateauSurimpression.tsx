@@ -14,7 +14,7 @@ import React from 'react';
 import SequenceTitle, { titleFrameStyle, type TitleTypography, type SubtitleTypography } from '@/components/creer/SequenceTitle';
 import SequenceCards, { type CardsTypography } from '@/components/creer/SequenceCards';
 import SequenceCta, { ctaFrameStyle, type CtaTypography } from '@/components/creer/SequenceCta';
-import { eclaircir, ajusterAccroche, type MiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { eclaircir, ajusterAccroche, ajusterCta, type MiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import { FONT_RATIO, TEXT_LAYOUT } from '@/lib/creer/designSpec';
 import type { DesignFormat } from '@/lib/creer/designSpec';
 
@@ -81,7 +81,12 @@ export const PlateauSurimpression = React.forwardRef<HTMLDivElement, PlateauSuri
             text={p.cta.text}
             subText={p.cta.subText}
             typography={{
-              ...p.cta.typography, scale: (p.cta.typography.scale ?? 1) * m.ctaScale,
+              ...p.cta.typography,
+              // #504 : le mot le plus long (URL) tient entier — jamais coupé.
+              scale: ajusterCta({
+                texte: p.cta.text, sousTexte: p.cta.subText ?? null, echelle: (p.cta.typography.scale ?? 1) * m.ctaScale, largeur: p.largeur,
+                ratioTexte: FONT_RATIO[p.format].cta, ratioSousTexte: FONT_RATIO[p.format].ctaSub, panneau: true,
+              }),
               // Sur le panneau sombre : la ligne d'action éclaircie (contraste, #502).
               subColor: eclaircir(p.cta.typography.subColor, m.ctaActionEclaircie) ?? p.cta.typography.subColor,
             }}

@@ -115,16 +115,23 @@ export interface RegleCoherence {
    * seulement. 0 = comportement d'avant.
    */
   ctaDynamique: number;
+  /**
+   * #504 — VERROU : aucun passage d'un rush montré deux fois (jamais de
+   * timecode repris, même en dernier recours) et aucun plan noir et blanc
+   * quand la matière est en couleur. Matière propre épuisée = vidéo plus
+   * courte (l'utilisateur est prévenu avant le rendu).
+   */
+  verrou: boolean;
 }
 
 export const COHERENCE_PROFILS: Record<NomProfilMontage, RegleCoherence> = {
   // Danse (#496) : le noir et blanc ne sert que faute de couleur utilisable,
   // jamais en alternance, jamais en longue série.
-  CARDIO_DANCE: { noirBlancDansCouleur: 1.2, planCalmeEnMontee: 0.25, ruptureAmbiance: 0.15, ruptureCouleur: 0.8, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 2, serieNoirBlanc: 0.8, matchCarte: 0.5, ctaDynamique: 1 },
-  EVENT_IMMERSIVE: { noirBlancDansCouleur: 0.4, planCalmeEnMontee: 0.2, ruptureAmbiance: 0.15, ruptureCouleur: 0.4, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0.4, ctaDynamique: 0 },
-  LIFESTYLE_BRAND: { noirBlancDansCouleur: 0.3, planCalmeEnMontee: 0, ruptureAmbiance: 0.2, ruptureCouleur: 0.3, ressemblance: 0.4, memeScene: 0.35, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0 },
-  TUTORIAL_EDUCATION: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.1, ressemblance: 0.2, memeScene: 0.15, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0 },
-  STANDARD: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.2, ressemblance: 0.3, memeScene: 0.3, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0 },
+  CARDIO_DANCE: { noirBlancDansCouleur: 1.2, planCalmeEnMontee: 0.25, ruptureAmbiance: 0.15, ruptureCouleur: 0.8, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 2, serieNoirBlanc: 0.8, matchCarte: 0.5, ctaDynamique: 1, verrou: true },
+  EVENT_IMMERSIVE: { noirBlancDansCouleur: 0.4, planCalmeEnMontee: 0.2, ruptureAmbiance: 0.15, ruptureCouleur: 0.4, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0.4, ctaDynamique: 0, verrou: false },
+  LIFESTYLE_BRAND: { noirBlancDansCouleur: 0.3, planCalmeEnMontee: 0, ruptureAmbiance: 0.2, ruptureCouleur: 0.3, ressemblance: 0.4, memeScene: 0.35, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0, verrou: false },
+  TUTORIAL_EDUCATION: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.1, ressemblance: 0.2, memeScene: 0.15, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0, verrou: false },
+  STANDARD: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.2, ressemblance: 0.3, memeScene: 0.3, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0, verrou: false },
 };
 
 /** Règles de TEXTES par profil — communes à Créer et à l'Autopilote. */
@@ -132,6 +139,8 @@ export interface RegleTextes {
   accroche: { positions: Array<'haut' | 'bas'>; dureeMax: number };
   cartes: { position: string; dureeMin: number; dureeMax: number };
   cta: { position: string; dureeMin: number };
+  /** #504 — fenêtre (s) où commence la PREMIÈRE carte ; l'accroche se resserre avant. */
+  premiereCarte?: [number, number];
 }
 
 const TEXTES_DYNAMIQUES: RegleTextes = {
@@ -141,7 +150,8 @@ const TEXTES_DYNAMIQUES: RegleTextes = {
 };
 
 export const TEXTES_PROFILS: Record<NomProfilMontage, RegleTextes> = {
-  CARDIO_DANCE: TEXTES_DYNAMIQUES,
+  // #504 : accroche ≈ 0–2 s, premier badge entre 1,8 et 2,5 s.
+  CARDIO_DANCE: { ...TEXTES_DYNAMIQUES, premiereCarte: [1.8, 2.5] },
   EVENT_IMMERSIVE: TEXTES_DYNAMIQUES,
   LIFESTYLE_BRAND: { ...TEXTES_DYNAMIQUES, cartes: { position: 'bas-gauche', dureeMin: 3, dureeMax: 4 } },
   TUTORIAL_EDUCATION: { accroche: { positions: ['haut'], dureeMax: 4 }, cartes: { position: 'centre', dureeMin: 3, dureeMax: 5 }, cta: { position: 'centre', dureeMin: 3 } },

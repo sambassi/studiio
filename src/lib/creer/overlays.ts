@@ -57,7 +57,12 @@ export function planOverlays(input: {
 
   // Titre : pendant le HOOK, lisible (≥ 2,5 s), jamais plus de `titreMax` —
   // ou la durée de sa voix si elle est plus longue (dans la limite de 25 %).
-  const finTitre = Math.min(duree * 0.25, Math.max(2.5, Math.min(titreMax, input.finHook ?? 3), voix.titre ?? 0));
+  const premiere = regles?.premiereCarte ?? null;
+  const finTitre = premiere
+    // #504 (danse) : l'accroche se resserre sur ≈ 0–2 s pour que la première
+    // carte arrive entre 1,8 et 2,5 s — sauf voix de titre plus longue.
+    ? Math.max(Math.min(premiere[1] - 0.4, Math.max(premiere[0] - 0.2, input.finHook ?? premiere[0])), Math.min(duree * 0.25, voix.titre ?? 0))
+    : Math.min(duree * 0.25, Math.max(2.5, Math.min(titreMax, input.finHook ?? 3), voix.titre ?? 0));
   const titre: [number, number] = [0, r(finTitre)];
 
   // CTA : les 2–3 dernières secondes (plus si sa voix l'exige, ≤ 25 %).
@@ -67,7 +72,7 @@ export function planOverlays(input: {
   // Cartes : entre le titre et le CTA, une à la fois (`carteMin`–`carteMax`),
   // avec un court répit entre deux. Trop peu de place : on en montre moins.
   const cartes: OverlaysMontage['cartes'] = [];
-  const debutZone = titre[1] + 0.4;
+  const debutZone = premiere ? Math.max(premiere[0], titre[1] + 0.2) : titre[1] + 0.4;
   const finZone = cta[0] - 0.4;
   const place = finZone - debutZone;
   if (nbCartes > 0 && place >= carteMin) {
@@ -75,7 +80,8 @@ export function planOverlays(input: {
     const creneau = place / n;
     const dureeCarte = Math.min(carteMax, Math.max(carteMin, creneau - 0.4));
     for (let i = 0; i < n; i++) {
-      const debut = debutZone + i * creneau + (creneau - dureeCarte) / 2;
+      // Danse : la première carte s'ouvre au début de la zone (≈ 2 s), pas au milieu de son créneau.
+      const debut = debutZone + i * creneau + (premiere ? 0 : (creneau - dureeCarte) / 2);
       cartes.push({ index: i, debut: r(debut), fin: r(debut + dureeCarte) });
     }
   }

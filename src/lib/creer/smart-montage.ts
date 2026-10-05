@@ -551,7 +551,10 @@ export function planMontage(
       nbCartes: titresCartes.length,
       finHook: grille.filter((c) => c.phase === 'HOOK').at(-1)?.fin ?? null,
       profil: detection.profil,
-    }).cartes.filter((c) => carteEnergique(titresCartes[c.index]))
+    }).cartes
+      // #504 VERROU : TOUTE carte veut un plan lisible (énergique : aussi dynamique).
+      .filter((c) => coh.verrou || carteEnergique(titresCartes[c.index]))
+      .map((c) => ({ ...c, energique: carteEnergique(titresCartes[c.index]) }))
     : [];
   const partJuste = 1 / rushs.length;
   /** #503 — fin de vidéo où la couleur, la lumière et l'énergie sont tenues (s). */
@@ -649,12 +652,16 @@ export function planMontage(
         // Danse : jamais une série noir et blanc de plusieurs secondes. Plus de
         // couleur utilisable ? La vidéo s'arrête là (jamais rallongée).
         if (serieTropLongue && matiereCouleur) continue;
+        // #504 VERROU : matière en couleur = aucun plan noir et blanc, jamais
+        // (pas de couleur → N&B → couleur). Plus de couleur : vidéo plus courte.
+        if (coh.verrou && matiereCouleur && noirBlanc) continue;
         // Sous une carte énergique : tout plan visible pendant la carte compte.
-        const sousCarte = fenetresEnergiques.some((f) => creneau.debut < f.fin && creneau.fin > f.debut);
+        const carteVisible = fenetresEnergiques.find((f) => creneau.debut < f.fin && creneau.fin > f.debut);
+        const sousCarte = !!carteVisible;
         // #503 — TEXT_VIDEO_VISUAL_FIT : mouvement, amplitude, lumière et
         // lisibilité MESURÉS (contre-jour sombre pénalisé), pas l'énergie seule.
         const fitCarte = sousCarte
-          ? ajustementTexteImage({ energie, luminosite: m.luminosite, amplitude: borne(m.mouvPic / mouvHautGlobal, 0, 1), nettete: m.nettete }, true) ?? energie
+          ? ajustementTexteImage({ energie, luminosite: m.luminosite, amplitude: borne(m.mouvPic / mouvHautGlobal, 0, 1), nettete: m.nettete }, carteVisible!.energique) ?? energie
           : null;
         if (fitCarte !== null) score += coh.matchCarte * (fitCarte - 0.5) - (fitCarte < 0.45 ? coh.matchCarte : 0);
         const coherence = 1
@@ -693,7 +700,7 @@ export function planMontage(
             matiereCouleur && noirBlanc ? 'noir et blanc dans une vidéo en couleur (pénalisé)' : null,
             bascule ? 'passage couleur ↔ noir et blanc (pénalisé)' : null,
             serieTropLongue ? 'série noir et blanc trop longue (pénalisé)' : null,
-            fitCarte !== null ? (fitCarte >= 0.6 ? `plan lisible et dynamique sous une carte énergique (accord ${arrondi2(fitCarte)})` : `plan peu lisible ou peu dynamique sous une carte énergique (accord ${arrondi2(fitCarte)}, pénalisé)`) : null,
+            fitCarte !== null ? (fitCarte >= 0.6 ? `plan lisible sous une carte (accord ${arrondi2(fitCarte)})` : `plan peu lisible sous une carte (accord ${arrondi2(fitCarte)}, pénalisé)`) : null,
             calme ? 'plan calme dans une montée d\'énergie (pénalisé)' : null,
             ctaDyn ? (energie >= SEUIL_ENERGIE_CALME && !(matiereCouleur && noirBlanc) ? `CTA dynamique : énergie ${arrondi2(energie)}${m.saturation !== null ? `, saturation ${arrondi2(m.saturation)}` : ''}` : 'CTA calme ou noir et blanc (pénalisé)') : null,
             reprise === 1 ? 'plan déjà monté, repris à un autre timecode' : reprise === 2 ? 'timecode déjà monté, repris faute d\'alternative' : null,
@@ -740,7 +747,9 @@ export function planMontage(
         || (!!c && finVideo && c.luminosite < SEUIL_SOMBRE);
       // Timecode déjà monté : seulement en fin de vidéo, faute de toute autre
       // option — et jamais dans la fenêtre anti-flash de 3 s (#502).
-      for (const niveau of (enSortie || finVideo ? [1, 2] : [1]) as Array<1 | 2>) {
+      // #504 VERROU : jamais de timecode repris (niveau 2 retiré).
+      const niveaux: Array<1 | 2> = coh.verrou ? [1] : (enSortie || finVideo ? [1, 2] : [1]);
+      for (const niveau of niveaux) {
         if (!faible(meilleur)) break;
         const repris = chercher(null, niveau);
         if (repris && !faible(repris)) meilleur = repris;
@@ -767,7 +776,21 @@ export function planMontage(
   const obtenu = plan[plan.length - 1].fin;
   const passes = options.recale ?? 0;
   if (passes < 3 && obtenu < cible - 0.5 && detection.profil !== 'STANDARD') {
-    return planMontage(analyses, obtenu, { ...options, profil: detection.profil, recale: passes + 1 }) ?? plan;
+    const recale = planMontage(analyses, obtenu, { ...options, profil: detection.profil, recale: passes + 1 }) ?? plan;
+    // #504 VERROU — durée PROPRE maximale : le placement glouton n'est pas
+    // monotone (demander 24 s peut donner 17 s quand 21 s est possible). On
+    // essaie des cibles plus courtes et on garde la plus longue vidéo propre,
+    // de préférence celle qui conclut par le CTA.
+    if (coh.verrou && passes === 0) {
+      let meilleur = recale;
+      const note = (p: RushSegment[]) => p[p.length - 1].fin + (p[p.length - 1].phase === 'CTA' ? 0.75 : 0);
+      for (let t = Math.floor(cible - 1); t > dureePlan(recale); t -= 1) {
+        const essai = planMontage(analyses, t, { ...options, profil: detection.profil, recale: 1 });
+        if (essai && note(essai) > note(meilleur)) meilleur = essai;
+      }
+      return meilleur;
+    }
+    return recale;
   }
   return plan;
 }

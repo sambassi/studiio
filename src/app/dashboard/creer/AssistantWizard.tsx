@@ -197,6 +197,8 @@ import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
+import { raccourciNecessaire, ArretPourAjouterDesRushs, type Raccourci } from '@/lib/creer/raccourci';
+import { controleQualite, erreurQualite } from '@/lib/creer/quality-gate';
 import { bilanCartesSurimpression, erreurCartesSurimpression, avecCtaDuBrief } from '@/lib/creer/validation-rendu';
 import { dateRestauree, dateRequiseManquante, envoiPossible } from '@/lib/creer/envoi';
 import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
@@ -4903,6 +4905,8 @@ export default function AssistantWizard() {
   // élément par élément — mêmes composants et même mise en page que
   // l'Autopilote (`PlateauSurimpression`, `surimpressions-mise-en-page.ts`).
   const [plateauSurimp, setPlateauSurimp] = useState<PlateauSurimpressionProps | null>(null);
+  /** #504 — vidéo raccourcie faute de matière unique : la question en cours. */
+  const [demandeRaccourci, setDemandeRaccourci] = useState<(Raccourci & { resoudre: (continuer: boolean) => void }) | null>(null);
   const plateauSurimpRef = useRef<HTMLDivElement>(null);
   const capturerSurimpressions = async (
     base: Omit<PlateauSurimpressionProps, 'element'>,
@@ -7450,6 +7454,16 @@ export default function AssistantWizard() {
           setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');
         } else if (dureePlan(planMontageRushs) < duree('video') - 0.05) {
           const dispo = Math.round(dureePlan(planMontageRushs) * 10) / 10;
+          // #504 : vidéo nettement plus courte faute de matière unique — on
+          // DEMANDE avant le rendu (rien n'est encore réservé ni débité).
+          const raccourci = raccourciNecessaire(duree('video'), dureePlan(planMontageRushs), new Set(planMontageRushs.map((x) => x.url)).size);
+          if (raccourci) {
+            console.log('[SmartMontage] RACCOURCI :', JSON.stringify({ REQUESTED_DURATION: raccourci.demande, FINAL_SAFE_DURATION: raccourci.possible, RUSHS_UNIQUES_DISPONIBLES: raccourci.rushs, RUSHS_SUPPLEMENTAIRES_RECOMMANDES: raccourci.supplementaires }));
+            setRenderStage('En attente de votre choix…');
+            const continuer = await new Promise<boolean>((resoudre) => setDemandeRaccourci({ ...raccourci, resoudre }));
+            setDemandeRaccourci(null);
+            if (!continuer) throw new ArretPourAjouterDesRushs();
+          }
           setMontageNotice(`Matière exploitable dans les rushes : ${dispo} s — séquence Vidéo ramenée à ${dispo} s (extraits jamais rallongés).`);
           plateau = { ...plateau, videoDuration: dureePlan(planMontageRushs) };
           duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
@@ -7527,6 +7541,24 @@ export default function AssistantWizard() {
 
         // 1 bis. Surimpressions : photos du titre, de chaque carte et du CTA
         //    de CE contenu. Échec : le mode plein écran d'avant, dit à l'écran.
+        // ── QUALITY GATE (#504) : un seul contrôle, juste avant de composer.
+        //    Bloquant en échec = arrêt AVANT toute réservation, rien de débité.
+        if (planMontageRushs && montageInfos) {
+          const controles = controleQualite({
+            profil: montageInfos.profil,
+            mesures: mesuresSegments(planMontageRushs, montageInfos.analyses),
+            rapport: montageInfos.rapport,
+            overlays: overlaysCreer,
+            cartes: contenu.cards ?? [],
+            cta: { texte: contenu.cta ?? '', sousTexte: contenu.ctaSub ?? null },
+            ctaUtilisateur: brief.cta ?? null,
+            voixTitre: !!voixSequencesRendu?.titre,
+            antiGels: true,
+          });
+          console.log('[QualityGate]', JSON.stringify(Object.fromEntries(controles.map((c) => [c.code, `${c.ok ? 'OK' : 'KO'} — ${c.detail}`]))));
+          const erreurGate = erreurQualite(controles);
+          if (erreurGate) throw new Error(erreurGate);
+        }
         let surimpressionsItem: SurimpressionsComposer | null = null;
         // #502 : le CTA dans la bande (haut / bas) MESURÉE la plus calme des
         // plans de sortie — même règle que l'Autopilote.
@@ -8305,6 +8337,14 @@ export default function AssistantWizard() {
       setRenderProgress(100);
       setSent(true);
     } catch (err) {
+      // « Ajouter des rushs » : arrêt voulu, avant toute réservation — retour
+      // aux rushes, aucune erreur affichée.
+      if (err instanceof ArretPourAjouterDesRushs) {
+        setRenderStage('');
+        setStep(S.style);
+        setTimeout(() => document.querySelector('[data-multi-rush]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+        return;
+      }
       console.error('[Assistant] Envoi au calendrier échoué:', err);
       // Le contenu qui etait en vol est le seul a avoir echoue : les suivants
       // n'ont jamais demarre et restent « en attente ».
@@ -8624,6 +8664,25 @@ export default function AssistantWizard() {
     <div className="space-y-6">
     {/* Plateau des surimpressions, HORS écran : seulement le temps de le
         photographier au rendu (profils dynamiques). */}
+    {demandeRaccourci && (
+      <div role="dialog" aria-modal="true" data-raccourci className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div className="max-w-md w-full rounded-2xl border border-gray-800 bg-gray-950 p-5 space-y-4">
+          <p className="text-sm text-gray-100" data-raccourci-message>{demandeRaccourci.message}</p>
+          <p className="text-xs text-gray-400" data-raccourci-detail>
+            Rushs uniques utilisés : {demandeRaccourci.rushs} · rushs à ajouter (estimation) : environ {demandeRaccourci.supplementaires}.
+            Aucun passage n’est répété.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button type="button" data-raccourci-continuer onClick={() => demandeRaccourci.resoudre(true)} className="flex-1 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-sm font-medium text-white">
+              Continuer avec {Math.round(demandeRaccourci.possible)} s
+            </button>
+            <button type="button" data-raccourci-ajouter onClick={() => demandeRaccourci.resoudre(false)} className="flex-1 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:text-white">
+              Ajouter des rushs
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {plateauSurimp && (
       <div aria-hidden style={{ position: 'fixed', left: -100000, top: 0, pointerEvents: 'none' }}>
         <PlateauSurimpression ref={plateauSurimpRef} {...plateauSurimp} />

@@ -126,6 +126,9 @@ export default function SequenceCta({
             textDecoration: trait,
             ...decoration(subSize),
             ...leadingTrim(subSize, typography.lineHeight),
+            // #504 : retour à la ligne par MOTS — une URL n'est jamais coupée.
+            overflowWrap: 'normal',
+            wordBreak: 'keep-all',
             marginTop: vw * GAP_RATIO - ((typography.lineHeight - 1) * subSize) / 2,
           }}
         >

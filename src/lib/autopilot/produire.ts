@@ -20,6 +20,8 @@ import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { appliquerMiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
+import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
+import { controleQualite } from '@/lib/creer/quality-gate';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -433,6 +435,9 @@ export async function produireUnMontage(input: {
   // Conseiller : ce que le plan a utilisé (profil, temps de la musique).
   let profilVideo: ReturnType<typeof profilMontageDuContexte>['profil'] = 'STANDARD';
   let montageRapport: ReturnType<typeof rapportPlan> | null = null;
+  // #504 : vidéo raccourcie faute de matière unique — personne à qui demander
+  // ici : c'est DIT (journal + metadata), jamais caché.
+  let montageRaccourci: Raccourci | null = null;
   let rythmeVideo: { beats: number[]; forts: number[]; drop: number | null } | null = null;
   let contexteConseil: { theme: string | null; objectif: string | null } = { theme: null, objectif: null };
   if (analysesRushs.length > 0 || secondesParRush.size > 1) {
@@ -466,6 +471,10 @@ export async function produireUnMontage(input: {
       contexte: contexteMontage,
       plagesExclues: input.plagesCycle ?? null,
     });
+    if (planMontageRushs) {
+      montageRaccourci = raccourciNecessaire(cible, dureePlan(planMontageRushs), new Set(planMontageRushs.map((x) => x.url)).size);
+      if (montageRaccourci) console.warn(`${journal} ${userId} — RACCOURCI ${JSON.stringify({ REQUESTED_DURATION: cible, FINAL_SAFE_DURATION: montageRaccourci.possible, RUSHS_SUPPLEMENTAIRES_RECOMMANDES: montageRaccourci.supplementaires })}`);
+    }
     if (planMontageRushs && enSurimpression) {
       overlays = planOverlays({
         duree: dureePlan(planMontageRushs),
@@ -509,6 +518,22 @@ export async function produireUnMontage(input: {
   // #502 : CTA dans la bande mesurée la plus calme des plans de sortie (même règle que Créer).
   const zoneCta = overlays?.cta && planMontageRushs ? zoneCalmeSortie(planMontageRushs, analysesRushs, overlays.cta[0]) : null;
   if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande });
+  // QUALITY GATE (#504) — le MÊME contrôle que Créer. Sans utilisateur à qui
+  // répondre, il est journalisé et écrit en métadonnées, jamais caché.
+  const qualiteMontage = planMontageRushs
+    ? controleQualite({
+      profil: profilVideo,
+      mesures: mesuresSegments(planMontageRushs, analysesRushs),
+      rapport: montageRapport,
+      overlays,
+      cartes: postUtilise.content.cards ?? [],
+      cta: { texte: design.ctaText ?? '', sousTexte: design.ctaSubText ?? null },
+      ctaUtilisateur: postUtilise.brief?.cta ?? null,
+      voixTitre: !!overlays?.voix?.titre,
+      antiGels: true,
+    })
+    : null;
+  if (qualiteMontage) console.log(`${journal} ${userId} — QUALITY_GATE ${JSON.stringify(Object.fromEntries(qualiteMontage.map((c) => [c.code, c.ok ? 'OK' : `KO ${c.detail}`])))}`);
   // ── PROXYS DE RENDU : un rush 4K / 60 i/s est rendu depuis sa copie
   // 1080p 30 i/s (créée une fois, en cache). Le plan et les métadonnées
   // gardent les URL ORIGINALES ; seule l'entrée du rendu change.
@@ -620,6 +645,8 @@ export async function produireUnMontage(input: {
     // Profil et mesures du plan — les mêmes champs que Créer.
     ...(planMontageRushs ? { profilMontage: profilVideo } : null),
     ...(montageRapport ? { montageRapport } : null),
+    ...(qualiteMontage ? { qualiteMontage: qualiteMontage.map(({ code, ok, detail }) => ({ code, ok, detail })) } : null),
+    ...(montageRaccourci ? { montageRaccourci: { demande: montageRaccourci.demande, possible: montageRaccourci.possible, rushsAAjouter: montageRaccourci.supplementaires, message: montageRaccourci.message } } : null),
     // Rushes dont l'analyse a échoué (délai, fichier illisible) : dit.
     ...(analysesEchouees.length ? { analysesEchouees } : null),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
