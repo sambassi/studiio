@@ -4271,6 +4271,14 @@ export default function CalendarPage() {
                 </div>
               </div>
 
+              {/* Avertissements du montage (Autopilote, y compris le cron) :
+                  voix standard utilisée faute de voix clonée, musique perdue… */}
+              {Array.isArray((fullPreviewPost.metadata as Record<string, unknown> | undefined)?.avertissements)
+                && ((fullPreviewPost.metadata as { avertissements: unknown[] }).avertissements).length > 0 && (
+                <ul data-calendrier-avertissements className="mb-2 space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+                  {((fullPreviewPost.metadata as { avertissements: unknown[] }).avertissements).map((a) => <li key={String(a)}>{String(a)}</li>)}
+                </ul>
+              )}
               <ConseilsVideo postId={fullPreviewPost.id} metadata={fullPreviewPost.metadata} />
 
               <div className="space-y-2 mt-auto">

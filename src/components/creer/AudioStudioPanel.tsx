@@ -571,29 +571,28 @@ export function AudioStudioPanel({
       const isWebm = blob.type.includes('webm');
       const ext = isWebm ? 'webm' : 'mp3';
       const contentType = isWebm ? 'audio/webm' : 'audio/mpeg';
-      const localUrl = URL.createObjectURL(blob);
       const file = new File([blob], `tts-${Date.now()}.${ext}`, { type: contentType });
 
-      try {
-        const uploadRes = await fetch('/api/upload/signed-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: file.name, contentType, purpose: 'voice' }),
-        });
-        const uploadData = await uploadRes.json();
-        if (uploadData.success) {
-          await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
-          setTtsProgress(100);
-          setTtsStage('done');
-          setTtsGeneratedWith({ url: uploadData.publicUrl, voiceId: selectedVoiceId, voiceName: voiceLabel, text: ttsText });
-          onVoiceChange(uploadData.publicUrl, `${TTS_NAME_PREFIX}${voiceLabel}`);
-          return;
-        }
-      } catch { /* fall through to local URL */ }
+      // La narration doit être ENREGISTRÉE pour exister dans la vidéo : une
+      // adresse locale (`blob:`) ne survit ni au rechargement ni au rendu
+      // serveur. Plus de repli silencieux sur elle — l'échec est dit.
+      const uploadRes = await fetch('/api/upload/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contentType, purpose: 'voice' }),
+      });
+      const uploadData = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok || !uploadData.success || !uploadData.signedUrl || !uploadData.publicUrl) {
+        throw new Error('La narration a été générée mais n’a pas pu être enregistrée. Réessayez.');
+      }
+      const putRes = await fetch(uploadData.signedUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      if (!putRes.ok) {
+        throw new Error(`La narration n’a pas pu être enregistrée (HTTP ${putRes.status}). Réessayez.`);
+      }
       setTtsProgress(100);
       setTtsStage('done');
-      setTtsGeneratedWith({ url: localUrl, voiceId: selectedVoiceId, voiceName: voiceLabel, text: ttsText });
-      onVoiceChange(localUrl, `${TTS_NAME_PREFIX}${voiceLabel}`);
+      setTtsGeneratedWith({ url: uploadData.publicUrl, voiceId: selectedVoiceId, voiceName: voiceLabel, text: ttsText });
+      onVoiceChange(uploadData.publicUrl, `${TTS_NAME_PREFIX}${voiceLabel}`);
     } catch (err: any) {
       console.error('[AudioPanel] TTS error:', err);
       setTtsError(err.message || 'Erreur de synthèse vocale');
