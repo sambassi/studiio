@@ -196,6 +196,7 @@ import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-re
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { bilanCartesSurimpression, erreurCartesSurimpression, avecCtaDuBrief } from '@/lib/creer/validation-rendu';
 import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
 import type { SurimpressionsComposer } from '@/lib/video-composer';
 import { analyserRush, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
@@ -7512,6 +7513,9 @@ export default function AssistantWizard() {
           // L'apercu EST la source de la photo des cartes : il doit porter le
           // contenu de cette iteration avant qu'on le photographie.
           if (contenu !== generated) flushSync(() => setGenerated(contenu));
+          // #500 : le CTA du brief est l'action finale réellement rendue
+          // (headline générée gardée au-dessus) — vidéo, surimpression, metadata.
+          contenu = avecCtaDuBrief(contenu, brief);
           // Plus de `% length` : l'affiche vient de l'emplacement de CETTE
           // video. Hors lot, la photo unique fait office.
           const affiche = total > 1
@@ -7523,6 +7527,18 @@ export default function AssistantWizard() {
         let surimpressionsItem: SurimpressionsComposer | null = null;
         const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil) : null;
         if (overlaysCreer && miseEnPage) {
+          // #500 : jamais de rendu qui part en silence avec des cartes
+          // perdues — chaque carte complète (titre + valeur) a sa fenêtre.
+          const bilanCartes = bilanCartesSurimpression(contenu.cards ?? [], overlaysCreer.cartes);
+          console.log('[Surimpressions] cartes :', JSON.stringify({
+            EXPECTED_CARDS: bilanCartes.attendues, VALID_CARDS: bilanCartes.valides, PLAN_CARD_WINDOWS: overlaysCreer.cartes.length,
+            INCOMPLETE: bilanCartes.incompletes, WITHOUT_WINDOW: bilanCartes.sansFenetre,
+          }));
+          const erreurCartes = erreurCartesSurimpression(bilanCartes);
+          if (erreurCartes) throw new Error(erreurCartes);
+          if (bilanCartes.sansFenetre.length) {
+            setMontageNotice(`Vidéo trop courte pour toutes les cartes : carte(s) ${bilanCartes.sansFenetre.join(', ')} non affichée(s). Allongez la vidéo ou retirez des cartes.`);
+          }
           setRenderStage('Textes sur la vidéo…');
           const images = await capturerSurimpressions({
             miseEnPage,
@@ -7533,7 +7549,10 @@ export default function AssistantWizard() {
             cartes: { cards: (contenu.cards ?? []).map((c) => ({ icon: c.icon, title: c.title, value: c.value })), cardStyle, typography: cardsTypography, valueColor: gradEnd },
             cta: { text: contenu.cta || '', subText: contenu.ctaSub || undefined, typography: textStyles.cta },
           }, overlaysCreer).catch((err) => { console.warn('[Surimpressions] capture impossible :', err); return null; });
-          if (images) surimpressionsItem = { fenetres: overlaysCreer, images };
+          if (images) {
+            console.log('[Surimpressions] CARD_IMAGES_GENERATED =', Object.keys(images.cartes).length, '/', overlaysCreer.cartes.length);
+            surimpressionsItem = { fenetres: overlaysCreer, images };
+          }
           else setMontageNotice('Textes sur la vidéo indisponibles pour ce rendu — titre, cartes et CTA en plein écran.');
         }
         duree = surimpressionsItem ? dureeSurimpression : dureePleinEcran;
