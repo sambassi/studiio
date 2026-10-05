@@ -17,7 +17,7 @@
  * Module PUR.
  */
 import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
-import { FONT_RATIO } from '@/lib/creer/designSpec';
+import { FONT_RATIO, TEXT_LAYOUT } from '@/lib/creer/designSpec';
 
 export interface BoiteCarte { x: number; y: number; w: number; h: number }
 
@@ -93,6 +93,34 @@ export function miseEnPageSurimpression(
   return options.ctaBande ? { ...base, ctaPos: { x: 50, y: CTA_Y[options.ctaBande] } } : base;
 }
 
+// ── CTA COMPLET (#504) ───────────────────────────────────────────────────
+/** Largeur du cadre CTA (part de la largeur) : marges ≥ 10 % de chaque côté. */
+export const CTA_LARGEUR_PART = TEXT_LAYOUT.ctaWidth / 100;
+/** Largeur moyenne PRUDENTE d'un caractère en majuscules grasses (em). */
+const EM_CTA = 0.68;
+
+/**
+ * Échelle du CTA pour que le mot le plus long — une URL comme
+ * « AFROBOOST.COM. » — tienne ENTIER sur une ligne dans la largeur utile
+ * (cadre moins le rembourrage du panneau) : retour à la ligne par mots, jamais
+ * de coupure de « .com », jamais d'ellipse. Réduction bornée par la
+ * lisibilité (ligne d'action ≥ 34 px). Pur.
+ */
+export function ajusterCta(p: {
+  texte: string; sousTexte?: string | null; echelle: number; largeur: number;
+  ratioTexte: number; ratioSousTexte: number; panneau?: boolean;
+}): number {
+  const utile = p.largeur * CTA_LARGEUR_PART - (p.panneau ? 2 * p.largeur * 0.04 : 0);
+  const plusLong = (t: string | null | undefined) => Math.max(0, ...(t ?? '').trim().split(/\s+/).map((m) => m.length));
+  const tient = (e: number) => plusLong(p.texte) * EM_CTA * p.largeur * p.ratioTexte * e <= utile
+    && plusLong(p.sousTexte) * EM_CTA * p.largeur * p.ratioSousTexte * e <= utile;
+  // Plancher : la ligne d'action reste lisible (≥ 34 px sur une image 1080 px).
+  const plancher = Math.min(p.echelle, 34 / (p.largeur * p.ratioSousTexte));
+  let e = p.echelle;
+  while (e > plancher && !tient(e)) e = Math.max(plancher, e * 0.95);
+  return e;
+}
+
 // ── ACCROCHE (#502) ──────────────────────────────────────────────────────
 /** Hauteur maximale du bloc titre + sous-titre (part de la hauteur de l'image). */
 export const ACCROCHE_HAUTEUR_MAX = 0.14;
@@ -151,6 +179,8 @@ export interface DesignSurimpression {
   /** #502 — panneau derrière le CTA. */
   ctaBackground?: string | null;
   ctaSubColor?: string;
+  ctaText?: string;
+  ctaSubText?: string;
   title?: string;
   subtitle?: string;
   /** Couleur de la valeur des cartes (sinon `gradientEnd`). */
@@ -175,6 +205,10 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
     echelleTitre: (d.titleScale ?? 1) * m.titleScale, echelleSousTitre: (d.subtitleScale ?? 1) * m.subtitleScale,
     largeur: 1080, hauteur: 1920, ratioTitre: FONT_RATIO['9:16'].title, ratioSousTitre: FONT_RATIO['9:16'].subtitle,
   });
+  const ctaEchelle = ajusterCta({
+    texte: d.ctaText ?? '', sousTexte: d.ctaSubText ?? null, echelle: (d.ctaScale ?? 1) * m.ctaScale, largeur: 1080,
+    ratioTexte: FONT_RATIO['9:16'].cta, ratioSousTexte: FONT_RATIO['9:16'].ctaSub, panneau: true,
+  });
   return {
     ...design,
     titlePos: m.titlePos,
@@ -183,7 +217,7 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
     ctaBackground: m.ctaFond,
     ctaSubColor: eclaircir(d.ctaSubColor ?? '#EC4899', m.ctaActionEclaircie) ?? d.ctaSubColor,
     ctaPos: m.ctaPos,
-    ctaScale: (d.ctaScale ?? 1) * m.ctaScale,
+    ctaScale: ctaEchelle,
     cardBoxes: { c0: m.carte },
     cardsTypography: { ...(d.cardsTypography ?? {}), scale: (d.cardsTypography?.scale ?? 1) * m.carteScale },
     cardBackground: m.carteFond,

@@ -102,8 +102,11 @@ describe.each([21.45, 24.288])('référence DANSE, cible %s s', (cible) => {
   const ms = mesuresSegments(plan, analyses)!;
   const r = rapportPlan('CARDIO_DANCE', ms, danse.rythme);
 
-  it('la vidéo va jusqu’à sa durée (avant : 19,9 s, dernier plan étiré)', () => {
-    expect(plan.at(-1)!.fin).toBeCloseTo(cible, 3);
+  it('la vidéo va aussi loin que la matière UNIQUE le permet, et conclut par le CTA (avant : 19,9 s, dernier plan étiré)', () => {
+    // #504 VERROU : plus aucun passage repris — 24,288 s n'est atteignable
+    // qu'en répétant ; la vidéo propre fait 23 s (l'utilisateur est prévenu).
+    expect(plan.at(-1)!.fin).toBeGreaterThanOrEqual(Math.min(cible, 23) - 1e-6);
+    expect(plan.at(-1)!.fin).toBeLessThanOrEqual(cible + 1e-6);
     expect(plan.at(-1)!.phase).toBe('CTA');
   });
 
