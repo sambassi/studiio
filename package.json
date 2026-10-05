@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:pg": "vitest run --config vitest.pg.config.ts",
+    "test:contracts": "vitest run --config vitest.contracts.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
   },
