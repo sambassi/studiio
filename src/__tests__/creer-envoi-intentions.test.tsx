@@ -270,3 +270,45 @@ describe('Intention 3 — télécharger', () => {
     expect(publications).toEqual([]);
   });
 });
+
+// ── #501 : une date n'est exigée QUE pour programmer ──────────────────────
+describe('#501 — date exigée seulement pour programmer', () => {
+  const vider = async () => {
+    await act(async () => { fireEvent.change(q<HTMLInputElement>('#lot-date')!, { target: { value: '' } }); });
+  };
+  const aujourdHui = () => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  it('nouveau contenu → brouillon SANS date : envoi possible, aucun « choisissez une date », daté du jour', async () => {
+    await allerAEnvoi();
+    await vider();
+    expect(q('[data-envoi-date-requise]')).toBeNull();
+    await envoyer();
+    expect(postsCrees).toHaveLength(1);
+    expect(postsCrees[0].status).toBe('draft');
+    expect(postsCrees[0].platforms).toEqual([]);
+    expect(postsCrees[0].scheduled_date).toBe(aujourdHui());
+    expect(publications).toEqual([]);
+  });
+
+  it('téléchargement SANS date : bouton actif, aucune programmation', async () => {
+    await allerAEnvoi();
+    await vider();
+    expect(q<HTMLButtonElement>('[data-export-bureau]')!.disabled).toBe(false);
+  });
+
+  it('programmation SANS date : bloquée et dite ; avec une date : possible', async () => {
+    await allerAEnvoi();
+    await act(async () => { fireEvent.click(q<HTMLButtonElement>('[data-envoi-intention="programmer"]')!); });
+    await act(async () => { fireEvent.click(q<HTMLButtonElement>('[data-envoi-reseau="instagram"]')!); });
+    await vider();
+    expect(envoi().disabled).toBe(true);
+    expect(q('[data-envoi-date-requise]')!.textContent).toBe('choisissez une date');
+    await act(async () => { fireEvent.change(q<HTMLInputElement>('#lot-date')!, { target: { value: '2099-10-10' } }); });
+    expect(envoi().disabled).toBe(false);
+    expect(q('[data-envoi-date-requise]')).toBeNull();
+  });
+});
