@@ -161,19 +161,26 @@ export function carteEnergique(titre: string | null | undefined): boolean {
  * VISIBLES pendant chaque carte — tous, pas seulement le premier.
  */
 export function matchCartesImages(
-  segs: ReadonlyArray<Pick<MesureSegment, 'debut' | 'fin' | 'energie'>>,
+  segs: ReadonlyArray<Pick<MesureSegment, 'debut' | 'fin' | 'energie'> & Partial<Pick<MesureSegment, 'luminosite' | 'amplitude' | 'nettete'>>>,
   fenetres: ReadonlyArray<{ index: number; debut: number; fin: number }>,
   titres: ReadonlyArray<string | null | undefined>,
-): Array<{ index: number; titre: string; energique: boolean; energie: number | null; plans: number }> {
+): Array<{ index: number; titre: string; energique: boolean; energie: number | null; plans: number; ajustement: number | null }> {
   return fenetres.map((f) => {
-    let poids = 0; let somme = 0; let plans = 0;
+    let poids = 0; let somme = 0; let plans = 0; let poidsFit = 0; let sommeFit = 0;
+    const titre = titres[f.index] ?? '';
+    const energique = carteEnergique(titre);
     for (const s of segs) {
       const recouvre = Math.min(s.fin, f.fin) - Math.max(s.debut, f.debut);
       if (recouvre <= 0 || typeof s.energie !== 'number') continue;
       poids += recouvre; somme += recouvre * s.energie; plans += 1;
+      // TOUTE la fenêtre de la carte, pondérée par le temps (#503).
+      const fit = ajustementTexteImage({ energie: s.energie, luminosite: s.luminosite ?? null, amplitude: s.amplitude, nettete: s.nettete }, energique);
+      if (fit !== null) { poidsFit += recouvre; sommeFit += recouvre * fit; }
     }
-    const titre = titres[f.index] ?? '';
-    return { index: f.index, titre, energique: carteEnergique(titre), energie: poids ? Math.round((somme / poids) * 100) / 100 : null, plans };
+    return {
+      index: f.index, titre, energique, energie: poids ? Math.round((somme / poids) * 100) / 100 : null, plans,
+      ajustement: poidsFit ? Math.round((sommeFit / poidsFit) * 100) / 100 : null,
+    };
   });
 }
 
@@ -253,6 +260,32 @@ export interface MesureSegment {
   luminosite: number | null;
   /** Mouvement 0..1 (référence d'un plan franchement actif). */
   energie: number | null;
+  /** #503 — pic de mouvement de la fenêtre, sur la même échelle (amplitude). */
+  amplitude?: number | null;
+  /** #503 — netteté 0..1 (lisibilité de l'image). */
+  nettete?: number | null;
+}
+
+// ── TEXT_VIDEO_VISUAL_FIT (#503) ─────────────────────────────────────────
+/**
+ * Accord MESURÉ entre un texte (carte) et l'image derrière lui, 0..1 :
+ * mouvement, amplitude, luminosité, lisibilité. Une carte physique ou
+ * énergique (« 300+ MUSCLES », « CARDIO COMPLET »…) pèse surtout le
+ * mouvement ; les autres, la lisibilité. Un contre-jour très sombre est
+ * pénalisé dans les deux cas. Aucune compréhension de la scène : des mesures.
+ */
+export function ajustementTexteImage(
+  m: { energie: number | null; luminosite: number | null; amplitude?: number | null; nettete?: number | null },
+  energique: boolean,
+): number | null {
+  if (typeof m.energie !== 'number' || typeof m.luminosite !== 'number') return null;
+  const lum = m.luminosite;
+  // Lumière : pleine entre 0,3 et 0,75 ; contre-jour / nuit (< 0,2) très pénalisé.
+  const lumiere = lum < 0.3 ? Math.max(0, (lum - 0.1) / 0.2) : lum > 0.75 ? Math.max(0, 1 - (lum - 0.75) / 0.25) : 1;
+  const amplitude = typeof m.amplitude === 'number' ? m.amplitude : m.energie;
+  const lisibilite = Math.min(1, 0.5 * lumiere + 0.5 * (typeof m.nettete === 'number' ? m.nettete : 0.5));
+  const p = energique ? { mouvement: 0.4, amplitude: 0.2, lumiere: 0.25, lisibilite: 0.15 } : { mouvement: 0.15, amplitude: 0.05, lumiere: 0.4, lisibilite: 0.4 };
+  return r2(p.mouvement * m.energie + p.amplitude * amplitude + p.lumiere * lumiere + p.lisibilite * lisibilite);
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
