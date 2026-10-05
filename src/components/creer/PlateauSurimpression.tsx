@@ -14,7 +14,8 @@ import React from 'react';
 import SequenceTitle, { titleFrameStyle, type TitleTypography, type SubtitleTypography } from '@/components/creer/SequenceTitle';
 import SequenceCards, { type CardsTypography } from '@/components/creer/SequenceCards';
 import SequenceCta, { ctaFrameStyle, type CtaTypography } from '@/components/creer/SequenceCta';
-import { eclaircir, type MiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { eclaircir, ajusterAccroche, type MiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { FONT_RATIO, TEXT_LAYOUT } from '@/lib/creer/designSpec';
 import type { DesignFormat } from '@/lib/creer/designSpec';
 
 export type ElementSurimpression = 'titre' | 'cta' | { carte: number };
@@ -39,6 +40,15 @@ export const PlateauSurimpression = React.forwardRef<HTMLDivElement, PlateauSuri
   const m = p.miseEnPage;
   const e = p.element;
   const carte = typeof e === 'object' ? p.cartes.cards[e.carte] : null;
+  // Accroche bornée en hauteur (#502) — la MÊME règle que l'Autopilote.
+  const accroche = ajusterAccroche({
+    titre: p.titre.title, sousTitre: p.titre.subtitle ?? null,
+    echelleTitre: (p.titre.typography.scale ?? 1) * m.titleScale,
+    echelleSousTitre: (p.titre.subtitleTypography.scale ?? 1) * m.subtitleScale,
+    largeur: p.largeur, hauteur: p.hauteur,
+    ratioTitre: FONT_RATIO[p.format].title, ratioSousTitre: FONT_RATIO[p.format].subtitle,
+    partLargeur: TEXT_LAYOUT.titleWidth / 100, interligneTitre: p.titre.typography.lineHeight,
+  });
   return (
     <div ref={ref} style={{ position: 'relative', width: p.largeur, height: p.hauteur, background: 'transparent', overflow: 'hidden' }}>
       {e === 'titre' && (
@@ -46,8 +56,8 @@ export const PlateauSurimpression = React.forwardRef<HTMLDivElement, PlateauSuri
           <SequenceTitle
             title={p.titre.title}
             subtitle={p.titre.subtitle}
-            typography={{ ...p.titre.typography, scale: (p.titre.typography.scale ?? 1) * m.titleScale }}
-            subtitleTypography={{ ...p.titre.subtitleTypography, scale: (p.titre.subtitleTypography.scale ?? 1) * m.subtitleScale }}
+            typography={{ ...p.titre.typography, scale: accroche.echelleTitre }}
+            subtitleTypography={{ ...p.titre.subtitleTypography, scale: accroche.echelleSousTitre }}
             format={p.format}
             containerWidth={p.largeur}
           />
@@ -70,9 +80,14 @@ export const PlateauSurimpression = React.forwardRef<HTMLDivElement, PlateauSuri
           <SequenceCta
             text={p.cta.text}
             subText={p.cta.subText}
-            typography={{ ...p.cta.typography, scale: (p.cta.typography.scale ?? 1) * m.ctaScale }}
+            typography={{
+              ...p.cta.typography, scale: (p.cta.typography.scale ?? 1) * m.ctaScale,
+              // Sur le panneau sombre : la ligne d'action éclaircie (contraste, #502).
+              subColor: eclaircir(p.cta.typography.subColor, m.ctaActionEclaircie) ?? p.cta.typography.subColor,
+            }}
             format={p.format}
             containerWidth={p.largeur}
+            fond={m.ctaFond}
           />
         </div>
       )}

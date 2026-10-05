@@ -167,6 +167,8 @@ export interface CreerSimpleMontageProps {
   /** Positions, en % du plateau — les memes qu'a l'ecran. */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
+  /** #502 — panneau derrière le CTA en surimpression (`appliquerMiseEnPageSurimpression`). */
+  ctaBackground?: string | null;
   watermark?: string;
   introDuration: number;
   cardsDuration: number;
@@ -596,6 +598,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   format={format}
                   containerWidth={width}
                   reveal={reveal}
+                  fond={props.ctaBackground ?? null}
                 />
               </div>
         );

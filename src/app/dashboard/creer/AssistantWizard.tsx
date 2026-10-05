@@ -196,6 +196,7 @@ import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-re
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { bilanCartesSurimpression, erreurCartesSurimpression, avecCtaDuBrief } from '@/lib/creer/validation-rendu';
 import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
 import type { SurimpressionsComposer } from '@/lib/video-composer';
@@ -7525,7 +7526,12 @@ export default function AssistantWizard() {
         // 1 bis. Surimpressions : photos du titre, de chaque carte et du CTA
         //    de CE contenu. Échec : le mode plein écran d'avant, dit à l'écran.
         let surimpressionsItem: SurimpressionsComposer | null = null;
-        const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil) : null;
+        // #502 : le CTA dans la bande (haut / bas) MESURÉE la plus calme des
+        // plans de sortie — même règle que l'Autopilote.
+        const zoneCta = overlaysCreer?.cta && planMontageRushs && montageInfos
+          ? zoneCalmeSortie(planMontageRushs, montageInfos.analyses, overlaysCreer.cta[0]) : null;
+        if (zoneCta) console.log('[Surimpressions] CTA_ZONE :', JSON.stringify(zoneCta));
+        const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil, { ctaBande: zoneCta?.bande }) : null;
         if (overlaysCreer && miseEnPage) {
           // #500 : jamais de rendu qui part en silence avec des cartes
           // perdues — chaque carte complète (titre + valeur) a sa fenêtre.
