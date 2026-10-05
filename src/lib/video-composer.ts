@@ -21,6 +21,7 @@ import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import type { Lut } from '@/lib/luts/types';
 import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import { ajusterPlan } from '@/lib/creer/smart-montage';
+import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
 import type { OverlaysMontage } from '@/lib/creer/overlays';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
@@ -3851,9 +3852,22 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // lus (jamais un trou noir au milieu du montage).
   const elParUrl = new Map(rushsLus.map((r) => [r.url, r.el] as const));
   const montageLu = montageDemande && montageDemande.every((m) => elParUrl.has(m.url)) ? montageDemande : null;
+  const planAjuste = montageLu && videoSeqPlan ? ajusterPlan(montageLu, videoSeqPlan.duration) : null;
+  // Double tampon (`pilote-montage.ts`) : deux extraits consecutifs du MEME
+  // rush prennent deux elements distincts, pour que le suivant soit positionne
+  // AVANT la coupe. Second element absent (chargement rate) = l'element unique,
+  // positionne a la coupe comme avant.
+  const tampons = planAjuste ? attribuerLecteurs(planAjuste) : [];
+  const secondsTampons = new Map<string, HTMLVideoElement>();
+  if (planAjuste) {
+    const urlsDoublees = Array.from(new Set(planAjuste.filter((_, k) => tampons[k] === 1).map((s) => s.url)));
+    await Promise.all(urlsDoublees.map((u) => loadVideo(elParUrl.get(u)!.currentSrc || u)
+      .then((el) => { secondsTampons.set(u, el); })
+      .catch((err) => console.warn('[Composer] Second tampon indisponible :', u.substring(0, 60), err?.message))));
+  }
   const rushPlan: { el: HTMLVideoElement; debut: number; fin: number; depuis: number; vitesse?: number }[] | null =
-    montageLu && videoSeqPlan
-      ? ajusterPlan(montageLu, videoSeqPlan.duration).map((seg) => ({ el: elParUrl.get(seg.url)!, debut: seg.debut, fin: seg.fin, depuis: seg.depuis ?? 0, vitesse: seg.vitesse ?? 1 }))
+    planAjuste
+      ? planAjuste.map((seg, k) => ({ el: (tampons[k] === 1 ? secondsTampons.get(seg.url) : null) ?? elParUrl.get(seg.url)!, debut: seg.debut, fin: seg.fin, depuis: seg.depuis ?? 0, vitesse: seg.vitesse ?? 1 }))
       : rushsLus.length >= 2 && videoSeqPlan
       ? planRushs(rushsLus, videoSeqPlan.duration).map((seg, i) => ({ el: rushsLus[i].el, debut: seg.debut, fin: seg.fin, depuis: 0 }))
       : null;
@@ -3863,6 +3877,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Tous les elements video du rush (un seul hors multi-rush).
   // Un element par RUSH (un plan de montage reprend le meme rush plusieurs fois).
   const rushEls: HTMLVideoElement[] = rushPlan ? Array.from(new Set(rushPlan.map((s) => s.el))) : (videoEl ? [videoEl] : []);
+  // Element peint pendant la sequence video, choisi par le pilote du rendu
+  // temps reel (`null` ailleurs : `segmentA`, comme avant).
+  let lecteurAffiche: HTMLVideoElement | null = null;
 
   console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
@@ -4074,7 +4091,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         case 'video': {
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
-          const rushCourant = rushPlan ? (segmentA(rushPlan, secondsIn)?.el ?? videoEl) : videoEl;
+          const rushCourant = rushPlan ? (lecteurAffiche ?? segmentA(rushPlan, secondsIn)?.el ?? videoEl) : videoEl;
           drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
           // Surimpressions (profils dynamiques) : posées sur le rush qui continue.
           if (options.surimpressions) dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps);
@@ -4811,8 +4828,28 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }
 
     // START video element
-    // Chaque rush pre-positionne sur son premier extrait (0 hors smart montage).
-    for (const el of rushEls) { el.currentTime = rushPlan?.find((s) => s.el === el)?.depuis ?? 0; el.pause(); }
+    // Chaque rush pre-positionne sur son premier extrait (0 hors multi-rush).
+    // Le pilote prepare ensuite chaque extrait PENDANT le plan precedent.
+    const pilote = rushPlan ? creerPiloteMontage(rushPlan, {
+      surCoupe: (c) => {
+        if (!c.prete) console.warn(`[Composer] ⚠️ Coupe ${c.k} : image suivante non prete apres ${(c.report * 1000).toFixed(0)} ms (readyState ${c.readyState}, seeking ${c.seeking}, ecart ${c.ecart.toFixed(2)} s)`);
+      },
+    }) : null;
+    if (pilote) pilote.prepositionner();
+    else for (const el of rushEls) { el.currentTime = 0; el.pause(); }
+
+    // Instrumentation des gels : instant de la derniere image NOUVELLE
+    // presentee par chaque lecteur (`requestVideoFrameCallback`), et
+    // evenements de chargement. Resume journalise a la fin du rendu.
+    const derniereImage = new Map<HTMLVideoElement, number>();
+    const evenements = { waiting: 0, seeking: 0, seeked: 0, canplay: 0 };
+    for (const el of rushEls) {
+      const rvfc = (el as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number }).requestVideoFrameCallback?.bind(el);
+      if (rvfc) { const suivre = () => { derniereImage.set(el, performance.now()); rvfc(suivre); }; rvfc(suivre); }
+      for (const nom of Object.keys(evenements) as (keyof typeof evenements)[]) el.addEventListener(nom, () => { evenements[nom]++; });
+    }
+    let gelMax = 0;
+    let basculeA = 0;
 
     // ── CRITICAL: draw frame 0 BEFORE starting the recorder ──
     // Same fix as fast mode: the canvas must already show the intro
@@ -4841,8 +4878,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     let animStopped = false;
     let lastAnimTime = performance.now(); // Pour détecter si rAF est en pause
 
-    // Extrait du plan multi-rush en cours de lecture (-1 : aucun).
-    let extraitCourant = -1;
     const doFrame = () => {
       if (animStopped) return;
       lastAnimTime = performance.now();
@@ -4851,6 +4886,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       if (elapsed >= totalDuration + 0.3) {
         animStopped = true;
         console.log('[Composer] Rendu terminé, arrêt du recorder');
+        if (pilote) console.log('[Composer] Coupes :', JSON.stringify({ ...pilote.bilan(), gelMaxMs: Math.round(gelMax), evenements }));
         stopRtTicker();
         if (keepAliveInterval) clearInterval(keepAliveInterval);
         if (musicEl) musicEl.pause();
@@ -4864,28 +4900,19 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       const t = Math.min(elapsed, totalDuration - 0.001);
 
       // Gérer l'élément vidéo
-      if (rushPlan) {
-        // Multi-rush / smart montage : l'extrait actif joue depuis son point
-        // d'entree (`depuis`) ; tous les autres rushes sont en pause. Un
-        // changement d'extrait sur le MEME rush (cut interne) repositionne
-        // la lecture meme si l'element n'a pas ete mis en pause.
+      if (pilote) {
+        // Multi-rush / smart montage : le pilote joue l'extrait actif, prepare
+        // le suivant pendant ce temps et ne bascule que sur une image prete.
         const videoSeq = sequences.find(s => s.type === 'video');
         if (videoSeq) {
           const vs = seqStarts[sequences.indexOf(videoSeq)];
-          const k = rushPlan.findIndex((seg) => t >= vs + seg.debut && t < vs + seg.fin);
-          const actif = k >= 0 ? rushPlan[k] : null;
-          for (const el of rushEls) {
-            if (actif && el === actif.el) {
-              if (el.paused || k !== extraitCourant) {
-                // V3 : un extrait peut être ralenti (`vitesse` < 1).
-                const vitesse = actif.vitesse ?? 1;
-                el.playbackRate = vitesse;
-                el.currentTime = actif.depuis + (t - (vs + actif.debut)) * vitesse;
-                if (el.paused) el.play().catch(() => {});
-              }
-            } else if (!el.paused) { el.pause(); }
-          }
-          extraitCourant = k;
+          const dedans = t >= vs && t < vs + videoSeq.duration;
+          const el = pilote.image(dedans ? t - vs : null);
+          const maintenant = performance.now();
+          if (el !== lecteurAffiche) basculeA = maintenant;
+          lecteurAffiche = el;
+          const vue = el ? derniereImage.get(el) : undefined;
+          if (el && vue !== undefined) gelMax = Math.max(gelMax, maintenant - Math.max(vue, basculeA));
         }
       } else if (videoEl) {
         const videoSeq = sequences.find(s => s.type === 'video');

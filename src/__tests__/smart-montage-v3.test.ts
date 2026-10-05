@@ -164,6 +164,8 @@ describe('câblage', () => {
   });
   it('le ralenti est rendu par Remotion et par le compositeur', () => {
     expect(src('remotion/CreerSimpleMontage.tsx')).toContain('playbackRate: seg.vitesse');
-    expect(src('src/lib/video-composer.ts')).toContain('el.playbackRate = vitesse;');
+    // Compositeur : la vitesse part dans le plan, le pilote l'applique.
+    expect(src('src/lib/video-composer.ts')).toContain('vitesse: seg.vitesse ?? 1');
+    expect(src('src/lib/creer/pilote-montage.ts')).toContain('seg.el.playbackRate = vitesse;');
   });
 });
