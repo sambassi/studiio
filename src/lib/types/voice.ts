@@ -206,9 +206,20 @@ export function voixCloneeAProposer(
   defaultId: string,
   voices: ReadonlyArray<{ id: string; cloned?: boolean }>,
 ): string | null {
-  if (current !== defaultId) return null;
+  // Voix fournisseur ABSENTE de la liste du compte (voix clonée supprimée
+  // puis recréée, choix restauré d'un brouillon ou de localStorage) : le
+  // fournisseur répondrait « Unknown voice ». Elle est remplacée par la voix
+  // clonée actuelle, sinon par la voix par défaut — jamais gardée en l'état.
+  // Par fournisseur : une liste ElevenLabs vide (échec de lecture) ne rend
+  // jamais périmée une voix ElevenLabs — on ne juge que ce qu'on a pu lire.
+  const memeFournisseur = (id: string) => (isElevenLabsVoiceId(current) ? isElevenLabsVoiceId(id) : isHeyGenVoiceId(id));
+  const listees = voices.filter((v) => memeFournisseur(v.id));
+  const perimee = (isElevenLabsVoiceId(current) || isHeyGenVoiceId(current))
+    && listees.length > 0 && !listees.some((v) => v.id === current);
+  if (current !== defaultId && !perimee) return null;
   const clonee = voices.find((v) => v.cloned === true);
-  return clonee && clonee.id !== current ? clonee.id : null;
+  if (clonee && clonee.id !== current) return clonee.id;
+  return perimee ? defaultId : null;
 }
 
 // ── Groupes du selecteur ─────────────────────────────────────────────────
