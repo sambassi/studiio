@@ -132,7 +132,7 @@ import { chargerLutPourRendu } from '@/lib/luts/charger';
 import type { Lut, LutRef } from '@/lib/luts/types';
 import {
   batchCost, distinctPhotoForIndex, distinctUrls,
-  autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce, dateBrouillonReprise,
+  autoAssignPhotos, batchPhotosReady, photosToFetch, batchDates, batchTopic, variationNonce,
 } from '@/lib/creer/batch';
 import {
   batchRunId, batchItemId, initialBatchItems, setItemState, batchSummary,
@@ -197,6 +197,7 @@ import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import { bilanCartesSurimpression, erreurCartesSurimpression, avecCtaDuBrief } from '@/lib/creer/validation-rendu';
+import { dateRestauree, dateRequiseManquante, envoiPossible } from '@/lib/creer/envoi';
 import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
 import type { SurimpressionsComposer } from '@/lib/video-composer';
 import { analyserRush, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
@@ -6049,7 +6050,8 @@ export default function AssistantWizard() {
     if (draft.lut) setLut(draft.lut);
     // Une date déjà passée n'est pas reprise (sinon : posts datés d'hier,
     // invisibles dans le Calendrier du mois courant) — `dateBrouillonReprise`.
-    if (draft.scheduledDate) setScheduledDate(dateBrouillonReprise(draft.scheduledDate));
+    // En MODIFICATION, la date est celle du post rouvert — jamais vidée (#501).
+    if (draft.scheduledDate) setScheduledDate(dateRestauree(draft.scheduledDate, !!editPostId));
     // Placement : chaque champ absent laisse le defaut d'origine en place.
     if (draft.titlePos) setTitlePos(draft.titlePos);
     if (draft.ctaPos) setCtaPos(draft.ctaPos);
@@ -11209,9 +11211,9 @@ export default function AssistantWizard() {
                           {scheduledDate} à {scheduledTime}
                           {batchCount > 1 ? ', un par jour' : ''}
                         </>
-                      ) : (
-                        <>{' · '}<span className="text-amber-400">choisissez une date</span></>
-                      )}
+                      ) : dateRequiseManquante(envoiIntention, scheduledDate) ? (
+                        <>{' · '}<span className="text-amber-400" data-envoi-date-requise>choisissez une date</span></>
+                      ) : null}
                       {/* La phrase suit l'intention : elle est la derniere
                           chose lue avant de confirmer, elle doit dire ce qui
                           va VRAIMENT se passer. */}
@@ -11285,8 +11287,10 @@ export default function AssistantWizard() {
                         // programmer : le bouton attend le choix plutot que
                         // d'envoyer un brouillon sous une etiquette qui dit
                         // le contraire.
-                        disabled={sending || actif(VERROU.serie) || !scheduledDate
-                          || (envoiIntention === 'programmer' && reseauxProgrammes.length === 0)}
+                        // Date exigée SEULEMENT pour programmer : un brouillon
+                        // sans date part à la date du jour (#501).
+                        disabled={sending || actif(VERROU.serie)
+                          || !envoiPossible({ intention: envoiIntention, date: scheduledDate, reseaux: reseauxProgrammes.length })}
                         className={DISABLED}
                         data-envoi-action={envoiIntention}
                       >

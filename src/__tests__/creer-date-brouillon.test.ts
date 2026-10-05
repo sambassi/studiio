@@ -26,7 +26,9 @@ describe('date d\'un brouillon repris', () => {
   });
   it('Créer applique la règle à la reprise du brouillon (CARDIO_DANCE, vidéo, musique : même chemin)', () => {
     const w = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
-    expect(w).toContain('if (draft.scheduledDate) setScheduledDate(dateBrouillonReprise(draft.scheduledDate));');
+    // #501 : la règle passe par `dateRestauree` — #497 pour un brouillon
+    // local, la date du post telle quelle en modification.
+    expect(w).toContain('if (draft.scheduledDate) setScheduledDate(dateRestauree(draft.scheduledDate, !!editPostId));');
     expect(w).not.toContain('if (draft.scheduledDate) setScheduledDate(draft.scheduledDate);');
   });
 });
