@@ -1684,6 +1684,15 @@ export default function AutopilotPanel({
 {/* ── Voix off clonée ──────────────────────────────────────────── */}
           <div>
             <p className="text-xs font-medium text-gray-300 mb-2">Voix off clonée</p>
+            {voixChargees && !!config.voiceId && !voixDeConfig(voixClonees, config.voiceId) && (
+              // Voix supprimée puis recréée : l'identifiant enregistré n'existe
+              // plus. Sans ce message, le sélecteur affichait « Voix par défaut »
+              // en silence et le cron repliait sur la voix standard.
+              <p data-autopilot-voix-perimee className="text-[11px] text-amber-300 mb-2">
+                La voix enregistrée pour l’Autopilote n’existe plus. Choisissez votre voix ci-dessous :
+                sinon la voix off standard sera utilisée.
+              </p>
+            )}
             {voixClonees.length === 0 ? (
               <p className="text-[11px] text-gray-500">
                 Aucune voix clonée. Rendez-vous dans <span className="text-gray-300">Mon avatar</span> pour
