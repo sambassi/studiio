@@ -126,7 +126,10 @@ export async function avancerStatutGeneration(
   }
 
   // Terminé : rapatriement sur NOTRE stockage (l'URL fournisseur expire).
-  let finalUrl = remote.videoUrl;
+  // Échec du rapatriement = PAS un succès : l'adresse du fournisseur expire,
+  // la vidéo disparaîtrait du montage. Le job reste « en cours » et le
+  // prochain passage réessaie ; au-delà du délai, il échoue et est remboursé.
+  let finalUrl: string | null = null;
   try {
     const buffer = viaDid ? await telechargerResultat(remote.videoUrl) : await downloadVideo(remote.videoUrl);
     const storagePath = `${userId}/avatar/${g.id}.mp4`;
@@ -134,13 +137,28 @@ export async function avancerStatutGeneration(
       .from('media')
       .upload(storagePath, buffer, { contentType: 'video/mp4', upsert: true });
     if (upErr) {
-      console.warn('[Avatar] Upload MinIO échoué, URL fournisseur conservée:', upErr.message);
+      console.warn('[Avatar] Rapatriement vidéo échoué (stockage), nouvel essai au prochain passage:', upErr.message);
     } else {
       const { data: pub } = supabaseAdmin.storage.from('media').getPublicUrl(storagePath);
-      if (pub?.publicUrl) finalUrl = pub.publicUrl;
+      finalUrl = pub?.publicUrl ?? null;
     }
   } catch (e) {
-    console.warn('[Avatar] Rapatriement vidéo échoué, URL fournisseur conservée:', e);
+    console.warn('[Avatar] Rapatriement vidéo échoué, nouvel essai au prochain passage:', e);
+  }
+  if (!finalUrl) {
+    // Rapatriement impossible au-delà du délai : échec franc et remboursé,
+    // jamais un « succès » pointant vers une adresse qui va expirer.
+    if (Date.now() - new Date(g.created_at).getTime() > STALE_AFTER_MS) {
+      const rembourse = await failAndRefund(g, 'La vidéo a été générée mais n’a pas pu être enregistrée.');
+      if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));
+      return {
+        status: 'failed',
+        videoUrl: null,
+        error: `La vidéo a été générée mais n’a pas pu être enregistrée.${g.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
+        rembourse,
+      };
+    }
+    return { status: 'processing', videoUrl: null };
   }
 
   await supabaseAdmin

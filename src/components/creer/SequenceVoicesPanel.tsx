@@ -358,9 +358,13 @@ export function SequenceVoicesPanel({
       // Step 1: TTS via synthesize() (Edge → OpenAI fallback chain)
       const audioBlob = await synthesize(text, selectedTtsVoiceId);
       console.log(`[SequenceVoices] TTS ${key} | size: ${audioBlob.size} bytes | type: ${audioBlob.type}`);
-      // 8KB ≈ 0.7s of MP3 @96kbps — defensive (synthesize enforces this internally)
-      if (audioBlob.size < 8000) {
-        throw new Error(`Audio TTS trop petit (${audioBlob.size} octets, minimum 8000) — réessaie ou choisis une autre voix`);
+      // 8KB ≈ 0.7s of MP3 @96kbps — defensive (synthesize enforces this internally).
+      // Voix clonée / HeyGen : un mot court pèse moins de 8 Ko, et `synthesize`
+      // a déjà écarté l'audio vide — le seuil ne vaut que pour Edge / OpenAI.
+      const voixFournisseur = isElevenLabsVoiceId(selectedTtsVoiceId) || isHeyGenVoiceId(selectedTtsVoiceId);
+      const minimum = voixFournisseur ? 512 : 8000;
+      if (audioBlob.size < minimum) {
+        throw new Error(`Audio TTS trop petit (${audioBlob.size} octets, minimum ${minimum}) — réessaie ou choisis une autre voix`);
       }
 
       // Step 2: Upload to Supabase via signed URL
@@ -389,7 +393,7 @@ export function SequenceVoicesPanel({
         throw new Error(`Fichier uploadé inaccessible : HEAD HTTP ${headRes.status} (bucket privé ou non configuré ?)`);
       }
       const cl = headRes.headers.get('content-length');
-      if (cl && Number(cl) < 8000) {
+      if (cl && Number(cl) < minimum) {
         throw new Error(`Fichier uploadé trop petit (${cl} octets) — Supabase a peut-être tronqué l'upload`);
       }
 

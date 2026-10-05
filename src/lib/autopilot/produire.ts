@@ -176,10 +176,16 @@ export interface MontageProduit {
 /** Avertissements lisibles d'un montage. Pure, testable. */
 export function avertissementsMontage(m: {
   musiqueIntrouvable: boolean; audioSilencieux: boolean; voixRepliEdge: boolean; montageSimple: boolean;
+  /** Une voix PERSONNELLE (clonée) était configurée — sinon on ne parle pas de « voix clonée ». */
+  voixPersonnelle?: boolean;
 }): string[] {
   const out: string[] = [];
   if (m.musiqueIntrouvable) out.push('Musique introuvable dans le stockage : la vidéo est sortie sans musique. Rechoisissez-la dans l’Autopilote.');
-  if (m.voixRepliEdge) out.push('Voix clonée indisponible : la voix off standard (gratuite) a été utilisée.');
+  if (m.voixRepliEdge) {
+    out.push(m.voixPersonnelle
+      ? 'Voix clonée indisponible : la voix off standard (gratuite) a été utilisée.'
+      : 'Voix ElevenLabs indisponible : la voix off standard (gratuite) a été utilisée.');
+  }
   if (m.montageSimple) out.push('Analyse intelligente indisponible — montage simple utilisé.');
   if (m.audioSilencieux) out.push('Le fichier final ne contient aucun son audible (ni musique, ni voix, ni son des rushes).');
   return out;
@@ -651,6 +657,16 @@ export async function produireUnMontage(input: {
     ...(analysesEchouees.length ? { analysesEchouees } : null),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
     ...(Object.values(voices).some((v) => v?.repli === 'edge') ? { voixRepliEdge: true } : null),
+    // Ce que l'utilisateur doit savoir, LU par le Calendrier — un montage du
+    // cron n'a personne pour voir l'écran « Produire maintenant ».
+    ...(() => {
+      const a = avertissementsMontage({
+        musiqueIntrouvable, audioSilencieux: !!audio?.silencieux,
+        voixRepliEdge: Object.values(voices).some((v) => v?.repli === 'edge'),
+        montageSimple: !!montageSimpleMotif, voixPersonnelle: !!(config.voiceId ?? '').trim(),
+      });
+      return a.length ? { avertissements: a } : null;
+    })(),
     // Durées par étape (diagnostic performance, temporaire).
     mesuresRendu: mesures,
     // « Conseils pour améliorer cette vidéo » : mesurés, rien n'est appliqué.
@@ -730,6 +746,7 @@ export async function produireUnMontage(input: {
       audioSilencieux: !!audio?.silencieux,
       voixRepliEdge: Object.values(voices).some((v) => v?.repli === 'edge'),
       montageSimple: !!montageSimpleMotif,
+      voixPersonnelle: !!(config.voiceId ?? '').trim(),
     }),
   };
 }
