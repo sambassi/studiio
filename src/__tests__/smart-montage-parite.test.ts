@@ -57,18 +57,30 @@ describe('parité Créer / Autopilote (DANSE réel)', () => {
     }
   });
 
-  it('ANTI_REPEAT : aucun timecode repris, mêmes mesures des deux côtés', () => {
+  it('ANTI_REPEAT : aucun timecode repris — sauf le CTA final faute d’alternative (#499) — mêmes mesures des deux côtés', () => {
     const r = rapport(CREATE_PLAN);
-    expect(r.DUPLICATE_SEGMENTS).toBe(0);
     expect(rapport(AUTOPILOT_PLAN)).toEqual(r);
     const fen = CREATE_PLAN.map((s) => ({ cle: s.url, depuis: s.depuis ?? 0, jusqua: s.jusqua ?? 0, empreinte: null }));
-    for (let i = 0; i < fen.length; i++) for (let j = i + 1; j < fen.length; j++) expect(memeTimecode(fen[i], fen[j])).toBe(false);
+    const dernier = fen.length - 1;
+    for (let i = 0; i < fen.length; i++) {
+      for (let j = i + 1; j < fen.length; j++) {
+        // #499 : seul le plan sous le CTA peut reprendre une matière déjà
+        // montée, et il le dit (jamais un plan noir et blanc ou calme à la place).
+        if (memeTimecode(fen[i], fen[j])) {
+          expect(j).toBe(dernier);
+          expect(CREATE_PLAN[dernier].raison).toContain('repris faute d\'alternative');
+        }
+      }
+    }
   });
 
   it('BEAT_SYNC (#496) : les coupes visent les PERCUSSIONS FORTES réelles — moitié à ≤ 80 ms, moins de la moitié au-delà de 120 ms', () => {
     const r = rapport(CREATE_PLAN);
-    expect(r.CUTS_LE_80MS! / r.CUTS_TOTAL).toBeGreaterThanOrEqual(0.5);
-    expect(r.CUTS_GT_120MS! / r.CUTS_TOTAL).toBeLessThan(0.5);
+    // Là où le morceau a des percussions fortes : au moins 70 % des coupes dessus.
+    expect(r.CUTS_IN_STRONG_ZONE_LE_80MS! / r.CUTS_IN_STRONG_ZONE!).toBeGreaterThanOrEqual(0.7);
+    // Partout (#499) : 80 % des coupes à ≤ 80 ms d'une percussion RÉELLE (forte ou secondaire).
+    expect(r.CUTS_PERCUSSION_LE_80MS! / r.CUTS_TOTAL).toBeGreaterThanOrEqual(0.8);
+    expect(r.CUTS_PERCUSSION_GT_120MS! / r.CUTS_TOTAL).toBeLessThan(0.2);
     expect(r.CUTS_LE_80MS! + r.CUTS_80_120MS! + r.CUTS_GT_120MS!).toBe(r.CUTS_TOTAL);
   });
 

@@ -110,3 +110,55 @@ export function appliquerMiseEnPageSurimpression<T extends object>(design: T, pr
     cardValueColor: eclaircir(d.gradientEnd ?? '#EC4899', m.valeurEclaircie),
   } as T;
 }
+
+// ── BADGES (#499) ─────────────────────────────────────────────────────────
+// Rendu réel DANSE (6) : des badges « -76% », « 3-en-1 »… SANS libellé. La
+// carte était une ligne icône | libellé | valeur où le libellé (base 0,
+// ellipse) cédait toute la place : plus l'échelle des cartes montait (× 1,6
+// en surimpression), plus il se réduisait — jusqu'à « … » seul (mesuré dans
+// Chromium : 57 px pour « OS RENFORCÉS » à l'échelle 3,5).
+
+/** Un badge s'affiche seulement s'il a un TITRE et une VALEUR. */
+export function badgeValide(c: { title?: string | null; value?: string | null } | null | undefined): boolean {
+  return !!c && !!(c.title ?? '').trim() && !!(c.value ?? '').trim();
+}
+
+/**
+ * Largeur moyenne d'un caractère, en em — majuscules grasses, police large
+ * (Poppins). Volontairement prudente : une police plus étroite ne fait que
+ * laisser de la marge.
+ */
+const EM_CARACTERE = 0.7;
+
+export interface AjustementBadge {
+  /** Échelle à appliquer au texte et à l'icône (≤ l'échelle demandée). */
+  echelle: number;
+  /** L'icône est gardée si la place le permet (sinon texte seul). */
+  icone: boolean;
+}
+
+/**
+ * Taille d'un badge pour qu'il montre TITRE (≤ 2 lignes, mots entiers) et
+ * VALEUR (1 ligne) dans `largeurPx`. Réduit l'échelle d'abord (jusqu'à la
+ * moitié), puis retire l'icône. Jamais la valeur seule. Pur.
+ */
+export function ajusterBadge(p: {
+  titre: string; valeur: string; largeurPx: number; echelle: number;
+  /** Tailles à l'échelle 1, en px : texte du titre, valeur, icône, écart, rembourrage horizontal (par côté). */
+  texte: number; valeurPx: number; icone: number; ecart: number; padX: number;
+}): AjustementBadge {
+  const motLePlusLong = Math.max(0, ...p.titre.trim().split(/\s+/).map((m) => m.length));
+  const tient = (s: number, icone: boolean) => {
+    const dispo = p.largeurPx - 2 * p.padX - (icone ? p.icone * s + p.ecart : 0);
+    const em = (n: number, px: number) => n * EM_CARACTERE * px * s;
+    return dispo > 0
+      && em(p.valeur.trim().length, p.valeurPx) <= dispo
+      && em(motLePlusLong, p.texte) <= dispo
+      && em(p.titre.trim().length, p.texte) <= 2 * dispo;
+  };
+  const min = p.echelle * 0.5;
+  for (const icone of [true, false]) {
+    for (let s = p.echelle; s >= min - 1e-9; s *= 0.95) if (tient(s, icone)) return { echelle: s, icone };
+  }
+  return { echelle: min, icone: false };
+}

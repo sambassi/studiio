@@ -12,6 +12,7 @@
  * change partout. Module PUR (aucune dépendance navigateur ni serveur).
  */
 import type { ContexteMontage } from '@/lib/creer/smart-montage';
+import { FORCE_PERCUSSION_FORTE, FORCE_PERCUSSION_SECONDAIRE } from '@/lib/creer/rythme-musique';
 
 // ── Ressemblance de deux images (empreinte 8×8) ─────────────────────────
 export const ecartEmpreinte = (a: number[], b: number[]) => {
@@ -92,16 +93,25 @@ export interface RegleCoherence {
    * à fort mouvement sont favorisés, les plans calmes pénalisés (0 = aucun).
    */
   matchCarte: number;
+  /**
+   * Poids du CTA DYNAMIQUE (#499) : le dernier plan, sous le CTA, privilégie
+   * la couleur et le mouvement MESURÉS (énergie, saturation) ; un plan calme
+   * ou noir et blanc au milieu de la couleur est pénalisé, et peut être
+   * remplacé par un plan couleur déjà monté repris à un AUTRE timecode.
+   * Aucune reconnaissance de contenu (groupe, sourires, studio) : mesures
+   * seulement. 0 = comportement d'avant.
+   */
+  ctaDynamique: number;
 }
 
 export const COHERENCE_PROFILS: Record<NomProfilMontage, RegleCoherence> = {
   // Danse (#496) : le noir et blanc ne sert que faute de couleur utilisable,
   // jamais en alternance, jamais en longue série.
-  CARDIO_DANCE: { noirBlancDansCouleur: 1.2, planCalmeEnMontee: 0.25, ruptureAmbiance: 0.15, ruptureCouleur: 0.8, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 2, serieNoirBlanc: 0.8, matchCarte: 0.5 },
-  EVENT_IMMERSIVE: { noirBlancDansCouleur: 0.4, planCalmeEnMontee: 0.2, ruptureAmbiance: 0.15, ruptureCouleur: 0.4, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0.4 },
-  LIFESTYLE_BRAND: { noirBlancDansCouleur: 0.3, planCalmeEnMontee: 0, ruptureAmbiance: 0.2, ruptureCouleur: 0.3, ressemblance: 0.4, memeScene: 0.35, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0 },
-  TUTORIAL_EDUCATION: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.1, ressemblance: 0.2, memeScene: 0.15, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0 },
-  STANDARD: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.2, ressemblance: 0.3, memeScene: 0.3, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0 },
+  CARDIO_DANCE: { noirBlancDansCouleur: 1.2, planCalmeEnMontee: 0.25, ruptureAmbiance: 0.15, ruptureCouleur: 0.8, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 2, serieNoirBlanc: 0.8, matchCarte: 0.5, ctaDynamique: 1 },
+  EVENT_IMMERSIVE: { noirBlancDansCouleur: 0.4, planCalmeEnMontee: 0.2, ruptureAmbiance: 0.15, ruptureCouleur: 0.4, ressemblance: 0.5, memeScene: 0.45, troisiemeMemeRush: 0.35, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0.4, ctaDynamique: 0 },
+  LIFESTYLE_BRAND: { noirBlancDansCouleur: 0.3, planCalmeEnMontee: 0, ruptureAmbiance: 0.2, ruptureCouleur: 0.3, ressemblance: 0.4, memeScene: 0.35, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0 },
+  TUTORIAL_EDUCATION: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.1, ressemblance: 0.2, memeScene: 0.15, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0 },
+  STANDARD: { noirBlancDansCouleur: 0.2, planCalmeEnMontee: 0, ruptureAmbiance: 0.1, ruptureCouleur: 0.2, ressemblance: 0.3, memeScene: 0.3, troisiemeMemeRush: 10, serieNoirBlancMaxS: 0, serieNoirBlanc: 0, matchCarte: 0, ctaDynamique: 0 },
 };
 
 /** Règles de TEXTES par profil — communes à Créer et à l'Autopilote. */
@@ -202,6 +212,16 @@ export interface RapportPlan {
   CUTS_LE_80MS: number | null;
   CUTS_80_120MS: number | null;
   CUTS_GT_120MS: number | null;
+  /**
+   * Coupes situées là où le morceau A des percussions fortes (jusqu'à la
+   * dernière) — ailleurs, aucune coupe ne peut tomber sur une percussion forte.
+   */
+  CUTS_IN_STRONG_ZONE: number | null;
+  CUTS_IN_STRONG_ZONE_LE_80MS: number | null;
+  /** Écart à la percussion RÉELLE la plus proche, forte ou secondaire (#499). */
+  CUTS_PERCUSSION_LE_80MS: number | null;
+  CUTS_PERCUSSION_80_120MS: number | null;
+  CUTS_PERCUSSION_GT_120MS: number | null;
 }
 
 export interface MesureSegment {
@@ -281,13 +301,29 @@ export function rapportPlan(
       }, { run: 0, max: 0 }).max)
       : null,
     ...(() => {
-      const fortes = (rythme?.impacts ?? []).filter((i) => i.force >= 0.5).map((i) => i.t);
-      if (!fortes.length || !coupes.length) return { CUTS_LE_80MS: null, CUTS_80_120MS: null, CUTS_GT_120MS: null };
-      const ecarts = coupes.map((c) => Math.min(...fortes.map((t) => Math.abs(t - c))));
+      const vide = {
+        CUTS_LE_80MS: null, CUTS_80_120MS: null, CUTS_GT_120MS: null, CUTS_IN_STRONG_ZONE: null, CUTS_IN_STRONG_ZONE_LE_80MS: null,
+        CUTS_PERCUSSION_LE_80MS: null, CUTS_PERCUSSION_80_120MS: null, CUTS_PERCUSSION_GT_120MS: null,
+      };
+      const fortes = (rythme?.impacts ?? []).filter((i) => i.force >= FORCE_PERCUSSION_FORTE).map((i) => i.t);
+      const reelles = (rythme?.impacts ?? []).filter((i) => i.force >= FORCE_PERCUSSION_SECONDAIRE).map((i) => i.t);
+      if (!fortes.length || !coupes.length) return vide;
+      const ecart = (l: number[]) => (c: number) => Math.min(...l.map((t) => Math.abs(t - c)));
+      const ecarts = coupes.map(ecart(fortes));
+      const ecartsReels = coupes.map(ecart(reelles));
+      const le = (e: number) => e <= 0.08 + 1e-9;
+      const mi = (e: number) => e > 0.08 + 1e-9 && e <= 0.12 + 1e-9;
+      const gt = (e: number) => e > 0.12 + 1e-9;
+      const zone = ecarts.filter((_, i) => coupes[i] <= Math.max(...fortes) + 0.12);
       return {
-        CUTS_LE_80MS: ecarts.filter((e) => e <= 0.08 + 1e-9).length,
-        CUTS_80_120MS: ecarts.filter((e) => e > 0.08 + 1e-9 && e <= 0.12 + 1e-9).length,
-        CUTS_GT_120MS: ecarts.filter((e) => e > 0.12 + 1e-9).length,
+        CUTS_LE_80MS: ecarts.filter(le).length,
+        CUTS_80_120MS: ecarts.filter(mi).length,
+        CUTS_GT_120MS: ecarts.filter(gt).length,
+        CUTS_IN_STRONG_ZONE: zone.length,
+        CUTS_IN_STRONG_ZONE_LE_80MS: zone.filter(le).length,
+        CUTS_PERCUSSION_LE_80MS: ecartsReels.filter(le).length,
+        CUTS_PERCUSSION_80_120MS: ecartsReels.filter(mi).length,
+        CUTS_PERCUSSION_GT_120MS: ecartsReels.filter(gt).length,
       };
     })(),
   };

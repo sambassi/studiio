@@ -28,6 +28,12 @@ export interface RythmeMusique {
 
 /** Force (0..1) à partir de laquelle une percussion est « forte ». */
 export const FORCE_PERCUSSION_FORTE = 0.5;
+/**
+ * Force à partir de laquelle une percussion est « secondaire » : là où le
+ * morceau n'a plus de percussion forte (passage plus calme), c'est elle que
+ * la coupe vise, plutôt qu'un temps théorique de la grille BPM.
+ */
+export const FORCE_PERCUSSION_SECONDAIRE = 0.3;
 
 const HOP_S = 0.02; // 20 ms
 

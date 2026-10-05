@@ -30,10 +30,10 @@
  * Aucune dépendance navigateur : testable avec des échantillons synthétiques.
  */
 import type { RushSegment } from '@/lib/creer/multi-rush';
-import { FORCE_PERCUSSION_FORTE } from '@/lib/creer/rythme-musique';
+import { FORCE_PERCUSSION_FORTE, FORCE_PERCUSSION_SECONDAIRE } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression } from '@/lib/creer/overlays';
 import {
-  ecartEmpreinte, similariteVisuelle, memeScene, estNoirEtBlanc, ECART_AMBIANCE, COHERENCE_PROFILS, carteEnergique, SEUIL_ENERGIE_CALME,
+  ecartEmpreinte, similariteVisuelle, memeScene, memeTimecode, estNoirEtBlanc, ECART_AMBIANCE, COHERENCE_PROFILS, carteEnergique, SEUIL_ENERGIE_CALME,
   type FenetreSource, type MesureSegment,
 } from '@/lib/creer/smart-montage-regles';
 
@@ -317,6 +317,11 @@ interface RegleProfil {
   activite: NomProfil | null;
   /** Coupes sur les percussions fortes RÉELLES (sinon la grille de temps). */
   percussions?: boolean;
+  /**
+   * Sans percussion forte dans la fenêtre : la percussion SECONDAIRE réelle
+   * avant la grille de temps (#499, danse). Absent = comportement d'avant.
+   */
+  percussionsSecondaires?: boolean;
 }
 
 export const REGLES_PROFILS: Record<Exclude<ProfilMontage, 'STANDARD'>, RegleProfil> = {
@@ -324,7 +329,7 @@ export const REGLES_PROFILS: Record<Exclude<ProfilMontage, 'STANDARD'>, ReglePro
   // plus de 2 s hors CTA (plus posé) ; cuts sur les temps de la musique.
   CARDIO_DANCE: {
     phases: { HOOK: [0.8, 1.2], BUILD: [1, 2], PEAK: [0.8, 1.5], FOCUS: [1, 2], CTA: [2, 3] },
-    softMax: 1.8, hardMax: 2, ralenti: true, overlay: true, activite: 'activite', percussions: true,
+    softMax: 1.8, hardMax: 2, ralenti: true, overlay: true, activite: 'activite', percussions: true, percussionsSecondaires: true,
   },
   EVENT_IMMERSIVE: {
     phases: { HOOK: [1.5, 2.5], BUILD: [1.5, 2.5], PEAK: [0.8, 1.6], FOCUS: [1.5, 2.2], CTA: [2, 3] },
@@ -388,14 +393,18 @@ export function grilleDeCoupes(
     // Profils énergiques : la PERCUSSION FORTE réelle (kick, snare, impact)
     // la plus intéressante de la fenêtre — force, puis proximité du milieu.
     // Aucune : la grille de temps, comme avant (cut naturel).
-    const impact = regle.percussions && rythme?.impacts
+    // Tolérance de ±0,15 s autour de la fenêtre de la phase : une vraie
+    // percussion vaut mieux qu'un temps théorique, sans plan trop court.
+    const percussionDe = (force: number, finMax: number) => regle.percussions && rythme?.impacts
       ? rythme.impacts
-        // Tolérance de ±0,15 s autour de la fenêtre de la phase : une vraie
-        // percussion vaut mieux qu'un temps théorique, sans plan trop court.
-        .filter((i) => i.force >= FORCE_PERCUSSION_FORTE && i.t >= t + Math.max(mn - 0.15, mn * 0.8) && i.t <= t + mx + 0.15)
+        .filter((i) => i.force >= force && i.t >= t + Math.max(mn - 0.15, mn * 0.8) && i.t <= finMax)
         .map((i) => ({ t: i.t, note: i.force - Math.abs(i.t - vise) / Math.max(0.2, mx - mn) }))
         .sort((a, b) => b.note - a.note)[0]?.t ?? null
       : null;
+    // 1. percussion forte ; 2. (danse) percussion secondaire — jamais au-delà
+    //    de la durée maximale d'un plan ; 3. la grille de temps (cut naturel).
+    const impact = percussionDe(FORCE_PERCUSSION_FORTE, t + mx + 0.15)
+      ?? (regle.percussionsSecondaires ? percussionDe(FORCE_PERCUSSION_SECONDAIRE, t + Math.min(mx + 0.15, phase === 'CTA' ? mx + 0.15 : regle.hardMax)) : null);
     const beat = rythme ? (impact ?? pres(rythme.forts) ?? pres(rythme.beats) ?? null) : null;
     let fin = Math.min(beat ?? vise, cible);
     if (cible - fin < mn * 0.6) fin = cible;
@@ -542,6 +551,13 @@ export function planMontage(
     }).cartes.filter((c) => carteEnergique(titresCartes[c.index]))
     : [];
   const partJuste = 1 / rushs.length;
+  // SORTIE (#499) : les plans visibles sous le CTA — MÊME fenêtre que la
+  // surimpression du CTA (`planOverlays`), sinon les 3 dernières secondes —
+  // plus le plan qui y mène (durée maximale d'un plan) : la vidéo ne doit pas
+  // retomber dans le noir et blanc ou le calme juste avant de conclure.
+  const debutSortie = coh.ctaDynamique > 0
+    ? ((profilEnSurimpression(detection.profil) ? planOverlays({ duree: cible, nbCartes: 0, finHook: null, profil: detection.profil }).cta?.[0] : null) ?? cible - 3) - regle.hardMax
+    : Infinity;
 
   for (const creneau of grille) {
     const d = creneau.fin - creneau.debut;
@@ -550,7 +566,10 @@ export function planMontage(
     // Jamais 3 plans de suite du même rush quand un autre rush a de quoi.
     const interdit = plan.length >= 2 && cleSource(plan[plan.length - 1].url) === cleSource(plan[plan.length - 2].url)
       ? cleSource(plan[plan.length - 1].url) : null;
-    const chercher = (exclu: string | null): Choix | null => {
+    // `reprise` (CTA dynamique, #499) : la matière déjà montée redevient
+    // disponible — 1 : à un AUTRE timecode seulement ; 2 : en dernier recours,
+    // un timecode déjà monté (jamais celui du plan précédent).
+    const chercher = (exclu: string | null, reprise: 0 | 1 | 2 = 0): Choix | null => {
     let meilleur: Choix | null = null;
     for (const { a, cle, st } of rushs) {
       if (cle === exclu) continue;
@@ -563,8 +582,9 @@ export function planMontage(
         const ralenti = regle.ralenti && ralentis < 2 && (creneau.phase === 'PEAK' || creneau.phase === 'HOOK') && m.geste;
         const vitesse = ralenti ? 0.6 : 1;
         const e = s + d * vitesse;
-        if (chevauche(s, e, utilisees[cle], marge)) continue;
-        if (m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
+        if (!reprise && chevauche(s, e, utilisees[cle], marge)) continue;
+        if (reprise === 1 && choisis.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
+        if (!reprise && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
 
         // QUALITÉ / PERTINENCE (comme V2)
         const mouv = 0.5 * m.mouvRel + 0.5 * m.mouvAbs;
@@ -620,6 +640,18 @@ export function planMontage(
           - (calme ? coh.planCalmeEnMontee : 0)
           - (rupture ? coh.ruptureAmbiance : 0);
         score -= 1 - coherence;
+        // CTA DYNAMIQUE (#499) : couleur et mouvement MESURÉS sous le CTA.
+        const ctaDyn = coh.ctaDynamique > 0 && (creneau.phase === 'CTA' || creneau.fin > debutSortie + 1e-6);
+        if (ctaDyn) {
+          score += coh.ctaDynamique * (energie - 0.5);
+          if (energie < SEUIL_ENERGIE_CALME) score -= coh.ctaDynamique;
+          if (matiereCouleur && noirBlanc) score -= coh.ctaDynamique;
+        }
+        // Dernier recours : le moins de matière déjà vue possible.
+        if (reprise === 2) {
+          const recouvre = Math.max(0, ...choisis.filter((c) => c.cle === cle).map((c) => Math.max(0, Math.min(e, c.jusqua) - Math.max(s, c.depuis)) / Math.max(1e-6, e - s)));
+          score -= recouvre;
+        }
         if (prec?.cle === cle) score -= 0.2;
         if (cle === interdit) score -= coh.troisiemeMemeRush;
         // Diversité des rushes, jamais au prix d'un mauvais plan
@@ -639,6 +671,8 @@ export function planMontage(
             serieTropLongue ? 'série noir et blanc trop longue (pénalisé)' : null,
             sousCarte ? (energie >= 0.5 ? 'plan dynamique sous une carte énergique' : 'plan peu dynamique sous une carte énergique (pénalisé)') : null,
             calme ? 'plan calme dans une montée d\'énergie (pénalisé)' : null,
+            ctaDyn ? (energie >= SEUIL_ENERGIE_CALME && !(matiereCouleur && noirBlanc) ? `CTA dynamique : énergie ${arrondi2(energie)}${m.saturation !== null ? `, saturation ${arrondi2(m.saturation)}` : ''}` : 'CTA calme ou noir et blanc (pénalisé)') : null,
+            reprise === 1 ? 'plan déjà monté, repris à un autre timecode' : reprise === 2 ? 'timecode déjà monté, repris faute d\'alternative' : null,
             scene ? 'même scène qu\'un plan déjà monté (pénalisé)' : simMax > 0.6 ? 'ressemble à un plan déjà monté (pénalisé)' : null,
           ].filter(Boolean);
           meilleur = {
@@ -661,7 +695,27 @@ export function planMontage(
     // Un 3e plan de suite du même rush est PÉNALISÉ (`coh.troisiemeMemeRush`),
     // plus interdit : interdit, il forçait un plan incohérent (noir et blanc
     // au milieu de la couleur) dès que les autres rushes l'étaient tous.
-    const meilleur = chercher(null);
+    let meilleur = chercher(null);
+    // CTA DYNAMIQUE : plus de plan neuf en couleur et en mouvement ? Un plan
+    // couleur déjà monté, repris à un AUTRE timecode, plutôt qu'un plan calme
+    // ou noir et blanc pour finir.
+    // Ailleurs : un plan noir et blanc au milieu de la couleur imposerait
+    // DEUX ruptures (aller, puis retour en couleur pour la sortie) — même
+    // reprise, s'il existe un plan couleur à un autre timecode.
+    const enSortie = creneau.phase === 'CTA' || creneau.fin > debutSortie + 1e-6;
+    if (coh.ctaDynamique > 0) {
+      // Hors sortie, une matière épuisée reste épuisée (vidéo plus courte,
+      // jamais rallongée par des reprises) ; seule la SORTIE est garantie.
+      const faible = (c: Choix | null) => (!c && enSortie)
+        || (!!c && !!matiereCouleur && estNoirEtBlanc(c.saturation))
+        || (!!c && enSortie && (c.seg.energie ?? 0) < SEUIL_ENERGIE_CALME);
+      // Timecode déjà monté : seulement sous le CTA, faute de toute autre option.
+      for (const niveau of (enSortie ? [1, 2] : [1]) as Array<1 | 2>) {
+        if (!faible(meilleur)) break;
+        const repris = chercher(null, niveau);
+        if (repris && !faible(repris)) meilleur = repris;
+      }
+    }
     // Plus de matière exploitable : la vidéo s'arrête là (jamais d'étirement).
     if (!meilleur) break;
     plan.push(meilleur.seg);

@@ -8,6 +8,7 @@ import {
 } from '@/lib/creer/textFormat';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
+import { ajusterBadge, badgeValide } from '@/lib/creer/surimpressions-mise-en-page';
 
 /**
  * Les cartes du montage — composant PARTAGÉ par les deux moteurs de rendu.
@@ -174,6 +175,14 @@ export default function SequenceCards({
    * des autres, alors que le compositeur canvas, lui, colle le texte au bord.
    */
   const sansCadre = isFrameless(cardStyle);
+  /**
+   * BADGE (#499) : carte posée SUR la vidéo (surimpression — seul cas où un
+   * `fond` est fourni, en boîte libre). Valeur et TITRE empilés, titre sur
+   * 2 lignes au plus, taille ajustée à la place (`ajusterBadge`) ; une carte
+   * sans titre ou sans valeur n'est pas affichée. Jamais la valeur seule.
+   */
+  const badge = fond != null && !!cardBoxes;
+  const cartesAffichees = badge ? cards.filter(badgeValide) : cards;
 
   /**
    * Carte survolee, et carte en cours de redimensionnement.
@@ -237,8 +246,16 @@ export default function SequenceCards({
           : null),
       }}
     >
-      {cards.map((c) => {
+      {cartesAffichees.map((c) => {
         const box = cardBoxes?.[c.id];
+        // Badge : échelle ajustée pour que titre ET valeur tiennent.
+        const aj = badge && box
+          ? ajusterBadge({
+            titre: c.title, valeur: c.value ?? '', largeurPx: vw * 0.84 * (box.w / 100), echelle,
+            texte: vw * CR.text, valeurPx: vw * CR.value, icone: vw * CR.icon, ecart: vw * CR.gap, padX: sansCadre ? 0 : vw * CR.padX,
+          })
+          : null;
+        const ech = aj?.echelle ?? echelle;
         return (
           <div
             key={c.id}
@@ -288,7 +305,8 @@ export default function SequenceCards({
                 ? {
                     position: 'absolute' as const,
                     left: `${box.x}%`, top: `${box.y}%`,
-                    width: `${box.w}%`, height: `${box.h}%`,
+                    // Badge : la hauteur S'ADAPTE au titre sur deux lignes.
+                    width: `${box.w}%`, ...(badge ? { minHeight: `${box.h}%`, boxSizing: 'border-box' as const } : { height: `${box.h}%` }),
                   }
                 // ⚠️ CONTEXTE DE POSITIONNEMENT POUR LES POIGNEES. Sans lui,
                 // elles se placeraient sur le plus proche ancetre positionne
@@ -323,6 +341,30 @@ export default function SequenceCards({
               outlineOffset: it ? uiPx(2) : undefined,
             }}
           >
+            {badge ? (
+              <>
+                {aj?.icone !== false && (
+                  <span style={{ flexShrink: 0, display: 'flex' }}>
+                    <CardIcon name={c.icon} size={Math.round(vw * CR.icon * ech)} color="#FFFFFF" className="" />
+                  </span>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 auto' }}>
+                  <span style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
+                    {c.value}
+                  </span>
+                  <span style={{
+                    fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
+                    color: '#FFFFFF', fontSize: vw * CR.text * ech, lineHeight: 1.1,
+                    // Mots entiers, deux lignes au plus — jamais d'ellipse.
+                    whiteSpace: 'normal', overflowWrap: 'normal', wordBreak: 'keep-all',
+                    ...styleTexte(vw * CR.text * ech),
+                  }}>
+                    {c.title}
+                  </span>
+                </div>
+              </>
+            ) : (
+            <>
             <CardIcon
               name={c.icon}
               // L'icone suit l'echelle du texte : l'agrandir seul donnerait
@@ -362,6 +404,8 @@ export default function SequenceCards({
               >
                 {c.value}
               </span>
+            )}
+            </>
             )}
             {/* ── POIGNEES DE COIN ────────────────────────────────────
                 ⚠️ ELLES N'EXISTAIENT QUE POUR LE TITRE ET LE CTA : sur une
