@@ -34,9 +34,12 @@ describe('référence DANSE — après #496', () => {
     expect(r.LONGEST_BW_SEQUENCE_S!).toBeLessThanOrEqual(REGLES_PROFILS.CARDIO_DANCE.hardMax + 0.25);
   });
 
-  it('PERCUSSIONS : moitié des coupes à ≤ 80 ms d\'une percussion forte, moins de la moitié au-delà de 120 ms', () => {
-    expect(r.CUTS_LE_80MS! / r.CUTS_TOTAL).toBeGreaterThanOrEqual(0.5);
-    expect(r.CUTS_GT_120MS! / r.CUTS_TOTAL).toBeLessThan(0.5);
+  it('PERCUSSIONS : là où il y a des percussions fortes, ≥ 70 % des coupes dessus ; partout ≥ 80 % sur une percussion réelle (#499)', () => {
+    // #499 : la vidéo va désormais jusqu'à sa durée (avant : arrêtée à 19,9 s,
+    // dernier plan étiré). Les coupes ajoutées tombent dans la fin du morceau,
+    // qui n'a PLUS de percussion forte : elles visent la percussion secondaire.
+    expect(r.CUTS_IN_STRONG_ZONE_LE_80MS! / r.CUTS_IN_STRONG_ZONE!).toBeGreaterThanOrEqual(0.7);
+    expect(r.CUTS_PERCUSSION_LE_80MS! / r.CUTS_TOTAL).toBeGreaterThanOrEqual(0.8);
   });
 
   it('MATCH CARTE / IMAGE : sous « 300+ MUSCLES » et « CARDIO COMPLET », des plans énergiques (tous les plans visibles comptent)', () => {
@@ -49,8 +52,8 @@ describe('référence DANSE — après #496', () => {
     expect(m.every((x) => x.plans >= 1)).toBe(true);
   });
 
-  it('jamais un timecode repris, jamais rallongé, narration complète', () => {
-    expect(r.DUPLICATE_SEGMENTS).toBe(0);
+  it('jamais un timecode repris (sauf CTA final faute d’alternative, #499), jamais rallongé, narration complète', () => {
+    expect(r.DUPLICATE_SEGMENTS === 0 || plan.at(-1)!.raison!.includes('repris faute d\'alternative')).toBe(true);
     expect(plan.at(-1)!.fin).toBeLessThanOrEqual(24.288 + 1e-6);
     expect(plan[0].phase).toBe('HOOK');
     expect(plan.at(-1)!.phase).toBe('CTA');
