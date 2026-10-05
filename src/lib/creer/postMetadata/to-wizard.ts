@@ -149,10 +149,15 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
     cards: Array.isArray(cartesLues)
       ? cartesLues.map((c, i) => {
           const carte = estObjet(c) ? c : {};
+          // #500 : l'Autopilote écrit `icon` / `title`, Créer `emoji` /
+          // `label`. Ne lire que la seconde forme vidait titre ET icône d'une
+          // vidéo Autopilote rouverte dans Créer — puis de toutes celles
+          // créées à partir d'elle (cartes réduites à leur valeur).
+          const texte = (...v: unknown[]) => (v.find((x) => typeof x === 'string' && x.trim()) as string | undefined) ?? '';
           return {
             id: idsLus[i],
-            icon: typeof carte.emoji === 'string' ? carte.emoji : '',
-            title: typeof carte.label === 'string' ? carte.label : '',
+            icon: texte(carte.emoji, carte.icon),
+            title: texte(carte.label, carte.title),
             value: typeof carte.value === 'string' ? carte.value : '',
             description: typeof carte.description === 'string' ? carte.description : '',
           };
