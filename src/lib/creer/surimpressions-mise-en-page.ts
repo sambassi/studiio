@@ -17,6 +17,7 @@
  * Module PUR.
  */
 import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
+import { FONT_RATIO } from '@/lib/creer/designSpec';
 
 export interface BoiteCarte { x: number; y: number; w: number; h: number }
 
@@ -34,6 +35,10 @@ export interface MiseEnPageSurimpression {
   carteFond: string;
   /** Part de blanc mêlée à la couleur d'accent de la valeur (lisible sur le fond sombre). */
   valeurEclaircie: number;
+  /** #502 — panneau sombre derrière le CTA (lisibilité sur n'importe quel plan). */
+  ctaFond: string;
+  /** #502 — part de blanc mêlée à la couleur de la ligne d'action, sur ce panneau. */
+  ctaActionEclaircie: number;
 }
 
 /** Profils dynamiques : la vidéo continue, les textes passent par-dessus. */
@@ -55,7 +60,17 @@ const DYNAMIQUE: MiseEnPageSurimpression = {
   carteScale: 1.6,
   carteFond: 'rgba(0,0,0,0.55)',
   valeurEclaircie: 0.5,
+  // Contraste mesuré dans le PIRE cas (plan blanc derrière) : titre blanc
+  // 5,1:1, ligne d'action éclaircie 3,4:1 — au-dessus du seuil 3:1 du
+  // conseiller (`REGLES_LISIBILITE.contrasteMin`).
+  ctaFond: 'rgba(0,0,0,0.6)',
+  ctaActionEclaircie: 0.6,
 };
+
+/** #502 — bande où poser le CTA : la plus CALME mesurée sur les plans de sortie. */
+export type BandeCta = 'haut' | 'bas';
+/** Bas de la ligne CTA (le cadre s'ancre par le bas, `ctaFrameStyle`). */
+const CTA_Y: Record<BandeCta, number> = { bas: 76, haut: 34 };
 
 /** Mêle `part` de blanc à une couleur #rrggbb (accent lisible sur fond sombre). Pure. */
 export function eclaircir(hex: string | null | undefined, part: number): string | null {
@@ -66,11 +81,61 @@ export function eclaircir(hex: string | null | undefined, part: number): string 
   return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
-export function miseEnPageSurimpression(profil: NomProfilMontage | string | null | undefined): MiseEnPageSurimpression | null {
+export function miseEnPageSurimpression(
+  profil: NomProfilMontage | string | null | undefined,
+  options: { ctaBande?: BandeCta | null } = {},
+): MiseEnPageSurimpression | null {
   if (profil !== 'CARDIO_DANCE' && profil !== 'EVENT_IMMERSIVE') return null;
   // La règle éditoriale (`TEXTES_PROFILS`) dit « cartes en bas-gauche » :
   // la boîte ci-dessus en est la traduction ; un autre réglage = autre boîte.
-  return TEXTES_PROFILS[profil].cartes.position === 'bas-gauche' ? DYNAMIQUE : { ...DYNAMIQUE, carte: { x: 13, y: 40, w: 74, h: 22 } };
+  const base = TEXTES_PROFILS[profil].cartes.position === 'bas-gauche' ? DYNAMIQUE : { ...DYNAMIQUE, carte: { x: 13, y: 40, w: 74, h: 22 } };
+  // Sans mesure : en bas, comme avant.
+  return options.ctaBande ? { ...base, ctaPos: { x: 50, y: CTA_Y[options.ctaBande] } } : base;
+}
+
+// ── ACCROCHE (#502) ──────────────────────────────────────────────────────
+/** Hauteur maximale du bloc titre + sous-titre (part de la hauteur de l'image). */
+export const ACCROCHE_HAUTEUR_MAX = 0.14;
+/** Tailles minimales lisibles (px, image 1080×1920) : titre, sous-titre. */
+const ACCROCHE_MIN_PX = { titre: 64, sousTitre: 34 };
+
+/**
+ * Échelles de l'accroche pour que titre + sous-titre tiennent dans
+ * `ACCROCHE_HAUTEUR_MAX` de la hauteur, sans passer sous une taille lisible.
+ * Estimation PRUDENTE (largeur moyenne des caractères 0,6 em), mêmes ratios
+ * que `SequenceTitle`. `echelleSousTitre` est le multiplicateur du sous-titre
+ * (sa taille = titre × ce multiplicateur). Pur.
+ */
+export function ajusterAccroche(p: {
+  titre: string; sousTitre?: string | null; echelleTitre: number; echelleSousTitre: number;
+  largeur: number; hauteur: number;
+  /** Ratios de police du format (`FONT_RATIO[format]`). */
+  ratioTitre: number; ratioSousTitre: number;
+  /** Largeur du cadre titre (part de la largeur). */
+  partLargeur?: number;
+  interligneTitre?: number;
+}): { echelleTitre: number; echelleSousTitre: number } {
+  const largeurUtile = p.largeur * (p.partLargeur ?? 0.84);
+  const lignes = (texte: string, px: number) => {
+    let n = 1; let ligne = 0;
+    for (const mot of texte.trim().split(/\s+/).filter(Boolean)) {
+      const w = (mot.length + 1) * 0.6 * px;
+      if (ligne > 0 && ligne + w > largeurUtile) { n += 1; ligne = w; } else ligne += w;
+    }
+    return texte.trim() ? n : 0;
+  };
+  const hauteurBloc = (e: number) => {
+    const pt = p.largeur * p.ratioTitre * e;
+    const ps = p.largeur * p.ratioSousTitre * e * p.echelleSousTitre;
+    return lignes(p.titre, pt) * pt * (p.interligneTitre ?? 1.1) + lignes(p.sousTitre ?? '', ps) * ps * 1.25 + (p.sousTitre ? ps * 0.4 : 0);
+  };
+  const plafond = ACCROCHE_HAUTEUR_MAX * p.hauteur;
+  const minTitre = ACCROCHE_MIN_PX.titre / (p.largeur * p.ratioTitre);
+  const minSous = ACCROCHE_MIN_PX.sousTitre / (p.largeur * p.ratioSousTitre * p.echelleSousTitre);
+  const plancher = Math.min(p.echelleTitre, Math.max(minTitre, minSous));
+  let e = p.echelleTitre;
+  while (e > plancher && hauteurBloc(e) > plafond) e = Math.max(plancher, e * 0.95);
+  return { echelleTitre: e, echelleSousTitre: p.echelleSousTitre };
 }
 
 /** Les champs de design que la mise en page renseigne (Remotion / composants partagés). */
@@ -83,6 +148,11 @@ export interface DesignSurimpression {
   cardBoxes?: Record<string, BoiteCarte> | null;
   cardsTypography?: { scale?: number } & Record<string, unknown>;
   cardBackground?: string | null;
+  /** #502 — panneau derrière le CTA. */
+  ctaBackground?: string | null;
+  ctaSubColor?: string;
+  title?: string;
+  subtitle?: string;
   /** Couleur de la valeur des cartes (sinon `gradientEnd`). */
   cardValueColor?: string | null;
   gradientEnd?: string;
@@ -93,15 +163,25 @@ export interface DesignSurimpression {
  * échelles choisies par l'utilisateur sont MULTIPLIÉES (jamais écrasées).
  * La carte est rendue seule (`c0`) : une seule boîte suffit.
  */
-export function appliquerMiseEnPageSurimpression<T extends object>(design: T, profil: string | null | undefined): T {
-  const m = miseEnPageSurimpression(profil);
+export function appliquerMiseEnPageSurimpression<T extends object>(
+  design: T, profil: string | null | undefined, options: { ctaBande?: BandeCta | null } = {},
+): T {
+  const m = miseEnPageSurimpression(profil, options);
   if (!m) return design;
   const d = design as DesignSurimpression;
+  // Accroche bornée en hauteur (#502) — la MÊME règle que Créer.
+  const accroche = ajusterAccroche({
+    titre: d.title ?? '', sousTitre: d.subtitle ?? null,
+    echelleTitre: (d.titleScale ?? 1) * m.titleScale, echelleSousTitre: (d.subtitleScale ?? 1) * m.subtitleScale,
+    largeur: 1080, hauteur: 1920, ratioTitre: FONT_RATIO['9:16'].title, ratioSousTitre: FONT_RATIO['9:16'].subtitle,
+  });
   return {
     ...design,
     titlePos: m.titlePos,
-    titleScale: (d.titleScale ?? 1) * m.titleScale,
-    subtitleScale: (d.subtitleScale ?? 1) * m.subtitleScale,
+    titleScale: accroche.echelleTitre,
+    subtitleScale: accroche.echelleSousTitre,
+    ctaBackground: m.ctaFond,
+    ctaSubColor: eclaircir(d.ctaSubColor ?? '#EC4899', m.ctaActionEclaircie) ?? d.ctaSubColor,
     ctaPos: m.ctaPos,
     ctaScale: (d.ctaScale ?? 1) * m.ctaScale,
     cardBoxes: { c0: m.carte },

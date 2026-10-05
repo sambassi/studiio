@@ -125,14 +125,15 @@ describe('source unique, aucune règle recopiée', () => {
   const src = (f: string) => readFileSync(resolve(process.cwd(), f), 'utf-8');
   it('Autopilote : mise en page partagée appliquée au design Remotion / hybride', () => {
     const p = src('src/lib/autopilot/produire.ts');
-    expect(p).toContain('if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo);');
+    // #502 : + la bande du CTA mesurée (zone calme), même règle que Créer.
+    expect(p).toContain('if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande });');
     expect(p).toContain('profil: profilVideo,');
   });
   it('Créer : mêmes fenêtres, même mise en page, mêmes composants', () => {
     const w = src('src/app/dashboard/creer/AssistantWizard.tsx');
     expect(w).toContain('overlaysCreer = planOverlays({');
     expect(w).toContain('profil: montageInfos.profil,');
-    expect(w).toContain('miseEnPageSurimpression(montageInfos.profil)');
+    expect(w).toContain('miseEnPageSurimpression(montageInfos.profil, { ctaBande: zoneCta?.bande })');
     expect(w).toContain('<PlateauSurimpression ref={plateauSurimpRef} {...plateauSurimp} />');
     expect(w).toContain('...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),');
     expect(w).not.toMatch(/carteFond\s*:|titleScale:\s*2\.2|ctaPos:\s*\{\s*x:\s*50,\s*y:\s*76/);

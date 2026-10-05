@@ -51,6 +51,7 @@ export default function SequenceCta({
   format,
   containerWidth,
   reveal = 1,
+  fond = null,
 }: {
   text: string;
   subText?: string;
@@ -66,6 +67,11 @@ export default function SequenceCta({
    * frappes concurrentes a l'ecran.
    */
   reveal?: number;
+  /**
+   * #502 — panneau sombre derrière le CTA posé SUR la vidéo (surimpression) :
+   * lisible quel que soit le plan. `null` = le CTA d'avant, sans panneau.
+   */
+  fond?: string | null;
 }) {
   const vw = containerWidth;
   const weight = typography.bold ? 900 : 400;
@@ -81,7 +87,7 @@ export default function SequenceCta({
     textUnderlineOffset: size * UNDERLINE_OFFSET_RATIO,
   });
 
-  return (
+  const contenu = (
     <>
       <div
         style={{
@@ -127,6 +133,12 @@ export default function SequenceCta({
         </div>
       )}
     </>
+  );
+  if (!fond) return contenu;
+  return (
+    <div data-cta-fond style={{ backgroundColor: fond, padding: `${vw * 0.03}px ${vw * 0.04}px`, borderRadius: vw * 0.03 }}>
+      {contenu}
+    </div>
   );
 }
 

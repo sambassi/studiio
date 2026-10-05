@@ -46,6 +46,19 @@ export function memeScene(a: FenetreSource, b: FenetreSource): boolean {
   return ecart < MEME_SCENE.ecartS && ecartEmpreinte(a.empreinte, b.empreinte) < MEME_SCENE.empreinte;
 }
 
+// ── ANTI-RÉPÉTITION « FLASH » (#502) ────────────────────────────────────
+/** Fenêtre (s, timeline de la vidéo) où une reprise se remarque immédiatement. */
+export const FENETRE_FLASH_S = 3;
+/** Similarité visuelle (0..1) au-delà de laquelle deux plans sont quasi identiques. */
+export const SIMILARITE_FLASH = 0.85;
+/**
+ * Un plan qui PROLONGE le précédent (même rush, reprise là où il s'arrêtait)
+ * est un plan continu coupé — pas une répétition (cas DANSE (8), 0,97–1,83 s).
+ */
+export function prolonge(prec: FenetreSource, suivant: FenetreSource): boolean {
+  return prec.cle === suivant.cle && Math.abs(suivant.depuis - prec.jusqua) <= 0.25;
+}
+
 /** Deux extraits qui reprennent EXACTEMENT la même matière (timecodes qui se chevauchent). */
 export function memeTimecode(a: FenetreSource, b: FenetreSource): boolean {
   return a.cle === b.cle && Math.min(a.jusqua, b.jusqua) - Math.max(a.depuis, b.depuis) > 0.05;
@@ -218,6 +231,10 @@ export interface RapportPlan {
    */
   CUTS_IN_STRONG_ZONE: number | null;
   CUTS_IN_STRONG_ZONE_LE_80MS: number | null;
+  /** #502 — dans `FENETRE_FLASH_S` : même source + timecode chevauchant. */
+  RECENT_DUPLICATE_EXACT_COUNT: number;
+  /** #502 — dans `FENETRE_FLASH_S` : quasi identiques (≥ `SIMILARITE_FLASH`), hors plan continu. */
+  RECENT_DUPLICATE_SIMILAR_COUNT: number | null;
   /** Écart à la percussion RÉELLE la plus proche, forte ou secondaire (#499). */
   CUTS_PERCUSSION_LE_80MS: number | null;
   CUTS_PERCUSSION_80_120MS: number | null;
@@ -286,6 +303,20 @@ export function rapportPlan(
     AVG_BEAT_OFFSET_MS: decalages.length ? Math.round((decalages.reduce((a, b) => a + b, 0) / decalages.length) * 1000) : null,
     MAX_BEAT_OFFSET_MS: decalages.length ? Math.round(Math.max(...decalages) * 1000) : null,
     DUPLICATE_SEGMENTS: doublons,
+    ...(() => {
+      let exact = 0; let similaires = 0; let mesurable = true;
+      for (let i = 0; i < segs.length; i++) {
+        for (let j = i + 1; j < segs.length; j++) {
+          if (segs[j].debut - segs[i].fin >= FENETRE_FLASH_S) break;
+          if (j === i + 1 && prolonge(segs[i], segs[j])) continue;
+          if (memeTimecode(segs[i], segs[j])) { exact += 1; continue; }
+          const s = similariteVisuelle(segs[i].empreinte, segs[j].empreinte);
+          if (s === null) mesurable = false;
+          else if (s >= SIMILARITE_FLASH) similaires += 1;
+        }
+      }
+      return { RECENT_DUPLICATE_EXACT_COUNT: exact, RECENT_DUPLICATE_SIMILAR_COUNT: mesurable ? similaires : null };
+    })(),
     SAME_SCENE_PAIRS: segs.every((s) => s.empreinte) ? scenes : null,
     VISUAL_REUSE_FALLBACK: 0,
     VISUAL_SIMILARITY_MAX: simMax,

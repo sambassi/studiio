@@ -33,7 +33,7 @@ import type { RushSegment } from '@/lib/creer/multi-rush';
 import { FORCE_PERCUSSION_FORTE, FORCE_PERCUSSION_SECONDAIRE } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression } from '@/lib/creer/overlays';
 import {
-  ecartEmpreinte, similariteVisuelle, memeScene, memeTimecode, estNoirEtBlanc, ECART_AMBIANCE, COHERENCE_PROFILS, carteEnergique, SEUIL_ENERGIE_CALME,
+  ecartEmpreinte, similariteVisuelle, memeScene, memeTimecode, estNoirEtBlanc, FENETRE_FLASH_S, SIMILARITE_FLASH, prolonge, ECART_AMBIANCE, COHERENCE_PROFILS, carteEnergique, SEUIL_ENERGIE_CALME,
   type FenetreSource, type MesureSegment,
 } from '@/lib/creer/smart-montage-regles';
 
@@ -584,6 +584,10 @@ export function planMontage(
         const e = s + d * vitesse;
         if (!reprise && chevauche(s, e, utilisees[cle], marge)) continue;
         if (reprise === 1 && choisis.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
+        // ANTI-RÉPÉTITION FLASH (#502) : dans les 3 dernières secondes, jamais
+        // la même matière — même en dernier recours (reprise 2).
+        const recents = choisis.filter((_, k) => plan[k].fin > creneau.debut - FENETRE_FLASH_S);
+        if (recents.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
         if (!reprise && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
 
         // QUALITÉ / PERTINENCE (comme V2)
@@ -620,6 +624,14 @@ export function planMontage(
         const scene = choisis.some((c) => memeScene({ cle, depuis: s, jusqua: e, empreinte: m.empreinte }, c));
         score -= coh.ressemblance * Math.max(0, simMax - 0.4) / 0.6;
         if (scene) score -= coh.memeScene;
+        // Quasi identique à un plan des 3 dernières secondes (hors plan continu) :
+        // fortement pénalisé — gardé seulement faute d'alternative.
+        const fenetreCandidat = { cle, depuis: s, jusqua: e, empreinte: m.empreinte };
+        const flash = recents.some((c, k) => {
+          if (k === recents.length - 1 && prolonge(c, fenetreCandidat)) return false;
+          return (similariteVisuelle(m.empreinte, c.empreinte) ?? 0) >= SIMILARITE_FLASH;
+        });
+        if (flash) score -= 1;
         // COHÉRENCE VISUELLE (pénalités, jamais d'exclusion d'un rush).
         const noirBlanc = estNoirEtBlanc(m.saturation);
         const energie = borne(m.mouvBrut / mouvHautGlobal, 0, 1);
@@ -674,6 +686,7 @@ export function planMontage(
             ctaDyn ? (energie >= SEUIL_ENERGIE_CALME && !(matiereCouleur && noirBlanc) ? `CTA dynamique : énergie ${arrondi2(energie)}${m.saturation !== null ? `, saturation ${arrondi2(m.saturation)}` : ''}` : 'CTA calme ou noir et blanc (pénalisé)') : null,
             reprise === 1 ? 'plan déjà monté, repris à un autre timecode' : reprise === 2 ? 'timecode déjà monté, repris faute d\'alternative' : null,
             scene ? 'même scène qu\'un plan déjà monté (pénalisé)' : simMax > 0.6 ? 'ressemble à un plan déjà monté (pénalisé)' : null,
+            flash ? 'quasi identique à un plan des 3 dernières secondes (pénalisé)' : null,
           ].filter(Boolean);
           meilleur = {
             score, cle, empreinte: m.empreinte, luminosite: m.luminosite, saturation: m.saturation, source: e - s,
