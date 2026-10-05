@@ -1021,6 +1021,16 @@ Retourne un objet `{ title, text, links }` après avoir retiré nav/footer/banni
 3. Lire tasks/pre-pr-checklist.md — la checklist anti-régression à respecter à chaque merge
 4. Si aucun des trois n'existe, les créer avant de commencer
 
+## FONCTIONNALITÉS VERROUILLÉES — CONTRAT ANTI-RÉGRESSION (OBLIGATOIRE)
+
+Registre : `docs/FEATURE_LOCKS.md`. Contrats : `src/__tests__/contracts/`, lancés par
+`npm run test:contracts` (et en CI, job « Contrats verrouilles + build »).
+Avant toute modification : identifier les fonctionnalités LOCKED impactées, lire leurs
+invariants, lancer les contrats AVANT et APRÈS. Un contrat vert devenu rouge = STOP ;
+ne jamais modifier un contrat pour faire passer la CI sans l'accord explicite de l'utilisateur.
+Chaque PR fournit CHANGED_FILES / LOCKED_FEATURES_IMPACTED / CONTRACTS_RUN /
+CONTRACTS_RESULT / NEW_RISK.
+
 ## ANTI-RÉGRESSION (lecture obligatoire avant tout merge)
 
 `tasks/pre-pr-checklist.md` liste 7 flux critiques à smoke-tester sur preview Vercel

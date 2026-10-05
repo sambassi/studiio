@@ -48,6 +48,26 @@ jobs:
         run: echo "### Resultat des tests" >> $GITHUB_STEP_SUMMARY && echo "Les tests Vitest ont termine avec le code ${{ job.status }}." >> $GITHUB_STEP_SUMMARY
 
   # ──────────────────────────────────────────────────────────────────────────
+  # Contrats des fonctionnalités verrouillées (docs/FEATURE_LOCKS.md) + build.
+  # CONTRACTS=GREEN et BUILD=GREEN sont obligatoires avant tout merge.
+  contracts:
+    name: Contrats verrouilles + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Installer les dependances
+        run: npm ci --ignore-scripts
+      - name: Contrats verrouilles
+        run: npm run test:contracts
+      - name: Build
+        run: npm run build
+
+  # ──────────────────────────────────────────────────────────────────────────
   # Credits : atomicite et idempotence, sur un VRAI PostgreSQL.
   #
   # Job SEPARE : le job « Tests Vitest » ci-dessus n'est pas touche. Les tests
