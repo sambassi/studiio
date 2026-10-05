@@ -33,7 +33,7 @@ import type { RushSegment } from '@/lib/creer/multi-rush';
 import { FORCE_PERCUSSION_FORTE, FORCE_PERCUSSION_SECONDAIRE } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression } from '@/lib/creer/overlays';
 import {
-  ecartEmpreinte, similariteVisuelle, memeScene, memeTimecode, estNoirEtBlanc, FENETRE_FLASH_S, SIMILARITE_FLASH, prolonge, ECART_AMBIANCE, COHERENCE_PROFILS, carteEnergique, SEUIL_ENERGIE_CALME,
+  ecartEmpreinte, similariteVisuelle, memeScene, memeTimecode, estNoirEtBlanc, ajustementTexteImage, FENETRE_FLASH_S, SIMILARITE_FLASH, prolonge, ECART_AMBIANCE, COHERENCE_PROFILS, carteEnergique, SEUIL_ENERGIE_CALME,
   type FenetreSource, type MesureSegment,
 } from '@/lib/creer/smart-montage-regles';
 
@@ -444,10 +444,12 @@ function mesuresFenetre(a: AnalyseRush, st: StatsRush, s: number, e: number) {
   ).length / dedans.length;
   const mouvBrut = moyenne(dedans.map((x) => x.mouvement));
   const pic = Math.max(...dedans.map((x) => x.mouvement));
+  const mouvPic = pic;
   const audioBrut = moyenne(dedans.map((x) => x.audio));
   return {
     ratees,
     mouvBrut,
+    mouvPic,
     mouvRel: borne(mouvBrut / st.mouvHaut, 0, 1),
     mouvAbs: borne(mouvBrut / SEUILS.mouvementReference, 0, 1),
     nettete: borne(net / (st.netMediane * 2), 0, 1),
@@ -482,6 +484,7 @@ export function mesuresSegments(plan: ReadonlyArray<RushSegment>, analyses: Read
     out.push({
       cle: cleSource(seg.url), depuis, jusqua, debut: seg.debut, fin: seg.fin, phase: seg.phase ?? null,
       empreinte: m.empreinte, saturation: m.saturation, luminosite: arrondi2(m.luminosite), energie: arrondi2(borne(m.mouvBrut / mouvHautGlobal, 0, 1)),
+      amplitude: arrondi2(borne(m.mouvPic / mouvHautGlobal, 0, 1)), nettete: arrondi2(m.nettete),
     });
   }
   return out;
@@ -551,6 +554,10 @@ export function planMontage(
     }).cartes.filter((c) => carteEnergique(titresCartes[c.index]))
     : [];
   const partJuste = 1 / rushs.length;
+  /** #503 — fin de vidéo où la couleur, la lumière et l'énergie sont tenues (s). */
+  const FIN_COHERENTE_S = 10;
+  /** #503 — luminosité moyenne sous laquelle un plan est « très sombre » (contre-jour, nuit). */
+  const SEUIL_SOMBRE = 0.2;
   // SORTIE (#499) : les plans visibles sous le CTA — MÊME fenêtre que la
   // surimpression du CTA (`planOverlays`), sinon les 3 dernières secondes —
   // plus le plan qui y mène (durée maximale d'un plan) : la vidéo ne doit pas
@@ -644,7 +651,12 @@ export function planMontage(
         if (serieTropLongue && matiereCouleur) continue;
         // Sous une carte énergique : tout plan visible pendant la carte compte.
         const sousCarte = fenetresEnergiques.some((f) => creneau.debut < f.fin && creneau.fin > f.debut);
-        if (sousCarte) score += coh.matchCarte * (energie - 0.5) - (energie < SEUIL_ENERGIE_CALME ? coh.matchCarte : 0);
+        // #503 — TEXT_VIDEO_VISUAL_FIT : mouvement, amplitude, lumière et
+        // lisibilité MESURÉS (contre-jour sombre pénalisé), pas l'énergie seule.
+        const fitCarte = sousCarte
+          ? ajustementTexteImage({ energie, luminosite: m.luminosite, amplitude: borne(m.mouvPic / mouvHautGlobal, 0, 1), nettete: m.nettete }, true) ?? energie
+          : null;
+        if (fitCarte !== null) score += coh.matchCarte * (fitCarte - 0.5) - (fitCarte < 0.45 ? coh.matchCarte : 0);
         const coherence = 1
           - (bascule ? coh.ruptureCouleur : 0)
           - (serieTropLongue ? coh.serieNoirBlanc : 0)
@@ -681,7 +693,7 @@ export function planMontage(
             matiereCouleur && noirBlanc ? 'noir et blanc dans une vidéo en couleur (pénalisé)' : null,
             bascule ? 'passage couleur ↔ noir et blanc (pénalisé)' : null,
             serieTropLongue ? 'série noir et blanc trop longue (pénalisé)' : null,
-            sousCarte ? (energie >= 0.5 ? 'plan dynamique sous une carte énergique' : 'plan peu dynamique sous une carte énergique (pénalisé)') : null,
+            fitCarte !== null ? (fitCarte >= 0.6 ? `plan lisible et dynamique sous une carte énergique (accord ${arrondi2(fitCarte)})` : `plan peu lisible ou peu dynamique sous une carte énergique (accord ${arrondi2(fitCarte)}, pénalisé)`) : null,
             calme ? 'plan calme dans une montée d\'énergie (pénalisé)' : null,
             ctaDyn ? (energie >= SEUIL_ENERGIE_CALME && !(matiereCouleur && noirBlanc) ? `CTA dynamique : énergie ${arrondi2(energie)}${m.saturation !== null ? `, saturation ${arrondi2(m.saturation)}` : ''}` : 'CTA calme ou noir et blanc (pénalisé)') : null,
             reprise === 1 ? 'plan déjà monté, repris à un autre timecode' : reprise === 2 ? 'timecode déjà monté, repris faute d\'alternative' : null,
@@ -719,11 +731,16 @@ export function planMontage(
     if (coh.ctaDynamique > 0) {
       // Hors sortie, une matière épuisée reste épuisée (vidéo plus courte,
       // jamais rallongée par des reprises) ; seule la SORTIE est garantie.
+      // #503 — LES 10 DERNIÈRES SECONDES (danse) : un plan noir et blanc,
+      // très sombre ou lent y casse la fin ; une reprise couleur l'emporte.
+      const finVideo = coh.ctaDynamique > 0 && creneau.fin > cible - FIN_COHERENTE_S + 1e-6;
       const faible = (c: Choix | null) => (!c && enSortie)
         || (!!c && !!matiereCouleur && estNoirEtBlanc(c.saturation))
-        || (!!c && enSortie && (c.seg.energie ?? 0) < SEUIL_ENERGIE_CALME);
-      // Timecode déjà monté : seulement sous le CTA, faute de toute autre option.
-      for (const niveau of (enSortie ? [1, 2] : [1]) as Array<1 | 2>) {
+        || (!!c && (enSortie || finVideo) && (c.seg.energie ?? 0) < SEUIL_ENERGIE_CALME)
+        || (!!c && finVideo && c.luminosite < SEUIL_SOMBRE);
+      // Timecode déjà monté : seulement en fin de vidéo, faute de toute autre
+      // option — et jamais dans la fenêtre anti-flash de 3 s (#502).
+      for (const niveau of (enSortie || finVideo ? [1, 2] : [1]) as Array<1 | 2>) {
         if (!faible(meilleur)) break;
         const repris = chercher(null, niveau);
         if (repris && !faible(repris)) meilleur = repris;

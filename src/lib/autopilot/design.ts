@@ -41,6 +41,7 @@ import { sequenceSecondsWithVoice, voiceUrls, type VoixParSequence } from '@/lib
  */
 export { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
 import { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
+import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
 
 /**
  * Durée de la séquence vidéo pour un rush donné.
@@ -202,7 +203,13 @@ export function buildAutopilotDesign(
     // Texte des cartes — police, taille, graisse, casse, alignement. Absent :
     // le rendu d'aujourd'hui.
     ...(style.cards ? { cardsTypography: style.cards } : null),
-    ctaText: post.content.tagLine,
+    // CTA (#503) : le CTA du BRIEF de l'Autopilote est la ligne d'action —
+    // la MÊME règle que Créer (`avecCtaDuBrief`). Sans brief : rien n'est
+    // envoyé, la ligne par défaut du rendu (« LIEN EN BIO ») reste le repli.
+    ...(() => {
+      const c = avecCtaDuBrief({ cta: post.content.tagLine ?? '', ctaSub: '' }, post.brief);
+      return { ctaText: c.cta, ...(c.ctaSub ? { ctaSubText: c.ctaSub } : null) };
+    })(),
     // Le jumeau, s'il est monté, REMPLACE le rush pour la séquence « Vidéo ».
     videoUrl: jumeau ? jumeau.videoUrl : post.rushUrl,
     // La photo d'affiche du Mode simple : le MÊME champ, rendu au même
@@ -375,6 +382,8 @@ export function buildAutopilotMetadata(input: {
       gradientColor1: design.gradientStart,
       gradientColor2: design.gradientEnd,
       ctaMainText: design.ctaText,
+      // Relu par une régénération depuis le Calendrier (#503).
+      ...(design.ctaSubText ? { ctaSubText: design.ctaSubText } : null),
       siteText: { enabled: true, text: AUTOPILOT_WATERMARK },
       // ⚠️ CES CINQ CHAMPS SONT CE QU'UNE RÉGÉNÉRATION DOIT RETROUVER. Le
       // Calendrier reconstruit le design à partir d'ici ; sans eux, un
