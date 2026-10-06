@@ -139,7 +139,7 @@ describe('Le compositeur reçoit ce qu il attend VRAIMENT', () => {
   it('le montage est déclaré sonore quand seules les voix par séquence existent', () => {
     // Sans cela, le Calendrier croirait le montage muet.
     expect(wizard).toContain(
-      "hasAudio: !!(musicUrl || voiceUrl || voixSequencesRendu || (plateau.rushUrl && duree('video') > 0)),",
+      "hasAudio: !!(musiqueRendu || voiceUrl || voixSequencesRendu || (plateau.rushUrl && duree('video') > 0)),",
     );
   });
 

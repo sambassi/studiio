@@ -55,7 +55,7 @@ describe('Créer (simple) — import d’un rush', () => {
       // du rendu, dont la voix off de la séquence 'video' est retirée en mode
       // avatar) : sans elles dans ce calcul, le Calendrier croirait le montage
       // muet alors qu'il porte du son.
-      /hasAudio:\s*!!\(musicUrl \|\| voiceUrl \|\| voixSequencesRendu \|\| \(plateau\.rushUrl && duree\('video'\) > 0\)\)/,
+      /hasAudio:\s*!!\(musiqueRendu \|\| voiceUrl \|\| voixSequencesRendu \|\| \(plateau\.rushUrl && duree\('video'\) > 0\)\)/,
     );
   });
 
