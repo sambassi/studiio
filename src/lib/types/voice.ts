@@ -147,7 +147,7 @@ export function mapElevenLabsVoice(
   const baseName = String(raw.name ?? '').trim() || 'Voix';
   return {
     id: `${ELEVENLABS_VOICE_PREFIX}${voiceId}`,
-    name: cloned ? `${baseName} (ma voix)` : `${baseName} (ElevenLabs)`,
+    name: cloned ? `${baseName} (ma voix)` : `${baseName} (premium)`,
     lang,
     gender,
     flag: ELEVENLABS_LANG_FLAGS[lang] ?? '\u{1F3A4}',
@@ -227,8 +227,8 @@ export function voixCloneeAProposer(
 /** Libelles des `<optgroup>` des deux selecteurs de voix de Creer. */
 export const VOICE_GROUP_LABELS = {
   cloned: 'Ma voix clonée',
-  elevenlabs: 'Voix ElevenLabs',
-  heygen: 'Voix HeyGen',
+  elevenlabs: 'Voix premium',
+  heygen: 'Voix avatar',
   openai: 'Voix OpenAI',
   edge: 'Voix standard (Edge)',
 } as const;

@@ -59,7 +59,7 @@ export async function verifierJumeauChezFournisseurs(userId: string): Promise<Ve
   if (!r.ok) return { motif: 'motif' in r ? r.motif : 'lecture_impossible' };
   const details: string[] = [];
   const avatar = r.prive.fournisseurAvatar === 'did' ? await verifierAvatarDid(r.prive.providerAvatarId) : 'non_verifiable';
-  if (r.prive.fournisseurAvatar !== 'did') details.push('Vérification d’avatar disponible pour D-ID uniquement.');
+  if (r.prive.fournisseurAvatar !== 'did') details.push('Vérification non disponible pour cet avatar.');
   const voix = await verifierVoixElevenLabs(r.prive.providerVoiceId);
   const lecture = await avatarVivantDuCompte(userId);
   const cle = lecture.ok ? (lecture.avatar as { source_object_key?: string | null } | null)?.source_object_key : null;

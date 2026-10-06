@@ -184,7 +184,7 @@ export function avertissementsMontage(m: {
   if (m.voixRepliEdge) {
     out.push(m.voixPersonnelle
       ? 'Voix clonée indisponible : la voix off standard (gratuite) a été utilisée.'
-      : 'Voix ElevenLabs indisponible : la voix off standard (gratuite) a été utilisée.');
+      : 'Voix premium indisponible : la voix off standard (gratuite) a été utilisée.');
   }
   if (m.montageSimple) out.push('Analyse intelligente indisponible — montage simple utilisé.');
   if (m.audioSilencieux) out.push('Le fichier final ne contient aucun son audible (ni musique, ni voix, ni son des rushes).');

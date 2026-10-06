@@ -2118,7 +2118,7 @@ export default function AutopilotPanel({
         <div className="space-y-4">
 {/* ── Voix off ─────────────────────────────────────────────────
               OPTION PAYANTE, donc EXPLICITE et desactivee par defaut. La
-              narration passe par ElevenLabs, facture a l'usage : l'activer
+              narration passe par le fournisseur de voix, facture a l'usage : l'activer
               d'office ferait payer une voix que personne n'a demandee. Le cout
               est ecrit dans l'etiquette, pas cache dans une aide au survol. */}
           <div>
@@ -2153,7 +2153,7 @@ export default function AutopilotPanel({
                 </span>
                 <span className="block text-[11px] text-gray-500 mt-0.5">
                   {config.voiceEnabled
-                    ? 'Chaque montage est narré par une voix IA (crédits ElevenLabs).'
+                    ? 'Chaque montage est narré par une voix IA premium.'
                     : 'Aucune narration, aucun coût. Les vidéos sortent avec la musique seule.'}
                 </span>
               </span>

@@ -76,7 +76,7 @@ describe('mapElevenLabsVoice — la forme brute varie, la sortie non', () => {
 
   it('une voix clonée se nomme « ma voix », le catalogue « ElevenLabs »', () => {
     expect(mapElevenLabsVoice({ voice_id: 'aaaaaaaa', name: 'Sam', category: 'cloned' })!.name).toBe('Sam (ma voix)');
-    expect(mapElevenLabsVoice({ voice_id: 'aaaaaaaa', name: 'Sam', category: 'premade' })!.name).toBe('Sam (ElevenLabs)');
+    expect(mapElevenLabsVoice({ voice_id: 'aaaaaaaa', name: 'Sam', category: 'premade' })!.name).toBe('Sam (premium)');
   });
 
   it('« professional » est une voix clonée, elle aussi', () => {
@@ -86,7 +86,7 @@ describe('mapElevenLabsVoice — la forme brute varie, la sortie non', () => {
   });
 
   it('une voix sans nom ne sort pas anonyme', () => {
-    expect(mapElevenLabsVoice({ voice_id: 'aaaaaaaa' })!.name).toBe('Voix (ElevenLabs)');
+    expect(mapElevenLabsVoice({ voice_id: 'aaaaaaaa' })!.name).toBe('Voix (premium)');
   });
 
   it('le fournisseur est marqué — le sélecteur en a besoin', () => {
@@ -228,7 +228,7 @@ describe('Les gardes de la route', () => {
   });
 
   it('un audio vide est une erreur, pas un fichier de zéro octet', () => {
-    expect(route).toContain("return NextResponse.json({ error: 'ElevenLabs returned empty audio' }, { status: 500 });");
+    expect(route).toContain("return NextResponse.json({ error: 'Le service de voix n’a renvoyé aucun son. Réessayez.' }, { status: 500 });");
   });
 
   it('le texte est borné', () => {
@@ -238,7 +238,7 @@ describe('Les gardes de la route', () => {
 
   it('un appel qui traîne est coupé, et le dit en 504', () => {
     expect(route).toContain('const TTS_TIMEOUT_MS = 45_000;');
-    expect(route).toContain("return NextResponse.json({ error: 'ElevenLabs TTS timed out' }, { status: 504 });");
+    expect(route).toContain("return NextResponse.json({ error: 'Le service de voix n’a pas répondu à temps. Réessayez.' }, { status: 504 });");
   });
 
   it('une panne remonte à l alerte de service', () => {

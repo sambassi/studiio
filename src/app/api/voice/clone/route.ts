@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `Clonage refusé par ElevenLabs (${upstream.status}).`,
+          error: `Le clonage de votre voix a été refusé (${upstream.status}). Vérifiez vos échantillons et réessayez.`,
           detail: rawBody.slice(0, 300),
         },
         { status: 502 },
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
     } catch {
       console.error('[Voice/Clone] reponse non-JSON', rawBody.slice(0, 200));
       return NextResponse.json(
-        { success: false, error: 'Réponse illisible d’ElevenLabs.' },
+        { success: false, error: 'Le service de voix a renvoyé une réponse illisible. Réessayez.' },
         { status: 502 },
       );
     }
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
     const voiceId = String(parsed?.voice_id ?? '').trim();
     if (!voiceId) {
       return NextResponse.json(
-        { success: false, error: 'ElevenLabs n’a renvoyé aucun identifiant de voix.' },
+        { success: false, error: 'Votre voix n’a pas pu être créée. Réessayez.' },
         { status: 502 },
       );
     }

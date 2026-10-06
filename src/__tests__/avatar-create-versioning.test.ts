@@ -260,7 +260,7 @@ describe('POST /api/avatar/create — première inscription', () => {
     expect(l.source_object_key).toMatch(NONCE);
     expect(l.source_url).toBeNull();
     expect(l.subject_type).toBe('self');
-    expect(l.consent_version).toBe('enrolement-2026-07-28');
+    expect(l.consent_version).toBe('enrolement-2026-10-06');
     expect(l.consent_text).toMatch(/^Je certifie etre la personne visible dans la video/);
     expect(l.validated_at).toBeNull();
     expect(l.provider_avatar_id).toBe('hg-as-1');
@@ -343,7 +343,7 @@ describe('POST /api/avatar/create — remplacement', () => {
     expect(l.avatar_type).toBe('video');
     expect(l.validated_at).toBeNull();
     expect(l.provider_avatar_id).toBe('hg-as-1');
-    expect(l.consent_version).toBe('enrolement-2026-07-28');
+    expect(l.consent_version).toBe('enrolement-2026-10-06');
     // L'ancienne source (dérivée du source_url legacy) est retirée APRÈS la transition
     // en base, et le fournisseur n'est appelé qu'APRÈS elle aussi.
     const ancienne = `stockage:remove:${U}/avatar/source-1757000000000.jpg`;

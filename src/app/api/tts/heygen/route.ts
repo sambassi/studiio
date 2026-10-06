@@ -121,7 +121,7 @@ function mapVoice(raw: Record<string, any>, cloned: boolean): HeyGenTtsVoice | n
   const baseName = String(raw.display_name ?? raw.name ?? 'Voix').trim() || 'Voix';
   return {
     id: `${HEYGEN_VOICE_PREFIX}${voiceId}`,
-    name: cloned ? `${baseName} (ma voix)` : `${baseName} (HeyGen)`,
+    name: cloned ? `${baseName} (ma voix)` : `${baseName} (avatar)`,
     lang,
     gender,
     flag: LANG_FLAGS[lang] ?? '\u{1F3A4}',
@@ -252,7 +252,7 @@ export async function POST(req: NextRequest) {
     if (!heygenRes.ok) {
       console.error('[TTS/HeyGen] upstream error', heygenRes.status, rawBody.slice(0, 300));
       return NextResponse.json(
-        { error: `HeyGen TTS upstream error (${heygenRes.status})` },
+        { error: `Le service de voix est temporairement indisponible (${heygenRes.status}).` },
         { status: 500 },
       );
     }
@@ -262,19 +262,19 @@ export async function POST(req: NextRequest) {
       parsed = rawBody ? JSON.parse(rawBody) : null;
     } catch {
       console.error('[TTS/HeyGen] reponse non-JSON', rawBody.slice(0, 200));
-      return NextResponse.json({ error: 'HeyGen returned an unreadable response' }, { status: 500 });
+      return NextResponse.json({ error: 'Le service de voix a renvoyé une réponse illisible. Réessayez.' }, { status: 500 });
     }
 
     // HTTP 200 avec `error` non nul : HeyGen le fait sur certains endpoints.
     if (parsed?.error) {
       console.error('[TTS/HeyGen] 200-with-error', rawBody.slice(0, 300));
-      return NextResponse.json({ error: 'HeyGen TTS refused the request' }, { status: 500 });
+      return NextResponse.json({ error: 'La synthèse vocale a été refusée. Réessayez avec un autre texte.' }, { status: 500 });
     }
 
     const audioUrl: string | undefined = parsed?.data?.audio_url ?? parsed?.audio_url;
     if (!audioUrl) {
       console.error('[TTS/HeyGen] audio_url absent', rawBody.slice(0, 300));
-      return NextResponse.json({ error: 'HeyGen returned no audio URL' }, { status: 500 });
+      return NextResponse.json({ error: 'Le service de voix n’a renvoyé aucun son. Réessayez.' }, { status: 500 });
     }
 
     // HeyGen renvoie une URL : on telecharge pour servir le meme format de
@@ -291,14 +291,14 @@ export async function POST(req: NextRequest) {
     if (!audioRes.ok) {
       console.error('[TTS/HeyGen] download failed', audioRes.status);
       return NextResponse.json(
-        { error: `HeyGen audio download failed (${audioRes.status})` },
+        { error: `Le son n’a pas pu être récupéré (${audioRes.status}). Réessayez.` },
         { status: 500 },
       );
     }
 
     const buf = Buffer.from(await audioRes.arrayBuffer());
     if (buf.length === 0) {
-      return NextResponse.json({ error: 'HeyGen returned empty audio' }, { status: 500 });
+      return NextResponse.json({ error: 'Le service de voix n’a renvoyé aucun son. Réessayez.' }, { status: 500 });
     }
 
     const upstreamType = audioRes.headers.get('content-type') || '';
@@ -315,9 +315,10 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     if (msg.includes('aborted') || msg.includes('timeout')) {
-      return NextResponse.json({ error: 'HeyGen TTS timed out' }, { status: 504 });
+      return NextResponse.json({ error: 'Le service de voix n’a pas répondu à temps. Réessayez.' }, { status: 504 });
     }
     console.error('[TTS/HeyGen] error:', msg);
-    return NextResponse.json({ error: `HeyGen TTS failed: ${msg}` }, { status: 500 });
+    console.error('[TTS] synthèse en échec :', msg);
+    return NextResponse.json({ error: 'La synthèse vocale a échoué. Réessayez.' }, { status: 500 });
   }
 }

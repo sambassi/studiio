@@ -185,7 +185,7 @@ export default function VoiceCloneRecorder({
       }
       setNotice(
         data.requiresVerification
-          ? 'Voix créée — ElevenLabs demande une vérification avant de l’utiliser.'
+          ? 'Voix créée — une vérification est nécessaire avant de l’utiliser.'
           : 'Voix créée. Elle apparaît maintenant dans le sélecteur de voix.',
       );
       discard();

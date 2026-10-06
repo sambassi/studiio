@@ -31,7 +31,7 @@ export interface UserVoice {
  * ElevenLabs impose contractuellement que le donneur ait consenti.
  */
 export const VOICE_CONSENT_TEXT =
-  "Je certifie que la voix enregistree est la mienne et j'autorise Studiio et ElevenLabs a en creer un clone.";
+  "Je certifie que la voix enregistree est la mienne et j'autorise Studiio et ses prestataires techniques a en creer un clone.";
 
 /** Duree minimale conseillee d'un echantillon, en secondes. */
 export const MIN_SAMPLE_SECONDS = 30;

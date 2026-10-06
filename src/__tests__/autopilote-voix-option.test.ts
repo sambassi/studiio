@@ -131,7 +131,8 @@ describe('L option est visible et son coût annoncé', () => {
 
   it('le prix est dans l étiquette, pas dans une aide au survol', () => {
     expect(panneau).toContain('option payante');
-    expect(panneau).toContain('crédits ElevenLabs');
+    expect(panneau).toContain('voix IA premium');
+    expect(panneau).not.toContain('ElevenLabs');
   });
 
   it('et il dit ce qui se passe quand c est éteint', () => {

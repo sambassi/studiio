@@ -43,12 +43,12 @@ export const TEXTE_CONSENTEMENT =
  * version. (Distinct de `TEXTE_CONSENTEMENT`, texte du lot historique A_8c.)
  */
 export const CONSENTEMENT_ENROLEMENT = {
-  version: 'enrolement-2026-07-28',
+  version: 'enrolement-2026-10-06',
   textes: {
     photo:
       "Je certifie etre la personne visible sur l'image et j'autorise Studiio a en creer un avatar anime.",
     video:
-      "Je certifie etre la personne visible dans la video et j'autorise Studiio et HeyGen a l'utiliser pour entrainer un avatar a mon effigie.",
+      "Je certifie etre la personne visible dans la video et j'autorise Studiio et ses prestataires techniques a l'utiliser pour entrainer un avatar a mon effigie.",
   },
 } as const;
 
