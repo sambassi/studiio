@@ -13,10 +13,10 @@ interface Generation {
 interface Reponse {
   migrationAppliquee: boolean;
   generations: Generation[];
-  totaux: { providerCostEur: number; providerCostAdminEur: number; studiioPriceEur: number; marginEur: number; nonMesurees: number };
+  totaux: { providerCostEur: number | null; providerCostAdminEur: number | null; studiioPriceEur: number | null; marginEur: number | null; nonMesurees: number };
 }
 
-const eur = (n: number | null | undefined) => (typeof n === 'number' ? `${n.toFixed(4)} €` : '—');
+const eur = (n: number | null | undefined) => (typeof n === 'number' ? `${n.toFixed(4)} €` : 'non mesuré');
 
 export default function AvatarCoutsPage() {
   const [data, setData] = useState<Reponse | null>(null);
