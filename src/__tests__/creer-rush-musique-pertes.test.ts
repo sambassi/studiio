@@ -73,13 +73,15 @@ describe('Créer : le rush ne disparaît plus en silence', () => {
   it('envoi refusé si un rush est choisi mais la séquence Vidéo est inactive ou à 0 s', () => {
     expect(w).toContain("if (jumeauMode !== 'avatar' && plateau.rushUrl && (!videoActive || plateau.videoDuration <= 0)) {");
     // Placé AVANT la génération (payante) du jumeau et avant la boucle de rendu.
-    expect(w.indexOf('const introuvables = await mediasIntrouvables(')).toBeLessThan(w.lastIndexOf('const video = await genererEtAttendreVideoJumeau('));
+    expect(w.indexOf('const introuvables = await urlsIntrouvables(')).toBeLessThan(w.lastIndexOf('const video = await genererEtAttendreVideoJumeau('));
   });
 
-  it('envoi refusé si musique, voix ou rush sont introuvables', () => {
-    expect(w).toContain('const introuvables = await mediasIntrouvables([');
-    expect(w).toContain('musicUrl, voiceUrl,');
-    expect(w).toContain('plateau.rushUrl, ...rushSuivants.map((r) => r.url),');
+  it('médias vérifiés avant envoi : voix ou rush introuvables bloquent ; musique retirée et dite (P0 2026-10-06)', () => {
+    expect(w).toContain('const introuvables = await urlsIntrouvables(aVerifier.map((m) => m.url));');
+    expect(w).toContain("...(musicUrl ? [{ role: 'musique' as const, url: musicUrl }] : []),");
+    expect(w).toContain('[voiceUrl, ...Object.values(sequenceVoiceUrls ?? {})]');
+    expect(w).toContain('[plateau.rushUrl, ...rushSuivants.map((r) => r.url)]');
+    expect(w).toContain('setError(messageMediasBloquants(bloquants));');
   });
 
   it('la durée Vidéo ne descend jamais à 0 s quand un rush est posé', () => {

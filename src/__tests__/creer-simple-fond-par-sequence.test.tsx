@@ -156,7 +156,7 @@ describe('Câblage', () => {
   it("l'export n'envoie rien tant qu'aucune séquence n'a son fond", () => {
     // Default-safe : le compositeur reçoit `undefined` et se comporte comme
     // avant.
-    expect(wizard).toContain('sequenceBackgrounds: Object.keys(seqBackgrounds).length');
+    expect(wizard).toContain('sequenceBackgrounds: Object.keys(fondsRendu).length');
     expect(wizard).toContain(': undefined,');
   });
 

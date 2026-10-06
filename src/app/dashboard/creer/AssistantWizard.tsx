@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { mediasIntrouvables } from '@/lib/creer/medias-introuvables';
+import { urlsIntrouvables, trierMediasMorts, messageMediasBloquants, messageMediasRetires, type MediaAVerifier } from '@/lib/creer/medias-morts';
 import Link from 'next/link';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
@@ -4127,6 +4127,13 @@ export default function AssistantWizard() {
   const [renderTarget, setRenderTarget] = useState<'calendrier' | 'bureau' | 'apercu' | null>(null);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Le message d'erreur vit en haut de l'écran ; le bouton « Composer et
+  // envoyer » tout en bas. Sans ce défilement, un refus (fichier introuvable,
+  // crédits…) passait pour un clic qui ne fait rien.
+  const erreurRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (error) erreurRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, [error]);
 
   /**
    * Lit la politique une fois au montage.
@@ -7295,14 +7302,37 @@ export default function AssistantWizard() {
       // 2. Un fichier du montage supprimé entre-temps (post supprimé,
       //    médiathèque) était ignoré par le compositeur : vidéo sans
       //    musique, sans voix ou sans rush, sans aucun message.
-      const introuvables = await mediasIntrouvables([
-        musicUrl, voiceUrl,
-        ...Object.values(sequenceVoiceUrls ?? {}),
-        plateau.rushUrl, ...rushSuivants.map((r) => r.url),
-      ]);
-      if (introuvables.length > 0) {
-        setError(`Fichier introuvable (supprimé ?) : ${introuvables.join(', ')}. Choisissez-le de nouveau avant d'envoyer.`);
+      //    Un brouillon restauré peut porter des adresses MORTES (post
+      //    supprimé, fond IA expiré). Facultatifs (musique, fonds) : retirés
+      //    de CE montage et c'est dit. Obligatoires (rush, narration) : arrêt
+      //    ici, avant tout débit. En mode jumeau « avatar », l'ancien rush
+      //    sera REMPLACÉ par la vidéo du jumeau : il n'est pas exigé.
+      const aVerifier: MediaAVerifier[] = [
+        ...(musicUrl ? [{ role: 'musique' as const, url: musicUrl }] : []),
+        ...Object.entries(seqBackgrounds).flatMap(([cle, b]) => (b?.url ? [{ role: 'fond' as const, url: b.url, cle }] : [])),
+        ...[voiceUrl, ...Object.values(sequenceVoiceUrls ?? {})]
+          .filter((u): u is string => typeof u === 'string' && u.length > 0)
+          .map((url) => ({ role: 'narration' as const, url })),
+        ...(jumeauMode === 'avatar' ? [] : [plateau.rushUrl, ...rushSuivants.map((r) => r.url)]
+          .filter((u): u is string => typeof u === 'string' && u.length > 0)
+          .map((url) => ({ role: 'rush' as const, url }))),
+      ];
+      const introuvables = await urlsIntrouvables(aVerifier.map((m) => m.url));
+      const { aRetirer, bloquants } = trierMediasMorts(aVerifier.filter((m) => introuvables.has(m.url)));
+      if (bloquants.length > 0) {
+        setError(messageMediasBloquants(bloquants));
         return;
+      }
+      // Ce passage lit ces deux valeurs LOCALES, jamais l'état (qui ne sera
+      // relu qu'au prochain rendu de l'écran) ; l'état est nettoyé aussi,
+      // pour que le brouillon ne garde pas l'adresse morte.
+      const musiqueRendu: string | null = aRetirer.some((m) => m.role === 'musique') ? null : musicUrl;
+      const fondsMorts = new Set(aRetirer.filter((m) => m.role === 'fond').map((m) => m.cle));
+      const fondsRendu: SeqBackgrounds = Object.fromEntries(Object.entries(seqBackgrounds).filter(([cle]) => !fondsMorts.has(cle)));
+      if (aRetirer.length > 0) {
+        if (!musiqueRendu) setMusicUrl(null);
+        if (fondsMorts.size > 0) setSeqBackgrounds(fondsRendu);
+        setMontageNotice(messageMediasRetires(aRetirer));
       }
 
       // ── Jumeau numerique — la video ────────────────────────────────
@@ -7429,7 +7459,7 @@ export default function AssistantWizard() {
         const cibleEcran = duree('video');
         // V3 : coupes calées sur le rythme de la musique, lue à partir du
         // début de la séquence « Vidéo » (somme des séquences qui la précèdent).
-        const rythme = musicUrl ? await analyserMusiqueNavigateur(musicUrl) : null;
+        const rythme = musiqueRendu ? await analyserMusiqueNavigateur(musiqueRendu) : null;
         const debutVideo = ordre.slice(0, Math.max(0, ordre.indexOf('video'))).reduce((t, k) => t + duree(k), 0);
         // V2 : la pertinence des extraits suit le thème, le titre et le brief.
         // MÊME préparation que l'Autopilote (`contexteMontageDepuis`) : même
@@ -7752,7 +7782,7 @@ export default function AssistantWizard() {
           // Le compositeur bascule en mode « normal » (temps reel, audio mixe et
           // embarque) des qu'une de ces deux URL est fournie ; sans elles il
           // reste en mode « fast ».
-          musicUrl: musicUrl || undefined,
+          musicUrl: musiqueRendu || undefined,
           voiceUrl: voiceUrl || undefined,
           // Voix PAR SEQUENCE : chaque clip est joue au debut de sa sequence
           // et coupe a sa fin. `voiceUrl` reste le repli quand il n'y en a
@@ -7788,12 +7818,12 @@ export default function AssistantWizard() {
           // la sequence concernee, recadrage compris. `undefined` tant
           // qu'aucune n'a le sien — le compositeur se comporte alors comme
           // avant, a la ligne pres.
-          sequenceBackgrounds: Object.keys(seqBackgrounds).length
+          sequenceBackgrounds: Object.keys(fondsRendu).length
             ? {
-                titre: seqBackgrounds.titre ? { url: seqBackgrounds.titre.url, opacity: 1, transform: seqBackgrounds.titre.transform } : null,
-                cartes: seqBackgrounds.cartes ? { url: seqBackgrounds.cartes.url, opacity: 1, transform: seqBackgrounds.cartes.transform } : null,
-                video: seqBackgrounds.video ? { url: seqBackgrounds.video.url, opacity: 1, transform: seqBackgrounds.video.transform } : null,
-                cta: seqBackgrounds.cta ? { url: seqBackgrounds.cta.url, opacity: 1, transform: seqBackgrounds.cta.transform } : null,
+                titre: fondsRendu.titre ? { url: fondsRendu.titre.url, opacity: 1, transform: fondsRendu.titre.transform } : null,
+                cartes: fondsRendu.cartes ? { url: fondsRendu.cartes.url, opacity: 1, transform: fondsRendu.cartes.transform } : null,
+                video: fondsRendu.video ? { url: fondsRendu.video.url, opacity: 1, transform: fondsRendu.video.transform } : null,
+                cta: fondsRendu.cta ? { url: fondsRendu.cta.url, opacity: 1, transform: fondsRendu.cta.transform } : null,
               }
             : undefined,
           design: {
@@ -8031,13 +8061,13 @@ export default function AssistantWizard() {
           // compositeur route et embarque dans le fichier
           // (`hasRushAudio = !!videoEl`). L'omettre faisait proposer par le
           // Calendrier « Ajouter du son » sur un montage qui en avait deja.
-          hasAudio: !!(musicUrl || voiceUrl || voixSequencesRendu || (plateau.rushUrl && duree('video') > 0)),
+          hasAudio: !!(musiqueRendu || voiceUrl || voixSequencesRendu || (plateau.rushUrl && duree('video') > 0)),
           // Les URL `blob:` ne survivent pas au rechargement de la page. Le
           // panneau audio televerse normalement les pistes et renvoie une URL
           // publique, mais il retombe sur un blob local si le televersement de
           // la voix de synthese echoue. Stocker cette URL-la laisserait une
           // reference morte dans le post.
-          musicUrl: persistableUrl(musicUrl),
+          musicUrl: persistableUrl(musiqueRendu),
           voiceUrl: persistableUrl(voiceUrl),
           // La même liste que celle du rendu : en mode avatar, sans la voix off
           // de la séquence 'video', pour que le Calendrier ne rejoue pas une
@@ -8059,8 +8089,8 @@ export default function AssistantWizard() {
           // Fonds par sequence (forme du brouillon), URL durables seulement :
           // une photo `data:` ou `blob:` est ecartee, la sequence retombe alors
           // sur l'affiche globale a la regeneration. Absent sans fond propre.
-          seqBackgrounds: Object.keys(fondsPourMetadata(seqBackgrounds)).length
-            ? fondsPourMetadata(seqBackgrounds)
+          seqBackgrounds: Object.keys(fondsPourMetadata(fondsRendu)).length
+            ? fondsPourMetadata(fondsRendu)
             : undefined,
           // Le rush est deja INCRUSTE dans le montage ; on le persiste quand
           // meme sous `rushUrls` — c'est le champ que le Calendrier relit pour
@@ -8800,7 +8830,7 @@ export default function AssistantWizard() {
         )}
 
         {error && (
-          <div className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+          <div ref={erreurRef} data-creer-erreur className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
           </div>
