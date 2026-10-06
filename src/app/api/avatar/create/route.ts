@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MESSAGES_CREATION } from '@/lib/avatar/fournisseurs';
+import { MESSAGES_CREATION, jumeauVideoAutorise } from '@/lib/avatar/fournisseurs';
+import { isAdmin } from '@/lib/admin';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
@@ -56,6 +57,8 @@ function sansSourceUrl(avatar: Record<string, unknown>): Record<string, unknown>
     source_url: _sourceUrl, provider_consent_id: _consentId, consent_object_key: _consentKey, ...reste
   } = avatar;
   void _sourceUrl; void _consentId; void _consentKey;
+  // L'identifiant de GROUPE fournisseur ne sort jamais vers l'écran.
+  delete reste.provider_group_id;
   if (reste.provider === FOURNISSEUR_DID) {
     const { provider_avatar_id: _pa, provider_asset_id: _ps, provider_consent_created_at: creeLe, provider_consent_version: _pcv, ...sansIds } = reste;
     void _pa; void _ps; void _pcv;
@@ -225,7 +228,7 @@ export async function GET() {
     // `didVideoActif` : l'ecran ouvre « A partir d'une video » seulement si le
     // serveur le dit — drapeau ET cle presents. Jamais la cle elle-meme.
     // `nomProfil` : le nom du compte, pour PRÉ-REMPLIR le nom de consentement D-ID à l'écran. Rien d'autre du profil.
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), nomProfil: session.user.name ?? null } });
+    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null } });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);
     return NextResponse.json(
@@ -293,6 +296,11 @@ export async function POST(req: NextRequest) {
 
     const isVideo = file.type.startsWith('video/');
     const kind: AvatarKind = isVideo ? 'video' : 'photo';
+    // Jumeau VIDÉO hors D-ID legacy : réservé à l'admin (consentement externe,
+    // niveau 1). Refusé AVANT tout dépôt et tout appel fournisseur.
+    if (isVideo && !viaDid && !jumeauVideoAutorise(isAdmin(session.user.email))) {
+      return NextResponse.json({ success: false, error: MESSAGES_CREATION.videoIndisponible, code: 'jumeau_video_indisponible' }, { status: 403 });
+    }
 
     if (viaDid) {
       // D-ID : une VIDEO obligatoirement, MP4 ou MOV (ce que le fournisseur
@@ -572,11 +580,11 @@ export async function POST(req: NextRequest) {
       !!v && v.id === avatarId && v.version === nouvelleVersion && v.source_object_key === nouvelleCle;
 
     const fallbackName = isVideo ? 'video.mp4' : 'photo.jpg';
-    let chezFournisseur: { avatarId: string; assetId: string; status: string };
+    let chezFournisseur: { avatarId: string; assetId: string; status: string; groupId: string | null };
     try {
       const asset = await uploadAsset(new Blob([buffer], { type: file.type }), file.name || fallbackName);
       const cree = await createAvatarFromAsset(asset.assetId, name, kind);
-      chezFournisseur = { avatarId: cree.avatarId, assetId: asset.assetId, status: cree.status };
+      chezFournisseur = { avatarId: cree.avatarId, assetId: asset.assetId, status: cree.status, groupId: cree.avatarGroupId ?? null };
     } catch (erreurFournisseur) {
       // Fournisseur INVISIBLE : brut aux journaux, message Studiio en base
       // (`training_error` est relu par l'écran).
@@ -612,6 +620,8 @@ export async function POST(req: NextRequest) {
       provider_asset_id: chezFournisseur.assetId,
       status: chezFournisseur.status,
       training_error: null,
+      // Jumeau vidéo : le groupe sert au consentement filmé et à son suivi.
+      ...(kind === 'video' ? { provider_group_id: chezFournisseur.groupId, provider_group_consent: null } : {}),
     };
     const { data: rows, error: erreurProvider } = await supabaseAdmin
       .from('user_avatars')

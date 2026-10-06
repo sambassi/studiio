@@ -57,7 +57,7 @@ const avatar = (over: Ligne = {}): Ligne => ({
   id: A, user_id: U, status: 'completed', provider_avatar_id: 'hg-1', provider_asset_id: 'as-1',
   source_object_key: `${U}/avatar/source-1-${'a'.repeat(32)}.mp4`, source_url: null, subject_type: 'self', consent_version: 'x',
   consent_at: '2026-09-01T00:00:00Z', consent_text: 'x', validated_at: '2026-09-03T00:00:00Z', version: 2, deleted_at: null,
-  created_at: '2026-09-01T00:00:00.000Z', avatar_type: 'video', name: 'Bassi', training_error: null, ...over,
+  created_at: '2026-09-01T00:00:00.000Z', avatar_type: 'photo', name: 'Bassi', training_error: null, ...over,
 });
 const voix = (id: string, over: Ligne = {}): Ligne => ({
   id, user_id: U, provider: 'elevenlabs', provider_voice_id: `pvid_${id.slice(-4)}_abcd`, name: `Voix ${id.slice(-1)}`, lang: 'fr',
@@ -74,7 +74,7 @@ describe('resoudreJumeauDuCompte — prêt seulement si TOUT est vrai', () => {
   it('⚠️ avatar validé (version courante, fournisseur présent) + une voix utilisable → prêt ; le privé est séparé du public', async () => {
     const r = await resoudreJumeauDuCompte(U);
     expect(r).toMatchObject({ ok: true, jumeau: { avatar: { id: A, version: 2, nom: 'Bassi', valideLe: '2026-09-03T00:00:00Z' }, voix: { id: V1, nom: 'Voix 1' }, prononciations: 0 } });
-    expect(r.ok && r.prive).toEqual({ providerAvatarId: 'hg-1', fournisseurAvatar: 'heygen', providerVoiceId: 'pvid_0001_abcd', prononciations: [] });
+    expect(r.ok && r.prive).toEqual({ providerAvatarId: 'hg-1', fournisseurAvatar: 'heygen', typeAvatar: 'photo', consentementJumeau: null, providerVoiceId: 'pvid_0001_abcd', prononciations: [] });
     // Le fournisseur (pas son identifiant) sort côté public : l'écran en a
     // besoin pour dire ce que le moteur vidéo sait faire de cet avatar.
     expect(r.ok && r.jumeau.avatar.fournisseur).toBe('heygen');

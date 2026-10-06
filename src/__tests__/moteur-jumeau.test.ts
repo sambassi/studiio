@@ -123,7 +123,7 @@ const { POST } = await import('@/app/api/creer/jumeau/generer/route');
 const avatar = (over: Ligne = {}): Ligne => ({
   id: A, user_id: U, status: 'completed', provider_avatar_id: 'hg-avatar-1', provider_asset_id: 'as-1', source_object_key: `${U}/avatar/source-1-${'a'.repeat(32)}.mp4`,
   source_url: null, subject_type: 'self', consent_version: 'x', consent_at: '2026-09-01T00:00:00Z', consent_text: 'x', validated_at: '2026-09-03T00:00:00Z',
-  version: 3, deleted_at: null, created_at: '2026-09-01T00:00:00.000Z', avatar_type: 'video', name: 'Bassi', training_error: null, ...over,
+  version: 3, deleted_at: null, created_at: '2026-09-01T00:00:00.000Z', avatar_type: 'photo', name: 'Bassi', training_error: null, ...over,
 });
 const voix = (over: Ligne = {}): Ligne => ({ id: V1, user_id: U, provider: 'elevenlabs', provider_voice_id: 'pvid_perso_0001', name: 'Bassi', lang: 'fr', consent_at: '2026-08-01T00:00:00Z', consent_text: 'x', created_at: '2026-08-01T00:00:00Z', ...over });
 const TEXTE = 'Bienvenue chez Afroboost à Neuchâtel.';

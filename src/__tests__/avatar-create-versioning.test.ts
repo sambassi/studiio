@@ -246,7 +246,20 @@ beforeEach(() => {
   alea.constant = null; chrono.evenements.length = 0;
   base.pannes = []; base.executions = { select: 0, insert: 0, update: 0 };
   heygen.statut = { status: 'completed' }; heygen.statutRetenu = false; heygen.libererStatut = null;
-  session.courante = { user: { id: U } };
+  // Jumeau VIDÉO : réservé à l'admin depuis 2026-10-06 (consentement externe
+  // niveau 1). Ces tests couvrent le versionnage d'un avatar vidéo : session admin.
+  session.courante = { user: { id: U, email: 'contact.artboost@gmail.com' } };
+});
+
+describe('POST /api/avatar/create — jumeau vidéo réservé à l’admin', () => {
+  it('⚠️ utilisateur non admin + vidéo → 403, rien déposé, aucun appel fournisseur', async () => {
+    session.courante = { user: { id: U, email: 'client@exemple.fr' } };
+    const r = await requete();
+    expect(r.status).toBe(403);
+    expect((await r.json()).code).toBe('jumeau_video_indisponible');
+    expect(heygen.appels).toEqual([]);
+    expect(base.executions.insert).toBe(0);
+  });
 });
 
 describe('POST /api/avatar/create — première inscription', () => {
@@ -268,7 +281,8 @@ describe('POST /api/avatar/create — première inscription', () => {
     expect(l.status).toBe('processing');
     // L'ordre : upload → insert → HeyGen → update provider.
     expect(chrono.evenements.slice(0, 4)).toEqual(['stockage:upload', 'db:insert', 'heygen:assets', 'db:update:1']);
-    expect(base.journal[1]).toMatch(/^update:provider_asset_id,provider_avatar_id,status,training_error:1$/);
+    // Jumeau vidéo : le groupe fournisseur (consentement) est écrit avec l'avatar.
+    expect(base.journal[1]).toMatch(/^update:provider_asset_id,provider_avatar_id,provider_group_consent,provider_group_id,status,training_error:1$/);
     // La réponse ne porte pas source_url ; l'objet est bien en stockage.
     expect('source_url' in corps.data.avatar).toBe(false);
     expect(stockage.objets.has(l.source_object_key as string)).toBe(true);

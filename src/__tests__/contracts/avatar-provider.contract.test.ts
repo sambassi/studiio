@@ -15,7 +15,14 @@ const etat = vi.hoisted(() => ({
   credites: [] as Array<[string, number, string]>,
   debites: [] as Array<[string, number]>,
   ligne: null as Record<string, unknown> | null,
+  typeAvatar: 'photo' as string,
+  consentement: null as string | null,
+  session: null as unknown,
+  avatarVivant: null as Record<string, unknown> | null,
+  urlsConsentement: 0,
 }));
+vi.mock('@/lib/auth/config', () => ({ auth: async () => etat.session }));
+vi.mock('@/lib/avatar/lecture', () => ({ avatarVivantDuCompte: async () => ({ ok: true, avatar: etat.avatarVivant }) }));
 
 vi.mock('@/lib/db/supabase', () => {
   const requete = (table: string) => {
@@ -52,7 +59,7 @@ vi.mock('@/lib/avatar/jumeau', async (orig) => ({
   resoudreJumeauDuCompte: async () => ({
     ok: true,
     jumeau: { avatar: { id: 'av-1', version: 1, nom: 'A', valideLe: '2026-10-01', fournisseur: 'heygen' }, voix: { id: 'v-1', nom: 'bassi' }, prononciations: 0 },
-    prive: { providerAvatarId: 'hg-avatar', fournisseurAvatar: 'heygen', providerVoiceId: 'el-voice', prononciations: [] },
+    prive: { providerAvatarId: 'hg-avatar', fournisseurAvatar: 'heygen', typeAvatar: etat.typeAvatar, consentementJumeau: etat.consentement, providerVoiceId: 'el-voice', prononciations: [] },
   }),
 }));
 vi.mock('@/lib/voice/synthese', async (orig) => ({
@@ -67,10 +74,13 @@ vi.mock('@/lib/avatar/heygen', async (orig) => {
     uploadAsset: async () => { etat.appelsPayants.push('asset'); return { assetId: 'as-1' }; },
     generateAvatarVideoFromAudio: async () => { etat.appelsPayants.push('video'); throw new HeyGenError('HeyGen : quota exceeded (https://api.heygen.com/v3/videos)', 402, 'quota'); },
     getVideoStatus: async () => ({ status: 'failed', failureMessage: 'HeyGen failure_code=MOVIO_ERR avatar not found' }),
+    demanderConsentementJumeau: async () => { etat.urlsConsentement += 1; return { url: 'https://app.heygen.com/consent/abc' }; },
+    lireConsentementJumeau: async () => 'pending',
   };
 });
 
 import { genererVideoJumeau } from '@/lib/avatar/moteur-jumeau';
+import { POST as demanderConsentement, GET as lireConsentement } from '@/app/api/avatar/consentement/route';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { moteurJumeauDisponiblePour } from '@/lib/avatar/jumeau';
 import { libelleFournisseurAvatar } from '@/lib/creer/jumeau';
@@ -86,6 +96,7 @@ const ENV = { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY
 
 beforeEach(() => {
   etat.credits = 1000; etat.emailAdmin = false; etat.appelsPayants = []; etat.credites = []; etat.debites = []; etat.ligne = null;
+  etat.typeAvatar = 'photo'; etat.consentement = null; etat.session = null; etat.avatarVivant = null; etat.urlsConsentement = 0;
 });
 
 describe('AVATAR — fournisseur principal et legacy', () => {
@@ -168,5 +179,54 @@ describe('AVATAR — même moteur pour Créer et Autopilote', () => {
     expect(a).toContain('genererVideoJumeau(');
     const c = readFileSync(resolve(process.cwd(), 'src/app/api/creer/jumeau/generer/route.ts'), 'utf-8');
     expect(c).toContain('genererVideoJumeau(');
+  });
+});
+
+describe('JUMEAU VIDÉO (digital twin) — consentement externe réservé à l’admin', () => {
+  const jumeauVideo = { id: 'av-1', provider: 'heygen', avatar_type: 'video', provider_group_id: 'grp-1', provider_group_consent: null };
+
+  it('utilisateur normal : jamais d’URL fournisseur, jamais de nom fournisseur, aucun appel', async () => {
+    etat.session = { user: { id: 'u1', email: 'client@exemple.fr' } };
+    etat.avatarVivant = jumeauVideo;
+    for (const r of [(await demanderConsentement())!, (await lireConsentement())!]) {
+      expect(r.status).toBe(403);
+      const corps = JSON.stringify(await r.json());
+      expect(corps).not.toMatch(/https?:\/\//);
+      expect(trahitUnFournisseur(corps)).toBe(false);
+    }
+    expect(etat.urlsConsentement).toBe(0);
+  });
+
+  it('admin : seul à recevoir le lien de consentement externe', async () => {
+    etat.session = { user: { id: 'u1', email: 'contact.artboost@gmail.com' } };
+    etat.avatarVivant = jumeauVideo;
+    const r = (await demanderConsentement())!;
+    expect(r.status).toBe(200);
+    expect((await r.json()).data.url).toMatch(/^https:\/\//);
+    expect(etat.urlsConsentement).toBe(1);
+  });
+
+  it('jumeau vidéo d’un utilisateur normal : refusé AVANT tout appel payant', async () => {
+    etat.typeAvatar = 'video'; etat.consentement = 'accepted';
+    const r = await genererVideoJumeau({ userId: 'u1', textes: ['Bonjour'] }, { env: ENV });
+    expect(r.ok).toBe(false);
+    expect(etat.appelsPayants).toEqual([]);
+    expect(trahitUnFournisseur(r.ok ? '' : r.message)).toBe(false);
+  });
+
+  it('admin, consentement non accepté : refusé AVANT tout appel payant ; accepté : la voix part', async () => {
+    etat.emailAdmin = true; etat.typeAvatar = 'video'; etat.consentement = 'pending';
+    const refus = await genererVideoJumeau({ userId: 'u1', textes: ['Bonjour'] }, { env: ENV });
+    expect(refus.ok).toBe(false);
+    expect(etat.appelsPayants).toEqual([]);
+    etat.consentement = 'accepted';
+    await genererVideoJumeau({ userId: 'u1', textes: ['Bonjour'] }, { env: ENV });
+    expect(etat.appelsPayants[0]).toBe('voix'); // MA voix d'abord (bassi), puis l'avatar
+  });
+
+  it('création : une vidéo hors legacy est refusée à un non-admin AVANT tout dépôt', () => {
+    const c = readFileSync(resolve(process.cwd(), 'src/app/api/avatar/create/route.ts'), 'utf-8');
+    expect(c).toContain("if (isVideo && !viaDid && !jumeauVideoAutorise(isAdmin(session.user.email))) {");
+    expect(c.indexOf('jumeauVideoAutorise(isAdmin(session.user.email))')).toBeLessThan(c.indexOf('uploadAsset('));
   });
 });

@@ -695,3 +695,36 @@ export async function resolveVoiceId(requested?: string): Promise<string> {
   );
   return DOCUMENTED_FALLBACK_VOICE_ID;
 }
+
+// ── Consentement du jumeau vidéo (digital twin), niveau 1 ─────────────────
+//
+// Un digital twin ne peut produire de vidéo qu'après le consentement filmé de
+// la personne. Niveau 1 (tous comptes) : le fournisseur rend un LIEN vers sa
+// page d'enregistrement webcam (valable 24 h) ; on suit ensuite le statut du
+// groupe. RÉSERVÉ À L'ADMIN côté Studiio : un utilisateur ne doit jamais
+// recevoir d'URL fournisseur (voir /api/avatar/consentement).
+
+export type StatutConsentementJumeau = 'pending' | 'accepted' | 'rejected';
+
+/** POST /v3/avatars/{group_id}/consent — rend l'URL de la page de consentement. */
+export async function demanderConsentementJumeau(groupId: string, rerouteUrl?: string): Promise<{ url: string }> {
+  if (!groupId) throw new HeyGenError('Groupe d’avatar absent.', 400, 'no_group');
+  const data = await heygenFetch<{ url?: string; consent_url?: string }>(`/v3/avatars/${encodeURIComponent(groupId)}/consent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(rerouteUrl ? { reroute_url: rerouteUrl } : {}),
+    timeoutMs: 30_000,
+  });
+  const url = data?.url ?? data?.consent_url;
+  if (!url || !/^https:\/\//.test(url)) throw new HeyGenError('Lien de consentement absent.', 502, 'no_consent_url');
+  return { url };
+}
+
+/** GET /v3/avatars/{group_id} — le statut de consentement du groupe. */
+export async function lireConsentementJumeau(groupId: string): Promise<StatutConsentementJumeau | null> {
+  const data = await heygenFetch<{ consent_status?: string | null; avatar_group?: { consent_status?: string | null } }>(
+    `/v3/avatars/${encodeURIComponent(groupId)}`, { method: 'GET', timeoutMs: 30_000 },
+  );
+  const s = data?.consent_status ?? data?.avatar_group?.consent_status ?? null;
+  return s === 'pending' || s === 'accepted' || s === 'rejected' ? s : null;
+}

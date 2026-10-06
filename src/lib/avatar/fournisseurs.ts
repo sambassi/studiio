@@ -39,10 +39,22 @@ export const MESSAGES_AVATAR = {
   verificationTransitoire: 'Le statut de votre vidéo n’a pas pu être vérifié pour l’instant. Nouvel essai automatique.',
 } as const;
 
+/**
+ * Jumeau VIDÉO (digital twin) — TEMPORAIREMENT réservé à l'admin : son
+ * consentement passe par une page externe du fournisseur (niveau 1). Un
+ * utilisateur ne doit jamais y être envoyé tant qu'un parcours 100 % Studiio
+ * n'existe pas.
+ */
+export function jumeauVideoAutorise(admin: boolean): boolean {
+  return admin;
+}
+
 /** Création d'avatar — messages UTILISATEUR. */
 export const MESSAGES_CREATION = {
   echec: 'La création de votre avatar a échoué. Renvoyez votre photo ou votre vidéo.',
   indisponible: 'Le service Avatar est temporairement indisponible. Réessayez dans quelques minutes.',
+  videoIndisponible: 'La création d’un avatar à partir d’une vidéo n’est pas encore disponible. Créez votre avatar à partir d’une photo.',
+  consentementRequis: 'Votre avatar vidéo attend encore votre consentement. Aucun crédit Studiio n’a été débité.',
 } as const;
 
 /** Un texte destiné à l'utilisateur trahit-il un fournisseur ? (garde des tests et des réponses) */

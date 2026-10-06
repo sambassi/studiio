@@ -58,7 +58,7 @@
  *     l'aperçu déjà validé en production. Pas de drapeau global pour D-ID.
  */
 
-import { MESSAGES_AVATAR, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
+import { MESSAGES_AVATAR, MESSAGES_CREATION, jumeauVideoAutorise, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
@@ -122,6 +122,18 @@ export async function genererVideoJumeau(
   const moteur = moteurJumeauDisponiblePour(fournisseur, env);
   if (!moteur.disponible || (fournisseur !== 'heygen' && fournisseur !== FOURNISSEUR_DID)) {
     return { ok: false, motif: 'moteur_indisponible', message: moteur.message ?? 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' };
+  }
+
+  // 1 bis. Jumeau VIDÉO chez le fournisseur principal : TEMPORAIREMENT réservé
+  //        à l'admin, et seulement une fois son consentement filmé ACCEPTÉ —
+  //        avant tout débit, tout appel fournisseur.
+  if (fournisseur === 'heygen' && jumeau.prive.typeAvatar === 'video') {
+    if (!jumeauVideoAutorise(await compteAdmin(args.userId))) {
+      return { ok: false, motif: 'moteur_indisponible', message: MESSAGES_CREATION.videoIndisponible };
+    }
+    if (jumeau.prive.consentementJumeau !== 'accepted') {
+      return { ok: false, motif: 'moteur_indisponible', message: MESSAGES_CREATION.consentementRequis };
+    }
   }
 
   // 2. Les textes : DISPLAY intact, SPOKEN pour la voix.
