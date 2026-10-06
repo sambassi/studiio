@@ -447,6 +447,20 @@ export async function generateAvatarVideo(
  * multipart que la source de l'avatar. Ni `script`, ni `voice_id` : le
  * fournisseur ne doit rien synthétiser lui-même.
  */
+/**
+ * Moteur de rendu de l'avatar — EXPLICITE. Sans ce champ, le fournisseur
+ * choisit Avatar IV (≈ 8× le prix d'Avatar III). Avatar III est le moteur
+ * retenu pour Studiio ; `HEYGEN_AVATAR_ENGINE` peut le changer côté serveur
+ * (valeurs du fournisseur uniquement).
+ */
+export const MOTEURS_AVATAR = ['avatar_iii', 'avatar_iv', 'avatar_v'] as const;
+export type MoteurAvatar = typeof MOTEURS_AVATAR[number];
+export const MOTEUR_AVATAR_DEFAUT: MoteurAvatar = 'avatar_iii';
+export function moteurAvatar(env: NodeJS.ProcessEnv = process.env): MoteurAvatar {
+  const v = env.HEYGEN_AVATAR_ENGINE?.trim() as MoteurAvatar | undefined;
+  return v && (MOTEURS_AVATAR as readonly string[]).includes(v) ? v : MOTEUR_AVATAR_DEFAUT;
+}
+
 export async function generateAvatarVideoFromAudio(params: {
   avatarId: string;
   audioAssetId: string;
@@ -463,6 +477,7 @@ export async function generateAvatarVideoFromAudio(params: {
     aspect_ratio: aspectRatio,
     resolution: '720p',
     output_format: 'mp4',
+    engine: { type: moteurAvatar() },
   };
   console.log('[Avatar][HeyGen] POST /v3/videos (audio externe) payload', JSON.stringify(body));
   const data = await heygenFetch<{ video_id?: string; id?: string; status?: string }>(

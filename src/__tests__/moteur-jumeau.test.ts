@@ -160,7 +160,7 @@ describe('genererVideoJumeau — la chaîne réelle, fournisseurs interceptés a
     // 3. HeyGen videos : audio_asset_id + avatar courant, ni script ni voice_id.
     const videos = appelsVers('https://api.heygen.com/v3/videos');
     expect(videos).toHaveLength(1);
-    expect(videos[0].body).toEqual({ type: 'avatar', avatar_id: 'hg-avatar-1', audio_asset_id: 'asset-audio-1', aspect_ratio: '9:16', resolution: '720p', output_format: 'mp4' });
+    expect(videos[0].body).toEqual({ type: 'avatar', avatar_id: 'hg-avatar-1', audio_asset_id: 'asset-audio-1', aspect_ratio: '9:16', resolution: '720p', output_format: 'mp4', engine: { type: 'avatar_iii' } });
     expect(JSON.stringify(videos[0].body)).not.toMatch(/script|voice_id|audio_url/);
     // Ordre : ElevenLabs → assets → videos.
     expect(reseau.appels.map((a) => a.url.replace(/\?.*$/, ''))).toEqual([
