@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
@@ -145,11 +146,11 @@ export async function POST(req: NextRequest) {
       }
 
       if (remoteStatus === 'failed') {
-        const detail = training?.error ? ` (${training.error})` : '';
+        if (training?.error) console.warn('[Avatar] entrainement en echec chez le fournisseur :', training.error);
         return NextResponse.json(
           {
             success: false,
-            error: `L'entrainement de votre avatar a echoue chez HeyGen${detail}. Renvoyez ${isVideoAvatar ? 'une video' : 'une photo'}.`,
+            error: `L'entrainement de votre avatar a echoue. Renvoyez ${isVideoAvatar ? 'une video' : 'une photo'}.`,
             code: 'avatar_failed',
           },
           { status: 409 },
@@ -160,7 +161,7 @@ export async function POST(req: NextRequest) {
           {
             success: false,
             error:
-              "HeyGen attend une validation de consentement sur cet avatar. Verifiez votre compte HeyGen pour la finaliser.",
+              "Votre avatar attend encore une validation. Reessayez dans quelques minutes.",
             code: 'avatar_pending_consent',
           },
           { status: 409 },
@@ -371,7 +372,7 @@ export async function POST(req: NextRequest) {
         `[Avatar][HeyGen] Generation refusee pour ${userId} — code=${error.code} http=${error.httpStatus} : ${error.message}`,
       );
       return NextResponse.json(
-        { success: false, error: error.message, code: error.code, refunded: creditsDeducted },
+        { success: false, error: creditsDeducted ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echecAvantLancement, code: 'avatar_service', refunded: creditsDeducted },
         { status: error.httpStatus },
       );
     }

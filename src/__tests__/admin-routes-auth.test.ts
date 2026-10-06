@@ -91,6 +91,7 @@ const R = (route: string, method: Method, anonymous: 401 | 403, load: Case['load
 });
 
 const CASES: Case[] = [
+  R('avatar-couts', 'GET', 401, () => import('@/app/api/admin/avatar-couts/route')),
   R('cleanup-duplicates', 'GET', 401, () => import('@/app/api/admin/cleanup-duplicates/route')),
   R('cleanup-orphans', 'POST', 401, () => import('@/app/api/admin/cleanup-orphans/route')),
   R('email/test', 'POST', 401, () => import('@/app/api/admin/email/test/route')),

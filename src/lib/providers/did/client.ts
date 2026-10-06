@@ -26,7 +26,10 @@
  * considérée déjà encodée (base64 n'a pas de `:`) et passée telle quelle.
  */
 
+import { didLegacyAutorise } from '@/lib/avatar/fournisseurs';
+
 export const DID_API_BASE = 'https://api.d-id.com';
+
 
 export class DidError extends Error {
   constructor(message: string, public httpStatus: number, public code: string) {
@@ -39,9 +42,14 @@ export function cleDid(env: NodeJS.ProcessEnv = process.env): string | null {
   return env.DID_API_KEY?.trim() || null;
 }
 
-/** Le moteur D-ID n'existe pour l'application que si le drapeau ET la clé sont là. */
+/**
+ * Le moteur D-ID n'existe pour l'application que si le drapeau ET la clé sont
+ * là — ET que D-ID (LEGACY depuis 2026-10-06, HeyGen est le fournisseur
+ * principal) a été explicitement réautorisé. Point unique : aucune création,
+ * aucun aperçu, aucune vidéo D-ID ne part sans cette décision.
+ */
 export function didVideoAvatarDisponible(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.DID_VIDEO_AVATAR_ACTIVE === '1' && cleDid(env) !== null;
+  return env.DID_VIDEO_AVATAR_ACTIVE === '1' && cleDid(env) !== null && didLegacyAutorise(env);
 }
 
 /** Le drapeau est levé mais la clé manque : l'écran doit le dire, pas planter. */

@@ -105,9 +105,15 @@ DATE=2026-10-05
 VALIDATED_SHA=— (aucun rendu réel réussi en production)
 USER_FLOW=Mon avatar → avatar D-ID validé → Créer « Jumeau avatar » → vidéo du jumeau dans le montage
 INVARIANTS=
-- vidéo « réussie » seulement si enregistrée sur NOTRE stockage
+- vidéo « réussie » seulement si enregistrée sur NOTRE stockage (fichier vérifié non vide)
 - copie impossible → nouvel essai ; au-delà du délai → échec franc ET remboursé
-CONTRACT_TESTS=src/__tests__/contracts/jumeau.contract.test.ts
+- fournisseur principal = HeyGen (abstraction AvatarProvider) ; D-ID = LEGACY, jamais appelé sans AVATAR_DID_LEGACY_ACTIF=1
+- aucun fournisseur visible côté utilisateur (nom, prix, URL, erreur brute)
+- admin : 0 crédit Studiio ; coût fournisseur mesuré (avatar_generations.provider_cost_eur, /admin/avatar-couts)
+- sans crédit Studiio : aucun appel fournisseur payant
+- échec fournisseur : jamais un débit injustifié (remboursement)
+- Créer et Autopilote passent par la même porte genererVideoJumeau
+CONTRACT_TESTS=src/__tests__/contracts/jumeau.contract.test.ts, src/__tests__/contracts/avatar-provider.contract.test.ts
 PROD_SMOKE=GET /api/creer/jumeau (pret, moteurDisponible) — non payant
 REOPEN_ONLY_IF=— (pas encore LOCKED)
 JUMEAU_LOCKED=NON — après un test réel de bout en bout réussi

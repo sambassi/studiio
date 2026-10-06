@@ -58,6 +58,8 @@
  *     l'aperçu déjà validé en production. Pas de drapeau global pour D-ID.
  */
 
+import { MESSAGES_AVATAR, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
+import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
 import { referenceOperation } from '@/lib/credits/atomique';
@@ -171,8 +173,18 @@ export async function genererVideoJumeau(
   if (!generationId) return { ok: false, motif: 'base', message: 'La génération n’a pas pu être réservée. Réessayez.' };
 
   const gid = generationId;
-  const echouer = async (motif: 'fournisseur_voix' | 'fournisseur_avatar' | 'credits_insuffisants' | 'base', message: string, statut?: number, rembourser = false) => {
+  const echouer = async (motif: 'fournisseur_voix' | 'fournisseur_avatar' | 'credits_insuffisants' | 'base', messageBrut: string, statut?: number, rembourser = false) => {
+    // Fournisseur INVISIBLE : l'erreur brute va aux journaux et à l'admin
+    // (`provider_error`), l'utilisateur lit un message Studiio.
+    const fournisseurEnCause = motif === 'fournisseur_voix' || motif === 'fournisseur_avatar';
+    const message = fournisseurEnCause
+      ? (rembourser ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echecAvantLancement)
+      : messageUtilisateurSur(messageBrut, MESSAGES_AVATAR.echecAvantLancement);
+    if (fournisseurEnCause) console.error(`[Jumeau][${fournisseur}] génération ${gid} refusée :`, messageBrut);
     await supabaseAdmin.from('avatar_generations').update({ status: 'failed', error_message: message }).eq('id', gid);
+    if (fournisseurEnCause) {
+      await enregistrerCoutGeneration(gid, calculerCoutGeneration({ provider: fournisseur, admin: await compteAdmin(args.userId), secondes: 0, caracteres: 0, creditsDebites: 0 }, env), messageBrut);
+    }
     if (rembourser) await rembourserGenerationUneFois(args.userId, gid);
     const refus: ResultatMoteurJumeau = motif === 'credits_insuffisants'
       ? { ok: false, motif, message }
@@ -268,10 +280,14 @@ export async function enregistrerLancement(
   status: 'pending' | 'processing',
 ): Promise<string | null> {
   let derniere: string | null = null;
+  // Un admin n'est JAMAIS débité (exemption de `deductCredits`) : la ligne ne
+  // doit donc pas dire « 40 crédits facturés », sinon le suivi « rembourserait »
+  // des crédits jamais pris. Studiio : 0 ; le coût fournisseur, lui, est mesuré.
+  const creditsFactures = (await compteAdmin(userId)) ? 0 : AVATAR_VIDEO_COST;
   for (let essai = 0; essai < 2; essai += 1) {
     const { error } = await supabaseAdmin
       .from('avatar_generations')
-      .update({ provider_video_id: providerVideoId, status, credits_charged: AVATAR_VIDEO_COST })
+      .update({ provider_video_id: providerVideoId, status, credits_charged: creditsFactures })
       .eq('id', generationId)
       .eq('user_id', userId);
     if (!error) return null;

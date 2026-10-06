@@ -55,7 +55,7 @@ describe('Brouillon Créer — jumeauMode (rétro-compat useDigitalTwin)', () =>
   });
 });
 
-const MSG_DID = 'Votre avatar (créé à partir d’une vidéo) est prêt, mais le fournisseur d’avatar vidéo D-ID n’est pas configuré sur ce serveur (DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY). Aucun crédit n’est débité. Votre voix reste utilisable pour la narration.';
+const MSG_DID = 'Le service Avatar est temporairement indisponible. Aucun crédit Studiio n’a été débité.';
 const MSG_HEYGEN = 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible — votre voix reste utilisable pour la narration.';
 const PRET = { pret: true, motif: null, message: null, jumeau: { avatar: { id: 'a', version: 2, nom: 'Bassi', valideLe: '2026-09-03', fournisseur: 'heygen' }, voix: { id: 'v', nom: 'Bassi' }, prononciations: 2 }, moteurDisponible: false, messageMoteur: MSG_HEYGEN };
 const PRET_DID = { ...PRET, jumeau: { ...PRET.jumeau, avatar: { ...PRET.jumeau.avatar, fournisseur: 'did' } } };
@@ -89,7 +89,8 @@ describe('JumeauPanel — deux intentions, dites en clair', () => {
     expect(panneau.getAttribute('data-jumeau-mode')).toBe('aucun');
     const t = panneau.textContent!;
     expect(t).toContain('Votre jumeau est prêt');
-    expect(t).toContain('Avatar : Bassi (v2), validé — créé à partir d’une photo (HeyGen)');
+    expect(t).toContain('Avatar : Bassi (v2), validé — prêt pour vos vidéos');
+    expect(t).not.toMatch(/D-ID|HeyGen|ElevenLabs/);
     expect(t).toContain('Voix : Ma voix — Bassi');
     expect(t).toContain('2 prononciations personnalisées');
     // Ce qu'il dira : les textes de narration, séquence par séquence.
@@ -118,7 +119,7 @@ describe('JumeauPanel — deux intentions, dites en clair', () => {
     stub({ ...PRET_DID, moteurDisponible: true, messageMoteur: null });
     const { onModeChange, onVoixJumeau } = monter();
     await attendrePret();
-    expect(document.querySelector('[data-jumeau-avatar]')!.textContent).toContain('créé à partir d’une vidéo (D-ID)');
+    expect(document.querySelector('[data-jumeau-avatar]')!.textContent).toContain('créé à partir d’une vidéo (ancienne version)');
     expect(choix('avatar').disabled).toBe(false);
     expect(document.querySelector('[data-jumeau-moteur="indisponible"]')).toBeNull();
     fireEvent.click(choix('avatar'));
@@ -144,9 +145,9 @@ describe('JumeauPanel — deux intentions, dites en clair', () => {
     await attendrePret();
     expect(choix('avatar').disabled).toBe(true);
     const moteur = document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent!;
-    expect(moteur).toContain('D-ID');
-    expect(moteur).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
-    expect(moteur).toContain('Aucun crédit n’est débité');
+    expect(moteur).not.toMatch(/D-ID|HeyGen|ElevenLabs|_API_KEY/);
+    expect(moteur).toContain('temporairement indisponible');
+    expect(moteur).toContain('Aucun crédit Studiio n’a été débité');
     expect(moteur).not.toContain('pas encore pris en charge');
     expect(choix('voix').disabled).toBe(false);
     await waitFor(() => expect(onModeChange).toHaveBeenCalledWith('aucun'));

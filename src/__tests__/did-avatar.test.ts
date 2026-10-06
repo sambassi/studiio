@@ -136,6 +136,8 @@ globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
 
 process.env.DID_API_KEY = 'user:secretDID';
 process.env.DID_VIDEO_AVATAR_ACTIVE = '1';
+// D-ID est LEGACY depuis 2026-10-06 : ces tests couvrent le connecteur réautorisé.
+process.env.AVATAR_DID_LEGACY_ACTIF = '1';
 process.env.ELEVENLABS_API_KEY = 'cle-eleven';
 process.env.HEYGEN_API_KEY = 'cle-heygen';
 process.env.AUTH_SECRET = 'secret-de-test-tres-long';
@@ -206,7 +208,7 @@ beforeEach(() => {
   reseau.avatar = { id: 'avt-1', status: 'created' }; reseau.statutAvatar = 'training-started';
   reseau.scene = { id: 'scn-1', status: 'created' }; reseau.statutScene = { status: 'started' };
   session.courante = { user: { id: U } };
-  process.env.DID_API_KEY = 'user:secretDID'; process.env.DID_VIDEO_AVATAR_ACTIVE = '1';
+  process.env.DID_API_KEY = 'user:secretDID'; process.env.DID_VIDEO_AVATAR_ACTIVE = '1'; process.env.AVATAR_DID_LEGACY_ACTIF = '1';
 });
 
 describe('1. Garde-fous : drapeau, clé, session, propriété, formats', () => {
@@ -744,7 +746,8 @@ describe('5. L’aperçu RÉEL : ma voix ElevenLabs → audio privé → scène 
     reseau.statutScene = { status: 'rejected', error: { description: 'face not found' } };
     const s = await (await getStatut(generationId)).json();
     expect(s.data.status).toBe('failed');
-    expect(s.data.error).toContain('face not found');
+    expect(s.data.error).not.toContain('face not found');
+    expect(s.data.error).toContain('La génération de votre avatar a échoué');
     expect(s.data.error).not.toContain('rembourses');
     expect(stockage.objets.has(`${U}/avatar/audio-${generationId}.mp3`)).toBe(false);
   });
@@ -811,9 +814,9 @@ describe('6. Remplacement, suppression, et ce qui reste HeyGen', () => {
     expect(j.prive.fournisseurAvatar).toBe('did');
     // Le moteur se juge POUR cet avatar : le drapeau HeyGen ne dit rien d'un
     // avatar D-ID ; c'est le gate de l'aperçu (D-ID + ElevenLabs) qui compte.
-    const envDid = { DID_VIDEO_AVATAR_ACTIVE: '1', DID_API_KEY: 'user:secretDID', ELEVENLABS_API_KEY: 'cle-eleven', NEXT_PUBLIC_APP_URL: 'https://studiio.pro', AUTH_SECRET: 'secret-de-test-tres-long' } as unknown as NodeJS.ProcessEnv;
+    const envDid = { AVATAR_DID_LEGACY_ACTIF: '1', DID_VIDEO_AVATAR_ACTIVE: '1', DID_API_KEY: 'user:secretDID', ELEVENLABS_API_KEY: 'cle-eleven', NEXT_PUBLIC_APP_URL: 'https://studiio.pro', AUTH_SECRET: 'secret-de-test-tres-long' } as unknown as NodeJS.ProcessEnv;
     expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv)).toMatchObject({ disponible: false });
-    expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv).message).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
+    expect(moteurJumeauDisponiblePour('did', { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv).message).toBeTruthy();
     expect(moteurJumeauDisponiblePour('did', envDid)).toEqual({ disponible: true, message: null });
     // La chaîne : ElevenLabs sur MA voix (SPOKEN) → audio privé → scène D-ID
     // sur URL signée, intention `normale`, provider 'did'. Aucun appel HeyGen.

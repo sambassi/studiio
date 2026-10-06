@@ -121,6 +121,7 @@ globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
 // Le gate de l'aperçu, tel qu'en prod. PAS de JUMEAU_MOTEUR_ACTIVE, PAS de HEYGEN_API_KEY.
 process.env.DID_API_KEY = 'user:secretDID';
 process.env.DID_VIDEO_AVATAR_ACTIVE = '1';
+process.env.AVATAR_DID_LEGACY_ACTIF = '1';
 process.env.ELEVENLABS_API_KEY = 'cle-eleven-test';
 process.env.AUTH_SECRET = 'secret-de-test-tres-long';
 process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
@@ -150,7 +151,7 @@ beforeEach(() => {
   stockage.objets.clear(); stockage.journal.length = 0;
   reseau.appels.length = 0; reseau.eleven = 200; reseau.scene = 201;
   session.courante = { user: { id: U } };
-  process.env.DID_API_KEY = 'user:secretDID'; process.env.DID_VIDEO_AVATAR_ACTIVE = '1'; process.env.ELEVENLABS_API_KEY = 'cle-eleven-test';
+  process.env.DID_API_KEY = 'user:secretDID'; process.env.DID_VIDEO_AVATAR_ACTIVE = '1'; process.env.AVATAR_DID_LEGACY_ACTIF = '1'; process.env.ELEVENLABS_API_KEY = 'cle-eleven-test';
   delete process.env.JUMEAU_MOTEUR_ACTIVE; delete process.env.HEYGEN_API_KEY;
 });
 
@@ -201,7 +202,8 @@ describe('genererVideoJumeau sur un avatar D-ID — la chaîne de l’aperçu, i
     reseau.scene = 400;
     const r = await generer();
     expect(r).toMatchObject({ ok: false, motif: 'fournisseur_avatar', statut: 400 });
-    expect(r.ok ? '' : r.message).toContain('bad audio');
+    expect(r.ok ? '' : r.message).not.toContain('bad audio');
+    expect(r.ok ? '' : r.message).toContain('Vos crédits Studiio ont été recrédités');
     expect(base.generations[0].status).toBe('failed');
     expect([...stockage.objets.keys()].filter((k) => k.includes('/audio-'))).toEqual([]);
     expect(stockage.journal.some((j) => j.startsWith('remove:'))).toBe(true);
@@ -224,13 +226,13 @@ describe('genererVideoJumeau sur un avatar D-ID — la chaîne de l’aperçu, i
     ]) {
       const r = await generer([TEXTE], env);
       expect(r).toMatchObject({ ok: false, motif: 'moteur_indisponible' });
-      expect(r.ok ? '' : r.message).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
-      expect(r.ok ? '' : r.message).toContain('Aucun crédit n’est débité');
+      expect(r.ok ? '' : r.message).toContain('temporairement indisponible');
+      expect(r.ok ? '' : r.message).toContain('Aucun crédit Studiio n’a été débité');
     }
     // ElevenLabs absente : c'est elle qui est nommée.
     const r = await generer([TEXTE], { ...process.env, ELEVENLABS_API_KEY: undefined } as unknown as NodeJS.ProcessEnv);
     expect(r).toMatchObject({ ok: false, motif: 'moteur_indisponible' });
-    expect(r.ok ? '' : r.message).toContain('ELEVENLABS_API_KEY');
+    expect(r.ok ? '' : r.message).toContain('service de voix');
     expect(reseau.appels).toEqual([]); expect(credits.journal).toEqual([]); expect(base.generations).toEqual([]);
   });
 
@@ -280,7 +282,7 @@ describe('POST /api/creer/jumeau/generer avec un avatar D-ID', () => {
     expect(refus.status).toBe(503);
     const j = await refus.json() as { error: string; code: string };
     expect(j.code).toBe('moteur_indisponible');
-    expect(j.error).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
+    expect(j.error).toContain('temporairement indisponible');
     process.env.DID_VIDEO_AVATAR_ACTIVE = '1';
 
     reseau.scene = 400;
