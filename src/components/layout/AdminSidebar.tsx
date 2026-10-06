@@ -19,6 +19,7 @@ export function AdminSidebar() {
     { icon: Globe, label: t('landingPage'), href: '/admin/landing' },
     { icon: Settings, label: t('settings'), href: '/admin/settings' },
     { icon: CreditCard, label: 'Tarification', href: '/admin/pricing' },
+    { icon: Film, label: 'Coûts avatar', href: '/admin/avatar-couts' },
     { icon: FileText, label: t('terms'), href: '/admin/terms' },
     { icon: Mail, label: t('emails'), href: '/admin/emails' },
     { icon: Shield, label: t('auditLog'), href: '/admin/logs' },

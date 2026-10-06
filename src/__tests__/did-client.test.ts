@@ -25,7 +25,7 @@ const {
 } = await import('@/lib/providers/did/client');
 
 const CLE = 'utilisateur@studiio.pro:secretDID123';
-const env = { DID_API_KEY: CLE, DID_VIDEO_AVATAR_ACTIVE: '1' } as unknown as NodeJS.ProcessEnv;
+const env = { DID_API_KEY: CLE, DID_VIDEO_AVATAR_ACTIVE: '1', AVATAR_DID_LEGACY_ACTIF: '1' } as unknown as NodeJS.ProcessEnv;
 const deps = { env, fetch: fetchDouble };
 
 beforeEach(() => { appels.length = 0; reponse = { status: 200, body: {} }; lent = false; });

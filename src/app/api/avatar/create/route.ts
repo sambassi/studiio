@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGES_CREATION } from '@/lib/avatar/fournisseurs';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
@@ -324,7 +325,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: `Video trop lourde (${Math.round(file.size / 1024 / 1024)} Mo). HeyGen limite l'envoi a 32 Mo — reduisez la duree ou la qualite.`,
+            error: `Video trop lourde (${Math.round(file.size / 1024 / 1024)} Mo). L'envoi est limite a 32 Mo — reduisez la duree ou la qualite.`,
           },
           { status: 413 },
         );
@@ -577,9 +578,10 @@ export async function POST(req: NextRequest) {
       const cree = await createAvatarFromAsset(asset.assetId, name, kind);
       chezFournisseur = { avatarId: cree.avatarId, assetId: asset.assetId, status: cree.status };
     } catch (erreurFournisseur) {
-      const message = erreurFournisseur instanceof HeyGenError
-        ? erreurFournisseur.message
-        : "Le fournisseur n'a pas pu creer l'avatar.";
+      // Fournisseur INVISIBLE : brut aux journaux, message Studiio en base
+      // (`training_error` est relu par l'écran).
+      console.error('[Avatar] creation refusee chez le fournisseur :', erreurFournisseur instanceof Error ? erreurFournisseur.message : erreurFournisseur);
+      const message = MESSAGES_CREATION.echec;
       const { data: marquees, error: erreurMarque } = await supabaseAdmin
         .from('user_avatars')
         .update({ status: 'failed', training_error: message })
@@ -656,7 +658,7 @@ export async function POST(req: NextRequest) {
         `[Avatar][HeyGen] Creation refusee — code=${error.code} http=${error.httpStatus} : ${error.message}`,
       );
       return NextResponse.json(
-        { success: false, error: error.message, code: error.code },
+        { success: false, error: MESSAGES_CREATION.indisponible, code: 'avatar_service' },
         { status: error.httpStatus },
       );
     }

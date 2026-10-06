@@ -25,7 +25,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
 import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
 
 const appels: string[] = [];
-const JUMEAU_DEFAUT: { data: Record<string, unknown> } = { data: { pret: true, motif: null, message: null, jumeau: { avatar: { id: 'a', version: 2, nom: 'Bassi', valideLe: '2026-09-03', fournisseur: 'did' }, voix: { id: 'v', nom: 'Bassi' }, prononciations: 0 }, moteurDisponible: false, messageMoteur: 'Votre avatar (créé à partir d’une vidéo) est prêt, mais le fournisseur d’avatar vidéo D-ID n’est pas configuré sur ce serveur (DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY). Aucun crédit n’est débité. Votre voix reste utilisable pour la narration.' } };
+const JUMEAU_DEFAUT: { data: Record<string, unknown> } = { data: { pret: true, motif: null, message: null, jumeau: { avatar: { id: 'a', version: 2, nom: 'Bassi', valideLe: '2026-09-03', fournisseur: 'did' }, voix: { id: 'v', nom: 'Bassi' }, prononciations: 0 }, moteurDisponible: false, messageMoteur: 'Le service Avatar est temporairement indisponible. Aucun crédit Studiio n’a été débité.' } };
 
 let jumeau = JUMEAU_DEFAUT;
 
@@ -60,13 +60,14 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(appels.some((u) => u === '/api/creer/jumeau')).toBe(true);
     expect(appels.some((u) => u === '/api/voice/clone')).toBe(true);
     await settle();
-    expect(panneau!.textContent).toContain('créé à partir d’une vidéo (D-ID)');
+    expect(panneau!.textContent).toContain('créé à partir d’une vidéo (ancienne version)');
+    expect(panneau!.textContent).not.toMatch(/D-ID|HeyGen|ElevenLabs/);
     expect(panneau!.textContent).toContain('Utiliser ma voix clonée');
     expect(panneau!.textContent).toContain('Faire apparaître mon avatar parlant');
     expect(document.querySelector('[data-jumeau-dira]')).not.toBeNull();
     const avatar = document.querySelector('[data-jumeau-choix="avatar"]') as HTMLInputElement;
     expect(avatar.disabled).toBe(true);
-    expect(document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
+    expect(document.querySelector('[data-jumeau-moteur="indisponible"]')!.textContent).toContain('temporairement indisponible');
     const voix = document.querySelector('[data-jumeau-choix="voix"]') as HTMLInputElement;
     expect(voix.disabled).toBe(false);
     expect(voix.checked).toBe(false);

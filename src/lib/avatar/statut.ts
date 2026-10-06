@@ -26,6 +26,8 @@ import { getVideoStatus, downloadVideo } from '@/lib/avatar/heygen';
 import { lireScene, telechargerResultat } from '@/lib/providers/did/client';
 import { FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
+import { MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
+import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 
 /** Au-delà, une génération encore EN COURS est considérée perdue et remboursée. */
 export const STALE_AFTER_MS = 30 * 60 * 1000; // 30 min
@@ -47,6 +49,8 @@ interface LigneGeneration {
   credits_charged: number;
   credits_refunded: boolean;
   created_at: string;
+  /** Le texte DIT (sert au coût de la voix). */
+  script?: string | null;
 }
 
 /**
@@ -87,18 +91,16 @@ export async function avancerStatutGeneration(
   const remote = viaDid ? await lireScene(g.provider_video_id) : await getVideoStatus(g.provider_video_id);
 
   if (remote.status === 'failed') {
-    const nomFournisseur = viaDid ? 'D-ID' : 'HeyGen';
-    // Messages NON accentués : ce sont ceux, à l'octet, de l'ancienne route
-    // status (Créer marche, on ne change pas ses chaînes). Le suffixe suit
-    // `credits_charged > 0`, comme avant — pas le retour du remboursement.
-    const rembourse = await failAndRefund(g, remote.failureMessage || `${nomFournisseur} a signale un echec.`);
+    // Fournisseur INVISIBLE : l'erreur brute va aux journaux et à l'admin
+    // (`provider_error`) ; l'utilisateur lit un message Studiio.
+    const brut = remote.failureMessage || `${g.provider ?? 'heygen'} : échec signalé sans détail`;
+    console.error(`[Avatar][${g.provider ?? 'heygen'}] génération ${g.id} en échec :`, brut);
+    const admin = await compteAdmin(userId);
+    const visible = g.credits_charged > 0 && !admin ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echec;
+    const rembourse = await failAndRefund(g, visible);
+    await enregistrerCoutGeneration(g.id, calculerCoutGeneration({ provider: viaDid ? 'did' : 'heygen', admin, secondes: 0, caracteres: (g.script ?? '').length, creditsDebites: 0 }), brut);
     if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));
-    return {
-      status: 'failed',
-      videoUrl: null,
-      error: `${remote.failureMessage || `Echec ${nomFournisseur}`}.${g.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
-      rembourse,
-    };
+    return { status: 'failed', videoUrl: null, error: visible, rembourse };
   }
 
   if (remote.status !== 'completed' || !remote.videoUrl) {
@@ -132,6 +134,9 @@ export async function avancerStatutGeneration(
   let finalUrl: string | null = null;
   try {
     const buffer = viaDid ? await telechargerResultat(remote.videoUrl) : await downloadVideo(remote.videoUrl);
+    // Fichier VÉRIFIÉ avant d'être un résultat : un téléchargement vide n'est
+    // pas une vidéo (nouvel essai au prochain passage).
+    if (!buffer || buffer.length === 0) throw new Error('vidéo téléchargée vide');
     const storagePath = `${userId}/avatar/${g.id}.mp4`;
     const { error: upErr } = await supabaseAdmin.storage
       .from('media')
@@ -170,6 +175,11 @@ export async function avancerStatutGeneration(
       updated_at: new Date().toISOString(),
     })
     .eq('id', g.id);
+  // Coût réel de CETTE génération (admin : 0 crédit Studiio, coût externe mesuré).
+  const secondes = ('durationSeconds' in remote ? remote.durationSeconds : null) ?? null;
+  await enregistrerCoutGeneration(g.id, calculerCoutGeneration({
+    provider: viaDid ? 'did' : 'heygen', admin: await compteAdmin(userId), secondes, caracteres: (g.script ?? '').length, creditsDebites: g.credits_charged,
+  }));
   // D-ID : l'audio de ma voix ne sert plus — on ne garde pas une donnée
   // biométrique sans raison.
   if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));

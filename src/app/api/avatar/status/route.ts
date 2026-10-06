@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { HeyGenError } from '@/lib/avatar/heygen';
@@ -73,13 +74,15 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof DidError) {
       // Transitoire cote D-ID : meme regle que HeyGen, le prochain poll retentera.
-      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.httpStatus });
+      console.warn('[Avatar][status] transitoire :', error.message);
+      return NextResponse.json({ success: false, error: MESSAGES_AVATAR.verificationTransitoire, code: 'transitoire' }, { status: error.httpStatus });
     }
     if (error instanceof HeyGenError) {
       // Erreur transitoire cote HeyGen : on ne marque pas la generation en
       // echec, le prochain poll retentera.
+      console.warn('[Avatar][status] transitoire :', error.message);
       return NextResponse.json(
-        { success: false, error: error.message, code: error.code },
+        { success: false, error: MESSAGES_AVATAR.verificationTransitoire, code: 'transitoire' },
         { status: error.httpStatus },
       );
     }

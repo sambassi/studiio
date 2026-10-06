@@ -167,20 +167,20 @@ describe('/api/creer/jumeau', () => {
       process.env.ELEVENLABS_API_KEY = 'e';
       const g = await (await GET()).json() as { data: Record<string, unknown> };
       expect(g.data).toMatchObject({ pret: true, motif: null, moteurDisponible: false, jumeau: { avatar: { fournisseur: 'did' } } });
-      expect(String(g.data.messageMoteur)).toContain('D-ID');
-      expect(String(g.data.messageMoteur)).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
-      expect(String(g.data.messageMoteur)).toContain('Aucun crédit n’est débité');
+      expect(String(g.data.messageMoteur)).not.toMatch(/D-ID|HeyGen|ElevenLabs|_API_KEY/);
+      expect(String(g.data.messageMoteur)).toContain('ancienne version');
+      expect(String(g.data.messageMoteur)).toContain('Aucun crédit Studiio n’a été débité');
       expect(String(g.data.messageMoteur)).toContain('voix reste utilisable');
       expect(JSON.stringify(g)).not.toMatch(/did-1|pvid_|"provider"|pas encore pris en charge|créés à partir d’une photo/);
       // Le gate de l'aperçu, tel qu'en prod : D-ID actif + clé, ElevenLabs — et PAS de drapeau HeyGen.
-      process.env.DID_VIDEO_AVATAR_ACTIVE = '1'; process.env.DID_API_KEY = 'user:secret';
+      process.env.DID_VIDEO_AVATAR_ACTIVE = '1'; process.env.DID_API_KEY = 'user:secret'; process.env.AVATAR_DID_LEGACY_ACTIF = '1';
       const g2 = await (await GET()).json() as { data: Record<string, unknown> };
       expect(g2.data).toMatchObject({ pret: true, moteurDisponible: true, messageMoteur: null, jumeau: { avatar: { fournisseur: 'did' } } });
       // ElevenLabs absente → indisponible, et c'est ELLE qui est nommée.
       delete process.env.ELEVENLABS_API_KEY;
       const g3 = await (await GET()).json() as { data: Record<string, unknown> };
       expect(g3.data).toMatchObject({ pret: true, moteurDisponible: false });
-      expect(String(g3.data.messageMoteur)).toContain('ELEVENLABS_API_KEY');
+      expect(String(g3.data.messageMoteur)).toContain('service de voix');
     } finally {
       for (const [k, v] of Object.entries(sauvegarde)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     }

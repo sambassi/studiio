@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { MESSAGES_CREATION } from '@/lib/avatar/fournisseurs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
@@ -383,7 +384,8 @@ describe('POST /api/avatar/create — remplacement', () => {
     const l = vivant();
     expect(l.version).toBe(2);
     expect(l.status).toBe('failed');
-    expect(l.training_error).toBe('HeyGen a refuse la source.');
+    // Fournisseur invisible : le message brut n'est jamais stocké pour l'écran.
+    expect(l.training_error).toBe(MESSAGES_CREATION.echec);
     expect(l.provider_avatar_id).toBeNull();
     expect(l.source_object_key).toMatch(NONCE);
     expect(stockage.objets.has(l.source_object_key as string)).toBe(true);
@@ -660,7 +662,7 @@ describe('POST /api/avatar/create — erreur DB ≠ concurrence ; incertitude �
     const res = await requete();
     expect(res.status).toBe(422);
     expect(vivant().status).toBe('failed');
-    expect(vivant().training_error).toBe('HeyGen a refuse la source.');
+    expect(vivant().training_error).toBe(MESSAGES_CREATION.echec);
   });
 
   it('erreur DB à l’écriture provider ALORS qu’une v3 existe déjà → 409 avatar_superseded (réellement dépassée)', async () => {

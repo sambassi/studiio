@@ -20,9 +20,10 @@ export const estJumeauMode = (v: unknown): v is JumeauMode => v === 'aucun' || v
 /** Le fournisseur de l'avatar, en clair pour l'écran. */
 export type FournisseurAvatarPublic = 'heygen' | 'did' | 'inconnu';
 export function libelleFournisseurAvatar(f: FournisseurAvatarPublic | undefined): string {
-  if (f === 'did') return 'créé à partir d’une vidéo (D-ID)';
-  if (f === 'heygen') return 'créé à partir d’une photo (HeyGen)';
-  return 'fournisseur inconnu';
+  // Le fournisseur reste invisible : on dit COMMENT l'avatar a été créé.
+  if (f === 'did') return 'créé à partir d’une vidéo (ancienne version)';
+  if (f === 'heygen') return 'prêt pour vos vidéos';
+  return 'à recréer';
 }
 
 export interface EtatJumeau {

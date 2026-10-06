@@ -3,7 +3,7 @@ import { render, cleanup, waitFor, screen, fireEvent } from '@testing-library/re
 import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import {
   moteurJumeauDisponiblePour,
-  MESSAGE_MOTEUR_JUMEAU_DID_NON_CONFIGURE,
+  MESSAGE_MOTEUR_JUMEAU_DID_NON_CONFIGURE, MESSAGE_MOTEUR_JUMEAU_ANCIEN_MOTEUR,
   MESSAGE_MOTEUR_JUMEAU_VOIX_NON_CONFIGUREE,
   MESSAGE_MOTEUR_JUMEAU_FOURNISSEUR_INCONNU,
   MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE,
@@ -33,16 +33,16 @@ import {
  */
 
 const ENV_MOTEUR_HEYGEN = { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv;
-const ENV_APERCU_DID = { DID_VIDEO_AVATAR_ACTIVE: '1', DID_API_KEY: 'user:secret', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv;
+const ENV_APERCU_DID = { AVATAR_DID_LEGACY_ACTIF: '1', DID_VIDEO_AVATAR_ACTIVE: '1', DID_API_KEY: 'user:secret', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv;
 
 describe('moteurJumeauDisponiblePour — le moteur se juge POUR un avatar', () => {
   it('⚠️ D-ID : le drapeau HeyGen ne dit rien — indisponible sans D-ID, et le message nomme DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY', () => {
     const r = moteurJumeauDisponiblePour('did', ENV_MOTEUR_HEYGEN);
     expect(r.disponible).toBe(false);
-    expect(r.message).toBe(MESSAGE_MOTEUR_JUMEAU_DID_NON_CONFIGURE);
-    expect(r.message).toContain('D-ID');
-    expect(r.message).toContain('DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY');
-    expect(r.message).toContain('Aucun crédit n’est débité');
+    expect(r.message).toBe(MESSAGE_MOTEUR_JUMEAU_ANCIEN_MOTEUR);
+    expect(r.message).not.toMatch(/D-ID|HeyGen|ElevenLabs|_API_KEY/);
+    expect(r.message).toBeTruthy();
+    expect(r.message).toContain('Aucun crédit Studiio n’a été débité');
     expect(r.message).toContain('voix reste utilisable');
     expect(r.message).not.toContain('pas encore pris en charge');
     expect(r.message).not.toContain('créés à partir d’une photo');
@@ -51,13 +51,13 @@ describe('moteurJumeauDisponiblePour — le moteur se juge POUR un avatar', () =
   it('⚠️ D-ID : disponible avec EXACTEMENT le gate de l’aperçu (DID actif + clé + ElevenLabs), sans JUMEAU_MOTEUR_ACTIVE', () => {
     expect(moteurJumeauDisponiblePour('did', ENV_APERCU_DID)).toEqual({ disponible: true, message: null });
     // Drapeau D-ID sans clé, ou clé sans drapeau : indisponible.
-    expect(moteurJumeauDisponiblePour('did', { DID_VIDEO_AVATAR_ACTIVE: '1', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv).disponible).toBe(false);
+    expect(moteurJumeauDisponiblePour('did', { AVATAR_DID_LEGACY_ACTIF: '1', DID_VIDEO_AVATAR_ACTIVE: '1', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv).disponible).toBe(false);
     expect(moteurJumeauDisponiblePour('did', { DID_API_KEY: 'user:secret', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv).disponible).toBe(false);
     // ElevenLabs absente : c'est ELLE qui est nommée.
-    const sansVoix = moteurJumeauDisponiblePour('did', { DID_VIDEO_AVATAR_ACTIVE: '1', DID_API_KEY: 'user:secret' } as unknown as NodeJS.ProcessEnv);
+    const sansVoix = moteurJumeauDisponiblePour('did', { AVATAR_DID_LEGACY_ACTIF: '1', DID_VIDEO_AVATAR_ACTIVE: '1', DID_API_KEY: 'user:secret' } as unknown as NodeJS.ProcessEnv);
     expect(sansVoix.disponible).toBe(false);
     expect(sansVoix.message).toBe(MESSAGE_MOTEUR_JUMEAU_VOIX_NON_CONFIGUREE);
-    expect(sansVoix.message).toContain('ELEVENLABS_API_KEY');
+    expect(sansVoix.message).toContain('service de voix');
   });
 
   it('HeyGen : suit le drapeau global — actif → disponible ; absent → message générique qui rappelle que la voix marche ; le gate D-ID ne l’active pas', () => {
@@ -109,7 +109,7 @@ describe('JumeauAutopilote avec un avatar D-ID', () => {
     expect(document.querySelector('[data-jumeau-autopilote-avatar]')).toBeNull();
     // Le bloc vidéo affiche le message serveur (D-ID non configuré), sans promesse.
     const video = document.querySelector('[data-jumeau-autopilote-video="indisponible"]')!.textContent!;
-    expect(video).toContain('n’est pas configuré sur ce serveur');
+    expect(video).toContain('temporairement indisponible');
   });
 
   it('moteur vidéo DISPONIBLE + migration appliquée : l’interrupteur « Monter la vidéo de mon jumeau » apparaît et le clic l’active', async () => {

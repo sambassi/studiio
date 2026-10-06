@@ -164,15 +164,17 @@ export function scriptsDuJumeau(textes: readonly string[], prononciations: reado
 import { moteurJumeauDisponible } from '@/lib/avatar/moteur-jumeau';
 import { didVideoAvatarDisponible, didVideoAvatarConfigure } from '@/lib/providers/did/client';
 import { cleElevenLabs } from '@/lib/voice/synthese';
+import { didLegacyAutorise, MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
 export { moteurJumeauDisponible };
 export const MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE = 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible — votre voix reste utilisable pour la narration.';
-const SUITE_INDISPONIBLE = 'Aucun crédit n’est débité. Votre voix reste utilisable pour la narration.';
 /** D-ID : le fournisseur d'avatar vidéo n'est pas activé/configuré sur ce serveur. */
-export const MESSAGE_MOTEUR_JUMEAU_DID_NON_CONFIGURE = `Votre avatar (créé à partir d’une vidéo) est prêt, mais le fournisseur d’avatar vidéo D-ID n’est pas configuré sur ce serveur (DID_VIDEO_AVATAR_ACTIVE / DID_API_KEY). ${SUITE_INDISPONIBLE}`;
+export const MESSAGE_MOTEUR_JUMEAU_DID_NON_CONFIGURE = MESSAGES_AVATAR.indisponible;
 /** D-ID : la synthèse de la voix personnelle n'est pas configurée sur ce serveur. */
-export const MESSAGE_MOTEUR_JUMEAU_VOIX_NON_CONFIGUREE = `Votre avatar est prêt, mais la synthèse de votre voix personnelle (ElevenLabs, ELEVENLABS_API_KEY) n’est pas configurée sur ce serveur. ${SUITE_INDISPONIBLE}`;
+export const MESSAGE_MOTEUR_JUMEAU_VOIX_NON_CONFIGUREE = MESSAGES_AVATAR.voixIndisponible;
 /** Fournisseur d'avatar inconnu du contrat : rien n'est envoyé nulle part. */
-export const MESSAGE_MOTEUR_JUMEAU_FOURNISSEUR_INCONNU = `Le fournisseur de votre avatar n’est pas reconnu : la génération vidéo avec votre jumeau n’est pas possible. ${SUITE_INDISPONIBLE}`;
+export const MESSAGE_MOTEUR_JUMEAU_FOURNISSEUR_INCONNU = MESSAGES_AVATAR.indisponible;
+/** Avatar D-ID (legacy) sans décision explicite : jamais appelé, jamais payé. */
+export const MESSAGE_MOTEUR_JUMEAU_ANCIEN_MOTEUR = MESSAGES_AVATAR.ancienMoteur;
 
 /**
  * Le moteur vidéo peut-il animer CET avatar, sur ce serveur ? Le drapeau
@@ -188,6 +190,8 @@ export function moteurJumeauDisponiblePour(
       : { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_INDISPONIBLE };
   }
   if (fournisseur === 'did') {
+    // LEGACY : D-ID n'est plus appelé (ni payé) sans décision explicite.
+    if (!didLegacyAutorise(env)) return { disponible: false, message: MESSAGE_MOTEUR_JUMEAU_ANCIEN_MOTEUR };
     if (!didVideoAvatarDisponible(env)) {
       if (env.DID_VIDEO_AVATAR_ACTIVE === '1' && !didVideoAvatarConfigure(env)) {
         // Drapeau levé mais clé absente : l'admin doit le savoir par le NOM de la variable.
