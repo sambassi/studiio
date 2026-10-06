@@ -77,6 +77,10 @@ import { libelleFournisseurAvatar } from '@/lib/creer/jumeau';
 import { MESSAGES_AVATAR, MESSAGES_CREATION, fournisseurPrincipal, trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration } from '@/lib/avatar/couts';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
+import { VOICE_GROUP_LABELS, mapElevenLabsVoice } from '@/lib/types/voice';
+import { VOICE_CONSENT_TEXT } from '@/lib/voice/store';
+import { CONSENTEMENT_ENROLEMENT } from '@/lib/avatar/contrat';
+import { avertissementsMontage } from '@/lib/autopilot/produire';
 
 const ENV = { JUMEAU_MOTEUR_ACTIVE: '1', HEYGEN_API_KEY: 'k', ELEVENLABS_API_KEY: 'k' } as unknown as NodeJS.ProcessEnv;
 
@@ -100,6 +104,16 @@ describe('AVATAR — fournisseur invisible pour l’utilisateur', () => {
       ...(['heygen', 'did', 'inconnu', undefined] as const).map((f) => libelleFournisseurAvatar(f)),
     ];
     for (const m of messages) expect(trahitUnFournisseur(m), m).toBe(false);
+  });
+  it('sélecteur de voix, consentements et avertissements Autopilote : aucun fournisseur nommé', () => {
+    const voix = mapElevenLabsVoice({ voice_id: 'abc12345678', name: 'Rachel', category: 'premade' });
+    const textes = [
+      ...Object.values(VOICE_GROUP_LABELS), voix?.name ?? '',
+      VOICE_CONSENT_TEXT, ...Object.values(CONSENTEMENT_ENROLEMENT.textes),
+      ...avertissementsMontage({ musiqueIntrouvable: true, audioSilencieux: true, voixRepliEdge: true, montageSimple: true }),
+      ...avertissementsMontage({ musiqueIntrouvable: false, audioSilencieux: false, voixRepliEdge: true, montageSimple: false, voixPersonnelle: true }),
+    ];
+    for (const t of textes) expect(trahitUnFournisseur(t), t).toBe(false);
   });
   it('échec fournisseur au lancement → message Studiio, jamais l’erreur brute', async () => {
     const r = await genererVideoJumeau({ userId: 'u1', textes: ['Bonjour'] }, { env: ENV });

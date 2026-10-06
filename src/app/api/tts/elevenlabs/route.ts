@@ -241,14 +241,14 @@ export async function POST(req: NextRequest) {
         new Error(`ElevenLabs TTS ${upstream.status}: ${errText.slice(0, 200)}`),
       );
       return NextResponse.json(
-        { error: `ElevenLabs TTS upstream error (${upstream.status})` },
+        { error: `Le service de voix est temporairement indisponible (${upstream.status}).` },
         { status: 500 },
       );
     }
 
     const buf = Buffer.from(await upstream.arrayBuffer());
     if (buf.length === 0) {
-      return NextResponse.json({ error: 'ElevenLabs returned empty audio' }, { status: 500 });
+      return NextResponse.json({ error: 'Le service de voix n’a renvoyé aucun son. Réessayez.' }, { status: 500 });
     }
 
     const upstreamType = upstream.headers.get('content-type') || '';
@@ -265,10 +265,11 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     if (msg.includes('aborted') || msg.includes('timeout')) {
-      return NextResponse.json({ error: 'ElevenLabs TTS timed out' }, { status: 504 });
+      return NextResponse.json({ error: 'Le service de voix n’a pas répondu à temps. Réessayez.' }, { status: 504 });
     }
     console.error('[TTS/ElevenLabs] error:', msg);
     detectAndReportServiceError('elevenlabs', err);
-    return NextResponse.json({ error: `ElevenLabs TTS failed: ${msg}` }, { status: 500 });
+    console.error('[TTS] synthèse en échec :', msg);
+    return NextResponse.json({ error: 'La synthèse vocale a échoué. Réessayez.' }, { status: 500 });
   }
 }

@@ -947,7 +947,7 @@ export default function AvatarPage() {
                   {kind === 'video' && didVideoActif
                     ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et D-ID à l'utiliser pour entraîner un avatar à mon effigie."
                     : kind === 'video'
-                      ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et HeyGen à l'utiliser pour entraîner un avatar à mon effigie."
+                      ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et ses prestataires techniques à l'utiliser pour entraîner un avatar à mon effigie."
                       : "Je certifie être la personne visible sur l'image et j'autorise Studiio à en créer un avatar animé."}
                 </span>
               </label>

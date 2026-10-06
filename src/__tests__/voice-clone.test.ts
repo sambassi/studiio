@@ -181,7 +181,7 @@ describe('L appel de clonage est conforme à la doc', () => {
   });
 
   it('une réponse sans voice_id est une erreur, pas un succès silencieux', () => {
-    expect(clone).toContain('ElevenLabs n’a renvoyé aucun identifiant de voix.');
+    expect(clone).toContain('Votre voix n’a pas pu être créée. Réessayez.');
   });
 
   it('`requires_verification` est remonté au client', () => {

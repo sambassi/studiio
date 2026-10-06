@@ -112,7 +112,7 @@ describe('Autopilote : repli de voix dit avec le bon libellé', () => {
   });
   it('aucune voix personnelle → jamais « voix clonée »', () => {
     const a = avertissementsMontage({ ...base, voixRepliEdge: true, voixPersonnelle: false });
-    expect(a).toEqual(['Voix ElevenLabs indisponible : la voix off standard (gratuite) a été utilisée.']);
+    expect(a).toEqual(['Voix premium indisponible : la voix off standard (gratuite) a été utilisée.']);
     expect(a.join(' ')).not.toMatch(/clonée/);
   });
   it('les avertissements partent en métadonnées et le Calendrier les affiche (cron compris)', () => {
