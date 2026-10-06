@@ -29,8 +29,12 @@ export async function GET() {
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
 
   const lignes = (data ?? []) as unknown as Array<Record<string, unknown>>;
-  const somme = (k: string, filtre: (l: Record<string, unknown>) => boolean = () => true) =>
-    lignes.filter(filtre).reduce((t, l) => t + (typeof l[k] === 'number' ? (l[k] as number) : Number(l[k] ?? 0) || 0), 0);
+  // Somme des valeurs MESURÉES seulement ; aucune mesure = `null` (« non
+  // mesuré »), jamais 0 — un coût inconnu n'est pas un coût nul.
+  const somme = (k: string, filtre: (l: Record<string, unknown>) => boolean = () => true): number | null => {
+    const mesures = lignes.filter(filtre).map((l) => l[k]).filter((v) => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
+    return mesures.length ? Math.round(mesures.reduce((t, v) => t + v, 0) * 10000) / 10000 : null;
+  };
   return NextResponse.json({
     success: true,
     data: {
