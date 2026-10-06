@@ -66,6 +66,10 @@ export interface JumeauPrive {
   providerAvatarId: string;
   /** Le fournisseur de `providerAvatarId` : le moteur refuse tout ce qu'il ne sait pas animer. */
   fournisseurAvatar: FournisseurAvatar | 'inconnu';
+  /** 'photo' | 'video' (jumeau vidéo = digital twin chez le fournisseur). */
+  typeAvatar: string | null;
+  /** Consentement filmé du jumeau vidéo : 'pending' | 'accepted' | 'rejected' | null. */
+  consentementJumeau: string | null;
   providerVoiceId: string;
   prononciations: Prononciation[];
 }
@@ -132,7 +136,12 @@ export async function resoudreJumeauDuCompte(userId: string): Promise<Resolution
       voix: { id: voix.voix.id, nom: voix.voix.nom },
       prononciations: voix.prononciations.length,
     },
-    prive: { providerAvatarId: a.provider_avatar_id, fournisseurAvatar: fournisseurDe(a), providerVoiceId: voix.providerVoiceId, prononciations: voix.prononciations },
+    prive: {
+      providerAvatarId: a.provider_avatar_id, fournisseurAvatar: fournisseurDe(a),
+      typeAvatar: a.avatar_type ?? null,
+      consentementJumeau: (a as { provider_group_consent?: string | null }).provider_group_consent ?? null,
+      providerVoiceId: voix.providerVoiceId, prononciations: voix.prononciations,
+    },
   };
 }
 

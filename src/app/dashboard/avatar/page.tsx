@@ -1,5 +1,6 @@
 'use client';
 
+import ConsentementJumeauAdmin from '@/components/avatar/ConsentementJumeauAdmin';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   UserSquare2,
@@ -42,6 +43,8 @@ interface AvatarRow {
   etat?: 'supprime' | 'source_prete' | 'entrainement' | 'entraine_non_valide' | 'valide' | 'echec';
   /** Le fournisseur de cet avatar : 'heygen' (photo/vidéo HeyGen) ou 'did' (avatar vidéo). */
   provider?: 'heygen' | 'did' | string;
+  /** Jumeau vidéo : statut du consentement filmé (admin uniquement). */
+  provider_group_consent?: string | null;
   /** Avatar D-ID : l'étape DÉRIVÉE par le serveur et la phrase de consentement à lire. */
   etape_did?: EtapeDid;
   provider_consent_text?: string | null;
@@ -83,6 +86,8 @@ export default function AvatarPage() {
   const [voices, setVoices] = useState<Voice[]>([]);
   /** « À partir d'une vidéo » n'est ouvert que si le serveur le dit (drapeau + clé D-ID). */
   const [didVideoActif, setDidVideoActif] = useState(false);
+  /** Jumeau VIDÉO (digital twin) : TEMPORAIREMENT réservé à l'admin — le serveur le dit. */
+  const [jumeauVideoActif, setJumeauVideoActif] = useState(false);
   /** Le nom du profil (rendu par le serveur) ne sert qu'à PRÉ-REMPLIR le nom de consentement D-ID : la personne le corrige. */
   const [nomProfil, setNomProfil] = useState<string | null>(null);
 
@@ -303,6 +308,7 @@ export default function AvatarPage() {
 
     setAvatar(json.data.avatar);
     setDidVideoActif(json.data.didVideoActif === true);
+    setJumeauVideoActif(json.data.jumeauVideoActif === true);
     setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
@@ -882,7 +888,7 @@ export default function AvatarPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {([
                   { id: 'photo' as const, Icon: ImageIcon, title: 'À partir d’une photo', sub: 'Prêt en quelques minutes', soon: false },
-                  { id: 'video' as const, Icon: Clapperboard, title: 'À partir d’une vidéo', sub: 'Plus réaliste, entraînement plus long', soon: !didVideoActif },
+                  { id: 'video' as const, Icon: Clapperboard, title: 'À partir d’une vidéo', sub: 'Plus réaliste, entraînement plus long', soon: !(didVideoActif || jumeauVideoActif) },
                 ]).map(({ id, Icon, title, sub, soon }) => (
                   <button
                     key={id}
@@ -998,6 +1004,12 @@ export default function AvatarPage() {
                     <div className="text-xs text-gray-500">{avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}</div>
                   </div>
                 </div>
+              )}
+              {!viaDid && jumeauVideoActif && avatar.avatar_type === 'video' && avatar.status !== 'failed' && (
+                <ConsentementJumeauAdmin
+                  statutInitial={(avatar.provider_group_consent as 'pending' | 'accepted' | 'rejected' | null | undefined) ?? null}
+                  onAccepte={() => { void loadAvatar(false); }}
+                />
               )}
               {viaDid && avatar.etape_did && avatar.etape_did !== 'valide' && (
                 <AvatarVideoDid

@@ -113,6 +113,7 @@ INVARIANTS=
 - sans crédit Studiio : aucun appel fournisseur payant
 - échec fournisseur : jamais un débit injustifié (remboursement)
 - Créer et Autopilote passent par la même porte genererVideoJumeau
+- jumeau VIDÉO (digital twin) : TEMPORAIREMENT admin uniquement ; consentement filmé externe (niveau 1) réservé à l'admin ; un utilisateur ne reçoit jamais d'URL fournisseur ; génération refusée tant que le consentement n'est pas « accepted »
 CONTRACT_TESTS=src/__tests__/contracts/jumeau.contract.test.ts, src/__tests__/contracts/avatar-provider.contract.test.ts
 PROD_SMOKE=GET /api/creer/jumeau (pret, moteurDisponible) — non payant
 REOPEN_ONLY_IF=— (pas encore LOCKED)
