@@ -224,8 +224,8 @@ async function compteAvecJumeau(credits: number, email?: string): Promise<{ user
   );
   const { rows: [a] } = await db.query<{ id: string }>(
     `insert into public.user_avatars (user_id, provider_avatar_id, provider_asset_id, status, consent_at, consent_text, avatar_type, source_object_key, subject_type, consent_version, validated_at, version, name)
-     values ($1, 'hg-avatar-1', 'as-1', 'completed', now(), 'x', 'video', $2, 'self', 'v1', now(), 3, 'Bassi') returning id`,
-    [u.id, `${u.id}/avatar/source-1-${'a'.repeat(32)}.mp4`],
+     values ($1, 'hg-avatar-1', 'as-1', 'completed', now(), 'x', 'photo', $2, 'self', 'v1', now(), 3, 'Bassi') returning id`,
+    [u.id, `${u.id}/avatar/source-1-${'a'.repeat(32)}.jpg`],
   );
   const { rows: [v] } = await db.query<{ id: string }>(
     `insert into public.user_voices (user_id, provider, provider_voice_id, name, lang, consent_at, consent_text)
