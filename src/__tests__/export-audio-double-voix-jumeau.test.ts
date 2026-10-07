@@ -16,7 +16,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
   return { ...actual, ensureFontsLoaded: async () => [] };
 });
 
-import { composeVideo, voixGlobaleActive, MESSAGE_JUMEAU_MUET, type ComposerOptions } from '@/lib/video-composer';
+import { composeVideo, voixGlobaleActive, MESSAGE_JUMEAU_MUET, DUCK_MUSIQUE_JUMEAU, type ComposerOptions } from '@/lib/video-composer';
 
 // ── Journal des lectures : (src, type, instant depuis le début de l'enregistrement) ──
 interface Lecture { src: string; type: 'audio' | 'video'; a: number }
@@ -79,7 +79,8 @@ class FauxImage {
 }
 
 type Noeud = { connect: (n: Noeud) => void; el?: { src: string; tagName?: string; paused: boolean }; gain?: { value: number }; sources?: Noeud[] };
-const portes: Array<{ gain: { value: number } }> = [];
+interface FauxGain { gain: { value: number; programme: Array<[string, number, number]> }; sorties: unknown[]; connect: (n: unknown) => void; disconnect: () => void }
+const portes: FauxGain[] = [];
 class FauxAudioContext {
   state = 'running';
   currentTime = 0;
@@ -89,7 +90,18 @@ class FauxAudioContext {
   createMediaStreamDestination() { return { stream: new FauxMediaStream(), connect() {} }; }
   createBufferSource() { return { buffer: null, loop: false, connect() {}, start() {}, stop() {} }; }
   createGain() {
-    const g = { gain: { value: 1, cancelScheduledValues() {}, setValueAtTime() {} }, connect() {} };
+    const programme: Array<[string, number, number]> = [];
+    const g: FauxGain & Record<string, unknown> = {
+      gain: {
+        value: 1, programme,
+        cancelScheduledValues() {},
+        setValueAtTime(v: number, t: number) { programme.push(['set', v, t]); },
+        linearRampToValueAtTime(v: number, t: number) { programme.push(['rampe', v, t]); },
+      } as FauxGain['gain'],
+      sorties: [],
+      connect(n: unknown) { g.sorties.push(n); },
+      disconnect() { g.sorties.length = 0; },
+    };
     portes.push(g);
     return g;
   }
@@ -246,16 +258,15 @@ describe('Bug 2 — la voix du jumeau atteint le mix', () => {
   const jumeau = (sur: Partial<ComposerOptions> = {}) => options({ videoUrl: JUMEAU, rushAudioRequis: true, sequenceVoiceUrls: { titre: VOIX.titre, cartes: VOIX.cartes }, ...sur });
 
   it('4-5. jumeau avec audio + musique : livré, voix du jumeau mesurée, musique présente', async () => {
-    signal = { [`video:${JUMEAU}`]: 0.2, [`audio:${JUMEAU}`]: 0.2 };
+    signal = { [`video:${JUMEAU}`]: 0.2 };
     const r = await composeVideo(jumeau());
     expect(r.video.size).toBeGreaterThan(0);
     expect(lecturesDe(MUSIQUE).length).toBeGreaterThan(0);
     expect(lectures.some((l) => l.src === JUMEAU && l.type === 'video')).toBe(true);
-    expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('secours audio ACTIVÉ'), expect.anything(), expect.anything());
   });
 
   it('6-7. la voix du jumeau ne joue qu’EN séquence Vidéo : jamais à t=0, arrêtée ensuite', async () => {
-    signal = { [`video:${JUMEAU}`]: 0.2, [`audio:${JUMEAU}`]: 0.2 };
+    signal = { [`video:${JUMEAU}`]: 0.2 };
     await composeVideo(jumeau());
     const jumeauLectures = lectures.filter((l) => l.src === JUMEAU);
     expect(jumeauLectures.length).toBeGreaterThan(0);
@@ -264,11 +275,30 @@ describe('Bug 2 — la voix du jumeau atteint le mix', () => {
     for (const l of jumeauLectures) expect(l.a).toBeLessThan(1.15);
   });
 
-  it('piste de la vidéo silencieuse dans le mix (routage en échec) → le SECOURS audio prend le relais, rendu livré', async () => {
-    signal = { [`audio:${JUMEAU}`]: 0.2 }; // la vidéo n'apporte rien, le fichier parle
-    const r = await composeVideo(jumeau());
-    expect(r.video.size).toBeGreaterThan(0);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('secours audio ACTIVÉ'), expect.anything(), expect.anything());
+  it('ducking : musique ×0,18 PENDANT la séquence du jumeau seulement, rendue à ×1 ensuite ; voix du jumeau au volume plein', async () => {
+    signal = { [`video:${JUMEAU}`]: 0.2 };
+    await composeVideo(jumeau());
+    const duck = portes.find((g) => g.gain.programme.some(([, v]) => v === DUCK_MUSIQUE_JUMEAU))!;
+    expect(duck).toBeTruthy();
+    const p = duck.gain.programme;
+    const t0 = p[0][2];
+    // Vidéo de 0,6 s (titre 0,3 + cartes 0,3) à 1,1 s : rampe vers 0,18 AVANT, retour à 1 APRÈS.
+    expect(p).toEqual([
+      ['set', 1, t0],
+      ['set', 1, expect.closeTo(t0 + 0.35, 5)],
+      ['rampe', DUCK_MUSIQUE_JUMEAU, expect.closeTo(t0 + 0.6, 5)],
+      ['set', DUCK_MUSIQUE_JUMEAU, expect.closeTo(t0 + 1.1, 5)],
+      ['rampe', 1, expect.closeTo(t0 + 1.35, 5)],
+    ]);
+    // Réglage du rush 0,5 (défaut avec musique) → multiplicateur ×2 : volume plein, pas plus.
+    expect(portes.some((g) => g.gain.value === 2)).toBe(true);
+  });
+
+  it('rush ORDINAIRE : aucun ducking, aucun gain ajouté (mix d’avant)', async () => {
+    signal = {};
+    await composeVideo(options({ videoUrl: RUSH, sequenceVoiceUrls: { titre: VOIX.titre } }));
+    expect(portes.some((g) => g.gain.programme.some(([, v]) => v === DUCK_MUSIQUE_JUMEAU))).toBe(false);
+    expect(portes.some((g) => g.gain.value === 2)).toBe(false);
   });
 
   it('jumeau sans aucune voix mesurée → rendu REFUSÉ, jamais un jumeau muet livré', async () => {
@@ -276,15 +306,14 @@ describe('Bug 2 — la voix du jumeau atteint le mix', () => {
     await expect(composeVideo(jumeau())).rejects.toThrow(MESSAGE_JUMEAU_MUET);
   });
 
-  it('8. rush ORDINAIRE réellement silencieux : autorisé, livré, aucun secours chargé', async () => {
+  it('8. rush ORDINAIRE réellement silencieux : autorisé, livré', async () => {
     signal = {};
     const r = await composeVideo(options({ videoUrl: RUSH }));
     expect(r.video.size).toBeGreaterThan(0);
-    expect(creesAudio).not.toContain(RUSH);
   });
 
   it('aucune voix TTS « vidéo » lancée par-dessus le jumeau', async () => {
-    signal = { [`video:${JUMEAU}`]: 0.2, [`audio:${JUMEAU}`]: 0.2 };
+    signal = { [`video:${JUMEAU}`]: 0.2 };
     await composeVideo(jumeau());
     const pendantVideo = lectures.filter((l) => l.type === 'audio' && l.a >= 0.6 && l.a < 1.1 && l.src !== JUMEAU && l.src !== MUSIQUE);
     expect(pendantVideo).toEqual([]);

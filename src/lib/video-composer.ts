@@ -507,11 +507,13 @@ export interface ComposerOptions {
     cta?: string | null;
   };
   /**
-   * La vidéo de la séquence « Vidéo » PARLE (vidéo du jumeau) : sa voix doit
-   * être dans le mix final. Le rendu échoue plutôt que de livrer un jumeau
-   * muet (`MESSAGE_JUMEAU_MUET`) ; un élément audio de secours, même URL, prend
-   * le relais si la piste de la vidéo n'arrive pas dans le mix. Absent : un
-   * rush ordinaire, qui a le droit d'être silencieux — comportement d'avant.
+   * La vidéo de la séquence « Vidéo » PARLE (vidéo du jumeau). Pendant SA
+   * séquence seulement, sa voix passe au premier plan : la piste du rush est
+   * portée au volume plein et la musique est fortement baissée (couche
+   * multiplicative, posée PAR-DESSUS les réglages et keyframes de
+   * l'utilisateur, qui reviennent tels quels à la sortie). Et le rendu échoue
+   * plutôt que de livrer un jumeau muet (`MESSAGE_JUMEAU_MUET`). Absent : un
+   * rush ordinaire — comportement d'avant, il peut rester silencieux.
    */
   rushAudioRequis?: boolean;
   /**
@@ -803,6 +805,18 @@ export const MESSAGE_JUMEAU_MUET = 'La voix de votre jumeau n’a pas pu être a
 
 /** Niveau RMS (amplitude) en dessous duquel un signal est du silence numérique. */
 const SEUIL_SIGNAL = 1e-4;
+
+/**
+ * Mix pendant la séquence du jumeau. Mesuré sur un vrai export (musique 0,79,
+ * rush 0,5) : la voix du jumeau sortait ≈ 20 dB SOUS la musique. Rush porté
+ * au volume plein (×1/gain de base, soit +6 dB à 0,5) et musique ×0,10
+ * (−20 dB) : la voix passe ≈ +5 dB au-dessus de la musique, qui reste en
+ * fond (mesures du même export : ×0,18 donnait 0 dB d'écart). Le volume
+ * plein (1) ne dépasse jamais le niveau de la source : pas d'écrêtage ajouté.
+ */
+export const DUCK_MUSIQUE_JUMEAU = 0.1;
+/** Durée (s) des rampes d'entrée et de sortie du ducking. */
+const RAMPE_DUCK_S = 0.25;
 
 /** Niveau RMS instantané d'un analyseur. */
 function niveauRms(a: AnalyserNode, tampon: Parameters<AnalyserNode['getFloatTimeDomainData']>[0]): number {
@@ -3966,15 +3980,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Vidéo du jumeau (un seul rush, qui PARLE) : sa voix est exigée dans le
   // mix. `null` pour tout autre rush — rien ne change pour eux.
   const jumeau: {
-    porteVideo: GainNode | null;
     analyseVideo: AnalyserNode | null;
-    secours: { el: HTMLAudioElement; porte: GainNode; analyse: AnalyserNode } | null;
-    basculeSecours: boolean;
+    duckMusique: GainNode | null;
     maxVideo: number;
-    maxSecours: number;
     sequenceJouee: boolean;
   } | null = options.rushAudioRequis && videoEl && !rushPlan
-    ? { porteVideo: null, analyseVideo: null, secours: null, basculeSecours: false, maxVideo: 0, maxSecours: 0, sequenceJouee: false }
+    ? { analyseVideo: null, duckMusique: null, maxVideo: 0, sequenceJouee: false }
     : null;
   // Element peint pendant la sequence video, choisi par le pilote du rendu
   // temps reel (`null` ailleurs : `segmentA`, comme avant).
@@ -4448,20 +4459,24 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         for (const el of rushEls) {
           el.muted = false;
           const rushSource = audioCtx.createMediaElementSource(el);
+          rushSource.connect(rushGain);
           if (jumeau && el === videoEl) {
-            // Jumeau : la piste de la vidéo passe par sa PROPRE porte (qu'on
-            // peut fermer si le secours prend le relais) et un analyseur
-            // mesure qu'elle porte réellement un signal.
-            jumeau.porteVideo = audioCtx.createGain();
+            // Jumeau : un analyseur mesure que sa piste porte réellement un signal.
             jumeau.analyseVideo = audioCtx.createAnalyser();
             rushSource.connect(jumeau.analyseVideo);
-            rushSource.connect(jumeau.porteVideo);
-            jumeau.porteVideo.connect(rushGain);
-          } else {
-            rushSource.connect(rushGain);
           }
         }
-        rushGain.connect(audioDest);
+        if (jumeau && rushGain.gain.value > 0) {
+          // Jumeau : volume PLEIN, en multiplicateur après le réglage du rush
+          // (ses keyframes continuent de s'appliquer). Le rush ne joue que
+          // pendant SA séquence : ce gain n'agit donc que là.
+          const plein = audioCtx.createGain();
+          plein.gain.value = Math.min(4, 1 / rushGain.gain.value);
+          rushGain.connect(plein);
+          plein.connect(audioDest);
+        } else {
+          rushGain.connect(audioDest);
+        }
         rushGainNode = rushGain;
         console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted, '| ctx.state:', audioCtx.state);
       } catch (err) {
@@ -4469,35 +4484,6 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         // another AudioContext (batch reuse). Log and move on — the rush
         // just won't be audible in the output, same as pre-ducking era.
         console.warn('[Composer] ⚠️ Rush audio routing failed — rush will be silent in recording:', err);
-        if (jumeau) jumeau.porteVideo = null;
-      }
-      // Jumeau : élément audio de SECOURS, même fichier, branché sur le même
-      // mix (porte fermée). Il ne s'ouvre que si la piste de la vidéo n'arrive
-      // pas (routage en échec, ou silence mesuré alors que le secours parle).
-      if (jumeau && audioCtx.state === 'running') {
-        const el = await loadAudioElement(videoEl.currentSrc || videoEl.src);
-        if (el) {
-          try {
-            const src = audioCtx.createMediaElementSource(el);
-            const porte = audioCtx.createGain();
-            porte.gain.value = jumeau.porteVideo ? 0 : 1;
-            const analyse = audioCtx.createAnalyser();
-            src.connect(analyse);
-            src.connect(porte);
-            if (!rushGainNode) {
-              const g = audioCtx.createGain();
-              g.gain.value = options.audioKeyframes?.[0]?.rushVolume ?? (hasMixAudio ? 0.5 : 1.0);
-              g.connect(audioDest);
-              rushGainNode = g;
-            }
-            porte.connect(rushGainNode);
-            jumeau.secours = { el, porte, analyse };
-            jumeau.basculeSecours = !jumeau.porteVideo;
-            console.log('[Composer] Jumeau : secours audio prêt', jumeau.basculeSecours ? '(ACTIF : routage vidéo indisponible)' : '(en attente)');
-          } catch (err) {
-            console.warn('[Composer] ⚠️ Jumeau : secours audio non branché :', err);
-          }
-        }
       }
     } else if (videoEl && audioCtx && audioDest) {
       // RÈGLE ABSOLUE (lessons 2026-06-03, commits a9569e0 / 4ff6401 reverted):
@@ -4507,6 +4493,17 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       // output: the montage still renders correctly, just silent during the
       // video sequence — never a frozen video.
       console.warn('[Composer] ⚠️ Rush audio NOT routed — ctx.state is', audioCtx.state, '(not running). Video stays intact, rush silent.');
+    }
+
+    // Jumeau : la musique passe par une couche de ducking (×1 hors de sa
+    // séquence), APRÈS son gain réglé par l'utilisateur et ses keyframes.
+    if (jumeau && musicGainNode && audioDest) {
+      const duck = audioCtx.createGain();
+      duck.gain.value = 1;
+      musicGainNode.disconnect();
+      musicGainNode.connect(duck);
+      duck.connect(audioDest);
+      jumeau.duckMusique = duck;
     }
 
     // Final audio status
@@ -4798,12 +4795,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       try { document.body.removeChild(canvas); } catch {}
       libererEtalonneur();
       if (jumeau) {
-        jumeau.secours?.el.pause();
         // Le jumeau a joué, mais AUCUNE voix n'a atteint le mix : refusé,
         // jamais un MP4 « terminé » avec un jumeau muet.
-        const voix = jumeau.basculeSecours ? jumeau.maxSecours : jumeau.maxVideo;
-        console.log('[Composer] Jumeau audio — vidéo:', jumeau.maxVideo.toExponential(2), '| secours:', jumeau.maxSecours.toExponential(2), '| source:', jumeau.basculeSecours ? 'secours' : 'vidéo');
-        if (jumeau.sequenceJouee && !(voix > SEUIL_SIGNAL)) {
+        console.log('[Composer] Jumeau audio — niveau max mesuré :', jumeau.maxVideo.toExponential(2));
+        if (jumeau.sequenceJouee && !(jumeau.maxVideo > SEUIL_SIGNAL)) {
           console.error('[Composer] JUMEAU_MUET — aucune voix mesurée pendant la séquence Vidéo');
           if (audioCtx && !isSharedCtx) { audioCtx.close().catch(() => {}); }
           reject(new Error(MESSAGE_JUMEAU_MUET));
@@ -4854,7 +4849,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
             const mg = audioCtx.createGain();
             mg.gain.value = (validVoiceBuffer || voiceEl) ? 0.5 : 0.8;
             musicBufferSource.connect(mg);
-            mg.connect(audioDest);
+            mg.connect(jumeau?.duckMusique ?? audioDest);
             musicGainNode = mg;
             musicBufferSource.start(audioCtx.currentTime + 0.05);
             console.log('[Composer] ✅ Music AudioBuffer RECREATED and STARTED');
@@ -4946,6 +4941,22 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }
 
+    // ── Jumeau : musique baissée pendant SA séquence, rendue intacte ensuite ──
+    if (jumeau?.duckMusique && audioCtx) {
+      const seqVideo = sequences.find((sq) => sq.type === 'video');
+      if (seqVideo) {
+        const debut = audioStartTime + seqStarts[sequences.indexOf(seqVideo)];
+        const fin = debut + seqVideo.duration;
+        const g = jumeau.duckMusique.gain;
+        g.setValueAtTime(1, audioStartTime);
+        g.setValueAtTime(1, Math.max(audioStartTime, debut - RAMPE_DUCK_S));
+        g.linearRampToValueAtTime(DUCK_MUSIQUE_JUMEAU, debut);
+        g.setValueAtTime(DUCK_MUSIQUE_JUMEAU, fin);
+        g.linearRampToValueAtTime(1, fin + RAMPE_DUCK_S);
+        console.log('[Composer] Jumeau : musique ×', DUCK_MUSIQUE_JUMEAU, 'de', (debut - audioStartTime).toFixed(2), 'à', (fin - audioStartTime).toFixed(2), 's');
+      }
+    }
+
     // ── AUDIO DUCKING: schedule gain automation on music + rush nodes ──
     // Keyframes are in montage-timeline seconds. Each keyframe maps to
     // audioStartTime + kf.time on the AudioContext clock. setValueAtTime
@@ -5004,32 +5015,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     let gelMax = 0;
     let basculeA = 0;
 
-    // Jumeau : le secours suit la vidéo (même instant, même fenêtre), et l'on
-    // MESURE la voix qui arrive dans le mix. Silence de la vidéo alors que le
-    // secours parle : la porte bascule sur le secours. Jamais avant ni après
-    // la séquence « Vidéo ».
+    // Jumeau : on MESURE la voix qui arrive dans le mix pendant sa séquence.
     const tamponNiveau: Parameters<AnalyserNode['getFloatTimeDomainData']>[0] = new Float32Array(256);
-    const suivreJumeau = (dedans: boolean, tSeq: number) => {
-      if (!jumeau) return;
-      const sec = jumeau.secours;
-      if (!dedans) {
-        if (sec && !sec.el.paused) sec.el.pause();
-        return;
-      }
+    const suivreJumeau = (dedans: boolean) => {
+      if (!jumeau || !dedans) return;
       jumeau.sequenceJouee = true;
-      if (sec) {
-        if (sec.el.paused) { sec.el.currentTime = Math.max(0, tSeq); sec.el.play().catch(() => {}); }
-        else if (Math.abs(sec.el.currentTime - tSeq) > 0.25) sec.el.currentTime = Math.max(0, tSeq);
-      }
       if (jumeau.analyseVideo) jumeau.maxVideo = Math.max(jumeau.maxVideo, niveauRms(jumeau.analyseVideo, tamponNiveau));
-      if (sec) jumeau.maxSecours = Math.max(jumeau.maxSecours, niveauRms(sec.analyse, tamponNiveau));
-      if (!jumeau.basculeSecours && sec && jumeau.porteVideo
-        && jumeau.maxVideo <= SEUIL_SIGNAL && jumeau.maxSecours > SEUIL_SIGNAL) {
-        jumeau.porteVideo.gain.value = 0;
-        sec.porte.gain.value = 1;
-        jumeau.basculeSecours = true;
-        console.warn('[Composer] ⚠️ Jumeau : la piste de la vidéo n’arrive pas dans le mix — secours audio ACTIVÉ à', tSeq.toFixed(2), 's');
-      }
     };
 
     // ── CRITICAL: draw frame 0 BEFORE starting the recorder ──
@@ -5103,7 +5094,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           if (t >= vs && t < ve) {
             if (videoEl.paused) { videoEl.currentTime = t - vs; videoEl.play().catch(() => {}); }
           } else if (!videoEl.paused) { videoEl.pause(); }
-          suivreJumeau(t >= vs && t < ve, t - vs);
+          suivreJumeau(t >= vs && t < ve);
         }
       }
 
