@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { Loader2, RotateCcw, Sparkles, Check } from 'lucide-react';
+import { Loader2, RotateCcw, Sparkles, Check, Wand2, X } from 'lucide-react';
 
 /**
  * Photo d'affiche GENEREE PAR L'IA — le troisieme chemin, a cote de « Ma
@@ -85,6 +85,50 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
    * leve dans `finally`.
    */
   const enVolRef = useRef(false);
+
+  /**
+   * « Détailler avec l'IA » : la demande courte devient un prompt détaillé
+   * qui GARDE chaque élément demandé (le serveur écarte toute proposition
+   * qui en perdrait un). La proposition est affichée AVANT toute génération ;
+   * l'utilisateur la prend ou la laisse — rien n'est remplacé d'office et
+   * rien n'est généré (ni débité) par ce bouton.
+   */
+  const [detail, setDetail] = useState<
+    | { statut: 'repos' }
+    | { statut: 'encours' }
+    | { statut: 'proposition'; texte: string }
+    | { statut: 'erreur'; message: string }
+  >({ statut: 'repos' });
+
+  const detailler = useCallback(async () => {
+    const source = (prompt.trim() || suggestion).trim();
+    if (!source) {
+      setDetail({ statut: 'erreur', message: 'Décrivez d’abord l’image souhaitée.' });
+      return;
+    }
+    setDetail({ statut: 'encours' });
+    try {
+      const res = await fetch('/api/content/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fieldType: 'promptImage', topic: source.slice(0, 120), sourceText: source }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const texte = typeof data?.text === 'string' ? data.text.trim() : '';
+      if (!res.ok || !data?.success || !texte) {
+        setDetail({
+          statut: 'erreur',
+          message: typeof data?.error === 'string' && res.status === 422
+            ? data.error
+            : 'L’assistant n’a pas pu détailler la demande. Réessayez ou générez avec votre texte.',
+        });
+        return;
+      }
+      setDetail({ statut: 'proposition', texte });
+    } catch {
+      setDetail({ statut: 'erreur', message: 'L’assistant n’a pas pu détailler la demande. Réessayez ou générez avec votre texte.' });
+    }
+  }, [prompt, suggestion]);
 
   const generer = useCallback(async () => {
     if (enVolRef.current) return;
@@ -181,6 +225,47 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           className="mt-1 w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2.5 py-2 text-sm text-gray-100 resize-none"
         />
       </label>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void detailler()}
+          disabled={disabled || etat.statut === 'generation' || etat.statut === 'application' || detail.statut === 'encours'}
+          data-affiche-ia-detailler
+          title="Transforme une demande courte en prompt détaillé, sans rien retirer de ce que vous avez demandé"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-2.5 py-1 text-[11px] text-purple-300 hover:text-purple-200 hover:border-purple-500/50 disabled:opacity-40 transition-colors"
+        >
+          {detail.statut === 'encours' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+          {detail.statut === 'encours' ? 'Rédaction…' : 'Détailler avec l’IA'}
+        </button>
+      </div>
+      {detail.statut === 'erreur' && (
+        <p className="text-[11px] text-amber-300" role="alert" data-affiche-ia-detail-erreur>{detail.message}</p>
+      )}
+      {detail.statut === 'proposition' && (
+        <div className="rounded-lg border border-purple-500/40 bg-purple-500/10 px-2.5 py-2 space-y-2" data-affiche-ia-detail-proposition>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-purple-300">Prompt détaillé proposé</p>
+          <p className="text-xs text-gray-100 whitespace-pre-wrap leading-snug" data-affiche-ia-detail-texte>{detail.texte}</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { setPrompt(detail.texte); setDetail({ statut: 'repos' }); }}
+              data-affiche-ia-detail-utiliser
+              className="inline-flex items-center gap-1 rounded-md bg-purple-600 hover:bg-purple-500 px-2.5 py-1 text-[11px] font-medium text-white transition-colors"
+            >
+              <Check className="w-3 h-3" /> Utiliser ce prompt
+            </button>
+            <button
+              type="button"
+              onClick={() => setDetail({ statut: 'repos' })}
+              data-affiche-ia-detail-ignorer
+              className="inline-flex items-center gap-1 rounded-md border border-gray-600 px-2.5 py-1 text-[11px] text-gray-300 hover:text-white transition-colors"
+            >
+              <X className="w-3 h-3" /> Garder le mien
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* « Partir de ma photo » : préserve le sujet (visage, vêtements) à
           partir de la photo/affiche courante, au lieu d'un texte seul. */}
