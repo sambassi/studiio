@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info, Check } from 'lucide-react';
-import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
+import { TTS_VOICES, synthesize, synthesizeAvecSegments, type TtsVoice } from '@/lib/tts/edge-tts-client';
+import { texteDesMorceaux, type TimingVoix } from '@/lib/creer/synchro-cartes';
 import { compareVoiceToSequence, voiceFitMessage, estimateLabel, VOICE_FIT_APPLY_LABEL } from '@/lib/creer/voiceFit';
 import {
   fetchCustomVoices,
@@ -154,6 +155,12 @@ interface Props {
   sequenceVoices: SequenceVoices;
   userEdited: SequenceVoicesUserEdited;
   onChange: (key: SequenceKey, patch: Partial<SequenceVoice>) => void;
+  /**
+   * Les morceaux du texte narré des cartes (`morceauxCartes`). Quand le texte
+   * à lire est EXACTEMENT ces morceaux recollés, la voix des cartes est
+   * générée avec leur horodatage réel (voix ElevenLabs). Absent : comme avant.
+   */
+  morceauxCartes?: ReadonlyArray<{ texte: string; apres: string }>;
   onUserEditedChange: (key: SequenceKey, edited: boolean) => void;
   onResetText: (key: SequenceKey) => void;
   introDuration: number;
@@ -188,6 +195,7 @@ export function SequenceVoicesPanel({
   sequenceVoices,
   userEdited,
   onChange,
+  morceauxCartes,
   onUserEditedChange,
   onResetText,
   introDuration,
@@ -355,8 +363,19 @@ export function SequenceVoicesPanel({
     if (!text) return;
     setBusy((b) => ({ ...b, [key]: true }));
     try {
-      // Step 1: TTS via synthesize() (Edge → OpenAI fallback chain)
-      const audioBlob = await synthesize(text, selectedTtsVoiceId);
+      // Step 1: TTS via synthesize() (Edge → OpenAI fallback chain).
+      // Cartes dont le texte est exactement les morceaux attendus : même
+      // synthèse, avec l'horodatage réel de chaque morceau (ElevenLabs).
+      const morceaux = key === 'cartes' && morceauxCartes && texteDesMorceaux(morceauxCartes) === text ? morceauxCartes : null;
+      let timing: TimingVoix | undefined;
+      let audioBlob: Blob;
+      if (morceaux) {
+        const r = await synthesizeAvecSegments(text, selectedTtsVoiceId, morceaux);
+        audioBlob = r.blob;
+        if (r.segments) timing = { source: 'elevenlabs', morceaux: morceaux.map((m) => ({ texte: m.texte, apres: m.apres })), segments: r.segments };
+      } else {
+        audioBlob = await synthesize(text, selectedTtsVoiceId);
+      }
       console.log(`[SequenceVoices] TTS ${key} | size: ${audioBlob.size} bytes | type: ${audioBlob.type}`);
       // 8KB ≈ 0.7s of MP3 @96kbps — defensive (synthesize enforces this internally).
       // Voix clonée / HeyGen : un mot court pèse moins de 8 Ko, et `synthesize`
@@ -408,6 +427,8 @@ export function SequenceVoicesPanel({
         // Le texte lu, tel quel : c'est lui qui permet de dire « périmé »
         // si l'utilisateur le retouche ensuite.
         textAtGeneration: text,
+        // Toujours posé : une nouvelle voix efface l'horodatage de l'ancienne.
+        timing,
       });
     } catch (err) {
       console.error('[SequenceVoices] TTS error for', key, err);
@@ -457,7 +478,7 @@ export function SequenceVoicesPanel({
           const duration = await probeDuration(url);
           // Un enregistrement ne lit pas le texte : pas de `textAtGeneration`,
           // sinon une retouche du texte le signalerait perime a tort.
-          onChange(key, { audioUrl: url, source: 'record', ttsVoice: undefined, duration, textAtGeneration: undefined });
+          onChange(key, { audioUrl: url, source: 'record', ttsVoice: undefined, duration, textAtGeneration: undefined, timing: undefined });
         } finally {
           setBusy((b) => ({ ...b, [key]: false }));
         }
@@ -484,7 +505,7 @@ export function SequenceVoicesPanel({
   };
 
   const removeAudio = (key: SequenceKey) => {
-    onChange(key, { audioUrl: null, source: null, ttsVoice: undefined, duration: undefined, textAtGeneration: undefined });
+    onChange(key, { audioUrl: null, source: null, ttsVoice: undefined, duration: undefined, textAtGeneration: undefined, timing: undefined });
   };
 
   const handleTextChange = (key: SequenceKey, value: string) => {

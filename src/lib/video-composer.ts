@@ -24,6 +24,7 @@ import { ajusterPlan } from '@/lib/creer/smart-montage';
 import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
 import type { OverlaysMontage } from '@/lib/creer/overlays';
 import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendus/medias-requis';
+import { imageCartesA } from '@/lib/creer/synchro-cartes';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -193,6 +194,13 @@ export interface DesignOptions {
    *  centering on cardsPosition (which assumes the grid is centered and
    *  clips the top when the snapshot is tall). */
   cardsSnapshotRect?: { x: number; y: number; width: number; height: number };
+  /**
+   * Cartes synchronisées sur leur voix : la photo des cartes à chaque étape
+   * d'apparition (`debut` en s depuis le début de la séquence Cartes, où
+   * part sa voix), au même cadre que `cardsSnapshotRect`. Absent : la photo
+   * unique `cardsSnapshot`, comme avant.
+   */
+  cardsReveal?: Array<{ debut: number; image: HTMLImageElement }>;
   /** CTA main text override from design (e.g. 'AFROBOOST') */
   ctaMainText?: string;
   /** CTA sub text override from design (e.g. "CHAT POUR PLUS D'INFOS") */
@@ -1916,6 +1924,8 @@ export function drawCards(
   seqBgImg: HTMLImageElement | null = null,
   /** Per-sequence background opacity (0-1). */
   seqBgOpacity: number = 1,
+  /** Secondes écoulées dans la séquence Cartes (apparition calée sur la voix). */
+  secondsIn: number = Infinity,
 ) {
   // Per-element gradient: separate label/value/description flags. Null →
   // keep each element's historical solid color (no regression). Backward
@@ -1990,7 +2000,13 @@ export function drawCards(
   // discrepancies vs editor as low-priority unless the snapshot path itself
   // breaks.
   if (design?.cardsSnapshot) {
-    const snap = design.cardsSnapshot;
+    // Cartes calées sur la voix : la photo de l'étape en cours ; avant la
+    // première, aucune carte encore (l'enveloppe est refermée quand même).
+    const snap = design.cardsReveal?.length ? imageCartesA(design.cardsReveal, secondsIn) : design.cardsSnapshot;
+    if (!snap) {
+      ctx.restore();
+      return;
+    }
     // WYSIWYG branch: when the editor measured the cards grid rect relative
     // to the preview and forwarded it, use those exact bounds. This avoids
     // the top-clipping bug where a tall snapshot centered on cardsPosition.y
@@ -4115,7 +4131,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         case 'cards': {
           // eslint-disable-next-line no-console
           console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
-          drawCards(target, width, height, cards, logoImg, accentColor, progress, normalizedDesign, bgImg, seqBg.opacity);
+          const cardsSeq = sequences.find((s) => s.type === 'cards');
+          drawCards(target, width, height, cards, logoImg, accentColor, progress, normalizedDesign, bgImg, seqBg.opacity, cardsSeq ? progress * cardsSeq.duration : Infinity);
           break;
         }
         case 'video': {

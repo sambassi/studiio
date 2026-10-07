@@ -15,6 +15,8 @@
  * UI; PR C wires the composer to play each clip on its own sequence offset.
  */
 
+import type { TimingVoix } from '@/lib/creer/synchro-cartes';
+
 export type SequenceKey = 'titre' | 'cartes' | 'video' | 'cta';
 
 // ── Voix HeyGen (voix clonee de l'utilisateur) ────────────────────────────
@@ -288,6 +290,12 @@ export interface SequenceVoice {
    * sans un mot. Absent pour les audios anterieurs a ce champ.
    */
   textAtGeneration?: string;
+  /**
+   * Voix des CARTES seulement : [début, fin] RÉELS de chaque morceau dit
+   * (ElevenLabs `with-timestamps`). Absent : l'export estime, ou ne cale
+   * rien (`calageCartes`).
+   */
+  timing?: TimingVoix;
 }
 
 /**
