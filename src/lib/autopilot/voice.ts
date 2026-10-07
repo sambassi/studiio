@@ -5,6 +5,7 @@ import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { resoudreVoixParIdentifiant, prononciationsDuCompte } from '@/lib/voice/profil';
 import { scriptParle } from '@/lib/voice/prononciations';
+import { phrasesCartes, phrasesDansTexte, segmentsPhrases, type SegmentPhrase } from '@/lib/voice/phrases-cartes';
 
 /**
  * La voix off de l'Autopilote.
@@ -138,6 +139,11 @@ export interface VoixDeSequence {
    * GRATUITE du serveur a pris le relais — dit dans les métadonnées.
    */
   repli?: 'edge';
+  /**
+   * Cartes seulement : où commence et finit la phrase de CHAQUE carte dans
+   * ce fichier (s). Les surimpressions s'y calent (`planOverlays`).
+   */
+  phrases?: SegmentPhrase[];
 }
 
 export type VoixParSequence = Partial<Record<SequenceKey, VoixDeSequence>>;
@@ -148,13 +154,17 @@ export type VoixParSequence = Partial<Record<SequenceKey, VoixDeSequence>>;
  * Une séquence sans texte n'est pas narrée : mieux vaut le silence qu'un
  * clip vide qui décalerait la durée.
  */
+function cartesNarrees(post: PreparedPost) {
+  return post.content.cards.map((c) => ({
+    label: c.title, value: c.value, description: c.description,
+  }));
+}
+
 export function voiceTexts(post: PreparedPost): Partial<Record<SequenceKey, string>> {
   const tous = buildAutoFillText({
     title: post.title,
     subtitle: post.content.subtitle,
-    cards: post.content.cards.map((c) => ({
-      label: c.title, value: c.value, description: c.description,
-    })),
+    cards: cartesNarrees(post),
     ctaMainText: post.content.tagLine,
     // Le brief récurrent : son message s'ajoute à la narration du titre, son
     // CTA remplace la phrase générique. Sans brief, rien ne change.
@@ -166,6 +176,18 @@ export function voiceTexts(post: PreparedPost): Partial<Record<SequenceKey, stri
     if (t) out[cle] = t.slice(0, MAX_CHARS);
   }
   return out;
+}
+
+/**
+ * Segments de la voix des cartes : les phrases RÉELLEMENT dites (texte
+ * peut-être tronqué à `MAX_CHARS`), passées par la même transformation que
+ * le texte envoyé au moteur, réparties sur la durée MESURÉE du fichier.
+ */
+export function segmentsCartes(
+  post: PreparedPost, texteNarre: string, seconds: number, dire: (texte: string) => string,
+): SegmentPhrase[] {
+  const phrases = phrasesDansTexte(phrasesCartes(cartesNarrees(post)), texteNarre);
+  return segmentsPhrases(phrases.map((p) => ({ index: p.index, dit: dire(p.texte) })), seconds);
 }
 
 /** Synthèse ElevenLabs — HTTPS simple, ce qui passe depuis le serveur. */
@@ -345,7 +367,13 @@ export async function buildAutopilotVoices(input: {
         bucket: 'audio',
         storagePath: `${input.userId}/autopilote-${input.jobId}-${cle}.mp3`,
       });
-      if (seconds) out[cle] = repli ? { url, seconds, repli: 'edge' } : { url, seconds };
+      if (seconds) {
+        out[cle] = repli ? { url, seconds, repli: 'edge' } : { url, seconds };
+        if (cle === 'cartes') {
+          const phrases = segmentsCartes(input.post, texte, seconds, (t) => scriptParle(t, prononciations));
+          if (phrases.length > 0) out[cle]!.phrases = phrases;
+        }
+      }
       else {
         // Sans durée mesurée, on ne peut pas caler la séquence : la voix
         // serait coupée. On préfère ne pas l'utiliser.

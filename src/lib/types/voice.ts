@@ -15,6 +15,8 @@
  * UI; PR C wires the composer to play each clip on its own sequence offset.
  */
 
+import { phrasesCartes, texteCartes } from '@/lib/voice/phrases-cartes';
+
 export type SequenceKey = 'titre' | 'cartes' | 'video' | 'cta';
 
 // ── Voix HeyGen (voix clonee de l'utilisateur) ────────────────────────────
@@ -369,11 +371,9 @@ export function buildAutoFillText(input: {
     .join('. ')
     .trim();
 
-  const cartes = input.cards
-    .map((c) => [c.label, c.description, c.value].filter((s) => s && String(s).trim().length > 0).join('. '))
-    .filter((s) => s.length > 0)
-    .join(' ')
-    .trim();
+  // Une phrase par carte, la MÊME liste qui cale l'apparition des cartes
+  // sur la voix (`phrases-cartes.ts`).
+  const cartes = texteCartes(phrasesCartes(input.cards));
 
   const video = (input.videoOverlayText || '').trim();
 

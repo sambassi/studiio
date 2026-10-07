@@ -488,6 +488,8 @@ export async function produireUnMontage(input: {
         nbCartes: designBase.cards?.length ?? 0,
         finHook: planMontageRushs.filter((x) => x.phase === 'HOOK').at(-1)?.fin ?? null,
         voix: { titre: secondesVoix('titre'), cartes: secondesVoix('cartes'), video: secondesVoix('video'), cta: secondesVoix('cta') },
+        // Chaque carte apparaît quand la voix commence SA phrase.
+        phrasesCartes: voices.cartes?.phrases ?? null,
       });
     }
     chrono.selection = Date.now() - t2;
