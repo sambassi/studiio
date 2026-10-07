@@ -13,6 +13,7 @@
  */
 
 import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
+import type { SegmentPhrase } from '@/lib/voice/phrases-cartes';
 
 export type CleVoix = 'titre' | 'cartes' | 'video' | 'cta';
 
@@ -44,6 +45,13 @@ export function planOverlays(input: {
   finHook?: number | null;
   /** Durée mesurée de chaque voix off (s). */
   voix?: Partial<Record<CleVoix, number>>;
+  /**
+   * Où commence la phrase de chaque carte DANS la voix des cartes (s depuis
+   * le début du fichier, `segmentsPhrases`). Présent avec une voix des
+   * cartes : chaque carte apparaît quand sa phrase commence. Absent : les
+   * fenêtres régulières d'avant, inchangées.
+   */
+  phrasesCartes?: readonly SegmentPhrase[] | null;
 }): OverlaysMontage {
   const { duree, nbCartes } = input;
   const voix = input.voix ?? {};
@@ -99,6 +107,25 @@ export function planOverlays(input: {
   };
   poser('titre', 0);
   poser('cartes', cartes[0]?.debut ?? titre[1]);
+
+  // Voix des cartes découpée en phrases : la carte i apparaît quand SA phrase
+  // commence (départ RÉEL de la voix, après un éventuel décalage par la voix
+  // du titre) et reste jusqu'à la suivante. Une carte dont la phrase
+  // commencerait sous le CTA n'est pas montée.
+  const departCartes = departs.cartes;
+  const phrases = input.phrasesCartes ?? [];
+  if (departCartes !== undefined && phrases.length > 0) {
+    const calees: OverlaysMontage['cartes'] = [];
+    phrases.forEach((p, i) => {
+      const debut = departCartes + p.debut;
+      if (debut >= cta[0] - 0.4) return;
+      const suivante = phrases[i + 1] ? departCartes + phrases[i + 1].debut : Infinity;
+      // Lisible (≥ carteMin) sans jamais chevaucher la carte suivante ni le CTA.
+      const fin = Math.min(Math.max(departCartes + p.fin, debut + carteMin), suivante, cta[0] - 0.4);
+      calees.push({ index: p.index, debut: r(debut), fin: r(fin) });
+    });
+    cartes.splice(0, cartes.length, ...calees);
+  }
   poser('video', libre);
   poser('cta', cta[0]);
 
