@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     }
     console.error(`[Voice][ecoute] ElevenLabs ${synthese.statut ?? 'sans statut'} : ${synthese.detail}`);
     return NextResponse.json(
-      { success: false, error: 'Notre fournisseur n’a pas pu générer l’écoute. Réessayez.', code: 'ecoute_echec' },
+      { success: false, error: 'L’écoute de votre voix n’a pas pu être générée. Réessayez.', code: 'ecoute_echec' },
       { status: 502 },
     );
   }

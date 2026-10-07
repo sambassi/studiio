@@ -604,7 +604,7 @@ export async function POST(req: NextRequest) {
         if (relu.ok && relu.avatar && !estCetteVersion(relu.avatar)) return conflit('avatar_superseded');
         if (relu.ok && estCetteVersion(relu.avatar) && relu.avatar!.status === 'failed') throw erreurFournisseur;
         return erreurServeur(
-          "Le fournisseur a refuse la source et l'echec n'a pas pu etre enregistre. Reessayez.",
+          "La source de votre avatar a été refusée et l'échec n'a pas pu être enregistré. Réessayez.",
           'avatar_failure_persistence_failed',
         );
       }
@@ -639,7 +639,7 @@ export async function POST(req: NextRequest) {
       const relu = await lireAvatarVivant(userId);
       if (!relu.ok) {
         return erreurServeur(
-          "Votre avatar a ete cree chez le fournisseur mais n'a pas pu etre enregistre. Reessayez.",
+          "Votre avatar a été créé mais n'a pas pu être enregistré. Réessayez.",
           'avatar_provider_persistence_failed',
         );
       }
@@ -652,7 +652,7 @@ export async function POST(req: NextRequest) {
         row = relu.avatar!;
       } else {
         return erreurServeur(
-          "Votre avatar a ete cree chez le fournisseur mais n'a pas pu etre enregistre. Reessayez.",
+          "Votre avatar a été créé mais n'a pas pu être enregistré. Réessayez.",
           'avatar_provider_persistence_failed',
         );
       }

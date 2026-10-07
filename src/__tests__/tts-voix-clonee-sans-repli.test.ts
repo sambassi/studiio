@@ -113,9 +113,11 @@ describe('Voix standard — le repli OpenAI est conservé', () => {
     expect(appels[1].body).toMatchObject({ voice: 'echo' });
   });
 
-  it('Edge ET OpenAI en panne → l erreur historique, inchangée', async () => {
+  it('Edge ET OpenAI en panne → une erreur claire, sans fournisseur nommé', async () => {
     installerFetch({ '/api/tts/edge': { status: 500 }, '/api/tts/openai': { status: 500 } });
-    await expect(synthesize('Bonjour', 'fr-FR-DeniseNeural')).rejects.toThrow(/Edge TTS upstream a échoué/);
+    const erreur = await synthesize('Bonjour', 'fr-FR-DeniseNeural').catch((e: Error) => e);
+    expect((erreur as Error).message).toMatch(/^Synthèse vocale indisponible/);
+    expect((erreur as Error).message).not.toMatch(/Edge|OpenAI|_API_KEY/);
   });
 
   it('une voix openai-* en panne ne rejoue pas OpenAI en repli', async () => {

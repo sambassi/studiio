@@ -279,10 +279,9 @@ export async function POST(req: NextRequest) {
       // L'aperçu réservé ne doit pas rester « pending » pour toujours : marqué
       // en échec, il libère la place (l'index unique ignore `failed`).
       if (reservation) {
-        await libererReservation(
-          reservation.id,
-          erreurFournisseur instanceof HeyGenError ? erreurFournisseur.message : "Le fournisseur n'a pas repondu.",
-        );
+        // `error_message` est relu par l'écran : message Studiio seulement ;
+        // l'erreur brute est journalisée plus bas (catch principal).
+        await libererReservation(reservation.id, MESSAGES_AVATAR.echecAvantLancement);
       }
       throw erreurFournisseur;
     }

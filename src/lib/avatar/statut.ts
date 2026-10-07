@@ -26,7 +26,7 @@ import { getVideoStatus, downloadVideo } from '@/lib/avatar/heygen';
 import { lireScene, telechargerResultat } from '@/lib/providers/did/client';
 import { FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
-import { MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
+import { MESSAGES_AVATAR, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 
 /** Au-delà, une génération encore EN COURS est considérée perdue et remboursée. */
@@ -76,10 +76,10 @@ export async function avancerStatutGeneration(
   if (g.status === 'completed') {
     return g.video_url
       ? { status: 'completed', videoUrl: g.video_url }
-      : { status: 'failed', videoUrl: null, error: g.error_message || 'Vidéo absente.', rembourse: false };
+      : { status: 'failed', videoUrl: null, error: messageUtilisateurSur(g.error_message, 'Vidéo absente.'), rembourse: false };
   }
   if (g.status === 'failed') {
-    return { status: 'failed', videoUrl: null, error: g.error_message || 'Génération en échec.', rembourse: false };
+    return { status: 'failed', videoUrl: null, error: messageUtilisateurSur(g.error_message, 'Génération en échec.'), rembourse: false };
   }
 
   if (!g.provider_video_id) {

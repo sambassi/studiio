@@ -28,7 +28,7 @@ function stub(profil: Record<string, unknown>, ecoute: { status: number; body?: 
     if (u === '/api/voice/profil/prononciations') { serveur.data = { ...serveur.data, prononciations: body.prononciations }; return json(200, { success: true, data: { prononciations: body.prononciations } }); }
     if (u === '/api/voice/profil/voix') { serveur.data = { ...serveur.data, choix: body.userVoiceId, voixResolue: (serveur.data.voix as Array<{ id: string }>).find((v) => v.id === body.userVoiceId) ?? null, motifVoix: null, messageVoix: null, ecouteDisponible: true }; return json(200, { success: true, data: {} }); }
     if (u === '/api/voice/ecoute') {
-      if (ecoute.status !== 200) return json(ecoute.status, { success: false, error: 'Notre fournisseur n’a pas pu générer l’écoute. Réessayez.' });
+      if (ecoute.status !== 200) return json(ecoute.status, { success: false, error: 'L’écoute de votre voix n’a pas pu être générée. Réessayez.' });
       return { ok: true, status: 200, blob: async () => new Blob([ecoute.body ?? 'AUDIO']), headers: new Headers({ 'X-Studiio-Spoken': encodeURIComponent('Bienvenue au cours Afro-boust à Neu-cha-tel.') }) } as unknown as Response;
     }
     return json(404, {});
@@ -129,7 +129,7 @@ describe('MaVoixPanel', () => {
     stub(profilBase(), { status: 502 });
     render(<MaVoixPanel />);
     fireEvent.click(await waitFor(() => screen.getByRole('button', { name: /Écouter ma voix/ })));
-    await waitFor(() => expect(document.querySelector('[data-voix-erreur]')!.textContent).toMatch(/fournisseur n’a pas pu générer/));
+    await waitFor(() => expect(document.querySelector('[data-voix-erreur]')!.textContent).toMatch(/L’écoute de votre voix n’a pas pu être générée/));
     expect(document.querySelector('[data-ecoute-audio]')).toBeNull();
   });
 

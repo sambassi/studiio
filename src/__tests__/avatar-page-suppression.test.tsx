@@ -57,7 +57,8 @@ describe('/dashboard/avatar — supprimer mon avatar', () => {
     expect(texte).toMatch(/Avatar supprimé/);
     expect(texte).toMatch(/vidéos déjà générées sont conservées/);
     expect(texte).toMatch(/fichier source a été retiré/);
-    expect(texte).toMatch(/n'est pas supprimé automatiquement chez notre fournisseur/);
+    expect(texte).toMatch(/conservée par notre service de génération n'est pas supprimée automatiquement/);
+    expect(texte).not.toMatch(/fournisseur|HeyGen|D-ID/);
   });
 
   it('source non retirée (sourceRetiree:false) : l’écran le dit sans prétendre le contraire', async () => {
