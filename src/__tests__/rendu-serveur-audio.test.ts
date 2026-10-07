@@ -154,8 +154,10 @@ describe('Le repli sur la voix unique', () => {
     expect(composition).toContain('const voixUnique = !voixParSequence && props.voiceUrl ? props.voiceUrl : null;');
   });
 
-  it('le compositeur dit la même chose', () => {
-    expect(composer).toContain('sequence voices simply');
+  it('le compositeur FAIT la même chose (il le disait sans le faire : double voix au début)', () => {
+    // Comportement vérifié en exécution par export-audio-double-voix-jumeau.test.ts.
+    expect(composer).toContain('const voixGlobale = voixGlobaleActive(options);');
+    expect(composer).toContain('if (voiceUrl && voixGlobale) {');
   });
 });
 

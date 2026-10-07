@@ -7827,6 +7827,9 @@ export default function AssistantWizard() {
           // avatar, la voix off de la séquence 'video' est retirée en amont
           // (`voixSequencesRendu`) : l'avatar porte déjà sa voix.
           sequenceVoiceUrls: voixSequencesRendu,
+          // La vidéo du jumeau PARLE : sa voix est exigée dans le mix (secours
+          // audio, et refus plutôt qu'un jumeau muet). Rush ordinaire : absent.
+          ...(videoEstAvatar ? { rushAudioRequis: true } : {}),
           musicVolume,
           voiceVolume,
           // Mixeur unifie : ces keyframes pilotent les trois bus audio du
