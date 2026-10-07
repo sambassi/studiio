@@ -102,6 +102,17 @@ const ABREVIATIONS: Array<[RegExp, string]> = [
 ];
 
 /**
+ * Sigles qui se DISENT comme un mot, alors que les moteurs les épellent
+ * lettre par lettre. Mot entier, capitales seulement (« nejm.org » n'est pas
+ * touché). La forme dite n'est plus en capitales : jamais re-remplacée, la
+ * fonction reste idempotente. Une prononciation enregistrée par le compte
+ * reste prioritaire (`scriptParle` la protège avant cette étape).
+ */
+const SIGLES_PRONONCES: Array<[RegExp, string]> = [
+  [new RegExp(`(?<![${MOT}])NEJM(?![${MOT}])`, 'gu'), 'Nèjm'],
+];
+
+/**
  * Le texte tel que le moteur vocal doit le LIRE. Pure, déterministe,
  * idempotente. Une entrée vide ou non textuelle rend `''`.
  */
@@ -202,6 +213,7 @@ export function normaliserPourTTS(texte: string): string {
 
   // ── 15. Abréviations et symboles ───────────────────────────────────────
   for (const [motif, remplacement] of ABREVIATIONS) t = t.replace(motif, remplacement);
+  for (const [motif, dit] of SIGLES_PRONONCES) t = t.replace(motif, dit);
   t = t.replace(/\s?&\s?/g, ' et ');
   t = t.replace(/\s*(?:→|=>|->|➜|➔)\s*/g, ', ');
   t = t.replace(/\s*[•·▪|]\s*/g, ', ');

@@ -241,3 +241,30 @@ describe('Branchement — chaque moteur reçoit le texte DIT', () => {
     expect(lire('src/lib/avatar/moteur-jumeau.ts')).toContain('scriptsDuJumeau([display], jumeau.prive.prononciations)');
   });
 });
+
+describe('normaliserPourTTS — sigles prononcés comme un mot (NEJM)', () => {
+  it('NEJM → « Nèjm » dans le texte DIT', () => {
+    expect(n('NEJM')).toBe('Nèjm');
+    expect(n('Selon le NEJM, 76% des patients')).toBe('Selon le Nèjm, 76 pour cent des patients');
+    expect(n('(NEJM, 2024)')).toBe('(Nèjm, 2024)');
+  });
+
+  it('le texte AFFICHÉ reste exactement « NEJM »', () => {
+    const visible = 'Étude publiée dans le NEJM';
+    const { display, spoken } = scripts(visible, []);
+    expect(display).toBe('Étude publiée dans le NEJM');
+    expect(visible).toBe('Étude publiée dans le NEJM');
+    expect(spoken).toBe('Étude publiée dans le Nèjm');
+  });
+
+  it('mot entier et en capitales seulement', () => {
+    expect(n('NEJMX')).toBe('NEJMX');
+    expect(n('nejm.org')).toBe('nejm.org');
+  });
+
+  it('idempotent, et une prononciation du compte reste prioritaire', () => {
+    expect(n(n('le NEJM'))).toBe('le Nèjm');
+    expect(scriptParle('le NEJM', [{ affiche: 'NEJM', prononce: 'New England Journal' }]))
+      .toBe('le New England Journal');
+  });
+});
