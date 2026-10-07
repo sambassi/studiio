@@ -25,7 +25,7 @@
 
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { listUserVoices, type UserVoice } from '@/lib/voice/store';
-import { lirePrononciations, type Prononciation } from '@/lib/voice/prononciations';
+import { lirePrononciations, scriptParle, type Prononciation } from '@/lib/voice/prononciations';
 
 /** Les fournisseurs pour lesquels une synthèse est RÉELLEMENT câblée. */
 export const FOURNISSEURS_VOIX_CABLES = ['elevenlabs'] as const;
@@ -218,6 +218,32 @@ export async function resoudreVoixParIdentifiant(userId: string, voiceId: string
   }
   if (!ligne || !voixUtilisable(ligne)) return null;
   return { providerVoiceId: ligne.provider_voice_id, userVoiceId: ligne.id };
+}
+
+/**
+ * Le texte que le moteur vocal doit DIRE pour ce compte : ses prononciations
+ * (mots, marques) puis la normalisation fr-FR (`scriptParle`). C'est le point
+ * commun des routes de synthèse de Créer et de l'Autopilote ; le Jumeau et
+ * l'écoute passent par `scriptParle` avec les prononciations déjà relues.
+ *
+ * Tolérant : si les prononciations ne peuvent pas être relues, le texte est
+ * tout de même normalisé — jamais d'échec de synthèse pour ça. Le texte
+ * AFFICHÉ n'est jamais concerné : seul le résultat part au moteur.
+ */
+export async function texteParleDuCompte(userId: string | null | undefined, texte: string): Promise<string> {
+  return scriptParle(texte, await prononciationsDuCompte(userId));
+}
+
+/** Les prononciations du compte, relues à l'instant ; `[]` si illisibles (jamais d'exception). */
+export async function prononciationsDuCompte(userId: string | null | undefined): Promise<Prononciation[]> {
+  try {
+    if (!userId || !UUID.test(userId)) return [];
+    const prefs = await lirePreferences(userId);
+    return prefs.ok ? prefs.voix.prononciations : [];
+  } catch (e) {
+    console.warn('[Voix] prononciations du compte illisibles — normalisation seule :', e instanceof Error ? e.message : e);
+    return [];
+  }
 }
 
 /**

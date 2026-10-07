@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { texteParleDuCompte } from '@/lib/voice/profil';
 import { HEYGEN_VOICE_PREFIX, type HeyGenTtsVoice } from '@/lib/types/voice';
 
 /**
@@ -236,7 +237,8 @@ export async function POST(req: NextRequest) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text,
+          // Le texte DIT (prononciations du compte + normalisation fr-FR).
+          text: await texteParleDuCompte(session.user.id, text),
           voice_id: voiceId,
           input_type: 'text',
           speed: safeSpeed,

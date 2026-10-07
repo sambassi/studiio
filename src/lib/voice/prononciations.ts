@@ -7,7 +7,9 @@
  *
  *   DISPLAY_SCRIPT  ce que la personne écrit et voit — jamais modifié.
  *   SPOKEN_SCRIPT   ce qui part au moteur vocal — le même texte, où chaque
- *                   mot d'une prononciation est remplacé par sa forme dite.
+ *                   mot d'une prononciation est remplacé par sa forme dite,
+ *                   puis chiffres, pourcentages, symboles et abréviations
+ *                   écrits pour être bien lus (`normaliserPourTTS`).
  *
  * `scriptParle()` est LA fonction commune : l'écran d'aperçu, l'écoute, et
  * plus tard Créer et l'Autopilote, doivent tous passer par elle. Elle est
@@ -35,6 +37,8 @@
  * sans espaces superflus : deux entrées « Afroboost » et « afroboost » sont
  * un doublon.
  */
+
+import { normaliserPourTTS } from '@/lib/voice/normalisation-tts';
 
 export interface Prononciation {
   /** Le mot ou groupe tel qu'il est écrit dans le texte. */
@@ -149,21 +153,39 @@ const echapper = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const CARACTERE_DE_MOT = '[\\p{L}\\p{N}\\p{M}]';
 
 /**
- * Le texte RÉELLEMENT PRONONCÉ. Le texte affiché passé en entrée n'est
- * jamais modifié (chaînes immuables) ; sans prononciation, il est rendu tel
- * quel — la même référence.
+ * Un jeton par prononciation appliquée : un caractère d'usage privé, ni
+ * lettre ni chiffre, que la normalisation ne touche jamais. Il protège la
+ * forme dite choisie par le compte pendant la normalisation, puis il est
+ * remplacé par elle (`MAX_PRONONCIATIONS` jetons au plus).
+ */
+const JETON_BASE = 0xe100;
+const JETONS = new RegExp(`[\\u{${JETON_BASE.toString(16)}}-\\u{${(JETON_BASE + MAX_PRONONCIATIONS).toString(16)}}]`, 'gu');
+
+/**
+ * Le texte RÉELLEMENT PRONONCÉ — en deux temps, une seule fonction :
+ *
+ *   1. les prononciations du COMPTE (mots, marques) remplacent leurs mots ;
+ *   2. la normalisation fr-FR (`normaliserPourTTS` : « 76% » → « 76 pour
+ *      cent », « 3-en-1 » → « trois en un »…) s'applique AU RESTE du texte.
+ *      Les formes dites du compte ne sont jamais renormalisées.
+ *
+ * Le texte affiché passé en entrée n'est jamais modifié (chaînes immuables).
  */
 export function scriptParle(display: string, prononciations: readonly Prononciation[]): string {
   if (typeof display !== 'string' || display.length === 0) return typeof display === 'string' ? display : '';
   const entrees = lirePrononciations(prononciations as unknown);
-  if (entrees.length === 0) return display;
+  if (entrees.length === 0) return normaliserPourTTS(display);
   // Le plus long d'abord ; à longueur égale, l'ordre d'enregistrement.
   const ordonnees = [...entrees].sort((a, b) => b.affiche.length - a.affiche.length);
-  const parCle = new Map(ordonnees.map((p) => [cleAffiche(p.affiche), p.prononce] as const));
+  const indexParCle = new Map(ordonnees.map((p, i) => [cleAffiche(p.affiche), i] as const));
   const alternatives = ordonnees.map((p) => echapper(p.affiche).replace(/ /g, '\\s+')).join('|');
   const motif = new RegExp(`(?<!${CARACTERE_DE_MOT})(?:${alternatives})(?!${CARACTERE_DE_MOT})`, 'giu');
   // Une seule passe : `replace` avance dans le texte d'origine, jamais dans le résultat.
-  return display.replace(motif, (trouve) => parCle.get(cleAffiche(trouve)) ?? trouve);
+  const marque = display.replace(motif, (trouve) => {
+    const i = indexParCle.get(cleAffiche(trouve));
+    return i === undefined ? trouve : String.fromCharCode(JETON_BASE + i);
+  });
+  return normaliserPourTTS(marque).replace(JETONS, (j) => ordonnees[j.charCodeAt(0) - JETON_BASE]?.prononce ?? '');
 }
 
 /** Les deux textes, ensemble — ce que les générations conserveront. */

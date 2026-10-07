@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { texteParleDuCompte } from '@/lib/voice/profil';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +49,8 @@ export async function POST(req: NextRequest) {
 
     // Wrap TTS synthesis with timeout
     const audioBuffer = await Promise.race([
-      synthesizeTTS(text, voice, rate, pitch),
+      // Le texte DIT (prononciations du compte + normalisation fr-FR).
+      texteParleDuCompte(session.user.id, text).then((spoken) => synthesizeTTS(spoken, voice, rate, pitch)),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('TTS synthesis timeout')), TTS_TIMEOUT_MS)
       ),

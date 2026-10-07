@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
+import { texteParleDuCompte } from '@/lib/voice/profil';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,7 +50,8 @@ export async function POST(req: NextRequest) {
         },
         body: JSON.stringify({
           model: 'tts-1-hd',
-          input: text,
+          // Le texte DIT (prononciations du compte + normalisation fr-FR).
+          input: await texteParleDuCompte(session.user.id, text),
           voice,
           response_format: 'mp3',
           speed: safeSpeed,

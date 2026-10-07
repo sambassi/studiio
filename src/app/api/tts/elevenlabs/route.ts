@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } from '@/lib/types/voice';
 import { listUserVoices } from '@/lib/voice/store';
-import { voixUtilisable } from '@/lib/voice/profil';
+import { voixUtilisable, texteParleDuCompte } from '@/lib/voice/profil';
 
 /**
  * TTS ElevenLabs — synthese vocale, et liste des voix du compte.
@@ -210,6 +210,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unknown voice' }, { status: 404 });
     }
 
+    // Le texte DIT (prononciations du compte + normalisation fr-FR) ; le texte
+    // affiché, côté client, n'est jamais modifié.
+    const spoken = await texteParleDuCompte(session.user.id, text);
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TTS_TIMEOUT_MS);
 
@@ -224,7 +228,7 @@ export async function POST(req: NextRequest) {
             'Content-Type': 'application/json',
             Accept: 'audio/mpeg',
           },
-          body: JSON.stringify({ text, model_id: MODEL_ID }),
+          body: JSON.stringify({ text: spoken, model_id: MODEL_ID }),
           signal: controller.signal,
           cache: 'no-store',
         },
