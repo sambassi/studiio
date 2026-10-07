@@ -465,12 +465,15 @@ describe('E — l assistant manuel n est PAS modifié', () => {
     // deux cotes. Ce qui reste vrai, c'est qu'il n'a pas de poignees de
     // TEXTE : sa taille se regle au curseur, et lui en ajouter changerait son
     // ergonomie sans qu'on l'ait demande.
+    // ⚠️ DEMANDE DEPUIS : le titre se selectionnait sans pouvoir etre
+    // redimensionne. L'assistant a donc ses poignees de texte, branchees sur
+    // le MEME etat que le curseur (`startTextResize`).
     const principal = corpsWizard.slice(
       corpsWizard.indexOf('<Preview\n          {...previewShared}'),
       corpsWizard.indexOf('/>', corpsWizard.indexOf('<Preview\n          {...previewShared}')),
     );
     expect(principal.length).toBeGreaterThan(0);
-    expect(principal).not.toContain('onTextResizeStart');
+    expect(principal).toContain('onTextResizeStart={startTextResize}');
     expect(principal).toContain('onTextDoubleClick={ouvrirZone}');
     expect(principal).toContain('onCardDoubleClick');
   });
