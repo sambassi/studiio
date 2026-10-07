@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone, SlidersHorizontal, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { Music, Mic, Upload, Trash2, Volume2, VolumeX, Loader2, Play, Pause, Square, Sparkles, Image as ImageIcon, LayoutGrid, Film, Megaphone, SlidersHorizontal, AlertTriangle, ChevronDown, ChevronRight, Check, X } from 'lucide-react';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import { TTS_VOICES, synthesize, type TtsVoice } from '@/lib/tts/edge-tts-client';
 import { fetchCustomVoices, isHeyGenVoiceId, isElevenLabsVoiceId, voixCloneeAProposer, grouperVoixPourSelecteur } from '@/lib/types/voice';
 import MaVoixClonee from '@/components/creer/MaVoixClonee';
+import { modeVoixOff, LIBELLE_MODE_VOIX_OFF, corpsRequeteVoixOff, type ContexteVoixOff } from '@/lib/creer/voix-off-ia';
 import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { analyseRushForDucking, detectVoiceSpeech, applyVoiceDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
@@ -119,6 +120,14 @@ interface AudioStudioPanelProps {
   hasRush: boolean;
   contentTheme?: string;
   /**
+   * Ce que le wizard sait déjà de la vidéo (sujet, titre, cartes, CTA, ton,
+   * format) — nourrit le bouton IA de la synthèse vocale. Facultatif : sans
+   * lui, seul `contentTheme` sert de sujet.
+   */
+  voixOffContexte?: ContexteVoixOff;
+  /** Brief de la vidéo (objectif, message, public, CTA), relu côté serveur. */
+  voixOffBrief?: unknown;
+  /**
    * URL du rush — necessaire au mixeur unifie : l'auto-mix analyse sa piste
    * audio et l'ecoute du mixage la rejoue au bon moment.
    */
@@ -175,7 +184,7 @@ export function AudioStudioPanel({
   onMusicVolumeChange, onVoiceVolumeChange,
   introDuration, cardsDuration, videoDuration, ctaDuration,
   onIntroDurationChange, onCardsDurationChange, onVideoDurationChange, onCtaDurationChange,
-  hasRush, contentTheme,
+  hasRush, contentTheme, voixOffContexte, voixOffBrief,
   rushUrl = null, audioKeyframes, onAudioKeyframesChange, mixLayout,
   voiceId, onVoiceIdChange,
   clonedVoiceCard = false,
@@ -193,6 +202,10 @@ export function AudioStudioPanel({
   const [ttsLoading, setTtsLoading] = useState(false);
   const [ttsError, setTtsError] = useState('');
   const [ttsSuggestLoading, setTtsSuggestLoading] = useState(false);
+  // Proposition de l'IA, en attente de la décision de l'utilisateur : elle
+  // ne remplace JAMAIS le texte d'office.
+  const [ttsProposition, setTtsProposition] = useState<string | null>(null);
+  const [ttsSuggestError, setTtsSuggestError] = useState('');
   // Voix listees a la volee — HeyGen et ElevenLabs, voix clonee comprise.
   // Echec ou fournisseur non configure → liste vide, le selecteur ne change pas.
   const [customVoices, setCustomVoices] = useState<TtsVoice[]>([]);
@@ -605,25 +618,58 @@ export function AudioStudioPanel({
     }
   };
 
+  /**
+   * Bouton IA de la synthèse vocale. Champ vide → « Proposer un texte » ;
+   * texte présent → « Améliorer mon texte ». Le contexte connu (sujet,
+   * brief, titre, cartes, CTA, ton, format) part avec la demande.
+   *
+   * Avant : la réponse de `/api/content/ai-generate` (`{ content: { cards } }`)
+   * était lue comme `data.cards` — toujours absent — et l'erreur était
+   * avalée : le bouton semblait ne rien faire.
+   */
   const suggestTtsText = async () => {
+    if (ttsSuggestLoading) return;
     setTtsSuggestLoading(true);
+    setTtsSuggestError('');
+    setTtsProposition(null);
     try {
+      const contexte: ContexteVoixOff = {
+        ...voixOffContexte,
+        sujet: voixOffContexte?.sujet || contentTheme || undefined,
+      };
       const res = await fetch('/api/content/ai-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic: contentTheme || 'fitness et bien-être', locale: 'fr', cardCount: 1 }),
+        body: JSON.stringify(corpsRequeteVoixOff({ texte: ttsText, contexte, brief: voixOffBrief })),
       });
-      const data = await res.json();
-      if (data.success && data.cards?.[0]) {
-        const card = data.cards[0];
-        setTtsText(`${card.label}. ${card.description}`);
+      const data = await res.json().catch(() => ({}));
+      const texte = typeof data?.text === 'string' ? data.text.trim() : '';
+      if (!res.ok || !data?.success || !texte) {
+        setTtsSuggestError(
+          data?.useLocalFallback
+            ? 'Assistant IA indisponible pour le moment. Réessayez dans quelques minutes.'
+            : 'L’assistant n’a pas pu proposer de texte. Réessayez.',
+        );
+        return;
       }
+      setTtsProposition(texte);
     } catch {
-      // silently fail
+      setTtsSuggestError('L’assistant n’a pas pu proposer de texte. Vérifiez la connexion et réessayez.');
     } finally {
       setTtsSuggestLoading(false);
     }
   };
+
+  const accepterPropositionTts = () => {
+    if (!ttsProposition) return;
+    setTtsText(ttsProposition);
+    setTtsProposition(null);
+    setTtsError('');
+    setTtsStage('idle');
+    setTtsProgress(0);
+  };
+
+  const modeIaTts = modeVoixOff(ttsText);
 
   return (
     <div className="space-y-4">
@@ -853,17 +899,51 @@ export function AudioStudioPanel({
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center justify-between">
           <span>Synthèse vocale (TTS)</span>
           <button
+            type="button"
             onClick={suggestTtsText}
             disabled={ttsSuggestLoading}
-            className="flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:opacity-50 transition"
-            title="Suggérer un texte avec IA"
+            data-tts-ia
+            data-tts-ia-mode={modeIaTts}
+            className="flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:opacity-50 transition normal-case tracking-normal"
+            title={modeIaTts === 'ameliorer'
+              ? 'Rendre votre texte plus naturel à l’oral (vous validez avant tout changement)'
+              : 'Proposer un texte à partir du sujet, du brief et du contenu de la vidéo'}
           >
             {ttsSuggestLoading ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-            <span className="text-[9px]">IA</span>
+            <span className="text-[9px] font-semibold">{LIBELLE_MODE_VOIX_OFF[modeIaTts]}</span>
           </button>
         </div>
         <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); setTtsStage('idle'); setTtsProgress(0); }} placeholder="Tapez votre texte ici..."
           className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none" rows={3} />
+        {ttsSuggestError && (
+          <p className="mt-1.5 text-[10px] text-amber-300" role="alert" data-tts-ia-erreur>{ttsSuggestError}</p>
+        )}
+        {ttsProposition && (
+          <div className="mt-2 rounded-lg border border-purple-500/40 bg-purple-500/10 px-2.5 py-2" data-tts-ia-proposition>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-purple-300 mb-1">
+              {modeIaTts === 'ameliorer' ? 'Version améliorée proposée' : 'Texte proposé'}
+            </p>
+            <p className="text-xs text-gray-100 whitespace-pre-wrap leading-snug">{ttsProposition}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={accepterPropositionTts}
+                data-tts-ia-accepter
+                className="flex items-center gap-1 rounded-md bg-purple-600 hover:bg-purple-500 px-2.5 py-1 text-[10px] font-semibold text-white transition"
+              >
+                <Check size={11} /> Utiliser ce texte
+              </button>
+              <button
+                type="button"
+                onClick={() => setTtsProposition(null)}
+                data-tts-ia-refuser
+                className="flex items-center gap-1 rounded-md border border-gray-600 px-2.5 py-1 text-[10px] text-gray-300 hover:text-white transition"
+              >
+                <X size={11} /> {modeIaTts === 'ameliorer' ? 'Garder le mien' : 'Ignorer'}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}
             data-testid="tts-voice-select"
