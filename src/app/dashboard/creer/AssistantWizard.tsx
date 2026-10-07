@@ -57,6 +57,8 @@ import {
 } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
+import { calageCartes, morceauxCartes, lireTimingVoix } from '@/lib/creer/synchro-cartes';
+import { capturerEtapesCartes } from '@/lib/creer/capture-etapes-cartes';
 import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
@@ -5891,6 +5893,8 @@ export default function AssistantWizard() {
         // Texte au moment de la generation : sert au badge « audio perime »
         // apres rechargement, quand le texte a ete retouche.
         textAtGeneration: sequenceVoices[k].textAtGeneration,
+        // Horodatage réel de la voix des cartes : relu avec elle.
+        timing: sequenceVoices[k].timing,
       }]),
     ),
     sequenceVoicesUserEdited,
@@ -6038,6 +6042,7 @@ export default function AssistantWizard() {
             source: v.audioUrl ? ((v.source as 'tts' | 'record') ?? 'tts') : null,
             ttsVoice: v.ttsVoice,
             textAtGeneration: v.textAtGeneration,
+            timing: v.audioUrl ? lireTimingVoix(v.timing) : undefined,
             // Duree volontairement absente : elle sera remesuree.
           };
         }
@@ -6588,6 +6593,10 @@ export default function AssistantWizard() {
     }
     return une ? out : undefined;
   }, [sequenceVoices]);
+
+  // Les morceaux du texte narré des cartes : la voix des cartes en reçoit
+  // l'horodatage réel, l'export y cale l'apparition des cartes.
+  const morceauxCartesNarres = useMemo(() => morceauxCartes(generated?.cards ?? []), [generated]);
 
   const appliedVoiceDurations = useRef<Partial<Record<SequenceKey, number>>>({});
   useEffect(() => {
@@ -7636,6 +7645,9 @@ export default function AssistantWizard() {
         // Le canvas de la photo, gardé pour la TÉLÉVERSER avec le post : le
         // Calendrier la reblitte à la régénération au lieu de redessiner.
         let cardsSnapshotCanvas: HTMLCanvasElement | undefined;
+        // Cartes calées sur leur voix : une photo par étape d'apparition.
+        // `undefined` sans calage — la photo unique d'avant, rien d'autre.
+        let cardsReveal: Array<{ debut: number; image: HTMLImageElement }> | undefined;
         // Les onglets de l'apercu n'affichent qu'un element a la fois. La photo,
         // elle, doit TOUJOURS partir de la composition complete : prise depuis
         // l'onglet « Titre », elle aurait fige des cartes vides dans la video.
@@ -7712,6 +7724,30 @@ export default function AssistantWizard() {
                 width: (cRect.width / pRect.width) * 100,
                 height: (cRect.height / pRect.height) * 100,
               };
+              // Voix des cartes : chaque carte (puis sa valeur) apparaît quand
+              // la voix commence à la dire — horodatage réel ElevenLabs, sinon
+              // estimation. Texte retouché ou cartes changées : aucun calage.
+              const voixCartes = voixSequencesRendu?.cartes && voixSequencesRendu.cartes === sequenceVoices.cartes.audioUrl
+                ? sequenceVoices.cartes : null;
+              const calage = calageCartes(contenu.cards, voixCartes);
+              if (calage) {
+                setRenderStage('Synchronisation des cartes avec la voix…');
+                const photographier = async (): Promise<HTMLImageElement | null> => {
+                  const c = await domToCanvas(cardsEl, {
+                    backgroundColor: undefined, scale: 1, width: cardsEl.offsetWidth, height: cardsEl.offsetHeight,
+                  });
+                  const etape = new Image();
+                  etape.src = c.toDataURL('image/png');
+                  await new Promise<void>((resolve) => {
+                    const timer = setTimeout(resolve, 10000);
+                    etape.onload = () => { clearTimeout(timer); resolve(); };
+                    etape.onerror = () => { clearTimeout(timer); resolve(); };
+                  });
+                  return etape.naturalWidth > 0 && etape.naturalHeight > 0 ? etape : null;
+                };
+                cardsReveal = (await capturerEtapesCartes(cardsEl, calage, contenu.cards.map((c) => c.id), photographier)) ?? undefined;
+                console.log(`[Assistant] Cartes calées sur la voix (${calage.source}) : ${cardsReveal ? cardsReveal.length : 0} étape(s)`);
+              }
             }
           }
         } catch (err) {
@@ -7880,6 +7916,7 @@ export default function AssistantWizard() {
             // ── Cartes : image de l'apercu, blittee telle quelle ──────────
             cardsSnapshot,
             cardsSnapshotRect,
+            ...(cardsReveal ? { cardsReveal } : null),
             // Couche d'elements : le compositeur la peint sur les quatre
             // sequences. `undefined` sans element — rien ne change alors.
             elements: await rasterizeElements(),
@@ -10934,6 +10971,7 @@ export default function AssistantWizard() {
                   <SequenceVoicesPanel
                     sequenceVoices={sequenceVoices}
                     userEdited={sequenceVoicesUserEdited}
+                    morceauxCartes={morceauxCartesNarres}
                     onChange={(key, patch) => {
                       setSequenceVoices((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }));
                     }}

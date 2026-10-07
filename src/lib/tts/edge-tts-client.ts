@@ -4,6 +4,7 @@
  */
 
 import { isHeyGenVoiceId, isElevenLabsVoiceId } from '@/lib/types/voice';
+import { ENTETE_SEGMENTS, segmentsDeLEntete, type Segment } from '@/lib/creer/synchro-cartes';
 
 export interface TtsVoice {
   id: string;
@@ -344,6 +345,49 @@ export async function synthesize(
   console.warn('[TTS] Edge puis repli OpenAI en échec pour', voiceId);
   throw new Error(
     'Synthèse vocale indisponible pour le moment. Réessayez dans quelques minutes.'
+  );
+}
+
+/**
+ * Synthèse de la voix des CARTES avec, pour une voix ElevenLabs, les
+ * [début, fin] RÉELS de chaque morceau (`with-timestamps`, côté serveur).
+ *
+ * Toute autre voix, ou un horodatage absent : exactement `synthesize()`, et
+ * `segments: null` — l'export retombera sur l'estimation. Même voix, même
+ * texte, aucun repli ajouté.
+ */
+export async function synthesizeAvecSegments(
+  text: string,
+  voiceId: string,
+  morceaux: ReadonlyArray<{ texte: string; apres: string }>,
+): Promise<{ blob: Blob; segments: Segment[] | null }> {
+  if (!isElevenLabsVoiceId(voiceId) || morceaux.length === 0) {
+    return { blob: await synthesize(text, voiceId), segments: null };
+  }
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 50_000);
+  try {
+    const res = await fetch('/api/tts/elevenlabs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, voice: voiceId, morceaux }),
+      signal: ctl.signal,
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      if (blob.size > 0) return { blob, segments: segmentsDeLEntete(res.headers.get(ENTETE_SEGMENTS), morceaux.length) };
+    } else {
+      const data = await res.json().catch(() => ({}));
+      console.warn('[TTS] ElevenLabs (cartes) failed:', data.error || res.status);
+    }
+  } catch (err) {
+    console.warn('[TTS] ElevenLabs (cartes) exception:', err instanceof Error ? err.message : err);
+  } finally {
+    clearTimeout(timer);
+  }
+  throw new Error(
+    'Votre voix clonée n’a pas pu être synthétisée (service vocal indisponible ou voix non autorisée). '
+    + 'Aucune voix de remplacement n’a été utilisée.',
   );
 }
 

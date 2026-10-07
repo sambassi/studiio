@@ -349,7 +349,7 @@ export default function SequenceCards({
                   </span>
                 )}
                 <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 auto' }}>
-                  <span style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
+                  <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
                     {c.value}
                   </span>
                   <span style={{
@@ -392,7 +392,7 @@ export default function SequenceCards({
               {c.title}
             </span>
             {c.value && (
-              <span
+              <span data-card-value
                 style={{
                   fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400),
                   ...(landscape && !cardBoxes ? null : { flexShrink: 0 }),

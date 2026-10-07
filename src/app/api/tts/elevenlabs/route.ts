@@ -3,7 +3,12 @@ import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } from '@/lib/types/voice';
 import { listUserVoices } from '@/lib/voice/store';
-import { voixUtilisable, texteParleDuCompte } from '@/lib/voice/profil';
+import { voixUtilisable, texteParleDuCompte, prononciationsDuCompte } from '@/lib/voice/profil';
+import { scriptParle } from '@/lib/voice/prononciations';
+import {
+  morceauxDeLaRequete, texteDesMorceaux, segmentsDepuisAlignement, ENTETE_SEGMENTS,
+  type AlignementCaracteres, type Segment,
+} from '@/lib/creer/synchro-cartes';
 
 /**
  * TTS ElevenLabs — synthese vocale, et liste des voix du compte.
@@ -185,7 +190,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { text, voice } = body as { text?: string; voice?: string };
+    const { text, voice, morceaux } = body as { text?: string; voice?: string; morceaux?: unknown };
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
@@ -212,7 +217,20 @@ export async function POST(req: NextRequest) {
 
     // Le texte DIT (prononciations du compte + normalisation fr-FR) ; le texte
     // affiché, côté client, n'est jamais modifié.
-    const spoken = await texteParleDuCompte(session.user.id, text);
+    //
+    // Avec des MORCEAUX (voix des cartes) : chacun est normalisé à part puis
+    // recollé, pour savoir où il commence DANS le texte dit — et l'on demande
+    // à ElevenLabs l'alignement réel de ce même texte (`with-timestamps`).
+    const pieces = morceauxDeLaRequete(morceaux, text);
+    let morceauxDits: Array<{ texte: string; apres: string }> | null = null;
+    let spoken: string;
+    if (pieces) {
+      const prononciations = await prononciationsDuCompte(session.user.id);
+      morceauxDits = pieces.map((m) => ({ texte: scriptParle(m.texte, prononciations), apres: m.apres }));
+      spoken = texteDesMorceaux(morceauxDits);
+    } else {
+      spoken = await texteParleDuCompte(session.user.id, text);
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TTS_TIMEOUT_MS);
@@ -220,13 +238,13 @@ export async function POST(req: NextRequest) {
     let upstream: Response;
     try {
       upstream = await fetch(
-        `${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}?output_format=${OUTPUT_FORMAT}`,
+        `${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}${morceauxDits ? '/with-timestamps' : ''}?output_format=${OUTPUT_FORMAT}`,
         {
           method: 'POST',
           headers: {
             'xi-api-key': key,
             'Content-Type': 'application/json',
-            Accept: 'audio/mpeg',
+            Accept: morceauxDits ? 'application/json' : 'audio/mpeg',
           },
           body: JSON.stringify({ text: spoken, model_id: MODEL_ID }),
           signal: controller.signal,
@@ -250,13 +268,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const buf = Buffer.from(await upstream.arrayBuffer());
+    // `with-timestamps` : le MÊME audio, en base64, avec l'alignement par
+    // caractère du texte dit. Seuls les [début, fin] de chaque morceau
+    // repartent vers le client (un en-tête compact), jamais l'alignement brut.
+    let segments: Segment[] | null = null;
+    let buf: Buffer;
+    if (morceauxDits) {
+      const json = await upstream.json().catch(() => null) as { audio_base64?: unknown; alignment?: AlignementCaracteres } | null;
+      buf = Buffer.from(typeof json?.audio_base64 === 'string' ? json.audio_base64 : '', 'base64');
+      segments = segmentsDepuisAlignement(morceauxDits, json?.alignment);
+      if (!segments) console.warn('[TTS/ElevenLabs] alignement inexploitable — cartes calées par estimation');
+    } else {
+      buf = Buffer.from(await upstream.arrayBuffer());
+    }
     if (buf.length === 0) {
       return NextResponse.json({ error: 'Le service de voix n’a renvoyé aucun son. Réessayez.' }, { status: 500 });
     }
 
     const upstreamType = upstream.headers.get('content-type') || '';
     const contentType = upstreamType.startsWith('audio/') ? upstreamType : 'audio/mpeg';
+    const enteteSegments: Record<string, string> = segments ? { [ENTETE_SEGMENTS]: JSON.stringify(segments) } : {};
 
     return new NextResponse(new Uint8Array(buf) as unknown as BodyInit, {
       status: 200,
@@ -264,6 +295,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': contentType,
         'Content-Length': String(buf.length),
         'Cache-Control': 'public, max-age=3600',
+        ...enteteSegments,
       },
     });
   } catch (err: unknown) {

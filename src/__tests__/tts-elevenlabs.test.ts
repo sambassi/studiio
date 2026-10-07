@@ -167,7 +167,9 @@ describe('fetchCustomVoices — un seul point d entrée pour les sélecteurs', (
 
 describe('La route parle bien à ElevenLabs', () => {
   it('synthèse : POST /v1/text-to-speech/{voice_id}', () => {
-    expect(route).toContain('`${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}?output_format=${OUTPUT_FORMAT}`');
+    // Sans morceaux : `/v1/text-to-speech/{id}` comme avant ; avec morceaux
+    // (voix des cartes) : `/with-timestamps` — voir synchro-cartes-voix-reelle.test.ts.
+    expect(route).toContain("`${ELEVENLABS_BASE}/v1/text-to-speech/${voiceId}${morceauxDits ? '/with-timestamps' : ''}?output_format=${OUTPUT_FORMAT}`");
     expect(route).toContain("const ELEVENLABS_BASE = 'https://api.elevenlabs.io';");
   });
 
