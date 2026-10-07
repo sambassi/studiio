@@ -20,6 +20,7 @@ import AvatarVideoDid, { type EtapeDid } from '@/components/avatar/AvatarVideoDi
 import StatutAvatar, { type StatutAvatarCle, type LienStatut } from '@/components/avatar/StatutAvatar';
 import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneApercu, DeuxColonnes, ColonneTravail, ColonneApercu, type EtapeProgression, type Etape, type EtatApercu, type NiveauNotification } from '@/components/ux';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
+import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
@@ -187,7 +188,7 @@ export default function AvatarPage() {
       setProgress(null);
       setGenStatus('idle');
       const fournisseur = json.data?.fournisseur === 'non_disponible'
-        ? " Votre clone n'est pas supprimé automatiquement chez notre fournisseur."
+        ? " La copie de votre clone conservée par notre service de génération n'est pas supprimée automatiquement."
         : '';
       // Strictement vrai, rien de plus : aucun nettoyage automatique n'existe
       // aujourd'hui, on ne promet ni délai ni retrait futur. Ce qui est
@@ -698,7 +699,7 @@ export default function AvatarPage() {
 
   /** La notification affichée : celle de la page, sinon l'échec d'entraînement HeyGen (qui a sa sortie). */
   const notificationAffichee: NotificationPage | null = notification ?? (!viaDid && trainingFailed
-    ? { niveau: 'erreur', titre: "L'entraînement de votre avatar n'a pas abouti.", detail: "La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé.", motif: avatar?.training_error ?? null, action: { libelle: 'Changer de source', onClick: changerDeSource } }
+    ? { niveau: 'erreur', titre: "L'entraînement de votre avatar n'a pas abouti.", detail: "La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé.", motif: avatar?.training_error && !trahitUnFournisseur(avatar.training_error) ? avatar.training_error : null, action: { libelle: 'Changer de source', onClick: changerDeSource } }
     : null);
 
   /** Le média de la source (privée : `/api/avatar/source`), rendu une seule fois quand l'avatar existe. */

@@ -63,6 +63,31 @@ export function trahitUnFournisseur(texte: string | null | undefined): boolean {
   return !!texte && TRACES_FOURNISSEUR.test(texte);
 }
 
+/**
+ * Le MOTIF lisible d'un refus fournisseur, extrait de son corps de réponse
+ * brut (JSON ou texte) — ou `null`. Jamais le corps brut : seul le message
+ * (« audio too short »…) est gardé, sans URL, borné, et écarté s'il nomme un
+ * fournisseur, une clé ou une variable. Le corps complet reste aux journaux.
+ */
+export function motifLisibleDuFournisseur(corpsBrut: string | null | undefined): string | null {
+  if (!corpsBrut) return null;
+  let message: unknown = null;
+  try {
+    const o = JSON.parse(corpsBrut) as Record<string, unknown>;
+    const d = o?.detail as Record<string, unknown> | string | undefined;
+    const e = o?.error as Record<string, unknown> | string | undefined;
+    message = (typeof d === 'object' && d ? d.message : d)
+      ?? o?.message
+      ?? (typeof e === 'object' && e ? e.message : e);
+  } catch {
+    message = null; // un corps non JSON (page d'erreur HTML…) n'est jamais relayé
+  }
+  // Une URL désigne toujours le fournisseur (sa doc, son API) : motif écarté.
+  if (typeof message !== 'string' || /https?:\/\/|www\./i.test(message)) return null;
+  const propre = message.replace(/\s+/g, ' ').trim().slice(0, 200);
+  return propre && !trahitUnFournisseur(propre) ? propre : null;
+}
+
 /** Ce que l'écran peut afficher : le message neutre si le texte trahit un fournisseur. */
 export function messageUtilisateurSur(texte: string | null | undefined, repli: string): string {
   return !texte || trahitUnFournisseur(texte) ? repli : texte;

@@ -178,7 +178,7 @@ export default function VoiceCloneRecorder({
       const res = await fetch('/api/voice/clone', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok || !data?.success) {
-        // `detail` porte le message reel d'ElevenLabs quand il y en a un :
+        // `detail` porte le MOTIF du refus quand il est lisible (jamais le corps brut) :
         // c'est lui qui dit ce que l'enregistrement a de fautif.
         setError([data?.error, data?.detail].filter(Boolean).join(' — ') || 'Clonage impossible.');
         return;
@@ -323,8 +323,10 @@ export default function VoiceCloneRecorder({
               className="mt-0.5"
             />
             <span>
-              Je certifie que la voix enregistrée est la mienne et j’autorise Studiio et ElevenLabs
-              à en créer un clone.
+              {/* Même texte que le consentement ENREGISTRÉ (`VOICE_CONSENT_TEXT`, lib/voice/store.ts) :
+                  l'écran ne nomme pas le fournisseur, la preuve en base non plus. */}
+              Je certifie que la voix enregistrée est la mienne et j’autorise Studiio et ses prestataires
+              techniques à en créer un clone.
             </span>
           </label>
 

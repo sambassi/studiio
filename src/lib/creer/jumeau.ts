@@ -113,8 +113,8 @@ export const PHASES_JUMEAU: ReadonlyArray<{ phase: PhaseJumeau; libelle: string 
 /** Ce que dit chaque étape pendant qu'elle tourne — une phrase, pas un chiffre. */
 export const DETAIL_PHASE_JUMEAU: Record<PhaseJumeau, string> = {
   preparation: 'Vérification de votre jumeau et de votre solde…',
-  envoi: 'Envoi de votre voix et de votre avatar au fournisseur…',
-  traitement: 'Votre jumeau est animé par le fournisseur (5 à 20 min).',
+  envoi: 'Préparation de votre voix et de votre avatar pour la génération…',
+  traitement: 'Génération de votre jumeau en cours (5 à 20 min).',
   stockage: 'Vidéo du jumeau reçue — mise en place dans la séquence « Vidéo »…',
   rendu: 'Composition du montage…',
   pret: 'Prêt.',

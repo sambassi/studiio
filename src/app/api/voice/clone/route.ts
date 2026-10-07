@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
+import { motifLisibleDuFournisseur } from '@/lib/avatar/fournisseurs';
 import { ELEVENLABS_VOICE_PREFIX } from '@/lib/types/voice';
 import {
   validateCloneRequest,
@@ -147,14 +148,16 @@ export async function POST(req: NextRequest) {
         'elevenlabs',
         new Error(`ElevenLabs clone ${upstream.status}: ${rawBody.slice(0, 200)}`),
       );
-      // Le message REEL du fournisseur est relaye : la doc ne publie pas de
-      // liste fermee de formats, et un « erreur 422 » sec obligerait a
-      // deviner ce que l'enregistrement a de fautif.
+      // Le MOTIF du refus est relaye (la doc ne publie pas de liste fermee de
+      // formats, et un « erreur 422 » sec obligerait a deviner ce que
+      // l'enregistrement a de fautif) — mais jamais le corps brut : sans JSON
+      // lisible, ou s'il nomme le fournisseur, rien. Le corps est journalise.
+      const motif = motifLisibleDuFournisseur(rawBody);
       return NextResponse.json(
         {
           success: false,
           error: `Le clonage de votre voix a été refusé (${upstream.status}). Vérifiez vos échantillons et réessayez.`,
-          detail: rawBody.slice(0, 300),
+          ...(motif ? { detail: motif } : {}),
         },
         { status: 502 },
       );
@@ -212,7 +215,7 @@ export async function POST(req: NextRequest) {
     }
     console.error('[Voice/Clone] error:', msg);
     detectAndReportServiceError('elevenlabs', err);
-    return NextResponse.json({ success: false, error: `Clonage impossible : ${msg}` }, { status: 500 });
+    return NextResponse.json({ success: false, error: "Le clonage de votre voix a échoué. Réessayez dans quelques minutes." }, { status: 500 });
   }
 }
 

@@ -3,7 +3,8 @@ import {
 } from '@/lib/types/voice';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import type { PreparedPost } from '@/lib/autopilot/engine';
-import { resoudreVoixParIdentifiant } from '@/lib/voice/profil';
+import { resoudreVoixParIdentifiant, prononciationsDuCompte } from '@/lib/voice/profil';
+import { scriptParle } from '@/lib/voice/prononciations';
 
 /**
  * La voix off de l'Autopilote.
@@ -312,17 +313,22 @@ export async function buildAutopilotVoices(input: {
 
   const textes = voiceTexts(input.post);
   const out: VoixParSequence = {};
+  // Le texte DIT : prononciations du compte + normalisation fr-FR (« 76% » →
+  // « 76 pour cent »). Seul ce qui part au moteur change ; les textes des
+  // séquences (titre, cartes, CTA) restent ceux du post.
+  const prononciations = await prononciationsDuCompte(input.userId).catch(() => []);
 
   for (const cle of SEQUENCE_KEYS) {
     const texte = textes[cle];
     if (!texte) continue;
-    let mp3 = await synthetiser(texte, provider, voixResolue);
+    const dit = scriptParle(texte, prononciations);
+    let mp3 = await synthetiser(dit, provider, voixResolue);
     // ElevenLabs absent (clé non configurée) ou en échec : la voix gratuite
     // (Edge) plutôt qu'un montage muet. Test réel staging : sans clé
     // ElevenLabs, aucune voix, et le MP4 final sortait silencieux.
     let repli = voixForceeEdge;
     if (!mp3 && provider === 'elevenlabs') {
-      mp3 = await synthetiser(texte, 'edge');
+      mp3 = await synthetiser(dit, 'edge');
       repli = !!mp3;
       if (repli) console.warn(`[Autopilote/Voix] ${cle} : ElevenLabs indisponible, voix Edge utilisée`);
     }

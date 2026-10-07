@@ -339,8 +339,11 @@ export async function synthesize(
   // Both paths failed — throw so the caller surfaces a clear error.
   // We deliberately do NOT call `browserSynthesize` here; it produces a
   // silent blob that crashes playback (see docstring above).
+  // Message UTILISATEUR (affiché en toast) : aucun fournisseur ni variable
+  // nommés — le détail de chaque échec est déjà dans la console ci-dessus.
+  console.warn('[TTS] Edge puis repli OpenAI en échec pour', voiceId);
   throw new Error(
-    'Synthèse vocale indisponible — Edge TTS upstream a échoué et le fallback OpenAI n\'a pas réussi (vérifie que OPENAI_API_KEY est configuré côté serveur).'
+    'Synthèse vocale indisponible pour le moment. Réessayez dans quelques minutes.'
   );
 }
 

@@ -174,10 +174,13 @@ describe('L appel de clonage est conforme à la doc', () => {
     expect(code).not.toContain('Bearer');
   });
 
-  it('le message réel du fournisseur est relayé', () => {
+  it('le MOTIF du refus est relayé, jamais le corps brut du fournisseur', () => {
     // La doc ne publie pas de liste fermée de formats : un « 422 » sec
-    // obligerait à deviner ce que l'enregistrement a de fautif.
-    expect(clone).toContain('detail: rawBody.slice(0, 300)');
+    // obligerait à deviner ce que l'enregistrement a de fautif. Mais le corps
+    // brut (JSON, nom du fournisseur, URL) ne sort pas vers l'écran.
+    expect(clone).toContain('const motif = motifLisibleDuFournisseur(rawBody);');
+    expect(clone).not.toContain('detail: rawBody');
+    expect(clone).not.toContain('Clonage impossible : ${msg}');
   });
 
   it('une réponse sans voice_id est une erreur, pas un succès silencieux', () => {

@@ -83,8 +83,8 @@ import { genererVideoJumeau } from '@/lib/avatar/moteur-jumeau';
 import { POST as demanderConsentement, GET as lireConsentement } from '@/app/api/avatar/consentement/route';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { moteurJumeauDisponiblePour } from '@/lib/avatar/jumeau';
-import { libelleFournisseurAvatar } from '@/lib/creer/jumeau';
-import { MESSAGES_AVATAR, MESSAGES_CREATION, fournisseurPrincipal, trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
+import { libelleFournisseurAvatar, DETAIL_PHASE_JUMEAU } from '@/lib/creer/jumeau';
+import { MESSAGES_AVATAR, MESSAGES_CREATION, fournisseurPrincipal, trahitUnFournisseur, motifLisibleDuFournisseur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration } from '@/lib/avatar/couts';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
 import { VOICE_GROUP_LABELS, mapElevenLabsVoice } from '@/lib/types/voice';
@@ -141,6 +141,53 @@ describe('AVATAR — fournisseur invisible pour l’utilisateur', () => {
     const message = (r as { error: string }).error;
     expect(trahitUnFournisseur(message)).toBe(false);
     expect(message).not.toMatch(/MOVIO|not found/);
+  });
+});
+
+describe('AVATAR — parcours Jumeau / Mon avatar / voix : aucun texte visible ne nomme le fournisseur', () => {
+  const lire = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf-8');
+
+  it('suivi de génération du jumeau (Créer) : aucune étape ne parle « du fournisseur »', () => {
+    for (const t of Object.values(DETAIL_PHASE_JUMEAU)) {
+      expect(trahitUnFournisseur(t), t).toBe(false);
+      expect(t, t).not.toMatch(/fournisseur|provider/i);
+    }
+    expect(DETAIL_PHASE_JUMEAU.traitement).toBe('Génération de votre jumeau en cours (5 à 20 min).');
+  });
+
+  it('messages d’API relus par l’écran (création d’avatar, écoute, clonage, suppression) : neutres', () => {
+    const sources = [
+      lire('src/app/api/avatar/create/route.ts'), lire('src/app/api/voice/ecoute/route.ts'),
+      lire('src/app/api/voice/clone/route.ts'), lire('src/app/dashboard/avatar/page.tsx'),
+    ].join('\n');
+    expect(sources).not.toMatch(/cree chez le fournisseur|Le fournisseur a refuse la source|Notre fournisseur n’a pas pu|chez notre fournisseur/);
+    // Clonage de voix : jamais le corps brut, jamais l'exception brute.
+    expect(sources).not.toContain('detail: rawBody');
+    expect(sources).not.toContain('Clonage impossible : ${msg}');
+    // Aperçu d'avatar : l'erreur brute ne part plus dans `error_message` (relu par l'écran).
+    expect(lire('src/app/api/avatar/generate/route.ts')).not.toMatch(/libererReservation\([\s\S]{0,80}erreurFournisseur\.message/);
+  });
+
+  it('motif d’un refus fournisseur : seul le message lisible, jamais le corps brut ni un nom', () => {
+    expect(motifLisibleDuFournisseur('{"detail":{"status":"invalid_audio","message":"Audio too short"}}')).toBe('Audio too short');
+    expect(motifLisibleDuFournisseur('{"detail":{"message":"ElevenLabs: quota exceeded"}}')).toBeNull();
+    expect(motifLisibleDuFournisseur('{"message":"see https://api.heygen.com/docs"}')).toBeNull();
+    expect(motifLisibleDuFournisseur('<html>502 Bad Gateway</html>')).toBeNull();
+    expect(motifLisibleDuFournisseur('')).toBeNull();
+  });
+
+  it('suivi : une ancienne erreur brute enregistrée n’est jamais renvoyée telle quelle', async () => {
+    etat.ligne = { id: 'gen-1', user_id: 'u1', status: 'failed', provider: 'heygen', provider_video_id: 'v', video_url: null, error_message: 'HeyGen : quota exceeded (https://api.heygen.com/v3/videos)', credits_charged: 0, credits_refunded: true, created_at: new Date().toISOString(), script: 'Bonjour' };
+    const r = await avancerStatutGeneration('u1', 'gen-1');
+    expect(r.status).toBe('failed');
+    expect(trahitUnFournisseur((r as { error: string }).error)).toBe(false);
+  });
+
+  it('synthèse vocale de Créer en échec : toast sans fournisseur ni variable', () => {
+    const client = lire('src/lib/tts/edge-tts-client.ts');
+    const messages = [...client.matchAll(/throw new Error\(\s*'([^']+)'/g)].map((m) => m[1]);
+    expect(messages.length).toBeGreaterThan(0);
+    for (const m of messages) expect(trahitUnFournisseur(m) || /Edge|OpenAI/.test(m), m).toBe(false);
   });
 });
 
