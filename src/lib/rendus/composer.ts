@@ -12,6 +12,7 @@
  */
 import { composeVideo, CURRENT_COMPOSER_VERSION, type ComposerOptions } from '@/lib/video-composer';
 import { rendreEtFacturer, messagePour, type OperationRendu } from '@/lib/rendus/client';
+import { estMediaIndisponible } from '@/lib/rendus/medias-requis';
 
 /**
  * Televerse la vignette par le chemin ordinaire.
@@ -63,18 +64,27 @@ export async function composerEtFacturer(
   options: ComposerOptions,
 ): Promise<MontageLivre> {
   let vignette: Blob | null = null;
+  // Un media necessaire introuvable a un message PROPRE, plus utile que le
+  // generique « la composition a echoue » : on le garde pour le relever.
+  let mediaManquant: Error | null = null;
 
   const livraison = await rendreEtFacturer({
     operation,
     format,
     composer: async () => {
-      const rendu = await composeVideo(options);
-      vignette = rendu.thumbnail;
-      return rendu.video;
+      try {
+        const rendu = await composeVideo(options);
+        vignette = rendu.thumbnail;
+        return rendu.video;
+      } catch (e) {
+        if (estMediaIndisponible(e)) mediaManquant = e;
+        throw e;
+      }
     },
   });
 
   if (!livraison.ok || !livraison.blob) {
+    if (mediaManquant) throw mediaManquant;
     throw new Error(messagePour(livraison.motif));
   }
 

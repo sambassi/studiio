@@ -23,6 +23,7 @@ import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/
 import { ajusterPlan } from '@/lib/creer/smart-montage';
 import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
 import type { OverlaysMontage } from '@/lib/creer/overlays';
+import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendus/medias-requis';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -681,7 +682,9 @@ function loadImage(src: string, timeoutMs = 20000): Promise<HTMLImageElement> {
   // and prevent canvas tainting. Direct cross-origin loads can silently taint the canvas
   // even when crossOrigin='anonymous' is set, if the CDN doesn't return CORS headers
   // consistently (regional caches, etc.). A tainted canvas produces empty captureStream frames.
-  const isExternal = !src.includes(window.location.hostname) && !src.includes('.supabase.co/');
+  // Un chemin relatif (`/storage/v1/...`) est SAME-ORIGIN : il ne contient pas
+  // le nom d'hote, mais ne doit pas pour autant partir d'abord au relais.
+  const isExternal = !estMemeOrigine(src) && !src.includes(window.location.hostname) && !src.includes('.supabase.co/');
   const proxyUrl = `/api/proxy-media?url=${encodeURIComponent(src)}`;
 
   return new Promise((resolve, reject) => {
@@ -734,22 +737,32 @@ function loadVideo(src: string, timeoutMs = 30000): Promise<HTMLVideoElement> {
     // browser has a cached response WITHOUT CORS headers (pre-PR#180 cache), the
     // request fails and drawImage() gets a null/error video — video sequence black.
     // Rule: omit crossOrigin for same-origin paths so the browser skips CORS entirely.
-    const isSameOrigin = src.startsWith('/') ||
-      (typeof location !== 'undefined' && src.startsWith(location.origin + '/'));
+    // `estMemeOrigine` : chemin relatif, ou URL absolue de la meme origine.
+    // (Un `//hote/...` protocol-relative n'est PAS same-origin.)
+    const isSameOrigin = estMemeOrigine(src);
     const needsCrossOrigin = !src.startsWith('blob:') && !src.startsWith('data:') && !isSameOrigin;
     if (needsCrossOrigin) vid.crossOrigin = 'anonymous';
 
     vid.muted = true;
     vid.playsInline = true;
     vid.preload = 'auto';
-    vid.oncanplaythrough = () => { clearTimeout(timeout); resolve(vid); };
+    // Une video « prete » SANS image (piste audio seule, flux illisible) se
+    // peindrait en noir : on la traite comme un echec de chargement.
+    vid.oncanplaythrough = () => {
+      if (!vid.videoWidth || !vid.videoHeight) { vid.onerror?.(new Event('error')); return; }
+      clearTimeout(timeout); resolve(vid);
+    };
     vid.onerror = () => {
       if (src.startsWith('blob:') || src.startsWith('data:')) { clearTimeout(timeout); return reject(new Error('Video load failed')); }
       console.warn(`[Composer] Video direct load failed, trying proxy: ${src.substring(0, 60)}`);
       const vid2 = document.createElement('video');
       // Proxy route is same-origin — no crossOrigin needed
       vid2.muted = true; vid2.playsInline = true; vid2.preload = 'auto';
-      vid2.oncanplaythrough = () => { clearTimeout(timeout); resolve(vid2); };
+      vid2.oncanplaythrough = () => {
+        clearTimeout(timeout);
+        if (!vid2.videoWidth || !vid2.videoHeight) return reject(new Error(`Video sans image (direct + proxy): ${src.substring(0, 60)}`));
+        resolve(vid2);
+      };
       vid2.onerror = () => { clearTimeout(timeout); reject(new Error(`Video load failed (direct + proxy): ${src.substring(0, 60)}`)); };
       vid2.src = `/api/proxy-media?url=${encodeURIComponent(src)}`;
       vid2.load();
@@ -1895,7 +1908,7 @@ function drawIntro(
   ctx.restore();
 }
 
-function drawCards(
+export function drawCards(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   cards: CardData[], logoImg: HTMLImageElement | null, accent: string, progress: number,
   design?: DesignOptions,
@@ -1997,6 +2010,13 @@ function drawCards(
       // ici (Skia utilise deja le meme reechantillonneur) et coutait ~0,7 ms
       // par frame. Le compositeur reste donc inchange sur ce blit.
       ctx.drawImage(snap, drawX, drawY, drawW, drawH);
+      // Ferme l'enveloppe `ctx.save()` + `applyTextAnimation` ouverte plus
+      // haut. Sans ce `restore`, l'alpha (fondu), la translation (glissement)
+      // ou l'echelle (pop) de l'animation FUYAIENT dans les frames suivantes
+      // et s'y multipliaient : la sequence Cartes, puis la sequence Video qui
+      // la suit, sortaient entierement NOIRES jusqu'a ce qu'une transition
+      // reecrive `globalAlpha` (aperçu DOM intact, MP4 noir).
+      ctx.restore();
       return;
     }
     const snapW = snap.width;
@@ -2006,6 +2026,7 @@ function drawCards(
     // eslint-disable-next-line no-console
     console.log('[Composer] Drawing cards from SNAPSHOT', snapW, 'x', snapH, 'at', Math.round(snapX), Math.round(snapY));
     ctx.drawImage(snap, snapX, snapY, snapW, snapH);
+    ctx.restore(); // meme enveloppe d'animation a refermer (voir ci-dessus)
     return;  // short-circuit — don't draw manual cards
   }
 
@@ -3654,6 +3675,15 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // premier charge en multi-rush, l'unique sinon.
   const videoEl: HTMLVideoElement | null = rushsDemandes ? (rushsLus[0]?.el ?? null) : videoElPrincipal;
   console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl} videoImage:${!!videoImageEl}`);
+  // Video EXIGEE (`exigerVideo`, opt-in : sans elle, l'ancienne
+  // redistribution des durees reste la regle) mais introuvable : on s'arrete
+  // ICI, avant canvas, audio et enregistreur — rien a liberer, et surtout
+  // aucun MP4 « termine » sans la video que l'apercu montrait.
+  if (videoExigee(options) && videoUrl && videoDuration > 0 && !videoEl) {
+    const cause = `aucune source video chargee (${(rushsDemandes ?? [{ url: videoUrl }]).map((r) => r.url.substring(0, 80)).join(', ')})`;
+    console.error('[Composer] MEDIA_INDISPONIBLE sequence=video', cause);
+    throw new MediaIndisponibleError('video', cause);
+  }
 
   // Recadrage de l'affiche, applique UNE fois : le resultat sert ensuite de
   // source a toutes les sequences. `as HTMLImageElement` — le canvas rendu est

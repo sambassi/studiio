@@ -152,6 +152,7 @@ import {
   annonceCout, tarifsAffichables, libelleNombre, type Tarifs,
 } from '@/lib/facturation/annonce';
 import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
+import { verifierMediasRequis, estMediaIndisponible, exigerVideo, videoExigee } from '@/lib/rendus/medias-requis';
 import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
@@ -7915,6 +7916,17 @@ export default function AssistantWizard() {
           && !!previewRenduRef.current
           && signatureMatches(previewSignatureRef.current, signature);
 
+        // Vidéo de la séquence « Vidéo » (jumeau, rush) : l'aperçu la montre,
+        // le MP4 la doit aussi. Sondée AVANT toute réservation : absente du
+        // stockage → arrêt ici, message clair, rien n'est ouvert ni débité.
+        // `exigerVideo` marque l'objet sans y ajouter de champ : la parité
+        // avec « Régénérer » reste champ pour champ.
+        if (duree('video') > 0 && plateau.rushUrl) exigerVideo(optionsRendu);
+        if (!reutilisable && videoExigee(optionsRendu)) {
+          setRenderStage('Vérification des médias…');
+          await verifierMediasRequis(optionsRendu);
+        }
+
         let composed: { blob: Blob; url: string | null; thumbnailUrl: string | null; composerVersion: string };
         /** La tentative confirmee de CE tour, s'il en a ouvert une. */
         let renduConfirme: { jobId: string; url: string | null } | null = null;
@@ -7959,23 +7971,30 @@ export default function AssistantWizard() {
           // regarder l'objet et débite s'il l'y trouve. Le montage n'est
           // délivré qu'après cette confirmation — c'est ce qui remplace le
           // montant que le navigateur envoyait autrefois.
+          let mediaManquant: string | null = null;
           const livraison = await rendreEtFacturer({
             operation: destination === 'apercu' ? 'apercu' : 'bureau',
             format: renderFormat,
             etape: (t) => setRenderStage(t),
             composer: async () => {
-              const rendu = await composeVideo(optionsRendu);
-              // La vignette est gardée pour l'aperçu : un montage réutilisé
-              // par le Calendrier arriverait sinon sans miniature.
-              if (destination === 'apercu') vignetteApercu = rendu.thumbnail;
-              return rendu.video;
+              try {
+                const rendu = await composeVideo(optionsRendu);
+                // La vignette est gardée pour l'aperçu : un montage réutilisé
+                // par le Calendrier arriverait sinon sans miniature.
+                if (destination === 'apercu') vignetteApercu = rendu.thumbnail;
+                return rendu.video;
+              } catch (e) {
+                // Média nécessaire introuvable : son message, pas le générique.
+                if (estMediaIndisponible(e)) mediaManquant = e.message;
+                throw e;
+              }
             },
           });
 
           if (!livraison.ok || !livraison.blob) {
             // Rien n'est livré, et rien n'a été débité : le serveur n'a pas
             // confirmé. La tentative est déjà close de son côté.
-            setError(messagePour(livraison.motif));
+            setError(mediaManquant ?? messagePour(livraison.motif));
             majItem(itemEnCours, 'echoue', { erreur: livraison.motif || 'rendu refusé' });
             return;
           }
