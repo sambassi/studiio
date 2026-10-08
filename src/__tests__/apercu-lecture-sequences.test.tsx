@@ -220,8 +220,10 @@ describe('B — Créer', () => {
   });
 
   it('le câblage : le rendu d abord, la lecture ensuite, jamais pendant une composition', () => {
-    expect(wizard).toContain("const lectureSequences = generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (");
-    expect(wizard).toContain('overlay={renduDansLeCadre ?? lectureSequences}');
+    // Une fonction de l'échelle du cadre : l'aperçu principal ET l'aperçu
+    // agrandi la posent, jamais les deux à la fois.
+    expect(wizard).toContain("const lectureSequences = (scale: number) => (generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (");
+    expect(wizard).toContain('overlay={apercuAgrandi ? null : (renduDansLeCadre ?? lectureSequences(displayScale))}');
     // Les durées viennent du même point que le compositeur et le Calendrier —
     // pour le lecteur ET pour les extraits.
     expect(wizard).toContain('const etapesLecture = activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }));');
@@ -357,10 +359,15 @@ describe('D — choisir un effet le joue AUSSITÔT dans le grand aperçu', () =>
     await avancer(2500);
     expect(screen.getByRole('tab', { name: 'Cartes' }).getAttribute('aria-selected')).toBe('true');
     expect(lecteur()).toBeNull();
-    // Revenir sur « Tout » à la main ne rejoue RIEN tout seul.
+    // ⚠️ CE TEST DISAIT « revenir sur Tout ne rejoue rien ». L'utilisateur a
+    // signalé l'inverse comme un défaut : « Tout » montrait la vue EMPILÉE,
+    // qui ne correspond à aucune séquence du montage. Le clic sur l'onglet
+    // joue désormais le montage ENTIER — pas l'extrait, qui reste consommé.
     fireEvent.click(screen.getByRole('tab', { name: 'Tout' }));
-    expect(lecteur()?.getAttribute('data-sequence-playing')).toBe('false');
-    expect(document.querySelector('[data-playback-stage]')).toBeNull();
+    await avancer(16);
+    expect(lecteur()?.getAttribute('data-sequence-playing')).toBe('true');
+    expect(lecteur()?.getAttribute('data-sequence-extract')).toBeNull();
+    expect(calque('a')?.getAttribute('data-playback-sequence')).toBe('intro');
   });
 
   it('aucun rendu, aucun débit : ni `runRender`, ni appel réseau de rendu', async () => {

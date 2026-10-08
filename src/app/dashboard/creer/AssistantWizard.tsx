@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { urlsIntrouvables, trierMediasMorts, messageMediasBloquants, messageMediasRetires, type MediaAVerifier } from '@/lib/creer/medias-morts';
 import Link from 'next/link';
-import { flushSync } from 'react-dom';
+import { flushSync, createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import {
   Wand2,
@@ -42,6 +42,7 @@ import {
   FolderOpen,
   Crop,
   Maximize2,
+  Minimize2,
   Play,
   Info,
   MousePointerClick,
@@ -697,14 +698,6 @@ export function messageAffichesManquantes(
     ? `Recherchez d’autres photos pour obtenir ${total} affiches distinctes (${retenues} sur ${total}).`
     : `Choisissez autant de photos que de vidéos (${retenues} sur ${total}), ou repassez en mode automatique.`;
 }
-
-/**
- * Position et taille de la fenetre d'apercu agrandi.
- *
- * `localStorage` et non `sessionStorage` : c'est un reglage d'ergonomie, il
- * doit survivre a la fermeture de l'onglet.
- */
-const ENLARGED_GEOMETRY_KEY = 'studiio.creer-simple.apercu-agrandi';
 
 /**
  * Reglages typographiques par zone.
@@ -1435,6 +1428,8 @@ function PlateContent({
     onElementResizeStart?: (id: string, e: React.PointerEvent) => void;
     onElementDelete?: (id: string) => void;
     selectedElementId?: string | null;
+    /** Bloc selectionne (`data-guide-key`) — ses poignees restent visibles. */
+    selectedKey?: string | null;
   };
 }) {
   const vw = VIDEO_SIZE[format].w;
@@ -1462,7 +1457,7 @@ function PlateContent({
     cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard = null, selectedCards,
     groupedCards, capturing = false, onCardDoubleClick, onCardResizeStart, onDragStart,
     dragging = null, onTextDoubleClick, onTextResizeStart, onElementDragStart,
-    onElementResizeStart, onElementDelete, selectedElementId = null,
+    onElementResizeStart, onElementDelete, selectedElementId = null, selectedKey = null,
   } = edit ?? {};
   const uiPx = edit?.uiPx ?? ((n: number) => n);
 
@@ -1474,7 +1469,11 @@ function PlateContent({
    * demonte et le redimensionnement s'interrompt au milieu.
    */
   const [survolTexte, setSurvolTexte] = useState<'title' | 'cta' | null>(null);
-  const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
+  // ⚠️ ET QUAND LE BLOC EST SELECTIONNE : son cadre de selection s'affichait
+  // sans poignee hors survol — on voyait le titre « pris » sans pouvoir le
+  // redimensionner (et au tactile, il n'y a pas de survol du tout).
+  const poigneesVisibles = (el: 'title' | 'cta') =>
+    survolTexte === el || dragging === el || selectedKey === el;
 
   return (
     <>
@@ -2468,6 +2467,7 @@ export function Preview({
               groupedCards, capturing, uiPx, onCardDoubleClick, onCardResizeStart, onDragStart,
               dragging, onTextDoubleClick, onTextResizeStart, onElementDragStart,
               onElementResizeStart, onElementDelete, selectedElementId,
+              selectedKey: selection?.key ?? null,
             }}
           />
         )}
@@ -5160,6 +5160,55 @@ export default function AssistantWizard() {
     }
   }, []);
 
+  /**
+   * Prise d'une poignee de coin sur le TITRE ou le CTA — agrandit son texte.
+   *
+   * ⚠️ LE TITRE SE SELECTIONNAIT SANS SE REDIMENSIONNER. Son cadre de
+   * selection s'affichait au clic, mais l'apercu de l'assistant ne recevait
+   * aucune poignee : seul le curseur « Taille » du panneau de gauche agissait.
+   * Les cartes, elles, en avaient deja (`startCardTextResize`) — meme geste
+   * ici, rapport des distances au centre du bloc, sans saut a la prise.
+   *
+   * Un bloc de TEXTE n'a pas de boite propre : sa largeur est celle du cadre
+   * partage avec le compositeur (`titleFrameStyle` / `ctaFrameStyle`), sa
+   * hauteur celle de son texte. Le seul redimensionnement fidele au rendu est
+   * donc proportionnel — il ecrit `scale`, l'etat que lisent deja le curseur,
+   * le compositeur et les metadonnees. Le recadrage (`clampToBox`, effet plus
+   * bas) ramene ensuite le bloc dans le canevas s'il deborde.
+   */
+  const startTextResize = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary || dragRef.current) return;
+    const bloc = (e.currentTarget as HTMLElement).parentElement;
+    const box = bloc?.getBoundingClientRect();
+    if (!box) return;
+    const cx = box.left + box.width / 2;
+    const cy = box.top + box.height / 2;
+    const depart = Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy));
+    const echelleDepart = (el === 'title' ? titleStyle.scale : ctaStyle.scale) ?? 1;
+    const cible = e.currentTarget as HTMLElement;
+    const bouger = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      const d = Math.max(1, Math.hypot(ev.clientX - cx, ev.clientY - cy));
+      const echelle = Math.min(SCALE_MAX, Math.max(SCALE_MIN, echelleDepart * (d / depart)));
+      if (el === 'title') setTitleStyle((prev) => ({ ...prev, scale: echelle }));
+      else setCtaStyle((prev) => ({ ...prev, scale: echelle }));
+    };
+    const finir = () => {
+      cible.removeEventListener('pointermove', bouger);
+      cible.removeEventListener('pointerup', finir);
+      cible.removeEventListener('pointercancel', finir);
+      setDragging(null);
+    };
+    // `dragging` garde les poignees montees pendant le geste : le pointeur
+    // capture peut sortir du bloc, et `pointerleave` les demonterait.
+    setDragging(el);
+    try { cible.setPointerCapture?.(e.pointerId); } catch { /* pointeur deja relache */ }
+    cible.addEventListener('pointermove', bouger);
+    cible.addEventListener('pointerup', finir);
+    cible.addEventListener('pointercancel', finir);
+  }, [titleStyle.scale, ctaStyle.scale]);
+
   const startDrag = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
     // Meme raison que pour les cartes : l'appui appartient a l'element, quelle
     // que soit l'issue de la prise.
@@ -5605,27 +5654,18 @@ export default function AssistantWizard() {
   const [enlargedScale, setEnlargedScale] = useState(0);
   const [enlargedWidth, setEnlargedWidth] = useState(0);
 
-  /** Geometrie de la fenetre, relue d'une session a l'autre. */
-  const [enlargedGeometry, setEnlargedGeometry] = useState(() => {
-    const repli = { x: 120, y: 90, w: 420, h: 640 };
-    if (typeof window === 'undefined') return repli;
-    try {
-      const brut = window.localStorage.getItem(ENLARGED_GEOMETRY_KEY);
-      return brut ? { ...repli, ...(JSON.parse(brut) as typeof repli) } : repli;
-    } catch {
-      return repli;
-    }
-  });
+  /** La modale n'existe qu'avec un contenu à montrer. */
+  const apercuAgrandi = enlargedOpen && !!generated;
 
-  const rememberEnlargedGeometry = useCallback((g: { x: number; y: number; w: number; h: number }) => {
-    setEnlargedGeometry(g);
-    try {
-      window.localStorage.setItem(ENLARGED_GEOMETRY_KEY, JSON.stringify(g));
-    } catch {
-      // Quota plein ou stockage refuse : la fenetre marche, elle ne se
-      // souvient simplement pas de sa taille.
-    }
-  }, []);
+  /** Échap ramène à la vue normale — le geste attendu d'une vue plein écran. */
+  useEffect(() => {
+    if (!apercuAgrandi) return;
+    const surTouche = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEnlargedOpen(false);
+    };
+    window.addEventListener('keydown', surTouche);
+    return () => window.removeEventListener('keydown', surTouche);
+  }, [apercuAgrandi]);
 
   /**
    * Taille du plateau dans la fenetre.
@@ -5637,7 +5677,7 @@ export default function AssistantWizard() {
    * qu'un changement de marge rendrait faux en silence.
    */
   useEffect(() => {
-    if (!enlargedOpen) return;
+    if (!apercuAgrandi) return;
     const body = enlargedBodyRef.current;
     if (!body) return;
     const apply = () => {
@@ -5660,7 +5700,7 @@ export default function AssistantWizard() {
     ro.observe(body);
     if (enlargedFrameRef.current) ro.observe(enlargedFrameRef.current);
     return () => ro.disconnect();
-  }, [enlargedOpen, format]);
+  }, [apercuAgrandi, format]);
 
   /**
    * Ramene le titre et le CTA dans le cadre, sur leur encombrement REEL.
@@ -6476,13 +6516,43 @@ export default function AssistantWizard() {
     if (previewFocus !== 'all') setExtraitDemande(null);
   }, [previewFocus]);
 
-  const lectureSequences = generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (
+  /* ── « TOUT » JOUE L'ENSEMBLE ─────────────────────────────────────────
+     ⚠️ LE CLIC SUR L'ONGLET « TOUT » NE MONTRAIT QUE LA VUE EMPILÉE : titre,
+     cartes et CTA superposés — une image qui ne correspond à AUCUNE séquence
+     du montage — et il fallait encore trouver le petit ▶. Le clic lance
+     désormais la lecture des séquences, depuis le début ; à la fin (ou sur
+     Pause) le plateau de composition revient, éditable. Seul le GESTE lance :
+     l'ouverture de l'écran, sur « Tout » par défaut, ne joue rien. Avec la
+     réduction des animations, rien ne part — Lire reste volontaire. */
+  const [lectureToutDemandee, setLectureToutDemandee] = useState<number | null>(null);
+  const lectureToutNo = useRef(0);
+  const choisirOnglet = useCallback((f: PreviewFocus) => {
+    setPreviewFocus(f);
+    // Un montage rendu (ou en cours) occupe déjà « Tout » — et joue tout
+    // seul. Une demande laissée en attente partirait plus tard, sans geste.
+    if (f === 'all' && !reduireAnimations && !previewUrl && !rendPourApercu) {
+      lectureToutNo.current += 1;
+      setLectureToutDemandee(lectureToutNo.current);
+    }
+  }, [reduireAnimations, previewUrl, rendPourApercu]);
+  const lectureToutLancee = useCallback(() => setLectureToutDemandee(null), []);
+
+  /**
+   * Le lecteur des séquences, pour un cadre d'échelle `scale`.
+   *
+   * Une FONCTION et non un nœud : l'aperçu principal ET la fenêtre agrandie
+   * le posent, chacun à sa propre échelle. Un seul des deux à la fois (voir
+   * `overlay` des deux `Preview`) — deux lecteurs joueraient deux horloges.
+   */
+  const lectureSequences = (scale: number) => (generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (
     <SequencePlayback
       steps={etapesLecture}
       transition={transition}
-      frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale: displayScale }}
+      frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale }}
       demande={extraitDemande}
       onFin={finExtrait}
+      lancer={lectureToutDemandee}
+      onLancement={lectureToutLancee}
       renderLayer={({ key, progress, textAnimation: animationExtrait }) => {
         // Le fond de CETTE séquence — la règle de l'onglet correspondant.
         const fond = resolveBackground(key as PreviewFocus, seqBackgrounds, posterUrl, posterTransform);
@@ -6493,7 +6563,7 @@ export default function AssistantWizard() {
             focus={key as PreviewFocus}
             activeOrder={activeOrder}
             rushUrl={key === 'video' ? rushUrl : null}
-            displayScale={displayScale}
+            displayScale={scale}
             gradStart={gradStart}
             gradEnd={gradEnd}
             gradientOpacity={gradientOpacity}
@@ -6517,7 +6587,7 @@ export default function AssistantWizard() {
         );
       }}
     />
-  ) : null;
+  ) : null);
 
   /**
    * Pre-remplissage des textes de voix depuis le contenu genere.
@@ -11660,6 +11730,10 @@ export default function AssistantWizard() {
           onDragMove={moveDrag}
           onDragEnd={endDrag}
           dragging={dragging}
+          // Poignées de coin du TITRE et du CTA : le même geste que les
+          // cartes — il règle la taille du texte, que le curseur de gauche
+          // règle aussi (même état, même rendu).
+          onTextResizeStart={startTextResize}
           onCardDragStart={startCardDrag}
           // ⚠️ LES CARTES N'AVAIENT PAS DE POIGNEES. Tirer un coin de carte
           // ne faisait rien — elles n'existaient que pour le titre et le CTA.
@@ -11680,15 +11754,17 @@ export default function AssistantWizard() {
             onElementDragStart={startElementDrag}
           onElementResizeStart={startElementResize}
           onElementDelete={deleteElement}
-          onFocusChange={setPreviewFocus}
+          onFocusChange={choisirOnglet}
           // ⚠️ TOUTES LES SEQUENCES, PAS SEULEMENT CERTAINES. Titre,
           // sous-titre, cartes et CTA ouvrent chacun leur panneau — c'est ce
           // que l'utilisateur attend d'un double-clic sur un element.
           onTextDoubleClick={ouvrirZone}
           onCardDoubleClick={() => ouvrirZone('cards')}
           // Le vrai rendu d'abord ; sinon la lecture des séquences (« Tout »
-          // seulement) ; sinon rien — le plateau nu.
-          overlay={renduDansLeCadre ?? lectureSequences}
+          // seulement) ; sinon rien — le plateau nu. Aperçu agrandi ouvert :
+          // c'est LUI qui joue — deux lecteurs, ce seraient deux vidéos et
+          // deux horloges pour le même montage.
+          overlay={apercuAgrandi ? null : (renduDansLeCadre ?? lectureSequences(displayScale))}
         />
 
         {/* ── RÉGLAGES D'UNE SÉQUENCE, AU DOUBLE-CLIC ──────────────────
@@ -11867,8 +11943,9 @@ export default function AssistantWizard() {
           <button
             type="button"
             onClick={() => setEnlargedOpen((v) => !v)}
-            title="Ouvrir l’aperçu dans une fenêtre déplaçable et redimensionnable"
+            title="Agrandir l’aperçu en plein écran — Échap pour revenir"
             aria-pressed={enlargedOpen}
+            data-apercu-agrandir
             className={`mt-2 w-full flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
               enlargedOpen
                 ? 'border-purple-500/40 bg-gray-800 text-white'
@@ -11876,37 +11953,77 @@ export default function AssistantWizard() {
             }`}
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            {enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
+            {enlargedOpen ? 'Réduire l’aperçu' : 'Agrandir'}
           </button>
         )}
 
-        <FloatingPanel
-          title="Aperçu"
-          isOpen={enlargedOpen && !!generated}
-          onClose={() => setEnlargedOpen(false)}
-          initialX={enlargedGeometry.x}
-          initialY={enlargedGeometry.y}
-          initialWidth={enlargedGeometry.w}
-          initialHeight={enlargedGeometry.h}
-          resizable
-          // Elle reste ouverte pendant qu'on regle les couleurs, les cartes ou
-          // les fonds a gauche : c'est tout son interet.
-          closeOnClickOutside={false}
-          onGeometryChange={rememberEnlargedGeometry}
-          accentColor={accent}
-        >
-          <div ref={enlargedBodyRef} className="h-full w-full flex items-start justify-center">
-            <div style={{ width: enlargedWidth || '100%' }}>
-              <Preview
-                {...previewShared}
-                hideHeader
-                frameRef={enlargedFrameRef}
-                displayScale={enlargedScale}
-                onFocusChange={setPreviewFocus}
-              />
+        {/* ── APERÇU AGRANDI — PLEIN ÉCRAN ──────────────────────────────
+            ⚠️ C'ÉTAIT UNE FENÊTRE FLOTTANTE de 420 × 640 px par défaut : à
+            peine plus grande que l'aperçu de la colonne, l'utilisateur
+            l'ouvrait pour voir… la même taille. C'est désormais une modale
+            plein écran : le cadre est borné par la hauteur de la fenêtre
+            (≈ 90 % en 9:16), et l'on revient par le bouton ou Échap.
+
+            Posée dans `document.body` (portail) : la colonne d'aperçu est
+            collante (`sticky`), donc un contexte d'empilement — une modale
+            restée dedans passerait SOUS la barre latérale. */}
+        {apercuAgrandi && typeof document !== 'undefined' && createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Aperçu agrandi"
+            data-apercu-agrandi
+            className="fixed inset-0 flex flex-col"
+            style={{ zIndex: 120, backgroundColor: 'rgba(5, 5, 10, 0.92)', padding: 8 }}
+            onClick={(e) => { if (e.target === e.currentTarget) setEnlargedOpen(false); }}
+          >
+            <button
+              type="button"
+              onClick={() => setEnlargedOpen(false)}
+              data-apercu-reduire
+              title="Revenir à la vue normale (Échap)"
+              aria-label="Revenir à la vue normale"
+              className="absolute top-3 right-3 flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-900/90 px-2.5 py-1.5 text-xs text-gray-200 hover:text-white hover:border-gray-500 transition-colors"
+              style={{ zIndex: 1 }}
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              Réduire
+            </button>
+            <div
+              ref={enlargedBodyRef}
+              className="flex-1 min-h-0 w-full flex items-center justify-center"
+              onClick={(e) => { if (e.target === e.currentTarget) setEnlargedOpen(false); }}
+            >
+              <div
+                style={{
+                  width: enlargedWidth || '100%',
+                  // ⚠️ LA VRAIE CAUSE DU « MÊME TAILLE ». `.apercu-cadre`
+                  // (globals.css) borne la largeur du cadre à
+                  // `(100vh - --apercu-offset) × ratio` pour que l'aperçu de
+                  // la COLONNE tienne sous la navbar. Héritée ici, cette borne
+                  // gardait le cadre agrandi à la taille de la colonne, quelle
+                  // que soit la fenêtre. La modale n'a ni navbar ni en-tête :
+                  // décalage nul, et c'est sa propre mesure qui borne.
+                  ['--apercu-offset' as string]: '0px',
+                } as React.CSSProperties}
+              >
+                <Preview
+                  {...previewShared}
+                  hideHeader
+                  hideFootnote
+                  frameRef={enlargedFrameRef}
+                  displayScale={enlargedScale}
+                  onFocusChange={choisirOnglet}
+                  // Le rendu, la composition en cours ou la lecture des
+                  // séquences : le MÊME calque que l'aperçu principal, à
+                  // l'échelle de ce cadre.
+                  overlay={renduDansLeCadre ?? lectureSequences(enlargedScale)}
+                />
+              </div>
             </div>
-          </div>
-        </FloatingPanel>
+          </div>,
+          document.body,
+        )}
         {/* ── AFFICHE ─────────────────────────────────────────────────
             Telechargement local de l'apercu tel qu'il est affiche. Ni credit,
             ni post : un `<a download>` sur un blob. */}

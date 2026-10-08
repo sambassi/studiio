@@ -175,7 +175,9 @@ describe('C — le câblage de l assistant', () => {
   it('l aperçu de l assistant reçoit le calque — le rendu D ABORD', () => {
     // Depuis la lecture des séquences, le slot est partagé : le vrai rendu
     // (payé) garde la priorité, la lecture ne vient qu'en son absence.
-    expect(wizard).toContain('overlay={renduDansLeCadre ?? lectureSequences}');
+    // L'aperçu agrandi ouvert, c'est lui qui le reçoit (un seul lecteur).
+    expect(wizard).toContain('overlay={apercuAgrandi ? null : (renduDansLeCadre ?? lectureSequences(displayScale))}');
+    expect(wizard).toContain('overlay={renduDansLeCadre ?? lectureSequences(enlargedScale)}');
   });
 
   it('le montage ne joue que sur l onglet « Tout »', () => {

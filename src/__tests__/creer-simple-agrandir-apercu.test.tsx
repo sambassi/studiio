@@ -258,8 +258,11 @@ const DEBUT_WIZARD = wizard.indexOf('export default function AssistantWizard()')
 // corps : l'assistant en porte desormais un AUTRE, celui des reglages d'une
 // sequence ouvert au double-clic, declare plus haut. Sans cette ancre, la
 // tranche decrivait le mauvais panneau.
-const debutFenetre = wizard.lastIndexOf('<FloatingPanel', wizard.indexOf('title="Aperçu"', DEBUT_WIZARD));
-const fenetre = wizard.slice(debutFenetre, wizard.indexOf('</FloatingPanel>', debutFenetre));
+// ⚠️ DEPUIS LE PASSAGE EN PLEIN ECRAN, la fenetre n'est plus un
+// `FloatingPanel` mais une modale posee par portail : la tranche part de son
+// marqueur `data-apercu-agrandi` et s'arrete au `document.body` du portail.
+const debutFenetre = wizard.indexOf('{apercuAgrandi && typeof document', DEBUT_WIZARD);
+const fenetre = wizard.slice(debutFenetre, wizard.indexOf('document.body,', debutFenetre));
 
 describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
   it('elle ne reçoit AUCUNE des refs de l aperçu principal', () => {
@@ -296,7 +299,8 @@ describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
   });
 
   it('ses onglets pilotent l état partagé — ils marchent des deux côtés', () => {
-    expect(fenetre).toContain('onFocusChange={setPreviewFocus}');
+    // `choisirOnglet` : le même que l'aperçu principal (« Tout » y joue aussi).
+    expect(fenetre).toContain('onFocusChange={choisirOnglet}');
     expect(wizard).toContain('focus: previewFocus,');
   });
 
@@ -312,6 +316,16 @@ describe('La fenêtre est un MIROIR, pas un second éditeur', () => {
   });
 });
 
+/**
+ * ⚠️ LA FENETRE FLOTTANTE EST DEVENUE UNE MODALE PLEIN ECRAN.
+ *
+ * Elle s'ouvrait a 420 × 640 px (geometrie memorisee), et son cadre restait
+ * de toute facon borne par `.apercu-cadre` a la taille de la colonne :
+ * l'utilisateur cliquait « Agrandir » et obtenait la meme taille. La
+ * geometrie memorisee (`studiio.creer-simple.apercu-agrandi`) n'a plus d'objet
+ * — la taille est celle de l'ecran. Le comportement est verifie au rendu
+ * dans `creer-apercu-filtres-agrandir-redimension.test.tsx`.
+ */
 describe('Le bouton et la fenêtre', () => {
   it('fermée par défaut : ne rien faire ne change rien', () => {
     expect(wizard).toContain('const [enlargedOpen, setEnlargedOpen] = useState(false);');
@@ -319,66 +333,46 @@ describe('Le bouton et la fenêtre', () => {
 
   it('le bouton bascule, et n apparaît qu avec un contenu à montrer', () => {
     expect(wizard).toContain('onClick={() => setEnlargedOpen((v) => !v)}');
-    expect(wizard).toContain("enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'");
-    expect(fenetre).toContain('isOpen={enlargedOpen && !!generated}');
+    expect(wizard).toContain("enlargedOpen ? 'Réduire l’aperçu' : 'Agrandir'");
+    expect(wizard).toContain('const apercuAgrandi = enlargedOpen && !!generated;');
   });
 
   it('une icône lucide, jamais un emoji', () => {
     expect(wizard).toContain('<Maximize2 className="w-3.5 h-3.5" />');
+    expect(fenetre).toContain('<Minimize2 className="w-3.5 h-3.5" />');
   });
 
-  it('elle reste ouverte pendant qu on règle les couleurs à gauche', () => {
-    // Sans cela, le premier clic dans le panneau de réglages la refermerait —
-    // et elle ne servirait plus à rien.
-    expect(fenetre).toContain('closeOnClickOutside={false}');
+  it('plein écran, au-dessus de tout, et Échap ramène à la vue normale', () => {
+    expect(fenetre).toContain('className="fixed inset-0 flex flex-col"');
+    expect(fenetre).toContain('createPortal(');
+    expect(wizard).toContain("if (e.key === 'Escape') setEnlargedOpen(false);");
   });
 
-  it('elle est déplaçable et redimensionnable', () => {
-    expect(fenetre).toContain('resizable');
-    expect(fenetre).toContain('initialWidth={enlargedGeometry.w}');
-    expect(fenetre).toContain('initialHeight={enlargedGeometry.h}');
+  it('plus de géométrie mémorisée : la taille est celle de l écran', () => {
+    expect(wizard).not.toContain('ENLARGED_GEOMETRY_KEY');
+    expect(wizard).not.toContain('sessionStorage.');
   });
 });
 
 describe('Le plateau tient dans la fenêtre', () => {
   it('il est borné sur les DEUX dimensions, pas seulement la largeur', () => {
-    // Borné sur la seule largeur, un 9:16 déborderait en hauteur : élargir la
-    // fenêtre montrerait de moins en moins d'image.
+    // Borné sur la seule largeur, un 9:16 déborderait en hauteur.
     expect(wizard).toContain('Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio)');
   });
 
   it('le chrome est MESURÉ, pas écrit en dur', () => {
-    // Une marge modifiée dans `Preview` rendrait une constante fausse en
-    // silence.
     expect(wizard).toContain('Math.max(0, carte.offsetHeight - frame.offsetHeight)');
   });
 
   it('un seuil empêche mesure et largeur de se relancer sans fin', () => {
     expect(wizard).toContain('Math.abs(prev - large) > 1 ? large : prev');
   });
-});
 
-describe('Persistance de la géométrie', () => {
-  it('elle passe par localStorage — un réglage d ergonomie survit à l onglet', () => {
-    expect(wizard).toContain("const ENLARGED_GEOMETRY_KEY = 'studiio.creer-simple.apercu-agrandi';");
-    expect(wizard).toContain('window.localStorage.setItem(ENLARGED_GEOMETRY_KEY');
-    expect(wizard).not.toContain('sessionStorage.');
-  });
-
-  it('la lecture est gardée : SSR et stockage refusé', () => {
-    const bloc = wizard.slice(wizard.indexOf('const [enlargedGeometry'), wizard.indexOf('const rememberEnlargedGeometry'));
-    expect(bloc).toContain("typeof window === 'undefined'");
-    expect(bloc).toContain('} catch {');
-    expect(bloc).toContain('const repli = { x: 120, y: 90, w: 420, h: 640 };');
-  });
-
-  it('un quota plein ne casse pas la fenêtre', () => {
-    const bloc = wizard.slice(wizard.indexOf('const rememberEnlargedGeometry'), wizard.indexOf('const rememberEnlargedGeometry') + 700);
-    expect(bloc).toContain('} catch {');
-  });
-
-  it('un JSON corrompu retombe sur le repli, il ne fait pas planter la page', () => {
-    expect(wizard).toContain('JSON.parse(brut) as typeof repli');
+  it('la borne de la colonne (`.apercu-cadre`) est levée dans la modale', () => {
+    expect(fenetre).toContain("['--apercu-offset' as string]: '0px'");
+    // Ni en-tête ni note : toute la hauteur va au plateau.
+    expect(fenetre).toContain('hideHeader');
+    expect(fenetre).toContain('hideFootnote');
   });
 });
 

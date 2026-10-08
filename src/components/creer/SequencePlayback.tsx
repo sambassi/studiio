@@ -76,6 +76,8 @@ export default function SequencePlayback({
   disabled = false,
   demande = null,
   onFin,
+  lancer = null,
+  onLancement,
 }: {
   /** Séquences dans l'ordre du montage, avec leur durée en secondes. */
   steps: readonly SequenceStep[];
@@ -96,6 +98,15 @@ export default function SequencePlayback({
   demande?: PlaybackRequest | null;
   /** L'extrait est arrivé à son terme, ou a été quitté : le plateau est de retour. */
   onFin?: () => void;
+  /**
+   * Demande de lecture du montage ENTIER, depuis le début — le clic sur
+   * l'onglet « Tout ». Un compteur, comme `demande.id` : une valeur nouvelle
+   * relance. `null` (défaut) : rien ne part tout seul, comportement d'avant.
+   * L'appelant la consomme par `onLancement`, pour qu'un remontage du
+   * lecteur ne la rejoue pas.
+   */
+  lancer?: number | null;
+  onLancement?: () => void;
 }) {
   const playable = steps.filter((s) => s.seconds > 0);
   const total = totalSeconds(playable);
@@ -185,6 +196,25 @@ export default function SequencePlayback({
     // Une seule lecture par `id` : les bornes sont dans la demande elle-même.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demandeId]);
+
+  /* ── LE MONTAGE ENTIER, À LA DEMANDE ───────────────────────────────────
+     Même place que la demande d'extrait : après la remise à zéro du montage.
+     Lit TOUT le montage (aucun extrait armé), depuis zéro. */
+  const onLancementRef = useRef(onLancement);
+  useEffect(() => { onLancementRef.current = onLancement; }, [onLancement]);
+  useEffect(() => {
+    if (lancer === null || lancer === undefined) return;
+    onLancementRef.current?.();
+    if (totalSeconds(steps.filter((s) => s.seconds > 0)) <= 0) return;
+    tRef.current = 0;
+    setT(0);
+    setExtrait(null);
+    setFige(false);
+    setPlaying(true);
+    setDepart((n) => n + 1);
+    // Une lecture par valeur de `lancer`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lancer]);
 
   const toggle = useCallback(() => {
     if (total <= 0) return;
