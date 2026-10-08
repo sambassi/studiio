@@ -11660,7 +11660,10 @@ export default function AssistantWizard() {
                                 format={format === '9:16' ? 'reel' : 'tv'}
                                 videoUrl={null}
                                 value={{ cover: couverture, tiktok: reglagesTiktok }}
-                                onChange={({ cover, tiktok }) => { setCouverture(cover); setReglagesTiktok(tiktok); }}
+                                onChange={(modif) => {
+                                  if (modif.cover !== undefined) setCouverture(modif.cover);
+                                  if (modif.tiktok !== undefined) setReglagesTiktok(modif.tiktok);
+                                }}
                               />
                             </div>
                           )}

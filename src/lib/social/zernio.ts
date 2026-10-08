@@ -283,6 +283,8 @@ export interface ZernioPostCible {
   accountId: string;
   /** Réglages propres au réseau (couverture Instagram, `tiktokSettings`…). Absent : rien n'est envoyé. */
   platformSpecificData?: Record<string, unknown>;
+  /** Remplace `mediaItems` pour CE réseau seul (même vidéo + sa miniature). Absent : rien n'est envoyé. */
+  customMedia?: Array<{ type: 'video'; url: string; thumbnail?: string }>;
 }
 
 export interface ZernioPostInput {
@@ -290,8 +292,6 @@ export interface ZernioPostInput {
   platforms: ZernioPostCible[];
   /** URL rendue par `uploadMedia`, jamais une URL de notre stockage. */
   mediaUrl?: string;
-  /** Miniature du média (`mediaItems[].thumbnail`) — Facebook, YouTube. Absente : rien n'est envoyé. */
-  mediaThumbnail?: string;
   /** ISO. Avec `timezone`, programme le post. */
   scheduledFor?: string;
   timezone?: string;
@@ -318,9 +318,7 @@ export async function createPost(input: ZernioPostInput): Promise<ZernioPostResu
     body: {
       content: input.content,
       platforms: input.platforms,
-      ...(input.mediaUrl
-        ? { mediaItems: [{ type: 'video', url: input.mediaUrl, ...(input.mediaThumbnail ? { thumbnail: input.mediaThumbnail } : null) }] }
-        : null),
+      ...(input.mediaUrl ? { mediaItems: [{ type: 'video', url: input.mediaUrl }] } : null),
       ...(input.scheduledFor ? { scheduledFor: input.scheduledFor } : null),
       ...(input.timezone ? { timezone: input.timezone } : null),
       ...(input.publishNow ? { publishNow: true } : null),

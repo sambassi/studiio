@@ -9,8 +9,8 @@
  * |-----------------|---------------------------------------|---------------------------------------|
  * | Instagram Reel  | `platformSpecificData.instagramThumbnail` | `platformSpecificData.thumbOffset` (ms) |
  * | TikTok          | `tiktokSettings.video_cover_image_url`    | `tiktokSettings.video_cover_timestamp_ms` |
- * | Facebook        | `mediaItems[].thumbnail` (guide médias)   | — → image EXTRAITE par Studiio        |
- * | YouTube vidéo   | `mediaItems[].thumbnail` (≤ 2 Mo)         | — → image EXTRAITE par Studiio        |
+ * | Facebook        | `customMedia[].thumbnail` (guide médias)  | — → image EXTRAITE par Studiio        |
+ * | YouTube vidéo   | `customMedia[].thumbnail` (≤ 2 Mo)        | — → image EXTRAITE par Studiio        |
  * | YouTube Short   | non pris en charge par l'API              | non pris en charge                    |
  *
  * ⚠️ ABSENCE DE COUVERTURE = COMPORTEMENT D'AVANT, au champ près : aucun
@@ -117,7 +117,7 @@ export interface PlanCouverture {
   platformSpecificData?: Record<string, unknown>;
   /** Réglages de couverture à fusionner dans `tiktokSettings`. */
   tiktokCouverture?: Record<string, unknown>;
-  /** Image à poser sur `mediaItems[].thumbnail` (Facebook, YouTube). */
+  /** Miniature du média de CE réseau (`customMedia[].thumbnail`) — Facebook, YouTube classique. */
   miniatureMedia?: string;
   /** Repli utilisé, en clair — `null` si la couverture choisie est appliquée. */
   repli: string | null;

@@ -54,7 +54,13 @@ export default function ReglagesPublicationReseaux({
   /** Montage déjà rendu : permet de choisir un moment. Absent (Créer) : choix d'un moment désactivé. */
   videoUrl?: string | null;
   value: ValeurReglagesPublication;
-  onChange: (v: ValeurReglagesPublication) => void;
+  /**
+   * ⚠️ REÇOIT LA SEULE PARTIE MODIFIÉE (`{ cover }` ou `{ tiktok }`), que le
+   * parent fusionne. Renvoyer la valeur entière, calculée sur un `value`
+   * périmé, écrasait l'autre moitié : la lecture asynchrone des réglages
+   * TikTok effaçait une couverture choisie entre-temps.
+   */
+  onChange: (modif: Partial<ValeurReglagesPublication>) => void;
 }) {
   const cover = value.cover;
   const mode: ModeCouverture = cover?.mode ?? 'auto';
@@ -89,7 +95,6 @@ export default function ReglagesPublicationReseaux({
             return !!i && i.enabled && i.default === true;
           };
           onChange({
-            ...value,
             tiktok: {
               privacy_level: info.confidentialites.includes(CONFIDENTIALITE_SECURITE) ? CONFIDENTIALITE_SECURITE : info.confidentialites[0],
               allow_comment: d('allow_comment'), allow_duet: d('allow_duet'), allow_stitch: d('allow_stitch'),
@@ -106,9 +111,9 @@ export default function ReglagesPublicationReseaux({
 
   const choisirMode = (m: ModeCouverture) => {
     setErreurImage(null);
-    if (m === 'auto') onChange({ ...value, cover: { mode: 'auto' } });
-    else if (m === 'frame') onChange({ ...value, cover: { mode: 'frame', frameMs: cover?.mode === 'frame' ? cover.frameMs : 1000 } });
-    else onChange({ ...value, cover: cover?.mode === 'upload' ? cover : { mode: 'upload' } });
+    if (m === 'auto') onChange({ cover: { mode: 'auto' } });
+    else if (m === 'frame') onChange({ cover: { mode: 'frame', frameMs: cover?.mode === 'frame' ? cover.frameMs : 1000 } });
+    else onChange({ cover: cover?.mode === 'upload' ? cover : { mode: 'upload' } });
   };
 
   const envoyerImage = async (f: File) => {
@@ -121,14 +126,14 @@ export default function ReglagesPublicationReseaux({
       // Un repli `data:` n'est PAS une adresse publique : les réseaux ne
       // pourraient pas aller chercher l'image.
       if (r.dataUrl) { setErreurImage('Envoi de l’image impossible. Réessayez.'); return; }
-      onChange({ ...value, cover: { mode: 'upload', imageUrl: r.url } });
+      onChange({ cover: { mode: 'upload', imageUrl: r.url } });
     } finally {
       setEnvoi(false);
     }
   };
 
   const tt = value.tiktok;
-  const majTt = (patch: Partial<ReglagesTiktok>) => tt && onChange({ ...value, tiktok: { ...tt, ...patch } });
+  const majTt = (patch: Partial<ReglagesTiktok>) => tt && onChange({ tiktok: { ...tt, ...patch } });
 
   if (reseaux.length === 0) return null;
 
@@ -171,7 +176,7 @@ export default function ReglagesPublicationReseaux({
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) void envoyerImage(f); e.target.value = ''; }} />
                   </label>
                   <button type="button" className="inline-flex items-center gap-1 text-xs text-red-400 hover:text-red-300"
-                    onClick={() => onChange({ ...value, cover: { mode: 'auto' } })} data-couverture-supprimer>
+                    onClick={() => onChange({ cover: { mode: 'auto' } })} data-couverture-supprimer>
                     <Trash2 size={12} /> Supprimer
                   </button>
                 </div>
@@ -205,11 +210,14 @@ export default function ReglagesPublicationReseaux({
                     e.currentTarget.currentTime = (cover?.frameMs ?? 1000) / 1000;
                   }}
                 />
+                {/* Désactivé tant que la durée est inconnue : borné à 1 ms, le
+                    curseur enregistrerait un moment faux au premier geste. */}
                 <input
                   type="range"
                   min={0}
                   max={Math.max(dureeMs, 1)}
                   step={50}
+                  disabled={dureeMs <= 0}
                   value={cover?.frameMs ?? 1000}
                   aria-label="Moment de la couverture"
                   data-couverture-curseur
@@ -217,10 +225,13 @@ export default function ReglagesPublicationReseaux({
                   onChange={(e) => {
                     const ms = Number(e.target.value);
                     if (videoRef.current) videoRef.current.currentTime = ms / 1000;
-                    onChange({ ...value, cover: { mode: 'frame', frameMs: ms } });
+                    onChange({ cover: { mode: 'frame', frameMs: ms } });
                   }}
                 />
-                <p className="text-xs text-gray-400">Moment choisi : <span className="text-white" data-couverture-temps>{formatMs(cover?.frameMs ?? 1000)}</span></p>
+                <p className="text-xs text-gray-400">
+                  {dureeMs <= 0 ? 'Chargement de la vidéo… ' : null}
+                  Moment choisi : <span className="text-white" data-couverture-temps>{formatMs(cover?.frameMs ?? 1000)}</span>
+                </p>
               </>
             ) : (
               <p className="text-xs text-gray-400" data-couverture-frame-indisponible>

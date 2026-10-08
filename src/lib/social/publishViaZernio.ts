@@ -205,15 +205,25 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
     if (plan.repli) avertissements.push(plan.repli);
     return plan;
   });
-  const construireCibles = (avecCouverture: boolean) => ciblesRetenues.map((c, i) => {
+  // ⚠️ LA MINIATURE VA SUR LE MÉDIA DU SEUL RÉSEAU QUI LA VEUT. Posée sur
+  // `mediaItems[].thumbnail` (commun à TOUS les réseaux du post), elle
+  // partait aussi vers un YouTube Short — qui ne l'accepte pas : un refus
+  // aurait fait retirer la couverture de Facebook avec. `customMedia`
+  // (docs Zernio, guide médias) remplace le média pour UNE entrée : la même
+  // vidéo, avec sa miniature, pour Facebook / YouTube classique seulement.
+  const construireCibles = (avecCouverture: boolean, mediaUrl: string) => ciblesRetenues.map((c, i) => {
     const plan = avecCouverture ? plans[i] : null;
     const psd: Record<string, unknown> = {
       ...(plan?.platformSpecificData ?? {}),
       ...(c.platform === 'tiktok' && reglagesTt ? { tiktokSettings: tiktokSettings(reglagesTt, plan) } : {}),
     };
-    return { ...c, ...(Object.keys(psd).length ? { platformSpecificData: psd } : {}) };
+    const miniature = absolue(plan?.miniatureMedia);
+    return {
+      ...c,
+      ...(Object.keys(psd).length ? { platformSpecificData: psd } : {}),
+      ...(miniature ? { customMedia: [{ type: 'video' as const, url: mediaUrl, thumbnail: miniature }] } : {}),
+    };
   });
-  const miniatureMedia = absolue(plans.find((p) => p.miniatureMedia)?.miniatureMedia);
   const couvertureAppliquee = plans.some((p) => p.applique !== 'auto');
 
   try {
@@ -227,9 +237,8 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
 
     const envoyer = (avecCouverture: boolean) => createPost({
       content: post.caption,
-      platforms: construireCibles(avecCouverture),
+      platforms: construireCibles(avecCouverture, mediaUrl),
       mediaUrl,
-      ...(avecCouverture && miniatureMedia ? { mediaThumbnail: miniatureMedia } : {}),
       ...(post.scheduledFor
         ? { scheduledFor: post.scheduledFor, timezone: post.timezone ?? 'Europe/Paris' }
         : { publishNow: true }),

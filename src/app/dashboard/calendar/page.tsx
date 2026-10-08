@@ -3041,9 +3041,13 @@ export default function CalendarPage() {
                 cover: lireCouverture(editFormData.metadata),
                 tiktok: lireReglagesTiktok(editFormData.metadata),
               }}
-              onChange={({ cover, tiktok }) => setEditFormData((prev) => ({
+              onChange={(modif) => setEditFormData((prev) => ({
                 ...prev,
-                metadata: { ...(prev.metadata || {}), ...(cover ? { cover } : {}), ...(tiktok ? { tiktok } : {}) },
+                metadata: {
+                  ...(prev.metadata || {}),
+                  ...(modif.cover !== undefined ? { cover: modif.cover } : {}),
+                  ...(modif.tiktok !== undefined ? { tiktok: modif.tiktok } : {}),
+                },
               }))}
             />
             <div>

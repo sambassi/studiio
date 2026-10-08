@@ -152,7 +152,10 @@ async function publier(platforms: string[], metadata: Ligne, format = 'tv') {
   const { publierViaZernio } = await import('@/lib/social/publishViaZernio');
   return publierViaZernio({ id: 'p1', userId: 'u1', caption: 'x', mediaUrl: 'https://cdn.example/m.mp4', platforms, format });
 }
-const corps = (i = 0) => createPost.mock.calls[i]?.[0] as { platforms: Array<Record<string, any>>; mediaThumbnail?: string };
+const corps = (i = 0) => createPost.mock.calls[i]?.[0] as { platforms: Array<Record<string, any>>; mediaUrl?: string };
+/** Miniature posée sur le média d'UNE entrée (`customMedia`), ou `undefined`. */
+const miniatureDe = (entree: Record<string, any> | undefined) => entree?.customMedia?.[0]?.thumbnail as string | undefined;
+const aucuneMiniature = (i = 0) => corps(i).platforms.every((p) => p.customMedia === undefined);
 
 describe('publierViaZernio : requête par réseau', () => {
   beforeEach(() => {
@@ -174,7 +177,7 @@ describe('publierViaZernio : requête par réseau', () => {
       { platform: 'facebook', accountId: 'acc-facebook' },
       { platform: 'youtube', accountId: 'acc-youtube' },
     ]);
-    expect(corps().mediaThumbnail).toBeUndefined();
+    expect(aucuneMiniature()).toBe(true);
     expect(imageDepuisVideo).not.toHaveBeenCalled();
   });
 
@@ -186,7 +189,11 @@ describe('publierViaZernio : requête par réseau', () => {
     expect(fb.platformSpecificData).toBeUndefined();
     expect(yt.platformSpecificData).toBeUndefined();
     expect(tt.platformSpecificData.tiktokSettings).toMatchObject({ video_cover_image_url: IMG, express_consent_given: true, privacy_level: 'PUBLIC_TO_EVERYONE' });
-    expect(corps().mediaThumbnail).toBe(IMG);
+    // Facebook et YouTube : la même vidéo, avec SA miniature ; Instagram/TikTok : pas de customMedia.
+    expect(fb.customMedia).toEqual([{ type: 'video', url: 'https://zernio.example/tmp/video.mp4', thumbnail: IMG }]);
+    expect(miniatureDe(yt)).toBe(IMG);
+    expect(ig.customMedia).toBeUndefined();
+    expect(tt.customMedia).toBeUndefined();
   });
 
   it('moment : Instagram/TikTok reçoivent le moment ; Facebook/YouTube l’image EXTRAITE (une seule extraction)', async () => {
@@ -196,14 +203,25 @@ describe('publierViaZernio : requête par réseau', () => {
     expect(tt.platformSpecificData.tiktokSettings.video_cover_timestamp_ms).toBe(2500);
     expect(imageDepuisVideo).toHaveBeenCalledTimes(1);
     expect(imageDepuisVideo).toHaveBeenCalledWith('https://cdn.example/m.mp4', 2500, 'u1');
-    expect(corps().mediaThumbnail).toContain('/couvertures/frame.jpg');
+    expect(miniatureDe(corps().platforms[1])).toContain('/couvertures/frame.jpg');
+    expect(miniatureDe(corps().platforms[3])).toContain('/couvertures/frame.jpg');
   });
 
   it('YouTube Short : pas de miniature, publication normale, repli enregistré', async () => {
     const r = await publier(['YouTube'], { cover: UPLOAD }, 'reel');
     expect(r.ok).toBe(true);
-    expect(corps().mediaThumbnail).toBeUndefined();
+    expect(aucuneMiniature()).toBe(true);
     expect(base.scheduled_posts[0].metadata.avertissementsPublication.join(' ')).toContain('Shorts');
+  });
+
+  it('Facebook + YouTube Short dans le même post : Facebook GARDE sa miniature, le Short n’en reçoit aucune', async () => {
+    const r = await publier(['Facebook', 'YouTube'], { cover: UPLOAD }, 'reel');
+    expect(r.ok).toBe(true);
+    expect(createPost).toHaveBeenCalledTimes(1);
+    const [fb, yt] = corps().platforms;
+    expect(miniatureDe(fb)).toBe(IMG);
+    expect(yt.customMedia).toBeUndefined();
+    expect(corps().mediaUrl).toBe('https://zernio.example/tmp/video.mp4');
   });
 
   it('TikTok SANS consentement, seul : bloqué avant le fournisseur, message clair', async () => {
@@ -228,7 +246,7 @@ describe('publierViaZernio : requête par réseau', () => {
     expect(r.ok).toBe(true);
     expect(createPost).toHaveBeenCalledTimes(2);
     expect(corps(1).platforms[0].platformSpecificData).toBeUndefined();
-    expect(corps(1).mediaThumbnail).toBeUndefined();
+    expect(aucuneMiniature(1)).toBe(true);
     expect(base.scheduled_posts[0].metadata.avertissementsPublication.join(' ')).toContain('Couverture refusée');
   });
 
@@ -244,7 +262,7 @@ describe('publierViaZernio : requête par réseau', () => {
     imageDepuisVideo.mockImplementationOnce(async () => null as never);
     const r = await publier(['Facebook'], { cover: FRAME });
     expect(r.ok).toBe(true);
-    expect(corps().mediaThumbnail).toBeUndefined();
+    expect(aucuneMiniature()).toBe(true);
   });
 });
 
@@ -260,13 +278,25 @@ describe('écran : zone unique, résumé par réseau, TikTok honnête', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({ success: true, fiable: false, confidentialites: ['SELF_ONLY'], interactions: null }) })));
     const { default: Zone } = await import('@/components/social/ReglagesPublicationReseaux');
     let valeur = { cover: null as Couverture | null, tiktok: null as ReglagesTiktok | null };
-    const { rerender } = render(<Zone reseaux={['tiktok', 'youtube']} format="reel" value={valeur} onChange={(v) => { valeur = v; }} />);
+    const { rerender } = render(<Zone reseaux={['tiktok', 'youtube']} format="reel" value={valeur} onChange={(m) => { valeur = { ...valeur, ...m }; }} />);
     await waitFor(() => expect(valeur.tiktok).not.toBeNull());
-    rerender(<Zone reseaux={['tiktok', 'youtube']} format="reel" value={valeur} onChange={(v) => { valeur = v; }} />);
+    rerender(<Zone reseaux={['tiktok', 'youtube']} format="reel" value={valeur} onChange={(m) => { valeur = { ...valeur, ...m }; }} />);
     expect(valeur.tiktok).toMatchObject({ privacy_level: 'SELF_ONLY', consentement: false, allow_comment: false });
     expect(screen.getByText(/TikTok sera publié en « Moi uniquement »/)).toBeTruthy();
     expect((document.querySelector('[data-tiktok-consentement]') as HTMLInputElement).checked).toBe(false);
     expect(screen.getByText('YouTube Short : couverture choisie automatiquement')).toBeTruthy();
+  });
+  it('la lecture TikTok (asynchrone) n’efface JAMAIS une couverture choisie entre-temps', async () => {
+    let repondre: (v: unknown) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((r) => { repondre = r; })));
+    const { default: Zone } = await import('@/components/social/ReglagesPublicationReseaux');
+    const modifs: Array<Record<string, unknown>> = [];
+    render(<Zone reseaux={['tiktok']} format="reel" value={{ cover: null, tiktok: null }} onChange={(m) => modifs.push(m)} />);
+    (document.querySelector('[data-couverture-mode="frame"]') as HTMLElement).click();
+    repondre({ json: async () => ({ fiable: false, confidentialites: ['SELF_ONLY'], interactions: null }) });
+    await waitFor(() => expect(modifs.some((m) => 'tiktok' in m)).toBe(true));
+    for (const m of modifs) expect(Object.keys(m).length).toBe(1);
+    expect(modifs.find((m) => 'tiktok' in m)).not.toHaveProperty('cover');
   });
   it('Créer (pas de montage) : « image dans la vidéo » renvoie vers le Calendrier', async () => {
     const { default: Zone } = await import('@/components/social/ReglagesPublicationReseaux');
