@@ -52,6 +52,10 @@ export class ZernioError extends Error {
     message: string,
     readonly status: number,
     readonly retryAfter?: number,
+    /** Code d'erreur Zernio (`ACCOUNT_DISCONNECTED`, `PAYMENT_REQUIRED`…). */
+    readonly code?: string,
+    /** Message d'erreur RENDU PAR ZERNIO, tel quel (jamais de secret dedans). */
+    readonly detail?: string,
   ) {
     super(message);
     this.name = 'ZernioError';
@@ -105,10 +109,14 @@ async function appel<T>(
     if (!res.ok) {
       const texte = await res.text().catch(() => '');
       const retry = Number(res.headers.get('retry-after'));
+      let corps: { error?: unknown; message?: unknown; code?: unknown } = {};
+      try { corps = JSON.parse(texte); } catch { /* corps non JSON : message brut seulement */ }
       throw new ZernioError(
         `Zernio ${options.method ?? 'GET'} ${chemin} → ${res.status} ${texte.slice(0, 300)}`,
         res.status,
         Number.isFinite(retry) ? retry : undefined,
+        typeof corps.code === 'string' ? corps.code : undefined,
+        typeof corps.error === 'string' ? corps.error : typeof corps.message === 'string' ? corps.message : undefined,
       );
     }
     return await res.json() as T;
