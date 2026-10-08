@@ -53,6 +53,10 @@ describe('traduction pure', () => {
     expect(t.technique.message).toContain('token expired or was revoked');
     expect(t.compteDeconnecte).toBe(COMPTE_IG);
   });
+  it('compte nommé HORS des cibles : jamais marqué déconnecté', () => {
+    const t = traduireErreurZernio({ status: 403, code: 'ACCOUNT_DISCONNECTED', detail: CORPS_403.error }, [{ platform: 'tiktok', accountId: 'autre' }]);
+    expect(t.compteDeconnecte).toBeNull();
+  });
   it('refus inconnu : le message du réseau est montré, pas une phrase générique', () => {
     const t = traduireErreurZernio({ status: 400, code: 'VALIDATION', detail: 'TikTok: privacy_level is required' }, [{ platform: 'tiktok', accountId: 'a' }]);
     expect(t.motif).toBe('Refus du réseau : TikTok: privacy_level is required');

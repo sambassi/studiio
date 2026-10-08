@@ -231,7 +231,7 @@ async function marquerDeconnecte(userId: string, accountId: string): Promise<voi
   try {
     const { error } = await supabaseAdmin
       .from('zernio_accounts')
-      .update({ status: 'disconnected' })
+      .update({ status: 'disconnected', updated_at: new Date().toISOString() })
       .eq('user_id', userId)
       .eq('account_id', accountId);
     if (error) console.error('[Zernio/Publication] compte non marque deconnecte :', error.message);

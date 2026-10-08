@@ -24,7 +24,7 @@ export interface TraductionErreur {
   motif: string;
   details: Array<{ platform: string; success: false; error: string }>;
   technique: { status: number; code: string | null; message: string | null };
-  /** Identifiant Zernio du compte signalé déconnecté, s'il est nommé. */
+  /** Identifiant Zernio du compte CIBLÉ que Zernio signale déconnecté, sinon `null`. */
   compteDeconnecte: string | null;
 }
 
@@ -64,5 +64,7 @@ export function traduireErreurZernio(
     error: erreur.code === 'ACCOUNT_DISCONNECTED' ? 'compte à reconnecter' : (message ?? `HTTP ${erreur.status}`).slice(0, 200),
   }));
 
-  return { motif, details, technique, compteDeconnecte: erreur.code === 'ACCOUNT_DISCONNECTED' ? compteNomme : null };
+  // Seul un compte RÉELLEMENT CIBLÉ par cet envoi peut être marqué
+  // déconnecté : un identifiant nommé hors cibles ne touche à rien.
+  return { motif, details, technique, compteDeconnecte: erreur.code === 'ACCOUNT_DISCONNECTED' && visee ? visee.accountId : null };
 }
