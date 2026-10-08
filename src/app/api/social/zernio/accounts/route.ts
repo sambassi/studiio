@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { synchroniserComptesZernio } from '@/lib/social/synchroComptesZernio';
 import { droitDePublier } from '@/lib/social/publishing';
 import { isZernioPlatform } from '@/lib/social/zernio';
 
@@ -29,6 +30,10 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     const droit = await droitDePublier(session.user.id, session.user.email);
+    // Zernio fait foi : jeton expiré, autorisation révoquée, nouvel
+    // `accountId` après reconnexion — la base est remise à jour AVANT d'être
+    // lue. Injoignable : la base est lue telle quelle.
+    await synchroniserComptesZernio(session.user.id, droit.profileId);
     const { data } = await supabaseAdmin
       .from('zernio_accounts')
       .select('account_id, platform, username, status')
@@ -91,6 +96,10 @@ export async function POST(req: NextRequest) {
       console.error('[Zernio/Accounts] upsert :', error.message);
       return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });
     }
+    // Retour de connexion : relire TOUS les comptes chez Zernio. Une
+    // reconnexion peut créer un nouvel `accountId` ; l'ancien doit cesser
+    // d'être ciblé.
+    await synchroniserComptesZernio(session.user.id, droit.profileId, { forcer: true });
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[Zernio/Accounts]', err);
