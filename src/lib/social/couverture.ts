@@ -96,6 +96,17 @@ export function lireReglagesTiktok(meta: unknown): ReglagesTiktok | null {
   };
 }
 
+/**
+ * Les métadonnées d'un post SANS le consentement TikTok — pour tout geste qui
+ * doit le redemander : ouvrir l'éditeur du Calendrier, « Réessayer ».
+ * Le reste des réglages (visibilité, interactions) est conservé. Pur.
+ */
+export function sansConsentementTiktok<T extends object | null | undefined>(meta: T): T {
+  const t = (meta as { tiktok?: unknown } | null | undefined)?.tiktok;
+  if (!meta || !t || typeof t !== 'object') return meta;
+  return { ...meta, tiktok: { ...(t as Record<string, unknown>), consentement: false } } as T;
+}
+
 /** TikTok peut-il partir ? Sinon, le motif à afficher — AVANT tout appel au fournisseur. */
 export function validerTiktok(r: ReglagesTiktok | null): { ok: true } | { ok: false; motif: string } {
   if (!r) {

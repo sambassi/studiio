@@ -74,7 +74,7 @@ import { useTranslations, useLocale } from '@/i18n/client';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
 import { reseauDepuisLibelle, normaliserPlateformesCalendrier } from '@/lib/social/etatReseaux';
 import ReglagesPublicationReseaux from '@/components/social/ReglagesPublicationReseaux';
-import { lireCouverture, lireReglagesTiktok } from '@/lib/social/couverture';
+import { lireCouverture, lireReglagesTiktok, sansConsentementTiktok } from '@/lib/social/couverture';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ConseilsVideo } from '@/components/creer/ConseilsVideo';
@@ -946,7 +946,9 @@ export default function CalendarPage() {
     const target = post || selectedPost;
     if (target) {
       setSelectedPost(target);
-      setEditFormData({ ...target });
+      // ⚠️ Le consentement TikTok n'est JAMAIS réaffiché coché : il se redonne
+      // d'un geste explicite à chaque passage dans l'éditeur.
+      setEditFormData({ ...target, metadata: sansConsentementTiktok(target.metadata) });
       setEditTab(target.status as 'draft' | 'scheduled' | 'published');
       setShowEditModal(true);
       setShowPreviewModal(false);
@@ -1139,7 +1141,10 @@ export default function CalendarPage() {
     const cleanPost = {
       ...post,
       status: 'draft' as const,
-      metadata: { ...post.metadata, error: null, cron_publish_results: null },
+      // Couverture et réglages TikTok conservés ; le consentement TikTok, lui,
+      // est retiré : un nouvel envoi le redemande (sans lui, TikTok est
+      // écarté et les autres réseaux partent).
+      metadata: { ...sansConsentementTiktok(post.metadata), error: null, cron_publish_results: null },
     };
     await handlePublishPost(cleanPost);
   };

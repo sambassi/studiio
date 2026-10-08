@@ -71,6 +71,20 @@ export default function ReglagesPublicationReseaux({
   const avecTiktok = reseaux.includes('tiktok');
   const [infoTt, setInfoTt] = useState<InfoTiktok | null>(null);
 
+  // Libellés du sélecteur calés sur la largeur RÉELLE de la zone (une fenêtre
+  // « Modifier le Post » est étroite même sur grand écran) : jamais tronqués.
+  const selecteurRef = useRef<HTMLDivElement | null>(null);
+  const [largeurSelecteur, setLargeurSelecteur] = useState(0);
+  useEffect(() => {
+    const el = selecteurRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([e]) => setLargeurSelecteur(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [reseaux.length]);
+  const tailleLibelle: 'long' | 'moyen' | 'court' =
+    largeurSelecteur === 0 || largeurSelecteur >= 470 ? 'long' : largeurSelecteur >= 300 ? 'moyen' : 'court';
+
   // Réglages autorisés du compte TikTok — lus une fois, seulement si TikTok est visé.
   useEffect(() => {
     if (!avecTiktok || infoTt) return;
@@ -151,15 +165,16 @@ export default function ReglagesPublicationReseaux({
 
         {/* Segmented control : un seul fond, l'option active s'en détache. */}
         <div
+          ref={selecteurRef}
           className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-black/25 p-1"
           role="radiogroup"
           aria-label="Miniature / couverture"
         >
           {([
-            ['auto', 'Automatique', 'Auto', Sparkles],
-            ['upload', 'Choisir une image', 'Image', ImageIcon],
-            ['frame', 'Image dans la vidéo', 'Vidéo', Film],
-          ] as const).map(([m, libelle, court, Icone]) => (
+            ['auto', 'Automatique', 'Automatique', 'Auto', Sparkles],
+            ['upload', 'Choisir une image', 'Image', 'Image', ImageIcon],
+            ['frame', 'Image dans la vidéo', 'Dans la vidéo', 'Vidéo', Film],
+          ] as const).map(([m, libelle, moyen, court, Icone]) => (
             <button
               key={m}
               type="button"
@@ -174,10 +189,9 @@ export default function ReglagesPublicationReseaux({
                   : 'text-gray-400 hover:text-gray-200'
               }`}
             >
-              <Icone size={13} className="shrink-0" />
-              {/* Libellé court sur mobile : jamais de « Automat… » tronqué. */}
-              <span className="truncate sm:hidden">{court}</span>
-              <span className="hidden truncate sm:inline">{libelle}</span>
+              {/* Très étroit : le libellé seul, l'icône céderait la place. */}
+              {tailleLibelle !== 'court' && <Icone size={13} className="shrink-0" />}
+              <span className="truncate">{{ long: libelle, moyen, court }[tailleLibelle]}</span>
             </button>
           ))}
         </div>

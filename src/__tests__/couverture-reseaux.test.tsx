@@ -85,6 +85,16 @@ describe('TikTok : consentement explicite', () => {
   });
 });
 
+describe('consentement TikTok : jamais réutilisé sans nouveau geste', () => {
+  it('sansConsentementTiktok retire le seul consentement, garde tout le reste', async () => {
+    const { sansConsentementTiktok } = await import('@/lib/social/couverture');
+    const meta = { cover: FRAME, tiktok: TT, renderedVideoUrl: 'x' };
+    expect(sansConsentementTiktok(meta)).toEqual({ cover: FRAME, tiktok: { ...TT, consentement: false }, renderedVideoUrl: 'x' });
+    expect(sansConsentementTiktok({ cover: UPLOAD })).toEqual({ cover: UPLOAD });
+    expect(sansConsentementTiktok(null)).toBeNull();
+  });
+});
+
 describe('modèle : lecture et persistance', () => {
   it('couverture invalide → null (ancien comportement)', () => {
     expect(lireCouverture({})).toBeNull();
@@ -102,7 +112,8 @@ describe('modèle : lecture et persistance', () => {
   });
   it('Calendrier : « Réessayer » conserve metadata (dont cover et tiktok)', () => {
     const cal = readFileSync(resolve(__dirname, '../app/dashboard/calendar/page.tsx'), 'utf-8');
-    expect(cal).toContain('metadata: { ...post.metadata, error: null, cron_publish_results: null },');
+    expect(cal).toContain('metadata: { ...sansConsentementTiktok(post.metadata), error: null, cron_publish_results: null },');
+    expect(cal).toContain('setEditFormData({ ...target, metadata: sansConsentementTiktok(target.metadata) });');
     expect(cal).toContain('cover: lireCouverture(editFormData.metadata),');
   });
   it('Créer : la couverture et TikTok partent dans la métadonnée du post', () => {
