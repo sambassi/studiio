@@ -518,8 +518,9 @@ describe('La bibliothèque est accessible depuis toutes les séquences', () => {
     // Un élément se pose n'importe où sur le plateau et le compositeur le
     // peint sur les quatre séquences : réserver la bibliothèque à l'onglet des
     // cartes la rendait introuvable pour qui réglait son titre ou son CTA.
+    // Le bouton vit dans la barre d'actions de l'aperçu (icônes compactes).
     const bloc = wizard.slice(
-      wizard.indexOf("BIBLIOTHEQUE D'ELEMENTS"),
+      wizard.indexOf("ACTIONS DE L'APERÇU"),
       wizard.indexOf('Ajouter un élément'),
     );
     expect(bloc).toContain('{generated && (');

@@ -63,6 +63,13 @@ body {
   }
 }
 
+/* Aperçu AGRANDI : la borne ci-dessus vise la colonne latérale. Dans la
+   fenêtre agrandie, le cadre prend toute la largeur que la fenêtre lui donne
+   (calculée pour tenir aussi en hauteur, au ratio de la vidéo). */
+.apercu-agrandi .apercu-cadre {
+  width: 100%;
+}
+
 .input-base {
   @apply bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary;
 }

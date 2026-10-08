@@ -117,6 +117,7 @@ import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/des
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
+import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { mesuresHabillage, angleDiagonale, type HabillageVideo } from '@/lib/creer/habillageVideo';
 
 import {
@@ -1040,6 +1041,9 @@ const ORDRE_SUPPORT = ['unsupported-render', 'preview-only', 'ready'] as const;
  * « Video » se desactive tout seul sans rush : `activeOrder` ne contient
  * `'video'` que lorsqu'un rush est present.
  */
+/** Bouton-icône compact des actions de l'aperçu (libellé en infobulle et `sr-only`). */
+const ICONE_ACTION = 'h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-white hover:bg-gray-800/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors';
+
 const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
   { id: 'intro', label: 'Titre' },
   { id: 'cards', label: 'Cartes' },
@@ -2231,7 +2235,7 @@ export function Preview({
           la composition complete, celle qui part a l'export : ces onglets ne
           changent que ce qui est MONTRE, jamais le montage. */}
       {generated && onFocusChange && (
-        <div className="flex gap-1 mb-3" role="tablist" aria-label="Élément mis en avant">
+        <div className="flex gap-1 mb-3 min-w-0 overflow-x-auto" role="tablist" aria-label="Élément mis en avant">
           {ongletsApercu(activeOrder).map((t) => (
             <button
               key={t.id}
@@ -2245,7 +2249,7 @@ export function Preview({
                   ? 'Séquence masquée — activez-la dans Séquences'
                   : undefined
               }
-              className={`flex-1 justify-center text-[11px] disabled:opacity-30 ${classesOnglet(focus === t.id)}`}
+              className={`flex-1 min-w-0 justify-center whitespace-nowrap text-[11px] disabled:opacity-30 ${classesOnglet(focus === t.id)} !px-1.5`}
             >
               {t.label}
               {/* Marqueur de forme, pas seulement la couleur : barre sous l'onglet actif. */}
@@ -5676,6 +5680,18 @@ export default function AssistantWizard() {
       // souvient simplement pas de sa taille.
     }
   }, []);
+
+  // À l'ouverture : une VRAIE fenêtre agrandie, quasi plein écran et centrée.
+  // Une taille mémorisée trop petite (ou hors écran) n'est plus reprise.
+  useEffect(() => {
+    if (!enlargedOpen || typeof window === 'undefined') return;
+    const ratio = VIDEO_SIZE[format].w / VIDEO_SIZE[format].h;
+    setEnlargedGeometry((g) => geometrieAgrandie(g, window.innerWidth, window.innerHeight, ratio));
+    // Échap ferme la fenêtre, comme toute modale.
+    const echap = (e: KeyboardEvent) => { if (e.key === 'Escape') setEnlargedOpen(false); };
+    window.addEventListener('keydown', echap);
+    return () => window.removeEventListener('keydown', echap);
+  }, [enlargedOpen, format]);
 
   /**
    * Taille du plateau dans la fenetre.
@@ -11912,7 +11928,7 @@ export default function AssistantWizard() {
               disabled={sending}
               data-play-rendu
               title={etat.titre}
-              className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-purple-500/40 bg-purple-600/15 px-3 py-1.5 text-xs text-purple-100 hover:bg-purple-600/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="mt-2 w-full h-8 flex items-center justify-center gap-1.5 rounded-md bg-purple-600/20 px-3 text-xs text-purple-100 hover:bg-purple-600/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {sending ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Rendu…</>
@@ -11922,6 +11938,76 @@ export default function AssistantWizard() {
             </button>
           );
         })()}
+
+        {/* ── ACTIONS DE L'APERÇU — une ligne d'icônes ────────────────
+            Compactes, sur une ligne : chaque action garde son libellé en
+            infobulle (`title`), pour les lecteurs d'écran (`aria-label`,
+            texte `sr-only`) et au clavier (anneau de focus). Rien n'est
+            retiré, seule la place change. */}
+        {generated && (
+          <div role="toolbar" aria-label="Actions de l’aperçu" data-actions-apercu className="mt-2 flex items-center justify-center gap-1">
+            <button
+              type="button"
+              onClick={() => setEnlargedOpen((v) => !v)}
+              title={enlargedOpen ? 'Fermer l’aperçu agrandi' : 'Agrandir l’aperçu'}
+              aria-label={enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
+              aria-pressed={enlargedOpen}
+              className={`${ICONE_ACTION} ${enlargedOpen ? 'bg-gray-800 text-white' : ''}`}
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span className="sr-only">{enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadPoster('png')}
+              disabled={posterExporting}
+              title="Télécharger l’affiche — l’aperçu affiché en image, sans débiter de crédit"
+              aria-label="Télécharger l’affiche"
+              className={ICONE_ACTION}
+            >
+              {posterExporting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ImageDown className="w-3.5 h-3.5" />
+              )}
+              <span className="sr-only">{posterExporting ? 'Capture…' : 'Télécharger l’affiche'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadPoster('jpeg')}
+              disabled={posterExporting}
+              title="Même image, au format JPG"
+              aria-label="Télécharger l’affiche en JPG"
+              className={`${ICONE_ACTION} w-auto px-2 text-[11px] font-medium`}
+            >
+              JPG
+            </button>
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-gray-800" />
+            <button
+              type="button"
+              onClick={() => setElementPickerOpen((v) => !v)}
+              title={elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
+              aria-label={elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
+              aria-expanded={elementPickerOpen}
+              className={`${ICONE_ACTION} ${elementPickerOpen ? 'bg-gray-800 text-white' : ''}`}
+            >
+              <Shapes className="w-3.5 h-3.5" />
+              <span className="sr-only">{elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}</span>
+            </button>
+            {layoutTouched && (
+              <button
+                type="button"
+                onClick={resetLayout}
+                title="Rétablir la disposition d’origine"
+                aria-label="Rétablir la disposition d’origine"
+                className={ICONE_ACTION}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="sr-only">Rétablir la disposition d&apos;origine</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── LÉGENDE DU RENDU ─────────────────────────────────────────
             La mention de facturation était noyée dans le second panneau, à
@@ -11935,23 +12021,11 @@ export default function AssistantWizard() {
           </p>
         )}
 
-        {generated && (
-          <button
-            type="button"
-            onClick={() => setEnlargedOpen((v) => !v)}
-            title="Ouvrir l’aperçu dans une fenêtre déplaçable et redimensionnable"
-            aria-pressed={enlargedOpen}
-            className={`mt-2 w-full flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-              enlargedOpen
-                ? 'border-purple-500/40 bg-gray-800 text-white'
-                : 'border-gray-800 text-gray-300 hover:text-white hover:border-gray-700'
-            }`}
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-            {enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
-          </button>
-        )}
 
+        {/* Fond de la modale : assombrit la page, un clic ferme l'aperçu agrandi. */}
+        {enlargedOpen && !!generated && (
+          <div aria-hidden data-fond-apercu-agrandi className="fixed inset-0 z-[99] bg-black/70 backdrop-blur-[2px]" onClick={() => setEnlargedOpen(false)} />
+        )}
         <FloatingPanel
           title="Aperçu"
           isOpen={enlargedOpen && !!generated}
@@ -11967,7 +12041,7 @@ export default function AssistantWizard() {
           onGeometryChange={rememberEnlargedGeometry}
           accentColor={accent}
         >
-          <div ref={enlargedBodyRef} className="h-full w-full flex items-start justify-center">
+          <div ref={enlargedBodyRef} className="apercu-agrandi h-full w-full flex items-start justify-center">
             <div style={{ width: enlargedWidth || '100%' }}>
               <Preview
                 {...previewShared}
@@ -11982,33 +12056,6 @@ export default function AssistantWizard() {
         {/* ── AFFICHE ─────────────────────────────────────────────────
             Telechargement local de l'apercu tel qu'il est affiche. Ni credit,
             ni post : un `<a download>` sur un blob. */}
-        {generated && (
-          <div className="mt-2 flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => downloadPoster('png')}
-              disabled={posterExporting}
-              title="Enregistrer l’aperçu affiché en image, sans débiter de crédit"
-              className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {posterExporting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <ImageDown className="w-3.5 h-3.5" />
-              )}
-              {posterExporting ? 'Capture…' : 'Télécharger l’affiche'}
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadPoster('jpeg')}
-              disabled={posterExporting}
-              title="Même image, au format JPG"
-              className="rounded-lg border border-gray-800 px-2.5 py-1.5 text-xs text-gray-500 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              JPG
-            </button>
-          </div>
-        )}
 
         {/* ── BIBLIOTHEQUE D'ELEMENTS ─────────────────────────────────
             Sous l'apercu : c'est la qu'on voit ou l'element se pose.
@@ -12020,14 +12067,6 @@ export default function AssistantWizard() {
             son CTA. */}
         {generated && (
           <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setElementPickerOpen((v) => !v)}
-              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
-            >
-              <Shapes className="w-3.5 h-3.5" />
-              {elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
-            </button>
             {elementPickerOpen && (
               <div className="mt-2 rounded-xl border border-gray-800 bg-gray-900/50 p-3">
                 {/* La MEME grille que le choix d'icone de carte de
@@ -12108,16 +12147,6 @@ export default function AssistantWizard() {
           <p className="mt-2 text-center text-xs text-gray-500">
             Disposition des cartes réinitialisée : le contenu ou le format a changé.
           </p>
-        )}
-        {layoutTouched && (
-          <button
-            type="button"
-            onClick={resetLayout}
-            className="mt-2 w-full flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white transition-colors py-2"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Rétablir la disposition d&apos;origine
-          </button>
         )}
         </>
         )}
