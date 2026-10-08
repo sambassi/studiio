@@ -1351,10 +1351,16 @@ const TextResizeHandles: React.FC<{
           onPointerDown={(e) => { e.stopPropagation(); onWidthStart(el, e); }}
           title="Tirer pour élargir ou rétrécir le bloc"
           style={{
+            // Jamais sous les poignées de coin : sur un bloc d'une seule
+            // ligne (≈ 17 px à l'écran), une poignée de 22 px les chevauchait
+            // et devenait introuvable. Elle tient dans l'espace ENTRE les
+            // coins, centrée, au-dessus d'eux.
             position: 'absolute', top: '50%', left: '100%',
-            width: uiPx(7), height: uiPx(22), marginTop: -uiPx(11), marginLeft: -uiPx(3.5),
+            width: uiPx(7),
+            height: `max(${uiPx(6)}px, min(${uiPx(22)}px, calc(100% - ${uiPx(12)}px)))`,
+            transform: 'translate(-50%, -50%)',
             backgroundColor: '#FFFFFF', border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`, borderRadius: uiPx(3),
-            cursor: 'ew-resize', touchAction: 'none', zIndex: 5,
+            cursor: 'ew-resize', touchAction: 'none', zIndex: 6,
           }}
         />
       )}
@@ -2612,10 +2618,12 @@ export function Preview({
         />
       )}
 
-      {/* Bascules — posees DANS le cadre, en haut a droite : aucun pixel de
-          hauteur ajoute a la page, donc aucune etape rallongee. */}
+      {/* Bascules — posees DANS le cadre, en BAS a gauche : aucun pixel de
+          hauteur ajoute a la page. En haut a droite, elles recouvraient le
+          bord droit du titre (place par defaut a 8 % / 84 %) et cachaient
+          ses poignees de coin et de largeur. */}
       {generated && !capturing && (
-        <div className="absolute top-2 right-2 z-40 flex gap-1">
+        <div className="absolute bottom-2 left-2 z-40 flex gap-1">
           <button
             type="button"
             onClick={() => setReperesCentre((v) => !v)}
@@ -5823,12 +5831,22 @@ export default function AssistantWizard() {
     }
   }, []);
 
-  // À l'ouverture : une VRAIE fenêtre agrandie, quasi plein écran et centrée.
-  // Une taille mémorisée trop petite (ou hors écran) n'est plus reprise.
+  /**
+   * Ouvre / ferme l'aperçu agrandi. La taille est calculée AVANT l'ouverture
+   * (vraie fenêtre quasi plein écran, centrée) : posée dans un effet après
+   * coup, elle était écrasée par la géométrie que la fenêtre signale en
+   * s'ouvrant — elle restait à l'ancienne petite taille, hors écran.
+   */
+  const basculerAgrandi = useCallback(() => {
+    if (!enlargedOpen && typeof window !== 'undefined') {
+      const ratio = VIDEO_SIZE[format].w / VIDEO_SIZE[format].h;
+      setEnlargedGeometry((g) => geometrieAgrandie(g, window.innerWidth, window.innerHeight, ratio));
+    }
+    setEnlargedOpen((v) => !v);
+  }, [enlargedOpen, format]);
+
   useEffect(() => {
     if (!enlargedOpen || typeof window === 'undefined') return;
-    const ratio = VIDEO_SIZE[format].w / VIDEO_SIZE[format].h;
-    setEnlargedGeometry((g) => geometrieAgrandie(g, window.innerWidth, window.innerHeight, ratio));
     // Échap ferme la fenêtre, comme toute modale.
     const echap = (e: KeyboardEvent) => { if (e.key === 'Escape') setEnlargedOpen(false); };
     window.addEventListener('keydown', echap);
@@ -5852,10 +5870,14 @@ export default function AssistantWizard() {
       const frame = enlargedFrameRef.current;
       const carte = frame?.closest('.card-base') as HTMLElement | null;
       const chrome = carte && frame ? Math.max(0, carte.offsetHeight - frame.offsetHeight) : 0;
+      // Marges HORIZONTALES de la carte : la largeur posée ici est celle de la
+      // carte, le plateau en a 2 × padding de moins. Les oublier rendait le
+      // plateau 48 px trop étroit et laissait ≈ 90 px de hauteur vides.
+      const margeH = carte && frame ? Math.max(0, carte.offsetWidth - frame.offsetWidth) : 0;
       const ratio = VIDEO_SIZE[format].w / VIDEO_SIZE[format].h;
       const large = Math.max(
         120,
-        Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio),
+        Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio + margeH),
       );
       // Seuil de 1 px : sans lui, la mesure du chrome et la largeur qu'elle
       // determine se relanceraient l'une l'autre sans jamais se poser.
@@ -12144,7 +12166,7 @@ export default function AssistantWizard() {
           <div role="toolbar" aria-label="Actions de l’aperçu" data-actions-apercu className="mt-2 flex items-center justify-center gap-1">
             <button
               type="button"
-              onClick={() => setEnlargedOpen((v) => !v)}
+              onClick={basculerAgrandi}
               title={enlargedOpen ? 'Fermer l’aperçu agrandi' : 'Agrandir l’aperçu'}
               aria-label={enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
               aria-pressed={enlargedOpen}
@@ -12242,6 +12264,7 @@ export default function AssistantWizard() {
               <Preview
                 {...previewShared}
                 hideHeader
+                hideFootnote
                 frameRef={enlargedFrameRef}
                 displayScale={enlargedScale}
                 onFocusChange={setPreviewFocus}

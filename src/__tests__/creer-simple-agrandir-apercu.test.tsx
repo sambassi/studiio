@@ -318,7 +318,9 @@ describe('Le bouton et la fenêtre', () => {
   });
 
   it('le bouton bascule, et n apparaît qu avec un contenu à montrer', () => {
-    expect(wizard).toContain('onClick={() => setEnlargedOpen((v) => !v)}');
+    // La taille agrandie est calculée au clic, AVANT l'ouverture (`basculerAgrandi`).
+    expect(wizard).toContain('onClick={basculerAgrandi}');
+    expect(wizard).toContain('setEnlargedOpen((v) => !v);');
     expect(wizard).toContain("enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'");
     expect(fenetre).toContain('isOpen={enlargedOpen && !!generated}');
   });
@@ -344,7 +346,8 @@ describe('Le plateau tient dans la fenêtre', () => {
   it('il est borné sur les DEUX dimensions, pas seulement la largeur', () => {
     // Borné sur la seule largeur, un 9:16 déborderait en hauteur : élargir la
     // fenêtre montrerait de moins en moins d'image.
-    expect(wizard).toContain('Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio)');
+    // + les marges horizontales de la carte (le plateau en a 2 × padding de moins).
+    expect(wizard).toContain('Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio + margeH)');
   });
 
   it('le chrome est MESURÉ, pas écrit en dur', () => {

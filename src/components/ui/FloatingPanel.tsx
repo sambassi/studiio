@@ -162,7 +162,15 @@ export default function FloatingPanel({
 
   // Geometrie rapportee a la FIN du geste seulement : a chaque frame, elle
   // ferait ecrire le localStorage des dizaines de fois par seconde.
+  // Au rendu qui OUVRE le panneau, `pos` / `size` sont encore ceux d'avant :
+  // les signaler écraserait la géométrie que le parent vient de calculer
+  // (l'aperçu agrandi rouvrait alors à l'ancienne place). On attend le rendu
+  // suivant, où les valeurs initiales sont appliquées.
+  const etaitOuvert = useRef(false);
   useEffect(() => {
+    const vientDOuvrir = isOpen && !etaitOuvert.current;
+    etaitOuvert.current = isOpen;
+    if (vientDOuvrir) return;
     if (!isOpen || dragging || resizing || !onGeometryChange) return;
     onGeometryChange({ x: pos.x, y: pos.y, w: size.w, h: size.h });
   }, [isOpen, dragging, resizing, pos.x, pos.y, size.w, size.h, onGeometryChange]);

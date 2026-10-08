@@ -34,9 +34,10 @@ describe('16-17. fenêtre agrandie : grande, centrée, au ratio 9:16', () => {
     expect(geometrieAgrandie({ x: 120, y: 90, w: 420, h: 640 }, 1920, 1080, R916)).toEqual(geometrieCible(1920, 1080, R916));
   });
 
-  it('une grande taille mémorisée est gardée, ramenée dans l’écran', () => {
-    const g = geometrieAgrandie({ x: 1700, y: -50, w: 700, h: 1000 }, 1920, 1080, R916);
-    expect(g.w).toBe(700);
+  it('une taille mémorisée AU MOINS aussi grande que la cible est gardée, ramenée dans l’écran', () => {
+    const g = geometrieAgrandie({ x: 1700, y: -50, w: 900, h: 1100 }, 1920, 1080, R916);
+    expect(g.w).toBe(900);
+    expect(g.h).toBe(1080 - 32);
     expect(g.x + g.w).toBeLessThanOrEqual(1920 - 16);
     expect(g.y).toBeGreaterThanOrEqual(16);
   });
@@ -56,7 +57,7 @@ describe('20. actions de l’aperçu : compactes et accessibles', () => {
   const barre = wizard.slice(wizard.indexOf("ACTIONS DE L'APERÇU"), wizard.indexOf('LÉGENDE DU RENDU'));
   it('une seule ligne d’icônes (role="toolbar"), aucune fonction retirée', () => {
     expect(barre).toContain('role="toolbar"');
-    for (const action of ['setEnlargedOpen', "downloadPoster('png')", "downloadPoster('jpeg')", 'setElementPickerOpen', 'resetLayout']) {
+    for (const action of ['basculerAgrandi', "downloadPoster('png')", "downloadPoster('jpeg')", 'setElementPickerOpen', 'resetLayout']) {
       expect(barre, action).toContain(action);
     }
   });
