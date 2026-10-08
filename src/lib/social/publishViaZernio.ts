@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { droitDePublier, comptesConnectes, resoudreCibles, mediaPubliable } from '@/lib/social/publishing';
 import { createPost, uploadMedia, ZernioError } from '@/lib/social/zernio';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { traduireErreurZernio, type TraductionErreur } from '@/lib/social/erreursZernio';
 
 /**
  * Publier un post Studiio sur les réseaux de l'utilisateur, via Zernio.
@@ -27,7 +28,13 @@ export type ResultatPublication =
    * marquant le post `failed`, pour qu'une reprogrammation EXPLICITE
    * republie. Voir `etatPreuveZernio`.
    */
-  | { ok: false; motif: string; reessayable: boolean; preuveAncienne?: boolean };
+  | {
+      ok: false; motif: string; reessayable: boolean; preuveAncienne?: boolean;
+      /** Une ligne par réseau visé — pour `metadata.cron_publish_results`. */
+      details?: TraductionErreur['details'];
+      /** Code et message rendus par Zernio — pour `metadata.zernioErreur`. */
+      technique?: TraductionErreur['technique'];
+    };
 
 /**
  * La preuve qu'une tentative a ete remise a Zernio, lue dans `metadata`.
@@ -198,16 +205,38 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
         // aucun nombre de tentatives n'y changera quoi que ce soit.
         console.error('[Zernio/Publication] FACTURATION SUSPENDUE — intervention requise.');
       }
+      const traduction = traduireErreurZernio({ status: err.status, code: err.code, detail: err.detail }, cibles);
+      if (traduction.compteDeconnecte) {
+        // ⚠️ LA PAGE RÉSEAUX DOIT LE DIRE. Zernio a refusé ce compte (jeton
+        // expiré ou révoqué) : le laisser « connecté » chez nous ferait
+        // échouer chaque publication suivante sans que personne ne sache
+        // qu'il faut reconnecter.
+        await marquerDeconnecte(post.userId, traduction.compteDeconnecte);
+      }
       return {
         ok: false,
-        motif: err.paymentRequired
-          ? 'Service de publication suspendu.'
-          : 'Le réseau a refusé la publication.',
+        motif: traduction.motif,
         reessayable: err.retryable,
+        details: traduction.details,
+        technique: traduction.technique,
       };
     }
     console.error(`[Zernio/Publication] post ${post.id} :`, err);
     return { ok: false, motif: 'Publication impossible.', reessayable: true };
+  }
+}
+
+/** Compte Zernio refusé par Zernio : `disconnected`, pour que la page Réseaux le montre. */
+async function marquerDeconnecte(userId: string, accountId: string): Promise<void> {
+  try {
+    const { error } = await supabaseAdmin
+      .from('zernio_accounts')
+      .update({ status: 'disconnected' })
+      .eq('user_id', userId)
+      .eq('account_id', accountId);
+    if (error) console.error('[Zernio/Publication] compte non marque deconnecte :', error.message);
+  } catch (e) {
+    console.error('[Zernio/Publication] compte non marque deconnecte :', e);
   }
 }
 

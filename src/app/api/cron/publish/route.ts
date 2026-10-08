@@ -1148,9 +1148,18 @@ async function muxAudioIntoVideo(
 // zernioForPostId) est retiree : le post finit `failed` avec un motif
 // lisible, et c'est la reprogrammation EXPLICITE de l'utilisateur qui
 // republiera. La valeur est gardee sous `zernioPostIdAncien` pour diagnostic.
-function metaEchecZernio(metadata: any, resultat: { preuveAncienne?: boolean }): Record<string, unknown> {
-  if (!resultat.preuveAncienne) return { ...(metadata || {}) };
-  return { ...sansPreuveZernio(metadata), zernioPostIdAncien: metadata?.zernioPostId ?? null };
+function metaEchecZernio(
+  metadata: any,
+  resultat: { preuveAncienne?: boolean; details?: unknown[]; technique?: unknown },
+): Record<string, unknown> {
+  // Le détail par réseau et la cause technique rendue par Zernio : le
+  // Calendrier affiche les premiers, le second sert au diagnostic.
+  const diagnostic = {
+    ...(resultat.details?.length ? { cron_publish_results: resultat.details } : {}),
+    ...(resultat.technique ? { zernioErreur: resultat.technique } : {}),
+  };
+  if (!resultat.preuveAncienne) return { ...(metadata || {}), ...diagnostic };
+  return { ...sansPreuveZernio(metadata), zernioPostIdAncien: metadata?.zernioPostId ?? null, ...diagnostic };
 }
 
 // Resolve a publicly-fetchable URL for the Graph API / platform fetchers.
