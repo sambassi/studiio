@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { comptesConnectes, droitDePublier } from '@/lib/social/publishing';
+import { comptesConnectes, droitDePublier, reseauxZernioDemandes, resoudreCibles, MESSAGES_REFUS } from '@/lib/social/publishing';
+import { libelleCalendrier } from '@/lib/social/etatReseaux';
 import { publierViaZernio, etatPreuveZernio, sansPreuveZernio } from '@/lib/social/publishViaZernio';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { montageEstPerime, messageMontagePerime } from '@/lib/creer/montage-perime';
@@ -435,47 +436,71 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        // ── CHEMIN ZERNIO — les reseaux DE L'UTILISATEUR ──────────────
+        // ── CHEMIN ZERNIO — Instagram, Facebook, TikTok, YouTube ─────────
         //
-        // ⚠️ IL PASSE AVANT, ET IL NE REMPLACE RIEN. Les comptes
-        // `social_accounts` sont ceux que Studiio detient EN PROPRE : c'est le
-        // chemin historique de l'administrateur, et il reste intact juste en
-        // dessous. Zernio, lui, publie sur les comptes que l'utilisateur a
-        // connectes lui-meme.
+        // ⚠️ ZERNIO EST LA SEULE COUCHE DE PUBLICATION DE CES QUATRE RÉSEAUX.
+        // Avant, un post qui ne trouvait pas de cible Zernio (libellé
+        // « Instagram » comparé à « instagram », ou admin non reconnu faute
+        // d'email) retombait SANS LE DIRE sur l'ancien chemin Meta direct
+        // (`social_accounts`) : erreurs Graph sur un ancien identifiant, ou
+        // « Aucun compte social connecté » alors que la page Réseaux en
+        // montrait quatre. Désormais : Zernio, ou un échec qui dit pourquoi.
         //
-        // Un utilisateur sans droit ou sans compte Zernio retombe donc sur le
-        // comportement d'avant, a la ligne pres.
-        const zernioComptes = await comptesConnectes(post.user_id);
-        const zernioCibles = zernioComptes.filter((c) => (post.platforms || []).includes(c.platform));
-        if (zernioCibles.length > 0) {
-          const droit = await droitDePublier(post.user_id, undefined);
-          if (droit.autorise) {
-            const media = post.media_url || (post.metadata as any)?.renderedVideoUrl || null;
-            const resultat = await publierViaZernio({
-              id: post.id,
-              userId: post.user_id,
-              caption: post.caption || post.title || '',
-              mediaUrl: media,
-              platforms: post.platforms || [],
-              // Le cron ne traite que des posts DUS : on publie maintenant.
-              scheduledFor: null,
-            });
+        // Les comptes sont RELUS à chaque passage, par la même résolution que
+        // la page Réseaux : un compte connecté après la création du post compte.
+        if (reseauxZernioDemandes(post.platforms).length > 0) {
+          const resolution = resoudreCibles(post.platforms, await comptesConnectes(post.user_id));
+          const echouer = async (motif: string, details: string) => {
             await supabase
               .from('scheduled_posts')
-              .update(resultat.ok
-                // ⚠️ `publishing` ET NON `published` : c'est le webhook
-                // `post.published` de Zernio qui confirmera. Marquer publie
-                // ici annoncerait un succes qu'on ne connait pas encore.
-                ? { status: 'publishing' }
-                : { status: 'failed', metadata: { ...metaEchecZernio(post.metadata, resultat), error: resultat.motif } })
+              .update({ status: 'failed', metadata: { ...(post.metadata || {}), error: motif } })
               .eq('id', post.id);
-            console.log(`[CRON] Zernio post ${post.id} : ${resultat.ok ? `remis a ${resultat.comptes} compte(s)` : `refus — ${resultat.motif}`}`);
-            results.push({
-              postId: post.id, title: post.title, platforms: post.platforms,
-              success: resultat.ok, details: resultat.ok ? 'Zernio' : resultat.motif,
-            });
+            results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details });
+          };
+          console.log(`[CRON] Zernio post ${post.id} : demandes=${resolution.demandes.join(',')} connectes=${resolution.comptes.length} cibles=${resolution.cibles.length}${resolution.manquants.length ? ` manquants=${resolution.manquants.join(',')}` : ''}`);
+
+          // L'email n'est pas passe : `droitDePublier` le relit en base.
+          const droit = await droitDePublier(post.user_id);
+          if (!droit.autorise) {
+            const raison = droit.raison ?? 'option-absente';
+            console.warn(`[CRON] Zernio post ${post.id} : publication refusee (${raison})`);
+            await echouer(MESSAGES_REFUS[raison], `Zernio refuse : ${raison}`);
             continue;
           }
+          if (resolution.cibles.length === 0) {
+            const libelles = resolution.manquants.map((r) => libelleCalendrier(r)).join(', ');
+            await echouer(
+              `Aucun compte connecté pour : ${libelles}. Connectez-le dans Réseaux sociaux.`,
+              `Zernio : aucun compte pour ${resolution.manquants.join(',')}`,
+            );
+            continue;
+          }
+
+          const media = await preparerMediaZernio(post);
+          const resultat = await publierViaZernio({
+            id: post.id,
+            userId: post.user_id,
+            caption: post.caption || post.title || '',
+            mediaUrl: media,
+            platforms: post.platforms || [],
+            // Le cron ne traite que des posts DUS : on publie maintenant.
+            scheduledFor: null,
+          });
+          await supabase
+            .from('scheduled_posts')
+            .update(resultat.ok
+              // ⚠️ `publishing` ET NON `published` : c'est le webhook
+              // `post.published` de Zernio qui confirmera. Marquer publie
+              // ici annoncerait un succes qu'on ne connait pas encore.
+              ? { status: 'publishing' }
+              : { status: 'failed', metadata: { ...metaEchecZernio(post.metadata, resultat), error: resultat.motif } })
+            .eq('id', post.id);
+          console.log(`[CRON] Zernio post ${post.id} : ${resultat.ok ? `remis a ${resultat.comptes} compte(s)` : `refus — ${resultat.motif}`}`);
+          results.push({
+            postId: post.id, title: post.title, platforms: post.platforms,
+            success: resultat.ok, details: resultat.ok ? 'Zernio' : resultat.motif,
+          });
+          continue;
         }
 
         // Get the user's social accounts
@@ -888,6 +913,35 @@ export async function GET(req: NextRequest) {
 const CODES_TELECHARGEMENT = new Set([
   'cible_invalide', 'acces_refuse', 'introuvable', 'trop_volumineux', 'delai', 'reseau', 'stockage',
 ]);
+
+/**
+ * Le média remis à Zernio, prêt pour les réseaux.
+ *
+ * ⚠️ MÊME PRÉPARATION QUE L'ANCIEN CHEMIN META. Avant ce correctif, un post
+ * WebM partait sur l'ancien chemin, qui intégrait les pistes audio séparées
+ * puis convertissait en MP4. Zernio exige un MP4 (`mediaPubliable`) : sans
+ * cette étape, retirer le repli aurait rendu ces montages impubliables.
+ *
+ * Un échec de préparation rend l'URL d'origine : le garde de
+ * `publierViaZernio` refusera alors EXPLICITEMENT, jamais en silence.
+ */
+async function preparerMediaZernio(post: any): Promise<string | null> {
+  const meta = post.metadata || {};
+  const source: string | null = post.media_url || meta.renderedVideoUrl || null;
+  if (!source) return null;
+  try {
+    if (meta.hasAudio && (meta.musicUrl || meta.voiceUrl)) {
+      const muxe = await muxAudioIntoVideo(source, meta.musicUrl, meta.voiceUrl, post.user_id);
+      if (muxe) return muxe;
+    }
+    if (/\.webm(\?|$)/i.test(source)) {
+      return await convertToMp4IfNeeded(source, post.user_id);
+    }
+  } catch (err) {
+    console.error(`[CRON] Zernio post ${post.id} : preparation du media en echec :`, err);
+  }
+  return source;
+}
 
 /** Motif journalisable : le code type du telechargement s'il y en a un, sinon le message. */
 function motifErreur(err: unknown): string {
