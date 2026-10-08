@@ -508,8 +508,9 @@ export interface ComposerOptions {
   };
   /**
    * La vidéo de la séquence « Vidéo » PARLE (vidéo du jumeau). Pendant SA
-   * séquence seulement, sa voix passe au premier plan : la piste du rush est
-   * portée au volume plein et la musique est fortement baissée (couche
+   * séquence seulement, sa voix passe au premier plan : sa piste suit le
+   * réglage des VOIX (jamais le volume « rush » du son ambiant, qu'un réglage
+   * à 0 rendait muet) et la musique est fortement baissée (couche
    * multiplicative, posée PAR-DESSUS les réglages et keyframes de
    * l'utilisateur, qui reviennent tels quels à la sortie). Et le rendu échoue
    * plutôt que de livrer un jumeau muet (`MESSAGE_JUMEAU_MUET`). Absent : un
@@ -808,11 +809,10 @@ const SEUIL_SIGNAL = 1e-4;
 
 /**
  * Mix pendant la séquence du jumeau. Mesuré sur un vrai export (musique 0,79,
- * rush 0,5) : la voix du jumeau sortait ≈ 20 dB SOUS la musique. Rush porté
- * au volume plein (×1/gain de base, soit +6 dB à 0,5) et musique ×0,10
- * (−20 dB) : la voix passe ≈ +5 dB au-dessus de la musique, qui reste en
- * fond (mesures du même export : ×0,18 donnait 0 dB d'écart). Le volume
- * plein (1) ne dépasse jamais le niveau de la source : pas d'écrêtage ajouté.
+ * piste du jumeau 0,5) : la voix du jumeau sortait ≈ 20 dB SOUS la musique.
+ * Sa piste passe par le bus des VOIX (niveau `voiceVolume`, 1 par défaut) et
+ * la musique est multipliée par 0,10 (−20 dB) : la voix passe ≈ +5 dB
+ * au-dessus de la musique, qui reste en fond (×0,18 donnait 0 dB d'écart).
  */
 export const DUCK_MUSIQUE_JUMEAU = 0.1;
 /** Durée (s) des rampes d'entrée et de sortie du ducking. */
@@ -4459,24 +4459,24 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         for (const el of rushEls) {
           el.muted = false;
           const rushSource = audioCtx.createMediaElementSource(el);
-          rushSource.connect(rushGain);
           if (jumeau && el === videoEl) {
-            // Jumeau : un analyseur mesure que sa piste porte réellement un signal.
+            // Jumeau : sa piste EST une voix. Elle suit le réglage des VOIX
+            // (`voiceVolume`, keyframes du bus voix), jamais celui du son
+            // ambiant des rushes : un `rushVolume` à 0 — réglage courant pour
+            // couper le bruit d'un rush — rendait le jumeau muet (export réel
+            // du 07/10, keyframe { rushVolume: 0 }). L'analyseur mesure APRÈS
+            // le bus : ce qui entre réellement dans le mix.
+            const voixJumeau = audioCtx.createGain();
+            voixJumeau.gain.value = options.voiceVolume ?? 1.0;
+            rushSource.connect(voixJumeau);
+            voixJumeau.connect(voiceBus);
             jumeau.analyseVideo = audioCtx.createAnalyser();
-            rushSource.connect(jumeau.analyseVideo);
+            voiceBus.connect(jumeau.analyseVideo);
+          } else {
+            rushSource.connect(rushGain);
           }
         }
-        if (jumeau && rushGain.gain.value > 0) {
-          // Jumeau : volume PLEIN, en multiplicateur après le réglage du rush
-          // (ses keyframes continuent de s'appliquer). Le rush ne joue que
-          // pendant SA séquence : ce gain n'agit donc que là.
-          const plein = audioCtx.createGain();
-          plein.gain.value = Math.min(4, 1 / rushGain.gain.value);
-          rushGain.connect(plein);
-          plein.connect(audioDest);
-        } else {
-          rushGain.connect(audioDest);
-        }
+        rushGain.connect(audioDest);
         rushGainNode = rushGain;
         console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted, '| ctx.state:', audioCtx.state);
       } catch (err) {
