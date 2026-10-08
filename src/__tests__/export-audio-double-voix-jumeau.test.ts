@@ -78,50 +78,63 @@ class FauxImage {
   set src(_v: string) { setTimeout(() => this.onload?.(), 0); }
 }
 
-type Noeud = { connect: (n: Noeud) => void; el?: { src: string; tagName?: string; paused: boolean }; gain?: { value: number }; sources?: Noeud[] };
-interface FauxGain { gain: { value: number; programme: Array<[string, number, number]> }; sorties: unknown[]; connect: (n: unknown) => void; disconnect: () => void }
+/** Nœud du faux graphe : chaque nœud connaît ses ENTRÉES ; le signal se propage à travers les gains. */
+interface Noeud { entrees: Noeud[]; connect: (n: Noeud) => void; disconnect: () => void; el?: { src: string; paused: boolean; videoWidth?: number }; gain?: FauxGain['gain'] }
+interface FauxGain { gain: { value: number; programme: Array<[string, number, number]> }; sorties: Noeud[]; entrees: Noeud[]; connect: (n: Noeud) => void; disconnect: () => void }
 const portes: FauxGain[] = [];
+const destinations: Noeud[] = [];
+/** Rend, en échantillonnant toutes les 20 ms le signal qui ATTEINT la destination enregistrée. */
+async function rendreEtEcouter(o: ComposerOptions) {
+  let max = 0;
+  const t = setInterval(() => { for (const d of destinations) max = Math.max(max, amplitude(d)); }, 20);
+  try { await composeVideo(o); } finally { clearInterval(t); }
+  return max;
+}
+function noeud(extra: Partial<Noeud> = {}): Noeud {
+  const n: Noeud = {
+    entrees: [],
+    connect(t: Noeud) { t.entrees.push(n); },
+    disconnect() { /* le faux graphe ne retire rien : non utilisé par les assertions */ },
+    ...extra,
+  };
+  return n;
+}
+/** Amplitude qui SORT d'un nœud : source en lecture × gains traversés. */
+function amplitude(n: Noeud): number {
+  if (n.el) {
+    const type = 'videoWidth' in n.el ? 'video' : 'audio';
+    return !n.el.paused ? (signal[`${type}:${n.el.src}`] ?? 0) : 0;
+  }
+  const somme = n.entrees.reduce((t, e) => t + amplitude(e), 0);
+  return n.gain ? n.gain.value * somme : somme;
+}
 class FauxAudioContext {
   state = 'running';
   currentTime = 0;
   sampleRate = 48000;
   async resume() {}
   async close() { this.state = 'closed'; }
-  createMediaStreamDestination() { return { stream: new FauxMediaStream(), connect() {} }; }
-  createBufferSource() { return { buffer: null, loop: false, connect() {}, start() {}, stop() {} }; }
+  createMediaStreamDestination() { const d = Object.assign(noeud(), { stream: new FauxMediaStream() }); destinations.push(d); return d; }
+  createBufferSource() { return { ...noeud(), buffer: null, loop: false, start() {}, stop() {} }; }
   createGain() {
     const programme: Array<[string, number, number]> = [];
-    const g: FauxGain & Record<string, unknown> = {
+    const g = noeud({
       gain: {
         value: 1, programme,
         cancelScheduledValues() {},
         setValueAtTime(v: number, t: number) { programme.push(['set', v, t]); },
         linearRampToValueAtTime(v: number, t: number) { programme.push(['rampe', v, t]); },
-      } as FauxGain['gain'],
-      sorties: [],
-      connect(n: unknown) { g.sorties.push(n); },
-      disconnect() { g.sorties.length = 0; },
-    };
+      } as unknown as FauxGain['gain'],
+    }) as unknown as FauxGain;
     portes.push(g);
     return g;
   }
   createAnalyser() {
-    const a: Noeud & { getFloatTimeDomainData: (b: Float32Array) => void } = {
-      sources: [],
-      connect() {},
-      getFloatTimeDomainData(b: Float32Array) {
-        const el = a.sources?.[0]?.el;
-        const type = el && 'videoWidth' in el ? 'video' : 'audio';
-        const amp = el && !el.paused ? (signal[`${type}:${el.src}`] ?? 0) : 0;
-        b.fill(amp);
-      },
-    };
+    const a = noeud() as Noeud & { getFloatTimeDomainData: (b: Float32Array) => void };
+    a.getFloatTimeDomainData = (b: Float32Array) => { b.fill(amplitude(a)); };
     return a;
   }
-  createMediaElementSource(el: { src: string; paused: boolean }) {
-    const n: Noeud = { el, connect(t: Noeud) { t.sources?.push(n); } };
-    return n;
-  }
+  createMediaElementSource(el: { src: string; paused: boolean }) { return noeud({ el }); }
 }
 
 function contexte2D() {
@@ -208,6 +221,7 @@ beforeEach(() => {
   lectures.length = 0;
   creesAudio.length = 0;
   portes.length = 0;
+  destinations.length = 0;
   signal = {};
   installerNavigateur();
   const trace = (...a: unknown[]) => { if (process.env.DBG) process.stdout.write(`${a.map(String).join(' ').slice(0, 200)}\n`); };
@@ -290,20 +304,44 @@ describe('Bug 2 — la voix du jumeau atteint le mix', () => {
       ['set', DUCK_MUSIQUE_JUMEAU, expect.closeTo(t0 + 1.1, 5)],
       ['rampe', 1, expect.closeTo(t0 + 1.35, 5)],
     ]);
-    // Réglage du rush 0,5 (défaut avec musique) → multiplicateur ×2 : volume plein, pas plus.
-    expect(portes.some((g) => g.gain.value === 2)).toBe(true);
+    // La piste du jumeau suit le réglage des VOIX (voiceVolume, 1 par défaut).
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Jumeau audio — niveau max mesuré'), '2.00e-1');
   });
 
   it('rush ORDINAIRE : aucun ducking, aucun gain ajouté (mix d’avant)', async () => {
     signal = {};
     await composeVideo(options({ videoUrl: RUSH, sequenceVoiceUrls: { titre: VOIX.titre } }));
     expect(portes.some((g) => g.gain.programme.some(([, v]) => v === DUCK_MUSIQUE_JUMEAU))).toBe(false);
-    expect(portes.some((g) => g.gain.value === 2)).toBe(false);
   });
 
   it('jumeau sans aucune voix mesurée → rendu REFUSÉ, jamais un jumeau muet livré', async () => {
     signal = {};
     await expect(composeVideo(jumeau())).rejects.toThrow(MESSAGE_JUMEAU_MUET);
+  });
+
+  it('CAS RÉEL (export du 07/10) : mixeur avec rushVolume 0 — la voix du jumeau ATTEINT la sortie enregistrée', async () => {
+    signal = { [`video:${JUMEAU}`]: 0.2 }; // seule source qui « parle »
+    const sortie = await rendreEtEcouter(jumeau({ audioKeyframes: [{ time: 0, musicVolume: 0.02, rushVolume: 0, voiceVolume: 1 }] as never }));
+    expect(sortie).toBeGreaterThan(0.1);
+  });
+
+  it('réglage par défaut : la voix du jumeau atteint la sortie au niveau des voix', async () => {
+    signal = { [`video:${JUMEAU}`]: 0.2 };
+    expect(await rendreEtEcouter(jumeau())).toBeCloseTo(0.2, 5);
+  });
+
+  it('voix coupées (voiceVolume 0) : la voix du jumeau n’atteindrait pas le mix → rendu REFUSÉ', async () => {
+    signal = { [`video:${JUMEAU}`]: 0.2 };
+    await expect(composeVideo(jumeau({ voiceVolume: 0 }))).rejects.toThrow(MESSAGE_JUMEAU_MUET);
+  });
+
+  it('Jumeau en PREMIÈRE séquence (ordre vidéo → titre → cartes → CTA) : voix du jumeau dans le mix dès 0 s', async () => {
+    signal = { [`video:${JUMEAU}`]: 0.2 };
+    const r = await composeVideo(jumeau({ sequenceOrder: ['video', 'intro', 'cards', 'cta'] }));
+    expect(r.video.size).toBeGreaterThan(0);
+    const premiere = lectures.find((l) => l.src === JUMEAU)!;
+    const titre = lecturesDe(VOIX.titre)[0];
+    expect(premiere.a).toBeLessThan(titre.a);
   });
 
   it('8. rush ORDINAIRE réellement silencieux : autorisé, livré', async () => {

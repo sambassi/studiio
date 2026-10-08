@@ -220,7 +220,8 @@ describe('B — Créer', () => {
   });
 
   it('le câblage : le rendu d abord, la lecture ensuite, jamais pendant une composition', () => {
-    expect(wizard).toContain("const lectureSequences = generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (");
+    // Le rendu n'a la priorité que s'il est À JOUR (même empreinte que l'éditeur).
+    expect(wizard).toContain("const lectureSequences = generated && previewFocus === 'all' && !renduAJour && !rendPourApercu ? (");
     expect(wizard).toContain('overlay={renduDansLeCadre ?? lectureSequences}');
     // Les durées viennent du même point que le compositeur et le Calendrier —
     // pour le lecteur ET pour les extraits.
