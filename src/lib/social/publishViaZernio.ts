@@ -3,6 +3,11 @@ import { droitDePublier, comptesConnectes, resoudreCibles, mediaPubliable } from
 import { createPost, uploadMedia, ZernioError } from '@/lib/social/zernio';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { traduireErreurZernio, type TraductionErreur } from '@/lib/social/erreursZernio';
+import {
+  besoinImageExtraite, lireCouverture, lireReglagesTiktok, reglagesCouverture, tiktokSettings, validerTiktok,
+  type PlanCouverture, type ReseauCouverture,
+} from '@/lib/social/couverture';
+import { imageDepuisVideo } from '@/lib/social/imageDepuisVideo';
 
 /**
  * Publier un post Studiio sur les réseaux de l'utilisateur, via Zernio.
@@ -21,7 +26,13 @@ import { traduireErreurZernio, type TraductionErreur } from '@/lib/social/erreur
 
 export type ResultatPublication =
   /** `dejaEnvoye` : Zernio avait deja accepte ce post, rien n'a ete recree. */
-  | { ok: true; zernioPostId: string; comptes: number; dejaEnvoye?: boolean }
+  | {
+      ok: true; zernioPostId: string; comptes: number; dejaEnvoye?: boolean;
+      /** Ce qui a été appliqué comme couverture, réseau par réseau. */
+      couvertures?: Array<{ reseau: string; applique: PlanCouverture['applique']; repli: string | null }>;
+      /** Phrases à montrer dans le Calendrier (réseau écarté, repli de couverture). */
+      avertissements?: string[];
+    }
   /**
    * `preuveAncienne` : le post porte un `zernioPostId` sans `zernioForPostId`
    * (ecrit avant ce correctif). L'appelant doit retirer cette preuve en
@@ -83,6 +94,8 @@ export interface PostAPublier {
   /** ISO. Absent : publication immédiate. */
   scheduledFor?: string | null;
   timezone?: string;
+  /** `reel` / `tv` — un `reel` part en Short sur YouTube (pas de miniature personnalisée). */
+  format?: string | null;
 }
 
 /**
@@ -152,6 +165,57 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
     };
   }
 
+  // ── TikTok : réglages obligatoires + consentement explicite ──────────────
+  // Sans consentement (case cochée par l'utilisateur), TikTok est ÉCARTÉ
+  // avant tout appel au fournisseur ; les autres réseaux partent quand même.
+  const avertissements: string[] = [];
+  const reglagesTt = lireReglagesTiktok(meta);
+  const verdictTt = validerTiktok(reglagesTt);
+  let ciblesRetenues = cibles;
+  if (cibles.some((c) => c.platform === 'tiktok') && !verdictTt.ok) {
+    ciblesRetenues = cibles.filter((c) => c.platform !== 'tiktok');
+    avertissements.push(verdictTt.motif);
+    if (ciblesRetenues.length === 0) {
+      return {
+        ok: false,
+        motif: verdictTt.motif,
+        reessayable: false,
+        details: [{ platform: 'TikTok', success: false, error: verdictTt.motif }],
+      };
+    }
+  }
+
+  // ── Couverture ──────────────────────────────────────────────────────────
+  // Absente (anciens posts) : aucun réglage ajouté — la requête d'avant.
+  const cover = lireCouverture(meta);
+  const format = post.format ?? (typeof meta?.format === 'string' ? meta.format : null);
+  const reseauxRetenus = ciblesRetenues.map((c) => c.platform as ReseauCouverture);
+  const imageExtraite = besoinImageExtraite(reseauxRetenus, cover, format) && cover?.frameMs !== undefined
+    ? await imageDepuisVideo(mediaSource!, cover.frameMs, post.userId)
+    : null;
+  const absolue = (u: string | undefined) => (u ? toAbsoluteMediaUrl(u) : u);
+  const plans = ciblesRetenues.map((c) => {
+    const plan = reglagesCouverture(c.platform as ReseauCouverture, cover, { format, imageExtraite });
+    if (plan.platformSpecificData?.instagramThumbnail) {
+      plan.platformSpecificData = { ...plan.platformSpecificData, instagramThumbnail: absolue(String(plan.platformSpecificData.instagramThumbnail)) };
+    }
+    if (plan.tiktokCouverture?.video_cover_image_url) {
+      plan.tiktokCouverture = { ...plan.tiktokCouverture, video_cover_image_url: absolue(String(plan.tiktokCouverture.video_cover_image_url)) };
+    }
+    if (plan.repli) avertissements.push(plan.repli);
+    return plan;
+  });
+  const construireCibles = (avecCouverture: boolean) => ciblesRetenues.map((c, i) => {
+    const plan = avecCouverture ? plans[i] : null;
+    const psd: Record<string, unknown> = {
+      ...(plan?.platformSpecificData ?? {}),
+      ...(c.platform === 'tiktok' && reglagesTt ? { tiktokSettings: tiktokSettings(reglagesTt, plan) } : {}),
+    };
+    return { ...c, ...(Object.keys(psd).length ? { platformSpecificData: psd } : {}) };
+  });
+  const miniatureMedia = absolue(plans.find((p) => p.miniatureMedia)?.miniatureMedia);
+  const couvertureAppliquee = plans.some((p) => p.applique !== 'auto');
+
   try {
     // Le téléversement se fait MAINTENANT : l'URL présignée de Zernio ne vaut
     // qu'une heure, et son fichier temporaire sept jours.
@@ -161,10 +225,11 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       'video/mp4',
     );
 
-    const zernio = await createPost({
+    const envoyer = (avecCouverture: boolean) => createPost({
       content: post.caption,
-      platforms: cibles,
+      platforms: construireCibles(avecCouverture),
       mediaUrl,
+      ...(avecCouverture && miniatureMedia ? { mediaThumbnail: miniatureMedia } : {}),
       ...(post.scheduledFor
         ? { scheduledFor: post.scheduledFor, timezone: post.timezone ?? 'Europe/Paris' }
         : { publishNow: true }),
@@ -173,6 +238,26 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       // jour, et le Calendrier resterait indefiniment « programme ».
       metadata: { studiioPostId: post.id },
     });
+
+    // ⚠️ UNE MINIATURE NE FAIT JAMAIS ÉCHOUER LA PUBLICATION. Un refus de
+    // validation (400/422) alors qu'une couverture était posée : le post
+    // n'a PAS été créé chez Zernio, on renvoie donc UNE fois sans couverture
+    // — aucune double publication possible. Les refus d'autorisation, de
+    // facturation ou de quota (401/402/403/429) ne sont pas concernés.
+    let couverturesEnvoyees = couvertureAppliquee;
+    let zernio;
+    try {
+      zernio = await envoyer(true);
+    } catch (e) {
+      if (!(couvertureAppliquee && e instanceof ZernioError && (e.status === 400 || e.status === 422))) throw e;
+      console.warn(`[Zernio/Publication] post ${post.id} : couverture refusee (${e.status}) — renvoi sans couverture`);
+      avertissements.push(`Couverture refusée par le réseau${e.detail ? ` (${e.detail.slice(0, 160)})` : ''} : couverture choisie automatiquement.`);
+      couverturesEnvoyees = false;
+      zernio = await envoyer(false);
+    }
+    const couvertures = plans.map((p) => (couverturesEnvoyees
+      ? { reseau: p.reseau, applique: p.applique, repli: p.repli }
+      : { reseau: p.reseau, applique: 'auto' as const, repli: p.applique === 'auto' ? p.repli : 'couverture refusée par le réseau' }));
 
     // ⚠️ L'IDENTIFIANT ZERNIO VA DANS `metadata`, PAS DANS UNE COLONNE. En
     // ajouter une aurait demande une migration de plus pour une valeur de
@@ -188,7 +273,12 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
         .from('scheduled_posts')
         // `zernioForPostId` lie la preuve a CE post : une copie qui la
         // recopierait sera reconnue comme etrangere, donc publiee.
-        .update({ metadata: { ...meta, zernioPostId: zernio._id, zernioForPostId: post.id } })
+        .update({ metadata: {
+          ...meta, zernioPostId: zernio._id, zernioForPostId: post.id,
+          // Ce qui a vraiment été appliqué : le Calendrier l'affiche.
+          couvertures,
+          avertissementsPublication: avertissements,
+        } })
         .eq('id', post.id);
     } catch (e) {
       // Le post EST parti : ne pas le compter en echec pour une note de
@@ -196,7 +286,7 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       console.error('[Zernio/Publication] identifiant non memorise :', e);
     }
 
-    return { ok: true, zernioPostId: zernio._id, comptes: cibles.length };
+    return { ok: true, zernioPostId: zernio._id, comptes: ciblesRetenues.length, couvertures, avertissements };
   } catch (err) {
     if (err instanceof ZernioError) {
       console.error(`[Zernio/Publication] post ${post.id} :`, err.message);

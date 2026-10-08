@@ -200,6 +200,24 @@ export async function listAccounts(profileId: string): Promise<ZernioAccount[]> 
   return r.accounts ?? [];
 }
 
+/**
+ * Ce qu'un compte TikTok autorise — `GET /v1/accounts/{id}/tiktok/creator-info`
+ * (docs.zernio.com/platforms/tiktok). Lecture seule.
+ */
+export interface ZernioTiktokCreatorInfo {
+  creator?: { nickname?: string; canPostMore?: boolean };
+  privacyLevels?: Array<{ value: string; label?: string }>;
+  postingLimits?: {
+    interactionSettings?: Record<'allow_comment' | 'allow_duet' | 'allow_stitch', {
+      enabled?: boolean; required?: boolean; default?: boolean; label?: string;
+    } | undefined>;
+  };
+}
+
+export async function getTiktokCreatorInfo(accountId: string): Promise<ZernioTiktokCreatorInfo> {
+  return appel<ZernioTiktokCreatorInfo>(`/accounts/${encodeURIComponent(accountId)}/tiktok/creator-info`);
+}
+
 /** Santé d'un compte — `GET /v1/accounts/{id}/health` (docs.zernio.com/accounts/get-account-health). */
 export interface ZernioAccountHealth {
   status?: 'healthy' | 'warning' | 'error' | string;
@@ -263,6 +281,8 @@ export async function uploadMedia(
 export interface ZernioPostCible {
   platform: string;
   accountId: string;
+  /** Réglages propres au réseau (couverture Instagram, `tiktokSettings`…). Absent : rien n'est envoyé. */
+  platformSpecificData?: Record<string, unknown>;
 }
 
 export interface ZernioPostInput {
@@ -270,6 +290,8 @@ export interface ZernioPostInput {
   platforms: ZernioPostCible[];
   /** URL rendue par `uploadMedia`, jamais une URL de notre stockage. */
   mediaUrl?: string;
+  /** Miniature du média (`mediaItems[].thumbnail`) — Facebook, YouTube. Absente : rien n'est envoyé. */
+  mediaThumbnail?: string;
   /** ISO. Avec `timezone`, programme le post. */
   scheduledFor?: string;
   timezone?: string;
@@ -296,7 +318,9 @@ export async function createPost(input: ZernioPostInput): Promise<ZernioPostResu
     body: {
       content: input.content,
       platforms: input.platforms,
-      ...(input.mediaUrl ? { mediaItems: [{ type: 'video', url: input.mediaUrl }] } : null),
+      ...(input.mediaUrl
+        ? { mediaItems: [{ type: 'video', url: input.mediaUrl, ...(input.mediaThumbnail ? { thumbnail: input.mediaThumbnail } : null) }] }
+        : null),
       ...(input.scheduledFor ? { scheduledFor: input.scheduledFor } : null),
       ...(input.timezone ? { timezone: input.timezone } : null),
       ...(input.publishNow ? { publishNow: true } : null),
