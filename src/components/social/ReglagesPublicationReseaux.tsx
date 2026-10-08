@@ -137,167 +137,241 @@ export default function ReglagesPublicationReseaux({
 
   if (reseaux.length === 0) return null;
 
+  // ── Styles partagés (une seule source, pour une zone sobre et cohérente) ──
+  const carte = 'rounded-2xl bg-white/[0.025] p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]';
+  const titre = 'text-[11px] font-medium uppercase tracking-[0.08em] text-gray-400';
+  const sousTitre = 'text-[11px] font-medium text-gray-500';
+  const lienDiscret = 'inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-gray-400 transition-colors hover:bg-white/5 hover:text-white';
+
   return (
     <div className="space-y-3" data-reglages-publication>
-      <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3" data-couverture>
-        <p className="text-sm font-medium text-white mb-2">Miniature / couverture</p>
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Miniature / couverture">
+      {/* ── Miniature / couverture ─────────────────────────────────────── */}
+      <section className={carte} data-couverture>
+        <p className={titre}>Miniature / couverture</p>
+
+        {/* Segmented control : un seul fond, l'option active s'en détache. */}
+        <div
+          className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-black/25 p-1"
+          role="radiogroup"
+          aria-label="Miniature / couverture"
+        >
           {([
-            ['auto', 'Automatique', Sparkles],
-            ['upload', 'Choisir une image', ImageIcon],
-            ['frame', 'Image dans la vidéo', Film],
-          ] as const).map(([m, libelle, Icone]) => (
+            ['auto', 'Automatique', 'Auto', Sparkles],
+            ['upload', 'Choisir une image', 'Image', ImageIcon],
+            ['frame', 'Image dans la vidéo', 'Vidéo', Film],
+          ] as const).map(([m, libelle, court, Icone]) => (
             <button
               key={m}
               type="button"
               role="radio"
               aria-checked={mode === m}
+              aria-label={libelle}
               data-couverture-mode={m}
               onClick={() => choisirMode(m)}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
-                mode === m ? 'border-purple-500/60 bg-gray-800 text-white' : 'border-gray-800 text-gray-400 hover:text-white'
+              className={`inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all ${
+                mode === m
+                  ? 'bg-white/[0.08] text-white shadow-[0_1px_2px_rgba(0,0,0,0.4)]'
+                  : 'text-gray-400 hover:text-gray-200'
               }`}
             >
-              <Icone size={13} /> {libelle}
+              <Icone size={13} className="shrink-0" />
+              {/* Libellé court sur mobile : jamais de « Automat… » tronqué. */}
+              <span className="truncate sm:hidden">{court}</span>
+              <span className="hidden truncate sm:inline">{libelle}</span>
             </button>
           ))}
         </div>
 
         {mode === 'upload' && (
-          <div className="mt-3" data-couverture-upload>
+          <div className="mt-4" data-couverture-upload>
             {cover?.imageUrl ? (
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={cover.imageUrl} alt="Couverture choisie" className="h-24 w-auto rounded-md border border-gray-700 object-cover" />
-                <div className="flex flex-col gap-1.5">
-                  <label className="cursor-pointer text-xs text-purple-300 hover:text-white underline">
-                    Remplacer
+                <img src={cover.imageUrl} alt="Couverture choisie" className="h-20 w-auto max-w-[45%] rounded-lg object-cover ring-1 ring-white/10" />
+                <div className="flex flex-col items-start gap-0.5">
+                  <label className={`${lienDiscret} cursor-pointer`}>
+                    <ImageIcon size={12} /> Remplacer
                     <input type="file" accept={TYPES_IMAGE_COUVERTURE.join(',')} className="hidden"
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) void envoyerImage(f); e.target.value = ''; }} />
                   </label>
-                  <button type="button" className="inline-flex items-center gap-1 text-xs text-red-400 hover:text-red-300"
+                  <button type="button" className={`${lienDiscret} hover:text-red-300`}
                     onClick={() => onChange({ cover: { mode: 'auto' } })} data-couverture-supprimer>
                     <Trash2 size={12} /> Supprimer
                   </button>
                 </div>
               </div>
             ) : (
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-700 px-3 py-4 text-xs text-gray-400 hover:border-purple-500">
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 px-3 py-5 text-xs text-gray-400 transition-colors hover:border-purple-400/40 hover:text-gray-200">
                 {envoi ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
-                {envoi ? 'Envoi…' : 'Importer une image (JPEG, PNG ou WebP, 10 Mo max.)'}
+                <span>
+                  {envoi ? 'Envoi…' : 'Importer une image'}
+                  {!envoi && <span className="block text-[10px] text-gray-500">JPEG, PNG ou WebP · 10 Mo max.</span>}
+                </span>
                 <input type="file" accept={TYPES_IMAGE_COUVERTURE.join(',')} className="hidden" disabled={envoi}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void envoyerImage(f); e.target.value = ''; }} />
               </label>
             )}
-            {erreurImage && <p className="mt-1.5 text-xs text-red-400" data-couverture-erreur>{erreurImage}</p>}
+            {erreurImage && <p className="mt-2 text-[11px] text-red-400" data-couverture-erreur>{erreurImage}</p>}
           </div>
         )}
 
         {mode === 'frame' && (
-          <div className="mt-3" data-couverture-frame>
+          <div className="mt-4" data-couverture-frame>
             {videoUrl ? (
-              <>
+              <div className="flex items-center gap-5">
                 <video
                   ref={videoRef}
                   src={videoUrl}
                   muted
                   playsInline
                   preload="metadata"
-                  className="max-h-56 w-auto rounded-md border border-gray-700 bg-black"
+                  className="max-h-36 w-auto max-w-[40%] shrink-0 rounded-lg bg-black ring-1 ring-white/10"
                   onLoadedMetadata={(e) => {
                     const d = Math.round(e.currentTarget.duration * 1000);
                     if (Number.isFinite(d)) setDureeMs(d);
                     e.currentTarget.currentTime = (cover?.frameMs ?? 1000) / 1000;
                   }}
                 />
-                {/* Désactivé tant que la durée est inconnue : borné à 1 ms, le
-                    curseur enregistrerait un moment faux au premier geste. */}
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(dureeMs, 1)}
-                  step={50}
-                  disabled={dureeMs <= 0}
-                  value={cover?.frameMs ?? 1000}
-                  aria-label="Moment de la couverture"
-                  data-couverture-curseur
-                  className="mt-2 w-full accent-purple-500"
-                  onChange={(e) => {
-                    const ms = Number(e.target.value);
-                    if (videoRef.current) videoRef.current.currentTime = ms / 1000;
-                    onChange({ cover: { mode: 'frame', frameMs: ms } });
-                  }}
-                />
-                <p className="text-xs text-gray-400">
-                  {dureeMs <= 0 ? 'Chargement de la vidéo… ' : null}
-                  Moment choisi : <span className="text-white" data-couverture-temps>{formatMs(cover?.frameMs ?? 1000)}</span>
-                </p>
-              </>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <span className={sousTitre}>{dureeMs <= 0 ? 'Chargement de la vidéo…' : 'Moment choisi'}</span>
+                    <span className="font-mono text-[11px] tabular-nums text-gray-300" data-couverture-temps>{formatMs(cover?.frameMs ?? 1000)}</span>
+                  </div>
+                  {/* Désactivé tant que la durée est inconnue : borné à 1 ms, le
+                      curseur enregistrerait un moment faux au premier geste. */}
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(dureeMs, 1)}
+                    step={50}
+                    disabled={dureeMs <= 0}
+                    value={cover?.frameMs ?? 1000}
+                    aria-label="Moment de la couverture"
+                    data-couverture-curseur
+                    className="h-1 w-full cursor-pointer appearance-auto accent-purple-400 disabled:cursor-wait disabled:opacity-40"
+                    onChange={(e) => {
+                      const ms = Number(e.target.value);
+                      if (videoRef.current) videoRef.current.currentTime = ms / 1000;
+                      onChange({ cover: { mode: 'frame', frameMs: ms } });
+                    }}
+                  />
+                </div>
+              </div>
             ) : (
-              <p className="text-xs text-gray-400" data-couverture-frame-indisponible>
-                Disponible une fois le montage prêt : choisissez le moment depuis le Calendrier. En attendant, le moment par défaut ({formatMs(cover?.frameMs ?? 1000)}) sera utilisé.
+              <p className="flex items-start gap-2 rounded-xl bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-gray-400" data-couverture-frame-indisponible>
+                <Info size={13} className="mt-px shrink-0 text-gray-500" />
+                <span>Disponible une fois le montage prêt : choisissez le moment depuis le Calendrier. En attendant, le moment par défaut ({formatMs(cover?.frameMs ?? 1000)}) sera utilisé.</span>
               </p>
             )}
           </div>
         )}
 
-        <ul className="mt-3 space-y-0.5 text-[11px] text-gray-400" data-couverture-resume>
-          {reseaux.map((r) => <li key={r}>{resumeCouverture(r, cover, format)}</li>)}
+        {/* Résumé par réseau : léger, une ligne par réseau, sans cadre. */}
+        <ul className="mt-4 space-y-1 border-t border-white/[0.05] pt-3 text-[11px] text-gray-500" data-couverture-resume>
+          {reseaux.map((r) => (
+            <li key={r} className="flex items-start gap-2">
+              <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-gray-600" aria-hidden />
+              {resumeCouverture(r, cover, format)}
+            </li>
+          ))}
         </ul>
-      </div>
+      </section>
 
+      {/* ── Réglages TikTok : visibilité + interactions côte à côte, consentement en pied ── */}
       {avecTiktok && (
-        <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3" data-reglages-tiktok>
-          <p className="text-sm font-medium text-white mb-2">
-            Réglages TikTok{infoTt?.nickname ? <span className="text-gray-400 font-normal"> — @{infoTt.nickname}</span> : null}
-          </p>
+        <section className={carte} data-reglages-tiktok>
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={titre}>Réglages TikTok</p>
+            {infoTt?.nickname && <span className="truncate text-[11px] text-gray-500">@{infoTt.nickname}</span>}
+          </div>
           {!infoTt || !tt ? (
-            <p className="text-xs text-gray-400 inline-flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Lecture des réglages du compte…</p>
+            <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-gray-500"><Loader2 size={12} className="animate-spin" /> Lecture des réglages du compte…</p>
           ) : (
-            <div className="space-y-2 text-xs">
-              {infoTt.fiable ? (
-                <label className="flex items-center gap-2 text-gray-300">
-                  Visibilité
-                  <select
-                    data-tiktok-confidentialite
-                    value={tt.privacy_level}
-                    onChange={(e) => majTt({ privacy_level: e.target.value as ConfidentialiteTiktok })}
-                    className="rounded-md border border-gray-700 bg-gray-800 px-2 py-1 text-white"
-                  >
-                    {infoTt.confidentialites.map((c) => <option key={c} value={c}>{LIBELLES_CONFIDENTIALITE[c]}</option>)}
-                  </select>
+            <>
+              <div className="mt-4 grid gap-5 sm:grid-cols-[minmax(0,10rem)_1fr]">
+                {/* Visibilité */}
+                <div className="min-w-0">
+                  <p className={`${sousTitre} mb-2`}>Visibilité</p>
+                  {infoTt.fiable ? (
+                    <select
+                      data-tiktok-confidentialite
+                      aria-label="Visibilité TikTok"
+                      value={tt.privacy_level}
+                      onChange={(e) => majTt({ privacy_level: e.target.value as ConfidentialiteTiktok })}
+                      className="w-full rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/[0.08] focus:outline-none focus:ring-1 focus:ring-purple-400/50"
+                    >
+                      {infoTt.confidentialites.map((c) => <option key={c} value={c}>{LIBELLES_CONFIDENTIALITE[c]}</option>)}
+                    </select>
+                  ) : (
+                    <p className="text-[11px] leading-relaxed text-amber-300/90" data-tiktok-moi-uniquement>
+                      TikTok sera publié en « Moi uniquement » (réglages du compte indisponibles).
+                    </p>
+                  )}
+                </div>
+
+                {/* Interactions : des pastilles à bascule, compactes. La case
+                    native reste en place (accessibilité, clavier, état). */}
+                <div className="min-w-0">
+                  <p className={`${sousTitre} mb-2`}>Interactions</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['allow_comment', 'allow_duet', 'allow_stitch'] as const).map((k) => {
+                      const autorise = infoTt.interactions ? infoTt.interactions[k]?.enabled !== false : true;
+                      const actif = autorise && tt[k];
+                      return (
+                        <label
+                          key={k}
+                          title={autorise ? undefined : 'Désactivé par le compte TikTok'}
+                          className={`inline-flex select-none items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors focus-within:ring-1 focus-within:ring-purple-400/50 ${
+                            !autorise
+                              ? 'cursor-not-allowed bg-white/[0.02] text-gray-600 line-through decoration-gray-700'
+                              : actif
+                                ? 'cursor-pointer bg-purple-500/15 text-purple-100'
+                                : 'cursor-pointer bg-white/[0.05] text-gray-400 hover:text-gray-200'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            data-tiktok-interaction={k}
+                            checked={actif}
+                            disabled={!autorise}
+                            onChange={(e) => majTt({ [k]: e.target.checked } as Partial<ReglagesTiktok>)}
+                            className="sr-only"
+                          />
+                          <span className={`h-1.5 w-1.5 rounded-full ${actif ? 'bg-purple-300' : 'bg-gray-600'}`} aria-hidden />
+                          {{ allow_comment: 'Commentaires', allow_duet: 'Duos', allow_stitch: 'Collages' }[k]}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {infoTt.interactions && (['allow_comment', 'allow_duet', 'allow_stitch'] as const).some((k) => infoTt.interactions?.[k]?.enabled === false) && (
+                    <p className="mt-1.5 text-[10px] text-gray-600">Barré : désactivé par le compte</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Consentement : en pied, séparé d'un simple filet — mis en avant sans cadre lourd. */}
+              <div className="mt-5 border-t border-white/[0.05] pt-4">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    data-tiktok-consentement
+                    checked={tt.consentement}
+                    onChange={(e) => majTt({ consentement: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-purple-400"
+                  />
+                  <span className={`text-xs leading-relaxed ${tt.consentement ? 'text-white' : 'text-gray-300'}`}>
+                    Je confirme avoir vérifié ce contenu et j’accepte sa publication sur TikTok
+                  </span>
                 </label>
-              ) : (
-                <p className="inline-flex items-center gap-1.5 text-amber-300" data-tiktok-moi-uniquement>
-                  <Info size={12} /> TikTok sera publié en « Moi uniquement » (réglages du compte indisponibles).
-                </p>
-              )}
-              {(['allow_comment', 'allow_duet', 'allow_stitch'] as const).map((k) => {
-                const autorise = infoTt.interactions ? infoTt.interactions[k]?.enabled !== false : true;
-                return (
-                  <label key={k} className={`flex items-center gap-2 ${autorise ? 'text-gray-300' : 'text-gray-500'}`}>
-                    <input
-                      type="checkbox"
-                      data-tiktok-interaction={k}
-                      checked={autorise && tt[k]}
-                      disabled={!autorise}
-                      onChange={(e) => majTt({ [k]: e.target.checked } as Partial<ReglagesTiktok>)}
-                    />
-                    {{ allow_comment: 'Autoriser les commentaires', allow_duet: 'Autoriser les duos', allow_stitch: 'Autoriser les collages (stitch)' }[k]}
-                    {!autorise && ' — désactivé par le compte'}
-                  </label>
-                );
-              })}
-              <label className="flex items-start gap-2 pt-1 text-white">
-                <input type="checkbox" data-tiktok-consentement checked={tt.consentement} onChange={(e) => majTt({ consentement: e.target.checked })} className="mt-0.5" />
-                Je confirme avoir vérifié ce contenu et j’accepte sa publication sur TikTok
-              </label>
-              {!tt.consentement && (
-                <p className="text-amber-400" data-tiktok-consentement-requis>Sans cette confirmation, la vidéo ne partira pas sur TikTok (les autres réseaux, si.)</p>
-              )}
-            </div>
+                {!tt.consentement && (
+                  <p className="mt-1 pl-[26px] text-[11px] text-gray-500" data-tiktok-consentement-requis>
+                    Requis pour TikTok — les autres réseaux partent quand même.
+                  </p>
+                )}
+              </div>
+            </>
           )}
-        </div>
+        </section>
       )}
     </div>
   );
