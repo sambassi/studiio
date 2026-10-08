@@ -115,6 +115,9 @@ export interface Draft {
   textAnimation?: string;
   /** Habillage de la séquence Vidéo (`degrade` | `cadre` | `aucun`). Absent : le défaut. */
   habillageVideoMode?: string;
+  /** Largeur des blocs titre / CTA, en % (poignée de bord). */
+  titleWidth?: number;
+  ctaWidth?: number;
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -618,6 +621,8 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     textAnimation: TEXT_ANIMATION_KEYS.includes(raw.textAnimation as never)
       ? (raw.textAnimation as string)
       : undefined,
+    titleWidth: typeof raw.titleWidth === 'number' && raw.titleWidth >= 30 && raw.titleWidth <= 96 ? raw.titleWidth : undefined,
+    ctaWidth: typeof raw.ctaWidth === 'number' && raw.ctaWidth >= 30 && raw.ctaWidth <= 96 ? raw.ctaWidth : undefined,
     habillageVideoMode: raw.habillageVideoMode === 'degrade' || raw.habillageVideoMode === 'cadre' || raw.habillageVideoMode === 'aucun'
       ? (raw.habillageVideoMode as string)
       : undefined,

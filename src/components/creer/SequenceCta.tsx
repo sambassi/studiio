@@ -146,13 +146,13 @@ export default function SequenceCta({
 }
 
 /** Cadre du bloc CTA — ancre par le BAS, centre horizontalement. */
-export function ctaFrameStyle(position: { x: number; y: number }): React.CSSProperties {
+export function ctaFrameStyle(position: { x: number; y: number }, largeur: number = TEXT_LAYOUT.ctaWidth): React.CSSProperties {
   return {
     position: 'absolute',
     left: `${position.x}%`,
     top: `${position.y}%`,
     transform: 'translate(-50%, -100%)',
-    width: `${TEXT_LAYOUT.ctaWidth}%`,
+    width: `${largeur}%`,
     textAlign: 'center',
   };
 }

@@ -118,6 +118,8 @@ import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
+import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
+import { echelleCtaAjustee } from '@/lib/creer/ajustementCta';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -1325,6 +1327,8 @@ function validFree(f: FreeCards | null | undefined, ids: string[], fmt: Format):
 const TextResizeHandles: React.FC<{
   el: 'title' | 'cta';
   onStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  /** Poignée de BORD (milieu droit) : largeur du bloc. Absente sans gestionnaire. */
+  onWidthStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
   uiPx: (n: number) => number;
   capturing?: boolean;
   onDragMove?: (e: React.PointerEvent) => void;
@@ -1336,10 +1340,23 @@ const TextResizeHandles: React.FC<{
    * d'edition affiche en continu encombre l'apercu qu'il sert a regler.
    */
   visible?: boolean;
-}> = ({ el, onStart, uiPx, capturing, visible, onDragMove, onDragEnd }) => {
+}> = ({ el, onStart, onWidthStart, uiPx, capturing, visible, onDragMove, onDragEnd }) => {
   if (!onStart || capturing || !visible) return null;
   return (
     <>
+      {onWidthStart && (
+        <span
+          data-text-width-handle={el}
+          onPointerDown={(e) => { e.stopPropagation(); onWidthStart(el, e); }}
+          title="Tirer pour élargir ou rétrécir le bloc"
+          style={{
+            position: 'absolute', top: '50%', left: '100%',
+            width: uiPx(7), height: uiPx(22), marginTop: -uiPx(11), marginLeft: -uiPx(3.5),
+            backgroundColor: '#FFFFFF', border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`, borderRadius: uiPx(3),
+            cursor: 'ew-resize', touchAction: 'none', zIndex: 5,
+          }}
+        />
+      )}
       {([
         { coin: 'nw', top: 0, left: 0 },
         { coin: 'ne', top: 0, left: '100%' },
@@ -1405,6 +1422,8 @@ function PlateContent({
   text,
   titlePos,
   ctaPos,
+  titleWidth = DESIGN.titleWidth,
+  ctaWidth = DESIGN.ctaWidth,
   cardBoxes = null,
   cardStyle,
   cardsTypography,
@@ -1427,6 +1446,9 @@ function PlateContent({
   text: TextStyles;
   titlePos: Pos;
   ctaPos: Pos;
+  /** Largeur du bloc titre / CTA, en % de la vidéo (`sizes.title` / `sizes.watermark`). */
+  titleWidth?: number;
+  ctaWidth?: number;
   cardBoxes?: Record<string, CardBox> | null;
   cardStyle?: string;
   cardsTypography?: CardsTypography;
@@ -1460,6 +1482,7 @@ function PlateContent({
     dragging?: 'title' | 'cta' | null;
     onTextDoubleClick?: (el: 'title' | 'subtitle' | 'cta') => void;
     onTextResizeStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+    onTextWidthStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
     onElementDragStart?: (id: string, e: React.PointerEvent) => void;
     onElementResizeStart?: (id: string, e: React.PointerEvent) => void;
     onElementDelete?: (id: string) => void;
@@ -1490,7 +1513,7 @@ function PlateContent({
   const {
     cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard = null, selectedCards,
     groupedCards, capturing = false, onCardDoubleClick, onCardResizeStart, onDragStart,
-    dragging = null, onTextDoubleClick, onTextResizeStart, onElementDragStart,
+    dragging = null, onTextDoubleClick, onTextResizeStart, onTextWidthStart, onElementDragStart,
     onElementResizeStart, onElementDelete, selectedElementId = null,
   } = edit ?? {};
   const uiPx = edit?.uiPx ?? ((n: number) => n);
@@ -1580,7 +1603,7 @@ function PlateContent({
                 // Cadre PARTAGE avec la composition Remotion : la position et
                 // la largeur viennent du meme helper, les aides d'edition
                 // s'ajoutent par-dessus.
-                ...titleFrameStyle(titlePos),
+                ...titleFrameStyle(titlePos, titleWidth),
                 cursor: onDragStart ? (dragging === 'title' ? 'grabbing' : 'grab') : undefined,
                 // Au-dessus de la grille de cartes : sans cela, un titre
                 // depose sur la zone des cartes n'etait plus saisissable —
@@ -1606,7 +1629,7 @@ function PlateContent({
               {/* Poignees de coin — agrandir le TEXTE. Elles arretent la
                   propagation : sans cela, la prise deplacerait le bloc au
                   lieu de le redimensionner. */}
-              <TextResizeHandles el="title" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+              <TextResizeHandles el="title" onStart={onTextResizeStart} onWidthStart={onTextWidthStart} uiPx={uiPx} capturing={capturing}
                 visible={poigneesVisibles('title')}
                 onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
@@ -1671,7 +1694,7 @@ function PlateContent({
                   : onDragStart ? 'Glisser pour déplacer le CTA' : undefined
               }
               style={{
-                ...ctaFrameStyle(ctaPos),
+                ...ctaFrameStyle(ctaPos, ctaWidth),
                 cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
                 zIndex: onDragStart ? 2 : undefined,
                 touchAction: onDragStart ? 'none' : undefined,
@@ -1687,7 +1710,7 @@ function PlateContent({
                 format={format}
                 containerWidth={vw}
               />
-              <TextResizeHandles el="cta" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+              <TextResizeHandles el="cta" onStart={onTextResizeStart} onWidthStart={onTextWidthStart} uiPx={uiPx} capturing={capturing}
                 visible={poigneesVisibles('cta')}
                 onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
@@ -1957,6 +1980,9 @@ export function Preview({
   cardsTypography,
   onCardResizeStart,
   onTextResizeStart,
+  onTextWidthStart,
+  titleWidth,
+  ctaWidth,
   onTextDoubleClick,
   onCardDoubleClick,
 }: {
@@ -1978,6 +2004,10 @@ export function Preview({
    * sont pour le texte, qui n'a pas de boite propre a redimensionner.
    */
   onTextResizeStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  /** Poignée de bord du titre / CTA : leur largeur. */
+  onTextWidthStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  titleWidth?: number;
+  ctaWidth?: number;
   /** Double-clic sur le titre ou le CTA — ouvre son panneau de reglages. */
   onTextDoubleClick?: (el: 'title' | 'subtitle' | 'cta') => void;
   /** Double-clic sur une carte — ouvre le choix de son icone. */
@@ -2520,6 +2550,8 @@ export function Preview({
             text={text}
             titlePos={titlePos}
             ctaPos={ctaPos}
+            titleWidth={titleWidth}
+            ctaWidth={ctaWidth}
             cardBoxes={cardBoxes}
             cardStyle={cardStyle}
             cardsTypography={cardsTypography}
@@ -2531,7 +2563,7 @@ export function Preview({
             edit={{
               cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard, selectedCards,
               groupedCards, capturing, uiPx, onCardDoubleClick, onCardResizeStart, onDragStart,
-              dragging, onTextDoubleClick, onTextResizeStart, onElementDragStart,
+              dragging, onTextDoubleClick, onTextResizeStart, onTextWidthStart, onElementDragStart,
               onElementResizeStart, onElementDelete, selectedElementId,
             }}
           />
@@ -2999,7 +3031,11 @@ function AutopilotPreview({ config, accent, onPatch }: {
   const previewRef = useRef<HTMLDivElement>(null);
   const gesteRef = useRef<
     | { type: 'move'; el: 'title' | 'cta'; pointerId: number; grab: Pos; box: BoxPct }
-    | { type: 'resize'; el: 'title' | 'cta' | 'cards'; pointerId: number; distance: number; echelle: number }
+    | {
+        type: 'resize'; el: 'title' | 'cta' | 'cards'; pointerId: number; distance: number; echelle: number;
+        /** Titre / CTA : prise figée (coin, pointeur, taille du bloc) — `echelleDepuisCoin`. */
+        prise?: { coin: Coin; x0: number; y0: number; w0: number; h0: number };
+      }
     | null
   >(null);
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
@@ -3107,6 +3143,10 @@ function AutopilotPreview({ config, accent, onPatch }: {
       pointerId: e.pointerId,
       distance: Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy)),
       echelle: (el === 'title' ? style.title?.scale : style.cta?.scale) ?? 1,
+      prise: {
+        coin: ((e.currentTarget as HTMLElement).dataset.textHandle?.split('-')[1] ?? 'se') as Coin,
+        x0: e.clientX, y0: e.clientY, w0: box.width, h0: box.height,
+      },
     };
     setDragging(el);
     try {
@@ -3125,6 +3165,17 @@ function AutopilotPreview({ config, accent, onPatch }: {
     // a pas de geste (garde-fou anti « element collant »).
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
 
+    if (geste.type === 'resize' && geste.prise) {
+      // Titre / CTA : rien n'est re-mesuré pendant le geste (le centre du bloc
+      // se déplaçait vers le pointeur et annulait l'agrandissement).
+      const { coin, x0, y0, w0, h0 } = geste.prise;
+      const echelle = echelleDepuisCoin({
+        echelleDepart: geste.echelle, coin, dx: e.clientX - x0, dy: e.clientY - y0,
+        largeurBloc: w0, hauteurBloc: h0, min: SCALE_MIN, max: SCALE_MAX,
+      });
+      setStyle((prev) => ({ ...prev, [geste.el]: { ...(prev[geste.el] ?? {}), scale: echelle } }));
+      return;
+    }
     if (geste.type === 'resize') {
       const cible = (e.currentTarget as HTMLElement).parentElement;
       const box = cible?.getBoundingClientRect();
@@ -3586,6 +3637,9 @@ export default function AssistantWizard() {
     // l'utilisateur n'a pas choisi de couleur de sous-texte.
     subColor: '',
   });
+  /** Largeur des blocs titre / CTA (% de la vidéo) — réglée par leur poignée de bord. */
+  const [titleWidth, setTitleWidth] = useState<number>(DESIGN.titleWidth);
+  const [ctaWidth, setCtaWidth] = useState<number>(DESIGN.ctaWidth);
   /**
    * Section ouverte. Une seule a la fois : c'est ce qui empeche le panneau de
    * s'allonger indefiniment. `null` = tout replie.
@@ -3657,10 +3711,19 @@ export default function AssistantWizard() {
    * (`ctaSubColor: gradEnd`). Une valeur seedee au montage la figerait sur le
    * repli neutre, le kit de marque n'etant lu qu'apres, dans un effet.
    */
+  // Déclarés ICI (avant `textStyles`) : l'ajustement du CTA lit le texte et le format.
+  const [format, setFormat] = useState<Format>('9:16');
+  const [generated, setGenerated] = useState<Generated | null>(null);
   const textStyles: TextStyles = {
     title: titleStyle,
     subtitle: subtitleStyle,
-    cta: { ...ctaStyle, subColor: ctaStyle.subColor || gradEnd },
+    // Échelle du CTA ajustée pour qu'il ne déborde jamais (`echelleCtaAjustee`) :
+    // l'aperçu ET l'export reçoivent la même — elle ne fait que réduire.
+    cta: {
+      ...ctaStyle,
+      subColor: ctaStyle.subColor || gradEnd,
+      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: ctaStyle.scale ?? 1, largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
+    },
   };
 
   /**
@@ -3869,7 +3932,6 @@ export default function AssistantWizard() {
     setJumeauPhase((s) => ({ phase, debutLe: s?.debutLe ?? Date.now() }));
   }, []);
   const [toneId, setToneId] = useState(TONES[0].id);
-  const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
   const [dragKey, setDragKey] = useState<SeqKey | null>(null);
 
@@ -4067,6 +4129,64 @@ export default function AssistantWizard() {
     cible.addEventListener('pointercancel', finir);
   }, [cardsTypography.scale, patchCards]);
 
+  /**
+   * Coin du titre ou du CTA : sa TAILLE de texte (`scale`), celle que
+   * l'export lit (`textScale` / `ctaTextScale`). Tout est figé à la prise
+   * (`echelleDepuisCoin`) : pas de re-mesure du bloc pendant le geste.
+   */
+  const startTextResize = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    const cible = e.currentTarget as HTMLElement;
+    const coin = (cible.dataset.textHandle?.split('-')[1] ?? 'se') as Coin;
+    const box = cible.parentElement?.getBoundingClientRect();
+    if (!box) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const echelleDepart = (el === 'title' ? titleStyle.scale : ctaStyle.scale) ?? 1;
+    const poser = el === 'title' ? setTitleStyle : setCtaStyle;
+    const bouger = (ev: PointerEvent) => {
+      const scale = echelleDepuisCoin({
+        echelleDepart, coin, dx: ev.clientX - x0, dy: ev.clientY - y0,
+        largeurBloc: box.width, hauteurBloc: box.height, min: SCALE_MIN, max: SCALE_MAX,
+      });
+      (poser as (f: (p: { scale: number }) => unknown) => void)((prev) => ({ ...prev, scale }));
+    };
+    const finir = () => {
+      cible.removeEventListener('pointermove', bouger);
+      cible.removeEventListener('pointerup', finir);
+      cible.removeEventListener('pointercancel', finir);
+    };
+    try { cible.setPointerCapture?.(e.pointerId); } catch { /* pointeur deja relache */ }
+    cible.addEventListener('pointermove', bouger);
+    cible.addEventListener('pointerup', finir);
+    cible.addEventListener('pointercancel', finir);
+  }, [titleStyle.scale, ctaStyle.scale]);
+
+  /** Bord du titre ou du CTA : la LARGEUR du bloc (export : `titleSize` / `watermarkSize`). */
+  const startTextWidth = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    const cible = e.currentTarget as HTMLElement;
+    const box = cible.parentElement?.getBoundingClientRect();
+    if (!box) return;
+    const x0 = e.clientX;
+    const largeurDepart = el === 'title' ? titleWidth : ctaWidth;
+    const poser = el === 'title' ? setTitleWidth : setCtaWidth;
+    const bouger = (ev: PointerEvent) => {
+      poser(largeurDepuisBord({ largeurDepart, dx: ev.clientX - x0, largeurBlocPx: box.width, centre: el === 'cta' }));
+    };
+    const finir = () => {
+      cible.removeEventListener('pointermove', bouger);
+      cible.removeEventListener('pointerup', finir);
+      cible.removeEventListener('pointercancel', finir);
+    };
+    try { cible.setPointerCapture?.(e.pointerId); } catch { /* pointeur deja relache */ }
+    cible.addEventListener('pointermove', bouger);
+    cible.addEventListener('pointerup', finir);
+    cible.addEventListener('pointercancel', finir);
+  }, [titleWidth, ctaWidth]);
+
   /* ── VOIX PAR SEQUENCE ───────────────────────────────────────────────
      Chaque sequence porte son propre texte et sa propre voix, et sa DUREE
      se cale sur celle de son audio — c'est ce qui garantit qu'un texte
@@ -4080,7 +4200,6 @@ export default function AssistantWizard() {
     useState<SequenceVoicesUserEdited>(() => emptySequenceVoicesUserEdited());
 
   const [generating, setGenerating] = useState(false);
-  const [generated, setGenerated] = useState<Generated | null>(null);
   /**
    * Le contenu COURANT, lisible dans un gestionnaire sans attendre le rendu :
    * deux clics rapides sur « Ajouter » ou « Supprimer » partaient sinon de la
@@ -6009,6 +6128,9 @@ export default function AssistantWizard() {
     // brouillon sans ces champs se relit exactement comme avant.
     titlePos: samePos(titlePos, DESIGN.titlePos) ? undefined : titlePos,
     ctaPos: samePos(ctaPos, DESIGN.ctaPos) ? undefined : ctaPos,
+    // Largeurs réglées à la poignée ; `undefined` à la valeur par défaut.
+    titleWidth: titleWidth === DESIGN.titleWidth ? undefined : titleWidth,
+    ctaWidth: ctaWidth === DESIGN.ctaWidth ? undefined : ctaWidth,
     cardBoxes: cardBoxes ?? undefined,
     cardGroups: cardGroups.length ? cardGroups : undefined,
     elements: freeElements.length ? freeElements : undefined,
@@ -6029,6 +6151,7 @@ export default function AssistantWizard() {
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, lut, scheduledDate,
+    titleWidth, ctaWidth,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
@@ -6174,6 +6297,8 @@ export default function AssistantWizard() {
     if (draft.scheduledDate) setScheduledDate(dateRestauree(draft.scheduledDate, !!editPostId));
     // Placement : chaque champ absent laisse le defaut d'origine en place.
     if (draft.titlePos) setTitlePos(draft.titlePos);
+    if (typeof draft.titleWidth === 'number') setTitleWidth(draft.titleWidth);
+    if (typeof draft.ctaWidth === 'number') setCtaWidth(draft.ctaWidth);
     if (draft.ctaPos) setCtaPos(draft.ctaPos);
     if (draft.cardBoxes) {
       const free = draft.cardBoxes as FreeCards;
@@ -6370,6 +6495,8 @@ export default function AssistantWizard() {
     watermark: watermarkLabel,
     accent,
     text: textStyles,
+    titleWidth,
+    ctaWidth,
     habillageVideoMode,
     focus: previewFocus,
     // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
@@ -6607,6 +6734,8 @@ export default function AssistantWizard() {
             text={textStyles}
             titlePos={titlePos}
             ctaPos={ctaPos}
+            titleWidth={titleWidth}
+            ctaWidth={ctaWidth}
             cardBoxes={effectiveCardBoxes}
             cardStyle={cardStyle}
             cardsTypography={cardsTypography}
@@ -8012,7 +8141,7 @@ export default function AssistantWizard() {
             // ── Titre : haut-gauche ───────────────────────────────────────
             titleAlign: 'left' as const,
             titlePosition: { x: titlePos.x, y: titlePos.y },
-            titleSize: DESIGN.titleWidth,
+            titleSize: titleWidth,
             // Typographie du titre — memes valeurs que l'apercu.
             // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
             // il vaut aussi pour le sous-titre, que le compositeur dimensionne
@@ -8025,7 +8154,7 @@ export default function AssistantWizard() {
             ctaMainText: contenu.cta,
             ctaSubTextDesign: contenu.ctaSub,
             watermarkPosition: { x: ctaPos.x, y: ctaPos.y },
-            watermarkSize: DESIGN.ctaWidth,
+            watermarkSize: ctaWidth,
 
             // ── Cartes : image de l'apercu, blittee telle quelle ──────────
             cardsSnapshot,
@@ -8407,8 +8536,8 @@ export default function AssistantWizard() {
               elements: freeElements,
             },
             sizes: {
-              title: DESIGN.titleWidth,
-              watermark: DESIGN.ctaWidth,
+              title: titleWidth,
+              watermark: ctaWidth,
             },
           },
         };
@@ -8588,9 +8717,11 @@ export default function AssistantWizard() {
     // enverrait tels quels au compositeur et aux metadonnees.
     setTitlePos(DESIGN.titlePos);
     setCtaPos(DESIGN.ctaPos);
-    setHabillageVideoMode(MODE_HABILLAGE_DEFAUT);
     setCardBoxes(null);
     setSelectedCards(new Set());
+    setHabillageVideoMode(MODE_HABILLAGE_DEFAUT);
+    setTitleWidth(DESIGN.titleWidth);
+    setCtaWidth(DESIGN.ctaWidth);
     setCardGroups([]);
     setFreeElements([]);
     setSelectedElementId(null);
@@ -11809,6 +11940,8 @@ export default function AssistantWizard() {
           // Le geste agrandit le TEXTE de toutes les cartes : une carte deux
           // fois plus grosse que sa voisine ne serait pas un reglage.
           onCardResizeStart={startCardTextResize}
+          onTextResizeStart={startTextResize}
+          onTextWidthStart={startTextWidth}
           draggingCard={draggingCard}
           onClearSelection={clearSelection}
           cropping={cropping}

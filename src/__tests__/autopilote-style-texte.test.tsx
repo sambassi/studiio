@@ -470,7 +470,11 @@ describe('E — l assistant manuel n est PAS modifié', () => {
       corpsWizard.indexOf('/>', corpsWizard.indexOf('<Preview\n          {...previewShared}')),
     );
     expect(principal.length).toBeGreaterThan(0);
-    expect(principal).not.toContain('onTextResizeStart');
+    // DEMANDÉ DEPUIS (10/2026) : le titre et le CTA se redimensionnent aussi
+    // dans l'aperçu de l'assistant — taille au coin, largeur au bord (le
+    // curseur de taille reste dans la colonne). creer-redimension-titre-cta.
+    expect(principal).toContain('onTextResizeStart={startTextResize}');
+    expect(principal).toContain('onTextWidthStart={startTextWidth}');
     expect(principal).toContain('onTextDoubleClick={ouvrirZone}');
     expect(principal).toContain('onCardDoubleClick');
   });
