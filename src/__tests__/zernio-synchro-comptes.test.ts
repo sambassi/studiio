@@ -91,10 +91,18 @@ describe('reconnexion : nouvel accountId', () => {
     expect(statut('IG-OBSOLETE')).toBe('disconnected');
     expect(statut('IG')).toBe('connected');
   });
-  it('un compte connecté sur Zernio mais absent de la base est ajouté', async () => {
+  it('un compte actif sur Zernio mais ABSENT de la base n’est PAS ajouté (seul le retour de connexion enregistre)', async () => {
     base.zernio_accounts = base.zernio_accounts.filter((l) => l.account_id !== 'FB-NOUVEAU');
     await synchro();
-    expect(statut('FB-NOUVEAU')).toBe('connected');
+    expect(statut('FB-NOUVEAU')).toBeUndefined();
+  });
+});
+
+describe('« Déconnecter » dans Studiio est respecté', () => {
+  it('compte déconnecté par l’utilisateur, toujours actif chez Zernio : RESTE déconnecté', async () => {
+    base.zernio_accounts.find((l) => l.account_id === 'TT')!.status = 'disconnected';
+    await synchro();
+    expect(statut('TT')).toBe('disconnected');
   });
 });
 

@@ -17,10 +17,14 @@ import {
  * production (2026-10-08), Facebook avait ainsi deux lignes : l'ancienne
  * (`disconnected`) et la nouvelle (`connected`).
  *
- * Règle : Zernio fait foi. Chaque compte qu'il rend est écrit avec l'état
- * qu'il donne (actif + santé) ; chaque ligne qu'il ne rend plus passe
- * `disconnected`. Si Zernio est injoignable, la base n'est PAS touchée :
- * mieux vaut un état ancien qu'un compte déconnecté à tort.
+ * Règle : la synchronisation ne fait que RÉTROGRADER. Un compte que Zernio
+ * dit inactif (jeton invalide, `canPost=false`, `isActive=false`) ou ne rend
+ * plus passe `disconnected`. Elle ne reconnecte JAMAIS une ligne et n'en
+ * ajoute JAMAIS : « Déconnecter » dans Studiio ne révoque pas l'accès chez
+ * Zernio, et remettre la ligne à `connected` annulerait le choix de
+ * l'utilisateur — le cron republierait sur un compte qu'il a retiré. Seul le
+ * retour de connexion (POST /api/social/zernio/accounts) écrit un compte
+ * `connected`. Si Zernio est injoignable, la base n'est PAS touchée.
  */
 
 export type EtatCompte = 'connected' | 'disconnected';
@@ -78,34 +82,23 @@ export async function synchroniserComptesZernio(
   }
 
   const ecrit = new Date().toISOString();
-  if (comptes.length > 0) {
-    const { error } = await supabaseAdmin.from('zernio_accounts').upsert(
-      comptes.map((c) => ({
-        user_id: userId, profile_id: profileId, account_id: c.accountId,
-        platform: c.platform, username: c.username, status: c.status, updated_at: ecrit,
-      })),
-      { onConflict: 'account_id' },
-    );
-    if (error) {
-      console.error('[Zernio/Synchro] ecriture des comptes :', error.message);
-      return { ok: false, comptes };
-    }
-  }
-
-  // Les lignes que Zernio ne rend plus (ancien accountId après reconnexion,
-  // compte supprimé) : plus jamais ciblées.
-  const vivants = comptes.map((c) => c.accountId);
   const { data } = await supabaseAdmin
     .from('zernio_accounts').select('account_id, status').eq('user_id', userId);
-  const obsoletes = ((data ?? []) as Array<{ account_id: string; status: string }>)
-    .filter((l) => l.status !== 'disconnected' && !vivants.includes(l.account_id))
+  const actifsEnBase = ((data ?? []) as Array<{ account_id: string; status: string }>)
+    .filter((l) => l.status === 'connected')
     .map((l) => l.account_id);
-  for (const id of obsoletes) {
-    await supabaseAdmin.from('zernio_accounts')
+
+  // À rétrograder : connecté chez nous, mais inactif chez Zernio — ou absent
+  // de Zernio (ancien accountId après reconnexion, compte supprimé).
+  const etatsZernio = new Map(comptes.map((c) => [c.accountId, c.status]));
+  const aRetrograder = actifsEnBase.filter((id) => etatsZernio.get(id) !== 'connected');
+  for (const id of aRetrograder) {
+    const { error } = await supabaseAdmin.from('zernio_accounts')
       .update({ status: 'disconnected', updated_at: ecrit })
       .eq('user_id', userId).eq('account_id', id);
+    if (error) console.error('[Zernio/Synchro] retrogradation :', error.message);
   }
-  if (obsoletes.length) console.warn(`[Zernio/Synchro] ${obsoletes.length} compte(s) absent(s) de Zernio passe(s) disconnected`);
+  if (aRetrograder.length) console.warn(`[Zernio/Synchro] ${aRetrograder.length} compte(s) passe(s) disconnected d'apres Zernio`);
 
   return { ok: true, comptes };
 }
