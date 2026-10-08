@@ -58,6 +58,7 @@ import {
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
 import { calageCartes, morceauxCartes, lireTimingVoix } from '@/lib/creer/synchro-cartes';
+import { normaliserReglages } from '@/lib/types/voice';
 import { capturerEtapesCartes } from '@/lib/creer/capture-etapes-cartes';
 import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
@@ -117,7 +118,13 @@ import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/des
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
-import { mesuresHabillage, angleDiagonale, type HabillageVideo } from '@/lib/creer/habillageVideo';
+import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
+import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
+import { echelleCtaAjustee } from '@/lib/creer/ajustementCta';
+import {
+  mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
+  MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
+} from '@/lib/creer/habillageVideo';
 
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
@@ -1040,6 +1047,9 @@ const ORDRE_SUPPORT = ['unsupported-render', 'preview-only', 'ready'] as const;
  * « Video » se desactive tout seul sans rush : `activeOrder` ne contient
  * `'video'` que lorsqu'un rush est present.
  */
+/** Bouton-icône compact des actions de l'aperçu (libellé en infobulle et `sr-only`). */
+const ICONE_ACTION = 'h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-md text-gray-400 hover:text-white hover:bg-gray-800/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors';
+
 const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
   { id: 'intro', label: 'Titre' },
   { id: 'cards', label: 'Cartes' },
@@ -1318,6 +1328,8 @@ function validFree(f: FreeCards | null | undefined, ids: string[], fmt: Format):
 const TextResizeHandles: React.FC<{
   el: 'title' | 'cta';
   onStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  /** Poignée de BORD (milieu droit) : largeur du bloc. Absente sans gestionnaire. */
+  onWidthStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
   uiPx: (n: number) => number;
   capturing?: boolean;
   onDragMove?: (e: React.PointerEvent) => void;
@@ -1329,10 +1341,29 @@ const TextResizeHandles: React.FC<{
    * d'edition affiche en continu encombre l'apercu qu'il sert a regler.
    */
   visible?: boolean;
-}> = ({ el, onStart, uiPx, capturing, visible, onDragMove, onDragEnd }) => {
+}> = ({ el, onStart, onWidthStart, uiPx, capturing, visible, onDragMove, onDragEnd }) => {
   if (!onStart || capturing || !visible) return null;
   return (
     <>
+      {onWidthStart && (
+        <span
+          data-text-width-handle={el}
+          onPointerDown={(e) => { e.stopPropagation(); onWidthStart(el, e); }}
+          title="Tirer pour élargir ou rétrécir le bloc"
+          style={{
+            // Jamais sous les poignées de coin : sur un bloc d'une seule
+            // ligne (≈ 17 px à l'écran), une poignée de 22 px les chevauchait
+            // et devenait introuvable. Elle tient dans l'espace ENTRE les
+            // coins, centrée, au-dessus d'eux.
+            position: 'absolute', top: '50%', left: '100%',
+            width: uiPx(7),
+            height: `max(${uiPx(6)}px, min(${uiPx(22)}px, calc(100% - ${uiPx(12)}px)))`,
+            transform: 'translate(-50%, -50%)',
+            backgroundColor: '#FFFFFF', border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`, borderRadius: uiPx(3),
+            cursor: 'ew-resize', touchAction: 'none', zIndex: 6,
+          }}
+        />
+      )}
       {([
         { coin: 'nw', top: 0, left: 0 },
         { coin: 'ne', top: 0, left: '100%' },
@@ -1398,6 +1429,8 @@ function PlateContent({
   text,
   titlePos,
   ctaPos,
+  titleWidth = DESIGN.titleWidth,
+  ctaWidth = DESIGN.ctaWidth,
   cardBoxes = null,
   cardStyle,
   cardsTypography,
@@ -1420,6 +1453,9 @@ function PlateContent({
   text: TextStyles;
   titlePos: Pos;
   ctaPos: Pos;
+  /** Largeur du bloc titre / CTA, en % de la vidéo (`sizes.title` / `sizes.watermark`). */
+  titleWidth?: number;
+  ctaWidth?: number;
   cardBoxes?: Record<string, CardBox> | null;
   cardStyle?: string;
   cardsTypography?: CardsTypography;
@@ -1453,6 +1489,7 @@ function PlateContent({
     dragging?: 'title' | 'cta' | null;
     onTextDoubleClick?: (el: 'title' | 'subtitle' | 'cta') => void;
     onTextResizeStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+    onTextWidthStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
     onElementDragStart?: (id: string, e: React.PointerEvent) => void;
     onElementResizeStart?: (id: string, e: React.PointerEvent) => void;
     onElementDelete?: (id: string) => void;
@@ -1483,7 +1520,7 @@ function PlateContent({
   const {
     cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard = null, selectedCards,
     groupedCards, capturing = false, onCardDoubleClick, onCardResizeStart, onDragStart,
-    dragging = null, onTextDoubleClick, onTextResizeStart, onElementDragStart,
+    dragging = null, onTextDoubleClick, onTextResizeStart, onTextWidthStart, onElementDragStart,
     onElementResizeStart, onElementDelete, selectedElementId = null,
   } = edit ?? {};
   const uiPx = edit?.uiPx ?? ((n: number) => n);
@@ -1518,12 +1555,23 @@ function PlateContent({
                 }}
               />
             )}
-            {rushUrl && habillageVideo && (
-              /* Habillage : un cadre PAR-DESSUS les bords, mêmes mesures que
+            {rushUrl && habillageVideo?.mode === 'degrade' && (
+              /* Habillage « Dégradé » : le voile coloré des Cartes, PAR-DESSUS
+                 la vidéo — mêmes arrêts que l'export (`arretsVoile`). */
+              <div
+                aria-hidden
+                data-habillage-video
+                data-mode="degrade"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: cssVoile(habillageVideo) }}
+              />
+            )}
+            {rushUrl && habillageVideo && habillageVideo.mode !== 'degrade' && (
+              /* Habillage « Cadre » : PAR-DESSUS les bords, mêmes mesures que
                  l'export (`dessinerHabillageVideo`). Aucun filtre sur l'image. */
               <div
                 aria-hidden
                 data-habillage-video
+                data-mode="cadre"
                 style={{
                   position: 'absolute',
                   inset: 0,
@@ -1562,7 +1610,7 @@ function PlateContent({
                 // Cadre PARTAGE avec la composition Remotion : la position et
                 // la largeur viennent du meme helper, les aides d'edition
                 // s'ajoutent par-dessus.
-                ...titleFrameStyle(titlePos),
+                ...titleFrameStyle(titlePos, titleWidth),
                 cursor: onDragStart ? (dragging === 'title' ? 'grabbing' : 'grab') : undefined,
                 // Au-dessus de la grille de cartes : sans cela, un titre
                 // depose sur la zone des cartes n'etait plus saisissable —
@@ -1588,7 +1636,7 @@ function PlateContent({
               {/* Poignees de coin — agrandir le TEXTE. Elles arretent la
                   propagation : sans cela, la prise deplacerait le bloc au
                   lieu de le redimensionner. */}
-              <TextResizeHandles el="title" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+              <TextResizeHandles el="title" onStart={onTextResizeStart} onWidthStart={onTextWidthStart} uiPx={uiPx} capturing={capturing}
                 visible={poigneesVisibles('title')}
                 onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
@@ -1653,7 +1701,7 @@ function PlateContent({
                   : onDragStart ? 'Glisser pour déplacer le CTA' : undefined
               }
               style={{
-                ...ctaFrameStyle(ctaPos),
+                ...ctaFrameStyle(ctaPos, ctaWidth),
                 cursor: onDragStart ? (dragging === 'cta' ? 'grabbing' : 'grab') : undefined,
                 zIndex: onDragStart ? 2 : undefined,
                 touchAction: onDragStart ? 'none' : undefined,
@@ -1669,7 +1717,7 @@ function PlateContent({
                 format={format}
                 containerWidth={vw}
               />
-              <TextResizeHandles el="cta" onStart={onTextResizeStart} uiPx={uiPx} capturing={capturing}
+              <TextResizeHandles el="cta" onStart={onTextResizeStart} onWidthStart={onTextWidthStart} uiPx={uiPx} capturing={capturing}
                 visible={poigneesVisibles('cta')}
                 onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
@@ -1923,6 +1971,7 @@ export function Preview({
   watermark,
   accent,
   text,
+  habillageVideoMode = 'aucun',
   focus = 'all',
   onFocusChange,
   titlePos = DESIGN.titlePos,
@@ -1938,9 +1987,17 @@ export function Preview({
   cardsTypography,
   onCardResizeStart,
   onTextResizeStart,
+  onTextWidthStart,
+  titleWidth,
+  ctaWidth,
   onTextDoubleClick,
   onCardDoubleClick,
 }: {
+  /**
+   * Habillage de la séquence Vidéo, celui que l'export dessinera. Défaut
+   * `aucun` : seul Créer en passe un (l'Autopilote n'en dessine pas).
+   */
+  habillageVideoMode?: ModeHabillage;
   /**
    * Prise d'une poignee de coin sur le TITRE ou le CTA — agrandir le texte.
    *
@@ -1954,6 +2011,10 @@ export function Preview({
    * sont pour le texte, qui n'a pas de boite propre a redimensionner.
    */
   onTextResizeStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  /** Poignée de bord du titre / CTA : leur largeur. */
+  onTextWidthStart?: (el: 'title' | 'cta', e: React.PointerEvent) => void;
+  titleWidth?: number;
+  ctaWidth?: number;
   /** Double-clic sur le titre ou le CTA — ouvre son panneau de reglages. */
   onTextDoubleClick?: (el: 'title' | 'subtitle' | 'cta') => void;
   /** Double-clic sur une carte — ouvre le choix de son icone. */
@@ -2231,7 +2292,7 @@ export function Preview({
           la composition complete, celle qui part a l'export : ces onglets ne
           changent que ce qui est MONTRE, jamais le montage. */}
       {generated && onFocusChange && (
-        <div className="flex gap-1 mb-3" role="tablist" aria-label="Élément mis en avant">
+        <div className="flex gap-1 mb-3 min-w-0 overflow-x-auto" role="tablist" aria-label="Élément mis en avant">
           {ongletsApercu(activeOrder).map((t) => (
             <button
               key={t.id}
@@ -2245,7 +2306,7 @@ export function Preview({
                   ? 'Séquence masquée — activez-la dans Séquences'
                   : undefined
               }
-              className={`flex-1 justify-center text-[11px] disabled:opacity-30 ${classesOnglet(focus === t.id)}`}
+              className={`flex-1 min-w-0 justify-center whitespace-nowrap text-[11px] disabled:opacity-30 ${classesOnglet(focus === t.id)} !px-1.5`}
             >
               {t.label}
               {/* Marqueur de forme, pas seulement la couleur : barre sous l'onglet actif. */}
@@ -2496,6 +2557,8 @@ export function Preview({
             text={text}
             titlePos={titlePos}
             ctaPos={ctaPos}
+            titleWidth={titleWidth}
+            ctaWidth={ctaWidth}
             cardBoxes={cardBoxes}
             cardStyle={cardStyle}
             cardsTypography={cardsTypography}
@@ -2503,11 +2566,11 @@ export function Preview({
             watermark={watermark}
             accent={accent}
             gradEnd={gradEnd}
-            habillageVideo={{ debut: gradStart, fin: gradEnd, accent }}
+            habillageVideo={habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) ?? null}
             edit={{
               cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard, selectedCards,
               groupedCards, capturing, uiPx, onCardDoubleClick, onCardResizeStart, onDragStart,
-              dragging, onTextDoubleClick, onTextResizeStart, onElementDragStart,
+              dragging, onTextDoubleClick, onTextResizeStart, onTextWidthStart, onElementDragStart,
               onElementResizeStart, onElementDelete, selectedElementId,
             }}
           />
@@ -2555,10 +2618,12 @@ export function Preview({
         />
       )}
 
-      {/* Bascules — posees DANS le cadre, en haut a droite : aucun pixel de
-          hauteur ajoute a la page, donc aucune etape rallongee. */}
+      {/* Bascules — posees DANS le cadre, en BAS a gauche : aucun pixel de
+          hauteur ajoute a la page. En haut a droite, elles recouvraient le
+          bord droit du titre (place par defaut a 8 % / 84 %) et cachaient
+          ses poignees de coin et de largeur. */}
       {generated && !capturing && (
-        <div className="absolute top-2 right-2 z-40 flex gap-1">
+        <div className="absolute bottom-2 left-2 z-40 flex gap-1">
           <button
             type="button"
             onClick={() => setReperesCentre((v) => !v)}
@@ -2975,7 +3040,11 @@ function AutopilotPreview({ config, accent, onPatch }: {
   const previewRef = useRef<HTMLDivElement>(null);
   const gesteRef = useRef<
     | { type: 'move'; el: 'title' | 'cta'; pointerId: number; grab: Pos; box: BoxPct }
-    | { type: 'resize'; el: 'title' | 'cta' | 'cards'; pointerId: number; distance: number; echelle: number }
+    | {
+        type: 'resize'; el: 'title' | 'cta' | 'cards'; pointerId: number; distance: number; echelle: number;
+        /** Titre / CTA : prise figée (coin, pointeur, taille du bloc) — `echelleDepuisCoin`. */
+        prise?: { coin: Coin; x0: number; y0: number; w0: number; h0: number };
+      }
     | null
   >(null);
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
@@ -3083,6 +3152,10 @@ function AutopilotPreview({ config, accent, onPatch }: {
       pointerId: e.pointerId,
       distance: Math.max(1, Math.hypot(e.clientX - cx, e.clientY - cy)),
       echelle: (el === 'title' ? style.title?.scale : style.cta?.scale) ?? 1,
+      prise: {
+        coin: ((e.currentTarget as HTMLElement).dataset.textHandle?.split('-')[1] ?? 'se') as Coin,
+        x0: e.clientX, y0: e.clientY, w0: box.width, h0: box.height,
+      },
     };
     setDragging(el);
     try {
@@ -3101,6 +3174,17 @@ function AutopilotPreview({ config, accent, onPatch }: {
     // a pas de geste (garde-fou anti « element collant »).
     if (e.buttons === 0 && e.pointerType === 'mouse') return;
 
+    if (geste.type === 'resize' && geste.prise) {
+      // Titre / CTA : rien n'est re-mesuré pendant le geste (le centre du bloc
+      // se déplaçait vers le pointeur et annulait l'agrandissement).
+      const { coin, x0, y0, w0, h0 } = geste.prise;
+      const echelle = echelleDepuisCoin({
+        echelleDepart: geste.echelle, coin, dx: e.clientX - x0, dy: e.clientY - y0,
+        largeurBloc: w0, hauteurBloc: h0, min: SCALE_MIN, max: SCALE_MAX,
+      });
+      setStyle((prev) => ({ ...prev, [geste.el]: { ...(prev[geste.el] ?? {}), scale: echelle } }));
+      return;
+    }
     if (geste.type === 'resize') {
       const cible = (e.currentTarget as HTMLElement).parentElement;
       const box = cible?.getBoundingClientRect();
@@ -3562,6 +3646,9 @@ export default function AssistantWizard() {
     // l'utilisateur n'a pas choisi de couleur de sous-texte.
     subColor: '',
   });
+  /** Largeur des blocs titre / CTA (% de la vidéo) — réglée par leur poignée de bord. */
+  const [titleWidth, setTitleWidth] = useState<number>(DESIGN.titleWidth);
+  const [ctaWidth, setCtaWidth] = useState<number>(DESIGN.ctaWidth);
   /**
    * Section ouverte. Une seule a la fois : c'est ce qui empeche le panneau de
    * s'allonger indefiniment. `null` = tout replie.
@@ -3633,10 +3720,19 @@ export default function AssistantWizard() {
    * (`ctaSubColor: gradEnd`). Une valeur seedee au montage la figerait sur le
    * repli neutre, le kit de marque n'etant lu qu'apres, dans un effet.
    */
+  // Déclarés ICI (avant `textStyles`) : l'ajustement du CTA lit le texte et le format.
+  const [format, setFormat] = useState<Format>('9:16');
+  const [generated, setGenerated] = useState<Generated | null>(null);
   const textStyles: TextStyles = {
     title: titleStyle,
     subtitle: subtitleStyle,
-    cta: { ...ctaStyle, subColor: ctaStyle.subColor || gradEnd },
+    // Échelle du CTA ajustée pour qu'il ne déborde jamais (`echelleCtaAjustee`) :
+    // l'aperçu ET l'export reçoivent la même — elle ne fait que réduire.
+    cta: {
+      ...ctaStyle,
+      subColor: ctaStyle.subColor || gradEnd,
+      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: ctaStyle.scale ?? 1, largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
+    },
   };
 
   /**
@@ -3845,7 +3941,6 @@ export default function AssistantWizard() {
     setJumeauPhase((s) => ({ phase, debutLe: s?.debutLe ?? Date.now() }));
   }, []);
   const [toneId, setToneId] = useState(TONES[0].id);
-  const [format, setFormat] = useState<Format>('9:16');
   const [sequences, setSequences] = useState(DEFAULT_SEQUENCES);
   const [dragKey, setDragKey] = useState<SeqKey | null>(null);
 
@@ -3980,6 +4075,8 @@ export default function AssistantWizard() {
    * Defaut « Aucune » : le rendu de tous les montages existants.
    */
   const [textAnimation, setTextAnimation] = useState<TextAnimation>(DEFAULT_TEXT_ANIMATION);
+  /** Habillage de la séquence Vidéo / jumeau aux couleurs du style. */
+  const [habillageVideoMode, setHabillageVideoMode] = useState<ModeHabillage>(MODE_HABILLAGE_DEFAUT);
   /**
    * Style des cartes.
    *
@@ -4041,6 +4138,64 @@ export default function AssistantWizard() {
     cible.addEventListener('pointercancel', finir);
   }, [cardsTypography.scale, patchCards]);
 
+  /**
+   * Coin du titre ou du CTA : sa TAILLE de texte (`scale`), celle que
+   * l'export lit (`textScale` / `ctaTextScale`). Tout est figé à la prise
+   * (`echelleDepuisCoin`) : pas de re-mesure du bloc pendant le geste.
+   */
+  const startTextResize = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    const cible = e.currentTarget as HTMLElement;
+    const coin = (cible.dataset.textHandle?.split('-')[1] ?? 'se') as Coin;
+    const box = cible.parentElement?.getBoundingClientRect();
+    if (!box) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const echelleDepart = (el === 'title' ? titleStyle.scale : ctaStyle.scale) ?? 1;
+    const poser = el === 'title' ? setTitleStyle : setCtaStyle;
+    const bouger = (ev: PointerEvent) => {
+      const scale = echelleDepuisCoin({
+        echelleDepart, coin, dx: ev.clientX - x0, dy: ev.clientY - y0,
+        largeurBloc: box.width, hauteurBloc: box.height, min: SCALE_MIN, max: SCALE_MAX,
+      });
+      (poser as (f: (p: { scale: number }) => unknown) => void)((prev) => ({ ...prev, scale }));
+    };
+    const finir = () => {
+      cible.removeEventListener('pointermove', bouger);
+      cible.removeEventListener('pointerup', finir);
+      cible.removeEventListener('pointercancel', finir);
+    };
+    try { cible.setPointerCapture?.(e.pointerId); } catch { /* pointeur deja relache */ }
+    cible.addEventListener('pointermove', bouger);
+    cible.addEventListener('pointerup', finir);
+    cible.addEventListener('pointercancel', finir);
+  }, [titleStyle.scale, ctaStyle.scale]);
+
+  /** Bord du titre ou du CTA : la LARGEUR du bloc (export : `titleSize` / `watermarkSize`). */
+  const startTextWidth = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    const cible = e.currentTarget as HTMLElement;
+    const box = cible.parentElement?.getBoundingClientRect();
+    if (!box) return;
+    const x0 = e.clientX;
+    const largeurDepart = el === 'title' ? titleWidth : ctaWidth;
+    const poser = el === 'title' ? setTitleWidth : setCtaWidth;
+    const bouger = (ev: PointerEvent) => {
+      poser(largeurDepuisBord({ largeurDepart, dx: ev.clientX - x0, largeurBlocPx: box.width, centre: el === 'cta' }));
+    };
+    const finir = () => {
+      cible.removeEventListener('pointermove', bouger);
+      cible.removeEventListener('pointerup', finir);
+      cible.removeEventListener('pointercancel', finir);
+    };
+    try { cible.setPointerCapture?.(e.pointerId); } catch { /* pointeur deja relache */ }
+    cible.addEventListener('pointermove', bouger);
+    cible.addEventListener('pointerup', finir);
+    cible.addEventListener('pointercancel', finir);
+  }, [titleWidth, ctaWidth]);
+
   /* ── VOIX PAR SEQUENCE ───────────────────────────────────────────────
      Chaque sequence porte son propre texte et sa propre voix, et sa DUREE
      se cale sur celle de son audio — c'est ce qui garantit qu'un texte
@@ -4054,7 +4209,6 @@ export default function AssistantWizard() {
     useState<SequenceVoicesUserEdited>(() => emptySequenceVoicesUserEdited());
 
   const [generating, setGenerating] = useState(false);
-  const [generated, setGenerated] = useState<Generated | null>(null);
   /**
    * Le contenu COURANT, lisible dans un gestionnaire sans attendre le rendu :
    * deux clics rapides sur « Ajouter » ou « Supprimer » partaient sinon de la
@@ -5678,6 +5832,28 @@ export default function AssistantWizard() {
   }, []);
 
   /**
+   * Ouvre / ferme l'aperçu agrandi. La taille est calculée AVANT l'ouverture
+   * (vraie fenêtre quasi plein écran, centrée) : posée dans un effet après
+   * coup, elle était écrasée par la géométrie que la fenêtre signale en
+   * s'ouvrant — elle restait à l'ancienne petite taille, hors écran.
+   */
+  const basculerAgrandi = useCallback(() => {
+    if (!enlargedOpen && typeof window !== 'undefined') {
+      const ratio = VIDEO_SIZE[format].w / VIDEO_SIZE[format].h;
+      setEnlargedGeometry((g) => geometrieAgrandie(g, window.innerWidth, window.innerHeight, ratio));
+    }
+    setEnlargedOpen((v) => !v);
+  }, [enlargedOpen, format]);
+
+  useEffect(() => {
+    if (!enlargedOpen || typeof window === 'undefined') return;
+    // Échap ferme la fenêtre, comme toute modale.
+    const echap = (e: KeyboardEvent) => { if (e.key === 'Escape') setEnlargedOpen(false); };
+    window.addEventListener('keydown', echap);
+    return () => window.removeEventListener('keydown', echap);
+  }, [enlargedOpen, format]);
+
+  /**
    * Taille du plateau dans la fenetre.
    *
    * Le plateau doit tenir dans les DEUX dimensions : borner sur la seule
@@ -5694,10 +5870,14 @@ export default function AssistantWizard() {
       const frame = enlargedFrameRef.current;
       const carte = frame?.closest('.card-base') as HTMLElement | null;
       const chrome = carte && frame ? Math.max(0, carte.offsetHeight - frame.offsetHeight) : 0;
+      // Marges HORIZONTALES de la carte : la largeur posée ici est celle de la
+      // carte, le plateau en a 2 × padding de moins. Les oublier rendait le
+      // plateau 48 px trop étroit et laissait ≈ 90 px de hauteur vides.
+      const margeH = carte && frame ? Math.max(0, carte.offsetWidth - frame.offsetWidth) : 0;
       const ratio = VIDEO_SIZE[format].w / VIDEO_SIZE[format].h;
       const large = Math.max(
         120,
-        Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio),
+        Math.min(body.clientWidth, Math.max(0, body.clientHeight - chrome) * ratio + margeH),
       );
       // Seuil de 1 px : sans lui, la mesure du chrome et la largeur qu'elle
       // determine se relanceraient l'une l'autre sans jamais se poser.
@@ -5920,6 +6100,7 @@ export default function AssistantWizard() {
     sequences,
     transition,
     textAnimation,
+    habillageVideoMode,
     introDuration,
     cardsDuration,
     videoDuration,
@@ -5945,6 +6126,8 @@ export default function AssistantWizard() {
         textAtGeneration: sequenceVoices[k].textAtGeneration,
         // Horodatage réel de la voix des cartes : relu avec elle.
         timing: sequenceVoices[k].timing,
+        reglages: sequenceVoices[k].reglages,
+        reglagesAtGeneration: sequenceVoices[k].reglagesAtGeneration,
       }]),
     ),
     sequenceVoicesUserEdited,
@@ -5970,6 +6153,9 @@ export default function AssistantWizard() {
     // brouillon sans ces champs se relit exactement comme avant.
     titlePos: samePos(titlePos, DESIGN.titlePos) ? undefined : titlePos,
     ctaPos: samePos(ctaPos, DESIGN.ctaPos) ? undefined : ctaPos,
+    // Largeurs réglées à la poignée ; `undefined` à la valeur par défaut.
+    titleWidth: titleWidth === DESIGN.titleWidth ? undefined : titleWidth,
+    ctaWidth: ctaWidth === DESIGN.ctaWidth ? undefined : ctaWidth,
     cardBoxes: cardBoxes ?? undefined,
     cardGroups: cardGroups.length ? cardGroups : undefined,
     elements: freeElements.length ? freeElements : undefined,
@@ -5986,9 +6172,11 @@ export default function AssistantWizard() {
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     transition,
     textAnimation,
+    habillageVideoMode,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, lut, scheduledDate,
+    titleWidth, ctaWidth,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
@@ -6082,6 +6270,7 @@ export default function AssistantWizard() {
     // compositeur : un style inconnu est arrive ici a `undefined`.
     if (draft.transition) setTransition(draft.transition as TransitionStyle);
     if (draft.textAnimation) setTextAnimation(draft.textAnimation as TextAnimation);
+    if (draft.habillageVideoMode) setHabillageVideoMode(lireModeHabillage(draft.habillageVideoMode));
     setIntroDuration(draft.introDuration!);
     setCardsDuration(draft.cardsDuration!);
     setVideoDuration(draft.videoDuration!);
@@ -6104,6 +6293,8 @@ export default function AssistantWizard() {
             ttsVoice: v.ttsVoice,
             textAtGeneration: v.textAtGeneration,
             timing: v.audioUrl ? lireTimingVoix(v.timing) : undefined,
+            reglages: normaliserReglages(v.reglages),
+            reglagesAtGeneration: v.audioUrl ? normaliserReglages(v.reglagesAtGeneration) : undefined,
             // Duree volontairement absente : elle sera remesuree.
           };
         }
@@ -6133,6 +6324,8 @@ export default function AssistantWizard() {
     if (draft.scheduledDate) setScheduledDate(dateRestauree(draft.scheduledDate, !!editPostId));
     // Placement : chaque champ absent laisse le defaut d'origine en place.
     if (draft.titlePos) setTitlePos(draft.titlePos);
+    if (typeof draft.titleWidth === 'number') setTitleWidth(draft.titleWidth);
+    if (typeof draft.ctaWidth === 'number') setCtaWidth(draft.ctaWidth);
     if (draft.ctaPos) setCtaPos(draft.ctaPos);
     if (draft.cardBoxes) {
       const free = draft.cardBoxes as FreeCards;
@@ -6329,6 +6522,9 @@ export default function AssistantWizard() {
     watermark: watermarkLabel,
     accent,
     text: textStyles,
+    titleWidth,
+    ctaWidth,
+    habillageVideoMode,
     focus: previewFocus,
     // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
     // temps que la video.
@@ -6565,13 +6761,15 @@ export default function AssistantWizard() {
             text={textStyles}
             titlePos={titlePos}
             ctaPos={ctaPos}
+            titleWidth={titleWidth}
+            ctaWidth={ctaWidth}
             cardBoxes={effectiveCardBoxes}
             cardStyle={cardStyle}
             cardsTypography={cardsTypography}
             elements={freeElements}
             watermark={watermarkLabel}
             accent={accent}
-            habillageVideo={{ debut: gradStart, fin: gradEnd, accent }}
+            habillageVideo={habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) ?? null}
             // L'animation de l'ÉTAT — celle qui part au rendu — sauf pendant
             // l'essai d'une option par son bouton ▶, qui la montre sans la
             // choisir.
@@ -7933,7 +8131,9 @@ export default function AssistantWizard() {
           design: {
             // Habillage de la séquence Vidéo aux couleurs du style — le MÊME
             // cadre que l'aperçu. Seulement quand une vidéo est montée.
-            ...(plateau.rushUrl && duree('video') > 0 ? { habillageVideo: { debut: gradStart, fin: gradEnd, accent } } : {}),
+            ...(plateau.rushUrl && duree('video') > 0 && habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity })
+              ? { habillageVideo: habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) }
+              : {}),
             // Animation d'apparition du texte, jouee sur le debut de chaque
             // sequence. `'none'` = le rendu d'hier, au pixel.
             textAnimation,
@@ -7968,7 +8168,7 @@ export default function AssistantWizard() {
             // ── Titre : haut-gauche ───────────────────────────────────────
             titleAlign: 'left' as const,
             titlePosition: { x: titlePos.x, y: titlePos.y },
-            titleSize: DESIGN.titleWidth,
+            titleSize: titleWidth,
             // Typographie du titre — memes valeurs que l'apercu.
             // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
             // il vaut aussi pour le sous-titre, que le compositeur dimensionne
@@ -7981,7 +8181,7 @@ export default function AssistantWizard() {
             ctaMainText: contenu.cta,
             ctaSubTextDesign: contenu.ctaSub,
             watermarkPosition: { x: ctaPos.x, y: ctaPos.y },
-            watermarkSize: DESIGN.ctaWidth,
+            watermarkSize: ctaWidth,
 
             // ── Cartes : image de l'apercu, blittee telle quelle ──────────
             cardsSnapshot,
@@ -8310,7 +8510,9 @@ export default function AssistantWizard() {
           },
           design: {
             // Relu par le Calendrier (`options-depuis-metadata`) : même cadre.
-            ...(plateau.rushUrl && duree('video') > 0 ? { habillageVideo: { debut: gradStart, fin: gradEnd, accent } } : {}),
+            ...(plateau.rushUrl && duree('video') > 0 && habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity })
+              ? { habillageVideo: habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) }
+              : {}),
             textAnimation,
             cardStyle,
             // Transition entre sequences, passee au compositeur : meme cle que
@@ -8361,8 +8563,8 @@ export default function AssistantWizard() {
               elements: freeElements,
             },
             sizes: {
-              title: DESIGN.titleWidth,
-              watermark: DESIGN.ctaWidth,
+              title: titleWidth,
+              watermark: ctaWidth,
             },
           },
         };
@@ -8544,6 +8746,9 @@ export default function AssistantWizard() {
     setCtaPos(DESIGN.ctaPos);
     setCardBoxes(null);
     setSelectedCards(new Set());
+    setHabillageVideoMode(MODE_HABILLAGE_DEFAUT);
+    setTitleWidth(DESIGN.titleWidth);
+    setCtaWidth(DESIGN.ctaWidth);
     setCardGroups([]);
     setFreeElements([]);
     setSelectedElementId(null);
@@ -9449,6 +9654,33 @@ export default function AssistantWizard() {
                         <span className="text-[11px] text-gray-400 w-9 text-right tabular-nums">
                           {Math.round(gradientOpacity * 100)}%
                         </span>
+                      </div>
+
+                      {/* Habillage de la séquence Vidéo / jumeau : les couleurs du
+                          style par-dessus la vidéo, jamais un filtre sur l'image. */}
+                      <div className="mt-3" data-habillage-video-choix>
+                        <span className="block text-[11px] text-gray-500 mb-1.5">Habillage vidéo</span>
+                        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Habillage de la séquence Vidéo">
+                          {MODES_HABILLAGE.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={habillageVideoMode === m.id}
+                              onClick={() => setHabillageVideoMode(m.id)}
+                              className={`rounded-md px-2 py-1.5 text-[11px] transition-colors ${
+                                habillageVideoMode === m.id
+                                  ? 'bg-purple-600/25 text-white ring-1 ring-purple-500/50'
+                                  : 'bg-gray-800/60 text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              {m.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-gray-500">
+                          Dégradé : le voile coloré des cartes sur la vidéo. Cadre : une bordure aux couleurs du style.
+                        </p>
                       </div>
                     </div>
                 </StyleSection>
@@ -11735,6 +11967,8 @@ export default function AssistantWizard() {
           // Le geste agrandit le TEXTE de toutes les cartes : une carte deux
           // fois plus grosse que sa voisine ne serait pas un reglage.
           onCardResizeStart={startCardTextResize}
+          onTextResizeStart={startTextResize}
+          onTextWidthStart={startTextWidth}
           draggingCard={draggingCard}
           onClearSelection={clearSelection}
           cropping={cropping}
@@ -11912,7 +12146,7 @@ export default function AssistantWizard() {
               disabled={sending}
               data-play-rendu
               title={etat.titre}
-              className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-purple-500/40 bg-purple-600/15 px-3 py-1.5 text-xs text-purple-100 hover:bg-purple-600/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="mt-2 w-full h-8 flex items-center justify-center gap-1.5 rounded-md bg-purple-600/20 px-3 text-xs text-purple-100 hover:bg-purple-600/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {sending ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Rendu…</>
@@ -11922,6 +12156,76 @@ export default function AssistantWizard() {
             </button>
           );
         })()}
+
+        {/* ── ACTIONS DE L'APERÇU — une ligne d'icônes ────────────────
+            Compactes, sur une ligne : chaque action garde son libellé en
+            infobulle (`title`), pour les lecteurs d'écran (`aria-label`,
+            texte `sr-only`) et au clavier (anneau de focus). Rien n'est
+            retiré, seule la place change. */}
+        {generated && (
+          <div role="toolbar" aria-label="Actions de l’aperçu" data-actions-apercu className="mt-2 flex items-center justify-center gap-1">
+            <button
+              type="button"
+              onClick={basculerAgrandi}
+              title={enlargedOpen ? 'Fermer l’aperçu agrandi' : 'Agrandir l’aperçu'}
+              aria-label={enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
+              aria-pressed={enlargedOpen}
+              className={`${ICONE_ACTION} ${enlargedOpen ? 'bg-gray-800 text-white' : ''}`}
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span className="sr-only">{enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadPoster('png')}
+              disabled={posterExporting}
+              title="Télécharger l’affiche — l’aperçu affiché en image, sans débiter de crédit"
+              aria-label="Télécharger l’affiche"
+              className={ICONE_ACTION}
+            >
+              {posterExporting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ImageDown className="w-3.5 h-3.5" />
+              )}
+              <span className="sr-only">{posterExporting ? 'Capture…' : 'Télécharger l’affiche'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => downloadPoster('jpeg')}
+              disabled={posterExporting}
+              title="Même image, au format JPG"
+              aria-label="Télécharger l’affiche en JPG"
+              className={`${ICONE_ACTION} w-auto px-2 text-[11px] font-medium`}
+            >
+              JPG
+            </button>
+            <span aria-hidden className="mx-0.5 h-4 w-px bg-gray-800" />
+            <button
+              type="button"
+              onClick={() => setElementPickerOpen((v) => !v)}
+              title={elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
+              aria-label={elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
+              aria-expanded={elementPickerOpen}
+              className={`${ICONE_ACTION} ${elementPickerOpen ? 'bg-gray-800 text-white' : ''}`}
+            >
+              <Shapes className="w-3.5 h-3.5" />
+              <span className="sr-only">{elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}</span>
+            </button>
+            {layoutTouched && (
+              <button
+                type="button"
+                onClick={resetLayout}
+                title="Rétablir la disposition d’origine"
+                aria-label="Rétablir la disposition d’origine"
+                className={ICONE_ACTION}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="sr-only">Rétablir la disposition d&apos;origine</span>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── LÉGENDE DU RENDU ─────────────────────────────────────────
             La mention de facturation était noyée dans le second panneau, à
@@ -11935,23 +12239,11 @@ export default function AssistantWizard() {
           </p>
         )}
 
-        {generated && (
-          <button
-            type="button"
-            onClick={() => setEnlargedOpen((v) => !v)}
-            title="Ouvrir l’aperçu dans une fenêtre déplaçable et redimensionnable"
-            aria-pressed={enlargedOpen}
-            className={`mt-2 w-full flex items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
-              enlargedOpen
-                ? 'border-purple-500/40 bg-gray-800 text-white'
-                : 'border-gray-800 text-gray-300 hover:text-white hover:border-gray-700'
-            }`}
-          >
-            <Maximize2 className="w-3.5 h-3.5" />
-            {enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
-          </button>
-        )}
 
+        {/* Fond de la modale : assombrit la page, un clic ferme l'aperçu agrandi. */}
+        {enlargedOpen && !!generated && (
+          <div aria-hidden data-fond-apercu-agrandi className="fixed inset-0 z-[99] bg-black/70 backdrop-blur-[2px]" onClick={() => setEnlargedOpen(false)} />
+        )}
         <FloatingPanel
           title="Aperçu"
           isOpen={enlargedOpen && !!generated}
@@ -11967,11 +12259,12 @@ export default function AssistantWizard() {
           onGeometryChange={rememberEnlargedGeometry}
           accentColor={accent}
         >
-          <div ref={enlargedBodyRef} className="h-full w-full flex items-start justify-center">
+          <div ref={enlargedBodyRef} className="apercu-agrandi h-full w-full flex items-start justify-center">
             <div style={{ width: enlargedWidth || '100%' }}>
               <Preview
                 {...previewShared}
                 hideHeader
+                hideFootnote
                 frameRef={enlargedFrameRef}
                 displayScale={enlargedScale}
                 onFocusChange={setPreviewFocus}
@@ -11982,33 +12275,6 @@ export default function AssistantWizard() {
         {/* ── AFFICHE ─────────────────────────────────────────────────
             Telechargement local de l'apercu tel qu'il est affiche. Ni credit,
             ni post : un `<a download>` sur un blob. */}
-        {generated && (
-          <div className="mt-2 flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => downloadPoster('png')}
-              disabled={posterExporting}
-              title="Enregistrer l’aperçu affiché en image, sans débiter de crédit"
-              className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {posterExporting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <ImageDown className="w-3.5 h-3.5" />
-              )}
-              {posterExporting ? 'Capture…' : 'Télécharger l’affiche'}
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadPoster('jpeg')}
-              disabled={posterExporting}
-              title="Même image, au format JPG"
-              className="rounded-lg border border-gray-800 px-2.5 py-1.5 text-xs text-gray-500 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              JPG
-            </button>
-          </div>
-        )}
 
         {/* ── BIBLIOTHEQUE D'ELEMENTS ─────────────────────────────────
             Sous l'apercu : c'est la qu'on voit ou l'element se pose.
@@ -12020,14 +12286,6 @@ export default function AssistantWizard() {
             son CTA. */}
         {generated && (
           <div className="mt-2">
-            <button
-              type="button"
-              onClick={() => setElementPickerOpen((v) => !v)}
-              className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
-            >
-              <Shapes className="w-3.5 h-3.5" />
-              {elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
-            </button>
             {elementPickerOpen && (
               <div className="mt-2 rounded-xl border border-gray-800 bg-gray-900/50 p-3">
                 {/* La MEME grille que le choix d'icone de carte de
@@ -12108,16 +12366,6 @@ export default function AssistantWizard() {
           <p className="mt-2 text-center text-xs text-gray-500">
             Disposition des cartes réinitialisée : le contenu ou le format a changé.
           </p>
-        )}
-        {layoutTouched && (
-          <button
-            type="button"
-            onClick={resetLayout}
-            className="mt-2 w-full flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white transition-colors py-2"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Rétablir la disposition d&apos;origine
-          </button>
         )}
         </>
         )}

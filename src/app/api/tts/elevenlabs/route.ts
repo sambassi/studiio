@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
-import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, type ElevenLabsTtsVoice } from '@/lib/types/voice';
+import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, normaliserReglages, voiceSettingsElevenLabs, type ElevenLabsTtsVoice } from '@/lib/types/voice';
 import { listUserVoices } from '@/lib/voice/store';
 import { voixUtilisable, texteParleDuCompte, prononciationsDuCompte } from '@/lib/voice/profil';
 import { scriptParle } from '@/lib/voice/prononciations';
@@ -190,7 +190,11 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { text, voice, morceaux } = body as { text?: string; voice?: string; morceaux?: unknown };
+    const { text, voice, morceaux, reglages } = body as { text?: string; voice?: string; morceaux?: unknown; reglages?: unknown };
+    // Vitesse et dynamisme de la séquence (`normaliserReglages` : bornés).
+    // Sans réglage, la requête d'avant, inchangée.
+    const r = normaliserReglages(reglages);
+    const voiceSettings = r ? voiceSettingsElevenLabs(r) : null;
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
@@ -246,7 +250,7 @@ export async function POST(req: NextRequest) {
             'Content-Type': 'application/json',
             Accept: morceauxDits ? 'application/json' : 'audio/mpeg',
           },
-          body: JSON.stringify({ text: spoken, model_id: MODEL_ID }),
+          body: JSON.stringify({ text: spoken, model_id: MODEL_ID, ...(voiceSettings ? { voice_settings: voiceSettings } : {}) }),
           signal: controller.signal,
           cache: 'no-store',
         },

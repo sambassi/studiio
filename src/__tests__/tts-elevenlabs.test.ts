@@ -283,7 +283,8 @@ describe('Le routage client', () => {
 
   it('appelle la bonne route, avec l identifiant préfixé', () => {
     expect(client).toContain("await fetch('/api/tts/elevenlabs'");
-    expect(client).toContain("body: JSON.stringify({ text, voice: voiceId }),");
+    // + les réglages de la séquence, seulement s'il y en a (`reglagesCorps`).
+    expect(client).toContain("body: JSON.stringify({ text, voice: voiceId, ...reglagesCorps(options) }),");
   });
 
   it('un échec rend null — il ne retombe pas sur Edge', () => {

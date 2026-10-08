@@ -175,12 +175,12 @@ export default function SequenceTitle({
 }
 
 /** Cadre du bloc de titre — ancre au bord GAUCHE et au bord HAUT. */
-export function titleFrameStyle(position: { x: number; y: number }): React.CSSProperties {
+export function titleFrameStyle(position: { x: number; y: number }, largeur: number = TEXT_LAYOUT.titleWidth): React.CSSProperties {
   return {
     position: 'absolute',
     left: `${position.x}%`,
     top: `${position.y}%`,
-    width: `${TEXT_LAYOUT.titleWidth}%`,
+    width: `${largeur}%`,
     // ⚠️ PLUS D'ALIGNEMENT ICI. Il etait fige a gauche pour tout le bloc ;
     // titre et sous-titre portent desormais le leur, et un `textAlign` sur le
     // cadre les empecherait de differer. Le defaut de chacun reste 'left'.

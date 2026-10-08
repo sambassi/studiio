@@ -39,6 +39,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ⚠️ `rate` et `pitch` partent TELS QUELS dans le SSML de msedge-tts
+    // (`<prosody rate="…">`, aucun échappement) : seule la forme attendue
+    // passe — « +10% », « -5Hz ». Toute autre valeur est ignorée.
+    const rateSur = typeof rate === 'string' && /^[+-]\d{1,3}%$/.test(rate) ? rate : undefined;
+    const pitchSur = typeof pitch === 'string' && /^[+-]\d{1,3}Hz$/.test(pitch) ? pitch : undefined;
+
     if (!VALID_VOICE_PATTERN.test(voice)) {
       console.warn('[TTS/Edge] invalid voice ID rejected:', voice);
       return NextResponse.json(
@@ -50,7 +56,7 @@ export async function POST(req: NextRequest) {
     // Wrap TTS synthesis with timeout
     const audioBuffer = await Promise.race([
       // Le texte DIT (prononciations du compte + normalisation fr-FR).
-      texteParleDuCompte(session.user.id, text).then((spoken) => synthesizeTTS(spoken, voice, rate, pitch)),
+      texteParleDuCompte(session.user.id, text).then((spoken) => synthesizeTTS(spoken, voice, rateSur, pitchSur)),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('TTS synthesis timeout')), TTS_TIMEOUT_MS)
       ),

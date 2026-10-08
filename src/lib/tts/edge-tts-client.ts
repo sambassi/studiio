@@ -3,7 +3,23 @@
  * Tries server-side Edge TTS first, falls back to browser voices if server fails.
  */
 
-import { isHeyGenVoiceId, isElevenLabsVoiceId } from '@/lib/types/voice';
+import { isHeyGenVoiceId, isElevenLabsVoiceId, normaliserReglages, rateEdge, type ReglagesVoix } from '@/lib/types/voice';
+
+/**
+ * Options de synthèse. `reglages` (vitesse, dynamisme de la séquence) est
+ * traduit pour chaque moteur : Edge `rate`, ElevenLabs `reglages` (le serveur
+ * en fait ses `voice_settings`), OpenAI et HeyGen `speed`. Sans réglage : la
+ * requête d'avant, inchangée.
+ */
+export interface OptionsSynthese { rate?: string; pitch?: string; reglages?: ReglagesVoix }
+const reglagesCorps = (o?: OptionsSynthese) => {
+  const r = normaliserReglages(o?.reglages);
+  return r ? { reglages: r } : {};
+};
+const vitesseSpeed = (o?: OptionsSynthese) => {
+  const r = normaliserReglages(o?.reglages);
+  return r && r.vitesse !== 1 ? { speed: r.vitesse } : {};
+};
 import { ENTETE_SEGMENTS, segmentsDeLEntete, type Segment } from '@/lib/creer/synchro-cartes';
 
 export interface TtsVoice {
@@ -74,7 +90,7 @@ const VOICE_LANG_MAP: Record<string, string> = {
 async function tryServerSynthesize(
   text: string,
   voiceId: string,
-  options?: { rate?: string; pitch?: string },
+  options?: OptionsSynthese,
 ): Promise<Blob | null> {
   // ── HeyGen provider branch ─────────────────────────────────────────────
   // Les voix HeyGen sont listees dynamiquement (voix clonee comprise) : elles
@@ -89,7 +105,7 @@ async function tryServerSynthesize(
       const res = await fetch('/api/tts/heygen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: voiceId }),
+        body: JSON.stringify({ text, voice: voiceId, ...vitesseSpeed(options) }),
         signal: ctl.signal,
       });
       if (!res.ok) {
@@ -127,7 +143,7 @@ async function tryServerSynthesize(
       const res = await fetch('/api/tts/elevenlabs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: voiceId }),
+        body: JSON.stringify({ text, voice: voiceId, ...reglagesCorps(options) }),
         signal: ctl.signal,
       });
       if (!res.ok) {
@@ -165,7 +181,7 @@ async function tryServerSynthesize(
         const res = await fetch('/api/tts/openai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, voice: openaiVoice }),
+          body: JSON.stringify({ text, voice: openaiVoice, ...vitesseSpeed(options) }),
           signal: openaiCtl.signal,
         });
         if (res.ok) {
@@ -198,7 +214,8 @@ async function tryServerSynthesize(
       body: JSON.stringify({
         text,
         voice: voiceId,
-        rate: options?.rate || '+0%',
+        // La vitesse de la séquence l'emporte sur un `rate` brut.
+        rate: (options?.reglages && rateEdge(options.reglages.vitesse)) || options?.rate || '+0%',
         pitch: options?.pitch || '+0Hz',
       }),
       signal: controller.signal,
@@ -247,7 +264,7 @@ function pickOpenAiFallbackVoice(edgeVoiceId: string): 'alloy' | 'echo' | 'fable
  * Try OpenAI TTS as a server-side fallback when Edge TTS fails.
  * Returns null on any failure (caller decides what to do next).
  */
-async function tryOpenAiFallback(text: string, edgeVoiceId: string): Promise<Blob | null> {
+async function tryOpenAiFallback(text: string, edgeVoiceId: string, options?: OptionsSynthese): Promise<Blob | null> {
   const openaiVoice = pickOpenAiFallbackVoice(edgeVoiceId);
   console.log('[TTS] Trying OpenAI fallback voice:', openaiVoice, '(original:', edgeVoiceId, ')');
   const ctl = new AbortController();
@@ -256,7 +273,7 @@ async function tryOpenAiFallback(text: string, edgeVoiceId: string): Promise<Blo
     const res = await fetch('/api/tts/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice: openaiVoice }),
+      body: JSON.stringify({ text, voice: openaiVoice, ...vitesseSpeed(options) }),
       signal: ctl.signal,
     });
     if (!res.ok) {
@@ -308,7 +325,7 @@ async function tryOpenAiFallback(text: string, edgeVoiceId: string): Promise<Blo
 export async function synthesize(
   text: string,
   voiceId: string,
-  options?: { rate?: string; pitch?: string },
+  options?: OptionsSynthese,
 ): Promise<Blob> {
   // 1. Try server first (Edge or OpenAI based on voice ID)
   const serverBlob = await tryServerSynthesize(text, voiceId, options);
@@ -333,7 +350,7 @@ export async function synthesize(
   //    (If the original was already an openai-* voice, no point retrying it.)
   const voice = TTS_VOICES.find((v) => v.id === voiceId);
   if (voice?.provider !== 'openai') {
-    const openaiBlob = await tryOpenAiFallback(text, voiceId);
+    const openaiBlob = await tryOpenAiFallback(text, voiceId, options);
     if (openaiBlob && openaiBlob.size >= 8000) return openaiBlob;
   }
 
@@ -360,9 +377,10 @@ export async function synthesizeAvecSegments(
   text: string,
   voiceId: string,
   morceaux: ReadonlyArray<{ texte: string; apres: string }>,
+  reglages?: ReglagesVoix,
 ): Promise<{ blob: Blob; segments: Segment[] | null }> {
   if (!isElevenLabsVoiceId(voiceId) || morceaux.length === 0) {
-    return { blob: await synthesize(text, voiceId), segments: null };
+    return { blob: await synthesize(text, voiceId, { reglages }), segments: null };
   }
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 50_000);
@@ -370,7 +388,7 @@ export async function synthesizeAvecSegments(
     const res = await fetch('/api/tts/elevenlabs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice: voiceId, morceaux }),
+      body: JSON.stringify({ text, voice: voiceId, morceaux, ...reglagesCorps({ reglages }) }),
       signal: ctl.signal,
     });
     if (res.ok) {

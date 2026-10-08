@@ -296,6 +296,10 @@ export interface SequenceVoice {
    * rien (`calageCartes`).
    */
   timing?: TimingVoix;
+  /** Réglages choisis pour CETTE séquence (prochaine génération). Absent : défaut. */
+  reglages?: ReglagesVoix;
+  /** Réglages utilisés pour l'audio actuel — pour signaler un audio périmé. */
+  reglagesAtGeneration?: ReglagesVoix;
 }
 
 /**
@@ -309,15 +313,71 @@ export interface SequenceVoice {
  * est connu (audio anterieur a ce champ → pas de faux positif).
  */
 export function audioSequencePerime(
-  sv: Pick<SequenceVoice, 'audioUrl' | 'source' | 'ttsVoice' | 'text' | 'textAtGeneration'>,
+  sv: Pick<SequenceVoice, 'audioUrl' | 'source' | 'ttsVoice' | 'text' | 'textAtGeneration' | 'reglages' | 'reglagesAtGeneration'>,
   currentVoiceId: string,
-): { perime: boolean; motif: 'voix' | 'texte' | null } {
+): { perime: boolean; motif: 'voix' | 'texte' | 'reglages' | null } {
   if (!sv.audioUrl) return { perime: false, motif: null };
   if (sv.source === 'tts' && sv.ttsVoice && sv.ttsVoice !== currentVoiceId) return { perime: true, motif: 'voix' };
   if (typeof sv.textAtGeneration === 'string' && sv.textAtGeneration.trim() !== sv.text.trim()) {
     return { perime: true, motif: 'texte' };
   }
+  // Réglages de voix changés depuis la génération (TTS seulement). Absents
+  // des deux côtés = valeurs par défaut : un audio ancien n'est jamais
+  // signalé à tort.
+  if (sv.source === 'tts' && !memesReglages(sv.reglages, sv.reglagesAtGeneration)) {
+    return { perime: true, motif: 'reglages' };
+  }
   return { perime: false, motif: null };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Réglages de voix PAR SÉQUENCE : vitesse et dynamisme.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Réglages d'une voix de séquence, appliqués à la PROCHAINE génération.
+ *  - `vitesse` : multiplicateur de débit, 0,8 à 1,2 (1 = naturel). Tous les
+ *    moteurs le prennent (Edge : `rate`, ElevenLabs : `speed`, OpenAI et
+ *    HeyGen : `speed`) ;
+ *  - `dynamisme` : expressivité, 0 à 1 (0 = posé). ElevenLabs seulement
+ *    (`style`, stabilité abaissée) — ignoré, et dit, ailleurs.
+ */
+export interface ReglagesVoix {
+  vitesse: number;
+  dynamisme: number;
+}
+export const VITESSE_MIN = 0.8;
+export const VITESSE_MAX = 1.2;
+export const REGLAGES_VOIX_DEFAUT: ReglagesVoix = { vitesse: 1, dynamisme: 0 };
+
+const arrondi = (n: number, pas: number) => Math.round(n / pas) * pas;
+
+/**
+ * Réglages valides, bornés, arrondis — `undefined` s'ils valent les
+ * réglages par défaut (rien à envoyer, rien à comparer). Pure.
+ */
+export function normaliserReglages(brut: unknown): ReglagesVoix | undefined {
+  if (!brut || typeof brut !== 'object') return undefined;
+  const o = brut as Record<string, unknown>;
+  const v = typeof o.vitesse === 'number' && Number.isFinite(o.vitesse) ? o.vitesse : 1;
+  const d = typeof o.dynamisme === 'number' && Number.isFinite(o.dynamisme) ? o.dynamisme : 0;
+  const vitesse = Math.round(arrondi(Math.min(VITESSE_MAX, Math.max(VITESSE_MIN, v)), 0.05) * 100) / 100;
+  const dynamisme = Math.round(arrondi(Math.min(1, Math.max(0, d)), 0.1) * 10) / 10;
+  if (vitesse === 1 && dynamisme === 0) return undefined;
+  return { vitesse, dynamisme };
+}
+
+/** Mêmes réglages une fois normalisés (absent = défaut). */
+export function memesReglages(a: unknown, b: unknown): boolean {
+  const x = normaliserReglages(a) ?? REGLAGES_VOIX_DEFAUT;
+  const y = normaliserReglages(b) ?? REGLAGES_VOIX_DEFAUT;
+  return x.vitesse === y.vitesse && x.dynamisme === y.dynamisme;
+}
+
+/** `rate` msedge-tts depuis la vitesse : « +10% », « -15% ». */
+export function rateEdge(vitesse: number): string {
+  const n = Math.round((vitesse - 1) * 100);
+  return `${n >= 0 ? '+' : ''}${n}%`;
 }
 
 export type SequenceVoices = Record<SequenceKey, SequenceVoice>;
@@ -389,4 +449,20 @@ export function buildAutoFillText(input: {
     || [input.ctaMainText, input.ctaSubText].filter((s) => s && s.trim().length > 0).join('. ').trim();
 
   return { titre, cartes, video, cta };
+}
+
+/**
+ * `voice_settings` ElevenLabs depuis les réglages d'une séquence. Les quatre
+ * champs sont envoyés ensemble : en omettre un remplacerait le réglage
+ * stocké de la voix par le défaut de l'API. `speed` 0,7-1,2, `style` 0-1 ;
+ * la stabilité baisse un peu quand le dynamisme monte (plus vivant).
+ */
+export function voiceSettingsElevenLabs(r: ReglagesVoix) {
+  return {
+    stability: Math.round((0.5 - 0.3 * r.dynamisme) * 100) / 100,
+    similarity_boost: 0.75,
+    style: r.dynamisme,
+    use_speaker_boost: true,
+    speed: Math.min(1.2, Math.max(0.7, r.vitesse)),
+  };
 }

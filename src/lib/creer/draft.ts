@@ -1,5 +1,6 @@
 'use client';
 
+import { normaliserReglages, type ReglagesVoix } from '@/lib/types/voice';
 import { lireTimingVoix, type TimingVoix } from '@/lib/creer/synchro-cartes';
 import { findFont } from '@/lib/fonts/catalog';
 import { TRANSITION_KEYS } from '@/lib/video-composer';
@@ -113,6 +114,11 @@ export interface Draft {
   transition?: string;
   /** Animation d'apparition du texte. Absente = aucune, le rendu d'hier. */
   textAnimation?: string;
+  /** Habillage de la séquence Vidéo (`degrade` | `cadre` | `aucun`). Absent : le défaut. */
+  habillageVideoMode?: string;
+  /** Largeur des blocs titre / CTA, en % (poignée de bord). */
+  titleWidth?: number;
+  ctaWidth?: number;
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -137,7 +143,7 @@ export interface Draft {
    * lui qui permet de signaler « audio perime » apres rechargement quand le
    * texte a ete retouche. Absent = audio anterieur au champ, rien a signaler.
    */
-  sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string; textAtGeneration?: string; timing?: TimingVoix }>;
+  sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string; textAtGeneration?: string; timing?: TimingVoix; reglages?: ReglagesVoix; reglagesAtGeneration?: ReglagesVoix }>;
   /** Textes que l'utilisateur a repris a la main : le pre-remplissage les respecte. */
   sequenceVoicesUserEdited?: Record<string, boolean>;
   /**
@@ -481,6 +487,10 @@ function sanitizeSequenceVoices(raw: unknown): Draft['sequenceVoices'] {
         : {}),
       // L'horodatage réel de la voix des cartes, relu strictement.
       ...(audioUrl && lireTimingVoix(v.timing) ? { timing: lireTimingVoix(v.timing) } : {}),
+      // Réglages de la voix : gardés même sans audio (ils servent à la
+      // prochaine génération) ; ceux de l'audio actuel, seulement avec lui.
+      ...(normaliserReglages(v.reglages) ? { reglages: normaliserReglages(v.reglages) } : {}),
+      ...(audioUrl && normaliserReglages(v.reglagesAtGeneration) ? { reglagesAtGeneration: normaliserReglages(v.reglagesAtGeneration) } : {}),
     };
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -615,6 +625,11 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       : undefined,
     textAnimation: TEXT_ANIMATION_KEYS.includes(raw.textAnimation as never)
       ? (raw.textAnimation as string)
+      : undefined,
+    titleWidth: typeof raw.titleWidth === 'number' && raw.titleWidth >= 30 && raw.titleWidth <= 96 ? raw.titleWidth : undefined,
+    ctaWidth: typeof raw.ctaWidth === 'number' && raw.ctaWidth >= 30 && raw.ctaWidth <= 96 ? raw.ctaWidth : undefined,
+    habillageVideoMode: raw.habillageVideoMode === 'degrade' || raw.habillageVideoMode === 'cadre' || raw.habillageVideoMode === 'aucun'
+      ? (raw.habillageVideoMode as string)
       : undefined,
     introDuration: num(raw.introDuration, 0, 60, d.durations.intro),
     cardsDuration: num(raw.cardsDuration, 0, 60, d.durations.cards),
