@@ -183,11 +183,29 @@ export interface ZernioAccount {
   platform: string;
   username?: string;
   status?: string;
+  /** `false` : connexion inactive (jeton expiré, révoqué, compte déconnecté). */
+  isActive?: boolean;
 }
 
 export async function listAccounts(profileId: string): Promise<ZernioAccount[]> {
   const r = await appel<{ accounts?: ZernioAccount[] }>('/accounts', { query: { profileId } });
   return r.accounts ?? [];
+}
+
+/** Santé d'un compte — `GET /v1/accounts/{id}/health` (docs.zernio.com/accounts/get-account-health). */
+export interface ZernioAccountHealth {
+  status?: 'healthy' | 'warning' | 'error' | string;
+  tokenStatus?: { valid?: boolean; expiresAt?: string | null; needsRefresh?: boolean };
+  permissions?: { canPost?: boolean; missingRequired?: string[] };
+  issues?: unknown[];
+  recommendations?: unknown[];
+}
+
+export async function getAccountHealth(accountId: string): Promise<ZernioAccountHealth> {
+  const r = await appel<ZernioAccountHealth & { health?: ZernioAccountHealth }>(
+    `/accounts/${encodeURIComponent(accountId)}/health`,
+  );
+  return r.health ?? r;
 }
 
 // ── Média ────────────────────────────────────────────────────────────────

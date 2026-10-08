@@ -82,7 +82,12 @@ export function deriverEtatReseau(
   direct: StatutDirect | undefined,
   zernio: EntreeZernio | undefined,
 ): EtatDerive {
-  const compteZ = zernio?.comptes.find((c) => c.platform === reseau);
+  // ⚠️ LE COMPTE CONNECTÉ D'ABORD. Une reconnexion peut laisser deux lignes
+  // (l'ancien `accountId` déconnecté, le nouveau connecté) : prendre la
+  // première affichait « Reconnexion nécessaire » alors que le cron publiait
+  // déjà sur le nouveau compte.
+  const comptesReseau = zernio?.comptes.filter((c) => c.platform === reseau) ?? [];
+  const compteZ = comptesReseau.find((c) => c.status === 'connected') ?? comptesReseau[0];
   const zConnecte = !!compteZ && compteZ.status === 'connected';
   const zDeconnecte = !!compteZ && compteZ.status === 'disconnected';
   const zAutorise = !!zernio?.autorise;
