@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ImageIcon, Film, Sparkles, Trash2, Loader2, Info } from 'lucide-react';
+import { ImageIcon, Film, Sparkles, Trash2, Loader2, Info, RefreshCw } from 'lucide-react';
 import { uploadPosterFile } from '@/lib/creer/posterUpload';
 import {
   CONFIDENTIALITE_SECURITE, LIBELLES_CONFIDENTIALITE, resumeCouverture,
@@ -63,11 +63,30 @@ export default function ReglagesPublicationReseaux({
   onChange: (modif: Partial<ValeurReglagesPublication>) => void;
 }) {
   const cover = value.cover;
-  const mode: ModeCouverture = cover?.mode ?? 'auto';
+  /**
+   * ⚠️ « IMAGE » CHOISIE, MAIS PAS ENCORE D'IMAGE : un état LOCAL. Une
+   * couverture `upload` sans `imageUrl` n'est pas valide (`lireCouverture` la
+   * rejette) : le Calendrier relisait donc « automatique » et le bouton
+   * semblait ne rien faire. Tant qu'aucune image n'est envoyée, la couverture
+   * enregistrée reste automatique — c'est exactement ce qui partirait.
+   */
+  const [imageEnAttente, setImageEnAttente] = useState(false);
+  const mode: ModeCouverture = imageEnAttente && cover?.mode !== 'upload' ? 'upload' : (cover?.mode ?? 'auto');
   const [erreurImage, setErreurImage] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
-  const [dureeMs, setDureeMs] = useState(0);
+  const fichierRef = useRef<HTMLInputElement | null>(null);
+  /** Ouvrir le sélecteur de fichier dès que le champ est affiché (clic « Image »). */
+  const ouvrirSelecteur = useRef(false);
+  useEffect(() => {
+    if (!ouvrirSelecteur.current || !fichierRef.current) return;
+    ouvrirSelecteur.current = false;
+    fichierRef.current.click();
+  });
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [dureeMs, setDureeMs] = useState(0);
+  /** Chargement de la vidéo du moment : jamais infini (délai + erreur + « Réessayer »). */
+  const [etatVideo, setEtatVideo] = useState<'chargement' | 'pret' | 'erreur'>('chargement');
+  const [essaiVideo, setEssaiVideo] = useState(0);
   const avecTiktok = reseaux.includes('tiktok');
   const [infoTt, setInfoTt] = useState<InfoTiktok | null>(null);
 
@@ -123,12 +142,54 @@ export default function ReglagesPublicationReseaux({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avecTiktok, infoTt]);
 
+  // Chaque mode est indépendant : rien dans l'état de la vidéo ne bloque les deux autres.
   const choisirMode = (m: ModeCouverture) => {
     setErreurImage(null);
-    if (m === 'auto') onChange({ cover: { mode: 'auto' } });
-    else if (m === 'frame') onChange({ cover: { mode: 'frame', frameMs: cover?.mode === 'frame' ? cover.frameMs : 1000 } });
-    else onChange({ cover: cover?.mode === 'upload' ? cover : { mode: 'upload' } });
+    if (m === 'auto') {
+      setImageEnAttente(false);
+      onChange({ cover: { mode: 'auto' } });
+    } else if (m === 'frame') {
+      setImageEnAttente(false);
+      if (mode !== 'frame') { setDureeMs(0); setEtatVideo('chargement'); }
+      onChange({ cover: { mode: 'frame', frameMs: cover?.mode === 'frame' ? cover.frameMs : 1000 } });
+    } else if (cover?.mode !== 'upload') {
+      // Pas encore d'image : couverture automatique en attendant, et le
+      // sélecteur de fichier s'ouvre tout de suite (même geste utilisateur).
+      setImageEnAttente(true);
+      ouvrirSelecteur.current = true;
+      onChange({ cover: { mode: 'auto' } });
+    }
   };
+
+  /**
+   * Durée de la vidéo du moment. ⚠️ UN WEBM ENREGISTRÉ PAR MediaRecorder N'A
+   * PAS DE DURÉE dans son en-tête : Chrome annonce `Infinity` à
+   * `loadedmetadata` (montages du Calendrier en production). Un saut au-delà
+   * de la fin force le calcul (`durationchange` avec la vraie durée), puis on
+   * revient au moment choisi.
+   */
+  const surMetadonnees = (v: HTMLVideoElement) => {
+    const appliquer = (secondes: number) => {
+      setDureeMs(Math.round(secondes * 1000));
+      setEtatVideo('pret');
+      v.currentTime = (cover?.frameMs ?? 1000) / 1000;
+    };
+    if (Number.isFinite(v.duration) && v.duration > 0) { appliquer(v.duration); return; }
+    const surDuree = () => {
+      if (!Number.isFinite(v.duration) || v.duration <= 0) return;
+      v.removeEventListener('durationchange', surDuree);
+      appliquer(v.duration);
+    };
+    v.addEventListener('durationchange', surDuree);
+    v.currentTime = 1e101;
+  };
+
+  // Délai : passé 20 s sans durée, on le dit — jamais « Chargement… » éternel.
+  useEffect(() => {
+    if (mode !== 'frame' || !videoUrl || etatVideo !== 'chargement') return;
+    const t = setTimeout(() => setEtatVideo((e) => (e === 'chargement' ? 'erreur' : e)), 20_000);
+    return () => clearTimeout(t);
+  }, [mode, videoUrl, etatVideo, essaiVideo]);
 
   const envoyerImage = async (f: File) => {
     const refus = verifierImageCouverture(f);
@@ -140,6 +201,7 @@ export default function ReglagesPublicationReseaux({
       // Un repli `data:` n'est PAS une adresse publique : les réseaux ne
       // pourraient pas aller chercher l'image.
       if (r.dataUrl) { setErreurImage('Envoi de l’image impossible. Réessayez.'); return; }
+      setImageEnAttente(false);
       onChange({ cover: { mode: 'upload', imageUrl: r.url } });
     } finally {
       setEnvoi(false);
@@ -209,7 +271,7 @@ export default function ReglagesPublicationReseaux({
                       onChange={(e) => { const f = e.target.files?.[0]; if (f) void envoyerImage(f); e.target.value = ''; }} />
                   </label>
                   <button type="button" className={`${lienDiscret} hover:text-red-300`}
-                    onClick={() => onChange({ cover: { mode: 'auto' } })} data-couverture-supprimer>
+                    onClick={() => { setImageEnAttente(false); onChange({ cover: { mode: 'auto' } }); }} data-couverture-supprimer>
                     <Trash2 size={12} /> Supprimer
                   </button>
                 </div>
@@ -221,7 +283,7 @@ export default function ReglagesPublicationReseaux({
                   {envoi ? 'Envoi…' : 'Importer une image'}
                   {!envoi && <span className="block text-[10px] text-gray-500">JPEG, PNG ou WebP · 10 Mo max.</span>}
                 </span>
-                <input type="file" accept={TYPES_IMAGE_COUVERTURE.join(',')} className="hidden" disabled={envoi}
+                <input ref={fichierRef} type="file" accept={TYPES_IMAGE_COUVERTURE.join(',')} className="hidden" disabled={envoi}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void envoyerImage(f); e.target.value = ''; }} />
               </label>
             )}
@@ -233,42 +295,69 @@ export default function ReglagesPublicationReseaux({
           <div className="mt-4" data-couverture-frame>
             {videoUrl ? (
               <div className="flex items-center gap-5">
-                <video
-                  ref={videoRef}
-                  src={videoUrl}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  className="max-h-36 w-auto max-w-[40%] shrink-0 rounded-lg bg-black ring-1 ring-white/10"
-                  onLoadedMetadata={(e) => {
-                    const d = Math.round(e.currentTarget.duration * 1000);
-                    if (Number.isFinite(d)) setDureeMs(d);
-                    e.currentTarget.currentTime = (cover?.frameMs ?? 1000) / 1000;
-                  }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="mb-2 flex items-baseline justify-between gap-2">
-                    <span className={sousTitre}>{dureeMs <= 0 ? 'Chargement de la vidéo…' : 'Moment choisi'}</span>
-                    <span className="font-mono text-[11px] tabular-nums text-gray-300" data-couverture-temps>{formatMs(cover?.frameMs ?? 1000)}</span>
-                  </div>
-                  {/* Désactivé tant que la durée est inconnue : borné à 1 ms, le
-                      curseur enregistrerait un moment faux au premier geste. */}
-                  <input
-                    type="range"
-                    min={0}
-                    max={Math.max(dureeMs, 1)}
-                    step={50}
-                    disabled={dureeMs <= 0}
-                    value={cover?.frameMs ?? 1000}
-                    aria-label="Moment de la couverture"
-                    data-couverture-curseur
-                    className="h-1 w-full cursor-pointer appearance-auto accent-purple-400 disabled:cursor-wait disabled:opacity-40"
-                    onChange={(e) => {
-                      const ms = Number(e.target.value);
-                      if (videoRef.current) videoRef.current.currentTime = ms / 1000;
-                      onChange({ cover: { mode: 'frame', frameMs: ms } });
-                    }}
+                <div className="relative max-h-36 w-auto max-w-[40%] shrink-0 overflow-hidden rounded-lg bg-black ring-1 ring-white/10">
+                  <video
+                    key={essaiVideo}
+                    ref={videoRef}
+                    src={videoUrl}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className={`block max-h-36 w-auto transition-opacity ${etatVideo === 'pret' ? 'opacity-100' : 'opacity-0'}`}
+                    onLoadedMetadata={(e) => surMetadonnees(e.currentTarget)}
+                    onError={() => setEtatVideo('erreur')}
                   />
+                  {etatVideo !== 'pret' && (
+                    <div className="absolute inset-0 min-h-[6rem] min-w-[3.5rem] bg-white/[0.04]" aria-hidden>
+                      {etatVideo === 'chargement' && <div className="h-full w-full animate-pulse bg-white/[0.04]" />}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1" data-couverture-video-etat={etatVideo}>
+                  {etatVideo === 'erreur' ? (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-red-300" role="alert">Impossible de charger la vidéo</p>
+                      <button
+                        type="button"
+                        data-couverture-video-reessayer
+                        onClick={() => { setDureeMs(0); setEtatVideo('chargement'); setEssaiVideo((n) => n + 1); }}
+                        className={lienDiscret}
+                      >
+                        <RefreshCw size={12} /> Réessayer
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-2 flex items-baseline justify-between gap-2">
+                        <span className={sousTitre}>{etatVideo === 'chargement' ? 'Chargement de la vidéo…' : 'Moment choisi'}</span>
+                        <span className="font-mono text-[11px] tabular-nums text-gray-300" data-couverture-temps>{formatMs(cover?.frameMs ?? 1000)}</span>
+                      </div>
+                      {etatVideo === 'chargement' ? (
+                        /* Progression INDÉTERMINÉE : aucun pourcentage fiable n'existe
+                           pour un WebM sans durée — jamais de faux chiffre. */
+                        <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label="Chargement de la vidéo" data-couverture-progression>
+                          <div className="absolute inset-y-0 left-0 w-1/3 animate-pulse rounded-full bg-purple-400/60" />
+                        </div>
+                      ) : (
+                        <input
+                          type="range"
+                          min={0}
+                          max={Math.max(dureeMs, 1)}
+                          step={50}
+                          value={Math.min(cover?.frameMs ?? 1000, Math.max(dureeMs, 1))}
+                          aria-label="Moment de la couverture"
+                          data-couverture-curseur
+                          className="h-1 w-full cursor-pointer appearance-auto accent-purple-400"
+                          onChange={(e) => {
+                            const ms = Number(e.target.value);
+                            if (videoRef.current) videoRef.current.currentTime = ms / 1000;
+                            onChange({ cover: { mode: 'frame', frameMs: ms } });
+                          }}
+                        />
+                      )}
+                      {etatVideo === 'pret' && <p className="mt-1.5 text-right text-[10px] text-gray-600">sur {formatMs(dureeMs)}</p>}
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
