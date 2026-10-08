@@ -1,5 +1,6 @@
 'use client';
 
+import { normaliserReglages, type ReglagesVoix } from '@/lib/types/voice';
 import { lireTimingVoix, type TimingVoix } from '@/lib/creer/synchro-cartes';
 import { findFont } from '@/lib/fonts/catalog';
 import { TRANSITION_KEYS } from '@/lib/video-composer';
@@ -142,7 +143,7 @@ export interface Draft {
    * lui qui permet de signaler « audio perime » apres rechargement quand le
    * texte a ete retouche. Absent = audio anterieur au champ, rien a signaler.
    */
-  sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string; textAtGeneration?: string; timing?: TimingVoix }>;
+  sequenceVoices?: Record<string, { text: string; audioUrl?: string; source?: string; ttsVoice?: string; textAtGeneration?: string; timing?: TimingVoix; reglages?: ReglagesVoix; reglagesAtGeneration?: ReglagesVoix }>;
   /** Textes que l'utilisateur a repris a la main : le pre-remplissage les respecte. */
   sequenceVoicesUserEdited?: Record<string, boolean>;
   /**
@@ -486,6 +487,10 @@ function sanitizeSequenceVoices(raw: unknown): Draft['sequenceVoices'] {
         : {}),
       // L'horodatage réel de la voix des cartes, relu strictement.
       ...(audioUrl && lireTimingVoix(v.timing) ? { timing: lireTimingVoix(v.timing) } : {}),
+      // Réglages de la voix : gardés même sans audio (ils servent à la
+      // prochaine génération) ; ceux de l'audio actuel, seulement avec lui.
+      ...(normaliserReglages(v.reglages) ? { reglages: normaliserReglages(v.reglages) } : {}),
+      ...(audioUrl && normaliserReglages(v.reglagesAtGeneration) ? { reglagesAtGeneration: normaliserReglages(v.reglagesAtGeneration) } : {}),
     };
   }
   return Object.keys(out).length > 0 ? out : undefined;

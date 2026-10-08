@@ -12,7 +12,11 @@ import {
   voixCloneeAProposer,
   grouperVoixPourSelecteur,
   audioSequencePerime,
+  normaliserReglages,
+  VITESSE_MIN,
+  VITESSE_MAX,
   SEQUENCE_KEYS,
+  type ReglagesVoix,
   type SequenceKey,
   type SequenceVoice,
   type SequenceVoices,
@@ -227,6 +231,24 @@ export function SequenceVoicesPanel({
   // Controle : la valeur du parent prime des qu'elle existe. L'etat local
   // suit quand meme chaque changement, pour que localStorage reste juste.
   const selectedTtsVoiceId = voiceId ?? localTtsVoiceId;
+  /** Le dynamisme n'agit qu'avec une voix ElevenLabs (clonée / premium). */
+  const voixElevenLabs = isElevenLabsVoiceId(selectedTtsVoiceId);
+
+  /**
+   * Change les réglages d'UNE séquence. Aucun audio n'est touché : s'il
+   * existe, il est signalé « périmé » (réglages modifiés) jusqu'à sa
+   * régénération — jamais remplacé en silence.
+   */
+  const changerReglages = useCallback((key: SequenceKey, patch: Partial<ReglagesVoix>) => {
+    const actuel = normaliserReglages(sequenceVoices[key].reglages) ?? { vitesse: 1, dynamisme: 0 };
+    onChange(key, { reglages: normaliserReglages({ ...actuel, ...patch }) });
+  }, [sequenceVoices, onChange]);
+
+  /** « Appliquer à toutes les voix » : les réglages de `source` sur les quatre séquences. */
+  const appliquerATous = useCallback((source: SequenceKey) => {
+    const r = normaliserReglages(sequenceVoices[source].reglages);
+    for (const k of SEQUENCE_KEYS) if (k !== source) onChange(k, { reglages: r });
+  }, [sequenceVoices, onChange]);
   const setSelectedTtsVoiceId = useCallback((id: string) => {
     setLocalTtsVoiceId(id);
     onVoiceIdChange?.(id);
@@ -369,12 +391,15 @@ export function SequenceVoicesPanel({
       const morceaux = key === 'cartes' && morceauxCartes && texteDesMorceaux(morceauxCartes) === text ? morceauxCartes : null;
       let timing: TimingVoix | undefined;
       let audioBlob: Blob;
+      // Réglages de CETTE séquence (vitesse, dynamisme) — appliqués ici, à la
+      // génération ; mémorisés pour signaler un audio périmé s'ils changent.
+      const reglages = normaliserReglages(sequenceVoices[key].reglages);
       if (morceaux) {
-        const r = await synthesizeAvecSegments(text, selectedTtsVoiceId, morceaux);
+        const r = await synthesizeAvecSegments(text, selectedTtsVoiceId, morceaux, reglages);
         audioBlob = r.blob;
         if (r.segments) timing = { source: 'elevenlabs', morceaux: morceaux.map((m) => ({ texte: m.texte, apres: m.apres })), segments: r.segments };
       } else {
-        audioBlob = await synthesize(text, selectedTtsVoiceId);
+        audioBlob = await synthesize(text, selectedTtsVoiceId, { reglages });
       }
       console.log(`[SequenceVoices] TTS ${key} | size: ${audioBlob.size} bytes | type: ${audioBlob.type}`);
       // 8KB ≈ 0.7s of MP3 @96kbps — defensive (synthesize enforces this internally).
@@ -429,6 +454,7 @@ export function SequenceVoicesPanel({
         textAtGeneration: text,
         // Toujours posé : une nouvelle voix efface l'horodatage de l'ancienne.
         timing,
+        reglagesAtGeneration: reglages,
       });
     } catch (err) {
       console.error('[SequenceVoices] TTS error for', key, err);
@@ -478,7 +504,7 @@ export function SequenceVoicesPanel({
           const duration = await probeDuration(url);
           // Un enregistrement ne lit pas le texte : pas de `textAtGeneration`,
           // sinon une retouche du texte le signalerait perime a tort.
-          onChange(key, { audioUrl: url, source: 'record', ttsVoice: undefined, duration, textAtGeneration: undefined, timing: undefined });
+          onChange(key, { audioUrl: url, source: 'record', ttsVoice: undefined, duration, textAtGeneration: undefined, timing: undefined, reglagesAtGeneration: undefined });
         } finally {
           setBusy((b) => ({ ...b, [key]: false }));
         }
@@ -505,7 +531,7 @@ export function SequenceVoicesPanel({
   };
 
   const removeAudio = (key: SequenceKey) => {
-    onChange(key, { audioUrl: null, source: null, ttsVoice: undefined, duration: undefined, textAtGeneration: undefined, timing: undefined });
+    onChange(key, { audioUrl: null, source: null, ttsVoice: undefined, duration: undefined, textAtGeneration: undefined, timing: undefined, reglagesAtGeneration: undefined });
   };
 
   const handleTextChange = (key: SequenceKey, value: string) => {
@@ -655,6 +681,51 @@ export function SequenceVoicesPanel({
                 className="w-full resize-y rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
               />
 
+              {/* Réglages de CETTE voix — utilisés à la prochaine génération. */}
+              <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1" data-voice-reglages={key}>
+                <label className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                  <span className="w-14 shrink-0">Vitesse</span>
+                  <input
+                    type="range"
+                    min={VITESSE_MIN * 100}
+                    max={VITESSE_MAX * 100}
+                    step={5}
+                    value={Math.round((normaliserReglages(sv.reglages)?.vitesse ?? 1) * 100)}
+                    onChange={(e) => changerReglages(key, { vitesse: Number(e.target.value) / 100 })}
+                    aria-label={`Vitesse de la voix — ${SEQUENCE_LABELS[key]}`}
+                    className="flex-1 h-1 accent-purple-500"
+                  />
+                  <span className="w-8 text-right tabular-nums text-gray-300">×{(normaliserReglages(sv.reglages)?.vitesse ?? 1).toFixed(2).replace('.', ',')}</span>
+                </label>
+                <label
+                  className="flex items-center gap-1.5 text-[10px] text-gray-400"
+                  title={voixElevenLabs ? 'Expressivité de la voix' : 'Le dynamisme n’agit qu’avec une voix clonée / premium'}
+                >
+                  <span className="w-14 shrink-0">Dynamisme</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={10}
+                    step={1}
+                    value={Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 10)}
+                    onChange={(e) => changerReglages(key, { dynamisme: Number(e.target.value) / 10 })}
+                    disabled={!voixElevenLabs}
+                    aria-label={`Dynamisme de la voix — ${SEQUENCE_LABELS[key]}`}
+                    className="flex-1 h-1 accent-purple-500 disabled:opacity-40"
+                  />
+                  <span className="w-8 text-right tabular-nums text-gray-300">{Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 100)}%</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => appliquerATous(key)}
+                  data-voice-reglages-tous={key}
+                  className="col-span-2 justify-self-start text-[10px] text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
+                  title="Mettre la même vitesse et le même dynamisme sur toutes les voix (à régénérer)"
+                >
+                  Appliquer ces réglages à toutes les voix
+                </button>
+              </div>
+
               <div className="mt-1.5 flex items-center gap-1.5">
                 {!isRecordingThis ? (
                   <button
@@ -716,6 +787,7 @@ export function SequenceVoicesPanel({
                         Audio périmé — régénérer
                         {perime.motif === 'voix' && voixDeGeneration ? ` (généré avec ${voixDeGeneration})` : ''}
                         {perime.motif === 'texte' ? ' (le texte a changé)' : ''}
+                        {perime.motif === 'reglages' ? ' (réglages de voix modifiés)' : ''}
                       </span>
                       <button
                         type="button"

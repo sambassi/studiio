@@ -58,6 +58,7 @@ import {
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
 import { calageCartes, morceauxCartes, lireTimingVoix } from '@/lib/creer/synchro-cartes';
+import { normaliserReglages } from '@/lib/types/voice';
 import { capturerEtapesCartes } from '@/lib/creer/capture-etapes-cartes';
 import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
@@ -6103,6 +6104,8 @@ export default function AssistantWizard() {
         textAtGeneration: sequenceVoices[k].textAtGeneration,
         // Horodatage réel de la voix des cartes : relu avec elle.
         timing: sequenceVoices[k].timing,
+        reglages: sequenceVoices[k].reglages,
+        reglagesAtGeneration: sequenceVoices[k].reglagesAtGeneration,
       }]),
     ),
     sequenceVoicesUserEdited,
@@ -6268,6 +6271,8 @@ export default function AssistantWizard() {
             ttsVoice: v.ttsVoice,
             textAtGeneration: v.textAtGeneration,
             timing: v.audioUrl ? lireTimingVoix(v.timing) : undefined,
+            reglages: normaliserReglages(v.reglages),
+            reglagesAtGeneration: v.audioUrl ? normaliserReglages(v.reglagesAtGeneration) : undefined,
             // Duree volontairement absente : elle sera remesuree.
           };
         }

@@ -384,7 +384,8 @@ describe('3b. SequenceVoicesPanel — « Audio périmé — régénérer »', ()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Régénérer' })); });
     await waitFor(() => expect(onGenere).toHaveBeenCalledTimes(1));
     expect(synthesize).toHaveBeenCalledTimes(1);
-    expect(synthesize).toHaveBeenCalledWith('Bonjour à tous', CLONEE);
+    // Troisième argument : les réglages de la séquence (aucun ici).
+    expect(synthesize).toHaveBeenCalledWith('Bonjour à tous', CLONEE, { reglages: undefined });
     await waitFor(() => expect(badge()).toBeNull());
   });
 });

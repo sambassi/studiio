@@ -220,7 +220,8 @@ describe('Branchement — chaque moteur reçoit le texte DIT', () => {
   const lire = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf-8');
 
   it('routes de synthèse de Créer : ElevenLabs, Edge, HeyGen, OpenAI passent par texteParleDuCompte', () => {
-    expect(lire('src/app/api/tts/elevenlabs/route.ts')).toContain('body: JSON.stringify({ text: spoken, model_id: MODEL_ID })');
+    // Le texte DIT ; `voice_settings` seulement avec des réglages (voix-reglages-routes.test.ts).
+    expect(lire('src/app/api/tts/elevenlabs/route.ts')).toContain('body: JSON.stringify({ text: spoken, model_id: MODEL_ID, ...(voiceSettings ? { voice_settings: voiceSettings } : {}) })');
     expect(lire('src/app/api/tts/elevenlabs/route.ts')).toContain('texteParleDuCompte(session.user.id, text)');
     expect(lire('src/app/api/tts/edge/route.ts')).toContain('texteParleDuCompte(session.user.id, text).then((spoken) => synthesizeTTS(spoken');
     expect(lire('src/app/api/tts/heygen/route.ts')).toContain('text: await texteParleDuCompte(session.user.id, text)');
