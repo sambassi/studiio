@@ -28,6 +28,7 @@
  * `test` : `src/__tests__/calendrier-regeneration-fidele.test.tsx` compare les
  * quatre anciens blocs, recopiés, à cette fonction sur des posts anciens.
  */
+import { lireHabillageVideo } from '@/lib/creer/habillageVideo';
 import {
   TRANSITION_KEYS,
   type ComposerOptions,
@@ -231,6 +232,10 @@ export function optionsRenduDepuisMetadata(
   if (typeof designMeta.textAnimation === 'string' && designMeta.textAnimation) {
     design.textAnimation = designMeta.textAnimation;
   }
+  // Habillage de la séquence Vidéo, tel que Créer l'a rendu (absent des
+  // anciens posts : rendu inchangé).
+  const habillage = lireHabillageVideo(designMeta.habillageVideo);
+  if (habillage) design.habillageVideo = habillage;
   // Police des cartes : utile quand la photo manque et que le compositeur les
   // redessine. `cardsTextStyle` n'est pas lu par le compositeur, il voyage
   // pour que les options soient celles du parcours, champ pour champ.

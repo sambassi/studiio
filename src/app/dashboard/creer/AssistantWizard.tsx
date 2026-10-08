@@ -117,6 +117,7 @@ import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/des
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
+import { mesuresHabillage, angleDiagonale, type HabillageVideo } from '@/lib/creer/habillageVideo';
 
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
@@ -1404,6 +1405,7 @@ function PlateContent({
   watermark,
   accent,
   gradEnd,
+  habillageVideo = null,
   textAnimation,
   progress = 1,
   edit,
@@ -1425,6 +1427,11 @@ function PlateContent({
   watermark?: string;
   accent: string;
   gradEnd: string;
+  /**
+   * Cadre aux couleurs du style sur la vidéo (`habillageVideo.ts`), le MÊME
+   * que l'export. `null` : aucun habillage, comme avant.
+   */
+  habillageVideo?: HabillageVideo | null;
   /** Animation d'apparition du texte — pour les calques de lecture. */
   textAnimation?: TextAnimation;
   /** Avancement de la sequence, de 0 a 1. Defaut 1 : texte entier, aucune enveloppe. */
@@ -1510,6 +1517,24 @@ function PlateContent({
                   objectFit: 'cover',
                 }}
               />
+            )}
+            {rushUrl && habillageVideo && (
+              /* Habillage : un cadre PAR-DESSUS les bords, mêmes mesures que
+                 l'export (`dessinerHabillageVideo`). Aucun filtre sur l'image. */
+              <div
+                aria-hidden
+                data-habillage-video
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  boxSizing: 'border-box',
+                  pointerEvents: 'none',
+                  border: `${mesuresHabillage(VIDEO_SIZE[format].w).bande}px solid transparent`,
+                  borderImage: `linear-gradient(${angleDiagonale(VIDEO_SIZE[format].w, VIDEO_SIZE[format].h)}deg, ${habillageVideo.debut}, ${habillageVideo.fin}) 1`,
+                }}
+              >
+                <div style={{ position: 'absolute', inset: 0, boxShadow: `inset 0 0 0 ${mesuresHabillage(VIDEO_SIZE[format].w).filet}px ${habillageVideo.accent}` }} />
+              </div>
             )}
             <TextAnimationLayer style={textAnimation} progress={progress}>
             {shows('intro') && (
@@ -2478,6 +2503,7 @@ export function Preview({
             watermark={watermark}
             accent={accent}
             gradEnd={gradEnd}
+            habillageVideo={{ debut: gradStart, fin: gradEnd, accent }}
             edit={{
               cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard, selectedCards,
               groupedCards, capturing, uiPx, onCardDoubleClick, onCardResizeStart, onDragStart,
@@ -6545,6 +6571,7 @@ export default function AssistantWizard() {
             elements={freeElements}
             watermark={watermarkLabel}
             accent={accent}
+            habillageVideo={{ debut: gradStart, fin: gradEnd, accent }}
             // L'animation de l'ÉTAT — celle qui part au rendu — sauf pendant
             // l'essai d'une option par son bouton ▶, qui la montre sans la
             // choisir.
@@ -7904,6 +7931,9 @@ export default function AssistantWizard() {
               }
             : undefined,
           design: {
+            // Habillage de la séquence Vidéo aux couleurs du style — le MÊME
+            // cadre que l'aperçu. Seulement quand une vidéo est montée.
+            ...(plateau.rushUrl && duree('video') > 0 ? { habillageVideo: { debut: gradStart, fin: gradEnd, accent } } : {}),
             // Animation d'apparition du texte, jouee sur le debut de chaque
             // sequence. `'none'` = le rendu d'hier, au pixel.
             textAnimation,
@@ -8279,6 +8309,8 @@ export default function AssistantWizard() {
             borderColor: null,
           },
           design: {
+            // Relu par le Calendrier (`options-depuis-metadata`) : même cadre.
+            ...(plateau.rushUrl && duree('video') > 0 ? { habillageVideo: { debut: gradStart, fin: gradEnd, accent } } : {}),
             textAnimation,
             cardStyle,
             // Transition entre sequences, passee au compositeur : meme cle que

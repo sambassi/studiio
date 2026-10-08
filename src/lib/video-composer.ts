@@ -25,6 +25,7 @@ import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montag
 import type { OverlaysMontage } from '@/lib/creer/overlays';
 import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendus/medias-requis';
 import { imageCartesA } from '@/lib/creer/synchro-cartes';
+import { dessinerHabillageVideo } from '@/lib/creer/habillageVideo';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -201,6 +202,11 @@ export interface DesignOptions {
    * unique `cardsSnapshot`, comme avant.
    */
   cardsReveal?: Array<{ debut: number; image: HTMLImageElement }>;
+  /**
+   * Cadre aux couleurs du style par-dessus les bords de la séquence Vidéo
+   * (`habillageVideo.ts`). Absent : rendu d'avant, inchangé.
+   */
+  habillageVideo?: import('@/lib/creer/habillageVideo').HabillageVideo;
   /** CTA main text override from design (e.g. 'AFROBOOST') */
   ctaMainText?: string;
   /** CTA sub text override from design (e.g. "CHAT POUR PLUS D'INFOS") */
@@ -2871,6 +2877,9 @@ function drawVideoSeq(
   // Per-sequence gradient overlay (default: disabled for 'video', but the user
   // can opt-in via seqGradients). Paints on top of the video frame.
   paintSeqGradient(ctx, w, h, 'video', design);
+  // Habillage aux couleurs du style : cadre PAR-DESSUS les bords, jamais un
+  // filtre sur l'image. Opt-in (Créer) : les anciens posts n'en ont pas.
+  if (design?.habillageVideo) dessinerHabillageVideo(ctx, w, h, design.habillageVideo);
   // Video overlay text — legacy single overlay + any extras in design.overlays.
   // Each overlay is gated by its own [startTime, endTime] window so the same
   // video can show a CTA-style headline at t=0 and a smaller caption at t=4s.
