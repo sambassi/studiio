@@ -1,5 +1,7 @@
 'use client';
 
+import ReglagesPublicationReseaux from '@/components/social/ReglagesPublicationReseaux';
+import type { Couverture, ReglagesTiktok } from '@/lib/social/couverture';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { urlsIntrouvables, trierMediasMorts, messageMediasBloquants, messageMediasRetires, type MediaAVerifier } from '@/lib/creer/medias-morts';
 import Link from 'next/link';
@@ -4267,6 +4269,9 @@ export default function AssistantWizard() {
   const [envoiIntention, setEnvoiIntention] = useState<'brouillon' | 'programmer'>('brouillon');
   /** Les reseaux (identifiants minuscules, ceux du cron et de l'Autopilote) vises par `programmer`. */
   const [reseauxProgrammes, setReseauxProgrammes] = useState<Reseau[]>([]);
+  /** Miniature / couverture et réglages TikTok de l'envoi (`lib/social/couverture`). */
+  const [couverture, setCouverture] = useState<Couverture | null>(null);
+  const [reglagesTiktok, setReglagesTiktok] = useState<ReglagesTiktok | null>(null);
   /**
    * L'etat des reseaux du compte — la MEME lecture que l'ecran Reseaux et le
    * Calendrier (`useEtatReseaux`). Seuls les reseaux `connecte` sont
@@ -6166,7 +6171,10 @@ export default function AssistantWizard() {
     batchCount,
     batchPhotoUrls: batchPhotoUrls.length ? batchPhotoUrls : undefined,
     batchPhotoMode,
+    couverture: couverture ?? undefined,
+    reglagesTiktok: reglagesTiktok ?? undefined,
   }), [
+    couverture, reglagesTiktok,
     started, step, themeId, customTopic, brief, toneId, format, colors, jumeauMode, jumeauGenerationId,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
@@ -6271,6 +6279,8 @@ export default function AssistantWizard() {
     if (draft.transition) setTransition(draft.transition as TransitionStyle);
     if (draft.textAnimation) setTextAnimation(draft.textAnimation as TextAnimation);
     if (draft.habillageVideoMode) setHabillageVideoMode(lireModeHabillage(draft.habillageVideoMode));
+    if (draft.couverture) setCouverture(draft.couverture);
+    if (draft.reglagesTiktok) setReglagesTiktok(draft.reglagesTiktok);
     setIntroDuration(draft.introDuration!);
     setCardsDuration(draft.cardsDuration!);
     setVideoDuration(draft.videoDuration!);
@@ -8612,6 +8622,10 @@ export default function AssistantWizard() {
             metadata: {
               ...metadata,
               ...(photoCartes ? { cardsSnapshot: photoCartes } : null),
+              // Couverture choisie à l'Envoi ; absente = automatique (le
+              // comportement d'avant). Réglages TikTok seulement s'il est visé.
+              ...(couverture && couverture.mode !== 'auto' ? { cover: couverture } : null),
+              ...(programmationEffective && reseauxProgrammes.includes('tiktok') && reglagesTiktok ? { tiktok: reglagesTiktok } : null),
               // Le fuseau dans lequel la date et l'heure ont ete saisies :
               // sans lui, le cron lit `scheduled_time` comme une heure de
               // Paris. Les minutes, elles, arrivent telles quelles.
@@ -11635,6 +11649,23 @@ export default function AssistantWizard() {
                             <p className="mt-1.5 text-[11px] text-amber-400" data-envoi-reseaux-vides>
                               Choisissez au moins un réseau — sinon la vidéo restera en brouillon.
                             </p>
+                          )}
+                          {/* Miniature / couverture + réglages TikTok. Le montage
+                              n'est pas encore rendu : pas de choix d'un moment ici
+                              (le Calendrier le permet ensuite). */}
+                          {reseauxProgrammes.length > 0 && (
+                            <div className="mt-3">
+                              <ReglagesPublicationReseaux
+                                reseaux={reseauxProgrammes}
+                                format={format === '9:16' ? 'reel' : 'tv'}
+                                videoUrl={null}
+                                value={{ cover: couverture, tiktok: reglagesTiktok }}
+                                onChange={(modif) => {
+                                  if (modif.cover !== undefined) setCouverture(modif.cover);
+                                  if (modif.tiktok !== undefined) setReglagesTiktok(modif.tiktok);
+                                }}
+                              />
+                            </div>
                           )}
                         </div>
                       )}

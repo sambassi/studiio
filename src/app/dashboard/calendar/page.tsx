@@ -73,6 +73,8 @@ function formatRendu(p?: { format?: string | null } | null): 'reel' | 'tv' {
 import { useTranslations, useLocale } from '@/i18n/client';
 import { useEtatReseaux } from '@/lib/hooks/useEtatReseaux';
 import { reseauDepuisLibelle, normaliserPlateformesCalendrier } from '@/lib/social/etatReseaux';
+import ReglagesPublicationReseaux from '@/components/social/ReglagesPublicationReseaux';
+import { lireCouverture, lireReglagesTiktok, sansConsentementTiktok } from '@/lib/social/couverture';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ConseilsVideo } from '@/components/creer/ConseilsVideo';
@@ -944,7 +946,9 @@ export default function CalendarPage() {
     const target = post || selectedPost;
     if (target) {
       setSelectedPost(target);
-      setEditFormData({ ...target });
+      // ⚠️ Le consentement TikTok n'est JAMAIS réaffiché coché : il se redonne
+      // d'un geste explicite à chaque passage dans l'éditeur.
+      setEditFormData({ ...target, metadata: sansConsentementTiktok(target.metadata) });
       setEditTab(target.status as 'draft' | 'scheduled' | 'published');
       setShowEditModal(true);
       setShowPreviewModal(false);
@@ -1137,7 +1141,10 @@ export default function CalendarPage() {
     const cleanPost = {
       ...post,
       status: 'draft' as const,
-      metadata: { ...post.metadata, error: null, cron_publish_results: null },
+      // Couverture et réglages TikTok conservés ; le consentement TikTok, lui,
+      // est retiré : un nouvel envoi le redemande (sans lui, TikTok est
+      // écarté et les autres réseaux partent).
+      metadata: { ...sansConsentementTiktok(post.metadata), error: null, cron_publish_results: null },
     };
     await handlePublishPost(cleanPost);
   };
@@ -2704,7 +2711,10 @@ export default function CalendarPage() {
                 {selectedDayPosts.length > 0 && !bulkMode && (() => {
                   const fp = fullPreviewPost || selectedDayPosts[0];
                   const fpMeta = fp.metadata;
-                  const thumbnailUrl = fpMeta?.thumbnailUrl || null;
+                  // La couverture CHOISIE (image importée) passe avant la vignette
+                  // capturée à l'export : c'est elle qui partira sur les réseaux.
+                  const coverChoisie = lireCouverture(fpMeta);
+                  const thumbnailUrl = (coverChoisie?.mode === 'upload' ? coverChoisie.imageUrl : null) || fpMeta?.thumbnailUrl || null;
                   // For image posts the file itself IS the poster — route it to
                   // posterUrl so PostThumbnail renders <img>, not <video>.
                   const mediaIsImage = fp.media_type === 'image';
@@ -3023,6 +3033,28 @@ export default function CalendarPage() {
                 })}
               </div>
             </div>
+            {/* Miniature / couverture + réglages TikTok : la même zone que
+                l'étape Envoi de Créer. Rangés dans `metadata` — la sauvegarde,
+                « Publier maintenant » et « Réessayer » la conservent. */}
+            <ReglagesPublicationReseaux
+              reseaux={(editFormData.platforms || [])
+                .map((p) => reseauDepuisLibelle(p))
+                .filter((r): r is NonNullable<ReturnType<typeof reseauDepuisLibelle>> => !!r)}
+              format={editFormData.format}
+              videoUrl={(editFormData.metadata as Record<string, unknown> | undefined)?.renderedVideoUrl as string | undefined || editFormData.media_url || null}
+              value={{
+                cover: lireCouverture(editFormData.metadata),
+                tiktok: lireReglagesTiktok(editFormData.metadata),
+              }}
+              onChange={(modif) => setEditFormData((prev) => ({
+                ...prev,
+                metadata: {
+                  ...(prev.metadata || {}),
+                  ...(modif.cover !== undefined ? { cover: modif.cover } : {}),
+                  ...(modif.tiktok !== undefined ? { tiktok: modif.tiktok } : {}),
+                },
+              }))}
+            />
             <div>
               <label className="block text-sm font-medium text-white mb-2">{t('editModal.media')}</label>
               <div onClick={handleImportClick} className="border-2 border-dashed border-gray-700 rounded-lg p-6 text-center cursor-pointer hover:border-purple-500 transition">
@@ -4277,6 +4309,14 @@ export default function CalendarPage() {
                 && ((fullPreviewPost.metadata as { avertissements: unknown[] }).avertissements).length > 0 && (
                 <ul data-calendrier-avertissements className="mb-2 space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
                   {((fullPreviewPost.metadata as { avertissements: unknown[] }).avertissements).map((a) => <li key={String(a)}>{String(a)}</li>)}
+                </ul>
+              )}
+              {/* Publication : réseau écarté (TikTok sans consentement), repli de
+                  couverture — ce que Studiio a réellement fait, en clair. */}
+              {Array.isArray((fullPreviewPost.metadata as Record<string, unknown> | undefined)?.avertissementsPublication)
+                && ((fullPreviewPost.metadata as { avertissementsPublication: unknown[] }).avertissementsPublication).length > 0 && (
+                <ul data-calendrier-avertissements-publication className="mb-2 space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200">
+                  {((fullPreviewPost.metadata as { avertissementsPublication: unknown[] }).avertissementsPublication).map((a) => <li key={String(a)}>{String(a)}</li>)}
                 </ul>
               )}
               <ConseilsVideo postId={fullPreviewPost.id} metadata={fullPreviewPost.metadata} />

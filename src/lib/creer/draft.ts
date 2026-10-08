@@ -1,6 +1,7 @@
 'use client';
 
 import { normaliserReglages, type ReglagesVoix } from '@/lib/types/voice';
+import { lireCouverture, lireReglagesTiktok, type Couverture, type ReglagesTiktok } from '@/lib/social/couverture';
 import { lireTimingVoix, type TimingVoix } from '@/lib/creer/synchro-cartes';
 import { findFont } from '@/lib/fonts/catalog';
 import { TRANSITION_KEYS } from '@/lib/video-composer';
@@ -116,6 +117,13 @@ export interface Draft {
   textAnimation?: string;
   /** Habillage de la séquence Vidéo (`degrade` | `cadre` | `aucun`). Absent : le défaut. */
   habillageVideoMode?: string;
+  /** Miniature / couverture choisie à l'étape Envoi (`lib/social/couverture`). Absente : automatique. */
+  couverture?: Couverture;
+  /**
+   * Réglages TikTok de l'étape Envoi. ⚠️ Le consentement n'est JAMAIS restauré :
+   * il se redonne à chaque envoi, d'un geste explicite.
+   */
+  reglagesTiktok?: ReglagesTiktok;
   /** Largeur des blocs titre / CTA, en % (poignée de bord). */
   titleWidth?: number;
   ctaWidth?: number;
@@ -631,6 +639,11 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     habillageVideoMode: raw.habillageVideoMode === 'degrade' || raw.habillageVideoMode === 'cadre' || raw.habillageVideoMode === 'aucun'
       ? (raw.habillageVideoMode as string)
       : undefined,
+    couverture: lireCouverture({ cover: raw.couverture }) ?? undefined,
+    reglagesTiktok: (() => {
+      const r = lireReglagesTiktok({ tiktok: raw.reglagesTiktok });
+      return r ? { ...r, consentement: false } : undefined;
+    })(),
     introDuration: num(raw.introDuration, 0, 60, d.durations.intro),
     cardsDuration: num(raw.cardsDuration, 0, 60, d.durations.cards),
     videoDuration: num(raw.videoDuration, 0, 60, d.durations.video),

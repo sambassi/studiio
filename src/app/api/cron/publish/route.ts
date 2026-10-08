@@ -485,6 +485,8 @@ export async function GET(req: NextRequest) {
             platforms: post.platforms || [],
             // Le cron ne traite que des posts DUS : on publie maintenant.
             scheduledFor: null,
+            // `reel` → Short sur YouTube : pas de miniature personnalisée.
+            format: post.format ?? null,
           });
           await supabase
             .from('scheduled_posts')

@@ -178,11 +178,19 @@ describe('cron — situation de production', () => {
     expect(base.scheduled_posts[0].status).toBe('publishing');
   });
 
-  it('les 4 libellés du Calendrier : 4 cibles, jamais « No connected social accounts »', async () => {
-    base.scheduled_posts = [post(['Instagram', 'Facebook', 'TikTok', 'YouTube'])];
+  it('les 4 libellés du Calendrier (TikTok consenti) : 4 cibles, jamais « No connected social accounts »', async () => {
+    const tiktok = { privacy_level: 'SELF_ONLY', allow_comment: true, allow_duet: false, allow_stitch: false, consentement: true };
+    base.scheduled_posts = [post(['Instagram', 'Facebook', 'TikTok', 'YouTube'], { metadata: { renderedVideoUrl: MP4, tiktok } })];
     await lancerCron();
     expect(cibles().map((c) => c.platform)).toEqual(['instagram', 'facebook', 'tiktok', 'youtube']);
     expect(erreur()).not.toContain('No connected social accounts');
+  });
+
+  it('TikTok SANS consentement : écarté avant le fournisseur, les 3 autres partent', async () => {
+    base.scheduled_posts = [post(['Instagram', 'Facebook', 'TikTok', 'YouTube'])];
+    await lancerCron();
+    expect(cibles().map((c) => c.platform)).toEqual(['instagram', 'facebook', 'youtube']);
+    expect(JSON.stringify(base.scheduled_posts[0].metadata.avertissementsPublication)).toContain('TikTok');
   });
 
   it('post créé AVANT la connexion du compte : le compte ajouté ensuite est pris en compte', async () => {
