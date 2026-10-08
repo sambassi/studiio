@@ -113,6 +113,8 @@ export interface Draft {
   transition?: string;
   /** Animation d'apparition du texte. Absente = aucune, le rendu d'hier. */
   textAnimation?: string;
+  /** Habillage de la séquence Vidéo (`degrade` | `cadre` | `aucun`). Absent : le défaut. */
+  habillageVideoMode?: string;
   introDuration?: number;
   cardsDuration?: number;
   videoDuration?: number;
@@ -615,6 +617,9 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       : undefined,
     textAnimation: TEXT_ANIMATION_KEYS.includes(raw.textAnimation as never)
       ? (raw.textAnimation as string)
+      : undefined,
+    habillageVideoMode: raw.habillageVideoMode === 'degrade' || raw.habillageVideoMode === 'cadre' || raw.habillageVideoMode === 'aucun'
+      ? (raw.habillageVideoMode as string)
       : undefined,
     introDuration: num(raw.introDuration, 0, 60, d.durations.intro),
     cardsDuration: num(raw.cardsDuration, 0, 60, d.durations.cards),

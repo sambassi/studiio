@@ -118,7 +118,10 @@ import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
-import { mesuresHabillage, angleDiagonale, type HabillageVideo } from '@/lib/creer/habillageVideo';
+import {
+  mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
+  MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
+} from '@/lib/creer/habillageVideo';
 
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
@@ -1522,12 +1525,23 @@ function PlateContent({
                 }}
               />
             )}
-            {rushUrl && habillageVideo && (
-              /* Habillage : un cadre PAR-DESSUS les bords, mêmes mesures que
+            {rushUrl && habillageVideo?.mode === 'degrade' && (
+              /* Habillage « Dégradé » : le voile coloré des Cartes, PAR-DESSUS
+                 la vidéo — mêmes arrêts que l'export (`arretsVoile`). */
+              <div
+                aria-hidden
+                data-habillage-video
+                data-mode="degrade"
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: cssVoile(habillageVideo) }}
+              />
+            )}
+            {rushUrl && habillageVideo && habillageVideo.mode !== 'degrade' && (
+              /* Habillage « Cadre » : PAR-DESSUS les bords, mêmes mesures que
                  l'export (`dessinerHabillageVideo`). Aucun filtre sur l'image. */
               <div
                 aria-hidden
                 data-habillage-video
+                data-mode="cadre"
                 style={{
                   position: 'absolute',
                   inset: 0,
@@ -1927,6 +1941,7 @@ export function Preview({
   watermark,
   accent,
   text,
+  habillageVideoMode = 'aucun',
   focus = 'all',
   onFocusChange,
   titlePos = DESIGN.titlePos,
@@ -1945,6 +1960,11 @@ export function Preview({
   onTextDoubleClick,
   onCardDoubleClick,
 }: {
+  /**
+   * Habillage de la séquence Vidéo, celui que l'export dessinera. Défaut
+   * `aucun` : seul Créer en passe un (l'Autopilote n'en dessine pas).
+   */
+  habillageVideoMode?: ModeHabillage;
   /**
    * Prise d'une poignee de coin sur le TITRE ou le CTA — agrandir le texte.
    *
@@ -2507,7 +2527,7 @@ export function Preview({
             watermark={watermark}
             accent={accent}
             gradEnd={gradEnd}
-            habillageVideo={{ debut: gradStart, fin: gradEnd, accent }}
+            habillageVideo={habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) ?? null}
             edit={{
               cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard, selectedCards,
               groupedCards, capturing, uiPx, onCardDoubleClick, onCardResizeStart, onDragStart,
@@ -3984,6 +4004,8 @@ export default function AssistantWizard() {
    * Defaut « Aucune » : le rendu de tous les montages existants.
    */
   const [textAnimation, setTextAnimation] = useState<TextAnimation>(DEFAULT_TEXT_ANIMATION);
+  /** Habillage de la séquence Vidéo / jumeau aux couleurs du style. */
+  const [habillageVideoMode, setHabillageVideoMode] = useState<ModeHabillage>(MODE_HABILLAGE_DEFAUT);
   /**
    * Style des cartes.
    *
@@ -5936,6 +5958,7 @@ export default function AssistantWizard() {
     sequences,
     transition,
     textAnimation,
+    habillageVideoMode,
     introDuration,
     cardsDuration,
     videoDuration,
@@ -6002,6 +6025,7 @@ export default function AssistantWizard() {
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     transition,
     textAnimation,
+    habillageVideoMode,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, lut, scheduledDate,
@@ -6098,6 +6122,7 @@ export default function AssistantWizard() {
     // compositeur : un style inconnu est arrive ici a `undefined`.
     if (draft.transition) setTransition(draft.transition as TransitionStyle);
     if (draft.textAnimation) setTextAnimation(draft.textAnimation as TextAnimation);
+    if (draft.habillageVideoMode) setHabillageVideoMode(lireModeHabillage(draft.habillageVideoMode));
     setIntroDuration(draft.introDuration!);
     setCardsDuration(draft.cardsDuration!);
     setVideoDuration(draft.videoDuration!);
@@ -6345,6 +6370,7 @@ export default function AssistantWizard() {
     watermark: watermarkLabel,
     accent,
     text: textStyles,
+    habillageVideoMode,
     focus: previewFocus,
     // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
     // temps que la video.
@@ -6587,7 +6613,7 @@ export default function AssistantWizard() {
             elements={freeElements}
             watermark={watermarkLabel}
             accent={accent}
-            habillageVideo={{ debut: gradStart, fin: gradEnd, accent }}
+            habillageVideo={habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) ?? null}
             // L'animation de l'ÉTAT — celle qui part au rendu — sauf pendant
             // l'essai d'une option par son bouton ▶, qui la montre sans la
             // choisir.
@@ -7949,7 +7975,9 @@ export default function AssistantWizard() {
           design: {
             // Habillage de la séquence Vidéo aux couleurs du style — le MÊME
             // cadre que l'aperçu. Seulement quand une vidéo est montée.
-            ...(plateau.rushUrl && duree('video') > 0 ? { habillageVideo: { debut: gradStart, fin: gradEnd, accent } } : {}),
+            ...(plateau.rushUrl && duree('video') > 0 && habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity })
+              ? { habillageVideo: habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) }
+              : {}),
             // Animation d'apparition du texte, jouee sur le debut de chaque
             // sequence. `'none'` = le rendu d'hier, au pixel.
             textAnimation,
@@ -8326,7 +8354,9 @@ export default function AssistantWizard() {
           },
           design: {
             // Relu par le Calendrier (`options-depuis-metadata`) : même cadre.
-            ...(plateau.rushUrl && duree('video') > 0 ? { habillageVideo: { debut: gradStart, fin: gradEnd, accent } } : {}),
+            ...(plateau.rushUrl && duree('video') > 0 && habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity })
+              ? { habillageVideo: habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) }
+              : {}),
             textAnimation,
             cardStyle,
             // Transition entre sequences, passee au compositeur : meme cle que
@@ -8558,6 +8588,7 @@ export default function AssistantWizard() {
     // enverrait tels quels au compositeur et aux metadonnees.
     setTitlePos(DESIGN.titlePos);
     setCtaPos(DESIGN.ctaPos);
+    setHabillageVideoMode(MODE_HABILLAGE_DEFAUT);
     setCardBoxes(null);
     setSelectedCards(new Set());
     setCardGroups([]);
@@ -9465,6 +9496,33 @@ export default function AssistantWizard() {
                         <span className="text-[11px] text-gray-400 w-9 text-right tabular-nums">
                           {Math.round(gradientOpacity * 100)}%
                         </span>
+                      </div>
+
+                      {/* Habillage de la séquence Vidéo / jumeau : les couleurs du
+                          style par-dessus la vidéo, jamais un filtre sur l'image. */}
+                      <div className="mt-3" data-habillage-video-choix>
+                        <span className="block text-[11px] text-gray-500 mb-1.5">Habillage vidéo</span>
+                        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Habillage de la séquence Vidéo">
+                          {MODES_HABILLAGE.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={habillageVideoMode === m.id}
+                              onClick={() => setHabillageVideoMode(m.id)}
+                              className={`rounded-md px-2 py-1.5 text-[11px] transition-colors ${
+                                habillageVideoMode === m.id
+                                  ? 'bg-purple-600/25 text-white ring-1 ring-purple-500/50'
+                                  : 'bg-gray-800/60 text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              {m.label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-gray-500">
+                          Dégradé : le voile coloré des cartes sur la vidéo. Cadre : une bordure aux couleurs du style.
+                        </p>
                       </div>
                     </div>
                 </StyleSection>
