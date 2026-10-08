@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { droitDePublier, comptesConnectes, mediaPubliable } from '@/lib/social/publishing';
+import { droitDePublier, comptesConnectes, resoudreCibles, mediaPubliable } from '@/lib/social/publishing';
 import { createPost, uploadMedia, ZernioError } from '@/lib/social/zernio';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 
@@ -134,10 +134,8 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
     return { ok: false, motif: media.motif!, reessayable: false };
   }
 
-  const comptes = await comptesConnectes(post.userId);
-  const cibles = comptes
-    .filter((c) => post.platforms.includes(c.platform))
-    .map((c) => ({ platform: c.platform, accountId: c.accountId }));
+  const { demandes, comptes, cibles, manquants } = resoudreCibles(post.platforms, await comptesConnectes(post.userId));
+  console.log(`[Zernio/Publication] post ${post.id} : demandes=${demandes.join(',') || 'aucun'} connectes=${comptes.length} cibles=${cibles.length}${manquants.length ? ` manquants=${manquants.join(',')}` : ''}`);
 
   if (cibles.length === 0) {
     return {

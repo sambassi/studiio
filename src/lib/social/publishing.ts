@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { isAdmin } from '@/lib/admin';
+import { reseauDepuisLibelle } from '@/lib/social/etatReseaux';
 
 /**
  * Qui a le droit de publier sur ses réseaux, et avec quel média.
@@ -92,23 +93,30 @@ export async function definirPublicationOuverte(ouverte: boolean): Promise<boole
  * n'appellent pas la même action.
  */
 export async function droitDePublier(userId: string, email?: string | null): Promise<DroitPublication> {
-  const admin = isAdmin(email);
   const { zernioConfigured } = await import('@/lib/social/zernio');
 
   let profileId: string | null = null;
   let optionActive = false;
+  // ⚠️ L'EMAIL EST RELU EN BASE QUAND L'APPELANT NE L'A PAS. Le cron n'a pas
+  // de session : il appelait `droitDePublier(userId, undefined)`, l'admin
+  // n'était donc jamais reconnu, le coupe-circuit fermé le refusait, et le
+  // post retombait sur l'ancien chemin Meta (« Aucun compte social
+  // connecté ») alors que ses quatre comptes Zernio étaient connectés.
+  let emailEnBase: string | null = null;
   try {
     const { data } = await supabaseAdmin
       .from('users')
-      .select('zernio_profile_id, publishing_enabled')
+      .select('zernio_profile_id, publishing_enabled, email')
       .eq('id', userId)
       .limit(1);
-    const ligne = data?.[0] as { zernio_profile_id?: string | null; publishing_enabled?: boolean } | undefined;
+    const ligne = data?.[0] as { zernio_profile_id?: string | null; publishing_enabled?: boolean; email?: string | null } | undefined;
     profileId = ligne?.zernio_profile_id ?? null;
     optionActive = ligne?.publishing_enabled === true;
+    emailEnBase = ligne?.email ?? null;
   } catch (err) {
     console.error('[Publication] Lecture du droit impossible :', err);
   }
+  const admin = isAdmin(email ?? emailEnBase);
 
   if (!zernioConfigured()) {
     return { autorise: false, admin, raison: 'zernio-absent', profileId };
@@ -187,6 +195,60 @@ export async function comptesConnectes(userId: string): Promise<Array<{
     console.error('[Publication] Lecture des comptes impossible :', err);
     return [];
   }
+}
+
+/** Réseau publié par Zernio. */
+export type ReseauZernio = 'instagram' | 'facebook' | 'tiktok' | 'youtube';
+
+/**
+ * Les réseaux Zernio demandés par un post, en identifiant CANONIQUE
+ * (`instagram`, `facebook`, `tiktok`, `youtube`), sans doublon.
+ *
+ * ⚠️ C'EST LA SEULE CONVERSION. Le Calendrier écrit des libellés
+ * (« Instagram »), l'Autopilote des identifiants (« instagram ») : comparer
+ * les uns aux autres sans passer par ici donnait zéro cible. Les autres
+ * canaux (Email, WhatsApp…) ne sont pas des réseaux Zernio : ignorés.
+ */
+export function reseauxZernioDemandes(platforms: readonly unknown[] | null | undefined): ReseauZernio[] {
+  const out: ReseauZernio[] = [];
+  for (const p of platforms ?? []) {
+    if (typeof p !== 'string') continue;
+    const r = reseauDepuisLibelle(p);
+    if (r && !out.includes(r)) out.push(r);
+  }
+  return out;
+}
+
+export interface ResolutionCibles {
+  /** Réseaux Zernio demandés par le post (canoniques). */
+  demandes: ReseauZernio[];
+  /** Comptes Zernio connectés de l'utilisateur — la source de la page Réseaux. */
+  comptes: ReadonlyArray<{ accountId: string; platform: string }>;
+  /** Comptes à cibler : un par réseau demandé ET connecté. */
+  cibles: Array<{ platform: ReseauZernio; accountId: string }>;
+  /** Réseaux demandés sans compte connecté. */
+  manquants: ReseauZernio[];
+}
+
+/**
+ * LA résolution des comptes de publication — partagée par le cron et par
+ * `publierViaZernio`. Pure : l'appelant lui passe les comptes lus par
+ * `comptesConnectes` (même table que la page Réseaux sociaux), relus à
+ * CHAQUE publication — un compte connecté après la création du post compte.
+ */
+export function resoudreCibles(
+  platforms: readonly unknown[] | null | undefined,
+  comptes: ReadonlyArray<{ accountId: string; platform: string }>,
+): ResolutionCibles {
+  const demandes = reseauxZernioDemandes(platforms);
+  const cibles: ResolutionCibles['cibles'] = [];
+  const manquants: ReseauZernio[] = [];
+  for (const r of demandes) {
+    const compte = comptes.find((c) => reseauDepuisLibelle(c.platform) === r);
+    if (compte) cibles.push({ platform: r, accountId: compte.accountId });
+    else manquants.push(r);
+  }
+  return { demandes, comptes, cibles, manquants };
 }
 
 /**

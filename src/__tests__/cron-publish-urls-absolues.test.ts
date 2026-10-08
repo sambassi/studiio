@@ -65,7 +65,7 @@ vi.mock('@/lib/social/zernio', () => {
   return { createPost, uploadMedia, ZernioError };
 });
 
-// Pour le cron : aucun compte Zernio → chemin historique `social_accounts`.
+// Pour le cron : aucun compte Zernio → échec explicite (plus de repli `social_accounts`).
 // Pour `publierViaZernio` appele directement : un compte Instagram.
 let comptesZernio: Array<{ platform: string; accountId: string }> = [];
 vi.mock('@/lib/social/publishing', async (orig) => ({
@@ -146,44 +146,27 @@ afterEach(() => {
   if (envAvant.app === undefined) delete process.env.NEXT_PUBLIC_APP_URL;
 });
 
-describe('Facebook — file_url envoye a Meta', () => {
+/**
+ * Facebook / TikTok SANS compte Zernio, mais avec un ancien compte direct
+ * (`social_accounts`) : AVANT, le cron y retombait sans le dire. DÉSORMAIS,
+ * Zernio est la seule couche de publication de ces réseaux : aucun appel
+ * direct à Meta ni à TikTok, et un échec qui dit quel compte connecter.
+ */
+describe.each([
+  ['facebook', 'graph.facebook.com'],
+  ['tiktok', 'tiktokapis.com'],
+] as const)('%s sans compte Zernio — plus de repli direct', (plateforme, hote) => {
   beforeEach(() => {
-    comptesSociaux = [{ id: 'c-fb', user_id: 'user-1', platform: 'facebook', connected: true, access_token: 'jeton', account_id: 'page-1' }];
+    comptesSociaux = [{ id: 'c-legacy', user_id: 'user-1', platform: plateforme, connected: true, access_token: 'jeton', account_id: 'ancien-id' }];
   });
 
-  it('une URL relative MinIO devient absolue', async () => {
-    post = fabriquerPost(RELATIVE, 'facebook');
+  it.each([RELATIVE, ABSOLUE])('aucun appel direct, échec explicite (%s)', async (media) => {
+    post = fabriquerPost(media, plateforme);
     const corps = await lancerCron();
-    const appel = appelsFetch.find((a) => a.url.includes('graph.facebook.com'));
-    expect(appel?.corps.file_url).toBe(`${ORIGINE}${RELATIVE}`);
-    expect(corps.succeeded).toBe(1);
-  });
-
-  it('une URL deja absolue reste inchangee', async () => {
-    post = fabriquerPost(ABSOLUE, 'facebook');
-    await lancerCron();
-    const appel = appelsFetch.find((a) => a.url.includes('graph.facebook.com'));
-    expect(appel?.corps.file_url).toBe(ABSOLUE);
-  });
-});
-
-describe('TikTok — video_url envoye en PULL_FROM_URL', () => {
-  beforeEach(() => {
-    comptesSociaux = [{ id: 'c-tt', user_id: 'user-1', platform: 'tiktok', connected: true, access_token: 'jeton', account_id: 'tt' }];
-  });
-
-  it('une URL relative MinIO devient absolue', async () => {
-    post = fabriquerPost(RELATIVE, 'tiktok');
-    await lancerCron();
-    const appel = appelsFetch.find((a) => a.url.includes('tiktokapis.com'));
-    expect(appel?.corps.source_info.video_url).toBe(`${ORIGINE}${RELATIVE}`);
-  });
-
-  it('une URL deja absolue reste inchangee', async () => {
-    post = fabriquerPost(ABSOLUE, 'tiktok');
-    await lancerCron();
-    const appel = appelsFetch.find((a) => a.url.includes('tiktokapis.com'));
-    expect(appel?.corps.source_info.video_url).toBe(ABSOLUE);
+    expect(appelsFetch.some((a) => a.url.includes(hote))).toBe(false);
+    expect(createPost).not.toHaveBeenCalled();
+    expect(corps.succeeded ?? 0).toBe(0);
+    expect(JSON.stringify(corps)).toContain(`aucun compte pour ${plateforme}`);
   });
 });
 

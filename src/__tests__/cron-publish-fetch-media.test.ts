@@ -133,16 +133,19 @@ vi.mock('child_process', async (importOriginal) => {
   return { ...actual, default: { ...actual, execFile }, execFile };
 });
 
-// Zernio : aucun compte connecte → chemin historique `social_accounts`.
-vi.mock('@/lib/social/publishing', () => ({
-  comptesConnectes: async () => [],
-  droitDePublier: async () => ({ autorise: false }),
+// Zernio : un compte Instagram connecte. La preparation du media (muxage,
+// conversion WebM → MP4) se fait desormais AVANT la remise a Zernio — c'est
+// elle que ce test verifie. L'envoi lui-meme est simule.
+vi.mock('@/lib/social/publishing', async (orig) => ({
+  ...(await orig<typeof import('@/lib/social/publishing')>()),
+  comptesConnectes: async () => [{ platform: 'instagram', accountId: 'acc-ig', username: null }],
+  droitDePublier: async () => ({ autorise: true, admin: false }),
 }));
 // Les helpers purs de preuve Zernio (`etatPreuveZernio`…) restent reels : le
 // reset des posts bloques s'en sert. Seul l'envoi est simule.
 vi.mock('@/lib/social/publishViaZernio', async (orig) => ({
   ...(await orig<typeof import('@/lib/social/publishViaZernio')>()),
-  publierViaZernio: vi.fn(),
+  publierViaZernio: vi.fn(async () => ({ ok: false, motif: 'Format vidéo non accepté par les réseaux : un MP4 est requis.', reessayable: false })),
 }));
 vi.mock('@/lib/social/token-refresh', () => ({ getValidToken: async () => 'jeton-test' }));
 vi.mock('@/lib/email/resend', () => ({ sendEmail: vi.fn(async () => ({ success: true })) }));
@@ -348,9 +351,9 @@ describe("Comportemental — media forge d'un autre compte", () => {
     await lancerCron();
     const finales = misesAJour.filter((m) => m.table === 'scheduled_posts' && m.valeurs.status === 'failed');
     expect(finales).toHaveLength(1);
-    const historique = insertions.find((i) => i.table === 'publishing_history');
-    expect(historique?.valeurs.status).toBe('failed');
-    expect(String(historique?.valeurs.error_message)).toContain('telechargement:acces_refuse');
+    // La conversion refusee rend l'URL d'origine (WebM) : le garde media de
+    // `publierViaZernio` refuse alors EXPLICITEMENT — jamais un envoi muet.
+    expect(String((finales[0].valeurs.metadata as Record<string, unknown>)?.error)).toContain('MP4');
   });
 
   it("le muxage refuse est tolere (publication sans audio), puis la conversion echoue proprement", async () => {
