@@ -116,6 +116,7 @@ import { useOptionPreview } from '@/lib/hooks/useOptionPreview';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
+import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
@@ -1045,6 +1046,20 @@ const PREVIEW_TABS: Array<{ id: PreviewFocus; label: string }> = [
   { id: 'cta', label: 'CTA' },
   { id: 'all', label: 'Tout' },
 ];
+
+/**
+ * Les onglets DANS L'ORDRE DU MONTAGE : les séquences actives dans l'ordre
+ * choisi (`activeOrder`, le même que le rendu), puis les masquées, puis
+ * « Tout ». Dérivé à chaque rendu — aucun ordre local à tenir à jour.
+ */
+export function ongletsApercu(activeOrder: readonly string[]): Array<{ id: PreviewFocus; label: string }> {
+  const sequences = PREVIEW_TABS.filter((t) => t.id !== 'all');
+  const actives = activeOrder
+    .map((k) => sequences.find((t) => t.id === k))
+    .filter((t): t is { id: PreviewFocus; label: string } => !!t);
+  const masquees = sequences.filter((t) => !activeOrder.includes(t.id));
+  return [...actives, ...masquees, PREVIEW_TABS[PREVIEW_TABS.length - 1]];
+}
 
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
 type SectionId = 'format' | 'couleurs' | 'affiche' | 'ambiance' | 'texte' | 'sequences' | 'transition' | 'animation';
@@ -2192,7 +2207,7 @@ export function Preview({
           changent que ce qui est MONTRE, jamais le montage. */}
       {generated && onFocusChange && (
         <div className="flex gap-1 mb-3" role="tablist" aria-label="Élément mis en avant">
-          {PREVIEW_TABS.map((t) => (
+          {ongletsApercu(activeOrder).map((t) => (
             <button
               key={t.id}
               type="button"
@@ -4532,6 +4547,14 @@ export default function AssistantWizard() {
   const previewUrlRef = useRef<string | null>(null);
   /** Signature du montage en cache — lue dans le rendu, sans le refaire dépendre. */
   const previewSignatureRef = useRef<string | null>(null);
+  /**
+   * Empreinte de l'éditeur (ordre, couleurs, textes, positions…) au moment où
+   * le montage en cache a été composé, et l'empreinte COURANTE. Le montage
+   * n'est montré que tant qu'elles sont égales : changer l'ordre des
+   * séquences ou une couleur ne laisse plus l'aperçu jouer l'ancien rendu.
+   */
+  const empreinteRenduRef = useRef<string | null>(null);
+  const empreinteCouranteRef = useRef<string | null>(null);
   const previewBlobRef = useRef<Blob | null>(null);
   /**
    * La tentative CONFIRMEE qui a paye le montage garde en memoire.
@@ -4561,6 +4584,7 @@ export default function AssistantWizard() {
     previewUrlRef.current = blob ? URL.createObjectURL(blob) : null;
     previewBlobRef.current = blob;
     previewSignatureRef.current = signature;
+    empreinteRenduRef.current = blob ? empreinteCouranteRef.current : null;
     setPreviewUrl(previewUrlRef.current);
   }, []);
 
@@ -5947,6 +5971,17 @@ export default function AssistantWizard() {
   draftRef.current = buildDraft;
 
   /**
+   * Ce que le montage MONTRE, en une chaîne : le brouillon sans ce qui ne
+   * change pas l'image (étape, date, lot, état du jumeau), plus les couleurs
+   * effectives (kit de marque compris).
+   */
+  const empreinteCourante = useMemo(
+    () => empreinteApercu(buildDraft(), { accent, gradStart, gradEnd, gradientOpacity }),
+    [buildDraft, accent, gradStart, gradEnd, gradientOpacity],
+  );
+  empreinteCouranteRef.current = empreinteCourante;
+
+  /**
    * Restauration, au montage.
    *
    * Chaque champ est valide separement : un brouillon d'une version
@@ -6288,7 +6323,9 @@ export default function AssistantWizard() {
      lui sert à travailler. « Tout » était déjà l'image figée du montage
      complet ; c'est exactement ce que la vidéo remplace. */
   const rendPourApercu = sending && renderTarget === 'apercu';
-  const renduJoue = !!previewUrl && previewFocus === 'all';
+  // Le montage en cache n'est montré que s'il correspond aux réglages ACTUELS.
+  const renduAJour = !!previewUrl && empreinteRenduRef.current === empreinteCourante;
+  const renduJoue = renduAJour && previewFocus === 'all';
 
   /* ── SUIVI DU JUMEAU — des étapes réelles, jamais un faux pourcentage ──
      Pendant que le fournisseur anime l'avatar, il n'existe AUCUN pourcentage
@@ -6437,7 +6474,7 @@ export default function AssistantWizard() {
   ) => {
     // Rien à jouer, ou le cadre est pris par le rendu (composition en cours,
     // montage rendu affiché) : le lecteur n'y est pas.
-    if (!extrait || !generated || previewUrl || rendPourApercu) return;
+    if (!extrait || !generated || renduAJour || rendPourApercu) return;
     extraitNo.current += 1;
     if (previewFocus !== 'all') {
       focusAvantExtrait.current = previewFocus;
@@ -6446,7 +6483,7 @@ export default function AssistantWizard() {
       focusAvantExtrait.current = null;
     }
     setExtraitDemande({ ...extrait, ...essai, id: extraitNo.current, autoplay: !reduireAnimations });
-  }, [generated, previewUrl, rendPourApercu, previewFocus, reduireAnimations]);
+  }, [generated, renduAJour, rendPourApercu, previewFocus, reduireAnimations]);
 
   /** Transition `style` entre la séquence de l'onglet courant et la suivante. */
   const jouerTransition = useCallback((style: TransitionStyle) => {
@@ -6476,7 +6513,7 @@ export default function AssistantWizard() {
     if (previewFocus !== 'all') setExtraitDemande(null);
   }, [previewFocus]);
 
-  const lectureSequences = generated && previewFocus === 'all' && !previewUrl && !rendPourApercu ? (
+  const lectureSequences = generated && previewFocus === 'all' && !renduAJour && !rendPourApercu ? (
     <SequencePlayback
       steps={etapesLecture}
       transition={transition}
@@ -11828,6 +11865,9 @@ export default function AssistantWizard() {
           const etat = !previewUrl
             ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: 'Voir le rendu',
                 titre: 'Composer la vidéo et la regarder — animations et transitions comprises' }
+            : !renduAJour
+              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: 'Recomposer le rendu',
+                  titre: 'Les réglages ont changé depuis le dernier rendu — un nouveau rendu est débité' }
             : renduJoue
               ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: 'Recomposer le rendu',
                   titre: 'Refaire le montage avec les réglages actuels — un nouveau rendu est débité' }
@@ -11856,7 +11896,7 @@ export default function AssistantWizard() {
             côté du bouton « Fermer ». Elle devient une légende COMPACTE sous
             le cadre, et n'apparaît que quand un montage existe réellement —
             sinon elle parlait d'un rendu que personne n'avait demandé. */}
-        {previewUrl && (
+        {renduAJour && (
           <p className="mt-2 text-[11px] text-gray-500" data-play-legende>
             Ce montage sera réutilisé à l’envoi tant que rien ne change —
             un seul rendu débité.

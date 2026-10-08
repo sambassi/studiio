@@ -182,7 +182,10 @@ describe('C — le câblage de l assistant', () => {
     // ⚠️ LES AUTRES ONGLETS ISOLENT UN ÉLÉMENT POUR LE RÉGLER DE PRÈS. Y
     // substituer la vidéo entière retirerait à l'utilisateur la seule vue qui
     // lui sert à travailler.
-    expect(wizard).toContain("const renduJoue = !!previewUrl && previewFocus === 'all';");
+    expect(wizard).toContain("const renduJoue = renduAJour && previewFocus === 'all';");
+    // Et seulement s'il correspond aux réglages ACTUELS (ordre, couleurs…) :
+    // creer-apercu-ordre-couleurs.test.tsx.
+    expect(wizard).toContain('const renduAJour = !!previewUrl && empreinteRenduRef.current === empreinteCourante;');
   });
 
   it('il n y a plus qu UN SEUL lecteur dans tout l écran', () => {
