@@ -150,6 +150,9 @@ vi.mock('@/lib/db/supabase', () => {
     supabase: {},
     supabaseAdmin: {
       from,
+      // Le bail de création (base) : toujours libre ici — sa concurrence est
+      // éprouvée dans avatar-identites-versions et sur PostgreSQL réel.
+      rpc: async (nom: string) => ({ data: nom.endsWith('verrou_creation_avatar') ? true : null, error: null }),
       storage: {
         from: (bucket: string) => ({
           async upload(cle: string, _octets: unknown) {
@@ -204,6 +207,15 @@ vi.mock('@/lib/avatar/heygen', () => {
   };
 });
 
+/** Le lancement d'une VERSION CANDIDATE : observé, jamais exécuté ici (testé dans avatar-versions-identites). */
+const candidat = vi.hoisted(() => ({ appels: [] as Array<Record<string, unknown>> }));
+vi.mock('@/lib/avatar/remplacement', () => ({
+  lancerVersionCandidate: async (args: Record<string, unknown>) => {
+    candidat.appels.push(args);
+    return { ok: true, etat: 'entrainement', version: { id: 'v-cand', user_avatar_id: args.avatarId, user_id: args.userId, version: 2, provider: 'heygen', avatar_type: args.kind, status: 'processing', provider_avatar_id: 'hg-cand', provider_asset_id: null, source_object_key: args.cleSource, original_source_object_key: args.cleSource, training_error: null, validated_at: null, created_at: '2026-10-09T00:00:00Z', activated_at: null, abandoned_at: null } };
+  },
+}));
+
 const session = vi.hoisted(() => ({ courante: null as unknown }));
 vi.mock('@/lib/auth/config', () => ({ auth: async () => session.courante }));
 
@@ -246,6 +258,7 @@ beforeEach(() => {
   alea.constant = null; chrono.evenements.length = 0;
   base.pannes = []; base.executions = { select: 0, insert: 0, update: 0 };
   heygen.statut = { status: 'completed' }; heygen.statutRetenu = false; heygen.libererStatut = null;
+  candidat.appels.length = 0;
   // Jumeau VIDÉO : réservé à l'admin depuis 2026-10-06 (consentement externe
   // niveau 1). Ces tests couvrent le versionnage d'un avatar vidéo : session admin.
   session.courante = { user: { id: U, email: 'contact.artboost@gmail.com' } };
@@ -341,68 +354,35 @@ describe('POST /api/avatar/create — défense en profondeur : clés confondues'
 });
 
 describe('POST /api/avatar/create — remplacement', () => {
-  it('⚠️ même id, version 2, nouvelle clé, ancienne clé legacy retirée APRÈS la transition, générations intactes', async () => {
-    const ancien = avatarLegacy();
-    stockage.objets.set(`${U}/avatar/source-1757000000000.jpg`, 10);
-    const g = generationDe(ancien.id, null);
+  // ⚠️ INCIDENT 2026-10-09 : remplacer ne réécrit PLUS la ligne active.
+  it('⚠️ remplacer = VERSION CANDIDATE : la ligne active (version, fournisseur, validation, source) reste intacte, aucune source retirée', async () => {
+    const ancien = avatarLegacy({ source_object_key: `${U}/avatar/source-1.mp4`, source_url: null, version: 3, consent_version: 'x', subject_type: 'self', avatar_type: 'video', provider_group_id: 'grp-old' });
+    stockage.objets.set(`${U}/avatar/source-1.mp4`, 10);
+    const instantane = { ...ancien };
+    const g = generationDe(ancien.id, 3);
     const res = await requete();
     expect(res.status).toBe(200);
-    expect(base.avatars).toHaveLength(1);
-    const l = vivant();
-    expect(l.id).toBe(ancien.id);
-    expect(l.version).toBe(2);
-    expect(l.created_at).toBe('2026-09-01T00:00:00.000Z');
-    expect(l.source_object_key).toMatch(NONCE);
-    expect(l.source_url).toBeNull();
-    expect(l.avatar_type).toBe('video');
-    expect(l.validated_at).toBeNull();
-    expect(l.provider_avatar_id).toBe('hg-as-1');
-    expect(l.consent_version).toBe('enrolement-2026-10-06');
-    // L'ancienne source (dérivée du source_url legacy) est retirée APRÈS la transition
-    // en base, et le fournisseur n'est appelé qu'APRÈS elle aussi.
-    const ancienne = `stockage:remove:${U}/avatar/source-1757000000000.jpg`;
-    expect(chrono.evenements.indexOf(ancienne)).toBeGreaterThan(chrono.evenements.indexOf('db:update:1'));
-    expect(chrono.evenements.indexOf('heygen:assets')).toBeGreaterThan(chrono.evenements.indexOf('db:update:1'));
-    expect(chrono.evenements.indexOf('stockage:upload')).toBeLessThan(chrono.evenements.indexOf('db:update:1'));
-    expect(base.journal[0]).toMatch(/^update:.*version.*:1$/);
-    expect(stockage.objets.has(`${U}/avatar/source-1757000000000.jpg`)).toBe(false);
-    expect(stockage.objets.has(l.source_object_key as string)).toBe(true);
-    // Aucun delete ; la génération historique est intacte et pointe toujours l'avatar.
-    expect(base.journal.some((j) => j.startsWith('delete'))).toBe(false);
+    const corps = await res.json() as { data: { avatarId: string; mode: string; candidate: Record<string, unknown> } };
+    expect(corps.data).toMatchObject({ avatarId: ancien.id, mode: 'remplacer', candidate: { etat: 'entrainement', version: 2 } });
+    // Aucun identifiant fournisseur ni clé de stockage côté navigateur.
+    expect(JSON.stringify(corps)).not.toMatch(/hg-cand|source-/);
+    expect(vivant()).toEqual(instantane);
+    expect(base.journal.some((j) => j.startsWith('update:'))).toBe(false);
+    expect(stockage.journal.filter((j) => j.startsWith('remove:'))).toEqual([]);
+    expect(stockage.objets.has(`${U}/avatar/source-1.mp4`)).toBe(true);
+    // La candidate est lancée sur LA MÊME identité, avec la nouvelle source.
+    expect(candidat.appels).toHaveLength(1);
+    expect(candidat.appels[0]).toMatchObject({ userId: U, avatarId: ancien.id, kind: 'video', mode: 'remplacer', groupeExistant: 'grp-old' });
+    expect(candidat.appels[0].cleSource).toMatch(NONCE);
+    // Le fournisseur n'est jamais appelé par l'ancien chemin.
+    expect(heygen.appels).toEqual([]);
     expect(base.generations[0]).toEqual(g);
   });
 
-  it('⚠️ deux remplacements simultanés (v1) → un seul v2 ; la perdante retire sa source seulement', async () => {
-    avatarLegacy({ source_object_key: `${U}/avatar/source-1.mp4`, source_url: null });
-    stockage.objets.set(`${U}/avatar/source-1.mp4`, 10);
-    const [a, b] = await Promise.all([requete(), requete()]);
-    expect([a.status, b.status].sort()).toEqual([200, 409]);
-    expect(base.avatars).toHaveLength(1);
-    const l = vivant();
-    expect(l.version).toBe(2);
-    const uploads = stockage.journal.filter((j) => j.startsWith('upload:')).map((j) => j.slice(7));
-    const retraits = stockage.journal.filter((j) => j.startsWith('remove:')).map((j) => j.slice(7));
-    // Deux retraits : l'ancienne source (par la gagnante) et la source de la perdante.
-    expect(retraits.sort()).toEqual([`${U}/avatar/source-1.mp4`, uploads.find((u) => u !== l.source_object_key)].sort());
-    // Et l'ancienne n'est retirée qu'APRÈS un update qui a touché une ligne.
-    expect(chrono.evenements.indexOf(`stockage:remove:${U}/avatar/source-1.mp4`)).toBeGreaterThan(chrono.evenements.indexOf('db:update:1'));
-    expect(stockage.objets.has(l.source_object_key as string)).toBe(true);
-    expect(heygen.appels.filter((x) => x.startsWith('assets:'))).toHaveLength(1);
-  });
-
-  it('⚠️ HeyGen échoue sur la version courante → status failed + training_error, ligne, version et source conservées', async () => {
-    avatarLegacy({ source_object_key: `${U}/avatar/source-1.mp4`, source_url: null });
-    heygen.mode = 'echec';
-    const res = await requete();
-    expect(res.status).toBe(422);
-    const l = vivant();
-    expect(l.version).toBe(2);
-    expect(l.status).toBe('failed');
-    // Fournisseur invisible : le message brut n'est jamais stocké pour l'écran.
-    expect(l.training_error).toBe(MESSAGES_CREATION.echec);
-    expect(l.provider_avatar_id).toBeNull();
-    expect(l.source_object_key).toMatch(NONCE);
-    expect(stockage.objets.has(l.source_object_key as string)).toBe(true);
+  it('⚠️ jamais de commencerNouvelleVersionAvatar dans la route (l’écrasement de l’actif est supprimé)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('src/app/api/avatar/create/route.ts', 'utf8');
+    expect(src).not.toMatch(/commencerNouvelleVersionAvatar/);
   });
 
   it('un avatar supprimé (deleted_at) n’est pas remplacé : nouvelle ligne version 1', async () => {
@@ -418,48 +398,6 @@ describe('POST /api/avatar/create — remplacement', () => {
     expect((await requete()).status).toBe(200);
     expect(base.avatars.find((l) => l.id === autre.id)!.version).toBe(1);
     expect(stockage.objets.has(`${AUTRUI}/avatar/source-1.mp4`)).toBe(true);
-  });
-});
-
-describe('POST /api/avatar/create — réponse fournisseur PÉRIMÉE', () => {
-  async function scenarioPerime(issue: { ok: boolean }) {
-    // A : première inscription, HeyGen retenu.
-    heygen.mode = 'retenu';
-    const a = requete();
-    while (!heygen.liberer) await new Promise((r) => setTimeout(r, 1));
-    const v1 = vivant();
-    expect(v1.version).toBe(1);
-    // B : remplace pendant que A attend HeyGen — HeyGen répond à B tout de suite.
-    heygen.mode = 'ok';
-    const b = await requete();
-    expect(b.status).toBe(200);
-    const v2 = vivant();
-    expect(v2.id).toBe(v1.id);
-    expect(v2.version).toBe(2);
-    // B a obtenu SON identifiant fournisseur (A n'a pas encore le sien).
-    expect(v2.provider_avatar_id).toMatch(/^hg-as-\d$/);
-    const instantane = { ...v2 };
-    // HeyGen répond enfin à A.
-    heygen.liberer!(issue);
-    const resA = await a;
-    return { resA, instantane };
-  }
-
-  it('⚠️ STALE_PROVIDER_SUCCESS_CANNOT_OVERWRITE_NEW_VERSION : A (v1) revient après B (v2) → 409, v2 intacte', async () => {
-    const { resA, instantane } = await scenarioPerime({ ok: true });
-    expect(resA.status).toBe(409);
-    expect((await resA.json() as { code: string }).code).toBe('avatar_superseded');
-    expect(vivant()).toEqual(instantane);
-    expect(base.journal.filter((j) => j.startsWith('update:provider')).pop()).toMatch(/:0$/);
-  });
-
-  it('⚠️ STALE_PROVIDER_FAILURE_CANNOT_OVERWRITE_NEW_VERSION : l’échec de A ne met pas v2 en failed', async () => {
-    const { resA, instantane } = await scenarioPerime({ ok: false });
-    expect(resA.status).toBe(409);
-    expect((await resA.json() as { code: string }).code).toBe('avatar_superseded');
-    expect(vivant()).toEqual(instantane);
-    expect(vivant().status).not.toBe('failed');
-    expect(base.journal.filter((j) => j.startsWith('update:status,training_error')).pop()).toMatch(/:0$/);
   });
 });
 
@@ -490,14 +428,9 @@ describe('GET /api/avatar/create', () => {
     heygen.statutRetenu = true;
     const get = GET();
     while (!heygen.libererStatut) await new Promise((r) => setTimeout(r, 1));
-    // Le remplacement : même id, v2, fournisseur en échec → provider NULL, statut failed → puis on force source_ready
-    // pour être exactement dans le scénario (source enregistrée, fournisseur jamais sollicité).
-    heygen.mode = 'echec';
-    expect((await requete()).status).toBe(422);
+    // Un changement de version de la ligne (ex. bascule) pendant que le GET attend le fournisseur.
     const v2 = vivant();
-    expect(v2.version).toBe(2);
-    expect(v2.provider_avatar_id).toBeNull();
-    Object.assign(v2, { status: 'source_ready', training_error: null });
+    Object.assign(v2, { version: 2, provider_avatar_id: null, status: 'source_ready', training_error: null, source_object_key: `${U}/avatar/source-2-${'c'.repeat(32)}.mp4` });
     const instantane = { ...v2 };
     // HeyGen répond (tardivement) au GET, pour hg-old.
     heygen.libererStatut!();
@@ -601,97 +534,47 @@ describe('POST /api/avatar/create — erreur DB ≠ concurrence ; incertitude �
     expect(heygen.appels).toEqual([]);
   });
 
-  it('CAS_AMBIGUOUS_COMMIT_NEVER_DELETES_CURRENT_SOURCE : CAS commité mais réponse perdue → repris comme transition réussie ; relecture en panne → 500 sans suppression', async () => {
-    avatarLegacy({ source_object_key: cleActive, source_url: null });
-    stockage.objets.set(cleActive, 10);
-    base.pannes = [{ op: 'update', occurrence: 1, mode: 'fantome' }];
-    const res = await requete();
-    expect(res.status).toBe(200);
-    const l = vivant();
-    expect(l.version).toBe(2);
-    expect(l.provider_avatar_id).toBe('hg-as-1');
-    expect(remove()).toEqual([cleActive]);
-
-    // Variante : la relecture elle-même échoue → 500, aucune source retirée.
-    stockage.journal.length = 0; heygen.appels.length = 0; heygen.compteur = 0;
-    base.executions = { select: 0, insert: 0, update: 0 };
-    base.pannes = [{ op: 'update', occurrence: 1, mode: 'fantome' }, { op: 'select', occurrence: 2, mode: 'erreur' }];
-    const res2 = await requete();
-    expect(res2.status).toBe(500);
-    expect((await res2.json() as { code: string }).code).toBe('avatar_replace_failed');
-    expect(remove()).toEqual([]);
-    expect(heygen.appels).toEqual([]);
-  });
-
-  it('CAS en erreur SANS commit (ligne inchangée) → notre clé retirée en conservant la courante, 500', async () => {
-    avatarLegacy({ source_object_key: cleActive, source_url: null });
-    stockage.objets.set(cleActive, 10);
-    base.pannes = [{ op: 'update', occurrence: 1, mode: 'erreur' }];
-    const res = await requete();
-    expect(res.status).toBe(500);
-    expect(remove()).toHaveLength(1);
-    expect(remove()[0]).not.toBe(cleActive);
-    expect(stockage.objets.has(cleActive)).toBe(true);
-    expect(vivant().version).toBe(1);
-  });
-
   it('PROVIDER_SUCCESS_DB_ERROR_NOT_SUPERSEDED : update provider en erreur, version toujours courante, ids non persistés → 500 avatar_provider_persistence_failed, pas 409', async () => {
-    avatarLegacy({ source_object_key: cleActive, source_url: null });
-    // 1ʳᵉ update = CAS (ok) ; 2ᵉ update = écriture provider → erreur.
-    base.pannes = [{ op: 'update', occurrence: 2, mode: 'erreur' }];
+    // Première inscription : l'écriture du résultat fournisseur est la 1ʳᵉ update.
+    base.pannes = [{ op: 'update', occurrence: 1, mode: 'erreur' }];
     const res = await requete();
     expect(res.status).toBe(500);
     expect((await res.json() as { code: string }).code).toBe('avatar_provider_persistence_failed');
     const l = vivant();
-    expect(l.version).toBe(2);
+    expect(l.version).toBe(1);
     expect(l.provider_avatar_id).toBeNull();
     expect(stockage.objets.has(l.source_object_key as string)).toBe(true);
   });
 
   it('PROVIDER_SUCCESS_AMBIGUOUS_COMMIT_RECONCILED : update provider commité, réponse perdue → relecture montre les ids → 200', async () => {
-    avatarLegacy({ source_object_key: cleActive, source_url: null });
-    base.pannes = [{ op: 'update', occurrence: 2, mode: 'fantome' }];
+    // Première inscription : l'écriture du résultat fournisseur est la 1ʳᵉ update.
+    base.pannes = [{ op: 'update', occurrence: 1, mode: 'fantome' }];
     const res = await requete();
     expect(res.status).toBe(200);
     const corps = await res.json() as { data: { avatar: { provider_avatar_id: string; version: number } } };
     expect(corps.data.avatar.provider_avatar_id).toBe('hg-as-1');
-    expect(corps.data.avatar.version).toBe(2);
+    expect(corps.data.avatar.version).toBe(1);
   });
 
   it('PROVIDER_FAILURE_DB_ERROR_NOT_SUPERSEDED : HeyGen échoue, marquage failed en erreur, version courante non marquée → 500 avatar_failure_persistence_failed', async () => {
-    avatarLegacy({ source_object_key: cleActive, source_url: null });
+    // Première inscription : l'écriture du résultat fournisseur est la 1ʳᵉ update.
     heygen.mode = 'echec';
-    base.pannes = [{ op: 'update', occurrence: 2, mode: 'erreur' }];
+    base.pannes = [{ op: 'update', occurrence: 1, mode: 'erreur' }];
     const res = await requete();
     expect(res.status).toBe(500);
     expect((await res.json() as { code: string }).code).toBe('avatar_failure_persistence_failed');
-    expect(vivant().version).toBe(2);
+    expect(vivant().version).toBe(1);
     expect(vivant().status).toBe('source_ready');
   });
 
   it('PROVIDER_FAILURE_AMBIGUOUS_COMMIT_RECONCILED : marquage failed commité, réponse perdue → relecture montre failed → l’erreur HeyGen normale (422)', async () => {
-    avatarLegacy({ source_object_key: cleActive, source_url: null });
+    // Première inscription : l'écriture du résultat fournisseur est la 1ʳᵉ update.
     heygen.mode = 'echec';
-    base.pannes = [{ op: 'update', occurrence: 2, mode: 'fantome' }];
+    base.pannes = [{ op: 'update', occurrence: 1, mode: 'fantome' }];
     const res = await requete();
     expect(res.status).toBe(422);
     expect(vivant().status).toBe('failed');
     expect(vivant().training_error).toBe(MESSAGES_CREATION.echec);
   });
 
-  it('erreur DB à l’écriture provider ALORS qu’une v3 existe déjà → 409 avatar_superseded (réellement dépassée)', async () => {
-    avatarLegacy({ source_object_key: cleActive, source_url: null });
-    heygen.mode = 'retenu';
-    const a = requete();
-    while (!heygen.liberer) await new Promise((r) => setTimeout(r, 1));
-    heygen.mode = 'ok';
-    expect((await requete()).status).toBe(200); // v3
-    // L'écriture provider de A (prochaine update) tombe en erreur ; la relecture montre v3.
-    base.pannes = [{ op: 'update', occurrence: base.executions.update + 1, mode: 'erreur' }];
-    heygen.liberer!({ ok: true });
-    const res = await a;
-    expect(res.status).toBe(409);
-    expect((await res.json() as { code: string }).code).toBe('avatar_superseded');
-    expect(vivant().version).toBe(3);
-  });
 });

@@ -66,6 +66,7 @@ import { referenceOperation } from '@/lib/credits/atomique';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
 import { uploadAsset, generateAvatarVideoFromAudio, HeyGenError, type AvatarAspectRatio } from '@/lib/avatar/heygen';
 import { resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponiblePour, type MotifJumeau } from '@/lib/avatar/jumeau';
+import { moteurPourGeneration } from '@/lib/avatar/moteurs';
 import { animerAvatarDidSurMaVoix, FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { synthetiserAvecVoix, cleElevenLabs } from '@/lib/voice/synthese';
 
@@ -102,14 +103,30 @@ export interface DepsMoteurJumeau {
   fetch?: typeof fetch;
 }
 
+/** Une colonne inconnue de la base ou du cache PostgREST (migration non appliquée). */
+export function estColonneAbsente(e: { code?: string; message?: string } | null | undefined): boolean {
+  if (!e) return false;
+  return e.code === '42703' || e.code === 'PGRST204' || /column .* does not exist|Could not find the .* column/i.test(e.message ?? '');
+}
+
 export async function genererVideoJumeau(
-  args: { userId: string; textes: string[]; aspectRatio?: string },
+  args: {
+    userId: string; textes: string[]; aspectRatio?: string;
+    /** Identité LOGIQUE choisie (projet Créer, réglage Autopilote) ; absente = avatar par défaut. */
+    avatarId?: string | null;
+    /** Qualité de rendu demandée ; le moteur est décidé ICI, jamais par le navigateur. */
+    qualite?: unknown;
+  },
   deps: DepsMoteurJumeau = {},
 ): Promise<ResultatMoteurJumeau> {
   const env = deps.env ?? process.env;
 
-  // 1. Le jumeau, relu maintenant.
-  const jumeau = await resoudreJumeauDuCompte(args.userId);
+  // 0. La qualité, AVANT tout débit : une qualité non ouverte est refusée.
+  const choixMoteur = moteurPourGeneration(args.qualite, env);
+  if (!choixMoteur.ok) return { ok: false, motif: 'moteur_indisponible', message: choixMoteur.message };
+
+  // 1. Le jumeau, relu maintenant — la VERSION ACTIVE de l'identité choisie.
+  const jumeau = await resoudreJumeauDuCompte(args.userId, { avatarId: args.avatarId ?? null });
   if (!jumeau.ok) {
     if ('motif' in jumeau) return { ok: false, motif: jumeau.motif, message: jumeau.message };
     return { ok: false, motif: 'base', message: 'Votre jumeau n’a pas pu être vérifié.' };
@@ -153,16 +170,31 @@ export async function genererVideoJumeau(
   //    pas une seconde vidéo, pas un second débit. Si la gagnante a disparu
   //    entre-temps (échouée, donc hors index), on retente une fois.
   const identite = { user_id: args.userId, user_avatar_id: avatar.id, avatar_version: avatar.version, voice_id: marqueVoix, aspect_ratio: aspectRatio, script: spoken };
+  // Traçabilité : la version EXACTE et le moteur de ce rendu (colonnes de la migration identités/versions).
+  const tracabilite = {
+    ...(jumeau.prive.avatarVersionId ? { avatar_version_id: jumeau.prive.avatarVersionId } : {}),
+    ...(fournisseur === 'heygen' ? { engine: choixMoteur.moteur } : {}),
+  };
+  // ⚠️ Base d'AVANT la migration identités/versions : ces colonnes n'existent
+  // pas, et les écrire ferait échouer TOUTE génération. Une colonne absente
+  // (42703 / PGRST204) retire la traçabilité et rejoue la même réservation.
+  let avecTracabilite = Object.keys(tracabilite).length > 0;
   let generationId: string | null = null;
   for (let tentative = 0; tentative < 2 && !generationId; tentative += 1) {
     // `provider` = le fournisseur de l'avatar : c'est lui que /api/avatar/status
     // interroge (HeyGen ou D-ID) et rembourse en cas d'échec après lancement.
     const { data: reservee, error: erreurReservation } = await supabaseAdmin
       .from('avatar_generations')
-      .insert({ ...identite, intention: 'normale', provider: fournisseur, provider_video_id: null, status: 'pending', credits_charged: 0 })
+      .insert({ ...identite, ...(avecTracabilite ? tracabilite : {}), intention: 'normale', provider: fournisseur, provider_video_id: null, status: 'pending', credits_charged: 0 })
       .select('id')
       .single();
     if (!erreurReservation && reservee) { generationId = (reservee as { id: string }).id; break; }
+    if (avecTracabilite && estColonneAbsente(erreurReservation)) {
+      console.warn('[Jumeau] traçabilité version/moteur non enregistrée : migration identités/versions non appliquée.');
+      avecTracabilite = false;
+      tentative -= 1;
+      continue;
+    }
     if (!estConflitUnique(erreurReservation)) return { ok: false, motif: 'base', message: 'La génération n’a pas pu être réservée.' };
     const { data: enVol, error: erreurLecture } = await supabaseAdmin
       .from('avatar_generations')
@@ -262,7 +294,7 @@ export async function genererVideoJumeau(
   // 6. L'audio chez HeyGen, puis l'avatar animé sur CET audio.
   try {
     const asset = await uploadAsset(new Blob([new Uint8Array(synthese.audio)], { type: synthese.contentType }), 'jumeau.mp3');
-    const video = await generateAvatarVideoFromAudio({ avatarId: jumeau.prive.providerAvatarId, audioAssetId: asset.assetId, aspectRatio });
+    const video = await generateAvatarVideoFromAudio({ avatarId: jumeau.prive.providerAvatarId, audioAssetId: asset.assetId, aspectRatio, moteur: choixMoteur.moteur });
     const erreurMaj = await enregistrerLancement(generationId, args.userId, video.videoId, video.status === 'completed' ? 'processing' : 'pending');
     if (erreurMaj) {
       // La vidéo est lancée et facturée : on ne rembourse pas, on trace — et

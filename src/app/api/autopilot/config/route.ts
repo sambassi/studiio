@@ -35,6 +35,9 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     // Colonne ABSENTE tant que `2026-09-23-autopilot-jumeau.sql` n'est pas
     // appliquee : `sanitizeConfig` rend alors `false` (pas de jumeau video).
     jumeauAvatar: row.jumeau_avatar,
+    // Colonne ABSENTE tant que `2026-10-10-avatar-identites-versions.sql`
+    // n'est pas appliquée : `null` = avatar par défaut, comme avant.
+    jumeauAvatarId: row.avatar_id,
     topics: row.topics,
     runHour: row.run_hour,
     runTimezone: row.run_timezone,
@@ -182,6 +185,12 @@ const briefReady = () => colonneReady(
   + 'migrations/2026-09-21-autopilot-brief.sql',
 );
 
+const avatarChoisiReady = () => colonneReady(
+  'avatar_id',
+  'choix de l’avatar NON enregistre. Appliquer '
+  + 'migrations/2026-10-10-avatar-identites-versions.sql',
+);
+
 const jumeauReady = () => colonneReady(
   'jumeau_avatar',
   'reglage « video du jumeau » NON enregistre. Appliquer '
@@ -252,6 +261,29 @@ export async function PUT(req: NextRequest) {
     const avecDateDebut = await startDateReady();
     const avecBrief = await briefReady();
     const avecJumeau = await jumeauReady();
+    const avecAvatarChoisi = await avatarChoisiReady();
+    // L'avatar choisi doit être une identité VIVANTE DE CE COMPTE. Un id
+    // d'autrui serait inoffensif à la lecture (filtrée par compte), mais il
+    // n'a rien à faire dans la configuration : refusé, rien n'est écrit.
+    if (avecAvatarChoisi && propre.jumeauAvatarId) {
+      const { data: proprio, error: erreurProprio } = await supabaseAdmin
+        .from('user_avatars')
+        .select('id')
+        .eq('id', propre.jumeauAvatarId)
+        .eq('user_id', session.user.id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (erreurProprio) {
+        console.error('[Autopilote] lecture de l’avatar choisi :', erreurProprio.message);
+        return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });
+      }
+      if (!proprio) {
+        return NextResponse.json(
+          { success: false, error: 'Cet avatar n’existe pas dans votre compte.', code: 'avatar_introuvable' },
+          { status: 403 },
+        );
+      }
+    }
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(
@@ -315,6 +347,8 @@ export async function PUT(req: NextRequest) {
           // echouer l'upsert ENTIER. Tant qu'elle manque, l'ecran le dit
           // (`jumeauReady: false`) et aucun montage-jumeau n'est produit.
           ...(avecJumeau ? { jumeau_avatar: propre.jumeauAvatar } : null),
+          // L'identité LOGIQUE choisie (null = par défaut) — jamais un id fournisseur.
+          ...(avecAvatarChoisi ? { avatar_id: propre.jumeauAvatarId } : null),
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
           // en boucle en remettant la date a zero.

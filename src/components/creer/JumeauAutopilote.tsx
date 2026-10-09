@@ -1,5 +1,6 @@
 'use client';
 
+import SelecteurAvatar from '@/components/avatar/SelecteurAvatar';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Check, UserSquare2, AlertTriangle } from 'lucide-react';
@@ -40,13 +41,16 @@ export default function JumeauAutopilote(props: {
   jumeauReady?: boolean;
   /** Active/désactive la vidéo du jumeau dans les montages. Absent : option masquée. */
   onAvatarChange?: (actif: boolean) => void;
+  /** L'avatar LOGIQUE des montages (null = par défaut) et son enregistrement. */
+  avatarId?: string | null;
+  onAvatarIdChange?: (avatarId: string | null) => void;
 }) {
   const [etat, setEtat] = useState<EtatJumeau | null | 'chargement'>('chargement');
   useEffect(() => {
     let vivant = true;
-    void lireEtatJumeau().then((e) => { if (vivant) setEtat(e); });
+    void lireEtatJumeau(fetch, props.avatarId).then((e) => { if (vivant) setEtat(e); });
     return () => { vivant = false; };
-  }, []);
+  }, [props.avatarId]);
 
   const etatLu = etat !== 'chargement' && etat ? etat : null;
   const jumeau = etatLu && etatLu.pret ? etatLu.jumeau : null;
@@ -125,6 +129,9 @@ export default function JumeauAutopilote(props: {
                 />
                 <span className="text-emerald-200 font-medium">Monter la vidéo de mon jumeau</span>
               </label>
+              {props.onAvatarIdChange && (
+                <SelecteurAvatar avatarId={props.avatarId ?? null} onChange={props.onAvatarIdChange} />
+              )}
               <div className="text-gray-400">
                 Votre avatar parlant (sur votre voix clonée) devient la séquence « Vidéo » des montages produits — « Produire maintenant » et les générations programmées, même page fermée.
               </div>

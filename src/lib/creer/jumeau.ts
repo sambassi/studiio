@@ -42,9 +42,9 @@ export const JUMEAU_API = '/api/creer/jumeau';
 export const JUMEAU_INDISPONIBLE = 'Votre jumeau n’est plus disponible. Vérifiez votre avatar et votre voix.';
 
 /** L'état du jumeau, tel que le serveur le voit maintenant. `null` si l'appel échoue. */
-export async function lireEtatJumeau(fetchImpl: typeof fetch = fetch): Promise<EtatJumeau | null> {
+export async function lireEtatJumeau(fetchImpl: typeof fetch = fetch, avatarId?: string | null): Promise<EtatJumeau | null> {
   try {
-    const res = await fetchImpl(JUMEAU_API);
+    const res = await fetchImpl(avatarId ? `${JUMEAU_API}?avatarId=${encodeURIComponent(avatarId)}` : JUMEAU_API);
     const json = await res.json();
     return json?.success ? (json.data as EtatJumeau) : null;
   } catch {
@@ -86,9 +86,9 @@ export async function versionAncienneDuRush(
 }
 
 /** La vérification COMPLÈTE avant génération, avec les textes de la vidéo. */
-export async function verifierJumeauAvantRendu(textes: string[], fetchImpl: typeof fetch = fetch): Promise<EtatJumeau | null> {
+export async function verifierJumeauAvantRendu(textes: string[], fetchImpl: typeof fetch = fetch, avatarId?: string | null): Promise<EtatJumeau | null> {
   try {
-    const res = await fetchImpl(JUMEAU_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ textes }) });
+    const res = await fetchImpl(JUMEAU_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(avatarId ? { textes, avatarId } : { textes }) });
     const json = await res.json();
     return json?.success ? (json.data as EtatJumeau) : null;
   } catch {
@@ -110,10 +110,12 @@ export async function verifierJumeauAvantRendu(textes: string[], fetchImpl: type
 export async function gardeJumeauAvantRendu(args: {
   mode: JumeauMode;
   textes: string[];
+  /** L'avatar choisi pour le projet : c'est LUI qui est vérifié. */
+  avatarId?: string | null;
   verifier?: (textes: string[]) => Promise<EtatJumeau | null>;
 }): Promise<string | null> {
   if (args.mode !== 'avatar' && args.mode !== 'voix') return null;
-  const etat = await (args.verifier ?? verifierJumeauAvantRendu)(args.textes);
+  const etat = await (args.verifier ?? ((t: string[]) => verifierJumeauAvantRendu(t, fetch, args.avatarId)))(args.textes);
   if (!etat) return JUMEAU_INDISPONIBLE;
   if (!etat.pret) return etat.message || JUMEAU_INDISPONIBLE;
   if (args.mode === 'voix') return null;
@@ -293,6 +295,10 @@ export async function attendreStatutJumeau(args: {
 export async function genererEtAttendreVideoJumeau(args: {
   textes: string[];
   aspectRatio: string;
+  /** Identité LOGIQUE choisie (null/absent = avatar par défaut du compte). */
+  avatarId?: string | null;
+  /** Qualité de rendu ; le serveur décide du moteur et refuse une qualité fermée. */
+  qualite?: 'standard' | 'qualite' | 'premium';
   onLancee?: (generationId: string, avatarVersion: number) => void;
   onEtape?: (message: string) => void;
   onPhase?: (phase: PhaseJumeau) => void;
@@ -305,7 +311,11 @@ export async function genererEtAttendreVideoJumeau(args: {
   args.onEtape?.('Génération de votre jumeau…');
   const lancement = await f(`${JUMEAU_API}/generer`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ textes: args.textes, aspectRatio: args.aspectRatio }),
+    body: JSON.stringify({
+      textes: args.textes, aspectRatio: args.aspectRatio,
+      ...(args.avatarId ? { avatarId: args.avatarId } : {}),
+      ...(args.qualite ? { qualite: args.qualite } : {}),
+    }),
   });
   const lance = await lancement.json().catch(() => ({}));
   if (!lancement.ok || !lance?.success) throw new Error(lance?.error || JUMEAU_INDISPONIBLE);

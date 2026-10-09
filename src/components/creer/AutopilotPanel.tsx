@@ -1679,6 +1679,8 @@ export default function AutopilotPanel({
             avatarActif={config.jumeauAvatar}
             jumeauReady={jumeauReady}
             onAvatarChange={(actif) => enregistrer({ jumeauAvatar: actif })}
+            avatarId={config.jumeauAvatarId}
+            onAvatarIdChange={(avatarId) => enregistrer({ jumeauAvatarId: avatarId })}
           />
 
 {/* ── Voix off clonée ──────────────────────────────────────────── */}

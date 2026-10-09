@@ -6,8 +6,55 @@ import {
   storageKey, autopilotRushKeys, clesTournageEtAnalyses, draftRushKeys, collectStorageUrlsFromPost,
 } from '@/lib/storage/cleanup';
 import { clesDepuisUrl } from '@/lib/storage/references';
+import { estCleSourceAvatar } from '@/lib/avatar/source-cle';
+import { cleSourceDepuisUrlLegacy } from '@/lib/avatar/source';
+import { BUCKET_NAMESPACE_AVATAR } from '@/lib/storage/acces-objet';
 
 export const dynamic = 'force-dynamic';
+
+/** Une source d'avatar non rattachée reste 7 jours (le temps de préparer, vérifier, envoyer). */
+const DELAI_PREPARATION_SOURCE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Les clés de sources d'avatar qu'une ligne référence (identité ou version,
+ * source envoyée ou original). `null` si l'une des lectures échoue.
+ */
+async function clesSourcesAvatarReferencees(): Promise<Set<string> | null> {
+  try {
+    return await lireClesSourcesAvatar();
+  } catch {
+    return null;
+  }
+}
+async function lireClesSourcesAvatar(): Promise<Set<string> | null> {
+  // PAGINÉ : PostgREST plafonne les réponses (`db-max-rows`). Une liste
+  // tronquée ferait passer une source UTILISÉE pour orpheline.
+  const PAGE = 1000;
+  const cles = new Set<string>();
+  const lire = async (table: string, colonnes: string[]): Promise<boolean> => {
+    for (let debut = 0; ; debut += PAGE) {
+      const { data, error } = await supabaseAdmin.from(table).select(colonnes.join(', ')).order('id', { ascending: true }).range(debut, debut + PAGE - 1);
+      if (error || !Array.isArray(data)) return false;
+      for (const l of data as unknown as Array<Record<string, unknown>>) {
+        for (const c of colonnes) {
+          if (c === 'user_id' || c === 'source_url') continue;
+          if (typeof l[c] === 'string' && l[c]) cles.add(l[c] as string);
+        }
+        if (typeof l.source_url === 'string' && typeof l.user_id === 'string') {
+          const derivee = cleSourceDepuisUrlLegacy(l.source_url, l.user_id);
+          if (derivee) cles.add(derivee);
+        }
+      }
+      if (data.length < PAGE) return true;
+    }
+  };
+  // Lignes historiques : la source n'est connue que par `source_url` (clé
+  // `source-<ts>.ext`, jamais recopiée dans `source_object_key`). Sa clé est
+  // dérivée de l'URL, comme le fait la suppression d'un avatar.
+  if (!(await lire('user_avatars', ['source_object_key', 'source_url', 'user_id']))) return null;
+  if (!(await lire('avatar_versions', ['source_object_key', 'original_source_object_key']))) return null;
+  return cles;
+}
 export const maxDuration = 120;
 
 // Secret absent ou vide → refus total (voir `isCronAuthorized`).
@@ -184,6 +231,10 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
+  // ⚠️ CINQUIÈME : les sources d'avatar RÉFÉRENCÉES (version active,
+  // candidate, historique, original). `null` = illisible (dont la table des
+  // versions pas encore migrée) → TOUTES les sources sont gardées.
+  const sourcesAvatarReferencees = await clesSourcesAvatarReferencees();
   const rushKeys: Set<string> = banqueLue;
   // Lié à une constante non-nullable : `processFile` est une fonction
   // imbriquée, et TypeScript ne propage pas le rétrécissement d'un `let`
@@ -195,6 +246,8 @@ export async function GET(req: NextRequest) {
   let exemptesRushes = 0;
   let exemptesTournage = 0;
   let exemptesBrouillons = 0;
+  let exemptesSourcesAvatar = 0;
+  let sourcesAvatarOrphelines = 0;
   let candidats = 0;
   const buckets = ['media', 'audio'];
   const breakdown = { video: 0, audio: 0, image: 0 };
@@ -282,6 +335,29 @@ export async function GET(req: NextRequest) {
     // l'URL publique : `getPublicUrl` dépend de variables d'environnement et
     // peut rendre une forme relative selon le contexte d'exécution.
     const cle = `${bucket}/${path}`;
+    // ⚠️ LES SOURCES D'AVATAR NE SONT JAMAIS BALAYÉES ICI.
+    //
+    // `<userId>/avatar/source-…` (original importé, version préparée) est
+    // une vidéo, donc sous la rétention de 24 h, et aucune des sources
+    // d'exemption ci-dessous ne la connaît : la source de l'avatar actif
+    // disparaissait le lendemain, et tout ré-entraînement échouait. Ce sont
+    // des données biométriques gérées par les seuls parcours avatar et par
+    // la suppression explicite (`retirerSourceAvatar`) — jamais par l'âge.
+    // Une source ORPHELINE (jamais rattachée à une version : préparation
+    // abandonnée) n'est pas gardée indéfiniment : passé le délai de
+    // préparation, elle est retirée — un visage n'est pas conservé sans usage.
+    if (bucket === BUCKET_NAMESPACE_AVATAR && estCleSourceAvatar(path)) {
+      const creeLe = new Date((file as any).created_at || now.toISOString()).getTime();
+      const recente = now.getTime() - creeLe < DELAI_PREPARATION_SOURCE_MS;
+      if (!sourcesAvatarReferencees || sourcesAvatarReferencees.has(path) || recente) {
+        exemptesSourcesAvatar++;
+        preserved++;
+        return;
+      }
+      const { error } = await supabaseAdmin.storage.from(bucket).remove([path]);
+      if (error) { errors.push(`${path}: ${error.message}`); kept++; } else { deleted++; sourcesAvatarOrphelines++; }
+      return;
+    }
     if (rushKeys.has(cle)) {
       exemptesRushes++;
       preserved++;
@@ -337,7 +413,8 @@ export async function GET(req: NextRequest) {
     + `(video=${breakdown.video}, audio=${breakdown.audio}, image=${breakdown.image}) `
     + `conserves=${kept} exemptes=${preserved} `
     + `(posts=${exemptesPosts}, rushes-autopilote=${exemptesRushes}, `
-    + `tournage=${exemptesTournage}, brouillons=${exemptesBrouillons}) `
+    + `tournage=${exemptesTournage}, brouillons=${exemptesBrouillons}, `
+    + `sources-avatar=${exemptesSourcesAvatar}) `
     + `| banque=${rushKeys.size} cles, tournage=${clesTournage.size} cles, `
     + `brouillons=${clesBrouillon.size} cles`,
   );
@@ -356,6 +433,8 @@ export async function GET(req: NextRequest) {
       rushesAutopilote: exemptesRushes,
       tournage: exemptesTournage,
       brouillons: exemptesBrouillons,
+      sourcesAvatar: exemptesSourcesAvatar,
+      sourcesAvatarOrphelinesRetirees: sourcesAvatarOrphelines,
       banque: rushKeys.size,
       clesTournage: clesTournage.size,
       clesBrouillon: clesBrouillon.size,
