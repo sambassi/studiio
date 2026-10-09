@@ -36,6 +36,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { INTENTION_APERCU } from '@/lib/avatar/contrat';
 import { basesUrlPubliqueStockage } from '@/lib/avatar/source';
+import { choisirRenduRecent, type LigneRendu, type RenduRecent } from '@/lib/avatar/identite';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -79,6 +80,28 @@ export async function apercuDuClone(userId: string, avatarId: string, version: u
   if (g.status !== 'completed') return { statut: 'en_cours', generationId: g.id };
   if (!estUrlApercuReelle(g.video_url, userId, g.id)) return { statut: 'indisponible', generationId: g.id };
   return { statut: 'pret', generationId: g.id, url: g.video_url };
+}
+
+/**
+ * Le RENDU RÉCENT de l'avatar actif : la dernière génération terminée de CET
+ * avatar à CETTE version (aperçu ou génération normale), re-hébergée chez
+ * nous. Un EXEMPLE de résultat, jamais « l'avatar » lui-même — et jamais une
+ * génération d'une ancienne version. Lecture seule, aucun fournisseur.
+ */
+export async function renduRecentDuClone(userId: string, avatarId: string, version: unknown): Promise<RenduRecent | null> {
+  if (!UUID.test(userId) || !UUID.test(avatarId)) return null;
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) return null;
+  const { data, error } = await supabaseAdmin
+    .from('avatar_generations')
+    .select('id, user_avatar_id, avatar_version, status, video_url, created_at')
+    .eq('user_id', userId)
+    .eq('user_avatar_id', avatarId)
+    .eq('avatar_version', version)
+    .eq('status', 'completed')
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) throw new Error(`avatar_generations: rendu récent illisible (${error.message})`);
+  return choisirRenduRecent((data ?? []) as LigneRendu[], { avatarId, version }, (url, generationId) => estUrlApercuReelle(url, userId, generationId));
 }
 
 // ─────────────────────────────────────────────────────────────────────────

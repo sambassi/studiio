@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Check, UserSquare2, AlertTriangle } from 'lucide-react';
 import { lireEtatJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
+import { libelleAvatarActif } from '@/lib/avatar/identite';
 
 /**
  * MON JUMEAU DANS L'AUTOPILOTE — le meme etat serveur que le bloc de Creer
@@ -103,7 +104,8 @@ export default function JumeauAutopilote(props: {
               pas « votre jumeau », qui laisserait croire à l'avatar à l'image
               que la ligne suivante dément. */}
           <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Voix du jumeau prête pour la narration</div>
-          <div className="text-gray-300">Avatar : validé (v{jumeau.avatar.version}) · Voix : {jumeau.voix.nom}</div>
+          {/* Relu à CHAQUE génération côté serveur : aucune version n'est figée dans la configuration. */}
+          <div className="text-gray-300"><span data-jumeau-autopilote-avatar-actif={jumeau.avatar.version}>{libelleAvatarActif(jumeau.avatar.version)}</span> · Voix : {jumeau.voix.nom}</div>
           <div className="text-gray-400">
             Avec l’interrupteur, la narration de chaque vidéo produite par l’Autopilote est dite avec cette voix.
           </div>

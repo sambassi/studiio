@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Check, Loader2, UserSquare2 } from 'lucide-react';
 import { lireEtatJumeau, libelleFournisseurAvatar, type EtatJumeau, type JumeauMode } from '@/lib/creer/jumeau';
+import { libelleAvatarActif } from '@/lib/avatar/identite';
 import type { SequenceKey } from '@/lib/types/voice';
 
 /**
@@ -105,7 +106,7 @@ export default function JumeauPanel(props: {
 
   const recap = !jumeau ? null
     : mode === 'avatar'
-      ? `Dans la vidéo exportée : la séquence « Vidéo » montre votre avatar (v${jumeau.avatar.version}) disant ces textes avec votre voix (${jumeau.voix.nom}). Les séquences Titre, Cartes et CTA gardent leur narration, dite avec ${voixSequences}. Coût : ${props.coutAvatar} crédits en plus du rendu, débités à l’envoi.`
+      ? `Dans la vidéo exportée : la séquence « Vidéo » montre votre avatar actif (v${jumeau.avatar.version}) disant ces textes avec votre voix (${jumeau.voix.nom}). Les séquences Titre, Cartes et CTA gardent leur narration, dite avec ${voixSequences}. Coût : ${props.coutAvatar} crédits en plus du rendu, débités à l’envoi.`
       : mode === 'voix'
         ? `Dans la vidéo exportée : les séquences Titre, Cartes et CTA sont dites avec votre voix (${jumeau.voix.nom}). Votre avatar n’apparaît pas à l’image. Aucun coût avatar.`
         : `Dans la vidéo exportée : ni votre voix ni votre avatar — la narration est dite avec ${voixSequences}.`;
@@ -132,7 +133,9 @@ export default function JumeauPanel(props: {
           <div className="space-y-0.5">
             <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Votre jumeau est prêt</div>
             <div className="text-gray-300" data-jumeau-avatar>
-              Avatar : {jumeau.avatar.nom || 'Mon avatar'} (v{jumeau.avatar.version}), validé — {libelleFournisseurAvatar(jumeau.avatar.fournisseur)}
+              {/* L'identité unique (`resoudreJumeauDuCompte`) : la même que Mon avatar et l'Autopilote. */}
+              <span className="text-gray-100 font-medium" data-jumeau-avatar-actif={jumeau.avatar.version}>{libelleAvatarActif(jumeau.avatar.version)}</span>
+              {' '}— {libelleFournisseurAvatar(jumeau.avatar.fournisseur)}
             </div>
             <div className="text-gray-300" data-jumeau-voix>Voix : Ma voix — {jumeau.voix.nom}</div>
             {jumeau.prononciations > 0 && (

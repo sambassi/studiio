@@ -344,12 +344,13 @@ describe('C. La zone d’aperçu — deux colonnes, UNE zone, quatre états', ()
     expect(qa('[data-apercu]')).toHaveLength(1);
   });
 
-  it('⚠️ validé : la zone est prête avec l’avatar ; la vidéo HeyGen générée (« Votre vidéo ») arrive dans la MÊME zone, pas dans une carte à part', async () => {
+  it('⚠️ validé : la zone ne montre JAMAIS la source comme l’avatar — sans rendu récent elle le dit ; la vidéo HeyGen générée (« Votre vidéo ») arrive dans la MÊME zone, pas dans une carte à part', async () => {
     avatarHeygen('valide');
     await monterEtLireFil();
     expect(qa('[data-apercu]')).toHaveLength(1);
-    expect(q('[data-apercu]')?.getAttribute('data-apercu')).toBe('pret');
-    expect(q('[data-apercu="pret"] [data-apercu-media] video') ?? q('[data-apercu="pret"] [data-apercu-media] img'), 'un média dans la zone prête').not.toBeNull();
+    expect(q('[data-apercu]')?.getAttribute('data-apercu')).toBe('vide');
+    expect(q('[data-apercu]')!.textContent).toContain('Aucun rendu récent disponible.');
+    expect(q('[data-apercu] [data-avatar-source-apercu]'), 'la source n’est pas dans la zone').toBeNull();
     // Génération à la demande : le fournisseur a fini → la vidéo est le média de la zone.
     serveur.generation = { status: 'completed', videoUrl: URL_VIDEO, error: null };
     fireEvent.change(q<HTMLTextAreaElement>('textarea')!, { target: { value: 'Bonjour, je suis votre avatar.' } });
@@ -393,7 +394,8 @@ describe('E. Les actions secondaires — en texte, sous la colonne étape', () =
     avatarHeygen('valide');
     await monterEtLireFil();
     const colonneEtape = q('[data-avatar-colonne="etape"]')!;
-    const changer = screen.getByRole('button', { name: /Changer de source/ });
+    // Avatar validé : le geste s'appelle « Changer d'avatar » (carte Avatar actif).
+    const changer = screen.getByRole('button', { name: /Changer d’avatar/ });
     const armer = q<HTMLButtonElement>('[data-avatar-supprimer="armer"]')!;
     expect(armer).not.toBeNull();
     expect(armer.textContent).toContain('Supprimer mon avatar');

@@ -89,7 +89,7 @@ describe('JumeauPanel — deux intentions, dites en clair', () => {
     expect(panneau.getAttribute('data-jumeau-mode')).toBe('aucun');
     const t = panneau.textContent!;
     expect(t).toContain('Votre jumeau est prêt');
-    expect(t).toContain('Avatar : Bassi (v2), validé — prêt pour vos vidéos');
+    expect(t).toContain('Avatar actif · v2 — prêt pour vos vidéos');
     expect(t).not.toMatch(/D-ID|HeyGen|ElevenLabs/);
     expect(t).toContain('Voix : Ma voix — Bassi');
     expect(t).toContain('2 prononciations personnalisées');
@@ -133,7 +133,7 @@ describe('JumeauPanel — deux intentions, dites en clair', () => {
     expect(document.querySelector('[data-jumeau-panel]')!.getAttribute('data-jumeau-mode')).toBe('avatar');
     expect(choix('avatar').checked).toBe(true);
     const recap = document.querySelector('[data-jumeau-recap]')!.textContent!;
-    expect(recap).toContain('la séquence « Vidéo » montre votre avatar (v2) disant ces textes avec votre voix (Bassi)');
+    expect(recap).toContain('la séquence « Vidéo » montre votre avatar actif (v2) disant ces textes avec votre voix (Bassi)');
     expect(recap).toContain('dite avec la voix choisie dans Audio');
     expect(recap).toContain('Coût : 40 crédits en plus du rendu');
     expect(document.querySelector('[data-jumeau-sequences]')!.textContent).toContain('séquence « Vidéo »');

@@ -136,14 +136,14 @@ describe('/dashboard/avatar — validation du clone', () => {
     expect(document.querySelector('[data-avatar-validation="a-valider"]')!.textContent).toMatch(/Aperçu de validation offert/);
   });
 
-  it('déjà validé : « Avatar validé », rien d’autre à faire ; Changer de source et Supprimer restent là', async () => {
+  it('déjà validé : « Avatar actif », rien d’autre à faire ; Changer d’avatar et Supprimer restent là ; la source reste accessible à part', async () => {
     etatServeur.avatar = avatar({ etat: 'valide', validated_at: '2026-09-03T00:00:00Z' });
     render(<AvatarPage />);
     await waitFor(() => expect(document.querySelector('[data-avatar-validation="valide"]')).not.toBeNull());
     expect(document.querySelector('[data-avatar-apercu="generer"]')).toBeNull();
-    expect(screen.getByRole('button', { name: /Changer de source/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Changer d’avatar/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Supprimer mon avatar/ })).toBeTruthy();
-    expect(document.querySelector('[data-avatar-source-apercu]')).not.toBeNull();
+    expect(document.querySelector('[data-avatar-source-section] [data-avatar-source-apercu]')).not.toBeNull();
   });
 
   it('⚠️ le code de la page ne fabrique aucune URL d’aperçu : la seule source est la réponse du serveur', async () => {

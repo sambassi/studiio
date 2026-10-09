@@ -13,6 +13,8 @@
  *   'aucun'  — le parcours normal, celui de tous les brouillons antérieurs.
  */
 
+import { generationDepuisRush, versionPerimee } from '@/lib/avatar/identite';
+
 export type JumeauMode = 'aucun' | 'voix' | 'avatar';
 export const JUMEAU_MODES: readonly JumeauMode[] = ['aucun', 'voix', 'avatar'];
 export const estJumeauMode = (v: unknown): v is JumeauMode => v === 'aucun' || v === 'voix' || v === 'avatar';
@@ -45,6 +47,39 @@ export async function lireEtatJumeau(fetchImpl: typeof fetch = fetch): Promise<E
     const res = await fetchImpl(JUMEAU_API);
     const json = await res.json();
     return json?.success ? (json.data as EtatJumeau) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Le rush posé est-il une vidéo de jumeau d'une ANCIENNE version de l'avatar ?
+ *
+ * Un brouillon garde le rush déjà généré (`<userId>/avatar/<generationId>.mp4`)
+ * même après un changement d'avatar. On compare la version ÉPINGLÉE à cette
+ * génération (`GET /api/avatar/status` → `avatarVersion` ; génération
+ * terminée = lecture en base, aucun fournisseur) à la version de l'avatar
+ * actif (`GET /api/creer/jumeau`).
+ *
+ * LECTURE SEULE : rien n'est remplacé, rien n'est lancé, rien n'est débité.
+ * `null` = pas de jumeau dans le rush, versions identiques, ou l'une des deux
+ * inconnue — on n'avertit que sur une preuve.
+ */
+export async function versionAncienneDuRush(
+  rushUrl: string | null | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ generationId: string; versionRush: number; versionActive: number } | null> {
+  const generationId = generationDepuisRush(rushUrl);
+  if (!generationId) return null;
+  try {
+    const [statut, etat] = await Promise.all([
+      fetchImpl(`/api/avatar/status?generationId=${encodeURIComponent(generationId)}`).then((r) => r.json()).catch(() => null),
+      lireEtatJumeau(fetchImpl),
+    ]);
+    const versionRush = statut?.success ? statut.data?.avatarVersion : null;
+    const versionActive = etat?.pret ? etat.jumeau?.avatar.version : null;
+    if (!versionPerimee(versionRush, versionActive)) return null;
+    return { generationId, versionRush: versionRush as number, versionActive: versionActive as number };
   } catch {
     return null;
   }
@@ -199,7 +234,7 @@ export async function attendreStatutJumeau(args: {
   attendreMs?: (ms: number) => Promise<void>;
   maxAttenteMs?: number;
   maintenant?: () => number;
-}): Promise<{ url: string }> {
+}): Promise<{ url: string; avatarVersion: number | null }> {
   const f = args.fetchImpl ?? fetch;
   const dormir = args.attendreMs ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
   const horloge = args.maintenant ?? Date.now;
@@ -220,10 +255,11 @@ export async function attendreStatutJumeau(args: {
     const json = res ? await res.json().catch(() => null) : null;
     if (res?.ok && json?.success) {
       echecs = 0;
-      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null };
+      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null; avatarVersion?: number | null };
       if (d.status === 'completed' && d.videoUrl) {
         args.onPhase?.('stockage');
-        return { url: d.videoUrl };
+        // `avatarVersion` : la version du clone épinglée à la génération (null si inconnue).
+        return { url: d.videoUrl, avatarVersion: typeof d.avatarVersion === 'number' ? d.avatarVersion : null };
       }
       if (d.status === 'failed') throw new ErreurAttenteJumeau(d.error || 'La génération de votre jumeau a échoué.', 'echec');
       args.onEtape?.(DETAIL_PHASE_JUMEAU.traitement);

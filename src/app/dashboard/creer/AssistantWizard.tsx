@@ -179,11 +179,12 @@ import {
 import JumeauPanel from '@/components/creer/JumeauPanel';
 import CartesEditeur from '@/components/creer/CartesEditeur';
 import {
-  gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, type JumeauMode,
+  gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, versionAncienneDuRush, lireEtatJumeau, type JumeauMode,
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
+import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee } from '@/lib/avatar/identite';
 import {
   DRAFT_VERSION,
   draftKey,
@@ -3907,6 +3908,35 @@ export default function AssistantWizard() {
   const [jumeauMode, setJumeauMode] = useState<JumeauMode>('aucun');
   /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
   const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
+  /**
+   * Le rush posé est une vidéo de jumeau d'une ANCIENNE version de l'avatar
+   * (brouillon antérieur à un changement d'avatar). Un AVERTISSEMENT, rien de
+   * plus : le rush n'est jamais remplacé, aucune génération n'est lancée sans
+   * le clic « Régénérer avec l'avatar actif ».
+   */
+  const [jumeauAncienneVersion, setJumeauAncienneVersion] = useState<{ rushUrl: string; versionRush: number; versionActive: number } | null>(null);
+  /** Les rushes que la personne a choisi de GARDER : plus d'avertissement pour eux dans cette session. */
+  const jumeauAnciensGardes = useRef<Set<string>>(new Set());
+  /**
+   * Vérifie, en LECTURE SEULE, si `rush` est une vidéo de jumeau d'une
+   * ancienne version. Appelée seulement là où la version n'est pas connue
+   * d'avance : rush restauré d'un brouillon, génération reprise. Une vidéo
+   * lancée dans cette session l'est sur l'avatar actif : rien à vérifier.
+   * `versionConnue` : la version déjà rendue par le suivi (pas de relecture).
+   */
+  const verifierAncienJumeau = useCallback((rush: string | null | undefined, versionConnue?: number | null) => {
+    if (!rush || jumeauAnciensGardes.current.has(rush)) return;
+    const poser = (versionRush: number, versionActive: number) =>
+      setJumeauAncienneVersion({ rushUrl: rush, versionRush, versionActive });
+    if (typeof versionConnue === 'number') {
+      void lireEtatJumeau().then((e) => {
+        const active = e?.pret ? e.jumeau?.avatar.version : null;
+        if (versionPerimee(versionConnue, active)) poser(versionConnue, active as number);
+      });
+      return;
+    }
+    void versionAncienneDuRush(rush).then((r) => { if (r) poser(r.versionRush, r.versionActive); });
+  }, []);
   // Smart montage : repli sur l'enchaînement simple, ou séquence raccourcie —
   // toujours DIT à l'écran, jamais silencieux.
   const [montageNotice, setMontageNotice] = useState<string | null>(null);
@@ -6273,6 +6303,11 @@ export default function AssistantWizard() {
       setJumeauGenerationId(draft.jumeauGenerationId);
       reprendreJumeauRef.current(draft.jumeauGenerationId, draft.rushUrl);
     }
+    // Rush déjà posé (vidéo de jumeau d'un brouillon) : vient-il d'une ancienne
+    // version de l'avatar ? Lecture seule — le rush n'est jamais remplacé.
+    if (draft.rushUrl && (!draft.jumeauGenerationId || draft.rushUrl.includes(draft.jumeauGenerationId))) {
+      verifierAncienJumeau(draft.rushUrl);
+    }
     setSequences(draft.sequences as typeof DEFAULT_SEQUENCES);
     // `sanitizeDraft` a deja valide la valeur contre la liste du
     // compositeur : un style inconnu est arrive ici a `undefined`.
@@ -7139,8 +7174,8 @@ export default function AssistantWizard() {
     setJumeauPhase({ phase: 'traitement', debutLe: Date.now() });
     void (async () => {
       try {
-        const { url } = await attendreStatutJumeau({ generationId, onPhase: avancerJumeau });
-        const posee = await applyRush(url, 'Mon jumeau', false);
+        const { url, avatarVersion } = await attendreStatutJumeau({ generationId, onPhase: avancerJumeau });
+        const posee = await applyRush(url, typeof avatarVersion === 'number' ? `Mon jumeau (v${avatarVersion})` : 'Mon jumeau', false);
         setJumeauMode('aucun');
         setJumeauGenerationId(null);
         setJumeauReprise('inactif');
@@ -7148,6 +7183,8 @@ export default function AssistantWizard() {
         if (posee) {
           setJumeauNotice('Votre jumeau est prêt : il est monté dans la séquence « Vidéo ».');
           montrerJumeauPose();
+          // Génération lancée AVANT un éventuel changement d'avatar : on le dit.
+          if (typeof avatarVersion === 'number') verifierAncienJumeau(url, avatarVersion);
         }
       } catch (e) {
         // Le fournisseur a échoué, la génération est introuvable, ou le suivi
@@ -7162,6 +7199,21 @@ export default function AssistantWizard() {
   };
   const reprendreJumeauRef = useRef(reprendreJumeau);
   reprendreJumeauRef.current = reprendreJumeau;
+
+  // Le rush a changé (autre fichier, nouvelle vidéo) : l'avertissement ne le concerne plus.
+  useEffect(() => {
+    setJumeauAncienneVersion((a) => (a && a.rushUrl !== rushUrl ? null : a));
+  }, [rushUrl]);
+  /** « Garder cette vidéo » : on retire l'avertissement. Le rush n'est pas touché. */
+  const garderAncienJumeau = () => {
+    if (jumeauAncienneVersion) jumeauAnciensGardes.current.add(jumeauAncienneVersion.rushUrl);
+    setJumeauAncienneVersion(null);
+  };
+  /** « Régénérer avec l'avatar actif » : SEULEMENT sur ce clic — la relance existante, débit annoncé. */
+  const regenererAvecAvatarActif = () => {
+    setJumeauAncienneVersion(null);
+    relancerJumeau();
+  };
 
   /**
    * « Réessayer » après un échec de reprise : relance une génération EN FOND
@@ -9188,6 +9240,22 @@ export default function AssistantWizard() {
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{montageNotice}</span>
             <button onClick={() => setMontageNotice(null)} className="ml-auto text-xs text-amber-300 hover:text-white">OK</button>
+          </div>
+        )}
+
+        {jumeauAncienneVersion && jumeauReprise !== 'encours' && (
+          <div data-jumeau-ancienne-version={jumeauAncienneVersion.versionRush} className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
+            <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <span className="flex-1">
+              {AVERTISSEMENT_ANCIENNE_VERSION}
+              <span className="block text-[12px] text-amber-100/90 mt-0.5">
+                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}. Régénérer produit une nouvelle vidéo ({AVATAR_VIDEO_COST} crédits).
+              </span>
+            </span>
+            <div className="flex flex-col items-end gap-1.5">
+              <button type="button" data-jumeau-ancienne-action="garder" onClick={garderAncienJumeau} className="text-xs text-amber-300 hover:text-white">Garder cette vidéo</button>
+              <button type="button" data-jumeau-ancienne-action="regenerer" onClick={regenererAvecAvatarActif} className="text-xs text-amber-100 underline hover:text-white">Régénérer avec l’avatar actif</button>
+            </div>
           </div>
         )}
 
