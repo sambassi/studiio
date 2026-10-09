@@ -38,7 +38,7 @@ const T = ["users","scheduled_posts","videos",
   "social_accounts","app_settings",
   "credit_transactions","autopilot_config",
   "autopilot_jumeau_attente","plans","credit_packs",
-  "subscriptions","media","user_settings",
+  "subscriptions","user_settings",
   "user_voices","rendus","render_jobs",
   "publishing_history","zernio_accounts"];
 const H = { apikey: k, Authorization: "Bearer " + k };

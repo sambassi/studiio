@@ -251,7 +251,7 @@ la clé posée dans `studiio-app`, puis `SUPABASE_URL/rest/v1` (le proxy). Il ne
 et n'affiche aucun secret. Il vérifie :
 - le rôle de la clé ;
 - le code renvoyé à une requête anonyme ;
-- l'accès aux 20 tables utilisées par l'application ;
+- l'accès aux 19 tables utilisées par l'application (`media` n'en fait pas partie : c'est un bucket MinIO, pas une table) ;
 - le droit d'exécution des 10 RPC serveur pour le rôle de la clé ;
 - l'avatar v3, par version, statut et empreinte.
 
