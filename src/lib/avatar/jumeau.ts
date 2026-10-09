@@ -106,7 +106,7 @@ const MOTIF_VOIX: Record<MotifVoix, MotifJumeau> = {
  * cas c'est sa VERSION ACTIVE (le miroir) qui est relue — jamais une
  * candidate en préparation.
  */
-export async function resoudreJumeauDuCompte(userId: string, opts: { avatarId?: string | null } = {}): Promise<ResolutionJumeau> {
+export async function resoudreJumeauDuCompte(userId: string, opts: { avatarId?: string | null; voixId?: string | null } = {}): Promise<ResolutionJumeau> {
   const lecture = await avatarVivantDuCompte(userId, opts.avatarId ?? undefined);
   if (!lecture.ok) return { ok: false, erreur: lecture.erreur };
   const a = lecture.avatar;
@@ -128,7 +128,8 @@ export async function resoudreJumeauDuCompte(userId: string, opts: { avatarId?: 
     return { ok: false, motif: 'avatar_non_pret', message: MESSAGES_JUMEAU.avatar_non_pret };
   }
 
-  const voix = await resoudreVoixDuCompte(userId);
+  // `voixId` : choix PONCTUEL d'une voix du compte (Mon avatar), contrôlé comme la voix enregistrée.
+  const voix = await resoudreVoixDuCompte(userId, opts.voixId ?? null);
   if (!voix.ok) {
     if ('motif' in voix) {
       const motif = MOTIF_VOIX[voix.motif];

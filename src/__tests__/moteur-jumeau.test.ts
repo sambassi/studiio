@@ -405,3 +405,71 @@ describe('Durcissement : débit, remboursement, génération lancée non enregis
     expect(base.generations[0]).toMatchObject({ provider_video_id: 'vid-jumeau-1', status: 'completed' });
   });
 });
+
+describe('Voix choisie pour CETTE génération (Mon avatar) — contrôlée côté serveur', () => {
+  const V2 = '44444444-4444-4444-8444-000000000002';
+  const V_AUTRUI = '44444444-4444-4444-8444-000000000009';
+  const AUTRUI = 'bbbbbbbb-2222-4222-8222-222222222222';
+  const deuxVoix = () => {
+    base.voices = [voix(), voix({ id: V2, provider_voice_id: 'pvid_perso_0002', name: 'Bassi studio', created_at: '2026-08-02T00:00:00Z' })];
+  };
+  const prefsAvant = () => JSON.stringify(base.settings);
+  const sansEffet = () => {
+    expect(reseau.appels).toEqual([]);
+    expect(credits.journal).toEqual([]);
+    expect(base.generations).toEqual([]);
+  };
+
+  it('⚠️ voix A choisie → ElevenLabs synthétise avec A ; voix B choisie → avec B ; la voix enregistrée n’est JAMAIS modifiée', async () => {
+    deuxVoix();
+    const avant = prefsAvant();
+    const a = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', voixId: V1 });
+    expect(a.ok).toBe(true);
+    expect(appelsVers('https://api.elevenlabs.io/v1/text-to-speech/')[0].url).toContain('/text-to-speech/pvid_perso_0001?');
+    expect(base.generations[0].voice_id).toBe(`${PREFIXE_VOIX_JUMEAU}${V1}`);
+    base.generations = []; base.transactions = []; reseau.appels.length = 0; credits.journal.length = 0;
+    const b = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', voixId: V2 });
+    expect(b.ok).toBe(true);
+    expect(appelsVers('https://api.elevenlabs.io/v1/text-to-speech/')[0].url).toContain('/text-to-speech/pvid_perso_0002?');
+    expect(base.generations[0].voice_id).toBe(`${PREFIXE_VOIX_JUMEAU}${V2}`);
+    expect(prefsAvant()).toBe(avant);
+  });
+
+  it('⚠️ par la route : `voixId` du corps est transmis au moteur (voix B synthétisée)', async () => {
+    deuxVoix();
+    const res = await POST(new Request('https://studiio.pro/api/creer/jumeau/generer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ textes: [TEXTE], aspectRatio: '9:16', voixId: V2 }) }) as never);
+    expect(res.status).toBe(200);
+    expect(appelsVers('https://api.elevenlabs.io/v1/text-to-speech/')[0].url).toContain('/text-to-speech/pvid_perso_0002?');
+  });
+
+  it('⚠️ voix d’un AUTRE compte → refusée (voix_inutilisable) : aucun fournisseur, aucun débit, rien en base', async () => {
+    base.voices = [voix(), voix({ id: V_AUTRUI, user_id: AUTRUI, provider_voice_id: 'pvid_autrui_0009', name: 'Autrui' })];
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', voixId: V_AUTRUI });
+    expect(r).toMatchObject({ ok: false, motif: 'voix_inutilisable' });
+    sansEffet();
+    expect(JSON.stringify(reseau.appels)).not.toContain('pvid_autrui');
+  });
+
+  it('⚠️ voix NON PRÊTE (identifiant fournisseur absent) → refusée : aucun fournisseur, aucun débit', async () => {
+    base.voices = [voix(), voix({ id: V2, provider_voice_id: null, name: 'En préparation' })];
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', voixId: V2 });
+    expect(r).toMatchObject({ ok: false, motif: 'voix_inutilisable' });
+    sansEffet();
+  });
+
+  it('⚠️ voix SUPPRIMÉE entre le choix et la génération → refusée, JAMAIS remplacée par la voix enregistrée', async () => {
+    base.voices = [voix()];
+    base.settings[0] = { user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: V1, prononciations: [] } } };
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', voixId: V2 });
+    expect(r).toMatchObject({ ok: false, motif: 'voix_inutilisable' });
+    sansEffet();
+  });
+
+  it('sans voixId : la voix enregistrée, comme avant (Créer, Autopilote inchangés)', async () => {
+    deuxVoix();
+    base.settings[0] = { user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: V2, prononciations: [] } } };
+    const r = await generer();
+    expect(r.ok).toBe(true);
+    expect(appelsVers('https://api.elevenlabs.io/v1/text-to-speech/')[0].url).toContain('/text-to-speech/pvid_perso_0002?');
+  });
+});

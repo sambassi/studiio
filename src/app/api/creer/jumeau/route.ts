@@ -54,7 +54,9 @@ export async function GET(req?: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   const avatarId = lireAvatarId(req?.nextUrl?.searchParams?.get('avatarId'));
-  return reponse(await resoudreJumeauDuCompte(session.user.id, { avatarId }));
+  // `voixId` : vérifier le jumeau AVEC une voix du compte choisie ponctuellement (Mon avatar).
+  const voixId = lireAvatarId(req?.nextUrl?.searchParams?.get('voixId'));
+  return reponse(await resoudreJumeauDuCompte(session.user.id, { avatarId, voixId }));
 }
 
 export async function POST(req: NextRequest) {

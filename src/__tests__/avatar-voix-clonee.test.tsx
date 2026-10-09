@@ -29,20 +29,19 @@ const avatarValide = { id: A, name: 'Mon avatar vidéo', status: 'completed', av
 const jumeauPret = (voixId = BASSI) => ({ pret: true, motif: null, message: null, moteurDisponible: true, messageMoteur: null, jumeau: { avatar: { id: A, version: 3, nom: 'Mon avatar vidéo', valideLe: '2026-10-06', fournisseur: 'heygen' }, voix: { id: voixId, nom: 'bassi' }, prononciations: 0 } });
 
 const serveur = {
-  clonees: [] as Array<{ id: string; accountVoiceId: string; name: string }>,
-  jumeau: jumeauPret() as Record<string, unknown>,
-  /** Ce que rend GET /api/creer/jumeau AU MOMENT de générer (null = identique). */
-  jumeauAuLancement: null as Record<string, unknown> | null,
+  /** Les voix du compte : `utilisable` = prête (même règle que le serveur). */
+  clonees: [] as Array<{ id: string; accountVoiceId: string; name: string; utilisable: boolean }>,
+  /** Ce que le SERVEUR sait au moment de générer : voix existantes et prêtes du compte. */
+  voixServeur: new Set<string>(),
+  moteur: true,
 };
 const appels: Array<{ url: string; method: string; corps: unknown }> = [];
-let lancements = 0;
 
 beforeEach(() => {
   appels.length = 0;
-  lancements = 0;
-  serveur.clonees = [{ id: 'elevenlabs-bassi', accountVoiceId: BASSI, name: 'bassi' }];
-  serveur.jumeau = jumeauPret();
-  serveur.jumeauAuLancement = null;
+  serveur.clonees = [{ id: 'elevenlabs-bassi', accountVoiceId: BASSI, name: 'bassi', utilisable: true }];
+  serveur.voixServeur = new Set([BASSI]);
+  serveur.moteur = true;
   window.localStorage.clear();
   globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
     const u = String(url);
@@ -52,9 +51,12 @@ beforeEach(() => {
     if (u === '/api/avatar/create') return json(200, { success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'hg1', name: 'Yosef', language: 'French' }, { voiceId: 'hg2', name: 'Léa', language: 'French' }], defaultVoiceId: 'hg1' } });
     if (u === '/api/avatar/apercu') return json(200, { success: true, data: { avatarId: A, version: 3, etat: 'valide', apercu: { statut: 'aucun' }, renduRecent: null } });
     if (u.startsWith('/api/creer/jumeau?') || u === '/api/creer/jumeau') {
-      lancements += 1;
-      const etat = lancements > 1 && serveur.jumeauAuLancement ? serveur.jumeauAuLancement : serveur.jumeau;
-      return json(200, { success: true, data: etat });
+      // Le serveur résout AVEC la voix demandée : du compte et prête, sinon refus.
+      const voixId = new URL(`https://x${u}`).searchParams.get('voixId');
+      if (voixId && !serveur.voixServeur.has(voixId)) {
+        return json(200, { success: true, data: { pret: false, motif: 'voix_inutilisable', message: 'La voix choisie ne peut pas être utilisée. Vérifiez votre voix personnelle.', jumeau: null, moteurDisponible: serveur.moteur, messageMoteur: null } });
+      }
+      return json(200, { success: true, data: { ...jumeauPret(voixId ?? BASSI), moteurDisponible: serveur.moteur } });
     }
     if (u === '/api/voice/clone') return json(200, { success: true, voices: serveur.clonees });
     if (u === '/api/creer/jumeau/generer') return json(200, { success: true, data: { generationId: 'gen-jumeau', status: 'processing', avatarVersion: 3 } });
@@ -102,9 +104,9 @@ describe('Mon avatar — « Ma voix » dans le sélecteur', () => {
     await waitFor(() => expect(document.querySelector(`video[src="${URL_JUMEAU}"]`)).not.toBeNull());
     expect(posts()).toEqual(['/api/creer/jumeau/generer']);
     const corps = appels.find((a) => a.url === '/api/creer/jumeau/generer')!.corps as Record<string, unknown>;
-    expect(corps).toEqual({ textes: ['Bonjour, je suis Bassi.'], aspectRatio: '9:16', avatarId: A });
-    // Aucun identifiant de voix n'est envoyé : le serveur résout MA voix lui-même.
-    expect(JSON.stringify(corps)).not.toContain(BASSI);
+    expect(corps).toEqual({ textes: ['Bonjour, je suis Bassi.'], aspectRatio: '9:16', avatarId: A, voixId: BASSI });
+    // L'identifiant du COMPTE (user_voices.id), jamais un identifiant fournisseur.
+    expect(JSON.stringify(corps)).not.toContain('elevenlabs');
   });
 
   it('⚠️ 4. une voix HeyGen continue de passer par /api/avatar/generate, avec son voice_id', async () => {
@@ -127,41 +129,52 @@ describe('Mon avatar — « Ma voix » dans le sélecteur', () => {
     expect([...select().querySelectorAll('option')].map((o) => o.value)).toEqual(['hg1', 'hg2']);
   });
 
-  it('⚠️ 6a. la voix du jumeau a changé entre le choix et le clic : erreur claire, AUCUNE génération, aucune autre voix', async () => {
+  it('⚠️ 3b. plusieurs voix PRÊTES : toutes sélectionnables ; voix A → voixId A, voix B → voixId B (choix ponctuel, envoyé au serveur)', async () => {
+    serveur.clonees = [{ id: 'e1', accountVoiceId: BASSI, name: 'bassi', utilisable: true }, { id: 'e2', accountVoiceId: AUTRE, name: 'bassi studio', utilisable: true }];
+    serveur.voixServeur = new Set([BASSI, AUTRE]);
     await monter();
     await attendreClonees();
-    fireEvent.change(select(), { target: { value: `clone:${BASSI}` } });
+    const options = [...select().querySelectorAll('optgroup[label="Ma voix"] option')] as HTMLOptionElement[];
+    expect(options.map((o) => [o.textContent, o.disabled])).toEqual([['bassi — Voix clonée', false], ['bassi studio — Voix clonée', false]]);
     ecrire('Bonjour.');
-    serveur.jumeauAuLancement = jumeauPret(AUTRE);
-    await act(async () => { fireEvent.click(bouton()); });
-    await waitFor(() => expect(document.body.textContent).toContain('La voix utilisée par votre jumeau a changé.'));
-    expect(posts()).toEqual([]);
-    // Le choix affiché n'est pas remplacé en silence.
-    expect(select().value).toBe(`clone:${BASSI}`);
+    for (const [voix, attendu] of [[BASSI, BASSI], [AUTRE, AUTRE]] as const) {
+      appels.length = 0;
+      fireEvent.change(select(), { target: { value: `clone:${voix}` } });
+      await act(async () => { fireEvent.click(bouton()); });
+      await waitFor(() => expect(appels.some((a) => a.url === '/api/creer/jumeau/generer')).toBe(true));
+      // Vérifiée AVEC cette voix, puis générée AVEC cette voix.
+      expect(appels.some((a) => a.url === `/api/creer/jumeau?avatarId=${A}&voixId=${attendu}`)).toBe(true);
+      expect((appels.find((a) => a.url === '/api/creer/jumeau/generer')!.corps as Record<string, unknown>).voixId).toBe(attendu);
+      await waitFor(() => expect(document.querySelector(`video[src="${URL_JUMEAU}"]`)).not.toBeNull());
+    }
+    // Jamais la route des voix fournisseur, jamais une écriture de préférence.
+    expect(appels.some((a) => a.url === '/api/avatar/generate' || a.url.includes('settings') || a.url.includes('preferences'))).toBe(false);
   });
 
-  it('⚠️ 6b. jumeau indisponible au lancement (voix supprimée) : message du serveur, aucune génération, la sélection reste modifiable', async () => {
+  it('⚠️ 6a. voix NON PRÊTE : listée « (pas prête) », non sélectionnable', async () => {
+    serveur.clonees = [{ id: 'e1', accountVoiceId: BASSI, name: 'bassi', utilisable: true }, { id: 'e2', accountVoiceId: AUTRE, name: 'en préparation', utilisable: false }];
+    await monter();
+    await attendreClonees();
+    const autre = select().querySelector(`[data-voix-clonee="${AUTRE}"]`) as HTMLOptionElement;
+    expect(autre.textContent).toBe('en préparation — Voix clonée (pas prête)');
+    expect(autre.disabled).toBe(true);
+  });
+
+  it('⚠️ 6b. voix SUPPRIMÉE entre la sélection et la génération : message du serveur, aucune génération, aucune autre voix, la sélection reste modifiable', async () => {
     await monter();
     await attendreClonees();
     fireEvent.change(select(), { target: { value: `clone:${BASSI}` } });
     ecrire('Bonjour.');
-    serveur.jumeauAuLancement = { pret: false, motif: 'voix_absente', message: 'Ajoutez ou sélectionnez votre voix personnelle avant d’utiliser votre jumeau.', moteurDisponible: true, messageMoteur: null, jumeau: null };
+    serveur.voixServeur = new Set();
     await act(async () => { fireEvent.click(bouton()); });
-    await waitFor(() => expect(document.body.textContent).toContain('Ajoutez ou sélectionnez votre voix personnelle'));
+    await waitFor(() => expect(document.body.textContent).toContain('La voix choisie ne peut pas être utilisée.'));
+    expect(select().value).toBe(`clone:${BASSI}`);
     expect(posts()).toEqual([]);
     // L'option est désormais marquée indisponible, le bouton fermé ; une voix HeyGen se choisit et fonctionne.
     expect(document.querySelector('[data-voix-clonee-indisponible]')).not.toBeNull();
     expect(bouton().disabled).toBe(true);
     fireEvent.change(select(), { target: { value: 'hg1' } });
     expect(bouton().disabled).toBe(false);
-  });
-
-  it('⚠️ 6c. plusieurs voix clonées : seule celle du jumeau est sélectionnable, les autres sont dites indisponibles ici', async () => {
-    serveur.clonees = [{ id: 'e1', accountVoiceId: BASSI, name: 'bassi' }, { id: 'e2', accountVoiceId: AUTRE, name: 'bassi studio' }];
-    await monter();
-    await attendreClonees();
-    const options = [...select().querySelectorAll('optgroup[label="Ma voix"] option')] as HTMLOptionElement[];
-    expect(options.map((o) => [o.textContent, o.disabled])).toEqual([['bassi — Voix clonée', false], ['bassi studio — Voix clonée (indisponible ici)', true]]);
   });
 
   it('⚠️ 7. aucun appel hors des routes Studiio : jamais un fournisseur depuis le navigateur', async () => {

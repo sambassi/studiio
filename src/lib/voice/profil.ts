@@ -251,13 +251,20 @@ export async function prononciationsDuCompte(userId: string | null | undefined):
  * cache, jamais reçue du navigateur. Avec son `provider_voice_id`, que seul
  * le serveur voit. C'est ce que Créer et l'Autopilote appelleront.
  */
-export async function resoudreVoixDuCompte(userId: string): Promise<
+/**
+ * `voixChoisie` : un choix PONCTUEL (une génération), à la place de la voix
+ * enregistrée — jamais écrit. Il ne contourne aucun contrôle : la voix doit
+ * figurer parmi les voix DE CE COMPTE (`listUserVoices(userId)`) et être
+ * utilisable, sinon `voix_inexistante` / `voix_inutilisable`. Absent : la
+ * voix enregistrée (comportement de Créer et de l'Autopilote, inchangé).
+ */
+export async function resoudreVoixDuCompte(userId: string, voixChoisie?: string | null): Promise<
   { ok: true; voix: VoixPersonnelle; providerVoiceId: string; prononciations: Prononciation[] } | { ok: false; motif: MotifVoix } | { ok: false; erreur: string }
 > {
   if (!UUID.test(userId)) return { ok: false, erreur: 'compte invalide' };
   const [voix, prefs] = await Promise.all([listUserVoices(userId), lirePreferences(userId)]);
   if (!prefs.ok) return prefs;
-  const resolution = resoudreVoix(voix, prefs.voix.userVoiceId);
+  const resolution = resoudreVoix(voix, voixChoisie ?? prefs.voix.userVoiceId);
   if (!resolution.ok) return resolution;
   const ligne = voix.find((v) => v.id === resolution.voix.id)!;
   return { ok: true, voix: resolution.voix, providerVoiceId: ligne.provider_voice_id, prononciations: prefs.voix.prononciations };

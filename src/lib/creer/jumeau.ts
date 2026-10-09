@@ -42,9 +42,10 @@ export const JUMEAU_API = '/api/creer/jumeau';
 export const JUMEAU_INDISPONIBLE = 'Votre jumeau n’est plus disponible. Vérifiez votre avatar et votre voix.';
 
 /** L'état du jumeau, tel que le serveur le voit maintenant. `null` si l'appel échoue. */
-export async function lireEtatJumeau(fetchImpl: typeof fetch = fetch, avatarId?: string | null): Promise<EtatJumeau | null> {
+export async function lireEtatJumeau(fetchImpl: typeof fetch = fetch, avatarId?: string | null, voixId?: string | null): Promise<EtatJumeau | null> {
   try {
-    const res = await fetchImpl(avatarId ? `${JUMEAU_API}?avatarId=${encodeURIComponent(avatarId)}` : JUMEAU_API);
+    const q = [avatarId ? `avatarId=${encodeURIComponent(avatarId)}` : '', voixId ? `voixId=${encodeURIComponent(voixId)}` : ''].filter(Boolean).join('&');
+    const res = await fetchImpl(q ? `${JUMEAU_API}?${q}` : JUMEAU_API);
     const json = await res.json();
     return json?.success ? (json.data as EtatJumeau) : null;
   } catch {
@@ -297,6 +298,8 @@ export async function genererEtAttendreVideoJumeau(args: {
   aspectRatio: string;
   /** Identité LOGIQUE choisie (null/absent = avatar par défaut du compte). */
   avatarId?: string | null;
+  /** Voix du compte choisie pour CETTE vidéo (`user_voices.id`) ; absente = voix enregistrée. */
+  voixId?: string | null;
   /** Qualité de rendu ; le serveur décide du moteur et refuse une qualité fermée. */
   qualite?: 'standard' | 'qualite' | 'premium';
   onLancee?: (generationId: string, avatarVersion: number) => void;
@@ -314,6 +317,7 @@ export async function genererEtAttendreVideoJumeau(args: {
     body: JSON.stringify({
       textes: args.textes, aspectRatio: args.aspectRatio,
       ...(args.avatarId ? { avatarId: args.avatarId } : {}),
+      ...(args.voixId ? { voixId: args.voixId } : {}),
       ...(args.qualite ? { qualite: args.qualite } : {}),
     }),
   });

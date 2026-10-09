@@ -114,6 +114,8 @@ export async function genererVideoJumeau(
     userId: string; textes: string[]; aspectRatio?: string;
     /** Identité LOGIQUE choisie (projet Créer, réglage Autopilote) ; absente = avatar par défaut. */
     avatarId?: string | null;
+    /** Voix du compte choisie pour CETTE génération (`user_voices.id`) ; absente = voix enregistrée. Contrôlée côté serveur. */
+    voixId?: string | null;
     /** Qualité de rendu demandée ; le moteur est décidé ICI, jamais par le navigateur. */
     qualite?: unknown;
   },
@@ -126,7 +128,7 @@ export async function genererVideoJumeau(
   if (!choixMoteur.ok) return { ok: false, motif: 'moteur_indisponible', message: choixMoteur.message };
 
   // 1. Le jumeau, relu maintenant — la VERSION ACTIVE de l'identité choisie.
-  const jumeau = await resoudreJumeauDuCompte(args.userId, { avatarId: args.avatarId ?? null });
+  const jumeau = await resoudreJumeauDuCompte(args.userId, { avatarId: args.avatarId ?? null, voixId: args.voixId ?? null });
   if (!jumeau.ok) {
     if ('motif' in jumeau) return { ok: false, motif: jumeau.motif, message: jumeau.message };
     return { ok: false, motif: 'base', message: 'Votre jumeau n’a pas pu être vérifié.' };
