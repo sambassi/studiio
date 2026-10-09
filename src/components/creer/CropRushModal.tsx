@@ -9,7 +9,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   rush: { url: string; name: string; kind?: 'video' | 'image'; transform?: Transform } | null;
-  format: 'reel' | 'tv' | '9:16' | '16:9' | string;
+  format: 'reel' | 'tv' | '9:16' | '16:9' | '1:1' | string;
   onApply: (transform: Transform) => void;
 }
 
@@ -17,8 +17,9 @@ const DEFAULT_T: Transform = { scale: 1, offsetX: 0, offsetY: 0 };
 
 export default function CropRushModal({ isOpen, onClose, rush, format, onApply }: Props) {
   const isLandscape = format === 'tv' || format === '16:9';
-  const aspectRatio = isLandscape ? '16 / 9' : '9 / 16';
-  const displayFormat = isLandscape ? '16:9' : '9:16';
+  const isSquare = format === '1:1';
+  const aspectRatio = isSquare ? '1 / 1' : isLandscape ? '16 / 9' : '9 / 16';
+  const displayFormat = isSquare ? '1:1' : isLandscape ? '16:9' : '9:16';
 
   const [t, setT] = useState<Transform>(DEFAULT_T);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -34,7 +35,9 @@ export default function CropRushModal({ isOpen, onClose, rush, format, onApply }
 
   const clamp = (v: number) => Math.max(-1, Math.min(1, v));
 
-  const onMouseDown = (e: React.MouseEvent) => {
+  // Pointeur (souris ET doigt) : la même logique que le glisser d'origine.
+  const onMouseDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     dragState.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -42,7 +45,7 @@ export default function CropRushModal({ isOpen, onClose, rush, format, onApply }
       startOffY: t.offsetY,
     };
   };
-  const onMouseMove = (e: React.MouseEvent) => {
+  const onMouseMove = (e: React.PointerEvent) => {
     const ds = dragState.current;
     const el = containerRef.current;
     if (!ds || !el) return;
@@ -56,42 +59,48 @@ export default function CropRushModal({ isOpen, onClose, rush, format, onApply }
   const reset = () => setT({ ...DEFAULT_T });
 
   const isImage = rush.kind === 'image';
-  const mediaStyle: React.CSSProperties = {
+  // APERÇU = RENDU. Le moteur (`drawVideoSeq`) couvre le cadre (cover), zoome
+  // de `scale` et décale le centre de `offsetX * largeur DU CADRE`. Le calque
+  // fait donc exactement la taille du cadre : ses pourcentages de
+  // translation sont ceux du cadre, pas du média (qui, en cover, peut
+  // déborder et fausser le décalage).
+  const calqueStyle: React.CSSProperties = {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    minWidth: '100%',
-    minHeight: '100%',
-    objectFit: 'cover',
+    inset: 0,
     transformOrigin: 'center center',
-    transform: `translate(-50%, -50%) translate(${t.offsetX * 100}%, ${t.offsetY * 100}%) scale(${t.scale})`,
+    transform: `translate(${t.offsetX * 100}%, ${t.offsetY * 100}%) scale(${t.scale})`,
     pointerEvents: 'none',
   };
+  const mediaStyle: React.CSSProperties = { width: '100%', height: '100%', objectFit: 'cover', display: 'block' };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Recadrer ${isImage ? "l'image" : 'la vidéo'} — cadre ${displayFormat}`} size="lg">
       <div className="space-y-4">
         <div
           ref={containerRef}
-          onMouseDown={onMouseDown}
-          onMouseMove={onMouseMove}
-          onMouseUp={endDrag}
-          onMouseLeave={endDrag}
-          className="relative mx-auto w-full bg-black overflow-hidden rounded-lg select-none cursor-move"
-          style={{ aspectRatio, maxHeight: '60vh', maxWidth: isLandscape ? '100%' : '360px' }}
+          data-recadrage-cadre={displayFormat}
+          onPointerDown={onMouseDown}
+          onPointerMove={onMouseMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onPointerLeave={endDrag}
+          className="relative mx-auto w-full bg-black overflow-hidden rounded-lg select-none cursor-move touch-none"
+          style={{ aspectRatio, maxHeight: '60vh', maxWidth: isLandscape ? '100%' : isSquare ? '420px' : '360px' }}
         >
-          {isImage ? (
-            <img src={rush.url} alt={rush.name} style={mediaStyle} />
-          ) : (
-            <video
-              src={rush.url}
-              muted
-              loop
-              autoPlay
-              playsInline
-              style={mediaStyle}
-            />
-          )}
+          <div data-recadrage-calque style={calqueStyle}>
+            {isImage ? (
+              <img src={rush.url} alt={rush.name} style={mediaStyle} />
+            ) : (
+              <video
+                src={rush.url}
+                muted
+                loop
+                autoPlay
+                playsInline
+                style={mediaStyle}
+              />
+            )}
+          </div>
           <div className="absolute inset-0 border-2 border-white/20 pointer-events-none" />
         </div>
 

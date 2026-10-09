@@ -91,10 +91,17 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
     // hérite de la promesse « Appliquée au montage ». Le Calendrier transmet
     // la LUT par sa fonction partagée, qu'il appelle sur ses quatre chemins.
     expect(composerEtalonne).toBe(true);
+    // Mini-studio de Mon avatar (`optionsPostTraitement`) : la LUT de la
+    // bibliothèque, lue par `chargerLutPourRendu`, appliquée au MP4 téléchargé.
     expect([...appelantsRushLut].sort()).toEqual([
       'src/app/dashboard/creer/AssistantWizard.tsx',
+      'src/lib/avatar/studio.ts',
       OPTIONS_CALENDRIER,
     ]);
+    const studio = src('src/components/avatar/studio/MiniStudioAvatar.tsx');
+    expect(studio).toContain('chargerLutPourRendu(refDeLutAsset(lutChoisie))');
+    // Style choisi mais illisible : RIEN n'est exporté, jamais un fichier brut présenté comme étalonné.
+    expect(studio).toMatch(/if \(lutChoisie && !lutChargee\) throw new Error/);
     expect(src('src/app/dashboard/calendar/page.tsx').match(/preparerOptionsRendu\(post, '/g)).toHaveLength(4);
     expect(CAPACITES_ACTUELLES.rendu3d).toBe(true);
   });

@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     if (!generationId) {
       const { data: history } = await supabaseAdmin
         .from('avatar_generations')
-        .select('id, status, video_url, script, created_at, error_message')
+        .select('id, status, video_url, script, created_at, error_message, user_avatar_id, avatar_version, aspect_ratio, intention')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(10);

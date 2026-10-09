@@ -253,11 +253,11 @@ describe('/dashboard/avatar — « À partir d’une vidéo » (D-ID)', () => {
     expect(document.querySelector('[data-avatar-validation="valide"]')).toBeNull();
   });
 
-  it('avatar photo HeyGen : aucun panneau D-ID, le formulaire de génération HeyGen est toujours là', async () => {
+  it('avatar photo HeyGen : aucun panneau D-ID, le mini-studio de génération est toujours là', async () => {
     serveur.avatar = { id: A, name: 'Mon avatar', status: 'completed', avatar_type: 'photo', provider: 'heygen', created_at: '2026-09-15T00:00:00Z', etat: 'valide', version: 1, validated_at: '2026-09-15T00:00:00Z' };
     serveur.etape = 'valide';
     render(<AvatarPage />);
-    await waitFor(() => expect(document.body.textContent).toContain('Ce que dit votre avatar'));
+    await waitFor(() => expect(document.querySelector('[data-mini-studio]')).not.toBeNull());
     expect(document.querySelector('[data-avatar-did]')).toBeNull();
   });
 });
