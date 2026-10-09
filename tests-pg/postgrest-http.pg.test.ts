@@ -222,7 +222,11 @@ describeSiBinaire('PostgREST en HTTP — production actuelle, puis cible', () =>
 
     it('6. aucun jeton ne devient superutilisateur : `role=studiio` et `role=postgres` refusés', async () => {
       expect((await appel('/users', { role: superuser })).status).toBe(403);
-      expect((await appel('/users', { role: 'postgres' })).status).toBe(403);
+      // `postgres` peut ne pas exister sur la base (CI) : 400 « rôle inexistant »
+      // ou 403 « bascule interdite » — dans les deux cas, aucune donnée.
+      const r = await appel('/users', { role: 'postgres' });
+      expect([400, 403]).toContain(r.status);
+      expect(Array.isArray(await r.json())).toBe(false);
     });
 
     it('7. service_role n’est jamais studiio : ni superuser, ni membre d’un rôle ; le rôle hérité `anon` n’hérite plus de rien', async () => {
