@@ -189,7 +189,7 @@ export async function lancerJumeauMontage(input: {
   // RENDUE, pour qu'un passage ultérieur puisse réessayer ce créneau.
   let gen: Awaited<ReturnType<typeof genererVideoJumeau>>;
   try {
-    gen = await genererVideoJumeau({ userId: input.userId, textes: [script], aspectRatio: RATIO_AUTOPILOTE });
+    gen = await genererVideoJumeau({ userId: input.userId, textes: [script], aspectRatio: RATIO_AUTOPILOTE, avatarId: input.config.jumeauAvatarId ?? null });
   } catch (e) {
     await libererReservation(attenteId);
     const message = e instanceof Error ? e.message : String(e);

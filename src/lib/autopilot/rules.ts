@@ -526,6 +526,12 @@ export interface AutopilotConfig {
    * que le serveur ne sait pas produire.
    */
   jumeauAvatar: boolean;
+  /**
+   * L'avatar LOGIQUE des montages-jumeau (identité, jamais un identifiant
+   * fournisseur). `null` = l'avatar par défaut du compte. Sa VERSION ACTIVE
+   * est relue à chaque génération : remplacer l'avatar ne casse rien ici.
+   */
+  jumeauAvatarId: string | null;
 
   // ── L'identité CONSTANTE ────────────────────────────────────────────────
   //
@@ -632,6 +638,7 @@ export const DEFAULT_CONFIG: AutopilotConfig = {
   voiceEnabled: false,
   // Jumeau vidéo désactivé : aucune génération D-ID facturée sans demande.
   jumeauAvatar: false,
+  jumeauAvatarId: null,
   cardGradientStart: DEFAULT_BRANDING.cardGradientStart,
   cardGradientEnd: DEFAULT_BRANDING.cardGradientEnd,
   titleColor: DEFAULT_BRANDING.titleColor,
@@ -896,6 +903,7 @@ export function sanitizeConfig(raw: unknown): AutopilotConfig {
     // donc aucune génération d'avatar facturée sans que l'utilisateur l'ait
     // demandé. Même politique que `voiceEnabled`.
     jumeauAvatar: o.jumeauAvatar === true,
+    jumeauAvatarId: typeof o.jumeauAvatarId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(o.jumeauAvatarId) ? o.jumeauAvatarId : null,
 
     // ── L'identité constante ─────────────────────────────────────────────
     cardGradientStart: sanitizeHexColor(o.cardGradientStart, DEFAULT_BRANDING.cardGradientStart),

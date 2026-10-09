@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EVENEMENT_PRONONCIATIONS } from '@/lib/voice/profilClient';
 import { Loader2, Mic, Pencil, Play, Plus, Trash2, Check, X } from 'lucide-react';
 import {
   ajouterPrononciation, modifierPrononciation, supprimerPrononciation, scriptParle,
@@ -63,6 +64,12 @@ export default function MaVoixPanel() {
     }
   }, []);
   useEffect(() => { void charger(); }, [charger]);
+  // Une prononciation ajoutée ailleurs sur la page (mini-studio, prompteur) : même dictionnaire, on le relit.
+  useEffect(() => {
+    const relire = () => { void charger(); };
+    window.addEventListener(EVENEMENT_PRONONCIATIONS, relire);
+    return () => window.removeEventListener(EVENEMENT_PRONONCIATIONS, relire);
+  }, [charger]);
 
   const prononciations = profil?.prononciations ?? [];
   const spoken = useMemo(() => scriptParle(texte, prononciations), [texte, prononciations]);

@@ -16,6 +16,7 @@
  * Ce module ne fait AUCUN acces base ni stockage : il parle uniquement a
  * HeyGen. La persistance et les credits sont geres par les routes API.
  */
+import { MOTEURS_AVATAR, MOTEUR_AVATAR_DEFAUT, moteurAvatar, type MoteurAvatar } from '@/lib/avatar/moteurs';
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
@@ -243,10 +244,17 @@ export async function createAvatarFromAsset(
   assetId: string,
   name: string,
   kind: AvatarKind,
+  /**
+   * REMPLACEMENT : le groupe (identité) existant chez le fournisseur. La
+   * nouvelle vidéo y devient un NOUVEAU look, à côté de l'ancien qui reste
+   * utilisable ; le consentement est porté par le groupe (doc fournisseur,
+   * « Avatar Consent »). Absent = nouvelle identité = nouveau groupe.
+   */
+  groupeExistant?: string | null,
 ): Promise<CreatedAvatar> {
   const heygenType = HEYGEN_AVATAR_TYPE[kind];
   console.log(
-    `[Avatar][HeyGen] POST /v3/avatars — type=${heygenType} (${kind}) asset_id=${assetId} name="${name}"`,
+    `[Avatar][HeyGen] POST /v3/avatars — type=${heygenType} (${kind}) asset_id=${assetId} name="${name}"${groupeExistant ? ' groupe=existant' : ''}`,
   );
 
   const data = await heygenFetch<{
@@ -262,6 +270,7 @@ export async function createAvatarFromAsset(
       type: heygenType,
       name,
       file: { type: 'asset_id', asset_id: assetId },
+      ...(groupeExistant ? { avatar_group_id: groupeExistant } : {}),
     }),
     // L'entrainement d'un digital twin demarre plus lentement que celui d'une
     // talking photo : la reponse de creation peut tarder.
@@ -453,20 +462,17 @@ export async function generateAvatarVideo(
  * retenu pour Studiio ; `HEYGEN_AVATAR_ENGINE` peut le changer côté serveur
  * (valeurs du fournisseur uniquement).
  */
-export const MOTEURS_AVATAR = ['avatar_iii', 'avatar_iv', 'avatar_v'] as const;
-export type MoteurAvatar = typeof MOTEURS_AVATAR[number];
-export const MOTEUR_AVATAR_DEFAUT: MoteurAvatar = 'avatar_iii';
-export function moteurAvatar(env: NodeJS.ProcessEnv = process.env): MoteurAvatar {
-  const v = env.HEYGEN_AVATAR_ENGINE?.trim() as MoteurAvatar | undefined;
-  return v && (MOTEURS_AVATAR as readonly string[]).includes(v) ? v : MOTEUR_AVATAR_DEFAUT;
-}
+// Les moteurs vivent dans `moteurs.ts` (module pur, sans réseau) ; ré-exportés ici.
+export { MOTEURS_AVATAR, MOTEUR_AVATAR_DEFAUT, moteurAvatar, type MoteurAvatar };
 
 export async function generateAvatarVideoFromAudio(params: {
   avatarId: string;
   audioAssetId: string;
   aspectRatio?: AvatarAspectRatio;
+  /** Moteur choisi pour CETTE génération (déjà autorisé par l'appelant) ; défaut serveur sinon. */
+  moteur?: MoteurAvatar;
 }): Promise<{ videoId: string; status: string }> {
-  const { avatarId, audioAssetId, aspectRatio = '9:16' } = params;
+  const { avatarId, audioAssetId, aspectRatio = '9:16', moteur = moteurAvatar() } = params;
   if (!audioAssetId || !audioAssetId.trim()) {
     throw new HeyGenError("Aucun audio fourni pour animer l'avatar.", 400, 'no_audio_asset');
   }
@@ -477,7 +483,7 @@ export async function generateAvatarVideoFromAudio(params: {
     aspect_ratio: aspectRatio,
     resolution: '720p',
     output_format: 'mp4',
-    engine: { type: moteurAvatar() },
+    engine: { type: moteur },
   };
   console.log('[Avatar][HeyGen] POST /v3/videos (audio externe) payload', JSON.stringify(body));
   const data = await heygenFetch<{ video_id?: string; id?: string; status?: string }>(

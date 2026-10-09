@@ -36,7 +36,6 @@ const U = 'aaaaaaaa-1111-4111-8111-111111111111';
 const A = '11111111-1111-4111-8111-000000000001';
 const G = '22222222-2222-4222-8222-000000000001';
 const URL_APERCU = `https://studiio.pro/storage/v1/object/public/media/${U}/avatar/${G}.mp4`;
-const URL_VIDEO = `https://studiio.pro/storage/v1/object/public/media/${U}/avatar/video-g2.mp4`;
 
 type Ligne = Record<string, unknown> | null;
 type Generation = { status: 'processing' | 'completed' | 'failed'; videoUrl: string | null; error: string | null };
@@ -102,6 +101,9 @@ function stubApi() {
       serveur.apercu = { statut: 'aucun' };
       return json(200, { success: true, data: { avatarId: A, version: 1, validatedAt: '2026-09-16T00:00:00Z', dejaValide: false, etat: 'valide' } });
     }
+    // Mini-studio : l'état du jumeau (avatar actif + voix) et le solde, tels que les routes existantes les rendent.
+    if (u === '/api/creer/jumeau') return json(200, { success: true, data: { pret: true, motif: null, message: null, jumeau: { avatar: { id: A, version: 1, nom: 'Mon avatar', valideLe: '2026-09-16', fournisseur: 'heygen' }, voix: { id: 'uv1', nom: 'Bassi' }, prononciations: 0 }, moteurDisponible: true, messageMoteur: null } });
+    if (u === '/api/credits/balance') return json(200, { ok: true, politique: 'credits', balance: 500 });
     if (u.startsWith('/api/avatar/status')) {
       const g = serveur.generation;
       const generationId = u.split('generationId=')[1] ?? G;
@@ -344,22 +346,17 @@ describe('C. La zone d’aperçu — deux colonnes, UNE zone, quatre états', ()
     expect(qa('[data-apercu]')).toHaveLength(1);
   });
 
-  it('⚠️ validé : la zone ne montre JAMAIS la source comme l’avatar — sans rendu récent elle le dit ; la vidéo HeyGen générée (« Votre vidéo ») arrive dans la MÊME zone, pas dans une carte à part', async () => {
+  it('⚠️ validé : la zone ne montre JAMAIS la source comme l’avatar — sans rendu récent elle le dit ; la génération vit dans le mini-studio, sous la zone', async () => {
     avatarHeygen('valide');
     await monterEtLireFil();
     expect(qa('[data-apercu]')).toHaveLength(1);
     expect(q('[data-apercu]')?.getAttribute('data-apercu')).toBe('vide');
     expect(q('[data-apercu]')!.textContent).toContain('Aucun rendu récent disponible.');
     expect(q('[data-apercu] [data-avatar-source-apercu]'), 'la source n’est pas dans la zone').toBeNull();
-    // Génération à la demande : le fournisseur a fini → la vidéo est le média de la zone.
-    serveur.generation = { status: 'completed', videoUrl: URL_VIDEO, error: null };
-    fireEvent.change(q<HTMLTextAreaElement>('textarea')!, { target: { value: 'Bonjour, je suis votre avatar.' } });
-    const generer = screen.getAllByRole('button', { name: /Générer/ }).find((b) => !/aperçu/i.test(b.textContent ?? ''))!;
-    await act(async () => { fireEvent.click(generer); });
-    await waitFor(() => expect(q(`[data-apercu="pret"] video[src="${URL_VIDEO}"]`)).not.toBeNull());
+    // La génération à la demande vit dans le mini-studio, pas dans la zone.
+    await waitFor(() => expect(q('[data-mini-studio-generer]')).not.toBeNull());
+    expect(q('[data-apercu] [data-mini-studio]')).toBeNull();
     expect(qa('[data-apercu]')).toHaveLength(1);
-    expect(q('[data-apercu="pret"]')!.textContent).toContain('Votre vidéo');
-    expect(qa(`video[src="${URL_VIDEO}"]`)).toHaveLength(1);
   });
 });
 
@@ -380,12 +377,11 @@ describe('D. La génération HeyGen à la demande — seulement sous « Prêt »
 
     avatarHeygen('valide');
     await monterEtLireFil();
-    const label = qa('label').find((l) => /Ce que dit votre avatar/.test(l.textContent ?? ''));
-    expect(label, 'le formulaire de génération').toBeTruthy();
-    expect(q('textarea')).not.toBeNull();
-    const generer = screen.getAllByRole('button', { name: /Générer/ }).find((b) => !/aperçu/i.test(b.textContent ?? ''));
-    expect(generer).toBeTruthy();
-    expect(precede(q('[data-apercu]')!, label!), 'la ZoneApercu précède le formulaire').toBe(true);
+    await waitFor(() => expect(q('[data-mini-studio-generer]')).not.toBeNull());
+    const titre = qa('[data-mini-studio] h3').find((l) => /Ce que dit votre avatar/.test(l.textContent ?? ''));
+    expect(titre, 'le formulaire de génération').toBeTruthy();
+    expect(q('[data-mini-studio-texte]')).not.toBeNull();
+    expect(precede(q('[data-apercu]')!, titre!), 'la ZoneApercu précède le formulaire').toBe(true);
   });
 });
 
@@ -681,9 +677,10 @@ describe('I. Un seul CTA principal visible à la fois — dans chaque état touc
     fireEvent.playing(video);
     await waitFor(() => expect(q('[data-avatar-apercu="valider"]')).not.toBeNull());
     expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Valider mon avatar']);
-    // Validé, notification « Avatar validé. » affichée : « Générer » est le seul primaire.
+    // Validé, notification « Avatar validé. » affichée : « Générer ma vidéo » est le seul primaire.
     await act(async () => { fireEvent.click(q('[data-avatar-apercu="valider"]')!); });
     await waitFor(() => expect(etatsFil().validation).toBe('terminee'));
-    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Générer (40 crédits)']);
+    await waitFor(() => expect(q('[data-mini-studio-generer]')).not.toBeNull());
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Générer ma vidéo · 40 crédits']);
   });
 });

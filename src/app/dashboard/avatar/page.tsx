@@ -7,12 +7,12 @@ import {
   Upload,
   Loader2,
   Sparkles,
-  Download,
   RefreshCw,
   Image as ImageIcon,
   Clapperboard,
   Trash2,
   Mic,
+  Camera,
 } from 'lucide-react';
 import VoiceCloneRecorder from '@/components/voice/VoiceCloneRecorder';
 import MaVoixPanel from '@/components/voice/MaVoixPanel';
@@ -22,10 +22,11 @@ import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneA
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
+import MiniStudioAvatar from '@/components/avatar/studio/MiniStudioAvatar';
+import EnregistreurSource from '@/components/avatar/studio/EnregistreurSource';
+import MesAvatars from '@/components/avatar/MesAvatars';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 
-const AVATAR_VIDEO_COST = 40;
-const MAX_SCRIPT_CHARS = 1200;
 /** Limite imposée par HeyGen sur l'envoi d'un asset. */
 const MAX_VIDEO_MB = 32;
 /** Limite documentée par D-ID (« Video buffer size exceeds 50MB »). */
@@ -86,7 +87,7 @@ type GenStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 export default function AvatarPage() {
   const [loading, setLoading] = useState(true);
   const [avatar, setAvatar] = useState<AvatarRow | null>(null);
-  const [voices, setVoices] = useState<Voice[]>([]);
+  const [, setVoices] = useState<Voice[]>([]);
   /** « À partir d'une vidéo » n'est ouvert que si le serveur le dit (drapeau + clé D-ID). */
   const [didVideoActif, setDidVideoActif] = useState(false);
   /** Jumeau VIDÉO (digital twin) : TEMPORAIREMENT réservé à l'admin — le serveur le dit. */
@@ -99,14 +100,15 @@ export default function AvatarPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
+  /** Source : importer un fichier, ou s'enregistrer à la caméra (vidéo). */
+  const [modeSource, setModeSource] = useState<'import' | 'camera'>('import');
   const [creating, setCreating] = useState(false);
+  const [mesAvatarsCle, setMesAvatarsCle] = useState(0);
 
   // Génération
-  const [script, setScript] = useState('');
   const [voiceId, setVoiceId] = useState('');
-  const [ratio, setRatio] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [, setVideoUrl] = useState<string | null>(null);
   /**
    * L'aperçu RÉEL du clone (une vraie génération HeyGen sur le texte fixe de
    * Studiio) et la preuve de son ouverture. `jeton` n'existe qu'après
@@ -134,7 +136,7 @@ export default function AvatarPage() {
    * en rend une (`progress`). Sinon `null` : barre indéterminée. Plus aucune
    * estimation depuis le temps écoulé (cahier UX, Annexe A).
    */
-  const [progress, setProgress] = useState<number | null>(null);
+  const [, setProgress] = useState<number | null>(null);
   /** L'envoi de la source vers Studiio : octets réellement transférés (XHR), ou null hors envoi. */
   const [envoiSource, setEnvoiSource] = useState<ProgressionEnvoi | null>(null);
   const maVoixRef = useRef<HTMLElement | null>(null);
@@ -444,9 +446,12 @@ export default function AvatarPage() {
   // temps écoulé (90 × (1 − e^(−t/45))) a été retirée : elle mentait.
 
   // ── Création de l'avatar ────────────────────────────────────────────
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  /**
+   * Le fichier de la source — importé OU enregistré à la caméra : les MÊMES
+   * contrôles, puis le MÊME parcours (consentement → « Créer mon avatar »).
+   * Rien n'est envoyé ici. `false` = refusé, avec le motif affiché.
+   */
+  const choisirFichier = (f: File): boolean => {
     setError(null);
 
     // Contrôle côté client de la limite HeyGen : évite un upload de plusieurs
@@ -459,19 +464,24 @@ export default function AvatarPage() {
           ? `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). ${MAX_VIDEO_DID_MB} Mo maximum — réduisez la durée ou la qualité.`
           : `Vidéo trop lourde (${Math.round(f.size / 1024 / 1024)} Mo). ${MAX_VIDEO_MB} Mo maximum — réduisez la durée ou la qualité.`,
       );
-      e.target.value = '';
-      return;
+      return false;
     }
     if (videoDid && f.type !== 'video/mp4' && f.type !== 'video/quicktime') {
       setError('Format vidéo non supporté pour l’avatar vidéo. Utilisez MP4 ou MOV.');
-      e.target.value = '';
-      return;
+      return false;
     }
 
     if (preview) URL.revokeObjectURL(preview);
     setFile(f);
     // Aperçu local pour l'image comme pour la vidéo.
     setPreview(URL.createObjectURL(f));
+    return true;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!choisirFichier(f)) e.target.value = '';
   };
 
   const selectKind = (k: AvatarKind) => {
@@ -511,6 +521,18 @@ export default function AvatarPage() {
 
       if (!json.success || !json.data) {
         setError(json.error || "La création de l'avatar a échoué.");
+        return;
+      }
+      // Le compte avait déjà un avatar : le serveur a préparé une VERSION
+      // CANDIDATE, l'actuelle reste utilisée. On relit, sans rien écraser.
+      if (!json.data.avatar) {
+        setNotice('Nouvelle version en préparation. Votre version actuelle reste utilisée en attendant.');
+        setFile(null);
+        if (preview) URL.revokeObjectURL(preview);
+        setPreview(null);
+        setConsent(false);
+        setMesAvatarsCle((n) => n + 1);
+        await loadAvatar(false);
         return;
       }
       setAvatar(json.data.avatar);
@@ -587,48 +609,14 @@ export default function AvatarPage() {
     }
   }, [loadApercu]);
 
-  const handleGenerate = async () => {
-    if (!avatar || !script.trim() || genStatus === 'pending' || genStatus === 'processing') return;
-    setError(null);
-    setNotice(null);
-    setVideoUrl(null);
-    setProgress(null);
-    setGenStatus('pending');
-
-    try {
-      const res = await fetch('/api/avatar/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          avatarId: avatar.id,
-          script: script.trim(),
-          voiceId: voiceId || undefined,
-          aspectRatio: ratio,
-        }),
-      });
-      const json = await res.json();
-
-      if (!json.success) {
-        setGenStatus('failed');
-        setError(
-          json.refunded
-            ? `${json.error} Vos crédits ont été remboursés.`
-            : json.error || 'La génération a échoué.',
-        );
-        return;
-      }
-      setGenStatus('processing');
-      poll(json.data.generationId);
-    } catch {
-      setGenStatus('failed');
-      setError('Connexion impossible. Réessayez.');
-    }
-  };
-
   const busy = genStatus === 'pending' || genStatus === 'processing';
 
   /** « Changer de source » : le geste existant (retour à l'import), aussi offert par les notifications. */
   const changerDeSource = () => {
+    // Retour à l'import. Un avatar EXISTANT ne s'écrase plus pour autant
+    // (incident du 2026-10-09) : le serveur prépare une VERSION CANDIDATE et
+    // l'actuelle reste utilisée (voir `handleCreate`). Le parcours complet
+    // (préparation de la vidéo, aperçu, choix) vit dans « Mes avatars ».
     setAvatar(null);
     setVideoUrl(null);
     setProgress(null);
@@ -762,7 +750,6 @@ export default function AvatarPage() {
       };
     }
     if (etatEffectif === 'valide') {
-      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratio === '9:16' ? '9 / 16' : ratio === '16:9' ? '16 / 9' : '1 / 1', etat: { statut: 'pret', legende: 'Vidéo prête.' }, media: <video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /> };
       // ⚠️ JAMAIS la source ici : elle n'est pas l'avatar utilisé par Créer et
       // l'Autopilote. On montre un RENDU réel de la version active, ou on dit
       // qu'il n'y en a pas — sans rien inventer, sans appeler de fournisseur.
@@ -854,6 +841,9 @@ export default function AvatarPage() {
         data-entete="avatar"
       />
 
+      {/* Mes avatars — identités, version utilisée, nouvelle version en préparation. */}
+      <MesAvatars key={mesAvatarsCle} onChange={() => { void loadAvatar(false); }} />
+
       {/* D. Deux colonnes — la même mise en page que Créer (`DeuxColonnes`) :
           l'étape, ses gestes et la voix à gauche ; l'aperçu à droite. */}
       <DeuxColonnes nom="avatar" attributs={{ 'data-avatar-colonnes': '' }}>
@@ -909,6 +899,40 @@ export default function AvatarPage() {
           {/* ÉTAPE 1 — la source (première visite, ou « Changer de source ») */}
           {!avatar && (
             <div className="space-y-5">
+              {/* Deux façons d'apporter la source : la caméra (vidéo, avec
+                  prompteur) ou un fichier. La caméra ne fait que PRODUIRE le
+                  fichier : il suit ensuite le même parcours que l'import. */}
+              {(didVideoActif || jumeauVideoActif) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" role="radiogroup" aria-label="Source de l’avatar">
+                  {([
+                    { id: 'camera' as const, Icon: Camera, title: 'Enregistrer avec ma caméra', sub: 'Directement ici, avec prompteur' },
+                    { id: 'import' as const, Icon: Upload, title: 'Importer une photo ou une vidéo', sub: 'Depuis vos fichiers' },
+                  ]).map(({ id, Icon, title, sub }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={modeSource === id}
+                      data-avatar-source-mode={id}
+                      onClick={() => { if (id === 'camera') selectKind('video'); setModeSource(id); }}
+                      className={`rounded-xl p-4 text-left transition ${modeSource === id ? 'bg-purple-600/20 ring-1 ring-purple-500/50' : 'bg-gray-900/60 hover:bg-gray-800/70'}`}
+                    >
+                      <Icon className={`w-5 h-5 mb-2 ${modeSource === id ? 'text-purple-300' : 'text-gray-400'}`} />
+                      <div className="text-sm font-medium">{title}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{sub}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {modeSource === 'camera' && (didVideoActif || jumeauVideoActif) ? (
+                <EnregistreurSource
+                  mp4Requis={didVideoActif}
+                  onUtiliser={(f) => { if (choisirFichier(f)) setModeSource('import'); }}
+                  onImporterAlaPlace={() => setModeSource('import')}
+                />
+              ) : (
+              <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {([
                   { id: 'photo' as const, Icon: ImageIcon, title: 'À partir d’une photo', sub: 'Prêt en quelques minutes', soon: false },
@@ -1012,6 +1036,8 @@ export default function AvatarPage() {
                   </>
                 )}
               </button>
+              </>
+              )}
             </div>
           )}
 
@@ -1146,99 +1172,10 @@ export default function AvatarPage() {
             </div>
           </div>
 
-          {/* ✓ Prêt — l'étape suivante : faire parler l'avatar (photo HeyGen seulement). */}
+          {/* ✓ Prêt — le mini-studio : faire parler l'avatar ACTIF avec MA voix
+              (chaîne du jumeau), cadrage, style visuel, MP4. */}
           {avatar && etatEffectif === 'valide' && !viaDid && (
-            <div className="card-base p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Ce que dit votre avatar</label>
-                <textarea
-                  value={script}
-                  onChange={(e) => setScript(e.target.value.slice(0, MAX_SCRIPT_CHARS))}
-                  rows={5}
-                  placeholder="Bonjour, je suis…"
-                  className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-3 text-sm resize-y"
-                />
-                <div className="mt-1 text-right text-xs text-gray-500">
-                  {script.length} / {MAX_SCRIPT_CHARS}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Voix</label>
-                  <select
-                    value={voiceId}
-                    onChange={(e) => setVoiceId(e.target.value)}
-                    disabled={voices.length === 0}
-                    className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-50"
-                  >
-                    {voices.length === 0 && <option value="">Voix indisponibles</option>}
-                    {voices.map((v) => (
-                      <option key={v.voiceId} value={v.voiceId}>
-                        {v.name}
-                        {v.language ? ` — ${v.language}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Format</label>
-                  <div className="flex gap-2">
-                    {(['9:16', '16:9', '1:1'] as const).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => setRatio(r)}
-                        className={`flex-1 rounded-xl px-3 py-2.5 text-sm transition ${
-                          ratio === r
-                            ? 'bg-purple-600/30 text-purple-200 ring-1 ring-purple-500/50'
-                            : 'bg-gray-900 text-gray-400 hover:text-white'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={handleGenerate}
-                disabled={!script.trim() || busy}
-                className="w-full button-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {busy ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {genStatus === 'pending' ? 'Lancement…' : 'Génération en cours…'}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" /> Générer ({AVATAR_VIDEO_COST} crédits)
-                  </>
-                )}
-              </button>
-
-              {/* Génération à la demande : le fournisseur ne rend qu'un statut → barre
-                  indéterminée ; un pourcentage n'apparaît que si l'API en rend un réel. */}
-              {busy && (
-                <ProgressStatus
-                  titre="Création de votre vidéo"
-                  statut="en_cours"
-                  {...(progress !== null ? { pourcentage: progress } : {})}
-                  detail={progress === null ? 'Génération en cours — progression exacte indisponible.' : undefined}
-                  description="Cela prend généralement 1 à 5 minutes. Vous pouvez laisser cette page ouverte."
-                />
-              )}
-              {videoUrl && (
-                <a
-                  href={videoUrl}
-                  download
-                  className="inline-flex items-center gap-2 text-sm text-purple-300 hover:text-purple-200"
-                >
-                  <Download className="w-4 h-4" /> Télécharger la vidéo
-                </a>
-              )}
-            </div>
+            <MiniStudioAvatar videoReference={renduRecent?.url ?? null} onGenere={() => { void loadRenduRecent(); }} />
           )}
         </ColonneApercu>
       </DeuxColonnes>

@@ -42,23 +42,34 @@ function reponse(r: Awaited<ReturnType<typeof resoudreJumeauDuCompte>>, extra: R
   return NextResponse.json({ success: false, error: 'Votre jumeau n’a pas pu être vérifié. Réessayez.' }, { status: 500 });
 }
 
-export async function GET() {
+/**
+ * `avatarId` (query ou corps) : une identité LOGIQUE du compte — la version
+ * active est relue côté serveur. Jamais un identifiant fournisseur ; un id
+ * d'un autre compte se lit comme « aucun avatar ».
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const lireAvatarId = (v: unknown): string | null => (typeof v === 'string' && UUID.test(v) ? v : null);
+
+export async function GET(req?: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  return reponse(await resoudreJumeauDuCompte(session.user.id));
+  const avatarId = lireAvatarId(req?.nextUrl?.searchParams?.get('avatarId'));
+  return reponse(await resoudreJumeauDuCompte(session.user.id, { avatarId }));
 }
 
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   let textes: string[] = [];
+  let avatarId: string | null = null;
   try {
-    const corps = (await req.json()) as { textes?: unknown } | null;
+    const corps = (await req.json()) as { textes?: unknown; avatarId?: unknown } | null;
     if (Array.isArray(corps?.textes)) {
       textes = corps!.textes.filter((t): t is string => typeof t === 'string').slice(0, MAX_TEXTES).map((t) => t.slice(0, MAX_TEXTE));
     }
+    avatarId = lireAvatarId(corps?.avatarId);
   } catch { textes = []; }
-  const r = await resoudreJumeauDuCompte(session.user.id);
+  const r = await resoudreJumeauDuCompte(session.user.id, { avatarId });
   if (!r.ok) return reponse(r);
   return reponse(r, { scripts: scriptsDuJumeau(textes, r.prive.prononciations) });
 }
