@@ -260,6 +260,8 @@ export async function GET(req: NextRequest) {
         // l'avoir coché, et `=== true` dans `sanitizeConfig` rejette tout le
         // reste.
         jumeauAvatar: ligne.jumeau_avatar,
+        // Identité LOGIQUE choisie ; colonne absente avant la migration → défaut.
+        jumeauAvatarId: ligne.avatar_id,
       });
 
       // Avec le jumeau, un montage coûte DEUX choses : la génération de

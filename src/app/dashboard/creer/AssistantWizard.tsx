@@ -3946,6 +3946,8 @@ export default function AssistantWizard() {
    * rechargement déclenche la REPRISE : la page a été quittée pendant le rendu.
    */
   const [jumeauGenerationId, setJumeauGenerationId] = useState<string | null>(null);
+  // L'avatar choisi pour CE projet (identité logique) ; null = avatar par défaut du compte.
+  const [jumeauAvatarId, setJumeauAvatarId] = useState<string | null>(null);
   /**
    * État de la REPRISE d'une génération orpheline au montage : 'inactif' (rien
    * en attente), 'encours' (on sonde, l'utilisateur peut quitter et revenir),
@@ -6117,6 +6119,7 @@ export default function AssistantWizard() {
     // reprise si la page se ferme pendant le rendu. `undefined` = rien en
     // attente, comme tous les brouillons antérieurs.
     jumeauGenerationId: jumeauGenerationId ?? undefined,
+    jumeauAvatarId: jumeauAvatarId ?? undefined,
     started,
     step,
     themeId,
@@ -6205,7 +6208,7 @@ export default function AssistantWizard() {
     reglagesTiktok: reglagesTiktok ?? undefined,
   }), [
     couverture, reglagesTiktok,
-    started, step, themeId, customTopic, brief, toneId, format, colors, jumeauMode, jumeauGenerationId,
+    started, step, themeId, customTopic, brief, toneId, format, colors, jumeauMode, jumeauGenerationId, jumeauAvatarId,
     titleStyle, subtitleStyle, ctaStyle, watermarkOverride, watermarkEnabled,
     sequences, introDuration, cardsDuration, videoDuration, ctaDuration,
     transition,
@@ -6295,6 +6298,7 @@ export default function AssistantWizard() {
     // `sanitizeDraft` a déjà tranché : `jumeauMode` explicite, sinon l'ancien
     // `useDigitalTwin: true` → 'avatar', sinon 'aucun'.
     setJumeauMode(draft.jumeauMode ?? 'aucun');
+    setJumeauAvatarId(draft.jumeauAvatarId ?? null);
     // BUG B — génération orpheline : un identifiant persisté signale une vidéo
     // de jumeau lancée mais jamais montée (page fermée pendant le rendu). On
     // REPREND son suivi ici, sans en lancer une seconde ; si le rush porte déjà
@@ -7236,6 +7240,7 @@ export default function AssistantWizard() {
         const video = await genererEtAttendreVideoJumeau({
           textes,
           aspectRatio: format,
+          avatarId: jumeauAvatarId,
           onLancee: (id) => { lancee = id; setJumeauGenerationId(id); },
           onPhase: avancerJumeau,
         });
@@ -7493,7 +7498,7 @@ export default function AssistantWizard() {
     // si le moteur vidéo du jumeau existe. Sinon on s'arrête ici — jamais une
     // vidéo ordinaire livrée sous ce nom.
     const textesJumeau = Object.values(sequenceVoices).map((v) => v.text).filter((t) => typeof t === 'string' && t.length > 0);
-    const refusJumeau = await gardeJumeauAvantRendu({ mode: jumeauMode, textes: textesJumeau });
+    const refusJumeau = await gardeJumeauAvantRendu({ mode: jumeauMode, textes: textesJumeau, avatarId: jumeauAvatarId });
     if (refusJumeau) {
       setError(refusJumeau);
       return;
@@ -7690,6 +7695,7 @@ export default function AssistantWizard() {
           const video = await genererEtAttendreVideoJumeau({
             textes: textesJumeau,
             aspectRatio: format,
+            avatarId: jumeauAvatarId,
             // Persister l'identifiant DÈS le lancement : si la page se ferme
             // pendant les 5-20 min de rendu, la reprise au montage retrouvera
             // cette génération au lieu d'en payer une seconde.
@@ -9526,6 +9532,8 @@ export default function AssistantWizard() {
                   voixCourante={ttsVoiceId}
                   onVoixJumeau={setTtsVoiceId}
                   coutAvatar={AVATAR_VIDEO_COST}
+                  avatarId={jumeauAvatarId}
+                  onAvatarIdChange={setJumeauAvatarId}
                 />
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

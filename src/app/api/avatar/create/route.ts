@@ -15,15 +15,18 @@ import {
 } from '@/lib/avatar/heygen';
 import { CONSENTEMENT_ENROLEMENT, CONSENTEMENT_ENROLEMENT_DID, ETAT_SOURCE_PRETE, SUJET_AVATAR, etatAvatar } from '@/lib/avatar/contrat';
 import {
-  BUCKET_AVATAR, cleSourceAvatar, cleSourceDepuisUrlLegacy, retirerSourceAvatar,
+  BUCKET_AVATAR, cleSourceAvatar, retirerSourceAvatar,
 } from '@/lib/avatar/source';
-import { commencerNouvelleVersionAvatar } from '@/lib/avatar/version';
+import { avatarVivantDuCompte } from '@/lib/avatar/lecture';
+import { listerIdentites, identitesVideoAvecGroupe, emplacementsVideo } from '@/lib/avatar/versions';
+import { lancerVersionCandidate } from '@/lib/avatar/remplacement';
+import { versionPublique } from '@/lib/avatar/actions-version';
+import { cleSourceAvatarDuCompte, sourceAvatarPresente } from '@/lib/avatar/source';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
 import {
-  FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, DUREE_VALIDITE_CONSENTEMENT_MS, etapeDid, rafraichirEntrainementDid, retirerAvatarChezDid,
+  FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, DUREE_VALIDITE_CONSENTEMENT_MS, etapeDid, rafraichirEntrainementDid,
   type AvatarDid,
 } from '@/lib/avatar/did';
-import { retirerObjetPriveAvatar } from '@/lib/avatar/source';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -103,10 +106,11 @@ async function lireAvatarVivant(
     .select('*')
     .eq('user_id', userId)
     .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(1);
+    .order('created_at', { ascending: true });
   if (error) return { ok: false, erreur: error.message };
-  return { ok: true, avatar: ((data?.[0] as AvatarVivant | undefined) ?? null) };
+  // L'avatar PAR DÉFAUT (plusieurs identités possibles), sinon le plus ancien.
+  const lignes = (data ?? []) as AvatarVivant[];
+  return { ok: true, avatar: lignes.find((l) => l.is_default === true) ?? lignes[0] ?? null };
 }
 
 const estCetteVersionDid = (v: AvatarVivant | null, avatarId: string, version: number, cle: string) =>
@@ -120,6 +124,108 @@ const conflit = (code: 'avatar_concurrent' | 'avatar_superseded') =>
     { success: false, error: 'Un autre envoi vient de remplacer votre avatar. Rechargez la page.', code },
     { status: 409 },
   );
+
+/**
+ * ⚠️ NOUVELLE VERSION SANS TOUCHER À L'ACTIVE (incident du 2026-10-09).
+ *
+ * « Remplacer cet avatar » et « Créer un nouvel avatar » passent ICI, jamais
+ * par une réécriture de la ligne active : une VERSION CANDIDATE est créée
+ * dans `avatar_versions`, l'avatar actif reste celui de Créer et de
+ * l'Autopilote, et la bascule n'a lieu que sur « Utiliser cette version ».
+ *
+ * Un emplacement vidéo plein est refusé AVANT tout appel fournisseur.
+ */
+const MESSAGE_EMPLACEMENT_PLEIN =
+  'Votre emplacement d’avatar vidéo est déjà utilisé. Remplacez votre avatar vidéo existant : il restera actif pendant la préparation de la nouvelle version.';
+
+async function cheminCandidat(args: {
+  userId: string;
+  email: string | null | undefined;
+  mode: 'remplacer' | 'nouveau';
+  avatarIdCible: string | null;
+  kind: AvatarKind;
+  nom: string;
+  cleSource: string;
+  cleOriginal: string | null;
+  viaDid: boolean;
+  consentement: { consent_at: string; consent_text: string; consent_version: string; subject_type: string };
+  /** Retire la source déposée par CETTE requête si rien ne s'est lancé. */
+  nettoyer: () => Promise<void>;
+}): Promise<NextResponse> {
+  const { userId, kind } = args;
+  const refuser = async (status: number, code: string, error: string) => {
+    await args.nettoyer();
+    return NextResponse.json({ success: false, error, code }, { status });
+  };
+  if (args.viaDid) return refuser(409, 'remplacement_indisponible', 'Le remplacement n’est pas disponible pour cet avatar.');
+  if (kind === 'video' && !jumeauVideoAutorise(isAdmin(args.email))) {
+    return refuser(403, 'jumeau_video_indisponible', MESSAGES_CREATION.videoIndisponible);
+  }
+  const l = await listerIdentites(userId);
+  if (!l.ok) return refuser(500, 'avatar_read_failed', 'Vos avatars n’ont pas pu être lus. Réessayez.');
+  const emplacementPlein = kind === 'video' && identitesVideoAvecGroupe(l.identites) >= emplacementsVideo();
+
+  let avatarId: string;
+  let groupeExistant: string | null = null;
+  if (args.mode === 'nouveau') {
+    if (emplacementPlein) return refuser(409, 'emplacement_plein', MESSAGE_EMPLACEMENT_PLEIN);
+    // Nouvelle IDENTITÉ : jamais par défaut s'il en existe déjà une — créer
+    // un second avatar ne change pas celui qu'utilisent Créer et l'Autopilote.
+    const { data, error } = await supabaseAdmin
+      .from('user_avatars')
+      .insert({
+        user_id: userId, provider: 'heygen', avatar_type: kind, provider_avatar_id: null, provider_asset_id: null,
+        name: args.nom, status: ETAT_SOURCE_PRETE, source_object_key: null, source_url: null, validated_at: null,
+        version: 1, deleted_at: null, training_error: null, is_default: l.identites.length === 0, ...args.consentement,
+      })
+      .select('id')
+      .single();
+    if (error || !data) return refuser(500, 'avatar_insert_failed', 'Votre nouvel avatar n’a pas pu être enregistré. Réessayez.');
+    avatarId = (data as { id: string }).id;
+  } else {
+    const lu = await avatarVivantDuCompte(userId, args.avatarIdCible ?? undefined);
+    if (!lu.ok) return refuser(500, 'avatar_read_failed', 'Votre avatar n’a pas pu être lu. Réessayez.');
+    if (!lu.avatar) return refuser(404, 'avatar_absent', 'Avatar introuvable.');
+    const ident = lu.avatar as typeof lu.avatar & { provider?: string | null; provider_group_id?: string | null };
+    if (ident.provider === FOURNISSEUR_DID) {
+      return refuser(409, 'remplacement_indisponible', 'Le remplacement n’est pas disponible pour cet avatar.');
+    }
+    avatarId = ident.id;
+    // ⚠️ REMPLACER ne crée JAMAIS de nouveau groupe fournisseur (= un nouvel
+    // emplacement de jumeau). Même nature d'avatar, et pour un jumeau vidéo
+    // la nouvelle vidéo rejoint le GROUPE EXISTANT (nouveau look, l'ancien
+    // reste utilisable). Sinon : refus avant tout fournisseur.
+    const typeActuel = ident.avatar_type === 'video' ? 'video' : 'photo';
+    if (kind !== typeActuel) {
+      return refuser(409, 'type_different', kind === 'video'
+        ? 'Remplacer garde le même type d’avatar. Pour un avatar à partir d’une vidéo, utilisez « Créer un nouvel avatar ».'
+        : 'Remplacer garde le même type d’avatar : envoyez une vidéo, ou utilisez « Créer un nouvel avatar ».');
+    }
+    if (kind === 'video') {
+      if (!ident.provider_group_id) {
+        return refuser(409, 'groupe_absent', 'Cet avatar vidéo ne peut pas recevoir de nouvelle version. Utilisez « Créer un nouvel avatar ».');
+      }
+      groupeExistant = ident.provider_group_id;
+    }
+  }
+
+  const r = await lancerVersionCandidate({
+    userId, avatarId, kind, nom: args.nom, cleSource: args.cleSource, cleOriginal: args.cleOriginal,
+    mode: args.mode, groupeExistant, consentement: args.consentement,
+  });
+  if (!r.ok) {
+    return refuser(r.motif === 'candidate_en_cours' || r.motif === 'groupe_absent' ? 409 : r.motif === 'introuvable' ? 404 : r.motif === 'source_invalide' ? 400 : 500, r.motif, r.message);
+  }
+  if (r.groupeId && kind === 'video') {
+    // Le groupe d'une identité SANS version active (nouvel avatar) — jamais réécrit sur une identité utilisée.
+    await supabaseAdmin.from('user_avatars').update({ provider_group_id: r.groupeId, provider_group_consent: null })
+      .eq('id', avatarId).eq('user_id', userId).is('active_version_id', null).is('provider_group_id', null);
+  }
+  return NextResponse.json({
+    success: true,
+    data: { avatarId, mode: args.mode, candidate: versionPublique(r.version), etat: r.etat, message: r.message ?? null },
+  });
+}
 
 /**
  * GET /api/avatar/create — avatar courant de l'utilisateur + voix disponibles.
@@ -287,6 +393,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Remplacer / nouveau : le choix VIENT de l'écran, l'identité du compte est relue ici.
+    const modeBrut = formData.get('mode');
+    const modeDemande = modeBrut === 'remplacer' || modeBrut === 'nouveau' ? modeBrut : null;
+    const avatarIdBrut = formData.get('avatarId');
+    const avatarIdCible = typeof avatarIdBrut === 'string' && /^[0-9a-f-]{36}$/i.test(avatarIdBrut) ? avatarIdBrut : null;
+    const cleSourceRecue = formData.get('cleSource');
+    const cleOriginalRecue = formData.get('cleOriginal');
+    const consentementCandidat = (k: AvatarKind) => ({
+      consent_at: new Date().toISOString(),
+      consent_text: CONSENT_TEXT[k],
+      consent_version: CONSENTEMENT_ENROLEMENT.version,
+      subject_type: SUJET_AVATAR,
+    });
+
+    // Source PRÉPARÉE (enregistrée / recadrée / coupée, déjà en stockage privé) :
+    // toujours une version candidate — jamais l'avatar actif réécrit.
+    if (!file && typeof cleSourceRecue === 'string') {
+      if (!cleSourceAvatarDuCompte(cleSourceRecue, userId)) {
+        return NextResponse.json({ success: false, error: 'Source invalide.', code: 'avatar_source_invalid' }, { status: 400 });
+      }
+      // La source préparée doit EXISTER au compte avant toute ligne ou tout fournisseur.
+      if (!(await sourceAvatarPresente(userId, cleSourceRecue))) {
+        return NextResponse.json({ success: false, error: 'La vidéo préparée est introuvable. Recommencez la préparation.', code: 'avatar_source_absente' }, { status: 400 });
+      }
+      const cleOriginal = typeof cleOriginalRecue === 'string' && cleSourceAvatarDuCompte(cleOriginalRecue, userId) ? cleOriginalRecue : null;
+      const kindSource: AvatarKind = /\.(mp4|webm|mov)$/i.test(cleSourceRecue) ? 'video' : 'photo';
+      const lu = await lireAvatarVivant(userId);
+      if (!lu.ok) return erreurServeur("Votre avatar n'a pas pu etre lu. Reessayez.", 'avatar_read_failed');
+      return cheminCandidat({
+        userId, email: session.user.email, mode: modeDemande ?? (lu.avatar ? 'remplacer' : 'nouveau'), avatarIdCible,
+        kind: kindSource, nom: name, cleSource: cleSourceRecue, cleOriginal, viaDid,
+        consentement: consentementCandidat(kindSource),
+        // La source préparée appartient au parcours de l'écran : on ne la retire pas ici.
+        nettoyer: async () => {},
+      });
+    }
+
     if (!file) {
       return NextResponse.json(
         { success: false, error: 'Aucun fichier fourni.' },
@@ -395,9 +538,6 @@ export async function POST(req: NextRequest) {
       return erreurServeur("Votre avatar n'a pas pu etre lu. Reessayez.", 'avatar_read_failed');
     }
     const actuel = lecture.avatar;
-    const ancienneCle = actuel
-      ? (actuel.source_object_key ?? cleSourceDepuisUrlLegacy(actuel.source_url, userId))
-      : null;
 
     // D + E. La nouvelle source, sous sa cle privee.
     const nouvelleCle = cleSourceAvatar(userId, ext);
@@ -419,6 +559,19 @@ export async function POST(req: NextRequest) {
       consent_version: viaDid ? CONSENTEMENT_ENROLEMENT_DID.version : CONSENTEMENT_ENROLEMENT.version,
       subject_type: SUJET_AVATAR,
     };
+
+    // Le compte a déjà un avatar (ou demande un NOUVEL avatar) : version
+    // CANDIDATE, l'active n'est pas touchée. L'ancien chemin qui réécrivait
+    // la ligne active (version+1 avant que le fournisseur ait répondu) a été
+    // supprimé : c'est lui qui a coupé le jumeau v3 le 2026-10-09.
+    if (actuel) {
+      return cheminCandidat({
+        userId, email: session.user.email, mode: modeDemande ?? 'remplacer', avatarIdCible,
+        kind, nom: name, cleSource: nouvelleCle, cleOriginal: null, viaDid,
+        consentement,
+        nettoyer: async () => { await retirerSourceAvatar(userId, nouvelleCle, actuel.source_object_key ?? null); },
+      });
+    }
 
     /* ── Le nettoyage de MA source, et de rien d'autre ─────────────────────
        `cleConservee` est la cle que la ligne vivante designe MAINTENANT. Si
@@ -442,6 +595,7 @@ export async function POST(req: NextRequest) {
     let avatarId: string;
     let nouvelleVersion: number;
     if (!actuel) {
+      // Première identité du compte : elle devient l'avatar par défaut.
       const { data: inseree, error: insertError } = await supabaseAdmin
         .from('user_avatars')
         .insert({
@@ -458,6 +612,7 @@ export async function POST(req: NextRequest) {
           version: 1,
           deleted_at: null,
           training_error: null,
+          is_default: true,
           ...consentement,
         })
         .select('id, version')
@@ -490,71 +645,8 @@ export async function POST(req: NextRequest) {
         }
       }
     } else {
-      let transition: Awaited<ReturnType<typeof commencerNouvelleVersionAvatar>>;
-      try {
-        transition = await commencerNouvelleVersionAvatar({
-          userId,
-          avatarId: actuel.id,
-          versionAttendue: actuel.version,
-          // Un consentement D-ID VALIDE survit au changement de source : il
-          // appartient a la personne, pas a la video (rattache a l'ancienne
-          // version ; la personne confirmera sa reutilisation).
-          consentementFournisseur: (actuel as { provider_consent_status?: string | null }).provider_consent_status ?? null,
-          complement: {
-            provider: providerDemande,
-            source_object_key: nouvelleCle,
-            source_url: null,
-            avatar_type: kind,
-            name,
-            ...consentement,
-          },
-        });
-      } catch (erreurCas) {
-        // ⚠️ ERREUR INCERTAINE, meme regle : relire avant de nettoyer.
-        console.error('[Avatar] Transition incertaine :', erreurCas instanceof Error ? erreurCas.message : String(erreurCas));
-        const relu = await lireAvatarVivant(userId);
-        if (!relu.ok) {
-          console.warn(`[Avatar] Nettoyage differe pour ${nouvelleCle} : relecture impossible (${relu.erreur}).`);
-          return erreurServeur("Votre avatar n'a pas pu etre remplace. Reessayez.", 'avatar_replace_failed');
-        }
-        const v = relu.avatar;
-        if (v && v.id === actuel.id && v.version === actuel.version + 1 && v.source_object_key === nouvelleCle) {
-          transition = { ok: true, avatar: { id: v.id, user_id: userId, status: v.status, version: v.version, deleted_at: null, source_object_key: v.source_object_key } };
-        } else if (v && v.id === actuel.id && v.version === actuel.version && v.source_object_key === actuel.source_object_key) {
-          // Rien n'a bouge : notre mutation n'a pas ete appliquee.
-          await retirerMaSource(v);
-          return erreurServeur("Votre avatar n'a pas pu etre remplace. Reessayez.", 'avatar_replace_failed');
-        } else if (v) {
-          return abandonner();
-        } else {
-          await retirerMaSource(null);
-          return erreurServeur("Votre avatar n'a pas pu etre remplace. Reessayez.", 'avatar_replace_failed');
-        }
-      }
-      if (!transition.ok) {
-        if (transition.motif === 'source_invalide') {
-          await retirerMaSource(actuel);
-          return erreurServeur('Source invalide.', 'avatar_source_invalid');
-        }
-        return abandonner();
-      }
-      avatarId = transition.avatar.id;
-      nouvelleVersion = transition.avatar.version;
-    }
-
-    // H. L'ancienne source n'a plus de ligne qui la designe : on la retire.
-    //    APRES la transition, jamais avant — et jamais la nouvelle.
-    if (ancienneCle) await retirerSourceAvatar(userId, ancienneCle, nouvelleCle);
-    //    Meme sort pour ce que l'ancienne version D-ID possedait : sa video de
-    //    consentement (notre objet) et son avatar chez le fournisseur —
-    //    `actuel` est l'instantane EXACT sur lequel le compare-and-set a
-    //    reussi, donc ces identifiants sont certainement ceux de l'ancienne
-    //    version, jamais ceux de la nouvelle. Best effort, jamais bloquant.
-    if (actuel && actuel.provider === FOURNISSEUR_DID) {
-      const ancien = actuel as unknown as AvatarDid;
-      if (ancien.consent_object_key) await retirerObjetPriveAvatar(userId, ancien.consent_object_key);
-      const retrait = await retirerAvatarChezDid(ancien.provider_avatar_id);
-      if (retrait === 'non_retire') console.warn(`[Avatar][D-ID] ancien avatar fournisseur de ${avatarId} v${actuel.version} non retire.`);
+      // Inatteignable : un compte qui a déjà un avatar passe par `cheminCandidat`.
+      return erreurServeur("Votre avatar n'a pas pu etre enregistre. Reessayez.", 'avatar_insert_failed');
     }
 
     // I bis. D-ID : la source est deposee, la version posee — on s'arrete la.

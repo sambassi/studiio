@@ -35,6 +35,9 @@ function fromRow(row: Record<string, unknown> | null): AutopilotConfig {
     // Colonne ABSENTE tant que `2026-09-23-autopilot-jumeau.sql` n'est pas
     // appliquee : `sanitizeConfig` rend alors `false` (pas de jumeau video).
     jumeauAvatar: row.jumeau_avatar,
+    // Colonne ABSENTE tant que `2026-10-10-avatar-identites-versions.sql`
+    // n'est pas appliquée : `null` = avatar par défaut, comme avant.
+    jumeauAvatarId: row.avatar_id,
     topics: row.topics,
     runHour: row.run_hour,
     runTimezone: row.run_timezone,
@@ -182,6 +185,12 @@ const briefReady = () => colonneReady(
   + 'migrations/2026-09-21-autopilot-brief.sql',
 );
 
+const avatarChoisiReady = () => colonneReady(
+  'avatar_id',
+  'choix de l’avatar NON enregistre. Appliquer '
+  + 'migrations/2026-10-10-avatar-identites-versions.sql',
+);
+
 const jumeauReady = () => colonneReady(
   'jumeau_avatar',
   'reglage « video du jumeau » NON enregistre. Appliquer '
@@ -252,6 +261,7 @@ export async function PUT(req: NextRequest) {
     const avecDateDebut = await startDateReady();
     const avecBrief = await briefReady();
     const avecJumeau = await jumeauReady();
+    const avecAvatarChoisi = await avatarChoisiReady();
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(
@@ -315,6 +325,8 @@ export async function PUT(req: NextRequest) {
           // echouer l'upsert ENTIER. Tant qu'elle manque, l'ecran le dit
           // (`jumeauReady: false`) et aucun montage-jumeau n'est produit.
           ...(avecJumeau ? { jumeau_avatar: propre.jumeauAvatar } : null),
+          // L'identité LOGIQUE choisie (null = par défaut) — jamais un id fournisseur.
+          ...(avecAvatarChoisi ? { avatar_id: propre.jumeauAvatarId } : null),
           // `last_run_at` et `last_rush_url` appartiennent au MOTEUR : les
           // laisser ecrire par l'ecran permettrait de relancer une generation
           // en boucle en remettant la date a zero.

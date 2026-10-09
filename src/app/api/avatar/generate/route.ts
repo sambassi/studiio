@@ -11,6 +11,7 @@ import {
   HeyGenError,
   type AvatarAspectRatio,
 } from '@/lib/avatar/heygen';
+import { versionDuCompte, ecrireVersion } from '@/lib/avatar/versions';
 import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
 
 export const maxDuration = 120;
@@ -89,7 +90,31 @@ export async function POST(req: NextRequest) {
       ? await query.eq('id', avatarRowId).limit(1)
       : await query.order('created_at', { ascending: false }).limit(1);
 
-    const avatarRow = avatarRows?.[0];
+    let avatarRow = avatarRows?.[0];
+    // APERÇU D'UNE VERSION CANDIDATE (remplacement) : le clone à juger est
+    // celui de la candidate, pas l'avatar actif. On lit la candidate DU
+    // COMPTE, puis son identité ; le statut ne sera écrit que sur elle.
+    let candidateId: string | null = null;
+    const versionIdDemande = typeof body?.versionId === 'string' ? body.versionId : null;
+    if (versionIdDemande && intention === INTENTION_APERCU) {
+      const cand = await versionDuCompte(userId, versionIdDemande);
+      if (!cand || cand.abandoned_at) {
+        return NextResponse.json({ success: false, error: 'Version introuvable.', code: 'version_introuvable' }, { status: 404 });
+      }
+      const { data: identites } = await supabaseAdmin.from('user_avatars').select('*')
+        .eq('id', cand.user_avatar_id).eq('user_id', userId).is('deleted_at', null).limit(1);
+      const ident = identites?.[0];
+      if (!ident || ident.active_version_id === cand.id) {
+        return NextResponse.json({ success: false, error: 'Version introuvable.', code: 'version_introuvable' }, { status: 404 });
+      }
+      candidateId = cand.id;
+      avatarRow = {
+        ...ident,
+        provider: cand.provider, avatar_type: cand.avatar_type, status: cand.status,
+        provider_avatar_id: cand.provider_avatar_id, version: cand.version,
+        validated_at: cand.validated_at, consent_at: ident.consent_at ?? cand.created_at,
+      };
+    }
     if (!avatarRow) {
       return NextResponse.json(
         { success: false, error: "Aucun avatar. Creez d'abord votre avatar." },
@@ -141,7 +166,9 @@ export async function POST(req: NextRequest) {
       if (remoteStatus && remoteStatus !== avatarRow.status) {
         const patch: Record<string, unknown> = { status: remoteStatus };
         if (remoteStatus === 'failed' && training?.error) patch.training_error = training.error;
-        await supabaseAdmin.from('user_avatars').update(patch).eq('id', avatarRow.id);
+        // Une candidate se met à jour ELLE-MÊME — jamais le miroir de l'actif.
+        if (candidateId) await ecrireVersion(userId, candidateId, patch as { status: string; training_error?: string });
+        else await supabaseAdmin.from('user_avatars').update(patch).eq('id', avatarRow.id);
         avatarRow.status = remoteStatus;
       }
 
@@ -219,6 +246,7 @@ export async function POST(req: NextRequest) {
           user_id: userId,
           user_avatar_id: avatarRow.id,
           avatar_version: avatarRow.version,
+          ...(candidateId ? { avatar_version_id: candidateId } : {}),
           intention: INTENTION_APERCU,
           provider_video_id: null,
           script,

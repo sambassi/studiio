@@ -90,6 +90,8 @@ export interface Draft {
    * ce qui n'y ressemble pas est oublié plutôt que poussé dans un poll.
    */
   jumeauGenerationId?: string;
+  /** Avatar choisi pour ce projet (identité logique) ; absent = avatar par défaut. */
+  jumeauAvatarId?: string;
   step?: number;
   themeId?: string;
   customTopic?: string;
@@ -570,6 +572,10 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     // Forme d'identifiant seulement : lettres, chiffres, `-`, borne à 64. Ce
     // qui n'y ressemble pas (un objet, une URL) est oublié plutôt que poussé
     // dans un poll de statut.
+    jumeauAvatarId:
+      typeof raw.jumeauAvatarId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw.jumeauAvatarId)
+        ? raw.jumeauAvatarId
+        : undefined,
     jumeauGenerationId:
       typeof raw.jumeauGenerationId === 'string' && raw.jumeauGenerationId.length <= 64 && /^[A-Za-z0-9-]+$/.test(raw.jumeauGenerationId)
         ? raw.jumeauGenerationId
