@@ -7,7 +7,7 @@ cat > /tmp/etape3-cle.sh <<'SCRIPT'
 # variable puis redemarrer. Aucun secret affiche.
 set -uo pipefail
 umask 077
-ATTENDU_SHA=9fe6358c7ef37694
+ATTENDU_SHA=1ca7d8c570abade7
 S=$(grep -v '^ATTENDU_SHA=' "$0" | sha256sum | cut -c1-16)
 [ "$S" = "$ATTENDU_SHA" ] || {
   echo "STOP: script altere au collage ($S)"; exit 1; }
@@ -368,7 +368,8 @@ import json,sys
 v = open(sys.argv[1]).read().strip()
 json.dump({"key": "SUPABASE_SERVICE_KEY", "value": v,
   "is_literal": True, "is_shown_once": True,
-  "is_build_time": False, "is_preview": False},
+  "is_buildtime": False, "is_runtime": True,
+  "is_preview": False},
   open(sys.argv[2], "w"))' "$T/cle" "$T/corps"
 echo "=== D. BASCULE ==="
 c=$(api POST "/applications/$APP_UUID/envs" "$T/corps")
