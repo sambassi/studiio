@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prendreVerrouSource, libererVerrouSource } from '@/lib/avatar/verrou-traitement';
 import { MESSAGES_CREATION, jumeauVideoAutorise } from '@/lib/avatar/fournisseurs';
 import { isAdmin } from '@/lib/admin';
 import { auth } from '@/lib/auth/config';
@@ -144,7 +145,26 @@ function identitesMax(env: NodeJS.ProcessEnv = process.env): number {
 const MESSAGE_EMPLACEMENT_PLEIN =
   'Votre emplacement d’avatar vidéo est déjà utilisé. Remplacez votre avatar vidéo existant : il restera actif pendant la préparation de la nouvelle version.';
 
-async function cheminCandidat(args: {
+/**
+ * Une seule création de version / d'avatar à la fois PAR COMPTE : les
+ * contrôles « emplacement libre », « plafond d'avatars » et « une candidate
+ * à la fois » sont des lectures suivies d'écritures — deux requêtes
+ * simultanées passeraient sinon toutes les deux (TOCTOU).
+ */
+async function cheminCandidat(args: Parameters<typeof cheminCandidatSansVerrou>[0]): Promise<NextResponse> {
+  const cle = `creation:${args.userId}`;
+  if (!prendreVerrouSource(cle)) {
+    await args.nettoyer();
+    return NextResponse.json({ success: false, error: 'Une création est déjà en cours pour votre compte. Patientez, puis réessayez.', code: 'creation_en_cours' }, { status: 429 });
+  }
+  try {
+    return await cheminCandidatSansVerrou(args);
+  } finally {
+    libererVerrouSource(cle);
+  }
+}
+
+async function cheminCandidatSansVerrou(args: {
   userId: string;
   email: string | null | undefined;
   mode: 'remplacer' | 'nouveau';

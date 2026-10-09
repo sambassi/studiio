@@ -414,6 +414,17 @@ describe('6-7, 18. Plusieurs identités ; nouveau ≠ remplacer ; permissions', 
     expect(base.user_avatars).toHaveLength(1);
   });
 
+  it('⚠️ deux « nouvel avatar » simultanés : un seul passe le contrôle d’emplacement, l’autre est refusé (429), un seul appel fournisseur', async () => {
+    process.env.AVATAR_EMPLACEMENTS_VIDEO = '2';
+    const [a, b] = await Promise.all([
+      requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'b'), name: 'A' }),
+      requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'd'), name: 'B' }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 429]);
+    expect(fournisseur.appels.filter((x) => x.startsWith('avatars:'))).toHaveLength(1);
+    expect(base.user_avatars).toHaveLength(2);
+  });
+
   it('« Utiliser » (par défaut) change l’avatar par défaut — une seule identité par défaut', async () => {
     process.env.AVATAR_EMPLACEMENTS_VIDEO = '2';
     await requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'b'), name: 'Bassi studio' });
