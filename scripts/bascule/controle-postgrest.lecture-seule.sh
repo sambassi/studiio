@@ -87,7 +87,7 @@ where n.nspname = 'public'
   and not has_function_privilege(:'r', p.oid,
                                  'execute');
 SQL
-)
+) || ko "rpc_illisible"
 [ -z "$F" ] || ko "rpc_sans_execute:$(echo $F | tr ' ' ,)"
 # 3. Avatar v3 intact (empreinte, jamais l'identifiant)
 V=$(sql <<'SQL'
@@ -98,7 +98,7 @@ where u.email = 'contact.artboost@gmail.com'
   and a.deleted_at is null
 order by a.created_at limit 1;
 SQL
-)
+) || ko "v3_illisible"
 VV=${V%% *}; RESTE=${V#* }; VS=${RESTE%% *}
 VP=${RESTE#* }
 EMP=$(printf '%s' "$VP" | sha256sum | cut -c1-16)
