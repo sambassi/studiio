@@ -68,7 +68,11 @@ alter table public.user_avatars
   add column if not exists updated_at timestamptz not null default now();
 
 -- Plusieurs identités par compte : l'ancien « un seul avatar vivant » tombe,
--- remplacé par « un seul avatar PAR DÉFAUT ».
+-- remplacé par « un seul avatar PAR DÉFAUT ». Ce nouvel index garde la
+-- protection contre deux PREMIÈRES créations simultanées : le code crée la
+-- première identité d'un compte avec `is_default = true`, donc la seconde
+-- insertion concurrente échoue en 23505, comme avant. Une identité
+-- SUPPLÉMENTAIRE (« Créer un nouvel avatar ») n'est jamais créée par défaut.
 drop index if exists public.user_avatars_one_active_per_user_uidx;
 create unique index if not exists user_avatars_un_defaut_par_compte_uidx
   on public.user_avatars (user_id)
@@ -220,14 +224,26 @@ end;
 $$;
 
 -- 8. Droits ──────────────────────────────────────────────────────────────
--- Même convention que le reste du dépôt pour les tables ; les fonctions ne
--- sont exécutables que par leur propriétaire (rôle du serveur), comme
--- `debiter_credits`. Si le rôle PostgREST n'est pas propriétaire :
---   grant execute on function public.activer_version_avatar(uuid,uuid,uuid,uuid) to <role>;
---   grant execute on function public.definir_avatar_par_defaut(uuid,uuid) to <role>;
-grant all on table public.avatar_versions to public;
+-- AUCUN droit ouvert : `avatar_versions` contient des clés de sources
+-- biométriques et des identifiants fournisseur. En production, PostgREST se
+-- connecte en `studiio`, propriétaire (rôle des migrations) : il n'a besoin
+-- d'aucun grant. On nomme quand même les rôles serveur s'ils existent, pour
+-- le jour où ils ne seraient plus propriétaires — jamais `public`, `anon`
+-- ou `authenticated` (même convention que `2026-09-14-lut-assets.sql`).
+revoke all on table public.avatar_versions from public;
 revoke all on function public.activer_version_avatar(uuid, uuid, uuid, uuid) from public;
 revoke all on function public.definir_avatar_par_defaut(uuid, uuid) from public;
+do $$
+declare r text;
+begin
+  foreach r in array array['studiio', 'service_role'] loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('grant select, insert, update, delete on table public.avatar_versions to %I', r);
+      execute format('grant execute on function public.activer_version_avatar(uuid, uuid, uuid, uuid) to %I', r);
+      execute format('grant execute on function public.definir_avatar_par_defaut(uuid, uuid) to %I', r);
+    end if;
+  end loop;
+end $$;
 
 commit;
 
