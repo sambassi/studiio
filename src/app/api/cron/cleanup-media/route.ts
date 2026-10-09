@@ -6,6 +6,8 @@ import {
   storageKey, autopilotRushKeys, clesTournageEtAnalyses, draftRushKeys, collectStorageUrlsFromPost,
 } from '@/lib/storage/cleanup';
 import { clesDepuisUrl } from '@/lib/storage/references';
+import { estCleSourceAvatar } from '@/lib/avatar/source-cle';
+import { BUCKET_NAMESPACE_AVATAR } from '@/lib/storage/acces-objet';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -195,6 +197,7 @@ export async function GET(req: NextRequest) {
   let exemptesRushes = 0;
   let exemptesTournage = 0;
   let exemptesBrouillons = 0;
+  let exemptesSourcesAvatar = 0;
   let candidats = 0;
   const buckets = ['media', 'audio'];
   const breakdown = { video: 0, audio: 0, image: 0 };
@@ -282,6 +285,19 @@ export async function GET(req: NextRequest) {
     // l'URL publique : `getPublicUrl` dépend de variables d'environnement et
     // peut rendre une forme relative selon le contexte d'exécution.
     const cle = `${bucket}/${path}`;
+    // ⚠️ LES SOURCES D'AVATAR NE SONT JAMAIS BALAYÉES ICI.
+    //
+    // `<userId>/avatar/source-…` (original importé, version préparée) est
+    // une vidéo, donc sous la rétention de 24 h, et aucune des sources
+    // d'exemption ci-dessous ne la connaît : la source de l'avatar actif
+    // disparaissait le lendemain, et tout ré-entraînement échouait. Ce sont
+    // des données biométriques gérées par les seuls parcours avatar et par
+    // la suppression explicite (`retirerSourceAvatar`) — jamais par l'âge.
+    if (bucket === BUCKET_NAMESPACE_AVATAR && estCleSourceAvatar(path)) {
+      exemptesSourcesAvatar++;
+      preserved++;
+      return;
+    }
     if (rushKeys.has(cle)) {
       exemptesRushes++;
       preserved++;
@@ -337,7 +353,8 @@ export async function GET(req: NextRequest) {
     + `(video=${breakdown.video}, audio=${breakdown.audio}, image=${breakdown.image}) `
     + `conserves=${kept} exemptes=${preserved} `
     + `(posts=${exemptesPosts}, rushes-autopilote=${exemptesRushes}, `
-    + `tournage=${exemptesTournage}, brouillons=${exemptesBrouillons}) `
+    + `tournage=${exemptesTournage}, brouillons=${exemptesBrouillons}, `
+    + `sources-avatar=${exemptesSourcesAvatar}) `
     + `| banque=${rushKeys.size} cles, tournage=${clesTournage.size} cles, `
     + `brouillons=${clesBrouillon.size} cles`,
   );
@@ -356,6 +373,7 @@ export async function GET(req: NextRequest) {
       rushesAutopilote: exemptesRushes,
       tournage: exemptesTournage,
       brouillons: exemptesBrouillons,
+      sourcesAvatar: exemptesSourcesAvatar,
       banque: rushKeys.size,
       clesTournage: clesTournage.size,
       clesBrouillon: clesBrouillon.size,
