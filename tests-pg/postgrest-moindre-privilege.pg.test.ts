@@ -175,7 +175,7 @@ describe('1. La migration', () => {
     const sql = readFileSync(VERIF, 'utf-8');
     const verdict = sql.slice(sql.indexOf('select controle'), sql.lastIndexOf('rollback;'));
     const { rows } = await db.query(verdict);
-    expect(rows.length).toBeGreaterThanOrEqual(9);
+    expect(rows.length).toBeGreaterThanOrEqual(13);
     expect(rows.filter((r) => r.verdict !== 'OK')).toEqual([]);
   });
 });

@@ -10,6 +10,78 @@
 > - `migrations/2026-09-29-postgrest-moindre-privilege.rollback.sql` : le rollback SQL
 > - `tests-pg/postgrest-moindre-privilege.pg.test.ts` : les tests sur un vrai PostgreSQL (35 tests)
 
+## 0. Constat CONFIRMÉ en production (lecture seule, 2026-10-09)
+
+Script : `scripts/audit/postgrest-roles.lecture-seule.sh`, à coller dans Coolify → Terminal → localhost.
+
+| Contrôle | Valeur réelle |
+|---|---|
+| Utilisateur de `PGRST_DB_URI` | `studiio` |
+| `PGRST_DB_ANON_ROLE` | `studiio` |
+| Attributs de `studiio` | SUPERUSER, CREATEROLE, CREATEDB, LOGIN, BYPASSRLS |
+| claim `role` de `SUPABASE_SERVICE_ROLE_KEY` | `studiio` |
+| anonyme : SELECT `users` / EXECUTE `crediter_credits_stripe` | oui / oui |
+| `GET /users` **sans jeton**, en interne | **200** |
+
+L'exposition **depuis Internet** se mesure avec `scripts/audit/postgrest-exposition.lecture-seule.sh`.
+Ce script relève les réseaux, les ports publiés, les règles Traefik et la configuration du proxy
+(valeurs sensibles masquées), puis fait des `GET` sans jeton dont seul le code HTTP est affiché.
+
+**La preuve HTTP de bout en bout est désormais automatisée** dans `tests-pg/postgrest-http.pg.test.ts`.
+Un vrai PostgREST tourne en CI. Le test reproduit la configuration actuelle et prouve la faille :
+- lecture de `users` sans jeton ;
+- écriture des crédits de B sans jeton ;
+- débit de B par RPC sans jeton ;
+- clé `role=studiio` acceptée ;
+- `anon` hérité, membre du superutilisateur.
+
+Il prouve ensuite les 14 contrôles de la cible, puis le rollback.
+
+## 0 bis. Fonctions SECURITY DEFINER (toutes : `search_path` figé, EXECUTE au seul propriétaire)
+
+| Fonction | `p_user_id` libre | Appelée par |
+|---|---|---|
+| `debiter_credits` | oui | `lib/credits` (rendus) |
+| `debiter_credits_operation` | oui | `lib/credits` (avatar, voix, opérations) |
+| `confirmer_rendu`, `confirmer_rendu_sans_debit`, `clore_rendu` | oui | routes de rendu |
+| `lut_assets_ajouter` | oui | import de LUT |
+| `crediter_credits_stripe` | oui | webhook Stripe |
+| `stripe_event_claim` / `complete` / `fail` | non | webhook Stripe |
+| `lut_assets_verifier_plafond` | non (déclencheur) | base |
+
+Avec `PGRST_DB_ANON_ROLE=studiio`, n'importe quel appel **sans jeton** peut les exécuter pour n'importe quel compte.
+C'est la cause unique : les fonctions vérifient bien le compte qu'on leur passe, mais la confiance repose sur
+l'appelant, qui doit être le backend. Dans la cible, seul `service_role` (clé serveur, jamais le navigateur)
+peut les exécuter. Les futures fonctions de #532 (`activer_version_avatar`, `definir_avatar_par_defaut`)
+suivent la même règle, sans aucun GRANT à écrire, grâce aux privilèges par défaut (section 5 de la migration).
+
+Ajouts du 2026-10-10 à la migration (jamais appliquée) :
+- les rôles hérités `anon` et `authenticated` sont neutralisés : NOLOGIN, NOSUPERUSER, NOBYPASSRLS, aucune appartenance ;
+- toute fonction SECURITY DEFINER sans `search_path` en reçoit un ;
+- `verif.sql` contrôle ces quatre points.
+
+**Choix des noms.** L'anonyme reste `web_anon` (rôle neuf) et non `anon`. Un `anon` hérité d'un dump Supabase
+peut porter des droits ou des appartenances qu'aucune migration du dépôt ne connaît. `authenticated` n'a aucun
+usage : le navigateur n'appelle jamais PostgREST, et `authenticator` ne peut pas y basculer.
+
+## 0 ter. Ce qui casserait à la bascule (cartographie du code, 2026-10-10)
+
+- **Navigateur** : aucun appel PostgREST, ni client Supabase côté navigateur.
+  Le module `src/lib/db/supabase.ts` n'exporte plus que `supabaseAdmin`.
+- **Serveur** : tout passe par `supabaseAdmin` : routes, crons, auth NextAuth (table `users`), crédits,
+  calendrier, Créer, Autopilote, avatar, social. Il utilise `SUPABASE_URL` et
+  `SUPABASE_SERVICE_KEY` (à défaut `SUPABASE_SERVICE_ROLE_KEY`).
+  - **Il faut une clé `role=service_role`**, sinon tout répond 403.
+  - Les deux variables portent aujourd'hui `role=studiio`.
+- **10 RPC** appelées : `debiter_credits`, `debiter_credits_operation`, `confirmer_rendu`,
+  `confirmer_rendu_sans_debit`, `clore_rendu`, `lut_assets_ajouter`, `crediter_credits_stripe`,
+  `stripe_event_claim`, `stripe_event_complete`, `stripe_event_fail`. Toutes s'ouvrent à `service_role`.
+- **Hors périmètre de PostgREST** :
+  - le stockage, qui passe par MinIO (`STORAGE_PROVIDER=s3`) et non par PostgREST ;
+  - `src/lib/email/notifications.ts`, qui n'utilise plus son propre client.
+- **Aucune DDL à l'exécution** : seulement des `select` de sondage de colonnes (`colonneReady`),
+  autorisés à `service_role`.
+
 ## 1. Le problème
 
 D'après le dépôt (`tests-pg/lut-assets.pg.test.ts` §0b, mémoire `securite-gate-staging`),

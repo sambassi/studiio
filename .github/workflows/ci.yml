@@ -132,6 +132,17 @@ jobs:
           echo "PostgreSQL n'a pas repondu en 30 s"
           exit 1
 
+      - name: Installer PostgREST (tests HTTP de moindre privilege)
+        # Binaire officiel, version figee. Sans lui, tests-pg/postgrest-http
+        # serait saute : l'etape echoue donc plutot que de passer en silence.
+        run: |
+          V=v12.2.3
+          curl -fsSL -o "$RUNNER_TEMP/pgrst.tar.xz" \
+            "https://github.com/PostgREST/postgrest/releases/download/$V/postgrest-$V-linux-static-x64.tar.xz"
+          tar -xJf "$RUNNER_TEMP/pgrst.tar.xz" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/postgrest" --version
+          echo "POSTGREST_BIN=$RUNNER_TEMP/postgrest" >> "$GITHUB_ENV"
+
       - name: Tests de concurrence et d'idempotence
         env:
           DATABASE_URL: postgresql://studiio_ci:studiio_ci@127.0.0.1:5432/studiio_ci

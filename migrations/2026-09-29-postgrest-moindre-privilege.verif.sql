@@ -160,6 +160,28 @@ from (
   union all
   select 'service_role BYPASSRLS',
          coalesce((select rolbypassrls from pg_roles where rolname = 'service_role'), false)
+  union all
+  select 'service_role n est membre d aucun role (jamais studiio)',
+         not exists (select 1 from pg_auth_members m join pg_roles u on u.oid = m.member
+                      where u.rolname = 'service_role')
+  union all
+  select 'anon / authenticated herites : ni login, ni superuser, ni bypassrls, ni membres',
+         not exists (select 1 from pg_roles where rolname in ('anon','authenticated')
+                      and (rolcanlogin or rolsuper or rolbypassrls or rolcreaterole or rolcreatedb))
+         and not exists (select 1 from pg_auth_members m join pg_roles u on u.oid = m.member
+                          where u.rolname in ('anon','authenticated'))
+  union all
+  select 'toute fonction SECURITY DEFINER de public a un search_path fige',
+         not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                      where n.nspname = 'public' and p.prosecdef
+                        and not exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c
+                                         where c like 'search_path=%'))
+  union all
+  select 'aucune fonction SECURITY DEFINER de public executable par PUBLIC',
+         not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                      cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                      where n.nspname = 'public' and p.prosecdef and a.grantee = 0
+                        and a.privilege_type = 'EXECUTE')
 ) v;
 
 rollback;

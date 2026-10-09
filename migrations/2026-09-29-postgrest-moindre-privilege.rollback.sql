@@ -24,6 +24,11 @@
 -- A jouer en superuser (`psql -U studiio`). Rejouable.
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- NON annule, volontairement (ajouts du 2026-10-10) :
+--   - le search_path fige des fonctions SECURITY DEFINER : sans effet sur
+--     l'application, il ne fait que fermer un detournement de nom ;
+--   - les attributs forces des roles herites `anon` / `authenticated` :
+--     l'instantane de l'etape 0 (verif.sql, section A) les conserve.
 begin;
 
 -- 1. Le schema redevient utilisable par tous, comme avant.
