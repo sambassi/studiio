@@ -151,6 +151,17 @@ describe('Mon avatar — refonte : une carte, deux onglets', () => {
     expect(appels.filter((a) => a.method === 'POST')).toEqual([]);
   });
 
+  it('⚠️ les onglets vivent DANS la colonne centrale : rien entre l’en-tête de page et la colonne d’aperçu collante', async () => {
+    render(<AvatarPage />);
+    await waitFor(() => expect(document.querySelector('[data-avatar-generation]')).not.toBeNull());
+    const onglets = document.querySelector('[role="tablist"]') as HTMLElement;
+    const travail = document.querySelector('[data-colonne="travail"]') as HTMLElement;
+    const grille = document.querySelector('[data-avatar-colonnes]') as HTMLElement;
+    expect(travail.contains(onglets)).toBe(true);
+    // La grille suit directement l'en-tête de page : aucune barre au-dessus des deux colonnes.
+    expect(grille.previousElementSibling?.getAttribute('data-entete')).toBe('avatar');
+  });
+
   it('⚠️ arrivée par `#ma-voix` (lien de Créer > Audio) : l’onglet voix est ouvert', async () => {
     window.history.replaceState(null, '', '/dashboard/avatar#ma-voix');
     const defiler = vi.fn();
