@@ -7,6 +7,7 @@ import {
 } from '@/lib/storage/cleanup';
 import { clesDepuisUrl } from '@/lib/storage/references';
 import { estCleSourceAvatar } from '@/lib/avatar/source-cle';
+import { cleSourceDepuisUrlLegacy } from '@/lib/avatar/source';
 import { BUCKET_NAMESPACE_AVATAR } from '@/lib/storage/acces-objet';
 
 export const dynamic = 'force-dynamic';
@@ -35,12 +36,22 @@ async function lireClesSourcesAvatar(): Promise<Set<string> | null> {
       const { data, error } = await supabaseAdmin.from(table).select(colonnes.join(', ')).order('id', { ascending: true }).range(debut, debut + PAGE - 1);
       if (error || !Array.isArray(data)) return false;
       for (const l of data as unknown as Array<Record<string, unknown>>) {
-        for (const c of colonnes) if (typeof l[c] === 'string' && l[c]) cles.add(l[c] as string);
+        for (const c of colonnes) {
+          if (c === 'user_id' || c === 'source_url') continue;
+          if (typeof l[c] === 'string' && l[c]) cles.add(l[c] as string);
+        }
+        if (typeof l.source_url === 'string' && typeof l.user_id === 'string') {
+          const derivee = cleSourceDepuisUrlLegacy(l.source_url, l.user_id);
+          if (derivee) cles.add(derivee);
+        }
       }
       if (data.length < PAGE) return true;
     }
   };
-  if (!(await lire('user_avatars', ['source_object_key']))) return null;
+  // Lignes historiques : la source n'est connue que par `source_url` (clé
+  // `source-<ts>.ext`, jamais recopiée dans `source_object_key`). Sa clé est
+  // dérivée de l'URL, comme le fait la suppression d'un avatar.
+  if (!(await lire('user_avatars', ['source_object_key', 'source_url', 'user_id']))) return null;
   if (!(await lire('avatar_versions', ['source_object_key', 'original_source_object_key']))) return null;
   return cles;
 }

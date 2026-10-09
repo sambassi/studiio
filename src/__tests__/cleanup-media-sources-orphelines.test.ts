@@ -90,6 +90,19 @@ describe('Sources d’avatar orphelines', () => {
     expect(removed).not.toContain(ORPHELINE);
   });
 
+  it('⚠️ ligne HISTORIQUE (seulement `source_url`, clé `source-<ts>.ext`) : sa source n’est jamais prise pour une orpheline', async () => {
+    const LEGACY = `${U}/avatar/source-1690000000000.mp4`;
+    (listing[`media:${U}/avatar`] as Array<Record<string, string>>).push({ name: 'source-1690000000000.mp4', id: '5', created_at: DIX_JOURS });
+    tables.user_avatars = [{ source_object_key: null, user_id: U, source_url: `https://studiio.pro/storage/v1/object/public/media/${LEGACY}` }];
+    process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
+    try {
+      await GET(req());
+      expect(removed).not.toContain(LEGACY);
+    } finally {
+      (listing[`media:${U}/avatar`] as unknown[]).pop();
+    }
+  });
+
   it('⚠️ références illisibles (versions non migrées) → rien n’est retiré', async () => {
     tables.erreurVersions = true;
     await GET(req());

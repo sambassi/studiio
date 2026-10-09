@@ -15,6 +15,7 @@
  *
  * Réponse : `{ success: true, data: { cleOriginal, infos, preflight } }`.
  */
+import { prendreVerrouSource, libererVerrouSource, MESSAGE_SOURCE_EN_COURS } from '@/lib/avatar/verrou-traitement';
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -35,10 +36,13 @@ const refus = (status: number, error: string, data?: unknown) =>
 
 export async function POST(req: NextRequest) {
   let dossier: string | null = null;
+  let verrouille: string | null = null;
   try {
     const session = await auth();
     if (!session?.user?.id) return refus(401, 'Unauthorized');
     const userId = session.user.id;
+    if (!prendreVerrouSource(userId)) return refus(429, MESSAGE_SOURCE_EN_COURS);
+    verrouille = userId;
 
     let fichier: File | null = null;
     try {
@@ -93,6 +97,7 @@ export async function POST(req: NextRequest) {
     console.error('[Avatar][sources] erreur :', e instanceof Error ? e.message : String(e));
     return refus(500, 'Une erreur interne est survenue.');
   } finally {
+    if (verrouille) libererVerrouSource(verrouille);
     await retirerDossierTemporaire(dossier);
   }
 }

@@ -19,6 +19,7 @@
  *
  * Réponse : `{ success: true, data: { cleOriginal, cleTraitee, infos, preflight, parametres } }`.
  */
+import { prendreVerrouSource, libererVerrouSource, MESSAGE_SOURCE_EN_COURS } from '@/lib/avatar/verrou-traitement';
 import { NextRequest, NextResponse } from 'next/server';
 import { createWriteStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
@@ -45,10 +46,13 @@ const introuvable = () => refus(404, 'Source introuvable.');
 
 export async function POST(req: NextRequest) {
   let dossier: string | null = null;
+  let verrouille: string | null = null;
   try {
     const session = await auth();
     if (!session?.user?.id) return refus(401, 'Unauthorized');
     const userId = session.user.id;
+    if (!prendreVerrouSource(userId)) return refus(429, MESSAGE_SOURCE_EN_COURS);
+    verrouille = userId;
 
     let corps: { cleOriginal?: unknown; parametres?: unknown };
     try { corps = await req.json(); } catch { return refus(400, 'Requête illisible.'); }
@@ -111,6 +115,7 @@ export async function POST(req: NextRequest) {
     console.error('[Avatar][sources/traiter] erreur :', e instanceof Error ? e.message : String(e));
     return refus(500, 'Une erreur interne est survenue.');
   } finally {
+    if (verrouille) libererVerrouSource(verrouille);
     await retirerDossierTemporaire(dossier);
   }
 }

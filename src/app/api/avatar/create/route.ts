@@ -135,6 +135,12 @@ const conflit = (code: 'avatar_concurrent' | 'avatar_superseded') =>
  *
  * Un emplacement vidéo plein est refusé AVANT tout appel fournisseur.
  */
+/** Nombre d'avatars (identités vivantes) par compte : `AVATAR_IDENTITES_MAX`, 3 par défaut. */
+function identitesMax(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number.parseInt(env.AVATAR_IDENTITES_MAX ?? '', 10);
+  return Number.isInteger(n) && n >= 1 ? n : 3;
+}
+
 const MESSAGE_EMPLACEMENT_PLEIN =
   'Votre emplacement d’avatar vidéo est déjà utilisé. Remplacez votre avatar vidéo existant : il restera actif pendant la préparation de la nouvelle version.';
 
@@ -169,6 +175,11 @@ async function cheminCandidat(args: {
   let groupeExistant: string | null = null;
   if (args.mode === 'nouveau') {
     if (emplacementPlein) return refuser(409, 'emplacement_plein', MESSAGE_EMPLACEMENT_PLEIN);
+    // Plafond d'identités par compte, AVANT toute écriture ou tout fournisseur :
+    // chaque identité consomme un avatar chez le fournisseur (quota partagé).
+    if (l.identites.length >= identitesMax()) {
+      return refuser(409, 'identites_max', `Vous avez atteint le nombre maximal d’avatars (${identitesMax()}). Remplacez un avatar existant.`);
+    }
     // Nouvelle IDENTITÉ : jamais par défaut s'il en existe déjà une — créer
     // un second avatar ne change pas celui qu'utilisent Créer et l'Autopilote.
     const { data, error } = await supabaseAdmin

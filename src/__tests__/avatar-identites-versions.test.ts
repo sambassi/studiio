@@ -396,6 +396,24 @@ describe('6-7, 18. Plusieurs identités ; nouveau ≠ remplacer ; permissions', 
     expect(res.status).toBe(400);
   });
 
+  it('⚠️ plafond d’avatars par compte : « nouvel avatar » refusé AVANT toute écriture et tout fournisseur', async () => {
+    process.env.AVATAR_IDENTITES_MAX = '1';
+    const res = await requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'b'), name: 'Encore un' });
+    delete process.env.AVATAR_IDENTITES_MAX;
+    // Vidéo + emplacement plein est tranché d'abord ; en photo, le plafond tranche.
+    expect(res.status).toBe(409);
+    process.env.AVATAR_IDENTITES_MAX = '1';
+    const fd = new FormData();
+    for (const [k, v] of Object.entries({ consent: 'true', mode: 'nouveau', name: 'Photo' })) fd.append(k, v);
+    fd.append('file', new File([new Uint8Array(10)], 'p.jpg', { type: 'image/jpeg' }));
+    const photo = await createRoute.POST(new NextRequest('https://x/api/avatar/create', { method: 'POST', body: fd }));
+    delete process.env.AVATAR_IDENTITES_MAX;
+    expect(photo.status).toBe(409);
+    expect((await photo.json()).code).toBe('identites_max');
+    expect(fournisseur.appels).toEqual([]);
+    expect(base.user_avatars).toHaveLength(1);
+  });
+
   it('« Utiliser » (par défaut) change l’avatar par défaut — une seule identité par défaut', async () => {
     process.env.AVATAR_EMPLACEMENTS_VIDEO = '2';
     await requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'b'), name: 'Bassi studio' });
