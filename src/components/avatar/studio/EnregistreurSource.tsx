@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Camera, Circle, Maximize2, Mic, Pause, Play, RotateCcw, Square, Check, ChevronDown } from 'lucide-react';
+import { Camera, Circle, Maximize2, Mic, Pause, Play, RotateCcw, Square, Check, ChevronDown, ListChecks, SwitchCamera } from 'lucide-react';
 import Prompteur, { REGLAGES_PROMPTEUR_DEFAUT, type ReglagesPrompteur } from '@/components/avatar/studio/Prompteur';
 import TexteAvecPrononciations from '@/components/avatar/studio/TexteAvecPrononciations';
+import OvaleVisage, { GUIDE_TOURNAGE } from '@/components/avatar/studio/OvaleVisage';
 import {
   choisirFormatEnregistrement, formaterDuree, messageErreurCamera, typeEtExtension, verifierPriseSource,
   DEBIT_AUDIO_ENREGISTREMENT, DEBIT_VIDEO_ENREGISTREMENT, EXIGENCES_SOURCE_VIDEO,
@@ -20,6 +21,23 @@ import {
  */
 type Phase = 'inactif' | 'demande' | 'pret' | 'decompte' | 'enregistrement' | 'apercu' | 'erreur';
 const DUREE_MAX_S = 180; // ≤ 600 s exigés ; ~3 min tiennent sous 32 Mo au débit choisi
+
+/** La pause n'existe pas partout (anciens Safari) : sans elle, le bouton n'est pas proposé. */
+const pauseDisponible = () => typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.prototype?.pause === 'function';
+
+/** Le guide de tournage : ce qui fait une bonne source, AVANT d'enregistrer. */
+function GuideTournage() {
+  return (
+    <ul data-enregistreur-guide className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-left text-xs text-gray-300">
+      {GUIDE_TOURNAGE.map((ligne) => (
+        <li key={ligne} className="flex items-start gap-2"><Check className="mt-0.5 w-3.5 h-3.5 shrink-0 text-emerald-400" />{ligne}</li>
+      ))}
+      <li className="flex items-start gap-2"><Check className="mt-0.5 w-3.5 h-3.5 shrink-0 text-emerald-400" />
+        Durée : {EXIGENCES_SOURCE_VIDEO.dureeMinS} s minimum, idéalement 2 minutes
+      </li>
+    </ul>
+  );
+}
 
 export default function EnregistreurSource(props: {
   /** Le fournisseur de l'avatar vidéo n'accepte que le MP4. */
@@ -45,6 +63,12 @@ export default function EnregistreurSource(props: {
   const [defilement, setDefilement] = useState(false);
   const [reglages, setReglages] = useState<ReglagesPrompteur>(REGLAGES_PROMPTEUR_DEFAUT);
   const [cleRemise, setCleRemise] = useState(0);
+  /** Caméra avant (`user`) ou arrière (`environment`) — le bouton « Changer de caméra » du mobile. */
+  const [orientation, setOrientation] = useState<'user' | 'environment'>('user');
+  const [enPause, setEnPause] = useState(false);
+  /** Temps passé en pause, déduit de la durée de la prise. */
+  const tempsPause = useRef(0);
+  const debutPause = useRef<number | null>(null);
 
   const flux = useRef<MediaStream | null>(null);
   const video = useRef<HTMLVideoElement | null>(null);
@@ -69,7 +93,7 @@ export default function EnregistreurSource(props: {
     ? choisirFormatEnregistrement((m) => MediaRecorder.isTypeSupported(m), props.mp4Requis)
     : null;
 
-  const ouvrir = useCallback(async (ids?: { camera?: string; micro?: string }) => {
+  const ouvrir = useCallback(async (ids?: { camera?: string; micro?: string; orientation?: 'user' | 'environment' }) => {
     setErreur(null);
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setErreur('Votre navigateur ne permet pas d’enregistrer depuis la caméra. Importez une vidéo à la place.');
@@ -87,7 +111,7 @@ export default function EnregistreurSource(props: {
     couper();
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: ids?.camera ? { deviceId: { exact: ids.camera } } : { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: ids?.camera ? { deviceId: { exact: ids.camera } } : { facingMode: ids?.orientation ?? 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: ids?.micro ? { deviceId: { exact: ids.micro } } : true,
       });
       flux.current = s;
@@ -151,12 +175,15 @@ export default function EnregistreurSource(props: {
       const { type, extension } = typeEtExtension(format);
       const blob = new Blob(morceaux.current, { type });
       const fichier = new File([blob], `ma-source-avatar.${extension}`, { type });
-      setPrise({ url: URL.createObjectURL(blob), fichier, dureeS: (Date.now() - debutPrise.current) / 1000 });
+      setPrise({ url: URL.createObjectURL(blob), fichier, dureeS: dureeEffective() });
       setDefilement(false);
       setPhase('apercu');
     };
     enregistreur.current = r;
     r.start(1000);
+    tempsPause.current = 0;
+    debutPause.current = null;
+    setEnPause(false);
     setDuree(0);
     setCleRemise((k) => k + 1);
     if (texte.trim()) setDefilement(true);
@@ -164,16 +191,47 @@ export default function EnregistreurSource(props: {
     const debut = Date.now();
     debutPrise.current = debut;
     minuteur.current = setInterval(() => {
-      const s = (Date.now() - debut) / 1000;
+      if (debutPause.current !== null) return;
+      const s = dureeEffective();
       setDuree(s);
       if (s >= DUREE_MAX_S) arreter();
     }, 250);
   };
 
+  /** Durée RÉELLEMENT enregistrée : les pauses n'y comptent pas. */
+  const dureeEffective = () => {
+    const pauseEnCours = debutPause.current !== null ? Date.now() - debutPause.current : 0;
+    return (Date.now() - debutPrise.current - tempsPause.current - pauseEnCours) / 1000;
+  };
+
+  const basculerPause = () => {
+    const r = enregistreur.current;
+    if (!r) return;
+    if (r.state === 'recording') {
+      r.pause();
+      debutPause.current = Date.now();
+      setEnPause(true);
+      setDefilement(false);
+    } else if (r.state === 'paused') {
+      if (debutPause.current !== null) tempsPause.current += Date.now() - debutPause.current;
+      debutPause.current = null;
+      r.resume();
+      setEnPause(false);
+    }
+  };
+
+  const changerCamera = () => {
+    const suivante = orientation === 'user' ? 'environment' : 'user';
+    setOrientation(suivante);
+    void ouvrir({ orientation: suivante, micro });
+  };
+
   const arreter = () => {
     if (minuteur.current) clearInterval(minuteur.current);
     minuteur.current = null;
-    if (enregistreur.current?.state === 'recording') enregistreur.current.stop();
+    if (debutPause.current !== null) { tempsPause.current += Date.now() - debutPause.current; debutPause.current = null; }
+    setEnPause(false);
+    if (enregistreur.current?.state === 'recording' || enregistreur.current?.state === 'paused') enregistreur.current.stop();
   };
 
   const recommencer = () => {
@@ -205,6 +263,10 @@ export default function EnregistreurSource(props: {
         <div className="rounded-2xl bg-gray-900/60 p-5 space-y-3 text-center">
           <Camera className="w-8 h-8 mx-auto text-purple-300" />
           <p className="text-sm text-gray-300">Filmez-vous face caméra, seul à l’image, visage visible du début à la fin, dans un endroit calme et bien éclairé. Parlez naturellement pendant {EXIGENCES_SOURCE_VIDEO.dureeMinS} secondes au moins — idéalement 2 minutes. Un prompteur peut vous aider.</p>
+          <div className="rounded-xl bg-black/30 p-3 space-y-2">
+            <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-white"><ListChecks className="w-4 h-4 text-purple-300" /> Guide de tournage</p>
+            <GuideTournage />
+          </div>
           <button type="button" data-enregistreur-activer onClick={() => void ouvrir()} className="button-primary px-5 py-2.5 text-sm">Activer la caméra</button>
         </div>
       )}
@@ -237,10 +299,13 @@ export default function EnregistreurSource(props: {
           muted
           playsInline
           className={`absolute inset-0 w-full h-full object-cover ${phase === 'apercu' ? 'hidden' : ''}`}
-          style={{ transform: 'scaleX(-1)' }}
+          style={{ transform: orientation === 'user' ? 'scaleX(-1)' : 'none' }}
         />
         {phase === 'apercu' && prise && (
           <video data-enregistreur-video="prise" src={prise.url} controls playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
+        )}
+        {(phase === 'pret' || phase === 'decompte' || phase === 'enregistrement') && (
+          <OvaleVisage attribut="data-enregistreur-ovale" legende={phase === 'pret' ? 'Placez votre visage dans l’ovale' : undefined} />
         )}
         {(phase === 'pret' || phase === 'decompte' || phase === 'enregistrement') && (
           <Prompteur texte={texte} defilement={defilement} reglages={reglages} cleRemiseAZero={cleRemise} />
@@ -273,6 +338,15 @@ export default function EnregistreurSource(props: {
 
       {phase === 'pret' && (
         <div className="space-y-4">
+          {cameras.length > 1 && (
+            <button type="button" data-enregistreur-changer-camera onClick={changerCamera} className="sm:hidden w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-800 py-2.5 text-sm">
+              <SwitchCamera className="w-4 h-4" /> Changer de caméra
+            </button>
+          )}
+          <details className="rounded-2xl bg-gray-900/60 px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium flex items-center gap-2"><ListChecks className="w-4 h-4 text-purple-300" /> Guide de tournage</summary>
+            <div className="pt-3"><GuideTournage /></div>
+          </details>
           {(cameras.length > 1 || micros.length > 1) && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {cameras.length > 1 && (
@@ -330,6 +404,11 @@ export default function EnregistreurSource(props: {
           {texte.trim() && (
             <button type="button" data-prompteur-lecture onClick={() => setDefilement((d) => !d)} className="inline-flex items-center gap-1.5 rounded-xl bg-gray-800 px-4 py-2.5 text-sm">
               {defilement ? <><Pause className="w-4 h-4" /> Pause du texte</> : <><Play className="w-4 h-4" /> Reprendre le texte</>}
+            </button>
+          )}
+          {pauseDisponible() && (
+            <button type="button" data-enregistreur-pause={enPause ? 'oui' : 'non'} onClick={basculerPause} className="inline-flex items-center gap-1.5 rounded-xl bg-gray-800 px-4 py-2.5 text-sm">
+              {enPause ? <><Play className="w-4 h-4" /> Reprendre</> : <><Pause className="w-4 h-4" /> Pause</>}
             </button>
           )}
           <button type="button" data-enregistreur-arreter onClick={arreter} className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-medium text-white">
