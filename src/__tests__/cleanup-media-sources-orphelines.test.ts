@@ -24,14 +24,18 @@ const removed: string[] = [];
 
 vi.mock('@/lib/db/supabase', () => {
   const builder = (table: string) => {
+    let plage: [number, number] | null = null;
     const resultat = () => {
       if (table === 'avatar_versions' && tables.erreurVersions) return { data: null, error: { message: 'relation "avatar_versions" does not exist' } };
-      if (table === 'user_avatars') return { data: tables.user_avatars, error: null };
-      if (table === 'avatar_versions') return { data: tables.avatar_versions, error: null };
+      // Comme PostgREST : au plus 1000 lignes par réponse, la plage demandée sinon.
+      const couper = (l: unknown[]) => (plage ? l.slice(plage[0], plage[1] + 1) : l).slice(0, 1000);
+      if (table === 'user_avatars') return { data: couper(tables.user_avatars), error: null };
+      if (table === 'avatar_versions') return { data: couper(tables.avatar_versions), error: null };
       return { data: [], error: null };
     };
     const api: Record<string, unknown> = {
-      select: () => api, in: () => api, eq: () => api, gt: () => api, order: () => api, range: () => api, limit: () => api,
+      select: () => api, in: () => api, eq: () => api, gt: () => api, order: () => api, limit: () => api,
+      range: (a: number, b: number) => { plage = [a, b]; return api; },
       then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) => Promise.resolve(resultat()).then(ok, ko),
     };
     return api;
@@ -78,6 +82,12 @@ describe('Sources d’avatar orphelines', () => {
     const body = await (await GET(req())).json();
     expect(removed).toEqual([ORPHELINE]);
     expect(body.exemptes.sourcesAvatarOrphelinesRetirees).toBe(1);
+  });
+
+  it('⚠️ plus de 1000 identités : la source utilisée, en 2ᵉ page, n’est jamais prise pour une orpheline', async () => {
+    tables.user_avatars = [...Array.from({ length: 1500 }, (_, i) => ({ source_object_key: `x/avatar/source-${i}.mp4` })), { source_object_key: ORPHELINE }];
+    await GET(req());
+    expect(removed).not.toContain(ORPHELINE);
   });
 
   it('⚠️ références illisibles (versions non migrées) → rien n’est retiré', async () => {

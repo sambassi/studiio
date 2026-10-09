@@ -103,6 +103,12 @@ export interface DepsMoteurJumeau {
   fetch?: typeof fetch;
 }
 
+/** Une colonne inconnue de la base ou du cache PostgREST (migration non appliquée). */
+export function estColonneAbsente(e: { code?: string; message?: string } | null | undefined): boolean {
+  if (!e) return false;
+  return e.code === '42703' || e.code === 'PGRST204' || /column .* does not exist|Could not find the .* column/i.test(e.message ?? '');
+}
+
 export async function genererVideoJumeau(
   args: {
     userId: string; textes: string[]; aspectRatio?: string;
@@ -169,16 +175,26 @@ export async function genererVideoJumeau(
     ...(jumeau.prive.avatarVersionId ? { avatar_version_id: jumeau.prive.avatarVersionId } : {}),
     ...(fournisseur === 'heygen' ? { engine: choixMoteur.moteur } : {}),
   };
+  // ⚠️ Base d'AVANT la migration identités/versions : ces colonnes n'existent
+  // pas, et les écrire ferait échouer TOUTE génération. Une colonne absente
+  // (42703 / PGRST204) retire la traçabilité et rejoue la même réservation.
+  let avecTracabilite = Object.keys(tracabilite).length > 0;
   let generationId: string | null = null;
   for (let tentative = 0; tentative < 2 && !generationId; tentative += 1) {
     // `provider` = le fournisseur de l'avatar : c'est lui que /api/avatar/status
     // interroge (HeyGen ou D-ID) et rembourse en cas d'échec après lancement.
     const { data: reservee, error: erreurReservation } = await supabaseAdmin
       .from('avatar_generations')
-      .insert({ ...identite, ...tracabilite, intention: 'normale', provider: fournisseur, provider_video_id: null, status: 'pending', credits_charged: 0 })
+      .insert({ ...identite, ...(avecTracabilite ? tracabilite : {}), intention: 'normale', provider: fournisseur, provider_video_id: null, status: 'pending', credits_charged: 0 })
       .select('id')
       .single();
     if (!erreurReservation && reservee) { generationId = (reservee as { id: string }).id; break; }
+    if (avecTracabilite && estColonneAbsente(erreurReservation)) {
+      console.warn('[Jumeau] traçabilité version/moteur non enregistrée : migration identités/versions non appliquée.');
+      avecTracabilite = false;
+      tentative -= 1;
+      continue;
+    }
     if (!estConflitUnique(erreurReservation)) return { ok: false, motif: 'base', message: 'La génération n’a pas pu être réservée.' };
     const { data: enVol, error: erreurLecture } = await supabaseAdmin
       .from('avatar_generations')

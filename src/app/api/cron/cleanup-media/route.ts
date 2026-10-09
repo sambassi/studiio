@@ -26,16 +26,22 @@ async function clesSourcesAvatarReferencees(): Promise<Set<string> | null> {
   }
 }
 async function lireClesSourcesAvatar(): Promise<Set<string> | null> {
+  // PAGINÉ : PostgREST plafonne les réponses (`db-max-rows`). Une liste
+  // tronquée ferait passer une source UTILISÉE pour orpheline.
+  const PAGE = 1000;
   const cles = new Set<string>();
-  const a = await supabaseAdmin.from('user_avatars').select('source_object_key');
-  if (a.error) return null;
-  for (const l of (a.data ?? []) as Array<{ source_object_key: string | null }>) if (l.source_object_key) cles.add(l.source_object_key);
-  const v = await supabaseAdmin.from('avatar_versions').select('source_object_key, original_source_object_key');
-  if (v.error) return null;
-  for (const l of (v.data ?? []) as Array<{ source_object_key: string | null; original_source_object_key: string | null }>) {
-    if (l.source_object_key) cles.add(l.source_object_key);
-    if (l.original_source_object_key) cles.add(l.original_source_object_key);
-  }
+  const lire = async (table: string, colonnes: string[]): Promise<boolean> => {
+    for (let debut = 0; ; debut += PAGE) {
+      const { data, error } = await supabaseAdmin.from(table).select(colonnes.join(', ')).order('id', { ascending: true }).range(debut, debut + PAGE - 1);
+      if (error || !Array.isArray(data)) return false;
+      for (const l of data as unknown as Array<Record<string, unknown>>) {
+        for (const c of colonnes) if (typeof l[c] === 'string' && l[c]) cles.add(l[c] as string);
+      }
+      if (data.length < PAGE) return true;
+    }
+  };
+  if (!(await lire('user_avatars', ['source_object_key']))) return null;
+  if (!(await lire('avatar_versions', ['source_object_key', 'original_source_object_key']))) return null;
   return cles;
 }
 export const maxDuration = 120;
