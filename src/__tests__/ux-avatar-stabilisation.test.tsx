@@ -200,7 +200,8 @@ describe('2. Carte principale — le fil, le statut, la notification, la consign
     expect(c, 'la carte principale existe').not.toBeNull();
     expect(c.classList.contains('card-base')).toBe(true);
     expect(q('[data-colonne="travail"]')!.contains(c), 'dans la colonne travail').toBe(true);
-    expect(q('[data-colonne="travail"]')!.firstElementChild).toBe(c);
+    // Onglet « Avatar vidéo » : sans avatar, la carte principale ouvre le panneau.
+    expect(q('[data-colonne="travail"] [data-avatar-panneau="avatar"]')!.firstElementChild).toBe(c);
     expect(qa('[data-avatar-carte-principale]')).toHaveLength(1);
     expect(c.querySelector('[data-fil-etapes]'), 'le fil vit dans la carte').not.toBeNull();
     expect(qa('[data-fil-etapes]')).toHaveLength(1);
@@ -281,20 +282,25 @@ describe('3. Aperçu — un titre discret en capitales, avec icône', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-describe('4. Ma voix — UNE section après les colonnes, UN titre, composants voix RÉELS', () => {
-  it('⚠️ une seule section `[data-avatar-ma-voix]`, hors des colonnes, après elles ; ordre DOM carte → colonne aperçu → Ma voix', async () => {
+describe('4. Ma voix — UN onglet « Voix & Prononciation », UN titre, composants voix RÉELS', () => {
+  it('⚠️ une seule section `[data-avatar-ma-voix]` : le panneau de l’onglet voix, dans la colonne centrale, après le panneau avatar — jamais dans la colonne d’aperçu', async () => {
     await monter();
     expect(qa('[data-avatar-ma-voix]')).toHaveLength(1);
     const section = sectionVoix()!;
-    const colonnes = q('[data-colonnes]')!;
-    expect(colonnes).not.toBeNull();
-    expect(colonnes.contains(section), 'Ma voix n’est pas dans les colonnes').toBe(false);
-    expect(precede(colonnes, section), 'après les colonnes').toBe(true);
-    expect(precede(carte()!, q('[data-colonne="apercu"]')!), 'carte → colonne aperçu').toBe(true);
-    expect(precede(q('[data-colonne="apercu"]')!, section), 'colonne aperçu → Ma voix').toBe(true);
-    // Aucun composant voix ne s'est glissé dans la colonne de travail.
-    expect(q('[data-colonne="travail"] [data-voix-panel]')).toBeNull();
-    expect(qa('[data-colonne="travail"] h3').map((h) => h.textContent?.trim())).not.toContain('Enregistrer ma voix');
+    expect(section.getAttribute('role')).toBe('tabpanel');
+    expect(section.id).toBe('ma-voix');
+    const travail = q('[data-colonne="travail"]')!;
+    expect(travail.contains(section), 'Ma voix vit dans la colonne centrale').toBe(true);
+    expect(q('[data-colonne="apercu"]')!.contains(section)).toBe(false);
+    const panneauAvatar = q('[data-avatar-panneau="avatar"]')!;
+    expect(panneauAvatar.contains(carte()!), 'la carte principale est dans le panneau avatar').toBe(true);
+    expect(precede(panneauAvatar, section), 'panneau avatar → panneau voix').toBe(true);
+    // Aucun composant voix ne s'est glissé dans le panneau avatar.
+    expect(panneauAvatar.querySelector('[data-voix-panel]')).toBeNull();
+    expect([...panneauAvatar.querySelectorAll('h3')].map((h) => h.textContent?.trim())).not.toContain('Enregistrer ma voix');
+    // Un seul onglet visible à la fois (l'autre panneau est seulement masqué : rien ne se démonte).
+    expect(panneauAvatar.classList.contains('hidden')).toBe(false);
+    expect(section.classList.contains('hidden')).toBe(true);
   });
 
   it('⚠️ UN seul titre « Ma voix » : l’EnteteSection de niveau 2 (`[data-entete="ma-voix"] [data-entete-titre]`) — aucun h2 dans les composants voix', async () => {

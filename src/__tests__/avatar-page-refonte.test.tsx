@@ -684,6 +684,6 @@ describe('I. Un seul CTA principal visible à la fois — dans chaque état touc
     // Validé, notification « Avatar validé. » affichée : « Générer » est le seul primaire.
     await act(async () => { fireEvent.click(q('[data-avatar-apercu="valider"]')!); });
     await waitFor(() => expect(etatsFil().validation).toBe('terminee'));
-    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Générer (40 crédits)']);
+    expect(primaires().map((b) => b.textContent?.trim())).toEqual(['Générer la vidéo (40 crédits)']);
   });
 });

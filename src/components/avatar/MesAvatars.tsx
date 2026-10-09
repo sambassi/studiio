@@ -8,7 +8,7 @@
  * prépare à côté, et ne devient utilisée que sur « Utiliser cette version ».
  * L'écran ne voit aucun identifiant fournisseur ni aucune clé de stockage.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Loader2, Plus, Star, RefreshCw, Eye, Check, X, AlertTriangle, Settings2 } from 'lucide-react';
 import FluxSourceAvatar from '@/components/avatar/FluxSourceAvatar';
 
@@ -44,6 +44,13 @@ export default function MesAvatars(props: {
   onChange?: () => void;
   /** Ouvre « Remplacer » sur l'avatar par défaut (geste « Changer de source » de la page). Incrémenté à chaque demande. */
   demandeRemplacement?: number;
+  /**
+   * LA carte de l'avatar actif, fusionnée : ce que la page sait en plus (ligne
+   * de version, « Utiliser dans Créer », « Changer d'avatar », source repliée)
+   * s'insère DANS la carte de l'avatar par défaut — une seule carte, pas trois.
+   * Si la liste ne peut pas être lue, la carte est rendue seule avec ce contenu.
+   */
+  carteActive?: { attributs: Record<string, string>; contenu: ReactNode; actions?: ReactNode; apres?: ReactNode; nom: string; type: 'photo' | 'video' };
 }) {
   const [donnees, setDonnees] = useState<DonneesAvatars | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -125,18 +132,58 @@ export default function MesAvatars(props: {
     setApercu({ versionId: v.id, url: r.j.data.url, jeton: r.j.data.jeton });
   };
 
-  // Illisible ou en chargement : rien — la page de l'avatar reste utilisable sans ce bloc.
-  if (!donnees) return null;
+  const ca = props.carteActive;
+  const enteteCarte = (nom: string, type: 'photo' | 'video' | null, actif: boolean, parDefaut: boolean) => (
+    <div className="min-w-0">
+      {actif && <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-300">Avatar actif</div>}
+      <div className="mt-0.5 flex flex-wrap items-center gap-2">
+        <span className="text-lg font-semibold text-white truncate">{nom}</span>
+        {actif && (
+          <span data-badge-actif className="rounded-full bg-studiio-primary/20 text-purple-200 px-2 py-0.5 text-[10px] font-semibold">Actif</span>
+        )}
+        {parDefaut && (
+          <span data-badge-defaut className="inline-flex items-center gap-1 rounded-full bg-gray-800 text-gray-200 px-2 py-0.5 text-[10px]">
+            <Star className="w-3 h-3" /> Par défaut
+          </span>
+        )}
+      </div>
+      {type && <div className="text-xs text-gray-300 mt-0.5">{type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}</div>}
+    </div>
+  );
+  // Les classes du produit : `card-base` et les boutons `button-*` (globals.css).
+  const TERTIAIRE = 'button-ghost gap-1.5 !min-h-[30px] !text-xs';
+  const CARTE_ACTIVE = 'card-base !p-5 space-y-4 border-studiio-primary/40';
+  const CARTE = 'card-base !p-5 space-y-4';
+
+  // Illisible ou en chargement : la carte de l'avatar actif seule (si la page
+  // en a une), sinon rien — la page reste utilisable sans ce bloc.
+  if (!donnees) {
+    if (!ca) return null;
+    return (
+      <section data-mes-avatars="carte-seule" className="space-y-3">
+        <article {...ca.attributs} className={CARTE_ACTIVE}>
+          {enteteCarte(ca.nom, null, true, false)}
+          {ca.contenu}
+          {ca.actions && <div className="flex flex-wrap gap-2">{ca.actions}</div>}
+          {ca.apres}
+        </article>
+      </section>
+    );
+  }
+
+  const ordre = [...donnees.avatars].sort((x, y) => Number(y.parDefaut) - Number(x.parDefaut));
 
   return (
-    <section data-mes-avatars className="card-base p-5 space-y-4">
+    <section data-mes-avatars className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold">Mes avatars</h2>
+        <div>
+          <h2 className="text-base font-semibold text-white">Mes avatars</h2>
+        </div>
         <button
           type="button"
           data-nouvel-avatar
           onClick={() => setFlux({ mode: 'nouveau' })}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-1.5 text-xs font-medium"
+          className="button-secondary shrink-0 gap-1.5"
         >
           <Plus className="w-3.5 h-3.5" /> Créer un nouvel avatar
         </button>
@@ -145,69 +192,69 @@ export default function MesAvatars(props: {
       {erreur && <div data-mes-avatars-erreur className="rounded-lg bg-red-500/10 border border-red-500/30 p-2.5 text-xs text-red-200">{erreur}</div>}
 
       {donnees.avatars.length === 0 && (
-        <p className="text-sm text-gray-400">Aucun avatar pour l’instant. Créez le premier à partir d’une photo ou d’une vidéo.</p>
+        <p className="text-sm text-gray-300">Aucun avatar pour l’instant. Créez le premier à partir d’une photo ou d’une vidéo.</p>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {donnees.avatars.map((a) => {
+      <div className="grid grid-cols-1 gap-3">
+        {ordre.map((a, i) => {
           const s = statutCarte(a);
           const c = a.candidate;
+          const actif = a.parDefaut && a.utilisable;
+          const fusion = a.parDefaut && ca ? ca : null;
           return (
-            <article key={a.id} data-carte-avatar={a.id} className="rounded-xl border border-gray-800 bg-gray-900/50 p-4 space-y-3">
-              <header className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="font-medium flex items-center gap-2">
-                    {a.nom}
-                    {a.parDefaut && (
-                      <span data-badge-defaut className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 text-purple-200 text-[10px] px-2 py-0.5">
-                        <Star className="w-3 h-3" /> Par défaut
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-0.5">{a.type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}</div>
-                </div>
-                <span data-statut-carte={s.ton} className={`text-[11px] rounded-full px-2 py-0.5 ${s.ton === 'ok' ? 'bg-emerald-500/15 text-emerald-200' : s.ton === 'erreur' ? 'bg-red-500/15 text-red-200' : 'bg-amber-500/15 text-amber-200'}`}>
+            <div key={a.id} className="space-y-3">
+              {i === 1 && !ordre[1].parDefaut && ordre[0].parDefaut && (
+                <div className="pt-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Autres avatars</div>
+              )}
+            <article
+              data-carte-avatar={a.id}
+              {...(fusion ? fusion.attributs : {})}
+              className={a.parDefaut ? CARTE_ACTIVE : CARTE}
+            >
+              <header className="flex items-start justify-between gap-3">
+                {enteteCarte(a.nom, fusion ? null : a.type, actif, a.parDefaut)}
+                <span data-statut-carte={s.ton} className={`shrink-0 text-[11px] font-medium rounded-full px-2.5 py-1 ${s.ton === 'ok' ? 'bg-emerald-500/15 text-emerald-200' : s.ton === 'erreur' ? 'bg-red-500/15 text-red-200' : 'bg-amber-500/15 text-amber-200'}`}>
                   {s.libelle}
                 </span>
               </header>
 
-              {a.versionActive && (
+              {a.versionActive && !fusion && (
                 <p data-version-active className="text-xs text-gray-300">Version actuellement utilisée : v{a.versionActive.version}</p>
               )}
 
               {c && (c.etat === 'preparation' || c.etat === 'entrainement') && (
-                <div data-candidate="en-preparation" className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-xs text-amber-100 flex items-start gap-2">
+                <div data-candidate="en-preparation" className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-100 flex items-start gap-2">
                   <Loader2 className="w-3.5 h-3.5 animate-spin mt-0.5 shrink-0" />
                   <span>Nouvelle version en préparation (v{c.version}). {a.versionActive ? `Votre version v${a.versionActive.version} reste utilisée en attendant.` : 'Cette page se met à jour toute seule.'}</span>
                 </div>
               )}
 
               {c?.etat === 'echec' && (
-                <div data-candidate="echec" className="rounded-lg bg-red-500/10 border border-red-500/30 p-2.5 text-xs space-y-2">
+                <div data-candidate="echec" className="rounded-xl bg-red-500/10 border border-red-500/30 p-3 text-xs space-y-2">
                   <div className="flex items-start gap-2 text-red-100">
                     <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                     <div>
                       <div className="font-medium">La nouvelle version n’a pas pu être créée</div>
-                      {c.message && <div className="text-red-200/80 mt-0.5">{c.message}</div>}
+                      {c.message && <div className="text-red-200/90 mt-0.5">{c.message}</div>}
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" data-action="reessayer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className="rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">Réessayer</button>
-                    <button type="button" data-action="modifier-video" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className="rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">Modifier la vidéo</button>
-                    <button type="button" data-action="abandonner" disabled={occupe !== null} onClick={() => void action(`garder-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'garder' })} className="rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">Abandonner</button>
+                    <button type="button" data-action="reessayer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>Réessayer</button>
+                    <button type="button" data-action="modifier-video" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>Modifier la vidéo</button>
+                    <button type="button" data-action="abandonner" disabled={occupe !== null} onClick={() => void action(`garder-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'garder' })} className={TERTIAIRE}>Abandonner</button>
                   </div>
                 </div>
               )}
 
               {c?.etat === 'prete' && (
-                <div data-candidate="prete" className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-2.5 text-xs space-y-2">
+                <div data-candidate="prete" className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs space-y-2">
                   <div className="font-medium text-emerald-100">Votre nouvel avatar est prêt</div>
-                  <div className="text-emerald-100/80">Regardez l’aperçu, puis choisissez : rien ne change tant que vous n’avez pas décidé.</div>
+                  <div className="text-emerald-100/90">Regardez l’aperçu, puis choisissez : rien ne change tant que vous n’avez pas décidé.</div>
                   {apercu?.versionId === c.id && (
                     <video data-apercu-candidate src={apercu.url} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" data-action="apercu" disabled={occupe !== null} onClick={() => void voirApercu(a, c)} className="inline-flex items-center gap-1 rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">
+                    <button type="button" data-action="apercu" disabled={occupe !== null} onClick={() => void voirApercu(a, c)} className={TERTIAIRE}>
                       {occupe === `apercu-${c.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />} Aperçu
                     </button>
                     <button
@@ -216,46 +263,52 @@ export default function MesAvatars(props: {
                       disabled={occupe !== null || apercu?.versionId !== c.id}
                       title={apercu?.versionId !== c.id ? 'Regardez d’abord l’aperçu' : undefined}
                       onClick={() => void action(`utiliser-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'utiliser', jeton: apercu?.jeton }, () => setApercu(null))}
-                      className="inline-flex items-center gap-1 rounded-md bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 px-2.5 py-1 text-white"
+                      className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 px-3 py-1.5 text-white"
                     >
                       <Check className="w-3 h-3" /> Utiliser cette version
                     </button>
-                    <button type="button" data-action="garder" disabled={occupe !== null} onClick={() => void action(`garder-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'garder' }, () => setApercu(null))} className="inline-flex items-center gap-1 rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">
+                    <button type="button" data-action="garder" disabled={occupe !== null} onClick={() => void action(`garder-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'garder' }, () => setApercu(null))} className={TERTIAIRE}>
                       <X className="w-3 h-3" /> Garder ma version actuelle
                     </button>
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-wrap gap-2 text-xs">
+              {fusion?.contenu}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {fusion?.actions}
                 {!a.parDefaut && a.utilisable && (
-                  <button type="button" data-action="utiliser" disabled={occupe !== null} onClick={() => void action(`defaut-${a.id}`, '/api/avatars/defaut', { avatarId: a.id })} className="rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">Utiliser</button>
+                  <button type="button" data-action="utiliser" disabled={occupe !== null} onClick={() => void action(`defaut-${a.id}`, '/api/avatars/defaut', { avatarId: a.id })} className={TERTIAIRE}>Utiliser</button>
                 )}
                 {!c || c.etat === 'prete' || c.etat === 'echec' ? (
-                  <button type="button" data-action="remplacer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className="inline-flex items-center gap-1 rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">
+                  <button type="button" data-action="remplacer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>
                     <RefreshCw className="w-3 h-3" /> Remplacer cet avatar
                   </button>
                 ) : null}
-                <button type="button" data-action="gerer" onClick={() => setGerer(gerer === a.id ? null : a.id)} className="inline-flex items-center gap-1 rounded-md bg-gray-800 hover:bg-gray-700 px-2.5 py-1">
+                <button type="button" data-action="gerer" aria-expanded={gerer === a.id} onClick={() => setGerer(gerer === a.id ? null : a.id)} className={TERTIAIRE}>
                   <Settings2 className="w-3 h-3" /> Gérer
                 </button>
               </div>
 
               {gerer === a.id && (
-                <div data-historique className="rounded-lg border border-gray-800 p-2.5 text-xs space-y-1.5">
-                  <div className="text-gray-400">Versions précédentes</div>
-                  {a.historique.length === 0 && <div className="text-gray-500">Aucune.</div>}
+                <div data-historique className="rounded-lg border border-gray-800 bg-gray-950/50 p-3 text-xs space-y-2">
+                  <div className="text-gray-300 font-medium">Versions précédentes</div>
+                  {a.historique.length === 0 && <div className="text-gray-400">Aucune.</div>}
                   {a.historique.map((h) => (
-                    <div key={h.id} className="flex items-center justify-between gap-2">
+                    <div key={h.id} className="flex items-center justify-between gap-2 text-gray-200">
                       <span>v{h.version} · {h.etat === 'abandonnee' ? 'mise de côté' : h.etat === 'echec' ? 'non aboutie' : h.valideeLe ? 'déjà utilisée' : 'non validée'}</span>
                       {h.valideeLe && h.etat !== 'abandonnee' && (
-                        <button type="button" data-action="revenir" disabled={occupe !== null} onClick={() => void action(`revenir-${h.id}`, `/api/avatars/versions/${h.id}`, { action: 'revenir' })} className="rounded-md bg-gray-800 hover:bg-gray-700 px-2 py-0.5">Revenir à cette version</button>
+                        <button type="button" data-action="revenir" disabled={occupe !== null} onClick={() => void action(`revenir-${h.id}`, `/api/avatars/versions/${h.id}`, { action: 'revenir' })} className={TERTIAIRE}>Revenir à cette version</button>
                       )}
                     </div>
                   ))}
                 </div>
               )}
+
+              {fusion?.apres}
             </article>
+            </div>
           );
         })}
       </div>
