@@ -24,6 +24,7 @@ import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneA
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
+import { CLASSE_LECTEUR_GENERATION } from '@/lib/ui/lecteur-generation';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 
@@ -1236,15 +1237,15 @@ export default function AvatarPage() {
           <div data-avatar-validation={cleValidation}>
             <div data-avatar-apercu={cleApercu} data-avatar-apercu-cadre={zone.ratio}>
               {/* Avec le formulaire de génération sous lui, le cadre (ratio intact, jamais
-                  rogné) est borné en LARGEUR selon la hauteur d'écran — 200 px au plus,
-                  150 px au moins : lecteur, texte, voix, format et « Générer la vidéo »
-                  tiennent ensemble dès l'ouverture (mesuré : 1280×900, 1440×900).
+                  rogné) est borné en LARGEUR selon la hauteur d'écran (voir
+                  `lib/ui/lecteur-generation.ts`) : lecteur, texte, voix, format et « Générer
+                  la vidéo » tiennent ensemble dès l'ouverture, de 1366×768 à 1440×900.
                   Sans formulaire : règle commune (`.apercu-cadre`). */}
               <ZoneApercu
                 titre={zone.titre}
                 etat={zone.etat}
                 ratio={zone.ratio}
-                className={avatar && etatEffectif === 'valide' && !viaDid ? 'lg:[&_.apercu-cadre]:max-w-[clamp(150px,calc((100vh_-_33rem)*9/16),200px)]' : ''}
+                className={avatar && etatEffectif === 'valide' && !viaDid ? CLASSE_LECTEUR_GENERATION : ''}
               >
                 {zone.media}
               </ZoneApercu>
