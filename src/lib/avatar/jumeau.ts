@@ -64,6 +64,8 @@ export interface JumeauPublic {
 /** Ce que le moteur vidéo recevra — jamais le navigateur. */
 export interface JumeauPrive {
   providerAvatarId: string;
+  /** La version active (traçabilité des rendus) ; null avant la migration identités/versions. */
+  avatarVersionId: string | null;
   /** Le fournisseur de `providerAvatarId` : le moteur refuse tout ce qu'il ne sait pas animer. */
   fournisseurAvatar: FournisseurAvatar | 'inconnu';
   /** 'photo' | 'video' (jumeau vidéo = digital twin chez le fournisseur). */
@@ -98,8 +100,14 @@ const MOTIF_VOIX: Record<MotifVoix, MotifJumeau> = {
   voix_inutilisable: 'voix_inutilisable',
 };
 
-export async function resoudreJumeauDuCompte(userId: string): Promise<ResolutionJumeau> {
-  const lecture = await avatarVivantDuCompte(userId);
+/**
+ * `avatarId` : une identité PRÉCISE du compte (choix d'un projet Créer, ou
+ * réglage Autopilote). Absent : l'avatar PAR DÉFAUT du compte. Dans les deux
+ * cas c'est sa VERSION ACTIVE (le miroir) qui est relue — jamais une
+ * candidate en préparation.
+ */
+export async function resoudreJumeauDuCompte(userId: string, opts: { avatarId?: string | null } = {}): Promise<ResolutionJumeau> {
+  const lecture = await avatarVivantDuCompte(userId, opts.avatarId ?? undefined);
   if (!lecture.ok) return { ok: false, erreur: lecture.erreur };
   const a = lecture.avatar;
   if (!a) return { ok: false, motif: 'avatar_absent', message: MESSAGES_JUMEAU.avatar_absent };
@@ -138,6 +146,7 @@ export async function resoudreJumeauDuCompte(userId: string): Promise<Resolution
     },
     prive: {
       providerAvatarId: a.provider_avatar_id, fournisseurAvatar: fournisseurDe(a),
+      avatarVersionId: a.active_version_id ?? null,
       typeAvatar: a.avatar_type ?? null,
       consentementJumeau: (a as { provider_group_consent?: string | null }).provider_group_consent ?? null,
       providerVoiceId: voix.providerVoiceId, prononciations: voix.prononciations,
