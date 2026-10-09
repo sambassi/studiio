@@ -6,7 +6,7 @@ cat > /tmp/etape2-pgrst.sh <<'SCRIPT'
 # Rollback automatique si le controle echoue.
 set -uo pipefail
 umask 077
-ATTENDU_SHA=e76c44e654cf0c8c
+ATTENDU_SHA=76ba508a55fa0671
 S=$(grep -v '^ATTENDU_SHA=' "$0" | sha256sum | cut -c1-16)
 [ "$S" = "$ATTENDU_SHA" ] || {
   echo "STOP: script altere au collage ($S)"; exit 1; }
@@ -32,7 +32,9 @@ sqlw() {
 KO=""
 ko() { KO="$KO $1"; echo "KO $1"; }
 controle() {
-ATT_ROLE=$1; ATT_CODE=$2; KO=""
+local ATT_ROLE=$1 ATT_CODE=$2 Z NZ E L AR S i R RC AN
+local NT RPC_RESULT V VV RE VS VP EMP
+KO=""
 echo "=== 2. CONTROLES Z (les 13) ==="
 cat > /tmp/valide-z.sql <<'SQL'
 select 'Z roles_presents', (select count(*) from pg_roles
@@ -123,7 +125,8 @@ echo "=== 4. BACKEND PAR LE CHEMIN DE L'APP ==="
 # repondre, sans jamais conclure trop tot.
 for i in $(seq 1 12); do
   S=$(docker exec "$APP" node -e '
-const k = process.env.SUPABASE_SERVICE_KEY || "";
+const k = process.env.SUPABASE_SERVICE_KEY
+  || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const u = (process.env.SUPABASE_URL || "")
   .replace(/\/$/, "") + "/rest/v1/users?limit=0";
 fetch(u, { headers: { apikey: k,
@@ -177,7 +180,7 @@ echo "TABLES_200=$NT/19"
 [ "$NT" = 19 ] || { ko "tables_${NT}_sur_19"
   printf '%s\n' "$R" | grep '^TABLE' | grep -v ' 200$'; }
 echo "=== 5. RPC SERVEUR (10) ==="
-if ! RP=$(sqlw <<'SQL' 2>&1
+if ! RPC_RESULT=$(sqlw <<'SQL' 2>&1
 select r, count(*) filter (where
   has_function_privilege(r, p.oid, 'execute')),
   count(*)
@@ -194,11 +197,11 @@ where n.nspname = 'public'
 group by r order by r;
 SQL
 ); then ko "rpc_erreur_sql"; fi
-printf '%s\n' "$RP" | sed 's/^/RPC /'
-printf '%s\n' "$RP" | while read -r r x t; do
+printf '%s\n' "$RPC_RESULT" | sed 's/^/RPC /'
+printf '%s\n' "$RPC_RESULT" | while read -r r x t; do
   [ "$x" = "$t" ] && [ "${t:-0}" -ge 10 ] || echo NOK
 done | grep -q NOK && ko "rpc_incomplet"
-[ "$(printf '%s\n' "$RP" | grep -c .)" = 2 ] \
+[ "$(printf '%s\n' "$RPC_RESULT" | grep -c .)" = 2 ] \
   || ko "rpc_illisible"
 echo "=== 6. JUMEAU V3 ==="
 if ! V=$(sqlw <<'SQL' 2>&1
@@ -221,7 +224,8 @@ pret() {
   local i s
   for i in $(seq 1 15); do
     s=$(docker exec "$APP" node -e '
-const k = process.env.SUPABASE_SERVICE_KEY || "";
+const k = process.env.SUPABASE_SERVICE_KEY
+  || process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const u = (process.env.SUPABASE_URL || "")
   .replace(/\/$/, "") + "/rest/v1/users?limit=0";
 fetch(u, { headers: { apikey: k,
@@ -248,13 +252,14 @@ A0=$(printf '%s\n' "$ENV0" \
 [ "$A0" = studiio ] \
   || stop "anon actuel=$A0 (attendu studiio)"
 IMG=$(docker inspect "$PG" --format '{{.Image}}')
-RP=$(docker inspect "$PG" \
+RESTART_POLICY=$(docker inspect "$PG" \
   --format '{{.HostConfig.RestartPolicy.Name}}')
 NETS=$(docker inspect "$PG" \
   -f '{{json .NetworkSettings.Networks}}' | python3 -c '
 import json,sys
 print(" ".join(sorted(json.load(sys.stdin))))')
-echo "IMAGE_ID=${IMG:7:12} RESTART=$RP RESEAUX=$NETS"
+echo "IMAGE_ID=${IMG:7:12} RESTART=$RESTART_POLICY"
+echo "RESEAUX=$NETS"
 [ "$NETS" = "coolify studiio-internal" ] \
   || stop "reseaux inattendus ($NETS)"
 NV=$(printf '%s\n' "$ENV0" | grep -c '=')
@@ -285,7 +290,12 @@ retour() {
   echo "VERDICT_FINAL=ROLLBACK"
   exit 1
 }
-docker run -d --name "$PG" --restart "$RP" \
+case "$RESTART_POLICY" in
+  no|always|unless-stopped|on-failure) ;;
+  *) retour "politique de redemarrage illisible" ;;
+esac
+echo "RESTART_POLICY_UTILISEE=$RESTART_POLICY"
+docker run -d --name "$PG" --restart "$RESTART_POLICY" \
   --network coolify --env-file "$T/env" "$IMG" \
   >/dev/null || retour "creation"
 docker network connect studiio-internal "$PG" \
