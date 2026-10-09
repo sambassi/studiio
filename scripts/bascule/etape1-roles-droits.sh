@@ -448,9 +448,13 @@ fi
 echo "MIGRATION_APPLIQUEE=oui"
 echo "=== C. CONTROLES APRES ==="
 ECHEC=""
-sqlw < "$W/verdict.sql" \
-  | tee "$W/verdict.txt"
-grep -q ' f$' "$W/verdict.txt" && ECHEC="verdict_Z"
+# Code retour de psql verifie AVANT tout affichage :
+# une erreur SQL est un echec, jamais un passage.
+if ! sqlw < "$W/verdict.sql" > "$W/verdict.txt" 2>&1
+then ECHEC="verdict_Z_erreur_sql"; fi
+cat "$W/verdict.txt"
+[ "$(grep -c '^Z .* t$' "$W/verdict.txt")" = 13 ] \
+  || ECHEC="$ECHEC verdict_Z_incomplet"
 controle 200 studiio > "$W/controle-apres.txt" \
   || ECHEC="$ECHEC controle"
 grep -E '^(KO|AVATAR|VERDICT)' "$W/controle-apres.txt"
