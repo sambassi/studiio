@@ -108,7 +108,10 @@ vi.mock('@/lib/db/supabase', () => {
       getPublicUrl(cle: string) { return { data: { publicUrl: `https://studiio.pro/storage/v1/object/public/media/${cle}` } }; },
     }),
   };
-  return { supabase: { from, storage }, supabaseAdmin: { from, storage } };
+  // Le bail de création (base) : toujours libre ici — sa concurrence est
+  // éprouvée dans avatar-identites-versions et sur PostgreSQL réel.
+  const rpc = async (nom: string) => ({ data: nom.endsWith('verrou_creation_avatar') ? true : null, error: null });
+  return { supabase: { from, storage }, supabaseAdmin: { from, storage, rpc } };
 });
 
 globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {

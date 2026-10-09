@@ -223,24 +223,85 @@ begin
 end;
 $$;
 
--- 8. Droits ──────────────────────────────────────────────────────────────
+-- 8. UNE création de version / d'avatar à la fois PAR COMPTE ───────────────
+-- Un BAIL en base, valable pour TOUS les conteneurs (un déploiement progressif
+-- en fait tourner deux) : sans lui, deux requêtes simultanées passeraient les
+-- contrôles « emplacement libre / plafond / une candidate » et paieraient
+-- deux fois le fournisseur. Pris et rendu chacun en UNE instruction
+-- (transaction de quelques millisecondes) : aucune transaction n'est tenue
+-- pendant l'appel au fournisseur. Pas d'advisory lock de session : PostgREST
+-- partage ses connexions entre requêtes. Le bail expire seul (conteneur
+-- tué en plein appel) ; seul le détenteur de son jeton peut le rendre.
+create table if not exists public.avatar_verrous_creation (
+  user_id uuid primary key references public.users(id) on delete cascade,
+  jeton uuid not null,
+  expire_le timestamptz not null
+);
+
+-- Vrai = bail pris. Une ligne vivante d'un autre jeton = faux. Deux appels
+-- simultanés : le second attend le premier sur la clé primaire, puis voit
+-- un bail vivant — un seul gagne.
+create or replace function public.prendre_verrou_creation_avatar(
+  p_user_id uuid,
+  p_jeton uuid,
+  p_secondes integer
+)
+returns boolean
+language sql
+set search_path = pg_catalog, public
+as $$
+  with pris as (
+    insert into public.avatar_verrous_creation as v (user_id, jeton, expire_le)
+    values (p_user_id, p_jeton,
+            now() + make_interval(secs => greatest(1, least(coalesce(p_secondes, 600), 900))))
+    on conflict (user_id) do update
+      set jeton = excluded.jeton, expire_le = excluded.expire_le
+      where v.expire_le < now()
+    returning 1
+  )
+  select exists (select 1 from pris);
+$$;
+
+create or replace function public.liberer_verrou_creation_avatar(
+  p_user_id uuid,
+  p_jeton uuid
+)
+returns boolean
+language sql
+set search_path = pg_catalog, public
+as $$
+  with rendu as (
+    delete from public.avatar_verrous_creation
+     where user_id = p_user_id and jeton = p_jeton
+    returning 1
+  )
+  select exists (select 1 from rendu);
+$$;
+
+-- 9. Droits ──────────────────────────────────────────────────────────────
 -- AUCUN droit ouvert : `avatar_versions` contient des clés de sources
--- biométriques et des identifiants fournisseur. En production, PostgREST se
--- connecte en `studiio`, propriétaire (rôle des migrations) : il n'a besoin
--- d'aucun grant. On nomme quand même les rôles serveur s'ils existent, pour
--- le jour où ils ne seraient plus propriétaires — jamais `public`, `anon`
--- ou `authenticated` (même convention que `2026-09-14-lut-assets.sql`).
+-- biométriques et des identifiants fournisseur. Depuis #533 (appliquée le
+-- 2026-10-09), PostgREST se connecte en `authenticator`, qui ne fait que
+-- prendre `web_anon` (anonyme : AUCUN droit ici) ou `service_role` (le
+-- backend : droits ci-dessous). `studiio` reste le propriétaire, rôle des
+-- migrations. Jamais `public`, `anon`, `authenticated` ni `web_anon`.
 revoke all on table public.avatar_versions from public;
+revoke all on table public.avatar_verrous_creation from public;
 revoke all on function public.activer_version_avatar(uuid, uuid, uuid, uuid) from public;
 revoke all on function public.definir_avatar_par_defaut(uuid, uuid) from public;
+revoke all on function public.prendre_verrou_creation_avatar(uuid, uuid, integer) from public;
+revoke all on function public.liberer_verrou_creation_avatar(uuid, uuid) from public;
 do $$
 declare r text;
 begin
   foreach r in array array['studiio', 'service_role'] loop
     if exists (select 1 from pg_roles where rolname = r) then
       execute format('grant select, insert, update, delete on table public.avatar_versions to %I', r);
+      execute format('grant select, insert, update, delete on table public.avatar_verrous_creation to %I', r);
       execute format('grant execute on function public.activer_version_avatar(uuid, uuid, uuid, uuid) to %I', r);
       execute format('grant execute on function public.definir_avatar_par_defaut(uuid, uuid) to %I', r);
+      execute format('grant execute on function public.prendre_verrou_creation_avatar(uuid, uuid, integer) to %I', r);
+      execute format('grant execute on function public.liberer_verrou_creation_avatar(uuid, uuid) to %I', r);
     end if;
   end loop;
 end $$;

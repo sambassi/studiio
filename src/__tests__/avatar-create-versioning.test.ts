@@ -150,6 +150,9 @@ vi.mock('@/lib/db/supabase', () => {
     supabase: {},
     supabaseAdmin: {
       from,
+      // Le bail de création (base) : toujours libre ici — sa concurrence est
+      // éprouvée dans avatar-identites-versions et sur PostgreSQL réel.
+      rpc: async (nom: string) => ({ data: nom.endsWith('verrou_creation_avatar') ? true : null, error: null }),
       storage: {
         from: (bucket: string) => ({
           async upload(cle: string, _octets: unknown) {

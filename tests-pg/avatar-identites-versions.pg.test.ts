@@ -15,13 +15,16 @@
  *   4. service_role, comme PostgREST le fait (SET LOCAL ROLE), bascule une
  *      version ; une version d'un autre compte est refusée ;
  *   5. la vérification de #533 conclut toujours OK partout ;
- *   6. le rollback de #532 laisse le modèle #533 intact.
+ *   6. le rollback de #532 laisse le modèle #533 intact ;
+ *   7. le BAIL de création : fermé à web_anon, un seul gagnant sur N
+ *      connexions simultanées (N conteneurs), repris seulement expiré,
+ *      rendu seulement par son détenteur.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import type { Client } from 'pg';
-import { connecter, preparerBase, appliquerMigration, creerUtilisateur, RACINE } from './harness';
+import { connecter, preparerBase, appliquerMigration, creerUtilisateur, enConcurrence, RACINE } from './harness';
 
 const m = (f: string) => join(RACINE, 'migrations', f);
 const CHAINE_AVATAR = [
@@ -133,6 +136,60 @@ describe('#532 dans le modèle #533', () => {
     // web_anon ne peut pas l'appeler du tout.
     await expect(commeRole('web_anon', () =>
       db.query('select * from public.activer_version_avatar($1, $2, $3, $4)', [u, a, v3, v4]))).rejects.toThrow(REFUS);
+  });
+
+  it('⚠️ bail de création : fermé à PUBLIC et web_anon, ouvert à service_role', async () => {
+    const { rows } = await db.query(`
+      select p.proname,
+        has_function_privilege('web_anon', p.oid, 'EXECUTE') as anon,
+        has_function_privilege('service_role', p.oid, 'EXECUTE') as svc,
+        exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0) as public,
+        exists (select 1 from unnest(coalesce(p.proconfig, '{}')) c where c = 'search_path=pg_catalog, public') as sp
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public' and p.proname in ('prendre_verrou_creation_avatar', 'liberer_verrou_creation_avatar')
+      order by 1`);
+    expect(rows).toEqual([
+      { proname: 'liberer_verrou_creation_avatar', anon: false, svc: true, public: false, sp: true },
+      { proname: 'prendre_verrou_creation_avatar', anon: false, svc: true, public: false, sp: true },
+    ]);
+    await expect(commeRole('web_anon', () => db.query('select * from public.avatar_verrous_creation'))).rejects.toThrow(REFUS);
+  });
+
+  it('⚠️ bail de création : 8 conteneurs simultanés (connexions distinctes, service_role) → UN SEUL gagnant', async () => {
+    const u = await creerUtilisateur(db, 0);
+    const res = await enConcurrence(8, async (c, i) => {
+      await c.query('begin');
+      await c.query('set local role service_role');
+      const r = await c.query('select public.prendre_verrou_creation_avatar($1, $2, 600) as pris',
+        [u, `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`]);
+      await c.query('commit');
+      return r.rows[0].pris as boolean;
+    });
+    expect(res.every((r) => r.ok)).toBe(true);
+    expect(res.filter((r) => r.ok && r.valeur === true)).toHaveLength(1);
+    const { rows } = await db.query('select count(*)::int as n from public.avatar_verrous_creation where user_id = $1', [u]);
+    expect(rows[0].n).toBe(1);
+  });
+
+  it('bail : rendu SEULEMENT par son jeton ; repris seulement une fois rendu ou expiré', async () => {
+    const u = await creerUtilisateur(db, 0);
+    const J1 = '00000000-0000-4000-8000-0000000000a1';
+    const J2 = '00000000-0000-4000-8000-0000000000a2';
+    const prendre = async (j: string, s = 600) =>
+      (await db.query('select public.prendre_verrou_creation_avatar($1, $2, $3) as r', [u, j, s])).rows[0].r;
+    const rendre = async (j: string) =>
+      (await db.query('select public.liberer_verrou_creation_avatar($1, $2) as r', [u, j])).rows[0].r;
+    expect(await prendre(J1)).toBe(true);
+    expect(await prendre(J2)).toBe(false);
+    expect(await rendre(J2)).toBe(false); // un autre jeton ne rend pas le bail
+    expect(await prendre(J2)).toBe(false);
+    expect(await rendre(J1)).toBe(true);
+    expect(await prendre(J2)).toBe(true);
+    // Expiré (conteneur mort) : repris par le suivant.
+    await db.query(`update public.avatar_verrous_creation set expire_le = now() - interval '1 second' where user_id = $1`, [u]);
+    expect(await prendre(J1)).toBe(true);
+    expect(await rendre(J2)).toBe(false); // l'ancien détenteur ne rend plus rien
+    expect(await rendre(J1)).toBe(true);
   });
 
   it('⚠️ la vérification de #533 conclut toujours OK partout', async () => {

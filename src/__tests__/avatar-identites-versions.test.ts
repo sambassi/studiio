@@ -30,6 +30,11 @@ type L = Record<string, unknown>;
 const base = vi.hoisted(() => ({
   user_avatars: [] as L[], avatar_versions: [] as L[], avatar_generations: [] as L[],
   user_voices: [] as L[], user_settings: [] as L[], n: 0,
+  // Le bail de création (`avatar_verrous_creation`), PARTAGÉ par tous les
+  // conteneurs : c'est la base, pas la mémoire d'un processus.
+  verrous: new Map<string, { jeton: string; expire: number }>(),
+  panneVerrou: false,
+  journalVerrou: [] as string[],
 }));
 
 vi.mock('@/lib/db/supabase', () => {
@@ -75,8 +80,21 @@ vi.mock('@/lib/db/supabase', () => {
     };
     return api;
   };
-  // Les deux fonctions SQL de la migration, reproduites à l'identique.
+  // Les fonctions SQL de la migration, reproduites à l'identique.
   const rpc = async (nom: string, p: L) => {
+    if (nom === 'prendre_verrou_creation_avatar' || nom === 'liberer_verrou_creation_avatar') {
+      if (base.panneVerrou) return { data: null, error: { message: 'base injoignable' } };
+      const u = String(p.p_user_id); const vivant = base.verrous.get(u);
+      if (nom === 'prendre_verrou_creation_avatar') {
+        if (vivant && vivant.expire > Date.now()) { base.journalVerrou.push('refuse'); return { data: false, error: null }; }
+        base.verrous.set(u, { jeton: String(p.p_jeton), expire: Date.now() + Number(p.p_secondes) * 1000 });
+        base.journalVerrou.push('pris');
+        return { data: true, error: null };
+      }
+      if (vivant?.jeton !== p.p_jeton) return { data: false, error: null };
+      base.verrous.delete(u); base.journalVerrou.push('rendu');
+      return { data: true, error: null };
+    }
     const a = base.user_avatars.find((x) => x.id === p.p_avatar_id && x.user_id === p.p_user_id && x.deleted_at == null);
     if (nom === 'definir_avatar_par_defaut') {
       if (!a) return { data: [{ ok: false, motif: 'introuvable' }], error: null };
@@ -114,6 +132,7 @@ vi.mock('@/lib/avatar/heygen', async (orig) => {
       return { avatarId: `look-${fournisseur.compteur}`, status: 'processing', avatarGroupId: groupe ?? `grp-${fournisseur.compteur}` };
     },
     getAvatarTrainingStatus: async () => { fournisseur.appels.push('statut'); return { status: fournisseur.statut }; },
+    listVoices: async () => [],
   };
 });
 vi.mock('@/lib/avatar/source', async (orig) => {
@@ -181,6 +200,7 @@ function candidatePrete(versionId: string): string {
 
 beforeEach(() => {
   base.user_avatars = []; base.avatar_versions = []; base.avatar_generations = []; base.n = 0;
+  base.verrous.clear(); base.panneVerrou = false; base.journalVerrou = [];
   base.user_voices = [{ id: VOIX, user_id: U, provider: 'elevenlabs', provider_voice_id: 'pvid_0001_abcd', name: 'Bassi', lang: 'fr', consent_at: '2026-08-01T00:00:00Z', consent_text: 'x', created_at: '2026-08-01T00:00:00Z' }];
   base.user_settings = [];
   fournisseur.appels = []; fournisseur.refus = null; fournisseur.statut = 'processing'; fournisseur.compteur = 0;
@@ -423,6 +443,69 @@ describe('6-7, 18. Plusieurs identités ; nouveau ≠ remplacer ; permissions', 
     expect([a.status, b.status].sort()).toEqual([200, 429]);
     expect(fournisseur.appels.filter((x) => x.startsWith('avatars:'))).toHaveLength(1);
     expect(base.user_avatars).toHaveLength(2);
+  });
+
+  it('⚠️ bail tenu par un AUTRE conteneur : 429, aucun fournisseur, rien créé, le bail d’autrui intact', async () => {
+    process.env.AVATAR_EMPLACEMENTS_VIDEO = '2';
+    // L'autre conteneur d'un déploiement progressif a pris le bail : la
+    // mémoire de CE processus ne le voit pas, la base si.
+    base.verrous.set(U, { jeton: 'jeton-autre-conteneur', expire: Date.now() + 60_000 });
+    const avant = base.user_avatars.length;
+    const r = await requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'b'), name: 'A' });
+    expect(r.status).toBe(429);
+    expect((await r.json()).code).toBe('creation_en_cours');
+    expect(fournisseur.appels).toEqual([]);
+    expect(base.user_avatars).toHaveLength(avant);
+    expect(base.avatar_versions.filter((v) => v.version !== 3)).toEqual([]);
+    expect(base.verrous.get(U)?.jeton).toBe('jeton-autre-conteneur');
+  });
+
+  it('⚠️ « Remplacer » pendant le bail d’un autre conteneur : 429, aucune seconde candidate, aucun fournisseur', async () => {
+    base.verrous.set(U, { jeton: 'jeton-autre-conteneur', expire: Date.now() + 60_000 });
+    const r = await requete({ consent: 'true', mode: 'remplacer', avatarId: A3, cleSource: cle(U, 'b') });
+    expect(r.status).toBe(429);
+    expect(fournisseur.appels).toEqual([]);
+    expect(base.avatar_versions.filter((v) => v.version !== 3)).toEqual([]);
+  });
+
+  it('bail EXPIRÉ (conteneur mort en plein appel) : repris, la création passe, puis le bail est rendu', async () => {
+    process.env.AVATAR_EMPLACEMENTS_VIDEO = '2';
+    base.verrous.set(U, { jeton: 'jeton-mort', expire: Date.now() - 1 });
+    const r = await requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'b'), name: 'A' });
+    expect(r.status).toBe(200);
+    expect(base.journalVerrou).toEqual(['pris', 'rendu']);
+    expect(base.verrous.has(U)).toBe(false);
+  });
+
+  it('⚠️ base injoignable pour le bail : 503, FERMÉ — aucun fournisseur, rien créé', async () => {
+    process.env.AVATAR_EMPLACEMENTS_VIDEO = '2';
+    base.panneVerrou = true;
+    const avant = base.user_avatars.length;
+    const r = await requete({ consent: 'true', mode: 'nouveau', cleSource: cle(U, 'b'), name: 'A' });
+    expect(r.status).toBe(503);
+    expect(fournisseur.appels).toEqual([]);
+    expect(base.user_avatars).toHaveLength(avant);
+  });
+
+  it('le bail est rendu même quand le fournisseur refuse', async () => {
+    fournisseur.refus = 'quota';
+    await requete({ consent: 'true', mode: 'remplacer', avatarId: A3, cleSource: cle(U, 'b') });
+    expect(base.journalVerrou).toEqual(['pris', 'rendu']);
+    expect(base.verrous.has(U)).toBe(false);
+  });
+
+  it('⚠️ GET /api/avatar/create : l’avatar PAR DÉFAUT (v3 actif), jamais le plus récent en préparation', async () => {
+    base.user_avatars.push({
+      ...base.user_avatars.find((a) => a.id === A3)!, id: 'cccccccc-3333-4333-8333-333333333333', name: 'Bassi studio',
+      status: 'processing', provider_avatar_id: 'look-recent', validated_at: null, version: 1, is_default: false,
+      active_version_id: null, created_at: '2026-10-09T12:00:00Z', provider_group_id: null,
+    });
+    const res = await createRoute.GET();
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.avatar).toMatchObject({ id: A3, version: 3, provider_avatar_id: 'a3b4look', status: 'completed', etat: 'valide' });
+    // L'identité récente n'est ni rendue ni interrogée chez le fournisseur.
+    expect(fournisseur.appels).toEqual([]);
   });
 
   it('« Utiliser » (par défaut) change l’avatar par défaut — une seule identité par défaut', async () => {

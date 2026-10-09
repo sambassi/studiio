@@ -262,6 +262,28 @@ export async function PUT(req: NextRequest) {
     const avecBrief = await briefReady();
     const avecJumeau = await jumeauReady();
     const avecAvatarChoisi = await avatarChoisiReady();
+    // L'avatar choisi doit être une identité VIVANTE DE CE COMPTE. Un id
+    // d'autrui serait inoffensif à la lecture (filtrée par compte), mais il
+    // n'a rien à faire dans la configuration : refusé, rien n'est écrit.
+    if (avecAvatarChoisi && propre.jumeauAvatarId) {
+      const { data: proprio, error: erreurProprio } = await supabaseAdmin
+        .from('user_avatars')
+        .select('id')
+        .eq('id', propre.jumeauAvatarId)
+        .eq('user_id', session.user.id)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (erreurProprio) {
+        console.error('[Autopilote] lecture de l’avatar choisi :', erreurProprio.message);
+        return NextResponse.json({ success: false, error: 'Enregistrement impossible.' }, { status: 500 });
+      }
+      if (!proprio) {
+        return NextResponse.json(
+          { success: false, error: 'Cet avatar n’existe pas dans votre compte.', code: 'avatar_introuvable' },
+          { status: 403 },
+        );
+      }
+    }
     const { error } = await supabaseAdmin
       .from('autopilot_config')
       .upsert(

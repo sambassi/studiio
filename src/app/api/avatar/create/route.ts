@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prendreVerrouSource, libererVerrouSource } from '@/lib/avatar/verrou-traitement';
+import { prendreVerrouSource, libererVerrouSource, prendreBailCreation } from '@/lib/avatar/verrou-traitement';
 import { MESSAGES_CREATION, jumeauVideoAutorise } from '@/lib/avatar/fournisseurs';
 import { isAdmin } from '@/lib/admin';
 import { auth } from '@/lib/auth/config';
@@ -158,7 +158,21 @@ async function cheminCandidat(args: Parameters<typeof cheminCandidatSansVerrou>[
     return NextResponse.json({ success: false, error: 'Une création est déjà en cours pour votre compte. Patientez, puis réessayez.', code: 'creation_en_cours' }, { status: 429 });
   }
   try {
-    return await cheminCandidatSansVerrou(args);
+    // Le verrou en mémoire ne voit pas l'AUTRE conteneur d'un déploiement
+    // progressif : le bail en base couvre toute la décision ET l'appel
+    // fournisseur, sans transaction ouverte pendant cet appel.
+    const bail = await prendreBailCreation(args.userId);
+    if (!bail.ok) {
+      await args.nettoyer();
+      return bail.motif === 'occupe'
+        ? NextResponse.json({ success: false, error: 'Une création est déjà en cours pour votre compte. Patientez, puis réessayez.', code: 'creation_en_cours' }, { status: 429 })
+        : NextResponse.json({ success: false, error: 'Votre avatar n’a pas pu être préparé. Réessayez dans un instant.', code: 'verrou_indisponible' }, { status: 503 });
+    }
+    try {
+      return await cheminCandidatSansVerrou(args);
+    } finally {
+      await bail.rendre();
+    }
   } finally {
     libererVerrouSource(cle);
   }
@@ -270,15 +284,18 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: avatars } = await supabaseAdmin
-      .from('user_avatars')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1);
-
-    let avatar = avatars?.[0] ?? null;
+    // L'avatar PAR DÉFAUT du compte — sa ligne porte la version ACTIVE
+    // (miroir écrit par `activer_version_avatar` seul). Jamais « le plus
+    // récent » : un nouvel avatar en préparation ne remplace pas l'actif.
+    // Compte non migré : le seul avatar vivant (résolution de repli).
+    const lu = await lireAvatarVivant(session.user.id);
+    if (!lu.ok) {
+      console.error('[Avatar] GET create : lecture impossible :', lu.erreur);
+      return NextResponse.json({ success: false, error: "Impossible de charger l'avatar." }, { status: 500 });
+    }
+    // Même typage libre qu'avant (la réponse est enrichie plus bas : `etat`).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let avatar: any = lu.avatar;
 
     // Entrainement en cours ? On rafraichit le statut depuis HeyGen a chaque
     // consultation, ce qui permet a l'UI de simplement re-interroger cette

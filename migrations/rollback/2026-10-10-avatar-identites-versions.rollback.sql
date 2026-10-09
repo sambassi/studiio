@@ -21,6 +21,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 
 begin;
+drop function if exists public.prendre_verrou_creation_avatar(uuid, uuid, integer);
+drop function if exists public.liberer_verrou_creation_avatar(uuid, uuid);
+drop table if exists public.avatar_verrous_creation;
 drop function if exists public.activer_version_avatar(uuid, uuid, uuid, uuid);
 drop function if exists public.definir_avatar_par_defaut(uuid, uuid);
 alter table public.autopilot_config drop column if exists avatar_id;
