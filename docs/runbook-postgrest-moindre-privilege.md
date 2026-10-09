@@ -486,6 +486,8 @@ Sans aucune génération payante :
 
 - **jumeau v3** : Créer → panneau « Mon jumeau » → « Avatar actif · v3 », état prêt (`GET /api/creer/jumeau`, gratuit) ;
 - **Autopilote** : la page charge sa configuration, et un réglage s'enregistre ;
+- **voix** : « Ma voix » affiche la voix clonée et le dictionnaire de prononciations, et une prononciation s'enregistre. Pas d'écoute (synthèse payante) ;
+- **dashboard** : l'accueil affiche ses statistiques et les vidéos récentes ;
 - **médias** : la Bibliothèque liste ses fichiers ;
 - **social** : la page Réseaux affiche les comptes connectés ;
 - **paiements** : la page facturation affiche le plan, et le webhook Stripe de test répond 2xx.
