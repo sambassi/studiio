@@ -10,6 +10,92 @@
 > - `migrations/2026-09-29-postgrest-moindre-privilege.rollback.sql` : le rollback SQL
 > - `tests-pg/postgrest-moindre-privilege.pg.test.ts` : les tests sur un vrai PostgreSQL (35 tests)
 
+## 0. Constat CONFIRMÉ en production (lecture seule, 2026-10-09)
+
+Script : `scripts/audit/postgrest-roles.lecture-seule.sh`, à coller dans Coolify → Terminal → localhost.
+
+| Contrôle | Valeur réelle |
+|---|---|
+| Utilisateur de `PGRST_DB_URI` | `studiio` |
+| `PGRST_DB_ANON_ROLE` | `studiio` |
+| Attributs de `studiio` | SUPERUSER, CREATEROLE, CREATEDB, LOGIN, BYPASSRLS |
+| claim `role` de `SUPABASE_SERVICE_ROLE_KEY` | `studiio` |
+| anonyme : SELECT `users` / EXECUTE `crediter_credits_stripe` | oui / oui |
+| `GET /users` **sans jeton**, en interne | **200** |
+
+L'exposition **depuis Internet** se mesure avec `scripts/audit/postgrest-exposition.lecture-seule.sh`.
+Ce script relève les réseaux, les ports publiés, les règles Traefik et la configuration du proxy
+(valeurs sensibles masquées), puis fait des `GET` sans jeton dont seul le code HTTP est affiché.
+
+**La preuve HTTP de bout en bout est désormais automatisée** dans `tests-pg/postgrest-http.pg.test.ts`.
+Un vrai PostgREST tourne en CI. Le test reproduit la configuration actuelle et prouve la faille :
+- lecture de `users` sans jeton ;
+- écriture des crédits de B sans jeton ;
+- débit de B par RPC sans jeton ;
+- clé `role=studiio` acceptée ;
+- `anon` hérité, membre du superutilisateur.
+
+Il prouve ensuite les 14 contrôles de la cible, puis le rollback.
+
+## 0 bis. Fonctions SECURITY DEFINER (toutes : `search_path` figé, EXECUTE au seul propriétaire)
+
+| Fonction | `p_user_id` libre | Appelée par |
+|---|---|---|
+| `debiter_credits` | oui | `lib/credits` (rendus) |
+| `debiter_credits_operation` | oui | `lib/credits` (avatar, voix, opérations) |
+| `confirmer_rendu`, `confirmer_rendu_sans_debit`, `clore_rendu` | oui | routes de rendu |
+| `lut_assets_ajouter` | oui | import de LUT |
+| `crediter_credits_stripe` | oui | webhook Stripe |
+| `stripe_event_claim` / `complete` / `fail` | non | webhook Stripe |
+| `lut_assets_verifier_plafond` | non (déclencheur) | base |
+
+Avec `PGRST_DB_ANON_ROLE=studiio`, n'importe quel appel **sans jeton** peut les exécuter pour n'importe quel compte.
+C'est la cause unique : les fonctions vérifient bien le compte qu'on leur passe, mais la confiance repose sur
+l'appelant, qui doit être le backend. Dans la cible, seul `service_role` (clé serveur, jamais le navigateur)
+peut les exécuter. Les futures fonctions de #532 (`activer_version_avatar`, `definir_avatar_par_defaut`)
+suivent la même règle, sans aucun GRANT à écrire, grâce aux privilèges par défaut (section 5 de la migration).
+
+Ajouts du 2026-10-10 à la migration (jamais appliquée) :
+- les rôles hérités `anon` et `authenticated` sont neutralisés : NOLOGIN, NOSUPERUSER, NOBYPASSRLS, aucune appartenance ;
+- toute fonction SECURITY DEFINER sans `search_path` en reçoit un ;
+- `verif.sql` contrôle ces quatre points.
+
+**Choix des noms.** L'anonyme reste `web_anon` (rôle neuf) et non `anon`. Un `anon` hérité d'un dump Supabase
+peut porter des droits ou des appartenances qu'aucune migration du dépôt ne connaît. `authenticated` n'a aucun
+usage : le navigateur n'appelle jamais PostgREST, et `authenticator` ne peut pas y basculer.
+
+## 0 ter. Ce qui casserait à la bascule (cartographie du code, 2026-10-10)
+
+- **Navigateur** : aucun appel PostgREST, ni client Supabase côté navigateur.
+  Le module `src/lib/db/supabase.ts` n'exporte plus que `supabaseAdmin`.
+- **Serveur** : tout passe par `supabaseAdmin` : routes, crons, auth NextAuth (table `users`), crédits,
+  calendrier, Créer, Autopilote, avatar, social. Il utilise `SUPABASE_URL` et
+  `SUPABASE_SERVICE_KEY` (à défaut `SUPABASE_SERVICE_ROLE_KEY`).
+  - **Il faut une clé `role=service_role`**, sinon tout répond 403.
+  - Les deux variables portent aujourd'hui `role=studiio`.
+- **10 RPC** appelées : `debiter_credits`, `debiter_credits_operation`, `confirmer_rendu`,
+  `confirmer_rendu_sans_debit`, `clore_rendu`, `lut_assets_ajouter`, `crediter_credits_stripe`,
+  `stripe_event_claim`, `stripe_event_complete`, `stripe_event_fail`. Toutes s'ouvrent à `service_role`.
+- **Hors périmètre de PostgREST** :
+  - le stockage, qui passe par MinIO (`STORAGE_PROVIDER=s3`) et non par PostgREST ;
+  - `src/lib/email/notifications.ts`, qui n'utilise plus son propre client.
+- **Aucune DDL à l'exécution** : seulement des `select` de sondage de colonnes (`colonneReady`),
+  autorisés à `service_role`.
+
+## 0 quater. Exposition (lecture seule, 2026-10-09)
+
+- **Internet : non joignable d'après les preuves ci-dessous**, à confirmer par `scripts/audit/postgrest-exposition-complement.lecture-seule.sh` (configuration dynamique Traefik/Caddy, règles NAT, ports d'écoute de l'hôte). Les éléments relevés :
+  - aucun port publié sur l'hôte pour `studiio-postgrest` ni pour `studiio-pgrst-proxy` ;
+  - aucun label Traefik ni Caddy sur ces deux conteneurs ;
+  - `https://studiio.pro/users` et `https://studiio.pro/rest/v1/users` → **404** (réponse de Next) ;
+  - le proxy n'injecte aucun `Authorization` ni `apikey`.
+- **Interne : OUI.** Les deux conteneurs sont sur `studiio-internal` **et sur `coolify`**, le réseau partagé
+  avec les autres projets du serveur. Tout conteneur de ce réseau atteint `studiio-postgrest:3000` sans jeton,
+  en superutilisateur. C'est le risque latéral réel tant que les étapes 3 à 5 ne sont pas faites.
+- **Durcissement proposé, à part, avec GO** : retirer `studiio-postgrest` du réseau `coolify` s'il n'en a pas
+  besoin. L'application l'atteint par le proxy, et le proxy est sur `studiio-internal`. À vérifier d'abord sur
+  le staging.
+
 ## 1. Le problème
 
 D'après le dépôt (`tests-pg/lut-assets.pg.test.ts` §0b, mémoire `securite-gate-staging`),
@@ -158,6 +244,33 @@ de production** sans toucher au staging. On restaure la sauvegarde de 03h00 dans
 `postgres:16-alpine` sans réseau Coolify ni port publié, avec un PostgREST jetable et des secrets
 de test. On y déroule les étapes 2 à 5, puis on détruit les deux conteneurs.
 
+### Ordre SANS COUPURE et contrôle après chaque étape
+
+Le script `scripts/bascule/controle-postgrest.lecture-seule.sh` passe par le même chemin que l'application :
+la clé posée dans `studiio-app`, puis `SUPABASE_URL/rest/v1` (le proxy). Il ne lit aucune donnée (`limit=0`)
+et n'affiche aucun secret. Il vérifie :
+- le rôle de la clé ;
+- le code renvoyé à une requête anonyme ;
+- l'accès aux 19 tables utilisées par l'application (`media` n'en fait pas partie : c'est un bucket MinIO, pas une table) ;
+- le droit d'exécution des 10 RPC serveur pour le rôle de la clé ;
+- l'avatar v3, par version, statut et empreinte.
+
+Il conclut `VERDICT=CONTINUER` ou `VERDICT=ROLLBACK <motifs>`. La séquence complète a été validée en local avec un vrai
+PostgREST et un proxy identique au nginx de production. Chaque étape a rendu CONTINUER. Avec l'ancienne clé encore posée
+après le passage à `authenticator`, le script a bien rendu ROLLBACK.
+
+| # | Étape | Réversible par | Contrôle pour continuer |
+|---|---|---|---|
+| 1 | Sauvegarde Coolify + `pg_dump --schema-only` + verif « avant » | — | sauvegarde listée ; `ETAPE=avant` → CONTINUER |
+| 2 | Migration (rôles, grants, revokes) + SIGUSR1 | rollback SQL | verif Z OK partout ; `ETAPE=avant` → CONTINUER (rien ne change pour l'app) |
+| 3 | `PGRST_DB_ANON_ROLE=web_anon`, redémarrer PostgREST | remettre `studiio`, redémarrer | `ETAPE=anon_ferme` → CONTINUER (anonyme 401) + §7 |
+| 4 | Nouvelle clé `role=service_role` dans `SUPABASE_SERVICE_KEY` (et `_ROLE_KEY`), redéployer l'app | ancienne clé, redéployer | `ETAPE=cle_service` → CONTINUER + §7. La connexion est encore `studiio`, qui peut prendre le rôle `service_role` : aucune coupure |
+| 5 | `authenticator` : mot de passe + LOGIN, puis `PGRST_DB_URI` en `authenticator`, redémarrer | ancien `PGRST_DB_URI`, redémarrer | `ETAPE=authenticator` → CONTINUER + §7 + l'ancienne clé `role=studiio` refusée (403) |
+
+**Rollback** : si le verdict est `ROLLBACK`, on annule **la dernière étape seulement**, avec la colonne « Réversible par »,
+puis on relance le contrôle de l'étape précédente. Les variables Coolify ne se changent que dans l'interface : le
+script signale l'échec, mais ne modifie rien lui-même.
+
 ### Étape 0 — Pré-vol, lecture seule
 
 **0.a — Les rôles.** On attend `studiio | t`, et vraisemblablement aucun autre rôle LOGIN.
@@ -199,7 +312,7 @@ for (const k of ["SUPABASE_SERVICE_KEY","SUPABASE_SERVICE_ROLE_KEY","NEXT_PUBLIC
 console.log("SUPABASE_URL hote =", (process.env.SUPABASE_URL || "ABSENTE").replace(/\/\/[^@]*@/, "//"));'
 ```
 
-Attendu : `SUPABASE_SERVICE_KEY role=studiio`, et `SUPABASE_URL` vers `studiio-postgrest`.
+Attendu : `SUPABASE_SERVICE_KEY role=studiio`, et `SUPABASE_URL` vers `http://studiio-pgrst-proxy`. C'est la valeur constatée le 2026-10-09 : le proxy nginx ne sert que `/rest/v1/` (vers `studiio-postgrest:3000`) et répond 404 à tout le reste. **Toute sonde doit donc viser `$SUPABASE_URL/rest/v1/...`**, comme le fait `supabase-js`.
 
 - Si `NEXT_PUBLIC_SUPABASE_ANON_KEY` porte `role=studiio`, une clé superuser est **publiée
   dans le bundle navigateur**. Cela reste vrai jusqu'à l'étape 5, qui la neutralise : il faut
@@ -225,7 +338,7 @@ corriger avant tout le reste.
 l'opération pour chaque URL publique trouvée en 0.d, et pour `http://178.105.201.62:3000`.
 
 ```bash
-docker exec "$APP" node -e 'fetch(process.env.SUPABASE_URL + "/users?select=id&limit=1").then(r => console.log("anonyme interne", r.status))'
+docker exec "$APP" node -e 'fetch(process.env.SUPABASE_URL.replace(/\/$/, "") + "/rest/v1/users?select=id&limit=0").then(r => console.log("anonyme interne", r.status))'
 curl -s -o /dev/null -w 'anonyme public %{http_code}\n' "https://<url-publique-du-proxy>/users?select=id&limit=1"
 ```
 
@@ -316,9 +429,9 @@ Si `PGRST_JWT_SECRET` n'est pas une chaîne HS256 (JWK/JSON) : **STOP**, le scri
 
 ```bash
 docker exec -i "$APP" node -e '
-  const t = require("fs").readFileSync(0, "utf8").trim(), u = process.env.SUPABASE_URL;
+  const t = require("fs").readFileSync(0, "utf8").trim(), u = process.env.SUPABASE_URL.replace(/\/$/, "") + "/rest/v1";
   const H = { Authorization: "Bearer " + t };
-  Promise.all([fetch(u + "/users?select=id&limit=1", { headers: H }), fetch(u + "/subscriptions?select=id&limit=1", { headers: H })])
+  Promise.all([fetch(u + "/users?select=id&limit=0", { headers: { ...H, apikey: t } }), fetch(u + "/subscriptions?select=id&limit=0", { headers: { ...H, apikey: t } })])
     .then(rs => console.log(rs.map(r => r.status).join(" ")));' < /root/studiio-service-role.jwt
 ```
 
@@ -368,6 +481,18 @@ publication.
 - Garder `verif-avant` et `verif-apres` avec la sauvegarde.
 
 ## 7. Smoke tests applicatifs (après chaque bascule)
+
+Sans aucune génération payante :
+
+- **jumeau v3** : Créer → panneau « Mon jumeau » → « Avatar actif · v3 », état prêt (`GET /api/creer/jumeau`, gratuit) ;
+- **Autopilote** : la page charge sa configuration, et un réglage s'enregistre ;
+- **voix** : « Ma voix » affiche la voix clonée et le dictionnaire de prononciations, et une prononciation s'enregistre. Pas d'écoute (synthèse payante) ;
+- **dashboard** : l'accueil affiche ses statistiques et les vidéos récentes ;
+- **médias** : la Bibliothèque liste ses fichiers ;
+- **social** : la page Réseaux affiche les comptes connectés ;
+- **paiements** : la page facturation affiche le plan, et le webhook Stripe de test répond 2xx.
+
+Les points ci-dessous complètent ces vérifications :
 
 À faire après un hard-refresh, avec un compte réel :
 

@@ -134,6 +134,35 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- 1 bis. LES ROLES HERITES DE SUPABASE (`anon`, `authenticated`)
+--    Ajout du 2026-10-10. S'ils existent (restauration d'un dump Supabase),
+--    ils ne doivent rien pouvoir faire : aucun attribut dangereux, aucune
+--    appartenance a un autre role. Le navigateur n'appelle jamais PostgREST
+--    (audit du code) : `authenticated` n'a besoin d'AUCUN droit, et
+--    authenticator ne peut PAS y basculer (un jeton `role=authenticated` ou
+--    `role=anon` est refuse). On ne les supprime pas : un DROP ROLE echoue
+--    s'ils possedent des objets, et ce n'est pas l'objet de cette migration.
+-- ---------------------------------------------------------------------------
+do $$
+declare r text; g record;
+begin
+  foreach r in array array['anon', 'authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = r) then
+      execute format('alter role %I nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls', r);
+      for g in
+        select gr.rolname
+          from pg_auth_members m
+          join pg_roles gr on gr.oid = m.roleid
+          join pg_roles u on u.oid = m.member
+         where u.rolname = r
+      loop
+        execute format('revoke %I from %I', g.rolname, r);
+      end loop;
+    end if;
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- 2. LE SCHEMA : plus rien pour PUBLIC (donc pour web_anon).
 -- ---------------------------------------------------------------------------
 revoke create on schema public from public;
@@ -161,6 +190,32 @@ begin
       execute format('revoke all on all routines  in schema public from %I', r);
       execute format('revoke all on schema public from %I', r);
     end if;
+  end loop;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- 3 bis. LES FONCTIONS SECURITY DEFINER : search_path impose
+--    Ajout du 2026-10-10. Une fonction SECURITY DEFINER s'execute avec les
+--    droits de son proprietaire (`studiio`, superuser). Sans search_path fige,
+--    un appelant capable de creer un objet dans un schema lu en premier
+--    pourrait detourner un nom (operateur, fonction, table). Toute fonction
+--    SECURITY DEFINER de `public` qui n'en fixe pas recoit
+--    `pg_catalog, public` (le reglage deja utilise par nos migrations).
+-- ---------------------------------------------------------------------------
+do $$
+declare f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.prosecdef
+       and not exists (
+         select 1 from unnest(coalesce(p.proconfig, '{}')) c
+          where c like 'search_path=%')
+  loop
+    execute format('alter function %s set search_path = pg_catalog, public', f.sig);
   end loop;
 end $$;
 
