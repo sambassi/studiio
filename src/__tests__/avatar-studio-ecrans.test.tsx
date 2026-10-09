@@ -154,10 +154,13 @@ describe('Enregistrer ma source — caméra', () => {
     expect(FauxRecorder.instances[0].stream).toBe(fauxFlux);
     await act(async () => { vi.advanceTimersByTime(2000); });
     expect(q('[data-enregistreur-duree]')?.textContent).toBe('0:02');
-    vi.useRealTimers();
-
+    // ⚠️ Prise trop courte (< 15 s, exigence du fournisseur) : refusée AVANT tout envoi.
     await act(async () => { fireEvent.click(q('[data-enregistreur-arreter]')!); });
+    vi.useRealTimers();
     expect(q('[data-enregistreur-source="apercu"]')).not.toBeNull();
+    expect(q('[data-enregistreur-refus]')?.textContent).toMatch(/au moins 15 secondes/);
+    expect(q<HTMLButtonElement>('[data-enregistreur-utiliser]')!.disabled).toBe(true);
+    fireEvent.click(q('[data-enregistreur-utiliser]')!);
     expect(q('[data-enregistreur-video="prise"]')).not.toBeNull();
     fireEvent.click(q('[data-enregistreur-recommencer]')!);
     expect(q('[data-enregistreur-source="pret"]')).not.toBeNull();
@@ -165,9 +168,12 @@ describe('Enregistrer ma source — caméra', () => {
 
     vi.useFakeTimers();
     fireEvent.click(q('[data-enregistreur-demarrer]')!);
-    await act(async () => { vi.advanceTimersByTime(3100); });
-    vi.useRealTimers();
+    await act(async () => { vi.advanceTimersByTime(3100 + 20_000); });
     await act(async () => { fireEvent.click(q('[data-enregistreur-arreter]')!); });
+    vi.useRealTimers();
+    expect(q('[data-enregistreur-refus]')).toBeNull();
+    // Débit plafonné : la prise tient sous la limite d'envoi.
+    expect(FauxRecorder.instances.at(-1)!.options).toMatchObject({ videoBitsPerSecond: 1_200_000, audioBitsPerSecond: 128_000 });
     fireEvent.click(q('[data-enregistreur-utiliser]')!);
     expect(utiliser).toHaveBeenCalledTimes(1);
     const fichier = utiliser.mock.calls[0][0] as File;

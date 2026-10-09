@@ -185,6 +185,28 @@ export function formaterDuree(secondes: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/**
+ * Les exigences DOCUMENTÉES du fournisseur pour une source d'avatar vidéo
+ * (« digital twin ») : 15 à 600 s, grand côté ≥ 640 px (1080p recommandé),
+ * MP4 ou WebM, 32 Mo par l'envoi direct de Studiio. Vérifiées AVANT tout
+ * envoi : une prise hors règles est refusée ici, jamais chez le fournisseur.
+ */
+export const EXIGENCES_SOURCE_VIDEO = { dureeMinS: 15, dureeMaxS: 600, grandCoteMinPx: 640, tailleMaxMo: 32 } as const;
+
+/** Débits d'enregistrement : ~3 min de 720p tiennent sous les 32 Mo. */
+export const DEBIT_VIDEO_ENREGISTREMENT = 1_200_000;
+export const DEBIT_AUDIO_ENREGISTREMENT = 128_000;
+
+export function verifierPriseSource(p: { dureeS: number; largeur: number; hauteur: number; octets: number }): string[] {
+  const motifs: string[] = [];
+  const e = EXIGENCES_SOURCE_VIDEO;
+  if (p.dureeS < e.dureeMinS) motifs.push(`Enregistrez au moins ${e.dureeMinS} secondes (idéalement 2 minutes).`);
+  if (p.dureeS > e.dureeMaxS) motifs.push(`${e.dureeMaxS / 60} minutes maximum.`);
+  if (p.largeur > 0 && Math.max(p.largeur, p.hauteur) < e.grandCoteMinPx) motifs.push('La résolution de la caméra est trop faible (720p minimum conseillé).');
+  if (p.octets > e.tailleMaxMo * 1024 * 1024) motifs.push(`Vidéo trop lourde (${Math.round(p.octets / 1024 / 1024)} Mo, ${e.tailleMaxMo} Mo maximum) : enregistrez une prise plus courte.`);
+  return motifs;
+}
+
 // ── Prompteur ──────────────────────────────────────────────────────────
 
 /** Vitesse de défilement (1 à 10) → pixels par seconde. */

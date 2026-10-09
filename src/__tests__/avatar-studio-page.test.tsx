@@ -60,9 +60,9 @@ describe('Mon avatar — enregistrer sa source à la caméra', () => {
     await waitFor(() => expect(q('[data-enregistreur-source="pret"]')).not.toBeNull());
     vi.useFakeTimers();
     fireEvent.click(q('[data-enregistreur-demarrer]')!);
-    await act(async () => { vi.advanceTimersByTime(3100); });
-    vi.useRealTimers();
+    await act(async () => { vi.advanceTimersByTime(3100 + 20_000); });
     await act(async () => { fireEvent.click(q('[data-enregistreur-arreter]')!); });
+    vi.useRealTimers();
     fireEvent.click(q('[data-enregistreur-utiliser]')!);
 
     // Retour au parcours d'import : le fichier enregistré est choisi, le consentement reste à donner.

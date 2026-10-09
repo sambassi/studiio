@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Circle, Maximize2, Mic, Pause, Play, RotateCcw, Square, Check, ChevronDown } from 'lucide-react';
 import Prompteur, { REGLAGES_PROMPTEUR_DEFAUT, type ReglagesPrompteur } from '@/components/avatar/studio/Prompteur';
 import TexteAvecPrononciations from '@/components/avatar/studio/TexteAvecPrononciations';
-import { choisirFormatEnregistrement, formaterDuree, messageErreurCamera, typeEtExtension } from '@/lib/avatar/studio';
+import {
+  choisirFormatEnregistrement, formaterDuree, messageErreurCamera, typeEtExtension, verifierPriseSource,
+  DEBIT_AUDIO_ENREGISTREMENT, DEBIT_VIDEO_ENREGISTREMENT, EXIGENCES_SOURCE_VIDEO,
+} from '@/lib/avatar/studio';
 
 /**
  * ENREGISTRER MA SOURCE — caméra + micro du navigateur (getUserMedia +
@@ -16,7 +19,7 @@ import { choisirFormatEnregistrement, formaterDuree, messageErreurCamera, typeEt
  * ici — l'avatar actif ne change qu'après entraînement et validation.
  */
 type Phase = 'inactif' | 'demande' | 'pret' | 'decompte' | 'enregistrement' | 'apercu' | 'erreur';
-const DUREE_MAX_S = 180;
+const DUREE_MAX_S = 180; // ≤ 600 s exigés ; ~3 min tiennent sous 32 Mo au débit choisi
 
 export default function EnregistreurSource(props: {
   /** Le fournisseur de l'avatar vidéo n'accepte que le MP4. */
@@ -33,7 +36,10 @@ export default function EnregistreurSource(props: {
   const [niveauMicro, setNiveauMicro] = useState(0);
   const [decompte, setDecompte] = useState(3);
   const [duree, setDuree] = useState(0);
-  const [prise, setPrise] = useState<{ url: string; fichier: File } | null>(null);
+  const [prise, setPrise] = useState<{ url: string; fichier: File; dureeS: number } | null>(null);
+  /** Dimensions RÉELLES du flux caméra : l'aperçu montre exactement ce qui est enregistré. */
+  const [dimensions, setDimensions] = useState<{ largeur: number; hauteur: number }>({ largeur: 0, hauteur: 0 });
+  const debutPrise = useRef(0);
   const [texte, setTexte] = useState('');
   const [prompteurOuvert, setPrompteurOuvert] = useState(false);
   const [defilement, setDefilement] = useState(false);
@@ -89,7 +95,9 @@ export default function EnregistreurSource(props: {
       const appareils = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
       setCameras(appareils.filter((d) => d.kind === 'videoinput'));
       setMicros(appareils.filter((d) => d.kind === 'audioinput'));
-      setCamera(s.getVideoTracks()[0]?.getSettings().deviceId ?? '');
+      const reglagesVideo = s.getVideoTracks()[0]?.getSettings();
+      setDimensions({ largeur: reglagesVideo?.width ?? 0, hauteur: reglagesVideo?.height ?? 0 });
+      setCamera(reglagesVideo?.deviceId ?? '');
       setMicro(s.getAudioTracks()[0]?.getSettings().deviceId ?? '');
       // Indicateur micro : le niveau RÉEL du flux.
       try {
@@ -136,13 +144,14 @@ export default function EnregistreurSource(props: {
   const lancerEnregistrement = () => {
     if (!flux.current || !format) return;
     morceaux.current = [];
-    const r = new MediaRecorder(flux.current, { mimeType: format });
+    // Débit plafonné : une prise de quelques minutes reste sous la limite d'envoi.
+    const r = new MediaRecorder(flux.current, { mimeType: format, videoBitsPerSecond: DEBIT_VIDEO_ENREGISTREMENT, audioBitsPerSecond: DEBIT_AUDIO_ENREGISTREMENT });
     r.ondataavailable = (e) => { if (e.data && e.data.size > 0) morceaux.current.push(e.data); };
     r.onstop = () => {
       const { type, extension } = typeEtExtension(format);
       const blob = new Blob(morceaux.current, { type });
       const fichier = new File([blob], `ma-source-avatar.${extension}`, { type });
-      setPrise({ url: URL.createObjectURL(blob), fichier });
+      setPrise({ url: URL.createObjectURL(blob), fichier, dureeS: (Date.now() - debutPrise.current) / 1000 });
       setDefilement(false);
       setPhase('apercu');
     };
@@ -153,6 +162,7 @@ export default function EnregistreurSource(props: {
     if (texte.trim()) setDefilement(true);
     setPhase('enregistrement');
     const debut = Date.now();
+    debutPrise.current = debut;
     minuteur.current = setInterval(() => {
       const s = (Date.now() - debut) / 1000;
       setDuree(s);
@@ -176,11 +186,14 @@ export default function EnregistreurSource(props: {
   };
 
   const utiliser = () => {
-    if (!prise) return;
+    if (!prise || motifsPrise.length > 0) return;
     const fichier = prise.fichier;
     couper();
     props.onUtiliser(fichier);
   };
+
+  // Les règles du fournisseur, vérifiées AVANT tout envoi.
+  const motifsPrise = prise ? verifierPriseSource({ dureeS: prise.dureeS, largeur: dimensions.largeur, hauteur: dimensions.hauteur, octets: prise.fichier.size }) : [];
 
   const pleinEcran = () => { void cadre.current?.requestFullscreen?.().catch(() => {}); };
 
@@ -191,7 +204,7 @@ export default function EnregistreurSource(props: {
       {phase === 'inactif' && (
         <div className="rounded-2xl bg-gray-900/60 p-5 space-y-3 text-center">
           <Camera className="w-8 h-8 mx-auto text-purple-300" />
-          <p className="text-sm text-gray-300">Filmez-vous face caméra, dans un endroit calme et bien éclairé. Un prompteur peut vous aider à lire votre texte.</p>
+          <p className="text-sm text-gray-300">Filmez-vous face caméra, seul à l’image, visage visible du début à la fin, dans un endroit calme et bien éclairé. Parlez naturellement pendant {EXIGENCES_SOURCE_VIDEO.dureeMinS} secondes au moins — idéalement 2 minutes. Un prompteur peut vous aider.</p>
           <button type="button" data-enregistreur-activer onClick={() => void ouvrir()} className="button-primary px-5 py-2.5 text-sm">Activer la caméra</button>
         </div>
       )}
@@ -211,7 +224,12 @@ export default function EnregistreurSource(props: {
         ref={cadre}
         className={`relative mx-auto overflow-hidden rounded-2xl bg-black ${enDirect || phase === 'apercu' ? '' : 'hidden'}`}
         // Toujours entier à l'écran : « Arrêter » reste visible sans défiler.
-        style={{ aspectRatio: '9 / 16', width: 'min(100%, 420px, calc(70vh * 9 / 16))' }}
+        style={(() => {
+          // Le cadre suit le flux RÉEL (souvent 16:9 sur ordinateur) : rien n'est rogné
+          // à l'aperçu qui ne le serait pas dans le fichier.
+          const l = dimensions.largeur || 9; const h = dimensions.hauteur || 16;
+          return { aspectRatio: `${l} / ${h}`, width: `min(100%, ${l >= h ? '720px' : '420px'}, calc(70vh * ${l} / ${h}))` };
+        })()}
       >
         <video
           ref={video}
@@ -323,11 +341,16 @@ export default function EnregistreurSource(props: {
       {phase === 'apercu' && prise && (
         <div className="space-y-3">
           <p className="text-xs text-center text-gray-400">{formaterDuree(duree)} — {Math.max(1, Math.round(prise.fichier.size / 1024 / 1024))} Mo. Rien n’est envoyé tant que vous ne l’avez pas choisie.</p>
+          {motifsPrise.length > 0 && (
+            <ul data-enregistreur-refus className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200 space-y-1">
+              {motifsPrise.map((m) => <li key={m}>{m}</li>)}
+            </ul>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <button type="button" data-enregistreur-recommencer onClick={recommencer} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-3 text-sm">
               <RotateCcw className="w-4 h-4" /> Recommencer
             </button>
-            <button type="button" data-enregistreur-utiliser onClick={utiliser} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm">
+            <button type="button" data-enregistreur-utiliser onClick={utiliser} disabled={motifsPrise.length > 0} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40">
               <Check className="w-4 h-4" /> Utiliser cette vidéo
             </button>
           </div>

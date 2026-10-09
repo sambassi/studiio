@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   besoinPostTraitement, choisirFormatEnregistrement, etatCout, formaterDuree, lireGenerationMemorisee, messageErreurCamera,
-  motSelectionne, nomFichierAvatar, optionsPostTraitement, recadrageNeutre, typeEtExtension, vitessePrompteur, DIMENSIONS_STUDIO,
+  motSelectionne, nomFichierAvatar, optionsPostTraitement, verifierPriseSource, recadrageNeutre, typeEtExtension, vitessePrompteur, DIMENSIONS_STUDIO,
 } from '@/lib/avatar/studio';
 import { scriptParle } from '@/lib/voice/prononciations';
 
@@ -90,6 +90,16 @@ describe('enregistrement caméra', () => {
     expect(messageErreurCamera('NotFoundError')).toMatch(/Aucune caméra/);
     expect(messageErreurCamera('NotReadableError')).toMatch(/autre application/);
     expect(messageErreurCamera(undefined)).toMatch(/importer une vidéo/);
+  });
+  it('⚠️ exigences documentées du fournisseur, vérifiées AVANT envoi : 15–600 s, grand côté ≥ 640 px, 32 Mo', () => {
+    const ok = { dureeS: 120, largeur: 1280, hauteur: 720, octets: 20 * 1024 * 1024 };
+    expect(verifierPriseSource(ok)).toEqual([]);
+    expect(verifierPriseSource({ ...ok, dureeS: 9 })[0]).toMatch(/au moins 15 secondes/);
+    expect(verifierPriseSource({ ...ok, dureeS: 700 })[0]).toMatch(/10 minutes maximum/);
+    expect(verifierPriseSource({ ...ok, largeur: 480, hauteur: 360 })[0]).toMatch(/résolution/);
+    expect(verifierPriseSource({ ...ok, octets: 40 * 1024 * 1024 })[0]).toMatch(/trop lourde/);
+    // La source réelle de l'incident (848×478, 122,8 s, 23 Mo) respecte ces règles.
+    expect(verifierPriseSource({ dureeS: 122.84, largeur: 848, hauteur: 478, octets: 23.05 * 1024 * 1024 })).toEqual([]);
   });
   it('durée affichée', () => {
     expect(formaterDuree(0)).toBe('0:00');
