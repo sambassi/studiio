@@ -5,11 +5,14 @@
  * cette version), `en_cours`, `echec`, `indisponible` (générée mais sans
  * vidéo re-hébergée exploitable), `pret` (URL de la vidéo générée). Aucune
  * vidéo n'est inventée ; sans aperçu prêt, la validation reste fermée.
+ *
+ * `renduRecent` (avatar validé seulement) : la dernière vidéo terminée de la
+ * VERSION ACTIVE — un exemple de résultat, `null` s'il n'y en a pas.
  */
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { avatarVivantDuCompte } from '@/lib/avatar/lecture';
-import { apercuDuClone } from '@/lib/avatar/apercu';
+import { apercuDuClone, renduRecentDuClone } from '@/lib/avatar/apercu';
 import { etatAvatar } from '@/lib/avatar/contrat';
 
 export const dynamic = 'force-dynamic';
@@ -28,10 +31,14 @@ export async function GET() {
   }
   const a = lecture.avatar;
   try {
+    const etat = etatAvatar(a);
     const apercu = await apercuDuClone(session.user.id, a.id, a.version);
+    // Le rendu récent n'a de sens que pour un avatar ACTIF (validé) : c'est un
+    // exemple produit avec la version utilisée par Créer et l'Autopilote.
+    const renduRecent = etat === 'valide' ? await renduRecentDuClone(session.user.id, a.id, a.version) : null;
     return NextResponse.json({
       success: true,
-      data: { avatarId: a.id, version: a.version, etat: etatAvatar(a), apercu },
+      data: { avatarId: a.id, version: a.version, etat, apercu, renduRecent },
     }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (e) {
     console.error('[Avatar][apercu] lecture impossible :', e instanceof Error ? e.message : String(e));

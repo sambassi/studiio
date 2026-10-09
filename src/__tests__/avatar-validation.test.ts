@@ -235,7 +235,7 @@ describe('GET /api/avatar/apercu et POST /api/avatar/apercu/ouverture', () => {
     base.generations = [apercuPret()];
     const res = await APERCU();
     expect(res.status).toBe(200);
-    expect((await res.json() as { data: unknown }).data).toEqual({ avatarId: A, version: 2, etat: 'entraine_non_valide', apercu: { statut: 'pret', generationId: G, url: `${RELAIS}/${U}/avatar/${G}.mp4` } });
+    expect((await res.json() as { data: unknown }).data).toEqual({ avatarId: A, version: 2, etat: 'entraine_non_valide', apercu: { statut: 'pret', generationId: G, url: `${RELAIS}/${U}/avatar/${G}.mp4` }, renduRecent: null });
     const create = await (await CREATE_GET()).json() as { data: { avatar: { etat: string; version: number; validated_at: null } } };
     expect(create.data.avatar.etat).toBe('entraine_non_valide');
     expect(create.data.avatar.version).toBe(2);

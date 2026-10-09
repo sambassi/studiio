@@ -32,11 +32,19 @@ import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '
 /** Au-delà, une génération encore EN COURS est considérée perdue et remboursée. */
 export const STALE_AFTER_MS = 30 * 60 * 1000; // 30 min
 
-export type ResultatStatutGeneration =
-  | { status: 'introuvable' }
+type ResultatPoll =
   | { status: 'processing'; videoUrl: null }
   | { status: 'completed'; videoUrl: string }
   | { status: 'failed'; videoUrl: null; error: string; rembourse: boolean };
+
+/**
+ * `avatarVersion` : la version du clone ÉPINGLÉE à la génération
+ * (`avatar_generations.avatar_version`), présente seulement quand la base la
+ * connaît. Une information, jamais une décision : le poll est inchangé.
+ */
+export type ResultatStatutGeneration =
+  | { status: 'introuvable' }
+  | (ResultatPoll & { avatarVersion?: number });
 
 interface LigneGeneration {
   id: string;
@@ -70,7 +78,13 @@ export async function avancerStatutGeneration(
     .single();
 
   if (!gen) return { status: 'introuvable' };
-  const g = gen as LigneGeneration;
+  const r = await avancerLigne(userId, gen as LigneGeneration);
+  const version = (gen as { avatar_version?: unknown }).avatar_version;
+  return typeof version === 'number' ? { ...r, avatarVersion: version } : r;
+}
+
+/** Le poll lui-même, sur une ligne déjà lue et dont la propriété est vérifiée. */
+async function avancerLigne(userId: string, g: LigneGeneration): Promise<ResultatPoll> {
 
   // États terminaux : rien à ré-interroger.
   if (g.status === 'completed') {

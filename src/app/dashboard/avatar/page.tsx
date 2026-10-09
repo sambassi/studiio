@@ -21,6 +21,8 @@ import StatutAvatar, { type StatutAvatarCle, type LienStatut } from '@/component
 import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneApercu, DeuxColonnes, ColonneTravail, ColonneApercu, type EtapeProgression, type Etape, type EtatApercu, type NiveauNotification } from '@/components/ux';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
+import Link from 'next/link';
+import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
@@ -112,6 +114,11 @@ export default function AvatarPage() {
    */
   type Apercu = { statut: 'aucun' } | { statut: 'en_cours'; generationId: string } | { statut: 'echec'; generationId: string; erreur: string | null } | { statut: 'indisponible'; generationId: string } | { statut: 'pret'; generationId: string; url: string };
   const [apercu, setApercu] = useState<Apercu | null>(null);
+  /**
+   * Avatar VALIDÉ : la dernière vidéo terminée de la VERSION ACTIVE — un
+   * exemple de rendu, jamais présenté comme « l'avatar ». `null` = aucun.
+   */
+  const [renduRecent, setRenduRecent] = useState<RenduRecent | null>(null);
   /** « Voir mon avatar » a été cliqué : la vraie vidéo est affichée — sans jeton encore. */
   const [apercuVisible, setApercuVisible] = useState(false);
   /** Le jeton n'existe qu'après le DÉMARRAGE RÉEL de la lecture (`onPlaying`). */
@@ -204,6 +211,16 @@ export default function AvatarPage() {
       setSuppressionArmee(false);
     }
   };
+
+  const loadRenduRecent = useCallback(async () => {
+    try {
+      const res = await fetch('/api/avatar/apercu');
+      const json = await res.json();
+      setRenduRecent(json?.success && json.data?.renduRecent ? (json.data.renduRecent as RenduRecent) : null);
+    } catch {
+      setRenduRecent(null);
+    }
+  }, []);
 
   const loadApercu = useCallback(async () => {
     try {
@@ -313,6 +330,8 @@ export default function AvatarPage() {
     setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
+    if (json.data.avatar?.etat === 'valide') void loadRenduRecent();
+    else setRenduRecent(null);
     // Un jeton d'ouverture ne vaut que pour la version qui l'a délivré.
     setApercuOuvert((o) => (o && o.version === json.data.avatar?.version && json.data.avatar?.etat === 'entraine_non_valide' ? o : null));
     if (json.data.avatar?.etat !== 'entraine_non_valide') setApercuVisible(false);
@@ -719,7 +738,7 @@ export default function AvatarPage() {
       data-avatar-source-apercu="image"
       src={urlSourceAvatar(avatar)}
       onError={(e) => { e.currentTarget.hidden = true; }}
-      alt="Votre avatar"
+      alt={TITRE_SOURCE_AVATAR}
       className="w-full h-full object-contain"
     />
   )) : null;
@@ -744,7 +763,11 @@ export default function AvatarPage() {
     }
     if (etatEffectif === 'valide') {
       if (videoUrl) return { titre: 'Votre vidéo', ratio: ratio === '9:16' ? '9 / 16' : ratio === '16:9' ? '16 / 9' : '1 / 1', etat: { statut: 'pret', legende: 'Vidéo prête.' }, media: <video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /> };
-      return { titre: 'Votre avatar', ratio: ratioSource, etat: { statut: 'pret', legende: busy ? 'Avatar validé — votre vidéo est en cours de création.' : 'Avatar validé.' }, media: mediaSource };
+      // ⚠️ JAMAIS la source ici : elle n'est pas l'avatar utilisé par Créer et
+      // l'Autopilote. On montre un RENDU réel de la version active, ou on dit
+      // qu'il n'y en a pas — sans rien inventer, sans appeler de fournisseur.
+      if (renduRecent) return { titre: TITRE_RENDU_RECENT, ratio: '9 / 16', etat: { statut: 'pret', legende: busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.` }, media: <video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline className="w-full h-full object-contain bg-black" /> };
+      return { titre: TITRE_RENDU_RECENT, ratio: '9 / 16', media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
     }
     if (etatEffectif === 'entraine_non_valide') {
       const relance = { onClick: genererApercu, disabled: apercuEnCours || !apercu, principale: notification?.cle !== 'voix_manquante', attributs: { 'data-avatar-apercu': 'generer' } as const };
@@ -790,9 +813,9 @@ export default function AvatarPage() {
    * (cahier #409), et il vit dans la zone d'aperçu ou l'étape. Le bloc de
    * statut ne porte qu'un lien secondaire vers la suite, quand tout est prêt.
    */
-  const lienStatut: LienStatut | null = statutGlobal === 'pret'
-    ? { libelle: 'Utiliser dans Créer', href: '/dashboard/creer', attributs: { 'data-avatar-action': 'utiliser-creer' } }
-    : null;
+  // Avatar prêt : « Utiliser dans Créer » vit dans la carte « Avatar actif » —
+  // un seul lien, pas deux le même écran.
+  const lienStatut: LienStatut | null = null;
   const texteStatut: string | undefined = (() => {
     if (statutGlobal === 'aucun') return file ? 'Source choisie : certifiez le consentement, puis créez votre avatar.' : 'Commencez par choisir une photo ou une vidéo.';
     if (statutGlobal === 'consentement') return 'Votre phrase de consentement, lue face caméra, prouve que cet avatar est le vôtre.';
@@ -997,7 +1020,32 @@ export default function AvatarPage() {
             <div className="space-y-5">
               {/* Quand la zone d'aperçu montre autre chose que la source (aperçu de
                   validation, vidéo produite), la source reste visible ici, en petit. */}
-              {zone.media !== mediaSource && (
+              {etatEffectif === 'valide' && (
+                <div data-avatar-actif={avatar.version ?? ''} className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-3">
+                  <div>
+                    <div className="font-semibold">Avatar actif</div>
+                    <div className="text-xs text-gray-400" data-avatar-actif-meta>
+                      {avatar.version ? `v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-300">Cet avatar est celui utilisé dans Créer et Autopilote.</p>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <Link href="/dashboard/creer" data-avatar-actif-action="creer" data-avatar-action="utiliser-creer" className="text-sm text-purple-300 hover:text-purple-200 underline">Utiliser dans Créer</Link>
+                    <button type="button" onClick={changerDeSource} data-avatar-actif-action="changer" className="text-sm text-gray-400 hover:text-white flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5" /> Changer d’avatar
+                    </button>
+                  </div>
+                  {/* La source, à part et repliée : elle a servi à CRÉER l'avatar, elle ne l'est pas. */}
+                  <details data-avatar-source-section className="rounded-lg border border-white/10 bg-black/20">
+                    <summary className="cursor-pointer px-3 py-2 text-xs text-gray-300">{TITRE_SOURCE_AVATAR}</summary>
+                    <div className="p-3 space-y-2">
+                      <p className="text-xs text-gray-400">Cette {avatar.avatar_type === 'video' ? 'vidéo' : 'photo'} a servi à créer votre avatar.</p>
+                      <div className="w-32 rounded-lg overflow-hidden bg-black" style={{ aspectRatio: avatar.avatar_type === 'video' ? '9 / 16' : '1 / 1' }}>{mediaSource}</div>
+                    </div>
+                  </details>
+                </div>
+              )}
+              {etatEffectif !== 'valide' && zone.media !== mediaSource && (
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-black [&>*]:w-12 [&>*]:h-12 [&>*]:object-cover">{mediaSource}</div>
                   <div className="min-w-0">
@@ -1058,7 +1106,7 @@ export default function AvatarPage() {
 
               {/* Actions secondaires : en texte, jamais au niveau du CTA. Suppression en deux clics. */}
               <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-white/5">
-                {!(notificationAffichee?.action?.libelle === 'Changer de source' || (zone.etat.statut === 'erreur' && zone.etat.action?.libelle === 'Changer de source') || (viaDid && avatar.etape_did === 'echec')) && (
+                {etatEffectif !== 'valide' && !(notificationAffichee?.action?.libelle === 'Changer de source' || (zone.etat.statut === 'erreur' && zone.etat.action?.libelle === 'Changer de source') || (viaDid && avatar.etape_did === 'echec')) && (
                   <button onClick={changerDeSource} className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5">
                     <RefreshCw className="w-3.5 h-3.5" /> Changer de source
                   </button>

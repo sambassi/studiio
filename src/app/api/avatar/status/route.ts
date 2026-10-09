@@ -23,6 +23,11 @@ export const dynamic = 'force-dynamic';
  * pas diverger sur le poll, le rapatriement ou le remboursement.
  *
  * Sans `generationId`, renvoie les 10 dernieres generations de l'utilisateur.
+ *
+ * `avatarVersion` : la version du clone EPINGLEE a la generation
+ * (`avatar_generations.avatar_version`, `null` si inconnue). Creer la compare
+ * a l'avatar actif pour signaler une video d'une ancienne version — lecture
+ * seule, rien n'est remplace.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -52,10 +57,12 @@ export async function GET(req: NextRequest) {
         { status: 404 },
       );
     }
+    // Présente seulement si la base la connaît : la forme des réponses ne change pas sinon.
+    const avatarVersion = typeof r.avatarVersion === 'number' ? { avatarVersion: r.avatarVersion } : {};
     if (r.status === 'failed') {
       return NextResponse.json({
         success: true,
-        data: { generationId, status: 'failed', videoUrl: null, error: r.error },
+        data: { generationId, status: 'failed', videoUrl: null, error: r.error, ...avatarVersion },
       });
     }
     if (r.status === 'completed') {
@@ -64,12 +71,12 @@ export async function GET(req: NextRequest) {
       // pour les lecteurs qui comparent l'objet entier).
       return NextResponse.json({
         success: true,
-        data: { generationId, status: 'completed', videoUrl: r.videoUrl, error: null },
+        data: { generationId, status: 'completed', videoUrl: r.videoUrl, error: null, ...avatarVersion },
       });
     }
     return NextResponse.json({
       success: true,
-      data: { generationId, status: 'processing', videoUrl: null },
+      data: { generationId, status: 'processing', videoUrl: null, ...avatarVersion },
     });
   } catch (error) {
     if (error instanceof DidError) {

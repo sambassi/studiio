@@ -71,7 +71,7 @@ describe('A. attendreStatutJumeau — le contrat réel de /api/avatar/status', (
     const s = fetchScripte(['reseau', 'reseau', traitement(), termine()]);
     const phases: PhaseJumeau[] = [];
     const r = await attendreStatutJumeau({ generationId: GEN, fetchImpl: s.f, attendreMs: dormir, onPhase: (p) => phases.push(p) });
-    expect(r).toEqual({ url: '/media/u/avatar/g-1.mp4' });
+    expect(r).toEqual({ url: '/media/u/avatar/g-1.mp4', avatarVersion: null });
     expect(s.status()).toBe(4);
     expect(phases).toEqual(['traitement', 'stockage']);
   });
