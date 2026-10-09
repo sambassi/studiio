@@ -20,7 +20,7 @@ echo "CONTENEURS=$(echo $C)"
 echo "--- 1. Ports publies (tous conteneurs Studiio) ---"
 docker ps --format '{{.Names}} PORTS={{.Ports}}' \
   | grep -E "$MOTIF"
-echo "--- 2. Labels (tout conteneur) citant ces services ---"
+echo "--- 2. Labels citant ces services ---"
 for n in $(docker ps --format '{{.Names}}'); do
   docker inspect -f \
     '{{range $k,$v := .Config.Labels}}{{$k}}={{$v}}
