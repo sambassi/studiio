@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Check, Loader2, UserSquare2 } from 'lucide-react';
+import SelecteurAvatar from '@/components/avatar/SelecteurAvatar';
 import { lireEtatJumeau, libelleFournisseurAvatar, type EtatJumeau, type JumeauMode } from '@/lib/creer/jumeau';
 import { libelleAvatarActif } from '@/lib/avatar/identite';
 import type { SequenceKey } from '@/lib/types/voice';
@@ -49,14 +50,23 @@ export default function JumeauPanel(props: {
   onVoixJumeau: (voixId: string) => void;
   /** AVATAR_VIDEO_COST — annoncé avant l'envoi, en mode avatar. */
   coutAvatar: number;
+  /** Avatar choisi pour ce projet (identité logique, null = par défaut). */
+  avatarId?: string | null;
+  onAvatarIdChange?: (avatarId: string | null) => void;
 }) {
   const { mode, onModeChange, onVoixJumeau } = props;
   const [etat, setEtat] = useState<EtatJumeau | null | 'chargement'>('chargement');
   const [voixCompte, setVoixCompte] = useState<VoixCompte[] | null>(null);
 
+  // L'état du jumeau suit l'AVATAR CHOISI : relu à chaque changement.
   useEffect(() => {
     let vivant = true;
-    void lireEtatJumeau().then((e) => { if (vivant) setEtat(e); });
+    void lireEtatJumeau(fetch, props.avatarId).then((e) => { if (vivant) setEtat(e); });
+    return () => { vivant = false; };
+  }, [props.avatarId]);
+
+  useEffect(() => {
+    let vivant = true;
     void fetch('/api/voice/clone')
       .then((r) => r.json())
       .then((j) => { if (vivant) setVoixCompte(Array.isArray(j?.voices) ? (j.voices as VoixCompte[]) : []); })
@@ -189,6 +199,10 @@ export default function JumeauPanel(props: {
             ))}
             <div className="text-gray-500">Modifiable dans le panneau des voix par séquence (étape Audio).</div>
           </div>
+
+          {mode === 'avatar' && props.onAvatarIdChange && (
+            <SelecteurAvatar avatarId={props.avatarId ?? null} onChange={props.onAvatarIdChange} />
+          )}
 
           <div data-jumeau-sequences className="text-gray-400">
             {mode === 'avatar' && 'Où il apparaît : séquence « Vidéo » (à l’image, avec votre voix).'}

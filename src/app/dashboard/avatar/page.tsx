@@ -24,6 +24,7 @@ import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
 import MiniStudioAvatar from '@/components/avatar/studio/MiniStudioAvatar';
 import EnregistreurSource from '@/components/avatar/studio/EnregistreurSource';
+import MesAvatars from '@/components/avatar/MesAvatars';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 
 /** Limite imposée par HeyGen sur l'envoi d'un asset. */
@@ -102,6 +103,7 @@ export default function AvatarPage() {
   /** Source : importer un fichier, ou s'enregistrer à la caméra (vidéo). */
   const [modeSource, setModeSource] = useState<'import' | 'camera'>('import');
   const [creating, setCreating] = useState(false);
+  const [mesAvatarsCle, setMesAvatarsCle] = useState(0);
 
   // Génération
   const [voiceId, setVoiceId] = useState('');
@@ -521,6 +523,18 @@ export default function AvatarPage() {
         setError(json.error || "La création de l'avatar a échoué.");
         return;
       }
+      // Le compte avait déjà un avatar : le serveur a préparé une VERSION
+      // CANDIDATE, l'actuelle reste utilisée. On relit, sans rien écraser.
+      if (!json.data.avatar) {
+        setNotice('Nouvelle version en préparation. Votre version actuelle reste utilisée en attendant.');
+        setFile(null);
+        if (preview) URL.revokeObjectURL(preview);
+        setPreview(null);
+        setConsent(false);
+        setMesAvatarsCle((n) => n + 1);
+        await loadAvatar(false);
+        return;
+      }
       setAvatar(json.data.avatar);
       setNotice(
         kind === 'video' && didVideoActif
@@ -599,6 +613,10 @@ export default function AvatarPage() {
 
   /** « Changer de source » : le geste existant (retour à l'import), aussi offert par les notifications. */
   const changerDeSource = () => {
+    // Retour à l'import. Un avatar EXISTANT ne s'écrase plus pour autant
+    // (incident du 2026-10-09) : le serveur prépare une VERSION CANDIDATE et
+    // l'actuelle reste utilisée (voir `handleCreate`). Le parcours complet
+    // (préparation de la vidéo, aperçu, choix) vit dans « Mes avatars ».
     setAvatar(null);
     setVideoUrl(null);
     setProgress(null);
@@ -822,6 +840,9 @@ export default function AvatarPage() {
         statut={statutEntete}
         data-entete="avatar"
       />
+
+      {/* Mes avatars — identités, version utilisée, nouvelle version en préparation. */}
+      <MesAvatars key={mesAvatarsCle} onChange={() => { void loadAvatar(false); }} />
 
       {/* D. Deux colonnes — la même mise en page que Créer (`DeuxColonnes`) :
           l'étape, ses gestes et la voix à gauche ; l'aperçu à droite. */}

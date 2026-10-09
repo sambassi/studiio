@@ -21,7 +21,7 @@ import { avatarVivantDuCompte } from '@/lib/avatar/lecture';
 import { listerIdentites, identitesVideoAvecGroupe, emplacementsVideo } from '@/lib/avatar/versions';
 import { lancerVersionCandidate } from '@/lib/avatar/remplacement';
 import { versionPublique } from '@/lib/avatar/actions-version';
-import { cleSourceAvatarDuCompte } from '@/lib/avatar/source';
+import { cleSourceAvatarDuCompte, sourceAvatarPresente } from '@/lib/avatar/source';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
 import {
   FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, DUREE_VALIDITE_CONSENTEMENT_MS, etapeDid, rafraichirEntrainementDid,
@@ -402,6 +402,10 @@ export async function POST(req: NextRequest) {
     if (!file && typeof cleSourceRecue === 'string') {
       if (!cleSourceAvatarDuCompte(cleSourceRecue, userId)) {
         return NextResponse.json({ success: false, error: 'Source invalide.', code: 'avatar_source_invalid' }, { status: 400 });
+      }
+      // La source préparée doit EXISTER au compte avant toute ligne ou tout fournisseur.
+      if (!(await sourceAvatarPresente(userId, cleSourceRecue))) {
+        return NextResponse.json({ success: false, error: 'La vidéo préparée est introuvable. Recommencez la préparation.', code: 'avatar_source_absente' }, { status: 400 });
       }
       const cleOriginal = typeof cleOriginalRecue === 'string' && cleSourceAvatarDuCompte(cleOriginalRecue, userId) ? cleOriginalRecue : null;
       const kindSource: AvatarKind = /\.(mp4|webm|mov)$/i.test(cleSourceRecue) ? 'video' : 'photo';

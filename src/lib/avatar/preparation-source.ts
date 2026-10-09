@@ -23,6 +23,16 @@ export * from '@/lib/avatar/preparation-source-regles';
 
 const executer = promisify(execFile);
 
+/**
+ * Options d'ENTRÉE communes à ffprobe et ffmpeg : seul le protocole `file`
+ * est permis, et seuls les démultiplexeurs des formats acceptés (MP4/MOV,
+ * WebM/Matroska). HLS, concat, http… sont refusés avant toute lecture.
+ */
+export const PROTECTIONS_ENTREE = [
+  '-protocol_whitelist', 'file',
+  '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm',
+] as const;
+
 /** Une sonde ne lit que l'en-tête : 30 s suffisent largement. */
 const DELAI_FFPROBE_MS = 30_000;
 /** 10 min de 1080p en `veryfast` : quelques minutes au pire. Sous le `maxDuration` de la route. */
@@ -32,7 +42,9 @@ export const DELAI_FFMPEG_MS = 240_000;
 export async function infosVideo(chemin: string): Promise<InfosVideo> {
   const { size } = await stat(chemin);
   const { stdout } = await executer(cheminFfprobe(), [
-    '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', chemin,
+    // Fichier LOCAL uniquement : un conteneur piégé (playlist, concat) ne
+    // doit jamais faire ouvrir une URL ou un autre fichier (SSRF / lecture).
+    ...PROTECTIONS_ENTREE, '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', chemin,
   ], { timeout: DELAI_FFPROBE_MS, maxBuffer: 4 * 1024 * 1024 });
   let json: unknown;
   try { json = JSON.parse(String(stdout)); } catch { throw new Error('ffprobe: sortie illisible'); }
@@ -45,7 +57,7 @@ export async function infosVideo(chemin: string): Promise<InfosVideo> {
 export async function traiterVideo(
   entree: string, sortie: string, p: ParametresTraitement, infos: InfosVideo,
 ): Promise<void> {
-  await executer(cheminFfmpeg(), argumentsFfmpeg(entree, sortie, p, infos), {
+  await executer(cheminFfmpeg(), [...PROTECTIONS_ENTREE, ...argumentsFfmpeg(entree, sortie, p, infos)], {
     timeout: DELAI_FFMPEG_MS, maxBuffer: 16 * 1024 * 1024,
   });
 }

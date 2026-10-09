@@ -10,6 +10,34 @@ import { estCleSourceAvatar } from '@/lib/avatar/source-cle';
 import { BUCKET_NAMESPACE_AVATAR } from '@/lib/storage/acces-objet';
 
 export const dynamic = 'force-dynamic';
+
+/** Une source d'avatar non rattachée reste 7 jours (le temps de préparer, vérifier, envoyer). */
+const DELAI_PREPARATION_SOURCE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Les clés de sources d'avatar qu'une ligne référence (identité ou version,
+ * source envoyée ou original). `null` si l'une des lectures échoue.
+ */
+async function clesSourcesAvatarReferencees(): Promise<Set<string> | null> {
+  try {
+    return await lireClesSourcesAvatar();
+  } catch {
+    return null;
+  }
+}
+async function lireClesSourcesAvatar(): Promise<Set<string> | null> {
+  const cles = new Set<string>();
+  const a = await supabaseAdmin.from('user_avatars').select('source_object_key');
+  if (a.error) return null;
+  for (const l of (a.data ?? []) as Array<{ source_object_key: string | null }>) if (l.source_object_key) cles.add(l.source_object_key);
+  const v = await supabaseAdmin.from('avatar_versions').select('source_object_key, original_source_object_key');
+  if (v.error) return null;
+  for (const l of (v.data ?? []) as Array<{ source_object_key: string | null; original_source_object_key: string | null }>) {
+    if (l.source_object_key) cles.add(l.source_object_key);
+    if (l.original_source_object_key) cles.add(l.original_source_object_key);
+  }
+  return cles;
+}
 export const maxDuration = 120;
 
 // Secret absent ou vide → refus total (voir `isCronAuthorized`).
@@ -186,6 +214,10 @@ export async function GET(req: NextRequest) {
       { status: 503 },
     );
   }
+  // ⚠️ CINQUIÈME : les sources d'avatar RÉFÉRENCÉES (version active,
+  // candidate, historique, original). `null` = illisible (dont la table des
+  // versions pas encore migrée) → TOUTES les sources sont gardées.
+  const sourcesAvatarReferencees = await clesSourcesAvatarReferencees();
   const rushKeys: Set<string> = banqueLue;
   // Lié à une constante non-nullable : `processFile` est une fonction
   // imbriquée, et TypeScript ne propage pas le rétrécissement d'un `let`
@@ -198,6 +230,7 @@ export async function GET(req: NextRequest) {
   let exemptesTournage = 0;
   let exemptesBrouillons = 0;
   let exemptesSourcesAvatar = 0;
+  let sourcesAvatarOrphelines = 0;
   let candidats = 0;
   const buckets = ['media', 'audio'];
   const breakdown = { video: 0, audio: 0, image: 0 };
@@ -293,9 +326,19 @@ export async function GET(req: NextRequest) {
     // disparaissait le lendemain, et tout ré-entraînement échouait. Ce sont
     // des données biométriques gérées par les seuls parcours avatar et par
     // la suppression explicite (`retirerSourceAvatar`) — jamais par l'âge.
+    // Une source ORPHELINE (jamais rattachée à une version : préparation
+    // abandonnée) n'est pas gardée indéfiniment : passé le délai de
+    // préparation, elle est retirée — un visage n'est pas conservé sans usage.
     if (bucket === BUCKET_NAMESPACE_AVATAR && estCleSourceAvatar(path)) {
-      exemptesSourcesAvatar++;
-      preserved++;
+      const creeLe = new Date((file as any).created_at || now.toISOString()).getTime();
+      const recente = now.getTime() - creeLe < DELAI_PREPARATION_SOURCE_MS;
+      if (!sourcesAvatarReferencees || sourcesAvatarReferencees.has(path) || recente) {
+        exemptesSourcesAvatar++;
+        preserved++;
+        return;
+      }
+      const { error } = await supabaseAdmin.storage.from(bucket).remove([path]);
+      if (error) { errors.push(`${path}: ${error.message}`); kept++; } else { deleted++; sourcesAvatarOrphelines++; }
       return;
     }
     if (rushKeys.has(cle)) {
@@ -374,6 +417,7 @@ export async function GET(req: NextRequest) {
       tournage: exemptesTournage,
       brouillons: exemptesBrouillons,
       sourcesAvatar: exemptesSourcesAvatar,
+      sourcesAvatarOrphelinesRetirees: sourcesAvatarOrphelines,
       banque: rushKeys.size,
       clesTournage: clesTournage.size,
       clesBrouillon: clesBrouillon.size,
