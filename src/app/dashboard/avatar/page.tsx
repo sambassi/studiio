@@ -2,6 +2,8 @@
 
 import ConsentementJumeauAdmin from '@/components/avatar/ConsentementJumeauAdmin';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { flushSync } from 'react-dom';
+import { Onglets } from '@/components/ui/Onglets';
 import {
   UserSquare2,
   Upload,
@@ -140,6 +142,20 @@ export default function AvatarPage() {
   /** L'envoi de la source vers Studiio : octets réellement transférés (XHR), ou null hors envoi. */
   const [envoiSource, setEnvoiSource] = useState<ProgressionEnvoi | null>(null);
   const maVoixRef = useRef<HTMLElement | null>(null);
+  /**
+   * Deux onglets : l'avatar vidéo, et la voix (clonage, prononciations). Les
+   * deux panneaux restent MONTÉS (l'inactif est seulement masqué) : rien ne se
+   * recharge ni ne se perd en passant de l'un à l'autre. `#ma-voix` (lien de
+   * Créer > Audio) ouvre directement l'onglet de la voix.
+   */
+  const [onglet, setOnglet] = useState<'avatar' | 'voix'>('avatar');
+  useEffect(() => {
+    if (window.location.hash === '#ma-voix') setOnglet('voix');
+  }, []);
+  // Arrivée par `#ma-voix` : une fois la page chargée, on descend sur la section.
+  useEffect(() => {
+    if (!loading && window.location.hash === '#ma-voix') maVoixRef.current?.scrollIntoView({ block: 'start' });
+  }, [loading]);
 
   /**
    * LA notification de la page (cahier UX, §2.3) : une seule à la fois, la
@@ -161,7 +177,8 @@ export default function AvatarPage() {
     niveau: 'avertissement',
     titre: "Votre voix personnelle est nécessaire pour l'aperçu.",
     detail: "L'aperçu fait parler votre avatar avec votre voix. Ajoutez ou choisissez-la dans « Ma voix ».",
-    action: { libelle: 'Configurer ma voix', onClick: () => { maVoixRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); maVoixRef.current?.focus(); } },
+    // L'onglet « Voix & Prononciation » est d'abord AFFICHÉ (rendu synchrone), puis on y descend.
+    action: { libelle: 'Configurer ma voix', onClick: () => { flushSync(() => setOnglet('voix')); maVoixRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); maVoixRef.current?.focus(); } },
   });
 
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -861,8 +878,47 @@ export default function AvatarPage() {
     );
   }
 
+  /**
+   * LA carte de l'avatar actif, fusionnée dans « Mes avatars » : version,
+   * usage, « Utiliser dans Créer », « Changer d'avatar » et la source repliée
+   * vivent dans la carte de l'avatar par défaut — une carte au lieu de trois.
+   */
+  const carteActive = avatar && etatEffectif === 'valide' ? {
+    attributs: { 'data-avatar-actif': String(avatar.version ?? '') },
+    nom: avatar.name || 'Mon avatar',
+    type: (avatar.avatar_type === 'video' ? 'video' : 'photo') as 'photo' | 'video',
+    contenu: (
+      <div className="space-y-3">
+        <div className="text-xs text-gray-300" data-avatar-actif-meta>
+          {avatar.version ? `v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
+        </div>
+        <p className="text-sm text-gray-300">Cet avatar est celui utilisé dans Créer et Autopilote.</p>
+      </div>
+    ),
+    // Une seule rangée d'actions dans la carte : celles de la page, puis Remplacer / Gérer.
+    actions: (
+      <>
+        <Link href="/dashboard/creer" data-avatar-actif-action="creer" data-avatar-action="utiliser-creer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">Utiliser dans Créer</Link>
+        <button type="button" onClick={changerDeSource} data-avatar-actif-action="changer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">
+          <RefreshCw className="w-3 h-3" /> Changer d’avatar
+        </button>
+      </>
+    ),
+    apres: (
+      <>
+        {/* La source, à part et repliée : elle a servi à CRÉER l'avatar, elle ne l'est pas. */}
+        <details data-avatar-source-section className="rounded-lg border border-gray-800 bg-gray-950/50">
+          <summary className="cursor-pointer px-3 py-2 text-xs text-gray-300 hover:text-white">{TITRE_SOURCE_AVATAR}</summary>
+          <div className="p-3 space-y-2">
+            <p className="text-xs text-gray-300">Cette {avatar.avatar_type === 'video' ? 'vidéo' : 'photo'} a servi à créer votre avatar.</p>
+            <div className="w-28 rounded-lg overflow-hidden bg-black" style={{ aspectRatio: avatar.avatar_type === 'video' ? '9 / 16' : '1 / 1' }}>{mediaSource}</div>
+          </div>
+        </details>
+      </>
+    ),
+  } : undefined;
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div data-avatar-page className="max-w-6xl mx-auto p-6 space-y-6">
       {/* A. En-tête — pas de lien « Aide » : aucune page d'aide n'existe encore, on n'en promet pas. */}
       <EnteteSection
         titre="Mon avatar"
@@ -872,13 +928,28 @@ export default function AvatarPage() {
         data-entete="avatar"
       />
 
-      {/* Mes avatars — identités, version utilisée, nouvelle version en préparation. */}
-      <MesAvatars key={mesAvatarsCle} onChange={() => { void loadAvatar(false); }} />
+      {/* B. Deux onglets — le composant d'onglets du produit (clavier, aria). */}
+      <div className="border-b border-gray-800">
+        <Onglets
+          label="Sections de Mon avatar"
+          actif={onglet}
+          onChange={(id) => setOnglet(id === 'voix' ? 'voix' : 'avatar')}
+          onglets={[
+            { id: 'avatar', label: 'Avatar vidéo', icone: <Clapperboard className="w-4 h-4 mr-1.5" />, panneauId: 'panneau-avatar' },
+            { id: 'voix', label: 'Voix & Prononciation', icone: <Mic className="w-4 h-4 mr-1.5" />, panneauId: 'ma-voix' },
+          ]}
+        />
+      </div>
 
-      {/* D. Deux colonnes — la même mise en page que Créer (`DeuxColonnes`) :
-          l'étape, ses gestes et la voix à gauche ; l'aperçu à droite. */}
+      {/* C. Deux colonnes — la même grille que Créer : l'onglet au centre,
+          l'aperçu et la génération à droite, collants sur grand écran. */}
       <DeuxColonnes nom="avatar" attributs={{ 'data-avatar-colonnes': '' }}>
         <ColonneTravail attributs={{ 'data-avatar-colonne': 'etape' }}>
+          <div role="tabpanel" id="panneau-avatar" aria-labelledby="onglet-avatar" data-avatar-panneau="avatar" className={onglet === 'avatar' ? 'space-y-6' : 'hidden'}>
+          {/* Mes avatars — identités, version utilisée, nouvelle version ; la carte active
+              fusionnée. Sans aucun avatar, la carte de création ci-dessous suffit. */}
+          {avatar && <MesAvatars key={mesAvatarsCle} onChange={() => { void loadAvatar(false); }} carteActive={carteActive} />}
+
           {/* LA carte principale — comme la carte du wizard de Créer : le fil
               d'étapes en tête (une étape franchie ramène à la Source), le statut
               global et LE geste suivant, puis la notification (quand il y en a
@@ -888,6 +959,7 @@ export default function AvatarPage() {
             etapes={filEtapes}
             atteignables={avatar && !suppressionEnCours ? ['source'] : []}
             onAller={(cle) => { if (cle === 'source') changerDeSource(); }}
+            sansNoms
             className="mb-1"
           />
           <StatutAvatar statut={statutGlobal} texte={texteStatut} lien={lienStatut} />
@@ -1041,31 +1113,6 @@ export default function AvatarPage() {
             <div className="space-y-5">
               {/* Quand la zone d'aperçu montre autre chose que la source (aperçu de
                   validation, vidéo produite), la source reste visible ici, en petit. */}
-              {etatEffectif === 'valide' && (
-                <div data-avatar-actif={avatar.version ?? ''} className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-3">
-                  <div>
-                    <div className="font-semibold">Avatar actif</div>
-                    <div className="text-xs text-gray-400" data-avatar-actif-meta>
-                      {avatar.version ? `v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-300">Cet avatar est celui utilisé dans Créer et Autopilote.</p>
-                  <div className="flex flex-wrap items-center gap-4">
-                    <Link href="/dashboard/creer" data-avatar-actif-action="creer" data-avatar-action="utiliser-creer" className="text-sm text-purple-300 hover:text-purple-200 underline">Utiliser dans Créer</Link>
-                    <button type="button" onClick={changerDeSource} data-avatar-actif-action="changer" className="text-sm text-gray-400 hover:text-white flex items-center gap-1.5">
-                      <RefreshCw className="w-3.5 h-3.5" /> Changer d’avatar
-                    </button>
-                  </div>
-                  {/* La source, à part et repliée : elle a servi à CRÉER l'avatar, elle ne l'est pas. */}
-                  <details data-avatar-source-section className="rounded-lg border border-white/10 bg-black/20">
-                    <summary className="cursor-pointer px-3 py-2 text-xs text-gray-300">{TITRE_SOURCE_AVATAR}</summary>
-                    <div className="p-3 space-y-2">
-                      <p className="text-xs text-gray-400">Cette {avatar.avatar_type === 'video' ? 'vidéo' : 'photo'} a servi à créer votre avatar.</p>
-                      <div className="w-32 rounded-lg overflow-hidden bg-black" style={{ aspectRatio: avatar.avatar_type === 'video' ? '9 / 16' : '1 / 1' }}>{mediaSource}</div>
-                    </div>
-                  </details>
-                </div>
-              )}
               {etatEffectif !== 'valide' && zone.media !== mediaSource && (
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-black [&>*]:w-12 [&>*]:h-12 [&>*]:object-cover">{mediaSource}</div>
@@ -1156,6 +1203,28 @@ export default function AvatarPage() {
           )}
 
           </div>
+          </div>
+
+          {/* ── VOIX & PRONONCIATION ─────────────────────────────────────
+              Le clonage vocal est indépendant de l'avatar : il alimente le
+              sélecteur de voix de TOUS les montages. `id="ma-voix"` : cible du
+              lien « Gérer / cloner ma voix » de Créer > Audio. */}
+          <section id="ma-voix" ref={maVoixRef} tabIndex={-1} role="tabpanel" aria-labelledby="onglet-voix" data-avatar-ma-voix className={onglet === 'voix' ? 'outline-none space-y-6' : 'hidden'}>
+            <EnteteSection
+              titre="Ma voix"
+              sousTitre="Votre voix clonée, ses prononciations et son écoute — pour tous vos montages."
+              icone={<Mic className="w-6 h-6 text-white" />}
+              niveauTitre={2}
+              data-entete="ma-voix"
+            />
+            <div className="card-base space-y-8">
+              <VoiceCloneRecorder />
+              {/* La voix utilisée, les prononciations, l'aperçu prononcé, l'écoute. */}
+              <div className="border-t border-gray-800 pt-6">
+                <MaVoixPanel />
+              </div>
+            </div>
+          </section>
         </ColonneTravail>
 
         {/* Sur mobile (une colonne) l'aperçu suit la carte, puis vient « Ma voix » ;
@@ -1163,35 +1232,45 @@ export default function AvatarPage() {
         <ColonneApercu attributs={{ 'data-avatar-colonne': 'apercu' }}>
           <div data-avatar-validation={cleValidation}>
             <div data-avatar-apercu={cleApercu} data-avatar-apercu-cadre={zone.ratio}>
-              <ZoneApercu titre={zone.titre} etat={zone.etat} ratio={zone.ratio}>{zone.media}</ZoneApercu>
+              {/* Avec le formulaire de génération sous lui, le cadre (ratio intact, jamais
+                  rogné) est borné en LARGEUR : lecteur, texte, voix, format et « Générer »
+                  tiennent ensemble dans la colonne collante. Sans formulaire : règle commune. */}
+              <ZoneApercu
+                titre={zone.titre}
+                etat={zone.etat}
+                ratio={zone.ratio}
+                className={avatar && etatEffectif === 'valide' && !viaDid ? 'lg:[&_.apercu-cadre]:max-w-[200px]' : ''}
+              >
+                {zone.media}
+              </ZoneApercu>
             </div>
           </div>
 
           {/* ✓ Prêt — l'étape suivante : faire parler l'avatar (photo HeyGen seulement). */}
           {avatar && etatEffectif === 'valide' && !viaDid && (
-            <div className="card-base p-6 space-y-4">
+            <div data-avatar-generation className="card-base !p-5 space-y-3">
               <div>
-                <label className="block text-sm font-medium mb-2">Ce que dit votre avatar</label>
+                <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                  <label className="text-sm font-medium text-gray-100">Ce que dit votre avatar</label>
+                  <span className="text-xs text-gray-400">{script.length} / {MAX_SCRIPT_CHARS}</span>
+                </div>
                 <textarea
                   value={script}
                   onChange={(e) => setScript(e.target.value.slice(0, MAX_SCRIPT_CHARS))}
-                  rows={5}
+                  rows={3}
                   placeholder="Bonjour, je suis…"
-                  className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-3 text-sm resize-y"
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none p-3 text-sm text-gray-100 placeholder-gray-500 resize-y"
                 />
-                <div className="mt-1 text-right text-xs text-gray-500">
-                  {script.length} / {MAX_SCRIPT_CHARS}
-                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-2">Voix</label>
+                  <label className="block text-sm font-medium text-gray-100 mb-1.5">Voix</label>
                   <select
                     value={voiceId}
                     onChange={(e) => setVoiceId(e.target.value)}
                     disabled={voices.length === 0}
-                    className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-50"
+                    className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none p-2.5 text-sm text-gray-100 disabled:opacity-50"
                   >
                     {voices.length === 0 && <option value="">Voix indisponibles</option>}
                     {voices.map((v) => (
@@ -1203,16 +1282,17 @@ export default function AvatarPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2">Format</label>
+                  <label className="block text-sm font-medium text-gray-100 mb-1.5">Format</label>
                   <div className="flex gap-2">
                     {(['9:16', '16:9', '1:1'] as const).map((r) => (
                       <button
                         key={r}
                         onClick={() => setRatio(r)}
-                        className={`flex-1 rounded-xl px-3 py-2.5 text-sm transition ${
+                        aria-pressed={ratio === r}
+                        className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
                           ratio === r
-                            ? 'bg-purple-600/30 text-purple-200 ring-1 ring-purple-500/50'
-                            : 'bg-gray-900 text-gray-400 hover:text-white'
+                            ? 'bg-studiio-primary/20 text-purple-200 ring-1 ring-studiio-primary/50'
+                            : 'bg-gray-800 text-gray-300 hover:text-white'
                         }`}
                       >
                         {r}
@@ -1222,6 +1302,7 @@ export default function AvatarPage() {
                 </div>
               </div>
 
+              <div data-avatar-generer className="space-y-3">
               <button
                 onClick={handleGenerate}
                 disabled={!script.trim() || busy}
@@ -1234,7 +1315,7 @@ export default function AvatarPage() {
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" /> Générer ({AVATAR_VIDEO_COST} crédits)
+                    <Sparkles className="w-4 h-4" /> Générer la vidéo ({AVATAR_VIDEO_COST} crédits)
                   </>
                 )}
               </button>
@@ -1250,6 +1331,7 @@ export default function AvatarPage() {
                   description="Cela prend généralement 1 à 5 minutes. Vous pouvez laisser cette page ouverte."
                 />
               )}
+              </div>
               {videoUrl && (
                 <a
                   href={videoUrl}
@@ -1264,33 +1346,6 @@ export default function AvatarPage() {
         </ColonneApercu>
       </DeuxColonnes>
 
-      {/* ── MA VOIX ──────────────────────────────────────────────────
-          Le clonage vocal est independant de l'avatar : il alimente le
-          selecteur de voix de TOUS les montages, pas seulement cette page.
-          Il est donc affiche des la premiere visite, avant meme qu'un avatar
-          existe — SOUS les deux colonnes (la voix n'allonge pas la colonne
-          de travail ; sur mobile elle vient apres l'apercu), en UNE section :
-          enregistrer, voix utilisee, prononciations, apercu prononce, ecoute. */}
-      {/* `id="ma-voix"` : cible du lien « Gérer / cloner ma voix » de
-          Créer > Audio (`/dashboard/avatar#ma-voix`) — le navigateur y
-          descend seul, sans état ni paramètre à relire. */}
-      <section id="ma-voix" ref={maVoixRef} tabIndex={-1} data-avatar-ma-voix className="outline-none space-y-4">
-        <EnteteSection
-          titre="Ma voix"
-          sousTitre="Votre voix clonée, ses prononciations et son écoute — pour tous vos montages."
-          icone={<Mic className="w-6 h-6 text-white" />}
-          niveauTitre={2}
-          data-entete="ma-voix"
-        />
-        <div className="card-base p-6 space-y-8">
-          <VoiceCloneRecorder />
-          {/* Ma voix & prononciations — la voix utilisée, les prononciations,
-              l'aperçu affiché/prononcé, l'écoute réelle ou son indisponibilité. */}
-          <div className="border-t border-white/5 pt-6">
-            <MaVoixPanel />
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
