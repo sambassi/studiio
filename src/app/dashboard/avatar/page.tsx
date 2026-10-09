@@ -813,9 +813,9 @@ export default function AvatarPage() {
    * (cahier #409), et il vit dans la zone d'aperçu ou l'étape. Le bloc de
    * statut ne porte qu'un lien secondaire vers la suite, quand tout est prêt.
    */
-  const lienStatut: LienStatut | null = statutGlobal === 'pret'
-    ? { libelle: 'Utiliser dans Créer', href: '/dashboard/creer', attributs: { 'data-avatar-action': 'utiliser-creer' } }
-    : null;
+  // Avatar prêt : « Utiliser dans Créer » vit dans la carte « Avatar actif » —
+  // un seul lien, pas deux le même écran.
+  const lienStatut: LienStatut | null = null;
   const texteStatut: string | undefined = (() => {
     if (statutGlobal === 'aucun') return file ? 'Source choisie : certifiez le consentement, puis créez votre avatar.' : 'Commencez par choisir une photo ou une vidéo.';
     if (statutGlobal === 'consentement') return 'Votre phrase de consentement, lue face caméra, prouve que cet avatar est le vôtre.';
@@ -1030,7 +1030,7 @@ export default function AvatarPage() {
                   </div>
                   <p className="text-sm text-gray-300">Cet avatar est celui utilisé dans Créer et Autopilote.</p>
                   <div className="flex flex-wrap items-center gap-4">
-                    <Link href="/dashboard/creer" data-avatar-actif-action="creer" className="text-sm text-purple-300 hover:text-purple-200 underline">Utiliser dans Créer</Link>
+                    <Link href="/dashboard/creer" data-avatar-actif-action="creer" data-avatar-action="utiliser-creer" className="text-sm text-purple-300 hover:text-purple-200 underline">Utiliser dans Créer</Link>
                     <button type="button" onClick={changerDeSource} data-avatar-actif-action="changer" className="text-sm text-gray-400 hover:text-white flex items-center gap-1.5">
                       <RefreshCw className="w-3.5 h-3.5" /> Changer d’avatar
                     </button>
