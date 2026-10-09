@@ -157,7 +157,7 @@ create or replace function public.activer_version_avatar(
 returns table (ok boolean, motif text)
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public
 as $$
 declare
   a public.user_avatars%rowtype;
@@ -208,7 +208,7 @@ create or replace function public.definir_avatar_par_defaut(
 returns table (ok boolean, motif text)
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public
 as $$
 begin
   perform 1 from public.user_avatars
