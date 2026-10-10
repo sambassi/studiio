@@ -384,7 +384,7 @@ describe('Rendu Reel / TV', () => {
   });
 
   it.each([['reel', 11], ['tv', 17]] as const)('%s : chemin vivant /api/render/jobs — `cout` figé à la réservation = %i = débit à la confirmation', async (format, prix) => {
-    const { rendu } = await reserverRendu(U, 'export', format);
+    const { rendu } = await reserverRendu(U, 'bureau', format);
     expect(rendu?.cout).toBe(prix);
     expect(rendu?.politique).toBe('credits');
     const c = await confirmerRendu(U, rendu!.id, 1234, 'video/webm');
@@ -408,7 +408,7 @@ describe('Rendu Reel / TV', () => {
     const res = await post(DEDUCT, { postId: 'post-a' });
     expect((await res.json()).politique).toBe('partner_cost_only');
     expect(base.rpcs).toEqual([]);
-    expect((await reserverRendu(U, 'export', 'reel')).rendu?.politique).toBe('partner_cost_only');
+    expect((await reserverRendu(U, 'bureau', 'reel')).rendu?.politique).toBe('partner_cost_only');
     expect(solde()).toBe(SOLDE);
   });
 
