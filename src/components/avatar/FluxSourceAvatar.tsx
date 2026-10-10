@@ -27,7 +27,7 @@ import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { etapesParcoursSource, formatSource, type EtapeParcoursSource } from '@/lib/avatar/progression';
-import { LIBELLE_EMBELLISSEMENT, type InfosVideo, type NiveauEmbellissement, type ParametresTraitement } from '@/lib/avatar/preparation-source-regles';
+import { libelleLissage, type InfosVideo, type ParametresTraitement } from '@/lib/avatar/preparation-source-regles';
 
 type Etape = 'choix' | 'camera' | 'preparation' | 'consentement' | 'recapitulatif' | 'envoi';
 
@@ -54,7 +54,7 @@ export default function FluxSourceAvatar(props: {
   const [origine, setOrigine] = useState<'camera' | 'import'>('import');
   const [preparee, setPreparee] = useState<{ cleOriginal: string; cleTraitee: string; infos?: InfosVideo; parametres?: ParametresTraitement } | null>(null);
   /** Photo améliorée : les deux clés (original conservé + photo utilisée), le niveau et les dimensions réelles. */
-  const [photoPreparee, setPhotoPreparee] = useState<{ cleOriginal: string; cleTraitee: string; embellissement: NiveauEmbellissement; largeur: number | null; hauteur: number | null } | null>(null);
+  const [photoPreparee, setPhotoPreparee] = useState<{ cleOriginal: string; cleTraitee: string; lissage: number; largeur: number | null; hauteur: number | null } | null>(null);
   const [consent, setConsent] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   /** Envoi d'une photo : octets RÉELLEMENT transférés. */
@@ -126,7 +126,7 @@ export default function FluxSourceAvatar(props: {
   const format = type === 'video'
     ? formatSource(preparee?.infos?.largeurEffective, preparee?.infos?.hauteurEffective)
     : formatSource(photoPreparee?.largeur ?? dimsPhoto?.l, photoPreparee?.hauteur ?? dimsPhoto?.h);
-  const embellissement = type === 'video' ? preparee?.parametres?.amelioration?.embellissement : photoPreparee?.embellissement;
+  const lissage = type === 'video' ? (preparee?.parametres?.amelioration?.lissage ?? 0) : (photoPreparee?.lissage ?? 0);
 
   return (
     <div data-flux-source={props.mode} role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/70 flex items-start sm:items-center justify-center overflow-y-auto p-4">
@@ -271,7 +271,7 @@ export default function FluxSourceAvatar(props: {
                 <dt className="text-gray-500">Opération</dt><dd data-flux-recap="operation">{remplacer ? 'Nouvelle version de cet avatar' : 'Nouvel avatar (identité séparée)'}</dd>
                 <dt className="text-gray-500">Source</dt><dd data-flux-recap="source">{libelleSource}</dd>
                 <dt className="text-gray-500">Format</dt><dd data-flux-recap="format">{format ?? 'Inconnu'}</dd>
-                <dt className="text-gray-500">Embellissement</dt><dd data-flux-recap="embellissement">{LIBELLE_EMBELLISSEMENT[embellissement ?? 'aucun']}</dd>
+                <dt className="text-gray-500">Lissage</dt><dd data-flux-recap="embellissement">{libelleLissage(lissage)}</dd>
                 <dt className="text-gray-500">Consentement</dt><dd data-flux-recap="consentement">{consent ? 'Certifié' : 'À certifier'}</dd>
                 <dt className="text-gray-500">Qualité</dt><dd data-flux-recap="qualite" className="text-gray-400">Choisie à chaque génération de vidéo</dd>
               </dl>

@@ -8,7 +8,7 @@ import {
   uploadAsset,
   createAvatarFromAsset,
   getAvatarTrainingStatus,
-  moteursSupportesDuLook,
+  infosDuLook,
   listVoices,
   pickDefaultVoice,
   HeyGenError,
@@ -25,7 +25,7 @@ import { lancerVersionCandidate } from '@/lib/avatar/remplacement';
 import { versionPublique } from '@/lib/avatar/actions-version';
 import { cleSourceAvatarDuCompte, sourceAvatarPresente } from '@/lib/avatar/source';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
-import { qualitesDisponibles, qualiteParDefaut, qualitesMonAvatar, QUALITE_PAR_DEFAUT_MON_AVATAR } from '@/lib/avatar/moteurs';
+import { qualiteParDefaut, qualitesMonAvatar, QUALITE_PAR_DEFAUT_MON_AVATAR } from '@/lib/avatar/moteurs';
 import {
   FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, DUREE_VALIDITE_CONSENTEMENT_MS, etapeDid, rafraichirEntrainementDid,
   type AvatarDid,
@@ -383,16 +383,21 @@ export async function GET() {
 
     // Qualités de la voix HeyGen de Mon avatar : Premium n'est ouvert que si le
     // fournisseur CONFIRME `avatar_v` pour CE look (lecture gratuite, mémorisée).
-    const moteursLook = avatar && avatar.etat === 'valide' && avatar.provider !== FOURNISSEUR_DID && avatar.provider_avatar_id
-      ? await moteursSupportesDuLook(String(avatar.provider_avatar_id))
-      : null;
+    const look = avatar && avatar.etat === 'valide' && avatar.provider !== FOURNISSEUR_DID && avatar.provider_avatar_id
+      ? await infosDuLook(String(avatar.provider_avatar_id))
+      : { moteurs: null, orientation: null };
+    const moteursLook = look.moteurs;
 
     // `didVideoActif` : l'ecran ouvre « A partir d'une video » seulement si le
     // serveur le dit — drapeau ET cle presents. Jamais la cle elle-meme.
     // `nomProfil` : le nom du compte, pour PRÉ-REMPLIR le nom de consentement D-ID à l'écran. Rien d'autre du profil.
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesMonAvatar(moteursLook), qualiteParDefaut: QUALITE_PAR_DEFAUT_MON_AVATAR,
-      // Voix clonée (moteur du jumeau, comme Créer) : ses qualités et SON défaut, inchangés.
-      qualitesVoixClonee: qualitesDisponibles(), qualiteParDefautVoixClonee: qualiteParDefaut() } });
+    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesMonAvatar(moteursLook, avatar?.avatar_type), qualiteParDefaut: QUALITE_PAR_DEFAUT_MON_AVATAR,
+      // Voix clonée (moteur du jumeau) : mêmes choix — et SON défaut, celui de Créer, inchangé.
+      qualitesVoixClonee: qualitesMonAvatar(moteursLook, avatar?.avatar_type), qualiteParDefautVoixClonee: qualiteParDefaut(),
+      // Ce que HeyGen a RÉELLEMENT répondu pour ce look (`supported_api_engines`) ; `null` = pas de réponse.
+      moteursFournisseur: moteursLook,
+      // L'orientation NATIVE de l'avatar chez HeyGen : un autre format sera recadré (rempli), jamais bordé.
+      orientationAvatar: look.orientation } });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);
     return NextResponse.json(

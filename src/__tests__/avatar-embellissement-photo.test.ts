@@ -13,7 +13,7 @@ const AUTRUI = 'bbbbbbbb-2222-4222-8222-222222222222';
 const cleJpg = (u: string) => `${u}/avatar/source-1111111111111-${'a'.repeat(32)}.jpg`;
 
 const stockage = vi.hoisted(() => ({ objets: new Map<string, Buffer>(), deposes: [] as string[] }));
-const ffmpeg = vi.hoisted(() => ({ appels: [] as Array<{ niveau: string; orientation: number }>, echec: false }));
+const ffmpeg = vi.hoisted(() => ({ appels: [] as Array<{ lissage: number; orientation: number }>, echec: false }));
 const session = vi.hoisted(() => ({ courante: null as unknown }));
 
 vi.mock('@/lib/auth/config', () => ({ auth: async () => session.courante }));
@@ -38,18 +38,18 @@ vi.mock('@/lib/avatar/preparation-photo', async (orig) => {
   const { writeFile } = await import('node:fs/promises');
   return {
     ...reel,
-    traiterPhoto: async (_e: string, sortie: string, niveau: string, orientation: number) => {
-      ffmpeg.appels.push({ niveau, orientation });
+    traiterPhoto: async (_e: string, sortie: string, lissage: number, orientation: number) => {
+      ffmpeg.appels.push({ lissage, orientation });
       if (ffmpeg.echec) throw new Error('ffmpeg: échec simulé');
-      await writeFile(sortie, Buffer.from(`embellie:${niveau}`));
+      await writeFile(sortie, Buffer.from(`lissee:${lissage}`));
     },
   };
 });
 
 const {
-  argumentsFfmpegPhoto, orientationExif, filtresOrientation, bornerEmbellissementPhoto,
+  argumentsFfmpegPhoto, orientationExif, filtresOrientation, bornerLissagePhoto,
 } = await import('@/lib/avatar/preparation-photo-regles');
-const { filtreEmbellissement } = await import('@/lib/avatar/preparation-source-regles');
+const { filtreLissage } = await import('@/lib/avatar/preparation-source-regles');
 const depotRoute = await import('@/app/api/avatar/sources/photo/route');
 const traiterRoute = await import('@/app/api/avatar/sources/photo/traiter/route');
 
@@ -74,20 +74,21 @@ beforeEach(() => {
 });
 
 describe('Règles pures — photo', () => {
-  it('⚠️ chaque niveau : un seul filtre bilatéral ; « Aucun » : aucun lissage', () => {
-    for (const n of ['naturel', 'doux', 'lisse'] as const) {
-      const a = argumentsFfmpegPhoto('o.jpg', 's.jpg', n, 1);
+  it('⚠️ chaque lissage > 0 : un seul filtre bilatéral ; 0 % : aucun lissage', () => {
+    for (const l of [10, 25, 50, 75, 100]) {
+      const a = argumentsFfmpegPhoto('o.jpg', 's.jpg', l, 1);
       const vf = a[a.indexOf('-vf') + 1];
-      expect(vf).toBe(`${filtreEmbellissement(n)},format=yuvj444p`);
+      expect(vf).toBe(`${filtreLissage(l)},format=yuvj444p`);
       expect(vf).not.toMatch(/crop|scale|perspective|lenscorrection|remap|displace/);
     }
-    expect(argumentsFfmpegPhoto('o.jpg', 's.jpg', 'aucun', 1)[argumentsFfmpegPhoto('o.jpg', 's.jpg', 'aucun', 1).indexOf('-vf') + 1]).toBe('format=yuvj444p');
+    const a0 = argumentsFfmpegPhoto('o.jpg', 's.jpg', 0, 1);
+    expect(a0[a0.indexOf('-vf') + 1]).toBe('format=yuvj444p');
   });
 
   it('⚠️ non destructif : l’original en ENTRÉE, une autre sortie, métadonnées retirées, rotation auto désactivée', () => {
-    const a = argumentsFfmpegPhoto('original.jpg', 'embellie.jpg', 'doux', 1);
+    const a = argumentsFfmpegPhoto('original.jpg', 'lissee.jpg', 50, 1);
     expect(a[a.indexOf('-i') + 1]).toBe('original.jpg');
-    expect(a[a.length - 1]).toBe('embellie.jpg');
+    expect(a[a.length - 1]).toBe('lissee.jpg');
     expect(a).toContain('-noautorotate');
     expect(a[a.indexOf('-map_metadata') + 1]).toBe('-1');
   });
@@ -99,45 +100,49 @@ describe('Règles pures — photo', () => {
     expect(orientationExif(jpegAvecOrientation(6).subarray(0, 12))).toBe(1);
     expect(filtresOrientation(6)).toEqual(['transpose=1']);
     expect(filtresOrientation(1)).toEqual([]);
-    expect(argumentsFfmpegPhoto('o.jpg', 's.jpg', 'naturel', 6).join(' ')).toContain('transpose=1,bilateral=');
+    expect(argumentsFfmpegPhoto('o.jpg', 's.jpg', 25, 6).join(' ')).toContain('transpose=1,bilateral=');
   });
 
-  it('niveau inconnu → aucun', () => {
-    expect(bornerEmbellissementPhoto('remodeler')).toBe('aucun');
-    expect(bornerEmbellissementPhoto('lisse')).toBe('lisse');
+  it('lissage borné 0–100 ; illisible → 0 ; anciens niveaux encore compris', () => {
+    expect(bornerLissagePhoto({ lissage: 250 })).toBe(100);
+    expect(bornerLissagePhoto({ lissage: -3 })).toBe(0);
+    expect(bornerLissagePhoto({ lissage: 'n’importe quoi' })).toBe(0);
+    expect(bornerLissagePhoto({ embellissement: 'lisse' })).toBe(75);
+    expect(bornerLissagePhoto({ embellissement: 'remodeler' })).toBe(0);
+    expect(bornerLissagePhoto({})).toBe(0);
   });
 });
 
 describe('POST /api/avatar/sources/photo/traiter', () => {
-  it('⚠️ « Aucun » : l’original lui-même — ni ffmpeg, ni nouvel objet', async () => {
-    const r = await (await traiter({ cleOriginal: cleJpg(U), embellissement: 'aucun' })).json();
-    expect(r.data).toEqual({ cleOriginal: cleJpg(U), cleTraitee: cleJpg(U), embellissement: 'aucun' });
+  it('⚠️ 0 % : l’original lui-même — ni ffmpeg, ni nouvel objet', async () => {
+    const r = await (await traiter({ cleOriginal: cleJpg(U), lissage: 0 })).json();
+    expect(r.data).toEqual({ cleOriginal: cleJpg(U), cleTraitee: cleJpg(U), lissage: 0 });
     expect(ffmpeg.appels).toEqual([]);
     expect(stockage.deposes).toEqual([]);
   });
 
-  for (const niveau of ['naturel', 'doux', 'lisse'] as const) {
-    it(`⚠️ « ${niveau} » : traité par le serveur, déposé comme SECOND objet ; l’original intact`, async () => {
+  for (const lissage of [10, 25, 50, 75, 100]) {
+    it(`⚠️ ${lissage} % : traité par le serveur, déposé comme SECOND objet ; l’original intact`, async () => {
       const original = Buffer.from(stockage.objets.get(cleJpg(U))!);
-      const r = await (await traiter({ cleOriginal: cleJpg(U), embellissement: niveau })).json();
+      const r = await (await traiter({ cleOriginal: cleJpg(U), lissage })).json();
       expect(r.success).toBe(true);
       expect(r.data.cleTraitee).not.toBe(cleJpg(U));
       expect(r.data.cleTraitee).toMatch(new RegExp(`^${U}/avatar/source-\\d+-[0-9a-f]{32}\\.jpg$`));
-      expect(ffmpeg.appels).toEqual([{ niveau, orientation: 6 }]);
-      expect(stockage.objets.get(r.data.cleTraitee)!.toString()).toBe(`embellie:${niveau}`);
+      expect(ffmpeg.appels).toEqual([{ lissage, orientation: 6 }]);
+      expect(stockage.objets.get(r.data.cleTraitee)!.toString()).toBe(`lissee:${lissage}`);
       expect(stockage.objets.get(cleJpg(U))!.equals(original)).toBe(true);
     });
   }
 
   it('⚠️ la photo d’un autre compte : 404, ni lecture ni traitement', async () => {
     session.courante = { user: { id: AUTRUI } };
-    expect((await traiter({ cleOriginal: cleJpg(U), embellissement: 'doux' })).status).toBe(404);
+    expect((await traiter({ cleOriginal: cleJpg(U), lissage: 50 })).status).toBe(404);
     expect(ffmpeg.appels).toEqual([]);
   });
 
   it('échec ffmpeg : 422 clair, rien de déposé', async () => {
     ffmpeg.echec = true;
-    const res = await traiter({ cleOriginal: cleJpg(U), embellissement: 'doux' });
+    const res = await traiter({ cleOriginal: cleJpg(U), lissage: 50 });
     expect(res.status).toBe(422);
     expect(stockage.deposes).toEqual([]);
   });

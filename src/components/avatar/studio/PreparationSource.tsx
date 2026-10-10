@@ -6,12 +6,13 @@ import {
 } from 'lucide-react';
 import OvaleVisage from '@/components/avatar/studio/OvaleVisage';
 import ProgressStatus from '@/components/ux/ProgressStatus';
+import CurseurLissage from '@/components/avatar/studio/CurseurLissage';
 import { detailEnvoi, envoyerFormulaire, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { EXIGENCES_SOURCE_VIDEO, formaterDuree } from '@/lib/avatar/capture';
 import {
   AMELIORATION_NEUTRE, RATIOS_CADRE, ameliorationAutomatique, dimensionsApresRotation, filtreCssApercu, libelleCadrage,
   niveauQualite, recadrageDepuisReglages, statistiquesImage, zoomMinimal,
-  EMBELLISSEMENT_PAR_DEFAUT, LIBELLE_EMBELLISSEMENT, NIVEAUX_EMBELLISSEMENT, type NiveauEmbellissement,
+  LISSAGE_PAR_DEFAUT, libelleLissage,
   type InfosVideo, type ParametresAmelioration, type ParametresTraitement, type RatioCadre, type ResultatPreflight, type Rotation,
 } from '@/lib/avatar/preparation-source-regles';
 
@@ -74,7 +75,7 @@ export default function PreparationSource(props: {
   const [temps, setTemps] = useState(0);
   const [lecture, setLecture] = useState(false);
   // « Embellir le visage » est proposé à « Naturel » d'emblée (demande produit) ; « Aucun » le retire.
-  const [amelioration, setAmelioration] = useState<ParametresAmelioration>({ ...AMELIORATION_NEUTRE, embellissement: EMBELLISSEMENT_PAR_DEFAUT });
+  const [amelioration, setAmelioration] = useState<ParametresAmelioration>({ ...AMELIORATION_NEUTRE, lissage: LISSAGE_PAR_DEFAUT });
   /** Résultat : la version préparée, ou l'ORIGINAL importé (toujours conservé), pour comparer. */
   const [voirOriginal, setVoirOriginal] = useState(false);
   const [comparer, setComparer] = useState(false);
@@ -211,8 +212,8 @@ export default function PreparationSource(props: {
 
   // ── Améliorer ─────────────────────────────────────────────────────────
   const basculerAuto = (active: boolean) => {
-    // L'embellissement est un réglage à part : l'amélioration automatique ne le touche pas.
-    if (!active) { setAmelioration((a) => ({ ...AMELIORATION_NEUTRE, embellissement: a.embellissement })); return; }
+    // Le lissage est un réglage à part : l'amélioration automatique ne le touche pas.
+    if (!active) { setAmelioration((a) => ({ ...AMELIORATION_NEUTRE, lissage: a.lissage })); return; }
     // Une image de la vidéo, réduite, lue par un canvas : la mesure reste locale.
     let stats = { luminanceMoyenne: 128, ecartType: 50 };
     try {
@@ -225,10 +226,10 @@ export default function PreparationSource(props: {
         stats = statistiquesImage(ctx.getImageData(0, 0, 64, 64).data);
       }
     } catch { /* image illisible (pas encore chargée) : correction neutre */ }
-    setAmelioration((a) => ({ ...ameliorationAutomatique(stats), embellissement: a.embellissement }));
+    setAmelioration((a) => ({ ...ameliorationAutomatique(stats), lissage: a.lissage }));
   };
-  const embellir = (n: NiveauEmbellissement) => setAmelioration((a) => ({ ...a, embellissement: n }));
-  /** Réinitialiser : toutes les retouches retirées (embellissement compris) — la source redevient l'original. */
+  const lisser = (l: number) => setAmelioration((a) => ({ ...a, lissage: l }));
+  /** Réinitialiser : toutes les retouches retirées (lissage compris) — la source redevient l'original. */
   const reinitialiserRetouches = () => setAmelioration({ ...AMELIORATION_NEUTRE });
 
   // ── Prévisualiser ─────────────────────────────────────────────────────
@@ -505,18 +506,8 @@ export default function PreparationSource(props: {
                   contours restent nets). Aucune déformation : forme du visage, nez, mâchoire,
                   yeux, bouche et proportions ne bougent pas. L'original reste conservé. */}
               <div data-preparation-embellir className="rounded-xl bg-gray-900/60 px-4 py-3 space-y-2">
-                <div className="text-sm text-white">Embellir le visage</div>
-                <div role="radiogroup" aria-label="Intensité de l’embellissement" className="grid grid-cols-4 gap-1">
-                  {NIVEAUX_EMBELLISSEMENT.map((n) => (
-                    <button key={n} type="button" role="radio" aria-checked={amelioration.embellissement === n} data-preparation-embellissement={n} onClick={() => embellir(n)}
-                      className={`rounded-lg py-1.5 text-xs ${amelioration.embellissement === n ? 'bg-studiio-primary text-white' : 'bg-gray-800 text-gray-300 hover:text-white'}`}>
-                      {LIBELLE_EMBELLISSEMENT[n]}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-400">Lissage léger de la peau, rides et petites imperfections atténuées, teint légèrement homogénéisé. Les traits du visage ne sont jamais modifiés.</p>
+                <CurseurLissage valeur={amelioration.lissage ?? 0} onChange={lisser} onReinitialiser={reinitialiserRetouches} />
                 <p className="text-xs text-gray-500">L’effet est appliqué au rendu réel : « Prévisualiser » le montre, et vous pourrez comparer avec l’original.</p>
-                <button type="button" data-preparation-reinitialiser onClick={reinitialiserRetouches} className="button-ghost !min-h-[30px] !text-xs">Réinitialiser les retouches</button>
               </div>
             </div>
           )}
@@ -588,7 +579,7 @@ export default function PreparationSource(props: {
               <button type="button" role="radio" aria-checked={voirOriginal} data-preparation-voir="original" onClick={() => setVoirOriginal(true)} className={`rounded-lg py-1.5 text-xs ${voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — voir l’original</button>
               <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-voir="preparee" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — version préparée</button>
             </div>
-            <p className="text-xs text-gray-500" data-preparation-embellissement-applique>Embellissement : {LIBELLE_EMBELLISSEMENT[amelioration.embellissement ?? 'aucun']}. Votre vidéo d’origine est conservée telle quelle.</p>
+            <p className="text-xs text-gray-500" data-preparation-embellissement-applique>Lissage : {libelleLissage(resultat.parametres?.amelioration?.lissage ?? amelioration.lissage ?? 0)}. Votre vidéo d’origine est conservée telle quelle.</p>
             <div className="grid grid-cols-2 gap-3">
               <button type="button" data-preparation-modifier onClick={() => setEtape('edition')} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-3 text-sm"><ArrowLeft className="w-4 h-4" /> Modifier</button>
               <button type="button" data-preparation-utiliser onClick={utiliser} disabled={!resultat.preflight.ok} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> Utiliser cette vidéo</button>

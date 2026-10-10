@@ -47,7 +47,8 @@ const etapes = (courante: number, echouee = false): EtapeProgression[] =>
  * qu'après les deux (`POST /api/avatar/create` exige le consentement).
  */
 export function progressionVersion(c: { version: number; etat: EtatVersionCandidate; message?: string | null; apercu?: EtatApercuVersion }): ProgressionVersion {
-  const titre = `Nouvelle version v${c.version}`;
+  // « v5 » numérote un ENTRAÎNEMENT de l’avatar — jamais le moteur « Avatar V ».
+  const titre = `Nouvelle version de l’avatar (v${c.version})`;
   if (c.etat === 'echec' || c.etat === 'abandonnee') {
     return {
       titre, statut: 'erreur', etapes: etapes(2, true),

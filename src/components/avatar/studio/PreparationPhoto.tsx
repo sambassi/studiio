@@ -5,7 +5,7 @@
  *
  * 1. L'ORIGINAL est déposé tel quel (`POST /api/avatar/sources/photo`), avec
  *    la progression RÉELLE de l'envoi.
- * 2. Le niveau (Aucun / Naturel / Doux / Lissé) est appliqué par le SERVEUR
+ * 2. Le lissage (0–100 %, continu) est appliqué par le SERVEUR
  *    (`POST /api/avatar/sources/photo/traiter`, ffmpeg, filtre bilatéral —
  *    aucune déformation) ; ce qui s'affiche est le fichier qui partira.
  * 3. Avant / Après, « Voir l'original », « Réinitialiser » (= l'original).
@@ -17,9 +17,8 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, RotateCcw, X } from 'lucide-react';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { detailEnvoi, envoyerFormulaire, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
-import {
-  EMBELLISSEMENT_PAR_DEFAUT, LIBELLE_EMBELLISSEMENT, NIVEAUX_EMBELLISSEMENT, type NiveauEmbellissement,
-} from '@/lib/avatar/preparation-source-regles';
+import { LISSAGE_PAR_DEFAUT, libelleLissage } from '@/lib/avatar/preparation-source-regles';
+import CurseurLissage from '@/components/avatar/studio/CurseurLissage';
 
 type Etape = 'envoi' | 'erreur' | 'edition' | 'traitement' | 'resultat';
 interface Reponse<T> { success?: boolean; error?: string; data?: T }
@@ -29,15 +28,15 @@ const apercu = (cle: string) => `/api/avatar/sources/apercu?cle=${encodeURICompo
 export default function PreparationPhoto(props: {
   fichier: File;
   onAnnuler: () => void;
-  onPret: (r: { cleOriginal: string; cleTraitee: string; embellissement: NiveauEmbellissement; largeur: number | null; hauteur: number | null }) => void;
+  onPret: (r: { cleOriginal: string; cleTraitee: string; lissage: number; largeur: number | null; hauteur: number | null }) => void;
 }) {
   const { fichier } = props;
   const [etape, setEtape] = useState<Etape>('envoi');
   const [progression, setProgression] = useState<ProgressionEnvoi | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [cleOriginal, setCleOriginal] = useState<string | null>(null);
-  const [niveau, setNiveau] = useState<NiveauEmbellissement>(EMBELLISSEMENT_PAR_DEFAUT);
-  const [resultat, setResultat] = useState<{ cleTraitee: string; niveau: NiveauEmbellissement } | null>(null);
+  const [lissage, setLissage] = useState<number>(LISSAGE_PAR_DEFAUT);
+  const [resultat, setResultat] = useState<{ cleTraitee: string; lissage: number } | null>(null);
   const [voirOriginal, setVoirOriginal] = useState(false);
   const [urlLocale, setUrlLocale] = useState<string | null>(null);
   const [dims, setDims] = useState<{ l: number; h: number } | null>(null);
@@ -72,23 +71,23 @@ export default function PreparationPhoto(props: {
     return () => abandon.abort();
   }, [fichier, essai]);
 
-  /** 2. Le rendu RÉEL du niveau choisi, par le serveur. */
-  const appliquer = async (n: NiveauEmbellissement) => {
+  /** 2. Le rendu RÉEL du lissage choisi, par le serveur. */
+  const appliquer = async (l: number) => {
     if (!cleOriginal) return;
     setEtape('traitement'); setErreur(null);
     try {
       const r = await fetch('/api/avatar/sources/photo/traiter', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cleOriginal, embellissement: n }),
+        body: JSON.stringify({ cleOriginal, lissage: l }),
       });
-      const j = (await r.json().catch(() => null)) as Reponse<{ cleTraitee: string; embellissement: NiveauEmbellissement }> | null;
+      const j = (await r.json().catch(() => null)) as Reponse<{ cleTraitee: string; lissage: number }> | null;
       if (r.ok && j?.success && j.data?.cleTraitee) {
-        setResultat({ cleTraitee: j.data.cleTraitee, niveau: j.data.embellissement ?? n });
+        setResultat({ cleTraitee: j.data.cleTraitee, lissage: typeof j.data.lissage === 'number' ? j.data.lissage : l });
         setVoirOriginal(false);
         setEtape('resultat');
         return;
       }
-      setErreur(j?.error ?? 'L’embellissement a échoué. Réessayez.');
+      setErreur(j?.error ?? 'Le lissage a échoué. Réessayez.');
       setEtape('edition');
     } catch {
       setErreur('Connexion impossible. Réessayez.');
@@ -96,18 +95,18 @@ export default function PreparationPhoto(props: {
     }
   };
 
-  /** Réinitialiser : aucun embellissement — la photo utilisée redevient l'original, tel quel. */
+  /** Réinitialiser : aucun lissage — la photo utilisée redevient l'original, tel quel. */
   const reinitialiser = () => {
     if (!cleOriginal) return;
-    setNiveau('aucun');
-    setResultat({ cleTraitee: cleOriginal, niveau: 'aucun' });
+    setLissage(0);
+    setResultat({ cleTraitee: cleOriginal, lissage: 0 });
     setVoirOriginal(false);
     setEtape('resultat');
   };
 
   const utiliser = () => {
     if (!cleOriginal || !resultat) return;
-    props.onPret({ cleOriginal, cleTraitee: resultat.cleTraitee, embellissement: resultat.niveau, largeur: dims?.l ?? null, hauteur: dims?.h ?? null });
+    props.onPret({ cleOriginal, cleTraitee: resultat.cleTraitee, lissage: resultat.lissage, largeur: dims?.l ?? null, hauteur: dims?.h ?? null });
   };
 
   return (
@@ -147,18 +146,9 @@ export default function PreparationPhoto(props: {
               <img data-preparation-photo-image="originale" src={urlLocale} alt="Votre photo d’origine" onLoad={(e) => setDims({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full object-contain" />
             )}
           </div>
-          {/* EMBELLIR LE VISAGE — même filtre que la vidéo : peau lissée, traits intacts. */}
-          <div data-preparation-embellir className="rounded-xl bg-gray-900/60 px-4 py-3 space-y-2">
-            <div className="text-sm text-white">Embellir le visage</div>
-            <div role="radiogroup" aria-label="Intensité de l’embellissement" className="grid grid-cols-4 gap-1">
-              {NIVEAUX_EMBELLISSEMENT.map((n) => (
-                <button key={n} type="button" role="radio" aria-checked={niveau === n} data-preparation-embellissement={n} disabled={etape === 'traitement'} onClick={() => setNiveau(n)}
-                  className={`rounded-lg py-1.5 text-xs ${niveau === n ? 'bg-studiio-primary text-white' : 'bg-gray-800 text-gray-300 hover:text-white'}`}>
-                  {LIBELLE_EMBELLISSEMENT[n]}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400">Lissage léger de la peau, rides et petites imperfections atténuées, teint légèrement homogénéisé. Forme du visage, yeux, nez, bouche et mâchoire ne sont jamais modifiés.</p>
+          {/* LISSAGE DU VISAGE — même filtre que la vidéo : peau lissée, traits intacts. */}
+          <div data-preparation-embellir className="rounded-xl bg-gray-900/60 px-4 py-3">
+            <CurseurLissage valeur={lissage} onChange={setLissage} disabled={etape === 'traitement'} />
           </div>
           {erreur && <p data-preparation-photo-echec role="alert" className="rounded-xl bg-red-500/10 p-3 text-xs text-red-200">{erreur}</p>}
           {etape === 'traitement' ? (
@@ -166,7 +156,7 @@ export default function PreparationPhoto(props: {
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <button type="button" onClick={props.onAnnuler} className="button-secondary py-2.5 text-sm">Annuler</button>
-              <button type="button" data-preparation-photo-previsualiser onClick={() => void appliquer(niveau)} className="button-primary py-2.5 text-sm">Prévisualiser</button>
+              <button type="button" data-preparation-photo-previsualiser onClick={() => void appliquer(lissage)} className="button-primary py-2.5 text-sm">Prévisualiser</button>
             </div>
           )}
         </div>
@@ -185,9 +175,9 @@ export default function PreparationPhoto(props: {
           </div>
           <div role="radiogroup" aria-label="Comparer" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-900/70 p-1">
             <button type="button" role="radio" aria-checked={voirOriginal} data-preparation-photo-voir="original" onClick={() => setVoirOriginal(true)} className={`rounded-lg py-1.5 text-xs ${voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — voir l’original</button>
-            <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-photo-voir="apres" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — {LIBELLE_EMBELLISSEMENT[resultat.niveau]}</button>
+            <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-photo-voir="apres" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — lissage {resultat.lissage} %</button>
           </div>
-          <p className="text-xs text-gray-500">Votre photo d’origine est conservée telle quelle.</p>
+          <p className="text-xs text-gray-500" data-preparation-photo-lissage>Lissage : {libelleLissage(resultat.lissage)}. Votre photo d’origine est conservée telle quelle.</p>
           <div className="grid grid-cols-3 gap-2">
             <button type="button" data-preparation-photo-modifier onClick={() => setEtape('edition')} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><ArrowLeft className="w-3.5 h-3.5" /> Modifier</button>
             <button type="button" data-preparation-photo-reinitialiser onClick={reinitialiser} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><RotateCcw className="w-3.5 h-3.5" /> Réinitialiser</button>

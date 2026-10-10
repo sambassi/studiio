@@ -2,13 +2,13 @@
  * PRÉPARER UNE PHOTO SOURCE — les règles PURES (aucun réseau, aucun binaire).
  *
  * Même principe que la vidéo (`preparation-source-regles.ts`), même filtre :
- * « Embellir le visage » = `bilateral` de ffmpeg (lissage des zones
+ * « Lissage du visage » (0–100 %, continu) = `bilateral` de ffmpeg (lissage des zones
  * uniformes, contours nets), AUCUNE transformation géométrique. Le traitement
  * tourne sur le serveur Studiio, avec le ffmpeg déjà utilisé pour la vidéo :
  * aucun fournisseur, aucun frais.
  *
  * NON DESTRUCTIF : l'original importé reste tel quel en stockage ; la photo
- * embellie est un SECOND objet. « Aucun » = l'original lui-même, sans
+ * lissée est un SECOND objet. 0 % = l'original lui-même, sans
  * ré-encodage.
  *
  * Orientation : un téléphone enregistre souvent l'image couchée, avec une
@@ -18,7 +18,7 @@
  * toujours le sens que montre le navigateur, quelle que soit la version de
  * ffmpeg. La sortie n'a plus d'EXIF (ni lieu, ni appareil, ni orientation).
  */
-import { filtreEmbellissement, estNiveauEmbellissement, type NiveauEmbellissement } from '@/lib/avatar/preparation-source-regles';
+import { filtreLissage, lissageDemande } from '@/lib/avatar/preparation-source-regles';
 
 /** Types de photo acceptés → extension de stockage. */
 export const TYPES_PHOTO_ACCEPTES: Readonly<Record<string, string>> = {
@@ -29,9 +29,9 @@ export const TYPES_PHOTO_ACCEPTES: Readonly<Record<string, string>> = {
 /** 10 Mo — la limite déjà annoncée à l'import d'une photo. */
 export const TAILLE_MAX_PHOTO_OCTETS = 10 * 1024 * 1024;
 
-/** Le niveau demandé, ramené aux valeurs connues ; tout le reste = `aucun`. */
-export function bornerEmbellissementPhoto(v: unknown): NiveauEmbellissement {
-  return estNiveauEmbellissement(v) ? v : 'aucun';
+/** Le lissage demandé (0–100 ; ancien niveau accepté) ; tout le reste = 0. */
+export function bornerLissagePhoto(corps: { lissage?: unknown; embellissement?: unknown } | null | undefined): number {
+  return lissageDemande(corps);
 }
 
 /**
@@ -138,8 +138,8 @@ export const PROTECTIONS_ENTREE_PHOTO = [
  * filtre bilatéral, sortie JPEG de haute qualité, sans métadonnées. Rien
  * d'autre — ni recadrage, ni mise à l'échelle, ni déformation.
  */
-export function argumentsFfmpegPhoto(entree: string, sortie: string, niveau: NiveauEmbellissement, orientation: number): string[] {
-  const embellir = filtreEmbellissement(niveau);
+export function argumentsFfmpegPhoto(entree: string, sortie: string, lissage: number, orientation: number): string[] {
+  const embellir = filtreLissage(lissage);
   const filtres = [...filtresOrientation(orientation), ...(embellir ? [embellir] : []), 'format=yuvj444p'];
   return [
     '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',

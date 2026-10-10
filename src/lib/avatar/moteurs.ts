@@ -82,19 +82,41 @@ export function qualiteParDefaut(env: NodeJS.ProcessEnv = process.env): QualiteR
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Mon avatar — parcours « voix HeyGen » (POST /api/avatar/generate)
+// Mon avatar — la qualité de GÉNÉRATION (moteur HeyGen)
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Ce parcours n'a jamais envoyé de moteur : le fournisseur prend alors
- * Avatar IV (documentation HeyGen, « models »). Avatar IV y est donc le
- * comportement EXISTANT — ouvert sans configuration, et présélectionné, pour
- * qu'aucun déploiement ne baisse la qualité en silence.
+ * Documentation HeyGen (developers.heygen.com, « models », « avatar-v »,
+ * relue le 2026-10-10) : le moteur est un réglage de chaque GÉNÉRATION
+ * (`engine` de POST /v3/videos), pas de l'entraînement. Sans `engine`, HeyGen
+ * prend Avatar IV. Avatar V est réservé aux jumeaux numériques (`digital_twin`)
+ * et « opt-in par look » : il n'est utilisable que si `supported_api_engines`
+ * du look le contient (GET /v3/avatars/looks/{look_id}, lecture gratuite).
+ *
+ * Règle Studiio : AUCUN blocage interne de plus. Avatar III et IV sont ouverts ;
+ * Avatar V l'est dès que HeyGen le CONFIRME pour l'avatar — sinon il reste
+ * fermé avec la VRAIE raison. Le serveur revérifie au moment de générer.
  */
 export const MOTEURS_DEJA_UTILISES_MON_AVATAR: readonly MoteurAvatar[] = ['avatar_iv'];
 export const QUALITE_PAR_DEFAUT_MON_AVATAR: QualiteRendu = 'qualite';
+/** Le nom du moteur HeyGen, affiché à côté de la qualité (jamais confondu avec la VERSION de l'avatar). */
+export const LIBELLE_MOTEUR: Record<MoteurAvatar, string> = { avatar_iii: 'Avatar III', avatar_iv: 'Avatar IV', avatar_v: 'Avatar V' };
+export const DESCRIPTION_QUALITE: Record<QualiteRendu, string> = {
+  standard: 'Rapide, économique',
+  qualite: 'Recommandé',
+  premium: 'Meilleure qualité',
+};
 
-export interface QualiteOfferte { qualite: QualiteRendu; libelle: string; ouverte: boolean; recommandee: boolean; motif: string | null }
+export const MOTIF_PREMIUM = {
+  photo: 'Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).',
+  nonConfirme: 'HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.',
+  nonSupporte: 'Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).',
+} as const;
+
+export interface QualiteOfferte {
+  qualite: QualiteRendu; libelle: string; moteur: MoteurAvatar; moteurLibelle: string; description: string;
+  ouverte: boolean; recommandee: boolean; meilleure: boolean; motif: string | null;
+}
 
 /** Lecture tolérante de `supported_api_engines` (fournisseur) : seuls les moteurs connus sont gardés. */
 export function lireMoteursSupportes(brut: unknown): MoteurAvatar[] | null {
@@ -102,31 +124,47 @@ export function lireMoteursSupportes(brut: unknown): MoteurAvatar[] | null {
   return brut.filter((m): m is MoteurAvatar => typeof m === 'string' && (MOTEURS_AVATAR as readonly string[]).includes(m));
 }
 
+/** Avatar V est-il utilisable pour CET avatar ? `null` = oui ; sinon la vraie raison. */
+export function motifPremium(typeAvatar: string | null | undefined, moteursSupportes: readonly MoteurAvatar[] | null): string | null {
+  if (typeAvatar !== 'video') return MOTIF_PREMIUM.photo;
+  if (moteursSupportes === null) return MOTIF_PREMIUM.nonConfirme;
+  if (!moteursSupportes.includes('avatar_v')) return MOTIF_PREMIUM.nonSupporte;
+  return null;
+}
+
 /**
- * Les qualités de Mon avatar (voix HeyGen), avec leur motif quand elles sont
- * fermées. `moteursSupportes` : ce que le fournisseur CONFIRME pour cet
- * avatar (`supported_api_engines`), `null` s'il n'a pas pu le dire.
- *
- *   Standard  ouvert (moteur par défaut du serveur), sauf refus explicite du fournisseur ;
- *   Qualité   ouvert (comportement existant), recommandé et présélectionné ;
- *   Premium   ouvert SEULEMENT si le serveur l'autorise ET que le fournisseur
- *             confirme `avatar_v` pour cet avatar — sinon fermé, motif dit.
+ * Les qualités de génération de Mon avatar, avec leur motif quand elles sont
+ * fermées. `moteursSupportes` : ce que HeyGen CONFIRME pour ce look, `null`
+ * s'il n'a pas pu le dire. Standard et Qualité ne se ferment que sur un refus
+ * explicite du fournisseur.
  */
-export function qualitesMonAvatar(moteursSupportes: readonly MoteurAvatar[] | null, env: NodeJS.ProcessEnv = process.env): QualiteOfferte[] {
-  const autorises = moteursAutorises(env);
+export function qualitesMonAvatar(
+  moteursSupportes: readonly MoteurAvatar[] | null,
+  typeAvatar: string | null | undefined = 'video',
+): QualiteOfferte[] {
   return QUALITES.map((q) => {
     const moteur = MOTEUR_PAR_QUALITE[q];
-    const refuseFournisseur = moteursSupportes !== null && !moteursSupportes.includes(moteur);
-    let motif: string | null = null;
-    if (q === 'premium') {
-      if (!autorises.includes(moteur)) motif = 'Pas encore ouvert sur Studiio.';
-      else if (moteursSupportes === null) motif = 'Compatibilité de votre avatar non confirmée par le service de génération.';
-      else if (refuseFournisseur) motif = 'Non pris en charge par votre avatar.';
-    } else if (refuseFournisseur) {
-      motif = 'Non pris en charge par votre avatar.';
-    } else if (!autorises.includes(moteur) && !MOTEURS_DEJA_UTILISES_MON_AVATAR.includes(moteur)) {
-      motif = 'Pas encore ouvert sur Studiio.';
-    }
-    return { qualite: q, libelle: LIBELLE_QUALITE[q], ouverte: motif === null, recommandee: q === QUALITE_PAR_DEFAUT_MON_AVATAR, motif };
+    const motif = q === 'premium'
+      ? motifPremium(typeAvatar, moteursSupportes)
+      : moteursSupportes !== null && !moteursSupportes.includes(moteur) ? 'Non pris en charge par cet avatar (réponse HeyGen).' : null;
+    return {
+      qualite: q, libelle: LIBELLE_QUALITE[q], moteur, moteurLibelle: LIBELLE_MOTEUR[moteur], description: DESCRIPTION_QUALITE[q],
+      ouverte: motif === null, recommandee: q === QUALITE_PAR_DEFAUT_MON_AVATAR, meilleure: q === 'premium', motif,
+    };
   });
+}
+
+/**
+ * Le moteur d'une génération DEMANDÉE depuis Mon avatar : III et IV ouverts,
+ * V accepté ici SOUS RÉSERVE — `verifierFournisseur` impose à l'appelant de
+ * relire la confirmation HeyGen AVANT tout débit. Sans qualité : défaut serveur.
+ * Une qualité inconnue est refusée, jamais rabattue.
+ */
+export function moteurPourMonAvatar(
+  qualite: unknown, env: NodeJS.ProcessEnv = process.env,
+): { ok: true; moteur: MoteurAvatar; verifierFournisseur: boolean } | { ok: false; message: string } {
+  if (qualite === undefined || qualite === null || qualite === '') return { ok: true, moteur: moteurAvatar(env), verifierFournisseur: false };
+  if (!estQualite(qualite)) return { ok: false, message: 'Qualité de rendu inconnue.' };
+  const moteur = MOTEUR_PAR_QUALITE[qualite];
+  return { ok: true, moteur, verifierFournisseur: moteur === 'avatar_v' };
 }

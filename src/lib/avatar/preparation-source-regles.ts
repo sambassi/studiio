@@ -233,50 +233,94 @@ export interface ParametresAmelioration {
   nettete: number;
   debruitage: boolean;
   /**
-   * « Embellir le visage » — INDÉPENDANT de `active` (l'amélioration
-   * automatique). Absent = `aucun` : une demande antérieure est rendue à
-   * l'identique.
+   * « Lissage du visage », 0–100 % — INDÉPENDANT de `active` (l'amélioration
+   * automatique). Absent = 0 : une demande antérieure est rendue à l'identique.
    */
+  lissage?: number;
+  /** Ancien réglage par niveaux, encore accepté en entrée (voir `lissageDemande`). */
   embellissement?: NiveauEmbellissement;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Embellir le visage
+// Lissage du visage — CONTINU, de 0 à 100 %
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Lissage léger de la peau : rides fines, petites imperfections, teint
- * légèrement homogénéisé. UN SEUL filtre, `bilateral` (ffmpeg ≥ 4.4 ; la
- * production tourne sur le ffmpeg 5.1 de Debian bookworm) : un flou qui ne
- * moyenne que des pixels de VALEUR proche — les zones uniformes (la peau)
- * s'adoucissent, les contours (yeux, nez, bouche, mâchoire) restent nets.
+ * « Lissage du visage » : lissage de la peau (rides fines, petites
+ * imperfections, teint légèrement homogénéisé). UN SEUL filtre, `bilateral`
+ * (ffmpeg ≥ 4.4 ; la production tourne sur le ffmpeg 5.1 de Debian bookworm) :
+ * un flou qui ne moyenne que des pixels de VALEUR proche — la peau s'adoucit,
+ * les contours (yeux, nez, bouche, mâchoire) restent nets.
  *
- * Il n'existe AUCUNE transformation géométrique ici : pas de déplacement de
- * pixel, pas de déformation, pas de remodelage. Forme du visage, nez,
- * mâchoire, yeux, bouche et proportions sont donc conservés par
- * construction. L'original importé reste intact en stockage (non destructif).
+ * L'intensité est CONTINUE : chaque pourcent change réellement le filtre
+ * (rayon spatial et seuil de valeur interpolés linéairement), ce ne sont pas
+ * quatre paliers déguisés. Les repères (Naturel 25 %, Doux 50 %, Lissé 75 %)
+ * retombent exactement sur les anciens niveaux. Même à 100 %, le seuil reste
+ * bas (0,10) : les traits ne sont jamais fondus, aucun visage « plastique ».
+ *
+ * Il n'existe AUCUNE transformation géométrique ici : forme du visage, nez,
+ * mâchoire, yeux, bouche et proportions sont conservés par construction.
+ * L'original importé reste intact en stockage (non destructif).
  */
-export type NiveauEmbellissement = 'aucun' | 'naturel' | 'doux' | 'lisse';
-export const NIVEAUX_EMBELLISSEMENT: readonly NiveauEmbellissement[] = ['aucun', 'naturel', 'doux', 'lisse'];
-export const LIBELLE_EMBELLISSEMENT: Record<NiveauEmbellissement, string> = {
-  aucun: 'Aucun', naturel: 'Naturel', doux: 'Doux', lisse: 'Lissé',
-};
-/** Ce que l'éditeur propose d'emblée (demande produit). Le SERVEUR, lui, rend `aucun` à une demande muette. */
-export const EMBELLISSEMENT_PAR_DEFAUT: NiveauEmbellissement = 'naturel';
-/** Rayon spatial (px) et seuil de valeur (0–1) du filtre bilatéral, par niveau. */
-export const PARAMETRES_EMBELLISSEMENT: Record<Exclude<NiveauEmbellissement, 'aucun'>, { sigmaS: number; sigmaR: number }> = {
-  naturel: { sigmaS: 2, sigmaR: 0.04 },
-  doux: { sigmaS: 3, sigmaR: 0.06 },
-  lisse: { sigmaS: 4, sigmaR: 0.08 },
-};
-export const estNiveauEmbellissement = (v: unknown): v is NiveauEmbellissement =>
-  typeof v === 'string' && (NIVEAUX_EMBELLISSEMENT as readonly string[]).includes(v);
+export const LISSAGE_MIN = 0;
+export const LISSAGE_MAX = 100;
+/** Ce que l'éditeur propose d'emblée (demande produit). Le SERVEUR, lui, rend 0 à une demande muette. */
+export const LISSAGE_PAR_DEFAUT = 25;
+export const REPERES_LISSAGE: ReadonlyArray<{ valeur: number; libelle: string }> = [
+  { valeur: 0, libelle: 'Aucun' },
+  { valeur: 25, libelle: 'Naturel' },
+  { valeur: 50, libelle: 'Doux' },
+  { valeur: 75, libelle: 'Lissé' },
+  { valeur: 100, libelle: 'Maximum' },
+];
 
-/** Le filtre ffmpeg d'un niveau, ou `null` pour `aucun` — toujours géométriquement neutre. */
+/** Anciens niveaux (avant le curseur) : encore acceptés, ramenés à leur pourcentage. */
+export type NiveauEmbellissement = 'aucun' | 'naturel' | 'doux' | 'lisse';
+export const estNiveauEmbellissement = (v: unknown): v is NiveauEmbellissement =>
+  v === 'aucun' || v === 'naturel' || v === 'doux' || v === 'lisse';
+export function lissageDepuisNiveau(n: NiveauEmbellissement): number {
+  return n === 'naturel' ? 25 : n === 'doux' ? 50 : n === 'lisse' ? 75 : 0;
+}
+
+/** Toute valeur ramenée à un entier de 0 à 100 ; illisible → 0 (jamais un lissage non demandé). */
+export function bornerLissage(v: unknown): number {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(Math.min(LISSAGE_MAX, Math.max(LISSAGE_MIN, n)));
+}
+
+/** Le lissage demandé : `lissage` (0–100), sinon un ancien niveau, sinon 0. */
+export function lissageDemande(a: { lissage?: unknown; embellissement?: unknown } | null | undefined): number {
+  if (a && a.lissage !== undefined && a.lissage !== null) return bornerLissage(a.lissage);
+  if (a && estNiveauEmbellissement(a.embellissement)) return lissageDepuisNiveau(a.embellissement);
+  return 0;
+}
+
+/** Les paramètres du filtre bilatéral pour un lissage (0 → aucun filtre). Interpolation linéaire, continue. */
+export function parametresLissage(lissage: number): { sigmaS: number; sigmaR: number } | null {
+  const l = bornerLissage(lissage);
+  if (l <= 0) return null;
+  const k = l / 100;
+  const r = (x: number) => Math.round(x * 1000) / 1000;
+  return { sigmaS: r(1 + 4 * k), sigmaR: r(0.02 + 0.08 * k) };
+}
+
+/** Le filtre ffmpeg d'un lissage, ou `null` à 0 % — toujours géométriquement neutre. */
+export function filtreLissage(lissage: number): string | null {
+  const p = parametresLissage(lissage);
+  return p ? `bilateral=sigmaS=${p.sigmaS}:sigmaR=${p.sigmaR}:planes=7` : null;
+}
+
+/** « 25 % — Naturel », « 40 % » : le repère n'est nommé que s'il est atteint exactement. */
+export function libelleLissage(lissage: number): string {
+  const l = bornerLissage(lissage);
+  const repere = REPERES_LISSAGE.find((x) => x.valeur === l);
+  return repere ? `${l} % — ${repere.libelle}` : `${l} %`;
+}
+
+/** Compatibilité : le filtre d'un ancien niveau. */
 export function filtreEmbellissement(n: NiveauEmbellissement | undefined): string | null {
-  if (!n || n === 'aucun') return null;
-  const p = PARAMETRES_EMBELLISSEMENT[n];
-  return `bilateral=sigmaS=${p.sigmaS}:sigmaR=${p.sigmaR}:planes=7`;
+  return n ? filtreLissage(lissageDepuisNiveau(n)) : null;
 }
 
 /** Fractions 0..1 de l'image APRÈS rotation. */
@@ -298,7 +342,7 @@ export const BORNES_AMELIORATION = {
 } as const;
 
 export const AMELIORATION_NEUTRE: ParametresAmelioration = {
-  active: false, luminosite: 0, contraste: 1, saturation: 1, nettete: 0, debruitage: false, embellissement: 'aucun',
+  active: false, luminosite: 0, contraste: 1, saturation: 1, nettete: 0, debruitage: false, lissage: 0,
 };
 
 const borner = (v: unknown, min: number, max: number, defaut: number) => {
@@ -391,8 +435,8 @@ export function bornerParametres(
     saturation: borner(a.saturation, B.saturation[0], B.saturation[1], 1),
     nettete: borner(a.nettete, B.nettete[0], B.nettete[1], 0),
     debruitage: a.debruitage === true,
-    // Valeur inconnue ou absente : `aucun` — jamais un lissage non demandé.
-    embellissement: estNiveauEmbellissement(a.embellissement) ? a.embellissement : 'aucun',
+    // Valeur inconnue ou absente : 0 — jamais un lissage non demandé.
+    lissage: lissageDemande(a),
   };
 
   return { debutS: debut, finS: fin, rotation, recadrage, amelioration };
@@ -472,7 +516,7 @@ export function argumentsFfmpeg(
   if (a.active && a.debruitage) filtres.push('hqdn3d=1.5:1.5:6:6');
   // Embellir : après le débruitage, AVANT la correction et la netteté (accentuer
   // une texture qu'on vient d'adoucir serait absurde).
-  const embellir = filtreEmbellissement(a.embellissement);
+  const embellir = filtreLissage(a.lissage ?? 0);
   if (embellir) filtres.push(embellir);
   if (a.active) {
     if (a.luminosite !== 0 || a.contraste !== 1 || a.saturation !== 1) {

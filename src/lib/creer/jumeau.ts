@@ -302,6 +302,8 @@ export async function genererEtAttendreVideoJumeau(args: {
   voixId?: string | null;
   /** Qualité de rendu ; le serveur décide du moteur et refuse une qualité fermée. */
   qualite?: 'standard' | 'qualite' | 'premium';
+  /** `remplir` : le format est rempli par HeyGen (pas de bandes). Absent = comportement d'avant. */
+  cadrage?: 'remplir';
   onLancee?: (generationId: string, avatarVersion: number) => void;
   onEtape?: (message: string) => void;
   onPhase?: (phase: PhaseJumeau) => void;
@@ -319,6 +321,7 @@ export async function genererEtAttendreVideoJumeau(args: {
       ...(args.avatarId ? { avatarId: args.avatarId } : {}),
       ...(args.voixId ? { voixId: args.voixId } : {}),
       ...(args.qualite ? { qualite: args.qualite } : {}),
+      ...(args.cadrage ? { cadrage: args.cadrage } : {}),
     }),
   });
   const lance = await lancement.json().catch(() => ({}));

@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 
-const { generateAvatarVideo, moteursSupportesDuLook } = await import('@/lib/avatar/heygen');
+const { generateAvatarVideo, moteursSupportesDuLook, infosDuLook } = await import('@/lib/avatar/heygen');
 
 describe('generateAvatarVideo — moteur', () => {
   it('⚠️ sans moteur demandé : aucun champ `engine` (corps inchangé)', async () => {
@@ -53,5 +53,26 @@ describe('moteursSupportesDuLook — `supported_api_engines` (lecture gratuite, 
     await moteursSupportesDuLook('look-d', 1000);
     await moteursSupportesDuLook('look-d', 1000 + 5 * 60_000);
     expect((globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(1);
+  });
+});
+
+describe('Cadrage HeyGen — `fit`', () => {
+  it('⚠️ `cadrage: cover` → `fit: "cover"` envoyé (le format est rempli, jamais de bandes)', async () => {
+    await generateAvatarVideo({ avatarId: 'look', script: 'Bonjour', voiceId: 'voix', aspectRatio: '9:16', cadrage: 'cover' });
+    expect(corps[0]).toMatchObject({ aspect_ratio: '9:16', fit: 'cover' });
+  });
+  it('sans cadrage : aucun champ `fit` (corps d’avant)', async () => {
+    await generateAvatarVideo({ avatarId: 'look', script: 'Bonjour', voiceId: 'voix' });
+    expect(corps[0]).not.toHaveProperty('fit');
+  });
+});
+
+describe('infosDuLook — orientation native (`preferred_orientation`)', () => {
+  it('lit l’orientation et les moteurs en UNE lecture ; valeur inconnue → null', async () => {
+    const rep = (b: unknown) => vi.fn(async () => ({ ok: true, status: 200, json: async () => b, text: async () => JSON.stringify(b) } as unknown as Response));
+    vi.stubGlobal('fetch', rep({ data: { supported_api_engines: ['avatar_iv'], preferred_orientation: 'landscape' } }));
+    expect(await infosDuLook('look-o1', 1)).toEqual({ moteurs: ['avatar_iv'], orientation: 'landscape' });
+    vi.stubGlobal('fetch', rep({ data: { supported_api_engines: [], preferred_orientation: 'diagonale' } }));
+    expect(await infosDuLook('look-o2', 1)).toEqual({ moteurs: [], orientation: null });
   });
 });

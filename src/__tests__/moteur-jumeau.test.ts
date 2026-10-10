@@ -473,3 +473,31 @@ describe('Voix choisie pour CETTE génération (Mon avatar) — contrôlée côt
     expect(appelsVers('https://api.elevenlabs.io/v1/text-to-speech/')[0].url).toContain('/text-to-speech/pvid_perso_0002?');
   });
 });
+
+describe('Mon avatar — cadrage rempli et qualité Premium (moteur du jumeau)', () => {
+  it('⚠️ `cadrage: remplir` → HeyGen reçoit `fit: cover` (le format est rempli, aucune bande dans le fichier)', async () => {
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', cadrage: 'remplir' });
+    expect(r.ok).toBe(true);
+    const corps = appelsVers('https://api.heygen.com/v3/videos')[0].body as Record<string, unknown>;
+    expect(corps).toMatchObject({ aspect_ratio: '9:16', fit: 'cover' });
+  });
+
+  it('sans `cadrage` (Créer, Autopilote) : corps INCHANGÉ, aucun `fit`', async () => {
+    await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16' });
+    expect(appelsVers('https://api.heygen.com/v3/videos')[0].body).not.toHaveProperty('fit');
+  });
+
+  it('⚠️ Premium sur un avatar PHOTO : refusé avec la vraie raison, AUCUN fournisseur, AUCUN débit', async () => {
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'premium' });
+    expect(r).toMatchObject({ ok: false, motif: 'moteur_indisponible', message: 'Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).' });
+    expect(reseau.appels).toEqual([]);
+    expect(credits.journal).toEqual([]);
+  });
+
+  it('⚠️ un moteur falsifié depuis le client est IGNORÉ : seule la qualité est lue, et revalidée par le serveur', async () => {
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'standard', moteur: 'avatar_v', engine: { type: 'avatar_v' } } as never);
+    expect(r.ok).toBe(true);
+    expect((appelsVers('https://api.heygen.com/v3/videos')[0].body as { engine: unknown }).engine).toEqual({ type: 'avatar_iii' });
+    expect((await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'avatar_v' })).ok).toBe(false);
+  });
+});

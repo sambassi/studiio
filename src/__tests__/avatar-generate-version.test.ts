@@ -136,32 +136,57 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
     expect(heygen.args[1].moteur).toBe('avatar_iv');
   });
 
-  it('⚠️ Premium non ouvert côté serveur : 400 AVANT tout débit et tout fournisseur — jamais rabattu en silence', async () => {
+  it('⚠️ Premium SANS confirmation HeyGen (lecture muette) : 400 avec la vraie raison, AVANT tout débit — jamais rabattu sur Avatar IV', async () => {
     base.avatars = [avatar()];
+    heygen.moteursLook = null;
     const res = await requete({ qualite: 'premium' });
     expect(res.status).toBe(400);
-    expect((await res.json() as { code: string }).code).toBe('qualite_indisponible');
-    expect(heygen.appels).toEqual([]);
+    const j = await res.json() as { code: string; error: string };
+    expect(j.code).toBe('qualite_indisponible');
+    expect(j.error).toBe('HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.');
+    expect(heygen.appels).toEqual(['moteurs:hg-1']);
     expect(credits.journal).toEqual([]);
     expect(base.generations).toEqual([]);
   });
 
-  it('⚠️ Premium ouvert mais NON confirmé par le fournisseur pour ce look : 400, aucun débit, aucune vidéo', async () => {
-    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_v';
+  it('⚠️ Premium NON supporté par ce look (réponse HeyGen) : 400 « Avatar V n’est pas disponible pour cet avatar », aucun débit, aucune vidéo', async () => {
     base.avatars = [avatar()];
     heygen.moteursLook = ['avatar_iii', 'avatar_iv'];
     const res = await requete({ qualite: 'premium' });
     expect(res.status).toBe(400);
+    expect((await res.json() as { error: string }).error).toBe('Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).');
     expect(heygen.appels).toEqual(['moteurs:hg-1']);
     expect(credits.journal).toEqual([]);
   });
 
-  it('Premium ouvert ET confirmé (`supported_api_engines`) : avatar_v', async () => {
-    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_v';
+  it('⚠️ Premium confirmé par HeyGen : avatar_v réellement envoyé — AUCUN blocage interne (sans variable de configuration)', async () => {
     base.avatars = [avatar()];
     heygen.moteursLook = ['avatar_iii', 'avatar_iv', 'avatar_v'];
     expect((await requete({ qualite: 'premium' })).status).toBe(200);
     expect(heygen.args[0].moteur).toBe('avatar_v');
+    expect(credits.journal).toEqual(['debit:40']);
+  });
+
+  it('⚠️ Premium sur un avatar PHOTO : refusé (Avatar V = jumeau vidéo seulement), sans même interroger HeyGen', async () => {
+    base.avatars = [avatar({ avatar_type: 'photo' })];
+    heygen.moteursLook = ['avatar_v'];
+    const res = await requete({ qualite: 'premium' });
+    expect(res.status).toBe(400);
+    expect((await res.json() as { error: string }).error).toBe('Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).');
+    expect(heygen.appels).toEqual([]);
+  });
+
+  it('⚠️ cadrage : chaque génération de Mon avatar demande à HeyGen de REMPLIR le format (`fit: cover`)', async () => {
+    base.avatars = [avatar()];
+    await requete({ aspectRatio: '16:9' });
+    expect(heygen.args[0]).toMatchObject({ aspectRatio: '16:9', cadrage: 'cover' });
+  });
+
+  it('⚠️ moteur falsifié par le client (`engine`, `moteur`) : IGNORÉ — seule la qualité est lue, et revalidée', async () => {
+    base.avatars = [avatar()];
+    expect((await requete({ engine: { type: 'avatar_v' }, moteur: 'avatar_v' })).status).toBe(200);
+    expect(heygen.args[0]).not.toHaveProperty('moteur');
+    expect((await requete({ qualite: 'avatar_v' })).status).toBe(400);
   });
 
   it('une qualité inconnue est refusée de même', async () => {

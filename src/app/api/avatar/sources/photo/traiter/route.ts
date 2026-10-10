@@ -1,12 +1,12 @@
 /**
- * POST /api/avatar/sources/photo/traiter — `{ cleOriginal, embellissement }`.
+ * POST /api/avatar/sources/photo/traiter — `{ cleOriginal, lissage }` (0–100 ; l'ancien `embellissement` reste accepté).
  *
  * Embellit une photo source DU COMPTE avec le ffmpeg du serveur (filtre
  * bilatéral, aucune transformation géométrique, orientation EXIF respectée),
  * et dépose le résultat comme SECOND objet : l'original n'est jamais modifié.
- * `aucun` → l'original lui-même, sans traitement ni nouvel objet.
+ * 0 % → l'original lui-même, sans traitement ni nouvel objet.
  *
- * Réponse : `{ success: true, data: { cleOriginal, cleTraitee, embellissement } }`.
+ * Réponse : `{ success: true, data: { cleOriginal, cleTraitee, lissage } }`.
  */
 import { prendreVerrouSource, libererVerrouSource, MESSAGE_SOURCE_EN_COURS } from '@/lib/avatar/verrou-traitement';
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,7 +20,7 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { BUCKET_AVATAR, cleSourceAvatar, cleSourceAvatarDuCompte, ouvrirSourceAvatar, typeSourceAvatar } from '@/lib/avatar/source';
 import { dossierTemporaire, retirerDossierTemporaire } from '@/lib/avatar/preparation-source';
 import {
-  TYPES_PHOTO_ACCEPTES, TAILLE_MAX_PHOTO_OCTETS, bornerEmbellissementPhoto, orientationPhoto, traiterPhoto,
+  TYPES_PHOTO_ACCEPTES, TAILLE_MAX_PHOTO_OCTETS, bornerLissagePhoto, orientationPhoto, traiterPhoto,
 } from '@/lib/avatar/preparation-photo';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     if (!session?.user?.id) return refus(401, 'Unauthorized');
     const userId = session.user.id;
 
-    let corps: { cleOriginal?: unknown; embellissement?: unknown };
+    let corps: { cleOriginal?: unknown; lissage?: unknown; embellissement?: unknown };
     try { corps = await req.json(); } catch { return refus(400, 'Requête illisible.'); }
     const cleOriginal = corps?.cleOriginal;
     // Propriété et nature (une PHOTO du compte), AVANT tout accès au stockage.
@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
     const type = typeSourceAvatar(cleOriginal) ?? '';
     const extension = TYPES_PHOTO_ACCEPTES[type];
     if (!extension) return introuvable();
-    const niveau = bornerEmbellissementPhoto(corps.embellissement);
-    if (niveau === 'aucun') {
-      return NextResponse.json({ success: true, data: { cleOriginal, cleTraitee: cleOriginal, embellissement: niveau } });
+    const lissage = bornerLissagePhoto(corps);
+    if (lissage === 0) {
+      return NextResponse.json({ success: true, data: { cleOriginal, cleTraitee: cleOriginal, lissage } });
     }
 
     if (!prendreVerrouSource(userId)) return refus(429, MESSAGE_SOURCE_EN_COURS);
@@ -65,10 +65,10 @@ export async function POST(req: NextRequest) {
     const orientation = orientationPhoto(await readFile(entree), extension);
 
     try {
-      await traiterPhoto(entree, sortie, niveau, orientation);
+      await traiterPhoto(entree, sortie, lissage, orientation);
     } catch (e) {
       console.error('[Avatar][sources/photo/traiter] ffmpeg :', e instanceof Error ? e.message.slice(0, 500) : String(e));
-      return refus(422, 'L’embellissement de la photo a échoué. Choisissez « Aucun » ou une autre photo.');
+      return refus(422, 'Le lissage de la photo a échoué. Mettez le lissage à 0 % ou choisissez une autre photo.');
     }
 
     const octets = await readFile(sortie);
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       console.error('[Avatar][sources/photo/traiter] stockage impossible :', error.message);
       return refus(500, 'La photo embellie n’a pas pu être enregistrée. Réessayez.');
     }
-    return NextResponse.json({ success: true, data: { cleOriginal, cleTraitee, embellissement: niveau } });
+    return NextResponse.json({ success: true, data: { cleOriginal, cleTraitee, lissage } });
   } catch (e: unknown) {
     console.error('[Avatar][sources/photo/traiter] erreur :', e instanceof Error ? e.message : String(e));
     return refus(500, 'Une erreur interne est survenue.');

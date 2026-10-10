@@ -306,7 +306,7 @@ export default function MesAvatars(props: {
                     </div>
                   </div>
                   {/* La progression s'arrête là où elle a échoué — rien ne continue d'« avancer ». */}
-                  <ProgressStatus titre={`Nouvelle version v${c.version}`} statut="erreur" etapes={progressionVersion(c).etapes} compact note={null} />
+                  <ProgressStatus titre={`Nouvelle version de l’avatar (v${c.version})`} statut="erreur" etapes={progressionVersion(c).etapes} compact note={null} />
                   {a.versionActive && <div className="text-red-100/80">Votre version v{a.versionActive.version} reste utilisée.</div>}
                   <div className="flex flex-wrap gap-2">
                     <button type="button" data-action="reessayer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>Réessayer</button>
@@ -325,7 +325,7 @@ export default function MesAvatars(props: {
                     return <div data-candidate-apercu={c.apercu ?? 'inconnu'}><ProgressStatus titre={p.titre} statut={occupe === `apercu-${c.id}` && p.statut === 'attente' ? 'en_cours' : p.statut} etapes={p.etapes} description={occupe === `apercu-${c.id}` && p.statut === 'attente' ? 'Ouverture de l’aperçu…' : p.message} detail={p.description} note={null} /></div>;
                   })()}
                   {apercu?.versionId === c.id && (
-                    <video data-apercu-candidate src={apercu.url} controls playsInline className="w-full max-h-72 rounded-lg bg-black" />
+                    <video data-apercu-candidate src={apercu.url} controls playsInline className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />
                   )}
                   <div className="flex flex-wrap gap-2">
                     <button type="button" data-action="apercu" disabled={occupe !== null} onClick={() => void voirApercu(a, c)} className={TERTIAIRE}>
@@ -455,14 +455,14 @@ export default function MesAvatars(props: {
                           </div>
                           {revenir && <p className="text-gray-500">Réactive cette version déjà prête : aucun nouvel entraînement, aucun frais.</p>}
                           {apercuHistorique?.versionId === h.id && (
-                            <video data-apercu-version={h.id} src={apercuHistorique.url} controls playsInline className="w-full max-h-72 rounded-lg bg-black object-contain" />
+                            <video data-apercu-version={h.id} src={apercuHistorique.url} controls playsInline className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />
                           )}
                           {vue && (
                             <div data-version-source-vue={vue.originale ? 'originale' : 'utilisee'} className="space-y-1.5">
                               {h.type === 'video'
-                                ? <video src={srcSource(vue.originale)} controls playsInline preload="metadata" className="w-full max-h-72 rounded-lg bg-black object-contain" />
+                                ? <video src={srcSource(vue.originale)} controls playsInline preload="metadata" className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />
                                 /* eslint-disable-next-line @next/next/no-img-element */
-                                : <img src={srcSource(vue.originale)} alt={`Source de la version v${h.version}`} className="w-full max-h-72 rounded-lg bg-black object-contain" />}
+                                : <img src={srcSource(vue.originale)} alt={`Source de la version v${h.version}`} className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />}
                               {h.originalConserve && (
                                 <button type="button" data-action="voir-original" onClick={() => setSourceVue({ versionId: h.id, originale: !vue.originale })} className={TERTIAIRE}>
                                   {vue.originale ? 'Voir la version envoyée' : 'Voir l’original importé'}

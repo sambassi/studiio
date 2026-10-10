@@ -27,9 +27,9 @@ import Link from 'next/link';
 import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
-import { LIBELLE_EMBELLISSEMENT, type NiveauEmbellissement } from '@/lib/avatar/preparation-source-regles';
+import { libelleLissage } from '@/lib/avatar/preparation-source-regles';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
-import { CLASSES_LECTEUR_GENERATION, ratioCadre } from '@/lib/ui/lecteur-generation';
+import { CLASSES_LECTEUR_GENERATION, ratioCadre, formatLecteurDepuisRatio } from '@/lib/ui/lecteur-generation';
 import {
   ETAPES_GENERATION_HEYGEN, ETAPES_GENERATION_JUMEAU, DETAIL_GENERATION, etapesGeneration, detailStatutFournisseur,
   CLE_GENERATION_EN_COURS, lireGenerationEnCours, type PhaseGenerationHeygen, type PhaseGenerationJumeau, type GenerationEnCours,
@@ -98,7 +98,7 @@ interface Voice {
 
 type GenStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 type Qualite = 'standard' | 'qualite' | 'premium';
-interface QualiteOfferte { qualite: Qualite; libelle: string; ouverte: boolean; recommandee?: boolean; motif?: string | null }
+interface QualiteOfferte { qualite: Qualite; libelle: string; ouverte: boolean; recommandee?: boolean; motif?: string | null; moteurLibelle?: string; description?: string; meilleure?: boolean }
 const lireQualites = (brut: unknown): QualiteOfferte[] => (Array.isArray(brut)
   ? (brut as QualiteOfferte[]).filter((q) => q && (q.qualite === 'standard' || q.qualite === 'qualite' || q.qualite === 'premium'))
   : []);
@@ -138,7 +138,7 @@ export default function AvatarPage() {
   const [mesAvatarsCle, setMesAvatarsCle] = useState(0);
   /** Première photo : « Embellir le visage » (facultatif ici) — l'original reste conservé à côté. */
   const [ameliorerPhoto, setAmeliorerPhoto] = useState(false);
-  const [photoPreparee, setPhotoPreparee] = useState<{ cleOriginal: string; cleTraitee: string; embellissement: NiveauEmbellissement } | null>(null);
+  const [photoPreparee, setPhotoPreparee] = useState<{ cleOriginal: string; cleTraitee: string; lissage: number } | null>(null);
 
   // Génération
   const [script, setScript] = useState('');
@@ -178,6 +178,21 @@ export default function AvatarPage() {
   const [genEchec, setGenEchec] = useState<string | null>(null);
   /** Ratio RÉEL de la source (dimensions lues sur l'image / la vidéo chargée) ; `null` tant qu'inconnu. */
   const [ratioSourceReel, setRatioSourceReel] = useState<string | null>(null);
+  /**
+   * Le ratio RÉEL de chaque vidéo affichée (dimensions lues au chargement), par
+   * adresse : un résultat 9:16 a un lecteur vertical, un 16:9 un lecteur
+   * horizontal — le lecteur n'ajoute jamais de bandes autour du fichier.
+   */
+  const [ratiosMedias, setRatiosMedias] = useState<Record<string, string>>({});
+  /** L'orientation NATIVE de l'avatar chez HeyGen (`preferred_orientation`) ; `null` si inconnue. */
+  const [orientationAvatar, setOrientationAvatar] = useState<'portrait' | 'landscape' | 'square' | null>(null);
+  const noterRatio = (url: string) => (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const v = e.currentTarget;
+    if (v.videoWidth > 0 && v.videoHeight > 0) {
+      const r = `${v.videoWidth} / ${v.videoHeight}`;
+      setRatiosMedias((m) => (m[url] === r ? m : { ...m, [url]: r }));
+    }
+  };
   /** « Changer d'avatar » : ouvre la liste de MES avatars (incrémenté à chaque demande). */
   const [demandeChoixAvatar, setDemandeChoixAvatar] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -417,6 +432,8 @@ export default function AvatarPage() {
     setDidVideoActif(json.data.didVideoActif === true);
     setJumeauVideoActif(json.data.jumeauVideoActif === true);
     setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
+    const o = json.data.orientationAvatar;
+    setOrientationAvatar(o === 'portrait' || o === 'landscape' || o === 'square' ? o : null);
     if (Array.isArray(json.data.qualites)) {
       setQualitesHeygen(lireQualites(json.data.qualites));
       if (json.data.qualiteParDefaut) setDefautHeygen(json.data.qualiteParDefaut as Qualite);
@@ -751,6 +768,8 @@ export default function AvatarPage() {
       try {
         const { url } = await genererEtAttendreVideoJumeau({
           textes: [script.trim()], aspectRatio: ratio, avatarId: avatar.id, voixId: choisie,
+          // Le format choisi est REMPLI par HeyGen (pas de bandes dans le fichier).
+          cadrage: 'remplir',
           ...(qualiteEnvoyee ? { qualite: qualiteEnvoyee } : {}),
           // Acceptée par le serveur : mémorisée pour reprendre le SUIVI après un rechargement.
           onLancee: (generationId) => memoriserGeneration({ generationId, mode: 'jumeau', avatarId: avatar.id, debutLe: Date.now() }),
@@ -858,6 +877,7 @@ export default function AvatarPage() {
    */
   const viaVoixClonee = voiceId.startsWith(PREFIXE_VOIX_CLONEE);
   const qualites = viaVoixClonee ? qualitesClonee : qualitesHeygen;
+  const premium = qualites.find((q) => q.qualite === 'premium') ?? null;
     useEffect(() => {
     const liste = viaVoixClonee ? qualitesClonee : qualitesHeygen;
     const defaut = viaVoixClonee ? defautClonee : defautHeygen;
@@ -1010,11 +1030,11 @@ export default function AvatarPage() {
     if (etatEffectif === 'valide') {
       // Sous le formulaire de génération, pas de légende visible (la hauteur va au lecteur) :
       // le titre dit ce qu'on voit, la légende reste lue par les lecteurs d'écran.
-      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /><span className="sr-only">Vidéo prête.</span></> };
+      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratiosMedias[videoUrl] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline onLoadedMetadata={noterRatio(videoUrl)} className="w-full h-full object-contain bg-black" /><span className="sr-only">Vidéo prête.</span></> };
       // ⚠️ JAMAIS la source ici : elle n'est pas l'avatar utilisé par Créer et
       // l'Autopilote. On montre un RENDU réel de la version active, ou on dit
       // qu'il n'y en a pas — sans rien inventer, sans appeler de fournisseur.
-      if (renduRecent) return { titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
+      if (renduRecent) return { titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratiosMedias[renduRecent.url] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline onLoadedMetadata={noterRatio(renduRecent.url)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
       return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
     }
     if (etatEffectif === 'entraine_non_valide') {
@@ -1031,8 +1051,8 @@ export default function AvatarPage() {
       if (!apercuVisible) return { titre: 'Aperçu de validation', ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: 'Votre aperçu est prêt.', actionSuivante: { libelle: 'Voir mon aperçu', onClick: voirApercu, attributs: { 'data-avatar-apercu': 'voir' } } } };
       const ouvert = !!apercuOuvert && apercuOuvert.generationId === apercu.generationId;
       return {
-        titre: 'Aperçu de validation', ratio: '9 / 16',
-        media: <video data-avatar-apercu="video" src={apercu.url} controls autoPlay playsInline onPlaying={apercuEnLecture} className="w-full h-full object-contain bg-black" />,
+        titre: 'Aperçu de validation', ratio: ratiosMedias[apercu.url] ?? '9 / 16',
+        media: <video data-avatar-apercu="video" src={apercu.url} controls autoPlay playsInline onPlaying={apercuEnLecture} onLoadedMetadata={noterRatio(apercu.url)} className="w-full h-full object-contain bg-black" />,
         etat: ouvert
           ? { statut: 'pret', legende: 'Ça vous ressemble ?', actionSuivante: { libelle: validationEnCours ? 'Validation en cours…' : 'Valider mon avatar', onClick: validerAvatar, disabled: validationEnCours, attributs: { 'data-avatar-apercu': 'valider' } } }
           : { statut: 'pret', legende: 'Lancez la lecture : le bouton de validation apparaîtra ensuite.' },
@@ -1312,7 +1332,7 @@ export default function AvatarPage() {
               {/* Photo : « Embellir le visage », facultatif — le parcours d'avant reste identique sans lui. */}
               {kind === 'photo' && file && !ameliorerPhoto && (
                 <div data-avatar-photo-embellir className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-900/60 p-3 text-sm">
-                  <span className="text-gray-300">{photoPreparee ? `Embellissement : ${LIBELLE_EMBELLISSEMENT[photoPreparee.embellissement]} — original conservé.` : 'Embellir le visage (facultatif)'}</span>
+                  <span className="text-gray-300">{photoPreparee ? `Lissage : ${libelleLissage(photoPreparee.lissage)} — original conservé.` : 'Lissage du visage (facultatif)'}</span>
                   <button type="button" data-avatar-photo-ameliorer onClick={() => setAmeliorerPhoto(true)} className="button-ghost !min-h-[30px] !text-xs">{photoPreparee ? 'Modifier' : 'Améliorer ma photo'}</button>
                 </div>
               )}
@@ -1320,7 +1340,7 @@ export default function AvatarPage() {
                 <PreparationPhoto
                   fichier={file}
                   onAnnuler={() => setAmeliorerPhoto(false)}
-                  onPret={(r) => { setPhotoPreparee({ cleOriginal: r.cleOriginal, cleTraitee: r.cleTraitee, embellissement: r.embellissement }); setAmeliorerPhoto(false); }}
+                  onPret={(r) => { setPhotoPreparee({ cleOriginal: r.cleOriginal, cleTraitee: r.cleTraitee, lissage: r.lissage }); setAmeliorerPhoto(false); }}
                 />
               )}
 
@@ -1507,7 +1527,7 @@ export default function AvatarPage() {
                 titre={zone.titre}
                 etat={zone.etat}
                 ratio={zone.ratio}
-                className={avatar && etatEffectif === 'valide' && !viaDid ? `${CLASSES_LECTEUR_GENERATION[ratio]} lg:!p-3 lg:!space-y-2` : ''}
+                className={avatar && etatEffectif === 'valide' && !viaDid ? `${CLASSES_LECTEUR_GENERATION[formatLecteurDepuisRatio(zone.ratio)]} lg:!p-3 lg:!space-y-2` : ''}
               >
                 {zone.media}
               </ZoneApercu>
@@ -1533,7 +1553,7 @@ export default function AvatarPage() {
 
               {/* Voix et Qualité côte à côte, le Format sur une ligne : lecteur, réglages et
                   « Générer la vidéo » tiennent ensemble à l'ouverture, de 1366×768 à 1440×900. */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="min-w-0">
                   <label className="block text-xs font-medium text-gray-100 mb-1">Voix</label>
                   <select
@@ -1590,7 +1610,7 @@ export default function AvatarPage() {
                     Un niveau fermé reste visible, grisé, avec SA raison dans son libellé. */}
                 {qualites.length > 0 && (
                   <div data-avatar-qualite className="min-w-0">
-                    <label htmlFor="avatar-qualite" className="block text-xs font-medium text-gray-100 mb-1">Qualité</label>
+                    <label htmlFor="avatar-qualite" className="block text-xs font-medium text-gray-100 mb-1">Qualité de génération</label>
                     <select
                       id="avatar-qualite"
                       data-avatar-qualite-choix
@@ -1601,14 +1621,14 @@ export default function AvatarPage() {
                     >
                       {qualites.map((q) => (
                         <option key={q.qualite} value={q.qualite} disabled={!q.ouverte} data-avatar-qualite-option={q.qualite} data-avatar-qualite-ouverte={q.ouverte ? 'oui' : 'non'}>
-                          {q.libelle}{q.recommandee ? ' — recommandé' : q.qualite === 'standard' ? ' — économique' : q.qualite === 'premium' ? ' — maximale' : ''}{q.ouverte ? '' : ` (indisponible : ${q.motif ?? 'pas encore ouvert'})`}
+                          {q.libelle}{q.moteurLibelle ? ` — ${q.moteurLibelle}` : ''}{q.description ? ` · ${q.description.toLowerCase()}` : ''}{q.ouverte ? '' : ` (indisponible : ${q.motif ?? 'pas encore ouvert'})`}
                         </option>
                       ))}
                     </select>
-                    {viaVoixClonee && <p data-avatar-qualite-voix-clonee className="mt-1 text-[10px] text-gray-400">Avec votre voix clonée, la qualité suit celle de Créer.</p>}
                   </div>
                 )}
               </div>
+
 
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-gray-100 shrink-0 w-14">Format</span>
@@ -1675,6 +1695,28 @@ export default function AvatarPage() {
                 );
               })()}
               </div>
+              {/* PREMIUM — AVATAR V, sous le bouton (le bouton reste à l'écran), dit en une phrase : disponible (et sélectionnable d'un clic),
+                  sélectionné, ou fermé avec la VRAIE raison rendue par HeyGen. Jamais confondu
+                  avec la VERSION de l'avatar (« v5 » numérote un entraînement, pas un moteur). */}
+              {premium && (
+                <div data-avatar-premium={premium.ouverte ? (qualite === 'premium' ? 'selectionne' : 'disponible') : 'indisponible'} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-300">
+                  <span className="rounded-full bg-studiio-primary/25 px-1.5 py-0.5 text-[10px] font-semibold text-purple-100" data-avatar-premium-badge>Meilleure qualité</span>
+                  {premium.ouverte ? (
+                    qualite === 'premium'
+                      ? <span>Premium — Avatar V sélectionné.</span>
+                      : <><span>Premium — Avatar V disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => setQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
+                  ) : (
+                    <span data-avatar-premium-motif className="text-gray-400">Premium — Avatar V : {premium.motif ?? 'indisponible.'}</span>
+                  )}
+                </div>
+              )}
+              {viaVoixClonee && <p data-avatar-qualite-voix-clonee className="text-[10px] text-gray-400">Avec votre voix clonée, la qualité par défaut est celle de Créer.</p>}
+              {/* Format ≠ orientation de l'avatar : dit, sous le bouton (le bouton reste à l'écran). */}
+              {orientationAvatar && orientationAvatar !== (ratio === '9:16' ? 'portrait' : ratio === '16:9' ? 'landscape' : 'square') && (
+                <p data-avatar-recadrage className="text-[11px] text-gray-400">
+                  Avatar créé en {orientationAvatar === 'landscape' ? 'paysage' : orientationAvatar === 'portrait' ? 'portrait' : 'carré'} : en {ratio}, l’image est recadrée pour remplir tout le cadre — sans bandes ni déformation. Pour un {ratio} au cadrage de votre choix, remplacez l’avatar par une vidéo cadrée en {ratio}.
+                </p>
+              )}
               {videoUrl && (
                 <a
                   href={videoUrl}

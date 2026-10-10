@@ -61,8 +61,8 @@ function pixels(octets: Buffer): { l: number; h: number; px: (x: number, y: numb
 const sombre = ([r, g, b]: number[]) => r + g + b < 3 * 90;
 const bleu = ([r, g, b]: number[]) => b > 180 && r < 80 && g < 80;
 
-const traiter = (cleOriginal: string, embellissement: string) => route.POST(new NextRequest('https://studiio.pro/api/avatar/sources/photo/traiter', {
-  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cleOriginal, embellissement }),
+const traiter = (cleOriginal: string, lissage: number) => route.POST(new NextRequest('https://studiio.pro/api/avatar/sources/photo/traiter', {
+  method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cleOriginal, lissage }),
 }));
 
 beforeEach(() => {
@@ -81,15 +81,15 @@ describe('Orientation EXIF d’un WebP (lecture pure)', () => {
 });
 
 describe.skipIf(!ffmpegPresent)('Embellir une photo WebP — vrai ffmpeg', () => {
-  it('⚠️ « Aucun » : l’original lui-même, sans traitement ni nouvel objet', async () => {
-    const r = await (await traiter(cle('a'), 'aucun')).json();
-    expect(r.data).toMatchObject({ cleOriginal: cle('a'), cleTraitee: cle('a'), embellissement: 'aucun' });
+  it('⚠️ 0 % : l’original lui-même, sans traitement ni nouvel objet', async () => {
+    const r = await (await traiter(cle('a'), 0)).json();
+    expect(r.data).toMatchObject({ cleOriginal: cle('a'), cleTraitee: cle('a'), lissage: 0 });
     expect(stockage.deposes).toEqual([]);
   });
 
-  for (const niveau of ['naturel', 'doux', 'lisse'] as const) {
+  for (const niveau of [10, 25, 50, 75, 100] as const) {
     for (const [fichier, n] of [['portrait.webp', 'a'], ['portrait-exif6.webp', 'b']] as const) {
-      it(`⚠️ « ${niveau} » sur ${fichier} : traité, lisible, droit, non déformé, original intact`, async () => {
+      it(`⚠️ ${niveau} % sur ${fichier} : traité, lisible, droit, non déformé, original intact`, async () => {
         const original = Buffer.from(stockage.objets.get(cle(n))!);
         const res = await traiter(cle(n), niveau);
         expect(res.status).toBe(200);
@@ -113,7 +113,7 @@ describe.skipIf(!ffmpegPresent)('Embellir une photo WebP — vrai ffmpeg', () =>
     }
   }
 
-  it('⚠️ le lissage agit (grain de peau adouci), de plus en plus de Naturel à Lissé — à chaîne égale', async () => {
+  it('⚠️ le lissage est CONTINU : le grain de peau décroît à chaque palier 0 → 10 → 25 → 40 → 60 → 80 → 100 % (à chaîne égale)', async () => {
     const { traiterPhoto } = await import('@/lib/avatar/preparation-photo');
     const { mkdtemp, readFile, writeFile, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
@@ -122,20 +122,19 @@ describe.skipIf(!ffmpegPresent)('Embellir une photo WebP — vrai ffmpeg', () =>
     try {
       const entree = join(dossier, 'o.webp');
       await writeFile(entree, readFileSync(resolve(FIXTURES, 'portrait.webp')));
-      // Variation locale de la peau (zone sans trait), sur la MÊME chaîne (redressement, JPEG) :
-      // seul le filtre diffère, la compression n'est pas prise pour du lissage.
-      const rugosite = async (niveau: 'aucun' | 'naturel' | 'doux' | 'lisse') => {
-        const sortie = join(dossier, `${niveau}.jpg`);
-        await traiterPhoto(entree, sortie, niveau, 1);
+      // Variation locale de la peau (zone sans trait), sur la MÊME chaîne (JPEG) : seul le filtre diffère.
+      const rugosite = async (lissage: number) => {
+        const sortie = join(dossier, `${lissage}.jpg`);
+        await traiterPhoto(entree, sortie, lissage, 1);
         const p = pixels(await readFile(sortie));
         let somme = 0;
         for (let y = 600; y < 700; y += 1) for (let x = 100; x < 500; x += 1) somme += Math.abs(p.px(x, y)[0] - p.px(x + 1, y)[0]);
         return somme;
       };
-      const [a0, n, d, l] = [await rugosite('aucun'), await rugosite('naturel'), await rugosite('doux'), await rugosite('lisse')];
-      expect(n).toBeLessThan(a0);
-      expect(d).toBeLessThan(n);
-      expect(l).toBeLessThan(d);
+      const paliers = [0, 10, 25, 40, 60, 80, 100];
+      const r: number[] = [];
+      for (const l of paliers) r.push(await rugosite(l));
+      for (let i = 1; i < r.length; i += 1) expect(r[i]).toBeLessThan(r[i - 1]);
     } finally {
       await rm(dossier, { recursive: true, force: true });
     }
