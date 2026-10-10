@@ -267,3 +267,37 @@ describe('f. nominal', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });
+
+describe('g. transparence du prompt', () => {
+  it('« Voir le prompt utilisé » montre le prompt final renvoyé par le serveur', async () => {
+    const PROMPT = 'A black woman dancing, with wireless headphones. Original request (French): « femme noire danse »';
+    stubFetch(() => reponseOk({ promptFinal: PROMPT }));
+    render(<AfficheIA suggestion="lac au matin" onUtiliser={async () => {}} />);
+    fireEvent.change(document.querySelector('[data-affiche-ia-prompt]')!, { target: { value: 'femme noire danse' } });
+    fireEvent.click(btnGenerer());
+    await waitFor(() => expect(apercu()).not.toBeNull());
+
+    const details = document.querySelector('[data-affiche-ia-prompt-utilise]') as HTMLDetailsElement;
+    expect(details).not.toBeNull();
+    expect(details.tagName).toBe('DETAILS');
+    expect(details.open).toBe(false); // discret : replié par défaut
+    expect(screen.getByText('Voir le prompt utilisé')).toBeTruthy();
+    expect(details.textContent).toContain(PROMPT);
+  });
+
+  it('sans promptFinal (ancien serveur) : pas de bloc vide', async () => {
+    stubFetch(() => reponseOk());
+    render(<AfficheIA suggestion="lac au matin" onUtiliser={async () => {}} />);
+    fireEvent.click(btnGenerer());
+    await waitFor(() => expect(apercu()).not.toBeNull());
+    expect(document.querySelector('[data-affiche-ia-prompt-utilise]')).toBeNull();
+  });
+
+  it('champ vide : l écran dit que le thème sera utilisé, et disparaît dès qu on écrit', () => {
+    render(<AfficheIA suggestion="lac au matin" onUtiliser={async () => {}} />);
+    const note = document.querySelector('[data-affiche-ia-theme-utilise]');
+    expect(note?.textContent).toContain('« lac au matin »');
+    fireEvent.change(document.querySelector('[data-affiche-ia-prompt]')!, { target: { value: 'plage' } });
+    expect(document.querySelector('[data-affiche-ia-theme-utilise]')).toBeNull();
+  });
+});

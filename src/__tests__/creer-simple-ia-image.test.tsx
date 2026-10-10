@@ -255,3 +255,53 @@ describe('L intégration dans le Mode simple', () => {
     expect(screen.getByText(STYLE_PRESETS[0].label)).toBeTruthy();
   });
 });
+
+describe('« Générer arrière-plan » part du TEXTE seul, jamais de l image courante', () => {
+  // Envoyer l'image courante basculait le serveur sur l'édition de photo
+  // (flux-kontext) : la pose et le sujet existants étaient recopiés au lieu
+  // de la scène décrite.
+  const reponse = () => vi.fn(async () => ({
+    ok: true, json: async () => ({ success: true, resultUrl: 'https://cdn.test/fond.webp', creditsUsed: 5 }),
+  }));
+
+  it('AiImageTools : generate-bg n envoie pas imageUrl (magic-edit, lui, l envoie : test plus haut)', async () => {
+    const fetchMock = reponse();
+    vi.stubGlobal('fetch', fetchMock as never);
+    const { onImageResult } = rendre();
+
+    fireEvent.click(bouton('generate-bg'));
+    await waitFor(() => expect(document.querySelector('[data-ai-prompt]')).not.toBeNull());
+    fireEvent.change(document.querySelector('[data-ai-prompt]')!, { target: { value: 'femme qui danse' } });
+    fireEvent.click(document.querySelector('[data-ai-confirm]')!);
+    await waitFor(() => expect(onImageResult).toHaveBeenCalled());
+
+    const corps = JSON.parse((fetchMock.mock.calls[0] as never[])[1]!['body']);
+    expect(corps.action).toBe('generate-bg');
+    expect(corps.prompt).toBe('femme qui danse');
+    expect(corps).not.toHaveProperty('imageUrl');
+  });
+
+  it('ImageEditorPanel : generate-bg n envoie pas imageUrl même avec un fond chargé', async () => {
+    const { default: ImageEditorPanel } = await import('@/components/creer/ImageEditorPanel');
+    const fetchMock = reponse();
+    vi.stubGlobal('fetch', fetchMock as never);
+    render(
+      <ImageEditorPanel
+        seqKey="titre"
+        config={{ url: 'https://cdn.test/fond-actuel.jpg', opacity: 1 }}
+        onUpdate={vi.fn()}
+        onUploadFile={vi.fn(async () => {})}
+        showToast={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Générer arrière-plan (5 cr.)'));
+    const champ = await screen.findByPlaceholderText(/Décrivez le fond/);
+    fireEvent.change(champ, { target: { value: 'femme qui danse' } });
+    fireEvent.click(screen.getByText(/Lancer \(5 cr\.\)/));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    const corps = JSON.parse((fetchMock.mock.calls[0] as never[])[1]!['body']);
+    expect(corps.action).toBe('generate-bg');
+    expect(corps).not.toHaveProperty('imageUrl');
+  });
+});
