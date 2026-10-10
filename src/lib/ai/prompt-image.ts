@@ -117,6 +117,7 @@ const LEXIQUE: EntreeLexique[] = [
 
   // ── ACTIONS ── (formes conjuguees courantes ; « court » est traite a part)
   { fr: ['danse', 'danser', 'dansant', 'dansante', 'dansent', 'dansait', 'en train de danser', 'qui danse'], en: 'dancing', cat: 'action' },
+  { fr: ['avec énergie', 'avec energie', 'énergiquement', 'avec entrain'], en: 'energetic movement', cat: 'style' },
   { fr: ['courir', 'courant', 'courent', 'en train de courir', 'qui court', 'fait un footing', 'fait son footing', 'fait du jogging'], en: 'running', cat: 'action' },
   { fr: ['sprinte', 'sprinter', 'sprintant'], en: 'sprinting', cat: 'action' },
   { fr: ['saute', 'sauter', 'sautant', 'sautent'], en: 'jumping', cat: 'action' },
@@ -556,9 +557,11 @@ function phraseAnglaise({ structure: s, sujetsPluriels, objetsPluriels }: Analys
  * structuree d'abord (les premiers mots pesent le plus), enrichissement
  * ensuite, texte original recopie a la fin.
  *
- * `mode: 'reference'` (« Partir de ma photo », flux-kontext-pro) ajoute la
- * consigne de garder le visage et l'identite de la photo, tout en appliquant
- * la pose, l'action, les objets et le decor demandes.
+ * `mode: 'reference'` (« Partir de ma photo », flux-kontext-pro) : garder la
+ * PERSONNE (visage, identite, teint, coiffure) et sa TENUE (vetements et leurs
+ * couleurs) de la photo, mais appliquer librement la nouvelle pose, l'action,
+ * le decor, l'ambiance et la lumiere demandes — la posture d'origine n'est
+ * jamais imposee.
  */
 export function construirePromptImage(
   texte: string,
@@ -572,7 +575,16 @@ export function construirePromptImage(
   parties.push(structure.style.join(', '));
   let corps = parties.join(', ');
   if (options.mode === 'reference') {
-    corps = `Using the person from the input image (keep the same face and identity): ${corps}. Apply the described pose, action, objects and setting`;
+    // « Partir de ma photo (préserve mon visage / mes vêtements) » : on garde la
+    // PERSONNE et sa TENUE, on change le reste. La posture d'origine n'est PAS
+    // imposée : l'action demandée (danser, courir…) l'emporte.
+    corps = [
+      'Same person as in the input image: keep the same face and identity, same skin tone, same hairstyle',
+      'keep the same clothing as in the input image, same garments and same clothing colors (for example the same T-shirt in the same color)',
+      `new scene: ${corps}`,
+      'change the pose freely to perform the requested action, new dynamic pose, do not keep the original standing pose',
+      'apply the requested setting, mood and lighting, replace the original background',
+    ].join('. ');
   } else {
     corps = corps.charAt(0).toUpperCase() + corps.slice(1);
   }

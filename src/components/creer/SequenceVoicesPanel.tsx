@@ -193,6 +193,12 @@ interface Props {
    */
   voiceId?: string;
   onVoiceIdChange?: (id: string) => void;
+  /**
+   * Demande de régénération venue d'ailleurs (ex. « Régénérer la voix » de la
+   * liste des cartes) : `n` change → la voix de `key` est régénérée, par la
+   * MÊME action que le bouton « Régénérer » du panneau.
+   */
+  demandeRegeneration?: { key: SequenceKey; n: number } | null;
 }
 
 export function SequenceVoicesPanel({
@@ -213,6 +219,7 @@ export function SequenceVoicesPanel({
   onSequenceDurationChange,
   voiceId,
   onVoiceIdChange,
+  demandeRegeneration = null,
 }: Props) {
   // Shared TTS voice picker (one voice for all sequences in this panel —
   // simpler UX than per-sequence voice selectors). Persists in localStorage
@@ -479,6 +486,16 @@ export function SequenceVoicesPanel({
       setGenerateAllBusy(false);
     }
   };
+
+  // « Régénérer la voix » demandé depuis la liste des cartes : la MÊME action
+  // que le bouton du panneau, une fois par demande.
+  const demandeVue = useRef(0);
+  useEffect(() => {
+    if (!demandeRegeneration || demandeRegeneration.n === demandeVue.current) return;
+    demandeVue.current = demandeRegeneration.n;
+    void generateTts(demandeRegeneration.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demandeRegeneration]);
 
   const startRecording = async (key: SequenceKey) => {
     if (recording) return;

@@ -61,7 +61,7 @@ import {
 } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
-import { calageCartes, morceauxCartes, lireTimingVoix } from '@/lib/creer/synchro-cartes';
+import { calageCartes, morceauxCartes, lireTimingVoix, etatVoixCartes } from '@/lib/creer/synchro-cartes';
 import { normaliserReglages } from '@/lib/types/voice';
 import { capturerEtapesCartes } from '@/lib/creer/capture-etapes-cartes';
 import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
@@ -4554,6 +4554,8 @@ export default function AssistantWizard() {
    */
   const [rushTransform, setRushTransform] = useState<RecadrageRush>(RECADRAGE_RUSH_NEUTRE);
   const [recadrerRushOuvert, setRecadrerRushOuvert] = useState(false);
+  /** « Régénérer la voix » demandé depuis la liste des cartes (transmis au panneau des voix). */
+  const [demandeRegenVoix, setDemandeRegenVoix] = useState<{ key: SequenceKey; n: number } | null>(null);
   const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
   useEffect(() => { posterTransformRef.current = posterTransform; }, [posterTransform]);
   const [cropping, setCropping] = useState(false);
@@ -6981,6 +6983,11 @@ export default function AssistantWizard() {
   // Les morceaux du texte narré des cartes : la voix des cartes en reçoit
   // l'horodatage réel, l'export y cale l'apparition des cartes.
   const morceauxCartesNarres = useMemo(() => morceauxCartes(generated?.cards ?? []), [generated]);
+  /** La voix des cartes suit-elle encore les cartes affichées ? (`ordre` après un regroupement qui déplace ou ↑/↓.) */
+  const etatVoixCartesCourant = useMemo(
+    () => etatVoixCartes(generated?.cards ?? [], sequenceVoices.cartes),
+    [generated, sequenceVoices.cartes],
+  );
 
   const appliedVoiceDurations = useRef<Partial<Record<SequenceKey, number>>>({});
   useEffect(() => {
@@ -11432,6 +11439,12 @@ export default function AssistantWizard() {
                     {activeOrder.includes('cards') && (
                       <CartesEditeur
                         cards={generated.cards}
+                        // La voix des cartes ne suit plus (ordre ou texte changé) : dit ici, AVANT
+                        // le rendu, avec la régénération directe (même action que le panneau des voix).
+                        voixPerimee={etatVoixCartesCourant === 'ok' ? null : {
+                          motif: etatVoixCartesCourant,
+                          onRegenerer: () => setDemandeRegenVoix((d) => ({ key: 'cartes', n: (d?.n ?? 0) + 1 })),
+                        }}
                         couleurValeur={gradEnd}
                         onAdd={ajouterCarte}
                         onRemove={supprimerCarte}
@@ -11480,6 +11493,7 @@ export default function AssistantWizard() {
                     encore à ce moment-là du parcours. */}
                 {!generating && generated && (
                   <SequenceVoicesPanel
+                    demandeRegeneration={demandeRegenVoix}
                     sequenceVoices={sequenceVoices}
                     userEdited={sequenceVoicesUserEdited}
                     morceauxCartes={morceauxCartesNarres}

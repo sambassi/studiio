@@ -74,6 +74,11 @@ export interface CartesEditeurProps {
   onDissocier?: () => void;
   /** Monter (-1) ou descendre (+1) un bloc entier : carte seule ou groupe. */
   onMoveBloc?: (blocId: string, delta: number) => void;
+  /**
+   * La voix des cartes ne correspond plus aux cartes (ordre ou texte changé) :
+   * dit ICI, avant le rendu, avec l'action directe « Régénérer la voix ».
+   */
+  voixPerimee?: { motif: 'ordre' | 'texte'; onRegenerer?: () => void; enCours?: boolean } | null;
 }
 
 const FLECHE = 'rounded p-1 text-gray-500 normal-case tracking-normal hover:bg-studiio-primary/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30';
@@ -82,7 +87,7 @@ const CHAMP = 'w-full rounded-lg border border-gray-800 bg-gray-950/60 px-2.5 py
 
 export default function CartesEditeur({
   cards, onChange, couleurValeur = '#C4B5FD', onAdd, onRemove, canAdd = true, canRemove = true, max,
-  onIconChange, iconesMasquees, selection, onToggleSelect, groups = [], onRegrouper, onDissocier, onMoveBloc,
+  onIconChange, iconesMasquees, selection, onToggleSelect, groups = [], onRegrouper, onDissocier, onMoveBloc, voixPerimee = null,
 }: CartesEditeurProps) {
   /** La carte dont la grille d'icônes est ouverte — une seule à la fois. */
   const [iconeOuverte, setIconeOuverte] = useState<string | null>(null);
@@ -237,6 +242,20 @@ export default function CartesEditeur({
 
   return (
     <div className="space-y-2" data-cartes-editeur>
+      {voixPerimee && (
+        <div role="alert" data-cartes-voix-perimee={voixPerimee.motif} className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
+          <span className="flex-1 min-w-[12rem]">
+            {voixPerimee.motif === 'ordre'
+              ? 'L’ordre des cartes a changé. Régénérez la voix des cartes pour conserver la synchronisation.'
+              : 'Le texte des cartes a changé. Régénérez la voix des cartes pour conserver la synchronisation.'}
+          </span>
+          {voixPerimee.onRegenerer && (
+            <button type="button" data-cartes-regenerer-voix onClick={voixPerimee.onRegenerer} disabled={voixPerimee.enCours} className="button-secondary !min-h-[28px] !px-2.5 !text-[11px] disabled:opacity-50">
+              {voixPerimee.enCours ? 'Régénération…' : 'Régénérer la voix'}
+            </button>
+          )}
+        </div>
+      )}
       {onToggleSelect && (onRegrouper || onDissocier) && (
         <div className="flex flex-wrap items-center gap-1.5" data-cartes-outils>
           <span className="flex-1 text-[11px] text-gray-400">

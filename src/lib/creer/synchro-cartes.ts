@@ -279,3 +279,30 @@ export function segmentsDeLEntete(valeur: string | null, attendus: number): Segm
     return null;
   }
 }
+
+/**
+ * La voix des cartes est-elle encore synchronisée avec les cartes ACTUELLES ?
+ *
+ *   `ok`     — même texte, dans le même ordre (ou pas de voix générée) ;
+ *   `ordre`  — mêmes cartes, mêmes textes, mais l'ORDRE a changé (regroupement
+ *              qui déplace, flèches ↑/↓) : la voix lit l'ancien ordre ;
+ *   `texte`  — le texte des cartes a changé.
+ *
+ * Sert à PRÉVENIR dans l'éditeur, avant le rendu : `calageCartes` renvoie
+ * déjà `null` dans les deux derniers cas (cartes affichées d'un bloc).
+ */
+export function etatVoixCartes(
+  cartes: readonly CarteDite[],
+  voix: { audioUrl?: string | null; textAtGeneration?: string } | null | undefined,
+): 'ok' | 'ordre' | 'texte' {
+  if (!voix?.audioUrl || !voix.textAtGeneration) return 'ok';
+  const attendu = voix.textAtGeneration.trim();
+  if (texteDesMorceaux(morceauxCartes(cartes)) === attendu) return 'ok';
+  // Mêmes cartes dans un autre ordre : chaque carte se retrouve, entière, dans le
+  // texte lu, et la longueur totale est la même.
+  const parCarte = cartes.map((c) => texteDesMorceaux(morceauxCartes([c]))).filter((t) => t.length > 0);
+  const total = parCarte.reduce((n, t) => n + t.length, 0);
+  const memeTaille = Math.abs(total - attendu.replace(/\s+/g, ' ').length) <= parCarte.length * 3 + 2
+    || Math.abs(total - attendu.length) <= parCarte.length * 3 + 2;
+  return parCarte.length > 1 && memeTaille && parCarte.every((t) => attendu.includes(t)) ? 'ordre' : 'texte';
+}

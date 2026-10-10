@@ -135,3 +135,29 @@ describe('mode reference (Partir de ma photo)', () => {
     expect(p).toContain(`« ${FEMME} »`);
   });
 });
+
+describe('« Partir de ma photo » — même personne, MÊMES VÊTEMENTS, pose et décor nouveaux', () => {
+  // Photo source : un homme debout, T-shirt noir (la photo part au modèle comme `input_image`).
+  const p = construirePromptImage('danse avec énergie sur une plage', { mode: 'reference' });
+
+  it('⚠️ identité, visage, teint, coiffure : conservés', () => {
+    for (const x of ['Same person as in the input image', 'same face and identity', 'same skin tone', 'same hairstyle']) expect(p.promptFinal).toContain(x);
+  });
+
+  it('⚠️ vêtements et leurs couleurs conservés (le T-shirt noir de la photo reste le même)', () => {
+    for (const x of ['keep the same clothing as in the input image', 'same garments', 'same clothing colors', 'same T-shirt in the same color']) expect(p.promptFinal).toContain(x);
+  });
+
+  it('⚠️ action = danse, décor = plage, énergie ; la posture d’origine n’est PAS imposée', () => {
+    expect(p.structure.action).toContain('dancing');
+    expect(p.structure.decor).toContain('on a beach');
+    expect(p.promptFinal).toContain('energetic movement');
+    expect(p.promptFinal).toContain('change the pose freely to perform the requested action');
+    expect(p.promptFinal).toContain('replace the original background');
+    expect(p.promptFinal).not.toMatch(/keep the same pose|same posture/i);
+  });
+
+  it('le texte d’origine est recopié', () => {
+    expect(p.promptFinal).toContain('« danse avec énergie sur une plage »');
+  });
+});
