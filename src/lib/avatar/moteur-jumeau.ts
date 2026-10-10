@@ -60,6 +60,7 @@
 
 import { MESSAGES_AVATAR, MESSAGES_CREATION, jumeauVideoAutorise, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
+import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
 import { referenceOperation } from '@/lib/credits/atomique';
@@ -246,7 +247,7 @@ export async function genererVideoJumeau(
     if (fournisseurEnCause) console.error(`[Jumeau][${fournisseur}] génération ${gid} refusée :`, messageBrut);
     await supabaseAdmin.from('avatar_generations').update({ status: 'failed', error_message: message }).eq('id', gid);
     if (fournisseurEnCause) {
-      await enregistrerCoutGeneration(gid, calculerCoutGeneration({ provider: fournisseur, admin: await compteAdmin(args.userId), secondes: 0, caracteres: 0, creditsDebites: 0 }, env), messageBrut);
+      await enregistrerCoutGeneration(gid, calculerCoutGeneration({ provider: fournisseur, admin: await compteExempteDeCredits(args.userId), secondes: 0, caracteres: 0, creditsDebites: 0 }, env), messageBrut);
     }
     if (rembourser) await rembourserGenerationUneFois(args.userId, gid);
     const refus: ResultatMoteurJumeau = motif === 'credits_insuffisants'
@@ -349,7 +350,7 @@ export async function enregistrerLancement(
   // Un admin n'est JAMAIS débité (exemption de `deductCredits`) : la ligne ne
   // doit donc pas dire « 40 crédits facturés », sinon le suivi « rembourserait »
   // des crédits jamais pris. Studiio : 0 ; le coût fournisseur, lui, est mesuré.
-  const creditsFactures = (await compteAdmin(userId)) ? 0 : AVATAR_VIDEO_COST;
+  const creditsFactures = (await compteExempteDeCredits(userId)) ? 0 : AVATAR_VIDEO_COST;
   for (let essai = 0; essai < 2; essai += 1) {
     const { error } = await supabaseAdmin
       .from('avatar_generations')

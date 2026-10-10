@@ -2,20 +2,20 @@ import { randomUUID } from 'crypto';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { debiterOperationAtomique } from '@/lib/credits/atomique';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
-import { isAdmin } from '@/lib/admin';
+import { exempteDeCredits } from '@/lib/facturation/exemption';
 
 const ADMIN_BALANCE = 999_999_999;
 
 export async function getUserCredits(userId: string): Promise<number> {
   const { data, error } = await supabase
     .from('users')
-    .select('credits, email')
+    .select('credits, email, role')
     .eq('id', userId)
     .single();
 
   if (error) throw new Error('Failed to fetch user credits');
   // Admin = solde illimité (jamais bloqué par les checks de crédits).
-  if (data?.email && isAdmin(data.email)) return ADMIN_BALANCE;
+  if (exempteDeCredits(data)) return ADMIN_BALANCE;
   return data?.credits || 0;
 }
 
@@ -82,10 +82,10 @@ export async function deductCredits(
   // Admin = pas de décrément. On retourne true sans toucher à la DB.
   const { data: u } = await supabase
     .from('users')
-    .select('email')
+    .select('email, role')
     .eq('id', userId)
     .single();
-  if (u?.email && isAdmin(u.email)) return true;
+  if (exempteDeCredits(u)) return true;
 
   // Une référence jetable reste une référence : elle nourrit l'index et rend
   // la ligne traçable. Ce qu'elle ne fait pas, c'est reconnaître un rejeu.

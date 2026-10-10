@@ -3,6 +3,7 @@ import { MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
+import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 import { AVATAR_VIDEO_COST, AVATAR_MAX_SCRIPT_CHARS } from '@/lib/stripe/constants';
 import {
   generateAvatarVideo,
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
   const userId = session.user.id;
 
   let creditsDeducted = false;
+  let coutFacture = 0;
 
   try {
     const body = await req.json();
@@ -313,8 +315,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Debit avant appel externe (jamais pour un aperçu)
-    if (coutUtilisateur > 0) {
-      await deductCredits(userId, coutUtilisateur, 'avatar');
+    // ⚠️ Un administrateur n'est jamais débité (`deductCredits` l'exempte) : il
+    // ne doit donc ni être noté « 40 crédits facturés », ni « remboursé » de
+    // crédits qu'on ne lui a jamais pris. HeyGen, lui, est appelé pareil.
+    const exempte = coutUtilisateur > 0 && await compteExempteDeCredits(userId);
+    coutFacture = exempte ? 0 : coutUtilisateur;
+    if (coutFacture > 0) {
+      await deductCredits(userId, coutFacture, 'avatar');
       creditsDeducted = true;
     }
 
@@ -383,7 +390,7 @@ export async function POST(req: NextRequest) {
         voice_id: resolvedVoiceId,
         aspect_ratio: aspectRatio,
         status: status === 'completed' ? 'processing' : 'pending',
-        credits_charged: AVATAR_VIDEO_COST,
+        credits_charged: coutFacture,
       })
       .select()
       .single();
@@ -406,7 +413,7 @@ export async function POST(req: NextRequest) {
       data: {
         generationId: generation.id,
         status: generation.status,
-        creditsCharged: AVATAR_VIDEO_COST,
+        creditsCharged: coutFacture,
       },
     });
   } catch (error) {
@@ -414,8 +421,8 @@ export async function POST(req: NextRequest) {
     // generation n'a pas demarre.
     if (creditsDeducted) {
       try {
-        await addCredits(userId, AVATAR_VIDEO_COST, 'refund');
-        console.log(`[Avatar] ${AVATAR_VIDEO_COST} credits rembourses a ${userId}`);
+        await addCredits(userId, coutFacture, 'refund');
+        console.log(`[Avatar] ${coutFacture} credits rembourses a ${userId}`);
       } catch (refundError) {
         console.error('[Avatar] REMBOURSEMENT ECHOUE pour', userId, refundError);
       }

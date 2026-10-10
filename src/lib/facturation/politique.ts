@@ -34,11 +34,13 @@
  * d'e-mails vivait dans le code — l'un se corrige sans redeploiement.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { exempteDeCredits } from './exemption';
+import { ROLE_ADMIN } from './roles';
 
 export type Politique = 'credits' | 'partner_cost_only';
 
 /** La seule valeur de role qui ouvre la politique partenaires. */
-export const ROLE_ADMIN = 'admin';
+export { ROLE_ADMIN };
 
 export const POLITIQUE_DEFAUT: Politique = 'credits';
 
@@ -97,14 +99,17 @@ export async function politiqueDeLUtilisateur(userId: string): Promise<Resolutio
   try {
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('role')
+      .select('role, email')
       .eq('id', userId)
       .maybeSingle();
 
     if (error || !data) return { politique: POLITIQUE_DEFAUT, role: null };
 
     const role = typeof data.role === 'string' ? data.role : null;
-    return { politique: politiquePourRole(role), role };
+    // Rôle `admin` OU e-mail administrateur : la MÊME exemption que les
+    // débits avatar / IA / Autopilote (`./exemption`) — un administrateur ne
+    // paie jamais de crédits Studiio, quel que soit le parcours.
+    return { politique: exempteDeCredits(data) ? 'partner_cost_only' : politiquePourRole(role), role };
   } catch {
     return { politique: POLITIQUE_DEFAUT, role: null };
   }
