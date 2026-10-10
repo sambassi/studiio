@@ -108,7 +108,7 @@ describe('MaVoixPanel — écouter une prononciation', () => {
     expect(document.querySelector('[data-prononciation-erreur="Afroboost"]')).toBeNull();
   });
 
-  it('« Écouter ma voix » : pré-écoute ≈ 5 s annoncée, zone de texte bornée, lecteur sans téléchargement', async () => {
+  it('« Écouter ma voix » : pré-écoute ≈ 5 s annoncée, zone de texte bornée, lecteur sans contrôles natifs ni téléchargement', async () => {
     render(<MaVoixPanel />);
     await waitFor(() => expect(document.querySelector('[data-apercu-texte]')).not.toBeNull());
     expect(document.querySelector('[data-preecoute-indice]')!.textContent).toMatch(/Pré-écoute gratuite : environ 5 secondes/);
@@ -117,7 +117,9 @@ describe('MaVoixPanel — écouter une prononciation', () => {
     fireEvent.change(zone, { target: { value: 'x'.repeat(200) } });
     expect(zone.value.length).toBe(70);
     const src = (await import('node:fs')).readFileSync((await import('node:path')).resolve(__dirname, '../components/voice/MaVoixPanel.tsx'), 'utf8');
-    expect(src).toMatch(/controlsList="nodownload"/);
+    // Plus de lecteur natif : le lecteur Studiio (`LecteurVoixCompact`) n'a ni menu ⋮ ni téléchargement.
+    expect(src).toMatch(/<LecteurVoixCompact/);
+    expect(src).not.toMatch(/\scontrols[=\s>]/);
     expect(src).not.toMatch(/\sdownload[=\s>]/);
   });
 });

@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Download, AudioLines } from 'lucide-react';
 import {
-  MAX_CARACTERES_AUDIO_COMPLET, coutAudioComplet, libelleBoutonAudioComplet, messageCreditsInsuffisants,
+  MAX_CARACTERES_AUDIO_COMPLET, coutAudioComplet, lignesPrixAudioComplet, LIBELLE_BOUTON_AUDIO_COMPLET, messageCreditsInsuffisants,
   MESSAGE_AUDIO_COMPLET_ECHEC, explicationTarifAudioComplet,
 } from '@/lib/voice/audio-complet';
 import { useTarifs } from '@/lib/tarifs/client';
+import BlocPrix from '@/components/ui/BlocPrix';
 
 /**
  * « Audio complet » — section de « Ma voix », séparée de la pré-écoute
- * gratuite. Payante : le prix annoncé sur le bouton vient de la même
+ * gratuite. Payante : le prix annoncé au-dessus du bouton vient de la même
  * fonction pure que le serveur (`coutAudioComplet`), mais seul le serveur le
  * calcule et débite ; l'écran n'envoie que `{ texte }`. Le prix d'une
  * tranche vient de la grille centrale (`useTarifs`, repli 1 pendant le
@@ -80,6 +81,9 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
       />
       <div data-audio-complet-compteur className="text-xs text-gray-400">{texteComplet.trim().length}/{MAX_CARACTERES_AUDIO_COMPLET} caractères</div>
       {disponible ? (
+        <div className="space-y-2">
+        {/* Le prix au-dessus du bouton (même présentation que « Générer la vidéo »). */}
+        <BlocPrix data-audio-complet-prix={exempte ? 'administrateur' : 'utilisateur'} lignes={lignesPrixAudioComplet(texteComplet.trim().length, exempte, creditsParTranche)} />
         <button
           data-audio-complet-generer
           onClick={() => void genererAudioComplet()}
@@ -87,8 +91,9 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
           className="button-primary flex items-center gap-2 disabled:opacity-40"
         >
           {generationEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <AudioLines className="w-4 h-4" />}
-          {libelleBoutonAudioComplet(texteComplet.trim().length, exempte, creditsParTranche)}
+          {LIBELLE_BOUTON_AUDIO_COMPLET}
         </button>
+        </div>
       ) : (
         <div data-audio-complet-indisponible className="text-sm text-gray-400">La génération de l’audio complet n’est pas encore disponible.</div>
       )}
