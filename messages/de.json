@@ -410,13 +410,9 @@
     "welcome": "Willkommen, {name}",
     "stats": {
       "videosCreated": "Erstellte Videos",
-      "publications": "Veröffentlichungen",
-      "totalViews": "Gesamtaufrufe",
-      "videosThisWeek": "{count} diese Woche",
       "creditsRemaining": "Verbleibende Credits",
-      "creditsBoughtThisWeek": "{count} diese Woche gekauft",
-      "pubsThisWeek": "{count} diese Woche",
-      "viewsIncrease": "{percent}% Steigerung"
+      "published": "Veröffentlichte Beiträge",
+      "scheduled": "Geplante Beiträge"
     },
     "quickActions": "Schnellaktionen",
     "createVideo": "Video erstellen",
