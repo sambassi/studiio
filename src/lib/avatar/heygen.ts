@@ -16,7 +16,7 @@
  * Ce module ne fait AUCUN acces base ni stockage : il parle uniquement a
  * HeyGen. La persistance et les credits sont geres par les routes API.
  */
-import { MOTEURS_AVATAR, MOTEUR_AVATAR_DEFAUT, moteurAvatar, type MoteurAvatar } from '@/lib/avatar/moteurs';
+import { MOTEURS_AVATAR, MOTEUR_AVATAR_DEFAUT, moteurAvatar, lireMoteursSupportes, type MoteurAvatar } from '@/lib/avatar/moteurs';
 
 const HEYGEN_BASE = 'https://api.heygen.com';
 
@@ -363,6 +363,33 @@ export async function getAvatarTrainingStatus(
     );
     return null;
   }
+}
+
+/**
+ * Les moteurs que le fournisseur CONFIRME pour un look (`supported_api_engines`
+ * de GET /v3/avatars/looks/{look_id} — lecture gratuite, documentation HeyGen
+ * « models »). `null` si la réponse ne le dit pas ou si l'appel échoue : on ne
+ * suppose JAMAIS un moteur supporté. Mémorisé 10 min par look (une lecture par
+ * ouverture de page au plus, pas une par clic).
+ */
+const CACHE_MOTEURS_LOOK = new Map<string, { moteurs: MoteurAvatar[] | null; expire: number }>();
+export async function moteursSupportesDuLook(lookId: string, maintenant = Date.now()): Promise<MoteurAvatar[] | null> {
+  if (!lookId) return null;
+  const memo = CACHE_MOTEURS_LOOK.get(lookId);
+  if (memo && memo.expire > maintenant) return memo.moteurs;
+  let moteurs: MoteurAvatar[] | null = null;
+  try {
+    const data = await heygenFetch<{ supported_api_engines?: unknown; avatar_item?: { supported_api_engines?: unknown } }>(
+      `/v3/avatars/looks/${encodeURIComponent(lookId)}`, { method: 'GET', timeoutMs: 10_000 },
+    );
+    moteurs = lireMoteursSupportes(data?.supported_api_engines ?? data?.avatar_item?.supported_api_engines);
+  } catch (err) {
+    console.warn(`[Avatar][HeyGen] Moteurs du look ${lookId} illisibles :`, err instanceof Error ? err.message : err);
+    moteurs = null;
+  }
+  // Un échec n'est mémorisé qu'une minute : on retentera vite.
+  CACHE_MOTEURS_LOOK.set(lookId, { moteurs, expire: maintenant + (moteurs ? 10 : 1) * 60_000 });
+  return moteurs;
 }
 
 /** Compatibilite : ancienne signature, ne renvoie que la chaine de statut. */

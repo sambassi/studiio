@@ -187,7 +187,7 @@ export default function MesAvatars(props: {
 
   const ca = props.carteActive;
   const enteteCarte = (nom: string, type: 'photo' | 'video' | null, actif: boolean, parDefaut: boolean) => (
-    <div className="min-w-0">
+    <div className="min-w-0 flex-1 basis-48">
       {actif && <div className="text-[11px] font-semibold uppercase tracking-wider text-purple-300">Avatar actif</div>}
       <div className="mt-0.5 flex flex-wrap items-center gap-2">
         <span className="text-lg font-semibold text-white truncate">{nom}</span>
@@ -268,7 +268,7 @@ export default function MesAvatars(props: {
               {...(fusion ? fusion.attributs : {})}
               className={a.parDefaut ? CARTE_ACTIVE : CARTE}
             >
-              <header className="flex items-start justify-between gap-3">
+              <header className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                 {enteteCarte(a.nom, fusion ? null : a.type, actif, a.parDefaut)}
                 <span data-statut-carte={s.ton} className={`shrink-0 text-[11px] font-medium rounded-full px-2.5 py-1 ${s.ton === 'ok' ? 'bg-emerald-500/15 text-emerald-200' : s.ton === 'erreur' ? 'bg-red-500/15 text-red-200' : 'bg-amber-500/15 text-amber-200'}`}>
                   {s.libelle}

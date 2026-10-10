@@ -7,13 +7,14 @@ import { AVATAR_VIDEO_COST, AVATAR_MAX_SCRIPT_CHARS } from '@/lib/stripe/constan
 import {
   generateAvatarVideo,
   getAvatarTrainingStatus,
+  moteursSupportesDuLook,
   resolveVoiceId,
   HeyGenError,
   type AvatarAspectRatio,
 } from '@/lib/avatar/heygen';
 import { versionDuCompte, ecrireVersion } from '@/lib/avatar/versions';
 import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
-import { moteurPourGeneration } from '@/lib/avatar/moteurs';
+import { moteurPourGeneration, MOTEURS_DEJA_UTILISES_MON_AVATAR } from '@/lib/avatar/moteurs';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -78,7 +79,8 @@ export async function POST(req: NextRequest) {
     // normale seulement : le serveur décide du moteur et REFUSE une qualité
     // fermée — avant tout débit et tout appel fournisseur, jamais rabattue en
     // silence. Sans qualité (et pour l'aperçu) : corps inchangé.
-    const choixMoteur = intention === INTENTION_APERCU ? null : body?.qualite === undefined ? null : moteurPourGeneration(body.qualite);
+    // Avatar IV est le moteur que ce parcours utilisait DÉJÀ (défaut du fournisseur) : ouvert sans configuration.
+    const choixMoteur = intention === INTENTION_APERCU ? null : body?.qualite === undefined ? null : moteurPourGeneration(body.qualite, process.env, MOTEURS_DEJA_UTILISES_MON_AVATAR);
     if (choixMoteur && !choixMoteur.ok) {
       return NextResponse.json(
         { success: false, error: choixMoteur.message, code: 'qualite_indisponible' },
@@ -280,6 +282,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: "L'aperçu n'a pas pu être réservé. Réessayez." }, { status: 500 });
       }
       reservation = reservee;
+    }
+
+    // 2 bis. Premium (Avatar V) : seulement si le fournisseur CONFIRME ce moteur
+    //        pour CE look — vérifié AVANT tout débit (lecture gratuite, mémorisée).
+    if (choixMoteur?.ok && choixMoteur.moteur === 'avatar_v') {
+      const supportes = await moteursSupportesDuLook(String(avatarRow.provider_avatar_id));
+      if (!supportes || !supportes.includes('avatar_v')) {
+        return NextResponse.json(
+          { success: false, error: 'La qualité « Premium » n’est pas confirmée pour votre avatar.', code: 'qualite_indisponible' },
+          { status: 400 },
+        );
+      }
     }
 
     // 3. Solde — un APERÇU de validation est OFFERT : il sert à vérifier son

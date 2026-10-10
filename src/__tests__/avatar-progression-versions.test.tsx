@@ -31,7 +31,7 @@ import {
 import {
   CLASSES_LECTEUR_GENERATION, CLASSE_LECTEUR_GENERATION, FORMATS_LECTEUR, hauteurLecteur, ratioCadre, largeurLecteur,
 } from '../lib/ui/lecteur-generation';
-import { MOTEUR_PAR_QUALITE, LIBELLE_QUALITE, qualiteParDefaut, qualitesDisponibles } from '../lib/avatar/moteurs';
+import { MOTEUR_PAR_QUALITE, LIBELLE_QUALITE, qualiteParDefaut, qualitesDisponibles, qualitesMonAvatar, QUALITE_PAR_DEFAUT_MON_AVATAR, lireMoteursSupportes } from '../lib/avatar/moteurs';
 import {
   argumentsFfmpeg, bornerParametres, filtreEmbellissement, NIVEAUX_EMBELLISSEMENT, EMBELLISSEMENT_PAR_DEFAUT, AMELIORATION_NEUTRE,
 } from '../lib/avatar/preparation-source-regles';
@@ -164,6 +164,21 @@ describe('Version et qualité', () => {
     expect(MOTEUR_PAR_QUALITE).toEqual({ standard: 'avatar_iii', qualite: 'avatar_iv', premium: 'avatar_v' });
     expect(LIBELLE_QUALITE).toEqual({ standard: 'Standard', qualite: 'Qualité', premium: 'Premium' });
   });
+  it('⚠️ Mon avatar (voix HeyGen) : Qualité/avatar_iv par défaut et recommandée, Standard ouvert, Premium fermé sans confirmation', () => {
+    expect(QUALITE_PAR_DEFAUT_MON_AVATAR).toBe('qualite');
+    const q = qualitesMonAvatar(null, ENV());
+    expect(q.map((x) => `${x.qualite}:${x.ouverte}`)).toEqual(['standard:true', 'qualite:true', 'premium:false']);
+    expect(q.find((x) => x.recommandee)?.qualite).toBe('qualite');
+    expect(q[2].motif).toBe('Pas encore ouvert sur Studiio.');
+    // Ouvert par le serveur mais NON confirmé par le fournisseur : toujours fermé, motif dit.
+    expect(qualitesMonAvatar(null, ENV({ AVATAR_MOTEURS_AUTORISES: 'avatar_v' }))[2]).toMatchObject({ ouverte: false, motif: 'Compatibilité de votre avatar non confirmée par le service de génération.' });
+    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv'], ENV({ AVATAR_MOTEURS_AUTORISES: 'avatar_v' }))[2]).toMatchObject({ ouverte: false, motif: 'Non pris en charge par votre avatar.' });
+    // Ouvert ET confirmé (`supported_api_engines`) : Premium s'ouvre.
+    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], ENV({ AVATAR_MOTEURS_AUTORISES: 'avatar_v' }))[2].ouverte).toBe(true);
+    expect(lireMoteursSupportes(['avatar_v', 'inconnu', 3])).toEqual(['avatar_v']);
+    expect(lireMoteursSupportes(undefined)).toBeNull();
+  });
+
   it('⚠️ par défaut seul Standard est ouvert ; la présélection suit le moteur par défaut du serveur', () => {
     expect(qualitesDisponibles(ENV()).map((q) => `${q.qualite}:${q.ouverte}`)).toEqual(['standard:true', 'qualite:false', 'premium:false']);
     expect(qualiteParDefaut(ENV())).toBe('standard');
@@ -339,7 +354,8 @@ describe('Parcours d’une nouvelle source — récapitulatif', () => {
   it('⚠️ nouvel avatar : une identité SÉPARÉE (mode « nouveau », sans avatarId)', () => {
     const { container } = render(<FluxSourceAvatar mode="nouveau" avatar={null} capacite={{ nouvelAvatarPhoto: true, nouvelAvatarVideo: true }} onFermer={() => {}} onTermine={() => {}} />);
     expect(container.querySelector('h3')!.textContent).toBe('Créer un nouvel avatar');
-    expect(etapesParcoursSource('photo').map((e) => e.cle)).toEqual(['source', 'consentement', 'recapitulatif', 'lancement']);
+    // La photo a désormais SON étape « Améliorer » (embellir), avant le consentement.
+    expect(etapesParcoursSource('photo').map((e) => `${e.cle}:${e.libelle}`)).toEqual(['source:Source', 'preparation:Améliorer', 'consentement:Consentement', 'recapitulatif:Récapitulatif', 'lancement:Lancement']);
   });
 
   it('formatSource : dimensions réelles → format lisible ; inconnues → null (rien d’inventé)', () => {
@@ -364,13 +380,14 @@ describe('Page Mon avatar', () => {
   beforeEach(() => {
     appels.length = 0;
     page.statut = 'completed';
-    page.qualites = [{ qualite: 'standard', libelle: 'Standard', ouverte: true }, { qualite: 'qualite', libelle: 'Qualité', ouverte: false }, { qualite: 'premium', libelle: 'Premium', ouverte: false }];
+    // Ce que le serveur rend réellement : fournisseur non confirmé, aucune configuration.
+    page.qualites = qualitesMonAvatar(null, {} as NodeJS.ProcessEnv);
     window.localStorage.clear();
     globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
       const u = String(url);
       appels.push({ url: u, method: init?.method ?? 'GET', corps: init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : null });
       const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body } as unknown as Response);
-      if (u === '/api/avatar/create') return json({ success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'hg1', name: 'Yosef', language: 'French' }], defaultVoiceId: 'hg1', qualites: page.qualites, qualiteParDefaut: 'standard' } });
+      if (u === '/api/avatar/create') return json({ success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'hg1', name: 'Yosef', language: 'French' }], defaultVoiceId: 'hg1', qualites: page.qualites, qualiteParDefaut: QUALITE_PAR_DEFAUT_MON_AVATAR, qualitesVoixClonee: qualitesDisponibles({} as NodeJS.ProcessEnv), qualiteParDefautVoixClonee: 'standard' } });
       if (u === '/api/avatar/apercu') return json({ success: true, data: { apercu: { statut: 'aucun' }, renduRecent: null } });
       if (u === '/api/avatar/generate') return json({ success: true, data: { generationId: GEN, status: 'pending' } });
       if (u.startsWith('/api/avatar/status?generationId=')) return json({ success: true, data: page.statut === 'completed' ? { status: 'completed', videoUrl: URL_VIDEO } : { status: page.statut } });
@@ -399,20 +416,32 @@ describe('Page Mon avatar', () => {
     expect(cadre()).toBe('9 / 16');
   });
 
-  it('⚠️ qualité : Standard sélectionnable, niveaux fermés désactivés et expliqués ; la qualité part avec la génération', async () => {
+  it('⚠️ qualité : « Qualité » (Avatar IV, le moteur déjà utilisé) présélectionnée et recommandée ; Premium fermé avec son motif', async () => {
     await monter();
-    const opt = (q: string) => document.querySelector(`[data-avatar-qualite-option="${q}"]`) as HTMLButtonElement;
+    const choix = document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement;
+    const opt = (q: string) => document.querySelector(`[data-avatar-qualite-option="${q}"]`) as HTMLOptionElement;
+    expect(choix.value).toBe('qualite');
+    expect(opt('qualite').textContent).toBe('Qualité — recommandé');
     expect(opt('standard').disabled).toBe(false);
-    expect(opt('standard').getAttribute('aria-checked')).toBe('true');
-    expect(opt('qualite').disabled).toBe(true);
     expect(opt('premium').disabled).toBe(true);
-    expect(document.querySelector('[data-avatar-qualite-fermee]')).not.toBeNull();
+    // La raison est DITE dans le libellé du niveau fermé.
+    expect(opt('premium').textContent).toBe('Premium — maximale (indisponible : Pas encore ouvert sur Studiio.)');
     fireEvent.change(document.querySelector('[data-avatar-generation] textarea')!, { target: { value: 'Bonjour.' } });
     await act(async () => { fireEvent.click(document.querySelector('[data-avatar-generer] button')!); });
     await waitFor(() => expect(document.querySelector(`video[src="${URL_VIDEO}"]`)).not.toBeNull());
-    expect(appels.find((a) => a.url === '/api/avatar/generate')!.corps).toMatchObject({ qualite: 'standard' });
+    expect(appels.find((a) => a.url === '/api/avatar/generate')!.corps).toMatchObject({ qualite: 'qualite' });
     // Succès clair, étapes toutes franchies.
     expect(document.querySelector('[data-avatar-generation-progression="completed"]')).not.toBeNull();
+  });
+
+  it('⚠️ Standard reste sélectionnable et part tel quel', async () => {
+    await monter();
+    fireEvent.change(document.querySelector('[data-avatar-qualite-choix]')!, { target: { value: 'standard' } });
+    expect((document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement).value).toBe('standard');
+    fireEvent.change(document.querySelector('[data-avatar-generation] textarea')!, { target: { value: 'Bonjour.' } });
+    await act(async () => { fireEvent.click(document.querySelector('[data-avatar-generer] button')!); });
+    await waitFor(() => expect(appels.some((a) => a.url === '/api/avatar/generate')).toBe(true));
+    expect(appels.find((a) => a.url === '/api/avatar/generate')!.corps).toMatchObject({ qualite: 'standard' });
   });
 
   it('⚠️ génération en cours : étapes réelles + statut fournisseur, puis reprise du SUIVI après rechargement (sans relancer)', async () => {

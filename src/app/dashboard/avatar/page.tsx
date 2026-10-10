@@ -26,6 +26,8 @@ import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
 import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
+import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
+import { LIBELLE_EMBELLISSEMENT, type NiveauEmbellissement } from '@/lib/avatar/preparation-source-regles';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 import { CLASSES_LECTEUR_GENERATION, ratioCadre } from '@/lib/ui/lecteur-generation';
 import {
@@ -96,7 +98,10 @@ interface Voice {
 
 type GenStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 type Qualite = 'standard' | 'qualite' | 'premium';
-interface QualiteOfferte { qualite: Qualite; libelle: string; ouverte: boolean }
+interface QualiteOfferte { qualite: Qualite; libelle: string; ouverte: boolean; recommandee?: boolean; motif?: string | null }
+const lireQualites = (brut: unknown): QualiteOfferte[] => (Array.isArray(brut)
+  ? (brut as QualiteOfferte[]).filter((q) => q && (q.qualite === 'standard' || q.qualite === 'qualite' || q.qualite === 'premium'))
+  : []);
 
 /** La génération en cours, mémorisée pour la reprise après rechargement (le stockage peut être indisponible). */
 const memoriserGeneration = (g: GenerationEnCours | null) => {
@@ -131,6 +136,9 @@ export default function AvatarPage() {
   const [consent, setConsent] = useState(false);
   const [creating, setCreating] = useState(false);
   const [mesAvatarsCle, setMesAvatarsCle] = useState(0);
+  /** Première photo : « Embellir le visage » (facultatif ici) — l'original reste conservé à côté. */
+  const [ameliorerPhoto, setAmeliorerPhoto] = useState(false);
+  const [photoPreparee, setPhotoPreparee] = useState<{ cleOriginal: string; cleTraitee: string; embellissement: NiveauEmbellissement } | null>(null);
 
   // Génération
   const [script, setScript] = useState('');
@@ -154,8 +162,12 @@ export default function AvatarPage() {
    * (avatar_v). Un réglage de CETTE génération, jamais de la version de
    * l'avatar. Le serveur dit lesquelles sont ouvertes ; il revérifie au clic.
    */
-  const [qualites, setQualites] = useState<QualiteOfferte[]>([]);
-  const [qualite, setQualite] = useState<Qualite>('standard');
+  const [qualitesHeygen, setQualitesHeygen] = useState<QualiteOfferte[]>([]);
+  const [defautHeygen, setDefautHeygen] = useState<Qualite>('qualite');
+  /** Voix clonée = moteur du jumeau (comme Créer) : ses propres qualités et SON défaut, inchangés. */
+  const [qualitesClonee, setQualitesClonee] = useState<QualiteOfferte[]>([]);
+  const [defautClonee, setDefautClonee] = useState<Qualite>('standard');
+  const [qualite, setQualite] = useState<Qualite>('qualite');
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   /** Où en est la génération (étapes RÉELLES du parcours HeyGen ou du jumeau), et son début. */
   const [genEtape, setGenEtape] = useState<{ mode: 'heygen'; phase: PhaseGenerationHeygen } | { mode: 'jumeau'; phase: PhaseGenerationJumeau } | null>(null);
@@ -406,13 +418,10 @@ export default function AvatarPage() {
     setJumeauVideoActif(json.data.jumeauVideoActif === true);
     setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
     if (Array.isArray(json.data.qualites)) {
-      const offertes = (json.data.qualites as QualiteOfferte[]).filter((q) => q && (q.qualite === 'standard' || q.qualite === 'qualite' || q.qualite === 'premium'));
-      setQualites(offertes);
-      // Présélection : la qualité du moteur par DÉFAUT du serveur (celle qu'il utilisait déjà).
-      const defaut = json.data.qualiteParDefaut as Qualite | undefined;
-      setQualite((q) => (offertes.some((o) => o.qualite === q && o.ouverte) ? q
-        : defaut && offertes.some((o) => o.qualite === defaut && o.ouverte) ? defaut
-          : offertes.find((o) => o.ouverte)?.qualite ?? 'standard'));
+      setQualitesHeygen(lireQualites(json.data.qualites));
+      if (json.data.qualiteParDefaut) setDefautHeygen(json.data.qualiteParDefaut as Qualite);
+      setQualitesClonee(lireQualites(json.data.qualitesVoixClonee));
+      if (json.data.qualiteParDefautVoixClonee) setDefautClonee(json.data.qualiteParDefautVoixClonee as Qualite);
     }
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
@@ -555,6 +564,8 @@ export default function AvatarPage() {
     }
 
     if (preview) URL.revokeObjectURL(preview);
+    setPhotoPreparee(null);
+    setAmeliorerPhoto(false);
     setFile(f);
     // Aperçu local pour l'image comme pour la vidéo.
     setPreview(URL.createObjectURL(f));
@@ -567,6 +578,7 @@ export default function AvatarPage() {
     if (preview) URL.revokeObjectURL(preview);
     setPreview(null);
     setFile(null);
+    setPhotoPreparee(null);
     setConsent(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -578,7 +590,13 @@ export default function AvatarPage() {
     setNotice(null);
     try {
       const fd = new FormData();
-      fd.append('file', file);
+      // Photo améliorée : la source est DÉJÀ en stockage — ses deux clés partent, pas le fichier.
+      if (kind === 'photo' && photoPreparee) {
+        fd.append('cleSource', photoPreparee.cleTraitee);
+        fd.append('cleOriginal', photoPreparee.cleOriginal);
+      } else {
+        fd.append('file', file);
+      }
       fd.append('consent', 'true');
       fd.append('name', kind === 'video' ? 'Mon avatar vidéo' : 'Mon avatar');
       // L'avatar vidéo passe par D-ID quand le serveur l'a ouvert ; la photo
@@ -604,6 +622,7 @@ export default function AvatarPage() {
       if (!json.data.avatar) {
         setNotice('Nouvelle version en préparation. Votre version actuelle reste utilisée en attendant.');
         setFile(null);
+        setPhotoPreparee(null);
         if (preview) URL.revokeObjectURL(preview);
         setPreview(null);
         setConsent(false);
@@ -620,6 +639,7 @@ export default function AvatarPage() {
             : "Photo importée. Votre avatar est en préparation — vous pouvez déjà écrire votre texte.",
       );
       setFile(null);
+      setPhotoPreparee(null);
       if (preview) URL.revokeObjectURL(preview);
       setPreview(null);
       setConsent(false);
@@ -830,6 +850,20 @@ export default function AvatarPage() {
 
   const busy = genStatus === 'pending' || genStatus === 'processing';
 
+  /**
+   * Les qualités du PARCOURS choisi : voix HeyGen (défaut « Qualité » = Avatar IV,
+   * le moteur déjà utilisé) ou voix clonée (moteur du jumeau, défaut du serveur
+   * comme dans Créer). Changer de parcours reprend SON défaut : jamais de baisse
+   * de qualité silencieuse.
+   */
+  const viaVoixClonee = voiceId.startsWith(PREFIXE_VOIX_CLONEE);
+  const qualites = viaVoixClonee ? qualitesClonee : qualitesHeygen;
+    useEffect(() => {
+    const liste = viaVoixClonee ? qualitesClonee : qualitesHeygen;
+    const defaut = viaVoixClonee ? defautClonee : defautHeygen;
+    setQualite(liste.some((q) => q.qualite === defaut && q.ouverte) ? defaut : liste.find((q) => q.ouverte)?.qualite ?? defaut);
+  }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautClonee, defautHeygen]);
+
   /** « Changer de source » : le geste existant (retour à l'import), aussi offert par les notifications. */
   const changerDeSource = () => {
     // Retour à l'import. Un avatar EXISTANT ne s'écrase plus pour autant
@@ -974,11 +1008,13 @@ export default function AvatarPage() {
       };
     }
     if (etatEffectif === 'valide') {
-      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratioFormat, etat: { statut: 'pret', legende: 'Vidéo prête.' }, media: <video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /> };
+      // Sous le formulaire de génération, pas de légende visible (la hauteur va au lecteur) :
+      // le titre dit ce qu'on voit, la légende reste lue par les lecteurs d'écran.
+      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /><span className="sr-only">Vidéo prête.</span></> };
       // ⚠️ JAMAIS la source ici : elle n'est pas l'avatar utilisé par Créer et
       // l'Autopilote. On montre un RENDU réel de la version active, ou on dit
       // qu'il n'y en a pas — sans rien inventer, sans appeler de fournisseur.
-      if (renduRecent) return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, etat: { statut: 'pret', legende: busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.` }, media: <video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline className="w-full h-full object-contain bg-black" /> };
+      if (renduRecent) return { titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
       return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
     }
     if (etatEffectif === 'entraine_non_valide') {
@@ -1273,6 +1309,21 @@ export default function AvatarPage() {
                 </span>
               </button>
 
+              {/* Photo : « Embellir le visage », facultatif — le parcours d'avant reste identique sans lui. */}
+              {kind === 'photo' && file && !ameliorerPhoto && (
+                <div data-avatar-photo-embellir className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-900/60 p-3 text-sm">
+                  <span className="text-gray-300">{photoPreparee ? `Embellissement : ${LIBELLE_EMBELLISSEMENT[photoPreparee.embellissement]} — original conservé.` : 'Embellir le visage (facultatif)'}</span>
+                  <button type="button" data-avatar-photo-ameliorer onClick={() => setAmeliorerPhoto(true)} className="button-ghost !min-h-[30px] !text-xs">{photoPreparee ? 'Modifier' : 'Améliorer ma photo'}</button>
+                </div>
+              )}
+              {kind === 'photo' && file && ameliorerPhoto && (
+                <PreparationPhoto
+                  fichier={file}
+                  onAnnuler={() => setAmeliorerPhoto(false)}
+                  onPret={(r) => { setPhotoPreparee({ cleOriginal: r.cleOriginal, cleTraitee: r.cleTraitee, embellissement: r.embellissement }); setAmeliorerPhoto(false); }}
+                />
+              )}
+
               {/* Consentement — obligatoire, également vérifié côté serveur */}
               <label className="flex items-start gap-3 cursor-pointer rounded-xl bg-gray-900/60 p-4">
                 <input
@@ -1456,7 +1507,7 @@ export default function AvatarPage() {
                 titre={zone.titre}
                 etat={zone.etat}
                 ratio={zone.ratio}
-                className={avatar && etatEffectif === 'valide' && !viaDid ? CLASSES_LECTEUR_GENERATION[ratio] : ''}
+                className={avatar && etatEffectif === 'valide' && !viaDid ? `${CLASSES_LECTEUR_GENERATION[ratio]} lg:!p-3 lg:!space-y-2` : ''}
               >
                 {zone.media}
               </ZoneApercu>
@@ -1465,30 +1516,32 @@ export default function AvatarPage() {
 
           {/* ✓ Prêt — l'étape suivante : faire parler l'avatar (photo HeyGen seulement). */}
           {avatar && etatEffectif === 'valide' && !viaDid && (
-            <div data-avatar-generation className="card-base !p-4 space-y-3">
+            <div data-avatar-generation className="card-base !p-4 space-y-2.5">
               <div>
-                <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                  <label className="text-sm font-medium text-gray-100">Ce que dit votre avatar</label>
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <label className="text-xs font-medium text-gray-100">Ce que dit votre avatar</label>
                   <span className="text-xs text-gray-400">{script.length} / {MAX_SCRIPT_CHARS}</span>
                 </div>
                 <textarea
                   value={script}
                   onChange={(e) => setScript(e.target.value.slice(0, MAX_SCRIPT_CHARS))}
-                  rows={3}
+                  rows={2}
                   placeholder="Bonjour, je suis…"
-                  className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none p-3 text-sm text-gray-100 placeholder-gray-500 resize-y"
+                  className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none px-3 py-2 text-sm text-gray-100 placeholder-gray-500 resize-y"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-100 mb-1.5">Voix</label>
+              {/* Voix et Qualité côte à côte, le Format sur une ligne : lecteur, réglages et
+                  « Générer la vidéo » tiennent ensemble à l'ouverture, de 1366×768 à 1440×900. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2">
+                <div className="min-w-0">
+                  <label className="block text-xs font-medium text-gray-100 mb-1">Voix</label>
                   <select
                     data-avatar-voix
                     value={voiceId}
                     onChange={(e) => { setVoiceId(e.target.value); setRefusVoixClonee(null); }}
                     disabled={voices.length === 0 && voixClonees.length === 0}
-                    className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none p-2.5 text-sm text-gray-100 disabled:opacity-50"
+                    className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none px-2.5 py-2 text-sm text-gray-100 disabled:opacity-50"
                   >
                     {voices.length === 0 && voixClonees.length === 0 && <option value="">Voix indisponibles</option>}
                     {/* MA VOIX en premier — seulement si le compte en a une. Toute voix PRÊTE
@@ -1533,55 +1586,49 @@ export default function AvatarPage() {
                     </p>
                   )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-100 mb-1.5">Format</label>
-                  <div className="flex gap-2">
-                    {(['9:16', '16:9', '1:1'] as const).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => setRatio(r)}
-                        aria-pressed={ratio === r}
-                        className={`flex-1 rounded-lg px-3 py-2 text-sm transition ${
-                          ratio === r
-                            ? 'bg-studiio-primary/20 text-purple-200 ring-1 ring-studiio-primary/50'
-                            : 'bg-gray-800 text-gray-300 hover:text-white'
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
+                {/* QUALITÉ DE RENDU — pour cette vidéo, distincte de la VERSION de l'avatar.
+                    Un niveau fermé reste visible, grisé, avec SA raison dans son libellé. */}
+                {qualites.length > 0 && (
+                  <div data-avatar-qualite className="min-w-0">
+                    <label htmlFor="avatar-qualite" className="block text-xs font-medium text-gray-100 mb-1">Qualité</label>
+                    <select
+                      id="avatar-qualite"
+                      data-avatar-qualite-choix
+                      value={qualite}
+                      disabled={busy}
+                      onChange={(e) => setQualite(e.target.value as Qualite)}
+                      className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none px-2.5 py-2 text-sm text-gray-100 disabled:opacity-50"
+                    >
+                      {qualites.map((q) => (
+                        <option key={q.qualite} value={q.qualite} disabled={!q.ouverte} data-avatar-qualite-option={q.qualite} data-avatar-qualite-ouverte={q.ouverte ? 'oui' : 'non'}>
+                          {q.libelle}{q.recommandee ? ' — recommandé' : q.qualite === 'standard' ? ' — économique' : q.qualite === 'premium' ? ' — maximale' : ''}{q.ouverte ? '' : ` (indisponible : ${q.motif ?? 'pas encore ouvert'})`}
+                        </option>
+                      ))}
+                    </select>
+                    {viaVoixClonee && <p data-avatar-qualite-voix-clonee className="mt-1 text-[10px] text-gray-400">Avec votre voix clonée, la qualité suit celle de Créer.</p>}
                   </div>
-                </div>
+                )}
               </div>
 
-              {/* QUALITÉ DE RENDU — pour cette vidéo. Distincte de la VERSION de l'avatar. */}
-              {qualites.length > 0 && (
-                <div data-avatar-qualite>
-                  <label className="block text-sm font-medium text-gray-100 mb-1.5">Qualité</label>
-                  <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Qualité de rendu">
-                    {qualites.map((q) => (
-                      <button
-                        key={q.qualite}
-                        type="button"
-                        role="radio"
-                        aria-checked={qualite === q.qualite}
-                        disabled={!q.ouverte || busy}
-                        data-avatar-qualite-option={q.qualite}
-                        data-avatar-qualite-ouverte={q.ouverte ? 'oui' : 'non'}
-                        title={q.ouverte ? undefined : 'Pas encore disponible sur votre compte.'}
-                        onClick={() => setQualite(q.qualite)}
-                        className={`rounded-lg px-2 py-1.5 text-left transition disabled:cursor-not-allowed ${qualite === q.qualite ? 'bg-studiio-primary/20 text-purple-100 ring-1 ring-studiio-primary/50' : 'bg-gray-800 text-gray-300 hover:text-white'} ${q.ouverte ? '' : 'opacity-50'}`}
-                      >
-                        <span className="block text-sm">{q.libelle}</span>
-                        <span className="block text-[10px] text-gray-400">{q.ouverte ? (q.qualite === 'standard' ? 'Rapide, économique' : q.qualite === 'qualite' ? 'Meilleur rendu' : 'Qualité maximale') : 'Pas encore disponible'}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {qualites.some((q) => !q.ouverte) && (
-                    <p data-avatar-qualite-fermee className="mt-1.5 text-[11px] text-gray-400">Les niveaux grisés ne sont pas encore ouverts sur votre compte.</p>
-                  )}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-100 shrink-0 w-14">Format</span>
+                <div className="flex gap-1.5 flex-1" role="group" aria-label="Format">
+                  {(['9:16', '16:9', '1:1'] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRatio(r)}
+                      aria-pressed={ratio === r}
+                      className={`flex-1 rounded-lg px-2 py-1.5 text-sm transition ${
+                        ratio === r
+                          ? 'bg-studiio-primary/20 text-purple-200 ring-1 ring-studiio-primary/50'
+                          : 'bg-gray-800 text-gray-300 hover:text-white'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
 
               <div data-avatar-generer className="space-y-3">
               <button

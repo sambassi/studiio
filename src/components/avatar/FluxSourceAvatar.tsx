@@ -5,7 +5,8 @@
  * VERSION du même avatar) ou « Créer un nouvel avatar » (nouvelle identité).
  *
  *   1. Source        caméra | importer une vidéo | importer une photo
- *   2. Préparation   (vidéo) recadrer, couper, améliorer, embellir — serveur, non destructif
+ *   2. Préparation   vidéo : recadrer, couper, améliorer, embellir ; photo : embellir —
+ *                    serveur (ffmpeg), non destructif : l'original reste conservé
  *   3. Consentement
  *   4. Récapitulatif ce qui va être envoyé, exactement, avec l'aperçu
  *   5. Lancement     envoi (progression réelle pour une photo), puis la
@@ -22,10 +23,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, Upload, Image as ImageIcon, Clapperboard, X, Check } from 'lucide-react';
 import EnregistreurSource from '@/components/avatar/studio/EnregistreurSource';
 import PreparationSource from '@/components/avatar/studio/PreparationSource';
+import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { etapesParcoursSource, formatSource, type EtapeParcoursSource } from '@/lib/avatar/progression';
-import { LIBELLE_EMBELLISSEMENT, type InfosVideo, type ParametresTraitement } from '@/lib/avatar/preparation-source-regles';
+import { LIBELLE_EMBELLISSEMENT, type InfosVideo, type NiveauEmbellissement, type ParametresTraitement } from '@/lib/avatar/preparation-source-regles';
 
 type Etape = 'choix' | 'camera' | 'preparation' | 'consentement' | 'recapitulatif' | 'envoi';
 
@@ -51,6 +53,8 @@ export default function FluxSourceAvatar(props: {
   /** D'où vient la source : la caméra, ou un fichier importé. */
   const [origine, setOrigine] = useState<'camera' | 'import'>('import');
   const [preparee, setPreparee] = useState<{ cleOriginal: string; cleTraitee: string; infos?: InfosVideo; parametres?: ParametresTraitement } | null>(null);
+  /** Photo améliorée : les deux clés (original conservé + photo utilisée), le niveau et les dimensions réelles. */
+  const [photoPreparee, setPhotoPreparee] = useState<{ cleOriginal: string; cleTraitee: string; embellissement: NiveauEmbellissement; largeur: number | null; hauteur: number | null } | null>(null);
   const [consent, setConsent] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   /** Envoi d'une photo : octets RÉELLEMENT transférés. */
@@ -76,8 +80,9 @@ export default function FluxSourceAvatar(props: {
     setFichier(f);
     setOrigine(depuis);
     setDimsPhoto(null);
-    if (type === 'video') setEtape('preparation');
-    else setEtape('consentement');
+    setPhotoPreparee(null);
+    // Vidéo ET photo passent par la préparation (embellir) avant le consentement.
+    setEtape('preparation');
   };
 
   const envoyer = async () => {
@@ -90,10 +95,11 @@ export default function FluxSourceAvatar(props: {
     if (remplacer) fd.append('avatarId', props.avatar!.id);
     try {
       let ok: boolean; let j: { success?: boolean; error?: string } | null;
-      if (type === 'video' && preparee) {
-        // Vidéo : la source est DÉJÀ en stockage (préparée) — seules ses clés partent.
-        fd.append('cleSource', preparee.cleTraitee);
-        fd.append('cleOriginal', preparee.cleOriginal);
+      const cles = type === 'video' ? preparee : photoPreparee;
+      if (cles) {
+        // La source est DÉJÀ en stockage (préparée) — seules ses clés partent, l'original avec.
+        fd.append('cleSource', cles.cleTraitee);
+        fd.append('cleOriginal', cles.cleOriginal);
         const r = await fetch('/api/avatar/create', { method: 'POST', body: fd });
         j = await r.json().catch(() => ({}));
         ok = r.ok && !!j?.success;
@@ -119,8 +125,8 @@ export default function FluxSourceAvatar(props: {
   const libelleSource = origine === 'camera' ? 'Vidéo enregistrée avec la caméra' : type === 'video' ? 'Vidéo importée' : 'Photo importée';
   const format = type === 'video'
     ? formatSource(preparee?.infos?.largeurEffective, preparee?.infos?.hauteurEffective)
-    : formatSource(dimsPhoto?.l, dimsPhoto?.h);
-  const embellissement = type === 'video' ? preparee?.parametres?.amelioration?.embellissement : undefined;
+    : formatSource(photoPreparee?.largeur ?? dimsPhoto?.l, photoPreparee?.hauteur ?? dimsPhoto?.h);
+  const embellissement = type === 'video' ? preparee?.parametres?.amelioration?.embellissement : photoPreparee?.embellissement;
 
   return (
     <div data-flux-source={props.mode} role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/70 flex items-start sm:items-center justify-center overflow-y-auto p-4">
@@ -212,7 +218,15 @@ export default function FluxSourceAvatar(props: {
           />
         )}
 
-        {etape === 'preparation' && fichier && (
+        {etape === 'preparation' && fichier && type === 'photo' && (
+          <PreparationPhoto
+            fichier={fichier}
+            onAnnuler={() => { setFichier(null); setEtape('choix'); }}
+            onPret={(r) => { setPhotoPreparee(r); setEtape('consentement'); }}
+          />
+        )}
+
+        {etape === 'preparation' && fichier && type === 'video' && (
           <PreparationSource
             fichier={fichier}
             onAnnuler={() => { setFichier(null); setEtape('choix'); }}
@@ -227,7 +241,7 @@ export default function FluxSourceAvatar(props: {
               <span>Je certifie être la personne qui apparaît dans cette {type === 'video' ? 'vidéo' : 'photo'} et j’accepte qu’elle serve à créer mon avatar.</span>
             </label>
             <div className="flex gap-2">
-              <button type="button" onClick={() => { setEtape(type === 'video' && fichier ? 'preparation' : 'choix'); }} className="button-secondary !min-h-[36px] text-sm">Modifier</button>
+              <button type="button" onClick={() => { setEtape(fichier ? 'preparation' : 'choix'); }} className="button-secondary !min-h-[36px] text-sm">Modifier</button>
               <button type="button" data-flux-continuer disabled={!consent} onClick={() => setEtape('recapitulatif')} className="button-primary !min-h-[36px] text-sm disabled:opacity-40">
                 Continuer vers le récapitulatif
               </button>
@@ -242,6 +256,9 @@ export default function FluxSourceAvatar(props: {
               <div data-flux-recap-apercu className="rounded-xl overflow-hidden bg-black flex items-center justify-center max-h-80">
                 {type === 'video' && preparee ? (
                   <video src={`/api/avatar/sources/apercu?cle=${encodeURIComponent(preparee.cleTraitee)}`} controls playsInline preload="metadata" className="w-full max-h-80 object-contain" />
+                ) : type === 'photo' && photoPreparee ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={`/api/avatar/sources/apercu?cle=${encodeURIComponent(photoPreparee.cleTraitee)}`} alt="La photo qui sera envoyée" className="w-full max-h-80 object-contain" />
                 ) : urlPhoto ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img src={urlPhoto} alt="Aperçu de la source" onLoad={(e) => setDimsPhoto({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full max-h-80 object-contain" />
@@ -254,12 +271,12 @@ export default function FluxSourceAvatar(props: {
                 <dt className="text-gray-500">Opération</dt><dd data-flux-recap="operation">{remplacer ? 'Nouvelle version de cet avatar' : 'Nouvel avatar (identité séparée)'}</dd>
                 <dt className="text-gray-500">Source</dt><dd data-flux-recap="source">{libelleSource}</dd>
                 <dt className="text-gray-500">Format</dt><dd data-flux-recap="format">{format ?? 'Inconnu'}</dd>
-                <dt className="text-gray-500">Embellissement</dt><dd data-flux-recap="embellissement">{type === 'video' ? LIBELLE_EMBELLISSEMENT[embellissement ?? 'aucun'] : 'Non disponible pour une photo'}</dd>
+                <dt className="text-gray-500">Embellissement</dt><dd data-flux-recap="embellissement">{LIBELLE_EMBELLISSEMENT[embellissement ?? 'aucun']}</dd>
                 <dt className="text-gray-500">Consentement</dt><dd data-flux-recap="consentement">{consent ? 'Certifié' : 'À certifier'}</dd>
                 <dt className="text-gray-500">Qualité</dt><dd data-flux-recap="qualite" className="text-gray-400">Choisie à chaque génération de vidéo</dd>
               </dl>
             </div>
-            {type === 'video' && preparee && <p className="text-xs text-gray-500">Votre vidéo d’origine est conservée telle quelle, à côté de la version envoyée.</p>}
+            {(type === 'video' ? preparee : photoPreparee) && <p className="text-xs text-gray-500">Votre {type === 'video' ? 'vidéo' : 'photo'} d’origine est conservée telle quelle, à côté de la version envoyée.</p>}
 
             {etape === 'envoi' ? (
               type === 'photo' && envoi ? (

@@ -189,11 +189,11 @@ export function formatSource(largeur: number | null | undefined, hauteur: number
 }
 
 export type EtapeParcoursSource = 'source' | 'preparation' | 'consentement' | 'recapitulatif' | 'lancement';
-/** Les étapes du parcours, dans l'ordre ; la préparation (recadrage, coupe, améliorer) n'existe que pour une vidéo. */
+/** Les étapes du parcours, dans l'ordre : la vidéo se recadre, se coupe et s'améliore ; la photo s'améliore (embellir). */
 export function etapesParcoursSource(type: 'photo' | 'video'): Array<{ cle: EtapeParcoursSource; libelle: string }> {
   return [
     { cle: 'source', libelle: 'Source' },
-    ...(type === 'video' ? [{ cle: 'preparation' as const, libelle: 'Recadrer, couper, améliorer' }] : []),
+    { cle: 'preparation', libelle: type === 'video' ? 'Recadrer, couper, améliorer' : 'Améliorer' },
     { cle: 'consentement', libelle: 'Consentement' },
     { cle: 'recapitulatif', libelle: 'Récapitulatif' },
     { cle: 'lancement', libelle: 'Lancement' },

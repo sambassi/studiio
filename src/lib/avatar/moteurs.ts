@@ -63,11 +63,13 @@ export function qualitesDisponibles(env: NodeJS.ProcessEnv = process.env): Array
 export function moteurPourGeneration(
   qualite: unknown,
   env: NodeJS.ProcessEnv = process.env,
+  /** Moteurs DÉJÀ utilisés par ce parcours sans configuration (ex. Avatar IV, défaut du fournisseur pour Mon avatar). */
+  dejaUtilises: readonly MoteurAvatar[] = [],
 ): { ok: true; moteur: MoteurAvatar } | { ok: false; message: string } {
   if (qualite === undefined || qualite === null || qualite === '') return { ok: true, moteur: moteurAvatar(env) };
   if (!estQualite(qualite)) return { ok: false, message: 'Qualité de rendu inconnue.' };
   const moteur = MOTEUR_PAR_QUALITE[qualite];
-  if (!moteursAutorises(env).includes(moteur)) {
+  if (!moteursAutorises(env).includes(moteur) && !dejaUtilises.includes(moteur)) {
     return { ok: false, message: `La qualité « ${LIBELLE_QUALITE[qualite]} » n’est pas encore disponible.` };
   }
   return { ok: true, moteur };
@@ -77,4 +79,54 @@ export function moteurPourGeneration(
 export function qualiteParDefaut(env: NodeJS.ProcessEnv = process.env): QualiteRendu {
   const m = moteurAvatar(env);
   return QUALITES.find((q) => MOTEUR_PAR_QUALITE[q] === m) ?? 'standard';
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Mon avatar — parcours « voix HeyGen » (POST /api/avatar/generate)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Ce parcours n'a jamais envoyé de moteur : le fournisseur prend alors
+ * Avatar IV (documentation HeyGen, « models »). Avatar IV y est donc le
+ * comportement EXISTANT — ouvert sans configuration, et présélectionné, pour
+ * qu'aucun déploiement ne baisse la qualité en silence.
+ */
+export const MOTEURS_DEJA_UTILISES_MON_AVATAR: readonly MoteurAvatar[] = ['avatar_iv'];
+export const QUALITE_PAR_DEFAUT_MON_AVATAR: QualiteRendu = 'qualite';
+
+export interface QualiteOfferte { qualite: QualiteRendu; libelle: string; ouverte: boolean; recommandee: boolean; motif: string | null }
+
+/** Lecture tolérante de `supported_api_engines` (fournisseur) : seuls les moteurs connus sont gardés. */
+export function lireMoteursSupportes(brut: unknown): MoteurAvatar[] | null {
+  if (!Array.isArray(brut)) return null;
+  return brut.filter((m): m is MoteurAvatar => typeof m === 'string' && (MOTEURS_AVATAR as readonly string[]).includes(m));
+}
+
+/**
+ * Les qualités de Mon avatar (voix HeyGen), avec leur motif quand elles sont
+ * fermées. `moteursSupportes` : ce que le fournisseur CONFIRME pour cet
+ * avatar (`supported_api_engines`), `null` s'il n'a pas pu le dire.
+ *
+ *   Standard  ouvert (moteur par défaut du serveur), sauf refus explicite du fournisseur ;
+ *   Qualité   ouvert (comportement existant), recommandé et présélectionné ;
+ *   Premium   ouvert SEULEMENT si le serveur l'autorise ET que le fournisseur
+ *             confirme `avatar_v` pour cet avatar — sinon fermé, motif dit.
+ */
+export function qualitesMonAvatar(moteursSupportes: readonly MoteurAvatar[] | null, env: NodeJS.ProcessEnv = process.env): QualiteOfferte[] {
+  const autorises = moteursAutorises(env);
+  return QUALITES.map((q) => {
+    const moteur = MOTEUR_PAR_QUALITE[q];
+    const refuseFournisseur = moteursSupportes !== null && !moteursSupportes.includes(moteur);
+    let motif: string | null = null;
+    if (q === 'premium') {
+      if (!autorises.includes(moteur)) motif = 'Pas encore ouvert sur Studiio.';
+      else if (moteursSupportes === null) motif = 'Compatibilité de votre avatar non confirmée par le service de génération.';
+      else if (refuseFournisseur) motif = 'Non pris en charge par votre avatar.';
+    } else if (refuseFournisseur) {
+      motif = 'Non pris en charge par votre avatar.';
+    } else if (!autorises.includes(moteur) && !MOTEURS_DEJA_UTILISES_MON_AVATAR.includes(moteur)) {
+      motif = 'Pas encore ouvert sur Studiio.';
+    }
+    return { qualite: q, libelle: LIBELLE_QUALITE[q], ouverte: motif === null, recommandee: q === QUALITE_PAR_DEFAUT_MON_AVATAR, motif };
+  });
 }

@@ -18,7 +18,7 @@ const base = vi.hoisted(() => ({
   avatars: [] as Array<Record<string, unknown>>,
   generations: [] as Array<Record<string, unknown>>,
 }));
-const heygen = vi.hoisted(() => ({ appels: [] as string[], args: [] as Array<Record<string, unknown>> }));
+const heygen = vi.hoisted(() => ({ appels: [] as string[], args: [] as Array<Record<string, unknown>>, moteursLook: null as string[] | null }));
 const credits = vi.hoisted(() => ({ journal: [] as string[] }));
 
 vi.mock('@/lib/db/supabase', () => {
@@ -56,6 +56,7 @@ vi.mock('@/lib/avatar/heygen', () => ({
   generateAvatarVideo: async (args: { avatarId: string }) => { heygen.appels.push(`videos:${args.avatarId}`); heygen.args.push(args); return { videoId: 'vid-1', status: 'processing' }; },
   getAvatarTrainingStatus: async (id: string) => { heygen.appels.push(`looks:${id}`); return { status: 'completed' }; },
   resolveVoiceId: async () => 'voice-1',
+  moteursSupportesDuLook: async (id: string) => { heygen.appels.push(`moteurs:${id}`); return heygen.moteursLook; },
 }));
 vi.mock('@/lib/credits/system', () => ({
   getUserCredits: async () => 1000,
@@ -77,7 +78,7 @@ const avatar = (over: Record<string, unknown> = {}) => ({
   avatar_type: 'video', consent_at: '2026-09-01T00:00:00Z', version: 4, deleted_at: null, created_at: '2026-09-01T00:00:00Z', ...over,
 });
 
-beforeEach(() => { base.avatars = []; base.generations = []; heygen.appels.length = 0; heygen.args.length = 0; credits.journal.length = 0; delete process.env.AVATAR_MOTEURS_AUTORISES; delete process.env.HEYGEN_AVATAR_ENGINE; });
+beforeEach(() => { base.avatars = []; base.generations = []; heygen.appels.length = 0; heygen.args.length = 0; heygen.moteursLook = null; credits.journal.length = 0; delete process.env.AVATAR_MOTEURS_AUTORISES; delete process.env.HEYGEN_AVATAR_ENGINE; });
 
 describe('POST /api/avatar/generate — version et avatar vivant', () => {
   it('⚠️ la génération porte avatar_version = version de la ligne (4) et user_avatar_id = id', async () => {
@@ -127,16 +128,15 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
     expect(heygen.args[0]).not.toHaveProperty('moteur');
   });
 
-  it('⚠️ Standard → avatar_iii ; Qualité ouverte côté serveur → avatar_iv', async () => {
+  it('⚠️ Standard → avatar_iii ; Qualité → avatar_iv SANS configuration (le moteur que ce parcours utilisait déjà)', async () => {
     base.avatars = [avatar()];
     expect((await requete({ qualite: 'standard' })).status).toBe(200);
     expect(heygen.args[0].moteur).toBe('avatar_iii');
-    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_iv';
     expect((await requete({ qualite: 'qualite' })).status).toBe(200);
     expect(heygen.args[1].moteur).toBe('avatar_iv');
   });
 
-  it('⚠️ Premium non ouvert : 400 AVANT tout débit et tout fournisseur — jamais rabattu en silence', async () => {
+  it('⚠️ Premium non ouvert côté serveur : 400 AVANT tout débit et tout fournisseur — jamais rabattu en silence', async () => {
     base.avatars = [avatar()];
     const res = await requete({ qualite: 'premium' });
     expect(res.status).toBe(400);
@@ -144,6 +144,24 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
     expect(heygen.appels).toEqual([]);
     expect(credits.journal).toEqual([]);
     expect(base.generations).toEqual([]);
+  });
+
+  it('⚠️ Premium ouvert mais NON confirmé par le fournisseur pour ce look : 400, aucun débit, aucune vidéo', async () => {
+    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_v';
+    base.avatars = [avatar()];
+    heygen.moteursLook = ['avatar_iii', 'avatar_iv'];
+    const res = await requete({ qualite: 'premium' });
+    expect(res.status).toBe(400);
+    expect(heygen.appels).toEqual(['moteurs:hg-1']);
+    expect(credits.journal).toEqual([]);
+  });
+
+  it('Premium ouvert ET confirmé (`supported_api_engines`) : avatar_v', async () => {
+    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_v';
+    base.avatars = [avatar()];
+    heygen.moteursLook = ['avatar_iii', 'avatar_iv', 'avatar_v'];
+    expect((await requete({ qualite: 'premium' })).status).toBe(200);
+    expect(heygen.args[0].moteur).toBe('avatar_v');
   });
 
   it('une qualité inconnue est refusée de même', async () => {
