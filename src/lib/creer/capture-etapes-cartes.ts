@@ -5,6 +5,9 @@ import { etatApres, type CalageCartes } from '@/lib/creer/synchro-cartes';
  * sur la voix (`calageCartes`) : à l'étape k, seules les cartes déjà dites
  * sont visibles, et parmi elles seules les valeurs déjà dites.
  *
+ * Un cadre de groupe (`data-card-group`) suit ses cartes : masqué tant
+ * qu'aucune d'elles n'est dite, visible dès la première.
+ *
  * Masquer passe par `visibility: hidden` : la mise en page ne bouge pas,
  * chaque photo garde EXACTEMENT le cadre de la photo complète — le
  * compositeur les pose toutes au même rectangle. Les styles d'origine sont
@@ -21,6 +24,11 @@ export async function capturerEtapesCartes<I>(
 ): Promise<Array<{ debut: number; image: I }> | null> {
   const cartes = idsCartes.map((id) => conteneur.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"]`));
   if (calage.etapes.some((e) => !cartes[e.carte])) return null;
+
+  // Cadres de groupe (`data-card-group`, disposition en flux) : leur filet et
+  // leur voile seraient photographies AVANT que la voix ne dise la premiere
+  // carte du groupe. Un cadre n'est visible que si l'une de ses cartes l'est.
+  const groupes = Array.from(conteneur.querySelectorAll<HTMLElement>('[data-card-group]'));
 
   const origine = new Map<HTMLElement, string>();
   const poser = (el: HTMLElement, visible: boolean) => {
@@ -40,6 +48,9 @@ export async function capturerEtapesCartes<I>(
         poser(el, etat.cartes.has(i));
         el.querySelectorAll<HTMLElement>('[data-card-value]').forEach((v) => poser(v, !etat.cartes.has(i) || etat.valeurs.has(i)));
       });
+      // Masquer le cadre masque aussi ses cartes (heritage de `visibility`) :
+      // on ne le fait donc que si AUCUNE n'est encore dite.
+      groupes.forEach((g) => poser(g, cartes.some((el, i) => !!el && etat.cartes.has(i) && g.contains(el))));
       const image = await photographier();
       if (!image) return null;
       out.push({ debut: etapes[k - 1].debut, image });
