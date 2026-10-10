@@ -14,7 +14,11 @@ import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
-import CompleterRushesStock, { idStockDuRush, type MetaRushStock } from '@/components/creer/CompleterRushesStock';
+import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type PropositionsStock } from '@/components/creer/CompleterRushesStock';
+import AvatarPrincipalAutopilote, { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
+import {
+  validerEtapeRushes, avatarPorteLaProduction, contenuRendu, MESSAGES_RUSHES, type AvatarPret,
+} from '@/lib/autopilot/medias-prevus';
 import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
@@ -151,13 +155,21 @@ function phraseDiffusion(config: AutopilotConfig): string {
  * de tourner sans : `shouldRun` → `sans-rush`). Le reste a toujours une
  * valeur — recommandee ou choisie — et ne bloque rien.
  */
-function checklistPreparation(config: AutopilotConfig): Array<{ cle: string; ok: boolean; texte: string; bloquant: boolean }> {
+function checklistPreparation(config: AutopilotConfig, avatarPret: AvatarPret = null): Array<{ cle: string; ok: boolean; texte: string; bloquant: boolean }> {
   const n = config.rushUrls.length;
+  // L'avatar prêt porte la production à lui seul (le moteur l'accepte sans
+  // rush) ; demandé mais pas prêt, il bloque — le lancement échouerait.
+  const avatarSeul = n === 0 && avatarPorteLaProduction(config.jumeauAvatar, avatarPret);
+  const avatarBloque = config.jumeauAvatar && avatarPret === false;
   return [
     { cle: 'sujets', ok: true, bloquant: false,
       texte: config.topics.length === 0 ? 'Sujets : tous les thèmes, en rotation' : `Sujets : ${config.topics.length} choisi${config.topics.length > 1 ? 's' : ''}` },
-    { cle: 'rushes', ok: n > 0, bloquant: true,
-      texte: n === 0 ? 'Aucun rush — rien ne sera produit' : `${n} rush${n > 1 ? 'es' : ''} prêt${n > 1 ? 's' : ''}` },
+    { cle: 'rushes', ok: (n > 0 || avatarSeul) && !avatarBloque, bloquant: true,
+      texte: avatarBloque
+        ? 'Avatar demandé, mais aucun avatar prêt — configurez-le dans Mon avatar'
+        : avatarSeul
+          ? 'Votre avatar tiendra la séquence Vidéo (aucun rush)'
+          : n === 0 ? 'Aucun rush — rien ne sera produit' : `${n} rush${n > 1 ? 'es' : ''} prêt${n > 1 ? 's' : ''}` },
     { cle: 'style', ok: true, bloquant: false, texte: 'Style configuré (couleurs, affiche, son)' },
     { cle: 'publication', ok: true, bloquant: false,
       texte: config.platforms.length ? `Publication : ${config.platforms.length} réseau${config.platforms.length > 1 ? 'x' : ''}` : 'Publication : dans le Calendrier seulement (aucun réseau)' },
@@ -324,7 +336,9 @@ function RECAP_VARIABLE(config: AutopilotConfig): Array<[string, string]> {
       ? `Vos ${config.posterUrls.length} photo${config.posterUrls.length > 1 ? 's' : ''}, en rotation`
       : 'Choisie par Studiio selon le thème'],
     ['Textes', 'Différents à chaque vidéo'],
-    ['Rushes', n === 0
+    ['Rushes', config.jumeauAvatar
+      ? (n === 0 ? 'Aucun — votre avatar tient la séquence Vidéo' : `${n} en banque — en repli si l’avatar échoue`)
+      : n === 0
       ? 'Aucun — rien ne sera produit'
       : n === 1
         ? '1 seul — il sera répété sur toutes les vidéos'
@@ -450,6 +464,15 @@ export default function AutopilotPanel({
   const [completerStock, setCompleterStock] = useState(false);
   /** Rushes stock acceptés dans cette session : url → attribution (Pexels). */
   const [metaStock, setMetaStock] = useState<Record<string, MetaRushStock>>({});
+  /**
+   * L'avatar personnel est-il prêt pour les montages (lu par
+   * `AvatarPrincipalAutopilote`, `GET /api/creer/jumeau`) ? `null` : pas
+   * encore vérifié. Sert la validation de l'étape Rushes et le résumé.
+   */
+  const [avatarPret, setAvatarPret] = useState<AvatarPret>(null);
+  const [vignetteAvatar, setVignetteAvatar] = useState<VignetteAvatar | null>(null);
+  /** Les propositions stock en attente de choix — pour « Médias prévus ». */
+  const [propositionsStock, setPropositionsStock] = useState<PropositionsStock>({ proposes: 0, vignettes: [] });
   /**
    * Les « Réglages avancés » de l'étape Style sont-ils dépliés ? Le lecteur
    * du mixage n'existe QUE dépliés : replier le bloc doit couper le son, pas
@@ -787,7 +810,16 @@ export default function AutopilotPanel({
   // L'etape des rushes est la seule qui BLOQUE : sans rush, l'Autopilote ne
   // produit rien, et le laisser avancer serait promettre une production qui
   // n'aura pas lieu.
-  const bloqueEtape = etape === 1 && config.rushUrls.length === 0;
+  //
+  // Avec l'avatar (réglage existant `jumeauAvatar`) prêt, l'étape passe sans
+  // rush : le moteur l'accepte déjà (`allowWithoutRush: config.jumeauAvatar`).
+  // Sans avatar, la règle historique est inchangée.
+  const validationRushes = validerEtapeRushes({
+    nbRushes: config.rushUrls.length,
+    avatarDemande: config.jumeauAvatar,
+    avatarPret,
+  });
+  const bloqueEtape = etape === 1 && validationRushes.bloque;
 
   /**
    * Le devis de « Produire un brouillon maintenant » — demandé UNE fois, à
@@ -917,9 +949,63 @@ export default function AutopilotPanel({
    * pas d'état propre — un composant aurait demandé huit props pour le même
    * résultat.
    */
+  /**
+   * « Médias prévus » — ce que les montages contiendront, AVANT tout rendu.
+   * Avatar (OUI/NON + vignette existante), rushes personnels, médias stock
+   * (en banque + proposés), et la phrase HONNÊTE du rendu (`contenuRendu`) :
+   * avec l'avatar, la séquence Vidéo est l'avatar seul — aucun mélange
+   * annoncé que le moteur ne produit pas.
+   */
+  const rendreMediasPrevus = () => {
+    const avatarOui = avatarPorteLaProduction(config.jumeauAvatar, avatarPret);
+    const stockEnBanque = config.rushUrls.filter((u) => idStockDuRush(u)).length;
+    const personnels = config.rushUrls.length - stockEnBanque;
+    const stockProposes = completerStock ? propositionsStock.proposes : 0;
+    const rendu = contenuRendu({ nbRushes: config.rushUrls.length, avatar: avatarOui });
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-2 text-[11px]" data-autopilot-medias-prevus data-rendu={rendu.cas}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias prévus</p>
+        <dl className="space-y-1.5">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-gray-500 shrink-0">Avatar personnel</dt>
+            <dd className="flex items-center gap-2 text-gray-200" data-autopilot-medias-avatar={avatarOui ? 'oui' : 'non'}>
+              {avatarOui && <MiniatureAvatar vignette={vignetteAvatar} className="w-7 h-7" />}
+              {avatarOui ? 'OUI' : 'NON'}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-gray-500 shrink-0">Rushes personnels</dt>
+            <dd className="text-gray-200" data-autopilot-medias-rushes={personnels}>{personnels}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-gray-500 shrink-0">Médias stock proposés</dt>
+            <dd className="flex items-center gap-1.5 text-gray-200" data-autopilot-medias-stock={stockProposes} data-autopilot-medias-stock-banque={stockEnBanque}>
+              {propositionsStock.vignettes.slice(0, 3).map((v) => (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img key={v} src={v} alt="" className="w-5 h-7 rounded object-cover bg-gray-800" data-autopilot-medias-stock-vignette />
+              ))}
+              {stockProposes}{stockEnBanque > 0 ? ` · ${stockEnBanque} conservé${stockEnBanque > 1 ? 's' : ''}` : ''}
+            </dd>
+          </div>
+        </dl>
+        <p className="text-gray-400" data-autopilot-medias-rendu>{rendu.phrase}</p>
+        {avatarOui && completerStock && (stockProposes > 0 || stockEnBanque > 0) && (
+          <p className="text-gray-500" data-autopilot-medias-stock-repli>
+            Rendu actuel : les médias stock conservés rejoignent votre banque, après vos rushes. Ils ne sont pas
+            montés avec l’avatar — ils servent si l’avatar ne peut pas être généré.
+          </p>
+        )}
+        {rendu.cas === 'avatar-seul' && !completerStock && (
+          <p className="text-gray-400" data-autopilot-avatar-seul>{MESSAGES_RUSHES.avatarSeul}</p>
+        )}
+      </div>
+    );
+  };
+
   const rendreProchaines = () => {
     const echeances = prochainesEcheances(config);
-    const sansRush = config.rushUrls.length === 0;
+    // Sans rush, seul l'avatar prêt permet de produire (le serveur l'accepte).
+    const sansRush = config.rushUrls.length === 0 && !avatarPorteLaProduction(config.jumeauAvatar, avatarPret);
     return (
       <div className="space-y-2">
         {/* ── Les DEUX prochaines échéances, une par ligne ───────────────
@@ -1133,7 +1219,11 @@ export default function AutopilotPanel({
           courte, puis une action principale. Meme place, meme forme. */}
       <div data-autopilot-a-faire>
         <p className="text-sm font-medium text-white">{ETAPES[etape].question}</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">{ETAPES[etape].aide}</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">
+          {etape === 1 && avatarPorteLaProduction(config.jumeauAvatar, avatarPret)
+            ? 'Vos rushes, votre avatar, ou les deux.'
+            : ETAPES[etape].aide}
+        </p>
       </div>
 
       {/* ── Étape 1 · Thèmes ─────────────────────────────────────────── */}
@@ -1243,6 +1333,18 @@ export default function AutopilotPanel({
       {/* ── Étape 2 · Vos rushes ─────────────────────────────────────── */}
       {etape === 1 && (
         <div className="space-y-3">
+          {/* ── PERSONNAGE PRINCIPAL — l'avatar, avant les rushes ─────────
+              Le réglage EXISTANT `jumeauAvatar`, par le même `enregistrer`
+              que « Mon jumeau » (étape Options). Aucune génération ici. */}
+          <AvatarPrincipalAutopilote
+            actif={config.jumeauAvatar}
+            avatarId={config.jumeauAvatarId}
+            jumeauReady={jumeauReady}
+            disabled={!ready || saving}
+            onChange={(actif) => enregistrer({ jumeauAvatar: actif })}
+            onPret={setAvatarPret}
+            onVignette={setVignetteAvatar}
+          />
 {/* ── Banque de rushes ─────────────────────────────────────────── */}
           <div>
             {/* L'etat en un mot, puis L'ACTION. Sans rush, « Ajouter des
@@ -1252,9 +1354,9 @@ export default function AutopilotPanel({
             <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={config.rushUrls.length > 0 ? 'pret' : 'a-faire'}>
                 Banque de rushes
-                <span className={`ml-1.5 ${config.rushUrls.length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className={`ml-1.5 ${config.rushUrls.length > 0 || avatarPorteLaProduction(config.jumeauAvatar, avatarPret) ? 'text-emerald-400' : 'text-amber-400'}`}>
                   {config.rushUrls.length === 0
-                    ? '0 rush — au moins un est nécessaire'
+                    ? (avatarPorteLaProduction(config.jumeauAvatar, avatarPret) ? '0 rush — facultatif avec votre avatar' : '0 rush — au moins un est nécessaire')
                     : `${config.rushUrls.length} rush${config.rushUrls.length > 1 ? 'es' : ''} prêt${config.rushUrls.length > 1 ? 's' : ''}`}
                 </span>
               </p>
@@ -1275,8 +1377,10 @@ export default function AutopilotPanel({
               </button>
             </div>
             <p className="text-[11px] text-gray-500 mb-2">
-              L’Autopilote y pioche à tour de rôle pour chaque vidéo. Sans rush, il ne produit rien —
-              il vous le dira plutôt que de générer des montages sans image.
+              {avatarPorteLaProduction(config.jumeauAvatar, avatarPret)
+                ? 'Facultatif : votre avatar tient la séquence Vidéo. Les rushes ajoutés ici servent si l’avatar ne peut pas être généré.'
+                : <>L’Autopilote y pioche à tour de rôle pour chaque vidéo. Sans rush, il ne produit rien —
+              il vous le dira plutôt que de générer des montages sans image.</>}
             </p>
             {/* ⚠️ LA LIMITE DU RUSH UNIQUE, DITE AVANT QU'ELLE SURPRENNE.
                 Avec un seul rush, la rotation n'a pas le choix : toutes les
@@ -1411,6 +1515,8 @@ export default function AutopilotPanel({
                 rushUrls={config.rushUrls}
                 format="9:16"
                 accent={accent}
+                avatar={avatarPorteLaProduction(config.jumeauAvatar, avatarPret)}
+                onPropositions={setPropositionsStock}
                 onConserver={(url, meta) => {
                   // La même URL absolue que celle que `ajouterRushes` enregistre.
                   const absolue = urlPubliqueAbsolue(url, window.location.origin) ?? url;
@@ -1420,6 +1526,8 @@ export default function AutopilotPanel({
               />
             )}
           </div>
+
+          {rendreMediasPrevus()}
 
 {/* ── VIDEO PONCTUELLE A PARTIR D'UN RUSH (sessions de tournage) ───
               Le socle M3-A, INTACT — mais repliee et nommee pour ce qu'elle
@@ -2275,7 +2383,7 @@ export default function AutopilotPanel({
               regle ici : on la DIT, et on retire au bouton son air de
               « tout est pret » tant que ce n'est pas vrai. */}
           {(() => {
-            const lignes = checklistPreparation(config);
+            const lignes = checklistPreparation(config, avatarPret);
             const pret = lignes.every((l) => l.ok || !l.bloquant);
             return (
               <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-1.5" data-autopilot-checklist data-autopilot-pret={pret ? 'oui' : 'non'}>
@@ -2293,13 +2401,17 @@ export default function AutopilotPanel({
                   </p>
                 ) : (
                   <p className="text-xs font-medium text-amber-300 pt-1" data-autopilot-verdict="pas-pret">
-                    Votre Autopilote n’est pas encore prêt — ajoutez au moins un rush.
-                    Vous pouvez l’activer dès maintenant : il démarrera au premier rush ajouté.
+                    {config.jumeauAvatar && avatarPret === false
+                      ? 'Votre Autopilote n’est pas encore prêt — aucun avatar prêt : configurez-le dans Mon avatar, ou décochez « Faire apparaître mon avatar ».'
+                      : <>Votre Autopilote n’est pas encore prêt — ajoutez au moins un rush.
+                    Vous pouvez l’activer dès maintenant : il démarrera au premier rush ajouté.</>}
                   </p>
                 )}
               </div>
             );
           })()}
+
+          {rendreMediasPrevus()}
 
           {([
             ['Ce qui change à chaque vidéo', RECAP_VARIABLE(config), 'variable'],
@@ -2335,14 +2447,14 @@ export default function AutopilotPanel({
               disabled={!ready || saving}
               aria-pressed={config.enabled}
               data-autopilot-toggle
-              data-cta={!config.enabled && config.rushUrls.length > 0 ? 'principal' : 'secondaire'}
+              data-cta={!config.enabled && (config.rushUrls.length > 0 || avatarPorteLaProduction(config.jumeauAvatar, avatarPret)) ? 'principal' : 'secondaire'}
               className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
               style={
                 config.enabled
                   ? { backgroundColor: '#1F2937', color: '#E5E7EB' }
                   // Sans rush : le bouton reste actif (regle metier inchangee)
                   // mais n'a plus l'air d'un « tout est pret ».
-                  : config.rushUrls.length === 0
+                  : config.rushUrls.length === 0 && !avatarPorteLaProduction(config.jumeauAvatar, avatarPret)
                     ? { backgroundColor: 'transparent', color: '#DDD6FE', boxShadow: `inset 0 0 0 1px ${accent}99` }
                     : { backgroundColor: accent, color: '#fff' }
               }
@@ -2380,8 +2492,8 @@ export default function AutopilotPanel({
         {etape < ETAPES.length - 1 && (
           <div className="flex items-center gap-2 min-w-0">
             {bloqueEtape && (
-              <span className="text-[11px] text-amber-400 truncate" data-autopilot-suivant-bloque>
-                Ajoutez au moins un rush pour continuer
+              <span className="text-[11px] text-amber-400 truncate" data-autopilot-suivant-bloque={validationRushes.motif ?? ''}>
+                {validationRushes.message}
               </span>
             )}
             <button
@@ -2389,7 +2501,7 @@ export default function AutopilotPanel({
               onClick={() => setEtape((n) => Math.min(ETAPES.length - 1, n + 1))}
               disabled={!ready || bloqueEtape}
               data-autopilot-suivant
-              title={bloqueEtape ? 'Ajoutez au moins un rush pour continuer' : undefined}
+              title={bloqueEtape ? validationRushes.message : undefined}
               className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
               style={{ backgroundColor: accent }}
             >

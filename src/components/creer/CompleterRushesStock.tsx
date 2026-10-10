@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ExternalLink, Loader2, RefreshCw, Search, Trash2, Info } from 'lucide-react';
-import { analyserCouvertureRushes, plansAutopilote, type ManqueCouverture } from '@/lib/stock/couverture';
+import { analyserCouvertureRushes, plansAutopilote, AVATAR_PRINCIPAL, type ManqueCouverture } from '@/lib/stock/couverture';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import { orientationDuFormat, type FormatStock, type MediaStock } from '@/lib/stock/types';
 
@@ -67,8 +67,11 @@ function libellePlan(role: string): string {
   return role === 'HOOK' ? 'Plan d’accroche' : role === 'BUILD' ? 'Plan de développement' : role === 'PEAK' ? 'Plan temps fort' : role === 'FOCUS' ? 'Plan focus' : 'Plan final';
 }
 
+/** Les propositions en attente de choix — remontées pour le résumé « Médias prévus ». */
+export interface PropositionsStock { proposes: number; vignettes: string[] }
+
 export default function CompleterRushesStock({
-  sujet, message, objectif, rushUrls, format = '9:16', accent, onConserver,
+  sujet, message, objectif, rushUrls, format = '9:16', accent, onConserver, avatar = false, onPropositions,
 }: {
   sujet: string;
   message?: string | null;
@@ -79,6 +82,13 @@ export default function CompleterRushesStock({
   accent: string;
   /** Le chemin d'ajout EXISTANT du panneau (`ajouterRushes`). */
   onConserver: (url: string, meta: MetaRushStock) => void;
+  /**
+   * L'avatar personnel est le PERSONNAGE PRINCIPAL : il passe avant tout rush
+   * et tient le premier plan (l'accroche) ; le stock ne complète que les
+   * plans restants. Défaut `false` : l'analyse d'avant, à l'identique.
+   */
+  avatar?: boolean;
+  onPropositions?: (p: PropositionsStock) => void;
 }) {
   // Les imports de CETTE session ne recalculent pas les plans : sinon chaque
   // « Conserver » relancerait la recherche et ferait disparaître la carte
@@ -93,12 +103,15 @@ export default function CompleterRushesStock({
 
   const couverture = useMemo(() => analyserCouvertureRushes({
     plans: plansAutopilote(sujet, message),
-    rushes: entreeRushes.map((url) => ({ url, origine: idStockDuRush(url) ? 'stock' as const : 'utilisateur' as const })),
+    rushes: [
+      ...(avatar ? [{ url: AVATAR_PRINCIPAL, origine: 'avatar' as const }] : []),
+      ...entreeRushes.map((url) => ({ url, origine: idStockDuRush(url) ? 'stock' as const : 'utilisateur' as const })),
+    ],
     sujet,
     objectif,
     format,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [sujet, message, objectif, format, cleRushes]);
+  }), [sujet, message, objectif, format, cleRushes, avatar]);
 
   const [slots, setSlots] = useState<Slot[]>([]);
   const [indisponible, setIndisponible] = useState(false);
@@ -217,21 +230,31 @@ export default function CompleterRushesStock({
     });
   }, [majSlot, onConserver]);
 
+  // « Proposés » = encore en attente de votre choix ; un média conservé est déjà dans la banque.
+  const enAttente = couverture.couvertureSuffisante
+    ? []
+    : slots.filter((s) => s.media && s.etat !== 'supprime' && s.etat !== 'conserve');
+  const proposes = enAttente.length;
+  const cleVignettes = enAttente.map((s) => s.media!.vignetteUrl).join('\n');
+  useEffect(() => {
+    onPropositions?.({ proposes, vignettes: cleVignettes ? cleVignettes.split('\n') : [] });
+  }, [proposes, cleVignettes, onPropositions]);
+  // Démonté (case décochée) : plus aucune proposition en attente.
+  useEffect(() => () => onPropositions?.({ proposes: 0, vignettes: [] }), [onPropositions]);
+
   if (couverture.couvertureSuffisante) {
     return (
       <p className="flex items-start gap-1.5 text-[11px] text-emerald-400" data-autopilot-stock-suffisant>
         <Check className="w-3 h-3 mt-0.5 shrink-0" />
-        Vos rushes suffisent : aucun média stock nécessaire.
+        {avatar ? 'Votre avatar et vos rushes suffisent : aucun média stock nécessaire.' : 'Vos rushes suffisent : aucun média stock nécessaire.'}
       </p>
     );
   }
 
-  // « Proposés » = encore en attente de votre choix ; un média conservé est déjà dans la banque.
-  const proposes = slots.filter((s) => s.media && s.etat !== 'supprime' && s.etat !== 'conserve').length;
-
   return (
     <div className="space-y-2" data-autopilot-stock>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-300">
+        {avatar && <span data-autopilot-stock-avatar>Avatar personnel : plan d’accroche</span>}
         <span data-autopilot-stock-personnels>Rushes personnels : {couverture.rushesPersonnels}</span>
         <span data-autopilot-stock-proposes>Médias stock proposés : {proposes}</span>
       </div>

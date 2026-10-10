@@ -827,7 +827,8 @@ export function statusMessage(
   formatDate: (d: Date) => string,
 ): string {
   if (!config.enabled) return 'En pause. Rien n’est généré.';
-  if (!config.rushUrls.length) {
+  // Avec la vidéo du jumeau, le moteur produit sans rush (`allowWithoutRush`).
+  if (!config.rushUrls.length && !config.jumeauAvatar) {
     return 'Actif, mais aucun rush dans la banque — ajoutez-en pour lancer la production.';
   }
   const prochain = nextRunAt(config.cadence, config.lastRunAt, now);
@@ -839,6 +840,7 @@ export function statusMessage(
     ? `à partir du ${formatDate(new Date(`${config.startDate}T12:00:00Z`))}`
     : prochain.getTime() <= now ? 'au prochain passage' : formatDate(prochain);
   const n = config.rushUrls.length;
+  if (n === 0) return `Actif · prochaine génération ${quand} · avec votre avatar`;
   return `Actif · prochaine génération ${quand} · ${n} rush${n > 1 ? 'es' : ''} disponible${n > 1 ? 's' : ''}`;
 }
 
