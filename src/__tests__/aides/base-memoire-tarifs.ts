@@ -38,6 +38,27 @@ reinitialiserBase();
 
 const erreur = (table: string) => ({ data: null, error: { message: `panne ${table}` } });
 
+/**
+ * Colonnes RÉELLES de la production (lecture seule du 2026-10-10,
+ * `information_schema.columns`). Écrire une autre colonne échoue comme dans
+ * PostgREST (PGRST204) — c'est ce qui a révélé `updated_by`, absente de
+ * `app_settings` en prod alors que la vieille migration la déclarait.
+ */
+export const COLONNES_PROD: Record<string, readonly string[]> = {
+  app_settings: ['key', 'value', 'updated_at'],
+  tarifs_rendu: ['format', 'credits', 'updated_at'],
+  audit_log: ['id', 'admin_email', 'action', 'target_type', 'target_id', 'details', 'created_at'],
+};
+
+function colonneInconnue(table: string, lignes: Ligne[]) {
+  const permises = COLONNES_PROD[table];
+  if (!permises) return null;
+  for (const l of lignes) for (const k of Object.keys(l)) {
+    if (!permises.includes(k)) return { data: null, error: { code: 'PGRST204', message: `Could not find the '${k}' column of '${table}' in the schema cache` } };
+  }
+  return null;
+}
+
 function requete(table: string) {
   const filtres: Array<[string, unknown]> = [];
   let ordre: { col: string; asc: boolean } | null = null;
@@ -77,6 +98,8 @@ function requete(table: string) {
       const f: Array<[string, unknown]> = [];
       const exec = () => {
         if (base.pannes[table]) return erreur(table);
+        const inconnue = colonneInconnue(table, [valeurs]);
+        if (inconnue) return inconnue;
         base.ecritures += 1;
         for (const l of base.tables[table] ?? []) if (f.every(([k, v]) => l[k] === v)) Object.assign(l, structuredClone(valeurs));
         return { data: null, error: null };
@@ -89,6 +112,8 @@ function requete(table: string) {
     },
     async upsert(valeur: Ligne) {
       if (base.pannes[table]) return erreur(table);
+      const inconnue = colonneInconnue(table, [valeur]);
+      if (inconnue) return inconnue;
       base.ecritures += 1;
       const t = (base.tables[table] ??= []);
       const i = t.findIndex((l) => l.key === valeur.key);
@@ -97,6 +122,8 @@ function requete(table: string) {
     },
     async insert(valeurs: Ligne | Ligne[]) {
       if (base.pannes[table]) return erreur(table);
+      const inconnue = colonneInconnue(table, Array.isArray(valeurs) ? valeurs : [valeurs]);
+      if (inconnue) return inconnue;
       base.ecritures += 1;
       const t = (base.tables[table] ??= []);
       const liste = Array.isArray(valeurs) ? valeurs : [valeurs];

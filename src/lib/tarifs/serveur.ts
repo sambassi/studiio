@@ -207,11 +207,13 @@ export async function ecrireTarifs(m: ModificationTarifs, adminEmail: string): P
     }
   }
   // 2. Le reste : le réglage admin (les rendus y sont recopiés, pour l'historique seulement).
+  // ⚠️ Colonnes de PRODUCTION : key, value, updated_at — PAS `updated_by`
+  // (déclarée par la vieille migration 004, absente de la base réelle :
+  // l'écrire ferait échouer chaque enregistrement). L'auteur va à `audit_log`.
   const { error } = await supabaseAdmin.from('app_settings').upsert({
     key: CLE_REGLAGE_TARIFS,
     value: { prix, valeurCreditChf, coutsFournisseur },
     updated_at: new Date().toISOString(),
-    updated_by: adminEmail,
   });
   if (error) throw new Error(`app_settings : ${error.message}`);
 
