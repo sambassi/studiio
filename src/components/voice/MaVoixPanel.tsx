@@ -7,6 +7,7 @@ import {
   MESSAGES_PRONONCIATION, type Prononciation,
 } from '@/lib/voice/prononciations';
 import { MAX_CARACTERES_PREECOUTE, MESSAGE_TROP_D_ECOUTES } from '@/lib/voice/preecoute';
+import AudioCompletSection from '@/components/voice/AudioCompletSection';
 
 /**
  * « Ma voix & prononciations » — l'écran ne décide rien, il affiche ce que
@@ -24,6 +25,12 @@ import { MAX_CARACTERES_PREECOUTE, MESSAGE_TROP_D_ECOUTES } from '@/lib/voice/pr
  *     lecteur visible, une seule à la fois, sans téléchargement.
  * Les deux écoutes sont des pré-écoutes gratuites et courtes : la borne
  * (≈ 5 s de texte dit) est appliquée par le serveur, jamais crue d'ici.
+ *
+ * « Audio complet » est une section À PART, payante : le prix annoncé sur le
+ * bouton vient de la même fonction pure que le serveur (`coutAudioComplet`),
+ * mais seul le serveur le calcule et débite. Le lecteur complet et le lien
+ * de téléchargement n'apparaissent qu'APRÈS un succès — dans
+ * `AudioCompletSection`, jamais dans ce fichier.
  */
 
 interface VoixPersonnelle { id: string; nom: string; fournisseur: string; langue: string | null; creeeLe: string; utilisable: boolean }
@@ -315,6 +322,9 @@ export default function MaVoixPanel() {
           </div>
         )}
       </section>
+
+      {/* ── AUDIO COMPLET — opération à part, payante (composant séparé : la pré-écoute ne se télécharge jamais) ── */}
+      <AudioCompletSection disponible={profil.ecouteDisponible} />
 
       {notice && <div className="text-sm text-emerald-200">{notice}</div>}
       {erreur && <div data-voix-erreur className="text-sm text-red-200">{erreur}</div>}
