@@ -50,7 +50,10 @@ import {
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
-import { RECADRAGE_RUSH_NEUTRE, recadrageRushActif, styleRecadrageRush, type RecadrageRush } from '@/lib/creer/recadrage-rush';
+import {
+  recadrageRushActif, styleRecadrageRush, recadrageDuRush, avecRecadrageRush, recadragesPourRushs, recadragesRushAvecHeritage,
+  type RecadrageRush, type RecadragesRush,
+} from '@/lib/creer/recadrage-rush';
 import RecadrerRush from '@/components/creer/RecadrerRush';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
@@ -4021,13 +4024,6 @@ export default function AssistantWizard() {
   // rush, `rushUrl` reste nul et la sequence « Video » demeure masquee —
   // comportement strictement identique a celui d'avant cet ajout.
   const [rushUrl, setRushUrl] = useState<string | null>(null);
-  // Un AUTRE rush (changé, retiré) n'hérite pas du recadrage du précédent. La
-  // restauration d'un brouillon (rien → rush) le garde.
-  const rushPrecedentRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (rushPrecedentRef.current && rushPrecedentRef.current !== rushUrl) setRushTransform(RECADRAGE_RUSH_NEUTRE);
-    rushPrecedentRef.current = rushUrl;
-  }, [rushUrl]);
   const [rushName, setRushName] = useState('');
   const [rushLibOpen, setRushLibOpen] = useState(false);
   const [rushLoading, setRushLoading] = useState(false);
@@ -4548,12 +4544,38 @@ export default function AssistantWizard() {
   /** Recadrage de l'affiche. Neutre = le « cover » centre d'avant. */
   const [posterTransform, setPosterTransform] = useState<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
   /**
-   * RECADRAGE DU RUSH (séquence Vidéo) : le rush remplit le format, la personne
-   * choisit ce qui reste visible. Même forme que `rushTransform` du compositeur :
-   * l'aperçu et l'export tracent la même image. Neutre = le « cover » centré d'avant.
+   * RECADRAGE PAR RUSH (séquence Vidéo) : chaque rush remplit le format, la
+   * personne choisit ce qui reste visible, rush par rush. Clé = URL du rush
+   * (`recadrage-rush.ts`) ; seuls les rushes recadrés y figurent — les autres
+   * restent en « cover » centré. Même forme que `rushTransforms` du
+   * compositeur : l'aperçu et l'export tracent la même image.
    */
-  const [rushTransform, setRushTransform] = useState<RecadrageRush>(RECADRAGE_RUSH_NEUTRE);
-  const [recadrerRushOuvert, setRecadrerRushOuvert] = useState(false);
+  const [rushTransforms, setRushTransforms] = useState<RecadragesRush>({});
+  /** Le recadrage du rush PRINCIPAL — celui que montrent le plateau et la lecture. */
+  const rushTransform: RecadrageRush = recadrageDuRush(rushTransforms, rushUrl);
+  /**
+   * Les recadrages à passer au compositeur pour CE rendu : ceux des rushes
+   * qu'il peint, et eux seuls. `{}` sans recadrage (options d'avant).
+   */
+  const recadragesRendu = (
+    principal: string,
+    rushs: ReadonlyArray<{ url: string }> | null | undefined,
+    plan: ReadonlyArray<{ url: string }> | null | undefined,
+  ): { rushTransforms?: RecadragesRush } => {
+    const t = recadragesPourRushs(rushTransforms, [principal, ...(rushs ?? []).map((r) => r.url), ...(plan ?? []).map((r) => r.url)]);
+    return Object.keys(t).length ? { rushTransforms: t } : {};
+  };
+  /** URL du rush en cours de recadrage (modale ouverte), sinon `null`. */
+  const [recadrerRushOuvert, setRecadrerRushOuvert] = useState<string | null>(null);
+  // Un rush RETIRÉ emporte son recadrage (un autre rush n'en hérite jamais :
+  // la clé est son URL). Réordonner ne change rien. La restauration d'un
+  // brouillon pose liste et recadrages ensemble : rien n'est perdu.
+  useEffect(() => {
+    setRushTransforms((prev) => {
+      const garde = recadragesPourRushs(prev, [rushUrl, ...rushSuivants.map((r) => r.url)]);
+      return Object.keys(garde).length === Object.keys(prev).length ? prev : garde;
+    });
+  }, [rushUrl, rushSuivants]);
   const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
   useEffect(() => { posterTransformRef.current = posterTransform; }, [posterTransform]);
   const [cropping, setCropping] = useState(false);
@@ -6268,7 +6290,14 @@ export default function AssistantWizard() {
     elements: freeElements.length ? freeElements : undefined,
     posterUrl: posterUrl ?? undefined,
     posterTransform: posterTransformActive(posterTransform) ? posterTransform : undefined,
-    rushTransform: recadrageRushActif(rushTransform) ? rushTransform : undefined,
+    // Recadrage par rush, limité aux rushes écrits dans CE brouillon.
+    rushTransforms: (() => {
+      const t = recadragesPourRushs(rushTransforms, [
+        persistableDraftUrl(rushUrl),
+        ...(rushSuivants.length ? rushSuivants.filter((r) => persistableDraftUrl(r.url)).map((r) => r.url) : []),
+      ]);
+      return Object.keys(t).length ? t : undefined;
+    })(),
     seqBackgrounds: Object.keys(seqBackgrounds).length ? seqBackgrounds : undefined,
     imageSource,
     batchCount,
@@ -6288,7 +6317,7 @@ export default function AssistantWizard() {
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, lut, scheduledDate,
     titleWidth, ctaWidth,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransforms, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -6458,7 +6487,9 @@ export default function AssistantWizard() {
     if (draft.elements) setFreeElements(draft.elements);
     if (draft.posterUrl) setPosterUrl(draft.posterUrl);
     if (draft.posterTransform) setPosterTransform(clampPosterTransform(draft.posterTransform));
-    if (draft.rushTransform) setRushTransform(draft.rushTransform);
+    // Recadrage par rush ; un brouillon d'avant (recadrage unique) le rend au
+    // rush PRINCIPAL seulement.
+    setRushTransforms(recadragesRushAvecHeritage(draft.rushTransforms, draft.rushTransform, draft.rushUrl ?? null));
     if (draft.seqBackgrounds) setSeqBackgrounds(draft.seqBackgrounds as SeqBackgrounds);
     if (draft.imageSource) setImageSource(draft.imageSource);
     // Un brouillon enregistre AVANT la fermeture de la serie porte encore son
@@ -8210,10 +8241,11 @@ export default function AssistantWizard() {
             ? { rushs: plateau.rushs.map((r) => ({ url: r.url, secondes: r.secondes ?? null })) }
             : {}),
           ...(duree('video') > 0 && planMontageRushs ? { montage: planMontageRushs } : {}),
-          // Recadrage choisi (« Recadrer la vidéo ») : le MÊME que l'aperçu. Un seul rush
-          // (borné sur SES dimensions) ; plusieurs rushes enchaînés restent en « cover » centré.
-          ...(duree('video') > 0 && plateau.rushUrl && plateau.rushUrl === rushUrl && !plateau.rushs && recadrageRushActif(rushTransform)
-            ? { rushTransform }
+          // Recadrage PAR RUSH (« Recadrer la vidéo ») : le MÊME que l'aperçu,
+          // chaque rush avec le sien (clé = URL), borné sur SES dimensions.
+          // Aucun rush recadré : clé absente, options identiques à avant.
+          ...(duree('video') > 0 && plateau.rushUrl
+            ? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs)
             : {}),
           ...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),
           ...(rushLut ? { rushLut } : {}),
@@ -8562,8 +8594,15 @@ export default function AssistantWizard() {
           // Recadrage de CETTE affiche, tel que passe au compositeur. Ecrit
           // seulement avec l'affiche : sans elle, il ne cadrerait rien.
           posterTransform: persistableUrl(affiche ?? null) ? recadrageValide(posterTransform) : undefined,
-          // Le recadrage du rush, pour « Modifier » et le Calendrier (Régénérer) : le MÊME qu'ici.
-          rushTransform: recadrageRushActif(rushTransform) ? recadrageValide(rushTransform) : undefined,
+          // Le recadrage de CHAQUE rush (clé = URL), pour « Modifier » et le
+          // Calendrier (Régénérer) : le MÊME qu'ici. Absent sans recadrage.
+          rushTransforms: (() => {
+            const urls = duree('video') > 0
+              ? (rushsDurables.length >= 2 ? rushsDurables.map((r) => r.url) : [persistableUrl(plateau.rushUrl)])
+              : [];
+            const t = recadragesPourRushs(rushTransforms, urls);
+            return Object.keys(t).length ? t : undefined;
+          })(),
           // Fonds par sequence (forme du brouillon), URL durables seulement :
           // une photo `data:` ou `blob:` est ecartee, la sequence retombe alors
           // sur l'affiche globale a la regeneration. Absent sans fond propre.
@@ -9045,7 +9084,12 @@ export default function AssistantWizard() {
       // que rien n'a bouge — donc jamais envoyes sans changement.
       transition,
       posterTransform: recadrageValide(posterTransform),
-      rushTransform: recadrageRushActif(rushTransform) ? recadrageValide(rushTransform) : undefined,
+      // Recadrage PAR RUSH, limité aux rushes écrits sous `rushUrls`. Toujours
+      // un objet : retirer le dernier recadrage doit partir.
+      rushTransforms: recadragesPourRushs(
+        rushTransforms,
+        rushsDurablesEcran.length >= 2 ? rushsDurablesEcran.map((r) => r.url) : [persistableUrl(rushUrl)],
+      ),
       // Toujours un objet (vide sans fond) : retirer le dernier fond propre
       // doit partir, `undefined` voudrait dire « ne rien envoyer ».
       seqBackgrounds: fondsPourMetadata(seqBackgrounds),
@@ -9053,7 +9097,7 @@ export default function AssistantWizard() {
   }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
       gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
       posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
-      rushUrl, rushSecondes, rushSuivants, audioKeyframes, cardGroups, lut, transition, posterTransform, rushTransform, seqBackgrounds]);
+      rushUrl, rushSecondes, rushSuivants, audioKeyframes, cardGroups, lut, transition, posterTransform, rushTransforms, seqBackgrounds]);
 
   /**
    * Prend l'empreinte sur le rendu qui SUIT l'hydratation : les `setState` de
@@ -10991,7 +11035,7 @@ export default function AssistantWizard() {
                                     <button
                                       type="button"
                                       data-rush-recadrer
-                                      onClick={() => setRecadrerRushOuvert(true)}
+                                      onClick={() => setRecadrerRushOuvert(rushUrl)}
                                       disabled={rushLoading}
                                       title="Choisir ce qui reste visible : la vidéo remplit tout le format, l'export utilise ce cadrage."
                                       aria-label="Recadrer la vidéo"
@@ -11073,6 +11117,19 @@ export default function AssistantWizard() {
                               </span>
                               <button
                                 type="button"
+                                data-rush-item-recadrer
+                                onClick={() => setRecadrerRushOuvert(r.url)}
+                                disabled={rushLoading}
+                                title="Recadrer ce rush : il remplit le format, l'export utilise ce cadrage."
+                                aria-label={`Recadrer le rush ${i + 1}`}
+                                data-recadre={recadrageRushActif(rushTransforms[r.url]) ? 'oui' : 'non'}
+                                className={`flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-medium transition disabled:opacity-40 flex-shrink-0 ${recadrageRushActif(rushTransforms[r.url]) ? 'bg-studiio-primary/25 text-purple-100' : 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
+                              >
+                                <Crop className="w-3 h-3" />
+                                Recadrer
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => poserListeRushs(deplacer(rushListe, i, -1))}
                                 disabled={i === 0 || rushLoading}
                                 title="Monter"
@@ -11124,13 +11181,16 @@ export default function AssistantWizard() {
                           comptez la durée du montage.
                         </p>
                       )}
-                      {recadrerRushOuvert && rushUrl && (
+                      {recadrerRushOuvert && rushListe.some((r) => r.url === recadrerRushOuvert) && (
                         <RecadrerRush
-                          url={rushUrl}
+                          // Un rush = une modale neuve (dimensions de SA source).
+                          key={recadrerRushOuvert}
+                          url={recadrerRushOuvert}
                           format={format}
-                          valeur={rushTransform}
-                          onChange={setRushTransform}
-                          onFermer={() => setRecadrerRushOuvert(false)}
+                          valeur={recadrageDuRush(rushTransforms, recadrerRushOuvert)}
+                          // Ce rush SEUL : les recadrages des autres ne bougent pas.
+                          onChange={(t) => setRushTransforms((prev) => avecRecadrageRush(prev, recadrerRushOuvert, t))}
+                          onFermer={() => setRecadrerRushOuvert(null)}
                         />
                       )}
                       {/* Mediatheque — televersement ET re-selection d'un rush deja
