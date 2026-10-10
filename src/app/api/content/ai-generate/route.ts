@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth/config';
 import { shortenForCard } from '@/lib/smart-content';
 import { briefPourPrompt } from '@/lib/creer/brief';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
+import { promptVoixOff } from '@/lib/creer/voix-off-ia';
+import { consigneDetaillerPromptImage, verifierPromptDetaille } from '@/lib/ai/prompt-image';
 
 // Fast model for card generation. Haiku 4.5 is 5-10× faster than Sonnet on
 // short JSON responses, which prevents client-side 8s AbortError timeouts
@@ -127,15 +129,27 @@ export async function POST(req: NextRequest) {
         tts: `Génère un script voix-off court (2-3 phrases, ~30 mots) pour une vidéo sur "${topic}". Ton engageant et motivant. En ${locale === 'fr' ? 'français' : 'anglais'}. Réponse JSON: {"text":"..."}`,
         salesPhraseRewrite: `Reformule cette phrase de vente pour la rendre plus accrocheuse et concise (max 120 caractères). Garde l'idée principale mais améliore le punch : "${topic}". Réponds UNIQUEMENT en JSON: {"text":"..."}`,
       };
-      // Le brief vient APRES la consigne de format : on la repete donc, pour
-      // que la derniere ligne lue par le modele reste la forme attendue.
-      const prompt = (fieldPrompts[fieldType] || fieldPrompts.title)
-        + (briefContext ? `${briefContext}\nRéponds UNIQUEMENT en JSON: {"text":"..."}` : '');
+      // Aide IA de Créer : textes SOURCES de l'utilisateur (voix-off à
+      // proposer/améliorer, prompt d'image à détailler). Leurs consignes
+      // vivent dans des modules purs, testés à part.
+      const sourceText: string = typeof body?.sourceText === 'string' ? body.sourceText : '';
+      if (fieldType === 'promptImage' && !sourceText.trim()) {
+        return NextResponse.json({ success: false, error: 'Décrivez d’abord l’image souhaitée.' }, { status: 400 });
+      }
+      const prompt = fieldType === 'voixOff'
+        ? promptVoixOff({ texte: sourceText, contexte: body?.contexte, sujet: topic, locale, briefContext })
+        : fieldType === 'promptImage'
+          ? consigneDetaillerPromptImage(sourceText)
+          // Le brief vient APRES la consigne de format : on la repete donc, pour
+          // que la derniere ligne lue par le modele reste la forme attendue.
+          : (fieldPrompts[fieldType] || fieldPrompts.title)
+            + (briefContext ? `${briefContext}\nRéponds UNIQUEMENT en JSON: {"text":"..."}` : '');
+      const maxTokens = fieldType === 'voixOff' || fieldType === 'promptImage' ? 700 : 256;
       // Try primary model first; if it returns a non-200 (commonly a
       // transient 400/529 on Haiku under load) retry once on Sonnet.
       const callModel = async (model: string) => {
         const r = await callAnthropic(apiKey, {
-          max_tokens: 256,
+          max_tokens: maxTokens,
           messages: [{ role: 'user', content: prompt }],
         }, model);
         if (!r.ok) {
@@ -186,6 +200,21 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ success: false, error: 'Empty AI response' }, { status: 502 });
         }
         const extracted = extractFieldText(result.raw);
+        if (extracted && fieldType === 'promptImage') {
+          // Un prompt détaillé qui perd un élément de la demande (personne,
+          // tenue, décor…) n'est JAMAIS proposé : on l'écarte, l'utilisateur
+          // garde le sien.
+          const verdict = verifierPromptDetaille(sourceText, extracted);
+          if (!verdict.ok) {
+            console.warn('[AI-Generate] promptImage écarté:', verdict.motif);
+            return NextResponse.json({
+              success: false,
+              error: 'La proposition de l’IA s’écartait de votre demande : elle a été écartée. Réessayez ou gardez votre texte.',
+              ...(verdict.motif === 'manquants' ? { manquants: verdict.manquants } : null),
+            }, { status: 422 });
+          }
+          return NextResponse.json({ success: true, text: verdict.prompt });
+        }
         if (extracted) {
           return NextResponse.json({ success: true, text: extracted });
         }

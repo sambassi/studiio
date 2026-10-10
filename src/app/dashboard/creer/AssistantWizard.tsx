@@ -11249,6 +11249,19 @@ export default function AssistantWizard() {
                   // masqué : il n'y aurait rien à cadencer.
                   hasRush={!!rushUrl}
                   contentTheme={themeId}
+                  // Bouton IA de la synthese vocale : il part de ce que le
+                  // wizard sait deja (sujet, brief, titre, cartes, CTA, ton,
+                  // format) au lieu du seul identifiant de theme.
+                  voixOffContexte={{
+                    sujet: currentTopic,
+                    titre: generated?.title,
+                    sousTitre: generated?.subtitle,
+                    cartes: generated?.cards.map((c) => [c.title, c.value, c.description].filter(Boolean).join(' — ')),
+                    cta: generated?.cta,
+                    ton: (TONES.find((t) => t.id === toneId) ?? TONES[0]).label,
+                    typeVideo: format === '9:16' ? 'Reel vertical 9:16' : format === '1:1' ? 'Post carré 1:1' : 'Vidéo horizontale 16:9',
+                  }}
+                  voixOffBrief={brief}
                   // Branche le mixeur unifie : un seul bouton « Mixer » pour
                   // les trois niveaux, au lieu d'un curseur par source.
                   rushUrl={rushUrl}

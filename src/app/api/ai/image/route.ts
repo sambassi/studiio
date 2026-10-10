@@ -9,6 +9,7 @@ import Replicate from 'replicate';
 import { extractText } from '@/lib/ai/extract-text';
 import { erreurReplicateSanitisee } from '@/lib/ai/replicate-erreur';
 import { detecterSignatureImage, MAX_AFFICHE_IA_BYTES } from '@/lib/storage/image-signature';
+import { construirePromptTexteImage, construirePromptReferenceImage, PROMPT_IMAGE_MAX } from '@/lib/ai/prompt-image';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120; // AI models can take up to 2 min
@@ -20,7 +21,7 @@ export const maxDuration = 120; // AI models can take up to 2 min
 // libre. Absent → 9:16, le seul format que l'ancien client envoyait.
 const FORMATS_AFFICHE_IA = ['9:16', '1:1', '16:9'] as const;
 type FormatAfficheIA = (typeof FORMATS_AFFICHE_IA)[number];
-const PROMPT_AFFICHE_IA_MAX = 1000;
+const PROMPT_AFFICHE_IA_MAX = PROMPT_IMAGE_MAX;
 /** Delai maximal accorde a Replicate pour produire l'image. */
 const DELAI_GENERATION_MS = 90_000;
 /** Delai maximal du telechargement d'une sortie URL « legacy ». */
@@ -483,10 +484,14 @@ export async function POST(req: NextRequest) {
           // le sujet (visage, vêtements, identité). Sinon, texte → image comme
           // avant. MÊME suite : validation, rapatriement durable, débit.
           const reference = typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl.trim() : null;
+          // ⚠️ La demande de l'utilisateur part EN TÊTE et MOT POUR MOT
+          // (`@/lib/ai/prompt-image`) : plus de suffixe « professional
+          // background » qui faisait disparaître la personne demandée, plus
+          // de substitution mot à mot FR → EN qui rendait la demande bancale.
           const output = reference
             ? await genererAvecDelai(replicate, {
               input_image: reference,
-              prompt: translateFrPromptToEn(promptAfficheIA),
+              prompt: construirePromptReferenceImage(promptAfficheIA),
               // La sortie prend le FORMAT de la vidéo (9:16…), pas celui de la
               // photo de référence — l'affiche doit tenir dans le montage.
               aspect_ratio: formatAfficheIA,
@@ -494,7 +499,7 @@ export async function POST(req: NextRequest) {
               safety_tolerance: 2,
             }, 'image-edit')
             : await genererAvecDelai(replicate, {
-              prompt: `${promptAfficheIA}, high quality, professional background, ${formatAfficheIA} aspect ratio`,
+              prompt: construirePromptTexteImage(promptAfficheIA, formatAfficheIA),
               num_outputs: 1,
               aspect_ratio: formatAfficheIA,
               output_format: 'webp',
