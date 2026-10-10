@@ -224,8 +224,14 @@ export interface ValeursWizard {
   transition?: string;
   /** Recadrage de l'affiche (`posterTransform`), déjà validé par l'appelant. */
   posterTransform?: { scale: number; offsetX: number; offsetY: number };
-  /** Recadrage du rush (`rushTransform`), déjà validé par l'appelant. */
+  /** HÉRITÉ — recadrage unique du rush. Créer écrit désormais `rushTransforms`. */
   rushTransform?: { scale: number; offsetX: number; offsetY: number };
+  /**
+   * Recadrage PAR RUSH (clé = URL du rush), déjà validé par l'appelant. `{}`
+   * = aucun rush recadré : c'est une VALEUR (retirer le dernier recadrage
+   * doit partir, et une table présente fait foi sur l'ancien `rushTransform`).
+   */
+  rushTransforms?: Record<string, { scale: number; offsetX: number; offsetY: number }>;
   /**
    * Fonds par séquence (`seqBackgrounds`), URL durables seulement
    * (`fondsPourMetadata`). `{}` = aucun fond propre : c'est une VALEUR, qui
@@ -275,6 +281,7 @@ export function metadataPourEnregistrement(
   // enregistrement sans changement n'écrit rien.
   poserSiChange(envoi, 'posterTransform', valeurs.posterTransform, ref.posterTransform);
   poserSiChange(envoi, 'rushTransform', valeurs.rushTransform, ref.rushTransform);
+  poserSiChange(envoi, 'rushTransforms', valeurs.rushTransforms, ref.rushTransforms);
   poserSiChange(envoi, 'seqBackgrounds', valeurs.seqBackgrounds, ref.seqBackgrounds);
 
   // ── `branding` : recomposé SUR l'existant, et seulement s'il bouge ───

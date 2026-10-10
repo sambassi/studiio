@@ -95,17 +95,20 @@ describe('Recadrage du rush — la chaîne jusqu’à l’export et au post', ()
   const lire = (f: string) => readFileSync(resolve(__dirname, '..', f), 'utf-8');
   const wizard = lire('app/dashboard/creer/AssistantWizard.tsx');
 
-  it('⚠️ l’export reçoit le recadrage (un seul rush) ; l’aperçu du plateau aussi', () => {
-    expect(wizard).toContain('? { rushTransform }');
+  // Recadrage PAR RUSH : l'export reçoit une table `rushTransforms` (clé = URL),
+  // voir `creer-recadrage-par-rush.test.ts` pour le comportement détaillé.
+  it('⚠️ l’export reçoit le recadrage (par rush) ; l’aperçu du plateau aussi', () => {
+    expect(wizard).toContain('? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs)');
     expect(wizard).toContain('...styleRecadrageRush(rushTransform),');
   });
 
   it('⚠️ persisté : brouillon, métadonnées du post (création + Modifier), relu par le Calendrier', () => {
-    expect(wizard).toContain('rushTransform: recadrageRushActif(rushTransform) ? rushTransform : undefined,');
-    expect(wizard).toContain('if (draft.rushTransform) setRushTransform(draft.rushTransform);');
+    expect(wizard).toContain('rushTransforms: (() => {');
+    expect(wizard).toContain('setRushTransforms(recadragesRushAvecHeritage(draft.rushTransforms, draft.rushTransform, draft.rushUrl ?? null));');
+    expect(lire('lib/creer/postMetadata/to-wizard.ts')).toContain("presence(meta, 'rushTransforms')");
     expect(lire('lib/creer/postMetadata/to-wizard.ts')).toContain("presence(meta, 'rushTransform')");
-    expect(lire('lib/creer/postMetadata/from-wizard.ts')).toContain("poserSiChange(envoi, 'rushTransform'");
-    expect(lire('lib/rendus/options-depuis-metadata.ts')).toContain('fidelite.rushTransform = recadrageRush');
+    expect(lire('lib/creer/postMetadata/from-wizard.ts')).toContain("poserSiChange(envoi, 'rushTransforms'");
+    expect(lire('lib/rendus/options-depuis-metadata.ts')).toContain('fidelite.rushTransforms = recadragesRush');
   });
 
   it('⚠️ le jumeau généré dans Créer REMPLIT le format (aucune bande DANS le fichier)', () => {

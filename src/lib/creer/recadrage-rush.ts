@@ -81,3 +81,123 @@ export function rectangleRush(srcW: number, srcH: number, w: number, h: number, 
   const cy = h / 2 + b.offsetY * h;
   return { x: cx - d.l / 2, y: cy - d.h / 2, l: d.l, h: d.h };
 }
+
+// ── RECADRAGE PAR RUSH ─────────────────────────────────────────────────
+//
+// Chaque rush a SON recadrage. Clé stable = l'URL du rush : les éléments de
+// la liste (`RushItem`) n'ont pas d'identifiant propre, et l'URL est ce que
+// partagent l'écran, le brouillon, la metadata (`rushUrls`, `rushSegments`)
+// et le compositeur (`rushs`, `montage`). Elle survit donc au réordonnancement,
+// au rechargement et à « Régénérer ». Un même fichier ajouté deux fois partage
+// son recadrage (c'est la même image).
+//
+//   rushTransforms: { [urlDuRush]: RecadrageRush }
+//
+// N'y figurent QUE les rushes réellement recadrés : un rush absent est en
+// « cover » centré (le comportement d'avant). Les dimensions de la source ne
+// sont pas stockées — elles sont relues sur la vidéo à l'édition, et le
+// recadrage enregistré a déjà été borné avec elles.
+//
+// Héritage : l'ancien champ unique `rushTransform` (posts / brouillons d'avant)
+// ne vaut QUE pour le rush principal (`rushUrls[0]` / `rushUrl`), jamais pour
+// les autres. Dès qu'une table `rushTransforms` existe, elle fait foi.
+
+export type RecadragesRush = Record<string, RecadrageRush>;
+
+const estObjetSimple = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** Un recadrage enregistrable : nombres finis, zoom 1–3, décalages ±1 (mêmes bornes que l'affiche). */
+export function recadrageRushValide(t: unknown): RecadrageRush | null {
+  if (!estObjetSimple(t)) return null;
+  const { scale, offsetX, offsetY } = t;
+  const fini = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+  if (!fini(scale) || scale < ZOOM_RUSH_MIN || scale > ZOOM_RUSH_MAX) return null;
+  if (!fini(offsetX) || Math.abs(offsetX) > 1) return null;
+  if (!fini(offsetY) || Math.abs(offsetY) > 1) return null;
+  return { scale, offsetX, offsetY };
+}
+
+/** Plafond défensif : une liste de rushes n'en compte jamais autant. */
+const MAX_RECADRAGES = 50;
+
+/**
+ * Nettoie une table brute (brouillon, metadata) : clé = URL non vide,
+ * recadrage valide ET actif. Toujours un objet — vide s'il ne reste rien.
+ */
+export function recadragesRushValides(v: unknown): RecadragesRush {
+  const out: RecadragesRush = {};
+  if (!estObjetSimple(v)) return out;
+  for (const url of Object.keys(v)) {
+    if (Object.keys(out).length >= MAX_RECADRAGES) break;
+    if (!url || typeof url !== 'string') continue;
+    const t = recadrageRushValide(v[url]);
+    if (t && recadrageRushActif(t)) out[url] = t;
+  }
+  return out;
+}
+
+/**
+ * La table effective : `table` si elle existe (elle fait foi, même vide),
+ * sinon l'ancien recadrage unique posé sur le rush PRINCIPAL seulement.
+ */
+export function recadragesRushAvecHeritage(
+  table: unknown,
+  heritage: unknown,
+  urlPrincipale: string | null | undefined,
+): RecadragesRush {
+  if (estObjetSimple(table)) return recadragesRushValides(table);
+  const t = recadrageRushValide(heritage);
+  return urlPrincipale && t && recadrageRushActif(t) ? { [urlPrincipale]: t } : {};
+}
+
+/** Le recadrage d'UN rush : le sien, sinon « cover » centré. */
+export function recadrageDuRush(table: RecadragesRush | null | undefined, url: string | null | undefined): RecadrageRush {
+  return (url && table && Object.prototype.hasOwnProperty.call(table, url) ? table[url] : null) ?? RECADRAGE_RUSH_NEUTRE;
+}
+
+/** Pose le recadrage d'UN rush (neutre = retiré). Ne touche aucune autre entrée. */
+export function avecRecadrageRush(table: RecadragesRush | null | undefined, url: string, t: Partial<RecadrageRush> | null | undefined): RecadragesRush {
+  const out: RecadragesRush = { ...(table ?? {}) };
+  const v = recadrageRushValide(t);
+  if (v && recadrageRushActif(v)) out[url] = v;
+  else delete out[url];
+  return out;
+}
+
+/** Ne garde que les recadrages des rushes encore présents (un rush retiré emporte le sien). */
+export function recadragesPourRushs(
+  table: RecadragesRush | null | undefined,
+  urls: ReadonlyArray<string | null | undefined>,
+): RecadragesRush {
+  const out: RecadragesRush = {};
+  if (!table) return out;
+  for (const url of urls) {
+    if (url && Object.prototype.hasOwnProperty.call(table, url)) out[url] = table[url];
+  }
+  return out;
+}
+
+/**
+ * COMPOSITEUR — le recadrage du rush PEINT à cet instant.
+ *
+ *   1. son entrée dans `rushTransforms` ;
+ *   2. sinon, s'il est le rush principal (`videoUrl`), l'ancien `rushTransform` ;
+ *   3. sinon rien : « cover » centré.
+ *
+ * `url` absente (image fixe à la place du rush) : l'ancien `rushTransform`,
+ * comme avant.
+ */
+export function recadragePourRushPeint(
+  url: string | null | undefined,
+  options: {
+    rushTransforms?: Record<string, { scale?: number; offsetX?: number; offsetY?: number }> | null;
+    rushTransform?: { scale?: number; offsetX?: number; offsetY?: number } | null;
+    videoUrl?: string | null;
+  },
+): { scale?: number; offsetX?: number; offsetY?: number } | undefined {
+  if (!url) return options.rushTransform ?? undefined;
+  const table = options.rushTransforms;
+  if (table && Object.prototype.hasOwnProperty.call(table, url)) return table[url] ?? undefined;
+  return url === options.videoUrl ? options.rushTransform ?? undefined : undefined;
+}

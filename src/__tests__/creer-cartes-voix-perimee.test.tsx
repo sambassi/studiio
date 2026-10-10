@@ -34,7 +34,7 @@ describe('etatVoixCartes', () => {
 
 describe('Liste des cartes — alerte et régénération directe', () => {
   afterEach(cleanup);
-  const base = { cards: [A, B, C], onChange: () => {} } as const;
+  const base = { cards: [A, B, C], onChange: () => {} };
 
   it('⚠️ ordre changé : message clair + bouton « Régénérer la voix » qui déclenche l’action', () => {
     const regenerer = vi.fn();
