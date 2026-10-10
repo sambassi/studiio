@@ -48,6 +48,7 @@ import {
   Info,
   MousePointerClick,
   X,
+  UserSquare2,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
@@ -192,6 +193,7 @@ import {
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
+import { apercuAvatarDepuisListe, lireAvatarsPourApercu, type ApercuAvatarCreer } from '@/lib/creer/apercu-avatar';
 import { useTarifs } from '@/lib/tarifs/client';
 import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee } from '@/lib/avatar/identite';
 import {
@@ -1437,6 +1439,7 @@ function PlateContent({
   rushUrl = null,
   onRushError,
   rushTransform = null,
+  avatar = null,
   text,
   titlePos,
   ctaPos,
@@ -1463,6 +1466,14 @@ function PlateContent({
   onRushError?: () => void;
   /** Recadrage du rush (zoom + décalage, fraction du cadre) — le MÊME que l'export (`rushTransform`). */
   rushTransform?: RecadrageRush | null;
+  /**
+   * « Faire apparaître mon avatar » : l'avatar A MONTRER dans la séquence
+   * « Vidéo », à la place du rush (le parent a deja decide). À l'envoi, la
+   * vidéo du jumeau remplace le rush ; l'aperçu le dit dès maintenant, avec
+   * la source déjà existante de l'avatar — jamais une génération.
+   * `null` (défaut) : le rendu d'avant, à l'identique.
+   */
+  avatar?: ApercuAvatarCreer | null;
   text: TextStyles;
   titlePos: Pos;
   ctaPos: Pos;
@@ -1550,8 +1561,94 @@ function PlateContent({
   const [ratioRush, setRatioRush] = useState<{ url: string; r: number } | null>(null);
   const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
 
+  // L'image de la séquence « Vidéo » : le rush, ou l'avatar qui le remplacera.
+  const videoAlImage = !!rushUrl || (avatar?.etat === 'pret' && !!avatar.url);
+
   return (
     <>
+            {avatar && (avatar.etat === 'pret' || focus === 'video') && (
+              /* Séquence « Vidéo » = l'avatar (mode « Faire apparaître mon
+                 avatar ») : SA source existante, remplie comme le rush. Le
+                 rush éventuel n'est pas montré — à l'envoi, il est remplacé. */
+              <div
+                data-apercu-avatar={avatar.etat}
+                style={{ position: 'absolute', inset: 0, backgroundColor: focus === 'video' ? DARK : undefined, overflow: 'hidden' }}
+              >
+                {avatar.etat === 'pret' && avatar.url && (avatar.type === 'video' ? (
+                  <video
+                    src={avatar.url}
+                    muted
+                    loop
+                    autoPlay
+                    playsInline
+                    preload="metadata"
+                    data-apercu-avatar-media="video"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={avatar.url}
+                    alt=""
+                    data-apercu-avatar-media="image"
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ))}
+                {/* L'indication — aide d'édition de l'onglet « Vidéo », jamais
+                    photographiée ni jouée. */}
+                {edit && !edit.capturing && focus === 'video' && (
+                  avatar.etat === 'absent' ? (
+                    <div
+                      data-apercu-avatar-config
+                      className="absolute inset-0 flex flex-col items-center justify-center text-center"
+                      style={{ gap: uiPx(10), padding: uiPx(24) }}
+                    >
+                      <UserSquare2 style={{ width: uiPx(36), height: uiPx(36) }} className="text-gray-500" />
+                      <p className="text-gray-200" style={{ fontSize: uiPx(14), lineHeight: 1.5 }}>
+                        Votre avatar n’est pas encore prêt pour vos vidéos.
+                      </p>
+                      <Link
+                        href="/dashboard/avatar"
+                        data-apercu-avatar-action
+                        className="text-purple-300 hover:text-purple-200 underline"
+                        style={{ fontSize: uiPx(13) }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        Gérer mon avatar
+                      </Link>
+                    </div>
+                  ) : (
+                    <div
+                      data-apercu-avatar-indice
+                      className="absolute flex items-center justify-center text-center"
+                      style={{
+                        left: '50%',
+                        bottom: uiPx(48),
+                        transform: 'translateX(-50%)',
+                        maxWidth: '90%',
+                        gap: uiPx(6),
+                        padding: `${uiPx(6)}px ${uiPx(12)}px`,
+                        borderRadius: uiPx(999),
+                        backgroundColor: 'rgba(0,0,0,0.65)',
+                        color: '#FFFFFF',
+                        fontSize: uiPx(12),
+                        lineHeight: 1.3,
+                        whiteSpace: 'nowrap',
+                        pointerEvents: 'none',
+                        zIndex: 3,
+                      }}
+                    >
+                      <UserSquare2 style={{ width: uiPx(14), height: uiPx(14), flexShrink: 0 }} />
+                      <span>
+                        {avatar.etat === 'chargement'
+                          ? 'Chargement de votre avatar…'
+                          : `Votre avatar apparaîtra ici${avatar.version ? ` · v${avatar.version}` : ''}`}
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
             {rushUrl && (
               <video
                 src={rushUrl}
@@ -1573,7 +1670,7 @@ function PlateContent({
                 )}
               />
             )}
-            {rushUrl && habillageVideo?.mode === 'degrade' && (
+            {videoAlImage && habillageVideo?.mode === 'degrade' && (
               /* Habillage « Dégradé » : le voile coloré des Cartes, PAR-DESSUS
                  la vidéo — mêmes arrêts que l'export (`arretsVoile`). */
               <div
@@ -1583,7 +1680,7 @@ function PlateContent({
                 style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: cssVoile(habillageVideo) }}
               />
             )}
-            {rushUrl && habillageVideo && habillageVideo.mode !== 'degrade' && (
+            {videoAlImage && habillageVideo && habillageVideo.mode !== 'degrade' && (
               /* Habillage « Cadre » : PAR-DESSUS les bords, mêmes mesures que
                  l'export (`dessinerHabillageVideo`). Aucun filtre sur l'image. */
               <div
@@ -1990,6 +2087,7 @@ export function Preview({
   gradientOpacity,
   rushUrl,
   rushTransform = null,
+  avatarApercu = null,
   watermark,
   accent,
   text,
@@ -2020,6 +2118,13 @@ export function Preview({
    * `aucun` : seul Créer en passe un (l'Autopilote n'en dessine pas).
    */
   habillageVideoMode?: ModeHabillage;
+  /**
+   * « Faire apparaître mon avatar » est choisi : la séquence « Vidéo » montre
+   * l'avatar (sa source existante) À LA PLACE du rush, comme l'envoi le fera.
+   * Défaut `null` : l'aperçu d'avant, à l'identique (Autopilote, Calendrier,
+   * Créer sans avatar).
+   */
+  avatarApercu?: ApercuAvatarCreer | null;
   /**
    * Prise d'une poignee de coin sur le TITRE ou le CTA — agrandir le texte.
    *
@@ -2273,6 +2378,10 @@ export function Preview({
   // l'isoler est tout l'interet de cet onglet.
   const showRush =
     !!rushUrl && !rushBroken && activeOrder.includes('video')
+    && (focus === 'all' || focus === 'video');
+  // Mode avatar : la séquence « Vidéo » est l'avatar — le rush (rush
+  // utilisateur ou média stock ajouté) n'y est pas montré, l'envoi le remplace.
+  const showAvatar = !!avatarApercu && activeOrder.includes('video')
     && (focus === 'all' || focus === 'video');
 
   /**
@@ -2577,8 +2686,9 @@ export function Preview({
             format={format}
             focus={focus}
             activeOrder={activeOrder}
-            rushUrl={showRush ? rushUrl : null}
+            rushUrl={showRush && !avatarApercu ? rushUrl : null}
             rushTransform={rushTransform}
+            avatar={showAvatar ? avatarApercu : null}
             onRushError={() => setRushBroken(true)}
             text={text}
             titlePos={titlePos}
@@ -2684,7 +2794,8 @@ export function Preview({
       {generated && !hideFootnote && (
         <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
           Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.
-          {showRush && ' Le rush occupe seul sa séquence, cadré comme ici.'}
+          {showRush && !avatarApercu && ' Le rush occupe seul sa séquence, cadré comme ici.'}
+          {showAvatar && ' Votre avatar occupe la séquence Vidéo : sa vidéo parlante est produite à l’envoi.'}
         </p>
       )}
     </div>
@@ -6677,6 +6788,29 @@ export default function AssistantWizard() {
   /** Ordre effectif : sequences activees, dans l'ordre choisi. */
   const activeOrder = ordreActif(sequences);
 
+  /* ── L'AVATAR DANS L'APERÇU ───────────────────────────────────────────
+     « Faire apparaître mon avatar » : à l'envoi, la vidéo du jumeau devient
+     la séquence « Vidéo » (activée d'office, rush remplacé — voir
+     `runRenderInterne`). L'aperçu le montre DÈS le choix, avec la source
+     existante de l'avatar (`GET /api/avatars` puis
+     `/api/avatars/versions/:id/source`) : lecture seule, aucun fournisseur,
+     aucun crédit. Hors mode avatar : rien n'est lu, l'aperçu est celui d'avant. */
+  const [avatarsApercu, setAvatarsApercu] = useState<Awaited<ReturnType<typeof lireAvatarsPourApercu>> | undefined>(undefined);
+  useEffect(() => {
+    if (jumeauMode !== 'avatar') return;
+    let vivant = true;
+    setAvatarsApercu(undefined);
+    void lireAvatarsPourApercu().then((l) => { if (vivant) setAvatarsApercu(l); });
+    return () => { vivant = false; };
+  }, [jumeauMode]);
+  const avatarApercu: ApercuAvatarCreer | null = jumeauMode !== 'avatar'
+    ? null
+    : avatarsApercu === undefined ? { etat: 'chargement' } : apercuAvatarDepuisListe(avatarsApercu, jumeauAvatarId);
+  /** Les séquences MONTRÉES : en mode avatar, « Vidéo » l'est toujours (l'envoi l'active d'office). */
+  const ordreApercu = avatarApercu && !activeOrder.includes('video')
+    ? sequences.filter((s) => s.enabled || s.key === 'video').map((s) => s.key)
+    : activeOrder;
+
   /**
    * Ce que l'apercu MONTRE — la seule source des deux instances.
    *
@@ -6700,12 +6834,13 @@ export default function AssistantWizard() {
     elements: freeElements,
     selectedElementId,
     capturing,
-    activeOrder,
+    activeOrder: ordreApercu,
     gradStart,
     gradEnd,
     gradientOpacity,
     rushUrl,
     rushTransform,
+    avatarApercu,
     watermark: watermarkLabel,
     accent,
     text: textStyles,
@@ -6830,8 +6965,8 @@ export default function AssistantWizard() {
    * pas d'y RESTER. On revient donc a la vue d'ensemble.
    */
   useEffect(() => {
-    if (previewFocus !== 'all' && !activeOrder.includes(previewFocus)) setPreviewFocus('all');
-  }, [previewFocus, activeOrder]);
+    if (previewFocus !== 'all' && !ordreApercu.includes(previewFocus)) setPreviewFocus('all');
+  }, [previewFocus, ordreApercu]);
 
   /**
    * Duree effective d'une sequence : 0 si elle est desactivee.
@@ -6938,8 +7073,9 @@ export default function AssistantWizard() {
             format={format}
             focus={key as PreviewFocus}
             activeOrder={activeOrder}
-            rushUrl={key === 'video' ? rushUrl : null}
+            rushUrl={key === 'video' && !avatarApercu ? rushUrl : null}
             rushTransform={key === 'video' ? rushTransform : null}
+            avatar={key === 'video' ? avatarApercu : null}
             displayScale={displayScale}
             gradStart={gradStart}
             gradEnd={gradEnd}
