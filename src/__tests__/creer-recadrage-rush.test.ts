@@ -81,14 +81,43 @@ describe('Recadrage du rush — rempli, sans bande, sans étirement, crop respec
 
   it('9:16 → 9:16 sans recadrage : neutre, rien n’est enregistré (comportement d’avant)', () => {
     expect(recadrageRushActif(RECADRAGE_RUSH_NEUTRE)).toBe(false);
-    expect(styleRecadrageRush(RECADRAGE_RUSH_NEUTRE)).toEqual({ objectFit: 'cover' });
+    expect(styleRecadrageRush(RECADRAGE_RUSH_NEUTRE)).toMatchObject({ objectFit: 'cover', width: '100%', height: '100%' });
   });
 
-  it('le style d’aperçu est la transformation du compositeur (cover + translate + scale)', () => {
-    expect(styleRecadrageRush({ scale: 1.5, offsetX: 0.2, offsetY: -0.1 })).toEqual({
+  it('repli pendant le chargement (ratio source inconnu) : cover + translate + scale', () => {
+    expect(styleRecadrageRush({ scale: 1.5, offsetX: 0.2, offsetY: -0.1 })).toMatchObject({
       objectFit: 'cover', transform: 'translate(20%, -10%) scale(1.5)', transformOrigin: 'center',
     });
   });
+
+  // Défaut vu au banc navigateur : en `cover` plein cadre, le navigateur coupe
+  // l'image au bord de l'ÉLÉMENT — un glissé au-delà de (zoom-1)/2 montrait une
+  // bande noire que l'export, lui, ne trace pas. Avec le ratio source, l'élément
+  // a la taille de l'image dessinée : même rectangle que l'export, au pixel près.
+  const pc = (v: unknown) => Number(String(v).replace('%', '')) / 100;
+  for (const [nom, srcW, srcH, w, h, t] of [
+    ['16:9 → 9:16, glissé à droite + zoom 1,5', 1920, 1080, 1080, 1920, { scale: 1.5, offsetX: 0.4368, offsetY: 0 }],
+    ['16:9 → 9:16, glissé au bord gauche', 1920, 1080, 1080, 1920, { scale: 1, offsetX: -0.9, offsetY: 0 }],
+    ['16:9 → 1:1, zoom 2 en haut', 1920, 1080, 1080, 1080, { scale: 2, offsetX: 0.1, offsetY: 0.4 }],
+    ['9:16 → 16:9, en bas', 1080, 1920, 1920, 1080, { scale: 1.2, offsetX: 0, offsetY: -0.8 }],
+    ['9:16 → 9:16, zoom 1,3', 1080, 1920, 1080, 1920, { scale: 1.3, offsetX: 0.1, offsetY: 0.1 }],
+  ] as const) {
+    it(`⚠️ aperçu = export, sans bande : ${nom}`, () => {
+      const st = styleRecadrageRush(t, { source: srcW / srcH, cadre: w / h });
+      const r = rectangleRush(srcW, srcH, w, h, t);
+      expect(pc(st.left)).toBeCloseTo(r.x / w, 4);
+      expect(pc(st.top)).toBeCloseTo(r.y / h, 4);
+      expect(pc(st.width)).toBeCloseTo(r.l / w, 4);
+      expect(pc(st.height)).toBeCloseTo(r.h / h, 4);
+      // L'image couvre tout le cadre.
+      expect(pc(st.left)).toBeLessThanOrEqual(1e-6);
+      expect(pc(st.top)).toBeLessThanOrEqual(1e-6);
+      expect(pc(st.left) + pc(st.width)).toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(pc(st.top) + pc(st.height)).toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(st.objectFit).toBe('fill'); // l'élément a le ratio de la source : pas d'étirement
+      expect((pc(st.width) * w) / (pc(st.height) * h)).toBeCloseTo(srcW / srcH, 3);
+    });
+  }
 });
 
 describe('Recadrage du rush — la chaîne jusqu’à l’export et au post', () => {
@@ -99,7 +128,7 @@ describe('Recadrage du rush — la chaîne jusqu’à l’export et au post', ()
   // voir `creer-recadrage-par-rush.test.ts` pour le comportement détaillé.
   it('⚠️ l’export reçoit le recadrage (par rush) ; l’aperçu du plateau aussi', () => {
     expect(wizard).toContain('? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs)');
-    expect(wizard).toContain('...styleRecadrageRush(rushTransform),');
+    expect(wizard).toContain('style={styleRecadrageRush(\n                  rushTransform,');
   });
 
   it('⚠️ persisté : brouillon, métadonnées du post (création + Modifier), relu par le Calendrier', () => {

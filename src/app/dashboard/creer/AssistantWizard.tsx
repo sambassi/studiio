@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
-  recadrageRushActif, styleRecadrageRush, recadrageDuRush, avecRecadrageRush, recadragesPourRushs, recadragesRushAvecHeritage,
+  recadrageRushActif, styleRecadrageRush, RATIO_FORMAT, recadrageDuRush, avecRecadrageRush, recadragesPourRushs, recadragesRushAvecHeritage,
   type RecadrageRush, type RecadragesRush,
 } from '@/lib/creer/recadrage-rush';
 import RecadrerRush from '@/components/creer/RecadrerRush';
@@ -1545,6 +1545,8 @@ function PlateContent({
    * demonte et le redimensionnement s'interrompt au milieu.
    */
   const [survolTexte, setSurvolTexte] = useState<'title' | 'cta' | null>(null);
+  /** Ratio de la vidéo du rush affichée : l'aperçu trace alors exactement le rectangle de l'export. */
+  const [ratioRush, setRatioRush] = useState<{ url: string; r: number } | null>(null);
   const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
 
   return (
@@ -1558,15 +1560,16 @@ function PlateContent({
                 playsInline
                 preload="metadata"
                 onError={onRushError}
-                data-rush-recadrage={recadrageRushActif(rushTransform) ? 'oui' : 'non'}
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  width: '100%',
-                  height: '100%',
-                  // Rempli, jamais bordé ; recadré comme l'export (même géométrie que `drawVideoSeq`).
-                  ...styleRecadrageRush(rushTransform),
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  if (v.videoWidth > 0 && v.videoHeight > 0) setRatioRush({ url: rushUrl, r: v.videoWidth / v.videoHeight });
                 }}
+                data-rush-recadrage={recadrageRushActif(rushTransform) ? 'oui' : 'non'}
+                // Rempli, jamais bordé ; recadré comme l'export (même rectangle que `drawVideoSeq`).
+                style={styleRecadrageRush(
+                  rushTransform,
+                  ratioRush && ratioRush.url === rushUrl ? { source: ratioRush.r, cadre: RATIO_FORMAT[format] } : null,
+                )}
               />
             )}
             {rushUrl && habillageVideo?.mode === 'degrade' && (

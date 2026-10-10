@@ -60,14 +60,51 @@ export function recadrageRushActif(t: Partial<RecadrageRush> | null | undefined)
   return !!t && ((Number(t.scale) || 1) !== 1 || (Number(t.offsetX) || 0) !== 0 || (Number(t.offsetY) || 0) !== 0);
 }
 
-/** Le style CSS de l'aperçu : élément plein cadre en `cover`, transformé comme le compositeur. */
-export function styleRecadrageRush(t: Partial<RecadrageRush> | null | undefined): { objectFit: 'cover'; transform?: string; transformOrigin?: string } {
-  if (!recadrageRushActif(t)) return { objectFit: 'cover' };
+/** Ratio largeur/hauteur de chaque format de sortie. */
+export const RATIO_FORMAT: Record<'9:16' | '1:1' | '16:9', number> = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9 };
+
+/**
+ * Le style CSS de l'aperçu, à poser sur une `<video>` dans un cadre
+ * `position: relative; overflow: hidden`.
+ *
+ * Avec le ratio de la SOURCE connu (`onLoadedMetadata`), l'élément a EXACTEMENT
+ * la taille de l'image que dessine le compositeur (cover × zoom), en % du
+ * cadre, et il est placé au centre + décalage : même rectangle que
+ * `rectangleRush` / `drawVideoSeq`, donc aucune bande que l'export n'aurait pas.
+ *
+ * Sans ce ratio (vidéo pas encore chargée) : plein cadre en `cover`, transformé.
+ * ⚠️ Ce repli COUPE l'image au bord de l'élément : un décalage plus grand que
+ * ce que le zoom seul laisse dépasser y montrerait une bande. Il ne sert que
+ * pendant le chargement.
+ */
+export function styleRecadrageRush(
+  t: Partial<RecadrageRush> | null | undefined,
+  ratios?: { source: number; cadre: number } | null,
+): Record<string, string | number> {
+  const plein = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' } as Record<string, string | number>;
+  if (ratios && ratios.source > 0 && ratios.cadre > 0 && Number.isFinite(ratios.source) && Number.isFinite(ratios.cadre)) {
+    // Bornes recalculées avec les ratios : un cadre de largeur 1 et de hauteur 1/cadre.
+    const b = bornerRecadrageRush(t, { srcW: ratios.source, srcH: 1, w: ratios.cadre, h: 1 });
+    // Taille dessinée en fraction du cadre (cover × zoom).
+    const l = Math.max(1, ratios.source / ratios.cadre) * b.scale;
+    const h = Math.max(1, ratios.cadre / ratios.source) * b.scale;
+    const pct = (n: number) => `${Math.round(n * 1e6) / 1e4}%`;
+    return {
+      position: 'absolute',
+      width: pct(l),
+      height: pct(h),
+      left: pct(0.5 + b.offsetX - l / 2),
+      top: pct(0.5 + b.offsetY - h / 2),
+      maxWidth: 'none',
+      objectFit: 'fill', // l'élément a déjà le ratio de la source : rien n'est étiré
+    };
+  }
+  if (!recadrageRushActif(t)) return plein;
   // Le recadrage a déjà été borné AVEC les dimensions de la source à l'édition :
   // ici, seulement des nombres sûrs (sans dimensions, on ne peut pas re-borner).
   const n = (v: unknown, min: number, max: number, d: number) => { const x = Number(v); return Number.isFinite(x) ? Math.min(max, Math.max(min, x)) : d; };
   const b = { scale: n(t?.scale, ZOOM_RUSH_MIN, ZOOM_RUSH_MAX, 1), offsetX: n(t?.offsetX, -1, 1, 0), offsetY: n(t?.offsetY, -1, 1, 0) };
-  return { objectFit: 'cover', transform: `translate(${b.offsetX * 100}%, ${b.offsetY * 100}%) scale(${b.scale})`, transformOrigin: 'center' };
+  return { ...plein, transform: `translate(${b.offsetX * 100}%, ${b.offsetY * 100}%) scale(${b.scale})`, transformOrigin: 'center' };
 }
 
 /**

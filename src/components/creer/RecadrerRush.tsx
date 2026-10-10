@@ -10,13 +10,14 @@
  * même image (`lib/creer/recadrage-rush.ts`).
  */
 import { useRef, useState, type PointerEvent as PointerEventReact } from 'react';
+import { createPortal } from 'react-dom';
 import { Crosshair, X } from 'lucide-react';
 import {
-  RECADRAGE_RUSH_NEUTRE, ZOOM_RUSH_MAX, ZOOM_RUSH_MIN, bornerRecadrageRush, styleRecadrageRush, type RecadrageRush,
+  RECADRAGE_RUSH_NEUTRE, RATIO_FORMAT, ZOOM_RUSH_MAX, ZOOM_RUSH_MIN, bornerRecadrageRush, styleRecadrageRush, type RecadrageRush,
 } from '@/lib/creer/recadrage-rush';
 
 type Format = '9:16' | '1:1' | '16:9';
-const RATIO: Record<Format, number> = { '9:16': 9 / 16, '1:1': 1, '16:9': 16 / 9 };
+const RATIO = RATIO_FORMAT;
 
 export default function RecadrerRush(props: {
   url: string;
@@ -50,7 +51,10 @@ export default function RecadrerRush(props: {
   const fin = () => { glisse.current = null; };
 
   const ratio = RATIO[props.format];
-  return (
+  // Rendue dans <body> : montée depuis une section repliable du panneau, la
+  // fenêtre disparaissait avec elle (display: none) et un ancêtre transformé
+  // aurait décalé son `position: fixed`.
+  const fenetre = (
     <div data-recadrer-rush role="dialog" aria-modal="true" aria-label="Recadrer la vidéo" className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
       <div className="w-full max-w-lg card-base p-5 space-y-4 bg-[#0A0A0F]">
         <header className="flex items-center justify-between">
@@ -78,7 +82,7 @@ export default function RecadrerRush(props: {
             preload="metadata"
             onLoadedMetadata={(e) => setDimsSource({ l: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })}
             className="pointer-events-none"
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', ...styleRecadrageRush(props.valeur) }}
+            style={styleRecadrageRush(props.valeur, dimsSource && dimsSource.h > 0 ? { source: dimsSource.l / dimsSource.h, cadre: ratio } : null)}
           />
         </div>
         <label className="block space-y-1 text-xs text-gray-300">
@@ -102,4 +106,5 @@ export default function RecadrerRush(props: {
       </div>
     </div>
   );
+  return typeof document === 'undefined' ? fenetre : createPortal(fenetre, document.body);
 }
