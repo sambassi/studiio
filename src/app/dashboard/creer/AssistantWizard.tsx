@@ -83,7 +83,8 @@ import SmartGuides from '@/components/creer/SmartGuides';
 import {
   nextSelection, pruneSelection, movingIds, groupBounds, clampGroupDelta, shiftBoxes,
   duplicateCards, duplicateBoxes, maxCards, updateCard, setCardIcon, addCard, removeCard, boxForNewCard, removeBox,
-  groupCards, ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, newElementId, MIN_GROUP,
+  ungroupCards, pruneGroups, expandSelection, groupOf, newGroupId, newElementId, MIN_GROUP,
+  regrouper, deplacerBloc, basculerSelection,
   type CardGroup,
 } from '@/lib/creer/selection';
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
@@ -1683,6 +1684,9 @@ function PlateContent({
                 onCardDoubleClick,
                 onCardResizeStart,
               }}
+              // Cadre de groupe : visible dans l'aperçu ET dans la photo
+              // exportée (en flux) — le même composant fait les deux.
+              groupeDe={groupedCards}
               cardStyle={cardStyle}
               typography={cardsTypography}
             />
@@ -2147,8 +2151,9 @@ export function Preview({
   selectedCards?: Set<string>;
   onClearSelection?: () => void;
   /**
-   * Cartes groupees, par identifiant de groupe. Aide d'edition : jamais
-   * photographiee, jamais exportee.
+   * Cartes groupees, par identifiant de groupe. Le filet rose lateral est une
+   * aide d'edition (jamais photographie) ; le CADRE de groupe des cartes en
+   * flux (`SequenceCards.groupeDe`), lui, est photographie avec les cartes.
    */
   groupedCards?: Record<string, string>;
   /**
@@ -5801,10 +5806,49 @@ export default function AssistantWizard() {
     setCardGroups((prev) => pruneGroups(prev, [...restants]));
   }, []);
 
+  /**
+   * Remplace l'ordre des cartes — jamais leur texte. L'etat COURANT, comme
+   * l'ajout : deux gestes rapides s'enchainent sans se perdre.
+   *
+   * Changer l'ordre change le texte attendu de la voix des cartes : un audio
+   * deja genere devient perime (`calageCartes` rend `null`, avis « voix
+   * perimee ») — le mecanisme existant, rien de plus.
+   */
+  const poserOrdreCartes = useCallback((cards: GeneratedCard[]) => {
+    const courant = generatedRef.current;
+    if (!courant || cards === courant.cards) return;
+    generatedRef.current = { ...courant, cards };
+    setGenerated((g) => (g ? { ...g, cards } : g));
+  }, []);
+
+  /**
+   * Grouper = REGROUPER : les membres deviennent consecutifs, a la place du
+   * premier d'entre eux (`regrouper`). Sans cela, le cadre de groupe et
+   * l'ordre de lecture de la voix ne correspondraient pas a l'ecran.
+   */
   const groupSelection = useCallback(() => {
     if (selectedCards.size < MIN_GROUP) return;
-    setCardGroups((prev) => groupCards(prev, [...selectedCards], newGroupId));
-  }, [selectedCards]);
+    const courant = generatedRef.current;
+    if (!courant) return;
+    const res = regrouper(courant.cards, groupsRef.current, selectedCards, newGroupId);
+    if (res.groups === groupsRef.current) return;
+    poserOrdreCartes(res.cards);
+    groupsRef.current = res.groups;
+    setCardGroups(res.groups);
+  }, [selectedCards, poserOrdreCartes]);
+
+  /** Coche / decoche une carte depuis la liste — son groupe entier suit. */
+  const basculerCarte = useCallback((id: string) => {
+    setSelectedCards((prev) => basculerSelection(prev, id, groupsRef.current));
+    setDuplicateNotice(null);
+  }, []);
+
+  /** Monte ou descend un bloc (carte seule ou groupe), ordre interne garde. */
+  const deplacerBlocCartes = useCallback((blocId: string, delta: number) => {
+    const courant = generatedRef.current;
+    if (!courant) return;
+    poserOrdreCartes(deplacerBloc(courant.cards, groupsRef.current, blocId, delta));
+  }, [poserOrdreCartes]);
 
   const ungroupSelection = useCallback(() => {
     setCardGroups((prev) => ungroupCards(prev, selectedCards));
@@ -11405,6 +11449,15 @@ export default function AssistantWizard() {
                         onChange={(id, patch) =>
                           setGenerated((g) => (g ? { ...g, cards: updateCard(g.cards, id, patch) } : g))
                         }
+                        // Sélection PARTAGÉE avec l'aperçu, groupes et ordre :
+                        // l'ordre de la liste est celui du tableau, donc celui
+                        // de l'aperçu, de l'export et de la voix.
+                        selection={selectedCards}
+                        onToggleSelect={basculerCarte}
+                        groups={cardGroups}
+                        onRegrouper={groupSelection}
+                        onDissocier={ungroupSelection}
+                        onMoveBloc={deplacerBlocCartes}
                       />
                     )}
 

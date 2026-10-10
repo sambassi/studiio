@@ -148,6 +148,14 @@ export interface SequenceCardsProps {
   fond?: string | null;
   interaction?: CardsInteraction;
   containerRef?: React.RefObject<HTMLDivElement>;
+  /**
+   * Carte -> groupe. En flux, les membres CONSECUTIFS d'un groupe sont
+   * encadres ensemble — dans l'apercu comme dans la photo exportee.
+   *
+   * ⚠️ ABSENT = LE DOM D'AVANT, a l'element pres : le rendu serveur et tout
+   * montage sans groupe ne changent pas.
+   */
+  groupeDe?: Record<string, string>;
 }
 
 export default function SequenceCards({
@@ -161,6 +169,7 @@ export default function SequenceCards({
   fond = null,
   interaction,
   containerRef,
+  groupeDe,
 }: SequenceCardsProps) {
   const vw = containerWidth;
   const CR = cardRatios(landscape);
@@ -217,6 +226,254 @@ export default function SequenceCards({
     textAlign: typography?.align,
   });
 
+  /** Une carte — identique, qu'elle soit seule ou dans le cadre d'un groupe. */
+  const rendreCarte = (c: SequenceCard) => {
+    const box = cardBoxes?.[c.id];
+    // Badge : échelle ajustée pour que titre ET valeur tiennent.
+    const aj = badge && box
+      ? ajusterBadge({
+        titre: c.title, valeur: c.value ?? '', largeurPx: vw * 0.84 * (box.w / 100), echelle,
+        texte: vw * CR.text, valeurPx: vw * CR.value, icone: vw * CR.icon, ecart: vw * CR.gap, padX: sansCadre ? 0 : vw * CR.padX,
+      })
+      : null;
+    const ech = aj?.echelle ?? echelle;
+    return (
+      <div
+        key={c.id}
+        data-card-id={c.id}
+        // Repere d'alignement, cote editeur uniquement : le rendu serveur
+        // (Remotion) doit produire exactement le meme DOM qu'avant. La
+        // cle porte l'identifiant de la carte — deux cartes qui la
+        // partageraient se confondraient dans `collectGuideBoxes`.
+        {...(editable
+          ? { 'data-guide-key': `card:${c.id}`, 'data-guide-label': c.title || 'Carte' }
+          : null)}
+        onPointerDown={it?.onCardDragStart ? (e) => it.onCardDragStart!(c.id, e) : undefined}
+        onPointerMove={it?.onDragMove}
+        onPointerUp={it?.onDragEnd}
+        onPointerCancel={it?.onDragEnd}
+        onLostPointerCapture={it?.onDragEnd}
+        onDoubleClick={it?.onCardDoubleClick ? () => it.onCardDoubleClick!(c.id) : undefined}
+        onPointerEnter={it?.onCardResizeStart ? () => setSurvolee(c.id) : undefined}
+        onPointerLeave={it?.onCardResizeStart ? () => setSurvolee((v) => (v === c.id ? null : v)) : undefined}
+        title={
+          it?.onCardDoubleClick
+            ? 'Double-clic pour changer l’icône'
+            : editable ? 'Glisser pour déplacer la carte' : undefined
+        }
+        // En grille, la carte s'empile comme la carte « Compact » du
+        // compositeur : icone, libelle, valeur. En ligne sur un tiers de
+        // largeur, le libelle serait reduit a deux caracteres et une
+        // ellipse.
+        style={{
+          display: 'flex',
+          ...(landscape && !cardBoxes
+            ? {
+                flexDirection: 'column' as const,
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center' as const,
+              }
+            : { alignItems: 'center' }),
+          backgroundColor: sansCadre ? undefined : (fond ?? 'rgba(255,255,255,0.08)'),
+          gap: vw * CR.gap,
+          borderRadius: sansCadre ? undefined : vw * CR.radius,
+          padding: sansCadre ? `${vw * CR.padY}px 0` : `${vw * CR.padY}px ${vw * CR.padX}px`,
+          ...(box
+            // La HAUTEUR mesuree est reappliquee : sans elle, une carte
+            // absolue se retrecirait a son contenu au moment meme de la
+            // bascule.
+            ? {
+                position: 'absolute' as const,
+                left: `${box.x}%`, top: `${box.y}%`,
+                // Badge : la hauteur S'ADAPTE au titre sur deux lignes.
+                width: `${box.w}%`, ...(badge ? { minHeight: `${box.h}%`, boxSizing: 'border-box' as const } : { height: `${box.h}%` }),
+              }
+            // ⚠️ CONTEXTE DE POSITIONNEMENT POUR LES POIGNEES. Sans lui,
+            // elles se placeraient sur le plus proche ancetre positionne
+            // — la GRILLE — et les quatre coins de chaque carte se
+            // retrouveraient empiles aux quatre coins du bloc.
+            : it?.onCardResizeStart ? { position: 'relative' as const } : null),
+          // ── Aides d'edition ────────────────────────────────────────
+          // Toutes conditionnees a `interaction` : cote serveur, aucune
+          // ne peut se retrouver dans la video.
+          cursor: editable ? (it!.draggingCard === c.id ? 'grabbing' : 'grab') : undefined,
+          touchAction: editable ? 'none' : undefined,
+          zIndex: it?.draggingCard === c.id ? 1 : undefined,
+          // Glissement : pointille, comme le titre et le CTA.
+          // Selection : trait plein BLANC — le fond du plateau EST le
+          // degrade d'accent par defaut, un lisere accent y serait
+          // invisible.
+          outline: !it || it.capturing
+            ? undefined
+            : it.draggingCard === c.id
+              ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)`
+              : it.selectedCards?.has(c.id)
+                ? `${uiPx(2)}px solid #FFFFFF`
+                : undefined,
+          boxShadow: !it || it.capturing
+            ? undefined
+            : it.draggingCard !== c.id && it.selectedCards?.has(c.id)
+              ? `0 0 0 ${uiPx(3)}px rgba(0,0,0,0.5)`
+              // Groupe : un filet lateral discret, du cote gauche.
+              : it.groupedCards?.[c.id] && it.groupTint
+                ? `inset ${uiPx(3)}px 0 0 0 ${it.groupTint}`
+                : undefined,
+          outlineOffset: it ? uiPx(2) : undefined,
+        }}
+      >
+        {badge ? (
+          <>
+            {aj?.icone !== false && (
+              <span style={{ flexShrink: 0, display: 'flex' }}>
+                <CardIcon name={c.icon} size={Math.round(vw * CR.icon * ech)} color="#FFFFFF" className="" />
+              </span>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 auto' }}>
+              <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
+                {c.value}
+              </span>
+              <span style={{
+                fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
+                color: '#FFFFFF', fontSize: vw * CR.text * ech, lineHeight: 1.1,
+                // Mots entiers, deux lignes au plus — jamais d'ellipse.
+                whiteSpace: 'normal', overflowWrap: 'normal', wordBreak: 'keep-all',
+                ...styleTexte(vw * CR.text * ech),
+              }}>
+                {c.title}
+              </span>
+            </div>
+          </>
+        ) : (
+        <>
+        <CardIcon
+          name={c.icon}
+          // L'icone suit l'echelle du texte : l'agrandir seul donnerait
+          // une carte au pictogramme minuscule a cote d'un texte enorme.
+          size={Math.round(vw * CR.icon * echelle)}
+          color="#FFFFFF"
+          className=""
+        />
+        <span
+          style={{
+            // `truncate` de Tailwind = ces trois proprietes.
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            // `?? 600` : la graisse d'aujourd'hui tant que rien n'est
+            // choisi. `bold: false` reste un reglage, pas une absence.
+            fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
+            color: '#FFFFFF',
+            ...(landscape && !cardBoxes ? { maxWidth: '100%' } : { flex: '1 1 0%' }),
+            fontSize: vw * CR.text * echelle,
+            lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
+            ...styleTexte(vw * CR.text * echelle),
+          }}
+        >
+          {c.title}
+        </span>
+        {c.value && (
+          <span data-card-value
+            style={{
+              fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400),
+              ...(landscape && !cardBoxes ? null : { flexShrink: 0 }),
+              fontSize: vw * CR.value * echelle,
+              lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
+              color: valueColor,
+              ...styleTexte(vw * CR.value * echelle),
+            }}
+          >
+            {c.value}
+          </span>
+        )}
+        </>
+        )}
+        {/* ── POIGNEES DE COIN ────────────────────────────────────
+            ⚠️ ELLES N'EXISTAIENT QUE POUR LE TITRE ET LE CTA : sur une
+            carte, tirer un coin ne faisait rien. Elles agrandissent le
+            TEXTE de la carte, pas sa boite — c'est ce que l'utilisateur
+            demande quand il tire sur un mot.
+
+            Absentes sans `onCardResizeStart`, et effacees pendant la
+            photo : le conteneur des cartes est justement ce que
+            `modern-screenshot` capture pour la video. */}
+        {it?.onCardResizeStart && !it.capturing
+          && (survolee === c.id || enCours === c.id || it.selectedCards?.has(c.id)) && ([
+          { coin: 'nw', top: 0, left: 0 },
+          { coin: 'ne', top: 0, left: '100%' },
+          { coin: 'sw', top: '100%', left: 0 },
+          { coin: 'se', top: '100%', left: '100%' },
+        ] as const).map((p) => (
+          <span
+            key={p.coin}
+            data-card-handle={`${c.id}-${p.coin}`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setEnCours(c.id);
+              it.onCardResizeStart!(c.id, e);
+            }}
+            onPointerMove={it.onDragMove}
+            onPointerUp={(e) => { setEnCours(null); it.onDragEnd?.(); void e; }}
+            onPointerCancel={() => { setEnCours(null); it.onDragEnd?.(); }}
+            onLostPointerCapture={() => { setEnCours(null); it.onDragEnd?.(); }}
+            title="Tirer pour agrandir le texte de la carte"
+            style={{
+              position: 'absolute',
+              top: p.top,
+              left: p.left,
+              width: uiPx(9),
+              height: uiPx(9),
+              marginTop: -uiPx(4.5),
+              marginLeft: -uiPx(4.5),
+              backgroundColor: '#FFFFFF',
+              border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
+              borderRadius: uiPx(2),
+              cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
+              touchAction: 'none',
+              zIndex: 5,
+            }}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  /**
+   * Cadre de GROUPE (disposition en flux uniquement) : les membres
+   * CONSECUTIFS d'un meme groupe sont poses dans un seul conteneur. Il est
+   * PHOTOGRAPHIE avec les cartes : c'est voulu, le regroupement se voit dans la
+   * video. Chaque carte garde son `data-card-id` — la capture calee sur la
+   * voix masque toujours les cartes une par une, et le cadre avec elles tant
+   * qu'aucune n'est dite (`capturerEtapesCartes`).
+   *
+   * Mode libre et badge : chaque carte porte sa position absolue, un cadre
+   * casserait le repere — comportement d'avant (le groupe se deplace en bloc).
+   */
+  const blocs: Array<{ groupe: string | null; cartes: SequenceCard[] }> = [];
+  for (const c of cartesAffichees) {
+    const g = !cardBoxes ? groupeDe?.[c.id] ?? null : null;
+    const dernier = blocs[blocs.length - 1];
+    if (g && dernier && dernier.groupe === g) dernier.cartes.push(c);
+    else blocs.push({ groupe: g, cartes: [c] });
+  }
+  const styleGroupe = (n: number): React.CSSProperties => {
+    const colonnes = Math.min(n, 3);
+    return {
+      display: landscape ? 'grid' : 'flex',
+      ...(landscape
+        ? { gridColumn: `span ${colonnes}`, gridTemplateColumns: `repeat(${colonnes}, minmax(0, 1fr))`, alignContent: 'center' as const }
+        : { flexDirection: 'column' as const }),
+      gap: vw * CR.gap,
+      padding: vw * CR.gap * 0.5,
+      borderRadius: vw * CR.radius * 1.25,
+      // Violet Studiio, discret : un filet et un voile, jamais un aplat.
+      border: `${Math.max(1, Math.round(vw * 0.0015))}px solid rgba(196,181,253,0.35)`,
+      backgroundColor: 'rgba(124,58,237,0.10)',
+      boxSizing: 'border-box' as const,
+      minWidth: 0,
+    };
+  };
+
   return (
     <div
       ref={containerRef}
@@ -246,216 +503,15 @@ export default function SequenceCards({
           : null),
       }}
     >
-      {cartesAffichees.map((c) => {
-        const box = cardBoxes?.[c.id];
-        // Badge : échelle ajustée pour que titre ET valeur tiennent.
-        const aj = badge && box
-          ? ajusterBadge({
-            titre: c.title, valeur: c.value ?? '', largeurPx: vw * 0.84 * (box.w / 100), echelle,
-            texte: vw * CR.text, valeurPx: vw * CR.value, icone: vw * CR.icon, ecart: vw * CR.gap, padX: sansCadre ? 0 : vw * CR.padX,
-          })
-          : null;
-        const ech = aj?.echelle ?? echelle;
-        return (
-          <div
-            key={c.id}
-            data-card-id={c.id}
-            // Repere d'alignement, cote editeur uniquement : le rendu serveur
-            // (Remotion) doit produire exactement le meme DOM qu'avant. La
-            // cle porte l'identifiant de la carte — deux cartes qui la
-            // partageraient se confondraient dans `collectGuideBoxes`.
-            {...(editable
-              ? { 'data-guide-key': `card:${c.id}`, 'data-guide-label': c.title || 'Carte' }
-              : null)}
-            onPointerDown={it?.onCardDragStart ? (e) => it.onCardDragStart!(c.id, e) : undefined}
-            onPointerMove={it?.onDragMove}
-            onPointerUp={it?.onDragEnd}
-            onPointerCancel={it?.onDragEnd}
-            onLostPointerCapture={it?.onDragEnd}
-            onDoubleClick={it?.onCardDoubleClick ? () => it.onCardDoubleClick!(c.id) : undefined}
-            onPointerEnter={it?.onCardResizeStart ? () => setSurvolee(c.id) : undefined}
-            onPointerLeave={it?.onCardResizeStart ? () => setSurvolee((v) => (v === c.id ? null : v)) : undefined}
-            title={
-              it?.onCardDoubleClick
-                ? 'Double-clic pour changer l’icône'
-                : editable ? 'Glisser pour déplacer la carte' : undefined
-            }
-            // En grille, la carte s'empile comme la carte « Compact » du
-            // compositeur : icone, libelle, valeur. En ligne sur un tiers de
-            // largeur, le libelle serait reduit a deux caracteres et une
-            // ellipse.
-            style={{
-              display: 'flex',
-              ...(landscape && !cardBoxes
-                ? {
-                    flexDirection: 'column' as const,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    textAlign: 'center' as const,
-                  }
-                : { alignItems: 'center' }),
-              backgroundColor: sansCadre ? undefined : (fond ?? 'rgba(255,255,255,0.08)'),
-              gap: vw * CR.gap,
-              borderRadius: sansCadre ? undefined : vw * CR.radius,
-              padding: sansCadre ? `${vw * CR.padY}px 0` : `${vw * CR.padY}px ${vw * CR.padX}px`,
-              ...(box
-                // La HAUTEUR mesuree est reappliquee : sans elle, une carte
-                // absolue se retrecirait a son contenu au moment meme de la
-                // bascule.
-                ? {
-                    position: 'absolute' as const,
-                    left: `${box.x}%`, top: `${box.y}%`,
-                    // Badge : la hauteur S'ADAPTE au titre sur deux lignes.
-                    width: `${box.w}%`, ...(badge ? { minHeight: `${box.h}%`, boxSizing: 'border-box' as const } : { height: `${box.h}%` }),
-                  }
-                // ⚠️ CONTEXTE DE POSITIONNEMENT POUR LES POIGNEES. Sans lui,
-                // elles se placeraient sur le plus proche ancetre positionne
-                // — la GRILLE — et les quatre coins de chaque carte se
-                // retrouveraient empiles aux quatre coins du bloc.
-                : it?.onCardResizeStart ? { position: 'relative' as const } : null),
-              // ── Aides d'edition ────────────────────────────────────────
-              // Toutes conditionnees a `interaction` : cote serveur, aucune
-              // ne peut se retrouver dans la video.
-              cursor: editable ? (it!.draggingCard === c.id ? 'grabbing' : 'grab') : undefined,
-              touchAction: editable ? 'none' : undefined,
-              zIndex: it?.draggingCard === c.id ? 1 : undefined,
-              // Glissement : pointille, comme le titre et le CTA.
-              // Selection : trait plein BLANC — le fond du plateau EST le
-              // degrade d'accent par defaut, un lisere accent y serait
-              // invisible.
-              outline: !it || it.capturing
-                ? undefined
-                : it.draggingCard === c.id
-                  ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)`
-                  : it.selectedCards?.has(c.id)
-                    ? `${uiPx(2)}px solid #FFFFFF`
-                    : undefined,
-              boxShadow: !it || it.capturing
-                ? undefined
-                : it.draggingCard !== c.id && it.selectedCards?.has(c.id)
-                  ? `0 0 0 ${uiPx(3)}px rgba(0,0,0,0.5)`
-                  // Groupe : un filet lateral discret, du cote gauche.
-                  : it.groupedCards?.[c.id] && it.groupTint
-                    ? `inset ${uiPx(3)}px 0 0 0 ${it.groupTint}`
-                    : undefined,
-              outlineOffset: it ? uiPx(2) : undefined,
-            }}
-          >
-            {badge ? (
-              <>
-                {aj?.icone !== false && (
-                  <span style={{ flexShrink: 0, display: 'flex' }}>
-                    <CardIcon name={c.icon} size={Math.round(vw * CR.icon * ech)} color="#FFFFFF" className="" />
-                  </span>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 auto' }}>
-                  <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
-                    {c.value}
-                  </span>
-                  <span style={{
-                    fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
-                    color: '#FFFFFF', fontSize: vw * CR.text * ech, lineHeight: 1.1,
-                    // Mots entiers, deux lignes au plus — jamais d'ellipse.
-                    whiteSpace: 'normal', overflowWrap: 'normal', wordBreak: 'keep-all',
-                    ...styleTexte(vw * CR.text * ech),
-                  }}>
-                    {c.title}
-                  </span>
-                </div>
-              </>
-            ) : (
-            <>
-            <CardIcon
-              name={c.icon}
-              // L'icone suit l'echelle du texte : l'agrandir seul donnerait
-              // une carte au pictogramme minuscule a cote d'un texte enorme.
-              size={Math.round(vw * CR.icon * echelle)}
-              color="#FFFFFF"
-              className=""
-            />
-            <span
-              style={{
-                // `truncate` de Tailwind = ces trois proprietes.
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                // `?? 600` : la graisse d'aujourd'hui tant que rien n'est
-                // choisi. `bold: false` reste un reglage, pas une absence.
-                fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
-                color: '#FFFFFF',
-                ...(landscape && !cardBoxes ? { maxWidth: '100%' } : { flex: '1 1 0%' }),
-                fontSize: vw * CR.text * echelle,
-                lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
-                ...styleTexte(vw * CR.text * echelle),
-              }}
-            >
-              {c.title}
-            </span>
-            {c.value && (
-              <span data-card-value
-                style={{
-                  fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400),
-                  ...(landscape && !cardBoxes ? null : { flexShrink: 0 }),
-                  fontSize: vw * CR.value * echelle,
-                  lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
-                  color: valueColor,
-                  ...styleTexte(vw * CR.value * echelle),
-                }}
-              >
-                {c.value}
-              </span>
-            )}
-            </>
-            )}
-            {/* ── POIGNEES DE COIN ────────────────────────────────────
-                ⚠️ ELLES N'EXISTAIENT QUE POUR LE TITRE ET LE CTA : sur une
-                carte, tirer un coin ne faisait rien. Elles agrandissent le
-                TEXTE de la carte, pas sa boite — c'est ce que l'utilisateur
-                demande quand il tire sur un mot.
-
-                Absentes sans `onCardResizeStart`, et effacees pendant la
-                photo : le conteneur des cartes est justement ce que
-                `modern-screenshot` capture pour la video. */}
-            {it?.onCardResizeStart && !it.capturing
-              && (survolee === c.id || enCours === c.id || it.selectedCards?.has(c.id)) && ([
-              { coin: 'nw', top: 0, left: 0 },
-              { coin: 'ne', top: 0, left: '100%' },
-              { coin: 'sw', top: '100%', left: 0 },
-              { coin: 'se', top: '100%', left: '100%' },
-            ] as const).map((p) => (
-              <span
-                key={p.coin}
-                data-card-handle={`${c.id}-${p.coin}`}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setEnCours(c.id);
-                  it.onCardResizeStart!(c.id, e);
-                }}
-                onPointerMove={it.onDragMove}
-                onPointerUp={(e) => { setEnCours(null); it.onDragEnd?.(); void e; }}
-                onPointerCancel={() => { setEnCours(null); it.onDragEnd?.(); }}
-                onLostPointerCapture={() => { setEnCours(null); it.onDragEnd?.(); }}
-                title="Tirer pour agrandir le texte de la carte"
-                style={{
-                  position: 'absolute',
-                  top: p.top,
-                  left: p.left,
-                  width: uiPx(9),
-                  height: uiPx(9),
-                  marginTop: -uiPx(4.5),
-                  marginLeft: -uiPx(4.5),
-                  backgroundColor: '#FFFFFF',
-                  border: `${uiPx(1)}px solid rgba(0,0,0,0.5)`,
-                  borderRadius: uiPx(2),
-                  cursor: p.coin === 'nw' || p.coin === 'se' ? 'nwse-resize' : 'nesw-resize',
-                  touchAction: 'none',
-                  zIndex: 5,
-                }}
-              />
-            ))}
+      {blocs.map((b, i) =>
+        b.groupe ? (
+          <div key={`${b.groupe}-${i}`} data-card-group={b.groupe} style={styleGroupe(b.cartes.length)}>
+            {b.cartes.map(rendreCarte)}
           </div>
-        );
-      })}
+        ) : (
+          rendreCarte(b.cartes[0])
+        ),
+      )}
     </div>
   );
 }

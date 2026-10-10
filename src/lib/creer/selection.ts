@@ -300,9 +300,11 @@ export function duplicateBoxes(
 /**
  * Groupe de cartes : elles se selectionnent et se deplacent ensemble.
  *
- * Un groupe est une aide d'EDITION. Il ne change ni le montage, ni les
- * metadonnees du post : deux cartes groupees s'exportent exactement comme deux
- * cartes non groupees.
+ * Le groupe ne touche JAMAIS au texte des cartes (titre, description, valeur,
+ * icone, identifiant). En disposition en flux, ses membres consecutifs sont
+ * encadres ensemble dans l'apercu ET dans la photo exportee
+ * (`SequenceCards`) ; l'ordre de lecture de la voix reste celui du tableau
+ * des cartes, c'est-a-dire l'ordre affiche.
  */
 export interface CardGroup {
   id: string;
@@ -376,4 +378,123 @@ export function expandSelection(selection: Set<string>, groups: CardGroup[]): Se
     if (g.cardIds.some((id) => out.has(id))) g.cardIds.forEach((id) => out.add(id));
   }
   return out.size === selection.size ? selection : out;
+}
+
+/**
+ * Bascule UNE carte dans la selection depuis la liste (case a cocher).
+ *
+ * Meme logique de bloc que `expandSelection` : cocher un membre prend tout son
+ * groupe, le decocher retire tout son groupe — sinon `expandSelection` le
+ * remettrait aussitot, et la case resterait cochee.
+ */
+export function basculerSelection(prev: Set<string>, id: string, groups: CardGroup[]): Set<string> {
+  const g = groupOf(groups, id);
+  const ids = g ? g.cardIds : [id];
+  const next = new Set(prev);
+  if (prev.has(id)) ids.forEach((cid) => next.delete(cid));
+  else ids.forEach((cid) => next.add(cid));
+  return next;
+}
+
+/**
+ * Un BLOC de la liste des cartes : une carte seule, ou une suite CONSECUTIVE
+ * de membres d'un meme groupe.
+ */
+export interface BlocCartes {
+  /** `carte:<id>` pour une carte seule, `groupe:<id>` pour un groupe. */
+  id: string;
+  /** Le groupe du bloc, `null` pour une carte seule. */
+  groupId: string | null;
+  /** Les cartes du bloc, dans l'ordre du tableau. */
+  cardIds: string[];
+}
+
+/**
+ * Les blocs, dans l'ordre du tableau des cartes — qui est l'ordre affiche ET
+ * l'ordre de lecture de la voix.
+ *
+ * Un groupe dont les membres ne sont PAS consecutifs (brouillon d'avant cette
+ * regle, duplication au milieu d'un groupe) donne plusieurs blocs — suffixes
+ * `#2`, `#3` — plutot que d'etre rassemble en silence : l'ordre affiche doit
+ * rester celui du tableau, sans quoi la voix ne suivrait plus l'ecran.
+ */
+export function blocsCartes(cards: readonly Identified[], groups: CardGroup[]): BlocCartes[] {
+  const out: BlocCartes[] = [];
+  const vus = new Map<string, number>();
+  for (const c of cards) {
+    const g = groupOf(groups, c.id);
+    const dernier = out[out.length - 1];
+    if (g && dernier && dernier.groupId === g.id) {
+      dernier.cardIds.push(c.id);
+      continue;
+    }
+    if (!g) {
+      out.push({ id: `carte:${c.id}`, groupId: null, cardIds: [c.id] });
+      continue;
+    }
+    const n = (vus.get(g.id) ?? 0) + 1;
+    vus.set(g.id, n);
+    out.push({ id: n === 1 ? `groupe:${g.id}` : `groupe:${g.id}#${n}`, groupId: g.id, cardIds: [c.id] });
+  }
+  return out;
+}
+
+/** Reconstruit le tableau dans l'ordre d'identifiants donne (memes objets). */
+function selonOrdre<T extends Identified>(cards: T[], ids: string[]): T[] {
+  const parId = new Map(cards.map((c) => [c.id, c]));
+  return ids.map((id) => parId.get(id)!).filter(Boolean);
+}
+
+/**
+ * Regroupe les cartes `ids` — et les rend CONSECUTIVES.
+ *
+ * Les membres sont rassembles a la place du PREMIER d'entre eux, dans leur
+ * ordre relatif d'origine ; les autres cartes gardent le leur. Le texte des
+ * cartes n'est jamais modifie : seuls l'ordre du tableau et l'appartenance aux
+ * groupes changent. Si l'ordre change, la voix des cartes deja generee devient
+ * perimee (le texte attendu change) — `calageCartes` rend alors `null`.
+ *
+ * Moins de `MIN_GROUP` cartes existantes : les MEMES references.
+ */
+export function regrouper<T extends Identified>(
+  cards: T[],
+  groups: CardGroup[],
+  ids: Iterable<string>,
+  newId: () => string,
+): { cards: T[]; groups: CardGroup[] } {
+  const retenus = new Set(ids);
+  const membres = cards.filter((c) => retenus.has(c.id));
+  if (membres.length < MIN_GROUP) return { cards, groups };
+  const premier = cards.findIndex((c) => retenus.has(c.id));
+  const autres = cards.filter((c) => !retenus.has(c.id));
+  // Avant le premier membre, il n'y a que des non-membres : `premier` est donc
+  // aussi sa place dans `autres`.
+  const ordre = [...autres.slice(0, premier), ...membres, ...autres.slice(premier)];
+  const inchange = ordre.every((c, i) => c === cards[i]);
+  return {
+    cards: inchange ? cards : ordre,
+    groups: groupCards(groups, membres.map((c) => c.id), newId),
+  };
+}
+
+/**
+ * Deplace un BLOC entier (carte seule ou groupe) de `delta` blocs — l'ordre
+ * interne du bloc est conserve. Bloc inconnu ou deja au bord : le MEME
+ * tableau. Les groupes, eux, ne changent pas : seul l'ordre bouge.
+ */
+export function deplacerBloc<T extends Identified>(
+  cards: T[],
+  groups: CardGroup[],
+  blocId: string,
+  delta: number,
+): T[] {
+  const blocs = blocsCartes(cards, groups);
+  const i = blocs.findIndex((b) => b.id === blocId);
+  if (i < 0 || !Number.isInteger(delta) || delta === 0) return cards;
+  const j = Math.max(0, Math.min(blocs.length - 1, i + delta));
+  if (j === i) return cards;
+  const ordre = blocs.slice();
+  const [bloc] = ordre.splice(i, 1);
+  ordre.splice(j, 0, bloc);
+  return selonOrdre(cards, ordre.flatMap((b) => b.cardIds));
 }
