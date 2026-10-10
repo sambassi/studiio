@@ -80,6 +80,12 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
   const [modeReference, setModeReference] = useState(false);
   const partirDeMaPhoto = modeReference && !!referenceUrl;
   /**
+   * Prompt réellement envoyé au modèle (renvoyé par le serveur), montré sous
+   * « Voir le prompt utilisé ». Il reste celui de la DERNIÈRE image réussie :
+   * un « Régénérer » qui échoue ne l'efface pas.
+   */
+  const [promptUtilise, setPromptUtilise] = useState<string | null>(null);
+  /**
    * Verrou SYNCHRONE : `disabled` ne suffit pas, React ne re-rend pas entre
    * deux clics du meme tour d'evenements. Pose au tout debut de l'action,
    * leve dans `finally`.
@@ -130,6 +136,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
         if (!res.ok || !data?.success || !data.resultUrl) {
           throw new Error(data?.error || `Erreur ${res.status}`);
         }
+        setPromptUtilise(typeof data.promptFinal === 'string' && data.promptFinal ? data.promptFinal : null);
         setEtat({
           statut: 'resultat',
           url: data.resultUrl,
@@ -181,6 +188,13 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           className="mt-1 w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2.5 py-2 text-sm text-gray-100 resize-none"
         />
       </label>
+      {/* Champ vide : le thème sert de consigne — on le dit au lieu de le
+          faire en silence. */}
+      {!prompt.trim() && suggestion.trim() && (
+        <p className="text-[11px] text-gray-500" data-affiche-ia-theme-utilise>
+          Champ vide : le thème « {suggestion.trim()} » sera utilisé comme description.
+        </p>
+      )}
 
       {/* « Partir de ma photo » : préserve le sujet (visage, vêtements) à
           partir de la photo/affiche courante, au lieu d'un texte seul. */}
@@ -249,6 +263,14 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={url} alt="Affiche générée" className="w-full h-full object-contain" />
           </div>
+          {promptUtilise && (
+            <details className="max-w-[320px] text-[11px] text-gray-500" data-affiche-ia-prompt-utilise>
+              <summary className="cursor-pointer select-none hover:text-gray-300">Voir le prompt utilisé</summary>
+              <p className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-gray-800 bg-gray-900/60 px-2.5 py-2 text-gray-400">
+                {promptUtilise}
+              </p>
+            </details>
+          )}
           <button
             type="button"
             onClick={() => void utiliser(url)}

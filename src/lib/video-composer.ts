@@ -20,6 +20,7 @@ import {
 import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import type { Lut } from '@/lib/luts/types';
 import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
+import { recadragePourRushPeint } from '@/lib/creer/recadrage-rush';
 import { ajusterPlan } from '@/lib/creer/smart-montage';
 import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
 import type { OverlaysMontage } from '@/lib/creer/overlays';
@@ -477,8 +478,19 @@ export interface ComposerOptions {
    * videoImageUrl are set, videoUrl (the real video) wins.
    */
   videoImageUrl?: string | null;
-  /** Optional crop transform for the rush/background video (scale + fractional offsets). */
+  /**
+   * Recadrage HÉRITÉ, unique (scale + décalages en fraction du cadre). Ne vaut
+   * que pour le rush PRINCIPAL (`videoUrl`) — ou l'image fixe qui le remplace —
+   * et seulement s'il n'a pas d'entrée dans `rushTransforms`.
+   */
   rushTransform?: { scale?: number; offsetX?: number; offsetY?: number };
+  /**
+   * RECADRAGE PAR RUSH (`src/lib/creer/recadrage-rush.ts`) : clé = URL du rush
+   * (celle de `videoUrl`, `rushs[i].url`, `montage[i].url`). Chaque rush est
+   * peint avec SON recadrage ; un rush absent de la table est en « cover »
+   * centré. Absente : rendu d'avant (seul `rushTransform`, rush principal).
+   */
+  rushTransforms?: Record<string, { scale?: number; offsetX?: number; offsetY?: number }> | null;
   /**
    * Recadrage de l'AFFICHE — meme forme que `rushTransform` : un zoom et des
    * decalages en fraction de la composition.
@@ -2814,7 +2826,7 @@ function drawSingleOverlay(
   ctx.restore();
 }
 
-function drawVideoSeq(
+export function drawVideoSeq(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, seqProgress: number,
   design?: DesignOptions,
@@ -3983,6 +3995,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   if (rushPlan) {
     console.log(montageLu ? '[Composer] Smart montage :' : '[Composer] Multi-rush :', rushPlan.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s@${s.depuis.toFixed(1)}`).join(' | '));
   }
+  // URL de chaque element video : c'est la cle du recadrage par rush
+  // (`rushTransforms`). Le second tampon d'un rush garde l'URL du rush.
+  const urlParLecteur = new Map<HTMLVideoElement, string>();
+  if (videoElPrincipal && videoUrl) urlParLecteur.set(videoElPrincipal, videoUrl);
+  for (const r of rushsLus) urlParLecteur.set(r.el, r.url);
+  secondsTampons.forEach((el, u) => urlParLecteur.set(el, u));
   // Tous les elements video du rush (un seul hors multi-rush).
   // Un element par RUSH (un plan de montage reprend le meme rush plusieurs fois).
   const rushEls: HTMLVideoElement[] = rushPlan ? Array.from(new Set(rushPlan.map((s) => s.el))) : (videoEl ? [videoEl] : []);
@@ -4212,7 +4230,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
           const rushCourant = rushPlan ? (lecteurAffiche ?? segmentA(rushPlan, secondsIn)?.el ?? videoEl) : videoEl;
-          drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, rushTransform, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
+          // Le recadrage de CE rush (par URL) — jamais celui d'un autre.
+          const recadrageCourant = recadragePourRushPeint(rushCourant ? urlParLecteur.get(rushCourant) : null, { rushTransforms: options.rushTransforms, rushTransform, videoUrl });
+          drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, recadrageCourant, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
           // Surimpressions (profils dynamiques) : posées sur le rush qui continue.
           if (options.surimpressions) dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps);
           break;

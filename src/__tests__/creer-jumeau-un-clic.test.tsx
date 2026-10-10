@@ -194,8 +194,9 @@ describe('mode avatar (ancien brouillon useDigitalTwin=true, relu en jumeauMode=
     // lecture qui ordonne) : rien n'est paye sans couverture.
     expect(trace.lastIndexOf('solde')).toBeGreaterThan(trace.indexOf('jumeau:verif'));
     expect(trace.lastIndexOf('solde')).toBeLessThan(trace.indexOf('jumeau:generer'));
-    // Le navigateur n'envoie que textes et format — aucun identifiant.
-    expect(Object.keys(corpsGenerer as object).sort()).toEqual(['aspectRatio', 'textes']);
+    // Le navigateur n'envoie que textes, format et « remplir le format » — aucun identifiant.
+    expect(Object.keys(corpsGenerer as object).sort()).toEqual(['aspectRatio', 'cadrage', 'textes']);
+    expect((corpsGenerer as { cadrage: string }).cadrage).toBe('remplir');
     expect((corpsGenerer as { textes: string[] }).textes.length).toBeGreaterThan(0);
     expect(document.body.textContent).toContain('Envoyé au calendrier');
   });

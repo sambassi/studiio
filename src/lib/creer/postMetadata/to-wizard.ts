@@ -43,6 +43,7 @@ import { idsCartesLues } from './cartes';
 import { lutRefValide } from '@/lib/luts/bibliotheque';
 import type { CanonicalDesign } from './types';
 import { fondsPourMetadata, recadrageValide } from './rendu-fidele';
+import { recadragesRushAvecHeritage } from '@/lib/creer/recadrage-rush';
 
 /** Le post tel que le serveur le rend. */
 interface PostLu {
@@ -240,6 +241,16 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // enregistrement les aurait effacés du montage suivant.
   const recadrage = recadrageValide(presence(meta, 'posterTransform'));
   if (recadrage) draft.posterTransform = recadrage;
+  // Recadrage PAR RUSH (clé = URL) : relu tel qu'écrit — sinon « Modifier »
+  // rouvrirait les vidéos recentrées. Sans table, l'ancien recadrage unique
+  // revient au rush PRINCIPAL (`rushUrls[0]`) seulement.
+  const rushsMeta = presence(meta, 'rushUrls');
+  const recadragesRush = recadragesRushAvecHeritage(
+    presence(meta, 'rushTransforms'),
+    presence(meta, 'rushTransform'),
+    Array.isArray(rushsMeta) && typeof rushsMeta[0] === 'string' ? rushsMeta[0] : null,
+  );
+  if (Object.keys(recadragesRush).length > 0) draft.rushTransforms = recadragesRush;
   const fonds = fondsPourMetadata(presence(meta, 'seqBackgrounds'));
   if (Object.keys(fonds).length > 0) draft.seqBackgrounds = fonds;
 

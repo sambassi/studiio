@@ -10,6 +10,7 @@ import { lutRefValide } from '@/lib/luts/bibliotheque';
 import type { LutRef } from '@/lib/luts/types';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
 import { estJumeauMode, type JumeauMode } from '@/lib/creer/jumeau';
+import { recadragesRushValides, recadragesPourRushs } from '@/lib/creer/recadrage-rush';
 
 /**
  * Brouillon de « Créer (simple) » — écriture, relecture, validation.
@@ -217,6 +218,18 @@ export interface Draft {
   posterUrl?: string;
   /** Recadrage de l'affiche. Absent = cadrage « cover » centre. */
   posterTransform?: { scale: number; offsetX: number; offsetY: number };
+  /**
+   * HÉRITÉ — recadrage unique des brouillons d'avant le recadrage par rush.
+   * Relu pour le rush PRINCIPAL seulement (`recadragesRushAvecHeritage`) ;
+   * plus jamais écrit.
+   */
+  rushTransform?: { scale: number; offsetX: number; offsetY: number };
+  /**
+   * Recadrage PAR RUSH (« Recadrer la vidéo »), clé = URL du rush
+   * (`src/lib/creer/recadrage-rush.ts`). Seuls les rushes recadrés y
+   * figurent ; absent = tous en « cover » centré, comme avant.
+   */
+  rushTransforms?: Record<string, { scale: number; offsetX: number; offsetY: number }>;
   /**
    * Fonds propres a une sequence. Absent = chaque sequence herite de
    * l'affiche globale, le comportement de tous les brouillons anterieurs.
@@ -733,6 +746,23 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     && typeof rt.offsetY === 'number' && Number.isFinite(rt.offsetY) && Math.abs(rt.offsetY) <= 1
       ? { scale: rt.scale, offsetX: rt.offsetX, offsetY: rt.offsetY }
       : undefined;
+  // Recadrage du rush : mêmes bornes que l'affiche (zoom 1–3, décalages ±1).
+  const rr = raw.rushTransform;
+  out.rushTransform =
+    isObj(rr)
+    && typeof rr.scale === 'number' && Number.isFinite(rr.scale) && rr.scale >= 1 && rr.scale <= 3
+    && typeof rr.offsetX === 'number' && Number.isFinite(rr.offsetX) && Math.abs(rr.offsetX) <= 1
+    && typeof rr.offsetY === 'number' && Number.isFinite(rr.offsetY) && Math.abs(rr.offsetY) <= 1
+      ? { scale: rr.scale, offsetX: rr.offsetX, offsetY: rr.offsetY }
+      : undefined;
+  // Recadrage par rush : chaque entrée jugée seule (URL non vide, recadrage
+  // valide et actif). Absent quand il ne reste rien.
+  // Seuls les rushes du brouillon gardent le leur.
+  const recadrages = recadragesPourRushs(
+    recadragesRushValides(raw.rushTransforms),
+    [out.rushUrl, ...(out.rushSuivants ?? []).map((r) => r.url)],
+  );
+  out.rushTransforms = Object.keys(recadrages).length ? recadrages : undefined;
   // Fonds par sequence : chaque entree est validee SEPAREMENT — elles sont
   // independantes, et en perdre une vaut mieux que de toutes les perdre.
   const bruts = raw.seqBackgrounds;

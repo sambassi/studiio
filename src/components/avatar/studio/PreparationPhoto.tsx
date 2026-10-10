@@ -13,12 +13,13 @@
  * L'original n'est jamais modifié. Aucun fournisseur n'est appelé ici :
  * « Utiliser cette photo » rend les deux clés au parcours (`onPret`).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, RotateCcw, X } from 'lucide-react';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { detailEnvoi, envoyerFormulaire, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { LISSAGE_PAR_DEFAUT, libelleLissage } from '@/lib/avatar/preparation-source-regles';
 import CurseurLissage from '@/components/avatar/studio/CurseurLissage';
+import { dessinerApercuLisse } from '@/lib/avatar/lissage-apercu';
 
 type Etape = 'envoi' | 'erreur' | 'edition' | 'traitement' | 'resultat';
 interface Reponse<T> { success?: boolean; error?: string; data?: T }
@@ -40,6 +41,19 @@ export default function PreparationPhoto(props: {
   const [voirOriginal, setVoirOriginal] = useState(false);
   const [urlLocale, setUrlLocale] = useState<string | null>(null);
   const [dims, setDims] = useState<{ l: number; h: number } | null>(null);
+  /** Aperçu EN DIRECT du lissage (même filtre, à la taille affichée) ; « Avant » montre l'original. */
+  const imageSource = useRef<HTMLImageElement | null>(null);
+  const toile = useRef<HTMLCanvasElement | null>(null);
+  const [avantEdition, setAvantEdition] = useState(false);
+  const [apercuDirect, setApercuDirect] = useState(false);
+  useEffect(() => {
+    if (!dims || !imageSource.current || !toile.current) return;
+    // Une image par rafraîchissement d'écran : le curseur reste fluide, aucun envoi réseau.
+    const id = requestAnimationFrame(() => {
+      if (imageSource.current && toile.current) setApercuDirect(dessinerApercuLisse(toile.current, imageSource.current, dims.l, dims.h, lissage));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [lissage, dims]);
   const [essai, setEssai] = useState(0);
 
   // L'aperçu LOCAL de l'original (le navigateur applique l'orientation de la photo).
@@ -140,15 +154,23 @@ export default function PreparationPhoto(props: {
 
       {(etape === 'edition' || etape === 'traitement') && (
         <div className="space-y-4">
-          <div className="mx-auto max-w-xs rounded-2xl overflow-hidden bg-black">
+          <div className="relative mx-auto max-w-xs rounded-2xl overflow-hidden bg-black">
             {urlLocale && (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img data-preparation-photo-image="originale" src={urlLocale} alt="Votre photo d’origine" onLoad={(e) => setDims({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full object-contain" />
+              <img ref={imageSource} data-preparation-photo-image="originale" src={urlLocale} alt="Votre photo d’origine" onLoad={(e) => setDims({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full object-contain" />
             )}
+            {/* L'aperçu lissé, dessiné PAR-DESSUS l'original (qui reste intact dessous). */}
+            <canvas ref={toile} data-preparation-photo-apercu-direct={apercuDirect && !avantEdition ? 'visible' : 'masque'} aria-label={`Aperçu du lissage à ${lissage} %`} className={`absolute inset-0 w-full h-full ${apercuDirect && !avantEdition ? '' : 'hidden'}`} />
+            <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">{avantEdition || !apercuDirect ? 'Original' : `Aperçu — lissage ${lissage} %`}</span>
+          </div>
+          <div role="radiogroup" aria-label="Comparer" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-900/70 p-1">
+            <button type="button" role="radio" aria-checked={avantEdition} data-preparation-photo-direct="avant" onClick={() => setAvantEdition(true)} className={`rounded-lg py-1.5 text-xs ${avantEdition ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — original</button>
+            <button type="button" role="radio" aria-checked={!avantEdition} data-preparation-photo-direct="apres" onClick={() => setAvantEdition(false)} className={`rounded-lg py-1.5 text-xs ${!avantEdition ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — aperçu en direct</button>
           </div>
           {/* LISSAGE DU VISAGE — même filtre que la vidéo : peau lissée, traits intacts. */}
           <div data-preparation-embellir className="rounded-xl bg-gray-900/60 px-4 py-3">
-            <CurseurLissage valeur={lissage} onChange={setLissage} disabled={etape === 'traitement'} />
+            <CurseurLissage valeur={lissage} onChange={(v) => { setLissage(v); setAvantEdition(false); }} disabled={etape === 'traitement'} onReinitialiser={() => setLissage(0)} />
+            <p className="mt-2 text-[11px] text-gray-500">L’aperçu suit le curseur en direct ; « Prévisualiser » produit le fichier réel.</p>
           </div>
           {erreur && <p data-preparation-photo-echec role="alert" className="rounded-xl bg-red-500/10 p-3 text-xs text-red-200">{erreur}</p>}
           {etape === 'traitement' ? (

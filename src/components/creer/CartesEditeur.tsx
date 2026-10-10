@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { ImageIcon, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Combine, ImageIcon, Plus, Trash2, Ungroup } from 'lucide-react';
 import { CardIcon } from '@/components/ui/CardIcon';
 import IconPicker from '@/components/creer/IconPicker';
-import { CARTE_LIMITES, type CarteTexte } from '@/lib/creer/selection';
+import {
+  CARTE_LIMITES, MIN_GROUP, blocsCartes, groupOf, type CardGroup, type CarteTexte,
+} from '@/lib/creer/selection';
 
 export { CARTE_LIMITES };
 
@@ -54,25 +56,95 @@ export interface CartesEditeurProps {
    * plutôt que de laisser croire que l'icône choisie y apparaîtra.
    */
   iconesMasquees?: ReadonlySet<string>;
+  /**
+   * SÉLECTION, GROUPES ET ORDRE. Tout est optionnel : absent, la liste est
+   * celle d'avant, sans case ni flèche.
+   *
+   * La sélection est CELLE de l'assistant (`selectedCards`) — la même que
+   * l'aperçu : cocher ici, c'est sélectionner là-bas.
+   */
+  selection?: ReadonlySet<string>;
+  /** Coche / décoche une carte (le parent étend au groupe). */
+  onToggleSelect?: (id: string) => void;
+  /** Groupes courants : leurs membres consécutifs sont encadrés ensemble. */
+  groups?: CardGroup[];
+  /** Regrouper la sélection (≥ 2 cartes). */
+  onRegrouper?: () => void;
+  /** Dissocier les groupes touchés par la sélection — l'ordre ne bouge pas. */
+  onDissocier?: () => void;
+  /** Monter (-1) ou descendre (+1) un bloc entier : carte seule ou groupe. */
+  onMoveBloc?: (blocId: string, delta: number) => void;
+  /**
+   * La voix des cartes ne correspond plus aux cartes (ordre ou texte changé) :
+   * dit ICI, avant le rendu, avec l'action directe « Régénérer la voix ».
+   */
+  voixPerimee?: { motif: 'ordre' | 'texte'; onRegenerer?: () => void; enCours?: boolean } | null;
 }
+
+const FLECHE = 'rounded p-1 text-gray-500 normal-case tracking-normal hover:bg-studiio-primary/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30';
 
 const CHAMP = 'w-full rounded-lg border border-gray-800 bg-gray-950/60 px-2.5 py-1.5 text-sm text-white placeholder:text-gray-600 focus:border-purple-500/60 focus:outline-none';
 
 export default function CartesEditeur({
   cards, onChange, couleurValeur = '#C4B5FD', onAdd, onRemove, canAdd = true, canRemove = true, max,
-  onIconChange, iconesMasquees,
+  onIconChange, iconesMasquees, selection, onToggleSelect, groups = [], onRegrouper, onDissocier, onMoveBloc, voixPerimee = null,
 }: CartesEditeurProps) {
   /** La carte dont la grille d'icônes est ouverte — une seule à la fois. */
   const [iconeOuverte, setIconeOuverte] = useState<string | null>(null);
-  return (
-    <div className="space-y-2" data-cartes-editeur>
-      {cards.map((c, i) => (
+  /** Ordre du tableau = ordre affiché = ordre de lecture de la voix. */
+  const blocs = blocsCartes(cards, groups);
+  const rang = new Map(cards.map((c, i) => [c.id, i]));
+  const parId = new Map(cards.map((c) => [c.id, c]));
+  const nbSelection = selection ? cards.filter((c) => selection.has(c.id)).length : 0;
+  const selectionGroupee = !!selection && cards.some((c) => selection.has(c.id) && !!groupOf(groups, c.id));
+
+  /** Flèches d'un bloc ; absentes sans `onMoveBloc`. */
+  const fleches = (blocId: string, k: number, quoi: string) => onMoveBloc && (
+    <>
+      <button
+        type="button"
+        onClick={() => onMoveBloc(blocId, -1)}
+        disabled={k === 0}
+        aria-label={`Monter ${quoi}`}
+        title={`Monter ${quoi}`}
+        data-bloc-monter={blocId}
+        className={FLECHE}
+      >
+        <ChevronUp size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onMoveBloc(blocId, 1)}
+        disabled={k === blocs.length - 1}
+        aria-label={`Descendre ${quoi}`}
+        title={`Descendre ${quoi}`}
+        data-bloc-descendre={blocId}
+        className={FLECHE}
+      >
+        <ChevronDown size={14} />
+      </button>
+    </>
+  );
+
+  const rendreCarte = (c: CarteEditable, blocSeul: { id: string; k: number } | null) => {
+    const i = rang.get(c.id) ?? 0;
+    return (
         <div
           key={c.id}
           data-carte-editeur={c.id}
           className="rounded-xl bg-gray-900/60 p-3 space-y-2"
         >
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-gray-500">
+            {onToggleSelect && (
+              <input
+                type="checkbox"
+                checked={!!selection?.has(c.id)}
+                onChange={() => onToggleSelect(c.id)}
+                aria-label={`Sélectionner la carte ${i + 1}`}
+                data-carte-selection={c.id}
+                className="h-3.5 w-3.5 cursor-pointer accent-studiio-primary"
+              />
+            )}
             {onIconChange ? (
               <button
                 type="button"
@@ -91,6 +163,7 @@ export default function CartesEditeur({
               <CardIcon name={c.icon} size={14} color="#C4B5FD" className="" />
             )}
             <span className="flex-1">Carte {i + 1}</span>
+            {blocSeul && fleches(blocSeul.id, blocSeul.k, `la carte ${i + 1}`)}
             {onRemove && (
               <button
                 type="button"
@@ -164,7 +237,79 @@ export default function CartesEditeur({
             />
           </label>
         </div>
-      ))}
+    );
+  };
+
+  return (
+    <div className="space-y-2" data-cartes-editeur>
+      {voixPerimee && (
+        <div role="alert" data-cartes-voix-perimee={voixPerimee.motif} className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
+          <span className="flex-1 min-w-[12rem]">
+            {voixPerimee.motif === 'ordre'
+              ? 'L’ordre des cartes a changé. Régénérez la voix des cartes pour conserver la synchronisation.'
+              : 'Le texte des cartes a changé. Régénérez la voix des cartes pour conserver la synchronisation.'}
+          </span>
+          {voixPerimee.onRegenerer && (
+            <button type="button" data-cartes-regenerer-voix onClick={voixPerimee.onRegenerer} disabled={voixPerimee.enCours} className="button-secondary !min-h-[28px] !px-2.5 !text-[11px] disabled:opacity-50">
+              {voixPerimee.enCours ? 'Régénération…' : 'Régénérer la voix'}
+            </button>
+          )}
+        </div>
+      )}
+      {onToggleSelect && (onRegrouper || onDissocier) && (
+        <div className="flex flex-wrap items-center gap-1.5" data-cartes-outils>
+          <span className="flex-1 text-[11px] text-gray-400">
+            {nbSelection === 0
+              ? 'Cochez des cartes pour les regrouper'
+              : `${nbSelection} carte${nbSelection > 1 ? 's' : ''} sélectionnée${nbSelection > 1 ? 's' : ''}`}
+          </span>
+          {onRegrouper && (
+            <button
+              type="button"
+              onClick={onRegrouper}
+              disabled={nbSelection < MIN_GROUP}
+              title={nbSelection < MIN_GROUP ? 'Sélectionnez au moins deux cartes' : 'Regrouper les cartes sélectionnées'}
+              data-cartes-regrouper
+              className="button-ghost gap-1.5 text-xs"
+            >
+              <Combine size={14} />
+              Regrouper
+            </button>
+          )}
+          {onDissocier && (
+            <button
+              type="button"
+              onClick={onDissocier}
+              disabled={!selectionGroupee}
+              title={selectionGroupee ? 'Séparer les cartes de leur groupe' : 'Sélectionnez une carte d’un groupe'}
+              data-cartes-dissocier
+              className="button-ghost gap-1.5 text-xs"
+            >
+              <Ungroup size={14} />
+              Dissocier
+            </button>
+          )}
+        </div>
+      )}
+      {blocs.map((b, k) => {
+        const membres = b.cardIds.map((id) => parId.get(id)!).filter(Boolean);
+        if (!b.groupId) return rendreCarte(membres[0], { id: b.id, k });
+        return (
+          <div
+            key={b.id}
+            data-carte-groupe={b.groupId}
+            data-bloc={b.id}
+            className="space-y-2 rounded-xl border border-studiio-primary/40 bg-studiio-primary/5 p-2"
+          >
+            <div className="flex items-center gap-2 px-1 text-[10px] uppercase tracking-wider text-gray-400">
+              <Combine size={12} className="text-studiio-primary" />
+              <span className="flex-1">Groupe · {membres.length} cartes</span>
+              {fleches(b.id, k, 'le groupe')}
+            </div>
+            {membres.map((c) => rendreCarte(c, null))}
+          </div>
+        );
+      })}
       {onAdd && (
         <button
           type="button"

@@ -7,6 +7,7 @@ import {
 import OvaleVisage from '@/components/avatar/studio/OvaleVisage';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import CurseurLissage from '@/components/avatar/studio/CurseurLissage';
+import { dessinerApercuLisse } from '@/lib/avatar/lissage-apercu';
 import { detailEnvoi, envoyerFormulaire, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { EXIGENCES_SOURCE_VIDEO, formaterDuree } from '@/lib/avatar/capture';
 import {
@@ -284,6 +285,25 @@ export default function PreparationSource(props: {
 
   const filtreApres = filtreCssApercu(amelioration);
 
+  // ── Lissage : aperçu EN DIRECT sur l'IMAGE COURANTE de la vidéo ─────────
+  // Même filtre que ffmpeg, à la taille affichée, recalculé quand le curseur
+  // bouge ou qu'on se déplace dans la vidéo. Rien n'est transcodé ici : le
+  // vrai fichier n'est produit qu'à « Prévisualiser ». Masqué pendant la lecture.
+  const toileLissage = useRef<HTMLCanvasElement | null>(null);
+  const [imageLisse, setImageLisse] = useState(false);
+  const lissageCourant = amelioration.lissage ?? 0;
+  const redessinerLissage = useCallback(() => {
+    const v = video.current; const t = toileLissage.current;
+    if (!v || !t || v.readyState < 2) { setImageLisse(false); return; }
+    setImageLisse(dessinerApercuLisse(t, v, v.videoWidth, v.videoHeight, lissageCourant));
+  }, [lissageCourant]);
+  useEffect(() => {
+    if (section !== 'ameliorer') return;
+    const id = requestAnimationFrame(redessinerLissage);
+    return () => cancelAnimationFrame(id);
+  }, [section, redessinerLissage, temps]);
+  const apercuLissageVisible = section === 'ameliorer' && !comparer && !lecture && imageLisse && lissageCourant > 0;
+
   return (
     <div data-preparation-source={etape} className="card-base space-y-4 p-4 sm:p-5 max-w-full overflow-hidden">
       <div className="flex items-center justify-between gap-3">
@@ -352,8 +372,20 @@ export default function PreparationSource(props: {
                 preload="auto"
                 onTimeUpdate={surTemps}
                 onPause={() => setLecture(false)}
+                onSeeked={() => { if (section === 'ameliorer') redessinerLissage(); }}
+                onLoadedData={() => { if (section === 'ameliorer') redessinerLissage(); }}
                 style={styleVideo(comparer ? 'none' : filtreApres)}
               />
+            )}
+            {/* Aperçu du lissage sur l'image courante, posé exactement sur la vidéo (même rotation). */}
+            <canvas
+              ref={toileLissage}
+              data-preparation-lissage-direct={apercuLissageVisible ? 'visible' : 'masque'}
+              aria-label={`Aperçu du lissage à ${lissageCourant} % sur l’image courante`}
+              style={{ ...styleVideo(filtreApres), display: apercuLissageVisible ? 'block' : 'none' }}
+            />
+            {apercuLissageVisible && (
+              <span className="pointer-events-none absolute right-2 bottom-2 rounded-full bg-purple-600/80 px-2 py-0.5 text-[10px] text-white">Aperçu — lissage {lissageCourant} %</span>
             )}
             {comparer && (
               <>

@@ -37,6 +37,7 @@ import {
   type TransitionStyle,
 } from '@/lib/video-composer';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
+import { recadragesRushAvecHeritage } from '@/lib/creer/recadrage-rush';
 import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan } from '@/lib/creer/multi-rush';
 import {
   elementsLibresDepuisMetadata,
@@ -265,6 +266,12 @@ export function optionsRenduDepuisMetadata(
   }
   const recadrage = recadrageValide(meta.posterTransform);
   if (recadrage) fidelite.posterTransform = recadrage;
+  // Recadrage PAR RUSH (clé = URL) : le MÊME que l'aperçu et l'export
+  // d'origine, rush par rush — mono-rush, multi-rush et plan de montage.
+  // `rushTransforms` fait foi ; sans elle, l'ancien `rushTransform` unique ne
+  // vaut que pour le rush principal (`rushUrls[0]`), jamais pour les autres.
+  const recadragesRush = recadragesRushAvecHeritage(meta.rushTransforms, meta.rushTransform, meta.rushUrls?.[0] || null);
+  if (Object.keys(recadragesRush).length > 0) fidelite.rushTransforms = recadragesRush;
   const fonds = fondsVersCompositeur(fondsPourMetadata(meta.seqBackgrounds));
   if (fonds) fidelite.sequenceBackgrounds = fonds;
 

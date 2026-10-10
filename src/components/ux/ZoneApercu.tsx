@@ -36,6 +36,8 @@ export interface ZoneApercuProps {
   children?: ReactNode;
   /** Ratio du cadre vide/chargement (ex. '9 / 16'). */
   ratio?: string;
+  /** Contenu de l'en-tête À LA PLACE du titre (ex. des onglets) — même hauteur, aucune ligne en plus. */
+  entete?: ReactNode;
   className?: string;
 }
 
@@ -51,7 +53,7 @@ export function ratioEnVariables(ratio: string): Record<'--apercu-w' | '--apercu
   return { '--apercu-w': m ? m[1] : '9', '--apercu-h': m ? m[2] : '16' };
 }
 
-export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = '9 / 16', className = '' }: ZoneApercuProps) {
+export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = '9 / 16', className = '', entete }: ZoneApercuProps) {
   // Le cadre tient entierement dans la fenetre (voir `.apercu-cadre`, globals.css).
   const cadre = { aspectRatio: ratio, ...ratioEnVariables(ratio) } as React.CSSProperties;
   return (
@@ -59,7 +61,7 @@ export default function ZoneApercu({ titre = 'Aperçu', etat, children, ratio = 
       {/* Même en-tête que le panneau d'aperçu de Créer : libellé discret en capitales. */}
       <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500" data-apercu-titre>
         <MonitorPlay className="w-4 h-4" aria-hidden />
-        {titre}
+        {entete ?? titre}
       </h2>
 
       {etat.statut === 'pret' ? (
