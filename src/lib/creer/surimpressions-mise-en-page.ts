@@ -86,9 +86,20 @@ export function miseEnPageSurimpression(
   options: { ctaBande?: BandeCta | null } = {},
 ): MiseEnPageSurimpression | null {
   if (profil !== 'CARDIO_DANCE' && profil !== 'EVENT_IMMERSIVE') return null;
+  return miseEnPageDuProfil(profil, options);
+}
+
+/**
+ * La mise en page d'un profil, SANS la question « ce profil passe-t-il en
+ * surimpression ? » (celle de `miseEnPageSurimpression`, qui reste la porte
+ * de Créer). Les cartes suivent la position éditoriale du profil
+ * (`TEXTES_PROFILS`) : bas-gauche → la boîte `DYNAMIQUE`, sinon le centre. Pur.
+ */
+function miseEnPageDuProfil(profil: string | null | undefined, options: { ctaBande?: BandeCta | null }): MiseEnPageSurimpression {
+  const regle = (TEXTES_PROFILS as Record<string, { cartes: { position: string } } | undefined>)[profil ?? ''] ?? TEXTES_PROFILS.STANDARD;
   // La règle éditoriale (`TEXTES_PROFILS`) dit « cartes en bas-gauche » :
   // la boîte ci-dessus en est la traduction ; un autre réglage = autre boîte.
-  const base = TEXTES_PROFILS[profil].cartes.position === 'bas-gauche' ? DYNAMIQUE : { ...DYNAMIQUE, carte: { x: 13, y: 40, w: 74, h: 22 } };
+  const base = regle.cartes.position === 'bas-gauche' ? DYNAMIQUE : { ...DYNAMIQUE, carte: { x: 13, y: 40, w: 74, h: 22 } };
   // Sans mesure : en bas, comme avant.
   return options.ctaBande ? { ...base, ctaPos: { x: 50, y: CTA_Y[options.ctaBande] } } : base;
 }
@@ -192,12 +203,20 @@ export interface DesignSurimpression {
  * Applique la mise en page au design d'un montage en surimpression. Les
  * échelles choisies par l'utilisateur sont MULTIPLIÉES (jamais écrasées).
  * La carte est rendue seule (`c0`) : une seule boîte suffit.
+ *
+ * ⚠️ APPELÉE SEULEMENT QUAND IL Y A DES SURIMPRESSIONS (Autopilote,
+ * `if (overlays)`). Elles existent aussi hors profils dynamiques : l'AVATAR
+ * passe toujours ses textes en surimpression, quel que soit le profil du
+ * thème (tutoriel, standard…). Sans mise en page, ces montages gardaient
+ * les positions plein écran — cartes en bandeau minuscule au milieu de
+ * l'image (texte ≈ 10 px, contraste < 3:1 mesuré au rendu réel) et CTA à
+ * 92 %, sous l'interface des réseaux. La mise en page du profil s'applique
+ * donc toujours ici.
  */
 export function appliquerMiseEnPageSurimpression<T extends object>(
   design: T, profil: string | null | undefined, options: { ctaBande?: BandeCta | null } = {},
 ): T {
-  const m = miseEnPageSurimpression(profil, options);
-  if (!m) return design;
+  const m = miseEnPageDuProfil(profil, options);
   const d = design as DesignSurimpression;
   // Accroche bornée en hauteur (#502) — la MÊME règle que Créer.
   const accroche = ajusterAccroche({
