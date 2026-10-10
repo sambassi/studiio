@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Mic, Pencil, Play, Plus, Trash2, Check, X } from 'lucide-react';
+import { Loader2, Mic, Pencil, Play, Plus, Trash2, Check, X, Volume2 } from 'lucide-react';
 import {
   ajouterPrononciation, modifierPrononciation, supprimerPrononciation, scriptParle,
   MESSAGES_PRONONCIATION, type Prononciation,
 } from '@/lib/voice/prononciations';
+import { MAX_CARACTERES_PREECOUTE, MESSAGE_TROP_D_ECOUTES } from '@/lib/voice/preecoute';
 
 /**
  * « Ma voix & prononciations » — l'écran ne décide rien, il affiche ce que
@@ -17,7 +18,12 @@ import {
  *   - l'aperçu TEXTE AFFICHÉ / SERA PRONONCÉ, par la même fonction commune
  *     que le serveur (`scriptParle`) ;
  *   - « Écouter ma voix » : un vrai audio, ou l'état « pas encore
- *     disponible » — jamais une voix générique, jamais un faux son.
+ *     disponible » — jamais une voix générique, jamais un faux son ;
+ *   - l'icône haut-parleur de chaque prononciation : le serveur dit CE mot
+ *     (≈ 5 s au plus), l'écran n'envoie que `{ affiche }`. Lecture sans
+ *     lecteur visible, une seule à la fois, sans téléchargement.
+ * Les deux écoutes sont des pré-écoutes gratuites et courtes : la borne
+ * (≈ 5 s de texte dit) est appliquée par le serveur, jamais crue d'ici.
  */
 
 interface VoixPersonnelle { id: string; nom: string; fournisseur: string; langue: string | null; creeeLe: string; utilisable: boolean }
@@ -44,6 +50,21 @@ export default function MaVoixPanel() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [spokenJoue, setSpokenJoue] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [ligneEnCours, setLigneEnCours] = useState<string | null>(null);
+  const [erreurLigne, setErreurLigne] = useState<{ affiche: string; message: string } | null>(null);
+  const lectureLigneRef = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
+
+  /** Arrête et libère la lecture d'une ligne en cours — une seule à la fois. */
+  const arreterLectureLigne = useCallback(() => {
+    const l = lectureLigneRef.current;
+    if (!l) return;
+    lectureLigneRef.current = null;
+    try { l.audio.pause(); } catch { /* lecture déjà arrêtée */ }
+    URL.revokeObjectURL(l.url);
+  }, []);
+  useEffect(() => () => arreterLectureLigne(), [arreterLectureLigne]);
+  // L'URL de l'écoute précédente est libérée dès qu'elle est remplacée, et au démontage.
+  useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
 
   const charger = useCallback(async () => {
     try {
@@ -66,6 +87,8 @@ export default function MaVoixPanel() {
 
   const prononciations = profil?.prononciations ?? [];
   const spoken = useMemo(() => scriptParle(texte, prononciations), [texte, prononciations]);
+  // Indicatif seulement : le serveur refuse de lui-même au-delà de la borne.
+  const spokenTropLong = spoken.length > MAX_CARACTERES_PREECOUTE;
 
   const enregistrerListe = async (liste: Prononciation[]) => {
     setErreur(null);
@@ -103,8 +126,37 @@ export default function MaVoixPanel() {
     await charger();
   };
 
+  const ecouterPrononciation = async (affiche: string) => {
+    if (ligneEnCours) return;
+    arreterLectureLigne();
+    audioRef.current?.pause();
+    setErreurLigne(null); setLigneEnCours(affiche);
+    try {
+      // Rien d'autre que l'entrée : le serveur fabrique lui-même le mini-texte.
+      const res = await fetch('/api/voice/prononciations/ecoute', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ affiche }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        const message = res.status === 429 ? MESSAGE_TROP_D_ECOUTES : (json.error || 'L’écoute a échoué.');
+        setErreurLigne({ affiche, message });
+        return;
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const audio = new Audio(url);
+      lectureLigneRef.current = { audio, url };
+      audio.onended = () => { if (lectureLigneRef.current?.url === url) arreterLectureLigne(); };
+      await audio.play().catch(() => { /* lecture refusée par le navigateur : rien à jouer */ });
+    } catch {
+      setErreurLigne({ affiche, message: 'L’écoute a échoué.' });
+    } finally {
+      setLigneEnCours(null);
+    }
+  };
+
   const ecouter = async () => {
     if (!profil?.ecouteDisponible || ecouteEnCours) return;
+    arreterLectureLigne();
     setErreur(null); setNotice(null); setEcouteEnCours(true);
     try {
       const res = await fetch('/api/voice/ecoute', {
@@ -112,11 +164,10 @@ export default function MaVoixPanel() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        setErreur(json.error || 'L’écoute a échoué.');
+        setErreur(res.status === 429 ? MESSAGE_TROP_D_ECOUTES : (json.error || 'L’écoute a échoué.'));
         return;
       }
       const blob = await res.blob();
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
       const url = URL.createObjectURL(blob);
       setAudioUrl(url);
       const dit = res.headers.get('X-Studiio-Spoken');
@@ -174,12 +225,30 @@ export default function MaVoixPanel() {
         <ul data-prononciations className="space-y-2">
           {prononciations.length === 0 && <li className="text-sm text-gray-500">Aucune prononciation personnalisée.</li>}
           {prononciations.map((p) => (
-            <li key={p.affiche} data-prononciation={p.affiche} className="flex items-center justify-between gap-3 text-sm rounded-lg bg-white/5 px-3 py-2">
-              <span><span className="font-medium">{p.affiche}</span> <span className="text-gray-400">→</span> {p.prononce}</span>
+            <li key={p.affiche} data-prononciation={p.affiche} className="text-sm rounded-lg bg-white/5 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-prononciation-ecouter={p.affiche}
+                  aria-label={`Écouter « ${p.affiche} »`}
+                  title={`Écouter « ${p.affiche} »`}
+                  onClick={() => void ecouterPrononciation(p.affiche)}
+                  disabled={ligneEnCours !== null}
+                  className="text-gray-400 hover:text-white disabled:opacity-40"
+                >
+                  {ligneEnCours === p.affiche ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}
+                </button>
+                <span><span className="font-medium">{p.affiche}</span> <span className="text-gray-400">→</span> {p.prononce}</span>
+              </span>
               <span className="flex items-center gap-2">
                 <button data-prononciation-modifier={p.affiche} onClick={() => setBrouillon({ affiche: p.affiche, prononce: p.prononce, origine: p.affiche })} className="text-gray-400 hover:text-white flex items-center gap-1 text-xs"><Pencil className="w-3.5 h-3.5" /> Modifier</button>
                 <button data-prononciation-supprimer={p.affiche} onClick={() => void supprimer(p.affiche)} className="text-gray-400 hover:text-red-300 flex items-center gap-1 text-xs"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
               </span>
+              </div>
+              {erreurLigne?.affiche === p.affiche && (
+                <div data-prononciation-erreur={p.affiche} className="mt-1 text-xs text-red-200">{erreurLigne.message}</div>
+              )}
             </li>
           ))}
         </ul>
@@ -207,7 +276,8 @@ export default function MaVoixPanel() {
         <textarea
           data-apercu-texte
           value={texte}
-          onChange={(e) => setTexte(e.target.value.slice(0, 600))}
+          onChange={(e) => setTexte(e.target.value.slice(0, MAX_CARACTERES_PREECOUTE))}
+          maxLength={MAX_CARACTERES_PREECOUTE}
           rows={2}
           className="w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white"
         />
@@ -225,12 +295,16 @@ export default function MaVoixPanel() {
         {/* ── ÉCOUTER — vrai audio ou état indisponible, jamais un faux son ── */}
         {profil.ecouteDisponible ? (
           <div className="space-y-2">
-            <button data-ecouter onClick={() => void ecouter()} disabled={ecouteEnCours || !texte.trim()} className="button-primary flex items-center gap-2 disabled:opacity-40">
+            <div data-preecoute-indice className="text-xs text-gray-400">Pré-écoute gratuite : environ 5 secondes ({spoken.length}/{MAX_CARACTERES_PREECOUTE} caractères prononcés).</div>
+            {spokenTropLong && (
+              <div data-preecoute-trop-long className="text-xs text-amber-200">Le texte prononcé dépasse la pré-écoute gratuite : raccourcissez-le.</div>
+            )}
+            <button data-ecouter onClick={() => void ecouter()} disabled={ecouteEnCours || !texte.trim() || spokenTropLong} className="button-primary flex items-center gap-2 disabled:opacity-40">
               {ecouteEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Écouter ma voix
             </button>
             {audioUrl && (
               <div className="space-y-1">
-                <audio data-ecoute-audio ref={audioRef} src={audioUrl} controls autoPlay className="w-full" />
+                <audio data-ecoute-audio ref={audioRef} src={audioUrl} controls controlsList="nodownload" autoPlay onPlay={arreterLectureLigne} className="w-full" />
                 {spokenJoue && <div className="text-xs text-gray-400">Texte prononcé : « {spokenJoue} »</div>}
               </div>
             )}
