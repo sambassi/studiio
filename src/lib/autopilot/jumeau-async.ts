@@ -41,6 +41,18 @@ import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-ju
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
 import { notifyOnce } from '@/lib/notifications/store';
+import { mediasDesSources, sourcesEffectives } from '@/lib/autopilot/sources';
+
+/**
+ * L'avatar sera-t-il monté AVEC d'autres sources (rushes personnels, stock) ?
+ * Seulement quand la clé `sources` est réglée : sans elle, le montage avatar
+ * d'avant (avatar seul) reste à l'identique. Pur.
+ */
+export function avatarAvecAutresSources(config: AutopilotConfig): boolean {
+  if (!sourcesEffectives(config).explicite) return false;
+  const m = mediasDesSources(config);
+  return m.rushesPersonnels.length + m.videosStock.length + m.photosStock.length > 0;
+}
 
 /** Format vertical de l'Autopilote — la génération du jumeau le suit. */
 const RATIO_AUTOPILOTE = '9:16';
@@ -189,7 +201,13 @@ export async function lancerJumeauMontage(input: {
   // RENDUE, pour qu'un passage ultérieur puisse réessayer ce créneau.
   let gen: Awaited<ReturnType<typeof genererVideoJumeau>>;
   try {
-    gen = await genererVideoJumeau({ userId: input.userId, textes: [script], aspectRatio: RATIO_AUTOPILOTE, avatarId: input.config.jumeauAvatarId ?? null });
+    gen = await genererVideoJumeau({
+      userId: input.userId, textes: [script], aspectRatio: RATIO_AUTOPILOTE, avatarId: input.config.jumeauAvatarId ?? null,
+      // MULTI-SOURCES : l'avatar alterne avec des plans plein cadre (rushes,
+      // stock) — son fichier doit REMPLIR le 9:16 (pas de bandes), comme Créer
+      // (#540). Avatar seul : inchangé, le fournisseur choisit.
+      ...(avatarAvecAutresSources(input.config) ? { cadrage: 'remplir' as const } : {}),
+    });
   } catch (e) {
     await libererReservation(attenteId);
     const message = e instanceof Error ? e.message : String(e);

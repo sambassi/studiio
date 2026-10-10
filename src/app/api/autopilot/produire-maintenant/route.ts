@@ -10,6 +10,7 @@ import {
   produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
+import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib/autopilot/sources';
 import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
 
 /**
@@ -140,9 +141,11 @@ export async function POST() {
     const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
 
     // ── Refus SANS DÉBIT ────────────────────────────────────────────────
-    // Le jumeau tient la séquence « Vidéo » : un montage avec jumeau n'a PAS
-    // besoin de rush. Le refus « sans rush » ne vaut donc que sans jumeau.
-    if (!config.jumeauAvatar && config.rushUrls.length === 0) {
+    // MULTI-SOURCES : le refus ne vaut que si AUCUNE source visuelle n'existe —
+    // calculé ici, depuis la configuration (rushes personnels selon `actives`,
+    // avatar actif, stock retenu, vidéos stock importées). Le jumeau tient la
+    // séquence « Vidéo » à lui seul ; sa disponibilité est vérifiée à son lancement.
+    if (!aUneSourceVisuelle(etatSourcesServeur(config))) {
       return NextResponse.json(
         { success: false, error: 'Aucun rush dans la banque : ajoutez au moins une vidéo.', code: 'sans-rush' },
         { status: 422 },
@@ -214,7 +217,7 @@ export async function POST() {
     // On LANCE la génération et on met le montage en file — le finaliseur (cron)
     // le rendra dès que la vidéo est prête. Le montage arrive dans le Calendrier
     // quelques minutes plus tard, même si l'onglet est fermé.
-    if (configBrouillon.jumeauAvatar) {
+    if (avatarActifConfig(configBrouillon)) {
       const lancement = await lancerJumeauMontage({
         userId,
         config: configBrouillon,

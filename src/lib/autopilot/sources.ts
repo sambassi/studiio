@@ -139,3 +139,64 @@ export function compterSources(rushUrls: readonly string[], c: ConfigSources) {
     unsplashPhotos: stockActif.filter((m) => m.provider === 'unsplash').length,
   };
 }
+
+// ── Lecture SERVEUR des sources d'une configuration (moteur, cron, routes) ──
+
+/** Le strict nécessaire d'une `AutopilotConfig` (sans dépendre de `rules.ts`). */
+export interface ConfigPourSources {
+  rushUrls: readonly string[];
+  jumeauAvatar: boolean;
+  designStyle?: { sources?: ConfigSources } | null;
+}
+
+/**
+ * Les sources de la configuration : la clé `sources` si l'utilisateur l'a
+ * réglée (`explicite`), sinon `sourcesParDefaut` — le comportement d'avant.
+ */
+export function sourcesEffectives(c: ConfigPourSources): { sources: ConfigSources; explicite: boolean } {
+  const s = c.designStyle?.sources;
+  return s ? { sources: s, explicite: true } : { sources: sourcesParDefaut(c.jumeauAvatar), explicite: false };
+}
+
+/**
+ * L'avatar est-il monté ? `jumeau_avatar` reste la colonne de vérité ; la clé
+ * `sources` peut seulement l'éteindre. Sans clé : `jumeauAvatar`, comme avant.
+ */
+export function avatarActifConfig(c: ConfigPourSources): boolean {
+  return !!c.jumeauAvatar && (c.designStyle?.sources?.actives.avatar ?? true);
+}
+
+/**
+ * Les médias réellement utilisables, source par source, `actives` respectés.
+ * Sans clé `sources` : toute la banque compte comme rushes personnels — la
+ * règle d'avant, à l'identique (aucun stock).
+ */
+export function mediasDesSources(c: ConfigPourSources): { rushesPersonnels: string[]; videosStock: string[]; photosStock: string[] } {
+  const { sources, explicite } = sourcesEffectives(c);
+  const banque = Array.from(new Set((c.rushUrls ?? []).filter((u) => typeof u === 'string' && u)));
+  if (!explicite) return { rushesPersonnels: banque, videosStock: [], photosStock: [] };
+  const rushesPersonnels = sources.actives.rushes ? banque.filter((u) => !estRushStock(u)) : [];
+  if (!sources.actives.stock) return { rushesPersonnels, videosStock: [], photosStock: [] };
+  const videosStock = Array.from(new Set([
+    ...banque.filter(estRushStock),
+    ...sources.stock.filter((m) => m.type === 'video').map((m) => m.url),
+  ]));
+  const photosStock = sources.stock.filter((m) => m.type === 'photo').map((m) => m.url).filter((u) => !videosStock.includes(u));
+  return { rushesPersonnels, videosStock, photosStock };
+}
+
+/**
+ * L'état des sources, calculé CÔTÉ SERVEUR depuis la configuration — jamais
+ * cru du navigateur. `avatarPret` est supposé vrai : la disponibilité réelle
+ * du jumeau est vérifiée plus tard par son propre chemin (lancement).
+ */
+export function etatSourcesServeur(c: ConfigPourSources): EtatSourcesVisuelles {
+  const m = mediasDesSources(c);
+  return {
+    rushesPersonnels: m.rushesPersonnels.length,
+    avatarActif: avatarActifConfig(c),
+    avatarPret: true,
+    bibliotheque: 0,
+    stockRetenus: m.videosStock.length + m.photosStock.length,
+  };
+}

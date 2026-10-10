@@ -206,8 +206,9 @@ describe('Moteur — jumeau sans rush (existant)', () => {
   });
   it('le cron autorise 0 rush SEULEMENT avec le jumeau, et facture la même somme que le devis', () => {
     const cron = readFileSync(resolve(__dirname, '../app/api/cron/autopilot/route.ts'), 'utf-8');
-    expect(cron).toContain('allowWithoutRush: config.jumeauAvatar');
-    expect(cron).toContain("(config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu)");
+    // Multi-sources : l'avatar ACTIF (`jumeau_avatar`, que la clé `sources` peut éteindre).
+    expect(cron).toContain('allowWithoutRush: avatarActifConfig(config)');
+    expect(cron).toContain("(avatarActifConfig(config) ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu)");
     expect(cron).toContain('+ await coutAfficheDuDevis(config)');
   });
 });

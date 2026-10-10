@@ -10,6 +10,7 @@
  * prochaine génération.
  */
 
+import { aUneSourceVisuelle, etatSourcesServeur } from '@/lib/autopilot/sources';
 import {
   sanitizeDesignStyle, type AutopilotDesignStyle,
 } from '@/lib/autopilot/textStyle';
@@ -746,7 +747,12 @@ export function decideRun(input: {
   const abordables = Math.floor(disponible / cout);
   if (abordables < 1) return { run: false, reason: 'credits' };
 
-  if (!config.rushUrls.length && !input.allowWithoutRush) {
+  // MULTI-SOURCES : plus de « au moins un rush » global — au moins UNE source
+  // visuelle exploitable, calculée depuis la configuration (rushes personnels
+  // selon `actives`, stock retenu, vidéos stock importées). L'avatar reste
+  // décidé par l'appelant (`allowWithoutRush`), qui en vérifie la disponibilité.
+  // Sans clé `sources` : la banque entière compte, exactement comme avant.
+  if (!aUneSourceVisuelle({ ...etatSourcesServeur(config), avatarActif: false }) && !input.allowWithoutRush) {
     return { run: false, reason: 'sans-rush' };
   }
 

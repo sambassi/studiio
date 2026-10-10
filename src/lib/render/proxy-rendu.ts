@@ -15,6 +15,7 @@
 import { createHash } from 'crypto';
 import { spawn } from 'child_process';
 import { objetDeUrlPublique, urlDeLecture } from '@/lib/creer/analyse-rush-serveur';
+import { estUrlImage } from '@/lib/creer/multi-rush';
 
 /** Côté court du proxy et cadence : ceux de la sortie 1080×1920 à 30 i/s. */
 export const PROXY_COTE_COURT = 1080;
@@ -78,6 +79,8 @@ export function argumentsProxy(entree: string, sortie: string): string[] {
   ];
 }
 
+export { estUrlImage };
+
 const enCours = new Map<string, Promise<string>>();
 
 export interface ResultatProxy { url: string; proxy: boolean; cree: boolean }
@@ -87,6 +90,8 @@ export interface ResultatProxy { url: string; proxy: boolean; cree: boolean }
  * l'URL d'origine s'il n'en a pas besoin — ou si quoi que ce soit échoue.
  */
 export async function urlRenduPourRush(url: string): Promise<ResultatProxy> {
+  // Une PHOTO (plan Ken Burns) n'a ni cadence ni proxy : jamais de `parseMedia`.
+  if (estUrlImage(url)) return { url, proxy: false, cree: false };
   const objet = objetDeUrlPublique(url);
   if (!objet) return { url, proxy: false, cree: false };
   try {
