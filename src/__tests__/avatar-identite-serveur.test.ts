@@ -156,7 +156,8 @@ describe('Autopilote et Créer — l’avatar courant relu à chaque génératio
   });
   it('⚠️ la génération du jumeau (Créer comme Autopilote) passe par resoudreJumeauDuCompte et épingle avatar + version', () => {
     const moteur = lire('lib/avatar/moteur-jumeau.ts');
-    expect(moteur).toContain('const jumeau = await resoudreJumeauDuCompte(args.userId, { avatarId: args.avatarId ?? null });');
+    // + la voix choisie pour CETTE génération (Mon avatar) ; absente = voix enregistrée.
+    expect(moteur).toContain('const jumeau = await resoudreJumeauDuCompte(args.userId, { avatarId: args.avatarId ?? null, voixId: args.voixId ?? null });');
     expect(moteur).toMatch(/user_avatar_id: avatar\.id, avatar_version: avatar\.version/);
     expect(lire('lib/autopilot/jumeau-async.ts')).toContain("import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';");
   });

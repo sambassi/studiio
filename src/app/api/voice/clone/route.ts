@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { motifLisibleDuFournisseur } from '@/lib/avatar/fournisseurs';
 import { ELEVENLABS_VOICE_PREFIX } from '@/lib/types/voice';
+import { voixUtilisable } from '@/lib/voice/profil';
 import {
   validateCloneRequest,
   voiceStoreReady,
@@ -237,6 +238,8 @@ export async function GET() {
         // qu'aucun identifiant fournisseur nu ne circule.
         accountVoiceId: v.id,
         name: v.name,
+        // Prête à servir (fournisseur câblé + identifiant valide) — même règle que le serveur.
+        utilisable: voixUtilisable(v),
         lang: v.lang,
         createdAt: v.created_at,
       })),

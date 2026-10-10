@@ -24,11 +24,16 @@ import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneA
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
+import { lireEtatJumeau, genererEtAttendreVideoJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 import { CLASSE_LECTEUR_GENERATION } from '@/lib/ui/lecteur-generation';
 
 const AVATAR_VIDEO_COST = 40;
+/** Valeur du sélecteur pour une voix clonée : `clone:<user_voices.id>` — jamais un identifiant fournisseur. */
+const PREFIXE_VOIX_CLONEE = 'clone:';
+const VOIX_CLONEE_INDISPONIBLE = 'Votre voix clonée n’est pas disponible pour le moment. Choisissez une autre voix.';
+const VOIX_CLONEE_ILLISIBLE = 'Votre voix clonée n’a pas pu être vérifiée. Réessayez, ou choisissez une autre voix.';
 const MAX_SCRIPT_CHARS = 1200;
 /** Limite imposée par HeyGen sur l'envoi d'un asset. */
 const MAX_VIDEO_MB = 32;
@@ -109,6 +114,19 @@ export default function AvatarPage() {
   // Génération
   const [script, setScript] = useState('');
   const [voiceId, setVoiceId] = useState('');
+  /**
+   * MES VOIX — les voix clonées du compte (`GET /api/voice/clone`), chacune
+   * PRÊTE ou non (`utilisable`, même règle que le serveur), et l'état du
+   * moteur du jumeau (`GET /api/creer/jumeau`). Choisie, une voix fait passer
+   * CETTE génération par le moteur du jumeau de Créer
+   * (`POST /api/creer/jumeau/generer` + `voixId` : synthèse avec CETTE voix,
+   * puis l'avatar animé sur cet audio). C'est un choix PONCTUEL : la voix
+   * enregistrée du compte (Créer, Autopilote) n'est jamais modifiée.
+   */
+  const [etatJumeau, setEtatJumeau] = useState<EtatJumeau | null>(null);
+  const [voixClonees, setVoixClonees] = useState<Array<{ id: string; nom: string; utilisable: boolean }>>([]);
+  /** Le dernier refus du serveur pour la voix clonée choisie — dit tel quel, jamais remplacé par une autre voix. */
+  const [refusVoixClonee, setRefusVoixClonee] = useState<string | null>(null);
   const [ratio, setRatio] = useState<'9:16' | '16:9' | '1:1'>('9:16');
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -627,6 +645,42 @@ export default function AvatarPage() {
     setProgress(null);
     setGenStatus('pending');
 
+    // MA voix (voix clonée) : le moteur du jumeau de Créer, tel quel.
+    if (voiceId.startsWith(PREFIXE_VOIX_CLONEE)) {
+      const choisie = voiceId.slice(PREFIXE_VOIX_CLONEE.length);
+      // Vérifiée MAINTENANT par le serveur, AVEC cette voix : du compte, prête,
+      // jumeau prêt. Sinon, on le dit ; jamais une autre voix en silence.
+      const etat = await lireEtatJumeau(fetch, avatar.id, choisie);
+      if (demonteRef.current) return;
+      const refus = !etat ? VOIX_CLONEE_ILLISIBLE
+        : !etat.pret ? (etat.message || VOIX_CLONEE_INDISPONIBLE)
+          : etat.jumeau && etat.jumeau.voix.id !== choisie ? VOIX_CLONEE_INDISPONIBLE
+            : !etat.moteurDisponible ? (etat.messageMoteur || VOIX_CLONEE_INDISPONIBLE)
+              : null;
+      if (refus) {
+        // La voix n'est plus utilisable : elle est marquée comme telle, la sélection reste affichée.
+        setVoixClonees((liste) => liste.map((v) => (v.id === choisie ? { ...v, utilisable: false } : v)));
+        setRefusVoixClonee(refus);
+      }
+      if (refus) {
+        setGenStatus('failed');
+        setError(refus);
+        return;
+      }
+      setGenStatus('processing');
+      try {
+        const { url } = await genererEtAttendreVideoJumeau({ textes: [script.trim()], aspectRatio: ratio, avatarId: avatar.id, voixId: choisie });
+        if (demonteRef.current) return;
+        setVideoUrl(url);
+        setGenStatus('completed');
+      } catch (e) {
+        if (demonteRef.current) return;
+        setGenStatus('failed');
+        setError(e instanceof Error && e.message ? e.message : 'La génération a échoué.');
+      }
+      return;
+    }
+
     try {
       const res = await fetch('/api/avatar/generate', {
         method: 'POST',
@@ -870,6 +924,37 @@ export default function AvatarPage() {
   // UNE seule règle de cadre pour toutes les pages — `.apercu-cadre` (globals.css,
   // posée par ZoneApercu) et UN seul décalage (`--apercu-offset` sur :root) :
   // la carte d'aperçu a ici le même en-tête que celle de Créer, rien à surcharger.
+
+  /** Les voix clonées du compte, et celle que le jumeau utilisera — lues comme Créer, sans fournisseur. */
+  useEffect(() => {
+    if (!avatar?.id || etatEffectif !== 'valide' || viaDid) return;
+    let vivant = true;
+    void (async () => {
+      const [etat, liste] = await Promise.all([
+        lireEtatJumeau(fetch, avatar.id),
+        fetch('/api/voice/clone').then((r) => r.json()).catch(() => null),
+      ]);
+      if (!vivant) return;
+      setEtatJumeau(etat);
+      const voix = Array.isArray(liste?.voices) ? (liste.voices as Array<{ accountVoiceId?: unknown; name?: unknown; utilisable?: unknown }>) : [];
+      setVoixClonees(voix
+        .filter((v) => typeof v.accountVoiceId === 'string' && v.accountVoiceId)
+        .map((v) => ({
+          id: v.accountVoiceId as string,
+          nom: typeof v.name === 'string' && v.name.trim() ? v.name.trim() : 'Ma voix',
+          // Ancienne réponse sans le champ : on ne promet rien, le serveur tranchera au clic.
+          utilisable: v.utilisable !== false,
+        })));
+    })();
+    return () => { vivant = false; };
+  }, [avatar?.id, etatEffectif, viaDid]);
+
+  /** Une voix clonée est sélectionnable si elle est PRÊTE et que le moteur du jumeau tourne (le serveur revérifie au clic). */
+  const moteurJumeauOk = etatJumeau?.moteurDisponible === true;
+  const voixSelectionnable = (v: { utilisable: boolean }) => v.utilisable && moteurJumeauOk;
+  const voixCloneeChoisie = voiceId.startsWith(PREFIXE_VOIX_CLONEE) ? voiceId.slice(PREFIXE_VOIX_CLONEE.length) : null;
+  const voixCloneeChoisieIndisponible = !!voixCloneeChoisie
+    && !voixClonees.some((v) => v.id === voixCloneeChoisie && voixSelectionnable(v));
 
   if (loading) {
     return (
@@ -1273,19 +1358,54 @@ export default function AvatarPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-100 mb-1.5">Voix</label>
                   <select
+                    data-avatar-voix
                     value={voiceId}
-                    onChange={(e) => setVoiceId(e.target.value)}
-                    disabled={voices.length === 0}
+                    onChange={(e) => { setVoiceId(e.target.value); setRefusVoixClonee(null); }}
+                    disabled={voices.length === 0 && voixClonees.length === 0}
                     className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none p-2.5 text-sm text-gray-100 disabled:opacity-50"
                   >
-                    {voices.length === 0 && <option value="">Voix indisponibles</option>}
-                    {voices.map((v) => (
+                    {voices.length === 0 && voixClonees.length === 0 && <option value="">Voix indisponibles</option>}
+                    {/* MA VOIX en premier — seulement si le compte en a une. Toute voix PRÊTE
+                        se choisit ici, pour cette vidéo seulement (la voix enregistrée du
+                        compte, celle de Créer et de l'Autopilote, ne change pas). */}
+                    {voixClonees.length > 0 && (
+                      <optgroup label="Ma voix" data-avatar-voix-groupe="clonees">
+                        {voixClonees.map((v) => {
+                          const ok = voixSelectionnable(v);
+                          return (
+                            <option key={v.id} value={`${PREFIXE_VOIX_CLONEE}${v.id}`} disabled={!ok && voiceId !== `${PREFIXE_VOIX_CLONEE}${v.id}`} data-voix-clonee={v.id}>
+                              {v.nom} — Voix clonée{ok ? '' : v.utilisable ? ' (moteur indisponible)' : ' (pas prête)'}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    )}
+                    {voixClonees.length > 0 && voices.length > 0 ? (
+                      <optgroup label="Voix disponibles" data-avatar-voix-groupe="disponibles">
+                        {voices.map((v) => (
+                          <option key={v.voiceId} value={v.voiceId}>
+                            {v.name}
+                            {v.language ? ` — ${v.language}` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : voices.map((v) => (
                       <option key={v.voiceId} value={v.voiceId}>
                         {v.name}
                         {v.language ? ` — ${v.language}` : ''}
                       </option>
                     ))}
                   </select>
+                  {voixCloneeChoisie && !voixCloneeChoisieIndisponible && (
+                    <span data-voix-clonee-badge className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-studiio-primary/20 text-purple-200 px-2 py-0.5 text-[10px] font-semibold">
+                      <Mic className="w-3 h-3" /> Voix clonée
+                    </span>
+                  )}
+                  {voixCloneeChoisieIndisponible && (
+                    <p data-voix-clonee-indisponible role="alert" className="mt-1.5 text-xs text-amber-300">
+                      {refusVoixClonee || (!moteurJumeauOk && etatJumeau?.messageMoteur) || VOIX_CLONEE_INDISPONIBLE}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-100 mb-1.5">Format</label>
@@ -1311,7 +1431,7 @@ export default function AvatarPage() {
               <div data-avatar-generer className="space-y-3">
               <button
                 onClick={handleGenerate}
-                disabled={!script.trim() || busy}
+                disabled={!script.trim() || busy || voixCloneeChoisieIndisponible}
                 className="w-full button-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {busy ? (

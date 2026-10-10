@@ -292,3 +292,10 @@ describe('Default-safe', () => {
     expect(store).toContain('const STORE_PROBE_TTL_MS = 60_000;');
   });
 });
+
+describe('GET /api/voice/clone — chaque voix dit si elle est PRÊTE', () => {
+  it('`utilisable` vient de la règle du serveur (`voixUtilisable`), jamais d’une supposition', () => {
+    expect(clone).toContain("import { voixUtilisable } from '@/lib/voice/profil';");
+    expect(clone).toContain('utilisable: voixUtilisable(v),');
+  });
+});

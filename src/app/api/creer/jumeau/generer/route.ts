@@ -21,17 +21,20 @@ export async function POST(req: NextRequest) {
   let textes: string[] = [];
   let aspectRatio: string | undefined;
   let avatarId: string | null = null;
+  let voixId: string | null = null;
   let qualite: unknown;
   try {
-    const corps = (await req.json()) as { textes?: unknown; aspectRatio?: unknown; avatarId?: unknown; qualite?: unknown } | null;
+    const corps = (await req.json()) as { textes?: unknown; aspectRatio?: unknown; avatarId?: unknown; voixId?: unknown; qualite?: unknown } | null;
     if (Array.isArray(corps?.textes)) textes = corps!.textes.filter((t): t is string => typeof t === 'string').slice(0, 20);
     if (typeof corps?.aspectRatio === 'string') aspectRatio = corps.aspectRatio;
     // Identité LOGIQUE et QUALITÉ seulement : le fournisseur et le moteur sont décidés par le serveur.
     if (typeof corps?.avatarId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(corps.avatarId)) avatarId = corps.avatarId;
+    // Voix choisie pour CETTE vidéo (`user_voices.id`) : appartenance et état vérifiés par le moteur.
+    if (typeof corps?.voixId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(corps.voixId)) voixId = corps.voixId;
     qualite = corps?.qualite;
   } catch { textes = []; }
 
-  const r = await genererVideoJumeau({ userId: session.user.id, textes, aspectRatio, avatarId, qualite });
+  const r = await genererVideoJumeau({ userId: session.user.id, textes, aspectRatio, avatarId, voixId, qualite });
   if (r.ok) {
     return NextResponse.json({ success: true, data: { generationId: r.generationId, status: r.status, avatarVersion: r.avatarVersion, dejaEnCours: r.dejaEnCours, spoken: r.spoken } });
   }
