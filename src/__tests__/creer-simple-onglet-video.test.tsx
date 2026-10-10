@@ -120,8 +120,10 @@ describe('Rétro-compatibilité', () => {
   it('un onglet devenu impossible ramène à « Tout »', () => {
     // Retirer le rush pendant qu'on est sur « Vidéo » laisserait un aperçu
     // vide sans ce garde-fou, déjà en place.
+    // `ordreApercu` = `activeOrder`, plus « Vidéo » quand l'avatar est choisi
+    // (l'envoi l'active d'office) : l'onglet de l'avatar n'est pas « impossible ».
     expect(wizard).toContain(
-      "if (previewFocus !== 'all' && !activeOrder.includes(previewFocus)) setPreviewFocus('all');",
+      "if (previewFocus !== 'all' && !ordreApercu.includes(previewFocus)) setPreviewFocus('all');",
     );
   });
 
