@@ -193,6 +193,10 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
     expect(lien.rel).toContain('noopener');
     // Explication du manque.
     expect(screen.getAllByText(/tous vos rushes sont déjà utilisés/).length).toBe(2);
+    // Libellés lisibles : jamais l'identifiant interne « plan-2 » à l'écran.
+    expect(document.querySelector('[data-autopilot-stock]')!.textContent).not.toMatch(/plan-\d/);
+    expect(screen.getByText('Plan de développement')).toBeTruthy();
+    expect(screen.getByText('Plan temps fort')).toBeTruthy();
     // Rien d'ajouté sans « Conserver ».
     expect(envois).toEqual([]);
     expect(corpsImport).toEqual([]);
@@ -211,6 +215,8 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
     expect(document.querySelector('[data-autopilot-stock-slot="plan-2"][data-etat="conserve"]')).toBeTruthy();
     // L'autre proposition reste en attente, rien n'est ajouté pour elle.
     expect(document.querySelector('[data-autopilot-stock-slot="plan-3"][data-etat="propose"]')).toBeTruthy();
+    // Le compteur ne compte plus le média conservé (il est déjà dans la banque).
+    expect(screen.getByText('Médias stock proposés : 1')).toBeTruthy();
   });
 
   it('« Supprimer » retire la proposition sans rien enregistrer', async () => {

@@ -62,6 +62,11 @@ function dureeLisible(s?: number): string {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
+/** Nom lisible d'un plan du smart montage (jamais « plan-2 »). */
+function libellePlan(role: string): string {
+  return role === 'HOOK' ? 'Plan d’accroche' : role === 'BUILD' ? 'Plan de développement' : role === 'PEAK' ? 'Plan temps fort' : role === 'FOCUS' ? 'Plan focus' : 'Plan final';
+}
+
 export default function CompleterRushesStock({
   sujet, message, objectif, rushUrls, format = '9:16', accent, onConserver,
 }: {
@@ -221,7 +226,8 @@ export default function CompleterRushesStock({
     );
   }
 
-  const proposes = slots.filter((s) => s.media && s.etat !== 'supprime').length;
+  // « Proposés » = encore en attente de votre choix ; un média conservé est déjà dans la banque.
+  const proposes = slots.filter((s) => s.media && s.etat !== 'supprime' && s.etat !== 'conserve').length;
 
   return (
     <div className="space-y-2" data-autopilot-stock>
@@ -245,15 +251,15 @@ export default function CompleterRushesStock({
           if (s.etat === 'supprime') {
             return (
               <li key={cle} className="text-[11px] text-gray-500" data-autopilot-stock-slot={cle} data-etat="supprime">
-                {cle} : proposition retirée — ce plan reprendra vos rushes.
+                {libellePlan(s.manque.role)} : proposition retirée — ce plan reprendra vos rushes.
               </li>
             );
           }
           return (
             <li key={cle} className="rounded-lg border border-gray-800 bg-gray-900 p-2 space-y-1.5" data-autopilot-stock-slot={cle} data-etat={s.etat}>
               <p className="text-[11px] text-gray-400">
-                <span className="font-medium text-gray-300">{cle}</span> — {s.manque.raison}
-                <span className="block text-[10px] text-gray-500">Thème : {s.manque.theme}</span>
+                <span className="font-medium text-gray-300">{libellePlan(s.manque.role)}</span> — {s.manque.raison}
+                <span className="block text-[10px] text-gray-500">Recherche : {s.manque.searchQueries[0] ?? s.manque.theme}</span>
               </p>
               {s.etat === 'recherche' && (
                 <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
