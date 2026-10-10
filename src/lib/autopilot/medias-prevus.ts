@@ -36,7 +36,11 @@ export const MESSAGES_RUSHES = {
   sansRush: 'Ajoutez au moins un rush pour continuer',
   avatarNonPret: 'Aucun avatar prêt : configurez votre avatar, ou décochez « Faire apparaître mon avatar ».',
   avatarEnVerification: 'Vérification de votre avatar…',
-  avatarSeul: 'Votre vidéo utilisera uniquement votre avatar. Activez “Compléter automatiquement mes rushes” pour ajouter des plans stock.',
+  // Honnête sur le moteur actuel : avec l'avatar, la séquence « Vidéo » EST
+  // l'avatar parlant — des plans stock ne s'y intercalent pas (ils ne servent
+  // que de secours si l'avatar ne peut pas être généré). Ne pas promettre un
+  // montage avatar + stock que le rendu ne fait pas encore.
+  avatarSeul: 'Votre vidéo utilisera uniquement votre avatar.',
 } as const;
 
 /**
