@@ -92,7 +92,11 @@ async function charger(): Promise<ConfigurationTarifs> {
     supabaseAdmin.from('app_settings').select('value').eq('key', CLE_REGLAGE_TARIFS).maybeSingle(),
     supabaseAdmin.from('tarifs_rendu').select('format, credits'),
   ]);
-  if (reglage.error && rendus.error) throw new Error('tarifs illisibles');
+  // Le réglage porte TOUS les prix hors rendus : illisible, il ne doit jamais
+  // être pris pour « vide ». Sinon la lecture servirait les replis comme une
+  // configuration valide (5 s de cache), et `ecrireTarifs` réécrirait ces
+  // replis par-dessus la configuration de l'admin.
+  if (reglage.error) throw new Error('tarifs illisibles');
   const brut = (lireJson(reglage.data?.value) ?? {}) as { prix?: unknown; valeurCreditChf?: unknown; coutsFournisseur?: unknown };
   const prix = normaliserGrille(brut.prix);
   // Les rendus : la table que lit le débit SQL fait foi.
