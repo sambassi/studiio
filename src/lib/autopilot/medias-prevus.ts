@@ -62,11 +62,19 @@ export function etatSourcesVisuelles(
   rushUrls: readonly string[],
   sources: ConfigSources,
   avatarPret: AvatarPret,
+  /**
+   * La clé `designStyle.sources` est-elle ENREGISTRÉE ? Défaut `false` : le
+   * calcul d'avant. Le moteur (`mediasDesSources`) ne monte la banque entière
+   * que SANS clé ; avec une clé et le stock éteint, il écarte les vidéos stock
+   * importées — l'écran doit dire la même chose.
+   */
+  cleEnregistree = false,
 ): EtatMediasPrevus {
   const c = compterSources(rushUrls, sources);
   // Médias déjà importés dans la banque (anciens « Conserver » #541) alors que
-  // la source stock est éteinte : la banque les monte toujours — ils comptent.
-  const bibliotheque = !sources.actives.stock && sources.actives.rushes ? rushUrls.filter(estRushStock).length : 0;
+  // la source stock est éteinte : SANS clé `sources`, la banque les monte
+  // toujours — ils comptent. Avec une clé, « stock éteint » les écarte.
+  const bibliotheque = !cleEnregistree && !sources.actives.stock && sources.actives.rushes ? rushUrls.filter(estRushStock).length : 0;
   return {
     ...c,
     avatarActif: sources.actives.avatar,

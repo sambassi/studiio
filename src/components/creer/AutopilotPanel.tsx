@@ -707,7 +707,8 @@ export default function AutopilotPanel({
    * stock OFF). L'avatar suit TOUJOURS la colonne `jumeauAvatar`.
    */
   const sources = useMemo(() => sourcesEffectives(config), [config]);
-  const etatSources = etatSourcesVisuelles(config.rushUrls, sources, avatarPret);
+  // Clé `sources` enregistrée ou non : la MÊME lecture que le moteur (`mediasDesSources`).
+  const etatSources = etatSourcesVisuelles(config.rushUrls, sources, avatarPret, !!config.designStyle.sources);
   const sourcePossible = aUneSourceVisuelle(etatSources);
   const montageFormat = montageDepuisStyle(config.designStyle)?.format;
   const formatStock: FormatStock = montageFormat === '16:9' || montageFormat === '1:1' ? montageFormat : '9:16';

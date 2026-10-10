@@ -145,15 +145,21 @@ function estHoteStockageStudiio(hote: string): boolean {
   return hote === 'studiio.pro' || hote === 'www.studiio.pro' || (!!app && hote === app);
 }
 
-/** Boucle locale, réseaux privés, lien local, nom sans domaine (service Docker interne). */
-function estHotePrive(hote: string): boolean {
-  const h = hote.replace(/^\[|\]$/g, '').toLowerCase();
+/**
+ * Boucle locale, réseaux privés / réservés, lien local, nom sans domaine
+ * (service Docker interne). Le point final est retiré d'abord (`localhost.`
+ * = `localhost`) ; TOUTE adresse IPv6 littérale est refusée (le stockage
+ * Studiio n'en utilise aucune — `::ffff:7f00:1`, `fe80::…` compris).
+ */
+export function estHotePrive(hote: string): boolean {
+  const h = hote.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.+$/, '');
+  if (!h || h.includes(':')) return true;
   if (!h.includes('.') || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
-  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true;
-  const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h);
+  const m = /^(\d+)\.(\d+)\.(\d+)\.\d+$/.exec(h);
   if (!m) return false;
-  const [x, y] = [Number(m[1]), Number(m[2])];
-  return x === 10 || x === 127 || x === 0 || (x === 169 && y === 254) || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168);
+  const [x, y, z] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  return x === 10 || x === 127 || x === 0 || (x === 169 && y === 254) || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168)
+    || (x === 100 && y >= 64 && y <= 127) || (x === 198 && (y === 18 || y === 19)) || (x === 192 && y === 0 && z === 0) || x >= 224;
 }
 
 export interface EtatSourcesVisuelles {

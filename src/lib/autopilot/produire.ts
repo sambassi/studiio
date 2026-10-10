@@ -25,6 +25,8 @@ import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
 import { avatarActifConfig, mediasDesSources, sourcesEffectives, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
 import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
+import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
+import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -337,9 +339,13 @@ export async function produireUnMontage(input: {
   const sourcesCfg = sourcesEffectives(config);
   const medias = mediasDesSources(config);
   const nbStock = medias.videosStock.length + medias.photosStock.length;
+  // Un plan ENREGISTRÉ par l'utilisateur (gabarit) pilote aussi un montage de
+  // rushes seuls : sans cela, l'ordre et les rushes forcés à l'écran étaient
+  // ignorés par le smart montage. Gabarit vide : le chemin d'avant, à l'octet.
+  const gabaritEnregistre = sourcesCfg.explicite && sourcesCfg.sources.gabarit.length > 0;
   const multiSources = sourcesCfg.explicite && (jumeauActif
     ? medias.rushesPersonnels.length + nbStock > 0
-    : nbStock > 0);
+    : nbStock > 0 || (gabaritEnregistre && medias.rushesPersonnels.length > 0));
   // La banque de rushes PERSONNELS (actives respectés) ; sans clé : la banque entière.
   const banqueRushs: string[] = sourcesCfg.explicite ? medias.rushesPersonnels : config.rushUrls;
 
@@ -538,6 +544,8 @@ export async function produireUnMontage(input: {
   /** Multi-sources : pourquoi ce plan, et les médias stock lâchés (introuvables). */
   let explicationsSources: string[] = [];
   const mediasIgnores: string[] = [];
+  /** Média stock redirigé (vers un hôte AUTORISÉ) → son URL finale : la seule que le rendu reçoit. */
+  const urlsFinalesStock = new Map<string, string>();
   let stockUtilise: MediaStockRetenu[] = [];
   if (multiSources) {
     const t2 = Date.now();
@@ -547,14 +555,23 @@ export async function produireUnMontage(input: {
     // URL hors de notre stockage / des CDN stock, même si la base en contient.
     const videosStock = medias.videosStock.filter((u) => urlStockAutorisee(u, 'video') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
     const photosStock = medias.photosStock.filter((u) => urlStockAutorisee(u, 'photo') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
-    const [presV, presP] = await Promise.all([
-      Promise.all(videosStock.map((u) => rushEncorePresent(u))),
-      Promise.all(photosStock.map((u) => rushEncorePresent(u))),
+    // Sonde SÛRE (`sonde-stock.ts`) : redirections jamais suivies en silence,
+    // chaque saut recontrôlé ; un média qui mène hors liste est LÂCHÉ.
+    const [sondesV, sondesP] = await Promise.all([
+      Promise.all(videosStock.map((u) => sonderMediaStock(u, 'video'))),
+      Promise.all(photosStock.map((u) => sonderMediaStock(u, 'photo'))),
     ]);
-    const videosOk = videosStock.filter((u, i) => presV[i] || (mediasIgnores.push(u), false));
-    const photosOk = photosStock.filter((u, i) => presP[i] || (mediasIgnores.push(u), false));
-    if (mediasIgnores.length) console.warn(`${journal} ${userId} — ${mediasIgnores.length} média(s) stock introuvable(s), ignoré(s)`);
-    const secondesStock = await Promise.all(videosOk.map((u) => probeRushSeconds(u)));
+    const garder = (liste: string[], sondes: Awaited<ReturnType<typeof sonderMediaStock>>[]) => liste.filter((u, i) => {
+      const s = sondes[i];
+      if (!s.ok) { mediasIgnores.push(u); return false; }
+      if (s.url !== u) urlsFinalesStock.set(u, s.url);
+      return true;
+    });
+    const videosOk = garder(videosStock, sondesV);
+    const photosOk = garder(photosStock, sondesP);
+    if (mediasIgnores.length) console.warn(`${journal} ${userId} — ${mediasIgnores.length} média(s) stock introuvable(s) ou refusé(s), ignoré(s)`);
+    // Durées lues sur l'URL FINALE validée — jamais sur la chaîne de redirections.
+    const secondesStock = await Promise.all(videosOk.map((u) => probeRushSeconds(urlsFinalesStock.get(u) ?? u)));
     const rushes = listeRushs.map((u) => ({ url: u, secondes: secondesParRush.has(u) ? secondesParRush.get(u) ?? null : (u === rushUrl ? rushSeconds : null) }));
     const stockVideos = videosOk.map((u, i) => ({ url: u, secondes: secondesStock[i] }));
     const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
@@ -567,6 +584,14 @@ export async function produireUnMontage(input: {
     });
     profilVideo = profilMontageDuContexte(contexteMontage).profil;
     contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif ?? null };
+    // LE PLAN MONTRÉ = LE PLAN RENDU. Sans gabarit enregistré, l'écran affiche
+    // la SUGGESTION (`gabaritSuggere`) : le moteur rend cette même suggestion,
+    // calculée par la même fonction sur les sources réellement disponibles.
+    const gabarit = gabaritEnregistre ? sourcesCfg.sources.gabarit : gabaritSuggere({
+      avatar: jumeauActif,
+      rushes: listeRushs.length,
+      stock: videosOk.length + photosOk.length,
+    });
     let res: ReturnType<typeof planMultiSources>;
     if (jumeauActif) {
       // ── AVATAR + autres sources : la séquence dure la PAROLE de l'avatar,
@@ -576,7 +601,7 @@ export async function produireUnMontage(input: {
       res = planMultiSources({
         avatar: { url: input.jumeauVideoUrl as string, secondes: T },
         rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
-        gabarit: sourcesCfg.sources.gabarit, cible: T,
+        gabarit, cible: T,
         options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
       });
       enSurimpression = true;
@@ -607,7 +632,7 @@ export async function produireUnMontage(input: {
       rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
       res = planMultiSources({
         rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
-        gabarit: sourcesCfg.sources.gabarit, cible,
+        gabarit, cible,
         options: { rythme: rythmeVideo, contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
       });
       if (res.plan.length && enSurimpression) {
@@ -748,15 +773,18 @@ export async function produireUnMontage(input: {
     ...(design.rushs ?? []).map((r) => r.url),
     ...(design.videoUrl && !jumeauActif && !estUrlImage(design.videoUrl) ? [design.videoUrl] : []),
   ]));
+  // Un média stock redirigé : le rendu ne reçoit QUE son URL finale validée
+  // (`sonde-stock.ts`) — Remotion / ffprobe ne rejouent jamais la chaîne.
+  const finale = (u: string) => urlsFinalesStock.get(u) ?? u;
   const proxys = new Map<string, string>();
   let proxysCrees = 0;
   let proxysReutilises = 0;
   for (const u of urlsRush) {
-    const p = await urlRenduPourRush(u);
+    const p = await urlRenduPourRush(finale(u));
     if (p.proxy) { proxys.set(u, p.url); if (p.cree) proxysCrees += 1; else proxysReutilises += 1; }
   }
-  const versRendu = (u: string) => proxys.get(u) ?? u;
-  const designRendu = proxys.size === 0 ? design : {
+  const versRendu = (u: string) => proxys.get(u) ?? finale(u);
+  const designRendu = proxys.size === 0 && urlsFinalesStock.size === 0 ? design : {
     ...design,
     ...(design.videoUrl ? { videoUrl: versRendu(design.videoUrl) } : {}),
     ...(design.montage ? { montage: design.montage.map((s) => ({ ...s, url: versRendu(s.url) })) } : {}),

@@ -112,12 +112,20 @@ async function produire(c: AutopilotConfig, jumeauVideoUrl: string | null = null
 }
 const montageDe = (d: Record<string, unknown>) => (d.montage ?? []) as RushSegment[];
 
-const fetchEspion = vi.fn(async () => new Response(null, { status: 200 }));
+// La sonde SÛRE des médias stock (`sonde-stock.ts`) passe par `fetch` : un média « mort » répond 404.
+// Une URL de REDIRECTIONS répond 302 vers sa cible (jamais suivie par `fetch` ici : `redirect: manual`).
+const REDIRECTIONS = new Map<string, string>();
+const fetchEspion = vi.fn(async (url: string | URL | Request) => {
+  const cible = REDIRECTIONS.get(String(url));
+  if (cible) return new Response(null, { status: 302, headers: { Location: cible } });
+  return new Response(null, { status: MORTS.has(String(url)) ? 404 : 200 });
+});
 
 beforeEach(() => {
   insertions = [];
   lastDesign = null;
   MORTS.clear();
+  REDIRECTIONS.clear();
   vi.clearAllMocks();
   vi.stubGlobal('fetch', fetchEspion);
 });
@@ -185,22 +193,23 @@ describe('les combinaisons multi-sources rendent', () => {
     expect(meta.rushUrls).toEqual([SV1]);
   });
 
-  it('rushes + stock (sans avatar) : rushes d’abord, stock en complément', async () => {
+  it('rushes + stock (sans avatar) : le plan SUGGÉRÉ à l’écran — rush, stock en alternance', async () => {
     const c = cfg({ rushUrls: [R1, SV1], designStyle: { sources: sources({ stock: true }, [media(P1, 'photo')]) } });
     const { design } = await produire(c);
     const plan = montageDe(design);
     expect(plan[0]).toMatchObject({ url: R1, source: 'rush' });
-    expect(plan.slice(1).every((s) => s.source === 'stock' || s.kind === 'image')).toBe(true);
+    expect(plan.map((s) => (s.source === 'rush' ? 'rush' : 'stock'))).toEqual(['rush', 'stock', 'rush', 'stock']);
     expect(design.videoUrl).toBe(R1);
     expect(design.videoDuration).toBe(plan.at(-1)!.fin);
   });
 
   it('rushes + avatar + stock : les trois sources dans un même plan', async () => {
     probeRushSeconds.mockImplementation(async (url: string) => (url.includes('/avatar/') ? 40 : url.includes('stock-') ? 8 : 4));
-    const c = cfg({ jumeauAvatar: true, rushUrls: [R1, SV1], designStyle: { sources: sources({ avatar: true, stock: true }, [media(P1, 'photo'), media(P2, 'photo', 'unsplash')]) } });
+    const c = cfg({ jumeauAvatar: true, rushUrls: [R1, R2, SV1], designStyle: { sources: sources({ avatar: true, stock: true }, [media(P1, 'photo'), media(P2, 'photo', 'unsplash')]) } });
     const { design } = await produire(c, AV);
     const plan = montageDe(design);
-    expect(new Set(plan.map((s) => s.source))).toEqual(new Set(['jumeau', 'rush', 'stock', 'photo']));
+    // Le plan suggéré (avatar, rush, stock, rush, avatar) : le premier média stock libre (la vidéo) tient le créneau stock.
+    expect(plan.map((s) => s.source)).toEqual(['jumeau', 'rush', 'stock', 'rush', 'jumeau']);
     expect(avatarSynchronise(plan)).toBe(true);
     expect(plan.at(-1)!.fin).toBe(40);
   });
@@ -214,7 +223,8 @@ describe('les combinaisons multi-sources rendent', () => {
     expect(design.videoUrl).toBe(P1);
     expect(planFromProps(design as never).some((s) => s.type === 'video')).toBe(true);
     expect(urlRenduPourRush).not.toHaveBeenCalled();
-    expect(rushEncorePresent).toHaveBeenCalledWith(P1);
+    // Sonde SÛRE : HEAD sans suivre les redirections.
+    expect(fetchEspion).toHaveBeenCalledWith(P1, expect.objectContaining({ method: 'HEAD', redirect: 'manual' }));
   });
 
   it('stock seul — vidéos importées (banque) : montées comme vidéos stock', async () => {
@@ -355,5 +365,50 @@ describe('rendu : photo, avatar, hybride', () => {
     // `kind: 'video'` = le défaut : rien n'est écrit (relecture d'avant).
     expect(relus[2].kind).toBeUndefined();
     expect(relus[3]).toEqual({ url: R2, debut: 8, fin: 9 });
+  });
+});
+
+describe('SSRF — redirections des médias stock, au niveau du moteur', () => {
+  const urlsDemandees = () => fetchEspion.mock.calls.map((a) => String((a as unknown[])[0]));
+
+  it('photo autorisée qui redirige vers 169.254.169.254 : lâchée, la cible jamais demandée, absente du rendu', async () => {
+    REDIRECTIONS.set(P2, 'http://169.254.169.254/latest/meta-data/');
+    const c = cfg({ rushUrls: [], designStyle: { sources: sources({ stock: true, rushes: false }, [media(P1, 'photo'), media(P2, 'photo', 'unsplash')]) } });
+    const { design, meta } = await produire(c);
+    expect(urlsDemandees().some((u) => u.includes('169.254'))).toBe(false);
+    expect(JSON.stringify(design)).not.toContain('169.254');
+    expect(JSON.stringify(design)).not.toContain(P2);
+    expect(meta.stockIgnores).toEqual([P2]);
+    expect(montageDe(design).map((s) => s.url)).toEqual([P1]);
+  });
+
+  it('vidéo de notre stockage qui redirige vers un service interne : lâchée, jamais sondée ni rendue', async () => {
+    REDIRECTIONS.set(SV1, 'http://studiio-minio:9000/media/u1/x.mp4');
+    const c = cfg({ rushUrls: [SV1, SV2], designStyle: { sources: sources({ stock: true, rushes: false }) } });
+    const { design } = await produire(c);
+    expect(urlsDemandees().some((u) => u.includes('studiio-minio'))).toBe(false);
+    expect(probeRushSeconds).not.toHaveBeenCalledWith(expect.stringContaining('studiio-minio'));
+    expect(probeRushSeconds).not.toHaveBeenCalledWith(SV1);
+    expect(montageDe(design).map((s) => s.url)).toEqual([SV2]);
+  });
+
+  it('redirection autorisée → autorisée : le RENDU (et parseMedia, le proxy) ne reçoit que l’URL finale', async () => {
+    const FINALE_P = 'https://images.unsplash.com/photo-final?w=1080';
+    const FINALE_V = `${S}stock-pexels-video-333.mp4`;
+    REDIRECTIONS.set(P2, FINALE_P);
+    REDIRECTIONS.set(SV1, FINALE_V);
+    const c = cfg({ rushUrls: [SV1], designStyle: { sources: sources({ stock: true, rushes: false }, [media(P2, 'photo', 'unsplash')]) } });
+    const { design, meta } = await produire(c);
+    const rendu = JSON.stringify(design);
+    expect(rendu).toContain(FINALE_P);
+    expect(rendu).toContain(FINALE_V);
+    expect(rendu).not.toContain(P2);
+    expect(rendu).not.toContain(SV1);
+    expect(probeRushSeconds).toHaveBeenCalledWith(FINALE_V);
+    expect(probeRushSeconds).not.toHaveBeenCalledWith(SV1);
+    expect(urlRenduPourRush).toHaveBeenCalledWith(FINALE_V);
+    expect(urlRenduPourRush).not.toHaveBeenCalledWith(SV1);
+    // Métadonnées : les médias RETENUS (attribution) gardent leur URL d'origine.
+    expect((meta.stockCredits as Array<{ url: string }>).map((x) => x.url)).toEqual([P2]);
   });
 });

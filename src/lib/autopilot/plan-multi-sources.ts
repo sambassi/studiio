@@ -23,6 +23,12 @@
  * Les rushes suivent le moteur de Créer (`planMontage`) ; le stock ne vient
  * qu'APRÈS, là où la matière des rushes manque pour atteindre la cible.
  *
+ * ── Autopilote : le plan montré = le plan rendu ─────────────────────────
+ * Sans gabarit ENREGISTRÉ, `produire.ts` passe la suggestion affichée à
+ * l'écran (`gabaritSuggere`, même fonction, mêmes sources) : l'utilisateur
+ * voit l'ordre des types que le rendu suivra. Les chemins « sans gabarit »
+ * ci-dessous restent ceux des appels directs.
+ *
  * Déterministe (aucun hasard, aucune horloge), explicable (`explications`,
  * `raison` par plan), sans réseau.
  */
@@ -155,6 +161,21 @@ class ReserveRushs {
           return { url, kind: 'video', source: 'rush', depuis: r3(a), dispo: r3(duree), raison: 'rush personnel' };
         }
       }
+    }
+    return null;
+  }
+  /**
+   * Créneau « rush » imposé : une fenêtre de `d` s si possible, sinon la plus
+   * longue qu'un rush offre encore (au moins 1 s) — un créneau « Rush » du plan
+   * montré reste un rush, il n'est jamais remplacé en silence par du stock
+   * parce que les rushes sont plus courts que le créneau.
+   */
+  prendreAuPlus(d: number): ItemBroll | null {
+    const plein = this.prendre(d);
+    if (plein) return plein;
+    for (const url of Array.from(this.totaux.keys())) {
+      const it = this.prendreDans(url, d);
+      if (it) return it;
     }
     return null;
   }
@@ -383,8 +404,8 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
     if (type === 'avatar' && !avatar) type = 'auto';
     if (type === 'avatar') { p.ajouterAvatar(d, `${etiquette} — avatar`); return; }
     if (type === 'rush') {
-      const pris = reserve.prendre(d);
-      if (pris) { p.ajouterItem(pris, d, etiquette); return; }
+      const pris = reserve.prendreAuPlus(d);
+      if (pris) { p.ajouterItem(pris, r3(Math.min(d, pris.dispo)), etiquette); return; }
     } else if (type === 'stock') {
       const it = libre(videos, d) ?? libre(photos, d);
       if (it) { poser(it, d, etiquette); return; }
