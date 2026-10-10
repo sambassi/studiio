@@ -240,8 +240,8 @@ describe('Les refus remontent, ils ne passent pas en silence', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('Les comptes gardent exactement leur comportement', () => {
-  it('administrateur : aucun débit, aucun appel SQL', async () => {
-    ligneUser = { id: 'moi', email: 'contact.artboost@gmail.com', credits: 100 };
+  it('administrateur (rôle en base) : aucun débit, aucun appel SQL', async () => {
+    ligneUser = { id: 'moi', email: 'quelquun@exemple.fr', role: 'admin', credits: 100 };
     await expect(deductCredits('moi', 40, 'avatar')).resolves.toBe(true);
     expect(rpcAppels).toEqual([]);
     expect(tablesEcrites).toEqual([]);
@@ -253,14 +253,16 @@ describe('Les comptes gardent exactement leur comportement', () => {
     expect(rpcAppels).toHaveLength(1);
   });
 
-  it("l'exemption reste celle par e-mail, distincte de la politique par rôle", () => {
-    // Les deux mécanismes coexistent depuis la facturation différenciée : le
-    // rôle en base gouverne les RENDUS, la liste d'e-mails gouverne ces
-    // quatre parcours-ci. Les fusionner changerait ce que paient des comptes
-    // réels — ce n'est pas ce lot.
+  it("un e-mail de la liste admin SANS rôle admin paie comme les autres (décision 2026-09-29)", async () => {
+    ligneUser = { id: 'moi', email: 'contact.artboost@gmail.com', role: 'user', credits: 100 };
+    await deductCredits('moi', 40, 'avatar');
+    expect(rpcAppels).toHaveLength(1);
+  });
+
+  it("l'exemption suit le rôle en base, plus la liste d'e-mails", () => {
     const src = readFileSync(join(process.cwd(), 'src/lib/credits/system.ts'), 'utf-8');
-    expect(src).toContain("import { isAdmin } from '@/lib/admin'");
-    expect(src).toContain('if (u?.email && isAdmin(u.email)) return true;');
+    expect(src).not.toContain('isAdmin(');
+    expect(src).toContain('politiqueDeLUtilisateur');
   });
 });
 
