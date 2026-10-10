@@ -17,7 +17,11 @@ export default auth((req) => {
     pathname === '/' ||
     pathname.startsWith('/auth') ||
     pathname.startsWith('/api/auth') ||
-    pathname.startsWith('/api/stripe/webhook')
+    pathname.startsWith('/api/stripe/webhook') ||
+    // Callback PawaPay : appelé par PawaPay, sans session. Hors `matcher`
+    // aujourd'hui (le middleware ne s'y exécute pas), listé ici pour qu'un
+    // futur élargissement du matcher ne le ferme pas par erreur.
+    pathname === '/api/pawapay/callback'
   ) {
     return NextResponse.next();
   }
