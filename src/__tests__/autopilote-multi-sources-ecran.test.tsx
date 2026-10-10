@@ -155,6 +155,9 @@ describe('Règle de validation — les 7 combinaisons et les deux blocages', () 
   it('plan suggéré : avatar en premier et en dernier, rushes d’abord, stock en complément', () => {
     expect(gabaritSuggere({ avatar: true, rushes: 1, stock: 2 }).map((c) => c.type)).toEqual(['avatar', 'rush', 'stock', 'stock', 'avatar']);
     expect(gabaritSuggere({ avatar: false, rushes: 0, stock: 1 }).map((c) => c.type)).toEqual(['stock', 'stock', 'stock']);
+    // Jamais plus de créneaux stock que de médias stock distincts : le reste revient aux rushes.
+    expect(gabaritSuggere({ avatar: false, rushes: 1, stock: 2 }).map((c) => c.type)).toEqual(['rush', 'stock', 'stock', 'rush']);
+    expect(gabaritSuggere({ avatar: true, rushes: 1, stock: 1 }).map((c) => c.type)).toEqual(['avatar', 'rush', 'stock', 'rush', 'avatar']);
     expect(gabaritSuggere({ avatar: false, rushes: 0, stock: 0 })).toEqual([]);
   });
   it('gabaritSuggere : rushes personnels d’abord, le stock ne complète que les créneaux restants, nombre de créneaux inchangé', () => {

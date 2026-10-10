@@ -135,7 +135,7 @@ export function contenuRendu(etat: EtatSourcesVisuelles): { cas: ContenuRendu; p
 
 /**
  * Le plan SUGGÉRÉ quand l'utilisateur n'a rien fixé : avatar en premier et en
- * dernier s'il est actif, rushes et stock en alternance au milieu. Il n'est
+ * dernier s'il est actif, rushes personnels d'abord au milieu, le stock en complément. Il n'est
  * jamais enregistré tel quel — seule une modification le fixe.
  */
 export function gabaritSuggere(etat: { avatar: boolean; rushes: number; stock: number }): CreneauGabarit[] {
@@ -146,8 +146,14 @@ export function gabaritSuggere(etat: { avatar: boolean; rushes: number; stock: n
   // ⚠️ PRIORITÉ PRODUIT : les rushes personnels d'abord ; le stock ne COMPLÈTE
   // que les plans que les rushes ne couvrent pas (jamais d'alternance qui
   // remplacerait un rush disponible par du stock). Sans stock, un rush se répète.
-  const milieu: TypeCreneau[] = Array.from({ length: n }, (_, i) =>
-    i < etat.rushes ? 'rush' : etat.stock > 0 ? 'stock' : 'rush');
+  // Jamais plus de créneaux « stock » que de médias stock DISTINCTS : au-delà,
+  // le moteur reprendrait un rush et l'écran annoncerait du stock à tort.
+  let stockPose = 0;
+  const milieu: TypeCreneau[] = Array.from({ length: n }, (_, i) => {
+    if (i < etat.rushes) return 'rush';
+    if (stockPose < etat.stock) { stockPose += 1; return 'stock'; }
+    return etat.rushes > 0 ? 'rush' : 'stock';
+  });
   const types: TypeCreneau[] = etat.avatar ? (n ? ['avatar', ...milieu, 'avatar'] : ['avatar']) : milieu;
   return types.map((type, i) => ({ id: `s${i + 1}`, type }));
 }
