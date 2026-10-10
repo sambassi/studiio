@@ -152,10 +152,31 @@ describe('Règle de validation — les 7 combinaisons et les deux blocages', () 
   it('avatar demandé mais pas prêt → bloqué, même avec d autres sources', () => {
     expect(validerEtapeRushes({ nbRushes: 2, avatarDemande: true, avatarPret: false, stockRetenus: 2 }).motif).toBe('avatar-non-pret');
   });
-  it('plan suggéré : avatar en premier et en dernier, rushes et stock alternés', () => {
-    expect(gabaritSuggere({ avatar: true, rushes: 1, stock: 2 }).map((c) => c.type)).toEqual(['avatar', 'rush', 'stock', 'rush', 'avatar']);
+  it('plan suggéré : avatar en premier et en dernier, rushes d’abord, stock en complément', () => {
+    expect(gabaritSuggere({ avatar: true, rushes: 1, stock: 2 }).map((c) => c.type)).toEqual(['avatar', 'rush', 'stock', 'stock', 'avatar']);
     expect(gabaritSuggere({ avatar: false, rushes: 0, stock: 1 }).map((c) => c.type)).toEqual(['stock', 'stock', 'stock']);
     expect(gabaritSuggere({ avatar: false, rushes: 0, stock: 0 })).toEqual([]);
+  });
+  it('gabaritSuggere : rushes personnels d’abord, le stock ne complète que les créneaux restants, nombre de créneaux inchangé', () => {
+    const t = (avatar: boolean, rushes: number, stock: number) => gabaritSuggere({ avatar, rushes, stock }).map((c) => c.type);
+    // Avatar + 2 rushes + stock : les deux rushes avant le stock.
+    expect(t(true, 2, 3)).toEqual(['avatar', 'rush', 'rush', 'stock', 'avatar']);
+    // 2 rushes + stock, sans avatar.
+    expect(t(false, 2, 3)).toEqual(['rush', 'rush', 'stock', 'stock']);
+    // Avatar + stock seul.
+    expect(t(true, 0, 2)).toEqual(['avatar', 'stock', 'stock', 'avatar']);
+    // 1 rush + stock + avatar : jamais d'alternance qui ramènerait un rush après le stock.
+    expect(t(true, 1, 2)).toEqual(['avatar', 'rush', 'stock', 'stock', 'avatar']);
+    // Rushes plus nombreux que les créneaux : tous les créneaux B-roll sont des rushes, le stock n'entre pas.
+    expect(t(false, 5, 2)).toEqual(['rush', 'rush', 'rush', 'rush']);
+    expect(t(true, 4, 2)).toEqual(['avatar', 'rush', 'rush', 'rush', 'avatar']);
+    // Sans stock : les rushes se répètent.
+    expect(t(false, 1, 0)).toEqual(['rush', 'rush', 'rush']);
+    expect(t(true, 2, 0)).toEqual(['avatar', 'rush', 'rush', 'avatar']);
+    // Avatar seul.
+    expect(t(true, 0, 0)).toEqual(['avatar']);
+    // Identifiants stables s1…sN.
+    expect(gabaritSuggere({ avatar: true, rushes: 2, stock: 3 }).map((c) => c.id)).toEqual(['s1', 's2', 's3', 's4', 's5']);
   });
 });
 
@@ -345,7 +366,7 @@ describe('Plan avant génération', () => {
 
   it('suggestion dérivée des sources, CTA fixe à la fin, rien enregistré tant qu on n y touche pas', async () => {
     await ouvrir();
-    await waitFor(() => expect(types()).toEqual(['avatar', 'rush', 'stock', 'rush', 'avatar']));
+    await waitFor(() => expect(types()).toEqual(['avatar', 'rush', 'stock', 'stock', 'avatar']));
     expect(q('[data-plan-suggere]')).toBeTruthy();
     expect(q('[data-plan-cta]')!.textContent).toContain('CTA');
     expect(q('[data-plan-ligne="0"]')!.textContent).toContain('Séquence 1 — Avatar');
@@ -360,12 +381,12 @@ describe('Plan avant génération', () => {
     await waitFor(() => expect(types().length).toBe(5));
     fireEvent.click(q('[data-plan-descendre="0"]')!);
     await waitFor(() => expect(envois.length).toBe(1));
-    expect(dernier().designStyle.sources!.gabarit.map((c) => c.type)).toEqual(['rush', 'avatar', 'stock', 'rush', 'avatar']);
+    expect(dernier().designStyle.sources!.gabarit.map((c) => c.type)).toEqual(['rush', 'avatar', 'stock', 'stock', 'avatar']);
     await waitFor(() => expect(q('[data-autopilot-plan]')!.getAttribute('data-plan-fixe')).toBe('oui'));
 
     fireEvent.click(q('[data-plan-monter="1"]')!);
     await waitFor(() => expect(envois.length).toBe(2));
-    expect(dernier().designStyle.sources!.gabarit.map((c) => c.type)).toEqual(['avatar', 'rush', 'stock', 'rush', 'avatar']);
+    expect(dernier().designStyle.sources!.gabarit.map((c) => c.type)).toEqual(['avatar', 'rush', 'stock', 'stock', 'avatar']);
 
     fireEvent.click(q('[data-plan-supprimer="3"]')!);
     await waitFor(() => expect(envois.length).toBe(3));
@@ -396,7 +417,7 @@ describe('Plan avant génération', () => {
     fireEvent.click(zone.querySelector('[data-autopilot-stock-retenir="pexels-video-V2"]')!);
     await waitFor(() => expect(envois.length).toBe(1));
     const g = dernier().designStyle.sources!.gabarit;
-    expect(g.map((c) => c.type)).toEqual(['avatar', 'stock', 'stock', 'rush', 'avatar']);
+    expect(g.map((c) => c.type)).toEqual(['avatar', 'stock', 'stock', 'stock', 'avatar']);
     expect(g[1].media).toBe(IMPORTE('V2'));
     expect(dernier().designStyle.sources!.stock.map((m) => m.providerAssetId)).toEqual(['U1', 'PH1', 'V2']);
     expect(dernier().rushUrls).toEqual([A, IMPORTE('V2')]);

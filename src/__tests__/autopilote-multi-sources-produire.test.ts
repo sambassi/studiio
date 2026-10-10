@@ -193,12 +193,14 @@ describe('les combinaisons multi-sources rendent', () => {
     expect(meta.rushUrls).toEqual([SV1]);
   });
 
-  it('rushes + stock (sans avatar) : le plan SUGGÉRÉ à l’écran — rush, stock en alternance', async () => {
-    const c = cfg({ rushUrls: [R1, SV1], designStyle: { sources: sources({ stock: true }, [media(P1, 'photo')]) } });
+  it('rushes + stock (sans avatar) : le plan SUGGÉRÉ à l’écran — rushes d’abord, stock en complément', async () => {
+    // 1 rush personnel + 3 médias stock (SV1, P1, P2) : le rush ouvre, le stock
+    // ne remplit que les créneaux que le rush ne couvre pas.
+    const c = cfg({ rushUrls: [R1, SV1], designStyle: { sources: sources({ stock: true }, [media(P1, 'photo'), media(P2, 'photo', 'unsplash')]) } });
     const { design } = await produire(c);
     const plan = montageDe(design);
     expect(plan[0]).toMatchObject({ url: R1, source: 'rush' });
-    expect(plan.map((s) => (s.source === 'rush' ? 'rush' : 'stock'))).toEqual(['rush', 'stock', 'rush', 'stock']);
+    expect(plan.map((s) => (s.source === 'rush' ? 'rush' : 'stock'))).toEqual(['rush', 'stock', 'stock', 'stock']);
     expect(design.videoUrl).toBe(R1);
     expect(design.videoDuration).toBe(plan.at(-1)!.fin);
   });
@@ -208,8 +210,9 @@ describe('les combinaisons multi-sources rendent', () => {
     const c = cfg({ jumeauAvatar: true, rushUrls: [R1, R2, SV1], designStyle: { sources: sources({ avatar: true, stock: true }, [media(P1, 'photo'), media(P2, 'photo', 'unsplash')]) } });
     const { design } = await produire(c, AV);
     const plan = montageDe(design);
-    // Le plan suggéré (avatar, rush, stock, rush, avatar) : le premier média stock libre (la vidéo) tient le créneau stock.
-    expect(plan.map((s) => s.source)).toEqual(['jumeau', 'rush', 'stock', 'rush', 'jumeau']);
+    // Le plan suggéré (avatar, rush, rush, stock, avatar) : les deux rushes personnels d’abord,
+    // le premier média stock libre (la vidéo) complète le créneau restant.
+    expect(plan.map((s) => s.source)).toEqual(['jumeau', 'rush', 'rush', 'stock', 'jumeau']);
     expect(avatarSynchronise(plan)).toBe(true);
     expect(plan.at(-1)!.fin).toBe(40);
   });

@@ -169,9 +169,9 @@ describe('sans plan enregistré : la suggestion affichée = les types rendus', (
     ['avatar seul', { jumeauAvatar: true, rushUrls: [], designStyle: { sources: sourcesCfg({ avatar: true, rushes: false }) } }, ['avatar']],
     ['stock seul', { rushUrls: [IMPORTE('V1')], designStyle: { sources: sourcesCfg({ rushes: false, stock: true }, STOCK) } }, ['stock', 'stock', 'stock']],
     ['avatar + rushes', { jumeauAvatar: true, rushUrls: [A, B], designStyle: { sources: sourcesCfg({ avatar: true }) } }, ['avatar', 'rush', 'rush', 'avatar']],
-    ['rushes + stock', { rushUrls: [A, B, IMPORTE('V1')], designStyle: { sources: sourcesCfg({ stock: true }, STOCK) } }, ['rush', 'stock', 'rush', 'stock']],
+    ['rushes + stock', { rushUrls: [A, B, IMPORTE('V1')], designStyle: { sources: sourcesCfg({ stock: true }, STOCK) } }, ['rush', 'rush', 'stock', 'stock']],
     ['avatar + stock', { jumeauAvatar: true, rushUrls: [IMPORTE('V1')], designStyle: { sources: sourcesCfg({ avatar: true, rushes: false, stock: true }, STOCK) } }, ['avatar', 'stock', 'stock', 'avatar']],
-    ['avatar + rushes + stock', { jumeauAvatar: true, rushUrls: [A, B, IMPORTE('V1')], designStyle: { sources: sourcesCfg({ avatar: true, stock: true }, STOCK) } }, ['avatar', 'rush', 'stock', 'rush', 'avatar']],
+    ['avatar + rushes + stock', { jumeauAvatar: true, rushUrls: [A, B, IMPORTE('V1')], designStyle: { sources: sourcesCfg({ avatar: true, stock: true }, STOCK) } }, ['avatar', 'rush', 'rush', 'stock', 'avatar']],
   ];
   for (const [nom, p, attendu] of combis) {
     it(nom, async () => {
@@ -209,15 +209,16 @@ describe('après chaque geste : le gabarit ENREGISTRÉ pilote le rendu à l’id
 
   it('déplacer, supprimer, forcer Avatar / Rush / Stock, choisir un média, rechercher, réinitialiser', async () => {
     await ouvrir();
-    await waitFor(() => expect(typesAffiches()).toEqual(['avatar', 'rush', 'stock', 'rush', 'avatar']));
+    // Suggestion : rushes personnels d’abord, stock en complément.
+    await waitFor(() => expect(typesAffiches()).toEqual(['avatar', 'rush', 'rush', 'stock', 'avatar']));
 
     // Déplacer : la séquence 1 descend.
     fireEvent.click(q('[data-plan-descendre="0"]')!);
     await waitFor(() => expect(envois.length).toBe(1));
-    await verifier(['rush', 'avatar', 'stock', 'rush', 'avatar']);
+    await verifier(['rush', 'avatar', 'rush', 'stock', 'avatar']);
 
-    // Supprimer la séquence 4.
-    fireEvent.click(q('[data-plan-supprimer="3"]')!);
+    // Supprimer la séquence 3 (le second rush).
+    fireEvent.click(q('[data-plan-supprimer="2"]')!);
     await waitFor(() => expect(envois.length).toBe(2));
     await verifier(['rush', 'avatar', 'stock', 'avatar']);
 
@@ -265,7 +266,7 @@ describe('après chaque geste : le gabarit ENREGISTRÉ pilote le rendu à l’id
     expect(dernier().designStyle.sources!.gabarit).toEqual([]);
     await waitFor(() => expect(q('[data-plan-suggere]')).toBeTruthy());
     const suggestion = typesAffiches();
-    expect(suggestion).toEqual(['avatar', 'rush', 'stock', 'rush', 'avatar']);
+    expect(suggestion).toEqual(['avatar', 'rush', 'rush', 'stock', 'avatar']);
     expect((await rendre(dernier())).types).toEqual(suggestion);
   }, 30_000);
 

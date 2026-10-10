@@ -139,12 +139,15 @@ export function contenuRendu(etat: EtatSourcesVisuelles): { cas: ContenuRendu; p
  * jamais enregistré tel quel — seule une modification le fixe.
  */
 export function gabaritSuggere(etat: { avatar: boolean; rushes: number; stock: number }): CreneauGabarit[] {
-  const milieu: TypeCreneau[] = [];
-  if (etat.rushes > 0) milieu.push('rush');
-  if (etat.stock > 0) milieu.push('stock');
-  const alt = (n: number): TypeCreneau[] => Array.from({ length: milieu.length ? n : 0 }, (_, i) => milieu[i % milieu.length]);
-  let types: TypeCreneau[];
-  if (etat.avatar) types = milieu.length ? ['avatar', ...alt(milieu.length > 1 ? 3 : 2), 'avatar'] : ['avatar'];
-  else types = alt(milieu.length > 1 ? 4 : 3);
+  // Nombre de plans intercalés : inchangé (3 avec avatar + deux sources, 2 sinon ;
+  // 4 / 3 sans avatar).
+  const sources = (etat.rushes > 0 ? 1 : 0) + (etat.stock > 0 ? 1 : 0);
+  const n = sources === 0 ? 0 : etat.avatar ? (sources > 1 ? 3 : 2) : (sources > 1 ? 4 : 3);
+  // ⚠️ PRIORITÉ PRODUIT : les rushes personnels d'abord ; le stock ne COMPLÈTE
+  // que les plans que les rushes ne couvrent pas (jamais d'alternance qui
+  // remplacerait un rush disponible par du stock). Sans stock, un rush se répète.
+  const milieu: TypeCreneau[] = Array.from({ length: n }, (_, i) =>
+    i < etat.rushes ? 'rush' : etat.stock > 0 ? 'stock' : 'rush');
+  const types: TypeCreneau[] = etat.avatar ? (n ? ['avatar', ...milieu, 'avatar'] : ['avatar']) : milieu;
   return types.map((type, i) => ({ id: `s${i + 1}`, type }));
 }
