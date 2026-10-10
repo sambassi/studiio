@@ -16,7 +16,7 @@ import type { MediaStock } from '@/lib/stock/types';
  * `designStyle.sources` (+ `jumeauAvatar`), par le PUT existant.
  */
 
-const ORIGINE = 'https://projet.supabase.co/storage/v1/object/public/media/u';
+const ORIGINE = 'https://studiio.pro/storage/v1/object/public/media/u';
 const A = `${ORIGINE}/a.mp4`;
 const B = `${ORIGINE}/b.mp4`;
 const IMPORTE = (id: string) => `${ORIGINE}/library/stock-pexels-video-${id}.mp4`;
@@ -28,7 +28,7 @@ function media(provider: 'pexels' | 'unsplash', type: 'video' | 'photo', id: str
     largeur: 1080, hauteur: 1920, orientation: 'portrait', dureeSecondes: type === 'video' ? 10 : undefined,
     vignetteUrl: `https://cdn.${provider}.test/${id}/thumb.jpg`,
     apercuUrl: `https://cdn.${provider}.test/${id}/apercu.jpg`,
-    fichierUrl: `https://cdn.${provider}.test/${id}/full.${type === 'video' ? 'mp4' : 'jpg'}`,
+    fichierUrl: type === 'photo' ? `https://images.${provider}.com/${id}/full.jpg` : `https://cdn.${provider}.test/${id}/full.mp4`,
     sourceUrl: `https://www.${provider}.com/${type}/${id}/`, auteur: `Auteur ${id}`,
     description: 'danse', licence: provider === 'unsplash' ? 'Unsplash License' : 'Pexels License',
     attribution: `x`,
@@ -36,7 +36,7 @@ function media(provider: 'pexels' | 'unsplash', type: 'video' | 'photo', id: str
 }
 
 const retenu = (provider: 'pexels' | 'unsplash', type: 'video' | 'photo', id: string, url?: string): MediaStockRetenu => ({
-  url: url ?? (type === 'video' ? IMPORTE(id) : `https://cdn.${provider}.test/${id}/full.jpg`),
+  url: url ?? (type === 'video' ? IMPORTE(id) : `https://images.${provider}.com/${id}/full.jpg`),
   type, provider, providerAssetId: id, auteur: `Auteur ${id}`, sourceUrl: `https://www.${provider}.com/${type}/${id}/`,
   licence: provider === 'unsplash' ? 'Unsplash License' : 'Pexels License', vignetteUrl: `https://cdn.${provider}.test/${id}/thumb.jpg`,
 });
@@ -280,7 +280,7 @@ describe('Retenir des médias stock', () => {
     await waitFor(() => expect(envois.length).toBe(1));
     expect(importes).toEqual([]);
     expect(dernier().rushUrls).toEqual([A]);
-    expect(dernier().designStyle.sources!.stock[0]).toMatchObject({ url: 'https://cdn.pexels.test/PH1/full.jpg', type: 'photo', provider: 'pexels', auteur: 'Auteur PH1', licence: 'Pexels License' });
+    expect(dernier().designStyle.sources!.stock[0]).toMatchObject({ url: 'https://images.pexels.com/PH1/full.jpg', type: 'photo', provider: 'pexels', auteur: 'Auteur PH1', licence: 'Pexels License' });
   });
 
   it('photo Unsplash : importer appelé (signalement du téléchargement), URL hotlink retenue', async () => {

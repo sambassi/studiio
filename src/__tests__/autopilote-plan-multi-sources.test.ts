@@ -14,10 +14,10 @@ import type { AnalyseRush, EchantillonRush } from '@/lib/creer/smart-montage';
 import type { RushSegment } from '@/lib/creer/multi-rush';
 
 const AV = 'https://minio.test/videos/u1/avatar/gen-1.mp4';
-const R1 = 'https://minio.test/storage/v1/object/public/media/u1/rush-a.mp4';
-const R2 = 'https://minio.test/storage/v1/object/public/media/u1/rush-b.mp4';
-const SV1 = 'https://minio.test/storage/v1/object/public/media/u1/stock-pexels-video-111.mp4';
-const SV2 = 'https://minio.test/storage/v1/object/public/media/u1/stock-pexels-video-222.mp4';
+const R1 = 'https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4';
+const R2 = 'https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4';
+const SV1 = 'https://studiio.pro/storage/v1/object/public/media/u1/stock-pexels-video-111.mp4';
+const SV2 = 'https://studiio.pro/storage/v1/object/public/media/u1/stock-pexels-video-222.mp4';
 const P1 = 'https://images.pexels.com/photos/1/a.jpeg';
 const P2 = 'https://images.unsplash.com/photo-2?w=1080';
 const P3 = 'https://images.unsplash.com/photo-3?w=1080';

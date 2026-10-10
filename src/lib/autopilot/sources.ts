@@ -85,6 +85,8 @@ export function normaliserConfigSources(brut: unknown): ConfigSources | undefine
   for (const m of Array.isArray(o.stock) ? o.stock : []) {
     const x = m as Record<string, unknown>;
     if (!estUrl(x?.url) || (x.type !== 'video' && x.type !== 'photo') || (x.provider !== 'pexels' && x.provider !== 'unsplash')) continue;
+    // Garde SSRF : seules nos vidéos stockées et les photos des CDN stock passent.
+    if (!urlStockAutorisee(x.url, x.type)) continue;
     // Unsplash ne fournit que des photos.
     if (x.provider === 'unsplash' && x.type !== 'photo') continue;
     if (stock.some((s) => s.url === x.url)) continue;
@@ -108,6 +110,50 @@ export function normaliserConfigSources(brut: unknown): ConfigSources | undefine
 /** Le fichier d'un média stock importé dans la Médiathèque (`/api/stock/importer`). */
 export function estRushStock(url: string): boolean {
   return /\/stock-(pexels|unsplash)-(video|photo)-[A-Za-z0-9_-]+\.(mp4|jpg)(\?|$)/.test(url);
+}
+
+/** Hôtes des PHOTOS stock acceptées (hotlink exigé par Unsplash ; CDN Pexels). */
+export const HOTES_PHOTOS_STOCK = ['images.pexels.com', 'images.unsplash.com', 'plus.unsplash.com'] as const;
+
+/**
+ * ⚠️ GARDE SSRF. Le serveur SONDE (HEAD) puis le moteur de rendu TÉLÉCHARGE les
+ * médias stock retenus : une URL libre ferait contacter n'importe quelle
+ * adresse (réseau interne compris) au nom du serveur. Seules passent :
+ *   - une VIDÉO rangée dans NOTRE stockage (`…/storage/v1/object/public/media/…`,
+ *     ce qu'écrit `/api/stock/importer`) ;
+ *   - une PHOTO https sur un hôte Pexels/Unsplash connu.
+ * Appliquée à l'enregistrement (`normaliserConfigSources`) ET juste avant la
+ * sonde (`produire.ts`).
+ */
+export function urlStockAutorisee(url: unknown, type: 'video' | 'photo'): url is string {
+  if (typeof url !== 'string') return false;
+  let u: URL;
+  try { u = new URL(url); } catch { return false; }
+  if (u.username || u.password) return false;
+  if (type === 'photo') return u.protocol === 'https:' && (HOTES_PHOTOS_STOCK as readonly string[]).includes(u.hostname);
+  return (u.protocol === 'https:' || u.protocol === 'http:')
+    && /^\/storage\/v1\/object\/public\/media\/[^?#]+$/.test(u.pathname)
+    && !/\.\./.test(u.pathname)
+    && estHoteStockageStudiio(u.hostname);
+}
+
+/** Le stockage public de Studiio : le domaine de l'application (et ses alias connus). */
+function estHoteStockageStudiio(hote: string): boolean {
+  // Jamais une adresse locale ou privée, même si l'application tourne en local.
+  if (estHotePrive(hote)) return false;
+  const app = (() => { try { return process.env.NEXT_PUBLIC_APP_URL ? new URL(process.env.NEXT_PUBLIC_APP_URL).hostname : null; } catch { return null; } })();
+  return hote === 'studiio.pro' || hote === 'www.studiio.pro' || (!!app && hote === app);
+}
+
+/** Boucle locale, réseaux privés, lien local, nom sans domaine (service Docker interne). */
+function estHotePrive(hote: string): boolean {
+  const h = hote.replace(/^\[|\]$/g, '').toLowerCase();
+  if (!h.includes('.') || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return true;
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true;
+  const m = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(h);
+  if (!m) return false;
+  const [x, y] = [Number(m[1]), Number(m[2])];
+  return x === 10 || x === 127 || x === 0 || (x === 169 && y === 254) || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168);
 }
 
 export interface EtatSourcesVisuelles {

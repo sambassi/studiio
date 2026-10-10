@@ -23,7 +23,7 @@ import { appliquerMiseEnPageSurimpression } from '@/lib/creer/surimpressions-mis
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
-import { avatarActifConfig, mediasDesSources, sourcesEffectives, type MediaStockRetenu } from '@/lib/autopilot/sources';
+import { avatarActifConfig, mediasDesSources, sourcesEffectives, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
 import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
@@ -543,8 +543,10 @@ export async function produireUnMontage(input: {
     const t2 = Date.now();
     // Les médias stock RETENUS (jamais cherchés ici) : sondés, un média mort est
     // LÂCHÉ — un média stock ne fait jamais échouer le montage.
-    const videosStock = medias.videosStock.slice(0, STOCK_MONTAGE_MAX);
-    const photosStock = medias.photosStock.slice(0, STOCK_MONTAGE_MAX);
+    // Garde SSRF (défense en profondeur) : jamais de sonde ni de rendu d'une
+    // URL hors de notre stockage / des CDN stock, même si la base en contient.
+    const videosStock = medias.videosStock.filter((u) => urlStockAutorisee(u, 'video') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
+    const photosStock = medias.photosStock.filter((u) => urlStockAutorisee(u, 'photo') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
     const [presV, presP] = await Promise.all([
       Promise.all(videosStock.map((u) => rushEncorePresent(u))),
       Promise.all(photosStock.map((u) => rushEncorePresent(u))),

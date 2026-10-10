@@ -13,10 +13,10 @@ import type { MediaStock } from '@/lib/stock/types';
  * plan manquant, et RIEN n'entre dans la banque sans « Conserver ».
  */
 
-const A = 'https://projet.supabase.co/storage/v1/object/public/media/u/a.mp4';
-const B = 'https://projet.supabase.co/storage/v1/object/public/media/u/b.mp4';
-const C = 'https://projet.supabase.co/storage/v1/object/public/media/u/c.mp4';
-const IMPORTE = (id: string) => `https://projet.supabase.co/storage/v1/object/public/media/u/library/stock-pexels-video-${id}.mp4`;
+const A = 'https://studiio.pro/storage/v1/object/public/media/u/a.mp4';
+const B = 'https://studiio.pro/storage/v1/object/public/media/u/b.mp4';
+const C = 'https://studiio.pro/storage/v1/object/public/media/u/c.mp4';
+const IMPORTE = (id: string) => `https://studiio.pro/storage/v1/object/public/media/u/library/stock-pexels-video-${id}.mp4`;
 const CLE = 'studiio.autopilote.completerRushesStock';
 
 function media(id: string, orientation: 'portrait' | 'landscape'): MediaStock {

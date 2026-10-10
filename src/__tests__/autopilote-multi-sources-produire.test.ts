@@ -86,7 +86,7 @@ import { produireUnMontage, devisMontage } from '@/lib/autopilot/produire';
 import { avatarAvecAutresSources } from '@/lib/autopilot/jumeau-async';
 
 const T0 = Date.parse('2026-10-10T09:00:00.000Z');
-const S = 'https://minio.test/storage/v1/object/public/media/u1/';
+const S = 'https://studiio.pro/storage/v1/object/public/media/u1/';
 const R1 = `${S}rush-a.mp4`;
 const R2 = `${S}rush-b.mp4`;
 const SV1 = `${S}stock-pexels-video-111.mp4`;
