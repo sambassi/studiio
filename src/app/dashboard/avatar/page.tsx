@@ -24,10 +24,14 @@ import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneA
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
-import { lireEtatJumeau, genererEtAttendreVideoJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
+import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
-import { CLASSE_LECTEUR_GENERATION } from '@/lib/ui/lecteur-generation';
+import { CLASSES_LECTEUR_GENERATION, ratioCadre } from '@/lib/ui/lecteur-generation';
+import {
+  ETAPES_GENERATION_HEYGEN, ETAPES_GENERATION_JUMEAU, DETAIL_GENERATION, etapesGeneration, detailStatutFournisseur,
+  CLE_GENERATION_EN_COURS, lireGenerationEnCours, type PhaseGenerationHeygen, type PhaseGenerationJumeau, type GenerationEnCours,
+} from '@/lib/avatar/progression';
 
 const AVATAR_VIDEO_COST = 40;
 /** Valeur du sélecteur pour une voix clonée : `clone:<user_voices.id>` — jamais un identifiant fournisseur. */
@@ -91,6 +95,23 @@ interface Voice {
 }
 
 type GenStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
+type Qualite = 'standard' | 'qualite' | 'premium';
+interface QualiteOfferte { qualite: Qualite; libelle: string; ouverte: boolean }
+
+/** La génération en cours, mémorisée pour la reprise après rechargement (le stockage peut être indisponible). */
+const memoriserGeneration = (g: GenerationEnCours | null) => {
+  try {
+    if (g) window.localStorage.setItem(CLE_GENERATION_EN_COURS, JSON.stringify(g));
+    else window.localStorage.removeItem(CLE_GENERATION_EN_COURS);
+  } catch { /* stockage indisponible : pas de reprise, rien d'autre */ }
+};
+const relireGeneration = (): GenerationEnCours | null => {
+  try { return lireGenerationEnCours(window.localStorage.getItem(CLE_GENERATION_EN_COURS)); } catch { return null; }
+};
+/** Phase du moteur du jumeau → étape affichée dans Mon avatar (pas de montage ici). */
+const phaseJumeauVersEtape = (p: PhaseJumeau): PhaseGenerationJumeau => (
+  p === 'stockage' ? 'stockage' : p === 'traitement' ? 'traitement' : p === 'pret' || p === 'rendu' ? 'prete' : 'envoi'
+);
 
 export default function AvatarPage() {
   const [loading, setLoading] = useState(true);
@@ -128,7 +149,25 @@ export default function AvatarPage() {
   /** Le dernier refus du serveur pour la voix clonée choisie — dit tel quel, jamais remplacé par une autre voix. */
   const [refusVoixClonee, setRefusVoixClonee] = useState<string | null>(null);
   const [ratio, setRatio] = useState<'9:16' | '16:9' | '1:1'>('9:16');
+  /**
+   * QUALITÉ DE RENDU — Standard (avatar_iii) / Qualité (avatar_iv) / Premium
+   * (avatar_v). Un réglage de CETTE génération, jamais de la version de
+   * l'avatar. Le serveur dit lesquelles sont ouvertes ; il revérifie au clic.
+   */
+  const [qualites, setQualites] = useState<QualiteOfferte[]>([]);
+  const [qualite, setQualite] = useState<Qualite>('standard');
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
+  /** Où en est la génération (étapes RÉELLES du parcours HeyGen ou du jumeau), et son début. */
+  const [genEtape, setGenEtape] = useState<{ mode: 'heygen'; phase: PhaseGenerationHeygen } | { mode: 'jumeau'; phase: PhaseGenerationJumeau } | null>(null);
+  const [genDebut, setGenDebut] = useState<number | null>(null);
+  /** Le dernier statut rendu par le fournisseur (pending / processing), dit en clair. */
+  const [statutFournisseur, setStatutFournisseur] = useState<string | null>(null);
+  /** L'échec de la dernière génération : l'étape où elle s'est arrêtée et le motif. */
+  const [genEchec, setGenEchec] = useState<string | null>(null);
+  /** Ratio RÉEL de la source (dimensions lues sur l'image / la vidéo chargée) ; `null` tant qu'inconnu. */
+  const [ratioSourceReel, setRatioSourceReel] = useState<string | null>(null);
+  /** « Changer d'avatar » : ouvre la liste de MES avatars (incrémenté à chaque demande). */
+  const [demandeChoixAvatar, setDemandeChoixAvatar] = useState(0);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   /**
    * L'aperçu RÉEL du clone (une vraie génération HeyGen sur le texte fixe de
@@ -366,6 +405,15 @@ export default function AvatarPage() {
     setDidVideoActif(json.data.didVideoActif === true);
     setJumeauVideoActif(json.data.jumeauVideoActif === true);
     setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
+    if (Array.isArray(json.data.qualites)) {
+      const offertes = (json.data.qualites as QualiteOfferte[]).filter((q) => q && (q.qualite === 'standard' || q.qualite === 'qualite' || q.qualite === 'premium'));
+      setQualites(offertes);
+      // Présélection : la qualité du moteur par DÉFAUT du serveur (celle qu'il utilisait déjà).
+      const defaut = json.data.qualiteParDefaut as Qualite | undefined;
+      setQualite((q) => (offertes.some((o) => o.qualite === q && o.ouverte) ? q
+        : defaut && offertes.some((o) => o.qualite === defaut && o.ouverte) ? defaut
+          : offertes.find((o) => o.ouverte)?.qualite ?? 'standard'));
+    }
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
     if (json.data.avatar?.etat === 'valide') void loadRenduRecent();
@@ -597,9 +645,11 @@ export default function AvatarPage() {
       }
 
       const { status, videoUrl: url, error: errMsg, progress: realProgress } = json.data;
+      const estApercu = apercuGenerationRef.current === generationId;
 
       if (status === 'completed' && url) {
         setProgress(null);
+        if (!estApercu) { memoriserGeneration(null); setGenEtape({ mode: 'heygen', phase: 'prete' }); setStatutFournisseur(null); }
         if (apercuGenerationRef.current === generationId) {
           // C'était l'aperçu : il vit dans son bloc, pas dans « votre vidéo ».
           apercuGenerationRef.current = null;
@@ -620,6 +670,7 @@ export default function AvatarPage() {
         return;
       }
       if (status === 'failed') {
+        if (!estApercu) { memoriserGeneration(null); setGenEchec(errMsg || 'La génération a échoué.'); setStatutFournisseur(null); }
         setGenStatus('failed');
         setError(errMsg || 'La génération a échoué.');
         if (apercuGenerationRef.current === generationId) { apercuGenerationRef.current = null; await loadApercu(); }
@@ -629,6 +680,7 @@ export default function AvatarPage() {
       if (typeof realProgress === 'number' && Number.isFinite(realProgress)) {
         setProgress(Math.min(99, Math.max(0, realProgress)));
       }
+      if (!estApercu) { setStatutFournisseur(typeof status === 'string' ? status : null); setGenEtape({ mode: 'heygen', phase: 'generation' }); }
       setGenStatus('processing');
       pollRef.current = setTimeout(() => poll(generationId), 5000);
     } catch {
@@ -643,11 +695,17 @@ export default function AvatarPage() {
     setNotice(null);
     setVideoUrl(null);
     setProgress(null);
+    setGenEchec(null);
+    setStatutFournisseur(null);
+    setGenDebut(Date.now());
     setGenStatus('pending');
+    // La qualité n'est envoyée que si le serveur l'a offerte ouverte ; il revérifie et refuse sinon.
+    const qualiteEnvoyee = qualites.some((q) => q.qualite === qualite && q.ouverte) ? qualite : undefined;
 
     // MA voix (voix clonée) : le moteur du jumeau de Créer, tel quel.
     if (voiceId.startsWith(PREFIXE_VOIX_CLONEE)) {
       const choisie = voiceId.slice(PREFIXE_VOIX_CLONEE.length);
+      setGenEtape({ mode: 'jumeau', phase: 'verification' });
       // Vérifiée MAINTENANT par le serveur, AVEC cette voix : du compte, prête,
       // jumeau prêt. Sinon, on le dit ; jamais une autre voix en silence.
       const etat = await lireEtatJumeau(fetch, avatar.id, choisie);
@@ -663,24 +721,40 @@ export default function AvatarPage() {
         setRefusVoixClonee(refus);
       }
       if (refus) {
+        setGenEchec(refus);
         setGenStatus('failed');
         setError(refus);
         return;
       }
       setGenStatus('processing');
+      setGenEtape({ mode: 'jumeau', phase: 'envoi' });
       try {
-        const { url } = await genererEtAttendreVideoJumeau({ textes: [script.trim()], aspectRatio: ratio, avatarId: avatar.id, voixId: choisie });
+        const { url } = await genererEtAttendreVideoJumeau({
+          textes: [script.trim()], aspectRatio: ratio, avatarId: avatar.id, voixId: choisie,
+          ...(qualiteEnvoyee ? { qualite: qualiteEnvoyee } : {}),
+          // Acceptée par le serveur : mémorisée pour reprendre le SUIVI après un rechargement.
+          onLancee: (generationId) => memoriserGeneration({ generationId, mode: 'jumeau', avatarId: avatar.id, debutLe: Date.now() }),
+          onPhase: (ph) => { if (!demonteRef.current) setGenEtape({ mode: 'jumeau', phase: phaseJumeauVersEtape(ph) }); },
+        });
+        memoriserGeneration(null);
         if (demonteRef.current) return;
         setVideoUrl(url);
+        setGenEtape({ mode: 'jumeau', phase: 'prete' });
         setGenStatus('completed');
       } catch (e) {
         if (demonteRef.current) return;
+        const message = e instanceof Error && e.message ? e.message : 'La génération a échoué.';
+        // Une attente interrompue (réseau, session) ne dit rien de la génération : on garde de quoi la reprendre.
+        const code = (e as { code?: string })?.code;
+        if (code !== 'connexion' && code !== 'session' && code !== 'delai') memoriserGeneration(null);
+        setGenEchec(message);
         setGenStatus('failed');
-        setError(e instanceof Error && e.message ? e.message : 'La génération a échoué.');
+        setError(message);
       }
       return;
     }
 
+    setGenEtape({ mode: 'heygen', phase: 'lancement' });
     try {
       const res = await fetch('/api/avatar/generate', {
         method: 'POST',
@@ -690,26 +764,69 @@ export default function AvatarPage() {
           script: script.trim(),
           voiceId: voiceId || undefined,
           aspectRatio: ratio,
+          ...(qualiteEnvoyee ? { qualite: qualiteEnvoyee } : {}),
         }),
       });
       const json = await res.json();
 
       if (!json.success) {
+        const message = json.refunded
+          ? `${json.error} Vos crédits ont été remboursés.`
+          : json.error || 'La génération a échoué.';
+        setGenEchec(message);
         setGenStatus('failed');
-        setError(
-          json.refunded
-            ? `${json.error} Vos crédits ont été remboursés.`
-            : json.error || 'La génération a échoué.',
-        );
+        setError(message);
         return;
       }
+      memoriserGeneration({ generationId: json.data.generationId, mode: 'heygen', avatarId: avatar.id, debutLe: Date.now() });
+      setGenEtape({ mode: 'heygen', phase: 'generation' });
+      setStatutFournisseur(typeof json.data.status === 'string' ? json.data.status : null);
       setGenStatus('processing');
       poll(json.data.generationId);
     } catch {
+      setGenEchec('Connexion impossible. Réessayez.');
       setGenStatus('failed');
       setError('Connexion impossible. Réessayez.');
     }
   };
+
+  // ── Reprise après rechargement ──────────────────────────────────────
+  // Une génération acceptée par le serveur a été mémorisée : on reprend son
+  // SUIVI (lecture de statut), jamais un nouveau lancement — aucun débit. La
+  // progression repart de l'étape RÉELLE (« Génération de l'avatar »), pas du début.
+  const repriseFaiteRef = useRef(false);
+  useEffect(() => {
+    if (repriseFaiteRef.current || !avatar?.id || avatar.etat !== 'valide') return;
+    repriseFaiteRef.current = true;
+    const g = relireGeneration();
+    if (!g || g.avatarId !== avatar.id) { if (g) memoriserGeneration(null); return; }
+    setGenDebut(g.debutLe);
+    setGenStatus('processing');
+    if (g.mode === 'heygen') {
+      setGenEtape({ mode: 'heygen', phase: 'generation' });
+      void poll(g.generationId);
+      return;
+    }
+    setGenEtape({ mode: 'jumeau', phase: 'traitement' });
+    void attendreStatutJumeau({
+      generationId: g.generationId,
+      onPhase: (ph) => { if (!demonteRef.current) setGenEtape({ mode: 'jumeau', phase: phaseJumeauVersEtape(ph) }); },
+    }).then(({ url }) => {
+      memoriserGeneration(null);
+      if (demonteRef.current) return;
+      setVideoUrl(url);
+      setGenEtape({ mode: 'jumeau', phase: 'prete' });
+      setGenStatus('completed');
+    }).catch((e: unknown) => {
+      if (demonteRef.current) return;
+      const message = e instanceof Error && e.message ? e.message : 'La génération a échoué.';
+      const code = (e as { code?: string })?.code;
+      if (code !== 'connexion' && code !== 'session' && code !== 'delai') memoriserGeneration(null);
+      setGenEchec(message);
+      setGenStatus('failed');
+      setError(message);
+    });
+  }, [avatar?.id, avatar?.etat, poll]);
 
   const busy = genStatus === 'pending' || genStatus === 'processing';
 
@@ -817,6 +934,7 @@ export default function AvatarPage() {
       data-avatar-source-apercu="video"
       src={urlSourceAvatar(avatar)}
       onError={(e) => { e.currentTarget.hidden = true; }}
+      onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth > 0 && v.videoHeight > 0) setRatioSourceReel(`${v.videoWidth} / ${v.videoHeight}`); }}
       className="w-full h-full object-contain bg-black"
       muted
       playsInline
@@ -828,6 +946,7 @@ export default function AvatarPage() {
       data-avatar-source-apercu="image"
       src={urlSourceAvatar(avatar)}
       onError={(e) => { e.currentTarget.hidden = true; }}
+      onLoad={(e) => { const i = e.currentTarget; if (i.naturalWidth > 0 && i.naturalHeight > 0) setRatioSourceReel(`${i.naturalWidth} / ${i.naturalHeight}`); }}
       alt={TITRE_SOURCE_AVATAR}
       className="w-full h-full object-contain"
     />
@@ -839,7 +958,10 @@ export default function AvatarPage() {
    * (« Votre vidéo ») comme état `pret` de la même zone. Tout vient du serveur.
    */
   const zone: { titre: string; etat: EtatApercu; media: React.ReactNode; ratio: string } = (() => {
-    const ratioSource = avatar?.avatar_type === 'video' || (!avatar && kind === 'video') ? '9 / 16' : '1 / 1';
+    // Le format de la SOURCE quand il est connu (dimensions lues) ; sinon l'hypothèse d'avant.
+    const ratioSource = (avatar && ratioSourceReel) || (avatar?.avatar_type === 'video' || (!avatar && kind === 'video') ? '9 / 16' : '1 / 1');
+    // Avatar prêt : le lecteur prend le FORMAT CHOISI (9:16 / 16:9 / 1:1), aussitôt le bouton changé.
+    const ratioFormat = ratioCadre(ratio);
     if (!avatar) {
       if (!preview) return { titre: 'Aperçu', ratio: ratioSource, media: null, etat: { statut: 'vide', message: `Choisissez ${kind === 'video' ? 'une vidéo' : 'une photo'} : elle s'affichera ici.` } };
       return {
@@ -852,16 +974,16 @@ export default function AvatarPage() {
       };
     }
     if (etatEffectif === 'valide') {
-      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratio === '9:16' ? '9 / 16' : ratio === '16:9' ? '16 / 9' : '1 / 1', etat: { statut: 'pret', legende: 'Vidéo prête.' }, media: <video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /> };
+      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratioFormat, etat: { statut: 'pret', legende: 'Vidéo prête.' }, media: <video src={videoUrl} controls playsInline className="w-full h-full object-contain bg-black" /> };
       // ⚠️ JAMAIS la source ici : elle n'est pas l'avatar utilisé par Créer et
       // l'Autopilote. On montre un RENDU réel de la version active, ou on dit
       // qu'il n'y en a pas — sans rien inventer, sans appeler de fournisseur.
-      if (renduRecent) return { titre: TITRE_RENDU_RECENT, ratio: '9 / 16', etat: { statut: 'pret', legende: busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.` }, media: <video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline className="w-full h-full object-contain bg-black" /> };
-      return { titre: TITRE_RENDU_RECENT, ratio: '9 / 16', media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
+      if (renduRecent) return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, etat: { statut: 'pret', legende: busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.` }, media: <video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline className="w-full h-full object-contain bg-black" /> };
+      return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
     }
     if (etatEffectif === 'entraine_non_valide') {
       const relance = { onClick: genererApercu, disabled: apercuEnCours || !apercu, principale: notification?.cle !== 'voix_manquante', attributs: { 'data-avatar-apercu': 'generer' } as const };
-      if (!apercu || apercu.statut === 'aucun') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'vide', message: 'Aperçu de validation offert — une courte vidéo réelle de votre avatar, avec votre voix.', action: { libelle: 'Générer mon aperçu', ...relance } } };
+      if (!apercu || apercu.statut === 'aucun') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'vide', message: 'Aperçu de validation offert — une courte vidéo réelle de votre avatar, avec votre voix.', action: { libelle: apercuEnCours ? 'Lancement de l’aperçu…' : 'Générer mon aperçu', ...relance } } };
       if (apercu.statut === 'echec') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: "L'aperçu n'a pas pu être généré. Vous pouvez le relancer sans frais.", detail: apercu.erreur ?? undefined, action: { libelle: "Relancer l'aperçu", ...relance } } };
       if (apercu.statut === 'en_cours') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'chargement', message: 'Votre aperçu est en cours de génération…', detail: 'Cela prend généralement 1 à 5 minutes. Cette page se met à jour toute seule.' } };
       // `indisponible` : la génération est terminée mais sa vidéo n'a pas pu être
@@ -876,7 +998,7 @@ export default function AvatarPage() {
         titre: 'Aperçu de validation', ratio: '9 / 16',
         media: <video data-avatar-apercu="video" src={apercu.url} controls autoPlay playsInline onPlaying={apercuEnLecture} className="w-full h-full object-contain bg-black" />,
         etat: ouvert
-          ? { statut: 'pret', legende: 'Ça vous ressemble ?', actionSuivante: { libelle: 'Valider mon avatar', onClick: validerAvatar, disabled: validationEnCours, attributs: { 'data-avatar-apercu': 'valider' } } }
+          ? { statut: 'pret', legende: 'Ça vous ressemble ?', actionSuivante: { libelle: validationEnCours ? 'Validation en cours…' : 'Valider mon avatar', onClick: validerAvatar, disabled: validationEnCours, attributs: { 'data-avatar-apercu': 'valider' } } }
           : { statut: 'pret', legende: 'Lancez la lecture : le bouton de validation apparaîtra ensuite.' },
       };
     }
@@ -958,8 +1080,9 @@ export default function AvatarPage() {
 
   if (loading) {
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+      <div data-avatar-chargement role="status" className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-500" aria-hidden />
+        <p className="text-sm text-gray-300">Chargement de votre avatar…</p>
       </div>
     );
   }
@@ -976,7 +1099,8 @@ export default function AvatarPage() {
     contenu: (
       <div className="space-y-3">
         <div className="text-xs text-gray-300" data-avatar-actif-meta>
-          {avatar.version ? `v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
+          {/* VERSION ≠ QUALITÉ : « v3 » numérote l'avatar ; la qualité se choisit à la génération. */}
+          {avatar.version ? `Version v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
         </div>
         <p className="text-sm text-gray-300">Cet avatar est celui utilisé dans Créer et Autopilote.</p>
       </div>
@@ -985,7 +1109,9 @@ export default function AvatarPage() {
     actions: (
       <>
         <Link href="/dashboard/creer" data-avatar-actif-action="creer" data-avatar-action="utiliser-creer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">Utiliser dans Créer</Link>
-        <button type="button" onClick={changerDeSource} data-avatar-actif-action="changer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">
+        {/* « Changer d'avatar » = choisir parmi MES avatars (« Remplacer » crée une nouvelle version,
+            « Créer un nouvel avatar » une nouvelle identité). */}
+        <button type="button" onClick={() => setDemandeChoixAvatar((n) => n + 1)} data-avatar-actif-action="changer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">
           <RefreshCw className="w-3 h-3" /> Changer d’avatar
         </button>
       </>
@@ -1037,7 +1163,7 @@ export default function AvatarPage() {
           <div role="tabpanel" id="panneau-avatar" aria-labelledby="onglet-avatar" data-avatar-panneau="avatar" className={onglet === 'avatar' ? 'space-y-6' : 'hidden'}>
           {/* Mes avatars — identités, version utilisée, nouvelle version ; la carte active
               fusionnée. Sans aucun avatar, la carte de création ci-dessous suffit. */}
-          {avatar && <MesAvatars key={mesAvatarsCle} onChange={() => { void loadAvatar(false); }} carteActive={carteActive} />}
+          {avatar && <MesAvatars key={mesAvatarsCle} onChange={() => { void loadAvatar(false); }} carteActive={carteActive} demandeChoixAvatar={demandeChoixAvatar} />}
 
           {/* LA carte principale — comme la carte du wizard de Créer : le fil
               d'étapes en tête (une étape franchie ramène à la Source), le statut
@@ -1330,7 +1456,7 @@ export default function AvatarPage() {
                 titre={zone.titre}
                 etat={zone.etat}
                 ratio={zone.ratio}
-                className={avatar && etatEffectif === 'valide' && !viaDid ? CLASSE_LECTEUR_GENERATION : ''}
+                className={avatar && etatEffectif === 'valide' && !viaDid ? CLASSES_LECTEUR_GENERATION[ratio] : ''}
               >
                 {zone.media}
               </ZoneApercu>
@@ -1428,6 +1554,35 @@ export default function AvatarPage() {
                 </div>
               </div>
 
+              {/* QUALITÉ DE RENDU — pour cette vidéo. Distincte de la VERSION de l'avatar. */}
+              {qualites.length > 0 && (
+                <div data-avatar-qualite>
+                  <label className="block text-sm font-medium text-gray-100 mb-1.5">Qualité</label>
+                  <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Qualité de rendu">
+                    {qualites.map((q) => (
+                      <button
+                        key={q.qualite}
+                        type="button"
+                        role="radio"
+                        aria-checked={qualite === q.qualite}
+                        disabled={!q.ouverte || busy}
+                        data-avatar-qualite-option={q.qualite}
+                        data-avatar-qualite-ouverte={q.ouverte ? 'oui' : 'non'}
+                        title={q.ouverte ? undefined : 'Pas encore disponible sur votre compte.'}
+                        onClick={() => setQualite(q.qualite)}
+                        className={`rounded-lg px-2 py-1.5 text-left transition disabled:cursor-not-allowed ${qualite === q.qualite ? 'bg-studiio-primary/20 text-purple-100 ring-1 ring-studiio-primary/50' : 'bg-gray-800 text-gray-300 hover:text-white'} ${q.ouverte ? '' : 'opacity-50'}`}
+                      >
+                        <span className="block text-sm">{q.libelle}</span>
+                        <span className="block text-[10px] text-gray-400">{q.ouverte ? (q.qualite === 'standard' ? 'Rapide, économique' : q.qualite === 'qualite' ? 'Meilleur rendu' : 'Qualité maximale') : 'Pas encore disponible'}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {qualites.some((q) => !q.ouverte) && (
+                    <p data-avatar-qualite-fermee className="mt-1.5 text-[11px] text-gray-400">Les niveaux grisés ne sont pas encore ouverts sur votre compte.</p>
+                  )}
+                </div>
+              )}
+
               <div data-avatar-generer className="space-y-3">
               <button
                 onClick={handleGenerate}
@@ -1446,17 +1601,32 @@ export default function AvatarPage() {
                 )}
               </button>
 
-              {/* Génération à la demande : le fournisseur ne rend qu'un statut → barre
-                  indéterminée ; un pourcentage n'apparaît que si l'API en rend un réel. */}
-              {busy && (
-                <ProgressStatus
-                  titre="Création de votre vidéo"
-                  statut="en_cours"
-                  {...(progress !== null ? { pourcentage: progress } : {})}
-                  detail={progress === null ? 'Génération en cours — progression exacte indisponible.' : undefined}
-                  description="Cela prend généralement 1 à 5 minutes. Vous pouvez laisser cette page ouverte."
-                />
-              )}
+              {/* Génération : les étapes RÉELLES du parcours (HeyGen ou jumeau), barre
+                  indéterminée — un pourcentage n'apparaît que si l'API en rend un réel.
+                  En échec, la progression s'arrête sur l'étape fautive ; en succès, elle le dit. */}
+              {genEtape && (busy || genStatus === 'failed' || genStatus === 'completed') && (() => {
+                const liste = genEtape.mode === 'heygen' ? ETAPES_GENERATION_HEYGEN : ETAPES_GENERATION_JUMEAU;
+                const etapes = genEtape.mode === 'heygen'
+                  ? etapesGeneration(ETAPES_GENERATION_HEYGEN, genEtape.phase, genStatus === 'failed')
+                  : etapesGeneration(ETAPES_GENERATION_JUMEAU, genEtape.phase, genStatus === 'failed');
+                const etapeEchec = liste.find((l) => l.phase === genEtape.phase)?.libelle;
+                return (
+                  <div data-avatar-generation-progression={genStatus} data-avatar-generation-mode={genEtape.mode} data-avatar-generation-phase={genEtape.phase}>
+                    <ProgressStatus
+                      titre={genStatus === 'completed' ? 'Votre vidéo est prête' : genStatus === 'failed' ? 'La génération a échoué' : 'Création de votre vidéo'}
+                      statut={genStatus === 'completed' ? 'succes' : genStatus === 'failed' ? 'erreur' : 'en_cours'}
+                      etapes={etapes}
+                      {...(progress !== null && busy ? { pourcentage: progress } : {})}
+                      description={busy ? DETAIL_GENERATION[genEtape.phase] : undefined}
+                      detail={busy ? (detailStatutFournisseur(statutFournisseur) ?? (progress === null ? 'Progression exacte indisponible.' : undefined)) : undefined}
+                      debutLe={busy && genDebut ? genDebut : undefined}
+                      echec={genStatus === 'failed' ? { etape: etapeEchec, motif: genEchec ?? 'La génération a échoué.' } : undefined}
+                      note={busy ? 'Cela prend généralement quelques minutes. Vous pouvez recharger la page : le suivi reprendra.' : null}
+                      compact={!busy && genStatus === 'completed'}
+                    />
+                  </div>
+                );
+              })()}
               </div>
               {videoUrl && (
                 <a

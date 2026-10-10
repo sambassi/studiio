@@ -386,6 +386,12 @@ export interface GenerateVideoParams {
    */
   voiceId: string;
   aspectRatio?: AvatarAspectRatio;
+  /**
+   * Moteur choisi pour CETTE génération (qualité déjà autorisée par
+   * l'appelant, `moteurPourGeneration`). Absent = corps INCHANGÉ (aucun champ
+   * `engine`), exactement comme avant.
+   */
+  moteur?: MoteurAvatar;
 }
 
 /**
@@ -395,7 +401,7 @@ export interface GenerateVideoParams {
 export async function generateAvatarVideo(
   params: GenerateVideoParams,
 ): Promise<{ videoId: string; status: string }> {
-  const { avatarId, script, voiceId, aspectRatio = '9:16' } = params;
+  const { avatarId, script, voiceId, aspectRatio = '9:16', moteur } = params;
 
   if (!voiceId || !voiceId.trim()) {
     // Garde-fou : on prefere une erreur explicite a un 400 HeyGen garanti.
@@ -415,6 +421,7 @@ export async function generateAvatarVideo(
     aspect_ratio: aspectRatio,
     resolution: '720p',
     output_format: 'mp4',
+    ...(moteur ? { engine: { type: moteur } } : {}),
   };
 
   // Trace de la requete sortante : couplee au log d'erreur de heygenFetch,

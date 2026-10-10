@@ -72,3 +72,9 @@ export function moteurPourGeneration(
   }
   return { ok: true, moteur };
 }
+
+/** La qualité dont le moteur est celui du serveur par défaut — celle que l'écran présélectionne. */
+export function qualiteParDefaut(env: NodeJS.ProcessEnv = process.env): QualiteRendu {
+  const m = moteurAvatar(env);
+  return QUALITES.find((q) => MOTEUR_PAR_QUALITE[q] === m) ?? 'standard';
+}

@@ -13,6 +13,7 @@ import {
 } from '@/lib/avatar/heygen';
 import { versionDuCompte, ecrireVersion } from '@/lib/avatar/versions';
 import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
+import { moteurPourGeneration } from '@/lib/avatar/moteurs';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -70,6 +71,17 @@ export async function POST(req: NextRequest) {
     if (!script) {
       return NextResponse.json(
         { success: false, error: 'Le texte a prononcer est vide.' },
+        { status: 400 },
+      );
+    }
+    // La QUALITÉ de rendu (Standard / Qualité / Premium), pour une génération
+    // normale seulement : le serveur décide du moteur et REFUSE une qualité
+    // fermée — avant tout débit et tout appel fournisseur, jamais rabattue en
+    // silence. Sans qualité (et pour l'aperçu) : corps inchangé.
+    const choixMoteur = intention === INTENTION_APERCU ? null : body?.qualite === undefined ? null : moteurPourGeneration(body.qualite);
+    if (choixMoteur && !choixMoteur.ok) {
+      return NextResponse.json(
+        { success: false, error: choixMoteur.message, code: 'qualite_indisponible' },
         { status: 400 },
       );
     }
@@ -302,6 +314,7 @@ export async function POST(req: NextRequest) {
         script,
         voiceId: resolvedVoiceId,
         aspectRatio,
+        ...(choixMoteur?.ok ? { moteur: choixMoteur.moteur } : {}),
       }));
     } catch (erreurFournisseur) {
       // L'aperçu réservé ne doit pas rester « pending » pour toujours : marqué

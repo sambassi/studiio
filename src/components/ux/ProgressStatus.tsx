@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { Check, XCircle, Loader2 } from 'lucide-react';
+import { Check, XCircle, Loader2, Hand } from 'lucide-react';
 
 /**
  * LA progression de Studiio — une seule forme pour toute opération longue
@@ -21,7 +21,11 @@ import { Check, XCircle, Loader2 } from 'lucide-react';
  * fournir que quand il est mesuré.
  */
 
-export type StatutProgression = 'en_cours' | 'succes' | 'info' | 'avertissement' | 'erreur';
+/**
+ * `attente` : rien ne tourne, c'est à la PERSONNE d'agir (regarder l'aperçu,
+ * choisir). Ni spinner ni barre animée : on ne simule pas un travail.
+ */
+export type StatutProgression = 'en_cours' | 'succes' | 'info' | 'avertissement' | 'erreur' | 'attente';
 export type EtatEtapeProgression = 'terminee' | 'courante' | 'a_venir' | 'echouee';
 
 export interface EtapeProgression { libelle: string; etat: EtatEtapeProgression }
@@ -122,6 +126,8 @@ export default function ProgressStatus({
           <Loader2 className="w-5 h-5 animate-spin text-purple-300 flex-shrink-0" aria-hidden />
         ) : statut === 'erreur' ? (
           <XCircle className="w-5 h-5 text-red-300 flex-shrink-0" aria-hidden />
+        ) : statut === 'attente' ? (
+          <Hand className="w-5 h-5 text-purple-200 flex-shrink-0" aria-hidden />
         ) : (
           <Check className="w-5 h-5 text-emerald-300 flex-shrink-0" aria-hidden />
         )}

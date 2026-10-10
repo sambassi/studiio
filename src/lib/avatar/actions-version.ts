@@ -55,6 +55,11 @@ export function versionPublique(v: VersionAvatar) {
     type: v.avatar_type === 'video' ? 'video' : 'photo',
     creeLe: v.created_at,
     valideeLe: v.validated_at,
+    activeeLe: v.activated_at,
+    /** Une source est conservée pour cette version (lisible par `/api/avatars/versions/:id/source`). */
+    source: !!v.source_object_key,
+    /** L'original importé est conservé À CÔTÉ de la version préparée (coupe, recadrage, amélioration). */
+    originalConserve: !!v.original_source_object_key && v.original_source_object_key !== v.source_object_key,
   };
 }
 

@@ -24,6 +24,7 @@ import { lancerVersionCandidate } from '@/lib/avatar/remplacement';
 import { versionPublique } from '@/lib/avatar/actions-version';
 import { cleSourceAvatarDuCompte, sourceAvatarPresente } from '@/lib/avatar/source';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
+import { qualitesDisponibles, qualiteParDefaut } from '@/lib/avatar/moteurs';
 import {
   FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, DUREE_VALIDITE_CONSENTEMENT_MS, etapeDid, rafraichirEntrainementDid,
   type AvatarDid,
@@ -382,7 +383,7 @@ export async function GET() {
     // `didVideoActif` : l'ecran ouvre « A partir d'une video » seulement si le
     // serveur le dit — drapeau ET cle presents. Jamais la cle elle-meme.
     // `nomProfil` : le nom du compte, pour PRÉ-REMPLIR le nom de consentement D-ID à l'écran. Rien d'autre du profil.
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null } });
+    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesDisponibles(), qualiteParDefaut: qualiteParDefaut() } });
   } catch (error) {
     console.error('[Avatar] GET create failed:', error);
     return NextResponse.json(
