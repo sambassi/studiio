@@ -13,10 +13,10 @@ import type { MediaStock } from '@/lib/stock/types';
  * plan manquant, et RIEN n'entre dans la banque sans « Conserver ».
  */
 
-const A = 'https://projet.supabase.co/storage/v1/object/public/media/u/a.mp4';
-const B = 'https://projet.supabase.co/storage/v1/object/public/media/u/b.mp4';
-const C = 'https://projet.supabase.co/storage/v1/object/public/media/u/c.mp4';
-const IMPORTE = (id: string) => `https://projet.supabase.co/storage/v1/object/public/media/u/library/stock-pexels-video-${id}.mp4`;
+const A = 'https://studiio.pro/storage/v1/object/public/media/u/a.mp4';
+const B = 'https://studiio.pro/storage/v1/object/public/media/u/b.mp4';
+const C = 'https://studiio.pro/storage/v1/object/public/media/u/c.mp4';
+const IMPORTE = (id: string) => `https://studiio.pro/storage/v1/object/public/media/u/library/stock-pexels-video-${id}.mp4`;
 const CLE = 'studiio.autopilote.completerRushesStock';
 
 function media(id: string, orientation: 'portrait' | 'landscape'): MediaStock {
@@ -105,8 +105,15 @@ async function ouvrirRushes() {
 
 const caseStock = () => document.querySelector('[data-autopilot-completer-stock]') as HTMLInputElement;
 
+/** La case est désormais la source stock ENREGISTRÉE : un PUT, puis on repart de zéro. */
+let envoiActivation: AutopilotConfig | null = null;
 async function activer() {
+  const avant = envois.length;
   fireEvent.click(caseStock());
+  await waitFor(() => expect(envois.length).toBe(avant + 1));
+  envoiActivation = JSON.parse(envois[avant]) as AutopilotConfig;
+  envois.length = 0;
+  await waitFor(() => expect(caseStock().checked).toBe(true));
 }
 
 async function attendrePropositions() {
@@ -118,8 +125,8 @@ describe('Désactivé (défaut) — comportement identique', () => {
     await ouvrirRushes();
     expect(caseStock()).toBeTruthy();
     expect(caseStock().checked).toBe(false);
-    expect(screen.getByText('Compléter automatiquement mes rushes')).toBeTruthy();
-    expect(screen.getByText(/Si vos propres médias ne suffisent pas/)).toBeTruthy();
+    expect(screen.getByText('Compléter avec Pexels / Unsplash')).toBeTruthy();
+    expect(screen.getByText(/seuls les médias que vous retenez sont utilisés/)).toBeTruthy();
     expect(document.querySelector('[data-autopilot-stock]')).toBeNull();
     expect(document.querySelector('[data-autopilot-stock-suffisant]')).toBeNull();
     expect(document.querySelector('[data-autopilot-rush-stock]')).toBeNull();
@@ -138,22 +145,27 @@ describe('Désactivé (défaut) — comportement identique', () => {
     expect(appelsStock).toEqual([]);
   });
 
-  it('cocher n enregistre RIEN côté serveur ; le choix vit dans localStorage', async () => {
+  it('cocher enregistre la source stock dans designStyle.sources (plus de localStorage)', async () => {
     configServeur = { ...configServeur, rushUrls: [A, B, C] };
     await ouvrirRushes();
     await activer();
-    expect(window.localStorage.getItem(CLE)).toBe('1');
-    expect(envois).toEqual([]);
-    fireEvent.click(caseStock());
+    expect(envoiActivation!.designStyle.sources).toEqual({ actives: { rushes: true, avatar: false, stock: true }, stock: [], gabarit: [] });
+    expect(envoiActivation!.rushUrls).toEqual([A, B, C]);
     expect(window.localStorage.getItem(CLE)).toBeNull();
-    expect(document.querySelector('[data-autopilot-stock-suffisant]')).toBeNull();
+    fireEvent.click(caseStock());
+    await waitFor(() => expect(envois.length).toBe(1));
+    expect((JSON.parse(envois[0]) as AutopilotConfig).designStyle.sources?.actives.stock).toBe(false);
+    await waitFor(() => expect(document.querySelector('[data-autopilot-stock-suffisant]')).toBeNull());
   });
 
-  it('le choix enregistré est relu au montage', async () => {
+  it('l ancienne préférence localStorage est MIGRÉE une fois vers la configuration, puis effacée', async () => {
     configServeur = { ...configServeur, rushUrls: [A, B, C] };
     window.localStorage.setItem(CLE, '1');
     await ouvrirRushes();
     await waitFor(() => expect(caseStock().checked).toBe(true));
+    await waitFor(() => expect(envois.length).toBe(1));
+    expect((JSON.parse(envois[0]) as AutopilotConfig).designStyle.sources?.actives.stock).toBe(true);
+    expect(window.localStorage.getItem(CLE)).toBeNull();
   });
 });
 
@@ -211,6 +223,11 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
     expect(corpsImport).toEqual([{ provider: 'pexels', type: 'video', providerAssetId: 'P1' }]);
     const recu = JSON.parse(envois[0]) as AutopilotConfig;
     expect(recu.rushUrls).toEqual([A, IMPORTE('P1')]);
+    // UN seul PUT : la banque ET le média retenu (attribution comprise).
+    expect(recu.designStyle.sources?.stock).toEqual([{
+      url: IMPORTE('P1'), type: 'video', provider: 'pexels', providerAssetId: 'P1', auteur: 'Auteur P1',
+      sourceUrl: 'https://www.pexels.com/video/P1/', licence: 'Pexels License', vignetteUrl: 'https://images.pexels.com/videos/P1/thumb.jpg',
+    }]);
     await waitFor(() => expect(document.querySelector(`[data-autopilot-rush-stock="${IMPORTE('P1')}"]`)?.textContent).toBe('Stock · Pexels · Auteur P1'));
     expect(document.querySelector('[data-autopilot-stock-slot="plan-2"][data-etat="conserve"]')).toBeTruthy();
     // L'autre proposition reste en attente, rien n'est ajouté pour elle.
@@ -276,7 +293,7 @@ describe('Activé — fournisseur en défaut', () => {
     expect(envois).toEqual([]);
   });
 
-  it('sans aucun rush, la règle bloquante existante est inchangée', async () => {
+  it('sans aucun rush ni média retenu : bloqué (des propositions ne sont pas une source)', async () => {
     configServeur = { ...configServeur, rushUrls: [] };
     await ouvrirRushes();
     await activer();

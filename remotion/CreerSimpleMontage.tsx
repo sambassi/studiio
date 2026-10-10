@@ -2,7 +2,8 @@ import React from 'react';
 import {
   AbsoluteFill, Audio, OffthreadVideo, Img, Sequence, useVideoConfig, useCurrentFrame,
 } from 'remotion';
-import { planRushs, type RushSegment } from '../src/lib/creer/multi-rush';
+import { planRushs, planAvecAvatar, type RushSegment } from '../src/lib/creer/multi-rush';
+import { transformeKenBurns } from '../src/lib/creer/ken-burns';
 import { ajusterPlan } from '../src/lib/creer/smart-montage';
 import type { OverlaysMontage } from '../src/lib/creer/overlays';
 import {
@@ -360,6 +361,21 @@ const Fond: React.FC<{ props: CreerSimpleMontageProps; type: string }> = ({ prop
   );
 };
 
+/**
+ * Plan PHOTO (Autopilote multi-sources) : l'image en `cover`, animée en Ken
+ * Burns (`transformeKenBurns`, pur et testé). `useCurrentFrame` est relatif au
+ * `Sequence` du plan : 0 → `dureeFrames`.
+ */
+export const PhotoKenBurns: React.FC<{ src: string; mouvement?: RushSegment['mouvement']; dureeFrames: number }> = ({ src, mouvement, dureeFrames }) => {
+  const frame = useCurrentFrame();
+  const t = transformeKenBurns(mouvement, dureeFrames > 1 ? frame / (dureeFrames - 1) : 0);
+  return (
+    <AbsoluteFill style={{ overflow: 'hidden' }}>
+      <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: t.css }} />
+    </AbsoluteFill>
+  );
+};
+
 /** Filigrane, en bas de cadre. */
 const Filigrane: React.FC<{ texte?: string; echelle: number }> = ({ texte, echelle }) =>
   texte ? (
@@ -515,10 +531,18 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         // Multi-rush : durée de la séquence « Vidéo » et écart entre le début
         // de sa séquence dans la série et son début NOMINAL.
         const iVideo = sequences.findIndex((s) => s.type === 'video');
-        const montage = (props.montage?.filter((m) => m?.url).length ?? 0) >= 2 ? props.montage!.filter((m) => m?.url) : null;
+        // MULTI-SOURCES : un plan qui porte une photo (ou l'avatar) se lit
+        // comme un plan, même à un seul extrait — une photo ne peut pas passer
+        // par `OffthreadVideo`.
+        const montageBrut = props.montage?.filter((m) => m?.url) ?? [];
+        const montage = montageBrut.length >= 2 || montageBrut.some((m) => m.kind === 'image' || m.kind === 'avatar') ? montageBrut : null;
         const plusieursRushs = (montage !== null || (props.rushs?.filter((r) => r?.url).length ?? 0) >= 2) && iVideo >= 0;
         const dureeVideo = iVideo >= 0 ? sequences[iVideo].duration : 0;
-        const planVideo: RushSegment[] = montage ? ajusterPlan(montage, dureeVideo) : plusieursRushs ? planRushs(props.rushs!, dureeVideo) : [];
+        // ⚠️ AVATAR : jamais de remise à l'échelle — `ajusterPlan` déplacerait
+        // `debut` sans `depuis`, et la bouche de l'avatar quitterait sa voix.
+        // Le moteur garantit `dureePlan === videoDuration` pour ces plans.
+        const avecAvatar = !!montage && planAvecAvatar(montage);
+        const planVideo: RushSegment[] = montage ? (avecAvatar ? montage.map((m) => ({ ...m })) : ajusterPlan(montage, dureeVideo)) : plusieursRushs ? planRushs(props.rushs!, dureeVideo) : [];
         const avance = (depart: number) => (iVideo >= 0 ? Math.max(0, offsets[iVideo] - depart) : 0);
 
         // Les trois blocs de texte, écrits UNE fois : plein écran (séquences
@@ -611,9 +635,25 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               // à leur place NOMINALE, `avance` frames après le début de la
               // série. Le dernier court jusqu'au bout (raccord sortant compris).
               <>
+                {/* Avatar en premier plan : il démarre à sa place NOMINALE (sa
+                    voix y démarre aussi) ; le raccord entrant montre le fond. */}
+                {planVideo[0]?.kind === 'avatar' && avance(depart) > 0 && <Fond props={props} type={type} />}
                 {planVideo.map((seg, k, plan) => {
-                  const from = k === 0 ? 0 : avance(depart) + Math.round(seg.debut * fps);
+                  // Le premier extrait démarre avec la séquence (raccord compris)
+                  // — sauf l'avatar, dont l'image doit rester sur sa voix.
+                  const from = k === 0 && seg.kind !== 'avatar' ? 0 : avance(depart) + Math.round(seg.debut * fps);
                   const fin = avance(depart) + Math.round(seg.fin * fps);
+                  if (seg.kind === 'image') {
+                    return (
+                      <Sequence
+                        key={`rush-${k}`}
+                        from={from}
+                        {...(k < plan.length - 1 ? { durationInFrames: Math.max(1, fin - from) } : {})}
+                      >
+                        <PhotoKenBurns src={seg.url} mouvement={seg.mouvement} dureeFrames={Math.max(1, fin - from)} />
+                      </Sequence>
+                    );
+                  }
                   return (
                     <Sequence
                       key={`rush-${k}`}

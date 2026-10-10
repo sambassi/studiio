@@ -131,7 +131,8 @@ describe('Mon avatar — refonte : une carte, deux onglets', () => {
     expect(c.querySelector('[data-version-active]')).toBeNull();
     // « Créer un nouvel avatar » reste là, en secondaire ; le seul primaire est « Générer la vidéo ».
     expect(document.querySelector('[data-nouvel-avatar]')!.className).toContain('button-secondary');
-    expect([...document.querySelectorAll('.button-primary')].map((b) => b.textContent?.trim())).toEqual(['Générer la vidéo (40 crédits)']);
+    expect([...document.querySelectorAll('.button-primary')].map((b) => b.textContent?.trim())).toEqual(['Générer la vidéo']);
+    expect(document.querySelector('[data-avatar-prix]')!.textContent).toBe('Prix : 40 crédits');
   });
 
   it('⚠️ onglets : « Avatar vidéo » par défaut ; « Voix & Prononciation » montre la voix — la génération reste à droite, rien n’est démonté', async () => {

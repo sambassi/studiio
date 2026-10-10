@@ -189,12 +189,15 @@ describe('Mon avatar — « Ma voix » dans le sélecteur', () => {
     expect(appels.some((a) => /heygen|elevenlabs/i.test(a.url))).toBe(false);
   });
 
-  it('⚠️ 10. coût inchangé : le bouton dit toujours 40 crédits, quelle que soit la voix ; aucun appel de crédits côté navigateur', async () => {
+  it('⚠️ 10. coût inchangé : le bloc prix dit toujours 40 crédits, quelle que soit la voix ; aucun appel de crédits côté navigateur', async () => {
+    // Le prix est annoncé AU-DESSUS du bouton (`data-avatar-prix`), le bouton dit seulement « Générer la vidéo ».
+    const prix = () => document.querySelector('[data-avatar-prix]')?.textContent;
     await monter();
     await attendreClonees();
-    expect(bouton().textContent).toContain('(40 crédits)');
+    expect(prix()).toBe('Prix : 40 crédits');
     fireEvent.change(select(), { target: { value: `clone:${BASSI}` } });
-    expect(bouton().textContent).toContain('(40 crédits)');
+    expect(prix()).toBe('Prix : 40 crédits');
+    expect(bouton().textContent?.trim()).toBe('Générer la vidéo');
     expect(appels.some((a) => a.url.startsWith('/api/credits'))).toBe(false);
   });
 });

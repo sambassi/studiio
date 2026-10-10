@@ -10,6 +10,7 @@
  * prochaine génération.
  */
 
+import { aUneSourceVisuelle, etatSourcesServeur } from '@/lib/autopilot/sources';
 import {
   sanitizeDesignStyle, type AutopilotDesignStyle,
 } from '@/lib/autopilot/textStyle';
@@ -746,7 +747,12 @@ export function decideRun(input: {
   const abordables = Math.floor(disponible / cout);
   if (abordables < 1) return { run: false, reason: 'credits' };
 
-  if (!config.rushUrls.length && !input.allowWithoutRush) {
+  // MULTI-SOURCES : plus de « au moins un rush » global — au moins UNE source
+  // visuelle exploitable, calculée depuis la configuration (rushes personnels
+  // selon `actives`, stock retenu, vidéos stock importées). L'avatar reste
+  // décidé par l'appelant (`allowWithoutRush`), qui en vérifie la disponibilité.
+  // Sans clé `sources` : la banque entière compte, exactement comme avant.
+  if (!aUneSourceVisuelle({ ...etatSourcesServeur(config), avatarActif: false }) && !input.allowWithoutRush) {
     return { run: false, reason: 'sans-rush' };
   }
 
@@ -827,7 +833,8 @@ export function statusMessage(
   formatDate: (d: Date) => string,
 ): string {
   if (!config.enabled) return 'En pause. Rien n’est généré.';
-  if (!config.rushUrls.length) {
+  // Avec la vidéo du jumeau, le moteur produit sans rush (`allowWithoutRush`).
+  if (!config.rushUrls.length && !config.jumeauAvatar) {
     return 'Actif, mais aucun rush dans la banque — ajoutez-en pour lancer la production.';
   }
   const prochain = nextRunAt(config.cadence, config.lastRunAt, now);
@@ -839,6 +846,7 @@ export function statusMessage(
     ? `à partir du ${formatDate(new Date(`${config.startDate}T12:00:00Z`))}`
     : prochain.getTime() <= now ? 'au prochain passage' : formatDate(prochain);
   const n = config.rushUrls.length;
+  if (n === 0) return `Actif · prochaine génération ${quand} · avec votre avatar`;
   return `Actif · prochaine génération ${quand} · ${n} rush${n > 1 ? 'es' : ''} disponible${n > 1 ? 's' : ''}`;
 }
 

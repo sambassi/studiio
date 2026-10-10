@@ -63,9 +63,10 @@ describe('mise en page partagée', () => {
     expect(m.ctaPos.y).toBeGreaterThan(50);
   });
 
-  it('profil sans surimpression : design inchangé ; sinon échelles MULTIPLIÉES (jamais écrasées)', () => {
+  it('Créer : pas de mise en page hors profil dynamique ; échelles MULTIPLIÉES (jamais écrasées)', () => {
     const d = { title: 't', titleScale: 1.2, ctaScale: 1, gradientEnd: '#882591' };
-    expect(appliquerMiseEnPageSurimpression(d, 'STANDARD')).toBe(d);
+    // La porte de Créer reste fermée hors profil dynamique (mode plein écran).
+    expect(miseEnPageSurimpression('STANDARD')).toBeNull();
     const a = appliquerMiseEnPageSurimpression(d, 'CARDIO_DANCE') as Record<string, unknown>;
     expect(a.titleScale).toBeCloseTo(1.2 * m.titleScale);
     expect(a.cardBoxes).toEqual({ c0: m.carte });

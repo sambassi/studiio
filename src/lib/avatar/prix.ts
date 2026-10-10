@@ -38,9 +38,19 @@ export function cleTarifEcranMonAvatar(args: { viaVoixClonee: boolean; qualiteEn
     : cleTarifMoteurAvatar(null);
 }
 
-/** Libellé du bouton « Générer la vidéo » ; un administrateur voit le prix public et son coût 0. */
-export function libelleBoutonGenererAvatar(prix: number, exempte: boolean): string {
+/** Le bouton reste court : le prix est annoncé AU-DESSUS, jamais dans le bouton. */
+export const LIBELLE_BOUTON_GENERER_AVATAR = 'Générer la vidéo';
+
+/**
+ * Les lignes du bloc prix posé au-dessus de « Générer la vidéo ».
+ * Utilisateur : « Prix : N crédits ». Administrateur (exempté) : le prix
+ * public, puis son coût réel, 0 — deux lignes courtes.
+ *
+ * (Avant : tout tenait dans le libellé du bouton, insécable — `.button-base`
+ * est `whitespace-nowrap` — et débordait de la colonne d'aperçu.)
+ */
+export function lignesPrixGenererAvatar(prix: number, exempte: boolean): string[] {
   return exempte
-    ? `Générer la vidéo — prix public ${libelleCredits(prix)} · votre coût : 0`
-    : `Générer la vidéo (${libelleCredits(prix)})`;
+    ? [`Prix public : ${libelleCredits(prix)}`, 'Votre coût : 0 crédit']
+    : [`Prix : ${libelleCredits(prix)}`];
 }

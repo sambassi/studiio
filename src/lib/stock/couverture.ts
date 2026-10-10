@@ -21,7 +21,17 @@
 import { construireRecherchesStock, type RoleSequence } from './requetes';
 import type { FormatStock, TypeStock } from './types';
 
-export type OrigineRush = 'utilisateur' | 'mediatheque' | 'stock';
+/**
+ * `avatar` : l'avatar personnel (jumeau), quand l'utilisateur le fait
+ * apparaître. Il passe AVANT tout rush — c'est le personnage principal — et
+ * tient UN plan (l'accroche, le premier) ; les autres plans restent à
+ * couvrir par ses rushes, sa Médiathèque, puis le stock. Ce n'est pas un
+ * fichier : son `url` est un jeton (`AVATAR_PRINCIPAL`), jamais téléchargé.
+ */
+export type OrigineRush = 'avatar' | 'utilisateur' | 'mediatheque' | 'stock';
+
+/** Le « rush » qui représente l'avatar personnel dans l'analyse de couverture. */
+export const AVATAR_PRINCIPAL = 'avatar:principal';
 
 export interface RushDisponible {
   url: string;
@@ -68,7 +78,7 @@ export const DUREE_DEUX_PLANS = 16;
 /** Plus court, un rush ne fournit pas un plan exploitable. */
 export const DUREE_MIN_PLAN = 1.5;
 
-const PRIORITE: Record<OrigineRush, number> = { utilisateur: 0, mediatheque: 1, stock: 2 };
+const PRIORITE: Record<OrigineRush, number> = { avatar: -1, utilisateur: 0, mediatheque: 1, stock: 2 };
 
 export function plansParRush(duree?: number | null): number {
   if (duree == null || !Number.isFinite(duree)) return 1;
@@ -92,22 +102,25 @@ export function analyserCouvertureRushes(e: EntreeCouverture): CouvertureRushes 
   for (let passe = 0; passe < 2; passe++) {
     for (const p of plansVideo) {
       if (!libres.has(p.cle)) continue;
+      // L'avatar ne tient qu'UN plan : jamais de « second plan » pour lui.
       const choix = rushes.find((x) => x.reste > 0
-        && (passe === 1 || !affectations.some((a) => a.rushUrl === x.r.url)));
+        && (passe === 1 ? x.r.origine !== 'avatar' : !affectations.some((a) => a.rushUrl === x.r.url)));
       if (!choix) continue;
       choix.reste -= 1;
       libres.delete(p.cle);
       affectations.push({ sequence: p.cle, rushUrl: choix.r.url, origine: choix.r.origine });
-      explication.push(`${p.cle} : ${choix.r.origine === 'utilisateur' ? 'votre rush' : choix.r.origine === 'mediatheque' ? 'votre Médiathèque' : 'média stock accepté'}${passe === 1 ? ' (second plan d’un rush long)' : ''}`);
+      explication.push(`${p.cle} : ${choix.r.origine === 'avatar' ? 'votre avatar' : choix.r.origine === 'utilisateur' ? 'votre rush' : choix.r.origine === 'mediatheque' ? 'votre Médiathèque' : 'média stock accepté'}${passe === 1 ? ' (second plan d’un rush long)' : ''}`);
     }
   }
 
   const manques: ManqueCouverture[] = [];
+  const avecAvatar = uniques.some((r) => r.origine === 'avatar');
+  const medias = uniques.filter((r) => r.origine !== 'avatar');
   for (const p of plansVideo) {
     if (!libres.has(p.cle)) continue;
     const r = construireRecherchesStock({ sujet: e.sujet, objectif: e.objectif, texte: p.texte, role: p.role, visuel: 'video', format });
-    const raison = uniques.length === 0
-      ? 'aucun rush disponible'
+    const raison = medias.length === 0
+      ? (avecAvatar ? 'votre avatar tient déjà l’accroche — plan complémentaire à illustrer' : 'aucun rush disponible')
       : 'tous vos rushes sont déjà utilisés — les réutiliser répéterait le même plan';
     manques.push({
       sequence: p.cle,

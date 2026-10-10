@@ -240,8 +240,8 @@ const { produireUnMontage, coutMontage, coutAfficheReference } = await import('@
 const { preparePosts } = await import('@/lib/autopilot/engine');
 const { DEFAULT_CONFIG } = await import('@/lib/autopilot/rules');
 const { reinitialiserAudioComplet } = await import('@/lib/voice/audio-complet-serveur');
-const { coutAudioComplet, libelleBoutonAudioComplet, explicationTarifAudioComplet } = await import('@/lib/voice/audio-complet');
-const { cleTarifEcranMonAvatar, libelleBoutonGenererAvatar } = await import('@/lib/avatar/prix');
+const { coutAudioComplet, lignesPrixAudioComplet, explicationTarifAudioComplet } = await import('@/lib/voice/audio-complet');
+const { cleTarifEcranMonAvatar, lignesPrixGenererAvatar } = await import('@/lib/avatar/prix');
 const { prixOutilIa } = await import('@/components/creer/AiImageTools');
 const { tarifsAffichables } = await import('@/lib/facturation/annonce');
 
@@ -445,7 +445,7 @@ describe('Avatar III / IV / V — POST /api/avatar/generate', () => {
     const ecran = await prixEcran();
     const cle = cleTarifEcranMonAvatar({ viaVoixClonee: false, ...(qualite ? { qualiteEnvoyee: qualite } : {}) });
     expect(ecran.prix[cle]).toBe(prix);
-    expect(libelleBoutonGenererAvatar(ecran.prix[cle], ecran.exempte)).toBe(`Générer la vidéo (${prix} crédits)`);
+    expect(lignesPrixGenererAvatar(ecran.prix[cle], ecran.exempte)).toEqual([`Prix : ${prix} crédits`]);
 
     // 402 : le montant exigé est le même.
     base.tables.users[0].credits = prix - 1;
@@ -467,7 +467,7 @@ describe('Avatar III / IV / V — POST /api/avatar/generate', () => {
   it('admin : prix public affiché, aucune RPC, credits_charged 0, pour les trois qualités', async () => {
     devenirAdmin();
     const ecran = await prixEcran();
-    expect(libelleBoutonGenererAvatar(ecran.prix['avatar.avatar_v'], ecran.exempte)).toBe('Générer la vidéo — prix public 41 crédits · votre coût : 0');
+    expect(lignesPrixGenererAvatar(ecran.prix['avatar.avatar_v'], ecran.exempte)).toEqual(['Prix public : 41 crédits', 'Votre coût : 0 crédit']);
     for (const qualite of ['standard', 'qualite', 'premium']) {
       const res = await post(AVATAR, { script: 'Bonjour à tous.', qualite });
       expect(res.status, qualite).toBe(200);
@@ -524,7 +524,7 @@ describe('Audio complet — POST /api/voice/audio-complet', () => {
     const parTranche = ecran.prix['audio.full_1000_chars'];
     expect(parTranche).toBe(3);
     expect(coutAudioComplet(2500, parTranche)).toBe(9);
-    expect(libelleBoutonAudioComplet(2500, false, parTranche)).toBe('Générer l’audio complet — 9 crédits');
+    expect(lignesPrixAudioComplet(2500, false, parTranche)).toEqual(['Prix : 9 crédits']);
     expect(explicationTarifAudioComplet(parTranche)).toContain('3 crédits par tranche de 1000 caractères');
 
     const res = await post(AUDIO, { texte: 'a'.repeat(2500) });
@@ -535,11 +535,11 @@ describe('Audio complet — POST /api/voice/audio-complet', () => {
     expect(solde()).toBe(SOLDE - 9);
   });
 
-  it('admin : aucune RPC, libellé administrateur', async () => {
+  it('admin : aucune RPC, bloc prix administrateur', async () => {
     devenirAdmin();
     const ecran = await prixEcran();
     expect(ecran.prix['audio.full_1000_chars']).toBe(3);
-    expect(libelleBoutonAudioComplet(2500, ecran.exempte, 3)).toBe('Générer l’audio complet — 0 crédit (administrateur)');
+    expect(lignesPrixAudioComplet(2500, ecran.exempte, 3)).toEqual(['Prix public : 9 crédits', 'Votre coût : 0 crédit']);
     const res = await post(AUDIO, { texte: 'a'.repeat(2500) });
     expect(res.status).toBe(200);
     expect((await res.json()).creditsDebites).toBe(0);
