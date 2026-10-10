@@ -9,7 +9,7 @@
  *
  * L'empreinte = sha256(compte | voix fournisseur | texte RÉELLEMENT dit).
  * Elle donne à la fois :
- *   - le chemin de l'objet (`audio/<userId>/voice/audio-complet-<24 hex>.mp3`) :
+ *   - le chemin de l’objet (`audio/audio-complet/<userId>/<24 hex>.mp3`, hors du dossier utilisateur) :
  *     un audio déjà généré est rendu tel quel, sans synthèse ni débit ;
  *   - la référence du débit (`audio-complet:<empreinte>`) : même si l'objet
  *     avait disparu, le socle atomique refuse un second débit de la même
@@ -27,8 +27,17 @@ export function empreinteAudioComplet(userId: string, providerVoiceId: string, s
   return createHash('sha256').update(`${userId}|${providerVoiceId}|${spoken}`).digest('hex');
 }
 
+/**
+ * ⚠️ HORS DU DOSSIER DE L'UTILISATEUR. Les envois navigateur (signed-url,
+ * multipart, proxy) n'acceptent QUE des chemins `<userId>/…` : sous
+ * `audio-complet/<userId>/…`, seul ce serveur peut écrire. Le nettoyage tient
+ * ces fichiers pour durables (payés) — un client ne doit pas pouvoir en
+ * fabriquer un en imitant le nom.
+ */
+export const PREFIXE_AUDIO_COMPLET = 'audio-complet';
+
 export function cheminAudioComplet(userId: string, empreinte: string): string {
-  return `${userId}/voice/audio-complet-${empreinte.slice(0, 24)}.mp3`;
+  return `${PREFIXE_AUDIO_COMPLET}/${userId}/${empreinte.slice(0, 24)}.mp3`;
 }
 
 /**

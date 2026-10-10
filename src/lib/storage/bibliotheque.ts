@@ -11,7 +11,13 @@ export function estMediaDeBibliotheque(cle: string): boolean {
 /**
  * Fichiers DURABLES, jamais purgés par la rétention temporaire :
  *
- * - l'audio complet PAYÉ (`audio/<uid>/voice/audio-complet-<empreinte>.mp3`,
+ * ⚠️ UNIQUEMENT HORS DES DOSSIERS `<userId>/` : les envois navigateur ne
+ * peuvent écrire que là (garde `startsWith(userId + '/')` des routes
+ * d'envoi). Un motif DANS le dossier utilisateur se laisserait imiter par un
+ * nom de fichier choisi par le client — et deviendrait du stockage permanent
+ * gratuit.
+ *
+ * - l'audio complet PAYÉ (`audio/audio-complet/<uid>/<empreinte>.mp3`,
  *   `/api/voice/audio-complet`) — l'utilisateur a payé des crédits : le
  *   re-télécharger ne doit coûter ni un nouvel appel fournisseur, ni un
  *   nouveau crédit. La pré-écoute gratuite n'est jamais stockée.
@@ -19,6 +25,6 @@ export function estMediaDeBibliotheque(cle: string): boolean {
  *   quelques octets qui gardent la licence d'un média importé.
  */
 export function estFichierDurable(cle: string): boolean {
-  return /^audio\/[^/]+\/voice\/audio-complet-[0-9a-f]{24}\.mp3$/.test(cle)
+  return /^audio\/audio-complet\/[^/]+\/[0-9a-f]{24}\.mp3$/.test(cle)
     || /^media\/stock-attributions\/[^/]+\/[^/]+\.json$/.test(cle);
 }

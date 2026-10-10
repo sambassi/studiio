@@ -157,7 +157,8 @@ describe('POST /api/voice/audio-complet — tarif calculé par le serveur', () =
     const h = empreinte(texte);
     expect(credits.deductCredits).toHaveBeenCalledWith(U, c, 'audio-complet', `audio-complet:${h}`);
     expect(json.url).toContain(cheminAudioComplet(U, h));
-    expect(cheminAudioComplet(U, h)).toBe(`${U}/voice/audio-complet-${h.slice(0, 24)}.mp3`);
+    // Hors du dossier utilisateur : aucun envoi navigateur ne peut écrire ici.
+    expect(cheminAudioComplet(U, h)).toBe(`audio-complet/${U}/${h.slice(0, 24)}.mp3`);
     // Ordre : envoi au stockage avant le débit.
     expect(stockage.uploadBufferToStorage.mock.invocationCallOrder[0]).toBeLessThan(credits.deductCredits.mock.invocationCallOrder[0]);
   });

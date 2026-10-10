@@ -91,12 +91,15 @@ beforeEach(() => {
       { name: 'recent.mp4', id: 'r', created_at: TROIS_JOURS },
       { name: 'old.mp4', id: 'o', created_at: TROIS_JOURS },
     ],
-    'audio:': [{ name: 'u1' }],
+    'audio:': [{ name: 'u1' }, { name: 'audio-complet' }],
     'audio:u1': [{ name: 'voice' }],
     'audio:u1/voice': [
-      { name: 'audio-complet-0123456789abcdef01234567.mp3', id: 'a', created_at: VIEUX },
+      // Un nom IMITÉ dans le dossier utilisateur (envoi navigateur) : temporaire.
+      { name: 'audio-complet-0123456789abcdef01234567.mp3', id: 'i', created_at: VIEUX },
       { name: 'voix-sequence.mp3', id: 'b', created_at: VIEUX },
     ],
+    'audio:audio-complet': [{ name: 'u1' }],
+    'audio:audio-complet/u1': [{ name: '0123456789abcdef01234567.mp3', id: 'a', created_at: VIEUX }],
   };
   listing['media:'] = [{ name: 'u1' }, { name: 'stock-attributions' }];
   listing['media:stock-attributions'] = [{ name: 'u1' }];
@@ -110,16 +113,19 @@ describe('Audio complet payé : durable', () => {
     const res = await GET(req());
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(removed).not.toContain('u1/voice/audio-complet-0123456789abcdef01234567.mp3');
+    expect(removed).not.toContain('audio-complet/u1/0123456789abcdef01234567.mp3');
+    // ⚠️ Le nom imité par un client dans SON dossier n'est PAS protégé.
+    expect(removed).toContain('u1/voice/audio-complet-0123456789abcdef01234567.mp3');
     expect(removed).not.toContain('stock-attributions/u1/stock-pexels-video-42.mp4.json');
     expect(removed).toContain('u1/voice/voix-sequence.mp3');
     expect(body.exemptes.durables).toBe(2);
   });
 
-  it('le motif est strict : un nom approchant reste temporaire', () => {
-    expect(estFichierDurable('audio/u1/voice/audio-complet-0123456789abcdef01234567.mp3')).toBe(true);
+  it('le motif est strict : seul le préfixe serveur est durable, jamais un nom imité dans un dossier utilisateur', () => {
+    expect(estFichierDurable('audio/audio-complet/u1/0123456789abcdef01234567.mp3')).toBe(true);
+    expect(estFichierDurable('audio/u1/voice/audio-complet-0123456789abcdef01234567.mp3')).toBe(false);
     expect(estFichierDurable('audio/u1/voice/audio-complet-xyz.mp3')).toBe(false);
-    expect(estFichierDurable('media/u1/voice/audio-complet-0123456789abcdef01234567.mp3')).toBe(false);
-    expect(estFichierDurable('audio/u1/music/audio-complet-0123456789abcdef01234567.mp3')).toBe(false);
+    expect(estFichierDurable('media/audio-complet/u1/0123456789abcdef01234567.mp3')).toBe(false);
+    expect(estFichierDurable('audio/audio-complet/u1/0123456789abcdef01234567.mp3.exe')).toBe(false);
   });
 });
