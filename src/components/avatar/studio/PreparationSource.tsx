@@ -5,11 +5,13 @@ import {
   AlertTriangle, ArrowLeft, Check, Columns2, Crop, Crosshair, Loader2, Pause, Play, RotateCcw, RotateCw, Scissors, Sparkles, X,
 } from 'lucide-react';
 import OvaleVisage from '@/components/avatar/studio/OvaleVisage';
+import ProgressStatus from '@/components/ux/ProgressStatus';
 import { detailEnvoi, envoyerFormulaire, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { EXIGENCES_SOURCE_VIDEO, formaterDuree } from '@/lib/avatar/capture';
 import {
   AMELIORATION_NEUTRE, RATIOS_CADRE, ameliorationAutomatique, dimensionsApresRotation, filtreCssApercu, libelleCadrage,
   niveauQualite, recadrageDepuisReglages, statistiquesImage, zoomMinimal,
+  EMBELLISSEMENT_PAR_DEFAUT, LIBELLE_EMBELLISSEMENT, NIVEAUX_EMBELLISSEMENT, type NiveauEmbellissement,
   type InfosVideo, type ParametresAmelioration, type ParametresTraitement, type RatioCadre, type ResultatPreflight, type Rotation,
 } from '@/lib/avatar/preparation-source-regles';
 
@@ -35,7 +37,7 @@ type Section = 'recadrer' | 'couper' | 'ameliorer';
 
 interface ReponseApi<T> { success?: boolean; error?: string; data?: T }
 interface DonneesOriginal { cleOriginal: string; infos: InfosVideo; preflight: ResultatPreflight }
-interface DonneesTraitee { cleOriginal: string; cleTraitee: string; infos: InfosVideo; preflight: ResultatPreflight; motifs?: string[] }
+interface DonneesTraitee { cleOriginal: string; cleTraitee: string; infos: InfosVideo; preflight: ResultatPreflight; motifs?: string[]; parametres?: ParametresTraitement }
 
 const LIBELLES_RATIO: Record<RatioCadre, string> = { original: 'Original', '9:16': '9:16', '1:1': '1:1', '16:9': '16:9' };
 const LIBELLES_QUALITE = {
@@ -50,7 +52,7 @@ const pourcent = (n: number) => `${(n * 100).toFixed(3)}%`;
 export default function PreparationSource(props: {
   fichier: File;
   onAnnuler: () => void;
-  onPret: (r: { cleOriginal: string; cleTraitee: string; infos: InfosVideo }) => void;
+  onPret: (r: { cleOriginal: string; cleTraitee: string; infos: InfosVideo; parametres?: ParametresTraitement }) => void;
 }) {
   const { fichier } = props;
   const [etape, setEtape] = useState<Etape>('envoi');
@@ -71,7 +73,10 @@ export default function PreparationSource(props: {
   const [finS, setFinS] = useState(0);
   const [temps, setTemps] = useState(0);
   const [lecture, setLecture] = useState(false);
-  const [amelioration, setAmelioration] = useState<ParametresAmelioration>({ ...AMELIORATION_NEUTRE });
+  // « Embellir le visage » est proposé à « Naturel » d'emblée (demande produit) ; « Aucun » le retire.
+  const [amelioration, setAmelioration] = useState<ParametresAmelioration>({ ...AMELIORATION_NEUTRE, embellissement: EMBELLISSEMENT_PAR_DEFAUT });
+  /** Résultat : la version préparée, ou l'ORIGINAL importé (toujours conservé), pour comparer. */
+  const [voirOriginal, setVoirOriginal] = useState(false);
   const [comparer, setComparer] = useState(false);
 
   const video = useRef<HTMLVideoElement | null>(null);
@@ -206,7 +211,8 @@ export default function PreparationSource(props: {
 
   // ── Améliorer ─────────────────────────────────────────────────────────
   const basculerAuto = (active: boolean) => {
-    if (!active) { setAmelioration({ ...AMELIORATION_NEUTRE }); return; }
+    // L'embellissement est un réglage à part : l'amélioration automatique ne le touche pas.
+    if (!active) { setAmelioration((a) => ({ ...AMELIORATION_NEUTRE, embellissement: a.embellissement })); return; }
     // Une image de la vidéo, réduite, lue par un canvas : la mesure reste locale.
     let stats = { luminanceMoyenne: 128, ecartType: 50 };
     try {
@@ -219,8 +225,11 @@ export default function PreparationSource(props: {
         stats = statistiquesImage(ctx.getImageData(0, 0, 64, 64).data);
       }
     } catch { /* image illisible (pas encore chargée) : correction neutre */ }
-    setAmelioration(ameliorationAutomatique(stats));
+    setAmelioration((a) => ({ ...ameliorationAutomatique(stats), embellissement: a.embellissement }));
   };
+  const embellir = (n: NiveauEmbellissement) => setAmelioration((a) => ({ ...a, embellissement: n }));
+  /** Réinitialiser : toutes les retouches retirées (embellissement compris) — la source redevient l'original. */
+  const reinitialiserRetouches = () => setAmelioration({ ...AMELIORATION_NEUTRE });
 
   // ── Prévisualiser ─────────────────────────────────────────────────────
   const parametres = (): ParametresTraitement => ({ debutS, finS, rotation, recadrage, amelioration });
@@ -239,6 +248,7 @@ export default function PreparationSource(props: {
       });
       const j = (await r.json().catch(() => null)) as ReponseApi<DonneesTraitee> | null;
       if (r.ok && j?.success && j.data?.cleTraitee) {
+        setVoirOriginal(false);
         setResultat(j.data);
         setEtape('resultat');
         return;
@@ -254,7 +264,8 @@ export default function PreparationSource(props: {
 
   const utiliser = () => {
     if (!resultat || !resultat.preflight.ok) return;
-    props.onPret({ cleOriginal: resultat.cleOriginal, cleTraitee: resultat.cleTraitee, infos: resultat.infos });
+    // Les paramètres RÉELLEMENT appliqués (bornés par le serveur), pour le récapitulatif.
+    props.onPret({ cleOriginal: resultat.cleOriginal, cleTraitee: resultat.cleTraitee, infos: resultat.infos, parametres: resultat.parametres ?? parametres() });
   };
 
   // ── La scène : la vidéo locale, tournée, avec le cadre ────────────────
@@ -282,14 +293,16 @@ export default function PreparationSource(props: {
       </div>
 
       {etape === 'envoi' && (
-        <div data-preparation-envoi className="space-y-2" role="status" aria-live="polite">
-          <p className="text-sm text-gray-300 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Envoi de la vidéo d’origine…</p>
-          <div className="h-2 w-full rounded-full bg-white/10 overflow-hidden">
-            <div className="h-full bg-purple-500 transition-[width]" style={{ width: `${progression?.pourcentage ?? 0}%` }} />
-          </div>
-          <p data-preparation-progression className="text-xs text-gray-500">
-            {progression ? `${progression.pourcentage} % — ${detailEnvoi(progression)}` : 'Démarrage…'}
-          </p>
+        <div data-preparation-envoi role="status" aria-live="polite">
+          {/* L'envoi de l'original : octets RÉELLEMENT transférés (XHR). */}
+          <ProgressStatus
+            titre="Envoi de la vidéo d’origine"
+            statut="en_cours"
+            {...(progression ? { pourcentage: progression.pourcentage } : {})}
+            detail={progression ? detailEnvoi(progression) : 'Démarrage…'}
+            note={progression && progression.pourcentage >= 100 ? 'Envoi terminé — contrôle de la vidéo par Studiio…' : null}
+          />
+          <p data-preparation-progression className="sr-only">{progression ? `${progression.pourcentage} % — ${detailEnvoi(progression)}` : 'Démarrage…'}</p>
         </div>
       )}
 
@@ -486,7 +499,25 @@ export default function PreparationSource(props: {
                   Lumière {amelioration.luminosite >= 0 ? '+' : ''}{Math.round(amelioration.luminosite * 100)} · Contraste {Math.round((amelioration.contraste - 1) * 100)} % · Netteté {amelioration.nettete > 0 ? 'légère' : 'inchangée'}{amelioration.debruitage ? ' · Grain réduit' : ''}
                 </p>
               )}
-              <p className="text-xs text-gray-500">Corrections naturelles uniquement : lumière, contraste, netteté. Aucun filtre beauté, aucune retouche du visage.</p>
+              <p className="text-xs text-gray-500">Corrections naturelles : lumière, contraste, netteté.</p>
+
+              {/* EMBELLIR LE VISAGE — lissage de la peau seulement (filtre bilatéral : les
+                  contours restent nets). Aucune déformation : forme du visage, nez, mâchoire,
+                  yeux, bouche et proportions ne bougent pas. L'original reste conservé. */}
+              <div data-preparation-embellir className="rounded-xl bg-gray-900/60 px-4 py-3 space-y-2">
+                <div className="text-sm text-white">Embellir le visage</div>
+                <div role="radiogroup" aria-label="Intensité de l’embellissement" className="grid grid-cols-4 gap-1">
+                  {NIVEAUX_EMBELLISSEMENT.map((n) => (
+                    <button key={n} type="button" role="radio" aria-checked={amelioration.embellissement === n} data-preparation-embellissement={n} onClick={() => embellir(n)}
+                      className={`rounded-lg py-1.5 text-xs ${amelioration.embellissement === n ? 'bg-studiio-primary text-white' : 'bg-gray-800 text-gray-300 hover:text-white'}`}>
+                      {LIBELLE_EMBELLISSEMENT[n]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400">Lissage léger de la peau, rides et petites imperfections atténuées, teint légèrement homogénéisé. Les traits du visage ne sont jamais modifiés.</p>
+                <p className="text-xs text-gray-500">L’effet est appliqué au rendu réel : « Prévisualiser » le montre, et vous pourrez comparer avec l’original.</p>
+                <button type="button" data-preparation-reinitialiser onClick={reinitialiserRetouches} className="button-ghost !min-h-[30px] !text-xs">Réinitialiser les retouches</button>
+              </div>
             </div>
           )}
 
@@ -510,7 +541,17 @@ export default function PreparationSource(props: {
             </button>
           </div>
           {etape === 'traitement' && (
-            <p role="status" aria-live="polite" className="text-xs text-center text-gray-400">Le serveur prépare votre vidéo. Cela peut prendre une minute.</p>
+            <div role="status" aria-live="polite">
+              {/* Le serveur coupe, recadre, retouche et ré-encode : aucun pourcentage mesurable → barre indéterminée. */}
+              <ProgressStatus
+                titre="Préparation de votre vidéo"
+                statut="en_cours"
+                description="Coupe, recadrage, retouches puis encodage de la version qui partira."
+                detail="Traitement en cours — progression exacte indisponible."
+                note="Cela peut prendre une minute. Votre original reste intact."
+                compact={false}
+              />
+            </div>
           )}
         </div>
       )}
@@ -522,8 +563,9 @@ export default function PreparationSource(props: {
           <div data-preparation-resultat className="space-y-4">
             <div className="relative mx-auto overflow-hidden rounded-2xl bg-black" style={{ aspectRatio: `${l || 9} / ${h || 16}`, width: `min(100%, calc(58vh * ${l || 9} / ${h || 16}))` }}>
               <video
-                data-preparation-video="preparee"
-                src={`/api/avatar/sources/apercu?cle=${encodeURIComponent(resultat.cleTraitee)}`}
+                key={voirOriginal ? 'original' : 'preparee'}
+                data-preparation-video={voirOriginal ? 'originale' : 'preparee'}
+                src={`/api/avatar/sources/apercu?cle=${encodeURIComponent(voirOriginal ? resultat.cleOriginal : resultat.cleTraitee)}`}
                 controls
                 playsInline
                 preload="metadata"
@@ -541,7 +583,12 @@ export default function PreparationSource(props: {
                 {resultat.preflight.avertissements.map((a) => <li key={a}>{a}</li>)}
               </ul>
             )}
-            <p className="text-xs text-gray-500">Votre vidéo d’origine est conservée telle quelle.</p>
+            {/* Avant / Après : le fichier préparé (ce qui partira) ou l'original, tous deux RÉELS. */}
+            <div role="radiogroup" aria-label="Comparer" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-900/70 p-1" data-preparation-avant-apres>
+              <button type="button" role="radio" aria-checked={voirOriginal} data-preparation-voir="original" onClick={() => setVoirOriginal(true)} className={`rounded-lg py-1.5 text-xs ${voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — voir l’original</button>
+              <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-voir="preparee" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — version préparée</button>
+            </div>
+            <p className="text-xs text-gray-500" data-preparation-embellissement-applique>Embellissement : {LIBELLE_EMBELLISSEMENT[amelioration.embellissement ?? 'aucun']}. Votre vidéo d’origine est conservée telle quelle.</p>
             <div className="grid grid-cols-2 gap-3">
               <button type="button" data-preparation-modifier onClick={() => setEtape('edition')} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-3 text-sm"><ArrowLeft className="w-4 h-4" /> Modifier</button>
               <button type="button" data-preparation-utiliser onClick={utiliser} disabled={!resultat.preflight.ok} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> Utiliser cette vidéo</button>

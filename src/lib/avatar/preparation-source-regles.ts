@@ -232,6 +232,51 @@ export interface ParametresAmelioration {
   /** Quantité d'`unsharp` (luma) : 0 … 0,6. */
   nettete: number;
   debruitage: boolean;
+  /**
+   * « Embellir le visage » — INDÉPENDANT de `active` (l'amélioration
+   * automatique). Absent = `aucun` : une demande antérieure est rendue à
+   * l'identique.
+   */
+  embellissement?: NiveauEmbellissement;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Embellir le visage
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lissage léger de la peau : rides fines, petites imperfections, teint
+ * légèrement homogénéisé. UN SEUL filtre, `bilateral` (ffmpeg ≥ 4.4 ; la
+ * production tourne sur le ffmpeg 5.1 de Debian bookworm) : un flou qui ne
+ * moyenne que des pixels de VALEUR proche — les zones uniformes (la peau)
+ * s'adoucissent, les contours (yeux, nez, bouche, mâchoire) restent nets.
+ *
+ * Il n'existe AUCUNE transformation géométrique ici : pas de déplacement de
+ * pixel, pas de déformation, pas de remodelage. Forme du visage, nez,
+ * mâchoire, yeux, bouche et proportions sont donc conservés par
+ * construction. L'original importé reste intact en stockage (non destructif).
+ */
+export type NiveauEmbellissement = 'aucun' | 'naturel' | 'doux' | 'lisse';
+export const NIVEAUX_EMBELLISSEMENT: readonly NiveauEmbellissement[] = ['aucun', 'naturel', 'doux', 'lisse'];
+export const LIBELLE_EMBELLISSEMENT: Record<NiveauEmbellissement, string> = {
+  aucun: 'Aucun', naturel: 'Naturel', doux: 'Doux', lisse: 'Lissé',
+};
+/** Ce que l'éditeur propose d'emblée (demande produit). Le SERVEUR, lui, rend `aucun` à une demande muette. */
+export const EMBELLISSEMENT_PAR_DEFAUT: NiveauEmbellissement = 'naturel';
+/** Rayon spatial (px) et seuil de valeur (0–1) du filtre bilatéral, par niveau. */
+export const PARAMETRES_EMBELLISSEMENT: Record<Exclude<NiveauEmbellissement, 'aucun'>, { sigmaS: number; sigmaR: number }> = {
+  naturel: { sigmaS: 2, sigmaR: 0.04 },
+  doux: { sigmaS: 3, sigmaR: 0.06 },
+  lisse: { sigmaS: 4, sigmaR: 0.08 },
+};
+export const estNiveauEmbellissement = (v: unknown): v is NiveauEmbellissement =>
+  typeof v === 'string' && (NIVEAUX_EMBELLISSEMENT as readonly string[]).includes(v);
+
+/** Le filtre ffmpeg d'un niveau, ou `null` pour `aucun` — toujours géométriquement neutre. */
+export function filtreEmbellissement(n: NiveauEmbellissement | undefined): string | null {
+  if (!n || n === 'aucun') return null;
+  const p = PARAMETRES_EMBELLISSEMENT[n];
+  return `bilateral=sigmaS=${p.sigmaS}:sigmaR=${p.sigmaR}:planes=7`;
 }
 
 /** Fractions 0..1 de l'image APRÈS rotation. */
@@ -253,7 +298,7 @@ export const BORNES_AMELIORATION = {
 } as const;
 
 export const AMELIORATION_NEUTRE: ParametresAmelioration = {
-  active: false, luminosite: 0, contraste: 1, saturation: 1, nettete: 0, debruitage: false,
+  active: false, luminosite: 0, contraste: 1, saturation: 1, nettete: 0, debruitage: false, embellissement: 'aucun',
 };
 
 const borner = (v: unknown, min: number, max: number, defaut: number) => {
@@ -346,6 +391,8 @@ export function bornerParametres(
     saturation: borner(a.saturation, B.saturation[0], B.saturation[1], 1),
     nettete: borner(a.nettete, B.nettete[0], B.nettete[1], 0),
     debruitage: a.debruitage === true,
+    // Valeur inconnue ou absente : `aucun` — jamais un lissage non demandé.
+    embellissement: estNiveauEmbellissement(a.embellissement) ? a.embellissement : 'aucun',
   };
 
   return { debutS: debut, finS: fin, rotation, recadrage, amelioration };
@@ -422,8 +469,12 @@ export function argumentsFfmpeg(
   if (g.largeur !== g.avantEchelle.largeur || g.hauteur !== g.avantEchelle.hauteur) filtres.push(`scale=${g.largeur}:${g.hauteur}:flags=lanczos`);
 
   const a = p.amelioration;
+  if (a.active && a.debruitage) filtres.push('hqdn3d=1.5:1.5:6:6');
+  // Embellir : après le débruitage, AVANT la correction et la netteté (accentuer
+  // une texture qu'on vient d'adoucir serait absurde).
+  const embellir = filtreEmbellissement(a.embellissement);
+  if (embellir) filtres.push(embellir);
   if (a.active) {
-    if (a.debruitage) filtres.push('hqdn3d=1.5:1.5:6:6');
     if (a.luminosite !== 0 || a.contraste !== 1 || a.saturation !== 1) {
       filtres.push(`eq=brightness=${fixe(a.luminosite)}:contrast=${fixe(a.contraste)}:saturation=${fixe(a.saturation)}`);
     }

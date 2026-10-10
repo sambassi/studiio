@@ -586,3 +586,78 @@ describe('Le chemin destructif a disparu', () => {
     expect(src).toMatch(/if \(actuel\) \{\n\s+return cheminCandidat/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Progression, historique et sources des versions (Mon avatar)
+// ─────────────────────────────────────────────────────────────────────────
+
+const servir = vi.hoisted(() => ({ cles: [] as string[] }));
+vi.mock('@/lib/avatar/servir-source', async (orig) => {
+  const reel = await orig<typeof import('@/lib/avatar/servir-source')>();
+  const { NextResponse } = await import('next/server');
+  return { ...reel, reponseSourceAvatar: async (cle: string) => { servir.cles.push(cle); return new NextResponse('ok', { status: 200 }); } };
+});
+const sourceVersionRoute = await import('@/app/api/avatars/versions/[versionId]/source/route');
+const sourceDe = (versionId: string, quelle?: string) => sourceVersionRoute.GET(
+  new NextRequest(`https://studiio.pro/api/avatars/versions/${versionId}/source${quelle ? `?quelle=${quelle}` : ''}`),
+  { params: { versionId } },
+);
+
+describe('Mon avatar — progression reconstruite, historique, sources par version', () => {
+  beforeEach(() => { servir.cles.length = 0; });
+
+  it('⚠️ v3 reste active et utilisable pendant l’entraînement de v4 ; la liste dit l’étape RÉELLE', async () => {
+    await candidateV4();
+    const a = (await (await listeRoute.GET()).json()).data.avatars[0];
+    expect(a.utilisable).toBe(true);
+    expect(a.versionActive).toMatchObject({ version: 3, etat: 'prete', source: true });
+    expect(a.candidate).toMatchObject({ version: 4, etat: 'entrainement', source: true, originalConserve: true, apercu: null });
+    const j = await resoudreJumeauDuCompte(U);
+    expect(j.ok && j.prive.avatarVersionId).toBe(V3);
+  });
+
+  it('⚠️ rechargement pendant l’aperçu de v4 : la liste rend « aperçu en cours » et la génération à suivre (aucun relancement)', async () => {
+    const id = await candidateV4();
+    base.avatar_versions.find((x) => x.id === id)!.status = 'completed';
+    const gen = 'eeeeeeee-0000-4000-8000-000000000045';
+    base.avatar_generations.push({ id: gen, user_id: U, user_avatar_id: A3, avatar_version: 4, intention: 'apercu', status: 'processing', video_url: null, created_at: new Date().toISOString() });
+    const appelsAvant = fournisseur.appels.length;
+    const c = (await (await listeRoute.GET()).json()).data.avatars[0].candidate;
+    expect(c).toMatchObject({ etat: 'prete', apercu: 'en_cours', apercuGenerationId: gen });
+    expect(fournisseur.appels.length).toBe(appelsAvant);
+  });
+
+  it('⚠️ historique conservé : après bascule v4, v3 reste listée (jamais supprimée), avec sa date d’activation', async () => {
+    const id = await candidateV4();
+    await executerActionVersion(U, 'utiliser', id, candidatePrete(id));
+    const a = (await (await listeRoute.GET()).json()).data.avatars[0];
+    expect(a.versionActive.version).toBe(4);
+    const v3 = a.historique.find((h: { version: number }) => h.version === 3);
+    expect(v3).toMatchObject({ etat: 'prete', source: true, activeeLe: expect.any(String) });
+    expect(base.avatar_versions.some((x) => x.id === V3)).toBe(true);
+  });
+
+  it('⚠️ « Revenir à cette version » : réactivation SANS entraînement — aucun appel fournisseur', async () => {
+    const id = await candidateV4();
+    await executerActionVersion(U, 'utiliser', id, candidatePrete(id));
+    const appelsAvant = [...fournisseur.appels];
+    const r = await executerActionVersion(U, 'revenir', V3, null);
+    expect(r.ok).toBe(true);
+    expect(fournisseur.appels).toEqual(appelsAvant);
+    expect(miroir()).toMatchObject({ active_version_id: V3, version: 3 });
+  });
+
+  it('⚠️ source d’une version : la clé ENVOYÉE par défaut, l’ORIGINAL conservé sur demande ; jamais d’autrui', async () => {
+    const id = await candidateV4();
+    expect((await sourceDe(id)).status).toBe(200);
+    expect((await sourceDe(id, 'originale')).status).toBe(200);
+    expect(servir.cles).toEqual([cle(U, 'b'), cle(U, 'c')]);
+    // Un autre compte : 404, le stockage n'est même pas sollicité.
+    session.courante = { user: { id: AUTRUI } };
+    expect((await sourceDe(id)).status).toBe(404);
+    expect((await sourceDe('pas-un-uuid')).status).toBe(404);
+    expect(servir.cles).toHaveLength(2);
+    session.courante = null;
+    expect((await sourceDe(id)).status).toBe(401);
+  });
+});

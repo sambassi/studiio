@@ -204,6 +204,8 @@ vi.mock('@/lib/avatar/heygen', () => {
     },
     listVoices: async () => [],
     pickDefaultVoice: () => undefined,
+    // Moteurs du look : non confirmés (Premium reste fermé). Hors du journal des appels.
+    moteursSupportesDuLook: async () => null,
   };
 });
 

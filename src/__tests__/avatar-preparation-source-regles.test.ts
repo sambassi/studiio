@@ -130,6 +130,8 @@ describe('Bornes — rien du navigateur n’atteint ffmpeg tel quel', () => {
     const p = bornerParametres({ amelioration: { active: true, luminosite: 5, contraste: 9, saturation: -3, nettete: 12, debruitage: true } }, 60);
     expect(p.amelioration).toEqual({
       active: true, luminosite: BORNES_AMELIORATION.luminosite[1], contraste: 1.15, saturation: 0.9, nettete: 0.6, debruitage: true,
+      // Demande muette sur l'embellissement : AUCUN lissage (jamais un réglage non demandé).
+      embellissement: 'aucun',
     });
     const n = bornerParametres({ amelioration: { luminosite: NaN, active: 'oui' } as never }, 60);
     expect(n.amelioration).toEqual(AMELIORATION_NEUTRE);

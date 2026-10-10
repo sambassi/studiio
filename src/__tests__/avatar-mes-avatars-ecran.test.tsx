@@ -114,9 +114,16 @@ describe('Parcours d’une nouvelle source', () => {
     fireEvent.click(container.querySelector('[data-flux-enregistrer]')!);
     fireEvent.click(container.querySelector('[data-faux-enregistreur]')!);
     fireEvent.click(container.querySelector('[data-fausse-preparation]')!);
-    const envoyer = container.querySelector('[data-flux-envoyer]') as HTMLButtonElement;
-    expect(envoyer.disabled).toBe(true);
+    // Consentement d'abord, puis le RÉCAPITULATIF : rien ne part avant.
+    const continuer = container.querySelector('[data-flux-continuer]') as HTMLButtonElement;
+    expect(continuer.disabled).toBe(true);
     fireEvent.click(container.querySelector('[data-flux-consentement]')!);
+    fireEvent.click(continuer);
+    expect(appels.some((a) => a.url === '/api/avatar/create')).toBe(false);
+    expect(container.querySelector('[data-flux-recap="source"]')?.textContent).toBe('Vidéo enregistrée avec la caméra');
+    expect(container.querySelector('[data-flux-recap="operation"]')?.textContent).toBe('Nouvelle version de cet avatar');
+    const envoyer = container.querySelector('[data-flux-envoyer]') as HTMLButtonElement;
+    expect(envoyer.textContent).toBe('Créer cette nouvelle version');
     fireEvent.click(envoyer);
     await waitFor(() => expect(fin).toHaveBeenCalled());
     const corps = appels.find((a) => a.url === '/api/avatar/create')!.corps as Record<string, string>;

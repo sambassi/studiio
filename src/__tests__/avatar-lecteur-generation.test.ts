@@ -10,11 +10,13 @@ import {
  *
  * jsdom ne calcule pas de mise en page : le budget est vérifié avec la hauteur
  * HORS LECTEUR mesurée au navigateur (banc local, habillage réel du tableau de
- * bord, 2026-10-09) — identique à 1366×768, 1280×800, 1280×900 et 1440×900 :
- * du haut de l'écran au bas du bouton, moins le lecteur = 524 px. Si une
- * modification de la colonne change cette hauteur, la remesurer ici.
+ * bord) — du haut de l'écran au bas du bouton, moins le lecteur. Mesuré
+ * 524 px le 2026-10-09 ; 493 px le 2026-10-10 (#538 : sélecteur de qualité
+ * ajouté, réglages compactés, légende du lecteur passée dans son titre), à
+ * 1366×768 comme à 1440×900, en 9:16, 16:9 et 1:1. Si une modification de la
+ * colonne change cette hauteur, la remesurer ici.
  */
-const HORS_LECTEUR_MESURE_PX = 524;
+const HORS_LECTEUR_MESURE_PX = 493;
 const MARGE_MIN_PX = 8;
 const hauteurLecteur = (h: number) => (largeurLecteur(h) * 16) / 9;
 
@@ -47,7 +49,8 @@ describe('Lecteur de génération — taille et budget de hauteur', () => {
 
   it('la page pose bien cette classe sur la zone d’aperçu quand le formulaire de génération est affiché', () => {
     const page = readFileSync(resolve(__dirname, '../app/dashboard/avatar/page.tsx'), 'utf-8');
-    expect(page).toContain("import { CLASSE_LECTEUR_GENERATION } from '@/lib/ui/lecteur-generation';");
-    expect(page).toContain("className={avatar && etatEffectif === 'valide' && !viaDid ? CLASSE_LECTEUR_GENERATION : ''}");
+    expect(page).toContain("import { CLASSES_LECTEUR_GENERATION, ratioCadre } from '@/lib/ui/lecteur-generation';");
+    // La classe du FORMAT CHOISI (9:16 garde exactement `CLASSE_LECTEUR_GENERATION`).
+    expect(page).toContain("className={avatar && etatEffectif === 'valide' && !viaDid ? `${CLASSES_LECTEUR_GENERATION[ratio]} lg:!p-3 lg:!space-y-2` : ''}");
   });
 });

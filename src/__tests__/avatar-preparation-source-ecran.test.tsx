@@ -143,7 +143,9 @@ describe('Préparer ma vidéo — éditeur', () => {
     await waitFor(() => expect(q('[data-preparation-qualite="acceptable"]')).not.toBeNull());
 
     fireEvent.click(q('[data-preparation-utiliser]')!);
-    expect(onPret).toHaveBeenCalledWith({ cleOriginal: CLE_O, cleTraitee: CLE_T2, infos: INFOS_T });
+    expect(onPret).toHaveBeenCalledWith(expect.objectContaining({ cleOriginal: CLE_O, cleTraitee: CLE_T2, infos: INFOS_T }));
+    // L'embellissement proposé d'emblée (« Naturel ») part avec les paramètres.
+    expect((onPret.mock.calls[0][0] as { parametres: { amelioration: { embellissement: string } } }).parametres.amelioration.embellissement).toBe('naturel');
     // Aucun autre appel : ni fournisseur, ni création d'avatar.
     expect(fetchs.map((f) => f.url)).toEqual(['/api/avatar/sources/traiter', '/api/avatar/sources/traiter']);
   });
