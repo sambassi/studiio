@@ -7,7 +7,11 @@ import { lireEtatJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
 import type { AvatarPret } from '@/lib/autopilot/medias-prevus';
 
 /**
- * PERSONNAGE PRINCIPAL — « Faire apparaître mon avatar », à l'étape Rushes.
+ * SOURCE « Mon avatar » — une des trois sources de la vidéo (étape Rushes).
+ *
+ * ⚠️ UNE SOURCE PARMI D'AUTRES. L'avatar se combine aux rushes personnels et
+ * aux médias stock (voir `lib/autopilot/sources`) ; il n'est plus un parcours
+ * « avatar seul ».
  *
  * ⚠️ AUCUN NOUVEAU RÉGLAGE. La case est le réglage EXISTANT `jumeauAvatar`
  * (« Monter la vidéo de mon jumeau », colonne `jumeau_avatar`), enregistré par
@@ -139,12 +143,11 @@ export default function AvatarPrincipalAutopilote(props: {
   const coche = props.actif && cocheePossible;
 
   return (
-    <section
-      className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2"
+    <div
+      className="space-y-1.5 min-w-0"
       data-autopilot-avatar-principal
       data-avatar-pret={pret === null ? 'inconnu' : pret ? 'oui' : 'non'}
     >
-      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Personnage principal</p>
       <label className={`flex items-start gap-2 ${cocheePossible && !props.disabled ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
         <input
           type="checkbox"
@@ -155,8 +158,8 @@ export default function AvatarPrincipalAutopilote(props: {
           className="mt-0.5"
         />
         <span className="min-w-0">
-          <span className="block text-xs font-medium text-gray-300">Faire apparaître mon avatar</span>
-          <span className="block text-[11px] text-gray-500">Utilisez votre avatar dans la vidéo, avec ou sans rush personnel.</span>
+          <span className="block text-xs font-medium text-gray-300">Mon avatar</span>
+          <span className="block text-[11px] text-gray-500">Votre avatar parlant, seul ou combiné à vos rushes et aux médias stock.</span>
         </span>
         {pret === true && <MiniatureAvatar vignette={vignette} className="w-9 h-9 ml-auto" />}
       </label>
@@ -170,7 +173,7 @@ export default function AvatarPrincipalAutopilote(props: {
         <p className="flex items-start gap-1.5 text-[11px] text-emerald-400" data-autopilot-avatar-etat="pret">
           <Check className="w-3 h-3 mt-0.5 shrink-0" />
           {coche
-            ? 'Votre avatar parlant (sur votre voix clonée) tiendra la séquence Vidéo. Facturé en plus du rendu, à chaque montage.'
+            ? 'Votre avatar parlant (sur votre voix clonée) prend place dans la séquence Vidéo, avec vos autres sources. Facturé en plus du rendu, à chaque montage.'
             : 'Votre avatar est prêt.'}
         </p>
       )}
@@ -189,6 +192,6 @@ export default function AvatarPrincipalAutopilote(props: {
           </Link>
         </div>
       )}
-    </section>
+    </div>
   );
 }
