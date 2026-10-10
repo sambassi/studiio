@@ -130,12 +130,13 @@ function postPrepare(rushUrl: string | null): PreparedPost {
 }
 
 describe('Règles — validation de l étape Rushes', () => {
-  it('E : 0 rush, avatar OFF → blocage historique', () => {
+  it('E : 0 rush, avatar OFF, aucun stock → aucune source, bloqué', () => {
     expect(validerEtapeRushes({ nbRushes: 0, avatarDemande: false, avatarPret: true }))
-      .toEqual({ bloque: true, motif: 'sans-rush', message: MESSAGES_RUSHES.sansRush });
+      .toEqual({ bloque: true, motif: 'sans-source', message: MESSAGES_RUSHES.sansSource });
   });
-  it('F : 0 rush, avatar OFF (stock ON ne compte pas) → bloqué', () => {
+  it('F : 0 rush, avatar OFF, propositions non retenues → bloqué ; un média stock RETENU suffit', () => {
     expect(validerEtapeRushes({ nbRushes: 0, avatarDemande: false, avatarPret: null }).bloque).toBe(true);
+    expect(validerEtapeRushes({ nbRushes: 0, avatarDemande: false, avatarPret: null, stockRetenus: 1 }).bloque).toBe(false);
   });
   it('C/D : 0 rush, avatar ON et prêt → valide', () => {
     expect(validerEtapeRushes({ nbRushes: 0, avatarDemande: true, avatarPret: true }).bloque).toBe(false);
@@ -152,11 +153,12 @@ describe('Règles — validation de l étape Rushes', () => {
     expect(validerEtapeRushes({ nbRushes: 2, avatarDemande: false, avatarPret: null }).bloque).toBe(false);
     expect(avatarPorteLaProduction(false, true)).toBe(false);
   });
-  it('le contenu du rendu est dit tel que le moteur le produit', () => {
-    expect(contenuRendu({ nbRushes: 0, avatar: true }).cas).toBe('avatar-seul');
-    expect(contenuRendu({ nbRushes: 2, avatar: true }).cas).toBe('avatar-rushes-en-repli');
-    expect(contenuRendu({ nbRushes: 2, avatar: false }).cas).toBe('rushes');
-    expect(contenuRendu({ nbRushes: 0, avatar: false }).cas).toBe('rien');
+  it('le contenu du rendu : multi-sources dès qu une source existe, rien sinon', () => {
+    const e = { rushesPersonnels: 0, avatarActif: true, avatarPret: true, bibliotheque: 0, stockRetenus: 0 };
+    expect(contenuRendu(e).cas).toBe('multi-sources');
+    expect(contenuRendu({ ...e, rushesPersonnels: 2 }).phrase).toBe('Vidéo multi-sources prête.');
+    expect(contenuRendu({ ...e, avatarActif: false, rushesPersonnels: 2 }).cas).toBe('multi-sources');
+    expect(contenuRendu({ ...e, avatarActif: false }).cas).toBe('rien');
   });
 });
 

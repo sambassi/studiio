@@ -110,13 +110,13 @@ describe('A — 2 rushes, avatar OFF, stock OFF : comportement historique', () =
     const attendu = JSON.stringify(sanitizeConfig({ ...sanitizeConfig(configServeur), rushUrls: [A] }));
     await ouvrirRushes();
     await attendrePret('oui');
-    expect(screen.getByText('Personnage principal')).toBeTruthy();
-    expect(screen.getByText('Faire apparaître mon avatar')).toBeTruthy();
-    expect(screen.getByText('Utilisez votre avatar dans la vidéo, avec ou sans rush personnel.')).toBeTruthy();
+    expect(screen.getByText('Sources de la vidéo')).toBeTruthy();
+    expect(screen.getByText('Mon avatar')).toBeTruthy();
+    expect(screen.getByText('Votre avatar parlant, seul ou combiné à vos rushes et aux médias stock.')).toBeTruthy();
     expect(caseAvatar().checked).toBe(false);
     expect(suivant().disabled).toBe(false);
     expect(document.querySelector('[data-autopilot-medias-avatar="non"]')).toBeTruthy();
-    expect(document.querySelector('[data-autopilot-medias-prevus]')?.getAttribute('data-rendu')).toBe('rushes');
+    expect(document.querySelector('[data-autopilot-medias-prevus]')?.getAttribute('data-rendu')).toBe('multi-sources');
     fireEvent.click(document.querySelectorAll('[aria-label="Retirer ce rush"]')[1]);
     await waitFor(() => expect(envois.length).toBe(1));
     expect(envois[0]).toBe(attendu);
@@ -136,8 +136,9 @@ describe('B — 2 rushes, avatar ON', () => {
     await waitFor(() => expect(caseAvatar().checked).toBe(true));
     expect(document.querySelector('[data-autopilot-medias-avatar="oui"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-medias-rushes="2"]')).toBeTruthy();
-    // Le rendu dit la vérité : avatar en séquence Vidéo, rushes en repli.
-    expect(document.querySelector('[data-autopilot-medias-prevus]')?.getAttribute('data-rendu')).toBe('avatar-rushes-en-repli');
+    // Multi-sources : avatar ET rushes, combinés — plus aucun « repli ».
+    expect(document.querySelector('[data-autopilot-medias-prevus]')?.getAttribute('data-rendu')).toBe('multi-sources');
+    expect(texte()).not.toMatch(/secours|ne sont pas montés avec/i);
     expect(suivant().disabled).toBe(false);
     // Vignette : la source EXISTANTE de la version active, jamais une génération.
     await waitFor(() => expect(document.querySelector('[data-avatar-vignette="photo"]')?.getAttribute('src')).toBe('/api/avatars/versions/ver-1/source'));
@@ -146,8 +147,7 @@ describe('B — 2 rushes, avatar ON', () => {
 
 describe('C — 0 rush, avatar ON, stock ON', () => {
   it('étape valide, le stock COMPLÈTE l avatar (plans 2 et 3), résumé complet', async () => {
-    configServeur = { ...configServeur, rushUrls: [], jumeauAvatar: true };
-    window.localStorage.setItem(CLE, '1');
+    configServeur = { ...configServeur, rushUrls: [], jumeauAvatar: true, designStyle: { sources: { actives: { rushes: true, avatar: true, stock: true }, stock: [], gabarit: [] } } };
     await ouvrirRushes();
     await attendrePret('oui');
     await waitFor(() => expect(document.querySelector('[data-autopilot-stock-slot="plan-3"][data-etat="propose"]')).toBeTruthy());
@@ -165,8 +165,9 @@ describe('C — 0 rush, avatar ON, stock ON', () => {
     await waitFor(() => expect(document.querySelector('[data-autopilot-medias-stock="2"]')).toBeTruthy());
     expect(document.querySelector('[data-autopilot-medias-avatar="oui"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-medias-rushes="0"]')).toBeTruthy();
-    expect(document.querySelectorAll('[data-autopilot-medias-stock-vignette]').length).toBe(2);
-    expect(document.querySelector('[data-autopilot-medias-stock-repli]')).toBeTruthy();
+    // Des propositions ne sont pas des médias retenus : aucune vignette au résumé.
+    expect(document.querySelectorAll('[data-autopilot-medias-stock-vignette]').length).toBe(0);
+    expect(texte()).not.toMatch(/secours|ne sont pas montés avec/i);
     expect(envois).toEqual([]);
     // Pexels uniquement (I).
     for (const a of appels.filter((x) => x.includes('/api/stock/recherche?'))) expect(a).toContain('fournisseurs=pexels');
@@ -179,8 +180,8 @@ describe('D — 0 rush, avatar ON, stock OFF : avatar seul', () => {
     await ouvrirRushes();
     await attendrePret('oui');
     await waitFor(() => expect(suivant().disabled).toBe(false));
-    expect(document.querySelector('[data-autopilot-avatar-seul]')?.textContent).toBe(MESSAGES_RUSHES.avatarSeul);
-    expect(document.querySelector('[data-autopilot-medias-prevus]')?.getAttribute('data-rendu')).toBe('avatar-seul');
+    expect(document.querySelector('[data-autopilot-medias-rendu]')?.textContent).toBe(MESSAGES_RUSHES.multiSources);
+    expect(document.querySelector('[data-autopilot-medias-prevus]')?.getAttribute('data-rendu')).toBe('multi-sources');
     expect(document.querySelector('[data-autopilot-suivant-bloque]')).toBeNull();
     expect(texte()).not.toMatch(/au moins un rush/i);
     // Vérification : la check-list tient l'avatar pour suffisant.
@@ -192,27 +193,26 @@ describe('D — 0 rush, avatar ON, stock OFF : avatar seul', () => {
   });
 });
 
-describe('E — 0 rush, avatar OFF, stock OFF : blocage historique', () => {
-  it('Continuer bloqué, message d avant', async () => {
+describe('E — 0 rush, avatar OFF, stock OFF : aucune source', () => {
+  it('Continuer bloqué, message « aucune source »', async () => {
     configServeur = { ...configServeur, rushUrls: [] };
     await ouvrirRushes();
     await attendrePret('oui');
     expect(suivant().disabled).toBe(true);
-    expect(document.querySelector('[data-autopilot-suivant-bloque]')?.textContent).toBe('Ajoutez au moins un rush pour continuer');
-    expect(screen.getByText('0 rush — au moins un est nécessaire')).toBeTruthy();
-    expect(document.querySelector('[data-autopilot-avatar-seul]')).toBeNull();
+    expect(document.querySelector('[data-autopilot-suivant-bloque]')?.textContent).toBe(MESSAGES_RUSHES.sansSource);
+    expect(screen.getByText('0 rush — aucune source pour l’instant')).toBeTruthy();
+    expect(texte()).not.toMatch(/au moins un rush/i);
   });
 });
 
 describe('F — 0 rush, avatar OFF, stock ON : toujours bloqué', () => {
   it('les propositions ne débloquent rien', async () => {
-    configServeur = { ...configServeur, rushUrls: [] };
-    window.localStorage.setItem(CLE, '1');
+    configServeur = { ...configServeur, rushUrls: [], designStyle: { sources: { actives: { rushes: true, avatar: false, stock: true }, stock: [], gabarit: [] } } };
     await ouvrirRushes();
     await waitFor(() => expect(document.querySelector('[data-autopilot-stock-slot="plan-3"][data-etat="propose"]')).toBeTruthy());
     expect(document.querySelector('[data-autopilot-stock-slot="plan-1"]')).toBeTruthy();
     expect(suivant().disabled).toBe(true);
-    expect(document.querySelector('[data-autopilot-suivant-bloque]')?.getAttribute('data-autopilot-suivant-bloque')).toBe('sans-rush');
+    expect(document.querySelector('[data-autopilot-suivant-bloque]')?.getAttribute('data-autopilot-suivant-bloque')).toBe('sans-source');
   });
 });
 
@@ -259,7 +259,7 @@ describe('H/I — fournisseurs stock en défaut', () => {
     await ouvrirRushes();
     await waitFor(() => expect(screen.getByText(MESSAGE_STOCK_INDISPONIBLE)).toBeTruthy());
     expect(suivant().disabled).toBe(false);
-    expect(document.querySelector('[data-autopilot-medias-stock="0"]')).toBeTruthy();
+    expect(document.querySelector('[data-autopilot-medias-stock]')).toBeNull();
   });
 
   it('I : une réponse qui mentionne Unsplash en échec n est jamais appelée côté Unsplash', async () => {

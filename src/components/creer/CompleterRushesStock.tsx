@@ -31,6 +31,8 @@ export interface MetaRushStock {
   auteur: string;
   sourceUrl: string;
   licence: string;
+  /** Vignette du fournisseur — pour le résumé « Médias prévus » et le plan. */
+  vignetteUrl?: string;
 }
 
 /** Le fichier qu'écrit `/api/stock/importer` : `stock-pexels-video-<id>.mp4`. */
@@ -41,7 +43,7 @@ export function idStockDuRush(url: string): string | null {
   return NOM_RUSH_STOCK.exec(url)?.[1] ?? null;
 }
 
-export const MESSAGE_STOCK_INDISPONIBLE = 'Recherche stock indisponible pour le moment — l’Autopilote continue avec vos rushes.';
+export const MESSAGE_STOCK_INDISPONIBLE = 'Recherche stock indisponible pour le moment — l’Autopilote continue avec vos autres sources.';
 
 type EtatSlot = 'recherche' | 'propose' | 'vide' | 'import' | 'conserve' | 'supprime';
 
@@ -227,6 +229,7 @@ export default function CompleterRushesStock({
       auteur: r.media?.auteur ?? m.auteur,
       sourceUrl: r.media?.sourceUrl ?? m.sourceUrl,
       licence: r.media?.licence ?? m.licence,
+      vignetteUrl: m.vignetteUrl,
     });
   }, [majSlot, onConserver]);
 
