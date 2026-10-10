@@ -412,19 +412,12 @@ describe('Rendu Reel / TV', () => {
     expect(solde()).toBe(SOLDE);
   });
 
-  // ⚠️ CONSTAT : la route historique /api/render ne connaît AUCUNE exemption
-  // (update direct de users.credits). Aucun écran ne l'appelle aujourd'hui
-  // (le rendu passe par /api/render/jobs), mais elle reste exposée.
-  // `it.fails` : ce test passera au rouge le jour où elle sera corrigée.
-  it('CONSTAT — admin : POST /api/render (historique) débite aujourd’hui le prix public (11)', async () => {
+  // Corrigé : la route historique /api/render applique la même exemption
+  // administrateur que tous les parcours (aucun écran ne l'appelle encore).
+  it('admin : POST /api/render (historique) ne débite rien', async () => {
     devenirAdmin();
     const res = await post(RENDER, { compositionId: 'AfroboostReel', format: 'reel' });
     expect(res.status).toBe(200);
-    expect(solde()).toBe(SOLDE - 11);
-  });
-  it.fails('CONSTAT — admin : POST /api/render (historique) ne devrait rien débiter', async () => {
-    devenirAdmin();
-    await post(RENDER, { compositionId: 'AfroboostReel', format: 'reel' });
     expect(solde()).toBe(SOLDE);
   });
 });
@@ -607,7 +600,7 @@ describe('Autopilote — montage (render.reel) + affiche de référence', () => 
     return produireUnMontage({ userId: U, config: c, post: p, rang: 0, now: T0, jobId: 'job-1' });
   };
 
-  it('devis affiché (GET produire-maintenant) = coutMontage = 11 ; affiche de référence = 21 ; débits 11 puis 21', async () => {
+  it('sans configuration enregistrée (mode automatique) : devis = coutMontage = 11 ; affiche de référence = 21 ; débits 11 puis 21', async () => {
     const devis = await (await DEVIS_AUTOPILOTE()).json();
     expect(devis.cout).toBe(11);
     expect((await prixEcran()).prix['autopilot.poster_reference']).toBe(21);
@@ -621,6 +614,14 @@ describe('Autopilote — montage (render.reel) + affiche de référence', () => 
       ['debiter_credits_operation', 'autopilote-affiche:job-1', 21],
     ]);
     expect(solde()).toBe(SOLDE - 32);
+  });
+
+  it('⚠️ mode « référence » actif : le devis inclut l’affiche — devis 32 = débit 11 + 21', async () => {
+    base.tables.autopilot_config = [{ user_id: U, enabled: true, poster_mode: 'reference', poster_urls: ['https://cdn.test/ma-photo.jpg'], rush_urls: ['https://cdn.test/r.mp4'] }];
+    const devis = await (await DEVIS_AUTOPILOTE()).json();
+    expect(devis.cout).toBe(32);
+    await produire();
+    expect(base.rpcs.reduce((n, x) => n + Number(x.debite), 0)).toBe(32);
   });
 
   it('admin : devis en frais partenaires, aucune RPC', async () => {
@@ -680,20 +681,14 @@ describe('(4) Garde — constantes de prix restantes', () => {
     }
   });
 
-  // ⚠️ CONSTAT — AssistantWizard : `COST = { reel: 10, tv: 15 }` sert ENCORE
-  // au contrôle de solde avant envoi ET au message « Crédits insuffisants :
-  // N requis » (le montant annoncé de la série vient, lui, de /api/render/tarifs).
-  // Avec reel = 11 : un compte à 10 crédits passe le contrôle client puis est
-  // refusé par le serveur ; le message d'erreur annonce 10 au lieu de 11.
-  it('CONSTAT — AssistantWizard : `COST` codé alimente coutTotal (contrôle + message d’erreur)', () => {
+  // Corrigé : le contrôle de solde de Créer et son message « Crédits
+  // insuffisants : N requis » lisent la grille (render.reel / render.tv), plus
+  // une constante 10/15 qu'un tarif admin rendrait fausse.
+  it('AssistantWizard : le coût du rendu vient de la grille, plus de `COST` codé', () => {
     const w = SOURCES.find((s) => s.p === 'src/app/dashboard/creer/AssistantWizard.tsx')!.texte;
-    expect(w).toMatch(/const COST = \{ reel: 10, tv: 15 \} as const;/);
-    expect(w).toMatch(/const cost = format === '16:9' \? COST\.tv : COST\.reel;/);
-    expect(w).toMatch(/const coutTotal = batchCost\(cost, total\)/);
-    expect(w).toMatch(/Crédits insuffisants : \$\{coutTotal\} requis/);
-  });
-  it.fails('CONSTAT — AssistantWizard ne devrait plus lire `COST` pour facturer ou annoncer', () => {
-    const w = SOURCES.find((s) => s.p === 'src/app/dashboard/creer/AssistantWizard.tsx')!.texte;
+    expect(w).not.toMatch(/const COST = \{/);
     expect(w).not.toMatch(/COST\.(reel|tv)/);
+    expect(w).toMatch(/const cost = format === '16:9' \? grilleTarifs\['render\.tv'\] : grilleTarifs\['render\.reel'\];/);
+    expect(w).toMatch(/const coutTotal = batchCost\(cost, total\)/);
   });
 });

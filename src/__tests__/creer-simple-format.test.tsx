@@ -194,7 +194,8 @@ describe('Export — 1080 × 1080 part vraiment au compositeur', () => {
   it('ne facture pas le carré au tarif paysage', () => {
     // Aussi large que le 9:16 et deux fois moins haut : le rendu est plus
     // petit, pas plus gros.
-    expect(wizardSource).toMatch(/const cost = format === '16:9' \? COST\.tv : COST\.reel;/);
+    // Le prix vient de la grille centrale (render.reel / render.tv) depuis #541.
+    expect(wizardSource).toMatch(/const cost = format === '16:9' \? grilleTarifs\['render\.tv'\] : grilleTarifs\['render\.reel'\];/);
   });
 
   it('le carré est classé « tv », comme le compositeur le classe', () => {

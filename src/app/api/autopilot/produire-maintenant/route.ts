@@ -7,7 +7,7 @@ import { creneauImmediat } from '@/lib/autopilot/rules';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { pickTopics } from '@/lib/autopilot/topics';
 import {
-  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, coutMontage,
+  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, coutMontage, coutAfficheDuDevis,
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
 import { prixDe } from '@/lib/tarifs/serveur';
@@ -86,11 +86,16 @@ export async function GET() {
   if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-  const [{ politique }, solde, cout] = await Promise.all([
+  const [{ politique }, solde, coutRendu, lignes] = await Promise.all([
     politiqueDeLUtilisateur(userId),
     getUserCredits(userId).catch(() => null),
     coutMontage(),
+    supabaseAdmin.from('autopilot_config').select('*').eq('user_id', userId).limit(1).then((r) => r.data, () => null),
   ]);
+  // Le devis = ce que POST vérifiera et ce que le montage débitera : rendu
+  // (+ affiche de référence si ce mode est actif).
+  const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
+  const cout = coutRendu + await coutAfficheDuDevis(config);
   return NextResponse.json({
     success: true,
     politique,
@@ -149,7 +154,9 @@ export async function POST() {
     // montage dont le rendu échouerait faute de crédits. Prix lus UNE fois
     // dans la grille centrale ; le rendu débite ce même `coutRendu`.
     const coutRendu = await coutMontage();
-    const cout = config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu;
+    // + l'affiche de référence quand elle sera produite (débitée après dépôt).
+    const coutAffiche = await coutAfficheDuDevis(config);
+    const cout = (config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu) + coutAffiche;
     const credits = await getUserCredits(userId).catch(() => 0);
     if (credits < cout) {
       return NextResponse.json({

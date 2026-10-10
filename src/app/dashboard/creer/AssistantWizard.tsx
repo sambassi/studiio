@@ -844,8 +844,6 @@ const DEFAULT_TEXT_STYLES: {
   },
 };
 
-/** Coût du rendu, aligné sur l'éditeur (tarifs serveur `tarifs_rendu`). */
-const COST = { reel: 10, tv: 15 } as const;
 
 type Format = '9:16' | '1:1' | '16:9';
 
@@ -3932,7 +3930,8 @@ export default function AssistantWizard() {
    */
   const [jumeauMode, setJumeauMode] = useState<JumeauMode>('aucun');
   /** Le prix du jumeau, lu dans la grille centrale (celle que débite le serveur ; repli 40). */
-  const coutJumeau = useTarifs().prix['avatar.jumeau'];
+  const grilleTarifs = useTarifs().prix;
+  const coutJumeau = grilleTarifs['avatar.jumeau'];
   /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
   const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
   /**
@@ -7684,7 +7683,10 @@ export default function AssistantWizard() {
     const renderFormat: 'reel' | 'tv' = isReel ? 'reel' : 'tv';
     // Le carré est aussi large que le 9:16 et deux fois moins haut : le
     // facturer au tarif paysage ferait payer plus cher un rendu plus petit.
-    const cost = format === '16:9' ? COST.tv : COST.reel;
+    // Le prix du rendu vient de la grille centrale (`render.reel` / `render.tv`,
+    // la table `tarifs_rendu` que débite le serveur) — plus d'une constante
+    // 10/15 qui laisserait passer un solde que le serveur refuse ensuite.
+    const cost = format === '16:9' ? grilleTarifs['render.tv'] : grilleTarifs['render.reel'];
     // Le lot : combien de montages, et a quelles dates.
     // Un apercu ne rend qu'UNE video : en jouer cinq a la suite n'apprendrait
     // rien de plus, et couterait cinq rendus.

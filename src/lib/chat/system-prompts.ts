@@ -17,7 +17,7 @@ const STUDIIO_KNOWLEDGE = `
 
 3. EXPORT (étape Envoi de /dashboard/creer)
 - Destinations : Aperçu, Bureau (téléchargement), Calendrier
-- Coût : 25 crédits par montage
+- Coût : affiché avant l’envoi (tarif réel du compte, réglé par l’administration — ne jamais annoncer un chiffre de mémoire)
 - Batch x1/x3/x5/x10 pour générer plusieurs variations
 
 4. CALENDRIER (/dashboard/calendar)

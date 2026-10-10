@@ -52,6 +52,16 @@ export function coutAfficheReference(): Promise<number> {
 }
 
 /**
+ * Ce que l'affiche de référence AJOUTE au devis d'un montage : son tarif quand
+ * le mode « référence » est actif avec au moins une photo (la condition même
+ * de `produireUnMontage`), 0 sinon. Sans elle, le devis annonçait le rendu
+ * seul alors que le montage débitait rendu + affiche.
+ */
+export async function coutAfficheDuDevis(config: Pick<AutopilotConfig, 'posterMode' | 'posterUrls'>): Promise<number> {
+  return config.posterMode === 'reference' && config.posterUrls.length > 0 ? coutAfficheReference() : 0;
+}
+
+/**
  * Produire UN montage d'Autopilote — la pièce commune au cron et à la
  * production manuelle.
  *

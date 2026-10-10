@@ -9,7 +9,7 @@ import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { pickTopics } from '@/lib/autopilot/topics';
 import { prixDe } from '@/lib/tarifs/serveur';
 import {
-  produireUnMontage, sujetsRecents, creneauxExistants, coutMontage,
+  produireUnMontage, sujetsRecents, creneauxExistants, coutMontage, coutAfficheDuDevis,
 } from '@/lib/autopilot/produire';
 import {
   lancerJumeauMontage, creneauxJumeauEnAttente, finaliserJumeauxPrets,
@@ -270,7 +270,8 @@ export async function GET(req: NextRequest) {
       // réellement — même calcul que « Produire maintenant ». Et le jumeau
       // tient la séquence « Vidéo » : une banque de rushes vide ne bloque pas.
       const coutRendu = await coutMontage();
-      const coutParMontage = config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu;
+      const coutParMontage = (config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu)
+        + await coutAfficheDuDevis(config);
       const credits = await getUserCredits(userId).catch(() => 0);
       const decision = decideRun({
         config, credits, costPerVideo: coutParMontage, now, allowWithoutRush: config.jumeauAvatar,
