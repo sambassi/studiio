@@ -97,6 +97,34 @@ export function coutMontage(): Promise<number> {
 }
 
 /**
+ * LE DEVIS COMPLET d'un montage, poste par poste — la formule du prix lue
+ * par le devis affiché (GET « Produire maintenant ») ET par le contrôle avant
+ * lancement (POST). Le cron applique la même somme, poste par poste.
+ *
+ *   - `rendu`   : `render.reel`, débité par `produireUnMontage` (réf. `autopilote:<jobId>`) ;
+ *   - `avatar`  : `avatar.jumeau` quand la vidéo du jumeau est montée, débité
+ *                 UNE fois par `genererVideoJumeau` (réf. `jumeau:<generationId>`),
+ *                 remboursé si la génération échoue ; 0 sinon ;
+ *   - `affiche` : `autopilot.poster_reference` en mode référence (réf.
+ *                 `autopilote-affiche:<jobId>`) ; 0 sinon.
+ *
+ * Aucun autre débit : la voix off n'est jamais synthétisée quand le jumeau
+ * est monté (il porte la voix), et l'Autopilote ne facture pas l'audio à part.
+ * ⚠️ Le GET annonçait rendu + affiche, SANS l'avatar, alors que le POST
+ * contrôlait (et que le montage débitait) rendu + avatar + affiche.
+ */
+export async function devisMontage(
+  config: Pick<AutopilotConfig, 'jumeauAvatar' | 'posterMode' | 'posterUrls'>,
+): Promise<{ rendu: number; avatar: number; affiche: number; total: number }> {
+  const [rendu, avatar, affiche] = await Promise.all([
+    coutMontage(),
+    config.jumeauAvatar ? prixDe('avatar.jumeau') : Promise.resolve(0),
+    coutAfficheDuDevis(config),
+  ]);
+  return { rendu, avatar, affiche, total: rendu + avatar + affiche };
+}
+
+/**
  * `snake_case` → `camelCase`, pour relire une ligne de `autopilot_config`.
  *
  * ⚠️ TOUTES LES COLONNES SUIVENT CETTE RÈGLE — `count_per_cycle` →

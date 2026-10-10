@@ -7,10 +7,9 @@ import { creneauImmediat } from '@/lib/autopilot/rules';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { pickTopics } from '@/lib/autopilot/topics';
 import {
-  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, coutMontage, coutAfficheDuDevis,
+  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
-import { prixDe } from '@/lib/tarifs/serveur';
 import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
 
 /**
@@ -86,20 +85,21 @@ export async function GET() {
   if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-  const [{ politique }, solde, coutRendu, lignes] = await Promise.all([
+  const [{ politique }, solde, lignes] = await Promise.all([
     politiqueDeLUtilisateur(userId),
     getUserCredits(userId).catch(() => null),
-    coutMontage(),
     supabaseAdmin.from('autopilot_config').select('*').eq('user_id', userId).limit(1).then((r) => r.data, () => null),
   ]);
   // Le devis = ce que POST vérifiera et ce que le montage débitera : rendu
-  // (+ affiche de référence si ce mode est actif).
+  // (+ avatar si la vidéo du jumeau est montée, + affiche de référence si ce
+  // mode est actif). `devisMontage` est la formule partagée avec POST.
   const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
-  const cout = coutRendu + await coutAfficheDuDevis(config);
+  const devis = await devisMontage(config);
   return NextResponse.json({
     success: true,
     politique,
-    cout,
+    cout: devis.total,
+    detail: { rendu: devis.rendu, avatar: devis.avatar, affiche: devis.affiche },
     solde,
     enCours: enVol.has(userId),
   });
@@ -153,10 +153,11 @@ export async function POST() {
     // On vérifie les deux d'avance pour ne pas lancer (et facturer l'avatar) un
     // montage dont le rendu échouerait faute de crédits. Prix lus UNE fois
     // dans la grille centrale ; le rendu débite ce même `coutRendu`.
-    const coutRendu = await coutMontage();
     // + l'affiche de référence quand elle sera produite (débitée après dépôt).
-    const coutAffiche = await coutAfficheDuDevis(config);
-    const cout = (config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu) + coutAffiche;
+    // La MÊME formule que le devis affiché (`devisMontage`).
+    const devis = await devisMontage(config);
+    const coutRendu = devis.rendu;
+    const cout = devis.total;
     const credits = await getUserCredits(userId).catch(() => 0);
     if (credits < cout) {
       return NextResponse.json({

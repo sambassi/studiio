@@ -126,8 +126,9 @@ describe('Le wizard', () => {
     expect(panneau.indexOf('const bloqueEtape')).toBeLessThan(panneau.indexOf('if (loading) {'));
   });
 
-  it('l étape des rushes BLOQUE tant qu il n y en a aucun', () => {
-    expect(panneau).toContain('const bloqueEtape = etape === 1 && config.rushUrls.length === 0;');
+  it('l étape des rushes BLOQUE tant qu il n y en a aucun (sauf avatar prêt — validerEtapeRushes)', () => {
+    expect(panneau).toContain('const bloqueEtape = etape === 1 && validationRushes.bloque;');
+    expect(panneau).toContain('nbRushes: config.rushUrls.length,');
     expect(panneau).toContain('disabled={!ready || bloqueEtape}');
   });
 
