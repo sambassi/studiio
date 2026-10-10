@@ -10441,7 +10441,9 @@ export default function AssistantWizard() {
                       <button
                         type="button"
                         data-ouvrir-stock="fond"
-                        onClick={() => setStockPanneau({ cle: seqCible })}
+                        // Un FOND se cherche en photo : sans type imposé, l'onglet
+                        // « Tout » (séquence nulle) ouvrait sur Vidéo → « Ajouter aux rushes ».
+                        onClick={() => setStockPanneau({ cle: seqCible, type: 'photo' })}
                         className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
                       >
                         <Search className="w-3.5 h-3.5" />

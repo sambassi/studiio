@@ -255,6 +255,24 @@ describe('AssistantWizard — intégration légère', () => {
     expect(appels.some((a) => a.url.includes('/api/stock/'))).toBe(false);
   });
 
+  it('ouvert depuis « Photo d’affiche » (onglet Tout) : le panneau s’ouvre sur PHOTO, jamais sur « Ajouter aux rushes »', async () => {
+    installerFetch({ recherche: { medias: [media('p1', { type: 'photo', id: 'pexels-photo-p1' })] } });
+    poser();
+    render(<AssistantWizard />);
+    await attendre();
+    await ouvrirSection('affiche');
+    const bouton = document.querySelector('[data-ouvrir-stock="fond"]') as HTMLButtonElement;
+    expect(bouton).toBeTruthy();
+    await act(async () => { fireEvent.click(bouton); });
+    await attendre();
+    const rech = appels.filter((a) => a.url.startsWith('/api/stock/recherche'));
+    expect(rech.length).toBeGreaterThan(0);
+    expect(rech.every((a) => new URLSearchParams(a.url.split('?')[1]).get('type') === 'photo')).toBe(true);
+    expect(document.querySelector('[data-stock-type="photo"]')?.getAttribute('aria-pressed')).toBe('true');
+    await act(async () => { fireEvent.click(document.querySelector('[data-stock-media]')!); });
+    expect(document.querySelector('[data-stock-utiliser]')?.textContent).not.toContain('Ajouter aux rushes');
+  });
+
   it('vidéo stock ajoutée depuis la séquence Vidéo : keep du nouveau rush, rush principal inchangé', async () => {
     const v = media('v9', {});
     const IMPORTEE = 'https://studiio.pro/storage/v1/object/public/media/u1/library/pexels-v9.mp4';
