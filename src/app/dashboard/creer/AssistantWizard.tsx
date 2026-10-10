@@ -93,6 +93,9 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AfficheIA from '@/components/creer/AfficheIA';
+import RechercheStockSequence, { texteDeSequence, type MetaStock } from '@/components/creer/RechercheStockSequence';
+import { construireRecherchesStock } from '@/lib/stock/requetes';
+import type { TypeStock } from '@/lib/stock/types';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import VideosPretes from '@/components/creer/VideosPretes';
 import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
@@ -4538,6 +4541,14 @@ export default function AssistantWizard() {
   const derniereRecherche = useRef<{ query: string; source: 'pexels' | 'unsplash' } | null>(null);
   const [photoQuery, setPhotoQuery] = useState('');
   const [photosLoading, setPhotosLoading] = useState(false);
+  // ── RECHERCHE STOCK GUIDÉE (additive) ─────────────────────────────────
+  // Panneau `RechercheStockSequence`, MONTÉ seulement à l'ouverture : tant
+  // qu'il reste fermé, aucune requête `/api/stock/*` ne part. `cle` fige la
+  // séquence visée à l'ouverture (`null` = affiche globale).
+  const [stockPanneau, setStockPanneau] = useState<{ cle: SeqBgKey | null; type?: TypeStock } | null>(null);
+  // Crédits des médias stock choisis, par URL posée (fond ou rush). État
+  // seul : le brouillon n'en porte rien, il se relit donc à l'identique.
+  const [stockMedias, setStockMedias] = useState<Record<string, MetaStock>>({});
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
   // Les deux autres chemins vers une affiche : la mediatheque (images deja
@@ -4805,6 +4816,24 @@ export default function AssistantWizard() {
   const seqCible = seqBgKeyForFocus(previewFocus);
   /** Fond REELLEMENT montre par l'onglet courant. */
   const fondAffiche = resolveBackground(previewFocus, seqBackgrounds, posterUrl, posterTransform);
+
+  /**
+   * Suggestions de recherche pour la séquence affichée — DÉTERMINISTES
+   * (`construireRecherchesStock`, aucun appel IA). Un clic remplit le champ
+   * et lance la recherche manuelle EXISTANTE (`searchPhotos`) : le chemin
+   * `/api/pexels` ne change pas, l'utilisateur peut toujours taper librement.
+   */
+  const suggestionsPhotos = useMemo(
+    () => construireRecherchesStock({
+      sujet: currentTopic,
+      objectif: brief.objectif,
+      texte: texteDeSequence(generated, seqCible),
+      role: seqCible,
+      visuel: 'arriere-plan',
+      format,
+    }).requetes.slice(0, 5),
+    [currentTopic, brief.objectif, generated, seqCible, format],
+  );
 
   /** Pose une photo : sur la sequence affichee, ou sur l'affiche globale. */
   /* ── APERÇU DU VRAI RENDU ────────────────────────────────────────────
@@ -9975,6 +10004,35 @@ export default function AssistantWizard() {
                       </button>
                     </div>
 
+                    {/* Suggestions pour la séquence affichée : un clic remplit
+                        le champ et lance la MÊME recherche que « Chercher ». */}
+                    {suggestionsPhotos.length > 0 && (
+                      <div className="space-y-1" data-suggestions-photos>
+                        <p className="text-[11px] text-gray-500">Suggestions pour cette séquence</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {suggestionsPhotos.map((q) => (
+                            <button
+                              key={q}
+                              type="button"
+                              data-suggestion-photo={q}
+                              disabled={photosLoading}
+                              onClick={() => {
+                                setPhotoQuery(q);
+                                searchPhotos(q, imageSource);
+                              }}
+                              className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+                                photoQuery.trim() === q
+                                  ? 'border-purple-500 text-white'
+                                  : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                              }`}
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {photosError && (
                       <div className="flex items-center gap-2">
                         <p className="text-xs text-gray-500 flex-1" data-photos-erreur>{photosError}</p>
@@ -10363,6 +10421,28 @@ export default function AssistantWizard() {
                           ? `Les photos choisies s’appliquent à la séquence « ${previewFocus === 'intro' ? 'Titre' : previewFocus === 'cards' ? 'Cartes' : previewFocus === 'video' ? 'Vidéo' : 'CTA'} ». Glissez-en une dans l’aperçu.`
                           : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
                       </p>
+                      {fondAffiche.url && stockMedias[fondAffiche.url] && (
+                        <p className="text-[11px] text-gray-500" data-fond-attribution>
+                          {stockMedias[fondAffiche.url].attribution}{' '}
+                          <a
+                            href={stockMedias[fondAffiche.url].sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-white"
+                          >
+                            (source)
+                          </a>
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        data-ouvrir-stock="fond"
+                        onClick={() => setStockPanneau({ cle: seqCible })}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        Rechercher des médias (stock)
+                      </button>
                     </div>
 
                     {fondAffiche.url && (
@@ -11183,6 +11263,36 @@ export default function AssistantWizard() {
                           <Plus className="w-3 h-3" />
                           Ajouter un rush
                         </button>
+                      )}
+                      {/* Recherche stock guidée : une vidéo choisie s'AJOUTE à la
+                          liste (ou devient le rush s'il n'y en a aucun) — le rush
+                          principal n'est jamais remplacé. */}
+                      <button
+                        type="button"
+                        data-ouvrir-stock="rush"
+                        onClick={() => setStockPanneau({ cle: 'video', type: 'video' })}
+                        disabled={rushLoading}
+                        className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Search className="w-3 h-3" />
+                        Rechercher des médias (stock)
+                      </button>
+                      {rushListe.some((r) => stockMedias[r.url]) && (
+                        <div className="mt-1 space-y-0.5" data-rush-attributions>
+                          {rushListe.filter((r) => stockMedias[r.url]).map((r) => (
+                            <p key={r.url} className="text-[11px] text-gray-500 truncate">
+                              {stockMedias[r.url].attribution}{' '}
+                              <a
+                                href={stockMedias[r.url].sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:text-white"
+                              >
+                                (source)
+                              </a>
+                            </p>
+                          ))}
+                        </div>
                       )}
                       {rushUrl && (
                         <p className="text-[11px] text-gray-500 mt-2">
@@ -12807,6 +12917,38 @@ export default function AssistantWizard() {
           if (!failure) setClipSource(null);
         }}
       />
+      {/* Recherche stock guidée — montée seulement à l'ouverture. */}
+      {stockPanneau && (
+        <RechercheStockSequence
+          role={stockPanneau.cle}
+          libelleSequence={
+            stockPanneau.cle === 'titre' ? 'Titre'
+              : stockPanneau.cle === 'cartes' ? 'Cartes'
+                : stockPanneau.cle === 'video' ? 'Vidéo'
+                  : stockPanneau.cle === 'cta' ? 'CTA'
+                    : 'Affiche'
+          }
+          sujet={currentTopic}
+          objectif={brief.objectif}
+          texte={texteDeSequence(generated, stockPanneau.cle)}
+          format={format}
+          typeInitial={stockPanneau.type}
+          fondExistant={stockPanneau.cle ? !!seqBackgrounds[stockPanneau.cle]?.url : !!posterUrl}
+          onUtiliserPhoto={(url, meta) => {
+            setStockMedias((prev) => ({ ...prev, [url]: meta }));
+            // Même pose que `applyPhoto`, sur la séquence figée à l'ouverture.
+            const cle = stockPanneau.cle;
+            if (!cle) { setPosterUrl(url); return; }
+            setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
+          }}
+          onAjouterRush={(url, nom, meta) => {
+            setStockMedias((prev) => ({ ...prev, [url]: meta }));
+            // `ajouterRush` : en fin de liste (keep compris) ; sans rush, import normal.
+            void ajouterRush(url, nom);
+          }}
+          onFermer={() => setStockPanneau(null)}
+        />
+      )}
     </DeuxColonnes>
     </div>
   );
