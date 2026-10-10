@@ -24,6 +24,8 @@ import { Notification, ProgressStatus, EnteteSection, FilEtapes, Consigne, ZoneA
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
+import { useTarifs } from '@/lib/tarifs/client';
+import { cleTarifEcranMonAvatar, libelleBoutonGenererAvatar } from '@/lib/avatar/prix';
 import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
@@ -35,7 +37,6 @@ import {
   CLE_GENERATION_EN_COURS, lireGenerationEnCours, type PhaseGenerationHeygen, type PhaseGenerationJumeau, type GenerationEnCours,
 } from '@/lib/avatar/progression';
 
-const AVATAR_VIDEO_COST = 40;
 /** Valeur du sélecteur pour une voix clonée : `clone:<user_voices.id>` — jamais un identifiant fournisseur. */
 const PREFIXE_VOIX_CLONEE = 'clone:';
 const VOIX_CLONEE_INDISPONIBLE = 'Votre voix clonée n’est pas disponible pour le moment. Choisissez une autre voix.';
@@ -170,6 +171,7 @@ export default function AvatarPage() {
   const [qualitesClonee, setQualitesClonee] = useState<QualiteOfferte[]>([]);
   const [defautClonee, setDefautClonee] = useState<Qualite>('standard');
   const [qualite, setQualite] = useState<Qualite>('qualite');
+  const tarifs = useTarifs();
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   /** Où en est la génération (étapes RÉELLES du parcours HeyGen ou du jumeau), et son début. */
   const [genEtape, setGenEtape] = useState<{ mode: 'heygen'; phase: PhaseGenerationHeygen } | { mode: 'jumeau'; phase: PhaseGenerationJumeau } | null>(null);
@@ -892,6 +894,11 @@ export default function AvatarPage() {
   const viaVoixClonee = voiceId.startsWith(PREFIXE_VOIX_CLONEE);
   const qualites = viaVoixClonee ? qualitesClonee : qualitesHeygen;
   const premium = qualites.find((q) => q.qualite === 'premium') ?? null;
+  // Le prix annoncé : celui de la grille centrale pour CE parcours et CETTE
+  // qualité — la même règle que le serveur (`lib/avatar/prix.ts`). Qualité non
+  // envoyée → Avatar IV (défaut HeyGen) ; voix clonée → tarif du jumeau.
+  const qualiteAnnoncee = qualites.some((q) => q.qualite === qualite && q.ouverte) ? qualite : undefined;
+  const prixGeneration = tarifs.prix[cleTarifEcranMonAvatar({ viaVoixClonee, qualiteEnvoyee: qualiteAnnoncee })];
     useEffect(() => {
     const liste = viaVoixClonee ? qualitesClonee : qualitesHeygen;
     const defaut = viaVoixClonee ? defautClonee : defautHeygen;
@@ -1719,7 +1726,7 @@ export default function AvatarPage() {
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" /> Générer la vidéo ({AVATAR_VIDEO_COST} crédits)
+                    <Sparkles className="w-4 h-4" /> {libelleBoutonGenererAvatar(prixGeneration, tarifs.exempte)}
                   </>
                 )}
               </button>

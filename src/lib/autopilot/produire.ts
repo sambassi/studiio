@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { deductCredits, getVideoRenderCost } from '@/lib/credits/system';
+import { deductCredits } from '@/lib/credits/system';
+import { prixDe } from '@/lib/tarifs/serveur';
 import { referenceOperation } from '@/lib/credits/atomique';
 import { toPostRow, slotKey, type PreparedPost } from '@/lib/autopilot/engine';
 import { sanitizeConfig, type AutopilotConfig } from '@/lib/autopilot/rules';
@@ -42,11 +43,23 @@ export function rushsCompagnons(banque: ReadonlyArray<string>, principal: string
 }
 
 /**
- * Coût d'une affiche générée à partir d'une photo de référence, en crédits.
- * ⚠️ LE MÊME que l'action « generate-bg » de `/api/ai/image` (5) : générer une
- * affiche coûte pareil, qu'on parte d'un texte (Créer) ou d'une photo (ici).
+ * Coût d'une affiche générée à partir d'une photo de référence, en crédits —
+ * le tarif `autopilot.poster_reference` de la grille centrale, lu au moment
+ * du débit (5 sans configuration admin, le même que « generate-bg »).
  */
-const COST_AFFICHE_REFERENCE = 5;
+export function coutAfficheReference(): Promise<number> {
+  return prixDe('autopilot.poster_reference');
+}
+
+/**
+ * Ce que l'affiche de référence AJOUTE au devis d'un montage : son tarif quand
+ * le mode « référence » est actif avec au moins une photo (la condition même
+ * de `produireUnMontage`), 0 sinon. Sans elle, le devis annonçait le rendu
+ * seul alors que le montage débitait rendu + affiche.
+ */
+export async function coutAfficheDuDevis(config: Pick<AutopilotConfig, 'posterMode' | 'posterUrls'>): Promise<number> {
+  return config.posterMode === 'reference' && config.posterUrls.length > 0 ? coutAfficheReference() : 0;
+}
 
 /**
  * Produire UN montage d'Autopilote — la pièce commune au cron et à la
@@ -71,13 +84,17 @@ const COST_AFFICHE_REFERENCE = 5;
 /**
  * Coût d'un montage, en crédits.
  *
- * L'Autopilote produit du vertical : c'est donc le tarif « reel », le même
- * que celui d'un rendu manuel. Il sert à DEUX choses — borner le nombre de
- * montages du cycle, et débiter après chaque rendu réussi. UNE constante,
- * lue par le cron ET par la production manuelle : deux lectures auraient pu
- * annoncer un prix et en débiter un autre.
+ * L'Autopilote produit du vertical : c'est donc le tarif « reel » de la
+ * grille centrale (`render.reel`, la table `tarifs_rendu` que lit aussi le
+ * débit SQL des rendus manuels — 10 sans configuration). Il sert à DEUX
+ * choses — borner le nombre de montages du cycle, et débiter après chaque
+ * rendu réussi. UNE fonction, lue par le cron ET par la production
+ * manuelle ; l'appelant qui a annoncé un prix le transmet à
+ * `produireUnMontage` (`coutRendu`) : le nombre annoncé est le nombre débité.
  */
-export const COST_PER_VIDEO = getVideoRenderCost('reel');
+export function coutMontage(): Promise<number> {
+  return prixDe('render.reel');
+}
 
 /**
  * `snake_case` → `camelCase`, pour relire une ligne de `autopilot_config`.
@@ -248,10 +265,15 @@ export async function produireUnMontage(input: {
    * Présente, elle REMPLACE le rush pour ce montage : elle porte déjà la voix
    * clonée, donc aucune voix off par séquence n'est synthétisée (ni coût
    * ElevenLabs, ni répétition, ni deux voix), et son audio est conservé. Le
-   * jumeau est facturé à SA génération (AVATAR_VIDEO_COST, en amont), pas ici :
+   * jumeau est facturé à SA génération (tarif `avatar.jumeau`, en amont), pas ici :
    * ce montage ne débite que le rendu, comme tout montage.
    */
   jumeauVideoUrl?: string | null;
+  /**
+   * Le prix du rendu DÉJÀ lu par l'appelant (`coutMontage()`), pour débiter
+   * exactement ce qui a été annoncé et contrôlé. Absent : lu au débit.
+   */
+  coutRendu?: number;
 }): Promise<MontageProduit> {
   const {
     userId, config, post, rang, now, jobId, dernierePosterUrl = null, journal = '[Autopilote]',
@@ -698,12 +720,13 @@ export async function produireUnMontage(input: {
   // Débit APRÈS coup, comme le chemin manuel : la vidéo est en ligne et le
   // post existe. Débiter avant ferait payer un rendu qui peut encore échouer.
   let debite = true;
+  const coutRendu = typeof input.coutRendu === 'number' ? input.coutRendu : await coutMontage();
   try {
     // Référence stable : le `jobId`. Une relance sur le même job ne débite
     // pas une seconde fois — c'est exactement le cas que l'ancien débit non
     // idempotent laissait passer, et un cron se relance.
     await deductCredits(
-      userId, COST_PER_VIDEO, 'render',
+      userId, coutRendu, 'render',
       referenceOperation('autopilote', jobId),
     );
   } catch (e) {
@@ -711,7 +734,7 @@ export async function produireUnMontage(input: {
     // dit fort, c'est tout.
     debite = false;
     console.error(
-      `${journal} debit manque pour ${userId} (${COST_PER_VIDEO} credits) :`,
+      `${journal} debit manque pour ${userId} (${coutRendu} credits) :`,
       e instanceof Error ? e.message : e,
     );
   }
@@ -719,10 +742,12 @@ export async function produireUnMontage(input: {
   // L'affiche IA, même règle : après le dépôt, best-effort, référence stable
   // par `jobId` — un créneau rejoué ne la débite pas deux fois.
   if (afficheIaADebiter) {
+    let coutAffiche: number | null = null;
     try {
-      await deductCredits(userId, COST_AFFICHE_REFERENCE, 'ai', referenceOperation('autopilote-affiche', jobId));
+      coutAffiche = await coutAfficheReference();
+      await deductCredits(userId, coutAffiche, 'ai', referenceOperation('autopilote-affiche', jobId));
     } catch (e) {
-      console.error(`${journal} ${userId} — débit affiche IA manqué (${COST_AFFICHE_REFERENCE} crédits) :`, e instanceof Error ? e.message : e);
+      console.error(`${journal} ${userId} — débit affiche IA manqué (${coutAffiche ?? '?'} crédits) :`, e instanceof Error ? e.message : e);
     }
   }
 

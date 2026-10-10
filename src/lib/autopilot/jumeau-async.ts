@@ -183,7 +183,7 @@ export async function lancerJumeauMontage(input: {
   const attenteId = (reservee as { id: string }).id;
 
   // ── 2. LANCER — seule la passe qui a réservé arrive ici ─────────────────
-  // (idempotente, facturée AVATAR_VIDEO_COST ; le moteur est revérifié pour le
+  // (idempotente, facturée au tarif `avatar.jumeau` ; le moteur est revérifié pour le
   // fournisseur de l'avatar ici même). Refus ou exception : la génération n'a
   // pas démarré (ou a été remboursée par le moteur) — la réservation est
   // RENDUE, pour qu'un passage ultérieur puisse réessayer ce créneau.

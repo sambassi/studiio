@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
-import { RENDER_COSTS } from '@/lib/stripe/constants';
+import { coutRenduVideo } from '@/lib/credits/system';
+import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 
 // Dynamic imports to avoid webpack bundling issues with @remotion/bundler
 const loadRenderWorker = () => import('@/lib/render/worker');
@@ -84,9 +85,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Check credits
-    const creditCost = format === 'tv' ? RENDER_COSTS.tv : RENDER_COSTS.reel;
+    // Prix lu UNE fois dans la grille tarifaire centrale (10 / 15 / 25 sans configuration).
     const isInfographic = composition.startsWith('Infographic');
-    const actualCost = isInfographic ? 25 : creditCost;
+    const actualCost = await coutRenduVideo(isInfographic ? 'infographic' : format === 'tv' ? 'tv' : 'reel');
 
     const { data: user, error: userError } = await supabase
       .from('users')
@@ -98,31 +99,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    if (user.credits < actualCost) {
+    // ⚠️ Administrateur : 0 crédit Studiio (même règle que tous les autres
+    // parcours, `exempteDeCredits`). Le rendu part pareil ; rien n'est débité,
+    // rien n'est noté comme facturé, donc rien à « rembourser » en cas d'échec.
+    const exempte = await compteExempteDeCredits(session.user.id);
+    const coutFacture = exempte ? 0 : actualCost;
+
+    if (!exempte && user.credits < actualCost) {
       return NextResponse.json(
         { success: false, error: `Credits insuffisants. Requis: ${actualCost}, disponible: ${user.credits}` },
         { status: 402 }
       );
     }
 
-    // Deduct credits BEFORE rendering
-    const { error: creditError } = await supabase
-      .from('users')
-      .update({ credits: user.credits - actualCost })
-      .eq('id', session.user.id);
+    if (!exempte) {
+      // Deduct credits BEFORE rendering
+      const { error: creditError } = await supabase
+        .from('users')
+        .update({ credits: user.credits - actualCost })
+        .eq('id', session.user.id);
 
-    if (creditError) {
-      console.error('Failed to deduct credits:', creditError);
-      return NextResponse.json({ success: false, error: 'Failed to deduct credits' }, { status: 500 });
+      if (creditError) {
+        console.error('Failed to deduct credits:', creditError);
+        return NextResponse.json({ success: false, error: 'Failed to deduct credits' }, { status: 500 });
+      }
+
+      // Log credit transaction
+      await supabase.from('credit_transactions').insert({
+        user_id: session.user.id,
+        amount: -actualCost,
+        type: 'render',
+        description: `Rendu ${composition} - ${title}`,
+      });
     }
-
-    // Log credit transaction
-    await supabase.from('credit_transactions').insert({
-      user_id: session.user.id,
-      amount: -actualCost,
-      type: 'render',
-      description: `Rendu ${composition} - ${title}`,
-    });
 
     // Create video record
     const { data: video, error: videoError } = await supabase
@@ -132,7 +141,7 @@ export async function POST(req: NextRequest) {
         title,
         format: format === 'tv' ? 'tv' : 'reel',
         status: 'rendering',
-        credits_used: actualCost,
+        credits_used: coutFacture,
         metadata: {
           compositionId: composition,
           batchIndex,
@@ -144,17 +153,19 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (videoError) {
-      // Refund credits on failure
-      await supabase
-        .from('users')
-        .update({ credits: user.credits })
-        .eq('id', session.user.id);
-      await supabase.from('credit_transactions').insert({
-        user_id: session.user.id,
-        amount: actualCost,
-        type: 'refund',
-        description: `Remboursement - echec creation video`,
-      });
+      // Refund credits on failure — seulement ce qui a été débité.
+      if (!exempte) {
+        await supabase
+          .from('users')
+          .update({ credits: user.credits })
+          .eq('id', session.user.id);
+        await supabase.from('credit_transactions').insert({
+          user_id: session.user.id,
+          amount: actualCost,
+          type: 'refund',
+          description: `Remboursement - echec creation video`,
+        });
+      }
       console.error('Failed to create video:', videoError);
       return NextResponse.json({ success: false, error: 'Failed to create video' }, { status: 500 });
     }
@@ -168,7 +179,7 @@ export async function POST(req: NextRequest) {
         status: 'queued',
         composition_id: composition,
         input_props: inputProps,
-        credits_charged: actualCost,
+        credits_charged: coutFacture,
       })
       .select()
       .single();
@@ -210,7 +221,7 @@ export async function POST(req: NextRequest) {
         userId: session.user.id,
         compositionId: composition,
         inputProps,
-        creditsCharged: actualCost,
+        creditsCharged: coutFacture,
       });
 
       if (waitUntilFn) {
@@ -236,8 +247,8 @@ export async function POST(req: NextRequest) {
         id: renderJob.id,
         status: renderJob.status,
       } : null,
-      creditsCharged: actualCost,
-      creditsRemaining: user.credits - actualCost,
+      creditsCharged: coutFacture,
+      creditsRemaining: user.credits - coutFacture,
     });
   } catch (error) {
     console.error('Render API error:', error);

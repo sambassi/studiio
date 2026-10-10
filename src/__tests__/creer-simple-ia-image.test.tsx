@@ -3,6 +3,14 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import AiImageTools, { AI_TOOLS, POSTER_ACTIONS, STYLE_PRESETS } from '@/components/creer/AiImageTools';
+import { CLE_ACTION_IA, TARIFS_DEFAUT } from '@/lib/tarifs/catalogue';
+
+// La grille (`useTarifs`) lit `/api/tarifs` : isolée, pour que le `fetch`
+// espionné ne voie que `/api/ai/image`. Prix = grille par défaut.
+vi.mock('@/lib/tarifs/client', async (original) => {
+  const { TARIFS_DEFAUT: defaut } = await import('@/lib/tarifs/catalogue');
+  return { ...(await original<typeof import('@/lib/tarifs/client')>()), useTarifs: () => ({ prix: { ...defaut }, exempte: false, charge: true }) };
+});
 
 /**
  * Outils IA sur la photo d'affiche — Mode simple.
@@ -51,13 +59,15 @@ const bouton = (action: string) =>
 describe('Le catalogue est la SEULE source du tarif', () => {
   it('le serveur et l écran annoncent le même coût', () => {
     // Le serveur est l'autorité — mais s'il annonce 5 et l'écran 3,
-    // l'utilisateur est débité de ce qu'il n'a pas accepté.
-    const table = route.slice(route.indexOf('const AI_CREDITS'), route.indexOf('// ── Replicate model IDs ──'));
+    // l'utilisateur est débité de ce qu'il n'a pas accepté. Depuis la grille
+    // tarifaire centrale, les DEUX lisent la même clé (`CLE_ACTION_IA`) :
+    // la route via `prixDe`, l'écran via `useTarifs` ; le repli de l'écran
+    // est la grille par défaut.
+    expect(route).toContain('await prixDe(CLE_ACTION_IA[action])');
+    expect(route).not.toContain('const AI_CREDITS');
     for (const tool of AI_TOOLS) {
-      const ligne = new RegExp(`'${tool.action}':\\s*(\\d+)`);
-      const m = table.match(ligne);
-      expect(m, tool.action).not.toBeNull();
-      expect(Number(m![1]), tool.action).toBe(tool.credits);
+      expect(CLE_ACTION_IA[tool.action], tool.action).toBeTruthy();
+      expect(tool.credits, tool.action).toBe(TARIFS_DEFAUT[CLE_ACTION_IA[tool.action]]);
     }
   });
 

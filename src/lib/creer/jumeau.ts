@@ -9,7 +9,7 @@
  *   'avatar' — présence vidéo réelle : la vidéo du jumeau (avatar animé sur
  *              ma voix, produite par le serveur) devient la séquence « Vidéo »
  *              à l'envoi. Exige le moteur vidéo disponible POUR cet avatar
- *              et coûte AVATAR_VIDEO_COST en plus du rendu.
+ *              et coûte le tarif `avatar.jumeau` en plus du rendu.
  *   'aucun'  — le parcours normal, celui de tous les brouillons antérieurs.
  */
 

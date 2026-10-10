@@ -93,6 +93,9 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AfficheIA from '@/components/creer/AfficheIA';
+import RechercheStockSequence, { texteDeSequence, type MetaStock } from '@/components/creer/RechercheStockSequence';
+import { construireRecherchesStock } from '@/lib/stock/requetes';
+import type { TypeStock } from '@/lib/stock/types';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import VideosPretes from '@/components/creer/VideosPretes';
 import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
@@ -189,7 +192,7 @@ import {
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
-import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
+import { useTarifs } from '@/lib/tarifs/client';
 import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee } from '@/lib/avatar/identite';
 import {
   DRAFT_VERSION,
@@ -841,8 +844,6 @@ const DEFAULT_TEXT_STYLES: {
   },
 };
 
-/** Coût du rendu, aligné sur l'éditeur (RENDER_COSTS). */
-const COST = { reel: 10, tv: 15 } as const;
 
 type Format = '9:16' | '1:1' | '16:9';
 
@@ -3924,10 +3925,13 @@ export default function AssistantWizard() {
    * L'intention « jumeau » : 'aucun' (parcours normal), 'voix' (ma voix
    * clonée narre Titre/Cartes/CTA — posée dans `ttsVoiceId` par le bloc),
    * 'avatar' (mon avatar parlant devient la séquence « Vidéo » à l'envoi,
-   * AVATAR_VIDEO_COST en plus). Une intention seulement : le serveur relit
-   * tout avant d'y donner suite.
+   * le tarif `avatar.jumeau` en plus). Une intention seulement : le serveur
+   * relit tout avant d'y donner suite.
    */
   const [jumeauMode, setJumeauMode] = useState<JumeauMode>('aucun');
+  /** Le prix du jumeau, lu dans la grille centrale (celle que débite le serveur ; repli 40). */
+  const grilleTarifs = useTarifs().prix;
+  const coutJumeau = grilleTarifs['avatar.jumeau'];
   /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
   const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
   /**
@@ -4538,6 +4542,14 @@ export default function AssistantWizard() {
   const derniereRecherche = useRef<{ query: string; source: 'pexels' | 'unsplash' } | null>(null);
   const [photoQuery, setPhotoQuery] = useState('');
   const [photosLoading, setPhotosLoading] = useState(false);
+  // ── RECHERCHE STOCK GUIDÉE (additive) ─────────────────────────────────
+  // Panneau `RechercheStockSequence`, MONTÉ seulement à l'ouverture : tant
+  // qu'il reste fermé, aucune requête `/api/stock/*` ne part. `cle` fige la
+  // séquence visée à l'ouverture (`null` = affiche globale).
+  const [stockPanneau, setStockPanneau] = useState<{ cle: SeqBgKey | null; type?: TypeStock } | null>(null);
+  // Crédits des médias stock choisis, par URL posée (fond ou rush). État
+  // seul : le brouillon n'en porte rien, il se relit donc à l'identique.
+  const [stockMedias, setStockMedias] = useState<Record<string, MetaStock>>({});
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
   // Les deux autres chemins vers une affiche : la mediatheque (images deja
@@ -4805,6 +4817,24 @@ export default function AssistantWizard() {
   const seqCible = seqBgKeyForFocus(previewFocus);
   /** Fond REELLEMENT montre par l'onglet courant. */
   const fondAffiche = resolveBackground(previewFocus, seqBackgrounds, posterUrl, posterTransform);
+
+  /**
+   * Suggestions de recherche pour la séquence affichée — DÉTERMINISTES
+   * (`construireRecherchesStock`, aucun appel IA). Un clic remplit le champ
+   * et lance la recherche manuelle EXISTANTE (`searchPhotos`) : le chemin
+   * `/api/pexels` ne change pas, l'utilisateur peut toujours taper librement.
+   */
+  const suggestionsPhotos = useMemo(
+    () => construireRecherchesStock({
+      sujet: currentTopic,
+      objectif: brief.objectif,
+      texte: texteDeSequence(generated, seqCible),
+      role: seqCible,
+      visuel: 'arriere-plan',
+      format,
+    }).requetes.slice(0, 5),
+    [currentTopic, brief.objectif, generated, seqCible, format],
+  );
 
   /** Pose une photo : sur la sequence affichee, ou sur l'affiche globale. */
   /* ── APERÇU DU VRAI RENDU ────────────────────────────────────────────
@@ -7653,7 +7683,10 @@ export default function AssistantWizard() {
     const renderFormat: 'reel' | 'tv' = isReel ? 'reel' : 'tv';
     // Le carré est aussi large que le 9:16 et deux fois moins haut : le
     // facturer au tarif paysage ferait payer plus cher un rendu plus petit.
-    const cost = format === '16:9' ? COST.tv : COST.reel;
+    // Le prix du rendu vient de la grille centrale (`render.reel` / `render.tv`,
+    // la table `tarifs_rendu` que débite le serveur) — plus d'une constante
+    // 10/15 qui laisserait passer un solde que le serveur refuse ensuite.
+    const cost = format === '16:9' ? grilleTarifs['render.tv'] : grilleTarifs['render.reel'];
     // Le lot : combien de montages, et a quelles dates.
     // Un apercu ne rend qu'UNE video : en jouer cinq a la suite n'apprendrait
     // rien de plus, et couterait cinq rendus.
@@ -7674,12 +7707,12 @@ export default function AssistantWizard() {
       setRenderTarget(null);
       return;
     }
-    // Le jumeau se paie a part, au tarif serveur d'une video avatar
-    // (AVATAR_VIDEO_COST, le meme que /api/avatar/generate) : compte ICI pour
+    // Le jumeau se paie a part, au tarif `avatar.jumeau` de la grille
+    // centrale (le meme que debite le moteur du jumeau) : compte ICI pour
     // que le solde soit verifie sur le total AVANT de produire quoi que ce
     // soit. Sans cela, la video du jumeau pouvait etre payee, puis le montage
     // refuse pour solde insuffisant.
-    const coutTotal = batchCost(cost, total) + (jumeauMode === 'avatar' ? AVATAR_VIDEO_COST : 0);
+    const coutTotal = batchCost(cost, total) + (jumeauMode === 'avatar' ? coutJumeau : 0);
     const baseDate = scheduledDate ? new Date(`${scheduledDate}T12:00:00`) : new Date();
     const dates = batchDates(Number.isNaN(baseDate.getTime()) ? new Date() : baseDate, total);
 
@@ -9394,7 +9427,7 @@ export default function AssistantWizard() {
             <span className="flex-1">
               {AVERTISSEMENT_ANCIENNE_VERSION}
               <span className="block text-[12px] text-amber-100/90 mt-0.5">
-                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}. Régénérer produit une nouvelle vidéo ({AVATAR_VIDEO_COST} crédits).
+                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}. Régénérer produit une nouvelle vidéo ({coutJumeau} crédits).
               </span>
             </span>
             <div className="flex flex-col items-end gap-1.5">
@@ -9670,7 +9703,7 @@ export default function AssistantWizard() {
                   textes={{ titre: sequenceVoices.titre.text, cartes: sequenceVoices.cartes.text, video: sequenceVoices.video.text, cta: sequenceVoices.cta.text }}
                   voixCourante={ttsVoiceId}
                   onVoixJumeau={setTtsVoiceId}
-                  coutAvatar={AVATAR_VIDEO_COST}
+                  coutAvatar={coutJumeau}
                   avatarId={jumeauAvatarId}
                   onAvatarIdChange={setJumeauAvatarId}
                 />
@@ -9974,6 +10007,35 @@ export default function AssistantWizard() {
                         {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Chercher'}
                       </button>
                     </div>
+
+                    {/* Suggestions pour la séquence affichée : un clic remplit
+                        le champ et lance la MÊME recherche que « Chercher ». */}
+                    {suggestionsPhotos.length > 0 && (
+                      <div className="space-y-1" data-suggestions-photos>
+                        <p className="text-[11px] text-gray-500">Suggestions pour cette séquence</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {suggestionsPhotos.map((q) => (
+                            <button
+                              key={q}
+                              type="button"
+                              data-suggestion-photo={q}
+                              disabled={photosLoading}
+                              onClick={() => {
+                                setPhotoQuery(q);
+                                searchPhotos(q, imageSource);
+                              }}
+                              className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+                                photoQuery.trim() === q
+                                  ? 'border-purple-500 text-white'
+                                  : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                              }`}
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {photosError && (
                       <div className="flex items-center gap-2">
@@ -10363,6 +10425,30 @@ export default function AssistantWizard() {
                           ? `Les photos choisies s’appliquent à la séquence « ${previewFocus === 'intro' ? 'Titre' : previewFocus === 'cards' ? 'Cartes' : previewFocus === 'video' ? 'Vidéo' : 'CTA'} ». Glissez-en une dans l’aperçu.`
                           : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
                       </p>
+                      {fondAffiche.url && stockMedias[fondAffiche.url] && (
+                        <p className="text-[11px] text-gray-500" data-fond-attribution>
+                          {stockMedias[fondAffiche.url].attribution}{' '}
+                          <a
+                            href={stockMedias[fondAffiche.url].sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:text-white"
+                          >
+                            (source)
+                          </a>
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        data-ouvrir-stock="fond"
+                        // Un FOND se cherche en photo : sans type imposé, l'onglet
+                        // « Tout » (séquence nulle) ouvrait sur Vidéo → « Ajouter aux rushes ».
+                        onClick={() => setStockPanneau({ cle: seqCible, type: 'photo' })}
+                        className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                        Rechercher des médias (stock)
+                      </button>
                     </div>
 
                     {fondAffiche.url && (
@@ -10962,7 +11048,7 @@ export default function AssistantWizard() {
                                 if (from) moveSequence(from, seq.key);
                                 setDragKey(null);
                               }}
-                              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                              className={`flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-xl px-3 py-2.5 transition ${
                                 dragKey === seq.key ? 'opacity-40' : ''
                               } ${
                                 seq.enabled
@@ -11012,7 +11098,10 @@ export default function AssistantWizard() {
                                   televersement et de re-selection d'un fichier
                                   deja envoye, comme dans le panneau audio. */}
                               {isVideo && (
-                                <div className="flex items-center gap-1 flex-shrink-0">
+                                // Mobile : les gestes du rush passent sur leur propre ligne (et
+                                // s'y replient) — sur une ligne, ils écrasaient le libellé et
+                                // sortaient de l'écran à 390 px.
+                                <div data-rush-actions className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-1 flex-shrink-0 basis-full order-last sm:basis-auto sm:order-none">
                                   <button
                                     type="button"
                                     onClick={() => { rushAjoutRef.current = false; setRushLibOpen(true); }}
@@ -11183,6 +11272,36 @@ export default function AssistantWizard() {
                           <Plus className="w-3 h-3" />
                           Ajouter un rush
                         </button>
+                      )}
+                      {/* Recherche stock guidée : une vidéo choisie s'AJOUTE à la
+                          liste (ou devient le rush s'il n'y en a aucun) — le rush
+                          principal n'est jamais remplacé. */}
+                      <button
+                        type="button"
+                        data-ouvrir-stock="rush"
+                        onClick={() => setStockPanneau({ cle: 'video', type: 'video' })}
+                        disabled={rushLoading}
+                        className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Search className="w-3 h-3" />
+                        Rechercher des médias (stock)
+                      </button>
+                      {rushListe.some((r) => stockMedias[r.url]) && (
+                        <div className="mt-1 space-y-0.5" data-rush-attributions>
+                          {rushListe.filter((r) => stockMedias[r.url]).map((r) => (
+                            <p key={r.url} className="text-[11px] text-gray-500 truncate">
+                              {stockMedias[r.url].attribution}{' '}
+                              <a
+                                href={stockMedias[r.url].sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:text-white"
+                              >
+                                (source)
+                              </a>
+                            </p>
+                          ))}
+                        </div>
                       )}
                       {rushUrl && (
                         <p className="text-[11px] text-gray-500 mt-2">
@@ -12807,6 +12926,38 @@ export default function AssistantWizard() {
           if (!failure) setClipSource(null);
         }}
       />
+      {/* Recherche stock guidée — montée seulement à l'ouverture. */}
+      {stockPanneau && (
+        <RechercheStockSequence
+          role={stockPanneau.cle}
+          libelleSequence={
+            stockPanneau.cle === 'titre' ? 'Titre'
+              : stockPanneau.cle === 'cartes' ? 'Cartes'
+                : stockPanneau.cle === 'video' ? 'Vidéo'
+                  : stockPanneau.cle === 'cta' ? 'CTA'
+                    : 'Affiche'
+          }
+          sujet={currentTopic}
+          objectif={brief.objectif}
+          texte={texteDeSequence(generated, stockPanneau.cle)}
+          format={format}
+          typeInitial={stockPanneau.type}
+          fondExistant={stockPanneau.cle ? !!seqBackgrounds[stockPanneau.cle]?.url : !!posterUrl}
+          onUtiliserPhoto={(url, meta) => {
+            setStockMedias((prev) => ({ ...prev, [url]: meta }));
+            // Même pose que `applyPhoto`, sur la séquence figée à l'ouverture.
+            const cle = stockPanneau.cle;
+            if (!cle) { setPosterUrl(url); return; }
+            setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
+          }}
+          onAjouterRush={(url, nom, meta) => {
+            setStockMedias((prev) => ({ ...prev, [url]: meta }));
+            // `ajouterRush` : en fin de liste (keep compris) ; sans rush, import normal.
+            void ajouterRush(url, nom);
+          }}
+          onFermer={() => setStockPanneau(null)}
+        />
+      )}
     </DeuxColonnes>
     </div>
   );

@@ -3,7 +3,10 @@ import { MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
-import { AVATAR_VIDEO_COST, AVATAR_MAX_SCRIPT_CHARS } from '@/lib/stripe/constants';
+import { compteExempteDeCredits } from '@/lib/facturation/exemption';
+import { AVATAR_MAX_SCRIPT_CHARS } from '@/lib/stripe/constants';
+import { prixDe } from '@/lib/tarifs/serveur';
+import { cleTarifMoteurAvatar } from '@/lib/avatar/prix';
 import {
   generateAvatarVideo,
   getAvatarTrainingStatus,
@@ -53,6 +56,7 @@ export async function POST(req: NextRequest) {
   const userId = session.user.id;
 
   let creditsDeducted = false;
+  let coutFacture = 0;
 
   try {
     const body = await req.json();
@@ -299,13 +303,20 @@ export async function POST(req: NextRequest) {
     //    clone, pas à produire une vidéo. Aucun contrôle de solde, aucun
     //    débit, donc rien à rembourser s'il échoue. La génération normale
     //    garde strictement son coût.
-    const coutUtilisateur = intention === INTENTION_APERCU ? 0 : AVATAR_VIDEO_COST;
+    //    Le PRIX vient de la grille centrale, selon le MOTEUR de cette
+    //    génération, lu UNE fois : 402, débit, `credits_charged`, réponse et
+    //    remboursement utilisent ce même `coutFacture`. Sans qualité demandée,
+    //    aucun moteur n'est transmis et HeyGen prend Avatar IV
+    //    (`lib/avatar/prix.ts`) : c'est lui qui est facturé.
+    const coutUtilisateur = intention === INTENTION_APERCU
+      ? 0
+      : await prixDe(cleTarifMoteurAvatar(choixMoteur?.ok ? choixMoteur.moteur : null));
     const credits = coutUtilisateur > 0 ? await getUserCredits(userId) : 0;
     if (coutUtilisateur > 0 && credits < coutUtilisateur) {
       return NextResponse.json(
         {
           success: false,
-          error: `Credits insuffisants. Requis : ${AVATAR_VIDEO_COST}, disponible : ${credits}.`,
+          error: `Credits insuffisants. Requis : ${coutUtilisateur}, disponible : ${credits}.`,
           code: 'insufficient_credits',
         },
         { status: 402 },
@@ -313,8 +324,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Debit avant appel externe (jamais pour un aperçu)
-    if (coutUtilisateur > 0) {
-      await deductCredits(userId, coutUtilisateur, 'avatar');
+    // ⚠️ Un administrateur n'est jamais débité (`deductCredits` l'exempte) : il
+    // ne doit donc ni être noté « 40 crédits facturés », ni « remboursé » de
+    // crédits qu'on ne lui a jamais pris. HeyGen, lui, est appelé pareil.
+    const exempte = coutUtilisateur > 0 && await compteExempteDeCredits(userId);
+    coutFacture = exempte ? 0 : coutUtilisateur;
+    if (coutFacture > 0) {
+      await deductCredits(userId, coutFacture, 'avatar');
       creditsDeducted = true;
     }
 
@@ -383,7 +399,7 @@ export async function POST(req: NextRequest) {
         voice_id: resolvedVoiceId,
         aspect_ratio: aspectRatio,
         status: status === 'completed' ? 'processing' : 'pending',
-        credits_charged: AVATAR_VIDEO_COST,
+        credits_charged: coutFacture,
       })
       .select()
       .single();
@@ -406,7 +422,7 @@ export async function POST(req: NextRequest) {
       data: {
         generationId: generation.id,
         status: generation.status,
-        creditsCharged: AVATAR_VIDEO_COST,
+        creditsCharged: coutFacture,
       },
     });
   } catch (error) {
@@ -414,8 +430,8 @@ export async function POST(req: NextRequest) {
     // generation n'a pas demarre.
     if (creditsDeducted) {
       try {
-        await addCredits(userId, AVATAR_VIDEO_COST, 'refund');
-        console.log(`[Avatar] ${AVATAR_VIDEO_COST} credits rembourses a ${userId}`);
+        await addCredits(userId, coutFacture, 'refund');
+        console.log(`[Avatar] ${coutFacture} credits rembourses a ${userId}`);
       } catch (refundError) {
         console.error('[Avatar] REMBOURSEMENT ECHOUE pour', userId, refundError);
       }

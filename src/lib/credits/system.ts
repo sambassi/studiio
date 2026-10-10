@@ -2,20 +2,21 @@ import { randomUUID } from 'crypto';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { debiterOperationAtomique } from '@/lib/credits/atomique';
 import { RENDER_COSTS } from '@/lib/stripe/constants';
-import { isAdmin } from '@/lib/admin';
+import { exempteDeCredits } from '@/lib/facturation/exemption';
+import { prixDe } from '@/lib/tarifs/serveur';
 
 const ADMIN_BALANCE = 999_999_999;
 
 export async function getUserCredits(userId: string): Promise<number> {
   const { data, error } = await supabase
     .from('users')
-    .select('credits, email')
+    .select('credits, email, role')
     .eq('id', userId)
     .single();
 
   if (error) throw new Error('Failed to fetch user credits');
   // Admin = solde illimité (jamais bloqué par les checks de crédits).
-  if (data?.email && isAdmin(data.email)) return ADMIN_BALANCE;
+  if (exempteDeCredits(data)) return ADMIN_BALANCE;
   return data?.credits || 0;
 }
 
@@ -82,10 +83,15 @@ export async function deductCredits(
   // Admin = pas de décrément. On retourne true sans toucher à la DB.
   const { data: u } = await supabase
     .from('users')
-    .select('email')
+    .select('email, role')
     .eq('id', userId)
     .single();
-  if (u?.email && isAdmin(u.email)) return true;
+  if (exempteDeCredits(u)) return true;
+
+  // Une opération que la grille tarifaire rend GRATUITE (prix 0 enregistré par
+  // l'admin) : rien à débiter. Sans ce garde, `debiter_credits_operation`
+  // refuserait le montant (`montant_invalide`) et ferait échouer l'opération.
+  if (amount === 0) return true;
 
   // Une référence jetable reste une référence : elle nourrit l'index et rend
   // la ligne traçable. Ce qu'elle ne fait pas, c'est reconnaître un rejeu.
@@ -128,8 +134,22 @@ export async function addCredits(
   return true;
 }
 
+/**
+ * ⚠️ PRIX CODÉ (repli historique) — plus aucun appelant applicatif. Conservé
+ * pour la compatibilité (tests qui le figent, mocks existants). Tout débit et
+ * toute annonce lisent `coutRenduVideo`, c'est-à-dire la grille centrale.
+ */
 export function getVideoRenderCost(format: 'reel' | 'tv'): number {
   return RENDER_COSTS[format];
+}
+
+/**
+ * Le prix d'un rendu, lu dans la grille tarifaire centrale (`prixDe`) :
+ * `tarifs_rendu` pour reel / tv (la table du débit SQL), le réglage admin
+ * pour l'infographie. Sans configuration : 10 / 15 / 25, les prix d'avant.
+ */
+export async function coutRenduVideo(format: 'reel' | 'tv' | 'infographic'): Promise<number> {
+  return prixDe(format === 'tv' ? 'render.tv' : format === 'infographic' ? 'render.infographic' : 'render.reel');
 }
 
 export async function canRenderVideo(
@@ -137,6 +157,6 @@ export async function canRenderVideo(
   format: 'reel' | 'tv'
 ): Promise<boolean> {
   const credits = await getUserCredits(userId);
-  const cost = getVideoRenderCost(format);
+  const cost = await coutRenduVideo(format);
   return credits >= cost;
 }

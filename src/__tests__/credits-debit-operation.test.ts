@@ -253,14 +253,19 @@ describe('Les comptes gardent exactement leur comportement', () => {
     expect(rpcAppels).toHaveLength(1);
   });
 
-  it("l'exemption reste celle par e-mail, distincte de la politique par rôle", () => {
-    // Les deux mécanismes coexistent depuis la facturation différenciée : le
-    // rôle en base gouverne les RENDUS, la liste d'e-mails gouverne ces
-    // quatre parcours-ci. Les fusionner changerait ce que paient des comptes
-    // réels — ce n'est pas ce lot.
+  it("l'exemption est UNIQUE : rôle admin OU e-mail admin, pour ces parcours comme pour les rendus", async () => {
+    // Décision produit (#541) : un administrateur ne paie JAMAIS de crédits
+    // Studiio. Les deux définitions (rôle en base pour les rendus, liste
+    // d'e-mails pour avatar / IA / Autopilote) passent par `exempteDeCredits`.
     const src = readFileSync(join(process.cwd(), 'src/lib/credits/system.ts'), 'utf-8');
-    expect(src).toContain("import { isAdmin } from '@/lib/admin'");
-    expect(src).toContain('if (u?.email && isAdmin(u.email)) return true;');
+    expect(src).toContain("import { exempteDeCredits } from '@/lib/facturation/exemption'");
+    expect(src).toContain('if (exempteDeCredits(u)) return true;');
+    const { exempteDeCredits } = await import('@/lib/facturation/exemption');
+    expect(exempteDeCredits({ email: 'contact.artboost@gmail.com', role: 'user' })).toBe(true);
+    expect(exempteDeCredits({ email: 'quelquun@exemple.com', role: 'admin' })).toBe(true);
+    expect(exempteDeCredits({ email: 'quelquun@exemple.com', role: 'user' })).toBe(false);
+    expect(exempteDeCredits({ email: 'quelquun@exemple.com', role: 'Administrateur' })).toBe(false);
+    expect(exempteDeCredits(null)).toBe(false);
   });
 });
 

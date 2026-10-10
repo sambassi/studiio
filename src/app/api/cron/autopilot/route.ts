@@ -7,9 +7,9 @@ import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rule
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { pickTopics } from '@/lib/autopilot/topics';
-import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
+import { prixDe } from '@/lib/tarifs/serveur';
 import {
-  produireUnMontage, sujetsRecents, creneauxExistants, COST_PER_VIDEO,
+  produireUnMontage, sujetsRecents, creneauxExistants, coutMontage, coutAfficheDuDevis,
 } from '@/lib/autopilot/produire';
 import {
   lancerJumeauMontage, creneauxJumeauEnAttente, finaliserJumeauxPrets,
@@ -30,9 +30,9 @@ import { doitPasserLeRush, rushReussi } from '@/lib/autopilot/echec-rush';
  * vit dans `lib/autopilot/produire.ts` (`produireUnMontage`), partage avec
  * « Produire un brouillon maintenant ». Ce fichier garde ce qui est propre
  * au CYCLE : la decision, les sujets, les creneaux, les doublons, le retrait
- * des rushes morts, l'avance de cadence. `COST_PER_VIDEO` (tarif « reel »,
- * `getVideoRenderCost('reel')`) vient du meme module : un seul prix, borne le
- * cycle ET debite.
+ * des rushes morts, l'avance de cadence. `coutMontage()` (tarif « reel » de
+ * la grille centrale) vient du meme module : lu une fois par compte, il borne
+ * le cycle ET il est transmis a `produireUnMontage`, qui debite ce nombre.
  *
  * ⚠️ CHAQUE MONTAGE EST ISOLE. Un rendu peut echouer — Chromium qui ne
  * demarre pas, un rush illisible, un televersement refuse. Un echec ne doit
@@ -269,10 +269,12 @@ export async function GET(req: NextRequest) {
       // Le nombre de montages du cycle est borné par ce que le solde paie
       // réellement — même calcul que « Produire maintenant ». Et le jumeau
       // tient la séquence « Vidéo » : une banque de rushes vide ne bloque pas.
-      const coutMontage = config.jumeauAvatar ? AVATAR_VIDEO_COST + COST_PER_VIDEO : COST_PER_VIDEO;
+      const coutRendu = await coutMontage();
+      const coutParMontage = (config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu)
+        + await coutAfficheDuDevis(config);
       const credits = await getUserCredits(userId).catch(() => 0);
       const decision = decideRun({
-        config, credits, costPerVideo: coutMontage, now, allowWithoutRush: config.jumeauAvatar,
+        config, credits, costPerVideo: coutParMontage, now, allowWithoutRush: config.jumeauAvatar,
       });
 
       if (!decision.run) {
@@ -387,6 +389,7 @@ export async function GET(req: NextRequest) {
             userId, config, post, rang: posts.indexOf(post), now, jobId,
             dernierePosterUrl,
             journal: '[Autopilote/Cron]',
+            coutRendu,
             // Un rush mort est mis de cote DES sa detection, meme si le rendu
             // echoue ensuite : l'adresse est retiree de la banque a la fin
             // du cycle.

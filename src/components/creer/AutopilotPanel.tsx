@@ -14,6 +14,7 @@ import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
+import CompleterRushesStock, { idStockDuRush, type MetaRushStock } from '@/components/creer/CompleterRushesStock';
 import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
@@ -369,6 +370,13 @@ function RECAP_DIFFUSION(config: AutopilotConfig): Array<[string, string]> {
   ];
 }
 
+/**
+ * La préférence « compléter avec du stock ». Le panneau ne connaît pas
+ * l'utilisateur (aucune prop, aucune session lue ici) : clé générique, propre
+ * au navigateur.
+ */
+const CLE_COMPLETER_STOCK = 'studiio.autopilote.completerRushesStock';
+
 const PLATEFORMES = [
   { id: 'instagram', label: 'Instagram' },
   { id: 'tiktok', label: 'TikTok' },
@@ -432,6 +440,16 @@ export default function AutopilotPanel({
    */
   const [libOpen, setLibOpen] = useState<null | 'rush' | 'musique' | 'affiche'>(null);
   const [etape, setEtape] = useState(0);
+  /**
+   * « Compléter automatiquement mes rushes » — DÉSACTIVÉ PAR DÉFAUT.
+   *
+   * ⚠️ AUCUNE COLONNE : le choix vit dans le navigateur (`localStorage`), la
+   * configuration enregistrée reste strictement la même. Désactivé, rien de
+   * plus n'est rendu que la case, et aucun appel stock ne part.
+   */
+  const [completerStock, setCompleterStock] = useState(false);
+  /** Rushes stock acceptés dans cette session : url → attribution (Pexels). */
+  const [metaStock, setMetaStock] = useState<Record<string, MetaRushStock>>({});
   /**
    * Les « Réglages avancés » de l'étape Style sont-ils dépliés ? Le lecteur
    * du mixage n'existe QUE dépliés : replier le bloc doit couper le son, pas
@@ -644,6 +662,20 @@ export default function AutopilotPanel({
   // configuration de depart, et l'apercu aurait ecrase tous les reglages faits
   // entre-temps a chaque geste.
   useEffect(() => { onPatchReady?.(enregistrer); }, [enregistrer, onPatchReady]);
+
+  // Lu APRÈS le montage : le rendu serveur ne connaît pas `localStorage`.
+  useEffect(() => {
+    try {
+      setCompleterStock(window.localStorage.getItem(CLE_COMPLETER_STOCK) === '1');
+    } catch { /* navigation privée : reste désactivé */ }
+  }, []);
+  const basculerCompleterStock = useCallback((actif: boolean) => {
+    setCompleterStock(actif);
+    try {
+      if (actif) window.localStorage.setItem(CLE_COMPLETER_STOCK, '1');
+      else window.localStorage.removeItem(CLE_COMPLETER_STOCK);
+    } catch { /* préférence non conservée, sans conséquence */ }
+  }, []);
 
   const etat = statusMessage(config, Date.now(), (d) =>
     d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }));
@@ -1300,6 +1332,12 @@ export default function AutopilotPanel({
                           <Film className="w-3 h-3 shrink-0" />
                           <span className="truncate">{url.split('/').pop()}</span>
                         </span>
+                        {/* Un rush stock accepté se dit tel quel — jamais confondu avec les vôtres. */}
+                        {completerStock && (metaStock[url] || idStockDuRush(url)) && (
+                          <span className="ml-5 text-[10px] text-gray-500" data-autopilot-rush-stock={url}>
+                            {metaStock[url] ? `Stock · Pexels · ${metaStock[url].auteur}` : 'Stock · Pexels'}
+                          </span>
+                        )}
                         {/* L'état, sous le nom : « accessible » ou « expiré ». Tant que
                             la vérification n'a pas répondu, on n'affiche rien plutôt
                             qu'un état faux. */}
@@ -1342,6 +1380,45 @@ export default function AutopilotPanel({
               }}
               onSelectMany={(items) => ajouterRushes(items.map((i) => i.url))}
             />
+          </div>
+
+          {/* ── COMPLÉTER AVEC DU STOCK (Pexels, vidéos) ──────────────────
+              Désactivé par défaut. Activé, Studiio regarde les plans que le
+              montage remplira, propose une vidéo par plan manquant, et
+              n'ajoute RIEN sans « Conserver ». La règle « au moins un rush »
+              ci-dessus ne change pas. */}
+          <div className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={completerStock}
+                onChange={(e) => basculerCompleterStock(e.target.checked)}
+                data-autopilot-completer-stock
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-xs font-medium text-gray-300">Compléter automatiquement mes rushes</span>
+                <span className="block text-[11px] text-gray-500">
+                  Si vos propres médias ne suffisent pas, Studiio peut rechercher des médias stock correspondant à votre sujet.
+                </span>
+              </span>
+            </label>
+            {completerStock && (
+              <CompleterRushesStock
+                sujet={config.topics[0] ? themeLabel(config.topics[0]) : (config.brief.objectif || config.brief.message || 'fitness')}
+                message={config.brief.message ?? null}
+                objectif={config.brief.objectif ?? null}
+                rushUrls={config.rushUrls}
+                format="9:16"
+                accent={accent}
+                onConserver={(url, meta) => {
+                  // La même URL absolue que celle que `ajouterRushes` enregistre.
+                  const absolue = urlPubliqueAbsolue(url, window.location.origin) ?? url;
+                  setMetaStock((m) => ({ ...m, [absolue]: meta }));
+                  ajouterRushes([url]);
+                }}
+              />
+            )}
           </div>
 
 {/* ── VIDEO PONCTUELLE A PARTIR D'UN RUSH (sessions de tournage) ───

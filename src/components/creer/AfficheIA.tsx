@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { Loader2, RotateCcw, Sparkles, Check } from 'lucide-react';
+import { useTarifs, libelleCredits } from '@/lib/tarifs/client';
 
 /**
  * Photo d'affiche GENEREE PAR L'IA — le troisieme chemin, a cote de « Ma
@@ -74,6 +75,8 @@ class DelaiDepasse extends Error {
 
 export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16', referenceUrl = null, disabled }: AfficheIAProps) {
   const [prompt, setPrompt] = useState('');
+  // Le prix de `generate-bg` : la grille centrale, celle que débite le serveur.
+  const { prix } = useTarifs();
   const [etat, setEtat] = useState<Etat>({ statut: 'repos' });
   // « Partir de ma photo » : génération à partir de la photo de référence, pour
   // préserver le sujet. N'a d'effet que si `referenceUrl` existe.
@@ -235,7 +238,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           {etat.statut === 'generation' ? 'Génération…' : url ? 'Régénérer' : 'Générer'}
         </button>
         <span className="text-[11px] text-gray-500">
-          5 crédits par image
+          {libelleCredits(prix['ai.generate_background'])} par image
           {creditsRemaining !== undefined && (
             <span data-affiche-ia-credits-restants> · {creditsRemaining} restants</span>
           )}

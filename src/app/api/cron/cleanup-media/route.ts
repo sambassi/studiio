@@ -7,6 +7,7 @@ import {
 } from '@/lib/storage/cleanup';
 import { clesDepuisUrl } from '@/lib/storage/references';
 import { estCleSourceAvatar } from '@/lib/avatar/source-cle';
+import { estFichierDurable } from '@/lib/storage/bibliotheque';
 import { cleSourceDepuisUrlLegacy } from '@/lib/avatar/source';
 import { BUCKET_NAMESPACE_AVATAR } from '@/lib/storage/acces-objet';
 
@@ -249,6 +250,7 @@ export async function GET(req: NextRequest) {
   let exemptesSourcesAvatar = 0;
   let sourcesAvatarOrphelines = 0;
   let candidats = 0;
+  let exemptesDurables = 0;
   const buckets = ['media', 'audio'];
   const breakdown = { video: 0, audio: 0, image: 0 };
   let deleted = 0;
@@ -358,6 +360,12 @@ export async function GET(req: NextRequest) {
       if (error) { errors.push(`${path}: ${error.message}`); kept++; } else { deleted++; sourcesAvatarOrphelines++; }
       return;
     }
+    // Audio complet PAYÉ, attributions stock : durables, hors rétention temporaire.
+    if (estFichierDurable(cle)) {
+      exemptesDurables++;
+      preserved++;
+      return;
+    }
     if (rushKeys.has(cle)) {
       exemptesRushes++;
       preserved++;
@@ -431,6 +439,7 @@ export async function GET(req: NextRequest) {
     exemptes: {
       posts: exemptesPosts,
       rushesAutopilote: exemptesRushes,
+      durables: exemptesDurables,
       tournage: exemptesTournage,
       brouillons: exemptesBrouillons,
       sourcesAvatar: exemptesSourcesAvatar,

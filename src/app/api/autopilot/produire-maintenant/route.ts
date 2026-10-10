@@ -7,10 +7,10 @@ import { creneauImmediat } from '@/lib/autopilot/rules';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { pickTopics } from '@/lib/autopilot/topics';
 import {
-  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, COST_PER_VIDEO,
+  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, coutMontage, coutAfficheDuDevis,
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
-import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
+import { prixDe } from '@/lib/tarifs/serveur';
 import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
 
 /**
@@ -74,10 +74,9 @@ const PREFIXE_MANUEL = 'manuel:';
 /**
  * Le DEVIS : ce que le clic coûtera, avant de cliquer.
  *
- * ⚠️ LE MÊME NOMBRE QUE LE DÉBIT. `COST_PER_VIDEO` est ce que
- * `produireUnMontage` retire ; l'annoncer depuis une autre source
- * (`/api/render/tarifs` lit `tarifs_rendu`, le tarif des rendus navigateur)
- * pourrait afficher un prix et en débiter un autre. La politique vient de
+ * ⚠️ LE MÊME NOMBRE QUE LE DÉBIT. `coutMontage()` (grille centrale,
+ * `render.reel`) est ce que `produireUnMontage` retire ; l'annoncer depuis
+ * une autre source pourrait afficher un prix et en débiter un autre. La politique vient de
  * la base, comme partout : un administrateur voit « frais partenaires », pas
  * un nombre qu'on ne lui retirera pas.
  */
@@ -87,14 +86,20 @@ export async function GET() {
   if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-  const [{ politique }, solde] = await Promise.all([
+  const [{ politique }, solde, coutRendu, lignes] = await Promise.all([
     politiqueDeLUtilisateur(userId),
     getUserCredits(userId).catch(() => null),
+    coutMontage(),
+    supabaseAdmin.from('autopilot_config').select('*').eq('user_id', userId).limit(1).then((r) => r.data, () => null),
   ]);
+  // Le devis = ce que POST vérifiera et ce que le montage débitera : rendu
+  // (+ affiche de référence si ce mode est actif).
+  const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
+  const cout = coutRendu + await coutAfficheDuDevis(config);
   return NextResponse.json({
     success: true,
     politique,
-    cout: COST_PER_VIDEO,
+    cout,
     solde,
     enCours: enVol.has(userId),
   });
@@ -143,11 +148,15 @@ export async function POST() {
         { status: 422 },
       );
     }
-    // Avec le jumeau, deux coûts : la génération de l'avatar (AVATAR_VIDEO_COST,
-    // débitée au lancement) PUIS le rendu (COST_PER_VIDEO, à la finalisation).
+    // Avec le jumeau, deux coûts : la génération de l'avatar (`avatar.jumeau`,
+    // débitée au lancement) PUIS le rendu (`coutMontage()`, à la finalisation).
     // On vérifie les deux d'avance pour ne pas lancer (et facturer l'avatar) un
-    // montage dont le rendu échouerait faute de crédits.
-    const cout = config.jumeauAvatar ? AVATAR_VIDEO_COST + COST_PER_VIDEO : COST_PER_VIDEO;
+    // montage dont le rendu échouerait faute de crédits. Prix lus UNE fois
+    // dans la grille centrale ; le rendu débite ce même `coutRendu`.
+    const coutRendu = await coutMontage();
+    // + l'affiche de référence quand elle sera produite (débitée après dépôt).
+    const coutAffiche = await coutAfficheDuDevis(config);
+    const cout = (config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu) + coutAffiche;
     const credits = await getUserCredits(userId).catch(() => 0);
     if (credits < cout) {
       return NextResponse.json({
@@ -258,6 +267,8 @@ export async function POST() {
       jobId,
       slotKey: jeton,
       journal: '[Autopilote/Manuel]',
+      // Le prix annoncé et contrôlé ci-dessus : c'est lui qui sera débité.
+      coutRendu,
       metadataSupplement: { production: 'manuelle' },
     }).then((rendu) => {
       noterResultat(userId, {
@@ -272,7 +283,7 @@ export async function POST() {
         status: 'draft',
         platforms: [],
         avertissements: rendu.avertissements,
-        cout: COST_PER_VIDEO,
+        cout: coutRendu,
         debite: rendu.debite,
         videoUrl: rendu.videoUrl,
         thumbnailUrl: rendu.thumbnailUrl,

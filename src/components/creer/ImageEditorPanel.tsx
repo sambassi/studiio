@@ -2,8 +2,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AI_TOOLS, STYLE_PRESETS, type AiAction, type AiToolDef,
+  AI_TOOLS, STYLE_PRESETS, prixOutilIa, type AiAction, type AiToolDef,
 } from '@/components/creer/AiImageTools';
+import { useTarifs } from '@/lib/tarifs/client';
 import {
   Sun, Contrast, Palette, Thermometer, Sparkles, CircleOff,
   Upload, Link2, Trash2, Move,
@@ -193,6 +194,8 @@ export default function ImageEditorPanel({
 }: ImageEditorPanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [urlDraft, setUrlDraft] = useState(config?.url ?? '');
+  // Prix des outils IA : la grille centrale, celle que débite le serveur.
+  const { prix: grilleTarifs } = useTarifs();
   const [uploading, setUploading] = useState(false);
   const [isDraggingCrop, setIsDraggingCrop] = useState(false);
   // AI tools state
@@ -754,7 +757,7 @@ export default function ImageEditorPanel({
                 disabled={!aiPrompt.trim()}
                 className="flex-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 px-2 py-1 text-[10px] text-white transition-colors"
               >
-                Lancer ({AI_TOOLS.find(t => t.action === aiPromptFor)?.credits} cr.)
+                Lancer ({aiPromptFor ? prixOutilIa(grilleTarifs, aiPromptFor) : ''} cr.)
               </button>
               <button
                 type="button"
@@ -823,7 +826,7 @@ export default function ImageEditorPanel({
                     runAiTool(tool);
                   }
                 }}
-                title={needsImage ? 'Uploadez d\'abord une image' : `${tool.label} (${tool.credits} cr.)`}
+                title={needsImage ? 'Uploadez d\'abord une image' : `${tool.label} (${prixOutilIa(grilleTarifs, tool.action)} cr.)`}
                 className={`rounded px-2 py-1.5 text-[10px] flex items-center gap-1 transition-colors ${
                   isDisabled
                     ? 'bg-gray-800/60 text-gray-600 cursor-not-allowed opacity-50'
@@ -836,7 +839,7 @@ export default function ImageEditorPanel({
                   tool.icon
                 )}
                 <span className="flex-1 text-left">{tool.label}</span>
-                <span className="text-[8px] text-gray-500">{tool.credits}</span>
+                <span className="text-[8px] text-gray-500">{prixOutilIa(grilleTarifs, tool.action)}</span>
               </button>
             );
           })}
