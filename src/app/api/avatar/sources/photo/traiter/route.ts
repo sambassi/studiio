@@ -20,7 +20,7 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { BUCKET_AVATAR, cleSourceAvatar, cleSourceAvatarDuCompte, ouvrirSourceAvatar, typeSourceAvatar } from '@/lib/avatar/source';
 import { dossierTemporaire, retirerDossierTemporaire } from '@/lib/avatar/preparation-source';
 import {
-  TYPES_PHOTO_ACCEPTES, TAILLE_MAX_PHOTO_OCTETS, bornerEmbellissementPhoto, orientationExif, traiterPhoto,
+  TYPES_PHOTO_ACCEPTES, TAILLE_MAX_PHOTO_OCTETS, bornerEmbellissementPhoto, orientationPhoto, traiterPhoto,
 } from '@/lib/avatar/preparation-photo';
 
 export const dynamic = 'force-dynamic';
@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     const entree = join(dossier, `original.${extension}`);
     const sortie = join(dossier, 'embellie.jpg');
     await pipeline(Readable.from(source.flux), createWriteStream(entree));
-    const orientation = extension === 'jpg' ? orientationExif(await readFile(entree)) : 1;
+    // JPEG et WebP : l'orientation EXIF que le navigateur applique, appliquée ici aussi.
+    const orientation = orientationPhoto(await readFile(entree), extension);
 
     try {
       await traiterPhoto(entree, sortie, niveau, orientation);
