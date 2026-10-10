@@ -26,6 +26,7 @@ import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
+import { CLASSE_LECTEUR_GENERATION } from '@/lib/ui/lecteur-generation';
 
 const AVATAR_VIDEO_COST = 40;
 const MAX_SCRIPT_CHARS = 1200;
@@ -918,7 +919,9 @@ export default function AvatarPage() {
     ),
   } : undefined;
   return (
-    <div data-avatar-page className="max-w-6xl mx-auto p-6 space-y-6">
+    <div data-avatar-page className="max-w-6xl mx-auto px-6 pb-6 pt-6 lg:pt-0 space-y-6">
+      {/* Grand écran : pas de marge haute en plus de celle du tableau de bord (la colonne
+          d'aperçu collante gagne cette hauteur) ; mobile inchangé. */}
       {/* A. En-tête — pas de lien « Aide » : aucune page d'aide n'existe encore, on n'en promet pas. */}
       <EnteteSection
         titre="Mon avatar"
@@ -928,23 +931,24 @@ export default function AvatarPage() {
         data-entete="avatar"
       />
 
-      {/* B. Deux onglets — le composant d'onglets du produit (clavier, aria). */}
-      <div className="border-b border-gray-800">
-        <Onglets
-          label="Sections de Mon avatar"
-          actif={onglet}
-          onChange={(id) => setOnglet(id === 'voix' ? 'voix' : 'avatar')}
-          onglets={[
-            { id: 'avatar', label: 'Avatar vidéo', icone: <Clapperboard className="w-4 h-4 mr-1.5" />, panneauId: 'panneau-avatar' },
-            { id: 'voix', label: 'Voix & Prononciation', icone: <Mic className="w-4 h-4 mr-1.5" />, panneauId: 'ma-voix' },
-          ]}
-        />
-      </div>
-
       {/* C. Deux colonnes — la même grille que Créer : l'onglet au centre,
           l'aperçu et la génération à droite, collants sur grand écran. */}
       <DeuxColonnes nom="avatar" attributs={{ 'data-avatar-colonnes': '' }}>
         <ColonneTravail attributs={{ 'data-avatar-colonne': 'etape' }}>
+          {/* Les onglets ne pilotent que la colonne centrale : ils vivent en tête de
+              celle-ci, et la colonne d'aperçu démarre dès sous l'en-tête de page. */}
+          <div className="border-b border-gray-800">
+            <Onglets
+              label="Sections de Mon avatar"
+              actif={onglet}
+              onChange={(id) => setOnglet(id === 'voix' ? 'voix' : 'avatar')}
+              onglets={[
+                { id: 'avatar', label: 'Avatar vidéo', icone: <Clapperboard className="w-4 h-4 mr-1.5" />, panneauId: 'panneau-avatar' },
+                { id: 'voix', label: 'Voix & Prononciation', icone: <Mic className="w-4 h-4 mr-1.5" />, panneauId: 'ma-voix' },
+              ]}
+            />
+          </div>
+
           <div role="tabpanel" id="panneau-avatar" aria-labelledby="onglet-avatar" data-avatar-panneau="avatar" className={onglet === 'avatar' ? 'space-y-6' : 'hidden'}>
           {/* Mes avatars — identités, version utilisée, nouvelle version ; la carte active
               fusionnée. Sans aucun avatar, la carte de création ci-dessous suffit. */}
@@ -1233,13 +1237,15 @@ export default function AvatarPage() {
           <div data-avatar-validation={cleValidation}>
             <div data-avatar-apercu={cleApercu} data-avatar-apercu-cadre={zone.ratio}>
               {/* Avec le formulaire de génération sous lui, le cadre (ratio intact, jamais
-                  rogné) est borné en LARGEUR : lecteur, texte, voix, format et « Générer »
-                  tiennent ensemble dans la colonne collante. Sans formulaire : règle commune. */}
+                  rogné) est borné en LARGEUR selon la hauteur d'écran (voir
+                  `lib/ui/lecteur-generation.ts`) : lecteur, texte, voix, format et « Générer
+                  la vidéo » tiennent ensemble dès l'ouverture, de 1366×768 à 1440×900.
+                  Sans formulaire : règle commune (`.apercu-cadre`). */}
               <ZoneApercu
                 titre={zone.titre}
                 etat={zone.etat}
                 ratio={zone.ratio}
-                className={avatar && etatEffectif === 'valide' && !viaDid ? 'lg:[&_.apercu-cadre]:max-w-[200px]' : ''}
+                className={avatar && etatEffectif === 'valide' && !viaDid ? CLASSE_LECTEUR_GENERATION : ''}
               >
                 {zone.media}
               </ZoneApercu>
@@ -1248,7 +1254,7 @@ export default function AvatarPage() {
 
           {/* ✓ Prêt — l'étape suivante : faire parler l'avatar (photo HeyGen seulement). */}
           {avatar && etatEffectif === 'valide' && !viaDid && (
-            <div data-avatar-generation className="card-base !p-5 space-y-3">
+            <div data-avatar-generation className="card-base !p-4 space-y-3">
               <div>
                 <div className="flex items-baseline justify-between gap-2 mb-1.5">
                   <label className="text-sm font-medium text-gray-100">Ce que dit votre avatar</label>
