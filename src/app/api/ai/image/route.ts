@@ -8,6 +8,7 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import Replicate from 'replicate';
 import { extractText } from '@/lib/ai/extract-text';
 import { erreurReplicateSanitisee } from '@/lib/ai/replicate-erreur';
+import { construirePromptImage } from '@/lib/ai/prompt-image';
 import { detecterSignatureImage, MAX_AFFICHE_IA_BYTES } from '@/lib/storage/image-signature';
 
 export const dynamic = 'force-dynamic';
@@ -483,10 +484,21 @@ export async function POST(req: NextRequest) {
           // le sujet (visage, vêtements, identité). Sinon, texte → image comme
           // avant. MÊME suite : validation, rapatriement durable, débit.
           const reference = typeof imageUrl === 'string' && imageUrl.trim() ? imageUrl.trim() : null;
+          // Prompt FIDELE (src/lib/ai/prompt-image.ts) : sujet, action, objets,
+          // apparence, decor et contraintes de l'utilisateur, en anglais, en
+          // tete ; enrichissement en AJOUT seulement ; texte original recopie.
+          // Pas de `negative_prompt` : ni flux-schnell ni flux-kontext-pro ne
+          // l'acceptent — les contraintes sont dites positivement (« no cable
+          // visible »). Pas de `seed` : « Regenerer » garde la meme structure,
+          // seule la composition change. Le prompt n'est JAMAIS logge ; il est
+          // rendu a l'utilisateur (`promptFinal`) qui l'a lui-meme ecrit.
+          const { structure, promptFinal } = construirePromptImage(promptAfficheIA, {
+            mode: reference ? 'reference' : 'texte',
+          });
           const output = reference
             ? await genererAvecDelai(replicate, {
               input_image: reference,
-              prompt: translateFrPromptToEn(promptAfficheIA),
+              prompt: promptFinal,
               // La sortie prend le FORMAT de la vidéo (9:16…), pas celui de la
               // photo de référence — l'affiche doit tenir dans le montage.
               aspect_ratio: formatAfficheIA,
@@ -494,7 +506,9 @@ export async function POST(req: NextRequest) {
               safety_tolerance: 2,
             }, 'image-edit')
             : await genererAvecDelai(replicate, {
-              prompt: `${promptAfficheIA}, high quality, professional background, ${formatAfficheIA} aspect ratio`,
+              // Le format part dans `aspect_ratio` : plus de « 9:16 aspect
+              // ratio » ni de « professional background » collés au texte.
+              prompt: promptFinal,
               num_outputs: 1,
               aspect_ratio: formatAfficheIA,
               output_format: 'webp',
@@ -561,6 +575,10 @@ export async function POST(req: NextRequest) {
             creditsUsed: cost,
             creditsRemaining: credits - cost,
             format: formatAfficheIA,
+            // Ce qui a reellement ete demande au modele — affiche dans
+            // « Voir le prompt utilisé ». Jamais logge cote serveur.
+            promptFinal,
+            structure,
           });
         } catch (err) {
           if (err instanceof ErreurAfficheIA) {

@@ -274,7 +274,11 @@ export default function ImageEditorPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: tool.action,
-          imageUrl: config?.url || undefined,
+          // Seuls les outils qui RETOUCHENT une image l'envoient. « Générer
+          // arrière-plan » (needsImage: false) part du texte seul : lui passer
+          // l'image courante basculait le serveur sur l'édition de photo
+          // (flux-kontext), qui recopiait la pose et le sujet existants.
+          imageUrl: tool.needsImage ? (config?.url || undefined) : undefined,
           prompt: prompt?.trim() || undefined,
           style: style || undefined,
         }),

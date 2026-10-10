@@ -412,8 +412,81 @@ describe('generate-bg — debit', () => {
   });
 });
 
+describe('generate-bg — prompt fidele (src/lib/ai/prompt-image.ts)', () => {
+  const FEMME = 'femme noire transpirante avec casque audio sans fil danse';
+  const HOMME = 'homme asiatique court sous la pluie avec parapluie rouge';
+  const promptEnvoye = (k = 0) => (runMock.mock.calls[k][1] as { input: Record<string, unknown> }).input.prompt as string;
+
+  it.each([
+    [FEMME, ['black woman', 'dancing', 'sweating', 'wireless headphones', 'no cable visible']],
+    [HOMME, ['asian man', 'running', 'rain', 'red umbrella']],
+  ] as const)('texte seul « %s » → flux-schnell recoit tous les elements', async (texte, attendus) => {
+    runMock.mockResolvedValue([fileOutput(octetsWebp())]);
+
+    const { status, body } = await post({ action: 'generate-bg', prompt: texte });
+
+    expect(status).toBe(200);
+    expect(runMock.mock.calls[0][0]).toBe('black-forest-labs/flux-schnell');
+    const p = promptEnvoye();
+    for (const a of attendus) expect(p.toLowerCase(), a).toContain(a);
+    expect(p).toContain(`« ${texte} »`);
+    for (const interdit of ['portrait', 'professional background', 'aspect ratio', 'looking at camera']) {
+      expect(p.toLowerCase(), interdit).not.toContain(interdit);
+    }
+    // Aucun champ que le modele ne connait pas (verifie dans cog-flux).
+    expect(runMock.mock.calls[0][1].input).not.toHaveProperty('negative_prompt');
+    // Le prompt final et sa structure reviennent au client.
+    expect(body.promptFinal).toBe(p);
+    expect(body.structure.original).toBe(texte);
+    expect(body.structure.sujet.length).toBe(1);
+    expect(body.structure.action.length).toBe(1);
+  });
+
+  it('« Partir de ma photo » : flux-kontext-pro recoit la structure anglaise, pas une traduction mot a mot', async () => {
+    runMock.mockResolvedValue([fileOutput(octetsWebp())]);
+
+    const { status, body } = await post({ action: 'generate-bg', prompt: FEMME, imageUrl: 'https://cdn.test/ma-photo.jpg' });
+
+    expect(status).toBe(200);
+    expect(runMock.mock.calls[0][0]).toBe('black-forest-labs/flux-kontext-pro');
+    const input = runMock.mock.calls[0][1].input as Record<string, unknown>;
+    expect(input.input_image).toBe('https://cdn.test/ma-photo.jpg');
+    const p = input.prompt as string;
+    for (const a of ['black woman', 'dancing', 'sweating', 'wireless headphones', 'no cable visible', 'keep the same face']) {
+      expect(p, a).toContain(a);
+    }
+    expect(body.promptFinal).toBe(p);
+  });
+
+  it('Regenerer (meme texte, deux requetes) → meme prompt envoye, deux generations distinctes', async () => {
+    runMock.mockResolvedValue([fileOutput(octetsWebp())]);
+
+    const a = await post({ action: 'generate-bg', prompt: HOMME });
+    const b = await post({ action: 'generate-bg', prompt: HOMME });
+
+    expect(promptEnvoye(1)).toBe(promptEnvoye(0));
+    expect(b.body.structure).toEqual(a.body.structure);
+    // Pas de graine imposee : seule la composition varie d'une image a l'autre.
+    expect(runMock.mock.calls[0][1].input).not.toHaveProperty('seed');
+    expect(b.body.generationId).not.toBe(a.body.generationId);
+  });
+
+  it('le prompt final n est jamais logge, meme en echec', async () => {
+    runMock.mockResolvedValue([fileOutput(octetsGif())]);
+
+    await post({ action: 'generate-bg', prompt: FEMME });
+
+    const sorties = toutesLesSortiesConsole();
+    expect(sorties).not.toContain('black woman');
+    expect(sorties).not.toContain('femme noire');
+  });
+});
+
 describe('generate-bg — validation du prompt et du format', () => {
-  it.each(['9:16', '1:1', '16:9'] as const)('format %s → aspect_ratio et suffixe du prompt coherents', async (format) => {
+  // Le format part UNIQUEMENT dans `aspect_ratio` : l'ancien suffixe
+  // « <format> aspect ratio » colle au prompt etait du bruit pour le modele
+  // (le prompt est desormais construit par src/lib/ai/prompt-image.ts).
+  it.each(['9:16', '1:1', '16:9'] as const)('format %s → aspect_ratio, et le prompt ne repete pas le format', async (format) => {
     runMock.mockResolvedValue([fileOutput(octetsWebp())]);
 
     const { status, body } = await post({ action: 'generate-bg', prompt: '  plage au coucher du soleil  ', format });
@@ -427,11 +500,10 @@ describe('generate-bg — validation du prompt et du format', () => {
     expect(options.input.output_format).toBe('webp');
     expect(options.signal).toBeInstanceOf(AbortSignal);
     const p = options.input.prompt as string;
-    expect(p.startsWith('plage au coucher du soleil,')).toBe(true);
-    expect(p).toContain(`${format} aspect ratio`);
-    for (const autre of ['9:16', '1:1', '16:9']) {
-      if (autre !== format) expect(p).not.toContain(autre);
-    }
+    expect(p.startsWith('Beach, at sunset,')).toBe(true);
+    expect(p).toContain('Original request (French): « plage au coucher du soleil »');
+    expect(p).not.toContain('aspect ratio');
+    for (const f of ['9:16', '1:1', '16:9']) expect(p).not.toContain(f);
   });
 
   it('format absent → 9:16 (retro-compatible)', async () => {
