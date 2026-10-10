@@ -69,3 +69,28 @@ export function partagerEnVol(cle: string, travail: () => Promise<ResultatAudioC
 export function reinitialiserAudioComplet() {
   enVol.clear();
 }
+
+/**
+ * Ce texte, avec cette voix, a-t-il DÉJÀ été payé ?
+ *
+ * ⚠️ LE FICHIER N'EST PAS UNE PREUVE DE PAIEMENT. Il est déposé AVANT le
+ * débit (on ne débite qu'un audio réussi) : un débit refusé dont la
+ * suppression échoue, ou un processus coupé entre dépôt et débit, laisserait
+ * un fichier impayé. Seule la ligne du journal `credit_transactions` portant
+ * la référence idempotente fait foi. Lecture impossible → « non payé » : on
+ * tente alors le débit, qui reste idempotent (jamais deux fois).
+ */
+export async function debitAudioCompletEnregistre(userId: string, reference: string): Promise<boolean> {
+  try {
+    const { supabaseAdmin } = await import('@/lib/db/supabase');
+    const { data, error } = await supabaseAdmin
+      .from('credit_transactions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('reference_id', reference)
+      .limit(1);
+    return !error && Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+}

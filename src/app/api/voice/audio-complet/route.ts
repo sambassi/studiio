@@ -33,7 +33,7 @@ import {
   MESSAGE_TEXTE_AUDIO_COMPLET_VIDE, MESSAGE_TEXTE_AUDIO_COMPLET_TROP_LONG,
   MESSAGE_AUDIO_COMPLET_ECHEC, MESSAGE_AUDIO_COMPLET_INDISPONIBLE,
 } from '@/lib/voice/audio-complet';
-import {
+import { debitAudioCompletEnregistre,
   BUCKET_AUDIO_COMPLET, OPERATION_AUDIO_COMPLET, empreinteAudioComplet, cheminAudioComplet,
   objetAudioCompletExiste, partagerEnVol, type ResultatAudioComplet,
 } from '@/lib/voice/audio-complet-serveur';
@@ -88,14 +88,31 @@ export async function POST(req: NextRequest) {
   const resultat = await partagerEnVol(`${userId}\u0000${empreinte}`, async () => {
     const exempt = await compteExempteDeCredits(userId);
 
+    // Payé ? Le JOURNAL fait foi, jamais la seule présence du fichier.
+    const dejaPaye = !exempt && await debitAudioCompletEnregistre(userId, reference);
+
     // Déjà généré (rafraîchissement, second envoi) : rendu tel quel, rien n'est facturé deux fois.
     if (await objetAudioCompletExiste(BUCKET_AUDIO_COMPLET, chemin)) {
+      let debite = 0;
+      if (!exempt && !dejaPaye) {
+        // Fichier présent mais débit absent (débit refusé + suppression ratée,
+        // coupure entre dépôt et débit) : on débite MAINTENANT, ou on ne livre pas.
+        try {
+          await deductCredits(userId, cout, OPERATION_AUDIO_COMPLET, reference);
+          debite = cout;
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          if (message === 'Insufficient credits') return refus(402, messageCreditsInsuffisants(cout), 'credits_insuffisants', { cout });
+          console.error('[Voice][audio-complet] débit refusé (fichier existant) :', message);
+          return refus(503, 'Le débit des crédits a échoué : l’audio n’a pas été livré. Réessayez.', 'debit_indisponible');
+        }
+      }
       const { data } = supabaseAdmin.storage.from(BUCKET_AUDIO_COMPLET).getPublicUrl(chemin);
-      return { status: 200, corps: { success: true, url: data.publicUrl, creditsDebites: 0, cout, caracteres, dejaGenere: true } };
+      return { status: 200, corps: { success: true, url: data.publicUrl, creditsDebites: debite, cout, caracteres, dejaGenere: true } };
     }
 
-    // Le solde AVANT tout appel fournisseur.
-    if (!exempt) {
+    // Le solde AVANT tout appel fournisseur (inutile si ce texte est déjà payé).
+    if (!exempt && !dejaPaye) {
       let solde = 0;
       try { solde = await getUserCredits(userId); } catch (e) {
         console.error('[Voice][audio-complet] solde illisible :', e instanceof Error ? e.message : e);
@@ -120,7 +137,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Le débit APRÈS le succès, idempotent sur la référence. Refusé → rien n'est livré.
-    if (!exempt) {
+    // Déjà payé (fichier purgé depuis) : régénéré sans second débit.
+    if (!exempt && !dejaPaye) {
       try {
         await deductCredits(userId, cout, OPERATION_AUDIO_COMPLET, reference);
       } catch (e) {
@@ -132,7 +150,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return { status: 200, corps: { success: true, url, creditsDebites: exempt ? 0 : cout, cout, caracteres, dejaGenere: false } };
+    return { status: 200, corps: { success: true, url, creditsDebites: exempt || dejaPaye ? 0 : cout, cout, caracteres, dejaGenere: false } };
   });
 
   return repondre(resultat);

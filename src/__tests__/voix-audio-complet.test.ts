@@ -18,7 +18,7 @@ const V1 = '44444444-4444-4444-8444-000000000001';
 const PVID = 'pvid_0001_abcd';
 
 type Ligne = Record<string, unknown>;
-const base = vi.hoisted(() => ({ voices: [] as Ligne[], settings: [] as Ligne[] }));
+const base = vi.hoisted(() => ({ voices: [] as Ligne[], settings: [] as Ligne[], transactions: [] as Ligne[] }));
 const eleven = vi.hoisted(() => ({ appels: [] as string[], statut: 200, retard: null as Promise<void> | null }));
 const etat = vi.hoisted(() => ({
   exempt: false, solde: 100, objets: new Set<string>(), uploadEchoue: false, debitErreur: null as string | null,
@@ -26,7 +26,7 @@ const etat = vi.hoisted(() => ({
 
 vi.mock('@/lib/db/supabase', () => {
   const from = (table: string) => {
-    const source = table === 'user_voices' ? base.voices : table === 'user_settings' ? base.settings : null;
+    const source = table === 'user_voices' ? base.voices : table === 'user_settings' ? base.settings : table === 'credit_transactions' ? base.transactions : null;
     if (!source) throw new Error(`table inattendue ${table}`);
     const filtres: Array<(l: Ligne) => boolean> = [];
     let colonnes: string[] | null = null;
@@ -54,7 +54,12 @@ vi.mock('@/lib/auth/config', () => ({ auth: async () => session.courante }));
 
 const credits = vi.hoisted(() => ({
   getUserCredits: vi.fn(async () => etat.solde),
-  deductCredits: vi.fn(async () => { if (etat.debitErreur) throw new Error(etat.debitErreur); return true; }),
+  deductCredits: vi.fn(async (userId: string, _n: number, _r?: string, reference?: string) => {
+    if (etat.debitErreur) throw new Error(etat.debitErreur);
+    // Le journal idempotent : une ligne par référence, comme l'index unique en base.
+    if (reference && !base.transactions.some((t) => t.reference_id === reference)) base.transactions.push({ id: `t${base.transactions.length}`, user_id: userId, reference_id: reference });
+    return true;
+  }),
 }));
 vi.mock('@/lib/credits/system', () => ({ getUserCredits: credits.getUserCredits, deductCredits: credits.deductCredits }));
 vi.mock('@/lib/facturation/exemption', () => ({
@@ -115,7 +120,7 @@ const texteDe = (n: number) => 'a'.repeat(n);
 const empreinte = (texte: string) => createHash('sha256').update(`${U}|${PVID}|${scriptParle(texte, PRONONCIATIONS)}`).digest('hex');
 
 beforeEach(() => {
-  base.voices = [voix()];
+  base.voices = [voix()]; base.transactions = [];
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: PRONONCIATIONS } } }];
   eleven.appels.length = 0; eleven.statut = 200; eleven.retard = null;
   etat.exempt = false; etat.solde = 100; etat.objets.clear(); etat.uploadEchoue = false; etat.debitErreur = null;
@@ -197,6 +202,35 @@ describe('POST /api/voice/audio-complet — tarif calculé par le serveur', () =
     expect(eleven.appels).toHaveLength(0);
     expect(credits.deductCredits).not.toHaveBeenCalled();
     expect(stockage.uploadBufferToStorage).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ fichier présent mais JAMAIS payé (suppression ratée après un débit refusé) → débité maintenant, sinon pas livré', async () => {
+    const texte = texteDe(1500);
+    const cle = `audio/${cheminAudioComplet(U, empreinte(texte))}`;
+    etat.objets.add(cle);
+    etat.debitErreur = 'Insufficient credits';
+    const refuse = await post(POST, { texte });
+    expect(refuse.status).toBe(402);
+    expect(JSON.stringify(await refuse.json())).not.toContain('storage/v1');
+    etat.debitErreur = null;
+    credits.deductCredits.mockClear();
+    const ok = await post(POST, { texte });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ creditsDebites: 2, dejaGenere: true });
+    expect(credits.deductCredits).toHaveBeenCalledTimes(1);
+    expect(eleven.appels).toHaveLength(0);
+  });
+
+  it('déjà payé puis fichier purgé → régénéré SANS second débit', async () => {
+    const texte = texteDe(900);
+    await post(POST, { texte });
+    etat.objets.clear();
+    credits.deductCredits.mockClear(); eleven.appels.length = 0;
+    const res = await post(POST, { texte });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ creditsDebites: 0, dejaGenere: false });
+    expect(eleven.appels).toHaveLength(1);
+    expect(credits.deductCredits).not.toHaveBeenCalled();
   });
 
   it('échec du fournisseur → 502, aucun débit, rien envoyé au stockage', async () => {
