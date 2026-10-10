@@ -240,6 +240,9 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // enregistrement les aurait effacés du montage suivant.
   const recadrage = recadrageValide(presence(meta, 'posterTransform'));
   if (recadrage) draft.posterTransform = recadrage;
+  // Recadrage du rush : relu tel qu'écrit — sinon « Modifier » rouvrirait la vidéo recentrée.
+  const recadrageRush = recadrageValide(presence(meta, 'rushTransform'));
+  if (recadrageRush) draft.rushTransform = recadrageRush;
   const fonds = fondsPourMetadata(presence(meta, 'seqBackgrounds'));
   if (Object.keys(fonds).length > 0) draft.seqBackgrounds = fonds;
 

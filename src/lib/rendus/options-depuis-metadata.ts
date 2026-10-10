@@ -265,6 +265,9 @@ export function optionsRenduDepuisMetadata(
   }
   const recadrage = recadrageValide(meta.posterTransform);
   if (recadrage) fidelite.posterTransform = recadrage;
+  // Recadrage du rush : le MÊME que l'aperçu et l'export d'origine (un seul rush).
+  const recadrageRush = recadrageValide(meta.rushTransform);
+  if (recadrageRush && !estPlanMontage(rushSegmentsDepuisMetadata(meta.rushSegments))) fidelite.rushTransform = recadrageRush;
   const fonds = fondsVersCompositeur(fondsPourMetadata(meta.seqBackgrounds));
   if (fonds) fidelite.sequenceBackgrounds = fonds;
 

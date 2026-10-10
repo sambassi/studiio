@@ -50,6 +50,8 @@ import {
   X,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
+import { RECADRAGE_RUSH_NEUTRE, recadrageRushActif, styleRecadrageRush, type RecadrageRush } from '@/lib/creer/recadrage-rush';
+import RecadrerRush from '@/components/creer/RecadrerRush';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
   type ComposerOptions,
@@ -1429,6 +1431,7 @@ function PlateContent({
   activeOrder,
   rushUrl = null,
   onRushError,
+  rushTransform = null,
   text,
   titlePos,
   ctaPos,
@@ -1453,6 +1456,8 @@ function PlateContent({
   /** Rush A MONTRER (le parent a deja decide), ou `null`. */
   rushUrl?: string | null;
   onRushError?: () => void;
+  /** Recadrage du rush (zoom + décalage, fraction du cadre) — le MÊME que l'export (`rushTransform`). */
+  rushTransform?: RecadrageRush | null;
   text: TextStyles;
   titlePos: Pos;
   ctaPos: Pos;
@@ -1549,12 +1554,14 @@ function PlateContent({
                 playsInline
                 preload="metadata"
                 onError={onRushError}
+                data-rush-recadrage={recadrageRushActif(rushTransform) ? 'oui' : 'non'}
                 style={{
                   position: 'absolute',
                   inset: 0,
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover',
+                  // Rempli, jamais bordé ; recadré comme l'export (même géométrie que `drawVideoSeq`).
+                  ...styleRecadrageRush(rushTransform),
                 }}
               />
             )}
@@ -1971,6 +1978,7 @@ export function Preview({
   gradEnd,
   gradientOpacity,
   rushUrl,
+  rushTransform = null,
   watermark,
   accent,
   text,
@@ -2119,6 +2127,8 @@ export function Preview({
    * plein cadre, sans titre ni cartes par-dessus.
    */
   rushUrl?: string | null;
+  /** Recadrage du rush, appliqué à l'aperçu exactement comme à l'export. */
+  rushTransform?: RecadrageRush | null;
   previewRef?: React.RefObject<HTMLDivElement>;
   cardsRef?: React.RefObject<HTMLDivElement>;
   /**
@@ -2556,6 +2566,7 @@ export function Preview({
             focus={focus}
             activeOrder={activeOrder}
             rushUrl={showRush ? rushUrl : null}
+            rushTransform={rushTransform}
             onRushError={() => setRushBroken(true)}
             text={text}
             titlePos={titlePos}
@@ -4005,6 +4016,13 @@ export default function AssistantWizard() {
   // rush, `rushUrl` reste nul et la sequence « Video » demeure masquee —
   // comportement strictement identique a celui d'avant cet ajout.
   const [rushUrl, setRushUrl] = useState<string | null>(null);
+  // Un AUTRE rush (changé, retiré) n'hérite pas du recadrage du précédent. La
+  // restauration d'un brouillon (rien → rush) le garde.
+  const rushPrecedentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (rushPrecedentRef.current && rushPrecedentRef.current !== rushUrl) setRushTransform(RECADRAGE_RUSH_NEUTRE);
+    rushPrecedentRef.current = rushUrl;
+  }, [rushUrl]);
   const [rushName, setRushName] = useState('');
   const [rushLibOpen, setRushLibOpen] = useState(false);
   const [rushLoading, setRushLoading] = useState(false);
@@ -4524,6 +4542,13 @@ export default function AssistantWizard() {
   const [afficheIAOuvert, setAfficheIAOuvert] = useState(false);
   /** Recadrage de l'affiche. Neutre = le « cover » centre d'avant. */
   const [posterTransform, setPosterTransform] = useState<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
+  /**
+   * RECADRAGE DU RUSH (séquence Vidéo) : le rush remplit le format, la personne
+   * choisit ce qui reste visible. Même forme que `rushTransform` du compositeur :
+   * l'aperçu et l'export tracent la même image. Neutre = le « cover » centré d'avant.
+   */
+  const [rushTransform, setRushTransform] = useState<RecadrageRush>(RECADRAGE_RUSH_NEUTRE);
+  const [recadrerRushOuvert, setRecadrerRushOuvert] = useState(false);
   const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
   useEffect(() => { posterTransformRef.current = posterTransform; }, [posterTransform]);
   const [cropping, setCropping] = useState(false);
@@ -6199,6 +6224,7 @@ export default function AssistantWizard() {
     elements: freeElements.length ? freeElements : undefined,
     posterUrl: posterUrl ?? undefined,
     posterTransform: posterTransformActive(posterTransform) ? posterTransform : undefined,
+    rushTransform: recadrageRushActif(rushTransform) ? rushTransform : undefined,
     seqBackgrounds: Object.keys(seqBackgrounds).length ? seqBackgrounds : undefined,
     imageSource,
     batchCount,
@@ -6218,7 +6244,7 @@ export default function AssistantWizard() {
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, lut, scheduledDate,
     titleWidth, ctaWidth,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
+    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransform, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -6388,6 +6414,7 @@ export default function AssistantWizard() {
     if (draft.elements) setFreeElements(draft.elements);
     if (draft.posterUrl) setPosterUrl(draft.posterUrl);
     if (draft.posterTransform) setPosterTransform(clampPosterTransform(draft.posterTransform));
+    if (draft.rushTransform) setRushTransform(draft.rushTransform);
     if (draft.seqBackgrounds) setSeqBackgrounds(draft.seqBackgrounds as SeqBackgrounds);
     if (draft.imageSource) setImageSource(draft.imageSource);
     // Un brouillon enregistre AVANT la fermeture de la serie porte encore son
@@ -6568,6 +6595,7 @@ export default function AssistantWizard() {
     gradEnd,
     gradientOpacity,
     rushUrl,
+    rushTransform,
     watermark: watermarkLabel,
     accent,
     text: textStyles,
@@ -6801,6 +6829,7 @@ export default function AssistantWizard() {
             focus={key as PreviewFocus}
             activeOrder={activeOrder}
             rushUrl={key === 'video' ? rushUrl : null}
+            rushTransform={key === 'video' ? rushTransform : null}
             displayScale={displayScale}
             gradStart={gradStart}
             gradEnd={gradEnd}
@@ -7241,6 +7270,8 @@ export default function AssistantWizard() {
           textes,
           aspectRatio: format,
           avatarId: jumeauAvatarId,
+          // Le format est REMPLI par HeyGen (`fit: cover`) : plus de bandes DANS le fichier.
+          cadrage: 'remplir',
           onLancee: (id) => { lancee = id; setJumeauGenerationId(id); },
           onPhase: avancerJumeau,
         });
@@ -7696,6 +7727,8 @@ export default function AssistantWizard() {
             textes: textesJumeau,
             aspectRatio: format,
             avatarId: jumeauAvatarId,
+            // Le format est REMPLI par HeyGen (`fit: cover`) : plus de bandes DANS le fichier.
+            cadrage: 'remplir',
             // Persister l'identifiant DÈS le lancement : si la page se ferme
             // pendant les 5-20 min de rendu, la reprise au montage retrouvera
             // cette génération au lieu d'en payer une seconde.
@@ -8133,6 +8166,11 @@ export default function AssistantWizard() {
             ? { rushs: plateau.rushs.map((r) => ({ url: r.url, secondes: r.secondes ?? null })) }
             : {}),
           ...(duree('video') > 0 && planMontageRushs ? { montage: planMontageRushs } : {}),
+          // Recadrage choisi (« Recadrer la vidéo ») : le MÊME que l'aperçu. Un seul rush
+          // (borné sur SES dimensions) ; plusieurs rushes enchaînés restent en « cover » centré.
+          ...(duree('video') > 0 && plateau.rushUrl && plateau.rushUrl === rushUrl && !plateau.rushs && recadrageRushActif(rushTransform)
+            ? { rushTransform }
+            : {}),
           ...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),
           ...(rushLut ? { rushLut } : {}),
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
@@ -8480,6 +8518,8 @@ export default function AssistantWizard() {
           // Recadrage de CETTE affiche, tel que passe au compositeur. Ecrit
           // seulement avec l'affiche : sans elle, il ne cadrerait rien.
           posterTransform: persistableUrl(affiche ?? null) ? recadrageValide(posterTransform) : undefined,
+          // Le recadrage du rush, pour « Modifier » et le Calendrier (Régénérer) : le MÊME qu'ici.
+          rushTransform: recadrageRushActif(rushTransform) ? recadrageValide(rushTransform) : undefined,
           // Fonds par sequence (forme du brouillon), URL durables seulement :
           // une photo `data:` ou `blob:` est ecartee, la sequence retombe alors
           // sur l'affiche globale a la regeneration. Absent sans fond propre.
@@ -8961,6 +9001,7 @@ export default function AssistantWizard() {
       // que rien n'a bouge — donc jamais envoyes sans changement.
       transition,
       posterTransform: recadrageValide(posterTransform),
+      rushTransform: recadrageRushActif(rushTransform) ? recadrageValide(rushTransform) : undefined,
       // Toujours un objet (vide sans fond) : retirer le dernier fond propre
       // doit partir, `undefined` voudrait dire « ne rien envoyer ».
       seqBackgrounds: fondsPourMetadata(seqBackgrounds),
@@ -8968,7 +9009,7 @@ export default function AssistantWizard() {
   }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
       gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
       posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
-      rushUrl, rushSecondes, rushSuivants, audioKeyframes, cardGroups, lut, transition, posterTransform, seqBackgrounds]);
+      rushUrl, rushSecondes, rushSuivants, audioKeyframes, cardGroups, lut, transition, posterTransform, rushTransform, seqBackgrounds]);
 
   /**
    * Prend l'empreinte sur le rendu qui SUIT l'hydratation : les `setState` de
@@ -10905,6 +10946,20 @@ export default function AssistantWizard() {
                                   {rushUrl && (
                                     <button
                                       type="button"
+                                      data-rush-recadrer
+                                      onClick={() => setRecadrerRushOuvert(true)}
+                                      disabled={rushLoading}
+                                      title="Choisir ce qui reste visible : la vidéo remplit tout le format, l'export utilise ce cadrage."
+                                      aria-label="Recadrer la vidéo"
+                                      className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition disabled:opacity-40 ${recadrageRushActif(rushTransform) ? 'bg-studiio-primary/25 text-purple-100' : 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
+                                    >
+                                      <Crop className="w-3 h-3" />
+                                      Recadrer
+                                    </button>
+                                  )}
+                                  {rushUrl && (
+                                    <button
+                                      type="button"
                                       onClick={clearRush}
                                       title="Retirer le rush"
                                       aria-label="Retirer le rush"
@@ -11024,6 +11079,15 @@ export default function AssistantWizard() {
                           Vidéo, au ratio de la source. Le rendu se fait alors en temps réel :
                           comptez la durée du montage.
                         </p>
+                      )}
+                      {recadrerRushOuvert && rushUrl && (
+                        <RecadrerRush
+                          url={rushUrl}
+                          format={format}
+                          valeur={rushTransform}
+                          onChange={setRushTransform}
+                          onFermer={() => setRecadrerRushOuvert(false)}
+                        />
                       )}
                       {/* Mediatheque — televersement ET re-selection d'un rush deja
                           envoye. Meme composant que le panneau audio, filtre sur

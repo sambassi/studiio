@@ -217,6 +217,8 @@ export interface Draft {
   posterUrl?: string;
   /** Recadrage de l'affiche. Absent = cadrage « cover » centre. */
   posterTransform?: { scale: number; offsetX: number; offsetY: number };
+  /** Recadrage du rush (« Recadrer la vidéo »), même convention. Absent = « cover » centré, comme avant. */
+  rushTransform?: { scale: number; offsetX: number; offsetY: number };
   /**
    * Fonds propres a une sequence. Absent = chaque sequence herite de
    * l'affiche globale, le comportement de tous les brouillons anterieurs.
@@ -732,6 +734,15 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     && typeof rt.offsetX === 'number' && Number.isFinite(rt.offsetX) && Math.abs(rt.offsetX) <= 1
     && typeof rt.offsetY === 'number' && Number.isFinite(rt.offsetY) && Math.abs(rt.offsetY) <= 1
       ? { scale: rt.scale, offsetX: rt.offsetX, offsetY: rt.offsetY }
+      : undefined;
+  // Recadrage du rush : mêmes bornes que l'affiche (zoom 1–3, décalages ±1).
+  const rr = raw.rushTransform;
+  out.rushTransform =
+    isObj(rr)
+    && typeof rr.scale === 'number' && Number.isFinite(rr.scale) && rr.scale >= 1 && rr.scale <= 3
+    && typeof rr.offsetX === 'number' && Number.isFinite(rr.offsetX) && Math.abs(rr.offsetX) <= 1
+    && typeof rr.offsetY === 'number' && Number.isFinite(rr.offsetY) && Math.abs(rr.offsetY) <= 1
+      ? { scale: rr.scale, offsetX: rr.offsetX, offsetY: rr.offsetY }
       : undefined;
   // Fonds par sequence : chaque entree est validee SEPAREMENT — elles sont
   // independantes, et en perdre une vaut mieux que de toutes les perdre.

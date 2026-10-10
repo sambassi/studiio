@@ -224,6 +224,8 @@ export interface ValeursWizard {
   transition?: string;
   /** Recadrage de l'affiche (`posterTransform`), déjà validé par l'appelant. */
   posterTransform?: { scale: number; offsetX: number; offsetY: number };
+  /** Recadrage du rush (`rushTransform`), déjà validé par l'appelant. */
+  rushTransform?: { scale: number; offsetX: number; offsetY: number };
   /**
    * Fonds par séquence (`seqBackgrounds`), URL durables seulement
    * (`fondsPourMetadata`). `{}` = aucun fond propre : c'est une VALEUR, qui
@@ -272,6 +274,7 @@ export function metadataPourEnregistrement(
   // liste d'exclusion — un changement pose `montagePerime`, un
   // enregistrement sans changement n'écrit rien.
   poserSiChange(envoi, 'posterTransform', valeurs.posterTransform, ref.posterTransform);
+  poserSiChange(envoi, 'rushTransform', valeurs.rushTransform, ref.rushTransform);
   poserSiChange(envoi, 'seqBackgrounds', valeurs.seqBackgrounds, ref.seqBackgrounds);
 
   // ── `branding` : recomposé SUR l'existant, et seulement s'il bouge ───

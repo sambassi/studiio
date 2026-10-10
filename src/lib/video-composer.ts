@@ -2814,7 +2814,7 @@ function drawSingleOverlay(
   ctx.restore();
 }
 
-function drawVideoSeq(
+export function drawVideoSeq(
   ctx: CanvasRenderingContext2D, w: number, h: number,
   videoEl: HTMLVideoElement | null, logoImg: HTMLImageElement | null, seqProgress: number,
   design?: DesignOptions,

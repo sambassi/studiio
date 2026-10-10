@@ -70,6 +70,8 @@ interface AvatarRow {
   /** Fin de validité de la phrase de consentement (ISO), calculée par le serveur. */
   consent_expire_le?: string | null;
   version?: number;
+  /** La version ACTIVE de l'identité (`avatar_versions.id`), pour lire SA source. */
+  active_version_id?: string | null;
   validated_at?: string | null;
   /** Horodatage RÉEL de l'import de la source (posé par le serveur à chaque version) : l'entraînement HeyGen démarre dans la même requête. */
   consent_at?: string | null;
@@ -184,6 +186,15 @@ export default function AvatarPage() {
    * horizontal — le lecteur n'ajoute jamais de bandes autour du fichier.
    */
   const [ratiosMedias, setRatiosMedias] = useState<Record<string, string>>({});
+  /**
+   * Ce que montre la colonne de droite quand l'avatar est prêt :
+   *   `format` — APERÇU DU FORMAT CHOISI : la source de l'avatar dans le cadre
+   *              9:16 / 16:9 / 1:1, remplie et recadrée au centre — exactement ce
+   *              que fera la génération (`fit: cover`) ;
+   *   `rendu`  — le dernier rendu, à SON ratio réel (jamais transformé) ;
+   *   `video`  — la vidéo qui vient d'être générée, à son ratio réel.
+   */
+  const [vueApercu, setVueApercu] = useState<'format' | 'rendu' | 'video'>('format');
   /** L'orientation NATIVE de l'avatar chez HeyGen (`preferred_orientation`) ; `null` si inconnue. */
   const [orientationAvatar, setOrientationAvatar] = useState<'portrait' | 'landscape' | 'square' | null>(null);
   const noterRatio = (url: string) => (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -703,6 +714,7 @@ export default function AvatarPage() {
           return;
         }
         setVideoUrl(url);
+        setVueApercu('video');
         setGenStatus('completed');
         return;
       }
@@ -778,6 +790,7 @@ export default function AvatarPage() {
         memoriserGeneration(null);
         if (demonteRef.current) return;
         setVideoUrl(url);
+        setVueApercu('video');
         setGenEtape({ mode: 'jumeau', phase: 'prete' });
         setGenStatus('completed');
       } catch (e) {
@@ -854,6 +867,7 @@ export default function AvatarPage() {
       memoriserGeneration(null);
       if (demonteRef.current) return;
       setVideoUrl(url);
+      setVueApercu('video');
       setGenEtape({ mode: 'jumeau', phase: 'prete' });
       setGenStatus('completed');
     }).catch((e: unknown) => {
@@ -982,6 +996,15 @@ export default function AvatarPage() {
     ? { niveau: 'erreur', titre: "L'entraînement de votre avatar n'a pas abouti.", detail: "La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé.", motif: avatar?.training_error && !trahitUnFournisseur(avatar.training_error) ? avatar.training_error : null, action: { libelle: 'Changer de source', onClick: changerDeSource } }
     : null);
 
+  /**
+   * La source de la VERSION ACTIVE — et d'elle seule (privée, au compte) — pour
+   * l'aperçu du format choisi : c'est la vidéo qui a entraîné l'avatar utilisé.
+   * Jamais une autre source : sans version active connue, pas d'aperçu de format.
+   */
+  const srcVersionActive = avatar?.active_version_id
+    ? `/api/avatars/versions/${encodeURIComponent(avatar.active_version_id)}/source`
+    : null;
+
   /** Le média de la source (privée : `/api/avatar/source`), rendu une seule fois quand l'avatar existe. */
   const mediaSource = avatar?.id ? (avatar.avatar_type === 'video' ? (
     <video
@@ -1011,7 +1034,7 @@ export default function AvatarPage() {
    * validation aux étapes 4–5, l'avatar validé à ✓ — et la vidéo générée
    * (« Votre vidéo ») comme état `pret` de la même zone. Tout vient du serveur.
    */
-  const zone: { titre: string; etat: EtatApercu; media: React.ReactNode; ratio: string } = (() => {
+  const zone: { titre: string; etat: EtatApercu; media: React.ReactNode; ratio: string; vue?: 'format' | 'rendu' | 'video' } = (() => {
     // Le format de la SOURCE quand il est connu (dimensions lues) ; sinon l'hypothèse d'avant.
     const ratioSource = (avatar && ratioSourceReel) || (avatar?.avatar_type === 'video' || (!avatar && kind === 'video') ? '9 / 16' : '1 / 1');
     // Avatar prêt : le lecteur prend le FORMAT CHOISI (9:16 / 16:9 / 1:1), aussitôt le bouton changé.
@@ -1030,11 +1053,16 @@ export default function AvatarPage() {
     if (etatEffectif === 'valide') {
       // Sous le formulaire de génération, pas de légende visible (la hauteur va au lecteur) :
       // le titre dit ce qu'on voit, la légende reste lue par les lecteurs d'écran.
-      if (videoUrl) return { titre: 'Votre vidéo', ratio: ratiosMedias[videoUrl] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline onLoadedMetadata={noterRatio(videoUrl)} className="w-full h-full object-contain bg-black" /><span className="sr-only">Vidéo prête.</span></> };
-      // ⚠️ JAMAIS la source ici : elle n'est pas l'avatar utilisé par Créer et
-      // l'Autopilote. On montre un RENDU réel de la version active, ou on dit
-      // qu'il n'y en a pas — sans rien inventer, sans appeler de fournisseur.
-      if (renduRecent) return { titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratiosMedias[renduRecent.url] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline onLoadedMetadata={noterRatio(renduRecent.url)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
+      if (videoUrl && vueApercu === 'video') return { vue: 'video', titre: 'Votre vidéo', ratio: ratiosMedias[videoUrl] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline onLoadedMetadata={noterRatio(videoUrl)} className="w-full h-full object-contain bg-black" /><span className="sr-only">Vidéo prête.</span></> };
+      // ⚠️ Le RENDU RÉCENT garde son ratio réel : un ancien fichier n'est jamais transformé.
+      if (renduRecent && (vueApercu === 'rendu' || !srcVersionActive)) return { vue: 'rendu', titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratiosMedias[renduRecent.url] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline onLoadedMetadata={noterRatio(renduRecent.url)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
+      // APERÇU DU FORMAT CHOISI : la source de l'avatar actif, REMPLISSANT le cadre du
+      // format (recadrée au centre, jamais étirée) — le cadrage que produira la
+      // génération (`fit: cover` chez HeyGen). Lecture privée, aucun fournisseur.
+      if (srcVersionActive && (vueApercu === 'format' || !renduRecent)) return {
+        vue: 'format', titre: `Aperçu ${ratio}`, ratio: ratioFormat, etat: { statut: 'pret' },
+        media: <><video data-avatar-apercu-format={ratio} src={`${srcVersionActive}#t=1`} muted playsInline preload="metadata" className="w-full h-full object-cover bg-black" /><span className="sr-only">{`Aperçu du format ${ratio} : votre avatar recadré pour remplir le cadre, comme à la génération.`}</span></>,
+      };
       return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
     }
     if (etatEffectif === 'entraine_non_valide') {
@@ -1061,6 +1089,33 @@ export default function AvatarPage() {
     // Étapes 2–3 : la source, telle qu'importée.
     return { titre: 'Votre source', ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: !viaDid && etatEffectif === 'entrainement' ? 'Votre avatar est en cours de préparation.' : 'Votre source.' } };
   })();
+  /**
+   * Les onglets de la colonne de droite (avatar prêt) — DANS l'en-tête de la carte
+   * d'aperçu, sans ligne de plus : « Aperçu 9:16 » (le format choisi), « Rendu
+   * récent » (son ratio réel), « Votre vidéo » (celle qui vient d'être générée).
+   */
+  const ongletsApercu = avatar && etatEffectif === 'valide' && !viaDid && (renduRecent || videoUrl) ? (
+    <span role="tablist" aria-label="Aperçu" className="flex flex-wrap items-center gap-1 normal-case tracking-normal">
+      {([
+        ['format', `Aperçu ${ratio}`, !!srcVersionActive],
+        ['rendu', 'Rendu récent', !!renduRecent],
+        ['video', 'Votre vidéo', !!videoUrl],
+      ] as const).filter(([, , ok]) => ok).map(([cle, libelle]) => (
+        <button
+          key={cle}
+          type="button"
+          role="tab"
+          aria-selected={zone.vue === cle}
+          data-avatar-vue-apercu={cle}
+          onClick={() => setVueApercu(cle)}
+          className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${zone.vue === cle ? 'bg-studiio-primary/25 text-purple-100' : 'text-gray-400 hover:text-white'}`}
+        >
+          {libelle}
+          {cle === 'rendu' && <span className="sr-only"> avec cet avatar</span>}
+        </button>
+      ))}
+    </span>
+  ) : undefined;
   const cleValidation = !avatar ? undefined : etatEffectif === 'valide' ? 'valide' : etatEffectif === 'entraine_non_valide' ? 'a-valider' : !viaDid && etatEffectif === 'entrainement' ? 'entrainement' : undefined;
   const cleApercu = etatEffectif === 'entraine_non_valide' && (apercu?.statut === 'en_cours' || apercu?.statut === 'indisponible') ? (apercu.statut === 'en_cours' ? 'en-cours' : 'indisponible') : undefined;
 
@@ -1527,6 +1582,7 @@ export default function AvatarPage() {
                 titre={zone.titre}
                 etat={zone.etat}
                 ratio={zone.ratio}
+                entete={ongletsApercu}
                 className={avatar && etatEffectif === 'valide' && !viaDid ? `${CLASSES_LECTEUR_GENERATION[formatLecteurDepuisRatio(zone.ratio)]} lg:!p-3 lg:!space-y-2` : ''}
               >
                 {zone.media}
@@ -1636,7 +1692,7 @@ export default function AvatarPage() {
                   {(['9:16', '16:9', '1:1'] as const).map((r) => (
                     <button
                       key={r}
-                      onClick={() => setRatio(r)}
+                      onClick={() => { setRatio(r); setVueApercu('format'); }}
                       aria-pressed={ratio === r}
                       className={`flex-1 rounded-lg px-2 py-1.5 text-sm transition ${
                         ratio === r

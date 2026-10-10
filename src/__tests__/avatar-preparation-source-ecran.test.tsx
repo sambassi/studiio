@@ -210,3 +210,40 @@ describe('Préparer ma vidéo — éditeur', () => {
     expect(envoi.appels).toHaveLength(2);
   });
 });
+
+describe('Améliorer — lissage EN DIRECT sur l’image courante de la vidéo', () => {
+  it('⚠️ le curseur redessine l’image courante, lissée, sans aucun appel réseau ; masqué pendant la lecture', async () => {
+    await monter();
+    await act(async () => { envoi.liberer?.(); });
+    await waitFor(() => expect(q('[data-preparation-editeur]')).not.toBeNull());
+    const video = q<HTMLVideoElement>('[data-preparation-video="locale"]')!;
+    Object.defineProperty(video, 'readyState', { configurable: true, value: 4 });
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 1920 });
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 1080 });
+    // Un canvas qui sait lire / écrire des pixels (jsdom n'en a pas).
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: function getContext(this: HTMLCanvasElement) {
+        const l = this.width || 1; const h = this.height || 1;
+        return { drawImage: vi.fn(), getImageData: () => ({ data: new Uint8ClampedArray(l * h * 4).fill(120) }), putImageData: vi.fn() };
+      },
+    });
+    fireEvent.click(q('[data-preparation-section="ameliorer"]')!);
+    const appelsAvant = fetchs.length;
+    for (const v of [40, 80]) {
+      await act(async () => {
+        fireEvent.change(q('[data-curseur-lissage-entree]')!, { target: { value: String(v) } });
+        await new Promise((r) => setTimeout(r, 40));
+      });
+      expect(q('[data-preparation-lissage-direct]')!.getAttribute('data-preparation-lissage-direct')).toBe('visible');
+      expect(q('[data-preparation-lissage-direct]')!.getAttribute('aria-label')).toBe(`Aperçu du lissage à ${v} % sur l’image courante`);
+    }
+    // 0 % : rien à montrer, la vidéo d'origine.
+    await act(async () => {
+      fireEvent.change(q('[data-curseur-lissage-entree]')!, { target: { value: '0' } });
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    expect(q('[data-preparation-lissage-direct]')!.getAttribute('data-preparation-lissage-direct')).toBe('masque');
+    expect(fetchs.length).toBe(appelsAvant);
+  });
+});
