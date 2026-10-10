@@ -144,8 +144,8 @@ describe('Préparer ma vidéo — éditeur', () => {
 
     fireEvent.click(q('[data-preparation-utiliser]')!);
     expect(onPret).toHaveBeenCalledWith(expect.objectContaining({ cleOriginal: CLE_O, cleTraitee: CLE_T2, infos: INFOS_T }));
-    // L'embellissement proposé d'emblée (« Naturel ») part avec les paramètres.
-    expect((onPret.mock.calls[0][0] as { parametres: { amelioration: { embellissement: string } } }).parametres.amelioration.embellissement).toBe('naturel');
+    // Le lissage proposé d'emblée (25 %) part avec les paramètres.
+    expect((onPret.mock.calls[0][0] as { parametres: { amelioration: { lissage: number } } }).parametres.amelioration.lissage).toBe(25);
     // Aucun autre appel : ni fournisseur, ni création d'avatar.
     expect(fetchs.map((f) => f.url)).toEqual(['/api/avatar/sources/traiter', '/api/avatar/sources/traiter']);
   });

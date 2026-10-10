@@ -15,7 +15,7 @@ vi.mock('@/components/avatar/studio/PreparationSource', () => ({
   default: (p: { onPret: (r: unknown) => void }) => (
     <button data-fausse-preparation onClick={() => p.onPret({
       cleOriginal: 'O', cleTraitee: 'T', infos: { largeurEffective: 1920, hauteurEffective: 1080 },
-      parametres: { amelioration: { embellissement: 'doux' } },
+      parametres: { amelioration: { lissage: 50 } },
     })}>prête</button>
   ),
 }));
@@ -33,7 +33,7 @@ import {
 } from '../lib/ui/lecteur-generation';
 import { MOTEUR_PAR_QUALITE, LIBELLE_QUALITE, qualiteParDefaut, qualitesDisponibles, qualitesMonAvatar, QUALITE_PAR_DEFAUT_MON_AVATAR, lireMoteursSupportes } from '../lib/avatar/moteurs';
 import {
-  argumentsFfmpeg, bornerParametres, filtreEmbellissement, NIVEAUX_EMBELLISSEMENT, EMBELLISSEMENT_PAR_DEFAUT, AMELIORATION_NEUTRE,
+  argumentsFfmpeg, bornerParametres, filtreLissage, parametresLissage, LISSAGE_PAR_DEFAUT, REPERES_LISSAGE, AMELIORATION_NEUTRE,
 } from '../lib/avatar/preparation-source-regles';
 
 const ENV = (e: Record<string, string> = {}) => e as unknown as NodeJS.ProcessEnv;
@@ -48,7 +48,8 @@ describe('Progression d’une nouvelle version', () => {
   it('⚠️ chaque état serveur a sa progression : Source ✓ Consentement ✓ puis l’étape réelle', () => {
     expect(etats(progressionVersion({ version: 4, etat: 'preparation' }))).toEqual(['Source:terminee', 'Consentement:terminee', 'Entraînement:courante', 'Aperçu:a_venir', 'Validation:a_venir']);
     const e = progressionVersion({ version: 4, etat: 'entrainement' });
-    expect(e.titre).toBe('Nouvelle version v4');
+    // « v4 » = numéro de VERSION de l'avatar, jamais le moteur « Avatar V ».
+    expect(e.titre).toBe('Nouvelle version de l’avatar (v4)');
     expect(e.statut).toBe('en_cours');
     expect(e.message).toBe('Entraînement de votre avatar en cours…');
     expect(etats(progressionVersion({ version: 4, etat: 'prete', apercu: 'en_cours' }))[3]).toBe('Aperçu:courante');
@@ -164,17 +165,22 @@ describe('Version et qualité', () => {
     expect(MOTEUR_PAR_QUALITE).toEqual({ standard: 'avatar_iii', qualite: 'avatar_iv', premium: 'avatar_v' });
     expect(LIBELLE_QUALITE).toEqual({ standard: 'Standard', qualite: 'Qualité', premium: 'Premium' });
   });
-  it('⚠️ Mon avatar (voix HeyGen) : Qualité/avatar_iv par défaut et recommandée, Standard ouvert, Premium fermé sans confirmation', () => {
+  it('⚠️ Mon avatar : Qualité/Avatar IV par défaut et recommandée, Standard ouvert, Premium = Avatar V « Meilleure qualité »', () => {
     expect(QUALITE_PAR_DEFAUT_MON_AVATAR).toBe('qualite');
-    const q = qualitesMonAvatar(null, ENV());
-    expect(q.map((x) => `${x.qualite}:${x.ouverte}`)).toEqual(['standard:true', 'qualite:true', 'premium:false']);
+    const q = qualitesMonAvatar(null, 'video');
+    expect(q.map((x) => `${x.qualite}:${x.moteurLibelle}:${x.description}:${x.ouverte}`)).toEqual([
+      'standard:Avatar III:Rapide, économique:true', 'qualite:Avatar IV:Recommandé:true', 'premium:Avatar V:Meilleure qualité:false',
+    ]);
     expect(q.find((x) => x.recommandee)?.qualite).toBe('qualite');
-    expect(q[2].motif).toBe('Pas encore ouvert sur Studiio.');
-    // Ouvert par le serveur mais NON confirmé par le fournisseur : toujours fermé, motif dit.
-    expect(qualitesMonAvatar(null, ENV({ AVATAR_MOTEURS_AUTORISES: 'avatar_v' }))[2]).toMatchObject({ ouverte: false, motif: 'Compatibilité de votre avatar non confirmée par le service de génération.' });
-    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv'], ENV({ AVATAR_MOTEURS_AUTORISES: 'avatar_v' }))[2]).toMatchObject({ ouverte: false, motif: 'Non pris en charge par votre avatar.' });
-    // Ouvert ET confirmé (`supported_api_engines`) : Premium s'ouvre.
-    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], ENV({ AVATAR_MOTEURS_AUTORISES: 'avatar_v' }))[2].ouverte).toBe(true);
+    expect(q.find((x) => x.meilleure)?.qualite).toBe('premium');
+  });
+
+  it('⚠️ Premium : la VRAIE raison — jamais « pas encore ouvert » quand HeyGen confirme', () => {
+    expect(qualitesMonAvatar(null, 'video')[2]).toMatchObject({ ouverte: false, motif: 'HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.' });
+    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv'], 'video')[2]).toMatchObject({ ouverte: false, motif: 'Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).' });
+    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], 'photo')[2]).toMatchObject({ ouverte: false, motif: 'Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).' });
+    // Confirmé par HeyGen : ouvert, SANS aucune variable de configuration Studiio.
+    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], 'video')[2]).toMatchObject({ ouverte: true, motif: null });
     expect(lireMoteursSupportes(['avatar_v', 'inconnu', 3])).toEqual(['avatar_v']);
     expect(lireMoteursSupportes(undefined)).toBeNull();
   });
@@ -190,33 +196,45 @@ describe('Version et qualité', () => {
 // 6. Embellir — non destructif, sans géométrie
 // ─────────────────────────────────────────────────────────────────────────
 
-describe('Embellir le visage', () => {
+describe('Lissage du visage — continu, 0 à 100 %', () => {
   const infos = { largeurEffective: 1080, hauteurEffective: 1920 };
   const base = bornerParametres({ debutS: 0, finS: 30 }, 30);
 
-  it('⚠️ quatre niveaux, « Naturel » proposé d’emblée ; une demande muette ou inconnue = AUCUN lissage', () => {
-    expect(NIVEAUX_EMBELLISSEMENT).toEqual(['aucun', 'naturel', 'doux', 'lisse']);
-    expect(EMBELLISSEMENT_PAR_DEFAUT).toBe('naturel');
-    expect(base.amelioration.embellissement).toBe('aucun');
-    expect(bornerParametres({ amelioration: { embellissement: 'remodeler' } as never }, 30).amelioration.embellissement).toBe('aucun');
-    expect(AMELIORATION_NEUTRE.embellissement).toBe('aucun');
+  it('⚠️ 25 % d’emblée ; une demande muette ou illisible = 0 % (aucun lissage non demandé)', () => {
+    expect(LISSAGE_PAR_DEFAUT).toBe(25);
+    expect(base.amelioration.lissage).toBe(0);
+    expect(bornerParametres({ amelioration: { lissage: 'x' } as never }, 30).amelioration.lissage).toBe(0);
+    expect(bornerParametres({ amelioration: { lissage: 140 } as never }, 30).amelioration.lissage).toBe(100);
+    expect(AMELIORATION_NEUTRE.lissage).toBe(0);
   });
 
-  it('⚠️ un seul filtre de lissage (bilatéral), AUCUNE transformation géométrique ajoutée', () => {
+  it('⚠️ CONTINU : rayon et seuil croissent strictement à chaque valeur (10 < 25 < 40 < 60 < 80 < 100) — pas 4 paliers déguisés', () => {
+    const vals = [1, 10, 24, 25, 26, 40, 60, 80, 99, 100].map((l) => parametresLissage(l)!);
+    for (let i = 1; i < vals.length; i += 1) {
+      expect(vals[i].sigmaS).toBeGreaterThan(vals[i - 1].sigmaS);
+      expect(vals[i].sigmaR).toBeGreaterThan(vals[i - 1].sigmaR);
+    }
+    expect(parametresLissage(0)).toBeNull();
+    // Les repères retombent sur les anciens niveaux ; même à 100 %, le seuil reste bas (traits jamais fondus).
+    expect(parametresLissage(25)).toEqual({ sigmaS: 2, sigmaR: 0.04 });
+    expect(parametresLissage(50)).toEqual({ sigmaS: 3, sigmaR: 0.06 });
+    expect(parametresLissage(75)).toEqual({ sigmaS: 4, sigmaR: 0.08 });
+    expect(parametresLissage(100)).toEqual({ sigmaS: 5, sigmaR: 0.1 });
+    expect(REPERES_LISSAGE.map((r) => `${r.valeur}:${r.libelle}`)).toEqual(['0:Aucun', '25:Naturel', '50:Doux', '75:Lissé', '100:Maximum']);
+  });
+
+  it('⚠️ vidéo : un seul filtre bilatéral, AUCUNE transformation géométrique ajoutée', () => {
     const sans = argumentsFfmpeg('in.mp4', 'out.mp4', base, infos);
-    for (const n of ['naturel', 'doux', 'lisse'] as const) {
-      const avec = argumentsFfmpeg('in.mp4', 'out.mp4', bornerParametres({ debutS: 0, finS: 30, amelioration: { embellissement: n } as never }, 30), infos);
+    for (const l of [10, 25, 50, 75, 100]) {
+      const avec = argumentsFfmpeg('in.mp4', 'out.mp4', bornerParametres({ debutS: 0, finS: 30, amelioration: { lissage: l } as never }, 30), infos);
       const vf = avec[avec.indexOf('-vf') + 1];
-      expect(vf).toContain(filtreEmbellissement(n)!);
-      expect(vf.replace(`${filtreEmbellissement(n)!},`, '')).toBe(sans[sans.indexOf('-vf') + 1]);
-      expect(filtreEmbellissement(n)).toMatch(/^bilateral=/);
+      expect(vf.replace(`${filtreLissage(l)!},`, '')).toBe(sans[sans.indexOf('-vf') + 1]);
       expect(vf).not.toMatch(/crop|scale|transpose|perspective|lenscorrection|remap|displace/);
     }
-    expect(filtreEmbellissement('aucun')).toBeNull();
   });
 
-  it('⚠️ non destructif : l’original est l’ENTRÉE, la version embellie une AUTRE sortie', () => {
-    const a = argumentsFfmpeg('original.mp4', 'preparee.mp4', bornerParametres({ debutS: 0, finS: 30, amelioration: { embellissement: 'lisse' } as never }, 30), infos);
+  it('⚠️ non destructif : l’original est l’ENTRÉE, la version lissée une AUTRE sortie', () => {
+    const a = argumentsFfmpeg('original.mp4', 'preparee.mp4', bornerParametres({ debutS: 0, finS: 30, amelioration: { lissage: 100 } as never }, 30), infos);
     expect(a[a.indexOf('-i') + 1]).toBe('original.mp4');
     expect(a[a.length - 1]).toBe('preparee.mp4');
   });
@@ -253,7 +271,7 @@ describe('Mes avatars — progression, historique, choix', () => {
     const { container } = render(<MesAvatars />);
     await waitFor(() => expect(container.querySelector('[data-candidate="en-preparation"]')).not.toBeNull());
     const bloc = container.querySelector('[data-candidate="en-preparation"]')!;
-    expect(bloc.querySelector('[data-progress-titre]')!.textContent).toBe('Nouvelle version v4');
+    expect(bloc.querySelector('[data-progress-titre]')!.textContent).toBe('Nouvelle version de l’avatar (v4)');
     expect(bloc.querySelector('[data-progress-barre]')!.getAttribute('data-progress-barre')).toBe('indeterminee');
     expect([...bloc.querySelectorAll('[data-progress-etape-etat]')].map((e) => e.getAttribute('data-progress-etape-etat'))).toEqual(['terminee', 'terminee', 'courante', 'a_venir', 'a_venir']);
     expect(bloc.textContent).toMatch(/Votre version v3 reste utilisée/);
@@ -342,7 +360,7 @@ describe('Parcours d’une nouvelle source — récapitulatif', () => {
     expect(recap('avatar')).toBe('Mon avatar vidéo');
     expect(recap('source')).toBe('Vidéo importée');
     expect(recap('format')).toBe('16:9 (1920 × 1080)');
-    expect(recap('embellissement')).toBe('Doux');
+    expect(recap('embellissement')).toBe('50 % — Doux');
     expect(recap('qualite')).toBe('Choisie à chaque génération de vidéo');
     expect(container.querySelector('[data-flux-recap-apercu] video')!.getAttribute('src')).toBe('/api/avatar/sources/apercu?cle=T');
     await act(async () => { fireEvent.click(container.querySelector('[data-flux-envoyer]')!); });
@@ -381,13 +399,13 @@ describe('Page Mon avatar', () => {
     appels.length = 0;
     page.statut = 'completed';
     // Ce que le serveur rend réellement : fournisseur non confirmé, aucune configuration.
-    page.qualites = qualitesMonAvatar(null, {} as NodeJS.ProcessEnv);
+    page.qualites = qualitesMonAvatar(null, 'video');
     window.localStorage.clear();
     globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
       const u = String(url);
       appels.push({ url: u, method: init?.method ?? 'GET', corps: init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : null });
       const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body } as unknown as Response);
-      if (u === '/api/avatar/create') return json({ success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'hg1', name: 'Yosef', language: 'French' }], defaultVoiceId: 'hg1', qualites: page.qualites, qualiteParDefaut: QUALITE_PAR_DEFAUT_MON_AVATAR, qualitesVoixClonee: qualitesDisponibles({} as NodeJS.ProcessEnv), qualiteParDefautVoixClonee: 'standard' } });
+      if (u === '/api/avatar/create') return json({ success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'hg1', name: 'Yosef', language: 'French' }], defaultVoiceId: 'hg1', qualites: page.qualites, qualiteParDefaut: QUALITE_PAR_DEFAUT_MON_AVATAR, qualitesVoixClonee: qualitesMonAvatar(null, 'video'), qualiteParDefautVoixClonee: 'standard' } });
       if (u === '/api/avatar/apercu') return json({ success: true, data: { apercu: { statut: 'aucun' }, renduRecent: null } });
       if (u === '/api/avatar/generate') return json({ success: true, data: { generationId: GEN, status: 'pending' } });
       if (u.startsWith('/api/avatar/status?generationId=')) return json({ success: true, data: page.statut === 'completed' ? { status: 'completed', videoUrl: URL_VIDEO } : { status: page.statut } });
@@ -416,22 +434,36 @@ describe('Page Mon avatar', () => {
     expect(cadre()).toBe('9 / 16');
   });
 
-  it('⚠️ qualité : « Qualité » (Avatar IV, le moteur déjà utilisé) présélectionnée et recommandée ; Premium fermé avec son motif', async () => {
+  it('⚠️ « Qualité de génération » : Qualité — Avatar IV présélectionnée ; Premium — Avatar V affiché avec « Meilleure qualité » et sa vraie raison', async () => {
     await monter();
     const choix = document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement;
     const opt = (q: string) => document.querySelector(`[data-avatar-qualite-option="${q}"]`) as HTMLOptionElement;
+    expect(document.querySelector('label[for="avatar-qualite"]')!.textContent).toBe('Qualité de génération');
     expect(choix.value).toBe('qualite');
-    expect(opt('qualite').textContent).toBe('Qualité — recommandé');
-    expect(opt('standard').disabled).toBe(false);
+    expect(opt('standard').textContent).toBe('Standard — Avatar III · rapide, économique');
+    expect(opt('qualite').textContent).toBe('Qualité — Avatar IV · recommandé');
     expect(opt('premium').disabled).toBe(true);
-    // La raison est DITE dans le libellé du niveau fermé.
-    expect(opt('premium').textContent).toBe('Premium — maximale (indisponible : Pas encore ouvert sur Studiio.)');
+    expect(opt('premium').textContent).toBe('Premium — Avatar V · meilleure qualité (indisponible : HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.)');
+    expect(document.querySelector('[data-avatar-premium]')!.getAttribute('data-avatar-premium')).toBe('indisponible');
+    expect(document.querySelector('[data-avatar-premium-badge]')!.textContent).toBe('Meilleure qualité');
     fireEvent.change(document.querySelector('[data-avatar-generation] textarea')!, { target: { value: 'Bonjour.' } });
     await act(async () => { fireEvent.click(document.querySelector('[data-avatar-generer] button')!); });
     await waitFor(() => expect(document.querySelector(`video[src="${URL_VIDEO}"]`)).not.toBeNull());
     expect(appels.find((a) => a.url === '/api/avatar/generate')!.corps).toMatchObject({ qualite: 'qualite' });
-    // Succès clair, étapes toutes franchies.
     expect(document.querySelector('[data-avatar-generation-progression="completed"]')).not.toBeNull();
+  });
+
+  it('⚠️ Premium CONFIRMÉ par HeyGen : sélectionnable d’un clic, et « premium » part au serveur', async () => {
+    page.qualites = qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], 'video');
+    await monter();
+    expect(document.querySelector('[data-avatar-premium]')!.getAttribute('data-avatar-premium')).toBe('disponible');
+    fireEvent.click(document.querySelector('[data-avatar-premium-choisir]')!);
+    expect((document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement).value).toBe('premium');
+    expect(document.querySelector('[data-avatar-premium]')!.getAttribute('data-avatar-premium')).toBe('selectionne');
+    fireEvent.change(document.querySelector('[data-avatar-generation] textarea')!, { target: { value: 'Bonjour.' } });
+    await act(async () => { fireEvent.click(document.querySelector('[data-avatar-generer] button')!); });
+    await waitFor(() => expect(appels.some((a) => a.url === '/api/avatar/generate')).toBe(true));
+    expect(appels.find((a) => a.url === '/api/avatar/generate')!.corps).toMatchObject({ qualite: 'premium' });
   });
 
   it('⚠️ Standard reste sélectionnable et part tel quel', async () => {

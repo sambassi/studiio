@@ -62,3 +62,13 @@ export function hauteurLecteur(format: FormatLecteur, hauteurEcranPx: number, la
   const largeur = Math.min(largeurColonnePx, Math.max(LECTEUR_PAYSAGE_MIN_PX, (libre * 16) / 9));
   return (largeur * 9) / 16;
 }
+
+/**
+ * Le format de lecteur le plus proche d'un ratio CSS (`'720 / 1280'`) : la
+ * classe de taille qui garde « Générer la vidéo » à l'écran pour CE média.
+ */
+export function formatLecteurDepuisRatio(ratio: string): FormatLecteur {
+  const m = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(ratio);
+  const r = m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : 9 / 16;
+  return r < 0.8 ? '9:16' : r > 1.25 ? '16:9' : '1:1';
+}

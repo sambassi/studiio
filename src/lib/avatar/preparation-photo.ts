@@ -6,7 +6,6 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { cheminFfmpeg } from '@/lib/ffmpeg/binaires';
 import { argumentsFfmpegPhoto, PROTECTIONS_ENTREE_PHOTO } from '@/lib/avatar/preparation-photo-regles';
-import type { NiveauEmbellissement } from '@/lib/avatar/preparation-source-regles';
 
 export * from '@/lib/avatar/preparation-photo-regles';
 
@@ -15,8 +14,8 @@ const executer = promisify(execFile);
 export const DELAI_FFMPEG_PHOTO_MS = 60_000;
 
 /** Produit la photo EMBELLIE dans `sortie` (JPEG). L'entrée n'est jamais modifiée. */
-export async function traiterPhoto(entree: string, sortie: string, niveau: NiveauEmbellissement, orientation: number): Promise<void> {
-  const args = argumentsFfmpegPhoto(entree, sortie, niveau, orientation);
+export async function traiterPhoto(entree: string, sortie: string, lissage: number, orientation: number): Promise<void> {
+  const args = argumentsFfmpegPhoto(entree, sortie, lissage, orientation);
   // Les protections d'entrée AVANT `-i` (options d'entrée), après les options globales.
   const i = args.indexOf('-noautorotate');
   await executer(cheminFfmpeg(), [...args.slice(0, i), ...PROTECTIONS_ENTREE_PHOTO, ...args.slice(i)], {

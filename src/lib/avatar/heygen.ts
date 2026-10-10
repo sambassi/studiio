@@ -372,24 +372,42 @@ export async function getAvatarTrainingStatus(
  * suppose JAMAIS un moteur supporté. Mémorisé 10 min par look (une lecture par
  * ouverture de page au plus, pas une par clic).
  */
-const CACHE_MOTEURS_LOOK = new Map<string, { moteurs: MoteurAvatar[] | null; expire: number }>();
-export async function moteursSupportesDuLook(lookId: string, maintenant = Date.now()): Promise<MoteurAvatar[] | null> {
-  if (!lookId) return null;
-  const memo = CACHE_MOTEURS_LOOK.get(lookId);
-  if (memo && memo.expire > maintenant) return memo.moteurs;
-  let moteurs: MoteurAvatar[] | null = null;
+/** L'orientation native d'un look (`preferred_orientation`), `null` si HeyGen ne la dit pas. */
+export type OrientationLook = 'portrait' | 'landscape' | 'square';
+export interface InfosLook { moteurs: MoteurAvatar[] | null; orientation: OrientationLook | null }
+const CACHE_LOOKS = new Map<string, { infos: InfosLook; expire: number }>();
+
+/**
+ * Ce que HeyGen dit d'un look : moteurs supportés et orientation native —
+ * UNE lecture gratuite, mémorisée 10 min (1 min si elle échoue). Jamais lève.
+ */
+export async function infosDuLook(lookId: string, maintenant = Date.now()): Promise<InfosLook> {
+  const vide: InfosLook = { moteurs: null, orientation: null };
+  if (!lookId) return vide;
+  const memo = CACHE_LOOKS.get(lookId);
+  if (memo && memo.expire > maintenant) return memo.infos;
+  let infos = vide;
   try {
-    const data = await heygenFetch<{ supported_api_engines?: unknown; avatar_item?: { supported_api_engines?: unknown } }>(
+    type Look = { supported_api_engines?: unknown; preferred_orientation?: unknown };
+    const data = await heygenFetch<Look & { avatar_item?: Look }>(
       `/v3/avatars/looks/${encodeURIComponent(lookId)}`, { method: 'GET', timeoutMs: 10_000 },
     );
-    moteurs = lireMoteursSupportes(data?.supported_api_engines ?? data?.avatar_item?.supported_api_engines);
+    const item: Look = data?.supported_api_engines !== undefined ? data : (data?.avatar_item ?? data);
+    const o = item?.preferred_orientation;
+    infos = {
+      moteurs: lireMoteursSupportes(item?.supported_api_engines),
+      orientation: o === 'portrait' || o === 'landscape' || o === 'square' ? o : null,
+    };
   } catch (err) {
-    console.warn(`[Avatar][HeyGen] Moteurs du look ${lookId} illisibles :`, err instanceof Error ? err.message : err);
-    moteurs = null;
+    console.warn(`[Avatar][HeyGen] Look ${lookId} illisible :`, err instanceof Error ? err.message : err);
   }
-  // Un échec n'est mémorisé qu'une minute : on retentera vite.
-  CACHE_MOTEURS_LOOK.set(lookId, { moteurs, expire: maintenant + (moteurs ? 10 : 1) * 60_000 });
-  return moteurs;
+  CACHE_LOOKS.set(lookId, { infos, expire: maintenant + (infos.moteurs ? 10 : 1) * 60_000 });
+  return infos;
+}
+
+/** Les moteurs que HeyGen CONFIRME pour un look (`supported_api_engines`) ; `null` si inconnu. */
+export async function moteursSupportesDuLook(lookId: string, maintenant = Date.now()): Promise<MoteurAvatar[] | null> {
+  return (await infosDuLook(lookId, maintenant)).moteurs;
 }
 
 /** Compatibilite : ancienne signature, ne renvoie que la chaine de statut. */
@@ -419,7 +437,17 @@ export interface GenerateVideoParams {
    * `engine`), exactement comme avant.
    */
   moteur?: MoteurAvatar;
+  /**
+   * Cadrage de l'avatar dans le format demandé (`fit` de POST /v3/videos) :
+   * `cover` REMPLIT le cadre (rogne les bords, jamais de bandes, jamais
+   * d'étirement). Absent = corps INCHANGÉ : HeyGen choisit, et pose des
+   * bandes quand l'avatar et le format n'ont pas la même orientation.
+   */
+  cadrage?: CadrageAvatar;
 }
+
+/** `fit` de POST /v3/videos (documentation HeyGen, « create-video »). */
+export type CadrageAvatar = 'cover' | 'contain';
 
 /**
  * POST /v3/videos — lance la generation. Retourne immediatement un video_id ;
@@ -428,7 +456,7 @@ export interface GenerateVideoParams {
 export async function generateAvatarVideo(
   params: GenerateVideoParams,
 ): Promise<{ videoId: string; status: string }> {
-  const { avatarId, script, voiceId, aspectRatio = '9:16', moteur } = params;
+  const { avatarId, script, voiceId, aspectRatio = '9:16', moteur, cadrage } = params;
 
   if (!voiceId || !voiceId.trim()) {
     // Garde-fou : on prefere une erreur explicite a un 400 HeyGen garanti.
@@ -449,6 +477,7 @@ export async function generateAvatarVideo(
     resolution: '720p',
     output_format: 'mp4',
     ...(moteur ? { engine: { type: moteur } } : {}),
+    ...(cadrage ? { fit: cadrage } : {}),
   };
 
   // Trace de la requete sortante : couplee au log d'erreur de heygenFetch,
@@ -505,8 +534,10 @@ export async function generateAvatarVideoFromAudio(params: {
   aspectRatio?: AvatarAspectRatio;
   /** Moteur choisi pour CETTE génération (déjà autorisé par l'appelant) ; défaut serveur sinon. */
   moteur?: MoteurAvatar;
+  /** `fit` de la vidéo ; absent = corps inchangé (HeyGen choisit). */
+  cadrage?: CadrageAvatar;
 }): Promise<{ videoId: string; status: string }> {
-  const { avatarId, audioAssetId, aspectRatio = '9:16', moteur = moteurAvatar() } = params;
+  const { avatarId, audioAssetId, aspectRatio = '9:16', moteur = moteurAvatar(), cadrage } = params;
   if (!audioAssetId || !audioAssetId.trim()) {
     throw new HeyGenError("Aucun audio fourni pour animer l'avatar.", 400, 'no_audio_asset');
   }
@@ -518,6 +549,7 @@ export async function generateAvatarVideoFromAudio(params: {
     resolution: '720p',
     output_format: 'mp4',
     engine: { type: moteur },
+    ...(cadrage ? { fit: cadrage } : {}),
   };
   console.log('[Avatar][HeyGen] POST /v3/videos (audio externe) payload', JSON.stringify(body));
   const data = await heygenFetch<{ video_id?: string; id?: string; status?: string }>(

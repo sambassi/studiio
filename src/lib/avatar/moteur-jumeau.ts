@@ -64,9 +64,9 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
 import { referenceOperation } from '@/lib/credits/atomique';
 import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
-import { uploadAsset, generateAvatarVideoFromAudio, HeyGenError, type AvatarAspectRatio } from '@/lib/avatar/heygen';
+import { uploadAsset, generateAvatarVideoFromAudio, moteursSupportesDuLook, HeyGenError, type AvatarAspectRatio } from '@/lib/avatar/heygen';
 import { resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponiblePour, type MotifJumeau } from '@/lib/avatar/jumeau';
-import { moteurPourGeneration } from '@/lib/avatar/moteurs';
+import { moteurPourMonAvatar, motifPremium } from '@/lib/avatar/moteurs';
 import { animerAvatarDidSurMaVoix, FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { synthetiserAvecVoix, cleElevenLabs } from '@/lib/voice/synthese';
 
@@ -118,13 +118,20 @@ export async function genererVideoJumeau(
     voixId?: string | null;
     /** Qualité de rendu demandée ; le moteur est décidé ICI, jamais par le navigateur. */
     qualite?: unknown;
+    /**
+     * `remplir` : le format demandé est REMPLI (`fit: cover` chez HeyGen — pas de
+     * bandes dans le fichier, pas d'étirement). Absent = comportement d'avant
+     * (Créer, Autopilote) : HeyGen choisit.
+     */
+    cadrage?: 'remplir';
   },
   deps: DepsMoteurJumeau = {},
 ): Promise<ResultatMoteurJumeau> {
   const env = deps.env ?? process.env;
 
-  // 0. La qualité, AVANT tout débit : une qualité non ouverte est refusée.
-  const choixMoteur = moteurPourGeneration(args.qualite, env);
+  // 0. La qualité, AVANT tout débit : une qualité inconnue est refusée. Avatar V
+  //    n'est accepté que sous réserve — confirmé par HeyGen plus bas, avant tout débit.
+  const choixMoteur = moteurPourMonAvatar(args.qualite, env);
   if (!choixMoteur.ok) return { ok: false, motif: 'moteur_indisponible', message: choixMoteur.message };
 
   // 1. Le jumeau, relu maintenant — la VERSION ACTIVE de l'identité choisie.
@@ -153,6 +160,16 @@ export async function genererVideoJumeau(
     if (jumeau.prive.consentementJumeau !== 'accepted') {
       return { ok: false, motif: 'moteur_indisponible', message: MESSAGES_CREATION.consentementRequis };
     }
+  }
+
+  // 1 ter. Avatar V : seulement si HeyGen le CONFIRME pour CE look (lecture
+  //        gratuite, mémorisée) — sinon refus avec la vraie raison, avant tout débit.
+  if (choixMoteur.verifierFournisseur) {
+    const supportes = fournisseur === 'heygen' && jumeau.prive.typeAvatar === 'video'
+      ? await moteursSupportesDuLook(jumeau.prive.providerAvatarId)
+      : null;
+    const motif = motifPremium(fournisseur === 'heygen' ? jumeau.prive.typeAvatar : 'autre', supportes);
+    if (motif) return { ok: false, motif: 'moteur_indisponible', message: motif };
   }
 
   // 2. Les textes : DISPLAY intact, SPOKEN pour la voix.
@@ -296,7 +313,10 @@ export async function genererVideoJumeau(
   // 6. L'audio chez HeyGen, puis l'avatar animé sur CET audio.
   try {
     const asset = await uploadAsset(new Blob([new Uint8Array(synthese.audio)], { type: synthese.contentType }), 'jumeau.mp3');
-    const video = await generateAvatarVideoFromAudio({ avatarId: jumeau.prive.providerAvatarId, audioAssetId: asset.assetId, aspectRatio, moteur: choixMoteur.moteur });
+    const video = await generateAvatarVideoFromAudio({
+      avatarId: jumeau.prive.providerAvatarId, audioAssetId: asset.assetId, aspectRatio, moteur: choixMoteur.moteur,
+      ...(args.cadrage === 'remplir' ? { cadrage: 'cover' as const } : {}),
+    });
     const erreurMaj = await enregistrerLancement(generationId, args.userId, video.videoId, video.status === 'completed' ? 'processing' : 'pending');
     if (erreurMaj) {
       // La vidéo est lancée et facturée : on ne rembourse pas, on trace — et

@@ -104,7 +104,8 @@ describe('Mon avatar — « Ma voix » dans le sélecteur', () => {
     await waitFor(() => expect(document.querySelector(`video[src="${URL_JUMEAU}"]`)).not.toBeNull());
     expect(posts()).toEqual(['/api/creer/jumeau/generer']);
     const corps = appels.find((a) => a.url === '/api/creer/jumeau/generer')!.corps as Record<string, unknown>;
-    expect(corps).toEqual({ textes: ['Bonjour, je suis Bassi.'], aspectRatio: '9:16', avatarId: A, voixId: BASSI });
+    // `cadrage: 'remplir'` : le format choisi est rempli par HeyGen (aucune bande dans le fichier).
+    expect(corps).toEqual({ textes: ['Bonjour, je suis Bassi.'], aspectRatio: '9:16', avatarId: A, voixId: BASSI, cadrage: 'remplir' });
     // L'identifiant du COMPTE (user_voices.id), jamais un identifiant fournisseur.
     expect(JSON.stringify(corps)).not.toContain('elevenlabs');
   });

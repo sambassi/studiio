@@ -49,8 +49,8 @@ describe('Lecteur de génération — taille et budget de hauteur', () => {
 
   it('la page pose bien cette classe sur la zone d’aperçu quand le formulaire de génération est affiché', () => {
     const page = readFileSync(resolve(__dirname, '../app/dashboard/avatar/page.tsx'), 'utf-8');
-    expect(page).toContain("import { CLASSES_LECTEUR_GENERATION, ratioCadre } from '@/lib/ui/lecteur-generation';");
+    expect(page).toContain("import { CLASSES_LECTEUR_GENERATION, ratioCadre, formatLecteurDepuisRatio } from '@/lib/ui/lecteur-generation';");
     // La classe du FORMAT CHOISI (9:16 garde exactement `CLASSE_LECTEUR_GENERATION`).
-    expect(page).toContain("className={avatar && etatEffectif === 'valide' && !viaDid ? `${CLASSES_LECTEUR_GENERATION[ratio]} lg:!p-3 lg:!space-y-2` : ''}");
+    expect(page).toContain("className={avatar && etatEffectif === 'valide' && !viaDid ? `${CLASSES_LECTEUR_GENERATION[formatLecteurDepuisRatio(zone.ratio)]} lg:!p-3 lg:!space-y-2` : ''}");
   });
 });
