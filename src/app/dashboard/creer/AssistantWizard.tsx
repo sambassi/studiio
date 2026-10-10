@@ -11048,7 +11048,7 @@ export default function AssistantWizard() {
                                 if (from) moveSequence(from, seq.key);
                                 setDragKey(null);
                               }}
-                              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 transition ${
+                              className={`flex flex-wrap sm:flex-nowrap items-center gap-3 rounded-xl px-3 py-2.5 transition ${
                                 dragKey === seq.key ? 'opacity-40' : ''
                               } ${
                                 seq.enabled
@@ -11098,7 +11098,10 @@ export default function AssistantWizard() {
                                   televersement et de re-selection d'un fichier
                                   deja envoye, comme dans le panneau audio. */}
                               {isVideo && (
-                                <div className="flex items-center gap-1 flex-shrink-0">
+                                // Mobile : les gestes du rush passent sur leur propre ligne (et
+                                // s'y replient) — sur une ligne, ils écrasaient le libellé et
+                                // sortaient de l'écran à 390 px.
+                                <div data-rush-actions className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-1 flex-shrink-0 basis-full order-last sm:basis-auto sm:order-none">
                                   <button
                                     type="button"
                                     onClick={() => { rushAjoutRef.current = false; setRushLibOpen(true); }}
