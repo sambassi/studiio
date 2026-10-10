@@ -6,14 +6,16 @@ import {
   Eraser, Wand2, Paintbrush, ArrowUpCircle, Video, Image as ImageIcon,
   Layers, Maximize, ScanText, Loader2,
 } from 'lucide-react';
+import { CLE_ACTION_IA, TARIFS_DEFAUT, type GrilleTarifs } from '@/lib/tarifs/catalogue';
+import { useTarifs } from '@/lib/tarifs/client';
 
 /**
  * Outils IA d'image — catalogue PARTAGE et composant autonome.
  *
- * Le catalogue (`AI_TOOLS`) vit ici et nulle part ailleurs : c'est lui qui
- * porte le COUT EN CREDITS de chaque action. Deux copies finiraient par
- * annoncer des tarifs differents selon l'ecran, et l'un des deux mentirait.
- * `ImageEditorPanel` le lit desormais d'ici.
+ * Le catalogue (`AI_TOOLS`) vit ici et nulle part ailleurs : `ImageEditorPanel`
+ * le lit d'ici. Le PRIX, lui, vient de la grille tarifaire centrale — celle
+ * que debite `/api/ai/image` (`prixOutilIa`, via `CLE_ACTION_IA`) ; `credits`
+ * n'est que le prix de repli, affiche pendant le chargement de la grille.
  *
  * Le composant, lui, ne connait qu'une image et un moyen de rendre le
  * resultat : il ne depend d'aucun `SequenceBackgroundConfig`. C'est ce qui le
@@ -36,21 +38,29 @@ export interface AiToolDef {
   promptPlaceholder?: string;
   /** A-t-il besoin d'un style ? */
   needsStyle?: boolean;
-  /** Cout en credits — la SEULE source, pour tous les ecrans. */
+  /** Prix de REPLI (grille par defaut) — l'ecran affiche `prixOutilIa`. */
   credits: number;
 }
 
+const repli = (action: AiAction): number => TARIFS_DEFAUT[CLE_ACTION_IA[action]];
+
+/** Le prix d'une action IA dans la grille centrale (le meme que le debit serveur). */
+export function prixOutilIa(prix: GrilleTarifs, action: AiAction): number {
+  const cle = CLE_ACTION_IA[action];
+  return cle ? prix[cle] : repli(action);
+}
+
 export const AI_TOOLS: AiToolDef[] = [
-  { action: 'remove-bg', label: 'Effacer arrière-plan', icon: <Eraser size={11} />, needsImage: true, needsPrompt: false, credits: 2 },
-  { action: 'magic-eraser', label: 'Gomme magique', icon: <Wand2 size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Que voulez-vous effacer ? (ex: la personne, le texte…)', credits: 3 },
-  { action: 'magic-edit', label: 'Édition magique', icon: <Paintbrush size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Décrivez la modification (ex: changer le ciel en coucher de soleil)', credits: 5 },
-  { action: 'upscale', label: 'Augmenter résolution', icon: <ArrowUpCircle size={11} />, needsImage: true, needsPrompt: false, credits: 3 },
-  { action: 'image-to-video', label: "D'image à vidéo", icon: <Video size={11} />, needsImage: true, needsPrompt: false, credits: 15 },
-  { action: 'generate-bg', label: 'Générer arrière-plan', icon: <ImageIcon size={11} />, needsImage: false, needsPrompt: true, promptPlaceholder: 'Décrivez le fond (ex: gym moderne sombre avec néons violets)', credits: 5 },
-  { action: 'magic-layers', label: 'Calques magiques', icon: <Layers size={11} />, needsImage: true, needsPrompt: false, credits: 3 },
-  { action: 'style-transfer', label: 'Transfert de style', icon: <Maximize size={11} />, needsImage: true, needsPrompt: false, needsStyle: true, credits: 5 },
+  { action: 'remove-bg', label: 'Effacer arrière-plan', icon: <Eraser size={11} />, needsImage: true, needsPrompt: false, credits: repli('remove-bg') },
+  { action: 'magic-eraser', label: 'Gomme magique', icon: <Wand2 size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Que voulez-vous effacer ? (ex: la personne, le texte…)', credits: repli('magic-eraser') },
+  { action: 'magic-edit', label: 'Édition magique', icon: <Paintbrush size={11} />, needsImage: true, needsPrompt: true, promptPlaceholder: 'Décrivez la modification (ex: changer le ciel en coucher de soleil)', credits: repli('magic-edit') },
+  { action: 'upscale', label: 'Augmenter résolution', icon: <ArrowUpCircle size={11} />, needsImage: true, needsPrompt: false, credits: repli('upscale') },
+  { action: 'image-to-video', label: "D'image à vidéo", icon: <Video size={11} />, needsImage: true, needsPrompt: false, credits: repli('image-to-video') },
+  { action: 'generate-bg', label: 'Générer arrière-plan', icon: <ImageIcon size={11} />, needsImage: false, needsPrompt: true, promptPlaceholder: 'Décrivez le fond (ex: gym moderne sombre avec néons violets)', credits: repli('generate-bg') },
+  { action: 'magic-layers', label: 'Calques magiques', icon: <Layers size={11} />, needsImage: true, needsPrompt: false, credits: repli('magic-layers') },
+  { action: 'style-transfer', label: 'Transfert de style', icon: <Maximize size={11} />, needsImage: true, needsPrompt: false, needsStyle: true, credits: repli('style-transfer') },
   // Seul outil dont le resultat est du TEXTE : il ne remplace pas l'image.
-  { action: 'ocr', label: 'Capture de texte', icon: <ScanText size={11} />, needsImage: true, needsPrompt: false, credits: 1 },
+  { action: 'ocr', label: 'Capture de texte', icon: <ScanText size={11} />, needsImage: true, needsPrompt: false, credits: repli('ocr') },
 ];
 
 export const STYLE_PRESETS = [
@@ -98,6 +108,8 @@ export default function AiImageTools({
   const [style, setStyle] = useState<string>(STYLE_PRESETS[0].value);
 
   const outils = AI_TOOLS.filter((t) => actions.includes(t.action));
+  const { prix } = useTarifs();
+  const prixOutil = (tool: AiToolDef) => prixOutilIa(prix, tool.action);
 
   const lancer = useCallback(async (tool: AiToolDef, consigne?: string, styleChoisi?: string) => {
     if (tool.needsImage && !imageUrl) {
@@ -143,13 +155,13 @@ export default function AiImageTools({
         throw new Error('Aucune image renvoyée.');
       }
       onImageResult(data.resultUrl);
-      showToast(`${tool.label} terminé (${data.creditsUsed ?? tool.credits} cr.)`, 'success');
+      showToast(`${tool.label} terminé (${data.creditsUsed ?? prixOutilIa(prix, tool.action)} cr.)`, 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Traitement IA impossible.', 'error');
     } finally {
       setLoading(null);
     }
-  }, [imageUrl, onImageResult, showToast]);
+  }, [imageUrl, onImageResult, showToast, prix]);
 
   const enCours = loading !== null;
 
@@ -168,7 +180,7 @@ export default function AiImageTools({
               title={
                 tool.needsImage && !imageUrl
                   ? 'Choisissez d’abord une photo d’affiche'
-                  : `${tool.label} — ${tool.credits} crédits`
+                  : `${tool.label} — ${prixOutil(tool)} crédits`
               }
               aria-busy={loading === tool.action || undefined}
               // Une ACTION ponctuelle : survol, appui, focus et chargement
@@ -180,7 +192,7 @@ export default function AiImageTools({
                 <span className="truncate">{tool.label}</span>
               </span>
               {/* Le cout est annonce AVANT le clic — comme dans l'editeur avance. */}
-              <span className="text-[10px] text-gray-500 shrink-0">{tool.credits} cr.</span>
+              <span className="text-[10px] text-gray-500 shrink-0">{prixOutil(tool)} cr.</span>
             </button>
           );
         })}
@@ -221,7 +233,7 @@ export default function AiImageTools({
                 data-ai-confirm
                 className="flex-1 rounded-lg bg-purple-600/30 text-purple-100 ring-1 ring-purple-500/40 px-2 py-1.5 text-[11px] hover:bg-purple-600/40 disabled:opacity-40 disabled:cursor-not-allowed transition"
               >
-                Lancer ({tool.credits} cr.)
+                Lancer ({prixOutil(tool)} cr.)
               </button>
               <button
                 type="button"

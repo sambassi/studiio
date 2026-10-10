@@ -192,7 +192,7 @@ import {
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
-import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
+import { useTarifs } from '@/lib/tarifs/client';
 import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee } from '@/lib/avatar/identite';
 import {
   DRAFT_VERSION,
@@ -844,7 +844,7 @@ const DEFAULT_TEXT_STYLES: {
   },
 };
 
-/** Coût du rendu, aligné sur l'éditeur (RENDER_COSTS). */
+/** Coût du rendu, aligné sur l'éditeur (tarifs serveur `tarifs_rendu`). */
 const COST = { reel: 10, tv: 15 } as const;
 
 type Format = '9:16' | '1:1' | '16:9';
@@ -3927,10 +3927,12 @@ export default function AssistantWizard() {
    * L'intention « jumeau » : 'aucun' (parcours normal), 'voix' (ma voix
    * clonée narre Titre/Cartes/CTA — posée dans `ttsVoiceId` par le bloc),
    * 'avatar' (mon avatar parlant devient la séquence « Vidéo » à l'envoi,
-   * AVATAR_VIDEO_COST en plus). Une intention seulement : le serveur relit
-   * tout avant d'y donner suite.
+   * le tarif `avatar.jumeau` en plus). Une intention seulement : le serveur
+   * relit tout avant d'y donner suite.
    */
   const [jumeauMode, setJumeauMode] = useState<JumeauMode>('aucun');
+  /** Le prix du jumeau, lu dans la grille centrale (celle que débite le serveur ; repli 40). */
+  const coutJumeau = useTarifs().prix['avatar.jumeau'];
   /** Ce que la vidéo du jumeau est devenue : placée dans la séquence « Vidéo ». */
   const [jumeauNotice, setJumeauNotice] = useState<string | null>(null);
   /**
@@ -7703,12 +7705,12 @@ export default function AssistantWizard() {
       setRenderTarget(null);
       return;
     }
-    // Le jumeau se paie a part, au tarif serveur d'une video avatar
-    // (AVATAR_VIDEO_COST, le meme que /api/avatar/generate) : compte ICI pour
+    // Le jumeau se paie a part, au tarif `avatar.jumeau` de la grille
+    // centrale (le meme que debite le moteur du jumeau) : compte ICI pour
     // que le solde soit verifie sur le total AVANT de produire quoi que ce
     // soit. Sans cela, la video du jumeau pouvait etre payee, puis le montage
     // refuse pour solde insuffisant.
-    const coutTotal = batchCost(cost, total) + (jumeauMode === 'avatar' ? AVATAR_VIDEO_COST : 0);
+    const coutTotal = batchCost(cost, total) + (jumeauMode === 'avatar' ? coutJumeau : 0);
     const baseDate = scheduledDate ? new Date(`${scheduledDate}T12:00:00`) : new Date();
     const dates = batchDates(Number.isNaN(baseDate.getTime()) ? new Date() : baseDate, total);
 
@@ -9423,7 +9425,7 @@ export default function AssistantWizard() {
             <span className="flex-1">
               {AVERTISSEMENT_ANCIENNE_VERSION}
               <span className="block text-[12px] text-amber-100/90 mt-0.5">
-                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}. Régénérer produit une nouvelle vidéo ({AVATAR_VIDEO_COST} crédits).
+                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}. Régénérer produit une nouvelle vidéo ({coutJumeau} crédits).
               </span>
             </span>
             <div className="flex flex-col items-end gap-1.5">
@@ -9699,7 +9701,7 @@ export default function AssistantWizard() {
                   textes={{ titre: sequenceVoices.titre.text, cartes: sequenceVoices.cartes.text, video: sequenceVoices.video.text, cta: sequenceVoices.cta.text }}
                   voixCourante={ttsVoiceId}
                   onVoixJumeau={setTtsVoiceId}
-                  coutAvatar={AVATAR_VIDEO_COST}
+                  coutAvatar={coutJumeau}
                   avatarId={jumeauAvatarId}
                   onAvatarIdChange={setJumeauAvatarId}
                 />

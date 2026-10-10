@@ -10,6 +10,8 @@ import { extractText } from '@/lib/ai/extract-text';
 import { erreurReplicateSanitisee } from '@/lib/ai/replicate-erreur';
 import { construirePromptImage } from '@/lib/ai/prompt-image';
 import { detecterSignatureImage, MAX_AFFICHE_IA_BYTES } from '@/lib/storage/image-signature';
+import { CLE_ACTION_IA } from '@/lib/tarifs/catalogue';
+import { prixDe } from '@/lib/tarifs/serveur';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120; // AI models can take up to 2 min
@@ -43,18 +45,15 @@ class ErreurAfficheIA extends Error {
 }
 
 // ── Credit costs per AI action ──
-const AI_CREDITS: Record<string, number> = {
-  'remove-bg': 2,
-  'magic-eraser': 3,
-  'magic-edit': 5,
-  'upscale': 3,
-  'image-to-video': 15,
-  'generate-bg': 5,
-  'magic-layers': 3,
-  'style-transfer': 5,
-  // OCR : modele CPU a ~0,0003 $ le run, de loin le moins cher du lot.
-  'ocr': 1,
-};
+//
+// ⚠️ LE PRIX VIENT DE LA GRILLE TARIFAIRE CENTRALE (`prixDe`). Les actions
+// valides sont celles du catalogue (`CLE_ACTION_IA`) ; le prix d'une action
+// est lu UNE fois par requête, avant le contrôle du solde, et ce même nombre
+// sert au 402, au débit et à `creditsUsed`. Sans configuration admin, la
+// grille rend les prix d'avant (2/3/5/3/15/5/3/5/1). L'OCR, modèle CPU à
+// ~0,0003 $ le run, reste le moins cher du lot.
+const estActionIA = (action: unknown): action is string =>
+  typeof action === 'string' && Object.prototype.hasOwnProperty.call(CLE_ACTION_IA, action);
 
 // ── Replicate model IDs ──
 // Community models need version hash (owner/model:hash), Official models don't
@@ -327,7 +326,7 @@ export async function POST(req: NextRequest) {
 
     const { action, imageUrl, prompt, style, format } = await req.json();
 
-    if (!action || !AI_CREDITS[action]) {
+    if (!estActionIA(action)) {
       return NextResponse.json({ success: false, error: 'Action invalide' }, { status: 400 });
     }
 
@@ -357,9 +356,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check credits
+    // Check credits — le prix est lu UNE fois, ici : le 402, le débit et
+    // `creditsUsed` utilisent ce même nombre.
+    const cost = await prixDe(CLE_ACTION_IA[action]);
     const credits = await getUserCredits(session.user.id);
-    const cost = AI_CREDITS[action];
     if (credits < cost) {
       return NextResponse.json({
         success: false,

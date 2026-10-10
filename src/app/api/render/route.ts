@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
-import { RENDER_COSTS } from '@/lib/stripe/constants';
+import { coutRenduVideo } from '@/lib/credits/system';
 
 // Dynamic imports to avoid webpack bundling issues with @remotion/bundler
 const loadRenderWorker = () => import('@/lib/render/worker');
@@ -84,9 +84,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Check credits
-    const creditCost = format === 'tv' ? RENDER_COSTS.tv : RENDER_COSTS.reel;
+    // Prix lu UNE fois dans la grille tarifaire centrale (10 / 15 / 25 sans configuration).
     const isInfographic = composition.startsWith('Infographic');
-    const actualCost = isInfographic ? 25 : creditCost;
+    const actualCost = await coutRenduVideo(isInfographic ? 'infographic' : format === 'tv' ? 'tv' : 'reel');
 
     const { data: user, error: userError } = await supabase
       .from('users')

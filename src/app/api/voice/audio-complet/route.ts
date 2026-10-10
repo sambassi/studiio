@@ -1,7 +1,8 @@
 /**
  * POST /api/voice/audio-complet — « Générer l'audio complet » avec LA voix
- * personnelle du compte. Opération autonome et PAYANTE : 1 crédit Studiio
- * par bloc entamé de 1000 caractères (`coutAudioComplet`), 0 pour un
+ * personnelle du compte. Opération autonome et PAYANTE : le tarif
+ * `audio.full_1000_chars` de la grille centrale (1 sans configuration) par
+ * bloc entamé de 1000 caractères (`coutAudioComplet`), 0 pour un
  * administrateur. La pré-écoute (`/api/voice/ecoute`) reste gratuite.
  *
  * Le navigateur envoie `{ texte }` et RIEN d'autre : un champ de coût, de
@@ -28,6 +29,7 @@ import { referenceOperation } from '@/lib/credits/atomique';
 import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 import { CHAMPS_INTERDITS_FACTURATION } from '@/lib/facturation/politique';
 import { uploadBufferToStorage, deleteFromStorage } from '@/lib/storage/upload';
+import { prixDe } from '@/lib/tarifs/serveur';
 import {
   MAX_CARACTERES_AUDIO_COMPLET, coutAudioComplet, messageCreditsInsuffisants,
   MESSAGE_TEXTE_AUDIO_COMPLET_VIDE, MESSAGE_TEXTE_AUDIO_COMPLET_TROP_LONG,
@@ -79,7 +81,8 @@ export async function POST(req: NextRequest) {
   // Garde du fournisseur : les prononciations allongent un peu le texte, jamais du double.
   if (spoken.length > MAX_CARACTERES_AUDIO_COMPLET * 2) return repondre(refus(400, MESSAGE_TEXTE_AUDIO_COMPLET_TROP_LONG, 'texte_trop_long'));
 
-  const cout = coutAudioComplet(texte.length);
+  // Prix lu UNE fois (grille centrale) : 402, débit et réponse utilisent ce `cout`.
+  const cout = coutAudioComplet(texte.length, await prixDe('audio.full_1000_chars'));
   const empreinte = empreinteAudioComplet(userId, voix.providerVoiceId, spoken);
   const reference = referenceOperation(OPERATION_AUDIO_COMPLET, empreinte) as string;
   const chemin = cheminAudioComplet(userId, empreinte);

@@ -163,8 +163,8 @@ export async function debiterRenduAtomique(
  * unique sur `(user_id, reference_id)` interdit le second débit.
  *
  * Une différence, et elle est assumée : le MONTANT est un paramètre. Il vient
- * des contrats serveur existants (`AI_CREDITS`, `AVATAR_VIDEO_COST`,
- * `RENDER_COSTS`), jamais du navigateur — aucun champ de coût n'atteint cette
+ * de la grille tarifaire centrale (`prixDe`, `lib/tarifs/serveur`), lue
+ * côté serveur, jamais du navigateur — aucun champ de coût n’atteint cette
  * fonction, et la route qui en accepterait un le refuse en 422. La base
  * vérifie tout de même le montant : un zéro écrirait une trace de débit sans
  * débiter, un négatif créditerait par la porte du débit.

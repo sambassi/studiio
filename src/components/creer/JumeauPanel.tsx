@@ -48,7 +48,7 @@ export default function JumeauPanel(props: {
   voixCourante?: string;
   /** Pose la voix du jumeau comme voix TTS des séquences (identifiant Studiio `elevenlabs-…`). */
   onVoixJumeau: (voixId: string) => void;
-  /** AVATAR_VIDEO_COST — annoncé avant l'envoi, en mode avatar. */
+  /** Tarif `avatar.jumeau` (grille centrale) — annoncé avant l’envoi, en mode avatar. */
   coutAvatar: number;
   /** Avatar choisi pour ce projet (identité logique, null = par défaut). */
   avatarId?: string | null;

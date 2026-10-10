@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import AfficheIA from '@/components/creer/AfficheIA';
 
+// La grille tarifaire (`useTarifs`) lit `/api/tarifs` : isolée ici, pour que
+// le `fetch` espionné ne voie que l'appel de génération. Prix = grille par défaut.
+vi.mock('@/lib/tarifs/client', async (original) => {
+  const { TARIFS_DEFAUT } = await import('@/lib/tarifs/catalogue');
+  return { ...(await original<typeof import('@/lib/tarifs/client')>()), useTarifs: () => ({ prix: { ...TARIFS_DEFAUT }, exempte: false, charge: true }) };
+});
+
 /**
  * CRÉER — « Partir de ma photo » sur l'Affiche IA.
  *

@@ -127,7 +127,7 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(iBoucle).toBeGreaterThan(iRush);
     expect(iCompose).toBeGreaterThan(iBoucle);
     // Le solde est verifie sur le total, jumeau compris.
-    expect(code).toMatch(/batchCost\(cost, total\) \+ \(jumeauMode === 'avatar' \? AVATAR_VIDEO_COST : 0\)/);
+    expect(code).toMatch(/batchCost\(cost, total\) \+ \(jumeauMode === 'avatar' \? coutJumeau : 0\)/);
     // Le mode voix ne produit rien ici : seul le mode avatar entre dans le bloc jumeau.
     expect(code.slice(iMoteur - 300, iMoteur)).toMatch(/if \(jumeauMode === 'avatar'\) \{/);
     // Le bloc jumeau : ce qu'applyRush a pose devient le plateau du passage, puis

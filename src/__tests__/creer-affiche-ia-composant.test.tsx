@@ -18,6 +18,13 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import AfficheIA, { AFFICHE_IA_TIMEOUT_MS, AFFICHE_IA_MESSAGE_DELAI } from '@/components/creer/AfficheIA';
 
+// La grille tarifaire (`useTarifs`) lit `/api/tarifs` : isolée ici, pour que
+// le `fetch` espionné ne voie que l'appel de génération. Prix = grille par défaut.
+vi.mock('@/lib/tarifs/client', async (original) => {
+  const { TARIFS_DEFAUT } = await import('@/lib/tarifs/catalogue');
+  return { ...(await original<typeof import('@/lib/tarifs/client')>()), useTarifs: () => ({ prix: { ...TARIFS_DEFAUT }, exempte: false, charge: true }) };
+});
+
 const URL_DURABLE = 'https://studiio.pro/storage/media/ai-posters/u1/gen-42.webp';
 
 function reponseOk(overrides: Record<string, unknown> = {}) {

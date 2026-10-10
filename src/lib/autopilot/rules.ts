@@ -513,7 +513,7 @@ export interface AutopilotConfig {
    * montages produits — « Produire maintenant » ET le cron programmé.
    *
    * ⚠️ FAUX PAR DÉFAUT, et ce n'est pas une prudence de principe : chaque
-   * montage avec jumeau lance une génération D-ID facturée (AVATAR_VIDEO_COST)
+   * montage avec jumeau lance une génération D-ID facturée (tarif `avatar.jumeau`)
    * en plus du rendu. On ne l'active jamais à la place de l'utilisateur. Une
    * colonne absente (migration pas encore appliquée) vaut `undefined` → faux :
    * aucune configuration existante ne se met à générer un avatar sans l'avoir

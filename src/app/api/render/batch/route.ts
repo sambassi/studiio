@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
-import { RENDER_COSTS } from '@/lib/stripe/constants';
+import { coutRenduVideo } from '@/lib/credits/system';
 import { BATCH_RENDER_DESACTIVE, BATCH_RENDER_MESSAGE } from '@/lib/render/batch-disabled';
 
 // POST /api/render/batch — DESACTIVEE.
@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
 
     const composition = compositionId || (format === 'reel' ? 'AfroboostReel' : 'AfroboostTV');
     const isInfographic = composition.startsWith('Infographic');
-    const costPerVideo = isInfographic ? 25 : (format === 'tv' ? RENDER_COSTS.tv : RENDER_COSTS.reel);
+    // Grille tarifaire centrale (route désactivée : corps historique conservé).
+    const costPerVideo = await coutRenduVideo(isInfographic ? 'infographic' : format === 'tv' ? 'tv' : 'reel');
     const totalCost = costPerVideo * count;
 
     // Check credits

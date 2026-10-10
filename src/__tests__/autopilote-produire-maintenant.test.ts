@@ -386,8 +386,8 @@ describe('Le moteur partagé', () => {
         expect(code, interdit).not.toContain(interdit);
       }
     }
-    // Le cron garde le tarif comme constante partagée, pas une seconde lecture.
-    expect(cron).toContain('COST_PER_VIDEO');
+    // Le cron lit le tarif par la fonction partagée (grille centrale), pas une seconde définition.
+    expect(cron).toContain('coutMontage()');
     expect(cron).not.toContain("getVideoRenderCost('reel');");
   });
 

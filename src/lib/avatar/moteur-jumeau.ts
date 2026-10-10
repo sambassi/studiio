@@ -28,8 +28,9 @@
  * un identifiant D-ID envoyé à HeyGen (ou l'inverse), un fournisseur
  * inconnu animé par qui que ce soit.
  *
- * Crédits : la politique EXISTANTE d'une génération avatar
- * (AVATAR_VIDEO_COST), la même pour les deux fournisseurs, débitée avant les
+ * Crédits : le tarif `avatar.jumeau` de la grille centrale (`prixDe`, 40 sans
+ * configuration admin), lu UNE fois par génération, le même pour les deux
+ * fournisseurs, débité avant les
  * fournisseurs, remboursée si la vidéo n'a pas été lancée (ElevenLabs, dépôt
  * ou création fournisseur en échec) — comme /api/avatar/generate. Une fois
  * la vidéo lancée chez le fournisseur, c'est /api/avatar/status qui
@@ -64,7 +65,7 @@ import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits, deductCredits, addCredits } from '@/lib/credits/system';
 import { referenceOperation } from '@/lib/credits/atomique';
-import { AVATAR_VIDEO_COST } from '@/lib/stripe/constants';
+import { prixDe } from '@/lib/tarifs/serveur';
 import { uploadAsset, generateAvatarVideoFromAudio, moteursSupportesDuLook, HeyGenError, type AvatarAspectRatio } from '@/lib/avatar/heygen';
 import { resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponiblePour, type MotifJumeau } from '@/lib/avatar/jumeau';
 import { moteurPourMonAvatar, motifPremium } from '@/lib/avatar/moteurs';
@@ -259,9 +260,12 @@ export async function genererVideoJumeau(
   // 4. Crédits — la politique existante d'une génération avatar, débitée
   //    avant les fournisseurs, LIÉE à la génération gagnante : la référence
   //    `jumeau:<generationId>` rend le débit rejouable sans second débit.
+  //    Le prix est lu UNE fois, ici : contrôle, débit et `credits_charged`
+  //    utilisent ce nombre ; le remboursement relit le montant DÉBITÉ.
+  const coutJumeau = await prixDe('avatar.jumeau');
   const credits = await getUserCredits(args.userId);
-  if (credits < AVATAR_VIDEO_COST) {
-    return echouer('credits_insuffisants', `Crédits insuffisants. Requis : ${AVATAR_VIDEO_COST}, disponible : ${credits}.`);
+  if (credits < coutJumeau) {
+    return echouer('credits_insuffisants', `Crédits insuffisants. Requis : ${coutJumeau}, disponible : ${credits}.`);
   }
   // ⚠️ LE DÉBIT PEUT LEVER (solde passé sous le seuil entre la lecture et le
   // débit, socle absent, base indisponible). Il levait jusqu'ici HORS de tout
@@ -271,13 +275,13 @@ export async function genererVideoJumeau(
   // sur ce chemin ; la génération est close, et remboursée SI un débit a
   // réellement été enregistré (le débit a pu passer avant l'erreur).
   try {
-    await deductCredits(args.userId, AVATAR_VIDEO_COST, 'avatar', referenceOperation('jumeau', generationId));
+    await deductCredits(args.userId, coutJumeau, 'avatar', referenceOperation('jumeau', generationId));
   } catch (e) {
     const insuffisant = e instanceof Error && e.message === 'Insufficient credits';
     console.error(`[Jumeau] débit de la génération ${generationId} en erreur :`, e instanceof Error ? e.message : e);
     return echouer(
       insuffisant ? 'credits_insuffisants' : 'base',
-      insuffisant ? `Crédits insuffisants. Requis : ${AVATAR_VIDEO_COST}.` : 'Le débit de la génération a échoué. Rien n’a été lancé.',
+      insuffisant ? `Crédits insuffisants. Requis : ${coutJumeau}.` : 'Le débit de la génération a échoué. Rien n’a été lancé.',
       undefined,
       true,
     );
@@ -295,7 +299,7 @@ export async function genererVideoJumeau(
       { env, fetch: deps.fetch },
     );
     if (!anime.ok) return echouer(anime.etape === 'voix' ? 'fournisseur_voix' : 'fournisseur_avatar', anime.message, anime.statut, true);
-    const erreurMaj = await enregistrerLancement(generationId, args.userId, anime.sceneId, 'processing');
+    const erreurMaj = await enregistrerLancement(generationId, args.userId, anime.sceneId, 'processing', coutJumeau);
     if (erreurMaj) {
       // La scène est lancée et facturée : on ne rembourse pas, on trace — et
       // on RAPPORTE l'identifiant, pour que l'appelant ne relance jamais.
@@ -318,7 +322,7 @@ export async function genererVideoJumeau(
       avatarId: jumeau.prive.providerAvatarId, audioAssetId: asset.assetId, aspectRatio, moteur: choixMoteur.moteur,
       ...(args.cadrage === 'remplir' ? { cadrage: 'cover' as const } : {}),
     });
-    const erreurMaj = await enregistrerLancement(generationId, args.userId, video.videoId, video.status === 'completed' ? 'processing' : 'pending');
+    const erreurMaj = await enregistrerLancement(generationId, args.userId, video.videoId, video.status === 'completed' ? 'processing' : 'pending', coutJumeau);
     if (erreurMaj) {
       // La vidéo est lancée et facturée : on ne rembourse pas, on trace — et
       // on RAPPORTE l'identifiant, pour que l'appelant ne relance jamais.
@@ -345,12 +349,14 @@ export async function enregistrerLancement(
   userId: string,
   providerVideoId: string,
   status: 'pending' | 'processing',
+  /** Le montant débité pour CETTE génération (lu une fois par l'appelant) ; absent → relu au journal. */
+  creditsDebites?: number,
 ): Promise<string | null> {
   let derniere: string | null = null;
   // Un admin n'est JAMAIS débité (exemption de `deductCredits`) : la ligne ne
-  // doit donc pas dire « 40 crédits facturés », sinon le suivi « rembourserait »
+  // doit donc pas dire « N crédits facturés », sinon le suivi « rembourserait »
   // des crédits jamais pris. Studiio : 0 ; le coût fournisseur, lui, est mesuré.
-  const creditsFactures = (await compteExempteDeCredits(userId)) ? 0 : AVATAR_VIDEO_COST;
+  const creditsFactures = await creditsFacturesJumeau(userId, generationId, creditsDebites);
   for (let essai = 0; essai < 2; essai += 1) {
     const { error } = await supabaseAdmin
       .from('avatar_generations')
@@ -389,11 +395,36 @@ export async function rembourserGenerationUneFois(userId: string, generationId: 
   }
 }
 
+/**
+ * Le montant RÉELLEMENT débité pour une génération de jumeau, lu au journal
+ * (`credit_transactions`, référence `jumeau:<generationId>`). `0` : aucun
+ * débit (admin, prix 0) ; `null` : journal illisible.
+ */
+async function montantDebiteJumeau(userId: string, generationId: string): Promise<number | null> {
+  const { data, error } = await supabaseAdmin
+    .from('credit_transactions')
+    .select('id, amount')
+    .eq('user_id', userId)
+    .eq('reference_id', referenceOperation('jumeau', generationId))
+    .limit(1);
+  if (error) return null;
+  const montant = Number((data?.[0] as { amount?: unknown } | undefined)?.amount);
+  return Number.isFinite(montant) ? Math.abs(montant) : 0;
+}
+
+/** `credits_charged` d'une génération : 0 pour un admin, sinon ce qui a été débité. */
+async function creditsFacturesJumeau(userId: string, generationId: string, creditsDebites?: number): Promise<number> {
+  if (await compteExempteDeCredits(userId)) return 0;
+  if (typeof creditsDebites === 'number') return creditsDebites;
+  // Journal illisible : le tarif en vigueur, comme avant (jamais 0 par erreur).
+  return (await montantDebiteJumeau(userId, generationId)) ?? prixDe('avatar.jumeau');
+}
+
 async function rembourserSiDebitee(userId: string, generationId: string): Promise<boolean> {
   const reference = referenceOperation('jumeau', generationId);
   const { data: debits, error: erreurDebit } = await supabaseAdmin
     .from('credit_transactions')
-    .select('id')
+    .select('id, amount')
     .eq('user_id', userId)
     .eq('reference_id', reference)
     .limit(1);
@@ -402,6 +433,13 @@ async function rembourserSiDebitee(userId: string, generationId: string): Promis
     return false;
   }
   if (!debits || debits.length === 0) return false; // rien n'a été débité
+  // ⚠️ ON REND CE QUI A ÉTÉ PRIS, jamais le tarif du moment : l'admin a pu
+  // changer le prix entre le débit et l'échec.
+  const montantDebite = Math.abs(Number((debits[0] as { amount?: unknown }).amount));
+  if (!Number.isFinite(montantDebite) || montantDebite === 0) {
+    console.error(`[Jumeau] montant du débit de ${generationId} illisible — remboursement différé.`);
+    return false;
+  }
 
   const { data: pose } = await supabaseAdmin
     .from('avatar_generations')
@@ -412,7 +450,7 @@ async function rembourserSiDebitee(userId: string, generationId: string): Promis
   if (!pose || pose.length === 0) return false; // déjà remboursée
 
   try {
-    await addCredits(userId, AVATAR_VIDEO_COST, 'refund');
+    await addCredits(userId, montantDebite, 'refund');
     return true;
   } catch (e) {
     console.error(`[Jumeau] REMBOURSEMENT ÉCHOUÉ pour la génération ${generationId} :`, e instanceof Error ? e.message : e);
@@ -432,9 +470,11 @@ export async function reconcilierLancement(
   userId: string,
   providerVideoId: string,
 ): Promise<boolean> {
+  // Ce qui a été débité pour CETTE génération (journal), 0 pour un admin.
+  const creditsFactures = await creditsFacturesJumeau(userId, generationId);
   const { error } = await supabaseAdmin
     .from('avatar_generations')
-    .update({ provider_video_id: providerVideoId, status: 'processing', credits_charged: AVATAR_VIDEO_COST })
+    .update({ provider_video_id: providerVideoId, status: 'processing', credits_charged: creditsFactures })
     .eq('id', generationId)
     .eq('user_id', userId)
     .is('provider_video_id', null);
