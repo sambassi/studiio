@@ -1,0 +1,2690 @@
+{
+ "sommeil|CARDIO_DANCE|-": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|CARDIO_DANCE|haut": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|CARDIO_DANCE|bas": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|EVENT_IMMERSIVE|-": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|EVENT_IMMERSIVE|haut": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|EVENT_IMMERSIVE|bas": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|STANDARD|-": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|STANDARD|haut": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|STANDARD|bas": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|TUTORIAL_EDUCATION|-": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|TUTORIAL_EDUCATION|haut": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|TUTORIAL_EDUCATION|bas": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|LIFESTYLE_BRAND|-": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|LIFESTYLE_BRAND|haut": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|LIFESTYLE_BRAND|bas": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|INCONNU|-": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|INCONNU|haut": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|INCONNU|bas": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|null|-": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|null|haut": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "sommeil|null|bas": {
+  "title": "TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL",
+  "subtitle": "Et comment les corriger dès ce soir, sans médicament",
+  "ctaText": "Réservez votre bilan sommeil gratuit sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|CARDIO_DANCE|-": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|CARDIO_DANCE|haut": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|CARDIO_DANCE|bas": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|EVENT_IMMERSIVE|-": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|EVENT_IMMERSIVE|haut": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|EVENT_IMMERSIVE|bas": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|STANDARD|-": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|STANDARD|haut": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|STANDARD|bas": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|TUTORIAL_EDUCATION|-": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|TUTORIAL_EDUCATION|haut": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|TUTORIAL_EDUCATION|bas": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|LIFESTYLE_BRAND|-": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|LIFESTYLE_BRAND|haut": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|LIFESTYLE_BRAND|bas": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|INCONNU|-": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|INCONNU|haut": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|INCONNU|bas": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|null|-": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|null|haut": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "danse|null|bas": {
+  "title": "BRÛLEZ 600 CALORIES EN DANSANT SUR DE L’AFROBEAT",
+  "subtitle": "Le cours de danse cardio qui fait transpirer Neuchâtel",
+  "ctaText": "Réservez votre cours d’essai sur afroboost.com",
+  "gradientEnd": "#EC4899",
+  "format": "9:16",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.6061980347694633,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "regle|CARDIO_DANCE|-": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|CARDIO_DANCE|haut": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|CARDIO_DANCE|bas": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|EVENT_IMMERSIVE|-": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|EVENT_IMMERSIVE|haut": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|EVENT_IMMERSIVE|bas": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|STANDARD|-": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|STANDARD|haut": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|STANDARD|bas": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|TUTORIAL_EDUCATION|-": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|TUTORIAL_EDUCATION|haut": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|TUTORIAL_EDUCATION|bas": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|LIFESTYLE_BRAND|-": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|LIFESTYLE_BRAND|haut": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|LIFESTYLE_BRAND|bas": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|INCONNU|-": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|INCONNU|haut": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|INCONNU|bas": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|null|-": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|null|haut": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "regle|null|bas": {
+  "title": "Court",
+  "subtitle": null,
+  "ctaText": "GO",
+  "ctaSubText": "lien en bio",
+  "titleScale": 2.28,
+  "subtitleScale": 0.63,
+  "ctaScale": 1.4400000000000002,
+  "cardsTypography": {
+   "scale": 1.7600000000000002,
+   "font": "Anton"
+  },
+  "ctaSubColor": "#99ff99",
+  "gradientEnd": "#123456",
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#899aab"
+ },
+ "vide|CARDIO_DANCE|-": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|CARDIO_DANCE|haut": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|CARDIO_DANCE|bas": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|EVENT_IMMERSIVE|-": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|EVENT_IMMERSIVE|haut": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|EVENT_IMMERSIVE|bas": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|STANDARD|-": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|STANDARD|haut": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|STANDARD|bas": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|TUTORIAL_EDUCATION|-": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|TUTORIAL_EDUCATION|haut": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|TUTORIAL_EDUCATION|bas": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|LIFESTYLE_BRAND|-": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|LIFESTYLE_BRAND|haut": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|LIFESTYLE_BRAND|bas": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 0,
+    "y": 72,
+    "w": 100,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|INCONNU|-": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|INCONNU|haut": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|INCONNU|bas": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|null|-": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|null|haut": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 34
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ },
+ "vide|null|bas": {
+  "titlePos": {
+   "x": 8,
+   "y": 7
+  },
+  "titleScale": 1.9,
+  "subtitleScale": 0.7,
+  "ctaBackground": "rgba(0,0,0,0.6)",
+  "ctaSubColor": "#f7b6d6",
+  "ctaPos": {
+   "x": 50,
+   "y": 76
+  },
+  "ctaScale": 1.6,
+  "cardBoxes": {
+   "c0": {
+    "x": 13,
+    "y": 40,
+    "w": 74,
+    "h": 22
+   }
+  },
+  "cardsTypography": {
+   "scale": 1.6
+  },
+  "cardBackground": "rgba(0,0,0,0.55)",
+  "cardValueColor": "#f6a4cc"
+ }
+}

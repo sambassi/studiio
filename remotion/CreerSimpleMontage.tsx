@@ -168,6 +168,13 @@ export interface CreerSimpleMontageProps {
   /** Positions, en % du plateau — les memes qu'a l'ecran. */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
+  /**
+   * Largeurs des cadres titre / CTA (% de l'image) — posées par la mise en
+   * page des surimpressions en 16:9 et 1:1 (colonnes qui laissent le visage
+   * de l'avatar libre). Absentes : `TEXT_LAYOUT` (rendu d'avant).
+   */
+  titleWidth?: number;
+  ctaWidth?: number;
   /** #502 — panneau derrière le CTA en surimpression (`appliquerMiseEnPageSurimpression`). */
   ctaBackground?: string | null;
   watermark?: string;
@@ -548,7 +555,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         // Les trois blocs de texte, écrits UNE fois : plein écran (séquences
         // titre / cartes / CTA) ou en SURIMPRESSION sur le rush (V3).
         const blocTitre = (reveal: number) => (
-              <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos)}>
+              <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos, props.titleWidth)}>
                 <SequenceTitle
                   title={props.title}
                   subtitle={props.subtitle}
@@ -601,7 +608,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               />
         );
         const blocCta = (reveal: number) => (
-              <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos)}>
+              <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos, props.ctaWidth)}>
                 <SequenceCta
                   text={props.ctaText ?? ''}
                   subText={props.ctaSubText}
