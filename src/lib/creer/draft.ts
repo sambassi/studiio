@@ -11,6 +11,7 @@ import type { LutRef } from '@/lib/luts/types';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
 import { estJumeauMode, type JumeauMode } from '@/lib/creer/jumeau';
 import { recadragesRushValides, recadragesPourRushs } from '@/lib/creer/recadrage-rush';
+import { sanitizeMediasVideo, urlsRecadrables, type MediaVideo } from '@/lib/creer/medias-video';
 
 /**
  * Brouillon de « Créer (simple) » — écriture, relecture, validation.
@@ -178,6 +179,14 @@ export interface Draft {
    * brouillons antérieurs.
    */
   rushSuivants?: { url: string; name: string; isClip?: boolean; secondes?: number | null }[];
+  /**
+   * MULTI-SOURCES (`src/lib/creer/medias-video.ts`) : la liste ORDONNÉE des
+   * médias de la séquence « Vidéo » (rushes, avatar, vidéos et photos
+   * suggérées, médiathèque). Écrite SEULEMENT quand elle contient un avatar
+   * ou une photo ; absente = la liste se déduit de `rushUrl` + `rushSuivants`,
+   * le cas de tous les brouillons antérieurs.
+   */
+  mediasVideo?: MediaVideo[];
   /**
    * Filtre couleur (LUT) du rush — la RÉFÉRENCE canonique seule (empreinte,
    * nom, intensité) : jamais la table, jamais une URL ni une clé de
@@ -710,6 +719,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       ? raw.rushSecondes
       : undefined,
     rushSuivants: sanitizeRushSuivants(raw.rushSuivants),
+    mediasVideo: sanitizeMediasVideo(raw.mediasVideo),
     lut: sanitizeLutRef(raw.lut),
     scheduledDate:
       typeof raw.scheduledDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.scheduledDate)
@@ -760,7 +770,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
   // Seuls les rushes du brouillon gardent le leur.
   const recadrages = recadragesPourRushs(
     recadragesRushValides(raw.rushTransforms),
-    [out.rushUrl, ...(out.rushSuivants ?? []).map((r) => r.url)],
+    [out.rushUrl, ...(out.rushSuivants ?? []).map((r) => r.url), ...urlsRecadrables(out.mediasVideo)],
   );
   out.rushTransforms = Object.keys(recadrages).length ? recadrages : undefined;
   // Fonds par sequence : chaque entree est validee SEPAREMENT — elles sont

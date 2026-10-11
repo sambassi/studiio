@@ -286,6 +286,8 @@ describe('AssistantWizard — intégration légère', () => {
     render(<AssistantWizard />);
     await attendre();
     await ouvrirSection('sequences');
+    // « Médias de la séquence Vidéo » : Ajouter → Média suggéré.
+    await act(async () => { fireEvent.click(document.querySelector('[data-medias-ajouter]')!); });
     const bouton = document.querySelector('[data-ouvrir-stock="rush"]') as HTMLButtonElement;
     expect(bouton).toBeTruthy();
     await act(async () => { fireEvent.click(bouton); });

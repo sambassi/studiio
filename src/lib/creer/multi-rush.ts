@@ -198,7 +198,9 @@ export function rushsDepuisSegments(segments: ReadonlyArray<RushSegment>): { url
 export function estPlanMontage(segments: ReadonlyArray<RushSegment> | null | undefined): boolean {
   if (!segments || segments.length < 2) return false;
   const urls = new Set(segments.map((s) => s.url));
-  return urls.size < segments.length || segments.some((s) => typeof s.depuis === 'number' && s.depuis > 0);
+  return urls.size < segments.length || segments.some((s) => typeof s.depuis === 'number' && s.depuis > 0)
+    // Multi-sources : une photo ou un avatar n'est jamais un simple rush à enchaîner.
+    || segments.some((s) => s.kind === 'image' || s.kind === 'avatar');
 }
 
 /** URL d'une image fixe (photo stock, hotlink fournisseur) — pas une vidéo. Pur. */
