@@ -38,3 +38,31 @@ export async function importerStockClient(m: Pick<MediaStock, 'provider' | 'type
     return { erreur: 'indisponible' };
   }
 }
+
+/**
+ * Identifiant Unsplash d'une photo d'affiche venue de `/api/pexels`
+ * (`id: "unsplash-<id>"`, `source: "unsplash"`), ou `null` pour toute autre
+ * photo (Pexels, IA, téléversée). Pur.
+ */
+export function idUnsplashAffiche(photo: { id: string | number; source?: string }): string | null {
+  if (photo.source !== 'unsplash') return null;
+  const brut = String(photo.id);
+  const id = brut.startsWith('unsplash-') ? brut.slice('unsplash-'.length) : brut;
+  return /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null;
+}
+
+/**
+ * Choix d'une photo Unsplash comme affiche : Unsplash EXIGE que chaque
+ * utilisation déclenche son `download_location`. Le chemin existant
+ * (`/api/stock/importer`, provider `unsplash`) le fait côté serveur — on le
+ * réutilise. La photo reste servie en hotlink (`importe: false`) : l'appelant
+ * applique l'URL qu'il a déjà, sans attendre ce signalement. Sans effet
+ * pour une photo qui n'est pas Unsplash. Jamais d'exception.
+ */
+export function signalerChoixAfficheUnsplash(photo: { id: string | number; source?: string }): Promise<boolean> {
+  const id = idUnsplashAffiche(photo);
+  if (!id) return Promise.resolve(false);
+  return importerStockClient({ provider: 'unsplash', type: 'photo', providerAssetId: id })
+    .then((r) => !('erreur' in r))
+    .catch(() => false);
+}

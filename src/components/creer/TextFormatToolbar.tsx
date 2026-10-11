@@ -96,6 +96,9 @@ export default function TextFormatToolbar({
     contenu: React.ReactNode,
   ) => (
     <button
+      // Clé = le jeton (unique dans la barre) : les boutons d'alignement sont
+      // rendus par un `.map` — sans clé, React avertit à chaque rendu.
+      key={jeton}
       type="button"
       onClick={onClick}
       aria-pressed={actif}

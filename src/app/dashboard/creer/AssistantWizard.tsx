@@ -153,6 +153,7 @@ import {
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
 } from '@/lib/creer/posterPhotos';
+import { signalerChoixAfficheUnsplash } from '@/lib/stock/client';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import IconPicker from '@/components/creer/IconPicker';
@@ -10779,6 +10780,14 @@ export default function AssistantWizard() {
                                 key={`${photo.source ?? 'p'}-${photo.id}`}
                                 type="button"
                                 onClick={() => {
+                                  // Photo Unsplash RETENUE (pas un dé-choix) :
+                                  // téléchargement signalé à Unsplash, comme
+                                  // l'exigent ses règles. Hotlink conservé : la
+                                  // pose ci-dessous n'attend pas ce signalement.
+                                  const choisit = slotCible !== null || !!seqCible || (batchCount > 1 && batchPhotoMode === 'manuel'
+                                    ? rang < 0 && batchPhotoUrls.length < batchCount
+                                    : !retenue);
+                                  if (choisit) void signalerChoixAfficheUnsplash(photo);
                                   if (slotCible !== null) {
                                     assignerAffiche(slotCible, photo.url);
                                     return;
