@@ -115,6 +115,9 @@ export interface CreerSimpleRenderInput {
   /** Positions de l'ancre, en % du plateau — les memes qu'a l'ecran. */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
+  /** Largeurs des cadres titre / CTA (% de l'image) — surimpressions 16:9 / 1:1. */
+  titleWidth?: number;
+  ctaWidth?: number;
   watermark?: string;
   introDuration?: number;
   cardsDuration?: number;
