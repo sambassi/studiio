@@ -1,4 +1,6 @@
 import { pickRush } from '@/lib/autopilot/rules';
+import { sonderSur, telechargerSur, estRefusSsrf, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
+import { estNotreStockage } from '@/lib/securite/medias-externes';
 
 /**
  * La photo d'affiche et la durée du rush, pour l'Autopilote.
@@ -105,18 +107,22 @@ export async function pickPosterUrl(topic: string, variante = 0): Promise<string
  * fichier manque vraiment — ce qui coûte un montage, pas la banque.
  *
  * Un 405 (HEAD refusé par le stockage) ne dit rien non plus : il passe.
+ *
+ * ⚠️ SSRF : la sonde passe par le fetch SÛR (`fetch-sur.ts`) — DNS épinglé,
+ * adresses internes refusées, redirections revalidées une à une. Un REFUS de
+ * politique (cible interne, redirection vers une adresse privée, chaîne trop
+ * longue) n'est PAS un doute : la cible n'a pas été contactée, et l'URL ne
+ * sera jamais lisible par le rendu — le rush est « absent ». Le doute ne
+ * profite qu'aux échecs RÉSEAU d'une cible autorisée.
  */
-export async function rushEncorePresent(url: string, timeoutMs = 8_000): Promise<boolean> {
-  const controleur = new AbortController();
-  const minuteur = setTimeout(() => controleur.abort(), timeoutMs);
+export async function rushEncorePresent(url: string, timeoutMs = 8_000, reseau: OptionsFetchSur = {}): Promise<boolean> {
   try {
-    const res = await fetch(url, { method: 'HEAD', signal: controleur.signal, cache: 'no-store' });
+    const res = await sonderSur(url, { ...reseau, timeoutMs });
     return !(res.status === 404 || res.status === 410);
-  } catch {
+  } catch (e) {
+    if (estRefusSsrf(e)) return false;
     // Réseau, délai, hôte injoignable : aucune conclusion possible.
     return true;
-  } finally {
-    clearTimeout(minuteur);
   }
 }
 
@@ -133,11 +139,28 @@ export async function rushEncorePresent(url: string, timeoutMs = 8_000): Promise
  * dans Node — contrairement à `@remotion/media-utils`, qui suppose un
  * navigateur.
  */
-export async function probeRushSeconds(url: string): Promise<number | null> {
+export async function probeRushSeconds(url: string, reseau: OptionsFetchSur = {}): Promise<number | null> {
+  // ⚠️ SSRF / TOCTOU : `parseMedia` lit lui-même ce qu'on lui donne, en
+  // suivant les redirections. Il ne reçoit donc une URL que si elle désigne
+  // NOTRE stockage (relais public, qui ne redirige jamais) ; tout autre média
+  // est d'abord téléchargé par le fetch sûr, puis lu en FICHIER local.
+  let local: string | null = null;
   try {
     const { parseMedia } = await import('@remotion/media-parser');
+    let src = url;
+    let reader: import('@remotion/media-parser').MediaParserReaderInterface | undefined;
+    if (!estNotreStockage(url)) {
+      const os = await import('os');
+      const path = await import('path');
+      const { randomUUID } = await import('crypto');
+      local = path.join(os.tmpdir(), `studiio-sonde-${randomUUID()}`);
+      await telechargerSur(url, local, { timeoutMs: 120_000, ...reseau });
+      src = local;
+      reader = (await import('@remotion/media-parser/node')).nodeReader;
+    }
     const { durationInSeconds } = await parseMedia({
-      src: url,
+      src,
+      ...(reader ? { reader } : {}),
       fields: { durationInSeconds: true },
       acknowledgeRemotionLicense: true,
     });
@@ -146,5 +169,10 @@ export async function probeRushSeconds(url: string): Promise<number | null> {
       : null;
   } catch {
     return null;
+  } finally {
+    if (local) {
+      const { unlink } = await import('fs/promises');
+      await unlink(local).catch(() => undefined);
+    }
   }
 }

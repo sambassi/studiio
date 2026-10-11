@@ -222,9 +222,13 @@ describe('redirections : jamais suivies hors liste', () => {
 
   it('404 → introuvable ; hôte injoignable → lâché (le doute ne profite pas au stock)', async () => {
     expect(await sonder(M('mort.mp4'))).toMatchObject({ ok: false, motif: 'introuvable' });
-    const pFerme = (u: string) => u.startsWith(`http://127.0.0.1:${ferme}/`);
-    expect(await sonderMediaStock(`http://127.0.0.1:${ferme}/x.mp4`, 'video', { autorisee: pFerme, timeoutMs: 2000 }))
-      .toMatchObject({ ok: false, motif: 'injoignable' });
+    // Chemin de PRODUCTION (fetch sûr) : un hôte « public » (faux DNS) dont la
+    // connexion épinglée tombe sur un port fermé → injoignable, lâché.
+    const pFerme = (u: string) => u.startsWith('http://ferme.example/');
+    expect(await sonderMediaStock('http://ferme.example/x.mp4', 'video', {
+      autorisee: pFerme, timeoutMs: 2000,
+      reseau: { resoudre: async () => [{ address: '93.184.216.34', family: 4 }], connexionVers: () => ({ host: '127.0.0.1', port: ferme }), originesDeConfiance: [] },
+    })).toMatchObject({ ok: false, motif: 'injoignable' });
   });
 
   it('témoin : un fetch ORDINAIRE aurait suivi la redirection jusqu’au serveur privé', async () => {

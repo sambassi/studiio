@@ -24,6 +24,16 @@ vi.mock('@/lib/autopilot/render', () => ({
     return { videoUrl: 'https://cdn.test/rendu.mp4', thumbnailUrl: 'https://cdn.test/v.jpg', durationFrames: 900 };
   },
 }));
+// Sonde stock : en production le fetch SÛR ; ici le `fetch` espion lui est
+// injecté (transport de test) pour juger le câblage du moteur.
+vi.mock('@/lib/autopilot/sonde-stock', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/autopilot/sonde-stock')>();
+  return {
+    ...actual,
+    sonderMediaStock: (u: string, t: 'video' | 'photo', o: Parameters<typeof actual.sonderMediaStock>[2] = {}) =>
+      actual.sonderMediaStock(u, t, { ...o, fetchImpl: ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a)) as typeof fetch }),
+  };
+});
 vi.mock('@/lib/autopilot/poster', () => ({
   rushEncorePresent: async () => true,
   probeRushSeconds: async (url: string) => (url.includes('/avatar/') ? 30 : url.includes('stock-') ? 10 : 15),

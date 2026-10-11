@@ -114,6 +114,17 @@ const montageDe = (d: Record<string, unknown>) => (d.montage ?? []) as RushSegme
 
 // La sonde SÛRE des médias stock (`sonde-stock.ts`) passe par `fetch` : un média « mort » répond 404.
 // Une URL de REDIRECTIONS répond 302 vers sa cible (jamais suivie par `fetch` ici : `redirect: manual`).
+// En production la sonde passe par le fetch SÛR (DNS + adresses, prouvé par
+// `securite-fetch-sur-ssrf.test.ts`) ; ici on lui injecte ce `fetch` espion
+// (son transport de test) pour juger le CÂBLAGE du moteur.
+vi.mock('@/lib/autopilot/sonde-stock', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/autopilot/sonde-stock')>();
+  return {
+    ...actual,
+    sonderMediaStock: (u: string, t: 'video' | 'photo', o: Parameters<typeof actual.sonderMediaStock>[2] = {}) =>
+      actual.sonderMediaStock(u, t, { ...o, fetchImpl: ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a)) as typeof fetch }),
+  };
+});
 const REDIRECTIONS = new Map<string, string>();
 const fetchEspion = vi.fn(async (url: string | URL | Request) => {
   const cible = REDIRECTIONS.get(String(url));

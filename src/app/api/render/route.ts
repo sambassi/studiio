@@ -28,10 +28,17 @@ async function triggerRender(params: {
     const { renderVideo, completeJob } = await loadRenderWorker();
     const { uploadToStorage } = await loadStorage();
 
+    // ⚠️ SSRF : `inputProps` vient du NAVIGATEUR. Remotion (Img, Audio,
+    // OffthreadVideo) lirait lui-même chaque URL, redirections comprises.
+    // Toute URL hors de notre stockage est copiée d'abord par le fetch sûr ;
+    // une cible interne fait échouer le job (crédits rendus par `failJob`).
+    const { localiserProprietesLibres } = await import('@/lib/securite/medias-externes');
+    const propsLocales = await localiserProprietesLibres(inputProps);
+
     const { outputPath } = await renderVideo({
       jobId,
       compositionId,
-      inputProps,
+      inputProps: propsLocales,
     });
 
     // Upload rendered video to Supabase Storage

@@ -138,6 +138,22 @@ vi.mock('@/lib/storage/upload', () => ({
   },
 }));
 
+// ── Médias externes (affiche Pexels…) : copiés dans « MinIO » avant le rendu.
+// Le fetch sûr lui-même est prouvé par `securite-fetch-sur-ssrf.test.ts` ;
+// ici, la copie est déjà en cache (aucun réseau), le câblage reste réel.
+vi.mock('@/lib/securite/medias-externes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/securite/medias-externes')>();
+  const depot = {
+    existe: async () => true,
+    deposer: async () => undefined,
+    urlPublique: (b: string, c: string) => `https://minio.test/${b}/${c}`,
+  };
+  return {
+    ...actual,
+    localiserEntreesRendu: (d: Parameters<typeof actual.localiserEntreesRendu>[0]) => actual.localiserEntreesRendu(d, { depot }),
+  };
+});
+
 afterAll(() => { rmSync(racine, { recursive: true, force: true }); });
 
 // ── Scénario ─────────────────────────────────────────────────────────────

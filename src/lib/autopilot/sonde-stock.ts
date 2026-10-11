@@ -26,6 +26,7 @@
  * contrairement à un rush personnel, cf. `rushEncorePresent`).
  */
 import { urlStockAutorisee } from '@/lib/autopilot/sources';
+import { sonderSur, RefusSsrf, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 
 export const MAX_SAUTS = 3;
 const STATUTS_REDIRECTION = new Set([301, 302, 303, 307, 308]);
@@ -35,8 +36,14 @@ export type PredicatStock = (url: string, type: 'video' | 'photo') => boolean;
 export interface OptionsSondeStock {
   /** Contrôle de chaque URL (départ et chaque saut). Défaut : `urlStockAutorisee`. */
   autorisee?: PredicatStock;
-  /** Défaut : `fetch` global. */
+  /**
+   * TEST SEULEMENT — transport `fetch` injecté (sans contrôle DNS). Absent
+   * (production) : le fetch SÛR (`fetch-sur.ts`), qui ajoute à ce contrôle
+   * la résolution DNS, le refus des adresses internes et l'épinglage.
+   */
   fetchImpl?: typeof fetch;
+  /** TEST SEULEMENT — injections du fetch sûr (faux DNS, connexion locale). */
+  reseau?: OptionsFetchSur;
   maxSauts?: number;
   /** Délai TOTAL de la sonde, redirections comprises. */
   timeoutMs?: number;
@@ -58,6 +65,7 @@ export async function sonderMediaStock(
   const maxSauts = opts.maxSauts ?? MAX_SAUTS;
   // AVANT tout appel réseau.
   if (!autorisee(url, type)) return { ok: false, motif: 'refusee', url };
+  if (!opts.fetchImpl) return sonderParFetchSur(url, type, autorisee, maxSauts, opts);
   const controleur = new AbortController();
   const minuteur = setTimeout(() => controleur.abort(), opts.timeoutMs ?? 8_000);
   let courante = url;
@@ -87,5 +95,33 @@ export async function sonderMediaStock(
     }
   } finally {
     clearTimeout(minuteur);
+  }
+}
+
+/** Chemin de PRODUCTION : prédicat stock + DNS + adresses + épinglage, à chaque saut. */
+async function sonderParFetchSur(
+  url: string,
+  type: 'video' | 'photo',
+  autorisee: PredicatStock,
+  maxSauts: number,
+  opts: OptionsSondeStock,
+): Promise<ResultatSondeStock> {
+  try {
+    const r = await sonderSur(url, {
+      ...(opts.reseau ?? {}),
+      autorisee: (u) => autorisee(u.href, type),
+      // Origines de confiance par défaut = NOTRE stockage configuré (le stock
+      // vidéo y est importé) ; tout autre hôte, et tout saut, est résolu et jugé.
+      maxSauts,
+      timeoutMs: opts.timeoutMs ?? 8_000,
+    });
+    if (r.status === 404 || r.status === 410) return { ok: false, motif: 'introuvable', url: r.url };
+    return { ok: true, url: r.url, sauts: r.sauts };
+  } catch (e) {
+    if (e instanceof RefusSsrf) {
+      if (e.motif === 'trop-de-redirections') return { ok: false, motif: 'trop-de-redirections', url };
+      return { ok: false, motif: e.motif === 'hote-refuse' || e.motif === 'ip-interdite' || e.motif === 'redirection-invalide' ? 'redirection-refusee' : 'refusee', url };
+    }
+    return { ok: false, motif: 'injoignable', url };
   }
 }
