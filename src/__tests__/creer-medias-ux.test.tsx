@@ -250,7 +250,10 @@ describe('Médias suggérés (panneau isolé)', () => {
     expect(appels.filter((a) => a.url === '/api/stock/importer')).toHaveLength(1);
     expect(onAjouterRush).toHaveBeenCalledTimes(1);
     // Nom visible dans la liste des rushes : lisible, jamais un nom de fichier ni une banque.
-    expect(onAjouterRush.mock.calls[0][1]).toBe('Vidéo suggérée · 0:16');
+    // La durée ANNONCÉE (0:16) ne colle plus au nom : elle reste dans la meta,
+    // la légende montre la durée MESURÉE à l'import.
+    expect(onAjouterRush.mock.calls[0][1]).toBe('Vidéo suggérée');
+    expect(onAjouterRush.mock.calls[0][2].dureeAnnoncee).toBe(16);
     expect(bouton().textContent).toBe('Ajouté');
     expect(bouton().disabled).toBe(true);
     expect(openSpy).not.toHaveBeenCalled();

@@ -58,10 +58,12 @@ import {
 } from '@/lib/creer/recadrage-rush';
 import RecadrerRush from '@/components/creer/RecadrerRush';
 import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/MediasSequenceVideo';
+import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
   ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar, dureeListe, planDepuisListe,
   estimerDureeParole, nouvelIdMedia, libelleMedia, libelleSource, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
+  avecDureeChoisie, dureeEffective, planApercuListe, chronologieListe,
 } from '@/lib/creer/medias-video';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
@@ -7628,6 +7630,31 @@ export default function AssistantWizard() {
     }).finally(() => setRushLoading(false));
   };
 
+  /**
+   * « Retirer le rush » (ligne de la séquence Vidéo) : retire CE rush — et
+   * lui seul — de `rushUrl` / `rushSuivants` ET de la liste. Les autres
+   * médias, leur ordre, la séquence Vidéo et l'aperçu restent. La séquence
+   * ne se masque que s'il ne reste AUCUNE source visuelle (même chemin que
+   * « Supprimer » sur une carte : `poserListeMedias` → `clearRush`).
+   */
+  const retirerRush = (url: string | null) => {
+    const liste = listeMediasRef.current;
+    const i = url ? liste.findIndex((m) => m.url === url && m.type === 'video' && m.source !== 'avatar') : -1;
+    if (i < 0) { clearRush(); return; }
+    if (liste[i].id === mediaApercuId) setMediaApercuId(null);
+    poserListeMedias(retirerMedia(liste, i));
+  };
+
+  /** Durée choisie du média `i` (photo 1–30 s, vidéo raccourcie) — portée par le média. */
+  const choisirDureeMedia = (i: number, secondes: number) => {
+    const liste = listeMediasRef.current;
+    const m = liste[i];
+    if (!m) return;
+    const neuf = avecDureeChoisie(m, secondes);
+    if (neuf === m) return;
+    poserListeMedias(liste.map((x, k) => (k === i ? neuf : x)));
+  };
+
   // Disponibilité de l'avatar pour « Ajouter → Mon avatar » : lue à
   // l'ouverture du menu (lecture seule, aucun fournisseur, aucun crédit).
   const lireAvatarsPourListe = () => {
@@ -7644,8 +7671,21 @@ export default function AssistantWizard() {
     if (!url) return null;
     const type: MediaApercu['type'] = avatarPret && !m.url ? (avatarPret.type === 'photo' ? 'photo' : 'video') : m.type === 'image' ? 'photo' : 'video';
     // `libelleSource` : la durée est déjà affichée par l'aperçu (pas « · 0:02 · 0:02 »).
-    return { type, url, libelle: libelleSource(m), nomTechnique: titreMedia(m), dureeSecondes: m.duree ?? undefined };
+    return { type, url, libelle: libelleSource(m), nomTechnique: titreMedia(m), dureeSecondes: m.source === 'avatar' && !m.url ? undefined : dureeEffective(m) };
   }, [mediaApercuId, listeMedias, apercuAvatarListe]);
+  /**
+   * « Aperçu du montage » d'une liste enrichie : le plan de `planApercuListe`
+   * — le MÊME calcul que `planDepuisListe` à l'envoi — et sa chronologie (CTA
+   * compris s'il est joué). `null` sans liste enrichie : rien ne s'affiche.
+   */
+  const ctaJoue = sequences.some((q) => q.key === 'cta' && q.enabled);
+  const videoJouee = sequences.some((q) => q.key === 'video' && q.enabled);
+  const apercuMontage = useMemo(() => {
+    if (!mediasVideo || !estListeEnrichie(mediasVideo) || !videoJouee) return null;
+    const { etapes } = planApercuListe(mediasVideo, dureeAvatarEstimee);
+    const { lignes, reduits } = chronologieListe(mediasVideo, { dureeAvatarEstimee, dureeCta: ctaJoue ? ctaDuration : null });
+    return etapes.length ? { etapes, lignes, reduits } : null;
+  }, [mediasVideo, dureeAvatarEstimee, ctaJoue, videoJouee, ctaDuration]);
   const etatAvatarListe: EtatAvatarListe = avatarsApercu === undefined ? 'chargement' : apercuAvatarListe?.etat === 'pret' ? 'pret' : 'absent';
 
   /**
@@ -11561,7 +11601,7 @@ export default function AssistantWizard() {
                               </span>
                               <div className="min-w-0 flex-1">
                                 <div className="text-sm font-medium truncate">{meta.label}</div>
-                                <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? rushName : undefined}>
+                                <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? (listeMedias[0] ? titreMedia(listeMedias[0]) : undefined) : undefined}>
                                   {isVideo && mediasVideo
                                     ? `${mediasVideo.length} média${mediasVideo.length > 1 ? 's' : ''} enchaîné${mediasVideo.length > 1 ? 's' : ''}`
                                     : isVideo && rushUrl
@@ -11640,7 +11680,7 @@ export default function AssistantWizard() {
                                   {rushUrl && (
                                     <button
                                       type="button"
-                                      onClick={clearRush}
+                                      onClick={() => retirerRush(rushUrl)}
                                       title="Retirer le rush"
                                       aria-label="Retirer le rush"
                                       className="text-gray-500 hover:text-red-400 transition"
@@ -11735,6 +11775,7 @@ export default function AssistantWizard() {
                           if (m && m.id === mediaApercuId) setMediaApercuId(null);
                           poserListeMedias(retirerMedia(listeMedias, i));
                         }}
+                        onDuree={choisirDureeMedia}
                         onRecadrer={(m) => { if (m.url) setRecadrerRushOuvert(m.url); }}
                         onAjouterMonRush={() => { rushAjoutRef.current = true; setRushLibOpen(true); }}
                         onAjouterAvatar={ajouterAvatarListe}
@@ -11746,17 +11787,17 @@ export default function AssistantWizard() {
                         onAjouterMediatheque={() => setMediathequeListe({ remplacer: null, type: 'all' })}
                         onOuvrirMenu={lireAvatarsPourListe}
                       />
-                      {rushListe.some((r) => stockMedias[r.url]) && (
+                      {urlsRecadrables(listeMedias).some((u) => stockMedias[u]) && (
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.
                         <details className="mt-1" data-rush-attributions data-credit-media>
                           <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Informations des médias</summary>
                           <div className="mt-1 space-y-0.5">
-                          {rushListe.filter((r) => stockMedias[r.url]).map((r) => (
-                            <p key={r.url} className="text-[11px] text-gray-500 truncate">
-                              {stockMedias[r.url].attribution}{' '}
+                          {urlsRecadrables(listeMedias).filter((u, k, t) => stockMedias[u] && t.indexOf(u) === k).map((u) => (
+                            <p key={u} className="text-[11px] text-gray-500 truncate">
+                              {stockMedias[u].attribution}{' '}
                               <a
-                                href={stockMedias[r.url].sourceUrl}
+                                href={stockMedias[u].sourceUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="underline hover:text-white"
@@ -12926,6 +12967,22 @@ export default function AssistantWizard() {
           // seulement) ; sinon rien — le plateau nu.
           overlay={renduDansLeCadre ?? lectureSequences}
         />
+        {/* MULTI-SOURCES — « Aperçu du montage » + chronologie : la liste
+            jouée dans son ordre (même plan que le rendu), puis le CTA.
+            Absent pour un projet sans liste enrichie : l'aperçu d'avant, seul. */}
+        {apercuMontage && (
+          <ApercuMontageListe
+            etapes={apercuMontage.etapes}
+            lignes={apercuMontage.lignes}
+            reduitsALaVoix={apercuMontage.reduits}
+            format={format}
+            accent={accent}
+            ctaTexte={generated?.cta ?? null}
+            ctaSousTexte={generated?.ctaSub ?? null}
+            vignetteAvatar={apercuAvatarListe?.etat === 'pret' && apercuAvatarListe.url
+              ? { url: apercuAvatarListe.url, type: apercuAvatarListe.type } : null}
+          />
+        )}
 
         {/* ── RÉGLAGES D'UNE SÉQUENCE, AU DOUBLE-CLIC ──────────────────
             Le MÊME `FloatingPanel` et la MÊME `TextFormatToolbar` que

@@ -15,9 +15,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowDown, ArrowUp, Crop, Film, FolderOpen, Images, Loader2, Play, Plus, RefreshCw, Trash2, UserRound,
+  ArrowDown, ArrowUp, Crop, Film, FolderOpen, Images, Loader2, Minus, Play, Plus, RefreshCw, Trash2, UserRound,
 } from 'lucide-react';
-import { libelleMedia, titreMedia, type MediaVideo } from '@/lib/creer/medias-video';
+import {
+  bornesDuree, dureeEffective, formatSecondes, libelleMedia, titreMedia, type MediaVideo,
+} from '@/lib/creer/medias-video';
 
 export type EtatAvatarListe = 'pret' | 'absent' | 'chargement' | 'inconnu';
 
@@ -42,6 +44,11 @@ export interface MediasSequenceVideoProps {
   onDeplacer: (i: number, delta: number) => void;
   onRemplacer: (i: number) => void;
   onSupprimer: (i: number) => void;
+  /**
+   * Durée choisie du média `i` (s) — photo 1–30 s, vidéo raccourcie (jamais
+   * au-delà de sa durée mesurée). Absent : aucun réglage de durée affiché.
+   */
+  onDuree?: (i: number, secondes: number) => void;
   onRecadrer: (m: MediaVideo) => void;
   onAjouterMonRush: () => void;
   onAjouterAvatar: () => void;
@@ -86,6 +93,39 @@ function Vignette({ m, vignetteAvatar }: { m: MediaVideo; vignetteAvatar?: Media
         <span className="rounded-full bg-black/55 p-1"><Play className="w-3 h-3 text-white" /></span>
       </span>
     </div>
+  );
+}
+
+/**
+ * « Durée [−] 3 s [+] » d'une photo ou d'une vidéo (raccourcir seulement) ;
+ * « Durée liée à la voix » pour l'avatar. La valeur est `dureeEffective` —
+ * la même que la légende, la chronologie, l'aperçu et le rendu.
+ */
+function ReglageDuree({ m, i, occupe, onDuree }: { m: MediaVideo; i: number; occupe?: boolean; onDuree?: (i: number, s: number) => void }) {
+  const b = bornesDuree(m);
+  if (b.mode === 'voix') {
+    return <span data-media-duree="voix" className="text-[10px] text-gray-500">Durée liée à la voix</span>;
+  }
+  if (!onDuree || (b.mode !== 'photo' && b.mode !== 'video')) return null;
+  const d = dureeEffective(m);
+  const nom = m.type === 'image' ? 'la photo' : 'la vidéo';
+  const pas = 'flex items-center justify-center rounded-md w-6 h-6 text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed transition';
+  return (
+    <span data-media-duree={b.mode} className="flex items-center gap-1 text-[10px] text-gray-400">
+      <span>Durée</span>
+      <button
+        type="button" className={pas} data-duree-moins
+        onClick={() => onDuree(i, d - b.pas)} disabled={occupe || d <= b.min}
+        title={`Raccourcir ${nom}`} aria-label={`Raccourcir ${nom} ${i + 1}`}
+      ><Minus className="w-3 h-3" /></button>
+      <span data-duree-valeur className="min-w-[2.5rem] text-center text-[11px] font-medium text-gray-100 tabular-nums">{formatSecondes(d)} s</span>
+      <button
+        type="button" className={pas} data-duree-plus
+        onClick={() => onDuree(i, d + b.pas)} disabled={occupe || d >= b.max}
+        title={b.mode === 'video' ? `Allonger ${nom} (jusqu’à sa durée réelle)` : `Allonger ${nom}`}
+        aria-label={`Allonger ${nom} ${i + 1}`}
+      ><Plus className="w-3 h-3" /></button>
+    </span>
   );
 }
 
@@ -159,6 +199,12 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </span>
+              {/* Durée : sur sa propre ligne, alignée sous le libellé (rien ne déborde à 390 px). */}
+              {(m.source === 'avatar' || (p.onDuree && (m.type === 'image' || bornesDuree(m).mode === 'video'))) && (
+                <span className="basis-full flex items-center min-w-0" style={{ paddingLeft: 72 }}>
+                  <ReglageDuree m={m} i={i} occupe={p.occupe} onDuree={p.onDuree} />
+                </span>
+              )}
             </li>
           );
         })}

@@ -41,8 +41,19 @@ export interface MediaVideo {
   /** URL du média. ABSENTE pour un avatar pas encore produit (placeholder). */
   url?: string;
   type: TypeMediaVideo;
-  /** Durée retenue (s). Photo : 3 s par défaut ; avatar : durée de sa parole une fois produit. */
+  /**
+   * Durée MESURÉE (s) : vidéo = durée sondée à l'import (`loadedmetadata`),
+   * photo = 3 s par défaut, avatar = durée de sa parole une fois produit.
+   * Une durée ANNONCÉE par une recherche n'entre jamais ici.
+   */
   duree?: number | null;
+  /**
+   * Durée CHOISIE par l'utilisateur (s), distincte de la mesure. Photo :
+   * 1–30 s ; vidéo : raccourcie seulement (jamais au-delà de `duree`) ;
+   * avatar : jamais (sa durée est celle de la voix). Absente = la durée par
+   * défaut. Se déplace avec le média, disparaît à son remplacement.
+   */
+  dureeChoisie?: number | null;
   /** Nom technique (fichier) : jamais affiché comme libellé, seulement en `title`. */
   nom?: string;
   meta?: {
@@ -67,6 +78,9 @@ export const DUREE_VIDEO_REPLI = 6;
 /** Bornes d'une durée retenue (s). */
 export const DUREE_MEDIA_MIN = 1;
 export const DUREE_MEDIA_MAX = 120;
+/** Bornes de la durée choisie d'une photo (s), réglée seconde par seconde. */
+export const DUREE_PHOTO_MIN = 1;
+export const DUREE_PHOTO_MAX = 30;
 /** Un créneau d'avatar ne descend jamais sous cette durée tant que la parole le permet. */
 export const AVATAR_CRENEAU_MIN_S = 1.5;
 /** Nombre de médias au plus dans la liste (garde-fou brouillon). */
@@ -133,7 +147,10 @@ export function estVideoJumeau(r: { url: string; name?: string }): boolean {
 
 /** La liste dépasse-t-elle ce que portent `rushUrl` / `rushSuivants` (avatar ou photo) ? */
 export function estListeEnrichie(liste: ReadonlyArray<MediaVideo> | null | undefined): boolean {
-  return !!liste?.some((m) => m.source === 'avatar' || m.type === 'image');
+  // Une vidéo RACCOURCIE aussi : sa durée choisie n'existe pas dans les champs
+  // d'avant, et le smart montage ne la respecterait pas (DURÉE AFFICHÉE =
+  // DURÉE RENDUE). Sans durée choisie, rien ne change.
+  return !!liste?.some((m) => m.source === 'avatar' || m.type === 'image' || estDureeChoisieActive(m));
 }
 
 /** La liste contient-elle au moins un créneau d'avatar ? */
@@ -227,14 +244,32 @@ export function libelleSource(m: Pick<MediaVideo, 'source' | 'type' | 'meta'>): 
 export function libelleMedia(m: MediaVideo): string {
   const base = libelleSource(m);
   if (m.source === 'avatar' && !m.url) return `${base} · produit à l’envoi`;
-  const d = formatDureeMedia(m.type === 'image' ? (m.duree ?? DUREE_PHOTO_DEFAUT) : m.duree);
+  const d = formatDureeMedia(dureeAffichee(m));
   return d ? `${base} · ${d}` : base;
 }
 
-/** Infobulle : le nom du fichier, gardé pour qui le cherche. */
+/** Retire une durée collée à un nom (« Vidéo suggérée · 0:08 », anciens brouillons). */
+const sansDuree = (nom: string) => nom.replace(/\s*·\s*\d+:\d{2}\s*$/, '').trim();
+
+/**
+ * Infobulle : le nom du fichier, gardé pour qui le cherche, suivi de la
+ * MÊME durée que la légende (`dureeEffective`) — jamais celle qu'annonçait
+ * une recherche (« · 0:08 » au survol, « 0:02 » à l'écran : corrigé).
+ */
 export function titreMedia(m: MediaVideo): string | undefined {
   // Jamais un nom qui trahit le fournisseur, même au survol.
-  return m.nom && !/pexels|unsplash/i.test(m.nom) ? m.nom : undefined;
+  if (!m.nom || /pexels|unsplash/i.test(m.nom) || estNomStock(m.nom)) return undefined;
+  const nom = sansDuree(m.nom);
+  if (!nom) return undefined;
+  const d = formatDureeMedia(dureeAffichee(m));
+  return d ? `${nom} · ${d}` : nom;
+}
+
+/** Durée montrée par la légende et l'infobulle (`null` : avatar à produire, vidéo non sondée). */
+function dureeAffichee(m: MediaVideo): number | null {
+  if (m.source === 'avatar') return m.url ? (typeof m.duree === 'number' && m.duree > 0 ? m.duree : null) : null;
+  if (m.type === 'video' && !(typeof m.duree === 'number' && m.duree > 0)) return null;
+  return dureeEffective(m);
 }
 
 // ── Durées ───────────────────────────────────────────────────────────────
@@ -245,11 +280,79 @@ export function estimerDureeParole(textes: ReadonlyArray<string | null | undefin
   return r3(Math.max(3, mots / 2.6));
 }
 
-/** Durée qu'un média joue hors avatar. */
+const positif = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+const borne = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+
+/** Durée MESURÉE d'un média (sonde / parole), `null` si inconnue. */
+export function dureeMesuree(m: MediaVideo): number | null {
+  return positif(m.duree);
+}
+
+/** La durée choisie d'une VIDÉO la raccourcit-elle vraiment (ou celle d'une photo est-elle posée) ? */
+export function estDureeChoisieActive(m: MediaVideo): boolean {
+  const c = positif(m.dureeChoisie);
+  if (c === null || m.source === 'avatar') return false;
+  if (m.type === 'image') return true;
+  const mesuree = dureeMesuree(m);
+  return mesuree !== null && c < mesuree;
+}
+
+/**
+ * LA durée d'un média — UNE source de vérité pour la légende, l'infobulle,
+ * la chronologie, l'aperçu du projet et le plan rendu :
+ *  - photo : durée choisie (1–30 s), sinon 3 s ;
+ *  - vidéo : durée mesurée, raccourcie par la durée choisie (jamais au-delà
+ *    de la mesure, jamais sous 1 s) ; non sondée : 6 s supposées ;
+ *  - avatar : durée de sa parole (posée à la production), sinon l'estimation.
+ */
+export function dureeEffective(m: MediaVideo, dureeAvatarEstimee?: number | null): number {
+  if (m.source === 'avatar') return r3(dureeMesuree(m) ?? positif(dureeAvatarEstimee) ?? estimerDureeParole([]));
+  const choisie = positif(m.dureeChoisie);
+  if (m.type === 'image') {
+    return r3(borne(choisie ?? dureeMesuree(m) ?? DUREE_PHOTO_DEFAUT, DUREE_PHOTO_MIN, DUREE_PHOTO_MAX));
+  }
+  const mesuree = dureeMesuree(m);
+  if (mesuree === null) return DUREE_VIDEO_REPLI;
+  return r3(choisie !== null ? borne(choisie, Math.min(DUREE_MEDIA_MIN, mesuree), mesuree) : mesuree);
+}
+
+/** Durée qu'un média joue hors avatar (= `dureeEffective`). */
 export function dureeMedia(m: MediaVideo): number {
-  const d = typeof m.duree === 'number' && Number.isFinite(m.duree) && m.duree > 0 ? m.duree : null;
-  if (m.type === 'image') return d ?? DUREE_PHOTO_DEFAUT;
-  return d ?? DUREE_VIDEO_REPLI;
+  return dureeEffective(m);
+}
+
+export interface BornesDureeMedia {
+  /** `'photo'` : − / + de 1 à 30 s ; `'video'` : raccourcir seulement ; `'voix'` : liée à la voix ; `null` : rien. */
+  mode: 'photo' | 'video' | 'voix' | null;
+  min: number;
+  max: number;
+  pas: number;
+}
+
+/** Ce que la carte permet de régler sur la durée de ce média. */
+export function bornesDuree(m: MediaVideo): BornesDureeMedia {
+  if (m.source === 'avatar') return { mode: 'voix', min: 0, max: 0, pas: 1 };
+  if (m.type === 'image') return { mode: 'photo', min: DUREE_PHOTO_MIN, max: DUREE_PHOTO_MAX, pas: 1 };
+  const mesuree = dureeMesuree(m);
+  if (mesuree === null || !m.url) return { mode: null, min: 0, max: 0, pas: 1 };
+  return { mode: 'video', min: Math.min(DUREE_MEDIA_MIN, mesuree), max: mesuree, pas: 1 };
+}
+
+/**
+ * Le média avec la durée `secondes`, BORNÉE (photo 1–30 s ; vidéo
+ * 1 s → durée mesurée). Une vidéo ramenée à sa mesure perd sa durée choisie
+ * (retour au défaut, liste d'avant). Avatar : inchangé.
+ */
+export function avecDureeChoisie(m: MediaVideo, secondes: number): MediaVideo {
+  const b = bornesDuree(m);
+  if (b.mode !== 'photo' && b.mode !== 'video') return m;
+  if (!Number.isFinite(secondes)) return m;
+  const d = r3(borne(Math.round(secondes), b.min, b.max));
+  if (b.mode === 'video' && d >= b.max) {
+    const { dureeChoisie: _retire, ...reste } = m;
+    return reste;
+  }
+  return { ...m, dureeChoisie: d };
 }
 
 /**
@@ -286,6 +389,18 @@ export interface ResultatPlanListe {
  * créneaux d'avatar contigus n'en font qu'un (la parole est continue).
  */
 export function planDepuisListe(liste: ReadonlyArray<MediaVideo>): ResultatPlanListe {
+  const r = planDetaille(liste);
+  return { plan: r.etapes.map((e) => e.segment), duree: r.duree, ignores: r.ignores };
+}
+
+/** Un plan ET le média de la liste qui le joue (id, source, libellé). */
+export interface EtapePlanListe {
+  media: MediaVideo;
+  segment: RushSegment;
+}
+
+/** Le calcul UNIQUE du plan — `planDepuisListe` (rendu) et `planApercuListe` (écran) le partagent. */
+function planDetaille(liste: ReadonlyArray<MediaVideo>): { etapes: EtapePlanListe[]; duree: number; ignores: number; reduits: boolean } {
   const utilisables = liste.filter((m) => !!m.url);
   const ignores = liste.length - utilisables.length;
   // Fusion des avatars contigus.
@@ -295,7 +410,8 @@ export function planDepuisListe(liste: ReadonlyArray<MediaVideo>): ResultatPlanL
     if (m.source === 'avatar' && prev?.source === 'avatar') continue;
     items.push(m);
   }
-  if (items.length === 0) return { plan: [], duree: 0, ignores };
+  if (items.length === 0) return { etapes: [], duree: 0, ignores, reduits: false };
+  let reduits = false;
   const avatar = items.find((m) => m.source === 'avatar') ?? null;
   const nbAvatar = items.filter((m) => m.source === 'avatar').length;
   const brolls = items.filter((m) => m.source !== 'avatar');
@@ -303,7 +419,7 @@ export function planDepuisListe(liste: ReadonlyArray<MediaVideo>): ResultatPlanL
   let T: number;
   if (avatar) {
     T = r3(typeof avatar.duree === 'number' && avatar.duree > 0 ? avatar.duree : estimerDureeParole([]));
-    const B = brolls.reduce((t, m) => t + dureeMedia(m), 0);
+    const B = brolls.reduce((t, m) => t + dureeEffective(m), 0);
     // Les plans de coupe gardent leur durée tant que chaque créneau d'avatar
     // garde au moins AVATAR_CRENEAU_MIN_S ; sinon ils sont réduits ensemble.
     // Parole très courte : ce minimum descend à la part égale de chaque média
@@ -311,15 +427,16 @@ export function planDepuisListe(liste: ReadonlyArray<MediaVideo>): ResultatPlanL
     const minAvatar = Math.min(AVATAR_CRENEAU_MIN_S, T / items.length);
     const placeBroll = Math.max(0, T - nbAvatar * minAvatar);
     const f = B > placeBroll && B > 0 ? placeBroll / B : 1;
-    const dB = brolls.map((m) => dureeMedia(m) * f);
+    reduits = f < 1 - 1e-6;
+    const dB = brolls.map((m) => dureeEffective(m) * f);
     const partAvatar = nbAvatar > 0 ? (T - dB.reduce((a, b) => a + b, 0)) / nbAvatar : 0;
     let k = 0;
     durees = items.map((m) => (m.source === 'avatar' ? partAvatar : dB[k++]));
   } else {
-    durees = items.map((m) => dureeMedia(m));
+    durees = items.map((m) => dureeEffective(m));
     T = r3(durees.reduce((a, b) => a + b, 0));
   }
-  const plan: RushSegment[] = [];
+  const etapes: EtapePlanListe[] = [];
   let cumul = 0;
   let photos = 0;
   items.forEach((m, i) => {
@@ -327,17 +444,101 @@ export function planDepuisListe(liste: ReadonlyArray<MediaVideo>): ResultatPlanL
     cumul += durees[i];
     const fin = i === items.length - 1 ? T : r3(cumul);
     if (!(fin > debut)) return;
+    let segment: RushSegment;
     if (m.source === 'avatar') {
-      plan.push({ url: m.url!, debut, fin, depuis: debut, kind: 'avatar', source: 'jumeau' });
+      segment = { url: m.url!, debut, fin, depuis: debut, kind: 'avatar', source: 'jumeau' };
     } else if (m.type === 'image') {
       const mouvement: MouvementImage = MOUVEMENTS_PHOTO[photos % MOUVEMENTS_PHOTO.length];
       photos += 1;
-      plan.push({ url: m.url!, debut, fin, kind: 'image', source: 'photo', mouvement });
+      segment = { url: m.url!, debut, fin, kind: 'image', source: 'photo', mouvement };
     } else {
-      plan.push({ url: m.url!, debut, fin, kind: 'video', source: sourceSegment(m) });
+      segment = {
+        url: m.url!, debut, fin, kind: 'video', source: sourceSegment(m),
+        // Vidéo RACCOURCIE : l'extrait part du début et s'arrête à la durée
+        // choisie (les champs d'entrée / sortie du smart montage).
+        ...(estDureeChoisieActive(m) ? { depuis: 0, jusqua: dureeEffective(m) } : {}),
+      };
     }
+    etapes.push({ media: m, segment });
   });
-  return { plan, duree: plan.length ? plan[plan.length - 1].fin : 0, ignores };
+  return { etapes, duree: etapes.length ? etapes[etapes.length - 1].segment.fin : 0, ignores, reduits };
+}
+
+/** URL factice d'un créneau d'avatar pas encore produit — jamais chargée. */
+const AVATAR_A_PRODUIRE = 'avatar-a-produire:';
+
+/**
+ * Le plan MONTRÉ (aperçu du projet, chronologie) : le MÊME calcul que le
+ * rendu (`planDetaille`). Un créneau d'avatar pas encore produit y prend la
+ * durée estimée de sa parole (`dureeAvatarEstimee`) et une URL `null` :
+ * l'écran montre sa vignette, rien n'est produit. Sans avatar à produire, ce
+ * plan est EXACTEMENT celui passé à `composeVideo`.
+ */
+export interface EtapeApercu {
+  id: string;
+  source: SourceMediaVideo;
+  type: TypeMediaVideo;
+  /** `null` : avatar à produire (vignette + « Votre avatar parlera ici »). */
+  url: string | null;
+  debut: number;
+  fin: number;
+  /** Point d'entrée dans la vidéo (s). */
+  depuis: number;
+  mouvement?: MouvementImage;
+  libelle: string;
+}
+
+export function planApercuListe(
+  liste: ReadonlyArray<MediaVideo>, dureeAvatarEstimee?: number | null,
+): { etapes: EtapeApercu[]; duree: number; reduits: boolean } {
+  const estimee = positif(dureeAvatarEstimee) ?? estimerDureeParole([]);
+  const posee = liste.find((m) => m.source === 'avatar' && !!m.url && positif(m.duree))?.duree ?? null;
+  const complete = liste.map((m) => (m.source === 'avatar' && !m.url
+    ? { ...m, url: `${AVATAR_A_PRODUIRE}${m.id}`, duree: posee ?? estimee }
+    : m));
+  const r = planDetaille(complete);
+  return {
+    etapes: r.etapes.map(({ media, segment }) => ({
+      id: media.id,
+      source: media.source,
+      type: media.type,
+      url: segment.url.startsWith(AVATAR_A_PRODUIRE) ? null : segment.url,
+      debut: segment.debut,
+      fin: segment.fin,
+      depuis: segment.kind === 'avatar' ? segment.debut : segment.depuis ?? 0,
+      ...(segment.mouvement ? { mouvement: segment.mouvement } : {}),
+      libelle: libelleSource(media),
+    })),
+    duree: r.duree,
+    // Avec avatar, la séquence dure sa voix : des plans de coupe plus longs y sont réduits.
+    reduits: r.reduits,
+  };
+}
+
+/** Une ligne de la chronologie : « Rush personnel 4–9 s ». */
+export interface LigneChronologie {
+  id: string;
+  libelle: string;
+  debut: number;
+  fin: number;
+  cta?: boolean;
+}
+
+/** La chronologie de la séquence Vidéo (même plan que le rendu), puis le CTA. */
+export function chronologieListe(
+  liste: ReadonlyArray<MediaVideo>, opts: { dureeAvatarEstimee?: number | null; dureeCta?: number | null } = {},
+): { lignes: LigneChronologie[]; dureeVideo: number; total: number; reduits: boolean } {
+  const { etapes, duree, reduits } = planApercuListe(liste, opts.dureeAvatarEstimee);
+  const lignes: LigneChronologie[] = etapes.map((e) => ({ id: e.id, libelle: e.libelle, debut: e.debut, fin: e.fin }));
+  const cta = positif(opts.dureeCta);
+  if (cta !== null && etapes.length) lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: r3(duree + cta), cta: true });
+  return { lignes, dureeVideo: duree, total: lignes.length ? lignes[lignes.length - 1].fin : 0, reduits };
+}
+
+/** « 4 », « 4,5 » — secondes lisibles (une décimale au plus). */
+export function formatSecondes(s: number): string {
+  const v = Math.round(s * 10) / 10;
+  return String(v).replace('.', ',');
 }
 
 // ── Brouillon ────────────────────────────────────────────────────────────
@@ -377,10 +578,16 @@ export function sanitizeMediasVideo(v: unknown): MediaVideo[] | undefined {
       ...(metaBrut?.jumeau === true ? { jumeau: true } : {}),
       ...(typeof metaBrut?.avatarVersion === 'number' && Number.isFinite(metaBrut.avatarVersion) ? { avatarVersion: metaBrut.avatarVersion as number } : {}),
     };
+    const choisieBrute = typeof o.dureeChoisie === 'number' && Number.isFinite(o.dureeChoisie) && o.dureeChoisie > 0 ? o.dureeChoisie : null;
+    // Bornée comme à l'écran : photo 1–30 s, vidéo 1 s → durée mesurée, jamais pour l'avatar.
+    const dureeChoisie = choisieBrute === null || source === 'avatar' ? null
+      : type === 'image' ? r3(borne(choisieBrute, DUREE_PHOTO_MIN, DUREE_PHOTO_MAX))
+        : duree !== null && choisieBrute < duree ? r3(Math.max(Math.min(DUREE_MEDIA_MIN, duree), choisieBrute)) : null;
     out.push({
       id, source, type,
       ...(url ? { url } : {}),
       duree,
+      ...(dureeChoisie !== null ? { dureeChoisie } : {}),
       ...(typeof o.nom === 'string' && o.nom.length > 0 ? { nom: o.nom.slice(0, 200) } : {}),
       ...(Object.keys(meta).length ? { meta } : {}),
     });

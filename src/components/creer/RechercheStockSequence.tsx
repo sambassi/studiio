@@ -45,6 +45,11 @@ export interface MetaStock {
   sourceUrl: string;
   licence: string;
   attribution: string;
+  /**
+   * Durée ANNONCÉE par la recherche (s) — information seulement. La durée
+   * active d'une vidéo ajoutée est celle MESURÉE à l'import (`loadedmetadata`).
+   */
+  dureeAnnoncee?: number;
 }
 
 export function metaStockDe(m: MediaStock): MetaStock {
@@ -277,9 +282,10 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
       }
       const meta = metaStockDe(r.media ?? m);
       if (m.type === 'video') {
-        // Le nom VISIBLE dans la liste des rushes : lisible, jamais un nom de fichier.
-        const d = m.dureeSecondes ? ` · ${formatDuree(m.dureeSecondes)}` : '';
-        props.onAjouterRush(r.url, `Vidéo suggérée${d}`, meta);
+        // Le nom VISIBLE dans la liste des rushes : lisible, jamais un nom de
+        // fichier — et SANS la durée annoncée par la recherche : la légende et
+        // l'infobulle montrent la durée MESURÉE à l'import (une seule vérité).
+        props.onAjouterRush(r.url, 'Vidéo suggérée', m.dureeSecondes ? { ...meta, dureeAnnoncee: m.dureeSecondes } : meta);
         setAjoutes((prev) => ({ ...prev, [m.id]: true }));
         setMessage('Vidéo ajoutée à vos rushes et à la Médiathèque.');
       } else {
