@@ -4413,7 +4413,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       drawTransition(
         ctx, width, height,
         (p, target) => drawSeq(seq.type, p, target),
-        (p, target) => drawSeq(sequences[seqIdx + 1].type, p, target),
+        // MULTI-SOURCES : pendant le fondu ENTRANT, la séquence Vidéo d'un plan
+        // mixte reste sur sa PREMIÈRE image. La progression historique
+        // `t * 0,3` y ferait défiler jusqu'à 30 % du plan — un média SUIVANT
+        // apparaîtrait avant son tour. Les autres montages : inchangés.
+        (p, target) => drawSeq(sequences[seqIdx + 1].type, montageMixte && sequences[seqIdx + 1].type === 'video' ? 0 : p, target),
         transProgress,
         style,
         // Les calques ne sont crees que si un style en a besoin : un montage
