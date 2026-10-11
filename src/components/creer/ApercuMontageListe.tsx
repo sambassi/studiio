@@ -5,8 +5,8 @@
  * dans l'ordre de la liste, puis la carte CTA.
  *
  * Lecteur LOCAL et léger : aucun rendu serveur, aucun appel à un fournisseur,
- * aucune génération. Les étapes viennent de `planApercuListe` — le MÊME calcul
- * que le plan passé à `composeVideo` à l'envoi (`planDepuisListe`) : ce qui
+ * aucune génération. Les étapes sont les items de `planDetaille` — le MÊME
+ * plan que celui passé à `composeVideo` à l'envoi (`planDepuisListe`) : ce qui
  * s'affiche, ce qui se regarde et ce qui se rend durent pareil.
  *
  *  - vidéo : muette, depuis son point d'entrée, coupée à sa durée ;
@@ -19,7 +19,7 @@
  * 4–9 s · CTA 9–13 s ») : l'étape en cours est surlignée, un clic y saute.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pause, Play, RotateCcw, UserRound } from 'lucide-react';
+import { AlertTriangle, Pause, Play, RotateCcw, UserRound } from 'lucide-react';
 import { formatSecondes, type EtapeApercu, type LigneChronologie } from '@/lib/creer/medias-video';
 import { transformeKenBurns } from '@/lib/creer/ken-burns';
 
@@ -37,8 +37,10 @@ export interface ApercuMontageListeProps {
   ctaSousTexte?: string | null;
   /** Vignette de l'avatar (source de sa version active), déjà lue — jamais demandée ici. */
   vignetteAvatar?: { url: string; type: 'photo' | 'video' } | null;
-  /** Avec avatar : des médias ont été raccourcis pour tenir dans le temps de sa voix. */
-  reduitsALaVoix?: boolean;
+  /** Avec avatar : la narration (durée, « estimée » ou « réelle ») qui fixe la séquence. */
+  narration?: { duree: number; source: 'estimee' | 'reelle' } | null;
+  /** Avec avatar : de combien les médias dépassent la narration (s) — 0 : ils tiennent. */
+  depassement?: number;
 }
 
 const mmss = (s: number) => {
@@ -205,9 +207,10 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
                 data-ligne={l.id}
                 data-debut={l.debut}
                 data-fin={l.fin}
+                data-hors-narration={l.horsNarration ? 'oui' : undefined}
                 aria-current={courant ? 'step' : undefined}
                 onClick={() => sauterA(l.debut)}
-                className={`max-w-full truncate rounded-md px-2 py-1 text-[10px] tabular-nums transition ${courant ? 'bg-studiio-primary/25 text-white ring-1 ring-studiio-primary/60' : 'bg-gray-800/70 text-gray-300 hover:bg-gray-800'}`}
+                className={`max-w-full truncate rounded-md px-2 py-1 text-[10px] tabular-nums transition ${courant ? 'bg-studiio-primary/25 text-white ring-1 ring-studiio-primary/60' : 'bg-gray-800/70 text-gray-300 hover:bg-gray-800'} ${l.horsNarration ? 'ring-1 ring-amber-400/70' : ''}`}
               >
                 {l.libelle} {formatSecondes(l.debut)}–{formatSecondes(l.fin)} s
               </button>
@@ -215,9 +218,17 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
           );
         })}
       </ol>
-      {p.reduitsALaVoix && (
-        <p data-chronologie-reduite className="text-[10px] text-gray-500">
-          Avec votre avatar, la séquence Vidéo dure le temps de sa voix : les autres médias sont raccourcis pour y tenir.
+      {p.narration && (
+        <p
+          data-chronologie-narration={p.narration.source}
+          data-narration-duree={p.narration.duree}
+          className={`text-[10px] ${p.depassement && p.depassement > 0 ? 'text-amber-300' : 'text-gray-500'}`}
+        >
+          {p.depassement && p.depassement > 0 ? <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5" /> : null}
+          Narration {p.narration.source === 'reelle' ? 'réelle' : 'estimée'} de votre avatar : {formatSecondes(p.narration.duree)} s
+          {p.depassement && p.depassement > 0
+            ? ` — vos médias la dépassent de ${formatSecondes(Math.ceil(p.depassement * 10 - 1e-6) / 10)} s : raccourcissez-les avant d’envoyer.`
+            : '. Vos médias gardent leur durée ; votre avatar occupe le reste.'}
         </p>
       )}
     </section>

@@ -51,7 +51,7 @@ import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
 import { draftKey, DRAFT_VERSION, sanitizeDraft as sanitizeDraftBrut } from '../lib/creer/draft';
 import {
   avecDureeChoisie, bornesDuree, chronologieListe, deplacerMedia, dureeEffective, estListeEnrichie, libelleMedia,
-  planApercuListe, planDepuisListe, remplacerMedia, retirerMedia, sanitizeMediasVideo, titreMedia,
+  planApercuListe, planDepuisListe, planDetaille, remplacerMedia, retirerMedia, sanitizeMediasVideo, titreMedia,
   DUREE_PHOTO_MAX, DUREE_PHOTO_MIN, type MediaVideo,
 } from '@/lib/creer/medias-video';
 import MediasSequenceVideo, { type MediasSequenceVideoProps } from '@/components/creer/MediasSequenceVideo';
@@ -163,16 +163,16 @@ describe('plan unique', () => {
   it('rush 4 s + photo 5 s + vidéo 3 s → 12 s partout ; sans le rush → 8 s', () => {
     const rendu = planDepuisListe(liste);
     expect(rendu.duree).toBe(12);
-    const apercu = planApercuListe(liste);
+    const apercu = planApercuListe(planDetaille(liste));
     expect(apercu.etapes.map((e) => [e.url, e.debut, e.fin])).toEqual(rendu.plan.map((s) => [s.url, s.debut, s.fin]));
-    const chrono = chronologieListe(liste, { dureeCta: 4 });
+    const chrono = chronologieListe(planDetaille(liste), { dureeCta: 4 });
     expect(chrono.lignes.map((l) => `${l.libelle} ${l.debut}-${l.fin}`)).toEqual([
       'Rush personnel 0-4', 'Photo suggérée 4-9', 'Vidéo suggérée 9-12', 'CTA 12-16',
     ]);
     expect(chrono.dureeVideo).toBe(12);
     const sans = retirerMedia(liste, 0);
     expect(planDepuisListe(sans).duree).toBe(8);
-    expect(chronologieListe(sans).lignes.map((l) => l.libelle)).toEqual(['Photo suggérée', 'Vidéo suggérée']);
+    expect(chronologieListe(planDetaille(sans)).lignes.map((l) => l.libelle)).toEqual(['Photo suggérée', 'Vidéo suggérée']);
   });
 
   it('vidéo raccourcie : le plan la coupe à sa durée (entrée 0, sortie = durée choisie)', () => {
@@ -183,7 +183,7 @@ describe('plan unique', () => {
 
   it('avatar à produire : l’aperçu prend la parole estimée, sans URL (aucune génération)', () => {
     const l = [avatar(), rush({ duree: 2 }), photo()];
-    const { etapes, duree } = planApercuListe(l, 10);
+    const { etapes, duree } = planApercuListe(planDetaille(l, { dureeParole: 10, source: 'estimee' }));
     expect(duree).toBe(10);
     expect(etapes[0]).toMatchObject({ source: 'avatar', url: null, debut: 0 });
     expect(etapes.map((e) => e.id)).toEqual(['a1', 'r1', 'p1']);
@@ -200,6 +200,7 @@ function props(sur: Partial<MediasSequenceVideoProps> = {}): MediasSequenceVideo
     onApercu: vi.fn(), onDeplacer: vi.fn(), onRemplacer: vi.fn(), onSupprimer: vi.fn(), onRecadrer: vi.fn(),
     onAjouterMonRush: vi.fn(), onAjouterAvatar: vi.fn(), onAjouterSuggere: vi.fn(), onAjouterMediatheque: vi.fn(),
     ...sur,
+    plan: sur.plan ?? planDetaille(sur.medias ?? [avatar(), rush(), photo()], { dureeParole: 30, source: 'estimee' }),
   };
 }
 
@@ -209,7 +210,7 @@ describe('MediasSequenceVideo — réglage de durée', () => {
     const onDuree = vi.fn();
     const { container } = render(<MediasSequenceVideo {...props({ onDuree })} />);
     const [a, r, p] = Array.from(container.querySelectorAll('[data-media-item]'));
-    expect(a.querySelector('[data-media-duree="voix"]')!.textContent).toBe('Durée liée à la voix');
+    expect(a.querySelector('[data-media-duree="voix"]')!.textContent).toBe('Durée liée à la voix · ≈ 23 s');
     expect(a.querySelector('[data-duree-moins], [data-duree-plus]')).toBeNull();
     expect(p.querySelector('[data-duree-valeur]')!.textContent).toBe('3 s');
     fireEvent.click(p.querySelector('[data-duree-plus]')!);
@@ -234,8 +235,9 @@ describe('ApercuMontageListe — lecteur local', () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     const liste = [avatar(), rush({ duree: 2 }), photo({ dureeChoisie: 2 })];
-    const { etapes } = planApercuListe(liste, 6);
-    const { lignes } = chronologieListe(liste, { dureeAvatarEstimee: 6, dureeCta: 2 });
+    const plan = planDetaille(liste, { dureeParole: 6, source: 'estimee' });
+    const { etapes } = planApercuListe(plan);
+    const { lignes } = chronologieListe(plan, { dureeCta: 2 });
     const { container } = render(
       <ApercuMontageListe etapes={etapes} lignes={lignes} format="9:16" accent="#7C3AED" ctaTexte="Viens" vignetteAvatar={null} />,
     );

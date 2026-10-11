@@ -139,7 +139,10 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(bloc).toMatch(/videoDuration: posee\.secondes/);
     // Les deux seules sorties : l'echec du moteur, et un rush remplace entre-temps.
     // + multi-sources : une liste dont un média n'est pas prêt s'arrête AVANT tout débit.
-    expect(bloc.match(/\breturn;/g)).toHaveLength(3);
+    // + durées (règle absolue) : une parole RÉELLE plus courte que les médias
+    //   s'arrête AVANT tout débit de rendu, le jumeau gardé pour la relance.
+    expect(bloc.match(/\breturn;/g)).toHaveLength(4);
+    expect(bloc).toMatch(/res\.depassement > 0\) \{\s*setError\(messageNarrationTropCourte\(detail\)\);\s*return;/);
     expect(bloc).toMatch(/res\.ignores > 0 \|\| res\.plan\.length === 0\) \{\s*setError\([^;]*\);\s*return;/);
     // (Seule ligne tolérée avant `setError` : l'oubli d'une génération 404,
     // introuvable — la garder ferait boucler la reprise à chaque ouverture.)

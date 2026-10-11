@@ -61,9 +61,10 @@ import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/Me
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
-  ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar, dureeListe, planDepuisListe,
+  ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar,
   estimerDureeParole, nouvelIdMedia, libelleMedia, libelleSource, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
-  avecDureeChoisie, dureeEffective, planApercuListe, chronologieListe,
+  avecDureeChoisie, dureeEffective, planApercuListe, chronologieListe, planDetaille, paroleDeListe, planRenduDepuis,
+  itemDuPlan, bornesDuree, formatSecondes, messageNarrationTropCourte, type PlanDetaille,
 } from '@/lib/creer/medias-video';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
@@ -7509,6 +7510,20 @@ export default function AssistantWizard() {
   listeMediasRef.current = listeMedias;
   /** Durée de parole estimée de l'avatar avant sa production (textes des voix). */
   const dureeAvatarEstimee = estimerDureeParole(Object.values(sequenceVoices).map((v) => v.text));
+  /**
+   * LE plan de la liste (`planDetaille`) — la seule source des durées de la
+   * séquence « Vidéo » : cartes (légende, infobulle, réglage, « N s
+   * disponibles »), chronologie, aperçu du projet, aperçu d'un média, durée
+   * de séquence au brouillon. La parole est la RÉELLE (avatar produit) sinon
+   * l'estimée ; le rendu refait ce même calcul sur la liste envoyée.
+   */
+  const planDeListe = (liste: ReadonlyArray<MediaVideo>): PlanDetaille => {
+    const p = paroleDeListe(liste, dureeAvatarEstimee);
+    return planDetaille(liste, { dureeParole: p.dureeParole, source: p.source });
+  };
+  const planMedias = planDeListe(listeMedias);
+  /** Réglage de durée ramené au maximum valide : l'explication, sous la carte. */
+  const [noteDuree, setNoteDuree] = useState<{ id: string; texte: string } | null>(null);
   // Les gestes d'AVANT sur les rushes (« Changer », « Ajouter un rush »,
   // « Temps forts », recherche stock) restent la source des VIDÉOS : la liste
   // propre s'y accorde (retrait, ajout en fin, durées sondées).
@@ -7523,9 +7538,9 @@ export default function AssistantWizard() {
   // l'avatar, sinon la somme des médias) — jamais un réglage qui la contredit.
   useEffect(() => {
     if (!mediasVideo) return;
-    const d = Math.round(dureeListe(mediasVideo, dureeAvatarEstimee) * 10) / 10;
+    const d = Math.round(planMedias.duree * 10) / 10;
     if (d > 0 && Math.abs(d - videoDuration) > 0.05) setVideoDuration(d);
-  }, [mediasVideo, dureeAvatarEstimee, videoDuration]);
+  }, [mediasVideo, planMedias.duree, videoDuration]);
 
   /** Vide les champs rush SANS masquer la séquence (liste faite d'avatar / photos seuls). */
   const viderRushsDeLaListe = () => {
@@ -7564,7 +7579,7 @@ export default function AssistantWizard() {
     if (rushs.length) poserListeRushs(rushs);
     else viderRushsDeLaListe();
     setSequences((prev) => prev.map((q) => (q.key === 'video' ? { ...q, enabled: true } : q)));
-    setVideoDuration(Math.round(dureeListe(liste, dureeAvatarEstimee) * 10) / 10);
+    setVideoDuration(Math.round(planDeListe(liste).duree * 10) / 10);
   };
 
   /**
@@ -7645,12 +7660,29 @@ export default function AssistantWizard() {
     poserListeMedias(retirerMedia(liste, i));
   };
 
-  /** Durée choisie du média `i` (photo 1–30 s, vidéo raccourcie) — portée par le média. */
+  /**
+   * Durée choisie du média `i` (photo 1–30 s, vidéo raccourcie) — portée par
+   * le média. Avec avatar, un allongement est ramené AVANT d'être enregistré
+   * au temps de narration encore libre (jamais une durée qui déborde), avec
+   * une courte explication sous la carte.
+   */
   const choisirDureeMedia = (i: number, secondes: number) => {
     const liste = listeMediasRef.current;
     const m = liste[i];
     if (!m) return;
-    const neuf = avecDureeChoisie(m, secondes);
+    const plan = planDeListe(liste);
+    const avant = itemDuPlan(plan, m.id)?.dureeEffective ?? dureeEffective(m);
+    const neuf = avecDureeChoisie(m, secondes, plan);
+    const obtenue = dureeEffective(neuf);
+    const b = bornesDuree(m, plan);
+    if (secondes > avant && obtenue < Math.round(secondes) - 1e-6 && b.limiteParNarration) {
+      setNoteDuree({
+        id: m.id,
+        texte: obtenue > avant
+          ? `Ramenée à ${formatSecondes(obtenue)} s : la narration de votre avatar (${formatSecondes(plan.dureeParole ?? 0)} s) ne laisse pas plus de temps.`
+          : `Plus de temps libre : la narration de votre avatar dure ${formatSecondes(plan.dureeParole ?? 0)} s.`,
+      });
+    } else setNoteDuree(null);
     if (neuf === m) return;
     poserListeMedias(liste.map((x, k) => (k === i ? neuf : x)));
   };
@@ -7671,21 +7703,24 @@ export default function AssistantWizard() {
     if (!url) return null;
     const type: MediaApercu['type'] = avatarPret && !m.url ? (avatarPret.type === 'photo' ? 'photo' : 'video') : m.type === 'image' ? 'photo' : 'video';
     // `libelleSource` : la durée est déjà affichée par l'aperçu (pas « · 0:02 · 0:02 »).
-    return { type, url, libelle: libelleSource(m), nomTechnique: titreMedia(m), dureeSecondes: m.source === 'avatar' && !m.url ? undefined : dureeEffective(m) };
-  }, [mediaApercuId, listeMedias, apercuAvatarListe]);
+    const dureePlan = m.source === 'avatar' && !m.url ? undefined : itemDuPlan(planMedias, m.id)?.dureeEffective;
+    return { type, url, libelle: libelleSource(m), nomTechnique: titreMedia(m, dureePlan), dureeSecondes: dureePlan };
+  }, [mediaApercuId, listeMedias, apercuAvatarListe, planMedias]);
   /**
-   * « Aperçu du montage » d'une liste enrichie : le plan de `planApercuListe`
+   * « Aperçu du montage » d'une liste enrichie : les items de `planMedias`
    * — le MÊME calcul que `planDepuisListe` à l'envoi — et sa chronologie (CTA
    * compris s'il est joué). `null` sans liste enrichie : rien ne s'affiche.
    */
   const ctaJoue = sequences.some((q) => q.key === 'cta' && q.enabled);
   const videoJouee = sequences.some((q) => q.key === 'video' && q.enabled);
-  const apercuMontage = useMemo(() => {
+  const apercuMontage = (() => {
     if (!mediasVideo || !estListeEnrichie(mediasVideo) || !videoJouee) return null;
-    const { etapes } = planApercuListe(mediasVideo, dureeAvatarEstimee);
-    const { lignes, reduits } = chronologieListe(mediasVideo, { dureeAvatarEstimee, dureeCta: ctaJoue ? ctaDuration : null });
-    return etapes.length ? { etapes, lignes, reduits } : null;
-  }, [mediasVideo, dureeAvatarEstimee, ctaJoue, videoJouee, ctaDuration]);
+    const { etapes } = planApercuListe(planMedias);
+    const { lignes } = chronologieListe(planMedias, { dureeCta: ctaJoue ? ctaDuration : null });
+    const narration = planMedias.dureeParole !== null && planMedias.sourceParole
+      ? { duree: planMedias.dureeParole, source: planMedias.sourceParole } : null;
+    return etapes.length ? { etapes, lignes, narration, depassement: planMedias.depassement } : null;
+  })();
   const etatAvatarListe: EtatAvatarListe = avatarsApercu === undefined ? 'chargement' : apercuAvatarListe?.etat === 'pret' ? 'pret' : 'absent';
 
   /**
@@ -8060,6 +8095,18 @@ export default function AssistantWizard() {
       return;
     }
 
+    // ── Médias vs narration de l'avatar ─────────────────────────────
+    // AVANT tout appel (garde, solde, jumeau) : des médias plus longs que la
+    // narration ne sont JAMAIS raccourcis en silence au rendu. Le plan l'a
+    // déjà affiché ; l'envoi attend que l'utilisateur les raccourcisse.
+    if (mediasVideo && estListeEnrichie(mediasVideo)) {
+      const planAvant = planDeListe(mediasVideo);
+      if (planAvant.depassement > 0) {
+        setError(`La durée totale dépasse la narration ${planAvant.sourceParole === 'reelle' ? '' : 'estimée '}de votre avatar (${formatSecondes(planAvant.dureeParole ?? 0)} s) de ${formatSecondes(Math.ceil(planAvant.depassement * 10 - 1e-6) / 10)} s : raccourcissez vos médias avant d’envoyer.`);
+        return;
+      }
+    }
+
     // ── Jumeau numérique ────────────────────────────────────────────
     // AVANT tout état de chargement, tout appel de solde, toute composition :
     // si « Utiliser mon jumeau » est demandé, le SERVEUR revérifie tout
@@ -8333,13 +8380,23 @@ export default function AssistantWizard() {
         setRenderStage('Préparation…');
       }
       // ── MULTI-SOURCES : le plan suit la LISTE, dans l'ordre choisi ──────
-      // Déterministe (`planDepuisListe`) : aucun smart montage ne réordonne
-      // ce que l'utilisateur a rangé. Avec avatar, la séquence dure sa parole
-      // et chaque fenêtre d'avatar garde `depuis === debut` (lip-sync).
+      // Déterministe (`planDetaille`, projeté par `planRenduDepuis`) : aucun
+      // smart montage ne réordonne ce que l'utilisateur a rangé. Avec avatar,
+      // la séquence dure sa parole (RÉELLE une fois produit) et chaque
+      // fenêtre d'avatar garde `depuis === debut` (lip-sync).
       let planListe: RushSegment[] | null = null;
       const listePlan = listeAvatarPosee ?? listeEnvoi;
       if (listePlan) {
-        const res = planDepuisListe(listePlan);
+        const detail = planDeListe(listePlan);
+        const res = planRenduDepuis(detail);
+        // Parole RÉELLE plus courte que les médias : AUCUN rendu (jamais un
+        // média raccourci en silence). Le jumeau est déjà posé dans la liste
+        // (et le brouillon) avec sa durée : la relance le réutilise, sans
+        // seconde génération ni second débit.
+        if (res.depassement > 0) {
+          setError(messageNarrationTropCourte(detail));
+          return;
+        }
         if (res.ignores > 0 || res.plan.length === 0) {
           setError('Un média de la séquence Vidéo n’est pas prêt (avatar non produit ?) : rien n’a été composé ni débité.');
           return;
@@ -11737,6 +11794,8 @@ export default function AssistantWizard() {
                           c'est la vue des rushes d'avant (mêmes gestes, même montage). */}
                       <MediasSequenceVideo
                         medias={listeMedias}
+                        plan={planMedias}
+                        noteDuree={noteDuree}
                         occupe={rushLoading}
                         estRecadre={(u) => recadrageRushActif(rushTransforms[u])}
                         etatAvatar={etatAvatarListe}
@@ -12974,7 +13033,8 @@ export default function AssistantWizard() {
           <ApercuMontageListe
             etapes={apercuMontage.etapes}
             lignes={apercuMontage.lignes}
-            reduitsALaVoix={apercuMontage.reduits}
+            narration={apercuMontage.narration}
+            depassement={apercuMontage.depassement}
             format={format}
             accent={accent}
             ctaTexte={generated?.cta ?? null}

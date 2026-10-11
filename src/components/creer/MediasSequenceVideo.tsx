@@ -15,16 +15,25 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowDown, ArrowUp, Crop, Film, FolderOpen, Images, Loader2, Minus, Play, Plus, RefreshCw, Trash2, UserRound,
+  AlertTriangle, ArrowDown, ArrowUp, Crop, Film, FolderOpen, Images, Loader2, Minus, Play, Plus, RefreshCw, Trash2, UserRound,
 } from 'lucide-react';
 import {
-  bornesDuree, dureeEffective, formatSecondes, libelleMedia, titreMedia, type MediaVideo,
+  bornesDuree, formatSecondes, itemDuPlan, libelleMedia, messageNarration, titreMedia,
+  type ItemPlanDetaille, type MediaVideo, type PlanDetaille,
 } from '@/lib/creer/medias-video';
 
 export type EtatAvatarListe = 'pret' | 'absent' | 'chargement' | 'inconnu';
 
 export interface MediasSequenceVideoProps {
   medias: ReadonlyArray<MediaVideo>;
+  /**
+   * LE plan (`planDetaille`) de ces médias : la SEULE source des durées
+   * affichées (légende, infobulle, réglage), de l'en-tête « N s disponibles »
+   * et des médias hors narration. Le composant ne recalcule aucune durée.
+   */
+  plan: PlanDetaille;
+  /** Courte explication après un réglage ramené au maximum valide (par id de média). */
+  noteDuree?: { id: string; texte: string } | null;
   /** Un import / une sonde est en cours : les gestes attendent. */
   occupe?: boolean;
   /** Le média (par URL) a-t-il un recadrage actif ? */
@@ -98,16 +107,24 @@ function Vignette({ m, vignetteAvatar }: { m: MediaVideo; vignetteAvatar?: Media
 
 /**
  * « Durée [−] 3 s [+] » d'une photo ou d'une vidéo (raccourcir seulement) ;
- * « Durée liée à la voix » pour l'avatar. La valeur est `dureeEffective` —
- * la même que la légende, la chronologie, l'aperçu et le rendu.
+ * « Durée liée à la voix · 4 s » pour l'avatar. La valeur est celle de
+ * l'item du plan — la même que la légende, la chronologie, l'aperçu et le
+ * rendu. Avec avatar, [+] s'arrête au temps de narration encore libre.
  */
-function ReglageDuree({ m, i, occupe, onDuree }: { m: MediaVideo; i: number; occupe?: boolean; onDuree?: (i: number, s: number) => void }) {
-  const b = bornesDuree(m);
+function ReglageDuree({ m, i, item, plan, occupe, onDuree }: {
+  m: MediaVideo; i: number; item: ItemPlanDetaille | null; plan: PlanDetaille; occupe?: boolean; onDuree?: (i: number, s: number) => void;
+}) {
+  const b = bornesDuree(m, plan);
   if (b.mode === 'voix') {
-    return <span data-media-duree="voix" className="text-[10px] text-gray-500">Durée liée à la voix</span>;
+    const estimee = plan.sourceParole === 'estimee';
+    return (
+      <span data-media-duree="voix" className="text-[10px] text-gray-500">
+        Durée liée à la voix{item ? <> · <span data-duree-valeur className="text-gray-300 tabular-nums">{estimee ? '≈ ' : ''}{formatSecondes(item.dureeEffective)} s</span></> : null}
+      </span>
+    );
   }
-  if (!onDuree || (b.mode !== 'photo' && b.mode !== 'video')) return null;
-  const d = dureeEffective(m);
+  if (!onDuree || (b.mode !== 'photo' && b.mode !== 'video') || !item) return null;
+  const d = item.dureeEffective;
   const nom = m.type === 'image' ? 'la photo' : 'la vidéo';
   const pas = 'flex items-center justify-center rounded-md w-6 h-6 text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed transition';
   return (
@@ -121,8 +138,10 @@ function ReglageDuree({ m, i, occupe, onDuree }: { m: MediaVideo; i: number; occ
       <span data-duree-valeur className="min-w-[2.5rem] text-center text-[11px] font-medium text-gray-100 tabular-nums">{formatSecondes(d)} s</span>
       <button
         type="button" className={pas} data-duree-plus
-        onClick={() => onDuree(i, d + b.pas)} disabled={occupe || d >= b.max}
-        title={b.mode === 'video' ? `Allonger ${nom} (jusqu’à sa durée réelle)` : `Allonger ${nom}`}
+        onClick={() => onDuree(i, d + b.pas)} disabled={occupe || d >= b.max - 1e-6}
+        title={b.limiteParNarration && d >= b.max - 1e-6
+          ? `Plus de temps libre dans la narration de votre avatar`
+          : b.mode === 'video' ? `Allonger ${nom} (jusqu’à sa durée réelle)` : `Allonger ${nom}`}
         aria-label={`Allonger ${nom} ${i + 1}`}
       ><Plus className="w-3 h-3" /></button>
     </span>
@@ -143,6 +162,7 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
   const selection = p.medias.find((m) => m.id === p.selectionId) ?? null;
   const n = p.medias.length;
   const choisir = (f: () => void) => () => { setMenu(false); f(); };
+  const narration = messageNarration(p.plan);
 
   return (
     <div data-medias-video className="mt-2 rounded-xl bg-gray-900/40 ring-1 ring-emerald-500/20 p-2 space-y-1.5 min-w-0">
@@ -150,12 +170,29 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
         <span className="text-[11px] text-gray-400">Médias de la séquence Vidéo{n > 1 ? ', joués dans cet ordre' : ''}</span>
         {p.occupe && <Loader2 className="w-3 h-3 animate-spin text-gray-500 flex-shrink-0" />}
       </div>
+      {narration && (
+        <p
+          data-narration={narration.depasse ? 'depasse' : 'ok'}
+          data-narration-duree={p.plan.dureeParole ?? ''}
+          data-narration-source={p.plan.sourceParole ?? ''}
+          data-depassement={p.plan.depassement}
+          data-disponible={p.plan.dureeRestante ?? ''}
+          className={`px-1 text-[11px] leading-snug ${narration.depasse ? 'text-amber-300' : 'text-gray-400'}`}
+          role={narration.depasse ? 'alert' : undefined}
+        >
+          {narration.depasse && <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5" />}
+          Narration {p.plan.sourceParole === 'reelle' ? 'réelle' : 'estimée'} : {formatSecondes(p.plan.dureeParole ?? 0)} s · {narration.texte}
+          {narration.depasse ? ' : raccourcissez vos médias avant d’envoyer.' : ''}
+        </p>
+      )}
       {n === 0 && (
         <p className="px-1 text-[11px] text-gray-500">Aucun média : ajoutez un rush, votre avatar ou un média suggéré.</p>
       )}
       <ol className="space-y-1.5">
         {p.medias.map((m, i) => {
-          const libelle = libelleMedia(m);
+          const item = itemDuPlan(p.plan, m.id);
+          const dureePlan = item && !(m.source === 'avatar' && !m.url) ? item.dureeEffective : null;
+          const libelle = libelleMedia(m, dureePlan);
           const recadrable = m.source !== 'avatar' && !!m.url;
           const recadre = recadrable && !!p.estRecadre?.(m.url!);
           const choisi = m.id === p.selectionId;
@@ -164,11 +201,16 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
               key={m.id}
               data-media-item={m.source}
               data-media-type={m.type}
+              data-media-id={m.id}
+              data-duree-plan={item?.dureeEffective ?? ''}
+              data-debut={item?.debut ?? ''}
+              data-fin={item?.fin ?? ''}
+              data-hors-narration={item?.horsNarration ? 'oui' : undefined}
               className={`flex flex-wrap items-center gap-2 rounded-lg px-1.5 py-1.5 min-w-0 ${choisi ? 'bg-studiio-primary/15 ring-1 ring-studiio-primary/50' : 'bg-gray-900/60'}`}
             >
               <span className="text-[10px] font-bold text-emerald-300 w-4 text-center flex-shrink-0">{i + 1}</span>
               <Vignette m={m} vignetteAvatar={p.vignetteAvatar} />
-              <span className="min-w-0 flex-1 text-[11px] text-gray-200 leading-tight" title={titreMedia(m)} data-media-libelle>
+              <span className="min-w-0 flex-1 text-[11px] text-gray-200 leading-tight" title={titreMedia(m, dureePlan)} data-media-libelle>
                 {/* Deux lignes au plus : « Mon avatar · produit à l'envoi » reste lisible à 390 px. */}
                 <span className="block break-words" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{libelle}</span>
               </span>
@@ -202,7 +244,17 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
               {/* Durée : sur sa propre ligne, alignée sous le libellé (rien ne déborde à 390 px). */}
               {(m.source === 'avatar' || (p.onDuree && (m.type === 'image' || bornesDuree(m).mode === 'video'))) && (
                 <span className="basis-full flex items-center min-w-0" style={{ paddingLeft: 72 }}>
-                  <ReglageDuree m={m} i={i} occupe={p.occupe} onDuree={p.onDuree} />
+                  <ReglageDuree m={m} i={i} item={item} plan={p.plan} occupe={p.occupe} onDuree={p.onDuree} />
+                </span>
+              )}
+              {item?.horsNarration && (
+                <span data-media-hors-narration className="basis-full text-[10px] text-amber-300" style={{ paddingLeft: 72 }}>
+                  Ne tient pas dans la narration : raccourcissez ce média ou un autre.
+                </span>
+              )}
+              {p.noteDuree?.id === m.id && (
+                <span data-media-note-duree className="basis-full text-[10px] text-gray-400" style={{ paddingLeft: 72 }}>
+                  {p.noteDuree.texte}
                 </span>
               )}
             </li>
@@ -219,11 +271,11 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
               : <img src={p.vignetteAvatar!.url} alt="Mon avatar" className="w-full object-cover" style={{ maxHeight: 320 }} />
           ) : selection.type === 'image' ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={selection.url} alt={libelleMedia(selection)} className="w-full object-cover" style={{ maxHeight: 320 }} />
+            <img src={selection.url} alt={libelleMedia(selection, itemDuPlan(p.plan, selection.id)?.dureeEffective)} className="w-full object-cover" style={{ maxHeight: 320 }} />
           ) : (
             <video key={selection.url} src={selection.url} muted playsInline autoPlay loop controls className="w-full" style={{ maxHeight: 320 }} />
           )}
-          <p className="px-2 py-1 text-[10px] text-gray-400 truncate">{libelleMedia(selection)}</p>
+          <p className="px-2 py-1 text-[10px] text-gray-400 truncate">{libelleMedia(selection, selection.source === 'avatar' && !selection.url ? null : itemDuPlan(p.plan, selection.id)?.dureeEffective)}</p>
         </div>
       )}
 

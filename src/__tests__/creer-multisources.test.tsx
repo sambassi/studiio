@@ -24,7 +24,7 @@ vi.mock('@/lib/fonts/catalog', async () => {
 
 import {
   listeDepuisRushs, rushsDeListe, estListeEnrichie, ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia,
-  poserVideoAvatar, planDepuisListe, dureeListe, libelleMedia, libelleSource, sanitizeMediasVideo, reconcilierListe,
+  poserVideoAvatar, planDepuisListe, planDetaille, dureeListe, libelleMedia, libelleSource, sanitizeMediasVideo, reconcilierListe,
   urlsRecadrables, avatarAProduire, listeDepuisSegments, estVideoJumeau, DUREE_PHOTO_DEFAUT, type MediaVideo,
 } from '@/lib/creer/medias-video';
 import { avatarSynchronise } from '@/lib/autopilot/plan-multi-sources';
@@ -174,17 +174,19 @@ describe('plan : l’ordre de l’utilisateur', () => {
     expect(plan.filter((s) => s.kind === 'avatar').every((s) => s.depuis === s.debut)).toBe(true);
     expect(plan[4].mouvement).toBe('zoomIn');
   });
-  it('parole courte : les plans de coupe rétrécissent, l’avatar garde sa place', () => {
-    const { plan } = planDepuisListe(exemple(AVATAR, 8));
-    expect(plan.at(-1)!.fin).toBe(8);
-    for (const s of plan.filter((x) => x.kind === 'avatar')) expect(s.fin - s.debut).toBeGreaterThanOrEqual(1.5 - 1e-6);
-    expect(avatarSynchronise(plan)).toBe(true);
+  it('parole courte : AUCUN média raccourci en silence — dépassement déclaré, médias à leur durée', () => {
+    const r = planDepuisListe(exemple(AVATAR, 8));
+    // 4 + 5 + 3 = 12 s de médias, 8 − 2 × 1,5 = 5 s disponibles → 7 s de trop.
+    expect(r.depassement).toBe(7);
+    expect(r.plan.filter((x) => x.kind !== 'avatar').map((s) => s.fin - s.debut)).toEqual([4, 5, 3]);
+    for (const s of r.plan.filter((x) => x.kind === 'avatar')) expect(s.fin - s.debut).toBeCloseTo(1.5, 6);
+    expect(avatarSynchronise(r.plan)).toBe(true);
   });
   it('parole très courte : aucun média choisi ne disparaît du plan', () => {
-    const { plan } = planDepuisListe(exemple(AVATAR, 2));
-    expect(plan.map((s) => s.kind)).toEqual(['avatar', 'video', 'video', 'avatar', 'image']);
-    expect(plan.at(-1)!.fin).toBe(2);
-    for (const s of plan) expect(s.fin).toBeGreaterThan(s.debut);
+    const r = planDepuisListe(exemple(AVATAR, 2));
+    expect(r.plan.map((s) => s.kind)).toEqual(['avatar', 'video', 'video', 'avatar', 'image']);
+    expect(r.depassement).toBe(12);
+    for (const s of r.plan) expect(s.fin).toBeGreaterThan(s.debut);
   });
   it('sans avatar : chaque média joue sa durée, photo 3 s', () => {
     const l = exemple().filter((m) => m.source !== 'avatar');
@@ -226,7 +228,8 @@ describe('jumeau : UNE génération, prix inchangé', () => {
     expect(pose).toContain('poserVideoAvatar(courante, url, secondes, avatarVersion)');
     expect(pose).not.toMatch(/genererEtAttendreVideoJumeau|\/api\/avatar|fetch\(/);
     // La liste suit le plan déterministe (jamais le smart montage qui réordonne).
-    expect(envoi).toContain('const res = planDepuisListe(listePlan);');
+    expect(envoi).toContain('const detail = planDeListe(listePlan);');
+    expect(envoi).toContain('const res = planRenduDepuis(detail);');
     expect(envoi).toContain("...(duree('video') > 0 && planListe ? { montage: planListe } : {}),");
   });
 });
@@ -257,6 +260,7 @@ function props(sur: Partial<MediasSequenceVideoProps> = {}): MediasSequenceVideo
     onApercu: vi.fn(), onDeplacer: vi.fn(), onRemplacer: vi.fn(), onSupprimer: vi.fn(), onRecadrer: vi.fn(),
     onAjouterMonRush: vi.fn(), onAjouterAvatar: vi.fn(), onAjouterSuggere: vi.fn(), onAjouterMediatheque: vi.fn(),
     ...sur,
+    plan: sur.plan ?? planDetaille(sur.medias ?? exemple(), { dureeParole: 20, source: 'estimee' }),
   };
 }
 
