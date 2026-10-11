@@ -263,8 +263,23 @@ describe('Bug 1 — une seule voix à la fois', () => {
   });
 
   it('voix par séquence seules : chacune jouée une fois', async () => {
-    await composeVideo(options({ sequenceVoiceUrls: VOIX }));
+    // Sans vidéo, la séquence Vidéo n'est pas construite : l'appelant la
+    // signale par une durée 0. Avec 0,5 s ici, la table historique des voix
+    // (sans ordre personnalisé) plaçait la voix du CTA à 1,1 s, APRÈS la fin
+    // du montage (0,8 s) : elle ne « jouait » que dans les 0,3 s de dernière
+    // image figée retirées par #543.
+    await composeVideo(options({ sequenceVoiceUrls: VOIX, videoDuration: 0 }));
     for (const u of Object.values(VOIX)) expect(lecturesDe(u)).toHaveLength(1);
+  });
+
+  it('⚠️ séquence NON construite mais durée > 0 (sans ordre personnalisé) : la voix du CTA part au début RÉEL du CTA, pas après la fin', async () => {
+    // Régression révélée par le retrait de la marge de 0,3 s (#543) : l'ancienne
+    // table fixe comptait les 0,5 s d'une séquence Vidéo jamais construite et
+    // plaçait la voix du CTA à 1,1 s dans un montage de 0,8 s.
+    await composeVideo(options({ sequenceVoiceUrls: VOIX, videoDuration: 0.5 }));
+    for (const u of Object.values(VOIX)) expect(lecturesDe(u)).toHaveLength(1);
+    const cta = lecturesDe(VOIX.cta)[0] as unknown as { a?: number };
+    if (typeof cta?.a === 'number') expect(cta.a).toBeLessThan(0.8);
   });
 });
 

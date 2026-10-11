@@ -36,6 +36,7 @@
  */
 
 import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan } from '@/lib/creer/multi-rush';
+import { listeDepuisSegments, rushsDeListe } from '@/lib/creer/medias-video';
 import { DRAFT_VERSION, type Draft } from '../draft';
 import { resoudreTextes } from '../textesCanoniques';
 import { fromPostMetadata } from './from-post';
@@ -263,7 +264,20 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // (écrit par Créer), jamais depuis `rushUrls` seul — l'Agent IA y range sa
   // banque. Sans segments : `rushUrls[0]` seul, comme avant.
   const segments = rushSegmentsDepuisMetadata(presence(meta, 'rushSegments'));
-  if (segments && estPlanMontage(segments)) {
+  // Multi-sources (photos, avatar) : la liste ORDONNÉE des médias, et les
+  // seules VIDÉOS comme rushes — une photo n'est jamais relue comme un rush.
+  const listeMulti = listeDepuisSegments(segments);
+  if (listeMulti) {
+    draft.mediasVideo = listeMulti;
+    const [premier, ...suivants] = rushsDeListe(listeMulti);
+    if (premier) {
+      draft.rushUrl = premier.url;
+      draft.rushSecondes = premier.secondes ?? undefined;
+      draft.rushSuivants = suivants.map((r) => ({ url: r.url, name: '', secondes: r.secondes }));
+    } else {
+      delete draft.rushUrl;
+    }
+  } else if (segments && estPlanMontage(segments)) {
     // Smart montage : l'écran liste les RUSHES (sans doublon), pas les
     // extraits — le plan est recalculé au prochain envoi.
     const [premier, ...suivants] = rushsDuPlan(segments);

@@ -49,6 +49,7 @@ import {
   MousePointerClick,
   X,
   UserSquare2,
+  Group as GroupIcon,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
@@ -56,6 +57,15 @@ import {
   type RecadrageRush, type RecadragesRush,
 } from '@/lib/creer/recadrage-rush';
 import RecadrerRush from '@/components/creer/RecadrerRush';
+import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/MediasSequenceVideo';
+import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
+import {
+  listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
+  ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar,
+  estimerDureeParole, nouvelIdMedia, libelleMedia, libelleSource, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
+  avecDureeChoisie, dureeEffective, planApercuListe, chronologieListe, planDetaille, paroleDeListe, planRenduDepuis,
+  itemDuPlan, bornesDuree, formatSecondes, messageNarrationTropCourte, type PlanDetaille,
+} from '@/lib/creer/medias-video';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
   type ComposerOptions,
@@ -94,9 +104,11 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AfficheIA from '@/components/creer/AfficheIA';
-import RechercheStockSequence, { texteDeSequence, type MetaStock } from '@/components/creer/RechercheStockSequence';
+import RechercheStockSequence, { CreditBanques, mediaApercuDeStock, texteDeSequence, type MetaStock, type PanneauStockHandle } from '@/components/creer/RechercheStockSequence';
+import ApercuMedia, { type EtatAjoutMedia, type MediaApercu } from '@/components/creer/ApercuMedia';
+import ActionsEdition from '@/components/creer/ActionsEdition';
 import { construireRecherchesStock } from '@/lib/stock/requetes';
-import type { TypeStock } from '@/lib/stock/types';
+import type { MediaStock, TypeStock } from '@/lib/stock/types';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import VideosPretes from '@/components/creer/VideosPretes';
 import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
@@ -215,7 +227,7 @@ import {
 import { readEditTargetFromQuery } from '@/lib/creer/editTarget';
 import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
-  planRushs, dureeMultiRush, deplacer, retirer, type RushItem, type RushSegment,
+  planRushs, dureeMultiRush, planAvecAvatar, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
 import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
@@ -1099,6 +1111,13 @@ interface PosterPhoto {
 
 /** Nombre de vignettes ramenees par recherche. */
 const POSTER_COUNT = 12;
+
+/**
+ * Banque(s) interrogée(s) par la recherche de photos d'affiche. `both` :
+ * Studiio choisit, l'utilisateur ne voit jamais de nom de fournisseur.
+ */
+type SourcePhotos = 'pexels' | 'unsplash' | 'both';
+const SOURCE_PHOTOS_AUTO: SourcePhotos = 'both';
 
 /**
  * Une section repliable.
@@ -4175,6 +4194,24 @@ export default function AssistantWizard() {
   // Jeton de la LISTE : un ajout dont la sonde se resout apres un retrait ou
   // un reordonnancement ne doit pas ressusciter une liste perimee.
   const rushListeGenRef = useRef(0);
+  // ── MULTI-SOURCES (`src/lib/creer/medias-video.ts`) ──────────────────
+  // La liste ORDONNÉE des médias de la séquence « Vidéo ». `null` tant
+  // qu'elle ne contient que des vidéos : elle se DÉDUIT alors de `rushUrl` +
+  // `rushSuivants` (brouillon, montage et export d'avant, à la lettre). Elle
+  // ne devient un état propre qu'à l'entrée d'un avatar ou d'une photo.
+  const [mediasVideo, setMediasVideo] = useState<MediaVideo[] | null>(null);
+  const mediasVideoRef = useRef<MediaVideo[] | null>(null);
+  mediasVideoRef.current = mediasVideo;
+  /** Média montré par « Aperçu » (id) — le panneau d'aperçu peut s'y brancher. */
+  const [mediaApercuId, setMediaApercuId] = useState<string | null>(null);
+  /** Médiathèque ouverte DEPUIS la liste : ajout (`null`) ou remplacement (index). */
+  const [mediathequeListe, setMediathequeListe] = useState<{ remplacer: number | null; type: 'video' | 'all' } | null>(null);
+  /** Recherche stock ouverte DEPUIS la liste : les photos y entrent (pas en fond). */
+  const stockVersListeRef = useRef(false);
+  /** Index du média remplacé par la recherche stock (`null` = ajout). */
+  const remplacementStockRef = useRef<number | null>(null);
+  /** URL des vidéos venues de « Ma médiathèque » (libellé seulement). */
+  const [urlsMediatheque, setUrlsMediatheque] = useState<Set<string>>(() => new Set());
   // ── Filtre couleur (LUT) du rush ─────────────────────────────────────
   // Seule la REFERENCE canonique vit ici (empreinte, nom, intensite) : la
   // table validee a l'import n'est jamais conservee, les octets vivent dans
@@ -4650,7 +4687,7 @@ export default function AssistantWizard() {
    */
   const [photosEtat, setPhotosEtat] = useState<EtatPhotos | null>(null);
   /** La derniere recherche, pour la rejouer telle quelle. */
-  const derniereRecherche = useRef<{ query: string; source: 'pexels' | 'unsplash' } | null>(null);
+  const derniereRecherche = useRef<{ query: string; source: SourcePhotos } | null>(null);
   const [photoQuery, setPhotoQuery] = useState('');
   const [photosLoading, setPhotosLoading] = useState(false);
   // ── RECHERCHE STOCK GUIDÉE (additive) ─────────────────────────────────
@@ -4658,9 +4695,35 @@ export default function AssistantWizard() {
   // qu'il reste fermé, aucune requête `/api/stock/*` ne part. `cle` fige la
   // séquence visée à l'ouverture (`null` = affiche globale).
   const [stockPanneau, setStockPanneau] = useState<{ cle: SeqBgKey | null; type?: TypeStock } | null>(null);
+  // Panneau refermé : l'intention « vers la liste multi-sources » retombe.
+  useEffect(() => {
+    if (stockPanneau) return;
+    stockVersListeRef.current = false;
+    remplacementStockRef.current = null;
+  }, [stockPanneau]);
   // Crédits des médias stock choisis, par URL posée (fond ou rush). État
   // seul : le brouillon n'en porte rien, il se relit donc à l'identique.
   const [stockMedias, setStockMedias] = useState<Record<string, MetaStock>>({});
+  /**
+   * APERÇU DU MÉDIA — le média sélectionné dans « Médias suggérés », montré
+   * dans la colonne de droite À LA PLACE de l'aperçu du projet (qui reste
+   * monté, masqué : ses refs d'export et de mesure ne bougent pas). `null` =
+   * l'aperçu du projet, exactement comme avant.
+   */
+  const [mediaApercu, setMediaApercu] = useState<{ media: MediaStock; etat: EtatAjoutMedia } | null>(null);
+  const panneauStockRef = useRef<PanneauStockHandle | null>(null);
+  const surSelectionStock = useCallback((m: MediaStock | null, etat: EtatAjoutMedia) => {
+    setMediaApercu(m ? { media: m, etat } : null);
+  }, []);
+  // Panneau fermé : plus de sélection à montrer, retour à l'aperçu du projet.
+  useEffect(() => { if (!stockPanneau) setMediaApercu(null); }, [stockPanneau]);
+  // Ouvert depuis le bas de la colonne : on l'amène sous les yeux.
+  const stockOuvert = !!stockPanneau;
+  useEffect(() => {
+    if (!stockOuvert) return;
+    const el = document.querySelector('[data-recherche-stock]') as HTMLElement | null;
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [stockOuvert]);
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
   // Les deux autres chemins vers une affiche : la mediatheque (images deja
@@ -4698,10 +4761,10 @@ export default function AssistantWizard() {
   // brouillon pose liste et recadrages ensemble : rien n'est perdu.
   useEffect(() => {
     setRushTransforms((prev) => {
-      const garde = recadragesPourRushs(prev, [rushUrl, ...rushSuivants.map((r) => r.url)]);
+      const garde = recadragesPourRushs(prev, [rushUrl, ...rushSuivants.map((r) => r.url), ...urlsRecadrables(mediasVideo)]);
       return Object.keys(garde).length === Object.keys(prev).length ? prev : garde;
     });
-  }, [rushUrl, rushSuivants]);
+  }, [rushUrl, rushSuivants, mediasVideo]);
   /** « Régénérer la voix » demandé depuis la liste des cartes (transmis au panneau des voix). */
   const [demandeRegenVoix, setDemandeRegenVoix] = useState<{ key: SequenceKey; n: number } | null>(null);
   const posterTransformRef = useRef<PosterTransform>(POSTER_TRANSFORM_NEUTRAL);
@@ -4812,7 +4875,7 @@ export default function AssistantWizard() {
    */
   const searchPhotos = useCallback(async (
     query: string,
-    source: 'pexels' | 'unsplash',
+    source: SourcePhotos = SOURCE_PHOTOS_AUTO,
     nextPage = false,
   ) => {
     const q = query.trim();
@@ -4859,11 +4922,12 @@ export default function AssistantWizard() {
     }
   }, []);
 
-  /** Bascule de source : on relance aussitot, sinon la grille ment. */
-  const changeImageSource = useCallback((source: 'pexels' | 'unsplash') => {
-    setImageSource(source);
-    searchPhotos(photoQuery.trim() || currentTopic, source);
-  }, [photoQuery, currentTopic, searchPhotos]);
+  /**
+   * Plus de bascule Pexels / Unsplash : l'utilisateur ne choisit pas de
+   * banque d'images. La recherche interroge les deux (`both`, entrelacées par
+   * `/api/pexels`) ; `imageSource` reste lu et écrit par le brouillon, sans
+   * plus rien piloter (rétro-compatibilité des brouillons existants).
+   */
 
   useEffect(() => { batchCountRef.current = batchCount; }, [batchCount]);
 
@@ -4943,9 +5007,18 @@ export default function AssistantWizard() {
       role: seqCible,
       visuel: 'arriere-plan',
       format,
-    }).requetes.slice(0, 5),
+    }).suggestions.slice(0, 5),
     [currentTopic, brief.objectif, generated, seqCible, format],
   );
+  /**
+   * La requête d'une saisie : la puce française cliquée → sa requête
+   * anglaise ; un texte libre part tel quel (la route le traduit déjà).
+   */
+  const requetePhoto = (saisie: string): string => {
+    const propre = saisie.trim();
+    if (!propre) return currentTopic;
+    return suggestionsPhotos.find((x) => x.libelle === propre)?.requete ?? propre;
+  };
 
   /** Pose une photo : sur la sequence affichee, ou sur l'affiche globale. */
   /* ── APERÇU DU VRAI RENDU ────────────────────────────────────────────
@@ -5320,6 +5393,21 @@ export default function AssistantWizard() {
   const deleteElement = useCallback((id: string) => {
     setFreeElements((prev) => prev.filter((el) => el.id !== id));
     setSelectedElementId((cur) => (cur === id ? null : cur));
+  }, []);
+
+  /**
+   * Duplique l'élément retenu : même icône, même couleur, même taille, posé
+   * en léger décalage (superposé, on croirait qu'il ne s'est rien passé).
+   * La copie devient la sélection.
+   */
+  const dupliquerElement = useCallback((id: string) => {
+    const nouveau = newElementId();
+    setFreeElements((prev) => {
+      const src = prev.find((el) => el.id === id);
+      if (!src) return prev;
+      return [...prev, { ...src, id: nouveau, x: Math.min(95, src.x + 4), y: Math.min(95, src.y + 4) }];
+    });
+    setSelectedElementId(nouveau);
   }, []);
   const groupsRef = useRef<CardGroup[]>(cardGroups);
   useEffect(() => { groupsRef.current = cardGroups; }, [cardGroups]);
@@ -6420,6 +6508,11 @@ export default function AssistantWizard() {
     rushSuivants: rushSuivants.length
       ? rushSuivants.filter((r) => persistableDraftUrl(r.url))
       : undefined,
+    // Multi-sources : seulement quand la liste porte un avatar ou une photo
+    // (sinon elle se déduit des rushes) — brouillon identique à avant.
+    mediasVideo: mediasVideo && estListeEnrichie(mediasVideo)
+      ? mediasVideo.filter((m) => m.source === 'avatar' || !!persistableDraftUrl(m.url ?? null))
+      : undefined,
     // La reference canonique seule. `undefined` sans filtre, pour qu'un
     // brouillon sans ce champ se relise exactement comme avant.
     lut: lut ?? undefined,
@@ -6441,6 +6534,7 @@ export default function AssistantWizard() {
       const t = recadragesPourRushs(rushTransforms, [
         persistableDraftUrl(rushUrl),
         ...(rushSuivants.length ? rushSuivants.filter((r) => persistableDraftUrl(r.url)).map((r) => r.url) : []),
+        ...urlsRecadrables(mediasVideo).filter((u) => !!persistableDraftUrl(u)),
       ]);
       return Object.keys(t).length ? t : undefined;
     })(),
@@ -6461,7 +6555,7 @@ export default function AssistantWizard() {
     habillageVideoMode,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
-    voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, lut, scheduledDate,
+    voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, mediasVideo, lut, scheduledDate,
     titleWidth, ctaWidth,
     titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransforms, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
@@ -6611,6 +6705,9 @@ export default function AssistantWizard() {
       setRushSecondes(draft.rushSecondes ?? null);
       setRushSuivants(draft.rushSuivants ?? []);
     }
+    // Multi-sources : la liste propre (avatar / photos), relue telle quelle.
+    // Absente : déduite des rushes, comme avant.
+    setMediasVideo(draft.mediasVideo && estListeEnrichie(draft.mediasVideo) ? draft.mediasVideo : null);
     if (draft.lut) setLut(draft.lut);
     // Une date déjà passée n'est pas reprise (sinon : posts datés d'hier,
     // invisibles dans le Calendrier du mois courant) — `dateBrouillonReprise`.
@@ -7405,6 +7502,227 @@ export default function AssistantWizard() {
     }
   };
 
+  // ── MULTI-SOURCES — la liste des médias de la séquence « Vidéo » ──────
+  const urlsStock = useMemo(() => new Set(Object.keys(stockMedias)), [stockMedias]);
+  /** La liste MONTRÉE : l'état propre s'il existe, sinon la vue des rushes d'avant. */
+  const listeMedias: MediaVideo[] = mediasVideo ?? listeDepuisRushs(rushListe, urlsStock, urlsMediatheque);
+  const listeMediasRef = useRef<MediaVideo[]>(listeMedias);
+  listeMediasRef.current = listeMedias;
+  /** Durée de parole estimée de l'avatar avant sa production (textes des voix). */
+  const dureeAvatarEstimee = estimerDureeParole(Object.values(sequenceVoices).map((v) => v.text));
+  /**
+   * LE plan de la liste (`planDetaille`) — la seule source des durées de la
+   * séquence « Vidéo » : cartes (légende, infobulle, réglage, « N s
+   * disponibles »), chronologie, aperçu du projet, aperçu d'un média, durée
+   * de séquence au brouillon. La parole est la RÉELLE (avatar produit) sinon
+   * l'estimée ; le rendu refait ce même calcul sur la liste envoyée.
+   */
+  const planDeListe = (liste: ReadonlyArray<MediaVideo>): PlanDetaille => {
+    const p = paroleDeListe(liste, dureeAvatarEstimee);
+    return planDetaille(liste, { dureeParole: p.dureeParole, source: p.source });
+  };
+  const planMedias = planDeListe(listeMedias);
+  /** Réglage de durée ramené au maximum valide : l'explication, sous la carte. */
+  const [noteDuree, setNoteDuree] = useState<{ id: string; texte: string } | null>(null);
+  // Les gestes d'AVANT sur les rushes (« Changer », « Ajouter un rush »,
+  // « Temps forts », recherche stock) restent la source des VIDÉOS : la liste
+  // propre s'y accorde (retrait, ajout en fin, durées sondées).
+  useEffect(() => {
+    const liste = mediasVideoRef.current;
+    if (!liste) return;
+    const accordee = reconcilierListe(liste, rushListe, urlsStock, urlsMediatheque);
+    if (accordee !== liste) setMediasVideo([...accordee]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rushUrl, rushSecondes, rushSuivants]);
+  // Liste propre : la séquence « Vidéo » dure ce que la liste joue (parole de
+  // l'avatar, sinon la somme des médias) — jamais un réglage qui la contredit.
+  useEffect(() => {
+    if (!mediasVideo) return;
+    const d = Math.round(planMedias.duree * 10) / 10;
+    if (d > 0 && Math.abs(d - videoDuration) > 0.05) setVideoDuration(d);
+  }, [mediasVideo, planMedias.duree, videoDuration]);
+
+  /** Vide les champs rush SANS masquer la séquence (liste faite d'avatar / photos seuls). */
+  const viderRushsDeLaListe = () => {
+    rushRunIdRef.current++;
+    rushListeGenRef.current++;
+    setRushLoading(false);
+    setRushUrl(null);
+    setRushName('');
+    setRushIsClip(false);
+    setRushSecondes(null);
+    setRushSuivants([]);
+    rushSuivantsRef.current = [];
+  };
+
+  /**
+   * Pose une liste de médias. Sans avatar ni photo, elle redevient la vue des
+   * rushes d'avant (`poserListeRushs`, état propre effacé) ; sinon elle est
+   * l'état propre, les vidéos restant portées par `rushUrl` / `rushSuivants`.
+   * Un créneau d'avatar à produire active le jumeau (produit à l'envoi, au
+   * prix affiché) ; le dernier retiré le désactive.
+   */
+  const poserListeMedias = (liste: MediaVideo[]) => {
+    const avantAvatar = avatarAProduire(mediasVideoRef.current);
+    const rushs = rushsDeListe(liste);
+    if (!estListeEnrichie(liste)) {
+      mediasVideoRef.current = null;
+      setMediasVideo(null);
+      if (avantAvatar && jumeauMode === 'avatar') setJumeauMode('aucun');
+      poserListeRushs(rushs);
+      return;
+    }
+    mediasVideoRef.current = liste;
+    setMediasVideo(liste);
+    if (avatarAProduire(liste)) { if (jumeauMode !== 'avatar') setJumeauMode('avatar'); }
+    else if (avantAvatar && jumeauMode === 'avatar') setJumeauMode('aucun');
+    if (rushs.length) poserListeRushs(rushs);
+    else viderRushsDeLaListe();
+    setSequences((prev) => prev.map((q) => (q.key === 'video' ? { ...q, enabled: true } : q)));
+    setVideoDuration(Math.round(planDeListe(liste).duree * 10) / 10);
+  };
+
+  /**
+   * La vidéo du jumeau (UNE génération, au prix affiché) posée dans CHAQUE
+   * créneau « Mon avatar » de la liste, avec la durée de sa parole. `null` si
+   * la liste n'attend plus d'avatar (retiré pendant la génération).
+   */
+  const poserJumeauDansListe = async (
+    url: string, avatarVersion: number | undefined, textes: ReadonlyArray<string>,
+  ): Promise<{ url: string; secondes: number } | null> => {
+    if (!avatarAProduire(mediasVideoRef.current)) return null;
+    const probed = await probeRushDuration(url);
+    const secondes = Math.round(Math.min(probed ?? estimerDureeParole(textes), DUREE_MEDIA_MAX) * 1000) / 1000;
+    const courante = mediasVideoRef.current;
+    if (!courante || !avatarAProduire(courante)) return null;
+    poserListeMedias(poserVideoAvatar(courante, url, secondes, avatarVersion));
+    return { url, secondes };
+  };
+
+  /** Protection anti-rétention 24 h d'une vidéo posée hors `applyRush` / `ajouterRush`. */
+  const protegerMedia = (url: string) => {
+    void fetch('/api/creer/rush/keep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    })
+      .then((r) => { if (!r.ok && r.status !== 400 && r.status !== 401) setRushNonProtege(true); })
+      .catch(() => setRushNonProtege(true));
+  };
+
+  /** Ajoute une vidéo à la liste (fin) — le geste d'avant, `ajouterRush`. */
+  const ajouterVideoListe = (url: string, nom: string) => { void ajouterRush(url, nom); };
+
+  /** Ajoute une photo à la liste (fin) : 3 s, en Ken Burns. */
+  const ajouterPhotoListe = (url: string, nom: string, source: 'stock-photo' | 'mediatheque') => {
+    poserListeMedias(ajouterMedia(listeMediasRef.current, {
+      id: nouvelIdMedia('p'), source, url, type: 'image', duree: DUREE_PHOTO_DEFAUT, ...(nom ? { nom } : {}),
+    }));
+  };
+
+  /** Ajoute un créneau « Mon avatar » (sa vidéo est produite à l'envoi). */
+  const ajouterAvatarListe = () => {
+    poserListeMedias(ajouterMedia(listeMediasRef.current, { id: nouvelIdMedia('a'), source: 'avatar', type: 'video', duree: null }));
+  };
+
+  /** Remplace le média `i` par une vidéo (durée sondée) ou une photo, à la même place. */
+  const remplacerMediaListe = (i: number, url: string, nom: string, type: 'video' | 'image', source: MediaVideo['source']) => {
+    const neuf: MediaVideo = {
+      id: nouvelIdMedia(type === 'image' ? 'p' : 'r'), source, url, type,
+      duree: type === 'image' ? DUREE_PHOTO_DEFAUT : null, ...(nom ? { nom } : {}),
+    };
+    poserListeMedias(remplacerMedia(listeMediasRef.current, i, neuf));
+    if (type !== 'video') return;
+    protegerMedia(url);
+    setRushLoading(true);
+    void probeRushDuration(url).then((probed) => {
+      const secondes = probed
+        ? Math.min(Math.max(Math.round(probed), RUSH_SECONDS.min), RUSH_SECONDS.max)
+        : RUSH_SECONDS.fallback;
+      const courante = listeMediasRef.current;
+      if (!courante.some((m) => m.id === neuf.id)) return;
+      poserListeMedias(courante.map((m) => (m.id === neuf.id ? { ...m, duree: secondes } : m)));
+    }).finally(() => setRushLoading(false));
+  };
+
+  /**
+   * « Retirer le rush » (ligne de la séquence Vidéo) : retire CE rush — et
+   * lui seul — de `rushUrl` / `rushSuivants` ET de la liste. Les autres
+   * médias, leur ordre, la séquence Vidéo et l'aperçu restent. La séquence
+   * ne se masque que s'il ne reste AUCUNE source visuelle (même chemin que
+   * « Supprimer » sur une carte : `poserListeMedias` → `clearRush`).
+   */
+  const retirerRush = (url: string | null) => {
+    const liste = listeMediasRef.current;
+    const i = url ? liste.findIndex((m) => m.url === url && m.type === 'video' && m.source !== 'avatar') : -1;
+    if (i < 0) { clearRush(); return; }
+    if (liste[i].id === mediaApercuId) setMediaApercuId(null);
+    poserListeMedias(retirerMedia(liste, i));
+  };
+
+  /**
+   * Durée choisie du média `i` (photo 1–30 s, vidéo raccourcie) — portée par
+   * le média. Avec avatar, un allongement est ramené AVANT d'être enregistré
+   * au temps de narration encore libre (jamais une durée qui déborde), avec
+   * une courte explication sous la carte.
+   */
+  const choisirDureeMedia = (i: number, secondes: number) => {
+    const liste = listeMediasRef.current;
+    const m = liste[i];
+    if (!m) return;
+    const plan = planDeListe(liste);
+    const avant = itemDuPlan(plan, m.id)?.dureeEffective ?? dureeEffective(m);
+    const neuf = avecDureeChoisie(m, secondes, plan);
+    const obtenue = dureeEffective(neuf);
+    const b = bornesDuree(m, plan);
+    if (secondes > avant && obtenue < Math.round(secondes) - 1e-6 && b.limiteParNarration) {
+      setNoteDuree({
+        id: m.id,
+        texte: obtenue > avant
+          ? `Ramenée à ${formatSecondes(obtenue)} s : la narration de votre avatar (${formatSecondes(plan.dureeParole ?? 0)} s) ne laisse pas plus de temps.`
+          : `Plus de temps libre : la narration de votre avatar dure ${formatSecondes(plan.dureeParole ?? 0)} s.`,
+      });
+    } else setNoteDuree(null);
+    if (neuf === m) return;
+    poserListeMedias(liste.map((x, k) => (k === i ? neuf : x)));
+  };
+
+  // Disponibilité de l'avatar pour « Ajouter → Mon avatar » : lue à
+  // l'ouverture du menu (lecture seule, aucun fournisseur, aucun crédit).
+  const lireAvatarsPourListe = () => {
+    if (avatarsApercu !== undefined) return;
+    void lireAvatarsPourApercu().then((l) => setAvatarsApercu(l));
+  };
+  const apercuAvatarListe: ApercuAvatarCreer | null = avatarsApercu === undefined ? null : apercuAvatarDepuisListe(avatarsApercu, jumeauAvatarId);
+  /** Un média de la liste « séquence Vidéo » sélectionné pour l'aperçu de droite. */
+  const mediaListeApercu = useMemo<MediaApercu | null>(() => {
+    const m = mediaApercuId ? listeMedias.find((x) => x.id === mediaApercuId) : null;
+    if (!m) return null;
+    const avatarPret = m.source === 'avatar' && apercuAvatarListe?.etat === 'pret' ? apercuAvatarListe : null;
+    const url = m.url ?? avatarPret?.url ?? null;
+    if (!url) return null;
+    const type: MediaApercu['type'] = avatarPret && !m.url ? (avatarPret.type === 'photo' ? 'photo' : 'video') : m.type === 'image' ? 'photo' : 'video';
+    // `libelleSource` : la durée est déjà affichée par l'aperçu (pas « · 0:02 · 0:02 »).
+    const dureePlan = m.source === 'avatar' && !m.url ? undefined : itemDuPlan(planMedias, m.id)?.dureeEffective;
+    return { type, url, libelle: libelleSource(m), nomTechnique: titreMedia(m, dureePlan), dureeSecondes: dureePlan };
+  }, [mediaApercuId, listeMedias, apercuAvatarListe, planMedias]);
+  /**
+   * « Aperçu du montage » d'une liste enrichie : les items de `planMedias`
+   * — le MÊME calcul que `planDepuisListe` à l'envoi — et sa chronologie (CTA
+   * compris s'il est joué). `null` sans liste enrichie : rien ne s'affiche.
+   */
+  const ctaJoue = sequences.some((q) => q.key === 'cta' && q.enabled);
+  const videoJouee = sequences.some((q) => q.key === 'video' && q.enabled);
+  const apercuMontage = (() => {
+    if (!mediasVideo || !estListeEnrichie(mediasVideo) || !videoJouee) return null;
+    const { etapes } = planApercuListe(planMedias);
+    const { lignes } = chronologieListe(planMedias, { dureeCta: ctaJoue ? ctaDuration : null });
+    const narration = planMedias.dureeParole !== null && planMedias.sourceParole
+      ? { duree: planMedias.dureeParole, source: planMedias.sourceParole } : null;
+    return etapes.length ? { etapes, lignes, narration, depassement: planMedias.depassement } : null;
+  })();
+  const etatAvatarListe: EtatAvatarListe = avatarsApercu === undefined ? 'chargement' : apercuAvatarListe?.etat === 'pret' ? 'pret' : 'absent';
+
   /**
    * REPRISE d'une génération orpheline, au montage.
    *
@@ -7459,7 +7777,9 @@ export default function AssistantWizard() {
     void (async () => {
       try {
         const { url, avatarVersion } = await attendreStatutJumeau({ generationId, onPhase: avancerJumeau });
-        const posee = await applyRush(url, typeof avatarVersion === 'number' ? `Mon jumeau (v${avatarVersion})` : 'Mon jumeau', false);
+        const posee = avatarAProduire(mediasVideoRef.current)
+          ? await poserJumeauDansListe(url, typeof avatarVersion === 'number' ? avatarVersion : undefined, Object.values(sequenceVoices).map((v) => v.text).filter((t): t is string => !!t))
+          : await applyRush(url, typeof avatarVersion === 'number' ? `Mon jumeau (v${avatarVersion})` : 'Mon jumeau', false);
         setJumeauMode('aucun');
         setJumeauGenerationId(null);
         setJumeauReprise('inactif');
@@ -7526,7 +7846,9 @@ export default function AssistantWizard() {
           onLancee: (id) => { lancee = id; setJumeauGenerationId(id); },
           onPhase: avancerJumeau,
         });
-        const posee = await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
+        const posee = avatarAProduire(mediasVideoRef.current)
+          ? await poserJumeauDansListe(video.url, video.avatarVersion, textes)
+          : await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
         setJumeauMode('aucun');
         setJumeauGenerationId(null);
         setJumeauReprise('inactif');
@@ -7773,6 +8095,18 @@ export default function AssistantWizard() {
       return;
     }
 
+    // ── Médias vs narration de l'avatar ─────────────────────────────
+    // AVANT tout appel (garde, solde, jumeau) : des médias plus longs que la
+    // narration ne sont JAMAIS raccourcis en silence au rendu. Le plan l'a
+    // déjà affiché ; l'envoi attend que l'utilisateur les raccourcisse.
+    if (mediasVideo && estListeEnrichie(mediasVideo)) {
+      const planAvant = planDeListe(mediasVideo);
+      if (planAvant.depassement > 0) {
+        setError(`La durée totale dépasse la narration ${planAvant.sourceParole === 'reelle' ? '' : 'estimée '}de votre avatar (${formatSecondes(planAvant.dureeParole ?? 0)} s) de ${formatSecondes(Math.ceil(planAvant.depassement * 10 - 1e-6) / 10)} s : raccourcissez vos médias avant d’envoyer.`);
+        return;
+      }
+    }
+
     // ── Jumeau numérique ────────────────────────────────────────────
     // AVANT tout état de chargement, tout appel de solde, toute composition :
     // si « Utiliser mon jumeau » est demandé, le SERVEUR revérifie tout
@@ -7790,6 +8124,17 @@ export default function AssistantWizard() {
     // ce serait un double débit. On attend qu'elle aboutisse d'elle-même.
     if (jumeauMode === 'avatar' && jumeauReprise === 'encours') {
       setError('Votre jumeau se prépare encore. Patientez quelques instants, puis renvoyez.');
+      return;
+    }
+    // Multi-sources : un créneau « Mon avatar » sans vidéo exige le jumeau
+    // (produit à l'envoi). Désactivé entre-temps : on le dit, rien ne part.
+    const listeEnvoi: MediaVideo[] | null = mediasVideo && estListeEnrichie(mediasVideo) ? mediasVideo : null;
+    if (listeEnvoi && avatarAProduire(listeEnvoi) && jumeauMode !== 'avatar') {
+      setError('« Mon avatar » est dans la séquence Vidéo mais votre jumeau est désactivé : réactivez-le ou retirez ce média avant d’envoyer.');
+      return;
+    }
+    if (listeEnvoi && !avatarAProduire(listeEnvoi) && jumeauMode === 'avatar') {
+      setError('Votre jumeau est activé : ajoutez « Mon avatar » aux médias de la séquence Vidéo (Ajouter → Mon avatar) pour choisir sa place, ou désactivez-le.');
       return;
     }
     // Le jumeau lui-meme est produit plus bas, apres le solde et avant la
@@ -7937,9 +8282,12 @@ export default function AssistantWizard() {
         ...[voiceUrl, ...Object.values(sequenceVoiceUrls ?? {})]
           .filter((u): u is string => typeof u === 'string' && u.length > 0)
           .map((url) => ({ role: 'narration' as const, url })),
-        ...(jumeauMode === 'avatar' ? [] : [plateau.rushUrl, ...rushSuivants.map((r) => r.url)]
+        // Liste multi-sources : ses rushes RESTENT (l'avatar s'y intercale) et
+        // ses photos sont aussi obligatoires.
+        ...(jumeauMode === 'avatar' && !listeEnvoi ? [] : [plateau.rushUrl, ...rushSuivants.map((r) => r.url)]
           .filter((u): u is string => typeof u === 'string' && u.length > 0)
           .map((url) => ({ role: 'rush' as const, url }))),
+        ...(listeEnvoi ?? []).filter((m) => m.type === 'image' && !!m.url).map((m) => ({ role: 'rush' as const, url: m.url! })),
       ];
       const introuvables = await urlsIntrouvables(aVerifier.map((m) => m.url));
       const { aRetirer, bloquants } = trierMediasMorts(aVerifier.filter((m) => introuvables.has(m.url)));
@@ -7967,6 +8315,7 @@ export default function AssistantWizard() {
       // ce meme clic. En cas d'echec : on s'arrete, message a l'ecran,
       // jamais une video ordinaire livree sous ce nom. Le mode 'voix' ne passe
       // pas ici : sa voix est deja posee dans `ttsVoiceId`, rien a produire.
+      let listeAvatarPosee: MediaVideo[] | null = null;
       if (jumeauMode === 'avatar') {
         // Plus de `setRenderProgress(5)` : ce chiffre restait figé pendant
         // tout le rendu fournisseur (5 à 30 min) sans rien mesurer. L'écran
@@ -7990,7 +8339,11 @@ export default function AssistantWizard() {
             onEtape: (m) => setRenderStage(m),
             onPhase: avancerJumeau,
           });
-          posee = await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
+          posee = listeEnvoi
+            // Multi-sources : la vidéo du jumeau (UNE génération) va dans
+            // CHAQUE créneau « Mon avatar » ; les autres médias restent.
+            ? await poserJumeauDansListe(video.url, video.avatarVersion, textesJumeau)
+            : await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
           setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
         } catch (e) {
           // 404 : la génération n'existe pas pour ce compte — la garder dans le
@@ -8010,7 +8363,8 @@ export default function AssistantWizard() {
         setJumeauMode('aucun');
         // La génération est aboutie et posée : plus rien à reprendre.
         setJumeauGenerationId(null);
-        plateau = {
+        if (listeEnvoi) listeAvatarPosee = mediasVideoRef.current;
+        else plateau = {
           rushUrl: posee.url,
           sequences: sequences.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)),
           videoDuration: posee.secondes,
@@ -8024,6 +8378,38 @@ export default function AssistantWizard() {
         avancerJumeau('rendu');
         setRenderProgress(0);
         setRenderStage('Préparation…');
+      }
+      // ── MULTI-SOURCES : le plan suit la LISTE, dans l'ordre choisi ──────
+      // Déterministe (`planDetaille`, projeté par `planRenduDepuis`) : aucun
+      // smart montage ne réordonne ce que l'utilisateur a rangé. Avec avatar,
+      // la séquence dure sa parole (RÉELLE une fois produit) et chaque
+      // fenêtre d'avatar garde `depuis === debut` (lip-sync).
+      let planListe: RushSegment[] | null = null;
+      const listePlan = listeAvatarPosee ?? listeEnvoi;
+      if (listePlan) {
+        const detail = planDeListe(listePlan);
+        const res = planRenduDepuis(detail);
+        // Parole RÉELLE plus courte que les médias : AUCUN rendu (jamais un
+        // média raccourci en silence). Le jumeau est déjà posé dans la liste
+        // (et le brouillon) avec sa durée : la relance le réutilise, sans
+        // seconde génération ni second débit.
+        if (res.depassement > 0) {
+          setError(messageNarrationTropCourte(detail));
+          return;
+        }
+        if (res.ignores > 0 || res.plan.length === 0) {
+          setError('Un média de la séquence Vidéo n’est pas prêt (avatar non produit ?) : rien n’a été composé ni débité.');
+          return;
+        }
+        planListe = res.plan;
+        plateau = {
+          rushUrl: res.plan[0].url,
+          sequences: plateau.sequences.map((q) => (q.key === 'video' ? { ...q, enabled: true } : q)),
+          videoDuration: res.duree,
+          avatarVideo: planAvecAvatar(res.plan),
+          rushs: null,
+        };
+        console.log('[MultiSources] plan :', res.plan.map((x) => `${x.kind ?? 'video'}@${x.debut}-${x.fin}`).join(' | '));
       }
       const ordre = ordreActif(plateau.sequences);
       // `let` : le smart montage raccourcit la séquence « Vidéo » quand les
@@ -8420,11 +8806,14 @@ export default function AssistantWizard() {
             ? { rushs: plateau.rushs.map((r) => ({ url: r.url, secondes: r.secondes ?? null })) }
             : {}),
           ...(duree('video') > 0 && planMontageRushs ? { montage: planMontageRushs } : {}),
+          // Multi-sources : le plan de la liste (photos Ken Burns, avatar
+          // synchronisé, plans de coupe muets). Absent sans avatar ni photo.
+          ...(duree('video') > 0 && planListe ? { montage: planListe } : {}),
           // Recadrage PAR RUSH (« Recadrer la vidéo ») : le MÊME que l'aperçu,
           // chaque rush avec le sien (clé = URL), borné sur SES dimensions.
           // Aucun rush recadré : clé absente, options identiques à avant.
           ...(duree('video') > 0 && plateau.rushUrl
-            ? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs)
+            ? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs ?? planListe)
             : {}),
           ...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),
           ...(rushLut ? { rushLut } : {}),
@@ -8777,7 +9166,8 @@ export default function AssistantWizard() {
           // Calendrier (Régénérer) : le MÊME qu'ici. Absent sans recadrage.
           rushTransforms: (() => {
             const urls = duree('video') > 0
-              ? (rushsDurables.length >= 2 ? rushsDurables.map((r) => r.url) : [persistableUrl(plateau.rushUrl)])
+              ? (planListe ? planListe.map((x) => persistableUrl(x.url))
+                : rushsDurables.length >= 2 ? rushsDurables.map((r) => r.url) : [persistableUrl(plateau.rushUrl)])
               : [];
             const t = recadragesPourRushs(rushTransforms, urls);
             return Object.keys(t).length ? t : undefined;
@@ -8796,7 +9186,15 @@ export default function AssistantWizard() {
           // sa sequence est masquee ferait re-telecharger et re-decoder le
           // fichier a chaque regeneration depuis le Calendrier, en pure perte.
           rushUrls:
-            duree('video') > 0 && rushsDurables.length >= 2
+            duree('video') > 0 && planListe
+              ? (() => {
+                // Les vidéos (avatar compris) ; une liste de photos seules garde
+                // la première, que « Régénérer » passe comme source Vidéo.
+                const v = planListe.filter((x) => x.kind !== 'image');
+                const u = Array.from(new Set((v.length ? v : planListe.slice(0, 1)).map((x) => persistableUrl(x.url)).filter((x): x is string => !!x)));
+                return u.length ? u : undefined;
+              })()
+              : duree('video') > 0 && rushsDurables.length >= 2
               ? rushsDurables.map((r) => r.url)
               : duree('video') > 0 && persistableUrl(plateau.rushUrl)
               ? [persistableUrl(plateau.rushUrl)!]
@@ -8805,7 +9203,11 @@ export default function AssistantWizard() {
           // C'est CE champ (jamais `rushUrls.length`) qui dit a « Regenerer »
           // et a « Modifier » d'enchainer. Absent avec un seul rush.
           rushSegments:
-            duree('video') > 0 && rushsDurables.length >= 2
+            // Multi-sources : le plan complet (avec `kind`), relu par
+            // « Régénérer » et « Modifier » — seulement s'il est durable.
+            duree('video') > 0 && planListe
+              ? (planListe.length >= 2 && planListe.every((x) => !!persistableUrl(x.url)) ? planListe : undefined)
+              : duree('video') > 0 && rushsDurables.length >= 2
               ? planMontageRushs ?? planRushs(rushsDurables, duree('video'))
               : undefined,
           // Textes en surimpression (mêmes fenêtres que l'Autopilote).
@@ -9446,6 +9848,62 @@ export default function AssistantWizard() {
         l'assistant et l'Autopilote gardent les deux colonnes. */}
     <DeuxColonnes nom={started ? 'assistant' : parcours} apercu={started || parcours !== 'choix'}>
       <ColonneTravail>
+        {/* ── MÉDIAS SUGGÉRÉS — monté seulement à l'ouverture ──────────
+            DANS la page, en tête de la colonne de travail, et non plus en
+            fenêtre modale : la colonne de droite reste visible et montre
+            l'« Aperçu du média » sélectionné (`mediaApercu`). */}
+        {stockPanneau && (
+          <RechercheStockSequence
+            ref={panneauStockRef}
+            integre
+            role={stockPanneau.cle}
+            libelleSequence={
+              stockPanneau.cle === 'titre' ? 'Titre'
+                : stockPanneau.cle === 'cartes' ? 'Cartes'
+                  : stockPanneau.cle === 'video' ? 'Vidéo'
+                    : stockPanneau.cle === 'cta' ? 'CTA'
+                      : 'Affiche'
+            }
+            sujet={currentTopic}
+            objectif={brief.objectif}
+            texte={texteDeSequence(generated, stockPanneau.cle)}
+            format={format}
+            typeInitial={stockPanneau.type}
+            // Un fond ne se cherche qu'en photo ; la séquence Vidéo accepte
+            // une vidéo (ajoutée aux rushes) ou une photo (son fond).
+            typesAutorises={stockPanneau.type === 'photo' ? ['photo'] : ['video', 'photo']}
+            fondExistant={stockPanneau.cle ? !!seqBackgrounds[stockPanneau.cle]?.url : !!posterUrl}
+            onSelection={surSelectionStock}
+            onUtiliserPhoto={(url, meta) => {
+              setStockMedias((prev) => ({ ...prev, [url]: meta }));
+              // Multi-sources : ouverte depuis « Médias de la séquence Vidéo »,
+              // la photo ENTRE dans la liste (3 s, Ken Burns) au lieu du fond.
+              if (stockVersListeRef.current && stockPanneau.cle === 'video') {
+                const remplace = remplacementStockRef.current;
+                remplacementStockRef.current = null;
+                if (remplace !== null) remplacerMediaListe(remplace, url, '', 'image', 'stock-photo');
+                else ajouterPhotoListe(url, '', 'stock-photo');
+                return;
+              }
+              // Même pose que `applyPhoto`, sur la séquence figée à l'ouverture.
+              const cle = stockPanneau.cle;
+              if (!cle) { setPosterUrl(url); return; }
+              setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
+            }}
+            onAjouterRush={(url, nom, meta) => {
+              setStockMedias((prev) => ({ ...prev, [url]: meta }));
+              if (stockVersListeRef.current && remplacementStockRef.current !== null) {
+                const remplace = remplacementStockRef.current;
+                remplacementStockRef.current = null;
+                remplacerMediaListe(remplace, url, nom, 'video', 'stock-video');
+                return;
+              }
+              // `ajouterRush` : en fin de liste (keep compris) ; sans rush, import normal.
+              void ajouterRush(url, nom);
+            }}
+            onFermer={() => setStockPanneau(null)}
+          />
+        )}
         {/* MODIFICATION — la seule porte de sortie vers le serveur.
             Visible uniquement quand on modifie : en creation, rien de tout ceci
             n'existe, et le parcours se termine comme avant. */}
@@ -10095,28 +10553,17 @@ export default function AssistantWizard() {
                       Sans photo, le fond reste le dégradé de vos couleurs.
                     </p>
 
-                    {/* Source */}
-                    <div className="flex items-center gap-1.5">
-                      {(['pexels', 'unsplash'] as const).map((src) => (
-                        <button
-                          key={src}
-                          type="button"
-                          onClick={() => changeImageSource(src)}
-                          data-poster-source={src}
-                          className={`flex-1 rounded-lg border px-3 py-1.5 text-xs capitalize transition-colors ${
-                            imageSource === src
-                              ? 'border-purple-500 text-white'
-                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
-                          }`}
-                        >
-                          {src}
-                        </button>
-                      ))}
+                    {/* ── RECHERCHE UNIQUE ─────────────────────────────────
+                        Plus de choix de banque d'images : Studiio interroge
+                        lui-même toutes les sources de photos et mélange les
+                        résultats. Le crédit reste dû — ligne discrète sous
+                        la grille. */}
+                    <div className="space-y-1" data-poster-recherche>
+                      <p className="text-xs text-gray-400">Choisissez une image pour illustrer votre vidéo.</p>
+                      <p className="text-[11px] text-gray-500">Décrivez simplement ce que vous voulez montrer.</p>
                     </div>
-
-                    {/* Recherche */}
-                    <div className="flex items-center gap-1.5">
-                      <div className="relative flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="relative grow basis-48 min-w-0">
                         <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
                         <input
                           type="text"
@@ -10125,48 +10572,51 @@ export default function AssistantWizard() {
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
-                              searchPhotos(photoQuery.trim() || currentTopic, imageSource);
+                              searchPhotos(requetePhoto(photoQuery));
                             }
                           }}
                           data-poster-query
-                          placeholder={`Rechercher des photos… (ex : ${currentTopic})`}
+                          aria-label="Rechercher une photo"
+                          placeholder="Rechercher une photo…"
                           className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
                         />
                       </div>
                       <button
                         type="button"
-                        onClick={() => searchPhotos(photoQuery.trim() || currentTopic, imageSource)}
+                        onClick={() => searchPhotos(requetePhoto(photoQuery))}
                         disabled={photosLoading}
                         data-poster-search
-                        className="rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+                        className="flex grow sm:grow-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition-colors"
                       >
-                        {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Chercher'}
+                        {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                        Rechercher
                       </button>
                     </div>
 
-                    {/* Suggestions pour la séquence affichée : un clic remplit
-                        le champ et lance la MÊME recherche que « Chercher ». */}
+                    {/* Suggestions pour la séquence affichée : libellé
+                        FRANÇAIS à l'écran, requête anglaise envoyée — la
+                        MÊME recherche que « Rechercher ». */}
                     {suggestionsPhotos.length > 0 && (
                       <div className="space-y-1" data-suggestions-photos>
                         <p className="text-[11px] text-gray-500">Suggestions pour cette séquence</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {suggestionsPhotos.map((q) => (
+                          {suggestionsPhotos.map((sug) => (
                             <button
-                              key={q}
+                              key={sug.requete}
                               type="button"
-                              data-suggestion-photo={q}
+                              data-suggestion-photo={sug.requete}
                               disabled={photosLoading}
                               onClick={() => {
-                                setPhotoQuery(q);
-                                searchPhotos(q, imageSource);
+                                setPhotoQuery(sug.libelle);
+                                searchPhotos(sug.requete);
                               }}
                               className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40 ${
-                                photoQuery.trim() === q
+                                photoQuery.trim() === sug.libelle
                                   ? 'border-purple-500 text-white'
                                   : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
                               }`}
                             >
-                              {q}
+                              {sug.libelle}
                             </button>
                           ))}
                         </div>
@@ -10418,12 +10868,13 @@ export default function AssistantWizard() {
                         )}
                         <button
                           type="button"
-                          onClick={() => searchPhotos(photoQuery.trim() || currentTopic, imageSource, true)}
+                          onClick={() => searchPhotos(requetePhoto(photoQuery), SOURCE_PHOTOS_AUTO, true)}
                           disabled={photosLoading}
                           className="w-full rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
                         >
                           Autres photos
                         </button>
+                        <CreditBanques attribut="data-poster-credits" />
                       </>
                     )}
 
@@ -10562,7 +11013,7 @@ export default function AssistantWizard() {
                           : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
                       </p>
                       {fondAffiche.url && stockMedias[fondAffiche.url] && (
-                        <p className="text-[11px] text-gray-500" data-fond-attribution>
+                        <p className="text-[11px] text-gray-500" data-fond-attribution data-credit-media>
                           {stockMedias[fondAffiche.url].attribution}{' '}
                           <a
                             href={stockMedias[fondAffiche.url].sourceUrl}
@@ -10583,7 +11034,7 @@ export default function AssistantWizard() {
                         className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
                       >
                         <Search className="w-3.5 h-3.5" />
-                        Rechercher des médias (stock)
+                        Médias suggérés
                       </button>
                     </div>
 
@@ -11165,7 +11616,7 @@ export default function AssistantWizard() {
                           // Seule une sequence video SANS rush reste inerte. Des
                           // qu'un rush est importe, elle se deplace, se masque et
                           // s'affiche comme les trois autres.
-                          const inert = isVideo && !rushUrl;
+                          const inert = isVideo && !rushUrl && !mediasVideo;
                           return (
                             <div
                               key={seq.key}
@@ -11207,9 +11658,12 @@ export default function AssistantWizard() {
                               </span>
                               <div className="min-w-0 flex-1">
                                 <div className="text-sm font-medium truncate">{meta.label}</div>
-                                <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? rushName : undefined}>
-                                  {isVideo && rushUrl
-                                    ? (rushSuivants.length ? `${rushListe.length} rushes enchaînés` : rushName || 'Rush importé')
+                                <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? (listeMedias[0] ? titreMedia(listeMedias[0]) : undefined) : undefined}>
+                                  {isVideo && mediasVideo
+                                    ? `${mediasVideo.length} média${mediasVideo.length > 1 ? 's' : ''} enchaîné${mediasVideo.length > 1 ? 's' : ''}`
+                                    : isVideo && rushUrl
+                                    // Jamais le nom du fichier (gardé en infobulle) : sa provenance.
+                                    ? (rushSuivants.length ? `${rushListe.length} rushes enchaînés` : listeMedias[0] ? libelleMedia(listeMedias[0]) : 'Rush importé')
                                     : meta.hint}
                                 </div>
                                 {/* La protection anti-rétention a échoué en base : le rush
@@ -11283,7 +11737,7 @@ export default function AssistantWizard() {
                                   {rushUrl && (
                                     <button
                                       type="button"
-                                      onClick={clearRush}
+                                      onClick={() => retirerRush(rushUrl)}
                                       title="Retirer le rush"
                                       aria-label="Retirer le rush"
                                       className="text-gray-500 hover:text-red-400 transition"
@@ -11334,101 +11788,75 @@ export default function AssistantWizard() {
                           );
                         })}
                       </div>
-                      {/* MULTI-RUSH — liste ordonnee, visible des 2 rushes. Avec un
-                          seul rush, seul le lien « Ajouter un rush » apparait. */}
-                      {rushListe.length >= 2 && (
-                        <div data-multi-rush className="mt-2 rounded-xl bg-gray-900/40 ring-1 ring-emerald-500/20 p-2 space-y-1">
-                          <div className="text-[11px] text-gray-400 px-1">
-                            Rushes de la séquence Vidéo, joués dans cet ordre
-                          </div>
-                          {rushListe.map((r, i) => (
-                            <div key={`${r.url}-${i}`} data-rush-item className="flex items-center gap-2 rounded-lg px-2 py-1 bg-gray-900/60">
-                              <span className="text-[10px] font-bold text-emerald-300 w-4 text-center flex-shrink-0">{i + 1}</span>
-                              <span className="min-w-0 flex-1 truncate text-[11px] text-gray-300" title={r.name || r.url}>
-                                {r.name || `Rush ${i + 1}`}
-                              </span>
-                              <span className="text-[10px] text-gray-500 flex-shrink-0">
-                                {r.secondes ? `${r.secondes}s` : ''}
-                              </span>
-                              <button
-                                type="button"
-                                data-rush-item-recadrer
-                                onClick={() => setRecadrerRushOuvert(r.url)}
-                                disabled={rushLoading}
-                                title="Recadrer ce rush : il remplit le format, l'export utilise ce cadrage."
-                                aria-label={`Recadrer le rush ${i + 1}`}
-                                data-recadre={recadrageRushActif(rushTransforms[r.url]) ? 'oui' : 'non'}
-                                className={`flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[10px] font-medium transition disabled:opacity-40 flex-shrink-0 ${recadrageRushActif(rushTransforms[r.url]) ? 'bg-studiio-primary/25 text-purple-100' : 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
-                              >
-                                <Crop className="w-3 h-3" />
-                                Recadrer
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => poserListeRushs(deplacer(rushListe, i, -1))}
-                                disabled={i === 0 || rushLoading}
-                                title="Monter"
-                                aria-label={`Monter le rush ${i + 1}`}
-                                className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
-                              >
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => poserListeRushs(deplacer(rushListe, i, 1))}
-                                disabled={i === rushListe.length - 1 || rushLoading}
-                                title="Descendre"
-                                aria-label={`Descendre le rush ${i + 1}`}
-                                className="text-gray-500 hover:text-white disabled:opacity-20 disabled:cursor-not-allowed"
-                              >
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => poserListeRushs(retirer(rushListe, i))}
-                                disabled={rushLoading}
-                                title="Retirer ce rush"
-                                aria-label={`Retirer le rush ${i + 1}`}
-                                className="text-gray-500 hover:text-red-400 disabled:opacity-30 transition"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {rushUrl && (
-                        <button
-                          type="button"
-                          data-ajouter-rush
-                          onClick={() => { rushAjoutRef.current = true; setRushLibOpen(true); }}
-                          disabled={rushLoading}
-                          className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Ajouter un rush
-                        </button>
-                      )}
-                      {/* Recherche stock guidée : une vidéo choisie s'AJOUTE à la
-                          liste (ou devient le rush s'il n'y en a aucun) — le rush
-                          principal n'est jamais remplacé. */}
-                      <button
-                        type="button"
-                        data-ouvrir-stock="rush"
-                        onClick={() => setStockPanneau({ cle: 'video', type: 'video' })}
-                        disabled={rushLoading}
-                        className="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Search className="w-3 h-3" />
-                        Rechercher des médias (stock)
-                      </button>
-                      {rushListe.some((r) => stockMedias[r.url]) && (
-                        <div className="mt-1 space-y-0.5" data-rush-attributions>
-                          {rushListe.filter((r) => stockMedias[r.url]).map((r) => (
-                            <p key={r.url} className="text-[11px] text-gray-500 truncate">
-                              {stockMedias[r.url].attribution}{' '}
+                      {/* MULTI-SOURCES — « Médias de la séquence Vidéo » : la liste
+                          ORDONNÉE (rushes, avatar, vidéos et photos suggérées,
+                          médiathèque) et le menu « Ajouter ». Sans avatar ni photo,
+                          c'est la vue des rushes d'avant (mêmes gestes, même montage). */}
+                      <MediasSequenceVideo
+                        medias={listeMedias}
+                        plan={planMedias}
+                        noteDuree={noteDuree}
+                        occupe={rushLoading}
+                        estRecadre={(u) => recadrageRushActif(rushTransforms[u])}
+                        etatAvatar={etatAvatarListe}
+                        vignetteAvatar={apercuAvatarListe?.etat === 'pret' && apercuAvatarListe.url
+                          ? { url: apercuAvatarListe.url, type: apercuAvatarListe.type } : null}
+                        selectionId={mediaApercuId}
+                        // L'aperçu d'un média de la liste passe dans la colonne de
+                        // droite (« Aperçu du média »), comme les médias suggérés.
+                        apercuInterne={false}
+                        onApercu={(m) => {
+                          setMediaApercu(null);
+                          setMediaApercuId(m ? m.id : null);
+                          // Sur mobile, la colonne d'aperçu est SOUS la liste : on l'amène
+                          // à l'écran, sinon le clic semble ne rien faire. Sur bureau elle
+                          // est déjà visible — rien ne bouge.
+                          if (m) requestAnimationFrame(() => requestAnimationFrame(() => {
+                            const cible = document.querySelector('[data-apercu-media-liste]');
+                            const r = cible?.getBoundingClientRect();
+                            if (cible && r && (r.top >= window.innerHeight || r.bottom <= 0)) cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }));
+                        }}
+                        onDeplacer={(i, d) => poserListeMedias(deplacerMedia(listeMedias, i, d))}
+                        onRemplacer={(i) => {
+                          const m = listeMedias[i];
+                          if (!m) return;
+                          if (m.source === 'stock-photo' || m.source === 'stock-video') {
+                            stockVersListeRef.current = true;
+                            remplacementStockRef.current = i;
+                            setStockPanneau({ cle: 'video', type: m.type === 'image' ? 'photo' : 'video' });
+                          } else {
+                            setMediathequeListe({ remplacer: i, type: m.source === 'mediatheque' || m.type === 'image' ? 'all' : 'video' });
+                          }
+                        }}
+                        onSupprimer={(i) => {
+                          const m = listeMedias[i];
+                          if (m && m.id === mediaApercuId) setMediaApercuId(null);
+                          poserListeMedias(retirerMedia(listeMedias, i));
+                        }}
+                        onDuree={choisirDureeMedia}
+                        onRecadrer={(m) => { if (m.url) setRecadrerRushOuvert(m.url); }}
+                        onAjouterMonRush={() => { rushAjoutRef.current = true; setRushLibOpen(true); }}
+                        onAjouterAvatar={ajouterAvatarListe}
+                        onAjouterSuggere={() => {
+                          stockVersListeRef.current = true;
+                          remplacementStockRef.current = null;
+                          setStockPanneau({ cle: 'video', type: 'video' });
+                        }}
+                        onAjouterMediatheque={() => setMediathequeListe({ remplacer: null, type: 'all' })}
+                        onOuvrirMenu={lireAvatarsPourListe}
+                      />
+                      {urlsRecadrables(listeMedias).some((u) => stockMedias[u]) && (
+                        // Crédits exigés par les banques d'images, REPLIÉS : jamais un
+                        // nom de fournisseur dans l'interface principale.
+                        <details className="mt-1" data-rush-attributions data-credit-media>
+                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Informations des médias</summary>
+                          <div className="mt-1 space-y-0.5">
+                          {urlsRecadrables(listeMedias).filter((u, k, t) => stockMedias[u] && t.indexOf(u) === k).map((u) => (
+                            <p key={u} className="text-[11px] text-gray-500 truncate">
+                              {stockMedias[u].attribution}{' '}
                               <a
-                                href={stockMedias[r.url].sourceUrl}
+                                href={stockMedias[u].sourceUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="underline hover:text-white"
@@ -11437,7 +11865,8 @@ export default function AssistantWizard() {
                               </a>
                             </p>
                           ))}
-                        </div>
+                          </div>
+                        </details>
                       )}
                       {rushUrl && (
                         <p className="text-[11px] text-gray-500 mt-2">
@@ -11446,8 +11875,9 @@ export default function AssistantWizard() {
                           comptez la durée du montage.
                         </p>
                       )}
-                      {recadrerRushOuvert && rushListe.some((r) => r.url === recadrerRushOuvert) && (
+                      {recadrerRushOuvert && listeMedias.some((m) => m.url === recadrerRushOuvert) && (
                         <RecadrerRush
+                          type={listeMedias.find((m) => m.url === recadrerRushOuvert)?.type}
                           // Un rush = une modale neuve (dimensions de SA source).
                           key={recadrerRushOuvert}
                           url={recadrerRushOuvert}
@@ -11472,6 +11902,24 @@ export default function AssistantWizard() {
                           // « Importer / Changer » remplace le rush principal.
                           if (rushAjoutRef.current) { rushAjoutRef.current = false; void ajouterRush(url, name); }
                           else void applyRush(url, name);
+                        }}
+                      />
+                      {/* Médiathèque ouverte DEPUIS la liste multi-sources : vidéos ET
+                          photos, en ajout (fin de liste) ou en remplacement. */}
+                      <MediaLibrary
+                        isOpen={!!mediathequeListe}
+                        onClose={() => setMediathequeListe(null)}
+                        mediaType={mediathequeListe?.type ?? 'all'}
+                        onSelect={(url, name, type) => {
+                          const cible = mediathequeListe;
+                          setMediathequeListe(null);
+                          const estImage = type === 'image';
+                          const remplace = cible?.remplacer ?? null;
+                          if (cible?.type === 'all' && !estImage) setUrlsMediatheque((prev) => new Set(prev).add(url));
+                          const source = cible?.type === 'all' ? 'mediatheque' as const : 'rush' as const;
+                          if (remplace !== null) { remplacerMediaListe(remplace, url, name, estImage ? 'image' : 'video', source); return; }
+                          if (estImage) ajouterPhotoListe(url, name, 'mediatheque');
+                          else ajouterVideoListe(url, name);
                         }}
                       />
                     </div>
@@ -12507,6 +12955,35 @@ export default function AssistantWizard() {
           </div>
         ) : (
         <>
+        {/* ── APERÇU DU MÉDIA ─────────────────────────────────────────
+            Un média sélectionné dans « Médias suggérés » prend la place de
+            l'aperçu du projet. Celui-ci reste MONTÉ (masqué) : ses refs
+            d'export, de mesure et de glisser ne changent pas. */}
+        {!mediaApercu && mediaListeApercu && (
+          <div data-colonne-etat="media" data-apercu-media-liste>
+            <ApercuMedia
+              media={mediaListeApercu}
+              format={format}
+              etat="ajoute"
+              largeurMax={format === '16:9' ? undefined : 360}
+              onRetour={() => setMediaApercuId(null)}
+            />
+          </div>
+        )}
+        {mediaApercu && (
+          <div data-colonne-etat="media">
+            <ApercuMedia
+              media={mediaApercuDeStock(mediaApercu.media)}
+              format={format}
+              etat={mediaApercu.etat}
+              largeurMax={format === '16:9' ? undefined : 360}
+              onAjouter={() => panneauStockRef.current?.ajouterSelection()}
+              onRemplacer={() => panneauStockRef.current?.deselectionner()}
+              onRetour={() => { panneauStockRef.current?.deselectionner(); setMediaApercu(null); }}
+            />
+          </div>
+        )}
+        <div data-colonne-etat="projet" style={mediaApercu || mediaListeApercu ? { display: 'none' } : undefined}>
         <Preview
           {...previewShared}
           previewRef={previewRef}
@@ -12549,6 +13026,23 @@ export default function AssistantWizard() {
           // seulement) ; sinon rien — le plateau nu.
           overlay={renduDansLeCadre ?? lectureSequences}
         />
+        {/* MULTI-SOURCES — « Aperçu du montage » + chronologie : la liste
+            jouée dans son ordre (même plan que le rendu), puis le CTA.
+            Absent pour un projet sans liste enrichie : l'aperçu d'avant, seul. */}
+        {apercuMontage && (
+          <ApercuMontageListe
+            etapes={apercuMontage.etapes}
+            lignes={apercuMontage.lignes}
+            narration={apercuMontage.narration}
+            depassement={apercuMontage.depassement}
+            format={format}
+            accent={accent}
+            ctaTexte={generated?.cta ?? null}
+            ctaSousTexte={generated?.ctaSub ?? null}
+            vignetteAvatar={apercuAvatarListe?.etat === 'pret' && apercuAvatarListe.url
+              ? { url: apercuAvatarListe.url, type: apercuAvatarListe.type } : null}
+          />
+        )}
 
         {/* ── RÉGLAGES D'UNE SÉQUENCE, AU DOUBLE-CLIC ──────────────────
             Le MÊME `FloatingPanel` et la MÊME `TextFormatToolbar` que
@@ -12668,6 +13162,55 @@ export default function AssistantWizard() {
                   else setCtaStyle((v) => ({ ...v, ...patch }));
                 }}
               />
+
+              {/* ── ACTIONS ─────────────────────────────────────────────
+                  Les fonctions EXISTANTES de l'éditeur, rendues trouvables
+                  là où l'on édite. Titre, sous-titre et CTA sont uniques
+                  dans le montage : leurs actions restent visibles, grisées,
+                  avec la raison en infobulle. */}
+              {(() => {
+                const cartes = zoneOuverte === 'cards';
+                const nbSel = selectedCards.size;
+                const nbCartes = generated.cards.length;
+                const unique = `${ZONE_LABELS[zoneOuverte]} : un seul par vidéo`;
+                return (
+                  <ActionsEdition
+                    nom={ZONE_LABELS[zoneOuverte]}
+                    actions={[
+                      {
+                        id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: duplicateSelection,
+                        disabled: !cartes || nbSel === 0 || nbCartes >= limiteCartes,
+                        aide: !cartes ? unique
+                          : nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
+                            : nbCartes >= limiteCartes ? `Maximum de ${limiteCartes} cartes dans ce format`
+                              : 'Dupliquer la sélection',
+                      },
+                      {
+                        id: 'regrouper', libelle: 'Regrouper', Icone: GroupIcon, onClick: groupSelection,
+                        disabled: !cartes || nbSel < MIN_GROUP,
+                        aide: !cartes ? 'Seules les cartes se regroupent'
+                          : nbSel < MIN_GROUP ? 'Sélectionnez au moins deux cartes (Maj+clic)'
+                            : 'Déplacer ces cartes ensemble',
+                      },
+                      {
+                        id: 'dissocier', libelle: 'Dissocier', Icone: Ungroup, onClick: ungroupSelection,
+                        disabled: !cartes || !selectionGrouped,
+                        aide: !cartes ? 'Seules les cartes se regroupent'
+                          : !selectionGrouped ? 'Aucune carte sélectionnée n’est dans un groupe'
+                            : 'Séparer les cartes de leur groupe',
+                      },
+                      ...(cartes ? [{
+                        id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
+                        onClick: () => { for (const id of Array.from(selectedCards)) supprimerCarte(id); },
+                        disabled: nbSel === 0 || nbSel >= nbCartes,
+                        aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
+                          : nbSel >= nbCartes ? 'Il faut garder au moins une carte'
+                            : 'Supprimer la sélection',
+                      }] : []),
+                    ]}
+                  />
+                );
+              })()}
             </div>
           )}
         </FloatingPanel>
@@ -12923,6 +13466,7 @@ export default function AssistantWizard() {
             Disposition des cartes réinitialisée : le contenu ou le format a changé.
           </p>
         )}
+        </div>
         </>
         )}
       </ColonneApercu>
@@ -13023,6 +13567,13 @@ export default function AssistantWizard() {
                     </button>
                   </div>
                 </div>
+                <ActionsEdition
+                  nom="Élément"
+                  actions={[
+                    { id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: () => dupliquerElement(selectedElement.id), aide: 'Dupliquer cet élément' },
+                    { id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true, onClick: () => deleteElement(selectedElement.id), aide: 'Retirer cet élément de la vidéo' },
+                  ]}
+                />
           </div>
         )}
       </FloatingPanel>
@@ -13062,38 +13613,6 @@ export default function AssistantWizard() {
           if (!failure) setClipSource(null);
         }}
       />
-      {/* Recherche stock guidée — montée seulement à l'ouverture. */}
-      {stockPanneau && (
-        <RechercheStockSequence
-          role={stockPanneau.cle}
-          libelleSequence={
-            stockPanneau.cle === 'titre' ? 'Titre'
-              : stockPanneau.cle === 'cartes' ? 'Cartes'
-                : stockPanneau.cle === 'video' ? 'Vidéo'
-                  : stockPanneau.cle === 'cta' ? 'CTA'
-                    : 'Affiche'
-          }
-          sujet={currentTopic}
-          objectif={brief.objectif}
-          texte={texteDeSequence(generated, stockPanneau.cle)}
-          format={format}
-          typeInitial={stockPanneau.type}
-          fondExistant={stockPanneau.cle ? !!seqBackgrounds[stockPanneau.cle]?.url : !!posterUrl}
-          onUtiliserPhoto={(url, meta) => {
-            setStockMedias((prev) => ({ ...prev, [url]: meta }));
-            // Même pose que `applyPhoto`, sur la séquence figée à l'ouverture.
-            const cle = stockPanneau.cle;
-            if (!cle) { setPosterUrl(url); return; }
-            setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
-          }}
-          onAjouterRush={(url, nom, meta) => {
-            setStockMedias((prev) => ({ ...prev, [url]: meta }));
-            // `ajouterRush` : en fin de liste (keep compris) ; sans rush, import normal.
-            void ajouterRush(url, nom);
-          }}
-          onFermer={() => setStockPanneau(null)}
-        />
-      )}
     </DeuxColonnes>
     </div>
   );

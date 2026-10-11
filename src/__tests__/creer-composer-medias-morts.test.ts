@@ -67,7 +67,8 @@ describe('Câblage dans Créer', () => {
     expect(w.indexOf('const introuvables = await urlsIntrouvables(')).toBeLessThan(w.lastIndexOf('const video = await genererEtAttendreVideoJumeau('));
   });
   it('en mode jumeau « avatar », l’ancien rush (remplacé) n’est pas exigé', () => {
-    expect(w).toContain("...(jumeauMode === 'avatar' ? [] : [plateau.rushUrl, ...rushSuivants.map((r) => r.url)]");
+    // Multi-sources : avec une liste (avatar intercalé), les rushes RESTENT exigés.
+    expect(w).toContain("...(jumeauMode === 'avatar' && !listeEnvoi ? [] : [plateau.rushUrl, ...rushSuivants.map((r) => r.url)]");
   });
   it('le rendu lit la musique et les fonds NETTOYÉS, jamais l’état mort', () => {
     expect(w).toContain('const rythme = musiqueRendu ? await analyserMusiqueNavigateur(musiqueRendu) : null;');

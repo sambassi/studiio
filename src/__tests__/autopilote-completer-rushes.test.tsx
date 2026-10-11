@@ -125,8 +125,8 @@ describe('Désactivé (défaut) — comportement identique', () => {
     await ouvrirRushes();
     expect(caseStock()).toBeTruthy();
     expect(caseStock().checked).toBe(false);
-    expect(screen.getByText('Compléter avec Pexels / Unsplash')).toBeTruthy();
-    expect(screen.getByText(/seuls les médias que vous retenez sont utilisés/)).toBeTruthy();
+    expect(screen.getByText('Médias suggérés')).toBeTruthy();
+    expect(screen.getByText('Studiio recherche automatiquement des images et vidéos adaptées à votre contenu.')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-stock]')).toBeNull();
     expect(document.querySelector('[data-autopilot-stock-suffisant]')).toBeNull();
     expect(document.querySelector('[data-autopilot-rush-stock]')).toBeNull();
@@ -138,7 +138,7 @@ describe('Désactivé (défaut) — comportement identique', () => {
     configServeur = { ...configServeur, rushUrls: [A, B] };
     const attendu = JSON.stringify(sanitizeConfig({ ...sanitizeConfig(configServeur), rushUrls: [A] }));
     await ouvrirRushes();
-    const retirer = document.querySelectorAll('[aria-label="Retirer ce rush"]');
+    const retirer = document.querySelectorAll('[aria-label="Supprimer ce rush"]');
     fireEvent.click(retirer[1]);
     await waitFor(() => expect(envois.length).toBe(1));
     expect(envois[0]).toBe(attendu);
@@ -174,7 +174,7 @@ describe('Activé — couverture suffisante', () => {
     configServeur = { ...configServeur, rushUrls: [A, B, C] };
     await ouvrirRushes();
     await activer();
-    await waitFor(() => expect(screen.getByText('Vos rushes suffisent : aucun média stock nécessaire.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Vos rushes suffisent : aucun média suggéré nécessaire.')).toBeTruthy());
     await new Promise((r) => setTimeout(r, 20));
     expect(appelsStock).toEqual([]);
   });
@@ -188,7 +188,7 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
     expect(document.querySelector('[data-autopilot-stock-slot="plan-1"]')).toBeNull();
     expect(document.querySelector('[data-autopilot-stock-slot="plan-2"]')).toBeTruthy();
     expect(screen.getByText('Rushes personnels : 1')).toBeTruthy();
-    expect(screen.getByText('Médias stock proposés : 2')).toBeTruthy();
+    expect(screen.getByText('Médias suggérés : 2')).toBeTruthy();
     // Vertical (9:16) d'abord : le paysage L1 arrivé en tête n'est pas retenu.
     expect(document.querySelector('[data-autopilot-stock-vignette="P1"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-stock-vignette="P2"]')).toBeTruthy();
@@ -199,10 +199,17 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
       expect(u).toContain('fournisseurs=pexels');
       expect(u).toContain('format=9%3A16');
     }
-    // Attribution : lien vers la page Pexels, rel noopener.
+    // Attribution : plus de lien à l'écran ; dans l'aperçu, « Informations du média »
+    // révèle le lien vers la page du média (rel noopener) — seulement au clic.
+    expect(document.querySelector('a[href="https://www.pexels.com/video/P1/"]')).toBeNull();
+    fireEvent.click(document.querySelector('[data-autopilot-stock-slot="plan-2"] [data-carte-apercu]') as Element);
+    expect(document.querySelector('a[href="https://www.pexels.com/video/P1/"]')).toBeNull();
+    fireEvent.click(document.querySelector('[data-carte-informations]') as Element);
     const lien = document.querySelector('a[href="https://www.pexels.com/video/P1/"]') as HTMLAnchorElement;
     expect(lien).toBeTruthy();
     expect(lien.rel).toContain('noopener');
+    expect(lien.closest('[data-credit-media]')).toBeTruthy();
+    fireEvent.click(document.querySelector('[data-carte-apercu-fermer]') as Element);
     // Explication du manque.
     expect(screen.getAllByText(/tous vos rushes sont déjà utilisés/).length).toBe(2);
     // Libellés lisibles : jamais l'identifiant interne « plan-2 » à l'écran.
@@ -228,12 +235,12 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
       url: IMPORTE('P1'), type: 'video', provider: 'pexels', providerAssetId: 'P1', auteur: 'Auteur P1',
       sourceUrl: 'https://www.pexels.com/video/P1/', licence: 'Pexels License', vignetteUrl: 'https://images.pexels.com/videos/P1/thumb.jpg',
     }]);
-    await waitFor(() => expect(document.querySelector(`[data-autopilot-rush-stock="${IMPORTE('P1')}"]`)?.textContent).toBe('Stock · Pexels · Auteur P1'));
+    await waitFor(() => expect(document.querySelector(`[data-autopilot-rush-stock="${IMPORTE('P1')}"]`)?.querySelector('[data-carte-libelle]')?.textContent).toBe('Vidéo suggérée'));
     expect(document.querySelector('[data-autopilot-stock-slot="plan-2"][data-etat="conserve"]')).toBeTruthy();
     // L'autre proposition reste en attente, rien n'est ajouté pour elle.
     expect(document.querySelector('[data-autopilot-stock-slot="plan-3"][data-etat="propose"]')).toBeTruthy();
     // Le compteur ne compte plus le média conservé (il est déjà dans la banque).
-    expect(screen.getByText('Médias stock proposés : 1')).toBeTruthy();
+    expect(screen.getByText('Médias suggérés : 1')).toBeTruthy();
   });
 
   it('« Supprimer » retire la proposition sans rien enregistrer', async () => {
@@ -241,7 +248,7 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
     await activer();
     await attendrePropositions();
     fireEvent.click(document.querySelector('[data-autopilot-stock-supprimer="plan-2"]') as Element);
-    await waitFor(() => expect(screen.getByText('Médias stock proposés : 1')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Médias suggérés : 1')).toBeTruthy());
     expect(document.querySelector('[data-autopilot-stock-slot="plan-2"][data-etat="supprime"]')).toBeTruthy();
     expect(envois).toEqual([]);
   });
@@ -288,7 +295,7 @@ describe('Activé — fournisseur en défaut', () => {
     await ouvrirRushes();
     await activer();
     await waitFor(() => expect(screen.getByText(MESSAGE_STOCK_INDISPONIBLE)).toBeTruthy());
-    expect(screen.getByText('Médias stock proposés : 0')).toBeTruthy();
+    expect(screen.getByText('Médias suggérés : 0')).toBeTruthy();
     expect((document.querySelector('[data-autopilot-suivant]') as HTMLButtonElement).disabled).toBe(false);
     expect(envois).toEqual([]);
   });

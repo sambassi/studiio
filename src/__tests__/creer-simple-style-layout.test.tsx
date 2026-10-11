@@ -250,7 +250,7 @@ describe('Aucun réglage perdu', () => {
       'toggleSequence',                  // œil
       '<MediaLibrary',                   // import rush
       'Temps forts',                     // découpe
-      'onClick={clearRush}',             // retrait du rush
+      'onClick={() => retirerRush(rushUrl)}', // retrait du rush (ce rush seulement, #543)
     ]) {
       expect(step).toContain(marker);
     }

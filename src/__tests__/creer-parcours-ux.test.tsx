@@ -211,7 +211,7 @@ describe('Autopilote — guidage par étape', () => {
     await monter();
     const attendu = [
       ['De quoi Studiio doit-il parler ?', 'Choisissez un ou plusieurs sujets.'],
-      ['Choisissez les sources de vos vidéos', 'Vos rushes, votre avatar, des médias Pexels / Unsplash — seuls ou combinés.'],
+      ['Choisissez les sources de vos vidéos', 'Vos rushes, votre avatar, des médias suggérés — seuls ou combinés.'],
       ['À quoi ressembleront vos vidéos ?', 'Ces réglages valent pour toutes les futures vidéos.'],
       ['Quand et où publier ?', 'Fréquence, validation, réseaux.'],
       ['Options facultatives', 'Vous pouvez passer cette étape.'],

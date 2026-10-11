@@ -127,7 +127,7 @@ describe('Recadrage du rush — la chaîne jusqu’à l’export et au post', ()
   // Recadrage PAR RUSH : l'export reçoit une table `rushTransforms` (clé = URL),
   // voir `creer-recadrage-par-rush.test.ts` pour le comportement détaillé.
   it('⚠️ l’export reçoit le recadrage (par rush) ; l’aperçu du plateau aussi', () => {
-    expect(wizard).toContain('? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs)');
+    expect(wizard).toContain('? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs ?? planListe)');
     expect(wizard).toContain('style={styleRecadrageRush(\n                  rushTransform,');
   });
 

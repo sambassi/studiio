@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Check, Loader2, UserSquare2 } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, UserRound, UserSquare2 } from 'lucide-react';
 import { lireEtatJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
 import type { AvatarPret } from '@/lib/autopilot/medias-prevus';
 
@@ -157,9 +157,10 @@ export default function AvatarPrincipalAutopilote(props: {
           data-autopilot-avatar-case
           className="mt-0.5"
         />
+        <UserRound className="w-4 h-4 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
         <span className="min-w-0">
           <span className="block text-xs font-medium text-gray-300">Mon avatar</span>
-          <span className="block text-[11px] text-gray-500">Votre avatar parlant, seul ou combiné à vos rushes et aux médias stock.</span>
+          <span className="block text-[11px] text-gray-500">Votre avatar parlant, seul ou combiné à vos rushes et aux médias suggérés.</span>
         </span>
         {pret === true && <MiniatureAvatar vignette={vignette} className="w-9 h-9 ml-auto" />}
       </label>
