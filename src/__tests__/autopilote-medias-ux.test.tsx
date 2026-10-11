@@ -216,7 +216,8 @@ describe('Banque de rushes en cartes', () => {
     expect(carte(A).querySelector('[data-carte-libelle]')!.textContent).toBe('Rush personnel');
     expect(carte(A).getAttribute('title')).toBe('a.mp4');
     expect(carte(IMPORTE('V9')).querySelector('[data-carte-libelle]')!.textContent).toBe('Vidéo suggérée');
-    expect(carte(IMPORTE('V9')).getAttribute('title')).toBe('stock-pexels-video-V9.mp4');
+    // Un nom qui trahit le fournisseur n'apparaît pas, même au survol.
+    expect(carte(IMPORTE('V9')).getAttribute('title')).toBeNull();
     // Première image : la vidéo elle-même, lue sur ses seules métadonnées.
     const v = carte(A).querySelector('video[data-carte-premiere-image]') as HTMLVideoElement;
     expect(v.getAttribute('preload')).toBe('metadata');

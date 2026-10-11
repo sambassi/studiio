@@ -213,7 +213,8 @@ describe('Médias suggérés (panneau isolé)', () => {
     expect(apercu.getAttribute('aria-label')).toMatch(/Aperçu/);
     expect(ajouter.getAttribute('aria-label')).toMatch(/rushes/);
     // Le nom technique reste dans l'infobulle seulement.
-    expect(carte.querySelector('[data-stock-media]')!.getAttribute('title')).toBe('pexels-video-v1');
+    // L'infobulle parle comme l'utilisateur — jamais l'identifiant du fournisseur.
+    expect(carte.querySelector('[data-stock-media]')!.getAttribute('title')).toBe('Vidéo suggérée');
   });
 
   it('clic sur la vignette : sélection + aperçu ; rien n’est ajouté, aucun onglet, aucune navigation', async () => {

@@ -61,7 +61,7 @@ import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/Me
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
   ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar, dureeListe, planDepuisListe,
-  estimerDureeParole, nouvelIdMedia, libelleMedia, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
+  estimerDureeParole, nouvelIdMedia, libelleMedia, libelleSource, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
 } from '@/lib/creer/medias-video';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
@@ -7643,7 +7643,8 @@ export default function AssistantWizard() {
     const url = m.url ?? avatarPret?.url ?? null;
     if (!url) return null;
     const type: MediaApercu['type'] = avatarPret && !m.url ? (avatarPret.type === 'photo' ? 'photo' : 'video') : m.type === 'image' ? 'photo' : 'video';
-    return { type, url, libelle: libelleMedia(m), nomTechnique: titreMedia(m), dureeSecondes: m.duree ?? undefined };
+    // `libelleSource` : la durée est déjà affichée par l'aperçu (pas « · 0:02 · 0:02 »).
+    return { type, url, libelle: libelleSource(m), nomTechnique: titreMedia(m), dureeSecondes: m.duree ?? undefined };
   }, [mediaApercuId, listeMedias, apercuAvatarListe]);
   const etatAvatarListe: EtatAvatarListe = avatarsApercu === undefined ? 'chargement' : apercuAvatarListe?.etat === 'pret' ? 'pret' : 'absent';
 
@@ -11705,7 +11706,18 @@ export default function AssistantWizard() {
                         // L'aperçu d'un média de la liste passe dans la colonne de
                         // droite (« Aperçu du média »), comme les médias suggérés.
                         apercuInterne={false}
-                        onApercu={(m) => { setMediaApercu(null); setMediaApercuId(m ? m.id : null); }}
+                        onApercu={(m) => {
+                          setMediaApercu(null);
+                          setMediaApercuId(m ? m.id : null);
+                          // Sur mobile, la colonne d'aperçu est SOUS la liste : on l'amène
+                          // à l'écran, sinon le clic semble ne rien faire. Sur bureau elle
+                          // est déjà visible — rien ne bouge.
+                          if (m) requestAnimationFrame(() => requestAnimationFrame(() => {
+                            const cible = document.querySelector('[data-apercu-media-liste]');
+                            const r = cible?.getBoundingClientRect();
+                            if (cible && r && (r.top >= window.innerHeight || r.bottom <= 0)) cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }));
+                        }}
                         onDeplacer={(i, d) => poserListeMedias(deplacerMedia(listeMedias, i, d))}
                         onRemplacer={(i) => {
                           const m = listeMedias[i];

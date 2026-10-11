@@ -267,7 +267,8 @@ describe('MediasSequenceVideo', () => {
     expect(Array.from(items).map((e) => e.getAttribute('data-media-item'))).toEqual(['avatar', 'rush', 'stock-video', 'avatar', 'stock-photo']);
     expect(container.textContent).not.toMatch(/pexels|stock-|\.mp4|\.jpe?g/i);
     const libelles = container.querySelectorAll('[data-media-libelle]');
-    expect(libelles[2].getAttribute('title')).toBe('stock-pexels-video-123.mp4');
+    // Média suggéré : aucun nom de fournisseur, même au survol.
+    expect(libelles[2].getAttribute('title')).toBeNull();
     expect(container.querySelectorAll('[data-vignette="video"]').length).toBe(2);
     expect(container.querySelectorAll('[data-vignette="image"]').length).toBe(1);
   });

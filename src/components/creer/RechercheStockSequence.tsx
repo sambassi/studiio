@@ -98,7 +98,6 @@ export function mediaApercuDeStock(m: MediaStock): MediaApercu {
     url: m.type === 'video' ? m.fichierUrl : (m.fichierUrl || m.apercuUrl),
     posterUrl: m.type === 'video' ? (m.apercuUrl || m.vignetteUrl) : undefined,
     libelle: libelleMediaStock(m),
-    nomTechnique: m.id,
     dureeSecondes: m.dureeSecondes,
     credit: {
       auteur: m.auteur,
@@ -461,7 +460,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                       onClick={() => selectionner(m)}
                       aria-pressed={choisi}
                       aria-label={`Prévisualiser : ${libelle}${m.type === 'video' && m.dureeSecondes ? `, ${formatDuree(m.dureeSecondes)}` : ''}`}
-                      title={m.id}
+                      title={libelleMediaStock(m)}
                       className="relative block w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -479,7 +478,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                       )}
                     </button>
                     <div className="p-1.5 space-y-1">
-                      <p className="truncate text-[11px] text-gray-300" title={m.id}>
+                      <p className="truncate text-[11px] text-gray-300" title={libelleMediaStock(m)}>
                         {libelle}
                       </p>
                       {/* Carte étroite (2 colonnes, mobile) : boutons empilés, libellés entiers. */}

@@ -233,7 +233,8 @@ export function libelleMedia(m: MediaVideo): string {
 
 /** Infobulle : le nom du fichier, gardé pour qui le cherche. */
 export function titreMedia(m: MediaVideo): string | undefined {
-  return m.nom || undefined;
+  // Jamais un nom qui trahit le fournisseur, même au survol.
+  return m.nom && !/pexels|unsplash/i.test(m.nom) ? m.nom : undefined;
 }
 
 // ── Durées ───────────────────────────────────────────────────────────────

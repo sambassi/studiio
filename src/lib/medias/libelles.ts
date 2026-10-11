@@ -54,8 +54,12 @@ export function dureeLisible(s?: number | null): string {
 }
 
 /** Le nom technique d'un fichier — réservé à l'attribut `title`, jamais au libellé. */
-export function nomTechnique(url: string): string {
-  try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || url); } catch { return url.split('/').pop() || url; }
+export function nomTechnique(url: string): string | undefined {
+  let nom: string;
+  try { nom = decodeURIComponent(new URL(url).pathname.split('/').pop() || url); } catch { nom = url.split('/').pop() || url; }
+  // Un nom qui trahit le fournisseur (« stock-pexels-video-… ») ne s'affiche
+  // pas, même au survol : l'utilisateur n'a pas à connaître l'infrastructure.
+  return NOMS_FOURNISSEURS.test(nom) ? undefined : nom;
 }
 
 /** Les mots que l'écran ne doit jamais montrer hors crédits. */
