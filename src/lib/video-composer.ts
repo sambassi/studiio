@@ -5068,36 +5068,24 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // voice's intrinsic length exceeds the sequence window, it gets
     // clipped — the user was warned in the editor (overrun badge).
     if (hasAnySeqVoice) {
-      const introS = introDuration || 0;
-      const cardsS = cardsDuration || 0;
-      const videoS = videoDuration || 0;
-      const ctaS = ctaDuration || 0;
-      // Sans ordre personnalise : table historique, conservee telle quelle
-      // pour une retro-compat bit a bit (elle est deja approximative quand une
-      // sequence est masquee, mais c'est le comportement existant).
-      // Avec un ordre personnalise : offsets DERIVES de seqStarts, sinon les
-      // voix se joueraient au mauvais moment.
-      // Un ordre personnalise a-t-il ete demande ? Meme test qu'avant
-      // l'extraction de l'assemblage vers la spec partagee.
-      const hasCustomOrder = !!sequenceOrder?.length;
-      const offsets: Record<SeqVoiceKey, { start: number; end: number }> = hasCustomOrder
-        ? (() => {
-            const derived = {} as Record<SeqVoiceKey, { start: number; end: number }>;
-            for (const k of SEQ_VOICE_KEYS) {
-              const type = SEQ_NAME_MAP[k] || k;
-              const idx = sequences.findIndex((sq) => sq.type === type);
-              derived[k] = idx === -1
-                ? { start: 0, end: 0 }
-                : { start: seqStarts[idx], end: seqStarts[idx] + sequences[idx].duration };
-            }
-            return derived;
-          })()
-        : {
-            titre:  { start: 0,                              end: introS },
-            cartes: { start: introS,                         end: introS + cardsS },
-            video:  { start: introS + cardsS,                end: introS + cardsS + videoS },
-            cta:    { start: introS + cardsS + videoS,       end: introS + cardsS + videoS + ctaS },
-          };
+      // Offsets TOUJOURS dérivés de `seqStarts` (les séquences réellement
+      // construites). L'ancienne table fixe (intro → cartes → vidéo → CTA)
+      // donnait les mêmes valeurs quand les quatre séquences existent, mais
+      // décalait les voix suivantes quand une séquence était retirée (cartes
+      // vides, vidéo sans rush…) : la voix du CTA partait trop tard et n'était
+      // sauvée que par la marge de 0,3 s de fin d'enregistrement, supprimée
+      // (#543). Une voix sans séquence correspondante : fenêtre vide.
+      const offsets: Record<SeqVoiceKey, { start: number; end: number }> = (() => {
+        const derived = {} as Record<SeqVoiceKey, { start: number; end: number }>;
+        for (const k of SEQ_VOICE_KEYS) {
+          const type = SEQ_NAME_MAP[k] || k;
+          const idx = sequences.findIndex((sq) => sq.type === type);
+          derived[k] = idx === -1
+            ? { start: 0, end: 0 }
+            : { start: seqStarts[idx], end: seqStarts[idx] + sequences[idx].duration };
+        }
+        return derived;
+      })();
       for (const k of SEQ_VOICE_KEYS) {
         const el = seqVoiceEls[k];
         if (!el) continue;
