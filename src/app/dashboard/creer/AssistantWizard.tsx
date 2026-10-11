@@ -49,6 +49,7 @@ import {
   MousePointerClick,
   X,
   UserSquare2,
+  Group as GroupIcon,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
@@ -94,9 +95,11 @@ import {
 import { MediaLibrary } from '@/components/shared/MediaLibrary';
 import AiImageTools from '@/components/creer/AiImageTools';
 import AfficheIA from '@/components/creer/AfficheIA';
-import RechercheStockSequence, { texteDeSequence, type MetaStock } from '@/components/creer/RechercheStockSequence';
+import RechercheStockSequence, { CreditBanques, mediaApercuDeStock, texteDeSequence, type MetaStock, type PanneauStockHandle } from '@/components/creer/RechercheStockSequence';
+import ApercuMedia, { type EtatAjoutMedia } from '@/components/creer/ApercuMedia';
+import ActionsEdition from '@/components/creer/ActionsEdition';
 import { construireRecherchesStock } from '@/lib/stock/requetes';
-import type { TypeStock } from '@/lib/stock/types';
+import type { MediaStock, TypeStock } from '@/lib/stock/types';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import VideosPretes from '@/components/creer/VideosPretes';
 import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
@@ -1099,6 +1102,13 @@ interface PosterPhoto {
 
 /** Nombre de vignettes ramenees par recherche. */
 const POSTER_COUNT = 12;
+
+/**
+ * Banque(s) interrogée(s) par la recherche de photos d'affiche. `both` :
+ * Studiio choisit, l'utilisateur ne voit jamais de nom de fournisseur.
+ */
+type SourcePhotos = 'pexels' | 'unsplash' | 'both';
+const SOURCE_PHOTOS_AUTO: SourcePhotos = 'both';
 
 /**
  * Une section repliable.
@@ -4650,7 +4660,7 @@ export default function AssistantWizard() {
    */
   const [photosEtat, setPhotosEtat] = useState<EtatPhotos | null>(null);
   /** La derniere recherche, pour la rejouer telle quelle. */
-  const derniereRecherche = useRef<{ query: string; source: 'pexels' | 'unsplash' } | null>(null);
+  const derniereRecherche = useRef<{ query: string; source: SourcePhotos } | null>(null);
   const [photoQuery, setPhotoQuery] = useState('');
   const [photosLoading, setPhotosLoading] = useState(false);
   // ── RECHERCHE STOCK GUIDÉE (additive) ─────────────────────────────────
@@ -4661,6 +4671,26 @@ export default function AssistantWizard() {
   // Crédits des médias stock choisis, par URL posée (fond ou rush). État
   // seul : le brouillon n'en porte rien, il se relit donc à l'identique.
   const [stockMedias, setStockMedias] = useState<Record<string, MetaStock>>({});
+  /**
+   * APERÇU DU MÉDIA — le média sélectionné dans « Médias suggérés », montré
+   * dans la colonne de droite À LA PLACE de l'aperçu du projet (qui reste
+   * monté, masqué : ses refs d'export et de mesure ne bougent pas). `null` =
+   * l'aperçu du projet, exactement comme avant.
+   */
+  const [mediaApercu, setMediaApercu] = useState<{ media: MediaStock; etat: EtatAjoutMedia } | null>(null);
+  const panneauStockRef = useRef<PanneauStockHandle | null>(null);
+  const surSelectionStock = useCallback((m: MediaStock | null, etat: EtatAjoutMedia) => {
+    setMediaApercu(m ? { media: m, etat } : null);
+  }, []);
+  // Panneau fermé : plus de sélection à montrer, retour à l'aperçu du projet.
+  useEffect(() => { if (!stockPanneau) setMediaApercu(null); }, [stockPanneau]);
+  // Ouvert depuis le bas de la colonne : on l'amène sous les yeux.
+  const stockOuvert = !!stockPanneau;
+  useEffect(() => {
+    if (!stockOuvert) return;
+    const el = document.querySelector('[data-recherche-stock]') as HTMLElement | null;
+    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [stockOuvert]);
   const [photosError, setPhotosError] = useState<string | null>(null);
   const [posterUploading, setPosterUploading] = useState(false);
   // Les deux autres chemins vers une affiche : la mediatheque (images deja
@@ -4812,7 +4842,7 @@ export default function AssistantWizard() {
    */
   const searchPhotos = useCallback(async (
     query: string,
-    source: 'pexels' | 'unsplash',
+    source: SourcePhotos = SOURCE_PHOTOS_AUTO,
     nextPage = false,
   ) => {
     const q = query.trim();
@@ -4859,11 +4889,12 @@ export default function AssistantWizard() {
     }
   }, []);
 
-  /** Bascule de source : on relance aussitot, sinon la grille ment. */
-  const changeImageSource = useCallback((source: 'pexels' | 'unsplash') => {
-    setImageSource(source);
-    searchPhotos(photoQuery.trim() || currentTopic, source);
-  }, [photoQuery, currentTopic, searchPhotos]);
+  /**
+   * Plus de bascule Pexels / Unsplash : l'utilisateur ne choisit pas de
+   * banque d'images. La recherche interroge les deux (`both`, entrelacées par
+   * `/api/pexels`) ; `imageSource` reste lu et écrit par le brouillon, sans
+   * plus rien piloter (rétro-compatibilité des brouillons existants).
+   */
 
   useEffect(() => { batchCountRef.current = batchCount; }, [batchCount]);
 
@@ -4943,9 +4974,18 @@ export default function AssistantWizard() {
       role: seqCible,
       visuel: 'arriere-plan',
       format,
-    }).requetes.slice(0, 5),
+    }).suggestions.slice(0, 5),
     [currentTopic, brief.objectif, generated, seqCible, format],
   );
+  /**
+   * La requête d'une saisie : la puce française cliquée → sa requête
+   * anglaise ; un texte libre part tel quel (la route le traduit déjà).
+   */
+  const requetePhoto = (saisie: string): string => {
+    const propre = saisie.trim();
+    if (!propre) return currentTopic;
+    return suggestionsPhotos.find((x) => x.libelle === propre)?.requete ?? propre;
+  };
 
   /** Pose une photo : sur la sequence affichee, ou sur l'affiche globale. */
   /* ── APERÇU DU VRAI RENDU ────────────────────────────────────────────
@@ -5320,6 +5360,21 @@ export default function AssistantWizard() {
   const deleteElement = useCallback((id: string) => {
     setFreeElements((prev) => prev.filter((el) => el.id !== id));
     setSelectedElementId((cur) => (cur === id ? null : cur));
+  }, []);
+
+  /**
+   * Duplique l'élément retenu : même icône, même couleur, même taille, posé
+   * en léger décalage (superposé, on croirait qu'il ne s'est rien passé).
+   * La copie devient la sélection.
+   */
+  const dupliquerElement = useCallback((id: string) => {
+    const nouveau = newElementId();
+    setFreeElements((prev) => {
+      const src = prev.find((el) => el.id === id);
+      if (!src) return prev;
+      return [...prev, { ...src, id: nouveau, x: Math.min(95, src.x + 4), y: Math.min(95, src.y + 4) }];
+    });
+    setSelectedElementId(nouveau);
   }, []);
   const groupsRef = useRef<CardGroup[]>(cardGroups);
   useEffect(() => { groupsRef.current = cardGroups; }, [cardGroups]);
@@ -9446,6 +9501,47 @@ export default function AssistantWizard() {
         l'assistant et l'Autopilote gardent les deux colonnes. */}
     <DeuxColonnes nom={started ? 'assistant' : parcours} apercu={started || parcours !== 'choix'}>
       <ColonneTravail>
+        {/* ── MÉDIAS SUGGÉRÉS — monté seulement à l'ouverture ──────────
+            DANS la page, en tête de la colonne de travail, et non plus en
+            fenêtre modale : la colonne de droite reste visible et montre
+            l'« Aperçu du média » sélectionné (`mediaApercu`). */}
+        {stockPanneau && (
+          <RechercheStockSequence
+            ref={panneauStockRef}
+            integre
+            role={stockPanneau.cle}
+            libelleSequence={
+              stockPanneau.cle === 'titre' ? 'Titre'
+                : stockPanneau.cle === 'cartes' ? 'Cartes'
+                  : stockPanneau.cle === 'video' ? 'Vidéo'
+                    : stockPanneau.cle === 'cta' ? 'CTA'
+                      : 'Affiche'
+            }
+            sujet={currentTopic}
+            objectif={brief.objectif}
+            texte={texteDeSequence(generated, stockPanneau.cle)}
+            format={format}
+            typeInitial={stockPanneau.type}
+            // Un fond ne se cherche qu'en photo ; la séquence Vidéo accepte
+            // une vidéo (ajoutée aux rushes) ou une photo (son fond).
+            typesAutorises={stockPanneau.type === 'photo' ? ['photo'] : ['video', 'photo']}
+            fondExistant={stockPanneau.cle ? !!seqBackgrounds[stockPanneau.cle]?.url : !!posterUrl}
+            onSelection={surSelectionStock}
+            onUtiliserPhoto={(url, meta) => {
+              setStockMedias((prev) => ({ ...prev, [url]: meta }));
+              // Même pose que `applyPhoto`, sur la séquence figée à l'ouverture.
+              const cle = stockPanneau.cle;
+              if (!cle) { setPosterUrl(url); return; }
+              setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
+            }}
+            onAjouterRush={(url, nom, meta) => {
+              setStockMedias((prev) => ({ ...prev, [url]: meta }));
+              // `ajouterRush` : en fin de liste (keep compris) ; sans rush, import normal.
+              void ajouterRush(url, nom);
+            }}
+            onFermer={() => setStockPanneau(null)}
+          />
+        )}
         {/* MODIFICATION — la seule porte de sortie vers le serveur.
             Visible uniquement quand on modifie : en creation, rien de tout ceci
             n'existe, et le parcours se termine comme avant. */}
@@ -10095,28 +10191,17 @@ export default function AssistantWizard() {
                       Sans photo, le fond reste le dégradé de vos couleurs.
                     </p>
 
-                    {/* Source */}
-                    <div className="flex items-center gap-1.5">
-                      {(['pexels', 'unsplash'] as const).map((src) => (
-                        <button
-                          key={src}
-                          type="button"
-                          onClick={() => changeImageSource(src)}
-                          data-poster-source={src}
-                          className={`flex-1 rounded-lg border px-3 py-1.5 text-xs capitalize transition-colors ${
-                            imageSource === src
-                              ? 'border-purple-500 text-white'
-                              : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
-                          }`}
-                        >
-                          {src}
-                        </button>
-                      ))}
+                    {/* ── RECHERCHE UNIQUE ─────────────────────────────────
+                        Plus de choix de banque d'images : Studiio interroge
+                        lui-même toutes les sources de photos et mélange les
+                        résultats. Le crédit reste dû — ligne discrète sous
+                        la grille. */}
+                    <div className="space-y-1" data-poster-recherche>
+                      <p className="text-xs text-gray-400">Choisissez une image pour illustrer votre vidéo.</p>
+                      <p className="text-[11px] text-gray-500">Décrivez simplement ce que vous voulez montrer.</p>
                     </div>
-
-                    {/* Recherche */}
-                    <div className="flex items-center gap-1.5">
-                      <div className="relative flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="relative grow basis-48 min-w-0">
                         <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
                         <input
                           type="text"
@@ -10125,48 +10210,51 @@ export default function AssistantWizard() {
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
-                              searchPhotos(photoQuery.trim() || currentTopic, imageSource);
+                              searchPhotos(requetePhoto(photoQuery));
                             }
                           }}
                           data-poster-query
-                          placeholder={`Rechercher des photos… (ex : ${currentTopic})`}
+                          aria-label="Rechercher une photo"
+                          placeholder="Rechercher une photo…"
                           className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
                         />
                       </div>
                       <button
                         type="button"
-                        onClick={() => searchPhotos(photoQuery.trim() || currentTopic, imageSource)}
+                        onClick={() => searchPhotos(requetePhoto(photoQuery))}
                         disabled={photosLoading}
                         data-poster-search
-                        className="rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
+                        className="flex grow sm:grow-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition-colors"
                       >
-                        {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Chercher'}
+                        {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                        Rechercher
                       </button>
                     </div>
 
-                    {/* Suggestions pour la séquence affichée : un clic remplit
-                        le champ et lance la MÊME recherche que « Chercher ». */}
+                    {/* Suggestions pour la séquence affichée : libellé
+                        FRANÇAIS à l'écran, requête anglaise envoyée — la
+                        MÊME recherche que « Rechercher ». */}
                     {suggestionsPhotos.length > 0 && (
                       <div className="space-y-1" data-suggestions-photos>
                         <p className="text-[11px] text-gray-500">Suggestions pour cette séquence</p>
                         <div className="flex flex-wrap gap-1.5">
-                          {suggestionsPhotos.map((q) => (
+                          {suggestionsPhotos.map((sug) => (
                             <button
-                              key={q}
+                              key={sug.requete}
                               type="button"
-                              data-suggestion-photo={q}
+                              data-suggestion-photo={sug.requete}
                               disabled={photosLoading}
                               onClick={() => {
-                                setPhotoQuery(q);
-                                searchPhotos(q, imageSource);
+                                setPhotoQuery(sug.libelle);
+                                searchPhotos(sug.requete);
                               }}
                               className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40 ${
-                                photoQuery.trim() === q
+                                photoQuery.trim() === sug.libelle
                                   ? 'border-purple-500 text-white'
                                   : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
                               }`}
                             >
-                              {q}
+                              {sug.libelle}
                             </button>
                           ))}
                         </div>
@@ -10418,12 +10506,13 @@ export default function AssistantWizard() {
                         )}
                         <button
                           type="button"
-                          onClick={() => searchPhotos(photoQuery.trim() || currentTopic, imageSource, true)}
+                          onClick={() => searchPhotos(requetePhoto(photoQuery), SOURCE_PHOTOS_AUTO, true)}
                           disabled={photosLoading}
                           className="w-full rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
                         >
                           Autres photos
                         </button>
+                        <CreditBanques attribut="data-poster-credits" />
                       </>
                     )}
 
@@ -10562,7 +10651,7 @@ export default function AssistantWizard() {
                           : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
                       </p>
                       {fondAffiche.url && stockMedias[fondAffiche.url] && (
-                        <p className="text-[11px] text-gray-500" data-fond-attribution>
+                        <p className="text-[11px] text-gray-500" data-fond-attribution data-credit-media>
                           {stockMedias[fondAffiche.url].attribution}{' '}
                           <a
                             href={stockMedias[fondAffiche.url].sourceUrl}
@@ -10583,7 +10672,7 @@ export default function AssistantWizard() {
                         className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
                       >
                         <Search className="w-3.5 h-3.5" />
-                        Rechercher des médias (stock)
+                        Médias suggérés
                       </button>
                     </div>
 
@@ -12507,6 +12596,24 @@ export default function AssistantWizard() {
           </div>
         ) : (
         <>
+        {/* ── APERÇU DU MÉDIA ─────────────────────────────────────────
+            Un média sélectionné dans « Médias suggérés » prend la place de
+            l'aperçu du projet. Celui-ci reste MONTÉ (masqué) : ses refs
+            d'export, de mesure et de glisser ne changent pas. */}
+        {mediaApercu && (
+          <div data-colonne-etat="media">
+            <ApercuMedia
+              media={mediaApercuDeStock(mediaApercu.media)}
+              format={format}
+              etat={mediaApercu.etat}
+              largeurMax={format === '16:9' ? undefined : 360}
+              onAjouter={() => panneauStockRef.current?.ajouterSelection()}
+              onRemplacer={() => panneauStockRef.current?.deselectionner()}
+              onRetour={() => { panneauStockRef.current?.deselectionner(); setMediaApercu(null); }}
+            />
+          </div>
+        )}
+        <div data-colonne-etat="projet" style={mediaApercu ? { display: 'none' } : undefined}>
         <Preview
           {...previewShared}
           previewRef={previewRef}
@@ -12668,6 +12775,55 @@ export default function AssistantWizard() {
                   else setCtaStyle((v) => ({ ...v, ...patch }));
                 }}
               />
+
+              {/* ── ACTIONS ─────────────────────────────────────────────
+                  Les fonctions EXISTANTES de l'éditeur, rendues trouvables
+                  là où l'on édite. Titre, sous-titre et CTA sont uniques
+                  dans le montage : leurs actions restent visibles, grisées,
+                  avec la raison en infobulle. */}
+              {(() => {
+                const cartes = zoneOuverte === 'cards';
+                const nbSel = selectedCards.size;
+                const nbCartes = generated.cards.length;
+                const unique = `${ZONE_LABELS[zoneOuverte]} : un seul par vidéo`;
+                return (
+                  <ActionsEdition
+                    nom={ZONE_LABELS[zoneOuverte]}
+                    actions={[
+                      {
+                        id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: duplicateSelection,
+                        disabled: !cartes || nbSel === 0 || nbCartes >= limiteCartes,
+                        aide: !cartes ? unique
+                          : nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
+                            : nbCartes >= limiteCartes ? `Maximum de ${limiteCartes} cartes dans ce format`
+                              : 'Dupliquer la sélection',
+                      },
+                      {
+                        id: 'regrouper', libelle: 'Regrouper', Icone: GroupIcon, onClick: groupSelection,
+                        disabled: !cartes || nbSel < MIN_GROUP,
+                        aide: !cartes ? 'Seules les cartes se regroupent'
+                          : nbSel < MIN_GROUP ? 'Sélectionnez au moins deux cartes (Maj+clic)'
+                            : 'Déplacer ces cartes ensemble',
+                      },
+                      {
+                        id: 'dissocier', libelle: 'Dissocier', Icone: Ungroup, onClick: ungroupSelection,
+                        disabled: !cartes || !selectionGrouped,
+                        aide: !cartes ? 'Seules les cartes se regroupent'
+                          : !selectionGrouped ? 'Aucune carte sélectionnée n’est dans un groupe'
+                            : 'Séparer les cartes de leur groupe',
+                      },
+                      ...(cartes ? [{
+                        id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
+                        onClick: () => { for (const id of Array.from(selectedCards)) supprimerCarte(id); },
+                        disabled: nbSel === 0 || nbSel >= nbCartes,
+                        aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
+                          : nbSel >= nbCartes ? 'Il faut garder au moins une carte'
+                            : 'Supprimer la sélection',
+                      }] : []),
+                    ]}
+                  />
+                );
+              })()}
             </div>
           )}
         </FloatingPanel>
@@ -12923,6 +13079,7 @@ export default function AssistantWizard() {
             Disposition des cartes réinitialisée : le contenu ou le format a changé.
           </p>
         )}
+        </div>
         </>
         )}
       </ColonneApercu>
@@ -13023,6 +13180,13 @@ export default function AssistantWizard() {
                     </button>
                   </div>
                 </div>
+                <ActionsEdition
+                  nom="Élément"
+                  actions={[
+                    { id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: () => dupliquerElement(selectedElement.id), aide: 'Dupliquer cet élément' },
+                    { id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true, onClick: () => deleteElement(selectedElement.id), aide: 'Retirer cet élément de la vidéo' },
+                  ]}
+                />
           </div>
         )}
       </FloatingPanel>
@@ -13062,38 +13226,6 @@ export default function AssistantWizard() {
           if (!failure) setClipSource(null);
         }}
       />
-      {/* Recherche stock guidée — montée seulement à l'ouverture. */}
-      {stockPanneau && (
-        <RechercheStockSequence
-          role={stockPanneau.cle}
-          libelleSequence={
-            stockPanneau.cle === 'titre' ? 'Titre'
-              : stockPanneau.cle === 'cartes' ? 'Cartes'
-                : stockPanneau.cle === 'video' ? 'Vidéo'
-                  : stockPanneau.cle === 'cta' ? 'CTA'
-                    : 'Affiche'
-          }
-          sujet={currentTopic}
-          objectif={brief.objectif}
-          texte={texteDeSequence(generated, stockPanneau.cle)}
-          format={format}
-          typeInitial={stockPanneau.type}
-          fondExistant={stockPanneau.cle ? !!seqBackgrounds[stockPanneau.cle]?.url : !!posterUrl}
-          onUtiliserPhoto={(url, meta) => {
-            setStockMedias((prev) => ({ ...prev, [url]: meta }));
-            // Même pose que `applyPhoto`, sur la séquence figée à l'ouverture.
-            const cle = stockPanneau.cle;
-            if (!cle) { setPosterUrl(url); return; }
-            setSeqBackgrounds((prev) => ({ ...prev, [cle]: { url, transform: POSTER_TRANSFORM_NEUTRAL } }));
-          }}
-          onAjouterRush={(url, nom, meta) => {
-            setStockMedias((prev) => ({ ...prev, [url]: meta }));
-            // `ajouterRush` : en fin de liste (keep compris) ; sans rush, import normal.
-            void ajouterRush(url, nom);
-          }}
-          onFermer={() => setStockPanneau(null)}
-        />
-      )}
     </DeuxColonnes>
     </div>
   );

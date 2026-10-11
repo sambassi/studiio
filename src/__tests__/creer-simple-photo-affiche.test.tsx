@@ -152,9 +152,11 @@ describe('La recherche', () => {
     expect(wizard).toContain('posterPageRef.current = 1;');
   });
 
-  it('changer de source relance la recherche', () => {
-    // Sinon la grille afficherait encore les résultats de l'autre source.
-    expect(wizard).toContain('searchPhotos(photoQuery.trim() || currentTopic, source);');
+  it('plus de choix de source : Studiio interroge toutes les banques', () => {
+    // Le bouton Pexels | Unsplash a disparu (règle produit : l'utilisateur ne
+    // choisit ni ne voit de fournisseur). La recherche part en `both`.
+    expect(wizard).toContain("const SOURCE_PHOTOS_AUTO: SourcePhotos = 'both';");
+    expect(wizard).not.toContain('data-poster-source');
   });
 
   it('la requête par défaut vient du sujet, pas d un mot figé', () => {

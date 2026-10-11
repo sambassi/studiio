@@ -67,6 +67,9 @@ export function etatDepuisReponse(reponse: unknown): EtatPhotos {
  * prevenir quelqu'un.
  */
 export function messagePhotos(etat: EtatPhotos, source: string): string {
+  // Recherche AUTOMATIQUE (toutes les banques, `both`) : l'utilisateur n'a
+  // choisi aucune banque, l'écran n'en nomme donc aucune.
+  if (source !== 'pexels' && source !== 'unsplash') return messagePhotosNeutre(etat);
   const nom = nomSource(source);
   switch (etat) {
     case 'non-configure':
@@ -77,6 +80,22 @@ export function messagePhotos(etat: EtatPhotos, source: string): string {
       return `Limite de recherches atteinte chez ${nom}. Réessayez dans quelques minutes.`;
     case 'indisponible':
       return `${nom} est momentanément indisponible.`;
+    default:
+      return 'Aucune photo pour cette recherche.';
+  }
+}
+
+/** Le même message, sans nommer de banque d'images. */
+export function messagePhotosNeutre(etat: EtatPhotos): string {
+  switch (etat) {
+    case 'non-configure':
+      return 'La recherche de photos n’est pas disponible sur ce serveur.';
+    case 'auth':
+      return 'La recherche de photos est refusée : la configuration du serveur doit être vérifiée.';
+    case 'quota':
+      return 'Limite de recherches atteinte. Réessayez dans quelques minutes.';
+    case 'indisponible':
+      return 'La recherche de photos est momentanément indisponible.';
     default:
       return 'Aucune photo pour cette recherche.';
   }

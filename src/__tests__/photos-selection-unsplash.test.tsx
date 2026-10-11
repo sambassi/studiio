@@ -25,7 +25,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import {
-  etatDepuisReponse, messagePhotos, reessayable, motifPourStatut, nomSource,
+  etatDepuisReponse, messagePhotos, messagePhotosNeutre, reessayable, motifPourStatut, nomSource,
 } from '@/lib/creer/photosEtat';
 
 class NoopResizeObserver { observe() {} unobserve() {} disconnect() {} }
@@ -127,17 +127,21 @@ const ouvrirSelecteur = async () => {
   render(<AssistantWizard />);
   await attendre(6);
   for (let i = 0; i < 5; i += 1) {
-    if (document.querySelector('[data-poster-source="unsplash"]')) break;
+    if (document.querySelector('[data-poster-search]')) break;
     const suivant = screen.queryAllByRole('button', { name: /^Continuer/ })[0];
     if (!suivant) break;
     await act(async () => { fireEvent.click(suivant); });
     await attendre(4);
   }
-  expect(document.querySelector('[data-poster-source="unsplash"]'), 'le sélecteur de source doit être monté').not.toBeNull();
+  // Plus de sélecteur Pexels / Unsplash : une recherche unique, Studiio
+  // interroge les banques lui-même (`source=both`).
+  expect(document.querySelector('[data-poster-search]'), 'la recherche de photos doit être montée').not.toBeNull();
+  expect(document.querySelector('[data-poster-source]'), 'aucun choix de fournisseur à l’écran').toBeNull();
 };
 
+/** Lance la recherche unique (ex-« choisir Unsplash » : il n'y a plus de choix). */
 const choisirUnsplash = async () => {
-  const b = document.querySelector('[data-poster-source="unsplash"]') as HTMLButtonElement;
+  const b = document.querySelector('[data-poster-search]') as HTMLButtonElement;
   await act(async () => { fireEvent.click(b); });
   await attendre(12);
 };
@@ -232,11 +236,12 @@ describe('1. Une réponse Unsplash valide affiche les miniatures', () => {
     }
   });
 
-  it('la requête demande bien la source unsplash', async () => {
+  it('la requête interroge toutes les banques (source=both), sans choix de l’utilisateur', async () => {
     installerFetch(); poser();
     await ouvrirSelecteur();
     await choisirUnsplash();
-    expect(requetesPhotos.some((u) => u.includes('source=unsplash'))).toBe(true);
+    expect(requetesPhotos.some((u) => u.includes('source=both'))).toBe(true);
+    expect(requetesPhotos.some((u) => u.includes('source=unsplash') || u.includes('source=pexels'))).toBe(false);
   });
 });
 
@@ -309,7 +314,9 @@ describe('5 & 6. Les états à l écran', () => {
     poser();
     await ouvrirSelecteur();
     await choisirUnsplash();
-    expect(messageErreur()).toBe('Unsplash n’est pas configuré sur ce serveur.');
+    // Aucun nom de banque : l'utilisateur n'en a choisi aucune.
+    expect(messageErreur()).toBe(messagePhotosNeutre('non-configure'));
+    expect(messageErreur()).not.toMatch(/Pexels|Unsplash/);
     expect(document.querySelector('[data-photos-reessayer]')).toBeNull();
   });
 
@@ -320,7 +327,8 @@ describe('5 & 6. Les états à l écran', () => {
         poser();
         await ouvrirSelecteur();
         await choisirUnsplash();
-        expect(messageErreur()).toBe(messagePhotos(motif, 'unsplash'));
+        expect(messageErreur()).toBe(messagePhotos(motif, 'both'));
+        expect(messageErreur()).not.toMatch(/Pexels|Unsplash/);
         expect(messageErreur()).not.toContain('Aucune photo');
         expect(document.querySelector('[data-photos-reessayer]')).not.toBeNull();
         expect(vignettes()).toHaveLength(0);
@@ -337,14 +345,14 @@ describe('5 & 6. Les états à l écran', () => {
     await act(async () => { fireEvent.click(b); });
     await attendre(12);
     expect(requetesPhotos.length).toBe(avant + 1);
-    expect(requetesPhotos[requetesPhotos.length - 1]).toContain('source=unsplash');
+    expect(requetesPhotos[requetesPhotos.length - 1]).toContain('source=both');
   });
 
   it('un échec réseau est traité, pas propagé', async () => {
     installerFetch({ reseauKO: true }); poser();
     await ouvrirSelecteur();
     await choisirUnsplash();
-    expect(messageErreur()).toBe(messagePhotos('indisponible', 'unsplash'));
+    expect(messageErreur()).toBe(messagePhotos('indisponible', 'both'));
     expect(document.querySelector('[data-photos-reessayer]')).not.toBeNull();
   });
 });

@@ -148,12 +148,12 @@ describe('RechercheStockSequence (isolé)', () => {
     render(<RechercheStockSequence {...base} typeInitial="video" onAjouterRush={onAjouterRush} />);
     await attendre();
     await act(async () => { fireEvent.click(document.querySelector('[data-stock-media]')!); });
-    // Crédit visible, lien sûr.
-    const lien = document.querySelector('[data-stock-attribution] a') as HTMLAnchorElement;
+    // Crédit DISCRET (« Informations du média », replié), lien sûr.
+    const lien = document.querySelector('[data-media-infos] a') as HTMLAnchorElement;
     expect(lien.getAttribute('href')).toBe(v.sourceUrl);
     expect(lien.getAttribute('rel')).toBe('noopener noreferrer');
     expect(screen.getByText('Ajouter aux rushes')).toBeTruthy();
-    await act(async () => { fireEvent.click(document.querySelector('[data-stock-utiliser]')!); });
+    await act(async () => { fireEvent.click(document.querySelector('[data-stock-selection] [data-apercu-media-ajouter]')!); });
     await attendre();
     const imp = appels.find((a) => a.url === '/api/stock/importer')!;
     expect(imp.method).toBe('POST');
@@ -173,7 +173,7 @@ describe('RechercheStockSequence (isolé)', () => {
     await act(async () => { fireEvent.click(document.querySelector('[data-stock-media]')!); });
     expect(onUtiliserPhoto).not.toHaveBeenCalled();
     expect(appels.some((a) => a.url === '/api/stock/importer')).toBe(false);
-    const bouton = document.querySelector('[data-stock-utiliser]')!;
+    const bouton = document.querySelector('[data-stock-selection] [data-apercu-media-ajouter]')!;
     expect(bouton.textContent).toContain('Remplacer l’arrière-plan');
     await act(async () => { fireEvent.click(bouton); });
     await attendre();
@@ -187,22 +187,23 @@ describe('RechercheStockSequence (isolé)', () => {
     render(<RechercheStockSequence {...base} role="cta" libelleSequence="CTA" typeInitial="photo" />);
     await attendre();
     await act(async () => { fireEvent.click(document.querySelector('[data-stock-media]')!); });
-    expect(document.querySelector('[data-stock-utiliser]')!.textContent).toContain('Utiliser dans cette séquence');
+    expect(document.querySelector('[data-stock-selection] [data-apercu-media-ajouter]')!.textContent).toContain('Utiliser dans cette séquence');
   });
 
   it('fournisseur tombé : message discret, résultats restants affichés ; réseau en panne : pas de plantage', async () => {
     installerFetch({ recherche: { medias: [media('v1', {})], echecs: [{ provider: 'unsplash', motif: 'quota' }] } });
     render(<RechercheStockSequence {...base} typeInitial="photo" />);
     await attendre();
-    expect(document.querySelector('[data-stock-echecs]')?.textContent).toBe('Unsplash quota atteint');
+    // Jamais de nom de banque : un message neutre, les résultats restants affichés.
+    expect(document.querySelector('[data-stock-echecs]')?.textContent).toBe('Une partie des résultats n’est pas disponible pour le moment.');
     expect(document.querySelectorAll('[data-stock-media]').length).toBe(1);
     cleanup();
 
     installerFetch({ recherche: 'panne' });
     render(<RechercheStockSequence {...base} typeInitial="video" />);
     await attendre();
-    expect(document.querySelector('[data-stock-echecs]')?.textContent).toBe('Pexels indisponible');
-    expect(document.querySelector('[data-stock-vide]')).not.toBeNull();
+    expect(document.querySelector('[data-stock-echecs]')?.textContent).toBe('La recherche est momentanément indisponible. Réessayez dans un instant.');
+    expect(document.querySelectorAll('[data-stock-media]').length).toBe(0);
   });
 });
 
@@ -236,22 +237,26 @@ describe('AssistantWizard — intégration légère', () => {
     expect(document.querySelector('[data-recherche-stock]')).toBeNull();
   });
 
-  it('un clic sur une suggestion lance la recherche MANUELLE existante (/api/pexels) avec cette requête', async () => {
+  it('un clic sur une suggestion (libellé FR) lance la recherche MANUELLE existante (/api/pexels) avec la requête EN', async () => {
     installerFetch();
     poser();
     render(<AssistantWizard />);
     await attendre();
     await ouvrirSection('affiche');
     const puces = Array.from(document.querySelectorAll('[data-suggestion-photo]'));
-    const attendues = construireRecherchesStock({ sujet: 'yoga du matin', texte: '', role: null, visuel: 'arriere-plan', format: '9:16' }).requetes.slice(0, 5);
+    const sugg = construireRecherchesStock({ sujet: 'yoga du matin', texte: '', role: null, visuel: 'arriere-plan', format: '9:16' }).suggestions.slice(0, 5);
+    const attendues = sugg.map((x) => x.requete);
     expect(puces.map((p) => p.getAttribute('data-suggestion-photo'))).toEqual(attendues);
+    // À l'écran : le libellé français, jamais la requête anglaise.
+    expect(puces.map((p) => p.textContent)).toEqual(sugg.map((x) => x.libelle));
     await act(async () => { fireEvent.click(puces[0]); });
     await attendre();
     const pexels = appels.filter((a) => a.url.startsWith('/api/pexels'));
     expect(pexels).toHaveLength(1);
     expect(pexels[0].url).toContain(`query=${encodeURIComponent(attendues[0])}`);
-    expect(pexels[0].url).toContain('source=pexels');
-    expect((document.querySelector('[data-poster-query]') as HTMLInputElement).value).toBe(attendues[0]);
+    // Plus de choix de banque : toutes les banques (`both`).
+    expect(pexels[0].url).toContain('source=both');
+    expect((document.querySelector('[data-poster-query]') as HTMLInputElement).value).toBe(sugg[0].libelle);
     expect(appels.some((a) => a.url.includes('/api/stock/'))).toBe(false);
   });
 
@@ -270,7 +275,7 @@ describe('AssistantWizard — intégration légère', () => {
     expect(rech.every((a) => new URLSearchParams(a.url.split('?')[1]).get('type') === 'photo')).toBe(true);
     expect(document.querySelector('[data-stock-type="photo"]')?.getAttribute('aria-pressed')).toBe('true');
     await act(async () => { fireEvent.click(document.querySelector('[data-stock-media]')!); });
-    expect(document.querySelector('[data-stock-utiliser]')?.textContent).not.toContain('Ajouter aux rushes');
+    expect(document.querySelector('[data-stock-selection] [data-apercu-media-ajouter]')?.textContent).not.toContain('Ajouter aux rushes');
   });
 
   it('vidéo stock ajoutée depuis la séquence Vidéo : keep du nouveau rush, rush principal inchangé', async () => {
@@ -288,7 +293,7 @@ describe('AssistantWizard — intégration légère', () => {
     const rech = appels.find((a) => a.url.startsWith('/api/stock/recherche'))!;
     expect(new URLSearchParams(rech.url.split('?')[1]).get('type')).toBe('video');
     await act(async () => { fireEvent.click(document.querySelector('[data-stock-media]')!); });
-    await act(async () => { fireEvent.click(document.querySelector('[data-stock-utiliser]')!); });
+    await act(async () => { fireEvent.click(document.querySelector('[data-stock-selection] [data-apercu-media-ajouter]')!); });
     await attendre();
     const keep = appels.filter((a) => a.url === '/api/creer/rush/keep');
     expect(keep.map((k) => k.body?.url)).toContain(IMPORTEE);
