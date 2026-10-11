@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } fro
 import { classesCarteOption } from '@/lib/ui/etats';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
-  Sparkles, Clapperboard, CalendarDays,
+  Sparkles, Clapperboard, CalendarDays, Images,
 } from 'lucide-react';
+import CarteMedia, { GrilleMedias } from '@/components/medias/CarteMedia';
+import { creditMedia, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
 import { annonceCout } from '@/lib/facturation/annonce';
 import { politiqueAffichable } from '@/lib/facturation/libelles';
 import type { Politique } from '@/lib/facturation/politique';
@@ -16,11 +18,11 @@ import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type PropositionsStock } from '@/components/creer/CompleterRushesStock';
 import AvatarPrincipalAutopilote, { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
-import StockRechercheAutopilote, { cleMediaStock, libelleAttribution } from '@/components/creer/StockRechercheAutopilote';
+import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
 import {
   validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
-  gabaritSuggere, type AvatarPret, type EtatMediasPrevus,
+  gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
 } from '@/lib/autopilot/medias-prevus';
 import {
   aUneSourceVisuelle, estRushStock, MAX_STOCK_RETENU,
@@ -95,7 +97,7 @@ function nomDeFichier(url: string): string {
  */
 const ETAPES = [
   { titre: 'Sujets', question: 'De quoi Studiio doit-il parler ?', aide: 'Choisissez un ou plusieurs sujets.' },
-  { titre: 'Rushes', question: 'Choisissez les sources de vos vidéos', aide: 'Vos rushes, votre avatar, des médias Pexels / Unsplash — seuls ou combinés.' },
+  { titre: 'Rushes', question: 'Choisissez les sources de vos vidéos', aide: 'Vos rushes, votre avatar, des médias suggérés — seuls ou combinés.' },
   // ⚠️ CETTE ETAPE EST CELLE DE CE QUI NE CHANGE PAS. Les trois autres
   // reglent ce que l'Autopilote fait VARIER ; celle-ci, l'identite que
   // toutes les videos partagent.
@@ -158,14 +160,14 @@ function phraseDiffusion(config: AutopilotConfig): string {
 }
 
 /**
- * Les sources en une ligne : « 2 rushes · avatar · 3 médias stock ».
+ * Les sources en une ligne : « 2 rushes · avatar · 3 médias suggérés ».
  */
 function resumeSources(e: EtatMediasPrevus): string {
   const parts: string[] = [];
   const r = e.rushesPersonnels + e.bibliotheque;
   if (r > 0) parts.push(`${r} rush${r > 1 ? 'es' : ''}`);
   if (e.avatarActif && e.avatarPret) parts.push('avatar');
-  if (e.stockRetenus > 0) parts.push(`${e.stockRetenus} média${e.stockRetenus > 1 ? 's' : ''} stock`);
+  if (e.stockRetenus > 0) parts.push(`${e.stockRetenus} média${e.stockRetenus > 1 ? 's' : ''} suggéré${e.stockRetenus > 1 ? 's' : ''}`);
   return parts.join(' · ');
 }
 
@@ -1044,7 +1046,8 @@ export default function AutopilotPanel({
   /**
    * « Médias prévus » — ce que les montages contiendront, AVANT tout rendu,
    * source par source : avatar (OUI/NON + vignette existante), rushes
-   * personnels, Pexels (vidéos + photos), Unsplash (photos). Les sources se
+   * personnels, vidéos suggérées, photos suggérées — jamais le nom d'une
+   * plateforme (compte interne : `compterSources`). Les sources se
    * COMBINENT : une seule phrase, « Vidéo multi-sources prête », dès qu'une
    * source visuelle existe.
    */
@@ -1055,6 +1058,7 @@ export default function AutopilotPanel({
     const personnels = e.rushesPersonnels + e.bibliotheque;
     const stockProposes = sources.actives.stock ? propositionsStock.proposes : 0;
     const vignettes = sources.actives.stock ? sources.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
+    const { videos: videosSuggerees, photos: photosSuggerees } = mediasSuggeres(e);
     const ligne = (dt: string, dd: ReactNode, attrs: Record<string, string | number>) => (
       <div className="flex items-center justify-between gap-3 min-w-0">
         <dt className="text-gray-500 shrink-0">{dt}</dt>
@@ -1065,19 +1069,18 @@ export default function AutopilotPanel({
       <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-2 text-[11px] min-w-0" data-autopilot-medias-prevus data-rendu={rendu.cas}>
         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias prévus</p>
         <dl className="space-y-1.5">
-          {ligne('Avatar', <>{avatarOui && <MiniatureAvatar vignette={vignetteAvatar} className="w-7 h-7" />}{avatarOui ? 'OUI' : 'NON'}</>,
+          {ligne('Avatar :', <>{avatarOui && <MiniatureAvatar vignette={vignetteAvatar} className="w-7 h-7" />}{avatarOui ? 'OUI' : 'NON'}</>,
             { 'data-autopilot-medias-avatar': avatarOui ? 'oui' : 'non' })}
-          {ligne('Rushes personnels', personnels, { 'data-autopilot-medias-rushes': personnels })}
-          {ligne('Pexels', `${e.pexelsVideos} vidéo${e.pexelsVideos > 1 ? 's' : ''}${e.pexelsPhotos > 0 ? ` (+ ${e.pexelsPhotos} photo${e.pexelsPhotos > 1 ? 's' : ''})` : ''}`,
-            { 'data-autopilot-medias-pexels': `${e.pexelsVideos}/${e.pexelsPhotos}` })}
-          {ligne('Unsplash', `${e.unsplashPhotos} photo${e.unsplashPhotos > 1 ? 's' : ''}`, { 'data-autopilot-medias-unsplash': e.unsplashPhotos })}
-          {stockProposes > 0 && ligne('Propositions en attente', stockProposes, { 'data-autopilot-medias-stock': stockProposes })}
+          {ligne('Rushes personnels :', personnels, { 'data-autopilot-medias-rushes': personnels })}
+          {ligne('Vidéos suggérées :', videosSuggerees, { 'data-autopilot-medias-videos': videosSuggerees })}
+          {ligne('Photos suggérées :', photosSuggerees, { 'data-autopilot-medias-photos': photosSuggerees })}
+          {stockProposes > 0 && ligne('Propositions en attente :', stockProposes, { 'data-autopilot-medias-stock': stockProposes })}
         </dl>
         {vignettes.length > 0 && (
           <div className="flex flex-wrap gap-1.5" data-autopilot-medias-vignettes>
             {vignettes.map((m) => (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img key={m.url} src={m.vignetteUrl} alt={libelleAttribution(m)} title={libelleAttribution(m)}
+              <img key={m.url} src={m.vignetteUrl} alt={m.type === 'video' ? 'Vidéo suggérée' : 'Photo suggérée'} title={m.type === 'video' ? 'Vidéo suggérée' : 'Photo suggérée'}
                 className="w-7 h-10 rounded object-cover bg-gray-800" data-autopilot-medias-stock-vignette />
             ))}
           </div>
@@ -1134,7 +1137,7 @@ export default function AutopilotPanel({
             type="button"
             onClick={() => setProduire({ etat: 'confirmation' })}
             disabled={!ready || sansRush}
-            title={sansRush ? 'Ajoutez une source visuelle (rush, avatar ou média stock) pour produire.' : undefined}
+            title={sansRush ? 'Ajoutez une source visuelle (rush, avatar ou média suggéré) pour produire.' : undefined}
             data-autopilot-produire-maintenant
             className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-200 hover:border-gray-700 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -1432,6 +1435,7 @@ export default function AutopilotPanel({
                 data-autopilot-source-rushes
                 className="mt-0.5"
               />
+              <Film className="w-4 h-4 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
               <span className="min-w-0">
                 <span className="block text-xs font-medium text-gray-300">Mes rushes</span>
                 <span className="block text-[11px] text-gray-500">Vos vidéos personnelles, en rotation d’une vidéo à l’autre.</span>
@@ -1455,10 +1459,11 @@ export default function AutopilotPanel({
                 data-autopilot-completer-stock
                 className="mt-0.5"
               />
+              <Images className="w-4 h-4 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
               <span className="min-w-0">
-                <span className="block text-xs font-medium text-gray-300">Compléter avec Pexels / Unsplash</span>
+                <span className="block text-xs font-medium text-gray-300">Médias suggérés</span>
                 <span className="block text-[11px] text-gray-500">
-                  Vidéos Pexels, photos Pexels et Unsplash : seuls les médias que vous retenez sont utilisés.
+                  Studiio recherche automatiquement des images et vidéos adaptées à votre contenu.
                 </span>
               </span>
             </label>
@@ -1542,57 +1547,57 @@ export default function AutopilotPanel({
               </div>
             )}
             {config.rushUrls.length > 0 && (
-              <ul className="space-y-1">
+              <GrilleMedias attrs={{ 'data-autopilot-banque': '' }}>
                 {config.rushUrls.map((url) => {
                   const expire = rushAccessible[url] === false;
                   const verifie = url in rushAccessible;
+                  // Un média suggéré conservé se dit tel quel — jamais confondu avec vos rushes,
+                  // jamais par le nom de sa plateforme (crédit dans « Informations du média »).
+                  const suggere = !!(metaStock[url] || idStockDuRush(url) || estRushStock(url));
+                  const retenuStock = sources.stock.find((m) => m.url === url);
+                  const meta = metaStock[url];
+                  const credit = suggere && (meta || retenuStock)
+                    ? { texte: creditMedia({ type: 'video', auteur: meta?.auteur ?? retenuStock?.auteur, provider: retenuStock?.provider ?? 'pexels' }), lien: meta?.sourceUrl ?? retenuStock?.sourceUrl }
+                    : null;
                   return (
-                    <li
-                      key={url}
-                      className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 border ${
-                        expire ? 'bg-amber-500/5 border-amber-500/40' : 'bg-gray-900 border-gray-800'
-                      }`}
-                    >
-                      <span className="flex flex-col min-w-0">
-                        <span className="flex items-center gap-1.5 min-w-0 text-[11px] text-gray-300">
-                          <Film className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{url.split('/').pop()}</span>
-                        </span>
-                        {/* Un rush stock accepté se dit tel quel — jamais confondu avec les vôtres. */}
-                        {sources.actives.stock && (metaStock[url] || idStockDuRush(url)) && (
-                          <span className="ml-5 text-[10px] text-gray-500" data-autopilot-rush-stock={url}>
-                            {(() => {
-                              const auteur = metaStock[url]?.auteur ?? sources.stock.find((m) => m.url === url)?.auteur;
-                              return auteur ? `Stock · Pexels · ${auteur}` : 'Stock · Pexels';
-                            })()}
-                          </span>
-                        )}
-                        {/* L'état, sous le nom : « accessible » ou « expiré ». Tant que
-                            la vérification n'a pas répondu, on n'affiche rien plutôt
-                            qu'un état faux. */}
-                        {expire ? (
-                          <span className="ml-5 text-[10px] text-amber-400" data-autopilot-rush-expire={url}>
-                            Expiré (rétention 24 h) — réimportez-le
-                          </span>
-                        ) : verifie ? (
-                          <span className="ml-5 text-[10px] text-emerald-500/80" data-autopilot-rush-accessible={url}>
-                            Accessible
-                          </span>
-                        ) : null}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => enregistrer({ rushUrls: config.rushUrls.filter((u) => u !== url) })}
-                        disabled={saving}
-                        aria-label="Retirer ce rush"
-                        className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    <li key={url} className="min-w-0" data-autopilot-rush={url}>
+                      <CarteMedia
+                        url={url}
+                        type="video"
+                        vignetteUrl={meta?.vignetteUrl ?? retenuStock?.vignetteUrl}
+                        origine={suggere ? 'video-suggeree' : 'rush'}
+                        nomTechnique={nomTechnique(url)}
+                        credit={credit}
+                        alerte={expire}
+                        attrs={suggere && sources.actives.stock ? { 'data-autopilot-rush-stock': url } : undefined}
+                        badges={
+                          /* L'état, sous le libellé : « accessible » ou « expiré ». Tant que
+                             la vérification n'a pas répondu, rien plutôt qu'un état faux. */
+                          expire ? (
+                            <span className="flex items-center gap-1 text-[10px] text-amber-400" data-autopilot-rush-expire={url}>
+                              <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> Expiré — réimportez-le
+                            </span>
+                          ) : verifie ? (
+                            <span className="text-[10px] text-emerald-500/80" data-autopilot-rush-accessible={url}>
+                              Accessible
+                            </span>
+                          ) : null
+                        }
+                        actions={[{
+                          cle: 'supprimer',
+                          libelle: 'Supprimer',
+                          icone: Trash2,
+                          variante: 'danger',
+                          onClick: () => enregistrer({ rushUrls: config.rushUrls.filter((u) => u !== url) }),
+                          disabled: saving,
+                          ariaLabel: 'Supprimer ce rush',
+                          titre: 'Retirer ce média de la banque',
+                        }]}
+                      />
                     </li>
                   );
                 })}
-              </ul>
+              </GrilleMedias>
             )}
             {/* ⚠️ UN SEUL `enregistrer` POUR TOUT LE LOT. `enregistrer` se
                 referme sur `config` : N appels dans la même tâche liraient
@@ -1611,14 +1616,25 @@ export default function AutopilotPanel({
             />
           </div>
 
-          {/* ── SOURCE STOCK — Pexels (vidéos, photos) et Unsplash (photos).
+          {/* ── SOURCE « MÉDIAS SUGGÉRÉS » (stock : vidéos et photos de banques
+              d'images — leur nom n'apparaît que dans les crédits).
               Les propositions par plan manquant (#541) et la recherche libre
               n'ajoutent RIEN sans « Conserver » / « Retenir ». Chaque média
               retenu est enregistré dans `designStyle.sources.stock`, avec son
               attribution ; le cron n'interroge jamais les fournisseurs. */}
           {sources.actives.stock && (
             <div className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2 min-w-0" data-autopilot-stock-source>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias Pexels / Unsplash</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias suggérés</p>
+              {/* « Compléter automatiquement mes médias » (#541) — FUSIONNÉ dans la
+                  source « Médias suggérés » : c'est la MÊME case enregistrée
+                  (`designStyle.sources.actives.stock`, ancienne préférence
+                  migrée). Pas de seconde case : ce bloc en est le détail. */}
+              <div className="space-y-0.5" data-autopilot-completer-titre>
+                <p className="text-xs font-medium text-gray-300">Compléter automatiquement mes médias</p>
+                <p className="text-[11px] text-gray-500">
+                  Studiio peut ajouter des photos et vidéos adaptées à votre sujet lorsque cela améliore le montage.
+                </p>
+              </div>
               <CompleterRushesStock
                 sujet={sujetStock}
                 message={config.brief.message ?? null}
@@ -1639,36 +1655,36 @@ export default function AutopilotPanel({
                 }}
               />
               {sources.stock.length > 0 && (
-                <ul className="space-y-1" data-autopilot-stock-retenus>
-                  {sources.stock.map((m) => (
-                    <li key={m.url} className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-2 py-1.5 min-w-0" data-autopilot-stock-retenu={cleMediaStock(m)}>
-                      {m.vignetteUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={m.vignetteUrl} alt="" className="w-7 h-10 rounded object-cover bg-gray-800 shrink-0" />
-                      ) : (
-                        <span className="w-7 h-10 rounded bg-gray-800 shrink-0 flex items-center justify-center text-gray-500">
-                          {m.type === 'video' ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                        </span>
-                      )}
-                      <span className="min-w-0 flex-1 text-[10px] text-gray-400 break-words" data-autopilot-stock-attribution>
-                        {m.sourceUrl
-                          ? <a href={m.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">{libelleAttribution(m)}</a>
-                          : libelleAttribution(m)}
-                        {m.licence ? <span className="block text-gray-600">{m.licence}</span> : null}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => retirerStock(m.url)}
-                        disabled={saving}
-                        aria-label={`Retirer ${libelleAttribution(m)}`}
-                        data-autopilot-stock-retirer={cleMediaStock(m)}
-                        className="shrink-0 text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <div className="space-y-1">
+                  <p className="text-[11px] font-medium text-gray-300">Médias retenus</p>
+                  <GrilleMedias attrs={{ 'data-autopilot-stock-retenus': '' }}>
+                    {sources.stock.map((m) => {
+                      const origine = origineSuggeree(m.type);
+                      return (
+                        <li key={m.url} className="min-w-0" data-autopilot-stock-retenu={cleMediaStock(m)}>
+                          <CarteMedia
+                            url={m.url}
+                            type={m.type}
+                            vignetteUrl={m.vignetteUrl}
+                            origine={origine}
+                            nomTechnique={nomTechnique(m.url)}
+                            credit={{ texte: creditMedia(m), lien: m.sourceUrl || null }}
+                            actions={[{
+                              cle: 'supprimer',
+                              libelle: 'Supprimer',
+                              icone: Trash2,
+                              variante: 'danger',
+                              onClick: () => retirerStock(m.url),
+                              disabled: saving,
+                              ariaLabel: `Supprimer cette ${m.type === 'video' ? 'vidéo' : 'photo'} suggérée`,
+                              attrs: { 'data-autopilot-stock-retirer': cleMediaStock(m) },
+                            }]}
+                          />
+                        </li>
+                      );
+                    })}
+                  </GrilleMedias>
+                </div>
               )}
               <StockRechercheAutopilote
                 sujet={sujetStock}
@@ -2589,7 +2605,7 @@ export default function AutopilotPanel({
                     {config.jumeauAvatar && avatarPret === false
                       ? 'Votre Autopilote n’est pas encore prêt — aucun avatar prêt : configurez-le dans Mon avatar, ou décochez « Mon avatar ».'
                       : <>Votre Autopilote n’est pas encore prêt — ajoutez une source visuelle : un rush, votre avatar
-                    ou un média Pexels / Unsplash. Vous pouvez l’activer dès maintenant : il démarrera dès qu’une source sera prête.</>}
+                    ou un média suggéré. Vous pouvez l’activer dès maintenant : il démarrera dès qu’une source sera prête.</>}
                   </p>
                 )}
               </div>

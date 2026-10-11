@@ -1,6 +1,7 @@
 'use client';
 
-import { ArrowDown, ArrowUp, Film, ImageIcon, Megaphone, Plus, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Film, ImageIcon, Megaphone, Plus, RefreshCw, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react';
+import { LIBELLES_ORIGINE, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
 import { MAX_CRENEAUX, type CreneauGabarit, type MediaStockRetenu, type TypeCreneau } from '@/lib/autopilot/sources';
 import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 
@@ -16,30 +17,39 @@ import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarP
  *
  * Sans plan enregistré, la SUGGESTION (dérivée des sources actives) est
  * montrée ; le premier geste la fixe.
+ *
+ * ⚠️ LIBELLÉS PRODUIT : « Mon avatar », « Mes rushes », « Vidéo suggérée »,
+ * « Photo suggérée », « Auto » — jamais une plateforme ni un nom de fichier
+ * (celui-ci n'apparaît qu'en `title`). Les valeurs enregistrées (`type`,
+ * `media`) ne changent pas.
  */
 
 const TYPES: Array<{ v: TypeCreneau; label: string }> = [
   { v: 'auto', label: 'Auto' },
-  { v: 'avatar', label: 'Avatar' },
-  { v: 'rush', label: 'Rush' },
-  { v: 'stock', label: 'Stock' },
+  { v: 'avatar', label: 'Mon avatar' },
+  { v: 'rush', label: 'Mes rushes' },
+  { v: 'stock', label: 'Média suggéré' },
 ];
 
-function nomFichier(url: string): string {
-  try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || url); } catch { return url.split('/').pop() || url; }
+/** « Vidéo suggérée 2 » — numérotée par type, dans l'ordre des médias retenus. */
+function nomStock(m: MediaStockRetenu, stock: MediaStockRetenu[]): string {
+  const memeType = stock.filter((s) => s.type === m.type);
+  return `${LIBELLES_ORIGINE[origineSuggeree(m.type)]} ${memeType.indexOf(m) + 1}`;
 }
 
-const nomFournisseur = (p: string) => (p === 'unsplash' ? 'Unsplash' : 'Pexels');
-
-export function libelleCreneau(c: CreneauGabarit, stock: MediaStockRetenu[]): string {
-  if (c.type === 'avatar') return 'Avatar';
+export function libelleCreneau(c: CreneauGabarit, stock: MediaStockRetenu[], rushesPerso: string[] = []): string {
+  if (c.type === 'avatar') return 'Mon avatar';
   if (c.type === 'auto') return 'Auto — Studiio choisit';
-  if (c.type === 'rush') return c.media ? `Rush personnel · ${nomFichier(c.media)}` : 'Rush personnel';
+  if (c.type === 'rush') {
+    const i = c.media ? rushesPerso.indexOf(c.media) : -1;
+    return c.media ? `Mes rushes · ${i >= 0 ? `Rush ${i + 1}` : 'rush choisi'}` : 'Mes rushes';
+  }
   const m = c.media ? stock.find((s) => s.url === c.media) : undefined;
-  if (m) return `${nomFournisseur(m.provider)} · ${m.type === 'video' ? 'vidéo' : 'photo'} de ${m.auteur || 'auteur inconnu'}`;
-  const fournisseurs = Array.from(new Set(stock.map((s) => nomFournisseur(s.provider))));
-  return fournisseurs.length ? fournisseurs.join(' / ') : 'Pexels / Unsplash';
+  if (m) return LIBELLES_ORIGINE[origineSuggeree(m.type)];
+  return 'Média suggéré';
 }
+
+const BOUTON = 'flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-white disabled:opacity-30';
 
 function nouvelId(lignes: CreneauGabarit[]): string {
   let n = lignes.length + 1;
@@ -100,9 +110,14 @@ export default function PlanAvantGeneration({
         {lignes.map((c, i) => {
           const n = i + 1;
           const stockMedia = c.type === 'stock' && c.media ? stock.find((s) => s.url === c.media) : undefined;
-          const options = c.type === 'rush' ? rushesPerso.map((u) => ({ v: u, label: `Rush · ${nomFichier(u)}` }))
-            : c.type === 'stock' ? stock.map((s) => ({ v: s.url, label: `${nomFournisseur(s.provider)} · ${s.type === 'video' ? 'vidéo' : 'photo'} · ${s.auteur}` }))
+          const options = c.type === 'rush' ? rushesPerso.map((u, k) => ({ v: u, label: `Rush ${k + 1}` }))
+            : c.type === 'stock' ? stock.map((s) => ({ v: s.url, label: nomStock(s, stock) }))
               : [];
+          // « Remplacer » : le média suivant de la même source (même geste que la liste).
+          const suivant = options.length > 0
+            ? options[(options.findIndex((o) => o.v === c.media) + 1) % options.length]
+            : null;
+          const remplacable = !!suivant && (options.length > 1 || !c.media);
           return (
             <li key={c.id} className="rounded-lg border border-gray-800 bg-gray-900 p-2 space-y-1.5 min-w-0" data-plan-ligne={i} data-plan-type={c.type}>
               <div className="flex items-center gap-2 min-w-0">
@@ -118,7 +133,7 @@ export default function PlanAvantGeneration({
                 <p className="min-w-0 flex-1 text-[11px] text-gray-300">
                   <span className="font-medium text-white">Séquence {n}</span>
                   <span className="text-gray-500"> — </span>
-                  <span className="break-words" data-plan-libelle>{libelleCreneau(c, stock)}</span>
+                  <span className="break-words" data-plan-libelle title={c.media ? nomTechnique(c.media) : undefined}>{libelleCreneau(c, stock, rushesPerso)}</span>
                 </p>
               </div>
               {c.type === 'avatar' && !avatarDisponible && (
@@ -148,29 +163,46 @@ export default function PlanAvantGeneration({
                     {options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
                   </select>
                 )}
-                <button
-                  type="button"
-                  onClick={() => onRechercher(c.id, lignes)}
-                  disabled={disabled}
-                  aria-label={`Rechercher un autre média pour la séquence ${n}`}
-                  title="Rechercher un autre média"
-                  data-plan-rechercher={i}
-                  className="flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-white disabled:opacity-40"
-                >
-                  <Search className="w-3 h-3" /> Rechercher
-                </button>
-                <span className="ml-auto flex items-center gap-1">
-                  <button type="button" onClick={() => deplacer(i, -1)} disabled={disabled || i === 0} aria-label={`Monter la séquence ${n}`} data-plan-monter={i}
-                    className="rounded border border-gray-800 p-1 text-gray-300 hover:text-white disabled:opacity-30">
-                    <ArrowUp className="w-3 h-3" />
+                <span className="flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onRechercher(c.id, lignes)}
+                    disabled={disabled}
+                    aria-label={`Rechercher un média pour la séquence ${n}`}
+                    title="Rechercher un média pour cette séquence"
+                    data-plan-rechercher={i}
+                    className={BOUTON}
+                  >
+                    <Search className="w-3 h-3" /> Rechercher
                   </button>
-                  <button type="button" onClick={() => deplacer(i, 1)} disabled={disabled || i === lignes.length - 1} aria-label={`Descendre la séquence ${n}`} data-plan-descendre={i}
-                    className="rounded border border-gray-800 p-1 text-gray-300 hover:text-white disabled:opacity-30">
-                    <ArrowDown className="w-3 h-3" />
+                  <button
+                    type="button"
+                    onClick={() => suivant && maj((l) => { l[i] = { id: c.id, type: c.type, media: suivant.v }; return l; })}
+                    disabled={disabled || !remplacable}
+                    aria-label={`Remplacer le média de la séquence ${n}`}
+                    title={remplacable ? 'Passer au média suivant de cette source' : 'Aucun autre média dans cette source'}
+                    data-plan-remplacer={i}
+                    className={BOUTON}
+                  >
+                    <RefreshCw className="w-3 h-3" /> Remplacer
                   </button>
-                  <button type="button" onClick={() => maj((l) => l.filter((_, k) => k !== i))} disabled={disabled} aria-label={`Supprimer la séquence ${n}`} data-plan-supprimer={i}
-                    className="rounded border border-gray-800 p-1 text-gray-300 hover:text-red-400 disabled:opacity-30">
-                    <Trash2 className="w-3 h-3" />
+                  <span className="flex items-center gap-0.5 rounded border border-gray-800 pl-1.5 text-[10px] text-gray-400" role="group" aria-label={`Déplacer la séquence ${n}`}>
+                    Déplacer
+                    <button type="button" onClick={() => deplacer(i, -1)} disabled={disabled || i === 0}
+                      aria-label={`Déplacer la séquence ${n} vers le haut`} title="Déplacer vers le haut" data-plan-monter={i}
+                      className="p-1 text-gray-300 hover:text-white disabled:opacity-30">
+                      <ArrowUp className="w-3 h-3" />
+                    </button>
+                    <button type="button" onClick={() => deplacer(i, 1)} disabled={disabled || i === lignes.length - 1}
+                      aria-label={`Déplacer la séquence ${n} vers le bas`} title="Déplacer vers le bas" data-plan-descendre={i}
+                      className="p-1 text-gray-300 hover:text-white disabled:opacity-30">
+                      <ArrowDown className="w-3 h-3" />
+                    </button>
+                  </span>
+                  <button type="button" onClick={() => maj((l) => l.filter((_, k) => k !== i))} disabled={disabled}
+                    aria-label={`Supprimer la séquence ${n}`} title="Supprimer cette séquence" data-plan-supprimer={i}
+                    className={`${BOUTON} hover:text-red-400`}>
+                    <Trash2 className="w-3 h-3" /> Supprimer
                   </button>
                 </span>
               </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, within, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import { MESSAGE_STOCK_INDISPONIBLE } from '@/components/creer/CompleterRushesStock';
 import { DEFAULT_CONFIG, sanitizeConfig, type AutopilotConfig } from '@/lib/autopilot/rules';
@@ -111,13 +111,14 @@ describe('A — 2 rushes, avatar OFF, stock OFF : comportement historique', () =
     await ouvrirRushes();
     await attendrePret('oui');
     expect(screen.getByText('Sources de la vidéo')).toBeTruthy();
-    expect(screen.getByText('Mon avatar')).toBeTruthy();
-    expect(screen.getByText('Votre avatar parlant, seul ou combiné à vos rushes et aux médias stock.')).toBeTruthy();
+    // « Mon avatar » est aussi un type du plan : on le cherche dans la section Sources.
+    expect(within(document.querySelector('[data-autopilot-sources]') as HTMLElement).getByText('Mon avatar')).toBeTruthy();
+    expect(screen.getByText('Votre avatar parlant, seul ou combiné à vos rushes et aux médias suggérés.')).toBeTruthy();
     expect(caseAvatar().checked).toBe(false);
     expect(suivant().disabled).toBe(false);
     expect(document.querySelector('[data-autopilot-medias-avatar="non"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-medias-prevus]')?.getAttribute('data-rendu')).toBe('multi-sources');
-    fireEvent.click(document.querySelectorAll('[aria-label="Retirer ce rush"]')[1]);
+    fireEvent.click(document.querySelectorAll('[aria-label="Supprimer ce rush"]')[1]);
     await waitFor(() => expect(envois.length).toBe(1));
     expect(envois[0]).toBe(attendu);
     expect(JSON.parse(envois[0]).jumeauAvatar).toBe(false);
@@ -155,7 +156,7 @@ describe('C — 0 rush, avatar ON, stock ON', () => {
     expect(document.querySelector('[data-autopilot-stock-slot="plan-1"]')).toBeNull();
     expect(document.querySelector('[data-autopilot-stock-slot="plan-2"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-stock-avatar]')).toBeTruthy();
-    expect(screen.getByText('Médias stock proposés : 2')).toBeTruthy();
+    expect(screen.getByText('Médias suggérés : 2')).toBeTruthy();
     // Conserver / Remplacer / Supprimer / Chercher autre chose : l'UI existante.
     for (const s of ['conserver', 'remplacer', 'supprimer', 'chercher']) {
       expect(document.querySelector(`[data-autopilot-stock-${s}="plan-2"]`)).toBeTruthy();

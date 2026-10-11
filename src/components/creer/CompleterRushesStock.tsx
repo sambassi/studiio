@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ExternalLink, Loader2, RefreshCw, Search, Trash2, Info } from 'lucide-react';
+import { Check, Loader2, RefreshCw, Search, Trash2, Info } from 'lucide-react';
+import CarteMedia from '@/components/medias/CarteMedia';
+import { creditMedia } from '@/lib/medias/libelles';
 import { analyserCouvertureRushes, plansAutopilote, AVATAR_PRINCIPAL, type ManqueCouverture } from '@/lib/stock/couverture';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import { orientationDuFormat, type FormatStock, type MediaStock } from '@/lib/stock/types';
@@ -22,6 +24,9 @@ import { orientationDuFormat, type FormatStock, type MediaStock } from '@/lib/st
  *
  * ⚠️ JAMAIS BLOQUANT. Fournisseur en panne, quota, aucun résultat : un message
  * discret, et l'Autopilote continue avec les rushes de l'utilisateur.
+ *
+ * ⚠️ À L'ÉCRAN : « Vidéo suggérée », jamais le nom de la plateforme. Son
+ * attribution (exigée) vit dans « Informations du média » de l'aperçu.
  */
 
 /** Ce que l'on garde d'un média stock accepté — affiché dans la banque. */
@@ -43,7 +48,7 @@ export function idStockDuRush(url: string): string | null {
   return NOM_RUSH_STOCK.exec(url)?.[1] ?? null;
 }
 
-export const MESSAGE_STOCK_INDISPONIBLE = 'Recherche stock indisponible pour le moment — l’Autopilote continue avec vos autres sources.';
+export const MESSAGE_STOCK_INDISPONIBLE = 'Suggestions de médias indisponibles pour le moment — l’Autopilote continue avec vos autres sources.';
 
 type EtatSlot = 'recherche' | 'propose' | 'vide' | 'import' | 'conserve' | 'supprime';
 
@@ -56,12 +61,6 @@ interface Slot {
   /** Requêtes de ce plan : celles du moteur, ou la saisie libre. */
   requetes: string[];
   erreur?: string | null;
-}
-
-function dureeLisible(s?: number): string {
-  if (!s || !Number.isFinite(s)) return '';
-  const t = Math.round(s);
-  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
 /** Nom lisible d'un plan du smart montage (jamais « plan-2 »). */
@@ -249,7 +248,7 @@ export default function CompleterRushesStock({
     return (
       <p className="flex items-start gap-1.5 text-[11px] text-emerald-400" data-autopilot-stock-suffisant>
         <Check className="w-3 h-3 mt-0.5 shrink-0" />
-        {avatar ? 'Votre avatar et vos rushes suffisent : aucun média stock nécessaire.' : 'Vos rushes suffisent : aucun média stock nécessaire.'}
+        {avatar ? 'Votre avatar et vos rushes suffisent : aucun média suggéré nécessaire.' : 'Vos rushes suffisent : aucun média suggéré nécessaire.'}
       </p>
     );
   }
@@ -259,7 +258,7 @@ export default function CompleterRushesStock({
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-300">
         {avatar && <span data-autopilot-stock-avatar>Avatar personnel : plan d’accroche</span>}
         <span data-autopilot-stock-personnels>Rushes personnels : {couverture.rushesPersonnels}</span>
-        <span data-autopilot-stock-proposes>Médias stock proposés : {proposes}</span>
+        <span data-autopilot-stock-proposes>Médias suggérés : {proposes}</span>
       </div>
       <p className="text-[11px] text-gray-500">
         Rien n’est ajouté sans votre accord : conservez une proposition pour l’ajouter à la banque,
@@ -282,111 +281,91 @@ export default function CompleterRushesStock({
             );
           }
           return (
-            <li key={cle} className="rounded-lg border border-gray-800 bg-gray-900 p-2 space-y-1.5" data-autopilot-stock-slot={cle} data-etat={s.etat}>
-              <p className="text-[11px] text-gray-400">
-                <span className="font-medium text-gray-300">{libellePlan(s.manque.role)}</span> — {s.manque.raison}
-                <span className="block text-[10px] text-gray-500">Recherche : {s.manque.searchQueries[0] ?? s.manque.theme}</span>
-              </p>
-              {s.etat === 'recherche' && (
-                <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Recherche en cours…
-                </p>
-              )}
-              {s.etat !== 'recherche' && !s.media && (
-                <p className="text-[11px] text-gray-500" data-autopilot-stock-vide>
-                  {s.erreur ?? 'Aucune proposition pour ce plan.'}
-                </p>
-              )}
+            <li key={cle} className="flex flex-wrap gap-2 rounded-lg border border-gray-800 bg-gray-900 p-2 min-w-0" data-autopilot-stock-slot={cle} data-etat={s.etat}>
               {s.media && s.etat !== 'recherche' && (
-                <div className="flex gap-2">
-                  {/* Vignette seulement : le fichier HD n'est téléchargé qu'à « Conserver ». */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={s.media.vignetteUrl}
-                    alt={s.media.description || 'Vidéo stock'}
-                    className="w-14 h-20 rounded object-cover bg-gray-800 shrink-0"
-                    data-autopilot-stock-vignette={s.media.providerAssetId}
-                  />
-                  <div className="min-w-0 space-y-1 text-[10px] text-gray-400">
-                    {s.media.dureeSecondes ? <p>Durée : {dureeLisible(s.media.dureeSecondes)}</p> : null}
-                    <p>
-                      Vidéo de {s.media.auteur} sur{' '}
-                      <a
-                        href={s.media.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-0.5 underline hover:text-white"
-                      >
-                        Pexels <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                    </p>
-                    {s.etat === 'conserve' ? (
-                      <p className="flex items-center gap-1 text-emerald-400" data-autopilot-stock-conserve>
-                        <Check className="w-3 h-3" /> Ajouté à la banque de rushes
+                <div className="shrink-0" style={{ width: 132 }}>
+                  <CarteMedia
+                    url={s.media.fichierUrl || s.media.vignetteUrl}
+                    type="video"
+                    vignetteUrl={s.media.vignetteUrl}
+                    dureeSecondes={s.media.dureeSecondes}
+                    metadonnees={false}
+                    origine="video-suggeree"
+                    credit={{ texte: creditMedia(s.media), lien: s.media.sourceUrl }}
+                    accent={accent}
+                    vignetteAttrs={{ 'data-autopilot-stock-vignette': s.media.providerAssetId }}
+                    actions={s.etat === 'conserve' ? [] : [
+                      {
+                        cle: 'conserver', libelle: 'Conserver', icone: Check, variante: 'principal',
+                        onClick: () => { void conserver(s); }, disabled: s.etat === 'import', enCours: s.etat === 'import',
+                        ariaLabel: `Conserver cette vidéo pour le ${libellePlan(s.manque.role).toLowerCase()}`,
+                        attrs: { 'data-autopilot-stock-conserver': cle },
+                      },
+                      {
+                        cle: 'remplacer', libelle: 'Remplacer', icone: RefreshCw,
+                        onClick: () => { void remplacer(s); }, disabled: s.etat === 'import',
+                        ariaLabel: `Proposer une autre vidéo pour le ${libellePlan(s.manque.role).toLowerCase()}`,
+                        attrs: { 'data-autopilot-stock-remplacer': cle },
+                      },
+                      {
+                        cle: 'supprimer', libelle: 'Supprimer', icone: Trash2, variante: 'danger',
+                        onClick: () => majSlot(cle, (x) => ({ ...x, etat: 'supprime' })), disabled: s.etat === 'import',
+                        ariaLabel: `Retirer cette proposition du ${libellePlan(s.manque.role).toLowerCase()}`,
+                        attrs: { 'data-autopilot-stock-supprimer': cle },
+                      },
+                    ]}
+                    badges={s.etat === 'conserve' ? (
+                      <p className="flex items-center gap-1 text-[10px] text-emerald-400" data-autopilot-stock-conserve>
+                        <Check className="w-3 h-3 shrink-0" /> Ajoutée à la banque
                       </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        <button
-                          type="button"
-                          onClick={() => conserver(s)}
-                          disabled={s.etat === 'import'}
-                          data-autopilot-stock-conserver={cle}
-                          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-white disabled:opacity-40"
-                          style={{ backgroundColor: accent }}
-                        >
-                          {s.etat === 'import' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Check className="w-2.5 h-2.5" />} Conserver
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => remplacer(s)}
-                          disabled={s.etat === 'import'}
-                          data-autopilot-stock-remplacer={cle}
-                          className="flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-white disabled:opacity-40"
-                        >
-                          <RefreshCw className="w-2.5 h-2.5" /> Remplacer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => majSlot(cle, (x) => ({ ...x, etat: 'supprime' }))}
-                          disabled={s.etat === 'import'}
-                          data-autopilot-stock-supprimer={cle}
-                          className="flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-red-400 disabled:opacity-40"
-                        >
-                          <Trash2 className="w-2.5 h-2.5" /> Supprimer
-                        </button>
-                      </div>
-                    )}
-                    {s.media && s.erreur && <p className="text-amber-400">{s.erreur}</p>}
-                  </div>
+                    ) : null}
+                  />
                 </div>
               )}
-              {s.etat !== 'conserve' && s.etat !== 'import' && (
-                <form
-                  className="flex gap-1"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const q = (libre[cle] ?? '').trim().slice(0, 80);
-                    if (q) remplacer(s, [q]);
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={libre[cle] ?? ''}
-                    onChange={(e) => setLibre((l) => ({ ...l, [cle]: e.target.value }))}
-                    placeholder="Chercher autre chose…"
-                    aria-label={`Chercher autre chose pour ${cle}`}
-                    data-autopilot-stock-libre={cle}
-                    className="flex-1 min-w-0 rounded border border-gray-800 bg-gray-900 px-1.5 py-0.5 text-[10px] text-gray-200 placeholder:text-gray-600"
-                  />
-                  <button
-                    type="submit"
-                    data-autopilot-stock-chercher={cle}
-                    className="flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-white"
+              <div className="min-w-0 flex-1 space-y-1.5" style={{ flexBasis: 160 }}>
+                <p className="text-[11px] text-gray-400">
+                  <span className="font-medium text-gray-300">{libellePlan(s.manque.role)}</span> — {s.manque.raison}
+                  <span className="block text-[10px] text-gray-500">Recherche : {s.manque.searchQueries[0] ?? s.manque.theme}</span>
+                </p>
+                {s.etat === 'recherche' && (
+                  <p className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Recherche en cours…
+                  </p>
+                )}
+                {s.etat !== 'recherche' && !s.media && (
+                  <p className="text-[11px] text-gray-500" data-autopilot-stock-vide>
+                    {s.erreur ?? 'Aucune proposition pour ce plan.'}
+                  </p>
+                )}
+                {s.media && s.erreur && <p className="text-[10px] text-amber-400">{s.erreur}</p>}
+                {s.etat !== 'conserve' && s.etat !== 'import' && (
+                  <form
+                    className="flex flex-wrap gap-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const q = (libre[cle] ?? '').trim().slice(0, 80);
+                      if (q) remplacer(s, [q]);
+                    }}
                   >
-                    <Search className="w-2.5 h-2.5" /> Chercher autre chose
-                  </button>
-                </form>
-              )}
+                    <input
+                      type="text"
+                      value={libre[cle] ?? ''}
+                      onChange={(e) => setLibre((l) => ({ ...l, [cle]: e.target.value }))}
+                      placeholder="Chercher autre chose…"
+                      aria-label={`Chercher autre chose pour le ${libellePlan(s.manque.role).toLowerCase()}`}
+                      data-autopilot-stock-libre={cle}
+                      className="flex-1 min-w-0 rounded border border-gray-800 bg-gray-900 px-1.5 py-0.5 text-[10px] text-gray-200 placeholder:text-gray-600"
+                    />
+                    <button
+                      type="submit"
+                      data-autopilot-stock-chercher={cle}
+                      className="shrink-0 flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-white"
+                    >
+                      <Search className="w-2.5 h-2.5" /> Chercher autre chose
+                    </button>
+                  </form>
+                )}
+              </div>
             </li>
           );
         })}

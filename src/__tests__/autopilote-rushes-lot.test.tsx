@@ -72,7 +72,8 @@ async function ouvrirRushes() {
   fireEvent.click(document.querySelector('[data-autopilot-etape="1"]') as Element);
   await waitFor(() => expect(document.querySelector('[data-autopilot-add-rush]')).toBeTruthy());
   // La banque de départ est relue du serveur avant qu'on ajoute.
-  await waitFor(() => expect(screen.getByText('a.mp4')).toBeTruthy());
+  // Le nom du fichier n'est plus un libellé : il vit dans le `title` de la carte.
+  await waitFor(() => expect(document.querySelector('[data-carte-media][title="a.mp4"]')).toBeTruthy());
   fireEvent.click(document.querySelector('[data-autopilot-add-rush]') as Element);
   await waitFor(() => expect(document.querySelector('[data-mediatheque-input]')).toBeTruthy());
 }
@@ -90,8 +91,8 @@ describe('Ajouter plusieurs rushes à l Autopilote', () => {
     expect(envois[0].rushUrls.every((u) => /^https?:\/\//.test(u))).toBe(true);
     // La Médiathèque s'est refermée, la banque affiche les trois.
     await waitFor(() => expect(document.querySelector('[data-mediatheque-input]')).toBeNull());
-    expect(screen.getByText('b.mp4')).toBeTruthy();
-    expect(screen.getByText('c.mp4')).toBeTruthy();
+    expect(document.querySelector('[data-carte-media][title="b.mp4"]')).toBeTruthy();
+    expect(document.querySelector('[data-carte-media][title="c.mp4"]')).toBeTruthy();
     // Un seul enregistrement : pas un par fichier.
     await new Promise((r) => setTimeout(r, 20));
     expect(envois.length).toBe(1);

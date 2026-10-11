@@ -197,7 +197,8 @@ describe('Écran — validation par combinaison', () => {
     configServeur = { ...configServeur, designStyle: { sources: sourcesCfg({ actives: { stock: true }, stock: [retenu('unsplash', 'photo', 'U9', HOTLINK('U9'))] }) } };
     await ouvrir();
     expect(suivant().disabled).toBe(false);
-    expect(q('[data-autopilot-medias-unsplash]')!.getAttribute('data-autopilot-medias-unsplash')).toBe('1');
+    // Résumé sans plateforme : « Photos suggérées : 1 ».
+    expect(q('[data-autopilot-medias-photos]')!.getAttribute('data-autopilot-medias-photos')).toBe('1');
     expect(texte()).not.toMatch(/au moins un rush/i);
   });
 
@@ -227,7 +228,7 @@ describe('Persistance des sources', () => {
     configServeur = { ...configServeur, rushUrls: [A, B] };
     const attendu = JSON.stringify(sanitizeConfig({ ...sanitizeConfig(configServeur), rushUrls: [A] }));
     await ouvrir();
-    fireEvent.click(document.querySelectorAll('[aria-label="Retirer ce rush"]')[1]);
+    fireEvent.click(document.querySelectorAll('[aria-label="Supprimer ce rush"]')[1]);
     await waitFor(() => expect(brut.length).toBe(1));
     expect(brut[0]).toBe(attendu);
     expect(JSON.parse(brut[0]).designStyle.sources).toBeUndefined();
@@ -263,7 +264,7 @@ describe('Persistance des sources', () => {
     expect(dernier().designStyle.sources!.actives).toEqual({ rushes: true, avatar: true, stock: false });
   });
 
-  it('« Compléter avec Pexels / Unsplash » → sources.actives.stock = true', async () => {
+  it('« Médias suggérés » → sources.actives.stock = true', async () => {
     configServeur = { ...configServeur, rushUrls: [A] };
     await ouvrir();
     fireEvent.click(q('[data-autopilot-completer-stock]')!);
@@ -294,7 +295,12 @@ describe('Retenir des médias stock', () => {
     expect(dernier().rushUrls).toEqual([A, IMPORTE('V1')]);
     expect(dernier().designStyle.sources!.stock).toEqual([{ ...retenu('pexels', 'video', 'V1'), sourceUrl: 'https://www.pexels.com/video/V1/' }]);
     await waitFor(() => expect(q('[data-autopilot-stock-retenu="pexels-video-V1"]')).toBeTruthy());
-    expect(q('[data-autopilot-stock-retenu="pexels-video-V1"] [data-autopilot-stock-attribution]')!.textContent).toContain('Vidéo de Auteur V1 sur Pexels');
+    // L'attribution n'est plus un libellé : elle vit dans « Informations du média » de l'aperçu.
+    const carte = q('[data-autopilot-stock-retenu="pexels-video-V1"]')!;
+    expect(carte.querySelector('[data-carte-libelle]')!.textContent).toBe('Vidéo suggérée');
+    fireEvent.click(carte.querySelector('[data-carte-apercu]')!);
+    fireEvent.click(q('[data-carte-informations]')!);
+    expect(q('[data-carte-credit]')!.textContent).toContain('Vidéo de Auteur V1 sur Pexels');
   });
 
   it('photo Pexels : AUCUN import, URL Pexels retenue', async () => {
@@ -315,7 +321,10 @@ describe('Retenir des médias stock', () => {
     expect(importes).toEqual([{ provider: 'unsplash', type: 'photo', providerAssetId: 'U1' }]);
     expect(dernier().rushUrls).toEqual([A]);
     expect(dernier().designStyle.sources!.stock[0]).toMatchObject({ url: HOTLINK('U1'), provider: 'unsplash', type: 'photo', sourceUrl: 'https://www.unsplash.com/photo/U1/' });
-    await waitFor(() => expect(texte()).toContain('Photo de Auteur U1 sur Unsplash'));
+    await waitFor(() => expect(q('[data-autopilot-stock-retenu="unsplash-photo-U1"]')).toBeTruthy());
+    fireEvent.click(q('[data-autopilot-stock-retenu="unsplash-photo-U1"] [data-carte-apercu]')!);
+    fireEvent.click(q('[data-carte-informations]')!);
+    expect(q('[data-carte-credit]')!.textContent).toContain('Photo de Auteur U1 sur Unsplash');
   });
 
   it('recherche en panne : message discret, aucun crash, rien d enregistré', async () => {
@@ -352,8 +361,9 @@ describe('Résumé « Médias prévus »', () => {
     await ouvrir();
     await waitFor(() => expect(q('[data-autopilot-medias-avatar="oui"]')).toBeTruthy());
     expect(q('[data-autopilot-medias-rushes]')!.getAttribute('data-autopilot-medias-rushes')).toBe('1');
-    expect(q('[data-autopilot-medias-pexels]')!.textContent).toBe('2 vidéos (+ 1 photo)');
-    expect(q('[data-autopilot-medias-unsplash]')!.textContent).toBe('2 photos');
+    // Plus de répartition par plateforme : vidéos suggérées / photos suggérées.
+    expect(q('[data-autopilot-medias-videos]')!.textContent).toBe('2');
+    expect(q('[data-autopilot-medias-photos]')!.textContent).toBe('3');
     expect(document.querySelectorAll('[data-autopilot-medias-stock-vignette]').length).toBe(5);
     expect(q('[data-autopilot-medias-rendu]')!.textContent).toBe('Vidéo multi-sources prête.');
     expect(texte()).not.toMatch(/secours|ne sont pas montés avec|au moins un rush/i);
@@ -372,9 +382,9 @@ describe('Plan avant génération', () => {
     await waitFor(() => expect(types()).toEqual(['avatar', 'rush', 'stock', 'stock', 'avatar']));
     expect(q('[data-plan-suggere]')).toBeTruthy();
     expect(q('[data-plan-cta]')!.textContent).toContain('CTA');
-    expect(q('[data-plan-ligne="0"]')!.textContent).toContain('Séquence 1 — Avatar');
-    expect(q('[data-plan-ligne="1"]')!.textContent).toContain('Séquence 2 — Rush personnel');
-    expect(q('[data-plan-ligne="2"]')!.textContent).toContain('Séquence 3 — Unsplash / Pexels');
+    expect(q('[data-plan-ligne="0"]')!.textContent).toContain('Séquence 1 — Mon avatar');
+    expect(q('[data-plan-ligne="1"]')!.textContent).toContain('Séquence 2 — Mes rushes');
+    expect(q('[data-plan-ligne="2"]')!.textContent).toContain('Séquence 3 — Média suggéré');
     expect(q('[data-plan-ligne="0"] [data-avatar-vignette]')).toBeTruthy();
     expect(envois).toEqual([]);
   });
@@ -402,7 +412,7 @@ describe('Plan avant génération', () => {
     fireEvent.change(q('[data-plan-media="2"]')!, { target: { value: HOTLINK('U1') } });
     await waitFor(() => expect(envois.length).toBe(5));
     expect(dernier().designStyle.sources!.gabarit[2]).toMatchObject({ type: 'stock', media: HOTLINK('U1') });
-    await waitFor(() => expect(q('[data-plan-ligne="2"]')!.textContent).toContain('Unsplash · photo de Auteur U1'));
+    await waitFor(() => expect(q('[data-plan-ligne="2"] [data-plan-libelle]')!.textContent).toBe('Photo suggérée'));
     // Le reste de la configuration n'a pas bougé.
     expect(dernier().jumeauAvatar).toBe(true);
     expect(dernier().designStyle.sources!.stock).toHaveLength(2);
@@ -442,7 +452,7 @@ describe('Vérification — check-list et récapitulatif multi-sources', () => {
     await ouvrir();
     fireEvent.click(q('[data-autopilot-etape="5"]')!);
     await waitFor(() => expect(q('[data-autopilot-checklist]')!.getAttribute('data-autopilot-pret')).toBe('oui'));
-    expect(q('[data-autopilot-check="rushes"]')!.textContent).toContain('Sources : 1 média stock');
+    expect(q('[data-autopilot-check="rushes"]')!.textContent).toContain('Sources : 1 média suggéré');
     expect((q('[data-autopilot-produire-maintenant]') as HTMLButtonElement).disabled).toBe(false);
     expect(q('[data-autopilot-toggle]')!.getAttribute('data-cta')).toBe('principal');
     expect(texte()).not.toMatch(/au moins un rush/i);

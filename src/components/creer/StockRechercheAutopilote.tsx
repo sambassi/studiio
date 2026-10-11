@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { Check, ExternalLink, Info, Loader2, Plus, Search, X } from 'lucide-react';
+import { Check, Info, Loader2, Plus, Search, X } from 'lucide-react';
+import CarteMedia, { GrilleMedias } from '@/components/medias/CarteMedia';
+import { CREDIT_FOURNISSEURS, LIBELLES_ORIGINE, creditMedia, origineSuggeree } from '@/lib/medias/libelles';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import type { FormatStock, MediaStock, TypeStock } from '@/lib/stock/types';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
@@ -22,24 +24,53 @@ import type { MediaStockRetenu } from '@/lib/autopilot/sources';
  *   - photo Pexels : aucune importation, l'URL Pexels est retenue telle quelle.
  *
  * ⚠️ JAMAIS BLOQUANT. Fournisseur en panne : un message discret, rien d'autre.
+ *
+ * ⚠️ AUCUN FOURNISSEUR À L'ÉCRAN, AUCUNE NAVIGATION. Un filtre Tout / Vidéos
+ * / Photos (jamais un choix de plateforme), des cartes « Vidéo suggérée » /
+ * « Photo suggérée » dont le clic ouvre un APERÇU dans la page. L'attribution
+ * exigée par les plateformes vit dans « Informations du média » (aperçu) et
+ * dans le pied discret de la recherche — éléments `data-credit-media`.
  */
 
-export const MESSAGE_RECHERCHE_INDISPONIBLE = 'Recherche Pexels / Unsplash indisponible pour le moment. Réessayez plus tard.';
+export const MESSAGE_RECHERCHE_INDISPONIBLE = 'Recherche de médias indisponible pour le moment. Réessayez plus tard.';
 
 export function cleMediaStock(m: { provider: string; type: string; providerAssetId: string }): string {
   return `${m.provider}-${m.type}-${m.providerAssetId}`;
 }
 
-function nomFournisseur(p: string): string {
-  return p === 'unsplash' ? 'Unsplash' : 'Pexels';
+/**
+ * « Vidéo de X sur Pexels » — l'ATTRIBUTION d'un média. Réservée aux crédits
+ * (`data-credit-media`) : jamais un libellé principal.
+ */
+export const libelleAttribution = creditMedia;
+
+type Filtre = 'tout' | TypeStock;
+
+const FILTRES: Array<{ v: Filtre; label: string }> = [
+  { v: 'tout', label: 'Tout' },
+  { v: 'video', label: 'Vidéos' },
+  { v: 'photo', label: 'Photos' },
+];
+
+/** Une recherche d'UN type, telle que le moteur commun la sert. */
+async function chercherType(type: TypeStock, requete: string, format: FormatStock) {
+  const r = await rechercherStockClient({
+    requete, type, format, fournisseurs: type === 'video' ? ['pexels'] : ['pexels', 'unsplash'],
+  });
+  // Une seule plateforme sert des vidéos : un résultat vidéo d'une autre n'existe pas.
+  const medias = r.medias.filter((m) => m.type === type && (type === 'photo' || m.provider === 'pexels'));
+  return { medias, echec: r.echecs.length > 0 };
 }
 
-/** « Vidéo de X sur Pexels » — l'attribution affichée partout où le média est montré. */
-export function libelleAttribution(m: { type: string; auteur: string; provider: string }): string {
-  return `${m.type === 'video' ? 'Vidéo' : 'Photo'} de ${m.auteur || 'auteur inconnu'} sur ${nomFournisseur(m.provider)}`;
+/** Vidéos et photos entrelacées — « Tout » montre les deux dès la première ligne. */
+function entrelacer(a: MediaStock[], b: MediaStock[]): MediaStock[] {
+  const out: MediaStock[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if (a[i]) out.push(a[i]);
+    if (b[i]) out.push(b[i]);
+  }
+  return out;
 }
-
-type Mode = 'video' | 'photo';
 
 export default function StockRechercheAutopilote({
   sujet, format, accent, dejaRetenus, onRetenir, titre, onFermer, ident = 'general',
@@ -56,32 +87,31 @@ export default function StockRechercheAutopilote({
   ident?: string;
 }) {
   const [requete, setRequete] = useState(sujet);
-  const [mode, setMode] = useState<Mode>('video');
+  const [filtre, setFiltre] = useState<Filtre>('tout');
   const [resultats, setResultats] = useState<MediaStock[] | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [imports, setImports] = useState<Record<string, 'import' | 'erreur'>>({});
 
-  const chercher = useCallback(async (type: TypeStock, q: string) => {
+  const chercher = useCallback(async (f: Filtre, q: string) => {
     const texte = q.trim().slice(0, 80);
     if (!texte) return;
     setEnCours(true);
     setMessage(null);
-    const r = await rechercherStockClient({
-      requete: texte, type, format, fournisseurs: type === 'video' ? ['pexels'] : ['pexels', 'unsplash'],
-    });
-    // Unsplash ne sert QUE des photos : une « vidéo Unsplash » n'existe pas.
-    const medias = r.medias.filter((m) => m.type === type && (type === 'photo' || m.provider === 'pexels'));
+    const types: TypeStock[] = f === 'tout' ? ['video', 'photo'] : [f];
+    const r = await Promise.all(types.map((t) => chercherType(t, texte, format)));
+    const medias = r.length === 2 ? entrelacer(r[0].medias, r[1].medias) : r[0].medias;
+    const echec = r.some((x) => x.echec);
     setResultats(medias.slice(0, 8));
-    if (medias.length === 0) setMessage(r.echecs.length > 0 ? MESSAGE_RECHERCHE_INDISPONIBLE : 'Aucun résultat pour cette recherche.');
-    else if (r.echecs.length > 0) setMessage('Un fournisseur ne répond pas : résultats partiels.');
+    if (medias.length === 0) setMessage(echec ? MESSAGE_RECHERCHE_INDISPONIBLE : 'Aucun résultat pour cette recherche.');
+    else if (echec) setMessage('Certains résultats sont indisponibles pour le moment.');
     setEnCours(false);
   }, [format]);
 
   const retenir = useCallback(async (m: MediaStock) => {
     const cle = cleMediaStock(m);
     let url = m.fichierUrl;
-    // Vidéo Pexels → Médiathèque ; photo Unsplash → téléchargement signalé.
+    // Vidéo → Médiathèque ; photo Unsplash → téléchargement signalé (règle de la plateforme).
     if (m.type === 'video' || m.provider === 'unsplash') {
       setImports((x) => ({ ...x, [cle]: 'import' }));
       const r = await importerStockClient({ provider: m.provider, type: m.type, providerAssetId: m.providerAssetId });
@@ -117,29 +147,29 @@ export default function StockRechercheAutopilote({
         </div>
       )}
       <div className="flex gap-1" role="group" aria-label="Type de média">
-        {(['video', 'photo'] as Mode[]).map((t) => (
+        {FILTRES.map((t) => (
           <button
-            key={t}
+            key={t.v}
             type="button"
-            aria-pressed={mode === t}
-            onClick={() => { setMode(t); setResultats(null); setMessage(null); }}
-            data-autopilot-stock-mode={t}
-            className={`rounded px-2 py-0.5 text-[10px] border ${mode === t ? 'border-purple-500 text-white bg-purple-500/10' : 'border-gray-800 text-gray-400 hover:text-white'}`}
+            aria-pressed={filtre === t.v}
+            onClick={() => { setFiltre(t.v); setResultats(null); setMessage(null); }}
+            data-autopilot-stock-mode={t.v}
+            className={`rounded px-2 py-0.5 text-[10px] border ${filtre === t.v ? 'border-purple-500 text-white bg-purple-500/10' : 'border-gray-800 text-gray-400 hover:text-white'}`}
           >
-            {t === 'video' ? 'Vidéos Pexels' : 'Photos Pexels / Unsplash'}
+            {t.label}
           </button>
         ))}
       </div>
       <form
         className="flex gap-1 min-w-0"
-        onSubmit={(e) => { e.preventDefault(); void chercher(mode, requete); }}
+        onSubmit={(e) => { e.preventDefault(); void chercher(filtre, requete); }}
       >
         <input
           type="text"
           value={requete}
           onChange={(e) => setRequete(e.target.value)}
-          placeholder="Ex. : danse en studio"
-          aria-label="Rechercher un média stock"
+          placeholder="Que recherchez-vous ?"
+          aria-label="Que recherchez-vous ?"
           data-autopilot-stock-requete={ident}
           className="flex-1 min-w-0 rounded border border-gray-800 bg-gray-950 px-1.5 py-1 text-[11px] text-gray-200 placeholder:text-gray-600"
         />
@@ -158,43 +188,42 @@ export default function StockRechercheAutopilote({
         </p>
       )}
       {resultats && resultats.length > 0 && (
-        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+        <GrilleMedias min={96}>
           {resultats.map((m) => {
             const cle = cleMediaStock(m);
             const deja = dejaRetenus.includes(cle);
             const etat = imports[cle];
+            const origine = origineSuggeree(m.type);
             return (
-              <li key={cle} className="flex gap-2 rounded border border-gray-800 p-1.5 min-w-0" data-autopilot-stock-resultat={cle}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={m.vignetteUrl} alt={m.description || libelleAttribution(m)} className="w-10 h-14 rounded object-cover bg-gray-800 shrink-0" />
-                <div className="min-w-0 flex-1 space-y-1 text-[10px] text-gray-400">
-                  <p className="break-words">
-                    {m.type === 'video' ? 'Vidéo' : 'Photo'} de {m.auteur} sur{' '}
-                    <a href={m.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 underline hover:text-white">
-                      {nomFournisseur(m.provider)} <ExternalLink className="w-2.5 h-2.5" />
-                    </a>
-                  </p>
-                  {deja ? (
-                    <p className="flex items-center gap-1 text-emerald-400"><Check className="w-3 h-3" /> Retenu</p>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => { void retenir(m); }}
-                      disabled={etat === 'import'}
-                      data-autopilot-stock-retenir={cle}
-                      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-white disabled:opacity-40"
-                      style={{ backgroundColor: accent }}
-                    >
-                      {etat === 'import' ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Plus className="w-2.5 h-2.5" />} Retenir
-                    </button>
-                  )}
-                  {etat === 'erreur' && <p className="text-amber-400" data-autopilot-stock-retenir-erreur>Import impossible pour le moment — réessayez.</p>}
-                </div>
+              <li key={cle} className="min-w-0 space-y-1" data-autopilot-stock-resultat={cle}>
+                <CarteMedia
+                  url={m.type === 'video' ? m.fichierUrl : (m.apercuUrl || m.fichierUrl)}
+                  type={m.type}
+                  vignetteUrl={m.vignetteUrl}
+                  dureeSecondes={m.dureeSecondes}
+                  metadonnees={false}
+                  origine={origine}
+                  credit={{ texte: creditMedia(m), lien: m.sourceUrl }}
+                  accent={accent}
+                  actions={[deja
+                    ? {
+                      cle: 'ajoute', libelle: 'Ajouté', icone: Check, variante: 'fait', disabled: true, onClick: () => {},
+                      attrs: { 'data-autopilot-stock-ajoute': cle },
+                    }
+                    : {
+                      cle: 'ajouter', libelle: 'Ajouter', icone: Plus, variante: 'principal',
+                      onClick: () => { void retenir(m); }, disabled: etat === 'import', enCours: etat === 'import',
+                      ariaLabel: `Ajouter cette ${LIBELLES_ORIGINE[origine].toLowerCase()}`,
+                      attrs: { 'data-autopilot-stock-retenir': cle },
+                    }]}
+                />
+                {etat === 'erreur' && <p className="text-[10px] text-amber-400" data-autopilot-stock-retenir-erreur>Ajout impossible pour le moment — réessayez.</p>}
               </li>
             );
           })}
-        </ul>
+        </GrilleMedias>
       )}
+      <p className="text-[9px] text-gray-600" data-credit-media data-autopilot-stock-credit>{CREDIT_FOURNISSEURS}</p>
     </div>
   );
 }

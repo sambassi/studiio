@@ -42,7 +42,7 @@ export interface ValidationEtapeRushes {
 
 /** Les phrases — une seule source pour l'écran et les tests. */
 export const MESSAGES_RUSHES = {
-  sansSource: 'Aucune source visuelle : ajoutez un rush, activez votre avatar ou retenez un média Pexels / Unsplash.',
+  sansSource: 'Aucune source visuelle : ajoutez un rush, activez votre avatar ou retenez un média suggéré.',
   avatarNonPret: 'Aucun avatar prêt : configurez votre avatar, ou décochez « Mon avatar ».',
   avatarEnVerification: 'Vérification de votre avatar…',
   multiSources: 'Vidéo multi-sources prête.',
@@ -82,6 +82,15 @@ export function etatSourcesVisuelles(
     bibliotheque,
     stockRetenus: c.pexelsVideos + c.pexelsPhotos + c.unsplashPhotos,
   };
+}
+
+/**
+ * « Vidéos suggérées : X · Photos suggérées : Y » — le résumé tel que
+ * l'utilisateur le lit : SANS répartition par plateforme. Le compte interne
+ * (`compterSources`, par fournisseur) reste la source et n'est pas modifié.
+ */
+export function mediasSuggeres(e: Pick<EtatMediasPrevus, 'pexelsVideos' | 'pexelsPhotos' | 'unsplashPhotos'>): { videos: number; photos: number } {
+  return { videos: e.pexelsVideos, photos: e.pexelsPhotos + e.unsplashPhotos };
 }
 
 /**
