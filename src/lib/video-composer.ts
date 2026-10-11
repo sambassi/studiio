@@ -3311,6 +3311,35 @@ export function drawCTA(
 }
 
 // ═══════════════════════════════════════════════════════════
+// HORLOGE DU MONTAGE — fin du CONTENU vs fin de l'ENREGISTREMENT
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Horloge logique d'une image : l'instant `t` à dessiner, et si le CONTENU est
+ * terminé (il faut alors arrêter l'enregistreur, sans plus rien dessiner).
+ *
+ * Avant : l'enregistreur tournait jusqu'à `dureeContenu + 0,3 s` (« tiny
+ * buffer to ensure last frame is captured », 9eab7bd puis 76fc621). Comme `t`
+ * était déjà bloqué sur la dernière image, ces 0,3 s étaient la DERNIÈRE IMAGE
+ * FIGÉE, enregistrée en plus : fichier = durée affichée + 9 images, et le
+ * dernier média semblait durer 0,3 s de trop.
+ *
+ * Mesuré dans Chrome (banc #543) : arrêter à `dureeContenu` ne perd ni la
+ * dernière image ni l'audio — `MediaRecorder.stop()` vide lui-même son
+ * tampon (dernier `dataavailable` puis `stop`). La finalisation de
+ * l'enregistreur n'a donc besoin d'AUCUNE image de contenu en plus.
+ *
+ * `t` reste strictement sous `dureeContenu` : la dernière image est celle de
+ * la dernière séquence, jamais une séquence suivante inexistante.
+ */
+export function horlogeMontage(ecoule: number, dureeContenu: number): { t: number; fini: boolean } {
+  return {
+    t: Math.min(Math.max(0, ecoule), dureeContenu - 0.001),
+    fini: ecoule >= dureeContenu,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════
 // MOTEUR DE TRANSITIONS
 // ═══════════════════════════════════════════════════════════
 
@@ -4861,7 +4890,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         lastDrawAt = performance.now();
         const elapsed = (performance.now() - startTime) / 1000;
 
-        if (elapsed >= totalDuration + 0.3) {
+        const horloge = horlogeMontage(elapsed, totalDuration);
+        if (horloge.fini) {
           animStopped = true;
           console.log('[Composer] Render complete, stopping recorder');
           stopTicker();
@@ -4869,7 +4899,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           return;
         }
 
-        const t = Math.min(elapsed, totalDuration - 0.001);
+        const t = horloge.t;
 
         // No video element playback management in FAST mode: a real rush video
         // always takes the REAL-TIME path now (so its audio track is captured).
@@ -5214,7 +5244,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       lastAnimTime = performance.now();
       const elapsed = (performance.now() - startTime) / 1000;
 
-      if (elapsed >= totalDuration + 0.3) {
+      const horloge = horlogeMontage(elapsed, totalDuration);
+      if (horloge.fini) {
         animStopped = true;
         console.log('[Composer] Rendu terminé, arrêt du recorder');
         if (pilote) console.log('[Composer] Coupes :', JSON.stringify({ ...pilote.bilan(), gelMaxMs: Math.round(gelMax), evenements }));
@@ -5228,7 +5259,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         return;
       }
 
-      const t = Math.min(elapsed, totalDuration - 0.001);
+      const t = horloge.t;
 
       // Gérer l'élément vidéo
       if (planComplet) {

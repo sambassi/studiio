@@ -33,6 +33,7 @@
  */
 import type { RushItem, RushSegment, MouvementImage, SourceSegment } from '@/lib/creer/multi-rush';
 import { MOUVEMENTS_PHOTO } from '@/lib/autopilot/plan-multi-sources';
+import { TRANSITION_DURATION_SECONDS } from '@/lib/creer/transitionPreview';
 
 export type SourceMediaVideo = 'rush' | 'avatar' | 'stock-video' | 'stock-photo' | 'mediatheque';
 export type TypeMediaVideo = 'video' | 'image';
@@ -657,6 +658,14 @@ export interface LigneChronologie {
   fin: number;
   cta?: boolean;
   horsNarration?: boolean;
+  /**
+   * Fondu ENTRANT, en secondes, joué AVANT `debut` : le CTA apparaît par-dessus
+   * la fin du dernier média, qui, lui, joue jusqu'à `debut` (le compositeur
+   * place la transition dans les `TRANSITION_DURATION_SECONDS` dernières
+   * secondes de la séquence sortante). `debut` reste l'instant où le CTA est
+   * seul à l'écran ; absent = coupe franche.
+   */
+  fondu?: number;
 }
 
 /** La chronologie de la séquence Vidéo (les items du plan), puis le CTA. */
@@ -668,7 +677,10 @@ export function chronologieListe(
     id: e.id, libelle: e.libelle, debut: e.debut, fin: e.fin, ...(e.horsNarration ? { horsNarration: true } : {}),
   }));
   const cta = positif(opts.dureeCta);
-  if (cta !== null && etapes.length) lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: r3(duree + cta), cta: true });
+  if (cta !== null && etapes.length) {
+    const fondu = r3(Math.min(TRANSITION_DURATION_SECONDS, duree));
+    lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: r3(duree + cta), cta: true, ...(fondu > 0 ? { fondu } : {}) });
+  }
   return { lignes, dureeVideo: duree, total: lignes.length ? lignes[lignes.length - 1].fin : 0 };
 }
 

@@ -104,18 +104,30 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
 
   const progresEtape = etape ? Math.min(1, Math.max(0, (t - etape.debut) / Math.max(0.001, etape.fin - etape.debut))) : 0;
 
+  // Fondu vers le CTA, comme le rendu : le CTA apparaît PAR-DESSUS la fin du
+  // dernier média (qui joue jusqu'au bout), pendant `fondu` secondes avant `debut`.
+  const ligneCta = calendrier.find((l) => l.cta) ?? null;
+  const opaciteFonduCta = ligneCta?.fondu && ligne && !ligne.cta && t >= ligneCta.debut - ligneCta.fondu
+    ? Math.min(1, Math.max(0, (t - (ligneCta.debut - ligneCta.fondu)) / ligneCta.fondu))
+    : 0;
+  const carteCta = (opacite?: number) => (
+    <div
+      {...(opacite === undefined ? { 'data-apercu-montage-cta': true } : { 'data-apercu-montage-cta-fondu': opacite.toFixed(2) })}
+      className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center bg-gray-950"
+      style={opacite === undefined ? undefined : { opacity: opacite }}
+    >
+      <span className="rounded-full px-4 py-2 text-sm font-bold text-white break-words max-w-full" style={{ backgroundColor: p.accent }}>
+        {p.ctaTexte || 'CTA'}
+      </span>
+      {p.ctaSousTexte ? <span className="text-[11px] text-gray-300 break-words max-w-full">{p.ctaSousTexte}</span> : null}
+    </div>
+  );
+
   let cadre: JSX.Element;
   if (!ligne) {
     cadre = <div className="absolute inset-0 flex items-center justify-center text-[11px] text-gray-500">Aucun média</div>;
   } else if (ligne.cta) {
-    cadre = (
-      <div data-apercu-montage-cta className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center bg-gray-950">
-        <span className="rounded-full px-4 py-2 text-sm font-bold text-white break-words max-w-full" style={{ backgroundColor: p.accent }}>
-          {p.ctaTexte || 'CTA'}
-        </span>
-        {p.ctaSousTexte ? <span className="text-[11px] text-gray-300 break-words max-w-full">{p.ctaSousTexte}</span> : null}
-      </div>
-    );
+    cadre = carteCta();
   } else if (etape && etape.source === 'avatar' && !etape.url) {
     cadre = (
       <div data-apercu-montage-avatar="a-produire" className="absolute inset-0">
@@ -174,6 +186,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
         style={{ aspectRatio: RATIO[p.format], width: '100%', maxWidth: p.format === '16:9' ? 420 : p.format === '1:1' ? 300 : 220 }}
       >
         {cadre}
+        {opaciteFonduCta > 0 ? carteCta(opaciteFonduCta) : null}
         <div className="absolute left-0 right-0 bottom-0 h-1 bg-white/10">
           <div className="h-full" style={{ width: `${total > 0 ? (t / total) * 100 : 0}%`, backgroundColor: p.accent }} />
         </div>
@@ -208,11 +221,14 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
                 data-debut={l.debut}
                 data-fin={l.fin}
                 data-hors-narration={l.horsNarration ? 'oui' : undefined}
+                data-fondu={l.fondu ? l.fondu : undefined}
+                title={l.fondu ? `Le CTA apparaît en fondu pendant les ${formatSecondes(l.fondu)} dernières secondes du média précédent, qui joue jusqu’à ${formatSecondes(l.debut)} s.` : undefined}
                 aria-current={courant ? 'step' : undefined}
                 onClick={() => sauterA(l.debut)}
                 className={`max-w-full truncate rounded-md px-2 py-1 text-[10px] tabular-nums transition ${courant ? 'bg-studiio-primary/25 text-white ring-1 ring-studiio-primary/60' : 'bg-gray-800/70 text-gray-300 hover:bg-gray-800'} ${l.horsNarration ? 'ring-1 ring-amber-400/70' : ''}`}
               >
                 {l.libelle} {formatSecondes(l.debut)}–{formatSecondes(l.fin)} s
+                {l.fondu ? <span className="text-gray-400"> · fondu {formatSecondes(l.fondu)} s</span> : null}
               </button>
             </li>
           );
