@@ -56,23 +56,27 @@ afterEach(() => { cleanup(); });
 const zone = () => document.querySelector('[data-audio-complet-texte]') as HTMLTextAreaElement;
 const bouton = () => document.querySelector('[data-audio-complet-generer]') as HTMLButtonElement;
 const saisir = (n: number) => fireEvent.change(zone(), { target: { value: 'a'.repeat(n) } });
+/** Le prix est annoncé AU-DESSUS du bouton (bloc prix), le bouton reste court. */
+const prix = () => [...document.querySelectorAll('[data-audio-complet-prix] [data-bloc-prix-ligne]')].map((l) => l.textContent);
 
 describe('MaVoixPanel — audio complet', () => {
-  it.each([[500, '1 crédit'], [1000, '1 crédit'], [1001, '2 crédits'], [2500, '3 crédits']])('⚠️ %i caractères → « Générer l’audio complet — %s »', async (n, libelle) => {
+  it.each([[500, '1 crédit'], [1000, '1 crédit'], [1001, '2 crédits'], [2500, '3 crédits']])('⚠️ %i caractères → « Prix : %s » au-dessus de « Générer l’audio complet »', async (n, libelle) => {
     render(<MaVoixPanel />);
     await waitFor(() => expect(zone()).not.toBeNull());
     expect(zone().maxLength).toBe(5000);
     saisir(n);
-    expect(bouton().textContent).toBe(`Générer l’audio complet — ${libelle}`);
+    expect(prix()).toEqual([`Prix : ${libelle}`]);
+    expect(bouton().textContent).toBe('Générer l’audio complet');
     expect(document.querySelector('[data-audio-complet-compteur]')!.textContent).toBe(`${n}/5000 caractères`);
   });
 
-  it('⚠️ administrateur : « 0 crédit (administrateur) »', async () => {
+  it('⚠️ administrateur : « Prix public : 3 crédits » / « Votre coût : 0 crédit »', async () => {
     politique = 'partner_cost_only';
     render(<MaVoixPanel />);
     await waitFor(() => expect(zone()).not.toBeNull());
     saisir(2500);
-    await waitFor(() => expect(bouton().textContent).toBe('Générer l’audio complet — 0 crédit (administrateur)'));
+    await waitFor(() => expect(prix()).toEqual(['Prix public : 3 crédits', 'Votre coût : 0 crédit']));
+    expect(bouton().textContent).toBe('Générer l’audio complet');
   });
 
   it('⚠️ n’envoie que { texte }, désactivé pendant la génération ; lecteur + téléchargement SEULEMENT après succès', async () => {
@@ -116,12 +120,15 @@ describe('MaVoixPanel — audio complet', () => {
     expect(document.querySelector('[data-audio-complet-lecteur]')).toBeNull();
   });
 
-  it('⚠️ la pré-écoute garde nodownload et aucun lien de téléchargement', async () => {
+  it('⚠️ la pré-écoute n’a ni contrôles natifs (donc ni menu ⋮ ni téléchargement) ni lien de téléchargement', async () => {
     render(<MaVoixPanel />);
     await waitFor(() => expect(document.querySelector('[data-ecouter]')).not.toBeNull());
     fireEvent.click(document.querySelector('[data-ecouter]') as HTMLButtonElement);
     await waitFor(() => expect(document.querySelector('[data-ecoute-audio]')).not.toBeNull());
-    expect(document.querySelector('[data-ecoute-audio]')!.getAttribute('controlslist')).toBe('nodownload');
+    // Le lecteur Studiio remplace `controls controlsList="nodownload"` : plus aucun contrôle natif.
+    expect(document.querySelector('[data-ecoute-audio]')!.hasAttribute('controls')).toBe(false);
+    expect(document.querySelector('[controls]')).toBeNull();
+    expect(document.querySelector('[data-lecteur-voix]')).not.toBeNull();
     expect(document.querySelector('[download]')).toBeNull();
     expect(appels.some((a) => a.url === '/api/voice/audio-complet')).toBe(false);
   });

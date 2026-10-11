@@ -104,7 +104,7 @@ process.env.ELEVENLABS_API_KEY = 'cle-de-test';
 const { POST } = await import('@/app/api/voice/audio-complet/route');
 const { POST: ECOUTER } = await import('@/app/api/voice/ecoute/route');
 const { POST: ECOUTER_PRONONCIATION } = await import('@/app/api/voice/prononciations/ecoute/route');
-const { coutAudioComplet, libelleBoutonAudioComplet, MAX_CARACTERES_AUDIO_COMPLET } = await import('@/lib/voice/audio-complet');
+const { coutAudioComplet, lignesPrixAudioComplet, LIBELLE_BOUTON_AUDIO_COMPLET, MAX_CARACTERES_AUDIO_COMPLET } = await import('@/lib/voice/audio-complet');
 const { reinitialiserAudioComplet, cheminAudioComplet } = await import('@/lib/voice/audio-complet-serveur');
 const { reinitialiserPreecoute } = await import('@/lib/voice/preecoute-serveur');
 const { scriptParle } = await import('@/lib/voice/prononciations');
@@ -136,10 +136,11 @@ describe('coutAudioComplet — 1 crédit par bloc entamé de 1000 caractères', 
   it.each([[1, 1], [500, 1], [1000, 1], [1001, 2], [2000, 2], [2500, 3], [5000, 5], [0, 1]])('%i caractères → %i crédit(s)', (n, c) => {
     expect(coutAudioComplet(n)).toBe(c);
   });
-  it('libellés du bouton', () => {
-    expect(libelleBoutonAudioComplet(500, false)).toBe('Générer l’audio complet — 1 crédit');
-    expect(libelleBoutonAudioComplet(2500, false)).toBe('Générer l’audio complet — 3 crédits');
-    expect(libelleBoutonAudioComplet(2500, true)).toBe('Générer l’audio complet — 0 crédit (administrateur)');
+  it('bloc prix au-dessus du bouton (le bouton reste court)', () => {
+    expect(LIBELLE_BOUTON_AUDIO_COMPLET).toBe('Générer l’audio complet');
+    expect(lignesPrixAudioComplet(500, false)).toEqual(['Prix : 1 crédit']);
+    expect(lignesPrixAudioComplet(2500, false)).toEqual(['Prix : 3 crédits']);
+    expect(lignesPrixAudioComplet(2500, true)).toEqual(['Prix public : 3 crédits', 'Votre coût : 0 crédit']);
   });
 });
 

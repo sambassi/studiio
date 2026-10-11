@@ -47,10 +47,18 @@ export function explicationTarifAudioComplet(creditsParTranche = 1): string {
 
 export const libelleCredits = (n: number) => `${n} crédit${n > 1 ? 's' : ''}`;
 
-/** Le libellé du bouton : le prix est toujours annoncé avant le clic. */
-export function libelleBoutonAudioComplet(nbCaracteres: number, administrateur: boolean, creditsParTranche = 1): string {
-  if (administrateur) return 'Générer l’audio complet — 0 crédit (administrateur)';
-  return `Générer l’audio complet — ${libelleCredits(coutAudioComplet(nbCaracteres, creditsParTranche))}`;
+/** Le bouton reste court : le prix est annoncé au-dessus, toujours avant le clic. */
+export const LIBELLE_BOUTON_AUDIO_COMPLET = 'Générer l’audio complet';
+
+/**
+ * Les lignes du bloc prix posé au-dessus du bouton (même présentation que
+ * « Générer la vidéo » de Mon avatar). Utilisateur : « Prix : N crédits ».
+ * Administrateur : le prix public puis « Votre coût : 0 crédit ».
+ * (Avant : un seul libellé de bouton insécable, qui débordait sur mobile.)
+ */
+export function lignesPrixAudioComplet(nbCaracteres: number, administrateur: boolean, creditsParTranche = 1): string[] {
+  const prix = libelleCredits(coutAudioComplet(nbCaracteres, creditsParTranche));
+  return administrateur ? [`Prix public : ${prix}`, 'Votre coût : 0 crédit'] : [`Prix : ${prix}`];
 }
 
 export const MESSAGE_TEXTE_AUDIO_COMPLET_VIDE = 'Le texte à générer est vide.';

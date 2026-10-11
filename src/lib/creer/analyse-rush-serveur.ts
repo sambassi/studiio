@@ -114,6 +114,18 @@ export function objetDeUrlPublique(url: string): { bucket: string; cle: string }
  * A → B → A → B. Même fichier lu en direct : ~0,6 s d'analyse.
  */
 export async function urlDeLecture(url: string): Promise<string> {
+  // ⚠️ SSRF / TOCTOU : ffmpeg (`-i http…`) et `parseMedia` suivent les
+  // redirections et refont leur DNS. Un média qui n'est PAS dans notre
+  // stockage (origines configurées) est d'abord copié par le fetch sûr
+  // (`medias-externes.ts`) ; ffmpeg ne lit jamais l'hôte d'un utilisateur.
+  // Rejette sur refus ou échec réseau — jamais de repli sur l'URL d'origine.
+  if (/^https?:\/\//i.test(url)) {
+    const { estNotreStockage, localiserMedia } = await import('@/lib/securite/medias-externes');
+    if (!estNotreStockage(url)) {
+      const genre = /\.(mp3|m4a|wav|ogg|aac|flac)(\?|#|$)/i.test(url) ? 'audio' : 'video';
+      url = await localiserMedia(url, { genre });
+    }
+  }
   const objet = objetDeUrlPublique(url);
   if (!objet) return url;
   try {
@@ -231,7 +243,9 @@ export function analyserRushServeurCache(url: string, dureeSecondes: number | nu
   const cle = `${url}@${dureeSecondes ?? ''}`;
   const hit = cache.get(cle);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.analyse;
-  const analyse = analyserRushServeur(url, dureeSecondes).then((a) => { if (!a) cache.delete(cle); return a; });
+  // Média illisible ou REFUSÉ (`urlDeLecture` : SSRF) : pas d'analyse, jamais
+  // une exception — le rush reste montable sans mesure.
+  const analyse = analyserRushServeur(url, dureeSecondes).catch(() => null).then((a) => { if (!a) cache.delete(cle); return a; });
   cache.set(cle, { at: Date.now(), analyse });
   while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
   return analyse;

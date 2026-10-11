@@ -1,4 +1,6 @@
 import { pickRush } from '@/lib/autopilot/rules';
+import { sonderSur, telechargerSur, estRefusSsrf, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
+import { estNotreStockage } from '@/lib/securite/medias-externes';
 
 /**
  * La photo d'affiche et la durée du rush, pour l'Autopilote.
@@ -16,33 +18,10 @@ import { pickRush } from '@/lib/autopilot/rules';
 /** Portrait : l'Autopilote produit du 9:16. */
 const ORIENTATION = 'portrait';
 
-/**
- * Mots-clés envoyés à la banque d'images, à partir du sujet.
- *
- * Le sujet vient des objectifs de l'utilisateur, en français. Pexels indexe
- * en anglais : sans traduction, « routine du matin » ne ramène rien et le
- * montage repart sur un dégradé. On garde un repli générique plutôt qu'une
- * requête vide.
- */
-export function posterQuery(topic: string): string {
-  const propre = (topic || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const table: Array<[RegExp, string]> = [
-    [/sommeil|dormir|nuit|repos/, 'sleep rest recovery'],
-    [/nutrition|manger|aliment|repas/, 'healthy food nutrition'],
-    [/cardio|course|courir|running/, 'cardio running workout'],
-    [/muscu|force|halter/, 'weightlifting gym strength'],
-    [/yoga|meditation|stress|mental/, 'yoga meditation calm'],
-    [/danse|dance/, 'dance fitness energy'],
-    [/matin|reveil|routine/, 'morning routine sunrise'],
-    [/eau|hydrat/, 'water hydration drink'],
-    [/energie|motivation/, 'athlete motivation training'],
-  ];
-  for (const [motif, requete] of table) {
-    if (motif.test(propre)) return requete;
-  }
-  // Repli : le même que la route `/api/pexels` quand elle ne reconnaît rien.
-  return 'fitness dance workout';
-}
+// `posterQuery` vit dans un module pur (le navigateur l'importe sans le reste).
+export { posterQuery } from '@/lib/autopilot/poster-requete';
+import { posterQuery } from '@/lib/autopilot/poster-requete';
+
 
 /**
  * Affiche prise dans la banque de l'utilisateur, en rotation.
@@ -105,18 +84,22 @@ export async function pickPosterUrl(topic: string, variante = 0): Promise<string
  * fichier manque vraiment — ce qui coûte un montage, pas la banque.
  *
  * Un 405 (HEAD refusé par le stockage) ne dit rien non plus : il passe.
+ *
+ * ⚠️ SSRF : la sonde passe par le fetch SÛR (`fetch-sur.ts`) — DNS épinglé,
+ * adresses internes refusées, redirections revalidées une à une. Un REFUS de
+ * politique (cible interne, redirection vers une adresse privée, chaîne trop
+ * longue) n'est PAS un doute : la cible n'a pas été contactée, et l'URL ne
+ * sera jamais lisible par le rendu — le rush est « absent ». Le doute ne
+ * profite qu'aux échecs RÉSEAU d'une cible autorisée.
  */
-export async function rushEncorePresent(url: string, timeoutMs = 8_000): Promise<boolean> {
-  const controleur = new AbortController();
-  const minuteur = setTimeout(() => controleur.abort(), timeoutMs);
+export async function rushEncorePresent(url: string, timeoutMs = 8_000, reseau: OptionsFetchSur = {}): Promise<boolean> {
   try {
-    const res = await fetch(url, { method: 'HEAD', signal: controleur.signal, cache: 'no-store' });
+    const res = await sonderSur(url, { ...reseau, timeoutMs });
     return !(res.status === 404 || res.status === 410);
-  } catch {
+  } catch (e) {
+    if (estRefusSsrf(e)) return false;
     // Réseau, délai, hôte injoignable : aucune conclusion possible.
     return true;
-  } finally {
-    clearTimeout(minuteur);
   }
 }
 
@@ -133,11 +116,28 @@ export async function rushEncorePresent(url: string, timeoutMs = 8_000): Promise
  * dans Node — contrairement à `@remotion/media-utils`, qui suppose un
  * navigateur.
  */
-export async function probeRushSeconds(url: string): Promise<number | null> {
+export async function probeRushSeconds(url: string, reseau: OptionsFetchSur = {}): Promise<number | null> {
+  // ⚠️ SSRF / TOCTOU : `parseMedia` lit lui-même ce qu'on lui donne, en
+  // suivant les redirections. Il ne reçoit donc une URL que si elle désigne
+  // NOTRE stockage (relais public, qui ne redirige jamais) ; tout autre média
+  // est d'abord téléchargé par le fetch sûr, puis lu en FICHIER local.
+  let local: string | null = null;
   try {
     const { parseMedia } = await import('@remotion/media-parser');
+    let src = url;
+    let reader: import('@remotion/media-parser').MediaParserReaderInterface | undefined;
+    if (!estNotreStockage(url)) {
+      const os = await import('os');
+      const path = await import('path');
+      const { randomUUID } = await import('crypto');
+      local = path.join(os.tmpdir(), `studiio-sonde-${randomUUID()}`);
+      await telechargerSur(url, local, { timeoutMs: 120_000, ...reseau });
+      src = local;
+      reader = (await import('@remotion/media-parser/node')).nodeReader;
+    }
     const { durationInSeconds } = await parseMedia({
-      src: url,
+      src,
+      ...(reader ? { reader } : {}),
       fields: { durationInSeconds: true },
       acknowledgeRemotionLicense: true,
     });
@@ -146,5 +146,10 @@ export async function probeRushSeconds(url: string): Promise<number | null> {
       : null;
   } catch {
     return null;
+  } finally {
+    if (local) {
+      const { unlink } = await import('fs/promises');
+      await unlink(local).catch(() => undefined);
+    }
   }
 }

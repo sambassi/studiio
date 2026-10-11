@@ -4,6 +4,7 @@ import {
   TEXT_CASES, TEXT_ALIGNS, type TextCase, type TextAlign,
 } from '@/lib/creer/textFormat';
 import { CARD_STYLE_NAMES } from '@/lib/creer/cardStyles';
+import { normaliserConfigSources, type ConfigSources } from '@/lib/autopilot/sources';
 
 /**
  * Le style de texte CONSTANT de l'Autopilote — police, taille, position,
@@ -124,6 +125,11 @@ export function montageDepuisStyle(
 }
 
 export interface AutopilotDesignStyle {
+  /**
+   * Sources de la vidéo (rushes / avatar / stock) et gabarit du plan
+   * multi-sources — voir `lib/autopilot/sources`. Absent = comportement d'avant.
+   */
+  sources?: ConfigSources;
   /**
    * Format et durée du montage de rushes. Absent = les valeurs par défaut.
    *
@@ -298,6 +304,7 @@ export function sanitizeDesignStyle(brut: unknown): AutopilotDesignStyle {
     // ⚠️ SANS CETTE LIGNE, LE RÉGLAGE EST SILENCIEUSEMENT EFFACÉ à chaque
     // enregistrement : `compacter` ne garde que ce qui est nommé ici.
     montage: montage(o.montage),
+    sources: normaliserConfigSources(o.sources),
     title: zone(o.title, true),
     // La position du sous-titre est retirée par `zone(..., false)` : voir le
     // commentaire du champ.

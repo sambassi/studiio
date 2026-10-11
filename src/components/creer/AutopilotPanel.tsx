@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react';
 import { classesCarteOption } from '@/lib/ui/etats';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
@@ -14,7 +14,19 @@ import SessionsTournagePanel from '@/components/creer/SessionsTournagePanel';
 import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
-import CompleterRushesStock, { idStockDuRush, type MetaRushStock } from '@/components/creer/CompleterRushesStock';
+import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type PropositionsStock } from '@/components/creer/CompleterRushesStock';
+import AvatarPrincipalAutopilote, { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
+import StockRechercheAutopilote, { cleMediaStock, libelleAttribution } from '@/components/creer/StockRechercheAutopilote';
+import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
+import {
+  validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
+  gabaritSuggere, type AvatarPret, type EtatMediasPrevus,
+} from '@/lib/autopilot/medias-prevus';
+import {
+  aUneSourceVisuelle, estRushStock, MAX_STOCK_RETENU,
+  type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
+} from '@/lib/autopilot/sources';
+import type { FormatStock } from '@/lib/stock/types';
 import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
@@ -83,7 +95,7 @@ function nomDeFichier(url: string): string {
  */
 const ETAPES = [
   { titre: 'Sujets', question: 'De quoi Studiio doit-il parler ?', aide: 'Choisissez un ou plusieurs sujets.' },
-  { titre: 'Rushes', question: 'Ajoutez les vidéos que Studiio pourra utiliser', aide: 'Au moins un rush est nécessaire.' },
+  { titre: 'Rushes', question: 'Choisissez les sources de vos vidéos', aide: 'Vos rushes, votre avatar, des médias Pexels / Unsplash — seuls ou combinés.' },
   // ⚠️ CETTE ETAPE EST CELLE DE CE QUI NE CHANGE PAS. Les trois autres
   // reglent ce que l'Autopilote fait VARIER ; celle-ci, l'identite que
   // toutes les videos partagent.
@@ -146,18 +158,36 @@ function phraseDiffusion(config: AutopilotConfig): string {
 }
 
 /**
- * La check-list de preparation. Chaque ligne vient de la configuration ; la
- * seule condition BLOQUANTE pour la production est le rush (le moteur refuse
- * de tourner sans : `shouldRun` → `sans-rush`). Le reste a toujours une
- * valeur — recommandee ou choisie — et ne bloque rien.
+ * Les sources en une ligne : « 2 rushes · avatar · 3 médias stock ».
  */
-function checklistPreparation(config: AutopilotConfig): Array<{ cle: string; ok: boolean; texte: string; bloquant: boolean }> {
-  const n = config.rushUrls.length;
+function resumeSources(e: EtatMediasPrevus): string {
+  const parts: string[] = [];
+  const r = e.rushesPersonnels + e.bibliotheque;
+  if (r > 0) parts.push(`${r} rush${r > 1 ? 'es' : ''}`);
+  if (e.avatarActif && e.avatarPret) parts.push('avatar');
+  if (e.stockRetenus > 0) parts.push(`${e.stockRetenus} média${e.stockRetenus > 1 ? 's' : ''} stock`);
+  return parts.join(' · ');
+}
+
+/**
+ * La check-list de preparation. Chaque ligne vient de la configuration ; la
+ * seule condition BLOQUANTE pour la production est d'avoir AU MOINS UNE
+ * source visuelle (rushes, avatar prêt, médias stock retenus — voir
+ * `aUneSourceVisuelle`). Le reste a toujours une valeur et ne bloque rien.
+ */
+function checklistPreparation(config: AutopilotConfig, e: EtatMediasPrevus, avatarPret: AvatarPret): Array<{ cle: string; ok: boolean; texte: string; bloquant: boolean }> {
+  // Avatar demandé mais pas prêt : bloquant — le lancement échouerait.
+  const avatarBloque = config.jumeauAvatar && avatarPret === false;
+  const possible = aUneSourceVisuelle(e);
   return [
     { cle: 'sujets', ok: true, bloquant: false,
       texte: config.topics.length === 0 ? 'Sujets : tous les thèmes, en rotation' : `Sujets : ${config.topics.length} choisi${config.topics.length > 1 ? 's' : ''}` },
-    { cle: 'rushes', ok: n > 0, bloquant: true,
-      texte: n === 0 ? 'Aucun rush — rien ne sera produit' : `${n} rush${n > 1 ? 'es' : ''} prêt${n > 1 ? 's' : ''}` },
+    { cle: 'rushes', ok: possible && !avatarBloque, bloquant: true,
+      texte: avatarBloque
+        ? 'Avatar demandé, mais aucun avatar prêt — configurez-le dans Mon avatar'
+        : possible
+          ? `Sources : ${resumeSources(e)}`
+          : 'Aucune source visuelle — rien ne sera produit' },
     { cle: 'style', ok: true, bloquant: false, texte: 'Style configuré (couleurs, affiche, son)' },
     { cle: 'publication', ok: true, bloquant: false,
       texte: config.platforms.length ? `Publication : ${config.platforms.length} réseau${config.platforms.length > 1 ? 'x' : ''}` : 'Publication : dans le Calendrier seulement (aucun réseau)' },
@@ -314,8 +344,8 @@ function prochainesEcheances(
  * d'activer un pilote automatique : qu'est-ce qui va se ressembler d'une
  * video a l'autre ? Une liste unique de quinze lignes ne repondait pas.
  */
-function RECAP_VARIABLE(config: AutopilotConfig): Array<[string, string]> {
-  const n = config.rushUrls.length;
+function RECAP_VARIABLE(config: AutopilotConfig, e: EtatMediasPrevus): Array<[string, string]> {
+  const n = e.rushesPersonnels;
   return [
     ['Thèmes', config.topics.length === 0
       ? 'Tous (12 thèmes)'
@@ -324,8 +354,9 @@ function RECAP_VARIABLE(config: AutopilotConfig): Array<[string, string]> {
       ? `Vos ${config.posterUrls.length} photo${config.posterUrls.length > 1 ? 's' : ''}, en rotation`
       : 'Choisie par Studiio selon le thème'],
     ['Textes', 'Différents à chaque vidéo'],
+    ['Sources', aUneSourceVisuelle(e) ? resumeSources(e) : 'Aucune — rien ne sera produit'],
     ['Rushes', n === 0
-      ? 'Aucun — rien ne sera produit'
+      ? 'Aucun rush personnel'
       : n === 1
         ? '1 seul — il sera répété sur toutes les vidéos'
         : `${n} en rotation — jamais deux fois de suite le même`],
@@ -441,15 +472,22 @@ export default function AutopilotPanel({
   const [libOpen, setLibOpen] = useState<null | 'rush' | 'musique' | 'affiche'>(null);
   const [etape, setEtape] = useState(0);
   /**
-   * « Compléter automatiquement mes rushes » — DÉSACTIVÉ PAR DÉFAUT.
-   *
-   * ⚠️ AUCUNE COLONNE : le choix vit dans le navigateur (`localStorage`), la
-   * configuration enregistrée reste strictement la même. Désactivé, rien de
-   * plus n'est rendu que la case, et aucun appel stock ne part.
+   * La recherche stock ouverte pour UNE ligne du plan (« Rechercher un autre
+   * média ») : l'identifiant de la ligne et les lignes affichées à ce moment
+   * (la suggestion n'est pas encore enregistrée).
    */
-  const [completerStock, setCompleterStock] = useState(false);
+  const [rechercheLigne, setRechercheLigne] = useState<{ id: string; lignes: CreneauGabarit[] } | null>(null);
   /** Rushes stock acceptés dans cette session : url → attribution (Pexels). */
   const [metaStock, setMetaStock] = useState<Record<string, MetaRushStock>>({});
+  /**
+   * L'avatar personnel est-il prêt pour les montages (lu par
+   * `AvatarPrincipalAutopilote`, `GET /api/creer/jumeau`) ? `null` : pas
+   * encore vérifié. Sert la validation de l'étape Rushes et le résumé.
+   */
+  const [avatarPret, setAvatarPret] = useState<AvatarPret>(null);
+  const [vignetteAvatar, setVignetteAvatar] = useState<VignetteAvatar | null>(null);
+  /** Les propositions stock en attente de choix — pour « Médias prévus ». */
+  const [propositionsStock, setPropositionsStock] = useState<PropositionsStock>({ proposes: 0, vignettes: [] });
   /**
    * Les « Réglages avancés » de l'étape Style sont-ils dépliés ? Le lecteur
    * du mixage n'existe QUE dépliés : replier le bloc doit couper le son, pas
@@ -663,19 +701,94 @@ export default function AutopilotPanel({
   // entre-temps a chaque geste.
   useEffect(() => { onPatchReady?.(enregistrer); }, [enregistrer, onPatchReady]);
 
-  // Lu APRÈS le montage : le rendu serveur ne connaît pas `localStorage`.
+  /**
+   * LES SOURCES DE LA VIDÉO — `designStyle.sources`, ou le comportement
+   * d'avant quand la clé est absente (rushes ON, avatar = `jumeauAvatar`,
+   * stock OFF). L'avatar suit TOUJOURS la colonne `jumeauAvatar`.
+   */
+  const sources = useMemo(() => sourcesEffectives(config), [config]);
+  // Clé `sources` enregistrée ou non : la MÊME lecture que le moteur (`mediasDesSources`).
+  const etatSources = etatSourcesVisuelles(config.rushUrls, sources, avatarPret, !!config.designStyle.sources);
+  const sourcePossible = aUneSourceVisuelle(etatSources);
+  const montageFormat = montageDepuisStyle(config.designStyle)?.format;
+  const formatStock: FormatStock = montageFormat === '16:9' || montageFormat === '1:1' ? montageFormat : '9:16';
+  const rushesPerso = config.rushUrls.filter((u) => !estRushStock(u));
+  const sujetStock = config.topics[0] ? themeLabel(config.topics[0]) : (config.brief.objectif || config.brief.message || 'fitness');
+
+  /**
+   * Enregistre les sources — par le MÊME `enregistrer` (un seul PUT), en
+   * fusion dans `designStyle` (polices, icônes et montage y vivent aussi).
+   * `actives.avatar` recopie toujours `jumeauAvatar`.
+   */
+  const enregistrerSources = useCallback((suivantes: ConfigSources, extra: Partial<AutopilotConfig> = {}) => {
+    const jumeau = extra.jumeauAvatar ?? config.jumeauAvatar;
+    enregistrer({
+      ...extra,
+      designStyle: { ...config.designStyle, sources: { ...suivantes, actives: { ...suivantes.actives, avatar: jumeau } } },
+    });
+  }, [config, enregistrer]);
+
+  /**
+   * « Mon avatar » — la colonne `jumeauAvatar`, ET son reflet dans
+   * `sources.actives.avatar` quand la clé existe. Sans clé (configuration
+   * jamais touchée), seul `jumeauAvatar` part : le PUT d'avant, à l'octet près.
+   */
+  const basculerAvatar = useCallback((actif: boolean) => {
+    if (config.designStyle.sources) enregistrerSources(sources, { jumeauAvatar: actif });
+    else enregistrer({ jumeauAvatar: actif });
+  }, [config.designStyle.sources, enregistrerSources, enregistrer, sources]);
+
+  const basculerSource = useCallback((cle: 'rushes' | 'stock', actif: boolean) => {
+    enregistrerSources({ ...sources, actives: { ...sources.actives, [cle]: actif } });
+  }, [enregistrerSources, sources]);
+
+  /**
+   * Retient un média stock : enregistré dans `sources.stock` (attribution
+   * comprise) ; une VIDÉO Pexels importée rejoint aussi la banque de rushes.
+   * Depuis une ligne du plan, la ligne devient « Stock » sur ce média. UN
+   * SEUL enregistrement pour le tout.
+   */
+  const retenirStock = useCallback((m: MediaStockRetenu, ligne?: { id: string; lignes: CreneauGabarit[] } | null) => {
+    const url = urlPubliqueAbsolue(m.url, window.location.origin) ?? m.url;
+    const media: MediaStockRetenu = { ...m, url };
+    const stock = [...sources.stock.filter((s) => s.url !== url), media].slice(0, MAX_STOCK_RETENU);
+    const extra: Partial<AutopilotConfig> = {};
+    if (m.type === 'video') {
+      const banque = dedupeParCleObjet([...config.rushUrls, url]);
+      if (banque.length !== dedupeParCleObjet(config.rushUrls).length) extra.rushUrls = banque;
+    }
+    const gabarit = ligne
+      ? ligne.lignes.map((l) => (l.id === ligne.id ? { id: l.id, type: 'stock' as const, media: url } : l))
+      : sources.gabarit;
+    enregistrerSources({ ...sources, actives: { ...sources.actives, stock: true }, stock, gabarit }, extra);
+  }, [config.rushUrls, enregistrerSources, sources]);
+
+  /** Retire un média retenu — de la banque aussi pour une vidéo, et des lignes du plan qui le forçaient. */
+  const retirerStock = useCallback((url: string) => {
+    const m = sources.stock.find((s) => s.url === url);
+    const extra: Partial<AutopilotConfig> = m?.type === 'video' ? { rushUrls: config.rushUrls.filter((u) => u !== url) } : {};
+    enregistrerSources({
+      ...sources,
+      stock: sources.stock.filter((s) => s.url !== url),
+      gabarit: sources.gabarit.map((l) => (l.media === url ? { id: l.id, type: l.type } : l)),
+    }, extra);
+  }, [config.rushUrls, enregistrerSources, sources]);
+
+  /**
+   * MIGRATION UNIQUE de l'ancienne préférence navigateur (#541,
+   * `localStorage`) : « Compléter automatiquement » coché devient la source
+   * stock ENREGISTRÉE. La clé est ensuite effacée — plus jamais relue.
+   */
+  const migrationFaite = useRef(false);
   useEffect(() => {
+    if (loading || !ready || migrationFaite.current) return;
+    migrationFaite.current = true;
     try {
-      setCompleterStock(window.localStorage.getItem(CLE_COMPLETER_STOCK) === '1');
-    } catch { /* navigation privée : reste désactivé */ }
-  }, []);
-  const basculerCompleterStock = useCallback((actif: boolean) => {
-    setCompleterStock(actif);
-    try {
-      if (actif) window.localStorage.setItem(CLE_COMPLETER_STOCK, '1');
-      else window.localStorage.removeItem(CLE_COMPLETER_STOCK);
-    } catch { /* préférence non conservée, sans conséquence */ }
-  }, []);
+      if (window.localStorage.getItem(CLE_COMPLETER_STOCK) !== '1') return;
+      window.localStorage.removeItem(CLE_COMPLETER_STOCK);
+    } catch { return; }
+    if (!sources.actives.stock) basculerSource('stock', true);
+  }, [loading, ready, sources.actives.stock, basculerSource]);
 
   const etat = statusMessage(config, Date.now(), (d) =>
     d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }));
@@ -787,7 +900,18 @@ export default function AutopilotPanel({
   // L'etape des rushes est la seule qui BLOQUE : sans rush, l'Autopilote ne
   // produit rien, et le laisser avancer serait promettre une production qui
   // n'aura pas lieu.
-  const bloqueEtape = etape === 1 && config.rushUrls.length === 0;
+  //
+  // Avec l'avatar (réglage existant `jumeauAvatar`) prêt, l'étape passe sans
+  // rush : le moteur l'accepte déjà (`allowWithoutRush: config.jumeauAvatar`).
+  // Sans avatar, la règle historique est inchangée.
+  const validationRushes = validerEtapeRushes({
+    nbRushes: etatSources.rushesPersonnels,
+    avatarDemande: config.jumeauAvatar,
+    avatarPret,
+    stockRetenus: etatSources.stockRetenus,
+    bibliotheque: etatSources.bibliotheque,
+  });
+  const bloqueEtape = etape === 1 && validationRushes.bloque;
 
   /**
    * Le devis de « Produire un brouillon maintenant » — demandé UNE fois, à
@@ -917,9 +1041,57 @@ export default function AutopilotPanel({
    * pas d'état propre — un composant aurait demandé huit props pour le même
    * résultat.
    */
+  /**
+   * « Médias prévus » — ce que les montages contiendront, AVANT tout rendu,
+   * source par source : avatar (OUI/NON + vignette existante), rushes
+   * personnels, Pexels (vidéos + photos), Unsplash (photos). Les sources se
+   * COMBINENT : une seule phrase, « Vidéo multi-sources prête », dès qu'une
+   * source visuelle existe.
+   */
+  const rendreMediasPrevus = () => {
+    const e = etatSources;
+    const avatarOui = e.avatarActif && e.avatarPret;
+    const rendu = contenuRendu(e);
+    const personnels = e.rushesPersonnels + e.bibliotheque;
+    const stockProposes = sources.actives.stock ? propositionsStock.proposes : 0;
+    const vignettes = sources.actives.stock ? sources.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
+    const ligne = (dt: string, dd: ReactNode, attrs: Record<string, string | number>) => (
+      <div className="flex items-center justify-between gap-3 min-w-0">
+        <dt className="text-gray-500 shrink-0">{dt}</dt>
+        <dd className="flex items-center gap-2 text-right text-gray-200 min-w-0" {...attrs}>{dd}</dd>
+      </div>
+    );
+    return (
+      <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-2 text-[11px] min-w-0" data-autopilot-medias-prevus data-rendu={rendu.cas}>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias prévus</p>
+        <dl className="space-y-1.5">
+          {ligne('Avatar', <>{avatarOui && <MiniatureAvatar vignette={vignetteAvatar} className="w-7 h-7" />}{avatarOui ? 'OUI' : 'NON'}</>,
+            { 'data-autopilot-medias-avatar': avatarOui ? 'oui' : 'non' })}
+          {ligne('Rushes personnels', personnels, { 'data-autopilot-medias-rushes': personnels })}
+          {ligne('Pexels', `${e.pexelsVideos} vidéo${e.pexelsVideos > 1 ? 's' : ''}${e.pexelsPhotos > 0 ? ` (+ ${e.pexelsPhotos} photo${e.pexelsPhotos > 1 ? 's' : ''})` : ''}`,
+            { 'data-autopilot-medias-pexels': `${e.pexelsVideos}/${e.pexelsPhotos}` })}
+          {ligne('Unsplash', `${e.unsplashPhotos} photo${e.unsplashPhotos > 1 ? 's' : ''}`, { 'data-autopilot-medias-unsplash': e.unsplashPhotos })}
+          {stockProposes > 0 && ligne('Propositions en attente', stockProposes, { 'data-autopilot-medias-stock': stockProposes })}
+        </dl>
+        {vignettes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5" data-autopilot-medias-vignettes>
+            {vignettes.map((m) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img key={m.url} src={m.vignetteUrl} alt={libelleAttribution(m)} title={libelleAttribution(m)}
+                className="w-7 h-10 rounded object-cover bg-gray-800" data-autopilot-medias-stock-vignette />
+            ))}
+          </div>
+        )}
+        <p className={rendu.cas === 'rien' ? 'text-amber-300' : 'text-emerald-400'} data-autopilot-medias-rendu>{rendu.phrase}</p>
+      </div>
+    );
+  };
+
   const rendreProchaines = () => {
     const echeances = prochainesEcheances(config);
-    const sansRush = config.rushUrls.length === 0;
+    // Sans AUCUNE source visuelle (ni rush, ni avatar prêt, ni média stock
+    // retenu), rien à produire.
+    const sansRush = !sourcePossible;
     return (
       <div className="space-y-2">
         {/* ── Les DEUX prochaines échéances, une par ligne ───────────────
@@ -962,7 +1134,7 @@ export default function AutopilotPanel({
             type="button"
             onClick={() => setProduire({ etat: 'confirmation' })}
             disabled={!ready || sansRush}
-            title={sansRush ? 'Ajoutez au moins un rush pour produire.' : undefined}
+            title={sansRush ? 'Ajoutez une source visuelle (rush, avatar ou média stock) pour produire.' : undefined}
             data-autopilot-produire-maintenant
             className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-200 hover:border-gray-700 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -976,7 +1148,7 @@ export default function AutopilotPanel({
             data-autopilot-produire-confirmation
           >
             <p className="text-purple-100">
-              Une vidéo est rendue tout de suite avec vos rushes et votre style,
+              Une vidéo est rendue tout de suite avec vos sources et votre style,
               puis déposée en <strong>brouillon</strong> dans le Calendrier, sans
               aucun réseau : rien ne sera publié.
             </p>
@@ -1133,7 +1305,9 @@ export default function AutopilotPanel({
           courte, puis une action principale. Meme place, meme forme. */}
       <div data-autopilot-a-faire>
         <p className="text-sm font-medium text-white">{ETAPES[etape].question}</p>
-        <p className="text-[11px] text-gray-500 mt-0.5">{ETAPES[etape].aide}</p>
+        <p className="text-[11px] text-gray-500 mt-0.5">
+          {ETAPES[etape].aide}
+        </p>
       </div>
 
       {/* ── Étape 1 · Thèmes ─────────────────────────────────────────── */}
@@ -1243,6 +1417,57 @@ export default function AutopilotPanel({
       {/* ── Étape 2 · Vos rushes ─────────────────────────────────────── */}
       {etape === 1 && (
         <div className="space-y-3">
+          {/* ── SOURCES DE LA VIDÉO — trois sources INDÉPENDANTES et
+              COMBINABLES d'un même Autopilote (jamais des parcours). Avatar :
+              la colonne `jumeauAvatar` ; rushes et stock :
+              `designStyle.sources.actives`. Un seul `enregistrer`. */}
+          <section className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2.5 min-w-0" data-autopilot-sources>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Sources de la vidéo</p>
+            <label className={`flex items-start gap-2 ${ready && !saving ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+              <input
+                type="checkbox"
+                checked={sources.actives.rushes}
+                disabled={!ready || saving}
+                onChange={(e) => basculerSource('rushes', e.target.checked)}
+                data-autopilot-source-rushes
+                className="mt-0.5"
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-gray-300">Mes rushes</span>
+                <span className="block text-[11px] text-gray-500">Vos vidéos personnelles, en rotation d’une vidéo à l’autre.</span>
+              </span>
+            </label>
+            <AvatarPrincipalAutopilote
+              actif={config.jumeauAvatar}
+              avatarId={config.jumeauAvatarId}
+              jumeauReady={jumeauReady}
+              disabled={!ready || saving}
+              onChange={basculerAvatar}
+              onPret={setAvatarPret}
+              onVignette={setVignetteAvatar}
+            />
+            <label className={`flex items-start gap-2 ${ready && !saving ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+              <input
+                type="checkbox"
+                checked={sources.actives.stock}
+                disabled={!ready || saving}
+                onChange={(e) => basculerSource('stock', e.target.checked)}
+                data-autopilot-completer-stock
+                className="mt-0.5"
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-gray-300">Compléter avec Pexels / Unsplash</span>
+                <span className="block text-[11px] text-gray-500">
+                  Vidéos Pexels, photos Pexels et Unsplash : seuls les médias que vous retenez sont utilisés.
+                </span>
+              </span>
+            </label>
+            {validationRushes.motif === 'sans-source' && (
+              <p className="flex items-start gap-1.5 text-[11px] text-amber-300" data-autopilot-sources-aucune>
+                <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" /> {validationRushes.message}
+              </p>
+            )}
+          </section>
 {/* ── Banque de rushes ─────────────────────────────────────────── */}
           <div>
             {/* L'etat en un mot, puis L'ACTION. Sans rush, « Ajouter des
@@ -1252,9 +1477,9 @@ export default function AutopilotPanel({
             <div className="flex items-center justify-between gap-2 mb-2">
               <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={config.rushUrls.length > 0 ? 'pret' : 'a-faire'}>
                 Banque de rushes
-                <span className={`ml-1.5 ${config.rushUrls.length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className={`ml-1.5 ${config.rushUrls.length > 0 || sourcePossible ? 'text-emerald-400' : 'text-amber-400'}`}>
                   {config.rushUrls.length === 0
-                    ? '0 rush — au moins un est nécessaire'
+                    ? (sourcePossible ? '0 rush — facultatif avec vos autres sources' : '0 rush — aucune source pour l’instant')
                     : `${config.rushUrls.length} rush${config.rushUrls.length > 1 ? 'es' : ''} prêt${config.rushUrls.length > 1 ? 's' : ''}`}
                 </span>
               </p>
@@ -1275,8 +1500,9 @@ export default function AutopilotPanel({
               </button>
             </div>
             <p className="text-[11px] text-gray-500 mb-2">
-              L’Autopilote y pioche à tour de rôle pour chaque vidéo. Sans rush, il ne produit rien —
-              il vous le dira plutôt que de générer des montages sans image.
+              {!sources.actives.rushes
+                ? 'Source « Mes rushes » désactivée : vos rushes personnels ne seront pas montés.'
+                : 'L’Autopilote y pioche à tour de rôle pour chaque vidéo, avec vos autres sources actives.'}
             </p>
             {/* ⚠️ LA LIMITE DU RUSH UNIQUE, DITE AVANT QU'ELLE SURPRENNE.
                 Avec un seul rush, la rotation n'a pas le choix : toutes les
@@ -1333,9 +1559,12 @@ export default function AutopilotPanel({
                           <span className="truncate">{url.split('/').pop()}</span>
                         </span>
                         {/* Un rush stock accepté se dit tel quel — jamais confondu avec les vôtres. */}
-                        {completerStock && (metaStock[url] || idStockDuRush(url)) && (
+                        {sources.actives.stock && (metaStock[url] || idStockDuRush(url)) && (
                           <span className="ml-5 text-[10px] text-gray-500" data-autopilot-rush-stock={url}>
-                            {metaStock[url] ? `Stock · Pexels · ${metaStock[url].auteur}` : 'Stock · Pexels'}
+                            {(() => {
+                              const auteur = metaStock[url]?.auteur ?? sources.stock.find((m) => m.url === url)?.auteur;
+                              return auteur ? `Stock · Pexels · ${auteur}` : 'Stock · Pexels';
+                            })()}
                           </span>
                         )}
                         {/* L'état, sous le nom : « accessible » ou « expiré ». Tant que
@@ -1382,44 +1611,108 @@ export default function AutopilotPanel({
             />
           </div>
 
-          {/* ── COMPLÉTER AVEC DU STOCK (Pexels, vidéos) ──────────────────
-              Désactivé par défaut. Activé, Studiio regarde les plans que le
-              montage remplira, propose une vidéo par plan manquant, et
-              n'ajoute RIEN sans « Conserver ». La règle « au moins un rush »
-              ci-dessus ne change pas. */}
-          <div className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2">
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={completerStock}
-                onChange={(e) => basculerCompleterStock(e.target.checked)}
-                data-autopilot-completer-stock
-                className="mt-0.5"
-              />
-              <span>
-                <span className="block text-xs font-medium text-gray-300">Compléter automatiquement mes rushes</span>
-                <span className="block text-[11px] text-gray-500">
-                  Si vos propres médias ne suffisent pas, Studiio peut rechercher des médias stock correspondant à votre sujet.
-                </span>
-              </span>
-            </label>
-            {completerStock && (
+          {/* ── SOURCE STOCK — Pexels (vidéos, photos) et Unsplash (photos).
+              Les propositions par plan manquant (#541) et la recherche libre
+              n'ajoutent RIEN sans « Conserver » / « Retenir ». Chaque média
+              retenu est enregistré dans `designStyle.sources.stock`, avec son
+              attribution ; le cron n'interroge jamais les fournisseurs. */}
+          {sources.actives.stock && (
+            <div className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2 min-w-0" data-autopilot-stock-source>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias Pexels / Unsplash</p>
               <CompleterRushesStock
-                sujet={config.topics[0] ? themeLabel(config.topics[0]) : (config.brief.objectif || config.brief.message || 'fitness')}
+                sujet={sujetStock}
                 message={config.brief.message ?? null}
                 objectif={config.brief.objectif ?? null}
                 rushUrls={config.rushUrls}
-                format="9:16"
+                format={formatStock}
                 accent={accent}
+                avatar={avatarPorteLaProduction(config.jumeauAvatar, avatarPret)}
+                onPropositions={setPropositionsStock}
                 onConserver={(url, meta) => {
-                  // La même URL absolue que celle que `ajouterRushes` enregistre.
+                  // La même URL absolue que celle que la banque enregistre.
                   const absolue = urlPubliqueAbsolue(url, window.location.origin) ?? url;
                   setMetaStock((m) => ({ ...m, [absolue]: meta }));
-                  ajouterRushes([url]);
+                  retenirStock({
+                    url: absolue, type: 'video', provider: 'pexels', providerAssetId: meta.providerAssetId,
+                    auteur: meta.auteur, sourceUrl: meta.sourceUrl, licence: meta.licence, vignetteUrl: meta.vignetteUrl ?? '',
+                  });
                 }}
               />
-            )}
-          </div>
+              {sources.stock.length > 0 && (
+                <ul className="space-y-1" data-autopilot-stock-retenus>
+                  {sources.stock.map((m) => (
+                    <li key={m.url} className="flex items-center gap-2 rounded-lg border border-gray-800 bg-gray-900 px-2 py-1.5 min-w-0" data-autopilot-stock-retenu={cleMediaStock(m)}>
+                      {m.vignetteUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={m.vignetteUrl} alt="" className="w-7 h-10 rounded object-cover bg-gray-800 shrink-0" />
+                      ) : (
+                        <span className="w-7 h-10 rounded bg-gray-800 shrink-0 flex items-center justify-center text-gray-500">
+                          {m.type === 'video' ? <Film className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1 text-[10px] text-gray-400 break-words" data-autopilot-stock-attribution>
+                        {m.sourceUrl
+                          ? <a href={m.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">{libelleAttribution(m)}</a>
+                          : libelleAttribution(m)}
+                        {m.licence ? <span className="block text-gray-600">{m.licence}</span> : null}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => retirerStock(m.url)}
+                        disabled={saving}
+                        aria-label={`Retirer ${libelleAttribution(m)}`}
+                        data-autopilot-stock-retirer={cleMediaStock(m)}
+                        className="shrink-0 text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <StockRechercheAutopilote
+                sujet={sujetStock}
+                format={formatStock}
+                accent={accent}
+                dejaRetenus={sources.stock.map(cleMediaStock)}
+                onRetenir={(m) => retenirStock(m)}
+                titre="Rechercher des médias"
+              />
+            </div>
+          )}
+
+          {rendreMediasPrevus()}
+
+          {/* ── PLAN AVANT GÉNÉRATION — le gabarit de la séquence Vidéo.
+              Aucune génération ici ; `designStyle.sources.gabarit`. */}
+          <PlanAvantGeneration
+            gabarit={sources.gabarit}
+            suggestion={gabaritSuggere({
+              avatar: etatSources.avatarActif && etatSources.avatarPret,
+              rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
+              stock: etatSources.stockRetenus,
+            })}
+            rushesPerso={sources.actives.rushes ? rushesPerso : []}
+            stock={sources.actives.stock ? sources.stock : []}
+            vignetteAvatar={vignetteAvatar}
+            avatarDisponible={etatSources.avatarActif && etatSources.avatarPret}
+            disabled={!ready || saving}
+            onChange={(g) => enregistrerSources({ ...sources, gabarit: g })}
+            onRechercher={(id, lignes) => setRechercheLigne({ id, lignes })}
+          />
+          {rechercheLigne && (
+            <StockRechercheAutopilote
+              key={rechercheLigne.id}
+              ident={`ligne-${rechercheLigne.id}`}
+              sujet={sujetStock}
+              format={formatStock}
+              accent={accent}
+              dejaRetenus={sources.stock.map(cleMediaStock)}
+              titre={`Rechercher un média pour la séquence ${rechercheLigne.lignes.findIndex((l) => l.id === rechercheLigne.id) + 1}`}
+              onFermer={() => setRechercheLigne(null)}
+              onRetenir={(m) => { retenirStock(m, rechercheLigne); setRechercheLigne(null); }}
+            />
+          )}
 
 {/* ── VIDEO PONCTUELLE A PARTIR D'UN RUSH (sessions de tournage) ───
               Le socle M3-A, INTACT — mais repliee et nommee pour ce qu'elle
@@ -1755,7 +2048,7 @@ export default function AutopilotPanel({
             }}
             avatarActif={config.jumeauAvatar}
             jumeauReady={jumeauReady}
-            onAvatarChange={(actif) => enregistrer({ jumeauAvatar: actif })}
+            onAvatarChange={basculerAvatar}
             avatarId={config.jumeauAvatarId}
             onAvatarIdChange={(avatarId) => enregistrer({ jumeauAvatarId: avatarId })}
           />
@@ -2275,7 +2568,7 @@ export default function AutopilotPanel({
               regle ici : on la DIT, et on retire au bouton son air de
               « tout est pret » tant que ce n'est pas vrai. */}
           {(() => {
-            const lignes = checklistPreparation(config);
+            const lignes = checklistPreparation(config, etatSources, avatarPret);
             const pret = lignes.every((l) => l.ok || !l.bloquant);
             return (
               <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-1.5" data-autopilot-checklist data-autopilot-pret={pret ? 'oui' : 'non'}>
@@ -2293,16 +2586,20 @@ export default function AutopilotPanel({
                   </p>
                 ) : (
                   <p className="text-xs font-medium text-amber-300 pt-1" data-autopilot-verdict="pas-pret">
-                    Votre Autopilote n’est pas encore prêt — ajoutez au moins un rush.
-                    Vous pouvez l’activer dès maintenant : il démarrera au premier rush ajouté.
+                    {config.jumeauAvatar && avatarPret === false
+                      ? 'Votre Autopilote n’est pas encore prêt — aucun avatar prêt : configurez-le dans Mon avatar, ou décochez « Mon avatar ».'
+                      : <>Votre Autopilote n’est pas encore prêt — ajoutez une source visuelle : un rush, votre avatar
+                    ou un média Pexels / Unsplash. Vous pouvez l’activer dès maintenant : il démarrera dès qu’une source sera prête.</>}
                   </p>
                 )}
               </div>
             );
           })()}
 
+          {rendreMediasPrevus()}
+
           {([
-            ['Ce qui change à chaque vidéo', RECAP_VARIABLE(config), 'variable'],
+            ['Ce qui change à chaque vidéo', RECAP_VARIABLE(config, etatSources), 'variable'],
             ['Ce qui ne change jamais', RECAP_CONSTANT(config, voixClonees), 'constant'],
             ['Rythme & diffusion', RECAP_DIFFUSION(config), 'diffusion'],
           ] as Array<[string, Array<[string, string]>, string]>).map(([titre, lignes, jeton]) => (
@@ -2335,14 +2632,14 @@ export default function AutopilotPanel({
               disabled={!ready || saving}
               aria-pressed={config.enabled}
               data-autopilot-toggle
-              data-cta={!config.enabled && config.rushUrls.length > 0 ? 'principal' : 'secondaire'}
+              data-cta={!config.enabled && sourcePossible ? 'principal' : 'secondaire'}
               className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed"
               style={
                 config.enabled
                   ? { backgroundColor: '#1F2937', color: '#E5E7EB' }
-                  // Sans rush : le bouton reste actif (regle metier inchangee)
+                  // Sans source : le bouton reste actif (regle metier inchangee)
                   // mais n'a plus l'air d'un « tout est pret ».
-                  : config.rushUrls.length === 0
+                  : !sourcePossible
                     ? { backgroundColor: 'transparent', color: '#DDD6FE', boxShadow: `inset 0 0 0 1px ${accent}99` }
                     : { backgroundColor: accent, color: '#fff' }
               }
@@ -2380,8 +2677,8 @@ export default function AutopilotPanel({
         {etape < ETAPES.length - 1 && (
           <div className="flex items-center gap-2 min-w-0">
             {bloqueEtape && (
-              <span className="text-[11px] text-amber-400 truncate" data-autopilot-suivant-bloque>
-                Ajoutez au moins un rush pour continuer
+              <span className="text-[11px] text-amber-400 truncate" data-autopilot-suivant-bloque={validationRushes.motif ?? ''}>
+                {validationRushes.message}
               </span>
             )}
             <button
@@ -2389,7 +2686,7 @@ export default function AutopilotPanel({
               onClick={() => setEtape((n) => Math.min(ETAPES.length - 1, n + 1))}
               disabled={!ready || bloqueEtape}
               data-autopilot-suivant
-              title={bloqueEtape ? 'Ajoutez au moins un rush pour continuer' : undefined}
+              title={bloqueEtape ? validationRushes.message : undefined}
               className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
               style={{ backgroundColor: accent }}
             >

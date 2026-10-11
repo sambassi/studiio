@@ -211,7 +211,7 @@ describe('Autopilote — guidage par étape', () => {
     await monter();
     const attendu = [
       ['De quoi Studiio doit-il parler ?', 'Choisissez un ou plusieurs sujets.'],
-      ['Ajoutez les vidéos que Studiio pourra utiliser', 'Au moins un rush est nécessaire.'],
+      ['Choisissez les sources de vos vidéos', 'Vos rushes, votre avatar, des médias Pexels / Unsplash — seuls ou combinés.'],
       ['À quoi ressembleront vos vidéos ?', 'Ces réglages valent pour toutes les futures vidéos.'],
       ['Quand et où publier ?', 'Fréquence, validation, réseaux.'],
       ['Options facultatives', 'Vous pouvez passer cette étape.'],
@@ -321,7 +321,7 @@ describe('Autopilote — guidage par étape', () => {
     allerEtape(5);
     expect(document.querySelector('[data-autopilot-checklist]')!.getAttribute('data-autopilot-pret')).toBe('non');
     expect(document.querySelector('[data-autopilot-check="rushes"]')!.getAttribute('data-autopilot-check-ok')).toBe('non');
-    expect(document.querySelector('[data-autopilot-verdict]')!.textContent).toMatch(/pas encore prêt.*au moins un rush/);
+    expect(document.querySelector('[data-autopilot-verdict]')!.textContent).toMatch(/pas encore prêt.*source visuelle/);
     const toggle = document.querySelector('[data-autopilot-toggle]')!;
     // Règle métier inchangée : activer sans rush reste possible (le moteur ne
     // produit rien) — mais le bouton n'est plus le gros violet « tout est prêt ».
@@ -361,7 +361,8 @@ describe('Autopilote — guidage par étape', () => {
     allerEtape(1);
     const etat = document.querySelector('[data-autopilot-rushes-etat]')!;
     expect(etat.getAttribute('data-autopilot-rushes-etat')).toBe('a-faire');
-    expect(etat.textContent).toMatch(/0 rush — au moins un est nécessaire/i);
+    expect(etat.textContent).toMatch(/0 rush — aucune source pour l’instant/i);
+    expect(document.body.textContent).not.toMatch(/au moins un rush/i);
     expect(document.querySelector('[data-autopilot-suivant-bloque]')).not.toBeNull();
     expect((document.querySelector('[data-autopilot-suivant]') as HTMLButtonElement).disabled).toBe(true);
   });

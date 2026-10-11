@@ -25,7 +25,8 @@ import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/htt
 import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
 import { useTarifs } from '@/lib/tarifs/client';
-import { cleTarifEcranMonAvatar, libelleBoutonGenererAvatar } from '@/lib/avatar/prix';
+import { cleTarifEcranMonAvatar, lignesPrixGenererAvatar, LIBELLE_BOUTON_GENERER_AVATAR } from '@/lib/avatar/prix';
+import BlocPrix from '@/components/ui/BlocPrix';
 import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
@@ -1714,6 +1715,9 @@ export default function AvatarPage() {
               </div>
 
               <div data-avatar-generer className="space-y-3">
+              {/* Le prix AU-DESSUS du bouton, en lignes courtes : dans le libellé
+                  (insécable) il débordait de la colonne d'aperçu. */}
+              <BlocPrix data-avatar-prix={tarifs.exempte ? 'administrateur' : 'utilisateur'} lignes={lignesPrixGenererAvatar(prixGeneration, tarifs.exempte)} />
               <button
                 onClick={handleGenerate}
                 disabled={!script.trim() || busy || voixCloneeChoisieIndisponible}
@@ -1726,7 +1730,7 @@ export default function AvatarPage() {
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4" /> {libelleBoutonGenererAvatar(prixGeneration, tarifs.exempte)}
+                    <Sparkles className="w-4 h-4" /> {LIBELLE_BOUTON_GENERER_AVATAR}
                   </>
                 )}
               </button>

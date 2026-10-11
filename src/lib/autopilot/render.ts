@@ -130,6 +130,16 @@ export async function renderAndUpload(input: {
   const { renderCreerSimple } = await import('@/lib/render/creerSimple');
   const { uploadToStorage } = await import('@/lib/storage/upload');
 
+  // ── SSRF / TOCTOU : le moteur de rendu ne lit QUE notre stockage ──────
+  // Remotion (`OffthreadVideo`, `Img`, `Audio`), ffmpeg (hybride) et
+  // `parseMedia` relisent eux-mêmes les URL qu'on leur donne, redirections
+  // et DNS compris. Tout média externe est donc copié AVANT, par le fetch sûr
+  // (`medias-externes.ts`), et le rendu ne reçoit que des URL de notre
+  // stockage. Un refus (adresse interne, redirection hors liste) fait
+  // échouer le rendu — jamais de repli sur l'URL d'origine.
+  const { localiserEntreesRendu } = await import('@/lib/securite/medias-externes');
+  input = { ...input, design: await localiserEntreesRendu(input.design) };
+
   // Le worker rapporte 20 → 95 % : ramené à 0..1.
   const onProgress = input.onComposition
     ? ({ progress }: { progress: number }) => input.onComposition!(Math.min(1, Math.max(0, (progress - 20) / 75)))

@@ -56,7 +56,8 @@ describe('ffmpeg réel', () => {
 describe('câblage Autopilote', () => {
   it('le RENDU reçoit les proxys ; le plan et les métadonnées gardent les URL originales', () => {
     const p = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/produire.ts'), 'utf-8');
-    expect(p).toContain('const p = await urlRenduPourRush(u);');
+    // L'URL FINALE validée d'un média stock redirigé (`sonde-stock.ts`), sinon l'URL elle-même.
+    expect(p).toContain('const p = await urlRenduPourRush(finale(u));');
     expect(p).toContain('userId, jobId, design: designRendu,');
     expect(p).toContain('RENDER_PROXY_MS: proxyMs,');
     // Les métadonnées s'écrivent à partir de `design` (URL d'origine), pas de `designRendu`.

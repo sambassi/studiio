@@ -72,7 +72,26 @@ export interface RushSegment {
   effet?: string | null;
   /** V3 : vitesse de lecture (1 = normale, 0.6 = ralenti). */
   vitesse?: number;
+  /**
+   * MULTI-SOURCES (Autopilote) : nature du plan. Absent = `'video'` — le
+   * comportement d'avant, un extrait de rush joué par `OffthreadVideo`.
+   * `'avatar'` : extrait de la vidéo du jumeau (même lecture qu'une vidéo,
+   * mais `depuis === debut` pour garder la parole synchronisée) ;
+   * `'image'` : une PHOTO (stock), animée en Ken Burns (`mouvement`).
+   */
+  kind?: KindSegment;
+  /** Provenance du média, informative : rush perso, vidéo stock, jumeau, photo. */
+  source?: SourceSegment;
+  /** Mouvement Ken Burns d'une photo (`kind: 'image'`). Absent : zoom avant. */
+  mouvement?: MouvementImage;
 }
+
+export type KindSegment = 'video' | 'avatar' | 'image';
+export type SourceSegment = 'rush' | 'stock' | 'jumeau' | 'photo';
+export type MouvementImage = 'zoomIn' | 'zoomOut' | 'panG' | 'panD';
+const KINDS: readonly KindSegment[] = ['video', 'avatar', 'image'];
+const SOURCES: readonly SourceSegment[] = ['rush', 'stock', 'jumeau', 'photo'];
+const MOUVEMENTS: readonly MouvementImage[] = ['zoomIn', 'zoomOut', 'panG', 'panD'];
 
 const arrondi = (n: number) => Math.round(n * 1000) / 1000;
 
@@ -142,7 +161,7 @@ export function rushSegmentsDepuisMetadata(valeur: unknown): RushSegment[] | nul
   const out: RushSegment[] = [];
   for (const v of valeur) {
     if (!v || typeof v !== 'object') return null;
-    const { url, debut, fin, depuis, score, jusqua, qualite, pertinence, raison, phase, differenceVisuelle, beatCible, effet, vitesse } = v as Record<string, unknown>;
+    const { url, debut, fin, depuis, score, jusqua, qualite, pertinence, raison, phase, differenceVisuelle, beatCible, effet, vitesse, kind, source, mouvement } = v as Record<string, unknown>;
     if (typeof url !== 'string' || !url) return null;
     if (typeof debut !== 'number' || typeof fin !== 'number' || !Number.isFinite(debut) || !Number.isFinite(fin) || fin <= debut) return null;
     out.push({
@@ -158,6 +177,10 @@ export function rushSegmentsDepuisMetadata(valeur: unknown): RushSegment[] | nul
       ...(typeof beatCible === 'number' && Number.isFinite(beatCible) ? { beatCible } : {}),
       ...(effet === 'ralenti' ? { effet } : {}),
       ...(typeof vitesse === 'number' && vitesse >= 0.25 && vitesse <= 2 && vitesse !== 1 ? { vitesse } : {}),
+      // Multi-sources : `kind` absent = 'video' (rien n'est écrit — relecture d'avant).
+      ...(typeof kind === 'string' && KINDS.includes(kind as KindSegment) && kind !== 'video' ? { kind: kind as KindSegment } : {}),
+      ...(typeof source === 'string' && SOURCES.includes(source as SourceSegment) ? { source: source as SourceSegment } : {}),
+      ...(typeof mouvement === 'string' && MOUVEMENTS.includes(mouvement as MouvementImage) ? { mouvement: mouvement as MouvementImage } : {}),
     });
   }
   return out;
@@ -176,6 +199,22 @@ export function estPlanMontage(segments: ReadonlyArray<RushSegment> | null | und
   if (!segments || segments.length < 2) return false;
   const urls = new Set(segments.map((s) => s.url));
   return urls.size < segments.length || segments.some((s) => typeof s.depuis === 'number' && s.depuis > 0);
+}
+
+/** URL d'une image fixe (photo stock, hotlink fournisseur) — pas une vidéo. Pur. */
+export function estUrlImage(url: string): boolean {
+  return /\.(jpe?g|png|webp|avif|gif)(\?|#|$)/i.test(url)
+    || /^https?:\/\/(images\.unsplash\.com|plus\.unsplash\.com|images\.pexels\.com)\//i.test(url);
+}
+
+/** Le segment est-il une PHOTO (Ken Burns) ? Absent = vidéo. */
+export function estSegmentImage(s: Pick<RushSegment, 'kind'>): boolean {
+  return s.kind === 'image';
+}
+
+/** Le plan contient-il un extrait de l'avatar (lecture synchronisée sur la voix) ? */
+export function planAvecAvatar(segments: ReadonlyArray<Pick<RushSegment, 'kind'>> | null | undefined): boolean {
+  return !!segments?.some((s) => s.kind === 'avatar');
 }
 
 /** Les rushes d'un plan, sans doublon, dans l'ordre de première apparition. */

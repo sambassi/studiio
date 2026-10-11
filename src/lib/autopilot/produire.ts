@@ -13,7 +13,7 @@ import {
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
 import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
-import { rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
+import { rushsDuPlan, estUrlImage, type RushSegment } from '@/lib/creer/multi-rush';
 import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre } from '@/lib/creer/analyse-rush-serveur';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
@@ -23,6 +23,10 @@ import { appliquerMiseEnPageSurimpression } from '@/lib/creer/surimpressions-mis
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
+import { avatarActifConfig, mediasDesSources, sourcesEffectives, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
+import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
+import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
+import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
@@ -40,6 +44,20 @@ export function rushsCompagnons(banque: ReadonlyArray<string>, principal: string
   const out: string[] = [];
   for (let k = 0; k < Math.min(n, autres.length); k++) out.push(autres[(depart + k) % autres.length]);
   return out;
+}
+
+/** Médias stock (vidéos, photos) pris au plus par montage multi-sources. */
+export const STOCK_MONTAGE_MAX = 8;
+
+/**
+ * Le rush du créneau quand la clé `sources` est réglée : celui pioché s'il
+ * appartient aux rushes personnels ACTIFS, sinon le suivant de cette banque,
+ * sinon aucun (rushes désactivés, ou banque faite seulement de stock). Pur.
+ */
+export function rushDuCreneau(choisi: string | null, banque: ReadonlyArray<string>, rang: number): string | null {
+  if (choisi && banque.includes(choisi)) return choisi;
+  if (banque.length === 0) return null;
+  return banque[((rang % banque.length) + banque.length) % banque.length];
 }
 
 /**
@@ -94,6 +112,36 @@ export async function coutAfficheDuDevis(config: Pick<AutopilotConfig, 'posterMo
  */
 export function coutMontage(): Promise<number> {
   return prixDe('render.reel');
+}
+
+/**
+ * LE DEVIS COMPLET d'un montage, poste par poste — la formule du prix lue
+ * par le devis affiché (GET « Produire maintenant ») ET par le contrôle avant
+ * lancement (POST). Le cron applique la même somme, poste par poste.
+ *
+ *   - `rendu`   : `render.reel`, débité par `produireUnMontage` (réf. `autopilote:<jobId>`) ;
+ *   - `avatar`  : `avatar.jumeau` quand la vidéo du jumeau est montée, débité
+ *                 UNE fois par `genererVideoJumeau` (réf. `jumeau:<generationId>`),
+ *                 remboursé si la génération échoue ; 0 sinon ;
+ *   - `affiche` : `autopilot.poster_reference` en mode référence (réf.
+ *                 `autopilote-affiche:<jobId>`) ; 0 sinon.
+ *
+ * Aucun autre débit : la voix off n'est jamais synthétisée quand le jumeau
+ * est monté (il porte la voix), et l'Autopilote ne facture pas l'audio à part.
+ * ⚠️ Le GET annonçait rendu + affiche, SANS l'avatar, alors que le POST
+ * contrôlait (et que le montage débitait) rendu + avatar + affiche.
+ */
+export async function devisMontage(
+  config: Pick<AutopilotConfig, 'jumeauAvatar' | 'posterMode' | 'posterUrls'> & { designStyle?: AutopilotConfig['designStyle'] },
+): Promise<{ rendu: number; avatar: number; affiche: number; total: number }> {
+  // Multi-sources : le stock ne coûte rien (0 crédit, médias déjà retenus) ;
+  // l'avatar n'est compté que s'il est réellement monté (`avatarActifConfig`).
+  const [rendu, avatar, affiche] = await Promise.all([
+    coutMontage(),
+    avatarActifConfig({ rushUrls: [], jumeauAvatar: config.jumeauAvatar, designStyle: config.designStyle }) ? prixDe('avatar.jumeau') : Promise.resolve(0),
+    coutAfficheDuDevis(config),
+  ]);
+  return { rendu, avatar, affiche, total: rendu + avatar + affiche };
 }
 
 /**
@@ -283,6 +331,24 @@ export async function produireUnMontage(input: {
   // ce montage — l'avatar est la vidéo, et la seule voix.
   const jumeauActif = typeof input.jumeauVideoUrl === 'string' && input.jumeauVideoUrl.length > 0;
 
+  // ── MULTI-SOURCES (`sources.ts`) ───────────────────────────────────────
+  // Rushes personnels, avatar et stock sont des sources COMBINABLES. Le plan
+  // multi-sources ne s'applique que si la clé `designStyle.sources` est
+  // réglée ET qu'une source s'ajoute à l'avatar (ou que du stock est retenu) :
+  // sans elle, chaque chemin d'avant reste identique à l'octet près.
+  const sourcesCfg = sourcesEffectives(config);
+  const medias = mediasDesSources(config);
+  const nbStock = medias.videosStock.length + medias.photosStock.length;
+  // Un plan ENREGISTRÉ par l'utilisateur (gabarit) pilote aussi un montage de
+  // rushes seuls : sans cela, l'ordre et les rushes forcés à l'écran étaient
+  // ignorés par le smart montage. Gabarit vide : le chemin d'avant, à l'octet.
+  const gabaritEnregistre = sourcesCfg.explicite && sourcesCfg.sources.gabarit.length > 0;
+  const multiSources = sourcesCfg.explicite && (jumeauActif
+    ? medias.rushesPersonnels.length + nbStock > 0
+    : nbStock > 0 || (gabaritEnregistre && medias.rushesPersonnels.length > 0));
+  // La banque de rushes PERSONNELS (actives respectés) ; sans clé : la banque entière.
+  const banqueRushs: string[] = sourcesCfg.explicite ? medias.rushesPersonnels : config.rushUrls;
+
   // ── Le rush existe-t-il encore ? ───────────────────────────────────────
   // Un rush supprimé — rétention du stockage, ménage de l'utilisateur —
   // reste écrit dans `rush_urls`. Sans ce contrôle, le rendu échoue trois
@@ -293,7 +359,11 @@ export async function produireUnMontage(input: {
   //
   // ⚠️ IGNORÉ QUAND LE JUMEAU EST MONTÉ : ce montage-là ne porte pas de rush,
   // donc rien à sonder ni à déclarer mort.
-  let rushUrl = jumeauActif ? null : post.rushUrl;
+  let rushUrl = jumeauActif && !multiSources
+    ? null
+    // Clé `sources` réglée : le rush du créneau doit appartenir aux rushes
+    // personnels ACTIFS (sinon le suivant de la banque, ou aucun).
+    : sourcesCfg.explicite ? rushDuCreneau(post.rushUrl, banqueRushs, rang) : post.rushUrl;
   let rushMort: string | null = null;
   if (rushUrl && !(await rushEncorePresent(rushUrl))) {
     console.warn(`${journal} ${userId} — rush introuvable, ignoré : ${rushUrl}`);
@@ -330,11 +400,14 @@ export async function produireUnMontage(input: {
   const analysesEchouees: string[] = [];
   let disponible = 0;
   let secondesParRush = new Map<string, number | null>();
-  if (rushUrl && !jumeauActif) {
+  /** Rushes personnels réunis pour ce montage (multi-sources). */
+  let listeRushs: string[] = rushUrl ? [rushUrl] : [];
+  if (rushUrl && (!jumeauActif || multiSources)) {
     const t0 = Date.now();
-    const autres = rushsCompagnons(config.rushUrls, rushUrl, rang, RUSHS_MONTAGE_MAX - 1);
+    const autres = rushsCompagnons(banqueRushs, rushUrl, rang, RUSHS_MONTAGE_MAX - 1);
     const presents = await Promise.all(autres.map((u) => rushEncorePresent(u)));
     const liste = [rushUrl, ...autres.filter((_, i) => presents[i])];
+    listeRushs = liste;
     if (liste.length > 1) {
       const secondes = await Promise.all(liste.map((u) => probeRushSeconds(u)));
       secondesParRush = new Map(liste.map((u, i) => [u, secondes[i]]));
@@ -468,7 +541,124 @@ export async function produireUnMontage(input: {
   let montageRaccourci: Raccourci | null = null;
   let rythmeVideo: { beats: number[]; forts: number[]; drop: number | null } | null = null;
   let contexteConseil: { theme: string | null; objectif: string | null } = { theme: null, objectif: null };
-  if (analysesRushs.length > 0 || secondesParRush.size > 1) {
+  /** Multi-sources : pourquoi ce plan, et les médias stock lâchés (introuvables). */
+  let explicationsSources: string[] = [];
+  const mediasIgnores: string[] = [];
+  /** Média stock redirigé (vers un hôte AUTORISÉ) → son URL finale : la seule que le rendu reçoit. */
+  const urlsFinalesStock = new Map<string, string>();
+  let stockUtilise: MediaStockRetenu[] = [];
+  if (multiSources) {
+    const t2 = Date.now();
+    // Les médias stock RETENUS (jamais cherchés ici) : sondés, un média mort est
+    // LÂCHÉ — un média stock ne fait jamais échouer le montage.
+    // Garde SSRF (défense en profondeur) : jamais de sonde ni de rendu d'une
+    // URL hors de notre stockage / des CDN stock, même si la base en contient.
+    const videosStock = medias.videosStock.filter((u) => urlStockAutorisee(u, 'video') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
+    const photosStock = medias.photosStock.filter((u) => urlStockAutorisee(u, 'photo') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
+    // Sonde SÛRE (`sonde-stock.ts`) : redirections jamais suivies en silence,
+    // chaque saut recontrôlé ; un média qui mène hors liste est LÂCHÉ.
+    const [sondesV, sondesP] = await Promise.all([
+      Promise.all(videosStock.map((u) => sonderMediaStock(u, 'video'))),
+      Promise.all(photosStock.map((u) => sonderMediaStock(u, 'photo'))),
+    ]);
+    const garder = (liste: string[], sondes: Awaited<ReturnType<typeof sonderMediaStock>>[]) => liste.filter((u, i) => {
+      const s = sondes[i];
+      if (!s.ok) { mediasIgnores.push(u); return false; }
+      if (s.url !== u) urlsFinalesStock.set(u, s.url);
+      return true;
+    });
+    const videosOk = garder(videosStock, sondesV);
+    const photosOk = garder(photosStock, sondesP);
+    if (mediasIgnores.length) console.warn(`${journal} ${userId} — ${mediasIgnores.length} média(s) stock introuvable(s) ou refusé(s), ignoré(s)`);
+    // Durées lues sur l'URL FINALE validée — jamais sur la chaîne de redirections.
+    const secondesStock = await Promise.all(videosOk.map((u) => probeRushSeconds(urlsFinalesStock.get(u) ?? u)));
+    const rushes = listeRushs.map((u) => ({ url: u, secondes: secondesParRush.has(u) ? secondesParRush.get(u) ?? null : (u === rushUrl ? rushSeconds : null) }));
+    const stockVideos = videosOk.map((u, i) => ({ url: u, secondes: secondesStock[i] }));
+    const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
+    const contexteMontage = contexteMontageDepuis({
+      theme: post.title,
+      titre: post.title,
+      sousTitre: post.content?.subtitle ?? null,
+      objectif: [postUtilise.brief?.objectif, postUtilise.brief?.message].filter(Boolean).join(' ') || null,
+      cartes: post.content?.cards ?? [],
+    });
+    profilVideo = profilMontageDuContexte(contexteMontage).profil;
+    contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif ?? null };
+    // LE PLAN MONTRÉ = LE PLAN RENDU. Sans gabarit enregistré, l'écran affiche
+    // la SUGGESTION (`gabaritSuggere`) : le moteur rend cette même suggestion,
+    // calculée par la même fonction sur les sources réellement disponibles.
+    const gabarit = gabaritEnregistre ? sourcesCfg.sources.gabarit : gabaritSuggere({
+      avatar: jumeauActif,
+      rushes: listeRushs.length,
+      stock: videosOk.length + photosOk.length,
+    });
+    let res: ReturnType<typeof planMultiSources>;
+    if (jumeauActif) {
+      // ── AVATAR + autres sources : la séquence dure la PAROLE de l'avatar,
+      // textes en SURIMPRESSION (aucun raccord avant la vidéo : la voix et
+      // l'image de l'avatar partent ensemble, à 0).
+      const T = jumeauSeconds && jumeauSeconds > 0 ? jumeauSeconds : (designBase.videoDuration ?? 0);
+      res = planMultiSources({
+        avatar: { url: input.jumeauVideoUrl as string, secondes: T },
+        rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
+        gabarit, cible: T,
+        options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
+      });
+      enSurimpression = true;
+      if (res.plan.length) {
+        const o = planOverlays({
+          duree: res.duree,
+          profil: profilVideo,
+          nbCartes: designBase.cards?.length ?? 0,
+          finHook: res.plan[0]?.kind === 'avatar' ? res.plan[0].fin : null,
+          voix: { video: res.duree },
+        });
+        // La voix de l'avatar est CONTINUE et part à 0, avec son image.
+        overlays = { ...o, voix: { video: 0 } };
+      }
+    } else {
+      // ── Rushes + stock, ou stock seul : la règle de durée du smart montage
+      // (voix à porter, matière disponible) ; le stock comble ce qui manque.
+      enSurimpression = profilEnSurimpression(profilVideo);
+      const voixAPorter = enSurimpression
+        ? ['titre', 'cartes', 'video', 'cta'].reduce((t, k) => t + (secondesVoix(k) ? secondesVoix(k) + 0.2 : 0), 0)
+        : secondesVoix('video');
+      // Même règle que le smart montage : ~30 s, la voix couverte, jamais plus
+      // que la matière (une durée illisible compte pour un plan de coupe).
+      const dispo = [...rushes, ...stockVideos].reduce((t, x) => t + (x.secondes ?? BROLL_VIDEO_S), 0) + photosOk.length * BROLL_MAX_S;
+      const cible = Math.min(dispo, Math.max(dureeCibleMontage(dispo), Math.ceil(voixAPorter)));
+      const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl) : null;
+      const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
+      rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
+      res = planMultiSources({
+        rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
+        gabarit, cible,
+        options: { rythme: rythmeVideo, contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
+      });
+      if (res.plan.length && enSurimpression) {
+        overlays = planOverlays({
+          duree: res.duree,
+          profil: profilVideo,
+          nbCartes: designBase.cards?.length ?? 0,
+          finHook: res.plan.filter((x) => x.phase === 'HOOK').at(-1)?.fin ?? null,
+          voix: { titre: secondesVoix('titre'), cartes: secondesVoix('cartes'), video: secondesVoix('video'), cta: secondesVoix('cta') },
+        });
+      }
+    }
+    explicationsSources = res.explications;
+    planMontageRushs = res.plan.length ? res.plan : null;
+    if (!planMontageRushs) overlays = null;
+    chrono.selection = Date.now() - t2;
+    if (planMontageRushs) {
+      const utilisees = new Set(planMontageRushs.map((x) => x.url));
+      stockUtilise = sourcesCfg.sources.stock.filter((m) => utilisees.has(m.url));
+      if (input.plagesCycle) plagesDuPlan(planMontageRushs.filter((x) => x.source === 'rush'), input.plagesCycle);
+      console.log(`${journal} ${userId} — MULTI_SOURCES ${JSON.stringify({ plans: planMontageRushs.length, duree: dureePlan(planMontageRushs), avatar: jumeauActif, explications: res.explications })}`);
+      const ms = mesuresSegments(planMontageRushs, analysesRushs);
+      if (ms) montageRapport = rapportPlan(profilVideo, ms, rythmeVideo);
+    }
+  }
+  if (!multiSources && (analysesRushs.length > 0 || secondesParRush.size > 1)) {
     const t2 = Date.now();
     const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
     // MÊME préparation que Créer (`contexteMontageDepuis`) : même thème +
@@ -534,11 +724,21 @@ export async function produireUnMontage(input: {
     ? {
       ...designBase,
       montage: planMontageRushs,
-      rushs: rushsDuPlan(planMontageRushs),
+      rushs: rushsDuPlan(multiSources ? planMontageRushs.filter((x) => x.kind !== 'image' && x.kind !== 'avatar') : planMontageRushs),
       videoDuration: dureePlan(planMontageRushs),
       // Surimpression : plus d'écran titre, cartes ni CTA — la vidéo continue
       // porte les textes (`overlays`). Les durées à 0 retirent ces séquences.
       ...(overlays ? { surimpressions: overlays, introDuration: 0, cardsDuration: 0, ctaDuration: 0 } : {}),
+      // MULTI-SOURCES : la séquence « Vidéo » existe dès qu'un plan existe (stock
+      // seul : le premier média) ; avec l'avatar, sa voix est une piste
+      // CONTINUE (`sequenceVoiceUrls.video`) et le son des plans est coupé —
+      // l'image de l'avatar, découpée, reste calée sur elle (`depuis === debut`).
+      ...(multiSources ? { videoUrl: designBase.videoUrl ?? planMontageRushs[0].url } : {}),
+      ...(multiSources && jumeauActif ? {
+        videoUrl: input.jumeauVideoUrl as string,
+        rushMuted: true,
+        sequenceVoiceUrls: { video: input.jumeauVideoUrl as string },
+      } : {}),
     }
     : designBase;
   // Surimpressions : position, taille et fond des textes — la MÊME mise en
@@ -566,20 +766,25 @@ export async function produireUnMontage(input: {
   // 1080p 30 i/s (créée une fois, en cache). Le plan et les métadonnées
   // gardent les URL ORIGINALES ; seule l'entrée du rendu change.
   const tProxy = Date.now();
+  // Ni photo (aucun `parseMedia` sur une image) ni avatar (sa vidéo sert aussi
+  // de piste de voix : même fichier pour l'image et le son).
   const urlsRush = Array.from(new Set([
-    ...(design.montage ?? []).map((s) => s.url),
+    ...(design.montage ?? []).filter((s) => s.kind !== 'image' && s.kind !== 'avatar').map((s) => s.url),
     ...(design.rushs ?? []).map((r) => r.url),
-    ...(design.videoUrl && !jumeauActif ? [design.videoUrl] : []),
+    ...(design.videoUrl && !jumeauActif && !estUrlImage(design.videoUrl) ? [design.videoUrl] : []),
   ]));
+  // Un média stock redirigé : le rendu ne reçoit QUE son URL finale validée
+  // (`sonde-stock.ts`) — Remotion / ffprobe ne rejouent jamais la chaîne.
+  const finale = (u: string) => urlsFinalesStock.get(u) ?? u;
   const proxys = new Map<string, string>();
   let proxysCrees = 0;
   let proxysReutilises = 0;
   for (const u of urlsRush) {
-    const p = await urlRenduPourRush(u);
+    const p = await urlRenduPourRush(finale(u));
     if (p.proxy) { proxys.set(u, p.url); if (p.cree) proxysCrees += 1; else proxysReutilises += 1; }
   }
-  const versRendu = (u: string) => proxys.get(u) ?? u;
-  const designRendu = proxys.size === 0 ? design : {
+  const versRendu = (u: string) => proxys.get(u) ?? finale(u);
+  const designRendu = proxys.size === 0 && urlsFinalesStock.size === 0 ? design : {
     ...design,
     ...(design.videoUrl ? { videoUrl: versRendu(design.videoUrl) } : {}),
     ...(design.montage ? { montage: design.montage.map((s) => ({ ...s, url: versRendu(s.url) })) } : {}),
@@ -666,6 +871,21 @@ export async function produireUnMontage(input: {
     ...(planMontageRushs
       ? { rushSegments: planMontageRushs, rushUrls: rushsDuPlan(planMontageRushs).map((r) => r.url) }
       : null),
+    // MULTI-SOURCES : ce qui a été combiné, pourquoi, et les crédits des médias
+    // stock montés (auteur, licence, lien — exigés par Pexels / Unsplash).
+    ...(multiSources ? {
+      // Les fichiers VIDÉO réellement montés (ni l'avatar, ni les photos).
+      ...(planMontageRushs ? { rushUrls: rushsDuPlan(planMontageRushs.filter((x) => x.kind !== 'image' && x.kind !== 'avatar')).map((r) => r.url) } : null),
+      multiSources: {
+        avatar: jumeauActif,
+        rushesPersonnels: (planMontageRushs ?? []).filter((x) => x.source === 'rush').length,
+        stockVideos: (planMontageRushs ?? []).filter((x) => x.source === 'stock').length,
+        photos: (planMontageRushs ?? []).filter((x) => x.kind === 'image').length,
+        explications: explicationsSources,
+      },
+      ...(stockUtilise.length ? { stockCredits: stockUtilise.map(({ url, provider, auteur, sourceUrl, licence }) => ({ url, provider, auteur, sourceUrl, licence })) } : null),
+      ...(mediasIgnores.length ? { stockIgnores: mediasIgnores } : null),
+    } : null),
     // Analyse impossible : montage simple — jamais en silence.
     ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
     // Textes en surimpression sur la vidéo continue (V3) : relus au rendu.

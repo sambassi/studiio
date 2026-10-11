@@ -39,6 +39,10 @@ const volumeMusiqueParDefaut = (avecVoix: boolean) => (avecVoix ? 0.5 : 0.8);
 export function raisonNonEligibleHybride(d: CreerSimpleRenderInput): string | null {
   const x = d as CreerSimpleRenderInput & { audioKeyframes?: unknown[]; rushLut?: unknown };
   if ((x.montage?.length ?? 0) < 2) return 'pas de plan Smart Montage (moins de 2 extraits)';
+  // Multi-sources : une photo (Ken Burns) ou l'avatar (lecture calée sur sa
+  // voix) ne passent pas par le filtre ffmpeg — Remotion les rend.
+  if (x.montage?.some((m) => m.kind === 'image')) return 'plan multi-sources avec photo (Ken Burns) : rendu Remotion';
+  if (x.montage?.some((m) => m.kind === 'avatar')) return 'plan multi-sources avec avatar (synchronisation labiale) : rendu Remotion';
   if (!x.surimpressions) return 'textes en séquences plein écran (pas de surimpression)';
   if (x.introDuration && x.introDuration > 0) return 'séquence titre plein écran';
   if (x.cardsDuration && x.cardsDuration > 0) return 'séquence cartes plein écran';

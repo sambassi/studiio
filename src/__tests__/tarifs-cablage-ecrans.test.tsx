@@ -22,7 +22,7 @@ import AiImageTools, { AI_TOOLS } from '@/components/creer/AiImageTools';
 import AudioCompletSection from '@/components/voice/AudioCompletSection';
 import AfficheIA from '@/components/creer/AfficheIA';
 import AvatarPage from '../app/dashboard/avatar/page';
-import { cleTarifEcranMonAvatar, libelleBoutonGenererAvatar } from '@/lib/avatar/prix';
+import { cleTarifEcranMonAvatar, lignesPrixGenererAvatar, LIBELLE_BOUTON_GENERER_AVATAR } from '@/lib/avatar/prix';
 
 const A = '11111111-1111-4111-8111-000000000001';
 const avatarValide = { id: A, name: 'Mon avatar vidéo', status: 'completed', avatar_type: 'video', created_at: '2026-10-07T00:00:00Z', etat: 'valide', version: 3, validated_at: '2026-10-07T10:00:00Z', provider: 'heygen' };
@@ -46,11 +46,18 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 const boutonGenerer = () => [...document.querySelectorAll('button')].find((b) => /Générer la vidéo/.test(b.textContent ?? '')) as HTMLButtonElement | undefined;
+/** Les lignes du bloc prix posé AU-DESSUS du bouton (le prix n'est plus dans le libellé : il débordait). */
+const lignesPrix = () => [...document.querySelectorAll('[data-avatar-prix] [data-bloc-prix-ligne]')].map((l) => l.textContent);
 
-describe('Mon avatar — le bouton annonce le prix de la qualité choisie', () => {
-  it('grille par défaut : « Générer la vidéo (40 crédits) », inchangé', async () => {
+describe('Mon avatar — le bloc prix annonce le prix de la qualité choisie', () => {
+  it('grille par défaut : « Prix : 40 crédits » au-dessus, bouton « Générer la vidéo » seul', async () => {
     render(<AvatarPage />);
-    await waitFor(() => expect(boutonGenerer()?.textContent).toContain('Générer la vidéo (40 crédits)'));
+    await waitFor(() => expect(lignesPrix()).toEqual(['Prix : 40 crédits']));
+    expect(boutonGenerer()?.textContent?.trim()).toBe('Générer la vidéo');
+    expect(document.querySelector('[data-avatar-prix]')!.getAttribute('data-avatar-prix')).toBe('utilisateur');
+    // Le bloc précède le bouton dans le même conteneur `data-avatar-generer`.
+    const conteneur = document.querySelector('[data-avatar-generer]')!;
+    expect(conteneur.firstElementChild).toBe(document.querySelector('[data-avatar-prix]'));
   });
 
   it('grille III 10 / IV 25 / V 40 : le libellé suit le sélecteur de qualité', async () => {
@@ -58,25 +65,32 @@ describe('Mon avatar — le bouton annonce le prix de la qualité choisie', () =
     render(<AvatarPage />);
     await waitFor(() => expect(document.querySelector('[data-avatar-qualite-choix]')).not.toBeNull());
     const choix = document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement;
-    await waitFor(() => expect(boutonGenerer()?.textContent).toContain('(25 crédits)'));
+    await waitFor(() => expect(lignesPrix()).toEqual(['Prix : 25 crédits']));
     fireEvent.change(choix, { target: { value: 'standard' } });
-    expect(boutonGenerer()?.textContent).toContain('(10 crédits)');
+    expect(lignesPrix()).toEqual(['Prix : 10 crédits']);
     fireEvent.change(choix, { target: { value: 'premium' } });
-    expect(boutonGenerer()?.textContent).toContain('(40 crédits)');
+    expect(lignesPrix()).toEqual(['Prix : 40 crédits']);
+    expect(boutonGenerer()?.textContent?.trim()).toBe('Générer la vidéo');
   });
 
-  it('administrateur : prix public affiché, coût 0', async () => {
-    grille.prix = { ...TARIFS_DEFAUT, 'avatar.avatar_iv': 50 };
+  it('administrateur : deux lignes « Prix public » / « Votre coût : 0 crédit », bouton exactement « Générer la vidéo »', async () => {
+    grille.prix = { ...TARIFS_DEFAUT, 'avatar.avatar_iii': 12, 'avatar.avatar_iv': 50 };
     grille.exempte = true;
     render(<AvatarPage />);
-    await waitFor(() => expect(boutonGenerer()?.textContent).toContain('Générer la vidéo — prix public 50 crédits · votre coût : 0'));
+    await waitFor(() => expect(lignesPrix()).toEqual(['Prix public : 50 crédits', 'Votre coût : 0 crédit']));
+    expect(boutonGenerer()?.textContent?.trim()).toBe('Générer la vidéo');
+    expect(document.querySelector('[data-avatar-prix]')!.getAttribute('data-avatar-prix')).toBe('administrateur');
+    fireEvent.change(document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement, { target: { value: 'standard' } });
+    expect(lignesPrix()).toEqual(['Prix public : 12 crédits', 'Votre coût : 0 crédit']);
   });
 
   it('règle partagée : sans qualité → Avatar IV ; voix clonée → tarif du jumeau', () => {
     expect(cleTarifEcranMonAvatar({ viaVoixClonee: false })).toBe('avatar.avatar_iv');
     expect(cleTarifEcranMonAvatar({ viaVoixClonee: false, qualiteEnvoyee: 'standard' })).toBe('avatar.avatar_iii');
     expect(cleTarifEcranMonAvatar({ viaVoixClonee: true, qualiteEnvoyee: 'premium' })).toBe('avatar.jumeau');
-    expect(libelleBoutonGenererAvatar(1, false)).toBe('Générer la vidéo (1 crédit)');
+    expect(lignesPrixGenererAvatar(1, false)).toEqual(['Prix : 1 crédit']);
+    expect(lignesPrixGenererAvatar(40, true)).toEqual(['Prix public : 40 crédits', 'Votre coût : 0 crédit']);
+    expect(LIBELLE_BOUTON_GENERER_AVATAR).toBe('Générer la vidéo');
   });
 });
 
@@ -107,15 +121,17 @@ describe('Affiche IA — « N crédits par image »', () => {
   });
 });
 
-describe('Audio complet — libellé et explication suivent la grille', () => {
+describe('Audio complet — bloc prix et explication suivent la grille', () => {
   const saisir = (n: number) => fireEvent.change(document.querySelector('[data-audio-complet-texte]') as HTMLTextAreaElement, { target: { value: 'a'.repeat(n) } });
   const boutonAudio = () => document.querySelector('[data-audio-complet-generer]') as HTMLButtonElement;
+  const prixAudio = () => [...document.querySelectorAll('[data-audio-complet-prix] [data-bloc-prix-ligne]')].map((l) => l.textContent);
 
   it('grille par défaut : « 1 crédit par tranche… », 2500 caractères → 3 crédits', () => {
     render(<AudioCompletSection disponible />);
     expect(document.querySelector('[data-audio-complet]')!.textContent).toContain('1 crédit par tranche de 1000 caractères entamée.');
     saisir(2500);
-    expect(boutonAudio().textContent).toBe('Générer l’audio complet — 3 crédits');
+    expect(prixAudio()).toEqual(['Prix : 3 crédits']);
+    expect(boutonAudio().textContent).toBe('Générer l’audio complet');
   });
 
   it('2 crédits / tranche : 2500 caractères → 6 crédits', () => {
@@ -123,13 +139,14 @@ describe('Audio complet — libellé et explication suivent la grille', () => {
     render(<AudioCompletSection disponible />);
     expect(document.querySelector('[data-audio-complet]')!.textContent).toContain('2 crédits par tranche de 1000 caractères entamée.');
     saisir(2500);
-    expect(boutonAudio().textContent).toBe('Générer l’audio complet — 6 crédits');
+    expect(prixAudio()).toEqual(['Prix : 6 crédits']);
   });
 
-  it('administrateur : libellé administrateur conservé', () => {
+  it('administrateur : prix public puis « Votre coût : 0 crédit », bouton court', () => {
     grille.exempte = true;
     render(<AudioCompletSection disponible />);
     saisir(10);
-    expect(boutonAudio().textContent).toBe('Générer l’audio complet — 0 crédit (administrateur)');
+    expect(prixAudio()).toEqual(['Prix public : 1 crédit', 'Votre coût : 0 crédit']);
+    expect(boutonAudio().textContent).toBe('Générer l’audio complet');
   });
 });

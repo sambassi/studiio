@@ -7,10 +7,10 @@ import { creneauImmediat } from '@/lib/autopilot/rules';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { pickTopics } from '@/lib/autopilot/topics';
 import {
-  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, coutMontage, coutAfficheDuDevis,
+  produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
-import { prixDe } from '@/lib/tarifs/serveur';
+import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib/autopilot/sources';
 import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
 
 /**
@@ -86,20 +86,21 @@ export async function GET() {
   if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
-  const [{ politique }, solde, coutRendu, lignes] = await Promise.all([
+  const [{ politique }, solde, lignes] = await Promise.all([
     politiqueDeLUtilisateur(userId),
     getUserCredits(userId).catch(() => null),
-    coutMontage(),
     supabaseAdmin.from('autopilot_config').select('*').eq('user_id', userId).limit(1).then((r) => r.data, () => null),
   ]);
   // Le devis = ce que POST vérifiera et ce que le montage débitera : rendu
-  // (+ affiche de référence si ce mode est actif).
+  // (+ avatar si la vidéo du jumeau est montée, + affiche de référence si ce
+  // mode est actif). `devisMontage` est la formule partagée avec POST.
   const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
-  const cout = coutRendu + await coutAfficheDuDevis(config);
+  const devis = await devisMontage(config);
   return NextResponse.json({
     success: true,
     politique,
-    cout,
+    cout: devis.total,
+    detail: { rendu: devis.rendu, avatar: devis.avatar, affiche: devis.affiche },
     solde,
     enCours: enVol.has(userId),
   });
@@ -140,9 +141,11 @@ export async function POST() {
     const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
 
     // ── Refus SANS DÉBIT ────────────────────────────────────────────────
-    // Le jumeau tient la séquence « Vidéo » : un montage avec jumeau n'a PAS
-    // besoin de rush. Le refus « sans rush » ne vaut donc que sans jumeau.
-    if (!config.jumeauAvatar && config.rushUrls.length === 0) {
+    // MULTI-SOURCES : le refus ne vaut que si AUCUNE source visuelle n'existe —
+    // calculé ici, depuis la configuration (rushes personnels selon `actives`,
+    // avatar actif, stock retenu, vidéos stock importées). Le jumeau tient la
+    // séquence « Vidéo » à lui seul ; sa disponibilité est vérifiée à son lancement.
+    if (!aUneSourceVisuelle(etatSourcesServeur(config))) {
       return NextResponse.json(
         { success: false, error: 'Aucun rush dans la banque : ajoutez au moins une vidéo.', code: 'sans-rush' },
         { status: 422 },
@@ -153,10 +156,11 @@ export async function POST() {
     // On vérifie les deux d'avance pour ne pas lancer (et facturer l'avatar) un
     // montage dont le rendu échouerait faute de crédits. Prix lus UNE fois
     // dans la grille centrale ; le rendu débite ce même `coutRendu`.
-    const coutRendu = await coutMontage();
     // + l'affiche de référence quand elle sera produite (débitée après dépôt).
-    const coutAffiche = await coutAfficheDuDevis(config);
-    const cout = (config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu) + coutAffiche;
+    // La MÊME formule que le devis affiché (`devisMontage`).
+    const devis = await devisMontage(config);
+    const coutRendu = devis.rendu;
+    const cout = devis.total;
     const credits = await getUserCredits(userId).catch(() => 0);
     if (credits < cout) {
       return NextResponse.json({
@@ -213,7 +217,7 @@ export async function POST() {
     // On LANCE la génération et on met le montage en file — le finaliseur (cron)
     // le rendra dès que la vidéo est prête. Le montage arrive dans le Calendrier
     // quelques minutes plus tard, même si l'onglet est fermé.
-    if (configBrouillon.jumeauAvatar) {
+    if (avatarActifConfig(configBrouillon)) {
       const lancement = await lancerJumeauMontage({
         userId,
         config: configBrouillon,

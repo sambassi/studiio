@@ -8,6 +8,7 @@ import {
 } from '@/lib/voice/prononciations';
 import { MAX_CARACTERES_PREECOUTE, MESSAGE_TROP_D_ECOUTES } from '@/lib/voice/preecoute';
 import AudioCompletSection from '@/components/voice/AudioCompletSection';
+import LecteurVoixCompact from '@/components/voice/LecteurVoixCompact';
 
 /**
  * « Ma voix & prononciations » — l'écran ne décide rien, il affiche ce que
@@ -19,14 +20,16 @@ import AudioCompletSection from '@/components/voice/AudioCompletSection';
  *   - l'aperçu TEXTE AFFICHÉ / SERA PRONONCÉ, par la même fonction commune
  *     que le serveur (`scriptParle`) ;
  *   - « Écouter ma voix » : un vrai audio, ou l'état « pas encore
- *     disponible » — jamais une voix générique, jamais un faux son ;
+ *     disponible » — jamais une voix générique, jamais un faux son. Il se
+ *     joue dans `LecteurVoixCompact` (lecture/pause, onde, chrono), jamais
+ *     dans le lecteur natif (menu ⋮, téléchargement) ;
  *   - l'icône haut-parleur de chaque prononciation : le serveur dit CE mot
  *     (≈ 5 s au plus), l'écran n'envoie que `{ affiche }`. Lecture sans
  *     lecteur visible, une seule à la fois, sans téléchargement.
  * Les deux écoutes sont des pré-écoutes gratuites et courtes : la borne
  * (≈ 5 s de texte dit) est appliquée par le serveur, jamais crue d'ici.
  *
- * « Audio complet » est une section À PART, payante : le prix annoncé sur le
+ * « Audio complet » est une section À PART, payante : le prix annoncé au-dessus du
  * bouton vient de la même fonction pure que le serveur (`coutAudioComplet`),
  * mais seul le serveur le calcule et débite. Le lecteur complet et le lien
  * de téléchargement n'apparaissent qu'APRÈS un succès — dans
@@ -311,7 +314,8 @@ export default function MaVoixPanel() {
             </button>
             {audioUrl && (
               <div className="space-y-1">
-                <audio data-ecoute-audio ref={audioRef} src={audioUrl} controls controlsList="nodownload" autoPlay onPlay={arreterLectureLigne} className="w-full" />
+                {/* Lecteur Studiio : `<audio>` caché sans `controls` — ni menu ⋮, ni téléchargement. */}
+                <LecteurVoixCompact ref={audioRef} src={audioUrl} onLecture={arreterLectureLigne} />
                 {spokenJoue && <div className="text-xs text-gray-400">Texte prononcé : « {spokenJoue} »</div>}
               </div>
             )}

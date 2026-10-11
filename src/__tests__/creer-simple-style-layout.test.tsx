@@ -302,7 +302,8 @@ describe('Les trois pièges trouvés à l’audit', () => {
     // `disabled` empêche de CHOISIR un onglet mort, pas d'y RESTER : masquer
     // la séquence après coup laissait un plateau vide, sans explication.
     expect(wizardSource).toMatch(
-      /if \(previewFocus !== 'all' && !activeOrder\.includes\(previewFocus\)\) setPreviewFocus\('all'\);/,
+      // `ordreApercu` : les séquences MONTRÉES (« Vidéo » incluse en mode avatar).
+      /if \(previewFocus !== 'all' && !ordreApercu\.includes\(previewFocus\)\) setPreviewFocus\('all'\);/,
     );
     // Et choisir une zone de texte ne braque l'aperçu que sur une séquence
     // réellement active.

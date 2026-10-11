@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits } from '@/lib/credits/system';
 import { sendEmailSilent } from '@/lib/email/resend';
 import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rules';
+import { avatarActifConfig } from '@/lib/autopilot/sources';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { pickTopics } from '@/lib/autopilot/topics';
@@ -270,11 +271,11 @@ export async function GET(req: NextRequest) {
       // réellement — même calcul que « Produire maintenant ». Et le jumeau
       // tient la séquence « Vidéo » : une banque de rushes vide ne bloque pas.
       const coutRendu = await coutMontage();
-      const coutParMontage = (config.jumeauAvatar ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu)
+      const coutParMontage = (avatarActifConfig(config) ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu)
         + await coutAfficheDuDevis(config);
       const credits = await getUserCredits(userId).catch(() => 0);
       const decision = decideRun({
-        config, credits, costPerVideo: coutParMontage, now, allowWithoutRush: config.jumeauAvatar,
+        config, credits, costPerVideo: coutParMontage, now, allowWithoutRush: avatarActifConfig(config),
       });
 
       if (!decision.run) {
@@ -310,7 +311,7 @@ export async function GET(req: NextRequest) {
       // Les créneaux déjà EN FILE pour leur jumeau comptent comme faits : sans
       // ça, chaque passe du cron relancerait une génération d'avatar (facturée)
       // tant que la précédente n'a pas fini de rendre.
-      if (config.jumeauAvatar) {
+      if (avatarActifConfig(config)) {
         for (const s of await creneauxJumeauEnAttente(userId)) dejaFaits.add(s);
       }
 
@@ -364,7 +365,7 @@ export async function GET(req: NextRequest) {
           // La génération D-ID prend des minutes, la requête est bornée à
           // 300 s : on met le montage en file (`lancerJumeauMontage`), le
           // finaliseur le rendra à une passe suivante, dès la vidéo prête.
-          if (config.jumeauAvatar) {
+          if (avatarActifConfig(config)) {
             const lancement = await lancerJumeauMontage({
               userId, config, post, rang: posts.indexOf(post), now, jobId, slotKey: jeton,
               journal: '[Autopilote/Cron]',

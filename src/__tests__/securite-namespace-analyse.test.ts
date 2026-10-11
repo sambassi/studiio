@@ -875,8 +875,9 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
    * serveur, hors navigateur.
    */
   const APPELANTS: Array<[string, string, string]> = [
+    // HEAD par le fetch SÛR (`fetch-sur.ts` : DNS épinglé, redirections revalidées).
     ['présence d un rush (HEAD)', 'src/lib/autopilot/poster.ts',
-      "fetch(url, { method: 'HEAD'"],
+      'await sonderSur(url, {'],
     ['durée d un rush (lecture par tranches)', 'src/lib/autopilot/poster.ts',
       "await import('@remotion/media-parser')"],
     ['choix de l URL publiable', 'src/lib/videos/playable-url.ts',

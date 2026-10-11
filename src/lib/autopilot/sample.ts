@@ -1,6 +1,6 @@
 import { generateSmartContent } from '@/lib/smart-content';
 import { THEMES } from '@/lib/themes';
-import { posterQuery } from '@/lib/autopilot/poster';
+import { posterQuery } from '@/lib/autopilot/poster-requete';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 
 /**
