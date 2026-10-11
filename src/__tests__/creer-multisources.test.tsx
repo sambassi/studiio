@@ -361,6 +361,7 @@ describe('compositeur — fonctions pures', () => {
 
 // ── Bout en bout : le VRAI composeVideo sur un faux navigateur ────────────
 interface Peint { source: unknown }
+const NOUVELLE_IMAGE = Symbol('nouvelle image');
 const peints: Peint[] = [];
 let sourcesAudio: unknown[] = [];
 let enregistreurs = 0;
@@ -433,6 +434,9 @@ function contexte() {
   const degrade = { addColorStop: () => {} };
   const base: Record<string, unknown> = {
     drawImage: (source: unknown) => { peints.push({ source }); },
+    // Début d'une image du montage (`drawFrame` vide la toile) : sert à
+    // découper `peints` image par image.
+    clearRect: (_x: number, _y: number, w: number, h: number) => { if (w === 64 && h === 64) peints.push({ source: NOUVELLE_IMAGE }); },
     measureText: (t: string) => ({ width: String(t).length * 10, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
     createLinearGradient: () => degrade,
     createRadialGradient: () => degrade,
@@ -523,4 +527,41 @@ describe('composeVideo — plan multi-sources sur un faux navigateur', () => {
     expect(enregistreurs).toBe(0);
     expect(document.body.querySelectorAll('canvas').length).toBe(0);
   });
+  it('fondu ENTRANT vers un plan mixte : seule sa PREMIÈRE image paraît, jamais un média suivant', async () => {
+    // Titre (affiche F) → Vidéo [photo 1 s → rush 4 s] → CTA, fondu par
+    // défaut de 0,8 s. L'ancienne progression `t * 0,3` atteignait 1,5 s du
+    // plan à la fin du fondu : le RUSH apparaissait sous le titre, avant son tour.
+    const F = '/media/affiche.jpg';
+    const { plan, duree } = planDepuisListe([
+      { id: 'p', source: 'stock-photo', type: 'image', url: P, duree: 0.5 },
+      { id: 'r', source: 'rush', type: 'video', url: R, duree: 4 },
+    ]);
+    // Photo : 1 s minimum → plan de 5 s ; 30 % de 5 s = 1,5 s, déjà dans le rush.
+    expect(plan.map((s) => [s.url, s.debut, s.fin])).toEqual([[P, 0, 1], [R, 1, 5]]);
+    await composeVideo({
+      width: 64, height: 64, fps: 30, title: 'T', cards: [],
+      posterUrl: F, design: { posterOnAllSequences: false },
+      videoUrl: plan[0].url, montage: plan,
+      introDuration: 1.2, cardsDuration: 0, videoDuration: duree, ctaDuration: 0.2,
+      accentColor: '#7C3AED',
+    } as ComposerOptions);
+    const rush = fauxVideos.find((v) => v.srcDemande === R)!;
+    expect(rush).toBeTruthy();
+    // Découpe image par image ; une image de FONDU peint le titre ET la vidéo.
+    const images: unknown[][] = [];
+    for (const p of peints) {
+      if (p.source === NOUVELLE_IMAGE) images.push([]);
+      else images.at(-1)?.push(p.source);
+    }
+    const estAffiche = (s: unknown) => (s as FauxImage)?.srcDemande === F;
+    const estPhoto = (s: unknown) => (s as FauxImage)?.srcDemande === P;
+    const fondu = images.filter((im) => im.some(estAffiche) && im.some((s) => estPhoto(s) || s === rush));
+    expect(fondu.length).toBeGreaterThan(3);
+    for (const im of fondu) {
+      expect(im.some(estPhoto)).toBe(true);
+      expect(im.includes(rush)).toBe(false);
+    }
+    // Le rush paraît bien ensuite, à son tour (aucun plan perdu).
+    expect(images.some((im) => !im.some(estAffiche) && im.includes(rush))).toBe(true);
+  }, 20000);
 });
