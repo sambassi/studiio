@@ -117,7 +117,8 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     const iGarde = code.indexOf('gardeJumeauAvantRendu(');
     const iSolde = code.indexOf('/api/credits/balance');
     const iMoteur = code.indexOf('genererEtAttendreVideoJumeau(');
-    const iRush = code.indexOf('posee = await applyRush(video.url');
+    // Posée par applyRush (jumeau seul) ou dans les créneaux « Mon avatar » de la liste multi-sources.
+    const iRush = code.indexOf(': await applyRush(video.url');
     const iBoucle = code.indexOf('for (let b = 0; b < total; b += 1)');
     const iCompose = code.search(/= await composerEtFacturer\(|await rendreEtFacturer\(\{/);
     expect(iGarde).toBeGreaterThan(0);
@@ -137,7 +138,9 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(bloc).toMatch(/rushUrl: posee\.url/);
     expect(bloc).toMatch(/videoDuration: posee\.secondes/);
     // Les deux seules sorties : l'echec du moteur, et un rush remplace entre-temps.
-    expect(bloc.match(/\breturn;/g)).toHaveLength(2);
+    // + multi-sources : une liste dont un média n'est pas prêt s'arrête AVANT tout débit.
+    expect(bloc.match(/\breturn;/g)).toHaveLength(3);
+    expect(bloc).toMatch(/res\.ignores > 0 \|\| res\.plan\.length === 0\) \{\s*setError\([^;]*\);\s*return;/);
     // (Seule ligne tolérée avant `setError` : l'oubli d'une génération 404,
     // introuvable — la garder ferait boucler la reprise à chaque ouverture.)
     expect(bloc).toMatch(/catch \(e\) \{\s*(if \(e instanceof ErreurAttenteJumeau && e\.code === 'introuvable'\) setJumeauGenerationId\(null\);\s*)?setError\([^;]*\);\s*return;\s*\}/);

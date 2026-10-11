@@ -259,8 +259,8 @@ describe('Créer — chaîne écran → export (sources)', () => {
   const wizard = readFileSync(resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
 
   it('un bouton « Recadrer » par rush de la liste, ouvrant la modale sur CE rush', () => {
-    expect(wizard).toContain('data-rush-item-recadrer');
-    expect(wizard).toContain('onClick={() => setRecadrerRushOuvert(r.url)}');
+    // Liste multi-sources : un « Recadrer » par média (vidéo ou photo), sur CE média.
+    expect(wizard).toContain('onRecadrer={(m) => { if (m.url) setRecadrerRushOuvert(m.url); }}');
     expect(wizard).toContain('onClick={() => setRecadrerRushOuvert(rushUrl)}');
     expect(wizard).toContain('valeur={recadrageDuRush(rushTransforms, recadrerRushOuvert)}');
     expect(wizard).toContain('onChange={(t) => setRushTransforms((prev) => avecRecadrageRush(prev, recadrerRushOuvert, t))}');
@@ -268,7 +268,7 @@ describe('Créer — chaîne écran → export (sources)', () => {
 
   it('le plateau montre le recadrage du rush qu’il affiche ; l’export reçoit la table par rush', () => {
     expect(wizard).toContain('const rushTransform: RecadrageRush = recadrageDuRush(rushTransforms, rushUrl);');
-    expect(wizard).toContain('? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs)');
+    expect(wizard).toContain('? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs ?? planListe)');
     expect(wizard).not.toContain('? { rushTransform }');
   });
 });

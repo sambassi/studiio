@@ -21,6 +21,8 @@ import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import type { Lut } from '@/lib/luts/types';
 import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import { recadragePourRushPeint } from '@/lib/creer/recadrage-rush';
+import { transformeKenBurns } from '@/lib/creer/ken-burns';
+import type { MouvementImage } from '@/lib/creer/multi-rush';
 import { ajusterPlan } from '@/lib/creer/smart-montage';
 import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
 import type { OverlaysMontage } from '@/lib/creer/overlays';
@@ -820,6 +822,64 @@ export function voixGlobaleActive(options: Pick<ComposerOptions, 'sequenceVoiceU
 }
 
 /** Message du rendu refusé : la voix du jumeau n'a pas atteint le montage. */
+/** Message montré quand une PHOTO du plan multi-sources ne se charge pas. */
+export const MESSAGE_PHOTO_INDISPONIBLE =
+  'Une photo de la séquence « Vidéo » n’a pas pu être chargée pour le rendu. '
+  + 'Rien n’a été débité. Réessayez dans un instant, ou remplacez cette photo.';
+
+/**
+ * MULTI-SOURCES (Créer) : le plan est-il « mixte » — au moins une PHOTO ou un
+ * extrait d'AVATAR ? Rend les plans retenus (URL non vide), sinon `null` (tous
+ * les autres montages gardent leurs chemins d'avant). Pur.
+ */
+export function estMontageMixte(
+  videoUrl: string | null | undefined,
+  montage: ReadonlyArray<RushSegment> | null | undefined,
+): RushSegment[] | null {
+  if (!videoUrl || !montage) return null;
+  const plans = montage.filter((m) => !!m?.url);
+  return plans.length > 0 && plans.some((m) => m.kind === 'image' || m.kind === 'avatar') ? plans : null;
+}
+
+/** Médias du plan mixte qui n'ont PAS pu être chargés (vidéos et photos). Pur. */
+export function mediasMixtesManquants(
+  plan: ReadonlyArray<RushSegment>, videosLues: ReadonlySet<string>, imagesLues: ReadonlySet<string>,
+): string[] {
+  const manquants = new Set<string>();
+  for (const s of plan) {
+    if (s.kind === 'image' ? !imagesLues.has(s.url) : !videosLues.has(s.url)) manquants.add(s.url);
+  }
+  return Array.from(manquants);
+}
+
+/**
+ * Plan mixte ramené à la durée de la séquence (`ajusterPlan`), puis chaque
+ * extrait d'AVATAR recalé sur `depuis === debut` — l'invariant lip-sync. Pur.
+ */
+export function ajusterPlanMixte(plan: ReadonlyArray<RushSegment>, duree: number): RushSegment[] {
+  return ajusterPlan(plan, duree).map((s) => (s.kind === 'avatar' ? { ...s, depuis: s.debut, vitesse: undefined } : s));
+}
+
+/**
+ * Cadrage d'une PHOTO à `progres` (0 → 1) de son plan : son recadrage (même
+ * forme que celui d'un rush) COMBINÉ au mouvement Ken Burns de `ken-burns.ts`
+ * (le même que la composition Remotion). Zoom multiplié, panoramique ajouté
+ * en fraction de largeur. Pur — `drawVideoSeq` le consomme tel quel.
+ */
+export function recadrageImageKenBurns(
+  recadrage: { scale?: number; offsetX?: number; offsetY?: number } | null | undefined,
+  mouvement: MouvementImage | undefined,
+  progres: number,
+): { scale: number; offsetX: number; offsetY: number } {
+  const kb = transformeKenBurns(mouvement, progres);
+  const scale = (recadrage?.scale || 1) * kb.scale;
+  return {
+    scale: Math.round(scale * 10000) / 10000,
+    offsetX: Math.round(((recadrage?.offsetX || 0) + (kb.translateXPct / 100) * kb.scale) * 10000) / 10000,
+    offsetY: recadrage?.offsetY || 0,
+  };
+}
+
 export const MESSAGE_JUMEAU_MUET = 'La voix de votre jumeau n’a pas pu être ajoutée au montage. Rien n’a été livré : relancez l’envoi.';
 
 /** Niveau RMS (amplitude) en dessous duquel un signal est du silence numérique. */
@@ -3732,14 +3792,28 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const mediaLoadStart = performance.now();
   // Multi-rush : a partir de 2 rushes seulement, et seulement si un rush est
   // demande (`videoUrl`) — un appelant qui masque la sequence ne le passe pas.
-  const montageDemande = videoUrl && options.montage && options.montage.filter((m) => m?.url).length >= 2
+  // MULTI-SOURCES (Créer, `medias-video.ts`) : un plan qui contient une PHOTO
+  // ou un extrait d'AVATAR. Accepté dès 1 plan (une photo seule, un avatar
+  // seul entre deux photos…). `null` pour tout autre montage : chemins d'avant.
+  const montageMixte = estMontageMixte(videoUrl, options.montage);
+  const montageDemande = montageMixte
+    ? montageMixte
+    : videoUrl && options.montage && options.montage.filter((m) => m?.url).length >= 2
     ? options.montage.filter((m) => m?.url)
     : null;
   const rushsDemandes = montageDemande
-    ? rushsDuPlan(montageDemande)
+    ? rushsDuPlan(montageMixte ? montageDemande.filter((m) => m.kind !== 'image') : montageDemande)
     : videoUrl && options.rushs && options.rushs.filter((r) => r?.url).length >= 2
     ? options.rushs.filter((r) => r?.url)
     : null;
+  // Photos du plan multi-sources, une fois chacune (même proxy anti-taint que l'affiche).
+  const imagesDemandees = montageMixte
+    ? Array.from(new Set(montageMixte.filter((m) => m.kind === 'image').map((m) => m.url)))
+    : [];
+  const imagesParUrl = new Map<string, HTMLImageElement>();
+  const imagesPromesse = Promise.all(imagesDemandees.map((u) => loadImage(u)
+    .then((img) => { imagesParUrl.set(u, img); })
+    .catch((err) => { console.error('[Composer] ❌ Photo du plan FAILED:', u.substring(0, 60), err?.message); })));
   const [posterImg, logoImg, videoElPrincipal, videoImageEl, rushsCharges] = await Promise.all([
     posterUrl ? loadImage(posterUrl).catch((err) => { console.error('[Composer] ❌ Poster load FAILED:', err.message); return null; }) : null,
     logoUrl ? loadImage(logoUrl).catch((err) => { console.error('[Composer] ❌ Logo load FAILED:', err.message); return null; }) : null,
@@ -3757,12 +3831,25 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // `videoEl` reste LE rush de reference (audio, bascule temps reel) : le
   // premier charge en multi-rush, l'unique sinon.
   const videoEl: HTMLVideoElement | null = rushsDemandes ? (rushsLus[0]?.el ?? null) : videoElPrincipal;
+  await imagesPromesse;
+  // Multi-sources : TOUT média du plan est nécessaire. Un seul manquant (photo
+  // ou vidéo) arrête le rendu ICI, avant canvas et enregistreur — jamais un
+  // plan noir ni une redistribution silencieuse (#518).
+  if (montageMixte && videoDuration > 0) {
+    const manquantes = mediasMixtesManquants(montageMixte, new Set(rushsLus.map((r) => r.url)), new Set(imagesParUrl.keys()));
+    if (manquantes.length > 0) {
+      const cause = `media(s) du plan multi-sources illisible(s) : ${manquantes.map((u) => u.substring(0, 80)).join(', ')}`;
+      console.error('[Composer] MEDIA_INDISPONIBLE sequence=video', cause);
+      const photo = montageMixte.some((m) => m.kind === 'image' && manquantes.includes(m.url));
+      throw new MediaIndisponibleError('video', cause, photo ? MESSAGE_PHOTO_INDISPONIBLE : undefined);
+    }
+  }
   console.log(`[Composer] Media loaded in ${((performance.now() - mediaLoadStart) / 1000).toFixed(1)}s — poster:${!!posterImg} logo:${!!logoImg} video:${!!videoEl} videoImage:${!!videoImageEl}`);
   // Video EXIGEE (`exigerVideo`, opt-in : sans elle, l'ancienne
   // redistribution des durees reste la regle) mais introuvable : on s'arrete
   // ICI, avant canvas, audio et enregistreur — rien a liberer, et surtout
   // aucun MP4 « termine » sans la video que l'apercu montrait.
-  if (videoExigee(options) && videoUrl && videoDuration > 0 && !videoEl) {
+  if (videoExigee(options) && !montageMixte && videoUrl && videoDuration > 0 && !videoEl) {
     const cause = `aucune source video chargee (${(rushsDemandes ?? [{ url: videoUrl }]).map((r) => r.url.substring(0, 80)).join(', ')})`;
     console.error('[Composer] MEDIA_INDISPONIBLE sequence=video', cause);
     throw new MediaIndisponibleError('video', cause);
@@ -3934,7 +4021,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // sequences into the list, because the transition logic crossfades
   // INTO sequences[seqIdx + 1] even when that next sequence has
   // duration 0 — which leaks the hidden sequence into the final frame.
-  const hasVideoBackground = !!videoEl || !!videoImageEl;
+  const hasVideoBackground = !!videoEl || !!videoImageEl || (!!montageMixte && imagesParUrl.size > 0);
   // ── Assemblage des sequences ──────────────────────────────────────────
   // Delegue a la spec PARTAGEE : le rendu serveur (Remotion) construit son
   // montage avec la MEME fonction. Deux assemblages independants
@@ -3972,8 +4059,18 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // sequence. Un rush du plan illisible = retour a l'enchainement des rushes
   // lus (jamais un trou noir au milieu du montage).
   const elParUrl = new Map(rushsLus.map((r) => [r.url, r.el] as const));
-  const montageLu = montageDemande && montageDemande.every((m) => elParUrl.has(m.url)) ? montageDemande : null;
-  const planAjuste = montageLu && videoSeqPlan ? ajusterPlan(montageLu, videoSeqPlan.duration) : null;
+  const montageLu = !montageMixte && montageDemande && montageDemande.every((m) => elParUrl.has(m.url)) ? montageDemande : null;
+  // Multi-sources : le plan COMPLET (vidéos, avatar, photos), ramené à la durée
+  // de la séquence ; l'avatar garde `depuis === debut` (lip-sync).
+  const planComplet = montageMixte && videoSeqPlan ? ajusterPlanMixte(montageMixte, videoSeqPlan.duration) : null;
+  // Le pilote ne joue que les plans VIDÉO (rushes, vidéos suggérées) ; l'avatar
+  // joue en continu à part (sa voix), les photos se peignent sans lecteur.
+  const planVideosMixte = planComplet ? planComplet.filter((s) => (s.kind ?? 'video') === 'video') : null;
+  const planAjuste = planVideosMixte
+    ? (planVideosMixte.length ? planVideosMixte : null)
+    : montageLu && videoSeqPlan ? ajusterPlan(montageLu, videoSeqPlan.duration) : null;
+  const urlAvatar = planComplet?.find((s) => s.kind === 'avatar')?.url ?? null;
+  const avatarEl: HTMLVideoElement | null = urlAvatar ? elParUrl.get(urlAvatar) ?? null : null;
   // Double tampon (`pilote-montage.ts`) : deux extraits consecutifs du MEME
   // rush prennent deux elements distincts, pour que le suivant soit positionne
   // AVANT la coupe. Second element absent (chargement rate) = l'element unique,
@@ -3989,9 +4086,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   const rushPlan: { el: HTMLVideoElement; debut: number; fin: number; depuis: number; vitesse?: number }[] | null =
     planAjuste
       ? planAjuste.map((seg, k) => ({ el: (tampons[k] === 1 ? secondsTampons.get(seg.url) : null) ?? elParUrl.get(seg.url)!, debut: seg.debut, fin: seg.fin, depuis: seg.depuis ?? 0, vitesse: seg.vitesse ?? 1 }))
-      : rushsLus.length >= 2 && videoSeqPlan
+      : !planComplet && rushsLus.length >= 2 && videoSeqPlan
       ? planRushs(rushsLus, videoSeqPlan.duration).map((seg, i) => ({ el: rushsLus[i].el, debut: seg.debut, fin: seg.fin, depuis: 0 }))
       : null;
+  if (planComplet) {
+    console.log('[Composer] Multi-sources :', planComplet.map((s) => `${s.kind ?? 'video'} ${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s`).join(' | '));
+  }
   if (rushPlan) {
     console.log(montageLu ? '[Composer] Smart montage :' : '[Composer] Multi-rush :', rushPlan.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s@${s.depuis.toFixed(1)}`).join(' | '));
   }
@@ -4004,6 +4104,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Tous les elements video du rush (un seul hors multi-rush).
   // Un element par RUSH (un plan de montage reprend le meme rush plusieurs fois).
   const rushEls: HTMLVideoElement[] = rushPlan ? Array.from(new Set(rushPlan.map((s) => s.el))) : (videoEl ? [videoEl] : []);
+  // Multi-sources : la vidéo de l'avatar est un lecteur de plus (hors pilote).
+  if (planComplet && avatarEl && !rushEls.includes(avatarEl)) rushEls.unshift(avatarEl);
+  // L'élément qui PARLE : la vidéo de l'avatar d'un plan multi-sources, sinon
+  // le rush unique du jumeau (chemin d'avant).
+  const elJumeau: HTMLVideoElement | null = planComplet ? avatarEl : videoEl;
   // Vidéo du jumeau (un seul rush, qui PARLE) : sa voix est exigée dans le
   // mix. `null` pour tout autre rush — rien ne change pour eux.
   const jumeau: {
@@ -4011,7 +4116,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     duckMusique: GainNode | null;
     maxVideo: number;
     sequenceJouee: boolean;
-  } | null = options.rushAudioRequis && videoEl && !rushPlan
+  } | null = options.rushAudioRequis && (planComplet ? !!avatarEl : !!videoEl && !rushPlan)
     ? { analyseVideo: null, duckMusique: null, maxVideo: 0, sequenceJouee: false }
     : null;
   // Element peint pendant la sequence video, choisi par le pilote du rendu
@@ -4229,10 +4334,31 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         case 'video': {
           const videoSeq = sequences.find((s) => s.type === 'video');
           const secondsIn = videoSeq ? progress * videoSeq.duration : 0;
+          if (planComplet) {
+            // Multi-sources : le plan du moment décide — photo (Ken Burns),
+            // avatar (lecture continue) ou vidéo (pilote).
+            const seg = segmentA(planComplet, secondsIn);
+            if (seg?.kind === 'image') {
+              const img = imagesParUrl.get(seg.url) ?? null;
+              const recadrage = recadrageImageKenBurns(
+                recadragePourRushPeint(seg.url, { rushTransforms: options.rushTransforms }),
+                seg.mouvement,
+                seg.fin > seg.debut ? (secondsIn - seg.debut) / (seg.fin - seg.debut) : 0,
+              );
+              drawVideoSeq(target, width, height, null, logoImg, progress, normalizedDesign, recadrage, img, secondsIn, bgImg, seqBg.opacity, lutGrader);
+            } else {
+              const el = seg?.kind === 'avatar'
+                ? avatarEl
+                : (lecteurAffiche ?? (rushPlan ? segmentA(rushPlan, secondsIn)?.el : null) ?? (seg ? elParUrl.get(seg.url) ?? null : null));
+              const recadrage = recadragePourRushPeint(el ? urlParLecteur.get(el) : null, { rushTransforms: options.rushTransforms });
+              drawVideoSeq(target, width, height, el, logoImg, progress, normalizedDesign, recadrage, null, secondsIn, bgImg, seqBg.opacity, lutGrader);
+            }
+          } else {
           const rushCourant = rushPlan ? (lecteurAffiche ?? segmentA(rushPlan, secondsIn)?.el ?? videoEl) : videoEl;
           // Le recadrage de CE rush (par URL) — jamais celui d'un autre.
           const recadrageCourant = recadragePourRushPeint(rushCourant ? urlParLecteur.get(rushCourant) : null, { rushTransforms: options.rushTransforms, rushTransform, videoUrl });
           drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, recadrageCourant, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
+          }
           // Surimpressions (profils dynamiques) : posées sur le rush qui continue.
           if (options.surimpressions) dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps);
           break;
@@ -4486,9 +4612,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         // Multi-rush : chaque rush passe par le MEME gain (meme reglage, meme
         // ducking). Un seul element hors multi-rush — le chemin d'avant.
         for (const el of rushEls) {
+          // Plan de coupe d'un montage AVEC avatar : MUET (jamais routé). La
+          // seule voix de la séquence est celle de l'avatar, continue.
+          if (planComplet && avatarEl && el !== avatarEl) { el.muted = true; continue; }
           el.muted = false;
           const rushSource = audioCtx.createMediaElementSource(el);
-          if (jumeau && el === videoEl) {
+          if (jumeau && el === elJumeau) {
             // Jumeau : sa piste EST une voix. Elle suit le réglage des VOIX
             // (`voiceVolume`, keyframes du bus voix), jamais celui du son
             // ambiant des rushes : un `rushVolume` à 0 — réglage courant pour
@@ -4633,7 +4762,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // idempotent : les liberations explicites de `onstop`/`onerror` et celle du
   // `.finally` peuvent se cumuler sans effet.
   lutGrader =
-    options.rushLut && (videoEl || videoImageEl)
+    options.rushLut && (videoEl || videoImageEl || imagesParUrl.size > 0)
       ? createLutGrader(options.rushLut.lut, options.rushLut.intensity)
       : null;
   if (options.rushLut) {
@@ -5030,6 +5159,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }) : null;
     if (pilote) pilote.prepositionner();
     else for (const el of rushEls) { el.currentTime = 0; el.pause(); }
+    if (pilote && avatarEl) { avatarEl.currentTime = 0; avatarEl.pause(); }
 
     // Instrumentation des gels : instant de la derniere image NOUVELLE
     // presentee par chaque lecteur (`requestVideoFrameCallback`), et
@@ -5101,7 +5231,31 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       const t = Math.min(elapsed, totalDuration - 0.001);
 
       // Gérer l'élément vidéo
-      if (pilote) {
+      if (planComplet) {
+        // Multi-sources : l'avatar JOUE EN CONTINU pendant toute la séquence
+        // (sa voix ne s'interrompt pas sous les plans de coupe) ; le pilote ne
+        // joue que les plans vidéo, et rien pendant une photo ou l'avatar.
+        const videoSeq = sequences.find(s => s.type === 'video');
+        if (videoSeq) {
+          const vs = seqStarts[sequences.indexOf(videoSeq)];
+          const dedans = t >= vs && t < vs + videoSeq.duration;
+          const secondsIn = t - vs;
+          if (avatarEl) {
+            if (dedans) { if (avatarEl.paused) { avatarEl.currentTime = secondsIn; avatarEl.play().catch(() => {}); } }
+            else if (!avatarEl.paused) avatarEl.pause();
+          }
+          if (pilote) {
+            const seg = dedans ? segmentA(planComplet, secondsIn) : null;
+            const el = pilote.image(seg && (seg.kind ?? 'video') === 'video' ? secondsIn : null);
+            const maintenant = performance.now();
+            if (el !== lecteurAffiche) basculeA = maintenant;
+            lecteurAffiche = el;
+            const vue = el ? derniereImage.get(el) : undefined;
+            if (el && vue !== undefined) gelMax = Math.max(gelMax, maintenant - Math.max(vue, basculeA));
+          }
+          suivreJumeau(dedans);
+        }
+      } else if (pilote) {
         // Multi-rush / smart montage : le pilote joue l'extrait actif, prepare
         // le suivant pendant ce temps et ne bascule que sur une image prete.
         const videoSeq = sequences.find(s => s.type === 'video');

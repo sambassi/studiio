@@ -25,7 +25,10 @@ export default function RecadrerRush(props: {
   valeur: RecadrageRush;
   onChange: (t: RecadrageRush) => void;
   onFermer: () => void;
+  /** Multi-sources : une PHOTO se recadre pareil. Absent = vidéo (comportement d'avant). */
+  type?: 'video' | 'image';
 }) {
+  const photo = props.type === 'image';
   const cadre = useRef<HTMLDivElement | null>(null);
   const [dimsSource, setDimsSource] = useState<{ l: number; h: number } | null>(null);
   const glisse = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -55,13 +58,13 @@ export default function RecadrerRush(props: {
   // fenêtre disparaissait avec elle (display: none) et un ancêtre transformé
   // aurait décalé son `position: fixed`.
   const fenetre = (
-    <div data-recadrer-rush role="dialog" aria-modal="true" aria-label="Recadrer la vidéo" className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div data-recadrer-rush role="dialog" aria-modal="true" aria-label={photo ? 'Recadrer la photo' : 'Recadrer la vidéo'} className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
       <div className="w-full max-w-lg card-base p-5 space-y-4 bg-[#0A0A0F]">
         <header className="flex items-center justify-between">
-          <h3 className="font-semibold">Recadrer la vidéo — format {props.format}</h3>
+          <h3 className="font-semibold">{photo ? 'Recadrer la photo' : 'Recadrer la vidéo'} — format {props.format}</h3>
           <button type="button" aria-label="Fermer" onClick={props.onFermer} className="p-1 text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
         </header>
-        <p className="text-xs text-gray-400">La vidéo remplit tout le cadre {props.format}. Faites-la glisser pour choisir ce qui reste visible, zoomez pour resserrer. L’export utilise exactement ce cadrage.</p>
+        <p className="text-xs text-gray-400">{photo ? 'La photo' : 'La vidéo'} remplit tout le cadre {props.format}. Faites-la glisser pour choisir ce qui reste visible, zoomez pour resserrer. L’export utilise exactement ce cadrage.</p>
         <div
           ref={cadre}
           data-recadrer-rush-cadre={props.format}
@@ -72,6 +75,17 @@ export default function RecadrerRush(props: {
           className="relative mx-auto overflow-hidden rounded-xl bg-black cursor-move select-none"
           style={{ aspectRatio: `${ratio}`, width: `min(100%, calc(55vh * ${ratio}))`, touchAction: 'none' }}
         >
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              data-recadrer-rush-image
+              src={props.url}
+              alt=""
+              onLoad={(e) => setDimsSource({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+              className="pointer-events-none max-w-none"
+              style={styleRecadrageRush(props.valeur, dimsSource && dimsSource.h > 0 ? { source: dimsSource.l / dimsSource.h, cadre: ratio } : null)}
+            />
+          ) : (
           <video
             data-recadrer-rush-video
             src={props.url}
@@ -84,6 +98,7 @@ export default function RecadrerRush(props: {
             className="pointer-events-none"
             style={styleRecadrageRush(props.valeur, dimsSource && dimsSource.h > 0 ? { source: dimsSource.l / dimsSource.h, cadre: ratio } : null)}
           />
+          )}
         </div>
         <label className="block space-y-1 text-xs text-gray-300">
           <span className="flex justify-between"><span>Zoom</span><span className="tabular-nums">{props.valeur.scale.toFixed(2)}×</span></span>
