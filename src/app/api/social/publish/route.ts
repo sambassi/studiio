@@ -5,6 +5,7 @@ import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { resolvePublishableUrl } from '@/lib/videos/playable-url';
 import { lireMediaPublication, ErreurMediaPublication } from '@/lib/social/media-publication';
+import { ensurePublicUrl } from '@/lib/social/url-publication';
 import { montageEstPerime, messageMontagePerime } from '@/lib/creer/montage-perime';
 
 /**
@@ -243,16 +244,16 @@ export async function POST(req: NextRequest) {
 
         switch (platform) {
           case 'instagram':
-            publishResult = await publishToInstagram(authedAccount, video, mediaUrl, caption, hashtags);
+            publishResult = await publishToInstagram(authedAccount, video, mediaUrl, session.user.id, caption, hashtags);
             break;
           case 'facebook':
-            publishResult = await publishToFacebook(authedAccount, video, mediaUrl, caption, hashtags);
+            publishResult = await publishToFacebook(authedAccount, video, mediaUrl, session.user.id, caption, hashtags);
             break;
           case 'tiktok':
-            publishResult = await publishToTikTok(authedAccount, video, mediaUrl, caption, hashtags);
+            publishResult = await publishToTikTok(authedAccount, video, mediaUrl, session.user.id, caption, hashtags);
             break;
           case 'youtube':
-            publishResult = await publishToYouTube(authedAccount, video, mediaUrl, caption, hashtags);
+            publishResult = await publishToYouTube(authedAccount, video, mediaUrl, session.user.id, caption, hashtags);
             break;
           default:
             publishResult = { success: false, error: `Plateforme non supportee: ${platformName}` };
@@ -383,6 +384,8 @@ async function publishToInstagram(
   video: any,
   /** URL deja resolue ET validee par `resolvePublishableUrl`. */
   mediaUrl: string,
+  /** Le PUBLIEUR (session) : proprietaire exige de tout objet prive signe. */
+  userId: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -400,7 +403,7 @@ async function publishToInstagram(
   ].join('\n').trim();
 
   try {
-    const publicVideoUrl = await ensurePublicUrl(mediaUrl);
+    const publicVideoUrl = await ensurePublicUrl(mediaUrl, userId);
 
     // Step 1: Create media container (Reels)
     const createRes = await fetch(
@@ -496,6 +499,8 @@ async function publishToFacebook(
   video: any,
   /** URL deja resolue ET validee par `resolvePublishableUrl`. */
   mediaUrl: string,
+  /** Le PUBLIEUR (session) : proprietaire exige de tout objet prive signe. */
+  userId: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -509,7 +514,7 @@ async function publishToFacebook(
   const fullCaption = [caption || video.title, '', hashtags?.join(' ') || ''].join('\n').trim();
 
   try {
-    const publicVideoUrl = await ensurePublicUrl(mediaUrl);
+    const publicVideoUrl = await ensurePublicUrl(mediaUrl, userId);
 
     // Post video directly by file_url (simpler + works for most FB page video uploads)
     const directRes = await fetch(
@@ -556,6 +561,8 @@ async function publishToTikTok(
   video: any,
   /** URL deja resolue ET validee par `resolvePublishableUrl`. */
   mediaUrl: string,
+  /** Le PUBLIEUR (session) : proprietaire exige de tout objet prive signe. */
+  userId: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -569,6 +576,9 @@ async function publishToTikTok(
   const title = [caption || video.title, hashtags?.join(' ') || ''].join(' ').slice(0, 150);
 
   try {
+    // TikTok tire le fichier lui-meme (PULL_FROM_URL) : meme resolution que
+    // Meta, donc meme garde de propriete avant toute signature.
+    const publicVideoUrl = await ensurePublicUrl(mediaUrl, userId);
     // TikTok Content Posting API v2
     const initRes = await fetch(
       'https://open.tiktokapis.com/v2/post/publish/video/init/',
@@ -588,7 +598,7 @@ async function publishToTikTok(
           },
           source_info: {
             source: 'PULL_FROM_URL',
-            video_url: mediaUrl,
+            video_url: publicVideoUrl,
           },
         }),
       }
@@ -616,6 +626,8 @@ async function publishToYouTube(
   video: any,
   /** URL deja resolue ET validee par `resolvePublishableUrl`. */
   mediaUrl: string,
+  /** Le PUBLIEUR (session) : proprietaire exige de tout objet prive signe. */
+  userId: string,
   caption?: string,
   hashtags?: string[],
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
@@ -642,7 +654,7 @@ async function publishToYouTube(
     // rend une erreur au message FIXE, sans URL ni adresse.
     let videoBuffer: Uint8Array<ArrayBuffer>;
     try {
-      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(mediaUrl)));
+      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(mediaUrl, userId)));
     } catch (e) {
       if (!(e instanceof ErreurMediaPublication)) throw e;
       console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', code: e.code });
@@ -735,30 +747,5 @@ async function publishToYouTube(
       message: error instanceof Error ? error.message : String(error),
     });
     return { success: false, error: error instanceof Error ? error.message : 'YouTube API error' };
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-// Ensure the media URL is fetchable by the platform.
-// If it's a private Supabase path, create a 1h signed URL.
-// Otherwise return it as-is (already public).
-// ══════════════════════════════════════════════════════════════
-async function ensurePublicUrl(url: string): Promise<string> {
-  if (!url) return url;
-  // Already a public Supabase URL or any external HTTPS URL → pass through
-  if (url.includes('/storage/v1/object/public/')) return url;
-  if (!url.includes('/storage/v1/object/')) return url;
-
-  // Private Supabase path — try to derive { bucket, path } and sign for 1h
-  try {
-    // Pattern: .../storage/v1/object/(sign|authenticated|private)/<bucket>/<path...>?...
-    const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
-    if (!m) return url;
-    const [, bucket, path] = m;
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return url;
-    return data.signedUrl;
-  } catch {
-    return url;
   }
 }

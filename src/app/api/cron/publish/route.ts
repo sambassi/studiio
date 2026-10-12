@@ -9,7 +9,7 @@ import { readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
-import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { ensurePublicUrl } from '@/lib/social/url-publication';
 import { downloadMediaToFile } from '@/lib/storage/fetch-media';
 import { lireMediaPublication, ErreurMediaPublication } from '@/lib/social/media-publication';
 import { getValidToken } from '@/lib/social/token-refresh';
@@ -794,13 +794,13 @@ export async function GET(req: NextRequest) {
                 result = await publishToInstagram(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'facebook':
-                result = await publishToFacebook(authedAccount, videoData, post.caption);
+                result = await publishToFacebook(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'tiktok':
-                result = await publishToTikTok(authedAccount, videoData, post.caption);
+                result = await publishToTikTok(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'youtube':
-                result = await publishToYouTube(authedAccount, videoData, post.caption);
+                result = await publishToYouTube(authedAccount, videoData, post.caption, post.user_id);
                 break;
               default:
                 result = { success: false, error: `Unsupported platform: ${platform}` };
@@ -1165,30 +1165,6 @@ function metaEchecZernio(
   return { ...sansPreuveZernio(metadata), zernioPostIdAncien: metadata?.zernioPostId ?? null, ...diagnostic };
 }
 
-// Resolve a publicly-fetchable URL for the Graph API / platform fetchers.
-// If the URL is a private Supabase path, create a 1h signed URL.
-//
-// ⚠️ ABSOLUE D'ABORD. Sous MinIO, `/api/upload/signed-url` ecrit une
-// `publicUrl` RELATIVE (`/storage/v1/object/public/…`). Meta et TikTok vont
-// chercher le fichier eux-memes : un chemin sans hote leur est inutilisable.
-// Une URL deja absolue ressort inchangee de `toAbsoluteMediaUrl`.
-async function ensurePublicUrl(url: string): Promise<string> {
-  if (!url) return url;
-  url = toAbsoluteMediaUrl(url);
-  if (url.includes('/storage/v1/object/public/')) return url;
-  if (!url.includes('/storage/v1/object/')) return url;
-  try {
-    const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
-    if (!m) return url;
-    const [, bucket, path] = m;
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return url;
-    return data.signedUrl;
-  } catch {
-    return url;
-  }
-}
-
 async function publishToInstagram(
   account: any,
   video: any,
@@ -1219,7 +1195,7 @@ async function publishToInstagram(
       publishableVideoUrl = await convertToMp4IfNeeded(video.video_url, userId);
       console.log(`[CRON][IG] Using converted MP4: ${publishableVideoUrl.substring(0, 80)}...`);
     }
-    publishableVideoUrl = await ensurePublicUrl(publishableVideoUrl);
+    publishableVideoUrl = await ensurePublicUrl(publishableVideoUrl, userId);
 
     // Step 1: Create media container (Reels)
     console.log(`[CRON][IG] Step 1: Creating media container for Reel...`);
@@ -1329,7 +1305,9 @@ async function publishToInstagram(
 async function publishToFacebook(
   account: any,
   video: any,
-  caption?: string,
+  caption: string | null | undefined,
+  /** Proprietaire du post : seul ses objets prives peuvent etre signes. */
+  userId: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
   const pageId = account.account_id;
@@ -1342,7 +1320,7 @@ async function publishToFacebook(
   console.log(`[CRON][FB] Starting publish to page ${pageId}, video_url=${video.video_url?.substring(0, 80)}...`);
 
   try {
-    const publicUrl = await ensurePublicUrl(video.video_url);
+    const publicUrl = await ensurePublicUrl(video.video_url, userId);
     const res = await fetch(
       `https://graph.facebook.com/v24.0/${pageId}/videos`,
       {
@@ -1393,7 +1371,9 @@ async function publishToFacebook(
 async function publishToTikTok(
   account: any,
   video: any,
-  caption?: string,
+  caption: string | null | undefined,
+  /** Proprietaire du post : seul ses objets prives peuvent etre signes. */
+  userId: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
 
@@ -1404,7 +1384,7 @@ async function publishToTikTok(
   try {
     // TikTok tire le fichier lui-meme (PULL_FROM_URL) : il lui faut une URL
     // absolue et publique, comme a Meta.
-    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+    const publicVideoUrl = await ensurePublicUrl(video.video_url, userId);
     const initRes = await fetch(
       'https://open.tiktokapis.com/v2/post/publish/video/init/',
       {
@@ -1442,7 +1422,9 @@ async function publishToTikTok(
 async function publishToYouTube(
   account: any,
   video: any,
-  caption?: string,
+  caption: string | null | undefined,
+  /** Proprietaire du post : seul ses objets prives peuvent etre signes. */
+  userId: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
 
@@ -1456,7 +1438,7 @@ async function publishToYouTube(
     // Erreur au message FIXE, sans URL ni adresse (voir media-publication.ts).
     let videoBuffer: Uint8Array<ArrayBuffer>;
     try {
-      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(video.video_url)));
+      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(video.video_url, userId)));
     } catch (e) {
       if (!(e instanceof ErreurMediaPublication)) throw e;
       console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', code: e.code });
