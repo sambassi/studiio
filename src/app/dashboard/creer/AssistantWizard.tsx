@@ -204,11 +204,12 @@ import CartesEditeur from '@/components/creer/CartesEditeur';
 import {
   gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, versionAncienneDuRush, lireEtatJumeau, type JumeauMode,
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
+  MESSAGE_ECHEC_VIDEO_AVATAR, motifEchecVideoAvatar, messageEchecJumeau,
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { apercuAvatarDepuisListe, lireAvatarsPourApercu, type ApercuAvatarCreer } from '@/lib/creer/apercu-avatar';
 import { useTarifs } from '@/lib/tarifs/client';
-import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee } from '@/lib/avatar/identite';
+import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee, generationDepuisRush } from '@/lib/avatar/identite';
 import {
   DRAFT_VERSION,
   draftKey,
@@ -4148,7 +4149,7 @@ export default function AssistantWizard() {
    * `reprendreId` non nul = le suivi s'est coupé (réseau, session, délai) mais
    * la génération continue — on la REPREND au lieu d'en payer une seconde.
    */
-  const [jumeauRepriseErreur, setJumeauRepriseErreur] = useState<{ message: string; reprendreId: string | null } | null>(null);
+  const [jumeauRepriseErreur, setJumeauRepriseErreur] = useState<{ message: string | null; reprendreId: string | null; titre?: string } | null>(null);
   /** Un seul poll de reprise à la fois ; remis à faux sur échec pour permettre « Réessayer ». */
   const jumeauRepriseFaite = useRef(false);
   /** Vrai pendant que le clic d'envoi gère lui-même la génération : la reprise ne double pas. */
@@ -6697,7 +6698,7 @@ export default function AssistantWizard() {
     // cette génération, `reprendreJumeau` n'a rien à faire.
     if (draft.jumeauGenerationId) {
       setJumeauGenerationId(draft.jumeauGenerationId);
-      reprendreJumeauRef.current(draft.jumeauGenerationId, draft.rushUrl);
+      reprendreJumeauRef.current(draft.jumeauGenerationId, draft.rushUrl, true);
     }
     // Rush déjà posé (vidéo de jumeau d'un brouillon) : vient-il d'une ancienne
     // version de l'avatar ? Lecture seule — le rush n'est jamais remplacé.
@@ -7803,11 +7804,27 @@ export default function AssistantWizard() {
     setPreviewFocus('video');
   };
   /** Fin d'une attente de jumeau en échec : le motif réel, et la bonne suite. */
-  const echecRepriseJumeau = (e: unknown, generationId: string | null) => {
+  const echecRepriseJumeau = (e: unknown, generationId: string | null, auMontage?: { rushUrl: string | null | undefined }) => {
     const code = e instanceof ErreurAttenteJumeau ? e.code : null;
     // 404 : rien à reprendre — l'identifiant est oublié, sinon chaque
     // ouverture de la page reboucherait dessus.
     if (code === 'introuvable') setJumeauGenerationId(null);
+    // BUG D — `failed` est TERMINAL (déjà remboursé côté serveur) : garder
+    // l'identifiant ré-affichait cet ANCIEN échec à chaque ouverture, même
+    // jumeau prêt. C'est la VIDÉO qui a échoué, pas l'avatar : on le dit tel
+    // quel. À l'OUVERTURE seulement : une vidéo de jumeau est déjà en place
+    // (rush ou liste) — cet ancien échec ne concerne plus l'écran, rien n'est
+    // affiché. Un échec de « Réessayer » / « Régénérer » est, lui, toujours dit.
+    if (code === 'echec') {
+      setJumeauGenerationId(null);
+      const dejaPose = !!auMontage
+        && (!!generationDepuisRush(auMontage.rushUrl ?? rushUrl) || (mediasVideoRef.current ?? []).some((m) => !!generationDepuisRush(m.url)));
+      setJumeauPhase(null);
+      if (dejaPose) { setJumeauRepriseErreur(null); setJumeauReprise('inactif'); return; }
+      setJumeauRepriseErreur({ titre: MESSAGE_ECHEC_VIDEO_AVATAR, message: motifEchecVideoAvatar(e instanceof Error ? e.message : null), reprendreId: null });
+      setJumeauReprise('echec');
+      return;
+    }
     // Réseau, session, délai : l'ATTENTE s'est arrêtée, pas la génération.
     // La relancer paierait une seconde vidéo : on propose de REPRENDRE le
     // suivi du même identifiant (une simple lecture de statut, gratuite).
@@ -7820,7 +7837,7 @@ export default function AssistantWizard() {
     setJumeauPhase(null);
   };
 
-  const reprendreJumeau = (generationId: string, rushUrlActuel?: string | null) => {
+  const reprendreJumeau = (generationId: string, rushUrlActuel?: string | null, auMontage = false) => {
     if (rushUrlActuel && rushUrlActuel.includes(generationId)) { setJumeauGenerationId(null); return; }
     if (jumeauRepriseFaite.current || jumeauRenduEnCours.current) return;
     jumeauRepriseFaite.current = true;
@@ -7846,7 +7863,7 @@ export default function AssistantWizard() {
       } catch (e) {
         // Le fournisseur a échoué, la génération est introuvable, ou le suivi
         // est coupé : on le dit, avec la suite adaptée (voir `echecRepriseJumeau`).
-        echecRepriseJumeau(e, generationId);
+        echecRepriseJumeau(e, generationId, auMontage ? { rushUrl: rushUrlActuel } : undefined);
         setJumeauNotice(null);
       } finally {
         // Rouvre la porte à un nouvel essai.
@@ -8179,6 +8196,12 @@ export default function AssistantWizard() {
       setError('Votre jumeau se prépare encore. Patientez quelques instants, puis renvoyez.');
       return;
     }
+    // BUG D — un ancien échec affiché ne décrit plus rien : une nouvelle
+    // génération va partir, il ne doit pas rester à côté du jumeau posé.
+    if (jumeauMode === 'avatar' && jumeauReprise === 'echec') {
+      setJumeauReprise('inactif');
+      setJumeauRepriseErreur(null);
+    }
     // Multi-sources : un créneau « Mon avatar » sans vidéo exige le jumeau
     // (produit à l'envoi). Désactivé entre-temps : on le dit, rien ne part.
     const listeEnvoi: MediaVideo[] | null = mediasVideo && estListeEnrichie(mediasVideo) ? mediasVideo : null;
@@ -8403,8 +8426,10 @@ export default function AssistantWizard() {
           // brouillon ferait boucler la reprise à chaque ouverture. Tout autre
           // arrêt de l'ATTENTE (réseau, session, délai) garde l'identifiant :
           // la génération continue côté serveur et sera reprise au retour.
-          if (e instanceof ErreurAttenteJumeau && e.code === 'introuvable') setJumeauGenerationId(null);
-          setError(e instanceof Error ? e.message : 'La génération de votre jumeau a échoué.');
+          // BUG D — `failed` est terminal aussi (déjà remboursé côté serveur) :
+          // le garder ré-affichait cet échec à chaque ouverture.
+          if (e instanceof ErreurAttenteJumeau && (e.code === 'introuvable' || e.code === 'echec')) setJumeauGenerationId(null);
+          setError(messageEchecJumeau(e));
           return;
         }
         if (!posee) {
@@ -10119,7 +10144,7 @@ export default function AssistantWizard() {
           <div data-jumeau-erreur className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span className="flex-1">
-              La génération de votre jumeau n’a pas abouti.
+              {jumeauRepriseErreur?.titre ?? 'La génération de votre jumeau n’a pas abouti.'}
               {jumeauRepriseErreur?.message && (
                 <span data-jumeau-erreur-motif className="block text-[12px] text-amber-100/90 mt-0.5">{jumeauRepriseErreur.message}</span>
               )}
