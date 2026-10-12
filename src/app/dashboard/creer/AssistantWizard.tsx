@@ -190,7 +190,7 @@ import {
 } from '@/lib/facturation/annonce';
 import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 import { verifierMediasRequis, estMediaIndisponible, exigerVideo, videoExigee } from '@/lib/rendus/medias-requis';
-import { pleinCadreDesJumeaux } from '@/lib/creer/jumeau-plein-cadre-client';
+import { pleinCadreDesJumeaux, useUrlJumeauPleinCadre } from '@/lib/creer/jumeau-plein-cadre-client';
 import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
@@ -1574,6 +1574,10 @@ function PlateContent({
   };
 }) {
   const vw = VIDEO_SIZE[format].w;
+  // Jumeau à bandes incrustées : l'aperçu montre la MÊME version plein cadre
+  // que l'export (même résolveur, même cache). `rushUrl` reste l'URL d'origine
+  // (état, brouillon, recadrage) ; seule la source affichée change.
+  const rushAffiche = useUrlJumeauPleinCadre(rushUrl, format);
   // 9:16 : l'ancre automatique (`DESIGN`) se lit comme le placement sur des
   // reseaux (`zones-sures-916`) ; une position posee a la main est rendue
   // telle quelle, et rien ne change en 16:9 / 1:1.
@@ -1720,7 +1724,7 @@ function PlateContent({
             )}
             {rushUrl && (
               <video
-                src={rushUrl}
+                src={rushAffiche ?? rushUrl}
                 muted
                 loop
                 autoPlay
@@ -1729,13 +1733,13 @@ function PlateContent({
                 onError={onRushError}
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
-                  if (v.videoWidth > 0 && v.videoHeight > 0) setRatioRush({ url: rushUrl, r: v.videoWidth / v.videoHeight });
+                  if (v.videoWidth > 0 && v.videoHeight > 0) setRatioRush({ url: rushAffiche ?? rushUrl, r: v.videoWidth / v.videoHeight });
                 }}
                 data-rush-recadrage={recadrageRushActif(rushTransform) ? 'oui' : 'non'}
                 // Rempli, jamais bordé ; recadré comme l'export (même rectangle que `drawVideoSeq`).
                 style={styleRecadrageRush(
                   rushTransform,
-                  ratioRush && ratioRush.url === rushUrl ? { source: ratioRush.r, cadre: RATIO_FORMAT[format] } : null,
+                  ratioRush && ratioRush.url === (rushAffiche ?? rushUrl) ? { source: ratioRush.r, cadre: RATIO_FORMAT[format] } : null,
                 )}
               />
             )}
