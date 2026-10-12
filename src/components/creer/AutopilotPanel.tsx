@@ -20,6 +20,7 @@ import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type Propositi
 import AvatarPrincipalAutopilote, { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
+import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import {
   validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
   gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
@@ -421,9 +422,16 @@ const PLATEFORMES = [
 ];
 
 export default function AutopilotPanel({
-  accent, onConfigChange, onPatchReady, onSessionChange, onVideoLancee,
+  accent, onConfigChange, onPatchReady, onSessionChange, onVideoLancee, onApercuMediasChange,
 }: {
   accent: string;
+  /**
+   * Remonte les MÉDIAS RÉELS du plan (gabarit effectif, sources cochées,
+   * rushes utilisables, stock retenu, avatar prêt) — l'aperçu de la colonne
+   * de droite en tire le média de sa séquence « Vidéo ». Absent : rien ne
+   * change ici, et l'aperçu garde sa règle de repli.
+   */
+  onApercuMediasChange?: (resume: ResumeMediasApercu) => void;
   /**
    * Remonte le tournage regardé, et le départ d'une création.
    *
@@ -727,6 +735,31 @@ export default function AutopilotPanel({
   const formatStock: FormatStock = montageFormat === '16:9' || montageFormat === '1:1' ? montageFormat : '9:16';
   const rushesPerso = rushesDispo.filter((u) => !estRushStock(u));
   const sujetStock = config.topics[0] ? themeLabel(config.topics[0]) : (config.brief.objectif || config.brief.message || 'fitness');
+
+  /**
+   * LE PLAN TEL QUE L'ÉCRAN LE MONTRE — enregistré, sinon suggéré. Une seule
+   * expression pour « Plan avant génération » et pour l'aperçu.
+   */
+  const planSuggere = gabaritSuggere({
+    avatar: etatSources.avatarActif && etatSources.avatarPret,
+    rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
+    stock: etatSources.stockRetenus,
+  });
+  const resumeApercu: ResumeMediasApercu = {
+    gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
+    actives: sources.actives,
+    rushesPerso: sources.actives.rushes ? rushesPerso : [],
+    stock: sources.actives.stock ? sources.stock : [],
+    avatar: {
+      disponible: avatarPorteLaProduction(sources.actives.avatar, avatarPret),
+      vignette: vignetteAvatar ? { url: vignetteAvatar.url, type: vignetteAvatar.type } : null,
+    },
+  };
+  // Remonté sur sa SIGNATURE : un objet neuf à chaque rendu ne relance rien.
+  const signatureApercu = signatureResume(resumeApercu);
+  const resumeApercuRef = useRef(resumeApercu);
+  resumeApercuRef.current = resumeApercu;
+  useEffect(() => { onApercuMediasChange?.(resumeApercuRef.current); }, [signatureApercu, onApercuMediasChange]);
 
   /**
    * Enregistre les sources — par le MÊME `enregistrer` (un seul PUT), en
@@ -1728,11 +1761,7 @@ export default function AutopilotPanel({
               Aucune génération ici ; `designStyle.sources.gabarit`. */}
           <PlanAvantGeneration
             gabarit={sources.gabarit}
-            suggestion={gabaritSuggere({
-              avatar: etatSources.avatarActif && etatSources.avatarPret,
-              rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
-              stock: etatSources.stockRetenus,
-            })}
+            suggestion={planSuggere}
             rushesPerso={sources.actives.rushes ? rushesPerso : []}
             stock={sources.actives.stock ? sources.stock : []}
             vignetteAvatar={vignetteAvatar}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { createPortal } from 'react-dom';
 import { Film, ImageIcon, Info, Loader2, Pause, Play, X, type LucideIcon } from 'lucide-react';
 import { LIBELLES_ORIGINE, dureeLisible, type OrigineMedia } from '@/lib/medias/libelles';
+import MiniatureVideo from '@/components/medias/MiniatureVideo';
 
 /**
  * CARTE MÉDIA — un média montré comme un média : une vignette, sa durée, ce
@@ -222,10 +223,20 @@ export default function CarteMedia({
   useEffect(() => { if (dureeSecondes) setDuree(dureeSecondes); }, [dureeSecondes]);
   const fermer = useCallback(() => setApercu(false), []);
 
-  // Une vidéo sans durée connue lit ses MÉTADONNÉES (premier plan + durée) ;
-  // avec une vignette ET une durée, rien n'est téléchargé avant l'aperçu.
-  const lireMetadonnees = metadonnees && type === 'video' && !dureeSecondes && !videoKo;
-  const styleVignette: CSSProperties = { aspectRatio: ratio };
+  // Une vidéo SANS vignette fournie : miniature extraite une fois puis gardée
+  // en cache (`useVignetteVideo`), qui donne aussi la durée et le ratio de la
+  // source. Plus de `<video preload="metadata">` par carte : le relais privé
+  // répond `no-store`, chaque affichage retéléchargeait le rush.
+  const miniatureExtraite = metadonnees && type === 'video' && !vignetteUrl;
+  // Une vidéo AVEC vignette mais sans durée lit encore ses métadonnées.
+  const lireMetadonnees = metadonnees && type === 'video' && !!vignetteUrl && !dureeSecondes && !videoKo;
+  const [ratioSource, setRatioSource] = useState<number | null>(null);
+  const surInfos = useCallback((i: { ratio: number; duree: number | null }) => {
+    setRatioSource(i.ratio);
+    if (!dureeSecondes && i.duree && Number.isFinite(i.duree)) setDuree(i.duree);
+  }, [dureeSecondes]);
+  // Miniature extraite : le ratio de la SOURCE (16:9 tant qu'il est inconnu).
+  const styleVignette: CSSProperties = { aspectRatio: miniatureExtraite ? String(ratioSource ?? 16 / 9) : ratio };
   const temps = dureeLisible(duree);
 
   return (
@@ -242,9 +253,12 @@ export default function CarteMedia({
         className="relative block w-full overflow-hidden bg-gray-800"
         style={styleVignette}
         data-carte-vignette
+        data-carte-ratio={miniatureExtraite ? String(ratioSource ?? 16 / 9) : undefined}
         tabIndex={sansApercu ? -1 : 0}
       >
-        {lireMetadonnees ? (
+        {miniatureExtraite ? (
+          <MiniatureVideo url={url} onInfos={surInfos} className="pointer-events-none" style={{ position: 'absolute', inset: 0 }} attrs={{ 'data-carte-miniature': '' }} />
+        ) : lireMetadonnees ? (
           <video
             src={`${url}#t=0.1`}
             poster={vignetteUrl || undefined}

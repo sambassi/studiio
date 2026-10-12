@@ -1,7 +1,9 @@
 'use client';
 
 import { ArrowDown, ArrowUp, Film, ImageIcon, Megaphone, Plus, RefreshCw, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react';
-import { LIBELLES_ORIGINE, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
+import { LIBELLES_ORIGINE, dureeLisible, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
+import MiniatureVideo from '@/components/medias/MiniatureVideo';
+import { useVignetteVideo } from '@/lib/hooks/useVignetteVideo';
 import { MAX_CRENEAUX, type CreneauGabarit, type MediaStockRetenu, type TypeCreneau } from '@/lib/autopilot/sources';
 import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 
@@ -47,6 +49,24 @@ export function libelleCreneau(c: CreneauGabarit, stock: MediaStockRetenu[], rus
   const m = c.media ? stock.find((s) => s.url === c.media) : undefined;
   if (m) return LIBELLES_ORIGINE[origineSuggeree(m.type)];
   return 'Média suggéré';
+}
+
+/**
+ * Nom, durée et statut d'un rush choisi — sous la ligne. La durée vient de la
+ * MÊME extraction que la miniature (cache partagé) : aucun second chargement.
+ */
+function InfosRush({ url }: { url: string }) {
+  const e = useVignetteVideo(url);
+  const nom = nomTechnique(url);
+  const duree = e.etat === 'pret' ? dureeLisible(e.vignette.duree) : null;
+  return (
+    <p className="min-w-0 truncate text-[10px] text-gray-500" data-plan-infos-rush>
+      {nom ? <span className="text-gray-400">{nom}</span> : null}
+      {duree ? <span data-plan-duree>{nom ? ' · ' : ''}{duree}</span> : null}
+      {e.etat === 'echec' ? <span data-plan-statut="indisponible">{nom || duree ? ' · ' : ''}Aperçu indisponible</span> : null}
+      {e.etat === 'chargement' ? <span data-plan-statut="chargement">{nom || duree ? ' · ' : ''}Lecture de l’aperçu…</span> : null}
+    </p>
+  );
 }
 
 const BOUTON = 'flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-white disabled:opacity-30';
@@ -110,6 +130,8 @@ export default function PlanAvantGeneration({
         {lignes.map((c, i) => {
           const n = i + 1;
           const stockMedia = c.type === 'stock' && c.media ? stock.find((s) => s.url === c.media) : undefined;
+          // Un rush FORCÉ et toujours utilisable : sa miniature réelle. « Au choix » garde l'icône.
+          const rushChoisi = c.type === 'rush' && c.media && rushesPerso.includes(c.media) ? c.media : null;
           const options = c.type === 'rush' ? rushesPerso.map((u, k) => ({ v: u, label: `Rush ${k + 1}` }))
             : c.type === 'stock' ? stock.map((s) => ({ v: s.url, label: nomStock(s, stock) }))
               : [];
@@ -122,7 +144,9 @@ export default function PlanAvantGeneration({
             <li key={c.id} className="rounded-lg border border-gray-800 bg-gray-900 p-2 space-y-1.5 min-w-0" data-plan-ligne={i} data-plan-type={c.type}>
               <div className="flex items-center gap-2 min-w-0">
                 {c.type === 'avatar' ? <MiniatureAvatar vignette={vignetteAvatar} className="w-7 h-7" />
-                  : stockMedia?.vignetteUrl ? (
+                  : rushChoisi ? (
+                    <MiniatureVideo url={rushChoisi} compact className="w-7 h-7 rounded-lg shrink-0" attrs={{ 'data-plan-vignette-rush': '' }} />
+                  ) : stockMedia?.vignetteUrl ? (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img src={stockMedia.vignetteUrl} alt="" className="w-7 h-7 rounded-lg object-cover bg-gray-800 shrink-0" data-plan-vignette />
                   ) : (
@@ -136,6 +160,7 @@ export default function PlanAvantGeneration({
                   <span className="break-words" data-plan-libelle title={c.media ? nomTechnique(c.media) : undefined}>{libelleCreneau(c, stock, rushesPerso)}</span>
                 </p>
               </div>
+              {rushChoisi && <InfosRush url={rushChoisi} />}
               {c.type === 'avatar' && !avatarDisponible && (
                 <p className="text-[10px] text-amber-400" data-plan-avatar-inactif>Avatar inactif : Studiio prendra une autre source.</p>
               )}
