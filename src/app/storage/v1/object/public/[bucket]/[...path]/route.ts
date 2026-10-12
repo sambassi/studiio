@@ -10,17 +10,28 @@
  * buffer intermédiaire, supporte les gros fichiers (vidéos).
  *
  * ─────────────────────────────────────────────────────────────────────────
- * CE QUE CETTE ROUTE NE FAIT PAS : DEMANDER UNE SESSION
+ * QUI LIT QUOI (#547 — PUBLIC_STORAGE_RELAY_RISK)
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Elle est appelée sans cookie par sept chemins recensés — rendus Remotion
- * (Chromium sans session), `/api/proxy-media`, publication YouTube, Zernio,
- * vérification de présence des rushes Autopilote, mesure de durée du rush,
- * vidéo de démo de l'accueil — et, de façon irréductible sans URL présignée,
- * par les serveurs de Meta et de TikTok, qui viennent CHERCHER le fichier
- * eux-mêmes au moment de publier. Fermer par une session ici casserait la
- * publication sociale. Cette fermeture demande une séquence à part (URL
- * présignée sur `MINIO_PUBLIC_ENDPOINT`) et n'appartient pas à ce lot.
+ * Cette route ne sert plus un objet de compte à quiconque connaît son URL.
+ * Après les refus de `cibleRecevable` (inchangés), la cible doit être
+ * LISIBLE par le demandeur (`lib/storage/politique-relais.ts`) :
+ *
+ *   - public sans condition : `media/externes/…` (copies de médias déjà
+ *     publics) ;
+ *   - jeton signé `?sr=<exp>.<hmac>` valide pour CETTE cible
+ *     (`lib/storage/jeton-relais.ts`) — c'est ce que reçoivent les lecteurs
+ *     sans cookie : Meta / TikTok / Zernio / YouTube via `ensurePublicUrl`,
+ *     Chromium de Remotion, les fetch du serveur vers sa propre origine ;
+ *   - session : le propriétaire (`cibleLisibleParCompte`), tout compte
+ *     connecté pour `converted/…`, un administrateur.
+ *
+ * Le navigateur de l'application est same-origin : `<video>`, `<img>`,
+ * `fetch` et même `crossOrigin="anonymous"` envoient le cookie de session.
+ *
+ * Un refus est rendu EXACTEMENT comme un objet absent (404, même corps),
+ * avant tout appel MinIO : ni 401 ni 403, rien qui confirme qu'une clé
+ * existe ou à qui elle appartient.
  *
  * Ce qui est fermé ici, en revanche, ne dépend d'aucun appelant :
  *
@@ -55,6 +66,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Client as MinioClient } from 'minio';
 import { Readable } from 'stream';
 import { typeContenuDepuisCle, cibleRecevable } from '@/lib/storage/acces-objet';
+import { lectureRelaisAutorisee } from '@/lib/storage/politique-relais';
+import { PARAM_JETON_RELAIS } from '@/lib/storage/jeton-relais';
+import { auth } from '@/lib/auth/config';
 
 // Force the route to run on Node (Edge can't stream from the MinIO SDK) and
 // never be statically cached — Range requests must hit the handler every
@@ -174,6 +188,33 @@ function introuvable(): NextResponse {
  * devinable) est documenté là-bas, avec la fonction.
  */
 
+/**
+ * #547 — la cible recevable est-elle LISIBLE par CE demandeur ?
+ *
+ * Public (`media/externes/…`), jeton signé `?sr=` valide pour cette cible,
+ * ou session du propriétaire (ou compte connecté pour `converted/…`, ou
+ * administrateur) — voir `lib/storage/politique-relais.ts`. La session n'est
+ * lue que si le reste ne suffit pas : un fournisseur muni d'un jeton ne
+ * coûte aucune lecture de session.
+ */
+function lisible(req: NextRequest, bucket: string, storagePath: string): Promise<boolean> {
+  let jeton: string | null = null;
+  try { jeton = new URL(req.url).searchParams.get(PARAM_JETON_RELAIS); } catch { jeton = null; }
+  return lectureRelaisAutorisee({
+    bucket,
+    cle: storagePath,
+    jeton,
+    session: async () => {
+      const s = await auth();
+      const u = s?.user as { id?: unknown; email?: unknown } | undefined;
+      return {
+        userId: typeof u?.id === 'string' ? u.id : null,
+        email: typeof u?.email === 'string' ? u.email : null,
+      };
+    },
+  });
+}
+
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ bucket: string; path: string[] }> },
@@ -192,6 +233,9 @@ export async function GET(
   // ne doit pas coûter une requête au stockage, et surtout ne doit pas
   // permettre d'en SONDER l'existence.
   if (!cibleRecevable(bucket, storagePath)) return introuvable();
+  // #547 : un objet de compte n'est plus servi à quiconque connaît l'URL.
+  // Même réponse qu'un objet absent, AVANT tout appel MinIO.
+  if (!(await lisible(req, bucket, storagePath))) return introuvable();
 
   const cors = entetesCors(req);
 
@@ -290,7 +334,7 @@ export async function HEAD(
   }
   const { bucket, path } = await ctx.params;
   const storagePath = Array.isArray(path) ? path.join('/') : '';
-  if (!cibleRecevable(bucket, storagePath)) {
+  if (!cibleRecevable(bucket, storagePath) || !(await lisible(req, bucket, storagePath))) {
     return new NextResponse(null, { status: 404 });
   }
   try {

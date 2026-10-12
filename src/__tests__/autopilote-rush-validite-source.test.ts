@@ -33,7 +33,9 @@ vi.mock('@/lib/autopilot/render', () => ({
 
 // ── La SEULE sonde doublée : le HEAD sûr, par statut ─────────────────────────
 const STATUTS = new Map<string, number>();
-const sonderSur = vi.fn(async (url: string) => ({ status: STATUTS.get(url) ?? 200, url, sauts: 0, entetes: {} }));
+// #547 : la sonde reçoit l'URL munie du jeton du relais (`?sr=`) ; le statut
+// est indexé sur l'URL nue de l'objet.
+const sonderSur = vi.fn(async (url: string) => ({ status: STATUTS.get(url.split('?')[0]) ?? 200, url, sauts: 0, entetes: {} }));
 vi.mock('@/lib/securite/fetch-sur', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/securite/fetch-sur')>();
   return { ...actual, sonderSur: (u: string) => sonderSur(u) };
@@ -155,6 +157,17 @@ describe('La règle (pure)', () => {
     expect([404, 410].map(etatDepuisStatut)).toEqual(['introuvable', 'introuvable']);
     expect([400, 401, 403].map(etatDepuisStatut)).toEqual(['expire', 'expire', 'expire']);
     expect([200, 206, 302, 405, 500, 503].map(etatDepuisStatut).every((e) => e === 'utilisable')).toBe(true);
+  });
+});
+
+describe('#547 — la sonde HEAD lit le relais avec un jeton, au nom du compte', () => {
+  it('rush du compte : sondé avec ?sr= ; rendu et métadonnées reçoivent l URL NUE', async () => {
+    const { design } = await produire(cfg({ rushUrls: [R1] }));
+    const sondees = sonderSur.mock.calls.map((c) => c[0] as string);
+    expect(sondees.some((u) => u.startsWith(`${R1}?sr=`))).toBe(true);
+    expect(design.videoUrl).toBe(R1);
+    expect(entreeRendu()).not.toContain('?sr=');
+    expect(JSON.stringify(insertions)).not.toContain('?sr=');
   });
 });
 

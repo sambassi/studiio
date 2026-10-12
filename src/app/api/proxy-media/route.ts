@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { signerUrlRelais } from '@/lib/storage/jeton-relais';
 import { bucketAutorise } from '@/lib/storage/buckets';
 import { clePossedeePar, origineSupabaseHistorique } from '@/lib/storage/acces-objet';
 
@@ -149,6 +150,14 @@ export async function GET(req: NextRequest) {
     // MANUELLEMENT et on re-valide chaque hop contre la même allowlist.
     const MAX_HOPS = 3;
     let current = parsed;
+    // #547 : le relais exige désormais la session du propriétaire ou un jeton.
+    // Ce fetch serveur ne porte aucun cookie : la cible — déjà validée
+    // ci-dessus (compartiment connu, clé de l'appelant) — reçoit un jeton
+    // court. JAMAIS pour un autre hôte : un jeton remis à un tiers ouvrirait
+    // l'objet.
+    if (appHost && parsed.hostname.toLowerCase().replace(/\.$/, '') === appHost) {
+      current = new URL(signerUrlRelais(parsed.toString(), { dureeMs: 10 * 60_000 }));
+    }
     let response: Response;
     for (let hop = 0; ; hop++) {
       response = await fetch(current.toString(), {

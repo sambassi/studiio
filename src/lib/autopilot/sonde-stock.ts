@@ -25,6 +25,7 @@
  * média stock ne fait jamais échouer un montage ; le doute ne lui profite pas,
  * contrairement à un rush personnel, cf. `rushEncorePresent`).
  */
+import { signerSiNotreStockage } from '@/lib/storage/jeton-relais';
 import { urlStockAutorisee } from '@/lib/autopilot/sources';
 import { sonderSur, RefusSsrf, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 
@@ -47,6 +48,12 @@ export interface OptionsSondeStock {
   maxSauts?: number;
   /** Délai TOTAL de la sonde, redirections comprises. */
   timeoutMs?: number;
+  /**
+   * #547 — compte au nom duquel on sonde. Une vidéo de NOTRE stockage qui
+   * lui appartient est sondée avec un jeton du relais (la sonde n'a pas de
+   * cookie) ; l'URL rendue reste l'URL NUE.
+   */
+  lecteur?: string;
 }
 
 export type MotifRejetStock = 'refusee' | 'redirection-refusee' | 'trop-de-redirections' | 'introuvable' | 'injoignable';
@@ -106,8 +113,9 @@ async function sonderParFetchSur(
   maxSauts: number,
   opts: OptionsSondeStock,
 ): Promise<ResultatSondeStock> {
+  const aSonder = opts.lecteur ? signerSiNotreStockage(url, { lecteur: opts.lecteur }) as string : url;
   try {
-    const r = await sonderSur(url, {
+    const r = await sonderSur(aSonder, {
       ...(opts.reseau ?? {}),
       autorisee: (u) => autorisee(u.href, type),
       // Origines de confiance par défaut = NOTRE stockage configuré (le stock
@@ -115,8 +123,10 @@ async function sonderParFetchSur(
       maxSauts,
       timeoutMs: opts.timeoutMs ?? 8_000,
     });
-    if (r.status === 404 || r.status === 410) return { ok: false, motif: 'introuvable', url: r.url };
-    return { ok: true, url: r.url, sauts: r.sauts };
+    // Le jeton ne sort jamais d'ici : sans redirection, l'URL finale est l'URL nue.
+    const finale = r.url === aSonder ? url : r.url;
+    if (r.status === 404 || r.status === 410) return { ok: false, motif: 'introuvable', url: finale };
+    return { ok: true, url: finale, sauts: r.sauts };
   } catch (e) {
     if (e instanceof RefusSsrf) {
       if (e.motif === 'trop-de-redirections') return { ok: false, motif: 'trop-de-redirections', url };

@@ -418,8 +418,9 @@ describe('SSRF — redirections des médias stock, au niveau du moteur', () => {
     expect(rendu).toContain(FINALE_V);
     expect(rendu).not.toContain(P2);
     expect(rendu).not.toContain(SV1);
-    expect(probeRushSeconds).toHaveBeenCalledWith(FINALE_V);
-    expect(probeRushSeconds).not.toHaveBeenCalledWith(SV1);
+    // #547 : la durée est lue AU NOM du compte (3e argument = lecteur du jeton).
+    expect(probeRushSeconds).toHaveBeenCalledWith(FINALE_V, {}, 'u1');
+    expect(probeRushSeconds.mock.calls.map((c) => c[0])).not.toContain(SV1);
     expect(urlRenduPourRush).toHaveBeenCalledWith(FINALE_V);
     expect(urlRenduPourRush).not.toHaveBeenCalledWith(SV1);
     // Métadonnées : les médias RETENUS (attribution) gardent leur URL d'origine.

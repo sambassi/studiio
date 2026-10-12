@@ -256,7 +256,7 @@ describe('proxy de rendu (`urlRenduPourRush`)', () => {
 describe('rendu hybride : sources lues au nom du compte', () => {
   it('câblage : `rendreHybride` reçoit le compte et le passe à `urlDeLecture`', () => {
     const h = readFileSync(resolve(process.cwd(), 'src/lib/render/hybride/rendu.ts'), 'utf-8');
-    expect(h).toContain('copieLocale(await urlDeLecture(u, input.userId), dossier, k)');
+    expect(h).toContain('copieLocale(await urlDeLecture(u, input.userId), dossier, k, input.userId)');
     const r = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/render.ts'), 'utf-8');
     expect(r).toContain('rendreHybride({ jobId: input.jobId, userId: input.userId, design: input.design, onProgress })');
   });

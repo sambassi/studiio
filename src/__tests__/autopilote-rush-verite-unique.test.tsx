@@ -35,7 +35,8 @@ const BANQUE = [R1, R2, R_AUTRE];
 
 // ── Le HEAD sûr, seule sonde doublée ────────────────────────────────────────
 const STATUTS = new Map<string, number>();
-const sonderSur = vi.fn(async (url: string) => ({ status: STATUTS.get(url) ?? 200, url, sauts: 0, entetes: {} }));
+// #547 : la sonde reçoit l'URL munie du jeton du relais ; statut indexé sur l'URL nue.
+const sonderSur = vi.fn(async (url: string) => ({ status: STATUTS.get(url.split('?')[0]) ?? 200, url, sauts: 0, entetes: {} }));
 vi.mock('@/lib/securite/fetch-sur', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/securite/fetch-sur')>();
   return { ...actual, sonderSur: (u: string) => sonderSur(u) };
@@ -126,7 +127,7 @@ const requete = (body: unknown) => ({ json: async () => body }) as unknown as im
 
 /** Le refusé n'a JAMAIS été sondé, lu ni signé — par aucun étage. */
 function jamaisTouche() {
-  expect(sonderSur.mock.calls.map((c) => c[0])).not.toContain(R_AUTRE);
+  expect(sonderSur.mock.calls.map((c) => String(c[0]).split('?')[0])).not.toContain(R_AUTRE);
   expect(JSON.stringify(sonderSur.mock.calls)).not.toContain(AUTRE);
   expect(presignedGetObject.mock.calls.filter((c) => JSON.stringify(c).includes(AUTRE))).toHaveLength(0);
   expect(createSignedUrl).toHaveBeenCalledTimes(0);

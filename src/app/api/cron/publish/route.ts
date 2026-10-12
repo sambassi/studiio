@@ -10,6 +10,8 @@ import { join } from 'path';
 import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { ensurePublicUrl } from '@/lib/social/url-publication';
+import { signerSiNotreStockage, DUREE_JETON_RELAIS_MAX_MS } from '@/lib/storage/jeton-relais';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile } from '@/lib/storage/fetch-media';
 import { lireMediaPublication, ErreurMediaPublication } from '@/lib/social/media-publication';
 import { getValidToken } from '@/lib/social/token-refresh';
@@ -103,9 +105,18 @@ async function sendPostByEmail(
   post: any,
   videoData: { video_url?: string | null; thumbnail_url?: string | null } | null,
 ): Promise<{ success: boolean; error?: string }> {
-  const mediaUrl =
-    post?.metadata?.renderedVideoUrl || post?.media_url || videoData?.video_url || null;
-  const posterUrl = post?.metadata?.thumbnailUrl || post?.metadata?.posterUrl || null;
+  // #547 : les destinataires (et le proxy d'images de Gmail) n'ont pas de
+  // session Studiio. Un média de NOTRE stockage appartenant à l'auteur du
+  // post reçoit un jeton du relais, au plafond (7 jours) — au-delà, le lien
+  // de l'email expire. Celui d'un autre compte reste nu (refusé).
+  const pourEmail = (u: unknown): string | null => {
+    if (typeof u !== 'string' || !u) return null;
+    const auteur = typeof post?.user_id === 'string' ? post.user_id : '';
+    return signerSiNotreStockage(toAbsoluteMediaUrl(u), { lecteur: auteur, dureeMs: DUREE_JETON_RELAIS_MAX_MS }) as string;
+  };
+  const mediaUrl = pourEmail(
+    post?.metadata?.renderedVideoUrl || post?.media_url || videoData?.video_url || null);
+  const posterUrl = pourEmail(post?.metadata?.thumbnailUrl || post?.metadata?.posterUrl || null);
   const title = post?.title || 'Votre publication';
   const caption = post?.caption || '';
 

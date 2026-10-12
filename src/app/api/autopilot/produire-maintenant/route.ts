@@ -12,7 +12,7 @@ import {
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
 import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib/autopilot/sources';
 import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
-import { rushEncorePresent } from '@/lib/autopilot/poster';
+import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
 import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
 
@@ -160,7 +160,7 @@ export async function POST() {
     // seulement sans avatar (le jumeau porte la séquence à lui seul) ; un
     // rush refusé par la garde de propriété n'est jamais contacté.
     if (!avatarActifConfig(config) && config.rushUrls.length > 0) {
-      const rushUrls = await rushesUtilisablesServeur(config.rushUrls, (u) => mediaLisiblePar(u, userId), rushEncorePresent);
+      const rushUrls = await rushesUtilisablesServeur(config.rushUrls, (u) => mediaLisiblePar(u, userId), sondeRushPour(userId));
       if (!aUneSourceVisuelle(etatSourcesServeur({ ...config, rushUrls }))) {
         return NextResponse.json(
           { success: false, error: 'Aucun média utilisable pour ce montage.', code: 'sans-rush' },

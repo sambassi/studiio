@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { rushEncorePresent } from '@/lib/autopilot/poster';
+import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
 import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { etatsRushesServeur } from '@/lib/autopilot/validite-rush';
 
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
   // Les HEAD en parallèle : chacun est borné par le délai de `rushEncorePresent`.
   // Refus de propriété : `refuse`, sans aucun appel réseau.
-  const etats = await etatsRushesServeur(aVerifier, (u) => mediaLisiblePar(u, userId), rushEncorePresent);
+  const etats = await etatsRushesServeur(aVerifier, (u) => mediaLisiblePar(u, userId), sondeRushPour(userId));
   const resultats: Record<string, boolean> = {};
   for (const [url, etat] of Object.entries(etats)) resultats[url] = etat === 'utilisable';
 

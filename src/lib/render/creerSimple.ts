@@ -159,6 +159,8 @@ export const CREER_SIMPLE_COMPOSITION_ID = 'creer-simple-montage';
  */
 export async function renderCreerSimple(input: {
   jobId: string;
+  /** #547 — compte au nom duquel les médias sont lus (jetons du relais). */
+  userId: string;
   design: CreerSimpleRenderInput;
   onProgress?: (progress: { progress: number; stage: string }) => void;
 }): Promise<{ outputPath: string; durationFrames: number }> {
@@ -195,6 +197,7 @@ export async function renderCreerSimple(input: {
     jobId: input.jobId,
     compositionId: CREER_SIMPLE_COMPOSITION_ID,
     inputProps,
+    proprietaire: input.userId,
     onProgress: input.onProgress,
   });
   return { outputPath, durationFrames };

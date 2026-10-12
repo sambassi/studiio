@@ -35,6 +35,7 @@ import {
   cibleParCheminLisible, cibleRecevable, cibleStockageParChemin, originesStockageConfigurees,
 } from '@/lib/storage/acces-objet';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { signerUrlRelais } from '@/lib/storage/jeton-relais';
 
 /** Plafond d'un média publié : celui des envois. */
 export const MAX_OCTETS_PUBLICATION = MAX_OCTETS_MEDIA;
@@ -121,11 +122,19 @@ export async function lireMediaPublication(
   // Confiance accordée à notre STOCKAGE seulement (relais public), pas à
   // toute l'origine de l'application : une autre route du même hôte repasse
   // le contrôle d'adresse comme n'importe quelle URL.
+  // La requête (`?sr=` d'une URL déjà signée par `ensurePublicUrl`) ne fait
+  // pas partie de l'adresse de l'objet : on juge le chemin seul.
+  const sansRequete = (u: string) => u.split(/[?#]/)[0];
+  const notreStockage = estNotreStockage(sansRequete(absolue), origines);
   const confiance = opts.reseau?.originesDeConfiance
-    ?? (estNotreStockage(absolue, origines) ? origines : []);
+    ?? (notreStockage ? origines : []);
+  // #547 : ce téléchargement serveur ne porte aucun cookie. Une URL du relais
+  // de NOTRE stockage (propriété vérifiée ci-dessus) reçoit un jeton court ;
+  // une URL externe ou présignée ressort inchangée.
+  const aLire = notreStockage ? signerUrlRelais(absolue, { dureeMs: 60 * 60_000 }) : absolue;
   const local = path.join(os.tmpdir(), `studiio-publication-${randomUUID()}.media`);
   try {
-    const r = await telechargerSur(absolue, local, {
+    const r = await telechargerSur(aLire, local, {
       timeoutMs: 300_000,
       maxOctets: MAX_OCTETS_PUBLICATION,
       ...(opts.reseau ?? {}),
@@ -139,7 +148,7 @@ export async function lireMediaPublication(
       // autre route d'une origine de confiance — que le fetch sûr ne
       // contrôlerait plus — est refusé.
       autorisee: (u) => verdictStockagePublication(u.href, opts.userId) !== 'refuse'
-        && (!confiance.includes(u.origin) || estNotreStockage(u.href, origines))
+        && (!confiance.includes(u.origin) || estNotreStockage(sansRequete(u.href), origines))
         && (opts.reseau?.autorisee ? opts.reseau.autorisee(u) : true),
     });
     return { octets: await readFile(local), typeContenu: r.typeContenu };

@@ -7,7 +7,7 @@ import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rule
 import { avatarActifConfig } from '@/lib/autopilot/sources';
 import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
 import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
-import { rushEncorePresent } from '@/lib/autopilot/poster';
+import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { pickTopics } from '@/lib/autopilot/topics';
@@ -286,7 +286,7 @@ export async function GET(req: NextRequest) {
       // décision (`decideRun`) le dit `sans-rush`, au lieu d'un montage
       // titre/cartes/CTA seul. Rien n'est retiré de la banque ici.
       if (decision.run && !avatarActifConfig(config) && config.rushUrls.length > 0) {
-        const rushUrls = await rushesUtilisablesServeur(config.rushUrls, (u) => mediaLisiblePar(u, userId), rushEncorePresent);
+        const rushUrls = await rushesUtilisablesServeur(config.rushUrls, (u) => mediaLisiblePar(u, userId), sondeRushPour(userId));
         decision = decideRun({ config: { ...config, rushUrls }, credits, costPerVideo: coutParMontage, now, allowWithoutRush: false });
       }
 

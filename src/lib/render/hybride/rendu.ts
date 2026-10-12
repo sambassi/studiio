@@ -23,6 +23,7 @@ import { pipeline } from 'stream/promises';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 import { argumentsHybride, type BoiteImage, type FenetreSurimpression, type EntreeHybride } from '@/lib/render/hybride/filtre';
 import { urlDeLecture } from '@/lib/creer/analyse-rush-serveur';
+import { signerSiNotreStockage, signerUrlsRelaisProfond, DUREE_JETON_RENDU_MS } from '@/lib/storage/jeton-relais';
 import { VIDEO_SIZE } from '@/lib/creer/designSpec';
 import type { ElementLisibilite } from '@/lib/creer/conseiller/lisibilite';
 
@@ -121,7 +122,7 @@ async function boiteUtile(png: string, largeur: number, hauteur: number): Promis
 type ElementStill = 'voile' | 'titre' | 'cta' | 'filigrane' | { carte: number };
 
 /** Rend les images fixes nécessaires (une seule ouverture de Chromium). */
-async function rendreStills(design: CreerSimpleRenderInput, elements: ElementStill[], dossier: string): Promise<string[]> {
+async function rendreStills(design: CreerSimpleRenderInput, elements: ElementStill[], dossier: string, userId: string): Promise<string[]> {
   const { getOrCreateBundle } = await import('@/lib/render/worker');
   const { openBrowser, selectComposition, renderStill } = await import('@remotion/renderer');
   const serveUrl = await getOrCreateBundle();
@@ -130,12 +131,14 @@ async function rendreStills(design: CreerSimpleRenderInput, elements: ElementSti
     const sorties: string[] = [];
     for (const [k, element] of elements.entries()) {
       // Aucune vidéo, aucun son : l'élément seul, sur fond transparent.
-      const inputProps = {
+      // #547 : Chromium n'a pas de session — logo, fonds, éléments libres
+      // stockés chez nous reçoivent un jeton du relais, au dernier moment.
+      const inputProps = signerUrlsRelaisProfond({
         ...design,
         stillSurimpression: element,
         montage: null, rushs: null, videoUrl: null, musicUrl: null, voiceUrl: null, sequenceVoiceUrls: undefined,
         introDuration: 0, cardsDuration: 0, videoDuration: 0, ctaDuration: 1,
-      };
+      }, { lecteur: userId, dureeMs: DUREE_JETON_RENDU_MS });
       const composition = await selectComposition({ serveUrl, id: 'creer-simple-montage', inputProps, puppeteerInstance: navigateur });
       const sortie = path.join(dossier, `still-${k}.png`);
       await renderStill({ composition, serveUrl, output: sortie, inputProps, imageFormat: 'png', frame: 0, puppeteerInstance: navigateur });
@@ -154,9 +157,11 @@ async function rendreStills(design: CreerSimpleRenderInput, elements: ElementSti
  * est identique au rendu Remotion image pour image, quelle que soit la
  * version de ffmpeg. Les proxys font quelques dizaines de Mo.
  */
-async function copieLocale(url: string, dossier: string, k: number): Promise<string> {
+async function copieLocale(url: string, dossier: string, k: number, userId: string): Promise<string> {
   if (!/^https?:\/\//.test(url)) return url;
-  const rep = await fetch(url);
+  // #547 : repli sur le relais (signeur interne indisponible) — sans
+  // cookie, il faut un jeton. Une URL présignée MinIO ressort inchangée.
+  const rep = await fetch(signerSiNotreStockage(url, { lecteur: userId, dureeMs: DUREE_JETON_RENDU_MS }) as string);
   if (!rep.ok || !rep.body) throw new Error(`source illisible (${rep.status})`);
   const sortie = path.join(dossier, `source-${k}${path.extname(new URL(url).pathname) || '.bin'}`);
   await pipeline(Readable.fromWeb(rep.body as never), fs.createWriteStream(sortie));
@@ -196,7 +201,7 @@ export async function rendreHybride(input: {
   s.cartes.forEach((c) => elements.push({ carte: c.index }));
   if (s.cta) elements.push('cta');
   if (d.watermark) elements.push('filigrane');
-  const stills = await etape('images fixes (Remotion renderStill)', () => rendreStills(d, elements, dossier));
+  const stills = await etape('images fixes (Remotion renderStill)', () => rendreStills(d, elements, dossier, input.userId));
   const image = (e: ElementStill) => stills[elements.findIndex((x) => JSON.stringify(x) === JSON.stringify(e))];
   const stillsMs = Date.now() - t0;
 
@@ -227,7 +232,7 @@ export async function rendreHybride(input: {
   const locales = new Map<string, string>();
   let k = 0;
   for (const u of Array.from(new Set([...plan.map((x) => x.url), ...(d.musicUrl ? [d.musicUrl] : []), ...voix.map((v) => v.source)]))) {
-    locales.set(u, await etape(`copie de la source ${k + 1}`, async () => copieLocale(await urlDeLecture(u, input.userId), dossier, k)));
+    locales.set(u, await etape(`copie de la source ${k + 1}`, async () => copieLocale(await urlDeLecture(u, input.userId), dossier, k, input.userId)));
     k += 1;
   }
   const local = (u: string) => locales.get(u) ?? u;

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { signerContenuEditorial, retirerJetonRelais } from '@/lib/storage/jeton-relais';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 
@@ -18,6 +19,15 @@ export async function GET() {
     const content = data?.value
       ? (typeof data.value === 'string' ? JSON.parse(data.value) : data.value)
       : null;
+
+    // #547 : la vidéo de démo vit sous le dossier de l'administrateur, que le
+    // relais ne sert plus sans session. Les visiteurs reçoivent une URL munie
+    // d'un jeton du relais (24 h, renouvelé à chaque chargement). Jamais
+    // persisté : la valeur en base reste l'URL nue.
+    const demo = content?.hero?.demoVideoUrl;
+    if (typeof demo === 'string' && demo) {
+      content.hero = { ...content.hero, demoVideoUrl: signerContenuEditorial(demo) };
+    }
 
     return NextResponse.json({ success: true, content });
   } catch (error) {
@@ -56,6 +66,12 @@ export async function PATCH(req: NextRequest) {
 
     // Deep merge: body overwrites existing keys
     const merged = { ...currentContent, ...body };
+    // #547 : le GET remet la vidéo de démo munie d'un jeton de 24 h ; l'éditeur
+    // la renvoie telle quelle. On ne persiste JAMAIS un jeton : il expirerait
+    // en base et la démo disparaîtrait de l'accueil le lendemain.
+    if (merged?.hero && typeof merged.hero === 'object' && typeof merged.hero.demoVideoUrl === 'string') {
+      merged.hero = { ...merged.hero, demoVideoUrl: retirerJetonRelais(merged.hero.demoVideoUrl) };
+    }
 
     // Colonnes RÉELLES de `app_settings` : key, value, updated_at (pas
     // `updated_by`, absente en production). L'auteur va à `audit_log`.

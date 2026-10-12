@@ -220,14 +220,19 @@ export async function urlDeLecture(url: string, userId: string): Promise<string>
     objet = { bucket: classe.bucket, cle: classe.cle };
   }
   if (!objet) return url;
+  // #547 : REPLI sur le relais (signeur interne absent ou en échec). ffmpeg et
+  // `parseMedia` le liraient sans cookie : l'URL reçoit un jeton, au nom de
+  // CE compte (propriété déjà vérifiée par `classerUrlLecture`).
+  const { signerSiNotreStockage } = await import('@/lib/storage/jeton-relais');
+  const repli = () => signerSiNotreStockage(url, { lecteur: userId }) as string;
   try {
     const { signeurInterne } = await import('@/lib/storage/minio-client');
     const signeur = signeurInterne();
-    if (!signeur) return url;
+    if (!signeur) return repli();
     const interne = await signeur.presignedGetObject(objet.bucket, objet.cle, 600);
-    return typeof interne === 'string' && /^https?:\/\//.test(interne) ? interne : url;
+    return typeof interne === 'string' && /^https?:\/\//.test(interne) ? interne : repli();
   } catch {
-    return url;
+    return repli();
   }
 }
 
