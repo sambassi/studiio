@@ -484,17 +484,25 @@ describe('AssistantWizard — aperçu du média dans la colonne de droite', () =
 });
 
 describe('AssistantWizard — actions des panneaux d’édition', () => {
-  it('Titre : Dupliquer / Regrouper / Dissocier visibles et grisés avec une raison', async () => {
+  // Bug « CTA → Dupliquer ne crée rien » : le CTA (comme le titre et le
+  // sous-titre) est UNIQUE dans tout le pipeline — état scalaire, `drawCTA`,
+  // Remotion, métadonnées. Un bouton « Dupliquer » qui ne peut jamais agir est
+  // une fausse promesse : les objets uniques n'en affichent plus.
+  it.each([
+    ['title', '[data-title-block]'],
+    ['cta', '[data-cta-block]'],
+  ])('%s : aucune action de duplication/groupe promise sur un objet unique', async (zone, bloc) => {
     installerFetch();
     poser();
     render(<AssistantWizard />);
     await attendre();
-    await act(async () => { fireEvent.doubleClick(document.querySelector('[data-title-block]')!); });
-    await waitFor(() => expect(document.querySelector('[data-zone-panneau="title"]')).toBeTruthy());
-    const barre = document.querySelector('[data-zone-panneau="title"] [data-actions-edition]')!;
-    const boutons = Array.from(barre.querySelectorAll('[data-action-edition]')) as HTMLButtonElement[];
-    expect(boutons.map((b) => b.textContent)).toEqual(['Dupliquer', 'Regrouper', 'Dissocier']);
-    expect(boutons.every((b) => b.disabled && !!b.getAttribute('title'))).toBe(true);
+    await act(async () => { fireEvent.doubleClick(document.querySelector(bloc)!); });
+    await waitFor(() => expect(document.querySelector(`[data-zone-panneau="${zone}"]`)).toBeTruthy());
+    const panneau = document.querySelector(`[data-zone-panneau="${zone}"]`)!;
+    expect(panneau.querySelector('[data-action-edition="dupliquer"]')).toBeNull();
+    expect(panneau.querySelector('[data-action-edition="regrouper"]')).toBeNull();
+    expect(panneau.querySelector('[data-action-edition="dissocier"]')).toBeNull();
+    expect(document.querySelectorAll('[data-cta-block]').length).toBe(1);
   });
 
   it('Cartes : sans sélection tout est grisé ; deux cartes cochées → Regrouper puis Dissocier', async () => {

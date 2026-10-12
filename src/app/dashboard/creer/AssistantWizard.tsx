@@ -13245,48 +13245,48 @@ export default function AssistantWizard() {
 
               {/* ── ACTIONS ─────────────────────────────────────────────
                   Les fonctions EXISTANTES de l'éditeur, rendues trouvables
-                  là où l'on édite. Titre, sous-titre et CTA sont uniques
-                  dans le montage : leurs actions restent visibles, grisées,
-                  avec la raison en infobulle. */}
-              {(() => {
-                const cartes = zoneOuverte === 'cards';
+                  là où l'on édite — pour les CARTES seulement.
+
+                  ⚠️ Titre, sous-titre et CTA sont UNIQUES dans tout le
+                  pipeline (état scalaire, `drawCTA`, composition Remotion,
+                  métadonnées du post) : « Dupliquer » y était affiché grisé,
+                  branché sur `duplicateSelection` (cartes), et ne créait
+                  jamais rien. Un bouton qui ne peut pas agir est une fausse
+                  promesse : ces zones n'en affichent plus. */}
+              {zoneOuverte === 'cards' && (() => {
                 const nbSel = selectedCards.size;
                 const nbCartes = generated.cards.length;
-                const unique = `${ZONE_LABELS[zoneOuverte]} : un seul par vidéo`;
                 return (
                   <ActionsEdition
                     nom={ZONE_LABELS[zoneOuverte]}
                     actions={[
                       {
                         id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: duplicateSelection,
-                        disabled: !cartes || nbSel === 0 || nbCartes >= limiteCartes,
-                        aide: !cartes ? unique
-                          : nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
-                            : nbCartes >= limiteCartes ? `Maximum de ${limiteCartes} cartes dans ce format`
-                              : 'Dupliquer la sélection',
+                        disabled: nbSel === 0 || nbCartes >= limiteCartes,
+                        aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
+                          : nbCartes >= limiteCartes ? `Maximum de ${limiteCartes} cartes dans ce format`
+                            : 'Dupliquer la sélection',
                       },
                       {
                         id: 'regrouper', libelle: 'Regrouper', Icone: GroupIcon, onClick: groupSelection,
-                        disabled: !cartes || nbSel < MIN_GROUP,
-                        aide: !cartes ? 'Seules les cartes se regroupent'
-                          : nbSel < MIN_GROUP ? 'Sélectionnez au moins deux cartes (Maj+clic)'
-                            : 'Déplacer ces cartes ensemble',
+                        disabled: nbSel < MIN_GROUP,
+                        aide: nbSel < MIN_GROUP ? 'Sélectionnez au moins deux cartes (Maj+clic)'
+                          : 'Déplacer ces cartes ensemble',
                       },
                       {
                         id: 'dissocier', libelle: 'Dissocier', Icone: Ungroup, onClick: ungroupSelection,
-                        disabled: !cartes || !selectionGrouped,
-                        aide: !cartes ? 'Seules les cartes se regroupent'
-                          : !selectionGrouped ? 'Aucune carte sélectionnée n’est dans un groupe'
-                            : 'Séparer les cartes de leur groupe',
+                        disabled: !selectionGrouped,
+                        aide: !selectionGrouped ? 'Aucune carte sélectionnée n’est dans un groupe'
+                          : 'Séparer les cartes de leur groupe',
                       },
-                      ...(cartes ? [{
+                      {
                         id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
                         onClick: () => { for (const id of Array.from(selectedCards)) supprimerCarte(id); },
                         disabled: nbSel === 0 || nbSel >= nbCartes,
                         aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
                           : nbSel >= nbCartes ? 'Il faut garder au moins une carte'
                             : 'Supprimer la sélection',
-                      }] : []),
+                      },
                     ]}
                   />
                 );
