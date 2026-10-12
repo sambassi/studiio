@@ -146,7 +146,8 @@ describe('Créer — Jumeau numérique dans l’étape Sujet', () => {
     expect(bloc).toMatch(/res\.ignores > 0 \|\| res\.plan\.length === 0\) \{\s*setError\([^;]*\);\s*return;/);
     // (Seule ligne tolérée avant `setError` : l'oubli d'une génération 404,
     // introuvable — la garder ferait boucler la reprise à chaque ouverture.)
-    expect(bloc).toMatch(/catch \(e\) \{\s*(if \(e instanceof ErreurAttenteJumeau && e\.code === 'introuvable'\) setJumeauGenerationId\(null\);\s*)?setError\([^;]*\);\s*return;\s*\}/);
+    // (BUG D : un `failed` terminal est oublié de la même façon.)
+    expect(bloc).toMatch(/catch \(e\) \{\s*(if \(e instanceof ErreurAttenteJumeau && (e\.code === 'introuvable'|\(e\.code === 'introuvable' \|\| e\.code === 'echec'\))\) setJumeauGenerationId\(null\);\s*)?setError\([^;]*\);\s*return;\s*\}/);
     expect(bloc).not.toMatch(/composerEtFacturer|rendreEtFacturer|composeAndUpload|setJumeauNotice\([^)]*lancez/);
     // Le montage lit le plateau du passage, jamais l'etat React pose a l'instant.
     const montage = code.slice(iBoucle, code.indexOf('const reset = () => {'));
