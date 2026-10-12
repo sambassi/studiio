@@ -62,13 +62,30 @@ export function lisserImage(
 }
 
 /**
+ * L'échelle à donner au rayon de l'aperçu : pixels AFFICHÉS par pixel du
+ * fichier sur lequel ffmpeg applique le filtre.
+ *
+ * `echelleSortie` = largeur du fichier préparé ÷ largeur de la source à cet
+ * endroit (1 sans réduction). Une vidéo 4K est réduite à 1920 px AVANT le
+ * filtre : un pixel de sortie couvre alors 2 pixels de source, et le rayon de
+ * ffmpeg (en pixels de sortie) couvre deux fois plus de visage. Sans ce
+ * facteur, l'aperçu montrerait deux fois moins de lissage que le fichier.
+ */
+export function echelleApercuLissage(largeurAffichee: number, largeurReelle: number, echelleSortie = 1): number {
+  if (!(largeurAffichee > 0 && largeurReelle > 0)) return 1;
+  const sortie = Number.isFinite(echelleSortie) && echelleSortie > 0 ? Math.min(1, echelleSortie) : 1;
+  return largeurAffichee / largeurReelle / sortie;
+}
+
+/**
  * Dessine `source` (image ou vidéo à son image COURANTE) dans `toile`, à la
  * taille d'affichage, lissée — sans toucher à la source. `largeurReelle` sert
- * à mettre le rayon à l'échelle. Rend `false` si l'image n'est pas lisible
- * (pas encore chargée, origine étrangère).
+ * à mettre le rayon à l'échelle ; `echelleSortie` (voir `echelleApercuLissage`)
+ * tient compte d'une réduction faite AVANT le filtre. Rend `false` si l'image
+ * n'est pas lisible (pas encore chargée, origine étrangère).
  */
 export function dessinerApercuLisse(
-  toile: HTMLCanvasElement, source: CanvasImageSource, largeurReelle: number, hauteurReelle: number, lissage: number, largeurMax = 360,
+  toile: HTMLCanvasElement, source: CanvasImageSource, largeurReelle: number, hauteurReelle: number, lissage: number, largeurMax = 360, echelleSortie = 1,
 ): boolean {
   if (!(largeurReelle > 0 && hauteurReelle > 0)) return false;
   const largeur = Math.max(1, Math.round(Math.min(largeurMax, largeurReelle)));
@@ -80,7 +97,7 @@ export function dessinerApercuLisse(
   try {
     ctx.drawImage(source, 0, 0, largeur, hauteur);
     const image = ctx.getImageData(0, 0, largeur, hauteur);
-    image.data.set(lisserImage(image.data, largeur, hauteur, lissage, largeur / largeurReelle));
+    image.data.set(lisserImage(image.data, largeur, hauteur, lissage, echelleApercuLissage(largeur, largeurReelle, echelleSortie)));
     ctx.putImageData(image, 0, 0);
     return true;
   } catch {
