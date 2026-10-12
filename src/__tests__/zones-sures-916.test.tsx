@@ -12,7 +12,10 @@
  *     jusqu'à 10 % de la hauteur, sous la barre du haut.
  *
  * Le 16:9 et le 1:1 sont gelés : sorties identiques, caractère pour
- * caractère, à celles capturées sur 0e8de3f AVANT ce changement.
+ * caractère, à celles capturées sur 0e8de3f AVANT ce changement — sauf les
+ * champs corrigés ensuite par la mise en page LARGE des surimpressions
+ * (`surimpressions-formats-larges-geometrie.test.tsx`) : bas du CTA au-dessus
+ * du filigrane, et Créer qui suit la mise en page large de l'Autopilote.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -194,7 +197,7 @@ describe('surimpressions 9:16 (Autopilote, Créer, avatar — même mise en page
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-describe('16:9 et 1:1 — identiques à avant (gel capturé sur 0e8de3f, avant ce changement)', () => {
+describe('16:9 et 1:1 — identiques à avant (gel capturé sur 0e8de3f), hors corrections des formats larges', () => {
   const gel = JSON.parse(readFileSync(resolve(process.cwd(), 'src/__tests__/fixtures/zones-sures-916-gel-larges.json'), 'utf-8'));
   it('surimpressions (Autopilote / avatar) : mise en page champ pour champ', () => {
     let n = 0;
@@ -206,13 +209,14 @@ describe('16:9 et 1:1 — identiques à avant (gel capturé sur 0e8de3f, avant c
     }
     expect(n).toBe(Object.keys(gel.surimpressions).length);
   });
-  it('surimpressions de Créer (`miseEnPageSurimpression`) avec format 16:9 / 1:1 : celles d’avant', () => {
+  it('surimpressions de Créer (`miseEnPageSurimpression`) avec format 16:9 / 1:1 : la mise en page large (gel mis à jour)', () => {
     for (const f of ['16:9', '1:1'] as const) {
       for (const p of GEL_PROFILS) for (const b of [undefined, 'haut', 'bas'] as const) {
         const cta = { texte: 'Réservez votre bilan sommeil gratuit sur afroboost.com', sousTexte: 'LIEN EN BIO', echelle: 1 };
-        expect(JSON.stringify(miseEnPageSurimpression(p, { ctaBande: b, format: f, cta }))).toBe(JSON.stringify(gel.miseEnPage[`${p}|${b ?? '-'}`]));
+        expect(JSON.stringify(miseEnPageSurimpression(p, { ctaBande: b, format: f, cta }))).toBe(JSON.stringify(gel.miseEnPage[`${f}|${p}|${b ?? '-'}`]));
       }
     }
+    expect(Object.keys(gel.miseEnPage).length).toBe(2 * GEL_PROFILS.length * 3);
   });
   it('aperçu de Créer (titre, cartes en flux et libres, CTA) : DOM identique', () => {
     for (const f of ['16:9', '1:1'] as const) {

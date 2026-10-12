@@ -40,6 +40,13 @@ export interface MiseEnPageSurimpression {
   ctaFond: string;
   /** #502 — part de blanc mêlée à la couleur de la ligne d'action, sur ce panneau. */
   ctaActionEclaircie: number;
+  /**
+   * Formats larges (16:9, 1:1) SEULEMENT : largeur des cadres titre / CTA (%
+   * de l'image), celle de `MISE_EN_PAGE_LARGE`. Absentes en 9:16 : les cadres
+   * gardent leur largeur par défaut (`TEXT_LAYOUT`), comme avant.
+   */
+  titleWidth?: number;
+  ctaWidth?: number;
 }
 
 /** Profils dynamiques : la vidéo continue, les textes passent par-dessus. */
@@ -129,8 +136,9 @@ export function eclaircir(hex: string | null | undefined, part: number): string 
 
 /**
  * Options de placement. `format` absent = 9:16 (le format des surimpressions,
- * comme `appliquerMiseEnPageSurimpression`) ; tout autre format garde les
- * positions d'avant. `cta` : le texte du CTA, pour poser la bande haute.
+ * comme `appliquerMiseEnPageSurimpression`) ; 16:9 et 1:1 reçoivent la mise
+ * en page LARGE, la même que l'Autopilote (`MISE_EN_PAGE_LARGE`). `cta` : le
+ * texte du CTA, pour poser la bande haute (9:16 seulement).
  */
 export interface OptionsMiseEnPage { ctaBande?: BandeCta | null; format?: DesignFormat | null; cta?: CtaAPlacer | null }
 
@@ -149,6 +157,22 @@ export function miseEnPageSurimpression(
  * (`TEXTES_PROFILS`) : bas-gauche → la boîte `DYNAMIQUE`, sinon le centre. Pur.
  */
 function miseEnPageDuProfil(profil: string | null | undefined, options: OptionsMiseEnPage): MiseEnPageSurimpression {
+  // 16:9 / 1:1 : la mise en page LARGE, la MÊME que l'Autopilote. Avant,
+  // Créer posait ici celle du 9:16 sur une image large (mesuré dans Chromium,
+  // 1920 × 1080 : CTA long de la bande haute de −15 % à 34 % — coupé par le
+  // haut de l'image —, accroche longue sur 8–90 % de la largeur, au milieu de
+  // l'image ; positions différentes de celles de l'Autopilote pour le même
+  // format). Couleurs et fonds : ceux du profil, inchangés.
+  if (options.format === '16:9' || options.format === '1:1') {
+    const L = MISE_EN_PAGE_LARGE[options.format];
+    return {
+      ...miseEnPageDuProfil(profil, {}),
+      titlePos: L.titlePos, titleScale: L.titleScale, subtitleScale: L.subtitleScale,
+      ctaPos: L.ctaPos, ctaScale: L.ctaScale,
+      carte: L.carte, carteScale: L.carteScale,
+      titleWidth: L.titleWidth, ctaWidth: L.ctaWidth,
+    };
+  }
   const regle = (TEXTES_PROFILS as Record<string, { cartes: { position: string } } | undefined>)[profil ?? ''] ?? TEXTES_PROFILS.STANDARD;
   // 9:16 (ou format absent) : la variante tenue dans la zone sûre des réseaux.
   const vertical = !options.format || options.format === '9:16';
@@ -291,7 +315,8 @@ export interface DesignSurimpression {
  * 9:16 garde la mise en page calibrée et mesurée, tenue dans la zone sûre des
  * réseaux (`DYNAMIQUE_916` : accroche à 12 %, carte jusqu'à 85 %, CTA haut
  * aligné par son haut) ; le 16:9 et le 1:1 ont la leur (`MISE_EN_PAGE_LARGE`),
- * inchangée, qui laisse libre le visage de l'avatar (`ZONE_VISAGE`).
+ * qui laisse libre le visage de l'avatar (`ZONE_VISAGE`) — la MÊME que le
+ * plateau de Créer (`miseEnPageSurimpression` + `echellesSurimpressionLarge`).
  */
 export function appliquerMiseEnPageSurimpression<T extends object>(
   design: T, profil: string | null | undefined,
@@ -393,10 +418,16 @@ const versCadre = (x0: number, y0: number, x1: number, h: number): BoiteCarte =>
  *
  *   16:9 : accroche en colonne GAUCHE (6–37 %, depuis 8 % du haut) ;
  *          carte en colonne DROITE (62–94 %, depuis 30 %) ;
- *          CTA en bande BASSE centrée (18–82 %, bas à 92 %, haut ≥ 60 %).
+ *          CTA en bande BASSE centrée (18–82 %, bas à 85 %, haut ≥ 53 %).
  *   1:1  : accroche en bande BASSE (6–94 %, depuis 50 %) ;
  *          carte en bande BASSE (8–92 %, depuis 50 %) ;
- *          CTA en bande BASSE (8–92 %, bas à 93 %, haut ≥ 57 %).
+ *          CTA en bande BASSE (8–92 %, bas à 91 %, haut ≥ 55 %).
+ * Bas du CTA AU-DESSUS du filigrane, toujours affiché pendant le CTA (mesuré
+ * dans Chromium) : `Filigrane` de Remotion (Autopilote, rendu hybride) haut à
+ * 87,0 % en 16:9 et 92,7 % en 1:1 ; calque `siteText` du compositeur de Créer
+ * (ligne de base à 96 %) haut à 92,9 %. Ancré à 92 % (16:9) le panneau du
+ * CTA recouvrait le filigrane sur 50 px ; à 93 % (1:1) il le touchait (3 px).
+ * 85 % / 91 % laissent ≥ 18 px.
  * Le visage (`ZONE_VISAGE`) est au centre-haut : ni colonne latérale ni
  * bande basse ne le recouvrent. En 16:9 les trois boîtes sont disjointes.
  * En 1:1 les colonnes latérales sont trop étroites (≤ 29 % : badge mesuré
@@ -409,12 +440,12 @@ const MISE_EN_PAGE_LARGE: Record<'16:9' | '1:1', MiseEnPageLarge> = {
   '16:9': {
     titlePos: { x: 6, y: 8 }, titleWidth: 31, titleHauteurMax: 0.42, titleScale: 1.3, subtitleScale: 0.85,
     carte: versCadre(62, 30, 94, 12), carteScale: 2,
-    ctaPos: { x: 50, y: 92 }, ctaWidth: 64, ctaHauteurMax: 0.32, ctaScale: 1.6,
+    ctaPos: { x: 50, y: 85 }, ctaWidth: 64, ctaHauteurMax: 0.3, ctaScale: 1.6,
   },
   '1:1': {
     titlePos: { x: 6, y: 50 }, titleWidth: 88, titleHauteurMax: 0.3, titleScale: 1.6, subtitleScale: 1,
     carte: versCadre(8, 50, 92, 12), carteScale: 2.6,
-    ctaPos: { x: 50, y: 93 }, ctaWidth: 84, ctaHauteurMax: 0.36, ctaScale: 1.6,
+    ctaPos: { x: 50, y: 91 }, ctaWidth: 84, ctaHauteurMax: 0.36, ctaScale: 1.6,
   },
 };
 
@@ -445,41 +476,62 @@ export interface DesignSurimpressionLarge extends DesignSurimpression {
   ctaWidth?: number;
 }
 
+/**
+ * Échelles FINALES du titre et du CTA en format large : l'accroche tient dans
+ * sa colonne / sa bande (`ajusterAccroche`), le mot le plus long du CTA tient
+ * sur une ligne (`ajusterCta`) puis le bloc tient sous le visage (plafond de
+ * hauteur), sans passer sous une ligne d'action lisible (≥ 34 px).
+ *
+ * SOURCE UNIQUE : l'Autopilote (`appliquerMiseEnPageSurimpression`, images du
+ * rendu Remotion / hybride) et le plateau photographié par Créer
+ * (`PlateauSurimpression`) l'appellent avec les mêmes entrées. Pur.
+ */
+export function echellesSurimpressionLarge(format: '16:9' | '1:1', p: {
+  titre: string; sousTitre?: string | null;
+  /** Échelles choisies par l'utilisateur (1 si aucune), avant la mise en page. */
+  echelleTitre?: number | null; echelleSousTitre?: number | null;
+  cta: string; sousTexteCta?: string | null; echelleCta?: number | null;
+}): { titleScale: number; subtitleScale: number; ctaScale: number } {
+  const L = MISE_EN_PAGE_LARGE[format];
+  const { w: W, h: H } = VIDEO_SIZE[format];
+  const R = FONT_RATIO[format];
+  const accroche = ajusterAccroche({
+    titre: p.titre, sousTitre: p.sousTitre ?? null,
+    echelleTitre: (p.echelleTitre ?? 1) * L.titleScale, echelleSousTitre: (p.echelleSousTitre ?? 1) * L.subtitleScale,
+    largeur: W, hauteur: H, ratioTitre: R.title, ratioSousTitre: R.subtitle,
+    partLargeur: L.titleWidth / 100, hauteurMax: L.titleHauteurMax,
+  });
+  const cta = { texte: p.cta, sousTexte: p.sousTexteCta ?? CTA_SOUS_TEXTE_DEFAUT, largeur: W, ratioTexte: R.cta, ratioSousTexte: R.ctaSub };
+  let ctaEchelle = ajusterCta({ ...cta, echelle: (p.echelleCta ?? 1) * L.ctaScale, panneau: true, partLargeur: L.ctaWidth / 100 });
+  const plancherCta = Math.min(ctaEchelle, 34 / (W * R.ctaSub));
+  while (ctaEchelle > plancherCta && hauteurCta({ ...cta, echelle: ctaEchelle, partLargeur: L.ctaWidth / 100 }) > L.ctaHauteurMax * H) {
+    ctaEchelle = Math.max(plancherCta, ctaEchelle * 0.95);
+  }
+  return { titleScale: accroche.echelleTitre, subtitleScale: accroche.echelleSousTitre, ctaScale: ctaEchelle };
+}
+
 function appliquerMiseEnPageLarge<T extends object>(design: T, profil: string | null | undefined, format: '16:9' | '1:1'): T {
   // Couleurs et fonds : ceux du profil (contraste mesuré), seul le placement
   // change. La bande calme mesurée (`ctaBande`) n'est PAS suivie : en format
   // large, la bande HAUTE est celle du visage — le CTA reste en bande basse.
   const m = miseEnPageDuProfil(profil, {});
   const L = MISE_EN_PAGE_LARGE[format];
-  const { w: W, h: H } = VIDEO_SIZE[format];
-  const R = FONT_RATIO[format];
   const d = design as DesignSurimpression;
-  const accroche = ajusterAccroche({
-    titre: d.title ?? '', sousTitre: d.subtitle ?? null,
-    echelleTitre: (d.titleScale ?? 1) * L.titleScale, echelleSousTitre: (d.subtitleScale ?? 1) * L.subtitleScale,
-    largeur: W, hauteur: H, ratioTitre: R.title, ratioSousTitre: R.subtitle,
-    partLargeur: L.titleWidth / 100, hauteurMax: L.titleHauteurMax,
+  const e = echellesSurimpressionLarge(format, {
+    titre: d.title ?? '', sousTitre: d.subtitle ?? null, echelleTitre: d.titleScale, echelleSousTitre: d.subtitleScale,
+    cta: d.ctaText ?? '', sousTexteCta: d.ctaSubText, echelleCta: d.ctaScale,
   });
-  // CTA : le mot le plus long tient sur une ligne (`ajusterCta`), puis le
-  // bloc tient sous le visage (plafond de hauteur), sans passer sous une
-  // ligne d'action lisible (≥ 34 px).
-  const cta = { texte: d.ctaText ?? '', sousTexte: d.ctaSubText ?? CTA_SOUS_TEXTE_DEFAUT, largeur: W, ratioTexte: R.cta, ratioSousTexte: R.ctaSub };
-  let ctaEchelle = ajusterCta({ ...cta, echelle: (d.ctaScale ?? 1) * L.ctaScale, panneau: true, partLargeur: L.ctaWidth / 100 });
-  const plancherCta = Math.min(ctaEchelle, 34 / (W * R.ctaSub));
-  while (ctaEchelle > plancherCta && hauteurCta({ ...cta, echelle: ctaEchelle, partLargeur: L.ctaWidth / 100 }) > L.ctaHauteurMax * H) {
-    ctaEchelle = Math.max(plancherCta, ctaEchelle * 0.95);
-  }
   return {
     ...design,
     titlePos: L.titlePos,
     titleWidth: L.titleWidth,
-    titleScale: accroche.echelleTitre,
-    subtitleScale: accroche.echelleSousTitre,
+    titleScale: e.titleScale,
+    subtitleScale: e.subtitleScale,
     ctaBackground: m.ctaFond,
     ctaSubColor: eclaircir(d.ctaSubColor ?? '#EC4899', m.ctaActionEclaircie) ?? d.ctaSubColor,
     ctaPos: L.ctaPos,
     ctaWidth: L.ctaWidth,
-    ctaScale: ctaEchelle,
+    ctaScale: e.ctaScale,
     cardBoxes: { c0: L.carte },
     cardsTypography: { ...(d.cardsTypography ?? {}), scale: (d.cardsTypography?.scale ?? 1) * L.carteScale },
     cardBackground: m.carteFond,
