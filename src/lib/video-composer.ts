@@ -3055,8 +3055,11 @@ export function drawCTA(
   /** Per-sequence background opacity (0-1). */
   seqBgOpacity: number = 1,
 ) {
+  // Machine a ecrire : la troncature porte sur les textes REELLEMENT peints
+  // (`ctaPeint` / `subPeint`, plus bas). Elle visait jadis le
+  // parametre `ctaText` — qui n'est que le REPLI du sous-texte (nommage
+  // historique du branding) : le gros texte apparaissait d'un bloc.
   const revealRatio = textRevealRatio(design?.textAnimation, progress);
-  if (revealRatio < 1) ctaText = revealText(ctaText, revealRatio);
   // ctaSubTextParam kept for backward compat but design.ctaSubTextDesign takes priority
   void ctaSubTextParam;
   // BIG text (watermark) uses watermarkFont; sub-text uses ctaFont. Fall back to global font.
@@ -3089,6 +3092,12 @@ export function drawCTA(
   // l'ecran, lui, n'affichait pas. Une cle ABSENTE vaut toujours `undefined`
   // et retombe donc, echelon par echelon, sur le repli historique — inchange.
   const effectiveSubText = design?.ctaSubTextDesign ?? ctaText ?? "CHAT POUR PLUS D'INFOS";
+  // Ce qui est PEINT a cet instant. Tronques AVANT la casse et la mise en
+  // lignes, comme le titre : le retour a la ligne suit la frappe. Principal et
+  // sous-texte a la MEME proportion, comme le titre et son sous-titre
+  // (`drawIntro`, `SequenceCta`). Hors machine a ecrire : les textes entiers.
+  const ctaPeint = revealRatio < 1 ? revealText(effectiveCtaText, revealRatio) : effectiveCtaText;
+  const subPeint = revealRatio < 1 && effectiveSubText ? revealText(effectiveSubText, revealRatio) : effectiveSubText;
 
   // CTA background: color-theme gradient backdrop (matches editor's
   // bg-gradient-to-br) + seqGradient overlay. Dark-hardcoded previously made
@@ -3137,7 +3146,7 @@ export function drawCTA(
   // minuscule — et `SequenceCta` applique la MEME fonction a la MEME chaine.
   const ctaCase = design?.ctaCase ?? DEFAULT_TEXT_CASE;
   const ctaAlign: CanvasTextAlign = sanitizeTextAlign(design?.ctaAlign, 'center');
-  const ctaWords = applyTextCase(effectiveCtaText, ctaCase).split(' ');
+  const ctaWords = applyTextCase(ctaPeint, ctaCase).split(' ');
   let ctaLines: string[] = [];
   let currentLine = '';
   for (const word of ctaWords) {
@@ -3175,8 +3184,8 @@ export function drawCTA(
   // Meme garde que `salesLines` juste au-dessus : `wrapText(ctx, '')` renvoie
   // `['']` et non `[]`. Sans ce ternaire, un texte eteint gardait une ligne
   // fantome de hauteur pleine.
-  const subLines: string[] = effectiveSubText
-    ? wrapText(ctx, applyTextCase(effectiveSubText, ctaCase), ctaContainerW, ctaLetterSpacing)
+  const subLines: string[] = subPeint
+    ? wrapText(ctx, applyTextCase(subPeint, ctaCase), ctaContainerW, ctaLetterSpacing)
     : [];
 
   const salesLineH = salesFontSize * lineMul;

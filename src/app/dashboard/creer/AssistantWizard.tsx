@@ -135,7 +135,7 @@ import TransitionMiniPreview from '@/components/creer/TransitionMiniPreview';
 import TextAnimationMiniPreview from '@/components/creer/TextAnimationMiniPreview';
 import SequencePlayback, { type PlaybackRequest } from '@/components/creer/SequencePlayback';
 import { transitionExtract, textAnimationExtract, type PlaybackExtract } from '@/lib/creer/transitionPreview';
-import { INTRO_WINDOW } from '@/lib/creer/textAnimation';
+import { INTRO_WINDOW, textAnimationState } from '@/lib/creer/textAnimation';
 import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { useOptionPreview } from '@/lib/hooks/useOptionPreview';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
@@ -1570,6 +1570,11 @@ function PlateContent({
   const titre916 = titreRendu916(format, titlePos, titleWidth, text, generated?.title, generated?.subtitle);
   titleWidth = titre916.largeur;
   const titleTypography = titre916.echelle === text.title.scale ? text.title : { ...text.title, scale: titre916.echelle };
+  // Machine a ecrire : part du texte deja ecrite (1 hors machine a ecrire ou
+  // sur le plateau, sans `progress`). Le MEME calcul que `SequenceAnimee`
+  // (Remotion) et `textRevealRatio` (canvas) — sans lui, l'apercu montrait le
+  // titre et le CTA entiers des la premiere image.
+  const reveal = textAnimationState(textAnimation, progress).charRatio;
   /**
    * Disposition des cartes en GRILLE plutot qu'en colonne.
    *
@@ -1796,6 +1801,7 @@ function PlateContent({
                 subtitleTypography={text.subtitle}
                 format={format}
                 containerWidth={vw}
+                reveal={reveal}
               />
               {/* Poignees de coin — agrandir le TEXTE. Elles arretent la
                   propagation : sans cela, la prise deplacerait le bloc au
@@ -1884,6 +1890,7 @@ function PlateContent({
                 typography={text.cta}
                 format={format}
                 containerWidth={vw}
+                reveal={reveal}
               />
               <TextResizeHandles el="cta" onStart={onTextResizeStart} onWidthStart={onTextWidthStart} uiPx={uiPx} capturing={capturing}
                 visible={poigneesVisibles('cta')}

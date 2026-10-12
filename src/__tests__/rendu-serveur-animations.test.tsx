@@ -137,10 +137,11 @@ describe('La machine à écrire, dans les composants partagés', () => {
     expect(container.textContent).toBe('ROUTTrois ');
   });
 
-  it('le SOUS-TEXTE du CTA, lui, n est pas tronqué', () => {
-    // `drawCTA` n'applique `revealText` qu'au texte principal : deux frappes
-    // concurrentes à l'écran se gênaient.
-    expect(composer).toContain('if (revealRatio < 1) ctaText = revealText(ctaText, revealRatio);');
+  it('le CTA ET son sous-texte s écrivent ensemble — la règle du titre', () => {
+    // `drawCTA` tronque les textes RÉELLEMENT peints, à la même proportion.
+    // Laisser le sous-texte entier faisait apparaître le CTA d'un bloc.
+    expect(composer).toContain('const ctaPeint = revealRatio < 1 ? revealText(effectiveCtaText, revealRatio) : effectiveCtaText;');
+    expect(composer).toContain('const subPeint = revealRatio < 1 && effectiveSubText ? revealText(effectiveSubText, revealRatio) : effectiveSubText;');
     const { container } = render(
       <SequenceCta
         text="JE ME LANCE" subText="LIEN EN BIO"
@@ -148,8 +149,7 @@ describe('La machine à écrire, dans les composants partagés', () => {
         format="9:16" containerWidth={1080} reveal={0.5}
       />,
     );
-    expect(container.textContent).toContain('LIEN EN BIO');
-    expect(container.textContent).not.toContain('JE ME LANCE');
+    expect(container.textContent).toBe('JE ME LIEN E');
   });
 
   it('sans `reveal`, le texte entier — le rendu d aujourd hui', () => {

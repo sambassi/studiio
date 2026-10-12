@@ -284,7 +284,7 @@ describe('Le compositeur applique l animation au bon endroit', () => {
   it('la machine à écrire tronque AVANT la mise en lignes', () => {
     // Le retour à la ligne suit alors la frappe, comme une vraie saisie.
     expect(composer).toContain('title = revealText(title, revealRatio);');
-    expect(composer).toContain('if (revealRatio < 1) ctaText = revealText(ctaText, revealRatio);');
+    expect(composer).toContain('const ctaPeint = revealRatio < 1 ? revealText(effectiveCtaText, revealRatio) : effectiveCtaText;');
   });
 });
 
