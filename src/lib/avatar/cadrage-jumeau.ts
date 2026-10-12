@@ -1,0 +1,207 @@
+/**
+ * CADRAGE DE LA VIDÉO DU JUMEAU — retirer les bandes INCRUSTÉES par le
+ * fournisseur, avant que le fichier ne devienne un rush.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE BUG (Créer 9:16 → Calendrier : jumeau horizontal, grandes bandes noires)
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Constaté en production (#539) : un avatar entraîné sur une source 16:9,
+ * généré en 9:16, revient du fournisseur en 720 × 1280 dont seule une bande
+ * centrale de 720 × 405 contient l'image. Les bandes sont DANS LE FICHIER.
+ *
+ * Tout l'aval est pourtant en « cover » : l'aperçu Créer (`object-fit: cover`
+ * / `styleRecadrageRush`), le compositeur (`drawVideoSeq`, `max(w/srcW,
+ * h/srcH)`), Remotion (`objectFit: 'cover'`), le rendu hybride (`crop` cover)
+ * et le lecteur du Calendrier (cadre au ratio du montage). Mais un « cover »
+ * d'un fichier 9:16 dans un cadre 9:16 est l'identité : il recopie
+ * fidèlement… les bandes. Aucun lecteur ni compositeur ne peut les retirer
+ * sans savoir qu'elles sont là.
+ *
+ * `fit: "cover"` est bien demandé à HeyGen depuis Créer (#540), mais :
+ *   - D-ID ne le reçoit pas (aucun champ équivalent) ;
+ *   - l'Autopilote ne l'envoie pas ;
+ *   - rien ne GARANTIT que le fournisseur l'honore sur chaque moteur.
+ *
+ * La correction est donc posée au seul point par lequel passe CHAQUE vidéo de
+ * jumeau, quel que soit le fournisseur : le rapatriement (`statut.ts`). Le
+ * fichier hébergé chez nous est plein cadre ; l'aperçu, le MP4 et le
+ * Calendrier, qui le reproduisent déjà fidèlement, deviennent pleins cadres
+ * eux aussi — et le recadrage manuel (#540) s'applique sur une vraie image.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * RÈGLES (pures, testées)
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * - La zone utile est mesurée par `cropdetect` sur TOUT le clip, sans remise
+ *   à zéro : c'est l'UNION des images — un geste qui sort de la bande
+ *   l'élargit, jamais on ne coupe ce qui a été visible.
+ * - Ce n'est une bande incrustée que si : un axe est entier, l'autre est
+ *   amputé de part ET d'autre (≥ 2 % chacun) de façon symétrique. Un fond
+ *   sombre d'un seul côté, ou un sujet décentré, ne déclenche rien.
+ * - La zone utile est recadrée en « cover » centré au ratio DEMANDÉ
+ *   (`aspect_ratio` de la génération), puis remise aux dimensions du
+ *   fichier : jamais d'étirement (même facteur sur x et y), jamais de bande.
+ * - Le son est COPIÉ tel quel : la synchronisation labiale ne bouge pas.
+ * - Tout échec (ffmpeg absent, fichier illisible, délai) rend le fichier
+ *   d'origine : le rapatriement n'est jamais bloqué par cette étape.
+ */
+
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { cheminFfmpeg } from '@/lib/ffmpeg/binaires';
+
+export interface Zone { l: number; h: number; x: number; y: number }
+
+/** Ratio largeur/hauteur d'un `aspect_ratio` de génération (`9:16`, `16:9`, `1:1`) ; `null` sinon. */
+export function ratioDemande(aspect: unknown): number | null {
+  if (typeof aspect !== 'string') return null;
+  const m = /^\s*(\d+(?:\.\d+)?)\s*[:/x]\s*(\d+(?:\.\d+)?)\s*$/.exec(aspect);
+  if (!m) return null;
+  const a = Number(m[1]); const b = Number(m[2]);
+  return a > 0 && b > 0 ? a / b : null;
+}
+
+/** La DERNIÈRE mesure `crop=l:h:x:y` de `cropdetect` (l'union du clip). */
+export function lireCropdetect(stderr: string): Zone | null {
+  const toutes = [...String(stderr).matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+  const m = toutes[toutes.length - 1];
+  if (!m) return null;
+  const [l, h, x, y] = m.slice(1, 5).map(Number);
+  return l > 0 && h > 0 ? { l, h, x, y } : null;
+}
+
+/**
+ * Bandes INCRUSTÉES (letterbox ou pillarbox) ? Un axe entier, l'autre amputé
+ * des deux côtés, symétriquement. Pur.
+ */
+export function bandesIncrustees(src: { l: number; h: number }, z: Zone): boolean {
+  const axe = (total: number, debut: number, taille: number) => {
+    const avant = debut;
+    const apres = total - debut - taille;
+    const tol = Math.max(4, total * 0.01);
+    return {
+      entier: avant <= tol && apres <= tol,
+      bandes: avant >= total * 0.02 && apres >= total * 0.02 && Math.abs(avant - apres) <= Math.max(8, total * 0.03),
+    };
+  };
+  const x = axe(src.l, z.x, z.l);
+  const y = axe(src.h, z.y, z.h);
+  return (x.entier && y.bandes) || (y.entier && x.bandes);
+}
+
+const pair = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
+
+/**
+ * « Cover » centré de la zone utile au ratio `r` : le plus grand rectangle de
+ * ratio `r` contenu dans la zone, centré. Pur, dimensions paires.
+ */
+export function rectangleCover(z: Zone, r: number): Zone {
+  const ratioZone = z.l / z.h;
+  let l = z.l; let h = z.h;
+  if (ratioZone > r) l = z.h * r; else h = z.l / r;
+  l = Math.min(pair(l), pair(z.l)); h = Math.min(pair(h), pair(z.h));
+  const x = z.x + Math.floor((z.l - l) / 2);
+  const y = z.y + Math.floor((z.h - h) / 2);
+  return { l, h, x, y };
+}
+
+/**
+ * Dimensions de sortie : celles du fichier quand il est déjà au ratio demandé
+ * (HeyGen 9:16 → 720 × 1280), sinon le grand côté du fichier au ratio demandé.
+ */
+export function dimensionsSortie(src: { l: number; h: number }, r: number): { l: number; h: number } {
+  if (Math.abs(src.l / src.h - r) < 0.01) return { l: pair(src.l), h: pair(src.h) };
+  const grand = Math.max(src.l, src.h);
+  return r < 1 ? { l: pair(grand * r), h: pair(grand) } : { l: pair(grand), h: pair(grand / r) };
+}
+
+export interface PlanCadrage { coupe: Zone; sortie: { l: number; h: number } }
+
+/**
+ * Décision complète, PURE : `null` = fichier gardé tel quel. `ratio` absent :
+ * celui du fichier (on retire les bandes sans changer de format).
+ */
+export function planCadrage(src: { l: number; h: number }, zone: Zone | null, ratio: number | null): PlanCadrage | null {
+  if (!zone || !(src.l > 0 && src.h > 0) || !bandesIncrustees(src, zone)) return null;
+  const r = ratio ?? src.l / src.h;
+  return { coupe: rectangleCover(zone, r), sortie: dimensionsSortie(src, r) };
+}
+
+/** Lecture du fichier LOCAL uniquement (jamais d'URL, de playlist ni de concat). */
+const PROTECTIONS_ENTREE = ['-protocol_whitelist', 'file', '-format_whitelist', 'mov,mp4,m4a,3gp,3g2,mj2,matroska,webm'] as const;
+
+export function argumentsCropdetect(entree: string): string[] {
+  // `reset=0` : la zone ne fait que grandir — l'UNION de tout le clip.
+  return ['-hide_banner', ...PROTECTIONS_ENTREE, '-i', entree, '-an', '-vf', 'cropdetect=limit=24:round=2:reset=0', '-f', 'null', '-'];
+}
+
+export function argumentsRecadrage(entree: string, sortie: string, p: PlanCadrage): string[] {
+  const { coupe: c, sortie: s } = p;
+  return [
+    '-hide_banner', '-y', ...PROTECTIONS_ENTREE, '-i', entree,
+    '-map', '0:v:0', '-map', '0:a?',
+    '-vf', `crop=${c.l}:${c.h}:${c.x}:${c.y},scale=${s.l}:${s.h}:flags=lanczos,setsar=1`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
+    '-c:a', 'copy', '-movflags', '+faststart', sortie,
+  ];
+}
+
+/** Dimensions du flux vidéo, lues dans la sortie de ffmpeg (`Stream … Video: … 720x1280`). */
+export function lireDimensions(stderr: string): { l: number; h: number } | null {
+  const m = /Stream #[^\n]*Video:[^\n]*?\b(\d{2,5})x(\d{2,5})\b/.exec(String(stderr));
+  return m ? { l: Number(m[1]), h: Number(m[2]) } : null;
+}
+
+type Executer = (bin: string, args: string[], opts: { timeout: number; maxBuffer: number }) => Promise<{ stdout: string; stderr: string }>;
+
+// `execFile` : aucun shell, les arguments partent tels quels.
+const executerParDefaut: Executer = async (bin, args, opts) => {
+  const r = await promisify(execFile)(bin, args, opts);
+  return { stdout: String(r.stdout), stderr: String(r.stderr) };
+};
+
+export interface ResultatCadrage {
+  buffer: Buffer;
+  /** Vrai seulement si des bandes ont été retirées. */
+  corrige: boolean;
+  plan: PlanCadrage | null;
+}
+
+/**
+ * Rend la vidéo du jumeau SANS bandes incrustées, au ratio demandé. Ne lève
+ * jamais : tout échec rend le fichier d'origine.
+ */
+export async function retirerBandesIncrustees(
+  buffer: Buffer,
+  opts: { aspectRatio?: unknown; executer?: Executer; ffmpeg?: string } = {},
+): Promise<ResultatCadrage> {
+  const tel: ResultatCadrage = { buffer, corrige: false, plan: null };
+  if (!buffer || buffer.length === 0) return tel;
+  const exec = opts.executer ?? executerParDefaut;
+  let dossier: string | null = null;
+  try {
+    const bin = opts.ffmpeg ?? cheminFfmpeg();
+    dossier = await mkdtemp(join(tmpdir(), 'jumeau-cadrage-'));
+    const entree = join(dossier, 'entree.mp4');
+    const sortie = join(dossier, 'sortie.mp4');
+    await writeFile(entree, buffer);
+    const mesure = await exec(bin, argumentsCropdetect(entree), { timeout: 60_000, maxBuffer: 32 * 1024 * 1024 });
+    const src = lireDimensions(mesure.stderr);
+    const plan = src ? planCadrage(src, lireCropdetect(mesure.stderr), ratioDemande(opts.aspectRatio)) : null;
+    if (!plan) return tel;
+    await exec(bin, argumentsRecadrage(entree, sortie, plan), { timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
+    const corrige = await readFile(sortie);
+    if (!corrige.length) return tel;
+    console.log('[Jumeau][cadrage] bandes incrustées retirées', JSON.stringify({ source: src, ...plan }));
+    return { buffer: corrige, corrige: true, plan };
+  } catch (e) {
+    console.warn('[Jumeau][cadrage] contrôle des bandes impossible, fichier gardé tel quel :', e instanceof Error ? e.message : e);
+    return tel;
+  } finally {
+    if (dossier) await rm(dossier, { recursive: true, force: true }).catch(() => {});
+  }
+}

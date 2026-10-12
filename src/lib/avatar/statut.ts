@@ -28,6 +28,7 @@ import { FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
 import { MESSAGES_AVATAR, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
+import { retirerBandesIncrustees } from '@/lib/avatar/cadrage-jumeau';
 
 /** Au-delà, une génération encore EN COURS est considérée perdue et remboursée. */
 export const STALE_AFTER_MS = 30 * 60 * 1000; // 30 min
@@ -59,6 +60,8 @@ interface LigneGeneration {
   created_at: string;
   /** Le texte DIT (sert au coût de la voix). */
   script?: string | null;
+  /** Format DEMANDÉ (`9:16`, `16:9`, `1:1`) : le fichier rapatrié le remplit. */
+  aspect_ratio?: string | null;
 }
 
 /**
@@ -151,10 +154,15 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
     // Fichier VÉRIFIÉ avant d'être un résultat : un téléchargement vide n'est
     // pas une vidéo (nouvel essai au prochain passage).
     if (!buffer || buffer.length === 0) throw new Error('vidéo téléchargée vide');
+    // Bandes INCRUSTÉES par le fournisseur (avatar 16:9 rendu en 9:16 : image
+    // utile en bande centrale) retirées ICI, au seul point commun à HeyGen,
+    // D-ID, Créer et l'Autopilote : le fichier hébergé remplit son format.
+    // Ne lève jamais — sans bandes, ou en cas d'échec, le fichier est inchangé.
+    const { buffer: fichier } = await retirerBandesIncrustees(buffer, { aspectRatio: g.aspect_ratio });
     const storagePath = `${userId}/avatar/${g.id}.mp4`;
     const { error: upErr } = await supabaseAdmin.storage
       .from('media')
-      .upload(storagePath, buffer, { contentType: 'video/mp4', upsert: true });
+      .upload(storagePath, fichier, { contentType: 'video/mp4', upsert: true });
     if (upErr) {
       console.warn('[Avatar] Rapatriement vidéo échoué (stockage), nouvel essai au prochain passage:', upErr.message);
     } else {
