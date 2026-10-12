@@ -32,14 +32,23 @@ export async function PATCH(req: NextRequest) {
   if (authErr) return authErr;
 
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
 
-    // Fetch existing content first for merge
-    const { data: existing } = await supabase
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ success: false, error: 'Corps invalide' }, { status: 400 });
+    }
+
+    // Contenu existant, pour la fusion. ⚠️ Une lecture en ÉCHEC arrête tout :
+    // fusionner dans `{}` puis écrire effacerait toute la page d'accueil.
+    const { data: existing, error: lecture } = await supabase
       .from('app_settings')
       .select('value')
       .eq('key', LANDING_KEY)
-      .single();
+      .maybeSingle();
+    if (lecture) {
+      console.error('Landing content read error:', lecture.message);
+      return NextResponse.json({ success: false, error: 'Failed to update landing content' }, { status: 500 });
+    }
 
     const currentContent = existing?.value
       ? (typeof existing.value === 'string' ? JSON.parse(existing.value) : existing.value)
@@ -48,14 +57,20 @@ export async function PATCH(req: NextRequest) {
     // Deep merge: body overwrites existing keys
     const merged = { ...currentContent, ...body };
 
-    await supabase
+    // Colonnes RÉELLES de `app_settings` : key, value, updated_at (pas
+    // `updated_by`, absente en production). L'auteur va à `audit_log`.
+    const { error: ecriture } = await supabase
       .from('app_settings')
       .upsert({
         key: LANDING_KEY,
         value: JSON.stringify(merged),
         updated_at: new Date().toISOString(),
-        updated_by: session!.user!.email,
       });
+    // Jamais de « succès » si l'écriture a échoué.
+    if (ecriture) {
+      console.error('Landing content update error:', ecriture.message);
+      return NextResponse.json({ success: false, error: 'Failed to update landing content' }, { status: 500 });
+    }
 
     await logAdminAction({
       adminEmail: session!.user!.email!,

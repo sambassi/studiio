@@ -32,17 +32,27 @@ export async function PATCH(req: NextRequest) {
   if (error) return error;
 
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length === 0) {
+      return NextResponse.json({ success: false, error: 'Corps invalide' }, { status: 400 });
+    }
 
-    for (const [key, value] of Object.entries(body)) {
-      await supabase
-        .from('app_settings')
-        .upsert({
-          key,
-          value: JSON.stringify(value),
-          updated_at: new Date().toISOString(),
-          updated_by: session!.user!.email,
-        });
+    // ⚠️ Colonnes RÉELLES de `app_settings` en production : key, value,
+    // updated_at — PAS `updated_by` (déclarée par la vieille migration 004,
+    // absente de la base) : l'écrire faisait échouer chaque enregistrement.
+    // L'auteur reste tracé dans `audit_log` (logAdminAction ci-dessous).
+    // Un seul upsert pour toutes les clés : tout est enregistré, ou rien.
+    const maintenant = new Date().toISOString();
+    const lignes = Object.entries(body).map(([key, value]) => ({
+      key,
+      value: JSON.stringify(value),
+      updated_at: maintenant,
+    }));
+    const { error: ecriture } = await supabase.from('app_settings').upsert(lignes);
+    // Jamais de « succès » si l'écriture a échoué.
+    if (ecriture) {
+      console.error('Admin settings update error:', ecriture.message);
+      return NextResponse.json({ success: false, error: 'Failed to update settings' }, { status: 500 });
     }
 
     await logAdminAction({
