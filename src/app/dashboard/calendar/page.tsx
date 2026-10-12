@@ -49,6 +49,7 @@ import {
   montageEstPerime, messageMontagePerime, leverMontagePerime,
 } from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
+import { lireCtaCopies } from '@/lib/creer/cta-copies';
 import { montageSize, preparerOptionsRendu, sourceVideoDuPost } from '@/lib/rendus/options-depuis-metadata';
 import { decisionExportBureau } from '@/lib/rendus/export-bureau';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
@@ -168,6 +169,8 @@ interface PostMetadata {
     ctaSubColor?: string;
     ctaMainText?: string;
     ctaSubText?: string;
+    /** CTA multiples (`cta-copies.ts`), relus par `lireCtaCopies`. */
+    ctaCopies?: unknown;
     noColorBg?: boolean;
     noColorSequences?: boolean;
     gradientColor1?: string;
@@ -3951,6 +3954,39 @@ export default function CalendarPage() {
                           marginTop: editorPxToDvh(4),
                         }}>{designCtaSubText || brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
                       </div>
+                      {/* CTA multiples (`cta-copies.ts`) : chaque copie a SA place, SA
+                          largeur, SON texte et SON style. Absentes : rien de plus. */}
+                      {lireCtaCopies(design?.ctaCopies).map((c) => (
+                        <div key={c.id} data-cta-copie={c.id} className="text-center" style={{
+                          position: 'absolute',
+                          left: `${c.pos.x}%`,
+                          top: `${c.pos.y}%`,
+                          transform: 'translate(-50%, -100%)',
+                          width: `${c.width}%`,
+                        }}>
+                          <p style={{
+                            fontFamily: fontStack(c.style.font),
+                            color: c.style.color,
+                            fontSize: editorPxToDvh((isReelFormat ? 12 : 16) * c.style.scale),
+                            letterSpacing: `${c.style.letterSpacing}px`,
+                            lineHeight: c.style.lineHeight,
+                            fontWeight: c.style.bold ? 900 : 400,
+                            fontStyle: c.style.italic ? 'italic' : 'normal',
+                            textTransform: 'uppercase',
+                            textShadow: `0 0 20px ${c.style.color}60`,
+                          }}>{c.text}</p>
+                          {c.sub && <p style={{
+                            fontFamily: fontStack(c.style.font),
+                            color: c.style.subColor || designCtaSubColor,
+                            fontSize: editorPxToDvh((isReelFormat ? 9 : 12) * c.style.scale),
+                            letterSpacing: `${c.style.letterSpacing}px`,
+                            textTransform: 'uppercase',
+                            fontWeight: c.style.bold ? 900 : 400,
+                            fontStyle: c.style.italic ? 'italic' : 'normal',
+                            marginTop: editorPxToDvh(4),
+                          }}>{c.sub}</p>}
+                        </div>
+                      ))}
                       {/* Logo sur CTA — per-sequence position */}
                       {designLogoUrl && designLogoSequences?.includes('cta') && (
                         <img src={designLogoUrl} alt="Logo" style={{

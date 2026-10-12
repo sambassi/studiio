@@ -18,6 +18,7 @@ import {
   SEQ_NAME_REVERSE as SPEC_SEQ_NAME_REVERSE,
 } from '@/lib/creer/designSpec';
 import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
+import { lireCtaCopies, designCompositeurCopie } from '@/lib/creer/cta-copies';
 import type { Lut } from '@/lib/luts/types';
 import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import { recadragePourRushPeint } from '@/lib/creer/recadrage-rush';
@@ -214,6 +215,13 @@ export interface DesignOptions {
   ctaMainText?: string;
   /** CTA sub text override from design (e.g. "CHAT POUR PLUS D'INFOS") */
   ctaSubTextDesign?: string;
+  /**
+   * CTA MULTIPLES — copies visuelles du CTA dans la séquence CTA
+   * (`src/lib/creer/cta-copies.ts`). Chacune porte son texte, sa position, sa
+   * largeur et son style ; `drawCTA` les peint après l'original. Absent ou
+   * vide : le CTA unique d'avant, à l'octet près.
+   */
+  ctaCopies?: import('@/lib/creer/cta-copies').CtaCopie[];
   /** Logo scale multiplier (default: 1.0) */
   logoScale?: number;
   /** Typography settings for title */
@@ -3060,26 +3068,9 @@ export function drawCTA(
   // parametre `ctaText` — qui n'est que le REPLI du sous-texte (nommage
   // historique du branding) : le gros texte apparaissait d'un bloc.
   const revealRatio = textRevealRatio(design?.textAnimation, progress);
+
   // ctaSubTextParam kept for backward compat but design.ctaSubTextDesign takes priority
   void ctaSubTextParam;
-  // BIG text (watermark) uses watermarkFont; sub-text uses ctaFont. Fall back to global font.
-  const watermarkFontFamily = design?.watermarkFont || design?.font || 'sans-serif';
-  const fontFamily = design?.ctaFont || design?.font || 'sans-serif';
-  const ctaSubColor = design?.ctaSubColor || accent; // editor default is accent color (#D91CD2)
-  const ctaColor = design?.ctaColor || '#FFFFFF'; // editor default is white, not accent
-  const ctaTextScale = design?.ctaTextScale || 1.0;
-
-  // Graisse et italique du CTA. `drawCTA` ecrivait `900` en dur a chaque
-  // `ctx.font` et ne lisait jamais `ctaTypography.bold/italic`, pourtant
-  // declares : les deux reglages existaient dans le type sans aucun effet.
-  // `bold !== false` reproduit exactement le rendu d'avant — seul un `false`
-  // explicite allege la graisse, comme pour le titre (`drawIntro`).
-  const ctaBold = design?.ctaTypography?.bold !== false;
-  const ctaItalic = !!design?.ctaTypography?.italic;
-  /** Chaine `ctx.font` du CTA — un seul endroit ou graisse et style vivent. */
-  const ctaFontStr = (size: number, family: string) =>
-    `${ctaItalic ? 'italic ' : ''}${ctaBold ? 900 : 400} ${size}px "${family}", sans-serif`;
-
   // CTA text mapping — editor renders:
   //   BIG text = ctaMainText state ("AFROBOOST")     → saved in design.ctaMainText & branding.watermarkText
   //   Sub text = ctaSubText state ("CHAT POUR PLUS D'INFOS") → saved in design.ctaSubTextDesign & branding.ctaText
@@ -3092,12 +3083,6 @@ export function drawCTA(
   // l'ecran, lui, n'affichait pas. Une cle ABSENTE vaut toujours `undefined`
   // et retombe donc, echelon par echelon, sur le repli historique — inchange.
   const effectiveSubText = design?.ctaSubTextDesign ?? ctaText ?? "CHAT POUR PLUS D'INFOS";
-  // Ce qui est PEINT a cet instant. Tronques AVANT la casse et la mise en
-  // lignes, comme le titre : le retour a la ligne suit la frappe. Principal et
-  // sous-texte a la MEME proportion, comme le titre et son sous-titre
-  // (`drawIntro`, `SequenceCta`). Hors machine a ecrire : les textes entiers.
-  const ctaPeint = revealRatio < 1 ? revealText(effectiveCtaText, revealRatio) : effectiveCtaText;
-  const subPeint = revealRatio < 1 && effectiveSubText ? revealText(effectiveSubText, revealRatio) : effectiveSubText;
 
   // CTA background: color-theme gradient backdrop (matches editor's
   // bg-gradient-to-br) + seqGradient overlay. Dark-hardcoded previously made
@@ -3124,185 +3109,227 @@ export function drawCTA(
   ctx.save();
   applyTextAnimation(ctx, w, h, design?.textAnimation, progress);
 
-  // Font sizes matched to editor CSS:
-  //   Editor (9:16): ctaMainText = 12px, ctaSubText = 9px, salesPhrase = 8px on 320px wide
-  //   12/320 = 0.0375, 9/320 = 0.028, 8/320 = 0.025
-  const isReel = h > w;
-  const ctaFontSize = Math.round(w * (isReel ? 0.0375 : 0.031) * ctaTextScale);
-  const salesFontSize = Math.round(w * (isReel ? 0.025 : 0.020) * ctaTextScale);
-  const subFontSize = Math.round(w * (isReel ? 0.028 : 0.023) * ctaTextScale);
-  const ctaLetterSpacing = (design?.ctaTypography?.letterSpacing || 0) * (w / 320); // scale from editor
+  /**
+   * Un bloc CTA complet (phrase d'accroche, icone, texte, sous-texte), peint
+   * avec les champs de `d`. Appele une fois pour le CTA d'origine — le corps
+   * d'avant, deplace tel quel — puis une fois par copie (`design.ctaCopies`,
+   * `cta-copies.ts`), chacune avec SON texte, SA position, SA largeur et SON
+   * style. Liste absente : un seul appel, le rendu d'avant a l'octet pres.
+   */
+  const peindreBlocCta = (
+    design: DesignOptions | undefined, effectiveCtaText: string, effectiveSubText: string, salesPhrase: string | undefined,
+  ) => {
+    // BIG text (watermark) uses watermarkFont; sub-text uses ctaFont. Fall back to global font.
+    const watermarkFontFamily = design?.watermarkFont || design?.font || 'sans-serif';
+    const fontFamily = design?.ctaFont || design?.font || 'sans-serif';
+    const ctaSubColor = design?.ctaSubColor || accent; // editor default is accent color (#D91CD2)
+    const ctaColor = design?.ctaColor || '#FFFFFF'; // editor default is white, not accent
+    const ctaTextScale = design?.ctaTextScale || 1.0;
 
-  // CTA position — editor uses translate(-50%, -100%) at watermarkPos (default: x=50%, y=97%)
-  // This means the BOTTOM of the text block is at the specified Y position
-  const ctaPosX = ((design?.watermarkPosition?.x ?? 50) / 100) * w;
-  const ctaPosY = ((design?.watermarkPosition?.y ?? 97) / 100) * h;
-  const ctaContainerW = w * ((design?.watermarkSize ?? 70) / 100);
+    // Graisse et italique du CTA. `drawCTA` ecrivait `900` en dur a chaque
+    // `ctx.font` et ne lisait jamais `ctaTypography.bold/italic`, pourtant
+    // declares : les deux reglages existaient dans le type sans aucun effet.
+    // `bold !== false` reproduit exactement le rendu d'avant — seul un `false`
+    // explicite allege la graisse, comme pour le titre (`drawIntro`).
+    const ctaBold = design?.ctaTypography?.bold !== false;
+    const ctaItalic = !!design?.ctaTypography?.italic;
+    /** Chaine `ctx.font` du CTA — un seul endroit ou graisse et style vivent. */
+    const ctaFontStr = (size: number, family: string) =>
+      `${ctaItalic ? 'italic ' : ''}${ctaBold ? 900 : 400} ${size}px "${family}", sans-serif`;
 
-  // Word-wrap CTA text within container width
-  ctx.font = ctaFontStr(ctaFontSize, fontFamily);
-  // ⚠️ LA REGLE PARTAGEE, PLUS `toUpperCase()` EN DUR. La casse s'applique
-  // AVANT la mise en lignes — une majuscule n'a pas la largeur de sa
-  // minuscule — et `SequenceCta` applique la MEME fonction a la MEME chaine.
-  const ctaCase = design?.ctaCase ?? DEFAULT_TEXT_CASE;
-  const ctaAlign: CanvasTextAlign = sanitizeTextAlign(design?.ctaAlign, 'center');
-  const ctaWords = applyTextCase(ctaPeint, ctaCase).split(' ');
-  let ctaLines: string[] = [];
-  let currentLine = '';
-  for (const word of ctaWords) {
-    const testLine = currentLine ? currentLine + ' ' + word : word;
-    if (measureLineForWrap(ctx, testLine, ctaLetterSpacing) > ctaContainerW && currentLine) {
-      ctaLines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
+    // Ce qui est PEINT a cet instant. Tronques AVANT la casse et la mise en
+    // lignes, comme le titre : le retour a la ligne suit la frappe. Principal et
+    // sous-texte a la MEME proportion, comme le titre et son sous-titre
+    // (`drawIntro`, `SequenceCta`). Hors machine a ecrire : les textes entiers.
+    const ctaPeint = revealRatio < 1 ? revealText(effectiveCtaText, revealRatio) : effectiveCtaText;
+    const subPeint = revealRatio < 1 && effectiveSubText ? revealText(effectiveSubText, revealRatio) : effectiveSubText;
+
+    // Font sizes matched to editor CSS:
+    //   Editor (9:16): ctaMainText = 12px, ctaSubText = 9px, salesPhrase = 8px on 320px wide
+    //   12/320 = 0.0375, 9/320 = 0.028, 8/320 = 0.025
+    const isReel = h > w;
+    const ctaFontSize = Math.round(w * (isReel ? 0.0375 : 0.031) * ctaTextScale);
+    const salesFontSize = Math.round(w * (isReel ? 0.025 : 0.020) * ctaTextScale);
+    const subFontSize = Math.round(w * (isReel ? 0.028 : 0.023) * ctaTextScale);
+    const ctaLetterSpacing = (design?.ctaTypography?.letterSpacing || 0) * (w / 320); // scale from editor
+
+    // CTA position — editor uses translate(-50%, -100%) at watermarkPos (default: x=50%, y=97%)
+    // This means the BOTTOM of the text block is at the specified Y position
+    const ctaPosX = ((design?.watermarkPosition?.x ?? 50) / 100) * w;
+    const ctaPosY = ((design?.watermarkPosition?.y ?? 97) / 100) * h;
+    const ctaContainerW = w * ((design?.watermarkSize ?? 70) / 100);
+
+    // Word-wrap CTA text within container width
+    ctx.font = ctaFontStr(ctaFontSize, fontFamily);
+    // ⚠️ LA REGLE PARTAGEE, PLUS `toUpperCase()` EN DUR. La casse s'applique
+    // AVANT la mise en lignes — une majuscule n'a pas la largeur de sa
+    // minuscule — et `SequenceCta` applique la MEME fonction a la MEME chaine.
+    const ctaCase = design?.ctaCase ?? DEFAULT_TEXT_CASE;
+    const ctaAlign: CanvasTextAlign = sanitizeTextAlign(design?.ctaAlign, 'center');
+    const ctaWords = applyTextCase(ctaPeint, ctaCase).split(' ');
+    let ctaLines: string[] = [];
+    let currentLine = '';
+    for (const word of ctaWords) {
+      const testLine = currentLine ? currentLine + ' ' + word : word;
+      if (measureLineForWrap(ctx, testLine, ctaLetterSpacing) > ctaContainerW && currentLine) {
+        ctaLines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
     }
-  }
-  if (currentLine) ctaLines.push(currentLine);
+    if (currentLine) ctaLines.push(currentLine);
 
-  // Vertical layout math — MATCHES EDITOR EXACTLY
-  // (infographie/page.tsx:3553-3593). Each element is ONE LINE at its own
-  // `fontSize * lineHeight`. The SPACING between elements is the editor's
-  // FIXED Tailwind margins, NOT a proportion of font size:
-  //   - sales → main:   `mt-0.5` = 2px on 320-px preview → 2 * w/320 scaled
-  //   - main  → sub:    `mt-1`   = 4px on 320-px preview → 4 * w/320 scaled
-  // Previously we used `fontSize * 1.5` as per-block height. With large
-  // ctaTextScale that produced a block much TALLER than the editor, and
-  // the bottom-anchor math pushed the CTA far above the user's chosen
-  // watermark position.
-  ctx.textBaseline = 'top';
-  const lineMul = design?.ctaTypography?.lineHeight || 1.2;
-  const mt05 = Math.max(1, Math.round(w * (2 / 320))); // mt-0.5 = 2px
-  const mt1 = Math.max(1, Math.round(w * (4 / 320)));  // mt-1   = 4px
+    // Vertical layout math — MATCHES EDITOR EXACTLY
+    // (infographie/page.tsx:3553-3593). Each element is ONE LINE at its own
+    // `fontSize * lineHeight`. The SPACING between elements is the editor's
+    // FIXED Tailwind margins, NOT a proportion of font size:
+    //   - sales → main:   `mt-0.5` = 2px on 320-px preview → 2 * w/320 scaled
+    //   - main  → sub:    `mt-1`   = 4px on 320-px preview → 4 * w/320 scaled
+    // Previously we used `fontSize * 1.5` as per-block height. With large
+    // ctaTextScale that produced a block much TALLER than the editor, and
+    // the bottom-anchor math pushed the CTA far above the user's chosen
+    // watermark position.
+    ctx.textBaseline = 'top';
+    const lineMul = design?.ctaTypography?.lineHeight || 1.2;
+    const mt05 = Math.max(1, Math.round(w * (2 / 320))); // mt-0.5 = 2px
+    const mt1 = Math.max(1, Math.round(w * (4 / 320)));  // mt-1   = 4px
 
-  // Wrap sales phrase + sub-text within the CTA container width — without
-  // this, long phrases like "Atteignez le bien-être avec nos optimisations
-  // expertes" overflow the canvas to the left/right.
-  ctx.font = ctaFontStr(salesFontSize, fontFamily);
-  const salesLines: string[] = salesPhrase ? wrapText(ctx, salesPhrase, ctaContainerW, ctaLetterSpacing) : [];
-  ctx.font = ctaFontStr(subFontSize, fontFamily);
-  // Meme garde que `salesLines` juste au-dessus : `wrapText(ctx, '')` renvoie
-  // `['']` et non `[]`. Sans ce ternaire, un texte eteint gardait une ligne
-  // fantome de hauteur pleine.
-  const subLines: string[] = subPeint
-    ? wrapText(ctx, applyTextCase(subPeint, ctaCase), ctaContainerW, ctaLetterSpacing)
-    : [];
+    // Wrap sales salesPhrase + sub-text within the CTA container width — without
+    // this, long phrases like "Atteignez le bien-être avec nos optimisations
+    // expertes" overflow the canvas to the left/right.
+    ctx.font = ctaFontStr(salesFontSize, fontFamily);
+    const salesLines: string[] = salesPhrase ? wrapText(ctx, salesPhrase, ctaContainerW, ctaLetterSpacing) : [];
+    ctx.font = ctaFontStr(subFontSize, fontFamily);
+    // Meme garde que `salesLines` juste au-dessus : `wrapText(ctx, '')` renvoie
+    // `['']` et non `[]`. Sans ce ternaire, un texte eteint gardait une ligne
+    // fantome de hauteur pleine.
+    const subLines: string[] = subPeint
+      ? wrapText(ctx, applyTextCase(subPeint, ctaCase), ctaContainerW, ctaLetterSpacing)
+      : [];
 
-  const salesLineH = salesFontSize * lineMul;
-  const ctaLineH = ctaFontSize * lineMul;
-  const subLineH = subFontSize * lineMul;
-  const salesBlockH = salesLines.length * salesLineH;
-  const ctaBlockH = ctaLines.length * ctaLineH;
-  const subBlockH = subLines.length * subLineH;
-  const blockH = salesBlockH
-    + (salesPhrase ? mt05 : 0) // gap sales → main
-    + ctaBlockH
-    + (subLines.length ? mt1 : 0) // gap main → sub, nul si la ligne est eteinte
-    + subBlockH;
+    const salesLineH = salesFontSize * lineMul;
+    const ctaLineH = ctaFontSize * lineMul;
+    const subLineH = subFontSize * lineMul;
+    const salesBlockH = salesLines.length * salesLineH;
+    const ctaBlockH = ctaLines.length * ctaLineH;
+    const subBlockH = subLines.length * subLineH;
+    const blockH = salesBlockH
+      + (salesPhrase ? mt05 : 0) // gap sales → main
+      + ctaBlockH
+      + (subLines.length ? mt1 : 0) // gap main → sub, nul si la ligne est eteinte
+      + subBlockH;
 
-  // Editor uses translate(-50%, -100%) → the BOTTOM of the block sits at ctaPosY.
-  let curY = ctaPosY - blockH;
+    // Editor uses translate(-50%, -100%) → the BOTTOM of the block sits at ctaPosY.
+    let curY = ctaPosY - blockH;
 
-  // Optional CTA icon — drawn ABOVE the CTA block so the existing layout
-  // (sales/main/sub) is untouched when no icon is configured. The icon is
-  // pre-rendered as a white-on-transparent <img> by the caller; the gradient
-  // (when enabled) is masked onto the icon pixels via an offscreen canvas
-  // + globalCompositeOperation 'source-in'. That isolates the masking so it
-  // doesn't affect the main canvas content.
-  if (design?.ctaIconImage) {
-    const iconSizeBase = design.ctaIconSize || 60;
-    const iconSize = iconSizeBase * (w / 1080);
-    const iconGap = Math.round(w * 0.02);
-    const iconX = ctaPosX - iconSize / 2;
-    const iconY = curY - iconSize - iconGap;
-    if (design.ctaIconGradient && design.ctaIconGradColor1 && design.ctaIconGradColor2) {
-      const off = document.createElement('canvas');
-      off.width = Math.max(1, Math.round(iconSize));
-      off.height = Math.max(1, Math.round(iconSize));
-      const offCtx = off.getContext('2d');
-      if (offCtx) {
-        offCtx.drawImage(design.ctaIconImage, 0, 0, off.width, off.height);
-        offCtx.globalCompositeOperation = 'source-in';
-        const grad = offCtx.createLinearGradient(0, 0, off.width, off.height);
-        grad.addColorStop(0, design.ctaIconGradColor1);
-        grad.addColorStop(1, design.ctaIconGradColor2);
-        offCtx.fillStyle = grad;
-        offCtx.fillRect(0, 0, off.width, off.height);
-        ctx.drawImage(off, iconX, iconY);
+    // Optional CTA icon — drawn ABOVE the CTA block so the existing layout
+    // (sales/main/sub) is untouched when no icon is configured. The icon is
+    // pre-rendered as a white-on-transparent <img> by the caller; the gradient
+    // (when enabled) is masked onto the icon pixels via an offscreen canvas
+    // + globalCompositeOperation 'source-in'. That isolates the masking so it
+    // doesn't affect the main canvas content.
+    if (design?.ctaIconImage) {
+      const iconSizeBase = design.ctaIconSize || 60;
+      const iconSize = iconSizeBase * (w / 1080);
+      const iconGap = Math.round(w * 0.02);
+      const iconX = ctaPosX - iconSize / 2;
+      const iconY = curY - iconSize - iconGap;
+      if (design.ctaIconGradient && design.ctaIconGradColor1 && design.ctaIconGradColor2) {
+        const off = document.createElement('canvas');
+        off.width = Math.max(1, Math.round(iconSize));
+        off.height = Math.max(1, Math.round(iconSize));
+        const offCtx = off.getContext('2d');
+        if (offCtx) {
+          offCtx.drawImage(design.ctaIconImage, 0, 0, off.width, off.height);
+          offCtx.globalCompositeOperation = 'source-in';
+          const grad = offCtx.createLinearGradient(0, 0, off.width, off.height);
+          grad.addColorStop(0, design.ctaIconGradColor1);
+          grad.addColorStop(1, design.ctaIconGradColor2);
+          offCtx.fillStyle = grad;
+          offCtx.fillRect(0, 0, off.width, off.height);
+          ctx.drawImage(off, iconX, iconY);
+        } else {
+          ctx.drawImage(design.ctaIconImage, iconX, iconY, iconSize, iconSize);
+        }
       } else {
         ctx.drawImage(design.ctaIconImage, iconX, iconY, iconSize, iconSize);
       }
-    } else {
-      ctx.drawImage(design.ctaIconImage, iconX, iconY, iconSize, iconSize);
     }
-  }
 
-  // Sales phrase (multi-line)
-  if (salesLines.length > 0) {
-    ctx.font = ctaFontStr(salesFontSize, fontFamily); ctx.textAlign = ctaAlign;
-    ctx.fillStyle = hexToRgba(ctaColor, 0.93);
-    salesLines.forEach((line, i) => {
-      fillTextWithSpacing(ctx, line, ctaPosX, curY + i * salesLineH, ctaLetterSpacing);
-    });
-    curY += salesBlockH + mt05;
-  }
+    // Sales salesPhrase (multi-line)
+    if (salesLines.length > 0) {
+      ctx.font = ctaFontStr(salesFontSize, fontFamily); ctx.textAlign = ctaAlign;
+      ctx.fillStyle = hexToRgba(ctaColor, 0.93);
+      salesLines.forEach((line, i) => {
+        fillTextWithSpacing(ctx, line, ctaPosX, curY + i * salesLineH, ctaLetterSpacing);
+      });
+      curY += salesBlockH + mt05;
+    }
 
-  // Main CTA text (multi-line) — uses watermarkFont + optional gradient.
-  ctx.font = ctaFontStr(ctaFontSize, watermarkFontFamily); ctx.textAlign = ctaAlign;
-  if (design?.watermarkTextGradient && design?.watermarkGradColor1 && design?.watermarkGradColor2) {
-    const grad = ctx.createLinearGradient(
-      ctaPosX - ctaContainerW / 2, curY,
-      ctaPosX + ctaContainerW / 2, curY + ctaBlockH,
-    );
-    grad.addColorStop(0, design.watermarkGradColor1);
-    grad.addColorStop(1, design.watermarkGradColor2);
-    ctx.fillStyle = grad;
-  } else {
-    ctx.fillStyle = ctaColor;
-  }
-  ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
-  ctaLines.forEach((line, i) => {
-    fillTextWithSpacing(ctx, line, ctaPosX, curY + i * ctaLineH, ctaLetterSpacing);
-  });
-  ctx.shadowBlur = 0;
-  // Souligne / barre — apres le texte et SANS l'ombre portee : un trait plein
-  // re-ombre paraitrait deux fois plus epais qu'a l'apercu. `textBaseline`
-  // vaut 'top', d'ou le `+ ctaFontSize` qui ramene a la ligne de base.
-  if (design?.ctaUnderline || design?.ctaStrike) {
+    // Main CTA text (multi-line) — uses watermarkFont + optional gradient.
+    ctx.font = ctaFontStr(ctaFontSize, watermarkFontFamily); ctx.textAlign = ctaAlign;
+    if (design?.watermarkTextGradient && design?.watermarkGradColor1 && design?.watermarkGradColor2) {
+      const grad = ctx.createLinearGradient(
+        ctaPosX - ctaContainerW / 2, curY,
+        ctaPosX + ctaContainerW / 2, curY + ctaBlockH,
+      );
+      grad.addColorStop(0, design.watermarkGradColor1);
+      grad.addColorStop(1, design.watermarkGradColor2);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = ctaColor;
+    }
+    ctx.shadowColor = hexToRgba(ctaColor, 0.4); ctx.shadowBlur = Math.round(w * 0.02);
     ctaLines.forEach((line, i) => {
-      drawTextDecoration(
-        ctx, line, ctaPosX, curY + i * ctaLineH + ctaFontSize,
-        ctaFontSize, ctaLetterSpacing,
-        { underline: design.ctaUnderline, strike: design.ctaStrike },
-      );
+      fillTextWithSpacing(ctx, line, ctaPosX, curY + i * ctaLineH, ctaLetterSpacing);
     });
-  }
-  curY += ctaBlockH + (subLines.length ? mt1 : 0);
+    ctx.shadowBlur = 0;
+    // Souligne / barre — apres le texte et SANS l'ombre portee : un trait plein
+    // re-ombre paraitrait deux fois plus epais qu'a l'apercu. `textBaseline`
+    // vaut 'top', d'ou le `+ ctaFontSize` qui ramene a la ligne de base.
+    if (design?.ctaUnderline || design?.ctaStrike) {
+      ctaLines.forEach((line, i) => {
+        drawTextDecoration(
+          ctx, line, ctaPosX, curY + i * ctaLineH + ctaFontSize,
+          ctaFontSize, ctaLetterSpacing,
+          { underline: design.ctaUnderline, strike: design.ctaStrike },
+        );
+      });
+    }
+    curY += ctaBlockH + (subLines.length ? mt1 : 0);
 
-  // Sub-text (multi-line) — user-configured color, 900 weight, uppercase, optional gradient.
-  ctx.font = ctaFontStr(subFontSize, fontFamily); ctx.textAlign = ctaAlign;
-  if (design?.ctaTypography?.textGradient && design?.ctaTypography?.gradColor1 && design?.ctaTypography?.gradColor2) {
-    const grad = ctx.createLinearGradient(
-      ctaPosX - ctaContainerW / 2, curY,
-      ctaPosX + ctaContainerW / 2, curY + subBlockH,
-    );
-    grad.addColorStop(0, design.ctaTypography.gradColor1);
-    grad.addColorStop(1, design.ctaTypography.gradColor2);
-    ctx.fillStyle = grad;
-  } else {
-    ctx.fillStyle = ctaSubColor;
-  }
-  subLines.forEach((line, i) => {
-    fillTextWithSpacing(ctx, line, ctaPosX, curY + i * subLineH, ctaLetterSpacing);
-  });
-  if (design?.ctaUnderline || design?.ctaStrike) {
-    subLines.forEach((line, i) => {
-      drawTextDecoration(
-        ctx, line, ctaPosX, curY + i * subLineH + subFontSize,
-        subFontSize, ctaLetterSpacing,
-        { underline: design.ctaUnderline, strike: design.ctaStrike },
+    // Sub-text (multi-line) — user-configured color, 900 weight, uppercase, optional gradient.
+    ctx.font = ctaFontStr(subFontSize, fontFamily); ctx.textAlign = ctaAlign;
+    if (design?.ctaTypography?.textGradient && design?.ctaTypography?.gradColor1 && design?.ctaTypography?.gradColor2) {
+      const grad = ctx.createLinearGradient(
+        ctaPosX - ctaContainerW / 2, curY,
+        ctaPosX + ctaContainerW / 2, curY + subBlockH,
       );
+      grad.addColorStop(0, design.ctaTypography.gradColor1);
+      grad.addColorStop(1, design.ctaTypography.gradColor2);
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = ctaSubColor;
+    }
+    subLines.forEach((line, i) => {
+      fillTextWithSpacing(ctx, line, ctaPosX, curY + i * subLineH, ctaLetterSpacing);
     });
+    if (design?.ctaUnderline || design?.ctaStrike) {
+      subLines.forEach((line, i) => {
+        drawTextDecoration(
+          ctx, line, ctaPosX, curY + i * subLineH + subFontSize,
+          subFontSize, ctaLetterSpacing,
+          { underline: design.ctaUnderline, strike: design.ctaStrike },
+        );
+      });
+    }
+  };
+  peindreBlocCta(design, effectiveCtaText, effectiveSubText, salesPhrase);
+  // CTA MULTIPLES : les copies, dans l'ordre, par-dessus l'original. Chacune
+  // s'ecrit a la machine a ecrire sur SON propre texte (meme proportion).
+  for (const copie of lireCtaCopies(design?.ctaCopies)) {
+    peindreBlocCta(designCompositeurCopie(design, copie), copie.text, copie.sub, undefined);
   }
   ctx.textBaseline = 'alphabetic';
 

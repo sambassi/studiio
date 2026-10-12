@@ -127,7 +127,9 @@ describe('Le chargement retient le rendu', () => {
     // Le catalogue en compte plus de cinquante : les charger toutes à chaque
     // rendu serait du réseau pur perdu.
     expect(FONT_CATALOG.length).toBeGreaterThan(40);
-    expect(composition).toContain("useMontageFonts(['Inter', props.titleFont, props.subtitleFont, props.ctaFont])");
+    // + les polices des copies du CTA (`cta-copies.ts`) : liste vide sans
+    // copie, donc exactement les familles d'avant.
+    expect(composition).toContain("useMontageFonts(['Inter', props.titleFont, props.subtitleFont, props.ctaFont, ...lireCtaCopies(props.ctaCopies).map((c) => c.style.font)])");
   });
 });
 
