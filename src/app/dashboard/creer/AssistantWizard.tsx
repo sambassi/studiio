@@ -143,6 +143,7 @@ import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/des
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import { signatureContenu, empreinteCourte } from '@/lib/creer/signature-contenu';
+import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
@@ -10489,6 +10490,12 @@ export default function AssistantWizard() {
           <div ref={erreurRef} data-creer-erreur className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{error}</span>
+            {/* Quota UTILISATEUR épuisé : le chemin vers son abonnement Studiio. */}
+            {error === MESSAGES_AVATAR.quotaEpuise && (
+              <a href={URL_ABONNEMENT} data-creer-erreur-abonnement className="ml-auto shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500">
+                Voir mon abonnement
+              </a>
+            )}
           </div>
         )}
 

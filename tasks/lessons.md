@@ -1187,3 +1187,9 @@ chargeant le chunk RÉELLEMENT déployé, pas la lib depuis npm.
 - `x || undefined` sur un texte transforme `''` (choix « rien ») en absence → repli sur un autre champ. Pour un texte, tester `typeof x === 'string'`.
 - Avatar : 9 échecs consécutifs = `Insufficient credit. This operation requires 'api' credits.` (compte fournisseur vide), lisible en 1 GET `/api/admin/avatar-couts` (`provider_error`). Lire `provider_error` AVANT d'enquêter sur URLs/permissions.
 - `renderSignature` est le JSON complet des options (images `data:` comprises) : ne jamais l'écrire en metadata, seulement une empreinte courte.
+
+## [2026-10-12] | Le compte API HeyGen vide a été découvert par l'utilisateur, à la génération ; et `service_alerts` n'avait jamais rien enregistré | Le financement fournisseur se SURVEILLE, et une écriture « qui ne doit pas casser le flux » doit quand même vérifier son `error`
+- Crédits utilisateur (Studiio) et solde de Studiio chez un fournisseur sont deux choses distinctes : un refus « solde fournisseur » ne doit ni échouer la génération ni consommer les crédits de l'utilisateur → attente + reprise unique (`attente-fournisseur.ts`, `sante.ts`).
+- `writeAlerts` lisait `select('id')` et insérait `created_at` dans `app_settings` (key, value, updated_at) : échec silencieux à chaque appel, jamais vérifié. Toute écriture best-effort vérifie et JOURNALISE `error`.
+- Ne jamais inventer d'API fournisseur : HeyGen `GET /v3/users/me`, D-ID `GET /credits`, ElevenLabs `GET /v1/user/subscription` existent ; aucune recharge par API n'est documentée (auto-reload = réglage du compte fournisseur).
+- Un nouveau statut sur une table couverte par un index unique PARTIEL (`status in (...)`) sort la ligne de l'index : réutiliser un statut couvert + un marqueur plutôt que d'ouvrir la porte au double job.

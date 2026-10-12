@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGE_ATTENTE_FOURNISSEUR } from '@/lib/avatar/attente-fournisseur';
 import { MESSAGES_AVATAR } from '@/lib/avatar/fournisseurs';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
@@ -76,7 +77,12 @@ export async function GET(req: NextRequest) {
     }
     return NextResponse.json({
       success: true,
-      data: { generationId, status: 'processing', videoUrl: null, ...avatarVersion },
+      data: {
+        generationId, status: 'processing', videoUrl: null, ...avatarVersion,
+        // Solde de Studiio épuisé chez le fournisseur : l'écran le dit, sans le
+        // nommer ; la génération reprendra seule (`attente-fournisseur.ts`).
+        ...(r.enAttenteFournisseur ? { enAttente: 'fournisseur', message: MESSAGE_ATTENTE_FOURNISSEUR } : {}),
+      },
     });
   } catch (error) {
     if (error instanceof DidError) {

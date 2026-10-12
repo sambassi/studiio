@@ -25,6 +25,7 @@ Les tâches périodiques sont des **Scheduled Tasks Coolify** attachées au serv
 |---|---|---|---|
 | `publish-cron` | chaque minute | `/api/cron/publish` | publie les `scheduled_posts` dont l'heure est passée (fuseau Europe/Paris) |
 | `cleanup-media` | toutes les 3 h | `/api/cron/cleanup-media` | purge les médias orphelins du stockage |
+| `providers-health` | toutes les 15 min | `/api/cron/providers-health` | **À CRÉER dans Coolify.** Lit le solde des fournisseurs (HeyGen, D-ID, ElevenLabs — lecture seule, aucun paiement), alerte l'admin, reprend les générations d'avatar en attente du fournisseur |
 
 `/api/cron/cleanup-db` existe côté code mais **n'a pas de tâche planifiée** à ce
 jour : la route est appelable manuellement avec le même jeton.

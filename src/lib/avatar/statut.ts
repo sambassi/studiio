@@ -29,12 +29,16 @@ import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
 import { MESSAGES_AVATAR, messageUtilisateurSur, creditsFournisseurEpuises } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 import { retirerBandesIncrustees } from '@/lib/avatar/cadrage-jumeau';
+import { signalerRefusDeSolde } from '@/lib/fournisseurs/sante';
+import { estEnAttenteFournisseur, lireMarqueurAttente, mettreEnAttente } from '@/lib/avatar/attente-fournisseur';
+import { reprendreGenerationEnAttente, abandonnerAttente } from '@/lib/avatar/moteur-jumeau';
 
 /** Au-delà, une génération encore EN COURS est considérée perdue et remboursée. */
 export const STALE_AFTER_MS = 30 * 60 * 1000; // 30 min
 
 type ResultatPoll =
-  | { status: 'processing'; videoUrl: null }
+  /** `enAttenteFournisseur` : solde de Studiio épuisé chez le fournisseur, reprise automatique. */
+  | { status: 'processing'; videoUrl: null; enAttenteFournisseur?: boolean }
   | { status: 'completed'; videoUrl: string }
   | { status: 'failed'; videoUrl: null; error: string; rembourse: boolean };
 
@@ -100,6 +104,18 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
   }
 
   if (!g.provider_video_id) {
+    // EN ATTENTE DU FOURNISSEUR (solde de Studiio épuisé) : chaque suivi
+    // tente la reprise UNIQUE si le fournisseur est revenu — sinon la
+    // génération attend, toujours « en cours » pour l'utilisateur.
+    if (estEnAttenteFournisseur(g)) {
+      const issue = await reprendreGenerationEnAttente(g as unknown as Parameters<typeof reprendreGenerationEnAttente>[0]);
+      if (issue === 'abandonnee') {
+        const { data: relue } = await supabaseAdmin.from('avatar_generations').select('error_message').eq('id', g.id).maybeSingle();
+        const message = messageUtilisateurSur((relue as { error_message?: string | null } | null)?.error_message, MESSAGES_AVATAR.creditsFournisseur);
+        return { status: 'failed', videoUrl: null, error: message, rembourse: false };
+      }
+      return { status: 'processing', videoUrl: null, enAttenteFournisseur: issue !== 'relancee' };
+    }
     return { status: 'processing', videoUrl: null };
   }
 
@@ -112,6 +128,23 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
     // (`provider_error`) ; l'utilisateur lit un message Studiio.
     const brut = remote.failureMessage || `${g.provider ?? 'heygen'} : échec signalé sans détail`;
     console.error(`[Avatar][${g.provider ?? 'heygen'}] génération ${g.id} en échec :`, brut);
+    // SOLDE DE STUDIIO ÉPUISÉ chez HeyGen (constaté en prod le 2026-10-12) :
+    // ce n'est pas l'échec de l'utilisateur. Admin alerté ; la génération
+    // repasse EN ATTENTE (débit gardé, pas de remboursement) et sera reprise
+    // UNE fois quand le solde reviendra. Si c'était déjà la reprise → abandon,
+    // crédits recrédités.
+    if (!viaDid && creditsFournisseurEpuises(brut)) {
+      await signalerRefusDeSolde('heygen', brut);
+      const marqueur = lireMarqueurAttente((g as { provider_error?: string | null }).provider_error);
+      if (marqueur?.reprises === 1) {
+        await abandonnerAttente(g);
+        const { data: relue } = await supabaseAdmin.from('avatar_generations').select('error_message').eq('id', g.id).maybeSingle();
+        const message = messageUtilisateurSur((relue as { error_message?: string | null } | null)?.error_message, MESSAGES_AVATAR.creditsFournisseur);
+        return { status: 'failed', videoUrl: null, error: message, rembourse: false };
+      }
+      await mettreEnAttente(g.id, { reprises: 0, cadrage: undefined, cause: brut });
+      return { status: 'processing', videoUrl: null, enAttenteFournisseur: true };
+    }
     const admin = await compteAdmin(userId);
     const rembourseUtilisateur = g.credits_charged > 0 && !admin;
     const visible = creditsFournisseurEpuises(brut)

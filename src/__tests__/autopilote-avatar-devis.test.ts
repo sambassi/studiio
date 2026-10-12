@@ -249,7 +249,11 @@ describe('Devis = débits — avatar ON avec ou sans rushes, sans double factura
   it('le moteur du jumeau débite avatar.jumeau UNE fois par génération (référence jumeau:<id>)', () => {
     const src = readFileSync(resolve(__dirname, '../lib/avatar/moteur-jumeau.ts'), 'utf-8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    expect(src.match(/deductCredits\(/g)).toHaveLength(1);
+    // Deux appels, UNE référence par génération : le lancement, et la reprise
+    // d'une génération en attente du fournisseur (même `jumeau:<id>`, donc
+    // idempotente — voir facturation-fournisseurs.test.ts, scénario 5).
+    expect(src.match(/deductCredits\(/g)).toHaveLength(2);
+    expect(src).toContain("deductCredits(ligne.user_id, coutJumeau, 'avatar', referenceOperation('jumeau', ligne.id))");
     expect(src).toContain("const coutJumeau = await prixDe('avatar.jumeau');");
     expect(src).toContain("deductCredits(args.userId, coutJumeau, 'avatar', referenceOperation('jumeau', generationId))");
   });
