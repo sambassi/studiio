@@ -235,7 +235,7 @@ import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-re
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
-import { positionTexteEffective } from '@/lib/creer/zones-sures-916';
+import { positionTexteEffective, titreSur916 } from '@/lib/creer/zones-sures-916';
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, ArretPourAjouterDesRushs, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite, erreurQualite } from '@/lib/creer/quality-gate';
@@ -815,6 +815,24 @@ interface TextStyles {
     letterSpacing: number;
     lineHeight: number;
   } & TextFormatFields;
+}
+
+/**
+ * Titre plein ecran en 9:16 : largeur et echelle RENDUES (`titreSur916`) —
+ * bord droit arrete au rail d'actions quand le bloc descend a sa hauteur,
+ * echelle reduite seulement s'il sortait sous les descriptions. Le MEME
+ * calcul pour l'apercu, le compositeur et les metadonnees ; hors 9:16, les
+ * valeurs choisies telles quelles.
+ */
+function titreRendu916(
+  format: string, pos: Pos, largeur: number, text: TextStyles,
+  titre: string | null | undefined, sousTitre: string | null | undefined,
+): { largeur: number; echelle: number } {
+  return titreSur916({
+    format, pos, largeur, echelle: text.title.scale, titre: titre ?? '', sousTitre,
+    echelleSousTitre: text.subtitle.scale, interligne: text.title.lineHeight, espacement: text.title.letterSpacing,
+    police: text.title.font, policeSousTitre: text.subtitle.font, casse: text.title.textCase, casseSousTitre: text.subtitle.textCase,
+  });
 }
 
 /**
@@ -1547,6 +1565,11 @@ function PlateContent({
   // telle quelle, et rien ne change en 16:9 / 1:1.
   titlePos = positionTexteEffective('title', titlePos, format);
   ctaPos = positionTexteEffective('cta', ctaPos, format);
+  // 9:16 : un titre agrandi qui descend a hauteur du rail d'actions se replie
+  // avant lui (`titreRendu916`) ; la position ne bouge jamais.
+  const titre916 = titreRendu916(format, titlePos, titleWidth, text, generated?.title, generated?.subtitle);
+  titleWidth = titre916.largeur;
+  const titleTypography = titre916.echelle === text.title.scale ? text.title : { ...text.title, scale: titre916.echelle };
   /**
    * Disposition des cartes en GRILLE plutot qu'en colonne.
    *
@@ -1769,7 +1792,7 @@ function PlateContent({
                 title={generated.title}
                 subtitle={generated.subtitle}
                 onSubtitleDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('subtitle') : undefined}
-                typography={text.title}
+                typography={titleTypography}
                 subtitleTypography={text.subtitle}
                 format={format}
                 containerWidth={vw}
@@ -8814,6 +8837,12 @@ export default function AssistantWizard() {
             color: accent,
           })),
         );
+        // 9:16 : largeur et echelle RENDUES du titre de CE contenu — le meme
+        // calcul que l'apercu (`titreRendu916`), repris par les metadonnees.
+        const titre916 = titreRendu916(format, titlePos, titleWidth, textStyles, contenu.title, contenu.subtitle);
+        const textDesignRendu = titre916.echelle === textStyles.title.scale
+          ? textDesign
+          : { ...textDesign, textScale: titre916.echelle, cardsTextScale: 100 / titre916.echelle };
         const optionsRendu: ComposerOptions = {
           width: size.w,
           height: size.h,
@@ -8954,12 +8983,12 @@ export default function AssistantWizard() {
             // ── Titre : haut-gauche ───────────────────────────────────────
             titleAlign: 'left' as const,
             titlePosition: { x: titlePos.x, y: titlePos.y },
-            titleSize: titleWidth,
+            titleSize: titre916.largeur,
             // Typographie du titre — memes valeurs que l'apercu.
             // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
             // il vaut aussi pour le sous-titre, que le compositeur dimensionne
             // avec le meme facteur.
-            ...textDesign,
+            ...textDesignRendu,
 
             // ── CTA : bas-centre ──────────────────────────────────────────
             // `ctaMainText` est lu EN PREMIER par drawCTA ; `ctaSubTextDesign`
@@ -9346,7 +9375,7 @@ export default function AssistantWizard() {
             titleAlign: 'left',
             // Memes champs typographiques que ceux passes au compositeur : une
             // regeneration depuis le Calendrier repart donc du meme rendu.
-            ...textDesign,
+            ...textDesignRendu,
             ctaMainText: contenu.cta,
             ctaSubText: contenu.ctaSub,
             gradientColor1: gradStart,
@@ -9371,7 +9400,7 @@ export default function AssistantWizard() {
               elements: freeElements,
             },
             sizes: {
-              title: titleWidth,
+              title: titre916.largeur,
               watermark: ctaWidth,
             },
           },

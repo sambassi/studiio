@@ -148,7 +148,9 @@ describe('formats larges — le format vient du design ou de l’option', () => 
   });
   it('le montage Remotion passe les largeurs aux cadres titre / CTA', () => {
     const src = readFileSync(resolve(process.cwd(), 'remotion/CreerSimpleMontage.tsx'), 'utf-8');
-    expect(src).toContain("titleFrameStyle(props.titlePos ?? positionTexteParDefaut('title', format), props.titleWidth)");
+    expect(src).toContain("const posTitre = props.titlePos ?? positionTexteParDefaut('title', format);");
+    // La largeur transmise passe telle quelle, sauf titre plein écran 9:16 arrêté au rail (`titreSur916`).
+    expect(src).toContain('titleFrameStyle(posTitre, t916 && t916.largeur !== largeurChoisie ? t916.largeur : props.titleWidth)');
     expect(src).toContain("ctaFrameStyle(props.ctaPos ?? positionTexteParDefaut('cta', format), props.ctaWidth)");
   });
 });

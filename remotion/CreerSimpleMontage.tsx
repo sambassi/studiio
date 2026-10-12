@@ -8,7 +8,7 @@ import { ajusterPlan } from '../src/lib/creer/smart-montage';
 import type { OverlaysMontage } from '../src/lib/creer/overlays';
 import {
   buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
-  gradientOverlayCss, DEFAULT_COLORS,
+  gradientOverlayCss, DEFAULT_COLORS, TEXT_LAYOUT,
   type PlannedSequence,
 } from '../src/lib/creer/designSpec';
 import SequenceCards, { type CardsTypography } from '../src/components/creer/SequenceCards';
@@ -31,7 +31,7 @@ import {
   baseSequenceFrames,
   TRANSITION_STYLE_KEYS, DEFAULT_TRANSITION_STYLE,
 } from './transitions';
-import { positionTexteParDefaut } from '../src/lib/creer/zones-sures-916';
+import { positionTexteParDefaut, titreSur916 } from '../src/lib/creer/zones-sures-916';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
 
@@ -558,15 +558,29 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
 
         // Les trois blocs de texte, écrits UNE fois : plein écran (séquences
         // titre / cartes / CTA) ou en SURIMPRESSION sur le rush (V3).
-        const blocTitre = (reveal: number) => (
-              <div style={titleFrameStyle(props.titlePos ?? positionTexteParDefaut('title', format), props.titleWidth)}>
+        // Plein écran 9:16 : la MÊME règle que l'aperçu et le compositeur de
+        // Créer (`titreSur916`) — bord droit arrêté au rail d'actions quand
+        // le titre agrandi descend à sa hauteur, position jamais touchée. Les
+        // surimpressions gardent leur mise en page (accroche bornée, #502).
+        const blocTitre = (reveal: number, pleinEcran = false) => {
+          const posTitre = props.titlePos ?? positionTexteParDefaut('title', format);
+          const largeurChoisie = props.titleWidth ?? TEXT_LAYOUT.titleWidth;
+          const t916 = pleinEcran ? titreSur916({
+            format, pos: posTitre, largeur: largeurChoisie, echelle: props.titleScale ?? 1,
+            titre: props.title ?? '', sousTitre: props.subtitle, echelleSousTitre: props.subtitleScale ?? 1,
+            interligne: props.titleLineHeight ?? 1.1, espacement: props.titleLetterSpacing ?? 0,
+            police: props.titleFont || 'Inter', policeSousTitre: props.subtitleFont ?? null,
+            casse: props.titleCase, casseSousTitre: props.subtitleCase,
+          }) : null;
+          return (
+              <div style={titleFrameStyle(posTitre, t916 && t916.largeur !== largeurChoisie ? t916.largeur : props.titleWidth)}>
                 <SequenceTitle
                   title={props.title}
                   subtitle={props.subtitle}
                   typography={{
                     font: props.titleFont || 'Inter',
                     color: titleColor,
-                    scale: props.titleScale ?? 1,
+                    scale: t916?.echelle ?? props.titleScale ?? 1,
                     bold: props.titleBold ?? true,
                     italic: props.titleItalic ?? false,
                     letterSpacing: props.titleLetterSpacing ?? 0,
@@ -592,7 +606,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   reveal={reveal}
                 />
               </div>
-        );
+          );
+        };
         const blocCartes = (liste: NonNullable<CreerSimpleMontageProps['cards']>) => (
               <SequenceCards
                 cards={liste.map((c, i) => ({
@@ -720,7 +735,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               <TextAnimationLayer style={animation} progress={anim.progress}>
               {/* Le MEME composant que l'apercu, et le MEME cadre : la
                   position vient de `titlePos`, comme a l'ecran. */}
-              {blocTitre(anim.reveal)}
+              {blocTitre(anim.reveal, true)}
               </TextAnimationLayer>
             )}
 

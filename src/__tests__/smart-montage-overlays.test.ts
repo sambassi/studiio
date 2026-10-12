@@ -75,7 +75,7 @@ describe('câblage', () => {
     expect(r).toContain('{blocCta(1)}');
     expect(r).toContain('const depart = props.surimpressions?.voix[cle];');
     // Le design d'avant est réutilisé tel quel (mêmes composants).
-    expect(r).toContain('{blocTitre(anim.reveal)}');
+    expect(r).toContain('{blocTitre(anim.reveal, true)}');
     expect(r).toContain('{blocCta(anim.reveal)}');
   });
 

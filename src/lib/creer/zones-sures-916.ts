@@ -26,7 +26,7 @@
  * Module PUR : ni DOM, ni React.
  */
 import { PLATFORM_SAFE_ZONES } from '@/lib/constants/platforms';
-import { CARDS_FRAME, TEXT_LAYOUT, type DesignFormat } from '@/lib/creer/designSpec';
+import { CARDS_FRAME, FONT_RATIO, GAP_RATIO, TEXT_LAYOUT, VIDEO_SIZE, type DesignFormat } from '@/lib/creer/designSpec';
 
 type Pos = { x: number; y: number };
 
@@ -133,4 +133,136 @@ export function horsZoneSure916(b: BoiteZone, eps = 0): string[] {
   const toucheRail = b.y1 > z.railHaut && b.y0 < z.railBas;
   if (toucheRail && b.x1 > z.droite + eps) out.push(`rail droit (${b.x1.toFixed(1)} % > ${z.droite} %)`);
   return out;
+}
+
+// ── TITRE PLEIN ÉCRAN AGRANDI (9:16) ─────────────────────────────────────
+//
+// Le cadre du titre s'ancre à gauche et descend avec le texte. Posé à 8 % sur
+// 84 % de large, son bord droit est à 92 % : tant que le bloc reste au-dessus
+// de 35 % rien ne le recouvre, mais un titre long AGRANDI (échelle jusqu'à
+// `SCALE_MAX` = 3) descend dans la hauteur du rail d'actions et passe dessous.
+//
+// RÈGLE (9:16 seulement, identique pour l'aperçu, le compositeur et Remotion) :
+//   1. LARGEUR — si le bloc PEUT atteindre la bande du rail (bas estimé
+//      > `railHaut`), son bord droit s'arrête au rail : largeur ramenée à
+//      `droite − x`. Le texte se replie sur une ligne de plus ; la position
+//      (glissée à la main ou non) n'est jamais touchée, la taille non plus.
+//   2. REPLI MINIMAL — si, même replié, le bloc descend sous la zone des
+//      descriptions (bas estimé > `bas`), l'échelle baisse par pas de 0,01
+//      jusqu'à ce qu'il tienne — jamais sous la taille par défaut (1) ni
+//      sous l'échelle choisie. Sans ce repli, un titre long à l'échelle 3
+//      sortait de l'image (mesuré : ≈ 120 % de la hauteur).
+// La largeur ne descend jamais sous `LARGEUR_TITRE_MIN_916` : un titre posé
+// à la main au-delà de 55 % garde sa position, avec cette largeur.
+
+/** Largeur minimale du cadre titre une fois arrêté au rail (même plancher que la poignée, `LARGEUR_MIN`). */
+export const LARGEUR_TITRE_MIN_916 = 30;
+
+/** Mêmes ratios que `SequenceTitle` et `drawIntro`. */
+const RATIO_TITRE_916 = FONT_RATIO['9:16'].title;
+const RATIO_SOUS_TITRE_916 = FONT_RATIO['9:16'].subtitle;
+const { w: LARGEUR_916, h: HAUTEUR_916 } = VIDEO_SIZE['9:16'];
+
+/**
+ * Chasse PRUDENTE d'un caractère, en em : [capitales, autre casse, espace].
+ *
+ * MESURÉE dans Chromium (canvas `measureText`, graisse la plus forte publiée,
+ * polices Google du catalogue, sur deux titres français en capitales et une
+ * phrase en casse normale), puis arrondie AU-DESSUS (≈ +5 %) : le bloc
+ * estimé est un peu plus haut que le bloc rendu, jamais plus bas.
+ * Mesures : Inter 900 0,670 / 0,564 / 0,199 ; défaut = la plus large des
+ * familles courantes (Alfa Slab One 0,748, Archivo Black 0,738, Cinzel 0,730,
+ * Montserrat 0,713 ; espace Shadows Into Light 0,45) ; étroites Oswald 0,516,
+ * Passion One 0,565, Roboto Condensed 0,541, Teko 0,480, Fjalla One 0,458 ;
+ * très étroites Anton 0,447, Bebas Neue 0,375, Staatliches 0,423 ; hors
+ * norme Syne 800 1,135 / 0,881, Rubik Mono One 0,85 partout, Great Vibes
+ * 0,915, Sacramento 0,909, Pacifico 0,767.
+ */
+const CHASSE_DEFAUT: readonly [number, number, number] = [0.78, 0.65, 0.47];
+const CHASSES: Record<string, readonly [number, number, number]> = {
+  Inter: [0.7, 0.6, 0.22],
+  ...Object.fromEntries(['Oswald', 'Passion One', 'Roboto Condensed', 'Teko', 'Fjalla One'].map((f) => [f, [0.6, 0.5, 0.3] as const])),
+  ...Object.fromEntries(['Anton', 'Anton SC', 'Bebas Neue', 'Staatliches'].map((f) => [f, [0.47, 0.48, 0.25] as const])),
+  Syne: [1.2, 0.93, 0.33],
+  'Rubik Mono One': [0.9, 0.9, 0.9],
+  'Great Vibes': [0.96, 0.65, 0.3],
+  Sacramento: [0.96, 0.65, 0.3],
+  Pacifico: [0.81, 0.65, 0.3],
+};
+function chasse(police: string | null | undefined, capitales: boolean): { em: number; espace: number } {
+  const c = (police && CHASSES[police]) || CHASSE_DEFAUT;
+  return { em: capitales ? c[0] : c[1], espace: c[2] };
+}
+
+/** Lignes d'un texte replié mot à mot dans `largeur` px (comme le navigateur et `wrapText`). Pur. */
+function lignes(texte: string, px: number, largeur: number, ch: { em: number; espace: number }, espacement: number): number {
+  const c = ch.em * px + espacement;
+  const espace = ch.espace * px + espacement;
+  let n = 0; let ligne = 0;
+  for (const mot of texte.trim().split(/\s+/).filter(Boolean)) {
+    const w = mot.length * c;
+    if (n > 0 && ligne + espace + w <= largeur) ligne += espace + w;
+    else { n += 1; ligne = w; }
+  }
+  return n;
+}
+
+/** Le titre plein écran à poser (positions et largeur en % de l'image). */
+export interface TitreAPlacer916 {
+  format: DesignFormat | string | null | undefined;
+  pos: Pos;
+  /** Largeur du cadre choisie (% de la largeur). */
+  largeur: number;
+  /** Échelle choisie (`text.title.scale`). */
+  echelle: number;
+  titre: string;
+  sousTitre?: string | null;
+  /** Multiplicateur du sous-titre (sa taille = titre × ce multiplicateur). */
+  echelleSousTitre?: number;
+  /** Interligne du titre (le sous-titre le partage). Défaut 1,1. */
+  interligne?: number;
+  /** Interlettrage, en px de l'éditeur (base 320). */
+  espacement?: number;
+  police?: string | null;
+  policeSousTitre?: string | null;
+  /** Casse du titre ; absente = capitales (`DEFAULT_TEXT_CASE`). */
+  casse?: 'none' | 'uppercase' | 'lowercase';
+  casseSousTitre?: 'none' | 'uppercase' | 'lowercase';
+}
+
+/**
+ * Boîte ESTIMÉE (prudente) du bloc titre + sous-titre, en % de l'image
+ * 9:16, pour une largeur et une échelle données. Pur.
+ */
+export function boiteTitre916(t: TitreAPlacer916, largeur: number, echelle: number): BoiteZone {
+  const lh = t.interligne ?? 1.1;
+  const esp = ((t.espacement ?? 0) * LARGEUR_916) / 320;
+  const utile = (largeur / 100) * LARGEUR_916;
+  const pt = LARGEUR_916 * RATIO_TITRE_916 * echelle;
+  const ps = LARGEUR_916 * RATIO_SOUS_TITRE_916 * echelle * (t.echelleSousTitre ?? 1);
+  const nT = lignes(t.titre, pt, utile, chasse(t.police, (t.casse ?? 'uppercase') === 'uppercase'), esp);
+  const sous = (t.sousTitre ?? '').trim();
+  const nS = sous ? lignes(sous, ps, utile, chasse(t.policeSousTitre ?? t.police, t.casseSousTitre === 'uppercase'), 0) : 0;
+  const h = nT * pt * lh + (nS ? LARGEUR_916 * GAP_RATIO + nS * ps * lh : 0);
+  return { x0: t.pos.x, y0: t.pos.y, x1: t.pos.x + largeur, y1: t.pos.y + (h / HAUTEUR_916) * 100 };
+}
+
+/**
+ * Largeur et échelle RENDUES du titre plein écran (voir la règle ci-dessus).
+ * Hors 9:16 : celles choisies, inchangées. Pur et idempotent.
+ */
+export function titreSur916(t: TitreAPlacer916): { largeur: number; echelle: number } {
+  const choisi = { largeur: t.largeur, echelle: t.echelle };
+  if (!estFormat916(t.format) || !t.titre?.trim()) return choisi;
+  const z = ZONE_SURE_916;
+  let largeur = t.largeur;
+  if (t.pos.x + largeur > z.droite && boiteTitre916(t, largeur, t.echelle).y1 > z.railHaut) {
+    largeur = Math.min(largeur, Math.max(LARGEUR_TITRE_MIN_916, Math.round((z.droite - t.pos.x) * 100) / 100));
+  }
+  let echelle = t.echelle;
+  const plancher = Math.min(t.echelle, 1);
+  while (echelle > plancher && boiteTitre916(t, largeur, echelle).y1 > z.bas) {
+    echelle = Math.max(plancher, Math.round((echelle - 0.01) * 100) / 100);
+  }
+  return { largeur, echelle };
 }

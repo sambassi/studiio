@@ -76,9 +76,12 @@ describe('18. CTA : ne déborde jamais, ne fait que réduire', () => {
 
 describe('10. export : taille ET largeur réglées partent au compositeur et au Calendrier', () => {
   it('largeurs réelles (plus les constantes) dans le design et `sizes`', () => {
-    expect(wizard).toContain('titleSize: titleWidth,');
+    // Titre : la largeur RENDUE (9:16 : arrêtée au rail d'actions, `titreSur916`) ;
+    // hors 9:16 elle vaut la largeur réglée.
+    expect(wizard).toContain('titleSize: titre916.largeur,');
     expect(wizard).toContain('watermarkSize: ctaWidth,');
-    expect(wizard).toContain('title: titleWidth,\n              watermark: ctaWidth,');
+    expect(wizard).toContain('title: titre916.largeur,\n              watermark: ctaWidth,');
+    expect(wizard).toContain('const titre916 = titreRendu916(format, titlePos, titleWidth, textStyles, contenu.title, contenu.subtitle);');
   });
 });
 
