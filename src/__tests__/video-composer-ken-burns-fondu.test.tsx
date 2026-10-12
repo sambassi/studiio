@@ -32,7 +32,8 @@ type Evenement =
   | { k: 'image' }
   | { k: 'peint'; source: unknown; args: number[] }
   | { k: 'alpha'; v: number }
-  | { k: 'barre'; w: number };
+  | { k: 'barre'; w: number }
+  | { k: 'texte'; v: string };
 const evenements: Evenement[] = [];
 let sourcesAudio: unknown[] = [];
 let fauxVideos: FauxVideo[] = [];
@@ -104,6 +105,7 @@ function contexte() {
     clearRect: (_x: number, _y: number, w: number, h: number) => { if (w === W && h === H) evenements.push({ k: 'image' }); },
     // Barre de progression : `fillRect(0, h - 3, w * elapsed / total, 3)`.
     fillRect: (x: number, y: number, w: number, h: number) => { if (x === 0 && y === H - 3 && h === 3) evenements.push({ k: 'barre', w }); },
+    fillText: (t: string) => { evenements.push({ k: 'texte', v: String(t) }); },
     measureText: (t: string) => ({ width: String(t).length * 10, actualBoundingBoxAscent: 8, actualBoundingBoxDescent: 2 }),
     createLinearGradient: () => degrade,
     createRadialGradient: () => degrade,
@@ -314,5 +316,46 @@ describe('Ken Burns pendant le fondu vers le CTA (faux navigateur)', () => {
     }
     // R2 paraît bien ensuite, à son tour.
     expect(ims.some((im) => im.t > 2.3 && peintures(im).some((p) => r2.includes(p.source as FauxVideo)))).toBe(true);
+  }, 30000);
+  it('fondu ENTRANT vers un rush UNIQUE : le temps de la séquence part de 0, sans saut au raccord', async () => {
+    // Titre 1,2 s → Vidéo (un seul rush, 5 s). Une surimpression texte entre à
+    // 0,5 s de la séquence Vidéo, soit à 1,7 s du montage. L'ancienne
+    // progression `t * 0,3` datait la séquence entrante jusqu'à 1,5 s PENDANT
+    // le fondu (0,4–1,2 s) : le texte y apparaissait, disparaissait au raccord
+    // (le temps retombait à 0), puis revenait à 1,7 s — un saut visible.
+    const R = '/media/rush-unique.mp4';
+    const MARQUE = 'SURIMPRESSION-0,5s';
+    const total = 1.2 + 5 + 0.3;
+    await composeVideo({
+      width: W, height: H, fps: 30, title: 'T', cards: [],
+      videoUrl: R,
+      design: { overlays: [{ text: MARQUE, position: { x: 50, y: 50 }, startTime: 0.5 }] },
+      introDuration: 1.2, cardsDuration: 0, videoDuration: 5, ctaDuration: 0.3,
+      accentColor: '#7C3AED',
+    } as unknown as ComposerOptions);
+    const ims = images(total);
+    const rush = fauxVideos.filter((v) => v.srcDemande === R);
+    expect(rush.length).toBeGreaterThan(0);
+    const visible = (im: ImageMontage) => im.ev.some((e) => e.k === 'texte' && e.v === MARQUE);
+    const UNE_IMAGE = 0.1; // marge d'horloge temps réel (jsdom)
+
+    // Pendant le fondu entrant, le rush est bien là — sur sa PREMIÈRE image
+    // (le lecteur n'a jamais été avancé avant son tour)…
+    const fondu = ims.filter((im) => im.t > 0.45 && im.t < 1.19);
+    expect(fondu.length).toBeGreaterThan(5);
+    for (const im of fondu) {
+      expect(peintures(im).some((p) => rush.includes(p.source as FauxVideo))).toBe(true);
+    }
+    // …et le temps de la séquence ne dépasse jamais le temps réel : aucun
+    // texte daté de 0,5 s n'apparaît avant 1,7 s du montage.
+    for (const im of ims) {
+      if (visible(im)) expect(im.t + UNE_IMAGE).toBeGreaterThanOrEqual(1.2 + 0.5);
+    }
+    // Continuité : une fois apparu, le texte ne disparaît plus (temps monotone).
+    const premiere = ims.findIndex(visible);
+    expect(premiere).toBeGreaterThan(-1);
+    const avantCta = ims.filter((im, i) => i >= premiere && im.t < 1.2 + 5 - 0.8 - 0.05);
+    expect(avantCta.length).toBeGreaterThan(5);
+    for (const im of avantCta) expect(visible(im)).toBe(true);
   }, 30000);
 });
