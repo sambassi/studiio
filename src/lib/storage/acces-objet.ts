@@ -717,19 +717,65 @@ function ressembleStockage(formes: string[]): boolean {
   return formes.some((f) => /\/storage\/v1\/object(\/|$)/i.test(f.replace(/\\/g, '/').replace(/\/{2,}/g, '/')));
 }
 
+/**
+ * Décodage TOLÉRANT, pour RECONNAÎTRE seulement : chaque `%XX` valide est
+ * décodé, les séquences invalides restent telles quelles. `formesDecodees`
+ * s'arrête à la première séquence invalide — un `%ZZ` glissé ailleurs dans le
+ * chemin suffisait à masquer `%73torage/…`.
+ */
+function formesTolerantes(valeur: string): string[] {
+  const formes = [valeur];
+  let courante = valeur;
+  for (let i = 0; i < 4; i++) {
+    const suivante = courante.replace(/%([0-9a-f]{2})/gi, (_t, h: string) => String.fromCharCode(parseInt(h, 16)));
+    if (suivante === courante) break;
+    formes.push(suivante);
+    courante = suivante;
+  }
+  return formes;
+}
+
+/** Toutes les formes d'un chemin qu'on examine pour le reconnaître. */
+function formesDe(chemin: string): string[] {
+  return [...formesDecodees(chemin), ...formesTolerantes(chemin)];
+}
+
+/**
+ * Les deux analyseurs voient-ils le MÊME chemin ? Comparaison des formes
+ * décodées une fois : l'analyseur WHATWG échappe certains caractères (espace,
+ * guillemets, non-ASCII) sans changer ce qu'ils désignent, mais toute
+ * normalisation qui change la cible (`.`/`..`, `%2e`, antislash, tabulation
+ * retirée) change aussi la forme décodée.
+ */
+function memeChemin(brut: string, whatwg: string): boolean {
+  if (brut === whatwg) return true;
+  try { return decodeURIComponent(brut) === decodeURIComponent(whatwg); } catch { return false; }
+}
+
 export function cibleStockageParChemin(valeur: unknown): CibleParChemin | 'refus' | null {
   if (typeof valeur !== 'string' || valeur.length === 0) return null;
   const brut = cheminBrutDe(valeur.trim());
-  if (brut === null) return null;
-  const formes = [...formesDecodees(brut)];
-  // Forme normalisée par l'analyseur WHATWG (`..`, `%2e%2e`, `\`) : celle
-  // qu'un client HTTP enverrait réellement.
+  // Forme normalisée par l'analyseur WHATWG — celui de `new URL`, donc du
+  // fetch sûr et de tout client HTTP : c'est CE chemin qui part réellement
+  // sur le réseau et que le routeur Next.js associe au relais.
+  //
+  // ⚠️ ELLE EST CALCULÉE MÊME QUAND LA LECTURE BRUTE ÉCHOUE. WHATWG accepte
+  // des formes que `cheminBrutDe` ne découpe pas — `https:hote/…`,
+  // `https:/hote/…`, `ht<TAB>tps://…`, un caractère de contrôle en tête —
+  // et les envoie bel et bien au relais. Sans elle, ces URL étaient jugées
+  // « hors stockage » : ni propriété, ni refus, l'objet d'un autre compte
+  // était lu puis publié.
+  let normalise: string | null = null;
   try {
-    const normalise = new URL(valeur.trim(), 'http://studiio.invalid').pathname;
-    formes.push(...formesDecodees(normalise));
-  } catch { /* URL invalide : les formes brutes suffisent */ }
+    normalise = new URL(valeur, 'http://studiio.invalid').pathname;
+  } catch { /* URL invalide : aucun client ne l'enverra telle quelle */ }
+  const formes = [...(brut !== null ? formesDe(brut) : []), ...(normalise !== null ? formesDe(normalise) : [])];
   if (!ressembleStockage(formes)) return null;
+  // Ressemble à un objet de stockage : les deux lectures doivent désigner le
+  // même chemin, sous la forme canonique exacte, sinon on ne devine pas.
+  if (brut === null || normalise === null) return 'refus';
   if (valeur !== valeur.trim()) return 'refus';
+  if (!memeChemin(brut, normalise)) return 'refus';
   const m = CHEMIN_STOCKAGE_CANONIQUE.exec(brut);
   if (!m) return 'refus';
   const [, acces, bucketBrut, cleBrute] = m;

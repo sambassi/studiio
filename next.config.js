@@ -29,6 +29,14 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    // OPTIMISEUR COUPÉ (`/_next/image` → 404). Aucun composant n'utilise
+    // `next/image`, et l'optimiseur servait SANS SESSION toute image locale
+    // demandée par `?url=/storage/v1/object/public/<bucket>/<clé>` — y
+    // compris sous un autre hôte que celui de l'application. Une URL de média
+    // `https://<app>/_next/image?url=…` n'était pas reconnue comme objet de
+    // stockage : le serveur publiait alors l'image d'un autre compte sans
+    // aucun contrôle de propriété.
+    unoptimized: true,
     // Plus de `*.supabase.co` : aucun composant n'utilise `next/image`, et le
     // stockage est MinIO, servi par l'application elle-meme. Ce joker ouvrait
     // l'optimiseur d'images (`/_next/image`) a N'IMPORTE QUEL projet Supabase

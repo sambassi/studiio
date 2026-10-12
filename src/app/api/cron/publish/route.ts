@@ -995,7 +995,11 @@ async function convertToMp4IfNeeded(videoUrl: string, userId: string): Promise<s
 
     // Step 4: Upload to Supabase Storage
     const fileName = `converted_${timestamp}.mp4`;
-    const storagePath = `converted/${fileName}`;
+    // Sous le préfixe du PROPRIÉTAIRE, comme `api/convert/to-mp4` : une clé
+    // `converted/<horodatage>` commune à tous était devinable et publiable
+    // par n'importe quel compte. Les anciennes restent lisibles (voir
+    // `CONVERSION_PARTAGEE`), aucune nouvelle n'y est écrite.
+    const storagePath = `${userId}/converted/${fileName}`;
     const { error: uploadError } = await supabase.storage
       .from('media')
       .upload(storagePath, mp4Buffer, {
@@ -1121,7 +1125,8 @@ async function muxAudioIntoVideo(
     // Étape 4 : Upload du MP4 final
     const mp4Buffer = await readFile(outputPath);
     const fileName = `muxed_${ts}.mp4`;
-    const storagePath = `converted/${fileName}`;
+    // Préfixe du propriétaire : voir `convertToMp4IfNeeded`.
+    const storagePath = `${userId}/converted/${fileName}`;
     const { error: uploadError } = await supabase.storage
       .from('media')
       .upload(storagePath, mp4Buffer, { contentType: 'video/mp4', upsert: true });

@@ -69,11 +69,13 @@ function hotePourJournal(url: string): string {
 }
 
 /**
- * Conversions MP4 du cron (`converted/<horodatage>.mp4`, compartiment
- * `media`) : écrites SANS identifiant de compte, puis publiées dans la foulée.
- * Préfixe commun, jamais une preuve de propriété — admis ici seulement en
- * lecture PUBLIQUE (le relais les sert déjà à quiconque a l'adresse), comme
- * avant ce contrôle. Voir `PREFIXES_PARTAGES`.
+ * Conversions MP4 HISTORIQUES (`converted/<horodatage>.mp4`, compartiment
+ * `media`) : écrites jadis SANS identifiant de compte. Le cron et
+ * `api/convert/to-mp4` écrivent désormais sous `<userId>/converted/…` (la
+ * propriété ordinaire s'y applique) ; seules d'anciennes URL persistées
+ * pointent encore ici. Préfixe commun, jamais une preuve de propriété — admis
+ * seulement en lecture PUBLIQUE (le relais les sert déjà à quiconque a
+ * l'adresse), jamais signé. Voir `PREFIXES_PARTAGES`.
  */
 const CONVERSION_PARTAGEE = /^converted\/[^/]+$/;
 
@@ -119,18 +121,25 @@ export async function lireMediaPublication(
   // Confiance accordée à notre STOCKAGE seulement (relais public), pas à
   // toute l'origine de l'application : une autre route du même hôte repasse
   // le contrôle d'adresse comme n'importe quelle URL.
-  const confiance = estNotreStockage(absolue, origines) ? origines : [];
+  const confiance = opts.reseau?.originesDeConfiance
+    ?? (estNotreStockage(absolue, origines) ? origines : []);
   const local = path.join(os.tmpdir(), `studiio-publication-${randomUUID()}.media`);
   try {
     const r = await telechargerSur(absolue, local, {
       timeoutMs: 300_000,
       maxOctets: MAX_OCTETS_PUBLICATION,
       ...(opts.reseau ?? {}),
-      originesDeConfiance: opts.reseau?.originesDeConfiance ?? confiance,
+      originesDeConfiance: confiance,
       // Rejoué à CHAQUE saut : une redirection vers un objet d'un autre
       // compte (relais public, n'importe quel hôte) est refusée avant d'être
       // demandée.
+      //
+      // ⚠️ La confiance (aucun contrôle d'adresse) vaut pour le CHEMIN
+      // d'objet de stockage, jamais pour toute l'origine : un saut vers une
+      // autre route d'une origine de confiance — que le fetch sûr ne
+      // contrôlerait plus — est refusé.
       autorisee: (u) => verdictStockagePublication(u.href, opts.userId) !== 'refuse'
+        && (!confiance.includes(u.origin) || estNotreStockage(u.href, origines))
         && (opts.reseau?.autorisee ? opts.reseau.autorisee(u) : true),
     });
     return { octets: await readFile(local), typeContenu: r.typeContenu };
