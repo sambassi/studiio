@@ -348,8 +348,10 @@ describe('Câblage', () => {
   it("n'écrit rien tant que rien n'a bougé", () => {
     // Un brouillon d'un utilisateur qui n'a rien déplacé reste exactement
     // celui d'avant cette PR.
-    expect(wizard).toContain('titlePos: samePos(titlePos, DESIGN.titlePos) ? undefined : titlePos');
-    expect(wizard).toContain('ctaPos: samePos(ctaPos, DESIGN.ctaPos) ? undefined : ctaPos');
+    // L'etat BRUT (l'ancre automatique), pas la position effective du format :
+    // un brouillon sans position suit le format a la relecture (zones sures 9:16).
+    expect(wizard).toContain('titlePos: samePos(titlePosBrut, DESIGN.titlePos) ? undefined : titlePosBrut');
+    expect(wizard).toContain('ctaPos: samePos(ctaPosBrut, DESIGN.ctaPos) ? undefined : ctaPosBrut');
     expect(wizard).toContain('cardBoxes: cardBoxes ?? undefined');
     expect(wizard).toContain('cardGroups: cardGroups.length ? cardGroups : undefined');
   });
@@ -359,7 +361,7 @@ describe('Câblage', () => {
     // placement et l'autosave n'écrirait jamais le nouveau.
     const debut = wizard.indexOf('  }), [', wizard.indexOf('const buildDraft'));
     const deps = wizard.slice(debut, wizard.indexOf(']);', debut));
-    expect(deps).toContain('titlePos, ctaPos, cardBoxes, cardGroups,');
+    expect(deps).toContain('titlePosBrut, ctaPosBrut, cardBoxes, cardGroups,');
   });
 
   it('chaque champ absent laisse le défaut en place à la relecture', () => {

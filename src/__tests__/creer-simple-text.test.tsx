@@ -292,7 +292,9 @@ describe('Export — les mêmes valeurs partent au compositeur', () => {
     // Calendrier, qui relit la seconde, qui aurait affiché autre chose que la
     // vidéo.
     expect(wizardSource.match(/const textDesign = \{/g)).toHaveLength(1);
-    expect(wizardSource.match(/\.\.\.textDesign,/g)).toHaveLength(2);
+    // Les deux étalent la MÊME dérivée (échelle du titre rendue en 9:16, `titreSur916`).
+    expect(wizardSource.match(/\.\.\.textDesignRendu,/g)).toHaveLength(2);
+    expect(wizardSource.match(/const textDesignRendu = /g)).toHaveLength(1);
   });
 
   it('mappe chaque réglage sur le champ que le compositeur lit vraiment', () => {

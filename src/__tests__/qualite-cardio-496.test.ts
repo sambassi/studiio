@@ -144,7 +144,9 @@ describe('accroche moins envahissante', () => {
     const titre = 1080 * FONT_RATIO['9:16'].title * m.titleScale * 1.1;
     const sous = 1080 * FONT_RATIO['9:16'].subtitle * m.titleScale * m.subtitleScale * 1.25;
     expect((titre + 3 * sous) / 1920).toBeLessThanOrEqual(0.15);
-    expect(m.titlePos.y).toBeLessThanOrEqual(10); // en haut, jamais centré
+    // En haut, jamais centré — mais sous les barres des réseaux (zone sûre 9:16).
+    expect(m.titlePos.y).toBeLessThanOrEqual(14);
+    expect(m.titlePos.y).toBeGreaterThanOrEqual(12);
   });
 });
 

@@ -235,6 +235,7 @@ import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-re
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { positionTexteEffective, titreSur916 } from '@/lib/creer/zones-sures-916';
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, ArretPourAjouterDesRushs, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite, erreurQualite } from '@/lib/creer/quality-gate';
@@ -814,6 +815,24 @@ interface TextStyles {
     letterSpacing: number;
     lineHeight: number;
   } & TextFormatFields;
+}
+
+/**
+ * Titre plein ecran en 9:16 : largeur et echelle RENDUES (`titreSur916`) —
+ * bord droit arrete au rail d'actions quand le bloc descend a sa hauteur,
+ * echelle reduite seulement s'il sortait sous les descriptions. Le MEME
+ * calcul pour l'apercu, le compositeur et les metadonnees ; hors 9:16, les
+ * valeurs choisies telles quelles.
+ */
+function titreRendu916(
+  format: string, pos: Pos, largeur: number, text: TextStyles,
+  titre: string | null | undefined, sousTitre: string | null | undefined,
+): { largeur: number; echelle: number } {
+  return titreSur916({
+    format, pos, largeur, echelle: text.title.scale, titre: titre ?? '', sousTitre,
+    echelleSousTitre: text.subtitle.scale, interligne: text.title.lineHeight, espacement: text.title.letterSpacing,
+    police: text.title.font, policeSousTitre: text.subtitle.font, casse: text.title.textCase, casseSousTitre: text.subtitle.textCase,
+  });
 }
 
 /**
@@ -1541,6 +1560,16 @@ function PlateContent({
   };
 }) {
   const vw = VIDEO_SIZE[format].w;
+  // 9:16 : l'ancre automatique (`DESIGN`) se lit comme le placement sur des
+  // reseaux (`zones-sures-916`) ; une position posee a la main est rendue
+  // telle quelle, et rien ne change en 16:9 / 1:1.
+  titlePos = positionTexteEffective('title', titlePos, format);
+  ctaPos = positionTexteEffective('cta', ctaPos, format);
+  // 9:16 : un titre agrandi qui descend a hauteur du rail d'actions se replie
+  // avant lui (`titreRendu916`) ; la position ne bouge jamais.
+  const titre916 = titreRendu916(format, titlePos, titleWidth, text, generated?.title, generated?.subtitle);
+  titleWidth = titre916.largeur;
+  const titleTypography = titre916.echelle === text.title.scale ? text.title : { ...text.title, scale: titre916.echelle };
   /**
    * Disposition des cartes en GRILLE plutot qu'en colonne.
    *
@@ -1763,7 +1792,7 @@ function PlateContent({
                 title={generated.title}
                 subtitle={generated.subtitle}
                 onSubtitleDoubleClick={onTextDoubleClick ? () => onTextDoubleClick('subtitle') : undefined}
-                typography={text.title}
+                typography={titleTypography}
                 subtitleTypography={text.subtitle}
                 format={format}
                 containerWidth={vw}
@@ -1794,6 +1823,7 @@ function PlateContent({
               cardBoxes={cardBoxes}
               containerWidth={vw}
               landscape={landscapeCards}
+              zoneSure916={format === '9:16'}
               valueColor={gradEnd}
               interaction={{
                 onCardDragStart,
@@ -3179,12 +3209,14 @@ function AutopilotPreview({ config, accent, onPatch }: {
   // INTERDIT (`creer-simple-move-title-cta`) : c'est ainsi que son apercu
   // bougeait pendant que son export restait fige. Ici la constante n'est
   // qu'un DEFAUT, repris en bloc quand le compte n'a rien pose.
-  const titlePos: Pos = style.title?.x !== undefined && style.title?.y !== undefined
+  // Le defaut se lit au format (zone sure des reseaux en 9:16), comme le rendu
+  // Remotion (`positionTexteParDefaut`) : la poignee part de ce qui est affiche.
+  const titlePos: Pos = positionTexteEffective('title', style.title?.x !== undefined && style.title?.y !== undefined
     ? { x: style.title.x, y: style.title.y }
-    : DESIGN.titlePos;
-  const ctaPos: Pos = style.cta?.x !== undefined && style.cta?.y !== undefined
+    : DESIGN.titlePos, format);
+  const ctaPos: Pos = positionTexteEffective('cta', style.cta?.x !== undefined && style.cta?.y !== undefined
     ? { x: style.cta.x, y: style.cta.y }
-    : DESIGN.ctaPos;
+    : DESIGN.ctaPos, format);
   const titlePosRef = useRef(titlePos);
   const ctaPosRef = useRef(ctaPos);
   useEffect(() => { titlePosRef.current = titlePos; }, [titlePos.x, titlePos.y]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4580,8 +4612,16 @@ export default function AssistantWizard() {
   // ── Deplacement du titre et du CTA ────────────────────────────────────
   // Defauts = les constantes `DESIGN` d'origine : tant que l'utilisateur ne
   // deplace rien, l'apercu ET l'export sont identiques a avant, au pixel.
-  const [titlePos, setTitlePos] = useState<Pos>(DESIGN.titlePos);
-  const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
+  const [titlePosBrut, setTitlePos] = useState<Pos>(DESIGN.titlePos);
+  const [ctaPosBrut, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
+  // ⚠️ L'ETAT GARDE L'ANCRE AUTOMATIQUE (`DESIGN`), CE QUI EST AFFICHE ET RENDU
+  // EST LA POSITION EFFECTIVE. En 9:16 cette ancre se lit comme le placement
+  // sur des reseaux (`zones-sures-916`) : apercu, glissement, compositeur et
+  // metadonnees lisent `titlePos` / `ctaPos` ci-dessous. Seuls le brouillon
+  // et « le placement a-t-il ete touche ? » lisent l'etat BRUT — un brouillon
+  // sans position suit donc le format, comme avant.
+  const titlePos = useMemo(() => positionTexteEffective('title', titlePosBrut, format), [titlePosBrut, format]);
+  const ctaPos = useMemo(() => positionTexteEffective('cta', ctaPosBrut, format), [ctaPosBrut, format]);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
     el: 'title' | 'cta' | 'card' | 'element' | 'element-resize' | 'poster-pan' | 'poster-zoom';
@@ -5980,8 +6020,8 @@ export default function AssistantWizard() {
   const layoutTouched =
     !!effectiveCardBoxes ||
     cardGroups.length > 0 ||
-    titlePos.x !== DESIGN.titlePos.x || titlePos.y !== DESIGN.titlePos.y ||
-    ctaPos.x !== DESIGN.ctaPos.x || ctaPos.y !== DESIGN.ctaPos.y;
+    titlePosBrut.x !== DESIGN.titlePos.x || titlePosBrut.y !== DESIGN.titlePos.y ||
+    ctaPosBrut.x !== DESIGN.ctaPos.x || ctaPosBrut.y !== DESIGN.ctaPos.y;
 
   /**
    * Duplique les cartes retenues.
@@ -6532,8 +6572,8 @@ export default function AssistantWizard() {
     scheduledDate,
     // Placement fait a la main. `undefined` quand rien n'a bouge : un
     // brouillon sans ces champs se relit exactement comme avant.
-    titlePos: samePos(titlePos, DESIGN.titlePos) ? undefined : titlePos,
-    ctaPos: samePos(ctaPos, DESIGN.ctaPos) ? undefined : ctaPos,
+    titlePos: samePos(titlePosBrut, DESIGN.titlePos) ? undefined : titlePosBrut,
+    ctaPos: samePos(ctaPosBrut, DESIGN.ctaPos) ? undefined : ctaPosBrut,
     // Largeurs réglées à la poignée ; `undefined` à la valeur par défaut.
     titleWidth: titleWidth === DESIGN.titleWidth ? undefined : titleWidth,
     ctaWidth: ctaWidth === DESIGN.ctaWidth ? undefined : ctaWidth,
@@ -6570,7 +6610,7 @@ export default function AssistantWizard() {
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, mediasVideo, lut, scheduledDate,
     titleWidth, ctaWidth,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransforms, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
+    titlePosBrut, ctaPosBrut, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransforms, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -8621,7 +8661,13 @@ export default function AssistantWizard() {
         const zoneCta = overlaysCreer?.cta && planMontageRushs && montageInfos
           ? zoneCalmeSortie(planMontageRushs, montageInfos.analyses, overlaysCreer.cta[0]) : null;
         if (zoneCta) console.log('[Surimpressions] CTA_ZONE :', JSON.stringify(zoneCta));
-        const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil, { ctaBande: zoneCta?.bande }) : null;
+        // Format + texte du CTA : en 9:16 la bande haute s'aligne par son HAUT
+        // sur la zone sure des reseaux (memes valeurs que le plateau capture).
+        const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil, {
+          ctaBande: zoneCta?.bande,
+          format,
+          cta: { texte: contenu.cta || '', sousTexte: contenu.ctaSub || null, echelle: textStyles.cta.scale ?? 1 },
+        }) : null;
         if (overlaysCreer && miseEnPage) {
           // #500 : jamais de rendu qui part en silence avec des cartes
           // perdues — chaque carte complète (titre + valeur) a sa fenêtre.
@@ -8791,6 +8837,12 @@ export default function AssistantWizard() {
             color: accent,
           })),
         );
+        // 9:16 : largeur et echelle RENDUES du titre de CE contenu — le meme
+        // calcul que l'apercu (`titreRendu916`), repris par les metadonnees.
+        const titre916 = titreRendu916(format, titlePos, titleWidth, textStyles, contenu.title, contenu.subtitle);
+        const textDesignRendu = titre916.echelle === textStyles.title.scale
+          ? textDesign
+          : { ...textDesign, textScale: titre916.echelle, cardsTextScale: 100 / titre916.echelle };
         const optionsRendu: ComposerOptions = {
           width: size.w,
           height: size.h,
@@ -8931,12 +8983,12 @@ export default function AssistantWizard() {
             // ── Titre : haut-gauche ───────────────────────────────────────
             titleAlign: 'left' as const,
             titlePosition: { x: titlePos.x, y: titlePos.y },
-            titleSize: titleWidth,
+            titleSize: titre916.largeur,
             // Typographie du titre — memes valeurs que l'apercu.
             // `textScale` est le SEUL levier de taille que `drawIntro` connait ;
             // il vaut aussi pour le sous-titre, que le compositeur dimensionne
             // avec le meme facteur.
-            ...textDesign,
+            ...textDesignRendu,
 
             // ── CTA : bas-centre ──────────────────────────────────────────
             // `ctaMainText` est lu EN PREMIER par drawCTA ; `ctaSubTextDesign`
@@ -9323,7 +9375,7 @@ export default function AssistantWizard() {
             titleAlign: 'left',
             // Memes champs typographiques que ceux passes au compositeur : une
             // regeneration depuis le Calendrier repart donc du meme rendu.
-            ...textDesign,
+            ...textDesignRendu,
             ctaMainText: contenu.cta,
             ctaSubText: contenu.ctaSub,
             gradientColor1: gradStart,
@@ -9348,7 +9400,7 @@ export default function AssistantWizard() {
               elements: freeElements,
             },
             sizes: {
-              title: titleWidth,
+              title: titre916.largeur,
               watermark: ctaWidth,
             },
           },

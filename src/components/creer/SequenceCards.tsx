@@ -9,6 +9,7 @@ import {
 import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
 import { ajusterBadge, badgeValide } from '@/lib/creer/surimpressions-mise-en-page';
+import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
 
 /**
  * Les cartes du montage — composant PARTAGÉ par les deux moteurs de rendu.
@@ -156,6 +157,16 @@ export interface SequenceCardsProps {
    * montage sans groupe ne changent pas.
    */
   groupeDe?: Record<string, string>;
+  /**
+   * Format vertical 9:16 : en disposition en FLUX, les cartes s'arrêtent au
+   * rail d'actions des réseaux (bord droit 92 % → 85 %, `zones-sures-916`).
+   * Un retrait INTÉRIEUR (`padding`) : le cadre, donc le repère des positions
+   * libres et de la photo des cartes, ne bouge pas. Sans effet en mode libre.
+   *
+   * ⚠️ ABSENT = LE RENDU D'AVANT. `landscape` ne suffit pas à reconnaître le
+   * 9:16 : l'éditeur rend aussi le 1:1 en colonne.
+   */
+  zoneSure916?: boolean;
 }
 
 export default function SequenceCards({
@@ -170,6 +181,7 @@ export default function SequenceCards({
   interaction,
   containerRef,
   groupeDe,
+  zoneSure916 = false,
 }: SequenceCardsProps) {
   const vw = containerWidth;
   const CR = cardRatios(landscape);
@@ -501,6 +513,7 @@ export default function SequenceCards({
         ...(landscape && !cardBoxes
           ? { gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', alignContent: 'center' as const }
           : null),
+        ...(zoneSure916 && !cardBoxes ? { paddingRight: RETRAIT_DROIT_CARTES_916 } : null),
       }}
     >
       {blocs.map((b, i) =>

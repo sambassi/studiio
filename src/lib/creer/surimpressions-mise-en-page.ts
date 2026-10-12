@@ -18,6 +18,7 @@
  */
 import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
 import { FONT_RATIO, TEXT_LAYOUT, VIDEO_SIZE, CARDS_FRAME, cardRatios, type DesignFormat } from '@/lib/creer/designSpec';
+import { ZONE_SURE_916, ctaBasPourBandeHaute916 } from '@/lib/creer/zones-sures-916';
 
 export interface BoiteCarte { x: number; y: number; w: number; h: number }
 
@@ -69,8 +70,53 @@ const DYNAMIQUE: MiseEnPageSurimpression = {
 
 /** #502 — bande où poser le CTA : la plus CALME mesurée sur les plans de sortie. */
 export type BandeCta = 'haut' | 'bas';
-/** Bas de la ligne CTA (le cadre s'ancre par le bas, `ctaFrameStyle`). */
+/**
+ * Bas de la ligne CTA (le cadre s'ancre par le bas, `ctaFrameStyle`).
+ * `haut: 34` ne reste que le repli HORS 9:16 (ou sans texte de CTA connu) :
+ * en 9:16 le CTA haut s'aligne par son HAUT sur la zone sûre — ancré à 34 %
+ * par le bas, un CTA long remontait sous la barre des réseaux (mesuré : haut
+ * du panneau à 10 % pour « Réservez votre bilan sommeil gratuit sur
+ * afroboost.com »), un CTA court flottait au milieu de l'image, sous la
+ * bande calme mesurée (rangées 0–1 = 0–25 %, `zone-calme.ts`).
+ */
 const CTA_Y: Record<BandeCta, number> = { bas: 76, haut: 34 };
+
+/**
+ * 9:16 — la mise en page dynamique tenue dans la zone sûre des réseaux
+ * (`zones-sures-916.ts`) : l'accroche commence SOUS les barres du haut (7 % →
+ * 12 %), la carte bas-gauche s'arrête au rail d'actions (bord droit 92 % →
+ * 85 %). Tout le reste (tailles, fonds, contrastes, CTA bas) est celui de
+ * `DYNAMIQUE`, inchangé.
+ */
+const LARGEUR_CARTE_916 = Math.floor(((ZONE_SURE_916.droite - parseFloat(CARDS_FRAME.left)) / (100 - parseFloat(CARDS_FRAME.left) - parseFloat(CARDS_FRAME.right))) * 1000) / 10;
+const DYNAMIQUE_916: MiseEnPageSurimpression = {
+  ...DYNAMIQUE,
+  titlePos: { x: DYNAMIQUE.titlePos.x, y: ZONE_SURE_916.haut },
+  carte: { ...DYNAMIQUE.carte, w: Math.min(DYNAMIQUE.carte.w, LARGEUR_CARTE_916) },
+};
+
+/** Le texte du CTA, pour placer la bande haute d'après sa hauteur (9:16). */
+export interface CtaAPlacer { texte?: string | null; sousTexte?: string | null; echelle?: number | null }
+
+/**
+ * Bas du CTA de la bande HAUTE, en 9:16 : son haut sur la zone sûre. Même
+ * échelle que celle que le CTA recevra au rendu (`ajusterCta`, panneau), même
+ * estimation de hauteur que les contrôles (`hauteurCta`). Pur.
+ */
+function ctaHaut916(cta: CtaAPlacer, ctaScale: number): number {
+  const R = FONT_RATIO['9:16'];
+  const { w: W, h: H } = VIDEO_SIZE['9:16'];
+  const texte = cta.texte ?? '';
+  const sousTexte = cta.sousTexte ?? CTA_SOUS_TEXTE_DEFAUT;
+  const echelle = ajusterCta({
+    texte, sousTexte: cta.sousTexte ?? null, echelle: (cta.echelle ?? 1) * ctaScale, largeur: W,
+    ratioTexte: R.cta, ratioSousTexte: R.ctaSub, panneau: true,
+  });
+  const hauteur = hauteurCta({
+    texte, sousTexte, echelle, largeur: W, partLargeur: TEXT_LAYOUT.ctaWidth / 100, ratioTexte: R.cta, ratioSousTexte: R.ctaSub,
+  });
+  return ctaBasPourBandeHaute916((hauteur / H) * 100);
+}
 
 /** Mêle `part` de blanc à une couleur #rrggbb (accent lisible sur fond sombre). Pure. */
 export function eclaircir(hex: string | null | undefined, part: number): string | null {
@@ -81,9 +127,16 @@ export function eclaircir(hex: string | null | undefined, part: number): string 
   return `#${c.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
+/**
+ * Options de placement. `format` absent = 9:16 (le format des surimpressions,
+ * comme `appliquerMiseEnPageSurimpression`) ; tout autre format garde les
+ * positions d'avant. `cta` : le texte du CTA, pour poser la bande haute.
+ */
+export interface OptionsMiseEnPage { ctaBande?: BandeCta | null; format?: DesignFormat | null; cta?: CtaAPlacer | null }
+
 export function miseEnPageSurimpression(
   profil: NomProfilMontage | string | null | undefined,
-  options: { ctaBande?: BandeCta | null } = {},
+  options: OptionsMiseEnPage = {},
 ): MiseEnPageSurimpression | null {
   if (profil !== 'CARDIO_DANCE' && profil !== 'EVENT_IMMERSIVE') return null;
   return miseEnPageDuProfil(profil, options);
@@ -95,13 +148,21 @@ export function miseEnPageSurimpression(
  * de Créer). Les cartes suivent la position éditoriale du profil
  * (`TEXTES_PROFILS`) : bas-gauche → la boîte `DYNAMIQUE`, sinon le centre. Pur.
  */
-function miseEnPageDuProfil(profil: string | null | undefined, options: { ctaBande?: BandeCta | null }): MiseEnPageSurimpression {
+function miseEnPageDuProfil(profil: string | null | undefined, options: OptionsMiseEnPage): MiseEnPageSurimpression {
   const regle = (TEXTES_PROFILS as Record<string, { cartes: { position: string } } | undefined>)[profil ?? ''] ?? TEXTES_PROFILS.STANDARD;
+  // 9:16 (ou format absent) : la variante tenue dans la zone sûre des réseaux.
+  const vertical = !options.format || options.format === '9:16';
+  const dyn = vertical ? DYNAMIQUE_916 : DYNAMIQUE;
   // La règle éditoriale (`TEXTES_PROFILS`) dit « cartes en bas-gauche » :
-  // la boîte ci-dessus en est la traduction ; un autre réglage = autre boîte.
-  const base = regle.cartes.position === 'bas-gauche' ? DYNAMIQUE : { ...DYNAMIQUE, carte: { x: 13, y: 40, w: 74, h: 22 } };
+  // la boîte ci-dessus en est la traduction ; un autre réglage = autre boîte
+  // (centrée, 19–81 % : déjà hors du rail d'actions).
+  const base = regle.cartes.position === 'bas-gauche' ? dyn : { ...dyn, carte: { x: 13, y: 40, w: 74, h: 22 } };
   // Sans mesure : en bas, comme avant.
-  return options.ctaBande ? { ...base, ctaPos: { x: 50, y: CTA_Y[options.ctaBande] } } : base;
+  if (!options.ctaBande) return base;
+  const y = options.ctaBande === 'haut' && vertical && options.cta
+    ? ctaHaut916(options.cta, base.ctaScale)
+    : CTA_Y[options.ctaBande];
+  return { ...base, ctaPos: { x: 50, y } };
 }
 
 // ── CTA COMPLET (#504) ───────────────────────────────────────────────────
@@ -227,9 +288,10 @@ export interface DesignSurimpression {
  * donc toujours ici.
  *
  * FORMAT : celui du design (`format`, défaut 9:16) ou `options.format`. Le
- * 9:16 garde EXACTEMENT la mise en page d'avant (calibrée et mesurée) ; le
- * 16:9 et le 1:1 ont la leur (`MISE_EN_PAGE_LARGE`), qui laisse libre le
- * visage de l'avatar (`ZONE_VISAGE`).
+ * 9:16 garde la mise en page calibrée et mesurée, tenue dans la zone sûre des
+ * réseaux (`DYNAMIQUE_916` : accroche à 12 %, carte jusqu'à 85 %, CTA haut
+ * aligné par son haut) ; le 16:9 et le 1:1 ont la leur (`MISE_EN_PAGE_LARGE`),
+ * inchangée, qui laisse libre le visage de l'avatar (`ZONE_VISAGE`).
  */
 export function appliquerMiseEnPageSurimpression<T extends object>(
   design: T, profil: string | null | undefined,
@@ -238,7 +300,10 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
   const d = design as DesignSurimpression & { format?: string | null };
   const format = options.format ?? d.format;
   if (format === '16:9' || format === '1:1') return appliquerMiseEnPageLarge(design, profil, format);
-  const m = miseEnPageDuProfil(profil, options);
+  const m = miseEnPageDuProfil(profil, {
+    ctaBande: options.ctaBande, format: '9:16',
+    cta: { texte: d.ctaText ?? '', sousTexte: d.ctaSubText ?? null, echelle: d.ctaScale ?? 1 },
+  });
   // Accroche bornée en hauteur (#502) — la MÊME règle que Créer.
   const accroche = ajusterAccroche({
     titre: d.title ?? '', sousTitre: d.subtitle ?? null,

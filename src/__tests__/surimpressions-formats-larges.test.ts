@@ -36,15 +36,31 @@ const DESIGNS: Record<string, Record<string, unknown>> = {
 };
 const PROFILS = ['CARDIO_DANCE', 'EVENT_IMMERSIVE', 'STANDARD', 'TUTORIAL_EDUCATION', 'LIFESTYLE_BRAND', 'INCONNU', null];
 
-describe('9:16 — mise en page inchangée', () => {
-  it('identique, champ pour champ, à celle de bb9b07b (et sans champ nouveau)', () => {
+describe('9:16 — mise en page inchangée hors zones sûres', () => {
+  it('identique, champ pour champ, à celle de bb9b07b — sauf les TROIS placements de la zone sûre (et sans champ nouveau)', () => {
     const gel = JSON.parse(readFileSync(resolve(process.cwd(), 'src/__tests__/fixtures/surimpressions-916-bb9b07b.json'), 'utf-8'));
     let n = 0;
     for (const [nom, d] of Object.entries(DESIGNS)) {
       for (const p of PROFILS) {
         for (const b of [undefined, 'haut', 'bas'] as const) {
           const cle = `${nom}|${p}|${b ?? '-'}`;
-          expect(JSON.stringify(appliquerMiseEnPageSurimpression(d, p, { ctaBande: b }))).toBe(JSON.stringify(gel[cle]));
+          const obtenu = appliquerMiseEnPageSurimpression(d, p, { ctaBande: b }) as Record<string, any>;
+          // Zones sûres 9:16 (`zones-sures-916`) : l'accroche passe de 7 % à
+          // 12 % ; la carte bas-gauche s'arrête au rail d'actions (largeur
+          // 100 % → 91,6 % du cadre, bord droit 92 % → 85 %) ; le CTA de la
+          // bande HAUTE s'aligne par son haut sur 12 %. Tout le reste —
+          // échelles, fonds, couleurs, CTA bas — est celui de bb9b07b.
+          const attendu = JSON.parse(JSON.stringify(gel[cle]));
+          expect(attendu.titlePos).toEqual({ x: 8, y: 7 });
+          attendu.titlePos = { x: 8, y: 12 };
+          if (attendu.cardBoxes.c0.w === 100) attendu.cardBoxes.c0.w = 91.6;
+          if (b === 'haut') {
+            expect(attendu.ctaPos).toEqual({ x: 50, y: 34 });
+            expect(obtenu.ctaPos.x).toBe(50);
+            expect(obtenu.ctaPos.y).toBeGreaterThan(12);
+            attendu.ctaPos = obtenu.ctaPos;
+          }
+          expect(JSON.stringify(obtenu)).toBe(JSON.stringify(attendu));
           n += 1;
         }
       }
@@ -132,7 +148,9 @@ describe('formats larges — le format vient du design ou de l’option', () => 
   });
   it('le montage Remotion passe les largeurs aux cadres titre / CTA', () => {
     const src = readFileSync(resolve(process.cwd(), 'remotion/CreerSimpleMontage.tsx'), 'utf-8');
-    expect(src).toContain('titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos, props.titleWidth)');
-    expect(src).toContain('ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos, props.ctaWidth)');
+    expect(src).toContain("const posTitre = props.titlePos ?? positionTexteParDefaut('title', format);");
+    // La largeur transmise passe telle quelle, sauf titre plein écran 9:16 arrêté au rail (`titreSur916`).
+    expect(src).toContain('titleFrameStyle(posTitre, t916 && t916.largeur !== largeurChoisie ? t916.largeur : props.titleWidth)');
+    expect(src).toContain("ctaFrameStyle(props.ctaPos ?? positionTexteParDefaut('cta', format), props.ctaWidth)");
   });
 });
