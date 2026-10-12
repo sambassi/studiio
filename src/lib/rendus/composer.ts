@@ -13,6 +13,7 @@
 import { composeVideo, CURRENT_COMPOSER_VERSION, type ComposerOptions } from '@/lib/video-composer';
 import { rendreEtFacturer, messagePour, type OperationRendu } from '@/lib/rendus/client';
 import { estMediaIndisponible } from '@/lib/rendus/medias-requis';
+import { pleinCadreDesJumeaux } from '@/lib/creer/jumeau-plein-cadre-client';
 
 /**
  * Televerse la vignette par le chemin ordinaire.
@@ -67,6 +68,9 @@ export async function composerEtFacturer(
   // Un media necessaire introuvable a un message PROPRE, plus utile que le
   // generique « la composition a echoue » : on le garde pour le relever.
   let mediaManquant: Error | null = null;
+  // Jumeau DÉJÀ stocké avec bandes incrustées : sa version plein cadre
+  // (dérivée localement, sans fournisseur ni crédit) — AVANT la tentative.
+  await pleinCadreDesJumeaux(options);
 
   const livraison = await rendreEtFacturer({
     operation,

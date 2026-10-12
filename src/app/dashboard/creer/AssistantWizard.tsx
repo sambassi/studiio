@@ -190,6 +190,7 @@ import {
 } from '@/lib/facturation/annonce';
 import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 import { verifierMediasRequis, estMediaIndisponible, exigerVideo, videoExigee } from '@/lib/rendus/medias-requis';
+import { pleinCadreDesJumeaux } from '@/lib/creer/jumeau-plein-cadre-client';
 import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
@@ -9254,6 +9255,10 @@ export default function AssistantWizard() {
         //
         // Le lot est exclu : ses vidéos 2..N ont un contenu VARIÉ, que le
         // montage de l'aperçu ne représente pas.
+        // Jumeau DÉJÀ stocké avec bandes incrustées → sa version plein cadre
+        // (dérivée côté serveur, sans fournisseur ni crédit). Avant la
+        // signature : l'aperçu et l'envoi comparent le MÊME objet.
+        await pleinCadreDesJumeaux(optionsRendu);
         const signature = renderSignature(optionsRendu);
         let vignetteApercu: Blob | null = null;
         // Reutiliser suppose que le montage a DEJA ete paye et prouve. On
