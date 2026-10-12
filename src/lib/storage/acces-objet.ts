@@ -668,3 +668,90 @@ export function cibleLisibleParCompte(bucket: string, cle: string, userId: unkno
   }
   return cleDuCompteStrict(cle, userId) && segments.length >= 2 && segments[segments.length - 1].length > 0;
 }
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE CHEMIN FAIT FOI, PAS L'HÔTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Les gardes de propriété ne s'appliquaient qu'aux URL dont l'ORIGINE était
+ * exactement configurée. La même clé atteinte par un autre nom — hôte de
+ * staging, alias, IP de l'application, `http` au lieu de `https`, point
+ * final (`studiio.pro.`), port explicite — était jugée « externe », copiée
+ * par le fetch sûr DEPUIS NOTRE RELAIS PUBLIC (qui sert sans session), et
+ * déposée dans `media/externes/…`, lisible par tous : la propriété n'était
+ * jamais vérifiée.
+ *
+ * Règle : un chemin d'objet de stockage
+ * (`/storage/v1/object/(public|sign|authenticated|private)/<bucket>/<clé>`),
+ * QUEL QUE SOIT L'HÔTE, est un objet de NOTRE stockage et passe le contrôle
+ * de propriété. Aucun CDN tiers n'emploie ce chemin — sauf Supabase, dont
+ * l'instance historique est la nôtre.
+ *
+ *   - `null`    : aucune forme du chemin ne ressemble à un objet de stockage ;
+ *   - `'refus'` : il y ressemble sous une forme décodée, normalisée ou d'une
+ *                 autre casse, mais pas sous la forme canonique exacte
+ *                 (`%2F`, `%252F`, `\`, `//`, `/./`, `PUBLIC`…) — on ne
+ *                 devine pas ce qu'un intermédiaire en ferait ;
+ *   - la cible : compartiment et clé décodés UNE fois (ce que voit le relais),
+ *                plus la clé BRUTE — les gardes doivent passer sur les deux.
+ *
+ * Pure. La chaîne de requête et le fragment ne participent pas au chemin.
+ */
+export type AccesStockage = 'public' | 'sign' | 'authenticated' | 'private';
+export interface CibleParChemin extends CibleStockage { cleBrute: string; acces: AccesStockage }
+
+const CHEMIN_STOCKAGE_CANONIQUE = /^\/storage\/v1\/object\/(public|sign|authenticated|private)\/([^/]+)\/(.+)$/;
+
+/** Le chemin brut (avant `?`/`#`) d'une URL absolue ou relative, ou `null`. */
+function cheminBrutDe(valeur: string): string | null {
+  if (valeur.startsWith('/') && !valeur.startsWith('//')) return valeur.split(/[?#]/)[0];
+  const m = /^[a-z][a-z0-9+.-]*:[\\/]{2}[^/\\?#]*/i.exec(valeur);
+  if (!m) return null;
+  const reste = valeur.slice(m[0].length).split(/[?#]/)[0];
+  return reste.length ? reste : '/';
+}
+
+/** Le chemin désigne-t-il un objet de stockage, sous l'une de ses formes ? */
+function ressembleStockage(formes: string[]): boolean {
+  return formes.some((f) => /\/storage\/v1\/object(\/|$)/i.test(f.replace(/\\/g, '/').replace(/\/{2,}/g, '/')));
+}
+
+export function cibleStockageParChemin(valeur: unknown): CibleParChemin | 'refus' | null {
+  if (typeof valeur !== 'string' || valeur.length === 0) return null;
+  const brut = cheminBrutDe(valeur.trim());
+  if (brut === null) return null;
+  const formes = [...formesDecodees(brut)];
+  // Forme normalisée par l'analyseur WHATWG (`..`, `%2e%2e`, `\`) : celle
+  // qu'un client HTTP enverrait réellement.
+  try {
+    const normalise = new URL(valeur.trim(), 'http://studiio.invalid').pathname;
+    formes.push(...formesDecodees(normalise));
+  } catch { /* URL invalide : les formes brutes suffisent */ }
+  if (!ressembleStockage(formes)) return null;
+  if (valeur !== valeur.trim()) return 'refus';
+  const m = CHEMIN_STOCKAGE_CANONIQUE.exec(brut);
+  if (!m) return 'refus';
+  const [, acces, bucketBrut, cleBrute] = m;
+  let bucket: string;
+  let cle: string;
+  try {
+    bucket = decodeURIComponent(bucketBrut);
+    cle = decodeURIComponent(cleBrute);
+  } catch {
+    return 'refus';
+  }
+  // Un nom de compartiment n'a rien à échapper.
+  if (bucket !== bucketBrut || bucket.length === 0) return 'refus';
+  if (cle.length === 0) return 'refus';
+  return { bucket, cle, cleBrute, acces: acces as AccesStockage };
+}
+
+/**
+ * Cette cible (par chemin) est-elle lisible par ce compte — sur la clé
+ * décodée ET sur la clé brute ? Pure.
+ */
+export function cibleParCheminLisible(cible: CibleParChemin, userId: unknown): boolean {
+  return cibleLisibleParCompte(cible.bucket, cible.cle, userId)
+    && cibleLisibleParCompte(cible.bucket, cible.cleBrute, userId);
+}

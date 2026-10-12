@@ -73,7 +73,7 @@ vi.mock('@/lib/db/supabase', () => {
 import { produireUnMontage } from '@/lib/autopilot/produire';
 
 const T0 = Date.parse('2026-08-05T09:00:00.000Z');
-const RUSH_PUBLIC = 'https://projet.supabase.co/storage/v1/object/public/media/u/rush.mp4';
+const RUSH_PUBLIC = 'https://projet.supabase.co/storage/v1/object/public/media/u1/rush.mp4';
 /** URL d'une génération d'avatar re-hébergée, telle que /api/avatar/status la pose. */
 const JUMEAU_URL = 'https://minio.test/videos/u1/avatar/gen-123.mp4';
 

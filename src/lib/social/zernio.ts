@@ -260,9 +260,11 @@ export async function getAccountHealth(accountId: string): Promise<ZernioAccount
 export async function uploadMedia(
   fichierUrl: string,
   filename: string,
-  contentType = 'video/mp4',
+  contentType: string,
+  userId: string,
 ): Promise<string> {
-  const { octets } = await lireMediaPublication(fichierUrl);
+  // Au nom du PUBLIEUR : un objet de notre stockage doit lui appartenir.
+  const { octets } = await lireMediaPublication(fichierUrl, { userId });
 
   const presign = await appel<{ uploadUrl: string; publicUrl: string }>('/media/presign', {
     method: 'POST',

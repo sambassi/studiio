@@ -31,7 +31,9 @@ import {
   EchecFetchSur, MAX_OCTETS_MEDIA, RefusSsrf, telechargerSur, type OptionsFetchSur,
 } from '@/lib/securite/fetch-sur';
 import { estNotreStockage } from '@/lib/securite/medias-externes';
-import { originesStockageConfigurees } from '@/lib/storage/acces-objet';
+import {
+  cibleParCheminLisible, cibleRecevable, cibleStockageParChemin, originesStockageConfigurees,
+} from '@/lib/storage/acces-objet';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 
 /** Plafond d'un média publié : celui des envois. */
@@ -67,17 +69,52 @@ function hotePourJournal(url: string): string {
 }
 
 /**
- * Lit le média à publier, en entier, en mémoire (plafonné).
+ * Conversions MP4 du cron (`converted/<horodatage>.mp4`, compartiment
+ * `media`) : écrites SANS identifiant de compte, puis publiées dans la foulée.
+ * Préfixe commun, jamais une preuve de propriété — admis ici seulement en
+ * lecture PUBLIQUE (le relais les sert déjà à quiconque a l'adresse), comme
+ * avant ce contrôle. Voir `PREFIXES_PARTAGES`.
+ */
+const CONVERSION_PARTAGEE = /^converted\/[^/]+$/;
+
+/**
+ * Une URL à publier, jugée par son CHEMIN, quel que soit son hôte :
+ *   - `hors-stockage` : rien de notre stockage (média externe) ;
+ *   - `autorise`      : objet de notre stockage lisible par ce PUBLIEUR ;
+ *   - `refuse`        : objet d'un autre compte, namespace privé, forme
+ *                       encodée ou non canonique du chemin de stockage.
+ * Pure.
+ */
+export function verdictStockagePublication(url: unknown, userId: unknown): 'hors-stockage' | 'autorise' | 'refuse' {
+  const cible = cibleStockageParChemin(url);
+  if (cible === null) return 'hors-stockage';
+  if (cible === 'refus') return 'refuse';
+  if (cibleParCheminLisible(cible, userId)) return 'autorise';
+  if (cible.acces === 'public' && cible.bucket === 'media'
+    && CONVERSION_PARTAGEE.test(cible.cle) && CONVERSION_PARTAGEE.test(cible.cleBrute)
+    && cibleRecevable(cible.bucket, cible.cle)) return 'autorise';
+  return 'refuse';
+}
+
+/**
+ * Lit le média à publier, en entier, en mémoire (plafonné), AU NOM de
+ * `opts.userId` (le PUBLIEUR) : un chemin d'objet de notre stockage — sur
+ * n'importe quel hôte, au départ comme après une redirection — doit lui
+ * appartenir (`verdictStockagePublication`).
  *
  * Rejette UNIQUEMENT `ErreurMediaPublication`. Une cible refusée n'a reçu
  * AUCUNE requête (seule la résolution DNS a eu lieu).
  */
 export async function lireMediaPublication(
   url: string,
-  opts: { reseau?: OptionsFetchSur } = {},
+  opts: { reseau?: OptionsFetchSur; userId: unknown },
 ): Promise<{ octets: Uint8Array<ArrayBuffer>; typeContenu: string | null }> {
   const absolue = typeof url === 'string' ? toAbsoluteMediaUrl(url) : '';
   if (!absolue) throw new ErreurMediaPublication('refuse');
+  if (verdictStockagePublication(absolue, opts.userId) === 'refuse') {
+    console.warn('[Publication/Média] objet de stockage refusé (propriété)', { hote: hotePourJournal(absolue) });
+    throw new ErreurMediaPublication('refuse');
+  }
   const origines = originesStockageConfigurees();
   // Confiance accordée à notre STOCKAGE seulement (relais public), pas à
   // toute l'origine de l'application : une autre route du même hôte repasse
@@ -90,6 +127,11 @@ export async function lireMediaPublication(
       maxOctets: MAX_OCTETS_PUBLICATION,
       ...(opts.reseau ?? {}),
       originesDeConfiance: opts.reseau?.originesDeConfiance ?? confiance,
+      // Rejoué à CHAQUE saut : une redirection vers un objet d'un autre
+      // compte (relais public, n'importe quel hôte) est refusée avant d'être
+      // demandée.
+      autorisee: (u) => verdictStockagePublication(u.href, opts.userId) !== 'refuse'
+        && (opts.reseau?.autorisee ? opts.reseau.autorisee(u) : true),
     });
     return { octets: await readFile(local), typeContenu: r.typeContenu };
   } catch (e) {

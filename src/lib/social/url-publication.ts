@@ -34,43 +34,32 @@
  * sortent, ni dans la réponse, ni dans `metadata.error`. Aucun appel de
  * signature n'a lieu.
  *
- * Inchangé : une URL publique (relais `/object/public/`) ou externe ressort
- * telle quelle (le relais applique ses propres refus) ; un échec de
- * signature rend l'URL d'origine, comme avant.
+ * Une URL publique (relais `/object/public/`) ressort telle quelle APRÈS la
+ * même garde de propriété (sauf `converted/…`, préfixe partagé du cron) ; une
+ * URL externe ressort telle quelle ; un échec de signature rend l'URL
+ * d'origine, comme avant.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { cibleLisibleParCompte } from '@/lib/storage/acces-objet';
+import { cibleParCheminLisible, cibleStockageParChemin } from '@/lib/storage/acces-objet';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
-import { ErreurMediaPublication } from '@/lib/social/media-publication';
+import { ErreurMediaPublication, verdictStockagePublication } from '@/lib/social/media-publication';
 
 /** Durée de validité de l'URL signée remise au réseau. */
 export const DUREE_SIGNATURE_PUBLICATION_S = 3600;
 
-const MOTIF_OBJET_PRIVE = /\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/?#]+)\/([^?#]+)/;
-
-/** Décodage unique, ou `null` si l'échappement est invalide. */
-function decoder(valeur: string): string | null {
-  try { return decodeURIComponent(valeur); } catch { return null; }
-}
-
-/**
- * La cible privée désignée par l'URL est-elle lisible par ce compte ?
- * Les deux formes (brute, décodée) doivent passer.
- */
-function ciblePriveeAutorisee(bucketBrut: string, cleBrute: string, userId: unknown): boolean {
-  const bucket = decoder(bucketBrut);
-  const cle = decoder(cleBrute);
-  if (bucket === null || cle === null) return false;
-  if (bucket !== bucketBrut) return false; // un nom de compartiment n'a rien à échapper
-  return cibleLisibleParCompte(bucket, cleBrute, userId) && cibleLisibleParCompte(bucket, cle, userId);
-}
-
 /**
  * Rend une URL que la plateforme peut aller chercher elle-même.
  *
- * @param userId le PUBLIEUR — propriétaire exigé de tout objet privé signé.
- * @throws ErreurMediaPublication('refuse') si l'URL désigne un objet privé
- *         que ce compte n'a pas le droit de lire.
+ * ⚠️ LE CHEMIN FAIT FOI, PAS L'HÔTE. Tout chemin d'objet de stockage
+ * (`/storage/v1/object/(public|sign|authenticated|private)/…`), sur
+ * N'IMPORTE QUEL hôte (staging, alias, IP, point final, `http`), passe la
+ * propriété du publieur (`verdictStockagePublication`) — y compris l'URL
+ * PUBLIQUE : remise telle quelle au réseau, elle publiait l'objet d'un autre
+ * compte sur les réseaux de celui-ci. Une forme encodée ou non canonique du
+ * chemin est refusée.
+ *
+ * @param userId le PUBLIEUR — propriétaire exigé de tout objet de stockage.
+ * @throws ErreurMediaPublication('refuse') avant toute signature.
  */
 export async function ensurePublicUrl(url: string, userId: unknown): Promise<string> {
   if (!url) return url;
@@ -78,23 +67,28 @@ export async function ensurePublicUrl(url: string, userId: unknown): Promise<str
   // un chemin relatif (`/storage/v1/object/public/…` sous MinIO) leur est
   // inutilisable. Une URL déjà absolue ressort inchangée.
   const absolue = toAbsoluteMediaUrl(url);
-  if (absolue.includes('/storage/v1/object/public/')) return absolue;
-  if (!absolue.includes('/storage/v1/object/')) return absolue;
-
-  const m = absolue.match(MOTIF_OBJET_PRIVE);
-  if (!m) return absolue;
-  const [, bucket, cle] = m;
-
-  if (!ciblePriveeAutorisee(bucket, cle, userId)) {
+  const verdict = verdictStockagePublication(absolue, userId);
+  if (verdict === 'hors-stockage') return absolue;
+  const cible = cibleStockageParChemin(absolue);
+  if (verdict === 'refuse' || cible === null || cible === 'refus') {
     // Journal sans clé ni URL : le compartiment seul suffit au diagnostic.
-    console.warn('[Publication/Média] objet privé refusé avant signature', { bucket: decoder(bucket) ?? 'invalide' });
+    console.warn('[Publication/Média] objet de stockage refusé avant signature', {
+      bucket: cible && cible !== 'refus' ? cible.bucket : 'invalide',
+    });
+    throw new ErreurMediaPublication('refuse');
+  }
+  if (cible.acces === 'public') return absolue;
+  // Privé (`sign` / `authenticated` / `private`) : propriété STRICTE, la
+  // conversion partagée n'est admise qu'en lecture publique — jamais signée.
+  if (!cibleParCheminLisible(cible, userId)) {
+    console.warn('[Publication/Média] objet privé refusé avant signature', { bucket: cible.bucket });
     throw new ErreurMediaPublication('refuse');
   }
 
   try {
     const { data, error } = await supabaseAdmin.storage
-      .from(bucket)
-      .createSignedUrl(cle, DUREE_SIGNATURE_PUBLICATION_S);
+      .from(cible.bucket)
+      .createSignedUrl(cible.cleBrute, DUREE_SIGNATURE_PUBLICATION_S);
     if (error || !data?.signedUrl) return absolue;
     return data.signedUrl;
   } catch {

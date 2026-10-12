@@ -1438,7 +1438,7 @@ async function publishToYouTube(
     // Erreur au message FIXE, sans URL ni adresse (voir media-publication.ts).
     let videoBuffer: Uint8Array<ArrayBuffer>;
     try {
-      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(video.video_url, userId)));
+      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(video.video_url, userId), { userId }));
     } catch (e) {
       if (!(e instanceof ErreurMediaPublication)) throw e;
       console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', code: e.code });

@@ -16,7 +16,8 @@ import {
 } from '@/lib/creer/smart-montage';
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
 import {
-  BUCKET_COPIES_EXTERNES, PREFIXE_RELAIS_PUBLIC, cibleLisibleParCompte, extraireCibleStockage, originesStockageConfigurees,
+  BUCKET_COPIES_EXTERNES, PREFIXE_RELAIS_PUBLIC, cibleLisibleParCompte, cibleParCheminLisible, cibleStockageParChemin,
+  extraireCibleStockage, originesStockageConfigurees,
 } from '@/lib/storage/acces-objet';
 
 /** Au-delà, on n'analyse pas (coût serveur) : les extraits viennent du début. */
@@ -154,10 +155,23 @@ export function classerUrlLecture(
     let u: URL;
     try { u = new URL(url); } catch { return { genre: 'refus' }; }
     const admises = origines.map((o) => { try { return new URL(o).origin; } catch { return null; } });
-    if (!admises.includes(u.origin)) return { genre: 'externe' };
-    // Notre origine, mais pas le relais (ni brut ni normalisé) : rien à
-    // signer — la copie par le fetch sûr reste la seule lecture possible.
-    if (!url.includes(PREFIXE_RELAIS_PUBLIC) && !u.pathname.startsWith(PREFIXE_RELAIS_PUBLIC)) return { genre: 'externe' };
+    const relais = url.includes(PREFIXE_RELAIS_PUBLIC) || u.pathname.startsWith(PREFIXE_RELAIS_PUBLIC);
+    if (!admises.includes(u.origin) || !relais) {
+      // ⚠️ LE CHEMIN FAIT FOI, PAS L'HÔTE. Un chemin d'objet de stockage
+      // atteint par un hôte non configuré (staging, alias, IP, `http`, point
+      // final, port) ou sous une forme `sign`/`authenticated` désigne quand
+      // même NOTRE stockage : il passe la propriété comme les autres. Jugé
+      // « externe », il était copié depuis le relais public — sans session,
+      // sans propriétaire — puis déposé dans les copies PARTAGÉES.
+      const parChemin = cibleStockageParChemin(url);
+      if (parChemin === 'refus') return { genre: 'refus' };
+      if (parChemin) {
+        if (!cibleParCheminLisible(parChemin, userId)) return { genre: 'refus' };
+        return { genre: 'stockage', bucket: parChemin.bucket, cle: parChemin.cle };
+      }
+      // Hors stockage : la copie par le fetch sûr reste la seule lecture.
+      return { genre: 'externe' };
+    }
     candidat = url;
   }
   const sansRequete = candidat.replace(/[?#].*$/s, '');

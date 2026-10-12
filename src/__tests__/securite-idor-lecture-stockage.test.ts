@@ -164,7 +164,11 @@ describe('classement d’une URL (`classerUrlLecture`)', () => {
     for (const u of ['/etc/passwd', 'file:///etc/passwd', '//evil.test/storage/v1/object/public/media/x', ' ' + urls.rushA, 'ftp://x/y', '', `https://user:pw@studiio.pro/storage/v1/object/public/media/${A}/x.mp4`]) {
       expect(classerUrlLecture(u, A, ORIGINES).genre, u).toBe('refus');
     }
-    expect(classerUrlLecture(`https://cdn.pexels.com/storage/v1/object/public/media/${B}/x.mp4`, A, ORIGINES).genre).toBe('externe');
+    // Le CHEMIN fait foi, pas l'hôte : un chemin d'objet de stockage sur un
+    // hôte non configuré passe la propriété (avant : « externe », copié
+    // depuis le relais public sans propriétaire — voir
+    // `securite-stockage-chemin-fait-foi.test.ts`).
+    expect(classerUrlLecture(`https://cdn.pexels.com/storage/v1/object/public/media/${B}/x.mp4`, A, ORIGINES).genre).toBe('refus');
     expect(classerUrlLecture('https://videos.pexels.com/v.mp4', A, ORIGINES).genre).toBe('externe');
   });
 
@@ -172,8 +176,10 @@ describe('classement d’une URL (`classerUrlLecture`)', () => {
     const H = 'https://lhuqdmlkhezdwzwlpfqo.supabase.co';
     expect(classerUrlLecture(`${H}/storage/v1/object/public/media/${A}/rush.mp4`, A, [O, H]).genre).toBe('stockage');
     expect(classerUrlLecture(`${H}/storage/v1/object/public/media/${B}/rush.mp4`, A, [O, H]).genre).toBe('refus');
-    // Origine historique coupée (`SUPABASE_LEGACY_STORAGE_URL` vide) : média externe, copié.
-    expect(classerUrlLecture(`${H}/storage/v1/object/public/media/${A}/rush.mp4`, A, [O]).genre).toBe('externe');
+    // Origine historique coupée (`SUPABASE_LEGACY_STORAGE_URL` vide) : le
+    // chemin fait toujours foi — propriété exigée, lecture dans NOTRE stockage.
+    expect(classerUrlLecture(`${H}/storage/v1/object/public/media/${A}/rush.mp4`, A, [O]).genre).toBe('stockage');
+    expect(classerUrlLecture(`${H}/storage/v1/object/public/media/${B}/rush.mp4`, A, [O]).genre).toBe('refus');
   });
 
   it('origines lues dans l’environnement par défaut', () => {

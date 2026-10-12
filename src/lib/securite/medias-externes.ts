@@ -22,7 +22,7 @@ import { createReadStream } from 'fs';
 import { stat, unlink } from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { extraireCibleStockage, originesStockageConfigurees } from '@/lib/storage/acces-objet';
+import { cibleStockageParChemin, extraireCibleStockage, originesStockageConfigurees } from '@/lib/storage/acces-objet';
 import { telechargerSur, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 
@@ -31,6 +31,19 @@ export const BUCKET_EXTERNES = 'media';
 /** L'URL désigne-t-elle NOTRE stockage (origine configurée + relais public) ? */
 export function estNotreStockage(url: unknown, origines: readonly string[] = originesStockageConfigurees()): boolean {
   return typeof url === 'string' && /^https?:\/\//i.test(url) && extraireCibleStockage(url, { origines }) !== null;
+}
+
+/**
+ * ⚠️ UNE COPIE EXTERNE N'EST JAMAIS UN OBJET DE NOTRE STOCKAGE. La copie est
+ * déposée dans `media/externes/…`, lisible par TOUT compte, et son appelant
+ * n'a pas de compte à opposer : un chemin d'objet de stockage — atteint par
+ * un hôte non configuré (staging, alias, IP, point final, `http`) ou par une
+ * redirection — est refusé ici, à CHAQUE saut, avant toute requête vers lui.
+ * Les lecteurs au nom d'un compte (`classerUrlLecture`) jugent ces chemins
+ * eux-mêmes, propriété comprise, et ne les envoient jamais ici.
+ */
+function horsStockage(u: URL): boolean {
+  return cibleStockageParChemin(u.href) === null;
 }
 
 export type GenreMedia = 'video' | 'image' | 'audio';
@@ -97,7 +110,12 @@ export async function localiserMedia(url: string, opts: OptionsLocalisation = {}
     const local = path.join(os.tmpdir(), `studiio-externe-${path.basename(cle)}`);
     try {
       // 10 min : un rush externe peut peser plusieurs centaines de Mo.
-      await telechargerSur(url, local, { timeoutMs: 600_000, ...(opts.reseau ?? {}), originesDeConfiance: opts.reseau?.originesDeConfiance ?? origines });
+      await telechargerSur(url, local, {
+        timeoutMs: 600_000,
+        ...(opts.reseau ?? {}),
+        originesDeConfiance: opts.reseau?.originesDeConfiance ?? origines,
+        autorisee: (u) => horsStockage(u) && (opts.reseau?.autorisee ? opts.reseau.autorisee(u) : true),
+      });
       const { size } = await stat(local);
       await depot.deposer(BUCKET_EXTERNES, cle, local, size);
     } finally {

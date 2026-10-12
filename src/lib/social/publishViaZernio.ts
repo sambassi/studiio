@@ -234,6 +234,7 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       mediaSource!,
       `studiio-${post.id}.mp4`,
       'video/mp4',
+      post.userId,
     );
 
     const envoyer = (avecCouverture: boolean) => createPost({

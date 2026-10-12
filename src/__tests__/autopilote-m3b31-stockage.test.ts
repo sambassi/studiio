@@ -1111,7 +1111,8 @@ describe('NON-RÉGRESSION — les producteurs de cette URL, et ce qui les casser
     'src/lib/social/url-publication.ts',
   ])('%s livre ce chemin tel quel aux plateformes', (fichier) => {
     const code = sansCommentaires(source(fichier));
-    expect(code).toContain("if (absolue.includes('/storage/v1/object/public/')) return absolue;");
+    // Toujours livrée telle quelle — APRÈS la garde de propriété du publieur.
+    expect(code).toContain("if (cible.acces === 'public') return absolue;");
   });
 
   it.each([

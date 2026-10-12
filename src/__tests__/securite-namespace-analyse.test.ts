@@ -846,7 +846,7 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
     // Publication immédiate ET programmée : une seule implémentation
     // partagée depuis la garde de propriété avant signature.
     ['publication sociale (immédiate et cron)', 'src/lib/social/url-publication.ts',
-      "if (absolue.includes('/storage/v1/object/public/')) return absolue;"],
+      "if (cible.acces === 'public') return absolue;"],
     ['relais authentifié du compositeur', 'src/app/api/proxy-media/route.ts',
       "u.pathname.startsWith('/storage/v1/object/public/')"],
     ['rendu serveur — lit MinIO en direct, hors de cette route',
@@ -884,7 +884,7 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
       'export function resolvePublishableUrl'],
     // GET par le fetch SÛR (`media-publication.ts` → `telechargerSur`).
     ['relais Zernio', 'src/lib/social/zernio.ts',
-      'await lireMediaPublication(fichierUrl)'],
+      'await lireMediaPublication(fichierUrl, { userId })'],
   ];
 
   it.each(APPELANTS)('%s appelle encore cette route', (_nom, fichier, marqueur) => {
