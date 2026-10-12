@@ -417,6 +417,8 @@ describe('11. Le sélecteur ne déclenche aucun rendu', () => {
     await act(async () => { fireEvent.click(vignettes()[0]); });
     await attendre(10);
     expect(composeVideoSpy).not.toHaveBeenCalled();
-    expect(appelsEcriture).toEqual([]);
+    // Seul appel non-GET permis : le signalement de téléchargement exigé par
+    // Unsplash (`/api/stock/importer`, photo servie en hotlink, rien écrit).
+    expect(appelsEcriture).toEqual(['POST /api/stock/importer']);
   });
 });

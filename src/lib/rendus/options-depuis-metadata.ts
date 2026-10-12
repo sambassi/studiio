@@ -38,7 +38,7 @@ import {
 } from '@/lib/video-composer';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { recadragesRushAvecHeritage } from '@/lib/creer/recadrage-rush';
-import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan } from '@/lib/creer/multi-rush';
+import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import {
   elementsLibresDepuisMetadata,
   fondsPourMetadata,
@@ -115,6 +115,33 @@ export function cartesSourcePourRendu(meta: any, chemin: CheminCalendrier): { aP
 
 const fini = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/**
+ * Source de la séquence « Vidéo » d'un post, et son plan multi-sources.
+ *
+ * Historique : `rushUrls[0]`, seule source relue. Or un plan MULTI-SOURCES
+ * (`rushSegments` avec au moins une photo ou un extrait d'avatar) n'a pas
+ * toujours de rush : l'Autopilote n'écrit sous `rushUrls` que les vidéos
+ * stock/perso (`[]` pour photos seules ou avatar + photos), et une metadata
+ * peut ne pas porter `rushUrls` du tout. « Régénérer » passait alors
+ * `videoUrl: null` et une durée Vidéo nulle : le compositeur
+ * (`estMontageMixte(videoUrl, …)` → `null`) jetait le plan, photos perdues.
+ *
+ * Règle : `rushUrls[0]` quand il existe (rendu d'avant, à l'identique) ;
+ * sinon, pour un plan MIXTE seulement, la première entrée du plan — la même
+ * valeur que Créer passe en `videoUrl` (`plateau.rushUrl = plan[0].url`).
+ * Aucun plan mixte : `null`, comme avant. Pur.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function sourceVideoDuPost(meta: any): { url: string | null; planMixte: RushSegment[] | null } {
+  const segments = rushSegmentsDepuisMetadata(meta?.rushSegments);
+  const planMixte = segments && segments.some((s) => s.kind === 'image' || s.kind === 'avatar') ? segments : null;
+  const rush: string | null = meta?.rushUrls?.[0] || null;
+  return { url: rush || (planMixte ? planMixte[0].url : null), planMixte };
+}
+
+/** Durée (s) d'un plan relu : la fin de son dernier extrait. */
+const finDuPlan = (plan: ReadonlyArray<RushSegment>) => plan[plan.length - 1].fin;
+
 /** Keyframes du mixeur exploitables (forme `AudioKeyframe`), ou `undefined`. */
 function keyframesValides(brut: unknown): AudioKeyframe[] | undefined {
   if (!Array.isArray(brut)) return undefined;
@@ -147,8 +174,14 @@ export function optionsRenduDepuisMetadata(
   const designMeta: any = meta.design || {};
   const brand = meta.branding;
   const seq = meta.sequences;
-  const hasRush = !!meta.rushUrls?.[0];
+  // Source « Vidéo » : `rushUrls[0]`, ou — plan multi-sources sans rush
+  // (photos seules, avatar + photos) — la première entrée du plan.
+  const { url: sourceVideo, planMixte } = sourceVideoDuPost(meta);
+  const hasRush = !!sourceVideo;
   const hasCards = meta.cards?.length > 0 || meta.textCards?.length > 0;
+  // Durée par défaut de la séquence Vidéo : 12 s historiquement ; pour un
+  // plan mixte, celle du plan enregistré (jamais un plan étiré à 12 s).
+  const videoParDefaut = planMixte ? finDuPlan(planMixte) : 12;
 
   // ── Durées : la règle historique de CHAQUE chemin ──────────────────────
   // `0` est une valeur VOULUE (séquence masquée) : « Régénérer » ne la
@@ -159,13 +192,13 @@ export function optionsRenduDepuisMetadata(
     ? {
         introDuration: safeDuration(seq?.intro, 5),
         cardsDuration: hasCards ? safeDuration(seq?.cards, 6) : 0,
-        videoDuration: hasRush ? safeDuration(seq?.video, 12) : 0,
+        videoDuration: hasRush ? safeDuration(seq?.video, videoParDefaut) : 0,
         ctaDuration: safeDuration(seq?.cta, 5),
       }
     : {
         introDuration: seq?.intro ?? 5,
         cardsDuration: seq?.cards ?? (hasCards ? 6 : 0),
-        videoDuration: seq?.video ?? 12,
+        videoDuration: seq?.video ?? videoParDefaut,
         ctaDuration: seq?.cta ?? 5,
       };
 
@@ -272,6 +305,10 @@ export function optionsRenduDepuisMetadata(
   // vaut que pour le rush principal (`rushUrls[0]`), jamais pour les autres.
   const recadragesRush = recadragesRushAvecHeritage(meta.rushTransforms, meta.rushTransform, meta.rushUrls?.[0] || null);
   if (Object.keys(recadragesRush).length > 0) fidelite.rushTransforms = recadragesRush;
+  // Plan avec AVATAR : sa voix est exigée dans le mix, comme dans Créer
+  // (`rushAudioRequis` posé pour la vidéo du jumeau) — refus plutôt qu'un
+  // jumeau muet. Absent sans plan mixte : options d'avant.
+  if (planMixte && planMixte.some((s) => s.kind === 'avatar')) fidelite.rushAudioRequis = true;
   const fonds = fondsVersCompositeur(fondsPourMetadata(meta.seqBackgrounds));
   if (fonds) fidelite.sequenceBackgrounds = fonds;
 
@@ -283,7 +320,7 @@ export function optionsRenduDepuisMetadata(
     salesPhrase: meta.salesPhrase || undefined,
     cards: prep.cards,
     posterUrl: meta.posterUrl || meta.pexelsUrl || meta.characterUrl || null,
-    videoUrl: meta.rushUrls?.[0] || null,
+    videoUrl: sourceVideo,
     // Multi-rush : seulement si Créer l'a écrit (`rushSegments`, ≥ 2). Jamais
     // déduit de `rushUrls.length` — l'Agent IA y range sa banque entière.
     // Smart montage : un PLAN d'extraits (points d'entrée, rushes repris)
@@ -359,7 +396,9 @@ export async function preparerOptionsRendu(
   const cards = source.aPrerendre ? await d.preRenderCardIcons(source.cartes) : source.cartes;
   // Filtre couleur du rush (`metadata.lut`, référence seule). Absent ou
   // illisible : rendu sans étalonnage, comme avant.
-  const rushLut = meta.rushUrls?.[0] ? await d.chargerLutPourRendu(meta.lut) : null;
+  // Plan multi-sources sans rush : la LUT s'applique comme dans Créer
+  // (`plateau.rushUrl` = première entrée du plan).
+  const rushLut = sourceVideoDuPost(meta).url ? await d.chargerLutPourRendu(meta.lut) : null;
   const elementsLus = elementsLibresDepuisMetadata(meta);
   const elements = elementsLus.length > 0
     ? await d.rasteriserElements(elementsLus, montageSize(meta?.videoSize, post?.format ?? 'tv').width)

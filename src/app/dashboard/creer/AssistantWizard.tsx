@@ -153,6 +153,7 @@ import {
 import {
   sanitizePhotos, vignetteAffichable, photoUtilisable, urlUtilisable,
 } from '@/lib/creer/posterPhotos';
+import { signalerChoixAffiche, photoDeLaGrille } from '@/lib/stock/client';
 import ClipDetectorModal, { type ClipSource } from '@/components/media/ClipDetectorModal';
 import { CardIcon } from '@/components/ui/CardIcon';
 import IconPicker from '@/components/creer/IconPicker';
@@ -5132,6 +5133,18 @@ export default function AssistantWizard() {
   }, []);
   // Le chemin IA (defini plus haut, sans dependance) applique via cette ref.
   useEffect(() => { applyPhotoRef.current = applyPhoto; }, [applyPhoto]);
+
+  /**
+   * Dépôt d'une photo de la grille sur l'aperçu : MÊME signalement Unsplash
+   * qu'un clic (`signalerChoixAffiche`), une fois par choix réel — rien si la
+   * photo est déjà celle de l'endroit visé (même cible que `applyPhoto`), ni
+   * pour une image venue d'ailleurs (absente de la grille).
+   */
+  const signalerDepotAffiche = (url: string) => {
+    const cle = seqBgKeyForFocus(previewFocusRef.current);
+    const dejaPosee = cle ? seqBackgroundsRef.current[cle]?.url === url : posterUrl === url;
+    void signalerChoixAffiche(photoDeLaGrille(posterPhotos, url), dejaPosee);
+  };
 
   /** Rend une sequence a l'affiche globale. */
   const resetSeqBackground = useCallback((cle: SeqBgKey) => {
@@ -10779,6 +10792,21 @@ export default function AssistantWizard() {
                                 key={`${photo.source ?? 'p'}-${photo.id}`}
                                 type="button"
                                 onClick={() => {
+                                  // Photo Unsplash RETENUE (pas un dé-choix) :
+                                  // téléchargement signalé à Unsplash, comme
+                                  // l'exigent ses règles. Hotlink conservé : la
+                                  // pose ci-dessous n'attend pas ce signalement.
+                                  // Déjà posée à l'endroit visé (dé-choix, lot
+                                  // complet, même fond) : rien — une fois par
+                                  // choix réel, clic ou dépôt confondus.
+                                  const dejaPosee = slotCible !== null
+                                    ? batchPhotoUrls.includes(photo.url)
+                                    : seqCible
+                                    ? seqBackgrounds[seqCible]?.url === photo.url
+                                    : batchCount > 1 && batchPhotoMode === 'manuel'
+                                    ? rang >= 0 || batchPhotoUrls.length >= batchCount
+                                    : retenue;
+                                  void signalerChoixAffiche(photo, dejaPosee);
                                   if (slotCible !== null) {
                                     assignerAffiche(slotCible, photo.url);
                                     return;
@@ -13007,7 +13035,7 @@ export default function AssistantWizard() {
           cropping={cropping}
           onPosterPanStart={startPosterPan}
           onPosterZoomStart={startPosterZoom}
-          onPhotoDrop={(url) => { setPhotoDragging(false); applyPhoto(url); }}
+          onPhotoDrop={(url) => { setPhotoDragging(false); signalerDepotAffiche(url); applyPhoto(url); }}
           photoDragging={photoDragging}
           guides={dragGuides}
           gaps={dragGaps}

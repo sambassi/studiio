@@ -112,11 +112,12 @@ describe('CAPACITES_ACTUELLES — fidèle au code', () => {
     expect(transmissions.length).toBe(conditionnelles.length);
     expect(wizard).toMatch(/const rushLut = [^;]*await chargerLutPourRendu\(lut\)/);
 
-    // Calendrier : lue UNE fois, seulement avec un rush, puis posée sous la
-    // forme conditionnelle — la clé est absente sans filtre.
+    // Calendrier : lue UNE fois, seulement avec une source « Vidéo » (rush,
+    // ou 1re entrée d'un plan multi-sources sans rush — `sourceVideoDuPost`),
+    // puis posée sous la forme conditionnelle — la clé est absente sans filtre.
     const options = src(OPTIONS_CALENDRIER);
     expect(options.match(/await d\.chargerLutPourRendu\(meta\.lut\)/g)).toHaveLength(1);
-    expect(options).toMatch(/const rushLut = meta\.rushUrls\?\.\[0\] \? await d\.chargerLutPourRendu\(meta\.lut\) : null;/);
+    expect(options).toMatch(/const rushLut = sourceVideoDuPost\(meta\)\.url \? await d\.chargerLutPourRendu\(meta\.lut\) : null;/);
     expect(options.match(/\.\.\.\(prep\.rushLut \? \{ rushLut: prep\.rushLut \} : \{\}\)/g)).toHaveLength(1);
   });
 

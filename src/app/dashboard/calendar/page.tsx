@@ -49,7 +49,7 @@ import {
   montageEstPerime, messageMontagePerime, leverMontagePerime,
 } from '@/lib/creer/postMetadata/from-wizard';
 import { composerEtFacturer } from '@/lib/rendus/composer';
-import { montageSize, preparerOptionsRendu } from '@/lib/rendus/options-depuis-metadata';
+import { montageSize, preparerOptionsRendu, sourceVideoDuPost } from '@/lib/rendus/options-depuis-metadata';
 import { decisionExportBureau } from '@/lib/rendus/export-bureau';
 import { useVerrous, VERROU } from '@/lib/creer/verrouAction';
 import { creneauImmediat, DEFAULT_TIMEZONE } from '@/lib/autopilot/rules';
@@ -302,6 +302,7 @@ function postHasVisualSource(post: Pick<Post, 'media_url' | 'metadata'> | null |
     meta?.videoUrl ||           // ancien montage (WebM mode rapide)
     meta?.rawVideoUrl ||        // rush brut (anciens posts)
     meta?.rushUrls?.[0] ||      // rush brut (posts éditeur)
+    sourceVideoDuPost(meta).url || // plan multi-sources (photos, avatar) sans rush
     meta?.posterUrl ||
     meta?.pexelsUrl ||
     meta?.characterUrl ||

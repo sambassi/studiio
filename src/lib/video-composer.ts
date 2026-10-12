@@ -4412,12 +4412,21 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       );
       drawTransition(
         ctx, width, height,
-        (p, target) => drawSeq(seq.type, p, target),
-        // MULTI-SOURCES : pendant le fondu ENTRANT, la séquence Vidéo d'un plan
-        // mixte reste sur sa PREMIÈRE image. La progression historique
-        // `t * 0,3` y ferait défiler jusqu'à 30 % du plan — un média SUIVANT
-        // apparaîtrait avant son tour. Les autres montages : inchangés.
-        (p, target) => drawSeq(sequences[seqIdx + 1].type, montageMixte && sequences[seqIdx + 1].type === 'video' ? 0 : p, target),
+        // Séquence SORTANTE. `drawTransition` la peint à `p = 1` (« terminée »)
+        // pendant tout le fondu : une séquence Vidéo y restait figée sur son
+        // DERNIER instant — la photo d'un plan en Ken Burns s'arrêtait net au
+        // zoom final pendant 0,8 s avant le CTA. La Vidéo suit donc son VRAI
+        // temps local (`seqProgress`, qui continue jusqu'à 1) : le média
+        // continue de bouger, seule l'opacité vient de la transition.
+        // Titre / Cartes / CTA gardent `p = 1` : leurs animations de texte
+        // restent identiques à l'octet près (rétro-compat).
+        (p, target) => drawSeq(seq.type, seq.type === 'video' ? seqProgress : p, target),
+        // MULTI-SOURCES / MULTI-RUSH : pendant le fondu ENTRANT, la séquence
+        // Vidéo d'un plan (mixte, ou plusieurs rushes) reste sur sa PREMIÈRE
+        // image. La progression historique `t * 0,3` y ferait défiler jusqu'à
+        // 30 % du plan — un média SUIVANT apparaîtrait avant son tour. Le rush
+        // unique d'avant : inchangé (son lecteur est en pause jusqu'à son tour).
+        (p, target) => drawSeq(sequences[seqIdx + 1].type, (montageMixte || rushPlan) && sequences[seqIdx + 1].type === 'video' ? 0 : p, target),
         transProgress,
         style,
         // Les calques ne sont crees que si un style en a besoin : un montage
