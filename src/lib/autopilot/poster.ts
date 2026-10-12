@@ -1,6 +1,7 @@
 import { pickRush } from '@/lib/autopilot/rules';
 import { sonderSur, telechargerSur, estRefusSsrf, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 import { estNotreStockage } from '@/lib/securite/medias-externes';
+import { etatDepuisStatut, type EtatRush } from '@/lib/autopilot/validite-rush';
 
 /**
  * La photo d'affiche et la durée du rush, pour l'Autopilote.
@@ -92,13 +93,29 @@ export async function pickPosterUrl(topic: string, variante = 0): Promise<string
  * sera jamais lisible par le rendu — le rush est « absent ». Le doute ne
  * profite qu'aux échecs RÉSEAU d'une cible autorisée.
  */
-export async function rushEncorePresent(url: string, timeoutMs = 8_000, reseau: OptionsFetchSur = {}): Promise<boolean> {
+export async function rushEncorePresent(
+  url: string,
+  timeoutMs = 8_000,
+  reseau: OptionsFetchSur = {},
+  /**
+   * L'état DÉTAILLÉ de la même sonde (`validite-rush.ts`), pour le montage et
+   * l'écran : `introuvable` (404/410), `expire` (400/401/403 — signature
+   * expirée, refus du stockage), `refuse` (politique SSRF), `utilisable`.
+   * Le booléen rendu, lui, ne change pas : `false` sur 404/410/SSRF seulement
+   * — c'est lui qui autorise le cron à retirer un rush de la banque, et un
+   * 403 (peut-être passager) ne doit jamais l'y autoriser.
+   */
+  onEtat?: (etat: EtatRush) => void,
+): Promise<boolean> {
   try {
     const res = await sonderSur(url, { ...reseau, timeoutMs });
-    return !(res.status === 404 || res.status === 410);
+    const etat = etatDepuisStatut(res.status);
+    onEtat?.(etat);
+    return etat !== 'introuvable';
   } catch (e) {
-    if (estRefusSsrf(e)) return false;
+    if (estRefusSsrf(e)) { onEtat?.('refuse'); return false; }
     // Réseau, délai, hôte injoignable : aucune conclusion possible.
+    onEtat?.('utilisable');
     return true;
   }
 }

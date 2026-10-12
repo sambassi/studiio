@@ -11,6 +11,9 @@ import {
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
 import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib/autopilot/sources';
+import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
+import { rushEncorePresent } from '@/lib/autopilot/poster';
+import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
 
 /**
@@ -150,6 +153,20 @@ export async function POST() {
         { success: false, error: 'Aucun rush dans la banque : ajoutez au moins une vidéo.', code: 'sans-rush' },
         { status: 422 },
       );
+    }
+    // SOURCE = média LISIBLE (`validite-rush.ts`). Des rushes configurés mais
+    // tous introuvables, expirés ou refusés valent une banque vide : sans
+    // autre source, refus — jamais un montage titre/cartes/CTA seul. Sondé
+    // seulement sans avatar (le jumeau porte la séquence à lui seul) ; un
+    // rush refusé par la garde de propriété n'est jamais contacté.
+    if (!avatarActifConfig(config) && config.rushUrls.length > 0) {
+      const rushUrls = await rushesUtilisablesServeur(config.rushUrls, (u) => mediaLisiblePar(u, userId), rushEncorePresent);
+      if (!aUneSourceVisuelle(etatSourcesServeur({ ...config, rushUrls }))) {
+        return NextResponse.json(
+          { success: false, error: 'Aucun média utilisable pour ce montage.', code: 'sans-rush' },
+          { status: 422 },
+        );
+      }
     }
     // Avec le jumeau, deux coûts : la génération de l'avatar (`avatar.jumeau`,
     // débitée au lancement) PUIS le rendu (`coutMontage()`, à la finalisation).

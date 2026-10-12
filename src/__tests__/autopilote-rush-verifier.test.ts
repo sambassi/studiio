@@ -36,12 +36,18 @@ vi.mock('@/lib/db/supabase', () => {
 
 // Le HEAD est doublé : on rend « expiré » pour toute URL contenant `dead`.
 const rushEncorePresent = vi.fn(async (url: string) => !url.includes('dead'));
+/** État détaillé de la sonde (`onEtat`), par URL — absent : le booléen fait foi. */
+const ETATS_SONDE = new Map<string, 'expire'>();
 vi.mock('@/lib/autopilot/poster', () => ({
-  rushEncorePresent: (url: string) => rushEncorePresent(url),
+  rushEncorePresent: (url: string, _t?: unknown, _r?: unknown, onEtat?: (e: string) => void) => {
+    const e = ETATS_SONDE.get(url);
+    if (e) onEtat?.(e);
+    return rushEncorePresent(url);
+  },
 }));
 
-const A = 'https://projet.supabase.co/storage/v1/object/public/media/u/a.mp4';
-const DEAD = 'https://projet.supabase.co/storage/v1/object/public/media/u/dead.mp4';
+const A = 'https://projet.supabase.co/storage/v1/object/public/media/u1/a.mp4';
+const DEAD = 'https://projet.supabase.co/storage/v1/object/public/media/u1/dead.mp4';
 const HORS_COMPTE = 'https://ailleurs.test/x.mp4';
 
 async function chargerRoute() {
@@ -57,6 +63,7 @@ beforeEach(() => {
   authMock.mockResolvedValue({ user: { id: 'u1' } });
   banque = [A, DEAD];
   rushEncorePresent.mockClear();
+  ETATS_SONDE.clear();
 });
 
 describe('Session', () => {
@@ -95,5 +102,28 @@ describe('Vérification', () => {
     expect(corps.success).toBe(true);
     expect(corps.resultats).toEqual({});
     expect(rushEncorePresent).not.toHaveBeenCalled();
+  });
+});
+
+describe('Une seule vérité (`validite-rush.ts`)', () => {
+  const EXPIRE = 'https://projet.supabase.co/storage/v1/object/public/media/u1/signe.mp4';
+  const AUTRE_COMPTE = 'https://projet.supabase.co/storage/v1/object/public/media/u2/prive.mp4';
+
+  it('403 (signature expirée) : `expire`, non utilisable', async () => {
+    banque = [A, EXPIRE];
+    ETATS_SONDE.set(EXPIRE, 'expire');
+    const { POST } = await chargerRoute();
+    const corps = await (await POST(requete({ urls: [A, EXPIRE] }))).json();
+    expect(corps.etats).toEqual({ [A]: 'utilisable', [EXPIRE]: 'expire' });
+    expect(corps.resultats[EXPIRE]).toBe(false);
+  });
+
+  it('rush d un autre compte DANS la banque : `refuse`, jamais HEADé', async () => {
+    banque = [A, AUTRE_COMPTE];
+    const { POST } = await chargerRoute();
+    const corps = await (await POST(requete({ urls: [A, AUTRE_COMPTE] }))).json();
+    expect(corps.etats[AUTRE_COMPTE]).toBe('refuse');
+    expect(corps.resultats[AUTRE_COMPTE]).toBe(false);
+    expect(rushEncorePresent).not.toHaveBeenCalledWith(AUTRE_COMPTE);
   });
 });

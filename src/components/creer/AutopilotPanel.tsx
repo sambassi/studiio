@@ -29,6 +29,9 @@ import {
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import type { FormatStock } from '@/lib/stock/types';
+import {
+  etatsDepuisReponseVerifier, rushesUtilisables, rushReparable, type EtatRush,
+} from '@/lib/autopilot/validite-rush';
 import { montageDepuisStyle } from '@/lib/autopilot/textStyle';
 import { CardIcon } from '@/components/ui/CardIcon';
 import ColorWheel from '@/components/ui/ColorWheel';
@@ -564,8 +567,9 @@ export default function AutopilotPanel({
   /** La liste des voix a été relue (même vide) : le bloc Jumeau peut se prononcer. */
   const [voixChargees, setVoixChargees] = useState(false);
   /**
-   * L'accessibilité de chaque rush de la banque : `true` accessible, `false`
-   * expiré (404/410 au stockage), absent = pas encore vérifié.
+   * L'état de chaque rush de la banque (`validite-rush.ts`) : `utilisable`,
+   * `introuvable` (404/410), `expire` (signature expirée, refus du stockage),
+   * `refuse` (garde de sécurité) — absent = pas encore vérifié (il compte).
    *
    * ⚠️ SIGNALER, JAMAIS EFFACER. Un rush sous la rétention de 24 h reste
    * écrit dans `rush_urls` alors que le fichier a disparu — l'utilisateur
@@ -573,7 +577,7 @@ export default function AutopilotPanel({
    * et on ne le retire que sur clic, via l'`enregistrer` habituel. Rien n'est
    * supprimé automatiquement.
    */
-  const [rushAccessible, setRushAccessible] = useState<Record<string, boolean>>({});
+  const [rushEtats, setRushEtats] = useState<Record<string, EtatRush>>({});
 
   // ⚠️ UN SEUL POINT DE REMONTÉE, sur l'état lui-même. Le panneau écrit
   // `config` par une demi-douzaine de chemins — `enregistrer`, les roues
@@ -616,7 +620,7 @@ export default function AutopilotPanel({
    * exactement celui d'avant. Le serveur ne HEAD que les rushes du compte.
    */
   const verifierRushes = useCallback(async (urls: string[]) => {
-    if (urls.length === 0) { setRushAccessible({}); return; }
+    if (urls.length === 0) { setRushEtats({}); return; }
     try {
       const res = await fetch('/api/autopilot/rush/verifier', {
         method: 'POST',
@@ -625,7 +629,7 @@ export default function AutopilotPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (data?.success && data.resultats && typeof data.resultats === 'object') {
-        setRushAccessible(data.resultats as Record<string, boolean>);
+        setRushEtats(etatsDepuisReponseVerifier(data));
       }
     } catch {
       // Réseau indisponible : on n'affiche aucun état plutôt qu'un faux
@@ -709,12 +713,19 @@ export default function AutopilotPanel({
    * stock OFF). L'avatar suit TOUJOURS la colonne `jumeauAvatar`.
    */
   const sources = useMemo(() => sourcesEffectives(config), [config]);
+  /**
+   * LES RUSHES QUI COMPTENT — la seule vérité (`validite-rush.ts`) : un rush
+   * introuvable, expiré ou refusé reste AFFICHÉ dans la banque (avec son
+   * état), mais ne compte NULLE PART comme source — compteurs, « Médias
+   * prévus », plan suggéré, validation, récap. Non encore vérifié : il compte.
+   */
+  const rushesDispo = useMemo(() => rushesUtilisables(config.rushUrls, rushEtats), [config.rushUrls, rushEtats]);
   // Clé `sources` enregistrée ou non : la MÊME lecture que le moteur (`mediasDesSources`).
-  const etatSources = etatSourcesVisuelles(config.rushUrls, sources, avatarPret, !!config.designStyle.sources);
+  const etatSources = etatSourcesVisuelles(rushesDispo, sources, avatarPret, !!config.designStyle.sources);
   const sourcePossible = aUneSourceVisuelle(etatSources);
   const montageFormat = montageDepuisStyle(config.designStyle)?.format;
   const formatStock: FormatStock = montageFormat === '16:9' || montageFormat === '1:1' ? montageFormat : '9:16';
-  const rushesPerso = config.rushUrls.filter((u) => !estRushStock(u));
+  const rushesPerso = rushesDispo.filter((u) => !estRushStock(u));
   const sujetStock = config.topics[0] ? themeLabel(config.topics[0]) : (config.brief.objectif || config.brief.message || 'fitness');
 
   /**
@@ -792,8 +803,9 @@ export default function AutopilotPanel({
     if (!sources.actives.stock) basculerSource('stock', true);
   }, [loading, ready, sources.actives.stock, basculerSource]);
 
+  // « N rushes disponibles » : les rushes UTILISABLES seulement (`rushesDispo`).
   const etat = statusMessage(config, Date.now(), (d) =>
-    d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }));
+    d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }), rushesDispo.length);
 
   /**
    * Ajoute des rushes à la banque — en UN enregistrement.
@@ -846,22 +858,24 @@ export default function AutopilotPanel({
    * déclenche jamais une génération.
    */
   const rushEcoute = config.keepRushAudio
-    ? (pickRush(config.rushUrls, config.lastRushUrl, 0) ?? null)
+    ? (pickRush(rushesDispo, config.lastRushUrl, 0) ?? null)
     : null;
   const dureesEcoute = useMemo(() => {
-    const video = config.rushUrls.length > 0 ? RUSH_SEQUENCE_SECONDS.fallback : 0;
+    const video = rushesDispo.length > 0 ? RUSH_SEQUENCE_SECONDS.fallback : 0;
     const { intro, cards, cta } = DEFAULT_SEQUENCE_SECONDS;
     return { intro, cards, cta, video, videoStart: intro + cards, total: intro + cards + video + cta };
-  }, [config.rushUrls.length]);
+  }, [rushesDispo.length]);
 
   /**
-   * Les rushes reconnus expirés, et ceux qui restent — dérivés de l'état
-   * d'accessibilité. `false` = 404/410 au stockage ; tout le reste (accessible
-   * OU non encore vérifié) est traité comme vivant : on ne retire jamais un
-   * rush sur un doute.
+   * Les rushes reconnus expirés (introuvables ou inaccessibles : à
+   * réimporter), et ceux que le retrait en lot garde. Un rush non vérifié est
+   * vivant : on ne retire jamais un rush sur un doute. Un rush REFUSÉ par la
+   * garde de sécurité n'est ni « réparable » ni retiré en lot — il ne compte
+   * simplement pas (`rushesDispo`).
    */
-  const rushExpires = config.rushUrls.filter((u) => rushAccessible[u] === false);
-  const rushVivants = config.rushUrls.filter((u) => rushAccessible[u] !== false);
+  const rushExpires = config.rushUrls.filter((u) => rushReparable(rushEtats[u]));
+  const rushVivants = config.rushUrls.filter((u) => !rushReparable(rushEtats[u]));
+  const nbRushesIndisponibles = config.rushUrls.length - rushesDispo.length;
 
   /** Ajoute ou retire un theme de la rotation. */
   const basculerTheme = useCallback((topic: string) => {
@@ -1480,26 +1494,31 @@ export default function AutopilotPanel({
                 redevient secondaire et « Continuer vers Style » prend
                 la place. */}
             <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={config.rushUrls.length > 0 ? 'pret' : 'a-faire'}>
+              <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={rushesDispo.length > 0 ? 'pret' : 'a-faire'} data-autopilot-rushes-utilisables={rushesDispo.length}>
                 Banque de rushes
-                <span className={`ml-1.5 ${config.rushUrls.length > 0 || sourcePossible ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {config.rushUrls.length === 0
+                <span className={`ml-1.5 ${rushesDispo.length > 0 || sourcePossible ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {rushesDispo.length === 0
                     ? (sourcePossible ? '0 rush — facultatif avec vos autres sources' : '0 rush — aucune source pour l’instant')
-                    : `${config.rushUrls.length} rush${config.rushUrls.length > 1 ? 'es' : ''} prêt${config.rushUrls.length > 1 ? 's' : ''}`}
+                    : `${rushesDispo.length} rush${rushesDispo.length > 1 ? 'es' : ''} prêt${rushesDispo.length > 1 ? 's' : ''}`}
                 </span>
+                {nbRushesIndisponibles > 0 && (
+                  <span className="ml-1.5 text-amber-400" data-autopilot-rushes-indisponibles={nbRushesIndisponibles}>
+                    {`· ${nbRushesIndisponibles} indisponible${nbRushesIndisponibles > 1 ? 's' : ''}`}
+                  </span>
+                )}
               </p>
               <button
                 type="button"
                 onClick={() => setLibOpen('rush')}
                 disabled={!ready || saving}
                 data-autopilot-add-rush
-                data-cta={config.rushUrls.length === 0 ? 'principal' : 'secondaire'}
+                data-cta={rushesDispo.length === 0 ? 'principal' : 'secondaire'}
                 className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-40 ${
-                  config.rushUrls.length === 0
+                  rushesDispo.length === 0
                     ? 'text-white'
                     : 'border border-gray-800 text-gray-300 hover:text-white hover:border-gray-700'
                 }`}
-                style={config.rushUrls.length === 0 ? { backgroundColor: accent } : undefined}
+                style={rushesDispo.length === 0 ? { backgroundColor: accent } : undefined}
               >
                 <Plus className="w-3 h-3" /> Ajouter des rushes
               </button>
@@ -1514,7 +1533,7 @@ export default function AutopilotPanel({
                 vidéos partagent la même séquence vidéo. L'utilisateur qui
                 attendait « des rushes différents » doit l'apprendre ici, pas
                 en découvrant deux montages identiques dans son Calendrier. */}
-            {config.rushUrls.length === 1 && (
+            {rushesDispo.length === 1 && (
               <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mb-2" data-autopilot-rush-unique>
                 <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
                 Un seul rush : il sera repris sur toutes les vidéos. Ajoutez-en un
@@ -1549,8 +1568,9 @@ export default function AutopilotPanel({
             {config.rushUrls.length > 0 && (
               <GrilleMedias attrs={{ 'data-autopilot-banque': '' }}>
                 {config.rushUrls.map((url) => {
-                  const expire = rushAccessible[url] === false;
-                  const verifie = url in rushAccessible;
+                  const expire = rushReparable(rushEtats[url]);
+                  const refuse = rushEtats[url] === 'refuse';
+                  const verifie = url in rushEtats;
                   // Un média suggéré conservé se dit tel quel — jamais confondu avec vos rushes,
                   // jamais par le nom de sa plateforme (crédit dans « Informations du média »).
                   const suggere = !!(metaStock[url] || idStockDuRush(url) || estRushStock(url));
@@ -1568,7 +1588,7 @@ export default function AutopilotPanel({
                         origine={suggere ? 'video-suggeree' : 'rush'}
                         nomTechnique={nomTechnique(url)}
                         credit={credit}
-                        alerte={expire}
+                        alerte={expire || refuse}
                         attrs={suggere && sources.actives.stock ? { 'data-autopilot-rush-stock': url } : undefined}
                         badges={
                           /* L'état, sous le libellé : « accessible » ou « expiré ». Tant que
@@ -1576,6 +1596,11 @@ export default function AutopilotPanel({
                           expire ? (
                             <span className="flex items-center gap-1 text-[10px] text-amber-400" data-autopilot-rush-expire={url}>
                               <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> Expiré — réimportez-le
+                            </span>
+                          ) : refuse ? (
+                            /* Refus de sécurité : jamais « réimportez-le », aucune adresse. */
+                            <span className="flex items-center gap-1 text-[10px] text-amber-400" data-autopilot-rush-refuse="">
+                              <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> Indisponible — non utilisé
                             </span>
                           ) : verifie ? (
                             <span className="text-[10px] text-emerald-500/80" data-autopilot-rush-accessible={url}>
@@ -1639,7 +1664,7 @@ export default function AutopilotPanel({
                 sujet={sujetStock}
                 message={config.brief.message ?? null}
                 objectif={config.brief.objectif ?? null}
-                rushUrls={config.rushUrls}
+                rushUrls={rushesDispo}
                 format={formatStock}
                 accent={accent}
                 avatar={avatarPorteLaProduction(config.jumeauAvatar, avatarPret)}
