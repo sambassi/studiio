@@ -8,6 +8,7 @@ import {
   type PlanCouverture, type ReseauCouverture,
 } from '@/lib/social/couverture';
 import { imageDepuisVideo } from '@/lib/social/imageDepuisVideo';
+import { ErreurMediaPublication } from '@/lib/social/media-publication';
 
 /**
  * Publier un post Studiio sur les réseaux de l'utilisateur, via Zernio.
@@ -233,6 +234,7 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       mediaSource!,
       `studiio-${post.id}.mp4`,
       'video/mp4',
+      post.userId,
     );
 
     const envoyer = (avecCouverture: boolean) => createPost({
@@ -297,6 +299,13 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
 
     return { ok: true, zernioPostId: zernio._id, comptes: ciblesRetenues.length, couvertures, avertissements };
   } catch (err) {
+    // ⚠️ MÉDIA REFUSÉ OU ILLISIBLE : motif FIXE (« Média de publication
+    // refusé. »), jamais l'URL, l'adresse, le port ni le statut de la cible —
+    // il finit dans `metadata.error`, lisible par l'auteur du post.
+    if (err instanceof ErreurMediaPublication) {
+      console.warn(`[Zernio/Publication] post ${post.id} : media ${err.code}`);
+      return { ok: false, motif: err.message, reessayable: err.reessayable };
+    }
     if (err instanceof ZernioError) {
       console.error(`[Zernio/Publication] post ${post.id} :`, err.message);
       if (err.paymentRequired) {

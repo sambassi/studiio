@@ -837,16 +837,16 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
   });
 
   /**
-   * Les sept appelants sans session, tels que l'en-tête de la route les
+   * Les appelants sans session, tels que l'en-tête de la route les
    * recense. Ce test fixe le fait qu'ils existent et qu'ils passent bien par
    * ce préfixe : si l'un d'eux disparaissait, la liste des risques du lot
    * changerait, et il faut le savoir.
    */
   const CONSOMMATEURS: Array<[string, string, string]> = [
-    ['publication sociale immédiate', 'src/app/api/social/publish/route.ts',
-      "if (url.includes('/storage/v1/object/public/')) return url;"],
-    ['publication programmée (cron)', 'src/app/api/cron/publish/route.ts',
-      "if (url.includes('/storage/v1/object/public/')) return url;"],
+    // Publication immédiate ET programmée : une seule implémentation
+    // partagée depuis la garde de propriété avant signature.
+    ['publication sociale (immédiate et cron)', 'src/lib/social/url-publication.ts',
+      "if (cible.acces === 'public') return absolue;"],
     ['relais authentifié du compositeur', 'src/app/api/proxy-media/route.ts',
       "u.pathname.startsWith('/storage/v1/object/public/')"],
     ['rendu serveur — lit MinIO en direct, hors de cette route',
@@ -882,8 +882,9 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
       "await import('@remotion/media-parser')"],
     ['choix de l URL publiable', 'src/lib/videos/playable-url.ts',
       'export function resolvePublishableUrl'],
+    // GET par le fetch SÛR (`media-publication.ts` → `telechargerSur`).
     ['relais Zernio', 'src/lib/social/zernio.ts',
-      "fetch(fichierUrl, { cache: 'no-store' })"],
+      'await lireMediaPublication(fichierUrl, { userId })'],
   ];
 
   it.each(APPELANTS)('%s appelle encore cette route', (_nom, fichier, marqueur) => {

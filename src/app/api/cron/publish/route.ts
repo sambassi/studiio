@@ -9,8 +9,9 @@ import { readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
-import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
+import { ensurePublicUrl } from '@/lib/social/url-publication';
 import { downloadMediaToFile } from '@/lib/storage/fetch-media';
+import { lireMediaPublication, ErreurMediaPublication } from '@/lib/social/media-publication';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS, formatBroadcastFailures } from '@/lib/social/whatsapp';
@@ -793,13 +794,13 @@ export async function GET(req: NextRequest) {
                 result = await publishToInstagram(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'facebook':
-                result = await publishToFacebook(authedAccount, videoData, post.caption);
+                result = await publishToFacebook(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'tiktok':
-                result = await publishToTikTok(authedAccount, videoData, post.caption);
+                result = await publishToTikTok(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'youtube':
-                result = await publishToYouTube(authedAccount, videoData, post.caption);
+                result = await publishToYouTube(authedAccount, videoData, post.caption, post.user_id);
                 break;
               default:
                 result = { success: false, error: `Unsupported platform: ${platform}` };
@@ -994,7 +995,11 @@ async function convertToMp4IfNeeded(videoUrl: string, userId: string): Promise<s
 
     // Step 4: Upload to Supabase Storage
     const fileName = `converted_${timestamp}.mp4`;
-    const storagePath = `converted/${fileName}`;
+    // Sous le préfixe du PROPRIÉTAIRE, comme `api/convert/to-mp4` : une clé
+    // `converted/<horodatage>` commune à tous était devinable et publiable
+    // par n'importe quel compte. Les anciennes restent lisibles (voir
+    // `CONVERSION_PARTAGEE`), aucune nouvelle n'y est écrite.
+    const storagePath = `${userId}/converted/${fileName}`;
     const { error: uploadError } = await supabase.storage
       .from('media')
       .upload(storagePath, mp4Buffer, {
@@ -1120,7 +1125,8 @@ async function muxAudioIntoVideo(
     // Étape 4 : Upload du MP4 final
     const mp4Buffer = await readFile(outputPath);
     const fileName = `muxed_${ts}.mp4`;
-    const storagePath = `converted/${fileName}`;
+    // Préfixe du propriétaire : voir `convertToMp4IfNeeded`.
+    const storagePath = `${userId}/converted/${fileName}`;
     const { error: uploadError } = await supabase.storage
       .from('media')
       .upload(storagePath, mp4Buffer, { contentType: 'video/mp4', upsert: true });
@@ -1164,30 +1170,6 @@ function metaEchecZernio(
   return { ...sansPreuveZernio(metadata), zernioPostIdAncien: metadata?.zernioPostId ?? null, ...diagnostic };
 }
 
-// Resolve a publicly-fetchable URL for the Graph API / platform fetchers.
-// If the URL is a private Supabase path, create a 1h signed URL.
-//
-// ⚠️ ABSOLUE D'ABORD. Sous MinIO, `/api/upload/signed-url` ecrit une
-// `publicUrl` RELATIVE (`/storage/v1/object/public/…`). Meta et TikTok vont
-// chercher le fichier eux-memes : un chemin sans hote leur est inutilisable.
-// Une URL deja absolue ressort inchangee de `toAbsoluteMediaUrl`.
-async function ensurePublicUrl(url: string): Promise<string> {
-  if (!url) return url;
-  url = toAbsoluteMediaUrl(url);
-  if (url.includes('/storage/v1/object/public/')) return url;
-  if (!url.includes('/storage/v1/object/')) return url;
-  try {
-    const m = url.match(/\/storage\/v1\/object\/(?:sign|authenticated|private)\/([^/]+)\/([^?]+)/);
-    if (!m) return url;
-    const [, bucket, path] = m;
-    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error || !data?.signedUrl) return url;
-    return data.signedUrl;
-  } catch {
-    return url;
-  }
-}
-
 async function publishToInstagram(
   account: any,
   video: any,
@@ -1218,7 +1200,7 @@ async function publishToInstagram(
       publishableVideoUrl = await convertToMp4IfNeeded(video.video_url, userId);
       console.log(`[CRON][IG] Using converted MP4: ${publishableVideoUrl.substring(0, 80)}...`);
     }
-    publishableVideoUrl = await ensurePublicUrl(publishableVideoUrl);
+    publishableVideoUrl = await ensurePublicUrl(publishableVideoUrl, userId);
 
     // Step 1: Create media container (Reels)
     console.log(`[CRON][IG] Step 1: Creating media container for Reel...`);
@@ -1328,7 +1310,9 @@ async function publishToInstagram(
 async function publishToFacebook(
   account: any,
   video: any,
-  caption?: string,
+  caption: string | null | undefined,
+  /** Proprietaire du post : seul ses objets prives peuvent etre signes. */
+  userId: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
   const pageId = account.account_id;
@@ -1341,7 +1325,7 @@ async function publishToFacebook(
   console.log(`[CRON][FB] Starting publish to page ${pageId}, video_url=${video.video_url?.substring(0, 80)}...`);
 
   try {
-    const publicUrl = await ensurePublicUrl(video.video_url);
+    const publicUrl = await ensurePublicUrl(video.video_url, userId);
     const res = await fetch(
       `https://graph.facebook.com/v24.0/${pageId}/videos`,
       {
@@ -1392,7 +1376,9 @@ async function publishToFacebook(
 async function publishToTikTok(
   account: any,
   video: any,
-  caption?: string,
+  caption: string | null | undefined,
+  /** Proprietaire du post : seul ses objets prives peuvent etre signes. */
+  userId: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
 
@@ -1403,7 +1389,7 @@ async function publishToTikTok(
   try {
     // TikTok tire le fichier lui-meme (PULL_FROM_URL) : il lui faut une URL
     // absolue et publique, comme a Meta.
-    const publicVideoUrl = await ensurePublicUrl(video.video_url);
+    const publicVideoUrl = await ensurePublicUrl(video.video_url, userId);
     const initRes = await fetch(
       'https://open.tiktokapis.com/v2/post/publish/video/init/',
       {
@@ -1441,7 +1427,9 @@ async function publishToTikTok(
 async function publishToYouTube(
   account: any,
   video: any,
-  caption?: string,
+  caption: string | null | undefined,
+  /** Proprietaire du post : seul ses objets prives peuvent etre signes. */
+  userId: string,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
 
@@ -1450,6 +1438,18 @@ async function publishToYouTube(
   }
 
   try {
+    // ⚠️ LE MÉDIA D'ABORD, PAR LE FETCH SÛR — avant d'ouvrir une session
+    // YouTube. L'URL vient du post (navigateur) : jamais de `fetch()` nu.
+    // Erreur au message FIXE, sans URL ni adresse (voir media-publication.ts).
+    let videoBuffer: Uint8Array<ArrayBuffer>;
+    try {
+      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(video.video_url, userId), { userId }));
+    } catch (e) {
+      if (!(e instanceof ErreurMediaPublication)) throw e;
+      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', code: e.code });
+      return { success: false, error: e.message };
+    }
+
     const metadata = {
       snippet: {
         title: (caption || video.title || '').slice(0, 100),
@@ -1493,14 +1493,6 @@ async function publishToYouTube(
       return { success: false, error: 'YouTube did not return upload URL' };
     }
 
-    const publicVideoUrl = await ensurePublicUrl(video.video_url);
-    const videoRes = await fetch(toAbsoluteMediaUrl(publicVideoUrl));
-    if (!videoRes.ok) {
-      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', status: videoRes.status });
-      return { success: false, error: 'Failed to download video for YouTube upload' };
-    }
-
-    const videoBuffer = await videoRes.arrayBuffer();
     const uploadRes = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {

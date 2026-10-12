@@ -17,6 +17,7 @@
  */
 
 import { z } from 'zod';
+import { neutraliserUrlsPost } from '@/lib/securite/urls-post';
 
 /**
  * Colonnes que le client a le droit de modifier.
@@ -179,9 +180,21 @@ export function parsePatchPostPayload(raw: unknown): PatchPayloadResult {
     return { ok: false, error: 'Aucun champ a modifier.' };
   }
 
+  // URLs lues plus tard par le SERVEUR : une valeur non enregistrable est
+  // RETIREE (jamais un 422 — le Calendrier renvoie des valeurs anciennes).
+  // Voir `src/lib/securite/urls-post.ts`.
+  const data: PatchPostPayload = { ...parsed.data };
+  const urls = neutraliserUrlsPost({ media_url: data.media_url, metadata: data.metadata });
+  if (urls.refusees.includes('media_url')) delete data.media_url;
+  if (data.metadata !== undefined) data.metadata = urls.metadata as PatchPostPayload['metadata'];
+  if (urls.refusees.length) console.warn('[API posts] URLs retirees (PATCH) :', urls.refusees);
+  if (Object.keys(data).length === 0) {
+    return { ok: false, error: 'Aucun champ a modifier.' };
+  }
+
   return {
     ok: true,
-    data: parsed.data,
-    hasMetadata: Object.prototype.hasOwnProperty.call(parsed.data, 'metadata'),
+    data,
+    hasMetadata: Object.prototype.hasOwnProperty.call(data, 'metadata'),
   };
 }

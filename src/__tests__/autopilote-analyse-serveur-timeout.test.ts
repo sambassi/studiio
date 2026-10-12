@@ -10,7 +10,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { instantsShowinfo, analyserRushServeur } from '@/lib/creer/analyse-rush-serveur';
+import { instantsShowinfo, mesurerSourceLue } from '@/lib/creer/analyse-rush-serveur';
 import { planMontage } from '@/lib/creer/smart-montage';
 
 let ffmpegOk = true;
@@ -25,7 +25,7 @@ describe('analyse serveur', () => {
   it('les rushes sont analysés UN PAR UN, et les échecs sont écrits', () => {
     const p = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/produire.ts'), 'utf-8');
     expect(p).toContain('for (const [i, u] of liste.entries()) {');
-    expect(p).toContain('const r = await analyserRushServeurCache(u, secondes[i]);');
+    expect(p).toContain('const r = await analyserRushServeurCache(u, secondes[i], userId);');
     expect(p).not.toContain('await Promise.all(liste.map((u, i) => analyserRushServeurCache(');
     expect(p).toContain('{ analysesEchouees }');
     const a = readFileSync(resolve(process.cwd(), 'src/lib/creer/analyse-rush-serveur.ts'), 'utf-8');
@@ -42,7 +42,7 @@ describe('analyse serveur', () => {
     execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc=size=320x568:rate=30:duration=20', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=20', '-c:v', 'libx264', '-g', '30', '-c:a', 'aac', '-shortest', '-y', long]);
     const analyses = [];
     for (const [f, d] of [[muet, 3], [uneCle, 12], [long, 20]] as const) {
-      const a = await analyserRushServeur(f, d);
+      const a = await mesurerSourceLue(f, f, d);
       expect(a, f).not.toBeNull();
       expect(a!.echantillons.length).toBeGreaterThanOrEqual(3);
       analyses.push(a!);

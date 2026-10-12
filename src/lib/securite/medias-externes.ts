@@ -20,9 +20,10 @@
 import { createHash } from 'crypto';
 import { createReadStream } from 'fs';
 import { stat, unlink } from 'fs/promises';
+import { randomUUID } from 'crypto';
 import os from 'os';
 import path from 'path';
-import { extraireCibleStockage, originesStockageConfigurees } from '@/lib/storage/acces-objet';
+import { cibleStockageParChemin, extraireCibleStockage, originesStockageConfigurees } from '@/lib/storage/acces-objet';
 import { telechargerSur, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 
@@ -31,6 +32,19 @@ export const BUCKET_EXTERNES = 'media';
 /** L'URL désigne-t-elle NOTRE stockage (origine configurée + relais public) ? */
 export function estNotreStockage(url: unknown, origines: readonly string[] = originesStockageConfigurees()): boolean {
   return typeof url === 'string' && /^https?:\/\//i.test(url) && extraireCibleStockage(url, { origines }) !== null;
+}
+
+/**
+ * ⚠️ UNE COPIE EXTERNE N'EST JAMAIS UN OBJET DE NOTRE STOCKAGE. La copie est
+ * déposée dans `media/externes/…`, lisible par TOUT compte, et son appelant
+ * n'a pas de compte à opposer : un chemin d'objet de stockage — atteint par
+ * un hôte non configuré (staging, alias, IP, point final, `http`) ou par une
+ * redirection — est refusé ici, à CHAQUE saut, avant toute requête vers lui.
+ * Les lecteurs au nom d'un compte (`classerUrlLecture`) jugent ces chemins
+ * eux-mêmes, propriété comprise, et ne les envoient jamais ici.
+ */
+function horsStockage(u: URL): boolean {
+  return cibleStockageParChemin(u.href) === null;
 }
 
 export type GenreMedia = 'video' | 'image' | 'audio';
@@ -61,7 +75,11 @@ async function depotParDefaut(): Promise<DepotMedias> {
   const { supabaseAdmin } = await import('@/lib/db/supabase');
   return {
     existe: (b, c) => clientMinio({ timeoutMs: 10_000 }).statObject(b, c).then(() => true, () => false),
-    deposer: async (b, c, f, taille) => { await clientMinio().putObject(b, c, createReadStream(f), taille); },
+    // ⚠️ Le flux a TOUJOURS un écouteur d'erreur et est détruit après l'envoi :
+    // si `putObject` échoue avant de le lire, le fichier temporaire est déjà
+    // effacé quand le flux s'ouvre — sans écouteur, l'ENOENT devient une
+    // exception non rattrapée qui fait tomber le processus Node.
+    deposer: (b, c, f, taille) => deposerFichierMinio(clientMinio(), b, c, f, taille),
     urlPublique: (b, c) => supabaseAdmin.storage.from(b).getPublicUrl(c).data.publicUrl,
   };
 }
@@ -75,6 +93,23 @@ export interface OptionsLocalisation {
 }
 
 const enCours = new Map<string, Promise<string>>();
+
+/**
+ * Dépose un fichier local dans MinIO.
+ *
+ * ⚠️ Le flux a TOUJOURS un écouteur d'erreur et est détruit après l'envoi :
+ * si `putObject` échoue avant de le lire, le fichier temporaire est déjà
+ * effacé quand le flux s'ouvre — sans écouteur, l'ENOENT devient une
+ * exception non rattrapée qui fait tomber le processus Node.
+ */
+export async function deposerFichierMinio(
+  client: { putObject: (b: string, c: string, flux: NodeJS.ReadableStream, taille: number) => Promise<unknown> },
+  bucket: string, cle: string, fichier: string, taille: number,
+): Promise<void> {
+  const flux = createReadStream(fichier);
+  flux.on('error', () => undefined);
+  try { await client.putObject(bucket, cle, flux, taille); } finally { flux.destroy(); }
+}
 
 /**
  * URL de NOTRE stockage pour ce média : lui-même s'il y est déjà, sinon sa
@@ -94,10 +129,17 @@ export async function localiserMedia(url: string, opts: OptionsLocalisation = {}
   const travail = (async () => {
     const depot = opts.depot ?? await depotParDefaut();
     if (await depot.existe(BUCKET_EXTERNES, cle)) return depot.urlPublique(BUCKET_EXTERNES, cle);
-    const local = path.join(os.tmpdir(), `studiio-externe-${path.basename(cle)}`);
+    // Nom UNIQUE par appel : deux copies du même média ne se partagent jamais
+    // (ni ne s'effacent) le même fichier temporaire.
+    const local = path.join(os.tmpdir(), `studiio-externe-${randomUUID()}-${path.basename(cle)}`);
     try {
       // 10 min : un rush externe peut peser plusieurs centaines de Mo.
-      await telechargerSur(url, local, { timeoutMs: 600_000, ...(opts.reseau ?? {}), originesDeConfiance: opts.reseau?.originesDeConfiance ?? origines });
+      await telechargerSur(url, local, {
+        timeoutMs: 600_000,
+        ...(opts.reseau ?? {}),
+        originesDeConfiance: opts.reseau?.originesDeConfiance ?? origines,
+        autorisee: (u) => horsStockage(u) && (opts.reseau?.autorisee ? opts.reseau.autorisee(u) : true),
+      });
       const { size } = await stat(local);
       await depot.deposer(BUCKET_EXTERNES, cle, local, size);
     } finally {

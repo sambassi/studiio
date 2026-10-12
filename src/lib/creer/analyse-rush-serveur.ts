@@ -15,6 +15,10 @@ import {
   mesurerImage, saturationRgb, ANALYSE_L, ANALYSE_H, COULEUR_L, COULEUR_H, type AnalyseRush, type EchantillonRush,
 } from '@/lib/creer/smart-montage';
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
+import {
+  BUCKET_COPIES_EXTERNES, PREFIXE_RELAIS_PUBLIC, cibleLisibleParCompte, cibleParCheminLisible, cibleStockageParChemin,
+  extraireCibleStockage, originesStockageConfigurees,
+} from '@/lib/storage/acces-objet';
 
 /** Au-delà, on n'analyse pas (coût serveur) : les extraits viennent du début. */
 const DUREE_ANALYSEE_MAX = 180;
@@ -105,28 +109,116 @@ export function objetDeUrlPublique(url: string): { bucket: string; cle: string }
 }
 
 /**
- * URL que ffmpeg LIT : signée INTERNE (MinIO en direct, réseau Docker) quand
- * le fichier est dans notre stockage.
+ * Refus de lecture d'un média au nom d'un compte. Message NEUTRE : ni clé
+ * d'objet, ni adresse interne — il peut finir dans un journal ou une
+ * métadonnée de rendu.
+ */
+export class LectureRefusee extends Error {
+  constructor() {
+    super('média refusé (hors du compte)');
+    this.name = 'LectureRefusee';
+  }
+}
+
+export type CibleLecture =
+  | { genre: 'stockage'; bucket: string; cle: string }
+  | { genre: 'externe' }
+  | { genre: 'refus' };
+
+/**
+ * Que désigne cette URL, pour une lecture serveur AU NOM de `userId` ? Pure.
+ *
+ *   - `stockage` : un objet de NOTRE stockage (chemin relatif du relais, ou
+ *     URL absolue sur une origine configurée), recevable par le relais public
+ *     ET appartenant à ce compte (`cibleLisibleParCompte`) ;
+ *   - `externe`  : un média hors de notre stockage — il sera copié par le
+ *     fetch sûr (`localiserMedia`), jamais lu en direct ;
+ *   - `refus`    : tout le reste (objet d'un autre compte, namespace privé,
+ *     traversée, chemin du relais malformé, schéma non http(s)).
+ *
+ * Une URL de notre origine qui porte le chemin du relais avec une chaîne de
+ * requête ou un fragment est jugée SANS eux : `?x` ne doit pas suffire à la
+ * faire passer pour « externe » et contourner le contrôle de propriété.
+ */
+export function classerUrlLecture(
+  url: unknown,
+  userId: unknown,
+  origines: readonly string[] = originesStockageConfigurees(),
+): CibleLecture {
+  if (typeof url !== 'string' || url.length === 0 || url !== url.trim()) return { genre: 'refus' };
+  let candidat: string;
+  if (url.startsWith('/')) {
+    if (url.startsWith('//')) return { genre: 'refus' };
+    candidat = url;
+  } else {
+    if (!/^https?:\/\//i.test(url)) return { genre: 'refus' };
+    let u: URL;
+    try { u = new URL(url); } catch { return { genre: 'refus' }; }
+    const admises = origines.map((o) => { try { return new URL(o).origin; } catch { return null; } });
+    const relais = url.includes(PREFIXE_RELAIS_PUBLIC) || u.pathname.startsWith(PREFIXE_RELAIS_PUBLIC);
+    if (!admises.includes(u.origin) || !relais) {
+      // ⚠️ LE CHEMIN FAIT FOI, PAS L'HÔTE. Un chemin d'objet de stockage
+      // atteint par un hôte non configuré (staging, alias, IP, `http`, point
+      // final, port) ou sous une forme `sign`/`authenticated` désigne quand
+      // même NOTRE stockage : il passe la propriété comme les autres. Jugé
+      // « externe », il était copié depuis le relais public — sans session,
+      // sans propriétaire — puis déposé dans les copies PARTAGÉES.
+      const parChemin = cibleStockageParChemin(url);
+      if (parChemin === 'refus') return { genre: 'refus' };
+      if (parChemin) {
+        if (!cibleParCheminLisible(parChemin, userId)) return { genre: 'refus' };
+        return { genre: 'stockage', bucket: parChemin.bucket, cle: parChemin.cle };
+      }
+      // Hors stockage : la copie par le fetch sûr reste la seule lecture.
+      return { genre: 'externe' };
+    }
+    candidat = url;
+  }
+  const sansRequete = candidat.replace(/[?#].*$/s, '');
+  const cible = extraireCibleStockage(sansRequete, { origines });
+  if (!cible) return { genre: 'refus' };
+  if (!cibleLisibleParCompte(cible.bucket, cible.cle, userId)) return { genre: 'refus' };
+  return { genre: 'stockage', bucket: cible.bucket, cle: cible.cle };
+}
+
+/** Ce média peut-il être lu par le serveur au nom de ce compte ? Pure. */
+export function mediaLisiblePar(url: unknown, userId: unknown): boolean {
+  return classerUrlLecture(url, userId).genre !== 'refus';
+}
+
+/**
+ * URL que ffmpeg LIT, AU NOM de `userId` : signée INTERNE (MinIO en direct,
+ * réseau Docker) quand le fichier est dans notre stockage ET appartient à ce
+ * compte (`classerUrlLecture`).
  *
  * ⚠️ Test réel staging 30/09 16:00 : lu par son adresse PUBLIQUE, le rush
  * `lv_0` (4K, 234 Mo) traversait le proxy puis l'application, et l'analyse
  * dépassait son délai → plan bâti sur deux rushes de 8 s → 4 extraits, 5,8 s,
  * A → B → A → B. Même fichier lu en direct : ~0,6 s d'analyse.
+ *
+ * ⚠️ IDOR : la signature interne ignore le relais public et ses refus. La
+ * garde (relais + propriété) passe donc AVANT toute signature ; un refus
+ * rejette `LectureRefusee` — jamais de signature, jamais de repli.
  */
-export async function urlDeLecture(url: string): Promise<string> {
-  // ⚠️ SSRF / TOCTOU : ffmpeg (`-i http…`) et `parseMedia` suivent les
-  // redirections et refont leur DNS. Un média qui n'est PAS dans notre
-  // stockage (origines configurées) est d'abord copié par le fetch sûr
-  // (`medias-externes.ts`) ; ffmpeg ne lit jamais l'hôte d'un utilisateur.
-  // Rejette sur refus ou échec réseau — jamais de repli sur l'URL d'origine.
-  if (/^https?:\/\//i.test(url)) {
-    const { estNotreStockage, localiserMedia } = await import('@/lib/securite/medias-externes');
-    if (!estNotreStockage(url)) {
-      const genre = /\.(mp3|m4a|wav|ogg|aac|flac)(\?|#|$)/i.test(url) ? 'audio' : 'video';
-      url = await localiserMedia(url, { genre });
-    }
+export async function urlDeLecture(url: string, userId: string): Promise<string> {
+  const classe = classerUrlLecture(url, userId);
+  if (classe.genre === 'refus') throw new LectureRefusee();
+  let objet: { bucket: string; cle: string } | null;
+  if (classe.genre === 'externe') {
+    // ⚠️ SSRF / TOCTOU : ffmpeg (`-i http…`) et `parseMedia` suivent les
+    // redirections et refont leur DNS. Un média qui n'est PAS dans notre
+    // stockage est d'abord copié par le fetch sûr (`medias-externes.ts`) ;
+    // ffmpeg ne lit jamais l'hôte d'un utilisateur. Rejette sur refus ou
+    // échec réseau — jamais de repli sur l'URL d'origine.
+    const { localiserMedia } = await import('@/lib/securite/medias-externes');
+    const genre = /\.(mp3|m4a|wav|ogg|aac|flac)(\?|#|$)/i.test(url) ? 'audio' : 'video';
+    url = await localiserMedia(url, { genre });
+    // URL fabriquée par NOTRE serveur : une copie partagée `externes/…`.
+    objet = objetDeUrlPublique(url);
+    if (objet && !(objet.bucket === BUCKET_COPIES_EXTERNES && cibleLisibleParCompte(objet.bucket, objet.cle, userId))) return url;
+  } else {
+    objet = { bucket: classe.bucket, cle: classe.cle };
   }
-  const objet = objetDeUrlPublique(url);
   if (!objet) return url;
   try {
     const { signeurInterne } = await import('@/lib/storage/minio-client');
@@ -152,15 +244,29 @@ export function analyseNeutre(url: string, duree: number): AnalyseRush {
   return { url, duree, echantillons };
 }
 
-/** Analyse un rush dont la durée est connue (sondée par l'appelant). */
-export async function analyserRushServeur(url: string, dureeSecondes: number | null): Promise<AnalyseRush | null> {
+/**
+ * Analyse un rush dont la durée est connue (sondée par l'appelant), lu AU NOM
+ * de `userId` : la garde de `urlDeLecture` (relais + propriété) passe avant
+ * toute lecture ; un refus rejette `LectureRefusee`.
+ */
+export async function analyserRushServeur(url: string, dureeSecondes: number | null, userId: string): Promise<AnalyseRush | null> {
+  if (!(typeof dureeSecondes === 'number' && dureeSecondes >= 1)) return null;
+  const source = await urlDeLecture(url, userId);
+  return mesurerSourceLue(url, source, dureeSecondes);
+}
+
+/**
+ * Les mesures, sur une source DÉJÀ résolue (`urlDeLecture`, ou un fichier
+ * local que le serveur a lui-même produit — tests). Jamais à appeler avec une
+ * adresse venue de l'utilisateur : c'est `analyserRushServeur` qui la juge.
+ */
+export async function mesurerSourceLue(url: string, source: string, dureeSecondes: number): Promise<AnalyseRush | null> {
   if (!(typeof dureeSecondes === 'number' && dureeSecondes >= 1)) return null;
   const duree = Math.min(dureeSecondes, DUREE_ANALYSEE_MAX);
   const pas = Math.max(0.5, duree / ECHANTILLONS_MAX);
   const os = await import('os');
   const path = await import('path');
   const fs = await import('fs/promises');
-  const source = await urlDeLecture(url);
   const base = path.join(os.tmpdir(), `studiio-analyse-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const audioTmp = `${base}.pcm`;
   const couleurTmp = `${base}.rgb`;
@@ -238,14 +344,18 @@ const CACHE_TTL_MS = 12 * 3600_000;
 const CACHE_MAX = 60;
 const cache = new Map<string, { at: number; analyse: Promise<AnalyseRush | null> }>();
 
-/** Analyse avec cache par rush (clé = URL, durée). Une erreur n'est pas mise en cache. */
-export function analyserRushServeurCache(url: string, dureeSecondes: number | null): Promise<AnalyseRush | null> {
-  const cle = `${url}@${dureeSecondes ?? ''}`;
+/**
+ * Analyse avec cache par rush (clé = compte, URL, durée). Une erreur n'est
+ * pas mise en cache. Le COMPTE est dans la clé : une analyse faite pour A ne
+ * sert jamais à B sans que la garde de `urlDeLecture` ait jugé B.
+ */
+export function analyserRushServeurCache(url: string, dureeSecondes: number | null, userId: string): Promise<AnalyseRush | null> {
+  const cle = `${userId}|${url}@${dureeSecondes ?? ''}`;
   const hit = cache.get(cle);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.analyse;
   // Média illisible ou REFUSÉ (`urlDeLecture` : SSRF) : pas d'analyse, jamais
   // une exception — le rush reste montable sans mesure.
-  const analyse = analyserRushServeur(url, dureeSecondes).catch(() => null).then((a) => { if (!a) cache.delete(cle); return a; });
+  const analyse = analyserRushServeur(url, dureeSecondes, userId).catch(() => null).then((a) => { if (!a) cache.delete(cle); return a; });
   cache.set(cle, { at: Date.now(), analyse });
   while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as string);
   return analyse;
@@ -256,11 +366,12 @@ const cacheMusique = new Map<string, { at: number; rythme: Promise<RythmeMusique
 const MUSIQUE_HZ = 11025;
 const MUSIQUE_MAX_S = 240;
 
-/** Rythme d'une musique (serveur, ffmpeg), avec cache. `null` si illisible. */
-export function analyserMusiqueServeur(url: string): Promise<RythmeMusique | null> {
-  const hit = cacheMusique.get(url);
+/** Rythme d'une musique (serveur, ffmpeg), avec cache par compte. `null` si illisible ou refusée. */
+export function analyserMusiqueServeur(url: string, userId: string): Promise<RythmeMusique | null> {
+  const cleCache = `${userId}|${url}`;
+  const hit = cacheMusique.get(cleCache);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.rythme;
-  const rythme = urlDeLecture(url).then((source) => executer([
+  const rythme = urlDeLecture(url, userId).then((source) => executer([
     '-hide_banner', '-loglevel', 'error', '-t', String(MUSIQUE_MAX_S), '-i', source,
     '-vn', '-ac', '1', '-ar', String(MUSIQUE_HZ), '-f', 'f32le', 'pipe:1',
   ])).then(({ stdout }) => {
@@ -268,10 +379,10 @@ export function analyserMusiqueServeur(url: string): Promise<RythmeMusique | nul
     return signal.length > MUSIQUE_HZ ? analyserRythme(signal, MUSIQUE_HZ) : null;
   }).catch((err) => {
     console.warn('[SmartMontage/serveur] rythme de la musique illisible :', err instanceof Error ? err.message : err);
-    cacheMusique.delete(url);
+    cacheMusique.delete(cleCache);
     return null;
   });
-  cacheMusique.set(url, { at: Date.now(), rythme });
+  cacheMusique.set(cleCache, { at: Date.now(), rythme });
   while (cacheMusique.size > 20) cacheMusique.delete(cacheMusique.keys().next().value as string);
   return rythme;
 }

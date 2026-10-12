@@ -174,6 +174,8 @@ export interface MesuresHybride { stillsMs: number; ffmpegMs: number; copieMs: n
 
 export async function rendreHybride(input: {
   jobId: string;
+  /** Compte au nom duquel les sources sont lues (garde de `urlDeLecture`). */
+  userId: string;
   design: CreerSimpleRenderInput;
   onProgress?: (p: { progress: number; stage: string }) => void;
 }): Promise<{ outputPath: string; durationFrames: number; mesures: MesuresHybride; textes: ElementLisibilite[] | null }> {
@@ -225,7 +227,7 @@ export async function rendreHybride(input: {
   const locales = new Map<string, string>();
   let k = 0;
   for (const u of Array.from(new Set([...plan.map((x) => x.url), ...(d.musicUrl ? [d.musicUrl] : []), ...voix.map((v) => v.source)]))) {
-    locales.set(u, await etape(`copie de la source ${k + 1}`, async () => copieLocale(await urlDeLecture(u), dossier, k)));
+    locales.set(u, await etape(`copie de la source ${k + 1}`, async () => copieLocale(await urlDeLecture(u, input.userId), dossier, k)));
     k += 1;
   }
   const local = (u: string) => locales.get(u) ?? u;

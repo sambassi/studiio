@@ -507,12 +507,12 @@ export function cleDansNamespaceLut(bucket: unknown, cle: unknown): boolean {
  * génériques (`purposeAcceptable`) : une source n'entre que par la route
  * d'enrôlement, qui construit sa clé.
  *
- * ⚠️ LA LECTURE PAR LE RELAIS PUBLIC N'EST PAS ENCORE FERMÉE. Aujourd'hui
- * `main` sert par ce relais à la fois `source_url` (l'aperçu de la photo sur
- * la page Avatar) et `video_url` (les vidéos générées). Refuser le segment ici
- * casserait les deux sans rien offrir à la place. La fermeture viendra avec la
- * route authentifiée de lecture de la source (AVATAR-2), et ne visera que la
- * source — une vidéo générée est un livrable, pas une donnée biométrique.
+ * LA LECTURE PAR LE RELAIS PUBLIC EST FERMÉE pour les objets PRIVÉS du
+ * dossier — source, vidéo de consentement, audio de « ma voix »
+ * (`cleSourceAvatarPrivee`, appliquée par `cibleRecevable`) ; la source ne
+ * sort plus que par `/api/avatar/source`, authentifiée. Les vidéos générées
+ * (`<userId>/avatar/<uuid>.mp4`) restent servies : une vidéo générée est un
+ * livrable, pas une donnée biométrique.
  */
 export const BUCKET_NAMESPACE_AVATAR = 'media';
 export const SEGMENT_NAMESPACE_AVATAR = 'avatar';
@@ -620,4 +620,184 @@ export function cibleRecevable(bucket: string, cle: string): boolean {
   // (`<userId>/avatar/<uuid>.mp4`) restent servies comme avant.
   if (cleSourceAvatarPrivee(bucket, cle)) return false;
   return true;
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * LECTURE PAR LE SERVEUR AU NOM D'UN COMPTE — LE RELAIS, PLUS LA PROPRIÉTÉ
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le serveur lit certains médias EN DIRECT dans MinIO (URL signée interne :
+ * analyse ffmpeg, proxy de rendu, copie du rendu hybride). Ces URL viennent
+ * de données écrites par l'utilisateur (`rush_urls`, musique, sources) : sans
+ * garde, A pouvait y poser l'adresse d'un objet PRIVÉ de B et le faire signer,
+ * lire et monter dans SON montage — le relais public, lui, l'aurait refusé.
+ *
+ * Deux conditions, dans cet ordre :
+ *   1. `cibleRecevable` — EXACTEMENT la politique du relais public (liste des
+ *      compartiments, chemin sain, namespaces privés : analyses, montages,
+ *      LUT, source / consentement / audio d'avatar). Ce qui n'est pas servi
+ *      publiquement n'est jamais lu au nom d'un compte non plus — pas même
+ *      par son propriétaire : ces objets ont leurs routes authentifiées.
+ *   2. la PROPRIÉTÉ, lue sur la clé (le préfixe EST la preuve, cf.
+ *      `cleDuCompteStrict`) :
+ *        - `<userId>/…`                       → ce compte seulement ;
+ *        - `audio-complet/<userId>/…`,
+ *          `stock-attributions/<userId>/…`    → propriétaire au 2e segment ;
+ *        - `media/externes/<fichier>` et
+ *          `media/externes/proxies/<fichier>` → copies PARTAGÉES de médias
+ *          publics (`medias-externes.ts`, clé = sha1 de l'URL d'origine) :
+ *          lisibles par tout compte, elles ne contiennent rien de privé ;
+ *        - tout le reste — y compris `converted/…` (préfixe commun, jamais
+ *          une preuve de propriété) — est refusé.
+ */
+export const BUCKET_COPIES_EXTERNES = 'media';
+
+/** Namespaces dont le PROPRIÉTAIRE est le 2e segment de la clé. */
+export const NAMESPACES_PROPRIETAIRE_SECOND = ['audio-complet', 'stock-attributions'] as const;
+
+const COPIE_EXTERNE = /^externes\/(?:proxies\/)?[^/]+$/;
+
+export function cibleLisibleParCompte(bucket: string, cle: string, userId: unknown): boolean {
+  if (typeof userId !== 'string' || userId.length === 0 || userId.includes('/')) return false;
+  if (!cibleRecevable(bucket, cle)) return false;
+  if (bucket === BUCKET_COPIES_EXTERNES && COPIE_EXTERNE.test(cle)) return true;
+  const segments = cle.split('/');
+  if ((NAMESPACES_PROPRIETAIRE_SECOND as readonly string[]).includes(segments[0])) {
+    return segments.length >= 3 && segments[1] === userId && segments[segments.length - 1].length > 0;
+  }
+  return cleDuCompteStrict(cle, userId) && segments.length >= 2 && segments[segments.length - 1].length > 0;
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * LE CHEMIN FAIT FOI, PAS L'HÔTE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Les gardes de propriété ne s'appliquaient qu'aux URL dont l'ORIGINE était
+ * exactement configurée. La même clé atteinte par un autre nom — hôte de
+ * staging, alias, IP de l'application, `http` au lieu de `https`, point
+ * final (`studiio.pro.`), port explicite — était jugée « externe », copiée
+ * par le fetch sûr DEPUIS NOTRE RELAIS PUBLIC (qui sert sans session), et
+ * déposée dans `media/externes/…`, lisible par tous : la propriété n'était
+ * jamais vérifiée.
+ *
+ * Règle : un chemin d'objet de stockage
+ * (`/storage/v1/object/(public|sign|authenticated|private)/<bucket>/<clé>`),
+ * QUEL QUE SOIT L'HÔTE, est un objet de NOTRE stockage et passe le contrôle
+ * de propriété. Aucun CDN tiers n'emploie ce chemin — sauf Supabase, dont
+ * l'instance historique est la nôtre.
+ *
+ *   - `null`    : aucune forme du chemin ne ressemble à un objet de stockage ;
+ *   - `'refus'` : il y ressemble sous une forme décodée, normalisée ou d'une
+ *                 autre casse, mais pas sous la forme canonique exacte
+ *                 (`%2F`, `%252F`, `\`, `//`, `/./`, `PUBLIC`…) — on ne
+ *                 devine pas ce qu'un intermédiaire en ferait ;
+ *   - la cible : compartiment et clé décodés UNE fois (ce que voit le relais),
+ *                plus la clé BRUTE — les gardes doivent passer sur les deux.
+ *
+ * Pure. La chaîne de requête et le fragment ne participent pas au chemin.
+ */
+export type AccesStockage = 'public' | 'sign' | 'authenticated' | 'private';
+export interface CibleParChemin extends CibleStockage { cleBrute: string; acces: AccesStockage }
+
+const CHEMIN_STOCKAGE_CANONIQUE = /^\/storage\/v1\/object\/(public|sign|authenticated|private)\/([^/]+)\/(.+)$/;
+
+/** Le chemin brut (avant `?`/`#`) d'une URL absolue ou relative, ou `null`. */
+function cheminBrutDe(valeur: string): string | null {
+  if (valeur.startsWith('/') && !valeur.startsWith('//')) return valeur.split(/[?#]/)[0];
+  const m = /^[a-z][a-z0-9+.-]*:[\\/]{2}[^/\\?#]*/i.exec(valeur);
+  if (!m) return null;
+  const reste = valeur.slice(m[0].length).split(/[?#]/)[0];
+  return reste.length ? reste : '/';
+}
+
+/** Le chemin désigne-t-il un objet de stockage, sous l'une de ses formes ? */
+function ressembleStockage(formes: string[]): boolean {
+  return formes.some((f) => /\/storage\/v1\/object(\/|$)/i.test(f.replace(/\\/g, '/').replace(/\/{2,}/g, '/')));
+}
+
+/**
+ * Décodage TOLÉRANT, pour RECONNAÎTRE seulement : chaque `%XX` valide est
+ * décodé, les séquences invalides restent telles quelles. `formesDecodees`
+ * s'arrête à la première séquence invalide — un `%ZZ` glissé ailleurs dans le
+ * chemin suffisait à masquer `%73torage/…`.
+ */
+function formesTolerantes(valeur: string): string[] {
+  const formes = [valeur];
+  let courante = valeur;
+  for (let i = 0; i < 4; i++) {
+    const suivante = courante.replace(/%([0-9a-f]{2})/gi, (_t, h: string) => String.fromCharCode(parseInt(h, 16)));
+    if (suivante === courante) break;
+    formes.push(suivante);
+    courante = suivante;
+  }
+  return formes;
+}
+
+/** Toutes les formes d'un chemin qu'on examine pour le reconnaître. */
+function formesDe(chemin: string): string[] {
+  return [...formesDecodees(chemin), ...formesTolerantes(chemin)];
+}
+
+/**
+ * Les deux analyseurs voient-ils le MÊME chemin ? Comparaison des formes
+ * décodées une fois : l'analyseur WHATWG échappe certains caractères (espace,
+ * guillemets, non-ASCII) sans changer ce qu'ils désignent, mais toute
+ * normalisation qui change la cible (`.`/`..`, `%2e`, antislash, tabulation
+ * retirée) change aussi la forme décodée.
+ */
+function memeChemin(brut: string, whatwg: string): boolean {
+  if (brut === whatwg) return true;
+  try { return decodeURIComponent(brut) === decodeURIComponent(whatwg); } catch { return false; }
+}
+
+export function cibleStockageParChemin(valeur: unknown): CibleParChemin | 'refus' | null {
+  if (typeof valeur !== 'string' || valeur.length === 0) return null;
+  const brut = cheminBrutDe(valeur.trim());
+  // Forme normalisée par l'analyseur WHATWG — celui de `new URL`, donc du
+  // fetch sûr et de tout client HTTP : c'est CE chemin qui part réellement
+  // sur le réseau et que le routeur Next.js associe au relais.
+  //
+  // ⚠️ ELLE EST CALCULÉE MÊME QUAND LA LECTURE BRUTE ÉCHOUE. WHATWG accepte
+  // des formes que `cheminBrutDe` ne découpe pas — `https:hote/…`,
+  // `https:/hote/…`, `ht<TAB>tps://…`, un caractère de contrôle en tête —
+  // et les envoie bel et bien au relais. Sans elle, ces URL étaient jugées
+  // « hors stockage » : ni propriété, ni refus, l'objet d'un autre compte
+  // était lu puis publié.
+  let normalise: string | null = null;
+  try {
+    normalise = new URL(valeur, 'http://studiio.invalid').pathname;
+  } catch { /* URL invalide : aucun client ne l'enverra telle quelle */ }
+  const formes = [...(brut !== null ? formesDe(brut) : []), ...(normalise !== null ? formesDe(normalise) : [])];
+  if (!ressembleStockage(formes)) return null;
+  // Ressemble à un objet de stockage : les deux lectures doivent désigner le
+  // même chemin, sous la forme canonique exacte, sinon on ne devine pas.
+  if (brut === null || normalise === null) return 'refus';
+  if (valeur !== valeur.trim()) return 'refus';
+  if (!memeChemin(brut, normalise)) return 'refus';
+  const m = CHEMIN_STOCKAGE_CANONIQUE.exec(brut);
+  if (!m) return 'refus';
+  const [, acces, bucketBrut, cleBrute] = m;
+  let bucket: string;
+  let cle: string;
+  try {
+    bucket = decodeURIComponent(bucketBrut);
+    cle = decodeURIComponent(cleBrute);
+  } catch {
+    return 'refus';
+  }
+  // Un nom de compartiment n'a rien à échapper.
+  if (bucket !== bucketBrut || bucket.length === 0) return 'refus';
+  if (cle.length === 0) return 'refus';
+  return { bucket, cle, cleBrute, acces: acces as AccesStockage };
+}
+
+/**
+ * Cette cible (par chemin) est-elle lisible par ce compte — sur la clé
+ * décodée ET sur la clé brute ? Pure.
+ */
+export function cibleParCheminLisible(cible: CibleParChemin, userId: unknown): boolean {
+  return cibleLisibleParCompte(cible.bucket, cible.cle, userId)
+    && cibleLisibleParCompte(cible.bucket, cible.cleBrute, userId);
 }

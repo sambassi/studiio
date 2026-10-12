@@ -23,6 +23,8 @@
  *   d'URL : le compte peut être enregistré sans attendre le webhook.
  */
 
+import { lireMediaPublication } from '@/lib/social/media-publication';
+
 const BASE = 'https://zernio.com/api/v1';
 
 /** Délai maximal d'un appel — un agrégateur lent ne doit pas geler un cycle. */
@@ -246,22 +248,28 @@ export async function getAccountHealth(accountId: string): Promise<ZernioAccount
  *
  * L'URL présignée vaut une heure, le fichier temporaire sept jours : on
  * téléverse donc AU MOMENT de publier, jamais à l'avance.
+ *
+ * ⚠️ LE MÉDIA EST LU PAR LE FETCH SÛR, ET AVANT TOUT APPEL ZERNIO.
+ * `fichierUrl` vient d'un post écrit par le navigateur : un `fetch()` nu
+ * lisait n'importe quelle adresse interne et en publiait les octets.
+ * `lireMediaPublication` refuse les adresses privées (DNS épinglé,
+ * redirections revalidées) et lève `ErreurMediaPublication` — message fixe,
+ * sans URL — avant tout appel à Zernio ; une cible refusée ne reçoit aucune
+ * requête.
  */
 export async function uploadMedia(
   fichierUrl: string,
   filename: string,
-  contentType = 'video/mp4',
+  contentType: string,
+  userId: string,
 ): Promise<string> {
+  // Au nom du PUBLIEUR : un objet de notre stockage doit lui appartenir.
+  const { octets } = await lireMediaPublication(fichierUrl, { userId });
+
   const presign = await appel<{ uploadUrl: string; publicUrl: string }>('/media/presign', {
     method: 'POST',
     body: { filename, contentType },
   });
-
-  const source = await fetch(fichierUrl, { cache: 'no-store' });
-  if (!source.ok) {
-    throw new ZernioError(`Média introuvable (${source.status}) : ${fichierUrl}`, 422);
-  }
-  const octets = await source.arrayBuffer();
 
   // ⚠️ PAS D'EN-TETE `Authorization` ICI. L'URL présignée porte déjà son
   // autorisation ; y ajouter la nôtre fait échouer la signature du stockage.

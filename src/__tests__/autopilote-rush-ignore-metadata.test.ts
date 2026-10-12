@@ -62,7 +62,7 @@ import { produireUnMontage } from '@/lib/autopilot/produire';
 
 const T0 = Date.parse('2026-08-05T09:00:00.000Z');
 /** Une URL PUBLIQUE, telle que la banque en garde — jamais signée ni expirable. */
-const RUSH_PUBLIC = 'https://projet.supabase.co/storage/v1/object/public/media/u/rush.mp4';
+const RUSH_PUBLIC = 'https://projet.supabase.co/storage/v1/object/public/media/u1/rush.mp4';
 
 const cfg = (p: Partial<AutopilotConfig> = {}): AutopilotConfig => ({
   ...DEFAULT_CONFIG, enabled: true, platforms: ['instagram'],

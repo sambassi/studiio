@@ -68,13 +68,13 @@ import { produireUnMontage } from '@/lib/autopilot/produire';
 import { etatSourcesVisuelles, sourcesEffectives as sourcesEcran, validerEtapeRushes } from '@/lib/autopilot/medias-prevus';
 import { aUneSourceVisuelle, etatSourcesServeur } from '@/lib/autopilot/sources';
 
-const ORIGINE = 'https://studiio.pro/storage/v1/object/public/media/u';
+const ORIGINE = 'https://studiio.pro/storage/v1/object/public/media/u1';
 const A = `${ORIGINE}/a.mp4`;
 const B = `${ORIGINE}/b.mp4`;
 const IMPORTE = (id: string) => `${ORIGINE}/library/stock-pexels-video-${id}.mp4`;
 const U1 = 'https://images.unsplash.com/photo-U1?ixid=x';
 const PH1 = 'https://images.pexels.com/PH1/full.jpg';
-const AV = 'https://studiio.pro/storage/v1/object/public/videos/u/avatar/gen-1.mp4';
+const AV = 'https://studiio.pro/storage/v1/object/public/videos/u1/avatar/gen-1.mp4';
 
 const retenu = (url: string, type: 'video' | 'photo', provider: 'pexels' | 'unsplash', id: string): MediaStockRetenu => ({
   url, type, provider, providerAssetId: id, auteur: `Auteur ${id}`, sourceUrl: `https://www.${provider}.com/x/${id}/`,

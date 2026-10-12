@@ -1105,12 +1105,21 @@ describe('NON-RÉGRESSION — les producteurs de cette URL, et ce qui les casser
    *
    * Ce test fixe le fait ; il ne dit pas comment le résoudre.
    */
+  // Les deux routes partagent désormais UNE implémentation
+  // (`lib/social/url-publication.ts`, garde de propriété avant signature).
+  it.each([
+    'src/lib/social/url-publication.ts',
+  ])('%s livre ce chemin tel quel aux plateformes', (fichier) => {
+    const code = sansCommentaires(source(fichier));
+    // Toujours livrée telle quelle — APRÈS la garde de propriété du publieur.
+    expect(code).toContain("if (cible.acces === 'public') return absolue;");
+  });
+
   it.each([
     'src/app/api/social/publish/route.ts',
     'src/app/api/cron/publish/route.ts',
-  ])('%s livre ce chemin tel quel aux plateformes', (fichier) => {
-    const code = sansCommentaires(source(fichier));
-    expect(code).toContain("if (url.includes('/storage/v1/object/public/')) return url;");
+  ])('%s passe par l implémentation partagée', (fichier) => {
+    expect(sansCommentaires(source(fichier))).toContain("from '@/lib/social/url-publication'");
   });
 
   /**
