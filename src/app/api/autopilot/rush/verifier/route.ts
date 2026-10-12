@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { rushEncorePresent } from '@/lib/autopilot/poster';
+import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
+import { etatAccesRush, type EtatRush } from '@/lib/autopilot/validite-rush';
 
 /**
  * Hygiène de la banque de rushes — `POST /api/autopilot/rush/verifier`.
@@ -23,10 +25,18 @@ import { rushEncorePresent } from '@/lib/autopilot/poster';
  * banque. Le cron, lui, retire un rush mort qu'il rencontre en produisant —
  * ce sont deux chemins distincts, et aucun n'efface silencieusement.
  *
- * ⚠️ MÊME SÉMANTIQUE QUE LE CRON. `rushEncorePresent` ne répond « non » que
- * sur un 404/410 ; un 500, un délai, une coupure laissent le rush « présent »
- * (le doute lui profite). L'écran ne marque donc jamais un rush valide comme
- * expiré à cause d'un hoquet du stockage.
+ * ⚠️ MÊME VÉRITÉ QUE LE MONTAGE (`validite-rush.ts`, `etatAccesRush`). Par URL :
+ *   - `resultats[url]` (booléen, contrat d'avant) : `true` = utilisable ;
+ *   - `etats[url]` : `utilisable` | `introuvable` (404/410) | `expire`
+ *     (400/401/403 : signature expirée, refus du stockage) | `refuse`.
+ * Un 500, un délai, une coupure laissent le rush « utilisable » (le doute lui
+ * profite) : l'écran ne marque jamais un rush valide comme expiré à cause
+ * d'un hoquet du stockage.
+ *
+ * ⚠️ GARDE DE PROPRIÉTÉ (#546) AVANT TOUT HEAD. Un rush de la banque qui
+ * désigne l'objet d'un autre compte (ou un namespace privé) est `refuse` sans
+ * être contacté — ni sondé, ni lu, ni signé. Il n'est pas « réparable » :
+ * l'écran ne propose pas de le réimporter et ne le retire pas en lot.
  */
 
 export const dynamic = 'force-dynamic';
@@ -64,11 +74,16 @@ export async function POST(req: NextRequest) {
   const aVerifier = demandees.filter((u) => banque.has(u));
 
   // Les HEAD en parallèle : chacun est borné par le délai de `rushEncorePresent`.
+  // Refus de propriété : `refuse`, sans aucun appel réseau.
   const paires = await Promise.all(
-    aVerifier.map(async (url) => [url, await rushEncorePresent(url)] as const),
+    aVerifier.map(async (url) => [url, mediaLisiblePar(url, userId) ? await etatAccesRush(url, rushEncorePresent) : 'refuse'] as const),
   );
   const resultats: Record<string, boolean> = {};
-  for (const [url, accessible] of paires) resultats[url] = accessible;
+  const etats: Record<string, EtatRush> = {};
+  for (const [url, etat] of paires) {
+    resultats[url] = etat === 'utilisable';
+    etats[url] = etat;
+  }
 
-  return NextResponse.json({ success: true, resultats, refusees });
+  return NextResponse.json({ success: true, resultats, etats, refusees });
 }

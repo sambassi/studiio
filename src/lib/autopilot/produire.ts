@@ -10,6 +10,7 @@ import { urlRenduPourRush } from '@/lib/render/proxy-rendu';
 import {
   pickPosterUrl, pickCustomPoster, probeRushSeconds, rushEncorePresent,
 } from '@/lib/autopilot/poster';
+import { etatAccesRush, type EtatRush } from '@/lib/autopilot/validite-rush';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
 import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
@@ -372,17 +373,52 @@ export async function produireUnMontage(input: {
     // personnels ACTIFS (sinon le suivant de la banque, ou aucun).
     : sourcesCfg.explicite ? rushDuCreneau(post.rushUrl, banqueRushs, rang) : post.rushUrl;
   let rushMort: string | null = null;
-  if (rushUrl && !lisible(rushUrl)) {
-    // Remplacé par un rush LISIBLE de la banque (même rotation que la clé
-    // `sources`), sinon aucun : le montage continue avec les rushes du compte.
-    console.warn(`${journal} ${userId} — rush refusé (hors du compte), ignoré`);
-    rushUrl = rushDuCreneau(null, banqueRushs, rang);
-  }
-  if (rushUrl && !(await rushEncorePresent(rushUrl))) {
-    console.warn(`${journal} ${userId} — rush introuvable, ignoré : ${rushUrl}`);
-    rushMort = rushUrl;
-    input.onRushMort?.(rushUrl);
-    rushUrl = null;
+  // ── UNE SEULE VÉRITÉ (`validite-rush.ts`) : SOURCE = média LISIBLE ──────
+  // Chaque rush candidat reçoit UN état, sondé une fois par montage :
+  //   - `refuse`      : garde de propriété (#546) ou refus SSRF — jamais
+  //                     sondé (propriété), jamais lu, jamais signé, jamais
+  //                     écrit, jamais retiré de la banque ;
+  //   - `introuvable` : 404/410 — rush du créneau signalé MORT (`onRushMort`),
+  //                     le cron le retire de la banque, comme avant ;
+  //   - `expire`      : 400/401/403 — signature expirée, stockage qui refuse :
+  //                     lâché pour ce montage, JAMAIS retiré automatiquement ;
+  //   - `utilisable`  : lisible, ou doute réseau (le doute profite au rush).
+  // Seuls les `utilisable` entrent dans le plan et partent au rendu.
+  const etatsRush = new Map<string, EtatRush>();
+  const etatDe = async (u: string): Promise<EtatRush> => {
+    const connu = etatsRush.get(u);
+    if (connu) return connu;
+    const etat: EtatRush = lisible(u) ? await etatAccesRush(u, rushEncorePresent) : 'refuse';
+    etatsRush.set(u, etat);
+    return etat;
+  };
+  /** Le rush du créneau a été lâché (introuvable ou expiré) : écrit dans les métadonnées. */
+  let rushCreneauIndisponible = false;
+  if (rushUrl) {
+    const etat = await etatDe(rushUrl);
+    if (etat !== 'utilisable') {
+      if (etat === 'refuse') {
+        // Aucune adresse au journal : elle peut être celle d'un autre compte.
+        console.warn(`${journal} ${userId} — rush refusé (hors du compte), ignoré`);
+      } else if (etat === 'introuvable') {
+        console.warn(`${journal} ${userId} — rush introuvable, ignoré : ${rushUrl}`);
+        rushMort = rushUrl;
+        input.onRushMort?.(rushUrl);
+        rushCreneauIndisponible = true;
+      } else {
+        console.warn(`${journal} ${userId} — rush inaccessible (expiré ou refusé par le stockage), ignoré`);
+        rushCreneauIndisponible = true;
+      }
+      // REPLI sur le rush UTILISABLE suivant de la banque (même rotation que
+      // les compagnons) : un rush A mort ne fait plus perdre un rush B valide.
+      // Aucun : le montage continue avec les autres sources (stock, avatar)
+      // ou en titre/cartes/CTA — jamais un plan vide envoyé au rendu.
+      const perdu = rushUrl;
+      rushUrl = null;
+      for (const u of rushsCompagnons(banqueRushs, perdu, rang, banqueRushs.length)) {
+        if ((await etatDe(u)) === 'utilisable') { rushUrl = u; break; }
+      }
+    }
   }
   const postUtilise = rushUrl === post.rushUrl ? post : { ...post, rushUrl };
 
@@ -422,9 +458,12 @@ export async function produireUnMontage(input: {
   let listeRushs: string[] = rushUrl ? [rushUrl] : [];
   if (rushUrl && (!jumeauActif || multiSources)) {
     const t0 = Date.now();
-    const autres = rushsCompagnons(banqueRushs, rushUrl, rang, RUSHS_MONTAGE_MAX - 1);
-    const presents = await Promise.all(autres.map((u) => rushEncorePresent(u)));
-    const liste = [rushUrl, ...autres.filter((_, i) => presents[i])];
+    // Les rushes déjà reconnus inutilisables (repli ci-dessus) ne prennent
+    // pas la place d'un compagnon valide.
+    const candidats = banqueRushs.filter((u) => { const e = etatsRush.get(u); return e === undefined || e === 'utilisable'; });
+    const autres = rushsCompagnons(candidats, rushUrl, rang, RUSHS_MONTAGE_MAX - 1);
+    const etatsAutres = await Promise.all(autres.map((u) => etatDe(u)));
+    const liste = [rushUrl, ...autres.filter((_, i) => etatsAutres[i] === 'utilisable')];
     listeRushs = liste;
     if (liste.length > 1) {
       const secondes = await Promise.all(liste.map((u) => probeRushSeconds(u)));
@@ -885,7 +924,9 @@ export async function produireUnMontage(input: {
     // pour l'afficher. `rushMort` n'est posé QUE quand un rush existait et
     // s'est révélé absent (404/410) : la condition « il avait des rushes » est
     // donc déjà remplie.
-    ...(rushMort ? { rushIgnore: true, rushIgnoreMotif: 'rush expiré' } : null),
+    // Même règle pour un rush EXPIRÉ (signature, refus du stockage). Un rush
+    // REFUSÉ par la garde de sécurité n'est jamais écrit (ni drapeau, ni adresse).
+    ...(rushMort || rushCreneauIndisponible ? { rushIgnore: true, rushIgnoreMotif: 'rush expiré' } : null),
     // Smart montage : le plan relu par le Calendrier (régénération, Modifier),
     // et les rushes réellement montés.
     ...(planMontageRushs

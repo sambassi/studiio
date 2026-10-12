@@ -831,10 +831,16 @@ export function statusMessage(
   config: AutopilotConfig,
   now: number,
   formatDate: (d: Date) => string,
+  /**
+   * Rushes réellement UTILISABLES (`validite-rush.ts`) — l'écran les connaît
+   * après vérification. Absent : toute la banque, comme avant.
+   */
+  rushesUtilisables?: number,
 ): string {
   if (!config.enabled) return 'En pause. Rien n’est généré.';
+  const n = typeof rushesUtilisables === 'number' ? rushesUtilisables : config.rushUrls.length;
   // Avec la vidéo du jumeau, le moteur produit sans rush (`allowWithoutRush`).
-  if (!config.rushUrls.length && !config.jumeauAvatar) {
+  if (!n && !config.jumeauAvatar) {
     return 'Actif, mais aucun rush dans la banque — ajoutez-en pour lancer la production.';
   }
   const prochain = nextRunAt(config.cadence, config.lastRunAt, now);
@@ -845,7 +851,6 @@ export function statusMessage(
   const quand = isBeforeStartDate(config, now)
     ? `à partir du ${formatDate(new Date(`${config.startDate}T12:00:00Z`))}`
     : prochain.getTime() <= now ? 'au prochain passage' : formatDate(prochain);
-  const n = config.rushUrls.length;
   if (n === 0) return `Actif · prochaine génération ${quand} · avec votre avatar`;
   return `Actif · prochaine génération ${quand} · ${n} rush${n > 1 ? 'es' : ''} disponible${n > 1 ? 's' : ''}`;
 }
