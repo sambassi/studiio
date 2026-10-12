@@ -40,6 +40,7 @@ import { urlPubliqueAbsolue } from '@/lib/creer/posterUpload';
 import { dedupeParCleObjet } from '@/lib/storage/cle-objet-client';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
+import { signatureApercuAutopilote } from '@/lib/autopilot/contenu-manuel';
 import {
   sanitizeConfig, statusMessage, DEFAULT_CONFIG, MAX_PER_CYCLE, pickRush,
   CADENCES, CADENCE_LABELS,
@@ -1034,7 +1035,14 @@ export default function AutopilotPanel({
     setProduire({ etat: 'en-cours' });
     setError(null);
     try {
-      const res = await fetch('/api/autopilot/produire-maintenant', { method: 'POST' });
+      // L'empreinte de l'APERÇU affiché : le serveur produit exactement ce
+      // sujet et ce texte (ou refuse s'ils ne correspondent plus), au lieu
+      // d'un sujet tiré ailleurs — voir `choisirContenuManuel`.
+      const res = await fetch('/api/autopilot/produire-maintenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apercuSignature: signatureApercuAutopilote(config) }),
+      });
       const data = await res.json().catch(() => ({}));
       // 202 : le rendu est lancé en arrière-plan ; 409 « en-cours » : un
       // rendu tourne déjà — dans les deux cas on SUIT celui qui tourne.
@@ -1048,7 +1056,7 @@ export default function AutopilotPanel({
     } finally {
       produireEnVolRef.current = false;
     }
-  }, [appliquerResultat]);
+  }, [appliquerResultat, config]);
 
   /**
    * Le bloc « prochaines échéances » + « Produire un brouillon maintenant »,

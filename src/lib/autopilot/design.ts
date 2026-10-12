@@ -383,7 +383,10 @@ export function buildAutopilotMetadata(input: {
       gradientColor2: design.gradientEnd,
       ctaMainText: design.ctaText,
       // Relu par une régénération depuis le Calendrier (#503).
-      ...(design.ctaSubText ? { ctaSubText: design.ctaSubText } : null),
+      // Toujours écrit, VIDE compris : la vidéo (Remotion) n'affiche pas de
+      // petite ligne sans brief, et le Calendrier — aperçu comme
+      // « Régénérer » — doit le savoir au lieu d'y recopier le CTA principal.
+      ctaSubText: design.ctaSubText ?? '',
       siteText: { enabled: true, text: AUTOPILOT_WATERMARK },
       // ⚠️ CES CINQ CHAMPS SONT CE QU'UNE RÉGÉNÉRATION DOIT RETROUVER. Le
       // Calendrier reconstruit le design à partir d'ici ; sans eux, un

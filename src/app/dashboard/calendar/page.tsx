@@ -3942,8 +3942,10 @@ export default function CalendarPage() {
                           textTransform: 'uppercase',
                           textShadow: `0 0 20px ${designCtaColor}60`,
                         }}>{designCtaMainText || brd?.ctaSubText || branding.ctaSubText || 'AFROBOOST'}</p>
-                        {/* Texte CTA secondaire (ex: CHAT POUR PLUS D'INFOS) */}
-                        <p style={{
+                        {/* Texte CTA secondaire (ex: CHAT POUR PLUS D'INFOS).
+                            ⚠️ `''` enregistré = pas de petite ligne, comme la vidéo :
+                            on ne la remplace plus par le CTA principal. */}
+                        {designCtaSubText !== '' && <p style={{
                           fontFamily: designFont,
                           color: designCtaSubColor,
                           fontSize: editorPxToDvh((isReelFormat ? 9 : 12) * designCtaTextScale),
@@ -3952,7 +3954,7 @@ export default function CalendarPage() {
                           fontWeight: ctaTypo.bold !== false ? 900 : 400,
                           fontStyle: ctaTypo.italic ? 'italic' : 'normal',
                           marginTop: editorPxToDvh(4),
-                        }}>{designCtaSubText || brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>
+                        }}>{designCtaSubText || brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>}
                       </div>
                       {/* CTA multiples (`cta-copies.ts`) : chaque copie a SA place, SA
                           largeur, SON texte et SON style. Absentes : rien de plus. */}

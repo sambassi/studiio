@@ -239,7 +239,10 @@ export function optionsRenduDepuisMetadata(
     cardsPosition: designMeta.positions?.cards || undefined,
     cardsSize: designMeta.sizes?.cards || undefined,
     ctaMainText: designMeta.ctaMainText || undefined,
-    ctaSubTextDesign: designMeta.ctaSubText || undefined,
+    // ⚠️ `''` EST UN CHOIX : « pas de petite ligne ». Le `||` d'avant le
+    // changeait en `undefined`, et le compositeur retombait sur le texte
+    // PRINCIPAL — « Régénérer » peignait le CTA deux fois.
+    ctaSubTextDesign: typeof designMeta.ctaSubText === 'string' ? designMeta.ctaSubText : undefined,
     titleTypography: designMeta.typography?.title || undefined,
     cardsTypography: designMeta.typography?.cards || designMeta.cardsTypography || undefined,
     extraTitle: designMeta.extraTitle || undefined,

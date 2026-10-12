@@ -1180,3 +1180,10 @@ attend son délai. | Toute lib serveur qui ouvre un WebSocket (`ws`) va dans
 chargeant le chunk RÉELLEMENT déployé, pas la lib depuis npm.
 
 [2026-09-29] | Test réel staging : un rush affiché et une musique choisie ont disparu du montage SANS message (séquence Vidéo à 0 s → rushUrls non écrit ; musique supprimée avec un post et relue en 404, ignorée par le compositeur). | Aucune donnée choisie par l'utilisateur ne doit être écartée en silence : bloquer l'envoi avec un message (avant tout débit) plutôt que dégrader le rendu ; supprimer un post n'emporte jamais la bibliothèque (musique, voix, rushes importés).
+
+## [2026-10-12] | Calendrier « NUTRITION / microbiote » ≠ projet de l'aperçu ; CTA aperçu ≠ CTA vidéo ; « échec avatar » générique | Un aperçu et un rendu doivent lire LE MÊME état, et un échec fournisseur doit être lu en base avant de coder
+- « Produire maintenant » (Autopilote) tirait son propre sujet (rotation 12 thèmes, graine à la minute) pendant que l'aperçu montrait le 1er thème avec une autre graine : deux projets différents sous un même bouton. Correctif : l'écran envoie l'empreinte de son aperçu, le serveur RECALCULE l'aperçu et produit exactement ce sujet/cette graine, sinon 409.
+- Le CTA du brief n'était appliqué qu'au rendu (`avecCtaDuBrief` après `setGenerated`) : la vidéo et le Calendrier divergeaient de l'écran. Une transformation appliquée seulement à l'export est une divergence garantie : elle va dans l'ÉTAT, que l'aperçu lit.
+- `x || undefined` sur un texte transforme `''` (choix « rien ») en absence → repli sur un autre champ. Pour un texte, tester `typeof x === 'string'`.
+- Avatar : 9 échecs consécutifs = `Insufficient credit. This operation requires 'api' credits.` (compte fournisseur vide), lisible en 1 GET `/api/admin/avatar-couts` (`provider_error`). Lire `provider_error` AVANT d'enquêter sur URLs/permissions.
+- `renderSignature` est le JSON complet des options (images `data:` comprises) : ne jamais l'écrire en metadata, seulement une empreinte courte.

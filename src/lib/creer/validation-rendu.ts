@@ -56,3 +56,32 @@ export function avecCtaDuBrief<T extends { cta: string; ctaSub: string }>(conten
   if (!contenu.cta.trim()) return { ...contenu, cta: action };
   return { ...contenu, ctaSub: action };
 }
+
+/**
+ * Le brief change PENDANT l'édition : le CTA de l'état (donc de l'aperçu) suit.
+ *
+ * ⚠️ C'EST L'ÉTAT QUI PORTE LE CTA DU BRIEF, PLUS LE RENDU. Avant, le brief
+ * n'était appliqué qu'au moment de composer : l'aperçu montrait le sous-texte
+ * généré (« LIEN EN BIO »), la vidéo et le Calendrier le texte du brief. Le
+ * CTA final doit être EXACTEMENT celui visible au clic sur Composer.
+ *
+ * La ligne qui portait l'ANCIEN texte du brief prend le nouveau (frappe après
+ * frappe) ; un brief vidé rend `repliSub` à la ligne d'action. Une saisie
+ * manuelle différente du brief n'est pas touchée tant que le brief ne change
+ * pas — elle est alors ce que l'aperçu ET la vidéo montrent.
+ */
+export function suivreCtaDuBrief<T extends { cta: string; ctaSub: string }>(
+  contenu: T,
+  ancien: string | null | undefined,
+  nouveau: string | null | undefined,
+  repliSub = '',
+): T {
+  const avant = (ancien ?? '').trim();
+  const apres = (nouveau ?? '').trim();
+  if (avant === apres) return contenu;
+  const memes = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  let suivant = contenu;
+  if (avant && memes(contenu.ctaSub, avant)) suivant = { ...contenu, ctaSub: apres || repliSub };
+  else if (avant && memes(contenu.cta, avant) && apres) suivant = { ...contenu, cta: apres };
+  return avecCtaDuBrief(suivant, { cta: apres });
+}

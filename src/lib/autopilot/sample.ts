@@ -2,6 +2,8 @@ import { generateSmartContent } from '@/lib/smart-content';
 import { THEMES } from '@/lib/themes';
 import { posterQuery } from '@/lib/autopilot/poster-requete';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
+import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
+import { sanitizeBrief } from '@/lib/creer/brief';
 
 /**
  * L'ÉCHANTILLON montré dans l'aperçu de l'Autopilote.
@@ -52,6 +54,12 @@ export function sampleSeed(topic: string): number {
 export interface AutopilotSample {
   /** Sujet retenu — celui affiché sous l'aperçu. */
   topic: string;
+  /**
+   * Graine du contenu montré. « Produire maintenant » la renvoie avec le
+   * sujet : le brouillon produit est alors EXACTEMENT l'aperçu (même texte,
+   * même variante), au lieu d'un sujet tiré ailleurs par le serveur.
+   */
+  seed: number;
   title: string;
   subtitle: string;
   cards: Array<{ icon: string; title: string; description: string; value: string }>;
@@ -70,11 +78,16 @@ export interface AutopilotSample {
  * écrit ici aurait montré une mise en page que l'Autopilote ne produit pas —
  * et l'écart ne se serait vu qu'en comparant une vraie vidéo à l'aperçu.
  */
-export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'>): AutopilotSample {
+export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'> & { brief?: unknown }): AutopilotSample {
   const topic = sampleTopic(config.topics);
-  const contenu = generateSmartContent(topic, sampleSeed(topic));
+  const seed = sampleSeed(topic);
+  const contenu = generateSmartContent(topic, seed);
+  // Le CTA du BRIEF, par la MÊME règle que le moteur (`buildAutopilotDesign`) :
+  // sans elle, la vidéo portait une ligne d'action que l'aperçu ne montrait pas.
+  const cta = avecCtaDuBrief({ cta: contenu.tagLine ?? '', ctaSub: '' }, sanitizeBrief(config.brief));
   return {
     topic,
+    seed,
     // Le moteur met le titre en capitales (`post.title.toUpperCase()`) et
     // `SequenceTitle` le fait de toute façon : on montre ce qui sera rendu.
     title: topic.toUpperCase(),
@@ -83,8 +96,8 @@ export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'>): A
       icon: c.icon, title: c.title, description: c.description, value: c.value,
     })),
     // `tagLine` EST le CTA du moteur — voir `buildAutopilotDesign`.
-    cta: contenu.tagLine,
-    ctaSub: '',
+    cta: cta.cta,
+    ctaSub: cta.ctaSub,
     posterQuery: posterQuery(topic),
   };
 }

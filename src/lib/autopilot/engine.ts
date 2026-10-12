@@ -112,6 +112,12 @@ export function preparePosts(input: {
   topic: string | string[];
   count: number;
   now: number;
+  /**
+   * Graine imposée par montage — celle de l'APERÇU, quand l'utilisateur
+   * produit ce qu'il a sous les yeux (`Produire maintenant`). Absente : la
+   * graine du cycle (`contentSeed`), comme avant.
+   */
+  seeds?: number[];
 }): PreparedPost[] {
   const { config, count, now } = input;
   const sujets = Array.isArray(input.topic) ? input.topic : [input.topic];
@@ -128,7 +134,11 @@ export function preparePosts(input: {
     // Le sujet du rang, ou le dernier disponible : jamais `undefined`, qui
     // ferait générer un contenu vide.
     const topic = sujets[i % Math.max(1, sujets.length)] || sujets[0] || 'motivation';
-    const content = generateSmartContent(topic, contentSeed(now, i));
+    const imposee = input.seeds?.[i];
+    const content = generateSmartContent(
+      topic,
+      typeof imposee === 'number' && Number.isFinite(imposee) ? imposee : contentSeed(now, i),
+    );
     // `generateSmartContent` rend `subtitle`, `tagLine` et `cards` — pas de
     // titre : c'est le sujet lui-meme qui en tient lieu, comme dans le Mode
     // simple.

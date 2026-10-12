@@ -142,6 +142,7 @@ import { useOptionPreview } from '@/lib/hooks/useOptionPreview';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
+import { signatureContenu, empreinteCourte } from '@/lib/creer/signature-contenu';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
@@ -242,7 +243,7 @@ import { positionTexteEffective, titreSur916 } from '@/lib/creer/zones-sures-916
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, ArretPourAjouterDesRushs, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite, erreurQualite } from '@/lib/creer/quality-gate';
-import { bilanCartesSurimpression, erreurCartesSurimpression, avecCtaDuBrief } from '@/lib/creer/validation-rendu';
+import { bilanCartesSurimpression, erreurCartesSurimpression, avecCtaDuBrief, suivreCtaDuBrief } from '@/lib/creer/validation-rendu';
 import { dateRestauree, dateRequiseManquante, envoiPossible } from '@/lib/creer/envoi';
 import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
 import type { SurimpressionsComposer } from '@/lib/video-composer';
@@ -3142,9 +3143,12 @@ function AutopilotPreview({ config, accent, onPatch }: {
    * comparer deux couleurs si les mots changent entre les deux.
    */
   const topicsKey = config.topics.join('|');
+  // Le CTA du brief est appliqué à l'échantillon comme le moteur l'applique à
+  // la vidéo : l'aperçu montre la ligne d'action réellement rendue.
+  const briefCta = config.brief?.cta ?? '';
   const sample = useMemo(
-    () => buildAutopilotSample({ topics: topicsKey ? topicsKey.split('|') : [] }),
-    [topicsKey],
+    () => buildAutopilotSample({ topics: topicsKey ? topicsKey.split('|') : [], brief: { cta: briefCta } }),
+    [topicsKey, briefCta],
   );
 
   const generated: Generated = useMemo(() => ({
@@ -8157,20 +8161,34 @@ export default function AssistantWizard() {
         const seed = Math.floor(Math.random() * 100000) + tone.seedOffset;
         genSigRef.current = `${topicText}|${tone.id}`;
         const result = generateSmartContent(topicText, seed);
-        setGenerated({
+        // Le CTA du brief entre dans l'ÉTAT, donc dans l'aperçu : c'est ce
+        // texte-là qui sera composé, sans substitution tardive au rendu.
+        setGenerated(avecCtaDuBrief({
           title: result.tagLine,
           subtitle: result.subtitle,
           cards: result.cards.slice(0, 5).map((c) => ({ ...c, id: newCardId() })),
           cta: tone.cta,
           ctaSub: tone.ctaSub,
-        });
+        }, brief));
       } catch {
         setError("La génération du contenu a échoué. Réessayez.");
       } finally {
         setGenerating(false);
       }
     }, 30);
-  }, [topicText, tone]);
+  }, [topicText, tone, brief]);
+
+  /**
+   * Édition du brief : le CTA de l'état suit le champ « Appel à l'action »,
+   * pour que l'aperçu montre dès maintenant ce que la vidéo rendra.
+   */
+  const briefCtaActuel = brief.cta ?? '';
+  const changerBrief = useCallback((suivant: VideoBrief) => {
+    if (briefCtaActuel !== (suivant.cta ?? '')) {
+      setGenerated((g) => (g ? suivreCtaDuBrief(g, briefCtaActuel, suivant.cta, tone.ctaSub) : g));
+    }
+    setBrief(suivant);
+  }, [briefCtaActuel, tone]);
 
   /**
    * Sujet ou ton depuis la derniere generation. Sert a ne PAS regenerer un
@@ -8855,10 +8873,13 @@ export default function AssistantWizard() {
           }
           // L'apercu EST la source de la photo des cartes : il doit porter le
           // contenu de cette iteration avant qu'on le photographie.
+          // #500 : le CTA du brief est l'action finale réellement rendue. Le
+          // contenu COURANT le porte déjà (état = aperçu, `changerBrief`) : on
+          // ne le substitue plus ici, sinon la vidéo divergerait de l'écran.
+          // Seules les VARIATIONS du lot, neuves, le reçoivent — AVANT d'être
+          // posées dans l'aperçu, pour que leur photo et leur rendu concordent.
+          if (contenu !== contenuInitial) contenu = avecCtaDuBrief(contenu, brief);
           if (contenu !== generated) flushSync(() => setGenerated(contenu));
-          // #500 : le CTA du brief est l'action finale réellement rendue
-          // (headline générée gardée au-dessus) — vidéo, surimpression, metadata.
-          contenu = avecCtaDuBrief(contenu, brief);
           // Plus de `% length` : l'affiche vient de l'emplacement de CETTE
           // video. Hors lot, la photo unique fait office.
           const affiche = total > 1
@@ -9559,6 +9580,12 @@ export default function AssistantWizard() {
           // carre dans un conteneur 16:9 et en perdrait le haut et le bas,
           // CTA compris.
           videoSize: { w: size.w, h: size.h },
+          // Identité du PROJET rendu : `renderSignature` couvre toutes les
+          // options passées au compositeur, `contenuSignature` le seul texte
+          // (titre, sous-titre, cartes, CTA). Le Calendrier peut ainsi prouver
+          // qu'un post est bien le projet de l'aperçu, et non un autre.
+          renderSignature: empreinteCourte(signature),
+          contenuSignature: signatureContenu(contenu),
           // Meme source que les durees passees au compositeur : l'apercu, la
           // video et le Calendrier suivent donc strictement le meme ordre.
           // ⚠️ SURIMPRESSIONS : titre / cartes / CTA gardent les durées de
@@ -10647,7 +10674,7 @@ export default function AssistantWizard() {
                     message, public et CTA guident la generation du contenu
                     (variations du lot) et le pre-remplissage des narrations.
                     Persiste dans le brouillon ; rien n'est genere ici. */}
-                <BriefVideo brief={brief} onChange={setBrief} />
+                <BriefVideo brief={brief} onChange={changerBrief} />
 
                 {/* Le texte EXACT de la narration, par sequence — celui de
                     SequenceVoicesPanel, modifiable a l'etape Contenu. */}
