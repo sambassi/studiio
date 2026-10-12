@@ -36,6 +36,7 @@
  */
 
 import { rushSegmentsDepuisMetadata, rushsDepuisSegments, estPlanMontage, rushsDuPlan } from '@/lib/creer/multi-rush';
+import { lireCtaCopies } from '../cta-copies';
 import { listeDepuisSegments, rushsDeListe } from '@/lib/creer/medias-video';
 import { DRAFT_VERSION, type Draft } from '../draft';
 import { resoudreTextes } from '../textesCanoniques';
@@ -232,6 +233,12 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
     const elements = presence(positions, 'elements');
     if (Array.isArray(elements)) draft.elements = copier(elements) as Draft['elements'];
   }
+
+  // ── CTA multiples ───────────────────────────────────────────────────
+  // Relus tels qu'écrits par Créer (`design.ctaCopies`), validés par
+  // `lireCtaCopies`. Absents ou vides : aucun champ, le CTA unique d'avant.
+  const copiesCta = lireCtaCopies(presence(design, 'ctaCopies'));
+  if (copiesCta.length > 0) draft.ctaCopies = copiesCta;
 
   // ── Médias ──────────────────────────────────────────────────────────
   const poster = presence(meta, 'posterUrl');

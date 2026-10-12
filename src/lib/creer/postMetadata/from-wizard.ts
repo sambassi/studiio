@@ -186,6 +186,12 @@ export interface ValeursWizard {
   gradientOpacity?: number;
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
+  /**
+   * CTA multiples (`cta-copies.ts`), sous `design.ctaCopies`. `[]` = aucune
+   * copie : identique au chargement d'un post qui n'en avait pas, donc jamais
+   * envoyé ; retirer la dernière copie envoie `[]`.
+   */
+  ctaCopies?: unknown[];
   elements?: unknown[];
   sequences?: Record<string, unknown>;
   videoSize?: { w: number; h: number };
@@ -311,6 +317,9 @@ export function metadataPourEnregistrement(
   // Rangees par POSITION : realignees par l'appelant, posees seulement si elles
   // ont bouge. Le reste de `design` part de l'existant (`designBase`).
   designChange = poserSiChange(design, 'cardCustomIcons', valeurs.cardCustomIcons, ref.cardCustomIcons)
+    || designChange;
+  // `ref ?? []` : un post chargé SANS copie compare `[]` à `[]`.
+  designChange = poserSiChange(design, 'ctaCopies', valeurs.ctaCopies, ref.ctaCopies ?? [])
     || designChange;
 
   // `positions` est lui-meme imbrique : meme regle, un cran plus bas. Ecraser

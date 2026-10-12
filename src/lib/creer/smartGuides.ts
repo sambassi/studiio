@@ -47,7 +47,9 @@ export type ElementKey =
   // exemplaires du meme type se confondraient dans `collectGuideBoxes`.
   | `overlay:${number}`
   | `card:${number}`
-  | `element:${string}`;
+  | `element:${string}`
+  // Copies du CTA (`cta-copies.ts`), par identifiant.
+  | `cta:${string}`;
 
 export interface ElementPos {
   key: ElementKey;

@@ -29,6 +29,7 @@
  * quatre anciens blocs, recopiés, à cette fonction sur des posts anciens.
  */
 import { lireHabillageVideo } from '@/lib/creer/habillageVideo';
+import { lireCtaCopies } from '@/lib/creer/cta-copies';
 import {
   TRANSITION_KEYS,
   type ComposerOptions,
@@ -280,6 +281,11 @@ export function optionsRenduDepuisMetadata(
     design.cardsTextStyle = designMeta.cardsTextStyle;
   }
   if (prep.elements && prep.elements.length > 0) design.elements = prep.elements;
+  // CTA multiples : relus tels que Créer les a écrits (forme RENDUE, échelle
+  // ajustée et couleur de sous-texte résolue). Absents des anciens posts :
+  // aucune clé, rendu inchangé.
+  const copiesCta = lireCtaCopies(designMeta.ctaCopies);
+  if (copiesCta.length > 0) design.ctaCopies = copiesCta;
   // La photo n'est posée que si elle représente ENCORE les cartes du post
   // (empreinte) : après un « Modifier » des cartes, le compositeur les
   // redessine plutôt que de blitter l'ancien contenu.

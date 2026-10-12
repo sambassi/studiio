@@ -118,6 +118,8 @@ export interface CreerSimpleRenderInput {
   /** Largeurs des cadres titre / CTA (% de l'image) — surimpressions 16:9 / 1:1. */
   titleWidth?: number;
   ctaWidth?: number;
+  /** CTA multiples (`cta-copies.ts`) — copies peintes dans la séquence CTA. Absent : le CTA unique. */
+  ctaCopies?: import('@/lib/creer/cta-copies').CtaCopie[];
   watermark?: string;
   introDuration?: number;
   cardsDuration?: number;
