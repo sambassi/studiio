@@ -31,7 +31,7 @@ import {
   baseSequenceFrames,
   TRANSITION_STYLE_KEYS, DEFAULT_TRANSITION_STYLE,
 } from './transitions';
-import { TEXT_LAYOUT } from '../src/lib/creer/designSpec';
+import { positionTexteParDefaut } from '../src/lib/creer/zones-sures-916';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
 
@@ -165,7 +165,11 @@ export interface CreerSimpleMontageProps {
   cardStyle?: string;
   /** Typographie du texte des cartes. Absente = le rendu d'aujourd'hui. */
   cardsTypography?: CardsTypography;
-  /** Positions, en % du plateau — les memes qu'a l'ecran. */
+  /**
+   * Positions, en % du plateau — les memes qu'a l'ecran. Absentes : le
+   * placement par defaut du format (`positionTexteParDefaut` : zone sure des
+   * reseaux en 9:16, `TEXT_LAYOUT` d'avant en 16:9 / 1:1).
+   */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
   /**
@@ -555,7 +559,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         // Les trois blocs de texte, écrits UNE fois : plein écran (séquences
         // titre / cartes / CTA) ou en SURIMPRESSION sur le rush (V3).
         const blocTitre = (reveal: number) => (
-              <div style={titleFrameStyle(props.titlePos ?? TEXT_LAYOUT.titlePos, props.titleWidth)}>
+              <div style={titleFrameStyle(props.titlePos ?? positionTexteParDefaut('title', format), props.titleWidth)}>
                 <SequenceTitle
                   title={props.title}
                   subtitle={props.subtitle}
@@ -600,6 +604,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 cardBoxes={props.cardBoxes ?? null}
                 containerWidth={width}
                 landscape={!isReel}
+                // 9:16 en flux : cartes arrêtées au rail d'actions des réseaux.
+                zoneSure916={format === '9:16'}
                 valueColor={props.cardValueColor || props.gradientEnd || DEFAULT_COLORS.gradientEnd}
                 // Absent = le cadre, comme depuis toujours.
                 cardStyle={props.cardStyle}
@@ -608,7 +614,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
               />
         );
         const blocCta = (reveal: number) => (
-              <div style={ctaFrameStyle(props.ctaPos ?? TEXT_LAYOUT.ctaPos, props.ctaWidth)}>
+              <div style={ctaFrameStyle(props.ctaPos ?? positionTexteParDefaut('cta', format), props.ctaWidth)}>
                 <SequenceCta
                   text={props.ctaText ?? ''}
                   subText={props.ctaSubText}

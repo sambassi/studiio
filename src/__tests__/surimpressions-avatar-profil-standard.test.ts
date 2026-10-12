@@ -26,7 +26,8 @@ describe.each(['TUTORIAL_EDUCATION', 'STANDARD', 'LIFESTYLE_BRAND', null])('prof
   const d = appliquerMiseEnPageSurimpression({ ...design }, profil) as Record<string, any>;
 
   it('la mise en page est appliquée (positions, carte encadrée, panneau CTA)', () => {
-    expect(d.titlePos).toEqual({ x: 8, y: 7 });
+    // 9:16 : accroche sous les barres des réseaux (zone sûre, 7 % → 12 %).
+    expect(d.titlePos).toEqual({ x: 8, y: 12 });
     expect(d.cardBoxes?.c0).toBeDefined();
     expect(d.cardBackground).toMatch(/^rgba\(0,0,0,0\.\d+\)$/);
     expect(d.ctaBackground).toMatch(/^rgba\(0,0,0,0\.\d+\)$/);

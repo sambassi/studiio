@@ -55,7 +55,9 @@ describe('CARDIO_DANCE : mêmes fenêtres de textes des deux côtés', () => {
 describe('mise en page partagée', () => {
   const m = miseEnPageSurimpression('CARDIO_DANCE')!;
   it('accroche en HAUT, carte en BAS-GAUCHE, CTA plus central qu\'avant (92 % → 76 %)', () => {
-    expect(m.titlePos.y).toBeLessThanOrEqual(10);
+    // En haut, sous les barres des réseaux (zone sûre 9:16 : 12 %).
+    expect(m.titlePos.y).toBeLessThanOrEqual(14);
+    expect(m.titlePos.y).toBeGreaterThanOrEqual(12);
     expect(m.carte.x).toBe(0);
     // Cadre des cartes 30 %–78 % : la carte commence sous 60 % de l'image.
     expect(0.30 + (m.carte.y / 100) * 0.48).toBeGreaterThan(0.6);
@@ -134,7 +136,8 @@ describe('source unique, aucune règle recopiée', () => {
     const w = src('src/app/dashboard/creer/AssistantWizard.tsx');
     expect(w).toContain('overlaysCreer = planOverlays({');
     expect(w).toContain('profil: montageInfos.profil,');
-    expect(w).toContain('miseEnPageSurimpression(montageInfos.profil, { ctaBande: zoneCta?.bande })');
+    expect(w).toContain('miseEnPageSurimpression(montageInfos.profil, {');
+    expect(w).toContain('ctaBande: zoneCta?.bande,');
     expect(w).toContain('<PlateauSurimpression ref={plateauSurimpRef} {...plateauSurimp} />');
     expect(w).toContain('...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),');
     expect(w).not.toMatch(/carteFond\s*:|titleScale:\s*2\.2|ctaPos:\s*\{\s*x:\s*50,\s*y:\s*76/);

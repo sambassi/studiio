@@ -235,6 +235,7 @@ import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-re
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { positionTexteEffective } from '@/lib/creer/zones-sures-916';
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, ArretPourAjouterDesRushs, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite, erreurQualite } from '@/lib/creer/quality-gate';
@@ -1541,6 +1542,11 @@ function PlateContent({
   };
 }) {
   const vw = VIDEO_SIZE[format].w;
+  // 9:16 : l'ancre automatique (`DESIGN`) se lit comme le placement sur des
+  // reseaux (`zones-sures-916`) ; une position posee a la main est rendue
+  // telle quelle, et rien ne change en 16:9 / 1:1.
+  titlePos = positionTexteEffective('title', titlePos, format);
+  ctaPos = positionTexteEffective('cta', ctaPos, format);
   /**
    * Disposition des cartes en GRILLE plutot qu'en colonne.
    *
@@ -1794,6 +1800,7 @@ function PlateContent({
               cardBoxes={cardBoxes}
               containerWidth={vw}
               landscape={landscapeCards}
+              zoneSure916={format === '9:16'}
               valueColor={gradEnd}
               interaction={{
                 onCardDragStart,
@@ -3179,12 +3186,14 @@ function AutopilotPreview({ config, accent, onPatch }: {
   // INTERDIT (`creer-simple-move-title-cta`) : c'est ainsi que son apercu
   // bougeait pendant que son export restait fige. Ici la constante n'est
   // qu'un DEFAUT, repris en bloc quand le compte n'a rien pose.
-  const titlePos: Pos = style.title?.x !== undefined && style.title?.y !== undefined
+  // Le defaut se lit au format (zone sure des reseaux en 9:16), comme le rendu
+  // Remotion (`positionTexteParDefaut`) : la poignee part de ce qui est affiche.
+  const titlePos: Pos = positionTexteEffective('title', style.title?.x !== undefined && style.title?.y !== undefined
     ? { x: style.title.x, y: style.title.y }
-    : DESIGN.titlePos;
-  const ctaPos: Pos = style.cta?.x !== undefined && style.cta?.y !== undefined
+    : DESIGN.titlePos, format);
+  const ctaPos: Pos = positionTexteEffective('cta', style.cta?.x !== undefined && style.cta?.y !== undefined
     ? { x: style.cta.x, y: style.cta.y }
-    : DESIGN.ctaPos;
+    : DESIGN.ctaPos, format);
   const titlePosRef = useRef(titlePos);
   const ctaPosRef = useRef(ctaPos);
   useEffect(() => { titlePosRef.current = titlePos; }, [titlePos.x, titlePos.y]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4580,8 +4589,16 @@ export default function AssistantWizard() {
   // ── Deplacement du titre et du CTA ────────────────────────────────────
   // Defauts = les constantes `DESIGN` d'origine : tant que l'utilisateur ne
   // deplace rien, l'apercu ET l'export sont identiques a avant, au pixel.
-  const [titlePos, setTitlePos] = useState<Pos>(DESIGN.titlePos);
-  const [ctaPos, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
+  const [titlePosBrut, setTitlePos] = useState<Pos>(DESIGN.titlePos);
+  const [ctaPosBrut, setCtaPos] = useState<Pos>(DESIGN.ctaPos);
+  // ⚠️ L'ETAT GARDE L'ANCRE AUTOMATIQUE (`DESIGN`), CE QUI EST AFFICHE ET RENDU
+  // EST LA POSITION EFFECTIVE. En 9:16 cette ancre se lit comme le placement
+  // sur des reseaux (`zones-sures-916`) : apercu, glissement, compositeur et
+  // metadonnees lisent `titlePos` / `ctaPos` ci-dessous. Seuls le brouillon
+  // et « le placement a-t-il ete touche ? » lisent l'etat BRUT — un brouillon
+  // sans position suit donc le format, comme avant.
+  const titlePos = useMemo(() => positionTexteEffective('title', titlePosBrut, format), [titlePosBrut, format]);
+  const ctaPos = useMemo(() => positionTexteEffective('cta', ctaPosBrut, format), [ctaPosBrut, format]);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
     el: 'title' | 'cta' | 'card' | 'element' | 'element-resize' | 'poster-pan' | 'poster-zoom';
@@ -5980,8 +5997,8 @@ export default function AssistantWizard() {
   const layoutTouched =
     !!effectiveCardBoxes ||
     cardGroups.length > 0 ||
-    titlePos.x !== DESIGN.titlePos.x || titlePos.y !== DESIGN.titlePos.y ||
-    ctaPos.x !== DESIGN.ctaPos.x || ctaPos.y !== DESIGN.ctaPos.y;
+    titlePosBrut.x !== DESIGN.titlePos.x || titlePosBrut.y !== DESIGN.titlePos.y ||
+    ctaPosBrut.x !== DESIGN.ctaPos.x || ctaPosBrut.y !== DESIGN.ctaPos.y;
 
   /**
    * Duplique les cartes retenues.
@@ -6532,8 +6549,8 @@ export default function AssistantWizard() {
     scheduledDate,
     // Placement fait a la main. `undefined` quand rien n'a bouge : un
     // brouillon sans ces champs se relit exactement comme avant.
-    titlePos: samePos(titlePos, DESIGN.titlePos) ? undefined : titlePos,
-    ctaPos: samePos(ctaPos, DESIGN.ctaPos) ? undefined : ctaPos,
+    titlePos: samePos(titlePosBrut, DESIGN.titlePos) ? undefined : titlePosBrut,
+    ctaPos: samePos(ctaPosBrut, DESIGN.ctaPos) ? undefined : ctaPosBrut,
     // Largeurs réglées à la poignée ; `undefined` à la valeur par défaut.
     titleWidth: titleWidth === DESIGN.titleWidth ? undefined : titleWidth,
     ctaWidth: ctaWidth === DESIGN.ctaWidth ? undefined : ctaWidth,
@@ -6570,7 +6587,7 @@ export default function AssistantWizard() {
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, mediasVideo, lut, scheduledDate,
     titleWidth, ctaWidth,
-    titlePos, ctaPos, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransforms, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
+    titlePosBrut, ctaPosBrut, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransforms, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
   /** La derniere version connue, pour ecrire sans attendre un rendu. */
@@ -8621,7 +8638,13 @@ export default function AssistantWizard() {
         const zoneCta = overlaysCreer?.cta && planMontageRushs && montageInfos
           ? zoneCalmeSortie(planMontageRushs, montageInfos.analyses, overlaysCreer.cta[0]) : null;
         if (zoneCta) console.log('[Surimpressions] CTA_ZONE :', JSON.stringify(zoneCta));
-        const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil, { ctaBande: zoneCta?.bande }) : null;
+        // Format + texte du CTA : en 9:16 la bande haute s'aligne par son HAUT
+        // sur la zone sure des reseaux (memes valeurs que le plateau capture).
+        const miseEnPage = overlaysCreer && montageInfos ? miseEnPageSurimpression(montageInfos.profil, {
+          ctaBande: zoneCta?.bande,
+          format,
+          cta: { texte: contenu.cta || '', sousTexte: contenu.ctaSub || null, echelle: textStyles.cta.scale ?? 1 },
+        }) : null;
         if (overlaysCreer && miseEnPage) {
           // #500 : jamais de rendu qui part en silence avec des cartes
           // perdues — chaque carte complète (titre + valeur) a sa fenêtre.

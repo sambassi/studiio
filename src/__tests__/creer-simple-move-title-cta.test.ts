@@ -79,7 +79,7 @@ describe('Default-safe : rien ne bouge tant qu on ne bouge rien', () => {
     // constante au lieu de la consommer.
     const debut = wizard.indexOf('const layoutTouched =');
     expect(debut).toBeGreaterThan(0);
-    const fin = wizard.indexOf(';', wizard.indexOf('ctaPos.y !== DESIGN.ctaPos.y'));
+    const fin = wizard.indexOf(';', wizard.indexOf('ctaPosBrut.y !== DESIGN.ctaPos.y'));
     const sansComparaison = wizard.slice(0, debut) + wizard.slice(fin);
     for (const interdit of ['DESIGN.titlePos.x', 'DESIGN.titlePos.y', 'DESIGN.ctaPos.x', 'DESIGN.ctaPos.y']) {
       expect(sansComparaison, interdit).not.toContain(interdit);

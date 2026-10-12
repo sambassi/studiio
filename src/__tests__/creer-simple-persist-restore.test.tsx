@@ -135,14 +135,32 @@ describe('Ce qui a été relu arrive intact à l aperçu', () => {
 });
 
 describe('Default-safe : sans placement enregistré, rien ne change', () => {
-  it('le titre et le CTA sont à leur place d origine', async () => {
+  it('le titre et le CTA sont à leur place par défaut (9:16 : zone sûre des réseaux)', async () => {
     poser({});
     await monter();
-    // Les constantes `DESIGN` historiques.
+    // 9:16 : l'ancre automatique se lit comme le placement sûr
+    // (`zones-sures-916` : titre sous les barres du haut, CTA au-dessus des
+    // descriptions). Les bords gauche / centre ne bougent pas.
+    expect(titre()!.style.left).toBe('8%');
+    expect(titre()!.style.top).toBe('12%');
+    expect(cta()!.style.left).toBe('50%');
+    expect(cta()!.style.top).toBe('76%');
+  });
+
+  it('16:9 : le titre et le CTA restent aux constantes `DESIGN` historiques', async () => {
+    poser({ format: '16:9' });
+    await monter();
     expect(titre()!.style.left).toBe('8%');
     expect(titre()!.style.top).toBe('8%');
     expect(cta()!.style.left).toBe('50%');
     expect(cta()!.style.top).toBe('92%');
+  });
+
+  it('9:16 : une position enregistrée (glissée à la main) est rendue telle quelle', async () => {
+    poser({ titlePos: { x: 20, y: 5 }, ctaPos: { x: 40, y: 95 } });
+    await monter();
+    expect(titre()!.style.top).toBe('5%');
+    expect(cta()!.style.top).toBe('95%');
   });
 
   it('les cartes sont en flux, sans style de position', async () => {
