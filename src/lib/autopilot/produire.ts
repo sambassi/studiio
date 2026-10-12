@@ -14,7 +14,7 @@ import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voic
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
 import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, estUrlImage, type RushSegment } from '@/lib/creer/multi-rush';
-import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre } from '@/lib/creer/analyse-rush-serveur';
+import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre, mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
@@ -347,7 +347,14 @@ export async function produireUnMontage(input: {
     ? medias.rushesPersonnels.length + nbStock > 0
     : nbStock > 0 || (gabaritEnregistre && medias.rushesPersonnels.length > 0));
   // La banque de rushes PERSONNELS (actives respectés) ; sans clé : la banque entière.
-  const banqueRushs: string[] = sourcesCfg.explicite ? medias.rushesPersonnels : config.rushUrls;
+  //
+  // ⚠️ IDOR : `rush_urls` est écrit par l'utilisateur. Une adresse de NOTRE
+  // stockage qui n'appartient pas à ce compte (ou vise un namespace privé)
+  // est LÂCHÉE ici, avant toute sonde, analyse, signature ou rendu — rien de
+  // l'autre compte n'est lu. Lâchée, pas « morte » : on ne la retire pas de
+  // la banque et on ne l'écrit nulle part (ni l'adresse, ni la clé).
+  const lisible = (u: string) => mediaLisiblePar(u, userId);
+  const banqueRushs: string[] = (sourcesCfg.explicite ? medias.rushesPersonnels : config.rushUrls).filter(lisible);
 
   // ── Le rush existe-t-il encore ? ───────────────────────────────────────
   // Un rush supprimé — rétention du stockage, ménage de l'utilisateur —
@@ -365,6 +372,12 @@ export async function produireUnMontage(input: {
     // personnels ACTIFS (sinon le suivant de la banque, ou aucun).
     : sourcesCfg.explicite ? rushDuCreneau(post.rushUrl, banqueRushs, rang) : post.rushUrl;
   let rushMort: string | null = null;
+  if (rushUrl && !lisible(rushUrl)) {
+    // Remplacé par un rush LISIBLE de la banque (même rotation que la clé
+    // `sources`), sinon aucun : le montage continue avec les rushes du compte.
+    console.warn(`${journal} ${userId} — rush refusé (hors du compte), ignoré`);
+    rushUrl = rushDuCreneau(null, banqueRushs, rang);
+  }
   if (rushUrl && !(await rushEncorePresent(rushUrl))) {
     console.warn(`${journal} ${userId} — rush introuvable, ignoré : ${rushUrl}`);
     rushMort = rushUrl;
@@ -383,7 +396,12 @@ export async function produireUnMontage(input: {
   // Réseau muet ou 405 : la sonde répond « présent », comme pour le rush.
   let configUtilisee = config;
   let musiqueIntrouvable = false;
-  if (config.musicUrl && !(await rushEncorePresent(config.musicUrl))) {
+  if (config.musicUrl && !lisible(config.musicUrl)) {
+    // Même garde que les rushes : jamais sondée, jamais lue, jamais écrite.
+    console.warn(`${journal} ${userId} — musique refusée (hors du compte), montage sans musique`);
+    configUtilisee = { ...config, musicUrl: null };
+    musiqueIntrouvable = true;
+  } else if (config.musicUrl && !(await rushEncorePresent(config.musicUrl))) {
     console.warn(`${journal} ${userId} — musique introuvable, montage sans musique : ${config.musicUrl}`);
     configUtilisee = { ...config, musicUrl: null };
     musiqueIntrouvable = true;
@@ -420,7 +438,7 @@ export async function produireUnMontage(input: {
       // du 30/09 : RUSH_ANALYSIS_MS=120041, aucun plan). Un rush en échec
       // n'empêche pas le montage des autres.
       for (const [i, u] of liste.entries()) {
-        const r = await analyserRushServeurCache(u, secondes[i]);
+        const r = await analyserRushServeurCache(u, secondes[i], userId);
         if (r) analysesRushs.push(r);
         else {
           // Mesure impossible : le rush reste MONTABLE (mesures neutres) au
@@ -553,8 +571,10 @@ export async function produireUnMontage(input: {
     // LÂCHÉ — un média stock ne fait jamais échouer le montage.
     // Garde SSRF (défense en profondeur) : jamais de sonde ni de rendu d'une
     // URL hors de notre stockage / des CDN stock, même si la base en contient.
-    const videosStock = medias.videosStock.filter((u) => urlStockAutorisee(u, 'video') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
-    const photosStock = medias.photosStock.filter((u) => urlStockAutorisee(u, 'photo') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
+    // Un média de notre stockage qui n'est pas à ce compte est lâché SANS être
+    // écrit dans `stockIgnores` (son adresse est celle d'un autre compte).
+    const videosStock = medias.videosStock.filter(lisible).filter((u) => urlStockAutorisee(u, 'video') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
+    const photosStock = medias.photosStock.filter(lisible).filter((u) => urlStockAutorisee(u, 'photo') || (mediasIgnores.push(u), false)).slice(0, STOCK_MONTAGE_MAX);
     // Sonde SÛRE (`sonde-stock.ts`) : redirections jamais suivies en silence,
     // chaque saut recontrôlé ; un média qui mène hors liste est LÂCHÉ.
     const [sondesV, sondesP] = await Promise.all([
@@ -627,7 +647,7 @@ export async function produireUnMontage(input: {
       // que la matière (une durée illisible compte pour un plan de coupe).
       const dispo = [...rushes, ...stockVideos].reduce((t, x) => t + (x.secondes ?? BROLL_VIDEO_S), 0) + photosOk.length * BROLL_MAX_S;
       const cible = Math.min(dispo, Math.max(dureeCibleMontage(dispo), Math.ceil(voixAPorter)));
-      const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl) : null;
+      const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl, userId) : null;
       const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
       rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
       res = planMultiSources({
@@ -681,7 +701,7 @@ export async function produireUnMontage(input: {
     const cible = Math.min(disponible, Math.max(dureeCibleMontage(disponible), Math.ceil(voixAPorter)));
     // V3 : coupes calées sur le rythme de la musique, lue à partir du début
     // de la séquence « Vidéo » (0 en surimpression, après titre et cartes sinon).
-    const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl) : null;
+    const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl, userId) : null;
     const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
     rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
     planMontageRushs = planMontage(analysesRushs, cible, {
@@ -780,7 +800,7 @@ export async function produireUnMontage(input: {
   let proxysCrees = 0;
   let proxysReutilises = 0;
   for (const u of urlsRush) {
-    const p = await urlRenduPourRush(finale(u));
+    const p = await urlRenduPourRush(finale(u), userId);
     if (p.proxy) { proxys.set(u, p.url); if (p.cree) proxysCrees += 1; else proxysReutilises += 1; }
   }
   const versRendu = (u: string) => proxys.get(u) ?? finale(u);

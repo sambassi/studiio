@@ -242,9 +242,11 @@ describe('analyse serveur : couleur mesurée, mesures existantes inchangées', (
     const couleur = join(d, 'c.mp4'); const gris = join(d, 'g.mp4');
     execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=6', '-pix_fmt', 'yuv420p', '-g', '25', '-y', couleur]);
     execFileSync('ffmpeg', ['-v', 'error', '-i', couleur, '-vf', 'hue=s=0', '-pix_fmt', 'yuv420p', '-g', '25', '-y', gris]);
-    const { analyserRushServeur } = await import('@/lib/creer/analyse-rush-serveur');
-    const ac = await analyserRushServeur(couleur, 6);
-    const ag = await analyserRushServeur(gris, 6);
+    // Fichiers LOCAUX produits par le test : mesurés sans la garde de lecture
+    // (`analyserRushServeur` refuse tout ce qui n'est pas une URL de média).
+    const { mesurerSourceLue } = await import('@/lib/creer/analyse-rush-serveur');
+    const ac = await mesurerSourceLue(couleur, couleur, 6);
+    const ag = await mesurerSourceLue(gris, gris, 6);
     const moy = (a: typeof ac) => a!.echantillons.reduce((t, e) => t + (e.saturation ?? NaN), 0) / a!.echantillons.length;
     expect(moy(ac)).toBeGreaterThan(0.2);
     expect(moy(ag)).toBeLessThan(0.025);

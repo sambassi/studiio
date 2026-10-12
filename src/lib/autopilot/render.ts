@@ -157,7 +157,7 @@ export async function renderAndUpload(input: {
   if (hybrideRaison === null) {
     const t0 = Date.now();
     try {
-      const h = await rendreHybride({ jobId: input.jobId, design: input.design, onProgress });
+      const h = await rendreHybride({ jobId: input.jobId, userId: input.userId, design: input.design, onProgress });
       rendu = h;
       moteur = 'HYBRID';
       mesuresHybride = { ...h.mesures };

@@ -97,7 +97,7 @@ describe('rush dont la mesure échoue : il reste montable', () => {
   it('câblage : ffmpeg lit l URL interne ; la production garde le rush non mesuré', () => {
     const a = readFileSync(resolve(process.cwd(), 'src/lib/creer/analyse-rush-serveur.ts'), 'utf-8');
     expect(a).toContain("'-t', String(duree), '-i', source,");
-    expect(a).toContain('const source = await urlDeLecture(url);');
+    expect(a).toContain('const source = await urlDeLecture(url, userId);');
     const p = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/produire.ts'), 'utf-8');
     expect(p).toContain('if (s && s >= 1) analysesRushs.push(analyseNeutre(u, s));');
   });

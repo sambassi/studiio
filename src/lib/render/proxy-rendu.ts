@@ -14,7 +14,7 @@
  */
 import { createHash } from 'crypto';
 import { spawn } from 'child_process';
-import { objetDeUrlPublique, urlDeLecture } from '@/lib/creer/analyse-rush-serveur';
+import { classerUrlLecture, urlDeLecture } from '@/lib/creer/analyse-rush-serveur';
 import { estUrlImage } from '@/lib/creer/multi-rush';
 import { estNotreStockage } from '@/lib/securite/medias-externes';
 
@@ -90,7 +90,7 @@ export interface ResultatProxy { url: string; proxy: boolean; cree: boolean }
  * URL à donner au RENDU pour ce rush : son proxy (créé ou retrouvé), ou
  * l'URL d'origine s'il n'en a pas besoin — ou si quoi que ce soit échoue.
  */
-export async function urlRenduPourRush(url: string): Promise<ResultatProxy> {
+export async function urlRenduPourRush(url: string, userId: string): Promise<ResultatProxy> {
   // Une PHOTO (plan Ken Burns) n'a ni cadence ni proxy : jamais de `parseMedia`.
   if (estUrlImage(url)) return { url, proxy: false, cree: false };
   // NOTRE stockage seulement (origine configurée, pas n'importe quel hôte qui
@@ -98,8 +98,13 @@ export async function urlRenduPourRush(url: string): Promise<ResultatProxy> {
   // pas de proxy ici, il est copié par le fetch sûr avant le rendu
   // (`localiserEntreesRendu`, appelée par `renderAndUpload`).
   if (!estNotreStockage(url)) return { url, proxy: false, cree: false };
-  const objet = objetDeUrlPublique(url);
-  if (!objet) return { url, proxy: false, cree: false };
+  // ⚠️ IDOR : ni `statObject`, ni signature, ni proxy pour un objet que ce
+  // compte ne peut pas lire (autre compte, namespace privé) — AVANT tout
+  // accès au stockage. L'URL est rendue telle quelle : le rendu ne la lira
+  // que par le relais public, sous SA politique.
+  const classe = classerUrlLecture(url, userId);
+  if (classe.genre !== 'stockage') return { url, proxy: false, cree: false };
+  const objet = { bucket: classe.bucket, cle: classe.cle };
   try {
     const { clientMinio } = await import('@/lib/storage/minio-client');
     const client = clientMinio();
@@ -112,7 +117,7 @@ export async function urlRenduPourRush(url: string): Promise<ResultatProxy> {
     if (existe) return { url: urlProxy, proxy: true, cree: false };
 
     // Besoin réel ? (dimensions et cadence lues dans l'en-tête seulement)
-    const source = await urlDeLecture(url);
+    const source = await urlDeLecture(url, userId);
     const { parseMedia } = await import('@remotion/media-parser');
     const meta = await parseMedia({ src: source, fields: { dimensions: true, fps: true }, acknowledgeRemotionLicense: true });
     const dims = meta.dimensions;

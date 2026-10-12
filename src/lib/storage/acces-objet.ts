@@ -507,12 +507,12 @@ export function cleDansNamespaceLut(bucket: unknown, cle: unknown): boolean {
  * génériques (`purposeAcceptable`) : une source n'entre que par la route
  * d'enrôlement, qui construit sa clé.
  *
- * ⚠️ LA LECTURE PAR LE RELAIS PUBLIC N'EST PAS ENCORE FERMÉE. Aujourd'hui
- * `main` sert par ce relais à la fois `source_url` (l'aperçu de la photo sur
- * la page Avatar) et `video_url` (les vidéos générées). Refuser le segment ici
- * casserait les deux sans rien offrir à la place. La fermeture viendra avec la
- * route authentifiée de lecture de la source (AVATAR-2), et ne visera que la
- * source — une vidéo générée est un livrable, pas une donnée biométrique.
+ * LA LECTURE PAR LE RELAIS PUBLIC EST FERMÉE pour les objets PRIVÉS du
+ * dossier — source, vidéo de consentement, audio de « ma voix »
+ * (`cleSourceAvatarPrivee`, appliquée par `cibleRecevable`) ; la source ne
+ * sort plus que par `/api/avatar/source`, authentifiée. Les vidéos générées
+ * (`<userId>/avatar/<uuid>.mp4`) restent servies : une vidéo générée est un
+ * livrable, pas une donnée biométrique.
  */
 export const BUCKET_NAMESPACE_AVATAR = 'media';
 export const SEGMENT_NAMESPACE_AVATAR = 'avatar';
@@ -620,4 +620,51 @@ export function cibleRecevable(bucket: string, cle: string): boolean {
   // (`<userId>/avatar/<uuid>.mp4`) restent servies comme avant.
   if (cleSourceAvatarPrivee(bucket, cle)) return false;
   return true;
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * LECTURE PAR LE SERVEUR AU NOM D'UN COMPTE — LE RELAIS, PLUS LA PROPRIÉTÉ
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Le serveur lit certains médias EN DIRECT dans MinIO (URL signée interne :
+ * analyse ffmpeg, proxy de rendu, copie du rendu hybride). Ces URL viennent
+ * de données écrites par l'utilisateur (`rush_urls`, musique, sources) : sans
+ * garde, A pouvait y poser l'adresse d'un objet PRIVÉ de B et le faire signer,
+ * lire et monter dans SON montage — le relais public, lui, l'aurait refusé.
+ *
+ * Deux conditions, dans cet ordre :
+ *   1. `cibleRecevable` — EXACTEMENT la politique du relais public (liste des
+ *      compartiments, chemin sain, namespaces privés : analyses, montages,
+ *      LUT, source / consentement / audio d'avatar). Ce qui n'est pas servi
+ *      publiquement n'est jamais lu au nom d'un compte non plus — pas même
+ *      par son propriétaire : ces objets ont leurs routes authentifiées.
+ *   2. la PROPRIÉTÉ, lue sur la clé (le préfixe EST la preuve, cf.
+ *      `cleDuCompteStrict`) :
+ *        - `<userId>/…`                       → ce compte seulement ;
+ *        - `audio-complet/<userId>/…`,
+ *          `stock-attributions/<userId>/…`    → propriétaire au 2e segment ;
+ *        - `media/externes/<fichier>` et
+ *          `media/externes/proxies/<fichier>` → copies PARTAGÉES de médias
+ *          publics (`medias-externes.ts`, clé = sha1 de l'URL d'origine) :
+ *          lisibles par tout compte, elles ne contiennent rien de privé ;
+ *        - tout le reste — y compris `converted/…` (préfixe commun, jamais
+ *          une preuve de propriété) — est refusé.
+ */
+export const BUCKET_COPIES_EXTERNES = 'media';
+
+/** Namespaces dont le PROPRIÉTAIRE est le 2e segment de la clé. */
+export const NAMESPACES_PROPRIETAIRE_SECOND = ['audio-complet', 'stock-attributions'] as const;
+
+const COPIE_EXTERNE = /^externes\/(?:proxies\/)?[^/]+$/;
+
+export function cibleLisibleParCompte(bucket: string, cle: string, userId: unknown): boolean {
+  if (typeof userId !== 'string' || userId.length === 0 || userId.includes('/')) return false;
+  if (!cibleRecevable(bucket, cle)) return false;
+  if (bucket === BUCKET_COPIES_EXTERNES && COPIE_EXTERNE.test(cle)) return true;
+  const segments = cle.split('/');
+  if ((NAMESPACES_PROPRIETAIRE_SECOND as readonly string[]).includes(segments[0])) {
+    return segments.length >= 3 && segments[1] === userId && segments[segments.length - 1].length > 0;
+  }
+  return cleDuCompteStrict(cle, userId) && segments.length >= 2 && segments[segments.length - 1].length > 0;
 }
