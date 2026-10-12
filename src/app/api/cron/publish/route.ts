@@ -11,6 +11,7 @@ import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { downloadMediaToFile } from '@/lib/storage/fetch-media';
+import { lireMediaPublication, ErreurMediaPublication } from '@/lib/social/media-publication';
 import { getValidToken } from '@/lib/social/token-refresh';
 import { sendEmail } from '@/lib/email/resend';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, MAX_RECIPIENTS, formatBroadcastFailures } from '@/lib/social/whatsapp';
@@ -1450,6 +1451,18 @@ async function publishToYouTube(
   }
 
   try {
+    // ⚠️ LE MÉDIA D'ABORD, PAR LE FETCH SÛR — avant d'ouvrir une session
+    // YouTube. L'URL vient du post (navigateur) : jamais de `fetch()` nu.
+    // Erreur au message FIXE, sans URL ni adresse (voir media-publication.ts).
+    let videoBuffer: Uint8Array<ArrayBuffer>;
+    try {
+      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(video.video_url)));
+    } catch (e) {
+      if (!(e instanceof ErreurMediaPublication)) throw e;
+      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', code: e.code });
+      return { success: false, error: e.message };
+    }
+
     const metadata = {
       snippet: {
         title: (caption || video.title || '').slice(0, 100),
@@ -1493,14 +1506,6 @@ async function publishToYouTube(
       return { success: false, error: 'YouTube did not return upload URL' };
     }
 
-    const publicVideoUrl = await ensurePublicUrl(video.video_url);
-    const videoRes = await fetch(toAbsoluteMediaUrl(publicVideoUrl));
-    if (!videoRes.ok) {
-      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', status: videoRes.status });
-      return { success: false, error: 'Failed to download video for YouTube upload' };
-    }
-
-    const videoBuffer = await videoRes.arrayBuffer();
     const uploadRes = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {

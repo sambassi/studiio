@@ -7,6 +7,7 @@ import {
 } from '@/lib/storage/cleanup';
 import { mergePostMetadata } from '@/lib/creer/postMetadata';
 import { PUT_ALLOWED_COLUMNS, parsePutPostPayload } from '@/lib/posts/put-payload';
+import { neutraliserUrlsPost } from '@/lib/securite/urls-post';
 
 // GET /api/posts?month=2026-03
 export async function GET(req: NextRequest) {
@@ -57,7 +58,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { title, caption, media_url, media_type, format, platforms, scheduled_date, scheduled_time, status, metadata } = body;
+    const { title, caption, media_type, format, platforms, scheduled_date, scheduled_time, status } = body;
+
+    // URLs lues plus tard par le SERVEUR (publication, muxage) : une valeur
+    // non enregistrable (schema, identifiants, hote local/prive) est RETIREE,
+    // la creation passe — voir `src/lib/securite/urls-post.ts`.
+    const urls = neutraliserUrlsPost({ media_url: body.media_url, metadata: body.metadata });
+    const media_url = urls.media_url ?? null;
+    const metadata = urls.metadata;
+    if (urls.refusees.length) console.warn('[API posts] URLs retirees a la creation :', urls.refusees);
 
     const { data, error } = await supabase
       .from('scheduled_posts')
@@ -79,7 +88,10 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, post: data });
+    return NextResponse.json({
+      success: true, post: data,
+      ...(urls.refusees.length ? { ignored: urls.refusees } : {}),
+    });
   } catch (error) {
     console.error('Error creating post:', error);
     return NextResponse.json({ success: false, error: 'Failed to create post' }, { status: 500 });

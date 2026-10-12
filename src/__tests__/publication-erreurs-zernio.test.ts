@@ -42,6 +42,12 @@ vi.mock('@/lib/db/supabase', () => {
   return { supabaseAdmin: client, supabase: client };
 });
 vi.mock('@/lib/admin', () => ({ isAdmin: () => true }));
+// Le média est lu par le FETCH SÛR (http natif, DNS réel) et non par `fetch` :
+// doublé ici, pour qu'aucune résolution ne sorte de la machine.
+vi.mock('@/lib/social/media-publication', async (orig) => ({
+  ...(await orig<typeof import('@/lib/social/media-publication')>()),
+  lireMediaPublication: async () => ({ octets: new Uint8Array(10), typeContenu: 'video/mp4' }),
+}));
 
 describe('traduction pure', () => {
   it('ACCOUNT_DISCONNECTED : nomme le réseau, demande la reconnexion, désigne le compte', () => {

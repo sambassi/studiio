@@ -31,6 +31,7 @@ import { z } from 'zod';
 // Detection generique des cles de detournement de prototype, deja utilisee
 // par `PATCH /api/posts/[id]`. La reutiliser plutot que la recopier.
 import { findDangerousKey } from '@/lib/posts/patch-payload';
+import { neutraliserUrlsPost } from '@/lib/securite/urls-post';
 
 /**
  * Champs modifiables depuis le Calendrier.
@@ -187,6 +188,14 @@ export function parsePutPostPayload(raw: unknown): PutPayloadResult {
     }
     updates[key] = parsed.data;
   }
+
+  // URLs lues plus tard par le SERVEUR : une valeur non enregistrable est
+  // ECARTEE et signalee, comme un champ hors liste blanche. Voir
+  // `src/lib/securite/urls-post.ts`.
+  const urls = neutraliserUrlsPost({ media_url: updates.media_url, metadata: updates.metadata });
+  if (urls.refusees.includes('media_url')) delete updates.media_url;
+  if (updates.metadata !== undefined) updates.metadata = urls.metadata;
+  ignored.push(...urls.refusees);
 
   if (Object.keys(updates).length === 0) {
     return {

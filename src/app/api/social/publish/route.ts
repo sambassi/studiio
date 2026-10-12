@@ -4,6 +4,7 @@ import { getValidToken } from '@/lib/social/token-refresh';
 import { isWhatsAppEnabled, canUseWhatsApp, broadcastWhatsApp, resolveRecipients, formatBroadcastFailures } from '@/lib/social/whatsapp';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { resolvePublishableUrl } from '@/lib/videos/playable-url';
+import { lireMediaPublication, ErreurMediaPublication } from '@/lib/social/media-publication';
 import { montageEstPerime, messageMontagePerime } from '@/lib/creer/montage-perime';
 
 /**
@@ -634,6 +635,20 @@ async function publishToYouTube(
   ].join('\n');
 
   try {
+    // ⚠️ LE MÉDIA D'ABORD, PAR LE FETCH SÛR — avant d'ouvrir une session
+    // YouTube. `mediaUrl` vient des métadonnées (navigateur) : le garde par
+    // NOM d'hôte de `resolvePublishableUrl` ne voit ni le DNS, ni les
+    // redirections. `lireMediaPublication` refuse toute adresse privée et
+    // rend une erreur au message FIXE, sans URL ni adresse.
+    let videoBuffer: Uint8Array<ArrayBuffer>;
+    try {
+      ({ octets: videoBuffer } = await lireMediaPublication(await ensurePublicUrl(mediaUrl)));
+    } catch (e) {
+      if (!(e instanceof ErreurMediaPublication)) throw e;
+      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', code: e.code });
+      return { success: false, error: e.message };
+    }
+
     // YouTube Data API v3 - Insert video
     const metadata = {
       snippet: {
@@ -684,15 +699,7 @@ async function publishToYouTube(
       return { success: false, error: 'YouTube did not return upload URL' };
     }
 
-    // Download video and upload to YouTube
-    const publicVideoUrl = await ensurePublicUrl(mediaUrl);
-    const videoRes = await fetch(publicVideoUrl);
-    if (!videoRes.ok) {
-      console.error('[SOCIAL_PUBLISH_ERROR]', { platform: 'youtube', step: 'download', status: videoRes.status });
-      return { success: false, error: 'Failed to download video for YouTube upload' };
-    }
-
-    const videoBuffer = await videoRes.arrayBuffer();
+    // Upload du média déjà lu (fetch sûr, plus haut).
     const uploadRes = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
