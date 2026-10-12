@@ -14,11 +14,20 @@
  *      même synthèse que « Écouter ma voix » (`synthetiserAvecVoix`).
  * Réponse : l'audio brut, `private, no-store`. Aucun stockage, aucune URL
  * publique, aucun crédit.
+ *
+ * ÉCOUTER AVANT D'ENREGISTRER : le corps peut porter, en plus, `prononce`
+ * (la forme dite en cours de saisie ou suggérée). La paire est alors validée
+ * avec les règles d'enregistrement (`prononciationValide` : vide, 80
+ * caractères, identique → 400), placée DEVANT les prononciations du compte
+ * le temps du calcul, et rien n'est enregistré. Même borne ≈ 5 s, même
+ * limiteur, même cache, même gratuité.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { resoudreVoixDuCompte, MESSAGES_VOIX } from '@/lib/voice/profil';
-import { cleAffiche, scriptParle } from '@/lib/voice/prononciations';
+import {
+  cleAffiche, scriptParle, prononciationValide, MESSAGES_PRONONCIATION, type Prononciation,
+} from '@/lib/voice/prononciations';
 import { synthetiserAvecVoix, cleElevenLabs } from '@/lib/voice/synthese';
 import { couperAuMot, MAX_CARACTERES_PREECOUTE } from '@/lib/voice/preecoute';
 import {
@@ -34,9 +43,22 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   const userId = session.user.id;
   let affiche: unknown = null;
-  try { affiche = ((await req.json()) as { affiche?: unknown } | null)?.affiche ?? null; } catch { affiche = null; }
+  let prononce: unknown = undefined;
+  try {
+    const corps = (await req.json()) as { affiche?: unknown; prononce?: unknown } | null;
+    affiche = corps?.affiche ?? null;
+    prononce = corps?.prononce;
+  } catch { affiche = null; }
   const cle = typeof affiche === 'string' ? cleAffiche(affiche) : '';
   if (!cle) return NextResponse.json({ success: false, error: 'Prononciation à écouter manquante.', code: 'affiche_manquante' }, { status: 400 });
+
+  // Une paire NON enregistrée (suggestion ou saisie) : validée comme à l'enregistrement.
+  let candidate: Prononciation | null = null;
+  if (prononce !== undefined && prononce !== null) {
+    const v = prononciationValide({ affiche, prononce });
+    if (!v.ok) return NextResponse.json({ success: false, error: MESSAGES_PRONONCIATION[v.motif], code: v.motif }, { status: 400 });
+    candidate = v.valeur;
+  }
 
   const voix = await resoudreVoixDuCompte(userId);
   if (!voix.ok) {
@@ -45,11 +67,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Votre voix n’a pas pu être lue.' }, { status: 500 });
   }
 
-  const entree = voix.prononciations.find((p) => cleAffiche(p.affiche) === cle);
+  // La candidate passe DEVANT les entrées du compte (même clé remplacée), sans rien enregistrer.
+  const liste: Prononciation[] = candidate
+    ? [candidate, ...voix.prononciations.filter((p) => cleAffiche(p.affiche) !== cle)]
+    : voix.prononciations;
+  const entree = liste.find((p) => cleAffiche(p.affiche) === cle);
   if (!entree) {
     return NextResponse.json({ success: false, error: 'Cette prononciation n’existe plus.', code: 'prononciation_introuvable' }, { status: 404 });
   }
-  const spoken = couperAuMot(scriptParle(entree.affiche, voix.prononciations), MAX_CARACTERES_PREECOUTE);
+  const spoken = couperAuMot(scriptParle(entree.affiche, liste), MAX_CARACTERES_PREECOUTE);
   if (!spoken) {
     return NextResponse.json({ success: false, error: 'Cette prononciation n’existe plus.', code: 'prononciation_introuvable' }, { status: 404 });
   }
