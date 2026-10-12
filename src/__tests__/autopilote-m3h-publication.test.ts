@@ -472,12 +472,13 @@ describe('13-20. La lecture : ce que le navigateur voit, et ne voit pas', () => 
     // ⚠️ IL NE SAIT SIGNER QU'UN DÉPÔT. C'est ce qui rend impossible une URL
     // de lecture atteignable par un navigateur.
     expect(corps).not.toContain('presignedGetObject');
-    // Le relais public, lui, répond sans session — par nécessité.
+    // Le relais public ne sert plus un objet de compte sans session ou jeton
+    // (#547) — et le montage, lui, n'y est jamais servi (namespace refusé).
     const relais = readFileSync(
       resolve(process.cwd(), 'src/app/storage/v1/object/public/[bucket]/[...path]/route.ts'),
       'utf8',
     );
-    expect(relais).toContain('CE QUE CETTE ROUTE NE FAIT PAS : DEMANDER UNE SESSION');
+    expect(relais).toContain('QUI LIT QUOI (#547 — PUBLIC_STORAGE_RELAY_RISK)');
     // Donc les deux routes M3-H exigent une session, chacune.
     for (const f of [SRC.routeEtat, SRC.routeFichier]) {
       expect(readFileSync(f, 'utf8')).toContain('const session = await auth()');

@@ -1,6 +1,7 @@
 import { pickRush } from '@/lib/autopilot/rules';
 import { sonderSur, telechargerSur, estRefusSsrf, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 import { estNotreStockage } from '@/lib/securite/medias-externes';
+import { signerSiNotreStockage } from '@/lib/storage/jeton-relais';
 import { etatDepuisStatut, type EtatRush } from '@/lib/autopilot/validite-rush';
 
 /**
@@ -133,7 +134,7 @@ export async function rushEncorePresent(
  * dans Node — contrairement à `@remotion/media-utils`, qui suppose un
  * navigateur.
  */
-export async function probeRushSeconds(url: string, reseau: OptionsFetchSur = {}): Promise<number | null> {
+export async function probeRushSeconds(url: string, reseau: OptionsFetchSur = {}, lecteur?: string): Promise<number | null> {
   // ⚠️ SSRF / TOCTOU : `parseMedia` lit lui-même ce qu'on lui donne, en
   // suivant les redirections. Il ne reçoit donc une URL que si elle désigne
   // NOTRE stockage (relais public, qui ne redirige jamais) ; tout autre média
@@ -141,7 +142,10 @@ export async function probeRushSeconds(url: string, reseau: OptionsFetchSur = {}
   let local: string | null = null;
   try {
     const { parseMedia } = await import('@remotion/media-parser');
-    let src = url;
+    // #547 : `parseMedia` lit sans cookie. Une URL de NOTRE stockage
+    // appartenant à `lecteur` reçoit un jeton du relais ; sans `lecteur`, elle
+    // part nue (le relais la refuse, la durée reste inconnue — repli prévu).
+    let src = lecteur ? signerSiNotreStockage(url, { lecteur }) as string : url;
     let reader: import('@remotion/media-parser').MediaParserReaderInterface | undefined;
     if (!estNotreStockage(url)) {
       const os = await import('os');

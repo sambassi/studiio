@@ -128,8 +128,10 @@ describe('/api/proxy-media — origines', () => {
     const res = await appeler('/storage/v1/object/public/media/u1/image/a.png');
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0]))
+    // #547 : le fetch serveur (sans cookie) porte un jeton du relais.
+    expect(String(fetchMock.mock.calls[0][0]).split('?')[0])
       .toBe(`${APP}/storage/v1/object/public/media/u1/image/a.png`);
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/\?sr=\d+\.[A-Za-z0-9_-]{43}$/);
   });
 
   it('chemin relatif SANS origine applicative → refusé, jamais envoyé à Supabase', async () => {

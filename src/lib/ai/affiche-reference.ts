@@ -18,6 +18,8 @@
  * l'affiche disparaîtrait de la vidéo au bout d'un moment.
  */
 
+import { signerSiNotreStockage } from '@/lib/storage/jeton-relais';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import Replicate from 'replicate';
 import { detecterSignatureImage } from '@/lib/storage/image-signature';
 import { uploadToStorage } from '@/lib/storage/upload';
@@ -104,7 +106,8 @@ export async function genererAfficheReference(input: {
   try {
     output = await replicate.run(MODELE_REFERENCE, {
       input: {
-        input_image: input.referenceUrl,
+        // #547 : Replicate lit sans cookie — jeton du relais, au nom du compte.
+        input_image: signerSiNotreStockage(toAbsoluteMediaUrl(input.referenceUrl), { lecteur: input.userId }) as string,
         prompt: input.prompt,
         aspect_ratio: input.aspectRatio,
         output_format: 'webp',

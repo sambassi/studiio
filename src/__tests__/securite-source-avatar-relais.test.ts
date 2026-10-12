@@ -46,6 +46,17 @@ const { GET: LIRE, HEAD: SONDER } = await import(
   '@/app/storage/v1/object/public/[bucket]/[...path]/route'
 );
 
+// #547 : le relais exige la session du propriétaire ou un jeton signé. Ces
+// tests portent sur la politique de chemin / namespace et le streaming : ils
+// lisent en lecteur LÉGITIME muni d'un jeton — qui ne se fabrique jamais pour
+// une cible non recevable (`jetonRelais` rend `null`). L'accès par session et
+// le refus sans jeton sont éprouvés dans `securite-relais-proprietaire.test.ts`.
+const { jetonRelais } = await import('@/lib/storage/jeton-relais');
+const jetonRequete = (bucket: string, segments: string[]) => {
+  const j = jetonRelais(bucket, segments.join('/'), Date.now() + 60_000);
+  return j ? `?sr=${j}` : '';
+};
+
 const ORIGINE = 'https://studiio.pro';
 const U = 'aaaaaaaa-1111-4111-8111-111111111111';
 const GEN = '11111111-1111-4111-8111-000000000009';
@@ -54,9 +65,9 @@ function requete(chemin: string): never {
   return new Request(`${ORIGINE}${chemin}`) as never;
 }
 const lire = (bucket: string, segments: string[]) =>
-  LIRE(requete(`/storage/v1/object/public/${bucket}/${segments.join('/')}`), { params: Promise.resolve({ bucket, path: segments }) });
+  LIRE(requete(`/storage/v1/object/public/${bucket}/${segments.join('/')}${jetonRequete(bucket, segments)}`), { params: Promise.resolve({ bucket, path: segments }) });
 const sonder = (bucket: string, segments: string[]) =>
-  SONDER(requete(`/storage/v1/object/public/${bucket}/${segments.join('/')}`), { params: Promise.resolve({ bucket, path: segments }) });
+  SONDER(requete(`/storage/v1/object/public/${bucket}/${segments.join('/')}${jetonRequete(bucket, segments)}`), { params: Promise.resolve({ bucket, path: segments }) });
 
 beforeEach(() => { etat.appels.length = 0; });
 

@@ -40,12 +40,21 @@
  * d'origine, comme avant.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { cibleParCheminLisible, cibleStockageParChemin } from '@/lib/storage/acces-objet';
+import {
+  cibleParCheminLisible,
+  cibleStockageParChemin,
+  extraireCibleStockage,
+  originesStockageConfigurees,
+} from '@/lib/storage/acces-objet';
+import { signerUrlRelais, DUREE_JETON_RELAIS_MS } from '@/lib/storage/jeton-relais';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { ErreurMediaPublication, verdictStockagePublication } from '@/lib/social/media-publication';
 
 /** Durée de validité de l'URL signée remise au réseau. */
 export const DUREE_SIGNATURE_PUBLICATION_S = 3600;
+
+/** Jeton du relais remis au réseau (#547) : 24 h, le temps d'un traitement Meta / TikTok lent. */
+export const DUREE_JETON_PUBLICATION_MS = DUREE_JETON_RELAIS_MS;
 
 /**
  * Rend une URL que la plateforme peut aller chercher elle-même.
@@ -77,7 +86,17 @@ export async function ensurePublicUrl(url: string, userId: unknown): Promise<str
     });
     throw new ErreurMediaPublication('refuse');
   }
-  if (cible.acces === 'public') return absolue;
+  if (cible.acces === 'public') {
+    // #547 : le relais n'ouvre plus un objet de compte sans session. Meta,
+    // TikTok et Zernio viennent le chercher SANS cookie : l'URL remise porte
+    // un jeton signé, lié à CETTE clé, valable 24 h. Jamais pour un hôte
+    // non configuré — un jeton remis à un tiers ouvrirait l'objet chez nous.
+    // Propriété déjà vérifiée ci-dessus (`verdictStockagePublication`).
+    const sansRequete = absolue.split(/[?#]/)[0];
+    return extraireCibleStockage(sansRequete, { origines: originesStockageConfigurees() })
+      ? signerUrlRelais(absolue, { dureeMs: DUREE_JETON_PUBLICATION_MS })
+      : absolue;
+  }
   // Privé (`sign` / `authenticated` / `private`) : propriété STRICTE, la
   // conversion partagée n'est admise qu'en lecture publique — jamais signée.
   if (!cibleParCheminLisible(cible, userId)) {

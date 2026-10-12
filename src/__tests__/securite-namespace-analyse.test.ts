@@ -153,8 +153,14 @@ type Gestionnaire = (req: unknown, ctx: Contexte) => Promise<Response>;
 const GET = routeStockage.GET as unknown as Gestionnaire;
 const HEAD = routeStockage.HEAD as unknown as Gestionnaire;
 
+// #547 : le relais exige la session du propriétaire ou un jeton signé. Ce
+// fichier éprouve la politique de NAMESPACE : il lit en lecteur LÉGITIME muni
+// d'un jeton — qui ne se fabrique jamais pour une cible refusée
+// (`jetonRelais` rend `null`), donc le blocage reste observé tel quel.
+const { jetonRelais } = await import('@/lib/storage/jeton-relais');
 function requete(bucket: string, cle: string, entetes: Record<string, string> = {}) {
-  return new Request(`${ORIGINE}${PREFIXE_PUBLIC}${bucket}/${cle}`, { headers: entetes });
+  const j = jetonRelais(bucket, cle, Date.now() + 60_000);
+  return new Request(`${ORIGINE}${PREFIXE_PUBLIC}${bucket}/${cle}${j ? `?sr=${j}` : ''}`, { headers: entetes });
 }
 
 const contexte = (bucket: string, cle: string): Contexte =>
@@ -845,8 +851,9 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
   const CONSOMMATEURS: Array<[string, string, string]> = [
     // Publication immédiate ET programmée : une seule implémentation
     // partagée depuis la garde de propriété avant signature.
+    // #547 : l'URL publique remise au réseau porte désormais un jeton du relais.
     ['publication sociale (immédiate et cron)', 'src/lib/social/url-publication.ts',
-      "if (cible.acces === 'public') return absolue;"],
+      "? signerUrlRelais(absolue, { dureeMs: DUREE_JETON_PUBLICATION_MS })"],
     ['relais authentifié du compositeur', 'src/app/api/proxy-media/route.ts',
       "u.pathname.startsWith('/storage/v1/object/public/')"],
     ['rendu serveur — lit MinIO en direct, hors de cette route',

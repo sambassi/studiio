@@ -249,7 +249,7 @@ describe('câblage Autopilote', () => {
     expect(r).toContain('let hybrideRaison = raisonNonEligibleHybride(input.design);');
     expect(r).toContain("moteur = 'REMOTION_FALLBACK';");
     expect(r).toContain('MOTEUR_RENDU=REMOTION_FALLBACK — HYBRID_FALLBACK_REASON=');
-    expect(r).toContain('rendu = await renderCreerSimple({ jobId: input.jobId, design: input.design, onProgress });');
+    expect(r).toContain('rendu = await renderCreerSimple({ jobId: input.jobId, userId: input.userId, design: input.design, onProgress });');
     const p = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/produire.ts'), 'utf-8');
     expect(p).toContain("MOTEUR_RENDU: moteur ?? 'REMOTION',");
     expect(p).toContain('HYBRID_FALLBACK_REASON: hybrideRaison');

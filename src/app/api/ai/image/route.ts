@@ -11,6 +11,8 @@ import { erreurReplicateSanitisee } from '@/lib/ai/replicate-erreur';
 import { construirePromptImage } from '@/lib/ai/prompt-image';
 import { detecterSignatureImage, MAX_AFFICHE_IA_BYTES } from '@/lib/storage/image-signature';
 import { CLE_ACTION_IA } from '@/lib/tarifs/catalogue';
+import { signerSiNotreStockage } from '@/lib/storage/jeton-relais';
+import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { prixDe } from '@/lib/tarifs/serveur';
 
 export const dynamic = 'force-dynamic';
@@ -324,7 +326,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Non autorisé' }, { status: 401 });
     }
 
-    const { action, imageUrl, prompt, style, format } = await req.json();
+    const { action, imageUrl: imageUrlBrute, prompt, style, format } = await req.json();
+    // #547 : Replicate vient CHERCHER l'image sans cookie. Une image de NOTRE
+    // stockage qui appartient à ce compte reçoit un jeton du relais ; celle
+    // d'un autre compte reste nue et le relais la refuse. Externe : inchangée.
+    const imageUrl = typeof imageUrlBrute === 'string' && imageUrlBrute.trim()
+      ? signerSiNotreStockage(toAbsoluteMediaUrl(imageUrlBrute.trim()), { lecteur: session.user.id }) as string
+      : imageUrlBrute;
 
     if (!estActionIA(action)) {
       return NextResponse.json({ success: false, error: 'Action invalide' }, { status: 400 });

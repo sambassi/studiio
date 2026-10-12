@@ -8,8 +8,9 @@ import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '
 import { renderAndUpload } from '@/lib/autopilot/render';
 import { urlRenduPourRush } from '@/lib/render/proxy-rendu';
 import {
-  pickPosterUrl, pickCustomPoster, probeRushSeconds, rushEncorePresent,
+  pickPosterUrl, pickCustomPoster, probeRushSeconds,
 } from '@/lib/autopilot/poster';
+import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
 import { etatRushServeur, type EtatRush } from '@/lib/autopilot/validite-rush';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
@@ -388,7 +389,7 @@ export async function produireUnMontage(input: {
   const etatDe = async (u: string): Promise<EtatRush> => {
     const connu = etatsRush.get(u);
     if (connu) return connu;
-    const etat = await etatRushServeur(u, lisible, rushEncorePresent);
+    const etat = await etatRushServeur(u, lisible, sondeRushPour(userId));
     etatsRush.set(u, etat);
     return etat;
   };
@@ -440,7 +441,7 @@ export async function produireUnMontage(input: {
     console.warn(`${journal} ${userId} — musique refusée (hors du compte), montage sans musique`);
     configUtilisee = { ...config, musicUrl: null };
     musiqueIntrouvable = true;
-  } else if (config.musicUrl && !(await rushEncorePresent(config.musicUrl))) {
+  } else if (config.musicUrl && !(await sondeRushPour(userId)(config.musicUrl))) {
     console.warn(`${journal} ${userId} — musique introuvable, montage sans musique : ${config.musicUrl}`);
     configUtilisee = { ...config, musicUrl: null };
     musiqueIntrouvable = true;
@@ -469,7 +470,7 @@ export async function produireUnMontage(input: {
     const liste = [rushUrl, ...autres.filter((_, i) => etatsAutres[i] === 'utilisable')];
     listeRushs = liste;
     if (liste.length > 1) {
-      const secondes = await Promise.all(liste.map((u) => probeRushSeconds(u)));
+      const secondes = await Promise.all(liste.map((u) => probeRushSeconds(u, {}, userId)));
       secondesParRush = new Map(liste.map((u, i) => [u, secondes[i]]));
       disponible = secondes.reduce<number>((t, x) => t + (x ?? 0), 0);
       chrono.preparation = Date.now() - t0;
@@ -499,10 +500,10 @@ export async function produireUnMontage(input: {
   input.onProgression?.('preparation', 0);
   // Les sondages RÉSEAU des durées, avant la fabrique de design qui reste pure.
   const [rushSeconds, jumeauSeconds] = await Promise.all([
-    rushUrl ? (secondesParRush.has(rushUrl) ? Promise.resolve(secondesParRush.get(rushUrl) ?? null) : probeRushSeconds(rushUrl)) : Promise.resolve(null),
+    rushUrl ? (secondesParRush.has(rushUrl) ? Promise.resolve(secondesParRush.get(rushUrl) ?? null) : probeRushSeconds(rushUrl, {}, userId)) : Promise.resolve(null),
     // La durée du jumeau cale la séquence « Vidéo » : la parole doit tenir
     // entière. Illisible (`null`) → durée par défaut, posée à la fabrique du design.
-    jumeauActif ? probeRushSeconds(input.jumeauVideoUrl as string) : Promise.resolve(null),
+    jumeauActif ? probeRushSeconds(input.jumeauVideoUrl as string, {}, userId) : Promise.resolve(null),
   ]);
 
   // ── L'AFFICHE : automatique (Pexels), mes photos, ou mes photos EN RÉFÉRENCE IA ──
@@ -620,8 +621,8 @@ export async function produireUnMontage(input: {
     // Sonde SÛRE (`sonde-stock.ts`) : redirections jamais suivies en silence,
     // chaque saut recontrôlé ; un média qui mène hors liste est LÂCHÉ.
     const [sondesV, sondesP] = await Promise.all([
-      Promise.all(videosStock.map((u) => sonderMediaStock(u, 'video'))),
-      Promise.all(photosStock.map((u) => sonderMediaStock(u, 'photo'))),
+      Promise.all(videosStock.map((u) => sonderMediaStock(u, 'video', { lecteur: userId }))),
+      Promise.all(photosStock.map((u) => sonderMediaStock(u, 'photo', { lecteur: userId }))),
     ]);
     const garder = (liste: string[], sondes: Awaited<ReturnType<typeof sonderMediaStock>>[]) => liste.filter((u, i) => {
       const s = sondes[i];
@@ -633,7 +634,7 @@ export async function produireUnMontage(input: {
     const photosOk = garder(photosStock, sondesP);
     if (mediasIgnores.length) console.warn(`${journal} ${userId} — ${mediasIgnores.length} média(s) stock introuvable(s) ou refusé(s), ignoré(s)`);
     // Durées lues sur l'URL FINALE validée — jamais sur la chaîne de redirections.
-    const secondesStock = await Promise.all(videosOk.map((u) => probeRushSeconds(urlsFinalesStock.get(u) ?? u)));
+    const secondesStock = await Promise.all(videosOk.map((u) => probeRushSeconds(urlsFinalesStock.get(u) ?? u, {}, userId)));
     const rushes = listeRushs.map((u) => ({ url: u, secondes: secondesParRush.has(u) ? secondesParRush.get(u) ?? null : (u === rushUrl ? rushSeconds : null) }));
     const stockVideos = videosOk.map((u, i) => ({ url: u, secondes: secondesStock[i] }));
     const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;

@@ -10,6 +10,7 @@ import { renderMedia, selectComposition } from '@remotion/renderer';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { signerUrlsRelaisProfond, DUREE_JETON_RENDU_MS } from '@/lib/storage/jeton-relais';
 import { supabaseAdmin } from '@/lib/db/supabase';
 
 // Bundle cache (in-memory for the function lifecycle)
@@ -57,9 +58,19 @@ export async function renderVideo(options: {
   jobId: string;
   compositionId: string;
   inputProps: Record<string, any>;
+  /**
+   * #547 — le compte au nom duquel le rendu lit ses médias. Seules les URL
+   * de NOTRE stockage qu'il peut lire lui-même reçoivent un jeton du relais ;
+   * les autres restent nues et le relais les refuse.
+   */
+  proprietaire: string;
   onProgress?: (progress: RenderProgress) => void;
 }): Promise<{ outputPath: string }> {
-  const { jobId, compositionId, inputProps, onProgress } = options;
+  const { jobId, compositionId, onProgress } = options;
+  // #547 : Chromium (Remotion) lit les médias SANS session. Toute URL du
+  // relais de notre stockage reçoit un jeton signé, ICI, au dernier moment —
+  // jamais persisté. Les URL externes / présignées ressortent inchangées.
+  const inputProps = signerUrlsRelaisProfond(options.inputProps, { lecteur: options.proprietaire, dureeMs: DUREE_JETON_RENDU_MS });
 
   // Update job status
   await updateJobStatus(jobId, 'rendering', 0, 'Bundling Remotion project...');

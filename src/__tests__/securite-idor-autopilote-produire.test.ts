@@ -133,7 +133,8 @@ describe('produireUnMontage — un objet de B dans la banque de A', () => {
     const { design } = await produire(cfg({ rushUrls: [A1, B_SOURCE, A2] }), A1);
     expect(toutCeQuiAEteLu()).not.toContain(B);
     expect(JSON.stringify(design)).not.toContain(B);
-    expect(rushEncorePresent).toHaveBeenCalledWith(A1, undefined, undefined, expect.any(Function));
+    // #547 : sondé AVEC le jeton du relais, au nom de A.
+    expect(rushEncorePresent).toHaveBeenCalledWith(expect.stringContaining(`${A1}?sr=`), undefined, undefined, expect.any(Function));
   });
 
   it('seul rush = rush de B : montage sans rush (titre / cartes / CTA), sans échec', async () => {
@@ -154,8 +155,10 @@ describe('produireUnMontage — un objet de B dans la banque de A', () => {
 
   it('rushes de A uniquement : aucun refus, le chemin d’avant (analyses au nom de A)', async () => {
     const { design } = await produire(cfg({ rushUrls: [A1, A2] }), A1);
-    expect(rushEncorePresent).toHaveBeenCalledWith(A1, undefined, undefined, expect.any(Function));
-    expect(rushEncorePresent).toHaveBeenCalledWith(A2, undefined, undefined, expect.any(Function));
+    // #547 : sondé AVEC le jeton du relais, au nom de A.
+    expect(rushEncorePresent).toHaveBeenCalledWith(expect.stringContaining(`${A1}?sr=`), undefined, undefined, expect.any(Function));
+    // #547 : sondé AVEC le jeton du relais, au nom de A.
+    expect(rushEncorePresent).toHaveBeenCalledWith(expect.stringContaining(`${A2}?sr=`), undefined, undefined, expect.any(Function));
     expect(analyserRushServeurCache).toHaveBeenCalledWith(A1, 15, A);
     expect(JSON.stringify(design)).toContain('rush-a1.mp4');
     for (const appel of urlRenduPourRush.mock.calls) expect(appel[1]).toBe(A);

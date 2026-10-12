@@ -39,6 +39,7 @@ async function triggerRender(params: {
       jobId,
       compositionId,
       inputProps: propsLocales,
+      proprietaire: userId,
     });
 
     // Upload rendered video to Supabase Storage

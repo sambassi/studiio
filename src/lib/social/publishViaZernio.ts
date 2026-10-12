@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { droitDePublier, comptesConnectes, resoudreCibles, mediaPubliable } from '@/lib/social/publishing';
 import { createPost, uploadMedia, ZernioError } from '@/lib/social/zernio';
+import { signerSiNotreStockage } from '@/lib/storage/jeton-relais';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { traduireErreurZernio, type TraductionErreur } from '@/lib/social/erreursZernio';
 import {
@@ -194,7 +195,14 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
   const imageExtraite = besoinImageExtraite(reseauxRetenus, cover, format) && cover?.frameMs !== undefined
     ? await imageDepuisVideo(mediaSource!, cover.frameMs, post.userId)
     : null;
-  const absolue = (u: string | undefined) => (u ? toAbsoluteMediaUrl(u) : u);
+  // #547 : Zernio (et le réseau derrière lui) vient CHERCHER la miniature
+  // sans cookie. Une image de NOTRE stockage reçoit un jeton du relais — et
+  // seulement si elle appartient au publieur : la couverture vient du post,
+  // donc du navigateur ; celle d'un autre compte reste nue et le relais la
+  // refuse.
+  const absolue = (u: string | undefined) => (u
+    ? signerSiNotreStockage(toAbsoluteMediaUrl(u), { lecteur: post.userId }) as string
+    : u);
   const plans = ciblesRetenues.map((c) => {
     const plan = reglagesCouverture(c.platform as ReseauCouverture, cover, { format, imageExtraite });
     if (plan.platformSpecificData?.instagramThumbnail) {

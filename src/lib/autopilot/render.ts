@@ -172,7 +172,7 @@ export async function renderAndUpload(input: {
     console.log(`[Autopilote/Rendu] ${input.jobId} — MOTEUR_RENDU=REMOTION — hybride non applicable : ${hybrideRaison}`);
   }
   if (!rendu) {
-    rendu = await renderCreerSimple({ jobId: input.jobId, design: input.design, onProgress });
+    rendu = await renderCreerSimple({ jobId: input.jobId, userId: input.userId, design: input.design, onProgress });
   }
   const { outputPath, durationFrames } = rendu;
   input.onEnvoi?.();

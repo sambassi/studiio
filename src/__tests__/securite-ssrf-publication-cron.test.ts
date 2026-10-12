@@ -293,7 +293,9 @@ describe('cron → publierViaZernio : médias légitimes publiés', () => {
   it('notre stockage (chemin relatif) : les octets partent chez Zernio', async () => {
     base.scheduled_posts = [post('/storage/v1/object/public/media/user-1/rendus/montage.mp4')];
     await lancerCron();
-    expect(stock.chemins).toContain('/storage/v1/object/public/media/user-1/rendus/montage.mp4');
+    // #547 : le téléchargement serveur porte le jeton du relais (`?sr=`).
+    expect(stock.chemins.map((c) => c.split('?')[0])).toContain('/storage/v1/object/public/media/user-1/rendus/montage.mp4');
+    expect(stock.chemins.some((c) => c.startsWith('/storage/v1/object/public/media/user-1/rendus/montage.mp4?sr='))).toBe(true);
     expect(depots).toHaveLength(1);
     expect(depots[0].equals(MP4)).toBe(true);
     expect(appelsZernio).toEqual(['presign', 'posts']);

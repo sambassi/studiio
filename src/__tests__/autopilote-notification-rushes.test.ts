@@ -228,7 +228,8 @@ describe('D — le câblage du cron et de la cloche', () => {
   });
 
   it('un rush introuvable est retiré de la banque ET signalé', () => {
-    expect(cron).toContain('rushEncorePresent');
+    // #547 : la sonde de présence, au nom du compte (jeton du relais).
+    expect(cron).toContain('sondeRushPour(userId)');
     // Le cron est prevenu DES la detection (`onRushMort`), avant le rendu.
     expect(cron).toContain('onRushMort: (url) => { rushesMorts.add(url); }');
     expect(cron).toContain('rush_urls: banquePropre');

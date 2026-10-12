@@ -317,8 +317,9 @@ describe('ensurePublicUrl (Meta, TikTok, cron) : propriété AVANT toute signatu
     await expect(ensurePublicUrl(`${hote}${CHEMIN_A}`, B)).rejects.toBeInstanceOf(ErreurMediaPublication);
     expect(createSignedUrl).not.toHaveBeenCalled();
   });
-  it('public de A par A : rendue telle quelle, 0 signature', async () => {
-    expect(await ensurePublicUrl(`${O}${CHEMIN_A}`, A)).toBe(`${O}${CHEMIN_A}`);
+  it('public de A par A : même chemin + jeton du relais (#547), 0 signature de stockage', async () => {
+    const rendue = await ensurePublicUrl(`${O}${CHEMIN_A}`, A);
+    expect(rendue.startsWith(`${O}${CHEMIN_A}?sr=`)).toBe(true);
     expect(createSignedUrl).not.toHaveBeenCalled();
   });
   it('signée par un alias : B → refus 0 signature ; A → signée sur SA clé', async () => {

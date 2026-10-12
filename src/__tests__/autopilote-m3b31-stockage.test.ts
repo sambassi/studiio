@@ -235,15 +235,16 @@ describe('CARACTÉRISATION — la route ne demande aucune identité', () => {
    * Un objet privé (un rush, un montage, une affiche) est servi en entier à
    * une requête sans cookie, sans en-tête, sans rien.
    */
-  it('un objet est servi ENTIER à une requête sans aucune session', async () => {
-    const octets = deposer('media', 'u1/library/rush.mp4', 'CONTENU-PRIVE-DE-U1');
+  // CHANGÉ (#547) — il était servi ENTIER. Il est refusé, sans un octet ouvert.
+  it('DURCI (#547) — un objet de compte est REFUSÉ à une requête sans session', async () => {
+    deposer('media', 'u1/library/rush.mp4', 'CONTENU-PRIVE-DE-U1');
     expect(session.courante).toBeNull();
 
     const r = await demander('media', ['u1', 'library', 'rush.mp4']);
 
-    expect(r.statut).toBe(200);
-    expect(r.corps.equals(octets)).toBe(true);
-    expect(Number(r.entetes.get('content-length'))).toBe(octets.length);
+    expect(r.statut).toBe(404);
+    expect(r.texte).not.toContain('CONTENU-PRIVE-DE-U1');
+    expect(etat.journal).toEqual([]);
   });
 
   /**
@@ -252,12 +253,10 @@ describe('CARACTÉRISATION — la route ne demande aucune identité', () => {
    * L'absence de comportement d'authentification pourrait s'expliquer par une
    * doublure mal posée. L'absence de tout MOYEN de s'authentifier, non.
    */
-  it('le source de la route ne contient aucun mécanisme d identité', () => {
-    for (const absent of [
-      '@/lib/auth/config', 'getServerSession', 'auth()', 'session',
-      'user_id', 'userId', 'cookies(',
-    ]) {
-      expect(CODE_ROUTE, `${CHEMIN_ROUTE} : ${absent}`).not.toContain(absent);
+  // CHANGÉ (#547) — la route lit la session et décide par la politique du relais.
+  it('DURCI (#547) — le source de la route porte la session et la politique de lecture', () => {
+    for (const present of ['@/lib/auth/config', 'auth()', 'lectureRelaisAutorisee', 'PARAM_JETON_RELAIS']) {
+      expect(CODE_ROUTE, `${CHEMIN_ROUTE} : ${present}`).toContain(present);
     }
   });
 
@@ -321,6 +320,9 @@ describe('DURCI — le compartiment passe par la liste blanche', () => {
 });
 
 describe('CARACTÉRISATION — la clé est le chemin, recollé tel quel', () => {
+  // #547 : lu au nom du PROPRIÉTAIRE de la clé (`u1`) — ce bloc décrit le
+  // service rendu, pas le contrôle d'accès (éprouvé dans SÉCURITÉ).
+  beforeEach(() => { session.courante = { user: { id: 'u1' } }; });
   /**
    * `path.join('/')` — ni normalisation, ni décodage, ni refus. Ce qui arrive
    * dans les segments dynamiques arrive à MinIO.
@@ -374,16 +376,21 @@ describe('CARACTÉRISATION — la clé est le chemin, recollé tel quel', () => 
    * Les clés de Studiio commencent par l'identifiant du propriétaire
    * (`{userId}/library/…`, `{userId}/rendus/…`). La route ne le sait pas.
    */
-  it('une clé préfixée par l identifiant d un AUTRE utilisateur est servie', async () => {
-    const octets = deposer('media', 'utilisateur-B/rendus/job-77.webm', 'MONTAGE-DE-B');
+  // CHANGÉ (#547) — elle était servie. Elle est refusée, sans lecture.
+  it('DURCI (#547) — une clé préfixée par l identifiant d un AUTRE utilisateur est refusée', async () => {
+    deposer('media', 'utilisateur-B/rendus/job-77.webm', 'MONTAGE-DE-B');
     session.courante = { user: { id: 'utilisateur-A' } };
     const r = await demander('media', ['utilisateur-B', 'rendus', 'job-77.webm']);
-    expect(r.statut).toBe(200);
-    expect(r.corps.equals(octets)).toBe(true);
+    expect(r.statut).toBe(404);
+    expect(r.texte).not.toContain('MONTAGE-DE-B');
+    expect(etat.journal).toEqual([]);
   });
 });
 
 describe('CARACTÉRISATION — Range, 206 et 416', () => {
+  // #547 : lu au nom du PROPRIÉTAIRE de la clé (`u1`) — ce bloc décrit le
+  // service rendu, pas le contrôle d'accès (éprouvé dans SÉCURITÉ).
+  beforeEach(() => { session.courante = { user: { id: 'u1' } }; });
   const TAILLE = 4096;
   const FIXTURE = (() => {
     const b = Buffer.alloc(TAILLE);
@@ -489,7 +496,14 @@ describe('CARACTÉRISATION — Range, 206 et 416', () => {
    * qui n'y a pas droit, sans même le servir. Après durcissement, ce 416 ne
    * doit jamais précéder le contrôle d'accès.
    */
-  it('le 416 divulgue la taille exacte de l objet, à une requête sans session', async () => {
+  // CHANGÉ (#547) — sans session, plus de 416 (oracle de taille) : un 404 neutre.
+  // Le propriétaire, lui, garde le 416 et sa taille.
+  it('DURCI (#547) — le 416 ne divulgue plus la taille à une requête sans session', async () => {
+    session.courante = null;
+    const anonyme = await demander('videos', ['u1', 'rush.mp4'], { range: 'bytes=999999-' });
+    expect(anonyme.statut).toBe(404);
+    expect(anonyme.entetes.get('content-range')).toBeNull();
+    session.courante = { user: { id: 'u1' } };
     const r = await demander('videos', ['u1', 'rush.mp4'], { range: 'bytes=999999-' });
     expect(r.statut).toBe(416);
     expect(r.entetes.get('content-range')).toContain(String(TAILLE));
@@ -497,6 +511,9 @@ describe('CARACTÉRISATION — Range, 206 et 416', () => {
 });
 
 describe('CARACTÉRISATION — HEAD', () => {
+  // #547 : lu au nom du PROPRIÉTAIRE de la clé (`u1`) — ce bloc décrit le
+  // service rendu, pas le contrôle d'accès (éprouvé dans SÉCURITÉ).
+  beforeEach(() => { session.courante = { user: { id: 'u1' } }; });
   it('HEAD rend la taille et `Accept-Ranges` sans ouvrir un octet', async () => {
     const octets = deposer('videos', 'u1/rush.mp4', Buffer.alloc(2048));
     const r = await sonder('videos', ['u1', 'rush.mp4']);
@@ -513,8 +530,13 @@ describe('CARACTÉRISATION — HEAD', () => {
    * Les clés de Studiio sont déterministes. Un HEAD qui distingue 200 et 404
    * sans session permet d'énumérer ce que possède un utilisateur.
    */
-  it('HEAD distingue présent (200) et absent (404), sans aucune session', async () => {
+  // CHANGÉ (#547) — plus d'oracle sans session : présent et absent rendent 404.
+  it('DURCI (#547) — HEAD sans session ne distingue plus présent et absent', async () => {
     deposer('media', 'u1/existe.jpg', 'X');
+    session.courante = null;
+    expect((await sonder('media', ['u1', 'existe.jpg'])).statut).toBe(404);
+    expect((await sonder('media', ['u1', 'absent.jpg'])).statut).toBe(404);
+    session.courante = { user: { id: 'u1' } };
     expect((await sonder('media', ['u1', 'existe.jpg'])).statut).toBe(200);
     expect((await sonder('media', ['u1', 'absent.jpg'])).statut).toBe(404);
   });
@@ -530,6 +552,9 @@ describe('CARACTÉRISATION — HEAD', () => {
 });
 
 describe('CARACTÉRISATION — cache et CORS', () => {
+  // #547 : lu au nom du PROPRIÉTAIRE de la clé (`u1`) — ce bloc décrit le
+  // service rendu, pas le contrôle d'accès (éprouvé dans SÉCURITÉ).
+  beforeEach(() => { session.courante = { user: { id: 'u1' } }; });
   beforeEach(() => { deposer('media', 'u1/rendus/job.webm', 'MONTAGE'); });
 
   /**
@@ -586,6 +611,9 @@ describe('CARACTÉRISATION — cache et CORS', () => {
 });
 
 describe('CARACTÉRISATION — le type MIME', () => {
+  // #547 : lu au nom du PROPRIÉTAIRE de la clé (`u1`) — ce bloc décrit le
+  // service rendu, pas le contrôle d'accès (éprouvé dans SÉCURITÉ).
+  beforeEach(() => { session.courante = { user: { id: 'u1' } }; });
   it.each([
     ['mp4', 'video/mp4'], ['webm', 'video/webm'], ['mov', 'video/quicktime'],
     ['jpg', 'image/jpeg'], ['jpeg', 'image/jpeg'], ['png', 'image/png'],
@@ -635,6 +663,9 @@ describe('CARACTÉRISATION — le type MIME', () => {
 });
 
 describe('CARACTÉRISATION — objet absent et panne du stockage', () => {
+  // #547 : lu au nom du PROPRIÉTAIRE de la clé (`u1`) — ce bloc décrit le
+  // service rendu, pas le contrôle d'accès (éprouvé dans SÉCURITÉ).
+  beforeEach(() => { session.courante = { user: { id: 'u1' } }; });
   it('un objet absent rend un 404 JSON `{"error":"not found"}`', async () => {
     const r = await demander('media', ['u1', 'nexiste-pas.mp4']);
     expect(r.statut).toBe(404);
@@ -771,14 +802,11 @@ describe('La garde du durcissement', () => {
     ).toEqual([]);
   });
 
-  it('ce qui reste ouvert est NOMMÉ, et attend le lot suivant', () => {
-    // Ce test ne juge pas : il tient l'inventaire. Le jour où la session
-    // arrivera, il deviendra rouge — et ce rouge dira « mets à jour la
-    // liste », ce qui est exactement le bon signal.
-    expect(manquantsReportes.length,
-      'la session et la vérification de propriété sont désormais présentes : '
-      + 'retirer ce test et activer le bloc SÉCURITÉ ci-dessous.').toBe(2);
-    expect(durcissementPresent).toBe(false);
+  // #547 : la session et la vérification de propriété sont posées ; le bloc
+  // SÉCURITÉ ci-dessous est désormais ACTIF.
+  it('plus rien ne reste ouvert : session et propriété posées, SÉCURITÉ active', () => {
+    expect(manquantsReportes, signauxManquants.join(' | ')).toEqual([]);
+    expect(durcissementPresent).toBe(true);
   });
 });
 
@@ -1109,10 +1137,11 @@ describe('NON-RÉGRESSION — les producteurs de cette URL, et ce qui les casser
   // (`lib/social/url-publication.ts`, garde de propriété avant signature).
   it.each([
     'src/lib/social/url-publication.ts',
-  ])('%s livre ce chemin tel quel aux plateformes', (fichier) => {
+  ])('%s livre ce chemin aux plateformes, muni d un jeton du relais (#547)', (fichier) => {
     const code = sansCommentaires(source(fichier));
-    // Toujours livrée telle quelle — APRÈS la garde de propriété du publieur.
-    expect(code).toContain("if (cible.acces === 'public') return absolue;");
+    // #547 : livrée APRÈS la garde de propriété du publieur, munie d'un
+    // jeton du relais — les plateformes la lisent sans cookie.
+    expect(code).toContain('? signerUrlRelais(absolue, { dureeMs: DUREE_JETON_PUBLICATION_MS })');
   });
 
   it.each([
