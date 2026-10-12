@@ -109,8 +109,9 @@ export async function rushEncorePresent(
 ): Promise<boolean> {
   try {
     const res = await sonderSur(url, { ...reseau, timeoutMs });
-    onEtat?.(etatDepuisStatut(res.status));
-    return !(res.status === 404 || res.status === 410);
+    const etat = etatDepuisStatut(res.status);
+    onEtat?.(etat);
+    return etat !== 'introuvable';
   } catch (e) {
     if (estRefusSsrf(e)) { onEtat?.('refuse'); return false; }
     // Réseau, délai, hôte injoignable : aucune conclusion possible.

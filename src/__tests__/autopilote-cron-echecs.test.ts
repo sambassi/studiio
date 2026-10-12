@@ -262,6 +262,18 @@ describe('2. Le retrait des rushes morts n efface pas un rush ajouté pendant le
     await passage();
     expect(ligne().rush_urls).toEqual([B]);
   });
+
+  it('TOUS morts, aucune autre source → `sans-rush` comme une banque vide : aucun rendu, banque intacte', async () => {
+    absentes.add(A);
+    absentes.add(B);
+    await passage();
+    // Jamais un montage titre/cartes/CTA seul.
+    expect(renderAndUpload).not.toHaveBeenCalled();
+    expect(posts()).toHaveLength(0);
+    expect(notifyOnce.mock.calls.map((c) => (c[0] as Record<string, string>).kind)).toContain('s');
+    // Rien n'est retiré par le contrôle avant production.
+    expect(ligne().rush_urls).toEqual([A, B]);
+  });
 });
 
 describe('3. Un montage raté est DIT à l utilisateur', () => {

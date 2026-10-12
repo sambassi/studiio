@@ -97,3 +97,34 @@ export async function etatAccesRush(url: string, sonde: SondeRush): Promise<Etat
   const present = await sonde(url, undefined, undefined, (e) => { detail = e; });
   return detail ?? (present ? 'utilisable' : 'introuvable');
 }
+
+/**
+ * L'état d'un rush CÔTÉ SERVEUR : la garde de propriété (`lisible`, en
+ * pratique `mediaLisiblePar`) passe AVANT toute sonde — un rush refusé n'est
+ * jamais contacté, ni lu, ni signé. Sinon : `etatAccesRush`, une sonde.
+ * Le même chemin pour la route de vérification, le contrôle avant production
+ * et le moteur.
+ */
+export async function etatRushServeur(url: string, lisible: (u: string) => boolean, sonde: SondeRush): Promise<EtatRush> {
+  return lisible(url) ? etatAccesRush(url, sonde) : 'refuse';
+}
+
+/** Les états de plusieurs rushes, sondés en parallèle (`etatRushServeur`). */
+export async function etatsRushesServeur(
+  urls: readonly string[], lisible: (u: string) => boolean, sonde: SondeRush,
+): Promise<Record<string, EtatRush>> {
+  const paires = await Promise.all(urls.map(async (u) => [u, await etatRushServeur(u, lisible, sonde)] as const));
+  return Object.fromEntries(paires);
+}
+
+/**
+ * CONTRÔLE AVANT PRODUCTION (cron, « Produire maintenant ») : les rushes de la
+ * banque qui comptent réellement, ordre conservé. Un rush introuvable, expiré
+ * ou refusé ne compte pas — exactement comme une banque vide : sans autre
+ * source, aucun montage titre/cartes/CTA n'est lancé.
+ */
+export async function rushesUtilisablesServeur(
+  urls: readonly string[], lisible: (u: string) => boolean, sonde: SondeRush,
+): Promise<string[]> {
+  return rushesUtilisables(urls, await etatsRushesServeur(urls, lisible, sonde));
+}

@@ -5,6 +5,9 @@ import { getUserCredits } from '@/lib/credits/system';
 import { sendEmailSilent } from '@/lib/email/resend';
 import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rules';
 import { avatarActifConfig } from '@/lib/autopilot/sources';
+import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
+import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
+import { rushEncorePresent } from '@/lib/autopilot/poster';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { notifyOnce, NOTIFICATION_KINDS } from '@/lib/notifications/store';
 import { pickTopics } from '@/lib/autopilot/topics';
@@ -103,7 +106,7 @@ const MESSAGES: Partial<Record<SkipReason, {
     kind: NOTIFICATION_KINDS.autopiloteSansRush,
     subject: 'Autopilote en attente — ajoutez des rushes',
     title: 'Autopilote en pause : ajoutez des rushes',
-    body: 'Votre Autopilote est actif mais sa banque de rushes est vide. '
+    body: 'Votre Autopilote est actif mais aucun rush de sa banque n’est utilisable (banque vide, rushes expirés ou supprimés). '
       + 'Ajoutez-y au moins une vidéo pour qu’il puisse produire.',
   },
 };
@@ -274,9 +277,18 @@ export async function GET(req: NextRequest) {
       const coutParMontage = (avatarActifConfig(config) ? (await prixDe('avatar.jumeau')) + coutRendu : coutRendu)
         + await coutAfficheDuDevis(config);
       const credits = await getUserCredits(userId).catch(() => 0);
-      const decision = decideRun({
+      let decision = decideRun({
         config, credits, costPerVideo: coutParMontage, now, allowWithoutRush: avatarActifConfig(config),
       });
+      // SOURCE = média LISIBLE (`validite-rush.ts`). Sondé seulement quand la
+      // configuration dit « on produit » et sans avatar : des rushes tous
+      // introuvables, expirés ou refusés valent une banque vide — la MÊME
+      // décision (`decideRun`) le dit `sans-rush`, au lieu d'un montage
+      // titre/cartes/CTA seul. Rien n'est retiré de la banque ici.
+      if (decision.run && !avatarActifConfig(config) && config.rushUrls.length > 0) {
+        const rushUrls = await rushesUtilisablesServeur(config.rushUrls, (u) => mediaLisiblePar(u, userId), rushEncorePresent);
+        decision = decideRun({ config: { ...config, rushUrls }, credits, costPerVideo: coutParMontage, now, allowWithoutRush: false });
+      }
 
       if (!decision.run) {
         // « pas encore » est le cas NORMAL entre deux cycles : on ne

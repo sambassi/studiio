@@ -10,7 +10,7 @@ import { urlRenduPourRush } from '@/lib/render/proxy-rendu';
 import {
   pickPosterUrl, pickCustomPoster, probeRushSeconds, rushEncorePresent,
 } from '@/lib/autopilot/poster';
-import { etatAccesRush, type EtatRush } from '@/lib/autopilot/validite-rush';
+import { etatRushServeur, type EtatRush } from '@/lib/autopilot/validite-rush';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
 import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
@@ -388,7 +388,7 @@ export async function produireUnMontage(input: {
   const etatDe = async (u: string): Promise<EtatRush> => {
     const connu = etatsRush.get(u);
     if (connu) return connu;
-    const etat: EtatRush = lisible(u) ? await etatAccesRush(u, rushEncorePresent) : 'refuse';
+    const etat = await etatRushServeur(u, lisible, rushEncorePresent);
     etatsRush.set(u, etat);
     return etat;
   };
@@ -412,7 +412,10 @@ export async function produireUnMontage(input: {
       // REPLI sur le rush UTILISABLE suivant de la banque (même rotation que
       // les compagnons) : un rush A mort ne fait plus perdre un rush B valide.
       // Aucun : le montage continue avec les autres sources (stock, avatar)
-      // ou en titre/cartes/CTA — jamais un plan vide envoyé au rendu.
+      // ou en titre/cartes/CTA — jamais un plan vide envoyé au rendu. Ce
+      // dernier cas n'est qu'un FILET (rush mort entre le contrôle avant
+      // production et le rendu) : sans aucun rush utilisable ni autre source,
+      // le cron et « Produire maintenant » refusent en amont (`sans-rush`).
       const perdu = rushUrl;
       rushUrl = null;
       for (const u of rushsCompagnons(banqueRushs, perdu, rang, banqueRushs.length)) {

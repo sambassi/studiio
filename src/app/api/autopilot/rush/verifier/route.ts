@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { rushEncorePresent } from '@/lib/autopilot/poster';
 import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
-import { etatAccesRush, type EtatRush } from '@/lib/autopilot/validite-rush';
+import { etatsRushesServeur } from '@/lib/autopilot/validite-rush';
 
 /**
  * Hygiène de la banque de rushes — `POST /api/autopilot/rush/verifier`.
@@ -75,15 +75,9 @@ export async function POST(req: NextRequest) {
 
   // Les HEAD en parallèle : chacun est borné par le délai de `rushEncorePresent`.
   // Refus de propriété : `refuse`, sans aucun appel réseau.
-  const paires = await Promise.all(
-    aVerifier.map(async (url) => [url, mediaLisiblePar(url, userId) ? await etatAccesRush(url, rushEncorePresent) : 'refuse'] as const),
-  );
+  const etats = await etatsRushesServeur(aVerifier, (u) => mediaLisiblePar(u, userId), rushEncorePresent);
   const resultats: Record<string, boolean> = {};
-  const etats: Record<string, EtatRush> = {};
-  for (const [url, etat] of paires) {
-    resultats[url] = etat === 'utilisable';
-    etats[url] = etat;
-  }
+  for (const [url, etat] of Object.entries(etats)) resultats[url] = etat === 'utilisable';
 
   return NextResponse.json({ success: true, resultats, etats, refusees });
 }
