@@ -1,6 +1,7 @@
 'use client';
 
 import { normaliserReglages, type ReglagesVoix } from '@/lib/types/voice';
+import { lireCtaCopies, type CtaCopie } from '@/lib/creer/cta-copies';
 import { lireCouverture, lireReglagesTiktok, type Couverture, type ReglagesTiktok } from '@/lib/social/couverture';
 import { lireTimingVoix, type TimingVoix } from '@/lib/creer/synchro-cartes';
 import { findFont } from '@/lib/fonts/catalog';
@@ -207,6 +208,12 @@ export interface Draft {
    */
   titlePos?: { x: number; y: number };
   ctaPos?: { x: number; y: number };
+  /**
+   * CTA MULTIPLES (`cta-copies.ts`) : copies visuelles du CTA, chacune avec
+   * son texte, sa position, sa largeur et son style. Absent = le CTA unique,
+   * le cas de tous les brouillons antérieurs.
+   */
+  ctaCopies?: CtaCopie[];
   /**
    * Emplacements libres des cartes, avec le FORMAT dans lequel ils ont ete
    * mesures : `h` est un % de la hauteur du conteneur, laquelle varie en sens
@@ -727,6 +734,10 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
         : undefined,
     titlePos: sanitizePos(raw.titlePos),
     ctaPos: sanitizePos(raw.ctaPos),
+    ctaCopies: (() => {
+      const copies = lireCtaCopies(raw.ctaCopies);
+      return copies.length ? copies : undefined;
+    })(),
   };
 
   // Le placement des cartes se relit APRES le contenu : sans ce croisement,

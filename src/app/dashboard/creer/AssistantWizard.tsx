@@ -124,6 +124,7 @@ import {
 } from '@/lib/autopilot/textStyle';
 import TextFormatToolbar from '@/components/creer/TextFormatToolbar';
 import { DEFAULT_TEXT_CASE, type TextCase, type TextAlign } from '@/lib/creer/textFormat';
+import { dupliquerCta, MAX_CTA_COPIES, type CtaCopie } from '@/lib/creer/cta-copies';
 import { CARD_STYLES, DEFAULT_CARD_STYLE } from '@/lib/creer/cardStyles';
 import { useFrameScale } from '@/lib/hooks/useFrameScale';
 import SequenceCards, { type CardsTypography } from '@/components/creer/SequenceCards';
@@ -135,7 +136,7 @@ import TransitionMiniPreview from '@/components/creer/TransitionMiniPreview';
 import TextAnimationMiniPreview from '@/components/creer/TextAnimationMiniPreview';
 import SequencePlayback, { type PlaybackRequest } from '@/components/creer/SequencePlayback';
 import { transitionExtract, textAnimationExtract, type PlaybackExtract } from '@/lib/creer/transitionPreview';
-import { INTRO_WINDOW } from '@/lib/creer/textAnimation';
+import { INTRO_WINDOW, textAnimationState } from '@/lib/creer/textAnimation';
 import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { useOptionPreview } from '@/lib/hooks/useOptionPreview';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
@@ -189,6 +190,7 @@ import {
 } from '@/lib/facturation/annonce';
 import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 import { verifierMediasRequis, estMediaIndisponible, exigerVideo, videoExigee } from '@/lib/rendus/medias-requis';
+import { pleinCadreDesJumeaux, useUrlJumeauPleinCadre } from '@/lib/creer/jumeau-plein-cadre-client';
 import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
@@ -204,11 +206,12 @@ import CartesEditeur from '@/components/creer/CartesEditeur';
 import {
   gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, versionAncienneDuRush, lireEtatJumeau, type JumeauMode,
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
+  MESSAGE_ECHEC_VIDEO_AVATAR, motifEchecVideoAvatar, messageEchecJumeau,
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { apercuAvatarDepuisListe, lireAvatarsPourApercu, type ApercuAvatarCreer } from '@/lib/creer/apercu-avatar';
 import { useTarifs } from '@/lib/tarifs/client';
-import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee } from '@/lib/avatar/identite';
+import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee, generationDepuisRush } from '@/lib/avatar/identite';
 import {
   DRAFT_VERSION,
   draftKey,
@@ -1484,6 +1487,7 @@ function PlateContent({
   ctaPos,
   titleWidth = DESIGN.titleWidth,
   ctaWidth = DESIGN.ctaWidth,
+  ctaCopies,
   cardBoxes = null,
   cardStyle,
   cardsTypography,
@@ -1519,6 +1523,12 @@ function PlateContent({
   /** Largeur du bloc titre / CTA, en % de la vidéo (`sizes.title` / `sizes.watermark`). */
   titleWidth?: number;
   ctaWidth?: number;
+  /**
+   * CTA MULTIPLES (`cta-copies.ts`) — copies visuelles du CTA, sous leur forme
+   * RENDUE (échelle ajustée, couleur de sous-texte résolue). Absent ou vide :
+   * le CTA unique d'avant, au nœud près.
+   */
+  ctaCopies?: CtaCopie[];
   cardBoxes?: Record<string, CardBox> | null;
   cardStyle?: string;
   cardsTypography?: CardsTypography;
@@ -1557,9 +1567,17 @@ function PlateContent({
     onElementResizeStart?: (id: string, e: React.PointerEvent) => void;
     onElementDelete?: (id: string) => void;
     selectedElementId?: string | null;
+    /** Copie de CTA : glisser, double-cliquer (son panneau), copie en cours de glissement. */
+    onCtaCopieDragStart?: (id: string, e: React.PointerEvent) => void;
+    onCtaCopieDoubleClick?: (id: string) => void;
+    draggingCtaCopie?: string | null;
   };
 }) {
   const vw = VIDEO_SIZE[format].w;
+  // Jumeau à bandes incrustées : l'aperçu montre la MÊME version plein cadre
+  // que l'export (même résolveur, même cache). `rushUrl` reste l'URL d'origine
+  // (état, brouillon, recadrage) ; seule la source affichée change.
+  const rushAffiche = useUrlJumeauPleinCadre(rushUrl, format);
   // 9:16 : l'ancre automatique (`DESIGN`) se lit comme le placement sur des
   // reseaux (`zones-sures-916`) ; une position posee a la main est rendue
   // telle quelle, et rien ne change en 16:9 / 1:1.
@@ -1570,6 +1588,11 @@ function PlateContent({
   const titre916 = titreRendu916(format, titlePos, titleWidth, text, generated?.title, generated?.subtitle);
   titleWidth = titre916.largeur;
   const titleTypography = titre916.echelle === text.title.scale ? text.title : { ...text.title, scale: titre916.echelle };
+  // Machine a ecrire : part du texte deja ecrite (1 hors machine a ecrire ou
+  // sur le plateau, sans `progress`). Le MEME calcul que `SequenceAnimee`
+  // (Remotion) et `textRevealRatio` (canvas) — sans lui, l'apercu montrait le
+  // titre et le CTA entiers des la premiere image.
+  const reveal = textAnimationState(textAnimation, progress).charRatio;
   /**
    * Disposition des cartes en GRILLE plutot qu'en colonne.
    *
@@ -1595,6 +1618,7 @@ function PlateContent({
     groupedCards, capturing = false, onCardDoubleClick, onCardResizeStart, onDragStart,
     dragging = null, onTextDoubleClick, onTextResizeStart, onTextWidthStart, onElementDragStart,
     onElementResizeStart, onElementDelete, selectedElementId = null,
+    onCtaCopieDragStart, onCtaCopieDoubleClick, draggingCtaCopie = null,
   } = edit ?? {};
   const uiPx = edit?.uiPx ?? ((n: number) => n);
 
@@ -1700,7 +1724,7 @@ function PlateContent({
             )}
             {rushUrl && (
               <video
-                src={rushUrl}
+                src={rushAffiche ?? rushUrl}
                 muted
                 loop
                 autoPlay
@@ -1709,13 +1733,13 @@ function PlateContent({
                 onError={onRushError}
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
-                  if (v.videoWidth > 0 && v.videoHeight > 0) setRatioRush({ url: rushUrl, r: v.videoWidth / v.videoHeight });
+                  if (v.videoWidth > 0 && v.videoHeight > 0) setRatioRush({ url: rushAffiche ?? rushUrl, r: v.videoWidth / v.videoHeight });
                 }}
                 data-rush-recadrage={recadrageRushActif(rushTransform) ? 'oui' : 'non'}
                 // Rempli, jamais bordé ; recadré comme l'export (même rectangle que `drawVideoSeq`).
                 style={styleRecadrageRush(
                   rushTransform,
-                  ratioRush && ratioRush.url === rushUrl ? { source: ratioRush.r, cadre: RATIO_FORMAT[format] } : null,
+                  ratioRush && ratioRush.url === (rushAffiche ?? rushUrl) ? { source: ratioRush.r, cadre: RATIO_FORMAT[format] } : null,
                 )}
               />
             )}
@@ -1796,6 +1820,7 @@ function PlateContent({
                 subtitleTypography={text.subtitle}
                 format={format}
                 containerWidth={vw}
+                reveal={reveal}
               />
               {/* Poignees de coin — agrandir le TEXTE. Elles arretent la
                   propagation : sans cela, la prise deplacerait le bloc au
@@ -1884,12 +1909,49 @@ function PlateContent({
                 typography={text.cta}
                 format={format}
                 containerWidth={vw}
+                reveal={reveal}
               />
               <TextResizeHandles el="cta" onStart={onTextResizeStart} onWidthStart={onTextWidthStart} uiPx={uiPx} capturing={capturing}
                 visible={poigneesVisibles('cta')}
                 onDragMove={onDragMove} onDragEnd={onDragEnd} />
             </div>
             )}
+            {/* CTA MULTIPLES — chaque copie : SON cadre (position, largeur),
+                SON texte, SON style, la MEME révélation que l'original (machine
+                à écrire appliquée à son propre texte). Après l'original, dans
+                le même calque d'animation : comme `drawCTA` et Remotion. */}
+            {shows('cta') && (ctaCopies ?? []).map((copie) => (
+              <div
+                key={copie.id}
+                data-guide-key={`cta:${copie.id}`}
+                data-guide-label="CTA"
+                data-cta-copie={copie.id}
+                onPointerDown={onCtaCopieDragStart ? (e) => onCtaCopieDragStart(copie.id, e) : undefined}
+                onPointerMove={onDragMove}
+                onPointerUp={onDragEnd}
+                onPointerCancel={onDragEnd}
+                onLostPointerCapture={onDragEnd}
+                onDoubleClick={onCtaCopieDoubleClick ? () => onCtaCopieDoubleClick(copie.id) : undefined}
+                title={onCtaCopieDoubleClick ? 'Glisser pour déplacer · double-clic pour modifier cette copie' : undefined}
+                style={{
+                  ...ctaFrameStyle(copie.pos, copie.width),
+                  cursor: onCtaCopieDragStart ? (draggingCtaCopie === copie.id ? 'grabbing' : 'grab') : undefined,
+                  zIndex: onCtaCopieDragStart ? 2 : undefined,
+                  touchAction: onCtaCopieDragStart ? 'none' : undefined,
+                  outline: !capturing && draggingCtaCopie === copie.id ? `${uiPx(1)}px dashed rgba(255,255,255,0.7)` : undefined,
+                  outlineOffset: uiPx(2),
+                }}
+              >
+                <SequenceCta
+                  text={copie.text}
+                  subText={copie.sub}
+                  typography={copie.style}
+                  format={format}
+                  containerWidth={vw}
+                  reveal={reveal}
+                />
+              </div>
+            ))}
             </TextAnimationLayer>
 
             {/* ── ELEMENTS LIBRES ─────────────────────────────────────────
@@ -2160,9 +2222,18 @@ export function Preview({
   onTextWidthStart,
   titleWidth,
   ctaWidth,
+  ctaCopies,
+  onCtaCopieDragStart,
+  onCtaCopieDoubleClick,
+  draggingCtaCopie = null,
   onTextDoubleClick,
   onCardDoubleClick,
 }: {
+  /** CTA multiples (forme rendue) et leurs aides d'édition — voir `PlateContent`. */
+  ctaCopies?: CtaCopie[];
+  onCtaCopieDragStart?: (id: string, e: React.PointerEvent) => void;
+  onCtaCopieDoubleClick?: (id: string) => void;
+  draggingCtaCopie?: string | null;
   /**
    * Habillage de la séquence Vidéo, celui que l'export dessinera. Défaut
    * `aucun` : seul Créer en passe un (l'Autopilote n'en dessine pas).
@@ -2745,6 +2816,7 @@ export function Preview({
             ctaPos={ctaPos}
             titleWidth={titleWidth}
             ctaWidth={ctaWidth}
+            ctaCopies={ctaCopies}
             cardBoxes={cardBoxes}
             cardStyle={cardStyle}
             cardsTypography={cardsTypography}
@@ -2758,6 +2830,7 @@ export function Preview({
               groupedCards, capturing, uiPx, onCardDoubleClick, onCardResizeStart, onDragStart,
               dragging, onTextDoubleClick, onTextResizeStart, onTextWidthStart, onElementDragStart,
               onElementResizeStart, onElementDelete, selectedElementId,
+              onCtaCopieDragStart, onCtaCopieDoubleClick, draggingCtaCopie,
             }}
           />
         )}
@@ -3839,6 +3912,16 @@ export default function AssistantWizard() {
   const [titleWidth, setTitleWidth] = useState<number>(DESIGN.titleWidth);
   const [ctaWidth, setCtaWidth] = useState<number>(DESIGN.ctaWidth);
   /**
+   * CTA MULTIPLES (`cta-copies.ts`) : copies visuelles du CTA dans la séquence
+   * CTA. L'original reste l'état historique ci-dessus (élément n° 1). Vide :
+   * le CTA unique d'avant, partout.
+   */
+  const [ctaCopies, setCtaCopies] = useState<CtaCopie[]>([]);
+  const ctaCopiesRef = useRef<CtaCopie[]>(ctaCopies);
+  ctaCopiesRef.current = ctaCopies;
+  /** CTA réglé dans le panneau « CTA » : `null` = l'original, sinon l'id d'une copie. */
+  const [ctaCible, setCtaCible] = useState<string | null>(null);
+  /**
    * Section ouverte. Une seule a la fois : c'est ce qui empeche le panneau de
    * s'allonger indefiniment. `null` = tout replie.
    */
@@ -3941,6 +4024,22 @@ export default function AssistantWizard() {
    * `typography` ci-dessous, qui porte les memes valeurs — sans lui, gras,
    * italique et interligne disparaissaient a la regeneration.
    */
+  /**
+   * Copies du CTA sous leur forme RENDUE — la même règle que l'original :
+   * échelle ajustée pour ne jamais déborder (`echelleCtaAjustee`, elle ne fait
+   * que réduire) et sous-texte qui suit la fin du dégradé tant qu'aucune
+   * couleur n'a été choisie. L'aperçu, le compositeur et la metadata
+   * reçoivent CET objet.
+   */
+  const copiesCtaRendues: CtaCopie[] = useMemo(() => ctaCopies.map((c) => ({
+    ...c,
+    style: {
+      ...c.style,
+      subColor: c.style.subColor || gradEnd,
+      scale: echelleCtaAjustee({ texte: c.text, sousTexte: c.sub, echelle: c.style.scale, largeurPct: c.width, video: VIDEO_SIZE[format] }),
+    },
+  })), [ctaCopies, gradEnd, format]);
+
   const textDesign = {
     titleFont: textStyles.title.font,
     titleColor: textStyles.title.color,
@@ -4148,7 +4247,7 @@ export default function AssistantWizard() {
    * `reprendreId` non nul = le suivi s'est coupé (réseau, session, délai) mais
    * la génération continue — on la REPREND au lieu d'en payer une seconde.
    */
-  const [jumeauRepriseErreur, setJumeauRepriseErreur] = useState<{ message: string; reprendreId: string | null } | null>(null);
+  const [jumeauRepriseErreur, setJumeauRepriseErreur] = useState<{ message: string | null; reprendreId: string | null; titre?: string } | null>(null);
   /** Un seul poll de reprise à la fois ; remis à faux sur échec pour permettre « Réessayer ». */
   const jumeauRepriseFaite = useRef(false);
   /** Vrai pendant que le clic d'envoi gère lui-même la génération : la reprise ne double pas. */
@@ -4476,6 +4575,8 @@ export default function AssistantWizard() {
       y: Math.max(80, window.innerHeight / 2 - 220),
     });
     setZoneOuverte(zone);
+    // Double-clic sur l'original : le panneau règle l'original.
+    setCtaCible(null);
   }, []);
 
   const [scheduledDate, setScheduledDate] = useState('');
@@ -4624,8 +4725,8 @@ export default function AssistantWizard() {
   const ctaPos = useMemo(() => positionTexteEffective('cta', ctaPosBrut, format), [ctaPosBrut, format]);
   /** Element en cours de glissement, et ecart de saisie fige au pointerdown. */
   const dragRef = useRef<{
-    el: 'title' | 'cta' | 'card' | 'element' | 'element-resize' | 'poster-pan' | 'poster-zoom';
-    /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. */
+    el: 'title' | 'cta' | 'cta-copie' | 'card' | 'element' | 'element-resize' | 'poster-pan' | 'poster-zoom';
+    /** Carte glissee, quand `el === 'card'` — son repere est le conteneur. Copie de CTA, quand `el === 'cta-copie'`. */
     cardId?: string;
     pointerId: number;
     /**
@@ -4649,6 +4750,8 @@ export default function AssistantWizard() {
   const titlePosRef = useRef<Pos>(DESIGN.titlePos);
   const ctaPosRef = useRef<Pos>(DESIGN.ctaPos);
   const [dragging, setDragging] = useState<'title' | 'cta' | null>(null);
+  /** Copie de CTA en cours de glissement (son id), ou `null`. */
+  const [draggingCtaCopie, setDraggingCtaCopie] = useState<string | null>(null);
   useEffect(() => { titlePosRef.current = titlePos; }, [titlePos]);
   useEffect(() => { ctaPosRef.current = ctaPos; }, [ctaPos]);
 
@@ -5773,6 +5876,34 @@ export default function AssistantWizard() {
     }
   }, [titlePos, ctaPos]);
 
+  /**
+   * Glisser une COPIE du CTA : même geste, même ancre (bas-centre), même
+   * aimantation et même bornage que l'original — seule SA position bouge.
+   */
+  const startCtaCopieDrag = useCallback((id: string, e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (e.button !== 0 || !e.isPrimary) return;
+    const rect = previewRef.current?.getBoundingClientRect();
+    if (!rect || dragRef.current) return;
+    const copie = ctaCopiesRef.current.find((c) => c.id === id);
+    if (!copie) return;
+    const box = e.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      el: 'cta-copie',
+      cardId: id,
+      pointerId: e.pointerId,
+      grab: grabOffset(e.clientX, e.clientY, rect, copie.pos),
+      box: { width: (box.width / rect.width) * 100, height: (box.height / rect.height) * 100 },
+    };
+    setDraggingCtaCopie(id);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      dragRef.current = null;
+      setDraggingCtaCopie(null);
+    }
+  }, []);
+
   /* ── GUIDES D'ALIGNEMENT ─────────────────────────────────────────────
      Lignes de centrage et badges d'ecart, affiches PENDANT un glissement.
      Vides au repos : ils n'existent que le temps du geste, et le drapeau
@@ -5836,6 +5967,10 @@ export default function AssistantWizard() {
     }
     if (exclure !== 'cta') {
       out.push({ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' });
+    }
+    for (const c of ctaCopiesRef.current) {
+      if (c.id === exclure) continue;
+      out.push({ key: `cta:${c.id}`, x: c.pos.x, y: c.pos.y, label: 'CTA' });
     }
     for (const el of freeElementsRef.current) {
       if (el.id === exclure) continue;
@@ -6003,6 +6138,20 @@ export default function AssistantWizard() {
       setCardBoxes(merged);
       return;
     }
+    if (drag.el === 'cta-copie') {
+      const id = drag.cardId as string;
+      const copie = ctaCopiesRef.current.find((c) => c.id === id);
+      if (!copie) return;
+      const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, copie.pos);
+      const aimante = snapAndGuide(raw, 'bottom-center', drag.box, id, `cta:${id}`);
+      const next = clampToBox(aimante, 'bottom-center', drag.box);
+      if (next.x === copie.pos.x && next.y === copie.pos.y) return;
+      // L'original et les autres copies ne bougent pas : seule CETTE copie.
+      const suivantes = ctaCopiesRef.current.map((c) => (c.id === id ? { ...c, pos: { x: next.x, y: next.y } } : c));
+      ctaCopiesRef.current = suivantes;
+      setCtaCopies(suivantes);
+      return;
+    }
     const current = drag.el === 'title' ? titlePosRef.current : ctaPosRef.current;
     const raw = pointToPct(e.clientX, e.clientY, rect, drag.grab, current);
     const ancre: Anchor = drag.el === 'title' ? 'top-left' : 'bottom-center';
@@ -6031,6 +6180,55 @@ export default function AssistantWizard() {
    * leur original — superposees, on croirait qu'il ne s'est rien passe.
    */
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+
+  /* ── CTA MULTIPLES ────────────────────────────────────────────────────
+     Dupliquer le CTA réglé dans le panneau (l'original ou une copie) : une
+     copie AUTONOME — texte, sous-texte, style, largeur repris, position
+     décalée (`positionCopieCta`, zone sûre du 9:16) — qui devient aussitôt
+     la cible du panneau et le bloc mesuré. La source ne bouge pas. */
+  const dupliquerCtaCourant = useCallback(() => {
+    const g = generatedRef.current;
+    if (!g || ctaCopiesRef.current.length >= MAX_CTA_COPIES) return;
+    const source = ctaCible ? ctaCopiesRef.current.find((c) => c.id === ctaCible) : null;
+    const copie = dupliquerCta(
+      source ?? { text: g.cta, sub: g.ctaSub, pos: { x: ctaPos.x, y: ctaPos.y }, width: ctaWidth, style: { ...ctaStyle } },
+      ctaCopiesRef.current,
+      format,
+    );
+    const suivantes = [...ctaCopiesRef.current, copie];
+    ctaCopiesRef.current = suivantes;
+    setCtaCopies(suivantes);
+    setCtaCible(copie.id);
+    setMeasuredKey(`cta:${copie.id}`);
+  }, [ctaCible, ctaPos, ctaWidth, ctaStyle, format]);
+
+  /** Supprime UNE copie. L'original ne passe jamais par ici. */
+  const supprimerCtaCopie = useCallback((id: string) => {
+    const suivantes = ctaCopiesRef.current.filter((c) => c.id !== id);
+    ctaCopiesRef.current = suivantes;
+    setCtaCopies(suivantes);
+    setCtaCible((v) => (v === id ? null : v));
+    setMeasuredKey((v) => (v === `cta:${id}` ? null : v));
+    setZoneOuverte(null);
+  }, []);
+
+  /** Modifie UNE copie (texte, sous-texte, style). L'original n'est pas touché. */
+  const modifierCtaCopie = useCallback((id: string, patch: (c: CtaCopie) => CtaCopie) => {
+    const suivantes = ctaCopiesRef.current.map((c) => (c.id === id ? patch(c) : c));
+    ctaCopiesRef.current = suivantes;
+    setCtaCopies(suivantes);
+  }, []);
+
+  /** La copie réglée dans le panneau « CTA », ou `null` (l'original). */
+  const copieCtaCible = ctaCible ? ctaCopies.find((c) => c.id === ctaCible) ?? null : null;
+
+  /** Double-clic sur une copie : le panneau « CTA », réglé sur CETTE copie. */
+  const ouvrirCtaCopie = useCallback((id: string) => {
+    ouvrirZone('cta');
+    setCtaCible(id);
+    setMeasuredKey(`cta:${id}`);
+  }, [ouvrirZone]);
+
   const limiteCartes = maxCards(format);
   const duplicateSelection = useCallback(() => {
     if (!generated || selectedCards.size === 0) return;
@@ -6185,6 +6383,7 @@ export default function AssistantWizard() {
   const endDrag = useCallback(() => {
     dragRef.current = null;
     setDragging(null);
+    setDraggingCtaCopie(null);
     setDraggingCard(null);
     // Les LIGNES magnetiques n'existent que le temps du geste — elles disent
     // « ca s'aligne en ce moment ». Les ECARTS, eux, restent : ils repondent a
@@ -6577,6 +6776,8 @@ export default function AssistantWizard() {
     // Largeurs réglées à la poignée ; `undefined` à la valeur par défaut.
     titleWidth: titleWidth === DESIGN.titleWidth ? undefined : titleWidth,
     ctaWidth: ctaWidth === DESIGN.ctaWidth ? undefined : ctaWidth,
+    // CTA multiples : `undefined` sans copie — brouillon identique à avant.
+    ctaCopies: ctaCopies.length ? ctaCopies : undefined,
     cardBoxes: cardBoxes ?? undefined,
     cardGroups: cardGroups.length ? cardGroups : undefined,
     elements: freeElements.length ? freeElements : undefined,
@@ -6609,7 +6810,7 @@ export default function AssistantWizard() {
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, mediasVideo, lut, scheduledDate,
-    titleWidth, ctaWidth,
+    titleWidth, ctaWidth, ctaCopies,
     titlePosBrut, ctaPosBrut, cardBoxes, cardGroups, freeElements, posterUrl, posterTransform, rushTransforms, seqBackgrounds, imageSource, batchCount, batchPhotoUrls, batchPhotoMode,
   ]);
 
@@ -6697,7 +6898,7 @@ export default function AssistantWizard() {
     // cette génération, `reprendreJumeau` n'a rien à faire.
     if (draft.jumeauGenerationId) {
       setJumeauGenerationId(draft.jumeauGenerationId);
-      reprendreJumeauRef.current(draft.jumeauGenerationId, draft.rushUrl);
+      reprendreJumeauRef.current(draft.jumeauGenerationId, draft.rushUrl, true);
     }
     // Rush déjà posé (vidéo de jumeau d'un brouillon) : vient-il d'une ancienne
     // version de l'avatar ? Lecture seule — le rush n'est jamais remplacé.
@@ -6771,6 +6972,9 @@ export default function AssistantWizard() {
     if (typeof draft.titleWidth === 'number') setTitleWidth(draft.titleWidth);
     if (typeof draft.ctaWidth === 'number') setCtaWidth(draft.ctaWidth);
     if (draft.ctaPos) setCtaPos(draft.ctaPos);
+    // CTA multiples : absents = aucune copie (le CTA unique d'avant).
+    setCtaCopies(draft.ctaCopies ?? []);
+    setCtaCible(null);
     if (draft.cardBoxes) {
       const free = draft.cardBoxes as FreeCards;
       // La ref suit l'etat : c'est ELLE que lit le gestionnaire de glissement,
@@ -6996,6 +7200,7 @@ export default function AssistantWizard() {
     text: textStyles,
     titleWidth,
     ctaWidth,
+    ctaCopies: copiesCtaRendues,
     habillageVideoMode,
     focus: previewFocus,
     // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
@@ -7237,6 +7442,7 @@ export default function AssistantWizard() {
             ctaPos={ctaPos}
             titleWidth={titleWidth}
             ctaWidth={ctaWidth}
+            ctaCopies={copiesCtaRendues}
             cardBoxes={effectiveCardBoxes}
             cardStyle={cardStyle}
             cardsTypography={cardsTypography}
@@ -7803,11 +8009,27 @@ export default function AssistantWizard() {
     setPreviewFocus('video');
   };
   /** Fin d'une attente de jumeau en échec : le motif réel, et la bonne suite. */
-  const echecRepriseJumeau = (e: unknown, generationId: string | null) => {
+  const echecRepriseJumeau = (e: unknown, generationId: string | null, auMontage?: { rushUrl: string | null | undefined }) => {
     const code = e instanceof ErreurAttenteJumeau ? e.code : null;
     // 404 : rien à reprendre — l'identifiant est oublié, sinon chaque
     // ouverture de la page reboucherait dessus.
     if (code === 'introuvable') setJumeauGenerationId(null);
+    // BUG D — `failed` est TERMINAL (déjà remboursé côté serveur) : garder
+    // l'identifiant ré-affichait cet ANCIEN échec à chaque ouverture, même
+    // jumeau prêt. C'est la VIDÉO qui a échoué, pas l'avatar : on le dit tel
+    // quel. À l'OUVERTURE seulement : une vidéo de jumeau est déjà en place
+    // (rush ou liste) — cet ancien échec ne concerne plus l'écran, rien n'est
+    // affiché. Un échec de « Réessayer » / « Régénérer » est, lui, toujours dit.
+    if (code === 'echec') {
+      setJumeauGenerationId(null);
+      const dejaPose = !!auMontage
+        && (!!generationDepuisRush(auMontage.rushUrl ?? rushUrl) || (mediasVideoRef.current ?? []).some((m) => !!generationDepuisRush(m.url)));
+      setJumeauPhase(null);
+      if (dejaPose) { setJumeauRepriseErreur(null); setJumeauReprise('inactif'); return; }
+      setJumeauRepriseErreur({ titre: MESSAGE_ECHEC_VIDEO_AVATAR, message: motifEchecVideoAvatar(e instanceof Error ? e.message : null), reprendreId: null });
+      setJumeauReprise('echec');
+      return;
+    }
     // Réseau, session, délai : l'ATTENTE s'est arrêtée, pas la génération.
     // La relancer paierait une seconde vidéo : on propose de REPRENDRE le
     // suivi du même identifiant (une simple lecture de statut, gratuite).
@@ -7820,7 +8042,7 @@ export default function AssistantWizard() {
     setJumeauPhase(null);
   };
 
-  const reprendreJumeau = (generationId: string, rushUrlActuel?: string | null) => {
+  const reprendreJumeau = (generationId: string, rushUrlActuel?: string | null, auMontage = false) => {
     if (rushUrlActuel && rushUrlActuel.includes(generationId)) { setJumeauGenerationId(null); return; }
     if (jumeauRepriseFaite.current || jumeauRenduEnCours.current) return;
     jumeauRepriseFaite.current = true;
@@ -7846,7 +8068,7 @@ export default function AssistantWizard() {
       } catch (e) {
         // Le fournisseur a échoué, la génération est introuvable, ou le suivi
         // est coupé : on le dit, avec la suite adaptée (voir `echecRepriseJumeau`).
-        echecRepriseJumeau(e, generationId);
+        echecRepriseJumeau(e, generationId, auMontage ? { rushUrl: rushUrlActuel } : undefined);
         setJumeauNotice(null);
       } finally {
         // Rouvre la porte à un nouvel essai.
@@ -8179,6 +8401,12 @@ export default function AssistantWizard() {
       setError('Votre jumeau se prépare encore. Patientez quelques instants, puis renvoyez.');
       return;
     }
+    // BUG D — un ancien échec affiché ne décrit plus rien : une nouvelle
+    // génération va partir, il ne doit pas rester à côté du jumeau posé.
+    if (jumeauMode === 'avatar' && jumeauReprise === 'echec') {
+      setJumeauReprise('inactif');
+      setJumeauRepriseErreur(null);
+    }
     // Multi-sources : un créneau « Mon avatar » sans vidéo exige le jumeau
     // (produit à l'envoi). Désactivé entre-temps : on le dit, rien ne part.
     const listeEnvoi: MediaVideo[] | null = mediasVideo && estListeEnrichie(mediasVideo) ? mediasVideo : null;
@@ -8403,8 +8631,10 @@ export default function AssistantWizard() {
           // brouillon ferait boucler la reprise à chaque ouverture. Tout autre
           // arrêt de l'ATTENTE (réseau, session, délai) garde l'identifiant :
           // la génération continue côté serveur et sera reprise au retour.
-          if (e instanceof ErreurAttenteJumeau && e.code === 'introuvable') setJumeauGenerationId(null);
-          setError(e instanceof Error ? e.message : 'La génération de votre jumeau a échoué.');
+          // BUG D — `failed` est terminal aussi (déjà remboursé côté serveur) :
+          // le garder ré-affichait cet échec à chaque ouverture.
+          if (e instanceof ErreurAttenteJumeau && (e.code === 'introuvable' || e.code === 'echec')) setJumeauGenerationId(null);
+          setError(messageEchecJumeau(e));
           return;
         }
         if (!posee) {
@@ -8997,6 +9227,9 @@ export default function AssistantWizard() {
             ctaSubTextDesign: contenu.ctaSub,
             watermarkPosition: { x: ctaPos.x, y: ctaPos.y },
             watermarkSize: ctaWidth,
+            // CTA multiples : peints par `drawCTA` après l'original. Clé
+            // absente sans copie — options identiques à avant.
+            ...(copiesCtaRendues.length ? { ctaCopies: copiesCtaRendues } : null),
 
             // ── Cartes : image de l'apercu, blittee telle quelle ──────────
             cardsSnapshot,
@@ -9026,6 +9259,10 @@ export default function AssistantWizard() {
         //
         // Le lot est exclu : ses vidéos 2..N ont un contenu VARIÉ, que le
         // montage de l'aperçu ne représente pas.
+        // Jumeau DÉJÀ stocké avec bandes incrustées → sa version plein cadre
+        // (dérivée côté serveur, sans fournisseur ni crédit). Avant la
+        // signature : l'aperçu et l'envoi comparent le MÊME objet.
+        await pleinCadreDesJumeaux(optionsRendu);
         const signature = renderSignature(optionsRendu);
         let vignetteApercu: Blob | null = null;
         // Reutiliser suppose que le montage a DEJA ete paye et prouve. On
@@ -9403,6 +9640,9 @@ export default function AssistantWizard() {
               title: titre916.largeur,
               watermark: ctaWidth,
             },
+            // CTA multiples, forme RENDUE : « Modifier » et « Régénérer » les
+            // relisent. Absents sans copie — metadata identique à avant.
+            ...(copiesCtaRendues.length ? { ctaCopies: copiesCtaRendues } : null),
           },
         };
 
@@ -9592,6 +9832,8 @@ export default function AssistantWizard() {
     setCtaWidth(DESIGN.ctaWidth);
     setCardGroups([]);
     setFreeElements([]);
+    setCtaCopies([]);
+    setCtaCible(null);
     setSelectedElementId(null);
     setPosterUrl(null);
     setPosterPhotos([]);
@@ -9686,6 +9928,8 @@ export default function AssistantWizard() {
       gradientOpacity,
       titlePos: { x: titlePos.x, y: titlePos.y },
       ctaPos: { x: ctaPos.x, y: ctaPos.y },
+      // Forme rendue, celle de la creation : `[]` sans copie (jamais envoye).
+      ctaCopies: copiesCtaRendues,
       elements: freeElements,
       sequences: {
         intro: seqDuration('intro'), cards: seqDuration('cards'),
@@ -9741,7 +9985,7 @@ export default function AssistantWizard() {
       seqBackgrounds: fondsPourMetadata(seqBackgrounds),
     };
   }, [format, generated, themeId, accent, textAnimation, gradStart, gradEnd,
-      gradientOpacity, titlePos, ctaPos, freeElements, activeOrder, seqDuration,
+      gradientOpacity, titlePos, ctaPos, copiesCtaRendues, freeElements, activeOrder, seqDuration,
       posterUrl, musicUrl, voiceUrl, musicVolume, voiceVolume, sequenceVoiceUrls,
       rushUrl, rushSecondes, rushSuivants, audioKeyframes, cardGroups, lut, transition, posterTransform, rushTransforms, seqBackgrounds]);
 
@@ -10119,7 +10363,7 @@ export default function AssistantWizard() {
           <div data-jumeau-erreur className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span className="flex-1">
-              La génération de votre jumeau n’a pas abouti.
+              {jumeauRepriseErreur?.titre ?? 'La génération de votre jumeau n’a pas abouti.'}
               {jumeauRepriseErreur?.message && (
                 <span data-jumeau-erreur-motif className="block text-[12px] text-amber-100/90 mt-0.5">{jumeauRepriseErreur.message}</span>
               )}
@@ -13102,6 +13346,9 @@ export default function AssistantWizard() {
           // que l'utilisateur attend d'un double-clic sur un element.
           onTextDoubleClick={ouvrirZone}
           onCardDoubleClick={() => ouvrirZone('cards')}
+          onCtaCopieDragStart={startCtaCopieDrag}
+          onCtaCopieDoubleClick={ouvrirCtaCopie}
+          draggingCtaCopie={draggingCtaCopie}
           // Le vrai rendu d'abord ; sinon la lecture des séquences (« Tout »
           // seulement) ; sinon rien — le plateau nu.
           overlay={renduDansLeCadre ?? lectureSequences}
@@ -13129,7 +13376,7 @@ export default function AssistantWizard() {
             l'Autopilote — extraits, jamais recopiés. La différence tient en
             une chose : ici le CONTENU s'édite aussi. */}
         <FloatingPanel
-          title={ZONE_LABELS[zoneOuverte ?? 'title']}
+          title={zoneOuverte === 'cta' && copieCtaCible ? `${ZONE_LABELS.cta} — copie` : ZONE_LABELS[zoneOuverte ?? 'title']}
           isOpen={zoneOuverte !== null}
           onClose={() => setZoneOuverte(null)}
           initialX={zonePos.x}
@@ -13140,7 +13387,7 @@ export default function AssistantWizard() {
           closeOnClickOutside={false}
         >
           {zoneOuverte && generated && (
-            <div className="space-y-3" data-zone-panneau={zoneOuverte}>
+            <div className="space-y-3" data-zone-panneau={zoneOuverte} data-cta-cible={zoneOuverte === 'cta' ? (copieCtaCible?.id ?? 'original') : undefined}>
               {/* ── LE TEXTE ────────────────────────────────────────────
                   ⚠️ LES CARTES N'ONT PAS UN TEXTE MAIS N : leur contenu se
                   règle à l'étape « Contenu », carte par carte, avec son
@@ -13161,14 +13408,23 @@ export default function AssistantWizard() {
                     value={
                       zoneOuverte === 'title' ? generated.title
                         : zoneOuverte === 'subtitle' ? generated.subtitle
-                          : generated.cta
+                          : copieCtaCible ? copieCtaCible.text
+                            : generated.cta
                     }
-                    onChange={(e) => setGenerated((g) => (g ? {
-                      ...g,
-                      ...(zoneOuverte === 'title' ? { title: e.target.value }
-                        : zoneOuverte === 'subtitle' ? { subtitle: e.target.value }
-                          : { cta: e.target.value }),
-                    } : g))}
+                    onChange={(e) => {
+                      // Une copie garde son texte à elle : l'original n'est pas touché.
+                      if (zoneOuverte === 'cta' && copieCtaCible) {
+                        const texte = e.target.value;
+                        modifierCtaCopie(copieCtaCible.id, (c) => ({ ...c, text: texte }));
+                        return;
+                      }
+                      setGenerated((g) => (g ? {
+                        ...g,
+                        ...(zoneOuverte === 'title' ? { title: e.target.value }
+                          : zoneOuverte === 'subtitle' ? { subtitle: e.target.value }
+                            : { cta: e.target.value }),
+                      } : g));
+                    }}
                     data-zone-texte={zoneOuverte}
                     style={{ resize: 'vertical' }}
                     className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
@@ -13193,8 +13449,15 @@ export default function AssistantWizard() {
                   <input
                     id="zone-soustexte-cta"
                     type="text"
-                    value={generated.ctaSub}
-                    onChange={(e) => setGenerated((g) => (g ? { ...g, ctaSub: e.target.value } : g))}
+                    value={copieCtaCible ? copieCtaCible.sub : generated.ctaSub}
+                    onChange={(e) => {
+                      if (copieCtaCible) {
+                        const sousTexte = e.target.value;
+                        modifierCtaCopie(copieCtaCible.id, (c) => ({ ...c, sub: sousTexte }));
+                        return;
+                      }
+                      setGenerated((g) => (g ? { ...g, ctaSub: e.target.value } : g));
+                    }}
                     data-zone-soustexte="cta"
                     placeholder="LIEN EN BIO"
                     maxLength={40}
@@ -13221,7 +13484,9 @@ export default function AssistantWizard() {
                   zoneOuverte === 'cards' ? cardsTypography
                     : zoneOuverte === 'title' ? textStyles.title
                       : zoneOuverte === 'subtitle' ? textStyles.subtitle
-                        : textStyles.cta
+                        : copieCtaCible
+                          ? (copiesCtaRendues.find((c) => c.id === copieCtaCible.id)?.style ?? copieCtaCible.style)
+                          : textStyles.cta
                 }
                 defauts={{
                   // Titre et CTA sortent en capitales quand rien n'est
@@ -13239,58 +13504,79 @@ export default function AssistantWizard() {
                   if (zoneOuverte === 'cards') patchCards(patch);
                   else if (zoneOuverte === 'title') setTitleStyle((v) => ({ ...v, ...patch }));
                   else if (zoneOuverte === 'subtitle') setSubtitleStyle((v) => ({ ...v, ...patch }));
+                  // Le style d'une copie lui appartient : l'original ne bouge pas.
+                  else if (copieCtaCible) modifierCtaCopie(copieCtaCible.id, (c) => ({ ...c, style: { ...c.style, ...patch } as CtaCopie['style'] }));
                   else setCtaStyle((v) => ({ ...v, ...patch }));
                 }}
               />
 
               {/* ── ACTIONS ─────────────────────────────────────────────
                   Les fonctions EXISTANTES de l'éditeur, rendues trouvables
-                  là où l'on édite. Titre, sous-titre et CTA sont uniques
-                  dans le montage : leurs actions restent visibles, grisées,
-                  avec la raison en infobulle. */}
-              {(() => {
-                const cartes = zoneOuverte === 'cards';
+                  là où l'on édite — cartes et CTA.
+
+                  ⚠️ Titre et sous-titre restent UNIQUES dans tout le
+                  pipeline : aucune action de duplication n'y est promise.
+                  Le CTA, lui, se duplique pour de vrai (`cta-copies.ts`) :
+                  copies rendues par l'aperçu, `drawCTA`, Remotion et la
+                  metadata — bloc plus bas. */}
+              {zoneOuverte === 'cards' && (() => {
                 const nbSel = selectedCards.size;
                 const nbCartes = generated.cards.length;
-                const unique = `${ZONE_LABELS[zoneOuverte]} : un seul par vidéo`;
                 return (
                   <ActionsEdition
                     nom={ZONE_LABELS[zoneOuverte]}
                     actions={[
                       {
                         id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: duplicateSelection,
-                        disabled: !cartes || nbSel === 0 || nbCartes >= limiteCartes,
-                        aide: !cartes ? unique
-                          : nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
-                            : nbCartes >= limiteCartes ? `Maximum de ${limiteCartes} cartes dans ce format`
-                              : 'Dupliquer la sélection',
+                        disabled: nbSel === 0 || nbCartes >= limiteCartes,
+                        aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
+                          : nbCartes >= limiteCartes ? `Maximum de ${limiteCartes} cartes dans ce format`
+                            : 'Dupliquer la sélection',
                       },
                       {
                         id: 'regrouper', libelle: 'Regrouper', Icone: GroupIcon, onClick: groupSelection,
-                        disabled: !cartes || nbSel < MIN_GROUP,
-                        aide: !cartes ? 'Seules les cartes se regroupent'
-                          : nbSel < MIN_GROUP ? 'Sélectionnez au moins deux cartes (Maj+clic)'
-                            : 'Déplacer ces cartes ensemble',
+                        disabled: nbSel < MIN_GROUP,
+                        aide: nbSel < MIN_GROUP ? 'Sélectionnez au moins deux cartes (Maj+clic)'
+                          : 'Déplacer ces cartes ensemble',
                       },
                       {
                         id: 'dissocier', libelle: 'Dissocier', Icone: Ungroup, onClick: ungroupSelection,
-                        disabled: !cartes || !selectionGrouped,
-                        aide: !cartes ? 'Seules les cartes se regroupent'
-                          : !selectionGrouped ? 'Aucune carte sélectionnée n’est dans un groupe'
-                            : 'Séparer les cartes de leur groupe',
+                        disabled: !selectionGrouped,
+                        aide: !selectionGrouped ? 'Aucune carte sélectionnée n’est dans un groupe'
+                          : 'Séparer les cartes de leur groupe',
                       },
-                      ...(cartes ? [{
+                      {
                         id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
                         onClick: () => { for (const id of Array.from(selectedCards)) supprimerCarte(id); },
                         disabled: nbSel === 0 || nbSel >= nbCartes,
                         aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
                           : nbSel >= nbCartes ? 'Il faut garder au moins une carte'
                             : 'Supprimer la sélection',
-                      }] : []),
+                      },
                     ]}
                   />
                 );
               })()}
+              {zoneOuverte === 'cta' && (
+                <ActionsEdition
+                  nom="CTA"
+                  actions={[
+                    {
+                      id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: dupliquerCtaCourant,
+                      disabled: ctaCopies.length >= MAX_CTA_COPIES,
+                      aide: ctaCopies.length >= MAX_CTA_COPIES
+                        ? `Maximum de ${MAX_CTA_COPIES} copies du CTA`
+                        : copieCtaCible ? 'Dupliquer cette copie du CTA' : 'Dupliquer le CTA',
+                    },
+                    // L'original ne se supprime pas d'ici : seule une copie.
+                    ...(copieCtaCible ? [{
+                      id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
+                      onClick: () => supprimerCtaCopie(copieCtaCible.id),
+                      aide: 'Supprimer cette copie du CTA',
+                    }] : []),
+                  ]}
+                />
+              )}
             </div>
           )}
         </FloatingPanel>

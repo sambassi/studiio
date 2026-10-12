@@ -732,7 +732,7 @@ describe('5. L’aperçu RÉEL : ma voix ElevenLabs → audio privé → scène 
     const s = await (await getStatut(generationId)).json();
     expect(s.data.status).toBe('failed');
     expect(s.data.error).not.toContain('face not found');
-    expect(s.data.error).toContain('La génération de votre avatar a échoué');
+    expect(s.data.error).toContain('La génération de la vidéo avec votre avatar a échoué');
     expect(s.data.error).not.toContain('rembourses');
     expect(stockage.objets.has(`${U}/avatar/audio-${generationId}.mp3`)).toBe(false);
   });

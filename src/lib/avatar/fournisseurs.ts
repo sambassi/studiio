@@ -31,9 +31,9 @@ export function didLegacyAutorise(env: NodeJS.ProcessEnv = process.env): boolean
 /** Messages UTILISATEUR — aucun nom de fournisseur, aucun détail technique. */
 export const MESSAGES_AVATAR = {
   indisponible: 'Le service Avatar est temporairement indisponible. Aucun crédit Studiio n’a été débité.',
-  echecAvantLancement: 'La génération de votre avatar a échoué. Aucun crédit Studiio n’a été débité.',
-  echecRembourse: 'La génération de votre avatar a échoué. Vos crédits Studiio ont été recrédités.',
-  echec: 'La génération de votre avatar a échoué.',
+  echecAvantLancement: 'La génération de la vidéo avec votre avatar a échoué. Aucun crédit Studiio n’a été débité.',
+  echecRembourse: 'La génération de la vidéo avec votre avatar a échoué. Vos crédits Studiio ont été recrédités.',
+  echec: 'La génération de la vidéo avec votre avatar a échoué.',
   voixIndisponible: 'Le service de voix est temporairement indisponible. Aucun crédit Studiio n’a été débité.',
   ancienMoteur: 'Votre avatar a été créé avec une ancienne version du service. Recréez-le dans « Mon avatar » pour l’utiliser dans vos vidéos. Aucun crédit Studiio n’a été débité. Votre voix reste utilisable pour la narration.',
   verificationTransitoire: 'Le statut de votre vidéo n’a pas pu être vérifié pour l’instant. Nouvel essai automatique.',

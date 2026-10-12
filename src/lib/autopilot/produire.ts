@@ -30,6 +30,7 @@ import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/pl
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
+import { jumeauPleinCadre } from '@/lib/avatar/jumeau-plein-cadre';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
 export const RUSHS_MONTAGE_MAX = 3;
@@ -332,6 +333,12 @@ export async function produireUnMontage(input: {
   // Le jumeau tient la séquence « Vidéo » : on n'utilise alors AUCUN rush pour
   // ce montage — l'avatar est la vidéo, et la seule voix.
   const jumeauActif = typeof input.jumeauVideoUrl === 'string' && input.jumeauVideoUrl.length > 0;
+  // Jumeau DÉJÀ stocké avec bandes incrustées (rapatrié avant #555) : on monte
+  // sa version plein cadre 9:16, dérivée localement — aucun appel fournisseur,
+  // aucun crédit. Propre ou contrôle impossible : l'URL d'origine.
+  const jumeauVideoUrl = jumeauActif
+    ? ((await jumeauPleinCadre({ url: input.jumeauVideoUrl as string, userId, format: '9:16' })).url ?? input.jumeauVideoUrl as string)
+    : null;
 
   // ── MULTI-SOURCES (`sources.ts`) ───────────────────────────────────────
   // Rushes personnels, avatar et stock sont des sources COMBINABLES. Le plan
@@ -503,7 +510,7 @@ export async function produireUnMontage(input: {
     rushUrl ? (secondesParRush.has(rushUrl) ? Promise.resolve(secondesParRush.get(rushUrl) ?? null) : probeRushSeconds(rushUrl, {}, userId)) : Promise.resolve(null),
     // La durée du jumeau cale la séquence « Vidéo » : la parole doit tenir
     // entière. Illisible (`null`) → durée par défaut, posée à la fabrique du design.
-    jumeauActif ? probeRushSeconds(input.jumeauVideoUrl as string, {}, userId) : Promise.resolve(null),
+    jumeauActif ? probeRushSeconds(jumeauVideoUrl as string, {}, userId) : Promise.resolve(null),
   ]);
 
   // ── L'AFFICHE : automatique (Pexels), mes photos, ou mes photos EN RÉFÉRENCE IA ──
@@ -583,7 +590,7 @@ export async function produireUnMontage(input: {
   // tient la séquence « Vidéo » à la place du rush.
   const designBase = buildAutopilotDesign(postUtilise, {
     posterUrl, rushSeconds, voices, config: configUtilisee,
-    jumeau: jumeauActif ? { videoUrl: input.jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
+    jumeau: jumeauActif ? { videoUrl: jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
   });
   // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
   // est celle du plan (jamais plus courte que la voix de la séquence).
@@ -662,7 +669,7 @@ export async function produireUnMontage(input: {
       // l'image de l'avatar partent ensemble, à 0).
       const T = jumeauSeconds && jumeauSeconds > 0 ? jumeauSeconds : (designBase.videoDuration ?? 0);
       res = planMultiSources({
-        avatar: { url: input.jumeauVideoUrl as string, secondes: T },
+        avatar: { url: jumeauVideoUrl as string, secondes: T },
         rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
         gabarit, cible: T,
         options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
@@ -798,9 +805,9 @@ export async function produireUnMontage(input: {
       // l'image de l'avatar, découpée, reste calée sur elle (`depuis === debut`).
       ...(multiSources ? { videoUrl: designBase.videoUrl ?? planMontageRushs[0].url } : {}),
       ...(multiSources && jumeauActif ? {
-        videoUrl: input.jumeauVideoUrl as string,
+        videoUrl: jumeauVideoUrl as string,
         rushMuted: true,
-        sequenceVoiceUrls: { video: input.jumeauVideoUrl as string },
+        sequenceVoiceUrls: { video: jumeauVideoUrl as string },
       } : {}),
     }
     : designBase;

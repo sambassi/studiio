@@ -32,6 +32,7 @@ import {
   TRANSITION_STYLE_KEYS, DEFAULT_TRANSITION_STYLE,
 } from './transitions';
 import { positionTexteParDefaut, titreSur916 } from '../src/lib/creer/zones-sures-916';
+import { lireCtaCopies, type CtaCopie } from '../src/lib/creer/cta-copies';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
 
@@ -181,6 +182,13 @@ export interface CreerSimpleMontageProps {
   ctaWidth?: number;
   /** #502 — panneau derrière le CTA en surimpression (`appliquerMiseEnPageSurimpression`). */
   ctaBackground?: string | null;
+  /**
+   * CTA MULTIPLES (`src/lib/creer/cta-copies.ts`) : copies visuelles du CTA,
+   * peintes DANS la séquence CTA après l'original, chacune avec son texte, sa
+   * position, sa largeur et son style. Absent ou vide : le CTA unique d'avant.
+   * Les surimpressions et l'image fixe du rendu hybride gardent l'original seul.
+   */
+  ctaCopies?: CtaCopie[];
   watermark?: string;
   introDuration: number;
   cardsDuration: number;
@@ -442,7 +450,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
 
   // Les polices du montage, plus Inter — celle des cartes et du filigrane.
   // Le rendu attend leur chargement : voir `useMontageFonts`.
-  useMontageFonts(['Inter', props.titleFont, props.subtitleFont, props.ctaFont]);
+  // Copies du CTA : leurs polices en plus — liste vide, la clé d'avant.
+  useMontageFonts(['Inter', props.titleFont, props.subtitleFont, props.ctaFont, ...lireCtaCopies(props.ctaCopies).map((c) => c.style.font)]);
   // Le format se DEDUIT des dimensions : le compositeur fait de meme, et une
   // prop separee pourrait le contredire.
   const format = isReel ? '9:16' : width === height ? '1:1' : '16:9';
@@ -628,6 +637,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 fond={props.cardBackground ?? null}
               />
         );
+        const copiesCta = lireCtaCopies(props.ctaCopies);
         const blocCta = (reveal: number) => (
               <div style={ctaFrameStyle(props.ctaPos ?? positionTexteParDefaut('cta', format), props.ctaWidth)}>
                 <SequenceCta
@@ -757,6 +767,18 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
             {type === 'cta' && (
               <TextAnimationLayer style={animation} progress={anim.progress}>
               {blocCta(anim.reveal)}
+              {copiesCta.map((c) => (
+                <div key={c.id} data-cta-copie={c.id} style={ctaFrameStyle(c.pos, c.width)}>
+                  <SequenceCta
+                    text={c.text}
+                    subText={c.sub}
+                    typography={{ ...c.style, subColor: c.style.subColor || props.ctaSubColor || '#EC4899' }}
+                    format={format}
+                    containerWidth={width}
+                    reveal={anim.reveal}
+                  />
+                </div>
+              ))}
               </TextAnimationLayer>
             )}
 

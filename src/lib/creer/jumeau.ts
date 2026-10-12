@@ -189,6 +189,41 @@ export const JUMEAU_POLL_MS = 5000;
 export const JUMEAU_ECHECS_MAX = 6;
 const attenteApresEchec = (n: number) => Math.min(30_000, JUMEAU_POLL_MS * 2 ** (n - 1));
 
+/**
+ * Échec d'une génération VIDÉO avec l'avatar. L'avatar lui-même (identité,
+ * version validée) n'est pas en cause : il reste prêt et réutilisable. Même
+ * libellé que `MESSAGES_AVATAR.echec` côté serveur.
+ */
+export const MESSAGE_ECHEC_VIDEO_AVATAR = 'La génération de la vidéo avec votre avatar a échoué.';
+/** Libellé que portent les lignes `failed` enregistrées avant ce correctif. */
+const ANCIEN_ECHEC_AVATAR = 'La génération de votre avatar a échoué.';
+
+/**
+ * Le complément utile d'un message d'échec serveur (crédits recrédités,
+ * délai dépassé…), sans répéter le titre — ni l'ancien libellé qui accusait
+ * l'avatar. `null` s'il ne reste rien à dire.
+ */
+export function motifEchecVideoAvatar(message: string | null | undefined): string | null {
+  if (!message) return null;
+  let reste = message.trim();
+  for (const titre of [MESSAGE_ECHEC_VIDEO_AVATAR, ANCIEN_ECHEC_AVATAR]) {
+    if (reste.startsWith(titre)) reste = reste.slice(titre.length).trim();
+  }
+  return reste.length > 0 ? reste : null;
+}
+
+/**
+ * Le message d'un échec du jumeau à l'ENVOI. Un `failed` serveur est un échec
+ * de la VIDÉO : titre exact, plus le complément utile (crédits, délai).
+ */
+export function messageEchecJumeau(e: unknown): string {
+  if (e instanceof ErreurAttenteJumeau && e.code === 'echec') {
+    const motif = motifEchecVideoAvatar(e.message);
+    return motif ? `${MESSAGE_ECHEC_VIDEO_AVATAR} ${motif}` : MESSAGE_ECHEC_VIDEO_AVATAR;
+  }
+  return e instanceof Error && e.message ? e.message : 'La génération de votre jumeau a échoué.';
+}
+
 export const JUMEAU_INTROUVABLE = 'Cette génération de jumeau est introuvable. Relancez-la si besoin.';
 export const JUMEAU_CONNEXION_PERDUE = 'Connexion perdue pendant la préparation de votre jumeau. Il continue côté serveur : rouvrez cette page pour le retrouver.';
 export const JUMEAU_SESSION_EXPIREE = 'Votre session a expiré. Reconnectez-vous : votre jumeau continue côté serveur et sera repris.';

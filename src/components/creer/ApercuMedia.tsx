@@ -20,6 +20,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, Info, Loader2, Pause, Play, Plus, RefreshCw } from 'lucide-react';
+import { useUrlJumeauPleinCadre } from '@/lib/creer/jumeau-plein-cadre-client';
 
 export type FormatApercuMedia = '9:16' | '16:9' | '1:1';
 
@@ -75,6 +76,8 @@ export default function ApercuMedia({
   media, format, etat = 'pret', onAjouter, onRemplacer, onRetour, libelleAjouter = 'Ajouter au projet', largeurMax,
 }: ApercuMediaProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Jumeau à bandes : la version plein cadre que montera l'export (même cache).
+  const urlAffichee = useUrlJumeauPleinCadre(media.type === 'video' ? media.url : null, format) ?? media.url;
   const [lecture, setLecture] = useState(false);
   const [temps, setTemps] = useState(0);
   const [duree, setDuree] = useState<number>(media.dureeSecondes ?? 0);
@@ -130,7 +133,7 @@ export default function ApercuMedia({
           <>
             <video
               ref={videoRef}
-              src={media.url}
+              src={urlAffichee}
               poster={media.posterUrl}
               muted
               playsInline

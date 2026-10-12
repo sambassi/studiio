@@ -12,7 +12,8 @@
  *   prévisualise, sans ajouter ni ouvrir d'onglet.
  * - Colonne de droite : « Aperçu du média » ↔ aperçu du projet.
  * - Panneaux d'édition : Dupliquer / Regrouper / Dissocier (fonctions
- *   existantes), grisés avec une raison quand ils ne s'appliquent pas.
+ *   existantes), grisés avec une raison quand ils ne s'appliquent pas ; le
+ *   CTA se duplique pour de vrai, le titre (unique) n'en promet rien.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, act, fireEvent, waitFor } from '@testing-library/react';
@@ -484,17 +485,48 @@ describe('AssistantWizard — aperçu du média dans la colonne de droite', () =
 });
 
 describe('AssistantWizard — actions des panneaux d’édition', () => {
-  it('Titre : Dupliquer / Regrouper / Dissocier visibles et grisés avec une raison', async () => {
+  // Le TITRE est UNIQUE dans tout le pipeline (état scalaire, `drawIntro`,
+  // Remotion, métadonnées) : aucune action de duplication n'y est promise.
+  it('title : aucune action de duplication/groupe promise sur un objet unique', async () => {
     installerFetch();
     poser();
     render(<AssistantWizard />);
     await attendre();
     await act(async () => { fireEvent.doubleClick(document.querySelector('[data-title-block]')!); });
     await waitFor(() => expect(document.querySelector('[data-zone-panneau="title"]')).toBeTruthy());
-    const barre = document.querySelector('[data-zone-panneau="title"] [data-actions-edition]')!;
-    const boutons = Array.from(barre.querySelectorAll('[data-action-edition]')) as HTMLButtonElement[];
-    expect(boutons.map((b) => b.textContent)).toEqual(['Dupliquer', 'Regrouper', 'Dissocier']);
-    expect(boutons.every((b) => b.disabled && !!b.getAttribute('title'))).toBe(true);
+    const panneau = document.querySelector('[data-zone-panneau="title"]')!;
+    expect(panneau.querySelector('[data-action-edition="dupliquer"]')).toBeNull();
+    expect(panneau.querySelector('[data-action-edition="regrouper"]')).toBeNull();
+    expect(panneau.querySelector('[data-action-edition="dissocier"]')).toBeNull();
+    expect(document.querySelectorAll('[data-title-block]').length).toBe(1);
+  });
+
+  // Bug « CTA → Dupliquer ne crée rien » : le CTA se duplique désormais POUR
+  // DE VRAI (`cta-copies.ts`) — copie autonome, rendue partout.
+  it('cta : « Dupliquer » est actif et crée une seconde copie visible du CTA', async () => {
+    installerFetch();
+    poser();
+    render(<AssistantWizard />);
+    await attendre();
+    await act(async () => { fireEvent.doubleClick(document.querySelector('[data-cta-block]')!); });
+    await waitFor(() => expect(document.querySelector('[data-zone-panneau="cta"]')).toBeTruthy());
+    const panneau = document.querySelector('[data-zone-panneau="cta"]')!;
+    const dupliquer = panneau.querySelector('[data-action-edition="dupliquer"]') as HTMLButtonElement;
+    expect(dupliquer).toBeTruthy();
+    expect(dupliquer.disabled).toBe(false);
+    // Pas de « Supprimer » sur l'original.
+    expect(panneau.querySelector('[data-action-edition="supprimer"]')).toBeNull();
+    expect(panneau.querySelector('[data-action-edition="regrouper"]')).toBeNull();
+    await act(async () => { fireEvent.click(dupliquer); });
+    await attendre(2);
+    expect(document.querySelectorAll('[data-cta-block]').length).toBe(1);
+    const copies = document.querySelectorAll('[data-cta-copie]');
+    expect(copies.length).toBe(1);
+    expect(copies[0].textContent).toContain('Viens');
+    // La copie est sélectionnée : le panneau la règle, et elle se supprime.
+    const cible = document.querySelector('[data-zone-panneau="cta"]')!.getAttribute('data-cta-cible');
+    expect(cible).toBe(copies[0].getAttribute('data-cta-copie'));
+    expect(document.querySelector('[data-zone-panneau="cta"] [data-action-edition="supprimer"]')).toBeTruthy();
   });
 
   it('Cartes : sans sélection tout est grisé ; deux cartes cochées → Regrouper puis Dissocier', async () => {

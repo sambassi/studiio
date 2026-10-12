@@ -61,10 +61,10 @@ export default function SequenceCta({
   /**
    * Part du texte deja ecrite, de 0 a 1 — la machine a ecrire.
    *
-   * Le SOUS-TEXTE n'est PAS tronque : `drawCTA` n'applique `revealText` qu'a
-   * l'appel principal. Le sous-texte est une mention courte (« lien en bio »)
-   * qui, ecrite lettre a lettre sous un titre qui se tape deja, faisait deux
-   * frappes concurrentes a l'ecran.
+   * L'appel principal ET le sous-texte s'ecrivent ensemble, a la MEME
+   * proportion — la regle du titre et de son sous-titre (`SequenceTitle`,
+   * `drawIntro`), reprise par `drawCTA`. Les deux finissent donc ensemble ;
+   * laisser le sous-texte entier faisait apparaitre le CTA d'un bloc.
    */
   reveal?: number;
   /**
@@ -132,7 +132,7 @@ export default function SequenceCta({
             marginTop: vw * GAP_RATIO - ((typography.lineHeight - 1) * subSize) / 2,
           }}
         >
-          {subText}
+          {revealText(subText, reveal)}
         </div>
       )}
     </>
