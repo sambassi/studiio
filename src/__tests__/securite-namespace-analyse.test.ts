@@ -882,8 +882,9 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
       "await import('@remotion/media-parser')"],
     ['choix de l URL publiable', 'src/lib/videos/playable-url.ts',
       'export function resolvePublishableUrl'],
+    // GET par le fetch SÛR (`media-publication.ts` → `telechargerSur`).
     ['relais Zernio', 'src/lib/social/zernio.ts',
-      "fetch(fichierUrl, { cache: 'no-store' })"],
+      'await lireMediaPublication(fichierUrl)'],
   ];
 
   it.each(APPELANTS)('%s appelle encore cette route', (_nom, fichier, marqueur) => {
