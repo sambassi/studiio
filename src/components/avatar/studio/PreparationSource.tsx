@@ -11,7 +11,7 @@ import { dessinerApercuLisse } from '@/lib/avatar/lissage-apercu';
 import { detailEnvoi, envoyerFormulaire, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { EXIGENCES_SOURCE_VIDEO, formaterDuree } from '@/lib/avatar/capture';
 import {
-  AMELIORATION_NEUTRE, RATIOS_CADRE, ameliorationAutomatique, dimensionsApresRotation, filtreCssApercu, libelleCadrage,
+  AMELIORATION_NEUTRE, RATIOS_CADRE, ameliorationAutomatique, dimensionsApresRotation, filtreCssApercu, geometrieSortie, libelleCadrage,
   niveauQualite, recadrageDepuisReglages, statistiquesImage, zoomMinimal,
   LISSAGE_PAR_DEFAUT, libelleLissage,
   type InfosVideo, type ParametresAmelioration, type ParametresTraitement, type RatioCadre, type ResultatPreflight, type Rotation,
@@ -292,11 +292,19 @@ export default function PreparationSource(props: {
   const toileLissage = useRef<HTMLCanvasElement | null>(null);
   const [imageLisse, setImageLisse] = useState(false);
   const lissageCourant = amelioration.lissage ?? 0;
+  // ffmpeg filtre APRÈS la réduction éventuelle (grand côté > 1920 px) : le
+  // rayon de l'aperçu suit la même réduction, sinon une source 4K paraîtrait
+  // deux fois moins lissée que le fichier préparé.
+  const echelleSortie = useMemo(() => {
+    if (!infos) return 1;
+    const g = geometrieSortie({ debutS: 0, finS: 0, rotation, recadrage, amelioration: AMELIORATION_NEUTRE }, infos);
+    return g.avantEchelle.largeur > 0 ? g.largeur / g.avantEchelle.largeur : 1;
+  }, [infos, rotation, recadrage]);
   const redessinerLissage = useCallback(() => {
     const v = video.current; const t = toileLissage.current;
     if (!v || !t || v.readyState < 2) { setImageLisse(false); return; }
-    setImageLisse(dessinerApercuLisse(t, v, v.videoWidth, v.videoHeight, lissageCourant));
-  }, [lissageCourant]);
+    setImageLisse(dessinerApercuLisse(t, v, v.videoWidth, v.videoHeight, lissageCourant, undefined, echelleSortie));
+  }, [lissageCourant, echelleSortie]);
   useEffect(() => {
     if (section !== 'ameliorer') return;
     const id = requestAnimationFrame(redessinerLissage);
