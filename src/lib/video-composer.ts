@@ -4421,12 +4421,16 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         // Titre / Cartes / CTA gardent `p = 1` : leurs animations de texte
         // restent identiques à l'octet près (rétro-compat).
         (p, target) => drawSeq(seq.type, seq.type === 'video' ? seqProgress : p, target),
-        // MULTI-SOURCES / MULTI-RUSH : pendant le fondu ENTRANT, la séquence
-        // Vidéo d'un plan (mixte, ou plusieurs rushes) reste sur sa PREMIÈRE
-        // image. La progression historique `t * 0,3` y ferait défiler jusqu'à
-        // 30 % du plan — un média SUIVANT apparaîtrait avant son tour. Le rush
-        // unique d'avant : inchangé (son lecteur est en pause jusqu'à son tour).
-        (p, target) => drawSeq(sequences[seqIdx + 1].type, (montageMixte || rushPlan) && sequences[seqIdx + 1].type === 'video' ? 0 : p, target),
+        // Séquence Vidéo ENTRANTE : toujours à son temps 0 pendant le fondu,
+        // quel que soit le plan (rush unique, mixte ou multi-rush). La
+        // progression historique `t * 0,3` datait la séquence jusqu'à 30 % de
+        // sa durée : un média SUIVANT apparaissait avant son tour (plans
+        // mixtes / multi-rush) et, pour le rush UNIQUE — dont le lecteur reste
+        // en pause sur sa première image jusqu'à son tour —, les textes et
+        // surimpressions datés de la séquence paraissaient pendant le fondu
+        // puis disparaissaient au raccord (temps retombé à 0) : un saut.
+        // Titre / Cartes / CTA entrants gardent `t * 0,3` (rétro-compat).
+        (p, target) => drawSeq(sequences[seqIdx + 1].type, sequences[seqIdx + 1].type === 'video' ? 0 : p, target),
         transProgress,
         style,
         // Les calques ne sont crees que si un style en a besoin : un montage
