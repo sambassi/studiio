@@ -82,7 +82,7 @@ describe('Câblage', () => {
     expect(wizard).toContain('setPhotoDragging(true);');
     expect(wizard).toContain('onDragEnd={() => setPhotoDragging(false)}');
     // Et aussi au dépôt : `dragend` n'arrive pas toujours après un drop.
-    expect(wizard).toContain('onPhotoDrop={(url) => { setPhotoDragging(false); applyPhoto(url); }}');
+    expect(wizard).toContain('onPhotoDrop={(url) => { setPhotoDragging(false); signalerDepotAffiche(url); applyPhoto(url); }}');
   });
 
   it('le réordonnancement des séquences garde son text/plain', () => {

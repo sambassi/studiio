@@ -44,13 +44,14 @@ describe('affiche Unsplash : téléchargement signalé', () => {
 
   it('Créer : la grille d’affiches signale le choix AVANT de poser l’URL (hotlink), jamais au dé-choix', () => {
     const src = readFileSync(resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
-    const i = src.indexOf('if (choisit) void signalerChoixAfficheUnsplash(photo);');
+    const i = src.indexOf('void signalerChoixAffiche(photo, dejaPosee);');
     expect(i).toBeGreaterThan(0);
     const bloc = src.slice(src.lastIndexOf('onClick={() => {', i), src.indexOf('data-poster-photo={photo.url}', i));
     // Signalé avant toute pose, et la pose garde l'URL du fournisseur.
-    expect(bloc.indexOf('signalerChoixAfficheUnsplash')).toBeLessThan(bloc.indexOf('assignerAffiche(slotCible, photo.url)'));
+    expect(bloc.indexOf('signalerChoixAffiche')).toBeLessThan(bloc.indexOf('assignerAffiche(slotCible, photo.url)'));
     expect(bloc).toContain('setPosterUrl(retenue ? null : photo.url)');
-    expect(bloc).toContain(': !retenue');
+    // Dé-choix de l'affiche globale (`retenue`) : déjà posée, rien n'est signalé.
+    expect(bloc).toContain(': retenue;');
   });
 });
 

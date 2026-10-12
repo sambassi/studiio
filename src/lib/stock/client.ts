@@ -66,3 +66,25 @@ export function signalerChoixAfficheUnsplash(photo: { id: string | number; sourc
     .then((r) => !('erreur' in r))
     .catch(() => false);
 }
+
+/**
+ * Un geste sur une photo d'affiche — clic dans la grille OU dépôt sur
+ * l'aperçu — est un CHOIX RÉEL quand la photo n'était pas déjà posée à
+ * l'endroit visé (affiche globale, fond de la séquence, emplacement du lot).
+ * Une fois par choix réel, et par ce seul chemin (`signalerChoixAfficheUnsplash`) :
+ * un clic puis un dépôt de la même photo au même endroit, ou un second dépôt,
+ * ne signalent rien de plus. Survol, aperçu, dé-choix : aucun appel (aucun
+ * geste ne passe ici). Jamais d'exception.
+ */
+export function signalerChoixAffiche(
+  photo: { id: string | number; source?: string } | null | undefined,
+  dejaPosee: boolean,
+): Promise<boolean> {
+  if (!photo || dejaPosee) return Promise.resolve(false);
+  return signalerChoixAfficheUnsplash(photo);
+}
+
+/** La photo de la grille dont l'URL a été déposée, ou `null` (autre origine). Pur. */
+export function photoDeLaGrille<T extends { url: string }>(photos: ReadonlyArray<T>, url: string): T | null {
+  return photos.find((p) => p.url === url) ?? null;
+}
