@@ -26,11 +26,14 @@ import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
 import { useTarifs } from '@/lib/tarifs/client';
 import { cleTarifEcranMonAvatar, lignesPrixGenererAvatar, LIBELLE_BOUTON_GENERER_AVATAR } from '@/lib/avatar/prix';
+import { devisVideoHeygen, dureeParoleEstimee, libelleCoutUsd, libelleDuree, LIBELLE_MOTEUR as LIBELLE_MOTEUR_DEVIS } from '@/lib/fournisseurs/devis-fournisseur';
+import { MOTEUR_PAR_QUALITE, LIBELLE_QUALITE as LIBELLE_QUALITE_ECRAN } from '@/lib/avatar/moteurs';
 import BlocPrix from '@/components/ui/BlocPrix';
-import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
+import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, LancementAnnule, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
 import { libelleLissage } from '@/lib/avatar/preparation-source-regles';
+import { avecConfirmationCout, confirmerCreationAvatar, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 import { CLASSES_LECTEUR_GENERATION, ratioCadre, formatLecteurDepuisRatio } from '@/lib/ui/lecteur-generation';
 import {
@@ -107,6 +110,21 @@ const lireQualites = (brut: unknown): QualiteOfferte[] => (Array.isArray(brut)
   ? (brut as QualiteOfferte[]).filter((q) => q && (q.qualite === 'standard' || q.qualite === 'qualite' || q.qualite === 'premium'))
   : []);
 
+/**
+ * LA qualité en vigueur à l'écran — la même règle que le serveur
+ * (`qualiteEnVigueur`) : le choix enregistré (affiché même s'il est devenu
+ * indisponible, bloqué avec sa raison — jamais remplacé en silence), sinon la
+ * qualité par défaut de tous les parcours. Défaut fermé pour cet avatar : la
+ * première qualité ouverte, À ENREGISTRER pour que Créer et l'Autopilote
+ * utilisent exactement celle affichée.
+ */
+function qualiteEnVigueurEcran(liste: QualiteOfferte[], sauvee: Qualite | null, defaut: Qualite): { qualite: Qualite; aEnregistrer: boolean } {
+  if (sauvee) return { qualite: sauvee, aEnregistrer: false };
+  if (liste.length === 0 || liste.some((q) => q.qualite === defaut && q.ouverte)) return { qualite: defaut, aEnregistrer: false };
+  const premiere = liste.find((q) => q.ouverte)?.qualite;
+  return premiere ? { qualite: premiere, aEnregistrer: true } : { qualite: defaut, aEnregistrer: false };
+}
+
 /** La génération en cours, mémorisée pour la reprise après rechargement (le stockage peut être indisponible). */
 const memoriserGeneration = (g: GenerationEnCours | null) => {
   try {
@@ -170,8 +188,18 @@ export default function AvatarPage() {
   const [defautHeygen, setDefautHeygen] = useState<Qualite>('qualite');
   /** Voix clonée = moteur du jumeau (comme Créer) : ses propres qualités et SON défaut, inchangés. */
   const [qualitesClonee, setQualitesClonee] = useState<QualiteOfferte[]>([]);
-  const [defautClonee, setDefautClonee] = useState<Qualite>('standard');
   const [qualite, setQualite] = useState<Qualite>('qualite');
+  /** La qualité ENREGISTRÉE pour cet avatar : source de vérité du moteur (Mon avatar, Créer, Autopilote). */
+  const [qualiteSauvegardee, setQualiteSauvegardee] = useState<Qualite | null>(null);
+  /** Enregistre la qualité de CET avatar (source de vérité de Créer et de l'Autopilote) ; échec → l'état d'avant, dit. */
+  const enregistrerQualite = (avatarId: string, q: Qualite, avant: Qualite | null) => {
+    setQualiteSauvegardee(q);
+    void fetch('/api/avatar/qualite', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarId, qualite: q }),
+    }).then((r) => r.json()).then((j) => {
+      if (!j?.success) { setQualiteSauvegardee(avant); setError(j?.error || 'La qualité n’a pas pu être enregistrée.'); }
+    }).catch(() => { setQualiteSauvegardee(avant); setError('La qualité n’a pas pu être enregistrée.'); });
+  };
   const tarifs = useTarifs();
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   /** Où en est la génération (étapes RÉELLES du parcours HeyGen ou du jumeau), et son début. */
@@ -362,12 +390,18 @@ export default function AvatarPage() {
       // Avatar D-ID : l'aperçu part sur MA voix (ElevenLabs) vers D-ID ; HeyGen sinon.
       const res = avatar.provider === 'did'
         ? await fetch('/api/avatar/did/apercu', { method: 'POST' })
-        : await fetch('/api/avatar/generate', {
+        : null;
+      // HeyGen : un admin voit le coût de l'aperçu (moteur, durée, $) AVANT l'appel.
+      const issue = res
+        ? { annule: false as const, json: await res.json() }
+        : await avecConfirmationCout((confirmation) => fetch('/api/avatar/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined }),
-        });
-      const json = await res.json();
+          // La qualité SÉLECTIONNÉE : le devis et l'appel portent son moteur.
+          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined, ...(qualites.length > 0 ? { qualite } : {}), ...(confirmation ?? {}) }),
+        }), { cle: 'avatar:apercu' });
+      if (issue.annule) { setNotice(MESSAGE_ANNULE); return; }
+      const json = issue.json;
       if (!json.success) {
         // Sans voix personnelle, l'aperçu ne peut pas parler : on le dit avec la sortie (« Ma voix »), pas une erreur sèche.
         if (json.code === 'voix_indisponible') { signalerVoixManquante(); await loadApercu(); return; }
@@ -448,11 +482,21 @@ export default function AvatarPage() {
     setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
     const o = json.data.orientationAvatar;
     setOrientationAvatar(o === 'portrait' || o === 'landscape' || o === 'square' ? o : null);
+    const brute = json.data.qualiteSauvegardee;
+    const sauvee: Qualite | null = brute === 'standard' || brute === 'qualite' || brute === 'premium' ? brute : null;
+    setQualiteSauvegardee(sauvee);
     if (Array.isArray(json.data.qualites)) {
-      setQualitesHeygen(lireQualites(json.data.qualites));
-      if (json.data.qualiteParDefaut) setDefautHeygen(json.data.qualiteParDefaut as Qualite);
+      const liste = lireQualites(json.data.qualites);
+      const defaut = (json.data.qualiteParDefaut as Qualite | undefined) ?? defautHeygen;
+      setQualitesHeygen(liste);
+      setDefautHeygen(defaut);
       setQualitesClonee(lireQualites(json.data.qualitesVoixClonee));
-      if (json.data.qualiteParDefautVoixClonee) setDefautClonee(json.data.qualiteParDefautVoixClonee as Qualite);
+      // La sélection est posée DANS LE MÊME RENDU que l'avatar et ses qualités :
+      // jamais un rendu intermédiaire qui montrerait une autre qualité, un autre
+      // prix ou un autre coût (vu en CI : « Qualité » affichée un instant).
+      const choix = qualiteEnVigueurEcran(liste, sauvee, defaut);
+      setQualite(choix.qualite);
+      if (choix.aEnregistrer && json.data.avatar?.id) enregistrerQualite(json.data.avatar.id, choix.qualite, sauvee);
     }
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
@@ -633,6 +677,16 @@ export default function AvatarPage() {
       // L'avatar vidéo passe par D-ID quand le serveur l'a ouvert ; la photo
       // reste HeyGen, à l'identique. Le serveur revérifie le drapeau.
       if (kind === 'video' && didVideoActif) fd.append('provider', 'did');
+      // COÛT FOURNISSEUR (admin) : créer chez HeyGen peut être facturé, sans
+      // tarif public — l'avertissement et l'avatar déjà prêt AVANT l'envoi.
+      if (!(kind === 'video' && didVideoActif)) {
+        const choix = await confirmerCreationAvatar({ type: kind === 'video' ? 'video' : 'photo' });
+        if (choix === 'annuler' || choix === 'existant') {
+          setNotice(choix === 'existant' ? 'Votre avatar existant reste utilisé : aucune nouvelle version créée.' : MESSAGE_ANNULE);
+          return;
+        }
+        if (choix === 'continuer') fd.append(CHAMP_CONFIRMATION_COUT, '1');
+      }
 
       // Envoi avec les octets RÉELLEMENT transférés (XHR) : la progression
       // affichée est celle de l'envoi vers Studiio, et s'arrête là — le
@@ -751,8 +805,10 @@ export default function AvatarPage() {
     setStatutFournisseur(null);
     setGenDebut(Date.now());
     setGenStatus('pending');
-    // La qualité n'est envoyée que si le serveur l'a offerte ouverte ; il revérifie et refuse sinon.
-    const qualiteEnvoyee = qualites.some((q) => q.qualite === qualite && q.ouverte) ? qualite : undefined;
+    // La qualité SÉLECTIONNÉE part toujours : le serveur la revérifie et REFUSE une
+    // qualité fermée (jamais rabattue sur une autre). Le bouton est déjà bloqué dans ce cas.
+    if (!qualiteOuverte) { setGenStatus('idle'); setError(motifQualiteFermee); return; }
+    const qualiteEnvoyee = qualites.length > 0 ? qualite : undefined;
 
     // MA voix (voix clonée) : le moteur du jumeau de Créer, tel quel.
     if (voiceId.startsWith(PREFIXE_VOIX_CLONEE)) {
@@ -798,6 +854,13 @@ export default function AvatarPage() {
         setGenStatus('completed');
       } catch (e) {
         if (demonteRef.current) return;
+        // Coût fournisseur refusé : rien n'a été lancé — retour au repos, sans échec affiché.
+        if (e instanceof LancementAnnule) {
+          setGenStatus('idle');
+          setGenEtape(null);
+          setNotice(e.message);
+          return;
+        }
         const message = e instanceof Error && e.message ? e.message : 'La génération a échoué.';
         // Une attente interrompue (réseau, session) ne dit rien de la génération : on garde de quoi la reprendre.
         const code = (e as { code?: string })?.code;
@@ -811,7 +874,8 @@ export default function AvatarPage() {
 
     setGenEtape({ mode: 'heygen', phase: 'lancement' });
     try {
-      const res = await fetch('/api/avatar/generate', {
+      // Un admin voit le coût HeyGen (moteur, durée estimée, $) AVANT l'appel ; annuler = 0 appel.
+      const issue = await avecConfirmationCout((confirmation) => fetch('/api/avatar/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -820,9 +884,16 @@ export default function AvatarPage() {
           voiceId: voiceId || undefined,
           aspectRatio: ratio,
           ...(qualiteEnvoyee ? { qualite: qualiteEnvoyee } : {}),
+          ...(confirmation ?? {}),
         }),
-      });
-      const json = await res.json();
+      }), { cle: 'avatar:generer' });
+      if (issue.annule) {
+        setGenStatus('idle');
+        setGenEtape(null);
+        if (issue.choix !== 'deja_en_cours') setNotice(MESSAGE_ANNULE);
+        return;
+      }
+      const json = issue.json;
 
       if (!json.success) {
         const message = json.refunded
@@ -898,13 +969,41 @@ export default function AvatarPage() {
   // Le prix annoncé : celui de la grille centrale pour CE parcours et CETTE
   // qualité — la même règle que le serveur (`lib/avatar/prix.ts`). Qualité non
   // envoyée → Avatar IV (défaut HeyGen) ; voix clonée → tarif du jumeau.
-  const qualiteAnnoncee = qualites.some((q) => q.qualite === qualite && q.ouverte) ? qualite : undefined;
-  const prixGeneration = tarifs.prix[cleTarifEcranMonAvatar({ viaVoixClonee, qualiteEnvoyee: qualiteAnnoncee })];
+  // LA qualité en vigueur : celle affichée, envoyée, chiffrée et enregistrée — partout.
+  const qualiteOuverte = qualites.length === 0 || qualites.some((q) => q.qualite === qualite && q.ouverte);
+  const motifQualiteFermee = `${LIBELLE_QUALITE_ECRAN[qualite]} non disponible pour cet avatar${(() => { const m = qualites.find((q) => q.qualite === qualite)?.motif; return m ? ` : ${m}` : '.'; })()}`;
+  // ADMIN : le coût FOURNISSEUR de la qualité sélectionnée, recalculé à chaque
+  // changement de qualité ou de texte — le moteur affiché est celui envoyé.
+  const devisAdmin = tarifs.exempte && avatar && avatar.provider !== 'did'
+    ? devisVideoHeygen({
+      operation: 'video_avatar',
+      moteurEnvoye: MOTEUR_PAR_QUALITE[qualite],
+      avatarType: avatar.avatar_type,
+      dureeSecondes: dureeParoleEstimee([script]),
+      creditsStudiio: 0,
+    })
+    : null;
+  const prixGeneration = tarifs.prix[cleTarifEcranMonAvatar({ viaVoixClonee, qualiteEnvoyee: qualites.length > 0 ? qualite : undefined })];
     useEffect(() => {
-    const liste = viaVoixClonee ? qualitesClonee : qualitesHeygen;
-    const defaut = viaVoixClonee ? defautClonee : defautHeygen;
-    setQualite(liste.some((q) => q.qualite === defaut && q.ouverte) ? defaut : liste.find((q) => q.ouverte)?.qualite ?? defaut);
-  }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautClonee, defautHeygen]);
+    // Passage voix HeyGen ↔ voix clonée : même règle, sur la liste de ce parcours.
+    // (Au chargement, la sélection est déjà posée par `loadAvatar`, même résultat.)
+    const choix = qualiteEnVigueurEcran(viaVoixClonee ? qualitesClonee : qualitesHeygen, qualiteSauvegardee, defautHeygen);
+    if (choix.aEnregistrer) choisirQualiteRef.current(choix.qualite); else setQualite(choix.qualite);
+  }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautHeygen, qualiteSauvegardee]);
+
+  /**
+   * L'utilisateur CHOISIT la qualité : elle est appliquée tout de suite (prix,
+   * moteur, coût fournisseur recalculés) et enregistrée pour CET avatar — Créer
+   * et l'Autopilote l'utiliseront aussi.
+   */
+  const choisirQualite = (q: Qualite) => {
+    if (qualites.length > 0 && !qualites.some((x) => x.qualite === q && x.ouverte)) return;
+    setQualite(q);
+    if (!avatar) return;
+    enregistrerQualite(avatar.id, q, qualiteSauvegardee);
+  };
+  const choisirQualiteRef = useRef(choisirQualite);
+  choisirQualiteRef.current = choisirQualite;
 
   /** « Changer de source » : le geste existant (retour à l'import), aussi offert par les notifications. */
   const changerDeSource = () => {
@@ -1680,7 +1779,7 @@ export default function AvatarPage() {
                       data-avatar-qualite-choix
                       value={qualite}
                       disabled={busy}
-                      onChange={(e) => setQualite(e.target.value as Qualite)}
+                      onChange={(e) => choisirQualite(e.target.value as Qualite)}
                       className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none px-2.5 py-2 text-sm text-gray-100 disabled:opacity-50"
                     >
                       {qualites.map((q) => (
@@ -1718,9 +1817,23 @@ export default function AvatarPage() {
               {/* Le prix AU-DESSUS du bouton, en lignes courtes : dans le libellé
                   (insécable) il débordait de la colonne d'aperçu. */}
               <BlocPrix data-avatar-prix={tarifs.exempte ? 'administrateur' : 'utilisateur'} lignes={lignesPrixGenererAvatar(prixGeneration, tarifs.exempte)} />
+              {devisAdmin && (
+                <div data-avatar-cout-fournisseur={devisAdmin.moteur ?? ''} className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] text-gray-300 space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Coût fournisseur estimé (admin)</p>
+                  <p data-avatar-cout-ligne="moteur">HeyGen — {LIBELLE_MOTEUR_DEVIS[devisAdmin.moteur ?? ''] ?? devisAdmin.moteur} · durée estimée {libelleDuree(devisAdmin.dureeSecondes)}</p>
+                  <p data-avatar-cout-ligne="cout">
+                    {devisAdmin.tarifUsdParSeconde !== null ? `${devisAdmin.tarifUsdParSeconde.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} $ / s · ` : ''}
+                    {devisAdmin.coutUsd ? `coût ${libelleCoutUsd(devisAdmin.coutUsd)}` : 'Coût fournisseur exact non disponible'} · crédits Studiio : 0
+                  </p>
+                </div>
+              )}
+              {!qualiteOuverte && <p data-avatar-qualite-fermee className="text-[11px] text-amber-300">{motifQualiteFermee}</p>}
+              <p data-avatar-qualite-portee data-qualite={qualite} className="text-[10px] text-gray-500">
+                {`${LIBELLE_QUALITE_ECRAN[qualite]} — ${LIBELLE_MOTEUR_DEVIS[MOTEUR_PAR_QUALITE[qualite]]} : la qualité utilisée par Mon avatar, Créer et l’Autopilote pour cet avatar${qualiteSauvegardee ? '.' : ' (qualité par défaut).'}`}
+              </p>
               <button
                 onClick={handleGenerate}
-                disabled={!script.trim() || busy || voixCloneeChoisieIndisponible}
+                disabled={!script.trim() || busy || voixCloneeChoisieIndisponible || !qualiteOuverte}
                 className="w-full button-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {busy ? (
@@ -1771,7 +1884,7 @@ export default function AvatarPage() {
                   {premium.ouverte ? (
                     qualite === 'premium'
                       ? <span>Premium — Avatar V sélectionné.</span>
-                      : <><span>Premium — Avatar V disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => setQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
+                      : <><span>Premium — Avatar V disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => choisirQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
                   ) : (
                     <span data-avatar-premium-motif className="text-gray-400">Premium — Avatar V : {premium.motif ?? 'indisponible.'}</span>
                   )}

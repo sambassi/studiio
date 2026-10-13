@@ -13,6 +13,7 @@
  *   'aucun'  — le parcours normal, celui de tous les brouillons antérieurs.
  */
 
+import { avecConfirmationCout, MESSAGE_ANNULE, type Confirmeur } from '@/lib/fournisseurs/confirmation-client';
 import { generationDepuisRush, versionPerimee } from '@/lib/avatar/identite';
 
 export type JumeauMode = 'aucun' | 'voix' | 'avatar';
@@ -347,11 +348,16 @@ export async function genererEtAttendreVideoJumeau(args: {
   fetchImpl?: typeof fetch;
   attendreMs?: (ms: number) => Promise<void>;
   maxAttenteMs?: number;
+  /** Une RELANCE (nouvelle vidéo payante) : le devis le dit. */
+  relance?: boolean;
+  /** Confirmation du coût fournisseur (admin) ; défaut : la fenêtre « Coût fournisseur estimé ». */
+  confirmer?: Confirmeur;
 }): Promise<{ url: string; generationId: string; avatarVersion: number }> {
   const f = args.fetchImpl ?? fetch;
   args.onPhase?.('envoi');
   args.onEtape?.('Génération de votre jumeau…');
-  const lancement = await f(`${JUMEAU_API}/generer`, {
+  // Un admin voit le coût HeyGen AVANT l'appel (428 + devis) ; annuler = 0 appel.
+  const issue = await avecConfirmationCout((confirmation) => f(`${JUMEAU_API}/generer`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       textes: args.textes, aspectRatio: args.aspectRatio,
@@ -359,10 +365,13 @@ export async function genererEtAttendreVideoJumeau(args: {
       ...(args.voixId ? { voixId: args.voixId } : {}),
       ...(args.qualite ? { qualite: args.qualite } : {}),
       ...(args.cadrage ? { cadrage: args.cadrage } : {}),
+      ...(args.relance ? { relance: true } : {}),
+      ...(confirmation ?? {}),
     }),
-  });
-  const lance = await lancement.json().catch(() => ({}));
-  if (!lancement.ok || !lance?.success) throw new Error(lance?.error || JUMEAU_INDISPONIBLE);
+  }), { cle: 'jumeau:generer', ...(args.confirmer ? { confirmer: args.confirmer } : {}) });
+  if (issue.annule) throw new LancementAnnule();
+  const lance = issue.json;
+  if (issue.status < 200 || issue.status >= 300 || !lance?.success) throw new Error(lance?.error || JUMEAU_INDISPONIBLE);
   const generationId: string = lance.data.generationId;
   const avatarVersion: number = lance.data.avatarVersion;
   // Persister l'identifiant AVANT d'attendre : si l'onglet se ferme pendant le
@@ -378,4 +387,10 @@ export async function genererEtAttendreVideoJumeau(args: {
     maxAttenteMs: args.maxAttenteMs,
   });
   return { url, generationId, avatarVersion };
+}
+
+/** L'admin a refusé le coût fournisseur : rien n'a été lancé ni débité. */
+export class LancementAnnule extends Error {
+  readonly annule = true;
+  constructor() { super(MESSAGE_ANNULE); this.name = 'LancementAnnule'; }
 }

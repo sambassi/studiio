@@ -87,6 +87,17 @@ vi.mock('@/lib/credits/system', () => ({
   },
   addCredits: async (_u: string, n: number) => { credits.journal.push(`refund:${n}`); credits.solde += n; },
 }));
+// Coût fournisseur (#562) : `coutAdmin.actif` fait de la session un ADMIN pour
+// la garde de confirmation ; faux (défaut) = l'exemption réelle, inchangée.
+const coutAdmin = vi.hoisted(() => ({ actif: false, jumeauVideo: false }));
+vi.mock('@/lib/avatar/couts', async (orig) => {
+  const vrai = await orig<typeof import('@/lib/avatar/couts')>();
+  return { ...vrai, compteAdmin: async (u: string) => coutAdmin.jumeauVideo || vrai.compteAdmin(u) };
+});
+vi.mock('@/lib/facturation/exemption', async (orig) => {
+  const vrai = await orig<typeof import('@/lib/facturation/exemption')>();
+  return { ...vrai, compteExempteDeCredits: async (u: string) => coutAdmin.actif || vrai.compteExempteDeCredits(u) };
+});
 const session = vi.hoisted(() => ({ courante: { user: { id: 'aaaaaaaa-1111-4111-8111-111111111111' } } as unknown }));
 vi.mock('@/lib/auth/config', () => ({ auth: async () => session.courante }));
 
@@ -108,6 +119,10 @@ globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
   if (u === 'https://api.heygen.com/v3/videos') {
     if (reseau.heygenVideos !== 200) return new Response(JSON.stringify({ error: { message: 'audio refuse' } }), { status: reseau.heygenVideos });
     return new Response(JSON.stringify({ data: { video_id: 'vid-jumeau-1', status: 'waiting' } }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  // Lecture GRATUITE des moteurs d'un look (Avatar V confirmé ou non par HeyGen).
+  if (u.startsWith('https://api.heygen.com/v3/avatars/looks/')) {
+    return new Response(JSON.stringify({ data: { supported_api_engines: ['avatar_iii', 'avatar_iv', 'avatar_v'] } }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   throw new Error(`fetch inattendu ${u}`);
 }) as unknown as typeof fetch;
@@ -134,7 +149,7 @@ const appelsVers = (prefixe: string) => reseau.appels.filter((a) => a.url.starts
 beforeEach(() => {
   base.avatars = [avatar()]; base.voices = [voix()]; base.generations = []; base.transactions = []; base.compteur = 0;
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: [{ affiche: 'Afroboost', prononce: 'Afro-boust' }, { affiche: 'Neuchâtel', prononce: 'Neu-cha-tel' }] } } }];
-  credits.solde = 1000; credits.journal.length = 0; credits.leve = null; credits.admin = false; credits.majEchoue = false;
+  credits.solde = 1000; credits.journal.length = 0; credits.leve = null; credits.admin = false; credits.majEchoue = false; coutAdmin.actif = false; coutAdmin.jumeauVideo = false;
   reseau.appels.length = 0; reseau.eleven = 200; reseau.heygenAssets = 200; reseau.heygenVideos = 200;
   process.env.JUMEAU_MOTEUR_ACTIVE = '1';
   session.courante = { user: { id: U } };
@@ -499,5 +514,167 @@ describe('Mon avatar — cadrage rempli et qualité Premium (moteur du jumeau)',
     expect(r.ok).toBe(true);
     expect((appelsVers('https://api.heygen.com/v3/videos')[0].body as { engine: unknown }).engine).toEqual({ type: 'avatar_iii' });
     expect((await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'avatar_v' })).ok).toBe(false);
+  });
+});
+
+describe('#562 — coût fournisseur AVANT la vidéo du jumeau (admin, lancement manuel)', () => {
+  const lancer = (confirme: boolean, operation?: 'relance_video') =>
+    genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme, ...(operation ? { operation } : {}) } });
+
+  it('⚠️ J. relance qui créerait une NOUVELLE vidéo : devis « relance » rendu AVANT tout — 0 appel (voix comprise), 0 ligne, 0 débit', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    const r = await lancer(false, 'relance_video');
+    expect(r).toMatchObject({ ok: false, motif: 'confirmation_cout' });
+    if (r.ok || r.motif !== 'confirmation_cout') return;
+    // Le moteur RÉELLEMENT envoyé (Avatar III par défaut), avatar photo → tarif photo.
+    expect(r.devis).toMatchObject({ operation: 'relance_video', moteur: 'avatar_iii', moteurImplicite: false, typeAvatar: 'photo', prixConnu: true, creditsStudiio: 0 });
+    expect(r.devis.coutUsd!.min).toBeGreaterThan(0);
+    expect(reseau.appels).toEqual([]);
+    expect(base.generations).toEqual([]);
+    expect(credits.journal).toEqual([]);
+  });
+
+  it('⚠️ G. confirmé → exactement UNE vidéo chez le fournisseur', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    const r = await lancer(true);
+    expect(r.ok).toBe(true);
+    expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
+  });
+
+  it('⚠️ cron / reprise (aucune garde demandée) : jamais bloqué par la confirmation', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    expect((await generer()).ok).toBe(true);
+    expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
+  });
+
+  it('utilisateur non admin : aucune confirmation demandée (il paie en crédits, comme avant)', async () => {
+    const r = await lancer(false);
+    expect(r.ok).toBe(true);
+  });
+
+  it('⚠️ route Créer : admin sans confirmation → 428 + devis, 0 appel ; avec confirmation → 1 vidéo', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    const envoyer = (corps: Record<string, unknown>) => POST(new NextRequest('https://studiio.pro/api/creer/jumeau/generer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps) }));
+    const refus = await envoyer({ textes: [TEXTE], aspectRatio: '9:16' });
+    expect(refus.status).toBe(428);
+    const j = await refus.json();
+    expect(j).toMatchObject({ code: 'confirmation_cout_fournisseur', devis: { operation: 'video_avatar', moteur: 'avatar_iii' } });
+    expect(reseau.appels).toEqual([]);
+    const ok = await envoyer({ textes: [TEXTE], aspectRatio: '9:16', relance: true, confirmationCoutFournisseur: true });
+    expect(ok.status).toBe(200);
+    expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
+  });
+});
+
+describe('#562 bis — G. Créer / Autopilote : la qualité ENREGISTRÉE pour l’avatar', () => {
+  const moteurEnvoye = () => (appelsVers('https://api.heygen.com/v3/videos')[0].body as { engine: { type: string } }).engine.type;
+  const choisir = (qualite: string) => {
+    const prefs = base.settings[0].creator_preferences as Record<string, unknown>;
+    base.settings[0].creator_preferences = { ...prefs, qualitesAvatar: { [A]: qualite } };
+  };
+
+  it('⚠️ qualité « qualite » enregistrée → Avatar IV envoyé, enregistré, et c’est lui que le devis annonce', async () => {
+    choisir('qualite');
+    coutAdmin.actif = true; credits.admin = true;
+    const devis = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: false } });
+    expect(devis).toMatchObject({ ok: false, motif: 'confirmation_cout', devis: { moteur: 'avatar_iv' } });
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: true, moteurConfirme: 'avatar_iv' } });
+    expect(r.ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iv');
+    expect(base.generations[0].engine).toBe('avatar_iv');
+  });
+
+  it('⚠️ Autopilote (aucune qualité, aucune garde) : la qualité enregistrée « standard » → Avatar III', async () => {
+    choisir('standard');
+    expect((await generer()).ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+  });
+
+  it('aucune qualité enregistrée : le défaut d’avant (Avatar III), jamais un moteur plus cher en silence', async () => {
+    expect((await generer()).ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+  });
+
+  it('une qualité EXPLICITE de la requête l’emporte sur la qualité enregistrée', async () => {
+    choisir('qualite');
+    expect((await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'standard' })).ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+  });
+
+  it('⚠️ confirmé pour Avatar IV mais la qualité est devenue Standard : nouveau devis, AUCUN appel', async () => {
+    choisir('standard');
+    coutAdmin.actif = true; credits.admin = true;
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: true, moteurConfirme: 'avatar_iv' } });
+    expect(r).toMatchObject({ ok: false, motif: 'confirmation_cout', devis: { moteur: 'avatar_iii' } });
+    expect(reseau.appels).toEqual([]);
+  });
+
+  it('⚠️ le devis Autopilote annonce le moteur de la qualité enregistrée', async () => {
+    const { devisVideoAutopilote } = await import('@/lib/fournisseurs/devis-autopilote');
+    choisir('qualite');
+    const d = await devisVideoAutopilote(U, { jumeauAvatar: true, jumeauAvatarId: A } as never, 'Un texte court.');
+    expect(d).toMatchObject({ moteur: 'avatar_iv', operation: 'video_autopilote' });
+    choisir('standard');
+    expect((await devisVideoAutopilote(U, { jumeauAvatar: true, jumeauAvatarId: A } as never, 'Un texte court.'))?.moteur).toBe('avatar_iii');
+  });
+});
+
+describe('#562 ter — UNE source de vérité : qualité affichée = moteur envoyé = devis = moteur enregistré', () => {
+  const MOTEURS = { standard: 'avatar_iii', qualite: 'avatar_iv', premium: 'avatar_v' } as const;
+  const moteurEnvoye = () => (appelsVers('https://api.heygen.com/v3/videos').at(-1)!.body as { engine: { type: string } }).engine.type;
+  const choisir = (qualite: string) => {
+    const prefs = base.settings[0].creator_preferences as Record<string, unknown>;
+    base.settings[0].creator_preferences = { ...prefs, qualitesAvatar: { [A]: qualite } };
+  };
+  /** Le moteur que CHAQUE parcours utiliserait : devis Créer (admin), vidéo Créer, devis Autopilote, vidéo Autopilote, trace. */
+  const partout = async () => {
+    const { devisVideoAutopilote } = await import('@/lib/fournisseurs/devis-autopilote');
+    coutAdmin.actif = true; credits.admin = true;
+    const devisCreer = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: false } });
+    const creer = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: true } });
+    const moteurCreer = moteurEnvoye();
+    const devisAuto = await devisVideoAutopilote(U, { jumeauAvatar: true, jumeauAvatarId: A } as never, null);
+    base.generations = [];
+    const auto = await genererVideoJumeau({ userId: U, textes: ['Autre texte du créneau.'], aspectRatio: '9:16' });
+    expect(creer.ok && auto.ok).toBe(true);
+    return {
+      devisCreer: devisCreer.ok ? null : 'devis' in devisCreer ? devisCreer.devis.moteur : null,
+      creer: moteurCreer,
+      devisAutopilote: devisAuto?.moteur ?? null,
+      autopilote: moteurEnvoye(),
+      enregistre: base.generations[0].engine,
+    };
+  };
+
+  it('⚠️ ancien avatar SANS qualité enregistrée : X = qualiteParDefaut() partout (Standard → Avatar III en production)', async () => {
+    const { qualiteParDefaut } = await import('@/lib/avatar/moteurs');
+    const X = qualiteParDefaut();
+    expect(X).toBe('standard');
+    const m = MOTEURS[X];
+    expect(await partout()).toEqual({ devisCreer: m, creer: m, devisAutopilote: m, autopilote: m, enregistre: m });
+  });
+
+  for (const q of ['standard', 'qualite'] as const) {
+    it(`⚠️ ${q} enregistrée → ${MOTEURS[q]} partout`, async () => {
+      choisir(q);
+      const m = MOTEURS[q];
+      expect(await partout()).toEqual({ devisCreer: m, creer: m, devisAutopilote: m, autopilote: m, enregistre: m });
+    });
+  }
+
+  it('⚠️ Premium enregistré ET confirmé par HeyGen (jumeau vidéo) → Avatar V partout, réellement envoyé', async () => {
+    base.avatars = [avatar({ avatar_type: 'video', provider_group_consent: 'accepted' })];
+    coutAdmin.jumeauVideo = true;
+    choisir('premium');
+    expect(await partout()).toEqual({ devisCreer: 'avatar_v', creer: 'avatar_v', devisAutopilote: 'avatar_v', autopilote: 'avatar_v', enregistre: 'avatar_v' });
+  });
+
+  it('⚠️ Premium enregistré mais INDISPONIBLE (avatar photo) : refus avec la raison, AUCUN repli sur IV / III, aucun appel', async () => {
+    choisir('premium');
+    const r = await generer();
+    expect(r).toMatchObject({ ok: false, motif: 'moteur_indisponible' });
+    expect(reseau.appels.filter((a) => a.url.startsWith('https://api.heygen.com/v3/videos'))).toEqual([]);
+    expect(reseau.appels.filter((a) => a.url.startsWith('https://api.elevenlabs.io'))).toEqual([]);
+    expect(credits.journal).toEqual([]);
   });
 });

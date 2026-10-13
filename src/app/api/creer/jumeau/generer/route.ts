@@ -13,6 +13,7 @@ import { auth } from '@/lib/auth/config';
 import { genererVideoJumeau } from '@/lib/avatar/moteur-jumeau';
 import { MESSAGE_ATTENTE_FOURNISSEUR } from '@/lib/avatar/attente-fournisseur';
 import { URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
+import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -26,8 +27,15 @@ export async function POST(req: NextRequest) {
   let voixId: string | null = null;
   let qualite: unknown;
   let cadrage: 'remplir' | undefined;
+  // Lancement MANUEL : un admin confirme le coût fournisseur (428 + devis sinon).
+  let confirme = false;
+  let moteurConfirme: unknown;
+  let relance = false;
   try {
-    const corps = (await req.json()) as { textes?: unknown; aspectRatio?: unknown; avatarId?: unknown; voixId?: unknown; qualite?: unknown; cadrage?: unknown } | null;
+    const corps = (await req.json()) as { textes?: unknown; aspectRatio?: unknown; avatarId?: unknown; voixId?: unknown; qualite?: unknown; cadrage?: unknown; relance?: unknown; [CHAMP_CONFIRMATION_COUT]?: unknown } | null;
+    confirme = confirmationCoutLue(corps?.[CHAMP_CONFIRMATION_COUT]);
+    moteurConfirme = (corps as { moteurConfirme?: unknown } | null)?.moteurConfirme;
+    relance = corps?.relance === true;
     if (Array.isArray(corps?.textes)) textes = corps!.textes.filter((t): t is string => typeof t === 'string').slice(0, 20);
     if (typeof corps?.aspectRatio === 'string') aspectRatio = corps.aspectRatio;
     // Identité LOGIQUE et QUALITÉ seulement : le fournisseur et le moteur sont décidés par le serveur.
@@ -38,7 +46,11 @@ export async function POST(req: NextRequest) {
     cadrage = corps?.cadrage === 'remplir' ? 'remplir' : undefined;
   } catch { textes = []; }
 
-  const r = await genererVideoJumeau({ userId: session.user.id, textes, aspectRatio, avatarId, voixId, qualite, ...(cadrage ? { cadrage } : {}) });
+  const r = await genererVideoJumeau({
+    userId: session.user.id, textes, aspectRatio, avatarId, voixId, qualite, ...(cadrage ? { cadrage } : {}),
+    coutFournisseur: { confirme, moteurConfirme, operation: relance ? 'relance_video' : 'video_avatar' },
+  });
+  if (!r.ok && r.motif === 'confirmation_cout') return reponseConfirmationCout(r.devis);
   if (r.ok) {
     return NextResponse.json({ success: true, data: {
       generationId: r.generationId, status: r.status, avatarVersion: r.avatarVersion, dejaEnCours: r.dejaEnCours, spoken: r.spoken,

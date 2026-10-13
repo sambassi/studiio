@@ -19,6 +19,7 @@
  * un réglage de chaque génération vidéo (moteur de rendu), sans effet sur
  * l'entraînement d'une version — elle se choisit dans « Générer la vidéo ».
  */
+import { confirmerCreationAvatar, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import { useEffect, useRef, useState } from 'react';
 import { Camera, Upload, Image as ImageIcon, Clapperboard, X, Check } from 'lucide-react';
 import EnregistreurSource from '@/components/avatar/studio/EnregistreurSource';
@@ -94,6 +95,15 @@ export default function FluxSourceAvatar(props: {
     fd.append('name', (nom.trim() || (type === 'video' ? 'Mon avatar vidéo' : 'Mon avatar')).slice(0, 80));
     if (remplacer) fd.append('avatarId', props.avatar!.id);
     try {
+      // COÛT FOURNISSEUR (admin) : créer chez HeyGen peut être facturé, sans
+      // tarif public — l'avertissement et l'avatar déjà prêt AVANT l'envoi.
+      const choix = await confirmerCreationAvatar({ type });
+      if (choix === 'annuler' || choix === 'existant') {
+        setErreur(choix === 'existant' ? 'Votre avatar existant reste utilisé : aucune nouvelle version créée.' : MESSAGE_ANNULE);
+        setEtape('recapitulatif');
+        return;
+      }
+      if (choix === 'continuer') fd.append(CHAMP_CONFIRMATION_COUT, '1');
       let ok: boolean; let j: { success?: boolean; error?: string } | null;
       const cles = type === 'video' ? preparee : photoPreparee;
       if (cles) {

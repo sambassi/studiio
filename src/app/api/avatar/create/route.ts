@@ -20,12 +20,16 @@ import {
   BUCKET_AVATAR, cleSourceAvatar, retirerSourceAvatar,
 } from '@/lib/avatar/source';
 import { avatarVivantDuCompte } from '@/lib/avatar/lecture';
+import { compteExempteDeCredits } from '@/lib/facturation/exemption';
+import { lireQualiteAvatar } from '@/lib/avatar/qualite-sauvegardee';
+import { devisCreationPourCompte } from '@/lib/fournisseurs/devis-creation-avatar';
+import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 import { listerIdentites, identitesVideoAvecGroupe, emplacementsVideo } from '@/lib/avatar/versions';
 import { lancerVersionCandidate } from '@/lib/avatar/remplacement';
 import { versionPublique } from '@/lib/avatar/actions-version';
 import { cleSourceAvatarDuCompte, sourceAvatarPresente } from '@/lib/avatar/source';
 import { didVideoAvatarDisponible } from '@/lib/providers/did/client';
-import { qualiteParDefaut, qualitesMonAvatar, QUALITE_PAR_DEFAUT_MON_AVATAR } from '@/lib/avatar/moteurs';
+import { qualiteParDefaut, qualitesMonAvatar } from '@/lib/avatar/moteurs';
 import {
   FOURNISSEUR_DID, TYPES_VIDEO_DID, MAX_VIDEO_SOURCE_DID_OCTETS, DUREE_VALIDITE_CONSENTEMENT_MS, etapeDid, rafraichirEntrainementDid,
   type AvatarDid,
@@ -391,9 +395,13 @@ export async function GET() {
     // `didVideoActif` : l'ecran ouvre « A partir d'une video » seulement si le
     // serveur le dit — drapeau ET cle presents. Jamais la cle elle-meme.
     // `nomProfil` : le nom du compte, pour PRÉ-REMPLIR le nom de consentement D-ID à l'écran. Rien d'autre du profil.
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesMonAvatar(moteursLook, avatar?.avatar_type), qualiteParDefaut: QUALITE_PAR_DEFAUT_MON_AVATAR,
+    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesMonAvatar(moteursLook, avatar?.avatar_type),
+      // UNE qualité par défaut pour TOUS les parcours (Mon avatar, aperçu, Créer, Autopilote) : celle du moteur serveur.
+      qualiteParDefaut: qualiteParDefaut(),
       // Voix clonée (moteur du jumeau) : mêmes choix — et SON défaut, celui de Créer, inchangé.
       qualitesVoixClonee: qualitesMonAvatar(moteursLook, avatar?.avatar_type), qualiteParDefautVoixClonee: qualiteParDefaut(),
+      // La qualité CHOISIE pour cet avatar (source de vérité du moteur) ; `null` = jamais choisie.
+      qualiteSauvegardee: avatar?.id ? await lireQualiteAvatar(session.user.id, String(avatar.id)) : null,
       // Ce que HeyGen a RÉELLEMENT répondu pour ce look (`supported_api_engines`) ; `null` = pas de réponse.
       moteursFournisseur: moteursLook,
       // L'orientation NATIVE de l'avatar chez HeyGen : un autre format sera recadré (rempli), jamais bordé.
@@ -454,6 +462,20 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    // COÛT FOURNISSEUR — créer un avatar ou une nouvelle version (POST
+    // /v3/avatars) peut être facturé par HeyGen, SANS tarif public : jamais un
+    // montant inventé. Un admin (0 crédit Studiio) doit avoir confirmé
+    // (l'écran a lu `GET /api/avatar/devis-creation` avant l'envoi) — sinon
+    // 428 + devis, AVANT tout dépôt, toute ligne et tout appel.
+    if (!viaDid && !confirmationCoutLue(formData.get(CHAMP_CONFIRMATION_COUT)) && await compteExempteDeCredits(userId)) {
+      const sourceCle = formData.get('cleSource');
+      const typeDemande: AvatarKind = file
+        ? (file.type.startsWith('video/') ? 'video' : 'photo')
+        : typeof sourceCle === 'string' && /\.(mp4|webm|mov)$/i.test(sourceCle) ? 'video' : 'photo';
+      const { devis, contexte } = await devisCreationPourCompte(userId, typeDemande);
+      return reponseConfirmationCout(devis, { ...contexte });
     }
 
     // Remplacer / nouveau : le choix VIENT de l'écran, l'identité du compte est relue ici.

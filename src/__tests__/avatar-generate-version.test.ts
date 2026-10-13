@@ -122,10 +122,10 @@ describe('POST /api/avatar/generate — version et avatar vivant', () => {
 });
 
 describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon avatar)', () => {
-  it('⚠️ sans qualité : appel INCHANGÉ (aucun moteur transmis)', async () => {
+  it('⚠️ sans qualité : LA qualité par défaut de tous les parcours (Standard → Avatar III) est ENVOYÉE — jamais un défaut HeyGen implicite (#562)', async () => {
     base.avatars = [avatar()];
     expect((await requete()).status).toBe(200);
-    expect(heygen.args[0]).not.toHaveProperty('moteur');
+    expect(heygen.args[0].moteur).toBe('avatar_iii');
   });
 
   it('⚠️ Standard → avatar_iii ; Qualité → avatar_iv SANS configuration (le moteur que ce parcours utilisait déjà)', async () => {
@@ -185,7 +185,8 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
   it('⚠️ moteur falsifié par le client (`engine`, `moteur`) : IGNORÉ — seule la qualité est lue, et revalidée', async () => {
     base.avatars = [avatar()];
     expect((await requete({ engine: { type: 'avatar_v' }, moteur: 'avatar_v' })).status).toBe(200);
-    expect(heygen.args[0]).not.toHaveProperty('moteur');
+    // Le moteur falsifié n'est pas lu : c'est la qualité par défaut qui part.
+    expect(heygen.args[0].moteur).toBe('avatar_iii');
     expect((await requete({ qualite: 'avatar_v' })).status).toBe(400);
   });
 
@@ -195,9 +196,9 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
     expect(credits.journal).toEqual([]);
   });
 
-  it('un APERÇU ignore la qualité (texte fixe, offert, moteur par défaut)', async () => {
+  it('un APERÇU (texte fixe, offert) suit la qualité CHOISIE — #562 : Standard → Avatar III envoyé', async () => {
     base.avatars = [avatar({ status: 'completed', validated_at: null })];
-    await requete({ intention: 'apercu', qualite: 'premium' });
-    expect(heygen.args[0] ?? {}).not.toHaveProperty('moteur');
+    await requete({ intention: 'apercu', qualite: 'standard' });
+    expect(heygen.args[0].moteur).toBe('avatar_iii');
   });
 });

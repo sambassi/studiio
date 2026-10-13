@@ -18,6 +18,7 @@ vi.mock('@/components/voice/MaVoixPanel', () => ({ default: () => null }));
 
 import AvatarPage from '../app/dashboard/avatar/page';
 import { reinitialiserTarifsEcran } from '@/lib/tarifs/client';
+import { qualiteParDefaut, MOTEUR_PAR_QUALITE } from '@/lib/avatar/moteurs';
 
 const A = '11111111-1111-4111-8111-000000000001';
 const avatarValide = { id: A, name: 'Mon avatar vidéo', status: 'completed', avatar_type: 'video', created_at: '2026-10-07T00:00:00Z', etat: 'valide', version: 3, validated_at: '2026-10-07T10:00:00Z', provider: 'heygen' };
@@ -78,5 +79,141 @@ describe('Mon avatar — bloc prix (grille lue sur /api/tarifs)', () => {
     render(<AvatarPage />);
     await waitFor(() => expect(lignes()).toEqual(['Prix : 25 crédits']));
     expect(bouton().disabled).toBe(true);
+  });
+});
+
+describe('#562 bis — la qualité choisie : prix, moteur et coût fournisseur recalculés, choix enregistré', () => {
+  const cout = () => document.querySelector('[data-avatar-cout-fournisseur]');
+  const appels = () => (globalThis.fetch as unknown as { mock: { calls: Array<[string, RequestInit?]> } }).mock.calls;
+
+  it('⚠️ admin : Standard / Qualité / Premium → Avatar III / IV / V, coût recalculé sur le MÊME texte', async () => {
+    serveur.exempte = true;
+    render(<AvatarPage />);
+    await waitFor(() => expect(cout()).not.toBeNull());
+    const zone = document.querySelector('textarea') as HTMLTextAreaElement;
+    // 26 mots ≈ 10 s → 8–12 s.
+    fireEvent.change(zone, { target: { value: Array.from({ length: 26 }, (_, i) => `mot${i}`).join(' ') } });
+    const lire = () => ({ moteur: cout()!.getAttribute('data-avatar-cout-fournisseur'), texte: cout()!.textContent });
+    fireEvent.change(qualite(), { target: { value: 'standard' } });
+    expect(lire().moteur).toBe('avatar_iii');
+    expect(lire().texte).toContain('Avatar III');
+    expect(lire().texte).toContain('8–12 s');
+    expect(lire().texte).toContain('≈ 0,08–0,12 $');
+    fireEvent.change(qualite(), { target: { value: 'qualite' } });
+    expect(lire().moteur).toBe('avatar_iv');
+    expect(lire().texte).toContain('≈ 0,64–0,97 $');
+    fireEvent.change(qualite(), { target: { value: 'premium' } });
+    expect(lire().moteur).toBe('avatar_v');
+    expect(lire().texte).toContain('≈ 0,96–1,44 $');
+    expect(lire().texte).toContain('crédits Studiio : 0');
+  });
+
+  it('utilisateur : aucun coût fournisseur affiché (le prix en crédits seulement)', async () => {
+    render(<AvatarPage />);
+    await waitFor(() => expect(lignes()).toEqual(['Prix : 25 crédits']));
+    expect(cout()).toBeNull();
+  });
+
+  it('⚠️ le choix est ENREGISTRÉ pour cet avatar (Créer et l’Autopilote l’utilisent) et rechargé', async () => {
+    render(<AvatarPage />);
+    await waitFor(() => expect(lignes()).toEqual(['Prix : 25 crédits']));
+    expect(document.querySelector('[data-avatar-qualite-portee]')?.textContent).toContain('(qualité par défaut)');
+    fireEvent.change(qualite(), { target: { value: 'standard' } });
+    const sauve = appels().find(([u]) => u === '/api/avatar/qualite');
+    expect(sauve).toBeTruthy();
+    expect(JSON.parse(String(sauve![1]!.body))).toEqual({ avatarId: A, qualite: 'standard' });
+    await waitFor(() => expect(document.querySelector('[data-avatar-qualite-portee]')?.textContent).toBe('Standard — Avatar III : la qualité utilisée par Mon avatar, Créer et l’Autopilote pour cet avatar.'));
+  });
+
+  it('une qualité déjà enregistrée est la sélection au chargement', async () => {
+    const avant = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (String(url) === '/api/avatar/create') {
+        return { ok: true, status: 200, json: async () => ({ success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'v1', name: 'Voix' }], defaultVoiceId: 'v1', qualites: QUALITES, qualiteParDefaut: 'qualite', qualiteSauvegardee: 'premium' } }) } as unknown as Response;
+      }
+      return (avant as typeof fetch)(url as string, init);
+    }) as unknown as typeof fetch;
+    const vues = new Set<string>();
+    const obs = new MutationObserver(() => { const el = document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement | null; if (el) vues.add(el.value); });
+    obs.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    render(<AvatarPage />);
+    await waitFor(() => expect(lignes()).toEqual(['Prix : 40 crédits']));
+    expect(qualite().value).toBe('premium');
+    await new Promise((r) => setTimeout(r, 50));
+    obs.disconnect();
+    // La qualité enregistrée dès le premier affichage du sélecteur — jamais « Qualité » un instant.
+    expect([...vues]).toEqual(['premium']);
+  });
+});
+
+describe('#562 ter — Mon avatar affiche LA qualité en vigueur ; Premium indisponible = bloqué, sans repli', () => {
+  const avecServeur = (data: Record<string, unknown>) => {
+    const avant = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (String(url) === '/api/avatar/create') {
+        return { ok: true, status: 200, json: async () => ({ success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'v1', name: 'Voix' }], defaultVoiceId: 'v1', ...data } }) } as unknown as Response;
+      }
+      return (avant as typeof fetch)(url as string, init);
+    }) as unknown as typeof fetch;
+  };
+  const appels = () => (globalThis.fetch as unknown as { mock: { calls: Array<[string, RequestInit?]> } }).mock.calls.map(([u]) => String(u));
+  /**
+   * TOUTES les qualités affichées depuis le premier rendu (y compris un rendu
+   * intermédiaire de quelques millisecondes) : la CI a vu « Qualité » un
+   * instant avant la vraie sélection. Une seule valeur est admise.
+   */
+  const espionQualitesAffichees = () => {
+    const vues = new Set<string>();
+    const noter = (el: Element) => { const v = el.getAttribute('data-qualite'); if (v) vues.add(v); };
+    const obs = new MutationObserver((recs) => {
+      for (const r of recs) {
+        if (r.type === 'attributes' && r.oldValue) vues.add(r.oldValue);
+        if (r.type === 'attributes') noter(r.target as Element);
+        r.addedNodes.forEach((n) => { if (n instanceof Element) { if (n.matches('[data-qualite]')) noter(n); n.querySelectorAll('[data-qualite]').forEach(noter); } });
+      }
+    });
+    obs.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-qualite'], attributeOldValue: true });
+    return { vues, arreter: () => { obs.takeRecords(); obs.disconnect(); } };
+  };
+
+  it('⚠️ ancien avatar sans qualité enregistrée : la sélection = qualiteParDefaut() du serveur, et le devis admin porte SON moteur', async () => {
+    serveur.exempte = true;
+    const X = qualiteParDefaut();
+    avecServeur({ qualites: QUALITES, qualiteParDefaut: X, qualiteSauvegardee: null });
+    const espion = espionQualitesAffichees();
+    render(<AvatarPage />);
+    await waitFor(() => expect(document.querySelector('[data-avatar-cout-fournisseur]')).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 50));
+    espion.arreter();
+    // Jamais une autre qualité, même un instant.
+    expect([...espion.vues]).toEqual([X]);
+    expect(qualite().value).toBe(X);
+    expect(document.querySelector('[data-avatar-cout-fournisseur]')!.getAttribute('data-avatar-cout-fournisseur')).toBe(MOTEUR_PAR_QUALITE[X]);
+    expect(document.querySelector('[data-avatar-qualite-portee]')!.getAttribute('data-qualite')).toBe(X);
+    expect(document.querySelector('[data-avatar-qualite-portee]')!.textContent).toBe('Standard — Avatar III : la qualité utilisée par Mon avatar, Créer et l’Autopilote pour cet avatar (qualité par défaut).');
+  });
+
+  it('⚠️ Premium enregistré mais INDISPONIBLE : affiché tel quel, raison dite, génération bloquée — aucun repli, aucun appel', async () => {
+    const fermees = QUALITES.map((q) => (q.qualite === 'premium' ? { ...q, ouverte: false, motif: 'Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).' } : q));
+    avecServeur({ qualites: fermees, qualiteParDefaut: 'standard', qualiteSauvegardee: 'premium' });
+    render(<AvatarPage />);
+    await waitFor(() => expect(document.querySelector('[data-avatar-qualite-fermee]')).not.toBeNull());
+    expect(qualite().value).toBe('premium');
+    expect(document.querySelector('[data-avatar-qualite-fermee]')!.textContent).toBe('Premium non disponible pour cet avatar : Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).');
+    expect((document.querySelector('[data-avatar-qualite-option="premium"]') as HTMLOptionElement).disabled).toBe(true);
+    fireEvent.change(document.querySelector('textarea')!, { target: { value: 'Bonjour à tous.' } });
+    expect(bouton().disabled).toBe(true);
+    fireEvent.click(bouton());
+    expect(appels()).not.toContain('/api/avatar/generate');
+  });
+
+  it('Premium fermé : impossible de le CHOISIR (rien enregistré, la sélection ne bouge pas)', async () => {
+    const fermees = QUALITES.map((q) => (q.qualite === 'premium' ? { ...q, ouverte: false, motif: 'x' } : q));
+    avecServeur({ qualites: fermees, qualiteParDefaut: 'standard', qualiteSauvegardee: null });
+    render(<AvatarPage />);
+    await waitFor(() => expect(qualite()).not.toBeNull());
+    await waitFor(() => expect(qualite().value).toBe('standard'));
+    fireEvent.change(qualite(), { target: { value: 'premium' } });
+    expect(appels()).not.toContain('/api/avatar/qualite');
   });
 });

@@ -234,10 +234,10 @@ describe('Avatar — le prix suit le MOTEUR choisi (grille admin)', () => {
     expect(grille.lectures.filter((c) => c.startsWith('avatar.'))).toEqual([`avatar.${moteur}`]); // lu UNE fois
   });
 
-  it('sans qualité : moteur non transmis, HeyGen prend Avatar IV → tarif avatar_iv', async () => {
+  it('sans qualité : LA qualité par défaut (Standard → Avatar III) ENVOYÉE explicitement → tarif avatar_iii (#562)', async () => {
     await post(AVATAR, { script: 'Bonjour à tous.' });
-    expect(heygen.args[0].moteur).toBeUndefined();
-    expect(etat.journal).toEqual(['debit:25:avatar']);
+    expect(heygen.args[0].moteur).toBe('avatar_iii');
+    expect(etat.journal).toEqual(['debit:10:avatar']);
   });
 
   it('solde insuffisant : le 402 annonce le prix du moteur, rien n’est débité', async () => {
@@ -256,7 +256,7 @@ describe('Avatar — le prix suit le MOTEUR choisi (grille admin)', () => {
 
   it('administrateur : aucun débit, aucun remboursement, credits_charged 0', async () => {
     etat.admin = true;
-    const res = await post(AVATAR, { script: 'Bonjour à tous.', qualite: 'premium' });
+    const res = await post(AVATAR, { script: 'Bonjour à tous.', qualite: 'premium', confirmationCoutFournisseur: true });
     expect(res.status).toBe(200);
     expect(etat.journal).toEqual([]);
     expect(base.tables.avatar_generations[0].credits_charged).toBe(0);
