@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { isCronAuthorized } from '@/lib/cron/auth';
-import { CAPACITES, FOURNISSEURS_SURVEILLES, verifierFournisseur } from '@/lib/fournisseurs/sante';
+import { CAPACITES, FOURNISSEURS_SURVEILLES, TYPES_ALERTE, fournisseurSurveille, resoudreAdmin, verifierFournisseur } from '@/lib/fournisseurs/sante';
 import { PREFIXE_ATTENTE } from '@/lib/avatar/attente-fournisseur';
 import { reprendreGenerationEnAttente } from '@/lib/avatar/moteur-jumeau';
 
@@ -29,6 +29,13 @@ export async function GET(req: NextRequest) {
 
   const soldes: Record<string, unknown> = {};
   for (const id of FOURNISSEURS_SURVEILLES) {
+    // Fournisseur sans flux actif (D-ID legacy coupé) : ni lu, ni alerté —
+    // ses alertes encore ouvertes sont closes.
+    if (!fournisseurSurveille(id)) {
+      for (const cle of TYPES_ALERTE) await resoudreAdmin(id, cle);
+      soldes[id] = 'inactif';
+      continue;
+    }
     if (!CAPACITES[id].soldeApi) { soldes[id] = 'non mesurable'; continue; }
     try {
       const etat = await verifierFournisseur(id);

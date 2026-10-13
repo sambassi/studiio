@@ -41,6 +41,18 @@ export interface ServiceAlert {
   timestamp: string;         // ISO-8601
   dismissed: boolean;
   dismissedAt?: string;
+  /**
+   * Type d'alerte (ex. `solde_faible`). Avec lui, une alerte est UNIQUE par
+   * service + type : chaque passage du cron la met à jour au lieu d'en créer
+   * une nouvelle, et elle est RÉSOLUE quand le problème disparaît.
+   */
+  cle?: string;
+  /** Dernière fois que le problème a été constaté. */
+  lastSeenAt?: string;
+  /** Problème disparu (résolution automatique) — distinct d'un masquage par l'admin. */
+  resolvedAt?: string;
+  /** Nombre de constats depuis l'ouverture. */
+  occurrences?: number;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -139,6 +151,89 @@ export async function reportServiceAlert(
   } catch (err) {
     // Never let alert reporting crash the main flow
     console.error('[ServiceAlerts] Failed to report:', err);
+  }
+}
+
+/** Ce qu'a fait `signalerAlerteCle` — l'appelant n'envoie un email qu'à l'ouverture. */
+export type IssueAlerte = 'creee' | 'reouverte' | 'mise_a_jour' | 'erreur';
+
+/**
+ * UNE alerte par service + type (`cle`).
+ *
+ * ⚠️ LE DOUBLON QU'ELLE FERME (prod 2026-10-13) : `reportServiceAlert` ne
+ * dédoublonnait que les alertes NON masquées de moins d'une heure. Le cron
+ * providers-health (toutes les 15 min) recréait donc la même alerte dès que
+ * l'admin l'avait masquée, puis toutes les heures : 13 alertes en 1 h 30, et
+ * aucune ne se fermait quand le problème disparaissait.
+ *
+ *   - absente → créée ;
+ *   - ouverte (même masquée par l'admin) → MISE À JOUR (message, détails,
+ *     dernier constat), jamais dupliquée ; un masquage est respecté tant que
+ *     le problème dure ;
+ *   - résolue (`resolveAlerteCle`) puis constatée de nouveau → RÉOUVERTE.
+ *
+ * Les anciennes alertes sans type au même message sont closes au passage.
+ */
+export async function signalerAlerteCle(input: {
+  service: ServiceName;
+  cle: string;
+  severity: AlertSeverity;
+  message: string;
+  details?: string;
+}, now: number = Date.now()): Promise<IssueAlerte> {
+  try {
+    const alerts = await readAlerts();
+    const iso = new Date(now).toISOString();
+    const i = alerts.findIndex((a) => a.service === input.service && a.cle === input.cle);
+    let issue: IssueAlerte;
+    let suivantes: ServiceAlert[];
+    if (i < 0) {
+      issue = 'creee';
+      const alerte: ServiceAlert = {
+        id: `${input.service}-${input.cle}-${now}`,
+        service: input.service, severity: input.severity, message: input.message, details: input.details,
+        timestamp: iso, lastSeenAt: iso, dismissed: false, cle: input.cle, occurrences: 1,
+      };
+      suivantes = [alerte, ...alerts];
+    } else {
+      const e = alerts[i];
+      const commun = { severity: input.severity, message: input.message, details: input.details, lastSeenAt: iso };
+      let maj: ServiceAlert;
+      if (e.resolvedAt) {
+        issue = 'reouverte';
+        maj = { ...e, ...commun, timestamp: iso, dismissed: false, dismissedAt: undefined, resolvedAt: undefined, occurrences: 1 };
+      } else {
+        issue = 'mise_a_jour';
+        maj = { ...e, ...commun, occurrences: (e.occurrences ?? 1) + 1 };
+      }
+      suivantes = [...alerts];
+      suivantes[i] = maj;
+    }
+    // Les doublons historiques (sans type, même service et même message) sont clos.
+    suivantes = suivantes.map((a) => (!a.cle && a.service === input.service && a.message === input.message && !a.dismissed
+      ? { ...a, dismissed: true, dismissedAt: iso, resolvedAt: iso } : a));
+    await writeAlerts(suivantes.slice(0, 50));
+    return issue;
+  } catch (err) {
+    console.error('[ServiceAlerts] Failed to report:', err);
+    return 'erreur';
+  }
+}
+
+/** Le problème a disparu : l'alerte de ce type est résolue (et quitte le bandeau). `true` si elle l'était pas encore. */
+export async function resoudreAlerteCle(service: ServiceName, cle: string, now: number = Date.now()): Promise<boolean> {
+  try {
+    const alerts = await readAlerts();
+    const i = alerts.findIndex((a) => a.service === service && a.cle === cle && !a.resolvedAt);
+    if (i < 0) return false;
+    const iso = new Date(now).toISOString();
+    const suivantes = [...alerts];
+    suivantes[i] = { ...alerts[i], resolvedAt: iso, dismissed: true, dismissedAt: alerts[i].dismissedAt ?? iso };
+    await writeAlerts(suivantes);
+    return true;
+  } catch (err) {
+    console.error('[ServiceAlerts] Failed to resolve:', err);
+    return false;
   }
 }
 
