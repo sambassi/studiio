@@ -54,10 +54,31 @@ async function readAlerts(): Promise<ServiceAlert[]> {
       .select('value')
       .eq('key', SETTINGS_KEY)
       .single();
-    return (data?.value as ServiceAlert[]) || [];
+    return alertesDepuisValeur(data?.value);
   } catch {
     return [];
   }
+}
+
+/**
+ * La valeur relue, toujours un TABLEAU d'alertes.
+ *
+ * ⚠️ EN PRODUCTION, `app_settings.value` REVIENT EN CHAÎNE JSON (même
+ * convention que `/api/admin/settings`, qui `JSON.parse` à la lecture). Rendue
+ * telle quelle, la chaîne faisait planter `.filter` (GET service-health et
+ * Admin › Fournisseurs en 500, constaté le 2026-10-13 dès la première alerte
+ * réellement enregistrée) — et `[alerte, ...chaîne]` l'aurait découpée en
+ * caractères à l'écriture suivante. Toute entrée qui n'est pas une alerte est
+ * écartée.
+ */
+export function alertesDepuisValeur(valeur: unknown): ServiceAlert[] {
+  let v = valeur;
+  if (typeof v === 'string') {
+    try { v = JSON.parse(v); } catch { return []; }
+  }
+  if (!Array.isArray(v)) return [];
+  return v.filter((a): a is ServiceAlert => !!a && typeof a === 'object'
+    && typeof (a as ServiceAlert).id === 'string' && typeof (a as ServiceAlert).message === 'string');
 }
 
 /**

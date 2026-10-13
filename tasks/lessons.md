@@ -1193,3 +1193,6 @@ chargeant le chunk RÉELLEMENT déployé, pas la lib depuis npm.
 - `writeAlerts` lisait `select('id')` et insérait `created_at` dans `app_settings` (key, value, updated_at) : échec silencieux à chaque appel, jamais vérifié. Toute écriture best-effort vérifie et JOURNALISE `error`.
 - Ne jamais inventer d'API fournisseur : HeyGen `GET /v3/users/me`, D-ID `GET /credits`, ElevenLabs `GET /v1/user/subscription` existent ; aucune recharge par API n'est documentée (auto-reload = réglage du compte fournisseur).
 - Un nouveau statut sur une table couverte par un index unique PARTIEL (`status in (...)`) sort la ligne de l'index : réutiliser un statut couvert + un marqueur plutôt que d'ouvrir la porte au double job.
+
+## [2026-10-13] | Admin › Fournisseurs et service-health en 500 dès la première alerte réellement enregistrée | `app_settings.value` revient en chaîne JSON en production : toute lecture décode
+Le correctif #558 a rendu l'écriture des alertes effective ; la LECTURE, jamais exercée jusque-là, rendait la chaîne brute → `.filter` sur une chaîne. Les tests passaient : la fausse base renvoyait un tableau. **Règle** — une doublure de stockage reproduit la forme RÉELLE relue en prod (ici une chaîne) ; toute clé `app_settings` se lit via un décodeur tolérant (`relire`, `alertesDepuisValeur`).
