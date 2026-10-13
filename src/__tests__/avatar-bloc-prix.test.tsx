@@ -133,7 +133,10 @@ describe('#562 bis — la qualité choisie : prix, moteur et coût fournisseur r
       return (avant as typeof fetch)(url as string, init);
     }) as unknown as typeof fetch;
     render(<AvatarPage />);
-    await waitFor(() => expect(lignes()).toEqual(['Prix : 40 crédits']));
-    expect(qualite().value).toBe('premium');
+    // L'état FINAL : sélection ET prix de la qualité enregistrée (jamais l'un sans l'autre).
+    await waitFor(() => {
+      expect(qualite().value).toBe('premium');
+      expect(lignes()).toEqual(['Prix : 40 crédits']);
+    });
   });
 });
