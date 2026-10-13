@@ -18,6 +18,7 @@ const U = 'aaaaaaaa-1111-4111-8111-111111111111';
 const base = vi.hoisted(() => ({
   avatars: [] as Array<Record<string, unknown>>,
   generations: [] as Array<Record<string, unknown>>,
+  settings: [] as Array<Record<string, unknown>>,
 }));
 const heygen = vi.hoisted(() => ({ appels: [] as string[], args: [] as Array<Record<string, unknown>>, moteursLook: null as string[] | null, retenir: null as null | Promise<void> }));
 const credits = vi.hoisted(() => ({ journal: [] as string[] }));
@@ -29,7 +30,7 @@ vi.mock('@/lib/db/supabase', () => {
     const filtres: Array<(l: Record<string, unknown>) => boolean> = [];
     let insertion: Record<string, unknown> | null = null;
     let patch: Record<string, unknown> | null = null;
-    const source = () => (table === 'user_avatars' ? base.avatars : base.generations);
+    const source = () => (table === 'user_avatars' ? base.avatars : table === 'user_settings' ? base.settings : base.generations);
     const api = {
       select() { return api; },
       insert(v: Record<string, unknown>) { insertion = v; return api; },
@@ -82,7 +83,7 @@ const avatar = () => ({
 });
 
 beforeEach(() => {
-  base.avatars = [avatar()]; base.generations = []; heygen.appels.length = 0; heygen.args.length = 0; heygen.moteursLook = null; heygen.retenir = null;
+  base.avatars = [avatar()]; base.generations = []; base.settings = []; heygen.appels.length = 0; heygen.args.length = 0; heygen.moteursLook = null; heygen.retenir = null;
   credits.journal.length = 0; exemption.admin = false; exemption.echecHeygen = false;
   delete process.env.AVATAR_MOTEURS_AUTORISES; delete process.env.HEYGEN_AVATAR_ENGINE;
 });
@@ -167,13 +168,13 @@ describe('#562 — coût fournisseur AVANT l’appel (admin, Mon avatar)', () =>
     expect((await envoyer({ script: 'Encore.', confirmationCoutFournisseur: true })).status).toBe(200);
   });
 
-  it('⚠️ aperçu : devis Avatar IV IMPLICITE (aucun moteur envoyé), rien réservé avant confirmation ; jamais de réentraînement', async () => {
+  it('⚠️ aperçu sans qualité choisie : Avatar IV (défaut de Mon avatar) ENVOYÉ explicitement, rien réservé avant confirmation ; jamais de réentraînement', async () => {
     exemption.admin = true;
     base.avatars = [{ ...avatar(), validated_at: null }];
     const refus = await envoyer({ intention: 'apercu' });
     expect(refus.status).toBe(428);
     const j = await refus.json();
-    expect(j.devis).toMatchObject({ operation: 'apercu_avatar', moteur: 'avatar_iv', moteurImplicite: true, creditsStudiio: 0 });
+    expect(j.devis).toMatchObject({ operation: 'apercu_avatar', moteur: 'avatar_iv', moteurImplicite: false, creditsStudiio: 0 });
     expect(base.generations).toEqual([]);
     const ok = await envoyer({ intention: 'apercu', confirmationCoutFournisseur: true });
     expect(ok.status).toBe(200);
@@ -185,5 +186,56 @@ describe('#562 — coût fournisseur AVANT l’appel (admin, Mon avatar)', () =>
   it('utilisateur non admin : aucune confirmation, le parcours d’avant (débit en crédits)', async () => {
     const res = await envoyer({ script: 'Bonjour à tous.' });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('#562 bis — la QUALITÉ choisie = le moteur envoyé = le devis = la trace', () => {
+  const envoyer = (corps: Record<string, unknown>) => POST(new NextRequest('https://studiio.pro/api/avatar/generate', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps),
+  }));
+  const moteurEnvoye = () => (heygen.args[0] as { moteur?: string }).moteur;
+
+  for (const [qualite, moteur] of [['standard', 'avatar_iii'], ['qualite', 'avatar_iv'], ['premium', 'avatar_v']] as const) {
+    it(`⚠️ ${qualite} → devis ${moteur}, ${moteur} ENVOYÉ, ${moteur} enregistré sur la génération`, async () => {
+      exemption.admin = true;
+      heygen.moteursLook = ['avatar_iii', 'avatar_iv', 'avatar_v'];
+      const devis = (await (await envoyer({ script: 'Bonjour à tous.', qualite })).json()).devis;
+      expect(devis.moteur).toBe(moteur);
+      expect(devis.moteurImplicite).toBe(false);
+      const res = await envoyer({ script: 'Bonjour à tous.', qualite, confirmationCoutFournisseur: true, moteurConfirme: devis.moteur });
+      expect(res.status).toBe(200);
+      expect(moteurEnvoye()).toBe(moteur);
+      expect(base.generations[0].engine).toBe(moteur);
+    });
+  }
+
+  it('⚠️ D. confirmé en Avatar IV puis passé en Standard : NOUVEAU devis Avatar III, aucun appel (ni IV ni III)', async () => {
+    exemption.admin = true;
+    const res = await envoyer({ script: 'Bonjour à tous.', qualite: 'standard', confirmationCoutFournisseur: true, moteurConfirme: 'avatar_iv' });
+    expect(res.status).toBe(428);
+    expect((await res.json()).devis.moteur).toBe('avatar_iii');
+    expect(heygen.appels.filter((a) => a.startsWith('videos:'))).toEqual([]);
+    expect(base.generations).toEqual([]);
+  });
+
+  it('⚠️ sans qualité dans la requête : la qualité ENREGISTRÉE pour cet avatar est appliquée (Standard → Avatar III)', async () => {
+    base.settings = [{ user_id: U, creator_preferences: { qualitesAvatar: { [avatar().id as string]: 'standard' } } }];
+    expect((await envoyer({ script: 'Bonjour à tous.' })).status).toBe(200);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+    expect(base.generations[0].engine).toBe('avatar_iii');
+  });
+
+  it('aucune qualité nulle part : défaut de Mon avatar, ENVOYÉ explicitement (jamais un défaut HeyGen implicite)', async () => {
+    expect((await envoyer({ script: 'Bonjour à tous.' })).status).toBe(200);
+    expect(moteurEnvoye()).toBe('avatar_iv');
+  });
+
+  it('⚠️ aperçu : moteur de la qualité choisie, envoyé et enregistré', async () => {
+    exemption.admin = true;
+    base.avatars = [{ ...avatar(), validated_at: null }];
+    const res = await envoyer({ intention: 'apercu', qualite: 'standard', confirmationCoutFournisseur: true, moteurConfirme: 'avatar_iii' });
+    expect(res.status).toBe(200);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+    expect(base.generations[0].engine).toBe('avatar_iii');
   });
 });

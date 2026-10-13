@@ -59,6 +59,8 @@
  *     l'aperçu déjà validé en production. Pas de drapeau global pour D-ID.
  */
 
+import { lireQualiteAvatar } from '@/lib/avatar/qualite-sauvegardee';
+import { confirmationValable } from '@/lib/fournisseurs/confirmation-cout';
 import { devisVideoHeygen, dureeParoleEstimee, type DevisFournisseur, type OperationFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { MESSAGES_AVATAR, MESSAGES_CREATION, jumeauVideoAutorise, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
@@ -149,7 +151,7 @@ export async function genererVideoJumeau(
      * Lancement MANUEL (Créer, Mon avatar, relance) : un compte admin doit
      * avoir CONFIRMÉ le coût fournisseur. Absent (crons, reprise) = pas de garde.
      */
-    coutFournisseur?: { confirme: boolean; operation?: OperationFournisseur };
+    coutFournisseur?: { confirme: boolean; operation?: OperationFournisseur; moteurConfirme?: unknown };
   },
   deps: DepsMoteurJumeau = {},
 ): Promise<ResultatMoteurJumeau> {
@@ -157,7 +159,7 @@ export async function genererVideoJumeau(
 
   // 0. La qualité, AVANT tout débit : une qualité inconnue est refusée. Avatar V
   //    n'est accepté que sous réserve — confirmé par HeyGen plus bas, avant tout débit.
-  const choixMoteur = moteurPourMonAvatar(args.qualite, env);
+  let choixMoteur = moteurPourMonAvatar(args.qualite, env);
   if (!choixMoteur.ok) return { ok: false, motif: 'moteur_indisponible', message: choixMoteur.message };
 
   // 1. Le jumeau, relu maintenant — la VERSION ACTIVE de l'identité choisie.
@@ -167,6 +169,16 @@ export async function genererVideoJumeau(
     return { ok: false, motif: 'base', message: 'Votre jumeau n’a pas pu être vérifié.' };
   }
   const { avatar, voix } = jumeau.jumeau;
+  // 1 a. Sans qualité EXPLICITE (Créer, Autopilote) : la qualité que l'utilisateur
+  //      a CHOISIE pour cet avatar dans Mon avatar — une seule source de vérité.
+  //      Aucun choix enregistré : le défaut serveur d'avant (Avatar III).
+  if (args.qualite === undefined || args.qualite === null || args.qualite === '') {
+    const sauvee = await lireQualiteAvatar(args.userId, avatar.id);
+    if (sauvee) {
+      const choix = moteurPourMonAvatar(sauvee, env);
+      if (choix.ok) choixMoteur = choix;
+    }
+  }
   // GARDE, avant tout débit : le moteur se juge POUR le fournisseur de CET
   // avatar (HeyGen : drapeau global + clés ; D-ID : le gate de l'aperçu).
   // Un fournisseur inconnu, ou non configuré, n'atteint aucun fournisseur.
@@ -211,19 +223,17 @@ export async function genererVideoJumeau(
   // 2 bis. COÛT FOURNISSEUR — lancement manuel d'un admin : le devis HeyGen
   //        (moteur envoyé, durée estimée du texte dit, coût) AVANT toute
   //        réservation, tout débit et tout appel (voix comprise).
-  if (args.coutFournisseur && !args.coutFournisseur.confirme && fournisseur === 'heygen' && await compteExempteDeCredits(args.userId)) {
-    return {
-      ok: false,
-      motif: 'confirmation_cout',
-      message: 'Coût fournisseur à confirmer avant de lancer cette vidéo.',
-      devis: devisVideoHeygen({
-        operation: args.coutFournisseur.operation ?? 'video_avatar',
-        moteurEnvoye: choixMoteur.moteur,
-        avatarType: jumeau.prive.typeAvatar,
-        dureeSecondes: dureeParoleEstimee([spoken]),
-        creditsStudiio: 0,
-      }),
-    };
+  if (args.coutFournisseur && fournisseur === 'heygen') {
+    const devis = devisVideoHeygen({
+      operation: args.coutFournisseur.operation ?? 'video_avatar',
+      moteurEnvoye: choixMoteur.moteur,
+      avatarType: jumeau.prive.typeAvatar,
+      dureeSecondes: dureeParoleEstimee([spoken]),
+      creditsStudiio: 0,
+    });
+    if (!confirmationValable(args.coutFournisseur.confirme, args.coutFournisseur.moteurConfirme, devis) && await compteExempteDeCredits(args.userId)) {
+      return { ok: false, motif: 'confirmation_cout', message: 'Coût fournisseur à confirmer avant de lancer cette vidéo.', devis };
+    }
   }
 
   // 3. Réservation en base AVANT tout fournisseur — c'est l'index unique

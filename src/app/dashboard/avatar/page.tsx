@@ -26,6 +26,8 @@ import { trahitUnFournisseur } from '@/lib/avatar/fournisseurs';
 import Link from 'next/link';
 import { useTarifs } from '@/lib/tarifs/client';
 import { cleTarifEcranMonAvatar, lignesPrixGenererAvatar, LIBELLE_BOUTON_GENERER_AVATAR } from '@/lib/avatar/prix';
+import { devisVideoHeygen, dureeParoleEstimee, libelleCoutUsd, libelleDuree, LIBELLE_MOTEUR as LIBELLE_MOTEUR_DEVIS } from '@/lib/fournisseurs/devis-fournisseur';
+import { MOTEUR_PAR_QUALITE, LIBELLE_QUALITE as LIBELLE_QUALITE_ECRAN } from '@/lib/avatar/moteurs';
 import BlocPrix from '@/components/ui/BlocPrix';
 import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, LancementAnnule, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
@@ -173,6 +175,8 @@ export default function AvatarPage() {
   const [qualitesClonee, setQualitesClonee] = useState<QualiteOfferte[]>([]);
   const [defautClonee, setDefautClonee] = useState<Qualite>('standard');
   const [qualite, setQualite] = useState<Qualite>('qualite');
+  /** La qualité ENREGISTRÉE pour cet avatar : source de vérité du moteur (Mon avatar, Créer, Autopilote). */
+  const [qualiteSauvegardee, setQualiteSauvegardee] = useState<Qualite | null>(null);
   const tarifs = useTarifs();
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   /** Où en est la génération (étapes RÉELLES du parcours HeyGen ou du jumeau), et son début. */
@@ -367,10 +371,11 @@ export default function AvatarPage() {
       // HeyGen : un admin voit le coût de l'aperçu (moteur, durée, $) AVANT l'appel.
       const issue = res
         ? { annule: false as const, json: await res.json() }
-        : await avecConfirmationCout((confirme) => fetch('/api/avatar/generate', {
+        : await avecConfirmationCout((confirmation) => fetch('/api/avatar/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined, ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}) }),
+          // La qualité SÉLECTIONNÉE : le devis et l'appel portent son moteur.
+          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined, ...(qualiteChoisie() ? { qualite: qualiteChoisie() } : {}), ...(confirmation ?? {}) }),
         }), { cle: 'avatar:apercu' });
       if (issue.annule) { setNotice(MESSAGE_ANNULE); return; }
       const json = issue.json;
@@ -460,6 +465,8 @@ export default function AvatarPage() {
       setQualitesClonee(lireQualites(json.data.qualitesVoixClonee));
       if (json.data.qualiteParDefautVoixClonee) setDefautClonee(json.data.qualiteParDefautVoixClonee as Qualite);
     }
+    const sauvee = json.data.qualiteSauvegardee;
+    setQualiteSauvegardee(sauvee === 'standard' || sauvee === 'qualite' || sauvee === 'premium' ? sauvee : null);
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
     if (json.data.avatar?.etat === 'valide') void loadRenduRecent();
@@ -835,7 +842,7 @@ export default function AvatarPage() {
     setGenEtape({ mode: 'heygen', phase: 'lancement' });
     try {
       // Un admin voit le coût HeyGen (moteur, durée estimée, $) AVANT l'appel ; annuler = 0 appel.
-      const issue = await avecConfirmationCout((confirme) => fetch('/api/avatar/generate', {
+      const issue = await avecConfirmationCout((confirmation) => fetch('/api/avatar/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -844,7 +851,7 @@ export default function AvatarPage() {
           voiceId: voiceId || undefined,
           aspectRatio: ratio,
           ...(qualiteEnvoyee ? { qualite: qualiteEnvoyee } : {}),
-          ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}),
+          ...(confirmation ?? {}),
         }),
       }), { cle: 'avatar:generer' });
       if (issue.annule) {
@@ -930,12 +937,43 @@ export default function AvatarPage() {
   // qualité — la même règle que le serveur (`lib/avatar/prix.ts`). Qualité non
   // envoyée → Avatar IV (défaut HeyGen) ; voix clonée → tarif du jumeau.
   const qualiteAnnoncee = qualites.some((q) => q.qualite === qualite && q.ouverte) ? qualite : undefined;
+  /** La qualité sélectionnée, si elle est ouverte : c'est elle que la requête envoie. */
+  const qualiteChoisie = () => qualiteAnnoncee;
+  // ADMIN : le coût FOURNISSEUR de la qualité sélectionnée, recalculé à chaque
+  // changement de qualité ou de texte — le moteur affiché est celui envoyé.
+  const devisAdmin = tarifs.exempte && avatar && avatar.provider !== 'did'
+    ? devisVideoHeygen({
+      operation: 'video_avatar',
+      moteurEnvoye: MOTEUR_PAR_QUALITE[qualiteAnnoncee ?? qualite],
+      avatarType: avatar.avatar_type,
+      dureeSecondes: dureeParoleEstimee([script]),
+      creditsStudiio: 0,
+    })
+    : null;
   const prixGeneration = tarifs.prix[cleTarifEcranMonAvatar({ viaVoixClonee, qualiteEnvoyee: qualiteAnnoncee })];
     useEffect(() => {
     const liste = viaVoixClonee ? qualitesClonee : qualitesHeygen;
-    const defaut = viaVoixClonee ? defautClonee : defautHeygen;
+    // Le CHOIX enregistré de l'utilisateur d'abord ; sinon le défaut du parcours.
+    const defaut = qualiteSauvegardee ?? (viaVoixClonee ? defautClonee : defautHeygen);
     setQualite(liste.some((q) => q.qualite === defaut && q.ouverte) ? defaut : liste.find((q) => q.ouverte)?.qualite ?? defaut);
-  }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautClonee, defautHeygen]);
+  }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautClonee, defautHeygen, qualiteSauvegardee]);
+
+  /**
+   * L'utilisateur CHOISIT la qualité : elle est appliquée tout de suite (prix,
+   * moteur, coût fournisseur recalculés) et enregistrée pour CET avatar — Créer
+   * et l'Autopilote l'utiliseront aussi.
+   */
+  const choisirQualite = (q: Qualite) => {
+    setQualite(q);
+    if (!avatar) return;
+    const avant = qualiteSauvegardee;
+    setQualiteSauvegardee(q);
+    void fetch('/api/avatar/qualite', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarId: avatar.id, qualite: q }),
+    }).then((r) => r.json()).then((j) => {
+      if (!j?.success) { setQualiteSauvegardee(avant); setError(j?.error || 'La qualité n’a pas pu être enregistrée.'); }
+    }).catch(() => { setQualiteSauvegardee(avant); setError('La qualité n’a pas pu être enregistrée.'); });
+  };
 
   /** « Changer de source » : le geste existant (retour à l'import), aussi offert par les notifications. */
   const changerDeSource = () => {
@@ -1711,7 +1749,7 @@ export default function AvatarPage() {
                       data-avatar-qualite-choix
                       value={qualite}
                       disabled={busy}
-                      onChange={(e) => setQualite(e.target.value as Qualite)}
+                      onChange={(e) => choisirQualite(e.target.value as Qualite)}
                       className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none px-2.5 py-2 text-sm text-gray-100 disabled:opacity-50"
                     >
                       {qualites.map((q) => (
@@ -1749,6 +1787,21 @@ export default function AvatarPage() {
               {/* Le prix AU-DESSUS du bouton, en lignes courtes : dans le libellé
                   (insécable) il débordait de la colonne d'aperçu. */}
               <BlocPrix data-avatar-prix={tarifs.exempte ? 'administrateur' : 'utilisateur'} lignes={lignesPrixGenererAvatar(prixGeneration, tarifs.exempte)} />
+              {devisAdmin && (
+                <div data-avatar-cout-fournisseur={devisAdmin.moteur ?? ''} className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] text-gray-300 space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Coût fournisseur estimé (admin)</p>
+                  <p data-avatar-cout-ligne="moteur">HeyGen — {LIBELLE_MOTEUR_DEVIS[devisAdmin.moteur ?? ''] ?? devisAdmin.moteur} · durée estimée {libelleDuree(devisAdmin.dureeSecondes)}</p>
+                  <p data-avatar-cout-ligne="cout">
+                    {devisAdmin.tarifUsdParSeconde !== null ? `${devisAdmin.tarifUsdParSeconde.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} $ / s · ` : ''}
+                    {devisAdmin.coutUsd ? `coût ${libelleCoutUsd(devisAdmin.coutUsd)}` : 'Coût fournisseur exact non disponible'} · crédits Studiio : 0
+                  </p>
+                </div>
+              )}
+              <p data-avatar-qualite-portee className="text-[10px] text-gray-500">
+                {qualiteSauvegardee
+                  ? 'Qualité enregistrée pour cet avatar : Créer et l’Autopilote l’utilisent aussi.'
+                  : `Créer et l’Autopilote : ${LIBELLE_QUALITE_ECRAN[defautClonee]} tant qu’aucune qualité n’est choisie ici.`}
+              </p>
               <button
                 onClick={handleGenerate}
                 disabled={!script.trim() || busy || voixCloneeChoisieIndisponible}
@@ -1802,7 +1855,7 @@ export default function AvatarPage() {
                   {premium.ouverte ? (
                     qualite === 'premium'
                       ? <span>Premium — Avatar V sélectionné.</span>
-                      : <><span>Premium — Avatar V disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => setQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
+                      : <><span>Premium — Avatar V disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => choisirQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
                   ) : (
                     <span data-avatar-premium-motif className="text-gray-400">Premium — Avatar V : {premium.motif ?? 'indisponible.'}</span>
                   )}

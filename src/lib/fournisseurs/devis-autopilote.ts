@@ -3,13 +3,13 @@
  * HeyGen, et le budget par jour / par mois qui en découle. Une ESTIMATION
  * pour l'admin, jamais un prélèvement.
  *
- * Le moteur est celui que l'Autopilote ENVOIE réellement (aucune qualité
- * demandée → `moteurAvatar(env)`, Avatar III par défaut). Le script de
+ * Le moteur est celui que l'Autopilote ENVOIE réellement : la qualité
+ * choisie pour cet avatar dans Mon avatar, sinon `moteurAvatar(env)` (Avatar III). Le script de
  * l'avatar (`scriptJumeauMontage`) n'est connu qu'au moment du créneau :
  * avant, la durée est une PLAGE PRUDENTE bornée par sa longueur maximale.
  */
 import { resoudreJumeauDuCompte } from '@/lib/avatar/jumeau';
-import { moteurAvatar } from '@/lib/avatar/moteurs';
+import { moteurParDefautDeLAvatar } from '@/lib/avatar/qualite-sauvegardee';
 import { avatarActifConfig } from '@/lib/autopilot/sources';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import {
@@ -25,10 +25,10 @@ import {
 export const DUREE_VIDEO_AUTOPILOTE: Intervalle = { min: 3, max: 45 };
 
 /** Le jumeau que l'Autopilote animerait : fournisseur et type, `null` s'il n'est pas prêt. */
-async function jumeauAutopilote(userId: string, avatarId: string | null): Promise<{ fournisseur: string; typeAvatar: string | null } | null> {
+async function jumeauAutopilote(userId: string, avatarId: string | null): Promise<{ id: string; fournisseur: string; typeAvatar: string | null } | null> {
   const j = await resoudreJumeauDuCompte(userId, { avatarId, voixId: null }).catch(() => null);
   if (!j || !j.ok) return null;
-  return { fournisseur: j.prive.fournisseurAvatar, typeAvatar: j.prive.typeAvatar };
+  return { id: j.jumeau.avatar.id, fournisseur: j.prive.fournisseurAvatar, typeAvatar: j.prive.typeAvatar };
 }
 
 /**
@@ -50,7 +50,8 @@ export async function devisVideoAutopilote(
   const parole = script ? dureeParoleEstimee([script]) : null;
   return devisVideoHeygen({
     operation: 'video_autopilote',
-    moteurEnvoye: moteurAvatar(env),
+    // Le moteur que l'Autopilote ENVERRA : la qualité choisie pour cet avatar, sinon le défaut serveur.
+    moteurEnvoye: (await moteurParDefautDeLAvatar(userId, jumeau.id, env)).moteur,
     avatarType: jumeau.typeAvatar,
     dureeSecondes: parole ?? DUREE_VIDEO_AUTOPILOTE,
     origineDuree: parole ? 'texte' : 'plage',

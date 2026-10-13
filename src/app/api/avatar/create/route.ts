@@ -21,6 +21,7 @@ import {
 } from '@/lib/avatar/source';
 import { avatarVivantDuCompte } from '@/lib/avatar/lecture';
 import { compteExempteDeCredits } from '@/lib/facturation/exemption';
+import { lireQualiteAvatar } from '@/lib/avatar/qualite-sauvegardee';
 import { devisCreationPourCompte } from '@/lib/fournisseurs/devis-creation-avatar';
 import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 import { listerIdentites, identitesVideoAvecGroupe, emplacementsVideo } from '@/lib/avatar/versions';
@@ -397,6 +398,8 @@ export async function GET() {
     return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesMonAvatar(moteursLook, avatar?.avatar_type), qualiteParDefaut: QUALITE_PAR_DEFAUT_MON_AVATAR,
       // Voix clonée (moteur du jumeau) : mêmes choix — et SON défaut, celui de Créer, inchangé.
       qualitesVoixClonee: qualitesMonAvatar(moteursLook, avatar?.avatar_type), qualiteParDefautVoixClonee: qualiteParDefaut(),
+      // La qualité CHOISIE pour cet avatar (source de vérité du moteur) ; `null` = jamais choisie.
+      qualiteSauvegardee: avatar?.id ? await lireQualiteAvatar(session.user.id, String(avatar.id)) : null,
       // Ce que HeyGen a RÉELLEMENT répondu pour ce look (`supported_api_engines`) ; `null` = pas de réponse.
       moteursFournisseur: moteursLook,
       // L'orientation NATIVE de l'avatar chez HeyGen : un autre format sera recadré (rempli), jamais bordé.

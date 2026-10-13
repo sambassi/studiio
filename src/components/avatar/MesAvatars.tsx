@@ -8,7 +8,7 @@
  * prépare à côté, et ne devient utilisée que sur « Utiliser cette version ».
  * L'écran ne voit aucun identifiant fournisseur ni aucune clé de stockage.
  */
-import { avecConfirmationCout, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
+import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Loader2, Plus, Star, RefreshCw, Eye, Check, X, AlertTriangle, Settings2, Image as ImageIcon, Clapperboard, Users } from 'lucide-react';
 import FluxSourceAvatar from '@/components/avatar/FluxSourceAvatar';
@@ -155,9 +155,9 @@ export default function MesAvatars(props: {
     let r = await postJson(`/api/avatars/versions/${v.id}`, { action: 'apercu' });
     if (!r.ok && r.j?.code === 'apercu_aucun') {
       // Un admin voit le coût HeyGen de l'aperçu AVANT l'appel ; annuler = 0 appel.
-      const issue = await avecConfirmationCout((confirme) => fetch('/api/avatar/generate', {
+      const issue = await avecConfirmationCout((confirmation) => fetch('/api/avatar/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intention: 'apercu', versionId: v.id, avatarId: a.id, ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}) }),
+        body: JSON.stringify({ intention: 'apercu', versionId: v.id, avatarId: a.id, ...(confirmation ?? {}) }),
       }), { cle: `avatar:apercu:${v.id}` });
       if (issue.annule) { setOccupe(null); if (issue.choix !== 'deja_en_cours') setErreur(MESSAGE_ANNULE); return; }
       const g = { ok: issue.status >= 200 && issue.status < 300 && !!issue.json?.success, j: issue.json };

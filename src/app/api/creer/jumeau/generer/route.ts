@@ -29,10 +29,12 @@ export async function POST(req: NextRequest) {
   let cadrage: 'remplir' | undefined;
   // Lancement MANUEL : un admin confirme le coût fournisseur (428 + devis sinon).
   let confirme = false;
+  let moteurConfirme: unknown;
   let relance = false;
   try {
     const corps = (await req.json()) as { textes?: unknown; aspectRatio?: unknown; avatarId?: unknown; voixId?: unknown; qualite?: unknown; cadrage?: unknown; relance?: unknown; [CHAMP_CONFIRMATION_COUT]?: unknown } | null;
     confirme = confirmationCoutLue(corps?.[CHAMP_CONFIRMATION_COUT]);
+    moteurConfirme = (corps as { moteurConfirme?: unknown } | null)?.moteurConfirme;
     relance = corps?.relance === true;
     if (Array.isArray(corps?.textes)) textes = corps!.textes.filter((t): t is string => typeof t === 'string').slice(0, 20);
     if (typeof corps?.aspectRatio === 'string') aspectRatio = corps.aspectRatio;
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   const r = await genererVideoJumeau({
     userId: session.user.id, textes, aspectRatio, avatarId, voixId, qualite, ...(cadrage ? { cadrage } : {}),
-    coutFournisseur: { confirme, operation: relance ? 'relance_video' : 'video_avatar' },
+    coutFournisseur: { confirme, moteurConfirme, operation: relance ? 'relance_video' : 'video_avatar' },
   });
   if (!r.ok && r.motif === 'confirmation_cout') return reponseConfirmationCout(r.devis);
   if (r.ok) {

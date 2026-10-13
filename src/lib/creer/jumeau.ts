@@ -13,7 +13,7 @@
  *   'aucun'  — le parcours normal, celui de tous les brouillons antérieurs.
  */
 
-import { avecConfirmationCout, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE, type Confirmeur } from '@/lib/fournisseurs/confirmation-client';
+import { avecConfirmationCout, MESSAGE_ANNULE, type Confirmeur } from '@/lib/fournisseurs/confirmation-client';
 import { generationDepuisRush, versionPerimee } from '@/lib/avatar/identite';
 
 export type JumeauMode = 'aucun' | 'voix' | 'avatar';
@@ -357,7 +357,7 @@ export async function genererEtAttendreVideoJumeau(args: {
   args.onPhase?.('envoi');
   args.onEtape?.('Génération de votre jumeau…');
   // Un admin voit le coût HeyGen AVANT l'appel (428 + devis) ; annuler = 0 appel.
-  const issue = await avecConfirmationCout((confirme) => f(`${JUMEAU_API}/generer`, {
+  const issue = await avecConfirmationCout((confirmation) => f(`${JUMEAU_API}/generer`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       textes: args.textes, aspectRatio: args.aspectRatio,
@@ -366,7 +366,7 @@ export async function genererEtAttendreVideoJumeau(args: {
       ...(args.qualite ? { qualite: args.qualite } : {}),
       ...(args.cadrage ? { cadrage: args.cadrage } : {}),
       ...(args.relance ? { relance: true } : {}),
-      ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}),
+      ...(confirmation ?? {}),
     }),
   }), { cle: 'jumeau:generer', ...(args.confirmer ? { confirmer: args.confirmer } : {}) });
   if (issue.annule) throw new LancementAnnule();

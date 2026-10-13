@@ -234,9 +234,9 @@ describe('Avatar — le prix suit le MOTEUR choisi (grille admin)', () => {
     expect(grille.lectures.filter((c) => c.startsWith('avatar.'))).toEqual([`avatar.${moteur}`]); // lu UNE fois
   });
 
-  it('sans qualité : moteur non transmis, HeyGen prend Avatar IV → tarif avatar_iv', async () => {
+  it('sans qualité : Avatar IV (défaut de Mon avatar) ENVOYÉ explicitement → tarif avatar_iv (#562 : jamais implicite)', async () => {
     await post(AVATAR, { script: 'Bonjour à tous.' });
-    expect(heygen.args[0].moteur).toBeUndefined();
+    expect(heygen.args[0].moteur).toBe('avatar_iv');
     expect(etat.journal).toEqual(['debit:25:avatar']);
   });
 

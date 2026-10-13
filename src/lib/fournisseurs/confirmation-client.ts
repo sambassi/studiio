@@ -44,11 +44,23 @@ export type IssueConfirmee =
   | { annule: true; choix: Exclude<ChoixConfirmation, 'continuer'> | 'deja_en_cours'; status?: undefined; json?: undefined };
 
 /**
+ * Les champs à ajouter au corps une fois le devis accepté : la confirmation ET
+ * le moteur montré — le serveur refuse (nouveau devis) si le moteur a changé.
+ */
+export function champsConfirmation(devis: DevisFournisseur): Record<string, unknown> {
+  return { [CHAMP_CONFIRMATION_COUT]: true, ...(devis.moteur ? { moteurConfirme: devis.moteur } : {}) };
+}
+
+/** Un devis refusé parce que la sélection a changé est remontré, au plus ce nombre de fois. */
+const MAX_DEVIS = 3;
+
+/**
  * Envoie, et si le serveur exige une confirmation de coût, la demande puis
- * renvoie la même requête confirmée. `envoyer(confirme)` construit la requête.
+ * renvoie la même requête confirmée. `envoyer(confirmation)` construit la
+ * requête : `null` au premier envoi, puis les champs à fusionner au corps.
  */
 export async function avecConfirmationCout(
-  envoyer: (confirme: boolean) => Promise<Response>,
+  envoyer: (confirmation: Record<string, unknown> | null) => Promise<Response>,
   opts: { cle?: string; confirmer?: Confirmeur } = {},
 ): Promise<IssueConfirmee> {
   const cle = opts.cle ?? null;
@@ -56,12 +68,15 @@ export async function avecConfirmationCout(
   if (cle) enCours.add(cle);
   try {
     const lire = async (r: Response) => ({ status: r.status, json: await r.json().catch(() => ({})) });
-    const premier = await lire(await envoyer(false));
-    if (!estDemandeDeConfirmation(premier.status, premier.json)) return { annule: false, ...premier };
-    const { devis, ...contexte } = premier.json;
-    const choix = await (opts.confirmer ?? confirmeurParDefaut)(devis, contexte);
-    if (choix !== 'continuer') return { annule: true, choix };
-    return { annule: false, ...(await lire(await envoyer(true))) };
+    let reponse = await lire(await envoyer(null));
+    for (let tour = 0; tour < MAX_DEVIS && estDemandeDeConfirmation(reponse.status, reponse.json); tour += 1) {
+      const { devis, ...contexte } = reponse.json;
+      const choix = await (opts.confirmer ?? confirmeurParDefaut)(devis, contexte);
+      if (choix !== 'continuer') return { annule: true, choix };
+      // Le moteur CONFIRMÉ voyage avec la requête : s'il ne correspond plus, le serveur rend un nouveau devis.
+      reponse = await lire(await envoyer(champsConfirmation(devis)));
+    }
+    return { annule: false, ...reponse };
   } finally {
     if (cle) enCours.delete(cle);
   }

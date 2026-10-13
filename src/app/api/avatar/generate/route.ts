@@ -17,7 +17,8 @@ import {
 } from '@/lib/avatar/heygen';
 import { versionDuCompte, ecrireVersion } from '@/lib/avatar/versions';
 import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
-import { moteurPourMonAvatar, motifPremium } from '@/lib/avatar/moteurs';
+import { moteurPourMonAvatar, motifPremium, QUALITE_PAR_DEFAUT_MON_AVATAR } from '@/lib/avatar/moteurs';
+import { lireQualiteAvatar } from '@/lib/avatar/qualite-sauvegardee';
 import { devisVideoHeygen, dureeParoleEstimee } from '@/lib/fournisseurs/devis-fournisseur';
 import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, exigerConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 
@@ -35,6 +36,26 @@ const READY_STATUSES = ['completed', 'ready', 'success'];
  * index unique en base (`avatar_generations_apercu_unique`).
  */
 const generationsEnVol = new Set<string>();
+
+/** Colonne inconnue de la base ou du cache PostgREST (migration non appliquée). */
+const colonneAbsente = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === '42703' || e.code === 'PGRST204' || /column .* does not exist|Could not find the .* column/i.test(e.message ?? ''));
+
+type LigneGeneration = { id: string; status: string } & Record<string, unknown>;
+/**
+ * Insère une génération AVEC le moteur envoyé (`engine`, migration
+ * identités/versions) ; base d'avant la migration : la même ligne, sans lui.
+ */
+async function insererGeneration(ligne: Record<string, unknown>, colonnes = '*'): Promise<{ data: LigneGeneration | null; error: { code?: string; message?: string } | null }> {
+  const inserer = async (l: Record<string, unknown>) => {
+    const r = await supabaseAdmin.from('avatar_generations').insert(l).select(colonnes).single();
+    return { data: (r.data ?? null) as LigneGeneration | null, error: (r.error ?? null) as { code?: string; message?: string } | null };
+  };
+  const essai = await inserer(ligne);
+  if (!colonneAbsente(essai.error)) return essai;
+  const { engine: _sansMoteur, ...ancienne } = ligne;
+  return inserer(ancienne);
+}
 
 /** Une réservation d'aperçu qui n'ira pas plus loin : marquée en échec, la place est libre. */
 async function libererReservation(generationId: string, motif: string): Promise<void> {
@@ -94,7 +115,10 @@ export async function POST(req: NextRequest) {
     // fermée — avant tout débit et tout appel fournisseur, jamais rabattue en
     // silence. Sans qualité (et pour l'aperçu) : corps inchangé.
     // Avatar III et IV ouverts ; Avatar V seulement si HeyGen le confirme pour CE look (revérifié plus bas, avant tout débit).
-    const choixMoteur = intention === INTENTION_APERCU ? null : body?.qualite === undefined ? null : moteurPourMonAvatar(body.qualite);
+    // La qualité EXPLICITE de cette requête ; sans elle, celle que l'utilisateur
+    // a enregistrée pour CET avatar (relue plus bas), sinon le défaut de Mon
+    // avatar. Le moteur est TOUJOURS envoyé : jamais un défaut HeyGen implicite.
+    let choixMoteur = body?.qualite === undefined || body?.qualite === null || body?.qualite === '' ? null : moteurPourMonAvatar(body.qualite);
     if (choixMoteur && !choixMoteur.ok) {
       return NextResponse.json(
         { success: false, error: choixMoteur.message, code: 'qualite_indisponible' },
@@ -247,6 +271,27 @@ export async function POST(req: NextRequest) {
       `[Avatar][HeyGen] Requete a envoyer — avatar_id=${avatarRow.provider_avatar_id} voice_id=${resolvedVoiceId} ratio=${aspectRatio} script=${script.length} car.`,
     );
 
+    // 1 bis. LE MOTEUR, figé ici pour toute la suite (devis, prix, appel, trace).
+    if (!choixMoteur) {
+      const sauvee = await lireQualiteAvatar(userId, avatarRow.id);
+      choixMoteur = moteurPourMonAvatar(sauvee ?? QUALITE_PAR_DEFAUT_MON_AVATAR);
+    }
+    if (!choixMoteur.ok) {
+      return NextResponse.json({ success: false, error: choixMoteur.message, code: 'qualite_indisponible' }, { status: 400 });
+    }
+    const moteur = choixMoteur.moteur;
+
+    // 2 bis. Premium (Avatar V) : seulement si le fournisseur CONFIRME ce moteur
+    //        pour CE look — vérifié AVANT tout débit (lecture gratuite, mémorisée).
+    if (choixMoteur.verifierFournisseur) {
+      const supportes = avatarRow.avatar_type === 'video' ? await moteursSupportesDuLook(String(avatarRow.provider_avatar_id)) : null;
+      const motif = motifPremium(avatarRow.avatar_type, supportes);
+      if (motif) {
+        // Jamais rabattu en silence sur un autre moteur : la vraie raison, avant tout débit.
+        return NextResponse.json({ success: false, error: motif, code: 'qualite_indisponible' }, { status: 400 });
+      }
+    }
+
     // 2a. COÛT FOURNISSEUR — l'admin ne paie aucun crédit Studiio, mais HeyGen
     //     facture : il voit le devis (moteur, durée estimée, coût) et confirme
     //     AVANT toute réservation, tout débit et tout appel. Sans confirmation
@@ -254,12 +299,12 @@ export async function POST(req: NextRequest) {
     const adminExempte = await compteExempteDeCredits(userId);
     const devis = devisVideoHeygen({
       operation: intention === INTENTION_APERCU ? 'apercu_avatar' : 'video_avatar',
-      moteurEnvoye: choixMoteur?.ok ? choixMoteur.moteur : null,
+      moteurEnvoye: moteur,
       avatarType: avatarRow.avatar_type,
       dureeSecondes: dureeParoleEstimee([script]),
       creditsStudiio: adminExempte ? 0 : null,
     });
-    const garde = exigerConfirmationCout({ admin: adminExempte, confirme: confirmationCoutLue(body?.[CHAMP_CONFIRMATION_COUT]), devis });
+    const garde = exigerConfirmationCout({ admin: adminExempte, confirme: confirmationCoutLue(body?.[CHAMP_CONFIRMATION_COUT]), moteurConfirme: body?.moteurConfirme, devis });
     if (garde) return garde;
     if (intention !== INTENTION_APERCU) {
       if (generationsEnVol.has(userId)) {
@@ -293,9 +338,7 @@ export async function POST(req: NextRequest) {
           { status: 409 },
         );
       }
-      const { data: reservee, error: erreurReservation } = await supabaseAdmin
-        .from('avatar_generations')
-        .insert({
+      const { data: reservee, error: erreurReservation } = await insererGeneration({
           user_id: userId,
           user_avatar_id: avatarRow.id,
           avatar_version: avatarRow.version,
@@ -307,9 +350,8 @@ export async function POST(req: NextRequest) {
           aspect_ratio: aspectRatio,
           status: 'pending',
           credits_charged: 0,
-        })
-        .select('id')
-        .single();
+          engine: moteur,
+        }, 'id');
       if (erreurReservation || !reservee) {
         if (erreurReservation?.code === '23505') {
           return NextResponse.json(
@@ -323,17 +365,6 @@ export async function POST(req: NextRequest) {
       reservation = reservee;
     }
 
-    // 2 bis. Premium (Avatar V) : seulement si le fournisseur CONFIRME ce moteur
-    //        pour CE look — vérifié AVANT tout débit (lecture gratuite, mémorisée).
-    if (choixMoteur?.ok && choixMoteur.verifierFournisseur) {
-      const supportes = avatarRow.avatar_type === 'video' ? await moteursSupportesDuLook(String(avatarRow.provider_avatar_id)) : null;
-      const motif = motifPremium(avatarRow.avatar_type, supportes);
-      if (motif) {
-        // Jamais rabattu en silence sur un autre moteur : la vraie raison, avant tout débit.
-        return NextResponse.json({ success: false, error: motif, code: 'qualite_indisponible' }, { status: 400 });
-      }
-    }
-
     // 3. Solde — un APERÇU de validation est OFFERT : il sert à vérifier son
     //    clone, pas à produire une vidéo. Aucun contrôle de solde, aucun
     //    débit, donc rien à rembourser s'il échoue. La génération normale
@@ -345,7 +376,7 @@ export async function POST(req: NextRequest) {
     //    (`lib/avatar/prix.ts`) : c'est lui qui est facturé.
     const coutUtilisateur = intention === INTENTION_APERCU
       ? 0
-      : await prixDe(cleTarifMoteurAvatar(choixMoteur?.ok ? choixMoteur.moteur : null));
+      : await prixDe(cleTarifMoteurAvatar(moteur));
     const credits = coutUtilisateur > 0 ? await getUserCredits(userId) : 0;
     if (coutUtilisateur > 0 && credits < coutUtilisateur) {
       return NextResponse.json(
@@ -378,7 +409,7 @@ export async function POST(req: NextRequest) {
         script,
         voiceId: resolvedVoiceId,
         aspectRatio,
-        ...(choixMoteur?.ok ? { moteur: choixMoteur.moteur } : {}),
+        moteur,
         // Mon avatar : le format choisi est REMPLI (jamais de bandes dans le fichier),
         // l'avatar recadré par HeyGen, sans déformation. Aperçu compris.
         cadrage: 'cover',
@@ -420,9 +451,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const { data: generation, error: insertError } = await supabaseAdmin
-      .from('avatar_generations')
-      .insert({
+    const { data: generation, error: insertError } = await insererGeneration({
         user_id: userId,
         user_avatar_id: avatarRow.id,
         // La version du clone qui parle : l'historique sait, plus tard, quelle
@@ -435,9 +464,9 @@ export async function POST(req: NextRequest) {
         aspect_ratio: aspectRatio,
         status: status === 'completed' ? 'processing' : 'pending',
         credits_charged: coutFacture,
-      })
-      .select()
-      .single();
+        // Le moteur RÉELLEMENT envoyé à HeyGen — le coût se recalcule dessus.
+        engine: moteur,
+      });
 
     if (insertError || !generation) {
       // La video est lancee et facturee chez HeyGen : on ne rembourse pas,

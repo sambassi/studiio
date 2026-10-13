@@ -440,7 +440,8 @@ describe('Avatar III / IV / V — POST /api/avatar/generate', () => {
     ['standard', 'avatar_iii', 12],
     ['qualite', 'avatar_iv', 26],
     ['premium', 'avatar_v', 41],
-    [undefined, undefined, 26],
+    // #562 : sans qualité, le défaut de Mon avatar (Qualité) est ENVOYÉ explicitement — même prix.
+    [undefined, 'avatar_iv', 26],
   ] as const)('qualité %s → moteur %s : affiché = 402 = débit = credits_charged = %i', async (qualite, moteur, prix) => {
     const ecran = await prixEcran();
     const cle = cleTarifEcranMonAvatar({ viaVoixClonee: false, ...(qualite ? { qualiteEnvoyee: qualite } : {}) });

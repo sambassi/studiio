@@ -38,13 +38,26 @@ export function reponseConfirmationCout(devis: DevisFournisseur, extra?: Record<
   );
 }
 
+/**
+ * La confirmation vaut pour CE devis : si l'écran a confirmé un autre moteur
+ * (`moteurConfirme`, ex. Avatar IV puis passage en Standard), elle ne vaut
+ * pas — un nouveau devis est rendu, rien n'est appelé.
+ */
+export function confirmationValable(confirme: boolean, moteurConfirme: unknown, devis: DevisFournisseur): boolean {
+  if (!confirme) return false;
+  if (moteurConfirme === undefined || moteurConfirme === null) return true;
+  return moteurConfirme === devis.moteur;
+}
+
 /** La garde : `null` = l'appel peut partir ; sinon la réponse 428 à renvoyer telle quelle. */
 export function exigerConfirmationCout(args: {
   admin: boolean;
   confirme: boolean;
+  /** Le moteur que l'écran a montré et fait confirmer. */
+  moteurConfirme?: unknown;
   devis: DevisFournisseur;
   extra?: Record<string, unknown>;
 }): NextResponse | null {
-  if (!args.admin || args.confirme) return null;
+  if (!args.admin || confirmationValable(args.confirme, args.moteurConfirme, args.devis)) return null;
   return reponseConfirmationCout(args.devis, args.extra);
 }

@@ -80,3 +80,60 @@ describe('Mon avatar — bloc prix (grille lue sur /api/tarifs)', () => {
     expect(bouton().disabled).toBe(true);
   });
 });
+
+describe('#562 bis — la qualité choisie : prix, moteur et coût fournisseur recalculés, choix enregistré', () => {
+  const cout = () => document.querySelector('[data-avatar-cout-fournisseur]');
+  const appels = () => (globalThis.fetch as unknown as { mock: { calls: Array<[string, RequestInit?]> } }).mock.calls;
+
+  it('⚠️ admin : Standard / Qualité / Premium → Avatar III / IV / V, coût recalculé sur le MÊME texte', async () => {
+    serveur.exempte = true;
+    render(<AvatarPage />);
+    await waitFor(() => expect(cout()).not.toBeNull());
+    const zone = document.querySelector('textarea') as HTMLTextAreaElement;
+    // 26 mots ≈ 10 s → 8–12 s.
+    fireEvent.change(zone, { target: { value: Array.from({ length: 26 }, (_, i) => `mot${i}`).join(' ') } });
+    const lire = () => ({ moteur: cout()!.getAttribute('data-avatar-cout-fournisseur'), texte: cout()!.textContent });
+    fireEvent.change(qualite(), { target: { value: 'standard' } });
+    expect(lire().moteur).toBe('avatar_iii');
+    expect(lire().texte).toContain('Avatar III');
+    expect(lire().texte).toContain('8–12 s');
+    expect(lire().texte).toContain('≈ 0,08–0,12 $');
+    fireEvent.change(qualite(), { target: { value: 'qualite' } });
+    expect(lire().moteur).toBe('avatar_iv');
+    expect(lire().texte).toContain('≈ 0,64–0,97 $');
+    fireEvent.change(qualite(), { target: { value: 'premium' } });
+    expect(lire().moteur).toBe('avatar_v');
+    expect(lire().texte).toContain('≈ 0,96–1,44 $');
+    expect(lire().texte).toContain('crédits Studiio : 0');
+  });
+
+  it('utilisateur : aucun coût fournisseur affiché (le prix en crédits seulement)', async () => {
+    render(<AvatarPage />);
+    await waitFor(() => expect(lignes()).toEqual(['Prix : 25 crédits']));
+    expect(cout()).toBeNull();
+  });
+
+  it('⚠️ le choix est ENREGISTRÉ pour cet avatar (Créer et l’Autopilote l’utilisent) et rechargé', async () => {
+    render(<AvatarPage />);
+    await waitFor(() => expect(lignes()).toEqual(['Prix : 25 crédits']));
+    expect(document.querySelector('[data-avatar-qualite-portee]')?.textContent).toContain('tant qu’aucune qualité n’est choisie ici');
+    fireEvent.change(qualite(), { target: { value: 'standard' } });
+    const sauve = appels().find(([u]) => u === '/api/avatar/qualite');
+    expect(sauve).toBeTruthy();
+    expect(JSON.parse(String(sauve![1]!.body))).toEqual({ avatarId: A, qualite: 'standard' });
+    await waitFor(() => expect(document.querySelector('[data-avatar-qualite-portee]')?.textContent).toContain('Créer et l’Autopilote l’utilisent aussi'));
+  });
+
+  it('une qualité déjà enregistrée est la sélection au chargement', async () => {
+    const avant = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+      if (String(url) === '/api/avatar/create') {
+        return { ok: true, status: 200, json: async () => ({ success: true, data: { avatar: avatarValide, voices: [{ voiceId: 'v1', name: 'Voix' }], defaultVoiceId: 'v1', qualites: QUALITES, qualiteParDefaut: 'qualite', qualiteSauvegardee: 'premium' } }) } as unknown as Response;
+      }
+      return (avant as typeof fetch)(url as string, init);
+    }) as unknown as typeof fetch;
+    render(<AvatarPage />);
+    await waitFor(() => expect(lignes()).toEqual(['Prix : 40 crédits']));
+    expect(qualite().value).toBe('premium');
+  });
+});

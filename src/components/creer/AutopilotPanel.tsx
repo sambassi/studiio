@@ -30,7 +30,7 @@ import {
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
-import { avecConfirmationCout, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
+import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import type { FormatStock } from '@/lib/stock/types';
 import {
   etatsDepuisReponseVerifier, rushesUtilisables, rushReparable, type EtatRush,
@@ -1106,10 +1106,10 @@ export default function AutopilotPanel({
       // d'un sujet tiré ailleurs — voir `choisirContenuManuel`.
       // ADMIN + avatar : le coût HeyGen de CETTE vidéo est montré AVANT l'appel
       // (428 + devis) ; annuler = 0 appel, rien de réservé ni débité.
-      const issue = await avecConfirmationCout((confirme) => fetch('/api/autopilot/produire-maintenant', {
+      const issue = await avecConfirmationCout((confirmation) => fetch('/api/autopilot/produire-maintenant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apercuSignature: signatureApercuAutopilote(config), ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}) }),
+        body: JSON.stringify({ apercuSignature: signatureApercuAutopilote(config), ...(confirmation ?? {}) }),
       }), { cle: 'autopilote:produire' });
       if (issue.annule) {
         setProduire({ etat: 'erreur', message: MESSAGE_ANNULE });

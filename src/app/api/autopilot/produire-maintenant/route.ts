@@ -13,7 +13,7 @@ import {
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage, scriptJumeauMontage } from '@/lib/autopilot/jumeau-async';
 import { budgetAutopiloteDuCompte, devisVideoAutopilote } from '@/lib/fournisseurs/devis-autopilote';
-import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
+import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, confirmationValable, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib/autopilot/sources';
 import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
 import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
@@ -126,11 +126,13 @@ export async function POST(req?: Request) {
   let apercuSignature: string | null = null;
   // Admin : le coût fournisseur de la vidéo avatar a-t-il été confirmé ?
   let coutConfirme = false;
+  let moteurConfirme: unknown;
   try {
     const corps = req ? await req.json() : null;
     const brut = corps && typeof corps === 'object' ? (corps as { apercuSignature?: unknown }).apercuSignature : null;
     if (typeof brut === 'string' && /^c1-[0-9a-f]{8}$/.test(brut)) apercuSignature = brut;
     coutConfirme = confirmationCoutLue(corps && typeof corps === 'object' ? (corps as Record<string, unknown>)[CHAMP_CONFIRMATION_COUT] : null);
+    moteurConfirme = corps && typeof corps === 'object' ? (corps as Record<string, unknown>).moteurConfirme : undefined;
   } catch { /* pas de corps */ }
   const session = await auth();
   const userId = session?.user?.id;
@@ -258,9 +260,9 @@ export async function POST(req?: Request) {
       // COÛT FOURNISSEUR — lancement manuel d'un admin : le devis HeyGen de
       // CETTE vidéo (moteur de l'Autopilote, durée estimée de SON script)
       // AVANT toute réservation, tout débit et tout appel. 428 sinon.
-      if (!coutConfirme && await compteExempteDeCredits(userId)) {
+      if (await compteExempteDeCredits(userId)) {
         const devisFournisseur = await devisVideoAutopilote(userId, configBrouillon, scriptJumeauMontage(post));
-        if (devisFournisseur) return reponseConfirmationCout(devisFournisseur);
+        if (devisFournisseur && !confirmationValable(coutConfirme, moteurConfirme, devisFournisseur)) return reponseConfirmationCout(devisFournisseur);
       }
       const lancement = await lancerJumeauMontage({
         userId,

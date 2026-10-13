@@ -96,8 +96,8 @@ describe('F / G / H — le navigateur ne rejoue qu’après « Continuer », une
   /** Doublure du serveur : 428 sans confirmation ; « appel fournisseur » compté avec. */
   const serveur = () => {
     const appelsFournisseur: number[] = [];
-    const envoyer = vi.fn(async (confirme: boolean) => {
-      if (!confirme) return new Response(JSON.stringify({ success: false, code: 'confirmation_cout_fournisseur', devis }), { status: 428 });
+    const envoyer = vi.fn(async (confirmation: Record<string, unknown> | null) => {
+      if (!confirmation) return new Response(JSON.stringify({ success: false, code: 'confirmation_cout_fournisseur', devis }), { status: 428 });
       appelsFournisseur.push(1);
       return new Response(JSON.stringify({ success: true, data: { generationId: 'g1' } }), { status: 200 });
     });
@@ -109,7 +109,7 @@ describe('F / G / H — le navigateur ne rejoue qu’après « Continuer », une
     const issue = await avecConfirmationCout(s.envoyer, { confirmer: async () => 'annuler' });
     expect(issue).toEqual({ annule: true, choix: 'annuler' });
     expect(s.envoyer).toHaveBeenCalledTimes(1);
-    expect(s.envoyer).toHaveBeenCalledWith(false);
+    expect(s.envoyer).toHaveBeenCalledWith(null);
     expect(s.appelsFournisseur).toHaveLength(0);
   });
 
@@ -120,6 +120,30 @@ describe('F / G / H — le navigateur ne rejoue qu’après « Continuer », une
     expect(vu).toEqual([devis]);
     expect(issue).toMatchObject({ annule: false, status: 200 });
     expect(s.appelsFournisseur).toHaveLength(1);
+    // La requête confirmée porte le moteur MONTRÉ : le serveur refuse s'il a changé.
+    expect(s.envoyer).toHaveBeenLastCalledWith({ confirmationCoutFournisseur: true, moteurConfirme: 'avatar_iii' });
+  });
+
+  it('D. la sélection a changé entre le devis et l’envoi : le serveur rend un NOUVEAU devis, re-montré avant tout appel', async () => {
+    const iv = devisVideoHeygen({ operation: 'video_avatar', moteurEnvoye: 'avatar_iv', avatarType: 'video', dureeSecondes: S(30), creditsStudiio: 0 });
+    const appels: string[] = [];
+    let devisServeur = iv;
+    const envoyer = vi.fn(async (c: Record<string, unknown> | null) => {
+      // Le serveur n'accepte que la confirmation du moteur qu'il va envoyer.
+      if (!c || c.moteurConfirme !== devisServeur.moteur) return new Response(JSON.stringify({ code: 'confirmation_cout_fournisseur', devis: devisServeur }), { status: 428 });
+      appels.push(String(c.moteurConfirme));
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    });
+    const montres: string[] = [];
+    const issue = await avecConfirmationCout(envoyer, { confirmer: async (d) => {
+      montres.push(String(d.moteur));
+      // Pendant la fenêtre, l'utilisateur est passé de Qualité (IV) à Standard (III).
+      devisServeur = devis;
+      return 'continuer';
+    } });
+    expect(montres).toEqual(['avatar_iv', 'avatar_iii']);
+    expect(appels).toEqual(['avatar_iii']);
+    expect(issue).toMatchObject({ annule: false, status: 200 });
   });
 
   it('H. double clic AVANT/après la confirmation (même opération) → 1 seul appel', async () => {

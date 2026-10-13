@@ -557,3 +557,56 @@ describe('#562 — coût fournisseur AVANT la vidéo du jumeau (admin, lancement
     expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
   });
 });
+
+describe('#562 bis — G. Créer / Autopilote : la qualité ENREGISTRÉE pour l’avatar', () => {
+  const moteurEnvoye = () => (appelsVers('https://api.heygen.com/v3/videos')[0].body as { engine: { type: string } }).engine.type;
+  const choisir = (qualite: string) => {
+    const prefs = base.settings[0].creator_preferences as Record<string, unknown>;
+    base.settings[0].creator_preferences = { ...prefs, qualitesAvatar: { [A]: qualite } };
+  };
+
+  it('⚠️ qualité « qualite » enregistrée → Avatar IV envoyé, enregistré, et c’est lui que le devis annonce', async () => {
+    choisir('qualite');
+    coutAdmin.actif = true; credits.admin = true;
+    const devis = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: false } });
+    expect(devis).toMatchObject({ ok: false, motif: 'confirmation_cout', devis: { moteur: 'avatar_iv' } });
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: true, moteurConfirme: 'avatar_iv' } });
+    expect(r.ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iv');
+    expect(base.generations[0].engine).toBe('avatar_iv');
+  });
+
+  it('⚠️ Autopilote (aucune qualité, aucune garde) : la qualité enregistrée « standard » → Avatar III', async () => {
+    choisir('standard');
+    expect((await generer()).ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+  });
+
+  it('aucune qualité enregistrée : le défaut d’avant (Avatar III), jamais un moteur plus cher en silence', async () => {
+    expect((await generer()).ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+  });
+
+  it('une qualité EXPLICITE de la requête l’emporte sur la qualité enregistrée', async () => {
+    choisir('qualite');
+    expect((await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'standard' })).ok).toBe(true);
+    expect(moteurEnvoye()).toBe('avatar_iii');
+  });
+
+  it('⚠️ confirmé pour Avatar IV mais la qualité est devenue Standard : nouveau devis, AUCUN appel', async () => {
+    choisir('standard');
+    coutAdmin.actif = true; credits.admin = true;
+    const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme: true, moteurConfirme: 'avatar_iv' } });
+    expect(r).toMatchObject({ ok: false, motif: 'confirmation_cout', devis: { moteur: 'avatar_iii' } });
+    expect(reseau.appels).toEqual([]);
+  });
+
+  it('⚠️ le devis Autopilote annonce le moteur de la qualité enregistrée', async () => {
+    const { devisVideoAutopilote } = await import('@/lib/fournisseurs/devis-autopilote');
+    choisir('qualite');
+    const d = await devisVideoAutopilote(U, { jumeauAvatar: true, jumeauAvatarId: A } as never, 'Un texte court.');
+    expect(d).toMatchObject({ moteur: 'avatar_iv', operation: 'video_autopilote' });
+    choisir('standard');
+    expect((await devisVideoAutopilote(U, { jumeauAvatar: true, jumeauAvatarId: A } as never, 'Un texte court.'))?.moteur).toBe('avatar_iii');
+  });
+});
