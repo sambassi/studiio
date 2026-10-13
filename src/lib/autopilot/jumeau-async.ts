@@ -35,7 +35,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { longueurScriptCible } from '@/lib/creer/brief';
+import { scriptPourDuree } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
@@ -76,6 +76,16 @@ const MAX_TENTATIVES = 40;
  * montage, ce script ne se répète nulle part ailleurs.
  */
 export function scriptJumeauMontage(post: PreparedPost): string {
+  // Durée cible du brief : le script est COMPOSÉ pour elle — accroche,
+  // idées (cartes), appel à l'action — par unités entières, jamais coupé.
+  const pourDuree = scriptPourDuree({
+    titre: post.title,
+    sousTitre: post.content.subtitle,
+    cartes: post.content.cards ?? [],
+    cta: post.brief?.cta || post.content.tagLine,
+    brief: post.brief,
+  });
+  if (pourDuree !== null) return pourDuree.slice(0, MAX_SCRIPT);
   const briefMessage = (post.brief?.message ?? '').trim();
   const parts = [briefMessage, post.title, post.content.subtitle, post.content.tagLine]
     .map((p) => (typeof p === 'string' ? p.trim() : ''))
@@ -83,24 +93,7 @@ export function scriptJumeauMontage(post: PreparedPost): string {
   // Dédoublonne (le titre peut déjà être le message du brief), garde l'ordre.
   const vus = new Set<string>();
   const uniques = parts.filter((p) => (vus.has(p) ? false : (vus.add(p), true)));
-  // Durée cible du brief : le script tient dans le temps demandé, au rythme
-  // demandé — coupé entre deux phrases (ou deux mots), jamais au milieu d'un
-  // mot. Sans durée cible : la borne d'avant, à l'identique.
-  const cible = longueurScriptCible(post.brief);
-  if (cible === null) return uniques.join('. ').slice(0, MAX_SCRIPT);
-  const borne = Math.min(MAX_SCRIPT, cible);
-  let script = '';
-  for (const p of uniques) {
-    const suivant = script ? `${script}. ${p}` : p;
-    if (suivant.length <= borne) { script = suivant; continue; }
-    if (!script) {
-      const coupe = p.slice(0, borne);
-      const espace = coupe.lastIndexOf(' ');
-      script = espace > borne / 2 ? coupe.slice(0, espace) : coupe;
-    }
-    break;
-  }
-  return script;
+  return uniques.join('. ').slice(0, MAX_SCRIPT);
 }
 
 export type ResultatLancement =

@@ -157,17 +157,17 @@ describe('Durée et rythme dans le brief', () => {
     expect(briefPourPrompt({ duree: 15, rythme: 'calme' })).toMatch(/Durée cible de la vidéo : 15 secondes[\s\S]*Rythme : calme/);
   });
 
-  it('le script de l’avatar tient dans la durée cible, coupé entre deux phrases', () => {
+  it('le script de l’avatar est composé pour la durée cible, sans couper une phrase', () => {
     const post = {
       title: 'Finance',
-      content: { subtitle: 'Trois réflexes pour reprendre la main sur votre budget chaque mois', tagLine: 'Commencez dès aujourd’hui avec une seule action concrète' },
+      content: { subtitle: 'Trois réflexes pour reprendre la main sur votre budget chaque mois', tagLine: 'Commencez dès aujourd’hui avec une seule action concrète', cards: [] },
       brief: { message: 'Gérer son argent est une compétence qui s’apprend', duree: 5, rythme: 'normal' as const },
-    } as Parameters<typeof scriptJumeauMontage>[0];
+    } as unknown as Parameters<typeof scriptJumeauMontage>[0];
     const court = scriptJumeauMontage(post);
-    expect(court.length).toBeLessThanOrEqual(70);
-    expect(court).toBe('Gérer son argent est une compétence qui s’apprend. Finance');
+    // 5 s ≈ 70 caractères : titre et appel à l'action (obligatoires), entiers ; le reste ne tient pas.
+    expect(court).toBe('Finance. Commencez dès aujourd’hui avec une seule action concrète');
     const sansDuree = scriptJumeauMontage({ ...post, brief: { message: post.brief!.message } });
-    expect(sansDuree).toContain('Commencez dès aujourd’hui');
+    expect(sansDuree).toContain('Gérer son argent');
   });
 });
 

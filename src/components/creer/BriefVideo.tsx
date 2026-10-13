@@ -162,6 +162,11 @@ export default function BriefVideo({
           </button>
         )}
       </div>
+      {profil?.personnalise && (
+        <p className="text-[11px] text-gray-500" data-brief-theme-personnalise>
+          Thème personnalisé : les exemples reprennent simplement vos mots « {profil.libelle} ».
+        </p>
+      )}
       {annonce && (
         <p className="text-[11px] text-gray-400" data-brief-annonce role="status">{annonce}</p>
       )}

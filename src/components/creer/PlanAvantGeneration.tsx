@@ -6,6 +6,8 @@ import MiniatureVideo from '@/components/medias/MiniatureVideo';
 import { useVignetteVideo } from '@/lib/hooks/useVignetteVideo';
 import { MAX_CRENEAUX, type CreneauGabarit, type MediaStockRetenu, type TypeCreneau } from '@/lib/autopilot/sources';
 import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
+import { DUREE_ESTIMEE_SANS_CIBLE, horodatage, minutagePlan, secondesLisibles } from '@/lib/autopilot/duree-cible';
+import { RYTHME_LABELS, type RythmeBrief } from '@/lib/creer/brief';
 
 /**
  * « Plan avant génération » — le GABARIT de la séquence Vidéo, édité avant
@@ -78,8 +80,14 @@ function nouvelId(lignes: CreneauGabarit[]): string {
 }
 
 export default function PlanAvantGeneration({
-  gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher,
+  gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher, duree,
 }: {
+  /**
+   * Durée cible et rythme du brief. Le minutage affiché est celui du moteur
+   * (créneaux égaux) sur la durée cible — sans cible, sur ≈ 30 s. À la
+   * production, il est recalé sur la durée RÉELLE de la voix.
+   */
+  duree?: { cible: number | null; rythme: RythmeBrief | null };
   gabarit: CreneauGabarit[];
   suggestion: CreneauGabarit[];
   rushesPerso: string[];
@@ -93,6 +101,10 @@ export default function PlanAvantGeneration({
 }) {
   const fixe = gabarit.length > 0;
   const lignes = fixe ? gabarit : suggestion;
+  const cible = duree?.cible ?? null;
+  const reference = cible ?? DUREE_ESTIMEE_SANS_CIBLE;
+  const minutage = minutagePlan(lignes.length, reference);
+  const planifiee = minutage.length ? minutage[minutage.length - 1].fin : 0;
 
   const maj = (f: (l: CreneauGabarit[]) => CreneauGabarit[]) => onChange(f(lignes.map((l) => ({ ...l }))).slice(0, MAX_CRENEAUX));
   const deplacer = (i: number, d: -1 | 1) => maj((l) => {
@@ -123,6 +135,21 @@ export default function PlanAvantGeneration({
       <p className="text-[11px] text-gray-500">
         Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.
       </p>
+      {lignes.length > 0 && (
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-gray-900/60 px-2 py-1.5 text-[11px]" data-plan-duree>
+          <dt className="text-gray-500">Durée cible</dt>
+          <dd className="text-gray-200" data-plan-duree-cible={cible ?? ''}>{cible ? `${cible} s` : `automatique (≈ ${DUREE_ESTIMEE_SANS_CIBLE} s)`}</dd>
+          <dt className="text-gray-500">Durée planifiée</dt>
+          <dd className="text-gray-200" data-plan-duree-planifiee={planifiee}>{secondesLisibles(planifiee)}</dd>
+          <dt className="text-gray-500">Nombre de séquences</dt>
+          <dd className="text-gray-200" data-plan-nombre={lignes.length}>{lignes.length}</dd>
+          <dt className="text-gray-500">Rythme</dt>
+          <dd className="text-gray-200" data-plan-rythme={duree?.rythme ?? 'normal'}>{RYTHME_LABELS[duree?.rythme ?? 'normal']}</dd>
+          <dd className="col-span-2 text-[10px] text-gray-500 pt-0.5">
+            Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).
+          </dd>
+        </dl>
+      )}
       {lignes.length === 0 && (
         <p className="text-[11px] text-gray-400" data-plan-vide>Activez une source pour construire le plan.</p>
       )}
@@ -160,6 +187,11 @@ export default function PlanAvantGeneration({
                   <span className="break-words" data-plan-libelle title={c.media ? nomTechnique(c.media) : undefined}>{libelleCreneau(c, stock, rushesPerso)}</span>
                 </p>
               </div>
+              {minutage[i] && (
+                <p className="text-[10px] text-gray-400" data-plan-minutage={i}>
+                  {horodatage(minutage[i].debut)} → {horodatage(minutage[i].fin)} · Durée : {secondesLisibles(minutage[i].duree)}
+                </p>
+              )}
               {rushChoisi && <InfosRush url={rushChoisi} />}
               {c.type === 'avatar' && !avatarDisponible && (
                 <p className="text-[10px] text-amber-400" data-plan-avatar-inactif>Avatar inactif : Studiio prendra une autre source.</p>

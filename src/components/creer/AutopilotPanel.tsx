@@ -753,7 +753,7 @@ export default function AutopilotPanel({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
     stock: etatSources.stockRetenus,
-  });
+  }, { dureeSecondes: config.brief.duree, rythme: config.brief.rythme });
   const resumeApercu: ResumeMediasApercu = {
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
@@ -1854,6 +1854,7 @@ export default function AutopilotPanel({
             disabled={!ready || saving}
             onChange={(g) => enregistrerSources({ ...sources, gabarit: g })}
             onRechercher={(id, lignes) => setRechercheLigne({ id, lignes })}
+            duree={{ cible: config.brief.duree ?? null, rythme: config.brief.rythme ?? null }}
           />
           {rechercheLigne && (
             <StockRechercheAutopilote

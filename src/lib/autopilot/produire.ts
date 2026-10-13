@@ -28,6 +28,7 @@ import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
 import { avatarActifConfig, mediasDesSources, sourcesEffectives, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
 import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
+import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
@@ -658,11 +659,12 @@ export async function produireUnMontage(input: {
     // LE PLAN MONTRÉ = LE PLAN RENDU. Sans gabarit enregistré, l'écran affiche
     // la SUGGESTION (`gabaritSuggere`) : le moteur rend cette même suggestion,
     // calculée par la même fonction sur les sources réellement disponibles.
+    // Durée cible + rythme du brief : le MÊME nombre de plans que l'écran.
     const gabarit = gabaritEnregistre ? sourcesCfg.sources.gabarit : gabaritSuggere({
       avatar: jumeauActif,
       rushes: listeRushs.length,
       stock: videosOk.length + photosOk.length,
-    });
+    }, { dureeSecondes: postUtilise.brief?.duree, rythme: postUtilise.brief?.rythme });
     let res: ReturnType<typeof planMultiSources>;
     if (jumeauActif) {
       // ── AVATAR + autres sources : la séquence dure la PAROLE de l'avatar,
@@ -697,7 +699,9 @@ export async function produireUnMontage(input: {
       // Même règle que le smart montage : ~30 s, la voix couverte, jamais plus
       // que la matière (une durée illisible compte pour un plan de coupe).
       const dispo = [...rushes, ...stockVideos].reduce((t, x) => t + (x.secondes ?? BROLL_VIDEO_S), 0) + photosOk.length * BROLL_MAX_S;
-      const cible = Math.min(dispo, Math.max(dureeCibleMontage(dispo), Math.ceil(voixAPorter)));
+      // Durée cible du brief : elle remplace les ~30 s par défaut ; la voix
+      // RÉELLE reste couverte (jamais accélérée), la matière reste le plafond.
+      const cible = Math.min(dispo, Math.max(cibleVideoDuBrief(postUtilise.brief, designBase, enSurimpression) ?? dureeCibleMontage(dispo), Math.ceil(voixAPorter)));
       const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl, userId) : null;
       const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
       rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
@@ -749,7 +753,7 @@ export async function produireUnMontage(input: {
     const voixAPorter = enSurimpression
       ? ['titre', 'cartes', 'video', 'cta'].reduce((t, k) => t + (secondesVoix(k) ? secondesVoix(k) + 0.2 : 0), 0)
       : secondesVoix('video');
-    const cible = Math.min(disponible, Math.max(dureeCibleMontage(disponible), Math.ceil(voixAPorter)));
+    const cible = Math.min(disponible, Math.max(cibleVideoDuBrief(postUtilise.brief, designBase, enSurimpression) ?? dureeCibleMontage(disponible), Math.ceil(voixAPorter)));
     // V3 : coupes calées sur le rythme de la musique, lue à partir du début
     // de la séquence « Vidéo » (0 en surimpression, après titre et cartes sinon).
     const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl, userId) : null;

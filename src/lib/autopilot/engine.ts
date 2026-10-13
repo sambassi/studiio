@@ -1,4 +1,5 @@
 import { generateSmartContent } from '@/lib/smart-content';
+import { contenuPourDuree } from '@/lib/autopilot/duree-cible';
 import {
   pickRush, statusForMode, sanitizePublishTime, DEFAULT_PUBLISH_TIME, sanitizeBrief, slotDate,
   type AutopilotConfig, type VideoBrief,
@@ -135,10 +136,13 @@ export function preparePosts(input: {
     // ferait générer un contenu vide.
     const topic = sujets[i % Math.max(1, sujets.length)] || sujets[0] || 'motivation';
     const imposee = input.seeds?.[i];
-    const content = generateSmartContent(
+    // Durée cible du brief : le contenu est CONÇU pour elle (nombre d'idées,
+    // sous-titre) — cartes, narration et script de l'avatar en découlent.
+    // Sans durée cible : le contenu entier, comme avant.
+    const content = contenuPourDuree(generateSmartContent(
       topic,
       typeof imposee === 'number' && Number.isFinite(imposee) ? imposee : contentSeed(now, i),
-    );
+    ), topic, brief);
     // `generateSmartContent` rend `subtitle`, `tagLine` et `cards` — pas de
     // titre : c'est le sujet lui-meme qui en tient lieu, comme dans le Mode
     // simple.

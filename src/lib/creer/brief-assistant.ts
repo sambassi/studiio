@@ -117,6 +117,11 @@ export function domainesDuSujet(sujet: string | null | undefined): DomaineBrief[
 export interface ProfilBrief {
   /** Le libellé du thème, tel que l'écran le montre. */
   libelle: string;
+  /**
+   * Thème écrit à la main : les propositions REPRENNENT ses mots dans des
+   * modèles — aucune compréhension prétendue au-delà. L'écran le dit.
+   */
+  personnalise: boolean;
   placeholders: Record<BriefKey, string>;
   suggestions: Record<BriefKey, string[]>;
 }
@@ -330,7 +335,7 @@ export function profilBrief(sujets: ReadonlyArray<string> | string | null | unde
   if (!premier) return null;
   const connu = themeConnu(premier);
   const base = connu ? PROFILS[connu.topic] ?? PROFILS[connu.id] : null;
-  return { libelle: themeLabel(premier), ...(base ?? profilPersonnalise(premier)) };
+  return { libelle: themeLabel(premier), personnalise: !base, ...(base ?? profilPersonnalise(premier)) };
 }
 
 /** Les exemples (placeholders) à montrer : ceux du thème, sinon ceux d'avant. */

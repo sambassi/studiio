@@ -57,7 +57,12 @@ describe('A — la photo d affiche', () => {
     // repart sur un dégradé.
     expect(posterQuery('routine du matin')).toContain('morning');
     expect(posterQuery('bien manger au quotidien')).toContain('nutrition');
-    expect(posterQuery('sujet totalement inconnu')).toBe('fitness dance workout');
+    // Thème personnalisé non reconnu : SES mots, plus une affiche fitness par défaut.
+    expect(posterQuery('sujet totalement inconnu')).toBe('sujet totalement inconnu');
+    expect(posterQuery('')).toBe('fitness dance workout');
+    // Thèmes hors sport : une affiche du thème.
+    expect(posterQuery('finance')).toBe('personal finance money budget');
+    expect(posterQuery('Finance')).not.toMatch(/fitness|workout|gym/);
   });
 
   it('une API muette ne fait jamais échouer le cycle', () => {
