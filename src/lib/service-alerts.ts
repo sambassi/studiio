@@ -23,9 +23,14 @@ export type ServiceName =
   | 'resend'
   | 'supabase'
   | 'stripe'
-  | 'elevenlabs';
+  | 'elevenlabs'
+  | 'heygen'
+  | 'did'
+  | 'groq'
+  | 'zernio';
 
-export type AlertSeverity = 'warning' | 'critical';
+/** `info` : un fait sans action requise (recharge automatique constatée). */
+export type AlertSeverity = 'info' | 'warning' | 'critical';
 
 export interface ServiceAlert {
   id: string;
@@ -55,26 +60,18 @@ async function readAlerts(): Promise<ServiceAlert[]> {
   }
 }
 
+/**
+ * ⚠️ `app_settings` N'A NI `id` NI `created_at` (key, value, updated_at). La
+ * version précédente lisait `select('id')` — erreur ignorée, donc « absent » —
+ * puis tentait un `insert` avec `created_at` : ÉCHEC SILENCIEUX à chaque fois.
+ * Aucune alerte de service n'était donc jamais enregistrée. Un `upsert` sur la
+ * clé, erreur VÉRIFIÉE.
+ */
 async function writeAlerts(alerts: ServiceAlert[]): Promise<void> {
-  const { data: existing } = await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from('app_settings')
-    .select('id')
-    .eq('key', SETTINGS_KEY)
-    .single();
-
-  if (existing) {
-    await supabaseAdmin
-      .from('app_settings')
-      .update({ value: alerts, updated_at: new Date().toISOString() })
-      .eq('key', SETTINGS_KEY);
-  } else {
-    await supabaseAdmin.from('app_settings').insert({
-      key: SETTINGS_KEY,
-      value: alerts,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-  }
+    .upsert({ key: SETTINGS_KEY, value: alerts, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw new Error(`service_alerts : ${error.message}`);
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -92,12 +89,14 @@ export async function reportServiceAlert(
   try {
     const alerts = await readAlerts();
 
-    // Deduplicate — skip if same service+severity exists in the last hour
+    // Deduplicate — skip if the same service+severity+message exists in the
+    // last hour (deux CRITICAL différents d'un même service restent visibles).
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
     const duplicate = alerts.find(
       (a) =>
         a.service === service &&
         a.severity === severity &&
+        a.message === message &&
         !a.dismissed &&
         new Date(a.timestamp).getTime() > oneHourAgo,
     );
@@ -246,7 +245,7 @@ export function detectAndReportServiceError(
   }
 }
 
-function serviceLabel(service: ServiceName): string {
+export function serviceLabel(service: ServiceName): string {
   const labels: Record<ServiceName, string> = {
     replicate: 'Replicate (IA Image)',
     openai: 'OpenAI (Voix off)',
@@ -257,6 +256,10 @@ function serviceLabel(service: ServiceName): string {
     supabase: 'Supabase (Base de données)',
     stripe: 'Stripe (Paiements)',
     elevenlabs: 'ElevenLabs (Voix clonée)',
+    heygen: 'HeyGen (Avatar vidéo)',
+    did: 'D-ID (Avatar legacy)',
+    groq: 'Groq (Transcription)',
+    zernio: 'Zernio (Publication)',
   };
   return labels[service] || service;
 }

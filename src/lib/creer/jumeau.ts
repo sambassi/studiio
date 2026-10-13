@@ -293,14 +293,16 @@ export async function attendreStatutJumeau(args: {
     const json = res ? await res.json().catch(() => null) : null;
     if (res?.ok && json?.success) {
       echecs = 0;
-      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null; avatarVersion?: number | null };
+      const d = json.data as { status: string; videoUrl?: string | null; error?: string | null; avatarVersion?: number | null; enAttente?: string; message?: string };
       if (d.status === 'completed' && d.videoUrl) {
         args.onPhase?.('stockage');
         // `avatarVersion` : la version du clone épinglée à la génération (null si inconnue).
         return { url: d.videoUrl, avatarVersion: typeof d.avatarVersion === 'number' ? d.avatarVersion : null };
       }
       if (d.status === 'failed') throw new ErreurAttenteJumeau(d.error || 'La génération de votre jumeau a échoué.', 'echec');
-      args.onEtape?.(DETAIL_PHASE_JUMEAU.traitement);
+      // Solde de Studiio épuisé chez le fournisseur : on le DIT (sans le
+      // nommer), la génération reprendra seule — aucun crédit perdu.
+      args.onEtape?.(d.enAttente === 'fournisseur' && d.message ? d.message : DETAIL_PHASE_JUMEAU.traitement);
       await dormir(JUMEAU_POLL_MS);
       continue;
     }

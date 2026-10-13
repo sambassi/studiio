@@ -36,6 +36,9 @@ export const MESSAGES_AVATAR = {
   echec: 'La génération de la vidéo avec votre avatar a échoué.',
   voixIndisponible: 'Le service de voix est temporairement indisponible. Aucun crédit Studiio n’a été débité.',
   ancienMoteur: 'Votre avatar a été créé avec une ancienne version du service. Recréez-le dans « Mon avatar » pour l’utiliser dans vos vidéos. Aucun crédit Studiio n’a été débité. Votre voix reste utilisable pour la narration.',
+  // QUOTA DE L'UTILISATEUR (ses crédits Studiio) épuisé — à ne jamais
+  // confondre avec le solde de Studiio chez ses fournisseurs.
+  quotaEpuise: 'Votre quota de génération est épuisé. Passez au plan supérieur ou rechargez pour continuer.',
   verificationTransitoire: 'Le statut de votre vidéo n’a pas pu être vérifié pour l’instant. Nouvel essai automatique.',
   // Le FOURNISSEUR a refusé faute de crédits de SON côté (compte API vide) :
   // ni la vidéo, ni l'avatar, ni la voix ne sont en cause — et « Réessayer »
@@ -66,6 +69,9 @@ export function creditsFournisseurEpuises(brut: string | null | undefined): bool
 export function jumeauVideoAutorise(admin: boolean): boolean {
   return admin;
 }
+
+/** Où l'utilisateur gère son abonnement Studiio (CTA du quota épuisé). */
+export const URL_ABONNEMENT = '/dashboard/settings?tab=abonnement';
 
 /** Création d'avatar — messages UTILISATEUR. */
 export const MESSAGES_CREATION = {

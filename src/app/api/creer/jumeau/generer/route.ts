@@ -11,6 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { genererVideoJumeau } from '@/lib/avatar/moteur-jumeau';
+import { MESSAGE_ATTENTE_FOURNISSEUR } from '@/lib/avatar/attente-fournisseur';
+import { URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -38,7 +40,10 @@ export async function POST(req: NextRequest) {
 
   const r = await genererVideoJumeau({ userId: session.user.id, textes, aspectRatio, avatarId, voixId, qualite, ...(cadrage ? { cadrage } : {}) });
   if (r.ok) {
-    return NextResponse.json({ success: true, data: { generationId: r.generationId, status: r.status, avatarVersion: r.avatarVersion, dejaEnCours: r.dejaEnCours, spoken: r.spoken } });
+    return NextResponse.json({ success: true, data: {
+      generationId: r.generationId, status: r.status, avatarVersion: r.avatarVersion, dejaEnCours: r.dejaEnCours, spoken: r.spoken,
+      ...(r.enAttenteFournisseur ? { enAttente: 'fournisseur', message: MESSAGE_ATTENTE_FOURNISSEUR } : {}),
+    } });
   }
   const statut = r.motif === 'moteur_indisponible' ? 503
     : r.motif === 'credits_insuffisants' ? 402
@@ -46,5 +51,7 @@ export async function POST(req: NextRequest) {
     : r.motif === 'fournisseur_voix' || r.motif === 'fournisseur_avatar' ? 502
     : r.motif === 'base' ? 500
     : 409;
-  return NextResponse.json({ success: false, error: r.message, code: r.motif }, { status: statut });
+  // Quota UTILISATEUR épuisé : le lien vers son abonnement Studiio.
+  const action = r.motif === 'credits_insuffisants' ? { actionUrl: URL_ABONNEMENT, actionLabel: 'Voir mon abonnement' } : {};
+  return NextResponse.json({ success: false, error: r.message, code: r.motif, ...action }, { status: statut });
 }

@@ -17,8 +17,12 @@
  * HeyGen. La persistance et les credits sont geres par les routes API.
  */
 import { MOTEURS_AVATAR, MOTEUR_AVATAR_DEFAUT, moteurAvatar, lireMoteursSupportes, type MoteurAvatar } from '@/lib/avatar/moteurs';
+import { estRefusDeSolde } from '@/lib/fournisseurs/sante';
 
 const HEYGEN_BASE = 'https://api.heygen.com';
+
+/** Code d'une `HeyGenError` due au solde du compte API Studiio (pas à la demande). */
+export const CODE_SOLDE_FOURNISSEUR = 'provider_credits';
 
 /** Toutes les erreurs HeyGen remontent sous cette forme pour un mapping HTTP propre. */
 export class HeyGenError extends Error {
@@ -86,7 +90,7 @@ function extractHeyGenMessage(body: unknown): string | undefined {
  * indiagnosticable (on ne sait pas si c'est la voix, l'avatar ou le texte).
  * Le corps complet est en plus journalise cote serveur par heygenFetch.
  */
-function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
+export function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
   const raw = typeof body === 'string' ? body : JSON.stringify(body ?? '');
   const lowered = raw.toLowerCase();
   const code =
@@ -95,6 +99,14 @@ function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
   const detail = extractHeyGenMessage(body);
   const suffix = detail ? ` — HeyGen : ${detail}` : '';
 
+  // Solde du compte API HeyGen épuisé (402 `insufficient_credit`, ou le
+  // message réel constaté en production : « Insufficient credit. This
+  // operation requires 'api' credits. »). C'est le FINANCEMENT de Studiio,
+  // pas la demande : code dédié, pour mettre la génération en attente au lieu
+  // de l'échouer (`sante.ts`).
+  if (estRefusDeSolde(raw, status) || code === 'insufficient_credit') {
+    return new HeyGenError(`Solde API HeyGen insuffisant.${suffix}`, 503, CODE_SOLDE_FOURNISSEUR);
+  }
   if (status === 401 || status === 403) {
     return new HeyGenError(
       `Cle API HeyGen refusee. Verifier HEYGEN_API_KEY cote serveur.${suffix}`,
