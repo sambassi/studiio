@@ -45,6 +45,7 @@ const STATUTS: Record<StatutFournisseur, { label: string; couleur: string }> = {
   critique: { label: 'critique', couleur: '#f97316' },
   bloque: { label: 'bloqué', couleur: '#ef4444' },
   inconnu: { label: 'inconnu', couleur: '#6b7280' },
+  inactif: { label: 'inactif (non utilisé)', couleur: '#374151' },
 };
 
 const SEVERITES: Record<Alerte['severity'], { couleur: string; Icone: typeof Info }> = {
@@ -282,6 +283,10 @@ function CarteFournisseur({ f, onRecharger }: { f: Fournisseur; onRecharger: () 
   );
 }
 
+function usd(v: number | null | undefined): string {
+  return typeof v === 'number' ? `${v.toFixed(2)} $` : 'non mesuré';
+}
+
 function Economie({ economie }: { economie: Donnees['economie'] }) {
   return (
     <Card>
@@ -289,6 +294,8 @@ function Economie({ economie }: { economie: Donnees['economie'] }) {
       <CardContent className="space-y-3">
         <p className="text-xs text-gray-400">
           Seules les générations d’avatar sont mesurées aujourd’hui. Un coût non mesuré n’est pas un coût nul.
+          « HeyGen estimé » = secondes générées × tarif officiel du moteur (HeyGen n’expose aucun coût par vidéo) ;
+          « dont admin » : 0 crédit Studiio, mais payé chez HeyGen.
         </p>
         {!Array.isArray(economie) ? (
           <p className="text-red-400 text-sm">Lecture impossible : {economie.erreur}</p>
@@ -302,6 +309,7 @@ function Economie({ economie }: { economie: Donnees['economie'] }) {
                   <th className="p-2">Mois</th><th className="p-2">Coût fournisseur</th><th className="p-2">Par fournisseur</th>
                   <th className="p-2">Coût moyen / vidéo</th><th className="p-2">Prix Studiio</th><th className="p-2">Marge brute</th>
                   <th className="p-2">Non mesurées</th>
+                  <th className="p-2">HeyGen estimé</th><th className="p-2">dont admin</th>
                 </tr>
               </thead>
               <tbody>
@@ -318,6 +326,8 @@ function Economie({ economie }: { economie: Donnees['economie'] }) {
                     <td className="p-2">{eur(m.prixStudiioEur)}</td>
                     <td className="p-2">{eur(m.margeBruteEur)}</td>
                     <td className="p-2">{m.nonMesurees} / {m.generations}</td>
+                    <td className="p-2" data-testid={`heygen-estime-${m.mois}`}>{usd(m.coutHeygenEstimeUsd)}{m.secondesHeygen ? ` · ${Math.round(m.secondesHeygen)} s` : ''}</td>
+                    <td className="p-2">{usd(m.coutHeygenAdminEstimeUsd)}</td>
                   </tr>
                 ))}
               </tbody>

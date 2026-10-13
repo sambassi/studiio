@@ -20,7 +20,18 @@ export interface MoisEconomie {
   prixStudiioEur: number | null;
   margeBruteEur: number | null;
   nonMesurees: number;
+  /**
+   * Coût HeyGen ESTIMÉ (USD) : durée × tarif officiel du moteur
+   * (`tarifs-heygen.ts`), générations terminées seulement. `null` sans durée.
+   */
+  coutHeygenEstimeUsd: number | null;
+  /** Dont usages ADMIN : 0 crédit Studiio, mais bien payés chez HeyGen. */
+  coutHeygenAdminEstimeUsd: number | null;
+  /** Secondes générées (terminées) — la base de facturation HeyGen. */
+  secondesHeygen: number;
 }
+
+import { coutEstimeHeygenUsd } from '@/lib/fournisseurs/tarifs-heygen';
 
 const arrondi = (v: number) => Math.round(v * 10000) / 10000;
 const nombre = (v: unknown): number | null => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
@@ -35,7 +46,15 @@ export function economieParMois(lignes: Array<Record<string, unknown>>): MoisEco
   return [...parMois.entries()].sort(([a], [b]) => (a < b ? 1 : -1)).map(([mois, ls]) => {
     const parFournisseur: MoisEconomie['parFournisseur'] = {};
     let cout = 0; let mesurees = 0; let prix = 0; let prixMesures = 0;
+    let heygen = 0; let heygenAdmin = 0; let heygenEstimes = 0; let secondes = 0;
     for (const l of ls) {
+      if (l.provider === 'heygen' && l.status === 'completed') {
+        const usd = coutEstimeHeygenUsd({ engine: l.engine as string | null, avatarType: l.avatar_type as string | null, secondes: nombre(l.duration_seconds) });
+        if (usd !== null) {
+          heygen += usd; heygenEstimes += 1; secondes += nombre(l.duration_seconds) ?? 0;
+          if (l.admin_usage === true) heygenAdmin += usd;
+        }
+      }
       const f = typeof l.provider === 'string' ? l.provider : 'inconnu';
       const entree = parFournisseur[f] ?? { generations: 0, mesurees: 0, coutEur: null };
       entree.generations += 1;
@@ -60,6 +79,9 @@ export function economieParMois(lignes: Array<Record<string, unknown>>): MoisEco
       prixStudiioEur,
       margeBruteEur: coutFournisseurEur !== null && prixStudiioEur !== null ? arrondi(prixStudiioEur - coutFournisseurEur) : null,
       nonMesurees: ls.length - mesurees,
+      coutHeygenEstimeUsd: heygenEstimes ? arrondi(heygen) : null,
+      coutHeygenAdminEstimeUsd: heygenEstimes ? arrondi(heygenAdmin) : null,
+      secondesHeygen: arrondi(secondes),
     };
   });
 }

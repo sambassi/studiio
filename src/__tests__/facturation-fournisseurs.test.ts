@@ -43,6 +43,14 @@ vi.mock('@/lib/service-alerts', () => ({
   reportServiceAlert: async (service: string, severity: string, message: string, details?: string) => {
     etat.alertes.push({ service, severity, message, details });
   },
+  // Alerte UNIQUE par type : la doublure enregistre chaque signalement, et
+  // dit « créée » au premier (l'email ne part qu'à l'ouverture).
+  signalerAlerteCle: async (a: { service: string; cle: string; severity: string; message: string; details?: string }) => {
+    const deja = etat.alertes.some((x) => x.service === a.service && (x as { cle?: string }).cle === a.cle);
+    etat.alertes.push({ service: a.service, severity: a.severity, message: a.message, details: a.details, cle: a.cle } as never);
+    return deja ? 'mise_a_jour' : 'creee';
+  },
+  resoudreAlerteCle: async () => false,
   getAllAlerts: async () => etat.alertes,
 }));
 vi.mock('@/lib/email/resend', () => ({
@@ -133,6 +141,8 @@ vi.stubGlobal('fetch', async (url: string) => {
 });
 process.env.HEYGEN_API_KEY = 'cle-test';
 process.env.DID_API_KEY = 'cle-did-test';
+// Les scénarios D-ID supposent le flux legacy ACTIF (sinon D-ID n'est pas surveillé).
+process.env.AVATAR_DID_LEGACY_ACTIF = '1';
 delete process.env.ELEVENLABS_API_KEY;
 process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
 process.env.AUTH_SECRET = process.env.AUTH_SECRET || 'secret-de-test-0123456789';
@@ -448,5 +458,23 @@ describe('cron /api/cron/providers-health', () => {
     etat.soldesDid = [100];
     await Promise.all([appel('Bearer secret-cron'), appel('Bearer secret-cron')]);
     expect(etat.lecturesSolde).toBe(2); // HeyGen 1 + D-ID 1 (ElevenLabs sans clé ; Replicate non mesurable)
+  });
+});
+
+describe('D-ID non utilisé (flux legacy coupé) : ni lu, ni alerté', () => {
+  it('le cron ne lit pas son solde et dit « inactif »', async () => {
+    process.env.CRON_SECRET = 'secret-cron';
+    delete process.env.AVATAR_DID_LEGACY_ACTIF;
+    try {
+      etat.soldes = [100];
+      etat.soldesDid = [0];
+      const { GET } = await import('@/app/api/cron/providers-health/route');
+      const r = await (await GET(new Request('https://studiio.pro/api/cron/providers-health', { headers: { authorization: 'Bearer secret-cron' } }) as never)).json();
+      expect(r.soldes.did).toBe('inactif');
+      expect(etat.lecturesSolde).toBe(1); // HeyGen seulement
+      expect(etat.alertes.filter((a) => a.service === 'did')).toHaveLength(0);
+    } finally {
+      process.env.AVATAR_DID_LEGACY_ACTIF = '1';
+    }
   });
 });

@@ -1199,3 +1199,8 @@ Le correctif #558 a rendu l'écriture des alertes effective ; la LECTURE, jamais
 
 ## [2026-10-13] | « Brouillon déposé dans le Calendrier » affiché, Calendrier vide | Un succès s'annonce sur une PREUVE (le post relu), jamais sur un 200
 Avec l'avatar, « Produire maintenant » répond 200 `{ jumeau: 'en_preparation' }` sans `postId` : le montage attend en file le finaliseur (cron Autopilote horaire). L'écran prenait tout `success: true` pour un dépôt. **Règle** — un message « déposé / publié / enregistré » exige l'identifiant de l'objet ET sa relecture côté serveur (bon compte, statut affichable, média) ; un traitement asynchrone a son propre état « en préparation », suivi jusqu'à la preuve.
+
+## [2026-10-13] | 13 alertes « solde faible » en 1 h 30, alertes D-ID pour un fournisseur inutilisé, coût HeyGen « non mesuré » | Une alerte récurrente est UN objet (fournisseur + type) mis à jour puis résolu ; on ne surveille que ce qui sert ; « admin gratuit » ≠ « fournisseur gratuit »
+- Le dédoublonnage par « même message, non masquée, < 1 h » recréait l'alerte dès que l'admin la masquait. Règle : clé (fournisseur, type) → créer / mettre à jour / résoudre / réouvrir ; email à l'ouverture seulement.
+- D-ID : clé présente mais flux legacy coupé → la surveillance doit suivre l'usage réel (`fournisseurSurveille`), pas la présence d'une clé.
+- HeyGen n'expose aucun coût par vidéo : estimer durée × tarif officiel du moteur, et rapprocher des baisses de wallet (13/10 : 0,69 $ estimés pour 0,74 $ réels). Sans `engine`, HeyGen applique Avatar IV (≈ 8× Avatar III).

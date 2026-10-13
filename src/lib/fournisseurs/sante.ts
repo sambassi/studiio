@@ -32,8 +32,9 @@
  *   - `provider_lock:<id>`      : bail court (une vérification à la fois).
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { reportServiceAlert, type AlertSeverity } from '@/lib/service-alerts';
+import { signalerAlerteCle, resoudreAlerteCle, type AlertSeverity, type IssueAlerte } from '@/lib/service-alerts';
 import { sendEmailSilent } from '@/lib/email/resend';
+import { didLegacyAutorise } from '@/lib/avatar/fournisseurs';
 import { enteteAutorisationDid } from '@/lib/providers/did/client';
 
 export const FOURNISSEURS_SURVEILLES = ['heygen', 'elevenlabs', 'replicate', 'did'] as const;
@@ -70,7 +71,8 @@ export const CAPACITES: Record<FournisseurId, { soldeApi: boolean; unite: string
   },
 };
 
-export type StatutFournisseur = 'operationnel' | 'faible' | 'critique' | 'bloque' | 'inconnu';
+/** `inactif` : fournisseur non utilisé par un flux actif — ni lu, ni alerté. */
+export type StatutFournisseur = 'operationnel' | 'faible' | 'critique' | 'bloque' | 'inconnu' | 'inactif';
 
 export interface ConfigFournisseur {
   /** Sous ce solde : WARNING. */
@@ -118,6 +120,20 @@ export function etatVide(id: FournisseurId): EtatFournisseur {
     rechargesJour: { jour: '', n: 0 }, rechargesMois: { mois: '', n: 0 },
     derniereConsommation: null, derniereErreur: null, bloqueDepuis: null,
   };
+}
+
+/**
+ * Le fournisseur sert-il un flux ACTIF ? Sinon il n'est ni lu ni alerté.
+ *
+ * ⚠️ D-ID (2026-10-13) : sa clé était présente mais le flux legacy coupé
+ * (`AVATAR_DID_LEGACY_ACTIF` / `AVATAR_PROVIDER_PRINCIPAL` absents) — le cron
+ * lisait un solde de 0 et remplissait le bandeau admin d'alertes pour un
+ * fournisseur qu'aucune génération n'utilise. Le code legacy et l'historique
+ * restent intacts ; seule la SURVEILLANCE suit l'usage réel.
+ */
+export function fournisseurSurveille(id: FournisseurId, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (id === 'did') return didLegacyAutorise(env);
+  return true;
 }
 
 // ── Lecture du solde (adaptateurs officiels) ────────────────────────────────
@@ -321,14 +337,28 @@ export async function sousBail<T>(id: FournisseurId, fn: () => Promise<T>, m: Ma
 
 // ── Alertes admin ───────────────────────────────────────────────────────────
 
+/**
+ * Types d'alerte fournisseur : UNE alerte par fournisseur + type, mise à jour
+ * à chaque passage du cron, résolue quand le problème disparaît.
+ */
+export const TYPES_ALERTE = ['solde_faible', 'recharge_impossible', 'fournisseur_bloque', 'recharges_anormales', 'recharge_constatee'] as const;
+export type TypeAlerte = (typeof TYPES_ALERTE)[number];
+
 export interface Alerteur {
-  (id: FournisseurId, severite: AlertSeverity, message: string, details?: string): Promise<void>;
+  (id: FournisseurId, severite: AlertSeverity, message: string, details: string | undefined, cle: TypeAlerte): Promise<IssueAlerte | void>;
+}
+export interface Resolveur {
+  (id: FournisseurId, cle: TypeAlerte): Promise<unknown>;
 }
 
-/** Bannière Studiio Admin (`service_alerts`) ; CRITICAL → aussi un email admin. */
-export const alerterAdmin: Alerteur = async (id, severite, message, details) => {
-  await reportServiceAlert(id, severite, message, details);
-  if (severite === 'critical') {
+/**
+ * Bannière Studiio Admin (`service_alerts`, une alerte par type) ; CRITICAL →
+ * email admin À L'OUVERTURE seulement (créée ou réouverte), jamais à chaque
+ * passage du cron.
+ */
+export const alerterAdmin: Alerteur = async (id, severite, message, details, cle) => {
+  const issue = await signalerAlerteCle({ service: id, cle, severity: severite, message, details });
+  if (severite === 'critical' && (issue === 'creee' || issue === 'reouverte')) {
     const to = process.env.ADMIN_EMAIL || 'admin@studiio.pro';
     const esc = (v: string) => v.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
     void sendEmailSilent({
@@ -337,7 +367,10 @@ export const alerterAdmin: Alerteur = async (id, severite, message, details) => 
       html: `<p><b>${esc(message)}</b></p>${details ? `<p>${esc(details)}</p>` : ''}<p>Studiio n’a déclenché aucun paiement. Détail : Admin › Fournisseurs.</p>`,
     });
   }
+  return issue;
 };
+
+export const resoudreAdmin: Resolveur = (id, cle) => resoudreAlerteCle(id, cle);
 
 export const MESSAGES_ADMIN = {
   rechargeConstatee: (nom: string, montant: number, devise: string) => `${nom} : ${formatMontant(montant, devise)} ajoutés automatiquement.`,
@@ -358,6 +391,7 @@ function formatMontant(montant: number, devise: string): string {
 export interface DepsSante {
   magasin?: Magasin;
   alerter?: Alerteur;
+  resoudre?: Resolveur;
   env?: NodeJS.ProcessEnv;
   fetch?: Fetch;
   now?: () => number;
@@ -371,6 +405,7 @@ export interface DepsSante {
 export async function majEtatDepuisSolde(id: FournisseurId, deps: DepsSante = {}): Promise<EtatFournisseur> {
   const m = deps.magasin ?? magasinAppSettings;
   const alerter = deps.alerter ?? alerterAdmin;
+  const resoudre = deps.resoudre ?? resoudreAdmin;
   const now = deps.now ?? (() => Date.now());
   const config = (await lireConfig(m))[id];
   const avant = (await lireEtats(m))[id];
@@ -410,10 +445,10 @@ export async function majEtatDepuisSolde(id: FournisseurId, deps: DepsSante = {}
     etat.derniereRechargeMontant = delta;
     etat.rechargesJour = { jour, n: etat.rechargesJour.n + 1 };
     etat.rechargesMois = { mois, n: etat.rechargesMois.n + 1 };
-    await alerter(id, 'info', MESSAGES_ADMIN.rechargeConstatee(nom, delta, lecture.devise));
+    await alerter(id, 'info', MESSAGES_ADMIN.rechargeConstatee(nom, delta, lecture.devise), undefined, 'recharge_constatee');
     if (etat.rechargesJour.n > config.maxRechargesJour || etat.rechargesMois.n > config.maxRechargesMois) {
       await alerter(id, 'critical', MESSAGES_ADMIN.rechargesAnormales(nom),
-        `${etat.rechargesJour.n} recharge(s) aujourd’hui (plafond ${config.maxRechargesJour}), ${etat.rechargesMois.n} ce mois (plafond ${config.maxRechargesMois}). Vérifiez le réglage d’auto-reload chez ${nom}.`);
+        `${etat.rechargesJour.n} recharge(s) aujourd’hui (plafond ${config.maxRechargesJour}), ${etat.rechargesMois.n} ce mois (plafond ${config.maxRechargesMois}). Vérifiez le réglage d’auto-reload chez ${nom}.`, 'recharges_anormales');
     }
   } else if (delta < 0) {
     etat.derniereConsommation = { le: iso, montant: -delta };
@@ -425,14 +460,27 @@ export async function majEtatDepuisSolde(id: FournisseurId, deps: DepsSante = {}
     etat.derniereErreur = avant.statut === 'bloque' ? null : avant.derniereErreur;
   }
   const autoActive = lecture.autoReload ? lecture.autoReload.active : config.autoRechargeAttendue;
+  // Chaque type d'alerte est ouvert/mis à jour s'il s'applique, RÉSOLU sinon :
+  // l'alerte quitte le bandeau dès que le solde est revenu.
+  const actives = new Set<TypeAlerte>();
   if (etat.statut === 'faible') {
-    await alerter(id, 'warning', MESSAGES_ADMIN.soldeFaible(nom), `Solde ${formatMontant(lecture.solde, lecture.devise)} (seuil ${config.seuilBas}).`);
+    actives.add('solde_faible');
+    await alerter(id, 'warning', MESSAGES_ADMIN.soldeFaible(nom), `Solde ${formatMontant(lecture.solde, lecture.devise)} (seuil ${config.seuilBas}).`, 'solde_faible');
   } else if (etat.statut === 'critique' || etat.statut === 'bloque') {
-    await alerter(id, 'warning', MESSAGES_ADMIN.soldeFaible(nom), `Solde ${formatMontant(lecture.solde, lecture.devise)} (seuil critique ${config.seuilCritique}).`);
+    actives.add('solde_faible');
+    await alerter(id, 'warning', MESSAGES_ADMIN.soldeFaible(nom), `Solde ${formatMontant(lecture.solde, lecture.devise)} (seuil critique ${config.seuilCritique}).`, 'solde_faible');
     if (!autoActive) {
+      actives.add('recharge_impossible');
       await alerter(id, 'critical', MESSAGES_ADMIN.rechargeImpossible(nom),
-        `Recharge automatique désactivée chez ${nom}. Solde ${formatMontant(lecture.solde, lecture.devise)}. Activez l’auto-reload ou rechargez manuellement.`);
+        `Recharge automatique désactivée chez ${nom}. Solde ${formatMontant(lecture.solde, lecture.devise)}. Activez l’auto-reload ou rechargez manuellement.`, 'recharge_impossible');
     }
+  }
+  if (etat.rechargesJour.n > config.maxRechargesJour || etat.rechargesMois.n > config.maxRechargesMois) actives.add('recharges_anormales');
+  // Un solde positif lu par l'API lève le blocage constaté sur un refus.
+  if (etat.statut !== 'bloque') actives.delete('fournisseur_bloque');
+  else actives.add('fournisseur_bloque');
+  for (const cle of ['solde_faible', 'recharge_impossible', 'fournisseur_bloque', 'recharges_anormales'] as TypeAlerte[]) {
+    if (!actives.has(cle)) await resoudre(id, cle);
   }
   if (etat.statut === 'bloque') etat.bloqueDepuis = avant.bloqueDepuis ?? iso;
   await ecrireEtat(id, etat, m);
@@ -456,7 +504,7 @@ export async function signalerRefusDeSolde(id: FournisseurId, brut: string, deps
     const avant = (await lireEtats(m))[id];
     const iso = new Date(now()).toISOString();
     await ecrireEtat(id, { ...avant, statut: 'bloque', bloqueDepuis: avant.bloqueDepuis ?? iso, derniereErreur: brut.slice(0, 500) }, m);
-    await alerter(id, 'critical', MESSAGES_ADMIN.bloque(NOMS_FOURNISSEURS[id]), `Refus du fournisseur : ${brut.slice(0, 300)}`);
+    await alerter(id, 'critical', MESSAGES_ADMIN.bloque(NOMS_FOURNISSEURS[id]), `Refus du fournisseur : ${brut.slice(0, 300)}`, 'fournisseur_bloque');
   } catch (e) {
     console.error(`[Fournisseurs] ${id} : refus de solde non consigné :`, e instanceof Error ? e.message : e);
   }

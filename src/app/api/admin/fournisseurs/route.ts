@@ -14,7 +14,7 @@ import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getAllAlerts } from '@/lib/service-alerts';
 import {
-  CAPACITES, CLE_CONFIG, FOURNISSEURS_SURVEILLES, NOMS_FOURNISSEURS, assainirConfig, lireConfig, lireEtats,
+  CAPACITES, CLE_CONFIG, FOURNISSEURS_SURVEILLES, NOMS_FOURNISSEURS, assainirConfig, lireConfig, lireEtats, fournisseurSurveille,
   magasinAppSettings, verifierFournisseur, type FournisseurId,
 } from '@/lib/fournisseurs/sante';
 import { PREFIXE_ATTENTE } from '@/lib/avatar/attente-fournisseur';
@@ -47,9 +47,16 @@ export async function GET() {
   depuis.setUTCHours(0, 0, 0, 0);
   const { data: gens, error: erreurGens } = await supabaseAdmin
     .from('avatar_generations')
-    .select('provider, status, provider_cost_eur, studiio_price_eur, admin_usage, created_at')
+    .select('provider, status, provider_cost_eur, studiio_price_eur, admin_usage, created_at, engine, duration_seconds, user_avatar_id')
     .gte('created_at', depuis.toISOString())
     .limit(5000);
+  // Type d'avatar (photo / Digital Twin) : il fixe le tarif HeyGen du moteur.
+  const idsAvatars = [...new Set(((gens ?? []) as Array<{ user_avatar_id?: string | null }>).map((g) => g.user_avatar_id).filter((v): v is string => !!v))];
+  const { data: avatars } = idsAvatars.length
+    ? await supabaseAdmin.from('user_avatars').select('id, avatar_type').in('id', idsAvatars)
+    : { data: [] as Array<{ id: string; avatar_type: string | null }> };
+  const typeParAvatar = new Map(((avatars ?? []) as Array<{ id: string; avatar_type: string | null }>).map((a) => [a.id, a.avatar_type]));
+  const gensTypees = ((gens ?? []) as Array<Record<string, unknown>>).map((g) => ({ ...g, avatar_type: typeParAvatar.get(String(g.user_avatar_id)) ?? null }));
 
   return NextResponse.json({
     success: true,
@@ -59,11 +66,13 @@ export async function GET() {
         nom: NOMS_FOURNISSEURS[id],
         capacites: CAPACITES[id],
         config: config[id],
-        etat: etats[id],
+        surveille: fournisseurSurveille(id),
+        // Sans flux actif, l'écran dit « inactif » au lieu d'un dernier solde périmé.
+        etat: fournisseurSurveille(id) ? etats[id] : { ...etats[id], statut: 'inactif' as const },
         alertes: alertes.filter((a) => a.service === id).slice(0, 10),
       })),
       generationsEnAttente: enAttente ?? 0,
-      economie: erreurGens ? { erreur: erreurGens.message } : economieParMois((gens ?? []) as Array<Record<string, unknown>>),
+      economie: erreurGens ? { erreur: erreurGens.message } : economieParMois(gensTypees),
     },
   }, { headers: PAS_DE_CACHE });
 }
