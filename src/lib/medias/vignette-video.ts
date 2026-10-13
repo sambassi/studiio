@@ -177,7 +177,12 @@ function ouvrirBase(): Promise<IDBDatabase | null> {
       req.onupgradeneeded = () => {
         try { req.result.createObjectStore(MAGASIN); } catch { /* déjà là */ }
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // Une purge (`deleteDatabase`) ne doit jamais être bloquée par NOUS.
+        try { db.onversionchange = () => db.close(); } catch { /* doublure */ }
+        resolve(db);
+      };
       req.onerror = () => resolve(null);
       req.onblocked = () => resolve(null);
     } catch {
@@ -193,14 +198,17 @@ async function lirePersistant(cle: string): Promise<EntreePersistante | null> {
     return await new Promise((resolve) => {
       try {
         const req = db.transaction(MAGASIN, 'readonly').objectStore(MAGASIN).get(cle);
+        const fermer = () => { try { db.close(); } catch { /* déjà fermée */ } };
         req.onsuccess = () => {
+          fermer();
           const v = req.result as EntreePersistante | undefined;
           // Entrée sans date (ancienne) ou expirée : ignorée — elle sera réécrite.
           const fraiche = !!v && typeof v.creeLe === 'number' && Date.now() - v.creeLe < TTL_PERSISTANT_MS;
           resolve(v && fraiche && v.blob && typeof v.ratio === 'number' ? v : null);
         };
-        req.onerror = () => resolve(null);
+        req.onerror = () => { fermer(); resolve(null); };
       } catch {
+        try { db.close(); } catch { /* déjà fermée */ }
         resolve(null);
       }
     });
@@ -213,7 +221,12 @@ async function ecrirePersistant(cle: string, entree: EntreePersistante): Promise
   try {
     const db = await ouvrirBase();
     if (!db) return;
-    db.transaction(MAGASIN, 'readwrite').objectStore(MAGASIN).put({ ...entree, creeLe: Date.now() }, cle);
+    const tx = db.transaction(MAGASIN, 'readwrite');
+    tx.objectStore(MAGASIN).put({ ...entree, creeLe: Date.now() }, cle);
+    const fermer = () => { try { db.close(); } catch { /* déjà fermée */ } };
+    tx.oncomplete = fermer;
+    tx.onerror = fermer;
+    tx.onabort = fermer;
   } catch { /* le cache mémoire suffit */ }
 }
 
@@ -299,6 +312,24 @@ export function obtenirVignette(url: string): Promise<VignetteVideo | null> {
  */
 export async function viderVignettesPersistantes(): Promise<void> {
   memoire.clear();
+  // ⚠️ FAIL-CLOSED : on VIDE d'abord le contenu (transaction ordinaire, jamais
+  // bloquée), puis on supprime la base. Si la suppression est bloquée (un autre
+  // onglet garde la base ouverte), il ne reste qu'un magasin vide sur le disque.
+  try {
+    const db = await ouvrirBase();
+    if (db) {
+      await new Promise<void>((resolve) => {
+        try {
+          const tx = db.transaction(MAGASIN, 'readwrite');
+          tx.objectStore(MAGASIN).clear();
+          const fin = () => { try { db.close(); } catch { /* déjà fermée */ } resolve(); };
+          tx.oncomplete = fin;
+          tx.onerror = fin;
+          tx.onabort = fin;
+        } catch { try { db.close(); } catch { /* déjà fermée */ } resolve(); }
+      });
+    }
+  } catch { /* on tente quand même la suppression */ }
   try {
     const idb = typeof indexedDB !== 'undefined' ? indexedDB : null;
     if (!idb) return;

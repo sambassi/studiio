@@ -11,6 +11,17 @@ import { obtenirVignette, viderVignettesPersistantes, vignettesPourTests, cleVig
 
 const bases = new Map<string, Map<string, unknown>>();
 const effacees: string[] = [];
+let suppressionBloquee = false;
+const transaction = (store: Map<string, unknown>) => {
+  const tx: { oncomplete?: () => void; onerror?: () => void; onabort?: () => void; objectStore: () => unknown } = {
+    objectStore: () => ({
+      get: (k: string) => requete(() => store.get(k)),
+      put: (v: unknown, k: string) => { store.set(k, v); setTimeout(() => tx.oncomplete?.(), 0); return requete(() => undefined); },
+      clear: () => { store.clear(); setTimeout(() => tx.oncomplete?.(), 0); return requete(() => undefined); },
+    }),
+  };
+  return tx;
+};
 const requete = <T,>(f: () => T) => {
   const r: { result?: T; onsuccess?: () => void; onerror?: () => void; onblocked?: () => void; onupgradeneeded?: () => void } = {};
   setTimeout(() => { r.result = f(); r.onsuccess?.(); }, 0);
@@ -20,17 +31,16 @@ const fauxIndexedDB = {
   open: (nom: string) => requete(() => {
     if (!bases.has(nom)) bases.set(nom, new Map());
     const store = bases.get(nom)!;
-    return {
-      createObjectStore: () => {},
-      transaction: () => ({
-        objectStore: () => ({
-          get: (k: string) => requete(() => store.get(k)),
-          put: (v: unknown, k: string) => { store.set(k, v); return requete(() => undefined); },
-        }),
-      }),
-    };
+    return { createObjectStore: () => {}, close: () => {}, transaction: () => transaction(store) };
   }),
-  deleteDatabase: (nom: string) => requete(() => { effacees.push(nom); bases.delete(nom); }),
+  deleteDatabase: (nom: string) => {
+    if (suppressionBloquee) {
+      const r: { onsuccess?: () => void; onblocked?: () => void; onerror?: () => void } = {};
+      setTimeout(() => r.onblocked?.(), 0);
+      return r;
+    }
+    return requete(() => { effacees.push(nom); bases.delete(nom); });
+  },
 };
 vi.stubGlobal('indexedDB', fauxIndexedDB);
 
@@ -42,6 +52,7 @@ beforeEach(async () => {
   await new Promise((r) => setTimeout(r, 10));
   bases.clear();
   effacees.length = 0;
+  suppressionBloquee = false;
   vignettesPourTests.reinitialiser();
   vignettesPourTests.definirExtracteur(async () => ({ url: 'blob:x', blob: new Blob(['jpg']), ratio: 16 / 9, duree: 3 }));
 });
@@ -62,6 +73,16 @@ describe('confidentialité du cache de miniatures', () => {
     vignettesPourTests.definirExtracteur(extracteur);
     await obtenirVignette(URL_RUSH);
     expect(extracteur).toHaveBeenCalledTimes(1); // plus rien en cache
+  });
+
+  it('suppression BLOQUÉE (autre onglet) : le contenu est quand même effacé', async () => {
+    await obtenirVignette(URL_RUSH);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ecritures()).toHaveLength(1);
+    suppressionBloquee = true;
+    await viderVignettesPersistantes();
+    expect(effacees).toEqual([]);
+    expect(ecritures()).toHaveLength(0);
   });
 
   it('entrée de plus de 7 jours : ignorée, la miniature est réextraite', async () => {
