@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
+import { qualiteParDefaut } from '@/lib/avatar/moteurs';
 
 /**
  * COHÉRENCE DES PRIX — AFFICHÉ == SERVEUR == DÉBITÉ, pour CHAQUE opération payante.
@@ -440,11 +441,12 @@ describe('Avatar III / IV / V — POST /api/avatar/generate', () => {
     ['standard', 'avatar_iii', 12],
     ['qualite', 'avatar_iv', 26],
     ['premium', 'avatar_v', 41],
-    // #562 : sans qualité, le défaut de Mon avatar (Qualité) est ENVOYÉ explicitement — même prix.
-    [undefined, 'avatar_iv', 26],
+    // #562 : sans qualité, LA qualité par défaut (Standard) — celle que l'écran affiche ET envoie.
+    [undefined, 'avatar_iii', 12],
   ] as const)('qualité %s → moteur %s : affiché = 402 = débit = credits_charged = %i', async (qualite, moteur, prix) => {
     const ecran = await prixEcran();
-    const cle = cleTarifEcranMonAvatar({ viaVoixClonee: false, ...(qualite ? { qualiteEnvoyee: qualite } : {}) });
+    // L'écran affiche (et envoie) la qualité du serveur par défaut quand rien n'est choisi.
+    const cle = cleTarifEcranMonAvatar({ viaVoixClonee: false, qualiteEnvoyee: qualite ?? qualiteParDefaut() });
     expect(ecran.prix[cle]).toBe(prix);
     expect(lignesPrixGenererAvatar(ecran.prix[cle], ecran.exempte)).toEqual([`Prix : ${prix} crédits`]);
 

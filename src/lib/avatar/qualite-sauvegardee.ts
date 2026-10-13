@@ -6,12 +6,12 @@
  *
  * Rangée dans `user_settings.creator_preferences.qualitesAvatar[avatarId]`
  * (JSON existant, aucune migration). Écrite seulement par un CHOIX explicite
- * dans Mon avatar. Sans choix enregistré, chaque parcours garde son défaut
- * d'avant (Créer / Autopilote : `moteurAvatar(env)`, Avatar III) — un défaut
- * plus cher n'est jamais appliqué en silence.
+ * dans Mon avatar. Sans choix enregistré, TOUS les parcours prennent la MÊME
+ * qualité par défaut, `qualiteParDefaut(env)` (moteur serveur : Standard /
+ * Avatar III en production) — celle que Mon avatar affiche sélectionnée.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { MOTEUR_PAR_QUALITE, QUALITES, moteurAvatar, type MoteurAvatar, type QualiteRendu } from '@/lib/avatar/moteurs';
+import { MOTEUR_PAR_QUALITE, QUALITES, qualiteParDefaut, type MoteurAvatar, type QualiteRendu } from '@/lib/avatar/moteurs';
 
 const CLE = 'qualitesAvatar';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,13 +49,18 @@ export async function ecrireQualiteAvatar(userId: string, avatarId: string, qual
   return error ? { ok: false, erreur: error.message } : { ok: true };
 }
 
-/**
- * Le moteur d'une génération SANS qualité explicite (Créer, Autopilote) : la
- * qualité enregistrée de l'avatar si elle existe, sinon le défaut serveur.
- */
+/** La qualité EN VIGUEUR pour un avatar : celle enregistrée, sinon LA qualité par défaut. */
+export async function qualiteEnVigueur(
+  userId: string, avatarId: string | null | undefined, env: NodeJS.ProcessEnv = process.env,
+): Promise<{ qualite: QualiteRendu; enregistree: boolean }> {
+  const sauvee = await lireQualiteAvatar(userId, avatarId);
+  return sauvee ? { qualite: sauvee, enregistree: true } : { qualite: qualiteParDefaut(env), enregistree: false };
+}
+
+/** Le moteur d'une génération SANS qualité explicite (Créer, Autopilote) : celui de la qualité en vigueur. */
 export async function moteurParDefautDeLAvatar(
   userId: string, avatarId: string | null | undefined, env: NodeJS.ProcessEnv = process.env,
-): Promise<{ moteur: MoteurAvatar; qualite: QualiteRendu | null }> {
-  const qualite = await lireQualiteAvatar(userId, avatarId);
-  return { moteur: qualite ? MOTEUR_PAR_QUALITE[qualite] : moteurAvatar(env), qualite };
+): Promise<{ moteur: MoteurAvatar; qualite: QualiteRendu }> {
+  const { qualite } = await qualiteEnVigueur(userId, avatarId, env);
+  return { moteur: MOTEUR_PAR_QUALITE[qualite], qualite };
 }

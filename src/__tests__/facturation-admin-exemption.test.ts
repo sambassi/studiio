@@ -168,13 +168,13 @@ describe('#562 — coût fournisseur AVANT l’appel (admin, Mon avatar)', () =>
     expect((await envoyer({ script: 'Encore.', confirmationCoutFournisseur: true })).status).toBe(200);
   });
 
-  it('⚠️ aperçu sans qualité choisie : Avatar IV (défaut de Mon avatar) ENVOYÉ explicitement, rien réservé avant confirmation ; jamais de réentraînement', async () => {
+  it('⚠️ aperçu sans qualité choisie : LA qualité par défaut (Standard → Avatar III) ENVOYÉE explicitement, rien réservé avant confirmation ; jamais de réentraînement', async () => {
     exemption.admin = true;
     base.avatars = [{ ...avatar(), validated_at: null }];
     const refus = await envoyer({ intention: 'apercu' });
     expect(refus.status).toBe(428);
     const j = await refus.json();
-    expect(j.devis).toMatchObject({ operation: 'apercu_avatar', moteur: 'avatar_iv', moteurImplicite: false, creditsStudiio: 0 });
+    expect(j.devis).toMatchObject({ operation: 'apercu_avatar', moteur: 'avatar_iii', moteurImplicite: false, creditsStudiio: 0 });
     expect(base.generations).toEqual([]);
     const ok = await envoyer({ intention: 'apercu', confirmationCoutFournisseur: true });
     expect(ok.status).toBe(200);
@@ -225,9 +225,9 @@ describe('#562 bis — la QUALITÉ choisie = le moteur envoyé = le devis = la t
     expect(base.generations[0].engine).toBe('avatar_iii');
   });
 
-  it('aucune qualité nulle part : défaut de Mon avatar, ENVOYÉ explicitement (jamais un défaut HeyGen implicite)', async () => {
+  it('aucune qualité nulle part : LA qualité par défaut (Standard → Avatar III), ENVOYÉE explicitement', async () => {
     expect((await envoyer({ script: 'Bonjour à tous.' })).status).toBe(200);
-    expect(moteurEnvoye()).toBe('avatar_iv');
+    expect(moteurEnvoye()).toBe('avatar_iii');
   });
 
   it('⚠️ aperçu : moteur de la qualité choisie, envoyé et enregistré', async () => {

@@ -173,7 +173,6 @@ export default function AvatarPage() {
   const [defautHeygen, setDefautHeygen] = useState<Qualite>('qualite');
   /** Voix clonée = moteur du jumeau (comme Créer) : ses propres qualités et SON défaut, inchangés. */
   const [qualitesClonee, setQualitesClonee] = useState<QualiteOfferte[]>([]);
-  const [defautClonee, setDefautClonee] = useState<Qualite>('standard');
   const [qualite, setQualite] = useState<Qualite>('qualite');
   /** La qualité ENREGISTRÉE pour cet avatar : source de vérité du moteur (Mon avatar, Créer, Autopilote). */
   const [qualiteSauvegardee, setQualiteSauvegardee] = useState<Qualite | null>(null);
@@ -375,7 +374,7 @@ export default function AvatarPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // La qualité SÉLECTIONNÉE : le devis et l'appel portent son moteur.
-          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined, ...(qualiteChoisie() ? { qualite: qualiteChoisie() } : {}), ...(confirmation ?? {}) }),
+          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined, ...(qualites.length > 0 ? { qualite } : {}), ...(confirmation ?? {}) }),
         }), { cle: 'avatar:apercu' });
       if (issue.annule) { setNotice(MESSAGE_ANNULE); return; }
       const json = issue.json;
@@ -463,7 +462,6 @@ export default function AvatarPage() {
       setQualitesHeygen(lireQualites(json.data.qualites));
       if (json.data.qualiteParDefaut) setDefautHeygen(json.data.qualiteParDefaut as Qualite);
       setQualitesClonee(lireQualites(json.data.qualitesVoixClonee));
-      if (json.data.qualiteParDefautVoixClonee) setDefautClonee(json.data.qualiteParDefautVoixClonee as Qualite);
     }
     const sauvee = json.data.qualiteSauvegardee;
     setQualiteSauvegardee(sauvee === 'standard' || sauvee === 'qualite' || sauvee === 'premium' ? sauvee : null);
@@ -774,8 +772,10 @@ export default function AvatarPage() {
     setStatutFournisseur(null);
     setGenDebut(Date.now());
     setGenStatus('pending');
-    // La qualité n'est envoyée que si le serveur l'a offerte ouverte ; il revérifie et refuse sinon.
-    const qualiteEnvoyee = qualites.some((q) => q.qualite === qualite && q.ouverte) ? qualite : undefined;
+    // La qualité SÉLECTIONNÉE part toujours : le serveur la revérifie et REFUSE une
+    // qualité fermée (jamais rabattue sur une autre). Le bouton est déjà bloqué dans ce cas.
+    if (!qualiteOuverte) { setGenStatus('idle'); setError(motifQualiteFermee); return; }
+    const qualiteEnvoyee = qualites.length > 0 ? qualite : undefined;
 
     // MA voix (voix clonée) : le moteur du jumeau de Créer, tel quel.
     if (voiceId.startsWith(PREFIXE_VOIX_CLONEE)) {
@@ -936,27 +936,33 @@ export default function AvatarPage() {
   // Le prix annoncé : celui de la grille centrale pour CE parcours et CETTE
   // qualité — la même règle que le serveur (`lib/avatar/prix.ts`). Qualité non
   // envoyée → Avatar IV (défaut HeyGen) ; voix clonée → tarif du jumeau.
-  const qualiteAnnoncee = qualites.some((q) => q.qualite === qualite && q.ouverte) ? qualite : undefined;
-  /** La qualité sélectionnée, si elle est ouverte : c'est elle que la requête envoie. */
-  const qualiteChoisie = () => qualiteAnnoncee;
+  // LA qualité en vigueur : celle affichée, envoyée, chiffrée et enregistrée — partout.
+  const qualiteOuverte = qualites.length === 0 || qualites.some((q) => q.qualite === qualite && q.ouverte);
+  const motifQualiteFermee = `${LIBELLE_QUALITE_ECRAN[qualite]} non disponible pour cet avatar${(() => { const m = qualites.find((q) => q.qualite === qualite)?.motif; return m ? ` : ${m}` : '.'; })()}`;
   // ADMIN : le coût FOURNISSEUR de la qualité sélectionnée, recalculé à chaque
   // changement de qualité ou de texte — le moteur affiché est celui envoyé.
   const devisAdmin = tarifs.exempte && avatar && avatar.provider !== 'did'
     ? devisVideoHeygen({
       operation: 'video_avatar',
-      moteurEnvoye: MOTEUR_PAR_QUALITE[qualiteAnnoncee ?? qualite],
+      moteurEnvoye: MOTEUR_PAR_QUALITE[qualite],
       avatarType: avatar.avatar_type,
       dureeSecondes: dureeParoleEstimee([script]),
       creditsStudiio: 0,
     })
     : null;
-  const prixGeneration = tarifs.prix[cleTarifEcranMonAvatar({ viaVoixClonee, qualiteEnvoyee: qualiteAnnoncee })];
+  const prixGeneration = tarifs.prix[cleTarifEcranMonAvatar({ viaVoixClonee, qualiteEnvoyee: qualites.length > 0 ? qualite : undefined })];
     useEffect(() => {
     const liste = viaVoixClonee ? qualitesClonee : qualitesHeygen;
-    // Le CHOIX enregistré de l'utilisateur d'abord ; sinon le défaut du parcours.
-    const defaut = qualiteSauvegardee ?? (viaVoixClonee ? defautClonee : defautHeygen);
-    setQualite(liste.some((q) => q.qualite === defaut && q.ouverte) ? defaut : liste.find((q) => q.ouverte)?.qualite ?? defaut);
-  }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautClonee, defautHeygen, qualiteSauvegardee]);
+    // Le CHOIX enregistré de l'utilisateur ; sinon LA qualité par défaut, la même
+    // que Créer et l'Autopilote (le serveur la donne). Un choix enregistré devenu
+    // indisponible reste AFFICHÉ, bloqué, avec sa raison — jamais remplacé en silence.
+    const voulu = qualiteSauvegardee ?? defautHeygen;
+    if (qualiteSauvegardee || liste.length === 0 || liste.some((q) => q.qualite === voulu && q.ouverte)) { setQualite(voulu); return; }
+    // Défaut fermé pour CET avatar : la première qualité ouverte, ENREGISTRÉE — pour
+    // que Créer et l'Autopilote utilisent exactement celle affichée ici.
+    const premiere = liste.find((q) => q.ouverte)?.qualite;
+    if (premiere) choisirQualiteRef.current(premiere); else setQualite(voulu);
+  }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautHeygen, qualiteSauvegardee]);
 
   /**
    * L'utilisateur CHOISIT la qualité : elle est appliquée tout de suite (prix,
@@ -964,6 +970,7 @@ export default function AvatarPage() {
    * et l'Autopilote l'utiliseront aussi.
    */
   const choisirQualite = (q: Qualite) => {
+    if (qualites.length > 0 && !qualites.some((x) => x.qualite === q && x.ouverte)) return;
     setQualite(q);
     if (!avatar) return;
     const avant = qualiteSauvegardee;
@@ -974,6 +981,8 @@ export default function AvatarPage() {
       if (!j?.success) { setQualiteSauvegardee(avant); setError(j?.error || 'La qualité n’a pas pu être enregistrée.'); }
     }).catch(() => { setQualiteSauvegardee(avant); setError('La qualité n’a pas pu être enregistrée.'); });
   };
+  const choisirQualiteRef = useRef(choisirQualite);
+  choisirQualiteRef.current = choisirQualite;
 
   /** « Changer de source » : le geste existant (retour à l'import), aussi offert par les notifications. */
   const changerDeSource = () => {
@@ -1797,14 +1806,13 @@ export default function AvatarPage() {
                   </p>
                 </div>
               )}
-              <p data-avatar-qualite-portee className="text-[10px] text-gray-500">
-                {qualiteSauvegardee
-                  ? 'Qualité enregistrée pour cet avatar : Créer et l’Autopilote l’utilisent aussi.'
-                  : `Créer et l’Autopilote : ${LIBELLE_QUALITE_ECRAN[defautClonee]} tant qu’aucune qualité n’est choisie ici.`}
+              {!qualiteOuverte && <p data-avatar-qualite-fermee className="text-[11px] text-amber-300">{motifQualiteFermee}</p>}
+              <p data-avatar-qualite-portee data-qualite={qualite} className="text-[10px] text-gray-500">
+                {`${LIBELLE_QUALITE_ECRAN[qualite]} — ${LIBELLE_MOTEUR_DEVIS[MOTEUR_PAR_QUALITE[qualite]]} : la qualité utilisée par Mon avatar, Créer et l’Autopilote pour cet avatar${qualiteSauvegardee ? '.' : ' (qualité par défaut).'}`}
               </p>
               <button
                 onClick={handleGenerate}
-                disabled={!script.trim() || busy || voixCloneeChoisieIndisponible}
+                disabled={!script.trim() || busy || voixCloneeChoisieIndisponible || !qualiteOuverte}
                 className="w-full button-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {busy ? (

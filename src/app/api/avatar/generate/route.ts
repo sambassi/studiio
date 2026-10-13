@@ -17,7 +17,7 @@ import {
 } from '@/lib/avatar/heygen';
 import { versionDuCompte, ecrireVersion } from '@/lib/avatar/versions';
 import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
-import { moteurPourMonAvatar, motifPremium, QUALITE_PAR_DEFAUT_MON_AVATAR } from '@/lib/avatar/moteurs';
+import { moteurPourMonAvatar, motifPremium, qualiteParDefaut } from '@/lib/avatar/moteurs';
 import { lireQualiteAvatar } from '@/lib/avatar/qualite-sauvegardee';
 import { devisVideoHeygen, dureeParoleEstimee } from '@/lib/fournisseurs/devis-fournisseur';
 import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, exigerConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
@@ -274,7 +274,8 @@ export async function POST(req: NextRequest) {
     // 1 bis. LE MOTEUR, figé ici pour toute la suite (devis, prix, appel, trace).
     if (!choixMoteur) {
       const sauvee = await lireQualiteAvatar(userId, avatarRow.id);
-      choixMoteur = moteurPourMonAvatar(sauvee ?? QUALITE_PAR_DEFAUT_MON_AVATAR);
+      // Aucun choix : LA qualité par défaut de tous les parcours (celle de Créer et de l'Autopilote).
+      choixMoteur = moteurPourMonAvatar(sauvee ?? qualiteParDefaut());
     }
     if (!choixMoteur.ok) {
       return NextResponse.json({ success: false, error: choixMoteur.message, code: 'qualite_indisponible' }, { status: 400 });

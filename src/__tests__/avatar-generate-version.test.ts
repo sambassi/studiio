@@ -122,10 +122,10 @@ describe('POST /api/avatar/generate — version et avatar vivant', () => {
 });
 
 describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon avatar)', () => {
-  it('⚠️ sans qualité : le défaut de Mon avatar (Avatar IV, même prix qu’avant) est ENVOYÉ — jamais un défaut HeyGen implicite (#562)', async () => {
+  it('⚠️ sans qualité : LA qualité par défaut de tous les parcours (Standard → Avatar III) est ENVOYÉE — jamais un défaut HeyGen implicite (#562)', async () => {
     base.avatars = [avatar()];
     expect((await requete()).status).toBe(200);
-    expect(heygen.args[0].moteur).toBe('avatar_iv');
+    expect(heygen.args[0].moteur).toBe('avatar_iii');
   });
 
   it('⚠️ Standard → avatar_iii ; Qualité → avatar_iv SANS configuration (le moteur que ce parcours utilisait déjà)', async () => {
@@ -185,8 +185,8 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
   it('⚠️ moteur falsifié par le client (`engine`, `moteur`) : IGNORÉ — seule la qualité est lue, et revalidée', async () => {
     base.avatars = [avatar()];
     expect((await requete({ engine: { type: 'avatar_v' }, moteur: 'avatar_v' })).status).toBe(200);
-    // Le moteur falsifié n'est pas lu : c'est le défaut de Mon avatar qui part.
-    expect(heygen.args[0].moteur).toBe('avatar_iv');
+    // Le moteur falsifié n'est pas lu : c'est la qualité par défaut qui part.
+    expect(heygen.args[0].moteur).toBe('avatar_iii');
     expect((await requete({ qualite: 'avatar_v' })).status).toBe(400);
   });
 

@@ -59,7 +59,7 @@
  *     l'aperçu déjà validé en production. Pas de drapeau global pour D-ID.
  */
 
-import { lireQualiteAvatar } from '@/lib/avatar/qualite-sauvegardee';
+import { qualiteEnVigueur } from '@/lib/avatar/qualite-sauvegardee';
 import { confirmationValable } from '@/lib/fournisseurs/confirmation-cout';
 import { devisVideoHeygen, dureeParoleEstimee, type DevisFournisseur, type OperationFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { MESSAGES_AVATAR, MESSAGES_CREATION, jumeauVideoAutorise, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
@@ -171,13 +171,12 @@ export async function genererVideoJumeau(
   const { avatar, voix } = jumeau.jumeau;
   // 1 a. Sans qualité EXPLICITE (Créer, Autopilote) : la qualité que l'utilisateur
   //      a CHOISIE pour cet avatar dans Mon avatar — une seule source de vérité.
-  //      Aucun choix enregistré : le défaut serveur d'avant (Avatar III).
+  //      (Standard / Avatar III par défaut en production, la qualité affichée par Mon avatar).
+  //      Aucun choix : LA qualité par défaut de tous les parcours (`qualiteEnVigueur`).
   if (args.qualite === undefined || args.qualite === null || args.qualite === '') {
-    const sauvee = await lireQualiteAvatar(args.userId, avatar.id);
-    if (sauvee) {
-      const choix = moteurPourMonAvatar(sauvee, env);
-      if (choix.ok) choixMoteur = choix;
-    }
+    const { qualite } = await qualiteEnVigueur(args.userId, avatar.id, env);
+    const choix = moteurPourMonAvatar(qualite, env);
+    if (choix.ok) choixMoteur = choix;
   }
   // GARDE, avant tout débit : le moteur se juge POUR le fournisseur de CET
   // avatar (HeyGen : drapeau global + clés ; D-ID : le gate de l'aperçu).
