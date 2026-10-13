@@ -50,6 +50,8 @@ vi.mock('@/lib/db/supabase', () => {
       },
       async maybeSingle() {
         if (table === 'users') return { data: { role: 'user' }, error: null };
+        // La relecture de PREUVE du post déposé (`postVisibleDansCalendrier`).
+        if (table === 'scheduled_posts') return { data: posts[posts.length - 1] ?? null, error: null };
         return { data: null, error: null };
       },
       insert(row: Record<string, unknown>) {
@@ -461,7 +463,10 @@ describe('1 clic = 1 rendu : la production tourne en ARRIÈRE-PLAN', () => {
     const { readFileSync } = require('fs') as typeof import('fs');
     const panel = readFileSync(require('path').resolve(process.cwd(), 'src/components/creer/AutopilotPanel.tsx'), 'utf-8');
     expect(panel).toContain("if (res.status === 202 || data?.code === 'en-cours') return;");
-    expect(panel).toContain(".then((d) => { if (actif && d?.progression) setProduire({ etat: 'en-cours' }); })");
+    // Reprise au montage : rendu en cours OU montage-jumeau en préparation
+    // (comportement monté et vérifié dans autopilote-faux-succes-ecran).
+    expect(panel).toContain("if (d?.progression) setProduire({ etat: 'en-cours' });");
+    expect(panel).toContain("else if (d?.jumeau?.etat === 'en_preparation') setProduire({ etat: 'jumeau' });");
     expect(panel).toContain('if (!p && r) appliquerResultat(r);');
   });
 });

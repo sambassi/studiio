@@ -6,6 +6,7 @@ import { politiqueDeLUtilisateur } from '@/lib/facturation/politique';
 import { creneauImmediat } from '@/lib/autopilot/rules';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { choisirContenuManuel } from '@/lib/autopilot/contenu-manuel';
+import { postVisibleDansCalendrier } from '@/lib/autopilot/suivi-jumeau-manuel';
 import {
   produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
@@ -264,8 +265,11 @@ export async function POST(req?: Request) {
       return NextResponse.json({
         success: true,
         jumeau: 'en_preparation',
-        message: 'Votre jumeau se prépare. Le montage arrivera dans le Calendrier dans quelques minutes — vous pouvez fermer cette page.',
-        calendrierUrl: '/dashboard/calendar',
+        // ⚠️ RIEN N'EST ENCORE DANS LE CALENDRIER : le montage attend la vidéo
+        // de l'avatar, en file. L'écran le dit et suit la file
+        // (`/progression` → `jumeau`) jusqu'au post RÉELLEMENT déposé.
+        message: 'Votre avatar se prépare. Le brouillon sera déposé dans le Calendrier dès que sa vidéo sera prête.',
+        jobId,
         scheduledDate: date,
         scheduledTime: time,
         timezone: config.runTimezone,
@@ -298,22 +302,29 @@ export async function POST(req?: Request) {
       // Le prix annoncé et contrôlé ci-dessus : c'est lui qui sera débité.
       coutRendu,
       metadataSupplement: { production: 'manuelle', ...(choix.depuisApercu ? { contenuDepuisApercu: true, apercuSignature: choix.contenuSignature } : null) },
-    }).then((rendu) => {
+    }).then(async (rendu) => {
+      // PREUVE avant d'annoncer un dépôt : le post existe pour CE compte, avec
+      // sa vidéo, dans un statut que le Calendrier affiche.
+      const depose = rendu.postId ? await postVisibleDansCalendrier(userId, rendu.postId) : null;
+      if (!depose) {
+        noterResultat(userId, { success: false, error: 'Le rendu est terminé, mais le brouillon n’a pas été retrouvé dans le Calendrier.' });
+        return;
+      }
       noterResultat(userId, {
         success: true,
-        postId: rendu.postId,
+        postId: depose.postId,
         // Le Calendrier ne lit pas de paramètre d'URL : le lien mène à la page,
-        // et la date dit où regarder.
+        // et la date dit où regarder — celle RELUE dans le post.
         calendrierUrl: '/dashboard/calendar',
-        scheduledDate: date,
-        scheduledTime: time,
+        scheduledDate: depose.scheduledDate,
+        scheduledTime: depose.scheduledTime,
         timezone: config.runTimezone,
         status: 'draft',
         platforms: [],
         avertissements: rendu.avertissements,
         cout: coutRendu,
         debite: rendu.debite,
-        videoUrl: rendu.videoUrl,
+        videoUrl: depose.videoUrl,
         thumbnailUrl: rendu.thumbnailUrl,
         title: post.title,
       });

@@ -525,6 +525,8 @@ export default function AutopilotPanel({
     | { etat: 'repos' }
     | { etat: 'confirmation' }
     | { etat: 'en-cours' }
+    /** Avatar en préparation : le montage attend en file — RIEN n'est encore dans le Calendrier. */
+    | { etat: 'jumeau' }
     | { etat: 'fait'; postId: string | null; date: string; time: string; timezone: string; calendrierUrl: string; avertissements?: string[] }
     | { etat: 'erreur'; message: string }
   >({ etat: 'repos' });
@@ -1013,9 +1015,18 @@ export default function AutopilotPanel({
       setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.') });
       return;
     }
+    // ⚠️ « DÉPOSÉ » EXIGE UN POST. Un succès sans `postId` (vidéo de l'avatar
+    // encore en préparation, rendu sans dépôt) n'est PAS un dépôt : on ne
+    // l'annonce pas. Le serveur ne renvoie un `postId` qu'après avoir relu le
+    // post dans le Calendrier de ce compte (`postVisibleDansCalendrier`).
+    if (typeof data.postId !== 'string' || !data.postId) {
+      if (data.jumeau === 'en_preparation') { setProduire({ etat: 'jumeau' }); return; }
+      setProduire({ etat: 'erreur', message: 'La production s’est terminée sans brouillon enregistré dans le Calendrier.' });
+      return;
+    }
     setProduire({
       etat: 'fait',
-      postId: typeof data.postId === 'string' ? data.postId : null,
+      postId: data.postId,
       date: String(data.scheduledDate ?? ''),
       time: String(data.scheduledTime ?? ''),
       timezone: String(data.timezone ?? config.runTimezone),
@@ -1030,7 +1041,7 @@ export default function AutopilotPanel({
   // que le rendu est en cours (`/api/autopilot/produire-maintenant/progression`).
   const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string } | null>(null);
   useEffect(() => {
-    if (produire.etat !== 'en-cours') { setProgressionProduction(null); return; }
+    if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); return; }
     let actif = true;
     const lire = () => {
       fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
@@ -1042,6 +1053,17 @@ export default function AutopilotPanel({
           // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici.
           const r = d?.resultat;
           if (!p && r) appliquerResultat(r);
+          // Montage AVEC JUMEAU : l'état PROUVÉ par le serveur (file + post
+          // relu dans le Calendrier). Seul `depose` devient un succès.
+          const j = d?.jumeau as { etat?: string; message?: string; post?: { postId: string; scheduledDate: string; scheduledTime: string }; sansAvatar?: boolean } | null;
+          if (!p && !r && j?.etat === 'depose' && j.post) {
+            appliquerResultat({
+              success: true, postId: j.post.postId, scheduledDate: j.post.scheduledDate, scheduledTime: j.post.scheduledTime,
+              avertissements: j.sansAvatar ? ['La vidéo de votre avatar n’a pas pu être préparée : le brouillon a été monté sans elle.'] : [],
+            });
+          } else if (!p && !r && j?.etat === 'echec') {
+            setProduire({ etat: 'erreur', message: String(j.message ?? 'La production n’a pas abouti.') });
+          }
         })
         .catch(() => { /* la barre garde sa dernière valeur */ });
     };
@@ -1057,7 +1079,11 @@ export default function AutopilotPanel({
     let actif = true;
     fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
       .then((r) => r.json())
-      .then((d) => { if (actif && d?.progression) setProduire({ etat: 'en-cours' }); })
+      .then((d) => {
+        if (!actif) return;
+        if (d?.progression) setProduire({ etat: 'en-cours' });
+        else if (d?.jumeau?.etat === 'en_preparation') setProduire({ etat: 'jumeau' });
+      })
       .catch(() => { /* rien à reprendre */ });
     return () => { actif = false; };
   }, []);
@@ -1256,6 +1282,15 @@ export default function AutopilotPanel({
               <span>{progressionProduction?.libelle ?? 'Démarrage…'}</span>
             </p>
             <p className="text-[11px] text-gray-500">Vous pouvez continuer à régler l’Autopilote.</p>
+          </div>
+        )}
+        {produire.etat === 'jumeau' && (
+          <div className="space-y-1" data-autopilot-produire-jumeau>
+            <p className="flex items-center gap-1.5 text-xs text-gray-300">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Votre avatar se prépare. Le brouillon n’est pas encore dans le Calendrier : il y sera déposé dès que la vidéo sera montée.
+            </p>
+            <p className="text-[11px] text-gray-500">Gardez cette page ouverte pour suivre l’avancement, ou revenez plus tard.</p>
           </div>
         )}
         {produire.etat === 'fait' && (produire.avertissements ?? []).length > 0 && (
