@@ -753,7 +753,7 @@ export default function AutopilotPanel({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
     stock: etatSources.stockRetenus,
-  });
+  }, { dureeSecondes: config.brief.duree, rythme: config.brief.rythme });
   const resumeApercu: ResumeMediasApercu = {
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
@@ -1537,8 +1537,15 @@ export default function AutopilotPanel({
             titre="Brief récurrent"
             aide="Commun à toutes les vidéos produites. Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
             idPrefix="autopilot-brief"
+            sujets={config.topics}
+            avecDureeRythme
+            onChangerTheme={() => {
+              const premier = document.querySelector<HTMLButtonElement>('[data-autopilot-topic]');
+              premier?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              premier?.focus();
+            }}
           />
-          <BriefRecurrentRecap brief={config.brief} />
+          <BriefRecurrentRecap brief={config.brief} sujets={config.topics} admin={!!devis?.fournisseur} />
         </div>
       )}
 
@@ -1847,6 +1854,7 @@ export default function AutopilotPanel({
             disabled={!ready || saving}
             onChange={(g) => enregistrerSources({ ...sources, gabarit: g })}
             onRechercher={(id, lignes) => setRechercheLigne({ id, lignes })}
+            duree={{ cible: config.brief.duree ?? null, rythme: config.brief.rythme ?? null }}
           />
           {rechercheLigne && (
             <StockRechercheAutopilote

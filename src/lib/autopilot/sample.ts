@@ -1,6 +1,7 @@
 import { generateSmartContent } from '@/lib/smart-content';
 import { THEMES } from '@/lib/themes';
 import { posterQuery } from '@/lib/autopilot/poster-requete';
+import { contenuPourDuree } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
 import { sanitizeBrief } from '@/lib/creer/brief';
@@ -81,7 +82,8 @@ export interface AutopilotSample {
 export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'> & { brief?: unknown }): AutopilotSample {
   const topic = sampleTopic(config.topics);
   const seed = sampleSeed(topic);
-  const contenu = generateSmartContent(topic, seed);
+  // Le MÊME contenu que le moteur : conçu pour la durée cible du brief.
+  const contenu = contenuPourDuree(generateSmartContent(topic, seed), topic, sanitizeBrief(config.brief));
   // Le CTA du BRIEF, par la MÊME règle que le moteur (`buildAutopilotDesign`) :
   // sans elle, la vidéo portait une ligne d'action que l'aperçu ne montrait pas.
   const cta = avecCtaDuBrief({ cta: contenu.tagLine ?? '', ctaSub: '' }, sanitizeBrief(config.brief));

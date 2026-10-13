@@ -35,6 +35,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { scriptPourDuree } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
@@ -75,6 +76,16 @@ const MAX_TENTATIVES = 40;
  * montage, ce script ne se répète nulle part ailleurs.
  */
 export function scriptJumeauMontage(post: PreparedPost): string {
+  // Durée cible du brief : le script est COMPOSÉ pour elle — accroche,
+  // idées (cartes), appel à l'action — par unités entières, jamais coupé.
+  const pourDuree = scriptPourDuree({
+    titre: post.title,
+    sousTitre: post.content.subtitle,
+    cartes: post.content.cards ?? [],
+    cta: post.brief?.cta || post.content.tagLine,
+    brief: post.brief,
+  });
+  if (pourDuree !== null) return pourDuree.slice(0, MAX_SCRIPT);
   const briefMessage = (post.brief?.message ?? '').trim();
   const parts = [briefMessage, post.title, post.content.subtitle, post.content.tagLine]
     .map((p) => (typeof p === 'string' ? p.trim() : ''))

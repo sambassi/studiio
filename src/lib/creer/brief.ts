@@ -25,7 +25,37 @@ export type BriefKey = (typeof BRIEF_KEYS)[number];
 /** Un champ du brief, une fois relu : jamais plus de `BRIEF_MAX_CHARS`. */
 export const BRIEF_MAX_CHARS = 300;
 
-export type VideoBrief = Partial<Record<BriefKey, string>>;
+/** Le rythme de la narration — il fixe le débit (caractères par seconde) du script. */
+export type RythmeBrief = 'calme' | 'normal' | 'dynamique';
+
+export const RYTHMES_BRIEF: readonly RythmeBrief[] = ['calme', 'normal', 'dynamique'];
+
+export const RYTHME_LABELS: Record<RythmeBrief, string> = {
+  calme: 'Calme',
+  normal: 'Normal',
+  dynamique: 'Dynamique',
+};
+
+/** Débit de parole par rythme (caractères par seconde) — `normal` = celui de l'estimation fournisseur (≈ 14). */
+export const CARACTERES_PAR_SECONDE: Record<RythmeBrief, number> = {
+  calme: 12,
+  normal: 14,
+  dynamique: 16,
+};
+
+/** Durées proposées en un clic ; toute valeur entière dans les bornes reste acceptée (« Personnalisée »). */
+export const DUREES_BRIEF = [15, 30, 45] as const;
+export const DUREE_BRIEF_MIN = 5;
+export const DUREE_BRIEF_MAX = 90;
+
+/**
+ * Les quatre textes, plus — facultatifs eux aussi — la DURÉE CIBLE (secondes)
+ * et le RYTHME. Rangés dans le même JSON (`brief jsonb`) : aucune migration.
+ */
+export type VideoBrief = Partial<Record<BriefKey, string>> & {
+  duree?: number;
+  rythme?: RythmeBrief;
+};
 
 /** Libellés et exemples — ceux de l'utilisateur, repris tels quels. */
 export const BRIEF_LABELS: Record<BriefKey, string> = {
@@ -60,7 +90,24 @@ export function sanitizeBrief(raw: unknown): VideoBrief {
     const propre = v.trim().slice(0, BRIEF_MAX_CHARS);
     if (propre) out[cle] = propre;
   }
+  const d = o.duree;
+  if (typeof d === 'number' && Number.isFinite(d)) {
+    const n = Math.round(d);
+    if (n >= DUREE_BRIEF_MIN && n <= DUREE_BRIEF_MAX) out.duree = n;
+  }
+  if (typeof o.rythme === 'string' && (RYTHMES_BRIEF as readonly string[]).includes(o.rythme)) {
+    out.rythme = o.rythme as RythmeBrief;
+  }
   return out;
+}
+
+/**
+ * Longueur maximale (caractères) d'un script pour la durée et le rythme du
+ * brief — `null` sans durée cible : l'appelant garde alors sa borne d'avant.
+ */
+export function longueurScriptCible(brief: VideoBrief | null | undefined): number | null {
+  if (!brief?.duree) return null;
+  return Math.round(brief.duree * CARACTERES_PAR_SECONDE[brief.rythme ?? 'normal']);
 }
 
 /** Au moins un champ renseigné ? */
@@ -80,11 +127,14 @@ export function briefRempli(brief: VideoBrief | null | undefined): boolean {
  */
 export function briefPourPrompt(raw: unknown): string {
   const brief = sanitizeBrief(raw);
-  if (!briefRempli(brief)) return '';
+  if (!briefRempli(brief) && !brief.duree && !brief.rythme) return '';
   const lignes: string[] = [];
   if (brief.objectif) lignes.push(`- Objectif de la vidéo : ${brief.objectif}`);
   if (brief.message) lignes.push(`- Message à transmettre : ${brief.message}`);
   if (brief.public) lignes.push(`- Public visé : ${brief.public}`);
   if (brief.cta) lignes.push(`- Appel à l'action à reprendre tel quel dans le CTA : ${brief.cta}`);
+  const longueur = longueurScriptCible(brief);
+  if (brief.duree && longueur) lignes.push(`- Durée cible de la vidéo : ${brief.duree} secondes (narration complète ≈ ${longueur} caractères au plus)`);
+  if (brief.rythme) lignes.push(`- Rythme : ${RYTHME_LABELS[brief.rythme].toLowerCase()}`);
   return `\n\nBRIEF DE LA VIDÉO (à respecter — le titre et les cartes servent cet objectif et ce message, pour ce public) :\n${lignes.join('\n')}`;
 }

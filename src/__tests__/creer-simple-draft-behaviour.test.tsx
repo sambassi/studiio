@@ -81,7 +81,7 @@ const settle = async () => {
 /** Démarre le parcours et pose un sujet — le minimum pour avoir du travail. */
 const startAndType = async (topic: string) => {
   fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
-  const input = screen.getByPlaceholderText(/Ex\. :/);
+  const input = screen.getByPlaceholderText("Ex. : récupération après le sport");
   fireEvent.change(input, { target: { value: topic } });
   await settle();
 };
@@ -107,7 +107,7 @@ describe('Le rafraîchissement restaure — c’est tout l’objet', () => {
     resolved();
     view.rerender(<AssistantWizard />);
     await settle();
-    expect((screen.getByPlaceholderText(/Ex\. :/) as HTMLInputElement).value).toBe('yoga du matin');
+    expect((screen.getByPlaceholderText("Ex. : récupération après le sport") as HTMLInputElement).value).toBe('yoga du matin');
     expect(readKey(KEY).customTopic).toBe('yoga du matin');
   });
 
@@ -118,7 +118,7 @@ describe('Le rafraîchissement restaure — c’est tout l’objet', () => {
 
     render(<AssistantWizard />);
     await settle();
-    expect((screen.getByPlaceholderText(/Ex\. :/) as HTMLInputElement).value).toBe(
+    expect((screen.getByPlaceholderText("Ex. : récupération après le sport") as HTMLInputElement).value).toBe(
       'récupération après le sport',
     );
   });
@@ -157,7 +157,7 @@ describe('Quand l’écriture a lieu', () => {
   it('attend la pause de frappe — pas une écriture par caractère', async () => {
     render(<AssistantWizard />);
     fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
-    const input = screen.getByPlaceholderText(/Ex\. :/);
+    const input = screen.getByPlaceholderText("Ex. : récupération après le sport");
 
     const spy = vi.spyOn(Storage.prototype, 'setItem');
     for (const v of ['a', 'ab', 'abc', 'abcd', 'abcde']) {
@@ -177,7 +177,7 @@ describe('Quand l’écriture a lieu', () => {
   it('écrit au démontage — la navigation interne ne lève pas `beforeunload`', async () => {
     render(<AssistantWizard />);
     fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
-    fireEvent.change(screen.getByPlaceholderText(/Ex\. :/), { target: { value: 'juste avant' } });
+    fireEvent.change(screen.getByPlaceholderText("Ex. : récupération après le sport"), { target: { value: 'juste avant' } });
     // On démonte AVANT la fin de la minuterie.
     cleanup();
     expect(readKey(KEY).customTopic).toBe('juste avant');
@@ -186,7 +186,7 @@ describe('Quand l’écriture a lieu', () => {
   it('écrit sur `pagehide`', async () => {
     render(<AssistantWizard />);
     fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
-    fireEvent.change(screen.getByPlaceholderText(/Ex\. :/), { target: { value: 'onglet fermé' } });
+    fireEvent.change(screen.getByPlaceholderText("Ex. : récupération après le sport"), { target: { value: 'onglet fermé' } });
     window.dispatchEvent(new Event('pagehide'));
     expect(readKey(KEY).customTopic).toBe('onglet fermé');
   });

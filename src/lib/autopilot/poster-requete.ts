@@ -5,6 +5,7 @@
  * que de cette fonction, alors que `poster.ts` importe le fetch sûr et le
  * stockage (dns, fs, minio) — l'importer côté client cassait le build.
  */
+import { traduireRequete } from '@/lib/stock/requetes';
 
 /**
  * Mots-clés envoyés à la banque d'images, à partir du sujet.
@@ -26,10 +27,21 @@ export function posterQuery(topic: string): string {
     [/matin|reveil|routine/, 'morning routine sunrise'],
     [/eau|hydrat/, 'water hydration drink'],
     [/energie|motivation/, 'athlete motivation training'],
+    // Thèmes HORS SPORT : sans eux, une vidéo Finance recevait une affiche
+    // de fitness (le repli ci-dessous).
+    [/financ|argent|budget|epargn|invest|banque|salaire/, 'personal finance money budget'],
+    [/beaut|skincare|maquill|peau|cosmet/, 'skincare beauty routine'],
+    [/productiv|organis|concentr|procrastin/, 'productivity desk focus work'],
+    [/cuisine|cuisiner|food|recette|plat\b/, 'cooking kitchen food'],
+    [/voyage|voyager|travel|vacances|destination/, 'travel destination landscape'],
   ];
   for (const [motif, requete] of table) {
     if (motif.test(propre)) return requete;
   }
+  // Thème personnalisé non reconnu : SES mots (traduits quand le lexique les
+  // connaît), jamais une affiche de fitness par défaut.
+  const sesMots = traduireRequete(topic || '').trim();
+  if (sesMots) return sesMots;
   // Repli : le même que la route `/api/pexels` quand elle ne reconnaît rien.
   return 'fitness dance workout';
 }

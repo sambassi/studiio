@@ -35,6 +35,13 @@ interface Concept {
   frAction?: string;
   /** Personne : le nom seul (« Femme »). */
   frNom?: string;
+  /**
+   * Activité HORS SPORT (finance, cuisine…) : jamais suffixée de « workout »
+   * ni de « fitness », et son arrière-plan est son décor, pas un studio.
+   */
+  horsSport?: boolean;
+  decor?: string;
+  decorFr?: string;
 }
 
 const CONCEPTS: Concept[] = [
@@ -56,6 +63,12 @@ const CONCEPTS: Concept[] = [
   { mots: ['nutrition', 'alimentation', 'manger', 'repas', 'recette', 'fruits', 'legumes'], en: 'healthy food', fr: 'Alimentation saine', frAction: 'qui mange sainement', gerondif: 'eating healthy', categorie: 'activite', rang: 2 },
   { mots: ['sommeil', 'dormir', 'recuperation', 'repos'], en: 'rest recovery', fr: 'Récupération', frAction: 'au repos', gerondif: 'resting', categorie: 'activite', rang: 2 },
   { mots: ['bien-etre', 'bienetre', 'sante', 'wellness'], en: 'wellness', fr: 'Bien-être', categorie: 'activite', rang: 2 },
+  // Activités hors sport — les thèmes qui ne parlent pas d'entraînement.
+  { mots: ['finance', 'finances', 'financier', 'financiere', 'argent', 'budget', 'epargne', 'epargner', 'economiser', 'economies', 'investir', 'investissement', 'banque', 'salaire', 'depenses'], en: 'personal finance', fr: 'Finance', frAction: 'qui gère son budget', gerondif: 'managing money', categorie: 'activite', rang: 1, horsSport: true, decor: 'desk', decorFr: 'au bureau' },
+  { mots: ['beaute', 'beauty', 'skincare', 'maquillage', 'peau', 'cosmetique'], en: 'skincare', fr: 'Beauté', frAction: 'qui prend soin de sa peau', gerondif: 'doing skincare', categorie: 'activite', rang: 1, horsSport: true, decor: 'bathroom', decorFr: 'dans la salle de bain' },
+  { mots: ['cuisine', 'cuisiner', 'food', 'plat', 'plats', 'chef'], en: 'cooking', fr: 'Cuisine', frAction: 'qui cuisine', gerondif: 'cooking', categorie: 'activite', rang: 1, horsSport: true, decor: 'kitchen', decorFr: 'en cuisine' },
+  { mots: ['voyage', 'voyages', 'voyager', 'travel', 'vacances', 'destination', 'tourisme'], en: 'travel', fr: 'Voyage', frAction: 'en voyage', gerondif: 'traveling', categorie: 'activite', rang: 1, horsSport: true, decor: 'landscape', decorFr: 'en paysage' },
+  { mots: ['productivite', 'productivity', 'productif', 'productive', 'organisation', 'organiser', 'procrastination', 'concentration'], en: 'productivity', fr: 'Productivité', frAction: 'concentrée au travail', gerondif: 'working focused', categorie: 'activite', rang: 1, horsSport: true, decor: 'office', decorFr: 'au bureau' },
   // Personnes
   { mots: ['groupe', 'groupes', 'cours', 'classe', 'ensemble', 'collectif', 'communaute', 'equipe', 'participants', 'eleves'], en: 'group', fr: 'en groupe', frNom: 'Groupe', categorie: 'personnes' },
   { mots: ['femme', 'femmes', 'fille', 'filles'], en: 'woman', fr: 'au féminin', frNom: 'Femme', categorie: 'personnes' },
@@ -171,7 +184,18 @@ export function construireRecherchesStock(e: EntreeRecherchesStock): RecherchesS
   const orientation = orientationDuFormat(e.format ?? '9:16');
 
   // Le texte de la séquence passe d'abord : c'est lui qui décrit le plan.
-  const concepts = conceptsDe(e.texte, e.sujet, e.objectif);
+  // ⚠️ LE BRIEF N'EST QU'UN CONTEXTE SECONDAIRE. Dès que le texte ou le sujet
+  // nomment une activité, l'objectif ne peut plus en imposer une autre, ni un
+  // lieu, ni un style : il ne précise que les personnes et le ton. Sinon un
+  // objectif « remplir ma salle de sport » donnait des médias de salle de
+  // sport à une vidéo Finance. Sans activité au texte ni au sujet, le brief
+  // reste la seule piste — il compte alors entièrement, comme avant.
+  const primaires = conceptsDe(e.texte, e.sujet);
+  const duBrief = conceptsDe(e.objectif);
+  const primaireAUneActivite = primaires.some((c) => c.categorie === 'activite');
+  const concepts = primaireAUneActivite
+    ? [...primaires, ...duBrief.filter((c) => (c.categorie === 'personnes' || c.categorie === 'qualite') && !primaires.includes(c))]
+    : conceptsDe(e.texte, e.sujet, e.objectif);
   const de = (cat: Categorie) => concepts.filter((c) => c.categorie === cat);
   const activites = de('activite').sort((a, b) => (a.rang ?? 1) - (b.rang ?? 1));
   const principale = activites.find((a) => a.en !== 'workout' && a.en !== 'cardio') ?? activites[0];
@@ -194,15 +218,17 @@ export function construireRecherchesStock(e: EntreeRecherchesStock): RecherchesS
 
   if (principale) {
     const estEntrainement = principale.en === 'workout';
+    const horsSport = !!principale.horsSport;
     // 1. Style + activité + sujet humain : « african dance workout group ».
     pousser(
-      [style?.en, principale.en, estEntrainement ? '' : 'workout', humain?.en].filter(Boolean).join(' '),
-      [principale.fr, style ? style.fr : !estEntrainement ? 'fitness' : '', humain?.fr].filter(Boolean).join(' '),
+      [style?.en, principale.en, estEntrainement || horsSport ? '' : 'workout', humain?.en].filter(Boolean).join(' '),
+      [principale.fr, style ? style.fr : !estEntrainement && !horsSport ? 'fitness' : '', humain?.fr].filter(Boolean).join(' '),
     );
     // 2. Combinaison d'activités : « cardio dance fitness ».
     if (activites.length > 1) {
       const [a1, a2] = activites;
-      pousser(`${activites.slice(0, 2).map((a) => a.en).join(' ')} fitness`, `${a1.fr} et ${a2.fr.toLowerCase()}`);
+      const sport = !a1.horsSport && !a2.horsSport;
+      pousser(`${activites.slice(0, 2).map((a) => a.en).join(' ')}${sport ? ' fitness' : ''}`, `${a1.fr} et ${a2.fr.toLowerCase()}`);
     }
     // 3. Qualité + sujet : « energetic group workout ».
     if (qualite) {
@@ -220,7 +246,7 @@ export function construireRecherchesStock(e: EntreeRecherchesStock): RecherchesS
       `${personneC?.frNom ?? 'Femme'} ${principale.frAction ?? principale.fr.toLowerCase()} ${complement?.fr ?? ''}`,
     );
     // 5. Le cours en mouvement : « fitness class movement ».
-    if (humain?.en === 'group') {
+    if (humain?.en === 'group' && !horsSport) {
       pousser(
         `${principale.en === 'dance' ? 'dance' : 'fitness'} class movement`,
         principale.en === 'dance' ? 'Cours collectif de danse' : 'Cours collectif',
@@ -235,8 +261,8 @@ export function construireRecherchesStock(e: EntreeRecherchesStock): RecherchesS
   }
   if (visuel === 'arriere-plan') {
     pousser(
-      `${principale?.en ?? 'fitness'} ${lieu?.en ?? 'studio'} background`,
-      `Fond ${(principale?.fr ?? 'fitness').toLowerCase()} ${lieu?.fr ?? 'en studio'}`,
+      `${principale?.en ?? 'fitness'} ${lieu?.en ?? principale?.decor ?? 'studio'} background`,
+      `Fond ${(principale?.fr ?? 'fitness').toLowerCase()} ${lieu?.fr ?? principale?.decorFr ?? 'en studio'}`,
     );
   }
 

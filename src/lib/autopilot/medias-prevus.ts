@@ -24,6 +24,8 @@ import {
   type TypeCreneau,
   type CreneauGabarit,
 } from '@/lib/autopilot/sources';
+import { nombreCreneaux } from '@/lib/autopilot/duree-cible';
+import type { RythmeBrief } from '@/lib/creer/brief';
 
 /**
  * L'avatar est-il prêt pour les montages ? `null` = pas encore vérifié (ou
@@ -147,11 +149,18 @@ export function contenuRendu(etat: EtatSourcesVisuelles): { cas: ContenuRendu; p
  * dernier s'il est actif, rushes personnels d'abord au milieu, le stock en complément. Il n'est
  * jamais enregistré tel quel — seule une modification le fixe.
  */
-export function gabaritSuggere(etat: { avatar: boolean; rushes: number; stock: number }): CreneauGabarit[] {
-  // Nombre de plans intercalés : inchangé (3 avec avatar + deux sources, 2 sinon ;
-  // 4 / 3 sans avatar).
+export function gabaritSuggere(
+  etat: { avatar: boolean; rushes: number; stock: number },
+  /**
+   * Durée cible et rythme du brief. Présents : le nombre de plans en découle
+   * (`nombreCreneaux`). Absents : les nombres d'avant (3 intercalés avec
+   * avatar + deux sources, 2 sinon ; 4 / 3 sans avatar).
+   */
+  duree?: { dureeSecondes?: number | null; rythme?: RythmeBrief | null },
+): CreneauGabarit[] {
   const sources = (etat.rushes > 0 ? 1 : 0) + (etat.stock > 0 ? 1 : 0);
-  const n = sources === 0 ? 0 : etat.avatar ? (sources > 1 ? 3 : 2) : (sources > 1 ? 4 : 3);
+  const calcule = nombreCreneaux({ dureeSecondes: duree?.dureeSecondes, rythme: duree?.rythme, ...etat });
+  const n = sources === 0 ? 0 : calcule ? calcule.intercales : etat.avatar ? (sources > 1 ? 3 : 2) : (sources > 1 ? 4 : 3);
   // ⚠️ PRIORITÉ PRODUIT : les rushes personnels d'abord ; le stock ne COMPLÈTE
   // que les plans que les rushes ne couvrent pas (jamais d'alternance qui
   // remplacerait un rush disponible par du stock). Sans stock, un rush se répète.

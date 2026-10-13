@@ -10847,7 +10847,7 @@ export default function AssistantWizard() {
                     message, public et CTA guident la generation du contenu
                     (variations du lot) et le pre-remplissage des narrations.
                     Persiste dans le brouillon ; rien n'est genere ici. */}
-                <BriefVideo brief={brief} onChange={changerBrief} />
+                <BriefVideo brief={brief} onChange={changerBrief} sujets={[currentTopic]} />
 
                 {/* Le texte EXACT de la narration, par sequence — celui de
                     SequenceVoicesPanel, modifiable a l'etape Contenu. */}

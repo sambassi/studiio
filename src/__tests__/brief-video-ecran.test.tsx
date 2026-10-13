@@ -93,16 +93,16 @@ describe('Créer — étape Sujet', () => {
   it('le brief est saisi sous le sujet et arrive dans le brouillon', async () => {
     render(<AssistantWizard />);
     fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
-    // Le champ du sujet existe toujours, et il est unique (les tests
-    // existants le trouvent par /Ex\. :/).
-    expect(screen.getByPlaceholderText(/Ex\. :/)).toBeTruthy();
+    // Le champ du sujet existe toujours, et il est unique (trouvé par son
+    // exemple exact : les champs du brief ont aussi des exemples « Ex. : »).
+    expect(screen.getByPlaceholderText("Ex. : récupération après le sport")).toBeTruthy();
     const bloc = q('[data-brief-video]')!;
     expect(bloc).not.toBeNull();
     for (const cle of ['objectif', 'message', 'public', 'cta']) {
       expect(q(`[data-brief-field="${cle}"]`), cle).not.toBeNull();
     }
-    // L'exemple de l'utilisateur sert de placeholder.
-    expect(q<HTMLTextAreaElement>('[data-brief-field="objectif"]')!.placeholder).toBe(OBJECTIF);
+    // L'exemple suit le THÈME sélectionné (Sommeil par défaut) — assistant de brief.
+    expect(q<HTMLTextAreaElement>('[data-brief-field="objectif"]')!.placeholder).toBe('Ex. : aider à mieux dormir');
 
     fireEvent.change(q('[data-brief-field="objectif"]')!, { target: { value: OBJECTIF } });
     fireEvent.change(q('[data-brief-field="cta"]')!, { target: { value: 'Réservez votre cours d’essai.' } });
@@ -114,7 +114,7 @@ describe('Créer — étape Sujet', () => {
   it('sans saisie, le brouillon ne porte pas de brief', async () => {
     render(<AssistantWizard />);
     fireEvent.click(screen.getByRole('button', { name: 'Créer une vidéo' }));
-    fireEvent.change(screen.getByPlaceholderText(/Ex\. :/), { target: { value: 'danse' } });
+    fireEvent.change(screen.getByPlaceholderText("Ex. : récupération après le sport"), { target: { value: 'danse' } });
     await settle();
     expect(lireBrouillon().customTopic).toBe('danse');
     expect('brief' in lireBrouillon()).toBe(false);

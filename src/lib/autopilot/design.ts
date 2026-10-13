@@ -1,3 +1,5 @@
+import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
+import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import {
   DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS, VIDEO_SIZE,
 } from '@/lib/creer/designSpec';
@@ -173,11 +175,28 @@ export function buildAutopilotDesign(
   // voix — la plus longue des deux gagne, pour ne couper ni l'un ni l'autre.
   // Avec le jumeau, c'est SA durée qui cale la séquence : la parole de
   // l'avatar doit tenir en entier, jamais coupée.
+  // Durée cible du brief : une séquence NARRÉE dure sa voix réelle (les
+  // planchers 4/6/4 s ne servent qu'aux séquences sans voix) — sans quoi une
+  // vidéo de 15 s ne pourrait jamais descendre sous 14 s de titre/cartes/CTA.
+  // Sans durée cible : les planchers d'avant, à l'identique.
+  const seq = (cle: 'titre' | 'cartes' | 'cta', parDefaut: number) => (post.brief?.duree && voix[cle]
+    ? voiceSequenceSeconds((voix[cle] as { seconds: number }).seconds)
+    : sequenceSecondsWithVoice(voix, cle, parDefaut));
+  const introDuration = seq('titre', DEFAULT_SEQUENCE_SECONDS.intro);
+  const cardsDuration = seq('cartes', DEFAULT_SEQUENCE_SECONDS.cards);
+  const ctaDuration = seq('cta', DEFAULT_SEQUENCE_SECONDS.cta);
+  // Durée cible du brief (chemin mono-rush) : la séquence « Vidéo » prend la
+  // part qui reste après titre, cartes et CTA — jamais plus que le rush (pas
+  // d'image figée), jamais moins que sa voix. Sans durée cible : comme avant.
+  const parRush = autopilotVideoSeconds(post.rushUrl, options.rushSeconds);
+  const visee = cibleVideoDuBrief(post.brief, { introDuration, cardsDuration, ctaDuration }, false);
+  const rushConnu = typeof options.rushSeconds === 'number' && options.rushSeconds > 0 ? options.rushSeconds : null;
+  const baseVideo = visee !== null && post.rushUrl
+    ? Math.max(1, Math.round(Math.min(visee, rushConnu ?? parRush)))
+    : parRush;
   const video = jumeau
     ? Math.max(DEFAULT_SEQUENCE_SECONDS.video, Math.ceil(jumeau.seconds))
-    : sequenceSecondsWithVoice(
-      voix, 'video', autopilotVideoSeconds(post.rushUrl, options.rushSeconds),
-    );
+    : sequenceSecondsWithVoice(voix, 'video', baseVideo);
   return {
     title: post.title.toUpperCase(),
     subtitle: post.content.subtitle,
@@ -230,10 +249,10 @@ export function buildAutopilotDesign(
     // regle est un effet de l'EDITEUR, qui ecrit la duree dans le design ;
     // l'Autopilote n'a pas d'editeur, personne d'autre ne l'ecrira. La regle
     // (`voiceSequenceSeconds`) est la meme, seul l'endroit change.
-    introDuration: sequenceSecondsWithVoice(voix, 'titre', DEFAULT_SEQUENCE_SECONDS.intro),
-    cardsDuration: sequenceSecondsWithVoice(voix, 'cartes', DEFAULT_SEQUENCE_SECONDS.cards),
+    introDuration,
+    cardsDuration,
     videoDuration: video,
-    ctaDuration: sequenceSecondsWithVoice(voix, 'cta', DEFAULT_SEQUENCE_SECONDS.cta),
+    ctaDuration,
     // Voix par sequence : le rendu serveur les joue depuis la Phase 8, au
     // debut NOMINAL de chaque sequence.
     sequenceVoiceUrls: voiceUrls(voix),
