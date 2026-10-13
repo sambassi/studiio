@@ -18,7 +18,7 @@ import {
   CONFIG_PAR_DEFAUT, assainirConfig, estRefusDeSolde, lireEtats, magasinAppSettings, _reinitialiserSante,
   type Magasin,
 } from '@/lib/fournisseurs/sante';
-import { reportServiceAlert, getAllAlerts } from '@/lib/service-alerts';
+import { reportServiceAlert, getAllAlerts, getActiveAlerts, alertesDepuisValeur } from '@/lib/service-alerts';
 import { mapHeyGenFailure, CODE_SOLDE_FOURNISSEUR } from '@/lib/avatar/heygen';
 import { economieParMois } from '@/lib/fournisseurs/economie';
 
@@ -166,6 +166,21 @@ describe('alertes de service : enfin écrites (app_settings n’a ni id ni creat
     expect(lignes).toHaveLength(1);
     expect(Object.keys(lignes[0]).sort()).toEqual(['key', 'updated_at', 'value']);
     expect((await getAllAlerts()).map((a) => a.severity)).toEqual(['info', 'critical']);
+  });
+  it('PRODUCTION : la valeur revient en CHAÎNE JSON — relue en tableau, sans plantage ni découpage en caractères', async () => {
+    const existante = { id: 'heygen-1', service: 'heygen', severity: 'warning', message: 'HeyGen : solde fournisseur faible.', timestamp: new Date().toISOString(), dismissed: false };
+    fausseBase.table('app_settings').push({ key: 'service_alerts', value: JSON.stringify([existante]) });
+    expect(await getActiveAlerts()).toEqual([existante]);
+    await reportServiceAlert('heygen', 'critical', 'HeyGen : fournisseur bloqué — génération mise en attente.');
+    const relues = await getAllAlerts();
+    expect(relues.map((a) => a.severity)).toEqual(['critical', 'warning']);
+    expect(relues.every((a) => typeof a === 'object' && typeof a.id === 'string')).toBe(true);
+  });
+  it('valeur illisible ou entrées parasites : écartées, jamais une exception', () => {
+    expect(alertesDepuisValeur('{pas du json')).toEqual([]);
+    expect(alertesDepuisValeur('"texte"')).toEqual([]);
+    expect(alertesDepuisValeur(['[', 'x', null, 3])).toEqual([]);
+    expect(alertesDepuisValeur(null)).toEqual([]);
   });
   it('le magasin `app_settings` du module santé relit aussi une valeur écrite en chaîne JSON', async () => {
     fausseBase.table('app_settings').push({ key: 'provider_billing_config', value: JSON.stringify({ heygen: { seuilBas: 77 } }) });
