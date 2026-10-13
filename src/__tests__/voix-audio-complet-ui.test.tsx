@@ -99,10 +99,16 @@ describe('MaVoixPanel — audio complet', () => {
     expect(lien.hasAttribute('download')).toBe(true);
     expect(lien.querySelector('svg')).not.toBeNull();
     expect(lien.textContent).toContain('Télécharger l’audio');
-    const lecteur = document.querySelector('[data-audio-complet-lecteur]') as HTMLAudioElement;
-    expect(lecteur.getAttribute('src')).toBe(URL_AUDIO);
-    expect(lecteur.hasAttribute('controls')).toBe(true);
-    expect(lecteur.getAttribute('controlslist')).toBeNull();
+    // Anti-régression (bug signalé deux fois) : LE lecteur Studiio partagé, jamais `<audio controls>`.
+    const lecteur = document.querySelector('[data-audio-complet-lecteur]') as HTMLElement;
+    expect(lecteur.querySelector('[data-lecteur-voix]')).not.toBeNull();
+    expect(lecteur.querySelector('[data-lecteur-voix-bouton]')).not.toBeNull();
+    expect(lecteur.querySelector('[data-lecteur-voix-onde]')).not.toBeNull();
+    expect(lecteur.querySelector('[data-lecteur-voix-temps]')).not.toBeNull();
+    // Il lit EXACTEMENT l'URL rendue par le serveur.
+    expect(lecteur.querySelector('audio')!.getAttribute('src')).toBe(URL_AUDIO);
+    expect(document.querySelector('audio[controls]')).toBeNull();
+    expect(document.querySelector('[controls]')).toBeNull();
     expect(bouton().disabled).toBe(false);
   });
 

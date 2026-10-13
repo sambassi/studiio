@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Mic, Pencil, Play, Plus, Trash2, Check, X, Volume2, Wand2 } from 'lucide-react';
 import {
-  ajouterPrononciation, modifierPrononciation, supprimerPrononciation, scriptParle,
+  ajouterPrononciation, modifierPrononciation, supprimerPrononciation, scriptParle, prononciationIdentique,
   MESSAGES_PRONONCIATION, type Prononciation,
 } from '@/lib/voice/prononciations';
 import { MAX_CARACTERES_PREECOUTE, MESSAGE_TROP_D_ECOUTES } from '@/lib/voice/preecoute';
-import { suggererPrononciationLocale } from '@/lib/voice/suggestion-prononciation';
+import { suggererPrononciationLocale, suggestionUtile, MESSAGE_AUCUNE_SUGGESTION } from '@/lib/voice/suggestion-prononciation';
 import AudioCompletSection from '@/components/voice/AudioCompletSection';
 import LecteurVoixCompact from '@/components/voice/LecteurVoixCompact';
 
@@ -50,6 +50,8 @@ interface Profil {
   motifVoix: string | null;
   messageVoix: string | null;
   prononciations: Prononciation[];
+  /** Anciennes entrées « X → X » : signalées, jamais appliquées (absent des anciens serveurs). */
+  prononciationsIdentiques?: Prononciation[];
   ecouteDisponible: boolean;
 }
 
@@ -96,6 +98,7 @@ export default function MaVoixPanel() {
         voix: d.voix ?? [], choix: d.choix ?? null, voixResolue: d.voixResolue ?? null,
         motifVoix: d.motifVoix ?? null, messageVoix: d.messageVoix ?? null,
         prononciations: Array.isArray(d.prononciations) ? d.prononciations : [], ecouteDisponible: d.ecouteDisponible === true,
+        prononciationsIdentiques: Array.isArray(d.prononciationsIdentiques) ? d.prononciationsIdentiques : [],
       });
     } catch {
       setErreur('Profil vocal illisible.');
@@ -110,14 +113,20 @@ export default function MaVoixPanel() {
   // Indicatif seulement : le serveur refuse de lui-même au-delà de la borne.
   const spokenTropLong = spoken.length > MAX_CARACTERES_PREECOUTE;
 
-  const enregistrerListe = async (liste: Prononciation[]) => {
+  const identiques = profil?.prononciationsIdentiques ?? [];
+
+  const enregistrerListe = async (liste: Prononciation[], retirerIdentiques: string[] = []) => {
     setErreur(null);
     const res = await fetch('/api/voice/profil/prononciations', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prononciations: liste }),
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(retirerIdentiques.length ? { prononciations: liste, retirerIdentiques } : { prononciations: liste }),
     });
     const json = await res.json();
     if (!json.success) { setErreur(json.error || 'Enregistrement impossible.'); return false; }
-    setProfil((p) => (p ? { ...p, prononciations: json.data.prononciations } : p));
+    setProfil((p) => (p ? {
+      ...p,
+      prononciations: json.data.prononciations,
+      ...(Array.isArray(json.data.prononciationsIdentiques) ? { prononciationsIdentiques: json.data.prononciationsIdentiques } : {}),
+    } : p));
     return true;
   };
 
@@ -138,30 +147,37 @@ export default function MaVoixPanel() {
    * « Suggérer » : la règle locale d'abord (immédiate, sans réseau) ; le
    * serveur seulement si elle ne sait pas trancher. Ne fait QUE remplir le
    * champ prononcé — rien n'est enregistré, le texte d'origine reste tel quel.
+   *
+   * ⚠️ JAMAIS LE MÊME TEXTE. Une suggestion identique au texte d'origine
+   * (« lien en bio → lien en bio ») n'est PAS une correction : le champ
+   * n'est alors pas touché et l'écran le dit (`MESSAGE_AUCUNE_SUGGESTION`).
    */
   const suggerer = async () => {
     if (!brouillon || suggestionEnCours) return;
     const affiche = brouillon.affiche;
+    const avant = brouillon.prononce;
     const locale = suggererPrononciationLocale(affiche);
     setErreurBrouillon(null);
-    if (!locale.suggestion) { setNoteSuggestion('Écrivez d’abord le texte d’origine.'); return; }
-    setBrouillon((b) => (b ? { ...b, prononce: locale.suggestion } : b));
+    if (!affiche.trim()) { setNoteSuggestion('Écrivez d’abord le texte d’origine.'); return; }
+    const localeUtile = suggestionUtile(affiche, locale.suggestion);
     const noteOk = 'Suggestion Studiio : modifiez-la si besoin, écoutez-la, puis enregistrez.';
-    if (!locale.incertain) { setNoteSuggestion(noteOk); return; }
+    if (localeUtile) setBrouillon((b) => (b ? { ...b, prononce: localeUtile } : b));
+    if (localeUtile && !locale.incertain) { setNoteSuggestion(noteOk); return; }
     setSuggestionEnCours(true);
-    let note = 'Studiio n’a pas trouvé mieux : ajustez la prononciation à votre oreille, puis écoutez-la.';
+    let note = localeUtile ? 'Suggestion approximative : ajustez-la à votre oreille, puis écoutez-la.' : MESSAGE_AUCUNE_SUGGESTION;
     try {
       const res = await fetch('/api/voice/prononciations/suggestion', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ affiche }),
       });
       const json = await res.json().catch(() => ({}));
-      const proposee = json?.data?.suggestion;
-      if (res.ok && json?.success && json.data?.source === 'ia' && typeof proposee === 'string' && proposee.trim()) {
+      const proposee = res.ok && json?.success ? suggestionUtile(affiche, json.data?.suggestion) : null;
+      if (proposee && json.data?.source === 'ia') {
         // Seulement si la personne n'a rien changé entre-temps.
-        setBrouillon((b) => (b && b.affiche === affiche && b.prononce === locale.suggestion ? { ...b, prononce: proposee } : b));
+        const attendu = localeUtile ?? avant;
+        setBrouillon((b) => (b && b.affiche === affiche && b.prononce === attendu ? { ...b, prononce: proposee } : b));
         note = noteOk;
       }
-    } catch { /* la suggestion locale reste en place */ }
+    } catch { /* la suggestion locale (s'il y en a une) reste en place */ }
     finally {
       setSuggestionEnCours(false);
       setNoteSuggestion(note);
@@ -337,6 +353,18 @@ export default function MaVoixPanel() {
               )}
             </li>
           ))}
+          {identiques.map((p) => (
+            <li key={`identique-${p.affiche}`} data-prononciation-identique={p.affiche} className="text-sm rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <span><span className="font-medium">{p.affiche}</span> <span className="text-gray-400">→</span> {p.prononce}</span>
+                <span className="flex items-center gap-2">
+                  <button data-prononciation-identique-modifier={p.affiche} onClick={() => ouvrirBrouillon({ affiche: p.affiche, prononce: '', origine: null })} className="text-gray-300 hover:text-white flex items-center gap-1 text-xs"><Pencil className="w-3.5 h-3.5" /> Modifier</button>
+                  <button data-prononciation-identique-supprimer={p.affiche} onClick={() => void enregistrerListe(prononciations, [p.affiche])} className="text-gray-300 hover:text-red-300 flex items-center gap-1 text-xs"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-amber-200">Cette prononciation est identique au texte original : elle n’est pas appliquée.</div>
+            </li>
+          ))}
         </ul>
         {brouillon ? (
           <div data-prononciation-formulaire className="space-y-2 rounded-lg bg-white/5 p-3">
@@ -348,6 +376,9 @@ export default function MaVoixPanel() {
                 <input data-prononciation-prononce value={brouillon.prononce} onChange={(e) => setBrouillon({ ...brouillon, prononce: e.target.value })} placeholder="trois en un os renforcés" className="mt-1 w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white" />
               </label>
             </div>
+            {prononciationIdentique(brouillon.affiche, brouillon.prononce) && (
+              <div data-prononciation-brouillon-identique className="text-xs text-amber-200">Cette prononciation est identique au texte original : elle ne changerait rien.</div>
+            )}
             <span className="flex flex-wrap gap-2">
               <button type="button" data-prononciation-suggerer onClick={() => void suggerer()} disabled={suggestionEnCours || !brouillon.affiche.trim()} className="text-gray-300 hover:text-white flex items-center gap-1 text-sm disabled:opacity-40">
                 {suggestionEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} Suggérer
@@ -357,7 +388,7 @@ export default function MaVoixPanel() {
                   {ecouteBrouillonEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} Écouter
                 </button>
               )}
-              <button data-prononciation-valider onClick={() => void validerBrouillon()} className="button-primary flex items-center gap-1 text-sm"><Check className="w-4 h-4" /> Enregistrer</button>
+              <button data-prononciation-valider onClick={() => void validerBrouillon()} disabled={prononciationIdentique(brouillon.affiche, brouillon.prononce)} className="button-primary flex items-center gap-1 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> Enregistrer</button>
               <button data-prononciation-annuler onClick={() => ouvrirBrouillon(null)} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm"><X className="w-4 h-4" /> Annuler</button>
             </span>
             {noteSuggestion && <div data-prononciation-note className="text-xs text-gray-400">{noteSuggestion}</div>}

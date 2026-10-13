@@ -25,7 +25,21 @@
  * cas où l'écran demande l'aide du serveur.
  */
 import { normaliserPourTTS, nombreEnLettres } from '@/lib/voice/normalisation-tts';
-import { cleAffiche, MAX_LONGUEUR_PRONONCIATION } from '@/lib/voice/prononciations';
+import { cleAffiche, MAX_LONGUEUR_PRONONCIATION, prononciationIdentique } from '@/lib/voice/prononciations';
+
+/** Le message quand aucune forme dite DIFFÉRENTE n'existe : le champ n'est pas touché. */
+export const MESSAGE_AUCUNE_SUGGESTION = 'Aucune suggestion de prononciation différente trouvée.';
+
+/**
+ * Une suggestion n'est UTILE que si elle diffère du texte affiché (même
+ * normalisation que l'enregistrement). Sinon `null` : on ne simule jamais une
+ * correction en rendant le même texte.
+ */
+export function suggestionUtile(affiche: string, suggestion: string | null | undefined): string | null {
+  const s = (suggestion ?? '').trim();
+  if (!s || prononciationIdentique(affiche, s)) return null;
+  return s;
+}
 
 export interface SuggestionLocale {
   /** La forme dite proposée (peut être vide si l'entrée l'est). */

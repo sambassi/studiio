@@ -25,7 +25,7 @@
 
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { listUserVoices, type UserVoice } from '@/lib/voice/store';
-import { lirePrononciations, scriptParle, type Prononciation } from '@/lib/voice/prononciations';
+import { cleAffiche, lirePrononciations, lirePrononciationsIdentiques, scriptParle, type Prononciation } from '@/lib/voice/prononciations';
 
 /** Les fournisseurs pour lesquels une synthèse est RÉELLEMENT câblée. */
 export const FOURNISSEURS_VOIX_CABLES = ['elevenlabs'] as const;
@@ -61,6 +61,12 @@ export interface ProfilVoix {
   /** La voix qui parlera, ou le motif qui l'empêche. */
   resolution: { ok: true; voix: VoixPersonnelle } | { ok: false; motif: MotifVoix };
   prononciations: Prononciation[];
+  /**
+   * Anciennes entrées dont la forme dite est IDENTIQUE au texte affiché :
+   * jamais appliquées, montrées à part pour que la personne les modifie ou
+   * les supprime. Jamais effacées sans son geste.
+   */
+  prononciationsIdentiques: Prononciation[];
 }
 
 /** Une voix de `user_voices` est-elle utilisable pour parler ? */
@@ -101,12 +107,12 @@ export function resoudreVoix(voix: UserVoice[], choix: string | null): ProfilVoi
 
 const CLE_PREFERENCE = 'voixPersonnelle';
 
-interface PreferenceVoix { userVoiceId: string | null; prononciations: Prononciation[] }
+interface PreferenceVoix { userVoiceId: string | null; prononciations: Prononciation[]; identiques: Prononciation[] }
 
 function lirePreference(brut: unknown): PreferenceVoix {
   const o = (brut && typeof brut === 'object' ? brut : {}) as Record<string, unknown>;
   const userVoiceId = typeof o.userVoiceId === 'string' && UUID.test(o.userVoiceId) ? o.userVoiceId : null;
-  return { userVoiceId, prononciations: lirePrononciations(o.prononciations) };
+  return { userVoiceId, prononciations: lirePrononciations(o.prononciations), identiques: lirePrononciationsIdentiques(o.prononciations) };
 }
 
 async function lirePreferences(userId: string): Promise<{ ok: true; toutes: Record<string, unknown>; voix: PreferenceVoix } | { ok: false; erreur: string }> {
@@ -124,7 +130,12 @@ async function ecrirePreference(userId: string, valeur: PreferenceVoix): Promise
   const actuelles = await lirePreferences(userId);
   if (!actuelles.ok) return actuelles;
   // Les AUTRES préférences du compte sont conservées : on ne réécrit que notre clé.
-  const fusion = { ...actuelles.toutes, [CLE_PREFERENCE]: valeur };
+  // Les entrées identiques (signalées, jamais appliquées) restent stockées
+  // tant que la personne ne les a ni modifiées ni supprimées.
+  const fusion = {
+    ...actuelles.toutes,
+    [CLE_PREFERENCE]: { userVoiceId: valeur.userVoiceId, prononciations: [...valeur.prononciations, ...valeur.identiques] },
+  };
   const { error } = await supabaseAdmin
     .from('user_settings')
     .upsert({ user_id: userId, creator_preferences: fusion, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
@@ -147,6 +158,7 @@ export async function lireProfilVoix(userId: string): Promise<{ ok: true; profil
       choix: prefs.voix.userVoiceId,
       resolution: resoudreVoix(voix, prefs.voix.userVoiceId),
       prononciations: prefs.voix.prononciations,
+      prononciationsIdentiques: prefs.voix.identiques,
     },
   };
 }
@@ -173,17 +185,27 @@ export async function choisirVoix(userId: string, userVoiceId: unknown): Promise
   }
   const prefs = await lirePreferences(userId);
   if (!prefs.ok) return prefs;
-  const ecriture = await ecrirePreference(userId, { userVoiceId: choix, prononciations: prefs.voix.prononciations });
+  const ecriture = await ecrirePreference(userId, { userVoiceId: choix, prononciations: prefs.voix.prononciations, identiques: prefs.voix.identiques });
   if (!ecriture.ok) return ecriture;
   return lireProfilVoix(userId);
 }
 
-/** Remplace la liste des prononciations du compte (déjà validée par l'appelant, relue tolérante ici). */
-export async function enregistrerPrononciations(userId: string, liste: Prononciation[]): Promise<{ ok: true; profil: ProfilVoix } | { ok: false; erreur: string }> {
+/**
+ * Remplace la liste des prononciations du compte (déjà validée par
+ * l'appelant, relue tolérante ici). Les anciennes entrées IDENTIQUES sont
+ * gardées, sauf celles que la personne retire (`retirerIdentiques`) ou
+ * remplace par une vraie prononciation du même texte affiché.
+ */
+export async function enregistrerPrononciations(
+  userId: string, liste: Prononciation[], retirerIdentiques: readonly string[] = [],
+): Promise<{ ok: true; profil: ProfilVoix } | { ok: false; erreur: string }> {
   if (!UUID.test(userId)) return { ok: false, erreur: 'compte invalide' };
   const prefs = await lirePreferences(userId);
   if (!prefs.ok) return prefs;
-  const ecriture = await ecrirePreference(userId, { userVoiceId: prefs.voix.userVoiceId, prononciations: lirePrononciations(liste) });
+  const valides = lirePrononciations(liste);
+  const exclues = new Set([...valides.map((p) => cleAffiche(p.affiche)), ...retirerIdentiques.map((a) => cleAffiche(a))]);
+  const identiques = prefs.voix.identiques.filter((p) => !exclues.has(cleAffiche(p.affiche)));
+  const ecriture = await ecrirePreference(userId, { userVoiceId: prefs.voix.userVoiceId, prononciations: valides, identiques });
   if (!ecriture.ok) return ecriture;
   return lireProfilVoix(userId);
 }

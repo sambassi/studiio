@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 export async function PUT(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-  let corps: { prononciations?: unknown } = {};
+  let corps: { prononciations?: unknown; retirerIdentiques?: unknown } = {};
   try { corps = (await req.json()) ?? {}; } catch { corps = {}; }
   if (!Array.isArray(corps.prononciations)) {
     return NextResponse.json({ success: false, error: 'Liste de prononciations manquante.' }, { status: 400 });
@@ -30,10 +30,13 @@ export async function PUT(req: NextRequest) {
     }
     liste = r.liste;
   }
-  const r = await enregistrerPrononciations(session.user.id, liste);
+  const retirer = Array.isArray(corps.retirerIdentiques)
+    ? corps.retirerIdentiques.filter((a): a is string => typeof a === 'string').slice(0, 100)
+    : [];
+  const r = await enregistrerPrononciations(session.user.id, liste, retirer);
   if (!r.ok) {
     console.error('[Voice][profil] prononciations non enregistrées :', r.erreur);
     return NextResponse.json({ success: false, error: 'Vos prononciations n’ont pas pu être enregistrées.' }, { status: 500 });
   }
-  return NextResponse.json({ success: true, data: { prononciations: r.profil.prononciations } });
+  return NextResponse.json({ success: true, data: { prononciations: r.profil.prononciations, prononciationsIdentiques: r.profil.prononciationsIdentiques } });
 }

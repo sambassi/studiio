@@ -53,12 +53,50 @@ export const MAX_LONGUEUR_PRONONCIATION = 80;
 /** Espaces normalisés, sans caractères de contrôle. */
 function normaliser(valeur: unknown): string {
   if (typeof valeur !== 'string') return '';
-  return valeur.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  return valeur.normalize('NFC').replace(/[\u0000-\u001f\u007f\u200b-\u200d\u2060\ufeff]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-/** La clé d'identité d'une entrée : le texte affiché, sans casse. */
+/**
+ * La clé d'identité d'une entrée : le texte affiché, sans casse, en forme
+ * Unicode composée, espaces (y compris insécables et invisibles) réduits.
+ * « lien en bio », « Lien  en bio » et « lien en bio » ont la même clé.
+ */
 export function cleAffiche(affiche: string): string {
   return normaliser(affiche).toLocaleLowerCase('fr');
+}
+
+/**
+ * La forme dite est-elle IDENTIQUE au texte affiché (même clé) ? Une telle
+ * entrée ne corrige rien : elle n'est jamais suggérée, jamais acceptée, et
+ * jamais appliquée par `scriptParle`.
+ */
+export function prononciationIdentique(affiche: unknown, prononce: unknown): boolean {
+  const a = normaliser(affiche);
+  const p = normaliser(prononce);
+  return a.length > 0 && p.length > 0 && cleAffiche(a) === cleAffiche(p);
+}
+
+/**
+ * Les entrées ENREGISTRÉES (anciennes données) dont la forme dite est
+ * identique au texte affiché : relues À PART pour être SIGNALÉES à l'écran
+ * (« Modifier » / « Supprimer »), jamais supprimées en silence, jamais
+ * appliquées. Dédupliquées par texte affiché.
+ */
+export function lirePrononciationsIdentiques(brut: unknown): Prononciation[] {
+  if (!Array.isArray(brut)) return [];
+  const vues = new Set<string>();
+  const liste: Prononciation[] = [];
+  for (const entree of brut) {
+    const o = (entree && typeof entree === 'object' ? entree : {}) as Record<string, unknown>;
+    if (!prononciationIdentique(o.affiche, o.prononce)) continue;
+    const affiche = normaliser(o.affiche);
+    if (affiche.length > MAX_LONGUEUR_PRONONCIATION) continue;
+    const cle = cleAffiche(affiche);
+    if (vues.has(cle)) continue;
+    vues.add(cle);
+    liste.push({ affiche, prononce: normaliser(o.prononce) });
+  }
+  return liste;
 }
 
 export type RefusPrononciation = 'vide' | 'trop_long' | 'identique' | 'doublon' | 'trop_nombreuses';
@@ -66,7 +104,7 @@ export type RefusPrononciation = 'vide' | 'trop_long' | 'identique' | 'doublon' 
 export const MESSAGES_PRONONCIATION: Record<RefusPrononciation, string> = {
   vide: 'Le texte affiché et le texte prononcé sont obligatoires.',
   trop_long: `Chaque texte est limité à ${MAX_LONGUEUR_PRONONCIATION} caractères.`,
-  identique: 'Le texte prononcé est identique au texte affiché.',
+  identique: 'Cette prononciation est identique au texte original : elle ne changerait rien.',
   doublon: 'Ce mot a déjà une prononciation.',
   trop_nombreuses: `Vous pouvez enregistrer ${MAX_PRONONCIATIONS} prononciations au maximum.`,
 };
@@ -79,7 +117,7 @@ export function prononciationValide(brut: unknown): { ok: true; valeur: Prononci
   if (!affiche || !prononce) return { ok: false, motif: 'vide' };
   if (affiche.length > MAX_LONGUEUR_PRONONCIATION || prononce.length > MAX_LONGUEUR_PRONONCIATION) return { ok: false, motif: 'trop_long' };
   // Identique sans casse : « Afroboost → afroboost » ne changerait rien à l'oreille.
-  if (cleAffiche(affiche) === cleAffiche(prononce)) return { ok: false, motif: 'identique' };
+  if (prononciationIdentique(affiche, prononce)) return { ok: false, motif: 'identique' };
   return { ok: true, valeur: { affiche, prononce } };
 }
 

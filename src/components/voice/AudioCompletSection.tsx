@@ -8,6 +8,7 @@ import {
 } from '@/lib/voice/audio-complet';
 import { useTarifs } from '@/lib/tarifs/client';
 import BlocPrix from '@/components/ui/BlocPrix';
+import LecteurVoixCompact from '@/components/voice/LecteurVoixCompact';
 
 /**
  * « Audio complet » — section de « Ma voix », séparée de la pré-écoute
@@ -100,7 +101,12 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
       {erreurComplet && <div data-audio-complet-erreur className="text-sm text-red-200">{erreurComplet}</div>}
       {audioComplet && (
         <div data-audio-complet-resultat className="space-y-2">
-          <audio data-audio-complet-lecteur src={audioComplet.url} controls className="w-full" />
+          {/* LE lecteur Studiio — le même composant que la pré-écoute (`LecteurVoixCompact`),
+              jamais le lecteur natif blanc du navigateur (attribut `controls`). Il lit EXACTEMENT
+              l'URL rendue par le serveur : aucun nouvel appel, aucune régénération. */}
+          <div data-audio-complet-lecteur>
+            <LecteurVoixCompact src={audioComplet.url} />
+          </div>
           <div className="flex items-center gap-3 text-sm">
             <a data-audio-complet-telecharger href={audioComplet.url} download className="flex items-center gap-1.5 text-gray-200 hover:text-white">
               <Download className="w-4 h-4" /> Télécharger l’audio

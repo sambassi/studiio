@@ -124,7 +124,8 @@ describe('MaVoixPanel — coût de « Suggérer »', () => {
     fireEvent.click(q('[data-prononciation-ajouter]'));
     fireEvent.change(champAffiche(), { target: { value: 'ADN' } });
     fireEvent.click(q('[data-prononciation-suggerer]'));
-    await waitFor(() => expect(q('[data-prononciation-note]')?.textContent).toMatch(/n’a pas trouvé mieux/));
+    // « A D N » diffère de « ADN » : c'est une vraie suggestion (approximative), gardée.
+    await waitFor(() => expect(q('[data-prononciation-note]')?.textContent).toMatch(/Suggestion approximative/));
     expect(appelsRoute()).toBe(1);
     expect(champPrononce().value).toBe('A D N');
     expect(q<HTMLButtonElement>('[data-prononciation-suggerer]').disabled).toBe(false);

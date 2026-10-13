@@ -164,7 +164,7 @@ describe('POST /api/voice/prononciations/suggestion', () => {
 
   it('⚠️ cas difficile SANS clé Anthropic : suggestion locale seulement, aucun appel', async () => {
     const res = await post(SUGGERER, { affiche: 'Afroboost' });
-    expect(await res.json()).toEqual({ success: true, data: { suggestion: 'Afroboost', source: 'locale' } });
+    expect(await res.json()).toEqual({ success: true, data: { suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' } });
     expect(reseau.anthropic).toEqual([]);
   });
 
@@ -187,9 +187,9 @@ describe('POST /api/voice/prononciations/suggestion', () => {
     reseau.reponseAnthropic = { status: 500, texte: null };
     expect((await (await post(SUGGERER, { affiche: 'ADN' })).json()).data).toEqual({ suggestion: 'A D N', source: 'locale' });
     reseau.reponseAnthropic = { status: 200, texte: null };
-    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data.source).toBe('locale');
+    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data.source).toBe('aucune');
     reseau.reponseAnthropic = { status: 200, texte: 'AFROBOOST' };
-    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data).toEqual({ suggestion: 'Afroboost', source: 'locale' });
+    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' });
   });
 
   it('limiteur par compte : au-delà de 10 par minute → 429 avec Retry-After', async () => {

@@ -30,6 +30,7 @@ export async function GET() {
       motifVoix: p.resolution.ok ? null : p.resolution.motif,
       messageVoix: p.resolution.ok ? null : MESSAGES_VOIX[p.resolution.motif],
       prononciations: p.prononciations,
+      prononciationsIdentiques: p.prononciationsIdentiques,
       ecouteDisponible: p.resolution.ok && cleElevenLabs() !== null,
     },
   }, { headers: { 'Cache-Control': 'private, no-store' } });
