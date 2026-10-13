@@ -110,6 +110,21 @@ const lireQualites = (brut: unknown): QualiteOfferte[] => (Array.isArray(brut)
   ? (brut as QualiteOfferte[]).filter((q) => q && (q.qualite === 'standard' || q.qualite === 'qualite' || q.qualite === 'premium'))
   : []);
 
+/**
+ * LA qualité en vigueur à l'écran — la même règle que le serveur
+ * (`qualiteEnVigueur`) : le choix enregistré (affiché même s'il est devenu
+ * indisponible, bloqué avec sa raison — jamais remplacé en silence), sinon la
+ * qualité par défaut de tous les parcours. Défaut fermé pour cet avatar : la
+ * première qualité ouverte, À ENREGISTRER pour que Créer et l'Autopilote
+ * utilisent exactement celle affichée.
+ */
+function qualiteEnVigueurEcran(liste: QualiteOfferte[], sauvee: Qualite | null, defaut: Qualite): { qualite: Qualite; aEnregistrer: boolean } {
+  if (sauvee) return { qualite: sauvee, aEnregistrer: false };
+  if (liste.length === 0 || liste.some((q) => q.qualite === defaut && q.ouverte)) return { qualite: defaut, aEnregistrer: false };
+  const premiere = liste.find((q) => q.ouverte)?.qualite;
+  return premiere ? { qualite: premiere, aEnregistrer: true } : { qualite: defaut, aEnregistrer: false };
+}
+
 /** La génération en cours, mémorisée pour la reprise après rechargement (le stockage peut être indisponible). */
 const memoriserGeneration = (g: GenerationEnCours | null) => {
   try {
@@ -176,6 +191,15 @@ export default function AvatarPage() {
   const [qualite, setQualite] = useState<Qualite>('qualite');
   /** La qualité ENREGISTRÉE pour cet avatar : source de vérité du moteur (Mon avatar, Créer, Autopilote). */
   const [qualiteSauvegardee, setQualiteSauvegardee] = useState<Qualite | null>(null);
+  /** Enregistre la qualité de CET avatar (source de vérité de Créer et de l'Autopilote) ; échec → l'état d'avant, dit. */
+  const enregistrerQualite = (avatarId: string, q: Qualite, avant: Qualite | null) => {
+    setQualiteSauvegardee(q);
+    void fetch('/api/avatar/qualite', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarId, qualite: q }),
+    }).then((r) => r.json()).then((j) => {
+      if (!j?.success) { setQualiteSauvegardee(avant); setError(j?.error || 'La qualité n’a pas pu être enregistrée.'); }
+    }).catch(() => { setQualiteSauvegardee(avant); setError('La qualité n’a pas pu être enregistrée.'); });
+  };
   const tarifs = useTarifs();
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   /** Où en est la génération (étapes RÉELLES du parcours HeyGen ou du jumeau), et son début. */
@@ -458,13 +482,22 @@ export default function AvatarPage() {
     setNomProfil(typeof json.data.nomProfil === 'string' ? json.data.nomProfil : null);
     const o = json.data.orientationAvatar;
     setOrientationAvatar(o === 'portrait' || o === 'landscape' || o === 'square' ? o : null);
+    const brute = json.data.qualiteSauvegardee;
+    const sauvee: Qualite | null = brute === 'standard' || brute === 'qualite' || brute === 'premium' ? brute : null;
+    setQualiteSauvegardee(sauvee);
     if (Array.isArray(json.data.qualites)) {
-      setQualitesHeygen(lireQualites(json.data.qualites));
-      if (json.data.qualiteParDefaut) setDefautHeygen(json.data.qualiteParDefaut as Qualite);
+      const liste = lireQualites(json.data.qualites);
+      const defaut = (json.data.qualiteParDefaut as Qualite | undefined) ?? defautHeygen;
+      setQualitesHeygen(liste);
+      setDefautHeygen(defaut);
       setQualitesClonee(lireQualites(json.data.qualitesVoixClonee));
+      // La sélection est posée DANS LE MÊME RENDU que l'avatar et ses qualités :
+      // jamais un rendu intermédiaire qui montrerait une autre qualité, un autre
+      // prix ou un autre coût (vu en CI : « Qualité » affichée un instant).
+      const choix = qualiteEnVigueurEcran(liste, sauvee, defaut);
+      setQualite(choix.qualite);
+      if (choix.aEnregistrer && json.data.avatar?.id) enregistrerQualite(json.data.avatar.id, choix.qualite, sauvee);
     }
-    const sauvee = json.data.qualiteSauvegardee;
-    setQualiteSauvegardee(sauvee === 'standard' || sauvee === 'qualite' || sauvee === 'premium' ? sauvee : null);
     if (json.data.avatar?.etat === 'entraine_non_valide') void loadApercu();
     else setApercu(null);
     if (json.data.avatar?.etat === 'valide') void loadRenduRecent();
@@ -952,16 +985,10 @@ export default function AvatarPage() {
     : null;
   const prixGeneration = tarifs.prix[cleTarifEcranMonAvatar({ viaVoixClonee, qualiteEnvoyee: qualites.length > 0 ? qualite : undefined })];
     useEffect(() => {
-    const liste = viaVoixClonee ? qualitesClonee : qualitesHeygen;
-    // Le CHOIX enregistré de l'utilisateur ; sinon LA qualité par défaut, la même
-    // que Créer et l'Autopilote (le serveur la donne). Un choix enregistré devenu
-    // indisponible reste AFFICHÉ, bloqué, avec sa raison — jamais remplacé en silence.
-    const voulu = qualiteSauvegardee ?? defautHeygen;
-    if (qualiteSauvegardee || liste.length === 0 || liste.some((q) => q.qualite === voulu && q.ouverte)) { setQualite(voulu); return; }
-    // Défaut fermé pour CET avatar : la première qualité ouverte, ENREGISTRÉE — pour
-    // que Créer et l'Autopilote utilisent exactement celle affichée ici.
-    const premiere = liste.find((q) => q.ouverte)?.qualite;
-    if (premiere) choisirQualiteRef.current(premiere); else setQualite(voulu);
+    // Passage voix HeyGen ↔ voix clonée : même règle, sur la liste de ce parcours.
+    // (Au chargement, la sélection est déjà posée par `loadAvatar`, même résultat.)
+    const choix = qualiteEnVigueurEcran(viaVoixClonee ? qualitesClonee : qualitesHeygen, qualiteSauvegardee, defautHeygen);
+    if (choix.aEnregistrer) choisirQualiteRef.current(choix.qualite); else setQualite(choix.qualite);
   }, [viaVoixClonee, qualitesClonee, qualitesHeygen, defautHeygen, qualiteSauvegardee]);
 
   /**
@@ -973,13 +1000,7 @@ export default function AvatarPage() {
     if (qualites.length > 0 && !qualites.some((x) => x.qualite === q && x.ouverte)) return;
     setQualite(q);
     if (!avatar) return;
-    const avant = qualiteSauvegardee;
-    setQualiteSauvegardee(q);
-    void fetch('/api/avatar/qualite', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarId: avatar.id, qualite: q }),
-    }).then((r) => r.json()).then((j) => {
-      if (!j?.success) { setQualiteSauvegardee(avant); setError(j?.error || 'La qualité n’a pas pu être enregistrée.'); }
-    }).catch(() => { setQualiteSauvegardee(avant); setError('La qualité n’a pas pu être enregistrée.'); });
+    enregistrerQualite(avatar.id, q, qualiteSauvegardee);
   };
   const choisirQualiteRef = useRef(choisirQualite);
   choisirQualiteRef.current = choisirQualite;

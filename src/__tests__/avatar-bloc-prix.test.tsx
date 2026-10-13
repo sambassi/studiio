@@ -133,12 +133,16 @@ describe('#562 bis — la qualité choisie : prix, moteur et coût fournisseur r
       }
       return (avant as typeof fetch)(url as string, init);
     }) as unknown as typeof fetch;
+    const vues = new Set<string>();
+    const obs = new MutationObserver(() => { const el = document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement | null; if (el) vues.add(el.value); });
+    obs.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
     render(<AvatarPage />);
-    // L'état FINAL : sélection ET prix de la qualité enregistrée (jamais l'un sans l'autre).
-    await waitFor(() => {
-      expect(qualite().value).toBe('premium');
-      expect(lignes()).toEqual(['Prix : 40 crédits']);
-    });
+    await waitFor(() => expect(lignes()).toEqual(['Prix : 40 crédits']));
+    expect(qualite().value).toBe('premium');
+    await new Promise((r) => setTimeout(r, 50));
+    obs.disconnect();
+    // La qualité enregistrée dès le premier affichage du sélecteur — jamais « Qualité » un instant.
+    expect([...vues]).toEqual(['premium']);
   });
 });
 
@@ -153,13 +157,36 @@ describe('#562 ter — Mon avatar affiche LA qualité en vigueur ; Premium indis
     }) as unknown as typeof fetch;
   };
   const appels = () => (globalThis.fetch as unknown as { mock: { calls: Array<[string, RequestInit?]> } }).mock.calls.map(([u]) => String(u));
+  /**
+   * TOUTES les qualités affichées depuis le premier rendu (y compris un rendu
+   * intermédiaire de quelques millisecondes) : la CI a vu « Qualité » un
+   * instant avant la vraie sélection. Une seule valeur est admise.
+   */
+  const espionQualitesAffichees = () => {
+    const vues = new Set<string>();
+    const noter = (el: Element) => { const v = el.getAttribute('data-qualite'); if (v) vues.add(v); };
+    const obs = new MutationObserver((recs) => {
+      for (const r of recs) {
+        if (r.type === 'attributes' && r.oldValue) vues.add(r.oldValue);
+        if (r.type === 'attributes') noter(r.target as Element);
+        r.addedNodes.forEach((n) => { if (n instanceof Element) { if (n.matches('[data-qualite]')) noter(n); n.querySelectorAll('[data-qualite]').forEach(noter); } });
+      }
+    });
+    obs.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-qualite'], attributeOldValue: true });
+    return { vues, arreter: () => { obs.takeRecords(); obs.disconnect(); } };
+  };
 
   it('⚠️ ancien avatar sans qualité enregistrée : la sélection = qualiteParDefaut() du serveur, et le devis admin porte SON moteur', async () => {
     serveur.exempte = true;
     const X = qualiteParDefaut();
     avecServeur({ qualites: QUALITES, qualiteParDefaut: X, qualiteSauvegardee: null });
+    const espion = espionQualitesAffichees();
     render(<AvatarPage />);
     await waitFor(() => expect(document.querySelector('[data-avatar-cout-fournisseur]')).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 50));
+    espion.arreter();
+    // Jamais une autre qualité, même un instant.
+    expect([...espion.vues]).toEqual([X]);
     expect(qualite().value).toBe(X);
     expect(document.querySelector('[data-avatar-cout-fournisseur]')!.getAttribute('data-avatar-cout-fournisseur')).toBe(MOTEUR_PAR_QUALITE[X]);
     expect(document.querySelector('[data-avatar-qualite-portee]')!.getAttribute('data-qualite')).toBe(X);
