@@ -211,6 +211,9 @@ import {
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { apercuAvatarDepuisListe, lireAvatarsPourApercu, type ApercuAvatarCreer } from '@/lib/creer/apercu-avatar';
+import {
+  aUneSequenceVideo, mediaApercuAutopilote, type MediaApercuAutopilote, type ResumeMediasApercu,
+} from '@/lib/autopilot/apercu-medias';
 import { useTarifs } from '@/lib/tarifs/client';
 import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee, generationDepuisRush } from '@/lib/avatar/identite';
 import {
@@ -1483,6 +1486,7 @@ function PlateContent({
   onRushError,
   rushTransform = null,
   avatar = null,
+  imageSequenceVideo = null,
   text,
   titlePos,
   ctaPos,
@@ -1518,6 +1522,11 @@ function PlateContent({
    * `null` (défaut) : le rendu d'avant, à l'identique.
    */
   avatar?: ApercuAvatarCreer | null;
+  /**
+   * Image FIXE de la séquence « Vidéo » (une photo suggérée retenue par
+   * l'Autopilote), le parent a déjà décidé. `null` (défaut) : rien de neuf.
+   */
+  imageSequenceVideo?: string | null;
   text: TextStyles;
   titlePos: Pos;
   ctaPos: Pos;
@@ -1636,7 +1645,7 @@ function PlateContent({
   const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
 
   // L'image de la séquence « Vidéo » : le rush, ou l'avatar qui le remplacera.
-  const videoAlImage = !!rushUrl || (avatar?.etat === 'pret' && !!avatar.url);
+  const videoAlImage = !!rushUrl || (avatar?.etat === 'pret' && !!avatar.url) || !!imageSequenceVideo;
 
   return (
     <>
@@ -1722,6 +1731,15 @@ function PlateContent({
                   )
                 )}
               </div>
+            )}
+            {imageSequenceVideo && !rushUrl && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={imageSequenceVideo}
+                alt=""
+                data-sequence-video-image
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             )}
             {rushUrl && (
               <video
@@ -2201,6 +2219,8 @@ export function Preview({
   rushUrl,
   rushTransform = null,
   avatarApercu = null,
+  imageSequenceVideo = null,
+  etiquettes = null,
   watermark,
   accent,
   text,
@@ -2247,6 +2267,13 @@ export function Preview({
    * Créer sans avatar).
    */
   avatarApercu?: ApercuAvatarCreer | null;
+  /** Image fixe de la séquence « Vidéo » (photo suggérée de l'Autopilote). Défaut `null` : inchangé. */
+  imageSequenceVideo?: string | null;
+  /**
+   * Étiquettes posées DANS le cadre, hors du plateau photographié et sans
+   * capter le pointeur (« exemple », média réel…). Défaut `null` : rien.
+   */
+  etiquettes?: React.ReactNode;
   /**
    * Prise d'une poignee de coin sur le TITRE ou le CTA — agrandir le texte.
    *
@@ -2811,6 +2838,7 @@ export function Preview({
             rushUrl={showRush && !avatarApercu ? rushUrl : null}
             rushTransform={rushTransform}
             avatar={showAvatar ? avatarApercu : null}
+            imageSequenceVideo={activeOrder.includes('video') && (focus === 'all' || focus === 'video') && !avatarApercu ? imageSequenceVideo : null}
             onRushError={() => setRushBroken(true)}
             text={text}
             titlePos={titlePos}
@@ -2849,6 +2877,11 @@ export function Preview({
       {overlay && (
         <div className="absolute inset-0" data-preview-overlay>
           {overlay}
+        </div>
+      )}
+      {etiquettes && (
+        <div className="absolute inset-0" style={{ pointerEvents: 'none', zIndex: 30 }} data-preview-etiquettes>
+          {etiquettes}
         </div>
       )}
 
@@ -3082,6 +3115,51 @@ const TextZonePanel: React.FC<{
 };
 
 /**
+ * Étiquettes DANS le cadre de l'aperçu de l'Autopilote : « Affiche
+ * d'exemple » sur la photo Pexels, et le média réel (ou l'emplacement vide)
+ * de la séquence « Vidéo ». Jamais dans le plateau, jamais sous le pointeur.
+ */
+function EtiquettesApercuAutopilote({ focus, posterVisible, media }: {
+  focus: PreviewFocus;
+  posterVisible: boolean;
+  media: MediaApercuAutopilote | null;
+}) {
+  const pastille: React.CSSProperties = {
+    position: 'absolute', left: 8, maxWidth: 'calc(100% - 16px)', display: 'flex', alignItems: 'center', gap: 4,
+    padding: '2px 8px', borderRadius: 999, backgroundColor: 'rgba(10,10,15,0.72)', color: '#FFFFFF',
+    fontSize: 10, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+  };
+  const surVideo = focus === 'video' && !!media;
+  return (
+    <>
+      {posterVisible && !surVideo && (
+        <span style={{ ...pastille, top: 8 }} data-autopilot-etiquette-exemple>
+          <ImagePlus style={{ width: 10, height: 10, flexShrink: 0 }} /> Affiche d’exemple
+        </span>
+      )}
+      {media && media.type !== 'aucun' && (
+        <span style={{ ...pastille, top: posterVisible && !surVideo ? 30 : 8 }} data-autopilot-etiquette-media={media.type}>
+          {media.type === 'avatar'
+            ? <UserSquare2 style={{ width: 10, height: 10, flexShrink: 0 }} />
+            : <Film style={{ width: 10, height: 10, flexShrink: 0 }} />}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{media.etiquette}</span>
+        </span>
+      )}
+      {media && media.type === 'aucun' && focus === 'video' && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center text-center"
+          style={{ gap: 8, padding: 16, color: '#D1D5DB' }}
+          data-autopilot-etiquette-media="aucun"
+        >
+          <Film style={{ width: 24, height: 24, opacity: 0.7 }} />
+          <span style={{ fontSize: 11, lineHeight: 1.4 }}>{media.etiquette}</span>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
  * Aperçu de l'Autopilote — un ÉCHANTILLON, pas la prochaine vidéo.
  *
  * ⚠️ LA COLONNE DE DROITE ÉTAIT VIDE SUR CET ÉCRAN. Elle sert l'assistant
@@ -3096,9 +3174,15 @@ const TextZonePanel: React.FC<{
  * vraie vidéo à l'aperçu, c'est-à-dire trop tard. Ce composant n'ajoute donc
  * rien au rendu : il l'ALIMENTE, à partir de la configuration.
  */
-function AutopilotPreview({ config, accent, onPatch }: {
+function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   config: AutopilotConfig;
   accent: string;
+  /**
+   * Les médias RÉELS du plan, remontés par le panneau
+   * (`onApercuMediasChange`). Absent : repli sur la banque, sans jamais
+   * montrer un média stock comme un rush (`mediaApercuAutopilote`).
+   */
+  medias?: ResumeMediasApercu | null;
   /**
    * Enregistre un reglage — c'est `enregistrer` du panneau, remonte.
    *
@@ -3246,11 +3330,33 @@ function AutopilotPreview({ config, accent, onPatch }: {
    * (`buildSequences` retire une séquence de durée nulle), et annoncer un
    * onglet « Vidéo » vide serait une promesse que le montage ne tient pas.
    */
+  const avecVideo = aUneSequenceVideo(medias, config);
   const activeOrder = useMemo(
-    () => (config.rushUrls.length > 0
+    () => (avecVideo
       ? ['intro', 'cards', 'video', 'cta']
       : ['intro', 'cards', 'cta']),
-    [config.rushUrls.length],
+    [avecVideo],
+  );
+
+  /**
+   * LE MÉDIA DE LA SÉQUENCE « VIDÉO » — la règle du PLAN, pas `rushUrls[0]`
+   * (`apercu-medias.ts`) : premier créneau réel du gabarit (avatar, rush
+   * personnel utilisable, média retenu), jamais une source décochée, jamais
+   * un stock pris pour un rush. Rien de réel : un emplacement étiqueté.
+   */
+  const sourcesActivesRepli = config.designStyle?.sources?.actives ?? null;
+  const mediaVideo = useMemo(
+    () => mediaApercuAutopilote(medias, { rushUrls: config.rushUrls, actives: sourcesActivesRepli }),
+    [medias, config.rushUrls, sourcesActivesRepli],
+  );
+  const rushApercu = mediaVideo.type === 'rush' || (mediaVideo.type === 'stock' && mediaVideo.media === 'video')
+    ? mediaVideo.url : null;
+  const imageApercu = mediaVideo.type === 'stock' && mediaVideo.media === 'photo' ? mediaVideo.url : null;
+  const avatarApercuAutopilote: ApercuAvatarCreer | null = useMemo(
+    () => (mediaVideo.type === 'avatar'
+      ? { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url }
+      : null),
+    [mediaVideo],
   );
 
   /** Ecrit un reglage : brouillon tout de suite, base ensuite. */
@@ -3596,6 +3702,19 @@ function AutopilotPreview({ config, accent, onPatch }: {
         cardStyle={style.cardStyle}
         cardsTypography={style.cards}
         onCardResizeStart={startCardResize}
+        // ── LA SÉQUENCE VIDÉO : LES MÉDIAS RÉELS DU PLAN ────────────────
+        // « Tout » ne les recevait pas, et l'onglet « Vidéo » montrait
+        // `rushUrls[0]` — parfois une vidéo stock jamais choisie.
+        rushUrl={rushApercu}
+        avatarApercu={avatarApercuAutopilote}
+        imageSequenceVideo={imageApercu}
+        etiquettes={lectureEnCours ? null : (
+          <EtiquettesApercuAutopilote
+            focus={focus}
+            posterVisible={!!posterUrl && samplePosterVisible(focus, config.cardsShowPoster)}
+            media={avecVideo && (focus === 'video' || focus === 'all') ? mediaVideo : null}
+          />
+        )}
         // « Les cartes de la vidéo seront exactement celles-ci » est vrai pour
         // l'assistant et FAUX ici : ce sont celles d'un échantillon. La note
         // honnête de l'Autopilote la remplace, juste en dessous.
@@ -3613,12 +3732,16 @@ function AutopilotPreview({ config, accent, onPatch }: {
             frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale: displayScale }}
             onPlayingChange={setLectureEnCours}
             renderLayer={({ key, progress }) => (
+              <>
               <PlateauLecture
                 generated={generated}
                 format={format}
                 focus={key as PreviewFocus}
                 activeOrder={activeOrder}
-                rushUrl={key === 'video' ? (config.rushUrls[0] ?? null) : null}
+                // La MÊME règle que l'onglet : le média réel du plan.
+                rushUrl={key === 'video' && !avatarApercuAutopilote ? rushApercu : null}
+                avatar={key === 'video' ? avatarApercuAutopilote : null}
+                imageSequenceVideo={key === 'video' && !avatarApercuAutopilote ? imageApercu : null}
                 displayScale={displayScale}
                 gradStart={config.cardGradientStart}
                 gradEnd={config.cardGradientEnd}
@@ -3636,6 +3759,12 @@ function AutopilotPreview({ config, accent, onPatch }: {
                 textAnimation={DEFAULT_TEXT_ANIMATION}
                 progress={progress}
               />
+              <EtiquettesApercuAutopilote
+                focus={key as PreviewFocus}
+                posterVisible={!!posterUrl && samplePosterVisible(key as PreviewFocus, config.cardsShowPoster)}
+                media={key === 'video' ? mediaVideo : null}
+              />
+              </>
             )}
           />
         ) : null}
@@ -3651,7 +3780,8 @@ function AutopilotPreview({ config, accent, onPatch }: {
       >
         <Info className="w-3 h-3 mt-0.5 shrink-0" />
         <span>
-          Aperçu du projet — <span className="text-gray-400">exemple</span> sur le thème
+          <span className="text-gray-300" data-autopilot-apercu-badge="style">Aperçu du style</span>
+          {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
           {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
           changent à chaque vidéo ; le style, non.
           {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
@@ -3672,6 +3802,23 @@ function AutopilotPreview({ config, accent, onPatch }: {
           )}
         </span>
       </p>
+
+      {/* ── MÉDIAS RÉELS DU PLAN ─────────────────────────────────────────
+          Ce que la séquence « Vidéo » montre n'est PAS un exemple : c'est le
+          premier média réel du plan. Le dire à part, pour qu'on ne confonde
+          jamais l'affiche d'exemple avec son propre rush. */}
+      {avecVideo && (
+        <p
+          className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
+          data-autopilot-apercu-medias={mediaVideo.type}
+        >
+          <Film className="w-3 h-3 mt-0.5 shrink-0" />
+          <span>
+            <span className="text-gray-200" data-autopilot-apercu-badge="medias">Médias réels du plan</span>
+            {' '}— séquence vidéo : <span data-autopilot-apercu-media-etiquette>{mediaVideo.etiquette}</span>
+          </span>
+        </p>
+      )}
 
       {/* ── LE MODE D'EMPLOI ─────────────────────────────────────────────
           ⚠️ IL REMPLACE UNE ÉTAPE ENTIÈRE, ET IL ÉTAIT INVISIBLE. Police,
@@ -4134,6 +4281,8 @@ export default function AssistantWizard() {
    * fini par se contredire.
    */
   const [autopilotConfig, setAutopilotConfig] = useState<AutopilotConfig>(AUTOPILOT_DEFAULT_CONFIG);
+  /** Les médias RÉELS du plan de l'Autopilote, remontés par son panneau, pour l'aperçu. */
+  const [autopilotMedias, setAutopilotMedias] = useState<ResumeMediasApercu | null>(null);
   /**
    * ─────────────────────────────────────────────────────────────────────
    * L'APERÇU UNIQUE
@@ -10539,6 +10688,7 @@ export default function AssistantWizard() {
               <AutopilotPanel
                 accent={accent}
                 onConfigChange={setAutopilotConfig}
+                onApercuMediasChange={setAutopilotMedias}
                 onPatchReady={(patch) => { autopilotPatchRef.current = patch; }}
                 onSessionChange={setTournageRegarde}
                 onVideoLancee={() => setRelanceVideos((n) => n + 1)}
@@ -13300,6 +13450,7 @@ export default function AssistantWizard() {
                   config={autopilotConfig}
                   accent={accent}
                   onPatch={autopilotPatch}
+                  medias={autopilotMedias}
                 />
               </div>
             )}

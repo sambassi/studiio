@@ -21,6 +21,7 @@ import {
   bornesDuree, formatSecondes, itemDuPlan, libelleMedia, messageNarration, titreMedia,
   type ItemPlanDetaille, type MediaVideo, type PlanDetaille,
 } from '@/lib/creer/medias-video';
+import MiniatureVideo from '@/components/medias/MiniatureVideo';
 
 export type EtatAvatarListe = 'pret' | 'absent' | 'chargement' | 'inconnu';
 
@@ -96,7 +97,9 @@ function Vignette({ m, vignetteAvatar }: { m: MediaVideo; vignetteAvatar?: Media
   return (
     <div className={cadre} data-vignette="video">
       {m.url ? (
-        <video src={`${m.url}#t=0.1`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+        /* Miniature extraite une fois et gardée en cache (`useVignetteVideo`) :
+           plus de `<video>` qui retélécharge le rush à chaque affichage. */
+        <MiniatureVideo url={m.url} compact style={{ position: 'absolute', inset: 0 }} />
       ) : null}
       <span className="absolute inset-0 flex items-center justify-center">
         <span className="rounded-full bg-black/55 p-1"><Play className="w-3 h-3 text-white" /></span>

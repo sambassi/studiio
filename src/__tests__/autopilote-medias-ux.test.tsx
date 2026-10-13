@@ -8,6 +8,7 @@ import { mediasSuggeres } from '@/lib/autopilot/medias-prevus';
 import { CREDIT_FOURNISSEURS, NOMS_FOURNISSEURS, dureeLisible } from '@/lib/medias/libelles';
 import type { ConfigSources, MediaStockRetenu } from '@/lib/autopilot/sources';
 import type { MediaStock } from '@/lib/stock/types';
+import { vignettesPourTests } from '@/lib/medias/vignette-video';
 
 /**
  * AUTOPILOTE — MÉDIAS SANS FOURNISSEUR, EN CARTES.
@@ -218,10 +219,10 @@ describe('Banque de rushes en cartes', () => {
     expect(carte(IMPORTE('V9')).querySelector('[data-carte-libelle]')!.textContent).toBe('Vidéo suggérée');
     // Un nom qui trahit le fournisseur n'apparaît pas, même au survol.
     expect(carte(IMPORTE('V9')).getAttribute('title')).toBeNull();
-    // Première image : la vidéo elle-même, lue sur ses seules métadonnées.
-    const v = carte(A).querySelector('video[data-carte-premiere-image]') as HTMLVideoElement;
-    expect(v.getAttribute('preload')).toBe('metadata');
-    expect(v.muted).toBe(true);
+    // Première image : une MINIATURE extraite une fois et gardée en cache
+    // (`useVignetteVideo`) — plus de `<video>` qui retélécharge le rush.
+    expect(carte(A).querySelector('[data-carte-miniature]')).toBeTruthy();
+    expect(carte(A).querySelector('video')).toBeNull();
     // Expiré : toujours visible, sur la carte.
     await waitFor(() => expect(carte(DEAD).querySelector(`[data-autopilot-rush-expire="${DEAD}"]`)).toBeTruthy());
     expect(carte(DEAD).textContent).toContain('Expiré');
@@ -237,7 +238,10 @@ describe('Banque de rushes en cartes', () => {
 });
 
 describe('CarteMedia', () => {
-  it('rend libellé, durée « 0:12 », actions ; durée lue sur loadedmetadata', () => {
+  it('rend libellé, durée « 0:12 », actions ; durée lue par l extraction de la miniature', async () => {
+    vignettesPourTests.reinitialiser();
+    vignettesPourTests.desactiverPersistance();
+    vignettesPourTests.definirExtracteur(async () => ({ url: 'blob:v', ratio: 9 / 16, duree: 7.4 }));
     const supprimer = vi.fn();
     render(
       <ul>
@@ -255,11 +259,10 @@ describe('CarteMedia', () => {
     expect(cartes[3].querySelector('[data-carte-duree]')!.textContent).toBe('1:15');
     // Une proposition distante : rien n'est téléchargé (vignette seulement).
     expect(cartes[1].querySelector('video')).toBeNull();
-    // Vidéo sans durée connue : lue sur les métadonnées.
-    const v = cartes[0].querySelector('video') as HTMLVideoElement;
-    Object.defineProperty(v, 'duration', { value: 7.4, configurable: true });
-    fireEvent.loadedMetadata(v);
-    expect(cartes[0].querySelector('[data-carte-duree]')!.textContent).toBe('0:07');
+    // Vidéo sans durée connue : la durée vient de l'extraction de la miniature.
+    await waitFor(() => expect(cartes[0].querySelector('[data-carte-duree]')?.textContent).toBe('0:07'));
+    expect(cartes[0].querySelector('video')).toBeNull();
+    vignettesPourTests.reinitialiser();
     expect(cartes[0].getAttribute('title')).toBe('v.mp4');
     fireEvent.click(cartes[0].querySelector('button[aria-label="Aperçu — Rush personnel"][data-carte-apercu]') ?? cartes[0].querySelector('[data-carte-apercu]')!);
     fireEvent.click(screen.getByLabelText('Fermer l’aperçu'));

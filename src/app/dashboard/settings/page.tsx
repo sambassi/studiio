@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
+import { viderVignettesPersistantes } from '@/lib/medias/vignette-video';
 import { Suspense, useEffect, useRef } from 'react';
 import { Target, CreditCard, Palette, User, LogOut } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -144,7 +145,7 @@ function SettingsContent() {
               </div>
             </div>
             <button
-              onClick={() => signOut({ callbackUrl: '/' })}
+              onClick={async () => { await viderVignettesPersistantes(); await signOut({ callbackUrl: '/' }); }}
               className="flex items-center gap-2 rounded-lg bg-red-600/10 border border-red-500/20 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-600/20 transition-colors"
             >
               <LogOut size={16} />
