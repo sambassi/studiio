@@ -59,6 +59,7 @@
  *     l'aperçu déjà validé en production. Pas de drapeau global pour D-ID.
  */
 
+import { devisVideoHeygen, dureeParoleEstimee, type DevisFournisseur, type OperationFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { MESSAGES_AVATAR, MESSAGES_CREATION, jumeauVideoAutorise, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 import { compteExempteDeCredits } from '@/lib/facturation/exemption';
@@ -104,6 +105,12 @@ export type ResultatMoteurJumeau =
   | { ok: false; motif: 'moteur_indisponible' | 'texte_absent' | 'texte_trop_long' | 'credits_insuffisants' | MotifJumeau; message: string }
   | { ok: false; motif: 'fournisseur_voix' | 'fournisseur_avatar' | 'base'; message: string; statut?: number }
   /**
+   * Lancement MANUEL par un compte admin (0 crédit Studiio) sans confirmation
+   * du coût fournisseur : RIEN n'a été réservé, débité ni appelé. L'appelant
+   * montre `devis` et rejoue avec `coutFournisseur.confirme`.
+   */
+  | { ok: false; motif: 'confirmation_cout'; message: string; devis: DevisFournisseur }
+  /**
    * Le fournisseur a ACCEPTÉ la génération (elle est lancée, et débitée), mais
    * son identifiant n'a pas pu être écrit sur `avatar_generations`. Ce n'est
    * PAS un échec à rejouer : relancer paierait une seconde génération.
@@ -138,6 +145,11 @@ export async function genererVideoJumeau(
      * (Créer, Autopilote) : HeyGen choisit.
      */
     cadrage?: 'remplir';
+    /**
+     * Lancement MANUEL (Créer, Mon avatar, relance) : un compte admin doit
+     * avoir CONFIRMÉ le coût fournisseur. Absent (crons, reprise) = pas de garde.
+     */
+    coutFournisseur?: { confirme: boolean; operation?: OperationFournisseur };
   },
   deps: DepsMoteurJumeau = {},
 ): Promise<ResultatMoteurJumeau> {
@@ -195,6 +207,24 @@ export async function genererVideoJumeau(
   const spoken = scriptsDuJumeau([display], jumeau.prive.prononciations)[0].spoken;
   const aspectRatio: AvatarAspectRatio = RATIOS.includes(args.aspectRatio as AvatarAspectRatio) ? (args.aspectRatio as AvatarAspectRatio) : '9:16';
   const marqueVoix = `${PREFIXE_VOIX_JUMEAU}${voix.id}`;
+
+  // 2 bis. COÛT FOURNISSEUR — lancement manuel d'un admin : le devis HeyGen
+  //        (moteur envoyé, durée estimée du texte dit, coût) AVANT toute
+  //        réservation, tout débit et tout appel (voix comprise).
+  if (args.coutFournisseur && !args.coutFournisseur.confirme && fournisseur === 'heygen' && await compteExempteDeCredits(args.userId)) {
+    return {
+      ok: false,
+      motif: 'confirmation_cout',
+      message: 'Coût fournisseur à confirmer avant de lancer cette vidéo.',
+      devis: devisVideoHeygen({
+        operation: args.coutFournisseur.operation ?? 'video_avatar',
+        moteurEnvoye: choixMoteur.moteur,
+        avatarType: jumeau.prive.typeAvatar,
+        dureeSecondes: dureeParoleEstimee([spoken]),
+        creditsStudiio: 0,
+      }),
+    };
+  }
 
   // 3. Réservation en base AVANT tout fournisseur — c'est l'index unique
   //    partiel des générations de jumeau EN VOL qui tranche : deux requêtes

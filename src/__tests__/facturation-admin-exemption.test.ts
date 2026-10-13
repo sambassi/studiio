@@ -19,7 +19,7 @@ const base = vi.hoisted(() => ({
   avatars: [] as Array<Record<string, unknown>>,
   generations: [] as Array<Record<string, unknown>>,
 }));
-const heygen = vi.hoisted(() => ({ appels: [] as string[], args: [] as Array<Record<string, unknown>>, moteursLook: null as string[] | null }));
+const heygen = vi.hoisted(() => ({ appels: [] as string[], args: [] as Array<Record<string, unknown>>, moteursLook: null as string[] | null, retenir: null as null | Promise<void> }));
 const credits = vi.hoisted(() => ({ journal: [] as string[] }));
 const exemption = vi.hoisted(() => ({ admin: false, echecHeygen: false }));
 vi.mock('@/lib/facturation/exemption', () => ({ compteExempteDeCredits: async () => exemption.admin, exempteDeCredits: () => exemption.admin }));
@@ -56,7 +56,7 @@ vi.mock('@/lib/db/supabase', () => {
 
 vi.mock('@/lib/avatar/heygen', () => ({
   HeyGenError: class extends Error { httpStatus = 502; code = 'x'; },
-  generateAvatarVideo: async (args: { avatarId: string }) => { heygen.appels.push(`videos:${args.avatarId}`); heygen.args.push(args); if (exemption.echecHeygen) throw new Error('heygen down'); return { videoId: 'vid-1', status: 'processing' }; },
+  generateAvatarVideo: async (args: { avatarId: string }) => { heygen.appels.push(`videos:${args.avatarId}`); heygen.args.push(args); if (heygen.retenir) await heygen.retenir; if (exemption.echecHeygen) throw new Error('heygen down'); return { videoId: 'vid-1', status: 'processing' }; },
   getAvatarTrainingStatus: async (id: string) => { heygen.appels.push(`looks:${id}`); return { status: 'completed' }; },
   resolveVoiceId: async () => 'voice-1',
   moteursSupportesDuLook: async (id: string) => { heygen.appels.push(`moteurs:${id}`); return heygen.moteursLook; },
@@ -73,7 +73,7 @@ const { POST } = await import('@/app/api/avatar/generate/route');
 const requete = () =>
   POST(new NextRequest('https://studiio.pro/api/avatar/generate', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ script: 'Bonjour à tous.' }),
+    body: JSON.stringify({ script: 'Bonjour à tous.', confirmationCoutFournisseur: true }),
   }));
 
 const avatar = () => ({
@@ -82,7 +82,7 @@ const avatar = () => ({
 });
 
 beforeEach(() => {
-  base.avatars = [avatar()]; base.generations = []; heygen.appels.length = 0; heygen.args.length = 0; heygen.moteursLook = null;
+  base.avatars = [avatar()]; base.generations = []; heygen.appels.length = 0; heygen.args.length = 0; heygen.moteursLook = null; heygen.retenir = null;
   credits.journal.length = 0; exemption.admin = false; exemption.echecHeygen = false;
   delete process.env.AVATAR_MOTEURS_AUTORISES; delete process.env.HEYGEN_AVATAR_ENGINE;
 });
@@ -113,5 +113,77 @@ describe('POST /api/avatar/generate — administrateur', () => {
     credits.journal.length = 0; exemption.echecHeygen = true;
     await requete();
     expect(credits.journal).toEqual(['debit:40', 'refund:40']);
+  });
+});
+
+describe('#562 — coût fournisseur AVANT l’appel (admin, Mon avatar)', () => {
+  const envoyer = (corps: Record<string, unknown>) => POST(new NextRequest('https://studiio.pro/api/avatar/generate', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps),
+  }));
+
+  it('⚠️ F. sans confirmation : 428 + devis (moteur, durée, coût, source) — 0 appel vidéo, 0 ligne, 0 débit', async () => {
+    exemption.admin = true;
+    const res = await envoyer({ script: 'Bonjour à tous, voici ma vidéo du jour.', qualite: 'standard' });
+    expect(res.status).toBe(428);
+    const j = await res.json();
+    expect(j.code).toBe('confirmation_cout_fournisseur');
+    expect(j.devis).toMatchObject({ operation: 'video_avatar', moteur: 'avatar_iii', moteurImplicite: false, typeAvatar: 'twin', prixConnu: true, creditsStudiio: 0 });
+    expect(j.devis.dureeSecondes.min).toBeLessThanOrEqual(j.devis.dureeSecondes.max);
+    expect(j.devis.source).toContain('HeyGen');
+    expect(heygen.appels.filter((a) => a.startsWith('videos:'))).toEqual([]);
+    expect(base.generations).toEqual([]);
+    expect(credits.journal).toEqual([]);
+  });
+
+  it('⚠️ E. admin : 0 crédit Studiio ET le coût HeyGen du bon moteur (Avatar IV = qualité « qualite »)', async () => {
+    exemption.admin = true;
+    const j = await (await envoyer({ script: 'Un deux trois quatre cinq six sept huit neuf dix onze douze treize.', qualite: 'qualite' })).json();
+    expect(j.devis).toMatchObject({ moteur: 'avatar_iv', creditsStudiio: 0 });
+    // 13 mots ≈ 5 s → 4–6 s à 4,83 $/min.
+    expect(j.devis.tarifUsdParSeconde).toBeCloseTo(4.83 / 60, 4);
+  });
+
+  it('⚠️ G. confirmé → exactement 1 appel vidéo', async () => {
+    exemption.admin = true;
+    const res = await envoyer({ script: 'Bonjour à tous.', confirmationCoutFournisseur: true });
+    expect(res.status).toBe(200);
+    expect(heygen.appels.filter((a) => a.startsWith('videos:'))).toHaveLength(1);
+  });
+
+  it('⚠️ H. deux requêtes confirmées simultanées (double clic, deux onglets) → 1 seul appel vidéo, l’autre 409', async () => {
+    exemption.admin = true;
+    let liberer!: () => void;
+    heygen.retenir = new Promise<void>((r) => { liberer = r; });
+    const premiere = envoyer({ script: 'Bonjour à tous.', confirmationCoutFournisseur: true });
+    await new Promise((r) => setTimeout(r, 20));
+    const seconde = await envoyer({ script: 'Bonjour à tous.', confirmationCoutFournisseur: true });
+    expect(seconde.status).toBe(409);
+    expect((await seconde.json()).code).toBe('generation_en_cours');
+    liberer();
+    expect((await premiere).status).toBe(200);
+    expect(heygen.appels.filter((a) => a.startsWith('videos:'))).toHaveLength(1);
+    // Le verrou est rendu : une génération suivante repart.
+    heygen.retenir = null;
+    expect((await envoyer({ script: 'Encore.', confirmationCoutFournisseur: true })).status).toBe(200);
+  });
+
+  it('⚠️ aperçu : devis Avatar IV IMPLICITE (aucun moteur envoyé), rien réservé avant confirmation ; jamais de réentraînement', async () => {
+    exemption.admin = true;
+    base.avatars = [{ ...avatar(), validated_at: null }];
+    const refus = await envoyer({ intention: 'apercu' });
+    expect(refus.status).toBe(428);
+    const j = await refus.json();
+    expect(j.devis).toMatchObject({ operation: 'apercu_avatar', moteur: 'avatar_iv', moteurImplicite: true, creditsStudiio: 0 });
+    expect(base.generations).toEqual([]);
+    const ok = await envoyer({ intention: 'apercu', confirmationCoutFournisseur: true });
+    expect(ok.status).toBe(200);
+    // Le clone EXISTANT parle : une vidéo, aucune création / aucun entraînement d'avatar.
+    expect(heygen.appels.filter((a) => a.startsWith('videos:'))).toEqual(['videos:hg-1']);
+    expect(heygen.appels.some((a) => a.startsWith('avatars'))).toBe(false);
+  });
+
+  it('utilisateur non admin : aucune confirmation, le parcours d’avant (débit en crédits)', async () => {
+    const res = await envoyer({ script: 'Bonjour à tous.' });
+    expect(res.status).toBe(200);
   });
 });

@@ -256,7 +256,7 @@ describe('Avatar — le prix suit le MOTEUR choisi (grille admin)', () => {
 
   it('administrateur : aucun débit, aucun remboursement, credits_charged 0', async () => {
     etat.admin = true;
-    const res = await post(AVATAR, { script: 'Bonjour à tous.', qualite: 'premium' });
+    const res = await post(AVATAR, { script: 'Bonjour à tous.', qualite: 'premium', confirmationCoutFournisseur: true });
     expect(res.status).toBe(200);
     expect(etat.journal).toEqual([]);
     expect(base.tables.avatar_generations[0].credits_charged).toBe(0);

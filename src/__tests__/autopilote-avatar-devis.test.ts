@@ -88,7 +88,24 @@ vi.mock('@/lib/autopilot/voice', async () => {
 });
 /** Le lancement du jumeau : capturé, jamais un fournisseur. */
 const lancerJumeauMontage = vi.fn(async (..._a: unknown[]) => ({ ok: true, generationId: 'g1', attenteId: 'a1', dejaEnFile: false }));
-vi.mock('@/lib/autopilot/jumeau-async', () => ({ lancerJumeauMontage: (...a: unknown[]) => lancerJumeauMontage(...a) }));
+// #562 : le coût fournisseur (admin). `coutAdmin.actif` faux (défaut) = comportement d'avant.
+const coutAdmin = vi.hoisted(() => ({ actif: false }));
+vi.mock('@/lib/facturation/exemption', async (orig) => {
+  const vrai = await orig<typeof import('@/lib/facturation/exemption')>();
+  return { ...vrai, compteExempteDeCredits: async (u: string) => coutAdmin.actif || vrai.compteExempteDeCredits(u) };
+});
+vi.mock('@/lib/fournisseurs/devis-autopilote', async () => {
+  const { devisVideoHeygen, budgetAutopilote } = await import('@/lib/fournisseurs/devis-fournisseur');
+  const devis = (script: string | null) => devisVideoHeygen({ operation: 'video_autopilote', moteurEnvoye: 'avatar_iii', avatarType: 'video', dureeSecondes: script ? { min: 2, max: 4 } : { min: 3, max: 45 }, origineDuree: script ? 'texte' : 'plage', creditsStudiio: 0 });
+  return {
+    devisVideoAutopilote: async (_u: string, _c: unknown, script: string | null) => devis(script),
+    budgetAutopiloteDuCompte: async (_u: string, c: { countPerCycle: number; cadence: string; jumeauAvatar: boolean }) => ({
+      devisParVideo: devis(null),
+      budget: budgetAutopilote({ avatarUtilise: c.jumeauAvatar, countPerCycle: c.countPerCycle, cadence: c.cadence, devisParVideo: devis(null) }),
+    }),
+  };
+});
+vi.mock('@/lib/autopilot/jumeau-async', () => ({ lancerJumeauMontage: (...a: unknown[]) => lancerJumeauMontage(...a), scriptJumeauMontage: () => 'Le script du jumeau.' }));
 
 const ligne = (extra: Record<string, unknown> = {}) => ({
   user_id: 'u1', enabled: true, mode: 'review', platforms: [], cadence: 'daily', count_per_cycle: 1,
@@ -98,6 +115,7 @@ const ligne = (extra: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   authMock.mockResolvedValue({ user: { id: 'u1' } });
+  coutAdmin.actif = false;
   configEnBase = ligne();
   posts = [];
   insertions = [];
@@ -326,5 +344,47 @@ describe('Devis = débits — avatar ON avec ou sans rushes, sans double factura
     const res = await POST();
     expect(res.status).toBe(422);
     expect(deductCredits).not.toHaveBeenCalled();
+  });
+});
+
+describe('#562 — Produire maintenant avec avatar : coût fournisseur AVANT le lancement (admin)', () => {
+  it('⚠️ admin sans confirmation → 428 + devis de CETTE vidéo (Avatar III, son script) : rien lancé, rien débité', async () => {
+    coutAdmin.actif = true;
+    configEnBase = ligne({ jumeau_avatar: true });
+    const { POST } = await route();
+    const res = await POST();
+    expect(res.status).toBe(428);
+    expect(await res.json()).toMatchObject({ code: 'confirmation_cout_fournisseur', devis: { operation: 'video_autopilote', moteur: 'avatar_iii', origineDuree: 'texte' } });
+    expect(lancerJumeauMontage).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ admin confirmé → le jumeau est lancé UNE fois', async () => {
+    coutAdmin.actif = true;
+    configEnBase = ligne({ jumeau_avatar: true });
+    const { POST } = await route();
+    const res = await POST(new Request('https://studiio.pro/x', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmationCoutFournisseur: true }) }));
+    expect(res.status).toBe(200);
+    expect(lancerJumeauMontage).toHaveBeenCalledTimes(1);
+  });
+
+  it('admin, avatar OFF : aucune vidéo HeyGen → aucune confirmation (rendu en arrière-plan comme avant)', async () => {
+    coutAdmin.actif = true;
+    const { POST } = await route();
+    expect((await POST()).status).toBe(202);
+  });
+
+  it('K. GET (admin) : le devis par vidéo + le budget jour / mois, avant activation', async () => {
+    coutAdmin.actif = true;
+    configEnBase = ligne({ jumeau_avatar: true, count_per_cycle: 2 });
+    const { GET } = await route();
+    const j = await (await GET()).json();
+    expect(j.fournisseur.devisParVideo).toMatchObject({ moteur: 'avatar_iii', origineDuree: 'plage' });
+    expect(j.fournisseur.budget).toMatchObject({ avatarUtilise: true, videosParJour: 2, coutJournalierUsd: { min: 0.06, max: 0.9 }, coutMensuelUsd: { min: 1.8, max: 27 } });
+  });
+
+  it('GET (utilisateur) : aucun coût fournisseur exposé', async () => {
+    const j = await (await (await route()).GET()).json();
+    expect(j.fournisseur).toBeUndefined();
   });
 });

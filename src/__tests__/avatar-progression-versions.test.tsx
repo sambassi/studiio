@@ -366,7 +366,7 @@ describe('Parcours d’une nouvelle source — récapitulatif', () => {
     await act(async () => { fireEvent.click(container.querySelector('[data-flux-envoyer]')!); });
     await waitFor(() => expect(fin).toHaveBeenCalled());
     // Remplacer = une version de la MÊME identité : mode « remplacer » + avatarId, et l'original conservé à côté.
-    expect(appels[0].corps).toMatchObject({ mode: 'remplacer', avatarId: 'a1', cleSource: 'T', cleOriginal: 'O' });
+    expect(appels.find((a) => a.url === '/api/avatar/create')!.corps).toMatchObject({ mode: 'remplacer', avatarId: 'a1', cleSource: 'T', cleOriginal: 'O' });
   });
 
   it('⚠️ nouvel avatar : une identité SÉPARÉE (mode « nouveau », sans avatarId)', () => {

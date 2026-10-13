@@ -81,7 +81,7 @@ vi.mock('@/lib/render/proxy-rendu', async (orig) => {
   return { ...actual, urlRenduPourRush: async (url: string) => ({ url, proxy: false, cree: false }) };
 });
 const lancerJumeauMontage = vi.fn(async (..._a: unknown[]) => ({ ok: true, generationId: 'g1', attenteId: 'a1', dejaEnFile: false }));
-vi.mock('@/lib/autopilot/jumeau-async', () => ({ lancerJumeauMontage: (...a: unknown[]) => lancerJumeauMontage(...a) }));
+vi.mock('@/lib/autopilot/jumeau-async', () => ({ lancerJumeauMontage: (...a: unknown[]) => lancerJumeauMontage(...a), scriptJumeauMontage: () => 'Le script du jumeau.' }));
 
 const S = 'https://studiio.pro/storage/v1/object/public/media/u1/';
 const R = [`${S}rush-a.mp4`, `${S}rush-b.mp4`];

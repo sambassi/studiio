@@ -18,6 +18,8 @@ import {
 import { versionDuCompte, ecrireVersion } from '@/lib/avatar/versions';
 import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
 import { moteurPourMonAvatar, motifPremium } from '@/lib/avatar/moteurs';
+import { devisVideoHeygen, dureeParoleEstimee } from '@/lib/fournisseurs/devis-fournisseur';
+import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, exigerConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -26,6 +28,13 @@ const VALID_RATIOS: AvatarAspectRatio[] = ['9:16', '16:9', '1:1'];
 
 /** Statuts HeyGen consideres comme « avatar utilisable ». */
 const READY_STATUSES = ['completed', 'ready', 'success'];
+
+/**
+ * Générations NORMALES en vol, par compte (ce processus) : un double clic ou
+ * deux onglets ne lancent jamais deux vidéos payantes. L'aperçu a déjà son
+ * index unique en base (`avatar_generations_apercu_unique`).
+ */
+const generationsEnVol = new Set<string>();
 
 /** Une réservation d'aperçu qui n'ira pas plus loin : marquée en échec, la place est libre. */
 async function libererReservation(generationId: string, motif: string): Promise<void> {
@@ -57,6 +66,7 @@ export async function POST(req: NextRequest) {
 
   let creditsDeducted = false;
   let coutFacture = 0;
+  let cleEnVol: string | null = null;
 
   try {
     const body = await req.json();
@@ -237,6 +247,31 @@ export async function POST(req: NextRequest) {
       `[Avatar][HeyGen] Requete a envoyer — avatar_id=${avatarRow.provider_avatar_id} voice_id=${resolvedVoiceId} ratio=${aspectRatio} script=${script.length} car.`,
     );
 
+    // 2a. COÛT FOURNISSEUR — l'admin ne paie aucun crédit Studiio, mais HeyGen
+    //     facture : il voit le devis (moteur, durée estimée, coût) et confirme
+    //     AVANT toute réservation, tout débit et tout appel. Sans confirmation
+    //     → 428 avec le devis, rien n'est écrit ni appelé.
+    const adminExempte = await compteExempteDeCredits(userId);
+    const devis = devisVideoHeygen({
+      operation: intention === INTENTION_APERCU ? 'apercu_avatar' : 'video_avatar',
+      moteurEnvoye: choixMoteur?.ok ? choixMoteur.moteur : null,
+      avatarType: avatarRow.avatar_type,
+      dureeSecondes: dureeParoleEstimee([script]),
+      creditsStudiio: adminExempte ? 0 : null,
+    });
+    const garde = exigerConfirmationCout({ admin: adminExempte, confirme: confirmationCoutLue(body?.[CHAMP_CONFIRMATION_COUT]), devis });
+    if (garde) return garde;
+    if (intention !== INTENTION_APERCU) {
+      if (generationsEnVol.has(userId)) {
+        return NextResponse.json(
+          { success: false, error: 'Une génération est déjà en cours de lancement.', code: 'generation_en_cours' },
+          { status: 409 },
+        );
+      }
+      cleEnVol = userId;
+      generationsEnVol.add(cleEnVol);
+    }
+
     // 2b. APERÇU : une seule génération vivante par version, RÉSERVÉE AVANT
     //     tout débit et tout appel — c'est l'index
     //     `avatar_generations_apercu_unique` qui tranche deux clics
@@ -327,7 +362,7 @@ export async function POST(req: NextRequest) {
     // ⚠️ Un administrateur n'est jamais débité (`deductCredits` l'exempte) : il
     // ne doit donc ni être noté « 40 crédits facturés », ni « remboursé » de
     // crédits qu'on ne lui a jamais pris. HeyGen, lui, est appelé pareil.
-    const exempte = coutUtilisateur > 0 && await compteExempteDeCredits(userId);
+    const exempte = coutUtilisateur > 0 && adminExempte;
     coutFacture = exempte ? 0 : coutUtilisateur;
     if (coutFacture > 0) {
       await deductCredits(userId, coutFacture, 'avatar');
@@ -453,5 +488,7 @@ export async function POST(req: NextRequest) {
       { success: false, error: 'La generation a echoue.', refunded: creditsDeducted },
       { status: 500 },
     );
+  } finally {
+    if (cleEnVol) generationsEnVol.delete(cleEnVol);
   }
 }

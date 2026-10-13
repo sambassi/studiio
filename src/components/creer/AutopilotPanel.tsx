@@ -26,9 +26,11 @@ import {
   gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
 } from '@/lib/autopilot/medias-prevus';
 import {
-  aUneSourceVisuelle, estRushStock, MAX_STOCK_RETENU,
+  aUneSourceVisuelle, avatarActifConfig, estRushStock, MAX_STOCK_RETENU,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
+import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
+import { avecConfirmationCout, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import type { FormatStock } from '@/lib/stock/types';
 import {
   etatsDepuisReponseVerifier, rushesUtilisables, rushReparable, type EtatRush,
@@ -544,7 +546,11 @@ export default function AutopilotPanel({
    * répondu : l'écran écrit alors « Tarif confirmé au rendu » plutôt qu'un
    * nombre qu'il aurait inventé.
    */
-  const [devis, setDevis] = useState<{ politique: Politique; cout: number; solde: number | null } | null>(null);
+  const [devis, setDevis] = useState<{
+    politique: Politique; cout: number; solde: number | null;
+    /** ADMIN seulement : le devis HeyGen d'UNE vidéo avatar (le budget est recalculé sur la config éditée). */
+    fournisseur: { devisParVideo: DevisFournisseur | null } | null;
+  } | null>(null);
   /** La colonne `brief` existe-t-elle ? Voir `briefReady` dans la route. */
   const [briefReady, setBriefReady] = useState(true);
   /**
@@ -966,13 +972,13 @@ export default function AutopilotPanel({
   const bloqueEtape = etape === 1 && validationRushes.bloque;
 
   /**
-   * Le devis de « Produire un brouillon maintenant » — demandé UNE fois, à
-   * l'ouverture de la confirmation, pas au montage : la plupart des visites
-   * ne cliquent pas. Un échec laisse `devis` à `null` : « Tarif confirmé au
-   * rendu », jamais un chiffre deviné.
+   * Le devis de « Produire un brouillon maintenant » — demandé UNE fois, au
+   * montage : pour un ADMIN il porte aussi le coût fournisseur d'une vidéo
+   * avatar, montré AVANT l'activation (budget jour / mois). Un échec laisse
+   * `devis` à `null` : « Tarif confirmé au rendu », jamais un chiffre deviné.
    */
   useEffect(() => {
-    if (produire.etat !== 'confirmation' || devis) return;
+    if (devis) return;
     let vivant = true;
     fetch('/api/autopilot/produire-maintenant')
       .then((r) => r.json())
@@ -982,11 +988,12 @@ export default function AutopilotPanel({
           politique: politiqueAffichable(d.politique),
           cout: d.cout,
           solde: typeof d.solde === 'number' ? d.solde : null,
+          fournisseur: d.fournisseur && typeof d.fournisseur === 'object' ? { devisParVideo: d.fournisseur.devisParVideo ?? null } : null,
         });
       })
       .catch(() => { /* « Tarif confirmé au rendu » */ });
     return () => { vivant = false; };
-  }, [produire.etat, devis]);
+  }, [devis]);
 
   /**
    * Lance UNE production manuelle — brouillon forcé, aucun réseau.
@@ -1097,17 +1104,23 @@ export default function AutopilotPanel({
       // L'empreinte de l'APERÇU affiché : le serveur produit exactement ce
       // sujet et ce texte (ou refuse s'ils ne correspondent plus), au lieu
       // d'un sujet tiré ailleurs — voir `choisirContenuManuel`.
-      const res = await fetch('/api/autopilot/produire-maintenant', {
+      // ADMIN + avatar : le coût HeyGen de CETTE vidéo est montré AVANT l'appel
+      // (428 + devis) ; annuler = 0 appel, rien de réservé ni débité.
+      const issue = await avecConfirmationCout((confirme) => fetch('/api/autopilot/produire-maintenant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apercuSignature: signatureApercuAutopilote(config) }),
-      });
-      const data = await res.json().catch(() => ({}));
+        body: JSON.stringify({ apercuSignature: signatureApercuAutopilote(config), ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}) }),
+      }), { cle: 'autopilote:produire' });
+      if (issue.annule) {
+        setProduire({ etat: 'erreur', message: MESSAGE_ANNULE });
+        return;
+      }
+      const data = issue.json;
       // 202 : le rendu est lancé en arrière-plan ; 409 « en-cours » : un
       // rendu tourne déjà — dans les deux cas on SUIT celui qui tourne.
-      if (res.status === 202 || data?.code === 'en-cours') return;
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || `Erreur ${res.status}`);
+      if (issue.status === 202 || data?.code === 'en-cours') return;
+      if (issue.status < 200 || issue.status >= 300 || !data?.success) {
+        throw new Error(data?.error || `Erreur ${issue.status}`);
       }
       appliquerResultat(data);
     } catch (err) {
@@ -1207,6 +1220,28 @@ export default function AutopilotPanel({
             </p>
           )}
         </dl>
+
+        {/* ── Coût FOURNISSEUR estimé (admin) ─────────────────────────────
+            Recalculé sur la configuration EN COURS d'édition (avatar,
+            nombre par cycle, cadence) : visible avant d'activer. Une
+            estimation, jamais un prélèvement. */}
+        {devis?.fournisseur && (() => {
+          const budget = budgetAutopilote({
+            avatarUtilise: avatarActifConfig(config),
+            countPerCycle: config.countPerCycle,
+            cadence: config.cadence,
+            devisParVideo: devis.fournisseur.devisParVideo,
+          });
+          return (
+            <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] space-y-0.5" data-autopilot-cout-fournisseur>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Coût fournisseur estimé (admin)</p>
+              {lignesBudgetAutopilote(budget, devis.fournisseur.devisParVideo).map((l) => (
+                <p key={l} className="text-gray-300">{l}</p>
+              ))}
+              <p className="text-[10px] text-gray-500">0 crédit Studiio, mais facturé sur le wallet HeyGen. Estimation, aucun prélèvement.</p>
+            </div>
+          );
+        })()}
 
         {/* ── Produire un brouillon MAINTENANT ───────────────────────────
             Ni l'heure de production ni celle de publication ne sont des

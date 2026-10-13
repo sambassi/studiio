@@ -469,7 +469,7 @@ describe('Avatar III / IV / V — POST /api/avatar/generate', () => {
     const ecran = await prixEcran();
     expect(lignesPrixGenererAvatar(ecran.prix['avatar.avatar_v'], ecran.exempte)).toEqual(['Prix public : 41 crédits', 'Votre coût : 0 crédit']);
     for (const qualite of ['standard', 'qualite', 'premium']) {
-      const res = await post(AVATAR, { script: 'Bonjour à tous.', qualite });
+      const res = await post(AVATAR, { script: 'Bonjour à tous.', qualite, confirmationCoutFournisseur: true });
       expect(res.status, qualite).toBe(200);
       expect((await res.json()).data.creditsCharged, qualite).toBe(0);
     }

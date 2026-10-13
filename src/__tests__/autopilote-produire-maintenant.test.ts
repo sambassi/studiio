@@ -462,7 +462,7 @@ describe('1 clic = 1 rendu : la production tourne en ARRIÈRE-PLAN', () => {
   it('le panneau suit le rendu lancé et le retrouve après un rechargement', () => {
     const { readFileSync } = require('fs') as typeof import('fs');
     const panel = readFileSync(require('path').resolve(process.cwd(), 'src/components/creer/AutopilotPanel.tsx'), 'utf-8');
-    expect(panel).toContain("if (res.status === 202 || data?.code === 'en-cours') return;");
+    expect(panel).toContain("if (issue.status === 202 || data?.code === 'en-cours') return;");
     // Reprise au montage : rendu en cours OU montage-jumeau en préparation
     // (comportement monté et vérifié dans autopilote-faux-succes-ecran).
     expect(panel).toContain("if (d?.progression) setProduire({ etat: 'en-cours' });");

@@ -27,10 +27,11 @@ import Link from 'next/link';
 import { useTarifs } from '@/lib/tarifs/client';
 import { cleTarifEcranMonAvatar, lignesPrixGenererAvatar, LIBELLE_BOUTON_GENERER_AVATAR } from '@/lib/avatar/prix';
 import BlocPrix from '@/components/ui/BlocPrix';
-import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
+import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, LancementAnnule, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
 import { libelleLissage } from '@/lib/avatar/preparation-source-regles';
+import { avecConfirmationCout, confirmerCreationAvatar, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 import { CLASSES_LECTEUR_GENERATION, ratioCadre, formatLecteurDepuisRatio } from '@/lib/ui/lecteur-generation';
 import {
@@ -362,12 +363,17 @@ export default function AvatarPage() {
       // Avatar D-ID : l'aperçu part sur MA voix (ElevenLabs) vers D-ID ; HeyGen sinon.
       const res = avatar.provider === 'did'
         ? await fetch('/api/avatar/did/apercu', { method: 'POST' })
-        : await fetch('/api/avatar/generate', {
+        : null;
+      // HeyGen : un admin voit le coût de l'aperçu (moteur, durée, $) AVANT l'appel.
+      const issue = res
+        ? { annule: false as const, json: await res.json() }
+        : await avecConfirmationCout((confirme) => fetch('/api/avatar/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined }),
-        });
-      const json = await res.json();
+          body: JSON.stringify({ intention: 'apercu', voiceId: voiceId || undefined, ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}) }),
+        }), { cle: 'avatar:apercu' });
+      if (issue.annule) { setNotice(MESSAGE_ANNULE); return; }
+      const json = issue.json;
       if (!json.success) {
         // Sans voix personnelle, l'aperçu ne peut pas parler : on le dit avec la sortie (« Ma voix »), pas une erreur sèche.
         if (json.code === 'voix_indisponible') { signalerVoixManquante(); await loadApercu(); return; }
@@ -633,6 +639,16 @@ export default function AvatarPage() {
       // L'avatar vidéo passe par D-ID quand le serveur l'a ouvert ; la photo
       // reste HeyGen, à l'identique. Le serveur revérifie le drapeau.
       if (kind === 'video' && didVideoActif) fd.append('provider', 'did');
+      // COÛT FOURNISSEUR (admin) : créer chez HeyGen peut être facturé, sans
+      // tarif public — l'avertissement et l'avatar déjà prêt AVANT l'envoi.
+      if (!(kind === 'video' && didVideoActif)) {
+        const choix = await confirmerCreationAvatar({ type: kind === 'video' ? 'video' : 'photo' });
+        if (choix === 'annuler' || choix === 'existant') {
+          setNotice(choix === 'existant' ? 'Votre avatar existant reste utilisé : aucune nouvelle version créée.' : MESSAGE_ANNULE);
+          return;
+        }
+        if (choix === 'continuer') fd.append(CHAMP_CONFIRMATION_COUT, '1');
+      }
 
       // Envoi avec les octets RÉELLEMENT transférés (XHR) : la progression
       // affichée est celle de l'envoi vers Studiio, et s'arrête là — le
@@ -798,6 +814,13 @@ export default function AvatarPage() {
         setGenStatus('completed');
       } catch (e) {
         if (demonteRef.current) return;
+        // Coût fournisseur refusé : rien n'a été lancé — retour au repos, sans échec affiché.
+        if (e instanceof LancementAnnule) {
+          setGenStatus('idle');
+          setGenEtape(null);
+          setNotice(e.message);
+          return;
+        }
         const message = e instanceof Error && e.message ? e.message : 'La génération a échoué.';
         // Une attente interrompue (réseau, session) ne dit rien de la génération : on garde de quoi la reprendre.
         const code = (e as { code?: string })?.code;
@@ -811,7 +834,8 @@ export default function AvatarPage() {
 
     setGenEtape({ mode: 'heygen', phase: 'lancement' });
     try {
-      const res = await fetch('/api/avatar/generate', {
+      // Un admin voit le coût HeyGen (moteur, durée estimée, $) AVANT l'appel ; annuler = 0 appel.
+      const issue = await avecConfirmationCout((confirme) => fetch('/api/avatar/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -820,9 +844,16 @@ export default function AvatarPage() {
           voiceId: voiceId || undefined,
           aspectRatio: ratio,
           ...(qualiteEnvoyee ? { qualite: qualiteEnvoyee } : {}),
+          ...(confirme ? { [CHAMP_CONFIRMATION_COUT]: true } : {}),
         }),
-      });
-      const json = await res.json();
+      }), { cle: 'avatar:generer' });
+      if (issue.annule) {
+        setGenStatus('idle');
+        setGenEtape(null);
+        if (issue.choix !== 'deja_en_cours') setNotice(MESSAGE_ANNULE);
+        return;
+      }
+      const json = issue.json;
 
       if (!json.success) {
         const message = json.refunded

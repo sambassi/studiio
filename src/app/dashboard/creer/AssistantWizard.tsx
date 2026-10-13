@@ -199,6 +199,7 @@ import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
 // l'apercu.
 import { FONT_GROUPS, fontStack, ensureFontLoaded, preloadCatalogPreview } from '@/lib/fonts/catalog';
 import { useSession } from 'next-auth/react';
+import { MESSAGE_AUCUN_APPEL } from '@/lib/fournisseurs/devis-fournisseur';
 import type { Politique } from '@/lib/facturation/politique';
 import {
   politiqueAffichable, MENTION_AUCUN_CREDIT,
@@ -207,6 +208,7 @@ import JumeauPanel from '@/components/creer/JumeauPanel';
 import CartesEditeur from '@/components/creer/CartesEditeur';
 import {
   gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, versionAncienneDuRush, lireEtatJumeau, type JumeauMode,
+  LancementAnnule,
   type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
   MESSAGE_ECHEC_VIDEO_AVATAR, motifEchecVideoAvatar, messageEchecJumeau,
 } from '@/lib/creer/jumeau';
@@ -8272,6 +8274,7 @@ export default function AssistantWizard() {
           avatarId: jumeauAvatarId,
           // Le format est REMPLI par HeyGen (`fit: cover`) : plus de bandes DANS le fichier.
           cadrage: 'remplir',
+          relance: true,
           onLancee: (id) => { lancee = id; setJumeauGenerationId(id); },
           onPhase: avancerJumeau,
         });
@@ -8287,6 +8290,13 @@ export default function AssistantWizard() {
           montrerJumeauPose();
         }
       } catch (e) {
+        // Coût fournisseur refusé : rien n'a été lancé, l'écran revient à l'échec d'avant.
+        if (e instanceof LancementAnnule) {
+          setJumeauPhase(null);
+          setJumeauRepriseErreur({ titre: 'Relance annulée.', message: e.message, reprendreId: null });
+          setJumeauReprise('echec');
+          return;
+        }
         echecRepriseJumeau(e, lancee);
       } finally {
         jumeauRepriseFaite.current = false;
@@ -10549,6 +10559,12 @@ export default function AssistantWizard() {
               {jumeauRepriseErreur?.titre ?? 'La génération de votre jumeau n’a pas abouti.'}
               {jumeauRepriseErreur?.message && (
                 <span data-jumeau-erreur-motif className="block text-[12px] text-amber-100/90 mt-0.5">{jumeauRepriseErreur.message}</span>
+              )}
+              {/* ADMIN : ce que coûte (ou non) le bouton chez le fournisseur, AVANT le clic. */}
+              {politiqueFacturation === 'partner_cost_only' && (
+                <span data-jumeau-cout-relance className="block text-[12px] text-amber-100/70 mt-0.5">
+                  {jumeauRepriseErreur?.reprendreId ? MESSAGE_AUCUN_APPEL : 'Réessayer lance une NOUVELLE vidéo HeyGen : son coût sera affiché avant l’envoi.'}
+                </span>
               )}
             </span>
             {jumeauRepriseErreur?.reprendreId ? (

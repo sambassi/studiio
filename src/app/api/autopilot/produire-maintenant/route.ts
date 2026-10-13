@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits } from '@/lib/credits/system';
 import { politiqueDeLUtilisateur } from '@/lib/facturation/politique';
+import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 import { creneauImmediat } from '@/lib/autopilot/rules';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
 import { choisirContenuManuel } from '@/lib/autopilot/contenu-manuel';
@@ -10,7 +11,9 @@ import { postVisibleDansCalendrier } from '@/lib/autopilot/suivi-jumeau-manuel';
 import {
   produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
-import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
+import { lancerJumeauMontage, scriptJumeauMontage } from '@/lib/autopilot/jumeau-async';
+import { budgetAutopiloteDuCompte, devisVideoAutopilote } from '@/lib/fournisseurs/devis-autopilote';
+import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib/autopilot/sources';
 import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
 import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
@@ -100,6 +103,11 @@ export async function GET() {
   // mode est actif). `devisMontage` est la formule partagée avec POST.
   const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
   const devis = await devisMontage(config);
+  // ADMIN (0 crédit Studiio) : le coût RÉEL chez le fournisseur, par vidéo, par
+  // jour et par mois — visible AVANT d'activer ou de produire. Estimation, jamais un débit.
+  const fournisseur = await compteExempteDeCredits(userId).catch(() => false)
+    ? await budgetAutopiloteDuCompte(userId, config).catch(() => null)
+    : null;
   return NextResponse.json({
     success: true,
     politique,
@@ -107,6 +115,7 @@ export async function GET() {
     detail: { rendu: devis.rendu, avatar: devis.avatar, affiche: devis.affiche },
     solde,
     enCours: enVol.has(userId),
+    ...(fournisseur ? { fournisseur } : {}),
   });
 }
 
@@ -115,10 +124,13 @@ export async function POST(req?: Request) {
   // Lue AVANT tout verrou — un corps illisible vaut « pas d'empreinte »,
   // c'est-à-dire l'ancien comportement.
   let apercuSignature: string | null = null;
+  // Admin : le coût fournisseur de la vidéo avatar a-t-il été confirmé ?
+  let coutConfirme = false;
   try {
     const corps = req ? await req.json() : null;
     const brut = corps && typeof corps === 'object' ? (corps as { apercuSignature?: unknown }).apercuSignature : null;
     if (typeof brut === 'string' && /^c1-[0-9a-f]{8}$/.test(brut)) apercuSignature = brut;
+    coutConfirme = confirmationCoutLue(corps && typeof corps === 'object' ? (corps as Record<string, unknown>)[CHAMP_CONFIRMATION_COUT] : null);
   } catch { /* pas de corps */ }
   const session = await auth();
   const userId = session?.user?.id;
@@ -243,6 +255,13 @@ export async function POST(req?: Request) {
     // le rendra dès que la vidéo est prête. Le montage arrive dans le Calendrier
     // quelques minutes plus tard, même si l'onglet est fermé.
     if (avatarActifConfig(configBrouillon)) {
+      // COÛT FOURNISSEUR — lancement manuel d'un admin : le devis HeyGen de
+      // CETTE vidéo (moteur de l'Autopilote, durée estimée de SON script)
+      // AVANT toute réservation, tout débit et tout appel. 428 sinon.
+      if (!coutConfirme && await compteExempteDeCredits(userId)) {
+        const devisFournisseur = await devisVideoAutopilote(userId, configBrouillon, scriptJumeauMontage(post));
+        if (devisFournisseur) return reponseConfirmationCout(devisFournisseur);
+      }
       const lancement = await lancerJumeauMontage({
         userId,
         config: configBrouillon,

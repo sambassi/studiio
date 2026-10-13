@@ -20,6 +20,9 @@ import {
   BUCKET_AVATAR, cleSourceAvatar, retirerSourceAvatar,
 } from '@/lib/avatar/source';
 import { avatarVivantDuCompte } from '@/lib/avatar/lecture';
+import { compteExempteDeCredits } from '@/lib/facturation/exemption';
+import { devisCreationPourCompte } from '@/lib/fournisseurs/devis-creation-avatar';
+import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 import { listerIdentites, identitesVideoAvecGroupe, emplacementsVideo } from '@/lib/avatar/versions';
 import { lancerVersionCandidate } from '@/lib/avatar/remplacement';
 import { versionPublique } from '@/lib/avatar/actions-version';
@@ -454,6 +457,20 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       );
+    }
+
+    // COÛT FOURNISSEUR — créer un avatar ou une nouvelle version (POST
+    // /v3/avatars) peut être facturé par HeyGen, SANS tarif public : jamais un
+    // montant inventé. Un admin (0 crédit Studiio) doit avoir confirmé
+    // (l'écran a lu `GET /api/avatar/devis-creation` avant l'envoi) — sinon
+    // 428 + devis, AVANT tout dépôt, toute ligne et tout appel.
+    if (!viaDid && !confirmationCoutLue(formData.get(CHAMP_CONFIRMATION_COUT)) && await compteExempteDeCredits(userId)) {
+      const sourceCle = formData.get('cleSource');
+      const typeDemande: AvatarKind = file
+        ? (file.type.startsWith('video/') ? 'video' : 'photo')
+        : typeof sourceCle === 'string' && /\.(mp4|webm|mov)$/i.test(sourceCle) ? 'video' : 'photo';
+      const { devis, contexte } = await devisCreationPourCompte(userId, typeDemande);
+      return reponseConfirmationCout(devis, { ...contexte });
     }
 
     // Remplacer / nouveau : le choix VIENT de l'écran, l'identité du compte est relue ici.

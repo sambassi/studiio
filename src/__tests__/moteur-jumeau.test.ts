@@ -87,6 +87,13 @@ vi.mock('@/lib/credits/system', () => ({
   },
   addCredits: async (_u: string, n: number) => { credits.journal.push(`refund:${n}`); credits.solde += n; },
 }));
+// Coût fournisseur (#562) : `coutAdmin.actif` fait de la session un ADMIN pour
+// la garde de confirmation ; faux (défaut) = l'exemption réelle, inchangée.
+const coutAdmin = vi.hoisted(() => ({ actif: false }));
+vi.mock('@/lib/facturation/exemption', async (orig) => {
+  const vrai = await orig<typeof import('@/lib/facturation/exemption')>();
+  return { ...vrai, compteExempteDeCredits: async (u: string) => coutAdmin.actif || vrai.compteExempteDeCredits(u) };
+});
 const session = vi.hoisted(() => ({ courante: { user: { id: 'aaaaaaaa-1111-4111-8111-111111111111' } } as unknown }));
 vi.mock('@/lib/auth/config', () => ({ auth: async () => session.courante }));
 
@@ -134,7 +141,7 @@ const appelsVers = (prefixe: string) => reseau.appels.filter((a) => a.url.starts
 beforeEach(() => {
   base.avatars = [avatar()]; base.voices = [voix()]; base.generations = []; base.transactions = []; base.compteur = 0;
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: [{ affiche: 'Afroboost', prononce: 'Afro-boust' }, { affiche: 'Neuchâtel', prononce: 'Neu-cha-tel' }] } } }];
-  credits.solde = 1000; credits.journal.length = 0; credits.leve = null; credits.admin = false; credits.majEchoue = false;
+  credits.solde = 1000; credits.journal.length = 0; credits.leve = null; credits.admin = false; credits.majEchoue = false; coutAdmin.actif = false;
   reseau.appels.length = 0; reseau.eleven = 200; reseau.heygenAssets = 200; reseau.heygenVideos = 200;
   process.env.JUMEAU_MOTEUR_ACTIVE = '1';
   session.courante = { user: { id: U } };
@@ -499,5 +506,54 @@ describe('Mon avatar — cadrage rempli et qualité Premium (moteur du jumeau)',
     expect(r.ok).toBe(true);
     expect((appelsVers('https://api.heygen.com/v3/videos')[0].body as { engine: unknown }).engine).toEqual({ type: 'avatar_iii' });
     expect((await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'avatar_v' })).ok).toBe(false);
+  });
+});
+
+describe('#562 — coût fournisseur AVANT la vidéo du jumeau (admin, lancement manuel)', () => {
+  const lancer = (confirme: boolean, operation?: 'relance_video') =>
+    genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', coutFournisseur: { confirme, ...(operation ? { operation } : {}) } });
+
+  it('⚠️ J. relance qui créerait une NOUVELLE vidéo : devis « relance » rendu AVANT tout — 0 appel (voix comprise), 0 ligne, 0 débit', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    const r = await lancer(false, 'relance_video');
+    expect(r).toMatchObject({ ok: false, motif: 'confirmation_cout' });
+    if (r.ok || r.motif !== 'confirmation_cout') return;
+    // Le moteur RÉELLEMENT envoyé (Avatar III par défaut), avatar photo → tarif photo.
+    expect(r.devis).toMatchObject({ operation: 'relance_video', moteur: 'avatar_iii', moteurImplicite: false, typeAvatar: 'photo', prixConnu: true, creditsStudiio: 0 });
+    expect(r.devis.coutUsd!.min).toBeGreaterThan(0);
+    expect(reseau.appels).toEqual([]);
+    expect(base.generations).toEqual([]);
+    expect(credits.journal).toEqual([]);
+  });
+
+  it('⚠️ G. confirmé → exactement UNE vidéo chez le fournisseur', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    const r = await lancer(true);
+    expect(r.ok).toBe(true);
+    expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
+  });
+
+  it('⚠️ cron / reprise (aucune garde demandée) : jamais bloqué par la confirmation', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    expect((await generer()).ok).toBe(true);
+    expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
+  });
+
+  it('utilisateur non admin : aucune confirmation demandée (il paie en crédits, comme avant)', async () => {
+    const r = await lancer(false);
+    expect(r.ok).toBe(true);
+  });
+
+  it('⚠️ route Créer : admin sans confirmation → 428 + devis, 0 appel ; avec confirmation → 1 vidéo', async () => {
+    coutAdmin.actif = true; credits.admin = true;
+    const envoyer = (corps: Record<string, unknown>) => POST(new NextRequest('https://studiio.pro/api/creer/jumeau/generer', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps) }));
+    const refus = await envoyer({ textes: [TEXTE], aspectRatio: '9:16' });
+    expect(refus.status).toBe(428);
+    const j = await refus.json();
+    expect(j).toMatchObject({ code: 'confirmation_cout_fournisseur', devis: { operation: 'video_avatar', moteur: 'avatar_iii' } });
+    expect(reseau.appels).toEqual([]);
+    const ok = await envoyer({ textes: [TEXTE], aspectRatio: '9:16', relance: true, confirmationCoutFournisseur: true });
+    expect(ok.status).toBe(200);
+    expect(appelsVers('https://api.heygen.com/v3/videos')).toHaveLength(1);
   });
 });
