@@ -34,6 +34,7 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { reportServiceAlert, type AlertSeverity } from '@/lib/service-alerts';
 import { sendEmailSilent } from '@/lib/email/resend';
+import { enteteAutorisationDid } from '@/lib/providers/did/client';
 
 export const FOURNISSEURS_SURVEILLES = ['heygen', 'elevenlabs', 'replicate', 'did'] as const;
 export type FournisseurId = (typeof FOURNISSEURS_SURVEILLES)[number];
@@ -174,7 +175,8 @@ export async function lireSolde(id: FournisseurId, deps: { env?: NodeJS.ProcessE
     const cle = env.DID_API_KEY;
     if (!cle) return null;
     // https://docs.d-id.com/reference/getcredits
-    const json = await lire('https://api.d-id.com/credits', { Authorization: `Basic ${cle}`, Accept: 'application/json' });
+    // Même en-tête que le client D-ID (clé `user:secret` encodée en base64).
+    const json = await lire('https://api.d-id.com/credits', { Authorization: enteteAutorisationDid(cle), Accept: 'application/json' });
     const restant = nombre(json.remaining);
     if (restant === null) throw new Error('D-ID : réponse de crédits sans `remaining`.');
     return { solde: restant, devise: 'crédits', autoReload: null };

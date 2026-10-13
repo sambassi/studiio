@@ -48,6 +48,12 @@ describe('lecture du solde — champs documentés seulement', () => {
     expect(await lireSolde('did', { env, fetch: reponse({ remaining: 12, total: 40 }) as typeof fetch })).toMatchObject({ solde: 12, devise: 'crédits' });
     expect(await lireSolde('elevenlabs', { env, fetch: reponse({ character_count: 70_000, character_limit: 100_000 }) as typeof fetch })).toMatchObject({ solde: 30_000, devise: 'caractères' });
   });
+  it('D-ID : même en-tête d’authentification que le client officiel (clé user:secret en base64)', async () => {
+    let entete = '';
+    const f = (async (_u: string, init?: RequestInit) => { entete = String((init?.headers as Record<string, string>).Authorization); return new Response(JSON.stringify({ remaining: 1 }), { status: 200 }); }) as typeof fetch;
+    await lireSolde('did', { env: { DID_API_KEY: 'moi@x.com:secret' } as unknown as NodeJS.ProcessEnv, fetch: f });
+    expect(entete).toBe(`Basic ${Buffer.from('moi@x.com:secret').toString('base64')}`);
+  });
   it('Replicate : aucune API de solde — null, jamais une valeur inventée ; clé absente : null', async () => {
     const f = vi.fn();
     expect(await lireSolde('replicate', { env, fetch: f as unknown as typeof fetch })).toBeNull();
