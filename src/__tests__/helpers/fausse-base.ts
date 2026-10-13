@@ -75,7 +75,12 @@ export function creerFausseBase() {
       update: (p: Ligne) => { op = 'update'; charge = p; return q; },
       upsert: (l: Ligne) => { op = 'upsert'; charge = l; return q; },
       delete: () => { op = 'delete'; return q; },
-      eq: (c: string, v: unknown) => { filtres.push((l) => l[c] === v); return q; },
+      // `metadata->>slotKey` : chemin JSON lu en texte, comme PostgREST.
+      eq: (c: string, v: unknown) => {
+        const [col, cle] = c.split('->>');
+        filtres.push((l) => (cle ? String((l[col] as Record<string, unknown> | null)?.[cle] ?? '') : l[c]) === v);
+        return q;
+      },
       is: (c: string, v: unknown) => { filtres.push((l) => (l[c] ?? null) === v); return q; },
       in: (c: string, v: unknown[]) => { filtres.push((l) => v.includes(l[c])); return q; },
       like: (c: string, motif: string) => { const p = motif.replace(/%$/, ''); filtres.push((l) => typeof l[c] === 'string' && (l[c] as string).startsWith(p)); return q; },

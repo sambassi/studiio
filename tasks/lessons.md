@@ -1196,3 +1196,6 @@ chargeant le chunk RÉELLEMENT déployé, pas la lib depuis npm.
 
 ## [2026-10-13] | Admin › Fournisseurs et service-health en 500 dès la première alerte réellement enregistrée | `app_settings.value` revient en chaîne JSON en production : toute lecture décode
 Le correctif #558 a rendu l'écriture des alertes effective ; la LECTURE, jamais exercée jusque-là, rendait la chaîne brute → `.filter` sur une chaîne. Les tests passaient : la fausse base renvoyait un tableau. **Règle** — une doublure de stockage reproduit la forme RÉELLE relue en prod (ici une chaîne) ; toute clé `app_settings` se lit via un décodeur tolérant (`relire`, `alertesDepuisValeur`).
+
+## [2026-10-13] | « Brouillon déposé dans le Calendrier » affiché, Calendrier vide | Un succès s'annonce sur une PREUVE (le post relu), jamais sur un 200
+Avec l'avatar, « Produire maintenant » répond 200 `{ jumeau: 'en_preparation' }` sans `postId` : le montage attend en file le finaliseur (cron Autopilote horaire). L'écran prenait tout `success: true` pour un dépôt. **Règle** — un message « déposé / publié / enregistré » exige l'identifiant de l'objet ET sa relecture côté serveur (bon compte, statut affichable, média) ; un traitement asynchrone a son propre état « en préparation », suivi jusqu'à la preuve.
