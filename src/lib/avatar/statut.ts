@@ -26,7 +26,7 @@ import { getVideoStatus, downloadVideo } from '@/lib/avatar/heygen';
 import { lireScene, telechargerResultat } from '@/lib/providers/did/client';
 import { FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
-import { MESSAGES_AVATAR, messageUtilisateurSur } from '@/lib/avatar/fournisseurs';
+import { MESSAGES_AVATAR, messageUtilisateurSur, creditsFournisseurEpuises } from '@/lib/avatar/fournisseurs';
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 import { retirerBandesIncrustees } from '@/lib/avatar/cadrage-jumeau';
 
@@ -113,7 +113,12 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
     const brut = remote.failureMessage || `${g.provider ?? 'heygen'} : échec signalé sans détail`;
     console.error(`[Avatar][${g.provider ?? 'heygen'}] génération ${g.id} en échec :`, brut);
     const admin = await compteAdmin(userId);
-    const visible = g.credits_charged > 0 && !admin ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echec;
+    const rembourseUtilisateur = g.credits_charged > 0 && !admin;
+    const visible = creditsFournisseurEpuises(brut)
+      ? (admin
+        ? MESSAGES_AVATAR.creditsFournisseurAdmin
+        : rembourseUtilisateur ? MESSAGES_AVATAR.creditsFournisseurRembourse : MESSAGES_AVATAR.creditsFournisseur)
+      : rembourseUtilisateur ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echec;
     const rembourse = await failAndRefund(g, visible);
     await enregistrerCoutGeneration(g.id, calculerCoutGeneration({ provider: viaDid ? 'did' : 'heygen', admin, secondes: 0, caracteres: (g.script ?? '').length, creditsDebites: 0 }), brut);
     if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));

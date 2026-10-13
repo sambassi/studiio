@@ -5,7 +5,7 @@ import { getUserCredits } from '@/lib/credits/system';
 import { politiqueDeLUtilisateur } from '@/lib/facturation/politique';
 import { creneauImmediat } from '@/lib/autopilot/rules';
 import { preparePosts, slotKey } from '@/lib/autopilot/engine';
-import { pickTopics } from '@/lib/autopilot/topics';
+import { choisirContenuManuel } from '@/lib/autopilot/contenu-manuel';
 import {
   produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
@@ -109,7 +109,16 @@ export async function GET() {
   });
 }
 
-export async function POST() {
+export async function POST(req?: Request) {
+  // Empreinte de l'aperçu affiché (facultative) : voir `choisirContenuManuel`.
+  // Lue AVANT tout verrou — un corps illisible vaut « pas d'empreinte »,
+  // c'est-à-dire l'ancien comportement.
+  let apercuSignature: string | null = null;
+  try {
+    const corps = req ? await req.json() : null;
+    const brut = corps && typeof corps === 'object' ? (corps as { apercuSignature?: unknown }).apercuSignature : null;
+    if (typeof brut === 'string' && /^c1-[0-9a-f]{8}$/.test(brut)) apercuSignature = brut;
+  } catch { /* pas de corps */ }
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
@@ -204,16 +213,14 @@ export async function POST() {
       );
     }
 
-    // ── Le sujet, comme le cron : différent des derniers brouillons ─────
+    // ── Le sujet : celui de l'APERÇU quand l'écran l'envoie ──────────────
+    // Sinon, comme le cron : différent des derniers brouillons.
     const recents = await sujetsRecents(userId);
-    const [topic] = pickTopics({
-      count: 1,
-      exclude: recents,
-      // À la minute et non au jour : deux essais manuels dans la journée ne
-      // doivent pas retomber sur le même sujet.
-      seed: Math.floor(now / 60_000),
-      pool: config.topics.length ? config.topics : undefined,
-    });
+    const choix = choisirContenuManuel({ config, apercuSignature, recents, now });
+    if (!choix.ok) {
+      return NextResponse.json({ success: false, error: choix.message, code: choix.code }, { status: 409 });
+    }
+    const { topic } = choix;
 
     // ── Brouillon FORCÉ ─────────────────────────────────────────────────
     // `mode: review` → statut `draft` (`statusForMode`) ; `platforms: []` →
@@ -221,7 +228,7 @@ export async function POST() {
     // sur le post : `toPostRow` lit le statut sur l'une, les réseaux sur
     // l'autre, et les métadonnées (`autopilotMode`) sur la première.
     const configBrouillon = { ...config, mode: 'review' as const, platforms: [] as string[] };
-    const [prepare] = preparePosts({ config: configBrouillon, topic, count: 1, now });
+    const [prepare] = preparePosts({ config: configBrouillon, topic, count: 1, now, seeds: choix.seeds });
     const post = { ...prepare, scheduledDate: date, scheduledTime: time, platforms: [] as string[] };
 
     // Verrou 3 : `jobId` DÉTERMINISTE pour le créneau — la référence de
@@ -243,7 +250,7 @@ export async function POST() {
         now,
         jobId,
         slotKey: jeton,
-        metadataSupplement: { production: 'manuelle' },
+        metadataSupplement: { production: 'manuelle', ...(choix.depuisApercu ? { contenuDepuisApercu: true, apercuSignature: choix.contenuSignature } : null) },
         journal: '[Autopilote/Manuel]',
       });
       if (!lancement.ok) {
@@ -290,7 +297,7 @@ export async function POST() {
       journal: '[Autopilote/Manuel]',
       // Le prix annoncé et contrôlé ci-dessus : c'est lui qui sera débité.
       coutRendu,
-      metadataSupplement: { production: 'manuelle' },
+      metadataSupplement: { production: 'manuelle', ...(choix.depuisApercu ? { contenuDepuisApercu: true, apercuSignature: choix.contenuSignature } : null) },
     }).then((rendu) => {
       noterResultat(userId, {
         success: true,

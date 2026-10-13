@@ -37,7 +37,25 @@ export const MESSAGES_AVATAR = {
   voixIndisponible: 'Le service de voix est temporairement indisponible. Aucun crédit Studiio n’a été débité.',
   ancienMoteur: 'Votre avatar a été créé avec une ancienne version du service. Recréez-le dans « Mon avatar » pour l’utiliser dans vos vidéos. Aucun crédit Studiio n’a été débité. Votre voix reste utilisable pour la narration.',
   verificationTransitoire: 'Le statut de votre vidéo n’a pas pu être vérifié pour l’instant. Nouvel essai automatique.',
+  // Le FOURNISSEUR a refusé faute de crédits de SON côté (compte API vide) :
+  // ni la vidéo, ni l'avatar, ni la voix ne sont en cause — et « Réessayer »
+  // échouera à l'identique tant que le compte n'est pas rechargé.
+  creditsFournisseurAdmin: 'La génération de la vidéo avec votre avatar a échoué. Le compte du prestataire avatar n’a plus de crédits API : rechargez-le, puis cliquez sur « Réessayer ». Aucun crédit Studiio n’a été débité.',
+  creditsFournisseur: 'La génération de la vidéo avec votre avatar a échoué. Le service Avatar est momentanément saturé : réessayez plus tard. Aucun crédit Studiio n’a été débité.',
+  creditsFournisseurRembourse: 'La génération de la vidéo avec votre avatar a échoué. Le service Avatar est momentanément saturé : réessayez plus tard. Vos crédits Studiio ont été recrédités.',
 } as const;
+
+/**
+ * Le refus brut du fournisseur dit-il « crédits API épuisés » ?
+ *
+ * Constaté en production le 2026-10-12 : `Insufficient credit. This operation
+ * requires 'api' credits.` sur chaque vidéo du jumeau — affiché jusqu'ici
+ * comme un échec générique, sans cause ni action possible.
+ */
+export function creditsFournisseurEpuises(brut: string | null | undefined): boolean {
+  if (!brut) return false;
+  return /insufficient[_\s-]*credit|requires\s+'?api'?\s+credits|not\s+enough\s+credits|out\s+of\s+credits/i.test(brut);
+}
 
 /**
  * Jumeau VIDÉO (digital twin) — TEMPORAIREMENT réservé à l'admin : son

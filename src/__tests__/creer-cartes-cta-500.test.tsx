@@ -125,7 +125,10 @@ describe('CTA : le brief est la source de vérité', () => {
 describe('câblage du Wizard', () => {
   const w = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
   it('CTA du brief appliqué au contenu rendu (vidéo, surimpression, metadata)', () => {
-    expect(w).toContain('contenu = avecCtaDuBrief(contenu, brief);');
+    // Le contenu courant porte déjà le CTA du brief (état = aperçu) ; seules
+    // les variations du lot le reçoivent au rendu (voir coherence-projet-cta).
+    expect(w).toContain('if (contenu !== contenuInitial) contenu = avecCtaDuBrief(contenu, brief);');
+    expect(w).toContain('<BriefVideo brief={brief} onChange={changerBrief} />');
   });
   it('validation avant capture, avant toute réservation', () => {
     const i = w.indexOf('const erreurCartes = erreurCartesSurimpression(bilanCartes);');

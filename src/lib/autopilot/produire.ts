@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { signatureContenu } from '@/lib/creer/signature-contenu';
 import { deductCredits } from '@/lib/credits/system';
 import { prixDe } from '@/lib/tarifs/serveur';
 import { referenceOperation } from '@/lib/credits/atomique';
@@ -925,6 +926,15 @@ export async function produireUnMontage(input: {
       // Le fuseau de l'utilisateur : sans lui, le cron de publication lirait
       // l'heure programmée comme une heure de Paris.
       timezone: config.runTimezone,
+    }),
+    // Empreinte du TEXTE réellement rendu (titre, sous-titre, cartes, CTA) :
+    // comparée à celle de l'aperçu, elle prouve que le post est ce projet-là.
+    contenuSignature: signatureContenu({
+      title: design.title ?? null,
+      subtitle: design.subtitle ?? null,
+      cards: (design.cards ?? []).map((c) => ({ title: c.title ?? c.label ?? null, description: c.description ?? null, value: c.value ?? null })),
+      cta: design.ctaText ?? null,
+      ctaSub: design.ctaSubText ?? null,
     }),
     // ── PAS DE REMPLACEMENT SILENCIEUX ─────────────────────────────────────
     // L'utilisateur avait un rush pour ce montage (`post.rushUrl`), mais il a
