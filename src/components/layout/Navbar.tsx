@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { viderVignettesPersistantes } from '@/lib/medias/vignette-video';
 import { useRouter } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import { Bell, User, LogOut, Shield, Zap, AlertTriangle } from 'lucide-react';
@@ -118,6 +119,8 @@ export function Navbar() {
   }, [chargerNotifications, nonLues]);
 
   const handleLogout = async () => {
+    // Miniatures de rushs privés : effacées du navigateur avant de partir.
+    await viderVignettesPersistantes();
     await signOut({ callbackUrl: '/' });
   };
 

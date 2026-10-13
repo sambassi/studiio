@@ -158,7 +158,15 @@ export async function extraireVignetteDom(url: string, deps: DependancesExtracti
 const BASE = 'studiio-vignettes';
 const MAGASIN = 'vignettes';
 
-interface EntreePersistante { blob: Blob; ratio: number; duree: number | null }
+/**
+ * ⚠️ CE SONT DES IMAGES DE RUSHS PRIVÉS (#554) : elles ne survivent ni à la
+ * déconnexion (`viderVignettesPersistantes`, appelée avant `signOut`) ni à
+ * `TTL_PERSISTANT_MS`. Sur un ordinateur partagé, le compte suivant ne doit
+ * pas retrouver sur le disque les images du précédent.
+ */
+export const TTL_PERSISTANT_MS = 7 * 24 * 60 * 60 * 1000;
+
+interface EntreePersistante { blob: Blob; ratio: number; duree: number | null; creeLe?: number }
 
 function ouvrirBase(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
@@ -187,7 +195,9 @@ async function lirePersistant(cle: string): Promise<EntreePersistante | null> {
         const req = db.transaction(MAGASIN, 'readonly').objectStore(MAGASIN).get(cle);
         req.onsuccess = () => {
           const v = req.result as EntreePersistante | undefined;
-          resolve(v && v.blob && typeof v.ratio === 'number' ? v : null);
+          // Entrée sans date (ancienne) ou expirée : ignorée — elle sera réécrite.
+          const fraiche = !!v && typeof v.creeLe === 'number' && Date.now() - v.creeLe < TTL_PERSISTANT_MS;
+          resolve(v && fraiche && v.blob && typeof v.ratio === 'number' ? v : null);
         };
         req.onerror = () => resolve(null);
       } catch {
@@ -203,7 +213,7 @@ async function ecrirePersistant(cle: string, entree: EntreePersistante): Promise
   try {
     const db = await ouvrirBase();
     if (!db) return;
-    db.transaction(MAGASIN, 'readwrite').objectStore(MAGASIN).put(entree, cle);
+    db.transaction(MAGASIN, 'readwrite').objectStore(MAGASIN).put({ ...entree, creeLe: Date.now() }, cle);
   } catch { /* le cache mémoire suffit */ }
 }
 
@@ -283,6 +293,26 @@ export function obtenirVignette(url: string): Promise<VignetteVideo | null> {
 }
 
 /** Réservé aux tests : remplace l'extracteur, l'horloge, et vide les caches. */
+/**
+ * Efface TOUT le cache de miniatures (mémoire + IndexedDB). Appelée avant la
+ * déconnexion. Ne lève jamais : une déconnexion ne doit pas être bloquée.
+ */
+export async function viderVignettesPersistantes(): Promise<void> {
+  memoire.clear();
+  try {
+    const idb = typeof indexedDB !== 'undefined' ? indexedDB : null;
+    if (!idb) return;
+    await new Promise<void>((resolve) => {
+      try {
+        const req = idb.deleteDatabase(BASE);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      } catch { resolve(); }
+    });
+  } catch { /* rien à effacer */ }
+}
+
 export const vignettesPourTests = {
   definirExtracteur(f: Extracteur) { extracteur = f; },
   definirHorloge(f: () => number) { maintenant = f; },
