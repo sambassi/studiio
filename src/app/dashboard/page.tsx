@@ -1,55 +1,92 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { CreditsDisplay } from '@/components/billing/CreditsDisplay';
 import { RecentVideos } from '@/components/dashboard/RecentVideos';
-import { Video, Film, Zap, Eye, Sparkles, Calendar, Music, Library, Share2, Settings, ArrowRight } from 'lucide-react';
+import {
+  Video, Zap, Send, CalendarClock, Info, Sparkles, Calendar, Music, Library, Share2, Settings, ArrowRight,
+} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import Link from 'next/link';
 import { useTranslations } from '@/i18n/client';
+
+/** Compteurs renvoyés par `/api/user/stats` ; `null` = inconnu. */
+interface Compteurs {
+  videos: number | null;
+  published: number | null;
+  scheduled: number | null;
+}
+
+/** Solde lu à la même source que la barre du haut (`/api/credits/balance`). */
+interface Solde {
+  credits: number | null;
+  /** Compte qui ne consomme pas de crédits Studiio : libellé, jamais un nombre. */
+  libelle: string | null;
+}
+
+/** Un nombre réel, ou « — » : jamais de valeur inventée. */
+function afficher(n: number | null | undefined): string {
+  return typeof n === 'number' ? n.toLocaleString('fr-FR') : '—';
+}
+
+const nombreOuNull = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 
 export default function DashboardPage() {
   const { data: session } = useSession();
   const userName = session?.user?.name?.split(' ')[0] || 'utilisateur';
   const t = useTranslations('dashboardHome');
+  const userId = session?.user?.id;
+
+  const [stats, setStats] = useState<Compteurs | null>(null);
+  const [solde, setSolde] = useState<Solde>({ credits: null, libelle: null });
+
+  useEffect(() => {
+    if (!userId) return;
+    let actif = true;
+
+    fetch('/api/credits/balance')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!actif || !d?.ok) return;
+        setSolde({
+          credits: nombreOuNull(d.balance),
+          libelle: typeof d.libelle === 'string' ? d.libelle : null,
+        });
+      })
+      .catch(() => {});
+
+    fetch('/api/user/stats')
+      .then((r) => r.json())
+      .then((d) => {
+        if (!actif || !d?.ok) return;
+        setStats({
+          videos: nombreOuNull(d.videos),
+          published: nombreOuNull(d.published),
+          scheduled: nombreOuNull(d.scheduled),
+        });
+      })
+      .catch(() => {});
+
+    return () => { actif = false; };
+  }, [userId]);
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-white mb-2">{t('welcome', { name: userName })} 👋</h1>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('welcome', { name: userName })}</h1>
         <p className="text-gray-400">{t('subtitle')}</p>
       </div>
 
+      {/* Chiffres réels du compte connecté. Pas de « vues totales » ni de
+          tendance : aucune source ne les mesure. En chargement ou en erreur,
+          « — » plutôt qu'un nombre inventé. */}
       <div className="grid md:grid-cols-4 gap-4">
-        <StatsCard
-          icon={Video}
-          label={t('stats.videosCreated')}
-          value={24}
-          change={t('stats.videosThisWeek', { count: '5' })}
-          changePositive={true}
-        />
-        <StatsCard
-          icon={Zap}
-          label={t('stats.creditsRemaining')}
-          value={1250}
-          change={t('stats.creditsBoughtThisWeek', { count: '500' })}
-          changePositive={true}
-        />
-        <StatsCard
-          icon={Film}
-          label={t('stats.publications')}
-          value={12}
-          change={t('stats.pubsThisWeek', { count: '2' })}
-          changePositive={true}
-        />
-        <StatsCard
-          icon={Eye}
-          label={t('stats.totalViews')}
-          value="48.2K"
-          change={t('stats.viewsIncrease', { percent: '12' })}
-          changePositive={true}
-        />
+        <StatsCard icon={Video} label={t('stats.videosCreated')} value={afficher(stats?.videos)} />
+        <StatsCard icon={Zap} label={t('stats.creditsRemaining')} value={afficher(solde.credits)} />
+        <StatsCard icon={Send} label={t('stats.published')} value={afficher(stats?.published)} />
+        <StatsCard icon={CalendarClock} label={t('stats.scheduled')} value={afficher(stats?.scheduled)} />
       </div>
 
       <section className="space-y-4">
@@ -97,7 +134,7 @@ export default function DashboardPage() {
           <RecentVideos />
         </div>
         <div className="space-y-6">
-          <CreditsDisplay credits={1250} isPro={true} />
+          <CreditsDisplay credits={solde.credits} libelle={solde.libelle} />
           <div className="card-base p-6 space-y-4">
             <h3 className="font-bold text-white">{t('quickActions')}</h3>
             <Link href="/dashboard/creer" className="block">
@@ -116,7 +153,7 @@ export default function DashboardPage() {
 
       {/* Retention policy note */}
       <div className="flex items-center gap-2 rounded-lg bg-gray-800/50 border border-gray-700/50 px-4 py-2.5 mt-2">
-        <span className="text-gray-500 text-xs">ℹ️</span>
+        <Info className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden="true" />
         <p className="text-[11px] text-gray-500">
           Rétention médias : vidéos 24h · audio/images 7j · préservés si post programmé
         </p>

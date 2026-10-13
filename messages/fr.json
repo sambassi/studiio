@@ -411,13 +411,9 @@
     "subtitle": "Vous avez un nouveau message de support",
     "stats": {
       "videosCreated": "Vidéos créées",
-      "videosThisWeek": "{count} cette semaine",
       "creditsRemaining": "Crédits restants",
-      "creditsBoughtThisWeek": "{count} achetés cette semaine",
-      "publications": "Publications",
-      "pubsThisWeek": "{count} cette semaine",
-      "totalViews": "Vues totales",
-      "viewsIncrease": "{percent}% d'augmentation"
+      "published": "Publications publiées",
+      "scheduled": "Publications programmées"
     },
     "quickActions": "Actions rapides",
     "createVideo": "Créer une vidéo",

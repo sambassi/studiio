@@ -411,13 +411,9 @@
     "subtitle": "You have a new support message",
     "stats": {
       "videosCreated": "Videos created",
-      "videosThisWeek": "{count} this week",
       "creditsRemaining": "Remaining credits",
-      "creditsBoughtThisWeek": "{count} bought this week",
-      "publications": "Publications",
-      "pubsThisWeek": "{count} this week",
-      "totalViews": "Total views",
-      "viewsIncrease": "{percent}% increase"
+      "published": "Published posts",
+      "scheduled": "Scheduled posts"
     },
     "quickActions": "Quick actions",
     "createVideo": "Create a video",
