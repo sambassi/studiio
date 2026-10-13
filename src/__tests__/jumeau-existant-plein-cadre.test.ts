@@ -155,13 +155,13 @@ function depotMemoire(initial: Record<string, Buffer>) {
   const ecrire = vi.fn(async (b: string, c: string, contenu: Buffer) => { objets.set(`${b}/${c}`, contenu); });
   return { objets, depot: { existe, lire, ecrire } };
 }
-/** ffmpeg RÉEL, chaque invocation comptée (cropdetect / recadrage). */
+/** ffmpeg RÉEL, chaque invocation comptée (cropdetect / échantillons de bandes unies / recadrage). */
 function recadreurCompte() {
-  const invocations: Array<'cropdetect' | 'crop'> = [];
+  const invocations: Array<'cropdetect' | 'echantillons' | 'crop'> = [];
   const recadrer = vi.fn((buf: Buffer, o: { aspectRatio?: unknown }) => retirerBandesIncrustees(buf, {
     ...o, ffmpeg: FFMPEG!,
     executer: async (bin, args, opts) => {
-      invocations.push(args.some((a) => a.startsWith('cropdetect')) ? 'cropdetect' : 'crop');
+      invocations.push(args.some((a) => a.startsWith('cropdetect')) ? 'cropdetect' : args.includes('rawvideo') ? 'echantillons' : 'crop');
       const r = spawnSync(bin, args, { encoding: 'utf8', timeout: opts.timeout, maxBuffer: opts.maxBuffer });
       if (r.status !== 0) throw new Error(`ffmpeg ${r.status}`);
       return { stdout: String(r.stdout), stderr: String(r.stderr) };
@@ -270,7 +270,9 @@ avecFfmpeg('jumeau EXISTANT à bandes incrustées → version plein cadre dériv
     const r = await jumeauPleinCadre({ url: url(cle), userId: A, format: '9:16' }, { depot, recadrer });
     expect(r).toEqual({ url: url(cle), statut: 'original' });
     expect(depot.ecrire).not.toHaveBeenCalled();
-    expect(invocations).toEqual(['cropdetect']);
+    // BUG 6 : `cropdetect` ne voit que le noir — les bandes unies de toute
+    // couleur sont cherchées ensuite, sans recadrage pour un jumeau propre.
+    expect(invocations).toEqual(['cropdetect', 'echantillons']);
     const r2 = await jumeauPleinCadre({ url: url(cle), userId: A, format: '9:16' }, { depot, recadrer });
     expect(r2.statut).toBe('original');
     expect(recadrer).toHaveBeenCalledTimes(1);

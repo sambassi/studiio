@@ -160,6 +160,15 @@ describe('lancerJumeauMontage', () => {
     expect(rows[0].generation_id).toBe('gen-9');
   });
 
+  it('⚠️ BUG 6 — avatar SEUL (aucune source réglée) : le fournisseur reçoit quand même le cadrage « remplir » en 9:16', async () => {
+    genererVideoJumeau.mockResolvedValue({ ok: true, generationId: 'gen-9' });
+    await lancerJumeauMontage({
+      userId: 'u1', config: { a: 1 } as never, post, rang: 0, now: 1,
+      jobId: 'job-1', slotKey: 'slot-1',
+    });
+    expect(genererVideoJumeau).toHaveBeenCalledWith(expect.objectContaining({ aspectRatio: '9:16', cadrage: 'remplir' }));
+  });
+
   it('idempotent par créneau : déjà en file → ne relance pas', async () => {
     enFile({ slot_key: 'slot-1', generation_id: 'gen-x' });
     const r = await lancerJumeauMontage({
