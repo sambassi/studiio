@@ -11,6 +11,7 @@ type Filtre = (l: Ligne) => boolean;
 
 export function creerFausseBase() {
   const tables = new Map<string, Ligne[]>();
+  const objets = new Set<string>();
   let seq = 0;
   const table = (nom: string) => {
     if (!tables.has(nom)) tables.set(nom, []);
@@ -39,7 +40,8 @@ export function creerFausseBase() {
     const executer = (): { data: unknown; error: unknown; count?: number } => {
       const t = table(nom);
       if (op === 'insert') {
-        const lignes = (Array.isArray(charge) ? charge : [charge!]).map((l) => ({ id: l.id ?? `${nom}-${++seq}`, created_at: new Date().toISOString(), credits_refunded: false, ...l }));
+        // Identifiants au format UUID, comme Postgres : certains modules les valident.
+        const lignes = (Array.isArray(charge) ? charge : [charge!]).map((l) => ({ id: l.id ?? `00000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`, created_at: new Date().toISOString(), credits_refunded: false, ...l }));
         for (const l of lignes) {
           if (conflit(nom, l)) return { data: null, error: { code: '23505', message: 'duplicate key value' } };
         }
@@ -90,8 +92,25 @@ export function creerFausseBase() {
   return {
     tables,
     table,
-    supabaseAdmin: { from, storage: { from: () => ({ upload: async () => ({ error: null }), getPublicUrl: (p: string) => ({ data: { publicUrl: `https://studiio.pro/storage/v1/object/public/media/${p}` } }) }) } },
-    vider: () => { tables.clear(); seq = 0; },
+    objets,
+    supabaseAdmin: {
+      from,
+      storage: {
+        from: (bucket: string) => ({
+          // Dépôt SANS écrasement par défaut, comme le stockage réel : une clé
+          // déjà présente est refusée (c'est ce qu'une reprise doit éviter).
+          upload: async (cle: string, _d: unknown, o?: { upsert?: boolean }) => {
+            const k = `${bucket}/${cle}`;
+            if (objets.has(k) && !o?.upsert) return { error: { message: 'The resource already exists' } };
+            objets.add(k);
+            return { error: null };
+          },
+          remove: async (cles: string[]) => { for (const c of cles) objets.delete(`${bucket}/${c}`); return { error: null }; },
+          getPublicUrl: (p: string) => ({ data: { publicUrl: `https://studiio.pro/storage/v1/object/public/media/${p}` } }),
+        }),
+      },
+    },
+    vider: () => { tables.clear(); objets.clear(); seq = 0; },
   };
 }
 

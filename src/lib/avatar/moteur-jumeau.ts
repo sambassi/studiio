@@ -74,6 +74,7 @@ import { resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponiblePour, ty
 import { moteurPourMonAvatar, motifPremium, moteurAvatar, MOTEURS_AVATAR } from '@/lib/avatar/moteurs';
 import { animerAvatarDidSurMaVoix, FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { synthetiserAvecVoix, cleElevenLabs } from '@/lib/voice/synthese';
+import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
 
 /** Marqueur d'une génération de jumeau dans `avatar_generations.voice_id` : la voix INTERNE (user_voices.id), jamais le voice_id fournisseur. */
 export const PREFIXE_VOIX_JUMEAU = 'jumeau:';
@@ -286,7 +287,7 @@ export async function genererVideoJumeau(
   //        bail — une recharge automatique passée entre-temps débloque, et
   //        l'utilisateur ne voit rien). Toujours bloqué → la génération reste
   //        réservée EN ATTENTE, rien n'est débité, elle reprendra seule.
-  if (fournisseur === 'heygen' && !(await fournisseurDisponible('heygen'))) {
+  if (!(await fournisseurDisponible(fournisseur))) {
     try {
       await mettreEnAttente(generationId, { reprises: 0, cadrage: args.cadrage, cause: 'Fournisseur bloqué à la pré-vérification (solde Studiio épuisé).' });
     } catch (e) {
@@ -321,19 +322,20 @@ export async function genererVideoJumeau(
   //      'did') suit, re-héberge, et rembourse en cas d'échec fournisseur.
   //      Aucun appel HeyGen sur ce chemin.
   if (fournisseur === FOURNISSEUR_DID) {
-    const anime = await animerAvatarDidSurMaVoix(
-      { userId: args.userId, generationId, providerAvatarId: jumeau.prive.providerAvatarId, providerVoiceId: jumeau.prive.providerVoiceId, spoken, nom: 'Jumeau Studiio' },
-      { env, fetch: deps.fetch },
-    );
-    if (!anime.ok) return echouer(anime.etape === 'voix' ? 'fournisseur_voix' : 'fournisseur_avatar', anime.message, anime.statut, true);
-    const erreurMaj = await enregistrerLancement(generationId, args.userId, anime.sceneId, 'processing', coutJumeau);
-    if (erreurMaj) {
-      // La scène est lancée et facturée : on ne rembourse pas, on trace — et
-      // on RAPPORTE l'identifiant, pour que l'appelant ne relance jamais.
-      console.error(`[Jumeau][D-ID] scène ${anime.sceneId} lancée mais génération ${generationId} non mise à jour :`, erreurMaj);
-      return { ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée. Contactez le support.', lance: true, generationId, providerVideoId: anime.sceneId };
+    const lanceDid = await lancerChezDid({
+      generationId, userId: args.userId, providerAvatarId: jumeau.prive.providerAvatarId,
+      providerVoiceId: jumeau.prive.providerVoiceId, spoken, cadrage: args.cadrage, coutJumeau,
+    }, { env, fetch: deps.fetch });
+    if (lanceDid.issue === 'lance') {
+      return { ok: true, generationId, status: 'processing', avatarVersion: avatar.version, dejaEnCours: false, display, spoken };
     }
-    return { ok: true, generationId, status: 'processing', avatarVersion: avatar.version, dejaEnCours: false, display, spoken };
+    if (lanceDid.issue === 'attente') {
+      return { ok: true, generationId, status: 'pending', avatarVersion: avatar.version, dejaEnCours: false, display, spoken, enAttenteFournisseur: true };
+    }
+    if (lanceDid.issue === 'non_enregistre') {
+      return { ok: false, motif: 'base', message: 'Génération lancée mais non enregistrée. Contactez le support.', lance: true, generationId, providerVideoId: lanceDid.providerVideoId };
+    }
+    return echouer(lanceDid.motif, lanceDid.message, lanceDid.statut, true);
   }
 
   // 5-6. MA voix, puis l'avatar animé chez HeyGen — chemin partagé avec la
@@ -360,6 +362,53 @@ type IssueLancement =
   | { issue: 'attente' }
   | { issue: 'non_enregistre'; providerVideoId: string }
   | { issue: 'echec'; motif: 'fournisseur_voix' | 'fournisseur_avatar'; message: string; statut?: number };
+
+/** Code normalisé d'un refus D-ID « solde insuffisant » (`erreurNormalisee`, HTTP 402). */
+const CODE_SOLDE_DID = 'did_insufficient_credits';
+
+/**
+ * D-ID (legacy) : la MÊME règle financière que HeyGen. Voix → audio privé →
+ * scène sur URL signée → identifiant écrit. Refus « solde D-ID » : fournisseur
+ * signalé, UNE récupération (relecture de `GET /credits` sous bail), UN nouvel
+ * essai si le solde est revenu, sinon génération EN ATTENTE (débit gardé).
+ *
+ * ⚠️ `animerAvatarDidSurMaVoix` retire déjà l'audio déposé quand la scène est
+ * refusée : un nouvel essai redépose sous la même clé sans collision. La voix
+ * est en revanche resynthétisée (la chaîne D-ID ne réutilise pas l'audio).
+ */
+async function lancerChezDid(
+  p: {
+    generationId: string; userId: string; providerAvatarId: string; providerVoiceId: string; spoken: string;
+    cadrage?: 'remplir'; coutJumeau?: number; reprise?: boolean;
+  },
+  deps: { env: NodeJS.ProcessEnv; fetch?: typeof fetch },
+): Promise<IssueLancement> {
+  for (let essai = 0; essai < 2; essai += 1) {
+    const anime = await animerAvatarDidSurMaVoix(
+      { userId: p.userId, generationId: p.generationId, providerAvatarId: p.providerAvatarId, providerVoiceId: p.providerVoiceId, spoken: p.spoken, nom: 'Jumeau Studiio' },
+      { env: deps.env, fetch: deps.fetch },
+    );
+    if (anime.ok) {
+      const erreurMaj = await enregistrerLancement(p.generationId, p.userId, anime.sceneId, 'processing', p.coutJumeau);
+      if (erreurMaj) {
+        // La scène est lancée et facturée : on ne rembourse pas, on trace — et
+        // on RAPPORTE l'identifiant, pour que l'appelant ne relance jamais.
+        console.error(`[Jumeau][D-ID] scène ${anime.sceneId} lancée mais génération ${p.generationId} non mise à jour :`, erreurMaj);
+        return { issue: 'non_enregistre', providerVideoId: anime.sceneId };
+      }
+      return { issue: 'lance', status: 'processing', providerVideoId: anime.sceneId };
+    }
+    if (anime.code === CODE_SOLDE_DID) {
+      await signalerRefusDeSolde(FOURNISSEUR_DID, anime.message);
+      if (essai === 0 && !p.reprise && (await fournisseurDisponible(FOURNISSEUR_DID))) continue;
+      await mettreEnAttente(p.generationId, { reprises: p.reprise ? 1 : 0, cadrage: p.cadrage, cause: anime.message });
+      return { issue: 'attente' };
+    }
+    return { issue: 'echec', motif: anime.etape === 'voix' ? 'fournisseur_voix' : 'fournisseur_avatar', message: anime.message, statut: anime.statut };
+  }
+  await mettreEnAttente(p.generationId, { reprises: p.reprise ? 1 : 0, cadrage: p.cadrage });
+  return { issue: 'attente' };
+}
 
 /**
  * Voix (ElevenLabs, en mémoire) → audio chez HeyGen → vidéo de l'avatar sur
@@ -462,8 +511,9 @@ export async function reprendreGenerationEnAttente(
     return 'abandonnee';
   }
   if (marqueur.reprises === 1) return 'deja_prise';
-  if (ligne.provider !== 'heygen') return 'toujours_en_attente';
-  if (!(await fournisseurDisponible('heygen'))) return 'toujours_en_attente';
+  const fournisseur = ligne.provider === FOURNISSEUR_DID ? FOURNISSEUR_DID : ligne.provider === 'heygen' ? 'heygen' : null;
+  if (!fournisseur) return 'toujours_en_attente';
+  if (!(await fournisseurDisponible(fournisseur))) return 'toujours_en_attente';
   if (!(await prendreReprise(ligne.id, marqueur))) return 'deja_prise';
 
   const voixId = ligne.voice_id?.startsWith(PREFIXE_VOIX_JUMEAU) ? ligne.voice_id.slice(PREFIXE_VOIX_JUMEAU.length) : null;
@@ -479,6 +529,18 @@ export async function reprendreGenerationEnAttente(
   } catch (e) {
     const insuffisant = e instanceof Error && e.message === 'Insufficient credits';
     await abandonnerAttente(ligne, insuffisant ? MESSAGES_AVATAR.quotaEpuise : MESSAGES_AVATAR.echecRembourse);
+    return 'abandonnee';
+  }
+  if (fournisseur === FOURNISSEUR_DID) {
+    // Un refus AU SUIVI laisse l'audio de la scène refusée dans notre stockage :
+    // retiré avant de redéposer sous la même clé (dépôt sans écrasement).
+    await retirerAudioDid(ligne.user_id, ligne.id);
+    const issueDid = await lancerChezDid({
+      generationId: ligne.id, userId: ligne.user_id, providerAvatarId: jumeau.prive.providerAvatarId,
+      providerVoiceId: jumeau.prive.providerVoiceId, spoken: ligne.script, cadrage: marqueur.cadrage, coutJumeau, reprise: true,
+    }, { env, fetch: deps.fetch });
+    if (issueDid.issue === 'lance' || issueDid.issue === 'non_enregistre') return 'relancee';
+    await abandonnerAttente(ligne, issueDid.issue === 'attente' ? undefined : MESSAGES_AVATAR.echecRembourse);
     return 'abandonnee';
   }
   const aspectRatio: AvatarAspectRatio = RATIOS.includes(ligne.aspect_ratio as AvatarAspectRatio) ? (ligne.aspect_ratio as AvatarAspectRatio) : '9:16';
@@ -512,6 +574,18 @@ export async function abandonnerAttente(ligne: Pick<LigneAttente, 'id' | 'user_i
   const visible = message
     ?? (admin ? MESSAGES_AVATAR.creditsFournisseurAdmin : rembourse ? MESSAGES_AVATAR.creditsFournisseurRembourse : MESSAGES_AVATAR.creditsFournisseur);
   await supabaseAdmin.from('avatar_generations').update({ status: 'failed', error_message: visible, updated_at: new Date().toISOString() }).eq('id', ligne.id);
+  // Audio privé d'une scène D-ID jamais aboutie : rien à garder (sans effet
+  // pour HeyGen, qui n'en dépose pas). Jamais bloquant : l'abandon est acquis.
+  await retirerAudioDid(ligne.user_id, ligne.id);
+}
+
+/** Retire l'audio privé d'une génération D-ID ; ne lève jamais. */
+async function retirerAudioDid(userId: string, generationId: string): Promise<void> {
+  try {
+    await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, generationId));
+  } catch (e) {
+    console.warn(`[Jumeau] audio de ${generationId} non retiré :`, e instanceof Error ? e.message : e);
+  }
 }
 
 /**

@@ -602,7 +602,11 @@ export async function retirerAvatarChezDid(providerAvatarId: string | null | und
 
 export type ResultatAnimationDid =
   | { ok: true; sceneId: string }
-  | { ok: false; etape: 'voix' | 'stockage' | 'fournisseur'; message: string; statut: number };
+  /**
+   * `code` : code normalisé du fournisseur (`did_insufficient_credits` = le
+   * solde de STUDIIO chez D-ID est épuisé → attente, pas échec).
+   */
+  | { ok: false; etape: 'voix' | 'stockage' | 'fournisseur'; message: string; statut: number; code?: string };
 
 /**
  * Anime l'avatar D-ID `providerAvatarId` sur MA voix disant `spoken`, pour
@@ -635,7 +639,10 @@ export async function animerAvatarDidSurMaVoix(
     return { ok: true, sceneId: scene.id };
   } catch (e) {
     await retirerObjetPriveAvatar(args.userId, cleAudio);
-    return { ok: false, etape: 'fournisseur', message: messageFournisseur(e, "Le fournisseur n'a pas pu animer votre avatar."), statut: statutFournisseur(e) };
+    return {
+      ok: false, etape: 'fournisseur', message: messageFournisseur(e, "Le fournisseur n'a pas pu animer votre avatar."), statut: statutFournisseur(e),
+      ...(e && typeof e === 'object' && typeof (e as { code?: unknown }).code === 'string' ? { code: (e as { code: string }).code } : {}),
+    };
   }
 }
 

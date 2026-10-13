@@ -11,6 +11,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fausseBase as base } from './helpers/fausse-base';
 
+/** Comptes de test — des UUID, comme en base (le stockage les valide). */
+const U1 = '11111111-1111-4111-8111-111111111111';
+const U2 = '22222222-2222-4222-8222-222222222222';
+const U3 = '33333333-3333-4333-8333-333333333333';
+
 const { etat, REFUS_HEYGEN } = vi.hoisted(() => ({ REFUS_HEYGEN: "Insufficient credit. This operation requires 'api' credits.", etat: {
   credits: new Map<string, number>(),
   syntheses: 0,
@@ -26,6 +31,11 @@ const { etat, REFUS_HEYGEN } = vi.hoisted(() => ({ REFUS_HEYGEN: "Insufficient c
   alertes: [] as Array<{ service: string; severity: string; message: string; details?: string }>,
   emails: [] as Array<{ subject: string; html: string }>,
   remboursements: [] as Array<[string, number]>,
+  /** D-ID : réponses successives à la création de scène, soldes `GET /credits`, statut distant. */
+  reponsesDid: [] as Array<'ok' | 'solde'>,
+  scenesDid: 0,
+  soldesDid: [] as number[],
+  sceneDistante: { status: 'processing' } as { status: string; videoUrl?: string; failureMessage?: string },
 } }));
 
 vi.mock('@/lib/db/supabase', async () => ({ supabaseAdmin: (await import('./helpers/fausse-base')).fausseBase.supabaseAdmin }));
@@ -72,7 +82,7 @@ vi.mock('@/lib/avatar/jumeau', async (orig) => ({
     ok: true,
     jumeau: { avatar: { id: `avatar-${userId}`, version: 3 }, voix: { id: `voix-${userId}` } },
     prive: {
-      providerAvatarId: 'look-1', avatarVersionId: null, fournisseurAvatar: 'heygen', typeAvatar: 'photo',
+      providerAvatarId: 'look-1', avatarVersionId: null, fournisseurAvatar: userId === '33333333-3333-4333-8333-333333333333' ? 'did' : 'heygen', typeAvatar: 'photo',
       consentementJumeau: null, providerVoiceId: 'voix-el', prononciations: [],
     },
   }),
@@ -95,14 +105,37 @@ vi.mock('@/lib/avatar/heygen', async (orig) => {
   };
 });
 
+vi.mock('@/lib/providers/did/client', async (orig) => {
+  const vrai = await orig<typeof import('@/lib/providers/did/client')>();
+  return {
+    ...vrai,
+    creerSceneAudio: async () => {
+      etat.scenesDid += 1;
+      // Le VRAI code normalisé d'un 402 D-ID (`erreurNormalisee`).
+      if ((etat.reponsesDid.shift() ?? 'ok') === 'solde') throw new vrai.DidError('Crédits D-ID insuffisants côté fournisseur.', 402, 'did_insufficient_credits');
+      return { id: `scene-${etat.scenesDid}` };
+    },
+    lireScene: async () => ({ ...etat.sceneDistante }),
+  };
+});
+
 // Lecture du solde HeyGen (`GET /v3/users/me`) : la seule requête réseau du module.
 vi.stubGlobal('fetch', async (url: string) => {
+  if (String(url).includes('api.d-id.com/credits')) {
+    etat.lecturesSolde += 1;
+    const restant = etat.soldesDid.length > 1 ? etat.soldesDid.shift()! : etat.soldesDid[0] ?? 0;
+    return new Response(JSON.stringify({ remaining: restant, total: 100 }), { status: 200 });
+  }
   if (!String(url).includes('api.heygen.com/v3/users/me')) throw new Error(`réseau interdit en test : ${url}`);
   etat.lecturesSolde += 1;
   const solde = etat.soldes.length > 1 ? etat.soldes.shift()! : etat.soldes[0] ?? 0;
   return new Response(JSON.stringify({ data: { billing_type: 'wallet', wallet: { currency: 'usd', remaining_balance: solde, auto_reload: { enabled: true, threshold_usd: 10, amount_usd: 30 } } } }), { status: 200 });
 });
 process.env.HEYGEN_API_KEY = 'cle-test';
+process.env.DID_API_KEY = 'cle-did-test';
+delete process.env.ELEVENLABS_API_KEY;
+process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
+process.env.AUTH_SECRET = process.env.AUTH_SECRET || 'secret-de-test-0123456789';
 
 import { genererVideoJumeau, reprendreGenerationEnAttente } from '@/lib/avatar/moteur-jumeau';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
@@ -110,7 +143,7 @@ import { MESSAGES_AVATAR, trahitUnFournisseur } from '@/lib/avatar/fournisseurs'
 import { MESSAGE_ATTENTE_FOURNISSEUR, ATTENTE_MAX_MS, lireMarqueurAttente } from '@/lib/avatar/attente-fournisseur';
 import { _reinitialiserSante, lireEtats } from '@/lib/fournisseurs/sante';
 
-const demande = (userId = 'u1') => ({ userId, textes: ['Bonjour, voici ma vidéo.'], aspectRatio: '9:16', cadrage: 'remplir' as const });
+const demande = (userId = U1) => ({ userId, textes: ['Bonjour, voici ma vidéo.'], aspectRatio: '9:16', cadrage: 'remplir' as const });
 const generation = (id: string) => base.table('avatar_generations').find((g) => g.id === id)!;
 const debits = (u: string) => base.table('credit_transactions').filter((t) => t.user_id === u);
 const bloquerHeyGen = async () => {
@@ -123,8 +156,9 @@ beforeEach(() => {
   Object.assign(etat, {
     syntheses: 0, uploads: 0, lancements: 0, reponsesLancement: [], soldes: [], lecturesSolde: 0,
     statutDistant: { status: 'processing' }, alertes: [], emails: [], remboursements: [],
+    reponsesDid: [], scenesDid: 0, soldesDid: [], sceneDistante: { status: 'processing' },
   });
-  etat.credits = new Map([['u1', 100], ['u2', 100]]);
+  etat.credits = new Map([[U1, 100], [U2, 100], [U3, 100]]);
 });
 
 describe('1. abonnement actif, fournisseur OK → génération lancée', () => {
@@ -133,14 +167,14 @@ describe('1. abonnement actif, fournisseur OK → génération lancée', () => {
     expect(r).toMatchObject({ ok: true, status: 'pending' });
     expect((r as { enAttenteFournisseur?: boolean }).enAttenteFournisseur).toBeUndefined();
     expect(etat.lancements).toBe(1);
-    expect(debits('u1')).toHaveLength(1);
+    expect(debits(U1)).toHaveLength(1);
     expect(etat.lecturesSolde).toBe(0);
   });
 });
 
 describe('2. quota utilisateur épuisé → aucun appel fournisseur', () => {
   it('ni voix, ni audio, ni vidéo ; message quota + CTA abonnement', async () => {
-    etat.credits.set('u1', 0);
+    etat.credits.set(U1, 0);
     const r = await genererVideoJumeau(demande());
     expect(r).toMatchObject({ ok: false, motif: 'credits_insuffisants', message: MESSAGES_AVATAR.quotaEpuise });
     expect(etat.syntheses + etat.uploads + etat.lancements + etat.lecturesSolde).toBe(0);
@@ -158,8 +192,8 @@ describe('3. solde HeyGen insuffisant au lancement → récupération → la gé
     expect(etat.lancements).toBe(2);
     expect(etat.syntheses).toBe(1); // la voix n'est pas refacturée
     expect(etat.uploads).toBe(1);
-    expect(debits('u1')).toHaveLength(1);
-    expect(etat.credits.get('u1')).toBe(60);
+    expect(debits(U1)).toHaveLength(1);
+    expect(etat.credits.get(U1)).toBe(60);
     expect(etat.remboursements).toEqual([]);
     expect(generation((r as { generationId: string }).generationId).provider_video_id).toBe('vid-2');
   });
@@ -182,19 +216,19 @@ describe('4. recharge impossible → en attente, admin alerté, crédits jamais 
     expect(etat.emails.some((e) => e.subject.includes('HeyGen : fournisseur bloqué'))).toBe(true);
 
     // L'utilisateur, pendant l'attente : « en cours », message d'attente, rien de perdu.
-    const suivi = await avancerStatutGeneration('u1', id);
+    const suivi = await avancerStatutGeneration(U1, id);
     expect(suivi).toMatchObject({ status: 'processing', enAttenteFournisseur: true });
     expect(etat.lancements).toBe(1);
     expect(MESSAGE_ATTENTE_FOURNISSEUR).toContain('Aucun crédit Studiio ne sera perdu');
 
     // Au-delà du délai : abandon, remboursé une seule fois.
     g.created_at = new Date(Date.now() - ATTENTE_MAX_MS - 60_000).toISOString();
-    const fin = await avancerStatutGeneration('u1', id);
+    const fin = await avancerStatutGeneration(U1, id);
     expect(fin.status).toBe('failed');
     expect(trahitUnFournisseur((fin as { error: string }).error)).toBe(false);
-    await avancerStatutGeneration('u1', id);
-    expect(etat.remboursements).toEqual([['u1', 40]]);
-    expect(etat.credits.get('u1')).toBe(100);
+    await avancerStatutGeneration(U1, id);
+    expect(etat.remboursements).toEqual([[U1, 40]]);
+    expect(etat.credits.get(U1)).toBe(100);
   });
 });
 
@@ -213,12 +247,12 @@ describe('5. reprise → un seul job fournisseur', () => {
     const issues = await Promise.all([
       reprendreGenerationEnAttente(ligne()),
       reprendreGenerationEnAttente(ligne()),
-      avancerStatutGeneration('u1', id),
+      avancerStatutGeneration(U1, id),
     ]);
     expect(etat.lancements).toBe(2); // 1 refusé + 1 seule reprise
     // Les deux reprises directes : une seule a pris la main.
     expect(issues.slice(0, 2).filter((i) => i === 'relancee').length).toBeLessThanOrEqual(1);
-    expect(debits('u1')).toHaveLength(1);
+    expect(debits(U1)).toHaveLength(1);
     expect(generation(id).provider_video_id).toBe('vid-2');
     expect(etat.remboursements).toEqual([]);
   });
@@ -237,13 +271,13 @@ describe('6. deux utilisateurs simultanés → une seule vérification/récupér
   it('fournisseur bloqué : deux demandes concurrentes = UNE lecture de solde', async () => {
     await bloquerHeyGen();
     etat.soldes = [0];
-    const [a, b] = await Promise.all([genererVideoJumeau(demande('u1')), genererVideoJumeau(demande('u2'))]);
+    const [a, b] = await Promise.all([genererVideoJumeau(demande(U1)), genererVideoJumeau(demande(U2))]);
     expect(etat.lecturesSolde).toBe(1);
     expect(a).toMatchObject({ ok: true, enAttenteFournisseur: true });
     expect(b).toMatchObject({ ok: true, enAttenteFournisseur: true });
     // Bloqué AVANT débit : rien n'est pris aux utilisateurs.
-    expect(debits('u1')).toHaveLength(0);
-    expect(debits('u2')).toHaveLength(0);
+    expect(debits(U1)).toHaveLength(0);
+    expect(debits(U2)).toHaveLength(0);
     expect(etat.syntheses + etat.lancements).toBe(0);
   });
 });
@@ -254,7 +288,7 @@ describe('7-8. « Insufficient credit » au suivi : utilisateur protégé, admin
     const id = (r as { generationId: string }).generationId;
     etat.statutDistant = { status: 'failed', failureMessage: REFUS_HEYGEN };
     etat.soldes = [0];
-    const suivi = await avancerStatutGeneration('u1', id);
+    const suivi = await avancerStatutGeneration(U1, id);
     expect(suivi).toMatchObject({ status: 'processing', enAttenteFournisseur: true });
     expect(JSON.stringify(suivi)).not.toMatch(/heygen|api credits|insufficient/i);
     expect(etat.remboursements).toEqual([]); // débit gardé pour la reprise
@@ -268,5 +302,151 @@ describe('7-8. « Insufficient credit » au suivi : utilisateur protégé, admin
       expect(trahitUnFournisseur(m)).toBe(false);
       expect(m).not.toMatch(/api credit|replicate|elevenlabs/i);
     }
+  });
+});
+
+describe('D-ID (legacy) : la même règle financière que HeyGen', () => {
+  it('fournisseur OK : scène lancée, audio déposé, un débit', async () => {
+    const r = await genererVideoJumeau(demande(U3));
+    expect(r).toMatchObject({ ok: true, status: 'processing' });
+    expect(etat.scenesDid).toBe(1);
+    expect(debits(U3)).toHaveLength(1);
+    expect([...base.objets].some((k) => k.includes(`${U3}/`))).toBe(true);
+  });
+
+  it('402 au lancement, solde revenu : UN nouvel essai, un seul débit', async () => {
+    etat.reponsesDid = ['solde', 'ok'];
+    etat.soldesDid = [50];
+    const r = await genererVideoJumeau(demande(U3));
+    expect(r).toMatchObject({ ok: true, status: 'processing' });
+    expect(etat.scenesDid).toBe(2);
+    expect(debits(U3)).toHaveLength(1);
+    expect(etat.remboursements).toEqual([]);
+  });
+
+  it('402 au lancement, solde toujours vide : EN ATTENTE, débit gardé, puis UNE reprise', async () => {
+    etat.reponsesDid = ['solde'];
+    etat.soldesDid = [0];
+    const r = await genererVideoJumeau(demande(U3));
+    expect(r).toMatchObject({ ok: true, enAttenteFournisseur: true });
+    const id = (r as { generationId: string }).generationId;
+    expect(generation(id)).toMatchObject({ status: 'pending' });
+    expect(etat.alertes.some((a) => a.service === 'did' && a.severity === 'critical')).toBe(true);
+    expect(etat.credits.get(U3)).toBe(60);
+
+    etat.soldesDid = [50];
+    etat.reponsesDid = ['ok', 'ok'];
+    const ligne = () => ({ ...generation(id) }) as unknown as Parameters<typeof reprendreGenerationEnAttente>[0];
+    await Promise.all([reprendreGenerationEnAttente(ligne()), reprendreGenerationEnAttente(ligne()), avancerStatutGeneration(U3, id)]);
+    expect(etat.scenesDid).toBe(2); // 1 refusée + 1 seule reprise
+    expect(debits(U3)).toHaveLength(1);
+    expect(generation(id)).toMatchObject({ status: 'processing', provider_video_id: 'scene-2' });
+    expect(etat.remboursements).toEqual([]);
+  });
+
+  it('refus « solde » AU SUIVI : attente ; la reprise retire l’audio resté puis redépose sans collision', async () => {
+    const r = await genererVideoJumeau(demande(U3));
+    const id = (r as { generationId: string }).generationId;
+    etat.sceneDistante = { status: 'failed', failureMessage: 'did_insufficient_credits' };
+    etat.soldesDid = [0];
+    const suivi = await avancerStatutGeneration(U3, id);
+    expect(suivi).toMatchObject({ status: 'processing', enAttenteFournisseur: true });
+    expect(JSON.stringify(suivi)).not.toMatch(/d-id|did_|insufficient/i);
+
+    etat.soldesDid = [40];
+    const issue = await reprendreGenerationEnAttente({ ...generation(id) } as unknown as Parameters<typeof reprendreGenerationEnAttente>[0]);
+    expect(issue).toBe('relancee');
+    expect(etat.scenesDid).toBe(2);
+    expect(debits(U3)).toHaveLength(1);
+  });
+
+  it('attente trop longue : abandon, remboursé UNE fois, audio privé retiré', async () => {
+    etat.reponsesDid = ['solde'];
+    etat.soldesDid = [0];
+    const r = await genererVideoJumeau(demande(U3));
+    const id = (r as { generationId: string }).generationId;
+    generation(id).created_at = new Date(Date.now() - ATTENTE_MAX_MS - 1).toISOString();
+    await avancerStatutGeneration(U3, id);
+    await avancerStatutGeneration(U3, id);
+    expect(generation(id).status).toBe('failed');
+    expect(etat.remboursements).toEqual([[U3, 40]]);
+    expect([...base.objets].some((k) => k.includes(id))).toBe(false);
+  });
+});
+
+describe('cron /api/cron/providers-health', () => {
+  const appel = async (auth: string | null) => {
+    const { GET } = await import('@/app/api/cron/providers-health/route');
+    const req = new Request('https://studiio.pro/api/cron/providers-health', { headers: auth ? { authorization: auth } : {} });
+    return GET(req as unknown as Parameters<typeof GET>[0]);
+  };
+  const enAttente = async (userId: string, reponses: Array<'solde'>) => {
+    if (userId === U3) { etat.reponsesDid = [...reponses]; etat.soldesDid = [0]; } else { etat.reponsesLancement = [...reponses]; etat.soldes = [0]; }
+    const r = await genererVideoJumeau(demande(userId));
+    expect(r).toMatchObject({ ok: true, enAttenteFournisseur: true });
+    return (r as { generationId: string }).generationId;
+  };
+
+  it('authentification : sans secret, mauvais jeton ou secret non configuré → 401, rien ne bouge', async () => {
+    process.env.CRON_SECRET = 'secret-cron';
+    expect((await appel(null)).status).toBe(401);
+    expect((await appel('Bearer faux')).status).toBe(401);
+    delete process.env.CRON_SECRET;
+    expect((await appel('Bearer undefined')).status).toBe(401);
+    expect(etat.lecturesSolde).toBe(0);
+  });
+
+  it('reprise des attentes HeyGen ET D-ID, deux passages SIMULTANÉS : une vidéo chacune, un débit, aucun remboursement', async () => {
+    process.env.CRON_SECRET = 'secret-cron';
+    const h = await enAttente(U1, ['solde']);
+    const d = await enAttente(U3, ['solde']);
+    etat.soldes = [90];
+    etat.soldesDid = [90];
+    const lancementsAvant = etat.lancements;
+    const scenesAvant = etat.scenesDid;
+    const [a, b] = await Promise.all([appel('Bearer secret-cron'), appel('Bearer secret-cron')]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(etat.lancements - lancementsAvant).toBe(1);
+    expect(etat.scenesDid - scenesAvant).toBe(1);
+    expect(generation(h).provider_video_id).toBeTruthy();
+    expect(generation(d).provider_video_id).toBeTruthy();
+    expect(debits(U1)).toHaveLength(1);
+    expect(debits(U3)).toHaveLength(1);
+    expect(etat.remboursements).toEqual([]);
+
+    // Idempotence : un troisième passage ne relance rien.
+    await appel('Bearer secret-cron');
+    expect(etat.lancements - lancementsAvant).toBe(1);
+    expect(etat.scenesDid - scenesAvant).toBe(1);
+  });
+
+  it('fournisseur toujours vide : le cron ne relance rien et ne débite rien de plus', async () => {
+    process.env.CRON_SECRET = 'secret-cron';
+    const id = await enAttente(U1, ['solde']);
+    const avant = etat.lancements;
+    const r = await (await appel('Bearer secret-cron')).json();
+    expect(r.reprises[id]).toBe('toujours_en_attente');
+    expect(etat.lancements).toBe(avant);
+    expect(debits(U1)).toHaveLength(1);
+    expect(generation(id).status).toBe('pending');
+  });
+
+  it('attente expirée, cron ET navigateur en même temps : abandon, remboursé UNE seule fois', async () => {
+    process.env.CRON_SECRET = 'secret-cron';
+    const id = await enAttente(U1, ['solde']);
+    generation(id).created_at = new Date(Date.now() - ATTENTE_MAX_MS - 1).toISOString();
+    await Promise.all([appel('Bearer secret-cron'), appel('Bearer secret-cron'), avancerStatutGeneration(U1, id)]);
+    expect(generation(id).status).toBe('failed');
+    expect(etat.remboursements).toEqual([[U1, 40]]);
+    expect(etat.credits.get(U1)).toBe(100);
+  });
+
+  it('soldes : deux passages simultanés → UNE lecture par fournisseur (bail)', async () => {
+    process.env.CRON_SECRET = 'secret-cron';
+    etat.soldes = [100];
+    etat.soldesDid = [100];
+    await Promise.all([appel('Bearer secret-cron'), appel('Bearer secret-cron')]);
+    expect(etat.lecturesSolde).toBe(2); // HeyGen 1 + D-ID 1 (ElevenLabs sans clé ; Replicate non mesurable)
   });
 });

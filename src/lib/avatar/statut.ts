@@ -133,8 +133,8 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
     // repasse EN ATTENTE (débit gardé, pas de remboursement) et sera reprise
     // UNE fois quand le solde reviendra. Si c'était déjà la reprise → abandon,
     // crédits recrédités.
-    if (!viaDid && creditsFournisseurEpuises(brut)) {
-      await signalerRefusDeSolde('heygen', brut);
+    if (creditsFournisseurEpuises(brut)) {
+      await signalerRefusDeSolde(viaDid ? FOURNISSEUR_DID : 'heygen', brut);
       const marqueur = lireMarqueurAttente((g as { provider_error?: string | null }).provider_error);
       if (marqueur?.reprises === 1) {
         await abandonnerAttente(g);
