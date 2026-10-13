@@ -1537,8 +1537,15 @@ export default function AutopilotPanel({
             titre="Brief récurrent"
             aide="Commun à toutes les vidéos produites. Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
             idPrefix="autopilot-brief"
+            sujets={config.topics}
+            avecDureeRythme
+            onChangerTheme={() => {
+              const premier = document.querySelector<HTMLButtonElement>('[data-autopilot-topic]');
+              premier?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              premier?.focus();
+            }}
           />
-          <BriefRecurrentRecap brief={config.brief} />
+          <BriefRecurrentRecap brief={config.brief} sujets={config.topics} admin={!!devis?.fournisseur} />
         </div>
       )}
 

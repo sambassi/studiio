@@ -19,6 +19,7 @@
  * recherche stock.
  */
 import { construireRecherchesStock, type RoleSequence } from './requetes';
+import { analyserCoherenceBrief } from '@/lib/creer/brief-assistant';
 import type { FormatStock, TypeStock } from './types';
 
 /**
@@ -150,9 +151,13 @@ export function analyserCouvertureRushes(e: EntreeCouverture): CouvertureRushes 
 export const PLANS_MONTAGE_AUTOPILOTE = 3;
 
 export function plansAutopilote(sujet: string, message?: string | null): PlanAVisuel[] {
+  // Le message vient du BRIEF : il ne nourrit un plan que s'il parle du même
+  // domaine que le sujet. « remplir ma salle de sport » ne transforme pas une
+  // vidéo Finance en vidéo de salle de sport.
+  const messageUtile = message && analyserCoherenceBrief(sujet, { message }).conflits.length === 0 ? message : '';
   const phases: Array<[RoleSequence, string]> = [
     ['HOOK', sujet],
-    ['BUILD', `${message ?? ''} ${sujet}`],
+    ['BUILD', `${messageUtile} ${sujet}`.trim()],
     ['PEAK', `${sujet} avec énergie`],
   ];
   return phases.slice(0, PLANS_MONTAGE_AUTOPILOTE).map(([role, texte], i) => ({ cle: `plan-${i + 1}`, role, texte, type: 'video' }));

@@ -128,7 +128,7 @@ describe('câblage du Wizard', () => {
     // Le contenu courant porte déjà le CTA du brief (état = aperçu) ; seules
     // les variations du lot le reçoivent au rendu (voir coherence-projet-cta).
     expect(w).toContain('if (contenu !== contenuInitial) contenu = avecCtaDuBrief(contenu, brief);');
-    expect(w).toContain('<BriefVideo brief={brief} onChange={changerBrief} />');
+    expect(w).toContain('<BriefVideo brief={brief} onChange={changerBrief} sujets={[currentTopic]} />');
   });
   it('validation avant capture, avant toute réservation', () => {
     const i = w.indexOf('const erreurCartes = erreurCartesSurimpression(bilanCartes);');

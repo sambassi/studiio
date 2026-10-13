@@ -35,6 +35,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { longueurScriptCible } from '@/lib/creer/brief';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
@@ -82,7 +83,24 @@ export function scriptJumeauMontage(post: PreparedPost): string {
   // Dédoublonne (le titre peut déjà être le message du brief), garde l'ordre.
   const vus = new Set<string>();
   const uniques = parts.filter((p) => (vus.has(p) ? false : (vus.add(p), true)));
-  return uniques.join('. ').slice(0, MAX_SCRIPT);
+  // Durée cible du brief : le script tient dans le temps demandé, au rythme
+  // demandé — coupé entre deux phrases (ou deux mots), jamais au milieu d'un
+  // mot. Sans durée cible : la borne d'avant, à l'identique.
+  const cible = longueurScriptCible(post.brief);
+  if (cible === null) return uniques.join('. ').slice(0, MAX_SCRIPT);
+  const borne = Math.min(MAX_SCRIPT, cible);
+  let script = '';
+  for (const p of uniques) {
+    const suivant = script ? `${script}. ${p}` : p;
+    if (suivant.length <= borne) { script = suivant; continue; }
+    if (!script) {
+      const coupe = p.slice(0, borne);
+      const espace = coupe.lastIndexOf(' ');
+      script = espace > borne / 2 ? coupe.slice(0, espace) : coupe;
+    }
+    break;
+  }
+  return script;
 }
 
 export type ResultatLancement =
