@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { sansPreuveZernio } from '@/lib/social/publishViaZernio';
+import { sansPreuveZernio, resultatsParReseau, motifPartiel } from '@/lib/social/publishViaZernio';
 
 /**
  * Webhook Zernio — un seul point d'entrée, routage interne.
@@ -149,6 +149,36 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       // Lecture impossible : on ne reecrit PAS `metadata` a l'aveugle (ce
       // serait tout effacer). Le statut passe quand meme a `failed`.
       console.error(`[Zernio/Webhook] post ${postId} : metadata illisible, preuve d'envoi conservee.`);
+    }
+
+    // ⚠️ `post.partial` : état PARTIEL explicite, résultats par réseau gardés
+    // (`zernioResultatsReseaux` survit à « Réessayer », qui vide
+    // `cron_publish_results`). Le cron le lit : un « Réessayer » finit en
+    // échec expliqué, jamais bloqué à `publishing`. La preuve reste.
+    if (type === 'post.partial') {
+      const { data: lignes, error: lectureErr } = await supabaseAdmin
+        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
+      if (!lectureErr && lignes && lignes.length > 0) {
+        const actuelle = (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {};
+        // Docs Zernio (webhooks/posts) : résultats sous `post.platforms[]`.
+        const postZernio = (evenement.post ?? {}) as Record<string, unknown>;
+        const resultats = resultatsParReseau(data.platforms ?? postZernio.platforms);
+        await supabaseAdmin
+          .from('scheduled_posts')
+          .update({
+            status: statut,
+            metadata: {
+              ...actuelle,
+              zernioPartiel: true,
+              zernioResultatsReseaux: resultats,
+              ...(resultats.length ? { cron_publish_results: resultats } : {}),
+              error: motifPartiel(resultats),
+            },
+          })
+          .eq('id', postId);
+        return;
+      }
+      console.error(`[Zernio/Webhook] post ${postId} : metadata illisible, etat partiel non memorise.`);
     }
 
     await supabaseAdmin

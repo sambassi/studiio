@@ -19,7 +19,7 @@ Tous les tests sont **mockés** (Zernio, base en mémoire, stockage, ffmpeg, e-m
 Les cas marqués `it.fails` documentent un **BUG RÉEL** démontré : la suite reste verte,
 et le test devient rouge le jour où le bug est corrigé (il faudra alors retirer `.fails`).
 Ces bugs ne sont PAS corrigés dans la PR A (règle : ne pas toucher la publication sans
-accord).
+accord). Les bugs 1-4 de C-NO-DUPLICATE-PUBLISH sont CORRIGÉS (PR Social Safety).
 
 ---
 
@@ -68,18 +68,37 @@ ROUVRIR_SEULEMENT_SI=changement du stockage date/heure décidé par le propriét
 ID=C-NO-DUPLICATE-PUBLISH
 RÈGLE=Deux passages du cron, 2–3 crons simultanés, webhook déjà reçu, reprogrammation
 d'un post déjà prouvé : un seul uploadMedia / createPost. La remise à zéro des posts
-bloqués (> 10 min) ne remet jamais en « scheduled » un post qui a une preuve d'envoi.
-TEST=src/__tests__/contracts/social-no-duplicate.contract.test.ts (cas G, H)
-BUG RÉEL (it.fails)=
-1. Échec d'écriture de la preuve après createPost réussi → remis en « scheduled »
-   après 10 min → REPUBLIÉ automatiquement.
-2. Délai dépassé de createPost → « failed » sans preuve → « Réessayer » publie une
-   2e fois (pas de distinction FAILED_BEFORE_PUBLISH / PUBLISHED_BUT_CONFIRMATION_LOST).
-3. Écriture inconditionnelle de « publishing » qui écrase un « published » posé par un
-   webhook arrivé tôt.
+bloqués (> 10 min) ne remet jamais en « scheduled » un post qui a une preuve d'envoi
+NI un marqueur de tentative.
+RÈGLE (tentative)=Avant createPost, `metadata.zernioTentative = { cle, pour, le }` est
+écrit (échec d'écriture → aucun envoi). `cle` part en en-tête `Idempotency-Key`
+(Zernio rend le post original pendant 24 h, docs.zernio.com/guides/idempotency).
+Une tentative sans preuve = PUBLISHED_BUT_CONFIRMATION_LOST : jamais de renvoi à
+l'aveugle ; « Réessayer » interroge d'abord Zernio (GET /v1/posts filtré par compte
+et date, comparaison de metadata.studiioPostId) :
+trouvé → preuve écrite, aucun envoi (published / publishing / partiel selon Zernio) ;
+trouvé en échec → nouvel envoi, nouvelle clé ; absent et clé < 23 h → envoi avec la
+MÊME clé ; recherche en erreur ou clé > 23 h → `failed` + `confirmationRequise`, et
+seul un « Réessayer » CONFIRMÉ par l'utilisateur (`publierSansVerification`) republie.
+Refus net de Zernio (4xx hors 408/409) = FAILED_BEFORE_PUBLISH : marqueur retiré.
+TEST=src/__tests__/contracts/social-no-duplicate.contract.test.ts (cas G, H, CORRIGÉ 1-4)
+     src/__tests__/contracts/social-confirmation-perdue.contract.test.ts (cas limites)
+CORRIGÉ (PR Social Safety, 2026-10-14)=
+1. Échec d'écriture de la preuve après createPost réussi → était remis en « scheduled »
+   après 10 min → REPUBLIÉ. Désormais : `{ error }` vérifié + 1 nouvel essai ; sinon le
+   reset met le post en `failed` + `confirmationPerdue` (message « Confirmation perdue »).
+2. Délai dépassé de createPost → « Réessayer » publiait une 2e fois. Désormais :
+   erreur ambiguë après envoi (délai, coupure, 5xx, 408, 409) = confirmation perdue,
+   marqueur gardé, vérification Zernio avant tout renvoi.
+3. Écriture inconditionnelle de « publishing » qui écrasait un « published » posé par
+   un webhook précoce. Désormais conditionnée à `status = 'publishing'` (l'écriture
+   `failed` aussi).
 4. Webhook post.partial puis « Réessayer » → bloqué en « publishing » sans message.
+   Désormais : `zernioPartiel` + `zernioResultatsReseaux` (par réseau) en metadata ;
+   « Réessayer » finit en `failed` explicite (réseaux en échec listés ; pour eux :
+   Dupliquer en ne gardant que ces réseaux). Pas de renvoi partiel automatique.
 VALIDÉ_LE=2026-10-14
-ROUVRIR_SEULEMENT_SI=correction des bugs ci-dessus (PR dédiée, accord du propriétaire)
+ROUVRIR_SEULEMENT_SI=changement de fournisseur ou du modèle preuve / tentative
 ```
 
 ## C-SOCIAL-MEDIA-FILE — le fichier envoyé est le fichier du post, au bon format

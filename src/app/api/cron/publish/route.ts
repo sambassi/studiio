@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { comptesConnectes, droitDePublier, reseauxZernioDemandes, resoudreCibles, MESSAGES_REFUS } from '@/lib/social/publishing';
 import { libelleCalendrier } from '@/lib/social/etatReseaux';
-import { publierViaZernio, etatPreuveZernio, sansPreuveZernio } from '@/lib/social/publishViaZernio';
+import { publierViaZernio, etatPreuveZernio, sansPreuveZernio, tentativeZernio, MOTIF_CONFIRMATION_PERDUE } from '@/lib/social/publishViaZernio';
 import { supabaseAdmin as supabase } from '@/lib/db/supabase';
 import { montageEstPerime, messageMontagePerime } from '@/lib/creer/montage-perime';
 import { execFile } from 'child_process';
@@ -289,11 +289,28 @@ export async function GET(req: NextRequest) {
       .select('id, metadata')
       .eq('status', 'publishing')
       .lt('updated_at', stuckThreshold);
-    const stuckIds = (stuckCandidates || [])
-      .filter((p: any) => {
-        const preuve = etatPreuveZernio(p.metadata, p.id);
-        return preuve === 'absente' || preuve === 'etrangere';
-      })
+    const sansPreuve = (stuckCandidates || []).filter((p: any) => {
+      const preuve = etatPreuveZernio(p.metadata, p.id);
+      return preuve === 'absente' || preuve === 'etrangere';
+    });
+    // ⚠️ MARQUEUR DE TENTATIVE SANS PREUVE = CONFIRMATION PERDUE. `createPost`
+    // a été appelé (preuve non écrite, instance coupée en plein envoi) :
+    // Zernio a PEUT-ÊTRE publié. Jamais `scheduled` (republication
+    // automatique) : `failed` + `confirmationPerdue`, visible dans le
+    // Calendrier ; « Réessayer » interrogera Zernio avant tout envoi.
+    const confirmationsPerdues = sansPreuve.filter((p: any) => tentativeZernio(p.metadata, p.id));
+    for (const p of confirmationsPerdues) {
+      const { error: perduErr } = await supabase
+        .from('scheduled_posts')
+        .update({ status: 'failed', metadata: { ...(p.metadata || {}), confirmationPerdue: true, error: MOTIF_CONFIRMATION_PERDUE } })
+        .eq('id', p.id)
+        .eq('status', 'publishing')
+        .lt('updated_at', stuckThreshold);
+      if (perduErr) console.error(`[CRON] Post ${p.id} : confirmation perdue non marquee :`, perduErr.message);
+      else console.warn(`[CRON] Post ${p.id} : tentative Zernio sans preuve — confirmation perdue, PAS remis en scheduled`);
+    }
+    const stuckIds = sansPreuve
+      .filter((p: any) => !tentativeZernio(p.metadata, p.id))
       .map((p: any) => p.id as string);
     const { data: stuckPosts, error: stuckErr } = stuckReadErr
       ? { data: null, error: stuckReadErr }
@@ -502,13 +519,17 @@ export async function GET(req: NextRequest) {
           });
           await supabase
             .from('scheduled_posts')
+            // ⚠️ `publishing` ET NON `published` : c'est le webhook
+            // `post.published` de Zernio qui confirmera. Marquer publie ici
+            // annoncerait un succes qu'on ne connait pas encore — sauf si
+            // Zernio vient de rendre lui-même `published` (post retrouvé).
             .update(resultat.ok
-              // ⚠️ `publishing` ET NON `published` : c'est le webhook
-              // `post.published` de Zernio qui confirmera. Marquer publie
-              // ici annoncerait un succes qu'on ne connait pas encore.
-              ? { status: 'publishing' }
+              ? (resultat.statutZernio === 'published' ? { status: 'published' } : { status: 'publishing' })
               : { status: 'failed', metadata: { ...metaEchecZernio(post.metadata, resultat), error: resultat.motif } })
-            .eq('id', post.id);
+            .eq('id', post.id)
+            // ⚠️ CONDITIONNEL : un webhook arrivé pendant l'envoi a pu poser
+            // `published` ou `failed`. Ne jamais le rétrograder.
+            .eq('status', 'publishing');
           console.log(`[CRON] Zernio post ${post.id} : ${resultat.ok ? `remis a ${resultat.comptes} compte(s)` : `refus — ${resultat.motif}`}`);
           results.push({
             postId: post.id, title: post.title, platforms: post.platforms,
@@ -1169,8 +1190,17 @@ async function muxAudioIntoVideo(
 // republiera. La valeur est gardee sous `zernioPostIdAncien` pour diagnostic.
 function metaEchecZernio(
   metadata: any,
-  resultat: { preuveAncienne?: boolean; details?: unknown[]; technique?: unknown },
+  resultat: {
+    preuveAncienne?: boolean; details?: unknown[]; technique?: unknown;
+    metadataAjout?: Record<string, unknown>; metadataRetrait?: string[];
+  },
 ): Record<string, unknown> {
+  // Marqueur de tentative, preuve d'envoi partiel… posés APRÈS la lecture de
+  // `metadata` par le cron : les reporter, sinon cette écriture les efface.
+  const base: Record<string, unknown> = { ...(metadata || {}) };
+  for (const cle of resultat.metadataRetrait ?? []) delete base[cle];
+  Object.assign(base, resultat.metadataAjout ?? {});
+  metadata = base;
   // Le détail par réseau et la cause technique rendue par Zernio : le
   // Calendrier affiche les premiers, le second sert au diagnostic.
   const diagnostic = {
