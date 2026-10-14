@@ -29,7 +29,7 @@ vi.mock('@/lib/avatar/moteur-jumeau', () => ({
 vi.mock('@/lib/avatar/statut', () => ({ avancerStatutGeneration: async () => null }));
 vi.mock('@/lib/autopilot/produire', () => ({ produireUnMontage: async () => ({ postId: 'p' }), creneauxExistants: async () => new Set() }));
 
-import { zoneBandesUnies, planCadrage, ratioDemande } from '@/lib/avatar/cadrage-jumeau';
+import { zoneBandesUnies, planCadrage, ratioDemande, bordsFrancs } from '@/lib/avatar/cadrage-jumeau';
 import { lancerJumeauMontage } from '@/lib/autopilot/jumeau-async';
 import { drawVideoSeq } from '@/lib/video-composer';
 
@@ -59,6 +59,24 @@ describe('C-BARS — détection et recadrage (règle pure)', () => {
   it('image pleine 9:16 : aucun recadrage inutile', () => {
     const z = zoneBandesUnies(image(SRC.l, SRC.h, 243, { x: 0, y: 0, l: 720, h: 1280 }), SRC);
     expect(planCadrage(SRC, z, ratioDemande('9:16'))).toBeNull();
+  });
+
+  it('faux positif : 9:16 plein cadre sur fond uni (blanc, gris, noir), sujet du haut au bas — JAMAIS recadré', () => {
+    for (const fond of [255, 128, 0]) {
+      const z = zoneBandesUnies(image(SRC.l, SRC.h, fond, { x: 180, y: 0, l: 360, h: 1280 }), SRC);
+      expect(planCadrage(SRC, z, ratioDemande('9:16'))).toBeNull();
+    }
+    // Même plan vu par cropdetect (fond noir) : colonnes noires ≠ pillarbox.
+    expect(planCadrage(SRC, { l: 360, h: 1280, x: 180, y: 0 }, ratioDemande('9:16'))).toBeNull();
+  });
+
+  it('faux positif : sujet ROND sur fond clair (boîte ≈ 1:1) — pas de bord droit, jamais recadré ; vraies bandes : bords droits', () => {
+    const disque = new Uint8Array(SRC.l * SRC.h).fill(243);
+    for (let y = 0; y < SRC.h; y++) for (let x = 0; x < SRC.l; x++) if (Math.hypot(x - 360, y - 640) < 360) disque[y * SRC.l + x] = 30 + ((x * 7 + y * 13) % 150);
+    const z = zoneBandesUnies(disque, SRC)!;
+    expect(bordsFrancs(disque, SRC, z)).toBe(false);
+    const vraies = image(SRC.l, SRC.h, 243, UTILE);
+    expect(bordsFrancs(vraies, SRC, zoneBandesUnies(vraies, SRC)!)).toBe(true);
   });
 });
 
