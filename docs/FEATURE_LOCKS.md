@@ -18,6 +18,11 @@ Contrats produit de la génération vidéo (C-FORMAT, C-CONTENT, C-STYLE, C-CTA,
 Autopilote ou Calendrier : lire le contrat → lancer les contrats → modifier →
 relancer TOUS les contrats.
 
+Contrats de la publication réseaux et de la planification (C-SOCIAL-PUBLISHING,
+C-SCHEDULING, C-NO-DUPLICATE-PUBLISH, C-SOCIAL-MEDIA-FILE, C-SOCIAL-TEXT,
+C-SOCIAL-TIMEZONE) : `docs/product-contracts/social-publishing.md`. La publication
+fonctionne : elle est protégée, jamais réécrite sans accord du propriétaire.
+
 Toute PR fournit : `CHANGED_FILES=` `LOCKED_FEATURES_IMPACTED=` (ou `NONE`)
 `CONTRACTS_RUN=` `CONTRACTS_RESULT=` `NEW_RISK=`.
 

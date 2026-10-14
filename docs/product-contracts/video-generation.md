@@ -68,8 +68,8 @@ sont exactement ceux du montage et du post Calendrier ; aucune donnée choisie
 (rush, musique, carte, CTA) n'est écartée en silence.
 POURQUOI=Aperçu et Calendrier ont déjà divergé (sujet « Produire maintenant », cartes
 perdues) : l'utilisateur publie autre chose que ce qu'il a vu.
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/contenu.contract.test.ts (8 tests ; mutation sample.ts → rouge)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=crash | perte de données | régression majeure mesurable
 ```
 
@@ -83,8 +83,8 @@ recomposition Calendrier lisent le MÊME état (metadata.design + contrat canoni
 postMetadata). Partie V2 (styles nommés / préréglages) : à compléter PR C.
 POURQUOI=Une transformation appliquée seulement à l'export est une divergence garantie
 (leçon 2026-10-12).
-TEST=à venir (QA) — partie V2 : à compléter PR C
-VALIDÉ_LE=à compléter
+TEST=AUCUN test dédié aujourd'hui (le design courant est couvert indirectement par contenu.contract.test.ts) — partie V2 : à créer en PR C
+VALIDÉ_LE=à compléter (PR C)
 ROUVRIR_SEULEMENT_SI=PR C (styles V2) | régression majeure mesurable
 ```
 
@@ -96,8 +96,8 @@ RÈGLE=Le CTA du brief est rendu tel quel, sans troncature, dans l'aperçu, la v
 le Calendrier ; jamais « LIEN EN BIO » à sa place ; aucun CTA inventé si
 l'utilisateur n'en a pas. Même règle Créer et Autopilote.
 POURQUOI=CTA appliqué seulement au rendu → vidéo ≠ écran (leçon 2026-10-12).
-TEST=à venir (QA) — voir aussi src/__tests__/contracts/autopilot.contract.test.ts
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/cta.contract.test.tsx (4 tests ; metadata = drawCTA = Remotion = aperçu Créer)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=crash | régression majeure mesurable
 ```
 
@@ -109,8 +109,8 @@ RÈGLE=Rush, photo, musique ou voix choisis par l'utilisateur sont ceux du monta
 média introuvable bloque l'envoi avec un message AVANT tout débit, jamais un
 remplacement silencieux ; supprimer un post n'emporte pas la bibliothèque.
 POURQUOI=Rush et musique disparus du montage sans message (leçon 2026-09-29).
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/medias-manuels.contract.test.ts (7 verts + 2 it.fails BUG RÉEL : rush mort et média forcé remplacé non affichés à l'écran + 1 it.todo rushDuCreneau)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=perte de données | régression majeure mesurable
 ```
 
@@ -122,8 +122,8 @@ RÈGLE=Une progression ou un succès (« déposé », « publié ») ne s'affich
 preuve : identifiant de l'objet relu côté serveur ; un traitement asynchrone a son
 état « en préparation » suivi jusqu'à la preuve.
 POURQUOI=« Brouillon déposé » affiché, Calendrier vide (leçon 2026-10-13).
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/progression.contract.test.tsx (5 tests)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
 
@@ -135,8 +135,8 @@ RÈGLE=Le prix affiché vient de la grille centrale (tarifs_rendu) que débite l
 aucune opération payante sans crédit ; échec fournisseur = remboursement ; opération
 payante lancée à la main par un admin = devis/garde 428 avant tout appel.
 POURQUOI=Coûts fournisseur invisibles et écarts écran/serveur (leçons 2026-10-13).
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/cout-fournisseur.contract.test.ts (4 verts + 1 it.fails BUG RÉEL : /api/voice/audio-complet admin sans garde 428)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=décision tarifaire explicite
 ```
 
@@ -148,8 +148,8 @@ RÈGLE=Aucune bande (noire ou claire) incrustée dans le montage final, en parti
 l'avatar en 9:16 ; le lecteur du Calendrier ne masque rien par CSS (object-contain
 sur un cadre au ratio du fichier).
 POURQUOI=BUG 6 (#565) : bandes claires de l'avatar en 9:16.
-TEST=à venir (QA) — voir src/__tests__/bug6-avatar-bandes-claires-9-16.test.ts
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/bandes-avatar.contract.test.ts (8 tests) — voir aussi src/__tests__/bug6-avatar-bandes-claires-9-16.test.ts
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; fusionné dans main via #564/#565, PAS ENCORE DÉPLOYÉ en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
 
@@ -160,8 +160,8 @@ ID=C-PLAYER
 RÈGLE=Un seul lecteur Studiio (« Audio complet »), jamais un lecteur natif blanc ; la
 vidéo démarre en muet (autoplay) et l'utilisateur rétablit le son.
 POURQUOI=Lecteur blanc signalé deux fois (#564, leçon 2026-10-13).
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/lecteur-voix.contract.test.tsx (3 tests)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; fusionné dans main via #564/#565, PAS ENCORE DÉPLOYÉ en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
 
@@ -172,8 +172,8 @@ ID=C-PRONUNCIATION
 RÈGLE=Une correction de prononciation produit un texte différent de l'original et
 c'est elle qui part à la synthèse ; jamais une « suggestion » identique au texte.
 POURQUOI=« Suggérer » recopiait le texte (#564).
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/prononciation.contract.test.ts (13 tests)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; fusionné dans main via #564/#565, PAS ENCORE DÉPLOYÉ en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
 
@@ -185,8 +185,8 @@ RÈGLE=La durée cible est une fonction pure partagée écran + moteur (duree-ci
 appliquée sur CHAQUE chemin (avatar, multi-sources, smart montage, mono-rush) ;
 un raccourcissement est annoncé.
 POURQUOI=Réglage appliqué à une seule branche (leçon 2026-10-13).
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/duree.contract.test.ts (7 tests)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
 
@@ -197,7 +197,7 @@ ID=C-THEME
 RÈGLE=Le thème choisi (et le contenu qui en découle, affiche comprise) est celui du
 rendu ; un repli générique n'impose jamais un autre thème (ex. « fitness »).
 POURQUOI=Affiche Finance retombée sur « fitness » par repli (leçon 2026-10-13).
-TEST=à venir (QA)
-VALIDÉ_LE=à compléter
+TEST=src/__tests__/contracts/theme.contract.test.ts (16 tests)
+VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
