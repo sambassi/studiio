@@ -127,7 +127,10 @@ vi.mock('@/lib/ffmpeg/transcode-to-mp4', () => ({
 }));
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
-  const execFile = (_cmd: string, _args: unknown, _opts: unknown, cb: (e: Error | null) => void) => {
+  // La sonde ffprobe (BUG 6 : ne jamais re-muxer une video qui a deja un
+  // son) repond « aucune piste audio » ; ffmpeg, lui, reste indisponible.
+  const execFile = (_cmd: string, args: unknown, _opts: unknown, cb: (e: Error | null, r?: { stdout: string; stderr: string }) => void) => {
+    if (Array.isArray(args) && args.includes('-select_streams')) return cb(null, { stdout: '', stderr: '' });
     cb(new Error('ffmpeg indisponible en test'));
   };
   return { ...actual, default: { ...actual, execFile }, execFile };
@@ -252,7 +255,10 @@ function fabriquerPost(mediaUrl: string, audio: { musicUrl?: string; voiceUrl?: 
     users: { email: 'proprio@test.local', name: 'Proprio' },
     media_url: mediaUrl,
     metadata: {
-      renderedVideoUrl: mediaUrl,
+      // Avec des pistes separees : un post SANS montage compose (video muette
+      // + musique/voix a integrer), seul cas encore muxe depuis le BUG 6. Un
+      // `renderedVideoUrl` voudrait dire « son deja embarque » : rien a muxer.
+      renderedVideoUrl: audio.musicUrl || audio.voiceUrl ? undefined : mediaUrl,
       hasAudio: !!(audio.musicUrl || audio.voiceUrl),
       musicUrl: audio.musicUrl ?? null,
       voiceUrl: audio.voiceUrl ?? null,

@@ -19,7 +19,8 @@ Tous les tests sont **mockés** (Zernio, base en mémoire, stockage, ffmpeg, e-m
 Les cas marqués `it.fails` documentent un **BUG RÉEL** démontré : la suite reste verte,
 et le test devient rouge le jour où le bug est corrigé (il faudra alors retirer `.fails`).
 Ces bugs ne sont PAS corrigés dans la PR A (règle : ne pas toucher la publication sans
-accord). Les bugs 1-4 de C-NO-DUPLICATE-PUBLISH sont CORRIGÉS (PR Social Safety).
+accord). Les six bugs (1-6) sont CORRIGÉS par la PR Social Safety : leurs tests
+sont redevenus des `it` normaux (« CORRIGÉ »).
 
 ---
 
@@ -31,8 +32,16 @@ RÈGLE=Seuls les réseaux demandés ET connectés sont ciblés, chacun avec son 
 la vidéo envoyée est celle du post (jamais le rush brut) ; ce qui part correspond
 exactement à la ligne du Calendrier.
 TEST=src/__tests__/contracts/social-publishing.contract.test.ts (cas A, E, I)
-BUG RÉEL (it.fails)=post mixte Instagram + E-mail : l'e-mail ne part jamais
-(route.ts : `continue` sur le chemin Zernio).
+BUG (5) CORRIGÉ (fix/social-safety-social-a)=post mixte Instagram + E-mail : l'e-mail
+ne partait jamais (`continue` sur le chemin Zernio). Désormais, APRÈS les réseaux
+Zernio (y compris quand Zernio refuse ou qu'aucun compte n'est connecté), le canal
+E-mail part par `envoyerCanalEmail` — la logique exacte de l'ancien chemin (opt-in
+réservé au détenteur, `filterSuppressed` / `isSuppressed`, envoi via `sendEmail`).
+Idempotence propre au canal, `metadata.canalEmail.etat` : `en_cours` écrit AVANT
+l'envoi (écriture impossible → rien ne part), `envoye` → jamais renvoyé (cron suivant,
+« Réessayer »), `echec` (rien n'est parti) → retenté au passage suivant. Un passage
+interrompu après `en_cours` ne renvoie jamais : un e-mail manquant plutôt qu'un double.
+Post E-mail seul et post Zernio seul : inchangés.
 VALIDÉ_LE=2026-10-14 (contrat de test, preuves par mutation)
 ROUVRIR_SEULEMENT_SI=changement de fournisseur décidé par le propriétaire
 ```
@@ -111,9 +120,17 @@ aucun téléchargement ni conversion (cas J, K, L). media_url prime sur rendered
 donc un 16:9 sort réduit) ; échec de conversion → refus, rien n'est envoyé. GIF refusé.
 TEST=src/__tests__/contracts/social-media-file.contract.test.ts
      src/__tests__/contracts/social-media-bytes.contract.test.ts
-BUG RÉEL (it.fails)=rendu déjà mixé + hasAudio + musicUrl → remuxé avec
-`-map 0:v:0 -map 1:a:0 -shortest` : la piste mixée (voix, son du rush, ducking) est
-remplacée par la musique brute et la vidéo peut être raccourcie.
+BUG (6) CORRIGÉ (fix/social-safety-social-a)=rendu déjà mixé + hasAudio + musicUrl était
+remuxé avec `-map 0:v:0 -map 1:a:0 -shortest` (piste mixée remplacée par la musique
+brute, vidéo raccourcie). Désormais : un montage composé (`renderedVideoUrl` présent)
+n'est JAMAIS remuxé — tous les écrivains actuels (Assistant, Autopilote, éditeur
+avancé, passerelle de rendu) y embarquent déjà le son ; l'URL d'origine part telle
+quelle (octets identiques, aucun téléchargement). Sans montage composé (post ancien :
+vidéo muette + pistes séparées), le muxage historique reste, mais ffprobe sonde
+d'abord la vidéo : piste audio présente → tel quel ; ffprobe absent ou en échec →
+tel quel (défaut sûr : au pire sans musique, jamais une piste écrasée). Même règle
+sur l'ancien chemin (post E-mail seul). Aucun écrivain actuel ne produit encore le
+cas « vidéo muette + pistes séparées » : il ne concerne que d'anciens posts.
 VALIDÉ_LE=2026-10-14
-ROUVRIR_SEULEMENT_SI=correction du remux (PR dédiée, accord du propriétaire)
+ROUVRIR_SEULEMENT_SI=un nouvel écrivain pose musicUrl/voiceUrl à intégrer côté serveur
 ```

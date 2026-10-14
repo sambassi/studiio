@@ -9,6 +9,7 @@ import { readFile, unlink, access } from 'fs/promises';
 import { join } from 'path';
 import { promisify } from 'util';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
+import { cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import { ensurePublicUrl } from '@/lib/social/url-publication';
 import { signerSiNotreStockage, DUREE_JETON_RELAIS_MAX_MS } from '@/lib/storage/jeton-relais';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
@@ -191,6 +192,172 @@ async function sendPostByEmail(
   return res.success
     ? { success: true }
     : { success: false, error: res.error || "Echec d'envoi de l'email" };
+}
+
+/**
+ * Canal EMAIL d'un post — la logique historique de la boucle des canaux,
+ * telle quelle (liste opt-in reservee au detenteur, `filterSuppressed` avant
+ * CHAQUE diffusion, plafond, sinon envoi a l'auteur si non desabonne).
+ *
+ * Extraite pour etre appelee aussi par le chemin Zernio (BUG 5) : un post
+ * mixte Instagram + Email ne passait jamais par la boucle, et son email ne
+ * partait pas. Ne leve jamais : chaque envoi est sous try/catch.
+ */
+async function envoyerCanalEmail(
+  post: any,
+  platform: string,
+  videoData: { video_url?: string | null; thumbnail_url?: string | null } | null,
+): Promise<{ platform: string; success: boolean; error?: string }> {
+  const owner = (post as any).users?.email as string | undefined;
+
+  // Vraie diffusion : liste opt-in relue a chaque envoi. Reservee au
+  // detenteur du compte, comme WhatsApp — la liste appartient a
+  // afroboost, un tiers ne peut pas attester du consentement de ses
+  // destinataires. Sinon, comportement historique : on ecrit a
+  // l'auteur du post.
+  const optIn = isAdmin(owner) ? [...new Set(await fetchSubscribers('email'))] : [];
+  // Liste de suppression relue AVANT CHAQUE diffusion : un
+  // desabonnement doit prendre effet immediatement, y compris entre
+  // deux posts du meme cron.
+  const subs = await filterSuppressed(optIn);
+  if (subs.length > 0) {
+    let sent = 0;
+    let failed = 0;
+    const capped = subs.slice(0, MAX_RECIPIENTS);
+    const skipped = subs.length - capped.length;
+    if (skipped > 0) {
+      console.warn(`[Email] Diffusion plafonnee : ${capped.length} envoyes, ${skipped} ignores.`);
+    }
+    // try/catch, comme le chemin historique juste en dessous : cette
+    // branche est hors du try par plateforme, une exception ferait
+    // perdre les autres canaux du post.
+    for (let i = 0; i < capped.length; i++) {
+      try {
+        const r = await sendPostByEmail(capped[i], null, post, videoData);
+        if (r.success) sent++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      if (i < capped.length - 1) await new Promise((x) => setTimeout(x, 500));
+    }
+    return {
+      platform,
+      success: sent > 0,
+      error: [
+        sent > 0 ? null : `Email : ${failed} envoi(s) en echec`,
+        skipped > 0 ? `${skipped} destinataire(s) ignore(s) (plafond)` : null,
+      ]
+        .filter(Boolean)
+        .join(' — ') || undefined,
+    };
+  }
+
+  // Liste opt-in non vide mais integralement desabonnee : on le dit
+  // au lieu de retomber sur l'auto-envoi, qui laisserait croire a
+  // une diffusion reussie.
+  if (optIn.length > 0) {
+    return {
+      platform,
+      success: false,
+      error: `Email : les ${optIn.length} destinataire(s) de la liste sont desabonne(s)`,
+    };
+  }
+
+  const to = owner;
+  if (!to) {
+    return { platform, success: false, error: 'Adresse email introuvable' };
+  }
+  if (await isSuppressed(to)) {
+    return {
+      platform,
+      success: false,
+      error: 'Email : cette adresse est desabonnee',
+    };
+  }
+  // try/catch propre : cette branche est HORS du try par plateforme
+  // situe plus bas. Sans lui, une exception ferait tomber le catch
+  // par POST et perdrait les autres canaux du meme post.
+  try {
+    const sent = await sendPostByEmail(to, (post as any).users?.name || null, post, videoData);
+    return { platform, success: sent.success, error: sent.error };
+  } catch (mailErr) {
+    return {
+      platform,
+      success: false,
+      error: mailErr instanceof Error ? mailErr.message : "Echec d'envoi de l'email",
+    };
+  }
+}
+
+
+/**
+ * BUG 5 — le canal Email d'un post MIXTE (Email + un reseau Zernio).
+ *
+ * Le chemin Zernio se termine par `continue` : la boucle des canaux, ou vit
+ * l'Email, n'etait jamais atteinte et l'email ne partait jamais. On reutilise
+ * ici `envoyerCanalEmail`, la logique exacte de l'ancien chemin (memes
+ * destinataires, meme `filterSuppressed` / `isSuppressed`).
+ *
+ * IDEMPOTENCE PROPRE AU CANAL — `metadata.canalEmail` :
+ * - `en_cours` est ECRIT AVANT l'envoi. Si cette ecriture echoue, rien ne
+ *   part : sans preuve, un passage suivant ou un « Reessayer » enverrait
+ *   une seconde fois. Un crash entre la reservation et l'envoi laisse
+ *   `en_cours` : l'email n'est alors plus jamais tente — on prefere un email
+ *   manquant a un email double ;
+ * - `envoye` apres un envoi reussi : plus jamais renvoye (cron suivant,
+ *   « Reessayer », « Reprogrammer » — la metadata est conservee) ;
+ * - `echec` quand rien n'est parti : un « Reessayer » explicite le retente.
+ *
+ * La metadata est RELUE avant chaque ecriture : la preuve Zernio (ou un
+ * echec Zernio) vient d'y etre ecrite et ne doit pas etre ecrasee.
+ * Ne leve jamais : une panne email ne change rien au sort des reseaux.
+ */
+async function emailDuPostMixte(post: any): Promise<void> {
+  const platform = ((post.platforms || []) as unknown[])
+    .find((p) => String(p).toLowerCase() === 'email') as string | undefined;
+  if (!platform) return;
+  try {
+    const relire = async (): Promise<Record<string, any> | null> => {
+      const { data, error } = await supabase.from('scheduled_posts').select('metadata').eq('id', post.id);
+      if (error || !data || data.length === 0) return null;
+      return (data[0] as any).metadata || {};
+    };
+    const meta = await relire();
+    if (!meta) {
+      console.error(`[CRON] Email du post mixte ${post.id} : metadata illisible — email non envoye`);
+      return;
+    }
+    const etat = meta.canalEmail?.etat;
+    if (etat === 'envoye' || etat === 'en_cours') {
+      console.log(`[CRON] Email du post mixte ${post.id} : deja ${etat} — pas de second envoi`);
+      return;
+    }
+    const { data: reserve, error: reserveErr } = await supabase
+      .from('scheduled_posts')
+      .update({ metadata: { ...meta, canalEmail: { etat: 'en_cours', le: new Date().toISOString() } } })
+      .eq('id', post.id)
+      .select('id');
+    if (reserveErr || !reserve || reserve.length === 0) {
+      console.error(`[CRON] Email du post mixte ${post.id} : preuve non ecrite — email non envoye`);
+      return;
+    }
+    const r = await envoyerCanalEmail(post, platform, post.videos || null);
+    const apres = (await relire()) ?? meta;
+    const { error: finErr } = await supabase
+      .from('scheduled_posts')
+      .update({
+        metadata: {
+          ...apres,
+          canalEmail: { etat: r.success ? 'envoye' : 'echec', le: new Date().toISOString(), erreur: r.error ?? null },
+        },
+      })
+      .eq('id', post.id);
+    if (finErr) console.error(`[CRON] Email du post mixte ${post.id} : resultat non ecrit (reste en_cours, jamais renvoye)`);
+    console.log(`[CRON] Email du post mixte ${post.id} : ${r.success ? 'envoye' : `echec — ${r.error ?? ''}`}`);
+  } catch (err) {
+    console.error(`[CRON] Email du post mixte ${post.id} : erreur`, err);
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -485,6 +652,9 @@ export async function GET(req: NextRequest) {
               .update({ status: 'failed', metadata: { ...(post.metadata || {}), error: motif } })
               .eq('id', post.id);
             results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details });
+            // BUG 5 : l'email ne depend d'aucun reseau — il part meme si
+            // Zernio refuse, comme sur l'ancien chemin.
+            await emailDuPostMixte(post);
           };
           console.log(`[CRON] Zernio post ${post.id} : demandes=${resolution.demandes.join(',')} connectes=${resolution.comptes.length} cibles=${resolution.cibles.length}${resolution.manquants.length ? ` manquants=${resolution.manquants.join(',')}` : ''}`);
 
@@ -535,6 +705,10 @@ export async function GET(req: NextRequest) {
             postId: post.id, title: post.title, platforms: post.platforms,
             success: resultat.ok, details: resultat.ok ? 'Zernio' : resultat.motif,
           });
+          // BUG 5 : le canal Email d'un post mixte vit dans la boucle de
+          // l'ancien chemin, jamais atteinte d'ici. Il est traite APRES les
+          // reseaux Zernio, avec sa propre preuve (jamais deux fois).
+          await emailDuPostMixte(post);
           continue;
         }
 
@@ -605,7 +779,8 @@ export async function GET(req: NextRequest) {
         // ═══ MUXAGE AUDIO : Si le post a des pistes audio séparées (musicUrl/voiceUrl) ═══
         // Cela arrive quand le Studio Son a sauvé les métadonnées audio mais la composition
         // client-side a échoué ou le fichier vidéo n'a pas d'audio embarqué.
-        const hasAudioMeta = meta.hasAudio && (meta.musicUrl || meta.voiceUrl);
+        // BUG 6 : jamais sur un montage dont le son est deja embarque.
+        const hasAudioMeta = pistesAudioSeparees(meta);
         if (hasAudioMeta && videoData.video_url) {
           console.log(`[CRON] Post a des pistes audio séparées — tentative de muxage`);
           console.log(`[CRON]   musicUrl: ${meta.musicUrl ? 'OUI' : 'NON'}, voiceUrl: ${meta.voiceUrl ? 'OUI' : 'NON'}`);
@@ -632,90 +807,7 @@ export async function GET(req: NextRequest) {
           // « not connected » puis sur le `default` du switch, et le post
           // partirait en `failed`.
           if (channel === 'email') {
-            const owner = (post as any).users?.email as string | undefined;
-
-            // Vraie diffusion : liste opt-in relue a chaque envoi. Reservee au
-            // detenteur du compte, comme WhatsApp — la liste appartient a
-            // afroboost, un tiers ne peut pas attester du consentement de ses
-            // destinataires. Sinon, comportement historique : on ecrit a
-            // l'auteur du post.
-            const optIn = isAdmin(owner) ? [...new Set(await fetchSubscribers('email'))] : [];
-            // Liste de suppression relue AVANT CHAQUE diffusion : un
-            // desabonnement doit prendre effet immediatement, y compris entre
-            // deux posts du meme cron.
-            const subs = await filterSuppressed(optIn);
-            if (subs.length > 0) {
-              let sent = 0;
-              let failed = 0;
-              const capped = subs.slice(0, MAX_RECIPIENTS);
-              const skipped = subs.length - capped.length;
-              if (skipped > 0) {
-                console.warn(`[Email] Diffusion plafonnee : ${capped.length} envoyes, ${skipped} ignores.`);
-              }
-              // try/catch, comme le chemin historique juste en dessous : cette
-              // branche est hors du try par plateforme, une exception ferait
-              // perdre les autres canaux du post.
-              for (let i = 0; i < capped.length; i++) {
-                try {
-                  const r = await sendPostByEmail(capped[i], null, post, videoData);
-                  if (r.success) sent++;
-                  else failed++;
-                } catch {
-                  failed++;
-                }
-                if (i < capped.length - 1) await new Promise((x) => setTimeout(x, 500));
-              }
-              platformResults.push({
-                platform,
-                success: sent > 0,
-                error: [
-                  sent > 0 ? null : `Email : ${failed} envoi(s) en echec`,
-                  skipped > 0 ? `${skipped} destinataire(s) ignore(s) (plafond)` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' — ') || undefined,
-              });
-              continue;
-            }
-
-            // Liste opt-in non vide mais integralement desabonnee : on le dit
-            // au lieu de retomber sur l'auto-envoi, qui laisserait croire a
-            // une diffusion reussie.
-            if (optIn.length > 0) {
-              platformResults.push({
-                platform,
-                success: false,
-                error: `Email : les ${optIn.length} destinataire(s) de la liste sont desabonne(s)`,
-              });
-              continue;
-            }
-
-            const to = owner;
-            if (!to) {
-              platformResults.push({ platform, success: false, error: 'Adresse email introuvable' });
-              continue;
-            }
-            if (await isSuppressed(to)) {
-              platformResults.push({
-                platform,
-                success: false,
-                error: 'Email : cette adresse est desabonnee',
-              });
-              continue;
-            }
-            // try/catch propre : cette branche est HORS du try par plateforme
-            // situe plus bas. Sans lui, une exception ferait tomber le catch
-            // par POST et perdrait les autres canaux du meme post.
-            try {
-              const sent = await sendPostByEmail(to, (post as any).users?.name || null, post, videoData);
-              platformResults.push({ platform, success: sent.success, error: sent.error });
-            } catch (mailErr) {
-              platformResults.push({
-                platform,
-                success: false,
-                error: mailErr instanceof Error ? mailErr.message : "Echec d'envoi de l'email",
-              });
-            }
+            platformResults.push(await envoyerCanalEmail(post, platform, videoData));
             continue;
           }
           // ── WhatsApp (Meta Cloud API) ────────────────────────────────
@@ -950,6 +1042,41 @@ const CODES_TELECHARGEMENT = new Set([
 ]);
 
 /**
+ * BUG 6 — faut-il intégrer `musicUrl` / `voiceUrl` dans la vidéo ?
+ *
+ * `hasAudio` ne veut PAS dire « pistes séparées à mixer » : tous les
+ * écrivains actuels (Assistant `AssistantWizard`, Autopilote `design.ts`,
+ * éditeur avancé, passerelle de rendu) le posent quand le son est DÉJÀ
+ * EMBARQUÉ dans le montage `renderedVideoUrl`, et gardent `musicUrl` pour une
+ * régénération. Re-muxer (`-map 0:v -map 1:a -shortest`) REMPLAÇAIT alors la
+ * piste mixée (voix, voix par séquence, son du rush) par la seule musique, et
+ * pouvait couper la vidéo.
+ *
+ * Un montage composé (`renderedVideoUrl`) n'est donc JAMAIS re-muxé : il part
+ * octet pour octet. Seul un post SANS montage composé garde l'ancien
+ * comportement — et `muxAudioIntoVideo` sonde encore la vidéo (ffprobe) pour
+ * ne jamais écraser une piste existante.
+ */
+function pistesAudioSeparees(meta: any): boolean {
+  if (!meta?.hasAudio || !(meta.musicUrl || meta.voiceUrl)) return false;
+  return !meta.renderedVideoUrl;
+}
+
+/**
+ * Vrai si le fichier LOCAL porte au moins une piste audio. Lève si ffprobe
+ * est absent ou échoue : l'appelant n'intègre alors RIEN (le fichier
+ * d'origine part tel quel — un son en moins vaut mieux qu'une piste mixée
+ * écrasée).
+ */
+async function videoAUnePisteAudio(chemin: string): Promise<boolean> {
+  const { stdout } = await execFileAsync(cheminFfprobe(), [
+    '-protocol_whitelist', 'file', '-v', 'error',
+    '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', chemin,
+  ], { timeout: 30_000 });
+  return String(stdout ?? '').trim().length > 0;
+}
+
+/**
  * Le média remis à Zernio, prêt pour les réseaux.
  *
  * ⚠️ MÊME PRÉPARATION QUE L'ANCIEN CHEMIN META. Avant ce correctif, un post
@@ -965,7 +1092,7 @@ async function preparerMediaZernio(post: any): Promise<string | null> {
   const source: string | null = post.media_url || meta.renderedVideoUrl || null;
   if (!source) return null;
   try {
-    if (meta.hasAudio && (meta.musicUrl || meta.voiceUrl)) {
+    if (pistesAudioSeparees(meta)) {
       const muxe = await muxAudioIntoVideo(source, meta.musicUrl, meta.voiceUrl, post.user_id);
       if (muxe) return muxe;
     }
@@ -1088,6 +1215,18 @@ async function muxAudioIntoVideo(
     // Étape 1 : Télécharger la vidéo (direct MinIO si chemin interne)
     console.log(`[MUX] Téléchargement vidéo...`);
     await downloadMediaToFile(videoUrl, videoPath, { userId });
+
+    // BUG 6 : une vidéo qui a DÉJÀ un son n'est jamais re-muxée — FFmpeg
+    // remplacerait sa piste. Sonde en échec → rien n'est intégré non plus.
+    try {
+      if (await videoAUnePisteAudio(videoPath)) {
+        console.log(`[MUX] La vidéo porte déjà une piste audio — envoyée telle quelle`);
+        return null;
+      }
+    } catch (e) {
+      console.warn(`[MUX] Sonde ffprobe en échec (${motifErreur(e)}) — vidéo envoyée telle quelle`);
+      return null;
+    }
 
     // Étape 2 : Télécharger les fichiers audio
     const inputArgs: string[] = ['-i', videoPath];

@@ -205,16 +205,97 @@ describe('C-SOCIAL-PUBLISHING (A) — canaux sans compte social', () => {
   });
 
   /*
-   * BUG RÉEL (5) : un post mixte (Email + un réseau Zernio) prend le chemin
-   * Zernio, qui se termine par `continue` (route.ts:517) : la boucle des
-   * canaux où vit l'Email n'est jamais atteinte. L'email n'est JAMAIS envoyé,
-   * sans erreur ni trace dans le Calendrier.
+   * BUG RÉEL (5) — CORRIGÉ. Un post mixte (Email + un réseau Zernio) prenait
+   * le chemin Zernio, qui se termine par `continue` : la boucle des canaux où
+   * vit l'Email n'était jamais atteinte. L'email part désormais APRÈS les
+   * réseaux Zernio, avec sa propre preuve `metadata.canalEmail`.
    */
-  it.fails('BUG RÉEL (5) : post mixte Instagram + Email → l email doit aussi partir', async () => {
+  it('BUG RÉEL (5) : post mixte Instagram + Email → l email doit aussi partir', async () => {
+    // CORRIGÉ
     const { autres } = await import('./helpers/socialHarness');
     etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram', 'Email'] })];
     await lancerCron(true);
     expect(zernio.createPost).toHaveBeenCalledTimes(1);
     expect(autres.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('post mixte : email à l auteur, preuve `envoye` écrite, preuve Zernio intacte, Zernio inchangé', async () => {
+    const { autres } = await import('./helpers/socialHarness');
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram', 'Email'] })];
+    const r = await lancerCron(true);
+    expect(autres.sendEmail.mock.calls[0][0].to).toBe('auteur@test.local');
+    expect(envoi().platforms.map((c: any) => c.platform)).toEqual(['instagram']);
+    expect(r.results[0]).toMatchObject({ success: true, details: 'Zernio' });
+    expect(ligne('p1').status).toBe('publishing');
+    expect(ligne('p1').metadata.canalEmail.etat).toBe('envoye');
+    expect(ligne('p1').metadata.zernioForPostId).toBe('p1');
+  });
+
+  it('post mixte : email déjà envoyé → jamais renvoyé (« Réessayer » puis nouveau passage)', async () => {
+    const { autres, reprogrammer } = await import('./helpers/socialHarness');
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram', 'Email'] })];
+    await lancerCron(true);
+    reprogrammer('p1');
+    await lancerCron(true);
+    expect(autres.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('post mixte : preuve `en_cours` (passage interrompu) → pas de second envoi', async () => {
+    const { autres } = await import('./helpers/socialHarness');
+    etat.base.scheduled_posts = [post('p1', {
+      platforms: ['Instagram', 'Email'],
+      metadata: { renderedVideoUrl: 'https://cdn.example/rendus/montage.mp4', canalEmail: { etat: 'en_cours' } },
+    })];
+    await lancerCron(true);
+    expect(autres.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('post mixte : envoi précédent en `echec` → retenté au passage suivant', async () => {
+    const { autres } = await import('./helpers/socialHarness');
+    autres.sendEmail.mockImplementationOnce(async () => ({ success: false, error: 'resend 500' }) as any);
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram', 'Email'] })];
+    await lancerCron(true);
+    expect(ligne('p1').metadata.canalEmail).toMatchObject({ etat: 'echec', erreur: 'resend 500' });
+    ligne('p1').status = 'scheduled';
+    await lancerCron(true);
+    expect(autres.sendEmail).toHaveBeenCalledTimes(2);
+    expect(ligne('p1').metadata.canalEmail.etat).toBe('envoye');
+  });
+
+  it('post mixte : preuve impossible à écrire → l email ne part PAS (jamais d envoi sans preuve)', async () => {
+    const { autres } = await import('./helpers/socialHarness');
+    etat.panneEcriture = (_t, maj) => maj.metadata?.canalEmail?.etat === 'en_cours';
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram', 'Email'] })];
+    await lancerCron(true);
+    expect(zernio.createPost).toHaveBeenCalledTimes(1);
+    expect(autres.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('post mixte, réseau non connecté → le post échoue côté Zernio mais l email part', async () => {
+    const { autres } = await import('./helpers/socialHarness');
+    etat.comptes = [];
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram', 'Email'] })];
+    await lancerCron(true);
+    expect(zernio.createPost).not.toHaveBeenCalled();
+    expect(ligne('p1').status).toBe('failed');
+    expect(String(ligne('p1').metadata.error)).toMatch(/Aucun compte connecté/);
+    expect(autres.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('post Zernio seul → aucun email, aucune preuve email (inchangé)', async () => {
+    const { autres } = await import('./helpers/socialHarness');
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram'] })];
+    await lancerCron(true);
+    expect(autres.sendEmail).not.toHaveBeenCalled();
+    expect(ligne('p1').metadata.canalEmail).toBeUndefined();
+  });
+
+  it('post Email seul → ancien chemin inchangé (statut published, pas de preuve canalEmail)', async () => {
+    const { autres } = await import('./helpers/socialHarness');
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Email'] })];
+    await lancerCron(true);
+    expect(autres.sendEmail).toHaveBeenCalledTimes(1);
+    expect(ligne('p1').status).toBe('published');
+    expect(ligne('p1').metadata.canalEmail).toBeUndefined();
   });
 });
