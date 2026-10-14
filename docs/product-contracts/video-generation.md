@@ -229,7 +229,7 @@ VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déj�
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
 
-## SPEC DE RENDU CANONIQUE (A2.1) — décrite, pas encore branchée
+## SPEC DE RENDU CANONIQUE (A2.1) — branchée sur renderCreerSimple (A2.2)
 
 ```
 ID=SPEC-RENDU (A2.1)
@@ -243,11 +243,18 @@ SENS=watermark = TEXTE du filigrane Remotion (le booléen « plan gratuit » du 
 est HORS spec) ; ctaText = CTA principal (compositeur : design.ctaMainText || watermarkText) ;
 ctaSubText absent ≠ '' (absent → « LIEN EN BIO » par défaut Remotion) ; format = format
 visuel, jamais reel/tv (facturation hors spec).
-ÉTAT=NON BRANCHÉ : aucun appelant ne l'utilise, renderCreerSimple et le compositeur
-navigateur sont inchangés. Aucun rendu ne change.
+ÉTAT=BRANCHÉ sur renderCreerSimple (A2.2) : `inputProps = versEntreeRemotion(d)`, sortie
+identique à l'ancien calcul (oracle gelé). Le bloc buildSequences / totalDurationFrames de
+renderCreerSimple est conservé tel quel. NON branchés : compositeur navigateur, api/render ;
+le chemin HYBRID reste hors spec. Aucun rendu ne change.
 ÉCARTS CONNUS (rendus par le compositeur, pas par Remotion) : logoUrl, siteText, rushLut,
 titleIcon*, extraTitle, habillageVideo, posterTransform/rushTransforms,
 sequenceTransitions, rushAudioRequis, ducking du jumeau (`CORRESPONDANCE_COMPOSITEUR`).
 TEST=src/__tests__/contracts/spec-rendu-parite.contract.test.ts (toStrictEqual contre les
-inputProps réels, fixtures Autopilote A/D/E/F/G/H/J + specs 9:16 / 1:1 / 16:9)
+inputProps réels, fixtures Autopilote A/D/E/F/G/H/J + specs 9:16 / 1:1 / 16:9 — devenu
+partiellement tautologique depuis A2.2) ;
+src/__tests__/contracts/spec-rendu-branchement.contract.test.ts (A2.2 : props worker
+toStrictEqual l'oracle gelé `inputPropsHistoriques`, même ordre de clés, durée, séquences,
+dimensions ; fixtures A/D/E/F/G/H/J + avatar+rush, 1:1, 16:9, ctaSubText '', média absent /
+invalide, transitions, ancienne metadata ; test source du branchement)
 ```
