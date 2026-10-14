@@ -188,7 +188,8 @@ avecFfmpeg('Faux positif — vraie chaîne ffmpeg (aucun appel fournisseur)', ()
     plan(p('claires-4-3'), [720, 1280], '0xF0F3F9', [720, 540], [0, 370]);
     // a6 : le fournisseur rend un fichier 16:9 qui contient l'image 9:16 (demande 9:16).
     plan(p('a6-pillarbox-16-9'), [1280, 720], 'black', [406, 720], [437, 0]);
-  });
+    // ~15 encodages ffmpeg : bien plus que les 10 s par défaut sur un runner de CI.
+  }, 180_000);
   afterAll(() => { if (dossier) rmSync(dossier, { recursive: true, force: true }); });
 
   const garder = ['blanc-haut-bas', 'gris-haut-bas', 'noir-haut-bas', 'blanc-haut', 'blanc-bas', 'carre-propre', 'paysage-propre', 'a1-sujet-large', 'a2-disque'];
@@ -198,7 +199,7 @@ avecFfmpeg('Faux positif — vraie chaîne ffmpeg (aucun appel fournisseur)', ()
     expect(r.plan).toBeNull();
     expect(r.corrige).toBe(false);
     expect(r.buffer).toBe(buf);
-  });
+  }, 60_000);
 
   it.each([
     ['claires-16-9', { l: 720, h: 1280 }, { y: 437, h: 406 }],
@@ -223,5 +224,5 @@ avecFfmpeg('Faux positif — vraie chaîne ffmpeg (aucun appel fournisseur)', ()
     const i = infos(out);
     expect(dims(i)).toEqual(sortie);
     expect(i).toMatch(/Audio:/);
-  });
+  }, 60_000);
 });
