@@ -88,16 +88,21 @@ describe('C-FORMAT — montage de rushes (passerelle) : le post porte le format 
     return corps;
   };
 
+  // Facturation INCHANGÉE (décision produit séparée) : pas de colonne envoyée
+  // (`/api/posts` pose « reel » comme avant) et `metadata.format` garde
+  // l'ancienne règle hauteur >= largeur.
   const cas: Array<[number, number, ProjectVideoFormat, 'reel' | 'tv']> = [
     [1920, 1080, '16:9', 'tv'],
-    [1080, 1080, '1:1', 'tv'],
+    [1080, 1080, '1:1', 'reel'],
     [1080, 1920, '9:16', 'reel'],
   ];
-  for (const [l, h, f, colonne] of cas) {
-    it(`${l}x${h} → colonne « ${colonne} », videoFormat ${f}, videoSize réel`, async () => {
+  for (const [l, h, f, ancienMetaFormat] of cas) {
+    it(`${l}x${h} → videoFormat ${f}, videoSize réel, colonne et metadata.format comme avant`, async () => {
       const corps = await poster(l, h);
-      expect(corps.format).toBe(colonne);
+      expect(corps.format).toBeUndefined();
+      expect(commePosteParApi(corps).format).toBe('reel');
       const meta = corps.metadata as Record<string, unknown>;
+      expect(meta.format).toBe(ancienMetaFormat);
       expect(meta.videoFormat).toBe(f);
       expect(meta.videoSize).toEqual({ w: l, h });
       const post = commePosteParApi(corps);
@@ -114,6 +119,12 @@ describe('C-FORMAT — montage de rushes (passerelle) : le post porte le format 
     // de quoi être bien cadré même par un lecteur ancien.
     const meta = post.metadata as { videoSize?: { w: number; h: number } };
     expect(ratioNum(montageFrame(meta.videoSize, post.format as 'reel' | 'tv').style.aspectRatio)).toBeGreaterThan(1);
+  });
+
+  it('carré : la facturation de régénération reste celle d’avant (« reel ») — aucun surcoût par effet de bord', async () => {
+    const post = commePosteParApi(await poster(1080, 1080));
+    expect(post.format).toBe('reel');
+    expect(formatDuPost(post)).toBe('1:1');
   });
 
   it('dimensions atypiques (720x1280) : format le plus proche, dimensions exactes gardées', async () => {

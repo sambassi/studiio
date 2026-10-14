@@ -368,11 +368,17 @@ export async function creerBrouillonPlanification(
     + `${String(aujourdhui.getMonth() + 1).padStart(2, '0')}-`
     + `${String(aujourdhui.getDate()).padStart(2, '0')}`;
 
-  // Format RÉEL du montage (C-FORMAT). Sans colonne `format`, `/api/posts`
-  // posait « reel » et, sans `videoSize`, le Calendrier jouait un montage
-  // 16:9 ou carré dans un cadre 9:16.
+  // Format RÉEL du montage (C-FORMAT) : `videoFormat` + `videoSize` suffisent au
+  // Calendrier pour jouer un montage 16:9 ou carré dans son vrai cadre (avant :
+  // cadre 9:16).
+  //
+  // ⚠️ FACTURATION INCHANGÉE (décision produit séparée, 2026-10-14) : la colonne
+  // `format` reste ABSENTE (`/api/posts` pose « reel », comme avant) et
+  // `metadata.format` garde l'ancienne règle. Le prix d'une régénération au
+  // Calendrier (`formatRendu`, lu sur la colonne) et le traitement YouTube Short
+  // ne bougent donc pas par effet de bord.
   const dims = { w: rendu.video.largeur, h: rendu.video.hauteur };
-  const champsFormat = metadataFormat(
+  const { videoFormat, videoSize } = metadataFormat(
     formatDepuisDimensions(dims.w, dims.h) ?? PROJECT_VIDEO_FORMAT_DEFAUT, dims,
   );
 
@@ -386,7 +392,6 @@ export async function creerBrouillonPlanification(
         title: 'Vidéo Studiio',
         caption: '',
         media_type: 'video',
-        format: champsFormat.format,
         // ⚠️ Vide, et c'est voulu — voir l'en-tête. La vidéo vit dans
         // `metadata`, là où le Calendrier sait la lire sans la promettre.
         media_url: null,
@@ -398,7 +403,9 @@ export async function creerBrouillonPlanification(
           renderedVideoUrl: rendu.video.chemin,
           autopilotRenduId: rendu.id,
           hasAudio: true,
-          ...champsFormat,
+          format: rendu.video.hauteur >= rendu.video.largeur ? 'reel' : 'tv',
+          videoFormat,
+          videoSize,
         },
       }),
     });

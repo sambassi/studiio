@@ -30,6 +30,9 @@ RÈGLE=
   Concerné : Créer (AssistantWizard), Autopilote cron (design.ts + engine.toPostRow),
   montage de rushes (rendu-passerelle.creerBrouillonPlanification, dimensions RÉELLES
   du fichier dans videoSize), post modifiable depuis la Bibliothèque (editable-post).
+  EXCEPTION facturation : le montage de rushes n'écrit QUE videoFormat + videoSize ;
+  sa colonne `format` reste absente (« reel » posé par /api/posts) et son
+  metadata.format garde l'ancienne règle — aucun changement de prix par effet de bord.
 - Tout lecteur passe par `formatDuPost` / `dimensionsDuPost` / `ratioCss` :
   priorité metadata.videoFormat > ratio de metadata.videoSize > metadata.format >
   colonne post.format (« reel » → 9:16, « tv » → 16:9) > défaut.
@@ -55,6 +58,15 @@ TEST=src/__tests__/contracts/format.contract.test.ts
 - « C-FORMAT — les lecteurs passent par le module »
 - « C-FORMAT — aucun 9:16 codé en dur hors liste »
 VALIDÉ_LE=2026-10-14 (tests ; pas encore de validation en production)
+FACTURATION DU CARRÉ — comportement ACTUEL documenté (non modifié, décision séparée) :
+- Créer, export : 1:1 → renderFormat « tv » envoyé à la réservation (`/api/render/jobs`),
+  le serveur applique donc le tarif 16:9 ; l'écran Créer affiche pourtant le prix
+  `render.reel` (9:16) pour le carré → écran et serveur divergent.
+- Calendrier, régénération : prix lu sur la colonne (`formatRendu`) → carré Créer
+  (colonne « tv ») au tarif 16:9 ; brouillon carré du montage de rushes (colonne
+  « reel ») au tarif 9:16.
+- Proposition à trancher par le propriétaire : un tarif explicite pour le carré (ou
+  aligner l'écran sur le serveur). Rien n'est changé tant que ce n'est pas décidé.
 ROUVRIR_SEULEMENT_SI=ajout d'un 4e format | décision de facturation explicite sur le
 carré | la colonne scheduled_posts.format change de domaine
 ```
