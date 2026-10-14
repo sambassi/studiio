@@ -245,7 +245,8 @@ describe('logique pure', () => {
     );
     expect(row).toMatchObject({ user_id: MOI, video_id: 'v', format: 'tv', scheduled_date: '2026-09-23', status: 'draft' });
     // Seul le format est posé — pour que le parcours guidé ouvre bien du 16:9.
-    expect(row.metadata).toEqual({ format: 'tv', videoSize: { w: 1920, h: 1080 } });
+    // C-FORMAT : `videoFormat` accompagne `videoSize` (porte unique metadataFormat).
+    expect(row.metadata).toEqual({ format: 'tv', videoFormat: '16:9', videoSize: { w: 1920, h: 1080 } });
   });
 
   it('editablePostId : UUID v5, déterministe, distinct par compte et par vidéo', () => {

@@ -78,6 +78,7 @@ import ReglagesPublicationReseaux from '@/components/social/ReglagesPublicationR
 import { lireCouverture, lireReglagesTiktok, sansConsentementTiktok } from '@/lib/social/couverture';
 import { AgentIAModal } from '@/components/creer/AgentIAModal';
 import { CardIcon } from '@/components/ui/CardIcon';
+import { dimensionsDuPost, formatDuPost, formatRenduFacturation, ratioCss } from '@/lib/format/projet';
 import { ConseilsVideo } from '@/components/creer/ConseilsVideo';
 import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
 
@@ -2736,8 +2737,11 @@ export default function CalendarPage() {
                         posterUrl={fpPosterImg}
                         videoUrl={videoUrl}
                         title={fp.title}
-                        format={fp.format}
-                        videoSize={fpMeta?.videoSize ?? null}
+                        // Lecture unique du format (C-FORMAT) : un ancien
+                        // montage de rushes 16:9 (colonne « reel » par
+                        // défaut) n'est plus mis dans une boîte 9:16.
+                        format={formatRenduFacturation(formatDuPost(fp))}
+                        videoSize={dimensionsDuPost(fp)}
                       />
                     </div>
                   );
@@ -2876,8 +2880,8 @@ export default function CalendarPage() {
             {/* Always show preview card — with media, or gradient + info cards */}
             <div className="flex justify-center bg-black rounded-lg p-4">
               <div className={`relative overflow-hidden rounded-xl ${
-                selectedPost.format === 'reel' ? 'w-48 aspect-[9/16]' : 'w-full max-w-lg aspect-video'
-              }`}>
+                formatDuPost(selectedPost) === '9:16' ? 'w-48' : 'w-full max-w-lg'
+              }`} style={{ aspectRatio: ratioCss(formatDuPost(selectedPost)) }}>
                 {selectedPost.media_type === 'video' && selectedPost.media_url ? (
                   <video src={selectedPost.media_url} controls className="w-full h-full object-cover rounded" />
                 ) : (
@@ -3140,6 +3144,9 @@ export default function CalendarPage() {
       {/* Full Preview Modal — Rich Montage Preview Before Publication */}
       {showFullPreview && fullPreviewPost && (() => {
         const meta = fullPreviewPost.metadata;
+        // Format du projet, lu UNE fois par la porte unique (C-FORMAT) : tous
+        // les cadres et libellés de l'aperçu plein écran en découlent.
+        const formatProjet = formatDuPost(fullPreviewPost);
 
         // ── Montage RENDU SERVEUR : on le lit, on ne le rejoue pas ────────
         //
@@ -3182,7 +3189,7 @@ export default function CalendarPage() {
                 onClick={(e) => e.stopPropagation()}
                 onError={() => console.warn('[Calendrier] montage serveur illisible :', urlServeur)}
                 className="max-h-[90vh] max-w-full rounded-xl shadow-2xl"
-                style={{ aspectRatio: '9 / 16' }}
+                style={{ aspectRatio: ratioCss(formatProjet) }}
               />
               {/* Montage SERVEUR périmé : « Régénérer » est interdit sur ces
                   posts (#313, recomposition navigateur → WebM illisible), et
@@ -3287,7 +3294,7 @@ export default function CalendarPage() {
         // L'aperçu calendrier utilise height:70dvh, aspect-ratio:9/16 → largeur ≈ 39.375dvh.
         // Titre base éditeur : (format=9:16 ? 14 : 18) * textScale px sur ~320px de large.
         // Calendrier : utilise dvh proportionnel à 39.375dvh → 1 editor-px ≈ 39.375/320 ≈ 0.123dvh
-        const isReelFormat = fullPreviewPost.format === 'reel';
+        const isReelFormat = formatProjet === '9:16';
         // Convertir les pixels éditeur en unités dvh : editorPx / 320 * 39.375 (reel) ou editorPx / 512 * 70 (tv)
         const editorPxToDvh = (editorPx: number) => `${(editorPx * (isReelFormat ? 0.123 : 0.137)).toFixed(2)}dvh`;
         // Convertir les pixels du canvas 1080px en dvh : canvasPx / 1080 * 39.375 = canvasPx * 0.03646
@@ -3428,7 +3435,7 @@ export default function CalendarPage() {
                    a `renderedVideoUrl` (never passed through the composer). ── */}
               {hasMontage && meta?.renderedVideoUrl ? (
                 (() => {
-                  const frame = montageFrame(meta?.videoSize, fullPreviewPost.format);
+                  const frame = montageFrame(dimensionsDuPost(fullPreviewPost), formatRenduFacturation(formatProjet));
                   return (
                 <div
                   className={`relative overflow-hidden rounded-xl bg-black ${frame.className}`}
@@ -3466,9 +3473,9 @@ export default function CalendarPage() {
 
                 return (
                   <div
-                    className={`relative overflow-hidden rounded-xl ${fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'}`}
+                    className={`relative overflow-hidden rounded-xl ${formatProjet === '9:16' ? '' : 'aspect-video w-full'}`}
                     style={{
-                      ...(fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : {}),
+                      ...(formatProjet === '9:16' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : {}),
                       border: borderCol ? `3px solid ${borderCol}` : undefined,
                       boxShadow: borderCol ? `0 0 30px ${borderCol}40, 0 0 60px ${borderCol}15` : `0 0 30px ${accent}4D, 0 0 60px ${accent}1A`,
                     }}
@@ -4111,10 +4118,10 @@ export default function CalendarPage() {
               /* Non-infographic preview (Creator, regular posts) */
               <div
                 className={`relative overflow-hidden rounded-xl ${
-                  fullPreviewPost.format === 'reel' ? '' : 'aspect-video w-full'
+                  formatProjet === '9:16' ? '' : 'aspect-video w-full'
                 }`}
                 style={{
-                  ...(fullPreviewPost.format === 'reel' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : {}),
+                  ...(formatProjet === '9:16' ? { aspectRatio: '9/16', height: '70dvh', maxHeight: '70dvh' } : {}),
                   border: borderCol ? `3px solid ${borderCol}` : undefined,
                   boxShadow: borderCol
                     ? `0 0 30px ${borderCol}40, 0 0 60px ${borderCol}15`
@@ -4199,7 +4206,7 @@ export default function CalendarPage() {
                       </span>
                     )}
                     <span className="bg-black/50 text-[10px] font-bold text-white px-2 py-1 rounded backdrop-blur-sm">
-                      {fullPreviewPost.format === 'reel' ? '9:16' : '16:9'}
+                      {formatProjet}
                     </span>
                   </div>
 
@@ -4279,7 +4286,7 @@ export default function CalendarPage() {
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-400">
                   <FileVideo className="w-3 h-3" />
-                  {tc(`formats.${fullPreviewPost.format}`)} • {fullPreviewPost.media_type}
+                  {tc(`formats.${formatRenduFacturation(formatProjet)}`)} • {fullPreviewPost.media_type}
                 </div>
                 {hasMetadata && (
                   <div className="flex items-center gap-2 text-xs text-gray-400">

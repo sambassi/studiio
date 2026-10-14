@@ -13,6 +13,11 @@ ne doit la casser. Elle n'est rouverte que dans les cas `REOPEN_ONLY_IF`.
    ne jamais contourner ni réécrire le contrat pour faire passer la CI ; prouver le
    changement de comportement voulu et obtenir l'accord explicite du propriétaire.
 
+Contrats produit de la génération vidéo (C-FORMAT, C-CONTENT, C-STYLE, C-CTA, …) :
+`docs/product-contracts/video-generation.md`. Avant toute modification de Créer,
+Autopilote ou Calendrier : lire le contrat → lancer les contrats → modifier →
+relancer TOUS les contrats.
+
 Toute PR fournit : `CHANGED_FILES=` `LOCKED_FEATURES_IMPACTED=` (ou `NONE`)
 `CONTRACTS_RUN=` `CONTRACTS_RESULT=` `NEW_RISK=`.
 

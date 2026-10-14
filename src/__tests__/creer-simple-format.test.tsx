@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { render, screen, cleanup } from '@testing-library/react';
 import { Preview } from '../app/dashboard/creer/AssistantWizard';
 import { montageFrame, montageSize } from '../app/dashboard/calendar/page';
+import { formatRenduFacturation, PROJECT_VIDEO_FORMATS } from '@/lib/format/projet';
 
 /**
  * Format 1:1 (carré, 1080×1080) dans « Créer (simple) ».
@@ -167,8 +168,10 @@ describe('Aperçu — les métriques du carré sont celles que rendra la vidéo'
 
 describe('Export — 1080 × 1080 part vraiment au compositeur', () => {
   it('les dimensions viennent de la table, plus d’un ternaire', () => {
-    expect(wizardSource).toMatch(/'1:1': \{ w: 1080, h: 1080 \}/);
-    expect(wizardSource).toMatch(/const size = VIDEO_SIZE\[format\];/);
+    // C-FORMAT : table unique dans designSpec, lue par `@/lib/format/projet`.
+    expect(readFileSync(resolve(__dirname, '../lib/creer/designSpec.ts'), 'utf-8')).toMatch(/'1:1': \{ w: 1080, h: 1080 \}/);
+    expect(wizardSource).not.toMatch(/const VIDEO_SIZE = \{/);
+    expect(wizardSource).toMatch(/const size = dimensionsDuFormat\(format\);/);
     expect(wizardSource).toMatch(/width: size\.w,\s*\n\s*height: size\.h,/);
     // L'ancien ternaire ne pouvait produire que 1080×1920 ou 1920×1080.
     expect(wizardSource).not.toMatch(/width: isReel \? 1080 : 1920/);
@@ -178,14 +181,15 @@ describe('Export — 1080 × 1080 part vraiment au compositeur', () => {
     // `post.format` ne connaît que « reel » et « tv » : un carré y tombe du
     // côté « tv » et serait recadré dans un conteneur 16:9 — on en perdrait
     // le haut et le bas, CTA compris.
-    expect(wizardSource).toMatch(/videoSize: \{ w: size\.w, h: size\.h \}/);
+    // C-FORMAT : `videoSize` (+ `videoFormat`, `format`) part par `metadataFormat`.
+    expect(wizardSource).toMatch(/\.\.\.metadataFormat\(format\)/);
     const calendarSource = readFileSync(
       resolve(__dirname, '../app/dashboard/calendar/page.tsx'),
       'utf-8',
     );
     // La géométrie elle-même est vérifiée sur `montageFrame` plus bas —
     // ici on s'assure seulement que le Calendrier la consulte.
-    expect(calendarSource).toMatch(/montageFrame\(meta\?\.videoSize, fullPreviewPost\.format\)/);
+    expect(calendarSource).toMatch(/montageFrame\(dimensionsDuPost\(fullPreviewPost\), formatRenduFacturation\(formatProjet\)\)/);
     // `contain` : équivalent à `cover` quand le conteneur porte le ratio
     // exact, mais aucun format futur ne sera rogné.
     expect(calendarSource).toMatch(/w-full h-full object-contain/);
@@ -199,8 +203,10 @@ describe('Export — 1080 × 1080 part vraiment au compositeur', () => {
   });
 
   it('le carré est classé « tv », comme le compositeur le classe', () => {
-    expect(wizardSource).toMatch(/const renderFormat: 'reel' \| 'tv' = isReel \? 'reel' : 'tv';/);
-    expect(wizardSource).toMatch(/const isReel = format === '9:16';/);
+    // C-FORMAT : la règle vit dans `formatRenduFacturation` (9:16 → reel, reste → tv).
+    expect(wizardSource).toMatch(/const renderFormat: 'reel' \| 'tv' = formatRenduFacturation\(format\);/);
+    expect(formatRenduFacturation('1:1')).toBe('tv');
+    expect(formatRenduFacturation('9:16')).toBe('reel');
   });
 });
 
@@ -211,7 +217,9 @@ describe('Sélecteur de format', () => {
   });
 
   it('le type Format porte les trois valeurs', () => {
-    expect(wizardSource).toMatch(/type Format = '9:16' \| '1:1' \| '16:9';/);
+    // C-FORMAT : le type unique du module, qui porte les trois valeurs.
+    expect(wizardSource).toMatch(/type Format = ProjectVideoFormat;/);
+    expect(PROJECT_VIDEO_FORMATS).toEqual(['9:16', '1:1', '16:9']);
   });
 });
 

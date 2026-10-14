@@ -1,7 +1,8 @@
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
+import { metadataFormat } from '@/lib/format/projet';
 import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import {
-  DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS, VIDEO_SIZE,
+  DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS,
 } from '@/lib/creer/designSpec';
 import { DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
 import type { AutopilotDesignStyle, AutopilotTextZone } from '@/lib/autopilot/textStyle';
@@ -314,7 +315,6 @@ export function buildAutopilotMetadata(input: {
   timezone?: string | null;
 }): Record<string, unknown> {
   const { post, design, videoUrl, thumbnailUrl, mode, timezone } = input;
-  const taille = VIDEO_SIZE[AUTOPILOT_FORMAT];
   const total = (design.introDuration ?? 0) + (design.cardsDuration ?? 0)
     + (design.videoDuration ?? 0) + (design.ctaDuration ?? 0);
   return {
@@ -366,7 +366,9 @@ export function buildAutopilotMetadata(input: {
     // La musique du compte, relue par une régénération depuis le Calendrier.
     // Sans elle, le montage regénéré sortirait muet.
     musicUrl: design.musicUrl ?? undefined,
-    videoSize: { w: taille.w, h: taille.h },
+    // Format du projet (C-FORMAT) : videoFormat + videoSize + format, par
+    // la même porte que Créer et le montage de rushes.
+    ...metadataFormat(AUTOPILOT_FORMAT),
     cards: post.content.cards,
     subtitle: design.subtitle,
     cta: design.ctaText,

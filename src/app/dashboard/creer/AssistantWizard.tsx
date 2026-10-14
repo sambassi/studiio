@@ -139,7 +139,8 @@ import { transitionExtract, textAnimationExtract, type PlaybackExtract } from '@
 import { INTRO_WINDOW, textAnimationState } from '@/lib/creer/textAnimation';
 import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { useOptionPreview } from '@/lib/hooks/useOptionPreview';
-import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
+import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, VIDEO_SIZE } from '@/lib/creer/designSpec';
+import { dimensionsDuFormat, formatRenduFacturation, metadataFormat, ratioCss, type ProjectVideoFormat } from '@/lib/format/projet';
 import { THEMES as SHARED_THEMES, themeLabel } from '@/lib/themes';
 import { renderSignature, signatureMatches } from '@/lib/creer/renderSignature';
 import { signatureContenu, empreinteCourte } from '@/lib/creer/signature-contenu';
@@ -523,12 +524,8 @@ const DESIGN = {
   font: 'Inter',
 } as const;
 
-/** Resolution native de la video, par format. */
-const VIDEO_SIZE = {
-  '9:16': { w: 1080, h: 1920 },
-  '1:1': { w: 1080, h: 1080 },
-  '16:9': { w: 1920, h: 1080 },
-} as const;
+// Resolution native de la video, par format : `VIDEO_SIZE` vient de
+// `designSpec` (table unique, C-FORMAT) — plus de copie locale.
 
 /**
  * Metriques exprimees en FRACTION DE LA LARGEUR VIDEO.
@@ -671,9 +668,9 @@ const FORMAT_HINT: Record<Format, string> = {
 
 /** Ratio CSS du cadre d'apercu — derive des dimensions natives, pas ecrit deux fois. */
 const ASPECT_CSS: Record<Format, string> = {
-  '9:16': '9 / 16',
-  '1:1': '1 / 1',
-  '16:9': '16 / 9',
+  '9:16': ratioCss('9:16'),
+  '1:1': ratioCss('1:1'),
+  '16:9': ratioCss('16:9'),
 };
 
 /**
@@ -889,7 +886,8 @@ const DEFAULT_TEXT_STYLES: {
 };
 
 
-type Format = '9:16' | '1:1' | '16:9';
+/** Format du projet : le type unique de `@/lib/format/projet` (C-FORMAT). */
+type Format = ProjectVideoFormat;
 
 interface GeneratedCard {
   /**
@@ -8609,8 +8607,7 @@ export default function AssistantWizard() {
     setRenderProgress(0);
     setRenderStage('Préparation…');
 
-    const isReel = format === '9:16';
-    const size = VIDEO_SIZE[format];
+    const size = dimensionsDuFormat(format);
     // 9:16 = reel, tout le reste = tv. Même convention que l'éditeur
     // (creer/page.tsx), et même classification que le compositeur, qui range
     // le carré du côté non-vertical (`isReel = h > w`).
@@ -8620,7 +8617,7 @@ export default function AssistantWizard() {
     // le Calendrier lit pour dimensionner son conteneur. Sans cela un montage
     // carré serait recadré dans un cadre 16:9 — la vidéo n'est pas déformée,
     // mais on en perdrait le haut et le bas, CTA compris.
-    const renderFormat: 'reel' | 'tv' = isReel ? 'reel' : 'tv';
+    const renderFormat: 'reel' | 'tv' = formatRenduFacturation(format);
     // Le carré est aussi large que le 9:16 et deux fois moins haut : le
     // facturer au tarif paysage ferait payer plus cher un rendu plus petit.
     // Le prix du rendu vient de la grille centrale (`render.reel` / `render.tv`,
@@ -9739,7 +9736,9 @@ export default function AssistantWizard() {
           // « reel » et « tv » : sans ce champ, le Calendrier cadrerait un
           // carre dans un conteneur 16:9 et en perdrait le haut et le bas,
           // CTA compris.
-          videoSize: { w: size.w, h: size.h },
+          // + `videoFormat` (source unique, C-FORMAT) et `format` (relu par
+          // la Bibliothèque), par la même porte que l'Autopilote.
+          ...metadataFormat(format),
           // Identité du PROJET rendu : `renderSignature` couvre toutes les
           // options passées au compositeur, `contenuSignature` le seul texte
           // (titre, sous-titre, cartes, CTA). Le Calendrier peut ainsi prouver
@@ -10095,7 +10094,7 @@ export default function AssistantWizard() {
    * rien reecrirait quand meme tout — et reecrire, c'est risquer de perdre.
    */
   const construireValeurs = useCallback((): ValeursWizard => {
-    const taille = VIDEO_SIZE[format];
+    const champsFormat = metadataFormat(format);
     const rushsDurablesEcran = rushSuivants.length ? rushListe.filter((r) => !!persistableUrl(r.url)) : [];
     return {
       title: generated?.title,
@@ -10124,7 +10123,10 @@ export default function AssistantWizard() {
         total: activeOrder.reduce((t, k) => t + seqDuration(k), 0),
         order: activeOrder,
       },
-      videoSize: { w: taille.w, h: taille.h },
+      videoSize: champsFormat.videoSize,
+      // Suit `videoSize` : un format change en modification doit changer
+      // aussi `videoFormat`, sinon la lecture (videoFormat d'abord) mentirait.
+      videoFormat: champsFormat.videoFormat,
       // `?? undefined` et non `?? ''` : une valeur absente ne doit pas etre
       // ENVOYEE, sinon elle effacerait ce que l'editeur avance y avait mis.
       posterUrl: persistableUrl(posterUrl),
