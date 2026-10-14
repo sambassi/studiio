@@ -45,6 +45,9 @@ Chaque écriture relit `metadata` juste avant et ne change QUE `canalEmail` ; re
 impossible → aucune écriture (jamais de copie périmée qui ressusciterait une preuve
 retirée par `post.failed` ou effacerait `zernioPartiel`). Fenêtre résiduelle de
 quelques ms entre relecture et update (pas de jsonb_set sans migration).
+Chaque état porte `pour: <id du post>` : une copie « Dupliquer » (qui recopie toute
+la metadata) voit la preuve de l'original étrangère et envoie SON e-mail, une fois.
+Preuve sans `pour` (écrite avant ce lien) : prudence, elle compte pour le post.
 Post E-mail seul et post Zernio seul : inchangés.
 VALIDÉ_LE=2026-10-14 (contrat de test, preuves par mutation)
 ROUVRIR_SEULEMENT_SI=changement de fournisseur décidé par le propriétaire
@@ -122,6 +125,11 @@ CORRIGÉ (PR Social Safety, 2026-10-14)=
    Désormais : `zernioPartiel` + `zernioResultatsReseaux` (par réseau) en metadata ;
    « Réessayer » finit en `failed` explicite (réseaux en échec listés ; pour eux :
    Dupliquer en ne gardant que ces réseaux). Pas de renvoi partiel automatique.
+   L'état partiel ne survit pas à ce qu'il décrit : retiré avec la preuve
+   (`sansPreuveZernio` : `post.failed` / `post.cancelled`, refus Zernio) et par tout
+   nouvel envoi NON partiel de ce post (partiel hérité d'une copie ou périmé). Un
+   partiel COURANT (preuve valide) reste et bloque toujours « Réessayer ».
+   Contrat : `social-cleanup.contract.test.ts`.
 VALIDÉ_LE=2026-10-14
 ROUVRIR_SEULEMENT_SI=changement de fournisseur ou du modèle preuve / tentative
 ```

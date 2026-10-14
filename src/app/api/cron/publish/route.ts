@@ -308,6 +308,8 @@ async function envoyerCanalEmail(
  * - `envoye` apres un envoi reussi : plus jamais renvoye (cron suivant,
  *   « Reessayer », « Reprogrammer » — la metadata est conservee) ;
  * - `echec` quand rien n'est parti : un « Reessayer » explicite le retente.
+ * Chaque etat porte `pour: post.id` : une copie « Dupliquer » qui herite de
+ * la preuve de l'original la voit etrangere et envoie SON email, une fois.
  *
  * Chaque ecriture RELIT la metadata juste avant et ne change QUE `canalEmail`
  * (`ecrireCanalEmail`) : la preuve Zernio, son retrait par un webhook
@@ -333,7 +335,11 @@ async function emailDuPostMixte(post: any): Promise<void> {
       console.error(`[CRON] Email du post mixte ${post.id} : metadata illisible — email non envoye`);
       return;
     }
-    const etat = meta.canalEmail?.etat;
+    // La preuve n'est celle de CE post que si `pour` le designe : une copie
+    // (« Dupliquer » recopie toute la metadata) ignore celle de l'original.
+    // Sans `pour` (ecrite avant ce lien) : prudence, elle compte pour ce post.
+    const pour = meta.canalEmail?.pour;
+    const etat = pour === undefined || pour === post.id ? meta.canalEmail?.etat : undefined;
     if (etat === 'envoye' || etat === 'en_cours') {
       console.log(`[CRON] Email du post mixte ${post.id} : deja ${etat} — pas de second envoi`);
       return;
@@ -348,12 +354,12 @@ async function emailDuPostMixte(post: any): Promise<void> {
         .select('id');
       return !error && !!data && data.length > 0;
     };
-    if (!(await ecrireCanalEmail({ etat: 'en_cours', le: new Date().toISOString() }))) {
+    if (!(await ecrireCanalEmail({ etat: 'en_cours', pour: post.id, le: new Date().toISOString() }))) {
       console.error(`[CRON] Email du post mixte ${post.id} : preuve non ecrite — email non envoye`);
       return;
     }
     const r = await envoyerCanalEmail(post, platform, post.videos || null);
-    const fin = await ecrireCanalEmail({ etat: r.success ? 'envoye' : 'echec', le: new Date().toISOString(), erreur: r.error ?? null });
+    const fin = await ecrireCanalEmail({ etat: r.success ? 'envoye' : 'echec', pour: post.id, le: new Date().toISOString(), erreur: r.error ?? null });
     if (!fin) console.error(`[CRON] Email du post mixte ${post.id} : resultat non ecrit (reste en_cours, jamais renvoye)`);
     console.log(`[CRON] Email du post mixte ${post.id} : ${r.success ? 'envoye' : `echec — ${r.error ?? ''}`}`);
   } catch (err) {

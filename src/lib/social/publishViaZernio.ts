@@ -90,7 +90,8 @@ export function etatPreuveZernio(
 
 /**
  * Les metadonnees sans preuve Zernio — pour autoriser une reprogrammation.
- * Le marqueur de tentative et ses drapeaux partent aussi : on n'appelle
+ * Le marqueur de tentative, ses drapeaux et l'état partiel (`zernioPartiel`,
+ * `zernioResultatsReseaux`) partent aussi : on n'appelle
  * ceci que quand Zernio a dit l'échec (`post.failed`) ou que la preuve est
  * écartée explicitement.
  */
@@ -98,6 +99,8 @@ export function sansPreuveZernio(metadata: Record<string, unknown> | null | unde
   const {
     zernioPostId: _id, zernioForPostId: _pour,
     zernioTentative: _t, confirmationPerdue: _cp, confirmationRequise: _cr,
+    // L'état partiel décrit l'envoi dont on retire la preuve : il part avec.
+    zernioPartiel: _p, zernioResultatsReseaux: _rr,
     ...reste
   } = metadata ?? {};
   return reste;
@@ -502,6 +505,7 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
 }
 
 const DRAPEAUX_CONFIRMATION = ['confirmationPerdue', 'confirmationRequise', 'publierSansVerification'];
+const ETAT_PARTIEL = ['zernioPartiel', 'zernioResultatsReseaux'];
 
 /**
  * Traduit le post que Zernio a rendu (créé, rejoué par clé, ou retrouvé) :
@@ -529,7 +533,7 @@ async function issueDuPostZernio(
       ok: false, reessayable: false,
       motif: `Publication refusée par les réseaux${echecs.length ? ` : ${echecs.join(', ')}` : ''}.`,
       ...(resultats.length ? { details: resultats } : {}),
-      metadataRetrait: ['zernioTentative', 'zernioPostId', 'zernioForPostId'],
+      metadataRetrait: ['zernioTentative', 'zernioPostId', 'zernioForPostId', ...ETAT_PARTIEL],
     };
   }
   const preuve = { zernioPostId: zernio._id, zernioForPostId: postId, ...(options.extraPreuve ?? {}) };
@@ -544,7 +548,9 @@ async function issueDuPostZernio(
       metadataAjout: partiel,
     };
   }
-  if (!(await fusionnerMetadata(postId, preuve, DRAPEAUX_CONFIRMATION))) {
+  // Envoi NON partiel : un état partiel encore en metadata décrit un AUTRE
+  // envoi (preuve retirée sans webhook, ou hérité d'une copie) — il part.
+  if (!(await fusionnerMetadata(postId, preuve, [...DRAPEAUX_CONFIRMATION, ...ETAT_PARTIEL]))) {
     console.error(`[Zernio/Publication] post ${postId} : preuve d'envoi NON ecrite (${zernio._id}).`);
   }
   return {
