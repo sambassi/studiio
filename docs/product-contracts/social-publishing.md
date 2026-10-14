@@ -130,6 +130,24 @@ ROUVRIR_SEULEMENT_SI=changement de fournisseur ou du modèle preuve / tentative
 
 ```
 ID=C-SOCIAL-WEBHOOK-ENVELOPPE
+RÈGLE (source unique)=UNE enveloppe par événement post : si `post` est un objet,
+metadata, platforms ET id se lisent dans `post` SEULEMENT ; sinon tout vient de
+l'ancienne forme `data` (id `data.id`/`data._id`, lu seulement si `data` est un objet —
+à plat, `id` est celui de l'événement). Jamais `post.metadata` mêlé à `data.platforms`.
+RÈGLE (propriétaire)=Le post est lu une fois (`id, user_id, metadata`) ; introuvable →
+ignoré. Identifiants de l'événement : `platforms[].accountId` (même enveloppe) et
+`profiles[].id` (racine, documenté). Identifiants de l'auteur : `zernio_accounts`
+(account_id / profile_id, TOUS statuts) + `users.zernio_profile_id`. Comptes des deux
+côtés → au moins un commun, sinon ignoré ; sinon profils des deux côtés → idem ; sinon
+(aucun identifiant, auteur sans ligne Zernio) → accepté comme avant. Contrôle AVANT
+l'anti-rejeu ; refus = warn sans identifiant ni contenu, réponse 200. Lecture du post en
+erreur : pas de contrôle, chemins « metadata illisible » inchangés ; lecture des comptes
+en erreur : journalisée, traitée comme « rien d'enregistré ».
+RÈGLE (post.cancelled)=`failed` + `metadata.error` « Publication annulée côté service de
+publication. », preuve d'envoi GARDÉE (doc Zernio : `cancelled` est aussi posé par
+DELETE /v1/posts/{id}/unpublish, le post a pu être publié ; « Réessayer » interroge donc
+Zernio d'abord). Jamais `scheduled` ni `publishing` : aucune republication automatique.
+Mêmes contrôles propriétaire + anti-rejeu que les autres événements post.
 RÈGLE=Événement PÉRIMÉ OU REJOUÉ ignoré : si l'événement porte `post.id` et que le post
 a une preuve d'envoi VALIDE (`zernioForPostId` = ce post) dont `zernioPostId` diffère, rien n'est écrit (un ancien
 `post.failed` redélivré n'efface jamais la preuve d'un nouvel envoi). Sans `post.id`
@@ -145,7 +163,11 @@ avant tout parsing, 503 sans secret, 401 signature absente/invalide, 200 même s
 traitement échoue, recherche par `studiioPostId` seulement (absent → aucune
 écriture), événement inconnu → 200 sans écriture, relecture-fusion de metadata,
 post.failed retire la preuve, post.partial la garde.
-TEST=src/__tests__/contracts/social-webhook-enveloppe.contract.test.ts
+TEST=src/__tests__/contracts/social-webhook-enveloppe.contract.test.ts (A, B cancelled ;
+     E, F, G source unique ; C, D propriétaire)
+CORRIGÉ (fix/social-hardening, 2026-10-14)=post.cancelled acquitté sans effet (post
+bloqué à `publishing`) ; metadata et platforms pouvaient venir de deux enveloppes
+différentes ; aucun contrôle que l'événement venait d'un compte de l'auteur du post.
 BUG CORRIGÉ (fix/social-safety)=le webhook lisait `data.metadata` et `data.accountId`
 — une enveloppe jamais documentée, inventée par nos fixtures : tout vrai événement
 Zernio était acquitté 200 et ignoré (posts bloqués à `publishing`, déconnexions de

@@ -260,8 +260,12 @@ describe('Webhooks et état explicite', () => {
     await lancerCron(false);
     await webhook({
       event: 'post.partial',
-      data: { _id: 'zernio-post-1', metadata: { studiioPostId: 'p1' } },
-      post: { platforms: [{ platform: 'instagram', status: 'published' }, { platform: 'youtube', status: 'failed', error: 'quota' }] },
+      // Enveloppe documentée seule : metadata ET platforms sous `post` (jamais
+      // `data.metadata` mêlé à `post.platforms`, contrat C-SOCIAL-WEBHOOK-ENVELOPPE).
+      post: {
+        id: 'zernio-post-1', metadata: { studiioPostId: 'p1' },
+        platforms: [{ platform: 'instagram', status: 'published' }, { platform: 'youtube', status: 'failed', error: 'quota' }],
+      },
     });
     expect(ligne('p1').status).toBe('failed');
     expect(ligne('p1').metadata).toMatchObject({
