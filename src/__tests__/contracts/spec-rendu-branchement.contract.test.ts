@@ -215,6 +215,14 @@ async function verifierIdentique(design: Record<string, unknown>) {
   expect(sequencesResume(tl)).toEqual(sequencesResume(planAttendu.sequences));
   expect(totalDurationFrames(tl, 30)).toBe(planAttendu.durationFrames);
   expect(dimensionsHistoriques(serveur.inputProps)).toEqual(dimensionsHistoriques(attendu));
+  // Copie superficielle, comme l'ancien étalement : mêmes références
+  // (cards, rushUrls…) que l'entrée, rien n'est recopié en profondeur.
+  const refsAttendues = inputPropsHistoriques(design as never) as Record<string, unknown>;
+  for (const k of Object.keys(design)) {
+    if (refsAttendues[k] === (design as Record<string, unknown>)[k]) {
+      expect(serveur.inputProps[k], `référence de « ${k} »`).toBe((design as Record<string, unknown>)[k]);
+    }
+  }
   // L'entrée n'est pas mutée.
   expect(design).toStrictEqual(copie);
   return { serveur, planAttendu };
