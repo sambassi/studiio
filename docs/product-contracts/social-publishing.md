@@ -137,16 +137,20 @@ l'ancienne forme `data` (id `data.id`/`data._id`, lu seulement si `data` est un 
 RÈGLE (propriétaire)=Le post est lu une fois (`id, user_id, metadata`) ; introuvable →
 ignoré. Identifiants de l'événement : `platforms[].accountId` (même enveloppe) et
 `profiles[].id` (racine, documenté). Identifiants de l'auteur : `zernio_accounts`
-(account_id / profile_id, TOUS statuts) + `users.zernio_profile_id`. Comptes des deux
-côtés → au moins un commun, sinon ignoré ; sinon profils des deux côtés → idem ; sinon
-(aucun identifiant, auteur sans ligne Zernio) → accepté comme avant. Contrôle AVANT
+(account_id / profile_id, TOUS statuts) + `users.zernio_profile_id`. Règle OU : accepté
+si un compte commun OU un profil commun ; refusé seulement si au moins un côté était
+comparable (ids des deux côtés) et qu'aucun ne correspond ; rien de comparable (aucun
+identifiant, auteur sans ligne Zernio) → accepté comme avant. Contrôle AVANT
 l'anti-rejeu ; refus = warn sans identifiant ni contenu, réponse 200. Lecture du post en
 erreur : pas de contrôle, chemins « metadata illisible » inchangés ; lecture des comptes
 en erreur : journalisée, traitée comme « rien d'enregistré ».
-RÈGLE (post.cancelled)=`failed` + `metadata.error` « Publication annulée côté service de
-publication. », preuve d'envoi GARDÉE (doc Zernio : `cancelled` est aussi posé par
-DELETE /v1/posts/{id}/unpublish, le post a pu être publié ; « Réessayer » interroge donc
-Zernio d'abord). Jamais `scheduled` ni `publishing` : aucune republication automatique.
+RÈGLE (post.cancelled)=traité comme post.failed : `failed`, preuve d'envoi et marqueur
+RETIRÉS, `metadata.error` « Publication annulée côté service de publication. » (doc
+Zernio : job annulé, ou toutes les entrées retirées par unpublish — plus rien en ligne).
+Garder la preuve bloquait le post : « Réessayer » → « déjà envoyé » sans appel →
+`publishing` sans webhook, épargné par le reset → bloqué. Jamais `scheduled` ni
+`publishing` : aucune republication automatique ; seul « Réessayer » de l'utilisateur
+renvoie (un nouvel envoi, une fois).
 Mêmes contrôles propriétaire + anti-rejeu que les autres événements post.
 RÈGLE=Événement PÉRIMÉ OU REJOUÉ ignoré : si l'événement porte `post.id` et que le post
 a une preuve d'envoi VALIDE (`zernioForPostId` = ce post) dont `zernioPostId` diffère, rien n'est écrit (un ancien

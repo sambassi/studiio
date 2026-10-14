@@ -171,6 +171,8 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       ? (lignes[0] as { user_id?: string | null; metadata?: Record<string, unknown> | null })
       : null;
 
+    // Lecture du post en erreur (`ligne` nul) : contrôle propriétaire SAUTÉ
+    // délibérément — fail-open, la charge utile est signée par Zernio.
     // ⚠️ PROPRIÉTAIRE : l'événement doit venir d'un compte / profil Zernio de
     // l'auteur du post. Identifiants lus dans la MÊME enveloppe que la
     // metadata (`platforms[].accountId`) et dans `profiles[].id` (racine,
@@ -200,38 +202,29 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       }
     }
 
-    // ⚠️ `post.failed` EFFACE LA PREUVE D'ENVOI. Sinon, un post reprogramme
-    // apres un echec serait pris pour « deja envoye » par le cron et
-    // resterait a `publishing` sans jamais partir. Relecture puis fusion : un
-    // `update` direct de `metadata` ecraserait sequences, design et URLs.
-    // `post.partial` GARDE la preuve : une partie des reseaux a publie, et
-    // republier en doublerait certains.
-    if (type === 'post.failed') {
+    // ⚠️ `post.failed` ET `post.cancelled` EFFACENT LA PREUVE D'ENVOI.
+    // Sinon, un post reprogramme serait pris pour « deja envoye » par le cron
+    // et resterait a `publishing` sans webhook — et le reset des posts
+    // bloques epargne les preuves valides : bloque pour toujours.
+    // `cancelled` (doc Zernio : job annule, ou toutes les entrees retirees
+    // par unpublish) : plus rien n'est en ligne ; statut `failed` + motif
+    // explicite. Aucune republication automatique (le cron ne prend que
+    // `scheduled`) : seul « Reessayer » de l'utilisateur renvoie.
+    // Relecture puis fusion : un `update` direct de `metadata` ecraserait
+    // sequences, design et URLs. `post.partial` GARDE la preuve : une partie
+    // des reseaux a publie, et republier en doublerait certains.
+    if (type === 'post.failed' || type === 'post.cancelled') {
       if (ligne) {
+        const sans = sansPreuveZernio(ligne.metadata);
         await supabaseAdmin
           .from('scheduled_posts')
-          .update({ status: statut, metadata: sansPreuveZernio(ligne.metadata) })
+          .update({ status: statut, metadata: type === 'post.cancelled' ? { ...sans, error: MOTIF_ANNULE } : sans })
           .eq('id', postId);
         return;
       }
       // Lecture impossible : on ne reecrit PAS `metadata` a l'aveugle (ce
       // serait tout effacer). Le statut passe quand meme a `failed`.
       console.error(`[Zernio/Webhook] post ${postId} : metadata illisible, preuve d'envoi conservee.`);
-    }
-
-    // ⚠️ `post.cancelled` GARDE LA PREUVE. Doc Zernio (OpenAPI) : `cancelled`
-    // est aussi posé par DELETE /v1/posts/{id}/unpublish — le post a PU être
-    // publié avant. Avec la preuve, « Réessayer » interroge d'abord Zernio au
-    // lieu de renvoyer à l'aveugle. Statut `failed` + motif explicite.
-    if (type === 'post.cancelled') {
-      if (ligne) {
-        await supabaseAdmin
-          .from('scheduled_posts')
-          .update({ status: statut, metadata: { ...(ligne.metadata ?? {}), error: MOTIF_ANNULE } })
-          .eq('id', postId);
-        return;
-      }
-      console.error(`[Zernio/Webhook] post ${postId} : metadata illisible, motif d'annulation non memorise.`);
     }
 
     // ⚠️ `post.partial` : état PARTIEL explicite, résultats par réseau gardés
@@ -273,9 +266,9 @@ const chainesNonVides = (v: unknown[]): string[] =>
 
 /**
  * L'événement vient-il d'un compte / profil Zernio de l'auteur du post ?
- * Comptes d'abord (`platforms[].accountId` ↔ `zernio_accounts.account_id`,
- * tous statuts), puis profils (`profiles[].id` ↔ `zernio_accounts.profile_id`
- * + `users.zernio_profile_id`). Rien à comparer d'un côté ou de l'autre :
+ * Comptes (`platforms[].accountId` ↔ `zernio_accounts.account_id`, tous
+ * statuts) OU profils (`profiles[].id` ↔ `zernio_accounts.profile_id` +
+ * `users.zernio_profile_id`). Rien à comparer d'un côté ou de l'autre :
  * accepté (ancienne forme, auteur sans compte enregistré).
  */
 async function evenementDuProprietaire(
@@ -307,7 +300,11 @@ async function evenementDuProprietaire(
     ...((Array.isArray(users) ? users : []) as Array<{ zernio_profile_id?: unknown }>).map((u) => u.zernio_profile_id),
   ]));
 
-  if (evComptes.length > 0 && ownComptes.size > 0) return evComptes.some((a) => ownComptes.has(a));
-  if (evProfils.length > 0 && ownProfils.size > 0) return evProfils.some((p) => ownProfils.has(p));
-  return true;
+  // Règle OU : un compte commun OU un profil commun suffit. Refus seulement
+  // si au moins un côté était comparable et qu'aucun ne correspond.
+  const comptesComparables = evComptes.length > 0 && ownComptes.size > 0;
+  const profilsComparables = evProfils.length > 0 && ownProfils.size > 0;
+  if (!comptesComparables && !profilsComparables) return true;
+  return (comptesComparables && evComptes.some((a) => ownComptes.has(a)))
+    || (profilsComparables && evProfils.some((p) => ownProfils.has(p)));
 }
