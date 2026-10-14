@@ -52,6 +52,19 @@
  *   UNIES de n'importe quelle couleur : lignes / colonnes de bord IDENTIQUES
  *   à la couleur du coin, sur TOUTES les images échantillonnées. Les mêmes
  *   garde-fous s'appliquent (`bandesIncrustees` : symétrique, un axe entier).
+ * - FAUX POSITIF (revue de release après #565) : un vrai 9:16 plein cadre sur
+ *   fond de studio UNI (clair, gris ou NOIR), sujet du haut au bas du cadre,
+ *   était lu comme pillarbox et zoomé ≈ 2× (coupe 532×944 → 1080×1920) ; un
+ *   sujet large ou rond sur fond uni passait pour un letterbox. Règle
+ *   désormais CONSERVATRICE — mieux vaut laisser une bande douteuse que
+ *   recadrer une bonne vidéo — sur les DEUX mesures (noire et unie) :
+ *     (b) fichier déjà au ratio demandé : seule la forme qu'un fournisseur
+ *         peut produire est admise — letterbox (bandes haut / bas) pour un
+ *         cadre vertical, pillarbox pour un cadre horizontal (`planCadrage`) ;
+ *     (c2) chaque bande finit sur un BORD DROIT : sur la ligne frontière, les
+ *         pixels d'image couvrent ≥ 90 % de sa longueur (`bordsFrancs`). Un
+ *         sujet (tête, épaules, disque) sur fond uni n'a pas de bord droit.
+ *   Dans le doute : aucun recadrage.
  * - Le son est COPIÉ tel quel : la synchronisation labiale ne bouge pas.
  * - Tout échec (ffmpeg absent, fichier illisible, délai) rend le fichier
  *   d'origine : le rapatriement n'est jamais bloqué par cette étape.
@@ -132,13 +145,79 @@ export function dimensionsSortie(src: { l: number; h: number }, r: number): { l:
 export interface PlanCadrage { coupe: Zone; sortie: { l: number; h: number } }
 
 /**
- * Décision complète, PURE : `null` = fichier gardé tel quel. `ratio` absent :
- * celui du fichier (on retire les bandes sans changer de format).
+ * (b) Forme des bandes admise. Un fichier DÉJÀ au ratio demandé ne peut porter
+ * que les bandes d'une image d'une autre forme « contenue » dedans : dans un
+ * cadre vertical, une image plus large → bandes en haut et en bas (letterbox,
+ * pleine largeur) ; dans un cadre horizontal, l'inverse (pillarbox). Des
+ * colonnes unies de part et d'autre d'un 9:16 sont le fond de studio autour
+ * du sujet, pas une incrustation. Fichier carré, ou d'une autre forme que la
+ * demande (16:9 rendu pour un 9:16) : les deux formes restent admises. Pur.
+ */
+export function formeBandesAdmise(src: { l: number; h: number }, z: Zone, r: number): boolean {
+  const cadre = src.l / src.h;
+  if (Math.abs(cadre / r - 1) >= 0.02 || Math.abs(r - 1) < 0.02) return true;
+  const pleineLargeur = z.x <= Math.max(4, src.l * 0.01) && src.l - z.x - z.l <= Math.max(4, src.l * 0.01);
+  return r < 1 ? pleineLargeur : !pleineLargeur;
+}
+
+/**
+ * Décision géométrique, PURE : `null` = fichier gardé tel quel. `ratio`
+ * absent : celui du fichier (on retire les bandes sans changer de format).
+ * La preuve sur les pixels (`bordsFrancs`) s'ajoute dans `retirerBandesIncrustees`.
  */
 export function planCadrage(src: { l: number; h: number }, zone: Zone | null, ratio: number | null): PlanCadrage | null {
   if (!zone || !(src.l > 0 && src.h > 0) || !bandesIncrustees(src, zone)) return null;
   const r = ratio ?? src.l / src.h;
+  if (!formeBandesAdmise(src, zone, r)) return null;
   return { coupe: rectangleCover(zone, r), sortie: dimensionsSortie(src, r) };
+}
+
+/**
+ * (c2) BORDS DROITS : une bande incrustée se termine sur une arête droite —
+ * l'image du fournisseur est un rectangle. Pour chaque côté amputé (> 4 px),
+ * on cherche autour de la frontière (6 lignes côté bande, 8 côté image) la
+ * ligne dont l'ÉTENDUE des pixels d'image (du premier au dernier pixel à plus
+ * de `tol` de la couleur de bande) est la plus grande, en médiane sur les
+ * images échantillonnées. Exigé : ≥ 90 % de la longueur, sur CHAQUE côté. Un
+ * sujet sur fond uni (tête, épaules, disque, silhouette) n'y arrive pas.
+ * Couleur de bande : coin haut-gauche de la première image. Pur ; `false`
+ * dès qu'un doute subsiste (aucun pixel lisible, aucun côté amputé).
+ */
+export function bordsFrancs(pixels: Uint8Array, src: { l: number; h: number }, z: Zone, tol = 8): boolean {
+  const { l, h } = src;
+  const taille = l * h;
+  if (!(l > 0 && h > 0) || !pixels || pixels.length < taille) return false;
+  const n = Math.floor(pixels.length / taille);
+  const ref = pixels[0];
+  const etendue = (f: number, pos: number, ligne: boolean) => {
+    const longueur = ligne ? l : h;
+    let a = -1; let b = -1;
+    for (let i = 0; i < longueur; i++) {
+      const v = ligne ? pixels[f * taille + pos * l + i] : pixels[f * taille + i * l + pos];
+      if (Math.abs(v - ref) > tol) { if (a < 0) a = i; b = i; }
+    }
+    return a < 0 ? 0 : (b - a + 1) / longueur;
+  };
+  // `vers` : +1 si l'image est du côté des indices croissants (haut, gauche).
+  const cote = (frontiere: number, vers: 1 | -1, ligne: boolean) => {
+    const limite = ligne ? h : l;
+    let meilleure = 0;
+    for (let k = -6; k <= 8; k++) {
+      const pos = frontiere + vers * k;
+      if (pos < 0 || pos >= limite) continue;
+      const parImage: number[] = [];
+      for (let f = 0; f < n; f++) parImage.push(etendue(f, pos, ligne));
+      parImage.sort((a, b) => a - b);
+      meilleure = Math.max(meilleure, parImage[Math.floor(parImage.length / 2)]);
+    }
+    return meilleure >= 0.9;
+  };
+  const cotes: boolean[] = [];
+  if (z.y > 4) cotes.push(cote(z.y, 1, true));
+  if (h - z.y - z.h > 4) cotes.push(cote(z.y + z.h - 1, -1, true));
+  if (z.x > 4) cotes.push(cote(z.x, 1, false));
+  if (l - z.x - z.l > 4) cotes.push(cote(z.x + z.l - 1, -1, false));
+  return cotes.length > 0 && cotes.every(Boolean);
 }
 
 /** Lecture du fichier LOCAL uniquement (jamais d'URL, de playlist ni de concat). */
@@ -265,15 +344,18 @@ export async function retirerBandesIncrustees(
     await writeFile(entree, buffer);
     const mesure = await exec(bin, argumentsCropdetect(entree), { timeout: 60_000, maxBuffer: 32 * 1024 * 1024 });
     const src = lireDimensions(mesure.stderr);
+    if (!src) return tel;
     const ratio = ratioDemande(opts.aspectRatio);
-    let plan = src ? planCadrage(src, lireCropdetect(mesure.stderr), ratio) : null;
-    if (src && !plan) {
-      // `cropdetect` ne voit que le NOIR : bandes claires ou colorées du
-      // fournisseur (BUG 6) cherchées ici, avec les mêmes garde-fous.
-      const brut = join(dossier, 'echantillons.gray');
-      await exec(bin, argumentsEchantillons(entree, brut), { timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
-      plan = planCadrage(src, zoneBandesUnies(new Uint8Array(await readFile(brut)), src), ratio);
-    }
+    // Échantillons TOUJOURS lus : ils servent à la mesure des bandes unies
+    // (BUG 6 : `cropdetect` ne voit que le NOIR) ET à la preuve des bords
+    // droits, exigée aussi pour une zone trouvée par `cropdetect` (fond de
+    // studio noir autour d'un sujet = même faux positif).
+    const brut = join(dossier, 'echantillons.gray');
+    await exec(bin, argumentsEchantillons(entree, brut), { timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
+    const pixels = new Uint8Array(await readFile(brut));
+    const noire = lireCropdetect(mesure.stderr);
+    const zone = planCadrage(src, noire, ratio) ? noire : zoneBandesUnies(pixels, src);
+    const plan = zone && bordsFrancs(pixels, src, zone) ? planCadrage(src, zone, ratio) : null;
     if (!plan) return tel;
     await exec(bin, argumentsRecadrage(entree, sortie, plan), { timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
     const corrige = await readFile(sortie);

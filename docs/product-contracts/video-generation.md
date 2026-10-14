@@ -159,8 +159,23 @@ ID=C-BARS
 RÈGLE=Aucune bande (noire ou claire) incrustée dans le montage final, en particulier
 l'avatar en 9:16 ; le lecteur du Calendrier ne masque rien par CSS (object-contain
 sur un cadre au ratio du fichier).
-POURQUOI=BUG 6 (#565) : bandes claires de l'avatar en 9:16.
-TEST=src/__tests__/contracts/bandes-avatar.contract.test.ts (8 tests) — voir aussi src/__tests__/bug6-avatar-bandes-claires-9-16.test.ts
+GARDE-FOU=Détection CONSERVATRICE (dans le doute, aucun recadrage), sur les deux
+mesures (cropdetect noir ET bandes unies) : (b) fichier déjà au ratio demandé →
+letterbox seul en vertical, pillarbox seul en horizontal ; (c2) chaque bande finit sur
+un BORD DROIT (étendue de l'image ≥ 90 % de la ligne frontière, médiane des images).
+Un 9:16 plein cadre sur fond uni (blanc, gris, noir), sujet touchant le haut et/ou le
+bas, ou un sujet large / rond sur fond uni, n'est JAMAIS recadré.
+Même tolérance de couleur (8) pour détecter la bande et pour vérifier son bord.
+LIMITES ACCEPTÉES (règle « dans le doute, rien ») : vraies bandes noires autour d'une
+image dont le bord est lui-même très sombre → bandes gardées ; vraie bande de la couleur
+du fond de l'image, ou bruit fort → gardée ; une ligne droite pleine largeur (étagère,
+bureau) sur fond uni, ou un buste à bords droits demandé en 16:9 / 1:1 / autre ratio que
+le fichier, reste indiscernable d'un letterbox. La protection principale reste la requête
+HeyGen `fit: cover` (#565).
+POURQUOI=BUG 6 (#565) : bandes claires de l'avatar en 9:16. Faux positif constaté en
+revue de release : 9:16 plein cadre sur fond de studio uni zoomé ≈ 2× (coupe 532×944) ;
+matrice QA 22 fixtures : 5 faux positifs → 0, aucun nouveau faux négatif.
+TEST=src/__tests__/contracts/bandes-avatar.contract.test.ts (10 tests) — voir aussi src/__tests__/bug6-avatar-bandes-claires-9-16.test.ts et src/__tests__/avatar-bandes-faux-positif.test.ts (règles pures + vraie chaîne ffmpeg)
 VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; fusionné dans main via #564/#565, PAS ENCORE DÉPLOYÉ en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```

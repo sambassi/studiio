@@ -214,7 +214,9 @@ avecFfmpeg('jumeau EXISTANT à bandes incrustées → version plein cadre dériv
     // L'ORIGINAL n'est jamais réécrit.
     expect(depot.ecrire.mock.calls.some((c) => c[1] === CLE_SOURCE)).toBe(false);
     expect(objets.get(`media/${CLE_SOURCE}`)).toBe(BANDES);
-    expect(invocations).toEqual(['cropdetect', 'crop']);
+    // Échantillons lus aussi sur le chemin noir : preuve des bords droits
+    // exigée avant tout recadrage (faux positif fond de studio noir).
+    expect(invocations).toEqual(['cropdetect', 'echantillons', 'crop']);
 
     // Le fichier dérivé : mêmes dimensions, aucune bande, son conservé.
     const derive = join(dossier, 'derive.mp4'); writeFileSync(derive, objets.get(`media/${CLE_DERIVEE}`)!);
