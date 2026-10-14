@@ -17,7 +17,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createHmac } from 'crypto';
-import { etat, post, lancerCron, reinitialiser, ligne, webhook, reprogrammer, WEBHOOK_SECRET } from './helpers/socialHarness';
+import { etat, post, lancerCron, reinitialiser, ligne, webhook, reprogrammer, WEBHOOK_SECRET, zernio } from './helpers/socialHarness';
 
 const espion = vi.hoisted(() => ({ upserts: [] as Array<{ table: string; valeurs: Record<string, unknown> }> }));
 
@@ -143,6 +143,40 @@ describe('Événements post — enveloppe documentée `post`', () => {
     expect(res.status).toBe(200);
     expect(etat.ecritures).toHaveLength(0);
     expect(espion.upserts).toHaveLength(0);
+  });
+});
+
+describe('Événement périmé ou rejoué — il ne vise pas le post Zernio courant', () => {
+  const ancien = (event: string) => ({ ...evenementPost(event, [{ platform: 'instagram', status: 'failed' }]),
+    post: { ...evenementPost(event, []).post, id: 'zernio-post-ANCIEN' } });
+
+  it('post.failed d un ANCIEN post Zernio (rejoué) → ignoré : la preuve courante est gardée, pas de republication', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    expect(ligne('p1').metadata.zernioPostId).toBe('zernio-post-1');
+    await webhook(ancien('post.failed'));
+    expect(ligne('p1').status).toBe('publishing');
+    expect(ligne('p1').metadata.zernioPostId).toBe('zernio-post-1');
+    reprogrammer('p1');
+    await lancerCron(false);
+    expect(zernio.createPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('post.published / post.partial d un ANCIEN post Zernio → ignorés', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    await webhook(ancien('post.published'));
+    expect(ligne('p1').status).toBe('publishing');
+    await webhook(ancien('post.partial'));
+    expect(ligne('p1').status).toBe('publishing');
+    expect(ligne('p1').metadata).not.toHaveProperty('zernioPartiel');
+  });
+
+  it('événement sans identifiant de post Zernio (ancienne forme) → appliqué comme avant', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    await webhook({ event: 'post.published', data: { metadata: { studiioPostId: 'p1' } } });
+    expect(ligne('p1').status).toBe('published');
   });
 });
 

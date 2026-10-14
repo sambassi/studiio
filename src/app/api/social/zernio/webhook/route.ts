@@ -140,6 +140,24 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
     if (!postId) return;
     const statut = type === 'post.published' ? 'published' : 'failed';
 
+    // ⚠️ ÉVÉNEMENT PÉRIMÉ OU REJOUÉ : il doit viser le post Zernio COURANT.
+    // Après « Réessayer », un ancien `post.failed` redélivré effacerait la
+    // preuve du nouvel envoi et ouvrirait une republication. Sans identifiant
+    // dans l'événement (ancienne forme) ou sans preuve en base : comme avant.
+    const idZernio = typeof postZernio.id === 'string' ? postZernio.id
+      : typeof postZernio._id === 'string' ? postZernio._id : null;
+    if (idZernio) {
+      const { data: lignes, error: lectureErr } = await supabaseAdmin
+        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
+      const courant = !lectureErr && lignes && lignes.length > 0
+        ? ((lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {}).zernioPostId
+        : undefined;
+      if (typeof courant === 'string' && courant !== idZernio) {
+        console.warn(`[Zernio/Webhook] post ${postId} : ${type} vise ${idZernio}, envoi courant ${courant} — evenement perime ignore.`);
+        return;
+      }
+    }
+
     // ⚠️ `post.failed` EFFACE LA PREUVE D'ENVOI. Sinon, un post reprogramme
     // apres un echec serait pris pour « deja envoye » par le cron et
     // resterait a `publishing` sans jamais partir. Relecture puis fusion : un
@@ -172,7 +190,7 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       if (!lectureErr && lignes && lignes.length > 0) {
         const actuelle = (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {};
         // Docs Zernio (webhooks/posts) : résultats sous `post.platforms[]`.
-        const resultats = resultatsParReseau(data.platforms ?? postZernio.platforms);
+        const resultats = resultatsParReseau(postZernio.platforms ?? data.platforms);
         await supabaseAdmin
           .from('scheduled_posts')
           .update({
