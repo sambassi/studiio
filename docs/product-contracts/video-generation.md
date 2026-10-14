@@ -165,6 +165,13 @@ letterbox seul en vertical, pillarbox seul en horizontal ; (c2) chaque bande fin
 un BORD DROIT (étendue de l'image ≥ 90 % de la ligne frontière, médiane des images).
 Un 9:16 plein cadre sur fond uni (blanc, gris, noir), sujet touchant le haut et/ou le
 bas, ou un sujet large / rond sur fond uni, n'est JAMAIS recadré.
+Même tolérance de couleur (8) pour détecter la bande et pour vérifier son bord.
+LIMITES ACCEPTÉES (règle « dans le doute, rien ») : vraies bandes noires autour d'une
+image dont le bord est lui-même très sombre → bandes gardées ; vraie bande de la couleur
+du fond de l'image, ou bruit fort → gardée ; une ligne droite pleine largeur (étagère,
+bureau) sur fond uni, ou un buste à bords droits demandé en 16:9 / 1:1 / autre ratio que
+le fichier, reste indiscernable d'un letterbox. La protection principale reste la requête
+HeyGen `fit: cover` (#565).
 POURQUOI=BUG 6 (#565) : bandes claires de l'avatar en 9:16. Faux positif constaté en
 revue de release : 9:16 plein cadre sur fond de studio uni zoomé ≈ 2× (coupe 532×944) ;
 matrice QA 22 fixtures : 5 faux positifs → 0, aucun nouveau faux négatif.

@@ -183,7 +183,7 @@ export function planCadrage(src: { l: number; h: number }, zone: Zone | null, ra
  * Couleur de bande : coin haut-gauche de la première image. Pur ; `false`
  * dès qu'un doute subsiste (aucun pixel lisible, aucun côté amputé).
  */
-export function bordsFrancs(pixels: Uint8Array, src: { l: number; h: number }, z: Zone, tol = 16): boolean {
+export function bordsFrancs(pixels: Uint8Array, src: { l: number; h: number }, z: Zone, tol = 8): boolean {
   const { l, h } = src;
   const taille = l * h;
   if (!(l > 0 && h > 0) || !pixels || pixels.length < taille) return false;

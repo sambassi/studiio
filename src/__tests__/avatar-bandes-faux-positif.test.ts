@@ -116,6 +116,18 @@ describe('Faux positif — règles pures', () => {
     expect(p.coupe.y + p.coupe.h).toBeLessThanOrEqual(utile.y + utile.h);
   });
 
+  it('n4b bandes claires + contenu 16:9 dont le haut est un ciel PÂLE (~10 de luminance du fond) : toujours recadré', () => {
+    const utile = { x: 0, y: 437, l: 720, h: 406 };
+    const px = forme(720, 1280, 243, rect(utile));
+    // Les 80 premières lignes du contenu : un ciel uni à 233, proche de la bande (243).
+    for (let y = utile.y; y < utile.y + 80; y++) px.fill(233, y * 720, (y + 1) * 720);
+    const p = decision(px)!;
+    expect(p).not.toBeNull();
+    expect(p.sortie).toEqual({ l: 720, h: 1280 });
+    expect(p.coupe.y).toBeGreaterThanOrEqual(utile.y);
+    expect(p.coupe.y + p.coupe.h).toBeLessThanOrEqual(utile.y + utile.h);
+  });
+
   it('bords droits : aucun côté amputé, ou pixels illisibles → false (dans le doute, rien)', () => {
     expect(bordsFrancs(new Uint8Array(0), SRC, { l: 720, h: 398, x: 0, y: 441 })).toBe(false);
     expect(bordsFrancs(forme(720, 1280, 243, () => true), SRC, { l: 720, h: 1280, x: 0, y: 0 })).toBe(false);
