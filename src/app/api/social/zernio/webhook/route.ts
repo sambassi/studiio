@@ -81,6 +81,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
+/**
+ * Motif affiché quand Zernio annonce `post.cancelled`. Non exporté : un
+ * fichier de route Next n'exporte que ses handlers et réglages.
+ */
+const MOTIF_ANNULE = 'Publication annulée côté service de publication.';
+
 function estObjet(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
@@ -93,7 +99,15 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
   // L'ancienne forme `data` reste lue en repli : elle n'a jamais été
   // documentée, nos premières fixtures l'avaient inventée d'après le code.
   const data = (estObjet(evenement.data) ? evenement.data : evenement) as Record<string, unknown>;
-  const postZernio = (estObjet(evenement.post) ? evenement.post : {}) as Record<string, unknown>;
+  // ⚠️ UNE SEULE SOURCE PAR ÉVÉNEMENT POST. Si `post` est un objet, metadata,
+  // platforms ET id se lisent dans `post` seulement ; sinon tout vient de
+  // l'ancienne forme `data`. Jamais `post.metadata` avec `data.platforms` :
+  // un mélange appliquerait au post A les résultats réseau d'un post B.
+  // L'id n'est lu dans `data` que si `data` est un vrai objet : à plat,
+  // `evenement.id` est l'identifiant de l'ÉVÉNEMENT, pas celui du post.
+  const sourcePost = (estObjet(evenement.post) ? evenement.post
+    : estObjet(evenement.data) ? evenement.data : null) as Record<string, unknown> | null;
+  const sourceMeta = (sourcePost ?? data) as Record<string, unknown>;
 
   if (type === 'account.connected' || type === 'account.disconnected') {
     const compte = (estObjet(evenement.account) ? evenement.account : data) as Record<string, unknown>;
@@ -131,28 +145,54 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
     return;
   }
 
-  if (type === 'post.published' || type === 'post.failed' || type === 'post.partial') {
+  if (type === 'post.published' || type === 'post.failed' || type === 'post.partial' || type === 'post.cancelled') {
     // ⚠️ ON RETROUVE LE POST PAR L'IDENTIFIANT QU'ON A ECRIT A LA CREATION,
     // range dans `metadata.studiioPostId`. Se fier a un rapprochement par
     // date ou par contenu confondrait deux montages du meme cycle.
-    const meta = (postZernio.metadata ?? data.metadata ?? {}) as Record<string, unknown>;
-    const postId = typeof meta.studiioPostId === 'string' ? meta.studiioPostId : null;
+    const metaEvenement = (estObjet(sourceMeta.metadata) ? sourceMeta.metadata : {}) as Record<string, unknown>;
+    const postId = typeof metaEvenement.studiioPostId === 'string' ? metaEvenement.studiioPostId : null;
     if (!postId) return;
+    // `post.cancelled` → `failed` (statut EXISTANT, jamais `scheduled` ni
+    // `publishing`) : le cron ne reprend que `scheduled`, le reset des posts
+    // bloqués que `publishing` — aucune republication automatique.
     const statut = type === 'post.published' ? 'published' : 'failed';
+
+    // Le post est lu UNE fois : propriétaire, anti-rejeu et fusion de
+    // metadata partent de cette ligne. Lecture en erreur : on garde le
+    // comportement d'avant (pas de contrôle, chemins « metadata illisible »).
+    const { data: lignes, error: lectureErr } = await supabaseAdmin
+      .from('scheduled_posts').select('id, user_id, metadata').eq('id', postId).limit(1);
+    const lisible = !lectureErr && Array.isArray(lignes);
+    if (lisible && lignes.length === 0) {
+      console.warn(`[Zernio/Webhook] post ${postId} introuvable — evenement ignore.`);
+      return;
+    }
+    const ligne = lisible
+      ? (lignes[0] as { user_id?: string | null; metadata?: Record<string, unknown> | null })
+      : null;
+
+    // Lecture du post en erreur (`ligne` nul) : contrôle propriétaire SAUTÉ
+    // délibérément — fail-open, la charge utile est signée par Zernio.
+    // ⚠️ PROPRIÉTAIRE : l'événement doit venir d'un compte / profil Zernio de
+    // l'auteur du post. Identifiants lus dans la MÊME enveloppe que la
+    // metadata (`platforms[].accountId`) et dans `profiles[].id` (racine,
+    // documenté). Sans identifiant dans l'événement, ou auteur sans compte
+    // Zernio enregistré (ancien cas) : accepté comme avant.
+    if (ligne?.user_id && !(await evenementDuProprietaire(evenement, sourceMeta, ligne.user_id))) {
+      console.warn(`[Zernio/Webhook] post ${postId} : evenement d’un autre proprietaire — ignore.`);
+      return;
+    }
 
     // ⚠️ ÉVÉNEMENT PÉRIMÉ OU REJOUÉ : il doit viser le post Zernio COURANT.
     // Après « Réessayer », un ancien `post.failed` redélivré effacerait la
     // preuve du nouvel envoi et ouvrirait une republication. Sans identifiant
     // dans l'événement (ancienne forme), sans preuve en base, ou preuve d'un
     // autre post : comme avant.
-    const idZernio = typeof postZernio.id === 'string' ? postZernio.id
-      : typeof postZernio._id === 'string' ? postZernio._id : null;
-    if (idZernio) {
-      const { data: lignes, error: lectureErr } = await supabaseAdmin
-        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
-      const meta = !lectureErr && lignes && lignes.length > 0
-        ? (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {}
-        : {};
+    const idZernio = !sourcePost ? null
+      : typeof sourcePost.id === 'string' ? sourcePost.id
+        : typeof sourcePost._id === 'string' ? sourcePost._id : null;
+    if (idZernio && ligne) {
+      const meta = ligne.metadata ?? {};
       // Seule une preuve qui appartient À CE POST compte : une copie
       // (« Dupliquer ») porte la preuve de l'original, étrangère ici.
       const courant = etatPreuveZernio(meta, postId) === 'valide' ? meta.zernioPostId : undefined;
@@ -162,20 +202,23 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       }
     }
 
-    // ⚠️ `post.failed` EFFACE LA PREUVE D'ENVOI. Sinon, un post reprogramme
-    // apres un echec serait pris pour « deja envoye » par le cron et
-    // resterait a `publishing` sans jamais partir. Relecture puis fusion : un
-    // `update` direct de `metadata` ecraserait sequences, design et URLs.
-    // `post.partial` GARDE la preuve : une partie des reseaux a publie, et
-    // republier en doublerait certains.
-    if (type === 'post.failed') {
-      const { data: lignes, error: lectureErr } = await supabaseAdmin
-        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
-      if (!lectureErr && lignes && lignes.length > 0) {
-        const actuelle = (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata;
+    // ⚠️ `post.failed` ET `post.cancelled` EFFACENT LA PREUVE D'ENVOI.
+    // Sinon, un post reprogramme serait pris pour « deja envoye » par le cron
+    // et resterait a `publishing` sans webhook — et le reset des posts
+    // bloques epargne les preuves valides : bloque pour toujours.
+    // `cancelled` (doc Zernio : job annule, ou toutes les entrees retirees
+    // par unpublish) : plus rien n'est en ligne ; statut `failed` + motif
+    // explicite. Aucune republication automatique (le cron ne prend que
+    // `scheduled`) : seul « Reessayer » de l'utilisateur renvoie.
+    // Relecture puis fusion : un `update` direct de `metadata` ecraserait
+    // sequences, design et URLs. `post.partial` GARDE la preuve : une partie
+    // des reseaux a publie, et republier en doublerait certains.
+    if (type === 'post.failed' || type === 'post.cancelled') {
+      if (ligne) {
+        const sans = sansPreuveZernio(ligne.metadata);
         await supabaseAdmin
           .from('scheduled_posts')
-          .update({ status: statut, metadata: sansPreuveZernio(actuelle) })
+          .update({ status: statut, metadata: type === 'post.cancelled' ? { ...sans, error: MOTIF_ANNULE } : sans })
           .eq('id', postId);
         return;
       }
@@ -189,12 +232,10 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
     // `cron_publish_results`). Le cron le lit : un « Réessayer » finit en
     // échec expliqué, jamais bloqué à `publishing`. La preuve reste.
     if (type === 'post.partial') {
-      const { data: lignes, error: lectureErr } = await supabaseAdmin
-        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
-      if (!lectureErr && lignes && lignes.length > 0) {
-        const actuelle = (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {};
+      if (ligne) {
+        const actuelle = ligne.metadata ?? {};
         // Docs Zernio (webhooks/posts) : résultats sous `post.platforms[]`.
-        const resultats = resultatsParReseau(postZernio.platforms ?? data.platforms);
+        const resultats = resultatsParReseau(sourceMeta.platforms);
         await supabaseAdmin
           .from('scheduled_posts')
           .update({
@@ -218,4 +259,52 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       .update({ status: statut })
       .eq('id', postId);
   }
+}
+
+const chainesNonVides = (v: unknown[]): string[] =>
+  v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+
+/**
+ * L'événement vient-il d'un compte / profil Zernio de l'auteur du post ?
+ * Comptes (`platforms[].accountId` ↔ `zernio_accounts.account_id`, tous
+ * statuts) OU profils (`profiles[].id` ↔ `zernio_accounts.profile_id` +
+ * `users.zernio_profile_id`). Rien à comparer d'un côté ou de l'autre :
+ * accepté (ancienne forme, auteur sans compte enregistré).
+ */
+async function evenementDuProprietaire(
+  evenement: Record<string, unknown>,
+  source: Record<string, unknown>,
+  userId: string,
+): Promise<boolean> {
+  const evComptes = chainesNonVides(
+    (Array.isArray(source.platforms) ? source.platforms : []).map((p) => (estObjet(p) ? p.accountId : null)),
+  );
+  const evProfils = chainesNonVides(
+    (Array.isArray(evenement.profiles) ? evenement.profiles : []).map((p) => (estObjet(p) ? p.id : null)),
+  );
+  if (evComptes.length === 0 && evProfils.length === 0) return true;
+
+  // Lecture en erreur → traitée comme « rien d'enregistré » (journalisée) :
+  // l'événement est signé par Zernio, le perdre bloquerait le post.
+  const { data: comptes, error: errComptes } = await supabaseAdmin
+    .from('zernio_accounts').select('account_id, profile_id').eq('user_id', userId);
+  if (errComptes) console.error('[Zernio/Webhook] comptes du proprietaire illisibles :', errComptes.message);
+  const { data: users, error: errUsers } = await supabaseAdmin
+    .from('users').select('zernio_profile_id').eq('id', userId).limit(1);
+  if (errUsers) console.error('[Zernio/Webhook] profil du proprietaire illisible :', errUsers.message);
+
+  const lignesComptes = (Array.isArray(comptes) ? comptes : []) as Array<{ account_id?: unknown; profile_id?: unknown }>;
+  const ownComptes = new Set(chainesNonVides(lignesComptes.map((c) => c.account_id)));
+  const ownProfils = new Set(chainesNonVides([
+    ...lignesComptes.map((c) => c.profile_id),
+    ...((Array.isArray(users) ? users : []) as Array<{ zernio_profile_id?: unknown }>).map((u) => u.zernio_profile_id),
+  ]));
+
+  // Règle OU : un compte commun OU un profil commun suffit. Refus seulement
+  // si au moins un côté était comparable et qu'aucun ne correspond.
+  const comptesComparables = evComptes.length > 0 && ownComptes.size > 0;
+  const profilsComparables = evProfils.length > 0 && ownProfils.size > 0;
+  if (!comptesComparables && !profilsComparables) return true;
+  return (comptesComparables && evComptes.some((a) => ownComptes.has(a)))
+    || (profilsComparables && evProfils.some((p) => ownProfils.has(p)));
 }

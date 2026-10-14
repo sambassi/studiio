@@ -265,3 +265,238 @@ describe('Signature — inchangée', () => {
     expect(ligne('p1').status).toBe('published');
   });
 });
+
+describe('post.cancelled — annulé sur Zernio : traité comme post.failed', () => {
+  // Garder la preuve bloquait le post : « Réessayer » → preuve valide → « déjà
+  // envoyé » sans appel → `publishing` sans webhook, que le reset n'efface pas
+  // (preuve valide) → bloqué pour toujours. Preuve retirée comme post.failed ;
+  // seul un « Réessayer » explicite de l'utilisateur republie.
+  it('A — cancelled signé du post courant → failed + motif, preuve retirée, AUCUNE republication automatique', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    expect(ligne('p1').metadata.zernioPostId).toBe('zernio-post-1');
+    const res = await webhook(evenementPost('post.cancelled', [{ platform: 'instagram', status: 'cancelled', accountId: 'acc-ig' }]));
+    expect(res.status).toBe(200);
+    expect(ligne('p1').status).toBe('failed');
+    expect(ligne('p1').metadata.error).toBe('Publication annulée côté service de publication.');
+    expect(ligne('p1').metadata).not.toHaveProperty('zernioPostId');
+    expect(ligne('p1').metadata).not.toHaveProperty('zernioForPostId');
+    expect(ligne('p1').metadata).not.toHaveProperty('zernioTentative');
+    expect(ligne('p1').metadata.renderedVideoUrl).toBe('https://cdn.example/rendus/montage.mp4');
+    await lancerCron(false);
+    await lancerCron(false);
+    expect(ligne('p1').status).toBe('failed');
+    expect(zernio.createPost).toHaveBeenCalledTimes(1);
+  });
+
+  it('A — cancelled puis « Réessayer » → exactement UN nouvel envoi, jamais bloqué à publishing', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    await webhook(evenementPost('post.cancelled', [{ platform: 'instagram', status: 'cancelled', accountId: 'acc-ig' }]));
+    zernio.createPost.mockImplementationOnce(async () => ({ _id: 'zernio-post-2' }));
+    reprogrammer('p1');
+    await lancerCron(false);
+    expect(zernio.createPost).toHaveBeenCalledTimes(2);
+    expect(ligne('p1').metadata).toMatchObject({ zernioPostId: 'zernio-post-2', zernioForPostId: 'p1' });
+    await lancerCron(false);
+    expect(zernio.createPost).toHaveBeenCalledTimes(2);
+    // Le webhook du NOUVEL envoi conclut le post.
+    await webhook({ ...evenementPost('post.published', []), post: { ...evenementPost('post.published', []).post, id: 'zernio-post-2' } });
+    expect(ligne('p1').status).toBe('published');
+  });
+
+  it('A — cancelled d un AUTRE propriétaire → aucun effet', async () => {
+    etat.base.zernio_accounts = [{ id: 'za', user_id: 'user-1', account_id: 'acc-ig', profile_id: 'prof-A', status: 'connected' }];
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    const avant = etat.ecritures.length;
+    await webhook(evenementPost('post.cancelled', [{ platform: 'instagram', status: 'cancelled', accountId: 'acc-B' }]));
+    expect(etat.ecritures.length).toBe(avant);
+    expect(ligne('p1').status).toBe('publishing');
+    expect(ligne('p1').metadata.zernioPostId).toBe('zernio-post-1');
+  });
+
+  it('B — cancelled rejoué d un ANCIEN post Zernio → aucun effet', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    const ecrituresAvant = etat.ecritures.length;
+    await webhook({ ...evenementPost('post.cancelled', []), post: { ...evenementPost('post.cancelled', []).post, id: 'zernio-post-ANCIEN' } });
+    expect(ligne('p1').status).toBe('publishing');
+    expect(ligne('p1').metadata.zernioPostId).toBe('zernio-post-1');
+    expect(ligne('p1').metadata).not.toHaveProperty('error');
+    expect(etat.ecritures.length).toBe(ecrituresAvant);
+    reprogrammer('p1');
+    await lancerCron(false);
+    expect(zernio.createPost).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Cohérence de source — UNE enveloppe par événement, jamais post.* mêlé à data.*', () => {
+  it('E — ancienne forme seule (`data`) : metadata, platforms et id lus dans `data`', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    await webhook({ event: 'post.partial', data: {
+      _id: 'zernio-post-1', metadata: { studiioPostId: 'p1' },
+      platforms: [{ platform: 'instagram', status: 'published' }, { platform: 'tiktok', status: 'failed', error: 'x' }],
+    } });
+    expect(ligne('p1').metadata).toMatchObject({
+      zernioPartiel: true,
+      zernioResultatsReseaux: [{ platform: 'instagram', success: true }, { platform: 'tiktok', success: false, error: 'x' }],
+    });
+  });
+
+  it('E — ancienne forme, id `data._id` d un ANCIEN post Zernio → ignoré (même garde anti-rejeu)', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    await webhook({ event: 'post.failed', data: { _id: 'zernio-post-ANCIEN', metadata: { studiioPostId: 'p1' } } });
+    expect(ligne('p1').status).toBe('publishing');
+    expect(ligne('p1').metadata.zernioPostId).toBe('zernio-post-1');
+  });
+
+  it('F — `post` documenté prioritaire même si un `data` porte d autres metadata / platforms', async () => {
+    etat.base.scheduled_posts = [post('p1'), post('p2', { status: 'publishing' })];
+    await lancerCron(false);
+    const ev = evenementPost('post.partial', [
+      { platform: 'instagram', status: 'published' },
+      { platform: 'tiktok', status: 'failed', error: 'doc' },
+    ]);
+    await webhook({ ...ev, data: {
+      _id: 'zernio-AUTRE', metadata: { studiioPostId: 'p2' },
+      platforms: [{ platform: 'facebook', status: 'failed', error: 'data' }],
+    } });
+    expect(ligne('p1').metadata.zernioResultatsReseaux).toEqual([
+      { platform: 'instagram', success: true }, { platform: 'tiktok', success: false, error: 'doc' },
+    ]);
+    expect(ligne('p2').status).toBe('publishing');
+    expect(ligne('p2').metadata).not.toHaveProperty('zernioPartiel');
+  });
+
+  it('G — `post` sans metadata : la metadata de `data` n est PAS empruntée → aucune écriture', async () => {
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' })];
+    const { metadata: _m, ...sansMeta } = evenementPost('post.failed', []).post;
+    await webhook({ id: 'evt-x', event: 'post.failed', post: sansMeta, data: { metadata: { studiioPostId: 'p1' } }, timestamp: new Date().toISOString() });
+    expect(ligne('p1').status).toBe('publishing');
+    expect(etat.ecritures).toHaveLength(0);
+  });
+
+  it('G — `post` sans platforms : les platforms de `data` ne sont PAS empruntées (metadata et platforms de la même source)', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    const { platforms: _p, ...sansPlateformes } = evenementPost('post.partial', []).post;
+    await webhook({ id: 'evt-y', event: 'post.partial', post: sansPlateformes,
+      data: { platforms: [{ platform: 'facebook', status: 'failed', error: 'data' }] }, timestamp: new Date().toISOString() });
+    expect(ligne('p1').metadata.zernioPartiel).toBe(true);
+    expect(ligne('p1').metadata.zernioResultatsReseaux).toEqual([]);
+  });
+});
+
+describe('Propriétaire — l événement doit venir d un compte / profil Zernio de l auteur du post', () => {
+  const avecComptes = () => {
+    etat.base.zernio_accounts = [
+      { id: 'za', user_id: 'user-1', account_id: 'acc-ig', profile_id: 'prof-A', status: 'connected' },
+      { id: 'zb', user_id: 'user-2', account_id: 'acc-B', profile_id: 'prof-B', status: 'connected' },
+    ];
+    etat.base.users = [{ id: 'user-1', zernio_profile_id: 'prof-A' }, { id: 'user-2', zernio_profile_id: 'prof-B' }];
+  };
+
+  it('C — compte de l auteur → accepté', async () => {
+    avecComptes();
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    await webhook(evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-ig' }]));
+    expect(ligne('p1').status).toBe('published');
+  });
+
+  it('C — compte déconnecté de l auteur (aucun filtre de statut) → accepté', async () => {
+    avecComptes();
+    etat.base.zernio_accounts[0].status = 'disconnected';
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' })];
+    await webhook(evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-ig' }]));
+    expect(ligne('p1').status).toBe('published');
+  });
+
+  it('D — compte d un AUTRE utilisateur → ignoré, aucune écriture, 200', async () => {
+    avecComptes();
+    etat.base.scheduled_posts = [post('p1')];
+    await lancerCron(false);
+    const avant = etat.ecritures.length;
+    for (const ev of ['post.failed', 'post.published', 'post.partial', 'post.cancelled']) {
+      const res = await webhook(evenementPost(ev, [{ platform: 'instagram', status: 'failed', accountId: 'acc-B' }]));
+      expect(res.status).toBe(200);
+    }
+    expect(etat.ecritures.length).toBe(avant);
+    expect(ligne('p1').status).toBe('publishing');
+    expect(ligne('p1').metadata.zernioPostId).toBe('zernio-post-1');
+    const avert = (console.warn as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((c) => String(c[0]));
+    const message = avert.find((m) => m.includes('autre proprietaire'));
+    expect(message).toBeDefined();
+    expect(message).not.toMatch(/acc-B|prof-B|acc-ig|@/);
+  });
+
+  it('profils seulement (platforms sans accountId) → décision par profiles[].id', async () => {
+    avecComptes();
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' }), post('p2', { status: 'publishing' })];
+    await webhook({ ...evenementPost('post.published', [{ platform: 'instagram', status: 'published' }]), profiles: [{ id: 'prof-B', externalId: null }] });
+    expect(ligne('p1').status).toBe('publishing');
+    await webhook({ ...evenementPost('post.published', [{ platform: 'instagram', status: 'published' }]), profiles: [{ id: 'prof-A', externalId: null }] });
+    expect(ligne('p1').status).toBe('published');
+  });
+
+  it('profil via users.zernio_profile_id seul (aucune ligne zernio_accounts) → accepté si égal, ignoré sinon', async () => {
+    etat.base.users = [{ id: 'user-1', zernio_profile_id: 'prof-A' }];
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' })];
+    await webhook({ ...evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-inconnu' }]), profiles: [{ id: 'prof-X', externalId: null }] });
+    expect(ligne('p1').status).toBe('publishing');
+    await webhook({ ...evenementPost('post.published', []), profiles: [{ id: 'prof-A', externalId: null }] });
+    expect(ligne('p1').status).toBe('published');
+  });
+
+  it('ancien cas — événement sans identifiant, ou auteur sans compte Zernio enregistré → accepté', async () => {
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' }), post('p2', { status: 'publishing' })];
+    await webhook(evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-quelconque' }]));
+    expect(ligne('p1').status).toBe('published');
+    avecComptes();
+    await webhook({ event: 'post.published', data: { metadata: { studiioPostId: 'p2' } } });
+    expect(ligne('p2').status).toBe('published');
+  });
+
+  it('identifiants lus dans la MÊME enveloppe : `post` documenté → les accountId de `data` ne comptent pas', async () => {
+    avecComptes();
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' })];
+    await webhook({ ...evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-B' }]),
+      data: { platforms: [{ platform: 'instagram', accountId: 'acc-ig' }] } });
+    expect(ligne('p1').status).toBe('publishing');
+  });
+
+  it('règle OU — accountId étranger mais profil de l auteur → accepté', async () => {
+    avecComptes();
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' })];
+    await webhook({ ...evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-B' }]),
+      profiles: [{ id: 'prof-A', externalId: null }] });
+    expect(ligne('p1').status).toBe('published');
+  });
+
+  it('règle OU — accountId étranger ET profil étranger → refusé', async () => {
+    avecComptes();
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing' })];
+    await webhook({ ...evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-B' }]),
+      profiles: [{ id: 'prof-B', externalId: null }] });
+    expect(ligne('p1').status).toBe('publishing');
+    expect(etat.ecritures).toHaveLength(0);
+  });
+
+  it('post introuvable → aucune écriture', async () => {
+    avecComptes();
+    await webhook(evenementPost('post.published', [{ platform: 'instagram', status: 'published', accountId: 'acc-ig' }]));
+    expect(etat.ecritures).toHaveLength(0);
+  });
+
+  it('lecture du post en erreur → comportement d avant (statut posé, metadata non réécrite)', async () => {
+    avecComptes();
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing', metadata: { zernioPostId: 'z', zernioForPostId: 'p1', renderedVideoUrl: 'x' } })];
+    etat.panneLecture = (t) => t === 'scheduled_posts';
+    await webhook(evenementPost('post.failed', [{ platform: 'instagram', status: 'failed', accountId: 'acc-B' }]));
+    expect(ligne('p1').status).toBe('failed');
+    expect(ligne('p1').metadata.zernioPostId).toBe('z');
+  });
+});
