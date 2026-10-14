@@ -12,9 +12,15 @@
  * compte reçoit le même 404 neutre.
  *
  * Ordre des refus (aucun n'a d'effet de bord) : interrupteur → session →
- * administrateur → propriété (`lireRendu`) → état `reserved` → opération →
- * spec (liste blanche) et cohérence du format facturé → job déjà en cours →
- * place. La place est prise en dernier : un refus n'en garde jamais une.
+ * administrateur (ces trois-là : même 404 `{ ok:false }`) → propriété
+ * (`lireRendu`) → état `reserved` → opération → corps (≤ 256 Ko) → spec
+ * (liste blanche, médias, couleurs, bornes) et cohérence du format facturé →
+ * job déjà en cours → place (la sienne ET tout rendu Remotion du processus)
+ * → relecture de la ligne. La place est prise en dernier : un refus n'en
+ * garde jamais une.
+ *
+ * L'Autopilote ne lit pas ces places : A2.3 lui cède la main (429), il ne la
+ * cède jamais à A2.3.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
@@ -22,9 +28,10 @@ import { isAdmin } from '@/lib/admin';
 import { lireRendu } from '@/lib/rendus/service';
 import { formatRenduFacturation } from '@/lib/format/projet';
 import {
-  DELAI_RENDU_SERVEUR_MS, OPERATIONS_RENDU_SERVEUR, executerRenduServeur,
-  moteurExportServeurActif, prendreExecution, renduServeurEnCours, validerSpecServeur,
+  OPERATIONS_RENDU_SERVEUR, TAILLE_MAX_CORPS, executerRenduServeur, moteurExportServeurActif,
+  prendreExecution, renduServeurEnCours, retryAfterSecondes, validerSpecServeur,
 } from '@/lib/render/moteur-export-serveur';
+import { rendusRemotionActifs } from '@/lib/render/occupation-remotion';
 import type { LigneRendu } from '@/lib/rendus/confirmation';
 
 export const dynamic = 'force-dynamic';
@@ -38,11 +45,9 @@ async function acceder(id: string): Promise<
   | { ok: false; reponse: NextResponse }
 > {
   const session = await auth();
-  if (!session?.user?.id) {
-    return { ok: false, reponse: NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 }) };
-  }
-  // Cas autorisés en A2.3 : administrateurs seulement. Même 404 que le flag
-  // éteint : rien ne révèle que la route existe.
+  // Sans session, ou hors des cas autorisés en A2.3 (administrateurs
+  // seulement) : même 404 que le flag éteint — rien ne révèle la route.
+  if (!session?.user?.id) return { ok: false, reponse: INTROUVABLE() };
   if (!isAdmin(session.user.email)) return { ok: false, reponse: INTROUVABLE() };
 
   const { rendu, socleAbsent } = await lireRendu(session.user.id, id);
@@ -77,8 +82,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ ok: false, motif: 'operation_refusee' }, { status: 403 });
     }
 
+    // Corps borné AVANT d'être lu (Content-Length annoncé), puis mesuré.
+    const annonce = Number(req.headers?.get?.('content-length') ?? NaN);
+    if (Number.isFinite(annonce) && annonce > TAILLE_MAX_CORPS) {
+      return NextResponse.json({ ok: false, motif: 'corps_trop_gros' }, { status: 413 });
+    }
+    let texte = '';
+    try { texte = await req.text(); } catch { /* corps absent : refusé ci-dessous */ }
+    if (Buffer.byteLength(texte, 'utf8') > TAILLE_MAX_CORPS) {
+      return NextResponse.json({ ok: false, motif: 'corps_trop_gros' }, { status: 413 });
+    }
     let corps: unknown = null;
-    try { corps = await req.json(); } catch { /* corps absent : refusé ci-dessous */ }
+    try { corps = JSON.parse(texte); } catch {
+      return NextResponse.json({ ok: false, motif: 'corps_illisible' }, { status: 422 });
+    }
     const validation = validerSpecServeur((corps as { spec?: unknown } | null)?.spec);
     if (!validation.ok) {
       return NextResponse.json({ ok: false, motif: validation.motif }, { status: 422 });
@@ -90,15 +107,31 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ ok: false, motif: 'format_incoherent' }, { status: 422 });
     }
 
-    const prise = prendreExecution(rendu.id);
+    const prise = prendreExecution(rendu.id, rendusRemotionActifs());
     if (!prise.ok) {
       if (prise.motif === 'deja_en_cours') {
         return NextResponse.json({ ok: false, motif: 'deja_en_cours' }, { status: 409 });
       }
       return NextResponse.json(
         { ok: false, motif: 'capacite_saturee', error: 'Un rendu est déjà en cours sur ce serveur.' },
-        { status: 429, headers: { 'Retry-After': String(Math.ceil(DELAI_RENDU_SERVEUR_MS / 1000)) } },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSecondes()) } },
       );
+    }
+
+    // ── P1 : relire APRÈS la place ────────────────────────────────────
+    // Entre la première lecture et ici (corps lent), une autre requête a pu
+    // rendre et confirmer cette tentative. Sans cette relecture, la même
+    // tentative serait rendue deux fois.
+    let relue: LigneRendu | null = null;
+    try {
+      relue = (await lireRendu(userId, rendu.id)).rendu as LigneRendu | null;
+    } catch (e) {
+      prise.place.liberer();
+      throw e;
+    }
+    if (!relue || relue.etat !== 'reserved') {
+      prise.place.liberer();
+      return NextResponse.json({ ok: false, motif: 'etat_invalide', etat: relue?.etat ?? null }, { status: 409 });
     }
 
     // ⚠️ LE TRAVAIL SURVIT À LA RÉPONSE (`node server.js`, conteneur

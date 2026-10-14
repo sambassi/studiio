@@ -34,8 +34,21 @@ export function moteurExportServeurActif(): boolean {
   return process.env.MOTEUR_EXPORT_SERVEUR === 'true';
 }
 
-/** Budget d'un rendu serveur : au-delà, il est annulé et la tentative échoue. */
+/**
+ * Budget d'un rendu serveur. À l'échéance, la tentative est close en
+ * `failed` IMMÉDIATEMENT et le rendu reçoit l'ordre d'annulation ; sa place
+ * reste prise jusqu'à ce que sa promesse rende la main.
+ */
 export const DELAI_RENDU_SERVEUR_MS = 600_000;
+
+/**
+ * Marge ajoutée au Retry-After : `renderMedia` rejette par course dès
+ * l'annulation, mais l'arrêt de Chromium / ffmpeg continue quelques secondes.
+ */
+export const MARGE_NETTOYAGE_S = 30;
+
+/** Plafond du corps de POST /serveur, en octets. */
+export const TAILLE_MAX_CORPS = 256 * 1024;
 
 /** Une seule composition Remotion à la fois sur ce serveur. */
 export const MAX_RENDUS_SERVEUR_SIMULTANES = 1;
@@ -45,7 +58,14 @@ export const OPERATIONS_RENDU_SERVEUR = ['apercu', 'bureau', 'calendrier'] as co
 
 let rendusEnCours = 0;
 const jobsEnCours = new Set<string>();
+/** Début de chaque job en cours (horloge), pour le Retry-After. */
+const debuts = new Map<string, number>();
+/**
+ * Derniers travaux de fond, CONSERVÉS une fois finis (bornés) : un appelant
+ * qui arrive après la fin lit encore l'issue.
+ */
 const travaux = new Map<string, Promise<IssueRenduServeur>>();
+const TRAVAUX_CONSERVES = 50;
 
 export interface PlaceRenduServeur {
   /** IDEMPOTENTE : un second appel ne rend ni la place ni le job deux fois. */
@@ -57,15 +77,20 @@ export interface PlaceRenduServeur {
  *
  * Synchrone : deux requêtes simultanées ne peuvent pas passer toutes deux le
  * contrôle. Le même job déjà en cours → `deja_en_cours` (409) ; un autre job
- * occupe la place → `capacite_saturee` (429).
+ * occupe la place, ou `autresRendusRemotion > 0` (`rendusRemotionActifs()`)
+ * → `capacite_saturee` (429).
  */
-export function prendreExecution(jobId: string):
+export function prendreExecution(jobId: string, autresRendusRemotion = 0):
   | { ok: true; place: PlaceRenduServeur }
   | { ok: false; motif: 'deja_en_cours' | 'capacite_saturee' } {
   if (jobsEnCours.has(jobId)) return { ok: false, motif: 'deja_en_cours' };
   if (rendusEnCours >= MAX_RENDUS_SERVEUR_SIMULTANES) return { ok: false, motif: 'capacite_saturee' };
+  // P-a : un `renderVideo` étranger (Autopilote, `/api/render`) tient déjà
+  // un Chromium dans ce processus — on ne lance pas le second.
+  if (autresRendusRemotion > 0) return { ok: false, motif: 'capacite_saturee' };
   rendusEnCours += 1;
   jobsEnCours.add(jobId);
+  debuts.set(jobId, Date.now());
   let rendue = false;
   return {
     ok: true,
@@ -75,6 +100,7 @@ export function prendreExecution(jobId: string):
         rendue = true;
         rendusEnCours -= 1;
         jobsEnCours.delete(jobId);
+        debuts.delete(jobId);
       },
     },
   };
@@ -90,7 +116,19 @@ export function rendusServeurEnCoursMaintenant(): number {
   return rendusEnCours;
 }
 
-/** Le travail de fond d'un job, s'il en a un. Pour les tests. */
+/**
+ * Retry-After d'un refus 429, en secondes : le reste du budget du job le plus
+ * long en cours, plus la marge de nettoyage. Sans job A2.3 connu (place prise
+ * par un autre rendu Remotion), le budget entier.
+ */
+export function retryAfterSecondes(maintenant: number = Date.now()): number {
+  let reste = -1;
+  for (const debut of debuts.values()) reste = Math.max(reste, debut + DELAI_RENDU_SERVEUR_MS - maintenant);
+  if (reste < 0 && debuts.size === 0) return Math.ceil(DELAI_RENDU_SERVEUR_MS / 1000) + MARGE_NETTOYAGE_S;
+  return Math.max(0, Math.ceil(reste / 1000)) + MARGE_NETTOYAGE_S;
+}
+
+/** Le travail de fond d'un job (en cours ou récemment fini). */
 export function travailRenduServeur(jobId: string): Promise<IssueRenduServeur> | undefined {
   return travaux.get(jobId);
 }
@@ -99,6 +137,7 @@ export function travailRenduServeur(jobId: string): Promise<IssueRenduServeur> |
 export function reinitialiserMoteurExportServeurPourTests(): void {
   rendusEnCours = 0;
   jobsEnCours.clear();
+  debuts.clear();
   travaux.clear();
 }
 
@@ -154,10 +193,89 @@ function genreValide(v: unknown, g: Genre): boolean {
   }
 }
 
+/** Bornes de la spec (C1). */
+export const BORNES_SPEC = {
+  dureeMaxS: 120,
+  texteMax: 2000,
+  profondeurMax: 8,
+  listes: { cards: 20, rushs: 10, rushUrls: 10, elements: 50, montage: 100 } as Record<string, number>,
+  listeParDefaut: 200,
+} as const;
+const DUREES = new Set(['introDuration', 'cardsDuration', 'videoDuration', 'ctaDuration']);
+
 /**
- * La spec reçue est-elle acceptable ? Liste blanche des clés, types de base,
- * titre et format visuel obligatoires. Ne transforme RIEN : la spec retenue
- * est l'objet reçu, tel quel.
+ * Champ média : absent / null, ou une URL http(s) CANONIQUE — `new URL(v)`
+ * réussit et `href === v`, sans blanc, sans `\`, sans `//` initial. Ce que
+ * `localiserEntreesRendu` copierait autrement depuis n'importe où (SSRF).
+ */
+export function urlMediaValide(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v !== 'string') return false;
+  if (/\s/.test(v) || v.includes('\\') || v.startsWith('//')) return false;
+  let u: URL;
+  try { u = new URL(v); } catch { return false; }
+  return (u.protocol === 'http:' || u.protocol === 'https:') && u.href === v;
+}
+
+const COULEUR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$|^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\)$/;
+/** Couleur : absente / null, ou hex / rgb(a) stricts. Rien qui finisse dans un `url(…)` CSS. */
+export function couleurValide(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  return typeof v === 'string' && COULEUR.test(v);
+}
+
+/** Clés dont la valeur est un média (à toute profondeur). */
+const estCleMedia = (cle: string) => /url$/i.test(cle);
+/** Clés dont TOUTES les valeurs sont des médias. */
+const estCarteMedias = (cle: string) => /urls$/i.test(cle) || cle === 'sequenceBackgrounds';
+/** Clés de couleur (à toute profondeur). */
+const estCleCouleur = (cle: string) => /(color|background)$/i.test(cle) || cle === 'gradientStart' || cle === 'gradientEnd';
+
+/**
+ * Parcours profond : médias, couleurs, bornes. `cle` est la clé qui porte la
+ * valeur (pour un élément de liste, celle de la liste).
+ */
+function parcourir(v: unknown, cle: string, chemin: string, profondeur: number, dansCarteMedias: boolean): string | null {
+  if (profondeur > BORNES_SPEC.profondeurMax) return `borne:profondeur:${chemin}`;
+  if (dansCarteMedias && !estObjet(v) && !Array.isArray(v)) {
+    return urlMediaValide(v) ? null : `media_invalide:${chemin}`;
+  }
+  if (estCleMedia(cle) && !estObjet(v) && !Array.isArray(v)) {
+    return urlMediaValide(v) ? null : `media_invalide:${chemin}`;
+  }
+  if (estCleCouleur(cle) && !estObjet(v) && !Array.isArray(v)) {
+    return couleurValide(v) ? null : `couleur_invalide:${chemin}`;
+  }
+  if (typeof v === 'string') return v.length > BORNES_SPEC.texteMax ? `borne:texte:${chemin}` : null;
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return `borne:nombre:${chemin}`;
+    if (DUREES.has(cle) && (v < 0 || v > BORNES_SPEC.dureeMaxS)) return `borne:duree:${chemin}`;
+    return null;
+  }
+  if (Array.isArray(v)) {
+    const max = BORNES_SPEC.listes[cle] ?? BORNES_SPEC.listeParDefaut;
+    if (v.length > max) return `borne:liste:${chemin}`;
+    for (let i = 0; i < v.length; i++) {
+      const m = parcourir(v[i], cle, `${chemin}[${i}]`, profondeur + 1, dansCarteMedias || estCarteMedias(cle));
+      if (m) return m;
+    }
+    return null;
+  }
+  if (estObjet(v)) {
+    const carte = dansCarteMedias || estCarteMedias(cle);
+    for (const [k, w] of Object.entries(v as Record<string, unknown>)) {
+      const m = parcourir(w, k, `${chemin}.${k.slice(0, 40)}`, profondeur + 1, carte);
+      if (m) return m;
+    }
+  }
+  return null;
+}
+
+/**
+ * La spec reçue est-elle acceptable ? Liste blanche des clés (propres, jamais
+ * héritées), types de base, titre et format visuel obligatoires, puis
+ * parcours profond : médias (B1), couleurs (B2), bornes (C1). Ne transforme
+ * RIEN : la spec retenue est l'objet reçu, tel quel.
  */
 export function validerSpecServeur(v: unknown):
   | { ok: true; spec: SpecRendu }
@@ -165,13 +283,19 @@ export function validerSpecServeur(v: unknown):
   if (!estObjet(v)) return { ok: false, motif: 'spec_absente' };
   const o = v as Record<string, unknown>;
   for (const [cle, valeur] of Object.entries(o)) {
-    const genre = (CLES_SPEC as Record<string, Genre | undefined>)[cle];
-    if (!genre) return { ok: false, motif: `cle_refusee:${cle.slice(0, 40)}` };
+    // Propre, jamais héritée (`constructor`, `toString`…) — `Object.hasOwn`
+    // en sémantique ; la lib TS du projet (< es2022) ne le déclare pas.
+    if (!Object.prototype.hasOwnProperty.call(CLES_SPEC, cle)) return { ok: false, motif: `cle_refusee:${cle.slice(0, 40)}` };
     if (valeur === undefined) continue;
+    const genre = (CLES_SPEC as Record<string, Genre>)[cle];
     if (!genreValide(valeur, genre)) return { ok: false, motif: `type_invalide:${cle}` };
   }
   if (typeof o.title !== 'string') return { ok: false, motif: 'titre_absent' };
   if (!(FORMATS_VISUELS as readonly unknown[]).includes(o.format)) return { ok: false, motif: 'format_invalide' };
+  for (const [cle, valeur] of Object.entries(o)) {
+    const motif = parcourir(valeur, cle, cle, 0, false);
+    if (motif) return { ok: false, motif };
+  }
   return { ok: true, spec: o as unknown as SpecRendu };
 }
 
@@ -204,8 +328,23 @@ function signalAnnulation() {
  * Rend, téléverse à la clé de la ligne, puis confirme par la porte commune.
  *
  * Ne jette JAMAIS : chaque issue est rendue et journalisée sans donnée
- * personnelle. La place n'est libérée qu'en `finally`, donc APRÈS la fin
- * réelle du rendu — y compris après une annulation par délai.
+ * personnelle.
+ *
+ * ÉCHÉANCE (P-b) : à `delaiMs`, la tentative est close en `failed`
+ * (`delai_depasse`) TOUT DE SUITE, même si la localisation, le bundle ou
+ * `selectComposition` n'ont pas rendu la main, et le rendu reçoit l'ordre
+ * d'annulation. `renderMedia` rejette alors par course : l'arrêt réel de
+ * Chromium / ffmpeg continue quelques secondes. La place n'est libérée qu'en
+ * `finally`, quand la promesse du travail a rendu la main — conservateur :
+ * mieux vaut un 429 qu'un second Chromium. Un travail qui se termine après
+ * l'échéance ne téléverse ni ne confirme rien.
+ *
+ * FENÊTRE CONNUE (P2), sans correctif possible sans état durable : entre la
+ * relecture `reserved` et la fin du téléversement, une confirmation
+ * concurrente (navigateur, `/confirm`) ou une annulation peut survenir.
+ * L'objet est alors écrasé après confirmation, ou laissé orphelin après
+ * annulation — jamais de débit indu : la confirmation reste la RPC
+ * idempotente (`where etat = 'reserved'` + index unique de transaction).
  */
 export async function executerRenduServeur(input: {
   userId: string;
@@ -215,8 +354,9 @@ export async function executerRenduServeur(input: {
   delaiMs?: number;
 }): Promise<IssueRenduServeur> {
   const travail = executer(input);
+  travaux.delete(input.rendu.id);
   travaux.set(input.rendu.id, travail);
-  void travail.finally(() => { if (travaux.get(input.rendu.id) === travail) travaux.delete(input.rendu.id); });
+  while (travaux.size > TRAVAUX_CONSERVES) travaux.delete(travaux.keys().next().value as string);
   return travail;
 }
 
@@ -230,33 +370,55 @@ async function executer(input: {
   const { userId, rendu, spec, place } = input;
   const jobId = rendu.id;
   const signal = signalAnnulation();
-  let delaiDepasse = false;
-  const minuterie = setTimeout(() => { delaiDepasse = true; signal.annuler(); }, input.delaiMs ?? DELAI_RENDU_SERVEUR_MS);
   // Le fichier que Remotion écrit (`worker.ts`) : connu d'avance, pour être
   // effacé même si le rendu jette à mi-chemin.
   let fichier: string | null = path.join(os.tmpdir(), `studiio-render-${jobId}.mp4`);
   let televerse = false;
   let phase: 'rendu' | 'televersement' | 'confirmation' = 'rendu';
 
-  const echouer = async (motif: string): Promise<IssueRenduServeur> => {
-    try {
-      const { cloreRendu } = await import('@/lib/rendus/service');
-      await cloreRendu(userId, jobId, 'failed', motif);
-    } catch { /* reste reserved, relisible */ }
-    console.warn(`[RenduServeur/A2.3] ${jobId} — failed : ${motif}`);
-    return { issue: 'echec', motif };
+  // Une seule clôture par travail, quelle qu'en soit la cause.
+  let cloture: Promise<IssueRenduServeur> | null = null;
+  const echouer = (motif: string): Promise<IssueRenduServeur> => {
+    if (!cloture) {
+      cloture = (async () => {
+        try {
+          const { cloreRendu } = await import('@/lib/rendus/service');
+          await cloreRendu(userId, jobId, 'failed', motif);
+        } catch { /* reste reserved, relisible */ }
+        console.warn(`[RenduServeur/A2.3] ${jobId} — failed : ${motif}`);
+        return { issue: 'echec', motif } as IssueRenduServeur;
+      })();
+    }
+    return cloture;
   };
 
+  let delaiDepasse = false;
+  const minuterie = setTimeout(() => {
+    delaiDepasse = true;
+    signal.annuler();
+    void echouer('delai_depasse');
+  }, input.delaiMs ?? DELAI_RENDU_SERVEUR_MS);
+  const surDelai = () => echouer('delai_depasse');
+
   try {
+    // ── P1 : la ligne a-t-elle changé entre la réponse 202 et ici ? ───
+    const { lireRendu } = await import('@/lib/rendus/service');
+    const { rendu: auDepart } = await lireRendu(userId, jobId);
+    if (delaiDepasse) return await surDelai();
+    if (!auDepart || auDepart.etat !== 'reserved') {
+      console.warn(`[RenduServeur/A2.3] ${jobId} — plus reserved au départ, aucun rendu`);
+      return { issue: 'abandonne', motif: 'etat_change' };
+    }
+
     // ── SSRF : le moteur ne lit QUE notre stockage ────────────────────
     const { localiserEntreesRendu } = await import('@/lib/securite/medias-externes');
     let design: SpecRendu;
     try {
       design = await localiserEntreesRendu(spec) as SpecRendu;
     } catch {
-      return await echouer('localisation_refusee');
+      return await (delaiDepasse ? surDelai() : echouer('localisation_refusee'));
     }
-    if (signal.estAnnule()) return await echouer('delai_depasse');
+    if (delaiDepasse) return await surDelai();
 
     const { renderCreerSimple } = await import('@/lib/render/creerSimple');
     try {
@@ -265,13 +427,13 @@ async function executer(input: {
       });
       fichier = outputPath;
     } catch {
-      return await echouer(delaiDepasse ? 'delai_depasse' : 'rendu_echoue');
+      return await (delaiDepasse ? surDelai() : echouer('rendu_echoue'));
     }
-    if (delaiDepasse) return await echouer('delai_depasse');
+    if (delaiDepasse) return await surDelai();
 
     // ── L'état a-t-il changé pendant le rendu (annulé, clos) ? ────────
-    const { lireRendu } = await import('@/lib/rendus/service');
     const { rendu: relu } = await lireRendu(userId, jobId);
+    if (delaiDepasse) return await surDelai();
     if (!relu || relu.etat !== 'reserved') {
       console.warn(`[RenduServeur/A2.3] ${jobId} — état changé pendant le rendu, rien n'est écrit`);
       return { issue: 'abandonne', motif: 'etat_change' };
@@ -286,8 +448,9 @@ async function executer(input: {
       });
       televerse = true;
     } catch {
-      return await echouer('televersement_echoue');
+      return await (delaiDepasse ? surDelai() : echouer('televersement_echoue'));
     }
+    if (delaiDepasse) return await surDelai();
 
     // ── La porte commune : preuve, politique, débit unique ────────────
     phase = 'confirmation';
@@ -311,7 +474,7 @@ async function executer(input: {
       console.warn(`[RenduServeur/A2.3] ${jobId} — failed : ${motif}`);
       return { issue: 'echec', motif };
     }
-    return await echouer(motif);
+    return await (delaiDepasse ? surDelai() : echouer(motif));
   } catch (e: unknown) {
     const nom = e instanceof Error ? e.name : 'inconnu';
     if (phase === 'confirmation') {
@@ -321,9 +484,11 @@ async function executer(input: {
       console.warn(`[RenduServeur/A2.3] ${jobId} — confirmation interrompue (${nom}), aucun réessai`);
       return { issue: 'laisse_ouvert', motif: 'confirmation_interrompue' };
     }
-    return await echouer(`${phase}_interrompu`);
+    return await (delaiDepasse ? surDelai() : echouer(`${phase}_interrompu`));
   } finally {
     clearTimeout(minuterie);
+    // Une clôture partie à l'échéance est attendue avant de rendre la place.
+    if (cloture) await (cloture as Promise<IssueRenduServeur>).catch(() => undefined);
     // `uploadToStorage` efface le fichier une fois en ligne ; sinon, on le fait.
     if (fichier && !televerse) await fsp.unlink(fichier).catch(() => undefined);
     place.liberer();

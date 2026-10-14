@@ -12,6 +12,14 @@ import fs from 'fs';
 import os from 'os';
 import { signerUrlsRelaisProfond, DUREE_JETON_RENDU_MS } from '@/lib/storage/jeton-relais';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { entrerRenduRemotion } from '@/lib/render/occupation-remotion';
+
+/**
+ * A2.3 — compteur PASSIF des `renderVideo` en cours (voir
+ * `occupation-remotion.ts`). Il ne refuse rien : seul le rendu serveur A2.3
+ * le lit. Ré-exporté ici, où il est tenu.
+ */
+export { rendusRemotionActifs } from '@/lib/render/occupation-remotion';
 
 // Bundle cache (in-memory for the function lifecycle)
 let cachedBundleUrl: string | null = null;
@@ -72,6 +80,16 @@ export async function renderVideo(options: {
    */
   cancelSignal?: (callback: () => void) => void;
 }): Promise<{ outputPath: string }> {
+  // A2.3 : compté de l'entrée au `finally`, succès comme exception.
+  const sortir = entrerRenduRemotion();
+  try {
+    return await renderVideoCompte(options);
+  } finally {
+    sortir();
+  }
+}
+
+async function renderVideoCompte(options: Parameters<typeof renderVideo>[0]): Promise<{ outputPath: string }> {
   const { jobId, compositionId, onProgress } = options;
   // #547 : Chromium (Remotion) lit les médias SANS session. Toute URL du
   // relais de notre stockage reçoit un jeton signé, ICI, au dernier moment —
