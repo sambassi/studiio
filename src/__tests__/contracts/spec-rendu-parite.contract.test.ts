@@ -13,6 +13,8 @@
  * n'est pas modifiée.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // ── Doublures (même banc que `autopilote-multi-sources-produire.test.ts`) ──
 let lastDesign: Record<string, unknown> | null = null;
@@ -260,6 +262,14 @@ describe('SPEC DE RENDU — formats et cas limites (specs directes)', () => {
       });
     });
   }
+
+  it('la règle de format de dimensionsDeRendu est celle de calculateMetadata (remotion/index.tsx)', () => {
+    // calculateMetadata est une prop JSX en ligne, non importable : on verrouille sa règle
+    // dans le source. Si elle change, dimensionsDeRendu doit changer avec elle.
+    const source = readFileSync(join(__dirname, '../../../remotion/index.tsx'), 'utf8');
+    expect(source).toContain("props.format === '16:9' ? '16:9' : props.format === '1:1' ? '1:1' : '9:16'");
+    expect(source).toMatch(/const taille = VIDEO_SIZE\[format as keyof typeof VIDEO_SIZE\];/);
+  });
 
   it('format absent ou inconnu → 9:16 (repli de calculateMetadata)', () => {
     expect(dimensionsDeRendu({})).toEqual({ format: '9:16', width: 1080, height: 1920 });

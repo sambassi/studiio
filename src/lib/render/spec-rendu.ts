@@ -167,7 +167,7 @@ export const CORRESPONDANCE_COMPOSITEUR: ReadonlyArray<{ compositeur: string; sp
   { compositeur: 'watermark (booléen, plan gratuit)', spec: null, note: 'hors spec — facturation/plan' },
   // ── Écarts connus : rendus par le compositeur, pas (encore) par Remotion ──
   { compositeur: 'logoUrl', spec: null },
-  { compositeur: 'siteText', spec: null },
+  { compositeur: 'siteText', spec: null, note: "pas de bandeau site dans Remotion ; Remotion peint seulement `watermark` (texte du filigrane), qui recouvre en partie siteText.text" },
   { compositeur: 'rushLut', spec: null },
   { compositeur: 'titleIcon* (icône du titre)', spec: null },
   { compositeur: 'extraTitle', spec: null },
