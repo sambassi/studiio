@@ -1,5 +1,6 @@
 import { renderVideo } from '@/lib/render/worker';
 import { buildSequences, totalDurationFrames } from '@/lib/creer/designSpec';
+import { versEntreeRemotion } from '@/lib/render/spec-rendu';
 import type { FreeElement } from '@/components/creer/FreeElementsLayer';
 import type { TextAnimation } from '@/lib/creer/textAnimation';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
@@ -167,14 +168,10 @@ export async function renderCreerSimple(input: {
   onProgress?: (progress: { progress: number; stage: string }) => void;
 }): Promise<{ outputPath: string; durationFrames: number }> {
   const d = input.design;
-  const inputProps = {
-    ...d,
-    introDuration: d.introDuration ?? 4,
-    cardsDuration: d.cardsDuration ?? 6,
-    videoDuration: d.videoDuration ?? 0,
-    ctaDuration: d.ctaDuration ?? 4,
-    cards: d.cards ?? [],
-  };
+  // A2.2 — props Remotion issues de la spec canonique (même calcul qu'avant :
+  // étalement puis défauts 4 / 6 / 0 / 4 et `cards ?? []`), verrouillé par
+  // `src/__tests__/contracts/spec-rendu-branchement.contract.test.ts`.
+  const inputProps = versEntreeRemotion(d);
 
   // La duree est recalculee ici pour la journaliser et la rendre a
   // l'appelant ; la composition la recalcule de son cote par

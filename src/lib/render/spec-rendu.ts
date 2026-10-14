@@ -6,12 +6,14 @@
  * (`CreerSimpleRenderInput`) plus les champs que la composition Remotion
  * accepte déjà sans qu'ils soient déclarés dans cette entrée.
  *
- * ⚠️ RIEN N'EST BRANCHÉ EN A2.1. Aucun appelant n'utilise ce module :
- * `renderCreerSimple` garde son propre calcul. Les fonctions ci-dessous en
- * sont une COPIE fidèle, verrouillée par
- * `src/__tests__/contracts/spec-rendu-parite.contract.test.ts` (toStrictEqual
- * contre les inputProps réellement confiés au worker, fixtures A/D/E/F/G/H/J
- * + specs directes 9:16 / 1:1 / 16:9). Les brancher est un lot ultérieur.
+ * BRANCHÉ EN A2.2 sur `renderCreerSimple` SEULEMENT : ses inputProps sont
+ * `versEntreeRemotion(d)` (sa ligne de temps reste calculée sur place, même
+ * règle que `planDeRendu`). La sortie est verrouillée contre un oracle gelé
+ * de l'ancien calcul par
+ * `src/__tests__/contracts/spec-rendu-branchement.contract.test.ts`, en plus
+ * de `spec-rendu-parite.contract.test.ts` (A2.1, désormais en partie
+ * tautologique). NON branchés : le compositeur navigateur, le chemin hybride
+ * et `api/render`.
  *
  * Aucun import de valeur hors `designSpec` (pur) : ni React, ni réseau, ni
  * base, ni facturation. Les autres imports sont des types.
