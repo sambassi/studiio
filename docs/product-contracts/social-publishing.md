@@ -126,6 +126,29 @@ VALIDÉ_LE=2026-10-14
 ROUVRIR_SEULEMENT_SI=changement de fournisseur ou du modèle preuve / tentative
 ```
 
+## C-SOCIAL-WEBHOOK-ENVELOPPE — le webhook lit l'enveloppe documentée par Zernio
+
+```
+ID=C-SOCIAL-WEBHOOK-ENVELOPPE
+RÈGLE=Le webhook accepte l'enveloppe DOCUMENTÉE (OpenAPI Zernio) : événements post
+`{ id, event, post: { id, status, platforms[], metadata }, timestamp }` — le post
+Studiio est retrouvé par `post.metadata.studiioPostId` (écho de la metadata de
+création, changelog Zernio 2026-07-09) ; événements compte `{ id, event, account:
+{ accountId, profileId, platform, username }, timestamp }`. L'ancienne forme
+`{ event, data: {...} }` reste acceptée en repli. Inchangés : HMAC sur le corps BRUT
+avant tout parsing, 503 sans secret, 401 signature absente/invalide, 200 même si le
+traitement échoue, recherche par `studiioPostId` seulement (absent → aucune
+écriture), événement inconnu → 200 sans écriture, relecture-fusion de metadata,
+post.failed retire la preuve, post.partial la garde.
+TEST=src/__tests__/contracts/social-webhook-enveloppe.contract.test.ts
+BUG CORRIGÉ (fix/social-safety)=le webhook lisait `data.metadata` et `data.accountId`
+— une enveloppe jamais documentée, inventée par nos fixtures : tout vrai événement
+Zernio était acquitté 200 et ignoré (posts bloqués à `publishing`, déconnexions de
+comptes jamais enregistrées).
+VALIDÉ_LE=2026-10-14
+ROUVRIR_SEULEMENT_SI=Zernio change le schéma `WebhookPayloadPost` / `WebhookPayloadAccount*`
+```
+
 ## C-SOCIAL-MEDIA-FILE — le fichier envoyé est le fichier du post, au bon format
 
 ```

@@ -81,13 +81,24 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
+function estObjet(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 async function traiter(evenement: Record<string, unknown>): Promise<void> {
   const type = String(evenement.event ?? evenement.type ?? '');
-  const data = (evenement.data ?? evenement) as Record<string, unknown>;
+  // ⚠️ ENVELOPPE DOCUMENTÉE PAR ZERNIO (OpenAPI `WebhookPayloadPost` /
+  // `WebhookPayloadAccountConnected`) : `post: {…, metadata}` et
+  // `account: {accountId, profileId, platform, username}`, SANS `data`.
+  // L'ancienne forme `data` reste lue en repli : elle n'a jamais été
+  // documentée, nos premières fixtures l'avaient inventée d'après le code.
+  const data = (estObjet(evenement.data) ? evenement.data : evenement) as Record<string, unknown>;
+  const postZernio = (estObjet(evenement.post) ? evenement.post : {}) as Record<string, unknown>;
 
   if (type === 'account.connected' || type === 'account.disconnected') {
-    const accountId = String(data.accountId ?? data._id ?? '');
-    const profileId = String(data.profileId ?? '');
+    const compte = (estObjet(evenement.account) ? evenement.account : data) as Record<string, unknown>;
+    const accountId = String(compte.accountId ?? compte._id ?? '');
+    const profileId = String(compte.profileId ?? '');
     if (!accountId || !profileId) return;
 
     if (type === 'account.disconnected') {
@@ -110,8 +121,8 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
         user_id: userId,
         profile_id: profileId,
         account_id: accountId,
-        platform: String(data.platform ?? 'inconnu'),
-        username: typeof data.username === 'string' ? data.username : null,
+        platform: String(compte.platform ?? 'inconnu'),
+        username: typeof compte.username === 'string' ? compte.username : null,
         status: 'connected',
         updated_at: new Date().toISOString(),
       },
@@ -124,7 +135,7 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
     // ⚠️ ON RETROUVE LE POST PAR L'IDENTIFIANT QU'ON A ECRIT A LA CREATION,
     // range dans `metadata.studiioPostId`. Se fier a un rapprochement par
     // date ou par contenu confondrait deux montages du meme cycle.
-    const meta = (data.metadata ?? {}) as Record<string, unknown>;
+    const meta = (postZernio.metadata ?? data.metadata ?? {}) as Record<string, unknown>;
     const postId = typeof meta.studiioPostId === 'string' ? meta.studiioPostId : null;
     if (!postId) return;
     const statut = type === 'post.published' ? 'published' : 'failed';
@@ -161,7 +172,6 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       if (!lectureErr && lignes && lignes.length > 0) {
         const actuelle = (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {};
         // Docs Zernio (webhooks/posts) : résultats sous `post.platforms[]`.
-        const postZernio = (evenement.post ?? {}) as Record<string, unknown>;
         const resultats = resultatsParReseau(data.platforms ?? postZernio.platforms);
         await supabaseAdmin
           .from('scheduled_posts')
