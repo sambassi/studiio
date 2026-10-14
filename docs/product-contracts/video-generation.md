@@ -258,3 +258,37 @@ toStrictEqual l'oracle gelé `inputPropsHistoriques`, même ordre de clés, dur�
 dimensions ; fixtures A/D/E/F/G/H/J + avatar+rush, 1:1, 16:9, ctaSubText '', média absent /
 invalide, transitions, ancienne metadata ; test source du branchement)
 ```
+
+## RENDU SERVEUR D'UNE TENTATIVE (A2.3) — derrière un interrupteur, éteint par défaut
+
+```
+ID=RENDU-SERVEUR (A2.3)
+ROUTE=POST|GET /api/render/jobs/[id]/serveur (src/app/api/render/jobs/[id]/serveur/route.ts),
+logique dans src/lib/render/moteur-export-serveur.ts. POST { spec } → 202, le rendu
+continue derrière la réponse ; GET → { etat, enCours }.
+FLAG=MOTEUR_EXPORT_SERVEUR === 'true' (exactement, relu à chaque appel). Absent / autre
+valeur → 404 { ok:false } AVANT toute lecture (ni session ni base).
+ACCÈS=administrateurs seulement (isAdmin) ; tout autre compte → même 404 neutre.
+Propriété par lireRendu (404), état reserved obligatoire (409 sinon : un job confirmé,
+annulé ou échoué ne se rend plus), opération apercu|bureau|calendrier (403 sinon).
+SPEC=liste blanche des clés de SpecRendu + types de base, title et format visuel
+obligatoires (422). Format FACTURÉ = rendus.format de la ligne ; formatRenduFacturation(
+spec.format) différent → 422. Aucun nouveau mapper : la spec part dans renderCreerSimple
+→ versEntreeRemotion. Aucune réservation, aucun tarif ici.
+CONFIRMATION=la même porte que le navigateur : src/lib/rendus/confirmation.ts
+(confirmerAvecPreuve, extraite de /confirm, comportement figé par
+rendu-confirm-caracterisation.contract.test.ts). Objet invalide / rendu échoué /
+téléversement échoué / délai dépassé / solde insuffisant → cloreRendu failed ; stockage
+injoignable → laissé reserved ; confirmation interrompue → aucun réessai, re-confirmable
+par /confirm (dejaConfirme). État changé pendant le rendu → ni upload ni confirmation.
+CAPACITÉ=une place en processus (compteur séparé de l'Autopilote) + Set des jobs en cours :
+même job → 409 deja_en_cours, autre job → 429 Retry-After 600. Délai 600 s : signal
+d'annulation Remotion (renderMedia.cancelSignal, optionnel dans worker/creerSimple, absent =
+comportement d'avant) ; la place n'est rendue qu'à la fin RÉELLE du rendu.
+LIMITES=verrou en processus seulement (conteneur unique — deux conteneurs ne se voient pas) ;
+la clé rendus est en .webm mais contient du MP4 (point A2.4) ; pas de convertisseur
+ComposerOptions → SpecRendu (A2.4) ; localiserEntreesRendu ne couvre pas surimpressions ni
+ctaCopies → ces clés sont refusées.
+TEST=src/__tests__/contracts/rendu-serveur-flag.contract.test.ts ;
+src/__tests__/contracts/rendu-confirm-caracterisation.contract.test.ts
+```

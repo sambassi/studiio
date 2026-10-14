@@ -166,6 +166,8 @@ export async function renderCreerSimple(input: {
   userId: string;
   design: CreerSimpleRenderInput;
   onProgress?: (progress: { progress: number; stage: string }) => void;
+  /** A2.3 — annulation relayée au worker. Absente = rendu d'avant, inchangé. */
+  cancelSignal?: (callback: () => void) => void;
 }): Promise<{ outputPath: string; durationFrames: number }> {
   const d = input.design;
   // A2.2 — props Remotion issues de la spec canonique (même calcul qu'avant :
@@ -198,6 +200,7 @@ export async function renderCreerSimple(input: {
     inputProps,
     proprietaire: input.userId,
     onProgress: input.onProgress,
+    ...(input.cancelSignal ? { cancelSignal: input.cancelSignal } : {}),
   });
   return { outputPath, durationFrames };
 }

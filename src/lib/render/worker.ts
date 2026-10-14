@@ -65,6 +65,12 @@ export async function renderVideo(options: {
    */
   proprietaire: string;
   onProgress?: (progress: RenderProgress) => void;
+  /**
+   * A2.3 — signal d'annulation Remotion (`makeCancelSignal`), relayé à
+   * `renderMedia`. Absent (défaut) = comportement d'avant, à l'identique.
+   * `selectComposition` n'accepte pas de signal dans cette version.
+   */
+  cancelSignal?: (callback: () => void) => void;
 }): Promise<{ outputPath: string }> {
   const { jobId, compositionId, onProgress } = options;
   // #547 : Chromium (Remotion) lit les médias SANS session. Toute URL du
@@ -105,6 +111,7 @@ export async function renderVideo(options: {
     outputLocation: outputPath,
     inputProps,
     timeoutInMilliseconds: 240000,
+    ...(options.cancelSignal ? { cancelSignal: options.cancelSignal } : {}),
     videoBitrate: '8M',
     encodingMaxRate: '12M',
     encodingBufferSize: '16M',
