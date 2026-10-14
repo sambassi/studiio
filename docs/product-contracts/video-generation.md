@@ -228,3 +228,26 @@ TEST=src/__tests__/contracts/theme.contract.test.ts (16 tests)
 VALIDÉ_LE=2026-10-14 (contrat de test, preuve par mutation ; comportement déjà validé en production)
 ROUVRIR_SEULEMENT_SI=régression majeure mesurable
 ```
+
+## SPEC DE RENDU CANONIQUE (A2.1) — décrite, pas encore branchée
+
+```
+ID=SPEC-RENDU (A2.1)
+QUOI=src/lib/render/spec-rendu.ts — module feuille PUR (aucun React / réseau / base /
+facturation). `SpecRendu` = `CreerSimpleRenderInput` + les champs que Remotion accepte
+sans qu'ils y soient déclarés (subtitleColor, ctaColor, ctaSubColor, ctaBackground).
+`versEntreeRemotion(spec)` = EXACTEMENT les props que `renderCreerSimple` confie au worker
+(étalement, défauts 4/6/0/4, cards ?? []). `planDeRendu(spec)` = la ligne de temps
+(buildSequences, images à 30 i/s, raccords, dimensions = VIDEO_SIZE[format], repli 9:16).
+SENS=watermark = TEXTE du filigrane Remotion (le booléen « plan gratuit » du compositeur
+est HORS spec) ; ctaText = CTA principal (compositeur : design.ctaMainText || watermarkText) ;
+ctaSubText absent ≠ '' (absent → « LIEN EN BIO » par défaut Remotion) ; format = format
+visuel, jamais reel/tv (facturation hors spec).
+ÉTAT=NON BRANCHÉ : aucun appelant ne l'utilise, renderCreerSimple et le compositeur
+navigateur sont inchangés. Aucun rendu ne change.
+ÉCARTS CONNUS (rendus par le compositeur, pas par Remotion) : logoUrl, siteText, rushLut,
+titleIcon*, extraTitle, habillageVideo, posterTransform/rushTransforms,
+sequenceTransitions, rushAudioRequis, ducking du jumeau (`CORRESPONDANCE_COMPOSITEUR`).
+TEST=src/__tests__/contracts/spec-rendu-parite.contract.test.ts (toStrictEqual contre les
+inputProps réels, fixtures Autopilote A/D/E/F/G/H/J + specs 9:16 / 1:1 / 16:9)
+```

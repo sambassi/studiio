@@ -1,0 +1,3169 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > A-916-simple : entrée de rendu, props serveur, ligne de temps > entree 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": 0.8,
+    "rushMuted": true,
+    "rushVolume": 0.5,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": 1,
+  },
+  "cartes": [
+    {
+      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "icon": "Brain",
+      "title": "ROUTINE DU MATIN & CERVEAU",
+      "value": "NEURO",
+    },
+    {
+      "description": "Système cardiovasculaire réagit positivement. Multiplié avec la danse.",
+      "icon": "Heart",
+      "title": "IMPACT CARDIO",
+      "value": "+CŒUR",
+    },
+    {
+      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "icon": "Zap",
+      "title": "ÉNERGIE QUOTIDIENNE",
+      "value": "BALANCE",
+    },
+    {
+      "description": "48h pour reconstruire après effort intense. Optimise ce temps.",
+      "icon": "Dumbbell",
+      "title": "MUSCLES & RÉCUP",
+      "value": "48H",
+    },
+    {
+      "description": "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois.",
+      "icon": "Apple",
+      "title": "NUTRITION CLÉ",
+      "value": "1 MOIS",
+    },
+  ],
+  "clesEntree": [
+    "cards",
+    "cardsDuration",
+    "ctaDuration",
+    "ctaText",
+    "format",
+    "gradientEnd",
+    "gradientStart",
+    "introDuration",
+    "musicUrl",
+    "musicVolume",
+    "posterOnAllSequences",
+    "posterUrl",
+    "rushMuted",
+    "rushVolume",
+    "sequenceVoiceUrls",
+    "subtitle",
+    "textAnimation",
+    "title",
+    "titleColor",
+    "transition",
+    "videoDuration",
+    "videoUrl",
+    "voiceVolume",
+    "watermark",
+  ],
+  "cta": {
+    "copies": null,
+    "principal": "SAVIEZ-VOUS ?",
+    "sous": null,
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "format": "9:16",
+  "marque": {
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": null,
+    "gradientStart": "#7C3AED",
+    "logo": null,
+    "titleColor": "#FFFFFF",
+    "watermark": "Studiio.pro",
+  },
+  "medias": {
+    "plan": null,
+    "posterOnAllSequences": false,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "surimpressions": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": null,
+  "sousTitre": "Routine du matin : les bienfaits prouvés",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+  "typo": {},
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > A-916-simple : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
+{
+  "durationFrames": 720,
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "timeline": {
+    "durees": [
+      4,
+      6,
+      10,
+      4,
+    ],
+    "images30": 720,
+    "ordre": [
+      "intro",
+      "cards",
+      "video",
+      "cta",
+    ],
+    "total": 24,
+    "transitions": 3,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > D-rushes-multiples : entrée de rendu, props serveur, ligne de temps > entree 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": 0.8,
+    "rushMuted": true,
+    "rushVolume": 0.5,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": 1,
+  },
+  "cartes": [
+    {
+      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "icon": "Brain",
+      "title": "ROUTINE DU MATIN & CERVEAU",
+      "value": "NEURO",
+    },
+    {
+      "description": "Système cardiovasculaire réagit positivement. Multiplié avec la danse.",
+      "icon": "Heart",
+      "title": "IMPACT CARDIO",
+      "value": "+CŒUR",
+    },
+    {
+      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "icon": "Zap",
+      "title": "ÉNERGIE QUOTIDIENNE",
+      "value": "BALANCE",
+    },
+    {
+      "description": "48h pour reconstruire après effort intense. Optimise ce temps.",
+      "icon": "Dumbbell",
+      "title": "MUSCLES & RÉCUP",
+      "value": "48H",
+    },
+    {
+      "description": "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois.",
+      "icon": "Apple",
+      "title": "NUTRITION CLÉ",
+      "value": "1 MOIS",
+    },
+  ],
+  "clesEntree": [
+    "cardBackground",
+    "cardBoxes",
+    "cardValueColor",
+    "cards",
+    "cardsDuration",
+    "cardsTypography",
+    "ctaBackground",
+    "ctaDuration",
+    "ctaPos",
+    "ctaScale",
+    "ctaSubColor",
+    "ctaText",
+    "format",
+    "gradientEnd",
+    "gradientStart",
+    "introDuration",
+    "montage",
+    "musicUrl",
+    "musicVolume",
+    "posterOnAllSequences",
+    "posterUrl",
+    "rushMuted",
+    "rushVolume",
+    "rushs",
+    "sequenceVoiceUrls",
+    "subtitle",
+    "subtitleScale",
+    "surimpressions",
+    "textAnimation",
+    "title",
+    "titleColor",
+    "titlePos",
+    "titleScale",
+    "transition",
+    "videoDuration",
+    "videoUrl",
+    "voiceVolume",
+    "watermark",
+  ],
+  "cta": {
+    "copies": null,
+    "principal": "SAVIEZ-VOUS ?",
+    "sous": null,
+  },
+  "durees": {
+    "cards": 0,
+    "cta": 0,
+    "intro": 0,
+    "video": 15.25,
+  },
+  "format": "9:16",
+  "marque": {
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": null,
+    "gradientStart": "#7C3AED",
+    "logo": null,
+    "titleColor": "#FFFFFF",
+    "watermark": "Studiio.pro",
+  },
+  "medias": {
+    "plan": [
+      {
+        "debut": 0,
+        "depuis": 0.5,
+        "fin": 1,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 1,
+        "depuis": 0.5,
+        "fin": 2,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+      {
+        "debut": 2,
+        "depuis": 2.5,
+        "fin": 3.5,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 3.5,
+        "depuis": 2.5,
+        "fin": 5,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+      {
+        "debut": 5,
+        "depuis": 5,
+        "fin": 6.5,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 6.5,
+        "depuis": 5,
+        "fin": 7.65,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+      {
+        "debut": 7.65,
+        "depuis": 7.5,
+        "fin": 8.8,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 8.8,
+        "depuis": 7.5,
+        "fin": 9.95,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+      {
+        "debut": 9.95,
+        "depuis": 10,
+        "fin": 11.1,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 11.1,
+        "depuis": 10,
+        "fin": 12.6,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+      {
+        "debut": 12.6,
+        "depuis": 12.5,
+        "fin": 14.1,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 14.1,
+        "depuis": 12.5,
+        "fin": 15.25,
+        "kind": "video",
+        "mouvement": null,
+        "source": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+    ],
+    "posterOnAllSequences": false,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [
+      {
+        "secondes": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "secondes": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+    ],
+    "surimpressions": [
+      "cartes",
+      "cta",
+      "titre",
+      "voix",
+    ],
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": null,
+  "sousTitre": "Routine du matin : les bienfaits prouvés",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+  "typo": {
+    "cardsTypography": {
+      "scale": 1.6,
+    },
+    "ctaPos": {
+      "x": 50,
+      "y": 76,
+    },
+    "ctaScale": 1.6,
+    "subtitleScale": 0.7,
+    "titlePos": {
+      "x": 8,
+      "y": 12,
+    },
+    "titleScale": 1.805,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > D-rushes-multiples : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
+{
+  "durationFrames": 458,
+  "durees": [
+    0,
+    0,
+    15.25,
+    0,
+  ],
+  "timeline": {
+    "durees": [
+      15.25,
+    ],
+    "images30": 458,
+    "ordre": [
+      "video",
+    ],
+    "total": 15.25,
+    "transitions": 0,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > E-avatar : entrée de rendu, props serveur, ligne de temps > entree 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": 0.8,
+    "rushMuted": false,
+    "rushVolume": 0.5,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": 1,
+  },
+  "cartes": [
+    {
+      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "icon": "Brain",
+      "title": "ROUTINE DU MATIN & CERVEAU",
+      "value": "NEURO",
+    },
+    {
+      "description": "Système cardiovasculaire réagit positivement. Multiplié avec la danse.",
+      "icon": "Heart",
+      "title": "IMPACT CARDIO",
+      "value": "+CŒUR",
+    },
+    {
+      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "icon": "Zap",
+      "title": "ÉNERGIE QUOTIDIENNE",
+      "value": "BALANCE",
+    },
+    {
+      "description": "48h pour reconstruire après effort intense. Optimise ce temps.",
+      "icon": "Dumbbell",
+      "title": "MUSCLES & RÉCUP",
+      "value": "48H",
+    },
+    {
+      "description": "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois.",
+      "icon": "Apple",
+      "title": "NUTRITION CLÉ",
+      "value": "1 MOIS",
+    },
+  ],
+  "clesEntree": [
+    "cards",
+    "cardsDuration",
+    "ctaDuration",
+    "ctaText",
+    "format",
+    "gradientEnd",
+    "gradientStart",
+    "introDuration",
+    "musicUrl",
+    "musicVolume",
+    "posterOnAllSequences",
+    "posterUrl",
+    "rushMuted",
+    "rushVolume",
+    "sequenceVoiceUrls",
+    "subtitle",
+    "textAnimation",
+    "title",
+    "titleColor",
+    "transition",
+    "videoDuration",
+    "videoUrl",
+    "voiceVolume",
+    "watermark",
+  ],
+  "cta": {
+    "copies": null,
+    "principal": "SAVIEZ-VOUS ?",
+    "sous": null,
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 20,
+  },
+  "format": "9:16",
+  "marque": {
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": null,
+    "gradientStart": "#7C3AED",
+    "logo": null,
+    "titleColor": "#FFFFFF",
+    "watermark": "Studiio.pro",
+  },
+  "medias": {
+    "plan": null,
+    "posterOnAllSequences": false,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "surimpressions": null,
+    "videoUrl": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+  },
+  "ordre": null,
+  "sousTitre": "Routine du matin : les bienfaits prouvés",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+  "typo": {},
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > E-avatar : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
+{
+  "durationFrames": 1020,
+  "durees": [
+    4,
+    6,
+    20,
+    4,
+  ],
+  "timeline": {
+    "durees": [
+      4,
+      6,
+      20,
+      4,
+    ],
+    "images30": 1020,
+    "ordre": [
+      "intro",
+      "cards",
+      "video",
+      "cta",
+    ],
+    "total": 34,
+    "transitions": 3,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > F-images-ken-burns : entrée de rendu, props serveur, ligne de temps > entree 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": 0.8,
+    "rushMuted": true,
+    "rushVolume": 0.5,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": 1,
+  },
+  "cartes": [
+    {
+      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "icon": "Brain",
+      "title": "ROUTINE DU MATIN & CERVEAU",
+      "value": "NEURO",
+    },
+    {
+      "description": "Système cardiovasculaire réagit positivement. Multiplié avec la danse.",
+      "icon": "Heart",
+      "title": "IMPACT CARDIO",
+      "value": "+CŒUR",
+    },
+    {
+      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "icon": "Zap",
+      "title": "ÉNERGIE QUOTIDIENNE",
+      "value": "BALANCE",
+    },
+    {
+      "description": "48h pour reconstruire après effort intense. Optimise ce temps.",
+      "icon": "Dumbbell",
+      "title": "MUSCLES & RÉCUP",
+      "value": "48H",
+    },
+    {
+      "description": "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois.",
+      "icon": "Apple",
+      "title": "NUTRITION CLÉ",
+      "value": "1 MOIS",
+    },
+  ],
+  "clesEntree": [
+    "cardBackground",
+    "cardBoxes",
+    "cardValueColor",
+    "cards",
+    "cardsDuration",
+    "cardsTypography",
+    "ctaBackground",
+    "ctaDuration",
+    "ctaPos",
+    "ctaScale",
+    "ctaSubColor",
+    "ctaText",
+    "format",
+    "gradientEnd",
+    "gradientStart",
+    "introDuration",
+    "montage",
+    "musicUrl",
+    "musicVolume",
+    "posterOnAllSequences",
+    "posterUrl",
+    "rushMuted",
+    "rushVolume",
+    "rushs",
+    "sequenceVoiceUrls",
+    "subtitle",
+    "subtitleScale",
+    "surimpressions",
+    "textAnimation",
+    "title",
+    "titleColor",
+    "titlePos",
+    "titleScale",
+    "transition",
+    "videoDuration",
+    "videoUrl",
+    "voiceVolume",
+    "watermark",
+  ],
+  "cta": {
+    "copies": null,
+    "principal": "SAVIEZ-VOUS ?",
+    "sous": null,
+  },
+  "durees": {
+    "cards": 0,
+    "cta": 0,
+    "intro": 0,
+    "video": 8,
+  },
+  "format": "9:16",
+  "marque": {
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": null,
+    "gradientStart": "#7C3AED",
+    "logo": null,
+    "titleColor": "#FFFFFF",
+    "watermark": "Studiio.pro",
+  },
+  "medias": {
+    "plan": [
+      {
+        "debut": 0,
+        "depuis": null,
+        "fin": 2.667,
+        "kind": "image",
+        "mouvement": "zoomIn",
+        "source": "photo",
+        "url": "https://images.pexels.com/photos/1/a.jpeg",
+      },
+      {
+        "debut": 2.667,
+        "depuis": null,
+        "fin": 8,
+        "kind": "image",
+        "mouvement": "panG",
+        "source": "photo",
+        "url": "https://images.unsplash.com/photo-2?w=1080",
+      },
+    ],
+    "posterOnAllSequences": false,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [],
+    "surimpressions": [
+      "cartes",
+      "cta",
+      "titre",
+      "voix",
+    ],
+    "videoUrl": "https://images.pexels.com/photos/1/a.jpeg",
+  },
+  "ordre": null,
+  "sousTitre": "Routine du matin : les bienfaits prouvés",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+  "typo": {
+    "cardsTypography": {
+      "scale": 1.6,
+    },
+    "ctaPos": {
+      "x": 50,
+      "y": 76,
+    },
+    "ctaScale": 1.6,
+    "subtitleScale": 0.7,
+    "titlePos": {
+      "x": 8,
+      "y": 12,
+    },
+    "titleScale": 1.805,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > F-images-ken-burns : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
+{
+  "durationFrames": 240,
+  "durees": [
+    0,
+    0,
+    8,
+    0,
+  ],
+  "timeline": {
+    "durees": [
+      8,
+    ],
+    "images30": 240,
+    "ordre": [
+      "video",
+    ],
+    "total": 8,
+    "transitions": 0,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > G-cta-sans-sous-texte : entrée de rendu, props serveur, ligne de temps > entree 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": 0.8,
+    "rushMuted": true,
+    "rushVolume": 0.5,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": 1,
+  },
+  "cartes": [
+    {
+      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "icon": "Brain",
+      "title": "ROUTINE DU MATIN & CERVEAU",
+      "value": "NEURO",
+    },
+    {
+      "description": "Système cardiovasculaire réagit positivement. Multiplié avec la danse.",
+      "icon": "Heart",
+      "title": "IMPACT CARDIO",
+      "value": "+CŒUR",
+    },
+    {
+      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "icon": "Zap",
+      "title": "ÉNERGIE QUOTIDIENNE",
+      "value": "BALANCE",
+    },
+    {
+      "description": "48h pour reconstruire après effort intense. Optimise ce temps.",
+      "icon": "Dumbbell",
+      "title": "MUSCLES & RÉCUP",
+      "value": "48H",
+    },
+    {
+      "description": "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois.",
+      "icon": "Apple",
+      "title": "NUTRITION CLÉ",
+      "value": "1 MOIS",
+    },
+  ],
+  "clesEntree": [
+    "cards",
+    "cardsDuration",
+    "ctaDuration",
+    "ctaText",
+    "format",
+    "gradientEnd",
+    "gradientStart",
+    "introDuration",
+    "musicUrl",
+    "musicVolume",
+    "posterOnAllSequences",
+    "posterUrl",
+    "rushMuted",
+    "rushVolume",
+    "sequenceVoiceUrls",
+    "subtitle",
+    "textAnimation",
+    "title",
+    "titleColor",
+    "transition",
+    "videoDuration",
+    "videoUrl",
+    "voiceVolume",
+    "watermark",
+  ],
+  "cta": {
+    "copies": null,
+    "principal": "SAVIEZ-VOUS ?",
+    "sous": null,
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "format": "9:16",
+  "marque": {
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": null,
+    "gradientStart": "#7C3AED",
+    "logo": null,
+    "titleColor": "#FFFFFF",
+    "watermark": "Studiio.pro",
+  },
+  "medias": {
+    "plan": null,
+    "posterOnAllSequences": false,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "surimpressions": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": null,
+  "sousTitre": "Routine du matin : les bienfaits prouvés",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+  "typo": {},
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > G-cta-sans-sous-texte : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
+{
+  "durationFrames": 720,
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "timeline": {
+    "durees": [
+      4,
+      6,
+      10,
+      4,
+    ],
+    "images30": 720,
+    "ordre": [
+      "intro",
+      "cards",
+      "video",
+      "cta",
+    ],
+    "total": 24,
+    "transitions": 3,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > H-cta-avec-sous-texte : entrée de rendu, props serveur, ligne de temps > entree 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": 0.8,
+    "rushMuted": true,
+    "rushVolume": 0.5,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": 1,
+  },
+  "cartes": [
+    {
+      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "icon": "Brain",
+      "title": "ROUTINE DU MATIN & CERVEAU",
+      "value": "NEURO",
+    },
+    {
+      "description": "Système cardiovasculaire réagit positivement. Multiplié avec la danse.",
+      "icon": "Heart",
+      "title": "IMPACT CARDIO",
+      "value": "+CŒUR",
+    },
+    {
+      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "icon": "Zap",
+      "title": "ÉNERGIE QUOTIDIENNE",
+      "value": "BALANCE",
+    },
+    {
+      "description": "48h pour reconstruire après effort intense. Optimise ce temps.",
+      "icon": "Dumbbell",
+      "title": "MUSCLES & RÉCUP",
+      "value": "48H",
+    },
+    {
+      "description": "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois.",
+      "icon": "Apple",
+      "title": "NUTRITION CLÉ",
+      "value": "1 MOIS",
+    },
+  ],
+  "clesEntree": [
+    "cards",
+    "cardsDuration",
+    "ctaDuration",
+    "ctaSubText",
+    "ctaText",
+    "format",
+    "gradientEnd",
+    "gradientStart",
+    "introDuration",
+    "musicUrl",
+    "musicVolume",
+    "posterOnAllSequences",
+    "posterUrl",
+    "rushMuted",
+    "rushVolume",
+    "sequenceVoiceUrls",
+    "subtitle",
+    "textAnimation",
+    "title",
+    "titleColor",
+    "transition",
+    "videoDuration",
+    "videoUrl",
+    "voiceVolume",
+    "watermark",
+  ],
+  "cta": {
+    "copies": null,
+    "principal": "SAVIEZ-VOUS ?",
+    "sous": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "format": "9:16",
+  "marque": {
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": null,
+    "gradientStart": "#7C3AED",
+    "logo": null,
+    "titleColor": "#FFFFFF",
+    "watermark": "Studiio.pro",
+  },
+  "medias": {
+    "plan": null,
+    "posterOnAllSequences": false,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "surimpressions": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": null,
+  "sousTitre": "Routine du matin : les bienfaits prouvés",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+  "typo": {},
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > H-cta-avec-sous-texte : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
+{
+  "durationFrames": 720,
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "timeline": {
+    "durees": [
+      4,
+      6,
+      10,
+      4,
+    ],
+    "images30": 720,
+    "ordre": [
+      "intro",
+      "cards",
+      "video",
+      "cta",
+    ],
+    "total": 24,
+    "transitions": 3,
+  },
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > J-musique-voix : entrée de rendu, props serveur, ligne de temps > entree 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": "https://cdn.test/musique.mp3",
+    "musicVolume": 0.35,
+    "rushMuted": true,
+    "rushVolume": 0.6,
+    "sequenceVoiceUrls": {
+      "cartes": "https://cdn.test/v-cartes.mp3",
+      "cta": "https://cdn.test/v-cta.mp3",
+      "titre": "https://cdn.test/v-titre.mp3",
+      "video": "https://cdn.test/v-video.mp3",
+    },
+    "voiceUrl": null,
+    "voiceVolume": 0.9,
+  },
+  "cartes": [
+    {
+      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "icon": "Brain",
+      "title": "ROUTINE DU MATIN & CERVEAU",
+      "value": "NEURO",
+    },
+    {
+      "description": "Système cardiovasculaire réagit positivement. Multiplié avec la danse.",
+      "icon": "Heart",
+      "title": "IMPACT CARDIO",
+      "value": "+CŒUR",
+    },
+    {
+      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "icon": "Zap",
+      "title": "ÉNERGIE QUOTIDIENNE",
+      "value": "BALANCE",
+    },
+    {
+      "description": "48h pour reconstruire après effort intense. Optimise ce temps.",
+      "icon": "Dumbbell",
+      "title": "MUSCLES & RÉCUP",
+      "value": "48H",
+    },
+    {
+      "description": "Alimentation équilibrée + 2-3 cours/semaine = résultats visibles en 1 mois.",
+      "icon": "Apple",
+      "title": "NUTRITION CLÉ",
+      "value": "1 MOIS",
+    },
+  ],
+  "clesEntree": [
+    "cards",
+    "cardsDuration",
+    "ctaDuration",
+    "ctaText",
+    "format",
+    "gradientEnd",
+    "gradientStart",
+    "introDuration",
+    "musicUrl",
+    "musicVolume",
+    "posterOnAllSequences",
+    "posterUrl",
+    "rushMuted",
+    "rushVolume",
+    "sequenceVoiceUrls",
+    "subtitle",
+    "textAnimation",
+    "title",
+    "titleColor",
+    "transition",
+    "videoDuration",
+    "videoUrl",
+    "voiceVolume",
+    "watermark",
+  ],
+  "cta": {
+    "copies": null,
+    "principal": "SAVIEZ-VOUS ?",
+    "sous": null,
+  },
+  "durees": {
+    "cards": 7.5,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "format": "9:16",
+  "marque": {
+    "gradientEnd": "#EC4899",
+    "gradientOpacity": null,
+    "gradientStart": "#7C3AED",
+    "logo": null,
+    "titleColor": "#FFFFFF",
+    "watermark": "Studiio.pro",
+  },
+  "medias": {
+    "plan": null,
+    "posterOnAllSequences": false,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "surimpressions": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": null,
+  "sousTitre": "Routine du matin : les bienfaits prouvés",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+  "typo": {},
+}
+`;
+
+exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > J-musique-voix : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
+{
+  "durationFrames": 765,
+  "durees": [
+    4,
+    7.5,
+    10,
+    4,
+  ],
+  "timeline": {
+    "durees": [
+      4,
+      7.5,
+      10,
+      4,
+    ],
+    "images30": 765,
+    "ordre": [
+      "intro",
+      "cards",
+      "video",
+      "cta",
+    ],
+    "total": 25.5,
+    "transitions": 3,
+  },
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > A-916-simple : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > A-916-simple : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > A-916-simple : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "images30": 720,
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "total": 24,
+  "transitions": 3,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > B-carre-1-1 : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1080,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > B-carre-1-1 : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1080,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > B-carre-1-1 : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "images30": 720,
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "total": 24,
+  "transitions": 3,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > C-paysage-16-9 : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1080,
+    "w": 1920,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > C-paysage-16-9 : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1080,
+    "w": 1920,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > C-paysage-16-9 : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "images30": 720,
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "total": 24,
+  "transitions": 3,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > D-rushes-multiples : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [
+      {
+        "secondes": 5,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "secondes": 5,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+    ],
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > D-rushes-multiples : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [
+      {
+        "secondes": 5,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "secondes": 5,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-b.mp4",
+      },
+    ],
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > D-rushes-multiples : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "images30": 720,
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "total": 24,
+  "transitions": 3,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > E-avatar : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": true,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 12,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": [
+      {
+        "debut": 0,
+        "fin": 6,
+        "kind": "avatar",
+        "url": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+      },
+      {
+        "debut": 6,
+        "fin": 9,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 9,
+        "depuis": 9,
+        "fin": 12,
+        "kind": "avatar",
+        "url": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+      },
+    ],
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [
+      {
+        "secondes": null,
+        "url": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+      },
+      {
+        "secondes": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+    ],
+    "videoUrl": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > E-avatar : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": true,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 12,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": [
+      {
+        "debut": 0,
+        "fin": 6,
+        "kind": "avatar",
+        "url": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+      },
+      {
+        "debut": 6,
+        "fin": 9,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+      {
+        "debut": 9,
+        "depuis": 9,
+        "fin": 12,
+        "kind": "avatar",
+        "url": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+      },
+    ],
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [
+      {
+        "secondes": null,
+        "url": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+      },
+      {
+        "secondes": null,
+        "url": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+      },
+    ],
+    "videoUrl": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > E-avatar : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    12,
+    4,
+  ],
+  "images30": 780,
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "total": 26,
+  "transitions": 3,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > F-images-ken-burns : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 5,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": [
+      {
+        "debut": 0,
+        "fin": 2.5,
+        "kind": "image",
+        "mouvement": "zoomIn",
+        "url": "https://images.pexels.com/photos/1/a.jpeg",
+      },
+      {
+        "debut": 2.5,
+        "fin": 5,
+        "kind": "image",
+        "mouvement": "panG",
+        "url": "https://images.unsplash.com/photo-2?w=1080",
+      },
+    ],
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [
+      {
+        "secondes": null,
+        "url": "https://images.pexels.com/photos/1/a.jpeg",
+      },
+      {
+        "secondes": null,
+        "url": "https://images.unsplash.com/photo-2?w=1080",
+      },
+    ],
+    "videoUrl": "https://images.pexels.com/photos/1/a.jpeg",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > F-images-ken-burns : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 5,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": [
+      {
+        "debut": 0,
+        "fin": 2.5,
+        "kind": "image",
+        "mouvement": "zoomIn",
+        "url": "https://images.pexels.com/photos/1/a.jpeg",
+      },
+      {
+        "debut": 2.5,
+        "fin": 5,
+        "kind": "image",
+        "mouvement": "panG",
+        "url": "https://images.unsplash.com/photo-2?w=1080",
+      },
+    ],
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": [
+      {
+        "secondes": null,
+        "url": "https://images.pexels.com/photos/1/a.jpeg",
+      },
+      {
+        "secondes": null,
+        "url": "https://images.unsplash.com/photo-2?w=1080",
+      },
+    ],
+    "videoUrl": "https://images.pexels.com/photos/1/a.jpeg",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > F-images-ken-burns : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    5,
+    4,
+  ],
+  "images30": 570,
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "total": 19,
+  "transitions": 3,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > G-cta-sans-sous-texte : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 0,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": null,
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > G-cta-sans-sous-texte : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 0,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": null,
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > G-cta-sans-sous-texte : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    4,
+  ],
+  "images30": 420,
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "total": 14,
+  "transitions": 2,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > H-cta-avec-sous-texte : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "Lien en bio",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "Lien en bio",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 0,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": null,
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > H-cta-avec-sous-texte : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "Lien en bio",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "Lien en bio",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 0,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": null,
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > H-cta-avec-sous-texte : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    4,
+  ],
+  "images30": 420,
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "total": 14,
+  "transitions": 2,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > I-logo-texte-site : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 0,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": "https://cdn.test/logo.png",
+    "siteText": {
+      "enabled": true,
+      "text": "monsite.fr",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": null,
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > I-logo-texte-site : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": null,
+    "musicVolume": null,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": null,
+    "voiceUrl": null,
+    "voiceVolume": null,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 0,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": "https://cdn.test/logo.png",
+    "siteText": {
+      "enabled": true,
+      "text": "monsite.fr",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": null,
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > I-logo-texte-site : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    4,
+  ],
+  "images30": 420,
+  "ordre": [
+    "intro",
+    "cards",
+    "cta",
+  ],
+  "total": 14,
+  "transitions": 2,
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > J-musique-voix : options « regenerer » et « planifier », ligne de temps du compositeur > planifier 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": "https://cdn.test/musique.mp3",
+    "musicVolume": 0.35,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": {
+      "cartes": "https://cdn.test/v-cartes.mp3",
+      "cta": "https://cdn.test/v-cta.mp3",
+      "titre": "https://cdn.test/v-titre.mp3",
+    },
+    "voiceUrl": null,
+    "voiceVolume": 0.9,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > J-musique-voix : options « regenerer » et « planifier », ligne de temps du compositeur > regenerer 1`] = `
+{
+  "animation": "none",
+  "audio": {
+    "musicUrl": "https://cdn.test/musique.mp3",
+    "musicVolume": 0.35,
+    "rushAudioRequis": null,
+    "sequenceVoiceUrls": {
+      "cartes": "https://cdn.test/v-cartes.mp3",
+      "cta": "https://cdn.test/v-cta.mp3",
+      "titre": "https://cdn.test/v-titre.mp3",
+    },
+    "voiceUrl": null,
+    "voiceVolume": 0.9,
+  },
+  "cartes": [
+    {
+      "color": "#7C3AED",
+      "description": "Se lever à heure fixe",
+      "emoji": "Sun",
+      "label": "Lever tôt",
+      "value": "6h",
+    },
+    {
+      "color": "#7C3AED",
+      "description": "Un grand verre d’eau",
+      "emoji": "Droplet",
+      "label": "Hydratation",
+      "value": "500 ml",
+    },
+  ],
+  "cta": {
+    "copies": null,
+    "ctaSubText": "LIEN EN BIO",
+    "ctaText": "Réserve ta séance",
+    "principalEffectif": "Réserve ta séance",
+    "sousEffectif": "",
+    "watermarkText": "Réserve ta séance",
+  },
+  "durees": {
+    "cards": 6,
+    "cta": 4,
+    "intro": 4,
+    "video": 10,
+  },
+  "marque": {
+    "accentColor": "#7C3AED",
+    "gradientColor1": "#7C3AED",
+    "gradientColor2": "#EC4899",
+    "logoUrl": null,
+    "siteText": {
+      "enabled": true,
+      "text": "Studiio.pro",
+    },
+    "titleAlign": "left",
+    "titleColor": null,
+  },
+  "medias": {
+    "montage": null,
+    "posterUrl": "https://cdn.test/affiche.jpg",
+    "rushs": null,
+    "videoUrl": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "sousTitre": "Trois gestes simples",
+  "taille": {
+    "h": 1920,
+    "w": 1080,
+  },
+  "titre": "ROUTINE DU MATIN",
+  "transition": "crossfade",
+}
+`;
+
+exports[`2. CRÉER / CALENDRIER — options du compositeur figées (preparerOptionsRendu) > J-musique-voix : options « regenerer » et « planifier », ligne de temps du compositeur > timeline 1`] = `
+{
+  "durees": [
+    4,
+    6,
+    10,
+    4,
+  ],
+  "images30": 720,
+  "ordre": [
+    "intro",
+    "cards",
+    "video",
+    "cta",
+  ],
+  "total": 24,
+  "transitions": 3,
+}
+`;
+
+exports[`3. Invariants Autopilote ↔ Calendrier (même projet) > DIFFÉRENCE EXISTANTE (J) : volumes du mixeur — le serveur les lit à plat, le Calendrier ne les retrouve PAS > voix-calendrier 1`] = `null`;
+
+exports[`3. Invariants Autopilote ↔ Calendrier (même projet) > DIFFÉRENCE EXISTANTE (J) : volumes du mixeur — le serveur les lit à plat, le Calendrier ne les retrouve PAS > volumes-calendrier 1`] = `
+[
+  undefined,
+  undefined,
+]
+`;
+
+exports[`3. Invariants Autopilote ↔ Calendrier (même projet) > DIFFÉRENCE EXISTANTE (titre/CTA) : position et alignement — serveur sans clé, Calendrier ancré à gauche > textes-positions 1`] = `
+{
+  "accent": {
+    "calendrier": "#7C3AED",
+    "serveur": "#7C3AED",
+  },
+  "calendrier": {
+    "titleAlign": "left",
+    "titlePosition": null,
+    "watermarkPosition": null,
+  },
+  "ctaText": {
+    "calendrierCtaSubText": "LIEN EN BIO",
+    "calendrierCtaText": "SAVIEZ-VOUS ?",
+    "watermarkText": "SAVIEZ-VOUS ?",
+  },
+  "serveur": {
+    "ctaPos": null,
+    "titleAlign": null,
+    "titlePos": null,
+  },
+}
+`;
+
+exports[`3. Invariants Autopilote ↔ Calendrier (même projet) > DIFFÉRENCES EXISTANTES (D / E / F) : plans multi-rush / avatar / photos > multi-sources 1`] = `
+{
+  "D-rushes-multiples": {
+    "planCalendrier": true,
+    "planServeur": true,
+    "planifier": {
+      "durees": [
+        15.25,
+      ],
+      "images30": 458,
+      "ordre": [
+        "video",
+      ],
+      "total": 15.25,
+      "transitions": 0,
+    },
+    "regenerer": {
+      "durees": [
+        15.25,
+      ],
+      "images30": 458,
+      "ordre": [
+        "video",
+      ],
+      "total": 15.25,
+      "transitions": 0,
+    },
+    "rushAudioRequisCalendrier": null,
+    "rushMutedServeur": true,
+    "serveur": {
+      "durees": [
+        15.25,
+      ],
+      "images30": 458,
+      "ordre": [
+        "video",
+      ],
+      "total": 15.25,
+      "transitions": 0,
+    },
+    "surimpressionsServeur": true,
+    "videoCalendrier": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+    "videoServeur": "https://studiio.pro/storage/v1/object/public/media/u1/rush-a.mp4",
+  },
+  "E-avatar": {
+    "planCalendrier": false,
+    "planServeur": false,
+    "planifier": {
+      "durees": [
+        4,
+        6,
+        4,
+      ],
+      "images30": 420,
+      "ordre": [
+        "intro",
+        "cards",
+        "cta",
+      ],
+      "total": 14,
+      "transitions": 2,
+    },
+    "regenerer": {
+      "durees": [
+        4,
+        6,
+        4,
+      ],
+      "images30": 420,
+      "ordre": [
+        "intro",
+        "cards",
+        "cta",
+      ],
+      "total": 14,
+      "transitions": 2,
+    },
+    "rushAudioRequisCalendrier": null,
+    "rushMutedServeur": false,
+    "serveur": {
+      "durees": [
+        4,
+        6,
+        20,
+        4,
+      ],
+      "images30": 1020,
+      "ordre": [
+        "intro",
+        "cards",
+        "video",
+        "cta",
+      ],
+      "total": 34,
+      "transitions": 3,
+    },
+    "surimpressionsServeur": false,
+    "videoCalendrier": null,
+    "videoServeur": "https://minio.test/videos/u1/avatar/gen-1.mp4",
+  },
+  "F-images-ken-burns": {
+    "planCalendrier": true,
+    "planServeur": true,
+    "planifier": {
+      "durees": [
+        8,
+      ],
+      "images30": 240,
+      "ordre": [
+        "video",
+      ],
+      "total": 8,
+      "transitions": 0,
+    },
+    "regenerer": {
+      "durees": [
+        8,
+      ],
+      "images30": 240,
+      "ordre": [
+        "video",
+      ],
+      "total": 8,
+      "transitions": 0,
+    },
+    "rushAudioRequisCalendrier": null,
+    "rushMutedServeur": true,
+    "serveur": {
+      "durees": [
+        8,
+      ],
+      "images30": 240,
+      "ordre": [
+        "video",
+      ],
+      "total": 8,
+      "transitions": 0,
+    },
+    "surimpressionsServeur": true,
+    "videoCalendrier": "https://images.pexels.com/photos/1/a.jpeg",
+    "videoServeur": "https://images.pexels.com/photos/1/a.jpeg",
+  },
+}
+`;
