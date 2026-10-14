@@ -214,10 +214,13 @@ export async function lancerJumeauMontage(input: {
   try {
     gen = await genererVideoJumeau({
       userId: input.userId, textes: [script], aspectRatio: RATIO_AUTOPILOTE, avatarId: input.config.jumeauAvatarId ?? null,
-      // MULTI-SOURCES : l'avatar alterne avec des plans plein cadre (rushes,
-      // stock) — son fichier doit REMPLIR le 9:16 (pas de bandes), comme Créer
-      // (#540). Avatar seul : inchangé, le fournisseur choisit.
-      ...(avatarAvecAutresSources(input.config) ? { cadrage: 'remplir' as const } : {}),
+      // Le fichier de l'avatar doit TOUJOURS remplir le 9:16 (`fit: cover`),
+      // comme Créer (#540). BUG 6 : « avatar seul », le fournisseur choisissait
+      // et rendait un avatar 16:9 centré entre deux bandes CLAIRES de son
+      // fond, que Remotion (cover d'un 9:16 dans un 9:16) recopiait jusque
+      // dans le MP4. Le recadrer chez le fournisseur garde la pleine
+      // définition ; `retirerBandesIncrustees` reste le filet au rapatriement.
+      cadrage: 'remplir' as const,
     });
   } catch (e) {
     await libererReservation(attenteId);

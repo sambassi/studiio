@@ -42,6 +42,16 @@
  * - La zone utile est recadrée en « cover » centré au ratio DEMANDÉ
  *   (`aspect_ratio` de la génération), puis remise aux dimensions du
  *   fichier : jamais d'étirement (même facteur sur x et y), jamais de bande.
+ * - BANDES CLAIRES OU COLORÉES (BUG 6, Autopilote 9:16, octobre 2026) :
+ *   `cropdetect` ne voit QUE le noir (`limit=24` = seuil de luminance). Le
+ *   fournisseur pose aussi des bandes de SA couleur de fond (mesurée en
+ *   production : #F0F3F9, luminance ≈ 243) — invisibles pour `cropdetect`,
+ *   qui rendait le cadre entier : fichier gardé tel quel, bandes recopiées
+ *   par le « cover » de Remotion jusque dans le MP4. Quand `cropdetect` ne
+ *   trouve rien, une seconde mesure (`zoneBandesUnies`) cherche des bandes
+ *   UNIES de n'importe quelle couleur : lignes / colonnes de bord IDENTIQUES
+ *   à la couleur du coin, sur TOUTES les images échantillonnées. Les mêmes
+ *   garde-fous s'appliquent (`bandesIncrustees` : symétrique, un axe entier).
  * - Le son est COPIÉ tel quel : la synchronisation labiale ne bouge pas.
  * - Tout échec (ffmpeg absent, fichier illisible, délai) rend le fichier
  *   d'origine : le rapatriement n'est jamais bloqué par cette étape.
@@ -139,6 +149,70 @@ export function argumentsCropdetect(entree: string): string[] {
   return ['-hide_banner', ...PROTECTIONS_ENTREE, '-i', entree, '-an', '-vf', 'cropdetect=limit=24:round=2:reset=0', '-f', 'null', '-'];
 }
 
+/**
+ * Échantillons pour `zoneBandesUnies` : 2 images/s (30 au plus), en
+ * luminance pleine résolution, écrites brutes dans `sortie` (jamais sur la
+ * sortie standard : aucun tampon binaire à travers `execFile`).
+ */
+export const ECHANTILLONS_MAX = 30;
+export function argumentsEchantillons(entree: string, sortie: string): string[] {
+  return [
+    '-hide_banner', '-y', ...PROTECTIONS_ENTREE, '-i', entree, '-an',
+    '-vf', 'fps=2,format=gray', '-frames:v', String(ECHANTILLONS_MAX), '-f', 'rawvideo', sortie,
+  ];
+}
+
+/**
+ * Zone utile d'après des bandes UNIES de n'importe quelle couleur (claire,
+ * colorée, noire). Pur.
+ *
+ * `pixels` : images en luminance (`l × h` octets chacune), bout à bout. La
+ * couleur de fond est celle du coin haut-gauche de la PREMIÈRE image ; une
+ * ligne (colonne) de bord est une bande si, sur CHAQUE image, au moins 99 %
+ * de ses pixels restent à `tol` de cette couleur. On ne lit que depuis les
+ * bords : la zone utile est l'UNION de ce qui n'est pas bande dans tout le
+ * clip. Un liseré de transition (mise à l'échelle du fournisseur) est retiré
+ * par une marge de `marge` px sur chaque côté amputé — jamais un trait clair.
+ * `null` : rien de lisible, ou tout le cadre est uni (image vide).
+ */
+export function zoneBandesUnies(pixels: Uint8Array, dims: { l: number; h: number }, tol = 8, marge = 4): Zone | null {
+  const { l, h } = dims;
+  const taille = l * h;
+  if (!(l > 0 && h > 0) || !pixels || pixels.length < taille) return null;
+  const n = Math.floor(pixels.length / taille);
+  const ref = pixels[0];
+  const proche = (v: number) => Math.abs(v - ref) <= tol;
+  const ecartsMax = (total: number) => Math.floor(total * 0.01);
+  const ligneUnie = (y: number) => {
+    for (let f = 0; f < n; f++) {
+      const base = f * taille + y * l;
+      let ecarts = 0;
+      for (let x = 0; x < l; x++) if (!proche(pixels[base + x]) && ++ecarts > ecartsMax(l)) return false;
+    }
+    return true;
+  };
+  const colonneUnie = (x: number) => {
+    for (let f = 0; f < n; f++) {
+      const base = f * taille + x;
+      let ecarts = 0;
+      for (let y = 0; y < h; y++) if (!proche(pixels[base + y * l]) && ++ecarts > ecartsMax(h)) return false;
+    }
+    return true;
+  };
+  let haut = 0; while (haut < h && ligneUnie(haut)) haut++;
+  if (haut >= h) return null;
+  let bas = 0; while (bas < h - haut && ligneUnie(h - 1 - bas)) bas++;
+  let gauche = 0; while (gauche < l && colonneUnie(gauche)) gauche++;
+  let droite = 0; while (droite < l - gauche && colonneUnie(l - 1 - droite)) droite++;
+  if (haut + bas + gauche + droite === 0) return { l, h, x: 0, y: 0 };
+  const m = (bande: number) => (bande > 0 ? marge : 0);
+  const y = haut + m(haut);
+  const x = gauche + m(gauche);
+  const zh = h - bas - m(bas) - y;
+  const zl = l - droite - m(droite) - x;
+  return zl > 0 && zh > 0 ? { l: zl, h: zh, x, y } : null;
+}
+
 export function argumentsRecadrage(entree: string, sortie: string, p: PlanCadrage): string[] {
   const { coupe: c, sortie: s } = p;
   return [
@@ -191,7 +265,15 @@ export async function retirerBandesIncrustees(
     await writeFile(entree, buffer);
     const mesure = await exec(bin, argumentsCropdetect(entree), { timeout: 60_000, maxBuffer: 32 * 1024 * 1024 });
     const src = lireDimensions(mesure.stderr);
-    const plan = src ? planCadrage(src, lireCropdetect(mesure.stderr), ratioDemande(opts.aspectRatio)) : null;
+    const ratio = ratioDemande(opts.aspectRatio);
+    let plan = src ? planCadrage(src, lireCropdetect(mesure.stderr), ratio) : null;
+    if (src && !plan) {
+      // `cropdetect` ne voit que le NOIR : bandes claires ou colorées du
+      // fournisseur (BUG 6) cherchées ici, avec les mêmes garde-fous.
+      const brut = join(dossier, 'echantillons.gray');
+      await exec(bin, argumentsEchantillons(entree, brut), { timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
+      plan = planCadrage(src, zoneBandesUnies(new Uint8Array(await readFile(brut)), src), ratio);
+    }
     if (!plan) return tel;
     await exec(bin, argumentsRecadrage(entree, sortie, plan), { timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
     const corrige = await readFile(sortie);
