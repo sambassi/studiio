@@ -168,7 +168,7 @@ describe('BUG 6 — l\'aval est en « cover » : composition, compositeur, Calen
     expect(String(montageFrame(undefined, 'reel').style.aspectRatio).replace(/\s/g, '')).toBe('9/16');
     // Le lecteur ne masque rien par CSS : `object-contain` sur le cadre au ratio du fichier.
     const page = readFileSync(join(__dirname, '../app/dashboard/calendar/page.tsx'), 'utf8');
-    const lecteur = page.slice(page.indexOf('montageFrame(meta?.videoSize'), page.indexOf('Legacy HTML montage rebuild'));
+    const lecteur = page.slice(page.indexOf('montageFrame(dimensionsDuPost(fullPreviewPost)'), page.indexOf('Legacy HTML montage rebuild'));
     expect(lecteur).toMatch(/object-contain/);
     expect(lecteur).not.toMatch(/object-cover|scale\(/);
   });

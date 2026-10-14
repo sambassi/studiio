@@ -29,6 +29,7 @@
  * quatre anciens blocs, recopiés, à cette fonction sur des posts anciens.
  */
 import { lireHabillageVideo } from '@/lib/creer/habillageVideo';
+import { dimensionsDuPost } from '@/lib/format/projet';
 import { lireCtaCopies } from '@/lib/creer/cta-copies';
 import {
   TRANSITION_KEYS,
@@ -70,11 +71,12 @@ export interface PostARendre {
 export function montageSize(
   videoSize: { w: number; h: number } | undefined,
   format: 'reel' | 'tv' | string,
+  videoFormat?: unknown,
 ): { width: number; height: number } {
-  if (videoSize && videoSize.w > 0 && videoSize.h > 0) {
-    return { width: videoSize.w, height: videoSize.h };
-  }
-  return format === 'reel' ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
+  // Lecture unique (C-FORMAT). Défaut « tv » conservé : un post sans format
+  // explicite se recompose en 16:9, comme avant (et comme `formatRendu`).
+  const d = dimensionsDuPost({ format, metadata: { videoSize, videoFormat } }, '16:9');
+  return { width: d.w, height: d.h };
 }
 
 /**
@@ -322,7 +324,7 @@ export function optionsRenduDepuisMetadata(
   if (fonds) fidelite.sequenceBackgrounds = fonds;
 
   return {
-    ...montageSize(meta?.videoSize, post?.format ?? 'tv'),
+    ...montageSize(meta?.videoSize, post?.format ?? 'tv', meta?.videoFormat),
     fps: 30,
     title: post.title || 'Vidéo',
     subtitle: meta.subtitle || undefined,
@@ -410,7 +412,7 @@ export async function preparerOptionsRendu(
   const rushLut = sourceVideoDuPost(meta).url ? await d.chargerLutPourRendu(meta.lut) : null;
   const elementsLus = elementsLibresDepuisMetadata(meta);
   const elements = elementsLus.length > 0
-    ? await d.rasteriserElements(elementsLus, montageSize(meta?.videoSize, post?.format ?? 'tv').width)
+    ? await d.rasteriserElements(elementsLus, montageSize(meta?.videoSize, post?.format ?? 'tv', meta?.videoFormat).width)
     : undefined;
   const photo = photoCartesValide(meta);
   const cardsSnapshot = photo ? (await d.chargerImage(photo.url)) ?? undefined : undefined;

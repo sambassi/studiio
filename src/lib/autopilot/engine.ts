@@ -1,5 +1,7 @@
 import { generateSmartContent } from '@/lib/smart-content';
 import { contenuPourDuree } from '@/lib/autopilot/duree-cible';
+import { AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
+import { formatDuPost, formatRenduFacturation } from '@/lib/format/projet';
 import {
   pickRush, statusForMode, sanitizePublishTime, DEFAULT_PUBLISH_TIME, sanitizeBrief, slotDate,
   type AutopilotConfig, type VideoBrief,
@@ -199,6 +201,9 @@ export function toPostRow(input: {
     caption: post.caption,
     media_url: videoUrl,
     media_type: 'video' as const,
+    // Colonne « reel » | « tv » dérivée du format écrit dans la metadata
+    // (C-FORMAT) ; l'Autopilote produit du 9:16, donc « reel ».
+    format: formatRenduFacturation(formatDuPost({ metadata }, AUTOPILOT_FORMAT)),
     platforms: post.platforms,
     scheduled_date: post.scheduledDate,
     scheduled_time: post.scheduledTime,

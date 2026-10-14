@@ -29,6 +29,7 @@
  * tel quel.
  */
 import type { EtapeRendu, EtatRendu, MotifRendu } from './rendu-contrat';
+import { formatDepuisDimensions, metadataFormat, PROJECT_VIDEO_FORMAT_DEFAUT } from '@/lib/format/projet';
 
 /** Le rythme du sondage, repris de M3-B3 : ni agressif, ni distrait. */
 export const DELAI_SUIVI_MS = 3000;
@@ -367,6 +368,20 @@ export async function creerBrouillonPlanification(
     + `${String(aujourdhui.getMonth() + 1).padStart(2, '0')}-`
     + `${String(aujourdhui.getDate()).padStart(2, '0')}`;
 
+  // Format RÉEL du montage (C-FORMAT) : `videoFormat` + `videoSize` suffisent au
+  // Calendrier pour jouer un montage 16:9 ou carré dans son vrai cadre (avant :
+  // cadre 9:16).
+  //
+  // ⚠️ FACTURATION INCHANGÉE (décision produit séparée, 2026-10-14) : la colonne
+  // `format` reste ABSENTE (`/api/posts` pose « reel », comme avant) et
+  // `metadata.format` garde l'ancienne règle. Le prix d'une régénération au
+  // Calendrier (`formatRendu`, lu sur la colonne) et le traitement YouTube Short
+  // ne bougent donc pas par effet de bord.
+  const dims = { w: rendu.video.largeur, h: rendu.video.hauteur };
+  const { videoFormat, videoSize } = metadataFormat(
+    formatDepuisDimensions(dims.w, dims.h) ?? PROJECT_VIDEO_FORMAT_DEFAUT, dims,
+  );
+
   let reponse: Response;
   try {
     reponse = await fetcher('/api/posts', {
@@ -389,6 +404,8 @@ export async function creerBrouillonPlanification(
           autopilotRenduId: rendu.id,
           hasAudio: true,
           format: rendu.video.hauteur >= rendu.video.largeur ? 'reel' : 'tv',
+          videoFormat,
+          videoSize,
         },
       }),
     });

@@ -85,6 +85,7 @@
 
 import { resoudreTextes, ecrireTexte, type ChampTexte, type CleTexte } from '../textesCanoniques';
 import { CLE_MONTAGE_PERIME } from '../montage-perime';
+import { formatRenduFacturation, type ProjectVideoFormat } from '@/lib/format/projet';
 
 const estObjet = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -195,6 +196,8 @@ export interface ValeursWizard {
   elements?: unknown[];
   sequences?: Record<string, unknown>;
   videoSize?: { w: number; h: number };
+  /** Format du projet (C-FORMAT, `@/lib/format/projet`). Suit `videoSize`. */
+  videoFormat?: ProjectVideoFormat;
   posterUrl?: string;
   musicUrl?: string;
   voiceUrl?: string;
@@ -266,6 +269,11 @@ export function metadataPourEnregistrement(
   poserSiChange(envoi, 'theme', valeurs.theme, ref.theme);
   poserSiChange(envoi, 'cards', valeurs.cards, ref.cards);
   poserSiChange(envoi, 'videoSize', valeurs.videoSize, ref.videoSize);
+  // Format changé en modification : `videoFormat` (lu en premier) et
+  // `format` (Bibliothèque) suivent, sinon ils contrediraient `videoSize`.
+  if (poserSiChange(envoi, 'videoFormat', valeurs.videoFormat, ref.videoFormat) && valeurs.videoFormat) {
+    envoi.format = formatRenduFacturation(valeurs.videoFormat);
+  }
   poserSiChange(envoi, 'posterUrl', valeurs.posterUrl, ref.posterUrl);
   poserSiChange(envoi, 'musicUrl', valeurs.musicUrl, ref.musicUrl);
   poserSiChange(envoi, 'voiceUrl', valeurs.voiceUrl, ref.voiceUrl);

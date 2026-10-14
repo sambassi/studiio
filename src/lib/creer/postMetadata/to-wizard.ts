@@ -46,6 +46,7 @@ import { lutRefValide } from '@/lib/luts/bibliotheque';
 import type { CanonicalDesign } from './types';
 import { fondsPourMetadata, recadrageValide } from './rendu-fidele';
 import { recadragesRushAvecHeritage } from '@/lib/creer/recadrage-rush';
+import { formatExpliciteDuPost, type PostAvecFormat } from '@/lib/format/projet';
 
 /** Le post tel que le serveur le rend. */
 interface PostLu {
@@ -79,12 +80,6 @@ const SEQUENCES = ['intro', 'cards', 'video', 'cta'] as const;
 /** Les quatre voix, qui portent d'AUTRES noms que les séquences. */
 const VOIX = ['titre', 'cartes', 'video', 'cta'] as const;
 
-/** Dimensions connues -> nom de format. Aucune approximation. */
-const FORMATS: Array<{ w: number; h: number; nom: string }> = [
-  { w: 1080, h: 1920, nom: '9:16' },
-  { w: 1080, h: 1080, nom: '1:1' },
-  { w: 1920, h: 1080, nom: '16:9' },
-];
 
 /**
  * Identité des cartes relues.
@@ -98,14 +93,6 @@ const FORMATS: Array<{ w: number; h: number; nom: string }> = [
  * Sans `Date.now()` ni aléa : deux lectures du même post donnent les mêmes
  * identifiants, ce qui rend la traduction reproductible et testable.
  */
-/** Le format nommé correspondant aux dimensions, ou `undefined`. */
-function formatDepuis(videoSize: unknown): string | undefined {
-  if (!estObjet(videoSize)) return undefined;
-  const w = videoSize.w;
-  const h = videoSize.h;
-  const trouve = FORMATS.find((f) => f.w === w && f.h === h);
-  return trouve?.nom;
-}
 
 /**
  * Traduit un post en brouillon.
@@ -171,7 +158,10 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // ── Thème et format ─────────────────────────────────────────────────
   const theme = presence(meta, 'theme');
   if (typeof theme === 'string') draft.themeId = theme;
-  const format = formatDepuis(presence(meta, 'videoSize'));
+  // Format du projet par la lecture unique (C-FORMAT) : videoFormat, puis
+  // videoSize, puis la colonne `format`. Un post qui ne dit rien garde le
+  // défaut de l'assistant.
+  const format = formatExpliciteDuPost(post as PostAvecFormat);
   if (format) draft.format = format;
 
   // ── Séquences : durées et activation ────────────────────────────────

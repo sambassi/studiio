@@ -14,6 +14,7 @@
  * Ce module est PUR : il ne lit ni n'écrit aucune base.
  */
 import { createHash } from 'crypto';
+import { formatDuPost, metadataFormat } from '@/lib/format/projet';
 
 /**
  * Espace de noms fixe des identifiants de « post modifiable » (UUID v5).
@@ -149,9 +150,14 @@ export function buildEditablePostRow(
   // Le format de la vidéo, sous la forme que relit le parcours guidé
   // (`toWizardDraft` lit `videoSize`, la Bibliothèque lit `format`). Sans lui,
   // une vidéo 16:9 s'ouvrait en 9:16. Posé seulement quand la vidéo le dit.
+  // Lecture et écriture par la porte unique (C-FORMAT) : un carré dont la
+  // metadata porte `videoSize` 1080x1080 (colonne « tv ») reste carré au lieu
+  // d'être réécrit en 1920x1080.
   if (video.format === 'tv' || video.format === 'reel') {
+    const f = formatDuPost({ format: video.format, metadata: video.metadata });
+    Object.assign(metadata, metadataFormat(f));
+    // Colonne de la vidéo telle quelle, comme avant (la Bibliothèque la lit).
     metadata.format = video.format;
-    metadata.videoSize = video.format === 'tv' ? { w: 1920, h: 1080 } : { w: 1080, h: 1920 };
   }
   return {
     user_id: userId,
