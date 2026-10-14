@@ -89,14 +89,33 @@ const ligne = (o: Record<string, unknown> = {}) => ({
 });
 
 /** Requête au corps BRUT : la route lit `req.text()` (borne de taille). */
-const requete = (texte: string | Promise<string>, entetes: Record<string, string> = {}) => {
-  const text = vi.fn(async () => texte);
-  return { req: { text, headers: new Headers(entetes) }, text };
+/**
+ * Requête au corps en FLUX (`req.body`), découpé en morceaux de 16 Ko, sans
+ * `text()` ni `json()` : la route doit lire le flux et s'arrêter au plafond.
+ * `flux.lus` compte les morceaux tirés, `flux.annule` dit si la route a
+ * coupé la lecture.
+ */
+const fluxDe = (texte: string | Promise<string>) => {
+  const etat = { lus: 0, annule: false };
+  let octets: Uint8Array | null = null;
+  let pos = 0;
+  const body = new ReadableStream<Uint8Array>({
+    async pull(ctrl) {
+      if (!octets) octets = new TextEncoder().encode(await texte);
+      if (pos >= octets.length) { ctrl.close(); return; }
+      etat.lus += 1;
+      ctrl.enqueue(octets.slice(pos, pos + 16 * 1024));
+      pos += 16 * 1024;
+    },
+    cancel() { etat.annule = true; },
+  }, { highWaterMark: 0 });
+  return { body, etat };
 };
 const postBrut = async (texte: string | Promise<string>, entetes: Record<string, string> = {}, id = 'job-1') => {
-  const { req, text } = requete(texte, entetes);
+  const { body, etat } = fluxDe(texte);
+  const req = { body, headers: new Headers(entetes) };
   const res = await POST(req as never, { params: { id } } as never);
-  return { status: res.status, body: await res.json(), headers: res.headers, text };
+  return { status: res.status, body: await res.json(), headers: res.headers, flux: etat };
 };
 const post = async (body: unknown = { spec: SPEC }, id = 'job-1') => postBrut(JSON.stringify(body) ?? '', {}, id);
 const get = async (id = 'job-1') => {
@@ -683,8 +702,38 @@ describe('C1. Bornes', () => {
     expect(gros.status).toBe(413);
     const annonce = await postBrut(JSON.stringify({ spec: SPEC }), { 'content-length': String(300 * 1024) });
     expect(annonce.status).toBe(413);
-    expect(annonce.text).not.toHaveBeenCalled();
+    expect(annonce.flux.lus).toBe(0);
     aucunEffet();
+  });
+
+  it('flux sans Content-Length > 256 Ko → 413, lecture coupée au plafond', async () => {
+    const etat = { lus: 0, annule: false };
+    const morceau = new Uint8Array(64 * 1024).fill(0x78);
+    // Flux SANS FIN : seule la borne de la route l'arrête.
+    const body = new ReadableStream<Uint8Array>({
+      pull(ctrl) { etat.lus += 1; ctrl.enqueue(morceau); },
+      cancel() { etat.annule = true; },
+    }, { highWaterMark: 0 });
+    const res = await POST({ body, headers: new Headers() } as never, { params: { id: 'job-1' } } as never);
+    expect(res.status).toBe(413);
+    expect(etat.annule).toBe(true);
+    expect(etat.lus).toBeLessThanOrEqual(6);
+    aucunEffet();
+  });
+
+  it('Content-Length mensonger (plus petit que le corps réel) → 413', async () => {
+    const r = await postBrut(JSON.stringify({ spec: { ...SPEC, subtitle: 'x'.repeat(300 * 1024) } }), { 'content-length': '100' });
+    expect(r.status).toBe(413);
+    expect(r.flux.annule).toBe(true);
+    aucunEffet();
+  });
+
+  it('corps normal lu en flux, en plusieurs morceaux → 202', async () => {
+    const cards = Array.from({ length: 20 }, () => ({ title: 'y'.repeat(1900) }));
+    const r = await postBrut(JSON.stringify({ spec: { ...SPEC, cards } }));
+    expect(r.status).toBe(202);
+    expect(r.flux.lus).toBeGreaterThan(1);
+    await finTravail();
   });
   it('JSON illisible → 422', async () => {
     expect((await postBrut('{ pas du json')).status).toBe(422);
@@ -830,5 +879,48 @@ describe('10b. Tentative restée reserved (stockage injoignable) puis relancée'
     expect(etat.debits).toBe(1);
     expect((await post()).status).toBe(409);
     expect(etat.debits).toBe(1);
+  });
+});
+
+describe('B1 bis. Un média emballé (tableau, objet, nombre) est refusé', () => {
+  const META = 'http://169.254.169.254/latest/meta-data/';
+  const cas: Array<[string, Record<string, unknown>]> = [
+    ['sequenceBackgrounds.titre = [url]', { sequenceBackgrounds: { titre: [META] } }],
+    ['montage[].url = [url]', { montage: [{ url: [META], kind: 'image', debut: 0, fin: 2 }] }],
+    ['sequenceVoiceUrls.video = [url]', { sequenceVoiceUrls: { video: ['http://studiio-postgrest:3000/'] } }],
+    ['videoUrl = [url]', { videoUrl: [META] }],
+    ['posterUrl = {x: url}', { posterUrl: { x: META } }],
+    ['rushs[].url = [url]', { rushs: [{ url: [META] }] }],
+    // `rushUrls` n'est pas une clé de SpecRendu : au premier niveau elle est
+    // refusée par la liste blanche (test ci-dessous) ; imbriquée, par B1.
+    ['montage[].rushUrls = [[url]]', { montage: [{ url: 'https://exemple.test/a.mp4', debut: 0, fin: 2, rushUrls: [[META]] }] }],
+    ['montage[].rushUrls = [3]', { montage: [{ url: 'https://exemple.test/a.mp4', debut: 0, fin: 2, rushUrls: [3] }] }],
+    ['montage[].rushUrls = [null]', { montage: [{ url: 'https://exemple.test/a.mp4', debut: 0, fin: 2, rushUrls: [null] }] }],
+    ['sequenceBackgrounds.titre = {x: url}', { sequenceBackgrounds: { titre: { x: META } } }],
+    ['sequenceVoiceUrls.cta = 7', { sequenceVoiceUrls: { cta: 7 } }],
+    ['sequenceBackgrounds.cartes = true', { sequenceBackgrounds: { cartes: true } }],
+    ['montage[].url = {u: url}', { montage: [{ url: { u: META }, debut: 0, fin: 2 }] }],
+    ['cards[].imageUrl = [url] (imbriqué)', { cards: [{ title: 'a', imageUrl: [META] }] }],
+  ];
+  for (const [nom, extra] of cas) {
+    it(`${nom} → 422 media_invalide`, async () => {
+      await refuse422({ ...SPEC, ...extra }, /^media_invalide/);
+    });
+  }
+  it('validerSpecServeur seul : chaque forme emballée → media_invalide', () => {
+    for (const [nom, extra] of cas) {
+      const v = moteur.validerSpecServeur({ ...SPEC, ...extra });
+      expect(v.ok, nom).toBe(false);
+      expect(v.ok ? '' : v.motif, nom).toMatch(/^media_invalide/);
+    }
+  });
+  it('rushUrls = [[url]] au premier niveau → 422 (clé hors liste blanche), sans effet', async () => {
+    await refuse422({ ...SPEC, rushUrls: [[META]] }, /^(cle_refusee|media_invalide)/);
+  });
+  it('cartes de médias plates de chaînes | null acceptées', async () => {
+    const S = 'https://studiio.pro/storage/v1/object/public/media/u/';
+    const r = await post({ spec: { ...SPEC, sequenceBackgrounds: { titre: `${S}a.jpg`, cartes: null }, sequenceVoiceUrls: { cta: `${S}v.mp3` } } });
+    expect(r.status).toBe(202);
+    await finTravail();
   });
 });

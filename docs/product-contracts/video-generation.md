@@ -272,10 +272,13 @@ ACCÈS=administrateurs seulement (isAdmin) ; sans session ou tout autre compte �
 neutre { ok:false } que le flag éteint.
 Propriété par lireRendu (404), état reserved obligatoire (409 sinon : un job confirmé,
 annulé ou échoué ne se rend plus), opération apercu|bureau|calendrier (403 sinon).
-SPEC=corps ≤ 256 Ko (Content-Length puis taille lue, 413) ; liste blanche des clés PROPRES de
+SPEC=corps ≤ 256 Ko (Content-Length vérifié en amont, puis req.body lu EN FLUX et coupé dès le
+plafond, 413) ; liste blanche des clés PROPRES de
 SpecRendu + types de base, title et format visuel obligatoires (422). Parcours profond :
 tout champ média (*Url, *Urls.*, sequenceBackgrounds.*, rushs[].url, montage[].url) = null
-ou URL http(s) CANONIQUE (new URL(v).href === v, sans blanc, sans \, sans // initial) sinon
+ou une CHAÎNE URL http(s) CANONIQUE — jamais un tableau / objet / nombre (Remotion stringifierait
+un tableau) ; cartes *Urls / sequenceBackgrounds = objet plat de chaînes | null, *Urls en
+tableau = chaînes seulement — (new URL(v).href === v, sans blanc, sans \, sans // initial) sinon
 422 media_invalide ; toute couleur (*Color, *Background, gradientStart/End, elements[].color)
 = #RGB/#RRGGBB/#RRGGBBAA ou rgb(a) stricts sinon 422 couleur_invalide ; bornes : durées
 0..120 s, cards ≤ 20, rushs ≤ 10, elements ≤ 50, montage ≤ 100, autres listes ≤ 200,

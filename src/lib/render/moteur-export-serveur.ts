@@ -226,23 +226,42 @@ export function couleurValide(v: unknown): boolean {
 
 /** Clés dont la valeur est un média (à toute profondeur). */
 const estCleMedia = (cle: string) => /url$/i.test(cle);
-/** Clés dont TOUTES les valeurs sont des médias. */
+/** Clés dont TOUTES les valeurs sont des médias (`*Urls`, `sequenceBackgrounds`). */
 const estCarteMedias = (cle: string) => /urls$/i.test(cle) || cle === 'sequenceBackgrounds';
 /** Clés de couleur (à toute profondeur). */
 const estCleCouleur = (cle: string) => /(color|background)$/i.test(cle) || cle === 'gradientStart' || cle === 'gradientEnd';
 
 /**
+ * Un média est une CHAÎNE valide ou null — jamais un conteneur. Un tableau
+ * d'un élément passerait sinon élément par élément, échapperait à
+ * `localiserEntreesRendu` (qui ne localise que les chaînes) et Remotion le
+ * stringifierait (`<Img src={["http://…"]}>`) : Chromium appellerait l'hôte.
+ */
+const mediaUnitaireValide = (v: unknown) =>
+  v === null || v === undefined || (typeof v === 'string' && v.length <= BORNES_SPEC.texteMax && urlMediaValide(v));
+
+/** Carte de médias : objet PLAT de chaînes | null, ou (`*Urls`) tableau de chaînes. */
+function carteMediasValide(v: unknown, cle: string): boolean {
+  if (v === null || v === undefined) return true;
+  if (Array.isArray(v)) {
+    if (cle === 'sequenceBackgrounds') return false;
+    if (v.length > (BORNES_SPEC.listes[cle] ?? BORNES_SPEC.listeParDefaut)) return false;
+    return v.every((e) => typeof e === 'string' && mediaUnitaireValide(e));
+  }
+  if (!estObjet(v)) return false;
+  const valeurs = Object.values(v as Record<string, unknown>);
+  if (valeurs.length > BORNES_SPEC.listeParDefaut) return false;
+  return valeurs.every(mediaUnitaireValide);
+}
+
+/**
  * Parcours profond : médias, couleurs, bornes. `cle` est la clé qui porte la
  * valeur (pour un élément de liste, celle de la liste).
  */
-function parcourir(v: unknown, cle: string, chemin: string, profondeur: number, dansCarteMedias: boolean): string | null {
+function parcourir(v: unknown, cle: string, chemin: string, profondeur: number): string | null {
   if (profondeur > BORNES_SPEC.profondeurMax) return `borne:profondeur:${chemin}`;
-  if (dansCarteMedias && !estObjet(v) && !Array.isArray(v)) {
-    return urlMediaValide(v) ? null : `media_invalide:${chemin}`;
-  }
-  if (estCleMedia(cle) && !estObjet(v) && !Array.isArray(v)) {
-    return urlMediaValide(v) ? null : `media_invalide:${chemin}`;
-  }
+  if (estCarteMedias(cle)) return carteMediasValide(v, cle) ? null : `media_invalide:${chemin}`;
+  if (estCleMedia(cle)) return mediaUnitaireValide(v) ? null : `media_invalide:${chemin}`;
   if (estCleCouleur(cle) && !estObjet(v) && !Array.isArray(v)) {
     return couleurValide(v) ? null : `couleur_invalide:${chemin}`;
   }
@@ -256,15 +275,14 @@ function parcourir(v: unknown, cle: string, chemin: string, profondeur: number, 
     const max = BORNES_SPEC.listes[cle] ?? BORNES_SPEC.listeParDefaut;
     if (v.length > max) return `borne:liste:${chemin}`;
     for (let i = 0; i < v.length; i++) {
-      const m = parcourir(v[i], cle, `${chemin}[${i}]`, profondeur + 1, dansCarteMedias || estCarteMedias(cle));
+      const m = parcourir(v[i], cle, `${chemin}[${i}]`, profondeur + 1);
       if (m) return m;
     }
     return null;
   }
   if (estObjet(v)) {
-    const carte = dansCarteMedias || estCarteMedias(cle);
     for (const [k, w] of Object.entries(v as Record<string, unknown>)) {
-      const m = parcourir(w, k, `${chemin}.${k.slice(0, 40)}`, profondeur + 1, carte);
+      const m = parcourir(w, k, `${chemin}.${k.slice(0, 40)}`, profondeur + 1);
       if (m) return m;
     }
   }
@@ -287,13 +305,19 @@ export function validerSpecServeur(v: unknown):
     // en sémantique ; la lib TS du projet (< es2022) ne le déclare pas.
     if (!Object.prototype.hasOwnProperty.call(CLES_SPEC, cle)) return { ok: false, motif: `cle_refusee:${cle.slice(0, 40)}` };
     if (valeur === undefined) continue;
+    // Un champ média mal formé (conteneur compris) est un refus MÉDIA, pas
+    // un simple refus de type.
+    if (estCleMedia(cle) || estCarteMedias(cle)) {
+      const motif = parcourir(valeur, cle, cle, 0);
+      if (motif) return { ok: false, motif };
+    }
     const genre = (CLES_SPEC as Record<string, Genre>)[cle];
     if (!genreValide(valeur, genre)) return { ok: false, motif: `type_invalide:${cle}` };
   }
   if (typeof o.title !== 'string') return { ok: false, motif: 'titre_absent' };
   if (!(FORMATS_VISUELS as readonly unknown[]).includes(o.format)) return { ok: false, motif: 'format_invalide' };
   for (const [cle, valeur] of Object.entries(o)) {
-    const motif = parcourir(valeur, cle, cle, 0, false);
+    const motif = parcourir(valeur, cle, cle, 0);
     if (motif) return { ok: false, motif };
   }
   return { ok: true, spec: o as unknown as SpecRendu };

@@ -39,6 +39,39 @@ export const runtime = 'nodejs';
 
 const INTROUVABLE = () => NextResponse.json({ ok: false }, { status: 404 });
 
+/**
+ * Lit `req.body` morceau par morceau, et s'arrête (`reader.cancel()`) dès que
+ * le plafond est dépassé. Pas de corps : chaîne vide (refusée plus loin).
+ */
+async function lireCorpsBorne(req: NextRequest, max: number): Promise<{ tropGros: boolean; texte: string }> {
+  const flux = (req as unknown as { body?: ReadableStream<Uint8Array> | null }).body;
+  if (!flux) return { tropGros: false, texte: '' };
+  const lecteur = flux.getReader();
+  const morceaux: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await lecteur.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > max) {
+        await lecteur.cancel().catch(() => undefined);
+        return { tropGros: true, texte: '' };
+      }
+      morceaux.push(value);
+    }
+  } catch {
+    return { tropGros: false, texte: '' };
+  } finally {
+    try { lecteur.releaseLock(); } catch { /* déjà libéré */ }
+  }
+  const tout = new Uint8Array(total);
+  let pos = 0;
+  for (const m of morceaux) { tout.set(m, pos); pos += m.byteLength; }
+  return { tropGros: false, texte: new TextDecoder().decode(tout) };
+}
+
 /** Les contrôles communs à POST et GET. Rend la ligne ou la réponse de refus. */
 async function acceder(id: string): Promise<
   | { ok: true; userId: string; rendu: LigneRendu }
@@ -87,11 +120,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (Number.isFinite(annonce) && annonce > TAILLE_MAX_CORPS) {
       return NextResponse.json({ ok: false, motif: 'corps_trop_gros' }, { status: 413 });
     }
-    let texte = '';
-    try { texte = await req.text(); } catch { /* corps absent : refusé ci-dessous */ }
-    if (Buffer.byteLength(texte, 'utf8') > TAILLE_MAX_CORPS) {
+    // Lu EN FLUX et coupé dès le plafond : un Content-Length absent ou
+    // mensonger ne fait jamais entrer plus de 256 Ko en mémoire.
+    const lecture = await lireCorpsBorne(req, TAILLE_MAX_CORPS);
+    if (lecture.tropGros) {
       return NextResponse.json({ ok: false, motif: 'corps_trop_gros' }, { status: 413 });
     }
+    const texte = lecture.texte;
     let corps: unknown = null;
     try { corps = JSON.parse(texte); } catch {
       return NextResponse.json({ ok: false, motif: 'corps_illisible' }, { status: 422 });
