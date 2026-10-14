@@ -41,6 +41,10 @@ Idempotence propre au canal, `metadata.canalEmail.etat` : `en_cours` écrit AVAN
 l'envoi (écriture impossible → rien ne part), `envoye` → jamais renvoyé (cron suivant,
 « Réessayer »), `echec` (rien n'est parti) → retenté au passage suivant. Un passage
 interrompu après `en_cours` ne renvoie jamais : un e-mail manquant plutôt qu'un double.
+Chaque écriture relit `metadata` juste avant et ne change QUE `canalEmail` ; relecture
+impossible → aucune écriture (jamais de copie périmée qui ressusciterait une preuve
+retirée par `post.failed` ou effacerait `zernioPartiel`). Fenêtre résiduelle de
+quelques ms entre relecture et update (pas de jsonb_set sans migration).
 Post E-mail seul et post Zernio seul : inchangés.
 VALIDÉ_LE=2026-10-14 (contrat de test, preuves par mutation)
 ROUVRIR_SEULEMENT_SI=changement de fournisseur décidé par le propriétaire
@@ -90,6 +94,18 @@ trouvé en échec → nouvel envoi, nouvelle clé ; absent et clé < 23 h → en
 MÊME clé ; recherche en erreur ou clé > 23 h → `failed` + `confirmationRequise`, et
 seul un « Réessayer » CONFIRMÉ par l'utilisateur (`publierSansVerification`) republie.
 Refus net de Zernio (4xx hors 408/409) = FAILED_BEFORE_PUBLISH : marqueur retiré.
+Renvoi sans couverture (400/422 sur la couverture) : clé DÉRIVÉE `<cle>:sans-couverture`
+(corps différent), notée `zernioTentative.cleSansCouverture` AVANT le renvoi ; un
+« Réessayer » repasse directement par elle.
+Le statut du post RENDU par createPost compte (rejeu de clé = post original, 207) :
+failed/cancelled → `failed`, preuve et marqueur retirés ; partial → état partiel ;
+published → `published` ; sinon `publishing` jusqu'au webhook.
+`publierSansVerification` est à usage unique : retiré à l'écriture du marqueur et à
+toute écriture d'échec du cron.
+Limite connue : la doc list-posts ne dit pas explicitement que chaque élément porte
+`metadata` (le schéma Post l'a ; GET /v1/posts/{id} le rend). S'il manquait, la
+recherche ne trouverait rien : < 23 h la clé d'idempotence reste la barrière, au-delà
+confirmation explicite (fail-closed).
 TEST=src/__tests__/contracts/social-no-duplicate.contract.test.ts (cas G, H, CORRIGÉ 1-4)
      src/__tests__/contracts/social-confirmation-perdue.contract.test.ts (cas limites)
 CORRIGÉ (PR Social Safety, 2026-10-14)=
@@ -122,15 +138,14 @@ TEST=src/__tests__/contracts/social-media-file.contract.test.ts
      src/__tests__/contracts/social-media-bytes.contract.test.ts
 BUG (6) CORRIGÉ (fix/social-safety-social-a)=rendu déjà mixé + hasAudio + musicUrl était
 remuxé avec `-map 0:v:0 -map 1:a:0 -shortest` (piste mixée remplacée par la musique
-brute, vidéo raccourcie). Désormais : un montage composé (`renderedVideoUrl` présent)
-n'est JAMAIS remuxé — tous les écrivains actuels (Assistant, Autopilote, éditeur
-avancé, passerelle de rendu) y embarquent déjà le son ; l'URL d'origine part telle
-quelle (octets identiques, aucun téléchargement). Sans montage composé (post ancien :
-vidéo muette + pistes séparées), le muxage historique reste, mais ffprobe sonde
-d'abord la vidéo : piste audio présente → tel quel ; ffprobe absent ou en échec →
-tel quel (défaut sûr : au pire sans musique, jamais une piste écrasée). Même règle
-sur l'ancien chemin (post E-mail seul). Aucun écrivain actuel ne produit encore le
-cas « vidéo muette + pistes séparées » : il ne concerne que d'anciens posts.
+brute, vidéo raccourcie). Désormais (hasAudio + musicUrl/voiceUrl), ffprobe sonde la
+vidéo — montage composé ou non — et décide SEUL : piste audio présente → l'URL
+d'origine part telle quelle (octets identiques, rien réécrit) ; ffprobe absent ou en
+échec → tel quel (défaut sûr : au pire sans musique, jamais une piste écrasée) ;
+vidéo MUETTE → musique/voix intégrées comme avant. Pas de raccourci sur
+`renderedVideoUrl` : quand le chargement du son échoue, le compositeur retombe en mode
+rapide SANS piste audio alors que hasAudio + musicUrl sont écrits — ces montages
+gardent leur musique. Même règle sur l'ancien chemin (post E-mail seul).
 VALIDÉ_LE=2026-10-14
 ROUVRIR_SEULEMENT_SI=un nouvel écrivain pose musicUrl/voiceUrl à intégrer côté serveur
 ```

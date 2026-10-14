@@ -24,6 +24,8 @@ export const etat = {
   ecritures: [] as Array<{ table: string; maj: Ligne; ids: string[] }>,
   /** Injection de panne : renvoyer un `{ error }` au lieu d'écrire. */
   panneEcriture: null as null | ((table: string, maj: Ligne) => boolean),
+  /** Injection de panne en LECTURE (select sans update) : renvoyer un `{ error }`. */
+  panneLecture: null as null | ((table: string) => boolean),
   /** Fichiers « téléversés » dans le stockage (chemin → octets). */
   stockage: new Map<string, unknown>(),
 };
@@ -42,6 +44,9 @@ function chaine(table: string) {
   let maj: Ligne | null = null;
   let limite = Infinity;
   const executer = () => {
+    if (!maj && etat.panneLecture?.(table)) {
+      return { data: null, error: { message: 'lecture en panne simulee', code: '57014' } };
+    }
     const lignes = (etat.base[table] ?? []).filter((l) => filtres.every((f) => f(l)));
     if (maj) {
       if (etat.panneEcriture?.(table, maj)) {
@@ -161,6 +166,7 @@ export function reinitialiser() {
   etat.comptes = [{ platform: 'instagram', accountId: 'acc-ig' }];
   etat.ecritures = [];
   etat.panneEcriture = null;
+  etat.panneLecture = null;
   etat.stockage.clear();
   zernio.createPost.mockReset().mockImplementation(async () => ({ _id: 'zernio-post-1' }));
   zernio.uploadMedia.mockReset().mockImplementation(async () => 'https://zernio.example/tmp/media.mp4');

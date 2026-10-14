@@ -140,8 +140,6 @@ interface PostMetadata {
   error?: string | null;
   /** Detail par plateforme du cron de publication (`{ platform, error }`). */
   cron_publish_results?: Array<{ platform?: string; success?: boolean; error?: string }> | null;
-  /** Envoi précédent non confirmé (réponse du service de publication perdue). */
-  confirmationPerdue?: boolean;
   /** Vérification impossible : « Réessayer » demande une confirmation explicite. */
   confirmationRequise?: boolean;
   /** Posé par « Réessayer » confirmé : le serveur republie sans vérifier (une fois). */

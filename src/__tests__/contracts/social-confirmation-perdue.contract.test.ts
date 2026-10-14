@@ -14,7 +14,7 @@
  * ⚠️ AUCUN RÉSEAU : Zernio, base, stockage, e-mail simulés ; `fetch` lève.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { etat, zernio, post, lancerCron, reinitialiser, ligne, webhook, reprogrammer, IL_Y_A_UNE_HEURE } from './helpers/socialHarness';
+import { etat, zernio, autres, post, lancerCron, reinitialiser, ligne, webhook, reprogrammer, IL_Y_A_UNE_HEURE } from './helpers/socialHarness';
 
 const recherche = vi.hoisted(() => ({ trouverPostStudiio: vi.fn() }));
 
@@ -284,6 +284,94 @@ describe('Webhooks et état explicite', () => {
     });
     await lancerCron(false);
     expect(ligne('p1').status).toBe('failed');
+  });
+});
+
+describe('Revue — clé du repli sans couverture, statut rendu par createPost, bypass à usage unique', () => {
+  it('repli sans couverture (422) → clé DÉRIVÉE distincte, notée dans le marqueur', async () => {
+    etat.base.scheduled_posts = [post('p1', { metadata: { renderedVideoUrl: 'https://cdn.example/r.mp4', cover: { mode: 'frame', frameMs: 1500 } } })];
+    const { ZernioError } = await vi.importActual<typeof import('@/lib/social/zernio')>('@/lib/social/zernio');
+    zernio.createPost.mockRejectedValueOnce(new ZernioError('couverture refusee', 422));
+    await lancerCron(false);
+    expect(zernio.createPost).toHaveBeenCalledTimes(2);
+    const cle = ligne('p1').metadata.zernioTentative.cle as string;
+    expect(cleEnvoyee(0)?.idempotencyKey).toBe(cle);
+    expect(cleEnvoyee(1)?.idempotencyKey).toBe(`${cle}:sans-couverture`);
+    expect(ligne('p1').metadata.zernioTentative.cleSansCouverture).toBe(`${cle}:sans-couverture`);
+    expect(ligne('p1').metadata).toMatchObject({ zernioPostId: 'zernio-post-1', zernioForPostId: 'p1' });
+  });
+
+  it('« Réessayer » après un renvoi sans couverture → repasse par la clé dérivée, sans retenter la couverture', async () => {
+    etat.base.scheduled_posts = [post('p1', { metadata: {
+      renderedVideoUrl: 'https://cdn.example/r.mp4', cover: { mode: 'frame', frameMs: 1500 },
+      zernioTentative: { ...tentative(), cleSansCouverture: 'cle-ancienne:sans-couverture' },
+    } })];
+    await lancerCron(false);
+    expect(zernio.createPost).toHaveBeenCalledTimes(1);
+    expect(cleEnvoyee(0)?.idempotencyKey).toBe('cle-ancienne:sans-couverture');
+  });
+
+  it('createPost rend le post ORIGINAL en échec (rejeu de clé) → failed, preuve et marqueur retirés', async () => {
+    etat.base.scheduled_posts = [post('p1', { metadata: { renderedVideoUrl: 'x', zernioTentative: tentative() } })];
+    zernio.createPost.mockResolvedValueOnce({ _id: 'z-orig', status: 'failed', platforms: [{ platform: 'instagram', status: 'failed', errorMessage: 'refus' }] } as any);
+    await lancerCron(false);
+    expect(ligne('p1').status).toBe('failed');
+    expect(ligne('p1').metadata).not.toHaveProperty('zernioPostId');
+    expect(ligne('p1').metadata).not.toHaveProperty('zernioTentative');
+    // Republier ensuite : nouvelle clé, pas de rejeu du post échoué.
+    reprogrammer('p1');
+    await lancerCron(false);
+    expect(zernio.createPost).toHaveBeenCalledTimes(2);
+    expect(cleEnvoyee(1)?.idempotencyKey).not.toBe('cle-ancienne');
+  });
+
+  it('createPost rend un post partiel → état partiel explicite, preuve gardée', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    zernio.createPost.mockResolvedValueOnce({ _id: 'z-part', status: 'partial', platforms: [{ platform: 'instagram', status: 'published' }, { platform: 'tiktok', status: 'failed', errorMessage: 'non' }] } as any);
+    await lancerCron(false);
+    expect(ligne('p1').status).toBe('failed');
+    expect(ligne('p1').metadata).toMatchObject({ zernioPostId: 'z-part', zernioForPostId: 'p1', zernioPartiel: true });
+    expect(ligne('p1').metadata.error).toMatch(/partiellement.*tiktok/);
+  });
+
+  it('createPost rend un post déjà publié → published', async () => {
+    etat.base.scheduled_posts = [post('p1')];
+    zernio.createPost.mockResolvedValueOnce({ _id: 'z-pub', status: 'published' } as any);
+    await lancerCron(false);
+    expect(ligne('p1').status).toBe('published');
+    expect(ligne('p1').metadata).toMatchObject({ zernioPostId: 'z-pub', zernioForPostId: 'p1' });
+  });
+
+  it('le bypass publierSansVerification ne revient jamais par l écriture d échec (copie périmée du cron)', async () => {
+    etat.base.scheduled_posts = [post('p1', { metadata: {
+      renderedVideoUrl: 'x', zernioTentative: tentative(), confirmationRequise: true, publierSansVerification: true,
+    } })];
+    await delaiDepasse();
+    await lancerCron(false);
+    expect(ligne('p1').status).toBe('failed');
+    expect(ligne('p1').metadata.publierSansVerification).toBeUndefined();
+    expect(ligne('p1').metadata.confirmationRequise).toBeUndefined();
+    expect(ligne('p1').metadata.confirmationPerdue).toBe(true);
+  });
+});
+
+describe('Canal e-mail d un post mixte — fusion de la seule clé canalEmail', () => {
+  it('relecture impossible après l envoi → n écrit PAS une copie périmée (preuve retirée entre-temps non ressuscitée)', async () => {
+    etat.base.scheduled_posts = [post('p1', { platforms: ['Instagram', 'Email'] })];
+    autres.sendEmail.mockImplementationOnce(async () => {
+      // Pendant l'envoi : un webhook post.failed retire la preuve, puis la base devient illisible.
+      const m = { ...ligne('p1').metadata };
+      delete m.zernioPostId; delete m.zernioForPostId;
+      ligne('p1').metadata = m;
+      etat.panneLecture = (t) => t === 'scheduled_posts';
+      return { success: true };
+    });
+    await lancerCron(false);
+    etat.panneLecture = null;
+    expect(autres.sendEmail).toHaveBeenCalledTimes(1);
+    expect(ligne('p1').metadata).not.toHaveProperty('zernioPostId');
+    // Reste « en_cours » : jamais renvoyé, jamais une copie périmée réécrite.
+    expect(ligne('p1').metadata.canalEmail.etat).toBe('en_cours');
   });
 });
 

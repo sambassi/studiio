@@ -126,8 +126,12 @@ describe('C-SOCIAL-MEDIA-FILE — BUG (6) CORRIGÉ : un son déjà embarqué n e
    * l'Autopilote (design.ts) et l'éditeur avancé posent `hasAudio: true` +
    * `musicUrl` quand la musique est DÉJÀ EMBARQUÉE dans le rendu. FFmpeg
    * (-map 0:v:0 -map 1:a:0 -shortest) REMPLAÇAIT la piste mixée par la seule
-   * musique. Désormais : un montage composé (`renderedVideoUrl`) part tel
-   * quel ; sans montage composé, ffprobe décide (piste présente → tel quel).
+   * musique. Désormais ffprobe décide, montage composé ou non : piste audio
+   * présente → fichier d'origine tel quel ; sonde en échec → tel quel ; vidéo
+   * MUETTE + musique/voix séparées → muxée. (Pas de court-circuit sur
+   * `renderedVideoUrl` : le compositeur retombe en mode rapide SANS piste
+   * audio quand le chargement du son échoue, alors que hasAudio + musicUrl
+   * sont écrits — ces montages doivent recevoir leur musique.)
    */
   const MUSIQUE = 'https://cdn.example/user-1/musique.mp3';
   const sonde = (sortie: string | Error) => {
@@ -146,17 +150,19 @@ describe('C-SOCIAL-MEDIA-FILE — BUG (6) CORRIGÉ : un son déjà embarqué n e
   it('BUG RÉEL (6) : un rendu déjà mixé (hasAudio + musicUrl) doit partir tel quel', async () => {
     // CORRIGÉ
     const RENDU = 'https://cdn.example/user-1/rendus/mixe.mp4';
+    sonde('1\n');
     etat.base.scheduled_posts = [post('p1', {
       media_url: RENDU,
       metadata: { renderedVideoUrl: RENDU, hasAudio: true, musicUrl: MUSIQUE, voiceUrl: null },
     })];
     await lancerCron(true);
-    expect(autres.execFile).not.toHaveBeenCalled();
+    expect(autres.execFile).toHaveBeenCalledTimes(1); // la sonde seule, aucun FFmpeg
     expect(zernio.uploadMedia.mock.calls[0][0]).toBe(RENDU);
   });
 
-  it('rendu déjà mixé : rien téléchargé, rien réécrit — les octets publiés sont ceux du fichier d origine', async () => {
+  it('rendu déjà mixé : rien réécrit — les octets publiés sont ceux du fichier d origine', async () => {
     const RENDU = 'https://cdn.example/user-1/rendus/mixe.mp4';
+    sonde('1\n');
     etat.base.scheduled_posts = [post('p1', {
       media_url: RENDU,
       metadata: { renderedVideoUrl: RENDU, hasAudio: true, musicUrl: MUSIQUE, voiceUrl: 'https://cdn.example/user-1/voix.mp3' },
@@ -164,18 +170,43 @@ describe('C-SOCIAL-MEDIA-FILE — BUG (6) CORRIGÉ : un son déjà embarqué n e
     const r = await lancerCron(true);
     expect(r.results[0].success).toBe(true);
     expect(zernio.uploadMedia.mock.calls[0]).toEqual([RENDU, 'studiio-p1.mp4', 'video/mp4', 'user-1']);
-    expect(autres.downloadMediaToFile).not.toHaveBeenCalled();
+    expect(autres.execFile).toHaveBeenCalledTimes(1);
     expect(etat.stockage.size).toBe(0);
   });
 
   it('rendu WebM déjà mixé : converti en MP4 (conversion qui garde le son), jamais re-muxé', async () => {
     const WEBM = 'https://cdn.example/user-1/rendus/mixe.webm';
+    sonde('1\n');
     etat.base.scheduled_posts = [post('p1', {
       media_url: WEBM, metadata: { renderedVideoUrl: WEBM, hasAudio: true, musicUrl: MUSIQUE },
     })];
     await lancerCron(true);
     expect(autres.transcode).toHaveBeenCalledTimes(1);
-    expect(autres.execFile).not.toHaveBeenCalled();
+    expect(autres.execFile).toHaveBeenCalledTimes(1); // la sonde seule
+  });
+
+  it('montage composé MUET (compositeur en mode rapide, son non chargé) + musique séparée → muxé', async () => {
+    const MUET = 'https://cdn.example/user-1/rendus/montage-muet.mp4';
+    sonde('');
+    etat.base.scheduled_posts = [post('p1', {
+      media_url: MUET, metadata: { renderedVideoUrl: MUET, hasAudio: true, musicUrl: MUSIQUE },
+    })];
+    await lancerCron(true);
+    const ffmpeg = autres.execFile.mock.calls.find((c) => !(c[1] as string[]).includes('-select_streams'));
+    expect((ffmpeg![1] as string[]).join(' ')).toContain('-map 0:v:0 -map 1:a:0');
+    expect(zernio.uploadMedia.mock.calls[0][0]).toMatch(/\/converted\/muxed_\d+\.mp4$/);
+  });
+
+  it('montage composé, ffprobe en échec → le fichier d origine part tel quel', async () => {
+    const RENDU = 'https://cdn.example/user-1/rendus/mixe.mp4';
+    sonde(Object.assign(new Error('spawn ffprobe ENOENT'), { code: 'ENOENT' }));
+    etat.base.scheduled_posts = [post('p1', {
+      media_url: RENDU, metadata: { renderedVideoUrl: RENDU, hasAudio: true, musicUrl: MUSIQUE },
+    })];
+    await lancerCron(true);
+    expect(autres.execFile).toHaveBeenCalledTimes(1);
+    expect(zernio.uploadMedia.mock.calls[0][0]).toBe(RENDU);
+    expect(etat.stockage.size).toBe(0);
   });
 
   it('sans montage composé, vidéo MUETTE + musique séparée → toujours muxée (comportement historique)', async () => {
@@ -220,8 +251,9 @@ describe('C-SOCIAL-MEDIA-FILE — BUG (6) CORRIGÉ : un son déjà embarqué n e
       platforms: ['Email'], media_url: RENDU,
       metadata: { renderedVideoUrl: RENDU, hasAudio: true, musicUrl: MUSIQUE },
     })];
+    sonde('1\n');
     await lancerCron(true);
-    expect(autres.execFile).not.toHaveBeenCalled();
+    expect(autres.execFile).toHaveBeenCalledTimes(1); // la sonde seule, aucun FFmpeg
     expect(autres.sendEmail).toHaveBeenCalledTimes(1);
   });
 });

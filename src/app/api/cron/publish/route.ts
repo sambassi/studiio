@@ -309,8 +309,13 @@ async function envoyerCanalEmail(
  *   « Reessayer », « Reprogrammer » — la metadata est conservee) ;
  * - `echec` quand rien n'est parti : un « Reessayer » explicite le retente.
  *
- * La metadata est RELUE avant chaque ecriture : la preuve Zernio (ou un
- * echec Zernio) vient d'y etre ecrite et ne doit pas etre ecrasee.
+ * Chaque ecriture RELIT la metadata juste avant et ne change QUE `canalEmail`
+ * (`ecrireCanalEmail`) : la preuve Zernio, son retrait par un webhook
+ * `post.failed`, `zernioPartiel`… ne sont jamais ecrases par une copie.
+ * Relecture impossible → aucune ecriture (jamais de copie perimee).
+ * Fenetre residuelle : un webhook qui ecrit ENTRE la relecture et l'update
+ * (quelques ms) peut etre ecrase — sans transaction ni jsonb_set cote
+ * PostgREST, c'est le mieux possible sans migration.
  * Ne leve jamais : une panne email ne change rien au sort des reseaux.
  */
 async function emailDuPostMixte(post: any): Promise<void> {
@@ -333,27 +338,23 @@ async function emailDuPostMixte(post: any): Promise<void> {
       console.log(`[CRON] Email du post mixte ${post.id} : deja ${etat} — pas de second envoi`);
       return;
     }
-    const { data: reserve, error: reserveErr } = await supabase
-      .from('scheduled_posts')
-      .update({ metadata: { ...meta, canalEmail: { etat: 'en_cours', le: new Date().toISOString() } } })
-      .eq('id', post.id)
-      .select('id');
-    if (reserveErr || !reserve || reserve.length === 0) {
+    const ecrireCanalEmail = async (canalEmail: Record<string, unknown>): Promise<boolean> => {
+      const actuelle = await relire();
+      if (!actuelle) return false;
+      const { data, error } = await supabase
+        .from('scheduled_posts')
+        .update({ metadata: { ...actuelle, canalEmail } })
+        .eq('id', post.id)
+        .select('id');
+      return !error && !!data && data.length > 0;
+    };
+    if (!(await ecrireCanalEmail({ etat: 'en_cours', le: new Date().toISOString() }))) {
       console.error(`[CRON] Email du post mixte ${post.id} : preuve non ecrite — email non envoye`);
       return;
     }
     const r = await envoyerCanalEmail(post, platform, post.videos || null);
-    const apres = (await relire()) ?? meta;
-    const { error: finErr } = await supabase
-      .from('scheduled_posts')
-      .update({
-        metadata: {
-          ...apres,
-          canalEmail: { etat: r.success ? 'envoye' : 'echec', le: new Date().toISOString(), erreur: r.error ?? null },
-        },
-      })
-      .eq('id', post.id);
-    if (finErr) console.error(`[CRON] Email du post mixte ${post.id} : resultat non ecrit (reste en_cours, jamais renvoye)`);
+    const fin = await ecrireCanalEmail({ etat: r.success ? 'envoye' : 'echec', le: new Date().toISOString(), erreur: r.error ?? null });
+    if (!fin) console.error(`[CRON] Email du post mixte ${post.id} : resultat non ecrit (reste en_cours, jamais renvoye)`);
     console.log(`[CRON] Email du post mixte ${post.id} : ${r.success ? 'envoye' : `echec — ${r.error ?? ''}`}`);
   } catch (err) {
     console.error(`[CRON] Email du post mixte ${post.id} : erreur`, err);
@@ -779,7 +780,7 @@ export async function GET(req: NextRequest) {
         // ═══ MUXAGE AUDIO : Si le post a des pistes audio séparées (musicUrl/voiceUrl) ═══
         // Cela arrive quand le Studio Son a sauvé les métadonnées audio mais la composition
         // client-side a échoué ou le fichier vidéo n'a pas d'audio embarqué.
-        // BUG 6 : jamais sur un montage dont le son est deja embarque.
+        // BUG 6 : la sonde ffprobe de muxAudioIntoVideo ne remplace jamais un son deja embarque.
         const hasAudioMeta = pistesAudioSeparees(meta);
         if (hasAudioMeta && videoData.video_url) {
           console.log(`[CRON] Post a des pistes audio séparées — tentative de muxage`);
@@ -1052,14 +1053,15 @@ const CODES_TELECHARGEMENT = new Set([
  * piste mixée (voix, voix par séquence, son du rush) par la seule musique, et
  * pouvait couper la vidéo.
  *
- * Un montage composé (`renderedVideoUrl`) n'est donc JAMAIS re-muxé : il part
- * octet pour octet. Seul un post SANS montage composé garde l'ancien
- * comportement — et `muxAudioIntoVideo` sonde encore la vidéo (ffprobe) pour
- * ne jamais écraser une piste existante.
+ * C'est donc la SONDE de `muxAudioIntoVideo` (ffprobe) qui décide, et elle
+ * seule : piste audio présente → fichier d'origine tel quel ; sonde en échec
+ * → tel quel ; vidéo muette → musique/voix intégrées. Pas de raccourci sur
+ * `renderedVideoUrl` : quand le chargement du son échoue, le compositeur
+ * retombe en mode rapide SANS piste audio (video-composer.ts) alors que
+ * `hasAudio` + `musicUrl` sont écrits — ces montages doivent garder leur musique.
  */
 function pistesAudioSeparees(meta: any): boolean {
-  if (!meta?.hasAudio || !(meta.musicUrl || meta.voiceUrl)) return false;
-  return !meta.renderedVideoUrl;
+  return !!meta?.hasAudio && !!(meta.musicUrl || meta.voiceUrl);
 }
 
 /**
@@ -1336,8 +1338,13 @@ function metaEchecZernio(
 ): Record<string, unknown> {
   // Marqueur de tentative, preuve d'envoi partiel… posés APRÈS la lecture de
   // `metadata` par le cron : les reporter, sinon cette écriture les efface.
+  // Les drapeaux de confirmation viennent de la copie du DÉBUT du cron :
+  // toujours retirés (seul `metadataAjout` les repose), pour que le bypass à
+  // usage unique `publierSansVerification` ne revienne jamais.
   const base: Record<string, unknown> = { ...(metadata || {}) };
-  for (const cle of resultat.metadataRetrait ?? []) delete base[cle];
+  for (const cle of ['publierSansVerification', 'confirmationRequise', 'confirmationPerdue', ...(resultat.metadataRetrait ?? [])]) {
+    delete base[cle];
+  }
   Object.assign(base, resultat.metadataAjout ?? {});
   metadata = base;
   // Le détail par réseau et la cause technique rendue par Zernio : le
