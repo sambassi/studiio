@@ -620,7 +620,7 @@ export async function GET(req: NextRequest) {
         console.warn(`[CRON] Post ${post.id} : montage perime (modifie depuis le rendu) — publication bloquee`);
         const { error: echecErr } = await supabase
           .from('scheduled_posts')
-          .update({ status: 'failed', metadata: { ...(post.metadata || {}), error: message } })
+          .update({ status: 'failed', metadata: { ...sansBypass(post.metadata), error: message } })
           .eq('id', post.id);
         if (echecErr) {
           // Le post reste a `publishing` : le reset des bloques le rendra a
@@ -650,7 +650,7 @@ export async function GET(req: NextRequest) {
           const echouer = async (motif: string, details: string) => {
             await supabase
               .from('scheduled_posts')
-              .update({ status: 'failed', metadata: { ...(post.metadata || {}), error: motif } })
+              .update({ status: 'failed', metadata: { ...sansBypass(post.metadata), error: motif } })
               .eq('id', post.id);
             results.push({ postId: post.id, title: post.title, platforms: post.platforms, success: false, details });
             // BUG 5 : l'email ne depend d'aucun reseau — il part meme si
@@ -1329,6 +1329,16 @@ async function muxAudioIntoVideo(
 // zernioForPostId) est retiree : le post finit `failed` avec un motif
 // lisible, et c'est la reprogrammation EXPLICITE de l'utilisateur qui
 // republiera. La valeur est gardee sous `zernioPostIdAncien` pour diagnostic.
+/**
+ * Copie de `metadata` sans le bypass à usage unique `publierSansVerification`.
+ * Un échec AVANT tout envoi le consomme aussi : une nouvelle tentative
+ * redemande la confirmation de l'utilisateur.
+ */
+function sansBypass(metadata: any): Record<string, unknown> {
+  const { publierSansVerification: _consomme, ...reste } = (metadata || {}) as Record<string, unknown>;
+  return reste;
+}
+
 function metaEchecZernio(
   metadata: any,
   resultat: {

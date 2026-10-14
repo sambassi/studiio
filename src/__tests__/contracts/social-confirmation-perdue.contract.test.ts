@@ -353,6 +353,27 @@ describe('Revue — clé du repli sans couverture, statut rendu par createPost, 
     expect(ligne('p1').metadata.confirmationRequise).toBeUndefined();
     expect(ligne('p1').metadata.confirmationPerdue).toBe(true);
   });
+
+  it('échec AVANT envoi (aucun compte connecté) : le bypass publierSansVerification est consommé, jamais conservé', async () => {
+    etat.comptes = [];
+    etat.base.scheduled_posts = [post('p1', { metadata: {
+      renderedVideoUrl: 'x', zernioTentative: tentative(), confirmationRequise: true, publierSansVerification: true,
+    } })];
+    await lancerCron(false);
+    expect(ligne('p1').status).toBe('failed');
+    expect(zernio.createPost).not.toHaveBeenCalled();
+    expect(ligne('p1').metadata.publierSansVerification).toBeUndefined();
+  });
+
+  it('échec AVANT envoi (montage périmé) : le bypass publierSansVerification est consommé, jamais conservé', async () => {
+    etat.base.scheduled_posts = [post('p1', { metadata: {
+      renderedVideoUrl: 'x', montagePerime: true, zernioTentative: tentative(), confirmationRequise: true, publierSansVerification: true,
+    } })];
+    await lancerCron(false);
+    expect(ligne('p1').status).toBe('failed');
+    expect(zernio.createPost).not.toHaveBeenCalled();
+    expect(ligne('p1').metadata.publierSansVerification).toBeUndefined();
+  });
 });
 
 describe('Canal e-mail d un post mixte — fusion de la seule clé canalEmail', () => {
