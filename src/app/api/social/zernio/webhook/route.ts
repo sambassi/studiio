@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { sansPreuveZernio, resultatsParReseau, motifPartiel } from '@/lib/social/publishViaZernio';
+import { sansPreuveZernio, resultatsParReseau, motifPartiel, etatPreuveZernio } from '@/lib/social/publishViaZernio';
 
 /**
  * Webhook Zernio — un seul point d'entrée, routage interne.
@@ -143,15 +143,19 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
     // ⚠️ ÉVÉNEMENT PÉRIMÉ OU REJOUÉ : il doit viser le post Zernio COURANT.
     // Après « Réessayer », un ancien `post.failed` redélivré effacerait la
     // preuve du nouvel envoi et ouvrirait une republication. Sans identifiant
-    // dans l'événement (ancienne forme) ou sans preuve en base : comme avant.
+    // dans l'événement (ancienne forme), sans preuve en base, ou preuve d'un
+    // autre post : comme avant.
     const idZernio = typeof postZernio.id === 'string' ? postZernio.id
       : typeof postZernio._id === 'string' ? postZernio._id : null;
     if (idZernio) {
       const { data: lignes, error: lectureErr } = await supabaseAdmin
         .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
-      const courant = !lectureErr && lignes && lignes.length > 0
-        ? ((lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {}).zernioPostId
-        : undefined;
+      const meta = !lectureErr && lignes && lignes.length > 0
+        ? (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {}
+        : {};
+      // Seule une preuve qui appartient À CE POST compte : une copie
+      // (« Dupliquer ») porte la preuve de l'original, étrangère ici.
+      const courant = etatPreuveZernio(meta, postId) === 'valide' ? meta.zernioPostId : undefined;
       if (typeof courant === 'string' && courant !== idZernio) {
         console.warn(`[Zernio/Webhook] post ${postId} : ${type} vise ${idZernio}, envoi courant ${courant} — evenement perime ignore.`);
         return;

@@ -172,6 +172,14 @@ describe('Événement périmé ou rejoué — il ne vise pas le post Zernio cour
     expect(ligne('p1').metadata).not.toHaveProperty('zernioPartiel');
   });
 
+  it('copie (« Dupliquer ») portant la preuve de l ORIGINAL : son propre post.published est appliqué', async () => {
+    etat.base.scheduled_posts = [post('p1', { status: 'publishing', metadata: {
+      renderedVideoUrl: 'x', zernioPostId: 'z-original', zernioForPostId: 'p-original',
+    } })];
+    await webhook({ ...evenementPost('post.published', []), post: { ...evenementPost('post.published', []).post, id: 'z-copie' } });
+    expect(ligne('p1').status).toBe('published');
+  });
+
   it('événement sans identifiant de post Zernio (ancienne forme) → appliqué comme avant', async () => {
     etat.base.scheduled_posts = [post('p1')];
     await lancerCron(false);

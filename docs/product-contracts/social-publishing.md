@@ -131,9 +131,10 @@ ROUVRIR_SEULEMENT_SI=changement de fournisseur ou du modèle preuve / tentative
 ```
 ID=C-SOCIAL-WEBHOOK-ENVELOPPE
 RÈGLE=Événement PÉRIMÉ OU REJOUÉ ignoré : si l'événement porte `post.id` et que le post
-a une preuve d'envoi `metadata.zernioPostId` différente, rien n'est écrit (un ancien
+a une preuve d'envoi VALIDE (`zernioForPostId` = ce post) dont `zernioPostId` diffère, rien n'est écrit (un ancien
 `post.failed` redélivré n'efface jamais la preuve d'un nouvel envoi). Sans `post.id`
-(ancienne forme) ou sans preuve en base : comportement inchangé.
+(ancienne forme), sans preuve, ou preuve d'un autre post (copie « Dupliquer ») :
+comportement inchangé.
 RÈGLE=Le webhook accepte l'enveloppe DOCUMENTÉE (OpenAPI Zernio) : événements post
 `{ id, event, post: { id, status, platforms[], metadata }, timestamp }` — le post
 Studiio est retrouvé par `post.metadata.studiioPostId` (écho de la metadata de
