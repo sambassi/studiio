@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { droitDePublier, comptesConnectes, resoudreCibles, mediaPubliable } from '@/lib/social/publishing';
-import { createPost, uploadMedia, ZernioError } from '@/lib/social/zernio';
+import { randomUUID } from 'crypto';
+import { createPost, trouverPostStudiio, uploadMedia, ZernioError, type ZernioPostResult } from '@/lib/social/zernio';
 import { signerSiNotreStockage } from '@/lib/storage/jeton-relais';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { traduireErreurZernio, type TraductionErreur } from '@/lib/social/erreursZernio';
@@ -34,6 +35,8 @@ export type ResultatPublication =
       couvertures?: Array<{ reseau: string; applique: PlanCouverture['applique']; repli: string | null }>;
       /** Phrases à montrer dans le Calendrier (réseau écarté, repli de couverture). */
       avertissements?: string[];
+      /** Statut du post rendu par Zernio (`published`…) — l'appelant passe alors à `published`. */
+      statutZernio?: string;
     }
   /**
    * `preuveAncienne` : le post porte un `zernioPostId` sans `zernioForPostId`
@@ -44,9 +47,16 @@ export type ResultatPublication =
   | {
       ok: false; motif: string; reessayable: boolean; preuveAncienne?: boolean;
       /** Une ligne par réseau visé — pour `metadata.cron_publish_results`. */
-      details?: TraductionErreur['details'];
+      details?: TraductionErreur['details'] | ResultatReseau[];
       /** Code et message rendus par Zernio — pour `metadata.zernioErreur`. */
       technique?: TraductionErreur['technique'];
+      /**
+       * Clés à fusionner dans / retirer de `metadata` en marquant l'échec.
+       * L'appelant écrit `failed` depuis SA copie de `metadata`, antérieure à
+       * l'envoi : sans ceci, il effacerait le marqueur posé avant `createPost`.
+       */
+      metadataAjout?: Record<string, unknown>;
+      metadataRetrait?: string[];
     };
 
 /**
@@ -78,10 +88,88 @@ export function etatPreuveZernio(
   return pour === postId ? 'valide' : 'etrangere';
 }
 
-/** Les metadonnees sans preuve Zernio — pour autoriser une reprogrammation. */
+/**
+ * Les metadonnees sans preuve Zernio — pour autoriser une reprogrammation.
+ * Le marqueur de tentative et ses drapeaux partent aussi : on n'appelle
+ * ceci que quand Zernio a dit l'échec (`post.failed`) ou que la preuve est
+ * écartée explicitement.
+ */
 export function sansPreuveZernio(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
-  const { zernioPostId: _id, zernioForPostId: _pour, ...reste } = metadata ?? {};
+  const {
+    zernioPostId: _id, zernioForPostId: _pour,
+    zernioTentative: _t, confirmationPerdue: _cp, confirmationRequise: _cr,
+    ...reste
+  } = metadata ?? {};
   return reste;
+}
+
+/**
+ * MARQUEUR DE TENTATIVE — posé dans `metadata.zernioTentative` AVANT
+ * `createPost`, et lié au post comme la preuve (`pour`).
+ *
+ * Il distingue les deux échecs que rien ne séparait :
+ * - FAILED_BEFORE_PUBLISH : pas de marqueur, ou refus net de Zernio (4xx) →
+ *   republier est sans risque ;
+ * - PUBLISHED_BUT_CONFIRMATION_LOST : marqueur sans preuve (délai dépassé,
+ *   coupure, preuve non écrite) → Zernio a PEUT-ÊTRE créé le post. Aucun
+ *   nouvel envoi sans avoir d'abord demandé à Zernio (`trouverPostStudiio`) ;
+ *   le renvoi réutilise `cle` comme `Idempotency-Key`, que Zernio honore 24 h.
+ */
+export interface TentativeZernio {
+  cle: string; pour: string; le: string;
+  /** Clé du renvoi SANS couverture (`${cle}:sans-couverture`), posée avant ce renvoi. */
+  cleSansCouverture?: string;
+}
+
+/** Au-delà, la clé d'idempotence a pu expirer chez Zernio (24 h) : marge d'une heure. */
+export const DUREE_CLE_IDEMPOTENCE_MS = 23 * 60 * 60 * 1000;
+
+export const MOTIF_CONFIRMATION_PERDUE =
+  'Confirmation perdue : la publication est peut-être déjà partie. Vérifiez vos réseaux. '
+  + '« Réessayer » vérifiera d’abord auprès du service de publication, sans jamais publier deux fois.';
+export const MOTIF_VERIFICATION_IMPOSSIBLE =
+  'Impossible de vérifier si ce post est déjà publié. Vérifiez vos réseaux : s’il n’y est pas, '
+  + 'cliquez sur « Réessayer » et confirmez la republication.';
+export const MOTIF_CONFIRMATION_REQUISE =
+  'Ce post a peut-être déjà été publié il y a plus de 24 h, sans confirmation. Vérifiez vos réseaux : '
+  + 's’il n’y est pas, cliquez sur « Réessayer » et confirmez la republication.';
+
+/** Le marqueur de tentative de CE post (celui d'une copie « Dupliquer » est ignoré). */
+export function tentativeZernio(
+  metadata: Record<string, unknown> | null | undefined,
+  postId: string,
+): TentativeZernio | null {
+  const t = metadata?.zernioTentative as Partial<TentativeZernio> | undefined;
+  if (!t || typeof t !== 'object') return null;
+  if (typeof t.cle !== 'string' || !t.cle || t.pour !== postId || typeof t.le !== 'string') return null;
+  return {
+    cle: t.cle, pour: t.pour, le: t.le,
+    ...(typeof t.cleSansCouverture === 'string' && t.cleSansCouverture ? { cleSansCouverture: t.cleSansCouverture } : {}),
+  };
+}
+
+type ResultatReseau = { platform: string; success: boolean; error?: string };
+
+/** Résultats par réseau d'un post Zernio (webhook ou liste) → format `cron_publish_results`. */
+export function resultatsParReseau(platforms: unknown): ResultatReseau[] {
+  if (!Array.isArray(platforms)) return [];
+  return platforms.map((p: any) => {
+    const statut = String(p?.status ?? '');
+    const erreur = p?.error ?? p?.errorMessage;
+    return {
+      platform: String(p?.platform ?? 'inconnu'),
+      success: statut === 'published',
+      ...(statut !== 'published' && typeof erreur === 'string' ? { error: erreur } : {}),
+    };
+  });
+}
+
+/** Message d'un envoi partiel — dit quoi est parti et comment republier le reste. */
+export function motifPartiel(resultats: ResultatReseau[] | null | undefined): string {
+  const echecs = (resultats ?? []).filter((r) => !r.success).map((r) => r.platform);
+  return `Publié partiellement${echecs.length ? ` — échec sur : ${echecs.join(', ')}` : ''}. `
+    + 'Les réseaux déjà servis ne seront pas republiés. Pour publier sur les autres, '
+    + 'dupliquez ce post et ne gardez que ces réseaux.';
 }
 
 export interface PostAPublier {
@@ -123,6 +211,18 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
     return { ok: false, motif: 'Publication impossible.', reessayable: true };
   }
   const preuve = etatPreuveZernio(meta, post.id);
+  if (preuve === 'valide' && meta?.zernioPartiel === true) {
+    // ⚠️ ENVOI PARTIEL : la preuve reste (republier doublerait les réseaux
+    // déjà servis), mais « Réessayer » ne doit pas finir bloqué à
+    // `publishing` en attendant un webhook qui ne viendra plus : échec
+    // explicite, avec la marche à suivre.
+    const resultats = Array.isArray(meta.zernioResultatsReseaux) ? meta.zernioResultatsReseaux as ResultatReseau[] : [];
+    console.warn(`[Zernio/Publication] post ${post.id} publie partiellement — pas de nouvel envoi.`);
+    return {
+      ok: false, motif: motifPartiel(resultats), reessayable: false,
+      ...(resultats.length ? { details: resultats } : {}),
+    };
+  }
   if (preuve === 'valide') {
     const dejaEnvoye = String(meta!.zernioPostId);
     console.warn(`[Zernio/Publication] post ${post.id} deja remis a Zernio (${dejaEnvoye}) — pas de nouvel envoi.`);
@@ -235,6 +335,47 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
   });
   const couvertureAppliquee = plans.some((p) => p.applique !== 'auto');
 
+  // ── Tentative précédente sans preuve : DEMANDER À ZERNIO avant tout envoi ──
+  let tentative = tentativeZernio(meta, post.id);
+  const sansVerification = meta?.publierSansVerification === true;
+  if (tentative && !sansVerification) {
+    let trouve: ZernioPostResult | null;
+    try {
+      trouve = await trouverPostStudiio(post.id, { depuis: tentative.le, accountId: cibles[0].accountId });
+    } catch (e) {
+      // « Je ne sais pas » ne vaut jamais « absent » : aucun envoi.
+      console.error(`[Zernio/Publication] post ${post.id} : verification de la tentative impossible :`, e);
+      return {
+        ok: false, motif: MOTIF_VERIFICATION_IMPOSSIBLE, reessayable: false,
+        metadataAjout: { zernioTentative: tentative, confirmationPerdue: true, confirmationRequise: true },
+      };
+    }
+    if (trouve) {
+      const statut = String(trouve.status ?? '');
+      if (statut !== 'failed' && statut !== 'cancelled') {
+        console.warn(`[Zernio/Publication] post ${post.id} retrouve chez Zernio (${trouve._id}, ${statut}) — pas de nouvel envoi.`);
+        return issueDuPostZernio(post.id, trouve, { dejaEnvoye: true });
+      }
+      // Zernio l'a en échec : rien n'est parti. Nouvelle clé — l'ancienne
+      // rendrait ce post échoué au lieu d'en créer un.
+      tentative = null;
+    } else if (!(Date.now() - Date.parse(tentative.le) < DUREE_CLE_IDEMPOTENCE_MS)) {
+      // Absent de la liste, mais la clé a pu expirer chez Zernio : plus de
+      // seconde barrière. On demande à l'utilisateur.
+      return {
+        ok: false, motif: MOTIF_CONFIRMATION_REQUISE, reessayable: false,
+        metadataAjout: { zernioTentative: tentative, confirmationRequise: true },
+      };
+    }
+  }
+  // Republication CONFIRMÉE par l'utilisateur : la clé encore valide est
+  // gardée (Zernio rendra l'original s'il existe), sinon une nouvelle.
+  if (tentative && sansVerification && !(Date.now() - Date.parse(tentative.le) < DUREE_CLE_IDEMPOTENCE_MS)) {
+    tentative = null;
+  }
+  let tentativeCourante: TentativeZernio = tentative ?? { cle: randomUUID(), pour: post.id, le: new Date().toISOString() };
+  let envoiTente = false;
+
   try {
     // Le téléversement se fait MAINTENANT : l'URL présignée de Zernio ne vaut
     // qu'une heure, et son fichier temporaire sept jours.
@@ -245,7 +386,23 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       post.userId,
     );
 
-    const envoyer = (avecCouverture: boolean) => createPost({
+    // ⚠️ LE MARQUEUR AVANT L'ENVOI. Sans lui, un délai dépassé ou une preuve
+    // non écrite rendait le post indiscernable d'un post jamais parti.
+    // Pas de marqueur écrit → pas d'envoi (rien n'est parti : réessayable).
+    const marque = await fusionnerMetadata(post.id, { zernioTentative: tentativeCourante },
+      ['publierSansVerification', 'confirmationRequise']);
+    if (!marque) {
+      return { ok: false, motif: 'Publication impossible.', reessayable: true };
+    }
+    envoiTente = true;
+
+    // Renvoi sans couverture = corps DIFFÉRENT : clé dérivée distincte (même
+    // clé + autre corps → Zernio peut répondre 409/422). Déterministe, et notée
+    // dans le marqueur AVANT le renvoi : un « Réessayer » repasse directement
+    // par elle, sans retenter la couverture (qui, acceptée cette fois, créerait
+    // un second post).
+    const cleSansCouverture = `${tentativeCourante.cle}:sans-couverture`;
+    const envoyer = (avecCouverture: boolean, cle: string) => createPost({
       content: post.caption,
       platforms: construireCibles(avecCouverture, mediaUrl),
       mediaUrl,
@@ -256,56 +413,41 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
       // identifiant, `post.published` arriverait sans savoir quoi mettre a
       // jour, et le Calendrier resterait indefiniment « programme ».
       metadata: { studiioPostId: post.id },
-    });
+    }, { idempotencyKey: cle });
 
     // ⚠️ UNE MINIATURE NE FAIT JAMAIS ÉCHOUER LA PUBLICATION. Un refus de
     // validation (400/422) alors qu'une couverture était posée : le post
     // n'a PAS été créé chez Zernio, on renvoie donc UNE fois sans couverture
     // — aucune double publication possible. Les refus d'autorisation, de
     // facturation ou de quota (401/402/403/429) ne sont pas concernés.
-    let couverturesEnvoyees = couvertureAppliquee;
+    let couverturesEnvoyees = couvertureAppliquee && !tentativeCourante.cleSansCouverture;
     let zernio;
     try {
-      zernio = await envoyer(true);
+      zernio = await envoyer(couverturesEnvoyees, tentativeCourante.cleSansCouverture ?? tentativeCourante.cle);
     } catch (e) {
-      if (!(couvertureAppliquee && e instanceof ZernioError && (e.status === 400 || e.status === 422))) throw e;
+      if (!(couverturesEnvoyees && e instanceof ZernioError && (e.status === 400 || e.status === 422))) throw e;
       console.warn(`[Zernio/Publication] post ${post.id} : couverture refusee (${e.status}) — renvoi sans couverture`);
       avertissements.push(`Couverture refusée par le réseau${e.detail ? ` (${e.detail.slice(0, 160)})` : ''} : couverture choisie automatiquement.`);
       couverturesEnvoyees = false;
-      zernio = await envoyer(false);
+      tentativeCourante = { ...tentativeCourante, cleSansCouverture };
+      // Rien n'a été créé (refus 400/422) : sans marqueur à jour, on n'envoie pas.
+      if (!(await fusionnerMetadata(post.id, { zernioTentative: tentativeCourante }))) {
+        return { ok: false, motif: 'Publication impossible.', reessayable: true };
+      }
+      zernio = await envoyer(false, cleSansCouverture);
     }
     const couvertures = plans.map((p) => (couverturesEnvoyees
       ? { reseau: p.reseau, applique: p.applique, repli: p.repli }
       : { reseau: p.reseau, applique: 'auto' as const, repli: p.applique === 'auto' ? p.repli : 'couverture refusée par le réseau' }));
 
-    // ⚠️ L'IDENTIFIANT ZERNIO VA DANS `metadata`, PAS DANS UNE COLONNE. En
-    // ajouter une aurait demande une migration de plus pour une valeur de
-    // diagnostic ; `scheduled_posts.metadata` est deja un JSON libre.
-    //
-    // Relecture puis fusion : un `update` direct ECRASERAIT tout le reste des
-    // metadonnees — sequences, design, URLs du montage.
-    try {
-      const { data } = await supabaseAdmin
-        .from('scheduled_posts').select('metadata').eq('id', post.id).limit(1);
-      const meta = ((data?.[0] as { metadata?: Record<string, unknown> } | undefined)?.metadata) ?? {};
-      await supabaseAdmin
-        .from('scheduled_posts')
-        // `zernioForPostId` lie la preuve a CE post : une copie qui la
-        // recopierait sera reconnue comme etrangere, donc publiee.
-        .update({ metadata: {
-          ...meta, zernioPostId: zernio._id, zernioForPostId: post.id,
-          // Ce qui a vraiment été appliqué : le Calendrier l'affiche.
-          couvertures,
-          avertissementsPublication: avertissements,
-        } })
-        .eq('id', post.id);
-    } catch (e) {
-      // Le post EST parti : ne pas le compter en echec pour une note de
-      // diagnostic manquee.
-      console.error('[Zernio/Publication] identifiant non memorise :', e);
-    }
-
-    return { ok: true, zernioPostId: zernio._id, comptes: ciblesRetenues.length, couvertures, avertissements };
+    // Le statut RENDU compte : un rejeu de clé rend le post ORIGINAL, même
+    // échoué ou partiel ; une réponse 207 aussi.
+    return issueDuPostZernio(post.id, zernio, {
+      comptes: ciblesRetenues.length,
+      // Ce qui a vraiment été appliqué : le Calendrier l'affiche.
+      extraPreuve: { couvertures, avertissementsPublication: avertissements },
+      couvertures, avertissements,
+    });
   } catch (err) {
     // ⚠️ MÉDIA REFUSÉ OU ILLISIBLE : motif FIXE (« Média de publication
     // refusé. »), jamais l'URL, l'adresse, le port ni le statut de la cible —
@@ -313,6 +455,19 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
     if (err instanceof ErreurMediaPublication) {
       console.warn(`[Zernio/Publication] post ${post.id} : media ${err.code}`);
       return { ok: false, motif: err.message, reessayable: err.reessayable };
+    }
+    // ⚠️ PUBLISHED_BUT_CONFIRMATION_LOST. Après l'envoi, un délai dépassé,
+    // une coupure, un 5xx, un 408 ou un 409 (traitement en cours, doublon)
+    // ne prouvent PAS que rien n'a été créé : le marqueur reste, « Réessayer »
+    // interrogera Zernio d'abord.
+    const ambigu = envoiTente && (!(err instanceof ZernioError)
+      || err.status >= 500 || err.status === 408 || err.status === 409);
+    if (ambigu) {
+      console.error(`[Zernio/Publication] post ${post.id} : confirmation perdue apres envoi :`, err);
+      return {
+        ok: false, motif: MOTIF_CONFIRMATION_PERDUE, reessayable: false,
+        metadataAjout: { zernioTentative: tentativeCourante, confirmationPerdue: true },
+      };
     }
     if (err instanceof ZernioError) {
       console.error(`[Zernio/Publication] post ${post.id} :`, err.message);
@@ -335,11 +490,70 @@ export async function publierViaZernio(post: PostAPublier): Promise<ResultatPubl
         reessayable: err.retryable,
         details: traduction.details,
         technique: traduction.technique,
+        // Refus net APRÈS l'envoi (4xx) : rien n'a été créé, le marqueur part.
+        // Pas redondant : sur un « Réessayer », la copie du cron porte le
+        // marqueur de la tentative précédente.
+        ...(envoiTente ? { metadataRetrait: ['zernioTentative'] } : {}),
       };
     }
     console.error(`[Zernio/Publication] post ${post.id} :`, err);
     return { ok: false, motif: 'Publication impossible.', reessayable: true };
   }
+}
+
+const DRAPEAUX_CONFIRMATION = ['confirmationPerdue', 'confirmationRequise', 'publierSansVerification'];
+
+/**
+ * Traduit le post que Zernio a rendu (créé, rejoué par clé, ou retrouvé) :
+ * - `failed` / `cancelled` : rien n'est publié → échec, preuve ET marqueur
+ *   retirés (la clé rejouerait ce post échoué) ;
+ * - `partial` : preuve écrite + état partiel explicite → échec expliqué ;
+ * - sinon : preuve écrite (`{ error }` vérifié, 1 nouvel essai), succès. Si
+ *   elle échoue encore, le marqueur reste : le reset des « bloqués » met le
+ *   post en « confirmation perdue », jamais en `scheduled`.
+ * `zernioForPostId` lie la preuve à CE post (une copie la verra étrangère).
+ */
+async function issueDuPostZernio(
+  postId: string,
+  zernio: ZernioPostResult,
+  options: {
+    dejaEnvoye?: boolean; comptes?: number; extraPreuve?: Record<string, unknown>;
+    couvertures?: Extract<ResultatPublication, { ok: true }>['couvertures']; avertissements?: string[];
+  },
+): Promise<ResultatPublication> {
+  const statut = String(zernio.status ?? '');
+  const resultats = resultatsParReseau(zernio.platforms);
+  if (statut === 'failed' || statut === 'cancelled') {
+    const echecs = resultats.filter((r) => !r.success).map((r) => `${r.platform}${r.error ? ` (${r.error})` : ''}`);
+    return {
+      ok: false, reessayable: false,
+      motif: `Publication refusée par les réseaux${echecs.length ? ` : ${echecs.join(', ')}` : ''}.`,
+      ...(resultats.length ? { details: resultats } : {}),
+      metadataRetrait: ['zernioTentative', 'zernioPostId', 'zernioForPostId'],
+    };
+  }
+  const preuve = { zernioPostId: zernio._id, zernioForPostId: postId, ...(options.extraPreuve ?? {}) };
+  if (statut === 'partial') {
+    const partiel = { ...preuve, zernioPartiel: true, zernioResultatsReseaux: resultats };
+    // Écrite tout de suite ET reportée par l'appelant : son écriture `failed`
+    // est conditionnelle et peut être sautée (webhook arrivé entre-temps).
+    await fusionnerMetadata(postId, partiel, DRAPEAUX_CONFIRMATION);
+    return {
+      ok: false, motif: motifPartiel(resultats), reessayable: false,
+      ...(resultats.length ? { details: resultats } : {}),
+      metadataAjout: partiel,
+    };
+  }
+  if (!(await fusionnerMetadata(postId, preuve, DRAPEAUX_CONFIRMATION))) {
+    console.error(`[Zernio/Publication] post ${postId} : preuve d'envoi NON ecrite (${zernio._id}).`);
+  }
+  return {
+    ok: true, zernioPostId: zernio._id, comptes: options.comptes ?? 0,
+    ...(options.dejaEnvoye ? { dejaEnvoye: true } : {}),
+    ...(statut ? { statutZernio: statut } : {}),
+    ...(options.couvertures ? { couvertures: options.couvertures } : {}),
+    ...(options.avertissements ? { avertissements: options.avertissements } : {}),
+  };
 }
 
 /** Compte Zernio refusé par Zernio : `disconnected`, pour que la page Réseaux le montre. */
@@ -354,6 +568,33 @@ async function marquerDeconnecte(userId: string, accountId: string): Promise<voi
   } catch (e) {
     console.error('[Zernio/Publication] compte non marque deconnecte :', e);
   }
+}
+
+/**
+ * Relit `metadata`, retire `retrait`, fusionne `ajout`, et ÉCRIT — en
+ * vérifiant le `{ error }` de chaque étape. Deux essais. `false` si rien n'a
+ * pu être écrit. Une lecture en échec n'écrit JAMAIS (ce serait tout effacer).
+ */
+async function fusionnerMetadata(
+  postId: string,
+  ajout: Record<string, unknown>,
+  retrait: string[] = [],
+): Promise<boolean> {
+  for (let essai = 1; essai <= 2; essai++) {
+    try {
+      const actuelle = { ...((await metadataEnBase(postId)) ?? {}) };
+      for (const cle of retrait) delete actuelle[cle];
+      const { error } = await supabaseAdmin
+        .from('scheduled_posts')
+        .update({ metadata: { ...actuelle, ...ajout } })
+        .eq('id', postId);
+      if (!error) return true;
+      console.error(`[Zernio/Publication] post ${postId} : ecriture metadata en echec (essai ${essai}) :`, error.message);
+    } catch (e) {
+      console.error(`[Zernio/Publication] post ${postId} : ecriture metadata en echec (essai ${essai}) :`, e);
+    }
+  }
+  return false;
 }
 
 /** `metadata` du post, relue en base. Leve si la lecture echoue. */

@@ -140,6 +140,10 @@ interface PostMetadata {
   error?: string | null;
   /** Detail par plateforme du cron de publication (`{ platform, error }`). */
   cron_publish_results?: Array<{ platform?: string; success?: boolean; error?: string }> | null;
+  /** Vérification impossible : « Réessayer » demande une confirmation explicite. */
+  confirmationRequise?: boolean;
+  /** Posé par « Réessayer » confirmé : le serveur republie sans vérifier (une fois). */
+  publierSansVerification?: boolean;
   sequences?: {
     intro?: number;
     cards?: number;
@@ -1140,7 +1144,14 @@ export default function CalendarPage() {
 
   // Retry a failed post — reset status to 'scheduled' so the cron picks it up again
   const handleRetryPost = async (post: Post) => {
-    if (!confirm('Réessayer la publication de ce post ?')) return;
+    // Envoi précédent non confirmé ET non vérifiable (le serveur a posé
+    // `confirmationRequise`) : republier peut doubler la publication. Seule
+    // une confirmation EXPLICITE lève la vérification ; sinon le serveur
+    // interroge le service de publication avant tout nouvel envoi.
+    const confirmationRequise = post.metadata?.confirmationRequise === true;
+    if (confirmationRequise) {
+      if (!confirm('Ce post a peut-être déjà été publié : nous n’avons pas pu le vérifier.\n\nVérifiez vos réseaux. Republier quand même ? (risque de doublon)')) return;
+    } else if (!confirm('Réessayer la publication de ce post ?')) return;
     // Use the full publish flow (with composition) instead of just resetting status
     // This ensures the montage is composed and uploaded before scheduling
     const cleanPost = {
@@ -1151,6 +1162,8 @@ export default function CalendarPage() {
       // écarté et les autres réseaux partent).
       metadata: { ...sansConsentementTiktok(post.metadata), error: null, cron_publish_results: null },
     };
+    // Republication confirmée : le serveur saute la vérification (une seule fois).
+    if (confirmationRequise) cleanPost.metadata = { ...cleanPost.metadata, publierSansVerification: true };
     await handlePublishPost(cleanPost);
   };
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { sansPreuveZernio } from '@/lib/social/publishViaZernio';
+import { sansPreuveZernio, resultatsParReseau, motifPartiel, etatPreuveZernio } from '@/lib/social/publishViaZernio';
 
 /**
  * Webhook Zernio — un seul point d'entrée, routage interne.
@@ -81,13 +81,24 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
+function estObjet(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 async function traiter(evenement: Record<string, unknown>): Promise<void> {
   const type = String(evenement.event ?? evenement.type ?? '');
-  const data = (evenement.data ?? evenement) as Record<string, unknown>;
+  // ⚠️ ENVELOPPE DOCUMENTÉE PAR ZERNIO (OpenAPI `WebhookPayloadPost` /
+  // `WebhookPayloadAccountConnected`) : `post: {…, metadata}` et
+  // `account: {accountId, profileId, platform, username}`, SANS `data`.
+  // L'ancienne forme `data` reste lue en repli : elle n'a jamais été
+  // documentée, nos premières fixtures l'avaient inventée d'après le code.
+  const data = (estObjet(evenement.data) ? evenement.data : evenement) as Record<string, unknown>;
+  const postZernio = (estObjet(evenement.post) ? evenement.post : {}) as Record<string, unknown>;
 
   if (type === 'account.connected' || type === 'account.disconnected') {
-    const accountId = String(data.accountId ?? data._id ?? '');
-    const profileId = String(data.profileId ?? '');
+    const compte = (estObjet(evenement.account) ? evenement.account : data) as Record<string, unknown>;
+    const accountId = String(compte.accountId ?? compte._id ?? '');
+    const profileId = String(compte.profileId ?? '');
     if (!accountId || !profileId) return;
 
     if (type === 'account.disconnected') {
@@ -110,8 +121,8 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
         user_id: userId,
         profile_id: profileId,
         account_id: accountId,
-        platform: String(data.platform ?? 'inconnu'),
-        username: typeof data.username === 'string' ? data.username : null,
+        platform: String(compte.platform ?? 'inconnu'),
+        username: typeof compte.username === 'string' ? compte.username : null,
         status: 'connected',
         updated_at: new Date().toISOString(),
       },
@@ -124,10 +135,32 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
     // ⚠️ ON RETROUVE LE POST PAR L'IDENTIFIANT QU'ON A ECRIT A LA CREATION,
     // range dans `metadata.studiioPostId`. Se fier a un rapprochement par
     // date ou par contenu confondrait deux montages du meme cycle.
-    const meta = (data.metadata ?? {}) as Record<string, unknown>;
+    const meta = (postZernio.metadata ?? data.metadata ?? {}) as Record<string, unknown>;
     const postId = typeof meta.studiioPostId === 'string' ? meta.studiioPostId : null;
     if (!postId) return;
     const statut = type === 'post.published' ? 'published' : 'failed';
+
+    // ⚠️ ÉVÉNEMENT PÉRIMÉ OU REJOUÉ : il doit viser le post Zernio COURANT.
+    // Après « Réessayer », un ancien `post.failed` redélivré effacerait la
+    // preuve du nouvel envoi et ouvrirait une republication. Sans identifiant
+    // dans l'événement (ancienne forme), sans preuve en base, ou preuve d'un
+    // autre post : comme avant.
+    const idZernio = typeof postZernio.id === 'string' ? postZernio.id
+      : typeof postZernio._id === 'string' ? postZernio._id : null;
+    if (idZernio) {
+      const { data: lignes, error: lectureErr } = await supabaseAdmin
+        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
+      const meta = !lectureErr && lignes && lignes.length > 0
+        ? (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {}
+        : {};
+      // Seule une preuve qui appartient À CE POST compte : une copie
+      // (« Dupliquer ») porte la preuve de l'original, étrangère ici.
+      const courant = etatPreuveZernio(meta, postId) === 'valide' ? meta.zernioPostId : undefined;
+      if (typeof courant === 'string' && courant !== idZernio) {
+        console.warn(`[Zernio/Webhook] post ${postId} : ${type} vise ${idZernio}, envoi courant ${courant} — evenement perime ignore.`);
+        return;
+      }
+    }
 
     // ⚠️ `post.failed` EFFACE LA PREUVE D'ENVOI. Sinon, un post reprogramme
     // apres un echec serait pris pour « deja envoye » par le cron et
@@ -149,6 +182,35 @@ async function traiter(evenement: Record<string, unknown>): Promise<void> {
       // Lecture impossible : on ne reecrit PAS `metadata` a l'aveugle (ce
       // serait tout effacer). Le statut passe quand meme a `failed`.
       console.error(`[Zernio/Webhook] post ${postId} : metadata illisible, preuve d'envoi conservee.`);
+    }
+
+    // ⚠️ `post.partial` : état PARTIEL explicite, résultats par réseau gardés
+    // (`zernioResultatsReseaux` survit à « Réessayer », qui vide
+    // `cron_publish_results`). Le cron le lit : un « Réessayer » finit en
+    // échec expliqué, jamais bloqué à `publishing`. La preuve reste.
+    if (type === 'post.partial') {
+      const { data: lignes, error: lectureErr } = await supabaseAdmin
+        .from('scheduled_posts').select('metadata').eq('id', postId).limit(1);
+      if (!lectureErr && lignes && lignes.length > 0) {
+        const actuelle = (lignes[0] as { metadata?: Record<string, unknown> | null }).metadata ?? {};
+        // Docs Zernio (webhooks/posts) : résultats sous `post.platforms[]`.
+        const resultats = resultatsParReseau(postZernio.platforms ?? data.platforms);
+        await supabaseAdmin
+          .from('scheduled_posts')
+          .update({
+            status: statut,
+            metadata: {
+              ...actuelle,
+              zernioPartiel: true,
+              zernioResultatsReseaux: resultats,
+              ...(resultats.length ? { cron_publish_results: resultats } : {}),
+              error: motifPartiel(resultats),
+            },
+          })
+          .eq('id', postId);
+        return;
+      }
+      console.error(`[Zernio/Webhook] post ${postId} : metadata illisible, etat partiel non memorise.`);
     }
 
     await supabaseAdmin

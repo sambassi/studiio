@@ -89,7 +89,11 @@ export function zernioConfigured(): boolean {
 
 async function appel<T>(
   chemin: string,
-  options: { method?: string; body?: unknown; query?: Record<string, string | undefined> } = {},
+  options: {
+    method?: string; body?: unknown; query?: Record<string, string | undefined>;
+    /** En-têtes supplémentaires (ex. `Idempotency-Key`). */
+    headers?: Record<string, string>;
+  } = {},
 ): Promise<T> {
   const url = new URL(`${BASE}${chemin}`);
   for (const [k, v] of Object.entries(options.query ?? {})) {
@@ -103,6 +107,7 @@ async function appel<T>(
       headers: {
         Authorization: `Bearer ${apiKey()}`,
         ...(options.body ? { 'Content-Type': 'application/json' } : null),
+        ...(options.headers ?? null),
       },
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: controleur.signal,
@@ -311,6 +316,9 @@ export interface ZernioPostInput {
 export interface ZernioPostResult {
   _id: string;
   status?: string;
+  /** Résultat par réseau (`status`, `errorMessage`…) — rendu par la liste des posts. */
+  platforms?: Array<Record<string, unknown>>;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -320,9 +328,20 @@ export interface ZernioPostResult {
  * comportement de sa part, pas une erreur de la nôtre : on ne transmet donc
  * que ce que l'appelant a réellement demandé.
  */
-export async function createPost(input: ZernioPostInput): Promise<ZernioPostResult> {
+export async function createPost(
+  input: ZernioPostInput,
+  options: {
+    /**
+     * `Idempotency-Key` (docs.zernio.com/guides/idempotency) : même clé dans
+     * les 24 h → Zernio rend le post ORIGINAL (200) au lieu d'en créer un
+     * second. Une première requête échouée sans création libère la clé.
+     */
+    idempotencyKey?: string;
+  } = {},
+): Promise<ZernioPostResult> {
   const r = await appel<{ post?: ZernioPostResult } & Partial<ZernioPostResult>>('/posts', {
     method: 'POST',
+    ...(options.idempotencyKey ? { headers: { 'Idempotency-Key': options.idempotencyKey } } : null),
     body: {
       content: input.content,
       platforms: input.platforms,
@@ -336,4 +355,50 @@ export async function createPost(input: ZernioPostInput): Promise<ZernioPostResu
   const post = r.post ?? (r as ZernioPostResult);
   if (!post?._id) throw new ZernioError('Zernio : post créé sans identifiant.', 502);
   return post;
+}
+
+/** Taille de page de la recherche — prudente : au-delà du maximum (non publié), Zernio répond 400. */
+const PAGE_RECHERCHE = 50;
+/** Au-delà, la recherche est déclarée non concluante (jamais « absent » par défaut). */
+const PAGES_MAX_RECHERCHE = 5;
+
+/**
+ * Retrouve chez Zernio le post créé pour un post Studiio — LECTURE SEULE.
+ *
+ * `GET /v1/posts` (docs.zernio.com/posts/list-posts) ne filtre ni par
+ * `metadata` ni par clé d'idempotence : on liste les posts du compte
+ * (`accountId`) depuis la veille de la tentative (`fromDate`), et on compare
+ * `metadata.studiioPostId` — la valeur que `createPost` y a rangée.
+ *
+ * - rend le post trouvé, ou `null` s'il est ABSENT de toutes les pages ;
+ * - LÈVE (`ZernioError`) si la liste est illisible ou trop longue pour
+ *   conclure : un « je ne sais pas » ne doit jamais valoir « absent ».
+ */
+export async function trouverPostStudiio(
+  studiioPostId: string,
+  options: { depuis: string; accountId?: string },
+): Promise<ZernioPostResult | null> {
+  const veille = new Date(new Date(options.depuis).getTime() - 24 * 60 * 60 * 1000);
+  if (Number.isNaN(veille.getTime())) throw new ZernioError('Recherche Zernio : date de tentative invalide.', 400);
+  const fromDate = veille.toISOString().slice(0, 10);
+  for (let page = 1; page <= PAGES_MAX_RECHERCHE; page++) {
+    const r = await appel<{ posts?: ZernioPostResult[]; pagination?: { pages?: number } }>('/posts', {
+      query: {
+        source: 'zernio',
+        fromDate,
+        limit: String(PAGE_RECHERCHE),
+        // `offset` et non `page` : seul `offset` figure dans les paramètres
+        // documentés, et un paramètre inconnu est refusé (400).
+        offset: String((page - 1) * PAGE_RECHERCHE),
+        ...(options.accountId ? { accountId: options.accountId } : null),
+      },
+    });
+    if (!Array.isArray(r.posts)) throw new ZernioError('Recherche Zernio : réponse sans liste de posts.', 502);
+    const trouve = r.posts.find((p) => p?.metadata?.studiioPostId === studiioPostId);
+    if (trouve?._id) return trouve;
+    const pages = Number(r.pagination?.pages);
+    const derniere = Number.isFinite(pages) ? page >= pages : r.posts.length < PAGE_RECHERCHE;
+    if (derniere) return null;
+  }
+  throw new ZernioError('Recherche Zernio non concluante (trop de posts sur la période).', 503);
 }

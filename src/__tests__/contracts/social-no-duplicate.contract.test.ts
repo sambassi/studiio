@@ -7,10 +7,9 @@
  * une preuve d'envoi (metadata.zernioPostId + zernioForPostId) empêche tout
  * second createPost, y compris après reprogrammation.
  *
- * Les `it.fails` documentent des BUGS RÉELS démontrés ici, non corrigés (la
- * publication fonctionne en production et n'est pas réécrite dans ce lot).
- * Quand un correctif arrive, le test devient rouge (« expected to fail ») :
- * retirer alors `.fails`, il devient un contrat vert.
+ * Les quatre BUGS RÉELS démontrés ici (anciens `it.fails`) sont CORRIGÉS
+ * (PR Social Safety) : ce sont désormais des contrats verts. Cas limites du
+ * correctif : social-confirmation-perdue.contract.test.ts.
  * Ne pas modifier pour faire passer la CI (docs/FEATURE_LOCKS.md).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -110,15 +109,16 @@ describe('C-NO-DUPLICATE-PUBLISH (H) — concurrence', () => {
   });
 });
 
-describe('C-NO-DUPLICATE-PUBLISH — BUGS RÉELS documentés (it.fails, non corrigés)', () => {
+describe('C-NO-DUPLICATE-PUBLISH — bugs réels CORRIGÉS (anciens it.fails)', () => {
   /*
-   * BUG RÉEL (1) : publishViaZernio.ts:287-306 — l'écriture de la preuve après
-   * createPost ignore le `{ error }` renvoyé par l'update (seule une exception
-   * est rattrapée). Si elle échoue, le post reste `publishing` SANS preuve ;
-   * après 10 min le reset des « bloqués » le remet à `scheduled` et le passage
-   * suivant RECRÉE le post chez Zernio → double publication automatique.
+   * CORRIGÉ (1) — était : l'écriture de la preuve après createPost ignorait le
+   * `{ error }` de l'update ; le post restait `publishing` SANS preuve, le
+   * reset des « bloqués » le remettait à `scheduled` → republication auto.
+   * Désormais : marqueur `zernioTentative` écrit AVANT createPost, `{ error }`
+   * vérifié et écriture rejouée une fois, et le reset met un marqueur sans
+   * preuve en `failed` + `confirmationPerdue`, jamais en `scheduled`.
    */
-  it.fails('BUG RÉEL (1) : preuve non écrite (update {error}) → le reset republie automatiquement', async () => {
+  it('CORRIGÉ (1) : preuve non écrite (update {error}) → le reset ne republie plus', async () => {
     etat.base.scheduled_posts = [post('p1')];
     etat.panneEcriture = (table, maj) => table === 'scheduled_posts' && !!maj.metadata?.zernioPostId;
     await lancerCron(false);
@@ -130,13 +130,14 @@ describe('C-NO-DUPLICATE-PUBLISH — BUGS RÉELS documentés (it.fails, non corr
   });
 
   /*
-   * BUG RÉEL (2) : createPost dépasse son délai (20 s) ou la réponse se perd
-   * → ZernioError 503, `reessayable: true`, post `failed` SANS preuve. Rien
-   * ne distingue FAILED_BEFORE_PUBLISH de PUBLISHED_BUT_CONFIRMATION_LOST :
-   * « Réessayer » rappelle createPost alors que Zernio avait peut-être créé
-   * le post → double publication.
+   * CORRIGÉ (2) — était : délai dépassé sur createPost → `failed` sans preuve,
+   * « Réessayer » rappelait createPost → double publication possible.
+   * Désormais : erreur ambiguë APRÈS envoi = PUBLISHED_BUT_CONFIRMATION_LOST
+   * (marqueur gardé, `confirmationPerdue`) ; « Réessayer » interroge d'abord
+   * Zernio (`trouverPostStudiio`) — ici la recherche échoue (réseau fermé) :
+   * aucun envoi à l'aveugle. Un renvoi réutilise la même Idempotency-Key.
    */
-  it.fails('BUG RÉEL (2) : délai dépassé sur createPost puis « Réessayer » → second createPost', async () => {
+  it('CORRIGÉ (2) : délai dépassé sur createPost puis « Réessayer » → aucun second createPost à l’aveugle', async () => {
     etat.base.scheduled_posts = [post('p1')];
     const { ZernioError } = await vi.importActual<typeof import('@/lib/social/zernio')>('@/lib/social/zernio');
     zernio.createPost.mockRejectedValueOnce(new ZernioError('Zernio /posts injoignable : This operation was aborted', 503));
@@ -148,12 +149,12 @@ describe('C-NO-DUPLICATE-PUBLISH — BUGS RÉELS documentés (it.fails, non corr
   });
 
   /*
-   * BUG RÉEL (3) : route.ts:503-511 — après publierViaZernio, le cron écrit
-   * `status: 'publishing'` SANS condition sur le statut courant. Un webhook
-   * `post.published` arrivé entre createPost et cette écriture est écrasé :
-   * le post reste `publishing` alors qu'il est publié.
+   * CORRIGÉ (3) — était : après publierViaZernio, le cron écrivait
+   * `status: 'publishing'` sans condition, écrasant un `published` posé par un
+   * webhook précoce. Désormais l'écriture est conditionnée à
+   * `.eq('status', 'publishing')`.
    */
-  it.fails('BUG RÉEL (3) : un post.published précoce est écrasé par status publishing', async () => {
+  it('CORRIGÉ (3) : un post.published précoce n’est plus écrasé par status publishing', async () => {
     etat.base.scheduled_posts = [post('p1')];
     zernio.createPost.mockImplementationOnce(async () => {
       // Le webhook arrive avant que le cron ait fini sa propre écriture.
@@ -165,14 +166,13 @@ describe('C-NO-DUPLICATE-PUBLISH — BUGS RÉELS documentés (it.fails, non corr
   });
 
   /*
-   * BUG RÉEL (4) : webhook post.partial → `failed` mais la preuve est GARDÉE
-   * (voulu : ne pas republier les réseaux déjà servis). « Réessayer » du
-   * Calendrier conserve metadata (preuve comprise) → le cron répond
-   * `dejaEnvoye`, remet `publishing`, aucun webhook ne viendra, et le reset
-   * exclut les preuves valides : post bloqué à `publishing` pour toujours,
-   * sans message.
+   * CORRIGÉ (4) — était : post.partial → `failed` preuve gardée, puis
+   * « Réessayer » → `dejaEnvoye` → bloqué à `publishing` pour toujours.
+   * Désormais : `zernioPartiel` + résultats par réseau en metadata ; le cron
+   * rend un échec explicite (réseaux en échec listés, marche à suivre), sans
+   * renvoi ni blocage.
    */
-  it.fails('BUG RÉEL (4) : post.partial puis « Réessayer » → bloqué à publishing sans fin', async () => {
+  it('CORRIGÉ (4) : post.partial puis « Réessayer » → échec explicite, jamais bloqué à publishing', async () => {
     etat.base.scheduled_posts = [post('p1')];
     await lancerCron(false);
     await webhook({ event: 'post.partial', data: { _id: 'zernio-post-1', metadata: { studiioPostId: 'p1' } } });
