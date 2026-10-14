@@ -132,8 +132,9 @@ describe('MaVoixPanel — Suggérer / Écouter / Enregistrer', () => {
     reponseSuggestion = { status: 429 };
     await ouvrirFormulaire('Afroboost');
     fireEvent.click(q('[data-prononciation-suggerer]'));
-    await waitFor(() => expect(q('[data-prononciation-note]')?.textContent).toMatch(/n’a pas trouvé mieux/));
-    expect(champPrononce().value).toBe('Afroboost');
+    await waitFor(() => expect(q('[data-prononciation-note]')?.textContent).toMatch(/Aucune suggestion de prononciation différente trouvée/));
+    // Jamais le même texte présenté comme une correction : le champ n'est pas touché.
+    expect(champPrononce().value).toBe('');
     fireEvent.change(champPrononce(), { target: { value: 'Afro-boost' } });
     expect(champPrononce().value).toBe('Afro-boost');
     expect(enregistrements()).toHaveLength(0);

@@ -8,8 +8,9 @@ import { formatTime, pseudoWaveform, seedFromString, barPlayed, ratioFromPointer
 export const BARRES_LECTEUR_VOIX = 32;
 
 /**
- * Lecteur compact aux couleurs de Studiio, pour une écoute COURTE (la
- * pré-écoute « Écouter ma voix »).
+ * LE lecteur voix de Studiio — composant PARTAGÉ : pré-écoute « Écouter ma
+ * voix » ET « Audio complet » (Mon avatar › Voix & Prononciation). Un seul
+ * composant, un seul habillage : ne pas en recréer un second ressemblant.
  *
  * Remplace `<audio controls>` : l'apparence du navigateur, son menu ⋮ et son
  * bouton de téléchargement n'ont rien à faire sur une pré-écoute gratuite.

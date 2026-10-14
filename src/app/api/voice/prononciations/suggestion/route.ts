@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { creerLimiteurMemoire } from '@/lib/securite/limiteur-memoire';
 import { MAX_LONGUEUR_PRONONCIATION } from '@/lib/voice/prononciations';
-import { suggererPrononciationLocale, nettoyerSuggestion } from '@/lib/voice/suggestion-prononciation';
+import { suggererPrononciationLocale, nettoyerSuggestion, suggestionUtile, MESSAGE_AUCUNE_SUGGESTION } from '@/lib/voice/suggestion-prononciation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -51,8 +51,17 @@ const CONSIGNE = [
   'Une seule ligne, sans guillemets, sans explication, 80 caractères au plus.',
 ].join(' ');
 
-const reponse = (suggestion: string, source: 'locale' | 'ia') =>
-  NextResponse.json({ success: true, data: { suggestion, source } });
+/**
+ * La SEULE sortie : une suggestion n'est rendue que si elle DIFFÈRE du texte
+ * affiché (`suggestionUtile`). Sinon `suggestion: null, source: 'aucune'` —
+ * jamais le même texte présenté comme une correction.
+ */
+const reponseFabrique = (affiche: string) => (suggestion: string | null, source: 'locale' | 'ia') => {
+  const utile = suggestionUtile(affiche, suggestion);
+  return utile
+    ? NextResponse.json({ success: true, data: { suggestion: utile, source } })
+    : NextResponse.json({ success: true, data: { suggestion: null, source: 'aucune', message: MESSAGE_AUCUNE_SUGGESTION } });
+};
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -66,6 +75,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: `Le texte d’origine est limité à ${MAX_LONGUEUR_PRONONCIATION} caractères.`, code: 'trop_long' }, { status: 400 });
   }
 
+  const reponse = reponseFabrique(texte);
   const locale = suggererPrononciationLocale(texte);
   if (!locale.incertain) return reponse(locale.suggestion, 'locale');
 
