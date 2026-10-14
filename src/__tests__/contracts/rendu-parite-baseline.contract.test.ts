@@ -162,14 +162,14 @@ async function produireAuto(fx: FixtureAuto): Promise<ResultatAuto> {
   await produireUnMontage({ userId: 'u1', config: fx.cfg, post, rang: 0, now: T0, jobId: 'job-1', jumeauVideoUrl: fx.jumeau ?? null });
   expect(lastDesign, 'le moteur doit avoir confié une entrée de rendu').not.toBeNull();
   const row = insertions[0] ?? {};
-  return { post, design: lastDesign as Record<string, unknown>, meta: (row.metadata ?? {}) as Record<string, unknown>, row };
+  return { post, design: lastDesign as unknown as Record<string, unknown>, meta: (row.metadata ?? {}) as unknown as Record<string, unknown>, row };
 }
 
 /** Ce que le serveur (`renderCreerSimple`) tire de l'entrée : props + images. */
 async function renduServeur(design: Record<string, unknown>) {
   lastInputProps = null;
   const r = await renderCreerSimple({ jobId: 'job-1', userId: 'u1', design: design as never });
-  return { inputProps: lastInputProps as Record<string, unknown>, durationFrames: r.durationFrames };
+  return { inputProps: lastInputProps as unknown as Record<string, unknown>, durationFrames: r.durationFrames };
 }
 
 /**
@@ -472,8 +472,8 @@ describe('2. CRÉER / CALENDRIER — options du compositeur figées (preparerOpt
     const d = await preparerOptionsRendu(postCreer(CREER['D-rushes-multiples']), 'regenerer', undefined, deps);
     const e = await preparerOptionsRendu(postCreer(CREER['E-avatar']), 'regenerer', undefined, deps);
     const f = await preparerOptionsRendu(postCreer(CREER['F-images-ken-burns']), 'regenerer', undefined, deps);
-    expect((d as Record<string, unknown>).rushs).toEqual([{ url: R1, secondes: null }, { url: R2, secondes: null }].map((r) => expect.objectContaining({ url: r.url })));
-    expect((e as Record<string, unknown>).rushAudioRequis).toBe(true);
+    expect((d as unknown as Record<string, unknown>).rushs).toEqual([{ url: R1, secondes: null }, { url: R2, secondes: null }].map((r) => expect.objectContaining({ url: r.url })));
+    expect((e as unknown as Record<string, unknown>).rushAudioRequis).toBe(true);
     expect(f.videoUrl).toBe(P1);
     expect(f.videoDuration).toBe(5);
   });
@@ -506,14 +506,14 @@ describe('3. Invariants Autopilote ↔ Calendrier (même projet)', () => {
       // Format : 9:16 des deux côtés.
       expect({ w: c.regen.width, h: c.regen.height }).toEqual({ w: VIDEO_SIZE['9:16'].w, h: VIDEO_SIZE['9:16'].h });
       // Transition et animation.
-      expect((c.regen as Record<string, unknown>).transition).toBe(c.design.transition);
-      expect((c.regen.design as Record<string, unknown>).textAnimation).toBe(c.design.textAnimation);
+      expect((c.regen as unknown as Record<string, unknown>).transition).toBe(c.design.transition);
+      expect((c.regen.design as unknown as Record<string, unknown>).textAnimation).toBe(c.design.textAnimation);
       // Textes.
       expect(c.regen.title).toBe(c.design.title);
       expect(c.regen.subtitle).toBe(c.design.subtitle);
       expect((c.regen.cards ?? []).length).toBe(((c.design.cards as unknown[]) ?? []).length);
       // CTA principal effectif et sous-texte effectif.
-      const d = c.regen.design as Record<string, unknown>;
+      const d = c.regen.design as unknown as Record<string, unknown>;
       expect(d.ctaMainText).toBe(c.design.ctaText);
       expect(d.ctaSubTextDesign).toBe((c.design.ctaSubText as string | undefined) ?? '');
       // Médias.
@@ -535,10 +535,10 @@ describe('3. Invariants Autopilote ↔ Calendrier (même projet)', () => {
     // L'Autopilote écrit les niveaux sous `design.audio*Volume` ; le Calendrier
     // ne relit que `meta.musicVolume` / `meta.voiceVolume` (à plat) → défauts.
     expect([c.design.musicVolume, c.design.voiceVolume]).toEqual([0.35, 0.9]);
-    expect([(c.regen as Record<string, unknown>).musicVolume, (c.regen as Record<string, unknown>).voiceVolume]).toMatchSnapshot('volumes-calendrier');
+    expect([(c.regen as unknown as Record<string, unknown>).musicVolume, (c.regen as unknown as Record<string, unknown>).voiceVolume]).toMatchSnapshot('volumes-calendrier');
     // Son du rush coupé côté serveur (`rushMuted`) : aucune option équivalente côté compositeur.
     expect(c.design.rushMuted).toBe(true);
-    expect('rushMuted' in (c.regen as Record<string, unknown>)).toBe(false);
+    expect('rushMuted' in (c.regen as unknown as Record<string, unknown>)).toBe(false);
     // Voix par séquence : relues ?
     expect(c.regen.sequenceVoiceUrls ?? null).toMatchSnapshot('voix-calendrier');
   });
@@ -552,12 +552,12 @@ describe('3. Invariants Autopilote ↔ Calendrier (même projet)', () => {
         regenerer: sequencesResume(c.tlRegen),
         planifier: sequencesResume(c.tlPlanif),
         planServeur: !!c.design.montage,
-        planCalendrier: !!(c.regen as Record<string, unknown>).montage,
+        planCalendrier: !!(c.regen as unknown as Record<string, unknown>).montage,
         surimpressionsServeur: !!c.design.surimpressions,
         videoServeur: c.design.videoUrl ?? null,
         videoCalendrier: c.regen.videoUrl ?? null,
         rushMutedServeur: c.design.rushMuted,
-        rushAudioRequisCalendrier: (c.regen as Record<string, unknown>).rushAudioRequis ?? null,
+        rushAudioRequisCalendrier: (c.regen as unknown as Record<string, unknown>).rushAudioRequis ?? null,
       };
     }
     expect(out).toMatchSnapshot('multi-sources');
@@ -580,7 +580,7 @@ describe('3. Invariants Autopilote ↔ Calendrier (même projet)', () => {
       expect([c.design.introDuration, c.design.cardsDuration, c.design.ctaDuration], nom).toEqual([0, 0, 0]);
       // Même ligne de temps (vidéo seule), mais AUCUN texte peint côté Calendrier.
       expect(sequencesResume(c.tlRegen), nom).toEqual(sequencesResume(c.tlServeur));
-      expect('surimpressions' in (c.regen as Record<string, unknown>), nom).toBe(false);
+      expect('surimpressions' in (c.regen as unknown as Record<string, unknown>), nom).toBe(false);
       // Son du rush : coupé côté serveur, aucune coupure transmise côté Calendrier.
       expect(c.design.rushMuted, nom).toBe(true);
     }
@@ -599,19 +599,19 @@ describe('3. Invariants Autopilote ↔ Calendrier (même projet)', () => {
     const a = await produireAuto(AUTO['A-916-simple']);
     expect('logoUrl' in a.design).toBe(false);
     expect(a.design.watermark).toBe('Studiio.pro');
-    expect((a.meta.design as Record<string, unknown>).siteText).toEqual({ enabled: true, text: 'Studiio.pro' });
+    expect((a.meta.design as unknown as Record<string, unknown>).siteText).toEqual({ enabled: true, text: 'Studiio.pro' });
     const i = await preparerOptionsRendu(postCreer(CREER['I-logo-texte-site']), 'regenerer', undefined, deps);
     expect(i.logoUrl).toBe('https://cdn.test/logo.png');
-    expect((i as Record<string, unknown>).siteText).toEqual({ enabled: true, text: 'monsite.fr' });
+    expect((i as unknown as Record<string, unknown>).siteText).toEqual({ enabled: true, text: 'monsite.fr' });
   });
 
   it('DIFFÉRENCE EXISTANTE (titre/CTA) : position et alignement — serveur sans clé, Calendrier ancré à gauche', async () => {
     const c = await deuxChemins('A-916-simple');
-    const d = c.regen.design as Record<string, unknown>;
+    const d = c.regen.design as unknown as Record<string, unknown>;
     expect({
       serveur: { titlePos: c.design.titlePos ?? null, titleAlign: c.design.titleAlign ?? null, ctaPos: c.design.ctaPos ?? null },
       calendrier: { titlePosition: d.titlePosition ?? null, titleAlign: d.titleAlign ?? null, watermarkPosition: d.watermarkPosition ?? null },
-      accent: { serveur: c.design.gradientStart, calendrier: (c.regen as Record<string, unknown>).accentColor },
+      accent: { serveur: c.design.gradientStart, calendrier: (c.regen as unknown as Record<string, unknown>).accentColor },
       ctaText: { calendrierCtaText: c.regen.ctaText, calendrierCtaSubText: c.regen.ctaSubText, watermarkText: c.regen.watermarkText ?? null },
     }).toMatchSnapshot('textes-positions');
   });
