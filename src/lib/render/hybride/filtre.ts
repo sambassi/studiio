@@ -20,6 +20,7 @@
  */
 
 import { BASE_L, BASE_H, BASE_FPS } from '@/lib/creer/conseiller/lisibilite';
+import { FONDU_ENTREE_MUSIQUE_S } from '@/lib/render/silence-tete-pur';
 
 export interface SegmentHybride {
   /** Fichier lisible par ffmpeg (proxy / URL interne). */
@@ -56,7 +57,12 @@ export interface EntreeHybride {
   /** Zone utile du filigrane. */
   boiteFiligrane?: BoiteImage | null;
   surimpressions: FenetreSurimpression[];
-  musique: { source: string; volume: number } | null;
+  /**
+   * `depart` (A6) : silence de tête sauté, en secondes, UNE fois au début de
+   * la vidéo (les repasses de `-stream_loop` repartent du début du fichier),
+   * avec le fondu d'entrée de `FONDU_ENTREE_MUSIQUE_S`. Absent : comme avant.
+   */
+  musique: { source: string; volume: number; depart?: number } | null;
   voix: Array<{ source: string; depart: number; volume: number }>;
   sortie: string;
   /**
@@ -162,7 +168,10 @@ export function argumentsHybride(e: EntreeHybride): string[] {
   const pistes: string[] = [];
   if (e.musique) {
     args.push('-stream_loop', '-1', '-i', e.musique.source);
-    filtres.push(`[${n}:a]atrim=0:${f3(e.duree)},asetpts=PTS-STARTPTS,volume=${e.musique.volume}[am]`);
+    const dep = e.musique.depart && e.musique.depart > 0 ? e.musique.depart : 0;
+    filtres.push(dep > 0
+      ? `[${n}:a]atrim=start=${f3(dep)}:end=${f3(dep + e.duree)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${FONDU_ENTREE_MUSIQUE_S},volume=${e.musique.volume}[am]`
+      : `[${n}:a]atrim=0:${f3(e.duree)},asetpts=PTS-STARTPTS,volume=${e.musique.volume}[am]`);
     pistes.push('[am]');
     n += 1;
   }

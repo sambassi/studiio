@@ -24,6 +24,7 @@ import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 const composer = readFileSync(resolve(__dirname, '../lib/video-composer.ts'), 'utf-8');
 const composition = readFileSync(resolve(__dirname, '../../remotion/CreerSimpleMontage.tsx'), 'utf-8');
 const audio = readFileSync(resolve(__dirname, '../../remotion/audio.tsx'), 'utf-8');
+const pur = readFileSync(resolve(__dirname, '../lib/render/silence-tete-pur.ts'), 'utf-8');
 const entree = readFileSync(resolve(__dirname, '../lib/render/creerSimple.ts'), 'utf-8');
 
 /**
@@ -172,11 +173,14 @@ describe('La musique boucle, comme dans le navigateur', () => {
     // remise à zéro à chaque passe : une atténuation posée à la trentième
     // seconde se rejouerait à chaque tour.
     expect(sansCommentaires(audio)).not.toContain('<Loop');
-    expect(audio).toContain('volume={(f) => volume(depart + f)}');
+    // A6 : la passe est repérée par `from` (première passe raccourcie du silence de tête).
+    expect(audio).toContain('volume={(f) => volume(from + f)}');
   });
 
   it('un morceau plus long que le montage ne boucle pas', () => {
-    expect(audio).toContain('if (boucleFrames === 0 || boucleFrames >= totalFrames)');
+    // A6 : la longueur utile de la première passe est `boucleFrames - depart` (0 sans silence de tête).
+    expect(audio).toContain('if (passes.length === 1) {');
+    expect(pur).toContain('if (boucleFrames === 0 || boucleFrames - depart >= totalFrames)');
   });
 
   it('un fichier illisible ne fait pas échouer le rendu', () => {

@@ -62,6 +62,11 @@ export interface CreerSimpleRenderInput {
   /** V3 : titre / cartes / CTA en surimpression sur la vidéo continue. */
   surimpressions?: import('@/lib/creer/overlays').OverlaysMontage | null;
   musicUrl?: string | null;
+  /**
+   * A6 — départ (s) dans le fichier musique : son silence de tête, mesuré au
+   * rendu (`silence-tete.ts`). Absent = la musique part de 0, comme avant.
+   */
+  musicStartSeconds?: number;
   gradientStart?: string;
   gradientEnd?: string;
   gradientOpacity?: number;
@@ -174,7 +179,10 @@ export async function renderCreerSimple(input: {
   /** A2.3 — annulation relayée au worker. Absente = rendu d'avant, inchangé. */
   cancelSignal?: (callback: () => void) => void;
 }): Promise<{ outputPath: string; durationFrames: number }> {
-  const d = input.design;
+  // A6 — silence de tête de la musique sauté (mesure locale, 0 sur échec :
+  // le design est alors rendu INCHANGÉ, même objet).
+  const { avecDepartMusique } = await import('@/lib/render/silence-tete');
+  const d = await avecDepartMusique(input.design, input.userId);
   // A2.2 — props Remotion issues de la spec canonique (même calcul qu'avant :
   // étalement puis défauts 4 / 6 / 0 / 4 et `cards ?? []`), verrouillé par
   // `src/__tests__/contracts/spec-rendu-branchement.contract.test.ts`.

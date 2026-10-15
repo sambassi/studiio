@@ -153,8 +153,10 @@ type Genre = 'texte' | 'nombre' | 'booleen' | 'objet' | 'liste' | 'texte_ou_null
  * ABSENTES, donc refusées : `surimpressions` et `ctaCopies` — leurs médias
  * ne sont pas couverts par `localiserEntreesRendu`, et le moteur de rendu
  * irait les lire lui-même (SSRF). Toute clé inconnue est refusée aussi.
+ * `musicStartSeconds` (A6) non plus : il est MESURÉ par le serveur au rendu
+ * (`silence-tete.ts`), jamais fourni par le client.
  */
-const CLES_SPEC: Record<Exclude<keyof SpecRendu, 'surimpressions' | 'ctaCopies'>, Genre> = {
+const CLES_SPEC: Record<Exclude<keyof SpecRendu, 'surimpressions' | 'ctaCopies' | 'musicStartSeconds'>, Genre> = {
   title: 'texte', subtitle: 'texte', cards: 'liste', ctaText: 'texte', ctaSubText: 'texte',
   posterUrl: 'texte_ou_null', posterOnAllSequences: 'booleen', cardBoxes: 'objet_ou_null',
   cardBackground: 'texte_ou_null', cardValueColor: 'texte_ou_null', sequenceBackgrounds: 'objet',
