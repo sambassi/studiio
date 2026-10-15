@@ -172,7 +172,7 @@ const CLES_SPEC: Record<Exclude<keyof SpecRendu, 'surimpressions' | 'ctaCopies'>
   introDuration: 'nombre', cardsDuration: 'nombre', videoDuration: 'nombre', ctaDuration: 'nombre',
   sequenceOrder: 'liste', format: 'texte', elements: 'liste', transition: 'texte', textAnimation: 'texte',
   sequenceVoiceUrls: 'objet', voiceUrl: 'texte_ou_null', musicVolume: 'nombre', voiceVolume: 'nombre',
-  rushVolume: 'nombre', rushMuted: 'booleen', audioKeyframes: 'liste',
+  rushVolume: 'nombre', rushMuted: 'booleen', audioKeyframes: 'liste', voixJumeau: 'booleen',
   subtitleColor: 'texte_ou_null', ctaColor: 'texte', ctaSubColor: 'texte', ctaBackground: 'texte_ou_null',
 };
 

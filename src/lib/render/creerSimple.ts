@@ -150,6 +150,11 @@ export interface CreerSimpleRenderInput {
   rushMuted?: boolean;
   /** Attenuations posees a la main dans le mixeur. */
   audioKeyframes?: AudioKeyframe[];
+  /**
+   * A2 — la séquence « Vidéo » porte la voix du JUMEAU : piste au niveau des
+   * voix, musique baissée pendant la séquence. Absent : le rendu d'avant.
+   */
+  voixJumeau?: boolean;
 }
 
 /** Identifiant de la composition, tel qu'enregistre dans `remotion/index`. */

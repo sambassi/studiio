@@ -177,5 +177,5 @@ export const CORRESPONDANCE_COMPOSITEUR: ReadonlyArray<{ compositeur: string; sp
   { compositeur: 'posterTransform / rushTransforms', spec: null },
   { compositeur: 'sequenceTransitions (transition par raccord)', spec: null },
   { compositeur: 'rushAudioRequis', spec: null },
-  { compositeur: 'ducking du jumeau (avatar)', spec: null },
+  { compositeur: 'ducking du jumeau (avatar)', spec: 'voixJumeau', note: 'A2 — piste au niveau des voix, musique ×0,1 ; l’échec « jumeau muet » de rushAudioRequis reste propre au canvas' },
 ];

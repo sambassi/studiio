@@ -492,6 +492,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "videoDuration",
     "videoUrl",
     "voiceVolume",
+    "voixJumeau",
     "watermark",
   ],
   "cta": {
