@@ -139,6 +139,9 @@ async function depotParDefaut(): Promise<DepotJumeaux> {
   };
 }
 
+/** Le dépôt interne (MinIO direct) — partagé avec la mesure de durée du jumeau (`duree-jumeau.ts`). */
+export const depotJumeauxParDefaut = depotParDefaut;
+
 export type StatutPleinCadre = 'refus' | 'autre' | 'original' | 'derive' | 'derive-existant' | 'deja-plein-cadre' | 'echec';
 
 export interface ResultatPleinCadre {

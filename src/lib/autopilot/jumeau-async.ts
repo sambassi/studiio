@@ -43,6 +43,7 @@ import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
 import { notifyOnce } from '@/lib/notifications/store';
 import { mediasDesSources, sourcesEffectives } from '@/lib/autopilot/sources';
+import { estJumeauIllisible, MESSAGE_JUMEAU_ILLISIBLE } from '@/lib/autopilot/duree-jumeau';
 
 /**
  * L'avatar sera-t-il monté AVEC d'autres sources (rushes personnels, stock) ?
@@ -66,6 +67,15 @@ const MAX_SCRIPT = 600;
  * ne répond jamais).
  */
 const MAX_TENTATIVES = 40;
+
+/**
+ * A1 — passes de rendu dont la DURÉE du jumeau est restée illisible (sonde et
+ * mesure locale de secours) avant de clore la ligne. Réessayer ne coûte rien
+ * (lecture de NOTRE stockage, aucun fournisseur, aucun débit) et couvre un
+ * stockage momentanément indisponible ; au-delà, le fichier est tenu pour
+ * illisible — jamais un montage sans l'avatar à sa place.
+ */
+export const ESSAIS_MESURE_JUMEAU = 3;
 
 /**
  * Le script que le jumeau DIT dans le montage.
@@ -117,6 +127,8 @@ interface SnapshotMontage {
   now: number;
   metadataSupplement?: Record<string, unknown>;
   journal?: string;
+  /** A1 : passes déjà arrêtées faute de durée fiable du jumeau. */
+  echecsMesureJumeau?: number;
 }
 
 /**
@@ -404,6 +416,23 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
       res.echecs += 1;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      // ── A1 : la DURÉE du jumeau est illisible ───────────────────────────
+      // `produireUnMontage` s'est arrêté AVANT tout rendu et tout débit. On
+      // ne monte JAMAIS le créneau sans l'avatar (pas de `rendreSansJumeau`) :
+      // on réessaie quelques passes (stockage passager), puis on clôt avec
+      // un message clair. Aucun fournisseur rappelé, aucune génération relancée.
+      if (estJumeauIllisible(e)) {
+        const echecs = (ligne.snapshot?.echecsMesureJumeau ?? 0) + 1;
+        if (echecs >= ESSAIS_MESURE_JUMEAU || ligne.tentatives + 1 >= MAX_TENTATIVES) {
+          await echouer(ligne, MESSAGE_JUMEAU_ILLISIBLE, `${MESSAGE_JUMEAU_ILLISIBLE} Aucun rendu n’a été débité.`);
+          res.echecs += 1;
+        } else {
+          console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — durée du jumeau illisible (passe ${echecs}/${ESSAIS_MESURE_JUMEAU}), on réessaiera`);
+          await rouvrir(ligne.id, { snapshot: { ...ligne.snapshot, echecsMesureJumeau: echecs } });
+          res.encore += 1;
+        }
+        continue;
+      }
       // ── Échec DÉFINITIF : un média du montage n'existe plus ─────────────
       // Un 404/410 au téléchargement ne se résout pas en réessayant : le
       // même rendu échouait à chaque passe, jusqu'à MAX_TENTATIVES. On clôt
@@ -447,14 +476,14 @@ export function estMediaIntrouvable(message: string): boolean {
   return /(?<![\w.-])(404|410)(?![\w.-])/.test(message);
 }
 
-async function rouvrir(id: string): Promise<void> {
+async function rouvrir(id: string, complement: { snapshot?: SnapshotMontage } = {}): Promise<void> {
   await supabaseAdmin
     .from('autopilot_jumeau_attente')
-    .update({ statut: 'en_attente', updated_at: new Date().toISOString() })
+    .update({ statut: 'en_attente', ...complement, updated_at: new Date().toISOString() })
     .eq('id', id);
 }
 
-async function echouer(ligne: LigneAttente, motif: string): Promise<void> {
+async function echouer(ligne: LigneAttente, motif: string, corps?: string): Promise<void> {
   await supabaseAdmin
     .from('autopilot_jumeau_attente')
     .update({ statut: 'echec', motif, updated_at: new Date().toISOString() })
@@ -471,9 +500,9 @@ async function echouer(ligne: LigneAttente, motif: string): Promise<void> {
       title: 'Autopilote : votre jumeau n’a pas pu être monté',
       // Le motif technique (message fournisseur, URL, code HTTP) reste dans
       // la file et les journaux : l'utilisateur lit une phrase claire.
-      body: 'Le montage prévu avec votre jumeau n’a pas pu être produit. '
+      body: corps ?? ('Le montage prévu avec votre jumeau n’a pas pu être produit. '
         + 'Les crédits du jumeau sont remboursés s’il n’a pas été généré ; '
-        + 'le rendu n’est débité que pour un montage livré.',
+        + 'le rendu n’est débité que pour un montage livré.'),
       href: '/dashboard/creer?panneau=autopilote',
     });
   } catch (e) {
