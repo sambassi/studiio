@@ -323,6 +323,10 @@ reste ouvert, y compris pour les admins en production) :
      (src/lib/securite/medias-externes.ts) laisse passer sans filtre les chaînes qui ne
      commencent pas par http(s)://. A2.3 s'en protège par sa propre validation, l'Autopilote
      non. Correctif de sécurité SÉPARÉ, hors A2.x.
+SUIVI SÉCURITÉ (À INVESTIGUER, aucune vulnérabilité démontrée) : src/lib/securite/fetch-sur.ts
+  — les origines dites de confiance (PUBLIC_STORAGE_URL…) sautent le contrôle d'adresse IP.
+  Vérifier en lecture quelles origines la production déclare et si l'une peut résoudre vers
+  une adresse interne. À traiter dans la même mission sécurité que le point 3.
 TEST=src/__tests__/contracts/rendu-serveur-flag.contract.test.ts ;
 src/__tests__/contracts/rendu-worker-occupation.contract.test.ts (options Remotion = 1a1a044) ;
 src/__tests__/contracts/rendu-serveur-isolement.contract.test.ts (aucun parcours branché) ;
