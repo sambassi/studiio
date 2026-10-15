@@ -12,6 +12,7 @@ import {
   pickPosterUrl, pickCustomPoster, probeRushSeconds,
 } from '@/lib/autopilot/poster';
 import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
+import { mesurerDureeJumeau, JumeauIllisibleError } from '@/lib/autopilot/duree-jumeau';
 import { etatRushServeur, type EtatRush } from '@/lib/autopilot/validite-rush';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
@@ -508,12 +509,21 @@ export async function produireUnMontage(input: {
 
   input.onProgression?.('preparation', 0);
   // Les sondages RÉSEAU des durées, avant la fabrique de design qui reste pure.
-  const [rushSeconds, jumeauSeconds] = await Promise.all([
+  const [rushSeconds, mesureJumeau] = await Promise.all([
     rushUrl ? (secondesParRush.has(rushUrl) ? Promise.resolve(secondesParRush.get(rushUrl) ?? null) : probeRushSeconds(rushUrl, {}, userId)) : Promise.resolve(null),
     // La durée du jumeau cale la séquence « Vidéo » : la parole doit tenir
-    // entière. Illisible (`null`) → durée par défaut, posée à la fabrique du design.
-    jumeauActif ? probeRushSeconds(jumeauVideoUrl as string, {}, userId) : Promise.resolve(null),
+    // entière. Sonde habituelle, puis mesure locale de secours (`duree-jumeau.ts`).
+    jumeauActif ? mesurerDureeJumeau({ url: jumeauVideoUrl as string, userId }) : Promise.resolve(null),
   ]);
+  // ── A1 : JAMAIS UN MONTAGE SANS L'AVATAR, EN SILENCE ────────────────────
+  // Une durée illisible valait 0 : la séquence « Vidéo » était SUPPRIMÉE et
+  // l'avatar, déjà payé, disparaissait du montage. Sans durée FIABLE, on
+  // arrête ici — avant toute affiche IA, tout rendu, tout débit, tout post.
+  if (jumeauActif && !mesureJumeau) {
+    console.error(`${journal} ${userId} — durée du jumeau illisible, montage arrêté : ${jumeauVideoUrl}`);
+    throw new JumeauIllisibleError(jumeauVideoUrl as string);
+  }
+  const jumeauSeconds = mesureJumeau ? mesureJumeau.secondes : null;
 
   // ── L'AFFICHE : automatique (Pexels), mes photos, ou mes photos EN RÉFÉRENCE IA ──
   // ⚠️ LA BANQUE DE L'UTILISATEUR PASSE AVANT PEXELS — mais seulement si elle
@@ -602,7 +612,7 @@ export async function produireUnMontage(input: {
   // tient la séquence « Vidéo » à la place du rush.
   const designBase = buildAutopilotDesign(postUtilise, {
     posterUrl, rushSeconds, voices, config: configUtilisee,
-    jumeau: jumeauActif ? { videoUrl: jumeauVideoUrl as string, seconds: jumeauSeconds ?? 0 } : null,
+    jumeau: jumeauActif && jumeauSeconds !== null ? { videoUrl: jumeauVideoUrl as string, seconds: jumeauSeconds } : null,
   });
   // Smart montage : la séquence « Vidéo » porte le plan d'extraits ; sa durée
   // est celle du plan (jamais plus courte que la voix de la séquence).
