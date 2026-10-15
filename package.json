@@ -29,7 +29,6 @@
     "lucide-react": "^0.383.0",
     "minio": "^8.0.7",
     "modern-screenshot": "^4.7.0",
-    "mp4-muxer": "^5.2.2",
     "msedge-tts": "^2.0.4",
     "next": "^14.2.0",
     "next-auth": "^5.0.0-beta.19",
@@ -41,7 +40,6 @@
     "remotion": "^4.0.441",
     "replicate": "^1.4.0",
     "stripe": "^15.0.0",
-    "webm-muxer": "^5.1.4",
     "zod": "^3.22.0"
   },
   "devDependencies": {
