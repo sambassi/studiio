@@ -258,8 +258,12 @@ describe('15. Les quatre parcours passent par la même porte', () => {
 
   it('la confirmation choisit la fonction SQL selon la politique', async () => {
     const { readFileSync } = await import('fs');
-    const src = readFileSync('src/app/api/render/jobs/[id]/confirm/route.ts', 'utf-8');
-    expect(src).toContain('politiqueDeLUtilisateur(session.user.id)');
+    // A2.3 : la logique preuve + politique est extraite dans
+    // `src/lib/rendus/confirmation.ts` ; la route confirm y délègue.
+    const route = readFileSync('src/app/api/render/jobs/[id]/confirm/route.ts', 'utf-8');
+    expect(route).toContain('confirmerAvecPreuve(session.user.id, rendu)');
+    const src = readFileSync('src/lib/rendus/confirmation.ts', 'utf-8');
+    expect(src).toContain('politiqueDeLUtilisateur(userId)');
     expect(src).toContain('confirmerRenduSansDebit');
     // La politique figée à la réservation est croisée avec celle du moment :
     // le plus restrictif l'emporte.

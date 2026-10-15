@@ -258,3 +258,61 @@ toStrictEqual l'oracle gelé `inputPropsHistoriques`, même ordre de clés, dur�
 dimensions ; fixtures A/D/E/F/G/H/J + avatar+rush, 1:1, 16:9, ctaSubText '', média absent /
 invalide, transitions, ancienne metadata ; test source du branchement)
 ```
+
+## RENDU SERVEUR D'UNE TENTATIVE (A2.3) — derrière un interrupteur, éteint par défaut
+
+```
+ID=RENDU-SERVEUR (A2.3)
+ROUTE=POST|GET /api/render/jobs/[id]/serveur (src/app/api/render/jobs/[id]/serveur/route.ts),
+logique dans src/lib/render/moteur-export-serveur.ts. POST { spec } → 202, le rendu
+continue derrière la réponse ; GET → { etat, enCours }.
+FLAG=MOTEUR_EXPORT_SERVEUR === 'true' (exactement, relu à chaque appel). Absent / autre
+valeur → 404 { ok:false } AVANT toute lecture (ni session ni base).
+ACCÈS=administrateurs seulement (isAdmin) ; sans session ou tout autre compte → même 404
+neutre { ok:false } que le flag éteint.
+Propriété par lireRendu (404), état reserved obligatoire (409 sinon : un job confirmé,
+annulé ou échoué ne se rend plus), opération apercu|bureau|calendrier (403 sinon).
+SPEC=corps ≤ 256 Ko (Content-Length vérifié en amont, puis req.body lu EN FLUX et coupé dès le
+plafond, 413) ; liste blanche des clés PROPRES de
+SpecRendu + types de base, title et format visuel obligatoires (422). Parcours profond :
+tout champ média (*Url, *Urls.*, sequenceBackgrounds.*, rushs[].url, montage[].url) = null
+ou une CHAÎNE URL http(s) CANONIQUE — jamais un tableau / objet / nombre (Remotion stringifierait
+un tableau) ; cartes *Urls / sequenceBackgrounds = objet plat de chaînes | null, *Urls en
+tableau = chaînes seulement — (new URL(v).href === v, sans blanc, sans \, sans // initial) sinon
+422 media_invalide ; toute couleur (*Color, *Background, gradientStart/End, elements[].color)
+= #RGB/#RRGGBB/#RRGGBBAA ou rgb(a) stricts sinon 422 couleur_invalide ; bornes : durées
+0..120 s, cards ≤ 20, rushs ≤ 10, elements ≤ 50, montage ≤ 100, autres listes ≤ 200,
+textes ≤ 2000, profondeur ≤ 8. Format FACTURÉ = rendus.format de la ligne ; formatRenduFacturation(
+spec.format) différent → 422. Aucun nouveau mapper : la spec part dans renderCreerSimple
+→ versEntreeRemotion. Aucune réservation, aucun tarif ici.
+CONFIRMATION=la même porte que le navigateur : src/lib/rendus/confirmation.ts
+(confirmerAvecPreuve, extraite de /confirm, comportement figé par
+rendu-confirm-caracterisation.contract.test.ts). Objet invalide / rendu échoué /
+téléversement échoué / délai dépassé / solde insuffisant → cloreRendu failed ; stockage
+injoignable → laissé reserved ; confirmation interrompue → aucun réessai, re-confirmable
+par /confirm (dejaConfirme). État changé pendant le rendu → ni upload ni confirmation.
+CAPACITÉ=une place en processus (compteur séparé de l'Autopilote) + Set des jobs en cours :
+même job → 409 deja_en_cours, autre job → 429. Un renderVideo étranger en cours
+(rendusRemotionActifs() > 0, compteur PASSIF de worker.ts : il ne refuse rien) → 429 aussi.
+L'Autopilote ne lit pas ce compteur : A2.3 ne le bloque jamais (le rendu hybride ffmpeg de
+l'Autopilote n'y est pas compté). Retry-After = reste du budget du job + 30 s de marge.
+La ligne est relue APRÈS la prise de place et au début du travail (non reserved → 409 /
+aucun rendu).
+DÉLAI=600 s. À l'échéance : cloreRendu failed delai_depasse IMMÉDIATEMENT (même si
+localisation / bundle / selectComposition n'ont pas rendu la main) + ordre d'annulation
+Remotion (renderMedia.cancelSignal, optionnel dans worker/creerSimple, absent = comportement
+d'avant). renderMedia rejette par course, le nettoyage Chromium/ffmpeg continue quelques
+secondes ; la place reste prise jusqu'à ce que la promesse du travail rende la main. Un
+travail fini après l'échéance ne téléverse ni ne confirme rien.
+FENÊTRE CONNUE (P2)=entre la relecture reserved et la fin du téléversement, une confirmation
+concurrente ou une annulation peut survenir : objet écrasé après confirmation, ou orphelin
+après annulation. Jamais de débit indu (RPC idempotente). Pas de correctif sans état durable.
+LIMITES=verrou en processus seulement (conteneur unique — deux conteneurs ne se voient pas) ;
+la clé rendus est en .webm mais contient du MP4 (point A2.4) ; pas de convertisseur
+ComposerOptions → SpecRendu (A2.4) ; localiserEntreesRendu ne couvre pas surimpressions ni
+ctaCopies → ces clés sont refusées.
+TEST=src/__tests__/contracts/rendu-serveur-flag.contract.test.ts ;
+src/__tests__/contracts/rendu-worker-occupation.contract.test.ts (options Remotion = 1a1a044) ;
+src/__tests__/contracts/rendu-serveur-isolement.contract.test.ts (aucun parcours branché) ;
+src/__tests__/contracts/rendu-confirm-caracterisation.contract.test.ts
+```
