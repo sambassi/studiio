@@ -365,25 +365,32 @@ export function enveloppeAutourDuJumeau(
  */
 export const DUREE_MIN_AVATAR_SEUL = 20;
 
-/** Durée appliquée (et recommandée à l'écran) quand la cible est sous ce minimum. */
+/** Durée RECOMMANDÉE à l'écran quand la cible est sous ce minimum — jamais appliquée sans le clic de l'utilisateur. */
 export const DUREE_RECOMMANDEE_AVATAR = 30;
 
+/** Code de refus / de saut quand la durée doit être confirmée (« Produire maintenant », cron, file). */
+export const CODE_DUREE_A_CONFIRMER = 'duree_a_confirmer';
+
 /**
- * Durée cible EFFECTIVE d'un montage avatar seul : la cible choisie, sauf
- * sous `DUREE_MIN_AVATAR_SEUL` où la durée recommandée (30 s) s'applique.
- * Sans cible : rien (le comportement d'avant). La config n'est jamais
- * réécrite — l'écart est annoncé dans l'Autopilote (`conseilDureeAvatar`).
+ * A4 v3 — avatar SEUL et cible sous `DUREE_MIN_AVATAR_SEUL` : le message
+ * complet ne tient pas. Studiio ne génère RIEN (ni jumeau, ni rendu, ni
+ * débit, ni post) et ne change JAMAIS la durée de lui-même : l'utilisateur
+ * confirme en passant à 30 s (bouton « Passer à 30 s »). Pur.
  */
-export function dureeEffectiveAvatarSeul(duree: number | null | undefined): number | undefined {
-  if (!duree || !(duree > 0)) return undefined;
-  return duree < DUREE_MIN_AVATAR_SEUL ? DUREE_RECOMMANDEE_AVATAR : duree;
+export function dureeAConfirmerAvecAvatar(duree: number | null | undefined, avatarSeul: boolean): boolean {
+  return avatarSeul && !!duree && duree > 0 && duree < DUREE_MIN_AVATAR_SEUL;
 }
 
-/** Le message à afficher sous la durée de l'Autopilote, ou `null`. */
+/** Le message du refus et du conseil. */
+export function messageDureeAConfirmer(duree: number): string {
+  return `Avec votre avatar, ${duree} s est trop court pour un message complet. Passez à ${DUREE_RECOMMANDEE_AVATAR} s pour lancer la génération.`;
+}
+
+/** Le conseil affiché sous la durée de l'Autopilote, ou `null`. */
 export function conseilDureeAvatar(duree: number | null | undefined, avatarSeul: boolean): { message: string; recommandee: number } | null {
-  if (!avatarSeul || !duree || duree >= DUREE_MIN_AVATAR_SEUL) return null;
+  if (!dureeAConfirmerAvecAvatar(duree, avatarSeul)) return null;
   return {
-    message: `Avec votre avatar, ${duree} s est trop court pour un message complet : nous recommandons ${DUREE_RECOMMANDEE_AVATAR} s. Les vidéos avec avatar seront produites en ${DUREE_RECOMMANDEE_AVATAR} s tant que cette durée est choisie.`,
+    message: `${messageDureeAConfirmer(duree as number)} Aucune vidéo avec avatar n’est produite tant que la durée n’est pas confirmée.`,
     recommandee: DUREE_RECOMMANDEE_AVATAR,
   };
 }

@@ -248,6 +248,11 @@ export function avatarAvecAutresSources(c: ConfigPourSources): boolean {
   return m.rushesPersonnels.length + m.videosStock.length + m.photosStock.length > 0;
 }
 
+/** Avatar actif et monté SEUL (titre, cartes et CTA plein écran autour de lui). Pur. */
+export function avatarSeulConfig(c: ConfigPourSources): boolean {
+  return avatarActifConfig(c) && !avatarAvecAutresSources(c);
+}
+
 /**
  * L'état des sources, calculé CÔTÉ SERVEUR depuis la configuration — jamais
  * cru du navigateur. `avatarPret` est supposé vrai : la disponibilité réelle

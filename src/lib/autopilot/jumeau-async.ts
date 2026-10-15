@@ -35,7 +35,9 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { dureeEffectiveAvatarSeul, scriptPourDuree, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
+import {
+  CODE_DUREE_A_CONFIRMER, dureeAConfirmerAvecAvatar, messageDureeAConfirmer, scriptPourDuree, secondesReserveesEnveloppeJumeau,
+} from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
@@ -88,14 +90,11 @@ export function scriptJumeauMontage(post: PreparedPost, config?: AutopilotConfig
   // l'avatar), ou sans config connue : le budget d'avant, toute la cible.
   //
   // A4 v2 — avatar seul : le message doit être COMPLET (accroche + première
-  // idée + appel à l'action, en unités entières). Une cible trop courte pour
-  // le contenir (< DUREE_MIN_AVATAR_SEUL) est portée à la durée recommandée
-  // (`dureeEffectiveAvatarSeul`, annoncée dans l'Autopilote) — jamais un
-  // script tronqué après coup, jamais la config réécrite.
+  // idée + appel à l'action, en unités entières). Une cible sous 20 s ne
+  // l'est pas : elle n'est JAMAIS lancée (`lancerJumeauMontage` refuse,
+  // `duree_a_confirmer`) et sa durée n'est jamais changée ici.
   const avatarSeul = !!config && !avatarAvecAutresSources(config);
-  const briefScript = avatarSeul && post.brief?.duree
-    ? { ...post.brief, duree: dureeEffectiveAvatarSeul(post.brief.duree) as number }
-    : post.brief;
+  const briefScript = post.brief;
   const pourDuree = scriptPourDuree({
     titre: post.title,
     sousTitre: post.content.subtitle,
@@ -171,6 +170,14 @@ export async function lancerJumeauMontage(input: {
   if (existant && existant.length > 0) {
     const l = existant[0] as { id: string; generation_id: string };
     return { ok: true, generationId: l.generation_id, attenteId: l.id, dejaEnFile: true };
+  }
+
+  // A4 v3 — avatar seul, cible sous 20 s : RIEN n'est lancé (ni réservation,
+  // ni génération, ni débit). Placé APRÈS la lecture de la file : un créneau
+  // déjà en file (génération déjà lancée et payée) suit son cours, à sa durée.
+  const dureeBrief = input.post.brief?.duree ?? input.config.brief?.duree;
+  if (dureeAConfirmerAvecAvatar(dureeBrief, !avatarAvecAutresSources(input.config))) {
+    return { ok: false, motif: CODE_DUREE_A_CONFIRMER, message: messageDureeAConfirmer(dureeBrief as number) };
   }
 
   const script = scriptJumeauMontage(input.post, input.config);

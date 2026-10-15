@@ -24,6 +24,8 @@ export const NOTIFICATION_KINDS = {
   autopiloteRushIntrouvable: 'autopilote-rush-introuvable',
   /** Le solde est descendu au seuil fixé par l'utilisateur. */
   autopiloteCredits: 'autopilote-credits',
+  /** A4 v3 — avatar seul, durée trop courte : confirmation de 30 s attendue. */
+  autopiloteDureeAConfirmer: 'autopilote-duree-a-confirmer',
 } as const;
 
 export type NotificationKind = typeof NOTIFICATION_KINDS[keyof typeof NOTIFICATION_KINDS];

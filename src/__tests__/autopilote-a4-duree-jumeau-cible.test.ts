@@ -11,7 +11,7 @@ vi.mock('@/lib/db/supabase', () => ({ supabaseAdmin: {}, supabase: {} }));
 
 import {
   enveloppeAutourDuJumeau, MINIMA_LISIBILITE_JUMEAU, secondesReserveesEnveloppeJumeau, scriptPourDuree, auDixiemeSuperieur,
-  dureeEffectiveAvatarSeul, conseilDureeAvatar, DUREE_MIN_AVATAR_SEUL, DUREE_RECOMMANDEE_AVATAR,
+  conseilDureeAvatar, dureeAConfirmerAvecAvatar, messageDureeAConfirmer, DUREE_MIN_AVATAR_SEUL, DUREE_RECOMMANDEE_AVATAR,
 } from '@/lib/autopilot/duree-cible';
 import { preparePosts } from '@/lib/autopilot/engine';
 import { buildAutopilotDesign } from '@/lib/autopilot/design';
@@ -52,8 +52,8 @@ describe('A4 — matrice cible × durée du jumeau (montage)', () => {
         expect(d.cardsDuration).toBeGreaterThanOrEqual(M.cards);
         expect(d.ctaDuration).toBeGreaterThanOrEqual(M.cta);
         expect(d.cards?.length).toBeGreaterThanOrEqual(1);
-        // A4 v2 : sous 20 s, la cible effective avec avatar est 30 s.
-        const eff = dureeEffectiveAvatarSeul(cible) as number;
+        // A4 v3 : toujours la cible CHOISIE (aucune durée imposée).
+        const eff = cible;
         const reste = eff - J;
         if (reste >= 8 && reste <= 21) expect(Math.abs(total - eff)).toBeLessThanOrEqual(0.2);
         else if (reste < 8) expect(total).toBeCloseTo(J + 8, 1); // cible trop courte : jumeau entier + minima
@@ -64,14 +64,13 @@ describe('A4 — matrice cible × durée du jumeau (montage)', () => {
 });
 
 describe('A4 — chaîne réelle : script dimensionné AVANT génération → montage', () => {
-  for (const cible of [15, 30, 45, 60]) {
+  for (const cible of [20, 30, 45, 60]) {
     it(`cible ${cible} s : total dans max(15 %, 3 s) quand la parole suit le débit estimé`, () => {
       const { post, config } = postPour(cible);
       const script = scriptJumeauMontage(post, config);
       const J = script.length / 14; // débit « normal » du brief
       const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: J } });
-      const eff = dureeEffectiveAvatarSeul(cible) as number;
-      expect(Math.abs(dureeRendue(d) - eff)).toBeLessThanOrEqual(tol(eff));
+      expect(Math.abs(dureeRendue(d) - cible)).toBeLessThanOrEqual(tol(cible));
     });
   }
 
@@ -124,11 +123,10 @@ describe('A4 — répartition et arrondi', () => {
     expect([d.introDuration, d.cardsDuration, d.ctaDuration]).toEqual([M.intro, M.cards, M.cta]);
   });
 
-  it('cible minimale (5 s) : cible effective 30 s, jumeau entier', () => {
+  it('cible minimale (5 s, ligne déjà en file) : SA durée — minima + jumeau entier, jamais 30 s imposé', () => {
     const { post } = postPour(5);
-    const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 14 } });
-    expect(d.videoDuration).toBe(14);
-    expect(Math.abs(dureeRendue(d) - 30)).toBeLessThanOrEqual(0.2);
+    const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 2 } });
+    expect([d.introDuration, d.cardsDuration, d.videoDuration, d.ctaDuration]).toEqual([2.5, 3, 2, 2.5]);
   });
 
   it('enveloppe au prorata 4/6/4, bornée par minima et ×1,5', () => {
@@ -154,12 +152,19 @@ describe('A4 — répartition et arrondi', () => {
   });
 });
 
-describe('A4 v2 — cible courte avec avatar : message complet ou 30 s', () => {
+describe('A4 v2/v3 — cible courte avec avatar : message complet, ou confirmation de 30 s', () => {
   const texteCarte0 = (post: ReturnType<typeof postPour>['post']) => {
     const c = post.content.cards[0];
     return [c.title, c.description, c.value].map((x) => (x ?? '').trim().replace(/[.\s]+$/, '')).filter(Boolean)[0];
   };
-  for (const cible of [10, 15, 20, 30]) {
+  for (const cible of [10, 15]) {
+    it(`cible ${cible} s : à confirmer — aucune durée imposée, conseil 30 s`, () => {
+      expect(dureeAConfirmerAvecAvatar(cible, true)).toBe(true);
+      expect(messageDureeAConfirmer(cible)).toBe(`Avec votre avatar, ${cible} s est trop court pour un message complet. Passez à 30 s pour lancer la génération.`);
+      expect(conseilDureeAvatar(cible, true)?.recommandee).toBe(DUREE_RECOMMANDEE_AVATAR);
+    });
+  }
+  for (const cible of [20, 30]) {
     it(`cible ${cible} s : accroche + idée + CTA, parole ≥ 7 s`, () => {
       const { post, config } = postPour(cible);
       const s = scriptJumeauMontage(post, config);
@@ -167,11 +172,9 @@ describe('A4 v2 — cible courte avec avatar : message complet ou 30 s', () => {
       expect(s).toContain(texteCarte0(post));
       expect(s.endsWith((post.brief?.cta || post.content.tagLine || '').trim().replace(/[.\s]+$/, ''))).toBe(true);
       expect(s.length / 14).toBeGreaterThanOrEqual(7);
-      const eff = dureeEffectiveAvatarSeul(cible);
-      expect(eff).toBe(cible < DUREE_MIN_AVATAR_SEUL ? DUREE_RECOMMANDEE_AVATAR : cible);
-      const conseil = conseilDureeAvatar(cible, true);
-      if (cible < 20) expect(conseil?.message).toContain('nous recommandons 30 s');
-      else expect(conseil).toBeNull();
+      expect(cible).toBeGreaterThanOrEqual(DUREE_MIN_AVATAR_SEUL);
+      expect(dureeAConfirmerAvecAvatar(cible, true)).toBe(false);
+      expect(conseilDureeAvatar(cible, true)).toBeNull();
     });
   }
 
@@ -184,7 +187,8 @@ describe('A4 v2 — cible courte avec avatar : message complet ou 30 s', () => {
   it('pas de conseil sans avatar seul ni sans cible', () => {
     expect(conseilDureeAvatar(15, false)).toBeNull();
     expect(conseilDureeAvatar(undefined, true)).toBeNull();
-    expect(dureeEffectiveAvatarSeul(undefined)).toBeUndefined();
+    expect(dureeAConfirmerAvecAvatar(undefined, true)).toBe(false);
+    expect(dureeAConfirmerAvecAvatar(15, false)).toBe(false);
   });
 
   it('UI : le conseil s’affiche sous la durée et « Passer à 30 s » pose 30 s (clic explicite)', async () => {
@@ -194,7 +198,7 @@ describe('A4 v2 — cible courte avec avatar : message complet ou 30 s', () => {
     const onChange = vi.fn();
     const r = render(React.createElement(BriefVideo, { brief: { duree: 15 }, onChange, avecDureeRythme: true, conseilDuree: conseilDureeAvatar(15, true) }));
     const bloc = r.container.querySelector('[data-brief-conseil-duree]');
-    expect(bloc?.textContent).toContain('15 s est trop court pour un message complet : nous recommandons 30 s');
+    expect(bloc?.textContent).toContain('Avec votre avatar, 15 s est trop court pour un message complet. Passez à 30 s pour lancer la génération.');
     fireEvent.click(r.container.querySelector('[data-brief-conseil-duree-appliquer]') as Element);
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ duree: 30 }));
     cleanup();

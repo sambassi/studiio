@@ -1,6 +1,6 @@
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import { metadataFormat } from '@/lib/format/projet';
-import { auDixiemeSuperieur, cibleVideoDuBrief, dureeEffectiveAvatarSeul, enveloppeAutourDuJumeau } from '@/lib/autopilot/duree-cible';
+import { auDixiemeSuperieur, cibleVideoDuBrief, enveloppeAutourDuJumeau } from '@/lib/autopilot/duree-cible';
 import {
   DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS,
 } from '@/lib/creer/designSpec';
@@ -189,9 +189,10 @@ export function buildAutopilotDesign(
   // A4 — jumeau + durée cible : titre, cartes et CTA se partagent ce que la
   // parole de l'avatar laisse de la cible (minima de lisibilité, jamais la
   // parole coupée). Sans jumeau ou sans cible : les règles d'avant.
-  // A4 v2 : la cible EFFECTIVE (sous 20 s → 30 s), la même que le script du jumeau.
+  // La cible CHOISIE, jamais une autre (A4 v3 : aucune durée imposée). Un
+  // créneau déjà en file sous 20 s garde sa durée : jumeau entier + minima.
   // Multi-sources : ces durées sont remplacées par la surimpression en aval.
-  const cibleJumeau = jumeau ? dureeEffectiveAvatarSeul(post.brief?.duree) : undefined;
+  const cibleJumeau = jumeau ? post.brief?.duree : undefined;
   const enveloppe = jumeau && cibleJumeau
     ? enveloppeAutourDuJumeau(cibleJumeau - videoJumeau, DEFAULT_SEQUENCE_SECONDS, post.content.cards.length > 0)
     : null;

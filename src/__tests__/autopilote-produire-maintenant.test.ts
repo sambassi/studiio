@@ -470,3 +470,41 @@ describe('1 clic = 1 rendu : la production tourne en ARRIÈRE-PLAN', () => {
     expect(panel).toContain('if (!p && r) appliquerResultat(r);');
   });
 });
+
+describe('A4 v3 — avatar seul, durée < 20 s : rien sans confirmation', () => {
+  const lancer = vi.fn(async (..._a: unknown[]) => ({ ok: true, generationId: 'g', attenteId: 'a', dejaEnFile: false }));
+  const avecLancerSimule = async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/autopilot/jumeau-async', async () => {
+      const actual = await vi.importActual<typeof import('@/lib/autopilot/jumeau-async')>('@/lib/autopilot/jumeau-async');
+      return { ...actual, lancerJumeauMontage: (...a: unknown[]) => lancer(...a) };
+    });
+    const route = await import('@/app/api/autopilot/produire-maintenant/route');
+    return route;
+  };
+  afterEach(() => { vi.doUnmock('@/lib/autopilot/jumeau-async'); lancer.mockClear(); });
+
+  it('15 s sans confirmation → 409 duree_a_confirmer, message clair, aucune génération, aucun rendu, aucun débit', async () => {
+    configEnBase = { ...configComplete(), jumeau_avatar: true, brief: { duree: 15 } };
+    const { POST } = await avecLancerSimule();
+    const res = await produire(POST);
+    expect(res.status).toBe(409);
+    const corps = await res.json();
+    expect(corps.code).toBe('duree_a_confirmer');
+    expect(corps.error).toBe('Avec votre avatar, 15 s est trop court pour un message complet. Passez à 30 s pour lancer la génération.');
+    expect(lancer).not.toHaveBeenCalled();
+    expect(renderAndUpload).not.toHaveBeenCalled();
+    expect(deductCredits).not.toHaveBeenCalled();
+    expect(posts).toHaveLength(0);
+  });
+
+  it('après « Passer à 30 s » (config à 30 s) → le jumeau est lancé, à 30 s', async () => {
+    configEnBase = { ...configComplete(), jumeau_avatar: true, brief: { duree: 30 } };
+    const { POST } = await avecLancerSimule();
+    const res = await produire(POST);
+    expect(res.status).toBeLessThan(300);
+    expect(lancer).toHaveBeenCalledTimes(1);
+    const arg = lancer.mock.calls[0][0] as { post: { brief?: { duree?: number } } };
+    expect(arg.post.brief?.duree).toBe(30);
+  });
+});

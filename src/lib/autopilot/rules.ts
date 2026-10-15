@@ -705,7 +705,9 @@ export type SkipReason =
   /** La date de début n'est pas atteinte — cas NORMAL, silencieux comme `pas-encore`. */
   | 'avant-la-date-de-debut'
   | 'credits'
-  | 'sans-rush';
+  | 'sans-rush'
+  /** A4 v3 — avatar seul, cible sous 20 s : rien n'est produit tant que l'utilisateur n'a pas confirmé 30 s. */
+  | 'duree_a_confirmer';
 
 /** Est-on, chez l'utilisateur, avant la date de début choisie ? Sans date : jamais. */
 export function isBeforeStartDate(config: Pick<AutopilotConfig, 'startDate' | 'runTimezone'>, now: number): boolean {
