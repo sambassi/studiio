@@ -35,7 +35,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { scriptPourDuree } from '@/lib/autopilot/duree-cible';
+import { scriptPourDuree, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
@@ -85,15 +85,23 @@ export const ESSAIS_MESURE_JUMEAU = 3;
  * c'est l'identité constante de la chaîne. Le jumeau étant la seule voix du
  * montage, ce script ne se répète nulle part ailleurs.
  */
-export function scriptJumeauMontage(post: PreparedPost): string {
+export function scriptJumeauMontage(post: PreparedPost, config?: AutopilotConfig | null): string {
   // Durée cible du brief : le script est COMPOSÉ pour elle — accroche,
   // idées (cartes), appel à l'action — par unités entières, jamais coupé.
+  //
+  // A4 — AVATAR SEUL (pas d'autres sources) : titre, cartes et CTA sont des
+  // séquences plein écran AUTOUR du jumeau ; leur part de la durée cible est
+  // réservée (`secondesReserveesEnveloppeJumeau`), sinon la vidéo durait
+  // ≈ cible + 14 s. Avec d'autres sources (textes en surimpression sur
+  // l'avatar), ou sans config connue : le budget d'avant, toute la cible.
+  const avatarSeul = !!config && !avatarAvecAutresSources(config);
   const pourDuree = scriptPourDuree({
     titre: post.title,
     sousTitre: post.content.subtitle,
     cartes: post.content.cards ?? [],
     cta: post.brief?.cta || post.content.tagLine,
     brief: post.brief,
+    ...(avatarSeul ? { secondesReservees: secondesReserveesEnveloppeJumeau(post.brief?.duree) } : null),
   });
   if (pourDuree !== null) return pourDuree.slice(0, MAX_SCRIPT);
   const briefMessage = (post.brief?.message ?? '').trim();
@@ -164,7 +172,7 @@ export async function lancerJumeauMontage(input: {
     return { ok: true, generationId: l.generation_id, attenteId: l.id, dejaEnFile: true };
   }
 
-  const script = scriptJumeauMontage(input.post);
+  const script = scriptJumeauMontage(input.post, input.config);
   if (!script) {
     return { ok: false, motif: 'texte_absent', message: 'Aucun texte à faire dire à votre jumeau pour ce montage.' };
   }

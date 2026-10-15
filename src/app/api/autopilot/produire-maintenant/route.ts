@@ -261,7 +261,7 @@ export async function POST(req?: Request) {
       // CETTE vidéo (moteur de l'Autopilote, durée estimée de SON script)
       // AVANT toute réservation, tout débit et tout appel. 428 sinon.
       if (await compteExempteDeCredits(userId)) {
-        const devisFournisseur = await devisVideoAutopilote(userId, configBrouillon, scriptJumeauMontage(post));
+        const devisFournisseur = await devisVideoAutopilote(userId, configBrouillon, scriptJumeauMontage(post, configBrouillon));
         if (devisFournisseur && !confirmationValable(coutConfirme, moteurConfirme, devisFournisseur)) return reponseConfirmationCout(devisFournisseur);
       }
       const lancement = await lancerJumeauMontage({
