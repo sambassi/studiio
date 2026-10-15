@@ -525,13 +525,23 @@ export async function produireUnMontage(input: {
   let afficheCustom: string | null = null;
   /** Affiche IA réellement produite : débitée seulement si le montage est livré. */
   let afficheIaADebiter = false;
-  const aDesPhotos = config.posterUrls.length > 0;
+  // ⚠️ IDOR (S1b) : `poster_urls` est écrit par l'utilisateur, comme
+  // `rush_urls`. MÊME garde, MÊME comportement que la banque de rushes
+  // (`banqueRushs`) : une photo de NOTRE stockage qui n'appartient pas à ce
+  // compte (ou malformée : traversée, namespace privé) est LÂCHÉE ici, avant
+  // pioche, référence IA ou rendu — jamais lue, jamais envoyée au fournisseur,
+  // jamais écrite, jamais retirée de la banque. Banque vide après filtre :
+  // même chemin qu'une banque vide (affiche automatique). Une photo publique
+  // externe (Pexels, Unsplash…) reste recevable : elle sera copiée par le
+  // fetch sûr au rendu.
+  const affichesLisibles = config.posterUrls.filter(lisible);
+  const aDesPhotos = affichesLisibles.length > 0;
 
   if (config.posterMode === 'reference' && aDesPhotos) {
     // UNE de mes photos sert de RÉFÉRENCE : l'IA en fait une affiche qui
     // préserve mon visage/mes vêtements. La rotation porte sur la photo SOURCE,
     // pour que deux montages ne repartent pas de la même.
-    const reference = pickCustomPoster(config.posterUrls, dernierePosterUrl, rang);
+    const reference = pickCustomPoster(affichesLisibles, dernierePosterUrl, rang);
     if (reference) {
       afficheCustom = reference;
       input.onAfficheCustom?.(reference);
@@ -560,7 +570,7 @@ export async function produireUnMontage(input: {
       }
     }
   } else if (config.posterMode === 'custom' && aDesPhotos) {
-    posterUrl = pickCustomPoster(config.posterUrls, dernierePosterUrl, rang);
+    posterUrl = pickCustomPoster(affichesLisibles, dernierePosterUrl, rang);
     if (posterUrl) { afficheCustom = posterUrl; input.onAfficheCustom?.(posterUrl); }
   } else {
     // Automatique : recherche par thème (Pexels). La variante fait tourner le

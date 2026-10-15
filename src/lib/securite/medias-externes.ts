@@ -23,7 +23,9 @@ import { stat, unlink } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import os from 'os';
 import path from 'path';
-import { cibleStockageParChemin, extraireCibleStockage, originesStockageConfigurees } from '@/lib/storage/acces-objet';
+import {
+  cibleStockageParChemin, cleObjetValide, extraireCibleStockage, originesStockageConfigurees, PREFIXE_RELAIS_PUBLIC,
+} from '@/lib/storage/acces-objet';
 import { RefusSsrf, telechargerSur, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 
@@ -173,23 +175,97 @@ export function mediasEntreeRendu(d: CreerSimpleRenderInput): Array<{ url: strin
   return out;
 }
 
+/** Toutes les valeurs des champs médias d'une entrée de rendu, quelle que soit leur forme. Pure. */
+function valeursEntreeRendu(d: CreerSimpleRenderInput): Array<{ valeur: unknown; genre: GenreMedia }> {
+  const out: Array<{ valeur: unknown; genre: GenreMedia }> = [];
+  const ajouter = (valeur: unknown, genre: GenreMedia) => { out.push({ valeur, genre }); };
+  ajouter(d.posterUrl, 'image');
+  for (const v of Object.values(d.sequenceBackgrounds ?? {})) ajouter(v, 'image');
+  ajouter(d.videoUrl, 'video');
+  for (const r of d.rushs ?? []) ajouter(r?.url, 'video');
+  for (const s of d.montage ?? []) ajouter(s?.url, s?.kind === 'image' ? 'image' : 'video');
+  ajouter(d.musicUrl, 'audio');
+  ajouter(d.voiceUrl, 'audio');
+  for (const v of Object.values(d.sequenceVoiceUrls ?? {})) ajouter(v, 'audio');
+  return out;
+}
+
+// eslint-disable-next-line no-control-regex
+const CARACTERE_DE_CONTROLE = /[\u0000-\u001f\u007f]/;
+
+/**
+ * Un objet de NOTRE stockage sous sa forme CANONIQUE, telle que Chromium la
+ * demandera sans rien normaliser. `estNotreStockage` ne juge que le PRÉFIXE
+ * brut : `…/public/media/x/../../../api/…` (ou `%2e%2e`, `%2E%2e`, segment
+ * `.`) y passe, puis Chromium remonte les segments et sort du relais.
+ * Exigé ici : aucun caractère de contrôle ; la lecture brute (relais) et la
+ * lecture WHATWG désignent le MÊME objet public (`cibleStockageParChemin`
+ * ne rend `'refus'` pour aucune normalisation) ; une clé sans `..`, `\`,
+ * ni `://`, brute comme décodée (double encodage `%252e` compris).
+ */
+function stockageCanonique(url: string, origines: readonly string[]): boolean {
+  if (CARACTERE_DE_CONTROLE.test(url)) return false;
+  const cible = extraireCibleStockage(url, { origines });
+  if (!cible) return false;
+  const parChemin = cibleStockageParChemin(url);
+  if (parChemin === null || parChemin === 'refus' || parChemin.acces !== 'public') return false;
+  if (parChemin.bucket !== cible.bucket || parChemin.cle !== cible.cle) return false;
+  return cleObjetValide(parChemin.cle) && cleObjetValide(parChemin.cleBrute);
+}
+
+/**
+ * Juge UNE valeur de champ média du rendu (fermé par défaut) :
+ *   - absente / vide / non-chaîne → `null`, transmise telle quelle (comme avant) ;
+ *   - chemin relais RELATIF canonique (`/storage/v1/object/public/…`) → `null`,
+ *     transmis tel quel puis signé par `signerUrlsRelaisProfond` (comme avant) ;
+ *   - URL http(s) déjà canonique (`classerChaineLibre` la rend inchangée) → elle-même,
+ *     à localiser — refusée si elle se dit « notre stockage » sans être canonique ;
+ *   - TOUT le reste → `RefusSsrf` : relatif (`proxy?src=`, `./`, `/proxy`),
+ *     `//hôte`, `\`, schéma interdit, texte, ou http(s) que l'analyseur WHATWG
+ *     réécrirait (blanc, tabulation, `https:hôte`, `https:\\hôte`).
+ */
+function urlEntreeRendu(valeur: unknown, origines: readonly string[]): string | null {
+  if (typeof valeur !== 'string' || valeur.length === 0) return null;
+  if (valeur.startsWith(PREFIXE_RELAIS_PUBLIC)) {
+    if (stockageCanonique(valeur, origines)) return null;
+    throw new RefusSsrf('url-invalide');
+  }
+  const canonique = classerChaineLibre(valeur);
+  if (canonique === null || canonique !== valeur) throw new RefusSsrf('url-invalide');
+  if (estNotreStockage(valeur, origines) && !stockageCanonique(valeur, origines)) throw new RefusSsrf('url-invalide');
+  return valeur;
+}
+
 /**
  * L'entrée de rendu dont TOUS les médias désignent notre stockage. Un même
  * fichier n'est localisé qu'une fois, quel que soit le nombre de champs qui le
  * portent (rush + plan, avatar image + voix).
+ *
+ * Fermée par défaut (S1b) : toute valeur média qui n'est ni une URL http(s)
+ * canonique, ni un chemin relais relatif canonique, rejette `RefusSsrf` —
+ * rien n'est demandé au réseau. Les médias externes sont copiés SANS
+ * exemption d'origine de confiance (`originesDeConfiance: []`) : seul un
+ * chemin hors stockage peut l'être, et c'est précisément celui qui doit
+ * passer le contrôle d'adresse.
  */
 export async function localiserEntreesRendu(
   d: CreerSimpleRenderInput,
   opts: Omit<OptionsLocalisation, 'genre'> = {},
 ): Promise<CreerSimpleRenderInput> {
-  const medias = mediasEntreeRendu(d);
+  const origines = opts.origines ?? originesStockageConfigurees();
+  const medias: Array<{ url: string; genre: GenreMedia }> = [];
+  for (const { valeur, genre } of valeursEntreeRendu(d)) {
+    const url = urlEntreeRendu(valeur, origines);
+    if (url !== null) medias.push({ url, genre });
+  }
   const genreDe = new Map<string, GenreMedia>();
   for (const m of medias) {
     // Vidéo prioritaire : la vidéo de l'avatar sert aussi de piste de voix.
     if (!genreDe.has(m.url) || m.genre === 'video') genreDe.set(m.url, m.genre);
   }
+  const reseau: OptionsFetchSur = { ...(opts.reseau ?? {}), originesDeConfiance: [] };
   const locales = new Map<string, string>();
-  for (const [url, genre] of genreDe) locales.set(url, await localiserMedia(url, { ...opts, genre }));
+  for (const [url, genre] of genreDe) locales.set(url, await localiserMedia(url, { ...opts, origines, genre, reseau }));
   const l = <T>(u: T): T => (http(u) ? (locales.get(u) ?? u) as T : u);
   const carte = (o: Record<string, string | null> | undefined) =>
     o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, l(v)])) : o;

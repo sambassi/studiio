@@ -395,7 +395,10 @@ describe('Affiches personnalisées', () => {
     // « mes photos » (custom) n'est honoré que si la banque n'est pas vide
     // (`aDesPhotos`) ; sinon on retombe dans la branche automatique `pickPosterUrl`.
     // (Le mode « référence IA » suit la même règle : `aDesPhotos` d'abord.)
-    expect(cron).toContain('const aDesPhotos = config.posterUrls.length > 0');
+    // S1b : la banque est d'abord filtrée par propriété (comme les rushes) ;
+    // vide après filtre = banque vide.
+    expect(cron).toContain('const affichesLisibles = config.posterUrls.filter(lisible)');
+    expect(cron).toContain('const aDesPhotos = affichesLisibles.length > 0');
     expect(cron).toContain("config.posterMode === 'custom' && aDesPhotos");
     expect(cron).toContain('pickPosterUrl(post.title');
   });
