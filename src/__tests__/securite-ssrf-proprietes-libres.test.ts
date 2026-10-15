@@ -306,3 +306,61 @@ describe('7. preuve S1a rejouée : les 12 charges ne passent plus intactes', () 
     expect(appelsFetchSur).toEqual([]);
   });
 });
+
+// ─── 8. QA S1a : chemins relatifs SANS « / » vers le /proxy local de Remotion ──
+describe('8. références relatives qui atteignent /proxy : RefusSsrf, 0 appel', () => {
+  const P = 'proxy?src=http%3A%2F%2F169.254.169.254%2F&time=0';
+  const CHARGES = {
+    nu: P,
+    point: `./${P}`,
+    remontee: `../../../${P}`,
+    pointAntislash: `.\\${P}`,
+    pointEncode: `%2e/${P}`,
+    deuxPointsEncodes: `%2e%2e/${P}`,
+    allerRetour: `proxy/../${P}`,
+    majuscules: 'PROXY?src=http%3A%2F%2F10.0.0.1%2F',
+    xEncode: 'pro%78y?src=http%3A%2F%2F10.0.0.1%2F',
+    espaceTete: ` \t${P}`,
+    sousChemin: 'proxy/x',
+  };
+  for (const [nom, charge] of Object.entries(CHARGES)) {
+    it(nom, async () => {
+      expect(new URL(charge.trim(), 'http://localhost:3000/').pathname.toLowerCase()).toMatch(/^\/pro(xy|%78y)/);
+      for (const f of [...formes(charge), { posterUrl: charge }]) {
+        await expect(localiserProprietesLibres(f, opts)).rejects.toMatchObject({ name: 'RefusSsrf', motif: 'url-invalide' });
+      }
+      expect(appelsFetchSur.filter((u) => !u.includes('cdn.public.example'))).toEqual([]);
+    });
+  }
+
+  it('%2Fproxy : chemin brut /%2Fproxy, non routé par Remotion → laissé intact', async () => {
+    expect(new URL('%2Fproxy?src=x', 'http://localhost:3000/').pathname).toBe('/%2Fproxy');
+    const e = { posterUrl: '%2Fproxy?src=http%3A%2F%2F10.0.0.1%2F' };
+    expect(await localiserProprietesLibres(e, opts)).toEqual(e);
+  });
+
+  it('références relatives ordinaires : intactes', async () => {
+    const e = { a: '95%', b: '12:30', c: '#7C3AED', d: 'logo', e: 'proxima', f: 'mon proxy', g: 'Photo 100%', h: '%zz' };
+    expect(await localiserProprietesLibres(e, opts)).toEqual(e);
+    expect(appelsFetchSur).toEqual([]);
+  });
+});
+
+// ─── 9. QA S1a : « Data: … », « File: … » sont du TEXTE (blanc après « : ») ──
+describe('9. nom de schéma suivi d’un blanc : texte intact', () => {
+  it.each(['Data: 5 chiffres', 'About: nous', 'File: x', 'file: /etc/passwd', 'Chrome: astuce', 'FTP: info', 'data:  x'])('%s', async (t) => {
+    const e = { posterUrl: t, logoUrl: t, backgroundVideos: [t] };
+    expect(await localiserProprietesLibres(e, opts)).toEqual(e);
+    expect(appelsFetchSur).toEqual([]);
+  });
+  it('« File: x » et « file: /etc/passwd » ne désignent pas /etc/passwd', () => {
+    expect(new URL('File: x').href).toBe('file:///%20x');
+    expect(new URL('file: /etc/passwd').href).toBe('file:///%20/etc/passwd');
+    expect(new URL('file: /etc/passwd').pathname).not.toBe('/etc/passwd');
+  });
+  it('blanc supprimé par WHATWG (tab/LF après « : ») : toujours refusé', async () => {
+    for (const t of ['file:\t///etc/passwd', 'data:\nimage/png;base64,AA', 'javascript:\ralert(1)']) {
+      await expect(localiserProprietesLibres({ posterUrl: t }, opts)).rejects.toMatchObject({ motif: 'schema' });
+    }
+  });
+});

@@ -236,6 +236,9 @@ const SCHEMAS_INTERDITS = new Set([
  * Rend l'URL http(s) CANONIQUE à localiser, `null` pour du texte ordinaire ;
  * rejette `RefusSsrf` pour un chemin relatif ou un schéma interdit.
  */
+/** Origine fictive servant à résoudre les références relatives (comme Chromium). */
+const BASE_RELATIVE = 'http://localhost:3000/';
+
 function classerChaineLibre(brute: string): string | null {
   // eslint-disable-next-line no-control-regex
   const n = brute.replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '').replace(/[\t\n\r]/g, '');
@@ -246,8 +249,21 @@ function classerChaineLibre(brute: string): string | null {
     return n === brute && http(brute) ? brute : u.href;
   }
   if (/^[/\\]/.test(n)) throw new RefusSsrf('url-invalide');
-  const schema = /^([a-z][a-z0-9+.-]*):/i.exec(n);
+  // Un nom de schéma suivi d'un BLANC (« Data: 5 chiffres », « File: x ») est
+  // du texte : WHATWG en ferait `file:///%20x`, qui ne désigne rien.
+  const schema = /^([a-z][a-z0-9+.-]*):(?![\u0000-\u0020])/i.exec(n);
   if (schema && SCHEMAS_INTERDITS.has(schema[1].toLowerCase())) throw new RefusSsrf('schema');
+  // Référence RELATIVE sans « / » en tête (`proxy?src=…`, `./proxy`,
+  // `%2e%2e/proxy`…) : Chromium la résout vers le serveur local de Remotion,
+  // dont `/proxy` télécharge sans filtre IP. Base RACINE : ce qui atteint
+  // /proxy depuis une base plus profonde l'atteint aussi depuis la racine.
+  let rel: URL | null = null;
+  try { rel = new URL(n, BASE_RELATIVE); } catch { rel = null; }
+  if (rel && rel.origin === new URL(BASE_RELATIVE).origin) {
+    // Décodage par octet, tolérant : « 95% » reste du texte au lieu d'échouer.
+    const chemin = rel.pathname.replace(/%([0-9a-f]{2})/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
+    if (chemin.toLowerCase().startsWith('/proxy')) throw new RefusSsrf('url-invalide');
+  }
   return null;
 }
 
