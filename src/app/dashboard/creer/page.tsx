@@ -10,12 +10,8 @@ import type { SearchParams } from '@/lib/routing/legacy-redirect';
  * Elle porte le parcours guidé et l'Autopilote, tous deux rendus par
  * `AssistantWizard`. C'est la SEULE entrée « Créer » du menu.
  *
- * L'ancien éditeur vit désormais sous `/dashboard/creer-avance`. Il n'est ni
- * dans le menu ni présenté comme un parcours : c'est une compatibilité
- * temporaire, le temps que ce parcours-ci sache relire un contenu existant.
- * Le lien discret ci-dessous existe pour ne pas laisser sans issue quelqu'un
- * qui a besoin d'un réglage que le parcours guidé n'expose pas encore — il
- * n'est PAS un troisième choix mis sur le même plan que l'assistant.
+ * L'ancien éditeur avancé (`/dashboard/creer-avance`) a été retiré : son URL
+ * redirige ici, de façon permanente (voir sa page et `legacy-redirect`).
  *
  * Cette page reste un composant SERVEUR : seul le wizard, qui a besoin d'état,
  * est un composant client.
@@ -44,8 +40,7 @@ export default function CreerPage({
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       {/* L'en-tete vit dans le wizard (`CreerEntete`) : il change selon que
           l'on est au choix des modes, dans l'assistant ou dans l'Autopilote,
-          et porte le retour au choix. L'editeur avance est propose sur
-          l'ecran de choix, comme option secondaire. */}
+          et porte le retour au choix. */}
 
       {/* Corps : parcours a gauche, apercu a droite — tout est pilote par
           le wizard, qui doit partager son etat entre les deux colonnes.

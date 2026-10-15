@@ -1,27 +1,23 @@
 /**
  * Destination des anciennes routes de création, query comprise.
  *
- * Trois chemins historiques mènent aujourd'hui à la création :
- * `/dashboard/creer-simple`, `/dashboard/creator` et `/dashboard/infographie`.
- * Après l'unification, ils mènent à :
+ * Quatre chemins historiques mènent aujourd'hui à la création :
+ * `/dashboard/creer-simple`, `/dashboard/creator`, `/dashboard/infographie`
+ * et `/dashboard/creer-avance` (l'ancien éditeur avancé, retiré). Après
+ * l'unification, ils mènent à :
  *
  * - `/dashboard/creer` — le parcours guidé : NOUVELLE création, et
  *   modification d'un post (`?postId=`, relu par `lib/creer/editTarget`) ;
  * - `/dashboard/library` — pour un lien `?id=` (un `videos.id`, voir
  *   `LIBRARY_ONLY_PARAMS`) : c'est là qu'une vidéo se modifie (#430).
  *
- * `/dashboard/creer-avance` (l'ancien éditeur) existe toujours, mais n'est
- * plus la cible d'AUCUNE redirection : il ne lit que `postId` et `tab`, et un
- * lien `?id=` y ouvrait un éditeur vide (son brouillon local, pas la vidéo).
- * On n'y arrive plus que volontairement (« Ouvrir l'éditeur avancé »).
- *
  * Ce module ne fait que CALCULER une cible. Il ne redirige pas lui-même, ne
  * lit aucune base et n'interprète aucun identifiant : transporter un paramètre
  * et le comprendre sont deux sujets distincts, et seul le premier est traité
  * ici.
  *
- * Une seule implémentation plutôt qu'une copie par page : trois copies
- * divergeraient, et le bug ne réapparaîtrait que sur l'une des trois.
+ * Une seule implémentation plutôt qu'une copie par page : quatre copies
+ * divergeraient, et le bug ne réapparaîtrait que sur l'une d'elles.
  */
 
 /** Ce que Next passe à une page serveur dans `searchParams`. */
@@ -29,9 +25,6 @@ export type SearchParams = Record<string, string | string[] | undefined>;
 
 /** Parcours guidé — toute nouvelle création. */
 export const CREER_ROUTE = '/dashboard/creer';
-
-/** Ancien éditeur — conservé, accessible par son lien volontaire ; plus une cible de redirection. */
-export const CREER_AVANCE_ROUTE = '/dashboard/creer-avance';
 
 /** Bibliothèque — destination des liens `?id=` (un `videos.id`). */
 export const LIBRARY_ROUTE = '/dashboard/library';
@@ -49,8 +42,8 @@ export const EDIT_PARAMS = ['postId', 'id'] as const;
  * Paramètres d'édition qui mènent à la BIBLIOTHÈQUE.
  *
  * `id` est un `videos.id`. Aucun éditeur ne le relit : ni le parcours guidé
- * (qui ouvrirait une création vierge), ni l'ancien éditeur (qui ne lit que
- * `postId` et `tab` — il ouvrait son brouillon local). Le convertir en
+ * (qui ouvrirait une création vierge), ni l'ancien éditeur avancé (retiré,
+ * qui ne lisait que `postId` et `tab` — il ouvrait son brouillon local). Le convertir en
  * `postId` serait inventer un lien entre deux tables. La Bibliothèque, elle,
  * sait modifier une vidéo : elle ouvre le post relié, ou propose d'en créer un
  * (`POST /api/videos/[id]/editable-post`, #430).

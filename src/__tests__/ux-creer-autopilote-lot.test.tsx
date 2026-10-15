@@ -85,10 +85,10 @@ describe('1. Choix du mode', () => {
     expect(document.querySelector('[data-colonne="apercu"]')).toBeNull();
     // La colonne travail n'est plus bornée aux 3/5 de la largeur.
     expect(document.querySelector('[data-colonne="travail"]')?.className).not.toContain('lg:col-span-3');
-    // Les deux cartes et l'éditeur avancé en option secondaire.
+    // Les deux cartes, et plus de lien vers l'ancien éditeur avancé (retiré).
     expect(document.querySelector('[data-parcours-assistant]')).not.toBeNull();
     expect(document.querySelector('[data-parcours-autopilote]')).not.toBeNull();
-    expect(document.querySelector('[data-editeur-avance]')).not.toBeNull();
+    expect(document.querySelector('[data-editeur-avance]')).toBeNull();
   });
 
   it('l Autopilote, une fois choisi, retrouve ses deux colonnes et son aperçu', async () => {

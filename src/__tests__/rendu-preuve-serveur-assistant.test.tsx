@@ -354,7 +354,7 @@ describe('6. Confirmation refusee → rien n est livre', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// 8. Les autres destinations de l'Assistant, et l'editeur avance
+// 8. Les autres destinations de l'Assistant
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('8. Telechargement — meme parcours, et rien n arrive au disque sans preuve', () => {
@@ -372,16 +372,6 @@ describe('8. Telechargement — meme parcours, et rien n arrive au disque sans p
     await cliquer(/Télécharger la vidéo/i);
     expect(trace).not.toContain('confirmation');
     expect(document.body.textContent).not.toContain('Téléchargé.');
-  });
-});
-
-describe('8. Editeur avance — passe par le meme socle', () => {
-  const avance = readFileSync(
-    join(process.cwd(), 'src/app/dashboard/creer-avance/page.tsx'), 'utf-8',
-  );
-  it('il appelle composerEtFacturer et non composeAndUpload', () => {
-    expect(avance).toContain("import { composerEtFacturer } from \"@/lib/rendus/composer\"");
-    expect(avance).not.toMatch(/composeAndUpload\s*\(/);
   });
 });
 

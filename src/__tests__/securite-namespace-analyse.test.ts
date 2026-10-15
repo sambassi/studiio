@@ -218,6 +218,13 @@ interface Famille {
   type: string;
   fichier: string;
   marqueur: string;
+  /**
+   * Famille HISTORIQUE : son fabricant a été retiré du code, mais des objets
+   * de cette forme existent encore dans le stockage et doivent rester servis.
+   * Le contrôle « son fabricant produit encore cette forme » ne s'applique
+   * pas ; le service, lui, reste éprouvé.
+   */
+  historique?: string;
 }
 
 const UTILISATEUR = 'usr-42';
@@ -273,6 +280,7 @@ const FAMILLES: Famille[] = [
     type: 'image/jpeg',
     fichier: 'src/app/dashboard/creer-avance/page.tsx',
     marqueur: "purpose: 'bg'",
+    historique: 'fabriquée par l ancien éditeur avancé, retiré — objets existants toujours servis',
   },
   {
     usage: 'vidéo de démo de la page d accueil',
@@ -455,7 +463,7 @@ describe('La garde du blocage de l espace de noms', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('L inventaire des clés est tenu depuis le code, pas de mémoire', () => {
-  it.each(FAMILLES.map((f) => [f.usage, f] as const))(
+  it.each(FAMILLES.filter((f) => !f.historique).map((f) => [f.usage, f] as const))(
     '%s — son fabricant produit encore cette forme',
     (_usage, f) => {
       expect(existsSync(racine(f.fichier)), f.fichier).toBe(true);

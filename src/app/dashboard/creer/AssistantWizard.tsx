@@ -10690,15 +10690,6 @@ export default function AssistantWizard() {
                 </div>
               </div>
             </Card>
-            {/* L'editeur avance : une option pour qui veut plus de controle,
-                dite comme telle — pas un troisieme parcours, et plus un lien
-                present pendant tout le reste. */}
-            <p className="sm:col-span-2 text-xs text-gray-500" data-editeur-avance>
-              Besoin de plus de contrôle ?{' '}
-              <Link href="/dashboard/creer-avance" className="underline underline-offset-2 hover:text-gray-300 transition">
-                Ouvrir l’éditeur avancé
-              </Link>
-            </p>
           </div>
         )}
 

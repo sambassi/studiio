@@ -317,16 +317,9 @@ describe('10. Abandon — aucun débit', () => {
 
 describe('13 & 16. Les quatre parcours passent par le contrat, et livrent après', () => {
   const wizard = readSource('src/app/dashboard/creer/AssistantWizard.tsx');
-  const avance = readSource('src/app/dashboard/creer-avance/page.tsx');
 
   it("l'Assistant fait passer aperçu et bureau par le contrat", () => {
     expect(wizard).toContain("operation: destination === 'apercu' ? 'apercu' : 'bureau',");
-  });
-
-  it("l'éditeur avancé fait passer ses deux exports par le contrat", () => {
-    expect(avance).toContain("composerEtFacturer('avance-brouillon', renderFormat, {");
-    expect(avance).toContain("composerEtFacturer('avance-bureau', renderFormat, {");
-    expect(avance).not.toContain('composeAndUpload(');
   });
 
   it('16. rien n est livré avant la confirmation', () => {
@@ -337,7 +330,7 @@ describe('13 & 16. Les quatre parcours passent par le contrat, et livrent après
   });
 
   it('14. aucun ancien appel avec un montant client ne subsiste', () => {
-    for (const source of [wizard, avance]) {
+    for (const source of [wizard]) {
       expect(source).not.toContain("JSON.stringify({ cost");
       expect(source).not.toContain('cost, reason:');
     }

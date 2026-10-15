@@ -145,8 +145,8 @@ describe('Écran d’entrée — un choix, une action principale', () => {
     await settle();
     expect(document.querySelector('[data-creer-entete="choix"]')!.textContent).toContain('Créer du contenu');
     expect(document.querySelector('[data-creer-retour-choix]')).toBeNull();
-    // L'éditeur avancé : une option secondaire, sur l'écran de choix seulement.
-    expect(document.querySelector('[data-editeur-avance]')!.textContent).toMatch(/Besoin de plus de contrôle/);
+    // L'éditeur avancé a été retiré : plus aucun lien vers lui sur l'écran de choix.
+    expect(document.querySelector('[data-editeur-avance]')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /Configurer l.Autopilote/ }));
     await settle();

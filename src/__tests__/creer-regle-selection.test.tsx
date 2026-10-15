@@ -238,7 +238,6 @@ describe('Au plus UNE ligne par axe', () => {
 
   it('les deux éditeurs appliquent la coupe', () => {
     for (const [nom, src] of [
-      ['avancé', readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8')],
       ['simple', readFileSync(resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'), 'utf-8')],
     ] as const) {
       expect(src.includes('onePerAxis(mergeGuides('), nom).toBe(true);
@@ -313,7 +312,6 @@ describe('Le milieu du format, visible pendant la manipulation', () => {
 });
 
 describe('Le câblage des deux éditeurs', () => {
-  const avance = readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8');
   const simple = readFileSync(
     resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
@@ -323,21 +321,21 @@ describe('Le câblage des deux éditeurs', () => {
     // Le gestionnaire de déplacement mesure la boîte APRÈS aimantation : le
     // DOM a un rendu de retard, mesurer ce qu'il affiche donnerait le chiffre
     // de la frame précédente.
-    for (const [nom, src] of [['avancé', avance], ['simple', simple]] as const) {
+    for (const [nom, src] of [['simple', simple]] as const) {
       expect(src.includes('const boiteActive = rend'), nom).toBe(true);
       expect(src.includes('computeGapBadges(boiteActive'), nom).toBe(true);
     }
   });
 
   it('et restent affichées à la sélection, sans glissement', () => {
-    for (const [nom, src] of [['avancé', avance], ['simple', simple]] as const) {
+    for (const [nom, src] of [['simple', simple]] as const) {
       expect(src.includes('sameGaps('), nom).toBe(true);
       expect(src.includes("closest('[data-guide-key]')"), nom).toBe(true);
     }
   });
 
   it('les deux éditeurs tracent les lignes d alignement et le cadre de sélection', () => {
-    for (const [nom, src] of [['avancé', avance], ['simple', simple]] as const) {
+    for (const [nom, src] of [['simple', simple]] as const) {
       expect(src.includes('computeAlignmentLines('), nom).toBe(true);
       expect(src.includes('mergeGuides('), nom).toBe(true);
       expect(src.includes('selection={'), nom).toBe(true);
@@ -345,7 +343,6 @@ describe('Le câblage des deux éditeurs', () => {
   });
 
   it('les deux montrent le milieu dès qu un bloc est mesuré', () => {
-    expect(avance).toContain('showCenter={showCenterGuides || activeGaps.length > 0}');
     expect(simple).toContain('showCenter={reperesCentre || gaps.length > 0}');
   });
 });

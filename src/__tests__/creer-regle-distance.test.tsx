@@ -170,48 +170,12 @@ describe('Cause 2 — la comparaison qui rend la mesure persistante possible', (
 });
 
 describe('Le câblage des deux éditeurs', () => {
-  const avance = readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8');
   const simple = readFileSync(
     resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   );
   const cartes = readFileSync(resolve(__dirname, '../components/creer/SequenceCards.tsx'), 'utf-8');
   const elements = readFileSync(resolve(__dirname, '../components/creer/FreeElementsLayer.tsx'), 'utf-8');
-
-  it('l éditeur avancé marque TOUS ses blocs déplaçables', () => {
-    // La liste est celle des `setDragging(...)` du fichier : chaque bloc qui
-    // se déplace doit se mesurer, sinon la règle reste aveugle.
-    for (const cle of [
-      'title', 'cards', 'watermark', 'overlay', 'logo', 'sitetext',
-      'titleIcon', 'extraTitle', 'extraSubtitle',
-    ]) {
-      expect(avance.includes(`data-guide-key="${cle}"`), cle).toBe(true);
-    }
-    // Instances multiples — clé portant l'index.
-    expect(avance).toContain('data-guide-key={`overlay:${i}`}');
-    expect(avance).toContain('data-guide-key={`card:${i}`}');
-  });
-
-  it('aucun bloc déplaçable de l éditeur avancé n est laissé sans clé', () => {
-    // Garde-fou contre l'oubli : tout `setDragging("x")` doit avoir sa clé.
-    // Les deux styles de guillemets : `setDragging('titleIcon')` est écrit en
-    // simples, et c'est justement un de ceux qui manquaient.
-    const cles = Array.from(avance.matchAll(/setDragging\(['"]([a-zA-Z]+)['"]\)/g)).map((m) => m[1]);
-    expect(cles).toContain('titleIcon');
-    expect(new Set(cles).size).toBeGreaterThan(7);
-    for (const cle of new Set(cles)) {
-      expect(avance.includes(`data-guide-key="${cle}"`), cle).toBe(true);
-    }
-  });
-
-  it('les blocs secondaires sont aussi des cibles d aimantation', () => {
-    // Marqués mais absents de `allPositions`, ils seraient mesurables sans
-    // être aimantables — deux comportements pour un même bloc.
-    expect(avance).toContain("key: 'titleIcon'");
-    expect(avance).toContain("key: 'extraTitle' as const");
-    expect(avance).toContain("key: 'extraSubtitle' as const");
-    expect(avance).toContain('key: `overlay:${i}` as const');
-  });
 
   it('le Mode simple marque titre, CTA, chaque carte et chaque élément', () => {
     expect(simple).toContain('data-guide-key="title"');
@@ -235,7 +199,7 @@ describe('Le câblage des deux éditeurs', () => {
   });
 
   it('les deux éditeurs mesurent le bloc SÉLECTIONNÉ, pas seulement le bloc glissé', () => {
-    for (const [nom, src] of [['avancé', avance], ['simple', simple]] as const) {
+    for (const [nom, src] of [['simple', simple]] as const) {
       expect(src.includes('measuredKey'), nom).toBe(true);
       expect(src.includes('sameGaps('), nom).toBe(true);
       // La clé est lue dans le DOM : elle vaut donc pour TOUT bloc marqué, y
@@ -248,7 +212,7 @@ describe('Le câblage des deux éditeurs', () => {
     // Elle affichait un écart NON égal vers le bloc survolé : le même bruit,
     // déclenché au passage de la souris. La règle ne montre plus qu'une
     // égalité, il n'y avait plus rien à désigner.
-    for (const [nom, src] of [['avancé', avance], ['simple', simple]] as const) {
+    for (const [nom, src] of [['simple', simple]] as const) {
       expect(src.includes('hoveredKey'), nom).toBe(false);
       expect(src.includes('pairWith'), nom).toBe(false);
     }
