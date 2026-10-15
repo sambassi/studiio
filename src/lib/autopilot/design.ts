@@ -280,6 +280,10 @@ export function buildAutopilotDesign(
     // sinon l'avatar parlerait sans qu'on l'entende. Un rush ordinaire suit,
     // lui, le choix `keepRushAudio` du compte.
     rushMuted: jumeau ? false : !identite.keepRushAudio,
+    // A2 — la vidéo du jumeau est une VOIX : piste au niveau des voix (jamais
+    // le volume « rush » du son ambiant) et musique baissée pendant sa
+    // séquence. Sans jumeau : clé ABSENTE, le design d'avant à l'octet.
+    ...(jumeau ? { voixJumeau: true } : null),
     watermark: AUTOPILOT_WATERMARK,
     transition: DEFAULT_TRANSITION,
     textAnimation: DEFAULT_TEXT_ANIMATION,

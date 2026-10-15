@@ -69,6 +69,34 @@ export function mixAt(t: number, o: MixOptions): { music: number; voice: number;
 }
 
 /**
+ * A2 — LA VOIX DU JUMEAU AU PREMIER PLAN.
+ *
+ * Recopie du compositeur canvas (`rushAudioRequis`, `DUCK_MUSIQUE_JUMEAU`,
+ * `RAMPE_DUCK_S` de `video-composer.ts`) : pendant la séquence « Vidéo » d'un
+ * jumeau, la musique est MULTIPLIÉE par 0,1 (−20 dB), par-dessus les réglages
+ * et images-clés de l'utilisateur, qui reviennent tels quels à la sortie.
+ * Rampes linéaires de 0,25 s : descente qui s'ACHÈVE au début de la fenêtre,
+ * remontée qui COMMENCE à sa fin. Un test vérifie que les valeurs n'ont pas
+ * dérivé du compositeur.
+ */
+export const DUCK_MUSIQUE_JUMEAU = 0.1;
+export const RAMPE_DUCK_JUMEAU_S = 0.25;
+
+/** Fenêtre (secondes) pendant laquelle le jumeau parle — `null` : aucune. */
+export interface FenetreJumeau { debut: number; fin: number }
+
+/** Facteur appliqué à la musique à l'instant `t` (1 hors de la fenêtre). */
+export function facteurMusiqueJumeau(t: number, fenetre: FenetreJumeau | null): number {
+  if (!fenetre || !(fenetre.fin > fenetre.debut)) return 1;
+  const { debut, fin } = fenetre;
+  const r = RAMPE_DUCK_JUMEAU_S;
+  if (t <= debut - r || t >= fin + r) return 1;
+  if (t < debut) return 1 + (DUCK_MUSIQUE_JUMEAU - 1) * ((t - (debut - r)) / r);
+  if (t <= fin) return DUCK_MUSIQUE_JUMEAU;
+  return DUCK_MUSIQUE_JUMEAU + (1 - DUCK_MUSIQUE_JUMEAU) * ((t - fin) / r);
+}
+
+/**
  * Musique de fond, en boucle sur toute la video.
  *
  * ⚠️ LA BOUCLE OBLIGE A CONNAITRE LA DUREE DU MORCEAU. Le canvas pose

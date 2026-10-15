@@ -16,7 +16,7 @@ import SequenceTitle, { titleFrameStyle } from '../src/components/creer/Sequence
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
 import TextAnimationLayer from '../src/components/creer/TextAnimationLayer';
-import { MusiqueEnBoucle, VoixDeSequence, mixAt } from './audio';
+import { MusiqueEnBoucle, VoixDeSequence, mixAt, facteurMusiqueJumeau, type FenetreJumeau } from './audio';
 import type { AudioKeyframe } from '../src/lib/creer/audioDucking';
 import type { TextCase, TextAlign } from '../src/lib/creer/textFormat';
 import {
@@ -251,6 +251,14 @@ export interface CreerSimpleMontageProps {
   rushMuted?: boolean;
   /** Attenuations posees a la main dans le mixeur. */
   audioKeyframes?: AudioKeyframe[];
+  /**
+   * A2 — la séquence « Vidéo » PARLE (vidéo du jumeau), comme
+   * `rushAudioRequis` côté canvas : sa piste suit le niveau des VOIX (jamais
+   * celui du son ambiant du rush) et la musique est baissée pendant cette
+   * séquence (`facteurMusiqueJumeau`). ABSENT = le rendu d'avant, à
+   * l'identique.
+   */
+  voixJumeau?: boolean;
 }
 
 /** Séquences du montage, à partir des props. */
@@ -268,6 +276,24 @@ export function planFromProps(props: CreerSimpleMontageProps): PlannedSequence[]
     videoRequested: !!props.videoUrl,
     sequenceOrder: props.sequenceOrder ?? null,
   });
+}
+
+/**
+ * A2 — fenêtre (secondes) où le jumeau parle : du moment où SA piste démarre
+ * (la séquence « Vidéo » de la série, raccord entrant compris) à la fin
+ * NOMINALE de la séquence. `null` sans `voixJumeau` : aucun ducking.
+ */
+export function fenetreVoixJumeau(
+  props: Pick<CreerSimpleMontageProps, 'voixJumeau' | 'videoUrl'>,
+  // Les repères du montage, calculés UNE fois par la composition.
+  reperes: { sequences: PlannedSequence[]; offsets: number[]; base: number[]; tFrames: number; fps: number },
+): FenetreJumeau | null {
+  if (!props.voixJumeau || !props.videoUrl) return null;
+  const { sequences, offsets, base, tFrames, fps } = reperes;
+  const i = sequences.findIndex((s) => s.type === 'video');
+  if (i < 0) return null;
+  const debut = i === 0 ? 0 : offsets[i] - tFrames;
+  return { debut: debut / fps, fin: (offsets[i] + base[i]) / fps };
 }
 
 /**
@@ -470,6 +496,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
   const voixParSequence = SEQ_VOICE_KEYS.some((cle) => !!props.sequenceVoiceUrls?.[cle]);
   const voixUnique = !voixParSequence && props.voiceUrl ? props.voiceUrl : null;
   const aDeLaVoix = voixParSequence || !!voixUnique;
+  const fenetreJumeau = fenetreVoixJumeau(props, { sequences, offsets, base, tFrames, fps });
   const mixOptions = {
     musicVolume: props.musicVolume,
     voiceVolume: props.voiceVolume,
@@ -498,7 +525,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           src={props.musicUrl}
           fps={fps}
           totalFrames={totalFrames}
-          volume={(f) => mixAt(f / fps, mixOptions).music}
+          volume={(f) => mixAt(f / fps, mixOptions).music * facteurMusiqueJumeau(f / fps, fenetreJumeau)}
         />
       )}
       {/* Surimpressions : les voix partent à LEURS départs dans la vidéo
@@ -729,8 +756,12 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 //
                 // La frame reçue est relative à la séquence de la série, qui
                 // démarre `tFrames` plus tôt : `depart` la ramène à l'absolu.
+                // A2 : la vidéo du jumeau PARLE — sa piste suit le niveau des
+                // VOIX, pas celui du son ambiant d'un rush.
                 volume={(f) => (
-                  props.rushMuted ? 0 : mixAt((depart + f) / fps, mixOptions).rush
+                  props.rushMuted ? 0 : (props.voixJumeau
+                    ? mixAt((depart + f) / fps, mixOptions).voice
+                    : mixAt((depart + f) / fps, mixOptions).rush)
                 )}
               />
             ) : (
