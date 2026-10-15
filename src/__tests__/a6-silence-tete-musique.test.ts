@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdtempSync } from 'fs';
+import { existsSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -22,6 +22,8 @@ import { facteurMusiqueJumeau, DUCK_MUSIQUE_JUMEAU } from '../../remotion/audio'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const FF: string = require('ffmpeg-static');
+// Le binaire ffmpeg-static peut manquer (CI) : la mesure réelle est alors sautée, comme les autres tests « vrai ffmpeg ».
+const ffmpegPresent = typeof FF === 'string' && existsSync(FF);
 
 const JOURNAL_ADOU = `[silencedetect @ 0x6] silence_start: 0
 [silencedetect @ 0x6] silence_end: 2.2629 | silence_duration: 2.2629
@@ -147,7 +149,7 @@ describe('commande ffmpeg hybride', () => {
   });
 });
 
-describe('mesure ffmpeg RÉELLE (fichiers synthétisés)', () => {
+describe.skipIf(!ffmpegPresent)('mesure ffmpeg RÉELLE (fichiers synthétisés)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'a6-silence-'));
   const fichier = (nom: string, blanc: number) => {
     const out = join(dir, nom);
