@@ -175,8 +175,9 @@ describe('A1 — caractérisation : ce qui ne doit pas bouger', () => {
   });
 
   it.each([
-    [12, 12], [12.3, 12.3], [2.2, 2.2], [47.01, 47.1], [0.4, 0.4],
-  ])('jumeau à durée valide %s s → séquence Vidéo de %s s (A4 : au dixième supérieur, plus de blanc d’~1 s)', (s, attendu) => {
+    // A3 : + 0,8 s, le fondu de sortie vers le CTA (la parole finit avant lui).
+    [12, 12.8], [12.3, 13.1], [2.2, 3], [47.01, 47.9], [0.4, 1.2],
+  ])('jumeau à durée valide %s s → séquence Vidéo de %s s (A4 : au dixième supérieur ; A3 : + fondu de sortie)', (s, attendu) => {
     const post = { title: 'Sujet', content: { subtitle: 's', cards: [], tagLine: 'cta' }, rushUrl: RUSH } as unknown as Parameters<typeof buildAutopilotDesign>[0];
     const d = buildAutopilotDesign(post, { config: DEFAULT_CONFIG, jumeau: { videoUrl: JUMEAU_URL, seconds: s } });
     expect(d.videoDuration).toBe(attendu);
@@ -187,7 +188,7 @@ describe('A1 — caractérisation : ce qui ne doit pas bouger', () => {
     sondeJumeau = 12.3;
     const { meta } = await produire(JUMEAU_URL);
     expect(lastDesign?.videoUrl).toBe(JUMEAU_URL);
-    expect(lastDesign?.videoDuration).toBe(12.3);
+    expect(lastDesign?.videoDuration).toBe(13.1); // A3 : 12,3 + fondu de sortie 0,8
     expect(renderAndUpload).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(lecturesMinio).not.toHaveBeenCalled(); // pas de secours quand la sonde suffit
@@ -240,7 +241,7 @@ describe('A1 — sans durée fiable, le montage est ARRÊTÉ (jamais produit san
     ffprobeDouble = 14.2;
     await produire(JUMEAU_URL);
     expect(lastDesign?.videoUrl).toBe(JUMEAU_URL);
-    expect(lastDesign?.videoDuration).toBe(14.2);
+    expect(lastDesign?.videoDuration).toBe(15); // A3 : 14,2 + fondu de sortie 0,8
     expect(renderAndUpload).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(fournisseur).not.toHaveBeenCalled();

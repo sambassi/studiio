@@ -1,6 +1,7 @@
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import { metadataFormat } from '@/lib/format/projet';
 import { auDixiemeSuperieur, cibleVideoDuBrief, enveloppeAutourDuJumeau } from '@/lib/autopilot/duree-cible';
+import { TRANSITION_DURATION_SECONDS } from '@/lib/creer/transitionPreview';
 import {
   DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS,
 } from '@/lib/creer/designSpec';
@@ -185,7 +186,14 @@ export function buildAutopilotDesign(
     : sequenceSecondsWithVoice(voix, cle, parDefaut));
   // A4 — la séquence du jumeau dure SA parole, au dixième supérieur (≤ 3
   // images de marge) : l'arrondi à la seconde ajoutait jusqu'à ~1 s de blanc.
-  const videoJumeau = jumeau ? Math.max(DEFAULT_SEQUENCE_SECONDS.video, auDixiemeSuperieur(jumeau.seconds)) : 0;
+  // A3 — + la durée du fondu de sortie : le jumeau part au début NOMINAL de
+  // sa séquence (fondu d'entrée terminé) et le raccord vers le CTA se joue
+  // dans ses 0,8 dernières secondes ; sans ce supplément, ses derniers mots
+  // tomberaient dans ce fondu. Avec une durée cible, l'enveloppe l'absorbe :
+  // le total ne bouge pas.
+  const videoJumeau = jumeau
+    ? Math.max(DEFAULT_SEQUENCE_SECONDS.video, Math.round((auDixiemeSuperieur(jumeau.seconds) + TRANSITION_DURATION_SECONDS) * 10) / 10)
+    : 0;
   // A4 — jumeau + durée cible : titre, cartes et CTA se partagent ce que la
   // parole de l'avatar laisse de la cible (minima de lisibilité, jamais la
   // parole coupée). Sans jumeau ou sans cible : les règles d'avant.

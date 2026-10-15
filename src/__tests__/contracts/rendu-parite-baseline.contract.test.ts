@@ -563,10 +563,11 @@ describe('3. Invariants Autopilote ↔ Calendrier (même projet)', () => {
     expect(out).toMatchSnapshot('multi-sources');
   });
 
-  it('DIFFÉRENCE EXISTANTE (E) : avatar seul — le Calendrier perd la séquence Vidéo (34 s → 14 s)', async () => {
+  it('DIFFÉRENCE EXISTANTE (E) : avatar seul — le Calendrier perd la séquence Vidéo (34,8 s → 14 s)', async () => {
     const c = await deuxChemins('E-avatar');
     expect(c.design.videoUrl).toBe(AV);
-    expect(sequencesResume(c.tlServeur).total).toBe(34);
+    // A3 : 34 → 34,8 — la séquence du jumeau porte le fondu de sortie (sans durée cible).
+    expect(sequencesResume(c.tlServeur).total).toBe(34.8);
     // `rushUrls: []` pour le jumeau : aucune source relue → pas de séquence Vidéo.
     expect(c.meta.rushUrls).toEqual([]);
     expect(c.regen.videoUrl ?? null).toBeNull();

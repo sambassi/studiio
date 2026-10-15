@@ -21,6 +21,8 @@ import { DEFAULT_SEQUENCE_SECONDS, buildSequences, totalDurationFrames } from '@
 
 const tol = (cible: number) => Math.max(3, cible * 0.15);
 const M = MINIMA_LISIBILITE_JUMEAU;
+/** A3 — la séquence du jumeau porte en plus le fondu de sortie vers le CTA. */
+const FONDU = 0.8;
 
 function postPour(duree: number | undefined, topic = 'finance') {
   const config: AutopilotConfig = { ...DEFAULT_CONFIG, brief: duree ? { duree } : {} };
@@ -44,9 +46,11 @@ describe('A4 — matrice cible × durée du jumeau (montage)', () => {
         const { post } = postPour(cible);
         const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: J } });
         const total = dureeRendue(d);
-        // Le jumeau ENTIER, jamais coupé, au plus 3 images de marge.
-        expect(d.videoDuration).toBeGreaterThanOrEqual(J);
-        expect((d.videoDuration as number) - J).toBeLessThanOrEqual(0.1 + 1e-9);
+        // Le jumeau ENTIER, jamais coupé, au plus 3 images de marge, + le
+        // fondu de sortie (A3 : la parole finit avant le raccord vers le CTA).
+        const S = d.videoDuration as number;
+        expect(S - J).toBeGreaterThanOrEqual(FONDU - 1e-9);
+        expect(S - J).toBeLessThanOrEqual(FONDU + 0.1 + 1e-9);
         // Minima de lisibilité toujours tenus.
         expect(d.introDuration).toBeGreaterThanOrEqual(M.intro);
         expect(d.cardsDuration).toBeGreaterThanOrEqual(M.cards);
@@ -54,10 +58,10 @@ describe('A4 — matrice cible × durée du jumeau (montage)', () => {
         expect(d.cards?.length).toBeGreaterThanOrEqual(1);
         // A4 v3 : toujours la cible CHOISIE (aucune durée imposée).
         const eff = cible;
-        const reste = eff - J;
+        const reste = eff - S;
         if (reste >= 8 && reste <= 21) expect(Math.abs(total - eff)).toBeLessThanOrEqual(0.2);
-        else if (reste < 8) expect(total).toBeCloseTo(J + 8, 1); // cible trop courte : jumeau entier + minima
-        else expect(total).toBeCloseTo(J + 21, 1); // jumeau trop court : enveloppe plafonnée à ×1,5
+        else if (reste < 8) expect(total).toBeCloseTo(S + 8, 1); // cible trop courte : jumeau entier + minima
+        else expect(total).toBeCloseTo(S + 21, 1); // jumeau trop court : enveloppe plafonnée à ×1,5
       });
     }
   }
@@ -119,14 +123,14 @@ describe('A4 — répartition et arrondi', () => {
   it('jumeau plus long que la cible : jumeau entier + minima, jamais coupé', () => {
     const { post } = postPour(15);
     const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 22.37 } });
-    expect(d.videoDuration).toBe(22.4);
+    expect(d.videoDuration).toBe(23.2); // 22,4 + fondu (A3)
     expect([d.introDuration, d.cardsDuration, d.ctaDuration]).toEqual([M.intro, M.cards, M.cta]);
   });
 
   it('cible minimale (5 s, ligne déjà en file) : SA durée — minima + jumeau entier, jamais 30 s imposé', () => {
     const { post } = postPour(5);
     const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 2 } });
-    expect([d.introDuration, d.cardsDuration, d.videoDuration, d.ctaDuration]).toEqual([2.5, 3, 2, 2.5]);
+    expect([d.introDuration, d.cardsDuration, d.videoDuration, d.ctaDuration]).toEqual([2.5, 3, 2.8, 2.5]); // 2 + fondu (A3)
   });
 
   it('enveloppe au prorata 4/6/4, bornée par minima et ×1,5', () => {
@@ -144,9 +148,9 @@ describe('A4 — répartition et arrondi', () => {
     expect(auDixiemeSuperieur(10.21)).toBe(10.3);
     const { post } = postPour(undefined);
     const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 9.97 } });
-    expect(d.videoDuration).toBe(10);
+    expect(d.videoDuration).toBe(10.8); // 10 + fondu (A3)
     const d2 = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 10.2 } });
-    expect(d2.videoDuration).toBe(10.2); // avant : 11 (0,8 s de blanc)
+    expect(d2.videoDuration).toBe(11); // 10,2 + fondu (A3) ; avant A4 : ceil = 11 + blanc
     // Sans durée cible : enveloppe 4/6/4 d'avant.
     expect([d2.introDuration, d2.cardsDuration, d2.ctaDuration]).toEqual([4, 6, 4]);
   });
