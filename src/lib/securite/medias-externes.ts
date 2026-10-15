@@ -24,7 +24,7 @@ import { randomUUID } from 'crypto';
 import os from 'os';
 import path from 'path';
 import { cibleStockageParChemin, extraireCibleStockage, originesStockageConfigurees } from '@/lib/storage/acces-objet';
-import { telechargerSur, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
+import { RefusSsrf, telechargerSur, type OptionsFetchSur } from '@/lib/securite/fetch-sur';
 import type { CreerSimpleRenderInput } from '@/lib/render/creerSimple';
 
 export const BUCKET_EXTERNES = 'media';
@@ -212,20 +212,62 @@ export async function localiserEntreesRendu(
 
 /**
  * Clés qui portent du TEXTE affiché, jamais un média : une URL écrite dans un
- * titre ou un CTA (« https://monsite.fr ») reste du texte.
+ * titre ou un CTA (« https://monsite.fr ») reste du texte. Comprend les clés
+ * texte des compositions (`remotion/types.ts` : `titleText`, `themeTitle`,
+ * `tagLine`, `videoMode`, `objective`, `anchor`… et toute clé `*Text`), dont
+ * aucune n'est chargée comme média. Seule une valeur CHAÎNE est exemptée : un
+ * objet rangé sous une telle clé est inspecté comme le reste.
  */
-const CLES_TEXTE = /^(title|subtitle|titre|sousTitre|text|texte|label|description|value|caption|cta.*|watermark.*|icon.*|name|nom|.*font.*|.*color.*|.*couleur.*|hashtags?|link|lien|website|sourceUrl)$/i;
+const CLES_TEXTE = /^(title|subtitle|titre|sousTitre|text|texte|.*text|label|description|value|caption|cta.*|watermark.*|icon.*|name|nom|.*font.*|.*color.*|.*couleur.*|hashtags?|link|lien|website|sourceUrl|themeTitle|themeSubtitle|tagLine|videoMode|objective|anchor)$/i;
+
+/** Schémas que le moteur de rendu ne doit JAMAIS recevoir (liste fermée). */
+const SCHEMAS_INTERDITS = new Set([
+  'file', 'data', 'blob', 'javascript', 'vbscript', 'ftp', 'ws', 'wss', 'filesystem', 'about',
+  'view-source', 'chrome', 'chrome-extension', 'gopher', 'jar', 'ldap', 'dict', 'smb',
+]);
+
+/**
+ * Classe une chaîne libre COMME REMOTION LA LIRA : `getAbsoluteSrc` fait
+ * `new URL(src, window.origin)`, dont l'analyse WHATWG retire C0/espace en
+ * tête et en fin, supprime tab/CR/LF partout et accepte `\\` comme `/`.
+ * Un simple `/^https?:\/\//` laisserait passer ` https://10.0.0.1`,
+ * `ht\ttps://…`, `https:10.0.0.1`, `//hôte` ou `/proxy?src=…`.
+ *
+ * Rend l'URL http(s) CANONIQUE à localiser, `null` pour du texte ordinaire ;
+ * rejette `RefusSsrf` pour un chemin relatif ou un schéma interdit.
+ */
+function classerChaineLibre(brute: string): string | null {
+  // eslint-disable-next-line no-control-regex
+  const n = brute.replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '').replace(/[\t\n\r]/g, '');
+  if (/^https?:/i.test(n)) {
+    let u: URL;
+    try { u = new URL(n); } catch { throw new RefusSsrf('url-invalide'); }
+    // Forme déjà canonique : transmise telle quelle (mêmes clés de cache qu'avant).
+    return n === brute && http(brute) ? brute : u.href;
+  }
+  if (/^[/\\]/.test(n)) throw new RefusSsrf('url-invalide');
+  const schema = /^([a-z][a-z0-9+.-]*):/i.exec(n);
+  if (schema && SCHEMAS_INTERDITS.has(schema[1].toLowerCase())) throw new RefusSsrf('schema');
+  return null;
+}
 
 /**
  * Remplace toute URL http(s) d'un objet arbitraire (hors clés de texte) par
- * sa copie dans notre stockage. Profondeur bornée ; rejette au premier refus.
+ * sa copie dans notre stockage. Chemins relatifs et schémas dangereux sont
+ * refusés ; au-delà de la profondeur 8, tout ce qui pourrait porter une URL
+ * est refusé (fermé par défaut). Rejette au premier refus.
  */
 export async function localiserProprietesLibres<T>(props: T, opts: Omit<OptionsLocalisation, 'genre'> = {}, profondeur = 0): Promise<T> {
-  if (profondeur > 8) return props;
-  if (http(props)) {
-    const genre: GenreMedia = /\.(jpe?g|png|webp|avif|gif)(\?|#|$)/i.test(props) ? 'image'
-      : /\.(mp3|m4a|wav|ogg|aac|flac)(\?|#|$)/i.test(props) ? 'audio' : 'video';
-    return await localiserMedia(props, { ...opts, genre }) as T;
+  if (profondeur > 8) {
+    if (props === null || props === undefined || typeof props === 'number' || typeof props === 'boolean') return props;
+    throw new RefusSsrf('url-invalide');
+  }
+  if (typeof props === 'string') {
+    const url = classerChaineLibre(props);
+    if (url === null) return props;
+    const genre: GenreMedia = /\.(jpe?g|png|webp|avif|gif)(\?|#|$)/i.test(url) ? 'image'
+      : /\.(mp3|m4a|wav|ogg|aac|flac)(\?|#|$)/i.test(url) ? 'audio' : 'video';
+    return await localiserMedia(url, { ...opts, genre }) as T;
   }
   if (Array.isArray(props)) {
     const out: unknown[] = [];
@@ -235,7 +277,7 @@ export async function localiserProprietesLibres<T>(props: T, opts: Omit<OptionsL
   if (props && typeof props === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(props as Record<string, unknown>)) {
-      out[k] = CLES_TEXTE.test(k) ? v : await localiserProprietesLibres(v, opts, profondeur + 1);
+      out[k] = CLES_TEXTE.test(k) && typeof v === 'string' ? v : await localiserProprietesLibres(v, opts, profondeur + 1);
     }
     return out as T;
   }
