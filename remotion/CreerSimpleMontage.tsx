@@ -119,6 +119,8 @@ export interface CreerSimpleMontageProps {
    */
   stillSurimpression?: 'voile' | 'titre' | 'cta' | 'filigrane' | { carte: number } | null;
   musicUrl?: string | null;
+  /** A6 — départ (s) dans le fichier musique (silence de tête sauté). Absent : 0. */
+  musicStartSeconds?: number;
   gradientStart?: string;
   gradientEnd?: string;
   gradientOpacity?: number;
@@ -525,6 +527,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           src={props.musicUrl}
           fps={fps}
           totalFrames={totalFrames}
+          debutSecondes={props.musicStartSeconds}
           volume={(f) => mixAt(f / fps, mixOptions).music * facteurMusiqueJumeau(f / fps, fenetreJumeau)}
         />
       )}

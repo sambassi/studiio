@@ -2,6 +2,7 @@ import React from 'react';
 import { Audio, Sequence, delayRender, continueRender } from 'remotion';
 import { getAudioDurationInSeconds } from '@remotion/media-utils';
 import { sampleKeyframes, type AudioKeyframe } from '../src/lib/creer/audioDucking';
+import { facteurFonduEntreeMusique, passesMusiqueEnBoucle } from '../src/lib/render/silence-tete-pur';
 
 /**
  * L'audio du montage, cote rendu serveur — Phase 8.
@@ -115,7 +116,15 @@ export const MusiqueEnBoucle: React.FC<{
   fps: number;
   totalFrames: number;
   volume: (frame: number) => number;
-}> = ({ src, fps, totalFrames, volume }) => {
+  /**
+   * A6 — départ (s) dans le fichier : son silence de tête, sauté UNE fois,
+   * au début de la vidéo, avec un fondu d'entrée de 0,15 s. Les repasses de
+   * la boucle repartent du début du fichier, comme le `loop` du canvas.
+   * Absent ou 0 : rendu d'avant, exactement.
+   */
+  debutSecondes?: number;
+}> = ({ src, fps, totalFrames, volume: volumeBrut, debutSecondes }) => {
+  const debutFrames = typeof debutSecondes === 'number' && debutSecondes > 0 ? Math.round(debutSecondes * fps) : 0;
   const [jeton] = React.useState(() => delayRender(`Duree de la musique : ${src}`));
   const [boucleFrames, setBoucleFrames] = React.useState<number | null>(null);
 
@@ -139,32 +148,34 @@ export const MusiqueEnBoucle: React.FC<{
   }, [src, fps, jeton]);
 
   if (boucleFrames === null) return null;
+  const passes = passesMusiqueEnBoucle(boucleFrames, totalFrames, debutFrames);
+  // Fondu d'entrée seulement si le silence de tête est réellement sauté.
+  const volume = passes[0].trimBefore > 0
+    ? (f: number) => volumeBrut(f) * facteurFonduEntreeMusique(f / fps, debutSecondes)
+    : volumeBrut;
   // Morceau plus long que le montage, ou duree inconnue : une seule passe.
-  if (boucleFrames === 0 || boucleFrames >= totalFrames) {
-    return <Audio src={src} volume={volume} />;
+  if (passes.length === 1) {
+    const p = passes[0];
+    return p.trimBefore > 0
+      ? <Audio src={src} volume={volume} trimBefore={p.trimBefore} />
+      : <Audio src={src} volume={volume} />;
   }
 
   // ⚠️ PAS `<Loop>` : la fonction de volume y recevrait la frame de la
   // BOUCLE, remise a zero a chaque passe. Une attenuation posee a la
   // trentieme seconde du montage se rejouerait alors a chaque tour. Les
   // passes sont donc posees a la main, chacune avec son decalage, ce qui
-  // rend la frame ABSOLUE recuperable.
-  const passes = Math.ceil(totalFrames / boucleFrames);
+  // rend la frame ABSOLUE recuperable (`passesMusiqueEnBoucle` : A6, la
+  // premiere passe saute le silence de tete, les suivantes repartent de 0).
   return (
     <>
-      {Array.from({ length: passes }, (_, i) => {
-        const depart = i * boucleFrames;
-        return (
-          <Sequence
-            key={depart}
-            from={depart}
-            durationInFrames={Math.min(boucleFrames, totalFrames - depart)}
-            name={`musique-${i + 1}`}
-          >
-            <Audio src={src} volume={(f) => volume(depart + f)} />
-          </Sequence>
-        );
-      })}
+      {passes.map(({ from, duree, trimBefore }, i) => (
+        <Sequence key={from} from={from} durationInFrames={duree} name={`musique-${i + 1}`}>
+          {trimBefore > 0
+            ? <Audio src={src} volume={(f) => volume(from + f)} trimBefore={trimBefore} />
+            : <Audio src={src} volume={(f) => volume(from + f)} />}
+        </Sequence>
+      ))}
     </>
   );
 };

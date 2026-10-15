@@ -238,6 +238,16 @@ export async function rendreHybride(input: {
   const local = (u: string) => locales.get(u) ?? u;
   voix.forEach((v) => { v.source = local(v.source); });
   const copieMs = Date.now() - t2;
+  // A6 — silence de tête de la musique, mesuré sur la COPIE LOCALE (aucun
+  // accès réseau de plus). 0 sur tout échec : la commande d'avant.
+  let departMusique = 0;
+  if (d.musicUrl) {
+    if (typeof d.musicStartSeconds === 'number') departMusique = d.musicStartSeconds;
+    else {
+      const { mesurerSilenceDeTete, departMusiquePourSilence } = await import('@/lib/render/silence-tete');
+      departMusique = departMusiquePourSilence(await mesurerSilenceDeTete(local(d.musicUrl), ffmpegPath()).catch(() => null));
+    }
+  }
 
   const entree: EntreeHybride = {
     segments: plan.map((seg) => ({
@@ -251,7 +261,7 @@ export async function rendreHybride(input: {
     filigrane: d.watermark ? image('filigrane') : null,
     boiteFiligrane,
     surimpressions: fenetres,
-    musique: d.musicUrl ? { source: local(d.musicUrl), volume: d.musicVolume ?? volumeMusiqueParDefaut(avecVoix) } : null,
+    musique: d.musicUrl ? { source: local(d.musicUrl), volume: d.musicVolume ?? volumeMusiqueParDefaut(avecVoix), ...(departMusique > 0 ? { depart: departMusique } : {}) } : null,
     voix,
     sortie: path.join(os.tmpdir(), `studiio-render-${input.jobId}.mp4`),
     analyseBase: path.join(dossier, 'base.gray'),
