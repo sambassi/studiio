@@ -62,7 +62,9 @@ vi.mock('@/lib/db/supabase', () => {
 import { produireUnMontage } from '@/lib/autopilot/produire';
 
 const T0 = Date.parse('2026-08-05T09:00:00.000Z');
-const MA_PHOTO = 'https://projet.supabase.co/storage/v1/object/public/media/u/mine.jpg';
+// S1b : la photo doit appartenir au compte qui produit (u1) — une photo d'un
+// autre compte est désormais lâchée comme un rush refusé.
+const MA_PHOTO = 'https://projet.supabase.co/storage/v1/object/public/media/u1/mine.jpg';
 
 const cfg = (p: Partial<AutopilotConfig> = {}): AutopilotConfig => ({
   ...DEFAULT_CONFIG, enabled: true, platforms: ['instagram'],
