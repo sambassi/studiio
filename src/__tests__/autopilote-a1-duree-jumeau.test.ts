@@ -175,19 +175,19 @@ describe('A1 — caractérisation : ce qui ne doit pas bouger', () => {
   });
 
   it.each([
-    [12, 12], [12.3, 13], [2.2, 3], [47.01, 48], [0.4, 1],
-  ])('jumeau à durée valide %s s → séquence Vidéo de %s s (arrondi au supérieur, inchangé)', (s, attendu) => {
+    [12, 12], [12.3, 12.3], [2.2, 2.2], [47.01, 47.1], [0.4, 0.4],
+  ])('jumeau à durée valide %s s → séquence Vidéo de %s s (A4 : au dixième supérieur, plus de blanc d’~1 s)', (s, attendu) => {
     const post = { title: 'Sujet', content: { subtitle: 's', cards: [], tagLine: 'cta' }, rushUrl: RUSH } as unknown as Parameters<typeof buildAutopilotDesign>[0];
     const d = buildAutopilotDesign(post, { config: DEFAULT_CONFIG, jumeau: { videoUrl: JUMEAU_URL, seconds: s } });
     expect(d.videoDuration).toBe(attendu);
     expect(d.videoUrl).toBe(JUMEAU_URL);
   });
 
-  it('montage AVEC jumeau lisible (sonde 12,3 s) : avatar monté, 13 s, un rendu, un débit, design figé', async () => {
+  it('montage AVEC jumeau lisible (sonde 12,3 s) : avatar monté, 12,3 s (A4), un rendu, un débit, design figé', async () => {
     sondeJumeau = 12.3;
     const { meta } = await produire(JUMEAU_URL);
     expect(lastDesign?.videoUrl).toBe(JUMEAU_URL);
-    expect(lastDesign?.videoDuration).toBe(13);
+    expect(lastDesign?.videoDuration).toBe(12.3);
     expect(renderAndUpload).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(lecturesMinio).not.toHaveBeenCalled(); // pas de secours quand la sonde suffit
@@ -234,13 +234,13 @@ describe('A1 — sans durée fiable, le montage est ARRÊTÉ (jamais produit san
     expect(lecturesMinio).toHaveBeenCalledWith('media', `u1/avatar/${GEN}.mp4`);
   });
 
-  it('sonde null mais fichier LISIBLE en secours (14,2 s) → avatar monté sur 15 s', async () => {
+  it('sonde null mais fichier LISIBLE en secours (14,2 s) → avatar monté sur 14,2 s (A4)', async () => {
     sondeJumeau = null;
     objets.set(CLE_MINIO, Buffer.from('mp4'));
     ffprobeDouble = 14.2;
     await produire(JUMEAU_URL);
     expect(lastDesign?.videoUrl).toBe(JUMEAU_URL);
-    expect(lastDesign?.videoDuration).toBe(15);
+    expect(lastDesign?.videoDuration).toBe(14.2);
     expect(renderAndUpload).toHaveBeenCalledTimes(1);
     expect(deductCredits).toHaveBeenCalledTimes(1);
     expect(fournisseur).not.toHaveBeenCalled();

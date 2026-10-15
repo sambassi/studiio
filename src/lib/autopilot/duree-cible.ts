@@ -96,6 +96,8 @@ function unitesDe(input: {
   message?: string | null;
   cartes: ReadonlyArray<Carte>;
   cta?: string | null;
+  /** A4 v2 — la première idée est gardée comme le titre et le CTA (message complet). */
+  ideeObligatoire?: boolean;
 }): Unite[] {
   const u: Unite[] = [];
   const message = (input.message ?? '').trim();
@@ -106,7 +108,7 @@ function unitesDe(input: {
   input.cartes.forEach((c, i) => {
     const t = texteCarte(c);
     // La première idée passe avant le message : une vidéo de 15 s dit au moins UNE chose concrète.
-    if (t) u.push({ cle: `carte-${i}`, texte: t, priorite: i === 0 ? 0.5 : 2 + i * 0.01 });
+    if (t) u.push({ cle: `carte-${i}`, texte: t, priorite: i === 0 ? 0.5 : 2 + i * 0.01, ...(i === 0 && input.ideeObligatoire ? { obligatoire: true } : null) });
   });
   const cta = (input.cta ?? '').trim();
   if (cta) u.push({ cle: 'cta', texte: cta, obligatoire: true, priorite: 0 });
@@ -153,9 +155,21 @@ export function scriptPourDuree(input: {
   cartes: ReadonlyArray<Carte>;
   cta?: string | null;
   brief: VideoBrief | null | undefined;
+  /**
+   * A4 — secondes de la durée cible DÉJÀ prises par d'autres séquences
+   * (titre, cartes, CTA plein écran autour de l'avatar seul). Le budget de
+   * parole devient (durée − réservé) × débit. Absent ou 0 : le budget d'avant.
+   */
+  secondesReservees?: number;
+  /** A4 v2 — avatar seul : la première idée est toujours dite (message complet). */
+  ideeObligatoire?: boolean;
 }): string | null {
-  const budget = longueurScriptCible(input.brief);
-  if (budget === null) return null;
+  const plein = longueurScriptCible(input.brief);
+  if (plein === null) return null;
+  const reserve = input.secondesReservees ?? 0;
+  const budget = reserve > 0 && input.brief?.duree
+    ? Math.round(Math.max(PLAN_MIN_S, input.brief.duree - reserve) * CARACTERES_PAR_SECONDE[input.brief.rythme ?? 'normal'])
+    : plein;
   const unites = unitesDe({ ...input, message: input.brief?.message });
   const gardees = selectionner(unites, budget);
   const vus = new Set<string>();
@@ -270,3 +284,113 @@ export function cibleVideoDuBrief(
   return Math.max(PLAN_MIN_S, brief.duree - autres);
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────
+// A4 — Avatar SEUL (sans autres sources) : titre, cartes et CTA plein écran
+// autour de la séquence « Vidéo » du jumeau. Sans cette répartition, le jumeau
+// (script calé sur TOUTE la durée cible) s'ajoutait aux 4/6/4 s fixes :
+// ≈ 14 s + la cible, soit ≈ 2× pour 15 s.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Durées de lisibilité MINIMALES (s) des séquences plein écran autour du jumeau. */
+export const MINIMA_LISIBILITE_JUMEAU = { intro: 2.5, cards: 3, cta: 2.5 } as const;
+
+/** Au-delà des défauts 4/6/4, l'enveloppe s'allonge au plus de ce facteur (jamais d'écran figé interminable). */
+export const ETIREMENT_MAX_ENVELOPPE = 1.5;
+
+/**
+ * Secondes de la durée cible RÉSERVÉES à titre, cartes et CTA quand l'avatar
+ * est monté seul : 40 % de la cible, bornés entre la somme des minima (8 s)
+ * et celle des défauts 4/6/4 (14 s). Le script du jumeau dispose du reste.
+ * 15 s → 8 (jumeau ≈ 7 s), 30 s → 12 (≈ 18 s), 45 s → 14 (≈ 31 s).
+ */
+export function secondesReserveesEnveloppeJumeau(duree: number | null | undefined): number {
+  if (!duree || !(duree > 0)) return 0;
+  const min = MINIMA_LISIBILITE_JUMEAU.intro + MINIMA_LISIBILITE_JUMEAU.cards + MINIMA_LISIBILITE_JUMEAU.cta;
+  return Math.min(14, Math.max(min, Math.round(duree * 0.4)));
+}
+
+/** Arrondi au dixième SUPÉRIEUR (epsilon flottant) — au plus 3 images de marge à 30 i/s. */
+export function auDixiemeSuperieur(s: number): number {
+  return Math.ceil(s * 10 - 1e-9) / 10;
+}
+
+/**
+ * Répartit `reste` secondes (durée cible − séquence du jumeau) entre titre,
+ * cartes et CTA : proportionnellement aux défauts (4/6/4), jamais sous les
+ * minima de lisibilité, jamais au-delà de ×1,5 les défauts. Pur.
+ *
+ *  - reste ≥ 21 s : 6/9/6 — la vidéo reste plus courte que la cible plutôt
+ *    que d'afficher un écran figé (contenu trop court pour la cible) ;
+ *  - reste < 8 s : les minima 2,5/3/2,5 — la cible est dépassée, le jumeau
+ *    entier et la lisibilité passent avant (cible trop courte).
+ *
+ * Sans carte, la séquence cartes n'est pas montée : sa part va au titre et au
+ * CTA, et `cards` garde le défaut (ignoré par le montage).
+ */
+export function enveloppeAutourDuJumeau(
+  reste: number,
+  defauts: { intro: number; cards: number; cta: number },
+  avecCartes: boolean,
+): { intro: number; cards: number; cta: number } {
+  const cles = avecCartes ? (['intro', 'cards', 'cta'] as const) : (['intro', 'cta'] as const);
+  const mins = MINIMA_LISIBILITE_JUMEAU;
+  const val: Record<string, number> = {};
+  // Remplissage par niveaux : les séquences bloquées à leur minimum sortent
+  // du partage, le reste est réparti au prorata des défauts.
+  let libres: string[] = [...cles];
+  let budget = reste;
+  for (let passe = 0; passe < 3; passe += 1) {
+    const poids = libres.reduce((t, k) => t + defauts[k as 'intro'], 0);
+    const k = Math.min(ETIREMENT_MAX_ENVELOPPE, poids > 0 ? budget / poids : 0);
+    const bloquees = libres.filter((c) => defauts[c as 'intro'] * k < mins[c as 'intro']);
+    if (bloquees.length === 0) {
+      for (const c of libres) val[c] = defauts[c as 'intro'] * k;
+      break;
+    }
+    for (const c of bloquees) { val[c] = mins[c as 'intro']; budget -= mins[c as 'intro']; }
+    libres = libres.filter((c) => !bloquees.includes(c));
+    if (libres.length === 0) break;
+  }
+  const d = (c: 'intro' | 'cards' | 'cta') => Math.max(mins[c], Math.round((val[c] ?? mins[c]) * 10) / 10);
+  return { intro: d('intro'), cards: avecCartes ? d('cards') : defauts.cards, cta: d('cta') };
+}
+
+/**
+ * A4 v2 — plus courte cible où l'avatar SEUL porte un message complet :
+ * enveloppe à l'écran aux minima (2,5 + 3 + 2,5 = 8 s) + une parole complète
+ * (accroche + une idée + CTA ≈ 120–170 car., soit 9–12 s à 14 car./s).
+ * À 15 s, la parole n'a que 7 s (≈ 98 car.) : une idée seule en fait déjà
+ * ~96 — l'avatar ne disait plus que le titre et le CTA.
+ */
+export const DUREE_MIN_AVATAR_SEUL = 20;
+
+/** Durée RECOMMANDÉE à l'écran quand la cible est sous ce minimum — jamais appliquée sans le clic de l'utilisateur. */
+export const DUREE_RECOMMANDEE_AVATAR = 30;
+
+/** Code de refus / de saut quand la durée doit être confirmée (« Produire maintenant », cron, file). */
+export const CODE_DUREE_A_CONFIRMER = 'duree_a_confirmer';
+
+/**
+ * A4 v3 — avatar SEUL et cible sous `DUREE_MIN_AVATAR_SEUL` : le message
+ * complet ne tient pas. Studiio ne génère RIEN (ni jumeau, ni rendu, ni
+ * débit, ni post) et ne change JAMAIS la durée de lui-même : l'utilisateur
+ * confirme en passant à 30 s (bouton « Passer à 30 s »). Pur.
+ */
+export function dureeAConfirmerAvecAvatar(duree: number | null | undefined, avatarSeul: boolean): boolean {
+  return avatarSeul && !!duree && duree > 0 && duree < DUREE_MIN_AVATAR_SEUL;
+}
+
+/** Le message du refus et du conseil. */
+export function messageDureeAConfirmer(duree: number): string {
+  return `Avec votre avatar, ${duree} s est trop court pour un message complet. Passez à ${DUREE_RECOMMANDEE_AVATAR} s pour lancer la génération.`;
+}
+
+/** Le conseil affiché sous la durée de l'Autopilote, ou `null`. */
+export function conseilDureeAvatar(duree: number | null | undefined, avatarSeul: boolean): { message: string; recommandee: number } | null {
+  if (!dureeAConfirmerAvecAvatar(duree, avatarSeul)) return null;
+  return {
+    message: `${messageDureeAConfirmer(duree as number)} Aucune vidéo avec avatar n’est produite tant que la durée n’est pas confirmée.`,
+    recommandee: DUREE_RECOMMANDEE_AVATAR,
+  };
+}

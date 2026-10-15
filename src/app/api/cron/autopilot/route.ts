@@ -4,7 +4,8 @@ import { supabaseAdmin } from '@/lib/db/supabase';
 import { getUserCredits } from '@/lib/credits/system';
 import { sendEmailSilent } from '@/lib/email/resend';
 import { sanitizeConfig, decideRun, type SkipReason } from '@/lib/autopilot/rules';
-import { avatarActifConfig } from '@/lib/autopilot/sources';
+import { avatarActifConfig, avatarSeulConfig } from '@/lib/autopilot/sources';
+import { dureeAConfirmerAvecAvatar } from '@/lib/autopilot/duree-cible';
 import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
 import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
@@ -94,6 +95,8 @@ const MESSAGES: Partial<Record<SkipReason, {
   subject: string;
   title: string;
   body: string;
+  /** Anti-doublon propre à la cause (défaut : une journée, `notifyOnce`). */
+  dedupeMs?: number;
 }>> = {
   credits: {
     kind: NOTIFICATION_KINDS.autopiloteCredits,
@@ -101,6 +104,15 @@ const MESSAGES: Partial<Record<SkipReason, {
     title: 'Autopilote en pause : crédits insuffisants',
     body: 'Votre solde est descendu au seuil que vous avez fixé. '
       + 'Rechargez vos crédits ou abaissez le seuil pour qu’il reprenne.',
+  },
+  duree_a_confirmer: {
+    kind: NOTIFICATION_KINDS.autopiloteDureeAConfirmer,
+    subject: 'Autopilote en pause — durée à confirmer',
+    title: 'Autopilote en pause : durée à confirmer',
+    body: 'Avec votre avatar, la durée choisie est trop courte pour un message complet. '
+      + 'Passez à 30 s dans l’Autopilote pour lancer la génération. Rien n’a été produit ni débité.',
+    // Une seule fois tant que la durée n'est pas confirmée (30 jours), pas un rappel quotidien.
+    dedupeMs: 30 * 86_400_000,
   },
   'sans-rush': {
     kind: NOTIFICATION_KINDS.autopiloteSansRush,
@@ -138,6 +150,7 @@ async function prevenir(
     title: m.title,
     body: m.body,
     href: LIEN_AUTOPILOTE,
+    ...(m.dedupeMs ? { dedupeMs: m.dedupeMs } : null),
   });
   if (!created || !email) return;
   // Fire-and-forget : un envoi d'email ne doit jamais retarder le passage
@@ -290,10 +303,18 @@ export async function GET(req: NextRequest) {
         decision = decideRun({ config: { ...config, rushUrls }, credits, costPerVideo: coutParMontage, now, allowWithoutRush: false });
       }
 
+      // A4 v3 — avatar seul, cible sous 20 s : AUCUN montage (ni jumeau, ni
+      // rendu, ni débit, ni post) et aucune durée imposée. Le cycle est sauté,
+      // UNE notification (anti-doublon de `notifyOnce`), jamais un échec. Seulement
+      // quand le cycle aurait produit : entre deux cycles, silence comme avant.
+      if (decision.run && dureeAConfirmerAvecAvatar(config.brief?.duree, avatarSeulConfig(config))) {
+        decision = { run: false, reason: 'duree_a_confirmer' };
+      }
+
       if (!decision.run) {
         // « pas encore » est le cas NORMAL entre deux cycles : on ne
         // previent que sur ce que l'utilisateur peut lever.
-        if (decision.reason === 'credits' || decision.reason === 'sans-rush') {
+        if (decision.reason === 'credits' || decision.reason === 'sans-rush' || decision.reason === 'duree_a_confirmer') {
           const { data: u } = await supabaseAdmin
             .from('users').select('email').eq('id', userId).limit(1);
           await prevenir(userId, (u?.[0] as { email?: string } | undefined)?.email, decision.reason);

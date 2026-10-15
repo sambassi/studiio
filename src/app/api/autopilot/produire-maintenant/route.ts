@@ -12,6 +12,8 @@ import {
   produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
 import { lancerJumeauMontage, scriptJumeauMontage } from '@/lib/autopilot/jumeau-async';
+import { CODE_DUREE_A_CONFIRMER, DUREE_RECOMMANDEE_AVATAR, dureeAConfirmerAvecAvatar, messageDureeAConfirmer } from '@/lib/autopilot/duree-cible';
+import { avatarSeulConfig } from '@/lib/autopilot/sources';
 import { budgetAutopiloteDuCompte, devisVideoAutopilote } from '@/lib/fournisseurs/devis-autopilote';
 import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, confirmationValable, reponseConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
 import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib/autopilot/sources';
@@ -192,6 +194,16 @@ export async function POST(req?: Request) {
         );
       }
     }
+    // ── A4 v3 : durée à confirmer — SANS DÉBIT, SANS APPEL ────────────────
+    // Avatar seul et cible sous 20 s : le message complet ne tient pas. Rien
+    // n'est généré ni débité, et la durée n'est jamais changée ici : le clic
+    // « Passer à 30 s » (route de configuration existante) confirme.
+    if (dureeAConfirmerAvecAvatar(config.brief?.duree, avatarSeulConfig(config))) {
+      return NextResponse.json(
+        { success: false, error: messageDureeAConfirmer(config.brief?.duree as number), code: CODE_DUREE_A_CONFIRMER, recommandee: DUREE_RECOMMANDEE_AVATAR },
+        { status: 409 },
+      );
+    }
     // Avec le jumeau, deux coûts : la génération de l'avatar (`avatar.jumeau`,
     // débitée au lancement) PUIS le rendu (`coutMontage()`, à la finalisation).
     // On vérifie les deux d'avance pour ne pas lancer (et facturer l'avatar) un
@@ -261,7 +273,7 @@ export async function POST(req?: Request) {
       // CETTE vidéo (moteur de l'Autopilote, durée estimée de SON script)
       // AVANT toute réservation, tout débit et tout appel. 428 sinon.
       if (await compteExempteDeCredits(userId)) {
-        const devisFournisseur = await devisVideoAutopilote(userId, configBrouillon, scriptJumeauMontage(post));
+        const devisFournisseur = await devisVideoAutopilote(userId, configBrouillon, scriptJumeauMontage(post, configBrouillon));
         if (devisFournisseur && !confirmationValable(coutConfirme, moteurConfirme, devisFournisseur)) return reponseConfirmationCout(devisFournisseur);
       }
       const lancement = await lancerJumeauMontage({
@@ -277,9 +289,9 @@ export async function POST(req?: Request) {
       });
       if (!lancement.ok) {
         // Moteur indisponible / crédits / texte : rien n'est monté, on le dit.
-        const statut = lancement.motif === 'credits_insuffisants' ? 402 : 400;
+        const statut = lancement.motif === 'credits_insuffisants' ? 402 : lancement.motif === CODE_DUREE_A_CONFIRMER ? 409 : 400;
         return NextResponse.json(
-          { success: false, error: lancement.message, code: `jumeau-${lancement.motif}` },
+          { success: false, error: lancement.message, code: lancement.motif === CODE_DUREE_A_CONFIRMER ? CODE_DUREE_A_CONFIRMER : `jumeau-${lancement.motif}` },
           { status: statut },
         );
       }

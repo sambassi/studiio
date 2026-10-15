@@ -1,6 +1,6 @@
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
 import { metadataFormat } from '@/lib/format/projet';
-import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
+import { auDixiemeSuperieur, cibleVideoDuBrief, enveloppeAutourDuJumeau } from '@/lib/autopilot/duree-cible';
 import {
   DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS, DEFAULT_COLORS,
 } from '@/lib/creer/designSpec';
@@ -183,9 +183,22 @@ export function buildAutopilotDesign(
   const seq = (cle: 'titre' | 'cartes' | 'cta', parDefaut: number) => (post.brief?.duree && voix[cle]
     ? voiceSequenceSeconds((voix[cle] as { seconds: number }).seconds)
     : sequenceSecondsWithVoice(voix, cle, parDefaut));
-  const introDuration = seq('titre', DEFAULT_SEQUENCE_SECONDS.intro);
-  const cardsDuration = seq('cartes', DEFAULT_SEQUENCE_SECONDS.cards);
-  const ctaDuration = seq('cta', DEFAULT_SEQUENCE_SECONDS.cta);
+  // A4 — la séquence du jumeau dure SA parole, au dixième supérieur (≤ 3
+  // images de marge) : l'arrondi à la seconde ajoutait jusqu'à ~1 s de blanc.
+  const videoJumeau = jumeau ? Math.max(DEFAULT_SEQUENCE_SECONDS.video, auDixiemeSuperieur(jumeau.seconds)) : 0;
+  // A4 — jumeau + durée cible : titre, cartes et CTA se partagent ce que la
+  // parole de l'avatar laisse de la cible (minima de lisibilité, jamais la
+  // parole coupée). Sans jumeau ou sans cible : les règles d'avant.
+  // La cible CHOISIE, jamais une autre (A4 v3 : aucune durée imposée). Un
+  // créneau déjà en file sous 20 s garde sa durée : jumeau entier + minima.
+  // Multi-sources : ces durées sont remplacées par la surimpression en aval.
+  const cibleJumeau = jumeau ? post.brief?.duree : undefined;
+  const enveloppe = jumeau && cibleJumeau
+    ? enveloppeAutourDuJumeau(cibleJumeau - videoJumeau, DEFAULT_SEQUENCE_SECONDS, post.content.cards.length > 0)
+    : null;
+  const introDuration = enveloppe ? enveloppe.intro : seq('titre', DEFAULT_SEQUENCE_SECONDS.intro);
+  const cardsDuration = enveloppe ? enveloppe.cards : seq('cartes', DEFAULT_SEQUENCE_SECONDS.cards);
+  const ctaDuration = enveloppe ? enveloppe.cta : seq('cta', DEFAULT_SEQUENCE_SECONDS.cta);
   // Durée cible du brief (chemin mono-rush) : la séquence « Vidéo » prend la
   // part qui reste après titre, cartes et CTA — jamais plus que le rush (pas
   // d'image figée), jamais moins que sa voix. Sans durée cible : comme avant.
@@ -196,7 +209,7 @@ export function buildAutopilotDesign(
     ? Math.max(1, Math.round(Math.min(visee, rushConnu ?? parRush)))
     : parRush;
   const video = jumeau
-    ? Math.max(DEFAULT_SEQUENCE_SECONDS.video, Math.ceil(jumeau.seconds))
+    ? videoJumeau
     : sequenceSecondsWithVoice(voix, 'video', baseVideo);
   return {
     title: post.title.toUpperCase(),

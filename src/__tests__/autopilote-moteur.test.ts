@@ -231,7 +231,8 @@ describe('La route', () => {
   it('elle prévient sur ce que l utilisateur peut lever, et seulement ça', () => {
     // « pas encore » est le cas normal entre deux cycles : le notifier serait
     // du bruit quotidien.
-    expect(route).toContain("if (decision.reason === 'credits' || decision.reason === 'sans-rush')");
+    // A4 v3 : la durée à confirmer (avatar seul, < 20 s) se lève aussi d'un clic.
+    expect(route).toContain("if (decision.reason === 'credits' || decision.reason === 'sans-rush' || decision.reason === 'duree_a_confirmer')");
     expect(route).toContain('Autopilote en pause — crédits insuffisants');
     expect(route).toContain('Autopilote en attente — ajoutez des rushes');
   });

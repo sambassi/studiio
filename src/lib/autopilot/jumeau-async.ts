@@ -35,26 +35,20 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { scriptPourDuree } from '@/lib/autopilot/duree-cible';
+import {
+  CODE_DUREE_A_CONFIRMER, dureeAConfirmerAvecAvatar, messageDureeAConfirmer, scriptPourDuree, secondesReserveesEnveloppeJumeau,
+} from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
 import { notifyOnce } from '@/lib/notifications/store';
-import { mediasDesSources, sourcesEffectives } from '@/lib/autopilot/sources';
+import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
 import { estJumeauIllisible, MESSAGE_JUMEAU_ILLISIBLE } from '@/lib/autopilot/duree-jumeau';
 
-/**
- * L'avatar sera-t-il monté AVEC d'autres sources (rushes personnels, stock) ?
- * Seulement quand la clé `sources` est réglée : sans elle, le montage avatar
- * d'avant (avatar seul) reste à l'identique. Pur.
- */
-export function avatarAvecAutresSources(config: AutopilotConfig): boolean {
-  if (!sourcesEffectives(config).explicite) return false;
-  const m = mediasDesSources(config);
-  return m.rushesPersonnels.length + m.videosStock.length + m.photosStock.length > 0;
-}
+/** Déplacée dans `sources.ts` (pure, utilisable côté client) — réexportée pour les appelants existants. */
+export { avatarAvecAutresSources };
 
 /** Format vertical de l'Autopilote — la génération du jumeau le suit. */
 const RATIO_AUTOPILOTE = '9:16';
@@ -85,15 +79,29 @@ export const ESSAIS_MESURE_JUMEAU = 3;
  * c'est l'identité constante de la chaîne. Le jumeau étant la seule voix du
  * montage, ce script ne se répète nulle part ailleurs.
  */
-export function scriptJumeauMontage(post: PreparedPost): string {
+export function scriptJumeauMontage(post: PreparedPost, config?: AutopilotConfig | null): string {
   // Durée cible du brief : le script est COMPOSÉ pour elle — accroche,
   // idées (cartes), appel à l'action — par unités entières, jamais coupé.
+  //
+  // A4 — AVATAR SEUL (pas d'autres sources) : titre, cartes et CTA sont des
+  // séquences plein écran AUTOUR du jumeau ; leur part de la durée cible est
+  // réservée (`secondesReserveesEnveloppeJumeau`), sinon la vidéo durait
+  // ≈ cible + 14 s. Avec d'autres sources (textes en surimpression sur
+  // l'avatar), ou sans config connue : le budget d'avant, toute la cible.
+  //
+  // A4 v2 — avatar seul : le message doit être COMPLET (accroche + première
+  // idée + appel à l'action, en unités entières). Une cible sous 20 s ne
+  // l'est pas : elle n'est JAMAIS lancée (`lancerJumeauMontage` refuse,
+  // `duree_a_confirmer`) et sa durée n'est jamais changée ici.
+  const avatarSeul = !!config && !avatarAvecAutresSources(config);
+  const briefScript = post.brief;
   const pourDuree = scriptPourDuree({
     titre: post.title,
     sousTitre: post.content.subtitle,
     cartes: post.content.cards ?? [],
     cta: post.brief?.cta || post.content.tagLine,
-    brief: post.brief,
+    brief: briefScript,
+    ...(avatarSeul ? { secondesReservees: secondesReserveesEnveloppeJumeau(briefScript?.duree), ideeObligatoire: true } : null),
   });
   if (pourDuree !== null) return pourDuree.slice(0, MAX_SCRIPT);
   const briefMessage = (post.brief?.message ?? '').trim();
@@ -164,7 +172,15 @@ export async function lancerJumeauMontage(input: {
     return { ok: true, generationId: l.generation_id, attenteId: l.id, dejaEnFile: true };
   }
 
-  const script = scriptJumeauMontage(input.post);
+  // A4 v3 — avatar seul, cible sous 20 s : RIEN n'est lancé (ni réservation,
+  // ni génération, ni débit). Placé APRÈS la lecture de la file : un créneau
+  // déjà en file (génération déjà lancée et payée) suit son cours, à sa durée.
+  const dureeBrief = input.post.brief?.duree ?? input.config.brief?.duree;
+  if (dureeAConfirmerAvecAvatar(dureeBrief, !avatarAvecAutresSources(input.config))) {
+    return { ok: false, motif: CODE_DUREE_A_CONFIRMER, message: messageDureeAConfirmer(dureeBrief as number) };
+  }
+
+  const script = scriptJumeauMontage(input.post, input.config);
   if (!script) {
     return { ok: false, motif: 'texte_absent', message: 'Aucun texte à faire dire à votre jumeau pour ce montage.' };
   }

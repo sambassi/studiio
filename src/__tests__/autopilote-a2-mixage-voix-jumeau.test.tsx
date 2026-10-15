@@ -141,7 +141,7 @@ describe('A2 — caractérisation SANS jumeau (identique)', () => {
 
 describe('A2 — jumeau monté (chemin mono)', () => {
   const jumeau = { videoUrl: JUMEAU, seconds: 12.3 };
-  // intro 4 s + cartes 6 s → vidéo nominale à 10 s, 13 s ; raccord 0,8 s
+  // intro 4 s + cartes 6 s → vidéo nominale à 10 s, 12,3 s (A4 : au dixième) ; raccord 0,8 s
   // (24 images) : la piste du jumeau démarre à 9,2 s.
   it('design : voixJumeau posé, rush non coupé', () => {
     const d = buildAutopilotDesign(post, { config: config(), jumeau });
@@ -149,7 +149,7 @@ describe('A2 — jumeau monté (chemin mono)', () => {
     expect(d.rushMuted).toBe(false);
     const f = fenetreVoixJumeau(versEntreeRemotion(d), FPS)!;
     expect(f.debut).toBeCloseTo(9.2, 6);
-    expect(f.fin).toBeCloseTo(23, 6);
+    expect(f.fin).toBeCloseTo(22.3, 6);
   });
 
   it('piste du jumeau au niveau des VOIX (1), plus au niveau « rush » (0,5)', async () => {
@@ -164,11 +164,11 @@ describe('A2 — jumeau monté (chemin mono)', () => {
     expect(m(8.9)).toBeCloseTo(0.8, 6);
     expect(m(9.2)).toBeCloseTo(0.08, 6);
     expect(m(15)).toBeCloseTo(0.08, 6);
-    expect(m(23)).toBeCloseTo(0.08, 6);
-    const montee = m(23.1);
+    expect(m(22.3)).toBeCloseTo(0.08, 6);
+    const montee = m(22.4);
     expect(montee).toBeGreaterThan(0.08);
     expect(montee).toBeLessThan(0.8);
-    expect(m(23.3)).toBeCloseTo(0.8, 6);
+    expect(m(22.6)).toBeCloseTo(0.8, 6);
     expect(m(26)).toBeCloseTo(0.8, 6);
   });
 

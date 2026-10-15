@@ -26,9 +26,10 @@ import {
   gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
 } from '@/lib/autopilot/medias-prevus';
 import {
-  aUneSourceVisuelle, avatarActifConfig, estRushStock, MAX_STOCK_RETENU,
+  aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, MAX_STOCK_RETENU,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
+import { conseilDureeAvatar } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import type { FormatStock } from '@/lib/stock/types';
@@ -1539,6 +1540,7 @@ export default function AutopilotPanel({
             idPrefix="autopilot-brief"
             sujets={config.topics}
             avecDureeRythme
+            conseilDuree={conseilDureeAvatar(config.brief?.duree, avatarActifConfig(config) && !avatarAvecAutresSources(config))}
             onChangerTheme={() => {
               const premier = document.querySelector<HTMLButtonElement>('[data-autopilot-topic]');
               premier?.scrollIntoView({ behavior: 'smooth', block: 'center' });
