@@ -96,6 +96,8 @@ function unitesDe(input: {
   message?: string | null;
   cartes: ReadonlyArray<Carte>;
   cta?: string | null;
+  /** A4 v2 — la première idée est gardée comme le titre et le CTA (message complet). */
+  ideeObligatoire?: boolean;
 }): Unite[] {
   const u: Unite[] = [];
   const message = (input.message ?? '').trim();
@@ -106,7 +108,7 @@ function unitesDe(input: {
   input.cartes.forEach((c, i) => {
     const t = texteCarte(c);
     // La première idée passe avant le message : une vidéo de 15 s dit au moins UNE chose concrète.
-    if (t) u.push({ cle: `carte-${i}`, texte: t, priorite: i === 0 ? 0.5 : 2 + i * 0.01 });
+    if (t) u.push({ cle: `carte-${i}`, texte: t, priorite: i === 0 ? 0.5 : 2 + i * 0.01, ...(i === 0 && input.ideeObligatoire ? { obligatoire: true } : null) });
   });
   const cta = (input.cta ?? '').trim();
   if (cta) u.push({ cle: 'cta', texte: cta, obligatoire: true, priorite: 0 });
@@ -159,6 +161,8 @@ export function scriptPourDuree(input: {
    * parole devient (durée − réservé) × débit. Absent ou 0 : le budget d'avant.
    */
   secondesReservees?: number;
+  /** A4 v2 — avatar seul : la première idée est toujours dite (message complet). */
+  ideeObligatoire?: boolean;
 }): string | null {
   const plein = longueurScriptCible(input.brief);
   if (plein === null) return null;
@@ -350,4 +354,36 @@ export function enveloppeAutourDuJumeau(
   }
   const d = (c: 'intro' | 'cards' | 'cta') => Math.max(mins[c], Math.round((val[c] ?? mins[c]) * 10) / 10);
   return { intro: d('intro'), cards: avecCartes ? d('cards') : defauts.cards, cta: d('cta') };
+}
+
+/**
+ * A4 v2 — plus courte cible où l'avatar SEUL porte un message complet :
+ * enveloppe à l'écran aux minima (2,5 + 3 + 2,5 = 8 s) + une parole complète
+ * (accroche + une idée + CTA ≈ 120–170 car., soit 9–12 s à 14 car./s).
+ * À 15 s, la parole n'a que 7 s (≈ 98 car.) : une idée seule en fait déjà
+ * ~96 — l'avatar ne disait plus que le titre et le CTA.
+ */
+export const DUREE_MIN_AVATAR_SEUL = 20;
+
+/** Durée appliquée (et recommandée à l'écran) quand la cible est sous ce minimum. */
+export const DUREE_RECOMMANDEE_AVATAR = 30;
+
+/**
+ * Durée cible EFFECTIVE d'un montage avatar seul : la cible choisie, sauf
+ * sous `DUREE_MIN_AVATAR_SEUL` où la durée recommandée (30 s) s'applique.
+ * Sans cible : rien (le comportement d'avant). La config n'est jamais
+ * réécrite — l'écart est annoncé dans l'Autopilote (`conseilDureeAvatar`).
+ */
+export function dureeEffectiveAvatarSeul(duree: number | null | undefined): number | undefined {
+  if (!duree || !(duree > 0)) return undefined;
+  return duree < DUREE_MIN_AVATAR_SEUL ? DUREE_RECOMMANDEE_AVATAR : duree;
+}
+
+/** Le message à afficher sous la durée de l'Autopilote, ou `null`. */
+export function conseilDureeAvatar(duree: number | null | undefined, avatarSeul: boolean): { message: string; recommandee: number } | null {
+  if (!avatarSeul || !duree || duree >= DUREE_MIN_AVATAR_SEUL) return null;
+  return {
+    message: `Avec votre avatar, ${duree} s est trop court pour un message complet : nous recommandons ${DUREE_RECOMMANDEE_AVATAR} s. Les vidéos avec avatar seront produites en ${DUREE_RECOMMANDEE_AVATAR} s tant que cette durée est choisie.`,
+    recommandee: DUREE_RECOMMANDEE_AVATAR,
+  };
 }

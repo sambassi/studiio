@@ -52,6 +52,7 @@ export default function BriefVideo({
   sujets,
   avecDureeRythme = false,
   onChangerTheme,
+  conseilDuree = null,
 }: {
   brief: VideoBrief;
   onChange: (brief: VideoBrief) => void;
@@ -74,6 +75,12 @@ export default function BriefVideo({
   avecDureeRythme?: boolean;
   /** « Changer le thème » dans l'alerte de cohérence. */
   onChangerTheme?: () => void;
+  /**
+   * A4 v2 — conseil affiché sous la durée (Autopilote avec avatar seul : cible
+   * trop courte pour un message complet). Absent : le bloc d'avant, à
+   * l'identique. Le bouton ne change la durée que sur un clic explicite.
+   */
+  conseilDuree?: { message: string; recommandee: number } | null;
 }) {
   const listeSujets = useMemo(() => (sujets ?? []).filter((s) => s && s.trim()), [sujets]);
   const profil = useMemo(() => profilBrief(listeSujets), [listeSujets]);
@@ -321,6 +328,21 @@ export default function BriefVideo({
                 />
               )}
             </div>
+            {conseilDuree && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-amber-300" role="status" data-brief-conseil-duree>
+                <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+                <span className="flex-1">{conseilDuree.message}</span>
+                <button
+                  type="button"
+                  onClick={() => { setDureeLibre(false); poserDuree(conseilDuree.recommandee); }}
+                  disabled={disabled}
+                  data-brief-conseil-duree-appliquer
+                  className="shrink-0 rounded-md border border-amber-500/40 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/10"
+                >
+                  Passer à {conseilDuree.recommandee} s
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-1">

@@ -11,6 +11,7 @@ vi.mock('@/lib/db/supabase', () => ({ supabaseAdmin: {}, supabase: {} }));
 
 import {
   enveloppeAutourDuJumeau, MINIMA_LISIBILITE_JUMEAU, secondesReserveesEnveloppeJumeau, scriptPourDuree, auDixiemeSuperieur,
+  dureeEffectiveAvatarSeul, conseilDureeAvatar, DUREE_MIN_AVATAR_SEUL, DUREE_RECOMMANDEE_AVATAR,
 } from '@/lib/autopilot/duree-cible';
 import { preparePosts } from '@/lib/autopilot/engine';
 import { buildAutopilotDesign } from '@/lib/autopilot/design';
@@ -51,8 +52,10 @@ describe('A4 — matrice cible × durée du jumeau (montage)', () => {
         expect(d.cardsDuration).toBeGreaterThanOrEqual(M.cards);
         expect(d.ctaDuration).toBeGreaterThanOrEqual(M.cta);
         expect(d.cards?.length).toBeGreaterThanOrEqual(1);
-        const reste = cible - J;
-        if (reste >= 8 && reste <= 21) expect(Math.abs(total - cible)).toBeLessThanOrEqual(0.2);
+        // A4 v2 : sous 20 s, la cible effective avec avatar est 30 s.
+        const eff = dureeEffectiveAvatarSeul(cible) as number;
+        const reste = eff - J;
+        if (reste >= 8 && reste <= 21) expect(Math.abs(total - eff)).toBeLessThanOrEqual(0.2);
         else if (reste < 8) expect(total).toBeCloseTo(J + 8, 1); // cible trop courte : jumeau entier + minima
         else expect(total).toBeCloseTo(J + 21, 1); // jumeau trop court : enveloppe plafonnée à ×1,5
       });
@@ -67,7 +70,8 @@ describe('A4 — chaîne réelle : script dimensionné AVANT génération → mo
       const script = scriptJumeauMontage(post, config);
       const J = script.length / 14; // débit « normal » du brief
       const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: J } });
-      expect(Math.abs(dureeRendue(d) - cible)).toBeLessThanOrEqual(tol(cible));
+      const eff = dureeEffectiveAvatarSeul(cible) as number;
+      expect(Math.abs(dureeRendue(d) - eff)).toBeLessThanOrEqual(tol(eff));
     });
   }
 
@@ -120,10 +124,11 @@ describe('A4 — répartition et arrondi', () => {
     expect([d.introDuration, d.cardsDuration, d.ctaDuration]).toEqual([M.intro, M.cards, M.cta]);
   });
 
-  it('cible minimale (5 s) : minima + jumeau entier', () => {
+  it('cible minimale (5 s) : cible effective 30 s, jumeau entier', () => {
     const { post } = postPour(5);
-    const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 2 } });
-    expect([d.introDuration, d.cardsDuration, d.videoDuration, d.ctaDuration]).toEqual([2.5, 3, 2, 2.5]);
+    const d = buildAutopilotDesign(post, { jumeau: { videoUrl: 'https://x/j.mp4', seconds: 14 } });
+    expect(d.videoDuration).toBe(14);
+    expect(Math.abs(dureeRendue(d) - 30)).toBeLessThanOrEqual(0.2);
   });
 
   it('enveloppe au prorata 4/6/4, bornée par minima et ×1,5', () => {
@@ -146,5 +151,55 @@ describe('A4 — répartition et arrondi', () => {
     expect(d2.videoDuration).toBe(10.2); // avant : 11 (0,8 s de blanc)
     // Sans durée cible : enveloppe 4/6/4 d'avant.
     expect([d2.introDuration, d2.cardsDuration, d2.ctaDuration]).toEqual([4, 6, 4]);
+  });
+});
+
+describe('A4 v2 — cible courte avec avatar : message complet ou 30 s', () => {
+  const texteCarte0 = (post: ReturnType<typeof postPour>['post']) => {
+    const c = post.content.cards[0];
+    return [c.title, c.description, c.value].map((x) => (x ?? '').trim().replace(/[.\s]+$/, '')).filter(Boolean)[0];
+  };
+  for (const cible of [10, 15, 20, 30]) {
+    it(`cible ${cible} s : accroche + idée + CTA, parole ≥ 7 s`, () => {
+      const { post, config } = postPour(cible);
+      const s = scriptJumeauMontage(post, config);
+      expect(s.startsWith(post.title.trim())).toBe(true);
+      expect(s).toContain(texteCarte0(post));
+      expect(s.endsWith((post.brief?.cta || post.content.tagLine || '').trim().replace(/[.\s]+$/, ''))).toBe(true);
+      expect(s.length / 14).toBeGreaterThanOrEqual(7);
+      const eff = dureeEffectiveAvatarSeul(cible);
+      expect(eff).toBe(cible < DUREE_MIN_AVATAR_SEUL ? DUREE_RECOMMANDEE_AVATAR : cible);
+      const conseil = conseilDureeAvatar(cible, true);
+      if (cible < 20) expect(conseil?.message).toContain('nous recommandons 30 s');
+      else expect(conseil).toBeNull();
+    });
+  }
+
+  it('30 s : script et montage identiques à A4 v1', () => {
+    const { post, config } = postPour(30);
+    const v1 = scriptPourDuree({ titre: post.title, sousTitre: post.content.subtitle, cartes: post.content.cards, cta: post.brief?.cta || post.content.tagLine, brief: post.brief, secondesReservees: 12 });
+    expect(scriptJumeauMontage(post, config)).toBe(v1);
+  });
+
+  it('pas de conseil sans avatar seul ni sans cible', () => {
+    expect(conseilDureeAvatar(15, false)).toBeNull();
+    expect(conseilDureeAvatar(undefined, true)).toBeNull();
+    expect(dureeEffectiveAvatarSeul(undefined)).toBeUndefined();
+  });
+
+  it('UI : le conseil s’affiche sous la durée et « Passer à 30 s » pose 30 s (clic explicite)', async () => {
+    const React = await import('react');
+    const { render, cleanup, fireEvent } = await import('@testing-library/react');
+    const { default: BriefVideo } = await import('@/components/creer/BriefVideo');
+    const onChange = vi.fn();
+    const r = render(React.createElement(BriefVideo, { brief: { duree: 15 }, onChange, avecDureeRythme: true, conseilDuree: conseilDureeAvatar(15, true) }));
+    const bloc = r.container.querySelector('[data-brief-conseil-duree]');
+    expect(bloc?.textContent).toContain('15 s est trop court pour un message complet : nous recommandons 30 s');
+    fireEvent.click(r.container.querySelector('[data-brief-conseil-duree-appliquer]') as Element);
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ duree: 30 }));
+    cleanup();
+    const r2 = render(React.createElement(BriefVideo, { brief: { duree: 15 }, onChange, avecDureeRythme: true }));
+    expect(r2.container.querySelector('[data-brief-conseil-duree]')).toBeNull();
+    cleanup();
   });
 });

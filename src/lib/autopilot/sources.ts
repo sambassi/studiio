@@ -238,6 +238,17 @@ export function mediasDesSources(c: ConfigPourSources): { rushesPersonnels: stri
 }
 
 /**
+ * L'avatar sera-t-il monté AVEC d'autres sources (rushes personnels, stock) ?
+ * Seulement quand la clé `sources` est réglée : sans elle, le montage avatar
+ * d'avant (avatar seul) reste à l'identique. Pur (client et serveur).
+ */
+export function avatarAvecAutresSources(c: ConfigPourSources): boolean {
+  if (!sourcesEffectives(c).explicite) return false;
+  const m = mediasDesSources(c);
+  return m.rushesPersonnels.length + m.videosStock.length + m.photosStock.length > 0;
+}
+
+/**
  * L'état des sources, calculé CÔTÉ SERVEUR depuis la configuration — jamais
  * cru du navigateur. `avatarPret` est supposé vrai : la disponibilité réelle
  * du jumeau est vérifiée plus tard par son propre chemin (lancement).

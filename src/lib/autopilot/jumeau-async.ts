@@ -35,26 +35,18 @@
  */
 
 import { supabaseAdmin } from '@/lib/db/supabase';
-import { scriptPourDuree, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
+import { dureeEffectiveAvatarSeul, scriptPourDuree, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
 import { notifyOnce } from '@/lib/notifications/store';
-import { mediasDesSources, sourcesEffectives } from '@/lib/autopilot/sources';
+import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
 import { estJumeauIllisible, MESSAGE_JUMEAU_ILLISIBLE } from '@/lib/autopilot/duree-jumeau';
 
-/**
- * L'avatar sera-t-il monté AVEC d'autres sources (rushes personnels, stock) ?
- * Seulement quand la clé `sources` est réglée : sans elle, le montage avatar
- * d'avant (avatar seul) reste à l'identique. Pur.
- */
-export function avatarAvecAutresSources(config: AutopilotConfig): boolean {
-  if (!sourcesEffectives(config).explicite) return false;
-  const m = mediasDesSources(config);
-  return m.rushesPersonnels.length + m.videosStock.length + m.photosStock.length > 0;
-}
+/** Déplacée dans `sources.ts` (pure, utilisable côté client) — réexportée pour les appelants existants. */
+export { avatarAvecAutresSources };
 
 /** Format vertical de l'Autopilote — la génération du jumeau le suit. */
 const RATIO_AUTOPILOTE = '9:16';
@@ -94,14 +86,23 @@ export function scriptJumeauMontage(post: PreparedPost, config?: AutopilotConfig
   // réservée (`secondesReserveesEnveloppeJumeau`), sinon la vidéo durait
   // ≈ cible + 14 s. Avec d'autres sources (textes en surimpression sur
   // l'avatar), ou sans config connue : le budget d'avant, toute la cible.
+  //
+  // A4 v2 — avatar seul : le message doit être COMPLET (accroche + première
+  // idée + appel à l'action, en unités entières). Une cible trop courte pour
+  // le contenir (< DUREE_MIN_AVATAR_SEUL) est portée à la durée recommandée
+  // (`dureeEffectiveAvatarSeul`, annoncée dans l'Autopilote) — jamais un
+  // script tronqué après coup, jamais la config réécrite.
   const avatarSeul = !!config && !avatarAvecAutresSources(config);
+  const briefScript = avatarSeul && post.brief?.duree
+    ? { ...post.brief, duree: dureeEffectiveAvatarSeul(post.brief.duree) as number }
+    : post.brief;
   const pourDuree = scriptPourDuree({
     titre: post.title,
     sousTitre: post.content.subtitle,
     cartes: post.content.cards ?? [],
     cta: post.brief?.cta || post.content.tagLine,
-    brief: post.brief,
-    ...(avatarSeul ? { secondesReservees: secondesReserveesEnveloppeJumeau(post.brief?.duree) } : null),
+    brief: briefScript,
+    ...(avatarSeul ? { secondesReservees: secondesReserveesEnveloppeJumeau(briefScript?.duree), ideeObligatoire: true } : null),
   });
   if (pourDuree !== null) return pourDuree.slice(0, MAX_SCRIPT);
   const briefMessage = (post.brief?.message ?? '').trim();
