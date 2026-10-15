@@ -8,7 +8,6 @@ const STUDIIO_KNOWLEDGE = `
 - Aperçu à droite, onglets Titre / Cartes / Vidéo / CTA / Tout ; titre, CTA et cartes se déplacent et se redimensionnent directement dans l'aperçu
 - Rush vidéo uploadable ; photo d'affiche : Pexels, photo perso ou affiche IA
 - Modifier un contenu existant : bouton « Modifier » du Calendrier ou de la Bibliothèque (ouvre Créer sur ce contenu)
-- Pour des réglages très fins, un éditeur avancé reste accessible depuis Créer : lien « Ouvrir l'éditeur avancé »
 
 2. AUDIO (étape Audio de /dashboard/creer)
 - Upload musique (mp3, wav, m4a)

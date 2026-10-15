@@ -6,28 +6,30 @@ import { resolve } from 'path';
  * Unification de « Créer » sous `/dashboard/creer`.
  *
  * Le parcours guidé occupe désormais la route canonique ; l'ancien éditeur
- * est relégué sous `/dashboard/creer-avance`, hors du menu, le temps que le
- * parcours guidé sache relire un contenu existant.
+ * avancé (`/dashboard/creer-avance`) a été retiré et son URL redirige vers
+ * Créer (permanent).
  *
  * Ce que ces tests verrouillent :
  *
  * 1. **Un seul « Créer » dans le menu**, et `creer-avance` n'y figure pas.
  * 2. **Aucun lien d'édition n'atteint le parcours guidé avec un identifiant
  *    qu'il ne sait pas relire.** `postId` (un post) y va ; `id` (une vidéo)
- *    reste sur l'éditeur avancé — sur le wizard il afficherait un montage
+ *    va à la Bibliothèque — sur le wizard il afficherait un montage
  *    vierge, et l'utilisateur croirait son contenu perdu.
- * 3. **Les trois routes historiques passent par le mécanisme partagé** et
+ * 3. **Les quatre routes historiques passent par le mécanisme partagé** et
  *    transportent leur query intégralement.
  */
 
 const h = vi.hoisted(() => ({ cibles: [] as string[] }));
 vi.mock('next/navigation', () => ({
   redirect: (url: string) => { h.cibles.push(url); },
+  permanentRedirect: (url: string) => { h.cibles.push(`permanent:${url}`); },
 }));
 
 import CreerSimpleLegacyRedirect from '../app/dashboard/creer-simple/page';
 import CreatorLegacyRedirect from '../app/dashboard/creator/page';
 import InfographieLegacyRedirect from '../app/dashboard/infographie/page';
+import CreerAvanceLegacyRedirect from '../app/dashboard/creer-avance/page';
 
 const lire = (p: string) => readFileSync(resolve(__dirname, p), 'utf-8');
 const sidebar = lire('../components/layout/Sidebar.tsx');
@@ -119,7 +121,8 @@ describe('tous les liens d’édition du Calendrier passent par le parcours guid
   it('⚠️ l’assistant de chat ne cite plus /dashboard/creer-avance comme chemin', () => {
     const prompts = lire('../lib/chat/system-prompts.ts');
     expect(prompts).not.toContain('/dashboard/creer-avance');
-    expect(prompts).toContain('Ouvrir l\'éditeur avancé');
+    // L'éditeur avancé a été retiré : l'assistant ne doit plus le proposer.
+    expect(prompts).not.toContain('Ouvrir l\'éditeur avancé');
   });
 });
 
@@ -175,21 +178,39 @@ describe('les deux parcours sont bien à leur place', () => {
     expect(wizard).toMatch(/<AutopilotPanel\s/);
   });
 
-  it('/dashboard/creer-avance conserve l’éditeur complet', () => {
+  it('/dashboard/creer-avance ne porte plus d’éditeur : il redirige, de façon permanente', () => {
     const avance = lire('../app/dashboard/creer-avance/page.tsx');
-    // Repere de taille : l'editeur ne doit pas avoir ete ampute par la bascule.
-    expect(avance.split('\n').length).toBeGreaterThan(12000);
-    // Il relit toujours `postId` et `tab` (le parcours guidé relit aussi
-    // `postId` depuis #426) — et JAMAIS `id` : c'est pourquoi aucune
-    // redirection ne l'y envoie plus (`legacy-redirect.ts`).
-    expect(avance).toContain("searchParams?.get('postId')");
-    expect(avance).not.toMatch(/searchParams\?\.get\('id'\)/);
-    expect(avance).toContain("searchParams?.get('tab')");
+    expect(avance.split('\n').length).toBeLessThan(60);
+    expect(avance).toContain("import { permanentRedirect } from 'next/navigation'");
+    expect(avance).toContain('creerRedirectTarget(searchParams)');
+    CreerAvanceLegacyRedirect({ searchParams: {} });
+    CreerAvanceLegacyRedirect({ searchParams: { postId: 'p1', tab: 'audio' } });
+    CreerAvanceLegacyRedirect({ searchParams: { id: 'v1' } });
+    expect(h.cibles).toEqual([
+      'permanent:/dashboard/creer',
+      'permanent:/dashboard/creer?postId=p1&tab=audio',
+      'permanent:/dashboard/library',
+    ]);
   });
 
-  it('les en-têtes COOP/COEP suivent l’ancien éditeur', () => {
+  it('next.config redirige l’ancienne URL et ses sous-chemins (308), et ses en-têtes COOP/COEP ont disparu', () => {
     const config = readFileSync(resolve(__dirname, '../../next.config.js'), 'utf-8');
-    expect(config).toContain("source: '/dashboard/creer-avance'");
+    expect(config).toContain("source: '/dashboard/creer-avance/:path+'");
+    expect(config).toContain("source: '/dashboard/creer-avance',");
+    expect(config).toContain("destination: '/dashboard/creer'");
+    // `?id=` (une vidéo) sans `postId` → la Bibliothèque, comme `legacy-redirect`.
+    expect(config).toContain("has: [{ type: 'query', key: 'id' }],");
+    expect(config).toContain("missing: [{ type: 'query', key: 'postId' }],");
+    expect(config).toContain("destination: '/dashboard/library'");
+    // Les en-têtes COOP/COEP de l'ancien éditeur sont partis avec lui.
+    expect(config).not.toContain('Cross-Origin-Opener-Policy');
     expect(config).not.toContain("source: '/dashboard/creer',");
+  });
+
+  it('plus aucun lien « Ouvrir l’éditeur avancé » dans Créer', () => {
+    const wizard = lire('../app/dashboard/creer/AssistantWizard.tsx');
+    expect(wizard).not.toContain('/dashboard/creer-avance');
+    expect(wizard).not.toContain('data-editeur-avance');
+    expect(wizard).not.toContain('Ouvrir l’éditeur avancé');
   });
 });

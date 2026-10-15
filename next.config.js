@@ -48,21 +48,39 @@ const nextConfig = {
       },
     ],
   },
-  async headers() {
+  async redirects() {
     return [
       {
-        // `/dashboard/creer-avance` et non `/dashboard/creer` : ces en-tetes
-        // ont ete poses pour l'ANCIEN editeur (FFmpeg WASM charge depuis
-        // /ffmpeg). Le parcours guide, qui occupe desormais /dashboard/creer,
-        // a toujours tourne SANS eux sous /dashboard/creer-simple — les lui
-        // appliquer ferait de COEP `credentialless` une nouveaute non testee
-        // sur ses medias cross-origin (rushes MinIO, affiches, images).
+        // L'ancien editeur avance a ete retire : son URL redirige en HTTP 308,
+        // avec les memes regles que `lib/routing/legacy-redirect` (que sa page,
+        // conservee en filet, applique aussi) :
+        // - `?id=` (un `videos.id`) sans `postId` → la Bibliotheque ;
+        // - tout le reste (`?postId=`, `?tab=`…) → Creer, query transportee
+        //   (Next la recopie d'office sur la destination).
         source: '/dashboard/creer-avance',
-        headers: [
-          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
-          { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
-        ],
+        has: [{ type: 'query', key: 'id' }],
+        missing: [{ type: 'query', key: 'postId' }],
+        destination: '/dashboard/library',
+        permanent: true,
       },
+      {
+        source: '/dashboard/creer-avance',
+        destination: '/dashboard/creer',
+        permanent: true,
+      },
+      {
+        // Ses eventuels SOUS-CHEMINS n'ont jamais eu de contenu propre.
+        source: '/dashboard/creer-avance/:path+',
+        destination: '/dashboard/creer',
+        permanent: true,
+      },
+    ];
+  },
+  async headers() {
+    // Les en-tetes COOP/COEP de `/dashboard/creer-avance` (FFmpeg WASM de
+    // l'ancien editeur) ont ete retires avec lui : la route ne fait plus que
+    // rediriger. Le parcours guide `/dashboard/creer` n'en a jamais eu.
+    return [
       {
         source: '/ffmpeg/:path*',
         headers: [

@@ -6,7 +6,6 @@ import {
   LIBRARY_ONLY_PARAMS,
   creerRedirectTarget,
   CREER_ROUTE,
-  CREER_AVANCE_ROUTE,
   LIBRARY_ROUTE,
   EDIT_PARAMS,
   type SearchParams,
@@ -228,8 +227,6 @@ describe('aucune destination externe possible', () => {
   it('les deux seules routes possibles sont les constantes du module', () => {
     expect(CREER_ROUTE).toBe('/dashboard/creer');
     expect(LIBRARY_ROUTE).toBe('/dashboard/library');
-    // L'éditeur avancé existe toujours (lien volontaire), mais n'est plus une cible.
-    expect(CREER_AVANCE_ROUTE).toBe('/dashboard/creer-avance');
   });
 });
 

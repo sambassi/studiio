@@ -322,15 +322,6 @@ describe('La bibliothèque est partagée, pas dupliquée', () => {
     expect(wizard).toContain("from '@/components/creer/IconPicker'");
   });
 
-  it("l'éditeur avancé importe le même module au lieu de sa copie", () => {
-    const avance = readFileSync(
-      resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'),
-      'utf-8',
-    );
-    expect(avance).toContain('from "@/lib/icons/library"');
-    expect(avance).not.toContain('const ICON_LIBRARY: Record<string, string[]> = {');
-  });
-
   it('la recherche accepte le nom lucide ET le synonyme français', () => {
     expect(iconMatches('Dumbbell', 'dumb')).toBe(true);
     expect(iconMatches('Dumbbell', ICON_KEYWORDS.Dumbbell?.[0] ?? 'haltère')).toBe(true);

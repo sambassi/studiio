@@ -28,10 +28,6 @@ vi.mock('@/lib/tarifs/client', async (original) => {
  */
 
 const route = readFileSync(resolve(__dirname, '../app/api/ai/image/route.ts'), 'utf-8');
-const panneauAvance = readFileSync(
-  resolve(__dirname, '../components/creer/ImageEditorPanel.tsx'),
-  'utf-8',
-);
 const wizard = readFileSync(
   resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
   'utf-8',
@@ -69,13 +65,6 @@ describe('Le catalogue est la SEULE source du tarif', () => {
       expect(CLE_ACTION_IA[tool.action], tool.action).toBeTruthy();
       expect(tool.credits, tool.action).toBe(TARIFS_DEFAUT[CLE_ACTION_IA[tool.action]]);
     }
-  });
-
-  it('l éditeur avancé lit ce même catalogue', () => {
-    expect(panneauAvance).toContain("} from '@/components/creer/AiImageTools';");
-    // Plus de seconde définition chez lui.
-    expect(panneauAvance).not.toContain('const AI_TOOLS: AiToolDef[] = [');
-    expect(panneauAvance).not.toContain('const STYLE_PRESETS = [');
   });
 
   it('le serveur connaît toutes les actions proposées', () => {
@@ -288,30 +277,6 @@ describe('« Générer arrière-plan » part du TEXTE seul, jamais de l image co
     const corps = JSON.parse((fetchMock.mock.calls[0] as never[])[1]!['body']);
     expect(corps.action).toBe('generate-bg');
     expect(corps.prompt).toBe('femme qui danse');
-    expect(corps).not.toHaveProperty('imageUrl');
-  });
-
-  it('ImageEditorPanel : generate-bg n envoie pas imageUrl même avec un fond chargé', async () => {
-    const { default: ImageEditorPanel } = await import('@/components/creer/ImageEditorPanel');
-    const fetchMock = reponse();
-    vi.stubGlobal('fetch', fetchMock as never);
-    render(
-      <ImageEditorPanel
-        seqKey="titre"
-        config={{ url: 'https://cdn.test/fond-actuel.jpg', opacity: 1 }}
-        onUpdate={vi.fn()}
-        onUploadFile={vi.fn(async () => {})}
-        showToast={vi.fn()}
-      />,
-    );
-    fireEvent.click(screen.getByTitle('Générer arrière-plan (5 cr.)'));
-    const champ = await screen.findByPlaceholderText(/Décrivez le fond/);
-    fireEvent.change(champ, { target: { value: 'femme qui danse' } });
-    fireEvent.click(screen.getByText(/Lancer \(5 cr\.\)/));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-
-    const corps = JSON.parse((fetchMock.mock.calls[0] as never[])[1]!['body']);
-    expect(corps.action).toBe('generate-bg');
     expect(corps).not.toHaveProperty('imageUrl');
   });
 });

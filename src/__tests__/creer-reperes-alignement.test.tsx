@@ -348,36 +348,31 @@ describe('Le calque n est plus déformé', () => {
 });
 
 describe('Le câblage des deux éditeurs', () => {
-  const avance = readFileSync(resolve(__dirname, '../app/dashboard/creer-avance/page.tsx'), 'utf-8');
   const simple = readFileSync(
     resolve(__dirname, '../app/dashboard/creer/AssistantWizard.tsx'),
     'utf-8',
   );
 
   it('les deux montent LE MÊME calque', () => {
-    for (const [nom, src] of [['avancé', avance], ['simple', simple]] as const) {
+    for (const [nom, src] of [['simple', simple]] as const) {
       expect(src.includes("from '@/components/creer/SmartGuides'")
         || src.includes('from "@/components/creer/SmartGuides"'), nom).toBe(true);
     }
   });
 
   it('les deux lui passent le FORMAT ACTIF — jamais une constante', () => {
-    expect(avance).toContain('format={format}');
     expect(simple).toContain('format={format}');
   });
 
   it('les deux mesurent les boîtes du DOM, pas les positions d état', () => {
-    expect(avance).toContain('collectGuideBoxes(previewRef.current)');
     expect(simple).toContain('collectGuideBoxes(previewRef.current)');
   });
 
   it('aucun des deux n appelle plus la mesure centre-à-centre', () => {
-    expect(avance).not.toContain('computeDistanceBadges');
     expect(simple).not.toContain('computeDistanceBadges');
   });
 
   it('le calque est effacé pendant la photo de l aperçu — dans les deux', () => {
-    expect(avance).toContain('{!isCapturingSnapshot && (');
     expect(simple).toContain('{!capturing && (');
   });
 });

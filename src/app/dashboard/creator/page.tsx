@@ -7,8 +7,8 @@
  * repartirait de zéro.
  *
  * Le calcul de la cible — `postId` (un post) vers le parcours guidé qui sait
- * le relire, `id` (une vidéo) encore vers l'éditeur avancé —
- * appartient à `legacy-redirect`, partagé par les trois routes.
+ * le relire, `id` (une vidéo) vers la Bibliothèque —
+ * appartient à `legacy-redirect`, partagé par les routes historiques.
  *
  * TODO: supprimer ce fichier une fois qu'aucun signet n'en dépend plus.
  */
