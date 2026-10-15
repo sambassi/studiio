@@ -504,7 +504,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "cards": 6,
     "cta": 4,
     "intro": 4,
-    "video": 20,
+    "video": 20.8,
   },
   "format": "9:16",
   "marque": {
@@ -537,28 +537,28 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
 
 exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → renderAndUpload) > E-avatar : entrée de rendu, props serveur, ligne de temps > serveur 1`] = `
 {
-  "durationFrames": 1020,
+  "durationFrames": 1044,
   "durees": [
     4,
     6,
-    20,
+    20.8,
     4,
   ],
   "timeline": {
     "durees": [
       4,
       6,
-      20,
+      20.8,
       4,
     ],
-    "images30": 1020,
+    "images30": 1044,
     "ordre": [
       "intro",
       "cards",
       "video",
       "cta",
     ],
-    "total": 34,
+    "total": 34.8,
     "transitions": 3,
   },
 }
@@ -3107,17 +3107,17 @@ exports[`3. Invariants Autopilote ↔ Calendrier (même projet) > DIFFÉRENCES E
       "durees": [
         4,
         6,
-        20,
+        20.8,
         4,
       ],
-      "images30": 1020,
+      "images30": 1044,
       "ordre": [
         "intro",
         "cards",
         "video",
         "cta",
       ],
-      "total": 34,
+      "total": 34.8,
       "transitions": 3,
     },
     "surimpressionsServeur": false,

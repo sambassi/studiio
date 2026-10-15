@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  AbsoluteFill, Audio, OffthreadVideo, Img, Sequence, useVideoConfig, useCurrentFrame,
+  AbsoluteFill, Audio, OffthreadVideo, Img, Sequence, Freeze, useVideoConfig, useCurrentFrame,
 } from 'remotion';
 import { planRushs, planAvecAvatar, type RushSegment } from '../src/lib/creer/multi-rush';
 import { transformeKenBurns } from '../src/lib/creer/ken-burns';
@@ -281,9 +281,9 @@ export function planFromProps(props: CreerSimpleMontageProps): PlannedSequence[]
 }
 
 /**
- * A2 — fenêtre (secondes) où le jumeau parle : du moment où SA piste démarre
- * (la séquence « Vidéo » de la série, raccord entrant compris) à la fin
- * NOMINALE de la séquence. `null` sans `voixJumeau` : aucun ducking.
+ * A2 — fenêtre (secondes) où le jumeau parle : du début NOMINAL de sa
+ * séquence (A3 : sa piste y démarre, après le fondu d'entrée) à sa fin
+ * NOMINALE. `null` sans `voixJumeau` : aucun ducking.
  */
 export function fenetreVoixJumeau(
   props: Pick<CreerSimpleMontageProps, 'voixJumeau' | 'videoUrl'>,
@@ -291,11 +291,12 @@ export function fenetreVoixJumeau(
   reperes: { sequences: PlannedSequence[]; offsets: number[]; base: number[]; tFrames: number; fps: number },
 ): FenetreJumeau | null {
   if (!props.voixJumeau || !props.videoUrl) return null;
-  const { sequences, offsets, base, tFrames, fps } = reperes;
+  const { sequences, offsets, base, fps } = reperes;
   const i = sequences.findIndex((s) => s.type === 'video');
   if (i < 0) return null;
-  const debut = i === 0 ? 0 : offsets[i] - tFrames;
-  return { debut: debut / fps, fin: (offsets[i] + base[i]) / fps };
+  // A3 — la piste démarre au début NOMINAL (après le fondu d'entrée), et
+  // non plus `tFrames` plus tôt avec la séquence de la série.
+  return { debut: offsets[i] / fps, fin: (offsets[i] + base[i]) / fps };
 }
 
 /**
@@ -742,6 +743,36 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                     </Sequence>
                   );
                 })}
+              </>
+            ) : type === 'video' && props.videoUrl && props.voixJumeau && avance(depart) > 0 ? (
+              // A3 — le jumeau PARLE : son image ET sa voix partent au début
+              // NOMINAL de la séquence (fondu d'entrée terminé), comme les voix
+              // par séquence. Pendant le raccord entrant, sa PREMIÈRE image,
+              // figée et muette : le fondu va des cartes à l'avatar, sans
+              // apparition brusque ni image rejouée. La séquence porte le fondu
+              // de sortie en plus (design.ts) : la parole finit avant le
+              // raccord vers le CTA.
+              <>
+                <Sequence durationInFrames={avance(depart)}>
+                  <Freeze frame={0}>
+                    <OffthreadVideo
+                      src={props.videoUrl}
+                      // Muette : la voix part avec la Sequence suivante.
+                      volume={0}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </Freeze>
+                </Sequence>
+                <Sequence from={avance(depart)}>
+                  <OffthreadVideo
+                    src={props.videoUrl}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    // Frame relative à la Sequence, qui démarre au départ nominal.
+                    volume={(f) => (
+                      props.rushMuted ? 0 : mixAt((depart + avance(depart) + f) / fps, mixOptions).voice
+                    )}
+                  />
+                </Sequence>
               </>
             ) : type === 'video' && props.videoUrl ? (
               <OffthreadVideo
