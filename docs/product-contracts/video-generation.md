@@ -311,6 +311,18 @@ LIMITES=verrou en processus seulement (conteneur unique — deux conteneurs ne s
 la clé rendus est en .webm mais contient du MP4 (point A2.4) ; pas de convertisseur
 ComposerOptions → SpecRendu (A2.4) ; localiserEntreesRendu ne couvre pas surimpressions ni
 ctaCopies → ces clés sont refusées.
+BLOQUANTS AVANT ACTIVATION (NON RÉSOLUS, ne pas activer MOTEUR_EXPORT_SERVEUR tant qu'un seul
+reste ouvert, y compris pour les admins en production) :
+  1. MP4 sous extension .webm — la clé rendus porte .webm alors que Remotion produit du MP4 ;
+     la publication sociale refuse le .webm. À corriger avant tout usage réel de la sortie.
+  2. Concurrence et mémoire Remotion — verrou en processus seulement, concurrency non fixée,
+     bundle webpack recréé à chaque rendu et jamais nettoyé dans /tmp, Chromium téléchargé au
+     1er rendu, pas de proxy 4K. Risque ressources ÉLEVÉ si un rendu coïncide avec
+     l'Autopilote ou un rush 4K.
+  3. Validation des URL de l'Autopilote — localiserEntreesRendu
+     (src/lib/securite/medias-externes.ts) laisse passer sans filtre les chaînes qui ne
+     commencent pas par http(s)://. A2.3 s'en protège par sa propre validation, l'Autopilote
+     non. Correctif de sécurité SÉPARÉ, hors A2.x.
 TEST=src/__tests__/contracts/rendu-serveur-flag.contract.test.ts ;
 src/__tests__/contracts/rendu-worker-occupation.contract.test.ts (options Remotion = 1a1a044) ;
 src/__tests__/contracts/rendu-serveur-isolement.contract.test.ts (aucun parcours branché) ;
