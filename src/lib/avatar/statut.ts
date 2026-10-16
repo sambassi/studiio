@@ -63,6 +63,8 @@ interface LigneGeneration {
   credits_charged: number;
   credits_refunded: boolean;
   created_at: string;
+  /** Dernière écriture (mise en attente, prise de reprise) : repère du dernier lancement (B1). */
+  updated_at?: string | null;
   /** Le texte DIT (sert au coût de la voix). */
   script?: string | null;
   /** Format DEMANDÉ (`9:16`, `16:9`, `1:1`) : le fichier rapatrié le remplit. */

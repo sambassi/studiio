@@ -270,7 +270,7 @@ export async function genererVideoJumeau(
     if (!estConflitUnique(erreurReservation)) return { ok: false, motif: 'base', message: 'La génération n’a pas pu être réservée.' };
     const { data: enVol, error: erreurLecture } = await supabaseAdmin
       .from('avatar_generations')
-      .select('id, status, provider, provider_video_id, provider_error, created_at')
+      .select('id, status, provider, provider_video_id, provider_error, created_at, updated_at')
       .eq('user_id', identite.user_id)
       .eq('user_avatar_id', identite.user_avatar_id)
       .eq('avatar_version', identite.avatar_version)
@@ -286,7 +286,7 @@ export async function genererVideoJumeau(
     // chez le fournisseur) : la rendre condamnait chaque nouvel essai du même
     // texte à `dejaEnCours` sur une génération qui ne partira jamais. Elle est
     // close (et son débit rendu une fois), puis la réservation est retentée.
-    if (gagnante && estGenerationZombie({ status: gagnante.status, provider_video_id: gagnante.provider_video_id ?? null, provider_error: gagnante.provider_error ?? null, created_at: gagnante.created_at ?? '' })) {
+    if (gagnante && estGenerationZombie({ status: gagnante.status, provider_video_id: gagnante.provider_video_id ?? null, provider_error: gagnante.provider_error ?? null, created_at: gagnante.created_at ?? '', updated_at: gagnante.updated_at ?? null })) {
       await cloreGenerationZombie({ id: gagnante.id, user_id: identite.user_id, provider: gagnante.provider ?? null });
       continue;
     }
@@ -801,18 +801,27 @@ export async function reconcilierLancement(
 export const DELAI_GENERATION_ZOMBIE_MS = 30 * 60 * 1000;
 
 interface LigneZombie {
-  status: string; provider: string | null; provider_video_id: string | null; provider_error: string | null; created_at: string;
+  status: string; provider: string | null; provider_video_id: string | null; provider_error: string | null; created_at: string; updated_at: string | null;
 }
 
 export function estGenerationZombie(
-  g: { status: string; provider_video_id: string | null; provider_error?: string | null; created_at: string },
+  g: { status: string; provider_video_id: string | null; provider_error?: string | null; created_at: string; updated_at?: string | null },
   maintenant: number = Date.now(),
 ): boolean {
   if (g.status !== 'pending' && g.status !== 'processing') return false;
   if (g.provider_video_id) return false;
+  // Déjà mise en attente au moins une fois (marqueur, qui n'est jamais retiré
+  // d'une ligne en vol) : jamais un zombie — l'attente et sa reprise unique
+  // ont leur propre fin (`ATTENTE_MAX_MS`, abandon remboursé).
   if (lireMarqueurAttente(g.provider_error) !== null) return false;
-  const debut = Date.parse(g.created_at);
-  return Number.isFinite(debut) && maintenant - debut > DELAI_GENERATION_ZOMBIE_MS;
+  // L'âge se mesure depuis le DERNIER lancement réel, jamais depuis
+  // `created_at` seul : sans migration, l'horodatage disponible est
+  // `updated_at`, posé à chaque mise en attente et à la prise de reprise
+  // (`prendreReprise`). On prend le plus récent des deux — au pire, la
+  // clôture est retardée, jamais avancée.
+  const reperes = [g.created_at, g.updated_at].map((v) => (v ? Date.parse(v) : Number.NaN)).filter(Number.isFinite);
+  if (reperes.length === 0) return false;
+  return maintenant - Math.max(...reperes) > DELAI_GENERATION_ZOMBIE_MS;
 }
 
 /**

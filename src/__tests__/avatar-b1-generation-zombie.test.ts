@@ -242,3 +242,35 @@ describe('B1 — un nouvel essai du même texte ne bute plus sur le zombie', () 
     expect(base.generations[0]).toMatchObject({ status: 'failed', provider_video_id: null });
   });
 });
+
+describe('B1 — l’âge se mesure depuis le DERNIER lancement, jamais depuis created_at seul', () => {
+  it('⚠️ créée il y a 3 h, mise en attente puis reprise il y a 5 min, sans identifiant (marqueur présent) → NON close, NON remboursée', async () => {
+    base.generations = [zombie({ created_at: ilYA(180), updated_at: ilYA(5), provider_error: 'waiting_provider:1:remplir|solde' })]; debitDuZombie();
+    const r = await avancerStatutGeneration(U, G);
+    expect(r.status).toBe('processing');
+    expect(base.generations[0]).toMatchObject({ status: 'pending', credits_refunded: false });
+    expect(remboursements()).toEqual([]);
+  });
+
+  it('⚠️ créée il y a 3 h, relancée il y a 5 min (updated_at), sans identifiant ni marqueur → NON close, NON remboursée', async () => {
+    base.generations = [zombie({ created_at: ilYA(180), updated_at: ilYA(5) })]; debitDuZombie();
+    expect((await avancerStatutGeneration(U, G)).status).toBe('processing');
+    expect(base.generations[0].status).toBe('pending');
+    expect(remboursements()).toEqual([]);
+    // Nouvel essai du même texte : la génération relancée reste celle rendue.
+    const r = await generer();
+    expect(r.ok && r.dejaEnCours && r.generationId).toBe(G);
+  });
+
+  it('⚠️ relancée il y a 40 min, toujours sans identifiant → close UNE seule fois (passes concurrentes)', async () => {
+    base.generations = [zombie({ created_at: ilYA(180), updated_at: ilYA(40) })]; debitDuZombie();
+    const [a, b] = await Promise.all([avancerStatutGeneration(U, G), avancerStatutGeneration(U, G)]);
+    expect([a.status, b.status]).toEqual(['failed', 'failed']);
+    expect(base.generations[0]).toMatchObject({ status: 'failed', credits_refunded: true });
+    expect(remboursements()).toEqual(['refund:40']);
+  });
+
+  it('marqueur d’attente présent, même reprise il y a 40 min → jamais close par le garde zombie', () => {
+    expect(estGenerationZombie({ status: 'pending', provider_video_id: null, provider_error: 'waiting_provider:1:-', created_at: ilYA(180), updated_at: ilYA(40) })).toBe(false);
+  });
+});
