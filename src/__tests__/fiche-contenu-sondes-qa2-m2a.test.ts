@@ -66,4 +66,10 @@ describe('lectures discutables retirées', () => {
     expect(ids(ficheContenuRush({ metadonnees: ['Classe de yoga du samedi'] }))).toEqual(['yoga']);
     expect(ids(ficheContenuRush({ metadonnees: ['danse en groupe'] }))).toContain('group');
   });
+  it('« boxing day » (soldes) n’est pas de la boxe, et n’invente aucune action', () => {
+    const f = desc('boxing day sale in a store');
+    expect(ids(f)).not.toContain('boxing');
+    expect(f.inconnus).toContain('action');
+    expect(ids(desc('man boxing in a gym'))).toContain('boxing');
+  });
 });

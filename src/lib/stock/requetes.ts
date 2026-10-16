@@ -175,6 +175,8 @@ const MOTS_SPORTIFS: ReadonlySet<string> = new Set([
 const VOISINS_EXCLUS_EN: Record<string, ReadonlySet<string>> = {
   studio: new Set(['apartment', 'apartments', 'flat', 'flats', 'loft', 'condo', 'appartement']),
   spinning: new Set(['wheel', 'top', 'plate', 'globe', 'record', 'vinyl']),
+  // « boxing day » : le lendemain de Noël (soldes), pas la boxe.
+  boxing: new Set(['day']),
 };
 
 function formeAnglaiseRecevable(forme: string, mots: string[], i: number): boolean {
@@ -263,6 +265,7 @@ export function conceptsDuTexte(texte: string | null | undefined, langues: { fr:
   if (langues.en) {
     mots.forEach((mot, i) => {
       if (!MOTS_ANGLAIS_IDENTIQUES.has(mot)) return;
+      if (!formeAnglaiseRecevable(mot, mots, i)) return;
       const c = CONCEPTS.find((x) => x.mots.includes(mot) && !x.implique);
       if (c) trouves.push([i, 2, c, GERONDIFS_IDENTIQUES.has(mot) && c.categorie === 'activite']);
     });
