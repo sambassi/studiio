@@ -15,6 +15,7 @@ import {
   mesurerImage, saturationRgb, ANALYSE_L, ANALYSE_H, COULEUR_L, COULEUR_H, type AnalyseRush, type EchantillonRush,
 } from '@/lib/creer/smart-montage';
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
+import { HD_L, HD_H, HD_IMAGES, mesurerNetteteHD, agregerNetteteHD, imagesHDDepuisBrut, type AnalyseRushQualite } from '@/lib/creer/nettete-hd';
 import {
   BUCKET_COPIES_EXTERNES, PREFIXE_RELAIS_PUBLIC, cibleLisibleParCompte, cibleParCheminLisible, cibleStockageParChemin,
   extraireCibleStockage, originesStockageConfigurees,
@@ -265,7 +266,7 @@ export async function analyserRushServeur(url: string, dureeSecondes: number | n
  * local que le serveur a lui-même produit — tests). Jamais à appeler avec une
  * adresse venue de l'utilisateur : c'est `analyserRushServeur` qui la juge.
  */
-export async function mesurerSourceLue(url: string, source: string, dureeSecondes: number): Promise<AnalyseRush | null> {
+export async function mesurerSourceLue(url: string, source: string, dureeSecondes: number): Promise<AnalyseRushQualite | null> {
   if (!(typeof dureeSecondes === 'number' && dureeSecondes >= 1)) return null;
   const duree = Math.min(dureeSecondes, DUREE_ANALYSEE_MAX);
   const pas = Math.max(0.5, duree / ECHANTILLONS_MAX);
@@ -275,6 +276,9 @@ export async function mesurerSourceLue(url: string, source: string, dureeSeconde
   const base = path.join(os.tmpdir(), `studiio-analyse-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const audioTmp = `${base}.pcm`;
   const couleurTmp = `${base}.rgb`;
+  const hdTmp = `${base}.hd`;
+  // M1 : netteté QUALITÉ, 8 images au plus, dans le MÊME passage (jamais lue par planMontage).
+  const pasHD = Math.max(pas, duree / HD_IMAGES);
   try {
     // ⚠️ IMAGES-CLÉS SEULEMENT (`-skip_frame nokey`). Décoder chaque image
     // d'un rush 4K 60 i/s de 40 s dépassait le délai de 120 s sur le serveur
@@ -286,9 +290,9 @@ export async function mesurerSourceLue(url: string, source: string, dureeSeconde
     // UN SEUL passage pour l'image ET le son.
     // Même sélection d'images pour le gris (mesures) et la couleur
     // (saturation, en 16×9 : quelques octets par image, coût négligeable).
-    const selection = (clesSeules: boolean) => (clesSeules
-      ? `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${pas})'`
-      : `fps=${1 / pas}`);
+    const selection = (clesSeules: boolean, p = pas) => (clesSeules
+      ? `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${p})'`
+      : `fps=${1 / p}`);
     const argsImages = (clesSeules: boolean, avecSon = true) => [
       '-hide_banner', '-loglevel', 'info', '-nostats', '-threads', '0',
       ...(clesSeules ? ['-skip_frame', 'nokey'] : ['-skip_loop_filter', 'all']),
@@ -299,6 +303,9 @@ export async function mesurerSourceLue(url: string, source: string, dureeSeconde
       '-map', '0:v:0',
       '-vf', `${selection(clesSeules)},scale=${COULEUR_L}:${COULEUR_H}:flags=fast_bilinear,format=rgb24`,
       '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-y', couleurTmp,
+      '-map', '0:v:0',
+      '-vf', `${selection(clesSeules, pasHD)},scale=${HD_L}:${HD_H},format=gray`,
+      '-fps_mode', 'passthrough', '-f', 'rawvideo', '-pix_fmt', 'gray', '-y', hdTmp,
       ...(avecSon ? ['-map', '0:a:0?', '-ac', '1', '-ar', String(AUDIO_HZ), '-f', 's16le', '-y', audioTmp] : []),
     ];
     // Un rush SANS piste audio laisse la sortie son vide, et ffmpeg refuse
@@ -332,13 +339,15 @@ export async function mesurerSourceLue(url: string, source: string, dureeSeconde
         ...(saturations.length === images.length ? { saturation: saturations[i] } : {}),
       });
     });
-    return { url, duree, echantillons };
+    const hd = agregerNetteteHD(imagesHDDepuisBrut(await fs.readFile(hdTmp).catch(() => Buffer.alloc(0))).map((g) => mesurerNetteteHD(g)));
+    return { url, duree, echantillons, ...(hd ? { netteteHD: hd } : null) };
   } catch (err) {
     console.warn('[SmartMontage/serveur] analyse impossible :', err instanceof Error ? err.message : err);
     return null;
   } finally {
     await fs.unlink(audioTmp).catch(() => {});
     await fs.unlink(couleurTmp).catch(() => {});
+    await fs.unlink(hdTmp).catch(() => {});
   }
 }
 

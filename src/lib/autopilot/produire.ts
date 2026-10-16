@@ -19,6 +19,7 @@ import { genererAfficheReference } from '@/lib/ai/affiche-reference';
 import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, estUrlImage, type RushSegment } from '@/lib/creer/multi-rush';
 import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre, mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
+import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
@@ -466,6 +467,8 @@ export async function produireUnMontage(input: {
   const chrono = { debut: Date.now(), preparation: 0, analyse: 0, selection: 0, rendu: 0, envoi: 0 };
   const analysesRushs: AnalyseRush[] = [];
   const analysesEchouees: string[] = [];
+  /** Rushes montés SANS mesure (`analyseNeutre`) : exclus du diagnostic qualité (M1). */
+  const rushsSansMesure = new Set<string>();
   let disponible = 0;
   let secondesParRush = new Map<string, number | null>();
   /** Rushes personnels réunis pour ce montage (multi-sources). */
@@ -499,6 +502,7 @@ export async function produireUnMontage(input: {
           // de 8 s (5,8 s, A → B → A → B). Dit dans les métadonnées.
           const s = secondes[i];
           if (s && s >= 1) analysesRushs.push(analyseNeutre(u, s));
+          rushsSansMesure.add(u);
           analysesEchouees.push(`${u.split('/').pop() ?? u}${s && s >= 1 ? ' (monté sans mesure)' : ''}`);
         }
         input.onProgression?.('analyse', (i + 1) / liste.length);
@@ -1003,6 +1007,21 @@ export async function produireUnMontage(input: {
     ...(montageRaccourci ? { montageRaccourci: { demande: montageRaccourci.demande, possible: montageRaccourci.possible, rushsAAjouter: montageRaccourci.supplementaires, message: montageRaccourci.message } } : null),
     // Rushes dont l'analyse a échoué (délai, fichier illisible) : dit.
     ...(analysesEchouees.length ? { analysesEchouees } : null),
+    // M1 — QUALITÉ DES RUSHES : DIAGNOSTIC CONSULTATIF (la clé `decisionMontage`
+    // ne décide rien ; même forme que Créer, une seule version). MESURÉ, en LECTURE SEULE. Il ne
+    // change ni la sélection ni le rendu (calculé après le plan, jamais relu
+    // par le rendu) ; il rend visible plus tard « pourquoi ce rush est à
+    // vérifier ». Tous les rushes de la banque sont ceux de l'utilisateur.
+    ...(() => {
+      try {
+        const mesurees = analysesRushs.filter((a) => !rushsSansMesure.has(a.url));
+        if (!mesurees.length) return null;
+        const d = evaluerQualiteRushs(mesurees, { choisisParUtilisateur: banqueRushs });
+        return { decisionMontage: { version: 1, qualiteRushs: qualiteRushsPourMetadata(d) } };
+      } catch {
+        return null; // un diagnostic ne bloque jamais un montage
+      }
+    })(),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
     ...(Object.values(voices).some((v) => v?.repli === 'edge') ? { voixRepliEdge: true } : null),
     // Ce que l'utilisateur doit savoir, LU par le Calendrier — un montage du
