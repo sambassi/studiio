@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, AlertCircle, Check, Edit2, Trash2 } from 'lucide-react';
+import { Loader2, AlertCircle, Check, Edit2, Trash2, Lock, Unlock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { useTranslations } from '@/i18n/client';
+import { PHRASE_SUPPRESSION_ADMIN, saisieConfirmationValide } from '@/lib/rgpd/confirmation-admin';
 
 interface User {
   id: string;
@@ -46,6 +47,10 @@ export default function UsersPage() {
 
   const [creditModal, setCreditModal] = useState(false);
   const [editModal, setEditModal] = useState(false);
+  // Suppression DÉFINITIVE : modale dédiée + phrase exacte (le serveur la
+  // revérifie, avec l'identifiant). Remplace l'ancien `confirm()`.
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleteSaisie, setDeleteSaisie] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditReason, setCreditReason] = useState('');
@@ -162,19 +167,51 @@ export default function UsersPage() {
     }
   };
 
-  const handleDeleteUser = async (user: User) => {
-    if (!confirm(t('users.confirmDelete', { name: user.name, email: user.email }))) return;
+  const openDeleteModal = (user: User) => {
+    setDeleteSaisie('');
+    setDeleteTarget(user);
+  };
+
+  const closeDeleteModal = () => {
+    if (actionLoading) return;
+    setDeleteTarget(null);
+    setDeleteSaisie('');
+  };
+
+  const handleDeleteUser = async () => {
+    const user = deleteTarget;
+    if (!user || !saisieConfirmationValide(deleteSaisie)) return;
 
     try {
       setActionLoading(true);
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmation: PHRASE_SUPPRESSION_ADMIN, userId: user.id }),
       });
 
+      // 409 = abonnement actif (rien supprimé) ; 202 = suppression partielle, à relancer.
+      if (res.status === 409) throw new Error(t('users.userDeleteSubscribed', { name: user.name }));
       if (!res.ok) throw new Error(t('users.errorDelete'));
+      setDeleteTarget(null);
+      setDeleteSaisie('');
+      if (res.status === 202) {
+        showToast(t('users.userDeletePartial', { name: user.name }), 'error');
+        fetchUsers();
+        return;
+      }
 
-      showToast(t('users.userDeleted', { name: user.name }), 'success');
+      // Terminée dans Studiio, mais des opérations restent à faire à la main
+      // chez des fournisseurs : on ne l'annonce pas comme un succès complet.
+      const body = await res.json().catch(() => null);
+      const restants: string[] = Array.isArray(body?.data?.externes)
+        ? body.data.externes.filter((e: any) => e?.etat === 'a_faire_manuellement').map((e: any) => String(e.fournisseur))
+        : [];
+      if (restants.length > 0) {
+        showToast(t('users.userDeletedExternes', { name: user.name, fournisseurs: restants.join(', ') }), 'error');
+      } else {
+        showToast(t('users.userDeleted', { name: user.name }), 'success');
+      }
       fetchUsers();
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('common.errorOccurred'), 'error');
@@ -387,17 +424,25 @@ export default function UsersPage() {
                             variant={user.status === 'active' ? 'secondary' : 'primary'}
                             onClick={() => handleToggleBan(user)}
                             disabled={actionLoading}
+                            title={user.status === 'active' ? t('users.actions.banHint') : t('users.actions.unbanHint')}
                           >
-                            {user.status === 'active' ? t('users.actions.ban') : t('users.actions.unban')}
+                            <span className="inline-flex items-center gap-1">
+                              {user.status === 'active' ? <Lock size={14} /> : <Unlock size={14} />}
+                              {user.status === 'active' ? t('users.actions.ban') : t('users.actions.unban')}
+                            </span>
                           </Button>
                           <Button
                             size="sm"
                             variant="secondary"
-                            onClick={() => handleDeleteUser(user)}
+                            onClick={() => openDeleteModal(user)}
                             disabled={actionLoading}
-                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                            title={t('users.actions.deletePermanently')}
+                            className="text-red-400 hover:text-red-300 hover:bg-red-900/20 border border-red-800/60"
                           >
-                            <Trash2 size={14} />
+                            <span className="inline-flex items-center gap-1">
+                              <Trash2 size={14} />
+                              {t('users.actions.deletePermanently')}
+                            </span>
                           </Button>
                         </div>
                       </td>
@@ -435,6 +480,49 @@ export default function UsersPage() {
           )}
         </CardContent>
       </Card>
+
+      <Modal isOpen={deleteTarget !== null} onClose={closeDeleteModal} title={t('users.deleteModal.title')}>
+        {deleteTarget && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-red-800/60 bg-red-950/30 p-3 text-sm">
+              <p className="text-gray-400 mb-2">{t('users.deleteModal.account')}</p>
+              <dl className="grid gap-x-3 gap-y-1" style={{ gridTemplateColumns: 'auto 1fr' }}>
+                <dt className="text-gray-400">{t('users.deleteModal.name')}</dt>
+                <dd className="text-white break-all">{deleteTarget.name}</dd>
+                <dt className="text-gray-400">{t('users.deleteModal.email')}</dt>
+                <dd className="text-white break-all">{deleteTarget.email}</dd>
+                <dt className="text-gray-400">{t('users.deleteModal.id')}</dt>
+                <dd className="text-white font-mono text-xs break-all">{deleteTarget.id}</dd>
+              </dl>
+            </div>
+            <p className="text-sm text-red-300">{t('users.deleteModal.effects')}</p>
+            <p className="text-sm text-gray-400">{t('users.deleteModal.banInstead')}</p>
+            <Input
+              label={t('users.deleteModal.typeToConfirm', { phrase: PHRASE_SUPPRESSION_ADMIN })}
+              placeholder={PHRASE_SUPPRESSION_ADMIN}
+              value={deleteSaisie}
+              onChange={(e) => setDeleteSaisie(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <div className="flex gap-3 pt-2">
+              <Button variant="secondary" className="flex-1" onClick={closeDeleteModal} disabled={actionLoading}>
+                {t('common.cancel')}
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1 bg-red-700 text-white hover:bg-red-600 border border-red-600"
+                onClick={handleDeleteUser}
+                disabled={actionLoading || !saisieConfirmationValide(deleteSaisie)}
+              >
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                  <span className="inline-flex items-center gap-1"><Trash2 size={14} />{t('users.deleteModal.confirm')}</span>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={creditModal} onClose={() => setCreditModal(false)} title={t('users.creditModal.title')}>
         <div className="space-y-4">

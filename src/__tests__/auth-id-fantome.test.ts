@@ -51,11 +51,13 @@ vi.mock('next-auth/providers/google', () => ({ default: () => ({}) }));
 vi.mock('next-auth/providers/facebook', () => ({ default: () => ({}) }));
 
 const { authCallbacks } = await import('@/lib/auth/config');
+// `jwt` peut renvoyer `null` (compte supprimé) ; ces tests portent sur des comptes normaux.
+const jwtCb = authCallbacks.jwt as unknown as (p: unknown) => Promise<any>;
 
 const PANNE = { data: null, error: { message: 'connect ECONNREFUSED' } };
 
 function premiereConnexion(token: Record<string, unknown> = {}) {
-  return authCallbacks.jwt({
+  return jwtCb({
     token: { email: EMAIL, name: 'Coach', sub: FANTOME, ...token },
     user: { id: FANTOME, email: EMAIL, name: 'Coach', image: null },
     account: { access_token: 'tok', provider: 'google', type: 'oidc', providerAccountId: 'x' },
@@ -123,18 +125,18 @@ describe('La base revient : le bon identifiant est retrouvé', () => {
     reponses = [PANNE];
     const token = await premiereConnexion();
     reponses = [{ data: [{ id: REEL, credits: 500, created_at: '2026-01-01' }], error: null }];
-    const suivant = await authCallbacks.jwt({ token } as any);
+    const suivant = await jwtCb({ token } as any);
     expect(suivant.id).toBe(REEL);
 
     // Une fois persisté, plus aucune relecture par e-mail.
     reponses = [];
-    const encore = await authCallbacks.jwt({ token: suivant } as any);
+    const encore = await jwtCb({ token: suivant } as any);
     expect(encore.id).toBe(REEL);
     expect(reponses).toHaveLength(0);
   });
 
   it('jwt sans e-mail dans le jeton ne tente rien', async () => {
-    const t = await authCallbacks.jwt({ token: { sub: FANTOME } } as any);
+    const t = await jwtCb({ token: { sub: FANTOME } } as any);
     expect(t.id).toBeUndefined();
   });
 });
@@ -172,7 +174,7 @@ describe('Cas nominal inchangé', () => {
 
   it('jwt sur un jeton déjà résolu ne touche pas la base', async () => {
     reponses = [];
-    const t = await authCallbacks.jwt({ token: { id: REEL, email: EMAIL } } as any);
+    const t = await jwtCb({ token: { id: REEL, email: EMAIL } } as any);
     expect(t.id).toBe(REEL);
   });
 });

@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin, logAdminAction } from '@/lib/admin';
+import { requireAdmin, logAdminAction, isAdmin } from '@/lib/admin';
+import {
+  creerDemandeCompte, executerDemande, statutPublic, uidValide, externesDe,
+} from '@/lib/rgpd/suppression-donnees';
+import { PHRASE_SUPPRESSION_ADMIN, confirmationSuppressionAdminValide } from '@/lib/rgpd/confirmation-admin';
+import { dependancesReelles } from '@/lib/rgpd/adaptateurs';
+import { marquerCompteSupprime } from '@/lib/auth/etat-compte';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { ApiResponse } from '@/lib/types/api';
 
@@ -127,7 +133,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ): Promise<NextResponse<ApiResponse<any>>> {
   try {
@@ -135,31 +141,51 @@ export async function DELETE(
     if (adminError) return adminError as NextResponse;
 
     const userId = params.id;
+    // Suppression RÉELLE (base + stockage), plus un simple `deleted_at` :
+    // voir src/lib/rgpd/suppression-donnees.ts. L'identifiant doit être un
+    // UUID canonique — il fixe les préfixes de stockage purgés.
+    if (!uidValide(userId)) {
+      return NextResponse.json({ success: false, error: 'Invalid user id' }, { status: 400 });
+    }
 
-    // Soft delete by setting deleted_at
-    const { data, error } = await supabaseAdmin
-      .from('users')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', userId)
-      .select()
-      .single();
+    // Confirmation FORTE, vérifiée ici et pas seulement dans l'interface :
+    // un appel accidentel ou scripté (DELETE nu, mauvais id) ne supprime rien.
+    let corps: unknown = null;
+    try { corps = await req.json(); } catch { corps = null; }
+    if (!confirmationSuppressionAdminValide(corps, userId)) {
+      return NextResponse.json({
+        success: false,
+        error: `Confirmation required: send { "confirmation": "${PHRASE_SUPPRESSION_ADMIN}", "userId": "<same id as the URL>" }`,
+      }, { status: 400 });
+    }
 
-    if (error) throw error;
+    const deps = { ...dependancesReelles(), estCompteProtege: isAdmin };
+    const demande = await creerDemandeCompte(userId, 'admin', deps);
+    const d = await executerDemande(demande.code, deps);
+    // Compte anonymisé : sa session tombe tout de suite sur cette instance.
+    if (d.etapes.some((e) => e.id === 'compte' && e.statut === 'terminee')) marquerCompteSupprime(userId);
 
-    // Log the action
     await logAdminAction({
       adminEmail: session!.user.email!,
       action: 'delete_user',
       targetType: 'user',
       targetId: userId,
-      details: { deletedAt: new Date().toISOString() },
+      details: { confirmationCode: d.code, statut: d.statut, motif: d.motif ?? null },
     });
 
+    // `ok` = terminée DANS STUDIIO. `data.statut` (global) ne dit
+    // « terminee » que s'il ne reste aucune opération externe manuelle.
+    const ok = d.statut === 'terminee';
+    const restants = externesDe(d).filter((e) => e.etat === 'a_faire_manuellement').map((e) => e.fournisseur);
     return NextResponse.json({
-      success: true,
-      data,
-      message: 'User deleted successfully (soft delete)',
-    });
+      success: ok,
+      data: statutPublic(d),
+      message: ok
+        ? restants.length > 0
+          ? `User data deleted in Studiio (account anonymized, billing records kept) — external operations remaining: ${restants.join(', ')}`
+          : 'User data deleted (account anonymized, billing records kept)'
+        : `Deletion ${d.statut}${d.motif ? ` (${d.motif})` : ''} — rerun to resume`,
+    }, { status: ok ? 200 : d.motif === 'verifications:abonnement_actif' ? 409 : 202 });
   } catch (error) {
     console.error('Error deleting user:', error);
     return NextResponse.json(
