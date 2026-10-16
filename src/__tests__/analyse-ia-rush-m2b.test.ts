@@ -525,3 +525,44 @@ describe('plafonds et coût mesuré', () => {
     }
   });
 });
+
+describe('QA — révocation et plafond image', () => {
+  it('révocation ENTRE la vision et la transcription → 0 appel transcription', async () => {
+    const m = monde();
+    const { d, compte } = deps({
+      stockage: m.s, parole: 'on danse',
+      vision: async () => { await enregistrerConsentementIA(A, false, 'fr', m.s); return reponseAnthropic(VISION_DANSE); },
+    });
+    const r = await analyser(RUSH_A, d);
+    expect(compte.vision).toBe(1);
+    expect(compte.transcription).toBe(0);
+    expect(r.fiche!.etapes.transcription).toMatchObject({ etat: 'a_faire', motif: 'consentement_retire' });
+  });
+  it('révocation après le lancement, avant la vision → 0 appel', async () => {
+    const m = monde();
+    const { d, compte } = deps({ stockage: m.s, parole: 'on danse' });
+    const mesurer = d.mesurerQualite!;
+    d.mesurerQualite = async (...a) => { await enregistrerConsentementIA(A, false, 'fr', m.s); return mesurer(...a); };
+    const r = await analyser(RUSH_A, d);
+    expect(compte.vision + compte.transcription).toBe(0);
+    expect(r.fiche!.etapes.vision.motif).toBe('consentement_retire');
+  });
+  it('dimensions illisibles : plafond haute résolution (4784 jetons) compté → 3 images suffisent à bloquer', async () => {
+    const illisible = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0, 0]), Buffer.alloc(1000, 0x11), Buffer.from([0xff, 0xd9])]);
+    expect(dimensionsJpeg(illisible)).toBeNull();
+    expect(jetonsImage(illisible)).toBe(4784);
+    const m = monde();
+    const { d, compte } = deps({ stockage: m.s, images: [illisible, illisible, illisible], qualite: qualite({ audio: 0 }) });
+    const r = await analyser(RUSH_A, d);
+    expect(r.fiche!.etapes.vision).toMatchObject({ etat: 'sans_objet', motif: 'plafond_depasse' });
+    expect(compte.vision).toBe(0);
+  });
+  it('balayage : aucun texte entendu dans la fiche écrite au cache', async () => {
+    const m = monde();
+    const { d } = deps({ stockage: m.s, parole: 'Marie Curie est venue au 12 rue de la Paix, elle a 30 ans, on danse' });
+    await analyser(RUSH_A, d);
+    const json = JSON.stringify(m.store.get(`media/${cleFicheContenu(A, 'media', CLE_A, TAILLE, 2)}`)).toLowerCase();
+    for (const mot of ['marie', 'curie', 'rue', 'paix', '30 ans', 'venue']) expect(json, mot).not.toContain(mot);
+    expect(json).toContain('"dance"');
+  });
+});

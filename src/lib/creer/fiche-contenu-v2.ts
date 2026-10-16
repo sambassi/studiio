@@ -62,12 +62,18 @@ export interface ObservationsRush {
   /** Les sujets que l'IMAGE seule a donnés (avant fusion), pour refondre sans rappeler. */
   categoriesVision: Array<{ id: string; confiance: ConfianceFiche }>;
   langue: LangueParole;
+  /**
+   * ⚠️ AUCUN TEXTE DE LA PAROLE N'EST GARDÉ — ni extrait, ni mot libre : un
+   * masquage de noms, d'âges ou d'adresses par motif ne sera jamais fiable.
+   * Seuls restent la présence, la durée parlée et des IDENTIFIANTS de la
+   * taxonomie fermée.
+   */
   parole: {
-    /** ≤ 300 caractères, URL / adresses / numéros / noms propres masqués. Jamais réinjecté. */
-    extrait: string | null;
     /** Concepts cités (taxonomie fermée), via `conceptsDuTexte`. */
     sujets: string[];
-    /** Vrai quand la parole ressemble à une consigne : sujets et extrait écartés. */
+    /** Secondes couvertes par des segments de parole, si connues. */
+    dureeParlee: number | null;
+    /** Vrai quand la parole ressemble à une consigne : sujets écartés. */
     ecartee?: true;
     source: 'parole';
   } | null;
@@ -116,7 +122,6 @@ export interface FicheContenuRushV2 extends Omit<FicheContenuRush, 'version' | '
 export const OBJETS_MAX = 5;
 export const CATEGORIES_VISION_MAX = 6;
 export const LIBRE_MAX = 40;
-export const EXTRAIT_MAX = 300;
 const CONFIANCES: readonly ConfianceFiche[] = ['elevee', 'moyenne', 'faible'];
 const COMPTES: readonly ComptePersonnes[] = ['aucune', 'une', 'plusieurs', 'inconnu'];
 const RANG: Record<ConfianceFiche, number> = { elevee: 0, moyenne: 1, faible: 2 };
@@ -334,40 +339,39 @@ export function langueParole(v: unknown): LangueParole {
   return 'autre';
 }
 
-/**
- * Extrait court d'une transcription : ≤ 300 caractères, sans URL, adresse
- * électronique, numéro (≥ 3 chiffres) ni mot capitalisé au milieu d'une
- * phrase (nom propre possible) — remplacés par « … ».
- */
-export function extraitParole(texte: string): string | null {
-  const t = texte.replace(/\s+/g, ' ').trim();
-  if (!t) return null;
-  const masque = t
-    .replace(/\b(?:https?:\/\/|www\.)\S+/gi, '…')
-    .replace(/\S+@\S+\.\S+/g, '…')
-    .replace(/[+()\d][\d .()\-]{2,}\d/g, (m) => (/\d{3,}|\d[\d .\-]{4,}/.test(m) ? '…' : m))
-    .replace(/([^.!?…]\s)([A-ZÀ-Þ][\p{L}'’-]+)/gu, '$1…');
-  const borne = masque.length > EXTRAIT_MAX ? `${masque.slice(0, EXTRAIT_MAX - 1).replace(/\s+\S*$/, '')}…` : masque;
-  return borne.slice(0, EXTRAIT_MAX);
-}
-
 export interface ParoleLue {
   presente: boolean;
   langue: unknown;
+  /** Lu en mémoire pour en tirer des identifiants, JAMAIS recopié. */
   texte: string;
+  /** Intervalles de parole (secondes), si connus. */
+  segments?: ReadonlyArray<{ debutSecondes?: unknown; finSecondes?: unknown }>;
+}
+
+/** Secondes parlées d'après les segments (bornées), ou `null`. */
+function dureeParleeDe(segments: ParoleLue['segments']): number | null {
+  if (!Array.isArray(segments) || segments.length === 0) return null;
+  let total = 0;
+  for (const g of segments) {
+    const d = Number(g?.debutSecondes);
+    const f = Number(g?.finSecondes);
+    if (Number.isFinite(d) && Number.isFinite(f) && f > d) total += f - d;
+  }
+  return Math.round(Math.min(total, 3600) * 10) / 10;
 }
 
 /** Les observations de parole d'une transcription validée (jamais réinjectées). */
 export function observationsParole(p: ParoleLue): ObservationsRush['parole'] {
   const texte = (p.texte || '').slice(0, 20_000);
   if (!p.presente || !texte.trim()) return null;
-  if (ressembleAConsigne(texte)) return { extrait: null, sujets: [], ecartee: true, source: 'parole' };
+  const dureeParlee = dureeParleeDe(p.segments);
+  if (ressembleAConsigne(texte)) return { sujets: [], dureeParlee, ecartee: true, source: 'parole' };
   const sujets = [...new Set(conceptsDuTexte(texte, { fr: true, en: true })
     .map((c) => c.concept)
     // Les catégories « personnes » / « qualité » ne sortent pas plus de la parole que de l'image.
     .filter((c) => c.categorie === 'activite' || c.categorie === 'lieu' || c.categorie === 'objet')
     .map((c) => c.id))].slice(0, CATEGORIES_VISION_MAX);
-  return { extrait: extraitParole(texte), sujets, source: 'parole' };
+  return { sujets, dureeParlee, source: 'parole' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -501,7 +505,9 @@ export function ficheContenuV2Valide(x: unknown): x is FicheContenuRushV2 {
   if (!['fr', 'en', 'de', 'autre', 'inconnu'].includes(o.langue)) return false;
   if (o.parole !== null) {
     if (!o.parole || typeof o.parole !== 'object') return false;
-    if (o.parole.extrait !== null && (typeof o.parole.extrait !== 'string' || o.parole.extrait.length > EXTRAIT_MAX)) return false;
+    // Liste FERMÉE de clés : un ancien champ de texte (ex. `extrait`) invalide la fiche.
+    if (Object.keys(o.parole).some((k) => !['sujets', 'dureeParlee', 'ecartee', 'source'].includes(k))) return false;
+    if (o.parole.dureeParlee !== null && !(typeof o.parole.dureeParlee === 'number' && o.parole.dureeParlee >= 0)) return false;
     if (!Array.isArray(o.parole.sujets) || !o.parole.sujets.every((s) => IDS_CONCEPTS.has(s))) return false;
   }
   if (!f.etapes || !etapeValide(f.etapes.vision) || !etapeValide(f.etapes.transcription)) return false;

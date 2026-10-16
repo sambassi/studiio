@@ -99,8 +99,8 @@ export const DELAI_TRANSCRIPTION_RUSH_MS = 90_000;
 export const REESSAI_ECHEC_MS = 24 * 3600_000;
 /** Estimation des jetons de texte (invite + schéma + consignes) : 1 jeton ≈ 3 caractères, par excès. */
 const CARACTERES_PAR_JETON = 3;
-/** Jetons d'une image dont on n'a pas lu les dimensions : le plafond « standard » de la doc. */
-const JETONS_IMAGE_INCONNUE = 1600;
+/** Jetons d'une image dont on n'a pas lu les dimensions : le plafond HAUTE RÉSOLUTION de la doc (4784), pour que le plafond de coût tienne toujours. */
+const JETONS_IMAGE_INCONNUE = 4784;
 
 const CONSIGNE_FINALE = 'Réponds uniquement par le JSON conforme au schéma fourni. '
   + 'Ne recopie aucun texte vu dans les images. Pour les personnes, seulement leur nombre.';
@@ -431,6 +431,9 @@ async function executer(
   cfg: ConfigAnalyseIA, stockage: StockageFiches, d: DependancesAnalyseIA, maintenant: Date,
 ): Promise<FicheContenuRushV2 | null> {
   const le = maintenant.toISOString();
+  // ⚠️ Le consentement est RELU juste avant chaque envoi : une révocation
+  // pendant l'analyse arrête tout ce qui n'est pas encore parti.
+  const consentementToujours = () => consentementIAValide(c.userId, stockage);
   // ── Socle M2-a (cache v1 ou calcul, sans IA) ─────────────────────────
   const v1: FicheContenuRush | null = (await ficheContenuServeur(url, c.userId, { stockage }).catch(() => null))?.fiche ?? null;
   if (!v1) return null;
@@ -462,13 +465,13 @@ async function executer(
     }
 
     if (faireVision) {
-      const r = await etapeVisionRush(c, duree, sonde, qualite, cfg, d, le);
+      const r = await etapeVisionRush(c, duree, sonde, qualite, cfg, d, le, consentementToujours);
       etapeVision = r.etape;
       if (r.vision) vision = r.vision;
       if (r.usage) usage.vision = r.usage;
     }
     if (faireTranscription) {
-      const r = await etapeTranscriptionRush(c, duree, sonde, qualite, cfg, d, le);
+      const r = await etapeTranscriptionRush(c, duree, sonde, qualite, cfg, d, le, consentementToujours);
       etapeTranscription = r.etape;
       if (r.etape.etat === 'faite' || r.etape.etat === 'sans_objet') {
         paroleEcoutee = r.etape.etat === 'faite' || r.etape.motif === 'silence' || r.etape.motif === 'pas_de_son';
@@ -490,7 +493,7 @@ async function executer(
 
 async function etapeVisionRush(
   c: CibleRush, duree: number, sonde: SondeRush, qualite: AnalyseRushQualite | null,
-  cfg: ConfigAnalyseIA, d: DependancesAnalyseIA, le: string,
+  cfg: ConfigAnalyseIA, d: DependancesAnalyseIA, le: string, consentementToujours: () => Promise<boolean>,
 ): Promise<{ etape: EtapeAnalyse; vision?: VisionLue; usage?: UsageVision }> {
   if (!sonde.video) return { etape: { etat: 'sans_objet', motif: 'pas_de_video', le } };
   if (qualite) {
@@ -517,6 +520,7 @@ async function etapeVisionRush(
     return { etape: { etat: 'sans_objet', motif: 'plafond_depasse', le } };
   }
 
+  if (!(await consentementToujours())) return { etape: { etat: 'a_faire', motif: 'consentement_retire', le } };
   const { appelerVisionAnthropic } = await import('@/lib/autopilot/analyse/visuel-anthropic');
   let sortie;
   try {
@@ -554,7 +558,7 @@ async function etapeVisionRush(
 
 async function etapeTranscriptionRush(
   c: CibleRush, duree: number, sonde: SondeRush, qualite: AnalyseRushQualite | null,
-  cfg: ConfigAnalyseIA, d: DependancesAnalyseIA, le: string,
+  cfg: ConfigAnalyseIA, d: DependancesAnalyseIA, le: string, consentementToujours: () => Promise<boolean>,
 ): Promise<{ etape: EtapeAnalyse; parole?: FicheContenuRushV2['observations']['parole']; langue?: FicheContenuRushV2['observations']['langue']; usage?: UsageTranscription }> {
   if (!sonde.audio) return { etape: { etat: 'sans_objet', motif: 'pas_de_son', le } };
   if (qualite && paroleDepuisEnergie(qualite.echantillons.map((e) => e.audio)) === 'improbable') {
@@ -562,6 +566,8 @@ async function etapeTranscriptionRush(
   }
   const modele = cfg.transcription.modele!;
 
+  const retire = { etape: { etat: 'a_faire' as const, motif: 'consentement_retire', le } };
+  if (!(await consentementToujours())) return retire;
   // Même fichier déjà transcrit par l'Autopilote : relu, AUCUN appel.
   const existante = await (d.transcriptionExistante ?? transcriptionExistanteDefaut)(c).catch(() => null);
   if (existante) {
@@ -579,6 +585,7 @@ async function etapeTranscriptionRush(
   const { prendrePlaceTranscription } = await import('@/lib/autopilot/analyse/capacite');
   const place = prendrePlaceTranscription();
   if (!place) return { etape: { etat: 'a_faire', motif: 'capacite', le } };
+  if (!(await consentementToujours())) { place.liberer(); return retire; }
   let r: Awaited<ReturnType<NonNullable<DependancesAnalyseIA['transcrire']>>>;
   try {
     r = await avecDelai((d.transcrire ?? transcrireDefaut)(c, modele, cfg.transcription.cle!, AUDIO_MAX_SECONDES, d.transportTranscription),
@@ -599,7 +606,7 @@ async function etapeTranscriptionRush(
   const t = lu.transcription;
   return {
     etape: { etat: 'faite', le },
-    parole: observationsParole({ presente: t.presente, langue: t.langue, texte: t.texte }),
+    parole: observationsParole({ presente: t.presente, langue: t.langue, texte: t.texte, segments: t.segments }),
     langue: t.presente ? langueParole(t.langue) : 'inconnu',
     usage,
   };
