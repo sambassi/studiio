@@ -11,7 +11,8 @@
  * on le garde) : on interroge le FOURNISSEUR (D-ID ou HeyGen, selon
  * `avatar_generations.provider`) AVANT le garde « périmé » ; une scène
  * réellement terminée est FINALISÉE (re-hébergée sur MinIO) quel que soit son
- * âge ; le garde 30 min ne frappe qu'une génération encore en cours ; l'échec
+ * âge ; le garde de délai (6 h + marge depuis le dernier lancement, B1) ne
+ * frappe qu'une génération encore en cours ; l'échec
  * fournisseur rembourse une seule fois (`credits_refunded`, pose atomique).
  *
  * Une erreur TRANSITOIRE du fournisseur (`DidError` / `HeyGenError`) est
@@ -30,11 +31,31 @@ import { MESSAGES_AVATAR, messageUtilisateurSur, creditsFournisseurEpuises } fro
 import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '@/lib/avatar/couts';
 import { retirerBandesIncrustees } from '@/lib/avatar/cadrage-jumeau';
 import { signalerRefusDeSolde } from '@/lib/fournisseurs/sante';
-import { estEnAttenteFournisseur, lireMarqueurAttente, mettreEnAttente } from '@/lib/avatar/attente-fournisseur';
+import { ATTENTE_MAX_MS, estEnAttenteFournisseur, lireMarqueurAttente, mettreEnAttente } from '@/lib/avatar/attente-fournisseur';
 import { reprendreGenerationEnAttente, abandonnerAttente, estGenerationZombie, cloreGenerationZombie } from '@/lib/avatar/moteur-jumeau';
 
 /** Au-delà, une génération encore EN COURS est considérée perdue et remboursée. */
 export const STALE_AFTER_MS = 30 * 60 * 1000; // 30 min
+
+/**
+ * B1 — Génération qui POSSÈDE un identifiant fournisseur et que le fournisseur
+ * dit encore « en cours » : elle n'est déclarée perdue qu'au-delà de l'attente
+ * autorisée (`ATTENTE_MAX_MS`, 6 h, reprise #558) + la même marge de 10 min
+ * que le suivi client (`JUMEAU_ATTENTE_FOURNISSEUR_MAX_MS`). Avant, jamais
+ * d'abandon : une génération reprise après une attente rend encore.
+ */
+export const DELAI_GENERATION_LANCEE_MS = ATTENTE_MAX_MS + 10 * 60 * 1000;
+
+/**
+ * Âge depuis le DERNIER (re)lancement réel : le plus récent de `created_at`
+ * et `updated_at` (posé par la mise en attente et la prise de reprise). Une
+ * génération reprise après 3 h d'attente ne paraît pas vieille de 3 h.
+ */
+function ageDepuisDernierLancement(g: { created_at: string; updated_at?: string | null }): number {
+  const reperes = [g.created_at, g.updated_at].map((v) => (v ? Date.parse(v) : Number.NaN)).filter(Number.isFinite);
+  if (reperes.length === 0) return 0;
+  return Date.now() - Math.max(...reperes);
+}
 
 type ResultatPoll =
   /** `enAttenteFournisseur` : solde de Studiio épuisé chez le fournisseur, reprise automatique. */
@@ -170,17 +191,17 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
   }
 
   if (remote.status !== 'completed' || !remote.videoUrl) {
-    // Confirmé ABSENT côté fournisseur : c'est SEULEMENT ici que le garde
-    // stale s'applique — une génération qui traîne depuis plus de 30 min est
-    // perdue → échec + remboursement.
-    const ageMs = Date.now() - new Date(g.created_at).getTime();
-    if (ageMs > STALE_AFTER_MS) {
-      const rembourse = await failAndRefund(g, 'La generation a depasse le delai maximum (30 minutes).');
+    // Encore EN COURS chez le fournisseur : c'est SEULEMENT ici que le garde
+    // de délai s'applique, et seulement au-delà de l'attente autorisée (6 h
+    // + marge) mesurée depuis le dernier (re)lancement (B1). Avant : jamais
+    // d'abandon. Au-delà : échec + remboursement unique (`failAndRefund`).
+    if (ageDepuisDernierLancement(g) > DELAI_GENERATION_LANCEE_MS) {
+      const rembourse = await failAndRefund(g, 'La generation a depasse le delai maximum.');
       if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));
       return {
         status: 'failed',
         videoUrl: null,
-        error: `La generation a depasse le delai maximum (30 minutes).${g.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
+        error: `La generation a depasse le delai maximum.${g.credits_charged > 0 ? ' Credits rembourses.' : ''}`,
         rembourse,
       };
     }
@@ -224,7 +245,7 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
   if (!finalUrl) {
     // Rapatriement impossible au-delà du délai : échec franc et remboursé,
     // jamais un « succès » pointant vers une adresse qui va expirer.
-    if (Date.now() - new Date(g.created_at).getTime() > STALE_AFTER_MS) {
+    if (ageDepuisDernierLancement(g) > STALE_AFTER_MS) {
       const rembourse = await failAndRefund(g, 'La vidéo a été générée mais n’a pas pu être enregistrée.');
       if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));
       return {

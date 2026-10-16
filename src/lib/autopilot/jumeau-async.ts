@@ -57,10 +57,28 @@ const RATIO_AUTOPILOTE = '9:16';
 /**
  * Passes de finalisation avant d'abandonner une ligne coincée. Chaque passe
  * = un poll ; `avancerStatutGeneration` déclare de toute façon l'échec au-delà
- * de 30 min de génération. Ce garde ne couvre que l'imprévu (fournisseur qui
- * ne répond jamais).
+ * du délai autorisé. Ce garde ne couvre que l'imprévu (fournisseur qui ne
+ * répond jamais) — et jamais avant `PLAFOND_SUIVI_JUMEAU_MS` pour un jumeau
+ * encore « en cours ».
  */
 const MAX_TENTATIVES = 40;
+
+/**
+ * B1 — un jumeau encore « en cours » n'est JAMAIS abandonné au seul compte des
+ * passes : à un déclenchement toutes les 5 min, 40 passes = 3 h 20, alors que
+ * le serveur laisse légitimement jusqu'à 6 h d'attente fournisseur
+ * (`ATTENTE_MAX_MS`) puis 6 h 10 de production après la reprise
+ * (`DELAI_GENERATION_LANCEE_MS`, `lib/avatar/statut.ts`). C'est le suivi
+ * serveur qui tranche (zombie, fin d'attente, délai de production) ; ce
+ * plafond ne couvre que l'imprévu au-delà de la somme des deux. Ligne sans
+ * `created_at` lisible : comportement d'origine (compte des passes seul).
+ */
+export const PLAFOND_SUIVI_JUMEAU_MS = 6 * 60 * 60 * 1000 + (6 * 60 * 60 * 1000 + 10 * 60 * 1000);
+
+function suiviEncoreAutorise(ligne: LigneAttente): boolean {
+  const debut = ligne.created_at ? Date.parse(ligne.created_at) : Number.NaN;
+  return Number.isFinite(debut) && Date.now() - debut <= PLAFOND_SUIVI_JUMEAU_MS;
+}
 
 /**
  * A1 — passes de rendu dont la DURÉE du jumeau est restée illisible (sonde et
@@ -322,6 +340,7 @@ interface LigneAttente {
   statut: string;
   snapshot: SnapshotMontage;
   tentatives: number;
+  created_at?: string | null;
 }
 
 /**
@@ -376,8 +395,8 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
 
       if (statut.status === 'processing') {
         // Toujours en génération : on rouvre pour la prochaine passe, sauf si
-        // trop de tentatives (fournisseur qui ne répond jamais).
-        if (ligne.tentatives + 1 >= MAX_TENTATIVES) {
+        // trop de tentatives ET au-delà de l'attente autorisée (B1).
+        if (ligne.tentatives + 1 >= MAX_TENTATIVES && !suiviEncoreAutorise(ligne)) {
           await echouer(ligne, 'La préparation du jumeau ne s’est jamais terminée.');
           await abandonnerGeneration(ligne);
           await rendreSansJumeau(ligne, 'jumeau non abouti');
@@ -437,7 +456,9 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
       // rouvre pour réessayer — sauf si on a déjà trop insisté, pour ne pas
       // boucler indéfiniment sur une ligne coincée.
       console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — passe en échec transitoire, on réessaiera :`, message);
-      if (ligne.tentatives + 1 >= MAX_TENTATIVES) {
+      // B1 — en phase `suivi`, un couac passager après 40 passes n'abandonne
+      // pas un jumeau encore dans son attente autorisée.
+      if (ligne.tentatives + 1 >= MAX_TENTATIVES && !(phase === 'suivi' && suiviEncoreAutorise(ligne))) {
         await echouer(ligne, 'La finalisation du montage-jumeau a échoué de façon répétée.');
         // B2 — le SUIVI du fournisseur a échoué à chaque passe : aucun jumeau
         // n'a été obtenu. Même issue que la ligne restée « en cours » : la
