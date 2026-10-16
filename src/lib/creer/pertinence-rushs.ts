@@ -307,9 +307,11 @@ export function pertinenceRush(
     : lien.rel === 'affine' ? 0.55 : lien.rel === 'famille' ? 0.5 : 0.45;
 
   // ── Contradictions : la recherche contredite, un lien ET une activité étrangère, ou
-  // l'activité du sujet vue par UNE source quand une AUTRE source montre une autre activité.
+  // l'activité du sujet vue par UNE source quand une AUTRE source montre une activité
+  // ÉTRANGÈRE au sujet. Une activité voisine ou affine (entraînement pour la danse,
+  // cuisine pour la nutrition…) n'est pas un conflit : elle sert le sujet.
   const conflit = !!lien && lien.rel === 'commun' && lien.p.categorie === 'activite' && lien.p.nPertinent < 2
-    && lues.some((x) => x.p.categorie === 'activite' && x.rel !== 'commun' && !x.p.sources.some((s) => lien.p.sources.includes(s)));
+    && lues.some((x) => x.p.categorie === 'activite' && x.rel === 'etranger' && !x.p.sources.some((s) => lien.p.sources.includes(s)));
   if (contradiction || (lien && sur) || conflit) {
     const motifs: MotifPertinence[] = [];
     if (contradiction) motifs.push({ code: 'recherche_contredite' });

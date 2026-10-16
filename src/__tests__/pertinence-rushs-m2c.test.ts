@@ -80,7 +80,8 @@ const CAS: Cas[] = [
   { nom: 'finance · M2-a « a man calculating his monthly budget »', contexte: FINANCE, fiche: stock('a man calculating his monthly budget', 'personal finance'), verite: 'pertinent', attendu: 'partiel' },
   { nom: 'finance · productivité « woman working focused » + image', contexte: FINANCE, fiche: v2(stock('woman working focused'), ['productivity']), verite: 'indirect', attendu: 'partiel' },
   // Observations contradictoires
-  { nom: 'danse · description danse, image cuisine (contradictoires)', contexte: DANSE, fiche: v2(stock('people dancing'), ['cooking']), verite: 'indeterminable', attendu: 'a_verifier' },
+  // La cuisine est voisine de tout sujet de mouvement : pas une contradiction (décision bda5313).
+  { nom: 'danse · description danse, image cuisine (activité voisine)', contexte: DANSE, fiche: v2(stock('people dancing'), ['cooking']), verite: 'indirect', attendu: 'partiel' },
   { nom: 'danse · recherche « dance » contredite par « chef cooking pasta » + image', contexte: DANSE, fiche: v2(stock('chef cooking pasta', 'dance'), ['cooking']), verite: 'hors_sujet', attendu: 'a_verifier' },
   // Sans description, sans fiche, M2-b manquante
   { nom: 'rush perso sans description ni v2', contexte: NUTRITION, fiche: perso(), verite: 'indeterminable', attendu: 'inconnu' },

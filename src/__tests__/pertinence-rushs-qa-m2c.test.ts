@@ -63,7 +63,8 @@ const F: Array<{ n: string; s: keyof typeof S; f: any; att: string[]; famille: '
   { n: '32 danse / requête dance + desc cooking + métadonnées cooking + contradiction', s: 'danse', f: v1([['dance', 'faible', ['pexels-requete']], ['cooking', 'elevee', ['pexels-description', 'metadonnees']]], { contradiction: true }), att: ['AV'], famille: 'piege' },
   { n: '33 nutrition / métadonnées = titre seules', s: 'nutrition', f: v1([['healthy-food', 'elevee', ['metadonnees']]]), att: ['A', 'I'], famille: 'piege' },
   { n: '34 nutrition / métadonnées + nom fichier = titre', s: 'nutrition', f: v1([['healthy-food', 'elevee', ['metadonnees', 'nom-fichier']]]), att: ['A', 'I'], famille: 'piege' },
-  { n: '35 danse / vision danse vs parole cuisine', s: 'danse', f: v2([['dance', 'moyenne', ['vision']], ['cooking', 'moyenne', ['parole']]]), att: ['AV'], famille: 'piege' },
+  // Décision (bda5313) : la cuisine est voisine de tout sujet de mouvement — pas un conflit.
+  { n: '35 danse / vision danse vs parole cuisine', s: 'danse', f: v2([['dance', 'moyenne', ['vision']], ['cooking', 'moyenne', ['parole']]]), att: ['A', 'AV'], famille: 'piege' },
   { n: '36 fiche vide', s: 'danse', f: v1([]), att: ['I'], famille: 'vide' },
   { n: '37 fiche null (M2-b et M2-a absentes)', s: 'danse', f: null, att: ['I'], famille: 'vide' },
   { n: '38 M2-b absente : v1 fichier+métadonnées danse', s: 'danse', f: v1([['dance', 'elevee', ['nom-fichier', 'metadonnees']]]), att: ['A', 'I'], famille: 'piege' },
