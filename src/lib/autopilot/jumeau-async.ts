@@ -36,7 +36,7 @@
 
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
-  CODE_DUREE_A_CONFIRMER, dureeAConfirmerAvecAvatar, messageDureeAConfirmer, scriptPourDuree, secondesReserveesEnveloppeJumeau,
+  CODE_DUREE_A_CONFIRMER, dureeAConfirmerAvecAvatar, messageDureeAConfirmer,
 } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
@@ -46,6 +46,7 @@ import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
 import { notifyOnce } from '@/lib/notifications/store';
 import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
+import { scriptJumeauMontage as scriptJumeauPur } from '@/lib/autopilot/script-jumeau';
 import { estJumeauIllisible, MESSAGE_JUMEAU_ILLISIBLE } from '@/lib/autopilot/duree-jumeau';
 
 /** Déplacée dans `sources.ts` (pure, utilisable côté client) — réexportée pour les appelants existants. */
@@ -53,8 +54,6 @@ export { avatarAvecAutresSources };
 
 /** Format vertical de l'Autopilote — la génération du jumeau le suit. */
 const RATIO_AUTOPILOTE = '9:16';
-/** Au-delà, la parole ne tient plus dans un plan d'avatar lisible. */
-const MAX_SCRIPT = 600;
 /**
  * Passes de finalisation avant d'abandonner une ligne coincée. Chaque passe
  * = un poll ; `avancerStatutGeneration` déclare de toute façon l'échec au-delà
@@ -73,46 +72,12 @@ const MAX_TENTATIVES = 40;
 export const ESSAIS_MESURE_JUMEAU = 3;
 
 /**
- * Le script que le jumeau DIT dans le montage.
- *
- * Concis, et DISTINCT du contenu des cartes : titre (l'accroche), sous-titre,
- * puis la phrase de CTA. Le message du brief récurrent, s'il existe, ouvre —
- * c'est l'identité constante de la chaîne. Le jumeau étant la seule voix du
- * montage, ce script ne se répète nulle part ailleurs.
+ * Le script que le jumeau DIT dans le montage — la règle vit dans
+ * `script-jumeau.ts` (pure, importable côté client : l'aperçu A5 estime la
+ * parole avec). Signature d'avant conservée pour les appelants existants.
  */
 export function scriptJumeauMontage(post: PreparedPost, config?: AutopilotConfig | null): string {
-  // Durée cible du brief : le script est COMPOSÉ pour elle — accroche,
-  // idées (cartes), appel à l'action — par unités entières, jamais coupé.
-  //
-  // A4 — AVATAR SEUL (pas d'autres sources) : titre, cartes et CTA sont des
-  // séquences plein écran AUTOUR du jumeau ; leur part de la durée cible est
-  // réservée (`secondesReserveesEnveloppeJumeau`), sinon la vidéo durait
-  // ≈ cible + 14 s. Avec d'autres sources (textes en surimpression sur
-  // l'avatar), ou sans config connue : le budget d'avant, toute la cible.
-  //
-  // A4 v2 — avatar seul : le message doit être COMPLET (accroche + première
-  // idée + appel à l'action, en unités entières). Une cible sous 20 s ne
-  // l'est pas : elle n'est JAMAIS lancée (`lancerJumeauMontage` refuse,
-  // `duree_a_confirmer`) et sa durée n'est jamais changée ici.
-  const avatarSeul = !!config && !avatarAvecAutresSources(config);
-  const briefScript = post.brief;
-  const pourDuree = scriptPourDuree({
-    titre: post.title,
-    sousTitre: post.content.subtitle,
-    cartes: post.content.cards ?? [],
-    cta: post.brief?.cta || post.content.tagLine,
-    brief: briefScript,
-    ...(avatarSeul ? { secondesReservees: secondesReserveesEnveloppeJumeau(briefScript?.duree), ideeObligatoire: true } : null),
-  });
-  if (pourDuree !== null) return pourDuree.slice(0, MAX_SCRIPT);
-  const briefMessage = (post.brief?.message ?? '').trim();
-  const parts = [briefMessage, post.title, post.content.subtitle, post.content.tagLine]
-    .map((p) => (typeof p === 'string' ? p.trim() : ''))
-    .filter(Boolean);
-  // Dédoublonne (le titre peut déjà être le message du brief), garde l'ordre.
-  const vus = new Set<string>();
-  const uniques = parts.filter((p) => (vus.has(p) ? false : (vus.add(p), true)));
-  return uniques.join('. ').slice(0, MAX_SCRIPT);
+  return scriptJumeauPur(post, config);
 }
 
 export type ResultatLancement =

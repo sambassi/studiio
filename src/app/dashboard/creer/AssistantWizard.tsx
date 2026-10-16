@@ -49,6 +49,7 @@ import {
   MousePointerClick,
   X,
   UserSquare2,
+  Mic,
   Group as GroupIcon,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -111,7 +112,11 @@ import { construireRecherchesStock } from '@/lib/stock/requetes';
 import type { MediaStock, TypeStock } from '@/lib/stock/types';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import VideosPretes from '@/components/creer/VideosPretes';
-import { buildAutopilotSample, samplePosterVisible } from '@/lib/autopilot/sample';
+import { buildAutopilotSample, samplePosterVisible, postDeLEchantillon } from '@/lib/autopilot/sample';
+import { etapesApercuAutopilote, estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
+import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
+import { secondesLisibles } from '@/lib/autopilot/duree-cible';
 // ⚠️ DEPUIS `brand.ts`, PAS `design.ts`. Ce dernier entraîne toute la chaîne
 // serveur de l'Autopilote (`voice` → `storage/upload` → `minio`) dans le
 // paquet du navigateur, et le build échoue sur « Can't resolve 'fs/promises' ».
@@ -3228,12 +3233,16 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
    * comparer deux couleurs si les mots changent entre les deux.
    */
   const topicsKey = config.topics.join('|');
-  // Le CTA du brief est appliqué à l'échantillon comme le moteur l'applique à
-  // la vidéo : l'aperçu montre la ligne d'action réellement rendue.
-  const briefCta = config.brief?.cta ?? '';
+  // Le BRIEF ENTIER est appliqué à l'échantillon comme le moteur l'applique à
+  // la vidéo : la ligne d'action réellement rendue (CTA) et — A5 — le contenu
+  // conçu pour la durée cible (`contenuPourDuree`), donc les cartes que la
+  // vidéo portera. C'est aussi ce que relit le serveur pour « Produire
+  // maintenant » (`signatureApercuAutopilote(config)`). Mémoïsé sur sa valeur
+  // SÉRIALISÉE : un objet neuf à chaque rendu ne relance rien.
+  const briefKey = JSON.stringify(sanitizeBrief(config.brief));
   const sample = useMemo(
-    () => buildAutopilotSample({ topics: topicsKey ? topicsKey.split('|') : [], brief: { cta: briefCta } }),
-    [topicsKey, briefCta],
+    () => buildAutopilotSample({ topics: topicsKey ? topicsKey.split('|') : [], brief: JSON.parse(briefKey) }),
+    [topicsKey, briefKey],
   );
 
   const generated: Generated = useMemo(() => ({
@@ -3636,19 +3645,42 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   const [lectureEnCours, setLectureEnCours] = useState(false);
 
   /**
-   * Ce que l'Autopilote rend VRAIMENT : les durees par defaut du Mode simple
-   * (`DEFAULT_SEQUENCE_SECONDS`), le repli de duree du rush — il ne decode
-   * pas le fichier — et les transition / animation par defaut, codees en dur
-   * dans `buildAutopilotDesign`. Aucun reglage n'existe pour ces valeurs :
-   * les montrer autrement mentirait.
+   * A5 — LA PAROLE DU JUMEAU, quand l'avatar est monté SEUL (titre, cartes et
+   * CTA plein écran autour de lui). Le jumeau d'un montage n'est généré qu'à
+   * son créneau (génération payante) : l'aperçu n'en a jamais la vidéo, et
+   * n'en déclenche aucune. Il ESTIME donc la parole avec le script exact que
+   * le montage fera dire (`scriptJumeauMontage`, dimensionné pour la durée
+   * cible) au débit du rythme — et le dit à l'écran.
+   * Avatar avec d'autres sources (surimpression) : hors de cette règle, les
+   * durées d'avant.
    */
+  const paroleJumeauEstimee = useMemo(() => {
+    if (!avatarApercuAutopilote || !avecVideo || avatarAvecAutresSources(config)) return null;
+    const post = postDeLEchantillon(sample, config.brief);
+    return estimerParoleJumeau(scriptJumeauMontage(post, config), post.brief?.rythme);
+  }, [avatarApercuAutopilote, avecVideo, config, sample]);
+
+  /**
+   * Ce que l'Autopilote rend VRAIMENT, par LA règle du rendu
+   * (`etapesApercuAutopilote` → `dureesMontageJumeau`, celle de
+   * `buildAutopilotDesign`) : sans jumeau, les durees par defaut du Mode
+   * simple et le repli de duree du rush — il ne decode pas le fichier ; avec
+   * le jumeau, sa parole et la repartition titre / cartes / CTA autour d'elle
+   * selon la duree cible. Transition / animation : les defauts, codes en dur
+   * dans `buildAutopilotDesign`.
+   */
+  const dureeCibleBrief = sanitizeBrief(config.brief).duree ?? null;
   const etapesLecture = useMemo(
-    () => activeOrder.map((k) => ({
-      key: k,
-      seconds: k === 'video' ? RUSH_SEQUENCE_SECONDS.fallback : DEFAULT_SEQUENCE_SECONDS[k as keyof typeof DEFAULT_SEQUENCE_SECONDS],
-    })),
-    [activeOrder],
+    () => etapesApercuAutopilote({
+      activeOrder,
+      paroleJumeau: paroleJumeauEstimee,
+      dureeCible: dureeCibleBrief,
+      avecCartes: sample.cards.length > 0,
+    }),
+    [activeOrder, paroleJumeauEstimee, dureeCibleBrief, sample.cards.length],
   );
+  const dureeTotaleApercu = Math.round(etapesLecture.reduce((t, e) => t + e.seconds, 0) * 10) / 10;
+  const sequenceJumeau = etapesLecture.find((e) => e.key === 'video')?.seconds ?? 0;
 
   const ouvrirPanneau = useCallback((suivant: typeof panneau) => {
     // Sous le curseur, borne a la fenetre : un panneau ouvert hors de l'ecran
@@ -3803,6 +3835,26 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           )}
         </span>
       </p>
+
+      {/* ── A5 — LE JUMEAU : DURÉE ESTIMÉE ET VOIX ─────────────────────────
+          L'aperçu joue la durée que le montage prendra (même règle que le
+          rendu), mais la parole n'existe pas encore : c'est une ESTIMATION,
+          et la voix de l'avatar ne s'entend que dans la vidéo finale. */}
+      {paroleJumeauEstimee !== null && (
+        <p
+          className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
+          data-autopilot-apercu-jumeau="estimee"
+          data-autopilot-apercu-duree-totale={dureeTotaleApercu}
+        >
+          <Mic className="w-3 h-3 mt-0.5 shrink-0" />
+          <span>
+            <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
+            {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeTotaleApercu)}.
+            {' '}La vidéo finale prend la durée réelle de la parole de l’avatar.
+            {' '}<span data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
+          </span>
+        </p>
+      )}
 
       {/* ── MÉDIAS RÉELS DU PLAN ─────────────────────────────────────────
           Ce que la séquence « Vidéo » montre n'est PAS un exemple : c'est le

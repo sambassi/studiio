@@ -150,7 +150,12 @@ describe('A — Autopilote', () => {
     );
     expect(autopilote).toContain('transition={DEFAULT_TRANSITION}');
     expect(autopilote).toContain('textAnimation={DEFAULT_TEXT_ANIMATION}');
-    expect(autopilote).toContain("seconds: k === 'video' ? RUSH_SEQUENCE_SECONDS.fallback : DEFAULT_SEQUENCE_SECONDS[");
+    // A5 — les durées passent par LA règle partagée avec le rendu
+    // (`etapesApercuAutopilote` → `dureesMontageJumeau`, celle de
+    // `buildAutopilotDesign`) ; sans jumeau, elle rend les constantes d'avant.
+    expect(autopilote).toContain('etapesApercuAutopilote({');
+    const durees = readFileSync(resolve(__dirname, '../lib/autopilot/durees-sequences.ts'), 'utf-8');
+    expect(durees).toContain('video: RUSH_SEQUENCE_SECONDS.fallback');
     const design = readFileSync(resolve(__dirname, '../lib/autopilot/design.ts'), 'utf-8');
     expect(design).toContain('transition: DEFAULT_TRANSITION,');
     expect(design).toContain('textAnimation: DEFAULT_TEXT_ANIMATION,');
