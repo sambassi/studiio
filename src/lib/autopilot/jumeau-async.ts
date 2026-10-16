@@ -48,6 +48,10 @@ import { notifyOnce } from '@/lib/notifications/store';
 import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
 import { scriptJumeauMontage as scriptJumeauPur } from '@/lib/autopilot/script-jumeau';
 import { estJumeauIllisible, MESSAGE_JUMEAU_ILLISIBLE } from '@/lib/autopilot/duree-jumeau';
+import {
+  echeanceDecisionJumeau, instantPublicationCreneau, libelleCreneau, politiqueRepliJumeau,
+  type PolitiqueRepliJumeau,
+} from '@/lib/autopilot/echeance-jumeau';
 
 /** Déplacée dans `sources.ts` (pure, utilisable côté client) — réexportée pour les appelants existants. */
 export { avatarAvecAutresSources };
@@ -121,6 +125,17 @@ interface SnapshotMontage {
   journal?: string;
   /** A1 : passes déjà arrêtées faute de durée fiable du jumeau. */
   echecsMesureJumeau?: number;
+  /** B3 — politique si le jumeau n'est pas prêt à l'échéance (absente = `sans_avatar`, B2). */
+  politiqueRepli?: PolitiqueRepliJumeau;
+  /**
+   * B3 — le créneau est sorti (ou sort) SANS avatar à l'échéance. Posé AVANT
+   * le rendu (`decideLe`), complété après (`produitLe`) : la ligne reste
+   * suivie pour la GÉNÉRATION (remboursement si elle échoue, jamais un second
+   * montage si elle aboutit).
+   */
+  repliSansAvatar?: { decideLe: string; produitLe?: string };
+  /** B3 — politique `suspendre` : échéance passée, créneau signalé (une fois). */
+  suspension?: { decideLe: string };
 }
 
 /**
@@ -397,12 +412,12 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
         // Toujours en génération : on rouvre pour la prochaine passe, sauf si
         // trop de tentatives ET au-delà de l'attente autorisée (B1).
         if (ligne.tentatives + 1 >= MAX_TENTATIVES && !suiviEncoreAutorise(ligne)) {
-          await echouer(ligne, 'La préparation du jumeau ne s’est jamais terminée.');
-          await abandonnerGeneration(ligne);
-          await rendreSansJumeau(ligne, 'jumeau non abouti');
+          await abandonnerSuivi(ligne, 'La préparation du jumeau ne s’est jamais terminée.');
           res.echecs += 1;
         } else {
-          await rouvrir(ligne.id);
+          // B3 — échéance de publication : décider AVANT l'heure annoncée.
+          // La génération, elle, reste suivie (aucune clôture, aucun remboursement).
+          await rouvrir(ligne.id, { snapshot: await appliquerEcheance(ligne) });
           res.encore += 1;
         }
         continue;
@@ -410,6 +425,13 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
 
       if (statut.status === 'completed') {
         phase = 'rendu';
+        // B3 — le créneau est DÉJÀ sorti sans avatar : un jumeau livré après
+        // le repli ne produit jamais une seconde vidéo ni un second post.
+        if (ligne.snapshot?.repliSansAvatar?.produitLe) {
+          await clore(ligne, 'rendu', 'Jumeau livré après le repli sans avatar : aucun second montage.');
+          res.rendus += 1;
+          continue;
+        }
         await rendreMontage(ligne, statut.videoUrl);
         res.rendus += 1;
         continue;
@@ -417,9 +439,15 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
 
       // failed | introuvable : crédits avatar déjà remboursés le cas échéant.
       const motif = statut.status === 'failed' ? statut.error : 'Génération du jumeau introuvable.';
-      await echouer(ligne, motif);
-      // Le créneau ne reste pas vide : montage SANS jumeau, dit explicitement.
-      await rendreSansJumeau(ligne, 'jumeau en échec');
+      if (ligne.snapshot?.repliSansAvatar?.produitLe) {
+        // Le créneau est déjà sorti sans avatar et l'utilisateur prévenu.
+        await clore(ligne, 'echec', motif);
+      } else {
+        await echouer(ligne, motif);
+        // Le créneau ne reste pas vide : montage SANS jumeau, dit explicitement
+        // — sauf politique `suspendre` (jamais de version dégradée).
+        if (politiqueRepliJumeau(ligne.snapshot) === 'sans_avatar') await rendreSansJumeau(ligne, 'jumeau en échec');
+      }
       res.echecs += 1;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -459,19 +487,20 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
       // B1 — en phase `suivi`, un couac passager après 40 passes n'abandonne
       // pas un jumeau encore dans son attente autorisée.
       if (ligne.tentatives + 1 >= MAX_TENTATIVES && !(phase === 'suivi' && suiviEncoreAutorise(ligne))) {
-        await echouer(ligne, 'La finalisation du montage-jumeau a échoué de façon répétée.');
         // B2 — le SUIVI du fournisseur a échoué à chaque passe : aucun jumeau
         // n'a été obtenu. Même issue que la ligne restée « en cours » : la
         // génération est close (crédits rendus une fois) et le créneau sort
         // SANS jumeau, dit explicitement. Un jumeau LIVRÉ dont le rendu
         // échoue (`rendu`) n'est jamais remplacé par un montage sans avatar.
         if (phase === 'suivi') {
-          await abandonnerGeneration(ligne);
-          await rendreSansJumeau(ligne, 'jumeau non abouti');
+          await abandonnerSuivi(ligne, 'La finalisation du montage-jumeau a échoué de façon répétée.');
+        } else {
+          await echouer(ligne, 'La finalisation du montage-jumeau a échoué de façon répétée.');
         }
         res.echecs += 1;
       } else {
-        await rouvrir(ligne.id);
+        // B3 — un suivi en panne passagère n'empêche pas la décision à l'échéance.
+        await rouvrir(ligne.id, phase === 'suivi' ? { snapshot: await appliquerEcheance(ligne) } : {});
         res.encore += 1;
       }
     }
@@ -593,7 +622,9 @@ async function reprendreLignesAbandonnees(userId?: string): Promise<void> {
   }
   for (const ligne of (abandonnees ?? []) as LigneAttente[]) {
     try {
-      if (await dejaRendu(ligne)) continue;
+      // B3 — après un repli sans avatar, le post du créneau EXISTE mais la
+      // génération doit rester suivie : on rouvre, on ne clôt pas.
+      if (!ligne.snapshot?.repliSansAvatar && await dejaRendu(ligne)) continue;
       await supabaseAdmin
         .from('autopilot_jumeau_attente')
         .update({ statut: 'en_attente', updated_at: new Date().toISOString() })
@@ -611,16 +642,17 @@ async function reprendreLignesAbandonnees(userId?: string): Promise<void> {
 async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promise<void> {
   if (await dejaRendu(ligne)) return;
   const s = ligne.snapshot;
+  const tardif = await renduTardif(ligne, 'avec');
   const rendu = await produireUnMontage({
     userId: ligne.user_id,
-    config: s.config,
+    config: tardif.config,
     post: s.post,
     rang: s.rang,
     now: s.now,
     jobId: ligne.job_id,
     slotKey: ligne.slot_key,
     journal: s.journal ?? '[Autopilote/Jumeau]',
-    metadataSupplement: { ...(s.metadataSupplement ?? {}), jumeau: true },
+    metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeau: true },
     jumeauVideoUrl,
   });
   await supabaseAdmin
@@ -635,23 +667,137 @@ async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promi
  * ORDINAIRE (rush/affiche + voix off si demandée) et on ÉCRIT l'échec du
  * jumeau dans les métadonnées — jamais un remplacement silencieux.
  */
-async function rendreSansJumeau(ligne: LigneAttente, motif: string): Promise<void> {
+async function rendreSansJumeau(ligne: LigneAttente, motif: string, o: { garderSuivi?: boolean } = {}): Promise<boolean> {
   const s = ligne.snapshot;
   try {
-    if (await dejaRendu(ligne)) return;
+    // `garderSuivi` (B3, repli à l'échéance) : la génération reste suivie —
+    // un post déjà déposé ne CLÔT pas la ligne, il évite seulement le doublon.
+    if (o.garderSuivi ? (await creneauxExistants(ligne.user_id)).has(ligne.slot_key) : await dejaRendu(ligne)) return true;
+    const tardif = await renduTardif(ligne, 'sans');
     await produireUnMontage({
       userId: ligne.user_id,
-      config: s.config,
+      config: tardif.config,
       post: s.post,
       rang: s.rang,
       now: s.now,
       jobId: ligne.job_id,
       slotKey: ligne.slot_key,
       journal: s.journal ?? '[Autopilote/Jumeau]',
-      metadataSupplement: { ...(s.metadataSupplement ?? {}), jumeauIgnore: true, jumeauIgnoreMotif: motif },
+      metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeauIgnore: true, jumeauIgnoreMotif: motif },
       // Pas de jumeauVideoUrl : montage ordinaire.
     });
+    return true;
   } catch (e) {
     console.error(`[Autopilote/Jumeau] ${ligne.user_id} — montage de repli (sans jumeau) impossible :`, e instanceof Error ? e.message : e);
+    return false;
   }
+}
+
+// ── B3 — ÉCHÉANCE DE PUBLICATION ─────────────────────────────────────────────
+
+/** Famille de notification « avatar en retard » — suffixée du créneau : une par créneau. */
+export const KIND_JUMEAU_RETARD = 'autopilote-jumeau-retard';
+
+function kindRetard(ligne: LigneAttente, variante: 'decision' | 'brouillon'): string {
+  const famille = variante === 'decision' ? KIND_JUMEAU_RETARD : `${KIND_JUMEAU_RETARD}-brouillon`;
+  return `${famille}:${ligne.slot_key.split('|').slice(-2).join(' ')}`;
+}
+
+async function notifierRetard(ligne: LigneAttente, title: string, body: string, variante: 'decision' | 'brouillon' = 'decision'): Promise<void> {
+  try {
+    await notifyOnce({ userId: ligne.user_id, kind: kindRetard(ligne, variante), title, body, href: '/dashboard/calendar' });
+  } catch (e) {
+    console.error('[Autopilote/Jumeau] notification de retard impossible :', e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Le jumeau est encore « en cours » : l'échéance de décision (heure de
+ * publication − marge de montage) est-elle passée ? Rend le snapshot à
+ * conserver sur la ligne. N'abandonne JAMAIS la génération et ne rembourse
+ * rien : elle peut encore aboutir, `avancerStatutGeneration` la suit avec ses
+ * propres délais.
+ *
+ *   - `sans_avatar` (défaut, B2) : le créneau sort une fois, SANS avatar,
+ *     avant l'heure de publication ; l'utilisateur est prévenu une fois.
+ *   - `suspendre` : aucune vidéo ; le créneau reste en attente, signalé une
+ *     fois ; s'il aboutit après l'heure, il sort en brouillon (`renduTardif`).
+ */
+async function appliquerEcheance(ligne: LigneAttente): Promise<SnapshotMontage> {
+  const s = ligne.snapshot;
+  const echeance = echeanceDecisionJumeau(s);
+  if (echeance === null || Date.now() < echeance) return s;
+  if (s.repliSansAvatar?.produitLe || s.suspension) return s;
+  const libelle = libelleCreneau(s);
+
+  if (politiqueRepliJumeau(s) === 'suspendre') {
+    console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — jumeau en retard, créneau ${ligne.slot_key} suspendu`);
+    await notifierRetard(
+      ligne,
+      'Autopilote : avatar en retard',
+      `Avatar en retard chez le fournisseur : la publication du ${libelle} est suspendue. `
+        + 'Elle ne partira pas en retard sans votre validation ; aucun rendu n’est débité tant qu’elle n’est pas produite.',
+    );
+    return { ...s, suspension: { decideLe: new Date().toISOString() } };
+  }
+
+  // Marque posée AVANT le rendu : une ligne reprise après un crash reste suivie.
+  const decide: SnapshotMontage = { ...s, repliSansAvatar: { decideLe: s.repliSansAvatar?.decideLe ?? new Date().toISOString() } };
+  await supabaseAdmin
+    .from('autopilot_jumeau_attente')
+    .update({ snapshot: decide, updated_at: new Date().toISOString() })
+    .eq('id', ligne.id);
+  const ok = await rendreSansJumeau({ ...ligne, snapshot: decide }, 'jumeau en retard', { garderSuivi: true });
+  if (!ok) return decide; // rendu raté : la passe suivante réessaie
+  console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — jumeau en retard, créneau ${ligne.slot_key} produit sans avatar`);
+  await notifierRetard(
+    ligne,
+    'Autopilote : vidéo produite sans avatar',
+    `Votre avatar n’était pas prêt à temps : la vidéo du ${libelle} a été produite sans avatar.`,
+  );
+  return { ...decide, repliSansAvatar: { ...decide.repliSansAvatar!, produitLe: new Date().toISOString() } };
+}
+
+/**
+ * Un rendu qui aboutirait APRÈS l'heure de publication ne part jamais seul
+ * en retard : il sort en BROUILLON (mêmes date/heure/fuseau au Calendrier),
+ * et l'utilisateur le sait. Avant l'heure, ou pour un brouillon : inchangé.
+ */
+async function renduTardif(ligne: LigneAttente, avatar: 'avec' | 'sans'): Promise<{ config: AutopilotConfig; supplement: Record<string, unknown> }> {
+  const s = ligne.snapshot;
+  const pub = instantPublicationCreneau(s);
+  if (pub === null || Date.now() < pub) return { config: s.config, supplement: {} };
+  await notifierRetard(
+    ligne,
+    'Autopilote : vidéo en attente de validation',
+    `Avatar en retard chez le fournisseur : la publication du ${libelleCreneau(s)} est suspendue. `
+      + `La vidéo ${avatar === 'avec' ? 'avec' : 'sans'} avatar est prête en brouillon : validez-la pour la publier.`,
+    'brouillon',
+  );
+  return { config: { ...s.config, mode: 'review' }, supplement: { publicationSuspendue: 'jumeau en retard' } };
+}
+
+/** Clôt une ligne SANS notification (le créneau est déjà sorti et dit). */
+async function clore(ligne: LigneAttente, statut: 'rendu' | 'echec', motif: string): Promise<void> {
+  await supabaseAdmin
+    .from('autopilot_jumeau_attente')
+    .update({ statut, motif, updated_at: new Date().toISOString() })
+    .eq('id', ligne.id);
+  console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — ligne ${ligne.id} close (${statut}) : ${motif}`);
+}
+
+/**
+ * Le suivi est abandonné (plafond B1 dépassé) : la génération encore en vol
+ * est close et remboursée une fois (B2). Le créneau sort sans jumeau — sauf
+ * s'il est DÉJÀ sorti (repli B3) ou que la politique l'interdit.
+ */
+async function abandonnerSuivi(ligne: LigneAttente, motif: string): Promise<void> {
+  if (ligne.snapshot?.repliSansAvatar?.produitLe) {
+    await clore(ligne, 'echec', motif);
+    await abandonnerGeneration(ligne);
+    return;
+  }
+  await echouer(ligne, motif);
+  await abandonnerGeneration(ligne);
+  if (politiqueRepliJumeau(ligne.snapshot) === 'sans_avatar') await rendreSansJumeau(ligne, 'jumeau non abouti');
 }
