@@ -119,8 +119,9 @@ vi.mock('@/lib/autopilot/produire', () => ({
 
 import {
   scriptJumeauMontage, lancerJumeauMontage, finaliserJumeauxPrets, estMediaIntrouvable,
-  creneauxJumeauEnAttente, STATUT_RESERVE, GENERATION_RESERVEE, DELAI_ABANDON_EN_COURS_MS,
+  creneauxJumeauEnAttente, STATUT_RESERVE, GENERATION_RESERVEE, DELAI_ABANDON_EN_COURS_MS, PLAFOND_SUIVI_JUMEAU_MS,
 } from '@/lib/autopilot/jumeau-async';
+import { ATTENTE_MAX_MS } from '@/lib/avatar/attente-fournisseur';
 import { JumeauIllisibleError } from '@/lib/autopilot/duree-jumeau';
 
 const post = {
@@ -484,6 +485,38 @@ describe('B2 — échec répété du SUIVI du jumeau : repli sans jumeau, sans d
     expect(abandonnerGenerationJumeau).toHaveBeenCalledWith('u1', 'gen-1');
     expect(produireUnMontage).toHaveBeenCalledTimes(1);
     expect(rows[0].statut).toBe('echec');
+  });
+
+  it('B1 — suivi « en cours » à MAX_TENTATIVES mais ligne de 3 h (attente autorisée) → rouverte, ni clôture ni repli', async () => {
+    enFile({ tentatives: 39, created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() });
+    avancer.mockResolvedValue({ status: 'processing', videoUrl: null, enAttenteFournisseur: true });
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.encore).toBe(1);
+    expect(rows[0].statut).toBe('en_attente');
+    expect(abandonnerGenerationJumeau).not.toHaveBeenCalled();
+    expect(produireUnMontage).not.toHaveBeenCalled();
+  });
+
+  it('B1 — couac passager du suivi après MAX_TENTATIVES, ligne de 3 h → rouverte, ni clôture ni repli', async () => {
+    enFile({ tentatives: 45, created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() });
+    avancer.mockRejectedValue(new Error('HeyGen a repondu 503.'));
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.encore).toBe(1);
+    expect(abandonnerGenerationJumeau).not.toHaveBeenCalled();
+    expect(produireUnMontage).not.toHaveBeenCalled();
+  });
+
+  it('B1 — suivi « en cours » à MAX_TENTATIVES et ligne au-delà du plafond (attente + production) → close et repli', async () => {
+    enFile({ tentatives: 39, created_at: new Date(Date.now() - PLAFOND_SUIVI_JUMEAU_MS - 60_000).toISOString() });
+    avancer.mockResolvedValue({ status: 'processing', videoUrl: null });
+    await finaliserJumeauxPrets({ max: 5 });
+    expect(abandonnerGenerationJumeau).toHaveBeenCalledTimes(1);
+    expect(rows[0].statut).toBe('echec');
+  });
+
+  it('B1 — le plafond couvre l’attente fournisseur (6 h) PLUS le délai de production après reprise', () => {
+    // = ATTENTE_MAX_MS + DELAI_GENERATION_LANCEE_MS (ce dernier vérifié dans avatar-status-reprise-stale).
+    expect(PLAFOND_SUIVI_JUMEAU_MS).toBe(ATTENTE_MAX_MS + (ATTENTE_MAX_MS + 10 * 60 * 1000));
   });
 
   it('⚠️ jumeau LIVRÉ mais le RENDU échoue jusqu’à MAX_TENTATIVES → aucun repli sans avatar, génération intacte', async () => {
