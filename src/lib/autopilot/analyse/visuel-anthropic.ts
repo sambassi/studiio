@@ -37,7 +37,7 @@
  * message est ensuite masqué et tronqué par `analyserVisuelRush`.
  */
 import { INVITE_VISUELLE } from './visuel-invite';
-import { TIMEOUT_VISUEL_MS, IMAGES_MAX, type FournisseurVisuel } from './visuel';
+import { TIMEOUT_VISUEL_MS, IMAGES_MAX, type FournisseurVisuel, type SortieFournisseur } from './visuel';
 // ⚠️ LA MÊME SOURCE QUE LE VALIDATEUR, JAMAIS UNE COPIE. Un vocabulaire
 // recopié à la main ici divergerait au premier ajout dans `PROBLEMES_VISUELS`,
 // et la divergence serait muette : le schéma interdirait une valeur que le
@@ -199,27 +199,10 @@ export function fournisseurAnthropic(transport?: Transport): FournisseurVisuel |
   const modele = process.env.AUTOPILOT_VISUEL_ANTHROPIC_MODEL;
   if (!modele) throw new ConfigurationVisuelleInvalide('modele_absent');
 
-  const envoyer: Transport = transport ?? ((url, init) => fetch(url, init));
-
   return async (entree) => {
     // Ceinture : la borne est déjà appliquée en amont par `lireImagesAnalyse`,
     // mais l'adaptateur ne doit pas dépendre de la prudence de son appelant.
     const images = entree.images.slice(0, IMAGES_MAX);
-
-    // ⚠️ LES IMAGES ET LEURS INSTANTS, DANS DES BLOCS DISTINCTS.
-    //
-    // L'instant est annoncé en TEXTE, juste avant son image : c'est ce qui
-    // permet au modèle de rapporter un instant qu'on lui a montré plutôt que
-    // d'en déduire un. Et le prompt système reste à part, jamais concaténé
-    // avec quoi que ce soit venant du rush.
-    const contenu: unknown[] = [];
-    for (const img of images) {
-      contenu.push({ type: 'text', text: `Image à ${img.seconde} secondes :` });
-      contenu.push({
-        type: 'image',
-        source: { type: 'base64', media_type: img.mimeType, data: img.data.toString('base64') },
-      });
-    }
     // ⚠️ LE VOCABULAIRE EST DIT, PAS SOUS-ENTENDU.
     //
     // L'invite système promet des défauts « choisis UNIQUEMENT dans le
@@ -230,74 +213,125 @@ export function fournisseurAnthropic(transport?: Transport): FournisseurVisuel |
     //
     // La FORME, elle, n'est plus recopiée à la main : elle vit dans le schéma,
     // d'où elle ne peut plus diverger.
-    contenu.push({
-      type: 'text',
-      text: 'Réponds uniquement par le JSON conforme au schéma fourni. '
+    return appelerVisionAnthropic({
+      cle, modele, transport,
+      systeme: INVITE_VISUELLE,
+      images,
+      consigneFinale: 'Réponds uniquement par le JSON conforme au schéma fourni. '
         + 'Les défauts techniques se choisissent UNIQUEMENT dans ce vocabulaire : '
         + `${PROBLEMES_VISUELS.join(', ')}.`,
+      schema: schemaVisuel(images.map((i) => i.seconde)),
+      jetonsSortieMax: JETONS_SORTIE_MAX,
+      delaiMs: TIMEOUT_VISUEL_MS,
     });
+  };
+}
 
-    // `AbortController` sur le MÊME délai que l'étape : sans lui, la requête
-    // continuerait de courir derrière un appel déjà abandonné.
-    const controleur = new AbortController();
-    const minuteur = setTimeout(() => controleur.abort(), TIMEOUT_VISUEL_MS);
+/** Ce que le transport Anthropic partagé reçoit. Aucun texte venu du rush. */
+export interface AppelVisionAnthropic {
+  cle: string;
+  modele: string;
+  /** L'invite système — une CONSTANTE littérale du dépôt, jamais concaténée. */
+  systeme: string;
+  images: ReadonlyArray<{ seconde: number; mimeType: 'image/jpeg'; data: Buffer }>;
+  /** La consigne finale — elle aussi un littéral à nous. */
+  consigneFinale: string;
+  schema: Record<string, unknown>;
+  jetonsSortieMax: number;
+  delaiMs: number;
+  transport?: Transport;
+  /**
+   * Paramètres de requête supplémentaires, PROPRES AU MODÈLE (ex. `thinking`
+   * coupé là où le modèle l'accepte). Absent = corps d'avant M2-b, à l'octet.
+   */
+  parametres?: Record<string, unknown>;
+}
 
-    let reponseHttp: { ok: boolean; status: number; json: () => Promise<unknown> };
-    try {
-      reponseHttp = await envoyer(POINT_ACCES, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': cle,
-          'anthropic-version': VERSION_API,
-        },
-        body: JSON.stringify({
-          model: modele,
-          max_tokens: JETONS_SORTIE_MAX,
-          system: INVITE_VISUELLE,
-          messages: [{ role: 'user', content: contenu }],
-          // La sortie structurée officielle : `output_config.format`, avec
-          // `type: 'json_schema'`. Aucun en-tête bêta n'est requis — la forme
-          // `output_format` et l'en-tête `structured-outputs-2025-11-13` sont
-          // l'ancienne écriture, encore acceptée mais dépréciée.
-          output_config: {
-            format: {
-              type: 'json_schema',
-              schema: schemaVisuel(images.map((i) => i.seconde)),
-            },
-          },
-        }),
-        signal: controleur.signal,
-      });
-    } finally {
-      clearTimeout(minuteur);
-    }
+/**
+ * LE transport Anthropic des analyses d'images — partagé par l'étape visuelle
+ * M3 et par l'analyse des rushes personnels M2-b. Une seule écriture de la
+ * requête, des en-têtes, du délai et de la lecture de `usage`.
+ */
+export async function appelerVisionAnthropic(a: AppelVisionAnthropic): Promise<SortieFournisseur> {
+  const envoyer: Transport = a.transport ?? ((url, init) => fetch(url, init));
+  const { cle, modele } = a;
+  // ⚠️ LES IMAGES ET LEURS INSTANTS, DANS DES BLOCS DISTINCTS.
+  //
+  // L'instant est annoncé en TEXTE, juste avant son image : c'est ce qui
+  // permet au modèle de rapporter un instant qu'on lui a montré plutôt que
+  // d'en déduire un. Et le prompt système reste à part, jamais concaténé
+  // avec quoi que ce soit venant du rush.
+  const contenu: unknown[] = [];
+  for (const img of a.images) {
+    contenu.push({ type: 'text', text: `Image à ${img.seconde} secondes :` });
+    contenu.push({
+      type: 'image',
+      source: { type: 'base64', media_type: img.mimeType, data: img.data.toString('base64') },
+    });
+  }
+  contenu.push({ type: 'text', text: a.consigneFinale });
 
-    if (!reponseHttp.ok) {
-      // Le STATUT, et rien d'autre. Le corps d'une erreur de fournisseur peut
-      // porter un identifiant de requête, une URL, voire un fragment de clé.
-      throw new Error(`fournisseur_http_${reponseHttp.status}`);
-    }
+  // `AbortController` sur le MÊME délai que l'étape : sans lui, la requête
+  // continuerait de courir derrière un appel déjà abandonné.
+  const controleur = new AbortController();
+  const minuteur = setTimeout(() => controleur.abort(), a.delaiMs);
 
-    const corps = await reponseHttp.json() as {
-      content?: Array<{ type?: string; text?: string }>;
-      usage?: { input_tokens?: unknown; output_tokens?: unknown };
-    };
-
-    // On prend le PREMIER bloc de texte, sans fouiller : chercher « le bloc
-    // qui ressemble à du JSON » serait la même complaisance que « chercher la
-    // première accolade », et le contrat la refuse pour la même raison.
-    const premier = corps.content?.find((b) => b?.type === 'text');
-    const brut = typeof premier?.text === 'string' ? premier.text : '';
-
-    return {
-      reponse: brut,
-      usage: {
-        inputTokens: corps.usage?.input_tokens,
-        outputTokens: corps.usage?.output_tokens,
+  let reponseHttp: { ok: boolean; status: number; json: () => Promise<unknown> };
+  try {
+    reponseHttp = await envoyer(POINT_ACCES, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': cle,
+        'anthropic-version': VERSION_API,
       },
-      // Le modèle CONFIGURÉ, jamais celui que la réponse prétendrait être.
-      modele,
-    };
+      body: JSON.stringify({
+        model: modele,
+        max_tokens: a.jetonsSortieMax,
+        system: a.systeme,
+        messages: [{ role: 'user', content: contenu }],
+        // La sortie structurée officielle : `output_config.format`, avec
+        // `type: 'json_schema'`. Aucun en-tête bêta n'est requis — la forme
+        // `output_format` et l'en-tête `structured-outputs-2025-11-13` sont
+        // l'ancienne écriture, encore acceptée mais dépréciée.
+        output_config: {
+          format: {
+            type: 'json_schema',
+            schema: a.schema,
+          },
+        },
+        ...(a.parametres ?? {}),
+      }),
+      signal: controleur.signal,
+    });
+  } finally {
+    clearTimeout(minuteur);
+  }
+
+  if (!reponseHttp.ok) {
+    // Le STATUT, et rien d'autre. Le corps d'une erreur de fournisseur peut
+    // porter un identifiant de requête, une URL, voire un fragment de clé.
+    throw new Error(`fournisseur_http_${reponseHttp.status}`);
+  }
+
+  const corps = await reponseHttp.json() as {
+    content?: Array<{ type?: string; text?: string }>;
+    usage?: { input_tokens?: unknown; output_tokens?: unknown };
+  };
+
+  // On prend le PREMIER bloc de texte, sans fouiller : chercher « le bloc
+  // qui ressemble à du JSON » serait la même complaisance que « chercher la
+  // première accolade », et le contrat la refuse pour la même raison.
+  const premier = corps.content?.find((b) => b?.type === 'text');
+  const brut = typeof premier?.text === 'string' ? premier.text : '';
+
+  return {
+    reponse: brut,
+    usage: {
+      inputTokens: corps.usage?.input_tokens,
+      outputTokens: corps.usage?.output_tokens,
+    },
+    // Le modèle CONFIGURÉ, jamais celui que la réponse prétendrait être.
+    modele,
   };
 }

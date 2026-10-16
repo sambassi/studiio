@@ -106,6 +106,8 @@ export interface EntreeAudioFlac {
   bucket: string;
   cleObjet: string;
   userId: string;
+  /** M2-b : durée maximale extraite (s). Absente = piste entière, comme avant. */
+  dureeMaxSecondes?: number;
 }
 
 export interface FichierFlac {
@@ -127,13 +129,17 @@ export type ResultatAudioFlac<T> =
  * `studiio-postgrest` et `studiio-db`) ; `-vn -sn -dn` prouve qu'aucune image
  * n'est décodée ; `-ar/-ac/-c:a flac` prouvent le format envoyé.
  */
-export function argumentsFlac(url: string, sortie: string): string[] {
+export function argumentsFlac(url: string, sortie: string, dureeMaxSecondes?: number): string[] {
+  // M2-b : `-t` borne la durée lue (et donc envoyée). Absent = commande d'avant.
+  const borne = typeof dureeMaxSecondes === 'number' && Number.isFinite(dureeMaxSecondes) && dureeMaxSecondes > 0
+    ? ['-t', String(Math.floor(dureeMaxSecondes))] : [];
   return [
     '-hide_banner', '-nostdin', '-nostats', '-loglevel', 'error',
     // ⚠️ L'URL D'ENTRÉE EST SÛRE ; LE CONTENU DU FICHIER NE L'EST PAS.
     '-protocol_whitelist', PROTOCOLES_AUTORISES,
     '-rw_timeout', RW_TIMEOUT_US,
     '-i', url,
+    ...borne,
     '-vn', '-sn', '-dn',
     '-map', '0:a:0',
     '-ar', String(FREQUENCE_HZ),
@@ -211,7 +217,7 @@ export async function avecAudioFlac<T>(
   try {
     const sortie = join(dossier, 'piste.flac');
 
-    const proc = await lancer(cheminFfmpeg(), argumentsFlac(url, sortie), {
+    const proc = await lancer(cheminFfmpeg(), argumentsFlac(url, sortie, entree.dureeMaxSecondes), {
       timeoutMs: TIMEOUT_FLAC_MS,
       maxSortie: SORTIE_MAX_FLAC,
     });

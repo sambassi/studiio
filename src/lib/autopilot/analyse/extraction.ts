@@ -403,7 +403,7 @@ async function executer(entree: EntreeExtraction): Promise<ResultatExtraction> {
 // Sondage
 // ─────────────────────────────────────────────────────────────────────────
 
-interface Sondage {
+export interface Sondage {
   ok: boolean;
   /** Renseigné SEULEMENT quand `ok` est faux. Un succès n'a pas de motif. */
   motif: MotifExtraction | null;
@@ -412,7 +412,7 @@ interface Sondage {
   technique: Record<string, unknown>;
 }
 
-async function sonder(url: string): Promise<Sondage> {
+export async function sonder(url: string): Promise<Sondage> {
   const parFfprobe = await sonderFfprobe(url);
   // Seule l'ABSENCE du binaire justifie le repli. Un fichier que ffprobe
   // déclare illisible l'est aussi pour ffmpeg : réessayer avec l'autre outil
@@ -559,9 +559,51 @@ function echec(motif: MotifExtraction, detail: string): Sondage {
  * images d'un même instant ne sont pas huit informations.
  */
 export function positionsVignettes(dureeSecondes: number): number[] {
+  return positionsImages(dureeSecondes, VIGNETTES_MAX);
+}
+
+/**
+ * M2-b — la même règle de répartition, avec un plafond choisi par l'appelant
+ * (borné à `VIGNETTES_MAX`, le plafond technique). `positionsVignettes` en est
+ * le cas `VIGNETTES_MAX`, à l'identique.
+ */
+export function positionsImages(dureeSecondes: number, max: number): number[] {
   if (!Number.isFinite(dureeSecondes) || dureeSecondes <= 0) return [];
-  const n = Math.min(VIGNETTES_MAX, Math.max(1, Math.floor(dureeSecondes)));
+  const plafond = Math.min(VIGNETTES_MAX, Math.max(1, Math.floor(Number.isFinite(max) ? max : VIGNETTES_MAX)));
+  const n = Math.min(plafond, Math.max(1, Math.floor(dureeSecondes)));
   return Array.from({ length: n }, (_, i) => arrondir(((i + 0.5) * dureeSecondes) / n));
+}
+
+/**
+ * UNE image JPEG (640 px de large au plus) à `seconde`, rendue en mémoire par
+ * stdout — la commande exacte des vignettes M3, partagée avec M2-b qui, lui,
+ * n'écrit rien dans le stockage. Ne lève pas : `SortieProcessus` brute.
+ */
+export function extraireImageJpeg(url: string, seconde: number): Promise<SortieProcessus> {
+  // L'indentation des arguments est celle d'avant M2-b (preuves sur le source).
+  return lancer(cheminFfmpeg(), [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-nostdin',
+      '-protocol_whitelist', PROTOCOLES_AUTORISES,
+      '-rw_timeout', RW_TIMEOUT_US,
+      // ⚠️ `-ss` AVANT `-i` : positionnement du démuxeur, donc requête
+      // `Range`. Après `-i`, ffmpeg décoderait depuis la première image et
+      // téléchargerait tout le rush pour rendre une seule vignette.
+      '-ss', String(seconde),
+      '-i', url,
+      '-frames:v', '1',
+      // La vignette est bornée en largeur : ce qui revient tient en quelques
+      // dizaines de kilo-octets, et le plafond de `maxBuffer` n'est jamais
+      // le mécanisme qui protège la mémoire — seulement le dernier filet.
+      '-vf', `scale='min(${LARGEUR_VIGNETTE},iw)':-2`,
+      '-f', 'image2',
+      '-vcodec', 'mjpeg',
+      '-q:v', '5',
+      // `-` : la JPEG revient par stdout. Aucun fichier temporaire, donc
+      // aucun fichier oublié le jour où le processus meurt entre deux images.
+      '-',
+    ], { timeoutMs: TIMEOUT_VIGNETTE_MS, maxSortie: SORTIE_MAX_VIGNETTE });
 }
 
 /**
@@ -593,29 +635,7 @@ async function produireVignettes(
   let premierEchec: string | null = null;
 
   for (const [index, seconde] of positions.entries()) {
-    const r = await lancer(cheminFfmpeg(), [
-      '-hide_banner',
-      '-loglevel', 'error',
-      '-nostdin',
-      '-protocol_whitelist', PROTOCOLES_AUTORISES,
-      '-rw_timeout', RW_TIMEOUT_US,
-      // ⚠️ `-ss` AVANT `-i` : positionnement du démuxeur, donc requête
-      // `Range`. Après `-i`, ffmpeg décoderait depuis la première image et
-      // téléchargerait tout le rush pour rendre une seule vignette.
-      '-ss', String(seconde),
-      '-i', url,
-      '-frames:v', '1',
-      // La vignette est bornée en largeur : ce qui revient tient en quelques
-      // dizaines de kilo-octets, et le plafond de `maxBuffer` n'est jamais
-      // le mécanisme qui protège la mémoire — seulement le dernier filet.
-      '-vf', `scale='min(${LARGEUR_VIGNETTE},iw)':-2`,
-      '-f', 'image2',
-      '-vcodec', 'mjpeg',
-      '-q:v', '5',
-      // `-` : la JPEG revient par stdout. Aucun fichier temporaire, donc
-      // aucun fichier oublié le jour où le processus meurt entre deux images.
-      '-',
-    ], { timeoutMs: TIMEOUT_VIGNETTE_MS, maxSortie: SORTIE_MAX_VIGNETTE });
+    const r = await extraireImageJpeg(url, seconde);
 
     // Un échec de vignette ISOLÉ reste non fatal : certaines positions
     // tombent sur une zone sans image clé exploitable, et perdre la mesure

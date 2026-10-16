@@ -23,6 +23,8 @@ Le statut d'une demande affiche « Terminée dans Studiio — opérations extern
 | Zernio | profil et comptes connectés | `users.zernio_profile_id`, `zernio_accounts` |
 | Stripe | client et facturation (conservés pour obligations comptables, résiliation à vérifier) | `users.stripe_customer_id`, `subscriptions.stripe_subscription_id` |
 | Meta | autorisation de l'application | côté utilisateur / console Meta |
+| Anthropic (M2-b, si activé) | images fixes des rushes personnels (analyse visuelle) — appel sans état, rien de stocké chez eux d'adressable par compte ; journaux ≤ 30 jours | aucun (aucun identifiant de fichier ni de requête conservé) — détail `tasks/m2b-confidentialite.md` |
+| Groq (M2-b, si activé) | son des rushes personnels (≤ 120 s, transcription) — appel sans état ; journaux ≤ 30 jours, zéro conservation activable | aucun — détail `tasks/m2b-confidentialite.md` |
 
 Aucun appel fournisseur n'est fait automatiquement. Automatisation possible plus tard, fournisseur par fournisseur, avec accord et coût vérifié.
 
