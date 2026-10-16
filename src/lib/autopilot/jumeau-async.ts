@@ -642,7 +642,7 @@ async function reprendreLignesAbandonnees(userId?: string): Promise<void> {
 async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promise<void> {
   if (await dejaRendu(ligne)) return;
   const s = ligne.snapshot;
-  const tardif = await renduTardif(ligne, 'avec');
+  const tardif = await renduTardif(ligne);
   const rendu = await produireUnMontage({
     userId: ligne.user_id,
     config: tardif.config,
@@ -659,6 +659,7 @@ async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promi
     .from('autopilot_jumeau_attente')
     .update({ statut: 'rendu', post_id: rendu.postId, updated_at: new Date().toISOString() })
     .eq('id', ligne.id);
+  if (tardif.tardif) await notifierBrouillonTardif(ligne, 'avec');
   console.log(`[Autopilote/Jumeau] ${ligne.user_id} — montage jumeau rendu (post ${rendu.postId ?? '?'})`);
 }
 
@@ -673,7 +674,7 @@ async function rendreSansJumeau(ligne: LigneAttente, motif: string, o: { garderS
     // `garderSuivi` (B3, repli à l'échéance) : la génération reste suivie —
     // un post déjà déposé ne CLÔT pas la ligne, il évite seulement le doublon.
     if (o.garderSuivi ? (await creneauxExistants(ligne.user_id)).has(ligne.slot_key) : await dejaRendu(ligne)) return true;
-    const tardif = await renduTardif(ligne, 'sans');
+    const tardif = await renduTardif(ligne);
     await produireUnMontage({
       userId: ligne.user_id,
       config: tardif.config,
@@ -686,6 +687,7 @@ async function rendreSansJumeau(ligne: LigneAttente, motif: string, o: { garderS
       metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeauIgnore: true, jumeauIgnoreMotif: motif },
       // Pas de jumeauVideoUrl : montage ordinaire.
     });
+    if (tardif.tardif) await notifierBrouillonTardif(ligne, 'sans');
     return true;
   } catch (e) {
     console.error(`[Autopilote/Jumeau] ${ligne.user_id} — montage de repli (sans jumeau) impossible :`, e instanceof Error ? e.message : e);
@@ -763,18 +765,22 @@ async function appliquerEcheance(ligne: LigneAttente): Promise<SnapshotMontage> 
  * en retard : il sort en BROUILLON (mêmes date/heure/fuseau au Calendrier),
  * et l'utilisateur le sait. Avant l'heure, ou pour un brouillon : inchangé.
  */
-async function renduTardif(ligne: LigneAttente, avatar: 'avec' | 'sans'): Promise<{ config: AutopilotConfig; supplement: Record<string, unknown> }> {
+async function renduTardif(ligne: LigneAttente): Promise<{ config: AutopilotConfig; supplement: Record<string, unknown>; tardif: boolean }> {
   const s = ligne.snapshot;
   const pub = instantPublicationCreneau(s);
-  if (pub === null || Date.now() < pub) return { config: s.config, supplement: {} };
+  if (pub === null || Date.now() < pub) return { config: s.config, supplement: {}, tardif: false };
+  return { config: { ...s.config, mode: 'review' }, supplement: { publicationSuspendue: 'jumeau en retard' }, tardif: true };
+}
+
+/** Prévient (une fois) que la vidéo tardive est en brouillon — APRÈS son rendu réussi. */
+async function notifierBrouillonTardif(ligne: LigneAttente, avatar: 'avec' | 'sans'): Promise<void> {
   await notifierRetard(
     ligne,
     'Autopilote : vidéo en attente de validation',
-    `Avatar en retard chez le fournisseur : la publication du ${libelleCreneau(s)} est suspendue. `
+    `Avatar en retard chez le fournisseur : la publication du ${libelleCreneau(ligne.snapshot)} est suspendue. `
       + `La vidéo ${avatar === 'avec' ? 'avec' : 'sans'} avatar est prête en brouillon : validez-la pour la publier.`,
     'brouillon',
   );
-  return { config: { ...s.config, mode: 'review' }, supplement: { publicationSuspendue: 'jumeau en retard' } };
 }
 
 /** Clôt une ligne SANS notification (le créneau est déjà sorti et dit). */

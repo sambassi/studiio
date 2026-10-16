@@ -294,6 +294,24 @@ describe('B3 — finalisation face à l’échéance', () => {
     expect(arg().metadataSupplement).toMatchObject({ publicationSuspendue: 'jumeau en retard', jumeau: true });
   });
 
+  it('rendu tardif : la notification « prête en brouillon » part APRÈS le rendu réussi, jamais si le rendu échoue', async () => {
+    enFile({ politiqueRepli: 'suspendre' }); a('2026-10-17T15:41:00Z');
+    avancer.mockResolvedValue(enCours);
+    await finaliserJumeauxPrets();
+    expect(notifyOnce).toHaveBeenCalledTimes(1); // signalement de suspension
+
+    a('2026-10-17T16:10:00Z');
+    avancer.mockResolvedValue(pret);
+    produireUnMontage.mockRejectedValueOnce(new Error('rendu impossible'));
+    await finaliserJumeauxPrets().catch(() => undefined);
+    expect(notifyOnce).toHaveBeenCalledTimes(1); // rendu raté : aucune annonce de brouillon
+
+    await finaliserJumeauxPrets();
+    expect(produireUnMontage).toHaveBeenCalledTimes(2);
+    expect(notifyOnce).toHaveBeenCalledTimes(2);
+    expect(String(notifyOnce.mock.calls[1][0].body)).toContain('prête en brouillon');
+  });
+
   it('`suspendre` + génération en échec → aucune version dégradée', async () => {
     enFile({ politiqueRepli: 'suspendre' }); a('2026-10-17T15:41:00Z');
     avancer.mockResolvedValue({ status: 'failed', error: 'HeyGen échec', rembourse: true });
