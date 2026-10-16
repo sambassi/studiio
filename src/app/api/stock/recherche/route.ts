@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { searchStockMedia } from '@/lib/stock/service';
+import { memoriserRequeteStock } from '@/lib/stock/requetes-memo';
 import type { FormatStock, FournisseurStock, TypeStock } from '@/lib/stock/types';
 
 /**
@@ -35,5 +36,8 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, Math.min(20, parseInt(p.get('page') || '1', 10) || 1));
 
   const r = await searchStockMedia({ requete, type, format, fournisseurs, page, parPage: 12 });
+  // M2-a : la recherche est retenue (mémoire serveur, ce compte) pour que
+  // l'import l'écrive dans l'attribution. Jamais bloquant.
+  try { memoriserRequeteStock(session.user.id, r.medias.map((m) => m.id), r.requete || requete); } catch { /* sans effet */ }
   return NextResponse.json({ success: true, ...r });
 }
