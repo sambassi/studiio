@@ -156,12 +156,44 @@ export interface CorrespondanceConcept {
 }
 
 /**
- * Formes anglaises AMBIGUËS, écartées dans ces tournures : « running water »
- * n'est pas une course à pied.
+ * Formes anglaises AMBIGUËS. « running » n'est une course à pied que dans un
+ * contexte sportif : « running a business », « running water », « running
+ * errands », « running late » n'en sont pas. Il est écarté quand il est suivi
+ * d'un complément (déterminant, possessif, objet) ou d'un mot non sportif —
+ * sauf si le texte porte un mot sportif explicite.
  */
-const EXCLUSIONS_EN: Record<string, ReadonlySet<string>> = {
-  running: new Set(['water', 'tap', 'faucet', 'stream', 'river', 'toilet', 'shower', 'late', 'out', 'low', 'total', 'mate', 'joke']),
+const SUIVANTS_NON_SPORTIFS: ReadonlySet<string> = new Set([
+  'a', 'an', 'the', 'his', 'her', 'their', 'my', 'our', 'your', 'its', 'this', 'that', 'some',
+  'business', 'businesses', 'company', 'shop', 'store', 'restaurant', 'cafe', 'bar', 'office', 'meeting', 'errand', 'errands',
+  'water', 'tap', 'faucet', 'stream', 'river', 'toilet', 'shower', 'late', 'out', 'low', 'total', 'mate', 'joke', 'program', 'code', 'machine',
+]);
+const MOTS_SPORTIFS: ReadonlySet<string> = new Set([
+  'run', 'runs', 'runner', 'runners', 'jog', 'jogger', 'jogging', 'marathon', 'track', 'sprint', 'sprinter', 'race', 'trail',
+  'sneakers', 'treadmill', 'athlete', 'athletes', 'workout', 'fitness', 'exercise', 'training',
+]);
+/** Voisins qui font d'un mot un AUTRE sens (« studio apartment » : un logement). */
+const VOISINS_EXCLUS_EN: Record<string, ReadonlySet<string>> = {
+  studio: new Set(['apartment', 'apartments', 'flat', 'flats', 'loft', 'condo', 'appartement']),
+  spinning: new Set(['wheel', 'top', 'plate', 'globe', 'record', 'vinyl']),
 };
+
+function formeAnglaiseRecevable(forme: string, mots: string[], i: number): boolean {
+  const suivant = mots[i + 1] ?? '';
+  const precedent = mots[i - 1] ?? '';
+  if (forme === 'running') {
+    if (mots.some((m) => MOTS_SPORTIFS.has(m))) return true;
+    return !SUIVANTS_NON_SPORTIFS.has(suivant);
+  }
+  const voisins = VOISINS_EXCLUS_EN[forme];
+  return !(voisins && (voisins.has(suivant) || voisins.has(precedent)));
+}
+
+/**
+ * Mots français qui ne DISENT pas ce qu'ils semblent dire pour une fiche :
+ * un « cours » ou une « classe » de danse peut être particulier — ils
+ * n'établissent pas un groupe. (La recherche stock, `conceptsDe`, les garde.)
+ */
+const NON_EXPLICITES_FR: ReadonlySet<string> = new Set(['cours', 'classe']);
 
 /**
  * Mots français de la taxonomie qui sont AUSSI autre chose (« course » de
@@ -221,6 +253,7 @@ export function conceptsDuTexte(texte: string | null | undefined, langues: { fr:
     mots.forEach((mot, i) => {
       const n = mot === 'pleinair' ? 'plein-air' : mot === 'bienetre' ? 'bien-etre' : mot;
       if (horsTaxonomie && AMBIGUS_FR.has(n)) return;
+      if (NON_EXPLICITES_FR.has(n)) return;
       const c = CONCEPTS.find((x) => x.mots.includes(n));
       if (!c) return;
       trouves.push([i, 0, c, c.categorie === 'activite' && VERBE_FR.test(n)]);
@@ -242,8 +275,7 @@ export function conceptsDuTexte(texte: string | null | undefined, langues: { fr:
         let trouve = -1;
         for (let i = 0; i + f.length <= mots.length && trouve < 0; i++) {
           if (!f.every((m, k) => mots[i + k] === m)) continue;
-          const exclus = f.length === 1 ? EXCLUSIONS_EN[f[0]] : undefined;
-          if (exclus && exclus.has(mots[i + 1] ?? '')) continue;
+          if (f.length === 1 && !formeAnglaiseRecevable(f[0], mots, i)) continue;
           trouve = i;
         }
         if (trouve >= 0) { trouves.push([trouve, 2, c, verbe && c.categorie === 'activite']); break; }

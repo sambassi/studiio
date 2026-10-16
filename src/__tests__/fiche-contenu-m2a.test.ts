@@ -73,7 +73,7 @@ describe('sources Pexels', () => {
 describe('nom de fichier', () => {
   it('nom parlant → indices, confiance faible au maximum', () => {
     const f = ficheContenuRush({ nomFichier: '1791985445290-cours-de-danse-plage.mp4' });
-    expect(f.categories.map((c) => [c.id, c.confiance])).toEqual([['group', 'faible'], ['dance', 'faible'], ['beach', 'faible']]);
+    expect(f.categories.map((c) => [c.id, c.confiance])).toEqual([['dance', 'faible'], ['beach', 'faible']]);
     expect(f.categories.every((c) => c.sources.join() === 'nom-fichier')).toBe(true);
     // Faible seul n'établit rien : tout reste inconnu.
     expect(f.inconnus).toEqual(['objets', 'lieu', 'action', 'personnes']);

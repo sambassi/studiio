@@ -211,19 +211,29 @@ export function ficheContenuRush(indices: IndicesContenu | null | undefined): Fi
     }
   }
 
-  let contradiction = false;
+  // La recherche dit ce qu'on CHERCHAIT, pas ce que montre le média.
+  // CONTRADICTION seulement si AUCUN concept de la recherche n'est confirmé par
+  // le contenu ET que le contenu parle d'autre chose (un autre concept, ou un
+  // sujet évident hors taxonomie : football, golf, club…). Une catégorie
+  // ANNEXE de la recherche (« workout » dans « dance workout ») non confirmée
+  // alors que la principale l'est garde sa confiance, sans drapeau.
+  const deLaRequete = [...parConcept].filter(([, e]) => e.sources.has('pexels-requete'));
+  const requeteConfirmee = deLaRequete.some(([, e]) => [...e.sources].some((x) => SOURCES_CONTENU.has(x)));
+  // « Ailleurs » = un concept du contenu de MÊME NATURE (une autre activité, un
+  // autre lieu), ou un sujet hors taxonomie face à une activité / un lieu
+  // recherché. Une personne nommée ne contredit pas une recherche « nutrition ».
+  const contenuAilleurs = deLaRequete.some(([, e]) => categoriesDuContenu.has(e.categorie)
+    || (horsTaxonomie.length > 0 && (e.categorie === 'activite' || e.categorie === 'lieu')));
+  const contradiction = deLaRequete.length > 0 && !requeteConfirmee && contenuAilleurs;
   const categories: CategorieFiche[] = [];
   for (const [id, e] of parConcept) {
     const sources = [...e.sources];
     const parLeContenu = sources.some((x) => SOURCES_CONTENU.has(x));
-    // La recherche dit ce qu'on CHERCHAIT, pas ce que montre le média. Si le
-    // contenu (titre, nom, informations) parle d'AUTRE CHOSE de même nature —
-    // une autre activité, un autre lieu, ou un sujet hors taxonomie évident
-    // (football, golf, club…) — la recherche est contredite.
-    const contredite = e.sources.has('pexels-requete') && !parLeContenu
-      && (categoriesDuContenu.has(e.categorie) || (horsTaxonomie.length > 0 && (e.categorie === 'activite' || e.categorie === 'lieu')));
+    const requeteSeule = e.sources.has('pexels-requete') && !parLeContenu;
     let confiance: ConfianceFiche;
-    if (contredite) { confiance = 'faible'; contradiction = true; }
+    if (requeteSeule && contradiction) confiance = 'faible';
+    // Annexe de même nature qu'un concept du contenu (« workout » à côté de « dance ») : faible.
+    else if (requeteSeule && categoriesDuContenu.has(e.categorie)) confiance = 'faible';
     // « Élevée » exige DEUX sources indépendantes qui concordent ; jamais une seule.
     else if (sources.length >= 2) confiance = 'elevee';
     else if (e.sources.has('nom-fichier')) confiance = 'faible'; // nom de fichier seul : faible au maximum
