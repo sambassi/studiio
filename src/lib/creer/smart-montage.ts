@@ -38,6 +38,7 @@ import {
 } from '@/lib/creer/smart-montage-regles';
 import {
   decouperPassages, bornesAutorisees, departsCandidats, paroleExtrait, borneDansLeSon, notePassagePhase, SEUILS_PASSAGES,
+  fenetreFixe, plafondPassage, plansEntiersCourts,
   type DecoupageRush, type EntreesPassages,
 } from '@/lib/creer/passages-rush';
 
@@ -587,7 +588,12 @@ export function planMontage(
     ? ((profilEnSurimpression(detection.profil) ? planOverlays({ duree: cible, nbCartes: 0, finHook: null, profil: detection.profil }).cta?.[0] : null) ?? cible - 3) - regle.hardMax
     : Infinity;
 
-  for (const creneau of grille) {
+  // M3-a (passages) : reste d'un plan entier plus court que son créneau, donné au créneau
+  // suivant (qui commence plus tôt et finit au même temps fort) ; 0 sinon.
+  let decalage = 0;
+  const usagePassage = new Map<string, number>();
+  for (const creneauGrille of grille) {
+    const creneau = decalage > 0 ? { ...creneauGrille, debut: arrondi(creneauGrille.debut - decalage) } : creneauGrille;
     const d = creneau.fin - creneau.debut;
     const prec: { cle: string; empreinte: number[] | null; luminosite: number | null; saturation: number | null } | null = precedent;
     type Choix = { seg: RushSegment; score: number; cle: string; empreinte: number[] | null; luminosite: number; saturation: number | null; source: number };
@@ -598,7 +604,8 @@ export function planMontage(
     // disponible — 1 : à un AUTRE timecode seulement ; 2 : en dernier recours,
     // un timecode déjà monté (jamais celui du plan précédent).
     // M3-a : `repli` = mode passages sans candidat propre → règle d'avant, raison écrite.
-    const chercher = (exclu: string | null, reprise: 0 | 1 | 2 = 0, repli = false): Choix | null => {
+    // `relache` : accroche sans exigence sur la parole (aucune alternative visuelle).
+    const chercher = (exclu: string | null, reprise: 0 | 1 | 2 = 0, repli = false, relache = false): Choix | null => {
     let meilleur: Choix | null = null;
     const passages = modePassages && !repli;
     for (const { a, cle, st } of rushs) {
@@ -606,24 +613,40 @@ export function planMontage(
       const marge = Math.max(SEUILS.margeMin, d / 2);
       const debutMin = Math.min(0.5, a.duree * 0.05);
       const dp = passages ? decoupages.get(cle)! : null;
-      // Mode passages : départs DANS les passages (débuts, sorties de geste, puis 0,5 s).
-      const departs = dp ? departsCandidats(dp, d) : null;
-      for (let k = 0, s = departs ? departs[0] : debutMin; departs ? k < departs.length : s + d <= a.duree - 0.05 + 1e-6; k++, s = departs ? departs[k] : s + 0.5) {
-        const m = mesuresFenetre(a, st, s, s + d);
+      // Mode passages : fenêtres DANS les passages (débuts, sorties de geste, puis 0,5 s),
+      // plus les plans ENTIERS un peu plus courts qu'un créneau long.
+      const fen: Array<[number, number]> | null = dp ? [...departsCandidats(dp, d).map((x) => [x, d] as [number, number]), ...plansEntiersCourts(dp, d)] : null;
+      for (let k = 0, s = fen ? (fen[0]?.[0] ?? 0) : debutMin; fen ? k < fen.length : s + d <= a.duree - 0.05 + 1e-6; k++, s = fen ? (fen[k]?.[0] ?? 0) : s + 0.5) {
+        const dd = fen ? fen[k][1] : d;
+        const court = dd < d - 1e-6;
+        const m = mesuresFenetre(a, st, s, s + dd);
         if (m.ratees > SEUILS.rateesMax) continue;
         // Ralenti : seulement sur un geste fort, peu de fois, profils dynamiques.
         // Mode passages : jamais (pas d'étirement pour combler la durée).
         const ralenti = !modePassages && regle.ralenti && ralentis < 2 && (creneau.phase === 'PEAK' || creneau.phase === 'HOOK') && m.geste;
         const vitesse = ralenti ? 0.6 : 1;
-        const e = s + d * vitesse;
+        const e = s + dd * vitesse;
         // Mode passages : un extrait tient dans UN passage, aucune borne dans un geste.
         const bp = dp ? bornesAutorisees(dp, s, e, entreesP[cle] ?? {}) : null;
         if (bp && !bp.ok) continue;
+        if (bp) {
+          // Plan fixe ou graphique (photo, texte, surimpression sur image immobile) : jamais.
+          if (fenetreFixe(a, s, e)) continue;
+          // Diversité : 1 extrait d'un passage court (< 8 s), 2 au plus sinon.
+          if ((usagePassage.get(`${cle}@${bp.passage!.debut}`) ?? 0) >= plafondPassage(bp.passage!)) continue;
+          // Accroche (HOOK) : jamais une borne en plein son incertain (phrase coupée) s'il existe une alternative.
+          if (creneau.phase === 'HOOK' && !relache) {
+            const pa = paroleExtrait(a, dp!, s, e, entreesP[cle] ?? {});
+            if ((pa.debut === 'incertaine' && borneDansLeSon(a, s)) || (pa.fin === 'incertaine' && borneDansLeSon(a, e))) continue;
+          }
+        }
         // Continuité (BUILD) : l'extrait reprend exactement là où le précédent s'arrête, dans le même passage.
         const dernier = choisis[choisis.length - 1];
         const continuite = !!bp && creneau.phase === 'BUILD' && !!dernier && prolonge(dernier, { cle, depuis: s, jusqua: e, empreinte: null })
           && !!bornesAutorisees(dp!, dernier.depuis, e, entreesP[cle] ?? {}).ok;
-        if (!reprise && !continuite && chevauche(s, e, utilisees[cle], marge)) continue;
+        // Mode passages : la marge anti-répétition vaut DANS un même plan ; au-delà d'un vrai changement de plan, c'est une autre image.
+        const plagesProches = bp ? (utilisees[cle] ?? []).filter(([x, y]) => x < bp.passage!.fin && y > bp.passage!.debut) : utilisees[cle];
+        if (!reprise && !continuite && chevauche(s, e, plagesProches, marge)) continue;
         if (reprise === 1 && choisis.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
         // ANTI-RÉPÉTITION FLASH (#502) : dans les 3 dernières secondes, jamais
         // la même matière — même en dernier recours (reprise 2).
@@ -733,6 +756,7 @@ export function planMontage(
         const dansLeSon = !!parole && dp!.paroleLocalisable
           && ((parole.debut === 'incertaine' && borneDansLeSon(a, s)) || (parole.fin === 'incertaine' && borneDansLeSon(a, e)));
         if (dansLeSon) score -= 0.15;
+        if (court) score -= 0.1;
         if (cle === interdit) score -= coh.troisiemeMemeRush;
         // Diversité des rushes, jamais au prix d'un mauvais plan
         const part = (partRush.get(cle) ?? 0) / Math.max(1e-6, cible);
@@ -758,18 +782,20 @@ export function planMontage(
             ...(noteP ? noteP.raisons : []),
             bp ? `passage ${arrondi(bp.passage!.debut)}–${arrondi(bp.passage!.fin)} s` : null,
             continuite ? 'continuité : même passage, sans saut' : null,
+            court ? 'plan entier plus court que le créneau (créneau raccourci, sans étirement)' : null,
+            decalage > 0 && bp ? 'créneau allongé du reste du plan précédent' : null,
             parole ? (parole.debut === 'pause_franche' && parole.fin === 'pause_franche' ? 'coupes dans un silence mesuré'
-              : parole.debut === 'absente' ? 'sans piste son' : dansLeSon ? 'borne probablement dans un son (pénalisé)' : 'parole non vérifiée aux bornes') : null,
+              : parole.debut === 'absente' ? (entreesP[cle]?.pisteAudio === true ? 'piste muette' : 'sans piste son') : dansLeSon ? 'borne probablement dans un son (pénalisé)' : 'parole non vérifiée aux bornes') : null,
             modePassages && repli ? 'faute d\'alternative : coupe au milieu d\'un plan' : null,
           ].filter(Boolean);
           meilleur = {
             score, cle, empreinte: m.empreinte, luminosite: m.luminosite, saturation: m.saturation, source: e - s,
             seg: {
-              url: a.url, debut: creneau.debut, fin: creneau.fin, depuis: arrondi(s), jusqua: arrondi(e),
+              url: a.url, debut: creneau.debut, fin: court ? arrondi(creneau.debut + (e - s)) : creneau.fin, depuis: arrondi(s), jusqua: arrondi(e),
               phase: creneau.phase, qualite: arrondi2(qualite), pertinence: pertinence === null ? null : arrondi2(pertinence),
-              differenceVisuelle: arrondi2(diff), beatCible: creneau.beat, effet: ralenti ? 'ralenti' : null,
+              differenceVisuelle: arrondi2(diff), beatCible: court ? null : creneau.beat, effet: ralenti ? 'ralenti' : null,
               energie: arrondi2(energie), similariteVisuelle: arrondi2(simMax), coherenceVisuelle: arrondi2(coherence),
-              beatOffsetMs: creneau.beat !== null ? Math.round(Math.abs(creneau.fin - creneau.beat) * 1000) : null,
+              beatOffsetMs: creneau.beat !== null && !court ? Math.round(Math.abs(creneau.fin - creneau.beat) * 1000) : null,
               ...(vitesse !== 1 ? { vitesse } : {}),
               score: arrondi(score), raison: raisons.join(' · '),
               ...(bp ? { passage: { debut: arrondi(bp.passage!.debut), fin: arrondi(bp.passage!.fin), motifDebut: bp.passage!.motifDebut, motifFin: bp.passage!.motifFin }, parole: parole! } : {}),
@@ -787,7 +813,9 @@ export function planMontage(
     // dans le rapport) — mesuré sur les rushes réels, le repli « règle d'avant »
     // recoupait des plans. Seule exception : obtenir les 2 plans minimum d'un
     // montage, avec la raison « faute d'alternative ».
-    let meilleur = modePassages ? (chercher(null) ?? (plan.length < 2 ? chercher(null, 0, true) : null)) : chercher(null);
+    let meilleur = modePassages
+      ? (chercher(null) ?? (creneau.phase === 'HOOK' ? chercher(null, 0, false, true) : null) ?? (plan.length < 2 ? chercher(null, 0, true) : null))
+      : chercher(null);
     // CTA DYNAMIQUE : plus de plan neuf en couleur et en mouvement ? Un plan
     // couleur déjà monté, repris à un AUTRE timecode, plutôt qu'un plan calme
     // ou noir et blanc pour finir.
@@ -819,13 +847,18 @@ export function planMontage(
     // Plus de matière exploitable : la vidéo s'arrête là (jamais d'étirement).
     if (!meilleur) break;
     plan.push(meilleur.seg);
+    if (modePassages && meilleur.seg.passage) {
+      const kp = `${meilleur.cle}@${meilleur.seg.passage.debut}`;
+      usagePassage.set(kp, (usagePassage.get(kp) ?? 0) + 1);
+      decalage = meilleur.seg.fin < creneau.fin - 1e-6 ? creneau.fin - meilleur.seg.fin : 0;
+    }
     (utilisees[meilleur.cle] ??= []).push([meilleur.seg.depuis ?? 0, meilleur.seg.jusqua ?? 0]);
-    partRush.set(meilleur.cle, (partRush.get(meilleur.cle) ?? 0) + (creneau.fin - creneau.debut));
+    partRush.set(meilleur.cle, (partRush.get(meilleur.cle) ?? 0) + (meilleur.seg.fin - meilleur.seg.debut));
     if (meilleur.empreinte) empreintesChoisies.push(meilleur.empreinte);
     if (meilleur.seg.effet === 'ralenti') ralentis += 1;
     precedent = { cle: meilleur.cle, empreinte: meilleur.empreinte, luminosite: meilleur.luminosite, saturation: meilleur.saturation };
     choisis.push({ cle: meilleur.cle, depuis: meilleur.seg.depuis ?? 0, jusqua: meilleur.seg.jusqua ?? 0, empreinte: meilleur.empreinte });
-    serieNoirBlanc = estNoirEtBlanc(meilleur.saturation) ? serieNoirBlanc + (creneau.fin - creneau.debut) : 0;
+    serieNoirBlanc = estNoirEtBlanc(meilleur.saturation) ? serieNoirBlanc + (meilleur.seg.fin - meilleur.seg.debut) : 0;
   }
   // Un plan d'UN seul rush (les autres écartés pour incohérence, #496) reste
   // un vrai montage : le refuser renvoyait à l'enchaînement brut de TOUS les

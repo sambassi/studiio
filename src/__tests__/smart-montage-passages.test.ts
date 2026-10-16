@@ -53,14 +53,14 @@ describe('mode passages sur les 6 rushes réels', () => {
           expect(p, `${s.url} ${s.depuis}-${s.jusqua}`).toBeDefined();
           expect(s.passage).toEqual({ debut: p!.debut, fin: p!.fin, motifDebut: p!.motifDebut, motifFin: p!.motifFin });
           for (const z of d.zones) {
-            if (z.type !== 'geste') expect(s.depuis! < z.fin && s.jusqua! > z.debut, 'à cheval sur un changement').toBe(false);
+            if (z.type !== 'geste') { if (!p!.interne) expect(s.depuis! < z.fin && s.jusqua! > z.debut, 'à cheval sur un changement').toBe(false); }
             else for (const b of [s.depuis!, s.jusqua!]) expect(b > z.debut + 1e-6 && b < z.fin - 1e-6, 'borne dans un geste').toBe(false);
           }
         }
       });
 
-      it('vrais changements de plan (ffmpeg 20,03 / 24,03 / 50,83 s) jamais à l\'intérieur d\'un extrait', () => {
-        const vrais: Record<string, number[]> = { converted_1791985445290: [20.033, 24.033], converted_1792081208949: [50.833] };
+      it('vrais changements de plan (20,03 / 24,03 s ; volets 49,1–49,5 et 51,3–51,6, coupe 50,8 s) jamais à l\'intérieur d\'un extrait', () => {
+        const vrais: Record<string, number[]> = { converted_1791985445290: [20.033, 24.033], converted_1792081208949: [49.3, 50.8, 51.45] };
         for (const s of plan!) {
           for (const [n, cuts] of Object.entries(vrais)) if (s.url.includes(n)) for (const c of cuts) expect(c > s.depuis! && c < s.jusqua!).toBe(false);
         }
@@ -106,8 +106,8 @@ describe('mode passages : ce qui ne change pas', () => {
   it('matière abondante : mêmes créneaux (début, fin, phase, temps fort visé) qu\'en mode grille', () => {
     for (const [profil, rythme] of [['CARDIO_DANCE', fixture.rythme60], ['LIFESTYLE_BRAND', fixture.rythme60], ['STANDARD', null]] as const) {
       const o: OptionsMontage = { profil, rythme };
-      const g = planMontage(abondant(), 30, o)!;
-      const p = planMontage(abondant(), 30, { ...o, selection: 'passages' })!;
+      const g = planMontage(abondant(12), 30, o)!;
+      const p = planMontage(abondant(12), 30, { ...o, selection: 'passages' })!;
       expect(g[g.length - 1].fin).toBe(30);
       expect(p.map((s) => [s.debut, s.fin, s.phase, s.beatCible])).toEqual(g.map((s) => [s.debut, s.fin, s.phase, s.beatCible]));
     }

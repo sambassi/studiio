@@ -86,7 +86,9 @@ describe('découpage en passages', () => {
     expect(zone[0].type).toBe('transition');
     // Le pic isolé de 9 s (changement de surimpression, même scène) n'est PAS une coupe.
     expect(d.zones.find((z) => z.pics.includes(9))?.type).toBe('geste');
-    expect(d.passages.map((p) => [p.debut, p.fin])).toEqual([[0.5, 48.5], [51.6, 53.583]]);
+    // 0,5–48,5 s = photo fixe + texte, 51,6–53,6 = écran CTA : écartés (plan fixe ou graphique) ;
+    // la seule action (danse au sol 49,5–50,5) est retrouvée DANS la zone de transition.
+    expect(d.passages.map((p) => [p.debut, p.fin, !!p.interne])).toEqual([[49.75, 50.5, true]]);
   });
 
   it('rush réel converted_1791985445290 : coupes à 20 et 24 s (ffmpeg 20,03 / 24,03), geste de l\'orateur 17–18 s', () => {

@@ -62,6 +62,31 @@ export const SEUILS_PASSAGES = {
   silenceMargeS: 0.1,
   /** RMS normalisé (min(1, RMS×4)) sous lequel la piste est muette (≈ -60 dBFS). */
   audioMuet: 0.004,
+  /**
+   * PLAN FIXE OU GRAPHIQUE : mouvement (écart de gris 0..1 entre deux mesures)
+   * sous lequel l'image est immobile — photo, carton de texte, écran de cartes
+   * d'un ancien montage. Mesuré : 0,000–0,003 sur ces écrans ; ≥ 0,016 sur le
+   * plan le plus calme filmé (mer, pexels-35532643).
+   */
+  mouvementFixe: 0.006,
+  /** Passage écarté quand cette part de ses mesures est immobile. */
+  partFixeMax: 0.6,
+  /** Passage plus court que ce seuil : UN extrait au plus (jamais découpé en morceaux). */
+  passageCourtS: 8,
+  /** Extraits au plus par passage (diversité). */
+  extraitsParPassage: 2,
+  /** Dans une zone de transition : saut d'empreinte entre deux mesures = changement interne. */
+  sautInterne: 0.1,
+  /** Pics minimum d'une zone pour y chercher un plan propre interne. */
+  picsZoneInterne: 3,
+  /**
+   * Plan propre interne à une zone de transition : durée minimale. Mesuré image par
+   * image (rush réel 2) : le volet finit vers 49,7 s, la mesure suivante sûre est
+   * 49,75 s, la coupe suivante tombe après 50,5 s ⇒ 0,75 s propres garanties.
+   */
+  passageInterneMinS: 0.7,
+  /** Plan entier plus court admis : au moins cette part du créneau. */
+  partCreneauMin: 0.6,
 } as const;
 
 export type TypeZone = 'coupe' | 'transition' | 'geste';
@@ -87,6 +112,8 @@ export interface Passage {
   motifFin: MotifBorne;
   /** Zones de geste contenues : un extrait peut les contenir, jamais y couper. */
   gestes: Array<[number, number]>;
+  /** Plan propre retrouvé À L'INTÉRIEUR d'une zone de transition (entre deux changements). */
+  interne?: boolean;
 }
 
 /** Entrées facultatives, mesurées HORS du moteur. Absentes : comportement prudent. */
@@ -166,10 +193,13 @@ export function decouperPassages(a: AnalyseRush, entrees: EntreesPassages = {}):
   }
   if (pas > S.pasGrossierS) {
     incertitudes.push(`mesures espacées de ${r3(pas)} s (images-clés) : aucun changement de plan interne localisable, le rush entier forme un seul passage`);
-    const passages: Passage[] = finUtile - debutUtile >= S.passageMinS
+    const m = E.filter((_x, i) => i > 0);
+    const fixe = m.length > 0 && m.filter((x) => x.mouvement < S.mouvementFixe).length / m.length >= S.partFixeMax;
+    const passages: Passage[] = finUtile - debutUtile >= S.passageMinS && !fixe
       ? [{ debut: r3(debutUtile), fin: r3(finUtile), motifDebut: 'debut_rush', motifFin: 'fin_rush', gestes: [] }]
       : [];
-    return { pas, resolution: 'grossiere', zones: [], passages, ecartes: [], partSonore, paroleLocalisable, incertitudes };
+    const ecartes = fixe ? [{ debut: r3(debutUtile), fin: r3(finUtile), motif: 'plan fixe ou graphique (image immobile)' }] : [];
+    return { pas, resolution: 'grossiere', zones: [], passages, ecartes, partSonore, paroleLocalisable, incertitudes };
   }
 
   // 1. Pics de mouvement, regroupés (CORRECTION A).
@@ -217,7 +247,66 @@ export function decouperPassages(a: AnalyseRush, entrees: EntreesPassages = {}):
     debut = Math.max(debut, z.fin); motif = mz;
   }
   if (debut < finUtile) fermer(finUtile, 'fin_rush');
-  return { pas, resolution: 'fine', zones, passages, ecartes, partSonore, paroleLocalisable, incertitudes };
+
+  // 4. Une zone de transition peut contenir la seule action du rush (rush réel 2 :
+  //    volet → danse au sol 49,5–50,5 s → coupe → volet) : les mesures consécutives
+  //    quasi identiques (saut < 0,1) y forment un plan propre, gardé s'il dure ≥ 0,8 s.
+  for (const z of changements) {
+    if (z.pics.length < S.picsZoneInterne) continue;
+    const idx = E.map((_x, i) => i).filter((i) => E[i].t >= z.pics[0] - 1e-6 && E[i].t <= z.pics[z.pics.length - 1] + 1e-6);
+    let run: number[] = [];
+    const clore = () => {
+      if (run.length >= 2) {
+        // Début : une demi-mesure après la première image stable (la fin d'un volet peut y traîner).
+        const d0 = E[run[0]].t + pas / 2; const f0 = E[run[run.length - 1]].t;
+        if (f0 - d0 >= S.passageInterneMinS - 1e-6 && d0 >= debutUtile && f0 <= finUtile) {
+          passages.push({ debut: r3(d0), fin: r3(f0), motifDebut: 'transition', motifFin: 'transition', gestes: [], interne: true });
+        }
+      }
+      run = [];
+    };
+    for (const i of idx) {
+      const saut = i > 0 && E[i].empreinte && E[i - 1].empreinte ? ecartEmpreinte(E[i].empreinte!, E[i - 1].empreinte!) : 1;
+      if (run.length && saut < S.sautInterne) run.push(i);
+      else { clore(); run = [i]; }
+    }
+    clore();
+  }
+  passages.sort((x, y) => x.debut - y.debut);
+
+  // 5. PLAN FIXE OU GRAPHIQUE : écarté (photo, texte incrusté, surimpression animée sur image fixe).
+  const gardes = passages.filter((p) => {
+    const m = E.filter((x, i) => i > 0 && x.t >= p.debut - 1e-6 && x.t <= p.fin + 1e-6);
+    const part = m.length ? m.filter((x) => x.mouvement < S.mouvementFixe).length / m.length : 0;
+    if (part >= S.partFixeMax) {
+      ecartes.push({ debut: p.debut, fin: p.fin, motif: `plan fixe ou graphique (image immobile ${Math.round(part * 100)} % du passage : photo, texte incrusté ou surimpression)` });
+      return false;
+    }
+    return true;
+  });
+  return { pas, resolution: 'fine', zones, passages: gardes, ecartes, partSonore, paroleLocalisable, incertitudes };
+}
+
+/** Fenêtre [s, e] immobile (mouvement moyen sous `mouvementFixe`) : plan fixe ou graphique. */
+export function fenetreFixe(a: AnalyseRush, s: number, e: number): boolean {
+  const m = a.echantillons.filter((x, i) => i > 0 && x.t >= s - 1e-6 && x.t <= e + 1e-6);
+  return m.length > 0 && moyenne(m.map((x) => x.mouvement)) < SEUILS_PASSAGES.mouvementFixe;
+}
+
+/** Nombre maximal d'extraits tirés d'un passage : 1 s'il est court (< 8 s), sinon 2. */
+export function plafondPassage(p: Passage): number {
+  return p.fin - p.debut < SEUILS_PASSAGES.passageCourtS ? 1 : SEUILS_PASSAGES.extraitsParPassage;
+}
+
+/**
+ * Plans ENTIERS plus courts que le créneau (≥ 60 % de lui) : le reste du créneau
+ * passe au plan suivant (la grille musicale ne bouge pas).
+ */
+export function plansEntiersCourts(d: DecoupageRush, duree: number): Array<[number, number]> {
+  const S = SEUILS_PASSAGES;
+  return d.passages
+    .filter((p) => p.fin - p.debut < duree - 1e-6 && p.fin - p.debut >= S.partCreneauMin * duree - 1e-6)
+    .map((p) => [p.debut, r3(p.fin - p.debut)] as [number, number]);
 }
 
 /** Le passage qui contient entièrement [s, e], s'il existe. */
