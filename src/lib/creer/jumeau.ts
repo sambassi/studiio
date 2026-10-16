@@ -180,6 +180,22 @@ export const JUMEAU_ATTENTE_MAX_MS = 32 * 60 * 1000;
 /** Intervalle nominal entre deux lectures du statut. */
 export const JUMEAU_POLL_MS = 5000;
 /**
+ * B3 — ATTENTE FOURNISSEUR (solde de Studiio épuisé chez le prestataire,
+ * `lib/avatar/attente-fournisseur.ts`) : le serveur garde la génération et la
+ * reprend seul, jusqu'à `ATTENTE_MAX_MS` (6 h) après sa création. Tant qu'il
+ * répond `enAttente: 'fournisseur'`, le client ne conclut JAMAIS à l'échec :
+ * il attend au-delà de `JUMEAU_ATTENTE_MAX_MS`, à un rythme ralenti, jusqu'à
+ * 6 h + une marge — au-delà, c'est le verdict serveur (`failed`, recrédité)
+ * qui doit déjà être tombé ; sinon le SUIVI s'arrête (code `delai`,
+ * identifiant gardé), la génération non.
+ */
+export const JUMEAU_ATTENTE_FOURNISSEUR_MAX_MS = 6 * 60 * 60 * 1000 + 10 * 60 * 1000;
+/** Rythme des lectures pendant une attente fournisseur, passé `JUMEAU_ATTENTE_MAX_MS`. */
+export const JUMEAU_POLL_ATTENTE_MS = 60_000;
+/** Ce que l'écran dit pendant l'attente fournisseur — jamais le nom du prestataire. */
+export const MESSAGE_JUMEAU_EN_ATTENTE_FOURNISSEUR =
+  'En attente chez le fournisseur : nous reprendrons automatiquement, vous pouvez quitter la page. Aucun crédit Studiio ne sera perdu.';
+/**
  * Échecs CONSÉCUTIFS tolérés (réseau coupé, 5xx, proxy, erreur transitoire
  * fournisseur relayée en 4xx) avant d'abandonner l'ATTENTE — jamais la
  * génération : elle continue côté serveur et reste reprenable au retour
@@ -281,8 +297,19 @@ export async function attendreStatutJumeau(args: {
   const limite = args.maxAttenteMs ?? JUMEAU_ATTENTE_MAX_MS;
   let echecs = 0;
   let derniereCause: 'connexion' | 'serveur' = 'serveur';
+  // B3 — `repere` : début de la fenêtre de suivi NORMALE. Elle repart quand
+  // le serveur sort de l'attente fournisseur (génération relancée).
+  let repere = debut;
+  let enAttenteFournisseur = false;
   args.onPhase?.('traitement');
-  while (horloge() - debut < limite) {
+  for (;;) {
+    if (enAttenteFournisseur) {
+      if (horloge() - debut >= JUMEAU_ATTENTE_FOURNISSEUR_MAX_MS) {
+        throw new ErreurAttenteJumeau(MESSAGE_JUMEAU_EN_ATTENTE_FOURNISSEUR, 'delai');
+      }
+    } else if (horloge() - repere >= limite) {
+      break;
+    }
     let res: Response | null = null;
     try {
       res = await f(`/api/avatar/status?generationId=${encodeURIComponent(args.generationId)}`);
@@ -302,8 +329,20 @@ export async function attendreStatutJumeau(args: {
       }
       if (d.status === 'failed') throw new ErreurAttenteJumeau(d.error || 'La génération de votre jumeau a échoué.', 'echec');
       // Solde de Studiio épuisé chez le fournisseur : on le DIT (sans le
-      // nommer), la génération reprendra seule — aucun crédit perdu.
-      args.onEtape?.(d.enAttente === 'fournisseur' && d.message ? d.message : DETAIL_PHASE_JUMEAU.traitement);
+      // nommer), la génération reprendra seule — aucun crédit perdu. Jamais
+      // un échec tant que le serveur dit « en attente » (B3).
+      if (d.enAttente === 'fournisseur') {
+        enAttenteFournisseur = true;
+        args.onEtape?.(MESSAGE_JUMEAU_EN_ATTENTE_FOURNISSEUR);
+        await dormir(horloge() - debut >= limite ? JUMEAU_POLL_ATTENTE_MS : JUMEAU_POLL_MS);
+        continue;
+      }
+      if (enAttenteFournisseur) {
+        // Sortie d'attente : la génération est relancée — fenêtre normale neuve.
+        enAttenteFournisseur = false;
+        repere = horloge();
+      }
+      args.onEtape?.(DETAIL_PHASE_JUMEAU.traitement);
       await dormir(JUMEAU_POLL_MS);
       continue;
     }

@@ -13,7 +13,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * Après : on interroge le fournisseur EN PREMIER.
  *   - fournisseur `done`/`completed` avec URL → FINALISER (re-héberger +
  *     `completed`) quel que soit l'âge ;
- *   - fournisseur encore en cours ET âge > 30 min → `failed` + remboursement ;
+ *   - fournisseur encore en cours ET âge > 6 h + marge depuis le dernier
+ *     lancement (B1) → `failed` + remboursement ;
  *   - fournisseur `failed` → `failed` + remboursement ;
  *   - jamais de double remboursement (drapeau `credits_refunded`).
  *
@@ -171,8 +172,8 @@ describe('GET /api/avatar/status — le garde stale interroge le fournisseur AVA
     expect(credits.appels).toHaveLength(0);
   });
 
-  it('⚠️ encore `processing` et vieux de plus de 30 min → failed + remboursement UNE fois', async () => {
-    etat.lignes = [gen({ created_at: ilYA(45) })];
+  it('⚠️ encore `processing` au-delà de l’attente autorisée (6 h + marge) → failed + remboursement UNE fois', async () => {
+    etat.lignes = [gen({ created_at: ilYA(6 * 60 + 15), updated_at: ilYA(6 * 60 + 15) })];
     providers.did = { status: 'processing', videoUrl: null, failureMessage: null };
 
     const res = await requete(G_DID);
@@ -208,11 +209,55 @@ describe('GET /api/avatar/status — le garde stale interroge le fournisseur AVA
   });
 
   it('⚠️ jamais de double remboursement : deux polls stale successifs → un seul crédit', async () => {
-    etat.lignes = [gen({ created_at: ilYA(45) })];
+    etat.lignes = [gen({ created_at: ilYA(6 * 60 + 15), updated_at: ilYA(6 * 60 + 15) })];
     providers.did = { status: 'processing', videoUrl: null, failureMessage: null };
 
     await requete(G_DID);
     await requete(G_DID);
     expect(credits.appels).toHaveLength(1);
+  });
+});
+
+describe('B1 — génération AVEC identifiant fournisseur : jamais abandonnée avant l’attente autorisée', () => {
+  it('le délai est celui de l’attente fournisseur (6 h) + la marge client de 10 min', async () => {
+    const { DELAI_GENERATION_LANCEE_MS } = await import('@/lib/avatar/statut');
+    const { ATTENTE_MAX_MS } = await import('@/lib/avatar/attente-fournisseur');
+    expect(DELAI_GENERATION_LANCEE_MS).toBe(ATTENTE_MAX_MS + 10 * 60 * 1000);
+  });
+
+  it('créée il y a 3 h, fournisseur « processing » → processing, aucun remboursement', async () => {
+    etat.lignes = [gen({ id: G_HG, provider: 'heygen', provider_video_id: 'hg-1', status: 'processing', created_at: ilYA(180), updated_at: ilYA(180) })];
+    providers.heygen = { status: 'processing', videoUrl: null, failureMessage: null, durationSeconds: undefined };
+    const corps = await (await requete(G_HG)).json() as { data: { status: string } };
+    expect(corps.data.status).toBe('processing');
+    expect(credits.appels).toHaveLength(0);
+    expect(etat.lignes[0].status).toBe('processing');
+    expect(etat.lignes[0].credits_refunded).toBe(false);
+  });
+
+  it('créée il y a 8 h mais RELANCÉE il y a 10 min (reprise après attente) → processing, aucun remboursement', async () => {
+    etat.lignes = [gen({ id: G_HG, provider: 'heygen', provider_video_id: 'hg-1', created_at: ilYA(8 * 60), updated_at: ilYA(10) })];
+    const corps = await (await requete(G_HG)).json() as { data: { status: string } };
+    expect(corps.data.status).toBe('processing');
+    expect(credits.appels).toHaveLength(0);
+  });
+
+  it('⚠️ > 6 h + marge sans statut terminal, DEUX passes simultanées → failed + UN seul remboursement', async () => {
+    etat.lignes = [gen({ id: G_HG, provider: 'heygen', provider_video_id: 'hg-1', created_at: ilYA(6 * 60 + 11), updated_at: ilYA(6 * 60 + 11) })];
+    const [a, b] = await Promise.all([requete(G_HG), requete(G_HG)]);
+    const statuts = [(await a.json() as { data: { status: string } }).data.status, (await b.json() as { data: { status: string } }).data.status];
+    expect(statuts).toEqual(['failed', 'failed']);
+    expect(credits.appels).toEqual([{ userId: U, montant: 40, type: 'refund' }]);
+    expect(etat.lignes[0].status).toBe('failed');
+    expect(etat.lignes[0].credits_refunded).toBe(true);
+  });
+
+  it('fournisseur « failed » (même récent) → failed + UN seul remboursement, deux passes simultanées', async () => {
+    etat.lignes = [gen({ id: G_HG, provider: 'heygen', provider_video_id: 'hg-1', created_at: ilYA(60), updated_at: ilYA(60) })];
+    providers.heygen = { status: 'failed', videoUrl: null, failureMessage: 'render error', durationSeconds: undefined };
+    const [a, b] = await Promise.all([requete(G_HG), requete(G_HG)]);
+    expect((await a.json() as { data: { status: string } }).data.status).toBe('failed');
+    expect((await b.json() as { data: { status: string } }).data.status).toBe('failed');
+    expect(credits.appels).toEqual([{ userId: U, montant: 40, type: 'refund' }]);
   });
 });
