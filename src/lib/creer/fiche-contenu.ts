@@ -360,18 +360,22 @@ export function contenuRushsPourMetadata(fiches: ReadonlyArray<{ cle: string; fi
  * M2-c : `pertinenceRushs` (3e argument, FACULTATIF) rejoint la même clé ;
  * absent ou `null`, la sortie est celle d'avant octet pour octet.
  */
-export function decisionMontagePourMetadata<Q, P = never>(
+export function decisionMontagePourMetadata<Q, P = never, S = never>(
   qualiteRushs: Q | null | undefined,
   contenuRushs: ReturnType<typeof contenuRushsPourMetadata> | null | undefined,
   pertinenceRushs?: P | null,
-): { decisionMontage?: { version: 1; qualiteRushs?: Q; contenuRushs?: NonNullable<ReturnType<typeof contenuRushsPourMetadata>>; pertinenceRushs?: P } } {
-  if (!qualiteRushs && !contenuRushs && !pertinenceRushs) return {};
+  // M3-a : rapport de sélection par passages (4e argument, FACULTATIF) ;
+  // absent ou `null`, la sortie est celle d'avant octet pour octet.
+  selection?: S | null,
+): { decisionMontage?: { version: 1; qualiteRushs?: Q; contenuRushs?: NonNullable<ReturnType<typeof contenuRushsPourMetadata>>; pertinenceRushs?: P; selection?: S } } {
+  if (!qualiteRushs && !contenuRushs && !pertinenceRushs && !selection) return {};
   return {
     decisionMontage: {
       version: 1,
       ...(qualiteRushs ? { qualiteRushs } : {}),
       ...(contenuRushs ? { contenuRushs } : {}),
       ...(pertinenceRushs ? { pertinenceRushs } : {}),
+      ...(selection ? { selection } : {}),
     },
   };
 }
