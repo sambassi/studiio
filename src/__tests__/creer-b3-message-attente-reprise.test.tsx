@@ -16,7 +16,6 @@ const rep = (status: number, body: unknown) => ({ ok: status >= 200 && status < 
 const traitement = () => rep(200, { success: true, data: { status: 'processing', videoUrl: null } });
 /** Le message que les lignes `failed` déjà en base portent (avant ce correctif). */
 const ANCIEN_MESSAGE = 'La génération de votre avatar a échoué.';
-const ACCUSE_AVATAR = /génération de votre avatar a échoué/;
 
 class NoopResizeObserver { observe() {} unobserve() {} disconnect() {} }
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = NoopResizeObserver;
@@ -105,9 +104,6 @@ beforeEach(() => { window.localStorage.clear(); statut = 'processing'; installer
 afterEach(() => { statut = '404'; cleanup(); vi.clearAllMocks(); });
 
 
-const ANCIENNE = '55555555-5555-4555-8555-00000000000a';
-const URL_ANCIEN_JUMEAU_OK = `https://studiio.pro/storage/v1/object/public/media/u1/avatar/${ANCIENNE}.mp4`;
-const brouillon = () => JSON.parse(window.localStorage.getItem(CLE)!);
 
 const etape = () => document.querySelector('[data-jumeau-reprise-etape]')?.textContent ?? null;
 
