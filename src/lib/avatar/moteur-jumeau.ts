@@ -843,17 +843,40 @@ export function estGenerationZombie(
 export async function cloreGenerationZombie(
   g: { id: string; user_id: string; provider: string | null },
 ): Promise<{ close: boolean; rembourse: boolean; message: string }> {
-  const { data: prise, error } = await supabaseAdmin
+  console.error(`[Jumeau] génération ${g.id} jamais partie chez le fournisseur (lancement interrompu) : clôture.`);
+  return cloreEnVolEtRembourser(g, { sansIdentifiantSeulement: true, message: MESSAGES_AVATAR.nonDemarree, messageRembourse: MESSAGES_AVATAR.nonDemarreeRembourse });
+}
+
+/**
+ * B2 — l'Autopilote renonce à une génération de jumeau qu'il n'a jamais pu
+ * suivre jusqu'au bout (fournisseur muet, suivi en échec répété jusqu'à son
+ * plafond de passes) : si elle est encore EN VOL, elle est close `failed` et
+ * son débit rendu AU PLUS UNE FOIS (`rembourserGenerationUneFois`). Une
+ * génération déjà terminée (livrée, échouée) n'est jamais touchée. Rend
+ * `true` si CET appel l'a close.
+ */
+export async function abandonnerGenerationJumeau(userId: string, generationId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin.from('avatar_generations').select('provider').eq('id', generationId).eq('user_id', userId).maybeSingle();
+  const provider = (data as { provider?: string | null } | null)?.provider ?? null;
+  const r = await cloreEnVolEtRembourser({ id: generationId, user_id: userId, provider }, { sansIdentifiantSeulement: false, message: MESSAGES_AVATAR.echec, messageRembourse: MESSAGES_AVATAR.echecRembourse });
+  return r.close;
+}
+
+async function cloreEnVolEtRembourser(
+  g: { id: string; user_id: string; provider: string | null },
+  o: { sansIdentifiantSeulement: boolean; message: string; messageRembourse: string },
+): Promise<{ close: boolean; rembourse: boolean; message: string }> {
+  let q = supabaseAdmin
     .from('avatar_generations')
-    .update({ status: 'failed', error_message: MESSAGES_AVATAR.nonDemarree, updated_at: new Date().toISOString() })
+    .update({ status: 'failed', error_message: o.message, updated_at: new Date().toISOString() })
     .eq('id', g.id)
-    .in('status', ['pending', 'processing'])
-    .is('provider_video_id', null)
-    .select('id');
-  if (error || !prise || prise.length === 0) return { close: false, rembourse: false, message: MESSAGES_AVATAR.nonDemarree };
-  console.error(`[Jumeau] génération ${g.id} jamais partie chez le fournisseur (lancement interrompu) : close.`);
+    .eq('user_id', g.user_id)
+    .in('status', ['pending', 'processing']);
+  if (o.sansIdentifiantSeulement) q = q.is('provider_video_id', null);
+  const { data: prise, error } = await q.select('id');
+  if (error || !prise || prise.length === 0) return { close: false, rembourse: false, message: o.message };
   const rembourse = await rembourserGenerationUneFois(g.user_id, g.id);
-  const message = rembourse ? MESSAGES_AVATAR.nonDemarreeRembourse : MESSAGES_AVATAR.nonDemarree;
+  const message = rembourse ? o.messageRembourse : o.message;
   if (rembourse) {
     await supabaseAdmin.from('avatar_generations').update({ error_message: message }).eq('id', g.id);
   }

@@ -97,9 +97,11 @@ vi.mock('@/lib/db/supabase', () => ({
 // ── Dépendances doublées ────────────────────────────────────────────────────
 const genererVideoJumeau = vi.fn<(...a: unknown[]) => Promise<unknown>>();
 const reconcilierLancement = vi.fn(async (..._a: unknown[]) => true);
+const abandonnerGenerationJumeau = vi.fn(async (..._a: unknown[]) => true);
 vi.mock('@/lib/avatar/moteur-jumeau', () => ({
   genererVideoJumeau: (...a: unknown[]) => genererVideoJumeau(...a),
   reconcilierLancement: (...a: unknown[]) => reconcilierLancement(...a),
+  abandonnerGenerationJumeau: (...a: unknown[]) => abandonnerGenerationJumeau(...a),
 }));
 
 const avancer = vi.fn<(...a: unknown[]) => Promise<unknown>>();
@@ -119,6 +121,7 @@ import {
   scriptJumeauMontage, lancerJumeauMontage, finaliserJumeauxPrets, estMediaIntrouvable,
   creneauxJumeauEnAttente, STATUT_RESERVE, GENERATION_RESERVEE, DELAI_ABANDON_EN_COURS_MS,
 } from '@/lib/autopilot/jumeau-async';
+import { JumeauIllisibleError } from '@/lib/autopilot/duree-jumeau';
 
 const post = {
   title: 'Routine du matin',
@@ -436,5 +439,73 @@ describe('Durcissement : ligne en cours abandonnée, génération non enregistr�
     expect(reconcilierLancement).toHaveBeenCalledWith('gen-7', 'u1', 'scene-7');
     expect(reconcilierLancement.mock.invocationCallOrder[0]).toBeLessThan(avancer.mock.invocationCallOrder[0]);
     expect(genererVideoJumeau).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('B2 — échec répété du SUIVI du jumeau : repli sans jumeau, sans double débit', () => {
+  beforeEach(() => { rows = []; vi.clearAllMocks(); creneauxAvecPost = new Set(); });
+
+  it('⚠️ exception du suivi à MAX_TENTATIVES → ligne « echec », génération close et remboursée, montage SANS jumeau (un seul rendu)', async () => {
+    enFile({ tentatives: 39 });
+    avancer.mockRejectedValue(new Error('HeyGen ne repond pas (timeout).'));
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.echecs).toBe(1);
+    expect(rows[0].statut).toBe('echec');
+    expect(abandonnerGenerationJumeau).toHaveBeenCalledTimes(1);
+    expect(abandonnerGenerationJumeau).toHaveBeenCalledWith('u1', 'gen-1');
+    expect(produireUnMontage).toHaveBeenCalledTimes(1);
+    const arg = produireUnMontage.mock.calls[0][0] as Record<string, unknown>;
+    expect(arg.jumeauVideoUrl).toBeUndefined();
+    expect(arg.jobId).toBe('job-1'); // même référence de débit du rendu
+    expect((arg.metadataSupplement as Record<string, unknown>).jumeauIgnore).toBe(true);
+  });
+
+  it('repli : un post déjà déposé pour le créneau → aucun second rendu (pas de double débit)', async () => {
+    enFile({ tentatives: 39 });
+    creneauxAvecPost = new Set(['manuel:u1|2026-08-05|09:00']);
+    avancer.mockRejectedValue(new Error('HeyGen est injoignable.'));
+    await finaliserJumeauxPrets({ max: 5 });
+    expect(produireUnMontage).not.toHaveBeenCalled();
+  });
+
+  it('avant MAX_TENTATIVES, l’exception reste transitoire : rouverte, ni repli ni clôture', async () => {
+    enFile({ tentatives: 3 });
+    avancer.mockRejectedValue(new Error('HeyGen a repondu 500.'));
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.encore).toBe(1);
+    expect(abandonnerGenerationJumeau).not.toHaveBeenCalled();
+    expect(produireUnMontage).not.toHaveBeenCalled();
+  });
+
+  it('suivi toujours « en cours » à MAX_TENTATIVES → génération close et remboursée, puis repli (chemin déjà en prod)', async () => {
+    enFile({ tentatives: 39 });
+    avancer.mockResolvedValue({ status: 'processing', videoUrl: null });
+    await finaliserJumeauxPrets({ max: 5 });
+    expect(abandonnerGenerationJumeau).toHaveBeenCalledWith('u1', 'gen-1');
+    expect(produireUnMontage).toHaveBeenCalledTimes(1);
+    expect(rows[0].statut).toBe('echec');
+  });
+
+  it('⚠️ jumeau LIVRÉ mais le RENDU échoue jusqu’à MAX_TENTATIVES → aucun repli sans avatar, génération intacte', async () => {
+    enFile({ tentatives: 39 });
+    avancer.mockResolvedValue({ status: 'completed', videoUrl: 'https://minio/u1/avatar/gen-1.mp4' });
+    produireUnMontage.mockRejectedValueOnce(new Error('Remotion : rendu interrompu'));
+    const res = await finaliserJumeauxPrets({ max: 5 });
+    expect(res.echecs).toBe(1);
+    expect(rows[0].statut).toBe('echec');
+    expect(produireUnMontage).toHaveBeenCalledTimes(1); // la seule tentative AVEC le jumeau
+    expect(abandonnerGenerationJumeau).not.toHaveBeenCalled();
+  });
+
+  it('⚠️ A1 — JumeauIllisibleError à MAX_TENTATIVES → arrêt, JAMAIS de montage sans avatar', async () => {
+    enFile({ tentatives: 39 });
+    avancer.mockResolvedValue({ status: 'completed', videoUrl: 'https://minio/u1/avatar/gen-1.mp4' });
+    produireUnMontage.mockRejectedValueOnce(new JumeauIllisibleError('durée illisible'));
+    await finaliserJumeauxPrets({ max: 5 });
+    expect(rows[0].statut).toBe('echec');
+    expect(produireUnMontage).toHaveBeenCalledTimes(1);
+    const sansAvatar = produireUnMontage.mock.calls.filter((c) => !(c[0] as Record<string, unknown>).jumeauVideoUrl);
+    expect(sansAvatar).toHaveLength(0);
+    expect(abandonnerGenerationJumeau).not.toHaveBeenCalled();
   });
 });
