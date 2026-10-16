@@ -144,7 +144,7 @@ describe('suppression complète du compte', () => {
     const r = await executerDemande(d.code, deps);
     expect(r.statut).toBe('terminee');
     expect(stockage.objets.media.size).toBe(0);
-  });
+  }, 30_000); // des dizaines de milliers d'objets simulés : délai explicite sous charge
 });
 
 describe('garde des préfixes de stockage', () => {

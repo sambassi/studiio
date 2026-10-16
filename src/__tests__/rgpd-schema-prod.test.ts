@@ -28,7 +28,7 @@ describe('suppression sur le schéma de PRODUCTION', () => {
     const avantB = JSON.stringify(base.tables.users.find((u) => u.id === B));
     const d = await executerDemande((await creerDemandeCompte(A, 'utilisateur', deps)).code, deps);
     expect(d.etapes.find((e) => e.id === 'compte')?.statut).toBe('terminee');
-    expect(d.statut === 'terminee' || d.statut === 'terminee_studiio_externes_restantes').toBe(true);
+    expect(['terminee', 'terminee_studiio_externes_restantes']).toContain(String(d.statut));
     const ua = base.tables.users.find((u) => u.id === A)!;
     expect(ua.email).toBe(`supprime-${A}@supprime.invalid`);
     expect(ua.image).toBeNull();
