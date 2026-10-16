@@ -24,18 +24,19 @@ const cat = (f: ReturnType<typeof ficheContenuRush>, id: string) => f.categories
 const SILENCE = Array.from({ length: 20 }, () => 0);
 
 describe('sources Pexels', () => {
-  it('description explicite → catégorie de la taxonomie, confiance élevée', () => {
+  it('description explicite seule → catégorie de la taxonomie, confiance MOYENNE (une seule source)', () => {
     const f = ficheContenuRush({ pexels: { description: 'a man calculating his budget at home' } });
-    expect(cat(f, 'personal-finance')).toEqual({ id: 'personal-finance', confiance: 'elevee', sources: ['pexels-description'] });
-    expect(cat(f, 'man')?.confiance).toBe('elevee');
-    expect(cat(f, 'home')?.confiance).toBe('elevee');
-    expect(f.inconnus).toEqual(['objets']); // action, lieu, personnes établis
+    expect(cat(f, 'personal-finance')).toEqual({ id: 'personal-finance', confiance: 'moyenne', sources: ['pexels-description'] });
+    expect(cat(f, 'man')?.confiance).toBe('moyenne');
+    expect(cat(f, 'home')?.confiance).toBe('moyenne');
+    // « budget » est un nom, pas un verbe : l'action reste inconnue.
+    expect(f.inconnus).toEqual(['objets', 'action'])
     expect(f.source).toBe("d'après description Pexels");
   });
 
   it('sans description mais URL de page avec slug (imports d’avant M2-a) → même lecture', () => {
     const f = ficheContenuRush({ pexels: { sourceUrl: 'https://www.pexels.com/video/women-dancing-in-a-studio-8955360/' } });
-    expect(f.categories.map((c) => [c.id, c.confiance])).toEqual([['dance', 'elevee'], ['studio', 'elevee']]);
+    expect(f.categories.map((c) => [c.id, c.confiance])).toEqual([['dance', 'moyenne'], ['studio', 'moyenne']]);
     expect(f.categories.every((c) => c.sources.join() === 'pexels-description')).toBe(true);
   });
 
@@ -50,15 +51,19 @@ describe('sources Pexels', () => {
       { id: 'healthy-food', confiance: 'moyenne', sources: ['pexels-requete'] },
       { id: 'cooking', confiance: 'moyenne', sources: ['pexels-requete'] }, // « food » : mot français du concept Cuisine
     ]);
-    expect(f.inconnus).toEqual(['objets', 'lieu', 'personnes']);
+    // Une recherche n'établit rien : tout reste inconnu.
+    expect(f.inconnus).toEqual(['objets', 'lieu', 'action', 'personnes']);
   });
 
   it('deux sources concordantes → élevée ; discordantes → la recherche contredite tombe à faible', () => {
-    const concord = ficheContenuRush({ pexels: { description: 'fresh fruits on a table', requete: 'healthy food' } });
+    const concord = ficheContenuRush({ pexels: { description: 'a woman eating healthy at home', requete: 'healthy food' } });
     expect(cat(concord, 'healthy-food')).toEqual({ id: 'healthy-food', confiance: 'elevee', sources: ['pexels-description', 'pexels-requete'] });
+    // « fruits » est un mot FRANÇAIS de la taxonomie : jamais lu dans un titre anglais.
+    expect(cat(ficheContenuRush({ pexels: { description: 'fresh fruits on a table', requete: 'healthy food' } }), 'healthy-food')?.confiance).toBe('moyenne');
     const discord = ficheContenuRush({ pexels: { description: 'group of people dancing', requete: 'personal finance' } });
-    expect(cat(discord, 'dance')?.confiance).toBe('elevee');
+    expect(cat(discord, 'dance')?.confiance).toBe('moyenne');
     expect(cat(discord, 'personal-finance')).toEqual({ id: 'personal-finance', confiance: 'faible', sources: ['pexels-requete'] });
+    expect(discord.contradiction).toBe(true);
     // Description muette sur l'activité : la recherche n'est pas contredite.
     const muette = ficheContenuRush({ pexels: { description: 'woman sitting at a table', requete: 'personal finance' } });
     expect(cat(muette, 'personal-finance')?.confiance).toBe('moyenne');
@@ -157,7 +162,7 @@ describe('validation, libellé, métadonnées', () => {
     expect(m.version).toBe(1);
     expect(m.rushs).toHaveLength(2);
     expect(JSON.stringify(m)).not.toMatch(/https?:|women|studio d/);
-    expect(m.rushs[1]).toEqual({ cle: '/x/media/u/library/stock-pexels-video-1.mp4', categories: [{ id: 'dance', confiance: 'elevee', sources: ['pexels-description'] }, { id: 'studio', confiance: 'elevee', sources: ['pexels-description'] }], parole: 'inconnu', inconnus: ['objets', 'personnes'] });
+    expect(m.rushs[1]).toEqual({ cle: '/x/media/u/library/stock-pexels-video-1.mp4', categories: [{ id: 'dance', confiance: 'moyenne', sources: ['pexels-description'] }, { id: 'studio', confiance: 'moyenne', sources: ['pexels-description'] }], parole: 'inconnu', inconnus: ['objets'] });
   });
   it('decisionMontagePourMetadata : sans fiche, EXACTEMENT la clé d’avant (M1)', () => {
     const q = { version: 1, rushs: [] };

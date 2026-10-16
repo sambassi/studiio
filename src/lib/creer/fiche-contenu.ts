@@ -28,7 +28,7 @@
  * Module PUR : aucun réseau, aucun stockage, aucun fournisseur IA.
  */
 import { motsDuSlug } from '@/lib/stock/fournisseurs';
-import { conceptParId, conceptsReconnus, IDS_CONCEPTS } from '@/lib/stock/requetes';
+import { conceptParId, conceptsDuTexte, IDS_CONCEPTS, motsDe, sujetsHorsTaxonomie } from '@/lib/stock/requetes';
 
 export const VERSION_FICHE_CONTENU = 1 as const;
 
@@ -52,6 +52,8 @@ export interface FicheContenuRush {
   inconnus: DimensionInconnue[];
   /** Résumé lisible des sources consultées — jamais un texte venu du fournisseur. */
   source: string;
+  /** Présent (vrai) quand le contenu contredit la recherche : la recherche est alors « faible ». */
+  contradiction?: true;
 }
 
 export interface IndicesContenu {
@@ -75,6 +77,22 @@ const DIMENSIONS: DimensionInconnue[] = ['objets', 'lieu', 'action', 'personnes'
 const DIMENSION_DE: Record<string, DimensionInconnue | undefined> = {
   objet: 'objets', lieu: 'lieu', activite: 'action', personnes: 'personnes',
 };
+/** Sources qui disent ce que MONTRE le média (la requête dit ce qu'on cherchait). */
+const SOURCES_CONTENU: ReadonlySet<SourceFiche> = new Set(['pexels-description', 'nom-fichier', 'metadonnees']);
+/** Langues lues par source : un titre Pexels est anglais. */
+const LANGUES: Record<SourceFiche, { fr: boolean; en: boolean }> = {
+  'pexels-description': { fr: false, en: true },
+  'pexels-requete': { fr: true, en: true },
+  'nom-fichier': { fr: true, en: true },
+  metadonnees: { fr: true, en: true },
+  'audio-energie': { fr: false, en: false },
+};
+/** Mots qui NOMMENT des personnes (anglais / français), sans les identifier. */
+const MOTS_PERSONNES: ReadonlySet<string> = new Set([
+  'people', 'person', 'persons', 'woman', 'women', 'man', 'men', 'girl', 'girls', 'boy', 'boys', 'kid', 'kids', 'child', 'children',
+  'player', 'players', 'dancer', 'dancers', 'couple', 'family', 'friends', 'crowd', 'group', 'team',
+  'personne', 'personnes', 'gens', 'femme', 'femmes', 'homme', 'hommes', 'fille', 'filles', 'garcon', 'enfant', 'enfants', 'famille', 'groupe', 'equipe',
+]);
 const RANG_CONFIANCE: Record<ConfianceFiche, number> = { elevee: 0, moyenne: 1, faible: 2 };
 const MAX_CATEGORIES = 8;
 const MAX_TEXTE = 300;
@@ -160,10 +178,9 @@ const LIBELLE_SOURCE: Record<SourceFiche, string> = {
 export function ficheContenuRush(indices: IndicesContenu | null | undefined): FicheContenuRush {
   const i = indices ?? {};
   const textes: Array<{ source: SourceFiche; texte: string }> = [];
-  let descriptionConnue = false;
   if (i.pexels) {
     const d = descriptionPexels(i.pexels);
-    if (d) { textes.push({ source: 'pexels-description', texte: d }); descriptionConnue = true; }
+    if (d) textes.push({ source: 'pexels-description', texte: d });
     const r = borneTexte(i.pexels.requete).trim();
     if (r) textes.push({ source: 'pexels-requete', texte: r });
   }
@@ -172,40 +189,61 @@ export function ficheContenuRush(indices: IndicesContenu | null | undefined): Fi
   const meta = (Array.isArray(i.metadonnees) ? i.metadonnees : []).map(borneTexte).filter((t) => t.trim()).join(' · ');
   if (meta) textes.push({ source: 'metadonnees', texte: meta });
 
-  // Concept → sources qui le citent, dans l'ordre d'apparition.
-  const parConcept = new Map<string, Set<SourceFiche>>();
-  const categoriesDecrites = new Set<string>();
+  // Concept → sources qui le citent (mots entiers, PAR LANGUE : un titre
+  // Pexels est anglais, une requête ou un nom de fichier peut être l'un ou
+  // l'autre), et s'il a été lu sur un verbe d'action dans une source de contenu.
+  const parConcept = new Map<string, { categorie: string; sources: Set<SourceFiche>; verbeContenu: boolean }>();
+  const categoriesDuContenu = new Set<string>();
+  const horsTaxonomie: string[] = [];
+  let personnesExplicites = false;
   for (const { source, texte } of textes) {
-    for (const c of conceptsReconnus(texte)) {
-      if (!parConcept.has(c.id)) parConcept.set(c.id, new Set());
-      parConcept.get(c.id)!.add(source);
-      if (source === 'pexels-description') categoriesDecrites.add(c.categorie);
+    const contenu = SOURCES_CONTENU.has(source);
+    if (contenu) {
+      horsTaxonomie.push(...sujetsHorsTaxonomie(texte));
+      if (source !== 'nom-fichier' && motsDe(texte).some((m) => MOTS_PERSONNES.has(m))) personnesExplicites = true;
+    }
+    for (const { concept, parVerbe } of conceptsDuTexte(texte, LANGUES[source])) {
+      const e = parConcept.get(concept.id) ?? { categorie: concept.categorie, sources: new Set<SourceFiche>(), verbeContenu: false };
+      e.sources.add(source);
+      if (parVerbe && contenu && source !== 'nom-fichier') e.verbeContenu = true;
+      parConcept.set(concept.id, e);
+      if (contenu) categoriesDuContenu.add(concept.categorie);
     }
   }
 
+  let contradiction = false;
   const categories: CategorieFiche[] = [];
-  for (const [id, ens] of parConcept) {
-    const sources = [...ens];
+  for (const [id, e] of parConcept) {
+    const sources = [...e.sources];
+    const parLeContenu = sources.some((x) => SOURCES_CONTENU.has(x));
+    // La recherche dit ce qu'on CHERCHAIT, pas ce que montre le média. Si le
+    // contenu (titre, nom, informations) parle d'AUTRE CHOSE de même nature —
+    // une autre activité, un autre lieu, ou un sujet hors taxonomie évident
+    // (football, golf, club…) — la recherche est contredite.
+    const contredite = e.sources.has('pexels-requete') && !parLeContenu
+      && (categoriesDuContenu.has(e.categorie) || (horsTaxonomie.length > 0 && (e.categorie === 'activite' || e.categorie === 'lieu')));
     let confiance: ConfianceFiche;
-    if (sources.length >= 2 || ens.has('pexels-description')) confiance = 'elevee';
-    else if (ens.has('pexels-requete')) {
-      // La recherche dit ce qu'on CHERCHAIT, pas ce que montre le média. Une
-      // description qui nomme AUTRE CHOSE de même nature (une autre activité,
-      // un autre lieu…) la contredit : la recherche seule reste alors faible.
-      // Une description muette sur ce point ne contredit rien.
-      const nature = conceptParId(id)?.categorie;
-      confiance = descriptionConnue && nature && categoriesDecrites.has(nature) ? 'faible' : 'moyenne';
-    } else if (ens.has('metadonnees')) confiance = 'moyenne';
-    else confiance = 'faible'; // nom de fichier seul : faible au maximum
+    if (contredite) { confiance = 'faible'; contradiction = true; }
+    // « Élevée » exige DEUX sources indépendantes qui concordent ; jamais une seule.
+    else if (sources.length >= 2) confiance = 'elevee';
+    else if (e.sources.has('nom-fichier')) confiance = 'faible'; // nom de fichier seul : faible au maximum
+    else confiance = 'moyenne';
     categories.push({ id, confiance, sources });
   }
-  categories.sort((a, b) => RANG_CONFIANCE[a.confiance] - RANG_CONFIANCE[b.confiance]);
+  categories.sort((x, y) => RANG_CONFIANCE[x.confiance] - RANG_CONFIANCE[y.confiance]);
   const retenues = categories.slice(0, MAX_CATEGORIES);
 
+  // Une dimension sort des inconnus SEULEMENT sur un mot explicite d'une
+  // source de contenu (titre, informations) : un verbe d'action pour l'action,
+  // un lieu / un objet / des personnes nommés. Une catégorie seule (Cuisine)
+  // n'implique jamais une action ; une recherche n'établit rien.
   const etablies = new Set<DimensionInconnue>();
+  if (personnesExplicites) etablies.add('personnes');
   for (const c of retenues) {
-    if (c.confiance === 'faible') continue;
-    const dim = DIMENSION_DE[conceptParId(c.id)?.categorie ?? ''];
+    const e = parConcept.get(c.id)!;
+    if (c.confiance === 'faible' || !c.sources.some((x) => x === 'pexels-description' || x === 'metadonnees')) continue;
+    if (e.categorie === 'activite') { if (e.verbeContenu) etablies.add('action'); continue; }
+    const dim = DIMENSION_DE[e.categorie];
     if (dim) etablies.add(dim);
   }
 
@@ -226,6 +264,7 @@ export function ficheContenuRush(indices: IndicesContenu | null | undefined): Fi
     parole,
     inconnus: DIMENSIONS.filter((d) => !etablies.has(d)),
     source,
+    ...(contradiction ? { contradiction: true as const } : {}),
   };
 }
 
@@ -258,6 +297,7 @@ export function ficheContenuValide(x: unknown): x is FicheContenuRush {
   const f = x as Record<string, unknown>;
   if (f.version !== VERSION_FICHE_CONTENU) return false;
   if (typeof f.source !== 'string' || f.source.length > 200) return false;
+  if ('contradiction' in f && f.contradiction !== true) return false;
   if (typeof f.parole !== 'string' || !PAROLES.has(f.parole)) return false;
   if (!Array.isArray(f.inconnus) || !f.inconnus.every((d) => (DIMENSIONS as string[]).includes(d as string))) return false;
   if (!Array.isArray(f.categories) || f.categories.length > MAX_CATEGORIES) return false;
@@ -299,6 +339,7 @@ export function contenuRushsPourMetadata(fiches: ReadonlyArray<{ cle: string; fi
       categories: fiche.categories.map(({ id, confiance, sources }) => ({ id, confiance, sources })),
       parole: fiche.parole,
       inconnus: fiche.inconnus,
+      ...(fiche.contradiction ? { contradiction: true as const } : {}),
     })),
   };
 }

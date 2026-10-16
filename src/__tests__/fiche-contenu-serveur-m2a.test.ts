@@ -12,7 +12,7 @@ import {
   ABSENT,
   type StockageFiches,
 } from '@/lib/creer/fiche-contenu-serveur';
-import { cibleRecevable, cibleLisibleParCompte, cleDansNamespaceAnalyse } from '@/lib/storage/acces-objet';
+import { cibleRecevable, cibleLisibleParCompte, cleDansNamespaceAnalyse, NAMESPACES_PROPRIETAIRE_SECOND } from '@/lib/storage/acces-objet';
 import { estFichierDurable } from '@/lib/storage/bibliotheque';
 import { attributionPourStockage } from '@/lib/stock/importer';
 import { memoriserRequeteStock, requeteStockMemorisee, viderRequetesStock } from '@/lib/stock/requetes-memo';
@@ -65,6 +65,21 @@ describe('clé et emplacement', () => {
   });
 });
 
+describe('défense en profondeur : `fiches-contenu` est un namespace à propriétaire au 2e segment', () => {
+  it('liste déclarée', () => {
+    expect(NAMESPACES_PROPRIETAIRE_SECOND).toContain('fiches-contenu');
+  });
+  it('même SANS le segment privé `analyse`, la fiche de A n’est jamais lisible par B', () => {
+    const sansAnalyse = `fiches-contenu/${A}/${'a'.repeat(40)}.1.v1.json`;
+    expect(cibleLisibleParCompte('media', sansAnalyse, B)).toBe(false);
+    expect(cibleLisibleParCompte('media', sansAnalyse, A)).toBe(true);
+    expect(cibleLisibleParCompte('media', `fiches-contenu/${A}`, A)).toBe(false);
+    // Avec le segment `analyse` (forme réelle) : refusée à tous, propriétaire compris.
+    expect(cibleLisibleParCompte('media', cleFicheContenu(A, 'media', `${A}/library/x.mp4`, 1), A)).toBe(false);
+    expect(cibleLisibleParCompte('media', cleFicheContenu(A, 'media', `${A}/library/x.mp4`, 1), B)).toBe(false);
+  });
+});
+
 describe('cache durable : 2e ouverture sans recalcul', () => {
   it('1re ouverture calcule et écrit ; 2e relit (aucun calcul, aucune relecture d’attribution)', async () => {
     const m = memoire({
@@ -74,7 +89,7 @@ describe('cache durable : 2e ouverture sans recalcul', () => {
     const onCalcul = vi.fn();
     const r1 = await ficheContenuServeur(STOCK_A, A, { stockage: m.s, onCalcul });
     expect(r1?.depuisCache).toBe(false);
-    expect(r1?.fiche.categories.map((c) => [c.id, c.confiance, c.sources.join()])).toEqual([['dance', 'elevee', 'pexels-description'], ['studio', 'elevee', 'pexels-description']]);
+    expect(r1?.fiche.categories.map((c) => [c.id, c.confiance, c.sources.join()])).toEqual([['dance', 'moyenne', 'pexels-description'], ['studio', 'moyenne', 'pexels-description']]);
     expect(m.appels.ecrire).toEqual([`media/${cleFicheContenu(A, 'media', `${A}/library/stock-pexels-video-8955360.mp4`, 5_000_000)}`]);
     const lecturesAvant = m.appels.lire.length;
     const r2 = await ficheContenuServeur(STOCK_A, A, { stockage: m.s, onCalcul });

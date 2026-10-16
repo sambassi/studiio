@@ -148,46 +148,123 @@ export function conceptParId(id: string): ConceptReconnu | null {
   return c ? { id, categorie: c.categorie, libelle: c.frNom ?? c.fr } : null;
 }
 
+/** Une correspondance : le concept, et s'il a été lu sur un VERBE d'action. */
+export interface CorrespondanceConcept {
+  concept: ConceptReconnu;
+  /** Lu sur une forme verbale (« dancing », « danser ») : une action est dite. */
+  parVerbe: boolean;
+}
+
 /**
- * Concepts reconnus dans un texte LIBRE, français OU anglais (titre de page
- * Pexels, requête envoyée au fournisseur, nom de fichier).
- *
- * Français : exactement `conceptsDe` (mêmes mots, mêmes implications).
- * Anglais : la forme anglaise DÉJÀ portée par chaque concept (`en`,
- * `gerondif`), mot pour mot et contiguë — « healthy food », « dancing ».
- * Aucune implication côté anglais : « african » ne fait pas danser une photo.
- * Pure, déterministe, sans IA.
+ * Formes anglaises AMBIGUËS, écartées dans ces tournures : « running water »
+ * n'est pas une course à pied.
  */
-export function conceptsReconnus(...textes: Array<string | null | undefined>): ConceptReconnu[] {
-  const out = new Map<string, ConceptReconnu>();
-  const ajouter = (c: Concept) => {
-    const id = idDuConcept(c);
-    if (!out.has(id)) out.set(id, { id, categorie: c.categorie, libelle: c.frNom ?? c.fr });
-  };
-  for (const t of textes) {
-    const mots = motsDe(t || '');
-    if (!mots.length) continue;
-    // (position, rang, concept) : l'ordre du texte, le français avant l'anglais à égalité.
-    const trouves: Array<[number, number, Concept]> = [];
+const EXCLUSIONS_EN: Record<string, ReadonlySet<string>> = {
+  running: new Set(['water', 'tap', 'faucet', 'stream', 'river', 'toilet', 'shower', 'late', 'out', 'low', 'total', 'mate', 'joke']),
+};
+
+/**
+ * Mots français de la taxonomie qui sont AUSSI autre chose (« course » de
+ * golf, « court » de tennis, « club » de nuit, « salon » de coiffure). Ils ne
+ * comptent pas quand le texte nomme un sujet hors taxonomie.
+ */
+const AMBIGUS_FR: ReadonlySet<string> = new Set(['course', 'court', 'club', 'salon', 'seance', 'cours', 'classe']);
+
+/**
+ * Sujets ÉVIDENTS hors de la taxonomie. Ils ne deviennent PAS des concepts :
+ * ils servent seulement à refuser une lecture ambiguë et à repérer une
+ * contradiction (un titre « football » contredit une recherche « yoga »).
+ */
+export const SUJETS_HORS_TAXONOMIE: ReadonlySet<string> = new Set([
+  'football', 'soccer', 'tennis', 'golf', 'basketball', 'baseball', 'volleyball', 'rugby', 'hockey', 'cricket',
+  'handball', 'badminton', 'club', 'nightclub', 'salon', 'hairdresser', 'barber', 'casino', 'foot',
+]);
+
+/** Le texte nomme-t-il un sujet hors taxonomie ? (mots entiers) */
+export function sujetsHorsTaxonomie(texte: string | null | undefined): string[] {
+  return [...new Set(motsDe(texte || '').filter((m) => SUJETS_HORS_TAXONOMIE.has(m)))];
+}
+
+const VERBE_FR = /(er|ir|ent|ez)$/;
+
+/**
+ * Mots de la liste française qui sont AUSSI des mots anglais de même sens
+ * (« budget », « yoga », « fitness »…) : lus dans un titre anglais. Les faux
+ * amis (« course », « court », « club », « salon », « food » → Cuisine) n'y
+ * sont pas.
+ */
+const MOTS_ANGLAIS_IDENTIQUES: ReadonlySet<string> = new Set([
+  'budget', 'finance', 'yoga', 'fitness', 'workout', 'jogging', 'boxing', 'zumba', 'skincare', 'beauty',
+  'travel', 'productivity', 'cardio', 'aerobic', 'meditation', 'stretching', 'spinning',
+]);
+const GERONDIFS_IDENTIQUES: ReadonlySet<string> = new Set(['jogging', 'boxing', 'stretching', 'spinning']);
+
+/**
+ * Concepts d'un texte LIBRE, par MOTS ENTIERS et par LANGUE.
+ *
+ * - `fr` : les mots français de la taxonomie (exactement ceux de `conceptsDe`,
+ *   implications comprises), sauf un mot ambigu quand le texte nomme un sujet
+ *   hors taxonomie ;
+ * - `en` : la forme anglaise DÉJÀ portée par chaque concept (`en`,
+ *   `gerondif`), mot pour mot et contiguë — « healthy food », « dancing » —
+ *   sans implication, hors tournures ambiguës (« running water »).
+ *
+ * Un titre Pexels est ANGLAIS : le lire en français ferait d'un « golf
+ * course » une course à pied. Ordre : celui du texte. Pure, sans IA.
+ */
+export function conceptsDuTexte(texte: string | null | undefined, langues: { fr: boolean; en: boolean }): CorrespondanceConcept[] {
+  const mots = motsDe(texte || '');
+  if (!mots.length) return [];
+  const horsTaxonomie = mots.some((m) => SUJETS_HORS_TAXONOMIE.has(m));
+  const trouves: Array<[number, number, Concept, boolean]> = [];
+  if (langues.fr) {
     mots.forEach((mot, i) => {
       const n = mot === 'pleinair' ? 'plein-air' : mot === 'bienetre' ? 'bien-etre' : mot;
+      if (horsTaxonomie && AMBIGUS_FR.has(n)) return;
       const c = CONCEPTS.find((x) => x.mots.includes(n));
       if (!c) return;
-      trouves.push([i, 0, c]);
-      for (const imp of c.implique ?? []) { const ci = PAR_EN.get(imp); if (ci) trouves.push([i, 1, ci]); }
+      trouves.push([i, 0, c, c.categorie === 'activite' && VERBE_FR.test(n)]);
+      for (const imp of c.implique ?? []) { const ci = PAR_EN.get(imp); if (ci) trouves.push([i, 1, ci, false]); }
     });
-    const chaine = ` ${mots.join(' ')} `;
+  }
+  if (langues.en) {
+    mots.forEach((mot, i) => {
+      if (!MOTS_ANGLAIS_IDENTIQUES.has(mot)) return;
+      const c = CONCEPTS.find((x) => x.mots.includes(mot) && !x.implique);
+      if (c) trouves.push([i, 2, c, GERONDIFS_IDENTIQUES.has(mot) && c.categorie === 'activite']);
+    });
     for (const c of CONCEPTS) {
       if (c.implique) continue; // `afroboost` : implication propre au mot français
-      for (const forme of [c.en, c.gerondif]) {
-        if (!forme) continue;
-        const k = chaine.indexOf(` ${motsDe(forme).join(' ')} `);
-        if (k >= 0) { trouves.push([chaine.slice(0, k + 1).trim().split(' ').filter(Boolean).length, 2, c]); break; }
+      const formes: Array<[string, boolean]> = [[c.en, false]];
+      if (c.gerondif) formes.unshift([c.gerondif, true]);
+      for (const [forme, verbe] of formes) {
+        const f = motsDe(forme);
+        let trouve = -1;
+        for (let i = 0; i + f.length <= mots.length && trouve < 0; i++) {
+          if (!f.every((m, k) => mots[i + k] === m)) continue;
+          const exclus = f.length === 1 ? EXCLUSIONS_EN[f[0]] : undefined;
+          if (exclus && exclus.has(mots[i + 1] ?? '')) continue;
+          trouve = i;
+        }
+        if (trouve >= 0) { trouves.push([trouve, 2, c, verbe && c.categorie === 'activite']); break; }
       }
     }
-    trouves.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    for (const [, , c] of trouves) ajouter(c);
   }
+  trouves.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const out = new Map<string, CorrespondanceConcept>();
+  for (const [, , c, parVerbe] of trouves) {
+    const id = idDuConcept(c);
+    const deja = out.get(id);
+    if (deja) { deja.parVerbe ||= parVerbe; continue; }
+    out.set(id, { concept: { id, categorie: c.categorie, libelle: c.frNom ?? c.fr }, parVerbe });
+  }
+  return [...out.values()];
+}
+
+/** Concepts d'un texte libre, français ET anglais (mots entiers). */
+export function conceptsReconnus(...textes: Array<string | null | undefined>): ConceptReconnu[] {
+  const out = new Map<string, ConceptReconnu>();
+  for (const t of textes) for (const { concept } of conceptsDuTexte(t, { fr: true, en: true })) if (!out.has(concept.id)) out.set(concept.id, concept);
   return [...out.values()];
 }
 

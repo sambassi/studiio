@@ -643,7 +643,8 @@ export function cibleRecevable(bucket: string, cle: string): boolean {
  *      `cleDuCompteStrict`) :
  *        - `<userId>/…`                       → ce compte seulement ;
  *        - `audio-complet/<userId>/…`,
- *          `stock-attributions/<userId>/…`    → propriétaire au 2e segment ;
+ *          `stock-attributions/<userId>/…`,
+ *          `fiches-contenu/<userId>/…`        → propriétaire au 2e segment ;
  *        - `media/externes/<fichier>` et
  *          `media/externes/proxies/<fichier>` → copies PARTAGÉES de médias
  *          publics (`medias-externes.ts`, clé = sha1 de l'URL d'origine) :
@@ -653,8 +654,15 @@ export function cibleRecevable(bucket: string, cle: string): boolean {
  */
 export const BUCKET_COPIES_EXTERNES = 'media';
 
-/** Namespaces dont le PROPRIÉTAIRE est le 2e segment de la clé. */
-export const NAMESPACES_PROPRIETAIRE_SECOND = ['audio-complet', 'stock-attributions'] as const;
+/**
+ * Namespaces dont le PROPRIÉTAIRE est le 2e segment de la clé.
+ *
+ * `fiches-contenu` (M2-a) : DÉFENSE EN PROFONDEUR. Ses clés portent déjà le
+ * segment privé `analyse`, refusé plus haut par `cibleRecevable` ; si ce
+ * refus venait à tomber, la propriété au 2e segment refuserait encore la
+ * fiche de B à A (et non « tout le reste refusé » par accident de forme).
+ */
+export const NAMESPACES_PROPRIETAIRE_SECOND = ['audio-complet', 'stock-attributions', 'fiches-contenu'] as const;
 
 const COPIE_EXTERNE = /^externes\/(?:proxies\/)?[^/]+$/;
 
