@@ -1316,6 +1316,8 @@
       "userModified": "User modified successfully",
       "errorDelete": "Error during deletion",
       "userDeleted": "User {name} deleted successfully",
+      "userDeletePartial": "Deletion of {name} is incomplete: run it again to finish",
+      "userDeleteSubscribed": "Deletion refused: {name} has an active subscription",
       "errorBan": "Error during ban",
       "userBanned": "User banned successfully",
       "userUnbanned": "User unbanned successfully",

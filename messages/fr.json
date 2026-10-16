@@ -1316,6 +1316,8 @@
       "userModified": "Utilisateur modifié avec succès",
       "errorDelete": "Erreur lors de la suppression",
       "userDeleted": "Utilisateur {name} supprimé avec succès",
+      "userDeletePartial": "Suppression de {name} incomplète : relancez pour la terminer",
+      "userDeleteSubscribed": "Suppression refusée : {name} a un abonnement actif",
       "errorBan": "Erreur lors du bannissement",
       "userBanned": "Utilisateur banni avec succès",
       "userUnbanned": "Utilisateur débanni avec succès",

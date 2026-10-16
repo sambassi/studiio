@@ -1336,6 +1336,8 @@
       "userModified": "Benutzer erfolgreich geändert",
       "errorDelete": "Fehler beim Löschen",
       "userDeleted": "Benutzer {name} erfolgreich gelöscht",
+      "userDeletePartial": "Löschung von {name} unvollständig: erneut ausführen, um sie abzuschließen",
+      "userDeleteSubscribed": "Löschung abgelehnt: {name} hat ein aktives Abonnement",
       "errorBan": "Fehler beim Sperren",
       "userBanned": "Benutzer erfolgreich gesperrt",
       "userUnbanned": "Benutzer erfolgreich entsperrt",

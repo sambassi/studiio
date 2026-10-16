@@ -172,7 +172,14 @@ export default function UsersPage() {
         headers: { 'Content-Type': 'application/json' },
       });
 
+      // 409 = abonnement actif (rien supprimé) ; 202 = suppression partielle, à relancer.
+      if (res.status === 409) throw new Error(t('users.userDeleteSubscribed', { name: user.name }));
       if (!res.ok) throw new Error(t('users.errorDelete'));
+      if (res.status === 202) {
+        showToast(t('users.userDeletePartial', { name: user.name }), 'error');
+        fetchUsers();
+        return;
+      }
 
       showToast(t('users.userDeleted', { name: user.name }), 'success');
       fetchUsers();
