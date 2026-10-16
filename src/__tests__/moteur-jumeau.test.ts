@@ -287,7 +287,9 @@ describe('genererVideoJumeau — la chaîne réelle, fournisseurs interceptés a
   it('⚠️ le perdant rend la génération EN VOL, jamais une plus récente échouée ; aucun fournisseur, aucun débit', async () => {
     const identite = { user_id: U, user_avatar_id: A, avatar_version: 3, intention: 'normale', voice_id: `${PREFIXE_VOIX_JUMEAU}${V1}`, aspect_ratio: '9:16', script: PRONONCE, credits_charged: 0 };
     base.generations = [
-      { id: 'gen-en-vol', created_at: '2026-09-15T10:00:00.000Z', status: 'processing', ...identite },
+      // Réellement EN VOL : lancée chez le fournisseur (identifiant présent). Sans identifiant
+      // et vieille de plus de 30 min, ce serait un zombie (B1), clos au lieu d'être rendu.
+      { id: 'gen-en-vol', created_at: '2026-09-15T10:00:00.000Z', status: 'processing', provider_video_id: 'vid-en-vol', ...identite },
       { id: 'gen-echouee', created_at: '2026-09-15T11:00:00.000Z', status: 'failed', ...identite },
     ];
     const r = await generer();

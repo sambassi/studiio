@@ -31,7 +31,7 @@ import { calculerCoutGeneration, compteAdmin, enregistrerCoutGeneration } from '
 import { retirerBandesIncrustees } from '@/lib/avatar/cadrage-jumeau';
 import { signalerRefusDeSolde } from '@/lib/fournisseurs/sante';
 import { estEnAttenteFournisseur, lireMarqueurAttente, mettreEnAttente } from '@/lib/avatar/attente-fournisseur';
-import { reprendreGenerationEnAttente, abandonnerAttente } from '@/lib/avatar/moteur-jumeau';
+import { reprendreGenerationEnAttente, abandonnerAttente, estGenerationZombie, cloreGenerationZombie } from '@/lib/avatar/moteur-jumeau';
 
 /** Au-delà, une génération encore EN COURS est considérée perdue et remboursée. */
 export const STALE_AFTER_MS = 30 * 60 * 1000; // 30 min
@@ -57,11 +57,14 @@ interface LigneGeneration {
   status: string;
   provider: string | null;
   provider_video_id: string | null;
+  provider_error?: string | null;
   video_url: string | null;
   error_message: string | null;
   credits_charged: number;
   credits_refunded: boolean;
   created_at: string;
+  /** Dernière écriture (mise en attente, prise de reprise) : repère du dernier lancement (B1). */
+  updated_at?: string | null;
   /** Le texte DIT (sert au coût de la voix). */
   script?: string | null;
   /** Format DEMANDÉ (`9:16`, `16:9`, `1:1`) : le fichier rapatrié le remplit. */
@@ -116,6 +119,17 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
       }
       return { status: 'processing', videoUrl: null, enAttenteFournisseur: issue !== 'relancee' };
     }
+    // B1 — ZOMBIE : ni identifiant fournisseur, ni attente, et plus vieille
+    // que le délai : le lancement a été interrompu, rien ne partira plus.
+    // Close + débit rendu une fois (`cloreGenerationZombie`).
+    if (estGenerationZombie(g)) {
+      const clos = await cloreGenerationZombie(g);
+      if (clos.close) return { status: 'failed', videoUrl: null, error: clos.message, rembourse: clos.rembourse };
+      // Une autre passe l'a close, ou un identifiant vient d'être rattaché : on relit.
+      const { data: relue } = await supabaseAdmin.from('avatar_generations').select('status, error_message').eq('id', g.id).maybeSingle();
+      const r = relue as { status?: string; error_message?: string | null } | null;
+      if (r?.status === 'failed') return { status: 'failed', videoUrl: null, error: messageUtilisateurSur(r.error_message, MESSAGES_AVATAR.nonDemarree), rembourse: false };
+    }
     return { status: 'processing', videoUrl: null };
   }
 
@@ -147,11 +161,8 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
     }
     const admin = await compteAdmin(userId);
     const rembourseUtilisateur = g.credits_charged > 0 && !admin;
-    const visible = creditsFournisseurEpuises(brut)
-      ? (admin
-        ? MESSAGES_AVATAR.creditsFournisseurAdmin
-        : rembourseUtilisateur ? MESSAGES_AVATAR.creditsFournisseurRembourse : MESSAGES_AVATAR.creditsFournisseur)
-      : rembourseUtilisateur ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echec;
+    // (Le refus « solde fournisseur » a déjà été traité au-dessus : ici, échec ordinaire.)
+    const visible = rembourseUtilisateur ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echec;
     const rembourse = await failAndRefund(g, visible);
     await enregistrerCoutGeneration(g.id, calculerCoutGeneration({ provider: viaDid ? 'did' : 'heygen', admin, secondes: 0, caracteres: (g.script ?? '').length, creditsDebites: 0 }), brut);
     if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));
