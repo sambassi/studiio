@@ -129,7 +129,7 @@ process.env.JUMEAU_MOTEUR_ACTIVE = '1';
 process.env.NEXT_PUBLIC_APP_URL = 'https://studiio.pro';
 
 const { avancerStatutGeneration, STALE_AFTER_MS } = await import('@/lib/avatar/statut');
-const { genererVideoJumeau, PREFIXE_VOIX_JUMEAU, reconcilierLancement, DELAI_GENERATION_ZOMBIE_MS, estGenerationZombie } = await import('@/lib/avatar/moteur-jumeau');
+const { genererVideoJumeau, PREFIXE_VOIX_JUMEAU, reconcilierLancement, DELAI_GENERATION_ZOMBIE_MS, estGenerationZombie, abandonnerGenerationJumeau } = await import('@/lib/avatar/moteur-jumeau');
 
 const avatar = (over: Ligne = {}): Ligne => ({
   id: A, user_id: U, status: 'completed', provider_avatar_id: 'hg-avatar-1', provider_asset_id: 'as-1', source_object_key: `${U}/avatar/source-1-${'a'.repeat(32)}.mp4`,
@@ -272,5 +272,28 @@ describe('B1 — l’âge se mesure depuis le DERNIER lancement, jamais depuis c
 
   it('marqueur d’attente présent, même reprise il y a 40 min → jamais close par le garde zombie', () => {
     expect(estGenerationZombie({ status: 'pending', provider_video_id: null, provider_error: 'waiting_provider:1:-', created_at: ilYA(180), updated_at: ilYA(40) })).toBe(false);
+  });
+});
+
+describe('B2 — abandonnerGenerationJumeau (Autopilote : suivi jamais abouti)', () => {
+  it('génération EN VOL (lancée) → failed + débit rendu une fois, même appelée deux fois', async () => {
+    base.generations = [zombie({ status: 'processing', provider_video_id: 'vid-1', credits_charged: 40, created_at: ilYA(5) })]; debitDuZombie();
+    expect(await abandonnerGenerationJumeau(U, G)).toBe(true);
+    expect(await abandonnerGenerationJumeau(U, G)).toBe(false);
+    expect(base.generations[0]).toMatchObject({ status: 'failed', credits_refunded: true });
+    expect(remboursements()).toEqual(['refund:40']);
+  });
+
+  it('génération déjà LIVRÉE → jamais touchée, rien remboursé', async () => {
+    base.generations = [zombie({ status: 'completed', provider_video_id: 'vid-1', video_url: 'https://minio/x.mp4' })]; debitDuZombie();
+    expect(await abandonnerGenerationJumeau(U, G)).toBe(false);
+    expect(base.generations[0].status).toBe('completed');
+    expect(remboursements()).toEqual([]);
+  });
+
+  it('déjà remboursée par le suivi (drapeau posé) → aucun second remboursement', async () => {
+    base.generations = [zombie({ status: 'processing', provider_video_id: 'vid-1', credits_refunded: true })]; debitDuZombie();
+    await abandonnerGenerationJumeau(U, G);
+    expect(remboursements()).toEqual([]);
   });
 });
