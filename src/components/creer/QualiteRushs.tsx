@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, XCircle } from 'lucide-react';
 import type { MediaVideo } from '@/lib/creer/medias-video';
-import type { AnalyseRush } from '@/lib/creer/smart-montage';
+import { cleSource, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { evaluerQualiteRushs, libelleQualite, type QualiteRush } from '@/lib/creer/qualite-rushs';
 
 /**
@@ -15,83 +15,112 @@ import { evaluerQualiteRushs, libelleQualite, type QualiteRush } from '@/lib/cre
  *    (l'appelant le passe au montage comme un retrait manuel) ;
  *  - « Utiliser quand même » : masque l'avertissement, le rush reste.
  *
- * L'analyse est celle de l'export (`analyserRush`, locale, gratuite, aucun
- * fournisseur), lancée une fois par rush et gardée en mémoire de la page.
+ * L'analyse est CELLE de l'export (`analyserRushMemo`, locale, gratuite,
+ * aucun fournisseur) : une seule mesure par rush, mêmes chiffres. Mise en
+ * pause pendant un export, abandonnée après un délai, jamais bloquante.
  */
 
 type Analyseur = (url: string) => Promise<AnalyseRush | null>;
 
-/** Une analyse par URL pour toute la page (la liste se réordonne souvent). */
-const memo = new Map<string, Promise<AnalyseRush | null>>();
-const MEMO_MAX = 40;
-function analyserUneFois(url: string, analyser: Analyseur): Promise<AnalyseRush | null> {
-  const hit = memo.get(url);
-  if (hit) return hit;
-  const p = analyser(url).catch(() => null);
-  memo.set(url, p);
-  while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value as string);
-  return p;
+/** Au-delà, une analyse qui ne répond pas est abandonnée (le panneau ne reste jamais « en cours »). */
+export const DELAI_ANALYSE_PANNEAU_MS = 90_000;
+/** Rush plus court : aucune analyse possible (`analyserRush` exige 1 s). */
+const DUREE_ANALYSABLE_MIN = 1;
+/** « Utiliser quand même », mémorisé par rush (clé de stockage), comme les autres préférences de Créer. */
+export const CLE_ACCEPTES = 'studiio:creer:qualite-rushs:acceptes';
+
+function lireAcceptes(): Set<string> {
+  try {
+    const brut = window.localStorage.getItem(CLE_ACCEPTES);
+    const v = brut ? JSON.parse(brut) : [];
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(-200) : []);
+  } catch {
+    return new Set();
+  }
+}
+function ecrireAcceptes(s: Set<string>) {
+  try { window.localStorage.setItem(CLE_ACCEPTES, JSON.stringify(Array.from(s).slice(-200))); } catch { /* stockage indisponible : préférence de session seulement */ }
 }
 
+/** L'analyse PARTAGÉE avec l'export (`analyserRushMemo`) : une seule mesure par rush. */
 const analyseurParDefaut: Analyseur = async (url) => {
-  const { analyserRush } = await import('@/lib/creer/analyse-rush');
-  return analyserRush(url);
+  const { analyserRushMemo } = await import('@/lib/creer/analyse-rush');
+  return analyserRushMemo(url);
 };
+
+const avecDelai = <T,>(p: Promise<T>, ms: number): Promise<T | 'delai'> =>
+  Promise.race([p, new Promise<'delai'>((ok) => setTimeout(() => ok('delai'), ms))]);
+
+type EtatAnalyse = { etat: 'mesuree'; analyse: AnalyseRush } | { etat: 'echec' };
 
 export interface QualiteRushsProps {
   medias: MediaVideo[];
   /** URL que le serveur peut relire (jamais une `blob:`) ; les autres ne sont pas analysées. */
   estDurable: (url: string) => boolean;
-  /** « Écarter ce rush » : retrait explicite du montage. */
-  onEcarter: (url: string) => void;
-  /** Tests : analyse injectée (défaut : analyse locale du navigateur). */
+  /** « Écarter ce rush » : retrait explicite du montage. Rend `false` si le rush n'a pas été retrouvé (rien n'est fait). */
+  onEcarter: (url: string) => boolean;
+  /** Export en cours : aucune nouvelle analyse lancée (elles ne doivent pas se disputer le décodage). */
+  enPause?: boolean;
+  /** Tests : analyse injectée (défaut : analyse locale partagée avec l'export). */
   analyser?: Analyseur;
+  delaiMs?: number;
 }
 
-export default function QualiteRushs({ medias, estDurable, onEcarter, analyser = analyseurParDefaut }: QualiteRushsProps) {
+export default function QualiteRushs({ medias, estDurable, onEcarter, enPause = false, analyser = analyseurParDefaut, delaiMs = DELAI_ANALYSE_PANNEAU_MS }: QualiteRushsProps) {
   // Rushes vidéo de l'utilisateur ou suggérés — jamais l'avatar, jamais une photo.
   const rushs = useMemo(
     () => medias.filter((m): m is MediaVideo & { url: string } => m.type === 'video' && m.source !== 'avatar' && !!m.url && estDurable(m.url)),
     [medias, estDurable],
   );
-  const cles = rushs.map((m) => m.url).join('\n');
-  const [analyses, setAnalyses] = useState<Record<string, AnalyseRush | null>>({});
-  const [enCours, setEnCours] = useState(false);
-  /** « Utiliser quand même » : avertissements masqués, par URL. */
+  /** Rushes dont la durée MESURÉE est sous la seconde : pas d'analyse, on le dit. */
+  const tropCourts = rushs.filter((m) => typeof m.duree === 'number' && m.duree > 0 && m.duree < DUREE_ANALYSABLE_MIN);
+  const aAnalyser = rushs.filter((m) => !tropCourts.includes(m));
+  const cles = aAnalyser.map((m) => m.url).join('\n');
+  const [resultats, setResultats] = useState<Record<string, EtatAnalyse>>({});
+  /** « Utiliser quand même » : avertissements masqués, par clé de rush, mémorisés. */
   const [acceptes, setAcceptes] = useState<Set<string>>(() => new Set());
+  const [introuvable, setIntrouvable] = useState(false);
+  useEffect(() => { setAcceptes(lireAcceptes()); }, []);
 
   useEffect(() => {
+    if (enPause) return;
     let vivant = true;
-    const urls = cles ? cles.split('\n') : [];
-    const manquantes = urls.filter((u) => !(u in analyses));
+    const manquantes = (cles ? cles.split('\n') : []).filter((u) => !(u in resultats));
     if (!manquantes.length) return;
-    setEnCours(true);
     void (async () => {
       // Un rush après l'autre : décoder plusieurs vidéos à la fois ralentit la page.
       for (const u of manquantes) {
-        const a = await analyserUneFois(u, analyser);
         if (!vivant) return;
-        setAnalyses((prev) => ({ ...prev, [u]: a }));
+        const r = await avecDelai(analyser(u).catch(() => null), delaiMs);
+        if (!vivant) return;
+        setResultats((prev) => ({ ...prev, [u]: r && r !== 'delai' ? { etat: 'mesuree', analyse: r } : { etat: 'echec' } }));
       }
-      if (vivant) setEnCours(false);
     })();
     return () => { vivant = false; };
-    // `analyses` exclu : seules les URL nouvelles déclenchent une mesure.
+    // `resultats` exclu : seules les URL nouvelles (ou la fin de la pause) relancent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cles, analyser]);
+  }, [cles, analyser, enPause, delaiMs]);
+
+  // « En cours » DÉDUIT de la liste actuelle : un rush retiré pendant sa mesure
+  // ne laisse jamais le panneau bloqué.
+  const enCours = !enPause && aAnalyser.some((m) => !(m.url in resultats));
 
   const diagnostic = useMemo(() => {
-    const mesurees = rushs.map((m) => analyses[m.url]).filter((a): a is AnalyseRush => !!a);
+    const mesurees = aAnalyser.map((m) => resultats[m.url]).filter((r): r is Extract<EtatAnalyse, { etat: 'mesuree' }> => r?.etat === 'mesuree').map((r) => r.analyse);
     if (!mesurees.length) return [];
     // Un rush importé ou pris dans la Médiathèque est un CHOIX de l'utilisateur.
     const choisis = rushs.filter((m) => m.source === 'rush' || m.source === 'mediatheque').map((m) => m.url);
     return evaluerQualiteRushs(mesurees, { choisisParUtilisateur: choisis }).rushs;
-  }, [rushs, analyses]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cles, resultats, rushs]);
 
   const position = (url: string) => medias.findIndex((m) => m.url === url) + 1;
-  const aSignaler = diagnostic.filter((q) => q.verdict !== 'ok' && !acceptes.has(q.url));
+  const aSignaler = diagnostic.filter((q) => q.verdict !== 'ok' && !acceptes.has(q.cle));
+  const courtsASignaler = tropCourts.filter((m) => !acceptes.has(cleSource(m.url)));
+  const accepter = (cle: string) => setAcceptes((prev) => { const n = new Set(prev).add(cle); ecrireAcceptes(n); return n; });
+  const ecarter = (url: string) => { setIntrouvable(!onEcarter(url)); };
 
-  if (!rushs.length || (!enCours && aSignaler.length === 0)) return null;
+  if (!rushs.length || (!enCours && aSignaler.length === 0 && courtsASignaler.length === 0 && !introuvable)) return null;
 
   return (
     <div className="mt-2 space-y-1.5" data-qualite-rushs>
@@ -101,20 +130,39 @@ export default function QualiteRushs({ medias, estDurable, onEcarter, analyser =
           Vérification de la qualité de vos rushes…
         </p>
       )}
+      {enPause && aAnalyser.some((m) => !(m.url in resultats)) && (
+        <p className="text-[11px] text-gray-500" data-qualite-rushs-pause>Vérification de la qualité reprise après l&apos;export.</p>
+      )}
+      {introuvable && (
+        <p className="text-[11px] text-amber-400/90" data-qualite-introuvable>
+          Ce rush n&apos;est plus dans la liste : rien n&apos;a été retiré.
+        </p>
+      )}
+      {courtsASignaler.map((m) => (
+        <LigneQualite
+          key={m.url}
+          q={{ url: m.url, cle: cleSource(m.url), verdict: 'a_verifier', motifs: [{ code: 'trop_court', gravite: 'faible', texte: `trop court pour être analysé : ${String(Math.round((m.duree as number) * 10) / 10).replace('.', ',')} s`, mesure: m.duree as number, seuil: DUREE_ANALYSABLE_MIN }], protections: [], choisiParVous: m.source === 'rush' || m.source === 'mediatheque' }}
+          position={position(m.url)}
+          onEcarter={() => ecarter(m.url)}
+          onAccepter={() => accepter(cleSource(m.url))}
+        />
+      ))}
       {aSignaler.map((q) => (
         <LigneQualite
           key={q.url}
           q={q}
           position={position(q.url)}
-          onEcarter={() => onEcarter(q.url)}
-          onAccepter={() => setAcceptes((prev) => new Set(prev).add(q.url))}
+          onEcarter={() => ecarter(q.url)}
+          onAccepter={() => accepter(q.cle)}
         />
       ))}
     </div>
   );
 }
 
-function LigneQualite({ q, position, onEcarter, onAccepter }: { q: QualiteRush; position: number; onEcarter: () => void; onAccepter: () => void }) {
+type LigneProps = { q: Pick<QualiteRush, 'url' | 'cle' | 'verdict' | 'motifs' | 'protections' | 'choisiParVous'>; position: number; onEcarter: () => void; onAccepter: () => void };
+
+function LigneQualite({ q, position, onEcarter, onAccepter }: LigneProps) {
   const grave = q.verdict === 'inutilisable';
   const Icone = grave ? XCircle : AlertTriangle;
   return (

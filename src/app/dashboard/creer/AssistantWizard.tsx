@@ -60,6 +60,7 @@ import {
 import RecadrerRush from '@/components/creer/RecadrerRush';
 import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/MediasSequenceVideo';
 import QualiteRushs from '@/components/creer/QualiteRushs';
+import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
@@ -260,7 +261,7 @@ import { bilanCartesSurimpression, erreurCartesSurimpression, avecCtaDuBrief, su
 import { dateRestauree, dateRequiseManquante, envoiPossible } from '@/lib/creer/envoi';
 import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
 import type { SurimpressionsComposer } from '@/lib/video-composer';
-import { analyserRush, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
+import { analyserRushMemo, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import {
   indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees, cartesAvecImagePerso,
@@ -8129,6 +8130,20 @@ export default function AssistantWizard() {
   };
 
   /**
+   * M1 — « Écarter ce rush » (panneau Qualité) : le retrait manuel de CE rush,
+   * et lui seul. Rush introuvable : AUCUNE action (jamais le repli `clearRush`
+   * de `retirerRush`, qui viderait la séquence) — le panneau le dit.
+   */
+  const ecarterRushQualite = (url: string): boolean => {
+    const liste = listeMediasRef.current;
+    const i = liste.findIndex((m) => m.url === url && m.type === 'video' && m.source !== 'avatar');
+    if (i < 0) return false;
+    if (liste[i].id === mediaApercuId) setMediaApercuId(null);
+    poserListeMedias(retirerMedia(liste, i));
+    return true;
+  };
+
+  /**
    * Durée choisie du média `i` (photo 1–30 s, vidéo raccourcie) — portée par
    * le média. Avec avatar, un allongement est ramené AVANT d'être enregistré
    * au temps de narration encore libre (jamais une durée qui déborde), avec
@@ -8971,6 +8986,8 @@ export default function AssistantWizard() {
         analyses: AnalyseRush[];
         rythme: { beats: number[]; forts: number[]; drop: number | null } | null;
       } | null = null;
+      /** M1 — diagnostic qualité des rushes (consultatif), ou `null`. */
+      let qualiteRushsCreer: ReturnType<typeof qualiteRushsPourMetadata> | null = null;
       setMontageNotice(null);
       if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length !== (plateau.rushs ?? []).length) {
         setMontageNotice('Analyse intelligente indisponible (un rush n’est pas encore enregistré) — montage simple utilisé.');
@@ -8979,9 +8996,16 @@ export default function AssistantWizard() {
         setRenderStage('Analyse des rushes…');
         const analyses: AnalyseRush[] = [];
         for (let i = 0; i < rushsDurables.length; i++) {
-          const a = await analyserRush(rushsDurables[i].url, (f) => setRenderProgress(Math.round(((i + f) / rushsDurables.length) * 10)));
+          // MÊME analyse que le panneau Qualité (M1) : une seule mesure par rush.
+          const a = await analyserRushMemo(rushsDurables[i].url, (f) => setRenderProgress(Math.round(((i + f) / rushsDurables.length) * 10)));
           if (a) analyses.push(a);
         }
+        // M1 : diagnostic CONSULTATIF écrit dans le post (même forme que
+        // l'Autopilote). Calculé sur les analyses déjà faites ; ne touche pas le plan.
+        try {
+          const choisis = listeMediasRef.current.filter((m) => m.url && (m.source === 'rush' || m.source === 'mediatheque')).map((m) => m.url as string);
+          if (analyses.length) qualiteRushsCreer = qualiteRushsPourMetadata(evaluerQualiteRushs(analyses, { choisisParUtilisateur: choisis }));
+        } catch { qualiteRushsCreer = null; }
         const cibleEcran = duree('video');
         // V3 : coupes calées sur le rythme de la musique, lue à partir du
         // début de la séquence « Vidéo » (somme des séquences qui la précèdent).
@@ -9784,6 +9808,9 @@ export default function AssistantWizard() {
           // pour regenerer, planifier, publier ou exporter avec le meme
           // etalonnage. Absente sans filtre : metadata identique a avant.
           lut: lut ? { empreinte: lut.empreinte, nom: lut.nom, intensite: lut.intensite } : undefined,
+          // M1 — DIAGNOSTIC consultatif de la qualité des rushes (même forme que
+          // l'Autopilote) : jamais relu par le rendu. Absent sans analyse.
+          ...(qualiteRushsCreer ? { decisionMontage: { version: 1, qualiteRushs: qualiteRushsCreer } } : {}),
           renderedVideoUrl: composed.url,
           thumbnailUrl: composed.thumbnailUrl || undefined,
           composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
@@ -12422,7 +12449,7 @@ export default function AssistantWizard() {
                           retrait automatique. « Écarter ce rush » = le retrait
                           manuel existant (`retirerRush`) ; sans clic, le montage
                           et le fichier final sont ceux d'avant. */}
-                      <QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={retirerRush} />
+                      <QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} />
                       {urlsRecadrables(listeMedias).some((u) => stockMedias[u]) && (
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.

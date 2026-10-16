@@ -28,7 +28,8 @@
  * plancher absolu ET écart aux autres rushes ; noir : luminance ET absence de
  * zones claires).
  */
-import { candidatsDuRush, cleSource, SEUILS, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { candidatsDuRush, cleSource, SEUILS } from '@/lib/creer/smart-montage';
+import type { AnalyseRushQualite, NetteteHD } from '@/lib/creer/nettete-hd';
 
 export const VERSION_QUALITE_RUSHS = 1 as const;
 
@@ -54,6 +55,35 @@ export const SEUILS_QUALITE = {
   neteteRelative: 0.25,
   /** Un rush SEUL, sans point de comparaison : flou fort seulement sous ce plancher extrême. */
   netetePlancherSeul: 0.025,
+  /**
+   * NETTETÉ QUALITÉ (`netteteHD`, 320×320 — prioritaire quand elle existe).
+   * Finesse (détail fin / détail à mi-résolution) : rushes réels nets et
+   * plans fixes, plage, interview mesurés 0,586–0,78 ; boxblur 8–10 : 0,33–0,46 ;
+   * boxblur 4 : 0,44–0,59. Seuil entre les deux, côté prudent.
+   * Navigateur (canvas, lissage « high ») : réels 0,69–0,89, boxblur 8–10
+   * 0,37–0,45, boxblur 4 0,48 — mêmes verdicts, marge plus grande.
+   */
+  finesseFlou: 0.55,
+  /**
+   * Détail fin (contraste local en 320×320) : un flou très fort (boxblur ≥ 20)
+   * remonte la finesse (plus aucun détail à aucune échelle) mais écrase le
+   * détail : 0,0024–0,0050 mesurés, contre 0,0192 au minimum pour un rush
+   * réel net et 0,0109 pour une plage surexposée.
+   */
+  detailPlancher: 0.008,
+  /** Détail fin relatif aux autres rushes (même logique que `neteteRelative`). */
+  detailRelatif: 0.25,
+  /** Rush SEUL : flou fort seulement sous ce détail extrême. */
+  detailPlancherSeul: 0.005,
+  /**
+   * Luminance : le serveur lit le plan Y (ffmpeg `format=gray`), le navigateur
+   * le RVB du canvas. Écart constaté (16/10) seulement sur des noirs « sous le
+   * noir » (Y < 16) qui gardent de la chrominance — typique d'un assombrissement
+   * artificiel (`eq=brightness`) : Y=5, chroma neutre → 0 des deux côtés ;
+   * Y=5 avec chroma → 0 serveur, 0,063 navigateur. Les niveaux 16–235 sont
+   * correctement étendus des deux côtés (Y=16 → 0). Non harmonisé : ces
+   * mesures nourrissent aussi `planMontage`, qu'on ne touche pas.
+   */
   /** Luminance médiane sous laquelle le rush est « sombre » (à vérifier). */
   luminanceSombre: 0.12,
   /** Luminance médiane sous laquelle l'image est quasi noire (motif fort). */
@@ -80,6 +110,8 @@ export const SEUILS_QUALITE = {
    * filé / un effet (1/3 du mouvement d'un plan franchement actif).
    */
   mouvementFile: SEUILS.mouvementReference / 3,
+  /** Durée en dessous de laquelle aucune analyse n'est possible (s) — `mesurerSourceLue`, `analyserRush`. */
+  dureeAnalyseMin: 1,
   /** Durée utile minimale (s) : la longueur minimale d'un extrait du moteur. */
   dureeUtileMin: 1.5,
 } as const;
@@ -119,6 +151,8 @@ export interface QualiteRush {
     mouvement: number;
     partFigee: number;
     dureeUtile: number;
+    /** Netteté qualité 320×320 (`nettete-hd.ts`), `null` si non mesurée. */
+    netteteHD: NetteteHD | null;
   };
   /** Meilleures fenêtres déjà notées par le moteur (`candidatsDuRush`), 3 au plus. */
   meilleursPassages: PassageQualite[];
@@ -147,7 +181,7 @@ const pct = (x: number) => `${Math.round(x * 100)} %`;
 const frFace = (mesure: number, seuil: number) => (fr(mesure) === fr(seuil) ? String(Number(mesure.toFixed(3))).replace('.', ',') : fr(mesure));
 
 /** Mesures agrégées d'un rush. `null` sans échantillon exploitable. */
-function mesurer(a: AnalyseRush) {
+function mesurer(a: AnalyseRushQualite) {
   const e = a.echantillons;
   if (!(a.duree > 0) || e.length === 0) return null;
   const nettete = mediane(e.map((x) => x.nettete));
@@ -163,7 +197,8 @@ function mesurer(a: AnalyseRush) {
   const partFigee = mouvs.length ? mouvs.filter((m) => m < SEUILS_QUALITE.mouvementFige).length / mouvs.length : 0;
   // Durée utile : part des images ni noires ni cramées (mêmes seuils que le moteur).
   const bonnes = e.filter((x) => x.luminosite >= SEUILS.noir && x.luminosite <= SEUILS.crame).length / e.length;
-  return { images: e.length, duree: a.duree, nettete, luminosite, contraste, mouvement, partFigee, dureeUtile: a.duree * bonnes };
+  const hd: NetteteHD | null = a.netteteHD && a.netteteHD.images > 0 ? a.netteteHD : null;
+  return { images: e.length, duree: a.duree, nettete, luminosite, contraste, mouvement, partFigee, dureeUtile: a.duree * bonnes, hd };
 }
 
 /**
@@ -174,7 +209,7 @@ function mesurer(a: AnalyseRush) {
  *   par l'utilisateur (C-MEDIA-MANUAL) : signalés « choisi par vous ».
  */
 export function evaluerQualiteRushs(
-  analyses: ReadonlyArray<AnalyseRush>,
+  analyses: ReadonlyArray<AnalyseRushQualite>,
   options: { choisisParUtilisateur?: Iterable<string> | null } = {},
 ): DiagnosticQualiteRushs {
   const S = SEUILS_QUALITE;
@@ -183,7 +218,7 @@ export function evaluerQualiteRushs(
   const rushs = analyses
     .filter((a) => { const k = cleSource(a.url); if (vus.has(k)) return false; vus.add(k); return true; })
     .map((a) => ({ a, cle: cleSource(a.url), m: mesurer(a) }))
-    .filter((x): x is { a: AnalyseRush; cle: string; m: NonNullable<ReturnType<typeof mesurer>> } => x.m !== null);
+    .filter((x): x is { a: AnalyseRushQualite; cle: string; m: NonNullable<ReturnType<typeof mesurer>> } => x.m !== null);
 
   const out: QualiteRush[] = rushs.map(({ a, cle, m }) => {
     const motifs: MotifQualite[] = [];
@@ -224,22 +259,14 @@ export function evaluerQualiteRushs(
     // ── NETTETÉ ── jugée seulement sur une image bien exposée (le laplacien
     // d'une image noire ou blanche est faible quelle que soit la mise au point).
     if (!sombre && !clair) {
-      const autres = rushs.filter((x) => x.cle !== cle).map((x) => x.m)
+      const autresBienExposes = rushs.filter((x) => x.cle !== cle).map((x) => x.m)
         .filter((x) => x.luminosite >= S.luminanceSombre && x.luminosite <= S.luminanceSurexposee);
-      const reference = autres.length ? mediane(autres.map((x) => x.nettete)) : null;
-      const sousPlancher = m.nettete < S.netetePlancher;
-      const sousRelatif = reference !== null && m.nettete < reference * S.neteteRelative;
-      if (sousPlancher || sousRelatif) {
-        // Fort : les DEUX mesures concordent (ou, rush seul, plancher extrême).
-        const fort = reference !== null ? sousPlancher && sousRelatif : m.nettete < S.netetePlancherSeul;
-        if (fort && enMouvement) protections.push(`flou avec mouvement (mouvement ${fr(m.mouvement)} ≥ ${fr(S.mouvementFile)}) : filé ou effet possible`);
-        const comparaison = reference !== null ? ` contre ${fr(reference)} pour vos autres rushes` : '';
-        const seuil = sousPlancher ? S.netetePlancher : r3((reference as number) * S.neteteRelative);
-        motifs.push({
-          code: 'flou', gravite: fort && !enMouvement ? 'fort' : 'faible',
-          texte: `flou : netteté ${frFace(m.nettete, seuil)}${comparaison}, seuil ${fr(seuil)}`,
-          mesure: r3(m.nettete), seuil, reference: reference === null ? null : r3(reference),
-        });
+      const flou = m.hd
+        ? jugerFlouHD(m.hd, autresBienExposes.filter((x) => x.hd).map((x) => (x.hd as NetteteHD).detail))
+        : jugerFlou64(m.nettete, autresBienExposes.map((x) => x.nettete));
+      if (flou) {
+        if (flou.fort && enMouvement) protections.push(`flou avec mouvement (mouvement ${fr(m.mouvement)} ≥ ${fr(S.mouvementFile)}) : filé ou effet possible`);
+        motifs.push({ ...flou.motif, gravite: flou.fort && !enMouvement ? 'fort' : 'faible' });
       }
     }
 
@@ -253,11 +280,18 @@ export function evaluerQualiteRushs(
     }
 
     // ── DURÉE UTILE ──
-    if (m.dureeUtile < S.dureeUtileMin) {
+    // Les images noires ou cramées sont déjà dites par le motif d'exposition :
+    // une scène de nuit n'est pas « 0 s utiles », elle est sombre. La durée
+    // est alors jugée sur la durée du rush elle-même.
+    const exposition = sombre || clair;
+    const dureeJugee = exposition ? m.duree : m.dureeUtile;
+    if (dureeJugee < S.dureeUtileMin) {
       motifs.push({
         code: 'trop_court', gravite: 'faible',
-        texte: `trop court : ${fr(m.dureeUtile, 1)} s utiles (minimum ${fr(S.dureeUtileMin, 1)} s)`,
-        mesure: r2(m.dureeUtile), seuil: S.dureeUtileMin,
+        texte: exposition
+          ? `trop court : ${fr(dureeJugee, 1)} s (minimum ${fr(S.dureeUtileMin, 1)} s)`
+          : `trop court : ${fr(dureeJugee, 1)} s utiles (minimum ${fr(S.dureeUtileMin, 1)} s)`,
+        mesure: r2(dureeJugee), seuil: S.dureeUtileMin,
       });
     }
 
@@ -273,11 +307,59 @@ export function evaluerQualiteRushs(
         images: m.images, duree: r2(m.duree), nettete: r3(m.nettete), luminosite: r3(m.luminosite),
         contraste: m.contraste === null ? null : r3(m.contraste), mouvement: r3(m.mouvement),
         partFigee: r2(m.partFigee), dureeUtile: r2(m.dureeUtile),
+        netteteHD: m.hd,
       },
       meilleursPassages,
     };
   });
   return { version: VERSION_QUALITE_RUSHS, rushs: out };
+}
+
+type MotifSansGravite = Omit<MotifQualite, 'gravite'>;
+
+/**
+ * Flou d'après la netteté QUALITÉ (320×320). Faible : finesse basse, ou
+ * détail sous le plancher, ou très en dessous des autres rushes. Fort : détail
+ * sous le plancher ET (finesse basse OU très en dessous des autres) — rush
+ * seul : détail sous le plancher extrême.
+ */
+function jugerFlouHD(hd: NetteteHD, detailsAutres: number[]): { fort: boolean; motif: MotifSansGravite } | null {
+  const S = SEUILS_QUALITE;
+  const reference = detailsAutres.length ? mediane(detailsAutres) : null;
+  const finesseBasse = hd.finesse < S.finesseFlou;
+  const sousPlancher = hd.detail < S.detailPlancher;
+  const sousRelatif = reference !== null && hd.detail < reference * S.detailRelatif;
+  if (!finesseBasse && !sousPlancher && !sousRelatif) return null;
+  const fort = reference !== null ? sousPlancher && (finesseBasse || sousRelatif) : hd.detail < S.detailPlancherSeul;
+  const comparaison = reference !== null ? ` contre ${fr(reference)} pour vos autres rushes` : '';
+  const texte = finesseBasse
+    ? `flou : finesse ${frFace(hd.finesse, S.finesseFlou)} < ${fr(S.finesseFlou)} (détail fin ${fr(hd.detail)}${comparaison})`
+    : `flou : détail fin ${frFace(hd.detail, sousPlancher ? S.detailPlancher : r3((reference as number) * S.detailRelatif))}${comparaison}, seuil ${fr(sousPlancher ? S.detailPlancher : r3((reference as number) * S.detailRelatif))}`;
+  return {
+    fort,
+    motif: {
+      code: 'flou', texte,
+      mesure: finesseBasse ? r3(hd.finesse) : r3(hd.detail),
+      seuil: finesseBasse ? S.finesseFlou : sousPlancher ? S.detailPlancher : r3((reference as number) * S.detailRelatif),
+      reference: reference === null ? null : r3(reference),
+    },
+  };
+}
+
+/** Repli sans netteté qualité (analyses antérieures) : netteté 64×36 du moteur. */
+function jugerFlou64(nettete: number, netetesAutres: number[]): { fort: boolean; motif: MotifSansGravite } | null {
+  const S = SEUILS_QUALITE;
+  const reference = netetesAutres.length ? mediane(netetesAutres) : null;
+  const sousPlancher = nettete < S.netetePlancher;
+  const sousRelatif = reference !== null && nettete < reference * S.neteteRelative;
+  if (!sousPlancher && !sousRelatif) return null;
+  const fort = reference !== null ? sousPlancher && sousRelatif : nettete < S.netetePlancherSeul;
+  const comparaison = reference !== null ? ` contre ${fr(reference)} pour vos autres rushes` : '';
+  const seuil = sousPlancher ? S.netetePlancher : r3((reference as number) * S.neteteRelative);
+  return {
+    fort,
+    motif: { code: 'flou', texte: `flou : netteté ${frFace(nettete, seuil)}${comparaison}, seuil ${fr(seuil)}`, mesure: r3(nettete), seuil, reference: reference === null ? null : r3(reference) },
+  };
 }
 
 const LIBELLE_MOTIF: Record<CodeMotif, string> = {
@@ -293,6 +375,11 @@ export function libelleQualite(q: Pick<QualiteRush, 'verdict' | 'motifs'>): stri
 }
 
 /**
+ * ⚠️ `decisionMontage.qualiteRushs` est un DIAGNOSTIC CONSULTATIF, pas une
+ * décision : malgré le nom de la clé (gardé pour la suite de la tranche),
+ * rien n'y est appliqué. Écrit À L'IDENTIQUE par Créer (export) et par
+ * l'Autopilote (`produire.ts`) — une seule version (`version: 1`).
+ *
  * Forme compacte écrite dans `metadata.decisionMontage.qualiteRushs` (v1) :
  * verdicts + motifs + version — aucune URL signée, aucune mesure brute
  * superflue. Lecture seule : aucun rendu ne la relit.

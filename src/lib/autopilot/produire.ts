@@ -1007,7 +1007,8 @@ export async function produireUnMontage(input: {
     ...(montageRaccourci ? { montageRaccourci: { demande: montageRaccourci.demande, possible: montageRaccourci.possible, rushsAAjouter: montageRaccourci.supplementaires, message: montageRaccourci.message } } : null),
     // Rushes dont l'analyse a échoué (délai, fichier illisible) : dit.
     ...(analysesEchouees.length ? { analysesEchouees } : null),
-    // M1 — QUALITÉ DES RUSHES : diagnostic MESURÉ, en LECTURE SEULE. Il ne
+    // M1 — QUALITÉ DES RUSHES : DIAGNOSTIC CONSULTATIF (la clé `decisionMontage`
+    // ne décide rien ; même forme que Créer, une seule version). MESURÉ, en LECTURE SEULE. Il ne
     // change ni la sélection ni le rendu (calculé après le plan, jamais relu
     // par le rendu) ; il rend visible plus tard « pourquoi ce rush est à
     // vérifier ». Tous les rushes de la banque sont ceux de l'utilisateur.

@@ -3,10 +3,10 @@
  * gestes. Par DÉFAUT rien n'est écarté ; « Écarter ce rush » passe par le
  * retrait manuel existant ; « Utiliser quand même » ne change rien au montage.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { readFileSync } from 'fs';
-import QualiteRushs from '@/components/creer/QualiteRushs';
+import QualiteRushs, { CLE_ACCEPTES } from '@/components/creer/QualiteRushs';
 import { retirerMedia, rushsDeListe, type MediaVideo } from '@/lib/creer/medias-video';
 import type { AnalyseRush, EchantillonRush } from '@/lib/creer/smart-montage';
 
@@ -33,7 +33,7 @@ const analyser = vi.fn(async (u: string) => MESURES[u] ?? null);
 
 describe('QualiteRushs — badges et gestes', () => {
   it('badges chiffrés pour les rushes à problème seulement ; rushes nets : rien', async () => {
-    render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => {}} analyser={analyser} />);
+    render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={analyser} />);
     await waitFor(() => expect(document.querySelectorAll('[data-qualite-rush]')).toHaveLength(2));
     const noir = document.querySelector('[data-qualite-rush="media/u1/noir.mp4"]')!;
     expect(noir.getAttribute('data-verdict')).toBe('inutilisable');
@@ -50,14 +50,14 @@ describe('QualiteRushs — badges et gestes', () => {
   });
 
   it('par défaut : AUCUN retrait (onEcarter jamais appelé sans clic)', async () => {
-    const onEcarter = vi.fn();
+    const onEcarter = vi.fn(() => true);
     render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={onEcarter} analyser={analyser} />);
     await waitFor(() => expect(document.querySelectorAll('[data-qualite-rush]')).toHaveLength(2));
     expect(onEcarter).not.toHaveBeenCalled();
   });
 
   it('« Écarter ce rush » : demande le retrait de CE rush ; avec le retrait existant, il quitte le montage', async () => {
-    const onEcarter = vi.fn();
+    const onEcarter = vi.fn(() => true);
     render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={onEcarter} analyser={analyser} />);
     await waitFor(() => expect(document.querySelector('[data-qualite-rush="media/u1/noir.mp4"]')).not.toBeNull());
     fireEvent.click(document.querySelector('[data-qualite-rush="media/u1/noir.mp4"] [data-qualite-ecarter]')!);
@@ -69,7 +69,7 @@ describe('QualiteRushs — badges et gestes', () => {
   });
 
   it('« Utiliser quand même » : avertissement masqué, rien retiré, liste inchangée', async () => {
-    const onEcarter = vi.fn();
+    const onEcarter = vi.fn(() => true);
     const liste = JSON.parse(JSON.stringify(LISTE));
     render(<QualiteRushs medias={liste} estDurable={() => true} onEcarter={onEcarter} analyser={analyser} />);
     await waitFor(() => expect(document.querySelector('[data-qualite-rush="media/u1/flou.mp4"]')).not.toBeNull());
@@ -83,22 +83,88 @@ describe('QualiteRushs — badges et gestes', () => {
   it('jamais d’analyse d’une URL non durable (blob:) ni de l’avatar', async () => {
     const a = vi.fn(async () => null);
     const liste: MediaVideo[] = [{ id: 'x', source: 'rush', url: 'blob:http://x/1', type: 'video' }, { id: 'y', source: 'avatar', url: U('av'), type: 'video' }];
-    render(<QualiteRushs medias={liste} estDurable={(u) => !u.startsWith('blob:')} onEcarter={() => {}} analyser={a} />);
+    render(<QualiteRushs medias={liste} estDurable={(u) => !u.startsWith('blob:')} onEcarter={() => true} analyser={a} />);
     await new Promise((r) => setTimeout(r, 20));
     expect(a).not.toHaveBeenCalled();
+  });
+});
+
+describe('QualiteRushs — bornes et bugs corrigés', () => {
+  beforeEach(() => { try { window.localStorage.clear(); } catch { /* */ } });
+
+  it('rush retiré PENDANT sa mesure : le panneau ne reste pas « Vérification… »', async () => {
+    let resoudre: (a: AnalyseRush | null) => void = () => {};
+    const lent = vi.fn(() => new Promise<AnalyseRush | null>((r) => { resoudre = r; }));
+    const { rerender } = render(<QualiteRushs medias={[media('a', 'net-1')]} estDurable={() => true} onEcarter={() => true} analyser={lent} />);
+    await waitFor(() => expect(document.querySelector('[data-qualite-rushs-analyse]')).not.toBeNull());
+    rerender(<QualiteRushs medias={[]} estDurable={() => true} onEcarter={() => true} analyser={lent} />);
+    expect(document.querySelector('[data-qualite-rushs-analyse]')).toBeNull();
+    resoudre(null);
+  });
+
+  it('analyse qui ne répond jamais : abandonnée après le délai, état propre', async () => {
+    const jamais = vi.fn(() => new Promise<AnalyseRush | null>(() => {}));
+    render(<QualiteRushs medias={[media('a', 'net-1')]} estDurable={() => true} onEcarter={() => true} analyser={jamais} delaiMs={30} />);
+    await waitFor(() => expect(document.querySelector('[data-qualite-rushs-analyse]')).not.toBeNull());
+    await waitFor(() => expect(document.querySelector('[data-qualite-rushs]')).toBeNull(), { timeout: 1000 });
+  });
+
+  it('export en cours : AUCUNE analyse lancée, reprise après', async () => {
+    const a = vi.fn(async (u: string) => MESURES[u] ?? null);
+    const { rerender } = render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={a} enPause />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(a).not.toHaveBeenCalled();
+    rerender(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={a} enPause={false} />);
+    await waitFor(() => expect(document.querySelectorAll('[data-qualite-rush]')).toHaveLength(2));
+  });
+
+  it('« Écarter » d’un rush introuvable : rien fait, message', async () => {
+    const onEcarter = vi.fn(() => false);
+    render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={onEcarter} analyser={analyser} />);
+    await waitFor(() => expect(document.querySelector('[data-qualite-rush="media/u1/noir.mp4"]')).not.toBeNull());
+    fireEvent.click(document.querySelector('[data-qualite-rush="media/u1/noir.mp4"] [data-qualite-ecarter]')!);
+    expect(document.querySelector('[data-qualite-introuvable]')!.textContent).toMatch(/rien n.a été retiré/);
+  });
+
+  it('rush de moins d’une seconde : « trop court pour être analysé », sans analyse', async () => {
+    const a = vi.fn(async () => null);
+    render(<QualiteRushs medias={[{ ...media('z', 'mini'), duree: 0.8 }]} estDurable={() => true} onEcarter={() => true} analyser={a} />);
+    await waitFor(() => expect(document.querySelector('[data-qualite-rush="media/u1/mini.mp4"]')).not.toBeNull());
+    expect(document.querySelector('[data-qualite-rush="media/u1/mini.mp4"]')!.textContent).toMatch(/trop court pour être analysé : 0,8 s/);
+    expect(a).not.toHaveBeenCalled();
+  });
+
+  it('« Utiliser quand même » mémorisé : ne réapparaît pas au rechargement', async () => {
+    const { unmount } = render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={analyser} />);
+    await waitFor(() => expect(document.querySelector('[data-qualite-rush="media/u1/flou.mp4"]')).not.toBeNull());
+    fireEvent.click(document.querySelector('[data-qualite-rush="media/u1/flou.mp4"] [data-qualite-accepter]')!);
+    unmount();
+    expect(JSON.parse(window.localStorage.getItem(CLE_ACCEPTES)!)).toEqual(['media/u1/flou.mp4']);
+    render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={analyser} />);
+    await waitFor(() => expect(document.querySelector('[data-qualite-rush="media/u1/noir.mp4"]')).not.toBeNull());
+    expect(document.querySelector('[data-qualite-rush="media/u1/flou.mp4"]')).toBeNull();
   });
 });
 
 describe('Créer — câblage minimal', () => {
   const aw = readFileSync('src/app/dashboard/creer/AssistantWizard.tsx', 'utf8');
   it('le panneau suit la liste des médias et « Écarter » = le retrait manuel existant', () => {
-    expect(aw).toContain('<QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={retirerRush} />');
+    expect(aw).toContain('<QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} />');
+    // « Écarter » n'emprunte JAMAIS le repli `clearRush` de `retirerRush`.
+    const f = aw.slice(aw.indexOf('const ecarterRushQualite = (url: string): boolean => {'), aw.indexOf('const choisirDureeMedia'));
+    expect(f).toContain('if (i < 0) return false;');
+    expect(f).not.toContain('clearRush');
     expect(aw.match(/<QualiteRushs /g)).toHaveLength(1);
   });
-  it('l’export n’en dépend pas : aucun diagnostic dans le chemin planMontage de Créer', () => {
-    const debut = aw.indexOf("setRenderStage('Analyse des rushes…');");
-    const fin = aw.indexOf('planMontageRushs = planMontage(analyses, cibleEcran', debut);
-    expect(debut).toBeGreaterThan(0);
-    expect(aw.slice(debut, fin)).not.toMatch(/qualite|Qualite/);
+  it('export : la MÊME analyse mémorisée que le panneau ; le diagnostic ne nourrit pas planMontage', () => {
+    expect(aw).toContain('const a = await analyserRushMemo(rushsDurables[i].url, (f) =>');
+    expect(aw).not.toMatch(/await analyserRush\(/);
+    expect(aw).toContain('planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
+    const panneau = readFileSync('src/components/creer/QualiteRushs.tsx', 'utf8');
+    expect(panneau).toContain('return analyserRushMemo(url);');
+  });
+  it('Créer écrit le diagnostic CONSULTATIF dans le post, même forme que l’Autopilote', () => {
+    expect(aw).toContain('...(qualiteRushsCreer ? { decisionMontage: { version: 1, qualiteRushs: qualiteRushsCreer } } : {}),');
+    expect(readFileSync('src/lib/autopilot/produire.ts', 'utf8')).toContain("return { decisionMontage: { version: 1, qualiteRushs: qualiteRushsPourMetadata(d) } };");
   });
 });

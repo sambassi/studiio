@@ -9,12 +9,30 @@
  * classique, jamais un montage cassé.
  */
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
-import { mesurerImage, saturationRgb, ANALYSE_L as L, ANALYSE_H as H, type AnalyseRush, type EchantillonRush } from '@/lib/creer/smart-montage';
+import { mesurerImage, saturationRgb, ANALYSE_L as L, ANALYSE_H as H, type EchantillonRush } from '@/lib/creer/smart-montage';
+import { HD_L, HD_H, HD_IMAGES, mesurerNetteteHD, agregerNetteteHD, type AnalyseRushQualite } from '@/lib/creer/nettete-hd';
 
 /** Au-delà, on n'échantillonne pas plus finement (≈ 240 images par rush). */
 const ECHANTILLONS_MAX = 240;
 /** Au-delà, l'audio n'est pas décodé (mémoire) : énergie audio à 0. */
-const AUDIO_OCTETS_MAX = 150 * 1024 * 1024;
+export const AUDIO_OCTETS_MAX = 150 * 1024 * 1024;
+/** Au-delà, on n'analyse pas plus loin (même borne que le serveur, `DUREE_ANALYSEE_MAX`). */
+export const DUREE_ANALYSEE_MAX = 180;
+
+/**
+ * Taille annoncée du fichier (HEAD), AVANT tout téléchargement. `null` si le
+ * serveur ne la donne pas : l'appelant garde alors le chemin d'avant (le
+ * fichier est lu puis mesuré), pour ne rien changer aux mesures de l'export.
+ */
+async function tailleAnnoncee(url: string): Promise<number | null> {
+  try {
+    const r = await fetch(url, { method: 'HEAD' });
+    const n = Number(r.headers.get('content-length'));
+    return r.ok && Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
 
 function attendreSeek(video: HTMLVideoElement, t: number): Promise<void> {
   return new Promise((resolve) => {
@@ -42,8 +60,12 @@ function chargerVideo(url: string): Promise<HTMLVideoElement> {
 }
 
 /** Énergie RMS par fenêtre de `pas` secondes (0..1). Tableau vide si pas d'audio. */
-async function energieAudio(url: string, duree: number, pas: number): Promise<number[]> {
+export async function energieAudio(url: string, duree: number, pas: number): Promise<number[]> {
   try {
+    // Trop gros pour décoder le son : on ne le télécharge même pas (le
+    // résultat est le même qu'avant — aucune énergie audio — sans les octets).
+    const annoncee = await tailleAnnoncee(url);
+    if (annoncee !== null && annoncee > AUDIO_OCTETS_MAX) return [];
     const rep = await fetch(url);
     if (!rep.ok) return [];
     const octets = await rep.arrayBuffer();
@@ -71,12 +93,13 @@ async function energieAudio(url: string, duree: number, pas: number): Promise<nu
 export async function analyserRush(
   url: string,
   onProgress?: (fraction: number) => void,
-): Promise<AnalyseRush | null> {
+): Promise<AnalyseRushQualite | null> {
   let video: HTMLVideoElement | null = null;
   try {
     video = await chargerVideo(url);
-    const duree = video.duration;
-    if (!Number.isFinite(duree) || duree < 1) return null;
+    const dureeTotale = video.duration;
+    if (!Number.isFinite(dureeTotale) || dureeTotale < 1) return null;
+    const duree = Math.min(dureeTotale, DUREE_ANALYSEE_MAX);
     const pas = Math.max(0.5, duree / ECHANTILLONS_MAX);
     const audioP = energieAudio(url, duree, pas);
 
@@ -85,6 +108,16 @@ export async function analyserRush(
     canvas.height = H;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return null;
+
+    // M1 : netteté QUALITÉ (320×320), 8 images au plus — jamais lue par planMontage.
+    const canvasHD = document.createElement('canvas');
+    canvasHD.width = HD_L;
+    canvasHD.height = HD_H;
+    const ctxHD = canvasHD.getContext('2d', { willReadFrequently: true });
+    if (ctxHD) ctxHD.imageSmoothingQuality = 'high';
+    const pasHD = Math.max(pas, duree / HD_IMAGES);
+    let trancheHD = -1;
+    const mesuresHD: Array<{ finesse: number; detail: number }> = [];
 
     const echantillons: EchantillonRush[] = [];
     let prec: Float32Array | null = null;
@@ -100,12 +133,21 @@ export async function analyserRush(
       const m = mesurerImage(gris, prec);
       prec = gris;
       echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, saturation: saturationRgb(px, 4), audio: 0 });
+      if (ctxHD && Math.floor(t / pasHD) > trancheHD) {
+        trancheHD = Math.floor(t / pasHD);
+        ctxHD.drawImage(video, 0, 0, HD_L, HD_H);
+        const pxHD = ctxHD.getImageData(0, 0, HD_L, HD_H).data;
+        const grisHD = new Float32Array(HD_L * HD_H);
+        for (let p = 0, q = 0; p < pxHD.length; p += 4, q++) grisHD[q] = (pxHD[p] * 0.299 + pxHD[p + 1] * 0.587 + pxHD[p + 2] * 0.114) / 255;
+        mesuresHD.push(mesurerNetteteHD(grisHD));
+      }
       onProgress?.(Math.min(0.95, (i + 1) / Math.max(1, total)));
     }
     const audio = await audioP;
     echantillons.forEach((e, i) => { e.audio = audio[i] ?? 0; });
     onProgress?.(1);
-    return { url, duree, echantillons };
+    const netteteHD = agregerNetteteHD(mesuresHD);
+    return { url, duree, echantillons, ...(netteteHD ? { netteteHD } : null) };
   } catch (err) {
     console.warn('[SmartMontage] analyse impossible, enchaînement classique :', url.slice(0, 60), err);
     return null;
@@ -113,6 +155,43 @@ export async function analyserRush(
     if (video) { video.removeAttribute('src'); video.load(); }
   }
 }
+
+// ── UNE analyse par rush, pour le panneau Qualité ET l'export ───────────
+// Même promesse : mêmes chiffres par construction. Purgée si le résultat est
+// `null` (rush illisible, CORS) pour qu'un nouvel essai reste possible.
+const MEMO_MAX = 40;
+type Analyse = (url: string, onProgress?: (fraction: number) => void) => Promise<AnalyseRushQualite | null>;
+
+/**
+ * Fabrique d'une analyse mémorisée par URL (sur le modèle
+ * d'`analyserRushServeurCache`). Pure côté logique : testable avec une
+ * analyse factice. La progression est relayée à TOUS les demandeurs.
+ */
+export function creerMemoAnalyses(analyser: Analyse, max = MEMO_MAX) {
+  const memo = new Map<string, { analyse: Promise<AnalyseRushQualite | null>; abonnes: Set<(f: number) => void> }>();
+  const analyserMemo = (url: string, onProgress?: (fraction: number) => void): Promise<AnalyseRushQualite | null> => {
+    const hit = memo.get(url);
+    if (hit) {
+      if (onProgress) {
+        hit.abonnes.add(onProgress);
+        void hit.analyse.finally(() => hit.abonnes.delete(onProgress));
+      }
+      return hit.analyse;
+    }
+    const abonnes = new Set<(f: number) => void>(onProgress ? [onProgress] : []);
+    const analyse = analyser(url, (f) => abonnes.forEach((a) => a(f)))
+      .catch(() => null)
+      .then((a) => { if (!a && memo.get(url)?.analyse === analyse) memo.delete(url); abonnes.clear(); return a; });
+    memo.set(url, { analyse, abonnes });
+    while (memo.size > max) memo.delete(memo.keys().next().value as string);
+    return analyse;
+  };
+  return { analyserMemo, vider: () => memo.clear(), taille: () => memo.size };
+}
+
+const memoNavigateur = creerMemoAnalyses((url, p) => analyserRush(url, p));
+/** L'analyse d'un rush, UNE fois par URL, pour le panneau Qualité ET l'export (Créer). */
+export const analyserRushMemo = memoNavigateur.analyserMemo;
 
 /**
  * Rythme de la musique, dans le navigateur (Créer) — même analyse que le
