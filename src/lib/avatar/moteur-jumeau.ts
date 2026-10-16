@@ -268,9 +268,9 @@ export async function genererVideoJumeau(
       continue;
     }
     if (!estConflitUnique(erreurReservation)) return { ok: false, motif: 'base', message: 'La génération n’a pas pu être réservée.' };
-    const { data: enVol, error: erreurLecture } = await supabaseAdmin
+    const lireEnVol = (colonnes: string) => supabaseAdmin
       .from('avatar_generations')
-      .select('id, status, provider, provider_video_id, provider_error, created_at, updated_at')
+      .select(colonnes)
       .eq('user_id', identite.user_id)
       .eq('user_avatar_id', identite.user_avatar_id)
       .eq('avatar_version', identite.avatar_version)
@@ -280,13 +280,19 @@ export async function genererVideoJumeau(
       .in('status', ['pending', 'processing'])
       .order('created_at', { ascending: false })
       .limit(1);
+    // B1 — les colonnes du garde zombie (`provider_error` vient de la
+    // migration des coûts) peuvent manquer sur une base plus ancienne : on
+    // relit alors comme AVANT (`id, status`) et le garde ne s'applique pas —
+    // jamais une réservation refusée pour une colonne absente.
+    let { data: enVol, error: erreurLecture } = await lireEnVol('id, status, provider, provider_video_id, provider_error, created_at, updated_at');
+    if (erreurLecture && estColonneAbsente(erreurLecture)) ({ data: enVol, error: erreurLecture } = await lireEnVol('id, status'));
     if (erreurLecture) return { ok: false, motif: 'base', message: 'Vos générations n’ont pas pu être lues.' };
-    const gagnante = enVol?.[0] as ({ id: string; status: string } & Partial<LigneZombie>) | undefined;
+    const gagnante = (enVol as unknown as Array<{ id: string; status: string } & Partial<LigneZombie>> | null)?.[0];
     // B1 — la « gagnante » est un ZOMBIE (lancement interrompu, jamais parti
     // chez le fournisseur) : la rendre condamnait chaque nouvel essai du même
     // texte à `dejaEnCours` sur une génération qui ne partira jamais. Elle est
     // close (et son débit rendu une fois), puis la réservation est retentée.
-    if (gagnante && estGenerationZombie({ status: gagnante.status, provider_video_id: gagnante.provider_video_id ?? null, provider_error: gagnante.provider_error ?? null, created_at: gagnante.created_at ?? '', updated_at: gagnante.updated_at ?? null })) {
+    if (gagnante && typeof gagnante.created_at === 'string' && estGenerationZombie({ status: gagnante.status, provider_video_id: gagnante.provider_video_id ?? null, provider_error: gagnante.provider_error ?? null, created_at: gagnante.created_at ?? '', updated_at: gagnante.updated_at ?? null })) {
       await cloreGenerationZombie({ id: gagnante.id, user_id: identite.user_id, provider: gagnante.provider ?? null });
       continue;
     }
