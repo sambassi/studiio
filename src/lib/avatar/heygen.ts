@@ -30,13 +30,33 @@ export class HeyGenError extends Error {
   readonly httpStatus: number;
   /** Code technique HeyGen si disponible (ex. 'quota_exceeded'). */
   readonly code?: string;
+  /** Statut HTTP RÉEL de la réponse HeyGen (absent : timeout, réseau, garde locale). */
+  readonly upstreamStatus?: number;
 
-  constructor(message: string, httpStatus = 502, code?: string) {
+  constructor(message: string, httpStatus = 502, code?: string, upstreamStatus?: number) {
     super(message);
     this.name = 'HeyGenError';
     this.httpStatus = httpStatus;
     this.code = code;
+    this.upstreamStatus = upstreamStatus;
   }
+}
+
+/**
+ * B2 — statuts HTTP du SUIVI (`GET /v3/videos/{id}`) qui ne se résolvent pas
+ * en rappelant : vidéo inconnue (404), demande refusée (400), clé refusée
+ * (401). 429, 5xx, timeout et réseau restent transitoires ; un refus de SOLDE
+ * (même en 400/401) aussi — il a son propre chemin (mise en attente).
+ */
+const STATUTS_SUIVI_DEFINITIFS = new Set([400, 401, 404]);
+
+export function estEchecDefinitifDuSuivi(err: unknown): err is HeyGenError {
+  return err instanceof HeyGenError
+    && err.code !== CODE_SOLDE_FOURNISSEUR
+    // Un « quota / rate limit » se résout en attendant, quel que soit son code HTTP.
+    && !/quota|rate limit/i.test(err.message)
+    && typeof err.upstreamStatus === 'number'
+    && STATUTS_SUIVI_DEFINITIFS.has(err.upstreamStatus);
 }
 
 function apiKey(): string {
@@ -105,13 +125,14 @@ export function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
   // pas la demande : code dédié, pour mettre la génération en attente au lieu
   // de l'échouer (`sante.ts`).
   if (estRefusDeSolde(raw, status) || code === 'insufficient_credit') {
-    return new HeyGenError(`Solde API HeyGen insuffisant.${suffix}`, 503, CODE_SOLDE_FOURNISSEUR);
+    return new HeyGenError(`Solde API HeyGen insuffisant.${suffix}`, 503, CODE_SOLDE_FOURNISSEUR, status);
   }
   if (status === 401 || status === 403) {
     return new HeyGenError(
       `Cle API HeyGen refusee. Verifier HEYGEN_API_KEY cote serveur.${suffix}`,
       503,
       code ?? 'unauthorized',
+      status,
     );
   }
   if (status === 429 || lowered.includes('quota') || lowered.includes('rate limit')) {
@@ -119,6 +140,7 @@ export function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
       `Quota HeyGen atteint. Reessayer plus tard ou augmenter le forfait HeyGen.${suffix}`,
       503,
       code ?? 'quota_exceeded',
+      status,
     );
   }
   if (status === 400 || status === 422) {
@@ -126,12 +148,14 @@ export function mapHeyGenFailure(status: number, body: unknown): HeyGenError {
       `HeyGen a refuse la demande.${suffix}`,
       400,
       code ?? 'invalid_request',
+      status,
     );
   }
   return new HeyGenError(
     `HeyGen a repondu ${status}.${suffix}`,
     502,
     code ?? 'upstream_error',
+    status,
   );
 }
 
@@ -588,13 +612,23 @@ export interface VideoStatus {
 
 /** GET /v3/videos/{video_id} — un seul poll. La boucle est geree par l'appelant. */
 export async function getVideoStatus(videoId: string): Promise<VideoStatus> {
-  const data = await heygenFetch<{
+  let data: {
     status?: string;
     video_url?: string;
     duration?: number;
     failure_code?: string;
     failure_message?: string;
-  }>(`/v3/videos/${encodeURIComponent(videoId)}`, { method: 'GET', timeoutMs: 20_000 });
+  };
+  try {
+    data = await heygenFetch(`/v3/videos/${encodeURIComponent(videoId)}`, { method: 'GET', timeoutMs: 20_000 });
+  } catch (err) {
+    // B2 — erreur PERMANENTE du suivi : la vidéo est en échec (le suivi clôt
+    // et rembourse une fois). Le reste est relancé : transitoire.
+    if (estEchecDefinitifDuSuivi(err)) {
+      return { status: 'failed', failureMessage: `Suivi HeyGen HTTP ${err.upstreamStatus} : ${err.message}` };
+    }
+    throw err;
+  }
 
   const raw = (data?.status ?? 'processing').toLowerCase();
   const status: HeyGenVideoStatus =

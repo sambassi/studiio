@@ -321,7 +321,8 @@ describe('Jumeau — on rend ce qui a été PRIS, jamais le tarif du moment', ()
 
   it('réconciliation : credits_charged = le montant débité, pas le tarif courant', async () => {
     base.tables.credit_transactions.push({ id: 't1', user_id: U, reference_id: reference, amount: -40 });
-    base.tables.avatar_generations.push({ id: GEN, user_id: U, provider_video_id: null, credits_refunded: false });
+    // Une génération EN VOL (la réconciliation ne ressuscite jamais une génération close — B1).
+    base.tables.avatar_generations.push({ id: GEN, user_id: U, status: 'pending', provider_video_id: null, credits_refunded: false });
     grille.prix['avatar.jumeau'] = 10;
     expect(await reconcilierLancement(GEN, U, 'vid-9')).toBe(true);
     expect(base.tables.avatar_generations[0]).toMatchObject({ provider_video_id: 'vid-9', credits_charged: 40 });

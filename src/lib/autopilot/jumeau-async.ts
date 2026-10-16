@@ -41,6 +41,7 @@ import {
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import type { PreparedPost } from '@/lib/autopilot/engine';
 import { genererVideoJumeau, reconcilierLancement } from '@/lib/avatar/moteur-jumeau';
+import { abandonnerGenerationJumeau } from '@/lib/avatar/moteur-jumeau';
 import { avancerStatutGeneration } from '@/lib/avatar/statut';
 import { produireUnMontage, creneauxExistants } from '@/lib/autopilot/produire';
 import { notifyOnce } from '@/lib/notifications/store';
@@ -359,6 +360,10 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
     if (!claim || claim.length === 0) continue; // pris par une autre passe
 
     const ligne = brute;
+    // B2 — où en est la passe : `suivi` (fournisseur, pas encore de vidéo) ou
+    // `rendu` (le jumeau est LIVRÉ et payé). Le repli sans jumeau ne vaut que
+    // pour un jumeau jamais obtenu, jamais pour un jumeau livré.
+    let phase: 'suivi' | 'rendu' = 'suivi';
     try {
       // Génération lancée mais jamais enregistrée : on la rattache AVANT de la
       // suivre. Sans identifiant fournisseur, le suivi dirait « en cours » à
@@ -374,6 +379,7 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
         // trop de tentatives (fournisseur qui ne répond jamais).
         if (ligne.tentatives + 1 >= MAX_TENTATIVES) {
           await echouer(ligne, 'La préparation du jumeau ne s’est jamais terminée.');
+          await abandonnerGeneration(ligne);
           await rendreSansJumeau(ligne, 'jumeau non abouti');
           res.echecs += 1;
         } else {
@@ -384,6 +390,7 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
       }
 
       if (statut.status === 'completed') {
+        phase = 'rendu';
         await rendreMontage(ligne, statut.videoUrl);
         res.rendus += 1;
         continue;
@@ -432,6 +439,15 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
       console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — passe en échec transitoire, on réessaiera :`, message);
       if (ligne.tentatives + 1 >= MAX_TENTATIVES) {
         await echouer(ligne, 'La finalisation du montage-jumeau a échoué de façon répétée.');
+        // B2 — le SUIVI du fournisseur a échoué à chaque passe : aucun jumeau
+        // n'a été obtenu. Même issue que la ligne restée « en cours » : la
+        // génération est close (crédits rendus une fois) et le créneau sort
+        // SANS jumeau, dit explicitement. Un jumeau LIVRÉ dont le rendu
+        // échoue (`rendu`) n'est jamais remplacé par un montage sans avatar.
+        if (phase === 'suivi') {
+          await abandonnerGeneration(ligne);
+          await rendreSansJumeau(ligne, 'jumeau non abouti');
+        }
         res.echecs += 1;
       } else {
         await rouvrir(ligne.id);
@@ -455,6 +471,15 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
 export function estMediaIntrouvable(message: string): boolean {
   if (!/download/i.test(message)) return false;
   return /(?<![\w.-])(404|410)(?![\w.-])/.test(message);
+}
+
+/** Clôt la génération encore en vol (débit rendu une fois) ; ne lève jamais. */
+async function abandonnerGeneration(ligne: LigneAttente): Promise<void> {
+  try {
+    await abandonnerGenerationJumeau(ligne.user_id, ligne.generation_id);
+  } catch (e) {
+    console.error(`[Autopilote/Jumeau] ${ligne.user_id} — génération ${ligne.generation_id} non close :`, e instanceof Error ? e.message : e);
+  }
 }
 
 async function rouvrir(id: string, complement: { snapshot?: SnapshotMontage } = {}): Promise<void> {
