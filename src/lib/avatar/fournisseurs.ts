@@ -34,6 +34,9 @@ export const MESSAGES_AVATAR = {
   echecAvantLancement: 'La génération de la vidéo avec votre avatar a échoué. Aucun crédit Studiio n’a été débité.',
   echecRembourse: 'La génération de la vidéo avec votre avatar a échoué. Vos crédits Studiio ont été recrédités.',
   echec: 'La génération de la vidéo avec votre avatar a échoué.',
+  // B1 — lancement interrompu (crash, redéploiement) : rien n'est parti chez le prestataire.
+  nonDemarree: 'La génération de la vidéo avec votre avatar n’a pas pu démarrer. Réessayez.',
+  nonDemarreeRembourse: 'La génération de la vidéo avec votre avatar n’a pas pu démarrer. Vos crédits Studiio ont été recrédités. Réessayez.',
   voixIndisponible: 'Le service de voix est temporairement indisponible. Aucun crédit Studiio n’a été débité.',
   ancienMoteur: 'Votre avatar a été créé avec une ancienne version du service. Recréez-le dans « Mon avatar » pour l’utiliser dans vos vidéos. Aucun crédit Studiio n’a été débité. Votre voix reste utilisable pour la narration.',
   // QUOTA DE L'UTILISATEUR (ses crédits Studiio) épuisé — à ne jamais

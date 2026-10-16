@@ -270,7 +270,7 @@ export async function genererVideoJumeau(
     if (!estConflitUnique(erreurReservation)) return { ok: false, motif: 'base', message: 'La génération n’a pas pu être réservée.' };
     const { data: enVol, error: erreurLecture } = await supabaseAdmin
       .from('avatar_generations')
-      .select('id, status')
+      .select('id, status, provider, provider_video_id, provider_error, created_at')
       .eq('user_id', identite.user_id)
       .eq('user_avatar_id', identite.user_avatar_id)
       .eq('avatar_version', identite.avatar_version)
@@ -281,7 +281,15 @@ export async function genererVideoJumeau(
       .order('created_at', { ascending: false })
       .limit(1);
     if (erreurLecture) return { ok: false, motif: 'base', message: 'Vos générations n’ont pas pu être lues.' };
-    const gagnante = enVol?.[0] as { id: string; status: string } | undefined;
+    const gagnante = enVol?.[0] as ({ id: string; status: string } & Partial<LigneZombie>) | undefined;
+    // B1 — la « gagnante » est un ZOMBIE (lancement interrompu, jamais parti
+    // chez le fournisseur) : la rendre condamnait chaque nouvel essai du même
+    // texte à `dejaEnCours` sur une génération qui ne partira jamais. Elle est
+    // close (et son débit rendu une fois), puis la réservation est retentée.
+    if (gagnante && estGenerationZombie({ status: gagnante.status, provider_video_id: gagnante.provider_video_id ?? null, provider_error: gagnante.provider_error ?? null, created_at: gagnante.created_at ?? '' })) {
+      await cloreGenerationZombie({ id: gagnante.id, user_id: identite.user_id, provider: gagnante.provider ?? null });
+      continue;
+    }
     if (gagnante) {
       return { ok: true, generationId: gagnante.id, status: gagnante.status, avatarVersion: avatar.version, dejaEnCours: true, display, spoken };
     }
@@ -768,10 +776,72 @@ export async function reconcilierLancement(
     .update({ provider_video_id: providerVideoId, status: 'processing', credits_charged: creditsFactures })
     .eq('id', generationId)
     .eq('user_id', userId)
-    .is('provider_video_id', null);
+    .is('provider_video_id', null)
+    // B1 — une génération déjà CLOSE (zombie échu, remboursé) n'est jamais
+    // ressuscitée : elle repartirait `processing` alors que ses crédits sont rendus.
+    .in('status', ['pending', 'processing']);
   if (error) {
     console.error(`[Jumeau] réconciliation de ${generationId} impossible :`, error.message);
     return false;
   }
   return true;
+}
+
+/**
+ * B1 — GÉNÉRATION ZOMBIE : réservée (et parfois débitée) puis jamais partie
+ * chez le fournisseur — crash ou redéploiement en plein lancement. Elle n'a
+ * ni identifiant fournisseur ni marqueur d'attente, et restait « en cours »
+ * pour toujours dans l'index des générations en vol.
+ *
+ * Même délai que le garde stale du suivi (`STALE_AFTER_MS`, 30 min) : un
+ * lancement dure quelques secondes (voix puis vidéo), jamais une demi-heure.
+ * Une génération EN ATTENTE FOURNISSEUR (marqueur) n'est jamais un zombie :
+ * elle a son propre délai (`ATTENTE_MAX_MS`).
+ */
+export const DELAI_GENERATION_ZOMBIE_MS = 30 * 60 * 1000;
+
+interface LigneZombie {
+  status: string; provider: string | null; provider_video_id: string | null; provider_error: string | null; created_at: string;
+}
+
+export function estGenerationZombie(
+  g: { status: string; provider_video_id: string | null; provider_error?: string | null; created_at: string },
+  maintenant: number = Date.now(),
+): boolean {
+  if (g.status !== 'pending' && g.status !== 'processing') return false;
+  if (g.provider_video_id) return false;
+  if (lireMarqueurAttente(g.provider_error) !== null) return false;
+  const debut = Date.parse(g.created_at);
+  return Number.isFinite(debut) && maintenant - debut > DELAI_GENERATION_ZOMBIE_MS;
+}
+
+/**
+ * Clôt un zombie : `failed` (pose CONDITIONNELLE — toujours en vol et
+ * toujours sans identifiant fournisseur), puis le débit `jumeau:<id>` est
+ * rendu AU PLUS UNE FOIS par le chemin existant `rembourserGenerationUneFois`
+ * (journal + drapeau `credits_refunded` atomique). Deux passes concurrentes :
+ * une seule remporte la clôture, une seule rembourse.
+ *
+ * `close: false` : une autre passe l'a close, ou un identifiant fournisseur
+ * vient d'y être rattaché — l'appelant relit la ligne.
+ */
+export async function cloreGenerationZombie(
+  g: { id: string; user_id: string; provider: string | null },
+): Promise<{ close: boolean; rembourse: boolean; message: string }> {
+  const { data: prise, error } = await supabaseAdmin
+    .from('avatar_generations')
+    .update({ status: 'failed', error_message: MESSAGES_AVATAR.nonDemarree, updated_at: new Date().toISOString() })
+    .eq('id', g.id)
+    .in('status', ['pending', 'processing'])
+    .is('provider_video_id', null)
+    .select('id');
+  if (error || !prise || prise.length === 0) return { close: false, rembourse: false, message: MESSAGES_AVATAR.nonDemarree };
+  console.error(`[Jumeau] génération ${g.id} jamais partie chez le fournisseur (lancement interrompu) : close.`);
+  const rembourse = await rembourserGenerationUneFois(g.user_id, g.id);
+  const message = rembourse ? MESSAGES_AVATAR.nonDemarreeRembourse : MESSAGES_AVATAR.nonDemarree;
+  if (rembourse) {
+    await supabaseAdmin.from('avatar_generations').update({ error_message: message }).eq('id', g.id);
+  }
+  if (g.provider === FOURNISSEUR_DID) await retirerAudioDid(g.user_id, g.id);
+  return { close: true, rembourse, message };
 }
