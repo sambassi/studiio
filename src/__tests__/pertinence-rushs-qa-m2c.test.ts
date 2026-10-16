@@ -48,9 +48,11 @@ const F: Array<{ n: string; s: keyof typeof S; f: any; att: string[]; famille: '
   { n: '19 sommeil / routine du soir soin peau', s: 'sommeil', f: v2([['skincare', 'elevee', ['vision', 'parole']], ['home', 'moyenne', ['vision']]]), att: ['A', 'AV'], famille: 'indirect' },
   { n: '20 fitness / danse vision+parole (famille)', s: 'fitness', f: v2([['dance', 'elevee', ['vision', 'parole']]]), att: ['A'], famille: 'indirect' },
   { n: '21 finance / danse vision+parole', s: 'finance', f: v2([['dance', 'elevee', ['vision', 'parole']]]), att: ['H'], famille: 'hs2' },
-  { n: '22 yoga / cuisine desc+vision', s: 'yoga', f: v2([['cooking', 'elevee', ['pexels-description', 'vision']]]), att: ['H'], famille: 'hs2' },
+  // Décision produit (QA bis) : l'alimentation sert tout sujet de mouvement → « activité voisine ».
+  { n: '22 yoga / cuisine desc+vision', s: 'yoga', f: v2([['cooking', 'elevee', ['pexels-description', 'vision']]]), att: ['A'], famille: 'indirect' },
   { n: '23 boxe / finance desc+métadonnées', s: 'boxe', f: v1([['personal-finance', 'elevee', ['pexels-description', 'metadonnees']]]), att: ['H'], famille: 'hs2' },
-  { n: '24 cuisine / boxe vision+parole', s: 'cuisine', f: v2([['boxing', 'elevee', ['vision', 'parole']]]), att: ['H'], famille: 'hs2' },
+  // Décision produit (QA bis) : cuisine × boxe = partiel, jamais hors sujet.
+  { n: '24 cuisine / boxe vision+parole', s: 'cuisine', f: v2([['boxing', 'elevee', ['vision', 'parole']]]), att: ['A'], famille: 'indirect' },
   { n: '25 nutrition / finance vision seule', s: 'nutrition', f: v2([['personal-finance', 'moyenne', ['vision']]]), att: ['AV'], famille: 'hs1' },
   { n: '26 danse / voyage desc seule', s: 'danse', f: v1([['travel', 'moyenne', ['pexels-description']]]), att: ['AV'], famille: 'hs1' },
   { n: '27 finance / nom fichier "danse" seul', s: 'finance', f: v1([['dance', 'elevee', ['nom-fichier']]]), att: ['I'], famille: 'piege' },
@@ -68,7 +70,7 @@ const F: Array<{ n: string; s: keyof typeof S; f: any; att: string[]; famille: '
   { n: '39 sujet immobilier non reconnu', s: 'immo', f: v2([['cooking', 'elevee', ['vision', 'parole']]]), att: ['I'], famille: 'vide' },
   { n: '40 coaching business non reconnu', s: 'coachingBiz', f: v2([['productivity', 'elevee', ['vision', 'parole']]]), att: ['I', 'A', 'P'], famille: 'vide' },
   { n: '41 danse / confiance faible partout (cuisine)', s: 'danse', f: v2([['cooking', 'faible', ['vision', 'parole']]]), att: ['I'], famille: 'piege' },
-  { n: '42 running / cuisine 2 sources + décor ville', s: 'running', f: v2([['cooking', 'elevee', ['vision', 'parole']], ['city', 'moyenne', ['vision']]]), att: ['AV', 'H'], famille: 'hs2' },
+  { n: '42 running / cuisine 2 sources + décor ville', s: 'running', f: v2([['cooking', 'elevee', ['vision', 'parole']], ['city', 'moyenne', ['vision']]]), att: ['A', 'AV', 'H'], famille: 'hs2' },
   { n: '43 yoga / plage seule', s: 'yoga', f: v2([['beach', 'moyenne', ['vision']]]), att: ['A'], famille: 'indirect' },
   { n: '44 cuisine / nutrition desc+vision (affinité)', s: 'cuisine', f: v2([['healthy-food', 'elevee', ['pexels-description', 'vision']]]), att: ['A', 'P'], famille: 'indirect' },
 ];

@@ -115,6 +115,14 @@ const AFFINITES: ReadonlyArray<readonly [string, string]> = [
  * faire d'un thème hors sport (« Curry de légumes ») un thème sportif.
  */
 const MODE_DE_VIE_SPORT: ReadonlySet<string> = new Set(['healthy-food', 'rest-recovery', 'wellness']);
+/**
+ * Décision produit (QA M2-c) : l'ALIMENTATION (cuisine, alimentation saine)
+ * sert TOUT sujet de mouvement (fitness, course, yoga, danse, boxe…) et
+ * réciproquement — au pire « activité voisine », jamais « hors sujet ».
+ */
+const ALIMENTATION: ReadonlySet<string> = new Set(['cooking', 'healthy-food']);
+const estMouvement = (id: string) => estSport(id) && !MODE_DE_VIE_SPORT.has(id);
+const alimentationEtMouvement = (a: string, b: string) => (ALIMENTATION.has(a) && estMouvement(b)) || (ALIMENTATION.has(b) && estMouvement(a));
 
 /** Lieux et objets qui servent de DÉCOR naturel à une activité du sujet. */
 const DECORS_SPORT = ['gym', 'studio', 'yoga-mat', 'water-bottle'];
@@ -203,7 +211,7 @@ type Relation = 'commun' | 'affine' | 'famille' | 'decor' | 'etranger' | 'neutre
 function relation(p: Preuve, sujet: { activites: string[]; lieuxObjets: string[] }): { rel: Relation; theme: string | undefined } {
   if (p.categorie === 'activite') {
     if (sujet.activites.includes(p.id)) return { rel: 'commun', theme: p.id };
-    const aff = sujet.activites.find((a) => affines(a, p.id));
+    const aff = sujet.activites.find((a) => affines(a, p.id) || alimentationEtMouvement(a, p.id));
     if (aff) return { rel: 'affine', theme: aff };
     // Même famille : avec le sujet PRINCIPAL sportif, ou une activité de
     // mouvement citée par le sujet (jamais par la seule nutrition d'un thème cuisine).
@@ -298,11 +306,14 @@ export function pertinenceRush(
     : lien.rel === 'commun' && lien.p.categorie === 'activite' ? 0.6
     : lien.rel === 'affine' ? 0.55 : lien.rel === 'famille' ? 0.5 : 0.45;
 
-  // ── Contradictions : la recherche contredite, ou un lien ET une activité étrangère.
-  if (contradiction || (lien && sur)) {
+  // ── Contradictions : la recherche contredite, un lien ET une activité étrangère, ou
+  // l'activité du sujet vue par UNE source quand une AUTRE source montre une autre activité.
+  const conflit = !!lien && lien.rel === 'commun' && lien.p.categorie === 'activite' && lien.p.nPertinent < 2
+    && lues.some((x) => x.p.categorie === 'activite' && x.rel !== 'commun' && !x.p.sources.some((s) => lien.p.sources.includes(s)));
+  if (contradiction || (lien && sur) || conflit) {
     const motifs: MotifPertinence[] = [];
     if (contradiction) motifs.push({ code: 'recherche_contredite' });
-    if (lien && sur) motifs.push({ code: 'contradictoire', sources: sourcesDe([lien, sur]) });
+    if (lien && (sur || conflit)) motifs.push({ code: 'contradictoire', sources: sourcesDe(lues.filter((x) => x.p.categorie === 'activite')) });
     const m = motifLien();
     if (m) motifs.push(m);
     else if (sur) motifs.push({ code: 'divergence', concept: sur.p.id, theme: principal });

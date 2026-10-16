@@ -71,7 +71,9 @@ const CAS: Cas[] = [
   { nom: 'danse · « group of friends in a studio »', contexte: DANSE, fiche: stock('group of friends in a studio'), verite: 'indirect', attendu: 'partiel' },
   { nom: 'danse · fête « people at a party with music »', contexte: DANSE, fiche: stock('people at a party with music'), verite: 'indirect', attendu: 'partiel' },
   { nom: 'danse · cardio « women doing cardio » + image', contexte: DANSE, fiche: v2(stock('women doing cardio'), ['cardio']), verite: 'indirect', attendu: 'partiel' },
-  { nom: 'danse · cuisine « chef cooking in a kitchen » + image', contexte: DANSE, fiche: v2(stock('chef cooking in a kitchen'), ['cooking']), verite: 'hors_sujet', attendu: 'hors_sujet' },
+  // Décision produit : l'alimentation sert tout sujet de mouvement → voisine, jamais hors sujet.
+  { nom: 'danse · cuisine « chef cooking in a kitchen » + image', contexte: DANSE, fiche: v2(stock('chef cooking in a kitchen'), ['cooking']), verite: 'indirect', attendu: 'partiel' },
+  { nom: 'danse · finance « a man calculating his monthly budget » + image', contexte: DANSE, fiche: v2(stock('a man calculating his monthly budget'), ['personal-finance']), verite: 'hors_sujet', attendu: 'hors_sujet' },
   // Finance
   { nom: 'finance · « people dancing at a party » + image', contexte: FINANCE, fiche: v2(stock('people dancing at a party', 'party'), ['dance']), verite: 'hors_sujet', attendu: 'hors_sujet' },
   { nom: 'finance · M2-a « people dancing at a party » (seule)', contexte: FINANCE, fiche: stock('people dancing at a party', 'party'), verite: 'hors_sujet', attendu: 'a_verifier' },
@@ -247,7 +249,8 @@ describe('M2-c — affinités minimales entre concepts EXISTANTS', () => {
     expect(pertinenceRush(f('healthy-food'), ctx('Cuisine')).niveau).toBe('partiel');
     expect(pertinenceRush(f('wellness'), ctx('Beauté')).niveau).toBe('partiel');
     expect(pertinenceRush(f('productivity'), ctx('Finance')).niveau).toBe('partiel');
-    expect(pertinenceRush(f('boxing'), ctx('Nutrition')).raisons[0]).toBe('Montre Boxe, activité voisine du sujet Alimentation saine');
+    // Décision produit (alimentation ↔ mouvement) : la boxe est « proche » de la nutrition.
+    expect(pertinenceRush(f('boxing'), ctx('Nutrition')).raisons[0]).toBe('Montre Boxe, proche du sujet Alimentation saine');
     expect(pertinenceRush(f('studio'), ctx('Danse')).raisons[0]).toBe('Décor en lien avec le sujet : en studio');
     // Un lieu sans lien n'est pas une preuve d'hors-sujet.
     expect(pertinenceRush(f('beach'), ctx('Finance')).niveau).toBe('inconnu');
@@ -351,7 +354,7 @@ describe('M2-c — correctifs QA (affinités mode de vie, libellé, cohérence C
     for (const t of MODE_DE_VIE) for (const r of MODE_DE_VIE) {
       if (t === r) continue;
       // Exceptions ASSUMÉES (pas de lien évident) : cuisine ↔ sport / yoga / beauté / méditation, beauté ↔ entraînement.
-      const SANS_LIEN = [['cooking', 'workout'], ['cooking', 'yoga'], ['cooking', 'skincare'], ['cooking', 'meditation'], ['skincare', 'workout']];
+      const SANS_LIEN = [['cooking', 'skincare'], ['cooking', 'meditation'], ['skincare', 'workout']];
       if (SANS_LIEN.some(([x, y]) => (t === x && r === y) || (t === y && r === x))) continue;
       if (pertinenceRush(f(r), ctx(THEMES[t])).niveau === 'hors_sujet') hs.push(`${t}<-${r}`);
     }
@@ -365,8 +368,17 @@ describe('M2-c — correctifs QA (affinités mode de vie, libellé, cohérence C
     expect(pertinenceRush(f('skincare'), ctx('méditation')).niveau).toBe('partiel');
   });
 
-  it('thème cuisine (+ légumes) : la boxe y reste hors sujet ; thème nutrition : la boxe reste voisine', () => {
-    expect(pertinenceRush(f('boxing'), contexteMontageDepuis({ theme: 'cuisine', titre: 'Curry de légumes facile' })).niveau).toBe('hors_sujet');
+  it('alimentation ↔ mouvement (décision produit) : voisins, jamais hors sujet ; finance / beauté / productivité gardent leurs hors sujet', () => {
+    expect(pertinenceRush(f('boxing'), contexteMontageDepuis({ theme: 'cuisine', titre: 'Curry de légumes facile' })).raisons[0]).toBe('Montre Boxe, proche du sujet Cuisine');
+    for (const t of ['fitness', 'running', 'yoga', 'danse', 'boxe']) {
+      expect(pertinenceRush(f('cooking'), ctx(t)).niveau, t).toBe('partiel');
+      expect(pertinenceRush(f('healthy-food'), ctx(t)).niveau, t).toBe('partiel');
+    }
+    expect(pertinenceRush(f('yoga'), ctx('finance')).niveau).toBe('hors_sujet');
+    expect(pertinenceRush(f('boxing'), ctx('beauté')).niveau).toBe('hors_sujet');
+    expect(pertinenceRush(f('dance'), contexteMontageDepuis({ theme: 'coaching', objectif: 'productivité' })).niveau).toBe('hors_sujet');
+    expect(pertinenceRush(f('personal-finance'), ctx('fitness')).niveau).toBe('hors_sujet');
+    expect(pertinenceRush(f('cooking'), ctx('finance')).niveau).toBe('hors_sujet');
     expect(pertinenceRush(f('boxing'), ctx('nutrition')).niveau).toBe('partiel');
     // Un thème hors sport qui cite une activité de mouvement reste prudent.
     expect(pertinenceRush(f('boxing'), contexteMontageDepuis({ theme: 'finance', cartes: [{ title: 'Faire du sport sans payer' }] })).niveau).toBe('partiel');

@@ -164,11 +164,11 @@ function analyse(url: string, nettete: number, mouvement = 0.05): AnalyseRush {
 }
 
 const ATTRIBUTION = JSON.stringify({ provider: 'pexels', providerAssetId: '8955360', type: 'video', sourceUrl: 'https://www.pexels.com/video/women-dancing-in-a-studio-8955360/', description: 'women dancing in a studio', requete: 'dance workout' });
-/** Fiche v2 EN CACHE (M2-b) : l'image ET la parole montrent de la cuisine. */
-const V2_CUISINE = fusionnerFicheV2({
+/** Fiche v2 EN CACHE (M2-b) : l'image ET la parole montrent de la finance. */
+const V2_FINANCE = fusionnerFicheV2({
   v1: ficheContenuRush({ nomFichier: 'converted_1791985445290.mp4' }),
-  vision: { objets: [], lieu: null, action: null, personnes: null, categories: [{ id: 'cooking', confiance: 'moyenne' }] },
-  parole: { sujets: ['cooking'], dureeParlee: 8, source: 'parole' }, langue: 'fr', paroleEcoutee: true,
+  vision: { objets: [], lieu: null, action: null, personnes: null, categories: [{ id: 'personal-finance', confiance: 'moyenne' }] },
+  parole: { sujets: ['personal-finance'], dureeParlee: 8, source: 'parole' }, langue: 'fr', paroleEcoutee: true,
   etapes: { vision: { etat: 'faite' }, transcription: { etat: 'faite' } }, usage: { tarifs: 't' },
 });
 
@@ -180,7 +180,7 @@ function preparer(o: { attribution?: boolean; v2?: boolean; minio?: boolean } = 
   OBJETS.set(`media/${U}/library/converted_1791985445290.mp4`, Buffer.alloc(2048));
   OBJETS.set(`media/${U}/library/converted_1792081208949.mp4`, Buffer.alloc(3072));
   if (o.attribution !== false) OBJETS.set(`media/stock-attributions/${U}/stock-pexels-video-8955360.mp4.json`, Buffer.from(ATTRIBUTION));
-  if (o.v2) OBJETS.set(`media/${cleFicheContenu(U, 'media', `${U}/library/converted_1791985445290.mp4`, 2048, 2)}`, Buffer.from(JSON.stringify(V2_CUISINE)));
+  if (o.v2) OBJETS.set(`media/${cleFicheContenu(U, 'media', `${U}/library/converted_1791985445290.mp4`, 2048, 2)}`, Buffer.from(JSON.stringify(V2_FINANCE)));
   const mesures: Record<string, AnalyseRush> = { [R1]: analyse(R1, 0.18), [R2]: analyse(R2, 0.25), [R3]: analyse(R3, 0.02, 0.0005) };
   analyserRushServeurCache.mockImplementation(async (u: unknown) => mesures[u as string] ?? null);
 }
@@ -189,7 +189,7 @@ type Pert = { version: number; theme: string[]; rushs: Array<{ cle: string; nive
 const pertinence = (meta: Record<string, unknown>) => (meta.decisionMontage as { pertinenceRushs?: Pert } | undefined)?.pertinenceRushs;
 
 describe('M2-c — Autopilote : diagnostic de pertinence, montage inchangé', () => {
-  it('danse : stock « women dancing in a studio » = lien, rush perso v2 cuisine (image + parole) = hors sujet', async () => {
+  it('danse : stock « women dancing in a studio » = lien, rush perso v2 finance (image + parole) = hors sujet', async () => {
     preparer({ v2: true });
     const { meta, design } = await produire(cfg({ rushUrls: [R1, R2] }), 'Cours de danse');
     const p = pertinence(meta)!;
@@ -200,7 +200,7 @@ describe('M2-c — Autopilote : diagnostic de pertinence, montage inchangé', ()
     expect(stock.aVerifier).toBeUndefined();
     const perso = p.rushs.find((r) => r.cle.endsWith('converted_1791985445290.mp4'))!;
     expect(perso).toMatchObject({ niveau: 'hors_sujet', score: 0.15, sources: ['vision', 'parole'] });
-    expect(perso.raisons).toEqual(['Hors sujet pour Danse : montre Cuisine (image + parole)']);
+    expect(perso.raisons).toEqual(['Hors sujet pour Danse : montre Finance (image + parole)']);
     expect(JSON.stringify(p)).not.toMatch(/https?:|women|studio/);
     // Diagnostic seulement : le rush hors sujet est TOUJOURS monté.
     expect(montage(design).some((s) => s.url === R2)).toBe(true);
