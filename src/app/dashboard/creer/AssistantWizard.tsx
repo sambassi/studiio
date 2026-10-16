@@ -59,6 +59,7 @@ import {
 } from '@/lib/creer/recadrage-rush';
 import RecadrerRush from '@/components/creer/RecadrerRush';
 import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/MediasSequenceVideo';
+import QualiteRushs from '@/components/creer/QualiteRushs';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
@@ -973,6 +974,8 @@ const S = { sujet: 0, style: 1, audio: 2, contenu: 3, envoi: 4 } as const;
  * le brouillon (`@/lib/creer/draft`).
  */
 const persistableUrl = (url: string | null): string | undefined => persistableDraftUrl(url);
+/** M1 : seuls les rushes déjà enregistrés sont mesurés (jamais une `blob:`). */
+const urlDurable = (url: string): boolean => !!persistableUrl(url);
 
 /**
  * Une affiche generee par l'IA n'est appliquee que si son URL est DURABLE :
@@ -12415,6 +12418,11 @@ export default function AssistantWizard() {
                         onAjouterMediatheque={() => setMediathequeListe({ remplacer: null, type: 'all' })}
                         onOuvrirMenu={lireAvatarsPourListe}
                       />
+                      {/* M1 — QUALITÉ DES RUSHES : recommandations mesurées, AUCUN
+                          retrait automatique. « Écarter ce rush » = le retrait
+                          manuel existant (`retirerRush`) ; sans clic, le montage
+                          et le fichier final sont ceux d'avant. */}
+                      <QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={retirerRush} />
                       {urlsRecadrables(listeMedias).some((u) => stockMedias[u]) && (
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.

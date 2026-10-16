@@ -1,0 +1,7 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`non-régression : planMontage IDENTIQUE à l’octet > 3 rushes nets : diagnostic sans effet sur les analyses ni sur le plan 1`] = `"c4941050a62950c89f6cc15e095d5d1f124538fbb035e60f059ed693ba375a03"`;
+
+exports[`non-régression : planMontage IDENTIQUE à l’octet > danse : diagnostic sans effet sur les analyses ni sur le plan 1`] = `"28bb604594d306431d5979d156def3294d5ac1d9f2fff3161960ba8c733428c1"`;
+
+exports[`non-régression : planMontage IDENTIQUE à l’octet > nets + dégradés : diagnostic sans effet sur les analyses ni sur le plan 1`] = `"6af20e7ec4cb907886fe0b3b1557d2f0de15d8f3e867ddf0c0dff10de1bc94f8"`;
