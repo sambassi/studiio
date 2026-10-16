@@ -15,6 +15,8 @@ import { join } from 'path';
 const REEL = '11111111-2222-4333-8444-555555555555';
 const SUPPRIME = '99999999-8888-4777-8666-555555555555';
 const PANNE = { data: null, error: { message: 'connect ECONNREFUSED' } };
+/** Base GELÉE : la requête ne répond jamais. */
+const GEL = { data: 'gel', error: 'gel' };
 
 let files: Record<string, Array<{ data: unknown; error: unknown }>> = {};
 const ecritures: { table: string; op: string; valeur: unknown }[] = [];
@@ -31,6 +33,7 @@ function requete(table: string) {
     then: (ok: (v: unknown) => unknown, ko?: (e: unknown) => unknown) => {
       if (op !== 'select') ecritures.push({ table, op, valeur });
       const r = files[table]?.shift() ?? PANNE;
+      if (r === GEL) return new Promise(() => {}).then(ok, ko);
       return Promise.resolve(r).then(ok, ko);
     },
   };
@@ -216,5 +219,50 @@ describe('Edge : le chemin Node (crypto/minio) est hors du middleware', () => {
     const src = readFileSync(join(process.cwd(), 'src/lib/auth/etat-compte.ts'), 'utf-8');
     const imports = [...src.matchAll(/^import[^\n]*from '([^']+)'/gm)].map((m) => m[1]);
     expect(imports).toEqual(['@/lib/db/supabase']);
+  });
+});
+
+describe('base GELÉE : la lecture d’état est bornée, la session continue', () => {
+  it('répond « inconnu » au délai, garde la session, et ne repaie pas le délai pendant la pause', async () => {
+    vi.useFakeTimers();
+    try {
+      etat.viderCacheEtatCompte();
+      files.users = [GEL];
+      const t0 = Date.now();
+      const p = etat.etatCompteSession(REEL, t0);
+      await vi.advanceTimersByTimeAsync(etat.DELAI_LECTURE_ETAT_MS);
+      await expect(p).resolves.toBe('inconnu');
+      // Pendant la pause : réponse immédiate, aucune nouvelle lecture.
+      files.users = [GEL];
+      await expect(etat.etatCompteSession(REEL, t0 + 1_000)).resolves.toBe('inconnu');
+      expect(files.users).toHaveLength(1);
+      // Pause écoulée, base revenue : on relit.
+      files.users = [{ data: [{ email: 'coach@x.com', deleted_at: null }], error: null }];
+      await expect(etat.etatCompteSession(REEL, t0 + etat.PAUSE_APRES_DELAI_MS + 1)).resolves.toBe('actif');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('jwt d’un compte normal avec base gelée : la session reste ouverte après le délai', async () => {
+    vi.useFakeTimers();
+    try {
+      etat.viderCacheEtatCompte();
+      files.users = [GEL];
+      const p = jwtExistant(REEL);
+      await vi.advanceTimersByTimeAsync(etat.DELAI_LECTURE_ETAT_MS);
+      const tok = await p;
+      expect(tok).not.toBeNull();
+      expect((tok as any).id).toBe(REEL);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('un compte marqué supprimé reste coupé même si la base gèle ensuite', async () => {
+    etat.viderCacheEtatCompte();
+    etat.marquerCompteSupprime(SUPPRIME);
+    files.users = [GEL];
+    await expect(etat.etatCompteSession(SUPPRIME)).resolves.toBe('supprime');
   });
 });
