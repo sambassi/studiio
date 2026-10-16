@@ -27,9 +27,18 @@ export function estMediaDeBibliotheque(cle: string): boolean {
  *   `media/fiches-contenu/<uid>/analyse/<sha1>.<taille>.v1.json`) — quelques
  *   centaines d'octets, écrits par le seul serveur : le cache durable qui évite
  *   de recalculer (et, plus tard, de repayer) l'analyse d'un même rush.
+ * - le registre des demandes de suppression RGPD / Meta
+ *   (`media/suppressions/<code>.json`) : la page de statut doit pouvoir dire
+ *   l'état réel d'une demande aussi longtemps qu'on la consulte ;
+ * - les liens d'identité Meta (`media/liens-meta/<sha256>.json` et leur index
+ *   inverse `media/liens-meta/compte/<uid>/<sha256>.json`), retirés par la
+ *   suppression elle-même (`src/lib/rgpd/`).
  */
 export function estFichierDurable(cle: string): boolean {
   return /^audio\/audio-complet\/[^/]+\/[0-9a-f]{24}\.mp3$/.test(cle)
     || /^media\/stock-attributions\/[^/]+\/[^/]+\.json$/.test(cle)
-    || /^media\/fiches-contenu\/[^/]+\/analyse\/[0-9a-f]{40}\.\d+\.v\d+\.json$/.test(cle);
+    || /^media\/fiches-contenu\/[^/]+\/analyse\/[0-9a-f]{40}\.\d+\.v\d+\.json$/.test(cle)
+    || /^media\/suppressions\/[0-9a-f]{32}\.json$/.test(cle)
+    || /^media\/liens-meta\/[0-9a-f]{64}\.json$/.test(cle)
+    || /^media\/liens-meta\/compte\/[0-9a-f-]{36}\/[0-9a-f]{64}\.json$/.test(cle);
 }

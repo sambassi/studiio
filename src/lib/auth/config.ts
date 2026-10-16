@@ -228,6 +228,18 @@ export const authCallbacks = {
       );
       if (resolved) {
         token.id = resolved.id;
+        // Lien « identifiant Facebook → compte » : seul moyen de rattacher
+        // une demande de suppression Meta (`/api/data-deletion`) au bon
+        // compte. Fire-and-forget, sans effet sur la connexion. Import
+        // dynamique : le middleware (Edge) importe ce module, et la
+        // connexion ne passe jamais par lui.
+        if (account.provider === 'facebook') {
+          const asid = account.providerAccountId;
+          const uid = resolved.id;
+          import('@/lib/rgpd/adaptateurs')
+            .then((m) => m.enregistrerLienMetaSilencieux('facebook', asid, uid))
+            .catch(() => { /* jamais bloquant */ });
+        }
         if (resolved.isNew) {
           // Brand-new account → fire-and-forget welcome email
           sendWelcomeEmailDirect(user.email!, user.name || 'Utilisateur', 10);

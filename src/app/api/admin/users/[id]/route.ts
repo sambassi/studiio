@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAdmin, logAdminAction } from '@/lib/admin';
+import { requireAdmin, logAdminAction, isAdmin } from '@/lib/admin';
+import {
+  creerDemandeCompte, executerDemande, statutPublic, uidValide,
+} from '@/lib/rgpd/suppression-donnees';
+import { dependancesReelles } from '@/lib/rgpd/adaptateurs';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { ApiResponse } from '@/lib/types/api';
 
@@ -135,31 +139,33 @@ export async function DELETE(
     if (adminError) return adminError as NextResponse;
 
     const userId = params.id;
+    // Suppression RÉELLE (base + stockage), plus un simple `deleted_at` :
+    // voir src/lib/rgpd/suppression-donnees.ts. L'identifiant doit être un
+    // UUID canonique — il fixe les préfixes de stockage purgés.
+    if (!uidValide(userId)) {
+      return NextResponse.json({ success: false, error: 'Invalid user id' }, { status: 400 });
+    }
 
-    // Soft delete by setting deleted_at
-    const { data, error } = await supabaseAdmin
-      .from('users')
-      .update({ deleted_at: new Date().toISOString() })
-      .eq('id', userId)
-      .select()
-      .single();
+    const deps = { ...dependancesReelles(), estCompteProtege: isAdmin };
+    const demande = await creerDemandeCompte(userId, 'admin', deps);
+    const d = await executerDemande(demande.code, deps);
 
-    if (error) throw error;
-
-    // Log the action
     await logAdminAction({
       adminEmail: session!.user.email!,
       action: 'delete_user',
       targetType: 'user',
       targetId: userId,
-      details: { deletedAt: new Date().toISOString() },
+      details: { confirmationCode: d.code, statut: d.statut, motif: d.motif ?? null },
     });
 
+    const ok = d.statut === 'terminee';
     return NextResponse.json({
-      success: true,
-      data,
-      message: 'User deleted successfully (soft delete)',
-    });
+      success: ok,
+      data: statutPublic(d),
+      message: ok
+        ? 'User data deleted (account anonymized, billing records kept)'
+        : `Deletion ${d.statut}${d.motif ? ` (${d.motif})` : ''} — rerun to resume`,
+    }, { status: ok ? 200 : d.motif === 'verifications:abonnement_actif' ? 409 : 202 });
   } catch (error) {
     console.error('Error deleting user:', error);
     return NextResponse.json(
