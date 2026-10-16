@@ -158,7 +158,9 @@ describe('POST /api/user/suppression (soi-même uniquement)', () => {
     const res = await appel({ confirmation: 'SUPPRIMER', userId: B, user_id: B });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data.statut).toBe('terminee');
+    // Terminée DANS STUDIIO ; A a des avatars/voix/Zernio/Meta → jamais « terminee » global.
+    expect(body.data.studiio).toBe('terminee');
+    expect(body.data.statut).toBe('terminee_studiio_externes_restantes');
     expect(jeu.base.tables.videos.filter((r) => r.user_id === A)).toEqual([]);
     expect(jeu.base.tables.videos.filter((r) => r.user_id === B).length).toBe(1);
     expect(jeu.base.tables.users.find((u) => u.id === B)!.email).toBe('b@exemple.test');
@@ -182,27 +184,81 @@ describe('POST /api/user/suppression (soi-même uniquement)', () => {
 });
 
 describe('DELETE /api/admin/users/[id]', () => {
-  const appel = (id: string) => adminUser.DELETE(new Request('http://localhost') as never, { params: { id } });
+  const PHRASE = 'SUPPRIMER DÉFINITIVEMENT';
+  const appel = (id: string, corps?: unknown) => adminUser.DELETE(new Request('http://localhost', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    ...(corps === undefined ? {} : { body: typeof corps === 'string' ? corps : JSON.stringify(corps) }),
+  }) as never, { params: { id } });
+  const admin = () => requireAdminMock.mockResolvedValue({ error: null, session: { user: { id: 'x', email: 'admin@studiio.test' } } });
+  const rienSupprime = () => {
+    expect(jeu.registre.demandes.size).toBe(0);
+    expect(jeu.base.appels).toEqual([]);
+    expect(jeu.stockage.appelsSupprimer).toBe(0);
+    expect(jeu.base.tables.videos.filter((r) => r.user_id === A).length).toBe(1);
+    expect(jeu.base.tables.users.find((u) => u.id === A)!.email).toBe('a@exemple.test');
+  };
 
   it('non admin → refus de requireAdmin, rien supprimé', async () => {
     const { NextResponse } = await import('next/server');
     requireAdminMock.mockResolvedValue({ error: NextResponse.json({}, { status: 403 }), session: null });
-    expect((await appel(A)).status).toBe(403);
-    expect(jeu.registre.demandes.size).toBe(0);
+    expect((await appel(A, { confirmation: PHRASE, userId: A })).status).toBe(403);
+    rienSupprime();
   });
 
   it('identifiant invalide → 400', async () => {
-    requireAdminMock.mockResolvedValue({ error: null, session: { user: { id: 'x', email: 'admin@studiio.test' } } });
-    expect((await appel('../..')).status).toBe(400);
-    expect(jeu.registre.demandes.size).toBe(0);
+    admin();
+    expect((await appel('../..', { confirmation: PHRASE, userId: '../..' })).status).toBe(400);
+    rienSupprime();
   });
 
-  it('admin → suppression réelle de la cible seule', async () => {
-    requireAdminMock.mockResolvedValue({ error: null, session: { user: { id: 'x', email: 'admin@studiio.test' } } });
-    const res = await appel(A);
+  it.each([
+    ['sans corps', undefined],
+    ['corps illisible', '{pas du json'],
+    ['corps vide', {}],
+    ['mauvaise phrase', { confirmation: 'SUPPRIMER', userId: A }],
+    ['casse différente', { confirmation: 'supprimer définitivement', userId: A }],
+    ['sans accent', { confirmation: 'SUPPRIMER DEFINITIVEMENT', userId: A }],
+    ['espace en trop', { confirmation: ' SUPPRIMER DÉFINITIVEMENT', userId: A }],
+    ['id différent', { confirmation: PHRASE, userId: B }],
+    ['id absent', { confirmation: PHRASE }],
+    ['id avec espace', { confirmation: PHRASE, userId: `${A} ` }],
+  ])('%s → 400 et ZÉRO suppression', async (_nom, corps) => {
+    admin();
+    const res = await appel(A, corps);
+    expect(res.status).toBe(400);
+    expect((await res.json()).success).toBe(false);
+    rienSupprime();
+  });
+
+  it('bonne phrase + même id → suppression réelle de la cible seule ; statut global honnête', async () => {
+    admin();
+    const res = await appel(A, { confirmation: PHRASE, userId: A });
     expect(res.status).toBe(200);
-    expect((await res.json()).data.statut).toBe('terminee');
+    const body = await res.json();
+    expect(body.data.studiio).toBe('terminee');
+    expect(body.data.statut).toBe('terminee_studiio_externes_restantes');
+    expect(body.message).toMatch(/external operations remaining/);
+    expect(body.data.externes.filter((e: any) => e.etat === 'a_faire_manuellement').map((e: any) => e.fournisseur).sort())
+      .toEqual(['elevenlabs', 'heygen', 'meta', 'stripe', 'zernio']);
+    // Aucun identifiant (ni uid, ni identifiant fournisseur) dans la réponse.
+    expect(JSON.stringify(body)).not.toContain(A);
     expect(jeu.base.tables.videos.filter((r) => r.user_id === A)).toEqual([]);
     expect(jeu.base.tables.videos.filter((r) => r.user_id === B).length).toBe(1);
+  });
+
+  it('abonnement actif → 409 conservé, rien supprimé hors vérifications', async () => {
+    admin();
+    const res = await appel(B, { confirmation: PHRASE, userId: B });
+    expect(res.status).toBe(409);
+    expect(jeu.base.tables.videos.filter((r) => r.user_id === B).length).toBe(1);
+  });
+
+  it('panne de stockage → 202 conservé', async () => {
+    admin();
+    jeu.stockage.panneApres = 0;
+    const res = await appel(A, { confirmation: PHRASE, userId: A });
+    expect(res.status).toBe(202);
+    expect((await res.json()).data.statut).toBe('partielle');
   });
 });

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, logAdminAction, isAdmin } from '@/lib/admin';
 import {
-  creerDemandeCompte, executerDemande, statutPublic, uidValide,
+  creerDemandeCompte, executerDemande, statutPublic, uidValide, externesDe,
 } from '@/lib/rgpd/suppression-donnees';
+import { PHRASE_SUPPRESSION_ADMIN, confirmationSuppressionAdminValide } from '@/lib/rgpd/confirmation-admin';
 import { dependancesReelles } from '@/lib/rgpd/adaptateurs';
+import { marquerCompteSupprime } from '@/lib/auth/etat-compte';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { ApiResponse } from '@/lib/types/api';
 
@@ -131,7 +133,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ): Promise<NextResponse<ApiResponse<any>>> {
   try {
@@ -146,9 +148,22 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Invalid user id' }, { status: 400 });
     }
 
+    // Confirmation FORTE, vérifiée ici et pas seulement dans l'interface :
+    // un appel accidentel ou scripté (DELETE nu, mauvais id) ne supprime rien.
+    let corps: unknown = null;
+    try { corps = await req.json(); } catch { corps = null; }
+    if (!confirmationSuppressionAdminValide(corps, userId)) {
+      return NextResponse.json({
+        success: false,
+        error: `Confirmation required: send { "confirmation": "${PHRASE_SUPPRESSION_ADMIN}", "userId": "<same id as the URL>" }`,
+      }, { status: 400 });
+    }
+
     const deps = { ...dependancesReelles(), estCompteProtege: isAdmin };
     const demande = await creerDemandeCompte(userId, 'admin', deps);
     const d = await executerDemande(demande.code, deps);
+    // Compte anonymisé : sa session tombe tout de suite sur cette instance.
+    if (d.etapes.some((e) => e.id === 'compte' && e.statut === 'terminee')) marquerCompteSupprime(userId);
 
     await logAdminAction({
       adminEmail: session!.user.email!,
@@ -158,12 +173,17 @@ export async function DELETE(
       details: { confirmationCode: d.code, statut: d.statut, motif: d.motif ?? null },
     });
 
+    // `ok` = terminée DANS STUDIIO. `data.statut` (global) ne dit
+    // « terminee » que s'il ne reste aucune opération externe manuelle.
     const ok = d.statut === 'terminee';
+    const restants = externesDe(d).filter((e) => e.etat === 'a_faire_manuellement').map((e) => e.fournisseur);
     return NextResponse.json({
       success: ok,
       data: statutPublic(d),
       message: ok
-        ? 'User data deleted (account anonymized, billing records kept)'
+        ? restants.length > 0
+          ? `User data deleted in Studiio (account anonymized, billing records kept) — external operations remaining: ${restants.join(', ')}`
+          : 'User data deleted (account anonymized, billing records kept)'
         : `Deletion ${d.statut}${d.motif ? ` (${d.motif})` : ''} — rerun to resume`,
     }, { status: ok ? 200 : d.motif === 'verifications:abonnement_actif' ? 409 : 202 });
   } catch (error) {

@@ -5,6 +5,7 @@ import {
   creerDemandeCompte, executerDemande, statutPublic, uidValide,
 } from '@/lib/rgpd/suppression-donnees';
 import { dependancesReelles } from '@/lib/rgpd/adaptateurs';
+import { marquerCompteSupprime } from '@/lib/auth/etat-compte';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,6 +45,8 @@ export async function POST(req: NextRequest) {
   }
   try {
     const d = await executerDemande(code, deps);
+    // Compte anonymisé : sa session tombe tout de suite sur cette instance.
+    if (d.etapes.some((e) => e.id === 'compte' && e.statut === 'terminee')) marquerCompteSupprime(userId);
     if (d.motif === 'verifications:abonnement_actif') {
       return NextResponse.json(
         { success: false, error: 'Résiliez d’abord votre abonnement, puis relancez la suppression.', data: statutPublic(d) },

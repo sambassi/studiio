@@ -166,6 +166,10 @@ const prefixeInverse = (uid: string) => `${PREFIXE_LIENS_META}compte/${uid}/`;
 
 export function liensMetaMinio(): LiensMeta {
   return {
+    async existePourCompte(userId) {
+      if (!uidValide(userId)) throw new Error('uid_invalide');
+      return (await stockageMinio().lister(BUCKET_REGISTRE, prefixeInverse(userId), 1)).length > 0;
+    },
     async resoudre(appli, metaUserId) {
       const v = await lireJson(BUCKET_REGISTRE, cleLien(condensatMeta(appli, metaUserId)));
       const uid = (v as { uid?: unknown } | null)?.uid;

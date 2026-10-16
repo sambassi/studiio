@@ -1338,6 +1338,7 @@
       "userDeleted": "Benutzer {name} erfolgreich gelöscht",
       "userDeletePartial": "Löschung von {name} unvollständig: erneut ausführen, um sie abzuschließen",
       "userDeleteSubscribed": "Löschung abgelehnt: {name} hat ein aktives Abonnement",
+      "userDeletedExternes": "{name} in Studiio gelöscht — externe Vorgänge ausstehend: {fournisseurs}",
       "errorBan": "Fehler beim Sperren",
       "userBanned": "Benutzer erfolgreich gesperrt",
       "userUnbanned": "Benutzer erfolgreich entsperrt",
@@ -1373,7 +1374,21 @@
       "actions": {
         "credit": "Gutschreiben",
         "ban": "Sperren",
-        "unban": "Entsperren"
+        "unban": "Entsperren",
+        "banHint": "Konto sperren (umkehrbar)",
+        "unbanHint": "Konto entsperren",
+        "deletePermanently": "Endgültig löschen"
+      },
+      "deleteModal": {
+        "title": "Dieses Konto endgültig löschen",
+        "account": "Betroffenes Konto",
+        "name": "Name",
+        "email": "E-Mail",
+        "id": "ID",
+        "effects": "Diese Aktion löscht Inhalte, Dateien und Verbindungstoken dieses Kontos endgültig und anonymisiert anschließend das Konto. Die Buchhaltung (Transaktionen, Abonnements, Renderings) bleibt erhalten. Sie kann nicht rückgängig gemacht werden.",
+        "banInstead": "Um den Zugang umkehrbar zu sperren, verwenden Sie stattdessen „Sperren“.",
+        "typeToConfirm": "Zur Bestätigung genau eingeben: {phrase}",
+        "confirm": "Endgültig löschen"
       },
       "creditModal": {
         "title": "Credits hinzufügen",

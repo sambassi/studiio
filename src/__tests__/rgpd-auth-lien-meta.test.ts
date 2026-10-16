@@ -29,8 +29,10 @@ vi.mock('next-auth/providers/google', () => ({ default: () => ({}) }));
 vi.mock('next-auth/providers/facebook', () => ({ default: () => ({}) }));
 
 const { authCallbacks } = await import('@/lib/auth/config');
+// `jwt` peut renvoyer `null` (compte supprimé) ; ces tests portent sur des comptes normaux.
+const jwtCb = authCallbacks.jwt as unknown as (p: unknown) => Promise<any>;
 
-const connexion = (provider: string) => authCallbacks.jwt({
+const connexion = (provider: string) => jwtCb({
   token: { email: 'coach@x.com' },
   user: { id: 'fantome', email: 'coach@x.com', name: 'Coach', image: null },
   account: { access_token: 'tok', provider, type: 'oauth', providerAccountId: '1000001' },

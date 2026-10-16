@@ -1318,6 +1318,7 @@
       "userDeleted": "Utilisateur {name} supprimé avec succès",
       "userDeletePartial": "Suppression de {name} incomplète : relancez pour la terminer",
       "userDeleteSubscribed": "Suppression refusée : {name} a un abonnement actif",
+      "userDeletedExternes": "{name} supprimé dans Studiio — opérations externes restantes : {fournisseurs}",
       "errorBan": "Erreur lors du bannissement",
       "userBanned": "Utilisateur banni avec succès",
       "userUnbanned": "Utilisateur débanni avec succès",
@@ -1352,8 +1353,22 @@
       },
       "actions": {
         "credit": "Créditer",
-        "ban": "Bannir",
-        "unban": "Débannir"
+        "ban": "Bloquer",
+        "unban": "Débloquer",
+        "banHint": "Bloquer le compte (réversible)",
+        "unbanHint": "Débloquer le compte",
+        "deletePermanently": "Supprimer définitivement"
+      },
+      "deleteModal": {
+        "title": "Supprimer définitivement ce compte",
+        "account": "Compte concerné",
+        "name": "Nom",
+        "email": "E-mail",
+        "id": "Identifiant",
+        "effects": "Cette action supprime définitivement les contenus, les fichiers et les jetons de connexion de ce compte, puis anonymise le compte. La comptabilité (transactions, abonnements, rendus) est conservée. Elle est irréversible.",
+        "banInstead": "Pour suspendre l’accès de façon réversible, utilisez plutôt « Bloquer ».",
+        "typeToConfirm": "Pour confirmer, tapez exactement : {phrase}",
+        "confirm": "Supprimer définitivement"
       },
       "creditModal": {
         "title": "Ajouter des crédits",

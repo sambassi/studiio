@@ -1318,6 +1318,7 @@
       "userDeleted": "User {name} deleted successfully",
       "userDeletePartial": "Deletion of {name} is incomplete: run it again to finish",
       "userDeleteSubscribed": "Deletion refused: {name} has an active subscription",
+      "userDeletedExternes": "{name} deleted in Studiio — external operations remaining: {fournisseurs}",
       "errorBan": "Error during ban",
       "userBanned": "User banned successfully",
       "userUnbanned": "User unbanned successfully",
@@ -1352,8 +1353,22 @@
       },
       "actions": {
         "credit": "Credit",
-        "ban": "Ban",
-        "unban": "Unban"
+        "ban": "Block",
+        "unban": "Unblock",
+        "banHint": "Block the account (reversible)",
+        "unbanHint": "Unblock the account",
+        "deletePermanently": "Delete permanently"
+      },
+      "deleteModal": {
+        "title": "Permanently delete this account",
+        "account": "Account",
+        "name": "Name",
+        "email": "Email",
+        "id": "ID",
+        "effects": "This permanently deletes this account’s content, files and connection tokens, then anonymizes the account. Accounting records (transactions, subscriptions, renders) are kept. This cannot be undone.",
+        "banInstead": "To suspend access reversibly, use “Block” instead.",
+        "typeToConfirm": "To confirm, type exactly: {phrase}",
+        "confirm": "Delete permanently"
       },
       "creditModal": {
         "title": "Add credits",

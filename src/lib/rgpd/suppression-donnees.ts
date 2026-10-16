@@ -54,6 +54,7 @@ export type StatutSuppression = 'en_attente' | 'en_cours' | 'terminee' | 'partie
 export type IdEtape =
   | 'rattachement'
   | 'verifications'
+  | 'inventaire_externes'
   | 'comptes_sociaux_meta'
   | 'photo_profil_meta'
   | 'lien_meta'
@@ -72,6 +73,52 @@ export interface Etape {
   maj: string | null;
 }
 
+/** Fournisseurs EXTERNES qui peuvent détenir des données du compte. */
+export type Fournisseur = 'heygen' | 'elevenlabs' | 'zernio' | 'stripe' | 'meta';
+export const FOURNISSEURS: readonly Fournisseur[] = ['heygen', 'elevenlabs', 'zernio', 'stripe', 'meta'];
+
+/**
+ * État d'une opération chez un fournisseur. AUCUN appel fournisseur n'est
+ * fait par ce module : il n'y a donc pas d'état « fait ». `non_applicable`
+ * n'est posé QUE si les données locales prouvent qu'il n'y a rien chez ce
+ * fournisseur ; dans le doute (lecture en échec), `a_faire_manuellement`.
+ */
+export type EtatExterne = 'a_faire_manuellement' | 'non_applicable';
+
+export interface OperationExterne {
+  fournisseur: Fournisseur;
+  /** Code stable de l'action manuelle (voir tasks/dette-rgpd-purge-stockage.md). */
+  action: string;
+  etat: EtatExterne;
+}
+
+/**
+ * Identifiant fournisseur relevé AVANT la suppression locale, pour que
+ * l'opérateur retrouve la donnée dans la console du fournisseur. PRIVÉ :
+ * vit dans le registre (objet non public), JAMAIS dans `statutPublic`.
+ */
+export interface ReferenceExterne {
+  fournisseur: Fournisseur;
+  table: string;
+  colonne: string;
+  valeur: string;
+}
+
+export const ACTIONS_EXTERNES: Record<Fournisseur, string> = {
+  heygen: 'supprimer_avatars_et_videos',
+  elevenlabs: 'supprimer_voix_clonees',
+  zernio: 'supprimer_profil_et_comptes_connectes',
+  stripe: 'verifier_resiliation_facturation_conservee',
+  meta: 'revoquer_autorisation_application',
+};
+
+/** Ce qui est conservé, volontairement (affiché tel quel). */
+export const CONSERVE_PUBLIC = [
+  'comptabilite (credit_transactions, subscriptions, rendus)',
+  'audit_log',
+  'email_suppressions',
+] as const;
+
 export interface DemandeSuppression {
   version: 1;
   code: string;
@@ -81,9 +128,18 @@ export interface DemandeSuppression {
   userId: string | null;
   metaAppli?: AppliMeta;
   metaUserId?: string;
+  /** Statut DANS STUDIIO (base + stockage), calculé depuis les étapes. */
   statut: StatutSuppression;
   motif?: string;
   etapes: Etape[];
+  /**
+   * Opérations chez les fournisseurs externes, figées par l'étape
+   * `inventaire_externes` AVANT toute suppression locale (après, les lignes
+   * qui prouvent l'existence d'une donnée externe ont disparu).
+   */
+  externes?: OperationExterne[];
+  /** Identifiants fournisseurs relevés (privé, jamais publié). */
+  referencesExternes?: ReferenceExterne[];
   creeLe: string;
   majLe: string;
 }
@@ -116,6 +172,8 @@ export interface RegistreSuppressions {
 }
 
 export interface LiensMeta {
+  /** Le compte a-t-il AU MOINS un lien Meta (connexion Facebook) ? Lève sur panne. */
+  existePourCompte?(userId: string): Promise<boolean>;
   /** Compte Studiio rattaché à cet identifiant Meta, `null` sinon ; lève sur panne. */
   resoudre(appli: AppliMeta, metaUserId: string): Promise<string | null>;
   /** Retire le lien de cet identifiant (s'il pointe vers `userId`). Idempotent. */
@@ -212,7 +270,7 @@ export const STATUTS_ABONNEMENT_ACTIF = ['active', 'trialing', 'past_due', 'unpa
 
 const ETAPES: Record<Portee, IdEtape[]> = {
   meta: ['rattachement', 'comptes_sociaux_meta', 'photo_profil_meta', 'lien_meta'],
-  compte: ['verifications', 'jetons_sociaux', 'stockage', 'contenus', 'liens_meta', 'compte'],
+  compte: ['verifications', 'inventaire_externes', 'jetons_sociaux', 'stockage', 'contenus', 'liens_meta', 'compte'],
 };
 
 /** Étapes après lesquelles, si elles ne sont pas terminées, on s'arrête. */
@@ -272,6 +330,10 @@ export async function creerDemandeMeta(
 ): Promise<DemandeSuppression> {
   if (!/^[0-9]{1,32}$/.test(metaUserId)) throw new RefusSuppression('id_meta_invalide');
   const d = squelette(deps, 'meta', 'meta', null);
+  // Meta n'envoie ce rappel que lorsque la personne a RETIRÉ l'application
+  // de son compte Facebook/Instagram : l'autorisation est déjà révoquée
+  // côté Meta. Les autres fournisseurs ne sont pas dans la portée « meta ».
+  d.externes = [{ fournisseur: 'meta', action: ACTIONS_EXTERNES.meta, etat: 'non_applicable' }];
   d.metaAppli = appli;
   d.metaUserId = metaUserId;
   await deps.registre.ecrire(d);
@@ -341,6 +403,101 @@ async function purgerStockage(userId: string, deps: DependancesSuppression): Pro
   return OK;
 }
 
+/** Colonnes dont la valeur identifie la donnée chez le fournisseur. */
+const SOURCES_EXTERNES: {
+  fournisseur: Fournisseur | ((l: Record<string, unknown>) => Fournisseur);
+  table: string;
+  filtres?: Filtre[];
+  colonnes: string[];
+  /** Ligne à retenir (défaut : toutes). */
+  retenir?: (l: Record<string, unknown>) => boolean;
+}[] = [
+  { fournisseur: 'heygen', table: 'user_avatars', colonnes: ['provider_avatar_id', 'provider_asset_id'] },
+  { fournisseur: 'heygen', table: 'avatar_versions', colonnes: ['provider_avatar_id', 'provider_asset_id'] },
+  { fournisseur: 'heygen', table: 'avatar_generations', colonnes: ['provider_video_id'] },
+  {
+    // `user_voices.provider` : 'elevenlabs' aujourd'hui, 'heygen' possible.
+    fournisseur: (l) => (l.provider === 'heygen' ? 'heygen' : 'elevenlabs'),
+    table: 'user_voices', colonnes: ['provider_voice_id'],
+  },
+  { fournisseur: 'zernio', table: 'zernio_accounts', colonnes: ['profile_id', 'account_id'] },
+  { fournisseur: 'stripe', table: 'subscriptions', colonnes: ['stripe_subscription_id', 'stripe_customer_id'] },
+  {
+    fournisseur: 'stripe', table: 'credit_transactions',
+    filtres: [{ colonne: 'type', op: 'in', valeur: ['purchase', 'subscription'] }],
+    // `reference_id` = `stripe:in:<facture>` / `stripe:cs:<session>` (crediter.ts).
+    colonnes: ['reference_id'],
+    retenir: (l) => typeof l.reference_id === 'string' && l.reference_id.startsWith('stripe:'),
+  },
+  {
+    fournisseur: 'meta', table: 'social_accounts',
+    filtres: [{ colonne: 'platform', op: 'in', valeur: [...PLATEFORMES_META] }],
+    colonnes: ['account_id'],
+  },
+];
+
+const MAX_REFERENCES = 500;
+
+/**
+ * Relève, à partir des SEULES données locales, ce qui reste à faire chez
+ * chaque fournisseur. Aucune requête réseau vers un fournisseur.
+ * Toute lecture en échec → `a_faire_manuellement` (jamais un faux « rien »).
+ */
+async function inventorierExternes(uid: string, deps: DependancesSuppression): Promise<{
+  externes: OperationExterne[]; references: ReferenceExterne[];
+}> {
+  const concerne = new Set<Fournisseur>();
+  const references: ReferenceExterne[] = [];
+  const noter = (fournisseur: Fournisseur, table: string, colonne: string, v: unknown) => {
+    if (references.length >= MAX_REFERENCES) return;
+    if (typeof v !== 'string' && typeof v !== 'number') return;
+    const valeur = String(v);
+    if (!valeur || references.some((r) => r.fournisseur === fournisseur && r.table === table && r.colonne === colonne && r.valeur === valeur)) return;
+    references.push({ fournisseur, table, colonne, valeur });
+  };
+
+  for (const src of SOURCES_EXTERNES) {
+    const r = await deps.base.lire(src.table, '*', [{ colonne: 'user_id', op: 'eq', valeur: uid }, ...(src.filtres ?? [])]);
+    if (r.erreur && !r.tableAbsente) {
+      // Lecture impossible : on ne sait pas, donc on ne prétend pas « rien ».
+      if (typeof src.fournisseur === 'string') concerne.add(src.fournisseur);
+      else { concerne.add('elevenlabs'); concerne.add('heygen'); }
+      continue;
+    }
+    for (const l of r.lignes) {
+      if (src.retenir && !src.retenir(l)) continue;
+      const f = typeof src.fournisseur === 'string' ? src.fournisseur : src.fournisseur(l);
+      concerne.add(f);
+      for (const c of src.colonnes) noter(f, src.table, c, l[c]);
+    }
+  }
+
+  // Ligne `users` : client Stripe et profil Zernio (colonnes facultatives).
+  const u = await deps.base.lire('users', '*', [{ colonne: 'id', op: 'eq', valeur: uid }]);
+  if (u.erreur) { concerne.add('stripe'); concerne.add('zernio'); concerne.add('meta'); }
+  else for (const l of u.lignes) {
+    if (l.stripe_customer_id) { concerne.add('stripe'); noter('stripe', 'users', 'stripe_customer_id', l.stripe_customer_id); }
+    if (l.zernio_profile_id) { concerne.add('zernio'); noter('zernio', 'users', 'zernio_profile_id', l.zernio_profile_id); }
+    // Photo de profil servie par Meta : la personne s'est connectée via Facebook.
+    if (estPhotoMeta(l.avatar_url)) concerne.add('meta');
+  }
+
+  // Meta : une connexion Facebook laisse un lien, donc une autorisation d'application.
+  if (!concerne.has('meta')) {
+    if (!deps.liensMeta.existePourCompte) concerne.add('meta');
+    else {
+      try { if (await deps.liensMeta.existePourCompte(uid)) concerne.add('meta'); } catch { concerne.add('meta'); }
+    }
+  }
+
+  return {
+    externes: FOURNISSEURS.map((f) => ({
+      fournisseur: f, action: ACTIONS_EXTERNES[f], etat: concerne.has(f) ? 'a_faire_manuellement' : 'non_applicable',
+    })),
+    references,
+  };
+}
+
 async function executerEtape(id: IdEtape, d: DemandeSuppression, deps: DependancesSuppression): Promise<ResultatEtape> {
   const uid = d.userId;
   switch (id) {
@@ -379,6 +536,16 @@ async function executerEtape(id: IdEtape, d: DemandeSuppression, deps: Dependanc
       if (abonnements.lignes.some((a) => a.cancel_at_period_end !== true)) {
         return { statut: 'echec', motif: 'verifications:abonnement_actif' };
       }
+      return OK;
+    }
+    case 'inventaire_externes': {
+      if (!uid) return { statut: 'echec', motif: 'sans_compte' };
+      // Figé une fois pour toutes : rejoué après la suppression locale, il
+      // conclurait à tort « rien chez le fournisseur ».
+      if (d.externes) return OK;
+      const inv = await inventorierExternes(uid, deps);
+      d.externes = inv.externes;
+      d.referencesExternes = inv.references;
       return OK;
     }
     case 'comptes_sociaux_meta': {
@@ -499,17 +666,43 @@ export async function executerDemande(code: string, deps: DependancesSuppression
 // Statut public — AUCUNE donnée personnelle
 // ─────────────────────────────────────────────────────────────────────────
 
-const MESSAGES: Record<StatutSuppression, string> = {
+/** Statut GLOBAL publié : Studiio + fournisseurs externes. */
+export type StatutGlobalPublic = StatutSuppression | 'terminee_studiio_externes_restantes';
+
+const MESSAGES: Record<StatutGlobalPublic, string> = {
   en_attente: 'Demande reçue. Elle n’a pas encore été exécutée ; elle est en attente de traitement.',
   en_cours: 'Suppression en cours.',
   terminee: 'Les données concernées par cette demande ont été supprimées.',
+  terminee_studiio_externes_restantes: 'Terminée dans Studiio — opérations externes restantes.',
   partielle: 'Suppression partielle : certaines étapes n’ont pas abouti et seront reprises.',
   echec: 'La suppression n’a pas pu être effectuée pour le moment. Elle sera reprise.',
 };
 
+/**
+ * Opérations externes d'une demande. Une demande de compte dont
+ * l'inventaire n'a pas (encore) été fait : tous les fournisseurs sont « à
+ * faire » — on ne sait pas, on ne prétend rien.
+ */
+export function externesDe(d: DemandeSuppression): OperationExterne[] {
+  if (d.externes) return d.externes;
+  if (d.portee === 'meta') return [];
+  return FOURNISSEURS.map((f) => ({ fournisseur: f, action: ACTIONS_EXTERNES[f], etat: 'a_faire_manuellement' as const }));
+}
+
+/** Jamais « terminée » tant qu'une opération externe reste à faire. */
+export function statutGlobalPublic(d: DemandeSuppression): StatutGlobalPublic {
+  if (d.statut !== 'terminee') return d.statut;
+  return externesDe(d).some((e) => e.etat === 'a_faire_manuellement') ? 'terminee_studiio_externes_restantes' : 'terminee';
+}
+
 export interface StatutPublic {
   confirmation_code: string;
-  statut: StatutSuppression;
+  /** Statut GLOBAL (Studiio + externes). */
+  statut: StatutGlobalPublic;
+  /** Statut dans Studiio seul. */
+  studiio: StatutSuppression;
+  externes: { fournisseur: Fournisseur; action: string; etat: EtatExterne }[];
+  conserve: string[];
   portee: Portee;
   etapes: { etape: IdEtape; statut: StatutSuppression }[];
   cree_le: string;
@@ -517,15 +710,22 @@ export interface StatutPublic {
   message: string;
 }
 
-/** Ce que la page de statut montre : ni uid, ni identifiant Meta, ni motif interne. */
+/**
+ * Ce que la page de statut montre : ni uid, ni identifiant Meta, ni motif
+ * interne, ni identifiant fournisseur (`referencesExternes` reste privé).
+ */
 export function statutPublic(d: DemandeSuppression): StatutPublic {
+  const statut = statutGlobalPublic(d);
   return {
     confirmation_code: d.code,
-    statut: d.statut,
+    statut,
+    studiio: d.statut,
+    externes: externesDe(d).map((e) => ({ fournisseur: e.fournisseur, action: e.action, etat: e.etat })),
+    conserve: [...CONSERVE_PUBLIC],
     portee: d.portee,
     etapes: d.etapes.map((e) => ({ etape: e.id, statut: e.statut })),
     cree_le: d.creeLe,
     mis_a_jour: d.majLe,
-    message: MESSAGES[d.statut],
+    message: MESSAGES[statut],
   };
 }

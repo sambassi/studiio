@@ -106,6 +106,7 @@ export interface FauxLiens extends LiensMeta {
 export function fauxLiens(initial: Record<string, string> = {}): FauxLiens {
   const l: FauxLiens = {
     liens: new Map(Object.entries(initial)),
+    async existePourCompte(uid) { return [...l.liens.values()].includes(uid); },
     async resoudre(appli, id) { return l.liens.get(`${appli}:${id}`) ?? null; },
     async supprimer(appli, id, uid) { if (l.liens.get(`${appli}:${id}`) === uid) l.liens.delete(`${appli}:${id}`); },
     async supprimerPourCompte(uid) { for (const [k, v] of [...l.liens]) if (v === uid) l.liens.delete(k); },

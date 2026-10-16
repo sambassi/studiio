@@ -3,6 +3,7 @@ import Google from 'next-auth/providers/google';
 import Facebook from 'next-auth/providers/facebook';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { sendWelcomeEmailDirect } from '@/lib/email/notifications';
+import { etatCompteSession } from '@/lib/auth/etat-compte';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -217,7 +218,8 @@ export const authCallbacks = {
   async jwt({ token, user, account }) {
     // First-login branch: sync user to Supabase and store its UUID on
     // the token. After this, subsequent requests reuse the same token
-    // (which already has `id`) without hitting Supabase again.
+    // (which already has `id`) without re-resolving by email — only the
+    // cached account-state probe (`etatCompteSession`) runs, see below.
     if (user && account) {
       token.accessToken = account.access_token;
 
@@ -226,19 +228,35 @@ export const authCallbacks = {
         user.name,
         user.image,
       );
+      // Compte SUPPRIMÉ (RGPD, ou ancien `deleted_at` admin) retrouvé par
+      // l'adresse : connexion refusée, et SURTOUT aucune écriture — la mise
+      // à jour nom/avatar ci-dessous réinscrirait des données personnelles
+      // sur la ligne anonymisée. Une base en panne (`inconnu`) ne bloque pas.
+      if (resolved && !resolved.isNew && (await etatCompteSession(resolved.id)) === 'supprime') {
+        console.warn('[auth] connexion refusée : compte supprimé', { id: resolved.id });
+        return null;
+      }
       if (resolved) {
         token.id = resolved.id;
         // Lien « identifiant Facebook → compte » : seul moyen de rattacher
         // une demande de suppression Meta (`/api/data-deletion`) au bon
-        // compte. Fire-and-forget, sans effet sur la connexion. Import
-        // dynamique : le middleware (Edge) importe ce module, et la
-        // connexion ne passe jamais par lui.
-        if (account.provider === 'facebook') {
-          const asid = account.providerAccountId;
-          const uid = resolved.id;
-          import('@/lib/rgpd/adaptateurs')
-            .then((m) => m.enregistrerLienMetaSilencieux('facebook', asid, uid))
-            .catch(() => { /* jamais bloquant */ });
+        // compte. Fire-and-forget, sans effet sur la connexion.
+        //
+        // Le middleware (runtime Edge) importe ce module. `NEXT_RUNTIME` est
+        // remplacé à la compilation par Next : dans le bundle Edge la
+        // branche est morte et `@/lib/rgpd/adaptateurs` (crypto, minio)
+        // n'y entre pas. La connexion, elle, passe toujours par la route
+        // `/api/auth/*`, en runtime Node.
+        // (Le test de runtime est un `if` À PART : webpack n'élague que les
+        // conditions entièrement constantes.)
+        if (process.env.NEXT_RUNTIME !== 'edge') {
+          if (account.provider === 'facebook') {
+            const asid = account.providerAccountId;
+            const uid = resolved.id;
+            import('@/lib/rgpd/adaptateurs')
+              .then((m) => m.enregistrerLienMetaSilencieux('facebook', asid, uid))
+              .catch(() => { /* jamais bloquant */ });
+          }
         }
         if (resolved.isNew) {
           // Brand-new account → fire-and-forget welcome email
@@ -281,6 +299,13 @@ export const authCallbacks = {
         typeof token.picture === 'string' ? token.picture : null,
       );
       if (resolved) token.id = resolved.id;
+    }
+    // Ancien JWT d'un compte supprimé : la session tombe (Auth.js efface le
+    // cookie quand `jwt` renvoie `null`) — dashboard et routes API protégées
+    // compris, puisqu'elles passent toutes par `auth()`. Fail-open sur une
+    // base indisponible : seul un compte EXPLICITEMENT supprimé est coupé.
+    if (!(user && account) && typeof token.id === 'string' && UUID_RE.test(token.id)) {
+      if ((await etatCompteSession(token.id)) === 'supprime') return null;
     }
     return token;
   },
