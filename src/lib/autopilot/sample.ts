@@ -5,6 +5,7 @@ import { contenuPourDuree } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
 import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
 import { sanitizeBrief } from '@/lib/creer/brief';
+import type { PostPourScriptJumeau } from '@/lib/autopilot/script-jumeau';
 
 /**
  * L'ÉCHANTILLON montré dans l'aperçu de l'Autopilote.
@@ -68,6 +69,12 @@ export interface AutopilotSample {
   ctaSub: string;
   /** Mots-clés de la banque d'images, pour aller chercher une affiche d'exemple. */
   posterQuery: string;
+  /**
+   * A5 — TOUTES les cartes du contenu, comme le montage les reçoit
+   * (`post.content.cards`, non limitées aux 5 affichées) : le script du
+   * jumeau les parcourt, l'aperçu doit donc l'estimer sur les mêmes.
+   */
+  cartesDuMontage: Array<{ title: string; description: string; value: string }>;
 }
 
 /**
@@ -101,6 +108,7 @@ export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'> & {
     cta: cta.cta,
     ctaSub: cta.ctaSub,
     posterQuery: posterQuery(topic),
+    cartesDuMontage: contenu.cards.map((c) => ({ title: c.title, description: c.description, value: c.value })),
   };
 }
 
@@ -124,4 +132,19 @@ export function samplePosterVisible(
 ): boolean {
   if (focus === 'all' || focus === 'intro') return true;
   return cardsShowPoster;
+}
+
+/**
+ * A5 — l'échantillon vu comme le montage que le moteur préparerait
+ * (`preparePosts` : `title` = le sujet, `tagLine` = le CTA, le brief recopié),
+ * pour faire dire au jumeau EXACTEMENT le script du montage
+ * (`scriptJumeauMontage`). Le CTA du brief l'emporte de toute façon sur
+ * `tagLine` dans le script : `sample.cta` convient dans les deux cas.
+ */
+export function postDeLEchantillon(sample: AutopilotSample, brief: unknown): PostPourScriptJumeau {
+  return {
+    title: sample.topic,
+    content: { subtitle: sample.subtitle, tagLine: sample.cta, cards: sample.cartesDuMontage },
+    brief: sanitizeBrief(brief),
+  };
 }
