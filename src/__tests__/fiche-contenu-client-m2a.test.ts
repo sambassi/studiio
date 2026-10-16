@@ -55,7 +55,7 @@ describe('Créer (AssistantWizard) : branchement minimal', () => {
     expect(plan).toBeGreaterThan(demande);
     expect(attente).toBeGreaterThan(rendu);
     expect(aw).toContain('...decisionMontagePourMetadata(qualiteRushsCreer, contenuRushsCreer, pertinenceRushsCreer),');
-    // M2-c : + 1 lecture de `fichesRecues` pour le diagnostic de pertinence (consultatif, après le rendu).
-    expect(aw.match(/fichesCreer|contenuRushsCreer|fichesRecues/g)?.length).toBe(8);
+    // M2-c : + 2 lectures de `fichesRecues` pour le diagnostic de pertinence (consultatif, après le rendu).
+    expect(aw.match(/fichesCreer|contenuRushsCreer|fichesRecues/g)?.length).toBe(9);
   });
 });

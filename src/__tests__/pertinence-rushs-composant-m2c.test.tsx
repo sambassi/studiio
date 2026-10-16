@@ -58,7 +58,7 @@ describe('QualiteRushs + pertinence — affichage', () => {
     expect(hs.textContent).toMatch(/Recommandation seulement/);
     const av = document.querySelector(`[data-pertinence-rush="${cle('danse-seule')}"]`)!;
     expect(av.querySelector('[data-pertinence-badge]')!.textContent).toBe('À vérifier');
-    expect(av.textContent).toMatch(/À vérifier : semble montrer Danse, sujet Finance \(une seule source\)/);
+    expect(av.textContent).toMatch(/À vérifier : semble montrer Danse, sujet Finance \(un seul indice fiable sur le contenu\)/);
     expect(document.querySelector(`[data-pertinence-rush="${cle('budget')}"]`)).toBeNull();
     expect(document.querySelector(`[data-pertinence-rush="${cle('perso')}"]`)).toBeNull();
     expect(document.querySelector('[data-pertinence-resume]')!.textContent).toBe('1 rush cohérent avec le sujet · Contenu non identifié pour 1 rush');
@@ -189,5 +189,20 @@ describe('QualiteRushs + pertinence — défaut sûr et lectures', () => {
     render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={analyser} contexte={FINANCE} lireFiches={jamais} delaiMs={30} />);
     await waitFor(() => expect(document.querySelector('[data-pertinence-resume]')?.textContent).toBe('Contenu non identifié pour 4 rushes'), { timeout: 1000 });
     expect(document.querySelectorAll('[data-pertinence-rush]')).toHaveLength(0);
+  });
+});
+
+describe('QualiteRushs + pertinence — fiches transmises au diagnostic du post', () => {
+  it('onFiches reçoit les fiches chargées (v2 comprise), et rien sans contexte', async () => {
+    const onFiches = vi.fn();
+    const { unmount } = render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={analyser} lireFiches={lireFiches} onFiches={onFiches} />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onFiches).not.toHaveBeenCalled();
+    unmount();
+    render(<QualiteRushs medias={LISTE} estDurable={() => true} onEcarter={() => true} analyser={analyser} contexte={FINANCE} lireFiches={lireFiches} onFiches={onFiches} />);
+    await waitFor(() => expect(onFiches).toHaveBeenCalled());
+    const derniere = onFiches.mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(derniere[U('fete')]).toEqual(FICHES[U('fete')]);
+    expect(Object.keys(derniere).sort()).toEqual(LISTE.map((m) => m.url).sort());
   });
 });

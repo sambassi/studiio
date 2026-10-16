@@ -162,7 +162,7 @@ describe('M2-c — règles anti-fausse décision', () => {
       const p = pertinenceRush(dansePourFinance(s), FINANCE);
       expect(p.niveau).toBe('partiel');
       expect(p.aVerifier).toBe(true);
-      expect(p.raisons[0]).toMatch(/^À vérifier : semble montrer Danse, sujet Finance \(une seule source\)$/);
+      expect(p.raisons[0]).toMatch(/^À vérifier : semble montrer Danse, sujet Finance \(un seul indice fiable sur le contenu\)$/);
     }
   });
 
@@ -331,5 +331,71 @@ describe('M2-c — metadata et non-régression', () => {
     expect(appels[0]).toBe(appels[1]);
     expect(aw).toMatch(/<QualiteRushs [^>]*contexte=\{contextePertinence\}/);
     expect(aw).toMatch(/decisionMontagePourMetadata\(qualiteRushsCreer, contenuRushsCreer, pertinenceRushsCreer\)/);
+  });
+});
+
+describe('M2-c — correctifs QA (affinités mode de vie, libellé, cohérence Créer)', () => {
+  const f = (id: string, sources = ['vision', 'parole']) => ({ version: 1, categories: [{ id, confiance: 'elevee', sources }], parole: 'inconnu', inconnus: [], source: 'x' }) as unknown as FicheContenuRush;
+  const ctx = (theme: string, titre?: string) => contexteMontageDepuis({ theme, titre });
+
+  it('QA 18 : bien-être + cuisine saine (image + parole) n’est PAS hors sujet', () => {
+    const p = pertinenceRush(f('cooking'), ctx('bien-être', 'Prendre soin de soi au quotidien'));
+    expect(p.niveau).toBe('partiel');
+    expect(p.raisons[0]).toBe('Montre Cuisine, proche du sujet Bien-être');
+  });
+
+  it('mode de vie : aucune paire bien-être / nutrition / cuisine / récupération / beauté / yoga / méditation / sport n’est hors sujet', () => {
+    const MODE_DE_VIE = ['wellness', 'healthy-food', 'cooking', 'rest-recovery', 'skincare', 'yoga', 'meditation', 'workout'];
+    const THEMES: Record<string, string> = { wellness: 'bien-être', 'healthy-food': 'nutrition', cooking: 'cuisine', 'rest-recovery': 'sommeil', skincare: 'beauté', yoga: 'yoga', meditation: 'méditation', workout: 'sport' };
+    const hs: string[] = [];
+    for (const t of MODE_DE_VIE) for (const r of MODE_DE_VIE) {
+      if (t === r) continue;
+      // Exceptions ASSUMÉES (pas de lien évident) : cuisine ↔ sport / yoga / beauté / méditation, beauté ↔ entraînement.
+      const SANS_LIEN = [['cooking', 'workout'], ['cooking', 'yoga'], ['cooking', 'skincare'], ['cooking', 'meditation'], ['skincare', 'workout']];
+      if (SANS_LIEN.some(([x, y]) => (t === x && r === y) || (t === y && r === x))) continue;
+      if (pertinenceRush(f(r), ctx(THEMES[t])).niveau === 'hors_sujet') hs.push(`${t}<-${r}`);
+    }
+    expect(hs).toEqual([]);
+  });
+
+  it('sommeil + soin de la peau, nutrition + beauté, méditation + soin : liens, jamais hors sujet', () => {
+    expect(pertinenceRush(f('skincare'), ctx('sommeil')).raisons[0]).toBe('Montre Beauté, proche du sujet Récupération');
+    expect(pertinenceRush(f('skincare'), ctx('nutrition')).niveau).toBe('partiel');
+    expect(pertinenceRush(f('healthy-food'), ctx('beauté')).niveau).toBe('partiel');
+    expect(pertinenceRush(f('skincare'), ctx('méditation')).niveau).toBe('partiel');
+  });
+
+  it('thème cuisine (+ légumes) : la boxe y reste hors sujet ; thème nutrition : la boxe reste voisine', () => {
+    expect(pertinenceRush(f('boxing'), contexteMontageDepuis({ theme: 'cuisine', titre: 'Curry de légumes facile' })).niveau).toBe('hors_sujet');
+    expect(pertinenceRush(f('boxing'), ctx('nutrition')).niveau).toBe('partiel');
+    // Un thème hors sport qui cite une activité de mouvement reste prudent.
+    expect(pertinenceRush(f('boxing'), contexteMontageDepuis({ theme: 'finance', cartes: [{ title: 'Faire du sport sans payer' }] })).niveau).toBe('partiel');
+  });
+
+  it('libellé exact : un seul indice fiable, jamais « une seule source » suivie de deux sources', () => {
+    const p = pertinenceRush(f('dance', ['metadonnees', 'nom-fichier']), DANSE);
+    expect(p.raisons).toEqual(['Semble montrer Danse, comme le sujet (un seul indice fiable sur le contenu)']);
+    for (const l of ['fr', 'en', 'de'] as const) {
+      expect(texteMotif(p.motifs[0], l)).not.toMatch(/\+|:.*,/);
+    }
+    expect(texteMotif(p.motifs[0], 'en')).toBe('Seems to show Dance, like the topic (only one reliable clue about the content)');
+    expect(texteMotif(p.motifs[0], 'de')).toBe('Scheint Tanz zu zeigen, wie das Thema (nur ein verlässlicher Hinweis auf den Inhalt)');
+  });
+
+  it('Créer : le diagnostic du post prend les fiches du panneau (v2), sinon la v1 reçue — sans lecture', async () => {
+    const { fichesDuDiagnostic } = await import('@/lib/creer/pertinence-rushs');
+    const a = 'https://x/media/u/a.mp4'; const b = 'https://x/media/u/b.mp4'; const c = 'https://x/media/u/c.mp4';
+    const v1a = stock('people dancing'); const v2a = v2(perso(), ['cooking'], ['cooking']); const v1b = stock('healthy food bowl');
+    const r = fichesDuDiagnostic([a, b, c], new Map([[a, v1a], [b, v1b]]), { [a]: v2a, [b]: null });
+    expect(r).toEqual([{ url: a, fiche: v2a }, { url: b, fiche: v1b }]);
+    expect(fichesDuDiagnostic([a], new Map([[a, v1a]]), null)).toEqual([{ url: a, fiche: v1a }]);
+    // Même verdict que le panneau : celui calculé sur la v2.
+    expect(pertinenceRush(r[0].fiche, DANSE).niveau).toBe(pertinenceRush(v2a, DANSE).niveau);
+    const aw = readFileSync('src/app/dashboard/creer/AssistantWizard.tsx', 'utf8');
+    expect(aw).toMatch(/onFiches=\{retenirFichesPanneau\}/);
+    expect(aw).toMatch(/fichesDuDiagnostic\(\[\.\.\.rushsDurables\.map\(\(r\) => r\.url\), \.\.\.fichesRecues\.keys\(\)\], fichesRecues, fichesPanneauRef\.current\)/);
+    // Lu après le rendu, jamais par le plan.
+    expect(aw.indexOf('fichesDuDiagnostic([')).toBeGreaterThan(aw.indexOf('composed = await composerEtFacturer('));
+    expect(aw.match(/fichesPanneauRef/g)?.length).toBe(4); // déclaration, type, affectation, lecture
   });
 });

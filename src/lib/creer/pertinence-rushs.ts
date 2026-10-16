@@ -99,10 +99,22 @@ const FORTES: ReadonlySet<string> = new Set(['pexels-description', 'vision', 'pa
  * « hors sujet » l'une pour l'autre.
  */
 const AFFINITES: ReadonlyArray<readonly [string, string]> = [
-  ['healthy-food', 'cooking'],
-  ['skincare', 'wellness'],
-  ['personal-finance', 'productivity'],
+  ['healthy-food', 'cooking'], // préparer un repas sain est le sujet même
+  ['skincare', 'wellness'], // le soin de soi fait partie du bien-être
+  ['personal-finance', 'productivity'], // même décor (bureau), même public
+  ['cooking', 'wellness'], // cuisiner sain est une pratique de bien-être
+  ['skincare', 'rest-recovery'], // routine du soir : soin puis sommeil
+  ['skincare', 'healthy-food'], // l'alimentation se voit sur la peau (nutrition ↔ beauté)
+  ['skincare', 'meditation'], // moment de soin de soi au calme
+  ['skincare', 'yoga'], // routine de soin de soi (yoga puis soin)
+  ['cooking', 'rest-recovery'], // dîner léger, tisane du soir : mieux dormir
 ];
+/**
+ * Les activités du MOUVEMENT (sport au sens strict). Alimentation saine,
+ * Récupération et Bien-être sont de la famille sport, mais ne suffisent pas à
+ * faire d'un thème hors sport (« Curry de légumes ») un thème sportif.
+ */
+const MODE_DE_VIE_SPORT: ReadonlySet<string> = new Set(['healthy-food', 'rest-recovery', 'wellness']);
 
 /** Lieux et objets qui servent de DÉCOR naturel à une activité du sujet. */
 const DECORS_SPORT = ['gym', 'studio', 'yoga-mat', 'water-bottle'];
@@ -193,7 +205,12 @@ function relation(p: Preuve, sujet: { activites: string[]; lieuxObjets: string[]
     if (sujet.activites.includes(p.id)) return { rel: 'commun', theme: p.id };
     const aff = sujet.activites.find((a) => affines(a, p.id));
     if (aff) return { rel: 'affine', theme: aff };
-    const fam = estSport(p.id) ? sujet.activites.find(estSport) : undefined;
+    // Même famille : avec le sujet PRINCIPAL sportif, ou une activité de
+    // mouvement citée par le sujet (jamais par la seule nutrition d'un thème cuisine).
+    const principalSport = estSport(sujet.activites[0] ?? '');
+    const fam = estSport(p.id)
+      ? sujet.activites.find((a) => estSport(a) && (principalSport || !MODE_DE_VIE_SPORT.has(a)))
+      : undefined;
     if (fam) return { rel: 'famille', theme: fam };
     return { rel: 'etranger', theme: undefined };
   }
@@ -272,7 +289,7 @@ export function pertinenceRush(
   const lien = [...liens].sort((a, b) => rang[a.rel] - rang[b.rel] || (b.p.categorie === 'activite' ? 1 : 0) - (a.p.categorie === 'activite' ? 1 : 0))[0];
   const motifLien = (): MotifPertinence | null => {
     if (!lien) return null;
-    if (lien.rel === 'commun' && lien.p.categorie === 'activite') return { code: 'comme_sujet_une_source', concept: lien.p.id, sources: lien.p.sources };
+    if (lien.rel === 'commun' && lien.p.categorie === 'activite') return { code: 'comme_sujet_une_source', concept: lien.p.id };
     if (lien.rel === 'affine') return { code: 'proche_sujet', concept: lien.p.id, theme: lien.theme };
     if (lien.rel === 'famille') return { code: 'meme_famille', concept: lien.p.id, theme: lien.theme };
     return { code: 'decor', concept: lien.p.id };
@@ -306,6 +323,20 @@ export function pertinenceRush(
   }
   // Seulement des lieux / objets sans lien : on ne sait pas.
   return sortie('inconnu', { motifs: [{ code: 'sans_lien' }], sources: sourcesDe(lues), communs });
+}
+
+/**
+ * Créer — les fiches du diagnostic écrit dans le post : CELLES DU PANNEAU
+ * quand il les a déjà chargées (v2 comprise), sinon la v1 reçue pendant
+ * l'export. Aucune lecture : l'avis enregistré est l'avis affiché.
+ */
+export function fichesDuDiagnostic(
+  urls: ReadonlyArray<string>,
+  recues: ReadonlyMap<string, FicheEntree>,
+  panneau: Readonly<Record<string, FicheEntree>> | null | undefined,
+): Array<{ url: string; fiche: FicheEntree }> {
+  return [...new Set(urls)].map((url) => ({ url, fiche: panneau?.[url] ?? recues.get(url) ?? null }))
+    .filter((x) => !!x.fiche);
 }
 
 /** Le diagnostic de tous les rushes. */

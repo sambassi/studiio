@@ -106,9 +106,11 @@ export interface QualiteRushsProps {
   contexte?: ContexteMontage | null;
   /** Tests : lecture des fiches injectée (défaut : routes GET existantes). */
   lireFiches?: LecteurFiches;
+  /** Les fiches chargées (v2 comprise) : le diagnostic du post réutilise les mêmes. */
+  onFiches?: (fiches: Readonly<Record<string, FicheLue>>) => void;
 }
 
-export default function QualiteRushs({ medias, estDurable, onEcarter, enPause = false, analyser = analyseurParDefaut, delaiMs = DELAI_ANALYSE_PANNEAU_MS, contexte = null, lireFiches = lecteurFichesParDefaut }: QualiteRushsProps) {
+export default function QualiteRushs({ medias, estDurable, onEcarter, enPause = false, analyser = analyseurParDefaut, delaiMs = DELAI_ANALYSE_PANNEAU_MS, contexte = null, lireFiches = lecteurFichesParDefaut, onFiches }: QualiteRushsProps) {
   // Rushes vidéo de l'utilisateur ou suggérés — jamais l'avatar, jamais une photo.
   const rushs = useMemo(
     () => medias.filter((m): m is MediaVideo & { url: string } => m.type === 'video' && m.source !== 'avatar' && !!m.url && estDurable(m.url)),
@@ -185,6 +187,7 @@ export default function QualiteRushs({ medias, estDurable, onEcarter, enPause = 
     // `fiches` exclu : seules les URL nouvelles (ou la fin de la pause) relancent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clesPertinence, enPause, lireFiches, delaiMs]);
+  useEffect(() => { if (onFiches && Object.keys(fiches).length) onFiches(fiches); }, [fiches, onFiches]);
   const pertinences = useMemo(
     () => (pertinenceActive && contexte
       ? rushs.filter((m) => m.url in fiches).map((m) => ({ url: m.url, p: pertinenceRush(fiches[m.url], contexte, { cle: cleSource(m.url) }) }))

@@ -62,7 +62,7 @@ import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/Me
 import QualiteRushs from '@/components/creer/QualiteRushs';
 import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
 import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/creer/fiche-contenu';
-import { evaluerPertinenceRushs, pertinenceRushsPourMetadata } from '@/lib/creer/pertinence-rushs';
+import { evaluerPertinenceRushs, fichesDuDiagnostic, pertinenceRushsPourMetadata } from '@/lib/creer/pertinence-rushs';
 import { auPlus, chargerFichesContenu, type FichesParUrl } from '@/lib/creer/fiche-contenu-client';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import {
@@ -8147,6 +8147,9 @@ export default function AssistantWizard() {
           objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
           cartes: generated?.cards ?? [],
         }), [currentTopic, generated, brief.objectif, brief.message]);
+  /** M2-c — fiches déjà chargées par le panneau (v2 comprise), relues par le diagnostic du post. */
+  const fichesPanneauRef = useRef<Parameters<NonNullable<React.ComponentProps<typeof QualiteRushs>['onFiches']>>[0]>({});
+  const retenirFichesPanneau = useCallback((f: typeof fichesPanneauRef.current) => { fichesPanneauRef.current = f; }, []);
 
   /**
    * M1 — « Écarter ce rush » (panneau Qualité) : le retrait manuel de CE rush,
@@ -9706,7 +9709,11 @@ export default function AssistantWizard() {
         const contenuRushsCreer = contenuRushsPourMetadata([...fichesRecues].map(([url, fiche]) => ({ cle: cleSource(url), fiche })));
         // M2-c : pertinence CONSULTATIVE, sur ces mêmes fiches et le même contexte que le plan.
         const pertinenceRushsCreer = (() => {
-          try { return pertinenceRushsPourMetadata(evaluerPertinenceRushs([...fichesRecues].map(([url, fiche]) => ({ cle: cleSource(url), fiche })), contextePertinence)); } catch { return null; }
+          // Les MÊMES fiches que le panneau (v2 comprise) ; à défaut la v1 reçue. Aucune lecture de plus.
+          try {
+            const fiches = fichesDuDiagnostic([...rushsDurables.map((r) => r.url), ...fichesRecues.keys()], fichesRecues, fichesPanneauRef.current);
+            return pertinenceRushsPourMetadata(evaluerPertinenceRushs(fiches.map(({ url, fiche }) => ({ cle: cleSource(url), fiche })), contextePertinence));
+          } catch { return null; }
         })();
         const metadata = {
           type: 'infographic',
@@ -12488,7 +12495,7 @@ export default function AssistantWizard() {
                           retrait automatique. « Écarter ce rush » = le retrait
                           manuel existant (`retirerRush`) ; sans clic, le montage
                           et le fichier final sont ceux d'avant. */}
-                      <QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} contexte={contextePertinence} />
+                      <QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} contexte={contextePertinence} onFiches={retenirFichesPanneau} />
                       {urlsRecadrables(listeMedias).some((u) => stockMedias[u]) && (
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.
