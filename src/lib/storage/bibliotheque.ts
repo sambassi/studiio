@@ -23,8 +23,13 @@ export function estMediaDeBibliotheque(cle: string): boolean {
  *   nouveau crédit. La pré-écoute gratuite n'est jamais stockée.
  * - l'attribution d'un média stock (`media/stock-attributions/<uid>/…json`) —
  *   quelques octets qui gardent la licence d'un média importé.
+ * - la fiche de contenu d'un rush (M2-a,
+ *   `media/fiches-contenu/<uid>/analyse/<sha1>.<taille>.v1.json`) — quelques
+ *   centaines d'octets, écrits par le seul serveur : le cache durable qui évite
+ *   de recalculer (et, plus tard, de repayer) l'analyse d'un même rush.
  */
 export function estFichierDurable(cle: string): boolean {
   return /^audio\/audio-complet\/[^/]+\/[0-9a-f]{24}\.mp3$/.test(cle)
-    || /^media\/stock-attributions\/[^/]+\/[^/]+\.json$/.test(cle);
+    || /^media\/stock-attributions\/[^/]+\/[^/]+\.json$/.test(cle)
+    || /^media\/fiches-contenu\/[^/]+\/analyse\/[0-9a-f]{40}\.\d+\.v\d+\.json$/.test(cle);
 }

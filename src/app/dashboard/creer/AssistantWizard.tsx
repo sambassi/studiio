@@ -61,6 +61,8 @@ import RecadrerRush from '@/components/creer/RecadrerRush';
 import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/MediasSequenceVideo';
 import QualiteRushs from '@/components/creer/QualiteRushs';
 import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
+import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/creer/fiche-contenu';
+import { auPlus, chargerFichesContenu, type FichesParUrl } from '@/lib/creer/fiche-contenu-client';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
@@ -248,7 +250,7 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, planAvecAvatar, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
@@ -8993,6 +8995,8 @@ export default function AssistantWizard() {
       } | null = null;
       /** M1 — diagnostic qualité des rushes (consultatif), ou `null`. */
       let qualiteRushsCreer: ReturnType<typeof qualiteRushsPourMetadata> | null = null;
+      /** M2-a — fiches de contenu (consultatives), demandées au serveur pendant le rendu. */
+      let fichesCreer: Promise<FichesParUrl> | null = null;
       setMontageNotice(null);
       if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length !== (plateau.rushs ?? []).length) {
         setMontageNotice('Analyse intelligente indisponible (un rush n’est pas encore enregistré) — montage simple utilisé.');
@@ -9011,6 +9015,8 @@ export default function AssistantWizard() {
           const choisis = listeMediasRef.current.filter((m) => m.url && (m.source === 'rush' || m.source === 'mediatheque')).map((m) => m.url as string);
           if (analyses.length) qualiteRushsCreer = qualiteRushsPourMetadata(evaluerQualiteRushs(analyses, { choisisParUtilisateur: choisis }));
         } catch { qualiteRushsCreer = null; }
+        // M2-a : fiches de contenu demandées EN PARALLÈLE du rendu (jamais attendues par lui).
+        fichesCreer = chargerFichesContenu(rushsDurables.map((r) => r.url));
         const cibleEcran = duree('video');
         // V3 : coupes calées sur le rythme de la musique, lue à partir du
         // début de la séquence « Vidéo » (somme des séquences qui la précèdent).
@@ -9678,6 +9684,11 @@ export default function AssistantWizard() {
         // Le post, montage inclus. `renderedVideoUrl` +
         //    `thumbnailUrl` + `composerVersion` à jour : le Calendrier lit la
         //    vidéo directement et n'affiche même pas son bouton « Régénérer ».
+        // M2-a : fiches de contenu CONSULTATIVES (au plus 1,5 s d'attente, déjà
+        // demandées pendant le rendu). La parole n'est PAS déduite ici : une
+        // analyse navigateur sans son (> 150 Mo) rend des zéros, pas un silence.
+        const fichesRecues = await auPlus(fichesCreer, 1500, new Map() as FichesParUrl);
+        const contenuRushsCreer = contenuRushsPourMetadata([...fichesRecues].map(([url, fiche]) => ({ cle: cleSource(url), fiche })));
         const metadata = {
           type: 'infographic',
           source: 'assistant-simple',
@@ -9815,7 +9826,8 @@ export default function AssistantWizard() {
           lut: lut ? { empreinte: lut.empreinte, nom: lut.nom, intensite: lut.intensite } : undefined,
           // M1 — DIAGNOSTIC consultatif de la qualité des rushes (même forme que
           // l'Autopilote) : jamais relu par le rendu. Absent sans analyse.
-          ...(qualiteRushsCreer ? { decisionMontage: { version: 1, qualiteRushs: qualiteRushsCreer } } : {}),
+          // M2-a : `contenuRushs` rejoint la même clé ; sans fiche informative, identique à avant.
+          ...decisionMontagePourMetadata(qualiteRushsCreer, contenuRushsCreer),
           renderedVideoUrl: composed.url,
           thumbnailUrl: composed.thumbnailUrl || undefined,
           composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,

@@ -125,6 +125,72 @@ export function conceptsDe(...textes: Array<string | null | undefined>): Concept
   return out;
 }
 
+/**
+ * M2-a — Un concept de la taxonomie FERMÉE ci-dessus, tel qu'une fiche de
+ * contenu le cite. `id` = la forme anglaise du concept (`healthy-food`,
+ * `dance`…), unique et stable ; aucune autre catégorie n'existe.
+ */
+export interface ConceptReconnu {
+  id: string;
+  categorie: Categorie;
+  /** Libellé français déjà montré à l'écran (« Danse », « Femme », « à la plage »). */
+  libelle: string;
+}
+
+const idDuConcept = (c: Concept) => c.en.replace(/\s+/g, '-');
+
+/** Les identifiants de la taxonomie fermée (validation d'une fiche relue). */
+export const IDS_CONCEPTS: ReadonlySet<string> = new Set(CONCEPTS.map(idDuConcept));
+
+/** Le concept d'un identifiant de la taxonomie fermée, ou `null`. */
+export function conceptParId(id: string): ConceptReconnu | null {
+  const c = CONCEPTS.find((x) => idDuConcept(x) === id && !x.implique) ?? CONCEPTS.find((x) => idDuConcept(x) === id);
+  return c ? { id, categorie: c.categorie, libelle: c.frNom ?? c.fr } : null;
+}
+
+/**
+ * Concepts reconnus dans un texte LIBRE, français OU anglais (titre de page
+ * Pexels, requête envoyée au fournisseur, nom de fichier).
+ *
+ * Français : exactement `conceptsDe` (mêmes mots, mêmes implications).
+ * Anglais : la forme anglaise DÉJÀ portée par chaque concept (`en`,
+ * `gerondif`), mot pour mot et contiguë — « healthy food », « dancing ».
+ * Aucune implication côté anglais : « african » ne fait pas danser une photo.
+ * Pure, déterministe, sans IA.
+ */
+export function conceptsReconnus(...textes: Array<string | null | undefined>): ConceptReconnu[] {
+  const out = new Map<string, ConceptReconnu>();
+  const ajouter = (c: Concept) => {
+    const id = idDuConcept(c);
+    if (!out.has(id)) out.set(id, { id, categorie: c.categorie, libelle: c.frNom ?? c.fr });
+  };
+  for (const t of textes) {
+    const mots = motsDe(t || '');
+    if (!mots.length) continue;
+    // (position, rang, concept) : l'ordre du texte, le français avant l'anglais à égalité.
+    const trouves: Array<[number, number, Concept]> = [];
+    mots.forEach((mot, i) => {
+      const n = mot === 'pleinair' ? 'plein-air' : mot === 'bienetre' ? 'bien-etre' : mot;
+      const c = CONCEPTS.find((x) => x.mots.includes(n));
+      if (!c) return;
+      trouves.push([i, 0, c]);
+      for (const imp of c.implique ?? []) { const ci = PAR_EN.get(imp); if (ci) trouves.push([i, 1, ci]); }
+    });
+    const chaine = ` ${mots.join(' ')} `;
+    for (const c of CONCEPTS) {
+      if (c.implique) continue; // `afroboost` : implication propre au mot français
+      for (const forme of [c.en, c.gerondif]) {
+        if (!forme) continue;
+        const k = chaine.indexOf(` ${motsDe(forme).join(' ')} `);
+        if (k >= 0) { trouves.push([chaine.slice(0, k + 1).trim().split(' ').filter(Boolean).length, 2, c]); break; }
+      }
+    }
+    trouves.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    for (const [, , c] of trouves) ajouter(c);
+  }
+  return [...out.values()];
+}
+
 /** Le rôle d'une séquence (Créer) ou d'une phase de montage (Autopilote). */
 export type RoleSequence = 'titre' | 'cartes' | 'video' | 'cta' | 'HOOK' | 'BUILD' | 'PEAK' | 'FOCUS' | 'CTA';
 /** Ce que l'on cherche : un plan vidéo, une photo, un arrière-plan, un plan d'illustration. */

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { dependancesParDefaut, ErreurFournisseurStock } from '@/lib/stock/fournisseurs';
 import { ErreurImport, importerMediaStock } from '@/lib/stock/importer';
+import { requeteStockMemorisee } from '@/lib/stock/requetes-memo';
 
 /**
  * Sélection RÉELLE d'un média stock — `POST /api/stock/importer`
@@ -36,9 +37,18 @@ export async function POST(req: NextRequest) {
 
   try {
     const { uploadBufferToStorage } = await import('@/lib/storage/upload');
+    // M2-a : la recherche retenue par le SERVEUR pour ce compte (jamais lue du corps).
+    const requete = requeteStockMemorisee(userId, `${provider}-${type}-${providerAssetId}`);
     const r = await importerMediaStock(userId, { provider, type, providerAssetId }, dependancesParDefaut(), {
       televerser: ({ chemin, contenu, contentType }) => uploadBufferToStorage({ buffer: contenu, bucket: 'media', storagePath: chemin, contentType }),
-    });
+    }, { requete });
+    // M2-a : fiche de contenu calculée À L'IMPORT (l'attribution vient d'être
+    // écrite), en tâche de fond — la réponse ne l'attend jamais.
+    if (r.importe && provider === 'pexels' && type === 'video') {
+      void import('@/lib/creer/fiche-contenu-serveur')
+        .then(({ ficheContenuServeur }) => ficheContenuServeur(r.url, userId, { recalculer: true }))
+        .catch(() => null);
+    }
     return NextResponse.json({ success: true, url: r.url, importe: r.importe, media: r.media });
   } catch (e) {
     if (e instanceof ErreurImport) {

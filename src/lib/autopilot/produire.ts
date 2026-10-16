@@ -16,10 +16,11 @@ import { mesurerDureeJumeau, JumeauIllisibleError } from '@/lib/autopilot/duree-
 import { etatRushServeur, type EtatRush } from '@/lib/autopilot/validite-rush';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
-import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, estUrlImage, type RushSegment } from '@/lib/creer/multi-rush';
 import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre, mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
+import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/creer/fiche-contenu';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
@@ -948,6 +949,20 @@ export async function produireUnMontage(input: {
     console.warn(`${journal} ${userId} — conseils impossibles :`, err instanceof Error ? err.message : err);
   }
 
+  // ── M2-a — FICHES DE CONTENU (consultatives) ─────────────────────────────
+  // APRÈS le rendu : jamais lues par la sélection ni par le rendu. Lecture du
+  // cache MinIO d'abord ; délai global borné ; toute panne → pas de fiche.
+  let contenuRushs: ReturnType<typeof contenuRushsPourMetadata> = null;
+  try {
+    const { fichesContenuServeur } = await import('@/lib/creer/fiche-contenu-serveur');
+    const energies = new Map(analysesRushs.filter((a) => !rushsSansMesure.has(a.url)).map((a) => [a.url, a.echantillons.map((e) => e.audio)]));
+    const urlsFiches = [...analysesRushs.map((a) => a.url), ...stockUtilise.filter((m) => m.type === 'video').map((m) => m.url)];
+    const fiches = await fichesContenuServeur(urlsFiches, userId, { energies, delaiMs: 4000 });
+    contenuRushs = contenuRushsPourMetadata(fiches.map((f) => ({ cle: cleSource(f.url), fiche: f.fiche })));
+  } catch {
+    contenuRushs = null; // une fiche ne bloque jamais un montage
+  }
+
   const metadata = {
     ...buildAutopilotMetadata({
       post: postUtilise, design, videoUrl, thumbnailUrl, mode: config.mode,
@@ -1012,16 +1027,18 @@ export async function produireUnMontage(input: {
     // change ni la sélection ni le rendu (calculé après le plan, jamais relu
     // par le rendu) ; il rend visible plus tard « pourquoi ce rush est à
     // vérifier ». Tous les rushes de la banque sont ceux de l'utilisateur.
-    ...(() => {
+    // M2-a : `contenuRushs` (fiches de contenu) rejoint la même clé, même
+    // esprit ; sans fiche informative, la clé est celle d'avant à l'identique.
+    ...decisionMontagePourMetadata((() => {
       try {
         const mesurees = analysesRushs.filter((a) => !rushsSansMesure.has(a.url));
         if (!mesurees.length) return null;
         const d = evaluerQualiteRushs(mesurees, { choisisParUtilisateur: banqueRushs });
-        return { decisionMontage: { version: 1, qualiteRushs: qualiteRushsPourMetadata(d) } };
+        return qualiteRushsPourMetadata(d);
       } catch {
         return null; // un diagnostic ne bloque jamais un montage
       }
-    })(),
+    })(), contenuRushs),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
     ...(Object.values(voices).some((v) => v?.repli === 'edge') ? { voixRepliEdge: true } : null),
     // Ce que l'utilisateur doit savoir, LU par le Calendrier — un montage du

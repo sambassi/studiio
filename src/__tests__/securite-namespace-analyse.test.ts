@@ -826,7 +826,10 @@ describe('Aucun consommateur ne peut porter une clé de l espace bloqué', () =>
     expect(entrees.length, 'le balayage n a lu aucun fichier').toBeGreaterThan(100);
 
     const trouves = producteursDeCleAnalyse(entrees);
-    expect(trouves.sort()).toEqual(['src/lib/autopilot/analyse/extraction.ts']);
+    // M2-a : la fiche de contenu (`fiches-contenu/<userId>/analyse/…json`) est
+    // rangée dans l'espace bloqué EXPRÈS — lue par son seul module serveur, avec
+    // une clé qu'il dérive de la session ; jamais une URL remise à un consommateur.
+    expect(trouves.sort()).toEqual(['src/lib/autopilot/analyse/extraction.ts', 'src/lib/creer/fiche-contenu-serveur.ts']);
   });
 
   it('le balayage MORD — sinon il ne prouverait rien', () => {

@@ -164,7 +164,11 @@ describe('Créer — câblage minimal', () => {
     expect(panneau).toContain('return analyserRushMemo(url, undefined, { borne: true });');
   });
   it('Créer écrit le diagnostic CONSULTATIF dans le post, même forme que l’Autopilote', () => {
-    expect(aw).toContain('...(qualiteRushsCreer ? { decisionMontage: { version: 1, qualiteRushs: qualiteRushsCreer } } : {}),');
-    expect(readFileSync('src/lib/autopilot/produire.ts', 'utf8')).toContain("return { decisionMontage: { version: 1, qualiteRushs: qualiteRushsPourMetadata(d) } };");
+    // M2-a : même clé, même helper des deux côtés (`decisionMontagePourMetadata`,
+    // `{ version: 1, qualiteRushs }` à l'identique tant qu'aucune fiche n'apprend rien).
+    expect(aw).toContain('...decisionMontagePourMetadata(qualiteRushsCreer, contenuRushsCreer),');
+    const pr = readFileSync('src/lib/autopilot/produire.ts', 'utf8');
+    expect(pr).toContain('return qualiteRushsPourMetadata(d);');
+    expect(pr).toContain('})(), contenuRushs),');
   });
 });

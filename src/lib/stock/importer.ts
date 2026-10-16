@@ -53,7 +53,14 @@ export function nomFichierStock(provider: FournisseurStock, type: TypeStock, id:
   return `stock-${provider}-${type}-${id.replace(/[^A-Za-z0-9_-]/g, '')}.${type === 'video' ? 'mp4' : 'jpg'}`;
 }
 
-export function attributionPourStockage(m: MediaStock, url: string): Record<string, unknown> {
+/**
+ * M2-a : `description` (mots du titre Pexels, déjà calculés) et `requete`
+ * (recherche qui a fait trouver le média, si le serveur la connaît) sont
+ * AJOUTÉS — le fichier importé et son nom ne changent pas. Absents : la fiche
+ * de contenu relit le slug de `sourceUrl`, comme pour les imports d'avant.
+ */
+export function attributionPourStockage(m: MediaStock, url: string, contexte: { requete?: string | null } = {}): Record<string, unknown> {
+  const requete = typeof contexte.requete === 'string' ? contexte.requete.trim().slice(0, 120) : '';
   return {
     provider: m.provider,
     providerAssetId: m.providerAssetId,
@@ -69,6 +76,8 @@ export function attributionPourStockage(m: MediaStock, url: string): Record<stri
     dureeSecondes: m.dureeSecondes ?? null,
     url,
     importeLe: new Date().toISOString(),
+    ...(m.description ? { description: m.description.slice(0, 300) } : {}),
+    ...(requete ? { requete } : {}),
   };
 }
 
@@ -77,6 +86,7 @@ export async function importerMediaStock(
   d: DemandeImport,
   deps: DependancesStock,
   stockage: StockageImport,
+  contexte: { requete?: string | null } = {},
 ): Promise<ResultatImport> {
   if (d.provider === 'unsplash') {
     if (d.type !== 'photo') throw new ErreurImport('invalide', 'Unsplash ne fournit que des photos');
@@ -107,7 +117,7 @@ export async function importerMediaStock(
   // L'attribution ne doit jamais faire échouer l'import : elle se réécrit au prochain choix.
   await stockage.televerser({
     chemin: `stock-attributions/${userId}/${nom}.json`,
-    contenu: Buffer.from(JSON.stringify(attributionPourStockage(media, url))),
+    contenu: Buffer.from(JSON.stringify(attributionPourStockage(media, url, contexte))),
     contentType: 'application/json',
   }).catch(() => null);
   return { url, media, importe: true };
