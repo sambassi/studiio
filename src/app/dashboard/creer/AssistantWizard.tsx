@@ -62,6 +62,7 @@ import MediasSequenceVideo, { type EtatAvatarListe } from '@/components/creer/Me
 import QualiteRushs from '@/components/creer/QualiteRushs';
 import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
 import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/creer/fiche-contenu';
+import { evaluerPertinenceRushs, pertinenceRushsPourMetadata } from '@/lib/creer/pertinence-rushs';
 import { auPlus, chargerFichesContenu, type FichesParUrl } from '@/lib/creer/fiche-contenu-client';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import {
@@ -8134,6 +8135,20 @@ export default function AssistantWizard() {
   };
 
   /**
+   * M2-c — Contexte de la PERTINENCE des rushes : les MÊMES champs, dans le
+   * même ordre, que le `contexteMontageDepuis` de l'export (un test compare
+   * les deux appels). Lu seulement par le panneau Qualité et le diagnostic
+   * consultatif `decisionMontage.pertinenceRushs` — jamais par le plan.
+   */
+  const contextePertinence = useMemo(() => contexteMontageDepuis({
+          theme: currentTopic,
+          titre: generated?.title ?? null,
+          sousTitre: generated?.subtitle ?? null,
+          objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
+          cartes: generated?.cards ?? [],
+        }), [currentTopic, generated, brief.objectif, brief.message]);
+
+  /**
    * M1 — « Écarter ce rush » (panneau Qualité) : le retrait manuel de CE rush,
    * et lui seul. Rush introuvable : AUCUNE action (jamais le repli `clearRush`
    * de `retirerRush`, qui viderait la séquence) — le panneau le dit.
@@ -9689,6 +9704,10 @@ export default function AssistantWizard() {
         // analyse navigateur sans son (> 150 Mo) rend des zéros, pas un silence.
         const fichesRecues = await auPlus(fichesCreer, 1500, new Map() as FichesParUrl);
         const contenuRushsCreer = contenuRushsPourMetadata([...fichesRecues].map(([url, fiche]) => ({ cle: cleSource(url), fiche })));
+        // M2-c : pertinence CONSULTATIVE, sur ces mêmes fiches et le même contexte que le plan.
+        const pertinenceRushsCreer = (() => {
+          try { return pertinenceRushsPourMetadata(evaluerPertinenceRushs([...fichesRecues].map(([url, fiche]) => ({ cle: cleSource(url), fiche })), contextePertinence)); } catch { return null; }
+        })();
         const metadata = {
           type: 'infographic',
           source: 'assistant-simple',
@@ -9827,7 +9846,7 @@ export default function AssistantWizard() {
           // M1 — DIAGNOSTIC consultatif de la qualité des rushes (même forme que
           // l'Autopilote) : jamais relu par le rendu. Absent sans analyse.
           // M2-a : `contenuRushs` rejoint la même clé ; sans fiche informative, identique à avant.
-          ...decisionMontagePourMetadata(qualiteRushsCreer, contenuRushsCreer),
+          ...decisionMontagePourMetadata(qualiteRushsCreer, contenuRushsCreer, pertinenceRushsCreer),
           renderedVideoUrl: composed.url,
           thumbnailUrl: composed.thumbnailUrl || undefined,
           composerVersion: composed.composerVersion || CURRENT_COMPOSER_VERSION,
@@ -12469,7 +12488,7 @@ export default function AssistantWizard() {
                           retrait automatique. « Écarter ce rush » = le retrait
                           manuel existant (`retirerRush`) ; sans clic, le montage
                           et le fichier final sont ceux d'avant. */}
-                      <QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} />
+                      <QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} contexte={contextePertinence} />
                       {urlsRecadrables(listeMedias).some((u) => stockMedias[u]) && (
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.

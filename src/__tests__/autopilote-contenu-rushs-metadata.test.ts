@@ -214,7 +214,8 @@ describe('M2-a — Autopilote : fiches écrites, sélection et rendu inchangés'
     expect(avec.design).toEqual(sans.design);
     // Chronos (`*_MS`) exclus : ils mesurent le temps machine, pas le contenu.
     const norme = (m: Record<string, unknown>) => JSON.parse(JSON.stringify(m, (k, v) => (/_MS$/.test(k) ? 0 : v)));
-    const sansCle = (m: Record<string, unknown>) => { const c = norme(m); delete c.decisionMontage.contenuRushs; return c; };
+    // M2-c : `pertinenceRushs` (diagnostic consultatif) vient avec les fiches, comme `contenuRushs`.
+    const sansCle = (m: Record<string, unknown>) => { const c = norme(m); delete c.decisionMontage.contenuRushs; delete c.decisionMontage.pertinenceRushs; return c; };
     expect(sansCle(avec.meta)).toEqual(norme(sans.meta));
     expect(avec.meta.rushSegments).toEqual(montage(avec.design));
   });

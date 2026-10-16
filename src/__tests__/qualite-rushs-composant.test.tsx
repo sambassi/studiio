@@ -149,7 +149,7 @@ describe('QualiteRushs — bornes et bugs corrigés', () => {
 describe('Créer — câblage minimal', () => {
   const aw = readFileSync('src/app/dashboard/creer/AssistantWizard.tsx', 'utf8');
   it('le panneau suit la liste des médias et « Écarter » = le retrait manuel existant', () => {
-    expect(aw).toContain('<QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} />');
+    expect(aw).toContain('<QualiteRushs medias={listeMedias} estDurable={urlDurable} onEcarter={ecarterRushQualite} enPause={sending} contexte={contextePertinence} />');
     // « Écarter » n'emprunte JAMAIS le repli `clearRush` de `retirerRush`.
     const f = aw.slice(aw.indexOf('const ecarterRushQualite = (url: string): boolean => {'), aw.indexOf('const choisirDureeMedia'));
     expect(f).toContain('if (i < 0) return false;');
@@ -166,9 +166,9 @@ describe('Créer — câblage minimal', () => {
   it('Créer écrit le diagnostic CONSULTATIF dans le post, même forme que l’Autopilote', () => {
     // M2-a : même clé, même helper des deux côtés (`decisionMontagePourMetadata`,
     // `{ version: 1, qualiteRushs }` à l'identique tant qu'aucune fiche n'apprend rien).
-    expect(aw).toContain('...decisionMontagePourMetadata(qualiteRushsCreer, contenuRushsCreer),');
+    expect(aw).toContain('...decisionMontagePourMetadata(qualiteRushsCreer, contenuRushsCreer, pertinenceRushsCreer),');
     const pr = readFileSync('src/lib/autopilot/produire.ts', 'utf8');
     expect(pr).toContain('return qualiteRushsPourMetadata(d);');
-    expect(pr).toContain('})(), contenuRushs),');
+    expect(pr).toContain('})(), contenuRushs, pertinenceRushs),');
   });
 });

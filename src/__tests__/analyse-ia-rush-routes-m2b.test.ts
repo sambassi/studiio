@@ -96,11 +96,24 @@ describe('aucun branchement vers rendu / planMontage / export / fichier final', 
     const importeurs = sources('src')
       .filter((f) => /['"]@\/lib\/creer\/(analyse-ia-rush|fiche-contenu-v2|consentement-ia)['"]/.test(readFileSync(racine(f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')))
       .sort();
+    // M2-c : consommateurs en LECTURE SEULE de la v2 (validateur pur, `lireFicheV2`
+    // en cache) — jamais le lancement d'une analyse ni le consentement.
+    const lecteursM2c = [
+      'src/components/creer/QualiteRushs.tsx',
+      'src/lib/autopilot/produire.ts',
+      'src/lib/creer/fiche-contenu-client.ts',
+      'src/lib/creer/pertinence-rushs.ts',
+    ];
     expect(importeurs).toEqual([
       'src/app/api/creer/consentement-ia/route.ts',
       'src/app/api/creer/fiches-contenu/approfondir/route.ts',
+      ...lecteursM2c,
       'src/lib/creer/analyse-ia-rush.ts',
-    ]);
+    ].sort());
+    for (const f of lecteursM2c) {
+      const src = readFileSync(racine(f), 'utf8');
+      expect(src, f).not.toMatch(/lancerAnalyseIA|consentement-ia|enregistrerConsentementIA|method: 'POST'/);
+    }
   });
   it('la route M2-a des fiches et la décision de montage ne lisent que la v1', () => {
     const route = readFileSync(racine('src/app/api/creer/fiches-contenu/route.ts'), 'utf8');
