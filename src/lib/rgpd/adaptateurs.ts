@@ -36,6 +36,17 @@ function estTableAbsente(e: { code?: string } | null): boolean {
   return !!e && (e.code === '42P01' || e.code === 'PGRST205');
 }
 
+/**
+ * Colonne absente du schéma : 42703 (Postgres) ou PGRST204 (PostgREST, pour
+ * une colonne inconnue dans un UPDATE). Renvoie son nom, sinon `undefined`.
+ */
+export function colonneAbsente(e: { code?: string; message?: string } | null): string | undefined {
+  if (!e || (e.code !== '42703' && e.code !== 'PGRST204')) return undefined;
+  const msg = e.message || '';
+  const m = /column "([a-z_][a-z0-9_]*)"/i.exec(msg) || /the '([a-z_][a-z0-9_]*)' column/i.exec(msg);
+  return m?.[1];
+}
+
 function appliquer<Q extends { eq(c: string, v: unknown): Q; in(c: string, v: unknown[]): Q }>(q: Q, filtres: Filtre[]): Q {
   let r = q;
   for (const f of filtres) r = f.op === 'eq' ? r.eq(f.colonne, f.valeur) : r.in(f.colonne, f.valeur);
@@ -45,7 +56,9 @@ function appliquer<Q extends { eq(c: string, v: unknown): Q; in(c: string, v: un
 export function baseSupabase(): BaseSuppression {
   const client = async () => (await import('@/lib/db/supabase')).supabaseAdmin;
   const res = (error: { code?: string; message?: string } | null): ResultatBase => (
-    error ? { erreur: error.code || 'erreur', tableAbsente: estTableAbsente(error) } : { erreur: null }
+    error
+      ? { erreur: error.code || 'erreur', tableAbsente: estTableAbsente(error), colonneAbsente: colonneAbsente(error) }
+      : { erreur: null }
   );
   return {
     async supprimer(table, filtres) {

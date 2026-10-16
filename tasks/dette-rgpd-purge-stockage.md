@@ -177,3 +177,11 @@ connexion (route `/api/auth/*`) s'exécute en Node.
    (point 4 de l'ancien TODO).
 9. **Recréation après suppression** : rien n'empêche de se reconnecter avec la même adresse et
    d'obtenir un compte neuf avec 10 crédits de bienvenue (abus marginal, non traité).
+
+
+## Schéma réel de la production (relevé en lecture seule le 16/10/2026)
+
+- `users` n'a **ni `deleted_at` ni `blocked`** (colonnes : id, name, email, password_hash, image, credits, role, created_at, updated_at, avatar_url, stripe_customer_id, plan, zernio_profile_id, publishing_enabled). 4 comptes, aucun anonymisé.
+- Tables absentes : `chat_logs`, `user_drive`, `email_suppressions` (traitées comme vides par la suppression).
+- Conséquence corrigée dans #590 : l'anonymisation retire une colonne absente et réessaie ; l'adresse anonymisée (obligatoire) suffit à couper la session ; `image` et `password_hash` sont désormais effacés.
+- **Préexistant, hors #590** : le bannissement admin (`/api/admin/users/[id]/ban`, `blocked`) et le filtre « bloqués » de la liste admin échouent en production faute de colonne `blocked`. À traiter par une migration dédiée, avec accord.

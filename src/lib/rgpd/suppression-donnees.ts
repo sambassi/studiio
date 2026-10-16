@@ -150,6 +150,8 @@ export type Filtre = { colonne: string; op: 'eq'; valeur: string } | { colonne: 
 export interface ResultatBase {
   erreur: string | null;
   tableAbsente?: boolean;
+  /** Nom de la colonne absente du schéma (42703 / PGRST204), si c'est la cause. */
+  colonneAbsente?: string;
 }
 
 export interface BaseSuppression {
@@ -587,15 +589,28 @@ async function executerEtape(id: IdEtape, d: DemandeSuppression, deps: Dependanc
       // Anonymisation, pas suppression : `on delete cascade` emporterait la
       // comptabilité conservée. L'adresse devient unique et non routable ;
       // une reconnexion avec l'ancienne adresse crée un compte neuf.
-      const r = await deps.base.mettreAJour('users', {
+      // Les bases n'ont pas toutes les mêmes colonnes (la prod n'a ni
+      // `deleted_at` ni `blocked`) : une colonne ABSENTE est retirée et l'on
+      // réessaie. L'adresse anonymisée, elle, est obligatoire — c'est elle
+      // qui coupe la session (`lib/auth/etat-compte.ts`).
+      const valeurs: Record<string, unknown> = {
         email: `supprime-${uid}@supprime.invalid`,
         name: '',
         avatar_url: '',
+        image: null,
+        password_hash: null,
         deleted_at: iso(deps),
         blocked: true,
         updated_at: iso(deps),
-      }, [{ colonne: 'id', op: 'eq', valeur: uid }]);
-      return echecBase(r, 'users') ?? OK;
+      };
+      for (let essai = 0; essai < 8; essai++) {
+        const r = await deps.base.mettreAJour('users', valeurs, [{ colonne: 'id', op: 'eq', valeur: uid }]);
+        if (!r.erreur) return OK;
+        const absente = r.colonneAbsente;
+        if (!absente || absente === 'email' || !(absente in valeurs)) return echecBase(r, 'users')!;
+        delete valeurs[absente];
+      }
+      return { statut: 'echec', motif: 'base:users' };
     }
   }
 }

@@ -20,6 +20,8 @@ export interface FausseBase extends BaseSuppression {
   tables: Record<string, Ligne[]>;
   absentes: Set<string>;
   enPanne: Set<string>;
+  /** Colonnes absentes du schéma, par table (UPDATE → PGRST204, comme PostgREST). */
+  colonnesAbsentes: Record<string, Set<string>>;
   appels: { op: string; table: string; filtres: Filtre[] }[];
 }
 
@@ -28,6 +30,7 @@ export function fausseBase(tables: Record<string, Ligne[]>): FausseBase {
     tables,
     absentes: new Set(),
     enPanne: new Set(),
+    colonnesAbsentes: {},
     appels: [],
     async supprimer(table, filtres) {
       b.appels.push({ op: 'delete', table, filtres });
@@ -39,6 +42,8 @@ export function fausseBase(tables: Record<string, Ligne[]>): FausseBase {
     async mettreAJour(table, valeurs, filtres) {
       b.appels.push({ op: 'update', table, filtres });
       if (b.enPanne.has(table)) return { erreur: '42703' };
+      const inconnue = Object.keys(valeurs).find((c) => b.colonnesAbsentes[table]?.has(c));
+      if (inconnue) return { erreur: 'PGRST204', colonneAbsente: inconnue };
       for (const l of b.tables[table] ?? []) if (correspond(l, filtres)) Object.assign(l, valeurs);
       return { erreur: null };
     },
