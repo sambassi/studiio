@@ -4454,6 +4454,8 @@ export default function AssistantWizard() {
    * la génération continue — on la REPREND au lieu d'en payer une seconde.
    */
   const [jumeauRepriseErreur, setJumeauRepriseErreur] = useState<{ message: string | null; reprendreId: string | null; titre?: string } | null>(null);
+  /** B3 — dernière étape dite par le suivi d'une reprise / relance (ex. attente fournisseur). */
+  const [jumeauRepriseEtape, setJumeauRepriseEtape] = useState<string | null>(null);
   /** Un seul poll de reprise à la fois ; remis à faux sur échec pour permettre « Réessayer ». */
   const jumeauRepriseFaite = useRef(false);
   /** Vrai pendant que le clic d'envoi gère lui-même la génération : la reprise ne double pas. */
@@ -8254,10 +8256,11 @@ export default function AssistantWizard() {
     jumeauRepriseFaite.current = true;
     setJumeauReprise('encours');
     setJumeauRepriseErreur(null);
+    setJumeauRepriseEtape(null);
     setJumeauPhase({ phase: 'traitement', debutLe: Date.now() });
     void (async () => {
       try {
-        const { url, avatarVersion } = await attendreStatutJumeau({ generationId, onPhase: avancerJumeau });
+        const { url, avatarVersion } = await attendreStatutJumeau({ generationId, onPhase: avancerJumeau, onEtape: setJumeauRepriseEtape });
         const posee = avatarAProduire(mediasVideoRef.current)
           ? await poserJumeauDansListe(url, typeof avatarVersion === 'number' ? avatarVersion : undefined, Object.values(sequenceVoices).map((v) => v.text).filter((t): t is string => !!t))
           : await applyRush(url, typeof avatarVersion === 'number' ? `Mon jumeau (v${avatarVersion})` : 'Mon jumeau', false);
@@ -8313,6 +8316,7 @@ export default function AssistantWizard() {
     jumeauRepriseFaite.current = true;
     setJumeauReprise('encours');
     setJumeauRepriseErreur(null);
+    setJumeauRepriseEtape(null);
     setJumeauNotice(null);
     setJumeauPhase({ phase: 'envoi', debutLe: Date.now() });
     let lancee: string | null = null;
@@ -8326,6 +8330,7 @@ export default function AssistantWizard() {
           cadrage: 'remplir',
           relance: true,
           onLancee: (id) => { lancee = id; setJumeauGenerationId(id); },
+          onEtape: setJumeauRepriseEtape,
           onPhase: avancerJumeau,
         });
         const posee = avatarAProduire(mediasVideoRef.current)
@@ -10604,6 +10609,9 @@ export default function AssistantWizard() {
               <span>Votre jumeau se prépare… (vous pouvez quitter cette page et revenir plus tard)</span>
             </div>
             {jumeauPhase && <div data-jumeau-suivi="reprise">{suiviJumeau(true)}</div>}
+            {jumeauRepriseEtape && jumeauRepriseEtape !== DETAIL_PHASE_JUMEAU.traitement && (
+              <p data-jumeau-reprise-etape className="text-[12px] text-purple-100/90">{jumeauRepriseEtape}</p>
+            )}
           </div>
         )}
         {jumeauReprise === 'echec' && (
