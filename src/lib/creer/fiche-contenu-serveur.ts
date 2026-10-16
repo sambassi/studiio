@@ -93,9 +93,19 @@ export function stockageFichesMinio(): StockageFiches {
 }
 
 /** Clé de la fiche d'un objet. Pure ; `userId` = celui de la session. */
-export function cleFicheContenu(userId: string, bucket: string, cleObjet: string, taille: number): string {
+export function cleFicheContenu(userId: string, bucket: string, cleObjet: string, taille: number, version: 1 | 2 = 1): string {
   const empreinte = createHash('sha1').update(`${bucket}/${cleObjet}`).digest('hex');
-  return `${PREFIXE_FICHES}/${userId}/analyse/${empreinte}.${Math.max(0, Math.floor(taille))}.v${1}.json`;
+  return `${PREFIXE_FICHES}/${userId}/analyse/${empreinte}.${Math.max(0, Math.floor(taille))}.v${version}.json`;
+}
+
+/**
+ * M2-b — Le registre de consentement à l'analyse IA du compte. Même espace
+ * privé que les fiches (`fiches-contenu/<userId>/analyse/…`) : refusé par le
+ * relais public, illisible au nom d'un autre compte, et PURGÉ avec le reste
+ * du compte par la suppression RGPD (`prefixesStockageDuCompte`).
+ */
+export function cleConsentementIA(userId: string): string {
+  return `${PREFIXE_FICHES}/${userId}/analyse/consentement-ia.json`;
 }
 
 const NOM_STOCK_PEXELS = /^stock-pexels-(video|photo)-[A-Za-z0-9_-]+\.(mp4|jpg)$/;

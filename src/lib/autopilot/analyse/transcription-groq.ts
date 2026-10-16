@@ -29,7 +29,9 @@
  * remonte, dans un littéral à nous.
  */
 import { readFile } from 'fs/promises';
-import { TIMEOUT_TRANSCRIPTION_MS, type FournisseurTranscription } from './transcription';
+import {
+  TIMEOUT_TRANSCRIPTION_MS, type FournisseurTranscription, type SortieFournisseur as SortieFournisseurTranscription,
+} from './transcription';
 
 /** Le point d'accès, compatible OpenAI — documenté par le fournisseur. */
 const POINT_ACCES = 'https://api.groq.com/openai/v1/audio/transcriptions';
@@ -91,60 +93,77 @@ export function fournisseurTranscriptionGroq(
   const modele = process.env.AUTOPILOT_TRANSCRIPTION_GROQ_MODEL;
   if (!modele) throw new ConfigurationTranscriptionInvalide('modele_absent');
 
-  const envoyer: TransportTranscription = transport ?? ((url, init) => fetch(url, init));
+  return async (demande) => envoyerTranscriptionGroq({
+    cle, modele, transport, chemin: demande.chemin, delaiMs: TIMEOUT_TRANSCRIPTION_MS,
+  });
+}
 
-  return async (demande) => {
-    // ⚠️ LE FICHIER EST LU EN MÉMOIRE, ET C'EST BORNÉ.
-    //
-    // `FLAC_OCTETS_MAX` (24 Mio) a déjà été vérifié par `avecAudioFlac` AVANT
-    // qu'on arrive ici, et `MAX_TRANSCRIPTIONS_SIMULTANEES` vaut 1 : le pic
-    // est donc de vingt-quatre mébioctets, une fois, sur un serveur qui en a
-    // sept mille. Un envoi en flux éviterait cette copie, au prix d'un
-    // multipart écrit à la main ; la copie bornée est le compromis honnête
-    // tant que la borne tient.
-    const octets = await readFile(demande.chemin);
+/** Ce que le transport Groq partagé reçoit : un FLAC local, rien d'autre. */
+export interface AppelTranscriptionGroq {
+  cle: string;
+  modele: string;
+  chemin: string;
+  delaiMs: number;
+  transport?: TransportTranscription;
+}
 
-    const formulaire = new FormData();
-    // Le nom de fichier est UN LITTÉRAL À NOUS. Reprendre le chemin
-    // temporaire y ferait voyager un nom de répertoire du serveur.
-    formulaire.append('file', new Blob([octets], { type: 'audio/flac' }), 'piste.flac');
-    formulaire.append('model', modele);
-    formulaire.append('response_format', FORMAT_REPONSE);
-    formulaire.append('temperature', TEMPERATURE);
-    // Les deux granularités, dans deux entrées distinctes : c'est la forme
-    // que la documentation décrit pour demander segments ET mots.
-    formulaire.append('timestamp_granularities[]', 'segment');
-    formulaire.append('timestamp_granularities[]', 'word');
+/**
+ * LE transport Groq — partagé par M3-D2 et par l'analyse des rushes
+ * personnels M2-b. Une seule écriture du formulaire, du délai et du refus.
+ */
+export async function envoyerTranscriptionGroq(a: AppelTranscriptionGroq): Promise<SortieFournisseurTranscription> {
+  const envoyer: TransportTranscription = a.transport ?? ((url, init) => fetch(url, init));
+  const { cle, modele } = a;
+  // ⚠️ LE FICHIER EST LU EN MÉMOIRE, ET C'EST BORNÉ.
+  //
+  // `FLAC_OCTETS_MAX` (24 Mio) a déjà été vérifié par `avecAudioFlac` AVANT
+  // qu'on arrive ici, et `MAX_TRANSCRIPTIONS_SIMULTANEES` vaut 1 : le pic
+  // est donc de vingt-quatre mébioctets, une fois, sur un serveur qui en a
+  // sept mille. Un envoi en flux éviterait cette copie, au prix d'un
+  // multipart écrit à la main ; la copie bornée est le compromis honnête
+  // tant que la borne tient.
+  const octets = await readFile(a.chemin);
 
-    // `AbortController` sur le MÊME délai que l'étape : sans lui, la requête
-    // continuerait de courir derrière un appel déjà abandonné.
-    const controleur = new AbortController();
-    const minuteur = setTimeout(() => controleur.abort(), TIMEOUT_TRANSCRIPTION_MS);
+  const formulaire = new FormData();
+  // Le nom de fichier est UN LITTÉRAL À NOUS. Reprendre le chemin
+  // temporaire y ferait voyager un nom de répertoire du serveur.
+  formulaire.append('file', new Blob([octets], { type: 'audio/flac' }), 'piste.flac');
+  formulaire.append('model', modele);
+  formulaire.append('response_format', FORMAT_REPONSE);
+  formulaire.append('temperature', TEMPERATURE);
+  // Les deux granularités, dans deux entrées distinctes : c'est la forme
+  // que la documentation décrit pour demander segments ET mots.
+  formulaire.append('timestamp_granularities[]', 'segment');
+  formulaire.append('timestamp_granularities[]', 'word');
 
-    let reponseHttp: { ok: boolean; status: number; text: () => Promise<string> };
-    try {
-      reponseHttp = await envoyer(POINT_ACCES, {
-        method: 'POST',
-        // ⚠️ AUCUN `content-type` POSÉ À LA MAIN : `FormData` porte sa propre
-        // frontière multipart, et l'écrire nous-mêmes la remplacerait par une
-        // valeur sans frontière — le serveur refuserait le corps entier.
-        headers: { authorization: `Bearer ${cle}` },
-        body: formulaire,
-        signal: controleur.signal,
-      });
-    } finally {
-      clearTimeout(minuteur);
-    }
+  // `AbortController` sur le MÊME délai que l'étape : sans lui, la requête
+  // continuerait de courir derrière un appel déjà abandonné.
+  const controleur = new AbortController();
+  const minuteur = setTimeout(() => controleur.abort(), a.delaiMs);
 
-    if (!reponseHttp.ok) {
-      // Le STATUT, et rien d'autre.
-      throw new Error(`fournisseur_http_${reponseHttp.status}`);
-    }
+  let reponseHttp: { ok: boolean; status: number; text: () => Promise<string> };
+  try {
+    reponseHttp = await envoyer(POINT_ACCES, {
+      method: 'POST',
+      // ⚠️ AUCUN `content-type` POSÉ À LA MAIN : `FormData` porte sa propre
+      // frontière multipart, et l'écrire nous-mêmes la remplacerait par une
+      // valeur sans frontière — le serveur refuserait le corps entier.
+      headers: { authorization: `Bearer ${cle}` },
+      body: formulaire,
+      signal: controleur.signal,
+    });
+  } finally {
+    clearTimeout(minuteur);
+  }
 
-    return {
-      reponse: await reponseHttp.text(),
-      // Le modèle CONFIGURÉ, jamais celui que la réponse prétendrait être.
-      modele,
-    };
+  if (!reponseHttp.ok) {
+    // Le STATUT, et rien d'autre.
+    throw new Error(`fournisseur_http_${reponseHttp.status}`);
+  }
+
+  return {
+    reponse: await reponseHttp.text(),
+    // Le modèle CONFIGURÉ, jamais celui que la réponse prétendrait être.
+    modele,
   };
 }
