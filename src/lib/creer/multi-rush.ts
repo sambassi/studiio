@@ -84,6 +84,13 @@ export interface RushSegment {
   source?: SourceSegment;
   /** Mouvement Ken Burns d'une photo (`kind: 'image'`). Absent : zoom avant. */
   mouvement?: MouvementImage;
+  /**
+   * M3-a (mode passages de `planMontage` SEULEMENT, absent sinon) : le passage
+   * du rush dont l'extrait est tiré, et ses motifs de bornes.
+   */
+  passage?: { debut: number; fin: number; motifDebut: string; motifFin: string };
+  /** M3-a (mode passages seulement) : ce que l'on peut dire de la parole à chaque borne. */
+  parole?: { debut: 'pause_franche' | 'incertaine' | 'absente'; fin: 'pause_franche' | 'incertaine' | 'absente' };
 }
 
 export type KindSegment = 'video' | 'avatar' | 'image';
