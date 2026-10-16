@@ -45,7 +45,8 @@ function ecrireAcceptes(s: Set<string>) {
 /** L'analyse PARTAGÉE avec l'export (`analyserRushMemo`) : une seule mesure par rush. */
 const analyseurParDefaut: Analyseur = async (url) => {
   const { analyserRushMemo } = await import('@/lib/creer/analyse-rush');
-  return analyserRushMemo(url);
+  // Borne 180 s pour le panneau SEUL (une analyse partielle n'est jamais reprise par l'export).
+  return analyserRushMemo(url, undefined, { borne: true });
 };
 
 const avecDelai = <T,>(p: Promise<T>, ms: number): Promise<T | 'delai'> =>

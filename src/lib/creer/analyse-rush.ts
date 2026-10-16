@@ -16,8 +16,20 @@ import { HD_L, HD_H, HD_IMAGES, mesurerNetteteHD, agregerNetteteHD, type Analyse
 const ECHANTILLONS_MAX = 240;
 /** Au-delà, l'audio n'est pas décodé (mémoire) : énergie audio à 0. */
 export const AUDIO_OCTETS_MAX = 150 * 1024 * 1024;
-/** Au-delà, on n'analyse pas plus loin (même borne que le serveur, `DUREE_ANALYSEE_MAX`). */
+/**
+ * Borne de durée du PANNEAU QUALITÉ seulement (même valeur que le serveur,
+ * `DUREE_ANALYSEE_MAX`). ⚠️ L'EXPORT n'a AUCUNE borne : il analyse le rush
+ * entier, exactement comme avant M1 — sinon le plan d'un rush > 180 s changerait.
+ */
 export const DUREE_ANALYSEE_MAX = 180;
+
+/** Durée réellement analysée : le rush entier sans borne (export), sinon bornée. Pure. */
+export function dureeAnalysee(dureeTotale: number, dureeMax?: number | null): number {
+  return typeof dureeMax === 'number' && dureeMax > 0 ? Math.min(dureeTotale, dureeMax) : dureeTotale;
+}
+
+/** Analyse BORNÉE qui n'a pas couvert tout le rush : jamais réutilisée par l'export. */
+export type AnalyseNavigateur = AnalyseRushQualite & { partielle?: true };
 
 /**
  * Taille annoncée du fichier (HEAD), AVANT tout téléchargement. `null` si le
@@ -93,13 +105,15 @@ export async function energieAudio(url: string, duree: number, pas: number): Pro
 export async function analyserRush(
   url: string,
   onProgress?: (fraction: number) => void,
-): Promise<AnalyseRushQualite | null> {
+  options: { dureeMax?: number | null } = {},
+): Promise<AnalyseNavigateur | null> {
   let video: HTMLVideoElement | null = null;
   try {
     video = await chargerVideo(url);
     const dureeTotale = video.duration;
     if (!Number.isFinite(dureeTotale) || dureeTotale < 1) return null;
-    const duree = Math.min(dureeTotale, DUREE_ANALYSEE_MAX);
+    const duree = dureeAnalysee(dureeTotale, options.dureeMax);
+    const partielle = duree < dureeTotale;
     const pas = Math.max(0.5, duree / ECHANTILLONS_MAX);
     const audioP = energieAudio(url, duree, pas);
 
@@ -147,7 +161,7 @@ export async function analyserRush(
     echantillons.forEach((e, i) => { e.audio = audio[i] ?? 0; });
     onProgress?.(1);
     const netteteHD = agregerNetteteHD(mesuresHD);
-    return { url, duree, echantillons, ...(netteteHD ? { netteteHD } : null) };
+    return { url, duree, echantillons, ...(netteteHD ? { netteteHD } : null), ...(partielle ? { partielle: true as const } : null) };
   } catch (err) {
     console.warn('[SmartMontage] analyse impossible, enchaînement classique :', url.slice(0, 60), err);
     return null;
@@ -160,37 +174,53 @@ export async function analyserRush(
 // Même promesse : mêmes chiffres par construction. Purgée si le résultat est
 // `null` (rush illisible, CORS) pour qu'un nouvel essai reste possible.
 const MEMO_MAX = 40;
-type Analyse = (url: string, onProgress?: (fraction: number) => void) => Promise<AnalyseRushQualite | null>;
+type Analyse = (url: string, onProgress?: (fraction: number) => void, borne?: boolean) => Promise<AnalyseNavigateur | null>;
 
 /**
  * Fabrique d'une analyse mémorisée par URL (sur le modèle
- * d'`analyserRushServeurCache`). Pure côté logique : testable avec une
- * analyse factice. La progression est relayée à TOUS les demandeurs.
+ * d'`analyserRushServeurCache`). Testable avec une analyse factice ; la
+ * progression est relayée à TOUS les demandeurs.
+ *
+ *  - `borne: true` (panneau) : peut rendre une analyse `partielle` (rush > 180 s) ;
+ *  - sans borne (export) : n'accepte JAMAIS une analyse partielle — il attend
+ *    celle du panneau, et si elle est partielle, relance une analyse ENTIÈRE
+ *    qui la remplace. Rush ≤ 180 s : une seule analyse, identique pour les deux.
  */
 export function creerMemoAnalyses(analyser: Analyse, max = MEMO_MAX) {
-  const memo = new Map<string, { analyse: Promise<AnalyseRushQualite | null>; abonnes: Set<(f: number) => void> }>();
-  const analyserMemo = (url: string, onProgress?: (fraction: number) => void): Promise<AnalyseRushQualite | null> => {
-    const hit = memo.get(url);
-    if (hit) {
-      if (onProgress) {
-        hit.abonnes.add(onProgress);
-        void hit.analyse.finally(() => hit.abonnes.delete(onProgress));
-      }
-      return hit.analyse;
-    }
+  type Entree = { analyse: Promise<AnalyseNavigateur | null>; abonnes: Set<(f: number) => void> };
+  const memo = new Map<string, Entree>();
+  const lancer = (url: string, onProgress: ((f: number) => void) | undefined, borne: boolean): Promise<AnalyseNavigateur | null> => {
     const abonnes = new Set<(f: number) => void>(onProgress ? [onProgress] : []);
-    const analyse = analyser(url, (f) => abonnes.forEach((a) => a(f)))
+    const analyse: Promise<AnalyseNavigateur | null> = analyser(url, (f) => abonnes.forEach((a) => a(f)), borne)
       .catch(() => null)
       .then((a) => { if (!a && memo.get(url)?.analyse === analyse) memo.delete(url); abonnes.clear(); return a; });
     memo.set(url, { analyse, abonnes });
     while (memo.size > max) memo.delete(memo.keys().next().value as string);
     return analyse;
   };
+  const analyserMemo = async (url: string, onProgress?: (fraction: number) => void, opts: { borne?: boolean } = {}): Promise<AnalyseNavigateur | null> => {
+    const borne = opts.borne === true;
+    const hit = memo.get(url);
+    if (!hit) return lancer(url, onProgress, borne);
+    if (onProgress) hit.abonnes.add(onProgress);
+    const a = await hit.analyse;
+    if (onProgress) hit.abonnes.delete(onProgress);
+    // L'export ne prend jamais une analyse bornée incomplète.
+    if (!borne && a?.partielle) {
+      const courante = memo.get(url);
+      if (courante && courante !== hit) return analyserMemo(url, onProgress, opts);
+      return lancer(url, onProgress, false);
+    }
+    return a;
+  };
   return { analyserMemo, vider: () => memo.clear(), taille: () => memo.size };
 }
 
-const memoNavigateur = creerMemoAnalyses((url, p) => analyserRush(url, p));
-/** L'analyse d'un rush, UNE fois par URL, pour le panneau Qualité ET l'export (Créer). */
+const memoNavigateur = creerMemoAnalyses((url, p, borne) => analyserRush(url, p, { dureeMax: borne ? DUREE_ANALYSEE_MAX : null }));
+/**
+ * L'analyse d'un rush, UNE fois par URL : panneau Qualité (`{ borne: true }`)
+ * et export (sans borne, comme avant M1).
+ */
 export const analyserRushMemo = memoNavigateur.analyserMemo;
 
 /**

@@ -161,7 +161,7 @@ describe('Créer — câblage minimal', () => {
     expect(aw).not.toMatch(/await analyserRush\(/);
     expect(aw).toContain('planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
     const panneau = readFileSync('src/components/creer/QualiteRushs.tsx', 'utf8');
-    expect(panneau).toContain('return analyserRushMemo(url);');
+    expect(panneau).toContain('return analyserRushMemo(url, undefined, { borne: true });');
   });
   it('Créer écrit le diagnostic CONSULTATIF dans le post, même forme que l’Autopilote', () => {
     expect(aw).toContain('...(qualiteRushsCreer ? { decisionMontage: { version: 1, qualiteRushs: qualiteRushsCreer } } : {}),');
