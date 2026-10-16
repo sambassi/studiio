@@ -16,11 +16,12 @@ import { mesurerDureeJumeau, JumeauIllisibleError } from '@/lib/autopilot/duree-
 import { etatRushServeur, type EtatRush } from '@/lib/autopilot/validite-rush';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
-import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush, type PlagesUtilisees } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush, type ContexteMontage, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, estUrlImage, type RushSegment } from '@/lib/creer/multi-rush';
 import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre, mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
 import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/creer/fiche-contenu';
+import { evaluerPertinenceRushs, pertinenceRushsPourMetadata } from '@/lib/creer/pertinence-rushs';
 import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { conseillerVideo, type RapportConseils } from '@/lib/creer/conseiller';
@@ -636,6 +637,8 @@ export async function produireUnMontage(input: {
   let montageRaccourci: Raccourci | null = null;
   let rythmeVideo: { beats: number[]; forts: number[]; drop: number | null } | null = null;
   let contexteConseil: { theme: string | null; objectif: string | null } = { theme: null, objectif: null };
+  /** M2-c — le contexte du plan, gardé pour le diagnostic de pertinence (jamais relu par le plan). */
+  let contextePertinence: ContexteMontage | null = null;
   /** Multi-sources : pourquoi ce plan, et les médias stock lâchés (introuvables). */
   let explicationsSources: string[] = [];
   const mediasIgnores: string[] = [];
@@ -681,6 +684,7 @@ export async function produireUnMontage(input: {
     });
     profilVideo = profilMontageDuContexte(contexteMontage).profil;
     contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif ?? null };
+    contextePertinence = contexteMontage;
     // LE PLAN MONTRÉ = LE PLAN RENDU. Sans gabarit enregistré, l'écran affiche
     // la SUGGESTION (`gabaritSuggere`) : le moteur rend cette même suggestion,
     // calculée par la même fonction sur les sources réellement disponibles.
@@ -774,6 +778,7 @@ export async function produireUnMontage(input: {
     // montage. Elle doit alors porter TOUTES les voix, l'une après l'autre.
     profilVideo = profilMontageDuContexte(contexteMontage).profil;
     contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif ?? null };
+    contextePertinence = contexteMontage;
     enSurimpression = profilEnSurimpression(profilVideo);
     const voixAPorter = enSurimpression
       ? ['titre', 'cartes', 'video', 'cta'].reduce((t, k) => t + (secondesVoix(k) ? secondesVoix(k) + 0.2 : 0), 0)
@@ -953,14 +958,36 @@ export async function produireUnMontage(input: {
   // APRÈS le rendu : jamais lues par la sélection ni par le rendu. Lecture du
   // cache MinIO d'abord ; délai global borné ; toute panne → pas de fiche.
   let contenuRushs: ReturnType<typeof contenuRushsPourMetadata> = null;
+  /** M2-c — pertinence des rushes : DIAGNOSTIC, sur ces mêmes fiches et le contexte du plan. */
+  let pertinenceRushs: ReturnType<typeof pertinenceRushsPourMetadata> = null;
+  let fichesLues: Awaited<ReturnType<typeof import('@/lib/creer/fiche-contenu-serveur')['fichesContenuServeur']>> = [];
   try {
     const { fichesContenuServeur } = await import('@/lib/creer/fiche-contenu-serveur');
     const energies = new Map(analysesRushs.filter((a) => !rushsSansMesure.has(a.url)).map((a) => [a.url, a.echantillons.map((e) => e.audio)]));
     const urlsFiches = [...analysesRushs.map((a) => a.url), ...stockUtilise.filter((m) => m.type === 'video').map((m) => m.url)];
     const fiches = await fichesContenuServeur(urlsFiches, userId, { energies, delaiMs: 4000 });
+    fichesLues = fiches;
     contenuRushs = contenuRushsPourMetadata(fiches.map((f) => ({ cle: cleSource(f.url), fiche: f.fiche })));
   } catch {
     contenuRushs = null; // une fiche ne bloque jamais un montage
+  }
+  // M2-c — fiche v2 (M2-b) EN CACHE pour les rushes de la banque : lecture
+  // seule, AUCUN appel fournisseur, délai borné ; absente → la fiche v1.
+  try {
+    if (contextePertinence && fichesLues.length) {
+      const { lireFicheV2 } = await import('@/lib/creer/analyse-ia-rush');
+      const v2 = new Map<string, Awaited<ReturnType<typeof lireFicheV2>>>();
+      const lecture = (async () => { for (const a of analysesRushs) v2.set(a.url, await lireFicheV2(a.url, userId).catch(() => null)); })();
+      let minuterieV2: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([lecture, new Promise<void>((r) => { minuterieV2 = setTimeout(r, 2000); })]);
+      if (minuterieV2) clearTimeout(minuterieV2);
+      pertinenceRushs = pertinenceRushsPourMetadata(evaluerPertinenceRushs(
+        fichesLues.map((f) => ({ cle: cleSource(f.url), fiche: v2.get(f.url) ?? f.fiche })),
+        contextePertinence,
+      ));
+    }
+  } catch {
+    pertinenceRushs = null; // un diagnostic ne bloque jamais un montage
   }
 
   const metadata = {
@@ -1038,7 +1065,7 @@ export async function produireUnMontage(input: {
       } catch {
         return null; // un diagnostic ne bloque jamais un montage
       }
-    })(), contenuRushs),
+    })(), contenuRushs, pertinenceRushs),
     // Voix gratuite (Edge) utilisée faute d'ElevenLabs : dit, jamais caché.
     ...(Object.values(voices).some((v) => v?.repli === 'edge') ? { voixRepliEdge: true } : null),
     // Ce que l'utilisateur doit savoir, LU par le Calendrier — un montage du

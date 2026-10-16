@@ -357,17 +357,21 @@ export function contenuRushsPourMetadata(fiches: ReadonlyArray<{ cle: string; fi
 /**
  * La clé `decisionMontage` du post : `{}` sans diagnostic ni fiche — le post
  * est alors IDENTIQUE à avant M2-a. Une seule version (`version: 1`).
+ * M2-c : `pertinenceRushs` (3e argument, FACULTATIF) rejoint la même clé ;
+ * absent ou `null`, la sortie est celle d'avant octet pour octet.
  */
-export function decisionMontagePourMetadata<Q>(
+export function decisionMontagePourMetadata<Q, P = never>(
   qualiteRushs: Q | null | undefined,
   contenuRushs: ReturnType<typeof contenuRushsPourMetadata> | null | undefined,
-): { decisionMontage?: { version: 1; qualiteRushs?: Q; contenuRushs?: NonNullable<ReturnType<typeof contenuRushsPourMetadata>> } } {
-  if (!qualiteRushs && !contenuRushs) return {};
+  pertinenceRushs?: P | null,
+): { decisionMontage?: { version: 1; qualiteRushs?: Q; contenuRushs?: NonNullable<ReturnType<typeof contenuRushsPourMetadata>>; pertinenceRushs?: P } } {
+  if (!qualiteRushs && !contenuRushs && !pertinenceRushs) return {};
   return {
     decisionMontage: {
       version: 1,
       ...(qualiteRushs ? { qualiteRushs } : {}),
       ...(contenuRushs ? { contenuRushs } : {}),
+      ...(pertinenceRushs ? { pertinenceRushs } : {}),
     },
   };
 }

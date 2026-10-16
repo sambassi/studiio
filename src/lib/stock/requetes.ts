@@ -148,6 +148,15 @@ export function conceptParId(id: string): ConceptReconnu | null {
   return c ? { id, categorie: c.categorie, libelle: c.frNom ?? c.fr } : null;
 }
 
+/**
+ * M2-c — Une activité de la taxonomie est-elle HORS SPORT (finance, cuisine…) ?
+ * Lu sur le drapeau `horsSport` déjà porté par `CONCEPTS` ; `false` pour un
+ * identifiant inconnu ou qui n'est pas une activité.
+ */
+export function estHorsSport(id: string): boolean {
+  return CONCEPTS.some((x) => idDuConcept(x) === id && x.categorie === 'activite' && x.horsSport === true);
+}
+
 /** Une correspondance : le concept, et s'il a été lu sur un VERBE d'action. */
 export interface CorrespondanceConcept {
   concept: ConceptReconnu;
