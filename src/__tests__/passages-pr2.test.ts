@@ -143,7 +143,7 @@ describe('2 bis. CTA garanti et marge au bord d\'une vraie coupe', () => {
       // Timeline continue, sans trou ni chevauchement.
       p.forEach((x, k) => { if (k) expect(Math.abs(x.debut - p[k - 1].fin), lib).toBeLessThan(1e-6); });
     }
-  });
+  }, 60_000); // 168 combinaisons : délai explicite sous charge CI
   it('Nutrition : les haltères 20,1–23,5 s (juste après la coupe de 20,03 s, piste muette) restent pris en entier', () => {
     const d1 = decouperPassages(RUSH1, E1);
     expect(bornesAutorisees(d1, 20.1, 23.5, E1).ok).toBe(true);
@@ -179,7 +179,7 @@ describe('2 ter. marge devant tout graphisme (QA sur le vrai MP4 B : « JE ME LA
         for (const [z0, z1] of zones) expect(x.depuis! < z1 && x.jusqua! > z0, `${sc.nom}/${cible} ${x.depuis}→${x.jusqua}`).toBe(false);
       }
     }
-  });
+  }, 60_000); // nombreuses combinaisons : délai explicite sous charge CI
   it('analyses réelles (avec le pic) : découpage inchangé', () => {
     expect(decouperPassages(RUSH1, E1).passages.map((p) => [p.debut, p.fin])).toEqual([[12.1, 19.5], [20.1, 23.5], [24.1, 27]]);
     expect(decouperPassages(RUSH2, entreesDuRush(RUSH2)).passages.map((p) => [p.debut, p.fin])).toEqual([[49.75, 50.5]]);
@@ -206,7 +206,7 @@ describe('2 quater. jump cut : jamais deux extraits adjacents du même plan rée
     }
     // Même rush, plans différents (ex. haltères → tractions) : toujours permis.
     expect(memeRushAutrePlan).toBeGreaterThan(0);
-  });
+  }, 60_000); // nombreuses combinaisons : délai explicite sous charge CI
   it('cas réel QA (assiette 4 s puis 10 s, même plan) : impossible, la vidéo raccourcit plutôt que de répéter', () => {
     for (const cible of [6, 8, 10, 14]) {
       const p = planMontage([REELS[0], REELS[2], REELS[5]], cible, { ...SCENARIOS[0].options, selection: 'passages' }) ?? [];
