@@ -160,6 +160,32 @@ describe('2 bis. CTA garanti et marge au bord d\'une vraie coupe', () => {
   });
 });
 
+describe('2 ter. marge devant tout graphisme (QA sur le vrai MP4 B : « JE ME LANCE » en fantôme)', () => {
+  // Analyse réelle du navigateur : le pic du fondu 27,5 s n'a pas dépassé 2,5 × la moyenne,
+  // aucune zone n'a séparé les tractions de l'écran CTA texte ⇒ l'extrait 26,1–27,6 entrait dans le fondu.
+  const SANS_PIC = { ...RUSH1, echantillons: RUSH1.echantillons.map((x) => (x.t === 27.5 ? { ...x, mouvement: 0.13 } : x)) };
+  it('pic du fondu manqué : le passage des tractions s\'arrête à la dernière image stable (27,0 s), l\'écran texte est écarté', () => {
+    const d = decouperPassages(SANS_PIC, E1);
+    expect(d.passages.map((p) => [p.debut, p.fin])).toEqual([[12.1, 19.5], [20.1, 23.5], [24.1, 27]]);
+    expect(d.ecartes.some((e) => e.debut <= 28 && e.fin >= 31.5 && /plan fixe ou graphique/.test(e.motif))).toBe(true);
+    expect(bornesAutorisees(d, 26.1, 27.6, E1).ok).toBe(false);
+  });
+  it('aucun extrait n\'entre dans un fondu / volet vers un graphisme (rush 1 : 8,9–9,5 et 27,5–28 ; rush 2 : 49,1–49,5 et 51,3–51,6)', () => {
+    const FONDUS: Record<string, Array<[number, number]>> = { '1791985445290': [[8.9, 9.5], [27.5, 32.1]], '1792081208949': [[0, 49.5], [51.3, 53.7]] };
+    for (const jeu of [REELS, [SANS_PIC, ...REELS.slice(1)]]) for (const sc of SCENARIOS) for (const cible of [4, 10, 14, 30, 60]) {
+      const p = planMontage(jeu, cible, { ...sc.options, selection: 'passages' });
+      for (const x of p ?? []) for (const [k, zones] of Object.entries(FONDUS)) {
+        if (!x.url.includes(k)) continue;
+        for (const [z0, z1] of zones) expect(x.depuis! < z1 && x.jusqua! > z0, `${sc.nom}/${cible} ${x.depuis}→${x.jusqua}`).toBe(false);
+      }
+    }
+  });
+  it('analyses réelles (avec le pic) : découpage inchangé', () => {
+    expect(decouperPassages(RUSH1, E1).passages.map((p) => [p.debut, p.fin])).toEqual([[12.1, 19.5], [20.1, 23.5], [24.1, 27]]);
+    expect(decouperPassages(RUSH2, entreesDuRush(RUSH2)).passages.map((p) => [p.debut, p.fin])).toEqual([[49.75, 50.5]]);
+  });
+});
+
 describe('3. interview sur pied (quasi immobile mais vivante) ≠ plan fixe ou graphique', () => {
   // Tête et bouche : 4 blocs de l'empreinte bougent de ±0,02 ; le reste est immobile.
   const tete = (t: number) => { const v = motif(1); for (const k of [27, 28, 35, 36]) v[k] = Math.round((v[k] + 0.02 * Math.sin(t * 7.3 + k)) * 1000) / 1000; return v; };

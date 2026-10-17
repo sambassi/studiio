@@ -106,6 +106,10 @@ export const SEUILS_PASSAGES = {
   ecartEnergieMoment: 0.25,
   /** PR2 — répétition visuelle : même rush, timecodes à moins de cet écart (s)… */
   procheS: 4,
+  /** PR2 — marge de sécurité devant / derrière tout plan fixe ou graphique (s). */
+  margeGraphiqueS: 0.5,
+  /** PR2 — suite d'images immobiles DANS un passage traitée comme un graphisme (s). */
+  immobileInterneMinS: 1,
   /** PR2 — accroche : pertinence M2-c FIABLE minimale d'un plan HOOK. */
   pertinenceAccroche: 0.6,
 } as const;
@@ -455,7 +459,81 @@ export function decouperPassages(a: AnalyseRush, entrees: EntreesPassages = {}):
     }
     return true;
   });
-  return { pas, resolution: 'fine', zones, passages: gardes, ecartes, partSonore, paroleLocalisable, paroleMesuree, duree: a.duree, interviews, incertitudes };
+  const finaux = margesGraphiques(a, gardes, ecartes, entrees);
+  return { pas, resolution: 'fine', zones, passages: finaux, ecartes, partSonore, paroleLocalisable, paroleMesuree, duree: a.duree, interviews, incertitudes };
+}
+
+/**
+ * PR2 (QA sur le vrai MP4 B) — MARGE DEVANT TOUT GRAPHISME. Un passage vivant
+ * qui touche un plan fixe ou graphique (passage écarté juste à côté, ou suite
+ * d'images immobiles ≥ 1 s À L'INTÉRIEUR du passage, faute d'un pic de
+ * mouvement assez fort pour la séparer) est rogné de ce côté : jusqu'à la
+ * dernière mesure STABLE avant le fondu ou le volet (saut d'empreinte ≥ 0,1
+ * ou de lumière ≥ 0,08 = image en train de changer), et au moins 0,5 s avant
+ * le graphisme. Cas réel : tractions du rush 1, fondu 27,5–28 s vers l'écran
+ * « JE ME LANCE » — l'extrait 26,1–27,6 laissait voir le texte en fantôme.
+ */
+function margesGraphiques(a: AnalyseRush, passages: Passage[], ecartes: DecoupageRush['ecartes'], entrees: EntreesPassages): Passage[] {
+  const S = SEUILS_PASSAGES;
+  const E = a.echantillons;
+  const instable = (i: number) => i > 0 && i < E.length && (
+    (E[i].empreinte && E[i - 1].empreinte ? ecartEmpreinte(E[i].empreinte!, E[i - 1].empreinte!) >= S.sautInterne : false)
+    || Math.abs(E[i].luminosite - E[i - 1].luminosite) >= S.changementLuminosite);
+  const indexA = (t: number) => E.findIndex((x) => x.t >= t - 1e-6);
+  /** Fin sûre devant un graphisme qui commence (image déjà fixe) à `t0`. */
+  const finDevant = (t0: number) => {
+    let k = indexA(t0); if (k < 0) k = E.length;
+    k -= 1; // dernière mesure avant le graphisme
+    while (k > 0 && instable(k)) k -= 1;
+    return Math.min(t0 - S.margeGraphiqueS, k >= 0 ? E[k].t : t0 - S.margeGraphiqueS);
+  };
+  /** Début sûr derrière un graphisme qui finit (image encore fixe) à `t1`. */
+  const debutDerriere = (t1: number) => {
+    let k = E.findIndex((x) => x.t > t1 + 1e-6); if (k < 0) return Infinity;
+    while (k < E.length && instable(k)) k += 1;
+    return Math.max(t1 + S.margeGraphiqueS, k < E.length ? E[k].t : Infinity);
+  };
+  const graphiques = ecartes.filter((e) => /plan fixe ou graphique/.test(e.motif));
+  const out: Passage[] = [];
+  for (const p of passages) {
+    // Suites d'images immobiles (≥ 1 s) DANS le passage, hors interview probable.
+    const idx = E.map((_x, i) => i).filter((i) => i > 0 && E[i].t >= p.debut - 1e-6 && E[i].t <= p.fin + 1e-6);
+    const suites: Array<[number, number]> = [];
+    let i0 = -1;
+    for (let k = 0; k <= idx.length; k++) {
+      const imm = k < idx.length && E[idx[k]].mouvement < S.mouvementFixe;
+      if (imm && i0 < 0) i0 = k;
+      if (!imm && i0 >= 0) {
+        const t0 = E[idx[i0] - 1].t; const t1 = E[idx[k - 1]].t;
+        if (t1 - t0 >= S.immobileInterneMinS - 1e-6 && !interviewProbable(a, t0, t1, entrees)) suites.push([t0, t1]);
+        i0 = -1;
+      }
+    }
+    for (const [x, y] of suites) ecartes.push({ debut: r3(x), fin: r3(y), motif: 'plan fixe ou graphique dans le passage (image immobile ≥ 1 s), avec sa marge' });
+    // Morceaux vivants entre ces suites, rognés devant / derrière chaque graphisme.
+    const bornes: Array<[number, number, boolean, boolean]> = [];
+    let d0 = p.debut; let apresGraphisme = false;
+    for (const [x, y] of suites) { bornes.push([d0, x, apresGraphisme, true]); d0 = y; apresGraphisme = true; }
+    bornes.push([d0, p.fin, apresGraphisme, false]);
+    for (const [deb, fin, apres, avant] of bornes) {
+      let d = deb; let f = fin;
+      if (apres) d = Math.max(d, debutDerriere(deb));
+      if (avant) f = Math.min(f, finDevant(fin));
+      // Graphisme écarté juste à côté du passage (≤ 1 s) : même marge.
+      for (const g of graphiques) {
+        if (g.debut >= f - 1e-6 && g.debut - f <= 1 + 1e-6) f = Math.min(f, finDevant(g.debut));
+        if (g.fin <= d + 1e-6 && d - g.fin <= 1 + 1e-6) d = Math.max(d, debutDerriere(g.fin));
+      }
+      d = r3(d); f = r3(f);
+      if (f - d >= (p.interne ? S.passageInterneMinS : S.passageMinS) - 1e-6) {
+        const rogne = d !== p.debut || f !== p.fin;
+        out.push(rogne
+          ? { ...p, debut: d, fin: f, motifDebut: d !== p.debut ? 'transition' : p.motifDebut, motifFin: f !== p.fin ? 'transition' : p.motifFin, gestes: p.gestes.filter(([x, y]) => y > d && x < f) }
+          : p);
+      }
+    }
+  }
+  return out.sort((x, y) => x.debut - y.debut);
 }
 
 /**
