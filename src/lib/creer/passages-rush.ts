@@ -195,6 +195,28 @@ export function coeursSilences(silences: ReadonlyArray<[number, number]> | null 
     .sort((p, q) => p[0] - q[0]);
 }
 
+/**
+ * PR2 — borne d'extrait acceptable pour la parole : au cœur d'un silence ; OU,
+ * à un bord de passage qui est un VRAI changement de plan, dans un silence avec
+ * la marge du seul côté de l'extrait (le son d'avant la coupe appartient à
+ * l'autre plan : rush réel 1, haltères dès 20,1 s, silence 20,1–32 s). La
+ * marge ne fait alors pas perdre un plan entier muet.
+ */
+export function borneSilencieuse(
+  silences: ReadonlyArray<[number, number]> | null | undefined, t: number, duree: number,
+  p: Pick<Passage, 'debut' | 'fin' | 'motifDebut' | 'motifFin'>, cote: 'debut' | 'fin',
+): boolean {
+  if (dansUnSilence(silences, t, duree)) return true;
+  const S = SEUILS_PASSAGES;
+  const auBord = cote === 'debut'
+    ? Math.abs(t - p.debut) < 1e-6 && (p.motifDebut === 'coupe' || p.motifDebut === 'transition')
+    : Math.abs(t - p.fin) < 1e-6 && (p.motifFin === 'coupe' || p.motifFin === 'transition');
+  if (!auBord) return false;
+  return (silences ?? []).some(([x, y]) => y - x >= S.silenceMinS - 1e-6 && (cote === 'debut'
+    ? t >= x - 1e-6 && (t <= y - S.silenceMargeS + 1e-6 || y >= duree - S.silenceMargeS)
+    : t <= y + 1e-6 && (t >= x + S.silenceMargeS - 1e-6 || x <= S.silenceMargeS / 2)));
+}
+
 /** PR2 — l'instant `t` est-il au cœur d'un silence franc (≥ 0,3 s, ≥ 0,1 s de chaque bord) ? */
 export function dansUnSilence(silences: ReadonlyArray<[number, number]> | null | undefined, t: number, duree: number = Infinity): boolean {
   return coeursSilences(silences, duree).some(([x, y]) => t >= x - 1e-6 && t <= y + 1e-6);
@@ -511,7 +533,7 @@ export function bornesAutorisees(d: DecoupageRush, s: number, e: number, entrees
   if (p.gestes.some((g) => dans(s, g) || dans(e, g))) return { ok: false, motif: 'borne au milieu d\'un geste' };
   // PR2 — silences mesurés, parole localisable : une borne hors d'un silence franc tombe
   // dans un son de parole probable ⇒ REFUSÉE (la vidéo raccourcit plutôt que de couper un mot).
-  if (d.paroleLocalisable && !(dansUnSilence(entrees.silences, s, d.duree) && dansUnSilence(entrees.silences, e, d.duree))) {
+  if (d.paroleLocalisable && !(borneSilencieuse(entrees.silences, s, d.duree, p, 'debut') && borneSilencieuse(entrees.silences, e, d.duree, p, 'fin'))) {
     return { ok: false, motif: 'borne dans un son de parole probable (hors d\'un silence mesuré)' };
   }
   if ((entrees.plagesParole ?? []).some(([x, y]) => dans(s, [x + 0.05, y - 0.05]) || dans(e, [x + 0.05, y - 0.05]))) {

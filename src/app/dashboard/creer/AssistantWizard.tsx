@@ -251,7 +251,7 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, planAvecAvatar, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, optionsModePassages, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
@@ -4921,7 +4921,9 @@ export default function AssistantWizard() {
   // SMART MONTAGE : dernier plan d'extraits calculé à l'envoi, avec
   // l'empreinte (rushes + durée) de l'écran pour lequel il vaut. Un
   // enregistrement sans rendu le réécrit tel quel ; écran changé = plan caduc.
-  const planMontageRef = useRef<{ cle: string; plan: RushSegment[] } | null>(null);
+  // M3-a PR2 : `methode` = méthode de sélection qui a produit ce plan (A actuelle,
+  // B passages, essai admin). Seul un plan A est réutilisé à l'enregistrement.
+  const planMontageRef = useRef<{ cle: string; plan: RushSegment[]; methode: 'A' | 'B' } | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
 
@@ -6794,6 +6796,27 @@ export default function AssistantWizard() {
   const cibleEdition = readEditTargetFromQuery(urlParams);
   const editPostId = cibleEdition.kind === 'edit' ? cibleEdition.postId : undefined;
 
+  // ── M3-a PR2 — ESSAI A/B ADMIN : méthode de sélection des extraits ──────
+  // B (« passages ») n'est PROPOSÉE que si le serveur répond `passages: true`
+  // (interrupteur serveur + rôle admin en base + compte exempté de crédits).
+  // Ce n'est pas une frontière de sécurité : B ne change QUE l'appel à
+  // `planMontage`, sur les rushes du compte ; la facturation reste décidée par
+  // le serveur, qui ne reçoit jamais la méthode. A par défaut, jamais
+  // persistée (ni brouillon, ni localStorage) ; absente en modification ; en B,
+  // seuls Bureau et Aperçu sont possibles (aucun post).
+  const [methodeBDisponible, setMethodeBDisponible] = useState(false);
+  const [methodeMontage, setMethodeMontage] = useState<'A' | 'B'>('A');
+  const configMethodeDemandee = useRef(false);
+  useEffect(() => {
+    if (step !== S.envoi || editPostId || !rushSuivants.length || configMethodeDemandee.current) return;
+    configMethodeDemandee.current = true;
+    fetch('/api/creer/montage-config', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setMethodeBDisponible(j?.passages === true))
+      .catch(() => setMethodeBDisponible(false));
+  }, [step, editPostId, rushSuivants.length]);
+  const methodeB = methodeBDisponible && !editPostId && methodeMontage === 'B';
+
   /**
    * ─────────────────────────────────────────────────────────────────────
    * MODIFICATION D'UN CONTENU EXISTANT
@@ -8626,6 +8649,8 @@ export default function AssistantWizard() {
     // annonce avant confirmation. Elle n'existe pas encore.
     if (editPostId) return;
     if (!generated || sending) return;
+    // M3-a PR2 : la méthode B (essai admin) ne crée jamais de post.
+    if (methodeB && destination === 'calendrier') return;
 
     // ── Serie fermee ────────────────────────────────────────────────
     // Place ici, et pas plus bas : la premiere chose que faisait ce
@@ -9051,7 +9076,9 @@ export default function AssistantWizard() {
           cartes: generated?.cards ?? [],
         });
         const rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null;
-        planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });
+        // M3-a PR2 : méthode B (essai admin) = SEULE différence, l'option de sélection.
+        if (methodeB) planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, ...optionsModePassages(analyses) });
+        else planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });
         if (planMontageRushs) {
           const profil = profilMontageDuContexte(contexteMontage).profil;
           const ms = mesuresSegments(planMontageRushs, analyses);
@@ -9078,7 +9105,7 @@ export default function AssistantWizard() {
           duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
         }
         planMontageRef.current = planMontageRushs
-          ? { cle: cleMontage(rushsDurables.map((r) => r.url), cibleEcran), plan: planMontageRushs }
+          ? { cle: cleMontage(rushsDurables.map((r) => r.url), cibleEcran, methodeB ? 'B' : 'A'), plan: planMontageRushs, methode: methodeB ? 'B' : 'A' }
           : null;
         console.log('[SmartMontage] plan :', planMontageRushs
           ? planMontageRushs.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | ')
@@ -10267,7 +10294,8 @@ export default function AssistantWizard() {
       // post mono-rush, donc jamais envoye ; efface les segments d'un post
       // redevenu mono-rush.
       rushSegments: rushsDurablesEcran.length >= 2 && seqDuration('video') > 0
-        ? (planMontageRef.current?.cle === cleMontage(rushsDurablesEcran.map((r) => r.url), seqDuration('video'))
+        // M3-a PR2 : seul un plan de la méthode A est réécrit dans un post (jamais B).
+        ? (planMontageRef.current?.methode === 'A' && planMontageRef.current.cle === cleMontage(rushsDurablesEcran.map((r) => r.url), seqDuration('video'), 'A')
           ? planMontageRef.current.plan
           : planRushs(rushsDurablesEcran, seqDuration('video')))
         : null,
@@ -13341,6 +13369,36 @@ export default function AssistantWizard() {
                       )}
                     </div>
 
+                    {/* ── M3-a PR2 — MÉTHODE DE SÉLECTION (essai A/B admin) ──
+                        Visible seulement si le serveur l'autorise ; absente en
+                        modification. B : Bureau et Aperçu seulement. */}
+                    {methodeBDisponible && !editPostId && (
+                      <div className="rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300" data-methode-montage={methodeMontage} role="radiogroup" aria-label="Méthode de sélection des extraits">
+                        <span className="block text-gray-500 mb-1">Méthode de sélection des extraits (essai administrateur)</span>
+                        <div className="flex gap-2">
+                          {(['A', 'B'] as const).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              role="radio"
+                              aria-checked={methodeMontage === m}
+                              data-methode-choix={m}
+                              disabled={sending || actif(VERROU.serie)}
+                              onClick={() => setMethodeMontage(m)}
+                              className={`flex-1 rounded-md border px-2 py-1 transition-colors ${methodeMontage === m ? 'border-violet-500 text-white' : 'border-gray-800 text-gray-400 hover:text-white'}`}
+                            >
+                              {m === 'A' ? 'Méthode A (actuelle)' : 'Méthode B (passages)'}
+                            </button>
+                          ))}
+                        </div>
+                        {methodeMontage === 'B' && (
+                          <span className="block mt-1 text-gray-500" data-methode-b-note>
+                            Téléchargement et aperçu seulement : aucun envoi au calendrier avec la méthode B.
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {/* ── TÉLÉCHARGER SUR L'ORDINATEUR ────────────────────
                         Rendu local : aucun post n'est créé, aucune
                         publication. La facturation est celle du Calendrier —
@@ -13399,7 +13457,7 @@ export default function AssistantWizard() {
                         // le contraire.
                         // Date exigée SEULEMENT pour programmer : un brouillon
                         // sans date part à la date du jour (#501).
-                        disabled={sending || actif(VERROU.serie)
+                        disabled={sending || actif(VERROU.serie) || methodeB
                           || !envoiPossible({ intention: envoiIntention, date: scheduledDate, reseaux: reseauxProgrammes.length })}
                         className={DISABLED}
                         data-envoi-action={envoiIntention}

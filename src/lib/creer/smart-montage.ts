@@ -554,6 +554,9 @@ export function planMontage(
   const decoupages = new Map<string, DecoupageRush>(modePassages ? rushs.map(({ a, cle }) => [cle, decouperPassages(a, entreesR.get(cle)!)]) : []);
 
   const grille = grilleDeCoupes(cible, regle, options.rythme ?? null);
+  // PR2 (passages) — le dernier créneau est TOUJOURS un CTA (une grille courte n'en
+  // contenait parfois aucun : le dernier créneau commençait avant 90 % de la cible).
+  if (modePassages && grille.length && !grille.some((c) => c.phase === 'CTA')) grille[grille.length - 1] = { ...grille[grille.length - 1], phase: 'CTA' };
   // PR2 (passages) : moments distincts de chaque passage, mesurés sur des fenêtres de la
   // longueur médiane des créneaux — le plafond d'extraits par passage en dépend.
   const moments = new Map<string, number>();
@@ -612,8 +615,16 @@ export function planMontage(
   // suivant (qui commence plus tôt et finit au même temps fort) ; 0 sinon.
   let decalage = 0;
   const usagePassage = new Map<string, number>();
+  // PR2 (passages) — CTA GARANTI : quand la matière manque, les créneaux BUILD /
+  // PEAK / FOCUS restants sont sautés (la vidéo raccourcit), jamais le CTA, posé
+  // juste après le dernier plan monté, de sa longueur prévue.
+  let epuise = false;
   for (const creneauGrille of grille) {
-    const creneau = decalage > 0 ? { ...creneauGrille, debut: arrondi(creneauGrille.debut - decalage) } : creneauGrille;
+    if (epuise && creneauGrille.phase !== 'CTA') continue;
+    const finMontee = plan.length ? plan[plan.length - 1].fin : 0;
+    const creneau = epuise
+      ? { ...creneauGrille, debut: finMontee, fin: arrondi(finMontee + (creneauGrille.fin - creneauGrille.debut)), beat: null }
+      : decalage > 0 ? { ...creneauGrille, debut: arrondi(creneauGrille.debut - decalage) } : creneauGrille;
     const d = creneau.fin - creneau.debut;
     const prec: { cle: string; empreinte: number[] | null; luminosite: number | null; saturation: number | null } | null = precedent;
     type Choix = { seg: RushSegment; score: number; cle: string; empreinte: number[] | null; luminosite: number; saturation: number | null; source: number };
@@ -885,6 +896,7 @@ export function planMontage(
       }
     }
     // Plus de matière exploitable : la vidéo s'arrête là (jamais d'étirement).
+    if (!meilleur && modePassages && creneau.phase !== 'CTA' && grille.some((c) => c.phase === 'CTA')) { epuise = true; decalage = 0; continue; }
     if (!meilleur) break;
     plan.push(meilleur.seg);
     if (modePassages && meilleur.seg.passage) {
@@ -904,6 +916,12 @@ export function planMontage(
   // un vrai montage : le refuser renvoyait à l'enchaînement brut de TOUS les
   // rushes — noir et blanc compris, le pire résultat.
   if (plan.length < 2) return null;
+  // PR2 (passages) — aucun extrait propre pour le CTA lui-même : le dernier plan monté
+  // en tient lieu (rôle CTA, écrit), plutôt qu'une vidéo sans CTA.
+  if (modePassages && grille.some((c) => c.phase === 'CTA') && plan[plan.length - 1].phase !== 'CTA') {
+    const der = plan[plan.length - 1];
+    plan[plan.length - 1] = { ...der, phase: 'CTA', raison: `${der.raison ?? ''} · CTA porté par le dernier plan disponible (matière épuisée)` };
+  }
   // Matière épuisée avant la cible : la vidéo est plus courte (jamais
   // étirée), mais sa NARRATION doit rester complète — on remonte le plan
   // une fois sur la durée réellement disponible, pour garder HOOK → CTA.
@@ -971,14 +989,25 @@ export function dureeCibleMontage(sommeRushs: number): number {
   return Math.min(sommeRushs, CIBLE_MONTAGE_DEFAUT);
 }
 
+/**
+ * M3-a PR2 — options du mode passages (essai A/B admin de Créer) : la sélection
+ * « passages » et les entrées de chaque rush, tirées des analyses (silences
+ * mesurés sur 50 ms, sonde de piste). À ÉTENDRE l'appel A, jamais à le remplacer.
+ */
+export function optionsModePassages(analyses: ReadonlyArray<AnalyseRush>): Pick<OptionsMontage, 'selection' | 'entreesPassages'> {
+  return { selection: 'passages', entreesPassages: Object.fromEntries(analyses.map((a) => [cleSource(a.url), entreesDuRush(a)])) };
+}
+
 /** Durée totale d'un plan (fin du dernier extrait). */
 export function dureePlan(plan: ReadonlyArray<RushSegment>): number {
   return plan.length ? plan[plan.length - 1].fin : 0;
 }
 
 /** Empreinte (rushes + durée) qui valide un plan calculé pour l'écran courant. */
-export function cleMontage(urls: ReadonlyArray<string>, duree: number): string {
-  return `${urls.join('|')}@${duree}`;
+export function cleMontage(urls: ReadonlyArray<string>, duree: number, methode: 'A' | 'B' = 'A'): string {
+  // M3-a PR2 : la méthode B (passages, essai admin) a sa propre clé — un plan B
+  // ne peut jamais valoir pour un écran en méthode A. A : clé d'avant, à l'identique.
+  return `${urls.join('|')}@${duree}${methode === 'B' ? '#B' : ''}`;
 }
 
 /** Taille des images d'analyse (niveaux de gris). Partagée navigateur / serveur. */

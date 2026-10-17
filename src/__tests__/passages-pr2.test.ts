@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { planMontage, cleSource, type AnalyseRush, type EchantillonRush, type OptionsMontage } from '@/lib/creer/smart-montage';
 import {
   decouperPassages, bornesAutorisees, paroleExtrait, fenetresSilences, paroleEntreSilences, entreesDuRush, momentsDistincts,
-  plafondPassage, interviewProbable, fenetreFixe, rapportSelection, pertinencePourPassages, dansUnSilence, mouvementLocal, empreinteProche,
+  plafondPassage, interviewProbable, fenetreFixe, rapportSelection, pertinencePourPassages, dansUnSilence, mouvementLocal, empreinteProche, borneSilencieuse,
   type EntreesPassages,
 } from '@/lib/creer/passages-rush';
 import { mesurerSilences } from '@/lib/creer/silences-audio';
@@ -90,8 +90,9 @@ describe('2. parole : coupe dans un silence, jamais dans un son de parole probab
     for (const { nom, plan } of PLANS) {
       for (const s of plan.filter((x) => x.url.includes('1791985445290'))) {
         for (const b of bornes(s)) {
-          for (const [x, y] of [...VOIX, ...d1.paroleMesuree]) expect(b > x + 1e-6 && b < y - 1e-6, `${nom} ${s.depuis}→${s.jusqua}`).toBe(false);
+          for (const [x, y] of VOIX) expect(b > x + 1e-6 && b < y - 1e-6, `${nom} ${s.depuis}→${s.jusqua}`).toBe(false);
         }
+        expect(bornesAutorisees(d1, s.depuis!, s.jusqua!, E1).ok, `${nom} ${s.depuis}→${s.jusqua}`).toBe(true);
         expect(['pause_franche', 'absente']).toContain(s.parole!.debut);
         expect(['pause_franche', 'absente']).toContain(s.parole!.fin);
       }
@@ -126,6 +127,36 @@ describe('2. parole : coupe dans un silence, jamais dans un son de parole probab
     for (const s of pause) expect(s.raison).toMatch(/coupe dans un silence mesuré \(sans preuve de fin de phrase\)/);
     const rap = rapportSelection(PLANS[2].plan, REELS, 60, {}, cleSource);
     expect(rap.incertitudes.join(' ')).toMatch(/sans prouver une fin de phrase/);
+  });
+});
+
+describe('2 bis. CTA garanti et marge au bord d\'une vraie coupe', () => {
+  it('chaque scénario, chaque durée (y compris matière insuffisante) : le plan finit par un CTA, jamais au milieu', () => {
+    const jeux: Record<string, AnalyseRush[]> = { tous: REELS, pexels: REELS.slice(2), perso: REELS.slice(0, 2), deux: [REELS[0], REELS[3]] };
+    for (const sc of SCENARIOS) for (const [nomJeu, an] of Object.entries(jeux)) for (const cible of [6, 12, 20, 30, 46, 60, 90]) for (const rythme of [sc.options.rythme, null]) {
+      const p = planMontage(an, cible, { ...sc.options, rythme, selection: 'passages' });
+      if (!p) continue;
+      const lib = `${sc.nom}/${nomJeu}/${cible}/${rythme ? 'musique' : 'sans'}`;
+      expect(p[p.length - 1].phase, lib).toBe('CTA');
+      const i = p.findIndex((x) => x.phase === 'CTA');
+      expect(p.slice(i).every((x) => x.phase === 'CTA'), lib).toBe(true);
+      // Timeline continue, sans trou ni chevauchement.
+      p.forEach((x, k) => { if (k) expect(Math.abs(x.debut - p[k - 1].fin), lib).toBeLessThan(1e-6); });
+    }
+  });
+  it('Nutrition : les haltères 20,1–23,5 s (juste après la coupe de 20,03 s, piste muette) restent pris en entier', () => {
+    const d1 = decouperPassages(RUSH1, E1);
+    expect(bornesAutorisees(d1, 20.1, 23.5, E1).ok).toBe(true);
+    expect(PLANS[1].plan.some((s) => s.url.includes('1791985445290') && s.depuis === 20.1)).toBe(true);
+    expect(PLANS[1].plan[PLANS[1].plan.length - 1].phase).toBe('CTA');
+  });
+  it('la marge d\'un seul côté ne vaut QU\'au bord d\'un passage ouvert par une vraie coupe', () => {
+    const sil: Array<[number, number]> = [[5, 6]];
+    const p = { debut: 5, fin: 9, motifDebut: 'coupe' as const, motifFin: 'fin_rush' as const };
+    expect(borneSilencieuse(sil, 5, 10, p, 'debut')).toBe(true);
+    expect(borneSilencieuse(sil, 5, 10, { ...p, motifDebut: 'debut_rush' }, 'debut')).toBe(false);
+    expect(borneSilencieuse(sil, 5.02, 10, p, 'debut')).toBe(false); // pas au bord du passage
+    expect(borneSilencieuse(sil, 5.95, 10, p, 'debut')).toBe(false); // le silence ne couvre pas le début de l'extrait
   });
 });
 
