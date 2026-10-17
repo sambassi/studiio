@@ -159,8 +159,10 @@ describe('câblage', () => {
   it('Autopilote et Créer passent le rythme de la musique au moteur', () => {
     expect(src('src/lib/autopilot/produire.ts')).toContain('rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;');
     expect(src('src/lib/autopilot/produire.ts')).toContain('rythme: rythmeVideo,');
-    expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('const rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null;');
-    expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
+    // M3-a PR3 : calcul déplacé dans `preparerPlanMontage` (export + aperçu rapide).
+    expect(src('src/lib/creer/preparer-plan-montage.ts')).toContain('const rythmeVideo = acquis.rythme ? rythmeSurFenetre(acquis.rythme, entree.debutVideo, cibleEcran) : null;');
+    expect(src('src/lib/creer/preparer-plan-montage.ts')).toContain('planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
+    expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('}), { analysesBrutes, rythme }, apercuPlanDisponible ? planApercuRef.current : null);');
   });
   it('le ralenti est rendu par Remotion et par le compositeur', () => {
     expect(src('remotion/CreerSimpleMontage.tsx')).toContain('playbackRate: seg.vitesse');

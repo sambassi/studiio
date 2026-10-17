@@ -251,7 +251,24 @@ export const analyserRushMemo = memoNavigateur.analyserMemo;
  * Rythme de la musique, dans le navigateur (Créer) — même analyse que le
  * serveur (`rythme-musique.ts`). `null` si la musique est illisible.
  */
-export async function analyserMusiqueNavigateur(url: string): Promise<RythmeMusique | null> {
+export function analyserMusiqueNavigateur(url: string): Promise<RythmeMusique | null> {
+  // M3-a PR3 : UNE lecture par URL (aperçu rapide et export partagent le même
+  // objet — c'est aussi ce qui prouve que le rythme n'a pas changé). Un échec
+  // n'est pas retenu : un nouvel essai reste possible.
+  const hit = memoMusique.get(url);
+  if (hit) return hit;
+  const p = lireRythmeMusique(url).then((r) => { if (!r && memoMusique.get(url) === p) memoMusique.delete(url); return r; });
+  memoMusique.set(url, p);
+  while (memoMusique.size > MEMO_MUSIQUE_MAX) memoMusique.delete(memoMusique.keys().next().value as string);
+  return p;
+}
+
+const MEMO_MUSIQUE_MAX = 8;
+const memoMusique = new Map<string, Promise<RythmeMusique | null>>();
+/** Tests : vide le mémo du rythme. */
+export function viderMemoMusique(): void { memoMusique.clear(); }
+
+async function lireRythmeMusique(url: string): Promise<RythmeMusique | null> {
   try {
     const rep = await fetch(url);
     if (!rep.ok) return null;

@@ -29,6 +29,11 @@ export interface PlaybackLayer {
    * sienne.
    */
   textAnimation?: TextAnimation;
+  /**
+   * M3-a PR3 : image FIGÉE (`still`), aucune lecture — l'aperçu rapide du plan
+   * y positionne son extrait sans le jouer. Absent / faux : en lecture.
+   */
+  figee?: boolean;
 }
 
 /**
@@ -233,7 +238,7 @@ export default function SequencePlayback({
   /** La scène est visible en lecture, et figée sur demande. */
   const scene = playing || fige;
   const calque = (key: string, progress: number) =>
-    renderLayer({ key, progress, ...(extrait?.textAnimation ? { textAnimation: extrait.textAnimation } : {}) });
+    renderLayer({ key, progress, ...(extrait?.textAnimation ? { textAnimation: extrait.textAnimation } : {}), ...(fige ? { figee: true } : {}) });
 
   return (
     <div
