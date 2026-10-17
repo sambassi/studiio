@@ -95,6 +95,8 @@ export function LecteurPlanApercu({ moteur, secondes, lecture, format, recadrage
       width={w}
       height={h}
       data-apercu-canvas
+      data-plan-lecture={lecture ? 'oui' : 'non'}
+      data-plan-s={secondes.toFixed(3)}
       onContextMenu={(e) => e.preventDefault()}
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', imageRendering: 'auto' }}
     />

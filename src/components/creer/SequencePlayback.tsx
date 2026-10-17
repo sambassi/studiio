@@ -34,6 +34,12 @@ export interface PlaybackLayer {
    * y positionne son extrait sans le jouer. Absent / faux : en lecture.
    */
   figee?: boolean;
+  /**
+   * M3-a PR3 : calque de la séquence ENTRANTE pendant une transition (dessinée
+   * à `t × 0,3`). Le compositeur n'a pas encore démarré sa vidéo : l'aperçu du
+   * plan y montre l'image figée du premier extrait. Absent : calque courant.
+   */
+  entrante?: boolean;
 }
 
 /**
@@ -237,8 +243,8 @@ export default function SequencePlayback({
   const label = SEQUENCE_LABELS[courante.key] ?? courante.key;
   /** La scène est visible en lecture, et figée sur demande. */
   const scene = playing || fige;
-  const calque = (key: string, progress: number) =>
-    renderLayer({ key, progress, ...(extrait?.textAnimation ? { textAnimation: extrait.textAnimation } : {}), ...(fige ? { figee: true } : {}) });
+  const calque = (key: string, progress: number, entrant = false) =>
+    renderLayer({ key, progress, ...(extrait?.textAnimation ? { textAnimation: extrait.textAnimation } : {}), ...(fige ? { figee: true } : {}), ...(entrant ? { entrante: true } : {}) });
 
   return (
     <div
@@ -281,7 +287,7 @@ export default function SequencePlayback({
             >
               {/* La séquence entrante est dessinée à `t × 0,3`, comme
                   `drawB(t * 0.3)` du compositeur. */}
-              {calque(entrante.key, clock.transitionProgress * ENTERING_PROGRESS_RATIO)}
+              {calque(entrante.key, clock.transitionProgress * ENTERING_PROGRESS_RATIO, true)}
             </div>
           )}
           {/* Barre d'avancement — sur le bord bas, sans hauteur ajoutée. */}

@@ -7808,13 +7808,15 @@ export default function AssistantWizard() {
       frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale: displayScale }}
       demande={extraitDemande}
       onFin={finExtrait}
-      renderLayer={({ key, progress, textAnimation: animationExtrait, figee }) => {
+      renderLayer={({ key, progress, textAnimation: animationExtrait, figee, entrante }) => {
         // Le fond de CETTE séquence — la règle de l'onglet correspondant.
         const fond = resolveBackground(key as PreviewFocus, seqBackgrounds, posterUrl, posterTransform);
         // M3-a PR3 — aperçu rapide : la séquence Vidéo joue le PLAN (canvas
         // filigrané), les surimpressions passent par-dessus, et un filigrane
         // DOM couvre TOUTES les couches de chaque séquence.
-        const secondesVideo = progress * dureeVideoApercu;
+        // Séquence Vidéo ENTRANTE (transition) : le compositeur n'a pas encore
+        // lancé le plan — son premier extrait, positionné, à l'arrêt.
+        const secondesVideo = entrante ? 0 : progress * dureeVideoApercu;
         const plateauLu = (
           <PlateauLecture
             generated={generated}
@@ -7824,7 +7826,7 @@ export default function AssistantWizard() {
             rushUrl={key === 'video' && !avatarApercu && !modeApercuPlan ? rushUrl : null}
             rushTransform={key === 'video' ? rushTransform : null}
             rushLecteur={key === 'video' && modeApercuPlan && moteurApercu ? (
-              <LecteurPlanApercu moteur={moteurApercu} secondes={secondesVideo} lecture={!figee} format={format} recadrages={rushTransforms} />
+              <LecteurPlanApercu moteur={moteurApercu} secondes={secondesVideo} lecture={!figee && !entrante} format={format} recadrages={rushTransforms} />
             ) : null}
             avatar={key === 'video' ? avatarApercu : null}
             displayScale={displayScale}

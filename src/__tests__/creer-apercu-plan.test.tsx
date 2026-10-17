@@ -298,6 +298,7 @@ describe('interrupteur ALLUMÉ (admin) : plan de l’aperçu rejoué à l’expo
       await act(async () => { fireEvent.click(lire); });
       const vus = new Set<string>();
       let vuCanvas = false;
+      let vuEntrante = false;
       for (let i = 0; i < 70; i += 1) {
         await patienter(60);
         const couches = Array.from(document.querySelectorAll('[data-playback-layer]'));
@@ -310,9 +311,13 @@ describe('interrupteur ALLUMÉ (admin) : plan de l’aperçu rejoué à l’expo
         // Pendant la lecture : aucun <video> dans la scène (les lecteurs sont hors DOM, peints dans le canvas).
         expect(document.querySelector('[data-playback-stage] video')).toBeNull();
         const canvas = document.querySelector('[data-apercu-canvas]') as HTMLCanvasElement | null;
+        // Transition VERS la Vidéo : le compositeur n'a pas lancé le plan — premier extrait, figé (s = 0).
+        const entrante = document.querySelector('[data-playback-layer="b"][data-playback-sequence="video"] [data-apercu-canvas]');
+        if (entrante) { vuEntrante = true; expect(entrante.getAttribute('data-plan-lecture')).toBe('non'); expect(entrante.getAttribute('data-plan-s')).toBe('0.000'); }
         if (canvas) { vuCanvas = true; expect(Math.max(canvas.width, canvas.height)).toBeLessThanOrEqual(540); }
       }
       expect(vuCanvas, 'la séquence Vidéo est peinte dans le canvas d’aperçu').toBe(true);
+      if (k === 'FINANCE') expect(vuEntrante, 'transition Cartes → Vidéo observée').toBe(true);
       expect(vus.has('video')).toBe(true);
       // Plein écran (profil non dynamique) : titre, cartes, vidéo… ; surimpression (danse) : la vidéo seule.
       expect(vus.size).toBeGreaterThanOrEqual(k === 'FINANCE' ? 3 : 1);
