@@ -186,6 +186,38 @@ describe('2 ter. marge devant tout graphisme (QA sur le vrai MP4 B : « JE ME LA
   });
 });
 
+describe('2 quater. jump cut : jamais deux extraits adjacents du même plan réel', () => {
+  const jeux: Record<string, AnalyseRush[]> = {
+    tous: REELS, qa: [REELS[0], REELS[2], REELS[5]], pexels: REELS.slice(2), deux: [REELS[2], REELS[5]], perso: REELS.slice(0, 2),
+  };
+  it('3 scénarios × 5 jeux × 7 durées : extraits adjacents jamais dans le même passage (hors plan continu), CTA final', () => {
+    let memeRushAutrePlan = 0;
+    for (const sc of SCENARIOS) for (const [nomJeu, an] of Object.entries(jeux)) for (const cible of [4, 8, 10, 14, 20, 30, 60]) {
+      const p = planMontage(an, cible, { ...sc.options, selection: 'passages' });
+      if (!p) continue;
+      const lib = `${sc.nom}/${nomJeu}/${cible}`;
+      for (let i = 1; i < p.length; i++) {
+        const a = p[i - 1]; const b = p[i];
+        if (a.url !== b.url) continue;
+        if (a.passage!.debut === b.passage!.debut) expect(b.raison, `${lib} #${i} ${a.depuis}→${a.jusqua} puis ${b.depuis}→${b.jusqua}`).toMatch(/continuité : même passage, sans saut/);
+        else memeRushAutrePlan += 1;
+      }
+      expect(p[p.length - 1].phase, lib).toBe('CTA');
+    }
+    // Même rush, plans différents (ex. haltères → tractions) : toujours permis.
+    expect(memeRushAutrePlan).toBeGreaterThan(0);
+  });
+  it('cas réel QA (assiette 4 s puis 10 s, même plan) : impossible, la vidéo raccourcit plutôt que de répéter', () => {
+    for (const cible of [6, 8, 10, 14]) {
+      const p = planMontage([REELS[0], REELS[2], REELS[5]], cible, { ...SCENARIOS[0].options, selection: 'passages' }) ?? [];
+      for (let i = 1; i < p.length; i++) {
+        const memePlan = p[i].url === p[i - 1].url && p[i].passage!.debut === p[i - 1].passage!.debut;
+        if (memePlan) expect(p[i].raison).toMatch(/continuité/);
+      }
+    }
+  });
+});
+
 describe('3. interview sur pied (quasi immobile mais vivante) ≠ plan fixe ou graphique', () => {
   // Tête et bouche : 4 blocs de l'empreinte bougent de ±0,02 ; le reste est immobile.
   const tete = (t: number) => { const v = motif(1); for (const k of [27, 28, 35, 36]) v[k] = Math.round((v[k] + 0.02 * Math.sin(t * 7.3 + k)) * 1000) / 1000; return v; };

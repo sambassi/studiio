@@ -694,6 +694,10 @@ export function planMontage(
         const recents = choisis.filter((_, k) => plan[k].fin > creneau.debut - FENETRE_FLASH_S);
         if (recents.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
         if (!reprise && !continuite && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
+        // PR2 (passages) — JUMP CUT : deux extraits ADJACENTS jamais du même passage
+        // (même plan réel), hors plan continu ; même rush mais autre plan : permis.
+        const precSeg = plan[plan.length - 1];
+        if (bp && !continuite && precSeg?.passage && cleSource(precSeg.url) === cle && Math.abs(precSeg.passage.debut - bp.passage!.debut) < 1e-6) continue;
         // PR2 (passages) — RÉPÉTITION VISUELLE : même rush, même passage ou timecodes proches
         // (< 4 s), image quasi identique (similarité ≥ seuil anti-flash) : jamais, hors plan continu.
         if (bp && !continuite && choisis.some((c) => c.cle === cle
