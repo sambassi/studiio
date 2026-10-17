@@ -104,6 +104,18 @@ describe('M3-a PR1 — mode actuel inchangé octet pour octet', () => {
     expect(sha(grille)).toBe(AVANT.globale);
   }, 180_000);
 
+  it('PR2 : analyses porteuses de silences mesurés, sonde et son continu ⇒ grille IDENTIQUE (sans option et `grille`)', () => {
+    const avecSon = (a: AnalyseRush): AnalyseRush => ({
+      ...a,
+      pisteAudio: a.url.includes('converted_') ? true : a.url.includes('pexels') ? false : null,
+      silences: a.url.includes('converted_1791985445290') ? [[0, 10.25], [11.9, 12.35], [14.5, 15.25], [15.65, 16.45], [18.75, 19.7], [20.1, 32]] : [[0.2, 0.9]],
+      sonContinu: a.url.includes('converted_1792081208949'),
+    });
+    const enrichis = liste.map((s) => ({ ...s, analyses: s.analyses.map(avecSon) }));
+    expect(sha(enrichis.map((s) => planMontage(s.analyses, s.cible, s.options)))).toBe(AVANT.globale);
+    expect(sha(enrichis.map((s) => planMontage(s.analyses, s.cible, { ...(s.options ?? {}), selection: 'grille' } as OptionsMontage)))).toBe(AVANT.globale);
+  }, 360_000);
+
   it('aucun segment du mode actuel ne porte de champ du mode passages', () => {
     for (const p of plans) for (const seg of p ?? []) expect('passage' in seg || 'parole' in seg).toBe(false);
   });

@@ -39,6 +39,7 @@ import {
 import {
   decouperPassages, bornesAutorisees, departsCandidats, paroleExtrait, borneDansLeSon, notePassagePhase, SEUILS_PASSAGES,
   fenetreFixe, plafondPassage, plansEntiersCourts,
+  entreesDuRush, fenetresSilences, momentsDistincts, pertinenceFiable, empreinteProche,
   type DecoupageRush, type EntreesPassages,
 } from '@/lib/creer/passages-rush';
 
@@ -70,6 +71,15 @@ export interface AnalyseRush {
   duree: number;
   echantillons: EchantillonRush[];
   descriptions?: DescriptionPlan[];
+  /**
+   * M3-a PR2 — silences francs mesurés sur trames de 50 ms (`silences-audio.ts`),
+   * là où le son est DÉJÀ décodé. Absent : non mesuré. Lu SEULEMENT en mode passages.
+   */
+  silences?: Array<[number, number]>;
+  /** M3-a PR2 — son continu ou pulsation musicale (parole non localisable). */
+  sonContinu?: boolean;
+  /** M3-a PR2 — sonde : `true` piste présente, `false` aucune piste, `null` inconnu (décodage impossible). */
+  pisteAudio?: boolean | null;
 }
 
 /** Ce que la vidéo doit raconter : sert à la PERTINENCE des extraits. */
@@ -539,9 +549,17 @@ export function planMontage(
   // dans la recherche d'un extrait ci-dessous. Absent : `null`, code d'avant.
   const modePassages = options.selection === 'passages';
   const entreesP = options.entreesPassages ?? {};
-  const decoupages = new Map<string, DecoupageRush>(modePassages ? rushs.map(({ a, cle }) => [cle, decouperPassages(a, entreesP[cle] ?? {})]) : []);
+  // PR2 : mesures portées par l'analyse (silences 50 ms, sonde) complétées par l'appelant.
+  const entreesR = new Map<string, EntreesPassages>(modePassages ? rushs.map(({ a, cle }) => [cle, entreesDuRush(a, entreesP[cle] ?? {})]) : []);
+  const decoupages = new Map<string, DecoupageRush>(modePassages ? rushs.map(({ a, cle }) => [cle, decouperPassages(a, entreesR.get(cle)!)]) : []);
 
   const grille = grilleDeCoupes(cible, regle, options.rythme ?? null);
+  // PR2 (passages) — le dernier créneau est TOUJOURS un CTA (une grille courte n'en
+  // contenait parfois aucun : le dernier créneau commençait avant 90 % de la cible).
+  if (modePassages && grille.length && !grille.some((c) => c.phase === 'CTA')) grille[grille.length - 1] = { ...grille[grille.length - 1], phase: 'CTA' };
+  // PR2 (passages) : moments distincts de chaque passage, mesurés sur des fenêtres de la
+  // longueur médiane des créneaux — le plafond d'extraits par passage en dépend.
+  const moments = new Map<string, number>();
   const utilisees: PlagesUtilisees = {};
   const partRush = new Map<string, number>();
   const plan: RushSegment[] = [];
@@ -559,6 +577,11 @@ export function planMontage(
   // (90e centile) de TOUTE la matière. `mouvAbs` sature sur des rushes de
   // danse (tout vaut 1) et ne distingue plus un plan calme d'un plan explosif.
   const mouvHautGlobal = quantile(rushs.flatMap(({ a }) => a.echantillons.map((x) => x.mouvement)), 0.9) || 1e-6;
+  if (modePassages && grille.length) {
+    const longueurs = grille.map((c) => c.fin - c.debut).sort((x, y) => x - y);
+    const Lm = longueurs[Math.floor(longueurs.length / 2)];
+    for (const { a, cle } of rushs) for (const p of decoupages.get(cle)!.passages) moments.set(`${cle}@${p.debut}`, momentsDistincts(a, p, Lm, mouvHautGlobal));
+  }
   const sats = rushs.flatMap(({ a }) => a.echantillons.map((x) => x.saturation)).filter((x): x is number => typeof x === 'number');
   const matiereCouleur = sats.length ? sats.filter((x) => !estNoirEtBlanc(x)).length >= sats.length / 2 : null;
   // MATCH CARTE / IMAGE : les fenêtres où une carte « énergique » sera à
@@ -592,8 +615,16 @@ export function planMontage(
   // suivant (qui commence plus tôt et finit au même temps fort) ; 0 sinon.
   let decalage = 0;
   const usagePassage = new Map<string, number>();
+  // PR2 (passages) — CTA GARANTI : quand la matière manque, les créneaux BUILD /
+  // PEAK / FOCUS restants sont sautés (la vidéo raccourcit), jamais le CTA, posé
+  // juste après le dernier plan monté, de sa longueur prévue.
+  let epuise = false;
   for (const creneauGrille of grille) {
-    const creneau = decalage > 0 ? { ...creneauGrille, debut: arrondi(creneauGrille.debut - decalage) } : creneauGrille;
+    if (epuise && creneauGrille.phase !== 'CTA') continue;
+    const finMontee = plan.length ? plan[plan.length - 1].fin : 0;
+    const creneau = epuise
+      ? { ...creneauGrille, debut: finMontee, fin: arrondi(finMontee + (creneauGrille.fin - creneauGrille.debut)), beat: null }
+      : decalage > 0 ? { ...creneauGrille, debut: arrondi(creneauGrille.debut - decalage) } : creneauGrille;
     const d = creneau.fin - creneau.debut;
     const prec: { cle: string; empreinte: number[] | null; luminosite: number | null; saturation: number | null } | null = precedent;
     type Choix = { seg: RushSegment; score: number; cle: string; empreinte: number[] | null; luminosite: number; saturation: number | null; source: number };
@@ -605,6 +636,8 @@ export function planMontage(
     // un timecode déjà monté (jamais celui du plan précédent).
     // M3-a : `repli` = mode passages sans candidat propre → règle d'avant, raison écrite.
     // `relache` : accroche sans exigence sur la parole (aucune alternative visuelle).
+    // PR2 : silences mesurés ⇒ une borne dans un son de parole probable est TOUJOURS refusée
+    // (aucune passe ne la relâche) ; faute de fenêtre propre, la vidéo est plus courte, et c'est écrit.
     const chercher = (exclu: string | null, reprise: 0 | 1 | 2 = 0, repli = false, relache = false): Choix | null => {
     let meilleur: Choix | null = null;
     const passages = modePassages && !repli;
@@ -613,9 +646,13 @@ export function planMontage(
       const marge = Math.max(SEUILS.margeMin, d / 2);
       const debutMin = Math.min(0.5, a.duree * 0.05);
       const dp = passages ? decoupages.get(cle)! : null;
+      const eR = passages ? entreesR.get(cle)! : null;
       // Mode passages : fenêtres DANS les passages (débuts, sorties de geste, puis 0,5 s),
-      // plus les plans ENTIERS un peu plus courts qu'un créneau long.
-      const fen: Array<[number, number]> | null = dp ? [...departsCandidats(dp, d).map((x) => [x, d] as [number, number]), ...plansEntiersCourts(dp, d)] : null;
+      // plus les plans ENTIERS un peu plus courts qu'un créneau long,
+      // plus (PR2) les fenêtres posées sur les silences mesurés et les phrases entières.
+      const fen: Array<[number, number]> | null = dp
+        ? [...departsCandidats(dp, d).map((x) => [x, d] as [number, number]), ...plansEntiersCourts(dp, d), ...fenetresSilences(dp, eR!.silences, d)]
+        : null;
       for (let k = 0, s = fen ? (fen[0]?.[0] ?? 0) : debutMin; fen ? k < fen.length : s + d <= a.duree - 0.05 + 1e-6; k++, s = fen ? (fen[k]?.[0] ?? 0) : s + 0.5) {
         const dd = fen ? fen[k][1] : d;
         const court = dd < d - 1e-6;
@@ -627,23 +664,27 @@ export function planMontage(
         const vitesse = ralenti ? 0.6 : 1;
         const e = s + dd * vitesse;
         // Mode passages : un extrait tient dans UN passage, aucune borne dans un geste.
-        const bp = dp ? bornesAutorisees(dp, s, e, entreesP[cle] ?? {}) : null;
+        const bp = dp ? bornesAutorisees(dp, s, e, eR!) : null;
         if (bp && !bp.ok) continue;
         if (bp) {
           // Plan fixe ou graphique (photo, texte, surimpression sur image immobile) : jamais.
-          if (fenetreFixe(a, s, e)) continue;
-          // Diversité : 1 extrait d'un passage court (< 8 s), 2 au plus sinon.
-          if ((usagePassage.get(`${cle}@${bp.passage!.debut}`) ?? 0) >= plafondPassage(bp.passage!)) continue;
+          // PR2 : une interview sur pied probable (son + mouvement local) n'en est pas un.
+          if (fenetreFixe(a, s, e, eR!)) continue;
+          // Diversité : 1 extrait d'un passage court (< 8 s), 2 au plus sinon ;
+          // PR2 : davantage pour un passage long aux moments distincts mesurés (jamais moins).
+          if ((usagePassage.get(`${cle}@${bp.passage!.debut}`) ?? 0) >= plafondPassage(bp.passage!, moments.get(`${cle}@${bp.passage!.debut}`))) continue;
           // Accroche (HOOK) : jamais une borne en plein son incertain (phrase coupée) s'il existe une alternative.
           if (creneau.phase === 'HOOK' && !relache) {
-            const pa = paroleExtrait(a, dp!, s, e, entreesP[cle] ?? {});
+            const pa = paroleExtrait(a, dp!, s, e, eR!);
             if ((pa.debut === 'incertaine' && borneDansLeSon(a, s)) || (pa.fin === 'incertaine' && borneDansLeSon(a, e))) continue;
+            // PR2 — pertinence M2-c FIABLE : l'accroche exige ≥ 0,6 s'il existe une alternative.
+            if (pertinenceFiable(eR!) && eR!.pertinence < SEUILS_PASSAGES.pertinenceAccroche) continue;
           }
         }
         // Continuité (BUILD) : l'extrait reprend exactement là où le précédent s'arrête, dans le même passage.
         const dernier = choisis[choisis.length - 1];
         const continuite = !!bp && creneau.phase === 'BUILD' && !!dernier && prolonge(dernier, { cle, depuis: s, jusqua: e, empreinte: null })
-          && !!bornesAutorisees(dp!, dernier.depuis, e, entreesP[cle] ?? {}).ok;
+          && !!bornesAutorisees(dp!, dernier.depuis, e, eR!).ok;
         // Mode passages : la marge anti-répétition vaut DANS un même plan ; au-delà d'un vrai changement de plan, c'est une autre image.
         const plagesProches = bp ? (utilisees[cle] ?? []).filter(([x, y]) => x < bp.passage!.fin && y > bp.passage!.debut) : utilisees[cle];
         if (!reprise && !continuite && chevauche(s, e, plagesProches, marge)) continue;
@@ -653,6 +694,15 @@ export function planMontage(
         const recents = choisis.filter((_, k) => plan[k].fin > creneau.debut - FENETRE_FLASH_S);
         if (recents.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
         if (!reprise && !continuite && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
+        // PR2 (passages) — JUMP CUT : deux extraits ADJACENTS jamais du même passage
+        // (même plan réel), hors plan continu ; même rush mais autre plan : permis.
+        const precSeg = plan[plan.length - 1];
+        if (bp && !continuite && precSeg?.passage && cleSource(precSeg.url) === cle && Math.abs(precSeg.passage.debut - bp.passage!.debut) < 1e-6) continue;
+        // PR2 (passages) — RÉPÉTITION VISUELLE : même rush, même passage ou timecodes proches
+        // (< 4 s), image quasi identique (similarité ≥ seuil anti-flash) : jamais, hors plan continu.
+        if (bp && !continuite && choisis.some((c) => c.cle === cle
+          && ((c.depuis >= bp.passage!.debut - 1e-6 && c.jusqua <= bp.passage!.fin + 1e-6) || Math.max(0, Math.max(s, c.depuis) - Math.min(e, c.jusqua)) < SEUILS_PASSAGES.procheS)
+          && (similariteVisuelle(empreinteProche(a, s, e), empreinteProche(a, c.depuis, c.jusqua)) ?? 0) >= SIMILARITE_FLASH)) continue;
 
         // QUALITÉ / PERTINENCE (comme V2)
         const mouv = 0.5 * m.mouvRel + 0.5 * m.mouvAbs;
@@ -679,7 +729,8 @@ export function planMontage(
           { base: score, qualite, mouvAbs: m.mouvAbs, nettete: m.nettete, energie: borne(m.mouvBrut / mouvHautGlobal, 0, 1), ratees: m.ratees },
           creneau.phase,
           {
-            pertinence: entreesP[cle]?.pertinence ?? null,
+            pertinence: eR!.pertinence ?? null,
+            pertinenceFiable: eR!.pertinenceFiable === true,
             departPassage: s - bp.passage!.debut <= SEUILS_PASSAGES.accrocheMaxS + 1e-6 || bp.passage!.gestes.some(([, f]) => s >= f - 1e-6 && s - f <= SEUILS_PASSAGES.accrocheMaxS + 1e-6),
             prolongeAction: continuite,
           },
@@ -752,7 +803,7 @@ export function planMontage(
         }
         if (prec?.cle === cle && !continuite) score -= 0.2;
         // Mode passages : borne probablement dans un son alors que des silences sont mesurés (parole localisable).
-        const parole = bp ? paroleExtrait(a, dp!, s, e, entreesP[cle] ?? {}) : null;
+        const parole = bp ? paroleExtrait(a, dp!, s, e, eR!) : null;
         const dansLeSon = !!parole && dp!.paroleLocalisable
           && ((parole.debut === 'incertaine' && borneDansLeSon(a, s)) || (parole.fin === 'incertaine' && borneDansLeSon(a, e)));
         if (dansLeSon) score -= 0.15;
@@ -781,11 +832,15 @@ export function planMontage(
             flash ? 'quasi identique à un plan des 3 dernières secondes (pénalisé)' : null,
             ...(noteP ? noteP.raisons : []),
             bp ? `passage ${arrondi(bp.passage!.debut)}–${arrondi(bp.passage!.fin)} s` : null,
+            bp && plafondPassage(bp.passage!, moments.get(`${cle}@${bp.passage!.debut}`)) > plafondPassage(bp.passage!)
+              ? `passage de ${Math.round((bp.passage!.fin - bp.passage!.debut) * 10) / 10} s, ${moments.get(`${cle}@${bp.passage!.debut}`)} moments distincts mesurés ⇒ ${plafondPassage(bp.passage!, moments.get(`${cle}@${bp.passage!.debut}`))} extraits au plus` : null,
+            bp && dp!.interviews.includes(bp.passage!.debut) ? 'plan quasi immobile gardé : interview sur pied probable (son et mouvement local mesurés)' : null,
             continuite ? 'continuité : même passage, sans saut' : null,
             court ? 'plan entier plus court que le créneau (créneau raccourci, sans étirement)' : null,
             decalage > 0 && bp ? 'créneau allongé du reste du plan précédent' : null,
-            parole ? (parole.debut === 'pause_franche' && parole.fin === 'pause_franche' ? 'coupes dans un silence mesuré'
-              : parole.debut === 'absente' ? (entreesP[cle]?.pisteAudio === true ? 'piste muette' : 'sans piste son') : dansLeSon ? 'borne probablement dans un son (pénalisé)' : 'parole non vérifiée aux bornes') : null,
+            parole ? (parole.debut === 'pause_franche' && parole.fin === 'pause_franche' ? 'coupe dans un silence mesuré (sans preuve de fin de phrase)'
+              : parole.debut === 'absente' ? (eR!.pisteAudio === true ? 'piste muette' : 'sans piste son')
+              : dansLeSon ? 'borne probablement dans un son (pénalisé)' : 'parole non vérifiée aux bornes') : null,
             modePassages && repli ? 'faute d\'alternative : coupe au milieu d\'un plan' : null,
           ].filter(Boolean);
           meilleur = {
@@ -845,6 +900,7 @@ export function planMontage(
       }
     }
     // Plus de matière exploitable : la vidéo s'arrête là (jamais d'étirement).
+    if (!meilleur && modePassages && creneau.phase !== 'CTA' && grille.some((c) => c.phase === 'CTA')) { epuise = true; decalage = 0; continue; }
     if (!meilleur) break;
     plan.push(meilleur.seg);
     if (modePassages && meilleur.seg.passage) {
@@ -864,6 +920,12 @@ export function planMontage(
   // un vrai montage : le refuser renvoyait à l'enchaînement brut de TOUS les
   // rushes — noir et blanc compris, le pire résultat.
   if (plan.length < 2) return null;
+  // PR2 (passages) — aucun extrait propre pour le CTA lui-même : le dernier plan monté
+  // en tient lieu (rôle CTA, écrit), plutôt qu'une vidéo sans CTA.
+  if (modePassages && grille.some((c) => c.phase === 'CTA') && plan[plan.length - 1].phase !== 'CTA') {
+    const der = plan[plan.length - 1];
+    plan[plan.length - 1] = { ...der, phase: 'CTA', raison: `${der.raison ?? ''} · CTA porté par le dernier plan disponible (matière épuisée)` };
+  }
   // Matière épuisée avant la cible : la vidéo est plus courte (jamais
   // étirée), mais sa NARRATION doit rester complète — on remonte le plan
   // une fois sur la durée réellement disponible, pour garder HOOK → CTA.
@@ -931,14 +993,25 @@ export function dureeCibleMontage(sommeRushs: number): number {
   return Math.min(sommeRushs, CIBLE_MONTAGE_DEFAUT);
 }
 
+/**
+ * M3-a PR2 — options du mode passages (essai A/B admin de Créer) : la sélection
+ * « passages » et les entrées de chaque rush, tirées des analyses (silences
+ * mesurés sur 50 ms, sonde de piste). À ÉTENDRE l'appel A, jamais à le remplacer.
+ */
+export function optionsModePassages(analyses: ReadonlyArray<AnalyseRush>): Pick<OptionsMontage, 'selection' | 'entreesPassages'> {
+  return { selection: 'passages', entreesPassages: Object.fromEntries(analyses.map((a) => [cleSource(a.url), entreesDuRush(a)])) };
+}
+
 /** Durée totale d'un plan (fin du dernier extrait). */
 export function dureePlan(plan: ReadonlyArray<RushSegment>): number {
   return plan.length ? plan[plan.length - 1].fin : 0;
 }
 
 /** Empreinte (rushes + durée) qui valide un plan calculé pour l'écran courant. */
-export function cleMontage(urls: ReadonlyArray<string>, duree: number): string {
-  return `${urls.join('|')}@${duree}`;
+export function cleMontage(urls: ReadonlyArray<string>, duree: number, methode: 'A' | 'B' = 'A'): string {
+  // M3-a PR2 : la méthode B (passages, essai admin) a sa propre clé — un plan B
+  // ne peut jamais valoir pour un écran en méthode A. A : clé d'avant, à l'identique.
+  return `${urls.join('|')}@${duree}${methode === 'B' ? '#B' : ''}`;
 }
 
 /** Taille des images d'analyse (niveaux de gris). Partagée navigateur / serveur. */

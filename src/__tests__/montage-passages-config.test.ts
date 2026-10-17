@@ -15,7 +15,8 @@ function fichiers(dir: string): string[] {
   });
 }
 const SOURCES = fichiers(join(RACINE, 'src')).filter((p) => !p.includes(`${join('src', '__tests__')}`));
-const AUTORISES = new Set(['src/lib/creer/montage-passages-config.ts', 'src/lib/creer/passages-rush.ts', 'src/lib/creer/smart-montage.ts']);
+// PR2 : Créer (AssistantWizard) demande le mode passages pour l'essai A/B admin.
+const AUTORISES = new Set(['src/lib/creer/montage-passages-config.ts', 'src/lib/creer/passages-rush.ts', 'src/lib/creer/smart-montage.ts', 'src/app/dashboard/creer/AssistantWizard.tsx']);
 
 describe('interrupteur STUDIIO_MONTAGE_PASSAGES_ENABLED', () => {
   it('"true" exactement active ; tout le reste éteint', () => {
@@ -27,11 +28,15 @@ describe('interrupteur STUDIIO_MONTAGE_PASSAGES_ENABLED', () => {
   });
 });
 
-describe('garde : aucun appelant ne lit l\'interrupteur ni ne demande le mode passages', () => {
-  it('l\'interrupteur n\'est lu nulle part hors de son module', () => {
+describe('garde : l\'interrupteur n\'est lu que par la route d\'autorisation ; seul Créer demande le mode passages', () => {
+  it('l\'interrupteur n\'est lu que par son module et la route montage-config (jamais par Créer)', () => {
     const lecteurs = SOURCES.filter((p) => readFileSync(p, 'utf8').includes('STUDIIO_MONTAGE_PASSAGES_ENABLED') || readFileSync(p, 'utf8').includes('montage-passages-config'))
       .map((p) => relative(RACINE, p));
-    expect(lecteurs).toEqual(['src/lib/creer/montage-passages-config.ts']);
+    expect(lecteurs.sort()).toEqual(['src/app/api/creer/montage-config/route.ts', 'src/lib/creer/montage-passages-config.ts']);
+    const aw = readFileSync(join(RACINE, 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
+    expect(aw).not.toMatch(/montage-passages-config|montagePassagesActif/);
+    // Aucune variable publique : l'interrupteur n'existe que côté serveur.
+    expect(SOURCES.filter((p) => /NEXT_PUBLIC_STUDIIO_MONTAGE/.test(readFileSync(p, 'utf8'))).map((p) => relative(RACINE, p))).toEqual([]);
   });
 
   it('passages-rush n\'est importé que par le moteur', () => {
@@ -40,12 +45,13 @@ describe('garde : aucun appelant ne lit l\'interrupteur ni ne demande le mode pa
     expect(importeurs).toEqual(['src/lib/creer/smart-montage.ts']);
   });
 
-  it('aucun fichier ne passe `selection` ni `entreesPassages` à planMontage (Créer, Autopilote, multi-sources compris)', () => {
+  it('hors Créer, aucun fichier ne passe `selection` ni `entreesPassages` à planMontage (Autopilote, multi-sources compris)', () => {
     const fautifs = SOURCES.filter((p) => !AUTORISES.has(relative(RACINE, p)))
       .filter((p) => /selection\s*:\s*['"`]passages|entreesPassages/.test(readFileSync(p, 'utf8')))
       .map((p) => relative(RACINE, p));
     expect(fautifs).toEqual([]);
-    for (const f of ['src/app/dashboard/creer/AssistantWizard.tsx', 'src/lib/autopilot/produire.ts', 'src/lib/autopilot/plan-multi-sources.ts']) {
+    for (const f of ['src/lib/autopilot/produire.ts', 'src/lib/autopilot/plan-multi-sources.ts']) {
+      expect(readFileSync(join(RACINE, f), 'utf8')).not.toMatch(/optionsModePassages/);
       const t = readFileSync(join(RACINE, f), 'utf8');
       expect(t.includes('passages'), f).toBe(false);
     }

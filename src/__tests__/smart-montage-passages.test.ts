@@ -109,7 +109,11 @@ describe('mode passages : ce qui ne change pas', () => {
       const g = planMontage(abondant(12), 30, o)!;
       const p = planMontage(abondant(12), 30, { ...o, selection: 'passages' })!;
       expect(g[g.length - 1].fin).toBe(30);
-      expect(p.map((s) => [s.debut, s.fin, s.phase, s.beatCible])).toEqual(g.map((s) => [s.debut, s.fin, s.phase, s.beatCible]));
+      // PR2 : en mode passages, le dernier créneau est toujours un CTA (la grille d'une
+      // cible courte peut n'en avoir aucun) ; tout le reste est identique.
+      const cta = (x: typeof g) => x.map((s, i) => [s.debut, s.fin, i === x.length - 1 && !x.some((y) => y.phase === 'CTA') ? 'CTA' : s.phase, s.beatCible]);
+      expect(p.map((s) => [s.debut, s.fin, s.phase, s.beatCible])).toEqual(cta(g));
+      expect(p[p.length - 1].phase).toBe('CTA');
     }
   });
 

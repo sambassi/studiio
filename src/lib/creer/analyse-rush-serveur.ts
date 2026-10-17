@@ -16,6 +16,7 @@ import {
 } from '@/lib/creer/smart-montage';
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
 import { HD_L, HD_H, HD_IMAGES, mesurerNetteteHD, agregerNetteteHD, imagesHDDepuisBrut, type AnalyseRushQualite } from '@/lib/creer/nettete-hd';
+import { silencesDepuisPcm, pisteAudioDepuisJournal } from '@/lib/creer/silences-audio';
 import {
   BUCKET_COPIES_EXTERNES, PREFIXE_RELAIS_PUBLIC, cibleLisibleParCompte, cibleParCheminLisible, cibleStockageParChemin,
   extraireCibleStockage, originesStockageConfigurees,
@@ -101,6 +102,22 @@ export function energieDepuisPcm(pcm: Uint8Array, pas: number, n: number, hz = A
     out.push(b > a ? Math.min(1, Math.sqrt(s / (b - a)) * 4) : 0);
   }
   return out;
+}
+
+/**
+ * M3-a PR2 — silences mesurés et sonde de piste, depuis le PCM et le journal
+ * du passage ffmpeg DÉJÀ fait (aucun décodage en plus). Pur.
+ *  - piste listée et PCM lu : `pisteAudio: true` + silences ;
+ *  - aucune piste listée : `pisteAudio: false` ;
+ *  - piste listée mais PCM vide (décodage impossible), ou journal muet : `null`
+ *    — un échec de décodage n'est JAMAIS un silence.
+ */
+export function mesuresSonFines(pcm: Uint8Array, journal: string, hz = AUDIO_HZ): { pisteAudio: boolean | null; silences?: Array<[number, number]>; sonContinu?: boolean } {
+  const piste = pisteAudioDepuisJournal(journal);
+  if (piste === false) return { pisteAudio: false };
+  if (piste !== true || pcm.byteLength < 2 * Math.ceil(hz * 0.05)) return { pisteAudio: null };
+  const m = silencesDepuisPcm(pcm, hz);
+  return { pisteAudio: true, silences: m.silences, sonContinu: m.sonContinu };
 }
 
 /** Bucket + clé d'une URL publique du stockage Studiio, sinon `null`. Pur. */
@@ -327,6 +344,8 @@ export async function mesurerSourceLue(url: string, source: string, dureeSeconde
     const t0 = instants[0] ?? 0;
     // Énergie audio par demi-seconde, relue à l'instant de chaque image.
     const audio = energieDepuisPcm(pcm, 0.5, Math.ceil(duree / 0.5) + 1);
+    // M3-a PR2 : silences francs (trames de 50 ms) sur le MÊME PCM, déjà en mémoire.
+    const sonFin = mesuresSonFines(pcm, stderr);
     const echantillons: EchantillonRush[] = [];
     let prec: Float32Array | null = null;
     images.forEach((g, i) => {
@@ -340,7 +359,7 @@ export async function mesurerSourceLue(url: string, source: string, dureeSeconde
       });
     });
     const hd = agregerNetteteHD(imagesHDDepuisBrut(await fs.readFile(hdTmp).catch(() => Buffer.alloc(0))).map((g) => mesurerNetteteHD(g)));
-    return { url, duree, echantillons, ...(hd ? { netteteHD: hd } : null) };
+    return { url, duree, echantillons, ...(hd ? { netteteHD: hd } : null), ...sonFin };
   } catch (err) {
     console.warn('[SmartMontage/serveur] analyse impossible :', err instanceof Error ? err.message : err);
     return null;

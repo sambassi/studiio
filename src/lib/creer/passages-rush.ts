@@ -24,7 +24,7 @@
  */
 import type { AnalyseRush, EchantillonRush, PhaseMontage } from '@/lib/creer/smart-montage';
 import type { RushSegment } from '@/lib/creer/multi-rush';
-import { ecartEmpreinte, memeTimecode } from '@/lib/creer/smart-montage-regles';
+import { ecartEmpreinte, memeTimecode, similariteVisuelle, SIMILARITE_FLASH } from '@/lib/creer/smart-montage-regles';
 
 /** Réglages chiffrés (écrits une fois, testés, ajustés sur la vérité terrain des 6 rushes réels). */
 export const SEUILS_PASSAGES = {
@@ -87,6 +87,31 @@ export const SEUILS_PASSAGES = {
   passageInterneMinS: 0.7,
   /** Plan entier plus court admis : au moins cette part du créneau. */
   partCreneauMin: 0.6,
+  /**
+   * PR2 — INTERVIEW SUR PIED (plan quasi immobile mais vivant) : mouvement
+   * LOCAL = plus grand écart d'un bloc de l'empreinte 8×8 entre deux mesures
+   * (mêmes images 64×36, aucun décodage en plus). Mesuré sur les 6 rushes :
+   * photo fixe et écrans de texte ≤ 0,003 (bruit de compression), médiane
+   * 0,000–0,001. Seuil provisoire = 3 × ce bruit, À VALIDER sur une vraie
+   * interview sur pied (validation audiovisuelle en attente).
+   */
+  mouvementLocalInterview: 0.01,
+  /** Interview probable : part des mesures du passage où la piste est sonore. */
+  partSonoreInterview: 0.5,
+  /** PR2 — passages longs : au plus ce nombre d'extraits par passage… */
+  extraitsParPassageMax: 6,
+  /** …et au plus un extrait par cette durée de passage (s). */
+  sParExtrait: 3,
+  /** Deux fenêtres d'un passage sont des moments distincts si leur énergie diffère d'au moins… */
+  ecartEnergieMoment: 0.25,
+  /** PR2 — répétition visuelle : même rush, timecodes à moins de cet écart (s)… */
+  procheS: 4,
+  /** PR2 — marge de sécurité devant / derrière tout plan fixe ou graphique (s). */
+  margeGraphiqueS: 0.5,
+  /** PR2 — suite d'images immobiles DANS un passage traitée comme un graphisme (s). */
+  immobileInterneMinS: 1,
+  /** PR2 — accroche : pertinence M2-c FIABLE minimale d'un plan HOOK. */
+  pertinenceAccroche: 0.6,
 } as const;
 
 export type TypeZone = 'coupe' | 'transition' | 'geste';
@@ -126,6 +151,121 @@ export interface EntreesPassages {
   plagesParole?: Array<[number, number]> | null;
   /** Pertinence M2-c 0..1, `null` = inconnue ⇒ facteur NEUTRE (1). */
   pertinence?: number | null;
+  /** PR2 — pertinence FIABLE (niveau connu, pas « à vérifier », confiance ≠ faible). Absent : non fiable. */
+  pertinenceFiable?: boolean;
+  /** PR2 — son continu ou pulsation musicale mesuré (trames de 50 ms) : parole non localisable. */
+  sonContinu?: boolean | null;
+}
+
+/**
+ * PR2 — entrées d'un rush : les mesures portées par l'analyse (silences de
+ * 50 ms, sonde de piste, son continu — mesurés là où le son est déjà décodé),
+ * complétées ou remplacées par celles de l'appelant. Pur.
+ */
+export function entreesDuRush(a: AnalyseRush, e: EntreesPassages = {}): EntreesPassages {
+  const out: EntreesPassages = { ...e };
+  if (out.pisteAudio === undefined && a.pisteAudio !== undefined) out.pisteAudio = a.pisteAudio;
+  if (out.silences === undefined && Array.isArray(a.silences)) out.silences = a.silences;
+  if (out.sonContinu === undefined && typeof a.sonContinu === 'boolean') out.sonContinu = a.sonContinu;
+  return out;
+}
+
+/**
+ * Forme minimale d'une pertinence M2-c (`PertinenceRush`), sans importer son
+ * module : le moteur reste isolé de `pertinence-rushs` (garde M2-c).
+ */
+export interface PertinencePassage { niveau: string; aVerifier: boolean; score: number | null; confiance: string }
+
+/** PR2 — pertinence M2-c d'un rush pour le mode passages : score et fiabilité. Pur. */
+export function pertinencePourPassages(p: PertinencePassage | null | undefined): Pick<EntreesPassages, 'pertinence' | 'pertinenceFiable'> {
+  if (!p || p.niveau === 'inconnu' || typeof p.score !== 'number') return { pertinence: null, pertinenceFiable: false };
+  return { pertinence: p.score, pertinenceFiable: !p.aVerifier && p.confiance !== 'faible' };
+}
+
+/** PR2 — la pertinence de ce rush est-elle connue ET fiable ? */
+export function pertinenceFiable(e: EntreesPassages | undefined): e is EntreesPassages & { pertinence: number } {
+  return !!e && typeof e.pertinence === 'number' && Number.isFinite(e.pertinence) && e.pertinenceFiable === true;
+}
+
+/**
+ * PR2 — cœurs des silences francs (≥ 0,3 s) : 0,1 s retirés de chaque bord
+ * INTÉRIEUR. Un silence qui touche le début ou la fin du fichier n'a pas de
+ * bord de ce côté (aucun son au-delà).
+ */
+export function coeursSilences(silences: ReadonlyArray<[number, number]> | null | undefined, duree: number = Infinity): Array<[number, number]> {
+  const S = SEUILS_PASSAGES;
+  return (silences ?? []).filter(([x, y]) => y - x >= S.silenceMinS - 1e-6)
+    .map(([x, y]) => [x <= S.silenceMargeS / 2 ? -Infinity : x + S.silenceMargeS, y >= duree - S.silenceMargeS ? Infinity : y - S.silenceMargeS] as [number, number])
+    .sort((p, q) => p[0] - q[0]);
+}
+
+/**
+ * PR2 — borne d'extrait acceptable pour la parole : au cœur d'un silence ; OU,
+ * à un bord de passage qui est un VRAI changement de plan, dans un silence avec
+ * la marge du seul côté de l'extrait (le son d'avant la coupe appartient à
+ * l'autre plan : rush réel 1, haltères dès 20,1 s, silence 20,1–32 s). La
+ * marge ne fait alors pas perdre un plan entier muet.
+ */
+export function borneSilencieuse(
+  silences: ReadonlyArray<[number, number]> | null | undefined, t: number, duree: number,
+  p: Pick<Passage, 'debut' | 'fin' | 'motifDebut' | 'motifFin'>, cote: 'debut' | 'fin',
+): boolean {
+  if (dansUnSilence(silences, t, duree)) return true;
+  const S = SEUILS_PASSAGES;
+  const auBord = cote === 'debut'
+    ? Math.abs(t - p.debut) < 1e-6 && (p.motifDebut === 'coupe' || p.motifDebut === 'transition')
+    : Math.abs(t - p.fin) < 1e-6 && (p.motifFin === 'coupe' || p.motifFin === 'transition');
+  if (!auBord) return false;
+  return (silences ?? []).some(([x, y]) => y - x >= S.silenceMinS - 1e-6 && (cote === 'debut'
+    ? t >= x - 1e-6 && (t <= y - S.silenceMargeS + 1e-6 || y >= duree - S.silenceMargeS)
+    : t <= y + 1e-6 && (t >= x + S.silenceMargeS - 1e-6 || x <= S.silenceMargeS / 2)));
+}
+
+/** PR2 — l'instant `t` est-il au cœur d'un silence franc (≥ 0,3 s, ≥ 0,1 s de chaque bord) ? */
+export function dansUnSilence(silences: ReadonlyArray<[number, number]> | null | undefined, t: number, duree: number = Infinity): boolean {
+  return coeursSilences(silences, duree).some(([x, y]) => t >= x - 1e-6 && t <= y + 1e-6);
+}
+
+/** PR2 — mouvement LOCAL entre deux mesures : plus grand écart d'un bloc de l'empreinte 8×8 (0..1), `null` sans empreintes. */
+export function mouvementLocal(x: EchantillonRush, prec: EchantillonRush | undefined): number | null {
+  if (!x.empreinte || !prec?.empreinte) return null;
+  const n = Math.min(x.empreinte.length, prec.empreinte.length);
+  if (!n) return null;
+  let m = 0;
+  for (let i = 0; i < n; i++) m = Math.max(m, Math.abs(x.empreinte[i] - prec.empreinte[i]));
+  return m;
+}
+
+/**
+ * PR2 — image d'une fenêtre [s, e] pour comparer deux extraits : la mesure du
+ * milieu, ou à défaut (rush à images-clés espacées, aucune mesure dedans) la
+ * mesure la plus proche du centre. `null` seulement sans aucune empreinte.
+ */
+export function empreinteProche(a: AnalyseRush, s: number, e: number): number[] | null {
+  const E = a.echantillons.filter((x) => x.empreinte);
+  if (!E.length) return null;
+  const dedans = E.filter((x) => x.t >= s - 1e-6 && x.t <= e + 1e-6);
+  if (dedans.length) return dedans[Math.floor(dedans.length / 2)].empreinte!;
+  const c = (s + e) / 2;
+  return E.reduce((p, x) => (Math.abs(x.t - c) < Math.abs(p.t - c) ? x : p), E[0]).empreinte!;
+}
+
+/**
+ * PR2 — INTERVIEW SUR PIED probable sur les mesures [s, e] : piste sonore
+ * sur au moins la moitié des mesures ET (mouvement local médian ≥ seuil, ou
+ * mouvement local non mesurable). Une photo fixe qui porte une voix (rush
+ * réel 2) n'a AUCUN mouvement local : elle reste un plan fixe.
+ */
+export function interviewProbable(a: AnalyseRush, s: number, e: number, entrees: EntreesPassages = {}): boolean {
+  const S = SEUILS_PASSAGES;
+  if (entrees.pisteAudio === false) return false;
+  const E = a.echantillons;
+  const idx = E.map((_x, i) => i).filter((i) => i > 0 && E[i].t >= s - 1e-6 && E[i].t <= e + 1e-6);
+  if (!idx.length) return false;
+  if (idx.filter((i) => E[i].audio > S.audioMuet).length / idx.length < S.partSonoreInterview) return false;
+  const locaux = idx.map((i) => mouvementLocal(E[i], E[i - 1])).filter((x): x is number => x !== null).sort((x, y) => x - y);
+  if (!locaux.length) return true;
+  return locaux[Math.floor(locaux.length / 2)] >= S.mouvementLocalInterview - 1e-9;
 }
 
 export interface DecoupageRush {
@@ -139,7 +279,30 @@ export interface DecoupageRush {
   partSonore: number;
   /** Vrai seulement si des silences mesurés sont fournis ET le son n'est pas continu. */
   paroleLocalisable: boolean;
+  /**
+   * PR2 — son de parole PROBABLE (entre deux silences francs mesurés, marge
+   * de 0,1 s comprise) : aucune borne d'extrait dedans. Vide si la parole
+   * n'est pas localisable. « Probable » : un silence ne prouve pas une fin de phrase.
+   */
+  paroleMesuree: Array<[number, number]>;
+  /** Durée du rush (s). */
+  duree: number;
+  /** PR2 — passages quasi immobiles gardés comme interview probable (début du passage). */
+  interviews: number[];
   incertitudes: string[];
+}
+
+/** PR2 — son de parole probable : le complément des cœurs de silence (marge 0,1 s) sur [0, durée]. */
+export function paroleEntreSilences(silences: ReadonlyArray<[number, number]>, duree: number): Array<[number, number]> {
+  const coeurs = coeursSilences(silences, duree);
+  const out: Array<[number, number]> = [];
+  let t = 0;
+  for (const [x, y] of coeurs) {
+    if (x > t + 1e-6) out.push([r3(t), r3(Math.min(x, duree))]);
+    t = Math.max(t, y);
+  }
+  if (t < duree - 1e-6) out.push([r3(t), r3(duree)]);
+  return out.filter(([x, y]) => y - x > 1e-6);
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -180,26 +343,37 @@ export function decouperPassages(a: AnalyseRush, entrees: EntreesPassages = {}):
   const audioMax = Math.max(1e-6, ...E.map((x) => x.audio));
   const partSonore = E.length ? E.filter((x) => x.audio > audioMax * S.sonoreRelatif && x.audio > S.audioMuet).length / E.length : 0;
   const silencesFournis = !!entrees.silences;
-  const paroleLocalisable = silencesFournis && entrees.pisteAudio !== false && partSonore <= S.partSonoreMax;
+  const paroleLocalisable = silencesFournis && entrees.pisteAudio !== false && partSonore <= S.partSonoreMax && entrees.sonContinu !== true;
   if (entrees.pisteAudio !== false && E.some((x) => x.audio > S.audioMuet)) {
     if (!silencesFournis) incertitudes.push('parole non vérifiée : aucun silence mesuré finement (trames de 50 ms) — le RMS de 0,5 s ne prouve ni un silence ni une fin de phrase');
     else if (partSonore > S.partSonoreMax) incertitudes.push(`son quasi continu (${Math.round(partSonore * 100)} % du temps) : parole et musique indiscernables, aucune pause garantie`);
+    else if (entrees.sonContinu === true) incertitudes.push('son continu ou musique mesurés (trames de 50 ms) : parole non localisable, aucune pause garantie — bornes non vérifiées');
+    else incertitudes.push('coupes placées dans des silences mesurés (trames de 50 ms) : cela évite de couper un son, sans prouver une fin de phrase');
   } else if (entrees.pisteAudio == null) {
     incertitudes.push('audio nul sans sonde : piste absente ou non décodée, indiscernable d\'un silence');
   }
+  const paroleMesuree = paroleLocalisable && a.duree > 0 ? paroleEntreSilences(entrees.silences ?? [], a.duree) : [];
+  const interviews: number[] = [];
+  const noterInterview = (p: { debut: number }) => {
+    interviews.push(p.debut);
+    incertitudes.push(`passage ${p.debut} s quasi immobile gardé : piste sonore et mouvement local mesurés (interview sur pied probable — seuil à valider sur une vraie interview)`);
+  };
 
   if (!(a.duree > 0) || E.length === 0) {
-    return { pas, resolution: 'grossiere', zones: [], passages: [], ecartes: [], partSonore, paroleLocalisable: false, incertitudes: [...incertitudes, 'rush sans mesure'] };
+    return { pas, resolution: 'grossiere', zones: [], passages: [], ecartes: [], partSonore, paroleLocalisable: false, paroleMesuree: [], duree: a.duree, interviews, incertitudes: [...incertitudes, 'rush sans mesure'] };
   }
   if (pas > S.pasGrossierS) {
     incertitudes.push(`mesures espacées de ${r3(pas)} s (images-clés) : aucun changement de plan interne localisable, le rush entier forme un seul passage`);
     const m = E.filter((_x, i) => i > 0);
-    const fixe = m.length > 0 && m.filter((x) => x.mouvement < S.mouvementFixe).length / m.length >= S.partFixeMax;
+    const immobile = m.length > 0 && m.filter((x) => x.mouvement < S.mouvementFixe).length / m.length >= S.partFixeMax;
+    const interview = immobile && interviewProbable(a, debutUtile, finUtile, entrees);
+    if (interview) noterInterview({ debut: r3(debutUtile) });
+    const fixe = immobile && !interview;
     const passages: Passage[] = finUtile - debutUtile >= S.passageMinS && !fixe
       ? [{ debut: r3(debutUtile), fin: r3(finUtile), motifDebut: 'debut_rush', motifFin: 'fin_rush', gestes: [] }]
       : [];
     const ecartes = fixe ? [{ debut: r3(debutUtile), fin: r3(finUtile), motif: 'plan fixe ou graphique (image immobile)' }] : [];
-    return { pas, resolution: 'grossiere', zones: [], passages, ecartes, partSonore, paroleLocalisable, incertitudes };
+    return { pas, resolution: 'grossiere', zones: [], passages, ecartes, partSonore, paroleLocalisable, paroleMesuree, duree: a.duree, interviews, incertitudes };
   }
 
   // 1. Pics de mouvement, regroupés (CORRECTION A).
@@ -278,24 +452,139 @@ export function decouperPassages(a: AnalyseRush, entrees: EntreesPassages = {}):
   const gardes = passages.filter((p) => {
     const m = E.filter((x, i) => i > 0 && x.t >= p.debut - 1e-6 && x.t <= p.fin + 1e-6);
     const part = m.length ? m.filter((x) => x.mouvement < S.mouvementFixe).length / m.length : 0;
+    if (part >= S.partFixeMax && interviewProbable(a, p.debut, p.fin, entrees)) { noterInterview(p); return true; }
     if (part >= S.partFixeMax) {
       ecartes.push({ debut: p.debut, fin: p.fin, motif: `plan fixe ou graphique (image immobile ${Math.round(part * 100)} % du passage : photo, texte incrusté ou surimpression)` });
       return false;
     }
     return true;
   });
-  return { pas, resolution: 'fine', zones, passages: gardes, ecartes, partSonore, paroleLocalisable, incertitudes };
+  const finaux = margesGraphiques(a, gardes, ecartes, entrees);
+  return { pas, resolution: 'fine', zones, passages: finaux, ecartes, partSonore, paroleLocalisable, paroleMesuree, duree: a.duree, interviews, incertitudes };
 }
 
-/** Fenêtre [s, e] immobile (mouvement moyen sous `mouvementFixe`) : plan fixe ou graphique. */
-export function fenetreFixe(a: AnalyseRush, s: number, e: number): boolean {
+/**
+ * PR2 (QA sur le vrai MP4 B) — MARGE DEVANT TOUT GRAPHISME. Un passage vivant
+ * qui touche un plan fixe ou graphique (passage écarté juste à côté, ou suite
+ * d'images immobiles ≥ 1 s À L'INTÉRIEUR du passage, faute d'un pic de
+ * mouvement assez fort pour la séparer) est rogné de ce côté : jusqu'à la
+ * dernière mesure STABLE avant le fondu ou le volet (saut d'empreinte ≥ 0,1
+ * ou de lumière ≥ 0,08 = image en train de changer), et au moins 0,5 s avant
+ * le graphisme. Cas réel : tractions du rush 1, fondu 27,5–28 s vers l'écran
+ * « JE ME LANCE » — l'extrait 26,1–27,6 laissait voir le texte en fantôme.
+ */
+function margesGraphiques(a: AnalyseRush, passages: Passage[], ecartes: DecoupageRush['ecartes'], entrees: EntreesPassages): Passage[] {
+  const S = SEUILS_PASSAGES;
+  const E = a.echantillons;
+  const instable = (i: number) => i > 0 && i < E.length && (
+    (E[i].empreinte && E[i - 1].empreinte ? ecartEmpreinte(E[i].empreinte!, E[i - 1].empreinte!) >= S.sautInterne : false)
+    || Math.abs(E[i].luminosite - E[i - 1].luminosite) >= S.changementLuminosite);
+  const indexA = (t: number) => E.findIndex((x) => x.t >= t - 1e-6);
+  /** Fin sûre devant un graphisme qui commence (image déjà fixe) à `t0`. */
+  const finDevant = (t0: number) => {
+    let k = indexA(t0); if (k < 0) k = E.length;
+    k -= 1; // dernière mesure avant le graphisme
+    while (k > 0 && instable(k)) k -= 1;
+    return Math.min(t0 - S.margeGraphiqueS, k >= 0 ? E[k].t : t0 - S.margeGraphiqueS);
+  };
+  /** Début sûr derrière un graphisme qui finit (image encore fixe) à `t1`. */
+  const debutDerriere = (t1: number) => {
+    let k = E.findIndex((x) => x.t > t1 + 1e-6); if (k < 0) return Infinity;
+    while (k < E.length && instable(k)) k += 1;
+    return Math.max(t1 + S.margeGraphiqueS, k < E.length ? E[k].t : Infinity);
+  };
+  const graphiques = ecartes.filter((e) => /plan fixe ou graphique/.test(e.motif));
+  const out: Passage[] = [];
+  for (const p of passages) {
+    // Suites d'images immobiles (≥ 1 s) DANS le passage, hors interview probable.
+    const idx = E.map((_x, i) => i).filter((i) => i > 0 && E[i].t >= p.debut - 1e-6 && E[i].t <= p.fin + 1e-6);
+    const suites: Array<[number, number]> = [];
+    let i0 = -1;
+    for (let k = 0; k <= idx.length; k++) {
+      const imm = k < idx.length && E[idx[k]].mouvement < S.mouvementFixe;
+      if (imm && i0 < 0) i0 = k;
+      if (!imm && i0 >= 0) {
+        const t0 = E[idx[i0] - 1].t; const t1 = E[idx[k - 1]].t;
+        if (t1 - t0 >= S.immobileInterneMinS - 1e-6 && !interviewProbable(a, t0, t1, entrees)) suites.push([t0, t1]);
+        i0 = -1;
+      }
+    }
+    for (const [x, y] of suites) ecartes.push({ debut: r3(x), fin: r3(y), motif: 'plan fixe ou graphique dans le passage (image immobile ≥ 1 s), avec sa marge' });
+    // Morceaux vivants entre ces suites, rognés devant / derrière chaque graphisme.
+    const bornes: Array<[number, number, boolean, boolean]> = [];
+    let d0 = p.debut; let apresGraphisme = false;
+    for (const [x, y] of suites) { bornes.push([d0, x, apresGraphisme, true]); d0 = y; apresGraphisme = true; }
+    bornes.push([d0, p.fin, apresGraphisme, false]);
+    for (const [deb, fin, apres, avant] of bornes) {
+      let d = deb; let f = fin;
+      if (apres) d = Math.max(d, debutDerriere(deb));
+      if (avant) f = Math.min(f, finDevant(fin));
+      // Graphisme écarté juste à côté du passage (≤ 1 s) : même marge.
+      for (const g of graphiques) {
+        if (g.debut >= f - 1e-6 && g.debut - f <= 1 + 1e-6) f = Math.min(f, finDevant(g.debut));
+        if (g.fin <= d + 1e-6 && d - g.fin <= 1 + 1e-6) d = Math.max(d, debutDerriere(g.fin));
+      }
+      d = r3(d); f = r3(f);
+      if (f - d >= (p.interne ? S.passageInterneMinS : S.passageMinS) - 1e-6) {
+        const rogne = d !== p.debut || f !== p.fin;
+        out.push(rogne
+          ? { ...p, debut: d, fin: f, motifDebut: d !== p.debut ? 'transition' : p.motifDebut, motifFin: f !== p.fin ? 'transition' : p.motifFin, gestes: p.gestes.filter(([x, y]) => y > d && x < f) }
+          : p);
+      }
+    }
+  }
+  return out.sort((x, y) => x.debut - y.debut);
+}
+
+/**
+ * Fenêtre [s, e] immobile (mouvement moyen sous `mouvementFixe`) : plan fixe ou graphique.
+ * PR2 : sauf interview sur pied probable (piste sonore + mouvement local mesuré).
+ */
+export function fenetreFixe(a: AnalyseRush, s: number, e: number, entrees?: EntreesPassages): boolean {
   const m = a.echantillons.filter((x, i) => i > 0 && x.t >= s - 1e-6 && x.t <= e + 1e-6);
-  return m.length > 0 && moyenne(m.map((x) => x.mouvement)) < SEUILS_PASSAGES.mouvementFixe;
+  const immobile = m.length > 0 && moyenne(m.map((x) => x.mouvement)) < SEUILS_PASSAGES.mouvementFixe;
+  return immobile && !(entrees && interviewProbable(a, s, e, entrees));
 }
 
-/** Nombre maximal d'extraits tirés d'un passage : 1 s'il est court (< 8 s), sinon 2. */
-export function plafondPassage(p: Passage): number {
-  return p.fin - p.debut < SEUILS_PASSAGES.passageCourtS ? 1 : SEUILS_PASSAGES.extraitsParPassage;
+/**
+ * Nombre maximal d'extraits tirés d'un passage : 1 s'il est court (< 8 s), sinon 2.
+ * PR2 (`moments` fourni) : selon les moments distincts mesurés, JAMAIS moins
+ * qu'avant, au plus 6 et au plus un extrait par 3 s de passage.
+ */
+export function plafondPassage(p: Passage, moments?: number | null): number {
+  const S = SEUILS_PASSAGES;
+  const duree = p.fin - p.debut;
+  const actuel = duree < S.passageCourtS ? 1 : S.extraitsParPassage;
+  if (typeof moments !== 'number' || !Number.isFinite(moments)) return actuel;
+  const haut = Math.max(actuel, Math.min(S.extraitsParPassageMax, Math.floor(duree / S.sParExtrait + 1e-9)));
+  return Math.min(haut, Math.max(actuel, Math.floor(moments)));
+}
+
+/**
+ * PR2 — MOMENTS DISTINCTS d'un passage : fenêtres consécutives de `longueur`
+ * secondes, gardées (glouton) si leur image diffère de toutes les précédentes
+ * (similarité < seuil anti-flash) OU si leur énergie diffère d'au moins 0,25.
+ * Mesure visuelle, pas sémantique. Pur.
+ */
+export function momentsDistincts(a: AnalyseRush, p: Passage, longueur: number, mouvHaut: number): number {
+  const S = SEUILS_PASSAGES;
+  if (!(longueur > 0)) return 1;
+  const E = a.echantillons;
+  const vus: Array<{ emp: number[] | null; en: number }> = [];
+  for (let s = p.debut; s + longueur <= p.fin + 1e-6; s += longueur) {
+    const idx = E.map((_x, i) => i).filter((i) => E[i].t >= s - 1e-6 && E[i].t <= s + longueur + 1e-6);
+    if (!idx.length) continue;
+    // Image de la fenêtre : la mesure du milieu (même choix que `mesuresFenetre` du moteur).
+    const emp = E[idx[Math.floor(idx.length / 2)]].empreinte ?? null;
+    const mv = idx.filter((i) => i > 0).map((i) => E[i].mouvement);
+    const en = Math.min(1, Math.max(0, moyenne(mv) / Math.max(1e-6, mouvHaut)));
+    const nouveau = vus.every((v) => {
+      const sim = similariteVisuelle(emp, v.emp);
+      return (sim !== null && sim < SIMILARITE_FLASH) || Math.abs(en - v.en) >= S.ecartEnergieMoment - 1e-9;
+    });
+    if (nouveau) vus.push({ emp, en });
+  }
+  return Math.max(1, vus.length);
 }
 
 /**
@@ -320,10 +609,45 @@ export function bornesAutorisees(d: DecoupageRush, s: number, e: number, entrees
   if (!p) return { ok: false, motif: 'à cheval sur un changement de plan (ou hors matière utile)' };
   const dans = (t: number, [x, y]: [number, number]) => t > x + 1e-6 && t < y - 1e-6;
   if (p.gestes.some((g) => dans(s, g) || dans(e, g))) return { ok: false, motif: 'borne au milieu d\'un geste' };
+  // PR2 — silences mesurés, parole localisable : une borne hors d'un silence franc tombe
+  // dans un son de parole probable ⇒ REFUSÉE (la vidéo raccourcit plutôt que de couper un mot).
+  if (d.paroleLocalisable && !(borneSilencieuse(entrees.silences, s, d.duree, p, 'debut') && borneSilencieuse(entrees.silences, e, d.duree, p, 'fin'))) {
+    return { ok: false, motif: 'borne dans un son de parole probable (hors d\'un silence mesuré)' };
+  }
   if ((entrees.plagesParole ?? []).some(([x, y]) => dans(s, [x + 0.05, y - 0.05]) || dans(e, [x + 0.05, y - 0.05]))) {
     return { ok: false, motif: 'borne au milieu d\'une parole horodatée' };
   }
   return { ok: true, passage: p };
+}
+
+/**
+ * PR2 — fenêtres placées sur les SILENCES mesurés d'un passage : (1) départs
+ * tels que les DEUX bornes tombent au cœur d'un silence ; (2) PHRASES
+ * ENTIÈRES (d'un cœur de silence au suivant, une ou plusieurs phrases) plus
+ * courtes que le créneau mais d'au moins 60 % de lui. `[départ, durée]`. Pur.
+ */
+export function fenetresSilences(d: DecoupageRush, silences: ReadonlyArray<[number, number]> | null | undefined, duree: number): Array<[number, number]> {
+  const S = SEUILS_PASSAGES;
+  if (!d.paroleLocalisable || !silences?.length) return [];
+  const out: Array<[number, number]> = [];
+  for (const p of d.passages) {
+    const coeurs = coeursSilences(silences, d.duree)
+      .map(([x, y]) => [Math.max(p.debut, x), Math.min(p.fin, y)] as [number, number])
+      .filter(([x, y]) => y >= x - 1e-6);
+    for (let i = 0; i < coeurs.length; i++) {
+      for (let j = i; j < coeurs.length; j++) {
+        const lo = Math.max(coeurs[i][0], coeurs[j][0] - duree);
+        const hi = Math.min(coeurs[i][1], coeurs[j][1] - duree);
+        if (hi >= lo - 1e-6) out.push([r3((lo + hi) / 2), r3(duree)]);
+        if (j > i) {
+          const c0 = (coeurs[i][0] + coeurs[i][1]) / 2; const c1 = (coeurs[j][0] + coeurs[j][1]) / 2;
+          const l = c1 - c0;
+          if (l < duree - 1e-6 && l >= S.partCreneauMin * duree - 1e-6) out.push([r3(c0), r3(l)]);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /** Départs candidats : débuts de passage, sorties de geste, puis tous les 0,5 s DANS le passage. */
@@ -350,8 +674,7 @@ export function paroleExtrait(a: AnalyseRush, d: DecoupageRush, s: number, e: nu
     const dedans = a.echantillons.filter((x) => x.t >= s - 1e-6 && x.t <= e + 1e-6);
     if (dedans.length && dedans.every((x) => x.audio < S.audioMuet)) return { debut: 'absente', fin: 'absente' };
   }
-  const borne = (t: number): ParoleBorne => (d.paroleLocalisable && (entrees.silences ?? []).some(([x, y]) =>
-    y - x >= S.silenceMinS - 1e-6 && t >= x + S.silenceMargeS - 1e-6 && t <= y - S.silenceMargeS + 1e-6) ? 'pause_franche' : 'incertaine');
+  const borne = (t: number): ParoleBorne => (d.paroleLocalisable && dansUnSilence(entrees.silences, t, d.duree) ? 'pause_franche' : 'incertaine');
   return { debut: borne(s), fin: borne(e) };
 }
 
@@ -382,7 +705,7 @@ export interface MesuresPassage {
  */
 export function notePassagePhase(
   m: MesuresPassage, phase: PhaseMontage,
-  ctx: { pertinence: number | null | undefined; departPassage: boolean; prolongeAction: boolean },
+  ctx: { pertinence: number | null | undefined; departPassage: boolean; prolongeAction: boolean; pertinenceFiable?: boolean },
 ): { score: number; raisons: string[] } {
   const raisons: string[] = [];
   const P = typeof ctx.pertinence === 'number' && Number.isFinite(ctx.pertinence) ? Math.min(1, Math.max(0, ctx.pertinence)) : null;
@@ -393,6 +716,10 @@ export function notePassagePhase(
     score += 0.25 * m.mouvAbs;
     if (ctx.departPassage) { score += 0.15; raisons.push('accroche franche : départ en début de passage'); }
     if (m.energie < 0.6 || m.ratees > 0) { score -= 0.3; raisons.push('accroche faible (énergie < 0,6 ou image ratée, pénalisé)'); }
+    // PR2 — pertinence M2-c FIABLE : une accroche hors sujet (< 0,6) est pénalisée (jamais un trou).
+    if (P !== null && ctx.pertinenceFiable === true && P < SEUILS_PASSAGES.pertinenceAccroche) {
+      score -= 0.3; raisons.push(`accroche peu pertinente (pertinence ${Math.round(P * 100) / 100} < 0,6, pénalisé)`);
+    }
   }
   if (phase === 'BUILD' && ctx.prolongeAction) { score += 0.1; raisons.push('prolonge l\'action du plan précédent'); }
   if (phase === 'PEAK') score += 0.25 * m.mouvAbs;
@@ -434,13 +761,16 @@ export function rapportSelection(
   const ecartes: RapportSelection['ecartes'] = [];
   for (const a of analyses) {
     const cle = cleDe(a.url);
-    const d = decouperPassages(a, entrees[cle] ?? {});
+    const d = decouperPassages(a, entreesDuRush(a, entrees[cle] ?? {}));
     if (utilisees.has(cle)) d.incertitudes.forEach((x) => incertitudes.add(`${cle.split('/').pop()} : ${x}`));
     else ecartes.push({ cle, motif: d.passages.length ? 'aucun passage retenu (score, cohérence ou répétition)' : 'aucun passage utilisable' });
   }
   const incertainesN = segs.filter((s) => s.parole && (s.parole.debut === 'incertaine' || s.parole.fin === 'incertaine')).length;
   if (incertainesN) incertitudes.add(`${incertainesN} extrait(s) dont une borne peut tomber dans un son (parole non vérifiée)`);
   if (replis) incertitudes.add(`${replis} extrait(s) pris faute d'alternative : coupe possible au milieu d'un plan`);
+  // PR2 — accroche : sans pertinence M2-c fiable pour son rush, elle est choisie sur l'image seule.
+  const hook = segs.find((s) => s.phase === 'HOOK');
+  if (hook && !pertinenceFiable(entrees[cleDe(hook.url)])) incertitudes.add('accroche choisie sur des critères visuels (pertinence du sujet inconnue ou non fiable)');
   const manque = !segs.length
     ? `aucun montage possible : moins de 2 extraits propres pour ${cible} s visées`
     : duree < cible - 0.5

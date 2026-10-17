@@ -73,7 +73,12 @@ describe('2. réutilisation plafonnée', () => {
       for (const s of plan) {
         const k = `${cleSource(s.url)}@${s.passage!.debut}`;
         usage.set(k, (usage.get(k) ?? 0) + 1);
-        expect(usage.get(k)!).toBeLessThanOrEqual(plafondPassage(s.passage! as never));
+        // PR2 : un passage long peut donner davantage d'extraits s'il a des moments distincts
+        // mesurés — au plus 6 et au plus un par 3 s, jamais moins qu'avant ; c'est écrit.
+        const p = s.passage! as never as { debut: number; fin: number };
+        const haut = Math.max(plafondPassage(p as never), Math.min(6, Math.floor((p.fin - p.debut) / 3)));
+        expect(usage.get(k)!).toBeLessThanOrEqual(haut);
+        if (usage.get(k)! > plafondPassage(p as never)) expect(s.raison).toMatch(/moments distincts mesurés/);
       }
       expect(plan.filter((s) => s.url.includes('7815139')).length).toBeLessThanOrEqual(1);
     });

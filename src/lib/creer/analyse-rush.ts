@@ -11,6 +11,7 @@
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
 import { mesurerImage, saturationRgb, ANALYSE_L as L, ANALYSE_H as H, type EchantillonRush } from '@/lib/creer/smart-montage';
 import { HD_L, HD_H, HD_IMAGES, mesurerNetteteHD, agregerNetteteHD, type AnalyseRushQualite } from '@/lib/creer/nettete-hd';
+import { silencesDepuisEchantillons } from '@/lib/creer/silences-audio';
 
 /** Au-delà, on n'échantillonne pas plus finement (≈ 240 images par rush). */
 const ECHANTILLONS_MAX = 240;
@@ -71,19 +72,37 @@ function chargerVideo(url: string): Promise<HTMLVideoElement> {
   });
 }
 
+/**
+ * Son d'un rush : énergie RMS par fenêtre de `pas` secondes (0..1, comme
+ * avant) et, M3-a PR2, silences francs sur trames de 50 ms calculés sur le
+ * MÊME buffer décodé (aucun second décodage). `pisteAudio: null` quand le son
+ * n'a pas pu être décodé : jamais confondu avec un silence.
+ */
+export interface SonRush {
+  energie: number[];
+  pisteAudio: boolean | null;
+  silences?: Array<[number, number]>;
+  sonContinu?: boolean;
+}
+
 /** Énergie RMS par fenêtre de `pas` secondes (0..1). Tableau vide si pas d'audio. */
 export async function energieAudio(url: string, duree: number, pas: number): Promise<number[]> {
+  return (await sonDuRush(url, duree, pas)).energie;
+}
+
+export async function sonDuRush(url: string, duree: number, pas: number): Promise<SonRush> {
+  const inconnu: SonRush = { energie: [], pisteAudio: null };
   try {
     // Trop gros pour décoder le son : on ne le télécharge même pas (le
     // résultat est le même qu'avant — aucune énergie audio — sans les octets).
     const annoncee = await tailleAnnoncee(url);
-    if (annoncee !== null && annoncee > AUDIO_OCTETS_MAX) return [];
+    if (annoncee !== null && annoncee > AUDIO_OCTETS_MAX) return inconnu;
     const rep = await fetch(url);
-    if (!rep.ok) return [];
+    if (!rep.ok) return inconnu;
     const octets = await rep.arrayBuffer();
-    if (octets.byteLength > AUDIO_OCTETS_MAX) return [];
+    if (octets.byteLength > AUDIO_OCTETS_MAX) return inconnu;
     const Ctx = (window as unknown as { OfflineAudioContext?: typeof OfflineAudioContext }).OfflineAudioContext;
-    if (!Ctx) return [];
+    if (!Ctx) return inconnu;
     const ctx = new Ctx(1, 1, 22050);
     const buf = await ctx.decodeAudioData(octets);
     const data = buf.getChannelData(0);
@@ -96,9 +115,12 @@ export async function energieAudio(url: string, duree: number, pas: number): Pro
       for (let j = a; j < b; j += 4) s += data[j] * data[j];
       out.push(b > a ? Math.min(1, Math.sqrt(s / Math.ceil((b - a) / 4)) * 4) : 0);
     }
-    return out;
+    // M3-a PR2 : silences 50 ms sur la durée analysée, depuis le buffer déjà décodé.
+    const fin = Math.min(data.length, Math.floor(duree * buf.sampleRate));
+    const m = silencesDepuisEchantillons(data.subarray(0, fin), buf.sampleRate);
+    return { energie: out, pisteAudio: true, silences: m.silences, sonContinu: m.sonContinu };
   } catch {
-    return []; // rush sans piste audio, codec non décodable : pas bloquant
+    return inconnu; // rush sans piste audio, codec non décodable : pas bloquant
   }
 }
 
@@ -115,7 +137,7 @@ export async function analyserRush(
     const duree = dureeAnalysee(dureeTotale, options.dureeMax);
     const partielle = duree < dureeTotale;
     const pas = Math.max(0.5, duree / ECHANTILLONS_MAX);
-    const audioP = energieAudio(url, duree, pas);
+    const audioP = sonDuRush(url, duree, pas);
 
     const canvas = document.createElement('canvas');
     canvas.width = L;
@@ -157,11 +179,13 @@ export async function analyserRush(
       }
       onProgress?.(Math.min(0.95, (i + 1) / Math.max(1, total)));
     }
-    const audio = await audioP;
+    const son = await audioP;
+    const audio = son.energie;
     echantillons.forEach((e, i) => { e.audio = audio[i] ?? 0; });
     onProgress?.(1);
     const netteteHD = agregerNetteteHD(mesuresHD);
-    return { url, duree, echantillons, ...(netteteHD ? { netteteHD } : null), ...(partielle ? { partielle: true as const } : null) };
+    const sonFin = { pisteAudio: son.pisteAudio, ...(son.silences ? { silences: son.silences, sonContinu: !!son.sonContinu } : null) };
+    return { url, duree, echantillons, ...(netteteHD ? { netteteHD } : null), ...(partielle ? { partielle: true as const } : null), ...sonFin };
   } catch (err) {
     console.warn('[SmartMontage] analyse impossible, enchaînement classique :', url.slice(0, 60), err);
     return null;
