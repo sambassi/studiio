@@ -50,6 +50,10 @@ export interface CreerSimpleRenderInput {
   cardBackground?: string | null;
   /** Couleur de la valeur des cartes (surimpressions). Absente = `gradientEnd`. */
   cardValueColor?: string | null;
+  /** Panneau derrière le CTA (#502, CTA d'action de l'Autopilote). Absent = sans panneau. */
+  ctaBackground?: string | null;
+  /** Couleur du sous-texte du CTA. Absente = le rose par défaut du montage. */
+  ctaSubColor?: string;
   sequenceBackgrounds?: Record<string, string | null>;
   videoUrl?: string | null;
   /** Multi-rush : rushes enchaînés (voir `multi-rush.ts`). Absent : `videoUrl` seul. */

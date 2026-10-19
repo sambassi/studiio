@@ -6,6 +6,7 @@ import { referenceOperation } from '@/lib/credits/atomique';
 import { toPostRow, slotKey, type PreparedPost } from '@/lib/autopilot/engine';
 import { sanitizeConfig, type AutopilotConfig } from '@/lib/autopilot/rules';
 import { buildAutopilotDesign, buildAutopilotMetadata, AUTOPILOT_FORMAT } from '@/lib/autopilot/design';
+import { sansLisibiliteCtaAction } from '@/lib/autopilot/cta-action';
 import { renderAndUpload } from '@/lib/autopilot/render';
 import { urlRenduPourRush } from '@/lib/render/proxy-rendu';
 import {
@@ -850,6 +851,9 @@ export async function produireUnMontage(input: {
   // page que Créer (`surimpressions-mise-en-page.ts`).
   // #502 : CTA dans la bande mesurée la plus calme des plans de sortie (même règle que Créer).
   const zoneCta = overlays?.cta && planMontageRushs ? zoneCalmeSortie(planMontageRushs, analysesRushs, overlays.cta[0]) : null;
+  // Le CTA d'action (`cta-action.ts`) porte déjà panneau, teinte et échelle :
+  // la mise en page les repose elle-même depuis les réglages de l'utilisateur.
+  if (overlays) design = sansLisibiliteCtaAction(design, configUtilisee.designStyle?.cta?.scale);
   if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande });
   // QUALITY GATE (#504) — le MÊME contrôle que Créer. Sans utilisateur à qui
   // répondre, il est journalisé et écrit en métadonnées, jamais caché.
@@ -943,6 +947,9 @@ export async function produireUnMontage(input: {
         sousTitre: design.subtitle ?? null,
         cartes: (design.cards ?? []).map((c) => ({ titre: c.title ?? c.label ?? null, valeur: c.value ?? null })),
         cta: design.ctaText ?? null,
+        // La petite ligne : quand elle porte l'action du brief, le CTA dit
+        // quoi faire — les conseils ne doivent pas prétendre le contraire.
+        ctaSecondaire: design.ctaSubText ?? null,
         fenetres: overlays ? { titre: overlays.titre, cartes: overlays.cartes, cta: overlays.cta } : null,
       },
       plan: planMontageRushs,
