@@ -30,6 +30,21 @@ const PREFIXE = '/storage/v1/object/public/';
 const objet = (bucketEtCle: string) => `${ORIGINE}${PREFIXE}${bucketEtCle}`;
 const MIO = 1024 * 1024;
 
+// ── Attentes DÉTERMINISTES ──────────────────────────────────────────────────
+// Jamais un nombre fixe de ticks : sous charge CPU (CI), les vraies E/S disque
+// de la route peuvent prendre plus de N tours de boucle. Chaque doublure
+// `signaler()` quand l'état observé change ; `attendreQue` se règle alors.
+const attentes: Array<{ cond: () => boolean; ok: () => void }> = [];
+function signaler() {
+  for (const a of [...attentes]) {
+    if (a.cond()) { attentes.splice(attentes.indexOf(a), 1); a.ok(); }
+  }
+}
+function attendreQue(cond: () => boolean): Promise<void> {
+  if (cond()) return Promise.resolve();
+  return new Promise((ok) => { attentes.push({ cond, ok }); });
+}
+
 // ── Session ────────────────────────────────────────────────────────────────
 const authMock = vi.fn();
 vi.mock('@/lib/auth/config', () => ({ auth: () => authMock() }));
@@ -41,7 +56,7 @@ const statObject = vi.fn(async () => ({ size: tailleAnnoncee, metaData: { 'conte
 let bloquerLecture = false;
 let porteLecture: (() => void) | null = null;
 const getObject = vi.fn(async () => {
-  if (bloquerLecture) await new Promise<void>((r) => { porteLecture = r; });
+  if (bloquerLecture) await new Promise<void>((r) => { porteLecture = r; signaler(); });
   if (panneLecture) throw new Error('ECONNRESET');
   return Readable.from([Buffer.alloc(4096, 1)]);
 });
@@ -73,6 +88,7 @@ vi.mock('@/lib/ffmpeg/transcode-to-mp4', () => ({
     if (bloquer) {
       await new Promise<void>((r, rejeter) => {
         portes.push(r);
+        signaler();
         // Comme execFile + signal : l'abandon TUE le processus ; la promesse
         // ne se règle qu'une fois le processus réellement terminé (`tuer`).
         options.signal?.addEventListener('abort', () => {
@@ -103,6 +119,7 @@ vi.mock('@/lib/db/supabase', () => ({
           if (depotJette) throw new Error('socket hang up');
           if (depotPendu) {
             depotAtteint = true;
+            signaler();
             // Dépôt LENT : ne se règle que quand le test le décide.
             return new Promise((r) => {
               reglerDepot = (issue) => r(issue === 'ok'
@@ -152,12 +169,33 @@ async function appeler(compte: string, url?: string) {
 
 /** Attend que `n` conversions soient arrêtées à la porte. */
 async function attendrePortes(n: number) {
-  for (let i = 0; i < 200 && portes.length < n; i++) await new Promise((r) => setTimeout(r, 2));
+  await attendreQue(() => portes.length >= n);
   expect(portes.length).toBe(n);
+}
+
+/** Se règle quand le limiteur n'a plus aucun jeton (libération observée). */
+const attendreJeton = () => attendreQue(() => limites.limiteurConversions().etat().global === 0);
+
+const CLE_LIMITEUR = Symbol.for('studiio.limiteurConversionsMp4');
+/**
+ * Limiteur NEUF pour chaque test (isolation), et dont chaque `liberer`
+ * prévient les attentes — la libération devient un événement observable.
+ */
+function limiteurNeufObserve() {
+  delete (globalThis as Record<symbol, unknown>)[CLE_LIMITEUR];
+  const l = limites.limiteurConversions();
+  const acquerir = l.acquerir.bind(l);
+  l.acquerir = (userId: string) => {
+    const j = acquerir(userId);
+    if (!j.ok) return j;
+    return { ok: true, liberer: () => { j.liberer(); signaler(); } };
+  };
 }
 function ouvrirPortes() { const p = portes; portes = []; p.forEach((r) => r()); }
 
 beforeEach(() => {
+  attentes.length = 0;
+  limiteurNeufObserve();
   tailleAnnoncee = 4096; panneLecture = false; issueFfmpeg = 'ok'; bloquer = false; depotJette = false; depotPendu = false; depotAtteint = false;
   reglerDepot = null; suppressions.length = 0;
   portes = []; conversions.length = 0; depots.length = 0;
@@ -173,7 +211,13 @@ beforeEach(() => {
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterEach(() => {
+  // Vide tout ce qu'un test interrompu aurait laissé en vol : ses jetons
+  // reviennent à SON limiteur, jamais à celui du test suivant.
   ouvrirPortes();
+  tuer.forEach((t) => t()); tuer = [];
+  reglerDepot?.('echec'); reglerDepot = null;
+  porteLecture?.(); porteLecture = null;
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -266,7 +310,7 @@ describe('3. Le jeton revient sur tous les chemins', () => {
     await attendrePortes(1);
     expect(signauxFfmpeg[0]).toBeDefined(); // le signal de la requête est transmis
     controleur.abort();
-    await new Promise((r) => setImmediate(r));
+    await attendreQue(() => tuer.length === 1); // l'écouteur d'abandon est synchrone
     // Le processus n'est pas encore mort : le jeton reste tenu.
     expect(tuer).toHaveLength(1);
     expect(limites.limiteurConversions().etat().global).toBe(1);
@@ -285,8 +329,7 @@ describe('3. Le jeton revient sur tous les chemins', () => {
     bloquerLecture = true;
     const controleur = new AbortController();
     const p = lancer('u1', undefined, controleur.signal);
-    for (let i = 0; i < 200 && !porteLecture; i++) await new Promise((r) => setTimeout(r, 2));
-    expect(porteLecture).not.toBeNull();
+    await attendreQue(() => porteLecture !== null);
     controleur.abort();
     porteLecture!();
     expect((await p).status).toBe(499);
@@ -304,8 +347,8 @@ describe('3 bis. Dépôt plus lent que le délai', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const p = lancer('u1');
-      for (let i = 0; i < 2000 && !depotAtteint; i++) await new Promise((r) => setImmediate(r));
-      expect(depotAtteint).toBe(true);
+      // La route a atteint le dépôt — donc armé son délai (faux minuteur).
+      await attendreQue(() => depotAtteint);
       expect(await Promise.race([p.then(() => 'fini'), new Promise((r) => setImmediate(() => r('pendu')))])).toBe('pendu');
       await vi.advanceTimersByTimeAsync(120_000);
       return await p;
@@ -313,9 +356,6 @@ describe('3 bis. Dépôt plus lent que le délai', () => {
       vi.useRealTimers();
     }
   }
-  const attendreJeton = async () => {
-    for (let i = 0; i < 200 && limites.limiteurConversions().etat().global > 0; i++) await new Promise((r) => setImmediate(r));
-  };
 
   it('au délai → 500, mais le jeton reste tenu tant que le dépôt est en vol', async () => {
     const res = await jusquauDelai();

@@ -3,7 +3,7 @@ import { THEMES } from '@/lib/themes';
 import { posterQuery } from '@/lib/autopilot/poster-requete';
 import { contenuPourDuree } from '@/lib/autopilot/duree-cible';
 import type { AutopilotConfig } from '@/lib/autopilot/rules';
-import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
+import { ctaAutopilote } from '@/lib/autopilot/cta-action';
 import { sanitizeBrief } from '@/lib/creer/brief';
 import type { PostPourScriptJumeau } from '@/lib/autopilot/script-jumeau';
 
@@ -67,6 +67,8 @@ export interface AutopilotSample {
   cards: Array<{ icon: string; title: string; description: string; value: string }>;
   cta: string;
   ctaSub: string;
+  /** La petite ligne porte l'action du brief (`cta-action.ts`). Absent : le CTA d'avant. */
+  ctaActionEnPetiteLigne?: true;
   /** Mots-clés de la banque d'images, pour aller chercher une affiche d'exemple. */
   posterQuery: string;
   /**
@@ -93,7 +95,7 @@ export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'> & {
   const contenu = contenuPourDuree(generateSmartContent(topic, seed), topic, sanitizeBrief(config.brief));
   // Le CTA du BRIEF, par la MÊME règle que le moteur (`buildAutopilotDesign`) :
   // sans elle, la vidéo portait une ligne d'action que l'aperçu ne montrait pas.
-  const cta = avecCtaDuBrief({ cta: contenu.tagLine ?? '', ctaSub: '' }, sanitizeBrief(config.brief));
+  const cta = ctaAutopilote(contenu.tagLine, sanitizeBrief(config.brief));
   return {
     topic,
     seed,
@@ -107,6 +109,9 @@ export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'> & {
     // `tagLine` EST le CTA du moteur — voir `buildAutopilotDesign`.
     cta: cta.cta,
     ctaSub: cta.ctaSub,
+    // La petite ligne porte l'action du brief : l'aperçu la rend lisible comme
+    // la vidéo (`lisibiliteCtaAction`). Absent sinon : l'échantillon d'avant.
+    ...(cta.actionEnPetiteLigne ? { ctaActionEnPetiteLigne: true as const } : null),
     posterQuery: posterQuery(topic),
     cartesDuMontage: contenu.cards.map((c) => ({ title: c.title, description: c.description, value: c.value })),
   };

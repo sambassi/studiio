@@ -75,6 +75,29 @@ async function ouvrir(operation: OperationRendu, format: 'reel' | 'tv'): Promise
   };
 }
 
+/**
+ * La cible d'envoi, demandee APRES la composition (PR-C).
+ *
+ * Le serveur ne remet plus d'URL presignee a la reservation : elle aurait du
+ * survivre a toute la composition. Il la remet ici, courte, vers le depot.
+ * Tout echec -- serveur plus ancien sans cette route, reseau, tentative close
+ * -- retombe sur la cible de la reservation : le relais, qui marche toujours.
+ */
+async function cibleApresComposition(tentative: Tentative): Promise<string> {
+  try {
+    // `POST` sur la route d'envoi = « ou envoyer ? » ; `PUT` = le relais.
+    const res = await fetch(`/api/render/jobs/${tentative.jobId}/upload`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.ok && typeof json.uploadUrl === 'string' && json.uploadUrl) {
+      return json.uploadUrl;
+    }
+  } catch { /* repli ci-dessous */ }
+  return tentative.uploadUrl;
+}
+
 async function abandonner(jobId: string, motif: string): Promise<void> {
   // Best-effort : une tentative laissee `reserved` ne debite rien de toute
   // facon. On la ferme quand meme, pour que l'etat dise la verite.
@@ -120,6 +143,7 @@ export async function rendreEtFacturer(params: {
 
   try {
     etape?.('Envoi du montage…');
+    tentative.uploadUrl = await cibleApresComposition(tentative);
     // Le relais de l'application est SAME-ORIGIN et authentifie par le
     // cookie de session : sans `credentials`, `fetch` ne l'envoie pas sur
     // une requete construite a la main, et la route repondrait 401. Une URL

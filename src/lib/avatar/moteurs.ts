@@ -75,6 +75,23 @@ export function moteurPourGeneration(
   return { ok: true, moteur };
 }
 
+/**
+ * GARDE-FOU ADMIN — un compte exempté de crédits (admin) ne paie rien en
+ * crédits : le coût fournisseur d'un moteur cher (Avatar IV ≈ 4,83 $/min,
+ * Avatar V ≈ 7,20 $/min) n'est couvert par rien. Pour lui, seuls les moteurs
+ * OUVERTS sur ce serveur (`moteursAutorises` : `AVATAR_MOTEURS_AUTORISES` +
+ * le moteur par défaut) passent ; les autres sont REFUSÉS, jamais rabattus en
+ * silence. Un utilisateur facturé en crédits garde ses règles (Mon avatar
+ * ouvre Avatar IV, et V sur confirmation HeyGen) : `exempte = false` → null.
+ * `null` = autorisé ; sinon le message du refus.
+ */
+export function refusMoteurCompteExempte(
+  moteur: MoteurAvatar, exempte: boolean, env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  if (!exempte || moteursAutorises(env).includes(moteur)) return null;
+  return `${LIBELLE_MOTEUR[moteur]} n’est pas autorisé sur ce serveur pour un compte administrateur (AVATAR_MOTEURS_AUTORISES). Choisissez la qualité Standard.`;
+}
+
 /** La qualité dont le moteur est celui du serveur par défaut — celle que l'écran présélectionne. */
 export function qualiteParDefaut(env: NodeJS.ProcessEnv = process.env): QualiteRendu {
   const m = moteurAvatar(env);

@@ -73,7 +73,8 @@ vi.mock('@/lib/credits/system', () => ({
   },
 }));
 vi.mock('@/lib/tarifs/serveur', () => ({ prixDe: async () => 40 }));
-vi.mock('@/lib/facturation/exemption', () => ({ compteExempteDeCredits: async () => false, exempteDeCredits: () => false }));
+const exemptionGardeFou = vi.hoisted(() => ({ admin: false }));
+vi.mock('@/lib/facturation/exemption', () => ({ compteExempteDeCredits: async () => exemptionGardeFou.admin, exempteDeCredits: () => exemptionGardeFou.admin }));
 vi.mock('@/lib/avatar/couts', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   compteAdmin: async () => false,
@@ -475,6 +476,29 @@ describe('D-ID non utilisé (flux legacy coupé) : ni lu, ni alerté', () => {
       expect(etat.alertes.filter((a) => a.service === 'did')).toHaveLength(0);
     } finally {
       process.env.AVATAR_DID_LEGACY_ACTIF = '1';
+    }
+  });
+});
+
+describe('Garde-fou mise en production — reprise d’une génération admin sur un moteur fermé', () => {
+  it('⚠️ génération en attente portant avatar_iv, compte admin, avatar_iv non autorisé → reprise refusée : abandonnée, AUCUN second lancement', async () => {
+    delete process.env.AVATAR_MOTEURS_AUTORISES;
+    etat.reponsesLancement = ['solde'];
+    etat.soldes = [0];
+    const r = await genererVideoJumeau(demande());
+    const id = (r as { generationId: string }).generationId;
+    expect(etat.lancements).toBe(1);
+    generation(id).engine = 'avatar_iv'; // ligne réservée avant le garde-fou
+    exemptionGardeFou.admin = true;
+    try {
+      etat.soldes = [80];
+      etat.reponsesLancement = ['ok'];
+      const issue = await reprendreGenerationEnAttente({ ...generation(id) } as unknown as Parameters<typeof reprendreGenerationEnAttente>[0]);
+      expect(issue).toBe('abandonnee');
+      expect(etat.lancements).toBe(1);
+      expect(generation(id).status).toBe('failed');
+    } finally {
+      exemptionGardeFou.admin = false;
     }
   });
 });

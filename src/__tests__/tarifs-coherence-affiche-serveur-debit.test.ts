@@ -469,6 +469,7 @@ describe('Avatar III / IV / V — POST /api/avatar/generate', () => {
 
   it('admin : prix public affiché, aucune RPC, credits_charged 0, pour les trois qualités', async () => {
     devenirAdmin();
+    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_iii,avatar_iv,avatar_v'; // ouverts explicitement (garde-fou admin)
     const ecran = await prixEcran();
     expect(lignesPrixGenererAvatar(ecran.prix['avatar.avatar_v'], ecran.exempte)).toEqual(['Prix public : 41 crédits', 'Votre coût : 0 crédit']);
     for (const qualite of ['standard', 'qualite', 'premium']) {

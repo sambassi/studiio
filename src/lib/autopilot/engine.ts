@@ -1,5 +1,6 @@
 import { generateSmartContent } from '@/lib/smart-content';
 import { contenuPourDuree } from '@/lib/autopilot/duree-cible';
+import { ctaAutopilote } from '@/lib/autopilot/cta-action';
 import { AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
 import { formatDuPost, formatRenduFacturation } from '@/lib/format/projet';
 import {
@@ -150,7 +151,13 @@ export function preparePosts(input: {
     // simple.
     out.push({
       title: topic,
-      caption: [content.subtitle, content.tagLine].filter(Boolean).join('\n\n'),
+      // L'action du brief, quand la vidéo la porte en petite ligne
+      // (`cta-action.ts`), finit la légende : sinon la publication ne portait
+      // que le slogan. Autres cas : la légende d'avant, à l'octet près.
+      caption: [
+        content.subtitle, content.tagLine,
+        ...(ctaAutopilote(content.tagLine, brief).actionEnPetiteLigne ? [(brief?.cta ?? '').trim()] : []),
+      ].filter(Boolean).join('\n\n'),
       // « Demain » chez l'utilisateur, pas chez le serveur — ou la date de
       // début si elle est plus tard ; et l'heure de publication choisie, pas
       // 18:00 en dur.

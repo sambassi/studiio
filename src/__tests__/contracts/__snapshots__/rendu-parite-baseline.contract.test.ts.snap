@@ -936,7 +936,10 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   "clesEntree": [
     "cards",
     "cardsDuration",
+    "ctaBackground",
     "ctaDuration",
+    "ctaScale",
+    "ctaSubColor",
     "ctaSubText",
     "ctaText",
     "format",
@@ -996,7 +999,9 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "titre": "ROUTINE DU MATIN",
   "transition": "crossfade",
-  "typo": {},
+  "typo": {
+    "ctaScale": 1.6,
+  },
 }
 `;
 

@@ -160,6 +160,26 @@ export async function DELETE(
     }
 
     const deps = { ...dependancesReelles(), estCompteProtege: isAdmin };
+
+    // Garde-fou : jamais son propre compte, jamais un compte administrateur
+    // (`src/lib/admin.ts`). Refusé AVANT toute écriture : aucune demande
+    // n'est enregistrée. La garde `verifications` de la bibliothèque reste
+    // en renfort si la lecture ci-dessous échoue.
+    if (userId === session?.user?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Refused: an admin cannot delete their own account.' },
+        { status: 403 },
+      );
+    }
+    const cible = await deps.base.lire('users', 'id, email', [{ colonne: 'id', op: 'eq', valeur: userId }]);
+    const emailCible = !cible.erreur && typeof cible.lignes[0]?.email === 'string' ? (cible.lignes[0].email as string) : null;
+    if (isAdmin(emailCible)) {
+      return NextResponse.json(
+        { success: false, error: 'Refused: admin accounts are protected and cannot be deleted.' },
+        { status: 403 },
+      );
+    }
+
     const demande = await creerDemandeCompte(userId, 'admin', deps);
     const d = await executerDemande(demande.code, deps);
     // Compte anonymisé : sa session tombe tout de suite sur cette instance.
@@ -185,7 +205,7 @@ export async function DELETE(
           ? `User data deleted in Studiio (account anonymized, billing records kept) — external operations remaining: ${restants.join(', ')}`
           : 'User data deleted (account anonymized, billing records kept)'
         : `Deletion ${d.statut}${d.motif ? ` (${d.motif})` : ''} — rerun to resume`,
-    }, { status: ok ? 200 : d.motif === 'verifications:abonnement_actif' ? 409 : 202 });
+    }, { status: ok ? 200 : d.motif === 'verifications:abonnement_actif' ? 409 : d.motif === 'verifications:compte_protege' ? 403 : 202 });
   } catch (error) {
     console.error('Error deleting user:', error);
     return NextResponse.json(

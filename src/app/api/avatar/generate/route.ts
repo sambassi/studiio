@@ -17,7 +17,7 @@ import {
 } from '@/lib/avatar/heygen';
 import { versionDuCompte, ecrireVersion } from '@/lib/avatar/versions';
 import { INTENTION_APERCU, SCRIPT_APERCU, lireIntention, etatAvatar } from '@/lib/avatar/contrat';
-import { moteurPourMonAvatar, motifPremium, qualiteParDefaut } from '@/lib/avatar/moteurs';
+import { moteurPourMonAvatar, motifPremium, qualiteParDefaut, refusMoteurCompteExempte } from '@/lib/avatar/moteurs';
 import { lireQualiteAvatar } from '@/lib/avatar/qualite-sauvegardee';
 import { devisVideoHeygen, dureeParoleEstimee } from '@/lib/fournisseurs/devis-fournisseur';
 import { CHAMP_CONFIRMATION_COUT, confirmationCoutLue, exigerConfirmationCout } from '@/lib/fournisseurs/confirmation-cout';
@@ -282,6 +282,15 @@ export async function POST(req: NextRequest) {
     }
     const moteur = choixMoteur.moteur;
 
+    // 1 ter. GARDE-FOU ADMIN : un compte exempté de crédits n'a droit qu'aux
+    //        moteurs ouverts sur ce serveur — refus AVANT tout appel (même la
+    //        lecture HeyGen d'Avatar V), tout débit, toute écriture.
+    const adminExempte = await compteExempteDeCredits(userId);
+    const refusMoteur = refusMoteurCompteExempte(moteur, adminExempte);
+    if (refusMoteur) {
+      return NextResponse.json({ success: false, error: refusMoteur, code: 'moteur_non_autorise' }, { status: 403 });
+    }
+
     // 2 bis. Premium (Avatar V) : seulement si le fournisseur CONFIRME ce moteur
     //        pour CE look — vérifié AVANT tout débit (lecture gratuite, mémorisée).
     if (choixMoteur.verifierFournisseur) {
@@ -297,7 +306,6 @@ export async function POST(req: NextRequest) {
     //     facture : il voit le devis (moteur, durée estimée, coût) et confirme
     //     AVANT toute réservation, tout débit et tout appel. Sans confirmation
     //     → 428 avec le devis, rien n'est écrit ni appelé.
-    const adminExempte = await compteExempteDeCredits(userId);
     const devis = devisVideoHeygen({
       operation: intention === INTENTION_APERCU ? 'apercu_avatar' : 'video_avatar',
       moteurEnvoye: moteur,

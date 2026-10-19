@@ -196,7 +196,8 @@ describe('Le choix de la cible', () => {
       },
     });
     expect(c.mode).toBe('direct');
-    expect(c.url).toContain('https://minio.studiio.pro/media/moi/rendus/job-1.webm');
+    // PR-C : la signature vise le DEPOT, jamais la cle du rendu.
+    expect(c.url).toContain('https://minio.studiio.pro/media/moi/rendus/job-1.depot.webm');
   });
 
   it('une signature qui produit une adresse interne retombe sur le relais', async () => {
@@ -246,13 +247,16 @@ describe('POST /api/render/jobs — la cible rendue au navigateur', () => {
     expect(texte).not.toContain(':9000');
   });
 
-  it('avec un endpoint public correct, elle est presignee en https', async () => {
+  it('PR-C : meme avec un endpoint public, la reservation ne remet AUCUNE URL presignee', async () => {
+    // La cible directe est demandee apres la composition (`/cible`) : voir
+    // `pr-c-rendus-avant-confirmation.test.ts`.
     signeurCourant = {
       presignedPutObject: async (b, k) => `https://minio.studiio.pro/${b}/${k}?X-Amz-Signature=zz`,
     };
     const r = await reserver();
-    expect(r.body.uploadMode).toBe('direct');
-    expect(r.body.uploadUrl.startsWith('https://minio.studiio.pro/')).toBe(true);
+    expect(r.body.uploadMode).toBe('relais');
+    expect(r.body.uploadUrl).toBe('/api/render/jobs/job-1/upload');
+    expect(JSON.stringify(r.body)).not.toContain('X-Amz-Signature');
   });
 
   it('un endpoint public mal configure ne fuit pas — repli sur le relais', async () => {
