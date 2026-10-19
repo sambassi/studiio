@@ -388,8 +388,11 @@ describe("16. L'orchestrateur ne livre RIEN sans confirmation", () => {
     const { rendreEtFacturer } = await import('@/lib/rendus/client');
     await rendreEtFacturer({ operation: 'apercu', format: 'reel', composer: async () => blob() });
     expect(appels[0]).toBe('POST /api/render/jobs');
-    expect(appels[1]).toBe('PUT https://minio.test/put/j1');
-    expect(appels[2]).toContain('/confirm');
+    // PR-C : la cible est demandee APRES la composition. Ce serveur simule ne
+    // la fournit pas -> repli sur celle de la reservation.
+    expect(appels[1]).toBe('POST /api/render/jobs/j1/upload');
+    expect(appels[2]).toBe('PUT https://minio.test/put/j1');
+    expect(appels[3]).toContain('/confirm');
   });
 
   it('une composition qui échoue ferme la tentative et ne téléverse rien', async () => {

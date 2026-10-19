@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { signeurPublic } from '@/lib/storage/minio-client';
 import {
-  cibleTeleversement, urlSortieSure, urlPubliqueRendu,
+  urlRelais, urlSortieSure, urlPubliqueRendu,
 } from '@/lib/rendus/cible-upload';
 import {
   reserverRendu, OPERATIONS, FORMATS, CHAMPS_INTERDITS_RENDU,
@@ -69,22 +68,19 @@ export async function POST(req: NextRequest) {
     }
 
     // ── OU LE NAVIGATEUR ENVOIE ──────────────────────────────────────
-    // Cette route signait ici avec le client Supabase, dont l'endpoint est
-    // `http://studiio-minio:9000` sous `STORAGE_PROVIDER=s3` : le nom Docker
-    // du conteneur, en clair. Chrome bloquait l'envoi en Mixed Content, apres
-    // que le montage avait ete compose -- donc aucun debit, aucun post, et
-    // huit megaoctets perdus.
+    // PR-C : AUCUNE URL presignee n'est remise ici. Elle l'etait, valable
+    // 900 s, alors que la composition n'avait pas commence -- et elle visait
+    // la cle du rendu, si bien qu'elle reecrivait encore le montage apres sa
+    // confirmation. La cible directe (courte, vers le DEPOT) est desormais
+    // demandee APRES la composition : `POST /api/render/jobs/<id>/upload`.
     //
-    // La cible est desormais soit une URL presignee HTTPS sur le nom PUBLIC,
-    // soit le relais same-origin de l'application. Dans les deux cas, bucket
-    // et cle viennent de la ligne `rendus`.
-    const cible = await cibleTeleversement(
-      rendu.id, rendu.bucket, rendu.cle, signeurPublic(),
-    );
+    // La reservation rend le relais same-origin : il relit l'etat en base et
+    // refuse toute ecriture hors `reserved`. C'est aussi la cible qu'utilise
+    // un onglet ouvert avant ce deploiement : il continue de fonctionner.
+    const cible = { url: urlRelais(rendu.id), mode: 'relais' as const };
 
     // Garde de dernier recours : rien d'inatteignable ou de non chiffre ne
-    // sort d'ici. `cibleTeleversement` retombe deja sur le relais, mais une
-    // regression future ne doit pas pouvoir renvoyer une adresse interne.
+    // sort d'ici.
     if (!urlSortieSure(cible.url)) {
       return NextResponse.json(
         { ok: false, error: 'Televersement indisponible' }, { status: 503 },
@@ -97,8 +93,13 @@ export async function POST(req: NextRequest) {
       cout: rendu.cout,
       uploadUrl: cible.url,
       uploadMode: cible.mode,
-      // URL publique de LA cle attribuee — pour que l'appelant puisse la
-      // poser comme media d'un post sans jamais inventer de chemin.
+      // URL de LA cle attribuee, pour poser le montage comme media d'un post
+      // APRES la confirmation (`rendreEtFacturer` ne la livre qu'alors).
+      // PR-C : elle est INUTILISABLE avant -- le relais de lecture ne sert
+      // `<uid>/rendus/…` qu'a la session du proprietaire (ou a un jeton qu'il
+      // a lui-meme obtenu), et en mode direct rien n'est a cette cle avant
+      // que `/confirm` n'y recopie le depot. Gardee dans la reponse pour les
+      // onglets ouverts avant le deploiement, qui la lisent ici.
       publicUrl: urlPubliqueRendu(rendu.bucket, rendu.cle),
     });
   } catch (e: unknown) {
