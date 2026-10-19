@@ -118,3 +118,33 @@ describe('Aperçu Autopilote — avatar coché, dès l’ouverture du panneau (�
     expect(dernier(resumes).avatar.disponible).toBe(false);
   });
 });
+
+describe('Changement d’avatar — une relecture qui échoue n’hérite jamais de l’ancien avatar', () => {
+  it('avatar A prêt, puis avatar B illisible → prêt et vignette remis à null (pas l’ancien A)', async () => {
+    const { renderHook } = await import('@testing-library/react');
+    const { useDisponibiliteAvatarAutopilote } = await import('@/components/creer/AvatarPrincipalAutopilote');
+    // A lisible ; B : la relecture échoue (réponse non ok) → `pret === null`.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      appels.push(`GET ${u}`);
+      if (u.startsWith('/api/creer/jumeau') && u.includes('avatarId=avB')) return { ok: false, json: async () => ({ success: false }) };
+      if (u.startsWith('/api/creer/jumeau')) return { ok: true, json: async () => ({ success: true, data: JUMEAU_PRET }) };
+      if (u.startsWith('/api/avatars')) return { ok: true, json: async () => ({ success: true, data: { ...AVATARS, avatars: [{ ...AVATARS.avatars[0], id: 'avA' }] } }) };
+      return { ok: true, json: async () => ({ success: true }) };
+    }));
+    const pret: unknown[] = [];
+    const vignettes: unknown[] = [];
+    const onPret = (v: unknown) => { pret.push(v); };
+    const onVignette = (v: unknown) => { vignettes.push(v); };
+    const { rerender } = renderHook((p: { avatarId: string }) => useDisponibiliteAvatarAutopilote({
+      actif: true, avatarId: p.avatarId, colonneReady: true, onPret: onPret as never, onVignette: onVignette as never,
+    }), { initialProps: { avatarId: 'avA' } });
+    await waitFor(() => expect(pret[pret.length - 1]).toBe(true));
+    await waitFor(() => expect((vignettes[vignettes.length - 1] as { url?: string } | null)?.url).toBe('/api/avatars/versions/ver-1/source'));
+    rerender({ avatarId: 'avB' });
+    await waitFor(() => expect(appels.some((a) => a.includes('avatarId=avB'))).toBe(true));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pret[pret.length - 1]).toBeNull();
+    expect(vignettes[vignettes.length - 1]).toBeNull();
+  });
+});
