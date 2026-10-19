@@ -220,7 +220,7 @@ import CartesEditeur from '@/components/creer/CartesEditeur';
 import {
   gardeJumeauAvantRendu, genererEtAttendreVideoJumeau, attendreStatutJumeau, versionAncienneDuRush, lireEtatJumeau, type JumeauMode,
   LancementAnnule,
-  type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, ErreurAttenteJumeau,
+  type PhaseJumeau, etapesJumeau, DETAIL_PHASE_JUMEAU, detailSuiviJumeau, ErreurAttenteJumeau,
   MESSAGE_ECHEC_VIDEO_AVATAR, motifEchecVideoAvatar, messageEchecJumeau,
 } from '@/lib/creer/jumeau';
 import ProgressStatus from '@/components/ux/ProgressStatus';
@@ -7508,7 +7508,7 @@ export default function AssistantWizard() {
       statut="en_cours"
       etapes={etapesJumeau(jumeauPhase.phase)}
       {...(jumeauPhase.phase === 'rendu' ? { pourcentage: renderProgress } : {})}
-      detail={jumeauPhase.phase === 'rendu' && renderStage ? renderStage : DETAIL_PHASE_JUMEAU[jumeauPhase.phase]}
+      detail={detailSuiviJumeau(jumeauPhase.phase, renderStage)}
       debutLe={jumeauPhase.debutLe}
       compact={compact}
       note={compact ? null : 'Vous pouvez quitter cette page : votre jumeau continue côté serveur et sera repris à votre retour.'}

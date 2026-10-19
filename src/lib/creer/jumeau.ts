@@ -159,6 +159,18 @@ export const DETAIL_PHASE_JUMEAU: Record<PhaseJumeau, string> = {
   pret: 'Prêt.',
 };
 
+/**
+ * Le détail affiché sous le suivi. « Rendu » : l'étape réelle du montage.
+ * « Traitement » : le message d'ATTENTE FOURNISSEUR (jusqu'à 6 h) ou de
+ * connexion instable quand le suivi l'a posé — jamais « 5 à 20 min » à sa
+ * place. Sinon, le texte de la phase.
+ */
+export function detailSuiviJumeau(phase: PhaseJumeau, etape: string | null | undefined): string {
+  if (phase === 'rendu' && etape) return etape;
+  if (phase === 'traitement' && etape && (etape === MESSAGE_JUMEAU_EN_ATTENTE_FOURNISSEUR || etape.startsWith('Connexion instable'))) return etape;
+  return DETAIL_PHASE_JUMEAU[phase];
+}
+
 /** Les étapes au format `ProgressStatus` : terminées avant, courante, à venir après. */
 export function etapesJumeau(phase: PhaseJumeau, echec = false): Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' | 'echouee' }> {
   const i = PHASES_JUMEAU.findIndex((p) => p.phase === phase);
