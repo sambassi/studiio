@@ -250,7 +250,8 @@ describe('cleDuCompteStrict', () => {
 
   it('le prefixe partage `converted/` → false (contrairement a clePossedeePar)', () => {
     expect(cleDuCompteStrict('converted/x.mp4', U)).toBe(false);
-    expect(clePossedeePar('converted/x.mp4', U)).toBe(true);
+    // Plus de prefixe partage : un ancien `converted/…` n'appartient a personne.
+    expect(clePossedeePar('converted/x.mp4', U)).toBe(false);
   });
 
   it('un autre compte → false', () => {

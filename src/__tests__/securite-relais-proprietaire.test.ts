@@ -159,9 +159,11 @@ describe('Ce qui doit rester public le reste', () => {
     expect((await lire('media', 'externes/proxies/0123456789abcdef.mp4')).status).toBe(200);
   });
 
-  it('conversion partagée converted/… : tout compte connecté, jamais anonyme', async () => {
+  it('ancienne conversion converted/… (sans compte) : ni anonyme, ni tout compte connecté — administrateur seul', async () => {
     expect((await lire('videos', 'converted/1712345678-x.mp4')).status).toBe(404);
     etat.session = { user: { id: B } };
+    expect((await lire('videos', 'converted/1712345678-x.mp4')).status).toBe(404);
+    etat.session = { user: { id: B, email: 'contact.artboost@gmail.com' } };
     expect((await lire('videos', 'converted/1712345678-x.mp4')).status).toBe(200);
   });
 });

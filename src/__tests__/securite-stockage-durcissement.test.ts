@@ -388,13 +388,13 @@ describe('proxy-media : une session ne suffit plus a lire l objet d autrui', () 
     expect(amont).not.toHaveBeenCalled();
   });
 
-  it('`converted/` reste lisible — prefixe partage, anterieur a ce lot', async () => {
-    // Ecrit sans identifiant de compte par `api/convert/to-mp4` et
-    // `api/cron/publish`. Le restreindre ici casserait le repli de
-    // conversion du Calendrier ; c'est le trou connu, delimite dans
-    // `PREFIXES_PARTAGES`.
-    const { res } = await appeler(objet('converted/converted_1712345678.mp4'), 'u1');
-    expect(res.status).toBe(200);
+  it('un ancien `converted/` (sans compte) n est plus proxifie pour un compte quelconque', async () => {
+    // Ecrit jadis sans identifiant de compte par `api/convert/to-mp4` et
+    // `api/cron/publish`, qui ecrivent desormais `<userId>/converted/…`.
+    // Proprietaire non prouvable : `PREFIXES_PARTAGES` est vide.
+    const { res, amont } = await appeler(objet('converted/converted_1712345678.mp4'), 'u1');
+    expect(res.status).toBe(403);
+    expect(amont).not.toHaveBeenCalled();
   });
 
   it('les URL externes legitimes gardent leur comportement', async () => {

@@ -305,9 +305,11 @@ describe('lireMediaPublication (Zernio, YouTube) : au nom du PUBLIEUR', () => {
     expect(externe.hits).toBe(2);
     expect(prive.hits).toBe(0);
   });
-  it('conversion partagée du cron (`converted/…`, lecture publique) : servie comme avant', async () => {
-    const r = await lireMediaPublication(`${O.replace('https', 'http')}.:80/storage/v1/object/public/media/converted/converted_1.mp4`, { userId: B });
-    expect(r.octets.length).toBe(MP4.length);
+  it('ancienne conversion du cron (`converted/…`, sans compte) : refusée, 0 requête', async () => {
+    const e = await lireMediaPublication(`${O.replace('https', 'http')}.:80/storage/v1/object/public/media/converted/converted_1.mp4`, { userId: B }).catch((x) => x);
+    expect(e).toBeInstanceOf(ErreurMediaPublication);
+    expect((e as ErreurMediaPublication).code).toBe('refuse');
+    expect(relais.hits).toBe(0);
   });
 });
 

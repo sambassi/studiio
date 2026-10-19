@@ -178,6 +178,8 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
+// Une ancienne conversion `converted/…` (sans compte) n'est plus jamais
+// autorisée : le verdict doit être `refuse` (voir le candidat dédié).
 const CONVERSION_HISTORIQUE = /^converted\/[^/]+$/;
 
 describe('différentiel : la garde et le relais désignent le même objet', () => {
@@ -199,8 +201,7 @@ describe('différentiel : la garde et le relais désignent le même objet', () =
       expect(parChemin, 'servi par le relais mais jugé hors stockage').not.toBeNull();
       expect(verdict, 'servi par le relais mais jugé hors stockage').not.toBe('hors-stockage');
       if (verdict === 'autorise') {
-        const aB = cibleLisibleParCompte(servi.bucket, servi.cle, B)
-          || (servi.bucket === 'media' && CONVERSION_HISTORIQUE.test(servi.cle));
+        const aB = cibleLisibleParCompte(servi.bucket, servi.cle, B);
         expect(aB, `autorisé pour B mais le relais sert ${servi.bucket}/${servi.cle}`).toBe(true);
       }
       const lecture = classerUrlLecture(absolue, B, [O]);
@@ -209,6 +210,8 @@ describe('différentiel : la garde et le relais désignent le même objet', () =
     }
     // Quoi qu'il arrive, l'objet de A n'est jamais autorisé pour B.
     if (servi && servi.cle === CLE_A) expect(verdict).toBe('refuse');
+    // Ni une ancienne conversion sans compte.
+    if (servi && CONVERSION_HISTORIQUE.test(servi.cle)) expect(verdict).toBe('refuse');
   });
 });
 

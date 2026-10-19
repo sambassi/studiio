@@ -288,9 +288,10 @@ describe('cleSourceAvatarDuCompte — la propriété, stricte', () => {
     }
   });
 
-  it('⚠️ plus strict que clePossedeePar : un préfixe partagé (`converted/`) n’est jamais une source', () => {
+  it('une ancienne conversion sans compte (`converted/`) n’est jamais une source', () => {
     const partagee = 'converted/source-1.mp4';
-    expect(clePossedeePar(partagee, U)).toBe(true);
+    // Plus aucun préfixe partagé : `clePossedeePar` la refuse aussi désormais.
+    expect(clePossedeePar(partagee, U)).toBe(false);
     expect(cleSourceAvatarDuCompte(partagee, U)).toBe(false);
     expect(cleAvatarDuCompte(partagee, U)).toBe(false);
   });

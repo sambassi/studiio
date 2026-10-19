@@ -402,3 +402,74 @@ describe('plus de copie locale de ensurePublicUrl', () => {
     expect(src).not.toMatch(/ensurePublicUrl\([^,)]*\)/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. Anciennes conversions `converted/<horodatage>` (clé SANS compte)
+//
+// Écrites jadis par `api/convert/to-mp4` et le cron sans identifiant de
+// compte : en devinant l'horodatage, B publiait la conversion de A sur SES
+// réseaux (le verdict les admettait en lecture publique). Propriétaire non
+// prouvable sans migration → refus, aux deux routes, sur les 4 réseaux.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CONVERSIONS_HISTORIQUES: Array<[string, string]> = [
+  ['publique', `${S}/public/media/converted/converted_1712345678901.mp4`],
+  ['publique, autre compartiment', `${S}/public/videos/converted/converted_1712345678901.mp4`],
+  ['signée', `${S}/sign/media/converted/converted_1712345678901.mp4`],
+];
+
+describe('ancienne conversion converted/… — ensurePublicUrl refuse, quel que soit le publieur', () => {
+  it.each(CONVERSIONS_HISTORIQUES)('%s → refusée pour A comme pour B, aucune signature', async (_nom, url) => {
+    const { ensurePublicUrl } = await import('@/lib/social/url-publication');
+    await expect(ensurePublicUrl(url, A)).rejects.toThrow(REFUS);
+    await expect(ensurePublicUrl(url, B)).rejects.toThrow(REFUS);
+    expect(signer).not.toHaveBeenCalled();
+  });
+
+  it('la conversion ACTUELLE de A (`<A>/converted/…`) reste publiable par A, pas par B', async () => {
+    const { ensurePublicUrl } = await import('@/lib/social/url-publication');
+    const pub = `${S}/public/media/${A}/converted/converted_1712345678901.mp4`;
+    expect(await ensurePublicUrl(pub, A)).toBe(pub);
+    await expect(ensurePublicUrl(pub, B)).rejects.toThrow(REFUS);
+    expect(await ensurePublicUrl(`${S}/sign/media/${A}/converted/muxed_1.mp4`, A)).toBe(SIGNEE);
+    expect(signer).toHaveBeenCalledWith(`${A}/converted/muxed_1.mp4`, 3600);
+  });
+});
+
+describe('ancienne conversion converted/… — route social/publish', () => {
+  describe.each(['instagram', 'facebook', 'tiktok', 'youtube'])('%s', (plateforme) => {
+    it('B ne publie pas la conversion historique devinée → refus, aucun appel réseau', async () => {
+      ligneVideo = { id: 'v1', user_id: A, title: 'T', video_url: CONVERSIONS_HISTORIQUES[0][1], metadata: {} };
+      comptesSociaux = [compte(plateforme)];
+      const corps = await publierSocial(plateforme);
+      expect(corps.success).toBe(false);
+      expect(corps.results[0].message).toBe(REFUS);
+      expect(corps.results[0].message).not.toContain('converted');
+      expect(lectures).toEqual([]);
+      expect(appelsFetch.some((a) => a.url.includes(HOTES[plateforme]))).toBe(false);
+    });
+  });
+});
+
+describe('ancienne conversion converted/… — cron', () => {
+  describe.each(['instagram', 'facebook', 'tiktok', 'youtube'])('%s', (plateforme) => {
+    it('post programmé portant converted/… → refus neutre, aucun appel réseau', async () => {
+      comptesSociaux = [compte(plateforme)];
+      postCron = fabriquerPost(plateforme, { media_url: CONVERSIONS_HISTORIQUES[0][1] });
+      const corps = await lancerCron();
+      expect(lectures).toEqual([]);
+      expect(appelsFetch.some((a) => a.url.includes(HOTES[plateforme]))).toBe(false);
+      expect(corps.results[0].success).toBe(false);
+      const finale = majPosts.find((m) => m.metadata?.cron_publish_results);
+      expect(finale?.metadata.cron_publish_results[0].error).toBe(REFUS);
+    });
+  });
+
+  it('non-régression : la conversion actuelle de A (`<A>/converted/…`) part toujours', async () => {
+    comptesSociaux = [compte('facebook')];
+    postCron = fabriquerPost('facebook', { media_url: `${S}/sign/media/${A}/converted/converted_1.mp4` });
+    const corps = await lancerCron();
+    expect(corps.results[0].success).toBe(true);
+    expect(signer).toHaveBeenCalledWith(`${A}/converted/converted_1.mp4`, 3600);
+  });
+});
