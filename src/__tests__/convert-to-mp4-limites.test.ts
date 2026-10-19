@@ -38,7 +38,10 @@ vi.mock('@/lib/auth/config', () => ({ auth: () => authMock() }));
 let tailleAnnoncee = 4096;
 let panneLecture = false;
 const statObject = vi.fn(async () => ({ size: tailleAnnoncee, metaData: { 'content-type': 'video/webm' } }));
+let bloquerLecture = false;
+let porteLecture: (() => void) | null = null;
 const getObject = vi.fn(async () => {
+  if (bloquerLecture) await new Promise<void>((r) => { porteLecture = r; });
   if (panneLecture) throw new Error('ECONNRESET');
   return Readable.from([Buffer.alloc(4096, 1)]);
 });
@@ -54,14 +57,29 @@ vi.mock('@/lib/storage/minio-client', async (importOriginal) => {
 
 // ── ffmpeg : attend une porte, puis réussit / échoue / dépasse son délai ──
 type Issue = 'ok' | 'echec' | 'delai';
+const signauxFfmpeg: Array<AbortSignal | undefined> = [];
+let tuer: Array<() => void> = [];
 let issueFfmpeg: Issue = 'ok';
 let portes: Array<() => void> = [];
 let bloquer = false;
 const conversions: string[] = [];
 vi.mock('@/lib/ffmpeg/transcode-to-mp4', () => ({
-  transcodeWebmToMp4WithLadder: async (_ff: string, inputPath: string, outputPath: string) => {
+  transcodeWebmToMp4WithLadder: async (
+    _ff: string, inputPath: string, outputPath: string, _tag: string,
+    options: { signal?: AbortSignal } = {},
+  ) => {
     conversions.push(inputPath);
-    if (bloquer) await new Promise<void>((r) => { portes.push(r); });
+    signauxFfmpeg.push(options.signal);
+    if (bloquer) {
+      await new Promise<void>((r, rejeter) => {
+        portes.push(r);
+        // Comme execFile + signal : l'abandon TUE le processus ; la promesse
+        // ne se règle qu'une fois le processus réellement terminé (`tuer`).
+        options.signal?.addEventListener('abort', () => {
+          tuer.push(() => rejeter(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })));
+        }, { once: true });
+      });
+    }
     if (issueFfmpeg === 'echec') throw new Error('All FFmpeg attempts failed. exit 1');
     if (issueFfmpeg === 'delai') throw new Error('All FFmpeg attempts failed. TIMEOUT');
     writeFileSync(outputPath, Buffer.alloc(8192, 2));
@@ -143,6 +161,10 @@ beforeEach(() => {
   tailleAnnoncee = 4096; panneLecture = false; issueFfmpeg = 'ok'; bloquer = false; depotJette = false; depotPendu = false; depotAtteint = false;
   reglerDepot = null; suppressions.length = 0;
   portes = []; conversions.length = 0; depots.length = 0;
+  tuer = []; signauxFfmpeg.length = 0; bloquerLecture = false; porteLecture = null;
+  delete process.env.STORAGE_PROVIDER;
+  delete process.env.STUDIIO_CONVERSION_MAX_OCTETS;
+  delete process.env.PUBLIC_STORAGE_URL;
   statObject.mockClear(); getObject.mockClear(); putObject.mockClear();
   putObject.mockImplementation(async () => ({ etag: 'x' }));
   delete process.env.STORAGE_PROVIDER;
@@ -237,16 +259,38 @@ describe('3. Le jeton revient sur tous les chemins', () => {
     aucunJeton();
   });
 
-  it('abandon du client : le jeton est rendu quand le travail se termine', async () => {
+  it('abandon pendant ffmpeg : ffmpeg tué, jeton tenu jusqu\'à l\'arrêt RÉEL, puis rendu → 499', async () => {
     bloquer = true;
     const controleur = new AbortController();
     const p = lancer('u1', undefined, controleur.signal);
     await attendrePortes(1);
+    expect(signauxFfmpeg[0]).toBeDefined(); // le signal de la requête est transmis
     controleur.abort();
-    // Le travail (ffmpeg) tourne encore : la machine est occupée, jeton tenu.
+    await new Promise((r) => setImmediate(r));
+    // Le processus n'est pas encore mort : le jeton reste tenu.
+    expect(tuer).toHaveLength(1);
     expect(limites.limiteurConversions().etat().global).toBe(1);
-    ouvrirPortes();
-    await p.catch(() => undefined);
+    // Le processus s'arrête (la porte, elle, n'est JAMAIS ouverte).
+    tuer.forEach((t) => t());
+    const res = await p;
+    expect(res.status).toBe(499);
+    aucunJeton();
+    expect(depots).toHaveLength(0);
+    // Le compte peut relancer aussitôt.
+    bloquer = false;
+    expect((await appeler('u1')).statut).toBe(200);
+  });
+
+  it('abandon pendant le téléchargement : ffmpeg jamais lancé, jeton rendu → 499', async () => {
+    bloquerLecture = true;
+    const controleur = new AbortController();
+    const p = lancer('u1', undefined, controleur.signal);
+    for (let i = 0; i < 200 && !porteLecture; i++) await new Promise((r) => setTimeout(r, 2));
+    expect(porteLecture).not.toBeNull();
+    controleur.abort();
+    porteLecture!();
+    expect((await p).status).toBe(499);
+    expect(conversions).toHaveLength(0);
     aucunJeton();
   });
 });
@@ -339,7 +383,7 @@ describe('4. Taille de la source', () => {
     tailleAnnoncee = 300 * MIO + 1;
     const { statut, corps } = await appeler('u1');
     expect(statut).toBe(413);
-    expect(corps).toEqual({ success: false, error: 'Média trop volumineux' });
+    expect(corps).toEqual({ success: false, error: 'Média trop volumineux', maxOctets: 300 * MIO });
     expect(statObject).toHaveBeenCalledTimes(1);
     expect(getObject).not.toHaveBeenCalled();
     expect(conversions).toHaveLength(0);
@@ -395,5 +439,103 @@ describe('6. Le limiteur seul', () => {
     if (a.ok) { a.liberer(); a.liberer(); }
     expect(l.etat()).toEqual({ global: 1, comptes: 1 });
     expect(l.acquerir('b')).toEqual({ ok: false, motif: 'compte' });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('7. Plafond réglable : STUDIIO_CONVERSION_MAX_OCTETS', () => {
+  const lire = (v?: string) => limites.tailleMaxSourceConversion(
+    v === undefined ? {} : { STUDIIO_CONVERSION_MAX_OCTETS: v },
+  );
+
+  it('absente ou invalide → 300 Mio, jamais illimité', () => {
+    for (const v of [undefined, '', '   ', 'abc', '-5', '0', '1.5', '1e9', '0x100000', 'Infinity',
+      String(limites.TAILLE_MAX_CONVERSION_PLANCHER - 1),
+      String(limites.TAILLE_MAX_CONVERSION_PLAFOND + 1),
+      '99999999999999999999']) {
+      expect(lire(v), String(v)).toBe(300 * MIO);
+    }
+  });
+
+  it('valide → prise telle quelle, bornes incluses', () => {
+    expect(lire(String(100 * MIO))).toBe(100 * MIO);
+    expect(lire(` ${100 * MIO} `)).toBe(100 * MIO);
+    expect(lire(String(limites.TAILLE_MAX_CONVERSION_PLANCHER))).toBe(1 * MIO);
+    expect(lire(String(limites.TAILLE_MAX_CONVERSION_PLAFOND))).toBe(512 * MIO);
+  });
+
+  it('la route applique la valeur réglée : 413 avant lecture, plafond dit dans la réponse', async () => {
+    process.env.STUDIIO_CONVERSION_MAX_OCTETS = String(10 * MIO);
+    tailleAnnoncee = 10 * MIO + 1;
+    const { statut, corps } = await appeler('u1');
+    expect(statut).toBe(413);
+    expect(corps.maxOctets).toBe(10 * MIO);
+    expect(getObject).not.toHaveBeenCalled();
+    aucunJeton();
+  });
+
+  it('valeur invalide côté route → défaut 300 Mio appliqué', async () => {
+    process.env.STUDIIO_CONVERSION_MAX_OCTETS = 'illimite';
+    tailleAnnoncee = 300 * MIO + 1;
+    expect((await appeler('u1')).statut).toBe(413);
+  });
+
+  it('GET → le plafond, session exigée', async () => {
+    const { GET } = await import('@/app/api/convert/to-mp4/route');
+    process.env.STUDIIO_CONVERSION_MAX_OCTETS = String(42 * MIO);
+    qui = 'u1';
+    const ok = await GET();
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ success: true, maxOctets: 42 * MIO });
+    authMock.mockImplementationOnce(async () => null);
+    const refus = await GET();
+    expect(refus.status).toBe(401);
+    expect(await refus.json()).not.toHaveProperty('maxOctets');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('8. 413 sur le transport HTTP (Content-Length)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('Content-Length > plafond → 413, corps jamais lu, ffmpeg jamais lancé', async () => {
+    // Origine de stockage EXTERNE configurée → `fetch-media` passe en HTTP.
+    process.env.PUBLIC_STORAGE_URL = 'https://cdn.studiio.test';
+    let octetsLus = 0;
+    const corpsFlux = new ReadableStream<Uint8Array>({
+      pull(c) { octetsLus += 1024; c.enqueue(new Uint8Array(1024)); },
+    });
+    const fetchMock = vi.fn(async () => new Response(corpsFlux, {
+      status: 200,
+      headers: { 'content-length': String(300 * MIO + 1), 'content-type': 'video/webm' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { statut, corps } = await appeler('u1', 'https://cdn.studiio.test/storage/v1/object/public/media/u1/rendus/a.webm');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(statObject).not.toHaveBeenCalled(); // bien le transport HTTP
+    expect(statut).toBe(413);
+    expect(corps).toEqual({ success: false, error: 'Média trop volumineux', maxOctets: 300 * MIO });
+    expect(octetsLus).toBeLessThanOrEqual(1024 * 2); // au plus le pré-remplissage du flux
+    expect(conversions).toHaveLength(0);
+    aucunJeton();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('9. Le client attend AU-DELÀ du pire cas serveur', () => {
+  it('pire cas = téléchargement + échelle ffmpeg + dépôt, synchronisés avec leurs sources', async () => {
+    const { DELAI_TELECHARGEMENT_MS } = await import('@/lib/storage/fetch-media');
+    const { DUREE_MAX_ECHELLE_MS } = await vi.importActual<typeof import('@/lib/ffmpeg/transcode-to-mp4')>('@/lib/ffmpeg/transcode-to-mp4');
+    expect(limites.PIRE_CAS_SERVEUR_CONVERSION_MS).toBe(DELAI_TELECHARGEMENT_MS + DUREE_MAX_ECHELLE_MS + limites.DELAI_DEPOT_MS);
+    expect(limites.ATTENTE_CLIENT_CONVERSION_MS).toBeGreaterThan(limites.PIRE_CAS_SERVEUR_CONVERSION_MS);
+  });
+
+  it('le Calendrier n\'utilise plus l\'ancien délai de 4 min ni un fetch nu', () => {
+    const source = readFileSync(join(process.cwd(), 'src/app/dashboard/calendar/page.tsx'), 'utf8');
+    expect(source).not.toMatch(/4 \* 60 \* 1000/);
+    expect(source).not.toMatch(/fetch\(\s*['"`]\/api\/convert\/to-mp4/);
+    expect(source.match(/appelerConversionMp4\(/g)).toHaveLength(2);
+    expect(source.match(/setTimeout\(\(\) => \w+\.abort\(\), ATTENTE_CLIENT_CONVERSION_MS\)/g)).toHaveLength(2);
   });
 });

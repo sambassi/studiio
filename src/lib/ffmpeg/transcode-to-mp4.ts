@@ -41,6 +41,9 @@ const LADDER: LadderAttempt[] = [
   { maxW: 540,  maxH: 960,  crf: 30, timeoutMs: 120000, label: '540p CRF30 last resort' },
 ];
 
+/** Durée maximale de toute l'échelle (somme des délais par palier), en ms. */
+export const DUREE_MAX_ECHELLE_MS = LADDER.reduce((total, a) => total + a.timeoutMs, 0);
+
 /**
  * Build the FFmpeg arg vector for a given attempt. Uses:
  *  - `ultrafast` preset + `zerolatency` tune + `-threads 0`
@@ -107,18 +110,29 @@ export async function transcodeWebmToMp4WithLadder(
   inputPath: string,
   outputPath: string,
   logPrefix: string = '[FFMPEG]',
+  /**
+   * Facultatif. `signal` : un abandon TUE le ffmpeg en cours (execFile) et
+   * arrête l'échelle — la promesse ne se règle qu'une fois le processus
+   * terminé. Sans options (cron), comportement strictement inchangé.
+   */
+  options: { signal?: AbortSignal } = {},
 ): Promise<TranscodeResult> {
   const start = Date.now();
   let lastStderr = '';
   let lastError: Error | null = null;
+  const { signal } = options;
 
   for (const attempt of LADDER) {
+    if (signal?.aborted) {
+      throw new Error(`${logPrefix} conversion abandonnée par le client`);
+    }
     const attemptStart = Date.now();
     console.log(`${logPrefix} Attempting ${attempt.label} (timeout ${attempt.timeoutMs / 1000}s)`);
     try {
       const result = await execFileAsync(ffmpegPath, buildFFmpegArgs(inputPath, outputPath, attempt), {
         timeout: attempt.timeoutMs,
         maxBuffer: 10 * 1024 * 1024,
+        ...(signal ? { signal } : {}),
       });
       const elapsedMs = Date.now() - start;
       const attemptMs = Date.now() - attemptStart;

@@ -16,7 +16,8 @@ import {
   MESSAGE_CONVERSION_EN_COURS,
   MESSAGE_SERVEUR_OCCUPE,
   RETRY_AFTER_CONVERSION_S,
-  TAILLE_MAX_SOURCE_CONVERSION,
+  tailleMaxSourceConversion,
+  DELAI_DEPOT_MS,
   type JetonConversion,
 } from '@/lib/ffmpeg/limiteur-conversions';
 import {
@@ -61,7 +62,8 @@ export const maxDuration = 300;
  *    conversion à la fois par compte, deux par processus → sinon 429 avec
  *    `Retry-After`. Le jeton est pris après les refus gratuits (401/400/404,
  *    raccourci non-webm) et rendu dans le `finally`, sur TOUS les chemins.
- * 6. La source est bornée à `TAILLE_MAX_SOURCE_CONVERSION` (300 Mio) : une
+ * 6. La source est bornée à `tailleMaxSourceConversion()` (300 Mio par
+ *    défaut, réglable par `STUDIIO_CONVERSION_MAX_OCTETS`) : une
  *    taille annoncée par le stockage au-delà → 413 avant de lire le corps ;
  *    une taille inconnue est coupée au flux par la même borne.
  *
@@ -82,13 +84,13 @@ export const maxDuration = 300;
 
 const LONGUEUR_MAX_URL = 2048;
 const TAILLE_MIN_OCTETS = 1024;
-/** Délai du dépôt de la sortie (≤ 300 Mio sur le réseau interne MinIO). */
-const DELAI_DEPOT_MS = 120_000;
 
 const REPONSE_401 = { success: false, error: 'Non autorisé' } as const;
 const REPONSE_400 = { success: false, error: 'Requête invalide' } as const;
 const REPONSE_404 = { success: false, error: 'Média introuvable' } as const;
 const REPONSE_413 = { success: false, error: 'Média trop volumineux' } as const;
+/** Le client est parti : personne ne lira ce corps, mais le travail s'arrête. */
+const REPONSE_499 = { success: false, error: 'Conversion abandonnée' } as const;
 const REPONSE_422 = { success: false, error: 'Source vidéo vide ou corrompue' } as const;
 const REPONSE_500 = { success: false, error: 'La conversion a échoué' } as const;
 const REPONSE_504 = { success: false, error: 'Délai de téléchargement dépassé' } as const;
@@ -159,12 +161,30 @@ function statutTelechargement(code: ErreurTelechargement['code'] | undefined): S
   }
 }
 
-function reponseTelechargement(statut: StatutTelechargement) {
+function reponseTelechargement(statut: StatutTelechargement, maxOctets: number) {
+  // Le 413 dit le plafond (valeur de configuration, non secrète) : le
+  // navigateur peut l'afficher et vérifier lui-même la prochaine fois.
   const corps = statut === 404 ? REPONSE_404
-    : statut === 413 ? REPONSE_413
+    : statut === 413 ? { ...REPONSE_413, maxOctets }
     : statut === 504 ? REPONSE_504
     : REPONSE_500;
   return NextResponse.json(corps, { status: statut });
+}
+
+/**
+ * GET /api/convert/to-mp4 — le plafond de taille d'une source, pour que le
+ * navigateur refuse AVANT de téléverser (repli Bureau). Session exigée ;
+ * la valeur n'est pas secrète, rien d'autre n'est dit.
+ */
+export async function GET() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json(REPONSE_401, { status: 401 });
+  }
+  return NextResponse.json(
+    { success: true, maxOctets: tailleMaxSourceConversion() },
+    { headers: { 'Cache-Control': 'private, max-age=300' } },
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -225,16 +245,17 @@ export async function POST(req: NextRequest) {
 
     // 6. Téléchargement borné, dans un fichier temporaire propre à cette conversion.
     let sizeBytes: number;
+    const maxOctets = tailleMaxSourceConversion();
     try {
       ({ sizeBytes } = await downloadMediaToFile(videoUrl, inputPath, {
         userId,
-        maxBytes: TAILLE_MAX_SOURCE_CONVERSION,
+        maxBytes: maxOctets,
       }));
     } catch (err) {
       const code = err instanceof ErreurTelechargement ? err.code : undefined;
       const statut = statutTelechargement(code);
       console.error('[CONVERT-API]', { conversionId, etape: 'telechargement', code: code ?? 'inconnu', statut });
-      return reponseTelechargement(statut);
+      return reponseTelechargement(statut, maxOctets);
     }
     console.log('[CONVERT-API]', { conversionId, etape: 'telecharge', sizeBytes });
 
@@ -244,6 +265,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(REPONSE_422, { status: 422 });
     }
 
+    // Abandon du client pendant le téléchargement : on ne lance pas ffmpeg.
+    if (req.signal?.aborted) {
+      console.warn('[CONVERT-API]', { conversionId, etape: 'abandon_client', avant: 'ffmpeg' });
+      return NextResponse.json(REPONSE_499, { status: 499 });
+    }
+
     // 7. Conversion via l'échelle partagée (1080p → 720p → 540p, délais par
     //    palier). Le détail d'un échec — ligne de commande, stderr — reste
     //    dans le journal serveur ; il ne porte pas l'URL.
@@ -251,8 +278,16 @@ export async function POST(req: NextRequest) {
     let stderr = '';
     let attempt = '';
     try {
-      ({ stderr, attempt } = await transcodeWebmToMp4WithLadder(ffmpegPath, inputPath, outputPath, '[CONVERT-API]'));
+      // Le signal de la requête : un client parti TUE ffmpeg (execFile), et
+      // la promesse ne se règle qu'à l'arrêt du processus → jeton rendu.
+      ({ stderr, attempt } = await transcodeWebmToMp4WithLadder(
+        ffmpegPath, inputPath, outputPath, '[CONVERT-API]', { signal: req.signal },
+      ));
     } catch (err) {
+      if (req.signal?.aborted) {
+        console.warn('[CONVERT-API]', { conversionId, etape: 'abandon_client', pendant: 'ffmpeg' });
+        return NextResponse.json(REPONSE_499, { status: 499 });
+      }
       const message = err instanceof Error ? err.message : String(err);
       console.error('[CONVERT-API]', { conversionId, etape: 'ffmpeg', stderrTail: message.slice(-500) });
       return NextResponse.json(REPONSE_500, { status: 500 });
@@ -271,6 +306,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 8. Dépôt sous le compte, sous un nom unique — jamais d'écrasement.
+    // Client parti après ffmpeg : inutile de déposer une sortie que nul ne lira.
+    if (req.signal?.aborted) {
+      console.warn('[CONVERT-API]', { conversionId, etape: 'abandon_client', avant: 'depot' });
+      return NextResponse.json(REPONSE_499, { status: 499 });
+    }
+
     const fileName = `${conversionId}.mp4`;
     const storagePath = `${userId}/converted/${fileName}`;
     // Borné dans le temps pour la RÉPONSE, pas pour le jeton. Le client de

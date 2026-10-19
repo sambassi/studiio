@@ -45,6 +45,11 @@ import { Modal } from '@/components/ui/Modal';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
 import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
+import { appelerConversionMp4, libelleOctets } from '@/lib/convert/client-conversion';
+import { ATTENTE_CLIENT_CONVERSION_MS } from '@/lib/ffmpeg/limiteur-conversions';
+
+/** L'attente du client, en minutes, pour les messages (PR-F). */
+const ATTENTE_CONVERSION_MIN = Math.round(ATTENTE_CLIENT_CONVERSION_MS / 60_000);
 import {
   montageEstPerime, messageMontagePerime, leverMontagePerime,
 } from '@/lib/creer/postMetadata/from-wizard';
@@ -2107,11 +2112,13 @@ export default function CalendarPage() {
           conversionProgress = Math.min(conversionProgress + 1, 75);
           setExportRenderProgress(conversionProgress);
         }, 1500);
-        // Client-side timeout — abort if the server takes too long. Vercel's
-        // function maxDuration is 300s; we cut at 240s so the user gets a
-        // proper "timeout, propose WebM fallback" prompt rather than a hang.
+        // Client-side timeout — AU-DELÀ du pire cas serveur (téléchargement +
+        // échelle ffmpeg + dépôt, voir `limiteur-conversions`) : on ne renonce
+        // jamais avant la fin réelle du travail, donc on ne relance jamais une
+        // conversion encore en cours (qui vaudrait un 429). Un abandon réel
+        // (onglet fermé) tue ffmpeg côté serveur et rend le jeton.
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4 * 60 * 1000);
+        const timeoutId = setTimeout(() => controller.abort(), ATTENTE_CLIENT_CONVERSION_MS);
         // Helper: trigger a direct WebM download from the original Supabase URL
         // — used as the user-confirmed fallback when MP4 conversion fails or
         // times out. Direct URL avoids re-fetching a 20+ MB blob into memory.
@@ -2127,11 +2134,10 @@ export default function CalendarPage() {
         };
         try {
           // Use server-side FFmpeg conversion (reliable H.264 output)
-          const convertRes = await fetch('/api/convert/to-mp4', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl: meta.renderedVideoUrl }),
+          // 429 (« déjà en cours ») : attendu puis retenté, affiché à l'écran.
+          const convertRes = await appelerConversionMp4(meta.renderedVideoUrl as string, {
             signal: controller.signal,
+            onAttente: (message, secondes) => setExportRenderStage(`${message} Nouvel essai dans ${secondes} s…`),
           });
           clearInterval(progressInterval);
           clearTimeout(timeoutId);
@@ -2172,7 +2178,9 @@ export default function CalendarPage() {
               // Show the full server error (FFmpeg stderr included if
               // present) so the user can decide whether to download the
               // raw WebM or report the problem with details.
-              const sizeInfo = typeof convertData.sourceSize === 'number'
+              const sizeInfo = typeof convertData.maxOctets === 'number'
+                ? ` (maximum ${libelleOctets(convertData.maxOctets)})`
+                : typeof convertData.sourceSize === 'number'
                 ? ` (source: ${convertData.sourceSize} octets)`
                 : typeof convertData.outputSize === 'number'
                   ? ` (sortie: ${convertData.outputSize} octets)`
@@ -2190,8 +2198,8 @@ export default function CalendarPage() {
           clearTimeout(timeoutId);
           if ((err as any)?.name === 'AbortError') {
             // 4-min client timeout — likely a very long video or server overloaded
-            console.warn('[Export] Server conversion timed out after 4 min');
-            if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)')) {
+            console.warn(`[Export] Server conversion timed out after ${ATTENTE_CONVERSION_MIN} min`);
+            if (confirm(`La conversion MP4 prend trop de temps (>${ATTENTE_CONVERSION_MIN} min). Télécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
               downloadWebmDirect();
             }
           } else {
@@ -2272,7 +2280,7 @@ export default function CalendarPage() {
 
         if (renderedUrl && renderedUrl.includes('webm')) {
           // Server-side conversion for reliable MP4 output. Mirrors the
-          // first convert site above — simulated progress 30→75 + 4 min
+          // first convert site above — simulated progress 30→75 + client timeout
           // timeout + direct URL download on success.
           setExportRenderProgress(30);
           setExportRenderStage('Conversion MP4 en cours (peut prendre 1-3 min)...');
@@ -2282,13 +2290,11 @@ export default function CalendarPage() {
             setExportRenderProgress(conv2);
           }, 1500);
           const conv2Controller = new AbortController();
-          const conv2TimeoutId = setTimeout(() => conv2Controller.abort(), 4 * 60 * 1000);
+          const conv2TimeoutId = setTimeout(() => conv2Controller.abort(), ATTENTE_CLIENT_CONVERSION_MS);
           try {
-            const convertRes = await fetch('/api/convert/to-mp4', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ videoUrl: renderedUrl }),
+            const convertRes = await appelerConversionMp4(renderedUrl, {
               signal: conv2Controller.signal,
+              onAttente: (message, secondes) => setExportRenderStage(`${message} Nouvel essai dans ${secondes} s…`),
             });
             clearInterval(conv2Interval);
             clearTimeout(conv2TimeoutId);
@@ -2308,7 +2314,9 @@ export default function CalendarPage() {
             } else {
               const errMsg = convertData.error || 'erreur serveur';
               console.warn('[Export] Server conversion failed:', convertData);
-              const sizeInfo = typeof convertData.sourceSize === 'number'
+              const sizeInfo = typeof convertData.maxOctets === 'number'
+                ? ` (maximum ${libelleOctets(convertData.maxOctets)})`
+                : typeof convertData.sourceSize === 'number'
                 ? ` (source: ${convertData.sourceSize} octets)`
                 : typeof convertData.outputSize === 'number'
                   ? ` (sortie: ${convertData.outputSize} octets)`
@@ -2325,8 +2333,8 @@ export default function CalendarPage() {
             clearInterval(conv2Interval);
             clearTimeout(conv2TimeoutId);
             if ((convErr as any)?.name === 'AbortError') {
-              console.warn('[Export] Server conversion timed out after 4 min');
-              if (confirm('La conversion MP4 prend trop de temps (>4 min). Télécharger le fichier brut à la place ? (lisible avec VLC ou QuickTime)')) {
+              console.warn(`[Export] Server conversion timed out after ${ATTENTE_CONVERSION_MIN} min`);
+              if (confirm(`La conversion MP4 prend trop de temps (>${ATTENTE_CONVERSION_MIN} min). Télécharger le fichier brut à la place ? (lisible avec VLC ou QuickTime)`)) {
                 const isWebm = blob.type.includes('webm');
                 directDownload(blob, isWebm ? 'webm' : 'mp4');
               }

@@ -40,9 +40,11 @@
  * le même processus (HMR, bundles distincts) partage le MÊME compteur.
  *
  * Le jeton se libère quand le gestionnaire de route se termine (`finally`) :
- * succès, erreur, délai dépassé. Si le client abandonne, ffmpeg continue
- * jusqu'à sa propre fin (délais bornés par l'échelle de transcodage) et le
- * jeton reste pris jusque-là — c'est voulu : la machine est encore occupée.
+ * succès, erreur, délai dépassé. Si le client abandonne (`req.signal`),
+ * ffmpeg est TUÉ (signal transmis à `execFile`) et le jeton revient dès que
+ * le processus est réellement terminé — jamais avant : tant qu'un travail
+ * tourne, il garde son jeton. Un téléchargement en cours, lui, va à sa fin
+ * (borné à 120 s) puis la route s'arrête sans lancer ffmpeg.
  *
  * Le cron de publication a sa propre conversion (`api/cron/publish`) et
  * n'est PAS soumis à ce limiteur : il est appelé par le planificateur, une
@@ -53,8 +55,52 @@ export const CONVERSIONS_MAX_PAR_COMPTE = 1;
 export const CONVERSIONS_MAX_PROCESSUS = 2;
 /** Indication `Retry-After`, en secondes. Une conversion type dure 30 s à 3 min. */
 export const RETRY_AFTER_CONVERSION_S = 30;
-/** Taille maximale d'une SOURCE de conversion, en octets (voir plus haut). */
+/** Taille maximale PAR DÉFAUT d'une SOURCE de conversion, en octets (voir plus haut). */
 export const TAILLE_MAX_SOURCE_CONVERSION = 300 * 1024 * 1024;
+
+/**
+ * Réglage serveur du plafond : `STUDIIO_CONVERSION_MAX_OCTETS` (entier,
+ * en octets). Acceptée seulement dans [1 Mio, 512 Mio] :
+ * - plancher 1 Mio : en dessous, aucun export réel ne passerait — c'est une
+ *   faute de frappe, pas un réglage ;
+ * - plafond 512 Mio : c'est la borne du relais de téléversement
+ *   (`TAILLE_MAXIMALE`, `rendus/cible-upload.ts`) — au-delà, la source ne
+ *   pourrait même pas être déposée, et la sortie lue en mémoire doublerait.
+ * Absente, vide, non entière, hors bornes → 300 Mio. JAMAIS « illimité ».
+ */
+export const VARIABLE_TAILLE_MAX_CONVERSION = 'STUDIIO_CONVERSION_MAX_OCTETS';
+export const TAILLE_MAX_CONVERSION_PLANCHER = 1 * 1024 * 1024;
+export const TAILLE_MAX_CONVERSION_PLAFOND = 512 * 1024 * 1024;
+
+export function tailleMaxSourceConversion(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const brut = env[VARIABLE_TAILLE_MAX_CONVERSION]?.trim();
+  if (!brut || !/^\d+$/.test(brut)) return TAILLE_MAX_SOURCE_CONVERSION;
+  const n = Number(brut);
+  if (!Number.isSafeInteger(n) || n < TAILLE_MAX_CONVERSION_PLANCHER || n > TAILLE_MAX_CONVERSION_PLAFOND) {
+    return TAILLE_MAX_SOURCE_CONVERSION;
+  }
+  return n;
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * COMBIEN DE TEMPS LE NAVIGATEUR DOIT ATTENDRE
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Pire cas serveur = téléchargement (120 s, `DELAI_TELECHARGEMENT_MS`) +
+ * échelle ffmpeg (240 + 180 + 120 s, `DUREE_MAX_ECHELLE_MS`) + dépôt
+ * (120 s, `DELAI_DEPOT_MS`) = 780 s. Le client attend AU-DELÀ (+ 60 s) :
+ * il ne renonce donc jamais avant la fin réelle du travail, et ne relance
+ * jamais une conversion que le serveur fait encore (ce qui lui vaudrait un
+ * 429). Choisi plutôt que de raccourcir l'échelle : aucune conversion
+ * légitime n'est tuée, et le cron (même échelle) n'est pas touché.
+ * Un test garde ces trois délais synchronisés avec leurs sources.
+ */
+export const DELAI_DEPOT_MS = 120_000;
+export const PIRE_CAS_SERVEUR_CONVERSION_MS = 120_000 + 540_000 + DELAI_DEPOT_MS;
+export const ATTENTE_CLIENT_CONVERSION_MS = PIRE_CAS_SERVEUR_CONVERSION_MS + 60_000;
 
 export const MESSAGE_CONVERSION_EN_COURS =
   'Une conversion est déjà en cours sur votre compte. Patientez quelques instants, puis réessayez.';
