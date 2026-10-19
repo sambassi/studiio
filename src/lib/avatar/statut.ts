@@ -214,6 +214,21 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
     return { status: 'processing', videoUrl: null };
   }
 
+  // Terminé mais de DURÉE NULLE annoncée : ce n'est pas une vidéo. La poser
+  // gardait le débit et bloquait le montage (« n'a pas pu être chargée »)
+  // à chaque essai. Échec définitif, remboursé une fois, rien téléversé.
+  // Durée absente (D-ID) : comportement d'avant.
+  const dureeAnnoncee = 'durationSeconds' in remote ? remote.durationSeconds : undefined;
+  if (typeof dureeAnnoncee === 'number' && !(dureeAnnoncee > 0)) {
+    console.error(`[Avatar][${g.provider ?? 'heygen'}] génération ${g.id} terminée avec une durée nulle (${dureeAnnoncee}) : échec.`);
+    const admin = await compteAdmin(userId);
+    const visible = g.credits_charged > 0 && !admin ? MESSAGES_AVATAR.echecRembourse : MESSAGES_AVATAR.echec;
+    const rembourse = await failAndRefund(g, visible);
+    await enregistrerCoutGeneration(g.id, calculerCoutGeneration({ provider: viaDid ? 'did' : 'heygen', admin, secondes: 0, caracteres: (g.script ?? '').length, creditsDebites: 0 }), `vidéo terminée de durée nulle (${dureeAnnoncee} s)`);
+    if (viaDid) await retirerObjetPriveAvatar(userId, cleAudioAvatar(userId, g.id));
+    return { status: 'failed', videoUrl: null, error: visible, rembourse };
+  }
+
   // Terminé : rapatriement sur NOTRE stockage (l'URL fournisseur expire).
   // Échec du rapatriement = PAS un succès : l'adresse du fournisseur expire,
   // la vidéo disparaîtrait du montage. Le job reste « en cours » et le
