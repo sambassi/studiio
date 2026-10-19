@@ -32,7 +32,7 @@ import {
 } from '@/lib/securite/fetch-sur';
 import { estNotreStockage } from '@/lib/securite/medias-externes';
 import {
-  cibleParCheminLisible, cibleRecevable, cibleStockageParChemin, originesStockageConfigurees,
+  cibleParCheminLisible, cibleStockageParChemin, originesStockageConfigurees,
 } from '@/lib/storage/acces-objet';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
 import { signerUrlRelais } from '@/lib/storage/jeton-relais';
@@ -70,22 +70,16 @@ function hotePourJournal(url: string): string {
 }
 
 /**
- * Conversions MP4 HISTORIQUES (`converted/<horodatage>.mp4`, compartiment
- * `media`) : écrites jadis SANS identifiant de compte. Le cron et
- * `api/convert/to-mp4` écrivent désormais sous `<userId>/converted/…` (la
- * propriété ordinaire s'y applique) ; seules d'anciennes URL persistées
- * pointent encore ici. Préfixe commun, jamais une preuve de propriété — admis
- * seulement en lecture PUBLIQUE (le relais les sert déjà à quiconque a
- * l'adresse), jamais signé. Voir `PREFIXES_PARTAGES`.
- */
-const CONVERSION_PARTAGEE = /^converted\/[^/]+$/;
-
-/**
  * Une URL à publier, jugée par son CHEMIN, quel que soit son hôte :
  *   - `hors-stockage` : rien de notre stockage (média externe) ;
  *   - `autorise`      : objet de notre stockage lisible par ce PUBLIEUR ;
  *   - `refuse`        : objet d'un autre compte, namespace privé, forme
- *                       encodée ou non canonique du chemin de stockage.
+ *                       encodée ou non canonique du chemin de stockage —
+ *                       et toute conversion HISTORIQUE `converted/<…>` (clé
+ *                       sans compte : propriétaire non prouvable, voir
+ *                       `PREFIXES_PARTAGES`). Elle était admise en lecture
+ *                       publique : B publiait la conversion de A en
+ *                       devinant l'horodatage.
  * Pure.
  */
 export function verdictStockagePublication(url: unknown, userId: unknown): 'hors-stockage' | 'autorise' | 'refuse' {
@@ -93,9 +87,6 @@ export function verdictStockagePublication(url: unknown, userId: unknown): 'hors
   if (cible === null) return 'hors-stockage';
   if (cible === 'refus') return 'refuse';
   if (cibleParCheminLisible(cible, userId)) return 'autorise';
-  if (cible.acces === 'public' && cible.bucket === 'media'
-    && CONVERSION_PARTAGEE.test(cible.cle) && CONVERSION_PARTAGEE.test(cible.cleBrute)
-    && cibleRecevable(cible.bucket, cible.cle)) return 'autorise';
   return 'refuse';
 }
 

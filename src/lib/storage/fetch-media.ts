@@ -116,7 +116,9 @@ export interface OptionsTelechargement {
   /** Le compte pour lequel on telecharge : la cle doit lui appartenir. */
   userId: string;
   /**
-   * Prefixes partages toleres EXPLICITEMENT par l'appelant (`['converted/']`).
+   * Prefixes partages toleres EXPLICITEMENT par l'appelant. AUCUN appelant
+   * n'en passe, et `converted/` ne doit plus jamais y figurer : un ancien
+   * `converted/…` n'a pas de proprietaire prouvable (`PREFIXES_PARTAGES`).
    * Sans cette liste, seule une cle `<userId>/…` passe.
    */
   prefixesPartages?: readonly string[];

@@ -1164,8 +1164,9 @@ async function convertToMp4IfNeeded(videoUrl: string, userId: string): Promise<s
     const fileName = `converted_${timestamp}.mp4`;
     // Sous le préfixe du PROPRIÉTAIRE, comme `api/convert/to-mp4` : une clé
     // `converted/<horodatage>` commune à tous était devinable et publiable
-    // par n'importe quel compte. Les anciennes restent lisibles (voir
-    // `CONVERSION_PARTAGEE`), aucune nouvelle n'y est écrite.
+    // par n'importe quel compte. Les anciennes ne sont plus servies qu'à
+    // l'administrateur (voir `PREFIXES_PARTAGES`), aucune nouvelle n'y est
+    // écrite.
     const storagePath = `${userId}/converted/${fileName}`;
     const { error: uploadError } = await supabase.storage
       .from('media')

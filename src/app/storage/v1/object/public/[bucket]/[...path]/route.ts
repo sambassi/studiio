@@ -23,8 +23,10 @@
  *     (`lib/storage/jeton-relais.ts`) — c'est ce que reçoivent les lecteurs
  *     sans cookie : Meta / TikTok / Zernio / YouTube via `ensurePublicUrl`,
  *     Chromium de Remotion, les fetch du serveur vers sa propre origine ;
- *   - session : le propriétaire (`cibleLisibleParCompte`), tout compte
- *     connecté pour `converted/…`, un administrateur.
+ *   - session : le propriétaire (`cibleLisibleParCompte`), un
+ *     administrateur. Les anciennes conversions `converted/…` (clé sans
+ *     compte, propriétaire non prouvable) ne sont plus servies à tout compte
+ *     connecté.
  *
  * Le navigateur de l'application est same-origin : `<video>`, `<img>`,
  * `fetch` et même `crossOrigin="anonymous"` envoient le cookie de session.
@@ -192,8 +194,8 @@ function introuvable(): NextResponse {
  * #547 — la cible recevable est-elle LISIBLE par CE demandeur ?
  *
  * Public (`media/externes/…`), jeton signé `?sr=` valide pour cette cible,
- * ou session du propriétaire (ou compte connecté pour `converted/…`, ou
- * administrateur) — voir `lib/storage/politique-relais.ts`. La session n'est
+ * ou session du propriétaire (ou administrateur ; un ancien `converted/…`
+ * sans compte n'est plus lisible par tout compte connecté) — voir `lib/storage/politique-relais.ts`. La session n'est
  * lue que si le reste ne suffit pas : un fournisseur muni d'un jeton ne
  * coûte aucune lecture de session.
  */

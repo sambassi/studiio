@@ -122,19 +122,26 @@ export function cleObjetValide(cle: unknown): cle is string {
 }
 
 /**
- * Prefixes partages, anterieurs a ce lot.
+ * Prefixes partages : AUCUN.
  *
- * `converted/` est ecrit par `api/convert/to-mp4` et `api/cron/publish` sans
- * identifiant de compte dans la cle : la conversion MP4 depose sous un nom
- * horodate commun a tous. Ces objets sont donc lisibles par tout compte
- * connecte, et ce lot ne le change pas — restreindre ici casserait le repli
- * de conversion du Calendrier et de l'export bureau sans rien remplacer.
+ * `converted/` y figurait : `api/convert/to-mp4` (avant #417) et
+ * `api/cron/publish` (avant #546) deposaient leurs MP4 sous
+ * `converted/converted_<horodatage>.mp4`, SANS identifiant de compte. Tout
+ * compte connecte pouvait donc lire, proxifier et PUBLIER la conversion d'un
+ * autre en devinant l'horodatage (une milliseconde, sur une fenetre connue).
  *
- * Ce qu'il faudra faire ensuite : donner a ces ecritures une cle
- * `<userId>/converted/…`, puis retirer cette liste. Tant qu'elle existe, elle
- * est le trou connu, ecrit, et delimite.
+ * Les deux ecrivains deposent desormais sous `<userId>/converted/…` (la
+ * propriete ordinaire s'y applique). Les anciens objets `converted/…` n'ont
+ * AUCUN proprietaire prouvable sans migration : aucune ligne ecrite par le
+ * SERVEUR ne les rattache a un compte (la conversion du Bureau n'est que
+ * telechargee, celle du cron part chez le reseau dans la meme execution), et
+ * une reference dans `scheduled_posts.media_url` ou `metadata` est ecrite par
+ * le NAVIGATEUR — B peut y poser la cle de A, ce n'est pas une preuve. Ils ne
+ * sont donc plus servis qu'a un administrateur (relais public). Liste vide,
+ * gardee pour que l'intention reste ecrite : n'y rien rajouter sans preuve
+ * de propriete cote serveur.
  */
-export const PREFIXES_PARTAGES = ['converted/'] as const;
+export const PREFIXES_PARTAGES: readonly string[] = [];
 
 /**
  * Cette cle appartient-elle a ce compte ?
@@ -142,6 +149,9 @@ export const PREFIXES_PARTAGES = ['converted/'] as const;
  * Le prefixe EST la preuve de propriete : les cles sont fabriquees par le
  * serveur sous la forme `<userId>/<usage>/<horodatage>-<nom>`, et seul le nom
  * vient du navigateur. Meme raisonnement que `verifierObjet`.
+ *
+ * Plus aucun prefixe partage (`PREFIXES_PARTAGES` est vide) : un ancien
+ * `converted/…` n'appartient a personne ici.
  */
 export function clePossedeePar(cle: unknown, userId: string): boolean {
   if (!userId) return false;

@@ -23,10 +23,11 @@
  *   3. SESSION :
  *        - le propriétaire (`cibleLisibleParCompte` : `<userId>/…`,
  *          `audio-complet/<userId>/…`, `stock-attributions/<userId>/…`) ;
- *        - les préfixes partagés historiques (`converted/…`) : tout compte
- *          CONNECTÉ, comme le documente `PREFIXES_PARTAGES` — plus jamais
- *          l'anonyme ;
  *        - un administrateur (back-office vidéos / utilisateurs).
+ *      Les anciennes conversions `converted/<horodatage>` (clé SANS compte)
+ *      ne sont PLUS lisibles par tout compte connecté : leur propriétaire
+ *      n'est prouvable par rien d'écrit côté serveur (voir
+ *      `PREFIXES_PARTAGES`). Seul l'administrateur les lit encore.
  *   4. Sinon : refus, rendu par le relais EXACTEMENT comme un objet absent
  *      (404, même corps), sans aucun appel au stockage.
  *
@@ -34,7 +35,6 @@
  */
 import {
   BUCKET_COPIES_EXTERNES,
-  PREFIXES_PARTAGES,
   cibleLisibleParCompte,
   cibleRecevable,
 } from '@/lib/storage/acces-objet';
@@ -76,7 +76,6 @@ export async function lectureRelaisAutorisee(d: DemandeRelais): Promise<boolean>
   const userId = s?.userId;
   if (typeof userId !== 'string' || userId.length === 0) return false;
   if (cibleLisibleParCompte(d.bucket, d.cle, userId)) return true;
-  if ((PREFIXES_PARTAGES as readonly string[]).some((p) => d.cle.startsWith(p) && d.cle.length > p.length)) return true;
   if (isAdmin(s?.email)) return true;
   return false;
 }

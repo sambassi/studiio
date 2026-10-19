@@ -35,7 +35,7 @@
  * signature n'a lieu.
  *
  * Une URL publique (relais `/object/public/`) ressort telle quelle APRÈS la
- * même garde de propriété (sauf `converted/…`, préfixe partagé du cron) ; une
+ * même garde de propriété (un ancien `converted/…` sans compte est refusé) ; une
  * URL externe ressort telle quelle ; un échec de signature rend l'URL
  * d'origine, comme avant.
  */
