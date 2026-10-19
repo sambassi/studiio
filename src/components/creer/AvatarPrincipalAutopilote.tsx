@@ -57,6 +57,51 @@ export function avatarPretPourMontage(etat: EtatJumeau | null, colonneReady: boo
   return etat.pret && etat.moteurDisponible && colonneReady;
 }
 
+/**
+ * Disponibilité de l'avatar ET vignette, lues SANS monter la case de l'étape
+ * Rushes : le panneau en a besoin dès l'ouverture, pour que l'aperçu montre
+ * ce que le moteur montera (avatar coché = avatar monté, quelle que soit
+ * l'étape affichée). Mêmes lectures que la case, aucun fournisseur appelé.
+ */
+export async function lireDisponibiliteAvatar(
+  avatarId: string | null,
+  colonneReady: boolean,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ pret: AvatarPret; vignette: VignetteAvatar | null }> {
+  const etat = await lireEtatJumeau(fetchImpl, avatarId).catch(() => null);
+  const pret = avatarPretPourMontage(etat ?? null, colonneReady);
+  const vignette = pret === true ? await lireVignetteAvatar(avatarId, fetchImpl) : null;
+  return { pret, vignette };
+}
+
+/**
+ * Le panneau lit l'avatar coché dès l'ouverture (`lireDisponibiliteAvatar`).
+ * À chaque changement (avatar choisi, case cochée, colonne), l'état précédent
+ * est d'abord EFFACÉ (`null`) : une relecture qui échoue ne laisse jamais
+ * l'ancien avatar « prêt » ni son ancienne vignette dans l'aperçu.
+ */
+export function useDisponibiliteAvatarAutopilote(p: {
+  actif: boolean;
+  avatarId: string | null;
+  colonneReady: boolean;
+  onPret: (pret: AvatarPret) => void;
+  onVignette: (v: VignetteAvatar | null) => void;
+}): void {
+  const { actif, avatarId, colonneReady, onPret, onVignette } = p;
+  useEffect(() => {
+    if (!actif) return;
+    let vivant = true;
+    onPret(null);
+    onVignette(null);
+    void lireDisponibiliteAvatar(avatarId, colonneReady).then(({ pret, vignette }) => {
+      if (!vivant || pret === null) return;
+      onPret(pret);
+      onVignette(vignette);
+    });
+    return () => { vivant = false; };
+  }, [actif, avatarId, colonneReady, onPret, onVignette]);
+}
+
 /** Petite vignette ; repli sur l'icône si la source est illisible. */
 export function MiniatureAvatar({ vignette, className = 'w-10 h-10' }: { vignette: VignetteAvatar | null; className?: string }) {
   const [echec, setEchec] = useState(false);

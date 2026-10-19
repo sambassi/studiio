@@ -17,7 +17,7 @@ import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type PropositionsStock } from '@/components/creer/CompleterRushesStock';
-import AvatarPrincipalAutopilote, { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
+import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
@@ -561,6 +561,19 @@ export default function AutopilotPanel({
    * pourrait pas s'enregistrer.
    */
   const [jumeauReady, setJumeauReady] = useState(true);
+  /**
+   * L'avatar coché est lu DÈS L'OUVERTURE, pas seulement quand l'étape Rushes
+   * monte `AvatarPrincipalAutopilote` : sinon l'aperçu (étape Sujets) montrait
+   * le premier rush, 20 s, alors que le moteur monte l'avatar (preuve
+   * Autopilote du 19/10). Même lecture que la case ; non coché : rien n'est lu.
+   */
+  useDisponibiliteAvatarAutopilote({
+    actif: config.jumeauAvatar,
+    avatarId: config.jumeauAvatarId,
+    colonneReady: jumeauReady,
+    onPret: setAvatarPret,
+    onVignette: setVignetteAvatar,
+  });
   /**
    * Le brief tel qu'il a été ENREGISTRÉ — pour n'envoyer un PUT à la perte
    * du focus que si quelque chose a changé, pas à chaque passage de champ.
