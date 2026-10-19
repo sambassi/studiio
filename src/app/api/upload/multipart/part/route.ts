@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { Client as MinioClient } from 'minio';
 import { ALLOWED_BUCKETS as BUCKETS } from '@/lib/storage/buckets';
+import { cleEnvoiGeneriqueAcceptable } from '@/lib/storage/acces-objet';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -47,6 +48,10 @@ export async function PUT(req: NextRequest) {
   }
   // Même garde que la route multipart : on ne poursuit que SON envoi.
   if (!key.startsWith(`${session.user.id}/`) || key.includes('..')) {
+    return NextResponse.json({ success: false, error: 'Path scope mismatch' }, { status: 403 });
+  }
+  // PR-B : la forme exacte délivrée par `initiate`, jamais un espace réservé.
+  if (!cleEnvoiGeneriqueAcceptable(key, session.user.id)) {
     return NextResponse.json({ success: false, error: 'Path scope mismatch' }, { status: 403 });
   }
   const client = clientInterne();

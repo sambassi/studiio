@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { purposeAcceptable } from '@/lib/storage/acces-objet';
+import { purposeAcceptable, cleEnvoiGeneriqueAcceptable } from '@/lib/storage/acces-objet';
 import { auth } from '@/lib/auth/config';
 import { Client as MinioClient } from 'minio';
 import { ALLOWED_BUCKETS as BUCKETS } from '@/lib/storage/buckets';
@@ -78,7 +78,9 @@ function clientInterne(): MinioClient | null {
 
 /** Le chemin demandé appartient-il bien à l'appelant ? */
 function cheminAutorise(storagePath: string, userId: string): boolean {
-  return storagePath.startsWith(`${userId}/`) && !storagePath.includes('..');
+  return storagePath.startsWith(`${userId}/`) && !storagePath.includes('..')
+    // PR-B : la forme exacte délivrée par `initiate`, jamais un espace réservé.
+    && cleEnvoiGeneriqueAcceptable(storagePath, userId);
 }
 
 export async function POST(req: NextRequest) {
