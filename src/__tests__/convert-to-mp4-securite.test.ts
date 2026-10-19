@@ -424,11 +424,15 @@ describe('15. Le raccourci non-webm — après la session et la propriété', ()
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('16. Deux conversions en parallèle', () => {
+  // Deux COMPTES : depuis PR-F, un même compte n'a droit qu'à une conversion
+  // à la fois (la 2e reçoit 429 — voir convert-to-mp4-limites.test.ts).
   it('deux identifiants, deux temporaires, deux clés de dépôt distincts', async () => {
-    connecte('u1');
+    authMock
+      .mockResolvedValueOnce({ user: { id: 'u1', email: 'u1@test.io' } })
+      .mockResolvedValueOnce({ user: { id: 'u2', email: 'u2@test.io' } });
     const [a, b] = await Promise.all([
       appeler(objet('media/u1/rendus/a.webm')),
-      appeler(objet('media/u1/rendus/b.webm')),
+      appeler(objet('media/u2/rendus/b.webm')),
     ]);
     expect(a.statut).toBe(200);
     expect(b.statut).toBe(200);

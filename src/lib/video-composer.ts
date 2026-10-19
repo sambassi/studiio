@@ -30,6 +30,12 @@ import type { OverlaysMontage } from '@/lib/creer/overlays';
 import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendus/medias-requis';
 import { imageCartesA } from '@/lib/creer/synchro-cartes';
 import { dessinerHabillageVideo } from '@/lib/creer/habillageVideo';
+import {
+  appelerConversionMp4,
+  libelleOctets,
+  messageSourceTropVolumineuse,
+  plafondConversionServeur,
+} from '@/lib/convert/client-conversion';
 
 const COMPOSER_VERSION = 'v38-fix-first-frame-blank-2026-04-30';
 console.log(`[Composer] Loaded version: ${COMPOSER_VERSION}`);
@@ -5662,6 +5668,13 @@ export async function convertWebmToMp4ServerSide(
 ): Promise<Blob> {
   if (webmBlob.type.includes('mp4')) return webmBlob;
 
+  // 0. Trop gros pour le serveur ? On le dit AVANT de téléverser. Le plafond
+  //    vient du serveur ; injoignable → on laisse le serveur trancher (413).
+  const plafond = await plafondConversionServeur();
+  if (plafond !== null && webmBlob.size > plafond) {
+    throw new Error(messageSourceTropVolumineuse(webmBlob.size, plafond));
+  }
+
   onProgress?.(5, 'Upload pour conversion serveur...');
 
   // 1. Get a signed upload URL
@@ -5695,15 +5708,16 @@ export async function convertWebmToMp4ServerSide(
 
   onProgress?.(35, 'Conversion serveur (FFmpeg natif)...');
 
-  // 3. Trigger server-side conversion
-  const convRes = await fetch('/api/convert/to-mp4', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ videoUrl: signedData.publicUrl }),
+  // 3. Trigger server-side conversion — un 429 (« déjà en cours ») est
+  //    attendu puis retenté, en le disant à l'écran.
+  const convRes = await appelerConversionMp4(signedData.publicUrl, {
+    onAttente: (message, secondes) => onProgress?.(35, `${message} Nouvel essai dans ${secondes} s…`),
   });
   const convData = await convRes.json();
   if (!convRes.ok || !convData.success || !convData.mp4Url) {
-    throw new Error(`Server fallback: conversion failed (${convData.error || convRes.status})`);
+    const plafondInfo = convRes.status === 413 && typeof convData.maxOctets === 'number'
+      ? ` — maximum ${libelleOctets(convData.maxOctets)}` : '';
+    throw new Error(`Server fallback: conversion failed (${convData.error || convRes.status}${plafondInfo})`);
   }
 
   onProgress?.(80, 'Téléchargement MP4 serveur...');
