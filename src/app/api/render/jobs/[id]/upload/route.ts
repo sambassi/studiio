@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Readable } from 'stream';
 import { auth } from '@/lib/auth/config';
 import { lireRendu, cloreRendu } from '@/lib/rendus/service';
-import { clientMinio } from '@/lib/storage/minio-client';
+import { clientMinio, signeurPublic } from '@/lib/storage/minio-client';
 import {
   TAILLE_MAXIMALE, typeTeleversementAutorise,
+  cibleTeleversement, urlSortieSure, PRESIGNE_TTL_S,
 } from '@/lib/rendus/cible-upload';
 
 export const dynamic = 'force-dynamic';
@@ -133,6 +134,73 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ ok: true, taille });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : 'televersement impossible';
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+/**
+ * POST : la cible d'envoi d'un montage DEJA compose (PR-C).
+ *
+ * Meme route que le relais, autre methode : `POST` demande OU envoyer, `PUT`
+ * envoie par le relais. Le client des rendus ne parle ainsi qu'aux routes
+ * jobs / upload / confirm / cancel (contrat `rendu-serveur-isolement`).
+ *
+ * Appelee par `rendreEtFacturer` entre la composition et le PUT -- jamais a
+ * la reservation : une URL presignee remise avant la composition devait
+ * survivre a celle-ci (900 s), et survivait d'autant a la confirmation.
+ *
+ * Remise seulement :
+ *   - au proprietaire de la tentative (inconnue ou d'autrui -> 404, meme
+ *     reponse, pour ne pas reveler l'existence d'une tentative d'un tiers) ;
+ *   - tant qu'elle est `reserved` (confirmee, annulee, echouee -> 409).
+ *
+ * Mode direct : URL presignee de `PRESIGNE_TTL_S` secondes vers le DEPOT
+ * (`cleDepot`), que seul `/confirm` recopie sur la cle du rendu, et seulement
+ * tant que la tentative est `reserved`. Sinon : le relais same-origin.
+ *
+ * Aucun champ de la requete n'est lu : bucket et cle viennent de la ligne.
+ */
+export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { rendu, socleAbsent } = await lireRendu(session.user.id, params.id);
+    if (socleAbsent) {
+      return NextResponse.json(
+        { ok: false, error: 'Rendu indisponible : migration des rendus non appliquee.' },
+        { status: 503 },
+      );
+    }
+    if (!rendu) {
+      return NextResponse.json({ ok: false, error: 'Rendu introuvable' }, { status: 404 });
+    }
+    if (rendu.etat !== 'reserved') {
+      return NextResponse.json(
+        { ok: false, error: 'Tentative close', motif: 'non_reserve', etat: rendu.etat },
+        { status: 409 },
+      );
+    }
+
+    const cible = await cibleTeleversement(
+      rendu.id, rendu.bucket, rendu.cle_objet, signeurPublic(),
+    );
+    if (!urlSortieSure(cible.url)) {
+      return NextResponse.json(
+        { ok: false, error: 'Televersement indisponible' }, { status: 503 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      uploadUrl: cible.url,
+      uploadMode: cible.mode,
+      ...(cible.mode === 'direct' ? { expireDansS: PRESIGNE_TTL_S } : {}),
+    });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'cible indisponible';
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

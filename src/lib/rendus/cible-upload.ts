@@ -34,13 +34,44 @@
 import type { ClientStockage } from '@/lib/storage/minio-client';
 
 /**
- * Duree de validite d'une URL presignee, en secondes.
+ * Duree de validite d'une URL presignee de RENDU, en secondes.
  *
- * Quinze minutes : de quoi envoyer un montage lourd sur une connexion
- * mediocre, sans laisser trainer une autorisation d'ecriture apres coup.
- * Meme valeur que les rushes, volontairement.
+ * ⚠️ PR-C : 900 s -> 300 s, et la signature n'est plus remise a la
+ * reservation mais APRES la composition (`POST /api/render/jobs/<id>/upload`).
+ *
+ * La mesure qui fixe la valeur :
+ *
+ *   - MinIO verifie l'expiration a l'AUTHENTIFICATION de la requete, donc au
+ *     debut du PUT : un envoi commence a temps se termine, quelle que soit sa
+ *     duree. En theorie quelques secondes suffiraient, puisque le navigateur
+ *     envoie aussitot la cible recue.
+ *   - Mais un mandataire qui tamponne le corps (Traefik, un CDN) ne transmet
+ *     les en-tetes qu'une fois le corps recu. Il faut donc couvrir l'envoi
+ *     ENTIER du plus gros montage accepte : `TAILLE_MAXIMALE` (512 Mio) a
+ *     20 Mbit/s montants = 512 x 8,39 / 20 ~ 215 s ; marge x 1,4 -> 300 s.
+ *     Un montage d'assistant (quelques dizaines de Mo) part en moins de 30 s.
+ *
+ * Ce que la duree ne fait PAS : revoquer l'URL. MinIO ne sait pas qu'une
+ * tentative a ete confirmee. C'est pourquoi l'URL presignee ne vise jamais la
+ * cle du rendu, mais son DEPOT (`cleDepot`) : la confirmation recopie le depot
+ * sur la cle du rendu, et un envoi tardif vers le depot n'est plus jamais
+ * recopie. Ecrire apres la confirmation ne change donc plus le rendu paye.
  */
-export const PRESIGNE_TTL_S = 900;
+export const PRESIGNE_TTL_S = 300;
+
+/**
+ * La cle de DEPOT d'un rendu : la seule qu'une URL presignee designe.
+ *
+ * Derivee de la cle du rendu (donc du serveur), dans le meme dossier du
+ * compte : elle herite de la politique du relais de lecture (proprietaire
+ * seul, ou jeton). `moi/rendus/<id>.webm` -> `moi/rendus/<id>.depot.webm`.
+ */
+export function cleDepot(cle: string): string {
+  const m = /^(.*?)(\.[A-Za-z0-9]{1,8})?$/.exec(cle);
+  const base = m?.[1] ?? cle;
+  const ext = m?.[2] ?? '';
+  return `${base}.depot${ext}`;
+}
 
 /** Types acceptes a l'ENTREE du relais. Tout le reste est refuse. */
 export const TYPES_TELEVERSEMENT = [
@@ -132,7 +163,8 @@ export async function cibleTeleversement(
 ): Promise<CibleUpload> {
   if (signeur) {
     try {
-      const url = await signeur.presignedPutObject(bucket, cle, PRESIGNE_TTL_S);
+      // Le DEPOT, jamais la cle du rendu : voir `PRESIGNE_TTL_S`.
+      const url = await signeur.presignedPutObject(bucket, cleDepot(cle), PRESIGNE_TTL_S);
       if (urlSortieSure(url)) return { url, mode: 'direct' };
       console.error('[Rendus] URL presignee refusee par la garde de sortie — repli sur le relais');
     } catch (e) {

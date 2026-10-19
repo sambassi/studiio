@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { lireRendu } from '@/lib/rendus/service';
 import { confirmerAvecPreuve } from '@/lib/rendus/confirmation';
+import { promouvoirDepot } from '@/lib/rendus/depot';
 
 /**
  * Confirme une tentative — et c'est la SEULE porte par laquelle un credit
@@ -34,6 +35,23 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     // revelerait l'existence d'une tentative d'un tiers.
     if (!rendu) {
       return NextResponse.json({ ok: false, error: 'Rendu introuvable' }, { status: 404 });
+    }
+
+    // ── PR-C : le DEPOT de l'URL presignee ───────────────────────────
+    // L'URL presignee (mode direct) n'ecrit jamais la cle du rendu, mais son
+    // depot. Tant que la tentative est `reserved`, on recopie le depot sur la
+    // cle du rendu ; ensuite, plus jamais : un envoi tardif vers le depot,
+    // meme avec une URL encore valide, n'atteint plus le montage confirme.
+    // Sans endpoint public, aucun depot ne peut exister : rien n'est tente.
+    // Le debit, lui, reste entierement dans `confirmerAvecPreuve`, inchange.
+    if (rendu.etat === 'reserved' && process.env.MINIO_PUBLIC_ENDPOINT) {
+      const promotion = await promouvoirDepot(rendu.bucket, rendu.cle_objet);
+      if (promotion === 'injoignable') {
+        return NextResponse.json(
+          { ok: false, error: 'Stockage injoignable', motif: 'stockage_injoignable' },
+          { status: 503 },
+        );
+      }
     }
 
     // Preuve + politique : la logique vit dans `confirmerAvecPreuve`, la
