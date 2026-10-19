@@ -610,6 +610,16 @@ export async function reprendreGenerationEnAttente(
   // sinon le moteur par défaut du serveur.
   const moteur: MoteurAvatar = (MOTEURS_AVATAR as readonly string[]).includes(ligne.engine ?? '')
     ? (ligne.engine as MoteurAvatar) : moteurAvatar(env);
+  // GARDE-FOU ADMIN : la reprise ne fait jamais partir chez HeyGen un moteur
+  // fermé sur ce serveur pour un compte exempté (ligne réservée avant le
+  // garde-fou). Close, aucun appel.
+  if (!moteursAutorises(env).includes(moteur)) {
+    const refus = refusMoteurCompteExempte(moteur, await compteExempteDeCredits(ligne.user_id), env);
+    if (refus) {
+      await abandonnerAttente(ligne, refus);
+      return 'abandonnee';
+    }
+  }
   const issue = await lancerChezHeyGen({
     generationId: ligne.id, userId: ligne.user_id, providerAvatarId: jumeau.prive.providerAvatarId,
     providerVoiceId: jumeau.prive.providerVoiceId, spoken: ligne.script, aspectRatio,
