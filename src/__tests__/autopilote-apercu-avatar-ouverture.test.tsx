@@ -98,6 +98,9 @@ describe('Aperçu Autopilote — avatar coché, dès l’ouverture du panneau (�
   it('la vignette de l’avatar remonte aussi (lecture de /api/avatars)', async () => {
     const resumes = ouvrir();
     await waitFor(() => expect(dernier(resumes)?.avatar.vignette?.url).toBe('/api/avatars/versions/ver-1/source'));
+    // La séquence Vidéo de l'aperçu affiche CETTE image (jamais un cadre vide).
+    const media = mediaApercuAutopilote(dernier(resumes), { rushUrls: configServeur.rushUrls, actives: null });
+    expect(media.type === 'avatar' ? media.url : null).toBe('/api/avatars/versions/ver-1/source');
   });
 
   it('avatar pas prêt → l’aperçu garde la règle d’avant (pas d’avatar)', async () => {
