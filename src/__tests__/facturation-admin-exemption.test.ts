@@ -138,6 +138,7 @@ describe('#562 — coût fournisseur AVANT l’appel (admin, Mon avatar)', () =>
 
   it('⚠️ E. admin : 0 crédit Studiio ET le coût HeyGen du bon moteur (Avatar IV = qualité « qualite »)', async () => {
     exemption.admin = true;
+    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_iii,avatar_iv,avatar_v'; // ouverts explicitement (garde-fou admin)
     const j = await (await envoyer({ script: 'Un deux trois quatre cinq six sept huit neuf dix onze douze treize.', qualite: 'qualite' })).json();
     expect(j.devis).toMatchObject({ moteur: 'avatar_iv', creditsStudiio: 0 });
     // 13 mots ≈ 5 s → 4–6 s à 4,83 $/min.
@@ -198,6 +199,7 @@ describe('#562 bis — la QUALITÉ choisie = le moteur envoyé = le devis = la t
   for (const [qualite, moteur] of [['standard', 'avatar_iii'], ['qualite', 'avatar_iv'], ['premium', 'avatar_v']] as const) {
     it(`⚠️ ${qualite} → devis ${moteur}, ${moteur} ENVOYÉ, ${moteur} enregistré sur la génération`, async () => {
       exemption.admin = true;
+      process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_iii,avatar_iv,avatar_v'; // ouverts explicitement (garde-fou admin)
       heygen.moteursLook = ['avatar_iii', 'avatar_iv', 'avatar_v'];
       const devis = (await (await envoyer({ script: 'Bonjour à tous.', qualite })).json()).devis;
       expect(devis.moteur).toBe(moteur);
@@ -237,5 +239,59 @@ describe('#562 bis — la QUALITÉ choisie = le moteur envoyé = le devis = la t
     expect(res.status).toBe(200);
     expect(moteurEnvoye()).toBe('avatar_iii');
     expect(base.generations[0].engine).toBe('avatar_iii');
+  });
+});
+
+describe('Garde-fou mise en production — moteurs autorisés pour un compte ADMIN (Mon avatar)', () => {
+  const envoyer = (corps: Record<string, unknown>) => POST(new NextRequest('https://studiio.pro/api/avatar/generate', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(corps),
+  }));
+  const rienAppele = () => {
+    expect(heygen.appels).toEqual([]);
+    expect(base.generations).toEqual([]);
+    expect(credits.journal).toEqual([]);
+  };
+
+  for (const [qualite, libelle] of [['qualite', 'Avatar IV'], ['premium', 'Avatar V']] as const) {
+    it(`⚠️ admin, ${qualite} (${libelle}) NON listé dans AVATAR_MOTEURS_AUTORISES → 403, 0 appel HeyGen (même la lecture du look), 0 ligne, 0 débit — même confirmé`, async () => {
+      exemption.admin = true;
+      heygen.moteursLook = ['avatar_iii', 'avatar_iv', 'avatar_v'];
+      for (const corps of [{ qualite }, { qualite, confirmationCoutFournisseur: true, moteurConfirme: qualite === 'qualite' ? 'avatar_iv' : 'avatar_v' }]) {
+        const res = await envoyer({ script: 'Bonjour à tous.', ...corps });
+        expect(res.status).toBe(403);
+        const j = await res.json();
+        expect(j.code).toBe('moteur_non_autorise');
+        expect(j.error).toContain(libelle);
+      }
+      rienAppele();
+    });
+  }
+
+  it('⚠️ admin, qualité ENREGISTRÉE « qualite » (aucune qualité dans la requête) → 403 aussi', async () => {
+    exemption.admin = true;
+    base.settings = [{ user_id: U, creator_preferences: { qualitesAvatar: { [avatar().id as string]: 'qualite' } } }];
+    expect((await envoyer({ script: 'Bonjour à tous.', confirmationCoutFournisseur: true })).status).toBe(403);
+    rienAppele();
+  });
+
+  it('admin, Avatar IV OUVERT par AVATAR_MOTEURS_AUTORISES → la garde 428 + devis reprend la main', async () => {
+    exemption.admin = true;
+    process.env.AVATAR_MOTEURS_AUTORISES = 'avatar_iv';
+    const res = await envoyer({ script: 'Bonjour à tous.', qualite: 'qualite' });
+    expect(res.status).toBe(428);
+    expect((await res.json()).devis.moteur).toBe('avatar_iv');
+  });
+
+  it('admin, Standard (Avatar III, moteur par défaut) → toujours permis (428 puis 1 appel)', async () => {
+    exemption.admin = true;
+    expect((await envoyer({ script: 'Bonjour à tous.', qualite: 'standard' })).status).toBe(428);
+    expect((await envoyer({ script: 'Bonjour à tous.', qualite: 'standard', confirmationCoutFournisseur: true, moteurConfirme: 'avatar_iii' })).status).toBe(200);
+    expect(heygen.args[0]).toMatchObject({ moteur: 'avatar_iii' });
+  });
+
+  it('⚠️ témoin — utilisateur NON admin : règles inchangées, « qualite » envoie toujours Avatar IV sans variable', async () => {
+    const res = await envoyer({ script: 'Bonjour à tous.', qualite: 'qualite' });
+    expect(res.status).toBe(200);
+    expect((heygen.args[0] as { moteur?: string }).moteur).toBe('avatar_iv');
   });
 });

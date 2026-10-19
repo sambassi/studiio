@@ -74,7 +74,7 @@ import { fournisseurDisponible, signalerRefusDeSolde } from '@/lib/fournisseurs/
 import { mettreEnAttente, prendreReprise, lireMarqueurAttente, estEnAttenteFournisseur, ATTENTE_MAX_MS } from '@/lib/avatar/attente-fournisseur';
 import type { MoteurAvatar } from '@/lib/avatar/moteurs';
 import { resoudreJumeauDuCompte, scriptsDuJumeau, moteurJumeauDisponiblePour, type MotifJumeau } from '@/lib/avatar/jumeau';
-import { moteurPourMonAvatar, motifPremium, moteurAvatar, MOTEURS_AVATAR } from '@/lib/avatar/moteurs';
+import { moteurPourMonAvatar, motifPremium, moteurAvatar, MOTEURS_AVATAR, moteursAutorises, refusMoteurCompteExempte } from '@/lib/avatar/moteurs';
 import { animerAvatarDidSurMaVoix, FOURNISSEUR_DID } from '@/lib/avatar/did';
 import { synthetiserAvecVoix, cleElevenLabs } from '@/lib/voice/synthese';
 import { cleAudioAvatar, retirerObjetPriveAvatar } from '@/lib/avatar/source';
@@ -185,6 +185,15 @@ export async function genererVideoJumeau(
   const moteur = moteurJumeauDisponiblePour(fournisseur, env);
   if (!moteur.disponible || (fournisseur !== 'heygen' && fournisseur !== FOURNISSEUR_DID)) {
     return { ok: false, motif: 'moteur_indisponible', message: moteur.message ?? 'La génération vidéo avec votre jumeau numérique n’est pas encore disponible.' };
+  }
+
+  // 1 a bis. GARDE-FOU ADMIN : un compte exempté de crédits n'a droit qu'aux
+  //          moteurs HeyGen ouverts sur ce serveur — manuel OU cron, avant
+  //          tout débit et tout appel. (Lecture du compte seulement si le
+  //          moteur est fermé : rien ne change pour les moteurs ouverts.)
+  if (fournisseur === 'heygen' && !moteursAutorises(env).includes(choixMoteur.moteur)) {
+    const refus = refusMoteurCompteExempte(choixMoteur.moteur, await compteExempteDeCredits(args.userId), env);
+    if (refus) return { ok: false, motif: 'moteur_indisponible', message: refus };
   }
 
   // 1 bis. Jumeau VIDÉO chez le fournisseur principal : TEMPORAIREMENT réservé

@@ -35,6 +35,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Compte administrateur : refusé AVANT toute écriture (aucune demande
+  // enregistrée). La garde `verifications` de la bibliothèque reste en renfort.
+  if (isAdmin(session?.user?.email)) {
+    return NextResponse.json(
+      { success: false, error: 'Compte administrateur protégé : il ne peut pas être supprimé par cette route.' },
+      { status: 403 },
+    );
+  }
+
   const deps = { ...dependancesReelles(), estCompteProtege: isAdmin };
   let code: string;
   try {
