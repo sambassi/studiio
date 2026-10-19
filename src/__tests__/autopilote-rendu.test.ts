@@ -186,9 +186,9 @@ describe('Le rendu serveur, et rien d autre', () => {
     expect(enTete).not.toContain("from '@remotion/");
   });
 
-  it('le fichier téléversé va dans le même compartiment que le chemin manuel', () => {
-    const manuelle = readFileSync(resolve(__dirname, '../app/api/render/route.ts'), 'utf-8');
-    expect(manuelle).toContain("bucket: 'videos'");
+  it('le fichier téléversé va dans le compartiment `videos` (celui de l’ancien chemin manuel)', () => {
+    // L'ancien chemin manuel (`/api/render`, fermé en 410 par PR-A) écrivait
+    // dans `videos` : l'Autopilote garde ce compartiment.
     expect(rendu).toContain("export const RENDER_BUCKET = 'videos';");
   });
 
