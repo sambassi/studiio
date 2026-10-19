@@ -37,8 +37,13 @@ export interface CtaAutopilote {
 /** Le CTA de l'Autopilote : la règle de Créer, telle quelle, et où se trouve l'action. */
 export function ctaAutopilote(tagLine: string | null | undefined, brief: { cta?: string | null } | null | undefined): CtaAutopilote {
   const c = avecCtaDuBrief({ cta: tagLine ?? '', ctaSub: '' }, brief);
+  return { ...c, actionEnPetiteLigne: actionEnPetiteLigne(c, brief) };
+}
+
+/** La petite ligne d'un CTA déjà résolu (`avecCtaDuBrief`) est-elle l'action du brief ? */
+export function actionEnPetiteLigne(c: { ctaSub: string }, brief: { cta?: string | null } | null | undefined): boolean {
   const action = (brief?.cta ?? '').trim();
-  return { ...c, actionEnPetiteLigne: !!action && !!c.ctaSub && c.ctaSub === action };
+  return !!action && !!c.ctaSub && c.ctaSub === action;
 }
 
 /**

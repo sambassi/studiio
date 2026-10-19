@@ -45,7 +45,8 @@ import { sequenceSecondsWithVoice, voiceUrls, type VoixParSequence } from '@/lib
  */
 export { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
 import { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
-import { ctaAutopilote, lisibiliteCtaAction } from '@/lib/autopilot/cta-action';
+import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
+import { actionEnPetiteLigne, lisibiliteCtaAction } from '@/lib/autopilot/cta-action';
 
 /**
  * Durée de la séquence vidéo pour un rush donné.
@@ -250,11 +251,11 @@ export function buildAutopilotDesign(
     // panneau, la teinte et l'échelle du CTA en surimpression (#502) — voir
     // `cta-action.ts`. Les autres cas : à l'octet près.
     ...(() => {
-      const c = ctaAutopilote(post.content.tagLine, post.brief);
+      const c = avecCtaDuBrief({ cta: post.content.tagLine ?? '', ctaSub: '' }, post.brief);
       return {
         ctaText: c.cta,
         ...(c.ctaSub ? { ctaSubText: c.ctaSub } : null),
-        ...(c.actionEnPetiteLigne ? lisibiliteCtaAction(c, style.cta?.scale ?? 1) : null),
+        ...(actionEnPetiteLigne(c, post.brief) ? lisibiliteCtaAction(c, style.cta?.scale ?? 1) : null),
       };
     })(),
     // Le jumeau, s'il est monté, REMPLACE le rush pour la séquence « Vidéo ».
