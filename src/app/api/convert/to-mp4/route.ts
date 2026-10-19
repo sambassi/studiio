@@ -81,6 +81,8 @@ export const maxDuration = 300;
 
 const LONGUEUR_MAX_URL = 2048;
 const TAILLE_MIN_OCTETS = 1024;
+/** Délai du dépôt de la sortie (≤ 300 Mio sur le réseau interne MinIO). */
+const DELAI_DEPOT_MS = 120_000;
 
 const REPONSE_401 = { success: false, error: 'Non autorisé' } as const;
 const REPONSE_400 = { success: false, error: 'Requête invalide' } as const;
@@ -242,12 +244,23 @@ export async function POST(req: NextRequest) {
     // 8. Dépôt sous le compte, sous un nom unique — jamais d'écrasement.
     const fileName = `${conversionId}.mp4`;
     const storagePath = `${userId}/converted/${fileName}`;
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from('media')
-      .upload(storagePath, mp4Buffer, {
-        contentType: 'video/mp4',
-        upsert: false,
-      });
+    // Borné dans le temps : un dépôt qui ne répond jamais retiendrait le
+    // jeton indéfiniment — deux suffiraient à fermer la conversion à tous.
+    // Au délai, on rend la main (500) ; le dépôt éventuel en retard laisse au
+    // pire un objet orphelin sous le compte, jamais une réponse fausse.
+    let minuteurDepot: ReturnType<typeof setTimeout> | undefined;
+    const delaiDepot = new Promise<{ error: { message: string } }>((resoudre) => {
+      minuteurDepot = setTimeout(() => resoudre({ error: { message: 'delai_depot' } }), DELAI_DEPOT_MS);
+    });
+    const { error: uploadError } = await Promise.race([
+      supabaseAdmin.storage
+        .from('media')
+        .upload(storagePath, mp4Buffer, {
+          contentType: 'video/mp4',
+          upsert: false,
+        }),
+      delaiDepot,
+    ]).finally(() => clearTimeout(minuteurDepot));
 
     if (uploadError) {
       console.error('[CONVERT-API]', { conversionId, etape: 'depot', outputBytes: mp4Buffer.length });

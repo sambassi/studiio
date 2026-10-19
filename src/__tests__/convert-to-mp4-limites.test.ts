@@ -71,12 +71,15 @@ vi.mock('@/lib/ffmpeg/transcode-to-mp4', () => ({
 // ── Dépôt ──────────────────────────────────────────────────────────────────
 const depots: string[] = [];
 let depotJette = false;
+let depotPendu = false;
+let depotAtteint = false;
 vi.mock('@/lib/db/supabase', () => ({
   supabaseAdmin: {
     storage: {
       from: (bucket: string) => ({
         upload: async (path: string) => {
           if (depotJette) throw new Error('socket hang up');
+          if (depotPendu) { depotAtteint = true; return new Promise(() => {}); } // ne répond jamais
           depots.push(`${bucket}/${path}`);
           return { data: { path }, error: null };
         },
@@ -121,7 +124,7 @@ async function attendrePortes(n: number) {
 function ouvrirPortes() { const p = portes; portes = []; p.forEach((r) => r()); }
 
 beforeEach(() => {
-  tailleAnnoncee = 4096; panneLecture = false; issueFfmpeg = 'ok'; bloquer = false; depotJette = false;
+  tailleAnnoncee = 4096; panneLecture = false; issueFfmpeg = 'ok'; bloquer = false; depotJette = false; depotPendu = false;
   portes = []; conversions.length = 0; depots.length = 0;
   statObject.mockClear(); getObject.mockClear();
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -226,6 +229,29 @@ describe('3. Le jeton revient sur tous les chemins', () => {
     ouvrirPortes();
     await p.catch(() => undefined);
     aucunJeton();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('3 bis. Dépôt qui ne répond jamais', () => {
+  it('délai de dépôt → 500 et jeton rendu (pas de verrou définitif)', async () => {
+    depotPendu = true; depotAtteint = false;
+    // Seuls setTimeout/clearTimeout sont figés : les E/S disque et
+    // setImmediate (l'attente ci-dessous) restent réels.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const p = lancer('u1');
+      for (let i = 0; i < 2000 && !depotAtteint; i++) await new Promise((r) => setImmediate(r));
+      expect(depotAtteint).toBe(true);
+      expect((await Promise.race([p.then(() => 'fini'), new Promise((r) => setImmediate(() => r('pendu')))]))).toBe('pendu');
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect((await p).status).toBe(500);
+    } finally {
+      vi.useRealTimers();
+    }
+    aucunJeton();
+    depotPendu = false;
+    expect((await appeler('u1')).statut).toBe(200);
   });
 });
 
