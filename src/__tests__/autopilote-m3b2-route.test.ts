@@ -880,9 +880,10 @@ describe('Le cadre d exécution', () => {
     // donc le rush entier.
     expect(maxDuration).toBe(480);
     // Les autres routes vidéo, elles, n'ont pas changé : leur travail non plus.
+    // (`src/app/api/render/route.ts` n'y figure plus : PR-A l'a fermée en 410,
+    // elle ne fait plus aucun travail et n'a donc plus de budget.)
     for (const f of [
       'src/app/api/convert/to-mp4/route.ts',
-      'src/app/api/render/route.ts',
     ]) {
       expect(readFileSync(join(process.cwd(), f), 'utf-8'))
         .toContain('export const maxDuration = 300');
