@@ -463,9 +463,59 @@ export function purposeAcceptable(valeur: unknown): boolean {
      que par la route d'enrôlement, qui construit sa clé. Aucun appelant
      n'envoie `purpose: "avatar"` aujourd'hui : ce refus ne casse rien, il
      ferme une porte avant qu'on la découvre. */
-  return valeur !== SEGMENT_NAMESPACE_ANALYSE
-    && valeur !== SEGMENT_NAMESPACE_LUT
-    && valeur !== SEGMENT_NAMESPACE_AVATAR;
+  /* PR-B — `%` refusé : aucun usage légitime n'en porte, et une forme encodée
+     (`%2e`, `%2f`) n'a rien à faire dans un segment de clé. */
+  if (valeur.includes('%')) return false;
+  return !SEGMENTS_RESERVES_SERVEUR.includes(valeur.toLowerCase());
+}
+
+/**
+ * PR-B — les espaces de noms qu'AUCUN navigateur n'écrit par les routes
+ * d'envoi génériques. Chacun a son écrivain serveur, qui construit la clé :
+ *   - `rendus`        : `lib/rendus/service.ts` (la preuve d'un rendu PAYÉ) ;
+ *   - `converted`     : `api/convert/to-mp4`, `api/cron/publish` ;
+ *   - `analyse`       : `lib/autopilot/analyse/extraction.ts` ;
+ *   - `lut`           : `lib/luts/bibliotheque.ts` (route dédiée) ;
+ *   - `avatar`        : `lib/avatar/*` (route d'enrôlement) ;
+ *   - `montages`, `autopilote` : l'Autopilote (`rendu-contrat`, `clip-contrat`) ;
+ *   - `couvertures`   : `lib/social/imageDepuisVideo.ts` (publication) ;
+ *   - `fiches-contenu`: `lib/creer/fiche-contenu-serveur.ts`.
+ * Comparés SANS casse. Aucun appelant du navigateur n'envoie l'un de ces
+ * `purpose` (vérifié : rush, music, voice, thumbnail, image, library, logo,
+ * poster, clip, montage, convert, demo).
+ */
+// Littéraux (et non les constantes `SEGMENT_NAMESPACE_*`) : `LUT` et `AVATAR`
+// sont déclarées plus bas dans ce module — les lire ici lèverait au chargement.
+export const SEGMENTS_RESERVES_SERVEUR: readonly string[] = [
+  'analyse', 'lut', 'avatar', 'rendus', 'converted', 'montages', 'autopilote', 'couvertures', 'fiches-contenu',
+];
+
+/**
+ * PR-B — la clé qu'une route d'envoi GÉNÉRIQUE accepte d'écrire quand elle
+ * vient de la requête (`api/storage/upload`, morceaux multipart).
+ *
+ * Exactement la forme que fabriquent les routes qui délivrent ces clés
+ * (`upload/signed-url`, `upload/multipart` initiate) :
+ * `<userId>/<purpose>/<horodatage ms>-<nom assaini>` — trois segments, rien de
+ * plus. Avant, seul le préfixe `<userId>/` était contrôlé : un compte pouvait
+ * RÉÉCRIRE la preuve de son rendu confirmé (`<userId>/rendus/<id>.webm`),
+ * ses vignettes d'analyse, ses LUT ou la source de son avatar.
+ *   - propriété stricte (`cleDuCompteStrict` : ni `..`, ni `\`, ni `://`) ;
+ *   - aucun `%` (formes encodées), aucun segment vide (`//`) ;
+ *   - `purpose` = `purposeAcceptable` (même règle que les routes POST) ;
+ *   - nom = horodatage + nom assaini : une clé déterministe écrite par le
+ *     serveur sous un `purpose` légitime (`image/<id>-affiche-ia`,
+ *     `library/<nom pexels>`) ne peut pas être visée.
+ */
+export function cleEnvoiGeneriqueAcceptable(cle: unknown, userId: unknown): boolean {
+  if (!cleDuCompteStrict(cle, userId)) return false;
+  const texte = cle as string;
+  if (texte.includes('%')) return false;
+  const segments = texte.split('/');
+  if (segments.length !== 3) return false;
+  const [, purpose, nom] = segments;
+  if (!purposeAcceptable(purpose)) return false;
+  return /^\d{13,}-[a-z0-9._-]+$/.test(nom);
 }
 
 /**

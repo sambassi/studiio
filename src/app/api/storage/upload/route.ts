@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { Client as MinioClient } from 'minio';
 import { ALLOWED_BUCKETS as BUCKETS } from '@/lib/storage/buckets';
+import { cleEnvoiGeneriqueAcceptable } from '@/lib/storage/acces-objet';
 import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
@@ -68,9 +69,13 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing path' }, { status: 400 });
     }
 
-    // Sécurité : le path doit commencer par session.user.id pour qu'un
-    // utilisateur ne puisse pas écraser les fichiers d'un autre.
-    if (!storagePath.startsWith(`${session.user.id}/`)) {
+    // Sécurité : le path doit appartenir STRICTEMENT au compte, ET avoir la
+    // forme exacte que délivre `upload/signed-url` (`<uid>/<purpose>/<ts>-<nom>`,
+    // `purpose` filtré par `purposeAcceptable` comme sur les routes POST).
+    // Avant, seul le préfixe était contrôlé : un compte pouvait réécrire la
+    // preuve de son rendu PAYÉ (`<uid>/rendus/<id>.webm`) ou tout autre objet
+    // écrit par le serveur (analyse, lut, avatar, converted…). PR-B.
+    if (!cleEnvoiGeneriqueAcceptable(storagePath, session.user.id)) {
       console.warn('[storage/upload] path scope mismatch', { sessionUserId: session.user.id, requestedPath: storagePath });
       return NextResponse.json({ success: false, error: 'Path scope mismatch' }, { status: 403 });
     }

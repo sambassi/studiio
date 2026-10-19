@@ -379,8 +379,6 @@ const FAMILLES: Famille[] = [
  */
 const BUCKET_VIGNETTES = 'media';
 
-/** Le segment que le lot B doit refuser dans `media`. */
-const MOTIF_SEGMENT_INTERDIT = /\/analyse\//;
 const CLE_VIGNETTE = `${UTILISATEUR}/analyse/an-1/vignette-01.jpg`;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1140,16 +1138,17 @@ describe('FAUX POSITIF REFERME — `purpose` ne peut plus viser l espace reserve
   });
 
   /**
-   * Le relais d'écriture ne contraint que le PRÉFIXE. Tout le reste de la clé
-   * vient de la chaîne de requête : un compte peut écrire exactement à la
-   * forme d'une vignette, dans son propre espace.
+   * PR-B — le relais d'écriture ne se contente plus du PRÉFIXE : la clé lue
+   * dans la chaîne de requête doit avoir la forme exacte que délivre
+   * `upload/signed-url`, `purpose` filtré par `purposeAcceptable`. Un compte
+   * ne peut plus écrire à la forme d'une vignette, même dans son espace.
    */
-  it('le relais d écriture n exige que le préfixe du compte, rien de plus', () => {
+  it('le relais d écriture exige la forme exacte délivrée par le serveur (PR-B)', () => {
     const code = sansCommentaires(source('src/app/api/storage/upload/route.ts'));
     expect(code).toContain("searchParams.get('path')");
-    expect(code).toContain('storagePath.startsWith(`${session.user.id}/`)');
-    expect(code, 'aucune contrainte de forme au-delà du préfixe')
-      .not.toMatch(MOTIF_SEGMENT_INTERDIT);
+    expect(code).toContain('cleEnvoiGeneriqueAcceptable(storagePath, session.user.id)');
+    expect(code, 'plus de garde au seul préfixe')
+      .not.toContain('storagePath.startsWith(`${session.user.id}/`)');
   });
 
   /**
