@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { clientMinio } from '@/lib/storage/minio-client';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import {
   downloadMediaToFile,
@@ -116,6 +117,32 @@ async function resolveFFmpegPath(): Promise<string> {
   }
 
   return 'ffmpeg'; // system fallback
+}
+
+/**
+ * Dépose la sortie. Sur MinIO (`STORAGE_PROVIDER=s3`, la prod), via un
+ * client à ÉCHÉANCE ABSOLUE (`clientMinio({ timeoutMs })`, socket détruite
+ * au délai) : le client partagé de `supabaseAdmin.storage` n'est pas borné,
+ * et un `putObject` bloqué n'y serait jamais réglé. Hors MinIO, l'adaptateur
+ * historique, inchangé. Même forme de résultat dans les deux cas.
+ */
+async function deposerSortie(
+  storagePath: string,
+  mp4Buffer: Buffer,
+): Promise<{ error: { message: string } | null }> {
+  if ((process.env.STORAGE_PROVIDER || '').toLowerCase() === 's3') {
+    try {
+      await clientMinio({ timeoutMs: DELAI_DEPOT_MS })
+        .putObject('media', storagePath, mp4Buffer, mp4Buffer.length, { 'Content-Type': 'video/mp4' });
+      return { error: null };
+    } catch (err) {
+      return { error: { message: err instanceof Error ? err.message : String(err) } };
+    }
+  }
+  const { error } = await supabaseAdmin.storage
+    .from('media')
+    .upload(storagePath, mp4Buffer, { contentType: 'video/mp4', upsert: false });
+  return { error: error ? { message: error.message } : null };
 }
 
 type StatutTelechargement = 404 | 413 | 500 | 504;
@@ -252,14 +279,12 @@ export async function POST(req: NextRequest) {
     // 500, mais le jeton n'est rendu qu'au RÈGLEMENT réel du dépôt — sinon
     // N requêtes lentes garderaient N buffers en vol hors plafond. Un dépôt
     // qui aboutit en retard est supprimé : la réponse a déjà dit « échec ».
+    // En prod (MinIO), le dépôt passe par un client BORNÉ au même délai,
+    // qui détruit la socket à l'échéance : la promesse se règle donc
+    // toujours, et le jeton ne peut pas rester pris indéfiniment.
     // (ffmpeg et le téléchargement, eux, sont attendus jusqu'au bout : tués
     // ou interrompus par leurs propres délais AVANT que la route ne rende.)
-    const televersement = supabaseAdmin.storage
-      .from('media')
-      .upload(storagePath, mp4Buffer, {
-        contentType: 'video/mp4',
-        upsert: false,
-      });
+    const televersement = deposerSortie(storagePath, mp4Buffer);
     let minuteurDepot: ReturnType<typeof setTimeout> | undefined;
     const delaiDepot = new Promise<'delai'>((resoudre) => {
       minuteurDepot = setTimeout(() => resoudre('delai'), DELAI_DEPOT_MS);
@@ -272,14 +297,20 @@ export async function POST(req: NextRequest) {
       if (jeton.ok) {
         const jetonDepot = jeton;
         liberationDifferee = true;
+        // Le jeton est rendu au RÈGLEMENT du dépôt — pas après la suppression
+        // de l'orphelin, qui ne retient plus de buffer et ne doit pas pouvoir
+        // retenir le jeton.
         void televersement
-          .then(async (r) => {
+          .then((r) => r, () => ({ error: { message: 'rejet' } }))
+          .then((r) => {
+            jetonDepot.liberer();
             if (!r?.error) {
-              await supabaseAdmin.storage.from('media').remove([storagePath]).catch(() => undefined);
-              console.warn('[CONVERT-API]', { conversionId, etape: 'depot_tardif_supprime' });
+              void supabaseAdmin.storage.from('media').remove([storagePath])
+                .then(() => console.warn('[CONVERT-API]', { conversionId, etape: 'depot_tardif_supprime' }))
+                .catch(() => undefined);
             }
-          }, () => undefined)
-          .finally(() => jetonDepot.liberer());
+          })
+          .catch(() => jetonDepot.liberer());
       }
       return NextResponse.json(REPONSE_500, { status: 500 });
     }

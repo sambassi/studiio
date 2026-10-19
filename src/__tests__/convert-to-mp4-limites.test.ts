@@ -42,11 +42,12 @@ const getObject = vi.fn(async () => {
   if (panneLecture) throw new Error('ECONNRESET');
   return Readable.from([Buffer.alloc(4096, 1)]);
 });
+const putObject = vi.fn(async (..._args: unknown[]) => ({ etag: 'x' }));
 vi.mock('@/lib/storage/minio-client', async (importOriginal) => {
   const reel = await importOriginal<Record<string, unknown>>();
   return {
     ...reel,
-    clientMinio: vi.fn(() => ({ statObject, putObject: vi.fn() })),
+    clientMinio: vi.fn(() => ({ statObject, putObject })),
     lecteurMinio: vi.fn(() => ({ getObject, getPartialObject: vi.fn() })),
   };
 });
@@ -142,7 +143,9 @@ beforeEach(() => {
   tailleAnnoncee = 4096; panneLecture = false; issueFfmpeg = 'ok'; bloquer = false; depotJette = false; depotPendu = false; depotAtteint = false;
   reglerDepot = null; suppressions.length = 0;
   portes = []; conversions.length = 0; depots.length = 0;
-  statObject.mockClear(); getObject.mockClear();
+  statObject.mockClear(); getObject.mockClear(); putObject.mockClear();
+  putObject.mockImplementation(async () => ({ etag: 'x' }));
+  delete process.env.STORAGE_PROVIDER;
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -296,6 +299,37 @@ describe('3 bis. Dépôt plus lent que le délai', () => {
     await attendreJeton();
     aucunJeton();
     expect(suppressions).toHaveLength(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('3 ter. Dépôt MinIO (prod) : client à échéance absolue', () => {
+  afterEach(() => { delete process.env.STORAGE_PROVIDER; });
+
+  it('STORAGE_PROVIDER=s3 → dépôt via clientMinio({ timeoutMs: 120000 }), même clé', async () => {
+    process.env.STORAGE_PROVIDER = 's3';
+    const { clientMinio } = await import('@/lib/storage/minio-client');
+    const { statut, corps } = await appeler('u1');
+    expect(statut).toBe(200);
+    expect(clientMinio).toHaveBeenCalledWith({ timeoutMs: 120_000 });
+    expect(putObject).toHaveBeenCalledTimes(1);
+    const [bucket, cle, , taille, entetes] = putObject.mock.calls[0];
+    expect(bucket).toBe('media');
+    expect(cle).toMatch(/^u1\/converted\/[0-9a-f-]{36}\.mp4$/);
+    expect(taille).toBe(8192);
+    expect(entetes).toEqual({ 'Content-Type': 'video/mp4' });
+    expect(depots).toHaveLength(0); // le client partagé non borné n'est pas utilisé
+    expect(corps.mp4Url).toBe(`${ORIGINE}${PREFIXE}media/${cle}`);
+    aucunJeton();
+  });
+
+  it('échéance du client borné (socket détruite) → 500 et jeton rendu', async () => {
+    process.env.STORAGE_PROVIDER = 's3';
+    putObject.mockImplementation(async () => { throw new Error('delai reseau MinIO depasse (120000 ms)'); });
+    const { statut, corps } = await appeler('u1');
+    expect(statut).toBe(500);
+    expect(JSON.stringify(corps)).not.toMatch(/MinIO|120000/);
+    aucunJeton();
   });
 });
 
