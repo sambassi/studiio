@@ -19,6 +19,7 @@ export interface TextesVideo {
   sousTitre?: string | null;
   cartes?: Array<{ titre?: string | null; valeur?: string | null }>;
   cta?: string | null;
+  /** Petite ligne du CTA : si elle porte l'action, le CTA en a une. Absente : ignorée. */
   ctaSecondaire?: string | null;
   /** Temps d'affichage réels (s). `null` = inconnu. */
   fenetres?: {
@@ -194,7 +195,9 @@ export function conseilsTextes(t: TextesVideo): Conseil[] {
   // ── CTA : une action claire ──
   if (t.cta && t.cta.trim()) {
     const nb = motsDe(t.cta).length;
-    const action = aUneAction(t.cta);
+    // La petite ligne compte (`ctaSecondaire`) : « Réserve ton cours » sous un
+    // slogan EST une action. Absente (Créer ne la passe pas) : la règle d'avant.
+    const action = aUneAction(t.cta) || (!!t.ctaSecondaire?.trim() && aUneAction(t.ctaSecondaire));
     const aff = duree(t.fenetres?.cta);
     const problemes: string[] = [];
     if (!action) problemes.push('Ton appel à l\'action ne dit pas quoi faire : c\'est un slogan, pas une action.');
