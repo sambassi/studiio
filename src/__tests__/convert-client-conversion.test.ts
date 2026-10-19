@@ -38,8 +38,18 @@ describe('appelerConversionMp4', () => {
     const res = await appelerConversionMp4('/x.webm', { fetchImpl, onAttente });
     expect(res.status).toBe(200);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(onAttente).toHaveBeenCalledWith(MESSAGE_429, 0);
+    // `Retry-After: 0` → plancher 1 s, jamais une rafale.
+    expect(onAttente).toHaveBeenCalledWith(MESSAGE_429, 1);
     expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual({ videoUrl: '/x.webm' });
+  });
+
+  it('ne retente pas s\'il ne reste plus de quoi couvrir le pire cas serveur', async () => {
+    const { PIRE_CAS_SERVEUR_CONVERSION_MS } = await import('@/lib/ffmpeg/limiteur-conversions');
+    const fetchImpl = vi.fn().mockResolvedValue(r429('30'));
+    // 30 s d'attente + 780 s de pire cas > 800 s restants → pas de nouvel essai.
+    const res = await appelerConversionMp4('/x.webm', { fetchImpl, echeanceMs: PIRE_CAS_SERVEUR_CONVERSION_MS + 20_000 });
+    expect(res.status).toBe(429);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('échéance atteinte → le 429 revient tel quel, message explicite lisible', async () => {
@@ -129,6 +139,28 @@ describe('Repli Bureau — convertWebmToMp4ServerSide', () => {
 });
 
 describe('transcodeWebmToMp4WithLadder — abandon', () => {
+  it('ne se règle qu\'à la MORT réelle du processus, même s\'il ignore SIGTERM', async () => {
+    const { transcodeWebmToMp4WithLadder } = await vi.importActual<typeof import('@/lib/ffmpeg/transcode-to-mp4')>('@/lib/ffmpeg/transcode-to-mp4');
+    const { existsSync, readFileSync } = await import('fs');
+    const dossier = mkdtempSync(join(tmpdir(), 'prf-ffmpeg-'));
+    const faux = join(dossier, 'ffmpeg');
+    const pidFichier = join(dossier, 'pid');
+    // Ignore SIGTERM (hérité par exec) : seul SIGKILL l'arrête.
+    writeFileSync(faux, `#!/bin/sh\ntrap '' TERM\necho $$ > "${pidFichier}"\nexec sleep 30\n`);
+    chmodSync(faux, 0o755);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const c = new AbortController();
+    const p = transcodeWebmToMp4WithLadder(faux, '/in.webm', join(dossier, 'out.mp4'), '[T]', { signal: c.signal });
+    for (let i = 0; i < 500 && !existsSync(pidFichier); i++) await new Promise((r) => setTimeout(r, 10));
+    const pid = Number(readFileSync(pidFichier, 'utf8').trim());
+    c.abort();
+    await expect(p).rejects.toThrow(/abandonnée/);
+    // Au règlement, le processus n'existe plus.
+    expect(() => process.kill(pid, 0)).toThrow();
+  }, 20000);
+
   it('le signal TUE le ffmpeg en cours et arrête l\'échelle (pas de palier suivant)', async () => {
     const { transcodeWebmToMp4WithLadder } = await vi.importActual<typeof import('@/lib/ffmpeg/transcode-to-mp4')>('@/lib/ffmpeg/transcode-to-mp4');
     // Un faux ffmpeg qui dort 30 s : seul un vrai kill le fait finir vite.

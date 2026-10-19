@@ -9,15 +9,19 @@
  *   alors le serveur trancher (413 avant lecture), rien n'est bloqué.
  * - `appelerConversionMp4()` fait le POST et, sur 429 (« une conversion est
  *   déjà en cours »), attend `Retry-After` puis RETENTE, en prévenant
- *   l'écran ; tant que l'échéance globale le permet. Au-delà, le 429 est
+ *   l'écran ; seulement s'il reste ensuite de quoi couvrir le pire cas
+ *   serveur avant l'échéance globale (sinon le client couperait lui-même
+ *   une conversion légitime). Au-delà, le 429 est
  *   rendu tel quel : son message est explicite et l'appelant l'affiche.
  *
  * Aucun import serveur : ce module part dans le bundle client.
  */
-import { ATTENTE_CLIENT_CONVERSION_MS } from '@/lib/ffmpeg/limiteur-conversions';
+import { ATTENTE_CLIENT_CONVERSION_MS, PIRE_CAS_SERVEUR_CONVERSION_MS } from '@/lib/ffmpeg/limiteur-conversions';
 
 const ROUTE = '/api/convert/to-mp4';
 const RETRY_AFTER_DEFAUT_S = 30;
+/** Plancher : un `Retry-After: 0` ne doit jamais devenir une rafale. */
+const RETRY_AFTER_MIN_S = 1;
 const RETRY_AFTER_MAX_S = 60;
 
 type Fetch = typeof fetch;
@@ -79,9 +83,11 @@ export async function appelerConversionMp4(
     if (res.status !== 429) return res;
 
     const brut = Number.parseInt(res.headers.get('retry-after') ?? '', 10);
-    const secondes = Math.min(RETRY_AFTER_MAX_S, Math.max(0, Number.isFinite(brut) ? brut : RETRY_AFTER_DEFAUT_S));
-    // Plus le temps d'attendre : le 429 part tel quel, avec son message.
-    if (Date.now() + secondes * 1000 >= fin) return res;
+    const secondes = Math.min(RETRY_AFTER_MAX_S, Math.max(RETRY_AFTER_MIN_S, Number.isFinite(brut) ? brut : RETRY_AFTER_DEFAUT_S));
+    // On ne retente que s'il reste, APRÈS l'attente, de quoi couvrir le pire
+    // cas serveur : sinon l'échéance du client couperait une conversion
+    // légitime. Plus le temps : le 429 part tel quel, avec son message.
+    if (Date.now() + secondes * 1000 + PIRE_CAS_SERVEUR_CONVERSION_MS > fin) return res;
 
     let message = 'Une conversion est déjà en cours.';
     try {

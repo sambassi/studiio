@@ -47,9 +47,6 @@ import { fontStack, ensureFontsLoaded } from '@/lib/fonts/catalog';
 import { CURRENT_COMPOSER_VERSION } from '@/lib/video-composer';
 import { appelerConversionMp4, libelleOctets } from '@/lib/convert/client-conversion';
 import { ATTENTE_CLIENT_CONVERSION_MS } from '@/lib/ffmpeg/limiteur-conversions';
-
-/** L'attente du client, en minutes, pour les messages (PR-F). */
-const ATTENTE_CONVERSION_MIN = Math.round(ATTENTE_CLIENT_CONVERSION_MS / 60_000);
 import {
   montageEstPerime, messageMontagePerime, leverMontagePerime,
 } from '@/lib/creer/postMetadata/from-wizard';
@@ -86,6 +83,9 @@ import { CardIcon } from '@/components/ui/CardIcon';
 import { dimensionsDuPost, formatDuPost, formatRenduFacturation, ratioCss } from '@/lib/format/projet';
 import { ConseilsVideo } from '@/components/creer/ConseilsVideo';
 import { useAgentIAEnabled } from '@/lib/hooks/useAgentIAEnabled';
+
+/** L'attente du client, en minutes, pour les messages (PR-F). */
+const ATTENTE_CONVERSION_MIN = Math.round(ATTENTE_CLIENT_CONVERSION_MS / 60_000);
 
 interface PostBranding {
   watermarkText?: string;

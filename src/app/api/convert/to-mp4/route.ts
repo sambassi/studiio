@@ -27,7 +27,9 @@ import {
   originesStockageConfigurees,
 } from '@/lib/storage/acces-objet';
 
-// Allow up to 300s for video conversion (Vercel Pro plan)
+// Hérité de Vercel ; SANS effet en auto-hébergé (Coolify). Le pire cas réel
+// est borné par les délais internes (téléchargement + échelle + dépôt =
+// `PIRE_CAS_SERVEUR_CONVERSION_MS`, 780 s), et le client attend au-delà.
 export const maxDuration = 300;
 
 /**

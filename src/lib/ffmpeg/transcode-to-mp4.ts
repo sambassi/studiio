@@ -1,7 +1,24 @@
-import { execFile } from 'child_process';
+import { execFile, type ChildProcess } from 'child_process';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+
+/** Délai laissé à ffmpeg pour quitter sur SIGTERM avant SIGKILL. */
+const GRACE_ARRET_MS = 5_000;
+
+/** Se règle quand le processus est RÉELLEMENT terminé (SIGKILL au besoin). */
+async function attendreArretReel(enfant: ChildProcess | undefined): Promise<void> {
+  if (!enfant || enfant.exitCode !== null || enfant.signalCode !== null) return;
+  await new Promise<void>((resoudre) => {
+    const fini = () => { clearTimeout(minuteur); resoudre(); };
+    enfant.once('exit', fini);
+    const minuteur = setTimeout(() => {
+      try { enfant.kill('SIGKILL'); } catch { /* déjà mort */ }
+    }, GRACE_ARRET_MS);
+    // Re-vérifie après l'abonnement : la sortie a pu arriver entre-temps.
+    if (enfant.exitCode !== null || enfant.signalCode !== null) fini();
+  });
+}
 
 /**
  * Server-side WebM → MP4 transcode with progressive quality ladder.
@@ -128,17 +145,26 @@ export async function transcodeWebmToMp4WithLadder(
     }
     const attemptStart = Date.now();
     console.log(`${logPrefix} Attempting ${attempt.label} (timeout ${attempt.timeoutMs / 1000}s)`);
+    const lancement = execFileAsync(ffmpegPath, buildFFmpegArgs(inputPath, outputPath, attempt), {
+      timeout: attempt.timeoutMs,
+      maxBuffer: 10 * 1024 * 1024,
+      ...(signal ? { signal } : {}),
+    });
     try {
-      const result = await execFileAsync(ffmpegPath, buildFFmpegArgs(inputPath, outputPath, attempt), {
-        timeout: attempt.timeoutMs,
-        maxBuffer: 10 * 1024 * 1024,
-        ...(signal ? { signal } : {}),
-      });
+      const result = await lancement;
       const elapsedMs = Date.now() - start;
       const attemptMs = Date.now() - attemptStart;
       console.log(`${logPrefix} ✅ Succeeded with ${attempt.label} in ${(attemptMs / 1000).toFixed(1)}s (total ${(elapsedMs / 1000).toFixed(1)}s)`);
       return { attempt: attempt.label, stderr: result.stderr || '', elapsedMs };
     } catch (err: unknown) {
+      // Abandon : execFile rejette DÈS l'envoi de SIGTERM, pas à la mort du
+      // processus. On attend sa fin réelle (SIGKILL après un délai de grâce)
+      // pour que l'appelant ne rende son jeton — ni ne supprime les fichiers
+      // temporaires — qu'une fois ffmpeg vraiment arrêté.
+      if (signal?.aborted) {
+        await attendreArretReel((lancement as unknown as { child?: ChildProcess }).child);
+        throw new Error(`${logPrefix} conversion abandonnée par le client`);
+      }
       const errObj = err as { stderr?: string; message?: string; code?: number; killed?: boolean };
       lastStderr = errObj.stderr || '';
       lastError = err as Error;
