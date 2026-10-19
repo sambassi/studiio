@@ -393,12 +393,13 @@ describe('Rendu Reel / TV', () => {
     expect(debits()).toEqual([prix]);
   });
 
-  it.each([['reel', 'AfroboostReel', 11], ['tv', 'AfroboostTV', 17]] as const)('%s : route historique POST /api/render débite %i', async (format, compositionId, prix) => {
+  // PR-A : la route historique POST /api/render est FERMÉE (410). Elle ne
+  // débite plus rien, à aucun prix : le seul chemin facturé est /api/render/jobs.
+  it.each([['reel', 'AfroboostReel'], ['tv', 'AfroboostTV']] as const)('%s : route historique POST /api/render fermée — 410, aucun débit', async (format, compositionId) => {
     const res = await post(RENDER, { compositionId, format });
-    const j = await res.json();
-    expect(j.creditsCharged).toBe(prix);
-    expect(solde()).toBe(SOLDE - prix);
-    expect(base.tables.credit_transactions.find((x) => x.type === 'render')?.amount).toBe(-prix);
+    expect(res.status).toBe(410);
+    expect(solde()).toBe(SOLDE);
+    expect(base.tables.credit_transactions.find((x) => x.type === 'render')).toBeUndefined();
   });
 
   it('admin : /api/tarifs rend le prix public, /api/credits/deduct n’appelle AUCUNE RPC, la réservation est en frais partenaires', async () => {
@@ -413,25 +414,24 @@ describe('Rendu Reel / TV', () => {
     expect(solde()).toBe(SOLDE);
   });
 
-  // Corrigé : la route historique /api/render applique la même exemption
-  // administrateur que tous les parcours (aucun écran ne l'appelle encore).
-  it('admin : POST /api/render (historique) ne débite rien', async () => {
+  // PR-A : fermée pour tous, administrateur compris (aucun écran ne l'appelait).
+  it('admin : POST /api/render (historique) fermée — 410, ne débite rien', async () => {
     devenirAdmin();
     const res = await post(RENDER, { compositionId: 'AfroboostReel', format: 'reel' });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(410);
     expect(solde()).toBe(SOLDE);
   });
 });
 
 describe('Rendu infographique', () => {
-  it('affiché 27 (/api/tarifs) = coutRenduVideo(infographic) = débit de POST /api/render (InfographicReel / InfographicTV)', async () => {
+  it('affiché 27 (/api/tarifs) = coutRenduVideo(infographic) ; POST /api/render (fermée) ne débite plus (InfographicReel / InfographicTV)', async () => {
     expect((await prixEcran()).prix['render.infographic']).toBe(27);
     expect(await coutRenduVideo('infographic')).toBe(27);
     for (const [compositionId, format] of [['InfographicReel', 'reel'], ['InfographicTV', 'tv']] as const) {
       const avant = solde();
-      const j = await (await post(RENDER, { compositionId, format })).json();
-      expect(j.creditsCharged, compositionId).toBe(27);
-      expect(avant - solde(), compositionId).toBe(27);
+      const res = await post(RENDER, { compositionId, format });
+      expect(res.status, compositionId).toBe(410);
+      expect(avant - solde(), compositionId).toBe(0);
     }
   });
 });
