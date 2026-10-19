@@ -9,8 +9,15 @@ import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import {
   downloadMediaToFile,
   ErreurTelechargement,
-  MAX_MEDIA_DOWNLOAD_BYTES,
 } from '@/lib/storage/fetch-media';
+import {
+  limiteurConversions,
+  MESSAGE_CONVERSION_EN_COURS,
+  MESSAGE_SERVEUR_OCCUPE,
+  RETRY_AFTER_CONVERSION_S,
+  TAILLE_MAX_SOURCE_CONVERSION,
+  type JetonConversion,
+} from '@/lib/ffmpeg/limiteur-conversions';
 import {
   cibleRecevable,
   cleDuCompteStrict,
@@ -49,6 +56,14 @@ export const maxDuration = 300;
  *    il n'y a rien à convertir. On rend l'URL publique RECONSTRUITE depuis
  *    la cible validée — jamais l'entrée brute renvoyée en écho.
  *
+ * 5. Puis le PLAFOND DE CONCURRENCE (`limiteur-conversions`) : une seule
+ *    conversion à la fois par compte, deux par processus → sinon 429 avec
+ *    `Retry-After`. Le jeton est pris après les refus gratuits (401/400/404,
+ *    raccourci non-webm) et rendu dans le `finally`, sur TOUS les chemins.
+ * 6. La source est bornée à `TAILLE_MAX_SOURCE_CONVERSION` (300 Mio) : une
+ *    taille annoncée par le stockage au-delà → 413 avant de lire le corps ;
+ *    une taille inconnue est coupée au flux par la même borne.
+ *
  * `fetch-media` refait ses propres contrôles au téléchargement. Les refaire
  * ici, avant, garantit que le raccourci non-webm et le 404 n'ont jamais
  * touché le stockage.
@@ -74,6 +89,8 @@ const REPONSE_413 = { success: false, error: 'Média trop volumineux' } as const
 const REPONSE_422 = { success: false, error: 'Source vidéo vide ou corrompue' } as const;
 const REPONSE_500 = { success: false, error: 'La conversion a échoué' } as const;
 const REPONSE_504 = { success: false, error: 'Délai de téléchargement dépassé' } as const;
+const REPONSE_429_COMPTE = { success: false, error: MESSAGE_CONVERSION_EN_COURS } as const;
+const REPONSE_429_GLOBAL = { success: false, error: MESSAGE_SERVEUR_OCCUPE } as const;
 
 // Resolve FFmpeg binary path — tries multiple locations for Vercel compatibility
 async function resolveFFmpegPath(): Promise<string> {
@@ -132,6 +149,7 @@ export async function POST(req: NextRequest) {
   const conversionId = randomUUID();
   const inputPath = join(tmpdir(), `convert_${conversionId}.webm`);
   const outputPath = join(tmpdir(), `convert_${conversionId}.mp4`);
+  let jeton: JetonConversion | null = null;
 
   try {
     // 2. Un corps borné.
@@ -162,14 +180,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, mp4Url: publicUrl, skipped: true });
     }
 
+    // 5. Plafond de concurrence — AVANT tout téléchargement ou ffmpeg.
+    jeton = limiteurConversions().acquerir(userId);
+    if (!jeton.ok) {
+      console.warn('[CONVERT-API]', { conversionId, etape: 'refus_concurrence', motif: jeton.motif });
+      return NextResponse.json(
+        jeton.motif === 'compte' ? REPONSE_429_COMPTE : REPONSE_429_GLOBAL,
+        { status: 429, headers: { 'Retry-After': String(RETRY_AFTER_CONVERSION_S) } },
+      );
+    }
+
     console.log('[CONVERT-API]', { conversionId, etape: 'debut', userId: userId.slice(0, 8), bucket });
 
-    // 5. Téléchargement borné, dans un fichier temporaire propre à cette conversion.
+    // 6. Téléchargement borné, dans un fichier temporaire propre à cette conversion.
     let sizeBytes: number;
     try {
       ({ sizeBytes } = await downloadMediaToFile(videoUrl, inputPath, {
         userId,
-        maxBytes: MAX_MEDIA_DOWNLOAD_BYTES,
+        maxBytes: TAILLE_MAX_SOURCE_CONVERSION,
       }));
     } catch (err) {
       const code = err instanceof ErreurTelechargement ? err.code : undefined;
@@ -185,7 +213,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(REPONSE_422, { status: 422 });
     }
 
-    // 6. Conversion via l'échelle partagée (1080p → 720p → 540p, délais par
+    // 7. Conversion via l'échelle partagée (1080p → 720p → 540p, délais par
     //    palier). Le détail d'un échec — ligne de commande, stderr — reste
     //    dans le journal serveur ; il ne porte pas l'URL.
     const ffmpegPath = await resolveFFmpegPath();
@@ -211,7 +239,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(REPONSE_500, { status: 500 });
     }
 
-    // 7. Dépôt sous le compte, sous un nom unique — jamais d'écrasement.
+    // 8. Dépôt sous le compte, sous un nom unique — jamais d'écrasement.
     const fileName = `${conversionId}.mp4`;
     const storagePath = `${userId}/converted/${fileName}`;
     const { error: uploadError } = await supabaseAdmin.storage
@@ -238,6 +266,8 @@ export async function POST(req: NextRequest) {
     console.error('[CONVERT-API]', { conversionId, etape: 'inattendu', name, message: message.slice(0, 200) });
     return NextResponse.json(REPONSE_500, { status: 500 });
   } finally {
+    // Le jeton d'abord : rien ci-dessous ne doit pouvoir le retenir.
+    if (jeton?.ok) jeton.liberer();
     // Au mieux, sur TOUS les chemins — y compris après un téléchargement
     // partiel interrompu (413, 504) ou une conversion tuée.
     await unlink(inputPath).catch(() => {});
