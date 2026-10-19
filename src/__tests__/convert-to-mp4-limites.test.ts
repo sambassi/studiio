@@ -73,15 +73,30 @@ const depots: string[] = [];
 let depotJette = false;
 let depotPendu = false;
 let depotAtteint = false;
+/** Règle le dépôt lent à la main : succès tardif ou échec tardif. */
+let reglerDepot: ((issue: 'ok' | 'echec') => void) | null = null;
+const suppressions: string[] = [];
 vi.mock('@/lib/db/supabase', () => ({
   supabaseAdmin: {
     storage: {
       from: (bucket: string) => ({
         upload: async (path: string) => {
           if (depotJette) throw new Error('socket hang up');
-          if (depotPendu) { depotAtteint = true; return new Promise(() => {}); } // ne répond jamais
+          if (depotPendu) {
+            depotAtteint = true;
+            // Dépôt LENT : ne se règle que quand le test le décide.
+            return new Promise((r) => {
+              reglerDepot = (issue) => r(issue === 'ok'
+                ? (depots.push(`${bucket}/${path}`), { data: { path }, error: null })
+                : { data: null, error: { message: 'tardif' } });
+            });
+          }
           depots.push(`${bucket}/${path}`);
           return { data: { path }, error: null };
+        },
+        remove: async (paths: string[]) => {
+          suppressions.push(...paths.map((x) => `${bucket}/${x}`));
+          return { data: paths, error: null };
         },
         getPublicUrl: (path: string) => ({ data: { publicUrl: `${ORIGINE}${PREFIXE}${bucket}/${path}` } }),
       }),
@@ -124,7 +139,8 @@ async function attendrePortes(n: number) {
 function ouvrirPortes() { const p = portes; portes = []; p.forEach((r) => r()); }
 
 beforeEach(() => {
-  tailleAnnoncee = 4096; panneLecture = false; issueFfmpeg = 'ok'; bloquer = false; depotJette = false; depotPendu = false;
+  tailleAnnoncee = 4096; panneLecture = false; issueFfmpeg = 'ok'; bloquer = false; depotJette = false; depotPendu = false; depotAtteint = false;
+  reglerDepot = null; suppressions.length = 0;
   portes = []; conversions.length = 0; depots.length = 0;
   statObject.mockClear(); getObject.mockClear();
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -233,25 +249,53 @@ describe('3. Le jeton revient sur tous les chemins', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-describe('3 bis. Dépôt qui ne répond jamais', () => {
-  it('délai de dépôt → 500 et jeton rendu (pas de verrou définitif)', async () => {
-    depotPendu = true; depotAtteint = false;
-    // Seuls setTimeout/clearTimeout sont figés : les E/S disque et
-    // setImmediate (l'attente ci-dessous) restent réels.
+describe('3 bis. Dépôt plus lent que le délai', () => {
+  /** Mène un appel jusqu'au dépôt lent, puis fait passer le délai de 120 s. */
+  async function jusquauDelai() {
+    depotPendu = true;
+    // Seuls setTimeout/clearTimeout sont figés : E/S disque et setImmediate restent réels.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const p = lancer('u1');
       for (let i = 0; i < 2000 && !depotAtteint; i++) await new Promise((r) => setImmediate(r));
       expect(depotAtteint).toBe(true);
-      expect((await Promise.race([p.then(() => 'fini'), new Promise((r) => setImmediate(() => r('pendu')))]))).toBe('pendu');
+      expect(await Promise.race([p.then(() => 'fini'), new Promise((r) => setImmediate(() => r('pendu')))])).toBe('pendu');
       await vi.advanceTimersByTimeAsync(120_000);
-      expect((await p).status).toBe(500);
+      return await p;
     } finally {
       vi.useRealTimers();
     }
+  }
+  const attendreJeton = async () => {
+    for (let i = 0; i < 200 && limites.limiteurConversions().etat().global > 0; i++) await new Promise((r) => setImmediate(r));
+  };
+
+  it('au délai → 500, mais le jeton reste tenu tant que le dépôt est en vol', async () => {
+    const res = await jusquauDelai();
+    expect(res.status).toBe(500);
+    // Le buffer MP4 est encore en mémoire : le plafond doit le compter.
+    expect(limites.limiteurConversions().etat()).toEqual({ global: 1, comptes: 1 });
+    expect((await appeler('u1')).statut).toBe(429);
+
+    // Le dépôt aboutit EN RETARD : jeton rendu, objet orphelin supprimé.
+    reglerDepot!('ok');
+    await attendreJeton();
     aucunJeton();
+    expect(suppressions).toHaveLength(1);
+    expect(suppressions[0]).toMatch(/^media\/u1\/converted\/[0-9a-f-]{36}\.mp4$/);
+    expect(suppressions[0]).toBe(depots[0]);
+
     depotPendu = false;
     expect((await appeler('u1')).statut).toBe(200);
+  });
+
+  it('dépôt qui échoue en retard → jeton rendu, rien à supprimer', async () => {
+    expect((await jusquauDelai()).status).toBe(500);
+    expect(limites.limiteurConversions().etat().global).toBe(1);
+    reglerDepot!('echec');
+    await attendreJeton();
+    aucunJeton();
+    expect(suppressions).toHaveLength(0);
   });
 });
 

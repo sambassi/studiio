@@ -152,6 +152,8 @@ export async function POST(req: NextRequest) {
   const inputPath = join(tmpdir(), `convert_${conversionId}.webm`);
   const outputPath = join(tmpdir(), `convert_${conversionId}.mp4`);
   let jeton: JetonConversion | null = null;
+  /** Vrai quand un dépôt en retard rendra lui-même le jeton à son règlement. */
+  let liberationDifferee = false;
 
   try {
     // 2. Un corps borné.
@@ -244,23 +246,44 @@ export async function POST(req: NextRequest) {
     // 8. Dépôt sous le compte, sous un nom unique — jamais d'écrasement.
     const fileName = `${conversionId}.mp4`;
     const storagePath = `${userId}/converted/${fileName}`;
-    // Borné dans le temps : un dépôt qui ne répond jamais retiendrait le
-    // jeton indéfiniment — deux suffiraient à fermer la conversion à tous.
-    // Au délai, on rend la main (500) ; le dépôt éventuel en retard laisse au
-    // pire un objet orphelin sous le compte, jamais une réponse fausse.
+    // Borné dans le temps pour la RÉPONSE, pas pour le jeton. Le client de
+    // stockage n'offre pas d'annulation : un dépôt qui dépasse le délai
+    // continue en mémoire (le buffer MP4 reste tenu). Au délai, on répond
+    // 500, mais le jeton n'est rendu qu'au RÈGLEMENT réel du dépôt — sinon
+    // N requêtes lentes garderaient N buffers en vol hors plafond. Un dépôt
+    // qui aboutit en retard est supprimé : la réponse a déjà dit « échec ».
+    // (ffmpeg et le téléchargement, eux, sont attendus jusqu'au bout : tués
+    // ou interrompus par leurs propres délais AVANT que la route ne rende.)
+    const televersement = supabaseAdmin.storage
+      .from('media')
+      .upload(storagePath, mp4Buffer, {
+        contentType: 'video/mp4',
+        upsert: false,
+      });
     let minuteurDepot: ReturnType<typeof setTimeout> | undefined;
-    const delaiDepot = new Promise<{ error: { message: string } }>((resoudre) => {
-      minuteurDepot = setTimeout(() => resoudre({ error: { message: 'delai_depot' } }), DELAI_DEPOT_MS);
+    const delaiDepot = new Promise<'delai'>((resoudre) => {
+      minuteurDepot = setTimeout(() => resoudre('delai'), DELAI_DEPOT_MS);
     });
-    const { error: uploadError } = await Promise.race([
-      supabaseAdmin.storage
-        .from('media')
-        .upload(storagePath, mp4Buffer, {
-          contentType: 'video/mp4',
-          upsert: false,
-        }),
-      delaiDepot,
-    ]).finally(() => clearTimeout(minuteurDepot));
+    const issueDepot = await Promise.race([televersement, delaiDepot])
+      .finally(() => clearTimeout(minuteurDepot));
+
+    if (issueDepot === 'delai') {
+      console.error('[CONVERT-API]', { conversionId, etape: 'depot_delai', outputBytes: mp4Buffer.length });
+      if (jeton.ok) {
+        const jetonDepot = jeton;
+        liberationDifferee = true;
+        void televersement
+          .then(async (r) => {
+            if (!r?.error) {
+              await supabaseAdmin.storage.from('media').remove([storagePath]).catch(() => undefined);
+              console.warn('[CONVERT-API]', { conversionId, etape: 'depot_tardif_supprime' });
+            }
+          }, () => undefined)
+          .finally(() => jetonDepot.liberer());
+      }
+      return NextResponse.json(REPONSE_500, { status: 500 });
+    }
+    const uploadError = issueDepot.error;
 
     if (uploadError) {
       console.error('[CONVERT-API]', { conversionId, etape: 'depot', outputBytes: mp4Buffer.length });
@@ -279,8 +302,9 @@ export async function POST(req: NextRequest) {
     console.error('[CONVERT-API]', { conversionId, etape: 'inattendu', name, message: message.slice(0, 200) });
     return NextResponse.json(REPONSE_500, { status: 500 });
   } finally {
-    // Le jeton d'abord : rien ci-dessous ne doit pouvoir le retenir.
-    if (jeton?.ok) jeton.liberer();
+    // Le jeton d'abord : rien ci-dessous ne doit pouvoir le retenir — sauf
+    // un dépôt encore en vol, qui le rendra lui-même à son règlement.
+    if (jeton?.ok && !liberationDifferee) jeton.liberer();
     // Au mieux, sur TOUS les chemins — y compris après un téléchargement
     // partiel interrompu (413, 504) ou une conversion tuée.
     await unlink(inputPath).catch(() => {});
