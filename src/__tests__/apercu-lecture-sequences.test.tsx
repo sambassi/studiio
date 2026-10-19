@@ -230,13 +230,15 @@ describe('B — Créer', () => {
     expect(wizard).toContain('overlay={renduDansLeCadre ?? lectureSequences}');
     // Les durées viennent du même point que le compositeur et le Calendrier —
     // pour le lecteur ET pour les extraits.
-    expect(wizard).toContain('const etapesLecture = activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }));');
+    // M3-a PR3 : interrupteur éteint (ou plan absent) ⇒ ces durées, à l'identique ;
+    // aperçu rapide (admin) ⇒ la ligne de temps du plan (`etapesDuPlan`).
+    expect(wizard).toContain('const etapesLecture = modeApercuPlan\n    ? etapesDuPlan(activeOrder, seqDuration, { dureeVideo: dureeVideoApercu }, !!fenetresApercu)\n    : activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }));');
     expect(wizard).toContain('steps={etapesLecture}');
     expect(wizard).toContain('transitionExtract(etapesLecture, previewFocus)');
     expect(wizard).toContain('textAnimationExtract(etapesLecture, previewFocus, INTRO_WINDOW)');
     // Et les effets sont ceux de l'état — les mêmes qui partent au rendu. Seul
     // l'ESSAI d'une option par son bouton ▶ impose la sienne, sans la choisir.
-    const bloc = wizard.slice(wizard.indexOf('const lectureSequences ='), wizard.indexOf('const lectureSequences =') + 2500);
+    const bloc = wizard.slice(wizard.indexOf('const lectureSequences ='), wizard.indexOf('const lectureSequences =') + 4000); // M3-a PR3 : + la couche du plan
     expect(bloc).toContain('transition={transition}');
     expect(bloc).toContain('textAnimation={animationExtrait ?? textAnimation}');
   });

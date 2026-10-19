@@ -33,10 +33,27 @@ export interface LecteurVideo {
   pause(): void;
 }
 
-export interface ExtraitPilote<L> { el: L; debut: number; fin: number; depuis: number; vitesse?: number }
+export interface ExtraitPilote<L> {
+  el: L; debut: number; fin: number; depuis: number; vitesse?: number;
+  /**
+   * M3-a PR3 (aperçu rapide) : source à charger dans `el` pour cet extrait —
+   * deux lecteurs ALTERNÉS servent tous les rushes. Absente (compositeur) :
+   * l'élément porte déjà son rush, rien n'est chargé — comportement inchangé.
+   */
+  source?: string;
+}
 
 /** HAVE_CURRENT_DATA : une image est décodée à la position courante. */
 const IMAGE_DECODEE = 2;
+
+/**
+ * M3-a PR3 (aperçu rapide) — deux lecteurs seulement, ALTERNÉS : l'extrait
+ * suivant est toujours sur l'autre lecteur, donc préparable pendant le plan
+ * en cours, quel que soit son rush.
+ */
+export function alternerLecteurs(n: number): number[] {
+  return Array.from({ length: Math.max(0, n) }, (_, k) => k % 2);
+}
 
 /**
  * Tampon (0 ou 1) de chaque extrait : un extrait qui suit un extrait du MÊME
@@ -58,18 +75,20 @@ export interface BilanPilote {
   reportMax: number;
 }
 
-export interface OptionsPilote {
+export interface OptionsPilote<L = unknown> {
   /** Report maximal d'une coupe dont l'image n'est pas prête (s). */
   attenteMax?: number;
   /** Écart toléré entre la position du lecteur et la position voulue (s). */
   tolerance?: number;
   /** Appelé à chaque coupe — instrumentation. */
   surCoupe?: (info: { k: number; report: number; prete: boolean; readyState: number; seeking: boolean; ecart: number }) => void;
+  /** Charge `source` dans le lecteur (aperçu rapide). Absent : aucune source n'est jamais chargée. */
+  charger?: (el: L, source: string) => void;
 }
 
 export function creerPiloteMontage<L extends LecteurVideo>(
   plan: ReadonlyArray<ExtraitPilote<L>>,
-  options: OptionsPilote = {},
+  options: OptionsPilote<L> = {},
 ) {
   const attenteMax = options.attenteMax ?? 0.25;
   const tolerance = options.tolerance ?? 0.3;
@@ -77,6 +96,17 @@ export function creerPiloteMontage<L extends LecteurVideo>(
   const prepare = new Set<number>();
   const bilan: BilanPilote = { coupes: 0, coupesNonPretes: 0, reportMax: 0 };
   let courant = -1;
+  /** Source chargée dans chaque lecteur (aperçu rapide seulement). */
+  const sources = new Map<L, string>();
+  const charger = options.charger;
+  /** Le lecteur de l'extrait `k` porte-t-il la bonne source ? La charge sinon. */
+  const assurerSource = (k: number) => {
+    const { el, source } = plan[k];
+    if (!source || !charger || sources.get(el) === source) return;
+    sources.set(el, source);
+    charger(el, source);
+  };
+  const bonneSource = (k: number) => !plan[k].source || !charger || sources.get(plan[k].el) === plan[k].source;
 
   const indexA = (s: number) => {
     const k = plan.findIndex((seg) => s >= seg.debut && s < seg.fin);
@@ -84,10 +114,11 @@ export function creerPiloteMontage<L extends LecteurVideo>(
   };
   const prete = (k: number) => {
     const { el, depuis } = plan[k];
-    return el.readyState >= IMAGE_DECODEE && !el.seeking && Math.abs(el.currentTime - depuis) <= tolerance;
+    return bonneSource(k) && el.readyState >= IMAGE_DECODEE && !el.seeking && Math.abs(el.currentTime - depuis) <= tolerance;
   };
   const demarrer = (k: number, s: number) => {
     const seg = plan[k];
+    assurerSource(k);
     const vitesse = seg.vitesse ?? 1;
     const cible = seg.depuis + Math.max(0, s - seg.debut) * vitesse;
     seg.el.playbackRate = vitesse;
@@ -111,6 +142,7 @@ export function creerPiloteMontage<L extends LecteurVideo>(
       vus.add(el);
       if (prepare.has(n)) continue;
       prepare.add(n);
+      assurerSource(n);
       if (!el.paused) el.pause();
       if (Math.abs(el.currentTime - depuis) > 0.05) el.currentTime = depuis;
     }
@@ -121,11 +153,34 @@ export function creerPiloteMontage<L extends LecteurVideo>(
     prepositionner() {
       for (const el of lecteurs) {
         const k = plan.findIndex((s) => s.el === el);
+        assurerSource(k);
         el.pause();
         el.currentTime = plan[k].depuis;
         prepare.add(k);
       }
     },
+    /**
+     * M3-a PR3 (aperçu rapide) — IMAGE FIGÉE à `secondes` : le lecteur de
+     * l'extrait est positionné à la position exacte, SANS lecture ; tous les
+     * lecteurs sont en pause. Le pilote repart ensuite de zéro (`image()`
+     * redémarrera l'extrait courant). Retour au début / saut sur la ligne de
+     * temps : l'appelant crée une NOUVELLE instance. Le compositeur ne
+     * l'appelle jamais.
+     */
+    positionner(secondes: number): L | null {
+      if (!plan.length) return null;
+      const k = indexA(secondes);
+      const seg = plan[k];
+      for (const el of lecteurs) if (el !== seg.el && !el.paused) el.pause();
+      assurerSource(k);
+      if (!seg.el.paused) seg.el.pause();
+      const cible = seg.depuis + Math.max(0, secondes - seg.debut) * (seg.vitesse ?? 1);
+      if (Math.abs(seg.el.currentTime - cible) > 0.01) seg.el.currentTime = cible;
+      courant = -1;
+      return seg.el;
+    },
+    /** Index de l'extrait joué à `secondes` (instrumentation, attributs data-plan-*). */
+    indexA: (secondes: number) => (plan.length ? indexA(secondes) : -1),
     /**
      * Une image : `secondes` dans la séquence vidéo, ou `null` hors séquence
      * (tout est mis en pause). Renvoie l'élément à peindre.

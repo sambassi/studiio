@@ -104,7 +104,8 @@ describe('parité Créer / Autopilote (DANSE réel)', () => {
 
 describe('source de vérité unique', () => {
   const src = (f: string) => readFileSync(resolve(process.cwd(), f), 'utf-8');
-  const creer = src('src/app/dashboard/creer/AssistantWizard.tsx');
+  // M3-a PR3 : le calcul du plan de Créer vit dans `preparerPlanMontage`, appelé par l'export.
+  const creer = src('src/app/dashboard/creer/AssistantWizard.tsx') + src('src/lib/creer/preparer-plan-montage.ts');
   const auto = src('src/lib/autopilot/produire.ts');
 
   it('Créer et Autopilote appellent les MÊMES fonctions partagées', () => {
@@ -112,7 +113,7 @@ describe('source de vérité unique', () => {
       expect(f).toContain('contexteMontageDepuis({');
       expect(f).toContain('planMontage(analyses');
       expect(f).toContain('profilMontageDuContexte(contexteMontage).profil');
-      expect(f).toContain('mesuresSegments(planMontageRushs');
+      expect(f).toMatch(/mesuresSegments\((planMontageRushs|plan, analyses)/);
       expect(f).toContain('rapportPlan(');
       expect(f).toContain('conseillerVideo({');
     }

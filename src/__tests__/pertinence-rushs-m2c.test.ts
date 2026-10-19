@@ -331,8 +331,13 @@ describe('M2-c — metadata et non-régression', () => {
   it('Créer : le contexte du panneau est le MÊME appel que celui de l’export', () => {
     const aw = readFileSync('src/app/dashboard/creer/AssistantWizard.tsx', 'utf8');
     const appels = [...aw.matchAll(/contexteMontageDepuis\(\{([\s\S]*?)\}\)/g)].map((m) => m[1].replace(/\s+/g, ' ').trim());
-    expect(appels).toHaveLength(2);
-    expect(appels[0]).toBe(appels[1]);
+    // M3-a PR3 : l'appel de l'export est déplacé dans `preparerPlanMontage` ;
+    // l'export lui passe les MÊMES champs que le panneau (`entreePlanMontage`).
+    expect(appels).toHaveLength(1);
+    const exportBloc = aw.slice(aw.indexOf('const prepPlan = preparerPlanMontage(entreePlanMontage({'), aw.indexOf('}), { analysesBrutes, rythme }'));
+    for (const champ of appels[0].split(/,\s*/).filter(Boolean)) expect(exportBloc.replace(/\s+/g, ' ')).toContain(champ.trim());
+    const prep = readFileSync('src/lib/creer/preparer-plan-montage.ts', 'utf8');
+    expect(prep).toContain('const contexteMontage = contexteMontageDepuis({');
     expect(aw).toMatch(/<QualiteRushs [^>]*contexte=\{contextePertinence\}/);
     expect(aw).toMatch(/decisionMontagePourMetadata\(qualiteRushsCreer, contenuRushsCreer, pertinenceRushsCreer\)/);
   });

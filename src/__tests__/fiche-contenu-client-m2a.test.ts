@@ -48,7 +48,9 @@ describe('Créer (AssistantWizard) : branchement minimal', () => {
   const aw = readFileSync('src/app/dashboard/creer/AssistantWizard.tsx', 'utf8');
   it('fiches demandées après les analyses, attendues au plus 1,5 s APRÈS le rendu, jamais passées au plan', () => {
     const demande = aw.indexOf('fichesCreer = chargerFichesContenu(rushsDurables.map((r) => r.url));');
-    const plan = aw.indexOf('planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
+    // M3-a PR3 : le calcul du plan est déplacé dans `preparerPlanMontage`, qui ne reçoit jamais les fiches.
+    const plan = aw.indexOf('const prepPlan = preparerPlanMontage(entreePlanMontage({');
+    expect(readFileSync('src/lib/creer/preparer-plan-montage.ts', 'utf8')).not.toMatch(/fiche/i);
     const rendu = aw.indexOf('composed = await composerEtFacturer(');
     const attente = aw.indexOf('const fichesRecues = await auPlus(fichesCreer, 1500, new Map() as FichesParUrl);');
     expect(demande).toBeGreaterThan(0);

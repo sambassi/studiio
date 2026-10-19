@@ -134,7 +134,9 @@ describe('source unique, aucune règle recopiée', () => {
   });
   it('Créer : mêmes fenêtres, même mise en page, mêmes composants', () => {
     const w = src('src/app/dashboard/creer/AssistantWizard.tsx');
-    expect(w).toContain('overlaysCreer = planOverlays({');
+    // M3-a PR3 : même calcul pour l'export et l'aperçu rapide (`surimpressionsDuPlan` → `planOverlays`).
+    expect(w).toContain('overlaysCreer = surimpressionsDuPlan({');
+    expect(src('src/lib/creer/preparer-plan-montage.ts')).toContain('return planOverlays({');
     expect(w).toContain('profil: montageInfos.profil,');
     expect(w).toContain('miseEnPageSurimpression(montageInfos.profil, {');
     expect(w).toContain('ctaBande: zoneCta?.bande,');

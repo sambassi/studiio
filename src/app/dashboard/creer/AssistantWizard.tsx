@@ -251,10 +251,10 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, planAvecAvatar, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { planMontage, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, optionsModePassages, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { ajusterPlan, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { conseillerVideo } from '@/lib/creer/conseiller';
-import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
+import { profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import { positionTexteEffective, titreSur916 } from '@/lib/creer/zones-sures-916';
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
@@ -265,7 +265,9 @@ import { dateRestauree, dateRequiseManquante, envoiPossible } from '@/lib/creer/
 import { PlateauSurimpression, type PlateauSurimpressionProps } from '@/components/creer/PlateauSurimpression';
 import type { SurimpressionsComposer } from '@/lib/video-composer';
 import { analyserRushMemo, analyserMusiqueNavigateur } from '@/lib/creer/analyse-rush';
-import { rythmeSurFenetre } from '@/lib/creer/rythme-musique';
+import { entreePlanMontage, preparerPlanMontage, clePlanMontage, surimpressionsDuPlan, etapesDuPlan, type PreparationPlan, type EntreePlanMontage } from '@/lib/creer/preparer-plan-montage';
+import { MoteurApercuPlan, type ProblemeApercu } from '@/lib/creer/apercu-plan-lecteur';
+import { LecteurPlanApercu, CoucheSurimpressionsApercu, FiligraneApercu } from '@/components/creer/LecteurPlanApercu';
 import {
   indexerCartesOrigine, cartesPourEnregistrement, indexerRangsOrigine, iconesPersoRealignees, cartesAvecImagePerso,
 } from '@/lib/creer/postMetadata/cartes';
@@ -1015,6 +1017,8 @@ export type PreviewFocus = 'all' | 'intro' | 'cards' | 'video' | 'cta';
 
 /** Classes de désactivation : `Button` n'en fournit aucune (ui/Button.tsx). */
 const DISABLED = 'disabled:opacity-40 disabled:cursor-not-allowed';
+/** M3-a PR3 — délai après la dernière modification avant de calculer le plan de l'aperçu (ms). */
+const DELAI_PLAN_APERCU_MS = 400;
 
 /**
  * Le parcours ouvert sur l'ecran d'entree, quand l'assistant n'a pas demarre.
@@ -1498,6 +1502,7 @@ function PlateContent({
   rushUrl = null,
   onRushError,
   rushTransform = null,
+  rushLecteur = null,
   avatar = null,
   imageSequenceVideo = null,
   text,
@@ -1527,6 +1532,11 @@ function PlateContent({
   onRushError?: () => void;
   /** Recadrage du rush (zoom + décalage, fraction du cadre) — le MÊME que l'export (`rushTransform`). */
   rushTransform?: RecadrageRush | null;
+  /**
+   * M3-a PR3 — lecteur du PLAN (aperçu rapide, canvas filigrané) posé à la
+   * place du `<video>` du rush. Absent (défaut) : le rendu d'avant, inchangé.
+   */
+  rushLecteur?: React.ReactNode;
   /**
    * « Faire apparaître mon avatar » : l'avatar A MONTRER dans la séquence
    * « Vidéo », à la place du rush (le parent a deja decide). À l'envoi, la
@@ -1658,7 +1668,7 @@ function PlateContent({
   const poigneesVisibles = (el: 'title' | 'cta') => survolTexte === el || dragging === el;
 
   // L'image de la séquence « Vidéo » : le rush, ou l'avatar qui le remplacera.
-  const videoAlImage = !!rushUrl || (avatar?.etat === 'pret' && !!avatar.url) || !!imageSequenceVideo;
+  const videoAlImage = !!rushUrl || !!rushLecteur || (avatar?.etat === 'pret' && !!avatar.url) || !!imageSequenceVideo;
 
   return (
     <>
@@ -1775,6 +1785,7 @@ function PlateContent({
                 )}
               />
             )}
+            {rushLecteur}
             {videoAlImage && habillageVideo?.mode === 'degrade' && (
               /* Habillage « Dégradé » : le voile coloré des Cartes, PAR-DESSUS
                  la vidéo — mêmes arrêts que l'export (`arretsVoile`). */
@@ -6817,6 +6828,28 @@ export default function AssistantWizard() {
   }, [step, editPostId, rushSuivants.length]);
   const methodeB = methodeBDisponible && !editPostId && methodeMontage === 'B';
 
+  // ── M3-a PR3 — APERÇU RAPIDE DU PLAN (interrupteur serveur, admin) ─────
+  // Proposé SEULEMENT si `/api/creer/apercu-config` répond `apercuPlan: true`
+  // (interrupteur `STUDIIO_APERCU_PLAN_ENABLED` + rôle admin relu en base).
+  // Éteint : l'aperçu « Tout » d'avant (rush 1 en boucle) et l'export qui
+  // recalcule le plan, à l'identique. Jamais persisté.
+  const [apercuPlanDisponible, setApercuPlanDisponible] = useState(false);
+  const configApercuDemandee = useRef(false);
+  useEffect(() => {
+    if (editPostId || !rushSuivants.length || configApercuDemandee.current) return;
+    configApercuDemandee.current = true;
+    fetch('/api/creer/apercu-config', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setApercuPlanDisponible(j?.apercuPlan === true))
+      .catch(() => setApercuPlanDisponible(false));
+  }, [editPostId, rushSuivants.length]);
+  /** Le plan calculé par l'aperçu (dernier COMPLET pour sa clé) — relu par l'export si la clé est identique. */
+  const planApercuRef = useRef<PreparationPlan | null>(null);
+  const [planApercu, setPlanApercu] = useState<PreparationPlan | null>(null);
+  const [planApercuEnCalcul, setPlanApercuEnCalcul] = useState(false);
+  /** Un média ne permet pas le positionnement (pas de plages d'octets) ou est illisible. */
+  const [problemeApercu, setProblemeApercu] = useState<{ cle: string; probleme: ProblemeApercu } | null>(null);
+
   /**
    * ─────────────────────────────────────────────────────────────────────
    * MODIFICATION D'UN CONTENU EXISTANT
@@ -7582,8 +7615,126 @@ export default function AssistantWizard() {
      rush, débit) et la joue à cette même place : quand elle existe ou se
      compose, elle a la priorité (`renduDansLeCadre`). Sur les autres onglets,
      rien — ils isolent un élément pour le régler. */
+  /* ── M3-a PR3 — APERÇU RAPIDE : le PLAN que l'export rejouera ─────────
+     Admin + interrupteur seulement. Mêmes entrées que l'export (rushes
+     durables, durées, musique, textes, méthode), même calcul
+     (`preparerPlanMontage`), calculé ≥ 400 ms après la dernière
+     modification. ⚠️ Le calcul est SYNCHRONE : une fois lancé il va jusqu'au
+     bout ; son résultat est IGNORÉ si la clé a changé entre-temps. Il ne
+     touche ni `videoDuration` ni le brouillon (le raccourci est seulement
+     annoncé ; l'export le demande, bloquant). Aucun appel réseau autre que
+     les GET des médias (analyses mémoïsées partagées avec l'export). */
+  const rushsApercuPlan = rushUrl ? [{ url: rushUrl, secondes: rushSecondes }, ...rushSuivants] : [];
+  const entreeApercuPlan: EntreePlanMontage | null = apercuPlanDisponible && generated && !editPostId && !avatarApercu
+    && jumeauMode !== 'avatar' && !(mediasVideo && estListeEnrichie(mediasVideo))
+    && rushsApercuPlan.length >= 2 && rushsApercuPlan.every((r) => urlDurable(r.url)) && seqDuration('video') > 0
+    ? entreePlanMontage({
+      rushs: rushsApercuPlan,
+      ordre: activeOrder,
+      duree: seqDuration,
+      musique: musicUrl,
+      theme: currentTopic,
+      titre: generated.title ?? null,
+      sousTitre: generated.subtitle ?? null,
+      objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
+      cartes: generated.cards ?? [],
+      methode: methodeB ? 'B' : 'A',
+      voixDeTextes: !!(sequenceVoices.titre?.audioUrl || sequenceVoices.cartes?.audioUrl || sequenceVoices.cta?.audioUrl),
+      format,
+    })
+    : null;
+  const cleApercuPlan = entreeApercuPlan ? clePlanMontage(entreeApercuPlan) : null;
+  const cleApercuPlanRef = useRef<string | null>(null);
+  cleApercuPlanRef.current = cleApercuPlan;
+  const entreeApercuPlanRef = useRef<EntreePlanMontage | null>(null);
+  entreeApercuPlanRef.current = entreeApercuPlan;
+  useEffect(() => {
+    if (!cleApercuPlan) { setPlanApercuEnCalcul(false); return; }
+    if (planApercuRef.current?.cle === cleApercuPlan) { setPlanApercuEnCalcul(false); return; }
+    setPlanApercuEnCalcul(true);
+    const cle = cleApercuPlan;
+    const entree = entreeApercuPlanRef.current!;
+    const minuterie = setTimeout(() => {
+      void (async () => {
+        const analysesBrutes: Array<AnalyseRush | null> = [];
+        for (const r of entree.rushs) analysesBrutes.push(await analyserRushMemo(r.url));
+        const rythme = entree.musique ? await analyserMusiqueNavigateur(entree.musique) : null;
+        if (cleApercuPlanRef.current !== cle) return; // réglage changé pendant les analyses : rien à calculer
+        const prep = preparerPlanMontage(entree, { analysesBrutes, rythme });
+        // Calcul terminé, mais la clé a pu changer pendant ce temps : résultat IGNORÉ.
+        if (cleApercuPlanRef.current !== cle) return;
+        planApercuRef.current = prep;
+        setPlanApercu(prep);
+        setPlanApercuEnCalcul(false);
+      })().catch(() => { if (cleApercuPlanRef.current === cle) setPlanApercuEnCalcul(false); });
+    }, DELAI_PLAN_APERCU_MS);
+    return () => clearTimeout(minuterie);
+  }, [cleApercuPlan]);
+  /** Le plan de l'aperçu, s'il correspond à l'écran COURANT. */
+  const prepApercu = planApercu && cleApercuPlan && planApercu.cle === cleApercuPlan ? planApercu : null;
+  const problemeApercuCourant = problemeApercu && problemeApercu.cle === cleApercuPlan ? problemeApercu.probleme : null;
+  const fenetresApercu = prepApercu && entreeApercuPlan
+    ? surimpressionsDuPlan({ plan: prepApercu.plan, profil: prepApercu.profil, nbCartes: entreeApercuPlan.nbCartes, voixDeTextes: entreeApercuPlan.voixDeTextes })
+    : null;
+  /** Durée de la séquence Vidéo à l'export : plan (surimpression), sinon demandée ou raccourcie. */
+  const dureeVideoApercu = prepApercu?.plan ? (fenetresApercu ? dureePlan(prepApercu.plan) : prepApercu.dureeVideo) : 0;
+  /** Plan joué : complet, sans problème de média. Sinon l'aperçu d'avant (« aperçu simplifié »). */
+  const planJoueApercu = useMemo(
+    () => (prepApercu?.plan && prepApercu.complet && !problemeApercuCourant ? ajusterPlan(prepApercu.plan, dureeVideoApercu) : null),
+    [prepApercu, problemeApercuCourant, dureeVideoApercu],
+  );
+  const moteurApercu = useMemo(() => {
+    if (!planJoueApercu || typeof document === 'undefined') return null;
+    const cle = cleApercuPlan;
+    return new MoteurApercuPlan(planJoueApercu, { surProbleme: (probleme) => { if (cle) setProblemeApercu({ cle, probleme }); } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planJoueApercu]);
+  useEffect(() => () => moteurApercu?.detruire(), [moteurApercu]);
+  /** Surimpressions de l'aperçu : mêmes props que la photo de l'export. */
+  const baseSurimpApercu: Omit<PlateauSurimpressionProps, 'element'> | null = (() => {
+    if (!fenetresApercu || !prepApercu?.plan || !generated) return null;
+    const zone = fenetresApercu.cta ? zoneCalmeSortie(prepApercu.plan, prepApercu.analyses, fenetresApercu.cta[0]) : null;
+    const taille = dimensionsDuFormat(format);
+    const miseEnPage = miseEnPageSurimpression(prepApercu.profil, {
+      ctaBande: zone?.bande,
+      format,
+      cta: { texte: generated.cta || '', sousTexte: generated.ctaSub || null, echelle: textStyles.cta.scale ?? 1 },
+    });
+    if (!miseEnPage) return null;
+    return {
+      miseEnPage,
+      format,
+      largeur: taille.w,
+      hauteur: taille.h,
+      titre: { title: generated.title || 'Infographie', subtitle: generated.subtitle || undefined, typography: textStyles.title, subtitleTypography: textStyles.subtitle },
+      cartes: { cards: (generated.cards ?? []).map((c) => ({ icon: c.icon, title: c.title, value: c.value })), cardStyle, typography: cardsTypography, valueColor: gradEnd },
+      cta: { text: generated.cta || '', subText: generated.ctaSub || undefined, typography: textStyles.cta },
+    };
+  })();
+  /** Contrôles de l'export, AFFICHÉS seulement (l'export reste seul à bloquer). */
+  const alerteApercu = (() => {
+    if (!prepApercu?.plan || !generated) return null;
+    const ko = erreurQualite(controleQualite({
+      profil: prepApercu.profil,
+      mesures: mesuresSegments(prepApercu.plan, prepApercu.analyses),
+      rapport: prepApercu.rapport,
+      overlays: fenetresApercu,
+      cartes: generated.cards ?? [],
+      cta: { texte: generated.cta ?? '', sousTexte: generated.ctaSub ?? null },
+      ctaUtilisateur: brief.cta ?? null,
+      voixTitre: !!sequenceVoices.titre?.audioUrl,
+      antiGels: true,
+    }));
+    if (ko) return ko;
+    return fenetresApercu ? erreurCartesSurimpression(bilanCartesSurimpression(generated.cards ?? [], fenetresApercu.cartes)) : null;
+  })();
+  /** L'aperçu rapide joue le plan (sinon : l'aperçu d'avant). */
+  const modeApercuPlan = !!(moteurApercu && planJoueApercu);
+
   /** Les séquences que le lecteur joue — durées du montage, par `seqDuration`. */
-  const etapesLecture = activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }));
+  const etapesLecture = modeApercuPlan
+    ? etapesDuPlan(activeOrder, seqDuration, { dureeVideo: dureeVideoApercu }, !!fenetresApercu)
+    : activeOrder.map((k) => ({ key: k, seconds: seqDuration(k) }));
 
   /* ── L'EXTRAIT À LA DEMANDE ───────────────────────────────────────────
      Choisir une transition ou une animation dans une grille la joue TOUT DE
@@ -7657,17 +7808,26 @@ export default function AssistantWizard() {
       frame={{ w: VIDEO_SIZE[format].w, h: VIDEO_SIZE[format].h, scale: displayScale }}
       demande={extraitDemande}
       onFin={finExtrait}
-      renderLayer={({ key, progress, textAnimation: animationExtrait }) => {
+      renderLayer={({ key, progress, textAnimation: animationExtrait, figee, entrante }) => {
         // Le fond de CETTE séquence — la règle de l'onglet correspondant.
         const fond = resolveBackground(key as PreviewFocus, seqBackgrounds, posterUrl, posterTransform);
-        return (
+        // M3-a PR3 — aperçu rapide : la séquence Vidéo joue le PLAN (canvas
+        // filigrané), les surimpressions passent par-dessus, et un filigrane
+        // DOM couvre TOUTES les couches de chaque séquence.
+        // Séquence Vidéo ENTRANTE (transition) : le compositeur n'a pas encore
+        // lancé le plan — son premier extrait, positionné, à l'arrêt.
+        const secondesVideo = entrante ? 0 : progress * dureeVideoApercu;
+        const plateauLu = (
           <PlateauLecture
             generated={generated}
             format={format}
             focus={key as PreviewFocus}
             activeOrder={activeOrder}
-            rushUrl={key === 'video' && !avatarApercu ? rushUrl : null}
+            rushUrl={key === 'video' && !avatarApercu && !modeApercuPlan ? rushUrl : null}
             rushTransform={key === 'video' ? rushTransform : null}
+            rushLecteur={key === 'video' && modeApercuPlan && moteurApercu ? (
+              <LecteurPlanApercu moteur={moteurApercu} secondes={secondesVideo} lecture={!figee && !entrante} format={format} recadrages={rushTransforms} />
+            ) : null}
             avatar={key === 'video' ? avatarApercu : null}
             displayScale={displayScale}
             gradStart={gradStart}
@@ -7694,6 +7854,16 @@ export default function AssistantWizard() {
             textAnimation={animationExtrait ?? textAnimation}
             progress={progress}
           />
+        );
+        if (!modeApercuPlan) return plateauLu;
+        return (
+          <>
+            {plateauLu}
+            {key === 'video' && fenetresApercu && baseSurimpApercu && (
+              <CoucheSurimpressionsApercu fenetres={fenetresApercu} secondes={secondesVideo} base={baseSurimpApercu} displayScale={displayScale} />
+            )}
+            <FiligraneApercu largeur={VIDEO_SIZE[format].w} hauteur={VIDEO_SIZE[format].h} />
+          </>
         );
       }}
     />
@@ -9047,9 +9217,12 @@ export default function AssistantWizard() {
       if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length === (plateau.rushs ?? []).length) {
         setRenderStage('Analyse des rushes…');
         const analyses: AnalyseRush[] = [];
+        /** Une analyse par rush, `null` comprise (M3-a PR3 : identité comparée au plan de l'aperçu). */
+        const analysesBrutes: Array<AnalyseRush | null> = [];
         for (let i = 0; i < rushsDurables.length; i++) {
           // MÊME analyse que le panneau Qualité (M1) : une seule mesure par rush.
           const a = await analyserRushMemo(rushsDurables[i].url, (f) => setRenderProgress(Math.round(((i + f) / rushsDurables.length) * 10)));
+          analysesBrutes.push(a);
           if (a) analyses.push(a);
         }
         // M1 : diagnostic CONSULTATIF écrit dans le post (même forme que
@@ -9064,25 +9237,35 @@ export default function AssistantWizard() {
         // V3 : coupes calées sur le rythme de la musique, lue à partir du
         // début de la séquence « Vidéo » (somme des séquences qui la précèdent).
         const rythme = musiqueRendu ? await analyserMusiqueNavigateur(musiqueRendu) : null;
-        const debutVideo = ordre.slice(0, Math.max(0, ordre.indexOf('video'))).reduce((t, k) => t + duree(k), 0);
-        // V2 : la pertinence des extraits suit le thème, le titre et le brief.
-        // MÊME préparation que l'Autopilote (`contexteMontageDepuis`) : même
-        // thème + mêmes textes = même profil (ex. CARDIO_DANCE), mêmes règles.
-        const contexteMontage = contexteMontageDepuis({
+        // M3-a PR3 : le calcul du plan est DÉPLACÉ (pas recopié) dans
+        // `preparerPlanMontage` — mêmes entrées, même ordre, même résultat :
+        // rythme calé sur le début de la séquence « Vidéo » (`debutVideo`),
+        // pertinence selon le thème, le titre et le brief (`contexteMontageDepuis`,
+        // MÊME préparation que l'Autopilote), méthode B = SEULE différence.
+        // Aperçu rapide allumé (admin) : le plan déjà calculé par l'aperçu est
+        // REJOUÉ si sa clé (toutes les entrées), sa complétude et ses mesures
+        // (mêmes objets d'analyse et de rythme) sont identiques ; sinon —
+        // périmé, incomplet, en calcul, interrupteur éteint — recalcul ici.
+        const prepPlan = preparerPlanMontage(entreePlanMontage({
+          rushs: rushsDurables,
+          ordre,
+          duree,
+          musique: musiqueRendu,
           theme: currentTopic,
           titre: generated?.title ?? null,
           sousTitre: generated?.subtitle ?? null,
           objectif: [brief.objectif, brief.message].filter(Boolean).join(' ') || null,
           cartes: generated?.cards ?? [],
-        });
-        const rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cibleEcran) : null;
-        // M3-a PR2 : méthode B (essai admin) = SEULE différence, l'option de sélection.
-        if (methodeB) planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, ...optionsModePassages(analyses) });
-        else planMontageRushs = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });
+          methode: methodeB ? 'B' : 'A',
+          voixDeTextes: !!(voixSequencesRendu?.titre || voixSequencesRendu?.cartes || voixSequencesRendu?.cta),
+          format,
+        }), { analysesBrutes, rythme }, apercuPlanDisponible ? planApercuRef.current : null);
+        const rythmeVideo = prepPlan.rythmeVideo;
+        planMontageRushs = prepPlan.plan;
+        if (prepPlan.reutilise) console.log('[SmartMontage] plan de l’aperçu rejoué (clé identique) — pas de recalcul.');
         if (planMontageRushs) {
-          const profil = profilMontageDuContexte(contexteMontage).profil;
-          const ms = mesuresSegments(planMontageRushs, analyses);
-          montageInfos = { profil, rapport: ms ? rapportPlan(profil, ms, rythmeVideo) : null, analyses, rythme: rythmeVideo };
+          const profil = prepPlan.profil;
+          montageInfos = { profil, rapport: prepPlan.rapport, analyses, rythme: rythmeVideo };
           console.log(`[SmartMontage] MONTAGE_PROFILE=${profil}`, montageInfos.rapport);
         }
         if (!planMontageRushs) {
@@ -9124,11 +9307,12 @@ export default function AssistantWizard() {
       const voixDeTextes = !!(voixSequencesRendu?.titre || voixSequencesRendu?.cartes || voixSequencesRendu?.cta);
       if (duree('video') > 0 && planMontageRushs && montageInfos && profilEnSurimpression(montageInfos.profil) && !voixDeTextes) {
         const dureeVideo = dureePlan(planMontageRushs);
-        overlaysCreer = planOverlays({
-          duree: dureeVideo,
-          nbCartes: (generated?.cards ?? []).length,
-          finHook: planMontageRushs.filter((x) => x.phase === 'HOOK').at(-1)?.fin ?? null,
+        // MÊME calcul que l'aperçu rapide (`surimpressionsDuPlan`).
+        overlaysCreer = surimpressionsDuPlan({
+          plan: planMontageRushs,
           profil: montageInfos.profil,
+          nbCartes: (generated?.cards ?? []).length,
+          voixDeTextes,
         });
         dureeSurimpression = dureeDeSequence(ordre, { intro: 0, cards: 0, video: dureeVideo, cta: 0 });
       }
@@ -13738,6 +13922,31 @@ export default function AssistantWizard() {
           // seulement) ; sinon rien — le plateau nu.
           overlay={renduDansLeCadre ?? lectureSequences}
         />
+        {/* M3-a PR3 — APERÇU RAPIDE (admin) : ce qu'il montre, ce qu'il ne montre pas. */}
+        {entreeApercuPlan && (
+          <div
+            data-apercu-plan-bandeau={modeApercuPlan ? 'plan' : planApercuEnCalcul ? 'calcul' : 'simplifie'}
+            className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-snug text-gray-300"
+          >
+            {modeApercuPlan ? (
+              <p>Aperçu rapide — son, filtre couleur et rendu exact des textes appliqués à l’export.</p>
+            ) : planApercuEnCalcul ? (
+              <p>Plan du montage en préparation… l’aperçu montre le premier rush en attendant.</p>
+            ) : (
+              <p data-apercu-simplifie>
+                Aperçu simplifié : {problemeApercuCourant === 'positionnement'
+                  ? 'un rush ne permet pas de se positionner dans la vidéo'
+                  : 'un rush n’a pas pu être analysé ou lu'} — le montage complet n’est visible qu’à l’export.
+              </p>
+            )}
+            {prepApercu?.raccourci && (
+              <p data-apercu-raccourci className="mt-1 text-amber-300">
+                {prepApercu.raccourci.message} À l’export, vous choisirez de continuer avec {Math.round(prepApercu.raccourci.possible)} s ou d’ajouter des rushs.
+              </p>
+            )}
+            {alerteApercu && <p data-apercu-alerte className="mt-1 text-red-300">{alerteApercu}</p>}
+          </div>
+        )}
         {/* MULTI-SOURCES — « Aperçu du montage » + chronologie : la liste
             jouée dans son ordre (même plan que le rendu), puis le CTA.
             Absent pour un projet sans liste enrichie : l'aperçu d'avant, seul. */}
