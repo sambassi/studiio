@@ -118,6 +118,7 @@ import type { MediaStock, TypeStock } from '@/lib/stock/types';
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
 import VideosPretes from '@/components/creer/VideosPretes';
 import { buildAutopilotSample, samplePosterVisible, postDeLEchantillon } from '@/lib/autopilot/sample';
+import { lisibiliteCtaAction } from '@/lib/autopilot/cta-action';
 import { etapesApercuAutopilote, estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
 import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
 import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
@@ -1511,6 +1512,7 @@ function PlateContent({
   titleWidth = DESIGN.titleWidth,
   ctaWidth = DESIGN.ctaWidth,
   ctaCopies,
+  ctaFond = null,
   cardBoxes = null,
   cardStyle,
   cardsTypography,
@@ -1562,6 +1564,11 @@ function PlateContent({
    * le CTA unique d'avant, au nœud près.
    */
   ctaCopies?: CtaCopie[];
+  /**
+   * Panneau derrière le CTA (`fond` de `SequenceCta`) — le CTA d'action de
+   * l'Autopilote (`cta-action.ts`). Défaut `null` : le CTA d'avant, au nœud près.
+   */
+  ctaFond?: string | null;
   cardBoxes?: Record<string, CardBox> | null;
   cardStyle?: string;
   cardsTypography?: CardsTypography;
@@ -1953,6 +1960,7 @@ function PlateContent({
                 format={format}
                 containerWidth={vw}
                 reveal={reveal}
+                fond={ctaFond}
               />
               <TextResizeHandles el="cta" onStart={onTextResizeStart} onWidthStart={onTextWidthStart} uiPx={uiPx} capturing={capturing}
                 visible={poigneesVisibles('cta')}
@@ -2260,6 +2268,7 @@ export function Preview({
   hideHeader = false,
   hideFootnote = false,
   overlay = null,
+  ctaFond = null,
   cardStyle,
   cardsTypography,
   onCardResizeStart,
@@ -2276,6 +2285,8 @@ export function Preview({
 }: {
   /** CTA multiples (forme rendue) et leurs aides d'édition — voir `PlateContent`. */
   ctaCopies?: CtaCopie[];
+  /** Panneau derrière le CTA — voir `PlateContent`. Défaut `null` : inchangé. */
+  ctaFond?: string | null;
   onCtaCopieDragStart?: (id: string, e: React.PointerEvent) => void;
   onCtaCopieDoubleClick?: (id: string) => void;
   draggingCtaCopie?: string | null;
@@ -2870,6 +2881,7 @@ export function Preview({
             titleWidth={titleWidth}
             ctaWidth={ctaWidth}
             ctaCopies={ctaCopies}
+            ctaFond={ctaFond}
             cardBoxes={cardBoxes}
             cardStyle={cardStyle}
             cardsTypography={cardsTypography}
@@ -2939,8 +2951,13 @@ export function Preview({
           hauteur ajoute a la page. En haut a droite, elles recouvraient le
           bord droit du titre (place par defaut a 8 % / 84 %) et cachaient
           ses poignees de coin et de largeur. */}
+      {/* ⚠️ AVEC UN CALQUE (`overlay`), LE COIN BAS-GAUCHE EST À SA COMMANDE :
+          le ▶ de `SequencePlayback` y est posé, au même z-index. Posées par-
+          dessus, ces bascules l'interceptaient — un clic de souris sur ▶
+          tombait sur « repères ». Elles passent alors en bas à DROITE. Sans
+          calque : la place d'avant, à l'identique. */}
       {generated && !capturing && (
-        <div className="absolute bottom-2 left-2 z-40 flex gap-1">
+        <div className={`absolute bottom-2 ${overlay ? 'right-2' : 'left-2'} z-40 flex gap-1`}>
           <button
             type="button"
             onClick={() => setReperesCentre((v) => !v)}
@@ -3307,6 +3324,12 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
    * couleur de texte que l'Autopilote fait régler. Le sous-texte du CTA suit
    * la fin du dégradé, comme dans l'assistant.
    */
+  // La petite ligne porte l'action du brief : panneau, teinte et échelle de la
+  // vidéo (`buildAutopilotDesign` → `lisibiliteCtaAction`). `null` sinon.
+  const ctaLisible = useMemo(
+    () => (sample.ctaActionEnPetiteLigne ? lisibiliteCtaAction(sample, style.cta?.scale ?? 1) : null),
+    [sample, style.cta?.scale],
+  );
   const text: TextStyles = useMemo(() => ({
     title: {
       ...DEFAULT_TEXT_STYLES.title,
@@ -3336,9 +3359,11 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     },
     cta: {
       ...DEFAULT_TEXT_STYLES.cta,
-      subColor: config.cardGradientEnd,
+      // Ligne d'action du brief (`cta-action.ts`) : la teinte et l'échelle que
+      // la vidéo rend sur son panneau. Sinon : le CTA d'avant.
+      subColor: ctaLisible?.ctaSubColor ?? config.cardGradientEnd,
       font: style.cta?.font ?? DEFAULT_TEXT_STYLES.cta.font,
-      scale: style.cta?.scale ?? DEFAULT_TEXT_STYLES.cta.scale,
+      scale: ctaLisible?.ctaScale ?? style.cta?.scale ?? DEFAULT_TEXT_STYLES.cta.scale,
       bold: style.cta?.bold ?? DEFAULT_TEXT_STYLES.cta.bold,
       italic: style.cta?.italic ?? DEFAULT_TEXT_STYLES.cta.italic,
       letterSpacing: style.cta?.letterSpacing ?? DEFAULT_TEXT_STYLES.cta.letterSpacing,
@@ -3348,7 +3373,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
       underline: style.cta?.underline,
       strike: style.cta?.strike,
     },
-  }), [config.titleColor, config.cardGradientEnd, style]);
+  }), [config.titleColor, config.cardGradientEnd, style, ctaLisible]);
 
   /**
    * Séquences de l'échantillon.
@@ -3752,6 +3777,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         // l'ecran, et seule la video produite montrait le resultat.
         cardStyle={style.cardStyle}
         cardsTypography={style.cards}
+        ctaFond={ctaLisible?.ctaBackground ?? null}
         onCardResizeStart={startCardResize}
         // ── LA SÉQUENCE VIDÉO : LES MÉDIAS RÉELS DU PLAN ────────────────
         // « Tout » ne les recevait pas, et l'onglet « Vidéo » montrait
@@ -3805,6 +3831,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
                 ctaPos={ctaPos}
                 cardStyle={style.cardStyle}
                 cardsTypography={style.cards}
+                ctaFond={ctaLisible?.ctaBackground ?? null}
                 watermark={AUTOPILOT_WATERMARK}
                 accent={accent}
                 textAnimation={DEFAULT_TEXT_ANIMATION}

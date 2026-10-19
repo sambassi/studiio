@@ -46,6 +46,7 @@ import { sequenceSecondsWithVoice, voiceUrls, type VoixParSequence } from '@/lib
 export { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
 import { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
 import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
+import { actionEnPetiteLigne, lisibiliteCtaAction } from '@/lib/autopilot/cta-action';
 
 /**
  * Durée de la séquence vidéo pour un rush donné.
@@ -246,9 +247,16 @@ export function buildAutopilotDesign(
     // CTA (#503) : le CTA du BRIEF de l'Autopilote est la ligne d'action —
     // la MÊME règle que Créer (`avecCtaDuBrief`). Sans brief : rien n'est
     // envoyé, la ligne par défaut du rendu (« LIEN EN BIO ») reste le repli.
+    // Ligne d'action rose sur rose, 30 px (≈ 1,2:1 mesuré) : elle reçoit le
+    // panneau, la teinte et l'échelle du CTA en surimpression (#502) — voir
+    // `cta-action.ts`. Les autres cas : à l'octet près.
     ...(() => {
       const c = avecCtaDuBrief({ cta: post.content.tagLine ?? '', ctaSub: '' }, post.brief);
-      return { ctaText: c.cta, ...(c.ctaSub ? { ctaSubText: c.ctaSub } : null) };
+      return {
+        ctaText: c.cta,
+        ...(c.ctaSub ? { ctaSubText: c.ctaSub } : null),
+        ...(actionEnPetiteLigne(c, post.brief) ? lisibiliteCtaAction(c, style.cta?.scale ?? 1) : null),
+      };
     })(),
     // Le jumeau, s'il est monté, REMPLACE le rush pour la séquence « Vidéo ».
     videoUrl: jumeau ? jumeau.videoUrl : post.rushUrl,
@@ -432,6 +440,10 @@ export function buildAutopilotMetadata(input: {
       // petite ligne sans brief, et le Calendrier — aperçu comme
       // « Régénérer » — doit le savoir au lieu d'y recopier le CTA principal.
       ctaSubText: design.ctaSubText ?? '',
+      // Le panneau du CTA d'action (`cta-action.ts`) : écrit seulement quand
+      // le rendu l'a porté — absent, la metadata d'avant à l'octet près.
+      ...(design.ctaBackground ? { ctaBackground: design.ctaBackground } : null),
+      ...(design.ctaSubColor ? { ctaSubColor: design.ctaSubColor } : null),
       siteText: { enabled: true, text: AUTOPILOT_WATERMARK },
       // ⚠️ CES CINQ CHAMPS SONT CE QU'UNE RÉGÉNÉRATION DOIT RETROUVER. Le
       // Calendrier reconstruit le design à partir d'ici ; sans eux, un
