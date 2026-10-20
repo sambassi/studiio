@@ -8,7 +8,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { test, expect, attenduAvantCorrection, DOSSIER_RESULTATS, PHASE } from './fixtures';
-import { ouvrirCreer, allerA, choisirFormat, poserCurseur, mentionsFournisseurVisibles, sonder, FORMATS, slugFormat } from './parcours';
+import { ouvrirCreer, allerA, choisirFormat, poserCurseur, mentionsFournisseurVisibles, sonder, texteHorsCadre, planche, FORMATS, slugFormat } from './parcours';
 
 const panneauVoix = (page: import('playwright/test').Page) => page.locator('[data-sequence-voices-panel]').first();
 
@@ -130,6 +130,36 @@ test.describe('Créer — parcours guidé', () => {
   });
 });
 
+test.describe('Créer — panneau Voix-off', () => {
+  test('aucun chevauchement libellé / curseur / valeur (3 largeurs)', async ({ page, banc }) => {
+    await ouvrirCreer(page);
+    await allerA(page, 'Style');
+    await allerA(page, 'Audio');
+    await allerA(page, 'Contenu');
+    const panneau = panneauVoix(page);
+    await panneau.scrollIntoViewIfNeeded();
+    await banc.capture(page, 'creer-voix-mise-en-page', { locator: panneau });
+    const chevauchements = await page.locator('[data-voice-reglage]').evaluateAll((lignes) => {
+      const out: string[] = [];
+      for (const l of lignes) {
+        const enfants = Array.from(l.children).map((c) => ({ nom: (c.tagName + ' ' + (c.textContent || '').trim()).slice(0, 40), r: (c as HTMLElement).getBoundingClientRect() }))
+          .filter((c) => c.r.width > 0 && c.r.height > 0);
+        for (let i = 0; i < enfants.length; i++) for (let j = i + 1; j < enfants.length; j++) {
+          const a = enfants[i].r; const b = enfants[j].r;
+          const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+          const y = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+          if (x > 1 && y > 1) out.push(`${l.getAttribute('data-voice-reglage')}: « ${enfants[i].nom} » × « ${enfants[j].nom} » (${Math.round(x)}×${Math.round(y)} px)`);
+        }
+        const p = (l.parentElement as HTMLElement).getBoundingClientRect(); const r = (l as HTMLElement).getBoundingClientRect();
+        if (r.right > p.right + 1) out.push(`${l.getAttribute('data-voice-reglage')}: déborde du panneau de ${Math.round(r.right - p.right)} px`);
+      }
+      return out;
+    });
+    test.info().annotations.push({ type: 'chevauchements', description: chevauchements.join(' | ') || 'aucun' });
+    expect(chevauchements).toEqual([]);
+  });
+});
+
 test.describe('Créer — composition réelle (compositeur navigateur)', () => {
   for (const format of FORMATS) {
     test(`composition ${format} en brouillon → fichier webm sur disque`, async ({ page, banc }, info) => {
@@ -161,6 +191,10 @@ test.describe('Créer — composition réelle (compositeur navigateur)', () => {
       test.info().annotations.push({ type: 'post', description: JSON.stringify({ status: post.status, format: post.format, title: post.title }) });
       expect(post.status).toBe('draft');
       expect(mesure.images ?? 0, 'le montage contient des images').toBeGreaterThan(10);
+      planche(fichier, path.join(DOSSIER_RESULTATS, `planche-creer-${slugFormat(format)}-${PHASE}.png`));
+      const bords = texteHorsCadre(fichier);
+      test.info().annotations.push({ type: 'texte-hors-cadre', description: JSON.stringify(bords) });
+      expect(bords.touches, 'aucun texte coupé par un bord du cadre').toEqual([]);
     });
   }
 });

@@ -81,3 +81,36 @@ export function sonder(fichier: string): { duree: number | null; images: number 
     return { duree: null, images: null, largeur: null, hauteur: null, audio: false };
   }
 }
+
+/**
+ * Texte coupé par le bord : sur des images extraites (2 par seconde, réduites à
+ * 270 px de large, niveaux de gris), compte les pixels quasi blancs (> 230)
+ * dans une bande de 2 px le long de chaque bord. Les textes du montage sont
+ * blancs ; le fond (dégradé, photo assombrie) ne l'est pas. Le filigrane est
+ * centré en bas, loin des bords latéraux, et la bande basse est ignorée.
+ */
+export function texteHorsCadre(fichier: string): { images: number; touches: Array<{ image: number; bord: string; pixels: number }> } {
+  const m = sonder(fichier);
+  if (!m.largeur || !m.hauteur) return { images: 0, touches: [{ image: -1, bord: 'illisible', pixels: 0 }] };
+  const L = 270;
+  const H = Math.round((m.hauteur / m.largeur) * L / 2) * 2;
+  const brut = execFileSync('ffmpeg', ['-v', 'error', '-i', fichier, '-vf', `fps=2,scale=${L}:${H}`, '-f', 'rawvideo', '-pix_fmt', 'gray', '-'], { maxBuffer: 512 * 1024 * 1024 });
+  const taille = L * H;
+  const n = Math.floor(brut.length / taille);
+  const touches: Array<{ image: number; bord: string; pixels: number }> = [];
+  const B = 2;
+  for (let k = 0; k < n; k++) {
+    const o = k * taille;
+    const px = (x: number, y: number) => brut[o + y * L + x];
+    const compte = { gauche: 0, droite: 0, haut: 0 };
+    for (let y = 0; y < H; y++) for (let x = 0; x < B; x++) { if (px(x, y) > 230) compte.gauche++; if (px(L - 1 - x, y) > 230) compte.droite++; }
+    for (let x = 0; x < L; x++) for (let y = 0; y < B; y++) if (px(x, y) > 230) compte.haut++;
+    for (const [bord, p] of Object.entries(compte)) if (p > 3) touches.push({ image: k, bord, pixels: p });
+  }
+  return { images: n, touches };
+}
+
+/** Planche 5×2 (1 image/s) d'un montage, à côté du fichier. */
+export function planche(fichier: string, sortie: string): void {
+  try { execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', fichier, '-vf', 'fps=1,scale=360:-2,tile=5x2', '-frames:v', '1', sortie]); } catch { /* sans planche */ }
+}

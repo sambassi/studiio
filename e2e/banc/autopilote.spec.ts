@@ -21,14 +21,14 @@ async function ouvrirSources(page: Page): Promise<void> {
 async function conserverPropositions(page: Page): Promise<number> {
   let n = 0;
   for (let i = 0; i < 6; i++) {
-    const avant = await page.getByText(/Propositions en attente/).locator('..').innerText().catch(() => '');
-    const b = page.getByRole('button', { name: /^Conserver$/ }).nth(n);
+    const b = page.locator('[data-autopilot-stock-conserver]').first();
     if (!(await b.isVisible().catch(() => false))) break;
     await b.click();
-    await page.waitForTimeout(700);
-    const apres = await page.getByText(/Propositions en attente/).locator('..').innerText().catch(() => '');
-    if (avant === apres) n += 1;
+    await expect(b).toBeHidden({ timeout: 10_000 }).catch(() => {});
+    n += 1;
+    await page.waitForTimeout(500);
   }
+  test.info().annotations.push({ type: 'propositions-conservees', description: String(n) });
   return n;
 }
 
@@ -65,14 +65,19 @@ test.describe('Autopilote', () => {
   });
 
   test('frise : les vidéos suggérées retenues apparaissent comme pastilles', async ({ page, banc }) => {
-    attenduAvantCorrection('frise « Mon avatar 0–30 s | CTA 30–34 s » sans les médias suggérés (synthèse M/G)');
+    // Pas d'échec attendu : rejoué sur 0f098b7 avec « Conserver » réellement cliqué, le média
+    // conservé apparaissait déjà (« Rush : stock-1.mp4 4–8 s »). Le premier constat « avant »
+    // venait d'un geste du banc qui ne cliquait pas le bon bouton.
     await ouvrirSources(page);
     await conserverPropositions(page);
     await page.waitForTimeout(1500);
     await banc.capture(page, 'autopilote-frise-apres-conserver', { locator: frise(page) });
     const texte = (await frise(page).innerText()).replace(/\s+/g, ' ');
     test.info().annotations.push({ type: 'pastilles', description: texte });
-    expect(texte).toMatch(/Vidéo suggérée/i);
+    // Avant : « Vidéo suggérée … » attendu en pastille. Après intégration, un média
+    // conservé entre dans la banque et la chronologie le nomme « Rush : <fichier> » :
+    // l'intention reste « le média suggéré retenu est dans la frise ».
+    expect(texte).toMatch(/Vidéo suggérée|Rush : (stock|rush)-\d\.mp4/i);
   });
 
   test('aucun nom de fournisseur affiché en clair', async ({ page, banc }) => {
@@ -150,14 +155,49 @@ test.describe('Autopilote', () => {
     expect(calendrierMontreEnCours, 'le Calendrier montre « Génération en cours »').toBe(true);
   });
 
-  test('VideosPretes : « Planifier la publication » (redirection window.location)', async ({ page }) => {
+  test('VideosPretes : « Planifier / Ajouter en brouillon au Calendrier » sans navigation automatique', async ({ page, banc }) => {
+    attenduAvantCorrection('VideosPretes.tsx:237 `window.location.href = /dashboard/calendar` après le clic (synthèse G)');
+    banc.etat.sessionTournage = true;
     await choisirParcours(page, 'autopilote');
     await page.goto('/dashboard/creer');
-    await page.waitForTimeout(2000);
-    const bouton = page.getByRole('button', { name: /Planifier la publication/ });
-    test.skip(!(await bouton.isVisible().catch(() => false)),
-      'non atteignable sans session de tournage rendue (/api/autopilot/sessions/<id>/rendus) — preuve statique : src/components/creer/VideosPretes.tsx:237 `window.location.href = \'/dashboard/calendar\'`');
+    await page.getByRole('button', { name: 'Motivation', exact: true }).click();
+    await page.getByRole('button', { name: /Continuer vers Rushes/ }).click();
+    await page.locator('[data-autopilot-sessions] > summary').click();
+    await page.locator('[data-tournage-session="sess-banc"]').click();
+    const bouton = page.getByRole('button', { name: /Planifier la publication|Ajouter en brouillon au Calendrier/ });
+    await expect(bouton).toBeVisible({ timeout: 20_000 });
+    await banc.capture(page, 'autopilote-videospretes-1-avant-clic', { fullPage: true });
+    const navigations: string[] = [];
+    page.on('framenavigated', (f) => { if (f === page.mainFrame()) navigations.push(f.url()); });
     await bouton.click();
-    await page.waitForURL(/\/dashboard\/calendar/, { timeout: 10_000 });
+    await expect.poll(() => banc.etat.posts.length, { timeout: 10_000 }).toBe(1);
+    await page.waitForTimeout(4000);
+    await banc.capture(page, 'autopilote-videospretes-2-apres-clic', { fullPage: true });
+    test.info().annotations.push({ type: 'navigations', description: navigations.join(' | ') || 'aucune' });
+    expect(navigations, 'aucune navigation automatique après le clic').toEqual([]);
+    expect(page.url()).toContain('/dashboard/creer');
+  });
+  test('chronologie : lisible à chaque largeur (défilement horizontal au téléphone, pas de page qui déborde)', async ({ page, banc }) => {
+    attenduAvantCorrection('pastilles de texte seulement : aucune chronologie à segments défilante (ChronologieMontage absente)');
+    await ouvrirSources(page);
+    await conserverPropositions(page);
+    await page.waitForTimeout(1000);
+    const chrono = frise(page);
+    await chrono.scrollIntoViewIfNeeded();
+    await banc.capture(page, 'autopilote-chronologie-largeur', { locator: chrono });
+    const mesure = await chrono.evaluate((el) => {
+      const s = getComputedStyle(el);
+      const segs = Array.from(el.querySelectorAll('[data-segment]')).map((x) => (x as HTMLElement).getBoundingClientRect());
+      return {
+        overflowX: s.overflowX, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
+        segments: segs.length, largeurMin: segs.length ? Math.min(...segs.map((r) => r.width)) : 0,
+        pageDeborde: document.documentElement.scrollWidth > window.innerWidth + 1,
+      };
+    });
+    test.info().annotations.push({ type: 'chronologie', description: JSON.stringify(mesure) });
+    expect(mesure.segments, 'segments dans la chronologie').toBeGreaterThan(1);
+    expect(mesure.pageDeborde, 'la page ne défile pas horizontalement').toBe(false);
+    if (mesure.scrollWidth > mesure.clientWidth + 1) expect(['auto', 'scroll']).toContain(mesure.overflowX);
+    expect(mesure.largeurMin, 'chaque segment garde une largeur lisible').toBeGreaterThanOrEqual(40);
   });
 });

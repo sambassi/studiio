@@ -53,7 +53,8 @@ export const VOIX_HEYGEN = [
   { voiceId: 'heygen-fr-2', id: 'heygen-fr-2', name: 'Hugo (FR)', language: 'French', gender: 'male', provider: 'heygen' },
 ];
 export const VOIX_ELEVEN = [
-  { voiceId: 'eleven-fr-1', id: 'eleven-fr-1', name: 'Charlotte', language: 'fr', gender: 'female', provider: 'elevenlabs', category: 'premade' },
+  // Identifiant au format réel de /api/tts/elevenlabs : `elevenlabs-<provider_voice_id>`.
+  { voiceId: 'elevenlabs-BancVoixFr01', id: 'elevenlabs-BancVoixFr01', name: 'Charlotte', language: 'fr', gender: 'female', provider: 'elevenlabs', category: 'premade' },
 ];
 
 export function mediaStock(i: number, type: 'video' | 'photo', requete: string, format = '9:16') {
@@ -101,6 +102,8 @@ export interface EtatBanc {
   /** Fichier où écrire le blob PUT du prochain rendu (Créer). */
   fichierRendu: string | null;
   autopilotConfig: Record<string, unknown> | null;
+  /** Une session de tournage avec un rendu prêt (VideosPretes) est-elle exposée ? */
+  sessionTournage: boolean;
 }
 
 const json = (d: unknown, status = 200): ReponseSimulee => ({ status, json: d });
@@ -136,7 +139,7 @@ export const ROUTES: Array<[string, Gestionnaire]> = [
   ['POST /api/upload/signed-url', ({ corps }) => {
     const brut = String((corps as { filename?: string })?.filename ?? `fichier-${Date.now()}`);
     const nom = brut.replace(/[^A-Za-z0-9._-]+/g, '_');
-    return json({ success: true, signedUrl: `/banc-upload/${nom}`, publicUrl: `http://localhost:3100/banc-medias/upload-${nom}`, path: nom });
+    return json({ success: true, signedUrl: `/banc-upload/${nom}`, publicUrl: `http://localhost:${process.env.BANC_PORT || 3100}/banc-medias/upload-${nom}`, path: nom });
   }],
   ['GET /api/render/tarifs', () => json({ ok: true, politique: 'standard', tarifs: { reel: 10, tv: 15 } })],
   ['GET /api/creer/montage-config', () => json({ passages: false })],
@@ -163,7 +166,11 @@ export const ROUTES: Array<[string, Gestionnaire]> = [
     if (corps && typeof corps === 'object') etat.autopilotConfig = { ...etat.autopilotConfig, ...(corps as Record<string, unknown>) };
     return json({ success: true, brandingReady: true, config: etat.autopilotConfig });
   }],
-  ['GET /api/autopilot/sessions', () => json({ success: true, sessions: [] })],
+  ['GET /api/autopilot/sessions', ({ etat }) => json({ ok: true, success: true, sessions: etat.sessionTournage ? [{ id: 'sess-banc', titre: 'Tournage banc', statut: 'pret', created_at: '2026-10-19T10:00:00.000Z' }] : [] })],
+  ['GET /api/autopilot/sessions/*/rushes', () => json({ ok: true, rushes: [{ id: 'rush-banc-1', rang: 0, etat: 'verifie', nomOrigine: 'rush-1.mp4', cleObjet: 'banc/rush-1.mp4' }] })],
+  // Rendu TERMINÉ de la session (VideosPretes) : vidéo servie par un chemin de l'application.
+  ['GET /api/autopilot/sessions/*/rendus', () => json({ ok: true, rendu: { id: 'rendu-banc', etat: 'reussie', etape: null, motif: null, video: { dureeSecondes: 3, largeur: 1080, hauteur: 1920, chemin: '/api/autopilot/rendus-montage/rendu-banc/fichier' } } })],
+  ['GET /api/autopilot/rendus-montage/*/fichier', () => ({ status: 200, body: fs.readFileSync(path.join(DOSSIER_MEDIAS, 'avatar.mp4')), contentType: 'video/mp4' })],
   ['GET /api/avatars', () => json({
     success: true,
     data: {
@@ -242,6 +249,18 @@ export const ROUTES: Array<[string, Gestionnaire]> = [
     const format = url.searchParams.get('format') || '9:16';
     const medias = Array.from({ length: 8 }, (_, i) => mediaStock(i, type, requete, format));
     return json({ success: true, medias, echecs: [], requete });
+  }],
+  // « Conserver » une vidéo suggérée : importée dans la Médiathèque (ici : extrait local).
+  ['POST /api/stock/importer', ({ corps }) => {
+    const c = (corps ?? {}) as { providerAssetId?: string; type?: string };
+    const i = Math.max(0, Number(c.providerAssetId ?? 9000) - 9000);
+    const m = mediaStock(i, c.type === 'photo' ? 'photo' : 'video', 'import');
+    // Un fichier distinct par média importé (sinon deux imports se confondraient dans la banque).
+    return json({ success: true, url: mediaHttps(['stock-1.mp4', 'stock-2.mp4', 'rush-1.mp4', 'rush-2.mp4', 'rush-3.mp4'][i % 5] + `?id=${9000 + i}`), importe: true, media: m });
+  }],
+  ['POST /api/autopilot/rush/verifier', ({ corps }) => {
+    const urls = Array.isArray((corps as { urls?: unknown[] })?.urls) ? ((corps as { urls: unknown[] }).urls.filter((u) => typeof u === 'string') as string[]) : [];
+    return json({ success: true, resultats: Object.fromEntries(urls.map((u) => [u, true])), etats: Object.fromEntries(urls.map((u) => [u, 'utilisable'])), refusees: [] });
   }],
   ['GET /api/pexels', ({ url }) => {
     const q = url.searchParams.get('query') || url.searchParams.get('q') || 'banc';
@@ -411,7 +430,7 @@ export const test = base.extend<{ banc: Banc }>({
     const surcharges: Array<[string, Gestionnaire]> = [];
     const serveur: string[] = [];
     const banc: Banc = {
-      etat: { posts: [], production: { progression: null, resultat: null, jumeau: null }, prononciations: [], rendus: [], fichierRendu: null, autopilotConfig: configAutopilotParDefaut() },
+      etat: { posts: [], production: { progression: null, resultat: null, jumeau: null }, prononciations: [], rendus: [], fichierRendu: null, autopilotConfig: configAutopilotParDefaut(), sessionTournage: false },
       externes: [], externesInterdits: [], nonSimulees: [], appels: [], consoleErreurs: [], requetesEchouees: [],
       surcharger: (cle, g) => { surcharges.unshift([cle, g]); },
       passerAuServeur: (cle) => { serveur.push(cle); },
