@@ -3,7 +3,7 @@
 import ReglagesPublicationReseaux from '@/components/social/ReglagesPublicationReseaux';
 import type { Couverture, ReglagesTiktok } from '@/lib/social/couverture';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { urlsIntrouvables, trierMediasMorts, messageMediasBloquants, messageMediasRetires, type MediaAVerifier } from '@/lib/creer/medias-morts';
+import { diagnostiquerIntrouvables, trierMediasMorts, messageMediasBloquants, messageMediasRetires, libelleMediaManquant, nomLisible, CAUSE_TEXTE, type MediaManquant } from '@/lib/creer/medias-morts';
 import Link from 'next/link';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
@@ -50,6 +50,7 @@ import {
   X,
   UserSquare2,
   Mic,
+  Image as ImageIcon,
   Group as GroupIcon,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -4626,7 +4627,16 @@ export default function AssistantWizard() {
   /** Média montré par « Aperçu » (id) — le panneau d'aperçu peut s'y brancher. */
   const [mediaApercuId, setMediaApercuId] = useState<string | null>(null);
   /** Médiathèque ouverte DEPUIS la liste : ajout (`null`) ou remplacement (index). */
-  const [mediathequeListe, setMediathequeListe] = useState<{ remplacer: number | null; type: 'video' | 'all' } | null>(null);
+  // `retrouver` : le média de cette place est introuvable ; le fichier choisi
+  // reprend SA place, sa durée et son recadrage (seule l'adresse change).
+  const [mediathequeListe, setMediathequeListe] = useState<{ remplacer: number | null; type: 'video' | 'all'; retrouver?: boolean } | null>(null);
+  /**
+   * Médias INDISPENSABLES introuvables au dernier « Composer et envoyer » :
+   * l'envoi est bloqué (rien composé, rien débité) tant qu'ils ne sont pas
+   * retrouvés ou remplacés. Jamais retirés ni remplacés en silence.
+   */
+  const [mediasManquants, setMediasManquants] = useState<MediaManquant[] | null>(null);
+  const messageManquantsRef = useRef<string | null>(null);
   /** Recherche stock ouverte DEPUIS la liste : les photos y entrent (pas en fond). */
   const stockVersListeRef = useRef(false);
   /** Index du média remplacé par la recherche stock (`null` = ajout). */
@@ -8284,6 +8294,21 @@ export default function AssistantWizard() {
   const listeMedias: MediaVideo[] = mediasVideo ?? listeDepuisRushs(rushListe, urlsStock, urlsMediatheque);
   const listeMediasRef = useRef<MediaVideo[]>(listeMedias);
   listeMediasRef.current = listeMedias;
+  // Un rush manquant retrouvé ou remplacé quitte la liste des manquants ; quand
+  // il n'en reste plus, le message de blocage qu'ils portaient s'efface.
+  const urlsListeCle = listeMedias.map((m) => m.url ?? '').join('\n');
+  useEffect(() => {
+    if (!mediasManquants) return;
+    const urls = new Set(listeMedias.map((m) => m.url));
+    const restants = mediasManquants.filter((m) => m.role !== 'rush' || urls.has(m.url));
+    if (restants.length === mediasManquants.length) return;
+    const ancien = messageManquantsRef.current;
+    const nouveau = restants.length ? messageMediasBloquants(restants) : null;
+    messageManquantsRef.current = nouveau;
+    setMediasManquants(restants.length ? restants : null);
+    setError((e) => (e === ancien ? nouveau : e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlsListeCle, mediasManquants]);
   /** Durée de parole estimée de l'avatar avant sa production (textes des voix). */
   const dureeAvatarEstimee = estimerDureeParole(Object.values(sequenceVoices).map((v) => v.text));
   /**
@@ -8409,6 +8434,36 @@ export default function AssistantWizard() {
   /** Ajoute un créneau « Mon avatar » (sa vidéo est produite à l'envoi). */
   const ajouterAvatarListe = () => {
     poserListeMedias(ajouterMedia(listeMediasRef.current, { id: nouvelIdMedia('a'), source: 'avatar', type: 'video', duree: null }));
+  };
+
+  /**
+   * « Retrouver ce fichier » : le MÊME média revient à SA place. Seule
+   * l'adresse change (et le nom s'il est connu) : durée mesurée, durée
+   * choisie, recadrage et rang dans la séquence sont conservés.
+   */
+  const retrouverMediaListe = (i: number, url: string, nom: string) => {
+    const ancien = listeMediasRef.current[i];
+    if (!ancien) return;
+    if (ancien.url && ancien.url !== url) {
+      const vieille = ancien.url;
+      setRushTransforms((prev) => (prev[vieille] && !prev[url] ? { ...prev, [url]: prev[vieille] } : prev));
+    }
+    if (ancien.url && ancien.url !== url && urlsMediatheque.has(ancien.url)) setUrlsMediatheque((prev) => new Set(prev).add(url));
+    poserListeMedias(remplacerMedia(listeMediasRef.current, i, { ...ancien, url, ...(nom ? { nom } : {}) }));
+    if (ancien.type === 'video') protegerMedia(url);
+  };
+
+  /** Ouvre le remplacement du média `i` (même chemin que le bouton de la liste). */
+  const ouvrirRemplacementMedia = (i: number) => {
+    const m = listeMediasRef.current[i];
+    if (!m) return;
+    if (m.source === 'stock-photo' || m.source === 'stock-video') {
+      stockVersListeRef.current = true;
+      remplacementStockRef.current = i;
+      setStockPanneau({ cle: 'video', type: m.type === 'image' ? 'photo' : 'video' });
+    } else {
+      setMediathequeListe({ remplacer: i, type: m.source === 'mediatheque' || m.type === 'image' ? 'all' : 'video' });
+    }
   };
 
   /** Remplace le média `i` par une vidéo (durée sondée) ou une photo, à la même place. */
@@ -9148,7 +9203,14 @@ export default function AssistantWizard() {
       //    de CE montage et c'est dit. Obligatoires (rush, narration) : arrêt
       //    ici, avant tout débit. En mode jumeau « avatar », l'ancien rush
       //    sera REMPLACÉ par la vidéo du jumeau : il n'est pas exigé.
-      const aVerifier: MediaAVerifier[] = [
+      // Nom d'origine et place de chaque rush : le message dit LEQUEL manque.
+      const infosRush = (url: string): Pick<MediaManquant, 'nom' | 'position' | 'type'> => {
+        const liste = listeMediasRef.current;
+        const i = liste.findIndex((m) => m.url === url);
+        if (i >= 0) return { nom: liste[i].nom, position: i + 1, type: liste[i].type };
+        return url === plateau.rushUrl && rushName ? { nom: rushName } : {};
+      };
+      const aVerifier: MediaManquant[] = [
         ...(musicUrl ? [{ role: 'musique' as const, url: musicUrl }] : []),
         ...Object.entries(seqBackgrounds).flatMap(([cle, b]) => (b?.url ? [{ role: 'fond' as const, url: b.url, cle }] : [])),
         ...[voiceUrl, ...Object.values(sequenceVoiceUrls ?? {})]
@@ -9158,15 +9220,22 @@ export default function AssistantWizard() {
         // ses photos sont aussi obligatoires.
         ...(jumeauMode === 'avatar' && !listeEnvoi ? [] : [plateau.rushUrl, ...rushSuivants.map((r) => r.url)]
           .filter((u): u is string => typeof u === 'string' && u.length > 0)
-          .map((url) => ({ role: 'rush' as const, url }))),
-        ...(listeEnvoi ?? []).filter((m) => m.type === 'image' && !!m.url).map((m) => ({ role: 'rush' as const, url: m.url! })),
+          .map((url) => ({ role: 'rush' as const, url, ...infosRush(url) }))),
+        ...(listeEnvoi ?? []).filter((m) => m.type === 'image' && !!m.url).map((m) => ({ role: 'rush' as const, url: m.url!, ...infosRush(m.url!) })),
       ];
-      const introuvables = await urlsIntrouvables(aVerifier.map((m) => m.url));
-      const { aRetirer, bloquants } = trierMediasMorts(aVerifier.filter((m) => introuvables.has(m.url)));
+      const introuvables = await diagnostiquerIntrouvables(aVerifier.map((m) => m.url));
+      const { aRetirer, bloquants } = trierMediasMorts(
+        aVerifier.filter((m) => introuvables.has(m.url)).map((m) => ({ ...m, cause: introuvables.get(m.url) })),
+      );
       if (bloquants.length > 0) {
-        setError(messageMediasBloquants(bloquants));
+        const message = messageMediasBloquants(bloquants);
+        messageManquantsRef.current = message;
+        setMediasManquants(bloquants);
+        setError(message);
         return;
       }
+      messageManquantsRef.current = null;
+      setMediasManquants(null);
       // Ce passage lit ces deux valeurs LOCALES, jamais l'état (qui ne sera
       // relu qu'au prochain rendu de l'écran) ; l'état est nettoyé aussi,
       // pour que le brouillon ne garde pas l'adresse morte.
@@ -10979,7 +11048,50 @@ export default function AssistantWizard() {
         {error && (
           <div ref={erreurRef} data-creer-erreur className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1 space-y-2">
             <span>{error}</span>
+            {/* Médias indispensables introuvables : LEQUEL, POURQUOI, et les
+                deux gestes. Rien n'est retiré ni remplacé sans un clic. */}
+            {mediasManquants && error === messageManquantsRef.current && (
+              <ul className="space-y-1.5" data-medias-manquants>
+                {mediasManquants.map((m) => {
+                  const i = typeof m.position === 'number' ? m.position - 1 : -1;
+                  const dansListe = m.role === 'rush' && i >= 0 && listeMedias[i]?.url === m.url;
+                  const nom = nomLisible(m.nom, m.url);
+                  return (
+                    <li key={`${m.role}:${m.url}`} data-media-manquant={m.cause ?? 'inconnu'}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-black/20 px-2.5 py-2">
+                      {m.type === 'image' ? <ImageIcon className="w-4 h-4 shrink-0 text-red-300" /> : m.role === 'narration' ? <Mic className="w-4 h-4 shrink-0 text-red-300" /> : <Film className="w-4 h-4 shrink-0 text-red-300" />}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-red-100" title={nom ?? undefined}>
+                          {typeof m.position === 'number' ? `Séquence Vidéo · ${m.type === 'image' ? 'média' : 'rush'} ${m.position}` : libelleMediaManquant({ ...m, cause: undefined })}
+                          {nom && typeof m.position === 'number' ? ` · ${nom}` : ''}
+                        </span>
+                        <span className="block text-xs text-red-300/80">
+                          {m.cause ? CAUSE_TEXTE[m.cause] : 'introuvable'}
+                          {m.role === 'narration' ? ' — régénérez ou réenregistrez cette voix' : ''}
+                        </span>
+                      </span>
+                      {dansListe && (
+                        <span className="flex flex-wrap gap-1.5">
+                          <button type="button" data-media-retrouver
+                            onClick={() => setMediathequeListe({ remplacer: i, type: m.type === 'image' ? 'all' : 'video', retrouver: true })}
+                            className="rounded-lg bg-purple-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-purple-500">
+                            Retrouver ce fichier
+                          </button>
+                          <button type="button" data-media-remplacer
+                            onClick={() => ouvrirRemplacementMedia(i)}
+                            className="rounded-lg border border-gray-600 px-2.5 py-1 text-xs font-semibold text-gray-200 hover:bg-white/10">
+                            Remplacer ce média
+                          </button>
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            </div>
             {/* Quota UTILISATEUR épuisé : le chemin vers son abonnement Studiio. */}
             {error === MESSAGES_AVATAR.quotaEpuise && (
               <a href={URL_ABONNEMENT} data-creer-erreur-abonnement className="ml-auto shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500">
@@ -12816,17 +12928,7 @@ export default function AssistantWizard() {
                           }));
                         }}
                         onDeplacer={(i, d) => poserListeMedias(deplacerMedia(listeMedias, i, d))}
-                        onRemplacer={(i) => {
-                          const m = listeMedias[i];
-                          if (!m) return;
-                          if (m.source === 'stock-photo' || m.source === 'stock-video') {
-                            stockVersListeRef.current = true;
-                            remplacementStockRef.current = i;
-                            setStockPanneau({ cle: 'video', type: m.type === 'image' ? 'photo' : 'video' });
-                          } else {
-                            setMediathequeListe({ remplacer: i, type: m.source === 'mediatheque' || m.type === 'image' ? 'all' : 'video' });
-                          }
-                        }}
+                        onRemplacer={ouvrirRemplacementMedia}
                         onSupprimer={(i) => {
                           const m = listeMedias[i];
                           if (m && m.id === mediaApercuId) setMediaApercuId(null);
@@ -12920,6 +13022,7 @@ export default function AssistantWizard() {
                           const remplace = cible?.remplacer ?? null;
                           if (cible?.type === 'all' && !estImage) setUrlsMediatheque((prev) => new Set(prev).add(url));
                           const source = cible?.type === 'all' ? 'mediatheque' as const : 'rush' as const;
+                          if (remplace !== null && cible?.retrouver) { retrouverMediaListe(remplace, url, name); return; }
                           if (remplace !== null) { remplacerMediaListe(remplace, url, name, estImage ? 'image' : 'video', source); return; }
                           if (estImage) ajouterPhotoListe(url, name, 'mediatheque');
                           else ajouterVideoListe(url, name);

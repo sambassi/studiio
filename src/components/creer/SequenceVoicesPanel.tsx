@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Mic, Square, Sparkles, Loader2, Trash2, Play, Pause, AlertTriangle, Info, Check } from 'lucide-react';
 import { TTS_VOICES, synthesize, synthesizeAvecSegments, type TtsVoice } from '@/lib/tts/edge-tts-client';
 import { texteDesMorceaux, type TimingVoix } from '@/lib/creer/synchro-cartes';
@@ -56,6 +56,18 @@ function formatTime(s: number): string {
  *  error and surface it via the optional onError callback so the parent
  *  can showToast() the user.
  */
+/** Réglage de voix : [libellé | curseur | valeur], le curseur prend le reste. */
+const REGLAGE_LIGNE_STYLE: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '4.25rem minmax(0, 1fr) 2.75rem',
+  alignItems: 'center',
+  columnGap: '0.5rem',
+  minWidth: 0,
+};
+/** Sans `min-width: 0`, un input range garde sa largeur intrinsèque et déborde. */
+const REGLAGE_CURSEUR_STYLE: CSSProperties = { width: '100%', minWidth: 0 };
+const REGLAGE_VALEUR_STYLE: CSSProperties = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+
 function PreviewPlayer({
   src,
   onDelete,
@@ -557,7 +569,7 @@ export function SequenceVoicesPanel({
   };
 
   return (
-    <div className="space-y-3 rounded-lg border border-gray-700 bg-gray-900/40 p-3">
+    <div className="min-w-0 space-y-3 rounded-lg border border-gray-700 bg-gray-900/40 p-3" data-sequence-voices-panel>
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-white">
@@ -571,12 +583,13 @@ export function SequenceVoicesPanel({
       </div>
 
       {/* Shared TTS voice + Generate all */}
-      <div className="flex flex-wrap items-center gap-2 rounded bg-gray-800/40 px-2 py-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 rounded bg-gray-800/40 px-2 py-2">
         <label className="text-[10px] text-gray-400">Voix TTS</label>
         <select
           value={selectedTtsVoiceId}
           onChange={(e) => setSelectedTtsVoiceId(e.target.value)}
           data-testid="seq-tts-voice-select"
+          style={{ maxWidth: '100%', minWidth: 0 }}
           className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-white focus:border-purple-500 focus:outline-none"
         >
           {/* Groupes, voix clonee en tete — memes groupes que le panneau
@@ -631,10 +644,10 @@ export function SequenceVoicesPanel({
           const voixDeGeneration = sv.ttsVoice ? allVoices.find((v) => v.id === sv.ttsVoice)?.name ?? sv.ttsVoice : null;
 
           return (
-            <div key={key} className={`rounded-md border p-2 ${SEQUENCE_ACCENT[key]}`}>
-              <div className="mb-1.5 flex items-center justify-between gap-2">
+            <div key={key} className={`min-w-0 rounded-md border p-2 ${SEQUENCE_ACCENT[key]}`}>
+              <div className="mb-1.5 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
                 <span className="text-xs font-semibold text-white">{SEQUENCE_LABELS[key]}</span>
-                <span className={`text-[10px] ${
+                <span style={{ fontVariantNumeric: 'tabular-nums' }} className={`text-[10px] ${
                   overrun ? 'text-orange-300' : fit?.status === 'ok' ? 'text-emerald-300' : 'text-gray-400'
                 }`}>
                   {/* Une duree au dixieme (« 5,4 s ») se lit telle quelle :
@@ -699,9 +712,18 @@ export function SequenceVoicesPanel({
               />
 
               {/* Réglages de CETTE voix — utilisés à la prochaine génération. */}
-              <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1" data-voice-reglages={key}>
-                <label className="flex items-center gap-1.5 text-[10px] text-gray-400">
-                  <span className="w-14 shrink-0">Vitesse</span>
+              {/* Une ligne par réglage, jamais deux côte à côte : un curseur
+                  natif a une largeur intrinsèque (~130 px) qui débordait de
+                  sa demi-colonne et chevauchait libellé et valeur. La grille
+                  [libellé | curseur | valeur] est en style inline (les
+                  classes arbitraires peuvent être purgées en prod). */}
+              <div className="mt-1.5 min-w-0 space-y-1" data-voice-reglages={key}>
+                <label
+                  className="text-[10px] text-gray-400"
+                  style={REGLAGE_LIGNE_STYLE}
+                  data-voice-reglage="vitesse"
+                >
+                  <span className="truncate">Vitesse</span>
                   <input
                     type="range"
                     min={VITESSE_MIN * 100}
@@ -710,15 +732,18 @@ export function SequenceVoicesPanel({
                     value={Math.round((normaliserReglages(sv.reglages)?.vitesse ?? 1) * 100)}
                     onChange={(e) => changerReglages(key, { vitesse: Number(e.target.value) / 100 })}
                     aria-label={`Vitesse de la voix — ${SEQUENCE_LABELS[key]}`}
-                    className="flex-1 h-1 accent-purple-500"
+                    className="h-1 accent-purple-500"
+                    style={REGLAGE_CURSEUR_STYLE}
                   />
-                  <span className="w-8 text-right tabular-nums text-gray-300">×{(normaliserReglages(sv.reglages)?.vitesse ?? 1).toFixed(2).replace('.', ',')}</span>
+                  <span className="text-right text-gray-300" style={REGLAGE_VALEUR_STYLE}>×{(normaliserReglages(sv.reglages)?.vitesse ?? 1).toFixed(2).replace('.', ',')}</span>
                 </label>
                 <label
-                  className="flex items-center gap-1.5 text-[10px] text-gray-400"
+                  className="text-[10px] text-gray-400"
+                  style={REGLAGE_LIGNE_STYLE}
+                  data-voice-reglage="dynamisme"
                   title={voixElevenLabs ? 'Expressivité de la voix' : 'Le dynamisme n’agit qu’avec une voix clonée / premium'}
                 >
-                  <span className="w-14 shrink-0">Dynamisme</span>
+                  <span className="truncate">Dynamisme</span>
                   <input
                     type="range"
                     min={0}
@@ -728,22 +753,23 @@ export function SequenceVoicesPanel({
                     onChange={(e) => changerReglages(key, { dynamisme: Number(e.target.value) / 10 })}
                     disabled={!voixElevenLabs}
                     aria-label={`Dynamisme de la voix — ${SEQUENCE_LABELS[key]}`}
-                    className="flex-1 h-1 accent-purple-500 disabled:opacity-40"
+                    className="h-1 accent-purple-500 disabled:opacity-40"
+                    style={REGLAGE_CURSEUR_STYLE}
                   />
-                  <span className="w-8 text-right tabular-nums text-gray-300">{Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 100)}%</span>
+                  <span className="text-right text-gray-300" style={REGLAGE_VALEUR_STYLE}>{Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 100)}%</span>
                 </label>
                 <button
                   type="button"
                   onClick={() => appliquerATous(key)}
                   data-voice-reglages-tous={key}
-                  className="col-span-2 justify-self-start text-[10px] text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
+                  className="block max-w-full text-left text-[10px] text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
                   title="Mettre la même vitesse et le même dynamisme sur toutes les voix (à régénérer)"
                 >
                   Appliquer ces réglages à toutes les voix
                 </button>
               </div>
 
-              <div className="mt-1.5 flex items-center gap-1.5">
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {!isRecordingThis ? (
                   <button
                     type="button"

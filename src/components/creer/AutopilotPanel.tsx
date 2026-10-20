@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } fro
 import { classesCarteOption } from '@/lib/ui/etats';
 import {
   Rocket, Loader2, Check, AlertTriangle, Film, Trash2, Plus, Music, Mic, ImageIcon,
-  Sparkles, Clapperboard, CalendarDays, Images,
+  Sparkles, Clapperboard, CalendarDays, Images, Info,
 } from 'lucide-react';
 import CarteMedia, { GrilleMedias } from '@/components/medias/CarteMedia';
 import { creditMedia, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
@@ -35,7 +35,11 @@ import {
 } from '@/lib/autopilot/sources';
 import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
-import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
+import { avecConfirmationCout } from '@/lib/fournisseurs/confirmation-client';
+import {
+  boutonProduireVisible, libelleBoutonProduire, suiteEnvoi, messageErreurTechnique, lireProgressionServeur,
+  repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, type EtatProduction,
+} from '@/lib/autopilot/etat-production-manuelle';
 import type { FormatStock } from '@/lib/stock/types';
 import {
   etatsDepuisReponseVerifier, rushesUtilisables, rushReparable, type EtatRush,
@@ -526,17 +530,12 @@ export default function AutopilotPanel({
    * « Produire un brouillon maintenant » — où en est-on.
    *
    *   repos → confirmation (le coût est affiché, rien n'est parti)
-   *         → en-cours (UN POST en vol) → fait | erreur → repos.
+   *         → en-cours (UN POST en vol) → fait | erreur | annule → repos.
+   *
+   * Les transitions sont dérivées des réponses serveur par des fonctions
+   * pures (`etat-production-manuelle.ts`), testées à part.
    */
-  const [produire, setProduire] = useState<
-    | { etat: 'repos' }
-    | { etat: 'confirmation' }
-    | { etat: 'en-cours' }
-    /** Avatar en préparation : le montage attend en file — RIEN n'est encore dans le Calendrier. */
-    | { etat: 'jumeau' }
-    | { etat: 'fait'; postId: string | null; date: string; time: string; timezone: string; calendrierUrl: string; avertissements?: string[] }
-    | { etat: 'erreur'; message: string }
-  >({ etat: 'repos' });
+  const [produire, setProduire] = useState<EtatProduction>({ etat: 'repos' });
   /**
    * ⚠️ VERROU SYNCHRONE CONTRE LE DOUBLE CLIC. `disabled` suit l'état React,
    * qui n'est pas encore rendu quand le second clic arrive dans la même
@@ -1119,11 +1118,22 @@ export default function AutopilotPanel({
   useEffect(() => {
     if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); setSuiviJumeauFile(null); return; }
     let actif = true;
+    // Lectures consécutives sans AUCUNE trace serveur (ni progression, ni
+    // résultat, ni file jumeau) : au-delà de `LECTURES_VIDES_MAX`, l'écran
+    // cesse d'attendre en silence — il le dit et rend le bouton.
+    let vides = 0;
     const lire = () => {
       fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
           if (!actif) return;
+          // Un POST encore en vol (verrou client) n'a pas encore de trace : on attend sa réponse.
+          if (lireProgressionServeur(d).cas === 'rien' && !produireEnVolRef.current) {
+            vides += 1;
+            if (vides >= LECTURES_VIDES_MAX) setProduire({ etat: 'erreur', message: MESSAGE_PRODUCTION_PERDUE, code: 'introuvable' });
+            return;
+          }
+          vides = 0;
           const p = d?.progression;
           if (p && typeof p.pourcent === 'number') {
             setProgressionProduction({
@@ -1166,11 +1176,16 @@ export default function AutopilotPanel({
       .then((r) => r.json())
       .then((d) => {
         if (!actif) return;
-        if (d?.progression) setProduire({ etat: 'en-cours' });
-        else if (d?.jumeau?.etat === 'en_preparation') setProduire({ etat: 'jumeau' });
+        // Ne remplace jamais un état posé entre-temps par un clic.
+        const lecture = lireProgressionServeur(d);
+        const reprise = repriseAuRetour(lecture);
+        if (reprise === 'en-cours') setProduire((e) => (e.etat === 'repos' ? { etat: 'en-cours' } : e));
+        else if (reprise === 'jumeau') setProduire((e) => (e.etat === 'repos' ? { etat: 'jumeau' } : e));
+        else if (reprise === 'resultat' && lecture.cas === 'resultat' && !produireEnVolRef.current) appliquerResultat(lecture.resultat);
       })
       .catch(() => { /* rien à reprendre */ });
     return () => { actif = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const produireMaintenant = useCallback(async () => {
@@ -1189,20 +1204,14 @@ export default function AutopilotPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apercuSignature: signatureApercuAutopilote(config), ...(confirmation ?? {}) }),
       }), { cle: 'autopilote:produire' });
-      if (issue.annule) {
-        setProduire({ etat: 'erreur', message: MESSAGE_ANNULE });
-        return;
-      }
-      const data = issue.json;
-      // 202 : le rendu est lancé en arrière-plan ; 409 « en-cours » : un
-      // rendu tourne déjà — dans les deux cas on SUIT celui qui tourne.
-      if (issue.status === 202 || data?.code === 'en-cours') return;
-      if (issue.status < 200 || issue.status >= 300 || !data?.success) {
-        throw new Error(data?.error || `Erreur ${issue.status}`);
-      }
-      appliquerResultat(data);
+      // « Opération annulée » SEULEMENT quand l'utilisateur a refusé le
+      // coût ; 202 / 409 « en-cours » / verrou déjà pris : on SUIT le rendu
+      // qui tourne ; refus serveur : SA raison, et une relance.
+      const suite = suiteEnvoi(issue);
+      if (suite.suite === 'etat') setProduire(suite.etat);
+      else if (suite.suite === 'resultat') appliquerResultat(suite.data);
     } catch (err) {
-      setProduire({ etat: 'erreur', message: err instanceof Error ? err.message : 'Production impossible.' });
+      setProduire({ etat: 'erreur', message: messageErreurTechnique(err) });
     } finally {
       produireEnVolRef.current = false;
     }
@@ -1326,7 +1335,7 @@ export default function AutopilotPanel({
             commandes : ce bouton, seul, produit tout de suite. Brouillon
             forcé, aucun réseau, coût annoncé AVANT — et un seul POST, quoi
             qu'on clique. */}
-        {produire.etat === 'repos' || produire.etat === 'fait' || produire.etat === 'erreur' ? (
+        {boutonProduireVisible(produire) ? (
           <button
             type="button"
             onClick={() => setProduire({ etat: 'confirmation' })}
@@ -1336,9 +1345,14 @@ export default function AutopilotPanel({
             className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-200 hover:border-gray-700 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             <Clapperboard className="w-3.5 h-3.5" />
-            Produire un brouillon maintenant
+            {libelleBoutonProduire(produire)}
           </button>
         ) : null}
+        {boutonProduireVisible(produire) && sansRush && (
+          <p className="text-[11px] text-amber-300" data-autopilot-produire-indisponible>
+            Ajoutez une source visuelle (rush, avatar ou média suggéré) pour produire.
+          </p>
+        )}
         {produire.etat === 'confirmation' && (
           <div
             className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 space-y-2 text-xs"
@@ -1433,8 +1447,13 @@ export default function AutopilotPanel({
           </p>
         )}
         {produire.etat === 'erreur' && (
-          <p className="flex items-start gap-1.5 text-xs text-red-400" data-autopilot-produire-erreur>
+          <p className="flex items-start gap-1.5 text-xs text-red-400" data-autopilot-produire-erreur data-code={produire.code ?? ''}>
             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {produire.message}
+          </p>
+        )}
+        {produire.etat === 'annule' && (
+          <p className="flex items-start gap-1.5 text-xs text-gray-400" data-autopilot-produire-annule>
+            <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {produire.message}
           </p>
         )}
       </div>
