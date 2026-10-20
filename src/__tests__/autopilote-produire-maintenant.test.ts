@@ -37,8 +37,19 @@ let posts: Array<Record<string, unknown>>;
 /** Les lignes insérées, dans l'ordre. */
 let insertions: Array<Record<string, unknown>>;
 
-vi.mock('@/lib/db/supabase', () => {
+/**
+ * `autopilot_jumeau_attente` : une VRAIE table en mémoire (unicité
+ * `(user_id, slot_key)` comprise) — la réservation persistante d'une
+ * production sans avatar s'y écrit. Hissée : survit à `vi.resetModules()`
+ * comme une base survit au redémarrage du processus.
+ */
+const fileAttente = vi.hoisted(() => ({ base: null as null | ReturnType<typeof import('./helpers/fausse-base')['creerFausseBase']> }));
+
+vi.mock('@/lib/db/supabase', async () => {
+  const { creerFausseBase } = await import('./helpers/fausse-base');
+  fileAttente.base ??= creerFausseBase();
   const from = (table: string) => {
+    if (table === 'autopilot_jumeau_attente') return fileAttente.base!.supabaseAdmin.from(table);
     const chaine: Record<string, unknown> = {};
     const self = () => chaine;
     Object.assign(chaine, {
@@ -162,6 +173,7 @@ async function produire(POST: () => Promise<Response>): Promise<Response> {
 }
 
 beforeEach(() => {
+  fileAttente.base?.vider();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(MAINTENANT);
   authMock.mockResolvedValue({ user: { id: 'u1' } });
@@ -507,5 +519,154 @@ describe('A4 v3 — avatar seul, durée < 20 s : rien sans confirmation', () => 
     expect(lancer).toHaveBeenCalledTimes(1);
     const arg = lancer.mock.calls[0][0] as { post: { brief?: { duree?: number } } };
     expect(arg.post.brief?.duree).toBe(30);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #613 — sans avatar, l'état et le verrou survivent au processus
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Un « processus » neuf : modules (donc Maps et `enVol`) rechargés ; `nouvelleInstance` = redémarrage. */
+async function processus(nouvelleInstance = false) {
+  vi.resetModules();
+  if (nouvelleInstance) delete (globalThis as { __studiioInstanceAutopilote?: string }).__studiioInstanceAutopilote;
+  const route = await import('@/app/api/autopilot/produire-maintenant/route');
+  const progression = await import('@/app/api/autopilot/produire-maintenant/progression/route');
+  return { POST: route.POST, GET: route.GET, PROGRESSION: progression.GET };
+}
+
+const ligneDirecte = () => fileAttente.base!.table('autopilot_jumeau_attente').find((l) => l.slot_key === 'manuel-direct') as Record<string, unknown> | undefined;
+
+async function attendreStatut(statuts: string[]): Promise<Record<string, unknown>> {
+  for (let i = 0; i < 400; i += 1) {
+    const l = ligneDirecte();
+    if (l && statuts.includes(String(l.statut))) return l;
+    await new Promise((ok) => setTimeout(ok, 5));
+  }
+  throw new Error(`statut jamais atteint : ${statuts.join(', ')}`);
+}
+
+describe('#613 — production sans avatar : état et verrou PERSISTANTS', () => {
+  it('deux POST SIMULTANÉS dans deux processus distincts (mémoires séparées) : un seul rendu, un seul débit', async () => {
+    delaiRendu = 30;
+    const a = await processus();
+    const b = await processus();
+    const [r1, r2] = await Promise.all([a.POST(), b.POST()]);
+    expect([r1.status, r2.status].sort()).toEqual([202, 409]);
+    const refus = r1.status === 409 ? r1 : r2;
+    expect((await refus.json()).code).toBe('en-cours');
+    await attendreStatut(['direct_rendu']);
+    expect(renderAndUpload).toHaveBeenCalledTimes(1);
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+  });
+
+  it('la réservation est écrite AVANT le rendu, et ignore la file jumeau (statut direct_*, génération nulle)', async () => {
+    let ligneAuRendu: Record<string, unknown> | undefined;
+    renderAndUpload.mockImplementationOnce(async () => {
+      ligneAuRendu = { ...ligneDirecte() };
+      return { videoUrl: 'https://cdn.test/rendu.mp4', thumbnailUrl: 'https://cdn.test/v.jpg', durationFrames: 900 };
+    });
+    const p = await processus();
+    expect((await p.POST()).status).toBe(202);
+    const fin = await attendreStatut(['direct_rendu']);
+    expect(ligneAuRendu).toMatchObject({ user_id: 'u1', statut: 'direct_en_cours', generation_id: '00000000-0000-0000-0000-000000000000' });
+    expect(fin.post_id).toBe('p1');
+    expect(fin.job_id).toBe(String(deductCredits.mock.calls[0]?.[3] ?? '').replace(/^autopilote:/, ''));
+  });
+
+  it('REDÉMARRAGE pendant le rendu (Maps vides) : la progression est relue de la base, un nouveau clic est refusé', async () => {
+    let finir: (() => void) | null = null;
+    renderAndUpload.mockImplementationOnce(() => new Promise((ok) => {
+      finir = () => ok({ videoUrl: 'https://cdn.test/rendu.mp4', thumbnailUrl: 'https://cdn.test/v.jpg', durationFrames: 900 });
+    }));
+    const avant = await processus();
+    const lance = await avant.POST();
+    expect(lance.status).toBe(202);
+    const { scheduledDate, scheduledTime } = await lance.json();
+    for (let i = 0; i < 200 && !finir; i += 1) await new Promise((ok) => setTimeout(ok, 5));
+
+    const apres = await processus(true);
+    const lu = await (await apres.PROGRESSION(new Request(`http://x/p?date=${scheduledDate}&time=${encodeURIComponent(scheduledTime)}`))).json();
+    expect(lu.progression).toMatchObject({ etape: expect.any(String) });
+    expect(lu.production).toEqual({ date: scheduledDate, time: scheduledTime });
+    // Le Calendrier voit la même chose (bandeau « Génération en cours »).
+    const { generationEnCoursDepuisLecture } = await import('@/lib/autopilot/progression');
+    expect(generationEnCoursDepuisLecture(lu)).toMatchObject({ sorte: 'rendu' });
+    // Nouveau clic, même après le redémarrage : refusé, il SUIT la production en cours.
+    const refus = await apres.POST();
+    expect(refus.status).toBe(409);
+    expect(await refus.json()).toMatchObject({ code: 'en-cours', scheduledDate, scheduledTime });
+    expect((await (await apres.GET()).json()).enCours).toBe(true);
+    expect(renderAndUpload).toHaveBeenCalledTimes(1);
+    (finir as unknown as () => void)();
+    await attendreStatut(['direct_rendu']);
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+  });
+
+  it('réservation ORPHELINE (processus mort) : libérée — issue « interrompue » pour le créneau suivi, relance possible, un débit par rendu', async () => {
+    renderAndUpload.mockImplementationOnce(() => new Promise(() => { /* le processus meurt pendant le rendu */ }));
+    const mort = await processus();
+    const lance = await mort.POST();
+    const { scheduledDate, scheduledTime } = await lance.json();
+    await new Promise((ok) => setTimeout(ok, 20));
+    expect(ligneDirecte()?.statut).toBe('direct_en_cours');
+
+    // Redémarrage, puis 4 min sans signe de vie de l'ancien processus.
+    vi.setSystemTime(MAINTENANT + 4 * 60_000);
+    const neuf = await processus(true);
+    const lu = await (await neuf.PROGRESSION(new Request(`http://x/p?date=${scheduledDate}&time=${encodeURIComponent(scheduledTime)}`))).json();
+    expect(lu.progression).toBeNull();
+    expect(lu.resultat).toMatchObject({ success: false, code: 'interrompue' });
+    expect(String(lu.resultat.error)).toContain('Aucun crédit n’est débité');
+    expect(ligneDirecte()?.statut).toBe('direct_echec');
+
+    const relance = await neuf.POST();
+    expect(relance.status).toBe(202);
+    await attendreStatut(['direct_rendu']);
+    expect(renderAndUpload).toHaveBeenCalledTimes(2);
+    // Le rendu mort n'a jamais déposé ni débité : un seul débit, celui de la relance.
+    expect(deductCredits).toHaveBeenCalledTimes(1);
+  });
+
+  it('même processus, silence > 30 min : orpheline aussi ; un brouillon déjà déposé pour son créneau → « déposé », jamais « échec »', async () => {
+    const p = await processus();
+    const { reserverProductionDirecte } = await import('@/lib/autopilot/suivi-jumeau-manuel');
+    expect(await reserverProductionDirecte('u1', { jobId: 'autopilote-manuel-u1-2026-08-04-1110', date: '2026-08-04', time: '11:10' })).toEqual({ ok: true });
+    // Le post du créneau existe (le processus est mort APRÈS le dépôt).
+    posts.push({ id: 'p9', user_id: 'u1', status: 'draft', scheduled_date: '2026-08-04', scheduled_time: '11:10:00', media_url: 'https://cdn.test/rendu.mp4', metadata: { slotKey: 'manuel:u1:2026-08-04:11:10' } });
+    vi.setSystemTime(MAINTENANT + 31 * 60_000);
+    const lu = await (await p.PROGRESSION(new Request('http://x/p?date=2026-08-04&time=11%3A10'))).json();
+    expect(lu.resultat).toMatchObject({ success: true, postId: 'p9' });
+    expect(ligneDirecte()).toMatchObject({ statut: 'direct_rendu', post_id: 'p9' });
+  });
+
+  it('une issue en base n est rendue QUE pour le créneau suivi (jamais celle d une autre production)', async () => {
+    const p = await processus();
+    expect((await p.POST()).status).toBe(202);
+    await attendreStatut(['direct_rendu']);
+    const q = await processus(true);
+    const autre = await (await q.PROGRESSION(new Request('http://x/p?date=2026-08-03&time=09%3A00'))).json();
+    expect(autre.resultat).toBeNull();
+    const sans = await (await q.PROGRESSION(new Request('http://x/p'))).json();
+    expect(sans.resultat).toBeNull();
+  });
+
+  it('base en panne à la réservation : 503, rien rendu ni débité', async () => {
+    const p = await processus();
+    const fromOrig = fileAttente.base!.supabaseAdmin.from;
+    fileAttente.base!.supabaseAdmin.from = ((t: string) => {
+      const q = fromOrig(t) as Record<string, unknown>;
+      const ins = q.insert as (l: unknown) => unknown;
+      q.insert = (l: unknown) => { ins(l); return { select: async () => ({ data: null, error: { code: '08006', message: 'connexion perdue' } }) }; };
+      return q;
+    }) as typeof fromOrig;
+    try {
+      const r = await p.POST();
+      expect(r.status).toBe(503);
+      expect(renderAndUpload).not.toHaveBeenCalled();
+      expect(deductCredits).not.toHaveBeenCalled();
+    } finally {
+      fileAttente.base!.supabaseAdmin.from = fromOrig;
+    }
   });
 });

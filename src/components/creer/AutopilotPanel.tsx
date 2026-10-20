@@ -39,7 +39,7 @@ import { avecConfirmationCout } from '@/lib/fournisseurs/confirmation-client';
 import {
   boutonProduireVisible, libelleBoutonProduire, suiteEnvoi, messageErreurTechnique, lireProgressionServeur,
   repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, MESSAGE_PRODUCTION_INTERROMPUE, type EtatProduction,
-  annoncerProductionAutopilote, estEnProduction, lireProductionSuivie, noterProductionSuivie, oublierProductionSuivie, parametresSuivi,
+  annoncerProductionAutopilote, estEnProduction, lireProductionSuivie, noterProductionSuivie, oublierProductionSuivie, parametresSuivi, suivreProductionDuServeur,
 } from '@/lib/autopilot/etat-production-manuelle';
 import type { FormatStock } from '@/lib/stock/types';
 import {
@@ -1096,7 +1096,9 @@ export default function AutopilotPanel({
   /** Le résultat d'une production (réponse directe, ou relu en arrière-plan). */
   const appliquerResultat = useCallback((data: Record<string, unknown>) => {
     if (!data?.success) {
-      setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.') });
+      // Le code (ex. `interrompue`, relu de la base après un redémarrage) dit
+      // si le bouton « réessaie » ou « relance ».
+      setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.'), ...(typeof data?.code === 'string' ? { code: data.code } : {}) });
       return;
     }
     // ⚠️ « DÉPOSÉ » EXIGE UN POST. Un succès sans `postId` (vidéo de l'avatar
@@ -1149,6 +1151,7 @@ export default function AutopilotPanel({
         .then((d) => {
           if (!actif) return;
           const lecture = lireProgressionServeur(d);
+          suivreProductionDuServeur(d);
           // Un POST encore en vol (verrou client) n'a pas encore de trace : on attend sa réponse.
           if ((lecture.cas === 'rien' || lecture.cas === 'perdue') && !produireEnVolRef.current) {
             vides += 1;
@@ -1201,6 +1204,7 @@ export default function AutopilotPanel({
         if (!actif) return;
         // Ne remplace jamais un état posé entre-temps par un clic.
         const lecture = lireProgressionServeur(d);
+        suivreProductionDuServeur(d);
         const reprise = repriseAuRetour(lecture);
         // Lancée depuis cet écran, introuvable partout (mémoire, file,
         // Calendrier) : le serveur a redémarré. On le DIT, avec la relance.
@@ -1237,8 +1241,11 @@ export default function AutopilotPanel({
       // Production ACCEPTÉE (202 ou avatar en file) : le créneau est gardé par
       // ce navigateur, pour la retrouver — ou dire qu'elle est perdue — au retour.
       if (!issue.annule) {
-        const accepte = (issue.json ?? {}) as { scheduledDate?: unknown; scheduledTime?: unknown; jumeau?: unknown };
-        if (issue.status === 202 || (issue.status >= 200 && issue.status < 300 && accepte.jumeau === 'en_preparation')) {
+        const accepte = (issue.json ?? {}) as { scheduledDate?: unknown; scheduledTime?: unknown; jumeau?: unknown; code?: unknown };
+        // 409 `en-cours` : une production tourne déjà (autre onglet, autre
+        // processus) — le serveur dit LAQUELLE ; on suit son créneau.
+        if (issue.status === 202 || (issue.status >= 200 && issue.status < 300 && accepte.jumeau === 'en_preparation')
+          || (issue.status === 409 && accepte.code === 'en-cours' && accepte.scheduledDate)) {
           noterProductionSuivie({ date: accepte.scheduledDate, time: accepte.scheduledTime });
         }
       }
