@@ -55,8 +55,9 @@ describe('dureeAvecCloture — la voix n’est jamais touchée', () => {
 describe('séquence de clôture (avatar + stock, cible 30 s, parole 24,68 s)', () => {
   const m = montage(P, 30);
   const plan = m.res.plan;
-  it('le montage dure la cible, la parole est entière, la clôture n’a aucun avatar', () => {
-    expect(m.res.duree).toBe(30);
+  it('le montage tient la cible (stock rare : à la matière près, jamais un gel), la parole est entière, la clôture n’a aucun avatar', () => {
+    expect(m.res.duree).toBeGreaterThanOrEqual(29.5);
+    expect(m.res.duree).toBeLessThanOrEqual(30);
     expect(m.res.parole).toBe(P);
     expect(m.res.debutCloture).toBe(P);
     const avatars = plan.filter((s) => s.kind === 'avatar');
@@ -66,13 +67,43 @@ describe('séquence de clôture (avatar + stock, cible 30 s, parole 24,68 s)', (
     expect(cloture.length).toBeGreaterThanOrEqual(1);
     expect(cloture.length).toBeLessThanOrEqual(2);
     expect(cloture.every((s) => s.kind !== 'avatar')).toBe(true);
-    // Contigu, jusqu'à la dernière image ; jamais un média monté deux fois.
+    // La PAROLE garde au moins un plan de coupe.
+    expect(plan.some((s) => s.kind !== 'avatar' && s.fin <= P + 1e-3)).toBe(true);
+    // Contigu ; un média repris l'est au plus une fois, sur un AUTRE passage (jamais un gel).
     plan.forEach((s, i) => { if (i) expect(s.debut).toBe(plan[i - 1].fin); });
-    const urls = plan.filter((s) => s.kind !== 'avatar').map((s) => s.url);
-    expect(new Set(urls).size).toBe(urls.length);
+    const parUrl = new Map<string, typeof plan>();
+    for (const s of plan.filter((x) => x.kind !== 'avatar')) parUrl.set(s.url, [...(parUrl.get(s.url) ?? []), s]);
+    for (const l of Array.from(parUrl.values())) {
+      expect(l.length).toBeLessThanOrEqual(2);
+      if (l.length === 2) expect((l[1].depuis ?? 0)).toBeGreaterThanOrEqual((l[0].depuis ?? 0) + (l[0].fin - l[0].debut) - 1e-3);
+      for (const s of l) expect((s.jusqua ?? Infinity) - (s.depuis ?? 0)).toBeGreaterThanOrEqual(s.fin - s.debut - 1e-3);
+    }
   });
   it('le CTA est sur la clôture, jusqu’à la dernière image', () => {
-    expect(m.overlays?.cta).toEqual([P, 30]);
+    expect(m.overlays?.cta).toEqual([P, m.res.duree]);
+  });
+  it('stock abondant (5 vidéos longues) : un plan de coupe par ~8 s de parole, clôture en deux plans, aucune reprise', () => {
+    const r = planMultiSources({
+      avatar: { url: AVATAR, secondes: P }, cible: P, dureeVisee: 30,
+      stockVideos: [0, 1, 2, 3, 4].map((i) => ({ url: v(10 + i), secondes: 12 })),
+    });
+    expect(r.duree).toBe(30);
+    const coupesParole = r.plan.filter((s) => s.kind !== 'avatar' && s.fin <= P + 1e-3);
+    expect(coupesParole.length).toBeGreaterThanOrEqual(3);
+    expect(r.plan.filter((s) => s.debut >= P - 1e-3)).toHaveLength(2);
+    const urls = r.plan.filter((s) => s.kind !== 'avatar').map((s) => s.url);
+    expect(new Set(urls).size).toBe(urls.length);
+  });
+  it('un seul média court : la parole le garde, la clôture prend la suite du fichier (autre passage), sans gel', () => {
+    const r = planMultiSources({
+      avatar: { url: AVATAR, secondes: P }, cible: P, dureeVisee: 30, stockVideos: [{ url: v(20), secondes: 6 }],
+    });
+    const coupes = r.plan.filter((s) => s.kind !== 'avatar');
+    expect(coupes.some((s) => s.fin <= P + 1e-3)).toBe(true);
+    const cl = coupes.filter((s) => s.debut >= P - 1e-3);
+    expect(cl).toHaveLength(1);
+    expect(cl[0].depuis ?? 0).toBeGreaterThanOrEqual(2 - 1e-3);
+    expect((cl[0].jusqua ?? 0)).toBeLessThanOrEqual(6 + 1e-3);
   });
   it('sans cible : le plan d’avant (durée = parole, aucune clôture)', () => {
     const avant = montage(P, null);
@@ -122,9 +153,9 @@ describe('aperçu = export : même fonction, mêmes entrées → mêmes segments
       ...resume, avatar: { ...resume.avatar, video: AVATAR },
       plan: { avatarDisponible: true, cible: 30, rythme: null, secondesAvatar: P, durees, dureeVisee: 30, contexte },
     }, { dureeCta: 4 });
-    expect(r.duree).toBe(30);
+    expect(r.duree).toBe(montage(P, 30).res.duree);
     expect(r.ctaEnSurimpression).toBe(true);
-    expect(r.ctaFenetre).toEqual([P, 30]);
+    expect(r.ctaFenetre).toEqual([P, r.duree]);
     expect(r.etapes.filter((e) => e.libelle.startsWith('Clôture + CTA')).length).toBeGreaterThan(0);
     expect(r.lignes.some((l) => l.cta)).toBe(false);
   });
