@@ -8,9 +8,9 @@ import {
 } from '@/lib/creer/textFormat';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
-import { ajusterBadge, badgeValide } from '@/lib/creer/surimpressions-mise-en-page';
+import { ajusterBadge, badgeValide, taillesBadge } from '@/lib/creer/surimpressions-mise-en-page';
 import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
-import { estVoile, haloTexteCss } from '@/lib/creer/contraste';
+import { estVoile, haloTexteCss, CONTOUR_TEXTE_ALPHA } from '@/lib/creer/contraste';
 
 /**
  * Planchers de lisibilité des cartes en 9:16 (fraction de la largeur vidéo) :
@@ -280,6 +280,8 @@ export default function SequenceCards({
       })
       : null;
     const ech = aj?.echelle ?? echelle;
+    // Badge : plancher lisible en 9:16 (titre ≥ 40 px sur 1080, valeur plus grande).
+    const tb = badge ? taillesBadge({ vw, ratios: CR, echelle: ech, portrait: !landscape }) : null;
     return (
       <div
         key={c.id}
@@ -373,22 +375,23 @@ export default function SequenceCards({
           <>
             {aj?.icone !== false && (
               // L'icône (SVG) n'hérite pas du `text-shadow` : même contour en filtre.
-              <span style={{ flexShrink: 0, display: 'flex', filter: `drop-shadow(0 0 ${Math.max(0.5, Math.round((vw / 1080) * 15) / 10)}px rgba(0,0,0,0.55))` }}>
-                <CardIcon name={c.icon} size={Math.round(vw * CR.icon * ech)} color="#FFFFFF" className="" />
+              <span style={{ flexShrink: 0, display: 'flex', filter: `drop-shadow(0 0 ${Math.max(0.5, Math.round((vw / 1080) * 15) / 10)}px rgba(0,0,0,${CONTOUR_TEXTE_ALPHA}))` }}>
+                <CardIcon name={c.icon} size={Math.round(tb!.icone)} color="#FFFFFF" className="" />
               </span>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 auto' }}>
               {c.value && (
-                <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
+                <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: tb!.valeur, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(tb!.valeur) }}>
                   {c.value}
                 </span>
               )}
               <span style={{
                 fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
-                color: '#FFFFFF', fontSize: vw * CR.text * ech, lineHeight: 1.1,
-                // Mots entiers, deux lignes au plus — jamais d'ellipse.
+                color: '#FFFFFF', fontSize: tb!.texte, lineHeight: 1.1,
+                // Mots entiers, jamais d'ellipse (deux lignes, une de plus si le
+                // plancher lisible l'exige).
                 whiteSpace: 'normal', overflowWrap: 'normal', wordBreak: 'keep-all',
-                ...styleTexte(vw * CR.text * ech),
+                ...styleTexte(tb!.texte),
               }}>
                 {c.title}
               </span>

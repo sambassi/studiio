@@ -105,7 +105,7 @@ describe('CTA : panneau, contraste, bande calme mesurée', () => {
     expect(html).toContain('data-cta-fond');
     // Plus de pavé rgba(0,0,0,0.6) : fond transparent, contour des glyphes.
     expect(html).toContain('background-color:transparent');
-    expect(html).toMatch(/text-shadow:[^;]*rgba\(0,0,0,0\.55\)/);
+    expect(html).toMatch(/text-shadow:[^;]*rgba\(0,0,0,0\.75\)/);
     expect(html).toContain('LE SPORT LE PLUS COMPLET');
     expect(html).toContain('Réservez votre cours d’essai sur afroboost.com.');
   });

@@ -82,7 +82,8 @@ export function eclaircirPourContraste(texte: string, fond: Rgb = fondPastillePi
 // fond clair, une TACHE grise floue. Rendu cible (sous-titres des formats
 // courts, type Captions / OpusClip) :
 //   1. lettres posées DIRECTEMENT sur l'image, avec un CONTOUR fin sombre
-//      (2 px à 1080, alpha 0,55, quatre directions) et une ombre portée
+//      (2 px à 1080, alpha 0,75, quatre directions — 0,55 ne suffisait pas
+//      sur le papier blanc du plan « écriture », lot 2) et une ombre portée
 //      douce et serrée — c'est lui qui porte le contraste au bord des lettres ;
 //   2. un voile local SEULEMENT quand le fond derrière le texte est connu
 //      clair ET chargé (`fondTexteSurImage`), discret (alpha ≤ 0,22), qui suit
@@ -93,10 +94,10 @@ export function eclaircirPourContraste(texte: string, fond: Rgb = fondPastillePi
 /** Opacité maximale du voile local (fond clair ET chargé seulement). */
 export const VOILE_TEXTE_ALPHA_MAX = 0.22;
 /** Opacité d'UNE couche du contour fin. */
-export const CONTOUR_TEXTE_ALPHA = 0.55;
+export const CONTOUR_TEXTE_ALPHA = 0.75;
 /**
  * Opacité effective du contour au bord d'une lettre : deux couches décalées
- * (horizontale + verticale) s'y superposent toujours → 1 − (1 − 0,55)².
+ * (horizontale + verticale) s'y superposent toujours → 1 − (1 − 0,75)².
  */
 export const HALO_TEXTE_ALPHA = Math.round((1 - (1 - CONTOUR_TEXTE_ALPHA) ** 2) * 1000) / 1000;
 /** Fond d'un texte posé sur l'image sans voile : aucun aplat, contour seul. */
@@ -141,7 +142,7 @@ export function alphaDuFond(fond: string | null | undefined): number {
 /**
  * Contour fin + ombre serrée des glyphes (CSS `text-shadow`), à l'échelle de
  * la vidéo `vw` (valeurs données pour 1080) : quatre décalages de 2 px à
- * alpha 0,55 (un trait fin tout autour), puis une ombre portée douce de
+ * alpha 0,75 (un trait fin tout autour), puis une ombre portée douce de
  * 2 px / 5 px. Le même pour le CTA et les cartes.
  */
 export function haloTexteCss(vw: number, alpha = CONTOUR_TEXTE_ALPHA): string {
