@@ -185,6 +185,17 @@ export function oublierProductionSuivie(): void {
   try { window.localStorage.removeItem(CLE_PRODUCTION_SUIVIE); } catch { /* stockage indisponible */ }
 }
 
+/**
+ * Une production sans avatar EN COURS côté serveur (relue de la base,
+ * champ `production` de `/progression`) que ce navigateur ne suivait pas
+ * (lancée d'un autre onglet, ou suivi perdu) : on note son créneau, pour
+ * retrouver SON issue à la fin. Ne remplace jamais un suivi existant.
+ */
+export function suivreProductionDuServeur(d: unknown, now = Date.now()): void {
+  const prod = d && typeof d === 'object' ? (d as { production?: { date?: unknown; time?: unknown } | null }).production : null;
+  if (prod && typeof prod === 'object' && !lireProductionSuivie(now)) noterProductionSuivie({ date: prod.date, time: prod.time }, now);
+}
+
 /** Paramètres de `/progression` pour la production suivie (`''` sans suivi). */
 export function parametresSuivi(p: ProductionSuivie | null): string {
   return p ? `?date=${encodeURIComponent(p.date)}&time=${encodeURIComponent(p.time)}` : '';

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Film, Image as ImageIcon, Loader2, RefreshCw, Search, Trash2, Info } from 'lucide-react';
 import CarteMedia from '@/components/medias/CarteMedia';
 import { creditMedia, origineSuggeree } from '@/lib/medias/libelles';
-import { descriptionMediaStock, pertinenceMedia, scenarioPertinence, type ScenarioPertinence } from '@/lib/autopilot/pertinence-medias';
+import { accepteAutomatiquement, descriptionMediaStock, MESSAGE_PEU_PERTINENTS, pertinenceMedia, scenarioPertinence, type ScenarioPertinence } from '@/lib/autopilot/pertinence-medias';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
 import { analyserCouvertureRushes, plansAutopilote, AVATAR_PRINCIPAL, type ManqueCouverture } from '@/lib/stock/couverture';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
@@ -94,16 +94,21 @@ export interface PropositionsStock { proposes: number; vignettes: string[] }
 /**
  * CLASSEMENT des résultats d'un plan : pertinence de CONTENU d'abord (titre
  * du média lu par `pertinence-medias`, concepts abstraits compris), puis le
- * bon format (vertical pour un 9:16), puis l'ordre du moteur. Un média `hors`
- * sujet n'est jamais proposé automatiquement. Pur, tri stable.
+ * bon format (vertical pour un 9:16), puis l'ordre du moteur.
+ *
+ * ⚠️ PROPOSITION AUTOMATIQUE (#613) : seul un média dont le contenu est
+ * reconnu du sujet (`pertinent`, `decor`, `limite`) est proposé — un média
+ * `inconnu` (rien du sujet dans son titre) ou `hors` sujet ne l'est jamais.
+ * `libre` (recherche SAISIE par l'utilisateur) : seul `hors` est écarté —
+ * l'utilisateur a choisi sa recherche. Pur, tri stable.
  */
 export function classerCandidats(
   medias: ReadonlyArray<MediaStock>,
-  o: { orientation: string; scenario: ScenarioPertinence },
+  o: { orientation: string; scenario: ScenarioPertinence; libre?: boolean },
 ): MediaStock[] {
   return medias
     .map((m, i) => ({ m, i, p: pertinenceMedia(m.description || descriptionMediaStock(m), o.scenario) }))
-    .filter((x) => x.p.niveau !== 'hors')
+    .filter((x) => (o.libre ? x.p.niveau !== 'hors' : accepteAutomatiquement(x.p.niveau)))
     .sort((a, b) => b.p.score - a.p.score
       || Number(b.m.orientation === o.orientation) - Number(a.m.orientation === o.orientation)
       || a.i - b.i)
@@ -203,38 +208,40 @@ export default function CompleterRushesStock({
   const [indisponible, setIndisponible] = useState(false);
   const [libre, setLibre] = useState<Record<string, string>>({});
   /** Résultats par requête et type — une requête n'est envoyée qu'une fois. */
-  const cache = useRef(new Map<string, Promise<{ medias: MediaStock[]; echec: boolean }>>());
+  const cache = useRef(new Map<string, Promise<{ medias: MediaStock[]; echec: boolean; bruts: number }>>());
   const generation = useRef(0);
   const avecPhotos = !!onRetenir;
 
   const orientation = orientationDuFormat(format);
-  const chercher = useCallback((requete: string, type: 'video' | 'photo' = 'video') => {
-    const cle = `${type}|${requete}`;
+  const chercher = useCallback((requete: string, type: 'video' | 'photo' = 'video', libre = false) => {
+    const cle = `${type}|${libre ? 'libre' : 'auto'}|${requete}`;
     const deja = cache.current.get(cle);
     if (deja) return deja;
     const p = rechercherStockClient({ requete, type, format, fournisseurs: ['pexels'] })
       .then((r) => {
-        const medias = classerCandidats(
-          r.medias.filter((m) => m.type === type && m.provider === 'pexels'),
-          { orientation, scenario },
-        );
-        return { medias, echec: r.echecs.length > 0 };
+        const bruts = r.medias.filter((m) => m.type === type && m.provider === 'pexels');
+        const medias = classerCandidats(bruts, { orientation, scenario, libre });
+        // `bruts` : ce que le fournisseur a rendu AVANT le tri de pertinence —
+        // « rien de pertinent » n'est pas « fournisseur indisponible ».
+        return { medias, echec: r.echecs.length > 0, bruts: bruts.length };
       });
     cache.current.set(cle, p);
     return p;
   }, [format, orientation, scenario]);
 
   /** Tous les résultats VIDÉO des requêtes d'un plan (au plus `REQUETES_MAX_PAR_PLAN`), dédoublonnés. */
-  const reunir = useCallback(async (requetes: string[], exclus: Set<string>, type: 'video' | 'photo' = 'video') => {
+  const reunir = useCallback(async (requetes: string[], exclus: Set<string>, type: 'video' | 'photo' = 'video', libre = false) => {
     let echec = false;
+    let bruts = 0;
     const out: MediaStock[] = [];
     for (const requete of requetes.slice(0, REQUETES_MAX_PAR_PLAN)) {
-      const r = await chercher(requete, type);
+      const r = await chercher(requete, type, libre);
       echec = echec || r.echec;
+      bruts += r.bruts;
       for (const m of r.medias) if (!exclus.has(m.id) && !exclus.has(m.providerAssetId) && !out.some((x) => x.id === m.id)) out.push(m);
       if (out.length >= CANDIDATS_PAR_PLAN * 2) break;
     }
-    return { medias: out, echec };
+    return { medias: out, echec, bruts };
   }, [chercher]);
 
   /** Le premier média des requêtes, dans l'ordre, qui n'est pas exclu. */
@@ -273,12 +280,14 @@ export default function CompleterRushesStock({
     (async () => {
       const banque = exclusDe([]);
       let echecs = 0;
+      let bruts = 0;
       // 1. Les vidéos de chaque plan (ses requêtes à lui).
       const listes: MediaStock[][] = [];
       for (const s of initiaux) {
         const r = await reunir(s.requetes, banque);
         if (g !== generation.current) return;
         if (r.echec) echecs += 1;
+        bruts += r.bruts;
         listes.push(r.medias);
       }
       let parPlan = repartirCandidats(listes, banque);
@@ -290,6 +299,7 @@ export default function CompleterRushesStock({
           if (c.length >= CANDIDATS_PAR_PLAN) return c;
           const r = await reunir(initiaux[k].requetes.slice(0, 1), pris, 'photo');
           if (r.echec) echecs += 1;
+          bruts += r.bruts;
           const ajout: MediaStock[] = [];
           for (const m of r.medias) {
             if (c.length + ajout.length >= CANDIDATS_PAR_PLAN) break;
@@ -309,7 +319,9 @@ export default function CompleterRushesStock({
         vus: parPlan[k].map((m) => m.id),
       }));
       setSlots(finaux);
-      if (echecs > 0 || finaux.every((s) => !s.candidats.length)) setIndisponible(true);
+      // Aucun candidat alors que le fournisseur a répondu : rien de PERTINENT
+      // (message dédié, `peuPertinents`) — pas une panne.
+      if (echecs > 0 || (bruts === 0 && finaux.every((s) => !s.candidats.length))) setIndisponible(true);
     })();
     return () => { generation.current += 1; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,15 +353,16 @@ export default function CompleterRushesStock({
         choix: 0,
         etat: r.media || s.candidats.length ? 'propose' : 'vide',
         vus: r.media ? [...s.vus, r.media.id] : s.vus,
-        erreur: r.media ? null : r.echec ? MESSAGE_STOCK_INDISPONIBLE : 'Aucune autre proposition pour ce plan.',
+        erreur: r.media ? null : r.echec ? MESSAGE_STOCK_INDISPONIBLE : 'Aucune autre proposition pertinente pour ce plan.',
       }));
       return;
     }
-    const v = await reunir(q, exclus);
+    // Recherche SAISIE par l'utilisateur : son choix — seul le hors sujet est écarté.
+    const v = await reunir(q, exclus, 'video', true);
     let candidats = v.medias.slice(0, CANDIDATS_PAR_PLAN);
     let echec = v.echec;
     if (avecPhotos && candidats.length < CANDIDATS_PAR_PLAN) {
-      const ph = await reunir(q, exclus, 'photo');
+      const ph = await reunir(q, exclus, 'photo', true);
       echec = echec || ph.echec;
       candidats = [...candidats, ...ph.medias].slice(0, CANDIDATS_PAR_PLAN);
     }
@@ -400,6 +413,13 @@ export default function CompleterRushesStock({
     ? []
     : slots.filter((s) => mediaDu(s) && s.etat !== 'supprime' && s.etat !== 'conserve');
   const proposes = enAttente.length;
+  /**
+   * Un plan sans aucune proposition pertinente (hors panne fournisseur) : le
+   * montage aura moins de plans de coupe — l'avatar et vos rushes tiennent
+   * plus longtemps. On le DIT, avec la marche à suivre.
+   */
+  const peuPertinents = !couverture.couvertureSuffisante && !indisponible
+    && slots.some((s) => s.etat === 'vide' && !s.erreur);
   const cleVignettes = enAttente.map((s) => mediaDu(s)!.vignetteUrl).join('\n');
   useEffect(() => {
     onPropositions?.({ proposes, vignettes: cleVignettes ? cleVignettes.split('\n') : [] });
@@ -427,6 +447,12 @@ export default function CompleterRushesStock({
         Rien n’est ajouté sans votre accord : conservez une proposition pour l’ajouter à la banque,
         après vos propres rushes.
       </p>
+      {peuPertinents && (
+        <p className="flex items-start gap-1.5 text-[11px] text-amber-300" data-autopilot-stock-peu-pertinents>
+          <Info className="w-3 h-3 mt-0.5 shrink-0" />
+          {MESSAGE_PEU_PERTINENTS}
+        </p>
+      )}
       {indisponible && (
         <p className="flex items-start gap-1.5 text-[11px] text-gray-400" data-autopilot-stock-indisponible>
           <Info className="w-3 h-3 mt-0.5 shrink-0" />
@@ -527,7 +553,7 @@ export default function CompleterRushesStock({
                 )}
                 {s.etat !== 'recherche' && !media && (
                   <p className="text-[11px] text-gray-500" data-autopilot-stock-vide>
-                    {s.erreur ?? 'Aucune proposition pour ce plan.'}
+                    {s.erreur ?? 'Aucun média assez pertinent pour ce plan — votre avatar ou vos rushes le couvriront.'}
                   </p>
                 )}
                 {media && s.erreur && <p className="text-[10px] text-amber-400">{s.erreur}</p>}

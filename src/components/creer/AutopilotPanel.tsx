@@ -21,6 +21,8 @@ import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutop
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
 import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
+import { buildAutopilotSample } from '@/lib/autopilot/sample';
+import { contexteDeLEchantillon, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { affichageProduction } from '@/lib/autopilot/progression';
@@ -31,7 +33,7 @@ import {
 } from '@/lib/autopilot/medias-prevus';
 import {
   aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
-  type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
+  sujetsCourants, type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
@@ -39,7 +41,7 @@ import { avecConfirmationCout } from '@/lib/fournisseurs/confirmation-client';
 import {
   boutonProduireVisible, libelleBoutonProduire, suiteEnvoi, messageErreurTechnique, lireProgressionServeur,
   repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, MESSAGE_PRODUCTION_INTERROMPUE, type EtatProduction,
-  annoncerProductionAutopilote, estEnProduction, lireProductionSuivie, noterProductionSuivie, oublierProductionSuivie, parametresSuivi,
+  annoncerProductionAutopilote, estEnProduction, lireProductionSuivie, noterProductionSuivie, oublierProductionSuivie, parametresSuivi, suivreProductionDuServeur,
 } from '@/lib/autopilot/etat-production-manuelle';
 import type { FormatStock } from '@/lib/stock/types';
 import {
@@ -804,11 +806,21 @@ export default function AutopilotPanel({
    * génération » ET l'aperçu du montage prévu (même avatar, même cible, même
    * rythme, même parole estimée) : les deux écrans calculent le MÊME plan.
    */
+  /**
+   * Ce que la vidéo DIRA — l'échantillon que « Produire maintenant » produit
+   * (`buildAutopilotSample`, le même que l'aperçu du style) : la pertinence
+   * des médias et la narration sont calculées comme au rendu.
+   */
+  const contextePlan = useMemo<ContexteTextesAutopilote>(
+    () => contexteDeLEchantillon(buildAutopilotSample({ topics: config.topics, brief: config.brief }), sujetsCourants(config), config.brief),
+    [config],
+  );
   const optionsPlan = {
     avatarDisponible: etatSources.avatarActif && etatSources.avatarPret,
     cible: config.brief.duree ?? null,
     rythme: config.brief.rythme ?? null,
     secondesAvatarEstimees: paroleAvatarPrevue,
+    contexte: contextePlan,
   };
   /**
    * La VRAIE vidéo de l'avatar, déjà produite (aperçu prêt, sinon rendu
@@ -837,6 +849,8 @@ export default function AutopilotPanel({
       rythme: optionsPlan.rythme,
       secondesAvatarEstimees: optionsPlan.secondesAvatarEstimees,
       durees: dureesPlan,
+      dureeVisee: optionsPlan.cible,
+      contexte: optionsPlan.contexte,
     },
   };
   // Remonté sur sa SIGNATURE : un objet neuf à chaque rendu ne relance rien.
@@ -1096,7 +1110,9 @@ export default function AutopilotPanel({
   /** Le résultat d'une production (réponse directe, ou relu en arrière-plan). */
   const appliquerResultat = useCallback((data: Record<string, unknown>) => {
     if (!data?.success) {
-      setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.') });
+      // Le code (ex. `interrompue`, relu de la base après un redémarrage) dit
+      // si le bouton « réessaie » ou « relance ».
+      setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.'), ...(typeof data?.code === 'string' ? { code: data.code } : {}) });
       return;
     }
     // ⚠️ « DÉPOSÉ » EXIGE UN POST. Un succès sans `postId` (vidéo de l'avatar
@@ -1149,6 +1165,7 @@ export default function AutopilotPanel({
         .then((d) => {
           if (!actif) return;
           const lecture = lireProgressionServeur(d);
+          suivreProductionDuServeur(d);
           // Un POST encore en vol (verrou client) n'a pas encore de trace : on attend sa réponse.
           if ((lecture.cas === 'rien' || lecture.cas === 'perdue') && !produireEnVolRef.current) {
             vides += 1;
@@ -1201,6 +1218,7 @@ export default function AutopilotPanel({
         if (!actif) return;
         // Ne remplace jamais un état posé entre-temps par un clic.
         const lecture = lireProgressionServeur(d);
+        suivreProductionDuServeur(d);
         const reprise = repriseAuRetour(lecture);
         // Lancée depuis cet écran, introuvable partout (mémoire, file,
         // Calendrier) : le serveur a redémarré. On le DIT, avec la relance.
@@ -1237,8 +1255,11 @@ export default function AutopilotPanel({
       // Production ACCEPTÉE (202 ou avatar en file) : le créneau est gardé par
       // ce navigateur, pour la retrouver — ou dire qu'elle est perdue — au retour.
       if (!issue.annule) {
-        const accepte = (issue.json ?? {}) as { scheduledDate?: unknown; scheduledTime?: unknown; jumeau?: unknown };
-        if (issue.status === 202 || (issue.status >= 200 && issue.status < 300 && accepte.jumeau === 'en_preparation')) {
+        const accepte = (issue.json ?? {}) as { scheduledDate?: unknown; scheduledTime?: unknown; jumeau?: unknown; code?: unknown };
+        // 409 `en-cours` : une production tourne déjà (autre onglet, autre
+        // processus) — le serveur dit LAQUELLE ; on suit son créneau.
+        if (issue.status === 202 || (issue.status >= 200 && issue.status < 300 && accepte.jumeau === 'en_preparation')
+          || (issue.status === 409 && accepte.code === 'en-cours' && accepte.scheduledDate)) {
           noterProductionSuivie({ date: accepte.scheduledDate, time: accepte.scheduledTime });
         }
       }
@@ -1997,6 +2018,7 @@ export default function AutopilotPanel({
             stock={sources.actives.stock ? sources.stock : []}
             stockPertinent={sources.actives.stock ? pertinent.stock : []}
             secondesAvatarEstimees={optionsPlan.secondesAvatarEstimees}
+            contexte={optionsPlan.contexte}
             vignetteAvatar={vignetteAvatar}
             avatarDisponible={optionsPlan.avatarDisponible}
             onDurees={setDureesPlan}

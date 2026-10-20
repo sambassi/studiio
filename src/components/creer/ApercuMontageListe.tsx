@@ -42,6 +42,12 @@ export interface ApercuMontageListeProps {
   /** Texte du CTA (carte finale). */
   ctaTexte?: string | null;
   ctaSousTexte?: string | null;
+  /**
+   * CTA EN SURIMPRESSION (Autopilote, avatar + plans de coupe) : la fenêtre
+   * (s) où le rendu l'affiche par-dessus les plans — sur la clôture jusqu'à la
+   * dernière image. Absent : aucun CTA superposé (comportement d'avant).
+   */
+  ctaSurimpression?: readonly [number, number] | null;
   /** Vignette de l'avatar (source de sa version active), déjà lue — jamais demandée ici. */
   vignetteAvatar?: { url: string; type: 'photo' | 'video' } | null;
   /** Avec avatar : la narration (durée, « estimée » ou « réelle ») qui fixe la séquence. */
@@ -219,6 +225,14 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
       >
         {cadre}
         {opaciteFonduCta > 0 ? carteCta(opaciteFonduCta) : null}
+        {p.ctaSurimpression && ligne && !ligne.cta && t >= p.ctaSurimpression[0] - 1e-3 && t <= p.ctaSurimpression[1] + 1e-3 ? (
+          <div data-apercu-montage-cta-surimpression className="absolute inset-x-0 bottom-6 flex flex-col items-center gap-1 px-3 text-center">
+            <span className="rounded-full px-3 py-1.5 text-xs font-bold text-white break-words max-w-full shadow" style={{ backgroundColor: p.accent }}>
+              {p.ctaTexte || 'CTA'}
+            </span>
+            {p.ctaSousTexte ? <span className="text-[10px] text-white/90 break-words max-w-full">{p.ctaSousTexte}</span> : null}
+          </div>
+        ) : null}
         <div className="absolute left-0 right-0 bottom-0 h-1 bg-white/10">
           <div className="h-full" style={{ width: `${total > 0 ? (t / total) * 100 : 0}%`, backgroundColor: p.accent }} />
         </div>

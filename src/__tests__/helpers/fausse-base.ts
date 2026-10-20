@@ -2,8 +2,9 @@
  * Fausse base PostgREST EN MÉMOIRE — juste ce que les tests de facturation
  * fournisseurs exécutent : select/insert/update/upsert/delete, filtres eq / is
  * / in / like / gte, order, limit, single / maybeSingle, count head, et les
- * deux contraintes d'unicité qui comptent ici (clé `app_settings.key`, index
- * « jumeau en vol » d'`avatar_generations`). Rien n'imite un comportement que
+ * contraintes d'unicité qui comptent ici (clé `app_settings.key`, index
+ * « jumeau en vol » d'`avatar_generations`, `(user_id, slot_key)` de
+ * `autopilot_jumeau_attente`). Rien n'imite un comportement que
  * le code ne déclenche pas.
  */
 type Ligne = Record<string, unknown>;
@@ -21,6 +22,8 @@ export function creerFausseBase() {
   function conflit(nom: string, l: Ligne): boolean {
     const t = table(nom);
     if (nom === 'app_settings') return t.some((x) => x.key === l.key);
+    // `unique (user_id, slot_key)` (migration 2026-09-23-autopilot-jumeau).
+    if (nom === 'autopilot_jumeau_attente') return t.some((x) => x.user_id === l.user_id && x.slot_key === l.slot_key);
     if (nom === 'avatar_generations' && (l.status === 'pending' || l.status === 'processing')) {
       return t.some((x) => (x.status === 'pending' || x.status === 'processing')
         && ['user_id', 'user_avatar_id', 'avatar_version', 'voice_id', 'aspect_ratio', 'script'].every((k) => x[k] === l[k]));
@@ -85,6 +88,7 @@ export function creerFausseBase() {
       in: (c: string, v: unknown[]) => { filtres.push((l) => v.includes(l[c])); return q; },
       like: (c: string, motif: string) => { const p = motif.replace(/%$/, ''); filtres.push((l) => typeof l[c] === 'string' && (l[c] as string).startsWith(p)); return q; },
       gte: (c: string, v: unknown) => { filtres.push((l) => String(l[c]) >= String(v)); return q; },
+      lt: (c: string, v: unknown) => { filtres.push((l) => String(l[c]) < String(v)); return q; },
       order: (c: string, o?: { ascending?: boolean }) => { tri = { col: c, asc: o?.ascending !== false }; return q; },
       limit: (n: number) => { limite = n; return q; },
       single: async () => { const r = executer(); const d = Array.isArray(r.data) ? r.data[0] ?? null : r.data; return { data: d, error: r.error ?? (d ? null : { code: 'PGRST116', message: 'no rows' }) }; },

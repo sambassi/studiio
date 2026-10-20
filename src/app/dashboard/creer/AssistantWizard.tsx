@@ -3818,9 +3818,12 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   );
   // Avatar + plans de coupe : le MP4 n'a PAS de séquence CTA (CTA en
   // surimpression sur la fin de la parole) — la durée annoncée ne la compte pas.
-  const dureeVideoApercu = montagePrevu.ctaEnSurimpression && dureeCtaLecture
-    ? Math.round((dureeTotaleApercu - dureeCtaLecture) * 10) / 10
-    : dureeTotaleApercu;
+  // Avec une clôture, la durée est celle du plan complet (parole + clôture) — la même que le rendu.
+  const dureeVideoApercu = montagePrevu.ctaEnSurimpression && montagePrevu.debutCloture != null && montagePrevu.duree > 0
+    ? Math.round(montagePrevu.duree * 10) / 10
+    : montagePrevu.ctaEnSurimpression && dureeCtaLecture
+      ? Math.round((dureeTotaleApercu - dureeCtaLecture) * 10) / 10
+      : dureeTotaleApercu;
   /** Vignettes déjà connues des médias suggérés retenus — la chronologie les montre sans rien télécharger. */
   const vignettesMontage = useMemo(() => {
     const v: Record<string, string> = {};
@@ -4028,7 +4031,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           <span>
             <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
             {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
-            {' '}La vidéo finale prend la durée réelle de la parole de l’avatar.
+            {' '}La vidéo finale prend la durée réelle de la parole de l’avatar (jamais accélérée) ; si elle est plus courte que la durée cible, une clôture avec le CTA complète la vidéo.
             {' '}<span data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
           </span>
         </p>
@@ -4090,12 +4093,15 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             accent={accent}
             ctaTexte={sample.cta}
             ctaSousTexte={sample.ctaSub}
+            ctaSurimpression={montagePrevu.ctaFenetre ?? null}
             vignetteAvatar={medias?.avatar.vignette ?? null}
             vignettes={vignettesMontage}
             onRemplacer={allerAuxMedias}
             titre="Aperçu de mon montage"
             sousTitre={montagePrevu.ctaEnSurimpression
-              ? "Vos médias réels, dans l'ordre du plan ; le CTA s'affiche en surimpression sur les dernières secondes. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."
+              ? (montagePrevu.debutCloture != null
+                ? "Vos médias réels, dans l'ordre du plan ; après la parole de l'avatar, une clôture (plans de coupe et musique) porte le CTA jusqu'à la dernière image. Seule la parole est estimée : à la production, elle est mesurée, jamais accélérée, et la clôture complète jusqu'à la durée cible."
+                : "Vos médias réels, dans l'ordre du plan ; le CTA s'affiche en surimpression sur les dernières secondes. Seule la parole est estimée : à la production, elle est mesurée (jamais accélérée) et une clôture complète la vidéo jusqu'à la durée cible si la parole est plus courte.")
               : "Vos médias réels, dans l'ordre du plan, puis le CTA. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."}
           />
         </div>
