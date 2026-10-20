@@ -217,6 +217,39 @@ export function calageCartes(
 }
 
 /**
+ * Repli quand AUCUN calage exact n'existe (texte de la voix retouché, voix
+ * absente ou d'une autre génération) : les cartes apparaissent quand même
+ * l'une après l'autre, au prorata de la longueur de leur texte, réparties sur
+ * la durée de la séquence Cartes. Avant : une seule photo de toutes les
+ * cartes, figée pendant toute la narration (jusqu'à 40 s).
+ *
+ * Ce n'est PAS un horodatage (`source: 'estimation'`) : la durée de la
+ * séquence reste celle de la voix, rien de l'audio n'est touché.
+ *
+ * `null` sous deux cartes (rien à révéler progressivement) ou sans durée.
+ */
+export function calageProportionnel(cartes: readonly CarteDite[], dureeSequence: number): CalageCartes | null {
+  if (!(dureeSequence > 0)) return null;
+  const morceaux = morceauxCartes(cartes);
+  const nbCartes = new Set(morceaux.map((m) => m.carte)).size;
+  if (nbCartes < 2) return null;
+  const segments = segmentsEstimes(morceaux, dureeSequence);
+  if (!segments) return null;
+  const etapes: EtapeApparition[] = [];
+  const vues = new Set<number>();
+  morceaux.forEach((m, i) => {
+    if (!vues.has(m.carte)) {
+      vues.add(m.carte);
+      etapes.push({ debut: segments[i][0], carte: m.carte, element: 'carte' });
+    } else if (m.role === 'valeur') {
+      etapes.push({ debut: segments[i][0], carte: m.carte, element: 'valeur' });
+    }
+  });
+  etapes.sort((a, b) => a.debut - b.debut);
+  return { source: 'estimation', etapes };
+}
+
+/**
  * Ce qui est visible après les `k` premières étapes : les cartes montrées,
  * et parmi elles celles dont la valeur l'est aussi. Une carte dont la valeur
  * n'est pas dite (pas de valeur) la montre avec elle.

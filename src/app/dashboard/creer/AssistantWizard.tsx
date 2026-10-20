@@ -71,6 +71,7 @@ import {
   estimerDureeParole, nouvelIdMedia, libelleMedia, libelleSource, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
   avecDureeChoisie, dureeEffective, planApercuListe, chronologieListe, planDetaille, paroleDeListe, planRenduDepuis,
   itemDuPlan, bornesDuree, formatSecondes, messageNarrationTropCourte, type PlanDetaille,
+  listeMontageJumeau, mediasExclusDuPlan, messageMediasExclus,
 } from '@/lib/creer/medias-video';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
@@ -81,7 +82,7 @@ import {
 } from '@/lib/video-composer';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
-import { calageCartes, morceauxCartes, lireTimingVoix, etatVoixCartes } from '@/lib/creer/synchro-cartes';
+import { calageCartes, calageProportionnel, morceauxCartes, lireTimingVoix, etatVoixCartes } from '@/lib/creer/synchro-cartes';
 import { normaliserReglages } from '@/lib/types/voice';
 import { capturerEtapesCartes } from '@/lib/creer/capture-etapes-cartes';
 import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
@@ -206,6 +207,7 @@ import { rendreEtFacturer, messagePour } from '@/lib/rendus/client';
 import { verifierMediasRequis, estMediaIndisponible, exigerVideo, videoExigee } from '@/lib/rendus/medias-requis';
 import { pleinCadreDesJumeaux, useUrlJumeauPleinCadre } from '@/lib/creer/jumeau-plein-cadre-client';
 import { composerEtFacturer, televerserVignette } from '@/lib/rendus/composer';
+import { demanderMp4Durable, renduAttendUnMp4 } from '@/lib/rendus/mp4-durable-client';
 // Catalogue de polices — LA source unique, partagee avec le compositeur.
 // Deux listes finiraient par diverger, et la video ne ressemblerait plus a
 // l'apercu.
@@ -5480,6 +5482,30 @@ export default function AssistantWizard() {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
   }, []);
 
+  /**
+   * « Télécharger MP4 » sur le montage joué dans l'aperçu.
+   *
+   * Le lecteur natif est privé de son menu « Télécharger » (il livrerait le
+   * WebM brut) : ce bouton est la seule sortie, et elle convertit toujours.
+   * Un échec de conversion s'affiche — jamais de repli vers le WebM.
+   */
+  const [telechargementApercu, setTelechargementApercu] = useState(false);
+  const telechargerApercuMp4 = useCallback(async () => {
+    const blob = previewBlobRef.current;
+    if (!blob) return;
+    setTelechargementApercu(true);
+    try {
+      const base = ((generated?.title || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_').slice(0, 60)) || 'studiio';
+      await downloadBlob(blob, `${base}.webm`);
+    } catch (err) {
+      setError(err instanceof Error
+        ? `Téléchargement MP4 impossible : ${err.message}`
+        : 'Téléchargement MP4 impossible.');
+    } finally {
+      setTelechargementApercu(false);
+    }
+  }, [generated?.title]);
+
   /** Dernier retour des outils IA — efface au traitement suivant. */
   /**
    * Vignettes dont le chargement a echoue.
@@ -7575,6 +7601,10 @@ export default function AssistantWizard() {
       <video
         src={previewUrl!}
         controls
+        // Le menu natif « Télécharger » enregistrerait le blob WebM brut :
+        // le seul téléchargement proposé passe par la conversion MP4.
+        controlsList="nodownload"
+        disablePictureInPicture
         autoPlay
         playsInline
         className="w-full h-full"
@@ -7599,6 +7629,21 @@ export default function AssistantWizard() {
       >
         <X className="w-3 h-3" />
         Revenir à l’édition
+      </button>
+      {/* ── TÉLÉCHARGER EN MP4 ───────────────────────────────────────
+          Le même chemin que l'export « Bureau » (`downloadBlob`) : le WebM
+          du compositeur est converti en MP4 avant d'être enregistré. Jamais
+          le blob WebM tel quel. */}
+      <button
+        type="button"
+        onClick={() => { void telechargerApercuMp4(); }}
+        disabled={telechargementApercu}
+        data-play-telecharger-mp4
+        title="Télécharger le montage en MP4"
+        className="absolute top-2 left-2 flex items-center gap-1.5 rounded-lg border border-gray-700 bg-black/70 px-2 py-1 text-[11px] text-gray-200 hover:text-white hover:border-gray-500 disabled:opacity-60 backdrop-blur-sm transition-colors"
+      >
+        {telechargementApercu ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+        {telechargementApercu ? 'Conversion MP4…' : 'Télécharger MP4'}
       </button>
     </div>
   ) : null;
@@ -8216,6 +8261,16 @@ export default function AssistantWizard() {
     return planDetaille(liste, { dureeParole: p.dureeParole, source: p.source });
   };
   const planMedias = planDeListe(listeMedias);
+  /**
+   * La liste MONTÉE — la même pour l'aperçu et l'envoi (`listeMontageJumeau`).
+   * Jumeau demandé sur des rushes ordinaires : l'avatar prend SA place dans
+   * la liste et les autres rushes restent (avant : il les remplaçait tous).
+   */
+  const listeEnrichieEtat = mediasVideo && estListeEnrichie(mediasVideo) ? mediasVideo : null;
+  const listeMontage = listeMontageJumeau(listeEnrichieEtat, listeMedias, jumeauMode === 'avatar');
+  const planMontage: PlanDetaille | null = listeMontage
+    ? (listeEnrichieEtat ? planMedias : planDeListe(listeMontage))
+    : null;
   /** Réglage de durée ramené au maximum valide : l'explication, sous la carte. */
   const [noteDuree, setNoteDuree] = useState<{ id: string; texte: string } | null>(null);
   // Les gestes d'AVANT sur les rushes (« Changer », « Ajouter un rush »,
@@ -8439,12 +8494,14 @@ export default function AssistantWizard() {
   const ctaJoue = sequences.some((q) => q.key === 'cta' && q.enabled);
   const videoJouee = sequences.some((q) => q.key === 'video' && q.enabled);
   const apercuMontage = (() => {
-    if (!mediasVideo || !estListeEnrichie(mediasVideo) || !videoJouee) return null;
-    const { etapes } = planApercuListe(planMedias);
-    const { lignes } = chronologieListe(planMedias, { dureeCta: ctaJoue ? ctaDuration : null });
-    const narration = planMedias.dureeParole !== null && planMedias.sourceParole
-      ? { duree: planMedias.dureeParole, source: planMedias.sourceParole } : null;
-    return etapes.length ? { etapes, lignes, narration, depassement: planMedias.depassement } : null;
+    if (!planMontage || !videoJouee) return null;
+    const { etapes } = planApercuListe(planMontage);
+    const { lignes } = chronologieListe(planMontage, { dureeCta: ctaJoue ? ctaDuration : null });
+    const narration = planMontage.dureeParole !== null && planMontage.sourceParole
+      ? { duree: planMontage.dureeParole, source: planMontage.sourceParole } : null;
+    return etapes.length
+      ? { etapes, lignes, narration, depassement: planMontage.depassement, exclus: mediasExclusDuPlan(planMontage) }
+      : null;
   })();
   const etatAvatarListe: EtatAvatarListe = avatarsApercu === undefined ? 'chargement' : apercuAvatarListe?.etat === 'pret' ? 'pret' : 'absent';
 
@@ -8867,10 +8924,12 @@ export default function AssistantWizard() {
     // AVANT tout appel (garde, solde, jumeau) : des médias plus longs que la
     // narration ne sont JAMAIS raccourcis en silence au rendu. Le plan l'a
     // déjà affiché ; l'envoi attend que l'utilisateur les raccourcisse.
-    if (mediasVideo && estListeEnrichie(mediasVideo)) {
-      const planAvant = planDeListe(mediasVideo);
+    if (listeMontage) {
+      const planAvant = planDeListe(listeMontage);
       if (planAvant.depassement > 0) {
-        setError(`La durée totale dépasse la narration ${planAvant.sourceParole === 'reelle' ? '' : 'estimée '}de votre avatar (${formatSecondes(planAvant.dureeParole ?? 0)} s) de ${formatSecondes(Math.ceil(planAvant.depassement * 10 - 1e-6) / 10)} s : raccourcissez vos médias avant d’envoyer.`);
+        // Les médias exclus sont NOMMÉS, avec la raison — le même calcul que
+        // la liste affichée sous l'aperçu du montage.
+        setError(`La durée totale dépasse la narration ${planAvant.sourceParole === 'reelle' ? '' : 'estimée '}de votre avatar (${formatSecondes(planAvant.dureeParole ?? 0)} s) de ${formatSecondes(Math.ceil(planAvant.depassement * 10 - 1e-6) / 10)} s. ${messageMediasExclus(planAvant) ?? 'Raccourcissez vos médias avant d’envoyer.'}`);
         return;
       }
     }
@@ -8902,7 +8961,9 @@ export default function AssistantWizard() {
     }
     // Multi-sources : un créneau « Mon avatar » sans vidéo exige le jumeau
     // (produit à l'envoi). Désactivé entre-temps : on le dit, rien ne part.
-    const listeEnvoi: MediaVideo[] | null = mediasVideo && estListeEnrichie(mediasVideo) ? mediasVideo : null;
+    // Jumeau sur des rushes ordinaires : la liste dérivée (avatar à SA place,
+    // rushes conservés), la MÊME que l'aperçu du montage.
+    const listeEnvoi: MediaVideo[] | null = listeMontage;
     if (listeEnvoi && avatarAProduire(listeEnvoi) && jumeauMode !== 'avatar') {
       setError('« Mon avatar » est dans la séquence Vidéo mais votre jumeau est désactivé : réactivez-le ou retirez ce média avant d’envoyer.');
       return;
@@ -9025,7 +9086,8 @@ export default function AssistantWizard() {
       // parlant, qui porte déjà la voix — elle exclut alors toute voix off TTS
       // de séquence 'video' (pas de double narration). Faux pour un rush ordinaire.
       // `rushs` : la liste multi-rush (>= 2), `null` avec un seul rush — le
-      // montage d'avant a la lettre. Le jumeau la remplace par SON rush.
+      // montage d'avant a la lettre. Le jumeau ne la remplace plus : il prend
+      // SA place dans la liste des médias (`listeMontageJumeau`).
       let plateau: {
         rushUrl: string | null; sequences: typeof sequences; videoDuration: number;
         avatarVideo: boolean; rushs: RushItem[] | null;
@@ -9089,6 +9151,10 @@ export default function AssistantWizard() {
       // jamais une video ordinaire livree sous ce nom. Le mode 'voix' ne passe
       // pas ici : sa voix est deja posee dans `ttsVoiceId`, rien a produire.
       let listeAvatarPosee: MediaVideo[] | null = null;
+      // Liste dérivée (jumeau sur des rushes ordinaires) : posée AVANT la
+      // génération, pour que la vidéo produite remplisse SON créneau et que
+      // les autres rushes restent dans le montage.
+      if (jumeauMode === 'avatar' && listeEnvoi && !listeEnrichieEtat) poserListeMedias(listeEnvoi);
       if (jumeauMode === 'avatar') {
         // Plus de `setRenderProgress(5)` : ce chiffre restait figé pendant
         // tout le rendu fournisseur (5 à 30 min) sans rien mesurer. L'écran
@@ -9139,6 +9205,9 @@ export default function AssistantWizard() {
         // La génération est aboutie et posée : plus rien à reprendre.
         setJumeauGenerationId(null);
         if (listeEnvoi) listeAvatarPosee = mediasVideoRef.current;
+        // Sans liste : AUCUN autre média n'était choisi (`listeMontageJumeau`
+        // rend une liste dès qu'un rush existe) — le jumeau est la seule
+        // vidéo, rien n'est retiré.
         else plateau = {
           rushUrl: posee.url,
           sequences: sequences.map((s) => (s.key === 'video' ? { ...s, enabled: true } : s)),
@@ -9545,7 +9614,11 @@ export default function AssistantWizard() {
               // estimation. Texte retouché ou cartes changées : aucun calage.
               const voixCartes = voixSequencesRendu?.cartes && voixSequencesRendu.cartes === sequenceVoices.cartes.audioUrl
                 ? sequenceVoices.cartes : null;
-              const calage = calageCartes(contenu.cards, voixCartes);
+              // Sans calage exact : apparition ESTIMÉE au prorata du texte de
+              // chaque carte, sur la durée de la séquence (celle de la voix,
+              // inchangée) — jamais une photo figée pendant toute la narration.
+              const calage = calageCartes(contenu.cards, voixCartes)
+                ?? calageProportionnel(contenu.cards, duree('cards'));
               if (calage) {
                 setRenderStage('Synchronisation des cartes avec la voix…');
                 const photographier = async (): Promise<HTMLImageElement | null> => {
@@ -10270,6 +10343,10 @@ export default function AssistantWizard() {
         //    le montage ne soit livre. Un post n'existe donc jamais pour un
         //    rendu non paye, et aucun rendu paye n'est facture deux fois.
         majItem(itemEnCours, 'pret', { postId: json.post.id });
+        // MP4 DURABLE : le serveur convertit le WebM confirmé en MP4 H.264/AAC
+        // et fait pointer le post dessus. Non bloquant — le post existe déjà ;
+        // un échec laisse le WebM et le signale sur le post.
+        if (renduAttendUnMp4(composed.url)) void demanderMp4Durable(json.post.id);
 
         }
       } finally {
@@ -13990,6 +14067,24 @@ export default function AssistantWizard() {
             vignetteAvatar={apercuAvatarListe?.etat === 'pret' && apercuAvatarListe.url
               ? { url: apercuAvatarListe.url, type: apercuAvatarListe.type } : null}
           />
+        )}
+        {/* Médias qui ne tiennent pas dans la narration : NOMMÉS, avec la
+            raison, AVANT toute génération. L'envoi reste bloqué tant qu'il
+            en reste — jamais un média retiré en silence. */}
+        {apercuMontage && apercuMontage.exclus.length > 0 && (
+          <div data-medias-exclus className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+            <p className="font-medium">
+              {apercuMontage.exclus.length === 1 ? '1 média ne sera pas dans la vidéo :' : `${apercuMontage.exclus.length} médias ne seront pas dans la vidéo :`}
+            </p>
+            <ul className="mt-1 list-disc pl-4 space-y-0.5">
+              {apercuMontage.exclus.map((e) => (
+                <li key={e.id} data-media-exclu={e.id}>
+                  <span className="text-amber-100">{e.libelle}</span> — {e.raison}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1 text-amber-300/80">Raccourcissez ou retirez-les pour pouvoir envoyer.</p>
+          </div>
         )}
 
         {/* ── RÉGLAGES D'UNE SÉQUENCE, AU DOUBLE-CLIC ──────────────────
