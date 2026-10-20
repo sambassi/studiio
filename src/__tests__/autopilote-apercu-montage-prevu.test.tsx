@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import { etapesMontageApercuAutopilote, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
+import { planCompletAutopilote } from '@/lib/autopilot/plan-complet';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
 
 /**
@@ -31,87 +32,51 @@ function resume(o: Partial<ResumeMediasApercu> = {}): ResumeMediasApercu {
   };
 }
 
-describe('etapesMontageApercuAutopilote', () => {
-  it('sans résumé : aucune étape, aucune ligne', () => {
+describe('etapesMontageApercuAutopilote = planCompletAutopilote (le plan de « Plan avant génération »)', () => {
+  it('sans résumé ou plan vide : aucune étape', () => {
     expect(etapesMontageApercuAutopilote(null, { dureeCta: 4 })).toEqual({ etapes: [], lignes: [], duree: 0 });
+    expect(etapesMontageApercuAutopilote(resume(), { dureeCta: 4 })).toEqual({ etapes: [], lignes: [], duree: 0 });
   });
 
-  it('tous les créneaux, dans l’ordre, contigus, puis le CTA en fondu', () => {
-    const r = etapesMontageApercuAutopilote(resume({
-      gabarit: [{ id: 'a', type: 'avatar' }, { id: 'b', type: 'rush' }, { id: 'c', type: 'stock' }, { id: 'd', type: 'avatar' }],
+  it('⚠️ plan enregistré à 1 créneau + avatar : étapes == segments (nombre, ordre, genre, durées), puis CTA', () => {
+    const plan = { avatarDisponible: true, cible: 30, rythme: null, durees: { [RUSH]: 12 } };
+    const r = resume({
+      gabarit: [{ id: 's1', type: 'stock' }],
       actives: { rushes: true, avatar: true, stock: true },
       rushesPerso: [RUSH],
-      stock: [retenu(PHOTO, 'photo')],
+      stock: [retenu(PHOTO, 'photo'), retenu(STOCK_V, 'video')],
       avatar: { disponible: true, vignette: null },
-    }), { dureeCta: 4 });
-    expect(r.etapes.map((e) => e.source)).toEqual(['avatar', 'rush', 'stock-photo', 'avatar']);
-    for (let i = 1; i < r.etapes.length; i += 1) expect(r.etapes[i].debut).toBe(r.etapes[i - 1].fin);
-    const cta = r.lignes[r.lignes.length - 1];
-    expect(cta).toMatchObject({ id: 'cta', cta: true, debut: r.duree, fin: r.duree + 4 });
-    expect(cta.fondu).toBeGreaterThan(0);
-    expect(r.etapes[2].mouvement).toBeDefined();
+      plan,
+    });
+    const complet = planCompletAutopilote({
+      gabarit: r.gabarit, actives: { rushes: true, stock: true, avatar: true },
+      rushesPerso: r.rushesPerso, stock: r.stock, avatar: { disponible: true, vignette: null },
+    }, { cible: 30, rythme: null, durees: plan.durees });
+    const a = etapesMontageApercuAutopilote(r, { dureeCta: 4 });
+    // L'alternance complète, pas le seul créneau du gabarit.
+    expect(complet.segments.length).toBeGreaterThan(1);
+    expect(a.etapes).toHaveLength(complet.segments.length);
+    const genre = { avatar: 'avatar', rush: 'rush', video: 'stock-video', photo: 'stock-photo' } as const;
+    expect(a.etapes.map((e) => e.source)).toEqual(complet.segments.map((g) => genre[g.genre]));
+    expect(a.etapes.map((e) => [e.debut, e.fin])).toEqual(complet.segments.map((g) => [g.debut, g.fin]));
+    expect(a.duree).toBe(complet.segments[complet.segments.length - 1].fin);
+    // Avatar non produit : emplacement, jamais un stock à sa place.
+    for (const e of a.etapes.filter((x) => x.source === 'avatar')) expect(e.url).toBeNull();
+    const cta = a.lignes[a.lignes.length - 1];
+    expect(cta).toMatchObject({ id: 'cta', cta: true, debut: a.duree, fin: a.duree + 4 });
+    expect(a.lignes).toHaveLength(complet.segments.length + 1);
   });
 
-  it('avatar pas encore produit : emplacement url null, jamais un stock à sa place', () => {
-    const r = etapesMontageApercuAutopilote(resume({
-      gabarit: [{ id: 'a', type: 'avatar' }],
-      actives: { rushes: true, avatar: true, stock: true },
-      stock: [retenu(STOCK_V, 'video')],
-      avatar: { disponible: false, vignette: null },
-    }));
-    expect(r.etapes).toHaveLength(1);
-    expect(r.etapes[0]).toMatchObject({ source: 'avatar', url: null, libelle: 'Mon avatar' });
-  });
-
-  it('source avatar décochée : le créneau avatar est omis', () => {
-    const r = etapesMontageApercuAutopilote(resume({
-      gabarit: [{ id: 'a', type: 'avatar' }, { id: 'b', type: 'rush' }],
-      rushesPerso: [RUSH],
-    }));
-    expect(r.etapes.map((e) => e.source)).toEqual(['rush']);
-  });
-
-  it('rotation des rushes (pas toujours le premier), média imposé respecté', () => {
-    const r = etapesMontageApercuAutopilote(resume({
-      gabarit: [{ id: 'a', type: 'rush' }, { id: 'b', type: 'rush' }, { id: 'c', type: 'rush' }, { id: 'd', type: 'rush', media: RUSH_2 }],
+  it('sans avatar : le plan du moteur, médias réels du plan', () => {
+    const r = resume({
+      gabarit: [{ id: 'a', type: 'rush' }, { id: 'b', type: 'rush' }],
       rushesPerso: [RUSH, RUSH_2],
-    }));
-    expect(r.etapes.map((e) => e.url)).toEqual([RUSH, RUSH_2, RUSH, RUSH_2]);
-    expect(r.etapes[1].libelle).toBe('Rush : salle.mp4');
-  });
-
-  it('rotation du stock et rush stock jamais pris pour un rush personnel', () => {
-    const r = etapesMontageApercuAutopilote(resume({
-      gabarit: [{ id: 'a', type: 'stock' }, { id: 'b', type: 'stock' }, { id: 'c', type: 'rush' }],
-      actives: { rushes: true, avatar: false, stock: true },
-      rushesPerso: [STOCK_V],
-      stock: [retenu(STOCK_V, 'video'), retenu(PHOTO, 'photo')],
-    }));
-    expect(r.etapes.map((e) => [e.source, e.url])).toEqual([['stock-video', STOCK_V], ['stock-photo', PHOTO]]);
-  });
-
-  it('auto : avatar prêt, sinon rush suivant, sinon stock suivant', () => {
-    const base = { gabarit: [{ id: 'a', type: 'auto' as const }, { id: 'b', type: 'auto' as const }], stock: [retenu(PHOTO, 'photo')] };
-    const avecAvatar = etapesMontageApercuAutopilote(resume({
-      ...base, actives: { rushes: true, avatar: true, stock: true }, rushesPerso: [RUSH], avatar: { disponible: true, vignette: null },
-    }));
-    expect(avecAvatar.etapes.map((e) => e.source)).toEqual(['avatar', 'avatar']);
-    const sansAvatar = etapesMontageApercuAutopilote(resume({
-      ...base, actives: { rushes: true, avatar: true, stock: true }, rushesPerso: [RUSH],
-    }));
-    expect(sansAvatar.etapes.map((e) => e.source)).toEqual(['rush', 'rush']);
-    const stockSeul = etapesMontageApercuAutopilote(resume({ ...base, actives: { rushes: false, avatar: false, stock: true }, rushesPerso: [RUSH] }));
-    expect(stockSeul.etapes.map((e) => e.source)).toEqual(['stock-photo', 'stock-photo']);
-  });
-
-  it('source rushes / stock décochée : rien de ces sources', () => {
-    const r = etapesMontageApercuAutopilote(resume({
-      gabarit: [{ id: 'a', type: 'rush' }, { id: 'b', type: 'stock' }],
-      actives: { rushes: false, avatar: false, stock: false },
-      rushesPerso: [RUSH],
-      stock: [retenu(PHOTO, 'photo')],
-    }), { dureeCta: 4 });
-    expect(r).toEqual({ etapes: [], lignes: [], duree: 0 });
+      plan: { avatarDisponible: false, cible: 20, rythme: null, durees: { [RUSH]: 10, [RUSH_2]: 10 } },
+    });
+    const a = etapesMontageApercuAutopilote(r);
+    expect(a.etapes.length).toBeGreaterThan(0);
+    expect(a.etapes.every((e) => e.source === 'rush' && (e.url === RUSH || e.url === RUSH_2))).toBe(true);
+    expect(a.etapes.every((e) => e.libelle.startsWith('Rush : '))).toBe(true);
   });
 });
 
@@ -122,12 +87,14 @@ describe('Aperçu du montage prévu — rendu', () => {
       gabarit: [{ id: 'a', type: 'avatar' }, { id: 'b', type: 'rush' }, { id: 'c', type: 'rush' }],
       actives: { rushes: true, avatar: true, stock: false },
       rushesPerso: [RUSH, RUSH_2],
+      avatar: { disponible: true, vignette: null },
+      plan: { avatarDisponible: true, cible: 20, rythme: null, durees: {} },
     }), { dureeCta: 4 });
     const { container } = render(
       <ApercuMontageListe etapes={r.etapes} lignes={r.lignes} format="9:16" accent="#7C3AED" ctaTexte="Viens" vignetteAvatar={null} titre="Aperçu du montage prévu" />,
     );
     expect(container.querySelector('h3')!.textContent).toBe('Aperçu du montage prévu');
-    expect([...container.querySelectorAll('[data-ligne]')].map((b) => b.getAttribute('data-ligne'))).toEqual(['creneau-1', 'creneau-2', 'creneau-3', 'cta']);
+    expect([...container.querySelectorAll('[data-ligne]')].map((b) => b.getAttribute('data-ligne'))).toEqual([...r.etapes.map((e) => e.id), 'cta']);
     expect(container.querySelector('[data-apercu-montage-avatar="a-produire"]')!.textContent).toContain('Votre avatar parlera ici');
   });
 

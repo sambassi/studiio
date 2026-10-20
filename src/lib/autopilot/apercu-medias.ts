@@ -20,7 +20,10 @@
  */
 import type { CreneauGabarit, MediaStockRetenu, SourcesActives } from '@/lib/autopilot/sources';
 import { estRushStock } from '@/lib/autopilot/sources';
-import { AVATAR_FENETRE_S, BROLL_PHOTO_S, BROLL_VIDEO_S, MOUVEMENTS_PHOTO } from '@/lib/autopilot/plan-multi-sources';
+import { MOUVEMENTS_PHOTO } from '@/lib/autopilot/plan-multi-sources';
+import { planCompletAutopilote, URL_AVATAR_PREVU } from '@/lib/autopilot/plan-complet';
+import { DUREE_ESTIMEE_SANS_CIBLE } from '@/lib/autopilot/duree-cible';
+import type { RythmeBrief } from '@/lib/creer/brief';
 import { TRANSITION_DURATION_SECONDS } from '@/lib/creer/transitionPreview';
 import type { EtapeApercu, LigneChronologie } from '@/lib/creer/medias-video';
 
@@ -35,6 +38,19 @@ export interface ResumeMediasApercu {
   stock: MediaStockRetenu[];
   /** L'avatar porte-t-il la production (demandé ET prêt) ? Sa vignette, si connue. */
   avatar: { disponible: boolean; vignette: { url: string; type: 'photo' | 'video' } | null };
+  /**
+   * Les options EXACTES de « Plan avant génération » (`planCompletAutopilote`) :
+   * l'aperçu du montage prévu calcule le MÊME plan. Absent : défauts du moteur.
+   */
+  plan?: {
+    avatarDisponible: boolean;
+    cible: number;
+    rythme: RythmeBrief | null;
+    secondesAvatar?: number | null;
+    scriptAvatar?: string | null;
+    /** Durées sondées des vidéos (rushes, vidéos suggérées). */
+    durees?: Readonly<Record<string, number | null>>;
+  };
 }
 
 export type MediaApercuAutopilote =
@@ -120,76 +136,70 @@ export function signatureResume(r: ResumeMediasApercu): string {
     r.avatar.disponible,
     r.avatar.vignette?.url ?? '',
     r.avatar.vignette?.type ?? '',
+    r.plan ?? null,
   ]);
 }
 
 /**
- * APERÇU DU MONTAGE PRÉVU — TOUS les créneaux du plan, dans l'ordre.
+ * APERÇU DU MONTAGE PRÉVU — le PLAN COMPLET, celui de « Plan avant génération ».
  *
- * ⚠️ `mediaApercuAutopilote` ne rend que le PREMIER créneau résoluble : le
- * bloc « Aperçu du style » montrait donc un seul média (souvent un stock, ou
- * toujours le même rush) et jamais l'enchaînement réel. Ici, chaque créneau
- * du gabarit devient une étape d'`ApercuMontageListe` :
- *   - avatar → TOUJOURS un emplacement (`url: null`) : la vidéo de l'avatar
- *     n'existe qu'à la production (« Votre avatar parlera ici »). Jamais un
- *     stock à sa place. Source avatar décochée : le créneau est omis ;
- *   - rush   → ROTATION sur les rushes personnels (1er créneau rush → rush 1,
- *     2e → rush 2…), sauf média imposé par le gabarit ;
- *   - stock  → ROTATION sur les médias retenus, sauf média imposé ;
- *   - auto   → avatar prêt, sinon rush suivant, sinon stock suivant.
- * Un créneau sans média réel est omis (jamais une vidéo générique).
- *
- * Durées INDICATIVES (celles des plans de coupe du moteur) : la vidéo finale
- * prend la durée réelle de la parole / des extraits. Pur, sans réseau.
+ * ⚠️ DEUX PLANS À L'ÉCRAN, C'ÉTAIT INACCEPTABLE. La première version listait
+ * les seuls créneaux du gabarit (un « Photo suggérée » de 2,5 s) pendant que
+ * « Plan avant génération » montrait l'alternance complète avatar ↔ plans de
+ * coupe. Les étapes viennent désormais de `planCompletAutopilote` (le même
+ * orchestrateur que le moteur, `planMultiSources`), avec les MÊMES options
+ * que `PlanAvantGeneration` (`resume.plan`) : chaque segment devient une
+ * étape d'`ApercuMontageListe`, puis le CTA.
+ *   - avatar → emplacement (`url: null`) tant que sa vidéo n'existe pas :
+ *     « Votre avatar parlera ici », jamais un stock à sa place ;
+ *   - rush / vidéo suggérée / photo suggérée → le média du plan.
+ * Pur, sans réseau.
  */
 export function etapesMontageApercuAutopilote(
   resume: ResumeMediasApercu | null | undefined,
   opts: { dureeCta?: number | null } = {},
 ): { etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number } {
   const etapes: EtapeApercu[] = [];
-  if (resume) {
-    const perso = resume.actives.rushes ? resume.rushesPerso.filter((u) => !estRushStock(u)) : [];
-    const stock = resume.actives.stock ? resume.stock : [];
-    let rangRush = 0;
-    let rangStock = 0;
+  if (resume && resume.gabarit.length > 0) {
+    const plan = resume.plan;
+    const avatarDisponible = plan?.avatarDisponible ?? (resume.actives.avatar && resume.avatar.disponible);
+    // La MÊME entrée que `PlanAvantGeneration` (sources déjà filtrées par l'écran).
+    const { segments } = planCompletAutopilote({
+      gabarit: resume.gabarit,
+      actives: { rushes: true, stock: true, avatar: avatarDisponible },
+      rushesPerso: resume.rushesPerso,
+      stock: resume.stock,
+      avatar: { disponible: avatarDisponible, vignette: null },
+    }, {
+      cible: plan?.cible ?? DUREE_ESTIMEE_SANS_CIBLE,
+      rythme: plan?.rythme ?? null,
+      secondesAvatar: plan?.secondesAvatar ?? null,
+      scriptAvatar: plan?.scriptAvatar ?? null,
+      durees: plan?.durees ?? {},
+    });
+    const perso = resume.rushesPerso;
     let photos = 0;
-    let t = 0;
-    const r3 = (n: number) => Math.round(n * 1000) / 1000;
-    const pousser = (e: Omit<EtapeApercu, 'debut' | 'fin' | 'depuis' | 'horsNarration' | 'id'>, secondes: number) => {
-      const debut = r3(t);
-      t += secondes;
-      etapes.push({ ...e, id: `creneau-${etapes.length + 1}`, debut, fin: r3(t), depuis: 0, horsNarration: false });
-    };
-    const avatar = (): boolean => {
-      if (!resume.actives.avatar) return false;
-      pousser({ source: 'avatar', type: 'video', url: null, libelle: 'Mon avatar' }, AVATAR_FENETRE_S);
-      return true;
-    };
-    const rush = (force?: string): boolean => {
-      if (!perso.length) return false;
-      const url = force && perso.includes(force) ? force : perso[rangRush++ % perso.length];
-      pousser({ source: 'rush', type: 'video', url, libelle: `Rush : ${nomRush(url, perso.indexOf(url))}` }, BROLL_VIDEO_S);
-      return true;
-    };
-    const media = (force?: string): boolean => {
-      if (!stock.length) return false;
-      const m = (force ? stock.find((s) => s.url === force) : undefined) ?? stock[rangStock++ % stock.length];
-      if (m.type === 'photo') {
-        pousser({
-          source: 'stock-photo', type: 'image', url: m.url, libelle: 'Photo suggérée',
+    segments.forEach((sg, k) => {
+      const id = `plan-${k + 1}`;
+      const base = { id, debut: sg.debut, fin: sg.fin, horsNarration: false };
+      if (sg.genre === 'avatar') {
+        etapes.push({
+          ...base, source: 'avatar', type: 'video',
+          url: sg.url === URL_AVATAR_PREVU ? null : sg.url,
+          depuis: sg.debut,
+          libelle: sg.role === 'accroche' ? 'Mon avatar — accroche' : sg.role === 'cta' ? 'Mon avatar — CTA' : 'Mon avatar',
+        });
+      } else if (sg.genre === 'photo') {
+        etapes.push({
+          ...base, source: 'stock-photo', type: 'image', url: sg.url, depuis: 0, libelle: 'Photo suggérée',
           mouvement: MOUVEMENTS_PHOTO[photos++ % MOUVEMENTS_PHOTO.length],
-        }, BROLL_PHOTO_S);
+        });
+      } else if (sg.genre === 'video') {
+        etapes.push({ ...base, source: 'stock-video', type: 'video', url: sg.url, depuis: 0, libelle: 'Vidéo suggérée' });
       } else {
-        pousser({ source: 'stock-video', type: 'video', url: m.url, libelle: 'Vidéo suggérée' }, BROLL_VIDEO_S);
+        etapes.push({ ...base, source: 'rush', type: 'video', url: sg.url, depuis: 0, libelle: `Rush : ${nomRush(sg.url, Math.max(0, perso.indexOf(sg.url)))}` });
       }
-      return true;
-    };
-    for (const c of resume.gabarit) {
-      if (c.type === 'avatar') avatar();
-      else if (c.type === 'rush') rush(c.media);
-      else if (c.type === 'stock') media(c.media);
-      else if (!(resume.avatar.disponible && avatar())) { if (!rush()) media(); }
-    }
+    });
   }
   const duree = etapes.length ? etapes[etapes.length - 1].fin : 0;
   const lignes: LigneChronologie[] = etapes.map((e) => ({ id: e.id, libelle: e.libelle, debut: e.debut, fin: e.fin }));

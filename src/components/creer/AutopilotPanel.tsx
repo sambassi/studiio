@@ -32,7 +32,7 @@ import {
   aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
-import { conseilDureeAvatar } from '@/lib/autopilot/duree-cible';
+import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import type { FormatStock } from '@/lib/stock/types';
@@ -783,6 +783,9 @@ export default function AutopilotPanel({
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
     stock: etatSources.stockRetenus,
   }, { dureeSecondes: config.brief.duree, rythme: config.brief.rythme });
+  /** Durées sondées par « Plan avant génération » — reprises par l'aperçu du montage prévu (même plan). */
+  const [dureesPlan, setDureesPlan] = useState<Record<string, number | null>>({});
+  const avatarDisponiblePlan = etatSources.avatarActif && etatSources.avatarPret;
   const resumeApercu: ResumeMediasApercu = {
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
@@ -791,6 +794,13 @@ export default function AutopilotPanel({
     avatar: {
       disponible: avatarPorteLaProduction(sources.actives.avatar, avatarPret),
       vignette: vignetteAvatar ? { url: vignetteAvatar.url, type: vignetteAvatar.type } : null,
+    },
+    // Les options EXACTES passées à `PlanAvantGeneration` ci-dessous.
+    plan: {
+      avatarDisponible: avatarDisponiblePlan,
+      cible: config.brief.duree ?? DUREE_ESTIMEE_SANS_CIBLE,
+      rythme: config.brief.rythme ?? null,
+      durees: dureesPlan,
     },
   };
   // Remonté sur sa SIGNATURE : un objet neuf à chaque rendu ne relance rien.
@@ -1904,7 +1914,8 @@ export default function AutopilotPanel({
             stock={sources.actives.stock ? sources.stock : []}
             stockPertinent={sources.actives.stock ? pertinent.stock : []}
             vignetteAvatar={vignetteAvatar}
-            avatarDisponible={etatSources.avatarActif && etatSources.avatarPret}
+            avatarDisponible={avatarDisponiblePlan}
+            onDurees={setDureesPlan}
             disabled={!ready || saving}
             onChange={(g) => enregistrerSources({ ...sources, gabarit: g })}
             onRechercher={(id, lignes) => setRechercheLigne({ id, lignes })}

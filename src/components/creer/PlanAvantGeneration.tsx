@@ -98,8 +98,10 @@ function nouvelId(lignes: CreneauGabarit[]): string {
 
 export default function PlanAvantGeneration({
   gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher, duree,
-  secondesAvatar, scriptAvatar, stockPertinent,
+  secondesAvatar, scriptAvatar, stockPertinent, onDurees,
 }: {
+  /** Durées sondées des vidéos, remontées : l'aperçu du montage prévu calcule le MÊME plan. */
+  onDurees?: (durees: Record<string, number | null>) => void;
   /**
    * Les médias stock que le MOTEUR piochera (sujet courant, `sourcesPertinentes`),
    * dans son ordre — ceux du plan calculé. Défaut : `stock`. Les listes de choix
@@ -136,6 +138,7 @@ export default function PlanAvantGeneration({
   const noterDuree = useCallback((url: string, d: number | null) => {
     setDurees((x) => (x[url] === d ? x : { ...x, [url]: d }));
   }, []);
+  useEffect(() => { onDurees?.(durees); }, [durees, onDurees]);
   const stockPlan = stockPertinent ?? stock;
   const videos = [...rushesPerso, ...stockPlan.filter((m) => m.type === 'video').map((m) => m.url)];
   /**
