@@ -173,9 +173,13 @@ function motsNormalises(t: string | null | undefined): string[] {
  *   - le début tronqué d'un mot du titre (≥ 2 lettres : « DOPA », « IDENT ») ;
  *   - le début tronqué du titre entier (« BOUCLEHAB »).
  * Une valeur porteuse d'information propre (« ANCRÉ » pour « HABIT
- * STACKING », « +ÉNERGIE », « 3-en-1 ») est gardée. Pure.
+ * STACKING », « +ÉNERGIE ») est gardée ; une valeur CHIFFRÉE n'est jamais
+ * traitée ici (`titreSansValeur`). Pure.
  */
 export function valeurRedondante(valeur: string | null | undefined, titre: string | null | undefined): boolean {
+  // Valeur CHIFFRÉE : jamais ici — `titreSansValeur` retire la redite du
+  // TITRE et garde le chiffre (« 300+ » / « 300+ MUSCLES » → « MUSCLES »).
+  if (A_UN_CHIFFRE.test(valeur ?? '')) return false;
   const v = motsNormalises(valeur);
   const t = motsNormalises(titre);
   if (!v.length || !t.length) return false;
