@@ -1,3 +1,4 @@
+import { chassePolice, enCapitales } from '@/lib/creer/zones-sures-916';
 /**
  * CTA qui ne déborde jamais — UNE règle, appliquée avant l'aperçu ET
  * l'export (elle produit l'échelle que les deux reçoivent).
@@ -104,4 +105,42 @@ export const defautsLisibles = (version: number | null | undefined) => (version 
 export function versionLisibiliteRestauree(version: number | null | undefined, source: 'brouillon' | 'post'): number {
   if (typeof version === 'number' && Number.isInteger(version) && version >= 1) return version;
   return source === 'brouillon' ? VERSION_LISIBILITE : 1;
+}
+
+// ── TITRE LISIBLE PAR DÉFAUT (v2, 9:16) ──────────────────────────────────
+//
+// Constat (démo « LE SPORT », lot 2) : écran titre de 5 s avec un titre
+// minuscule en haut à gauche (≈ 40 px de capitale sur 1080) — l'échelle 1 du
+// titre est celle de l'éditeur d'origine, pensée pour un plateau de 320 px.
+// Pour un projet aux défauts lisibles (`versionLisibilite` ≥ 2) en 9:16, le
+// titre à l'échelle par DÉFAUT (1) est ajusté pour occuper ≈ 80 % de la
+// largeur utile de son cadre, sur 1 ou 2 lignes selon son nombre de mots,
+// entre `ECHELLE_TITRE_LISIBLE` min et max. Une échelle réglée par
+// l'utilisateur (poignée, curseur) est gardée telle quelle — la même règle que
+// le CTA (`echelleCtaDeDepart`). La garde « aucun mot ne déborde »
+// (`titreSur916`) s'applique ensuite.
+
+/** Bornes de l'échelle automatique du titre (9:16) : ≈ 66 px à ≈ 113 px de corps sur 1080. */
+export const ECHELLE_TITRE_LISIBLE = { min: 1.4, max: 2.4 } as const;
+/** Part de la largeur utile du cadre visée par la ligne de titre. */
+export const PART_LARGEUR_TITRE = 0.8;
+
+export function echelleTitreDeDepart(p: {
+  echelle: number | null | undefined; titre: string | null | undefined; format: string;
+  /** Largeur du cadre titre (% de la vidéo). */
+  largeurPct: number; police?: string | null; casse?: 'none' | 'uppercase' | 'lowercase'; lisible?: boolean;
+}): number {
+  const e = p.echelle ?? 1;
+  const titre = (p.titre ?? '').trim();
+  if (!p.lisible || p.format !== '9:16' || e !== 1 || !titre) return e;
+  const W = 1080;
+  const utile = (p.largeurPct / 100) * W * PART_LARGEUR_TITRE;
+  const ch = chassePolice(p.police ?? 'Inter', enCapitales(titre, p.casse));
+  const mots = titre.split(/\s+/).filter(Boolean);
+  // Deux lignes au plus : le bloc reste au-dessus du rail d'actions des
+  // réseaux (35 % de la hauteur), sa largeur n'y est pas rabotée.
+  const lignes = Math.min(2, Math.max(1, Math.ceil(mots.length / 2)));
+  const largeurA1 = mots.reduce((t, m) => t + m.length * ch.em, 0) * W * 0.04375 + (mots.length - 1) * ch.espace * W * 0.04375;
+  const cible = (utile * lignes) / Math.max(1e-6, largeurA1);
+  return Math.round(Math.min(ECHELLE_TITRE_LISIBLE.max, Math.max(ECHELLE_TITRE_LISIBLE.min, cible)) * 100) / 100;
 }

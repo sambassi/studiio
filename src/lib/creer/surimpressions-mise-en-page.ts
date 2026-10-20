@@ -694,11 +694,21 @@ export function boitesSurimpression(design: object, format: DesignFormat): { tit
   const CR = cardRatios(format !== '9:16');
   const ech = d.cardsTypography?.scale ?? 1;
   const hCarteMax = Math.max(0, ...(d.cards ?? [{ title: 'x', value: 'x' }]).map((c) => {
+    const titre = c.title ?? c.label ?? '';
+    const largeurPx = W * 0.84 * (b.w / 100);
     const aj = ajusterBadge({
-      titre: c.title ?? c.label ?? '', valeur: c.value ?? '', largeurPx: W * 0.84 * (b.w / 100), echelle: ech,
+      titre, valeur: c.value ?? '', largeurPx, echelle: ech,
       texte: W * CR.text, valeurPx: W * CR.value, icone: W * CR.icon, ecart: W * CR.gap, padX: W * CR.padX,
     });
-    return (2 * W * CR.padY + aj.echelle * (W * CR.value * 1.3 + 2 * W * CR.text * 1.3)) / H * 100;
+    // Tailles RENDUES, plancher lisible du 9:16 compris (`taillesBadge`) : le
+    // titre peut alors prendre une ligne de plus que les deux d'`ajusterBadge`.
+    const t = taillesBadge({ vw: W, ratios: CR, echelle: aj.echelle, portrait: format === '9:16' });
+    const dispo = largeurPx - 2 * W * CR.padX - (aj.icone ? t.icone + W * CR.gap * aj.echelle : 0);
+    const lignes = Math.max(1, lignesRepliees(titre, t.texte, Math.max(1, dispo), chassePolice('Inter', true)));
+    // Interlignes RÉELS du badge (`SequenceCards` : valeur 1,05, titre 1,1) ;
+    // l'icône, centrée, ne grandit la boîte que si elle dépasse le texte.
+    const bloc = (c.value ? t.valeur * 1.05 : 0) + lignes * t.texte * 1.1;
+    return (2 * W * CR.padY + Math.max(bloc, aj.icone ? t.icone : 0)) / H * 100;
   }));
   const hK = Math.max((b.h / 100) * CADRE.h, hCarteMax);
   return {
@@ -746,6 +756,36 @@ export function badgeValide(c: { title?: string | null; value?: string | null } 
  * laisser de la marge.
  */
 const EM_CARACTERE = 0.7;
+
+/**
+ * Corps minimal (px sur 1080) du TITRE d'un badge posé sur l'image en 9:16 :
+ * 52 px (capitale ≈ 37 px), le même plancher que les cartes lisibles en flux
+ * (`LISIBILITE_916.text`). 40 px ne changeait presque rien à l'œil sur la
+ * démo (≈ 47 px déjà rendus).
+ */
+export const BADGE_TEXTE_MIN_PX_916 = 52;
+/** La valeur est toujours plus grande que le titre du badge (× 1,25 au moins). */
+export const BADGE_VALEUR_SUR_TEXTE = 1.25;
+
+/**
+ * Tailles (px) d'un badge posé sur l'image. Constat (« MOTIVATION », 20/10) :
+ * cartes en surimpression à ≈ 25 px sur 1080 — `ajusterBadge` réduisait
+ * l'échelle pour tenir 2 lignes dans la boîte. En 9:16 (portrait), le titre ne
+ * descend plus sous `BADGE_TEXTE_MIN_PX_916` (52 px ; la boîte s'allonge, une ligne de
+ * plus au besoin), la valeur reste ≥ 1,25 × le titre, l'icône suit. Pure.
+ */
+export function taillesBadge(p: {
+  vw: number; ratios: { text: number; value: number; icon: number }; echelle: number; portrait: boolean;
+}): { texte: number; valeur: number; icone: number } {
+  const brut = { texte: p.vw * p.ratios.text * p.echelle, valeur: p.vw * p.ratios.value * p.echelle, icone: p.vw * p.ratios.icon * p.echelle };
+  if (!p.portrait) return brut;
+  const texte = Math.max(brut.texte, (BADGE_TEXTE_MIN_PX_916 * p.vw) / 1080);
+  return {
+    texte,
+    valeur: Math.max(brut.valeur, texte * BADGE_VALEUR_SUR_TEXTE),
+    icone: Math.max(brut.icone, texte * 1.3),
+  };
+}
 
 export interface AjustementBadge {
   /** Échelle à appliquer au texte et à l'icône (≤ l'échelle demandée). */

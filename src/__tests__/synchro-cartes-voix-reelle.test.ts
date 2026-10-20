@@ -160,10 +160,11 @@ describe('1-3. horodatage réel → apparition, morceau par morceau', () => {
     // Ordre strict : la carte 2 n'apparaît pas avant que la voix ait fini la valeur de la carte 1.
     expect(etape(1, 'carte')).toBeGreaterThan(segments[2][1]);
 
-    // Ce que montre chaque étape : jamais une carte ou une valeur pas encore dite.
+    // Ce que montre chaque étape : jamais une carte pas encore dite ; sa
+    // VALEUR paraît avec elle (lot 2, 20/10 : valeurs tardives ou absentes).
     const e1 = etatApres(calage, 1);
     expect([...e1.cartes]).toEqual([0]);
-    expect([...e1.valeurs]).toEqual([]);
+    expect([...e1.valeurs]).toEqual([0]);
     const e2 = etatApres(calage, 2);
     expect([...e2.valeurs]).toEqual([0]);
 

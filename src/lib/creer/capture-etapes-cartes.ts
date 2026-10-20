@@ -4,7 +4,7 @@ import { FOND_TEXTE_SUR_IMAGE, estVoile, haloTexteCss } from '@/lib/creer/contra
 /**
  * Photographie le conteneur des cartes à chaque étape d'apparition calée
  * sur la voix (`calageCartes`) : à l'étape k, seules les cartes déjà dites
- * sont visibles, et parmi elles seules les valeurs déjà dites.
+ * sont visibles, avec leurs valeurs (une valeur paraît avec sa carte).
  *
  * Un cadre de groupe (`data-card-group`) suit ses cartes : masqué tant
  * qu'aucune d'elles n'est dite, visible dès la première.

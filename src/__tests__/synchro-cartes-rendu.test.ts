@@ -97,7 +97,7 @@ describe('capturerEtapesCartes — une photo par étape, styles toujours restaur
     c2: el.querySelector<HTMLElement>('[data-card-id="c2"]')!.style.visibility,
   });
 
-  it('carte 1, puis sa valeur, puis carte 2 — et le DOM revient tel quel', async () => {
+  it('carte 1 AVEC sa valeur (lot 2), puis carte 2 — et le DOM revient tel quel', async () => {
     const el = dom();
     const texte = texteDesMorceaux(morceauxCartes(CARTES));
     const calage = calageCartes(CARTES, { textAtGeneration: texte, duration: 6 })!;
@@ -105,7 +105,9 @@ describe('capturerEtapesCartes — une photo par étape, styles toujours restaur
     const etapes = await capturerEtapesCartes(el, calage, CARTES.map((c) => c.id), async () => { vus.push(visibles(el)); return `photo-${vus.length}`; });
     expect(etapes!.map((e) => e.image)).toEqual(['photo-1', 'photo-2', 'photo-3']);
     expect(vus).toEqual([
-      { c1: '', v1: 'hidden', c2: 'hidden' },
+      // Lot 2 (20/10) : la valeur paraît AVEC sa carte (plus de valeur
+      // tardive) ; l'étape « valeur » reste, sans effet visible.
+      { c1: '', v1: '', c2: 'hidden' },
       { c1: '', v1: '', c2: 'hidden' },
       { c1: '', v1: '', c2: '' },
     ]);

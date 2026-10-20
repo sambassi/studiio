@@ -238,9 +238,9 @@ describe('Contraste discret : contour fin + ombre serrée, plus de pavé ni de t
       expect(VOILE_TEXTE_ALPHA_MAX).toBeLessThanOrEqual(0.22);
     }
   });
-  it('contour : 2 px à 1080, alpha 0,55, quatre directions + une ombre douce', () => {
+  it('contour : 2 px à 1080, alpha 0,75, quatre directions + une ombre douce', () => {
     const h = haloTexteCss(1080);
-    expect(h.match(/rgba\(0,0,0,0\.55\)/g)).toHaveLength(4);
+    expect(h.match(/rgba\(0,0,0,0\.75\)/g)).toHaveLength(4);
     expect(h).toContain('2px 0 1px');
   });
   it('contraste au bord des lettres, pire plan (blanc), avec ou sans voile : texte blanc et ligne d\'action ≥ 4,5:1', () => {

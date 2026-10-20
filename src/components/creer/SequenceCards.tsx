@@ -8,9 +8,9 @@ import {
 } from '@/lib/creer/textFormat';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
-import { ajusterBadge, badgeValide } from '@/lib/creer/surimpressions-mise-en-page';
+import { ajusterBadge, badgeValide, taillesBadge } from '@/lib/creer/surimpressions-mise-en-page';
 import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
-import { estVoile, haloTexteCss } from '@/lib/creer/contraste';
+import { estVoile, haloTexteCss, CONTOUR_TEXTE_ALPHA, couleurValeurLisible } from '@/lib/creer/contraste';
 
 /**
  * Planchers de lisibilité des cartes en 9:16 (fraction de la largeur vidéo) :
@@ -193,6 +193,13 @@ export interface SequenceCardsProps {
    * 9:16 : l'éditeur rend aussi le 1:1 en colonne.
    */
   zoneSure916?: boolean;
+  /**
+   * Couleurs CONNUES du fond sous les cartes (dégradé de marque) : la valeur
+   * est éclaircie jusqu'à 4,5:1 contre le plus clair (`couleurValeurLisible`)
+   * et titre + valeur reçoivent le contour fin des textes sur l'image.
+   * Absent : rendu d'avant.
+   */
+  fondsContraste?: ReadonlyArray<string | null | undefined> | null;
 }
 
 export default function SequenceCards({
@@ -208,6 +215,7 @@ export default function SequenceCards({
   containerRef,
   groupeDe,
   zoneSure916 = false,
+  fondsContraste = null,
 }: SequenceCardsProps) {
   const vw = containerWidth;
   // 9:16 en flux : planchers de LISIBILITE sur téléphone (`LISIBILITE_916`).
@@ -234,6 +242,10 @@ export default function SequenceCards({
    */
   const badge = fond != null && !!cardBoxes;
   const cartesAffichees = badge ? cards.filter(badgeValide) : cards;
+  // Cartes sur un fond de couleurs connues (dégradé) : valeur lisible + contour.
+  const surDegrade = !badge && !!fondsContraste?.length;
+  const couleurValeur = surDegrade ? couleurValeurLisible(valueColor, fondsContraste!, fond ? 0 : 0.08) : valueColor;
+  const contourDegrade = surDegrade ? { textShadow: haloTexteCss(vw) } : null;
 
   /**
    * Carte survolee, et carte en cours de redimensionnement.
@@ -280,6 +292,8 @@ export default function SequenceCards({
       })
       : null;
     const ech = aj?.echelle ?? echelle;
+    // Badge : plancher lisible en 9:16 (titre ≥ 40 px sur 1080, valeur plus grande).
+    const tb = badge ? taillesBadge({ vw, ratios: CR, echelle: ech, portrait: !landscape }) : null;
     return (
       <div
         key={c.id}
@@ -373,22 +387,25 @@ export default function SequenceCards({
           <>
             {aj?.icone !== false && (
               // L'icône (SVG) n'hérite pas du `text-shadow` : même contour en filtre.
-              <span style={{ flexShrink: 0, display: 'flex', filter: `drop-shadow(0 0 ${Math.max(0.5, Math.round((vw / 1080) * 15) / 10)}px rgba(0,0,0,0.55))` }}>
-                <CardIcon name={c.icon} size={Math.round(vw * CR.icon * ech)} color="#FFFFFF" className="" />
+              <span style={{ flexShrink: 0, display: 'flex', filter: `drop-shadow(0 0 ${Math.max(0.5, Math.round((vw / 1080) * 15) / 10)}px rgba(0,0,0,${CONTOUR_TEXTE_ALPHA}))` }}>
+                <CardIcon name={c.icon} size={Math.round(tb!.icone)} color="#FFFFFF" className="" />
               </span>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 auto' }}>
               {c.value && (
-                <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
+                <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: tb!.valeur, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(tb!.valeur) }}>
                   {c.value}
                 </span>
               )}
               <span style={{
                 fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
-                color: '#FFFFFF', fontSize: vw * CR.text * ech, lineHeight: 1.1,
-                // Mots entiers, deux lignes au plus — jamais d'ellipse.
-                whiteSpace: 'normal', overflowWrap: 'normal', wordBreak: 'keep-all',
-                ...styleTexte(vw * CR.text * ech),
+                color: '#FFFFFF', fontSize: tb!.texte, lineHeight: 1.1,
+                // Mots entiers, jamais d'ellipse (deux lignes, une de plus si le
+                // plancher lisible l'exige). Plancher actif : un mot TRÈS long
+                // qui ne tiendrait pas se coupe en dernier recours, plutôt que
+                // de sortir de l'image (`overflow-wrap: anywhere`).
+                whiteSpace: 'normal', overflowWrap: tb!.texte > vw * CR.text * ech + 1e-6 ? 'anywhere' : 'normal', wordBreak: 'keep-all',
+                ...styleTexte(tb!.texte),
               }}>
                 {c.title}
               </span>
@@ -415,6 +432,7 @@ export default function SequenceCards({
             // choisi. `bold: false` reste un reglage, pas une absence.
             fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
             color: '#FFFFFF',
+            ...contourDegrade,
             ...(landscape && !cardBoxes ? { maxWidth: '100%' } : { flex: '1 1 0%' }),
             fontSize: vw * CR.text * echelle,
             lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
@@ -438,7 +456,8 @@ export default function SequenceCards({
               ...(landscape && !cardBoxes ? null : { flexShrink: 0 }),
               fontSize: vw * CR.value * echelle,
               lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
-              color: valueColor,
+              color: couleurValeur,
+              ...contourDegrade,
               ...styleTexte(vw * CR.value * echelle),
             }}
           >
