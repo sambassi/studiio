@@ -42,11 +42,22 @@ export const PlateauSurimpression = React.forwardRef<HTMLDivElement, PlateauSuri
   const carte = typeof e === 'object' ? p.cartes.cards[e.carte] : null;
   // 16:9 / 1:1 : échelles de la mise en page LARGE, la MÊME fonction que
   // l'Autopilote (cadres, plafonds de hauteur, CTA sous le visage).
+  // Chasse RÉELLE des polices choisies (Anton, Bebas…) : la MÊME entrée que
+  // l'Autopilote (`policeAccrocheDuDesign`) — sinon l'aperçu et le rendu
+  // ne réduisent pas le titre ni le CTA de la même façon.
+  const policeTitre = {
+    police: p.titre.typography.font || 'Inter', policeSousTitre: p.titre.subtitleTypography.font ?? null,
+    casse: p.titre.typography.textCase, casseSousTitre: p.titre.subtitleTypography.textCase,
+    espacement: p.titre.typography.letterSpacing ?? 0,
+  };
+  const policeCta = p.cta.typography.font || 'Inter';
+  const espacementCta = p.cta.typography.letterSpacing ?? 0;
   const large = p.format === '16:9' || p.format === '1:1'
     ? echellesSurimpressionLarge(p.format, {
       titre: p.titre.title, sousTitre: p.titre.subtitle ?? null,
       echelleTitre: p.titre.typography.scale, echelleSousTitre: p.titre.subtitleTypography.scale,
       cta: p.cta.text, sousTexteCta: p.cta.subText ?? null, echelleCta: p.cta.typography.scale,
+      policeTitre, policeCta, espacementCta,
     })
     : null;
   // Accroche bornée en hauteur (#502) — la MÊME règle que l'Autopilote.
@@ -57,6 +68,7 @@ export const PlateauSurimpression = React.forwardRef<HTMLDivElement, PlateauSuri
     largeur: p.largeur, hauteur: p.hauteur,
     ratioTitre: FONT_RATIO[p.format].title, ratioSousTitre: FONT_RATIO[p.format].subtitle,
     partLargeur: TEXT_LAYOUT.titleWidth / 100, interligneTitre: p.titre.typography.lineHeight,
+    ...policeTitre,
   });
   // 16:9 / 1:1 : celles de la mise en page large (ci-dessus), pas l'accroche 9:16.
   const echellesTitre = large ? { echelleTitre: large.titleScale, echelleSousTitre: large.subtitleScale } : accroche;
@@ -97,6 +109,7 @@ export const PlateauSurimpression = React.forwardRef<HTMLDivElement, PlateauSuri
               scale: large ? large.ctaScale : ajusterCta({
                 texte: p.cta.text, sousTexte: p.cta.subText ?? null, echelle: (p.cta.typography.scale ?? 1) * m.ctaScale, largeur: p.largeur,
                 ratioTexte: FONT_RATIO[p.format].cta, ratioSousTexte: FONT_RATIO[p.format].ctaSub, panneau: true,
+                police: policeCta, espacement: espacementCta,
               }),
               // Sur le panneau sombre : la ligne d'action éclaircie (contraste, #502).
               subColor: eclaircir(p.cta.typography.subColor, m.ctaActionEclaircie) ?? p.cta.typography.subColor,
