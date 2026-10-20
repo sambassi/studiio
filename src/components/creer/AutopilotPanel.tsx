@@ -1895,6 +1895,10 @@ export default function AutopilotPanel({
                 accent={accent}
                 avatar={avatarPorteLaProduction(config.jumeauAvatar, avatarPret)}
                 onPropositions={setPropositionsStock}
+                // Photos suggérées : complètent les vidéos quand elles ne suffisent
+                // pas ; retenues par le MÊME chemin que la recherche libre.
+                onRetenir={(m) => retenirStock(m)}
+                photosRetenues={sources.stock.filter((m) => m.type === 'photo').map((m) => m.url)}
                 onConserver={(url, meta) => {
                   // La même URL absolue que celle que la banque enregistre.
                   const absolue = urlPubliqueAbsolue(url, window.location.origin) ?? url;

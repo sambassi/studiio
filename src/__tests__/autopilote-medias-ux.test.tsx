@@ -35,7 +35,9 @@ function media(provider: 'pexels' | 'unsplash', type: 'video' | 'photo', id: str
     apercuUrl: `https://cdn.${provider}.test/${id}/apercu.jpg`,
     fichierUrl: type === 'photo' ? `https://images.${provider}.com/${id}/full.jpg` : `https://cdn.${provider}.test/${id}/full.mp4`,
     sourceUrl: `https://www.${provider}.com/${type}/${id}/`, auteur: `Auteur ${id}`,
-    description: 'danse', licence: provider === 'unsplash' ? 'Unsplash License' : 'Pexels License',
+    // Le titre du média parle du SUJET (yoga) : un média d'une autre activité
+    // n'est plus proposé automatiquement (`classerCandidats` écarte les « hors »).
+    description: 'woman doing yoga', licence: provider === 'unsplash' ? 'Unsplash License' : 'Pexels License',
     attribution: 'x',
   };
 }
@@ -154,9 +156,10 @@ describe('Aucun fournisseur à l’écran, quelle que soit la combinaison de sou
     if (q('[data-autopilot-stock-source]')) {
       await waitFor(() => expect(q('[data-autopilot-stock-slot] [data-carte-media], [data-autopilot-stock-suffisant]')).toBeTruthy());
       const zone = await lancerRecherche();
-      // Le crédit collectif reste, discret, et c'est un élément de crédit.
-      expect(zone.querySelector('[data-autopilot-stock-credit]')!.textContent).toBe(CREDIT_FOURNISSEURS);
-      expect(zone.querySelector('[data-autopilot-stock-credit]')!.hasAttribute('data-credit-media')).toBe(true);
+      // Plus de pied « fournisseurs » sur la surface principale : l'attribution
+      // vit dans « Informations du média » de chaque carte (élément de crédit).
+      expect(zone.querySelector('[data-autopilot-stock-credit]')).toBeNull();
+      expect(zone.textContent ?? '').not.toContain(CREDIT_FOURNISSEURS);
     }
     const t = textePrincipal(panneau);
     expect(t).not.toMatch(NOMS_FOURNISSEURS);

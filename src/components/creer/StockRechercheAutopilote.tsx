@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import { Check, Info, Loader2, Plus, Search, X } from 'lucide-react';
 import CarteMedia, { GrilleMedias } from '@/components/medias/CarteMedia';
-import { CREDIT_FOURNISSEURS, LIBELLES_ORIGINE, creditMedia, origineSuggeree } from '@/lib/medias/libelles';
+import { LIBELLES_ORIGINE, creditMedia, origineSuggeree } from '@/lib/medias/libelles';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import type { FormatStock, MediaStock, TypeStock } from '@/lib/stock/types';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
@@ -28,9 +28,13 @@ import type { MediaStockRetenu } from '@/lib/autopilot/sources';
  * ⚠️ AUCUN FOURNISSEUR À L'ÉCRAN, AUCUNE NAVIGATION. Un filtre Tout / Vidéos
  * / Photos (jamais un choix de plateforme), des cartes « Vidéo suggérée » /
  * « Photo suggérée » dont le clic ouvre un APERÇU dans la page. L'attribution
- * exigée par les plateformes vit dans « Informations du média » (aperçu) et
- * dans le pied discret de la recherche — éléments `data-credit-media`.
+ * exigée par les plateformes vit dans « Informations du média » (aperçu de
+ * chaque carte, élément `data-credit-media`) — plus de pied « fournisseurs »
+ * sur la surface principale.
  */
+
+/** Résultats montrés par recherche libre (vidéos et photos entrelacées). */
+export const MAX_RESULTATS_RECHERCHE = 18;
 
 export const MESSAGE_RECHERCHE_INDISPONIBLE = 'Recherche de médias indisponible pour le moment. Réessayez plus tard.';
 
@@ -53,9 +57,9 @@ const FILTRES: Array<{ v: Filtre; label: string }> = [
 ];
 
 /** Une recherche d'UN type, telle que le moteur commun la sert. */
-async function chercherType(type: TypeStock, requete: string, format: FormatStock) {
+async function chercherType(type: TypeStock, requete: string, format: FormatStock, page = 1) {
   const r = await rechercherStockClient({
-    requete, type, format, fournisseurs: type === 'video' ? ['pexels'] : ['pexels', 'unsplash'],
+    requete, type, format, fournisseurs: type === 'video' ? ['pexels'] : ['pexels', 'unsplash'], page,
   });
   // Une seule plateforme sert des vidéos : un résultat vidéo d'une autre n'existe pas.
   const medias = r.medias.filter((m) => m.type === type && (type === 'photo' || m.provider === 'pexels'));
@@ -100,9 +104,15 @@ export default function StockRechercheAutopilote({
     setMessage(null);
     const types: TypeStock[] = f === 'tout' ? ['video', 'photo'] : [f];
     const r = await Promise.all(types.map((t) => chercherType(t, texte, format)));
-    const medias = r.length === 2 ? entrelacer(r[0].medias, r[1].medias) : r[0].medias;
-    const echec = r.some((x) => x.echec);
-    setResultats(medias.slice(0, 8));
+    let medias = r.length === 2 ? entrelacer(r[0].medias, r[1].medias) : r[0].medias;
+    let echec = r.some((x) => x.echec);
+    // Un seul type : une page ne suffit pas à remplir la grille — la suivante complète.
+    if (types.length === 1 && !echec && medias.length > 0 && medias.length < MAX_RESULTATS_RECHERCHE) {
+      const suite = await chercherType(types[0], texte, format, 2);
+      echec = echec || suite.echec;
+      medias = [...medias, ...suite.medias.filter((m) => !medias.some((x) => cleMediaStock(x) === cleMediaStock(m)))];
+    }
+    setResultats(medias.slice(0, MAX_RESULTATS_RECHERCHE));
     if (medias.length === 0) setMessage(echec ? MESSAGE_RECHERCHE_INDISPONIBLE : 'Aucun résultat pour cette recherche.');
     else if (echec) setMessage('Certains résultats sont indisponibles pour le moment.');
     setEnCours(false);
@@ -223,7 +233,6 @@ export default function StockRechercheAutopilote({
           })}
         </GrilleMedias>
       )}
-      <p className="text-[9px] text-gray-600" data-credit-media data-autopilot-stock-credit>{CREDIT_FOURNISSEURS}</p>
     </div>
   );
 }

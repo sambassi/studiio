@@ -312,6 +312,140 @@ export function conceptsReconnus(...textes: Array<string | null | undefined>): C
   return [...out.values()];
 }
 
+/**
+ * CONCEPTS ABSTRAITS → SCÈNES CONCRÈTES.
+ *
+ * ⚠️ « MOTIVATION » CHERCHAIT « motivation motiver ». Un sujet abstrait
+ * (motivation, confiance, discipline…) n'est ni une activité ni un décor : la
+ * taxonomie ci-dessus n'y reconnaît rien, et la recherche retombait sur les
+ * mots bruts, en français — les banques d'images répondaient par des torses
+ * et une main qui écrit « MOTIV ». Une banque d'images répond à ce qu'on
+ * VOIT : chaque concept abstrait est traduit en scènes filmables
+ * (« athlete training sunrise », « writing goals notebook »…).
+ *
+ * Ne s'applique que si le texte et le sujet ne nomment AUCUNE activité de la
+ * taxonomie (default safe : un sujet connu garde ses requêtes à l'identique).
+ * `indices` : mots anglais attendus dans le TITRE d'un média qui illustre le
+ * concept — lus par `pertinence-medias` pour CLASSER les propositions (jamais
+ * pour en exclure).
+ */
+export interface ConceptAbstrait {
+  id: string;
+  /** Mots français (sans accents) qui l'évoquent. */
+  mots: readonly string[];
+  /** Libellé français à l'écran. */
+  fr: string;
+  /** Scènes concrètes : requête anglaise (≤ 4 mots) et libellé français. */
+  scenes: ReadonlyArray<{ en: string; fr: string }>;
+  /** Adjectif anglais pour combiner avec une activité du brief (« determined workout »). */
+  qualificatif: string;
+  /** Mots anglais d'un titre de média qui illustre ce concept. */
+  indices: readonly string[];
+}
+
+export const CONCEPTS_ABSTRAITS: ReadonlyArray<ConceptAbstrait> = [
+  {
+    id: 'motivation', fr: 'Motivation', qualificatif: 'determined',
+    mots: ['motivation', 'motivations', 'motive', 'motivee', 'motiver', 'motivant', 'motivante', 'depassement', 'determination', 'determine', 'determinee', 'perseverance', 'mental', 'mindset', 'volonte', 'courage'],
+    scenes: [
+      { en: 'athlete training sunrise', fr: 'Athlète à l’entraînement au lever du soleil' },
+      { en: 'runner determination', fr: 'Coureur déterminé' },
+      { en: 'person climbing stairs', fr: 'Personne qui monte des escaliers' },
+      { en: 'writing goals notebook', fr: 'Objectifs écrits dans un carnet' },
+      { en: 'boxing training', fr: 'Entraînement de boxe' },
+      { en: 'team high five', fr: 'Équipe qui se tape dans la main' },
+      { en: 'hiker mountain summit', fr: 'Randonneur au sommet' },
+    ],
+    indices: ['athlete', 'athletes', 'training', 'runner', 'running', 'stairs', 'climbing', 'climb', 'goals', 'goal', 'notebook', 'writing', 'boxing', 'boxer', 'summit', 'sunrise', 'determination', 'determined', 'motivation', 'motivated', 'workout', 'fitness', 'sprint', 'team'],
+  },
+  {
+    id: 'confiance', fr: 'Confiance en soi', qualificatif: 'confident',
+    mots: ['confiance', 'assurance', 'estime', 'affirmation', 'affirmer', 'charisme', 'timidite'],
+    scenes: [
+      { en: 'confident woman smiling', fr: 'Femme souriante et sûre d’elle' },
+      { en: 'public speaking stage', fr: 'Prise de parole sur scène' },
+      { en: 'man walking confidently', fr: 'Homme qui marche avec assurance' },
+      { en: 'woman looking mirror', fr: 'Femme face au miroir' },
+      { en: 'business handshake smile', fr: 'Poignée de main souriante' },
+    ],
+    indices: ['confident', 'confidence', 'smiling', 'smile', 'speaking', 'speaker', 'stage', 'presentation', 'walking', 'mirror', 'handshake', 'portrait', 'proud'],
+  },
+  {
+    id: 'discipline', fr: 'Discipline', qualificatif: 'disciplined',
+    mots: ['discipline', 'routine', 'routines', 'habitude', 'habitudes', 'regularite', 'constance', 'rigueur'],
+    scenes: [
+      { en: 'early morning routine', fr: 'Routine du matin' },
+      { en: 'alarm clock morning', fr: 'Réveil au petit matin' },
+      { en: 'athlete daily training', fr: 'Entraînement quotidien' },
+      { en: 'planner checklist desk', fr: 'Liste de tâches sur un bureau' },
+      { en: 'person running dawn', fr: 'Course à l’aube' },
+    ],
+    indices: ['morning', 'routine', 'alarm', 'clock', 'dawn', 'sunrise', 'training', 'planner', 'checklist', 'calendar', 'running', 'workout', 'habit'],
+  },
+  {
+    id: 'reussite', fr: 'Réussite', qualificatif: 'successful',
+    mots: ['reussite', 'reussir', 'succes', 'victoire', 'gagner', 'gagnant', 'gagnante', 'ambition', 'ambitieux', 'ambitieuse'],
+    scenes: [
+      { en: 'celebrating victory', fr: 'Célébration d’une victoire' },
+      { en: 'athlete finish line', fr: 'Athlète à la ligne d’arrivée' },
+      { en: 'team celebrating office', fr: 'Équipe qui célèbre' },
+      { en: 'trophy winner', fr: 'Trophée du vainqueur' },
+      { en: 'business success handshake', fr: 'Poignée de main de réussite' },
+    ],
+    indices: ['celebrating', 'celebration', 'victory', 'winner', 'winning', 'trophy', 'finish', 'success', 'successful', 'champion', 'medal', 'cheering'],
+  },
+  {
+    id: 'changement', fr: 'Changement', qualificatif: 'new',
+    mots: ['changement', 'transformation', 'transformer', 'progres', 'progresser', 'evolution', 'evoluer', 'croissance'],
+    scenes: [
+      { en: 'person walking forward road', fr: 'Personne qui avance sur une route' },
+      { en: 'plant growing', fr: 'Plante qui pousse' },
+      { en: 'sunrise new day', fr: 'Lever de soleil' },
+      { en: 'climbing mountain', fr: 'Ascension en montagne' },
+      { en: 'opening door light', fr: 'Porte qui s’ouvre sur la lumière' },
+    ],
+    indices: ['road', 'path', 'walking', 'growing', 'growth', 'plant', 'sprout', 'sunrise', 'climbing', 'mountain', 'door', 'journey', 'forward'],
+  },
+  {
+    id: 'bonheur', fr: 'Bonheur', qualificatif: 'happy',
+    mots: ['bonheur', 'gratitude', 'optimisme', 'positivite', 'epanouissement'],
+    scenes: [
+      { en: 'friends laughing together', fr: 'Amis qui rient ensemble' },
+      { en: 'woman smiling sunlight', fr: 'Femme souriante au soleil' },
+      { en: 'gratitude journal writing', fr: 'Carnet de gratitude' },
+      { en: 'family happy outdoor', fr: 'Famille heureuse dehors' },
+    ],
+    indices: ['laughing', 'laugh', 'smiling', 'smile', 'happy', 'happiness', 'joy', 'friends', 'sunlight', 'journal', 'gratitude', 'family'],
+  },
+  {
+    id: 'entrepreneuriat', fr: 'Entrepreneuriat', qualificatif: 'professional',
+    mots: ['entrepreneur', 'entrepreneurs', 'entrepreneuriat', 'entreprise', 'business', 'leadership', 'leader', 'startup', 'freelance'],
+    scenes: [
+      { en: 'entrepreneur working laptop', fr: 'Entrepreneur sur son ordinateur' },
+      { en: 'team meeting office', fr: 'Réunion d’équipe' },
+      { en: 'business presentation', fr: 'Présentation professionnelle' },
+      { en: 'handshake deal', fr: 'Poignée de main' },
+      { en: 'small business owner', fr: 'Commerçant dans sa boutique' },
+    ],
+    indices: ['entrepreneur', 'business', 'laptop', 'meeting', 'office', 'team', 'presentation', 'handshake', 'deal', 'owner', 'shop', 'startup', 'working'],
+  },
+];
+
+/** Les concepts abstraits nommés par des textes (ordre d'apparition, sans doublon). Pur. */
+export function conceptsAbstraitsDe(...textes: Array<string | null | undefined>): ConceptAbstrait[] {
+  const out: ConceptAbstrait[] = [];
+  for (const t of textes) {
+    for (const mot of motsDe(t || '')) {
+      const c = CONCEPTS_ABSTRAITS.find((x) => x.mots.includes(mot));
+      if (c && !out.includes(c)) out.push(c);
+    }
+  }
+  return out;
+}
+
+/** Décalage de départ dans les scènes selon la phase : chaque plan ouvre sur une scène différente. */
+const DECALAGE_ROLE: Partial<Record<RoleSequence, number>> = { HOOK: 0, BUILD: 1, PEAK: 2, FOCUS: 3, CTA: 4 };
+
 /** Le rôle d'une séquence (Créer) ou d'une phase de montage (Autopilote). */
 export type RoleSequence = 'titre' | 'cartes' | 'video' | 'cta' | 'HOOK' | 'BUILD' | 'PEAK' | 'FOCUS' | 'CTA';
 /** Ce que l'on cherche : un plan vidéo, une photo, un arrière-plan, un plan d'illustration. */
@@ -403,6 +537,31 @@ export function construireRecherchesStock(e: EntreeRecherchesStock): RecherchesS
     }
   };
 
+  // Concept ABSTRAIT (motivation, confiance…) quand ni le texte ni le sujet ne
+  // nomment une activité : des scènes concrètes d'abord, une par phase en tête
+  // (l'accroche, le développement et le temps fort n'ouvrent pas sur la même).
+  // Le brief n'en fournit un que si rien d'autre n'est reconnu.
+  const abstrait = primaireAUneActivite
+    ? undefined
+    : conceptsAbstraitsDe(e.texte, e.sujet)[0] ?? (principale ? undefined : conceptsAbstraitsDe(e.objectif)[0]);
+  if (abstrait) {
+    const n = abstrait.scenes.length;
+    const d = (e.role ? DECALAGE_ROLE[e.role] ?? 0 : 0) % n;
+    const premiere = abstrait.scenes[d];
+    pousser(premiere.en, premiere.fr);
+    // Combinée à l'objectif : l'activité du brief, dite avec le concept (« determined workout »).
+    if (principale) {
+      pousser(
+        `${abstrait.qualificatif} ${principale.gerondif ?? principale.en} ${humain?.en ?? ''}`,
+        `${principale.fr} — ${abstrait.fr.toLowerCase()} ${humain?.fr ?? ''}`,
+      );
+    }
+    for (let k = 1; k < n; k += 1) {
+      const s = abstrait.scenes[(d + k) % n];
+      pousser(s.en, s.fr);
+    }
+  }
+
   if (principale) {
     const estEntrainement = principale.en === 'workout';
     const horsSport = !!principale.horsSport;
@@ -463,6 +622,7 @@ export function construireRecherchesStock(e: EntreeRecherchesStock): RecherchesS
   const intentions = [style, principale, ...activites.filter((a) => a !== principale), humain, qualite, lieu, objet]
     .filter((c): c is Concept => !!c)
     .map((c) => c.en);
+  if (abstrait) intentions.unshift(abstrait.id);
 
   const requetes = q.slice(0, MAX_REQUETES);
   // Deux libellés identiques pour deux requêtes : le second se distingue.
