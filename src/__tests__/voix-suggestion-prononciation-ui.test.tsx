@@ -132,7 +132,7 @@ describe('MaVoixPanel — Suggérer / Écouter / Enregistrer', () => {
     reponseSuggestion = { status: 429 };
     await ouvrirFormulaire('Afroboost');
     fireEvent.click(q('[data-prononciation-suggerer]'));
-    await waitFor(() => expect(q('[data-prononciation-note]')?.textContent).toMatch(/Aucune suggestion de prononciation différente trouvée/));
+    await waitFor(() => expect(q('[data-prononciation-note]')?.textContent).toMatch(/Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même/));
     // Jamais le même texte présenté comme une correction : le champ n'est pas touché.
     expect(champPrononce().value).toBe('');
     fireEvent.change(champPrononce(), { target: { value: 'Afro-boost' } });
@@ -146,5 +146,19 @@ describe('MaVoixPanel — Suggérer / Écouter / Enregistrer', () => {
     expect(q('[data-prononciation-brouillon-ecouter]').textContent).toContain('Écouter');
     // Sans forme dite, « Écouter » est désactivé.
     expect(q<HTMLButtonElement>('[data-prononciation-brouillon-ecouter]').disabled).toBe(true);
+  });
+});
+
+describe('MaVoixPanel — Suggérer : expression ordinaire', () => {
+  it('« lien en bio » : aucun appel serveur, message « Aucune suggestion fiable », champ intact et modifiable', async () => {
+    await ouvrirFormulaire('lien en bio');
+    const avant = champPrononce().value;
+    fireEvent.click(q('[data-prononciation-suggerer]'));
+    await waitFor(() => expect(q('[data-prononciation-note]')?.textContent).toBe('Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.'));
+    expect(appels.some((a) => a.url === '/api/voice/prononciations/suggestion')).toBe(false);
+    expect(champPrononce().value).toBe(avant);
+    expect(champAffiche().value).toBe('lien en bio');
+    fireEvent.change(champPrononce(), { target: { value: 'lien an bio' } });
+    expect(champPrononce().value).toBe('lien an bio');
   });
 });

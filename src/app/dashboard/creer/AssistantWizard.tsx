@@ -11478,7 +11478,7 @@ export default function AssistantWizard() {
                 {/* Jumeau numérique — 'aucun' par défaut ; l'état vient du serveur.
                     Deux intentions : ma voix clonée (pose `ttsVoiceId`), ou mon
                     avatar parlant (séquence « Vidéo » à l'envoi). Les textes qu'il
-                    dira sont ceux des voix par séquence, modifiables à l'étape Audio. */}
+                    dira sont ceux des voix par séquence, modifiables à l'étape Contenu. */}
                 <JumeauPanel
                   mode={jumeauMode}
                   onModeChange={setJumeauMode}
@@ -12029,7 +12029,11 @@ export default function AssistantWizard() {
                                   setPhotoDragging(true);
                                 }}
                                 onDragEnd={() => setPhotoDragging(false)}
-                                title={photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
+                                // Jamais l'auteur d'une banque d'images dans
+                                // l'infobulle (crédits : « Crédits médias »,
+                                // replié) ; une photo À SOI (importée, générée
+                                // par l'IA) garde son libellé.
+                                title={photo.source === 'upload' && photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
                                 className={`relative overflow-hidden rounded-lg border transition-colors ${
                                   retenue ? 'border-purple-500' : 'border-gray-800 hover:border-gray-600'
                                 }`}
@@ -12216,17 +12220,25 @@ export default function AssistantWizard() {
                           : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
                       </p>
                       {fondAffiche.url && stockMedias[fondAffiche.url] && (
-                        <p className="text-[11px] text-gray-500" data-fond-attribution data-credit-media>
-                          {stockMedias[fondAffiche.url].attribution}{' '}
-                          <a
-                            href={stockMedias[fondAffiche.url].sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:text-white"
-                          >
-                            (source)
-                          </a>
-                        </p>
+                        // Attribution du fond REPLIÉE (« Crédits médias ») : exigée
+                        // par la banque d'images, jamais sur la surface principale.
+                        <details className="text-[11px] text-gray-500" data-fond-attribution data-credit-media data-media-infos>
+                          <summary className="flex cursor-pointer list-none items-center gap-1 hover:text-gray-300">
+                            <Info className="w-3 h-3" aria-hidden="true" />
+                            Crédits médias
+                          </summary>
+                          <p className="mt-1 pl-4 break-words">
+                            {stockMedias[fondAffiche.url].attribution}{' '}
+                            <a
+                              href={stockMedias[fondAffiche.url].sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline hover:text-white"
+                            >
+                              (source)
+                            </a>
+                          </p>
+                        </details>
                       )}
                       <button
                         type="button"
@@ -13048,7 +13060,7 @@ export default function AssistantWizard() {
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.
                         <details className="mt-1" data-rush-attributions data-credit-media>
-                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Informations des médias</summary>
+                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Crédits médias</summary>
                           <div className="mt-1 space-y-0.5">
                           {urlsRecadrables(listeMedias).filter((u, k, t) => stockMedias[u] && t.indexOf(u) === k).map((u) => (
                             <p key={u} className="text-[11px] text-gray-500 truncate">

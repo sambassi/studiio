@@ -27,17 +27,113 @@
 import { normaliserPourTTS, nombreEnLettres } from '@/lib/voice/normalisation-tts';
 import { cleAffiche, MAX_LONGUEUR_PRONONCIATION, prononciationIdentique } from '@/lib/voice/prononciations';
 
-/** Le message quand aucune forme dite DIFFÉRENTE n'existe : le champ n'est pas touché. */
-export const MESSAGE_AUCUNE_SUGGESTION = 'Aucune suggestion de prononciation différente trouvée.';
+/** Le message quand aucune forme dite FIABLE n'existe : le champ n'est pas touché. */
+export const MESSAGE_AUCUNE_SUGGESTION = 'Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.';
+
+/** Réponse exacte attendue du modèle quand la prononciation est déjà correcte. */
+export const REPONSE_AUCUNE = 'AUCUNE';
 
 /**
- * Une suggestion n'est UTILE que si elle diffère du texte affiché (même
- * normalisation que l'enregistrement). Sinon `null` : on ne simule jamais une
- * correction en rendant le même texte.
+ * Clé phonétique GROSSIÈRE : minuscules, sans accents, sans ponctuation ni
+ * tirets, lettres doublées réduites, sans espaces. « lien en bio » et
+ * « Lien-en-bioo » ont la même clé : la voix les dit pareil.
+ */
+export function clePhonetique(t: string): string {
+  return (t ?? '')
+    .normalize('NFD').replace(/\p{M}+/gu, '')
+    .toLocaleLowerCase('fr')
+    .replace(/œ/g, 'oe').replace(/æ/g, 'ae')
+    .replace(/[^\p{L}\p{N}]+/gu, '')
+    .replace(/(.)\1+/gu, '$1');
+}
+
+/** Distance d'édition (Levenshtein), en points de code. */
+export function distanceEdition(a: string, b: string): number {
+  const x = Array.from(a); const y = Array.from(b);
+  if (!x.length) return y.length;
+  if (!y.length) return x.length;
+  let prec = Array.from({ length: y.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= x.length; i += 1) {
+    const cour = [i];
+    for (let j = 1; j <= y.length; j += 1) {
+      cour[j] = Math.min(prec[j] + 1, cour[j - 1] + 1, prec[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+    }
+    prec = cour;
+  }
+  return prec[y.length];
+}
+
+const RE_CHIFFRE = /\p{N}/u;
+const RE_SIGLE = /(?<![\p{L}\p{N}])\p{Lu}{2,}(?![\p{L}\p{N}])/gu;
+const RE_GROUPE_CHIFFRES = /\p{N}+(?:[ ,.]\p{N}+)*/gu;
+
+/**
+ * Nombre de « transformations » légitimes dans le texte affiché : groupes de
+ * chiffres et sigles. Elles seules justifient une forme dite très éloignée
+ * (« 3 » → « trois », « ADN » → « A D N ») ou de même clé (« HIIT » → « hit »).
+ */
+function transformationsChiffreSigle(affiche: string): number {
+  return (affiche.match(RE_GROUPE_CHIFFRES)?.length ?? 0) + (affiche.match(RE_SIGLE)?.length ?? 0);
+}
+
+const nbMots = (t: string) => t.split(/\s+/).filter(Boolean).length;
+
+/**
+ * Le texte contient-il un NOM PROPRE ou une MARQUE ? Un mot à majuscule
+ * initiale (pas tout en capitales : ça, c'est un sigle) hors début de
+ * phrase — ou le mot unique de l'entrée (« Afroboost »). Le premier mot
+ * capitalisé d'une expression (« Lien en bio ») reste un mot ordinaire.
+ */
+export function contientNomPropre(affiche: string): boolean {
+  const mots = (affiche ?? '').trim().split(/[\s'’]+/).filter(Boolean);
+  const capitalise = (m: string) => /^[^\p{L}]*\p{Lu}\p{Ll}/u.test(m);
+  if (mots.length === 1) return capitalise(mots[0]);
+  return mots.slice(1).some(capitalise);
+}
+
+/**
+ * Expression française ORDINAIRE : en minuscules, sans chiffre ni sigle ni
+ * nom propre (aucune capitale). La voix la dit déjà correctement : inutile
+ * d'interroger un modèle (coût, et risque de « bioo »).
+ */
+export function expressionOrdinaire(affiche: string): boolean {
+  const t = (affiche ?? '').trim();
+  return t.length > 0 && !RE_CHIFFRE.test(t) && !/\p{Lu}/u.test(t);
+}
+
+/**
+ * Une suggestion n'est UTILE que si elle est FIABLE. Sinon `null` : on ne
+ * simule jamais une correction.
+ *  - vide, « AUCUNE », ou identique au texte (même normalisation que
+ *    l'enregistrement) → null ;
+ *  - nom propre / marque (`contientNomPropre`) : seules les règles de
+ *    plausibilité s'appliquent (« Afroboost » → « Afro-Boust » accepté) ;
+ *  - sans chiffre, sigle ni nom propre :
+ *      · même clé phonétique grossière → null (« lien en bio » / « Lien-en-bioo ») ;
+ *      · micro-variation : distance ≤ 2 ou ratio < 0,2 → null (« bioo ») ;
+ *      · non plausible : ratio > 0,8 ou plus de deux fois plus de mots → null ;
+ *  - avec chiffres / sigles : seule une forme démesurée est refusée
+ *    (plus de 2 × mots + 4 par transformation).
  */
 export function suggestionUtile(affiche: string, suggestion: string | null | undefined): string | null {
   const s = (suggestion ?? '').trim();
-  if (!s || prononciationIdentique(affiche, s)) return null;
+  if (!s || s.toLocaleUpperCase('fr') === REPONSE_AUCUNE || prononciationIdentique(affiche, s)) return null;
+  const a = (affiche ?? '').trim();
+  const transfos = transformationsChiffreSigle(a);
+  const motsA = Math.max(1, nbMots(a));
+  if (transfos > 0) return nbMots(s) > 2 * motsA + 4 * transfos ? null : s;
+  const ka = clePhonetique(a);
+  const ks = clePhonetique(s);
+  // Nom propre / marque : une respelling proche (« Afroboost » →
+  // « Afro-Boust ») EST la correction attendue — exempté des règles de
+  // micro-variation, mais pas de la plausibilité.
+  if (!contientNomPropre(a)) {
+    if (ka === ks) return null;
+    const d0 = distanceEdition(ka, ks);
+    if (d0 <= 2 || d0 / Math.max(ka.length, ks.length, 1) < 0.2) return null;
+  }
+  const ratio = distanceEdition(ka, ks) / Math.max(ka.length, ks.length, 1);
+  if (ratio > 0.8 || nbMots(s) > 2 * motsA) return null;
   return s;
 }
 
@@ -132,6 +228,8 @@ export function nettoyerSuggestion(brut: unknown, affiche: string): string | nul
   const sansGuillemets = premiereLigne.replace(/^[«"“'`\s]+|[»"”'`\s]+$/g, '');
   const net = propre(sansGuillemets);
   if (!net || net.length > MAX_LONGUEUR_PRONONCIATION) return null;
+  // « AUCUNE » : le modèle juge la prononciation déjà correcte.
+  if (net.replace(/[.!\s]+$/, '').toLocaleUpperCase('fr') === REPONSE_AUCUNE) return null;
   if (cleAffiche(net) === cleAffiche(propre(affiche))) return null;
   return net;
 }

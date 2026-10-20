@@ -26,7 +26,7 @@
  */
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Film, ImageIcon, LayoutGrid, Loader2, Play, Plus, Search, X } from 'lucide-react';
+import { Check, Film, ImageIcon, Info, LayoutGrid, Loader2, Play, Plus, Search, X } from 'lucide-react';
 import { construireRecherchesStock, traduireRequete, type RoleSequence } from '@/lib/stock/requetes';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import {
@@ -115,18 +115,25 @@ export function mediaApercuDeStock(m: MediaStock): MediaApercu {
 }
 
 /**
- * La ligne de crédit sous des résultats de banques d'images : exigée par
- * leurs conditions (Pexels demande un lien visible), volontairement discrète.
- * Seul endroit, avec « Informations du média », où leur nom apparaît.
+ * « Crédits médias » sous des résultats de banques d'images : exigés par
+ * leurs conditions, mais REPLIÉS (motif « Informations du média ») — jamais
+ * un nom de fournisseur sur la surface principale. Le lien reste accessible
+ * en un clic, au clavier comme à la souris (`<details>` natif).
  */
 export function CreditBanques({ attribut, className = '' }: { attribut?: string; className?: string }) {
   return (
-    <p {...(attribut ? { [attribut]: '' } : {})} data-credit-media className={`text-[10px] text-gray-600 ${className}`}>
-      Photos et vidéos fournies par{' '}
-      <a href={BANQUES.pexels.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-300">Pexels</a>
-      {' '}et{' '}
-      <a href={BANQUES.unsplash.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-300">Unsplash</a>
-    </p>
+    <details {...(attribut ? { [attribut]: '' } : {})} data-credit-media data-media-infos className={`text-[10px] text-gray-600 ${className}`}>
+      <summary className="flex cursor-pointer list-none items-center gap-1 hover:text-gray-300">
+        <Info className="w-3 h-3" aria-hidden="true" />
+        Crédits médias
+      </summary>
+      <p className="mt-1 pl-4">
+        Photos et vidéos fournies par{' '}
+        <a href={BANQUES.pexels.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-300">Pexels</a>
+        {' '}et{' '}
+        <a href={BANQUES.unsplash.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-300">Unsplash</a>
+      </p>
+    </details>
   );
 }
 
@@ -549,7 +556,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
 
         {message && <p data-stock-message className="text-[11px] text-gray-400" role="status">{message}</p>}
 
-        {/* Crédit des banques — exigé par leurs conditions, discret. */}
+        {/* Crédit des banques — exigé par leurs conditions, replié. */}
         <CreditBanques attribut="data-stock-credits" />
       </div>
     </div>

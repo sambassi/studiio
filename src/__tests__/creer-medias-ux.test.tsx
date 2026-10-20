@@ -157,9 +157,12 @@ describe('Médias suggérés (panneau isolé)', () => {
     expect(panneau.textContent).toContain('Cliquez sur un média pour le prévisualiser avant de l’ajouter.');
     // Les cartes : jamais de nom de fichier, jamais de banque.
     expect(texteHorsCredits(panneau)).not.toMatch(/Pexels|Unsplash|\.mp4|\.jpg/i);
-    // Le crédit, lui, est là — avec ses liens.
+    // Le crédit, lui, est là — REPLIÉ (« Crédits médias »), avec ses liens.
     const credits = panneau.querySelector('[data-stock-credits]')!;
-    expect(credits.textContent).toBe('Photos et vidéos fournies par Pexels et Unsplash');
+    expect(credits.tagName).toBe('DETAILS');
+    expect((credits as HTMLDetailsElement).open).toBe(false);
+    expect(credits.querySelector('summary')!.textContent).toBe('Crédits médias');
+    expect(credits.querySelector('p')!.textContent).toBe('Photos et vidéos fournies par Pexels et Unsplash');
     const liens = Array.from(credits.querySelectorAll('a'));
     expect(liens.map((a) => a.getAttribute('rel'))).toEqual(['noopener noreferrer', 'noopener noreferrer']);
     expect(liens.every((a) => a.getAttribute('target') === '_blank')).toBe(true);
@@ -424,6 +427,11 @@ describe('AssistantWizard — photo d’affiche', () => {
     // Aucune banque nommée hors du crédit ; le crédit est là.
     expect(texteHorsCredits(section)).not.toMatch(/Pexels|Unsplash/);
     expect(section.querySelector('[data-poster-credits]')!.textContent).toContain('Pexels et Unsplash');
+    expect(section.querySelector('[data-poster-credits]')!.tagName).toBe('DETAILS');
+    // Infobulle des vignettes : jamais l'auteur d'une banque d'images.
+    for (const v of Array.from(section.querySelectorAll('[data-poster-photo]'))) {
+      expect(v.getAttribute('title')).toBe('Choisir cette photo');
+    }
   });
 });
 

@@ -98,7 +98,9 @@ describe('JumeauPanel — deux intentions, dites en clair', () => {
     expect(dira).toContain('Titre : Bienvenue chez Afroboost');
     expect(dira).toContain('Cartes : Trois conseils pour bien dormir');
     expect(dira).toContain('CTA : Rejoignez-nous');
-    expect(dira).toContain('Modifiable dans le panneau des voix par séquence');
+    expect(dira).toContain('Modifiable dans le panneau « Voix-off par séquence » (étape Contenu)');
+    // Le panneau est monté à l'étape Contenu, pas à l'étape Audio.
+    expect(dira).not.toContain('étape Audio');
     expect(document.querySelector('[data-jumeau-dira-sequence="video"]')).toBeNull();
     // Les trois choix.
     expect(choix('aucun').checked).toBe(true);
