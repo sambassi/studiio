@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
 import ChronologieMontage, { segmentsChronologie, LARGEUR_MIN_SEGMENT } from '@/components/creer/ChronologieMontage';
 import CompleterRushesStock, { CANDIDATS_PAR_PLAN, classerCandidats, repartirCandidats } from '@/components/creer/CompleterRushesStock';
-import { lireVideoAvatarReelle } from '@/components/creer/AvatarPrincipalAutopilote';
+import { EVENEMENT_ECHEC_AVATAR, EVENEMENT_RELIRE_AVATAR, lireVideoAvatarReelle, relireDisponibiliteAvatar, useDisponibiliteAvatarAutopilote } from '@/components/creer/AvatarPrincipalAutopilote';
+import AttenteAvatarMontage, { DELAI_VERIFICATION_AVATAR_MS, MESSAGE_AVATAR_APERCU_INDISPONIBLE } from '@/components/creer/AttenteAvatarMontage';
 import { etapesMontageApercuAutopilote, mediaApercuAutopilote, signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import { planCompletAutopilote } from '@/lib/autopilot/plan-complet';
 import { construireRecherchesStock, conceptsAbstraitsDe } from '@/lib/stock/requetes';
@@ -366,3 +367,57 @@ describe('Aperçu de l’avatar — sa vraie vidéo, jamais du stock à sa place
     expect(await lireVideoAvatarReelle(null, reponse(null, false))).toBeNull();
   });
 });
+
+/* ─────────────────────────────────────────────────────────────────────── */
+
+describe('Vérification de l’avatar — délai et erreur visible, jamais un spinner infini', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('après 8 s sans réponse : emplacement explicite + « Réessayer » (qui relance la lecture)', async () => {
+    vi.useFakeTimers();
+    const relire = vi.fn();
+    window.addEventListener(EVENEMENT_RELIRE_AVATAR, relire);
+    const { container } = render(<AttenteAvatarMontage />);
+    expect(container.querySelector('[data-autopilot-avatar-verification]')).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(DELAI_VERIFICATION_AVATAR_MS - 100); });
+    expect(container.querySelector('[data-autopilot-avatar-apercu-indisponible]')).toBeNull();
+    act(() => { vi.advanceTimersByTime(200); });
+    const bloc = container.querySelector('[data-autopilot-avatar-apercu-indisponible]')!;
+    expect(bloc.textContent).toContain(MESSAGE_AVATAR_APERCU_INDISPONIBLE);
+    expect(container.querySelector('video, img')).toBeNull();
+    act(() => { fireEvent.click(container.querySelector('[data-autopilot-avatar-reessayer]')!); });
+    expect(relire).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('[data-autopilot-avatar-verification]')).toBeTruthy();
+    // Nouveau délai complet après « Réessayer ».
+    act(() => { vi.advanceTimersByTime(DELAI_VERIFICATION_AVATAR_MS + 10); });
+    expect(container.querySelector('[data-autopilot-avatar-apercu-indisponible]')).toBeTruthy();
+    window.removeEventListener(EVENEMENT_RELIRE_AVATAR, relire);
+  });
+
+  it('lecture en échec : sortie immédiate de l’attente', () => {
+    vi.useFakeTimers();
+    const { container } = render(<AttenteAvatarMontage />);
+    act(() => { window.dispatchEvent(new Event(EVENEMENT_ECHEC_AVATAR)); });
+    expect(container.querySelector('[data-autopilot-avatar-apercu-indisponible]')).toBeTruthy();
+  });
+
+  it('le hook du panneau : lecture illisible → événement d’échec ; « Réessayer » → nouvelle lecture', async () => {
+    const appels: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => { appels.push(String(url)); return { ok: false, json: async () => ({ success: false }) }; }));
+    const echec = vi.fn();
+    window.addEventListener(EVENEMENT_ECHEC_AVATAR, echec);
+    function Sonde() {
+      useDisponibiliteAvatarAutopilote({ actif: true, avatarId: null, colonneReady: true, onPret: noop, onVignette: noop });
+      return null;
+    }
+    render(<Sonde />);
+    await waitFor(() => expect(echec).toHaveBeenCalledTimes(1));
+    const lectures = appels.length;
+    act(() => { relireDisponibiliteAvatar(); });
+    await waitFor(() => expect(echec).toHaveBeenCalledTimes(2));
+    expect(appels.length).toBeGreaterThan(lectures);
+    expect(appels.every((u) => !/generer|generate|heygen/.test(u))).toBe(true);
+    window.removeEventListener(EVENEMENT_ECHEC_AVATAR, echec);
+  });
+});
+const noop = () => {};

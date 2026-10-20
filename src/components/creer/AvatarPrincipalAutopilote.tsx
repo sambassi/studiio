@@ -80,6 +80,15 @@ export async function lireDisponibiliteAvatar(
  * est d'abord EFFACÉ (`null`) : une relecture qui échoue ne laisse jamais
  * l'ancien avatar « prêt » ni son ancienne vignette dans l'aperçu.
  */
+/** « Réessayer » de l'aperçu : relance la lecture de disponibilité du panneau. */
+export const EVENEMENT_RELIRE_AVATAR = 'studiio:autopilote-avatar-relire';
+/** La lecture de disponibilité a échoué (réponse illisible) : l'aperçu sort de l'attente. */
+export const EVENEMENT_ECHEC_AVATAR = 'studiio:autopilote-avatar-echec';
+
+export function relireDisponibiliteAvatar(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENEMENT_RELIRE_AVATAR));
+}
+
 export function useDisponibiliteAvatarAutopilote(p: {
   actif: boolean;
   avatarId: string | null;
@@ -88,18 +97,28 @@ export function useDisponibiliteAvatarAutopilote(p: {
   onVignette: (v: VignetteAvatar | null) => void;
 }): void {
   const { actif, avatarId, colonneReady, onPret, onVignette } = p;
+  /** Incrémenté par « Réessayer » (`EVENEMENT_RELIRE_AVATAR`) : relance la même lecture. */
+  const [relecture, setRelecture] = useState(0);
+  useEffect(() => {
+    if (!actif || typeof window === 'undefined') return;
+    const relire = () => setRelecture((n) => n + 1);
+    window.addEventListener(EVENEMENT_RELIRE_AVATAR, relire);
+    return () => window.removeEventListener(EVENEMENT_RELIRE_AVATAR, relire);
+  }, [actif]);
   useEffect(() => {
     if (!actif) return;
     let vivant = true;
     onPret(null);
     onVignette(null);
     void lireDisponibiliteAvatar(avatarId, colonneReady).then(({ pret, vignette }) => {
-      if (!vivant || pret === null) return;
+      if (!vivant) return;
+      // Lecture illisible : l'état reste inconnu, mais l'aperçu le SAIT (erreur visible).
+      if (pret === null) { window.dispatchEvent(new Event(EVENEMENT_ECHEC_AVATAR)); return; }
       onPret(pret);
       onVignette(vignette);
     });
     return () => { vivant = false; };
-  }, [actif, avatarId, colonneReady, onPret, onVignette]);
+  }, [actif, avatarId, colonneReady, onPret, onVignette, relecture]);
 }
 
 /**

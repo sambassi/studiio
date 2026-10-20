@@ -66,6 +66,7 @@ import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/cre
 import { evaluerPertinenceRushs, fichesDuDiagnostic, pertinenceRushsPourMetadata } from '@/lib/creer/pertinence-rushs';
 import { auPlus, chargerFichesContenu, type FichesParUrl } from '@/lib/creer/fiche-contenu-client';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
+import AttenteAvatarMontage from '@/components/creer/AttenteAvatarMontage';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
   ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar,
@@ -3999,18 +4000,9 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
       {/* ── APERÇU DU MONTAGE PRÉVU ──────────────────────────────────────
           Les médias RÉELS du plan, tous, dans l'ordre, puis le CTA — le
           lecteur local de Créer (aucun rendu, aucun appel fournisseur). */}
-      {montagePrevu.avatar === 'chargement' && (
-        <section
-          data-autopilot-montage-prevu="chargement"
-          className="mt-3 rounded-xl bg-gray-900/50 ring-1 ring-white/10 p-3 min-w-0"
-        >
-          <h3 className="text-sm font-semibold text-gray-100">Aperçu de mon montage</h3>
-          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-400">
-            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-            Vérification de votre avatar… Le montage s’affichera avec lui.
-          </p>
-        </section>
-      )}
+      {/* Avatar en vérification : délai de 8 s et erreur visible (« Réessayer »),
+          jamais un spinner infini, jamais un stock à sa place. */}
+      {montagePrevu.avatar === 'chargement' && <AttenteAvatarMontage />}
       {montagePrevu.etapes.length > 0 && (
         <div data-autopilot-montage-prevu={montagePrevu.avatar ?? 'sans-avatar'}>
           <ApercuMontageListe
