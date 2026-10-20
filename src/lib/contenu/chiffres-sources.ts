@@ -30,6 +30,13 @@ const AVEC_PREPOSITION = new RegExp(
 );
 const SEULE = new RegExp(`${EXPR}`, 'gi');
 const A_UN_CHIFFRE = /\d/;
+/**
+ * ⚠️ Textes générés (IA comprise) : longueur bornée AVANT toute regex, pour
+ * qu'aucun motif à quantificateurs voisins (`\s*…\s?`, classes ancrées en
+ * fin) ne puisse dégénérer sur une entrée démesurée.
+ */
+const MAX_TEXTE = 600;
+const borne = (t: string | null | undefined, max = MAX_TEXTE) => (t ?? '').slice(0, max);
 
 /** Les nombres d'un texte, normalisés (« 40 », « 1.5 »). */
 function nombresDe(t: string): string[] {
@@ -38,7 +45,7 @@ function nombresDe(t: string): string[] {
 
 /** Les nombres que l'utilisateur a écrits lui-même : seuls ceux-là peuvent apparaître. */
 export function chiffresAutorises(...textes: Array<string | null | undefined>): Set<string> {
-  return new Set(textes.flatMap((t) => nombresDe(t ?? '')));
+  return new Set(textes.flatMap((t) => nombresDe(borne(t, 4000))));
 }
 
 /** Tous les nombres de `t` viennent-ils de l'utilisateur ? */
@@ -78,7 +85,7 @@ const majusculeInitiale = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slic
  * une préposition orpheline — « sur les hôtels » — est retiré).
  */
 export function texteSansChiffresInventes(texte: string | null | undefined, autorises: ReadonlySet<string>): string {
-  const t = (texte ?? '').trim();
+  const t = borne(texte).trim();
   if (!t || !A_UN_CHIFFRE.test(t) || chiffresSoutenus(t, autorises)) return t;
   const phrases = t.match(/[^.!?…]+[.!?…]*/g)?.map((p) => p.trim()).filter(Boolean) ?? [t];
   const saines = phrases.filter((p) => chiffresSoutenus(p, autorises));
@@ -113,7 +120,7 @@ export function texteSansChiffresInventes(texte: string | null | undefined, auto
 
 /** Titre de carte sans chiffre inventé (« VOLS -40% » → « VOLS »). Jamais vide si l'original ne l'était pas. */
 export function titreSansChiffresInventes(titre: string | null | undefined, autorises: ReadonlySet<string>): string {
-  const t = (titre ?? '').trim();
+  const t = borne(titre, 200).trim();
   if (!t || !A_UN_CHIFFRE.test(t) || chiffresSoutenus(t, autorises)) return t;
   const out = retirerChiffres(t, autorises);
   return out || t.replace(/[\d.,+\-−–~≈%★×/]+/g, ' ').replace(/\s{2,}/g, ' ').trim() || t;
@@ -121,14 +128,14 @@ export function titreSansChiffresInventes(titre: string | null | undefined, auto
 
 /** Valeur d'une carte : vidée si elle porte un chiffre non soutenu (« -40% » → « »). */
 export function valeurSansChiffresInventes(valeur: string | null | undefined, autorises: ReadonlySet<string>): string {
-  const v = (valeur ?? '').trim();
+  const v = borne(valeur, 60).trim();
   if (!v || !A_UN_CHIFFRE.test(v)) return v;
   return chiffresSoutenus(v, autorises) ? v : '';
 }
 
 /** Le titre sans la valeur qu'il répète (« VOLS -40% » avec la valeur « -40% » → « VOLS »). */
 export function titreSansValeur(titre: string, valeur: string | null | undefined): string {
-  const v = (valeur ?? '').trim();
+  const v = borne(valeur, 60).trim();
   // Seule une valeur CHIFFRÉE se répète à l'écran (« -40% VOLS -40% ») ; un
   // mot (« GROOVE ») peut légitimement ouvrir le titre.
   if (!v || !titre || !A_UN_CHIFFRE.test(v)) return titre;

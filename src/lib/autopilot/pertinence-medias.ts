@@ -155,12 +155,15 @@ export function descriptionMediaStock(m: { description?: string | null; sourceUr
   if (!m) return '';
   const explicite = (m.description ?? '').trim();
   if (explicite) return explicite.slice(0, 300);
-  const url = m.sourceUrl ?? '';
+  const url = (m.sourceUrl ?? '').slice(0, 2048);
   // Pexels : /video/<slug>-<id>/ ou /photo/<slug>-<id>/ ; Unsplash : /photos/<slug>-<id>.
   const r = /\/(?:video|photo|photos)\/([^/?#]+)/.exec(url);
   if (!r) return '';
-  const slug = r[1].replace(/-?[A-Za-z0-9_]*\d[A-Za-z0-9_]*$/, '');
-  return slug.replace(/-/g, ' ').trim();
+  // ⚠️ Adresse fournie par l'utilisateur : longueur bornée, aucune regex
+  // ambiguë (retour arrière). Le dernier morceau porteur d'un chiffre est l'id.
+  const morceaux = r[1].slice(0, 200).split('-').filter(Boolean);
+  if (morceaux.length && /\d/.test(morceaux[morceaux.length - 1])) morceaux.pop();
+  return morceaux.join(' ').trim();
 }
 
 /**

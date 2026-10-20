@@ -11,7 +11,7 @@ import { planMultiSources, avatarSynchronise, REPRISES_MAX_PAR_MEDIA } from '@/l
 import { descriptionMediaStock, pertinenceMedia, pertinencesPourPlan, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
 import { mediasDesSources, type MediaStockRetenu } from '@/lib/autopilot/sources';
 import {
-  carteSansChiffresInventes, chiffresAutorises, texteSansChiffresInventes, titreSansValeur, valeurSansChiffresInventes,
+  carteSansChiffresInventes, chiffresAutorises, texteSansChiffresInventes, titreSansChiffresInventes, titreSansValeur, valeurSansChiffresInventes,
 } from '@/lib/contenu/chiffres-sources';
 import { generateSmartContent } from '@/lib/smart-content';
 import { appliquerMiseEnPageSurimpression, ZONE_TEXTE_AVATAR_916, hauteurCta } from '@/lib/creer/surimpressions-mise-en-page';
@@ -219,5 +219,28 @@ describe('aucun chiffre inventé (Créer + Autopilote)', () => {
     const c = generateSmartContent('voyage 7 jours');
     expect(chiffresAutorises('voyage 7 jours').has('7')).toBe(true);
     for (const k of c.cards) for (const n of `${k.title} ${k.description} ${k.value}`.match(/\d+/g) ?? []) expect(n).toBe('7');
+  });
+});
+
+describe('entrées démesurées : aucune regex à retour arrière', () => {
+  it('slug de 50 000 caractères : traité en < 50 ms, cas usuels inchangés', () => {
+    const long = `https://www.pexels.com/video/${'a1'.repeat(25_000)}!/`;
+    const t0 = performance.now();
+    descriptionMediaStock({ sourceUrl: long });
+    descriptionMediaStock({ sourceUrl: `https://www.pexels.com/video/${'-'.repeat(50_000)}x` });
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(descriptionMediaStock({ sourceUrl: 'https://www.pexels.com/video/a-chef-cooking-seafood-on-the-beach-1001/' })).toBe('a chef cooking seafood on the beach');
+    expect(descriptionMediaStock({ sourceUrl: 'https://unsplash.com/photos/a-boat-on-a-lake-AbC1dEf?utm_source=studiio' })).toBe('a boat on a lake');
+    expect(descriptionMediaStock({ sourceUrl: 'https://www.pexels.com/video/1234567/' })).toBe('');
+  });
+
+  it('textes générés de 50 000 caractères : filtre des chiffres en < 50 ms', () => {
+    const a = chiffresAutorises('Voyage');
+    const t0 = performance.now();
+    texteSansChiffresInventes(`${' '.repeat(50_000)}1`, a);
+    texteSansChiffresInventes(`${'=,'.repeat(25_000)}x 4`, a);
+    titreSansChiffresInventes(`${'1 '.repeat(25_000)}%`, a);
+    titreSansValeur('VOLS', `${'1 '.repeat(25_000)}`);
+    expect(performance.now() - t0).toBeLessThan(50);
   });
 });
