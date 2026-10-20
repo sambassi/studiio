@@ -29,7 +29,7 @@ import {
   gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
 } from '@/lib/autopilot/medias-prevus';
 import {
-  aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, MAX_STOCK_RETENU,
+  aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { conseilDureeAvatar } from '@/lib/autopilot/duree-cible';
@@ -755,12 +755,24 @@ export default function AutopilotPanel({
    */
   const rushesDispo = useMemo(() => rushesUtilisables(config.rushUrls, rushEtats), [config.rushUrls, rushEtats]);
   // Clé `sources` enregistrée ou non : la MÊME lecture que le moteur (`mediasDesSources`).
-  const etatSources = etatSourcesVisuelles(rushesDispo, sources, avatarPret, !!config.designStyle.sources);
+  /**
+   * PERTINENCE — la MÊME lecture que le moteur (`mediasDesSources`) : un média
+   * stock retenu pour un autre sujet n'est ni compté (« Médias prévus »), ni
+   * montré (plan, aperçu). La banque, elle, reste affichée en entier.
+   */
+  const pertinent = useMemo(() => sourcesPertinentes({ ...config, rushUrls: rushesDispo }), [config, rushesDispo]);
+  const sourcesEcran = useMemo(() => ({ ...sources, stock: pertinent.stock }), [sources, pertinent.stock]);
+  const etatSources = etatSourcesVisuelles(pertinent.rushUrls, sourcesEcran, avatarPret, !!config.designStyle.sources);
   const sourcePossible = aUneSourceVisuelle(etatSources);
   const montageFormat = montageDepuisStyle(config.designStyle)?.format;
   const formatStock: FormatStock = montageFormat === '16:9' || montageFormat === '1:1' ? montageFormat : '9:16';
   const rushesPerso = rushesDispo.filter((u) => !estRushStock(u));
-  const sujetStock = config.topics[0] ? themeLabel(config.topics[0]) : (config.brief.objectif || config.brief.message || 'fitness');
+  // Le sujet des médias suggérés — la MÊME règle que le moteur (`sujetsCourants`).
+  const sujetStock = sujetStockPrincipal(config);
+  /** Média suggéré (stock) de la banque — jamais compté comme rush personnel. */
+  const estVideoSuggeree = (url: string) => !!(metaStock[url] || idStockDuRush(url) || estRushStock(url));
+  const nbRushesPersoBanque = rushesDispo.filter((u) => !estVideoSuggeree(u)).length;
+  const nbVideosSuggereesBanque = rushesDispo.length - nbRushesPersoBanque;
 
   /**
    * LE PLAN TEL QUE L'ÉCRAN LE MONTRE — enregistré, sinon suggéré. Une seule
@@ -775,7 +787,7 @@ export default function AutopilotPanel({
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
     rushesPerso: sources.actives.rushes ? rushesPerso : [],
-    stock: sources.actives.stock ? sources.stock : [],
+    stock: sources.actives.stock ? pertinent.stock : [],
     avatar: {
       disponible: avatarPorteLaProduction(sources.actives.avatar, avatarPret),
       vignette: vignetteAvatar ? { url: vignetteAvatar.url, type: vignetteAvatar.type } : null,
@@ -822,7 +834,9 @@ export default function AutopilotPanel({
    */
   const retenirStock = useCallback((m: MediaStockRetenu, ligne?: { id: string; lignes: CreneauGabarit[] } | null) => {
     const url = urlPubliqueAbsolue(m.url, window.location.origin) ?? m.url;
-    const media: MediaStockRetenu = { ...m, url };
+    // Le SUJET du moment est noté : un média retenu pour un autre sujet ne sera
+    // jamais pioché automatiquement (`mediasDesSources`).
+    const media: MediaStockRetenu = { ...m, url, sujet: m.sujet ?? sujetStock };
     const stock = [...sources.stock.filter((s) => s.url !== url), media].slice(0, MAX_STOCK_RETENU);
     const extra: Partial<AutopilotConfig> = {};
     if (m.type === 'video') {
@@ -833,7 +847,7 @@ export default function AutopilotPanel({
       ? ligne.lignes.map((l) => (l.id === ligne.id ? { id: l.id, type: 'stock' as const, media: url } : l))
       : sources.gabarit;
     enregistrerSources({ ...sources, actives: { ...sources.actives, stock: true }, stock, gabarit }, extra);
-  }, [config.rushUrls, enregistrerSources, sources]);
+  }, [config.rushUrls, enregistrerSources, sources, sujetStock]);
 
   /** Retire un média retenu — de la banque aussi pour une vidéo, et des lignes du plan qui le forçaient. */
   const retirerStock = useCallback((url: string) => {
@@ -1179,7 +1193,7 @@ export default function AutopilotPanel({
     const rendu = contenuRendu(e);
     const personnels = e.rushesPersonnels + e.bibliotheque;
     const stockProposes = sources.actives.stock ? propositionsStock.proposes : 0;
-    const vignettes = sources.actives.stock ? sources.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
+    const vignettes = sources.actives.stock ? pertinent.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
     const { videos: videosSuggerees, photos: photosSuggerees } = mediasSuggeres(e);
     const ligne = (dt: string, dd: ReactNode, attrs: Record<string, string | number>) => (
       <div className="flex items-center justify-between gap-3 min-w-0">
@@ -1649,12 +1663,14 @@ export default function AutopilotPanel({
                 redevient secondaire et « Continuer vers Style » prend
                 la place. */}
             <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={rushesDispo.length > 0 ? 'pret' : 'a-faire'} data-autopilot-rushes-utilisables={rushesDispo.length}>
+              <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={rushesDispo.length > 0 ? 'pret' : 'a-faire'} data-autopilot-rushes-utilisables={rushesDispo.length} data-autopilot-rushes-perso={nbRushesPersoBanque} data-autopilot-videos-suggerees={nbVideosSuggereesBanque}>
                 Banque de rushes
                 <span className={`ml-1.5 ${rushesDispo.length > 0 || sourcePossible ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {/* Rushes personnels et vidéos suggérées comptés À PART : une vidéo
+                      stock conservée n'est jamais annoncée comme « rush ». */}
                   {rushesDispo.length === 0
                     ? (sourcePossible ? '0 rush — facultatif avec vos autres sources' : '0 rush — aucune source pour l’instant')
-                    : `${rushesDispo.length} rush${rushesDispo.length > 1 ? 'es' : ''} prêt${rushesDispo.length > 1 ? 's' : ''}`}
+                    : libelleBanqueRushes(nbRushesPersoBanque, nbVideosSuggereesBanque)}
                 </span>
                 {nbRushesIndisponibles > 0 && (
                   <span className="ml-1.5 text-amber-400" data-autopilot-rushes-indisponibles={nbRushesIndisponibles}>
@@ -1886,6 +1902,7 @@ export default function AutopilotPanel({
             suggestion={planSuggere}
             rushesPerso={sources.actives.rushes ? rushesPerso : []}
             stock={sources.actives.stock ? sources.stock : []}
+            stockPertinent={sources.actives.stock ? pertinent.stock : []}
             vignetteAvatar={vignetteAvatar}
             avatarDisponible={etatSources.avatarActif && etatSources.avatarPret}
             disabled={!ready || saving}

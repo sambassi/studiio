@@ -70,7 +70,7 @@ describe('G — 3 rushes dont 1 expiré : 2 partout, et après rechargement', ()
   it('« 2 rushes prêts », 1 indisponible, Médias prévus = 2', async () => {
     await ouvrirRushes();
     await waitFor(() => expect(compteur().getAttribute('data-autopilot-rushes-utilisables')).toBe('2'));
-    expect(compteur().textContent).toContain('2 rushes prêts');
+    expect(compteur().textContent).toContain('2 rushes personnels');
     expect(document.querySelector('[data-autopilot-rushes-indisponibles="1"]')).toBeTruthy();
     expect(mediasRushes()).toBe('2');
     // Le rush expiré reste VISIBLE dans la banque, avec son état.

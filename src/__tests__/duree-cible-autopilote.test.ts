@@ -158,7 +158,8 @@ describe('UI — Plan avant génération : durée, nombre, rythme, minutage', ()
       cleanup();
       const suggestion = gabaritSuggere({ avatar: true, rushes: 0, stock: 12 }, { dureeSecondes, rythme });
       render(React.createElement(PlanAvantGeneration, {
-        gabarit: [], suggestion, rushesPerso: [], stock: [], vignetteAvatar: null, avatarDisponible: true,
+        // Avatar indisponible : un créneau = un plan, le minutage par créneau s'affiche.
+        gabarit: [], suggestion, rushesPerso: [], stock: [], vignetteAvatar: null, avatarDisponible: false,
         onChange: () => {}, onRechercher: () => {}, duree: { cible: dureeSecondes, rythme: rythme ?? null },
       }));
       const q = (s: string) => document.querySelector(s) as HTMLElement;
@@ -177,5 +178,27 @@ describe('UI — Plan avant génération : durée, nombre, rythme, minutage', ()
     expect(b.premier).toBe('00:00 → 00:02,5 · Durée : 2,5 s');
     const c = afficher(45, 'calme');
     expect(c).toMatchObject({ cible: '45 s', planifiee: '45 s', nombre: 9, rythme: 'Calme', premier: '00:00 → 00:05 · Durée : 5 s' });
+  });
+
+  it('avec avatar : le montage prévu liste CHAQUE plan (accroche, alternance, CTA) avec ses horaires', async () => {
+    const React = await import('react');
+    const { render, cleanup } = await import('@testing-library/react');
+    const { default: PlanAvantGeneration } = await import('@/components/creer/PlanAvantGeneration');
+    cleanup();
+    const photo = (id: string) => ({ url: `https://images.pexels.com/${id}.jpg`, type: 'photo' as const, provider: 'pexels' as const, providerAssetId: id, auteur: 'A', sourceUrl: '', licence: 'L', vignetteUrl: '' });
+    const stock = [photo('p1'), photo('p2'), photo('p3')];
+    const suggestion = gabaritSuggere({ avatar: true, rushes: 0, stock: 3 }, { dureeSecondes: 30, rythme: 'normal' });
+    render(React.createElement(PlanAvantGeneration, {
+      gabarit: [], suggestion, rushesPerso: [], stock, vignetteAvatar: null, avatarDisponible: true,
+      onChange: () => {}, onRechercher: () => {}, duree: { cible: 30, rythme: 'normal' },
+    }));
+    const segs = Array.from(document.querySelectorAll('[data-plan-segment]'));
+    expect(segs.length).toBeGreaterThan(suggestion.length);
+    expect(segs[0].getAttribute('data-role')).toBe('accroche');
+    expect(segs.at(-1)!.getAttribute('data-role')).toBe('cta');
+    expect(Number(segs.at(-1)!.getAttribute('data-fin'))).toBe(30);
+    expect(segs.some((x) => x.getAttribute('data-genre') === 'photo')).toBe(true);
+    expect(document.querySelector('[data-plan-duree-planifiee]')!.textContent).toBe('30 s');
+    expect(document.querySelector('[data-plan-minutage="0"]')).toBeNull();
   });
 });
