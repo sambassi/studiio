@@ -45,8 +45,7 @@ import { sequenceSecondsWithVoice, voiceUrls, type VoixParSequence } from '@/lib
  */
 export { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
 import { AUTOPILOT_WATERMARK, AUTOPILOT_FORMAT } from '@/lib/autopilot/brand';
-import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
-import { actionEnPetiteLigne, lisibiliteCtaAction } from '@/lib/autopilot/cta-action';
+import { ctaAutopilote, lisibiliteCtaAction } from '@/lib/autopilot/cta-action';
 
 /**
  * Durée de la séquence vidéo pour un rush donné.
@@ -245,17 +244,19 @@ export function buildAutopilotDesign(
     // le rendu d'aujourd'hui.
     ...(style.cards ? { cardsTypography: style.cards } : null),
     // CTA (#503) : le CTA du BRIEF de l'Autopilote est la ligne d'action —
-    // la MÊME règle que Créer (`avecCtaDuBrief`). Sans brief : rien n'est
-    // envoyé, la ligne par défaut du rendu (« LIEN EN BIO ») reste le repli.
+    // la MÊME règle que Créer (`avecCtaDuBrief`, via `ctaAutopilote`).
     // Ligne d'action rose sur rose, 30 px (≈ 1,2:1 mesuré) : elle reçoit le
     // panneau, la teinte et l'échelle du CTA en surimpression (#502) — voir
-    // `cta-action.ts`. Les autres cas : à l'octet près.
+    // `cta-action.ts`.
+    // SANS CTA dans le brief : l'action dérivée de l'objectif (`ctaAutopilote`),
+    // petite ligne explicitement VIDE — jamais le « LIEN EN BIO » par défaut
+    // du rendu (aucun lien n'a été fourni).
     ...(() => {
-      const c = avecCtaDuBrief({ cta: post.content.tagLine ?? '', ctaSub: '' }, post.brief);
+      const c = ctaAutopilote(post.content.tagLine, post.brief, post.title);
       return {
         ctaText: c.cta,
-        ...(c.ctaSub ? { ctaSubText: c.ctaSub } : null),
-        ...(actionEnPetiteLigne(c, post.brief) ? lisibiliteCtaAction(c, style.cta?.scale ?? 1) : null),
+        ctaSubText: c.ctaSub,
+        ...(c.actionEnPetiteLigne ? lisibiliteCtaAction(c, style.cta?.scale ?? 1) : null),
       };
     })(),
     // Le jumeau, s'il est monté, REMPLACE le rush pour la séquence « Vidéo ».

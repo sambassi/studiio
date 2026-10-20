@@ -34,8 +34,54 @@ export interface CtaAutopilote {
   actionEnPetiteLigne: boolean;
 }
 
-/** Le CTA de l'Autopilote : la règle de Créer, telle quelle, et où se trouve l'action. */
-export function ctaAutopilote(tagLine: string | null | undefined, brief: { cta?: string | null } | null | undefined): CtaAutopilote {
+/**
+ * CTA SANS CTA DANS LE BRIEF — un appel à l'action GÉNÉRIQUE et HONNÊTE,
+ * dérivé de l'OBJECTIF de l'utilisateur (puis de son message, puis du sujet).
+ *
+ * ⚠️ Constat (démo « Motivation », 20/10) : sans CTA dans le brief, le CTA
+ * final était le slogan généré (« LEVIERS EFFICACES ») et, sous lui, la ligne
+ * par défaut du rendu « LIEN EN BIO » — un lien que personne n'a fourni.
+ * Désormais : une ACTION que le spectateur peut faire sans lien, jamais une
+ * URL, jamais « lien en bio », jamais une promotion ni une promesse
+ * commerciale. Un lien n'apparaît que s'il est écrit dans le brief (`cta`).
+ * Table ordonnée : la première règle qui reconnaît le texte l'emporte.
+ */
+export const CTA_PAR_OBJECTIF: ReadonlyArray<{ cle: string; motif: RegExp; cta: string }> = [
+  { cle: 'vendre', motif: /\b(vend|achat|achet|command|reserv|inscri|essai|rendez|rdv|devis|tarif|client|boutique|cours)/, cta: 'ÉCRIS-NOUS EN MESSAGE' },
+  { cle: 'eduquer', motif: /\b(eduqu|apprend|appren|expliqu|enseign|astuce|conseil|savoir|comprend|guide|tuto|inform|decouvr)/, cta: 'ENREGISTRE POUR PLUS TARD' },
+  { cle: 'motiver', motif: /\b(motiv|inspir|encourag|bouge|action|depass|disciplin|mental|confiance|lance)/, cta: 'PASSE À L’ACTION AUJOURD’HUI' },
+  { cle: 'communaute', motif: /\b(communaut|abonn|notoriet|visibilit|partag|engag|fidel|rejoin)/, cta: 'ABONNE-TOI POUR LA SUITE' },
+];
+/** Aucun objectif reconnu : une action sans lien ni promesse. En capitales, comme les CTA générés (le rendu les met en capitales). */
+export const CTA_GENERIQUE = 'ENREGISTRE POUR PLUS TARD';
+
+const sansAccents = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** L'appel à l'action dérivé de l'objectif, du message, puis du sujet. Pur. */
+export function ctaDeLObjectif(...textes: ReadonlyArray<string | null | undefined>): string {
+  for (const t of textes) {
+    const x = sansAccents((t ?? '').trim());
+    if (!x) continue;
+    const r = CTA_PAR_OBJECTIF.find((c) => c.motif.test(x));
+    if (r) return r.cta;
+  }
+  return CTA_GENERIQUE;
+}
+
+/**
+ * Le CTA de l'Autopilote. Brief AVEC CTA : la règle de Créer, telle quelle
+ * (slogan + action du brief en petite ligne). Brief SANS CTA : l'action
+ * dérivée de l'objectif (`ctaDeLObjectif`) en ligne principale, petite ligne
+ * VIDE (jamais le « LIEN EN BIO » par défaut du rendu).
+ */
+export function ctaAutopilote(
+  tagLine: string | null | undefined,
+  brief: { cta?: string | null; objectif?: string | null; message?: string | null } | null | undefined,
+  sujet?: string | null,
+): CtaAutopilote {
+  if (!(brief?.cta ?? '').trim()) {
+    return { cta: ctaDeLObjectif(brief?.objectif, brief?.message, sujet), ctaSub: '', actionEnPetiteLigne: false };
+  }
   const c = avecCtaDuBrief({ cta: tagLine ?? '', ctaSub: '' }, brief);
   return { ...c, actionEnPetiteLigne: actionEnPetiteLigne(c, brief) };
 }

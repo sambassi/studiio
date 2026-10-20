@@ -327,12 +327,16 @@ describe('1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → rende
     ]);
   });
 
-  it('G / H : CTA du brief → sous-texte ; sans brief, aucune clé ctaSubText', async () => {
+  // #613 (20/10) : sans CTA dans le brief, la petite ligne est '' (jamais le
+  // « LIEN EN BIO » par défaut du rendu) et la ligne principale est une ACTION
+  // dérivée de l'objectif — plus le slogan, que garde le cas avec brief.
+  it('G / H : CTA du brief → sous-texte ; sans brief, petite ligne vide et action dérivée', async () => {
     const g = (await produireAuto(AUTO['G-cta-sans-sous-texte'])).design;
     const h = (await produireAuto(AUTO['H-cta-avec-sous-texte'])).design;
-    expect('ctaSubText' in g).toBe(false);
+    expect(g.ctaSubText).toBe('');
     expect(h.ctaSubText).toBe('Réserve ta séance');
-    expect(h.ctaText).toBe(g.ctaText);
+    expect(h.ctaText).not.toBe(g.ctaText);
+    expect(JSON.stringify(g)).not.toMatch(/LIEN EN BIO/i);
   });
 
   it('J : musique, voix par séquence et mixeur transmis ; durées calées sur la voix', async () => {

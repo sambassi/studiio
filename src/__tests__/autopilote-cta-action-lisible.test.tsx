@@ -177,7 +177,9 @@ const FIXTURE = resolve(__dirname, 'fixtures/cta-autopilote-instantane-base.json
 function instantane(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const topic of ['danse afro cardio', 'finance', 'yoga', 'nutrition', 'sommeil']) {
-    const slogan = buildAutopilotSample(config([topic])).cta;
+    // Le slogan généré (#613 : `sample.cta` est désormais l'action dérivée de l'objectif sans brief).
+    const echantillon = buildAutopilotSample(config([topic]));
+    const slogan = echantillon.tagLine ?? echantillon.cta;
     const briefs: Record<string, Record<string, unknown> | undefined> = {
       sansBrief: undefined,
       briefVide: { cta: '' },
