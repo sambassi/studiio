@@ -53,7 +53,6 @@ export function chiffresSoutenus(t: string, autorises: ReadonlySet<string>): boo
   return nombresDe(t).every((n) => autorises.has(n));
 }
 
-const PREPOSITIONS_ORPHELINES = /^(?:(?:sur|de|des|du|en|à|a|au|aux|pour|par|avec|et|ou)\b|d['’]|l['’]|=|\+|-|–|:)/i;
 /** Mot resté en fin de fragment une fois le chiffre retiré (« avant », « divisé par »). */
 const FIN_ORPHELINE = /\s+(?:avant|après|apres|de|du|des|en|par|pendant|sur|à|a|pour|divisée?s?|multipliée?s?|toutes|tous|les|le|la|chaque|=|\+|-|–|×|x)$/i;
 
@@ -79,51 +78,64 @@ function retirerChiffres(t: string, autorises: ReadonlySet<string>): string {
 const majusculeInitiale = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
 /**
- * Une phrase sans chiffre inventé. Phrases (« . ! ? ») porteuses d'un chiffre
- * non soutenu retirées s'il en reste une autre ; sinon le chiffre est retiré
- * sur place, fragment par fragment (un fragment qui ne commence plus que par
- * une préposition orpheline — « sur les hôtels » — est retiré).
+ * Noms qui PORTENT un chiffre sans être une statistique (« oméga-3 »,
+ * « vitamine B12 », « CO2 ») : masqués avant le filtre, rendus après.
+ */
+function masquerNoms(t: string): { texte: string; rendre: (x: string) => string } {
+  const noms: string[] = [];
+  const texte = t.replace(/[A-WYZa-wyzÀ-ÿ]-?\d+(?![\d%])/g, (m) => {
+    noms.push(m);
+    return `\uE000${String.fromCharCode(0xE100 + noms.length - 1)}`;
+  });
+  return { texte, rendre: (x) => x.replace(/\uE000([\uE100-\uEFFF])/g, (_, c: string) => noms[c.charCodeAt(0) - 0xE100] ?? '') };
+}
+
+/** Citation d'étude, de revue ou d'institution : jamais une phrase utile. */
+const CITATION = /\b(?:étude|etude|études|etudes|selon|nejm|harvard|lancet|universit[ée]|study|journal|chercheurs|recherche publiée)\b/i;
+const mots = (t: string) => t.split(/\s+/).filter((m) => /[A-Za-zÀ-ÿ]/.test(m));
+
+/**
+ * Une phrase qui reste lisible une fois nettoyée : au moins quatre mots,
+ * un mot qui peut être un verbe conjugué / infinitif, et pas une citation.
+ */
+export function phraseLisible(p: string): boolean {
+  const m = mots(p);
+  if (m.length < 4 || CITATION.test(p)) return false;
+  return m.some((w) => /^(?:est|sont|a|as|ont|va|vas|font|fait|peut|peux|doit|dois|aide|rend)$/i.test(w.replace(/[^\p{L}]/gu, ''))
+    || /(?:er|ir|re|ent|ons|ez|e|es|is|it|ait|aient)$/i.test(w.replace(/[^\p{L}]/gu, '')));
+}
+
+/**
+ * Une phrase sans chiffre inventé. Une PHRASE (« . ! ? ») porteuse d'un
+ * chiffre non soutenu est RETIRÉE entière — jamais réparée sur place (une
+ * réparation laissait « La danse sollicite muscles. »). Si le texte avait un
+ * chiffre, les phrases restantes trop courtes, sans verbe ou réduites à une
+ * citation sont retirées aussi. Plus rien : `''` (l'appelant prend un repli
+ * qualitatif, `carteSansChiffresInventes`).
  */
 export function texteSansChiffresInventes(texte: string | null | undefined, autorises: ReadonlySet<string>): string {
-  const t = borne(texte).trim();
-  if (!t || !A_UN_CHIFFRE.test(t) || chiffresSoutenus(t, autorises)) return t;
+  const brut = borne(texte).trim();
+  if (!brut) return brut;
+  const { texte: t, rendre } = masquerNoms(brut);
+  if (!A_UN_CHIFFRE.test(t) || chiffresSoutenus(t, autorises)) return brut;
   const phrases = t.match(/[^.!?…]+[.!?…]*/g)?.map((p) => p.trim()).filter(Boolean) ?? [t];
-  const saines = phrases.filter((p) => chiffresSoutenus(p, autorises));
-  if (saines.length > 0 && saines.length < phrases.length) return majusculeInitiale(saines.join(' ').trim());
-  const fragments = t.split(/(\s*[,;:]\s*)/);
-  const gardes: string[] = [];
-  for (let i = 0; i < fragments.length; i += 2) {
-    const brut = fragments[i];
-    const sep = fragments[i + 1] ?? '';
-    let f = brut;
-    if (!chiffresSoutenus(brut, autorises)) {
-      f = retirerChiffres(brut, autorises);
-      while (FIN_ORPHELINE.test(f)) f = f.replace(FIN_ORPHELINE, '');
-      // Retiré en tête : la préposition restée seule n'a plus de sens.
-      if (PREPOSITIONS_ORPHELINES.test(f) || f.split(/\s+/).filter(Boolean).length < 2) f = '';
-    }
-    if (f.trim()) gardes.push(f.trim() + sep);
-  }
-  let out = nettoyerEspaces(gardes.join('').replace(/\s*[,;:]\s*$/, ''));
-  if (!out) {
-    // Rien de lisible fragment par fragment : le texte entier, chiffres retirés,
-    // sans les prépositions restées en tête (« de danse = … » → « danse = … »).
-    out = retirerChiffres(t, autorises);
-    const TETE = /^(?:(?:sur|de|des|du|en|à|a|au|aux|pour|par|avec|et|ou|qui)\s+|d['’]|l['’]|[=+\-–:]\s*)/i;
-    while (TETE.test(out)) out = out.replace(TETE, '');
-    while (FIN_ORPHELINE.test(out)) out = out.replace(FIN_ORPHELINE, '');
-    if (out.split(/\s+/).filter(Boolean).length < 2) return '';
-  }
-  const fin = /[.!?…]$/.test(t) && !/[.!?…]$/.test(out) ? '.' : '';
-  return majusculeInitiale(out) + fin;
+  const gardees = phrases
+    .filter((p) => chiffresSoutenus(p, autorises))
+    .map((p) => rendre(p))
+    .filter((p) => phraseLisible(p));
+  if (!gardees.length) return '';
+  const out = majusculeInitiale(gardees.join(' ').trim());
+  return /[.!?…]$/.test(out) ? out : `${out}.`;
 }
 
 /** Titre de carte sans chiffre inventé (« VOLS -40% » → « VOLS »). Jamais vide si l'original ne l'était pas. */
 export function titreSansChiffresInventes(titre: string | null | undefined, autorises: ReadonlySet<string>): string {
-  const t = borne(titre, 200).trim();
-  if (!t || !A_UN_CHIFFRE.test(t) || chiffresSoutenus(t, autorises)) return t;
-  const out = retirerChiffres(t, autorises);
-  return out || t.replace(/[\d.,+\-−–~≈%★×/]+/g, ' ').replace(/\s{2,}/g, ' ').trim() || t;
+  const brut = borne(titre, 200).trim();
+  const { texte: t, rendre } = masquerNoms(brut);
+  if (!t || !A_UN_CHIFFRE.test(t) || chiffresSoutenus(t, autorises)) return brut;
+  let out = retirerChiffres(t, autorises);
+  while (FIN_ORPHELINE.test(out)) out = out.replace(FIN_ORPHELINE, '');
+  return rendre(out || t.replace(/[\d.,+\-−–~≈%★×/]+/g, ' ').replace(/\s{2,}/g, ' ').trim()) || brut;
 }
 
 /** Valeur d'une carte : vidée si elle porte un chiffre non soutenu (« -40% » → « »). */
@@ -144,6 +156,12 @@ export function titreSansValeur(titre: string, valeur: string | null | undefined
   return out || titre;
 }
 
+/** Repli qualitatif d'une carte vidée : « Un point clé à retenir : bagage cabine. » */
+export function descriptionDeSecours(titre: string): string {
+  const t = titre.trim().toLowerCase().replace(/[.!?…:]+$/, '');
+  return `Un point clé à garder en tête : ${t}.`;
+}
+
 export interface CarteTexte { title?: string; label?: string; description?: string; value?: string }
 
 /**
@@ -156,7 +174,12 @@ export function carteSansChiffresInventes<T extends CarteTexte>(carte: T, autori
   if (typeof carte.value === 'string') out.value = value;
   if (typeof carte.title === 'string') out.title = titreSansValeur(titreSansChiffresInventes(carte.title, autorises), value);
   if (typeof carte.label === 'string') out.label = titreSansValeur(titreSansChiffresInventes(carte.label, autorises), value);
-  if (typeof carte.description === 'string') out.description = texteSansChiffresInventes(carte.description, autorises);
+  if (typeof carte.description === 'string') {
+    out.description = texteSansChiffresInventes(carte.description, autorises);
+    // Plus rien de lisible : une phrase qualitative tirée du titre.
+    const titre = (out.title ?? out.label ?? '').trim();
+    if (!out.description && carte.description.trim() && titre) out.description = descriptionDeSecours(titre);
+  }
   return out;
 }
 

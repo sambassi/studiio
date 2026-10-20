@@ -184,11 +184,20 @@ describe('textes posés sur l’avatar : jamais sur la bouche', () => {
 describe('aucun chiffre inventé (Créer + Autopilote)', () => {
   const rien = chiffresAutorises('Voyage');
 
-  it('la carte « VOLS -40% » ne répète plus sa valeur et perd le chiffre inventé', () => {
+  it('la carte « VOLS -40% » ne répète plus sa valeur ; une phrase chiffrée est retirée entière, jamais réparée', () => {
     const c = carteSansChiffresInventes({ title: 'VOLS -40%', description: "Réserver mardi matin entre 6h et 8h : prix jusqu'à 40% moins chers", value: '-40%' }, rien);
-    expect(c).toEqual({ title: 'VOLS', description: 'Réserver mardi matin : prix moins chers', value: '' });
+    expect(c.title).toBe('VOLS');
+    expect(c.value).toBe('');
+    // Plus aucune phrase lisible : repli qualitatif tiré du titre.
+    expect(c.description).toBe('Un point clé à garder en tête : vols.');
     expect(carteSansChiffresInventes({ title: 'BAGAGE CABINE', description: '7 kg bien organisés = 10 jours de voyage. La technique du rolling', value: '7 kg' }, rien))
-      .toEqual({ title: 'BAGAGE CABINE', description: 'La technique du rolling', value: '' });
+      .toEqual({ title: 'BAGAGE CABINE', description: 'La technique du rolling.', value: '' });
+    // Cas relevés par la QA : jamais de fragment orphelin ni de citation seule.
+    expect(texteSansChiffresInventes('La danse sollicite 600 muscles. Course à pied.', rien)).toBe('');
+    expect(texteSansChiffresInventes('Étude NEJM 2019 : +40% de densité osseuse par an. Étude NEJM.', rien)).toBe('');
+    expect(texteSansChiffresInventes('Taux négociés au point le plus bas depuis 2021. Compare les offres avant de signer.', rien)).toBe('Compare les offres avant de signer.');
+    // Noms porteurs d'un chiffre : gardés.
+    expect(texteSansChiffresInventes('Les oméga-3 aident ta récupération après le sport.', rien)).toBe('Les oméga-3 aident ta récupération après le sport.');
   });
 
   it('un chiffre écrit par l’utilisateur reste ; la valeur n’est pas répétée dans le titre', () => {
@@ -244,3 +253,32 @@ describe('entrées démesurées : aucune regex à retour arrière', () => {
     expect(performance.now() - t0).toBeLessThan(50);
   });
 });
+
+describe('base locale smart-content : aucun chiffre, aucune phrase orpheline (QA #612)', () => {
+  const ORPHELIN = /\b(?:de|des|du|par|en|sur|à|avec|pour|le|la|les|un|une)\s*[.!?]$/i;
+  it.each(['voyage', 'danse afro cardio', 'nutrition sportive', 'finance personnelle'])('%s × 40 générations', (sujet) => {
+    for (let seed = 0; seed < 40; seed++) {
+      const c = generateSmartContent(sujet, seed);
+      const textes = [c.subtitle, ...c.cards.flatMap((k) => [k.title, k.description, k.value])];
+      for (const t of textes) expect(t, `${sujet}/${seed}`).not.toMatch(/\d/);
+      for (const k of c.cards) {
+        for (const phrase of k.description.match(/[^.!?…]+[.!?…]*/g) ?? []) {
+          const mots = phrase.trim().split(/\s+/).filter((m) => /\p{L}/u.test(m));
+          expect(mots.length, `${sujet}/${seed} « ${phrase} »`).toBeGreaterThanOrEqual(4);
+          expect(phrase.trim(), `${sujet}/${seed}`).not.toMatch(ORPHELIN);
+          expect(phrase, `${sujet}/${seed}`).not.toMatch(/\b(?:étude|NEJM|Harvard|selon)\b/i);
+        }
+      }
+    }
+  });
+});
+
+describe('thème : « Fitness et sport à la maison » n’est pas de l’immobilier', () => {
+  it('les mots de contexte (« maison ») ne choisissent plus le thème', () => {
+    const textes = JSON.stringify(generateSmartContent('Fitness et sport à la maison', 0)).toLowerCase();
+    expect(textes).not.toMatch(/scpi|immobili|taux d['’]effort|locatif|crédit/);
+    // L'immobilier reste reconnu quand il est le sujet.
+    expect(JSON.stringify(generateSmartContent('immobilier', 0)).toLowerCase()).toMatch(/immobili|pierre|locati|achat|bien/);
+  });
+});
+

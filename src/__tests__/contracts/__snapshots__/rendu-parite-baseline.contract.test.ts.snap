@@ -14,7 +14,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "cartes": [
     {
-      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "description": "Routine du matin agit sur ton cerveau et soutient ta concentration au quotidien.",
       "icon": "Brain",
       "title": "ROUTINE DU MATIN & CERVEAU",
       "value": "NEURO",
@@ -26,22 +26,22 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "value": "+CŒUR",
     },
     {
-      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "description": "Équilibre nutrition, mouvement et récupération : chaque élément compte.",
       "icon": "Zap",
       "title": "ÉNERGIE QUOTIDIENNE",
       "value": "BALANCE",
     },
     {
-      "description": "Optimise ce temps.",
+      "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "",
+      "value": "RÉCUP",
     },
     {
-      "description": "Alimentation équilibrée cours/semaine = résultats visibles.",
+      "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
       "icon": "Apple",
       "title": "NUTRITION CLÉ",
-      "value": "",
+      "value": "DUO",
     },
   ],
   "clesEntree": [
@@ -153,7 +153,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "cartes": [
     {
-      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "description": "Routine du matin agit sur ton cerveau et soutient ta concentration au quotidien.",
       "icon": "Brain",
       "title": "ROUTINE DU MATIN & CERVEAU",
       "value": "NEURO",
@@ -165,22 +165,22 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "value": "+CŒUR",
     },
     {
-      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "description": "Équilibre nutrition, mouvement et récupération : chaque élément compte.",
       "icon": "Zap",
       "title": "ÉNERGIE QUOTIDIENNE",
       "value": "BALANCE",
     },
     {
-      "description": "Optimise ce temps.",
+      "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "",
+      "value": "RÉCUP",
     },
     {
-      "description": "Alimentation équilibrée cours/semaine = résultats visibles.",
+      "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
       "icon": "Apple",
       "title": "NUTRITION CLÉ",
-      "value": "",
+      "value": "DUO",
     },
   ],
   "clesEntree": [
@@ -438,7 +438,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "cartes": [
     {
-      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "description": "Routine du matin agit sur ton cerveau et soutient ta concentration au quotidien.",
       "icon": "Brain",
       "title": "ROUTINE DU MATIN & CERVEAU",
       "value": "NEURO",
@@ -450,22 +450,22 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "value": "+CŒUR",
     },
     {
-      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "description": "Équilibre nutrition, mouvement et récupération : chaque élément compte.",
       "icon": "Zap",
       "title": "ÉNERGIE QUOTIDIENNE",
       "value": "BALANCE",
     },
     {
-      "description": "Optimise ce temps.",
+      "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "",
+      "value": "RÉCUP",
     },
     {
-      "description": "Alimentation équilibrée cours/semaine = résultats visibles.",
+      "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
       "icon": "Apple",
       "title": "NUTRITION CLÉ",
-      "value": "",
+      "value": "DUO",
     },
   ],
   "clesEntree": [
@@ -578,7 +578,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "cartes": [
     {
-      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "description": "Routine du matin agit sur ton cerveau et soutient ta concentration au quotidien.",
       "icon": "Brain",
       "title": "ROUTINE DU MATIN & CERVEAU",
       "value": "NEURO",
@@ -590,22 +590,22 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "value": "+CŒUR",
     },
     {
-      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "description": "Équilibre nutrition, mouvement et récupération : chaque élément compte.",
       "icon": "Zap",
       "title": "ÉNERGIE QUOTIDIENNE",
       "value": "BALANCE",
     },
     {
-      "description": "Optimise ce temps.",
+      "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "",
+      "value": "RÉCUP",
     },
     {
-      "description": "Alimentation équilibrée cours/semaine = résultats visibles.",
+      "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
       "icon": "Apple",
       "title": "NUTRITION CLÉ",
-      "value": "",
+      "value": "DUO",
     },
   ],
   "clesEntree": [
@@ -764,7 +764,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "cartes": [
     {
-      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "description": "Routine du matin agit sur ton cerveau et soutient ta concentration au quotidien.",
       "icon": "Brain",
       "title": "ROUTINE DU MATIN & CERVEAU",
       "value": "NEURO",
@@ -776,22 +776,22 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "value": "+CŒUR",
     },
     {
-      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "description": "Équilibre nutrition, mouvement et récupération : chaque élément compte.",
       "icon": "Zap",
       "title": "ÉNERGIE QUOTIDIENNE",
       "value": "BALANCE",
     },
     {
-      "description": "Optimise ce temps.",
+      "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "",
+      "value": "RÉCUP",
     },
     {
-      "description": "Alimentation équilibrée cours/semaine = résultats visibles.",
+      "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
       "icon": "Apple",
       "title": "NUTRITION CLÉ",
-      "value": "",
+      "value": "DUO",
     },
   ],
   "clesEntree": [
@@ -903,7 +903,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "cartes": [
     {
-      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "description": "Routine du matin agit sur ton cerveau et soutient ta concentration au quotidien.",
       "icon": "Brain",
       "title": "ROUTINE DU MATIN & CERVEAU",
       "value": "NEURO",
@@ -915,22 +915,22 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "value": "+CŒUR",
     },
     {
-      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "description": "Équilibre nutrition, mouvement et récupération : chaque élément compte.",
       "icon": "Zap",
       "title": "ÉNERGIE QUOTIDIENNE",
       "value": "BALANCE",
     },
     {
-      "description": "Optimise ce temps.",
+      "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "",
+      "value": "RÉCUP",
     },
     {
-      "description": "Alimentation équilibrée cours/semaine = résultats visibles.",
+      "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
       "icon": "Apple",
       "title": "NUTRITION CLÉ",
-      "value": "",
+      "value": "DUO",
     },
   ],
   "clesEntree": [
@@ -1053,7 +1053,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   },
   "cartes": [
     {
-      "description": "Routine du matin a un impact direct sur ton cerveau.",
+      "description": "Routine du matin agit sur ton cerveau et soutient ta concentration au quotidien.",
       "icon": "Brain",
       "title": "ROUTINE DU MATIN & CERVEAU",
       "value": "NEURO",
@@ -1065,22 +1065,22 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "value": "+CŒUR",
     },
     {
-      "description": "Équilibre entre nutrition, mouvement et récupération. Chaque élément compte.",
+      "description": "Équilibre nutrition, mouvement et récupération : chaque élément compte.",
       "icon": "Zap",
       "title": "ÉNERGIE QUOTIDIENNE",
       "value": "BALANCE",
     },
     {
-      "description": "Optimise ce temps.",
+      "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "",
+      "value": "RÉCUP",
     },
     {
-      "description": "Alimentation équilibrée cours/semaine = résultats visibles.",
+      "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
       "icon": "Apple",
       "title": "NUTRITION CLÉ",
-      "value": "",
+      "value": "DUO",
     },
   ],
   "clesEntree": [
