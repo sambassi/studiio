@@ -4585,7 +4585,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
     // `target` : le canvas sur lequel dessiner. C'est le canvas final dans le
     // cas general ; les transitions geometriques passent un calque hors-ecran.
-    const drawSeq = (type: string, progress: number, target: CanvasRenderingContext2D = ctx) => {
+    // `entrante` : la séquence ENTRE par une transition (dessinée à
+    // `t × 0,3` pour ses animations de texte, rétro-compat).
+    const drawSeq = (type: string, progress: number, target: CanvasRenderingContext2D = ctx, entrante = false) => {
       // Resolve per-sequence background override (or fall back to posterImg).
       // Opacity is applied to the BG image only — text/cards/etc. drawn on
       // top stay fully opaque. Canvas filters (Phase 2) are pre-applied to
@@ -4612,7 +4614,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           // eslint-disable-next-line no-console
           console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
           const cardsSeq = sequences.find((s) => s.type === 'cards');
-          const secondesCartes = cardsSeq ? progress * cardsSeq.duration : Infinity;
+          // Séquence ENTRANTE : ses étapes datées restent à 0 s. Constat
+          // (« LE SPORT », 20/10) : `t × 0,3` de 14 s datait les cartes jusqu'à
+          // 4,2 s pendant le fondu — la carte 2 (« OS RENFORCÉS ») paraissait
+          // AVANT la carte 1, puis la séquence retombait à 0 au raccord.
+          const secondesCartes = entrante ? 0 : cardsSeq ? progress * cardsSeq.duration : Infinity;
           // Cartes sur les rushes : le plan du moment (lecteur du pilote, ou
           // l'extrait prépositionné hors lecture — transitions), puis les cartes.
           const elSous = planCartes
@@ -4696,7 +4702,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         // surimpressions datés de la séquence paraissaient pendant le fondu
         // puis disparaissaient au raccord (temps retombé à 0) : un saut.
         // Titre / Cartes / CTA entrants gardent `t * 0,3` (rétro-compat).
-        (p, target) => drawSeq(sequences[seqIdx + 1].type, sequences[seqIdx + 1].type === 'video' ? 0 : p, target),
+        (p, target) => drawSeq(sequences[seqIdx + 1].type, sequences[seqIdx + 1].type === 'video' ? 0 : p, target, true),
         transProgress,
         style,
         // Les calques ne sont crees que si un style en a besoin : un montage
