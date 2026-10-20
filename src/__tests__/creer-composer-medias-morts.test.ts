@@ -64,7 +64,7 @@ describe('trierMediasMorts', () => {
 describe('Câblage dans Créer', () => {
   const w = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf-8');
   it('vérification AVANT la génération payante du jumeau', () => {
-    expect(w.indexOf('const introuvables = await urlsIntrouvables(')).toBeLessThan(w.lastIndexOf('const video = await genererEtAttendreVideoJumeau('));
+    expect(w.indexOf('const introuvables = await diagnostiquerIntrouvables(')).toBeLessThan(w.lastIndexOf('const video = await genererEtAttendreVideoJumeau('));
   });
   it('en mode jumeau « avatar », l’ancien rush (remplacé) n’est pas exigé', () => {
     // Multi-sources : avec une liste (avatar intercalé), les rushes RESTENT exigés.
