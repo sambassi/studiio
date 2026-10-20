@@ -19,11 +19,18 @@
  *               locale » dans un script de voyage → un plat) — au plus une fois ;
  *   hors      : une autre activité que le scénario ne mentionne pas — jamais
  *               piochée automatiquement (un média FORCÉ reste un choix) ;
- *   inconnu   : aucune description, ou rien de reconnu — la règle d'avant.
+ *   inconnu   : aucune description, ou rien du sujet reconnu dedans.
  *
- * DEFAULT SAFE : sujet non reconnu par la taxonomie → tout est `inconnu`, rien
- * n'est filtré ni réordonné. Les rushes PERSONNELS ne passent jamais ici.
- * Module PUR.
+ * ⚠️ « INCONNU » N'EST JAMAIS POSÉ AUTOMATIQUEMENT (#613 — un torse nu noir et
+ * blanc ouvrait une vidéo « Motivation »). La sélection automatique (moteur,
+ * propositions) ne prend que `pertinent`, `decor` et `limite` (une fois) —
+ * `accepteAutomatiquement`. Un CHOIX EXPLICITE de l'utilisateur (rush
+ * personnel, média retenu pour ce sujet, média forcé dans le plan) reste
+ * respecté : ce module classe, `sources.ts` décide.
+ *
+ * Corps exposé (torse nu, lingerie…) : `hors` pour un sujet qui ne parle
+ * d'aucun sport — un torse en salle reste pertinent pour « Musculation ».
+ * Les rushes PERSONNELS ne passent jamais ici. Module PUR.
  */
 import { CONCEPTS_ABSTRAITS, conceptsAbstraitsDe, conceptsDe, motsDe } from '@/lib/stock/requetes';
 
@@ -51,7 +58,7 @@ const ACTIVITES_MOTS: Record<string, readonly string[]> = {
   yoga: ['yoga', 'asana'],
   meditation: ['meditation', 'meditating', 'meditate', 'mindfulness'],
   running: ['running', 'runner', 'runners', 'jogging', 'jogger', 'marathon', 'sprint'],
-  'strength-training': ['weightlifting', 'dumbbell', 'dumbbells', 'barbell', 'deadlift', 'squat', 'bodybuilding'],
+  'strength-training': ['weightlifting', 'weights', 'lifting', 'dumbbell', 'dumbbells', 'barbell', 'kettlebell', 'deadlift', 'squat', 'bodybuilding', 'bodybuilder', 'muscle', 'muscles', 'muscular'],
   cycling: ['cycling', 'cyclist', 'bicycle', 'bike', 'biking'],
   swimming: ['swimming', 'swimmer', 'swim'],
   boxing: ['boxing', 'boxer', 'punching'],
@@ -89,12 +96,54 @@ const DECORS_ACTIVITE: Record<string, readonly string[]> = {
   cooking: ['ville'],
   dance: ['salle'],
   workout: ['salle'],
+  'strength-training': ['salle'],
+  cardio: ['salle'],
+  boxing: ['salle'],
+  stretching: ['salle', 'paysage'],
   yoga: ['plage', 'paysage', 'soleil'],
   running: ['paysage', 'ville', 'plage'],
   cycling: ['paysage', 'ville', 'montagne'],
   swimming: ['mer', 'plage'],
   meditation: ['paysage', 'soleil', 'plage'],
 };
+
+/**
+ * Activités PHYSIQUES : un corps exposé y est le sujet même (torse en salle,
+ * danseur, nageur). Hors d'elles, un corps exposé est hors sujet.
+ */
+const ACTIVITES_PHYSIQUES: ReadonlySet<string> = new Set([
+  'workout', 'strength-training', 'cardio', 'dance', 'yoga', 'stretching', 'running', 'cycling', 'swimming', 'boxing',
+]);
+
+/**
+ * Corps EXPOSÉ (titres Pexels / Unsplash, anglais) : jamais posé
+ * automatiquement pour un sujet sans activité physique (« Motivation »,
+ * « Nutrition », « Voyage »…).
+ */
+const MOTS_CORPS_EXPOSE: ReadonlySet<string> = new Set([
+  'shirtless', 'topless', 'barechested', 'nude', 'naked', 'nudity', 'torso', 'torsos', 'abs', 'sixpack',
+  'lingerie', 'underwear', 'bra', 'panties', 'sensual', 'sexy', 'seductive', 'erotic', 'provocative',
+  'buttocks', 'butt', 'cleavage', 'seins', 'torse', 'nue',
+]);
+
+/** Le média montre-t-il un corps exposé ? (mots entiers de sa description) */
+export function corpsExpose(description: string): boolean {
+  return motsDe(description).some((m) => MOTS_CORPS_EXPOSE.has(m));
+}
+
+/** Mots de liaison ignorés quand le SUJET lui-même est cherché dans un titre. */
+const MOTS_VIDES: ReadonlySet<string> = new Set([
+  'avec', 'pour', 'dans', 'sans', 'mais', 'plus', 'tout', 'tous', 'toute', 'toutes', 'votre', 'notre', 'leur', 'leurs',
+  'cette', 'comment', 'faire', 'with', 'from', 'your', 'that', 'this', 'what', 'about',
+]);
+
+/** Les niveaux qu'une sélection AUTOMATIQUE peut poser (« limite » : une fois, règle du plan). */
+export function accepteAutomatiquement(niveau: NiveauPertinenceMedia): boolean {
+  return niveau === 'pertinent' || niveau === 'decor' || niveau === 'limite';
+}
+
+/** Message de l'écran quand la sélection automatique manque de médias pertinents. */
+export const MESSAGE_PEU_PERTINENTS = 'Peu de médias pertinents trouvés — ajoutez-en ou cherchez.';
 
 /** Activités voisines : un plat est « mentionné » par un script qui parle de repas. */
 const FAMILLES: Record<string, readonly string[]> = {
@@ -144,6 +193,12 @@ export interface ScenarioPertinence {
    * niveau `hors`, jamais un filtre. Absent : la règle d'avant.
    */
   abstraits?: Set<string>;
+  /**
+   * Mots du SUJET lui-même (≥ 4 lettres) : un titre qui le nomme (« business
+   * meeting » pour « Business ») l'illustre, même hors taxonomie. Absent :
+   * aucun mot retenu.
+   */
+  motsSujet?: Set<string>;
 }
 
 export function scenarioPertinence(e: {
@@ -155,7 +210,11 @@ export function scenarioPertinence(e: {
   const principales = lireConcepts(...e.sujets).activites;
   const lus = lireConcepts(...e.sujets, ...(e.textes ?? []));
   const abstraits = principales.size === 0 ? new Set(conceptsAbstraitsDe(...e.sujets).map((c) => c.id)) : new Set<string>();
-  return { principales, mentionnees: lus.activites, scenesMentionnees: lus.scenes, ...(abstraits.size ? { abstraits } : {}) };
+  const motsSujet = new Set(e.sujets.flatMap((t) => motsDe(t ?? '')).filter((m) => m.length >= 4 && !MOTS_VIDES.has(m)));
+  return {
+    principales, mentionnees: lus.activites, scenesMentionnees: lus.scenes,
+    ...(abstraits.size ? { abstraits } : {}), ...(motsSujet.size ? { motsSujet } : {}),
+  };
 }
 
 /** La description d'un média stock retenu : explicite, sinon le slug de sa page. */
@@ -175,25 +234,31 @@ export function descriptionMediaStock(m: { description?: string | null; sourceUr
 }
 
 /**
- * Le niveau d'un média pour un scénario. Sans activité principale reconnue
- * (sujet hors taxonomie) : `inconnu` — aucun filtrage (default safe).
+ * Le niveau d'un média pour un scénario. Rien du sujet reconnu dans la
+ * description (ou aucune description) : `inconnu` — jamais posé
+ * automatiquement (`accepteAutomatiquement`), seulement par un choix explicite.
  */
 export function pertinenceMedia(description: string, s: ScenarioPertinence): PertinenceMedia {
   const lu = lireConcepts(description);
   const activites = Array.from(lu.activites);
   const scenes = Array.from(lu.scenes);
-  if (s.principales.size === 0 && s.abstraits?.size && description.trim()) {
-    // Sujet abstrait : un média qui l'ILLUSTRE (indices du concept) passe devant,
-    // les autres restent « inconnu » à leur score d'avant — rien n'est exclu.
-    const mots = new Set(motsDe(description));
-    const abstraits = s.abstraits;
+  if (!description.trim()) return { niveau: 'inconnu', score: 0.5, activites, scenes };
+  const mots = new Set(motsDe(description));
+  // Corps exposé pour un sujet qui ne parle d'aucune activité physique : hors sujet.
+  const physique = Array.from(s.principales).concat(Array.from(s.mentionnees)).some((a) => ACTIVITES_PHYSIQUES.has(a));
+  if (!physique && corpsExpose(description)) return { niveau: 'hors', score: 0, activites, scenes };
+  if (s.principales.size === 0) {
+    // Sujet abstrait ou hors taxonomie : seul un média qui l'ILLUSTRE (indices
+    // du concept abstrait, mot du sujet, activité que la vidéo cite) est
+    // reconnu ; les autres restent « inconnu » — jamais posés automatiquement.
+    const abstraits = s.abstraits ?? new Set<string>();
     const indices = CONCEPTS_ABSTRAITS.filter((c) => abstraits.has(c.id))
       .flatMap((c) => c.indices.filter((i) => mots.has(i)));
-    const n = new Set(indices).size;
+    const n = new Set(indices).size + Array.from(s.motsSujet ?? []).filter((m) => mots.has(m)).length;
     if (n > 0) return { niveau: 'pertinent', score: Math.min(0.95, 0.75 + 0.1 * n), activites, scenes };
+    if (activites.some((a) => s.mentionnees.has(a))) return { niveau: 'pertinent', score: 0.7, activites, scenes };
     return { niveau: 'inconnu', score: 0.5, activites, scenes };
   }
-  if (s.principales.size === 0 || !description.trim()) return { niveau: 'inconnu', score: 0.5, activites, scenes };
   const decors = new Set(Array.from(s.principales).flatMap((a) => DECORS_ACTIVITE[a] ?? []));
   const scenesDuSujet = scenes.filter((x) => decors.has(x) || s.scenesMentionnees.has(x)).length;
   if (activites.some((a) => s.principales.has(a))) {
@@ -202,6 +267,10 @@ export function pertinenceMedia(description: string, s: ScenarioPertinence): Per
   // Activités génériques (entraînement, bien-être) seules : pas une autre activité.
   const autres = activites.filter((a) => a !== 'workout' && a !== 'wellness');
   if (autres.length === 0) {
+    // Un entraînement générique (« gym workout ») pour un sujet PHYSIQUE : le décor du sujet.
+    if (activites.includes('workout') && Array.from(s.principales).some((a) => ACTIVITES_PHYSIQUES.has(a))) {
+      return { niveau: 'decor', score: Math.min(0.8, 0.7 + 0.05 * scenesDuSujet), activites, scenes };
+    }
     if (scenesDuSujet > 0) return { niveau: 'decor', score: Math.min(0.8, 0.65 + 0.05 * scenesDuSujet), activites, scenes };
     return { niveau: 'inconnu', score: 0.4, activites, scenes };
   }

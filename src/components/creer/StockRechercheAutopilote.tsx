@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Check, Info, Loader2, Plus, Search, X } from 'lucide-react';
 import CarteMedia, { GrilleMedias } from '@/components/medias/CarteMedia';
 import { CREDIT_FOURNISSEURS, LIBELLES_ORIGINE, creditMedia, origineSuggeree } from '@/lib/medias/libelles';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import type { FormatStock, MediaStock, TypeStock } from '@/lib/stock/types';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
+import { accepteAutomatiquement, descriptionMediaStock, MESSAGE_PEU_PERTINENTS, pertinenceMedia, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
 
 /**
  * Rechercher et RETENIR des médias stock pour l'Autopilote — vidéos Pexels,
@@ -132,6 +133,17 @@ export default function StockRechercheAutopilote({
     setEnCours(false);
   }, [format]);
 
+  /**
+   * AFFICHAGE SEUL (#613) : aucun résultat dont le contenu soit reconnu du
+   * sujet → on le dit. Rien n'est masqué ni réordonné : la recherche libre
+   * reste le choix de l'utilisateur.
+   */
+  const peuPertinents = useMemo(() => {
+    if (!resultats || resultats.length === 0) return false;
+    const scenario = scenarioPertinence({ sujets: [sujet] });
+    return !resultats.some((m) => accepteAutomatiquement(pertinenceMedia(m.description || descriptionMediaStock(m), scenario).niveau));
+  }, [resultats, sujet]);
+
   const retenir = useCallback(async (m: MediaStock) => {
     const cle = cleMediaStock(m);
     let url = m.fichierUrl;
@@ -209,6 +221,11 @@ export default function StockRechercheAutopilote({
       {message && (
         <p className="flex items-start gap-1.5 text-[11px] text-gray-400" data-autopilot-stock-recherche-message>
           <Info className="w-3 h-3 mt-0.5 shrink-0" /> {message}
+        </p>
+      )}
+      {peuPertinents && (
+        <p className="flex items-start gap-1.5 text-[11px] text-amber-300" data-autopilot-stock-recherche-peu-pertinents>
+          <Info className="w-3 h-3 mt-0.5 shrink-0" /> {MESSAGE_PEU_PERTINENTS}
         </p>
       )}
       {resultats && resultats.length > 0 && (
