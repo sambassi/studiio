@@ -7,7 +7,8 @@
  * pas affiché (#499). Et le CTA saisi dans le brief n'apparaissait pas.
  *
  * Ici, deux règles PURES, appelées par le Wizard avant toute réservation :
- *  - chaque carte doit être complète (titre + valeur) et avoir sa fenêtre ;
+ *  - chaque carte doit avoir un titre (la valeur est facultative : jamais de
+ *    chiffre inventé) et sa fenêtre ;
  *  - le CTA du brief, s'il est rempli, est l'action finale réellement rendue.
  */
 import { badgeValide } from '@/lib/creer/surimpressions-mise-en-page';

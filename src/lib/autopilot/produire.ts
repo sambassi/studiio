@@ -31,7 +31,8 @@ import { appliquerMiseEnPageSurimpression } from '@/lib/creer/surimpressions-mis
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
-import { avatarActifConfig, mediasDesSources, sourcesEffectives, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
+import { avatarActifConfig, mediasDesSources, sourcesEffectives, sujetsCourants, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
+import { narrationDesSurimpressions, pertinencesPourPlan, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
 import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
 import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
@@ -695,16 +696,32 @@ export async function produireUnMontage(input: {
       rushes: listeRushs.length,
       stock: videosOk.length + photosOk.length,
     }, { dureeSecondes: postUtilise.brief?.duree, rythme: postUtilise.brief?.rythme });
+    // PERTINENCE DE CONTENU (`pertinence-medias.ts`) : chaque média stock est
+    // lu contre le scénario de CETTE vidéo (sujet, brief, titre, cartes) —
+    // hors sujet jamais pioché, « limite » une fois, le plus pertinent ouvre.
+    const cartesPost = post.content?.cards ?? [];
+    const scenario = scenarioPertinence({
+      sujets: [...sujetsCourants(config), postUtilise.brief?.objectif ?? null],
+      textes: [post.title, post.content?.subtitle ?? null, postUtilise.brief?.message ?? null, postUtilise.brief?.cta ?? null,
+        ...cartesPost.flatMap((c) => [c.title ?? null, c.description ?? null])],
+    });
+    const pertinences = pertinencesPourPlan(sourcesCfg.sources.stock.filter((m) => videosOk.includes(m.url) || photosOk.includes(m.url)), scenario);
     let res: ReturnType<typeof planMultiSources>;
     if (jumeauActif) {
       // ── AVATAR + autres sources : la séquence dure la PAROLE de l'avatar,
       // textes en SURIMPRESSION (aucun raccord avant la vidéo : la voix et
       // l'image de l'avatar partent ensemble, à 0).
       const T = jumeauSeconds && jumeauSeconds > 0 ? jumeauSeconds : (designBase.videoDuration ?? 0);
+      // La narration (titre, cartes) sur la parole : un plan de coupe posé
+      // pendant une carte préfère le média qui montre ce qu'elle dit.
+      const narration = narrationDesSurimpressions(planOverlays({
+        duree: T, profil: profilVideo, nbCartes: designBase.cards?.length ?? 0,
+        finHook: Math.min(4, Math.max(2, T * 0.2)), voix: { video: T },
+      }), { titre: post.title, cartes: designBase.cards ?? [] });
       res = planMultiSources({
         avatar: { url: jumeauVideoUrl as string, secondes: T },
         rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
-        gabarit, cible: T,
+        gabarit, cible: T, pertinences, narration,
         options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
       });
       enSurimpression = true;
@@ -737,7 +754,7 @@ export async function produireUnMontage(input: {
       rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
       res = planMultiSources({
         rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
-        gabarit, cible,
+        gabarit, cible, pertinences,
         options: { rythme: rythmeVideo, contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
       });
       if (res.plan.length && enSurimpression) {
@@ -854,7 +871,9 @@ export async function produireUnMontage(input: {
   // Le CTA d'action (`cta-action.ts`) porte déjà panneau, teinte et échelle :
   // la mise en page les repose elle-même depuis les réglages de l'utilisateur.
   if (overlays) design = sansLisibiliteCtaAction(design, configUtilisee.designStyle?.cta?.scale);
-  if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande });
+  // Avatar : cartes et CTA SOUS le menton, jamais sur la bouche (`ZONE_TEXTE_AVATAR_916`).
+  const surAvatar = !!planMontageRushs?.some((x) => x.kind === 'avatar');
+  if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande, avatar: surAvatar });
   // QUALITY GATE (#504) — le MÊME contrôle que Créer. Sans utilisateur à qui
   // répondre, il est journalisé et écrit en métadonnées, jamais caché.
   const qualiteMontage = planMontageRushs

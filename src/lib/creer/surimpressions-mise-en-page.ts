@@ -320,25 +320,49 @@ export interface DesignSurimpression {
  */
 export function appliquerMiseEnPageSurimpression<T extends object>(
   design: T, profil: string | null | undefined,
-  options: { ctaBande?: BandeCta | null; format?: DesignFormat | null } = {},
+  options: {
+    ctaBande?: BandeCta | null; format?: DesignFormat | null;
+    /**
+     * Textes posés sur un AVATAR (présentateur en buste) : cartes et CTA dans
+     * la bande SOUS le menton (`ZONE_TEXTE_AVATAR_916`), CTA jamais remonté
+     * en haut (il tomberait sur les yeux). Absent : la mise en page d'avant.
+     */
+    avatar?: boolean;
+  } = {},
 ): T {
   const d = design as DesignSurimpression & { format?: string | null };
   const format = options.format ?? d.format;
   if (format === '16:9' || format === '1:1') return appliquerMiseEnPageLarge(design, profil, format);
-  const m = miseEnPageDuProfil(profil, {
-    ctaBande: options.ctaBande, format: '9:16',
+  const surAvatar = options.avatar === true;
+  const m0 = miseEnPageDuProfil(profil, {
+    ctaBande: surAvatar ? 'bas' : options.ctaBande, format: '9:16',
     cta: { texte: d.ctaText ?? '', sousTexte: d.ctaSubText ?? null, echelle: d.ctaScale ?? 1 },
   });
+  // Avatar : la carte commence SOUS le menton (même largeur, même hauteur).
+  const m = surAvatar
+    ? { ...m0, carte: { ...m0.carte, y: Math.round(((ZONE_TEXTE_AVATAR_916.haut - CADRE.y) / CADRE.h) * 1000) / 10 }, ctaPos: { x: 50, y: ZONE_TEXTE_AVATAR_916.bas } }
+    : m0;
   // Accroche bornée en hauteur (#502) — la MÊME règle que Créer.
   const accroche = ajusterAccroche({
     titre: d.title ?? '', sousTitre: d.subtitle ?? null,
     echelleTitre: (d.titleScale ?? 1) * m.titleScale, echelleSousTitre: (d.subtitleScale ?? 1) * m.subtitleScale,
     largeur: 1080, hauteur: 1920, ratioTitre: FONT_RATIO['9:16'].title, ratioSousTitre: FONT_RATIO['9:16'].subtitle,
   });
-  const ctaEchelle = ajusterCta({
+  let ctaEchelle = ajusterCta({
     texte: d.ctaText ?? '', sousTexte: d.ctaSubText ?? null, echelle: (d.ctaScale ?? 1) * m.ctaScale, largeur: 1080,
     ratioTexte: FONT_RATIO['9:16'].cta, ratioSousTexte: FONT_RATIO['9:16'].ctaSub, panneau: true,
   });
+  if (surAvatar) {
+    // Le panneau du CTA tient dans la bande sous le menton : jamais sur la bouche.
+    const R = FONT_RATIO['9:16'];
+    const plafond = ((ZONE_TEXTE_AVATAR_916.bas - ZONE_TEXTE_AVATAR_916.haut) / 100) * 1920;
+    const plancher = Math.min(ctaEchelle, 34 / (1080 * R.ctaSub));
+    const haut = (e: number) => hauteurCta({
+      texte: d.ctaText ?? '', sousTexte: d.ctaSubText ?? CTA_SOUS_TEXTE_DEFAUT, echelle: e, largeur: 1080,
+      partLargeur: TEXT_LAYOUT.ctaWidth / 100, ratioTexte: R.cta, ratioSousTexte: R.ctaSub,
+    });
+    while (ctaEchelle > plancher && haut(ctaEchelle) > plafond) ctaEchelle = Math.max(plancher, ctaEchelle * 0.95);
+  }
   return {
     ...design,
     titlePos: m.titlePos,
@@ -380,6 +404,16 @@ export interface Ellipse { cx: number; cy: number; rx: number; ry: number }
  * (16:9 : x 41,5–58,5 %, y 13–47 % ; 1:1 : x 37–63 %, y 13–43 % ;
  * 9:16 : x 33–67 %, y 17–39 %) avec une marge pour les formats larges.
  */
+/**
+ * 9:16, textes posés sur l'AVATAR : la bande SOUS le menton (% de la hauteur).
+ * Mesuré sur la vidéo HeyGen de production (présentateur en buste, plein
+ * cadre) : yeux ≈ 30 %, bouche ≈ 50 %, menton ≈ 58–60 % — plus bas que la
+ * mire de `ZONE_VISAGE`. Les cartes et le panneau du CTA restent entre 64 %
+ * et 76 % (bas du CTA : `CTA_BAS_916`, au-dessus des descriptions des
+ * réseaux) : jamais sur la bouche ni le menton.
+ */
+export const ZONE_TEXTE_AVATAR_916 = { haut: 64, bas: 76 } as const;
+
 export const ZONE_VISAGE: Record<DesignFormat, Ellipse> = {
   '9:16': { cx: 50, cy: 28, rx: 17, ry: 11 },
   '16:9': { cx: 50, cy: 30, rx: 10, ry: 20 },
@@ -609,9 +643,13 @@ export function couvertureVisage(b: BoiteImage, e: Ellipse): number {
 // en surimpression), plus il se réduisait — jusqu'à « … » seul (mesuré dans
 // Chromium : 57 px pour « OS RENFORCÉS » à l'échelle 3,5).
 
-/** Un badge s'affiche seulement s'il a un TITRE et une VALEUR. */
+/**
+ * Un badge s'affiche s'il a un TITRE (#499 : jamais une valeur seule). La
+ * VALEUR est facultative : sans chiffre soutenu par l'utilisateur
+ * (`chiffres-sources.ts`), la carte est un titre avec son icône.
+ */
 export function badgeValide(c: { title?: string | null; value?: string | null } | null | undefined): boolean {
-  return !!c && !!(c.title ?? '').trim() && !!(c.value ?? '').trim();
+  return !!c && !!(c.title ?? '').trim();
 }
 
 /**

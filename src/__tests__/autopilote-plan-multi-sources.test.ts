@@ -176,9 +176,16 @@ describe('planMultiSources — gabarit (choix explicites de l’utilisateur)', (
       { id: 'a', type: 'avatar' }, { id: 'b', type: 'stock' }, { id: 'c', type: 'rush' }, { id: 'd', type: 'avatar' },
     ] }));
     verifierContigu(r.plan, 20);
-    expect(r.plan.map((s) => s.kind === 'avatar' ? 'avatar' : s.source)).toEqual(['avatar', 'stock', 'rush', 'avatar']);
+    // Les morceaux d'avatar contigus (changements de cadre, `cadrerAvatar`) forment un seul créneau.
+    const blocs = r.plan.filter((s, i) => !(s.kind === 'avatar' && r.plan[i + 1]?.kind === 'avatar'));
+    expect(blocs.map((s) => s.kind === 'avatar' ? 'avatar' : s.source)).toEqual(['avatar', 'stock', 'rush', 'avatar']);
     // Accroche 4 s, plans de coupe de 4 s, l'avatar conclut (CTA).
-    expect(r.plan.map((s) => s.fin)).toEqual([4, 8, 12, 20]);
+    expect(blocs.map((s) => s.fin)).toEqual([4, 8, 12, 20]);
+    // Conclusion de 8 s : recoupée en changeant de cadre, le CTA garde le cadre d'origine.
+    const fin = r.plan.filter((s) => s.debut >= 12);
+    expect(fin.length).toBeGreaterThan(1);
+    expect(fin.at(-1)!.cadrage).toBeUndefined();
+    expect(fin.some((s) => (s.cadrage ?? 1) > 1)).toBe(true);
     expect(avatarSynchronise(r.plan)).toBe(true);
   });
 

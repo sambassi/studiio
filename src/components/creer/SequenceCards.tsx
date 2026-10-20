@@ -371,9 +371,11 @@ export default function SequenceCards({
               </span>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 auto' }}>
-              <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
-                {c.value}
-              </span>
+              {c.value && (
+                <span data-card-value style={{ fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400), fontSize: vw * CR.value * ech, lineHeight: 1.05, whiteSpace: 'nowrap', color: valueColor, ...styleTexte(vw * CR.value * ech) }}>
+                  {c.value}
+                </span>
+              )}
               <span style={{
                 fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
                 color: '#FFFFFF', fontSize: vw * CR.text * ech, lineHeight: 1.1,

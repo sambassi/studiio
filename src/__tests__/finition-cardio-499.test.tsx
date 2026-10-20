@@ -51,7 +51,8 @@ describe('badges : toujours TITRE + VALEUR', () => {
     expect(CARTES.every(badgeValide)).toBe(true);
     expect(badgeValide({ title: '', value: '-76%' })).toBe(false);
     expect(badgeValide({ title: '  ', value: '-76%' })).toBe(false);
-    expect(badgeValide({ title: 'RISQUE RÉDUIT', value: '' })).toBe(false);
+    // Valeur facultative : sans chiffre soutenu, la carte reste un titre (aucun chiffre inventé).
+    expect(badgeValide({ title: 'RISQUE RÉDUIT', value: '' })).toBe(true);
   });
 
   it('BADGES_TOTAL 5 × 6 échelles : chaque badge rendu porte son titre ET sa valeur, sans ellipse', () => {

@@ -85,6 +85,12 @@ export interface RushSegment {
   /** Mouvement Ken Burns d'une photo (`kind: 'image'`). Absent : zoom avant. */
   mouvement?: MouvementImage;
   /**
+   * AVATAR (`kind: 'avatar'`) : cadrage du plan, en échelle (1,15 = plan
+   * moyen, 1,3 = plan serré), zoom centré sur `ORIGINE_CADRAGE_AVATAR`.
+   * Absent : le cadre d'origine (le rendu d'avant).
+   */
+  cadrage?: number;
+  /**
    * M3-a (mode passages de `planMontage` SEULEMENT, absent sinon) : le passage
    * du rush dont l'extrait est tiré, et ses motifs de bornes.
    */
@@ -94,6 +100,14 @@ export interface RushSegment {
 }
 
 export type KindSegment = 'video' | 'avatar' | 'image';
+/**
+ * Centre du zoom de cadrage de l'avatar (% de l'image) : la ligne du menton
+ * d'un présentateur cadré en buste (mesuré sur la vidéo HeyGen 9:16 : yeux
+ * ≈ 30 %, bouche ≈ 50 %, menton ≈ 58 %). Zoomer depuis ce point garde la
+ * bouche et le menton fixes et sous le texte du haut ; les textes du bas
+ * (cartes, CTA) restent sous le menton.
+ */
+export const ORIGINE_CADRAGE_AVATAR = { x: 50, y: 58 } as const;
 export type SourceSegment = 'rush' | 'stock' | 'jumeau' | 'photo';
 export type MouvementImage = 'zoomIn' | 'zoomOut' | 'panG' | 'panD';
 const KINDS: readonly KindSegment[] = ['video', 'avatar', 'image'];

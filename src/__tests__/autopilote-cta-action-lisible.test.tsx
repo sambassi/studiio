@@ -139,7 +139,7 @@ describe('surimpression : la mise en page #502 n\'applique pas la lisibilité de
     const p = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/produire.ts'), 'utf8');
     const i = p.indexOf('if (overlays) design = sansLisibiliteCtaAction(');
     expect(i).toBeGreaterThan(0);
-    expect(i).toBeLessThan(p.indexOf('if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande });'));
+    expect(i).toBeLessThan(p.indexOf('if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande, avatar: surAvatar });'));
   });
 });
 
