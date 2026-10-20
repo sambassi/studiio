@@ -20,7 +20,7 @@
  */
 
 import { themeLabel } from '@/lib/themes';
-import { descriptionMediaStock, pertinenceMedia, scenarioPertinence, type PertinenceMedia } from '@/lib/autopilot/pertinence-medias';
+import { accepteAutomatiquement, descriptionMediaStock, pertinenceMedia, scenarioPertinence, type PertinenceMedia } from '@/lib/autopilot/pertinence-medias';
 
 export interface SourcesActives {
   /** Mes rushes personnels (la banque `rush_urls`, hors médias stock importés). */
@@ -294,12 +294,24 @@ export function mediasDesSources(c: ConfigPourSources): { rushesPersonnels: stri
   // Les rushes PERSONNELS ne sont jamais filtrés par sujet.
   const rushesPersonnels = sources.actives.rushes ? banque.filter((u) => !estRushStock(u)) : [];
   if (!sources.actives.stock) return { rushesPersonnels, videosStock: [], photosStock: [] };
-  // ── PERTINENCE : le sujet du média retenu contre le sujet courant ──────
-  //   - même sujet : en premier ;
-  //   - sujet inconnu (retenu avant ce champ, ou import ancien de la banque) :
-  //     après, et seulement s'il n'existe AUCUN média du sujet courant ;
-  //   - autre sujet : jamais pioché automatiquement.
-  // Un média FORCÉ dans le plan (choix explicite) reste toujours disponible.
+  // ── PERTINENCE (#613) — « inconnu » n'est JAMAIS posé automatiquement ──
+  //   - CHOIX EXPLICITE pour ce sujet : un média retenu pendant que ce sujet
+  //     était le sujet courant (« Conserver », « Retenir », recherche d'une
+  //     ligne du plan — `retenirStock` note `sujet`) est respecté, sauf
+  //     contenu hors sujet ;
+  //   - un média FORCÉ dans le plan (gabarit) reste toujours disponible ;
+  //   - retenu SANS sujet noté (avant ce champ) : son CONTENU décide —
+  //     `pertinent` / `decor` / `limite` : du sujet ; une description qui ne
+  //     dit RIEN du sujet : jamais pioché (le torse nu d'une vidéo
+  //     « Motivation ») ;
+  //   - AUCUNE description lisible (fiche ancienne, import ancien de la
+  //     banque) : impossible à juger — c'est un « Conserver » de l'utilisateur,
+  //     gardé comme avant, après le sujet et seulement s'il n'existe AUCUN
+  //     média du sujet courant (une configuration « stock seul » ancienne
+  //     continue de produire) ;
+  //   - autre sujet noté : jamais pioché automatiquement.
+  // Moins de médias pertinents = moins de plans de coupe : l'avatar et les
+  // rushes personnels tiennent plus longtemps (mieux qu'un plan hors sujet).
   // Sans sujets connus (`topics`/`brief` absents) : aucun filtre, l'ordre seul.
   const filtrer = c.topics !== undefined || c.brief !== undefined;
   const sujets = new Set(sujetsCourants(c).map(cleSujet));
@@ -307,16 +319,16 @@ export function mediasDesSources(c: ConfigPourSources): { rushesPersonnels: stri
   // ── CONTENU (`pertinence-medias.ts`) : le sujet noté au clic ne suffit pas
   // — il vaut le sujet du MOMENT de la recherche, pas ce que montre le média
   // (un plat trouvé pendant une recherche « voyage » était noté « Voyage »).
-  // La description du média (titre de sa page Pexels / Unsplash) est lue :
-  //   - autre activité, que le sujet et le brief ne mentionnent pas : hors sujet ;
-  //   - activité ou décor du sujet : du sujet, même retenu sans sujet noté.
-  // Sujet hors taxonomie, média sans description : la règle du sujet noté seule.
+  // La description du média (titre de sa page Pexels / Unsplash) est lue.
   const pertinence = pertinenceDesRetenus(c, sources.stock);
   const statut = (m: MediaStockRetenu | undefined): 'sujet' | 'inconnu' | 'hors' => {
     if (!m || !filtrer) return 'inconnu';
     const p = pertinence.get(m.url);
     if (p?.niveau === 'hors') return 'hors';
-    if (!m.sujet) return p && (p.niveau === 'pertinent' || p.niveau === 'decor') ? 'sujet' : 'inconnu';
+    if (!m.sujet) {
+      if (p && accepteAutomatiquement(p.niveau)) return 'sujet';
+      return descriptionMediaStock(m) ? 'hors' : 'inconnu';
+    }
     return sujets.has(cleSujet(m.sujet)) ? 'sujet' : 'hors';
   };
   const dansLeSujet = sources.stock.some((m) => statut(m) === 'sujet');

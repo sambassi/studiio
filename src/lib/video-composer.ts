@@ -684,7 +684,7 @@ export interface ComposerOptions {
    * dégradé par-dessus — la même composition qu'une affiche, et que l'aperçu
    * (`fondRushTexte` du plateau). Absent : fond d'avant (dégradé).
    */
-  fondRushTexte?: { intro?: { url: string; depuis?: number } | null; cta?: { url: string; depuis?: number } | null } | null;
+  fondRushTexte?: { intro?: { url: string; depuis?: number; jusqua?: number } | null; cta?: { url: string; depuis?: number; jusqua?: number } | null } | null;
   /**
    * SURIMPRESSIONS (profils dynamiques, Créer = Autopilote) : titre, cartes
    * et CTA posés SUR le rush, pendant leurs fenêtres (`planOverlays`). Les
@@ -4438,7 +4438,13 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Fonds en mouvement Titre / CTA (`fondRushTexte`) : un lecteur muet par
   // séquence, peint chaque image dans un calque à la taille de la vidéo
   // (couverture + assombrissement), que `pickSeqBg` sert comme une affiche.
-  const fondsTexte = new Map<string, { el: HTMLVideoElement; url: string; depuis: number; calque: HTMLCanvasElement; pret: boolean; seq: { type: string; duration: number } }>();
+  const fondsTexte = new Map<string, {
+    el: HTMLVideoElement; url: string; depuis: number; calque: HTMLCanvasElement; pret: boolean; seq: { type: string; duration: number };
+    /** #613 — extraits DANS la plage propre (double tampon) quand elle est plus courte que la séquence. */
+    plan: Array<{ el: HTMLVideoElement; debut: number; fin: number; depuis: number }>;
+    /** Lecteurs à libérer (le second tampon compris). */
+    els: HTMLVideoElement[];
+  }>();
   for (const type of ['intro', 'cta'] as const) {
     const f = options.fondRushTexte?.[type];
     const seq = sequences.find((x) => x.type === type);
@@ -4446,14 +4452,35 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const el = await loadVideo(f.url).catch((err) => { console.warn('[Composer] Fond en mouvement indisponible :', f.url.substring(0, 60), err?.message); return null; });
     if (!el) continue;
     el.muted = true;
+    const dureeEl = Number.isFinite(el.duration) ? el.duration : null;
+    const calque = document.createElement('canvas');
+    calque.width = width; calque.height = height;
+    // #613 — plage PROPRE connue (`jusqua`, `plansPropres`) : le fond ne joue que [depuis, jusqua].
+    // Démo « LE SPORT » : le CTA partait dans l'image figée du 3e rush (gel 0,27 s + flash) et le
+    // Titre rebouclait sur le reste d'un autre plan. Plage plus courte que la séquence : elle est
+    // REJOUÉE depuis son début par un second lecteur préparé à l'avance (double tampon, comme les
+    // coupes de la séquence Vidéo) — jamais un repositionnement qui fige l'image.
+    if (typeof f.jusqua === 'number' && f.jusqua > (f.depuis ?? 0) + 0.3) {
+      el.loop = false;
+      const depuis = Math.max(0, Math.min(f.depuis ?? 0, dureeEl !== null ? dureeEl - 0.3 : Infinity));
+      const L = Math.max(0.3, Math.min(f.jusqua, dureeEl ?? f.jusqua) - depuis - 0.05);
+      const els = [el];
+      if (L < seq.duration - 0.05) {
+        const second = await loadVideo(f.url).catch(() => null);
+        if (second) { second.muted = true; second.loop = false; els.push(second); }
+      }
+      const plan: Array<{ el: HTMLVideoElement; debut: number; fin: number; depuis: number }> = [];
+      for (let k = 0, t = 0; t < seq.duration - 1e-6; k++, t += L) {
+        plan.push({ el: els[k % els.length], debut: t, fin: Math.min(seq.duration, t + L), depuis });
+      }
+      fondsTexte.set(type, { el, url: f.url, depuis, calque, pret: false, seq, plan, els });
+      continue;
+    }
     // Rush plus court que la séquence (démo : 4 s pour un Titre de 6 s) : il
     // boucle, comme dans l'aperçu (`loop`) — jamais une image figée.
     el.loop = true;
-    const dureeEl = Number.isFinite(el.duration) ? el.duration : null;
     const depuis = dureeEl !== null ? Math.min(Math.max(0, f.depuis ?? 0), Math.max(0, dureeEl - Math.min(seq.duration, dureeEl) - 0.05)) : Math.max(0, f.depuis ?? 0);
-    const calque = document.createElement('canvas');
-    calque.width = width; calque.height = height;
-    fondsTexte.set(type, { el, url: f.url, depuis, calque, pret: false, seq });
+    fondsTexte.set(type, { el, url: f.url, depuis, calque, pret: false, seq, plan: [{ el, debut: 0, fin: seq.duration, depuis }], els: [el] });
   }
   /** Peint l'image courante du lecteur dans le calque (couverture, assombri 35 %). */
   const peindreFondTexte = (type: string, el: HTMLVideoElement | null) => {
@@ -5221,7 +5248,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Lecteurs des fonds en mouvement (`loop`) : arrêtés et vidés à CHAQUE
   // fin — normale, erreur, abandon — en même temps que l'étalonneur (les
   // mêmes appels `onstop` / `onerror` / `.finally`). Idempotent.
-  const libererEtalonneur = () => { lutGrader?.dispose(); libererLecteurs(Array.from(fondsTexte.values(), (f) => f.el)); fondsTexte.clear(); };
+  const libererEtalonneur = () => { lutGrader?.dispose(); libererLecteurs(Array.from(fondsTexte.values(), (f) => f.els).flat()); fondsTexte.clear(); };
 
   // ═══════════════════════════════════════════════════════════
   // UNIFIED MODE: Both with and without audio use the same render loop.
@@ -5631,7 +5658,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     if (piloteCartes) piloteCartes.prepositionner();
     // Fonds en mouvement : un pilote par séquence (Titre / CTA), prépositionné.
     const pilotesFond = new Map(Array.from(fondsTexte.entries()).map(([type, f]) => {
-      const pf = creerPiloteMontage([{ el: f.el, debut: 0, fin: f.seq.duration, depuis: f.depuis }]);
+      const pf = creerPiloteMontage(f.plan);
       pf.prepositionner();
       return [type, pf] as const;
     }));

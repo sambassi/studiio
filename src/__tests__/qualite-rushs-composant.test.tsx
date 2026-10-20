@@ -160,7 +160,7 @@ describe('Créer — câblage minimal', () => {
     expect(aw).toContain('const a = await analyserRushMemo(rushsDurables[i].url, (f) =>');
     expect(aw).not.toMatch(/await analyserRush\(/);
     // M3-a PR3 : calcul déplacé dans `preparerPlanMontage`, qui ne reçoit que les analyses (jamais le diagnostic).
-    expect(readFileSync('src/lib/creer/preparer-plan-montage.ts', 'utf8')).toContain('plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
+    expect(readFileSync('src/lib/creer/preparer-plan-montage.ts', 'utf8')).toContain('plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, rushApres: entree.rushApres });');
     expect(readFileSync('src/lib/creer/preparer-plan-montage.ts', 'utf8')).not.toMatch(/qualite/i);
     const panneau = readFileSync('src/components/creer/QualiteRushs.tsx', 'utf8');
     expect(panneau).toContain('return analyserRushMemo(url, undefined, { borne: true });');
