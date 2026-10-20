@@ -372,7 +372,8 @@ export default function SequenceCards({
         {badge ? (
           <>
             {aj?.icone !== false && (
-              <span style={{ flexShrink: 0, display: 'flex' }}>
+              // L'icône (SVG) n'hérite pas du `text-shadow` : même contour en filtre.
+              <span style={{ flexShrink: 0, display: 'flex', filter: `drop-shadow(0 0 ${Math.max(0.5, Math.round((vw / 1080) * 15) / 10)}px rgba(0,0,0,0.55))` }}>
                 <CardIcon name={c.icon} size={Math.round(vw * CR.icon * ech)} color="#FFFFFF" className="" />
               </span>
             )}

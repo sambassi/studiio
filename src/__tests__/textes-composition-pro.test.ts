@@ -23,7 +23,7 @@ import { planOverlays } from '@/lib/creer/overlays';
 import { carteSansChiffresInventes, chiffresAutorises, valeurRedondante } from '@/lib/contenu/chiffres-sources';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
-  alphaDuFond, contrasteSurVoile, estVoile, VOILE_TEXTE_ALPHA_MAX,
+  alphaDuFond, contrasteSurVoile, estVoile, haloTexteCss, FOND_TEXTE_SUR_IMAGE, VOILE_TEXTE_ALPHA_MAX,
 } from '@/lib/creer/contraste';
 import { FOND_CARTE_SUR_RUSH } from '@/lib/creer/capture-etapes-cartes';
 import { eclaircir } from '@/lib/creer/surimpressions-mise-en-page';
@@ -203,17 +203,36 @@ describe('Valeur de carte qui redit le libellé : vidée', () => {
 });
 
 // ── 4. LISIBILITÉ DISCRÈTE ────────────────────────────────────────────────
-describe('Contraste discret : voile local + halo, plus de pavé opaque', () => {
+describe('Contraste discret : contour fin + ombre serrée, plus de pavé ni de tache', () => {
   const m = miseEnPageSurimpression('CARDIO_DANCE')!;
-  it('fonds des cartes et du CTA : voiles en dégradé, alpha ≤ 0,35', () => {
+  it('par défaut : aucun aplat derrière cartes et CTA (texte sur l\'image)', () => {
     for (const f of [m.carteFond, m.ctaFond, FOND_CARTE_SUR_RUSH]) {
-      expect(estVoile(f)).toBe(true);
-      expect(alphaDuFond(f)).toBeLessThanOrEqual(VOILE_TEXTE_ALPHA_MAX);
+      expect(f).toBe(FOND_TEXTE_SUR_IMAGE);
+      expect(alphaDuFond(f)).toBe(0);
     }
   });
-  it('contraste au bord des lettres, pire plan (blanc) : texte blanc et ligne d\'action ≥ 4,5:1', () => {
-    expect(contrasteSurVoile('#FFFFFF')).toBeGreaterThanOrEqual(4.5);
-    expect(contrasteSurVoile(eclaircir('#EC4899', m.ctaActionEclaircie)!)).toBeGreaterThanOrEqual(4.5);
+  it('voile seulement sur fond clair ET chargé, discret (alpha ≤ 0,22)', () => {
+    const avec = (fondTexte: { clair?: boolean; charge?: boolean }) =>
+      appliquerMiseEnPageSurimpression({ title: 'X', ctaText: 'GO' } as never, 'STANDARD', { fondTexte }) as { ctaBackground: string; cardBackground: string };
+    expect(avec({ clair: true, charge: false }).ctaBackground).toBe(FOND_TEXTE_SUR_IMAGE);
+    expect(avec({ clair: false, charge: true }).cardBackground).toBe(FOND_TEXTE_SUR_IMAGE);
+    const v = avec({ clair: true, charge: true });
+    for (const f of [v.ctaBackground, v.cardBackground]) {
+      expect(estVoile(f)).toBe(true);
+      expect(alphaDuFond(f)).toBeLessThanOrEqual(VOILE_TEXTE_ALPHA_MAX);
+      expect(VOILE_TEXTE_ALPHA_MAX).toBeLessThanOrEqual(0.22);
+    }
+  });
+  it('contour : 2 px à 1080, alpha 0,55, quatre directions + une ombre douce', () => {
+    const h = haloTexteCss(1080);
+    expect(h.match(/rgba\(0,0,0,0\.55\)/g)).toHaveLength(4);
+    expect(h).toContain('2px 0 1px');
+  });
+  it('contraste au bord des lettres, pire plan (blanc), avec ou sans voile : texte blanc et ligne d\'action ≥ 4,5:1', () => {
+    for (const voile of [0, VOILE_TEXTE_ALPHA_MAX]) {
+      expect(contrasteSurVoile('#FFFFFF', voile)).toBeGreaterThanOrEqual(4.5);
+      expect(contrasteSurVoile(eclaircir('#EC4899', m.ctaActionEclaircie)!, voile)).toBeGreaterThanOrEqual(4.5);
+    }
   });
   it('ombre du titre : un contour dense (alpha ≥ 0,5), plus l\'ombre invisible d\'avant (0,1)', () => {
     const alphas = Array.from(titleShadow(1080).matchAll(/rgba\(0,0,0,([\d.]+)\)/g)).map((x) => Number(x[1]));

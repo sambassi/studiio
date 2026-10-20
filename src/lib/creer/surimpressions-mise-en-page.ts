@@ -18,7 +18,7 @@
  */
 import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
 import { FONT_RATIO, TEXT_LAYOUT, VIDEO_SIZE, CARDS_FRAME, cardRatios, type DesignFormat } from '@/lib/creer/designSpec';
-import { voileLocal } from '@/lib/creer/contraste';
+import { FOND_TEXTE_SUR_IMAGE, fondTexteSurImage } from '@/lib/creer/contraste';
 import { ZONE_SURE_916, ctaBasPourBandeHaute916, chassePolice, enCapitales, echelleMaxMot, lignesRepliees } from '@/lib/creer/zones-sures-916';
 
 export interface BoiteCarte { x: number; y: number; w: number; h: number }
@@ -33,11 +33,11 @@ export interface MiseEnPageSurimpression {
   /** Emplacement de LA carte affichée, en % du cadre des cartes (`CARDS_FRAME`). */
   carte: BoiteCarte;
   carteScale: number;
-  /** Fond du cadre de la carte (lisibilité sur un rush clair) : voile local en dégradé (`voileLocal`). */
+  /** Fond du cadre de la carte : transparent (contour des glyphes), ou voile discret sur fond clair et chargé. */
   carteFond: string;
   /** Part de blanc mêlée à la couleur d'accent de la valeur (lisible sur le fond sombre). */
   valeurEclaircie: number;
-  /** #502 — voile local derrière le CTA (lisibilité sur n'importe quel plan, `voileLocal`). */
+  /** #502 — fond du CTA : transparent (contour des glyphes), ou voile discret sur fond clair et chargé. */
   ctaFond: string;
   /** #502 — part de blanc mêlée à la couleur de la ligne d'action, sur ce panneau. */
   ctaActionEclaircie: number;
@@ -67,15 +67,15 @@ const DYNAMIQUE: MiseEnPageSurimpression = {
   // occupe le bas-gauche de ce cadre (≈ 64 %–75 % de l'image).
   carte: { x: 0, y: 72, w: 100, h: 22 },
   carteScale: 1.6,
-  // Contraste DISCRET (`contraste.ts`) : voile local léger (alpha ≤ 0,35,
-  // transparent vers ses bords) + halo serré autour des glyphes, à la place
-  // des pavés opaques d'avant (0,55 / 0,6 : « rectangle gris opaque sur la
-  // poitrine », MP4 du 20/10). Contraste mesuré dans le PIRE cas (plan blanc
-  // derrière, bord des lettres sur le halo) : titre blanc ≈ 14:1, ligne
-  // d'action éclaircie ≥ 4,5:1 (`contrasteSurVoile`).
-  carteFond: voileLocal('lineaire'),
+  // Texte posé SUR l'image (`contraste.ts`) : aucun aplat — contour fin
+  // sombre + ombre serrée autour des glyphes, à la place des pavés opaques
+  // d'avant (0,55 / 0,6 : « rectangle gris opaque sur la poitrine », MP4 du
+  // 20/10). Voile discret seulement sur un fond connu clair ET chargé
+  // (`fondTexte`). Contraste au bord des lettres, plan blanc derrière : texte
+  // blanc ≈ 12:1, ligne d'action éclaircie ≥ 4,5:1 (`contrasteSurVoile`).
+  carteFond: FOND_TEXTE_SUR_IMAGE,
   valeurEclaircie: 0.5,
-  ctaFond: voileLocal('radial'),
+  ctaFond: FOND_TEXTE_SUR_IMAGE,
   ctaActionEclaircie: 0.6,
 };
 
@@ -405,6 +405,11 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
      * en haut (il tomberait sur les yeux). Absent : la mise en page d'avant.
      */
     avatar?: boolean;
+    /**
+     * Fond MESURÉ derrière les textes, s'il est connu : clair ET chargé →
+     * voile local discret (`fondTexteSurImage`). Absent : contour seul.
+     */
+    fondTexte?: { clair?: boolean; charge?: boolean } | null;
   } = {},
 ): T {
   const d = design as DesignSurimpression & { format?: string | null };
@@ -447,13 +452,13 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
     titlePos: m.titlePos,
     titleScale: accroche.echelleTitre,
     subtitleScale: accroche.echelleSousTitre,
-    ctaBackground: m.ctaFond,
+    ctaBackground: options.fondTexte ? fondTexteSurImage('radial', options.fondTexte) : m.ctaFond,
     ctaSubColor: eclaircir(d.ctaSubColor ?? '#EC4899', m.ctaActionEclaircie) ?? d.ctaSubColor,
     ctaPos: m.ctaPos,
     ctaScale: ctaEchelle,
     cardBoxes: { c0: m.carte },
     cardsTypography: { ...(d.cardsTypography ?? {}), scale: (d.cardsTypography?.scale ?? 1) * m.carteScale },
-    cardBackground: m.carteFond,
+    cardBackground: options.fondTexte ? fondTexteSurImage('lineaire', options.fondTexte) : m.carteFond,
     cardValueColor: eclaircir(d.gradientEnd ?? '#EC4899', m.valeurEclaircie),
   } as T;
 }

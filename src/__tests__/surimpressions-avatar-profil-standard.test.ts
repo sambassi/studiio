@@ -7,7 +7,7 @@
  * bandeau de 2 % de haut au milieu de l'image (texte ≈ 10 px, contraste
  * mesuré < 3:1) et CTA à 92 %, dans la zone de description des réseaux.
  */
-import { alphaDuFond } from '@/lib/creer/contraste';
+import { FOND_TEXTE_SUR_IMAGE } from '@/lib/creer/contraste';
 import { describe, it, expect } from 'vitest';
 import { appliquerMiseEnPageSurimpression, miseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import { PLATFORM_SAFE_ZONES } from '@/lib/constants/platforms';
@@ -30,11 +30,9 @@ describe.each(['TUTORIAL_EDUCATION', 'STANDARD', 'LIFESTYLE_BRAND', null])('prof
     // 9:16 : accroche sous les barres des réseaux (zone sûre, 7 % → 12 %).
     expect(d.titlePos).toEqual({ x: 8, y: 12 });
     expect(d.cardBoxes?.c0).toBeDefined();
-    // Fonds : voiles locaux en dégradé, alpha ≤ 0,35 (contraste discret, 20/10).
-    for (const f of [d.cardBackground, d.ctaBackground]) {
-      expect(f).toMatch(/gradient\(.*rgba\(0,0,0,0\.\d+\)/);
-      expect(alphaDuFond(f)).toBeLessThanOrEqual(0.35);
-    }
+    // Fonds : plus de pavé — texte sur l'image, contour des glyphes (20/10).
+    expect(d.cardBackground).toBe(FOND_TEXTE_SUR_IMAGE);
+    expect(d.ctaBackground).toBe(FOND_TEXTE_SUR_IMAGE);
     expect(d.cardsTypography.scale).toBeGreaterThan(1);
   });
 

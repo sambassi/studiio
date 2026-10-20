@@ -128,7 +128,9 @@ export default function SequenceCta({
           // Secours : un mot plus large que le cadre passe à la ligne au lieu
           // de sortir de l'image (`ajusterCta` réduit déjà la taille avant).
           overflowWrap: 'break-word',
-          textShadow: halo ? `${halo}, 0 0 ${vw * 0.02}px ${typography.color}66` : `0 0 ${vw * 0.02}px ${typography.color}66`,
+          // Sur l'image : contour + ombre serrée seuls (la lueur claire d'avant
+          // éclaircissait le bord des lettres sur un plan clair).
+          textShadow: halo ?? `0 0 ${vw * 0.02}px ${typography.color}66`,
         }}
       >
         {revealText(text, reveal)}
@@ -167,8 +169,8 @@ export default function SequenceCta({
     </>
   );
   if (!fond) return contenu;
-  // Voile en dégradé (contraste discret, `voileLocal`) ou couleur unie
-  // (panneau d'avant, gardé pour les fonds déjà enregistrés).
+  // Voile discret en dégradé (fond clair et chargé), transparent, ou couleur
+  // unie (panneau d'avant, gardé pour les fonds déjà enregistrés).
   const fondCss: React.CSSProperties = estVoile(fond) ? { backgroundImage: fond } : { backgroundColor: fond };
   return (
     <div data-cta-fond style={{ ...fondCss, padding: `${vw * 0.03}px ${vw * 0.04}px`, borderRadius: vw * 0.03 }}>

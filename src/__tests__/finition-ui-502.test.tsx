@@ -81,9 +81,9 @@ describe('CTA : panneau, contraste, bande calme mesurée', () => {
     return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   };
   const ratio = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-  // 20/10 : plus de panneau opaque — voile local (alpha ≤ 0,35) + halo des
-  // glyphes. PIRE cas : un plan blanc derrière ; le bord des lettres est
-  // mesuré contre le halo posé sur le voile (`fondHaloPire`).
+  // 20/10 : plus de panneau opaque — contour fin + ombre serrée des glyphes.
+  // PIRE cas : un plan blanc derrière ; le bord des lettres est mesuré
+  // contre le contour posé sur ce blanc (`fondHaloPire`).
   const [g] = fondHaloPire().map((v) => v / 255);
   const fondPire = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
 
@@ -103,8 +103,9 @@ describe('CTA : panneau, contraste, bande calme mesurée', () => {
       />,
     );
     expect(html).toContain('data-cta-fond');
-    // Voile local (dégradé radial), plus le pavé rgba(0,0,0,0.6).
-    expect(html).toContain('background-image:radial-gradient');
+    // Plus de pavé rgba(0,0,0,0.6) : fond transparent, contour des glyphes.
+    expect(html).toContain('background-color:transparent');
+    expect(html).toMatch(/text-shadow:[^;]*rgba\(0,0,0,0\.55\)/);
     expect(html).toContain('LE SPORT LE PLUS COMPLET');
     expect(html).toContain('Réservez votre cours d’essai sur afroboost.com.');
   });

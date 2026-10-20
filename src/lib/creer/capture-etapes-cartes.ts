@@ -1,5 +1,5 @@
 import { etatApres, type CalageCartes } from '@/lib/creer/synchro-cartes';
-import { voileLocal, estVoile, haloTexteCss } from '@/lib/creer/contraste';
+import { FOND_TEXTE_SUR_IMAGE, estVoile, haloTexteCss } from '@/lib/creer/contraste';
 
 /**
  * Photographie le conteneur des cartes à chaque étape d'apparition calée
@@ -98,11 +98,11 @@ export async function capturerEtapesCartes<I>(
 }
 
 /**
- * Fond des cartes posées sur un rush : un VOILE local léger (alpha ≤ 0,35,
- * transparent vers la droite) + le halo des glyphes (`contraste.ts`) — et non
- * plus le pavé noir opaque à 72 % (« bandeau sombre opaque », MP4 du 20/10).
+ * Fond des cartes posées sur un rush : aucun aplat — contour fin sombre et
+ * ombre serrée des glyphes (`contraste.ts`) — et non plus le pavé noir opaque
+ * à 72 % (« bandeau sombre opaque », MP4 du 20/10).
  */
-export const FOND_CARTE_SUR_RUSH = voileLocal('lineaire');
+export const FOND_CARTE_SUR_RUSH = FOND_TEXTE_SUR_IMAGE;
 
 /**
  * Pose `fond` sur une carte (couleur unie, ou voile en dégradé) avec le halo

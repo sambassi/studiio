@@ -6,7 +6,7 @@
  * CTA 63 % en 16:9 ; accroche 12–15 % en 1:1). Chaque format a désormais son
  * placement ; le 9:16 reste octet pour octet celui d'avant.
  */
-import { voileLocal } from '@/lib/creer/contraste';
+import { FOND_TEXTE_SUR_IMAGE } from '@/lib/creer/contraste';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -62,11 +62,11 @@ describe('9:16 — mise en page inchangée hors zones sûres', () => {
             attendu.ctaPos = obtenu.ctaPos;
           }
           // Contraste discret (20/10) : les pavés opaques (0,55 / 0,6) du gel
-          // deviennent les voiles locaux de la mise en page — seul changement.
+          // disparaissent (texte sur l'image, contour) — seul changement.
           expect(attendu.cardBackground).toBe('rgba(0,0,0,0.55)');
           expect(attendu.ctaBackground).toBe('rgba(0,0,0,0.6)');
-          attendu.cardBackground = voileLocal('lineaire');
-          attendu.ctaBackground = voileLocal('radial');
+          attendu.cardBackground = FOND_TEXTE_SUR_IMAGE;
+          attendu.ctaBackground = FOND_TEXTE_SUR_IMAGE;
           expect(JSON.stringify(obtenu)).toBe(JSON.stringify(attendu));
           n += 1;
         }
