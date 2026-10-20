@@ -99,7 +99,10 @@ describe('Progression réelle', () => {
 
   it('câblage : route, rendu et panneau', () => {
     const route = src('src/app/api/autopilot/produire-maintenant/route.ts');
-    expect(route).toContain('onProgression: (etape, avancement) => noterProgression(userId, etape, avancement),');
+    expect(route).toContain('onProgression: (etape, avancement) => noter(etape, avancement),');
+    // `noter` = mémoire du processus + état persistant (`noterEtapeDirecte`).
+    expect(route).toContain('noterProgression(userId, etape, avancement);');
+    expect(route).toContain('noterEtapeDirecte(userId, jobId,');
     expect(route).toContain('effacerProgression(userId);');
     const render = src('src/lib/autopilot/render.ts');
     expect(render).toContain('input.onComposition!(Math.min(1, Math.max(0, (progress - 20) / 75)))');
