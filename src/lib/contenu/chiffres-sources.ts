@@ -156,6 +156,35 @@ export function titreSansValeur(titre: string, valeur: string | null | undefined
   return out || titre;
 }
 
+/** Texte comparable : sans accents, minuscules, lettres et chiffres seulement (mots conservés). */
+function motsNormalises(t: string | null | undefined): string[] {
+  return borne(t, 200).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
+ * La valeur ne fait-elle que RÉPÉTER le libellé ? Constat (MP4 « MOTIVATION »,
+ * 20/10) : « DOPA / DOPAMINE ANTICIP. », « PROC / PROCESS > GOAL »,
+ * « BOUCLE / BOUCLE HABITUDE » — un badge qui redit le titre, tronqué, sans
+ * rien apprendre. 109 cartes sur 696 de la base locale avaient une valeur
+ * égale à un mot du titre, 48 un préfixe. Redondante (accents, casse et
+ * ponctuation ignorés) si elle est :
+ *   - un mot du titre, ou une suite de mots du titre (« PROCESS GOAL ») ;
+ *   - le début tronqué d'un mot du titre (≥ 2 lettres : « DOPA », « IDENT ») ;
+ *   - le début tronqué du titre entier (« BOUCLEHAB »).
+ * Une valeur porteuse d'information propre (« ANCRÉ » pour « HABIT
+ * STACKING », « +ÉNERGIE », « 3-en-1 ») est gardée. Pure.
+ */
+export function valeurRedondante(valeur: string | null | undefined, titre: string | null | undefined): boolean {
+  const v = motsNormalises(valeur);
+  const t = motsNormalises(titre);
+  if (!v.length || !t.length) return false;
+  const joint = v.join('');
+  if (v.every((m) => t.includes(m))) return true;
+  if (v.length === 1 && joint.length >= 2 && t.some((m) => m.startsWith(joint))) return true;
+  return joint.length >= 2 && t.join('').startsWith(joint);
+}
+
 /** Repli qualitatif d'une carte vidée : « Un point clé à retenir : bagage cabine. » */
 export function descriptionDeSecours(titre: string): string {
   const t = titre.trim().toLowerCase().replace(/[.!?…:]+$/, '');
@@ -169,7 +198,10 @@ export interface CarteTexte { title?: string; label?: string; description?: stri
  * et jamais la valeur répétée dans le titre. Les autres champs sont gardés.
  */
 export function carteSansChiffresInventes<T extends CarteTexte>(carte: T, autorises: ReadonlySet<string>): T {
-  const value = valeurSansChiffresInventes(carte.value, autorises);
+  const chiffree = valeurSansChiffresInventes(carte.value, autorises);
+  // Valeur qui ne fait que redire le libellé (« DOPA » / « DOPAMINE
+  // ANTICIP. ») : vidée — la carte s'affiche titre + icône (`badgeValide`).
+  const value = valeurRedondante(chiffree, carte.title ?? carte.label) ? '' : chiffree;
   const out: T = { ...carte };
   if (typeof carte.value === 'string') out.value = value;
   if (typeof carte.title === 'string') out.title = titreSansValeur(titreSansChiffresInventes(carte.title, autorises), value);
