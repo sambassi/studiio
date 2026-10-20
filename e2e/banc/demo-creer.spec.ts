@@ -2,7 +2,7 @@
  * Démo CRÉER « LE SPORT LE PLUS COMPLET » — composition RÉELLE par le compositeur navigateur
  * (video-composer, Chromium complet), dans le banc isolé.
  *
- *   DEMO_SORTIE=/chemin/demos BANC_PORT=3130 npx playwright test -c e2e/banc/playwright.banc.config.ts \
+ *   DEMO_SORTIE=/chemin/demos BANC_PORT=3200 npx playwright test -c e2e/banc/playwright.banc.config.ts \
  *     e2e/banc/demo-creer.spec.ts --project ordinateur
  *
  * Cas réel rejoué : brouillon RESTAURÉ sans `versionLisibilite` (retombe en v1), titre + sous-titre,

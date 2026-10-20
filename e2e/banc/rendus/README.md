@@ -41,7 +41,7 @@ Rejouer seulement le rendu Remotion depuis `props.json` : le serveur de médias 
 ## B. Créer « LE SPORT LE PLUS COMPLET » (compositeur navigateur, Chromium réel)
 
 ```sh
-DEMO_SORTIE="$DEMOS" BANC_PORT=3130 npx playwright test -c e2e/banc/playwright.banc.config.ts \
+DEMO_SORTIE="$DEMOS" BANC_PORT=3200 npx playwright test -c e2e/banc/playwright.banc.config.ts \
   e2e/banc/demo-creer.spec.ts --project ordinateur
 ffmpeg -y -i "$DEMOS/creer-sport.webm" -c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p \
   -r 30 -c:a aac -b:a 160k -ar 48000 -movflags +faststart "$DEMOS/creer-sport.mp4"
@@ -51,7 +51,7 @@ Le scénario fait produire un brouillon par l'interface, le remplace par celui d
 (titre, sous-titre, 5 cartes, 3 rushes, voix par séquence, musique, CTA) **sans `versionLisibilite`**,
 recharge (« Brouillon restauré »), passe à Envoi, garde en brouillon et compose. Le PUT du blob est
 intercepté (`fixtures.ts`) → `creer-sport.webm`. `BANC_PORT` évite de réutiliser le `next dev` d'un autre
-worktree (défaut 3100).
+worktree (défaut 3100 ; 3200 réservé à ces démos). Si l’app propose « Continuer avec N s » (matière insuffisante), le scénario continue, comme l’utilisateur.
 
 ## C. Mesures
 
