@@ -71,8 +71,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, CalendarPlus, Download, Film, Loader2, Play,
+  AlertTriangle, CalendarDays, CalendarPlus, Download, Film, Loader2, Play,
 } from 'lucide-react';
+import { ecouterProductionAutopilote, productionAutopiloteEnCours } from '@/lib/autopilot/etat-production-manuelle';
 import {
   DELAI_SUIVI_MS, creerBrouillonPlanification, formaterDuree,
   lireRenduDeSession, messageEchec, orientation, phraseEnCours, renduEnCours,
@@ -126,8 +127,23 @@ export default function VideosPretes({
    */
   const [media, setMedia] = useState<'chargement' | 'pret' | 'erreur'>('chargement');
   const [planif, setPlanif] = useState<
-    { sorte: 'inactif' } | { sorte: 'encours' } | { sorte: 'dit'; texte: string; alerte: boolean }
+    | { sorte: 'inactif' } | { sorte: 'encours' }
+    | { sorte: 'dit'; texte: string; alerte: boolean; calendrier?: boolean }
   >({ sorte: 'inactif' });
+  /**
+   * Une production AUTOPILOTE tourne-t-elle sur cette page ?
+   *
+   * ⚠️ PENDANT UNE PRODUCTION, AUCUNE ANCIENNE VIDÉO À CÔTÉ DU MONTAGE EN
+   * COURS. La vidéo ponctuelle d'un rush, prête depuis longtemps, prenait la
+   * colonne d'aperçu sous le titre « Dernière vidéo générée » : on la croyait
+   * issue de la production qu'on venait de lancer. Tant qu'elle tourne, ce
+   * bloc s'efface et laisse l'aperçu du projet à sa place.
+   */
+  const [autopiloteEnCours, setAutopiloteEnCours] = useState<boolean>(() => productionAutopiloteEnCours());
+  useEffect(() => {
+    setAutopiloteEnCours(productionAutopiloteEnCours());
+    return ecouterProductionAutopilote(setAutopiloteEnCours);
+  }, []);
   /** Le verrou du bouton, pour la même raison qu'ailleurs : une `ref`. */
   const verrouPlanifRef = useRef(false);
 
@@ -194,6 +210,8 @@ export default function VideosPretes({
   const sorteAffichee: 'vide' | 'en_cours' | 'prete' | 'echec' = (() => {
     if (aucunRush || !courant) return 'vide';
     if (courant.etat === 'en_attente' || courant.etat === 'en_cours') return 'en_cours';
+    // Masquée pendant une production Autopilote : elle ne prend pas l'aperçu.
+    if (courant.video && autopiloteEnCours) return 'vide';
     return courant.video ? 'prete' : 'echec';
   })();
   useEffect(() => { onEtat?.(sorteAffichee); }, [sorteAffichee, onEtat]);
@@ -218,6 +236,12 @@ export default function VideosPretes({
    * ⚠️ AUCUN SYSTÈME DE PUBLICATION N'EST CRÉÉ ICI. `scheduled_posts`, le
    * Calendrier et son choix de plateforme/date/heure existent déjà : on y
    * dépose un BROUILLON, l'utilisateur y finit son geste.
+   *
+   * ⚠️ AUCUNE NAVIGATION FORCÉE. Le dépôt envoyait d'office vers le
+   * Calendrier (`window.location`) : monté dans la colonne de l'Autopilote,
+   * ce bloc arrachait la personne à sa configuration — ou à une production en
+   * cours. Le dépôt est dit, et un LIEN « Voir dans le Calendrier » laisse le
+   * choix d'y aller.
    */
   const ouvrirPlanification = useCallback(async (rendu: RenduEcran) => {
     if (verrouPlanifRef.current) return;
@@ -227,14 +251,14 @@ export default function VideosPretes({
       const r = await creerBrouillonPlanification(rendu, fetcher);
       if (!vivantRef.current) return;
       if (r.sorte === 'creee') {
+        // Le Calendrier prend le relais — c'est LUI qui porte la plateforme,
+        // la date et l'heure — mais seulement quand la personne le décide.
         setPlanif({
           sorte: 'dit',
-          texte: 'Brouillon créé. Ouverture du Calendrier…',
+          texte: 'Brouillon ajouté au Calendrier. Rien n’est publié : choisis-y la date et les réseaux.',
           alerte: false,
+          calendrier: true,
         });
-        // Le Calendrier prend le relais : c'est LUI qui porte la plateforme,
-        // la date et l'heure.
-        window.location.href = '/dashboard/calendar';
         return;
       }
       setPlanif({ sorte: 'dit', texte: r.message, alerte: true });
@@ -286,6 +310,10 @@ export default function VideosPretes({
   }
 
   const { rendu } = etat;
+
+  // Une production Autopilote tourne : la vidéo ponctuelle prête s'efface
+  // (voir `autopiloteEnCours`) — l'aperçu du montage en cours garde la place.
+  if (rendu.video && autopiloteEnCours && rendu.etat !== 'en_attente' && rendu.etat !== 'en_cours') return null;
 
   // ── En cours : une étape, jamais un pourcentage ────────────────────────
   if (rendu.etat === 'en_attente' || rendu.etat === 'en_cours') {
@@ -340,9 +368,11 @@ export default function VideosPretes({
           configuration de l'Autopilote, que cette video en faisait partie.
           Elle vient du parcours ponctuel « une video a partir d'un rush » :
           on le dit. */}
-      <Titre texte="Dernière vidéo générée" fort />
+      {/* ⚠️ PAS « Dernière vidéo générée ». Ce titre faisait passer une vidéo
+          ancienne, issue d'un rush, pour le résultat de l'Autopilote. */}
+      <Titre texte="Vidéo ponctuelle de ce tournage" fort />
       <p className="text-[10px] text-gray-500 -mt-0.5" data-videos-provenance>
-        Vidéo ponctuelle, créée à partir d’un rush — indépendante de l’Autopilote.
+        Créée à partir d’un rush — indépendante de l’Autopilote et de ses productions.
       </p>
       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 space-y-2">
         {lecture ? (
@@ -442,7 +472,7 @@ export default function VideosPretes({
             className="flex w-full min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
           >
             <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
-            {planif.sorte === 'encours' ? 'Préparation…' : 'Planifier la publication'}
+            {planif.sorte === 'encours' ? 'Ajout…' : 'Ajouter en brouillon au Calendrier'}
           </button>
         </div>
 
@@ -452,6 +482,18 @@ export default function VideosPretes({
             data-videos-planif-message
           >
             {planif.texte}
+            {planif.calendrier && (
+              <>
+                {' '}
+                <a
+                  href="/dashboard/calendar"
+                  className="inline-flex items-center gap-1 underline hover:text-white"
+                  data-videos-voir-calendrier
+                >
+                  <CalendarDays className="inline w-3 h-3" />Voir dans le Calendrier
+                </a>
+              </>
+            )}
           </p>
         )}
       </div>

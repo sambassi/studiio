@@ -200,9 +200,9 @@ describe('5. Ce que ce lot ne devait pas casser', () => {
       .toBe(CHEMIN);
   });
 
-  it('5.2 « Planifier la publication » est toujours là, et n’a pas été touché', async () => {
+  it('5.2 l’ajout au Calendrier est toujours là, libellé sans ambiguïté (brouillon)', async () => {
     const { container } = await ouvrir();
     expect(container.querySelector('[data-videos-planifier]')!.textContent)
-      .toContain('Planifier la publication');
+      .toContain('Ajouter en brouillon au Calendrier');
   });
 });
