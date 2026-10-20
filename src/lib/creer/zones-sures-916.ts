@@ -363,18 +363,50 @@ export function boiteTitre916(t: TitreAPlacer916, largeur: number, echelle: numb
   return { x0: t.pos.x, y0: t.pos.y, x1: t.pos.x + largeur, y1: t.pos.y + (h / HAUTEUR_916) * 100 };
 }
 
+/** #613 — bas de la zone sûre du titre en 1:1 et 16:9 (% de la hauteur) : rien plus bas. */
+export const BAS_TITRE_HORS_916 = 90;
+
+/**
+ * Boîte ESTIMÉE (prudente) du bloc titre + sous-titre, en % de l'image, pour
+ * TOUT format (mêmes ratios de police que le compositeur). Pur.
+ */
+export function boiteTitre(t: TitreAPlacer916, largeur: number, echelle: number): BoiteZone {
+  const f = (t.format === '16:9' || t.format === '1:1' ? t.format : '9:16') as DesignFormat;
+  const { w: W, h: H } = VIDEO_SIZE[f];
+  const lh = t.interligne ?? 1.1;
+  const esp = ((t.espacement ?? 0) * W) / 320;
+  const utile = (largeur / 100) * W;
+  const pt = W * FONT_RATIO[f].title * echelle;
+  const ps = W * FONT_RATIO[f].subtitle * echelle * (t.echelleSousTitre ?? 1);
+  const nT = lignes(t.titre, pt, utile, chasse(t.police, (t.casse ?? 'uppercase') === 'uppercase'), esp);
+  const sous = (t.sousTitre ?? '').trim();
+  const nS = sous ? lignes(sous, ps, utile, chasse(t.policeSousTitre ?? t.police, t.casseSousTitre === 'uppercase'), 0) : 0;
+  const h = nT * pt * lh + (nS ? W * GAP_RATIO + nS * ps * lh : 0);
+  return { x0: t.pos.x, y0: t.pos.y, x1: t.pos.x + largeur, y1: t.pos.y + (h / H) * 100 };
+}
+
 /**
  * Largeur et échelle RENDUES du titre plein écran (voir la règle ci-dessus).
  * Tout format : l'échelle baisse si un mot sortirait du cadre
- * (`echelleTitreSansDebord`) ; hors 9:16, rien d'autre ne change. Pur et
- * idempotent.
+ * (`echelleTitreSansDebord`) ; #613 — en 1:1 et 16:9, elle baisse aussi si
+ * le bloc descendait sous `BAS_TITRE_HORS_916` (titre agrandi par défaut,
+ * `echelleTitreDeDepart`). Pur et idempotent.
  */
 export function titreSur916(t: TitreAPlacer916): { largeur: number; echelle: number } {
   // TOUT FORMAT : aucun mot ne sort du cadre (`echelleTitreSansDebord`). Un
   // titre qui tient déjà garde exactement son échelle.
   const tenue = echelleTitreSansDebord(t);
   const choisi = { largeur: t.largeur, echelle: tenue };
-  if (!estFormat916(t.format) || !t.titre?.trim()) return choisi;
+  if (!t.titre?.trim()) return choisi;
+  if (!estFormat916(t.format)) {
+    // Aucun texte hors cadre : le bloc reste au-dessus du bas de la zone sûre. Un titre qui tient garde son échelle.
+    let echelle = tenue;
+    const plancherHors = Math.min(echelle, 1);
+    while (echelle > plancherHors && boiteTitre(t, t.largeur, echelle).y1 > BAS_TITRE_HORS_916) {
+      echelle = Math.max(plancherHors, Math.round((echelle - 0.01) * 100) / 100);
+    }
+    return { largeur: t.largeur, echelle };
+  }
   const z = ZONE_SURE_916;
   let largeur = t.largeur;
   if (t.pos.x + largeur > z.droite && boiteTitre916(t, largeur, tenue).y1 > z.railHaut) {

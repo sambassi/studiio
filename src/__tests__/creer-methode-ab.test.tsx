@@ -146,7 +146,8 @@ describe('12. sans autorisation du serveur : rien ne change', () => {
       expect(document.querySelector('[data-methode-montage]')).toBeNull();
       await telecharger();
       expect(sp.planMontage).toHaveBeenCalledTimes(1);
-      expect(Object.keys(optionsPlan()[0]).sort()).toEqual(['contexte', 'rythme']);
+      // #613 : Créer monte dans les plans propres (unicité par timecode, rush du fond du CTA évité en fin).
+      expect(Object.keys(optionsPlan()[0]).sort()).toEqual(['contexte', 'rushApres', 'rythme', 'uniciteParTimecode']);
       expect(sp.downloadBlob).toHaveBeenCalledTimes(1);
     });
   }

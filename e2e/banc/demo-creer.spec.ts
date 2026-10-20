@@ -17,6 +17,9 @@ import { test, expect, DOSSIER_RESULTATS, media } from './fixtures';
 import { ouvrirCreer, allerA, choisirFormat, sonder } from './parcours';
 
 const SORTIE = process.env.DEMO_SORTIE || path.join(DOSSIER_RESULTATS, 'demos');
+/** Format du projet : 9:16 (défaut, fichiers `creer-sport.*`), 1:1 ou 16:9 (`creer-sport-1x1.*`, `creer-sport-16x9.*`). */
+const FORMAT = (process.env.DEMO_FORMAT || '9:16') as '9:16' | '1:1' | '16:9';
+const SUFFIXE = FORMAT === '9:16' ? '' : `-${FORMAT.replace(':', 'x')}`;
 
 const CARTES = [
   { title: 'CARDIO COMPLET', value: '3-en-1', description: 'Danser fait travailler le cœur, le souffle et l’endurance en même temps.', icon: 'HeartPulse' },
@@ -36,14 +39,18 @@ test('démo Créer « LE SPORT LE PLUS COMPLET » → webm réel', async ({ page
   test.skip(info.project.name !== 'ordinateur', 'démo rendue une fois (ordinateur)');
   test.setTimeout(900_000);
   fs.mkdirSync(SORTIE, { recursive: true });
-  const webm = path.join(SORTIE, 'creer-sport.webm');
+  const webm = path.join(SORTIE, `creer-sport${SUFFIXE}.webm`);
   fs.rmSync(webm, { force: true });
   banc.etat.fichierRendu = webm;
+  // Journal console COMPLET (plan de montage, compositeur) : la preuve du plan réellement rendu.
+  const journal = path.join(SORTIE, `creer-console${SUFFIXE}.log`);
+  fs.writeFileSync(journal, '');
+  page.on('console', (m) => { try { fs.appendFileSync(journal, `${m.text()}\n`); } catch { /* */ } });
 
   // 1) Un brouillon NATUREL, produit par l'interface (structure exacte de la version courante).
   await ouvrirCreer(page);
   await allerA(page, 'Style');
-  await choisirFormat(page, '9:16');
+  await choisirFormat(page, FORMAT);
   await allerA(page, 'Audio');
   await allerA(page, 'Contenu');
   await page.getByRole('button', { name: /Générer toutes les voix TTS/ }).click();
@@ -59,7 +66,7 @@ test('démo Créer « LE SPORT LE PLUS COMPLET » → webm réel', async ({ page
   test.info().annotations.push({ type: 'cle-brouillon', description: cle });
   expect(brut, 'brouillon écrit par l’interface').toBeTruthy();
   const initial = JSON.parse(brut as string) as Record<string, any>;
-  fs.writeFileSync(path.join(SORTIE, 'creer-brouillon-initial.json'), JSON.stringify(initial, null, 2));
+  fs.writeFileSync(path.join(SORTIE, `creer-brouillon-initial${SUFFIXE}.json`), JSON.stringify(initial, null, 2));
 
   // 2) Le brouillon de l'utilisateur : contenu, médias, audio — SANS `versionLisibilite` (cas réel).
   const d: Record<string, any> = { ...initial };
@@ -67,7 +74,7 @@ test('démo Créer « LE SPORT LE PLUS COMPLET » → webm réel', async ({ page
   const ids = (initial.generated?.cards ?? []).map((c: { id: string }) => c.id);
   d.started = true;
   d.step = 3;
-  d.format = '9:16';
+  d.format = FORMAT;
   d.customTopic = 'Le sport le plus complet';
   d.generated = {
     title: 'LE SPORT LE PLUS COMPLET',
@@ -103,7 +110,7 @@ test('démo Créer « LE SPORT LE PLUS COMPLET » → webm réel', async ({ page
   d.ctaDuration = 4.5;
   d.sequenceVoicesUserEdited = { titre: true, cartes: true, video: true, cta: true };
   d.savedAt = Date.now();
-  fs.writeFileSync(path.join(SORTIE, 'creer-brouillon-restaure.json'), JSON.stringify(d, null, 2));
+  fs.writeFileSync(path.join(SORTIE, `creer-brouillon-restaure${SUFFIXE}.json`), JSON.stringify(d, null, 2));
 
   // 3) Restauration : posé AVANT les scripts de la page (après le `pagehide` qui réécrit l'ancien).
   await context.addInitScript(({ k, v }) => {
@@ -143,7 +150,7 @@ test('démo Créer « LE SPORT LE PLUS COMPLET » → webm réel', async ({ page
   expect(fs.existsSync(webm)).toBe(true);
   const mesure = sonder(webm);
   const post = banc.etat.posts[0] as Record<string, unknown>;
-  fs.writeFileSync(path.join(SORTIE, 'creer-post.json'), JSON.stringify(post, null, 2));
+  fs.writeFileSync(path.join(SORTIE, `creer-post${SUFFIXE}.json`), JSON.stringify(post, null, 2));
   test.info().annotations.push({ type: 'webm', description: `${webm} ${JSON.stringify(mesure)}` });
   expect(mesure.images ?? 0, 'le montage contient des images').toBeGreaterThan(10);
 });

@@ -126,21 +126,55 @@ function occupes(url: string, extraits: ReadonlyArray<ExtraitUtilise>): Array<[n
 }
 
 /**
- * Point d'entrée d'un extrait de `longueur` s dans un rush : le premier trou
- * libre à partir du curseur ; sinon (rush épuisé) l'endroit le moins
- * récemment utilisé, à partir du curseur ; durée inconnue : le curseur.
+ * Point d'entrée d'un extrait de `longueur` s dans un rush.
+ *
+ * #613 — la matière utilisable est celle des PLANS PROPRES du rush
+ * (`plansPropres` de `smart-montage.ts` : ni coupe de la source ni image
+ * figée — démo « LE SPORT » : l'extrait pris à 0 s du 3e rush ouvrait sur
+ * 0,63 s d'image figée, un gel de 0,7 s dans la vidéo). Sans mesure : le
+ * rush entier, comme avant.
+ *
+ * Choix : d'abord un départ LIBRE (aucune image déjà montée, marge
+ * `MARGE_REPRISE_S`), au plus près après le curseur (le rush avance) ; rush
+ * épuisé : le départ qui recouvre le MOINS de matière déjà montée — jamais
+ * « le début par défaut » ; durée inconnue : le curseur.
  */
-function pointEntree(duree: number | null, longueur: number, curseur: number, pris: Array<[number, number]>): number {
+function pointEntree(
+  duree: number | null, longueur: number, curseur: number, pris: Array<[number, number]>,
+  propres: ReadonlyArray<readonly [number, number]> | null,
+): number {
   if (duree === null) return curseur;
   const max = Math.max(0, duree - longueur);
-  const libre = (a: number) => pris.every(([x, y]) => a + longueur <= x + 0.05 || a >= y - 0.05);
-  // Candidats : le curseur, puis la fin de chaque extrait pris.
-  const candidats = [curseur, ...pris.map(([, y]) => y), 0].map((a) => Math.min(max, Math.max(0, a)));
-  for (const a of candidats) if (a >= curseur - 0.05 && libre(a)) return r3(a);
-  for (const a of candidats) if (libre(a)) return r3(a);
-  // Rien de libre : on repart du curseur (modulo la matière).
-  return r3(max > 0 ? curseur % max : 0);
+  const plans = (propres && propres.length ? propres : [[0, duree] as const])
+    .map(([x, y]) => [Math.max(0, x), Math.min(duree, y)] as [number, number])
+    .filter(([x, y]) => y > x);
+  // Plans assez longs pour l'extrait ; aucun : le départ de chaque plan (l'extrait finit sur une coupe
+  // franche de la source — un raccord — mais ne commence jamais dans une image figée ou un flash).
+  const tiennent = plans.filter(([x, y]) => y - x >= longueur - 1e-6);
+  const departs = new Set<number>();
+  const ajouter = (a: number) => departs.add(r3(Math.min(max, Math.max(0, a))));
+  if (tiennent.length) {
+    for (const [x, y] of tiennent) {
+      ajouter(x); ajouter(y - longueur);
+      for (let a = x; a <= y - longueur + 1e-6; a += 0.25) ajouter(a);
+      for (const [, v] of pris) if (v + MARGE_REPRISE_S >= x && v + MARGE_REPRISE_S <= y - longueur + 1e-6) ajouter(v + MARGE_REPRISE_S);
+    }
+  } else {
+    for (const [x] of plans) ajouter(x);
+  }
+  const recouvre = (a: number) => pris.reduce((t, [x, y]) => t + Math.max(0, Math.min(a + longueur, y + MARGE_REPRISE_S) - Math.max(a, x - MARGE_REPRISE_S)), 0);
+  let meilleur = curseur;
+  let note = Infinity;
+  for (const a of departs) {
+    // Recouvrement d'abord (matière neuve), puis avancer dans le rush, au plus près du curseur.
+    const n = recouvre(a) * 100 + (a < curseur - 0.05 ? 1 : 0) + Math.abs(a - curseur) * 0.01;
+    if (n < note - 1e-9) { note = n; meilleur = a; }
+  }
+  return r3(meilleur);
 }
+
+/** Marge entre deux extraits d'un même rush (s) : en deçà, la même image reviendrait. */
+export const MARGE_REPRISE_S = 0.25;
 
 /**
  * Le plan de la séquence Cartes : chaque plan (entre deux coupes) pris dans
@@ -152,33 +186,55 @@ export function planCartesSurRushs(p: {
   sources: ReadonlyArray<SourceRushNarration>;
   dureeCartes: number;
   apparitions?: ReadonlyArray<number>;
+  /** Plan de la séquence Vidéo (évité, et son 1er rush ne clôt pas les cartes). */
   dejaUtilises?: ReadonlyArray<ExtraitUtilise>;
   planMax?: number;
+  /**
+   * #613 — plans propres mesurés de chaque rush, par URL (`plansPropres`) :
+   * aucun extrait ne commence dans une image figée ni à cheval sur une coupe
+   * de la source. Absent : le rush entier (comportement d'avant).
+   */
+  plansPropres?: ReadonlyMap<string, ReadonlyArray<readonly [number, number]>> | null;
+  /**
+   * #613 — matière montée AILLEURS que dans la séquence Vidéo (fonds en
+   * mouvement du Titre / du CTA) : évitée tant que possible, comme la Vidéo.
+   */
+  autresUsages?: ReadonlyArray<ExtraitUtilise>;
+  /** #613 — rush montré JUSTE AVANT les cartes (fond du Titre) : le 1er plan n'en vient pas. */
+  rushAvant?: string | null;
 }): RushSegment[] | null {
   const sources = p.sources.filter((s) => !!s.url);
   if (!sources.length || !(p.dureeCartes > 0)) return null;
   const coupes = coupesCartes(p.dureeCartes, p.apparitions ?? [], p.planMax ?? PLAN_MAX_S);
-  const pris = new Map(sources.map((s) => [s.url, occupes(s.url, p.dejaUtilises ?? [])] as const));
-  const curseurs = new Map<string, number>(sources.map((s) => [s.url, 0]));
-  // Raccord avec la séquence Vidéo : le DERNIER plan des cartes ne vient
-  // jamais du rush qui OUVRE la Vidéo (sinon le même rush continuerait au-delà
-  // de 6 s à travers la coupe, avec un saut en arrière). On décale la
+  const usages = [...(p.dejaUtilises ?? []), ...(p.autresUsages ?? [])];
+  const pris = new Map(sources.map((s) => [s.url, occupes(s.url, usages)] as const));
+  const propres = (url: string) => p.plansPropres?.get(url) ?? null;
+  const curseurs = new Map<string, number>(sources.map((s) => [s.url, propres(s.url)?.[0]?.[0] ?? 0]));
+  // Raccords : le DERNIER plan des cartes ne vient jamais du rush qui OUVRE la
+  // Vidéo (sinon le même rush continuerait à travers la coupe, avec un saut en
+  // arrière) ; #613 — et le PREMIER ne vient pas du rush du fond du Titre (le
+  // même rush continuerait de l'autre côté de la coupe). On décale la
   // rotation (l'ordre cyclique de l'utilisateur est gardé) du plus petit pas
-  // qui l'évite. Un seul rush : rien à permuter.
+  // qui tient les deux ; sinon, le raccord avec la Vidéo seul (règle d'avant).
   const nbPlans = coupes.length - 1;
   const ouvreVideo = [...(p.dejaUtilises ?? [])].filter((e) => !e.kind || e.kind === 'video').sort((a, b) => a.debut - b.debut)[0]?.url;
+  const n = sources.length;
+  const finOk = (d: number) => !ouvreVideo || sources[(nbPlans - 1 + d) % n].url !== ouvreVideo;
+  const debutOk = (d: number) => !p.rushAvant || sources[d % n].url !== p.rushAvant;
   let decalage = 0;
-  if (ouvreVideo && sources.length > 1) {
-    while (decalage < sources.length - 1 && sources[(nbPlans - 1 + decalage) % sources.length].url === ouvreVideo) decalage += 1;
+  if (n > 1) {
+    const deux = Array.from({ length: n }, (_, d) => d).find((d) => finOk(d) && debutOk(d));
+    if (deux !== undefined) decalage = deux;
+    else while (decalage < n - 1 && !finOk(decalage)) decalage += 1;
   }
   const plan: RushSegment[] = [];
   for (let k = 1; k < coupes.length; k++) {
-    const src = sources[(k - 1 + decalage) % sources.length];
+    const src = sources[(k - 1 + decalage) % n];
     const debut = coupes[k - 1];
     const fin = coupes[k];
     const longueur = fin - debut;
     const liste = pris.get(src.url)!;
-    const depuis = pointEntree(src.duree, longueur, curseurs.get(src.url)!, liste);
+    const depuis = pointEntree(src.duree, longueur, curseurs.get(src.url)!, liste, propres(src.url));
     liste.push([depuis, depuis + longueur]);
     liste.sort((x, y) => x[0] - y[0]);
     curseurs.set(src.url, r3(depuis + longueur));

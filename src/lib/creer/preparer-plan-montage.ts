@@ -37,7 +37,8 @@ import type { RushSegment } from '@/lib/creer/multi-rush';
  * incrémenter si l'analyse ou les règles changent de sens : tout plan mis en
  * cache devient alors périmé.
  */
-export const VERSION_PLAN_MONTAGE = 1;
+export const VERSION_PLAN_MONTAGE = 2;
+// v2 (#613) : unicité par timecode dans les plans propres des rushes + rush du fond du CTA évité en fin.
 
 /** Toutes les entrées réelles du plan, du raccourci et des surimpressions. */
 export interface EntreePlanMontage {
@@ -64,6 +65,12 @@ export interface EntreePlanMontage {
   nbCartes: number;
   voixDeTextes: boolean;
   format: string;
+  /**
+   * #613 — rush montré JUSTE APRÈS la séquence Vidéo (fond en mouvement du
+   * CTA, `fondsRushTexte`) : le dernier plan de la Vidéo n'en vient pas.
+   * `null` : aucun.
+   */
+  rushApres: string | null;
 }
 
 export function entreePlanMontage<K extends string>(e: {
@@ -80,6 +87,8 @@ export function entreePlanMontage<K extends string>(e: {
   methode: 'A' | 'B';
   voixDeTextes: boolean;
   format: string;
+  /** #613 — URL du rush du fond en mouvement du CTA (`fondsRushTexte`), s'il y en a un. */
+  rushApres?: string | null;
 }): EntreePlanMontage {
   const ordre: string[] = [...e.ordre];
   const duree = e.duree as unknown as (k: string) => number;
@@ -104,6 +113,7 @@ export function entreePlanMontage<K extends string>(e: {
     nbCartes: (e.cartes ?? []).length,
     voixDeTextes: e.voixDeTextes,
     format: e.format,
+    rushApres: e.rushApres ?? null,
   };
 }
 
@@ -173,7 +183,8 @@ export function preparerPlanMontage(
   if (reutilise) plan = memo!.plan!.map((s) => ({ ...s }));
   // M3-a PR2 : méthode B (essai admin) = SEULE différence, l'option de sélection.
   else if (entree.methode === 'B') plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, ...optionsModePassages(analyses) });
-  else plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });
+  // #613 : Créer monte dans les PLANS PROPRES (ni coupe de la source ni image figée), unicité au timecode.
+  else plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, rushApres: entree.rushApres });
   const profil = profilMontageDuContexte(contexteMontage).profil;
   let rapport: ReturnType<typeof rapportPlan> | null = null;
   if (plan) {
