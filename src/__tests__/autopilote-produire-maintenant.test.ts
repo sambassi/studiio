@@ -571,7 +571,7 @@ describe('#613 — production sans avatar : état et verrou PERSISTANTS', () => 
     const fin = await attendreStatut(['direct_rendu']);
     expect(ligneAuRendu).toMatchObject({ user_id: 'u1', statut: 'direct_en_cours', generation_id: '00000000-0000-0000-0000-000000000000' });
     expect(fin.post_id).toBe('p1');
-    expect(fin.job_id).toBe(String(deductCredits.mock.calls[0]?.[3] ?? '').replace(/^autopilote:/, ''));
+    expect(fin.job_id).toBe(String((deductCredits.mock.calls[0] as unknown[] | undefined)?.[3] ?? '').replace(/^autopilote:/, ''));
   });
 
   it('REDÉMARRAGE pendant le rendu (Maps vides) : la progression est relue de la base, un nouveau clic est refusé', async () => {
