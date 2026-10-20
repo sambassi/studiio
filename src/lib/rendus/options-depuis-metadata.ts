@@ -28,6 +28,7 @@
  * `test` : `src/__tests__/calendrier-regeneration-fidele.test.tsx` compare les
  * quatre anciens blocs, recopiés, à cette fonction sur des posts anciens.
  */
+import { cartesSurRushsDepuisMetadata } from '@/lib/creer/narration-rushs';
 import { lireHabillageVideo } from '@/lib/creer/habillageVideo';
 import { dimensionsDuPost } from '@/lib/format/projet';
 import { lireCtaCopies } from '@/lib/creer/cta-copies';
@@ -345,6 +346,11 @@ export function optionsRenduDepuisMetadata(
     // navigateur : il lui faut leurs IMAGES (`SurimpressionsComposer`), que
     // seule la page Créer photographie au moment du rendu. Une régénération
     // depuis le Calendrier garde donc le comportement d'avant (vidéo seule).
+    // Cartes sur les rushes (narration longue) : les MÊMES plans que Créer.
+    // Absent des anciens posts : fond de la séquence Cartes d'avant.
+    ...(cartesSurRushsDepuisMetadata(meta.cartesSurRushs) && sourceVideo
+      ? { cartesSurRushs: cartesSurRushsDepuisMetadata(meta.cartesSurRushs)! }
+      : {}),
     ...(prep.rushLut ? { rushLut: prep.rushLut } : {}),
     logoUrl: meta.logoUrl || designMeta.logoUrl || null,
     musicUrl: meta.musicUrl || null,

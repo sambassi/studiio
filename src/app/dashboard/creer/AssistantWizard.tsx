@@ -71,7 +71,7 @@ import {
   estimerDureeParole, nouvelIdMedia, libelleMedia, libelleSource, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
   avecDureeChoisie, dureeEffective, planApercuListe, chronologieListe, planDetaille, paroleDeListe, planRenduDepuis,
   itemDuPlan, bornesDuree, formatSecondes, messageNarrationTropCourte, type PlanDetaille,
-  listeMontageJumeau, mediasExclusDuPlan, messageMediasExclus,
+  listeMontageJumeau, mediasExclusDuPlan, messageMediasExclus, dureeMesuree,
 } from '@/lib/creer/medias-video';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
@@ -84,7 +84,9 @@ import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
 import { calageCartes, calageProportionnel, morceauxCartes, lireTimingVoix, etatVoixCartes } from '@/lib/creer/synchro-cartes';
 import { normaliserReglages } from '@/lib/types/voice';
-import { capturerEtapesCartes } from '@/lib/creer/capture-etapes-cartes';
+import { besoinPastille } from '@/lib/creer/contraste';
+import { capturerEtapesCartes, avecFondCartes, FOND_CARTE_SUR_RUSH } from '@/lib/creer/capture-etapes-cartes';
+import { cartesSurRushsApplicable, planCartesSurRushs, sourcesDuPlan, type ExtraitUtilise } from '@/lib/creer/narration-rushs';
 import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
@@ -836,6 +838,8 @@ interface TextStyles {
     italic: boolean;
     letterSpacing: number;
     lineHeight: number;
+    /** Dérivé à l'affichage (`ctaSousPastille`) — jamais persisté. */
+    sousPastille?: boolean;
   } & TextFormatFields;
 }
 
@@ -4325,7 +4329,15 @@ export default function AssistantWizard() {
     },
   })), [ctaCopies, gradEnd, format]);
 
+  /**
+   * Petite ligne du CTA illisible sur le dégradé (contraste < 4,5:1 : le rose
+   * de marque sur le rose du fond, export du 20/10) : pastille sombre et
+   * teinte éclaircie, dans l'aperçu ET dans la vidéo (`contraste.ts`).
+   */
+  const ctaSousPastille = besoinPastille(textStyles.cta.subColor, [gradStart, gradEnd]);
+  const texteApercu: TextStyles = ctaSousPastille ? { ...textStyles, cta: { ...textStyles.cta, sousPastille: true } } : textStyles;
   const textDesign = {
+    ...(ctaSousPastille ? { ctaSousPastille: true } : {}),
     titleFont: textStyles.title.font,
     titleColor: textStyles.title.color,
     textScale: textStyles.title.scale,
@@ -7558,7 +7570,7 @@ export default function AssistantWizard() {
     avatarApercu,
     watermark: watermarkLabel,
     accent,
-    text: textStyles,
+    text: texteApercu,
     titleWidth,
     ctaWidth,
     ctaCopies: copiesCtaRendues,
@@ -7944,7 +7956,7 @@ export default function AssistantWizard() {
             gradientOpacity={gradientOpacity}
             posterUrl={fond.url}
             posterTransform={fond.transform}
-            text={textStyles}
+            text={texteApercu}
             titlePos={titlePos}
             ctaPos={ctaPos}
             titleWidth={titleWidth}
@@ -9450,6 +9462,32 @@ export default function AssistantWizard() {
         dureeSurimpression = dureeDeSequence(ordre, { intro: 0, cards: 0, video: dureeVideo, cta: 0 });
       }
 
+      // ── CARTES SUR LES RUSHES (narration longue) ───────────────────
+      // Une narration des cartes LONGUE ne se joue plus 40 s sur un dégradé
+      // avant que tous les rushes passent à la fin : les cartes se posent sur
+      // des plans des rushes de l'utilisateur, dans SON ordre, coupés aux
+      // apparitions des cartes (`narration-rushs.ts`). Durées, voix, ordre et
+      // plan de la séquence Vidéo : inchangés. Fond de cartes choisi : gardé.
+      const planVideoReference: ReadonlyArray<ExtraitUtilise> = videoEstAvatar && !planListe
+        ? []
+        : planListe
+          ?? planMontageRushs
+          ?? (plateau.rushs && plateau.rushs.length >= 2 ? planRushs(plateau.rushs, duree('video')) : null)
+          ?? (plateau.rushUrl ? [{ url: plateau.rushUrl, debut: 0, fin: duree('video') }] : []);
+      const dureesSources = new Map<string, number | null>();
+      for (const m of listeMediasRef.current ?? []) if (m.url && m.type === 'video') dureesSources.set(m.url, dureeMesuree(m));
+      for (const r of plateau.rushs ?? []) if (!dureesSources.get(r.url) && r.secondes) dureesSources.set(r.url, r.secondes);
+      const sourcesNarration = sourcesDuPlan(planVideoReference, dureesSources);
+      const narrationSurRushs = cartesSurRushsApplicable({
+        dureeCartes: duree('cards'),
+        dureeVideo: duree('video'),
+        nbCartes: (generated?.cards ?? []).length,
+        nbSources: sourcesNarration.length,
+        fondCartesExplicite: !!fondsRendu.cartes,
+        surimpressions: !!overlaysCreer,
+      });
+      if (narrationSurRushs) console.log('[Narration] cartes sur les rushes :', sourcesNarration.map((x) => x.url.split('/').pop()).join(' → '));
+
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
       // Le contenu courant sert TOUJOURS a la premiere — l'utilisateur vient
@@ -9575,8 +9613,32 @@ export default function AssistantWizard() {
         // l'onglet « Titre », elle aurait fige des cartes vides dans la video.
         // `flushSync` force le rendu AVANT la capture ; le `finally` restaure
         // l'onglet de l'utilisateur meme si la capture echoue.
+        // Calage des cartes sur leur voix (ou au prorata, #606) — calculé
+        // AVANT la capture : il sert aussi au repli sans photo et au plan des
+        // rushes sous les cartes.
+        const voixCartesRendu = voixSequencesRendu?.cartes && voixSequencesRendu.cartes === sequenceVoices.cartes.audioUrl
+          ? sequenceVoices.cartes : null;
+        const calageRendu = calageCartes(contenu.cards, voixCartesRendu)
+          ?? calageProportionnel(contenu.cards, duree('cards'));
+        const planSousCartes = narrationSurRushs && duree('cards') > 0
+          ? planCartesSurRushs({
+            sources: sourcesNarration,
+            dureeCartes: duree('cards'),
+            apparitions: calageRendu?.etapes.filter((e) => e.element === 'carte').map((e) => e.debut) ?? [],
+            dejaUtilises: planVideoReference,
+          })
+          : null;
+        if (planSousCartes) console.log('[Narration] plan sous les cartes :', planSousCartes.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | '));
         const focusBeforeCapture = previewFocus;
+        // CAUSE RACINE des cartes figées et minuscules (export du 20/10) : un
+        // média ouvert dans « Aperçu du média » MASQUE l'aperçu du projet
+        // (`display: none`) — conteneur des cartes à 0 px, capture sautée,
+        // cartes redessinées au canvas SANS apparition progressive. L'aperçu
+        // du média est donc refermé le temps de la capture, puis rétabli.
+        const mediaAvantCapture = { apercu: mediaApercu, id: mediaApercuId };
+        const mediaMasqueLApercu = !!(mediaAvantCapture.apercu || mediaAvantCapture.id);
         try {
+          if (mediaMasqueLApercu) flushSync(() => { setMediaApercu(null); setMediaApercuId(null); });
           // Les liseres — selection et glissement — sont des aides d'edition :
           // photographies, ils seraient blittes dans la video.
           //
@@ -9586,8 +9648,8 @@ export default function AssistantWizard() {
           // interactif. Un clic pendant l'envoi reposait la selection juste a
           // temps pour qu'elle soit gravee dans le montage.
           flushSync(() => setCapturing(true));
-          if (focusBeforeCapture !== 'all') {
-            flushSync(() => setPreviewFocus('all'));
+          if (focusBeforeCapture !== 'all' || mediaMasqueLApercu) {
+            if (focusBeforeCapture !== 'all') flushSync(() => setPreviewFocus('all'));
             // Une frame de peinture, bornee : `requestAnimationFrame` est GELE
             // dans un onglet en arriere-plan. Sans ce delai de garde, lancer
             // l'envoi puis changer d'onglet laissait la promesse pendante et le
@@ -9615,12 +9677,12 @@ export default function AssistantWizard() {
             // racine alors que ses enfants gardent leurs px natifs — contenu
             // deborde et rogne. Les fournir court-circuite ce calcul et donne au
             // clone ses dimensions de layout.
-            const canvas = await domToCanvas(cardsEl, {
+            const canvas = await avecFondCartes(cardsEl, planSousCartes ? FOND_CARTE_SUR_RUSH : null, () => domToCanvas(cardsEl, {
               backgroundColor: undefined,
               scale: 1,
               width: cardsEl.offsetWidth,
               height: cardsEl.offsetHeight,
-            });
+            }));
             console.log(
               `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (1:1, resolution native)`,
             );
@@ -9649,13 +9711,10 @@ export default function AssistantWizard() {
               // Voix des cartes : chaque carte (puis sa valeur) apparaît quand
               // la voix commence à la dire — horodatage réel ElevenLabs, sinon
               // estimation. Texte retouché ou cartes changées : aucun calage.
-              const voixCartes = voixSequencesRendu?.cartes && voixSequencesRendu.cartes === sequenceVoices.cartes.audioUrl
-                ? sequenceVoices.cartes : null;
               // Sans calage exact : apparition ESTIMÉE au prorata du texte de
               // chaque carte, sur la durée de la séquence (celle de la voix,
               // inchangée) — jamais une photo figée pendant toute la narration.
-              const calage = calageCartes(contenu.cards, voixCartes)
-                ?? calageProportionnel(contenu.cards, duree('cards'));
+              const calage = calageRendu;
               if (calage) {
                 setRenderStage('Synchronisation des cartes avec la voix…');
                 const photographier = async (): Promise<HTMLImageElement | null> => {
@@ -9671,7 +9730,12 @@ export default function AssistantWizard() {
                   });
                   return etape.naturalWidth > 0 && etape.naturalHeight > 0 ? etape : null;
                 };
-                cardsReveal = (await capturerEtapesCartes(cardsEl, calage, contenu.cards.map((c) => c.id), photographier)) ?? undefined;
+                // Cartes SUR les rushes : une carte à la fois (celle que la voix
+                // dit), sur un fond sombre lisible quel que soit le plan.
+                cardsReveal = (await capturerEtapesCartes(cardsEl, calage, contenu.cards.map((c) => c.id), photographier, {
+                  cumul: !planSousCartes,
+                  fondCarte: planSousCartes ? FOND_CARTE_SUR_RUSH : null,
+                })) ?? undefined;
                 console.log(`[Assistant] Cartes calées sur la voix (${calage.source}) : ${cardsReveal ? cardsReveal.length : 0} étape(s)`);
               }
             }
@@ -9683,6 +9747,7 @@ export default function AssistantWizard() {
           console.warn('[Assistant] Capture des cartes impossible, rendu canvas de secours:', err);
         } finally {
           if (focusBeforeCapture !== 'all') setPreviewFocus(focusBeforeCapture);
+          if (mediaMasqueLApercu) { setMediaApercu(mediaAvantCapture.apercu); setMediaApercuId(mediaAvantCapture.id); }
           setCapturing(false);
         }
 
@@ -9745,6 +9810,8 @@ export default function AssistantWizard() {
             ? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs ?? planListe)
             : {}),
           ...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),
+          // Cartes sur les rushes (narration longue) : plans SOUS les cartes.
+          ...(duree('video') > 0 && planSousCartes ? { cartesSurRushs: planSousCartes } : {}),
           ...(rushLut ? { rushLut } : {}),
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
@@ -9869,6 +9936,11 @@ export default function AssistantWizard() {
             cardsSnapshot,
             cardsSnapshotRect,
             ...(cardsReveal ? { cardsReveal } : null),
+            // Repli sans photo : les cartes redessinées apparaissent quand même
+            // à leur instant (jamais toutes ensemble pendant la narration).
+            ...(!cardsSnapshot && calageRendu
+              ? { cardsEtapes: calageRendu.etapes.filter((e) => e.element === 'carte').map((e) => ({ debut: e.debut, carte: e.carte })) }
+              : null),
             // Couche d'elements : le compositeur la peint sur les quatre
             // sequences. `undefined` sans element — rien ne change alors.
             elements: await rasterizeElements(),
@@ -10161,6 +10233,8 @@ export default function AssistantWizard() {
               : undefined,
           // Textes en surimpression (mêmes fenêtres que l'Autopilote).
           ...(surimpressionsItem ? { surimpressions: overlaysCreer } : {}),
+          // Plans sous les cartes, relus par « Régénérer » (URL durables seules).
+          ...(duree('video') > 0 && planSousCartes && planSousCartes.every((x) => !!persistableUrl(x.url)) ? { cartesSurRushs: planSousCartes } : {}),
           // Profil, mesures du plan et conseils : les MÊMES que l'Autopilote.
           // Taille et contraste des textes ne sont pas mesurés ici (pas de
           // rendu hybride) : le conseiller le dit, il ne devine pas.
