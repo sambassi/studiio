@@ -33,7 +33,7 @@ export type EtatPhotos =
 /** Le motif renvoye par la route quand le fournisseur a refuse. */
 export type EchecFournisseur = 'auth' | 'quota' | 'indisponible';
 
-/** Nom affichable d'une source. */
+/** Nom affichable d'une source — réservé aux crédits / à l'admin, jamais aux messages d'état. */
 export function nomSource(source: string): string {
   return source === 'unsplash' ? 'Unsplash' : 'Pexels';
 }
@@ -67,22 +67,13 @@ export function etatDepuisReponse(reponse: unknown): EtatPhotos {
  * prevenir quelqu'un.
  */
 export function messagePhotos(etat: EtatPhotos, source: string): string {
-  // Recherche AUTOMATIQUE (toutes les banques, `both`) : l'utilisateur n'a
-  // choisi aucune banque, l'écran n'en nomme donc aucune.
-  if (source !== 'pexels' && source !== 'unsplash') return messagePhotosNeutre(etat);
-  const nom = nomSource(source);
-  switch (etat) {
-    case 'non-configure':
-      return `${nom} n’est pas configuré sur ce serveur.`;
-    case 'auth':
-      return `${nom} refuse l’accès : la configuration du serveur doit être vérifiée.`;
-    case 'quota':
-      return `Limite de recherches atteinte chez ${nom}. Réessayez dans quelques minutes.`;
-    case 'indisponible':
-      return `${nom} est momentanément indisponible.`;
-    default:
-      return 'Aucune photo pour cette recherche.';
-  }
+  // Jamais de nom de fournisseur dans un message d'état : l'utilisateur
+  // n'a pas à savoir quelle banque d'images est derrière la recherche
+  // (règle produit, `src/lib/medias/libelles.ts`). La source reste reçue
+  // pour compatibilité des appelants ; les crédits vivent dans « Crédits
+  // médias » (`data-credit-media`).
+  void source;
+  return messagePhotosNeutre(etat);
 }
 
 /** Le même message, sans nommer de banque d'images. */

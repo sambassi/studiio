@@ -42,7 +42,10 @@ describe('C-PRONUNCIATION — jamais identique', () => {
   });
 
   it('une forme DIFFÉRENTE reste acceptée (le garde-fou ne bloque pas les vraies corrections)', () => {
-    expect(suggestionUtile('Afroboost', 'Afro-Boust')).toBe('Afro-Boust');
+    expect(suggestionUtile('Worcestershire', 'Wousteur-chire')).toBe('Wousteur-chire');
+    expect(suggestionUtile('3 séances', 'trois séances')).toBe('trois séances');
+    // Une micro-variation (« Afro-Boust », « bioo ») n'est pas une correction fiable.
+    expect(suggestionUtile('Afroboost', 'Afro-Boust')).toBeNull();
     expect(prononciationValide({ affiche: 'ADN', prononce: 'A D N' })).toMatchObject({ ok: true });
   });
 
