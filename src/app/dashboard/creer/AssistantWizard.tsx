@@ -11478,7 +11478,7 @@ export default function AssistantWizard() {
                 {/* Jumeau numérique — 'aucun' par défaut ; l'état vient du serveur.
                     Deux intentions : ma voix clonée (pose `ttsVoiceId`), ou mon
                     avatar parlant (séquence « Vidéo » à l'envoi). Les textes qu'il
-                    dira sont ceux des voix par séquence, modifiables à l'étape Audio. */}
+                    dira sont ceux des voix par séquence, modifiables à l'étape Contenu. */}
                 <JumeauPanel
                   mode={jumeauMode}
                   onModeChange={setJumeauMode}

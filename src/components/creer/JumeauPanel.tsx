@@ -197,7 +197,7 @@ export default function JumeauPanel(props: {
                 {s.texte || <span className="text-gray-600">(rien)</span>}
               </div>
             ))}
-            <div className="text-gray-500">Modifiable dans le panneau des voix par séquence (étape Audio).</div>
+            <div className="text-gray-500">Modifiable dans le panneau « Voix-off par séquence » (étape Contenu).</div>
           </div>
 
           {mode === 'avatar' && props.onAvatarIdChange && (
