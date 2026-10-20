@@ -116,6 +116,19 @@ export function planOverlays(input: {
   return { titre, cartes, cta, voix: departs };
 }
 
+/**
+ * Une surimpression qui FINIT AVEC LA VIDÉO n'a pas de fondu de sortie : elle
+ * reste pleine jusqu'à la dernière image. `finVideo` : durée de la séquence
+ * Vidéo quand elle est la DERNIÈRE du montage (sinon la transition suivante
+ * fait la sortie : `null`). Constat (« MOTIVATION », 20/10) : CTA à ≈ 40 %
+ * d'opacité sur la dernière image. Règle PARTAGÉE : Remotion
+ * (`CoucheOverlay`), compositeur (`dessinerSurimpressions`), aperçu
+ * (`etatSurimpression`). Pure.
+ */
+export function sortieSurimpression(finFenetre: number, finVideo: number | null | undefined, fps = 30): boolean {
+  return !(finVideo != null && finVideo > 0) || finFenetre < finVideo - 1 / Math.max(1, fps);
+}
+
 /** Relit des surimpressions stockées en métadonnées ; `null` si mal formées. */
 export function overlaysDepuisMetadata(v: unknown): OverlaysMontage | null {
   if (!v || typeof v !== 'object') return null;

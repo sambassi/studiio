@@ -401,8 +401,10 @@ export default function SequenceCards({
                 fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
                 color: '#FFFFFF', fontSize: tb!.texte, lineHeight: 1.1,
                 // Mots entiers, jamais d'ellipse (deux lignes, une de plus si le
-                // plancher lisible l'exige).
-                whiteSpace: 'normal', overflowWrap: 'normal', wordBreak: 'keep-all',
+                // plancher lisible l'exige). Plancher actif : un mot TRÈS long
+                // qui ne tiendrait pas se coupe en dernier recours, plutôt que
+                // de sortir de l'image (`overflow-wrap: anywhere`).
+                whiteSpace: 'normal', overflowWrap: tb!.texte > vw * CR.text * ech + 1e-6 ? 'anywhere' : 'normal', wordBreak: 'keep-all',
                 ...styleTexte(tb!.texte),
               }}>
                 {c.title}

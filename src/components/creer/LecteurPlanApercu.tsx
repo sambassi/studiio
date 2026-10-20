@@ -104,15 +104,17 @@ export function LecteurPlanApercu({ moteur, secondes, lecture, format, recadrage
 }
 
 /** Surimpressions actives à `secondes`, à la résolution vidéo, réduites par `displayScale`. */
-export function CoucheSurimpressionsApercu({ fenetres, secondes, base, displayScale }: {
+export function CoucheSurimpressionsApercu({ fenetres, secondes, base, displayScale, finVideo = null }: {
   fenetres: OverlaysMontage;
   secondes: number;
+  /** Durée de la séquence Vidéo si elle est la dernière (pas de fondu de sortie à la fin, comme l'export). */
+  finVideo?: number | null;
   base: Omit<PlateauSurimpressionProps, 'element'>;
   displayScale: number;
 }) {
   const actives: Array<{ cle: string; element: PlateauSurimpressionProps['element']; opacite: number; decalage: number }> = [];
   const voir = (cle: string, element: PlateauSurimpressionProps['element'], d: number, f: number) => {
-    const e = etatSurimpression(secondes, d, f);
+    const e = etatSurimpression(secondes, d, f, 30, finVideo);
     if (e) actives.push({ cle, element, ...e });
   };
   if (fenetres.titre) voir('titre', 'titre', fenetres.titre[0], fenetres.titre[1]);

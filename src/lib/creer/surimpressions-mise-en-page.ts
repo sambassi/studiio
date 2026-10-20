@@ -694,11 +694,21 @@ export function boitesSurimpression(design: object, format: DesignFormat): { tit
   const CR = cardRatios(format !== '9:16');
   const ech = d.cardsTypography?.scale ?? 1;
   const hCarteMax = Math.max(0, ...(d.cards ?? [{ title: 'x', value: 'x' }]).map((c) => {
+    const titre = c.title ?? c.label ?? '';
+    const largeurPx = W * 0.84 * (b.w / 100);
     const aj = ajusterBadge({
-      titre: c.title ?? c.label ?? '', valeur: c.value ?? '', largeurPx: W * 0.84 * (b.w / 100), echelle: ech,
+      titre, valeur: c.value ?? '', largeurPx, echelle: ech,
       texte: W * CR.text, valeurPx: W * CR.value, icone: W * CR.icon, ecart: W * CR.gap, padX: W * CR.padX,
     });
-    return (2 * W * CR.padY + aj.echelle * (W * CR.value * 1.3 + 2 * W * CR.text * 1.3)) / H * 100;
+    // Tailles RENDUES, plancher lisible du 9:16 compris (`taillesBadge`) : le
+    // titre peut alors prendre une ligne de plus que les deux d'`ajusterBadge`.
+    const t = taillesBadge({ vw: W, ratios: CR, echelle: aj.echelle, portrait: format === '9:16' });
+    const dispo = largeurPx - 2 * W * CR.padX - (aj.icone ? t.icone + W * CR.gap * aj.echelle : 0);
+    const lignes = Math.max(1, lignesRepliees(titre, t.texte, Math.max(1, dispo), chassePolice('Inter', true)));
+    // Interlignes RÉELS du badge (`SequenceCards` : valeur 1,05, titre 1,1) ;
+    // l'icône, centrée, ne grandit la boîte que si elle dépasse le texte.
+    const bloc = (c.value ? t.valeur * 1.05 : 0) + lignes * t.texte * 1.1;
+    return (2 * W * CR.padY + Math.max(bloc, aj.icone ? t.icone : 0)) / H * 100;
   }));
   const hK = Math.max((b.h / 100) * CADRE.h, hCarteMax);
   return {

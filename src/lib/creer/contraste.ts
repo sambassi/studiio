@@ -158,8 +158,9 @@ export function haloTexteCss(vw: number, alpha = CONTOUR_TEXTE_ALPHA): string {
  * de marque) sous le voile blanc de la carte (alpha `voileCarte`), au bord des
  * lettres cernées du contour fin. Constat
  * (banc, 3 formats) : « PLAN », « PARTAGE » roses (#EC4899) sur le dégradé
- * rose, ≈ 1,2:1. Teinte éclaircie (même famille) jusqu'à 4,5:1 contre le
- * contour posé sur le plus clair de ces fonds ; inchangée si elle suffit déjà ou si les fonds sont
+ * rose, ≈ 1,2:1. Teinte éclaircie au minimum (même famille) : remplissage
+ * ≥ 1,6:1 contre le plus clair de ces fonds, bord des lettres ≥ 4,5:1 sur le
+ * contour ; inchangée si elle suffit déjà ou si les fonds sont
  * inconnus. Pure.
  */
 export function couleurValeurLisible(couleur: string, fonds: ReadonlyArray<string | null | undefined>, voileCarte = 0.08, avecContour = true): string {
@@ -171,7 +172,8 @@ export function couleurValeurLisible(couleur: string, fonds: ReadonlyArray<strin
   // BORD des lettres, sur le contour posé sur ce fond — comme la petite ligne
   // du CTA. Sans lui, contre le fond nu (le blanc seul n'atteint pas toujours
   // 4,5:1 sur le rose de marque).
-  // Et le REMPLISSAGE se détache du fond (≥ `CONTRASTE_REMPLISSAGE_MIN`) :
+  // Et le REMPLISSAGE se détache du fond (≥ `CONTRASTE_REMPLISSAGE_MIN`,
+  // l'éclaircissement MINIMAL qui garde la teinte — #EC4899 → #F6A4CC) :
   // une valeur rose cernée de noir sur du rose reste une valeur rose qu'on
   // devine — éclaircie (même famille), elle se lit d'un coup d'œil.
   if (!avecContour) return eclaircirPourContraste(couleur, clair);
@@ -181,7 +183,7 @@ export function couleurValeurLisible(couleur: string, fonds: ReadonlyArray<strin
 }
 
 /** Contraste minimal du REMPLISSAGE d'une valeur cernée de contour contre son fond. */
-export const CONTRASTE_REMPLISSAGE_MIN = 2;
+export const CONTRASTE_REMPLISSAGE_MIN = 1.6;
 
 /** Le fond sous le bord d'une lettre dans le pire cas : contour (sur voile éventuel) sur BLANC. */
 export function fondHaloPire(alphaVoile = 0, alphaHalo = HALO_TEXTE_ALPHA): Rgb {

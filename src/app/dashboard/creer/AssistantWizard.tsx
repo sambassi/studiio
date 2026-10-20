@@ -165,6 +165,7 @@ import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
 import { echelleCtaAjustee, echelleCtaDeDepart, echelleTitreDeDepart, VERSION_LISIBILITE, defautsLisibles, versionLisibiliteRestauree } from '@/lib/creer/ajustementCta';
+import { recadragePourRushPeint } from '@/lib/creer/recadrage-rush';
 import { ASSOMBRISSEMENT_FOND_TEXTE, fondsRushTexte, fondRushDeLOnglet, type FondRush, type FondsRushTexte } from '@/lib/creer/fond-rush-texte';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
@@ -1529,6 +1530,7 @@ function PlateContent({
   watermark,
   accent,
   gradEnd,
+  gradStart,
   habillageVideo = null,
   textAnimation,
   progress = 1,
@@ -1585,6 +1587,8 @@ function PlateContent({
   watermark?: string;
   accent: string;
   gradEnd: string;
+  /** Début du dégradé de marque (contraste des valeurs de cartes). Absent : `accent`. */
+  gradStart?: string;
   /**
    * Cadre aux couleurs du style sur la vidéo (`habillageVideo.ts`), le MÊME
    * que l'export. `null` : aucun habillage, comme avant.
@@ -1909,8 +1913,10 @@ function PlateContent({
               landscape={landscapeCards}
               zoneSure916={format === '9:16'}
               valueColor={gradEnd}
-              // Valeur posée sur le dégradé : lisible (4,5:1) et contour fin.
-              fondsContraste={[accent, gradEnd]}
+              // Valeur posée sur le dégradé : lisible (4,5:1) et contour fin —
+              // projets aux défauts lisibles seulement (`lisible916`, v2) : un
+              // ancien post réexporté garde ses couleurs.
+              fondsContraste={cardsTypography?.lisible916 ? [gradStart ?? accent, gradEnd] : null}
               interaction={{
                 onCardDragStart,
                 onDragMove,
@@ -2169,7 +2175,10 @@ function FondRushTexte({ fond, gradStart, gradEnd, gradientOpacity }: {
         loop
         playsInline
         data-fond-rush-texte
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
+        // Recadrage du rush : le style de l'aperçu de la séquence Vidéo
+        // (`styleRecadrageRush`), même rectangle que le compositeur. La LUT
+        // n'est pas simulée dans l'aperçu (comme pour la séquence Vidéo).
+        style={{ ...(styleRecadrageRush(fond.recadrage) as React.CSSProperties), pointerEvents: 'none' }}
       />
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`, pointerEvents: 'none' }} />
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: backdropVeilCSS(gradStart, gradEnd, gradientOpacity), pointerEvents: 'none' }} />
@@ -2251,7 +2260,7 @@ function PlateauLecture({
           />
         </>
       )}
-      <PlateContent {...plate} />
+      <PlateContent {...plate} gradStart={gradStart} />
     </div>
   );
 }
@@ -2943,6 +2952,7 @@ export function Preview({
             watermark={watermark}
             accent={accent}
             gradEnd={gradEnd}
+            gradStart={gradStart}
             habillageVideo={habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) ?? null}
             edit={{
               cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard, selectedCards,
@@ -7678,11 +7688,18 @@ export default function AssistantWizard() {
    */
   // Fonds en mouvement Titre / CTA (v2, sans affiche) — la MÊME décision pour
   // l'aperçu et l'export (`fond-rush-texte.ts`).
-  const fondsRushProjet = fondsRushTexte({
+  const fondsRushBruts = fondsRushTexte({
     lisible, affiche: !!posterUrl, fondsSequence: seqBackgrounds,
     rushs: [{ url: rushUrl, secondes: rushSecondes }, ...rushSuivants.map((r) => ({ url: r.url, secondes: r.secondes }))],
     dureeCta: ctaDuration,
   });
+  // Recadrage de chaque rush de fond : celui du compositeur (aperçu = export).
+  const avecRecadrage = (f: FondRush | null): FondRush | null => (f
+    ? { ...f, recadrage: recadragePourRushPeint(f.url, { rushTransforms, rushTransform, videoUrl: rushUrl }) ?? null }
+    : null);
+  const fondsRushProjet: FondsRushTexte | null = fondsRushBruts
+    ? { intro: avecRecadrage(fondsRushBruts.intro), cta: avecRecadrage(fondsRushBruts.cta) }
+    : null;
   const previewShared = {
     fondsRush: fondsRushProjet,
     generated,
@@ -8118,7 +8135,8 @@ export default function AssistantWizard() {
           <>
             {plateauLu}
             {key === 'video' && fenetresApercu && baseSurimpApercu && (
-              <CoucheSurimpressionsApercu fenetres={fenetresApercu} secondes={secondesVideo} base={baseSurimpApercu} displayScale={displayScale} />
+              <CoucheSurimpressionsApercu fenetres={fenetresApercu} secondes={secondesVideo} base={baseSurimpApercu} displayScale={displayScale}
+                finVideo={ordreApercu[ordreApercu.length - 1] === 'video' ? dureeVideoApercu : null} />
             )}
             <FiligraneApercu largeur={VIDEO_SIZE[format].w} hauteur={VIDEO_SIZE[format].h} />
           </>

@@ -155,11 +155,12 @@ describe('Créer : fond Titre / CTA = rush en mouvement (v2, sans affiche)', () 
 describe('Créer : valeur de carte lisible sur le dégradé de marque', () => {
   const FONDS = ['#7C3AED', '#EC4899'];
   const sousVoile = (h: string) => hexVersRgb(h)!.map((v) => v * 0.92 + 255 * 0.08) as [number, number, number];
-  it('rose sur rose : remplissage ≥ 2:1 contre le fond le plus clair, ≥ 4,5:1 au bord des lettres (contour)', () => {
+  it('rose sur rose : éclaircissement minimal (remplissage ≥ 1,6:1), ≥ 4,5:1 au bord des lettres (contour)', () => {
     const v = couleurValeurLisible('#EC4899', FONDS);
     expect(v).not.toBe('#EC4899');
     const fond = sousVoile('#EC4899');
-    expect(ratioContraste(hexVersRgb(v)!, fond)).toBeGreaterThanOrEqual(2);
+    expect(ratioContraste(hexVersRgb(v)!, fond)).toBeGreaterThanOrEqual(1.6);
+    expect(ratioContraste(hexVersRgb(v)!, fond)).toBeLessThan(2); // la teinte reste rose
     expect(ratioContraste(hexVersRgb(v)!, fond.map((x) => x * (1 - HALO_TEXTE_ALPHA)) as [number, number, number])).toBeGreaterThanOrEqual(4.5);
   });
   it('couleur déjà lisible ou fond inconnu : inchangée', () => {
@@ -178,8 +179,73 @@ describe('Créer : valeur de carte lisible sur le dégradé de marque', () => {
   });
   it('câblage : aperçu de Créer et séquence Cartes Remotion passent les couleurs du dégradé', () => {
     const wiz = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
-    expect(wiz).toMatch(/fondsContraste=\{\[accent, gradEnd\]\}/);
+    expect(wiz).toMatch(/fondsContraste=\{cardsTypography\?\.lisible916 \? \[gradStart \?\? accent, gradEnd\] : null\}/);
     const rem = readFileSync(resolve(process.cwd(), 'remotion/CreerSimpleMontage.tsx'), 'utf8');
-    expect(rem).toMatch(/fondsContraste=\{props\.cardBackground == null \?/);
+    expect(rem).toMatch(/fondsContraste=\{props\.cardBackground == null && props\.cardsTypography\?\.lisible916 \?/);
+  });
+});
+
+// ── Retours QA du lot 2 ───────────────────────────────────────────────────
+import { libererLecteurs, dessinerSurimpressions } from '@/lib/video-composer';
+import { etatSurimpression } from '@/lib/creer/apercu-plan-lecteur';
+import { boitesSurimpression, appliquerMiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
+import { horsZoneSure916 } from '@/lib/creer/zones-sures-916';
+
+describe('R1 — lecteurs des fonds en mouvement libérés', () => {
+  it('libererLecteurs : pause, source retirée, load — tolérant', () => {
+    const journal: string[] = [];
+    const el = { pause: () => journal.push('pause'), removeAttribute: (a: string) => journal.push(`rm:${a}`), load: () => journal.push('load') };
+    libererLecteurs([el as never, { pause: () => { throw new Error('x'); } } as never]);
+    expect(journal).toEqual(['pause', 'rm:src', 'load']);
+  });
+  it('câblage : libérés avec l’étalonneur (onstop, onerror, finally de chaque chemin)', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/lib/video-composer.ts'), 'utf8');
+    expect(src).toMatch(/const libererEtalonneur = \(\) => \{ lutGrader\?\.dispose\(\); libererLecteurs\(Array\.from\(fondsTexte\.values\(\)/);
+    expect((src.match(/libererEtalonneur\(\)|\.finally\(libererEtalonneur\)/g) ?? []).length).toBeGreaterThanOrEqual(6);
+  });
+});
+
+describe('R2 — CTA sans fondu de sortie : compositeur et aperçu = Remotion', () => {
+  it('aperçu (etatSurimpression) : plein sur la dernière image si la fenêtre finit avec la vidéo finale', () => {
+    expect(etatSurimpression(24.62, 22.18, 24.682, 30, 24.682)!.opacite).toBe(1);
+    expect(etatSurimpression(24.62, 22.18, 24.682, 30, null)!.opacite).toBeLessThan(1);
+  });
+  it('compositeur (dessinerSurimpressions) : alpha 1 sur la dernière image', () => {
+    const alphas: number[] = [];
+    const ctx = new Proxy({}, {
+      get: (_t, p) => (p === 'createLinearGradient' ? () => ({ addColorStop: () => {} }) : () => {}),
+      set: (_t, p, v) => { if (p === 'globalAlpha') alphas.push(v as number); return true; },
+    }) as unknown as CanvasRenderingContext2D;
+    const s = { fenetres: { titre: null, cartes: [], cta: [22.18, 24.682] as [number, number], voix: {} }, images: { titre: null, cartes: [], cta: {} as CanvasImageSource } };
+    dessinerSurimpressions(ctx, 1080, 1920, 24.62, s as never, 30, 24.682);
+    expect(alphas.at(-1)).toBe(1);
+    dessinerSurimpressions(ctx, 1080, 1920, 24.62, s as never, 30, null);
+    expect(alphas.at(-1)).toBeLessThan(1);
+  });
+});
+
+describe('R5 — badges : plancher pris en compte par la géométrie, coupe de dernier recours', () => {
+  it('boitesSurimpression compte la hauteur des badges au plancher 52 px, et la carte reste dans la zone sûre', () => {
+    const d = appliquerMiseEnPageSurimpression({ title: 'X', ctaText: 'GO', cards: [{ title: 'PUBLIC COMMITMENT DURABLE', value: 'PARTAGE' }] } as never, 'CARDIO_DANCE', { format: '9:16' });
+    const b = boitesSurimpression({ ...(d as object), cards: [{ title: 'PUBLIC COMMITMENT DURABLE', value: 'PARTAGE' }] }, '9:16');
+    expect(b.carte.y1 - b.carte.y0).toBeGreaterThan((52 * 1.1 + 65 * 1.05) / 1920 * 100);
+    expect(horsZoneSure916(b.carte, 0.01)).toEqual([]);
+  });
+  it('mot très long au plancher : overflow-wrap anywhere (jamais hors de l’image)', () => {
+    const html = renderToStaticMarkup(
+      <SequenceCards cards={[{ id: 'c0', icon: 'Zap', title: 'ANTICONSTITUTIONNELLEMENTPARFAIT', value: '' }]} cardBoxes={{ c0: { x: 0, y: 72, w: 91.6, h: 22 } }}
+        containerWidth={1080} landscape={false} zoneSure916 valueColor="#EC4899" fond="transparent" typography={{ scale: 0.5 }} />,
+    );
+    expect(html).toContain('overflow-wrap:anywhere');
+  });
+});
+
+describe('R4 — aperçu du fond en mouvement : recadrage du compositeur', () => {
+  it('le fond porte le recadrage résolu par recadragePourRushPeint, appliqué par styleRecadrageRush', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
+    expect(src).toMatch(/recadrage: recadragePourRushPeint\(f\.url, \{ rushTransforms, rushTransform, videoUrl: rushUrl \}\)/);
+    expect(src).toMatch(/styleRecadrageRush\(fond\.recadrage\)/);
+    const comp = readFileSync(resolve(process.cwd(), 'src/lib/video-composer.ts'), 'utf8');
+    expect(comp).toMatch(/recadragePourRushPeint\(f\.url, \{ rushTransforms: options\.rushTransforms, rushTransform: options\.rushTransform, videoUrl: options\.videoUrl \}\)/);
   });
 });

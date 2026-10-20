@@ -16,7 +16,15 @@
 /** Assombrissement du rush servi en fond des séquences Titre / CTA (avant le voile du dégradé). */
 export const ASSOMBRISSEMENT_FOND_TEXTE = 0.35;
 
-export interface FondRush { url: string; depuis: number }
+export interface FondRush {
+  url: string;
+  depuis: number;
+  /**
+   * Recadrage du rush (`rushTransforms`) — le MÊME que le compositeur
+   * (`recadragePourRushPeint`), appliqué par l'aperçu en CSS. Absent : centré.
+   */
+  recadrage?: { scale?: number; offsetX?: number; offsetY?: number } | null;
+}
 export interface FondsRushTexte { intro: FondRush | null; cta: FondRush | null }
 
 export function fondsRushTexte(p: {

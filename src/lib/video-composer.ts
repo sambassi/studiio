@@ -39,7 +39,7 @@ import { transformeKenBurns, echelleZoomCartes, rectZoomeCentre } from '@/lib/cr
 import type { MouvementImage } from '@/lib/creer/multi-rush';
 import { ajusterPlan } from '@/lib/creer/smart-montage';
 import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
-import type { OverlaysMontage } from '@/lib/creer/overlays';
+import { sortieSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendus/medias-requis';
 import { imageCartesA } from '@/lib/creer/synchro-cartes';
 import { dessinerHabillageVideo } from '@/lib/creer/habillageVideo';
@@ -739,6 +739,17 @@ function peindreRushSousCartes(
   return true;
 }
 
+/**
+ * Arrête et vide des lecteurs vidéo : `pause()`, source retirée, `load()` —
+ * le navigateur libère le décodeur et cesse le téléchargement (un lecteur en
+ * `loop` tournerait sinon jusqu'à la fermeture de la page). Tolérant.
+ */
+export function libererLecteurs(els: Iterable<Pick<HTMLVideoElement, 'pause' | 'removeAttribute' | 'load'>>): void {
+  for (const el of els) {
+    try { el.pause(); el.removeAttribute('src'); el.load(); } catch { /* déjà libéré */ }
+  }
+}
+
 /** Voile des surimpressions — les arrêts de `VOILE_SURIMPRESSION` (Remotion). */
 function peindreVoileSurimpression(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -758,6 +769,8 @@ function peindreVoileSurimpression(ctx: CanvasRenderingContext2D, w: number, h: 
  */
 export function dessinerSurimpressions(
   ctx: CanvasRenderingContext2D, w: number, h: number, secondes: number, s: SurimpressionsComposer, fps = 30,
+  /** Durée de la séquence Vidéo si elle est la DERNIÈRE : une fenêtre qui finit avec elle n'a pas de fondu de sortie (`sortieSurimpression`). */
+  finVideo: number | null = null,
 ) {
   const bord = Math.max(1, Math.round(0.3 * fps));
   const image = Math.round(secondes * fps);
@@ -767,7 +780,8 @@ export function dessinerSurimpressions(
     const duree = Math.max(1, Math.round((fin - debut) * fps));
     if (f < 0 || f >= duree) return;
     const entree = Math.min(1, f / bord);
-    const opacite = Math.max(0, Math.min(entree, (duree - f) / bord));
+    const sortie = sortieSurimpression(fin, finVideo, fps);
+    const opacite = Math.max(0, sortie ? Math.min(entree, (duree - f) / bord) : entree);
     if (opacite <= 0) return;
     ctx.save();
     ctx.globalAlpha = opacite;
@@ -4448,7 +4462,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const c = f.calque.getContext('2d');
     if (!c) return;
     c.clearRect(0, 0, width, height);
-    if (!peindreRushSousCartes(c, width, height, el, recadragePourRushPeint(f.url, { rushTransforms: options.rushTransforms }), lutGrader)) return;
+    // Recadrage : la même résolution que l'aperçu (`fondsRushProjet`) et que la séquence Vidéo.
+    if (!peindreRushSousCartes(c, width, height, el, recadragePourRushPeint(f.url, { rushTransforms: options.rushTransforms, rushTransform: options.rushTransform, videoUrl: options.videoUrl }), lutGrader)) return;
     c.fillStyle = `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`;
     c.fillRect(0, 0, width, height);
     f.pret = true;
@@ -4709,7 +4724,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, recadrageCourant, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
           }
           // Surimpressions (profils dynamiques) : posées sur le rush qui continue.
-          if (options.surimpressions) dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps);
+          if (options.surimpressions) {
+            const videoFinale = sequences[sequences.length - 1]?.type === 'video';
+            dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps, videoFinale && videoSeq ? videoSeq.duration : null);
+          }
           break;
         }
         case 'cta': drawCTA(target, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
@@ -5200,7 +5218,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       `[Composer] LUT rush ${lutGrader ? 'active' : 'ignoree (rien a etalonner ou GPU indisponible)'} — ${options.rushLut.lut.kind}, ${options.rushLut.lut.size} pas, intensite ${options.rushLut.intensity}`,
     );
   }
-  const libererEtalonneur = () => { lutGrader?.dispose(); };
+  // Lecteurs des fonds en mouvement (`loop`) : arrêtés et vidés à CHAQUE
+  // fin — normale, erreur, abandon — en même temps que l'étalonneur (les
+  // mêmes appels `onstop` / `onerror` / `.finally`). Idempotent.
+  const libererEtalonneur = () => { lutGrader?.dispose(); libererLecteurs(Array.from(fondsTexte.values(), (f) => f.el)); fondsTexte.clear(); };
 
   // ═══════════════════════════════════════════════════════════
   // UNIFIED MODE: Both with and without audio use the same render loop.

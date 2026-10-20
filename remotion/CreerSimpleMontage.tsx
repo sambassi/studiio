@@ -5,7 +5,7 @@ import {
 import { planRushs, planAvecAvatar, ORIGINE_CADRAGE_AVATAR, type RushSegment } from '../src/lib/creer/multi-rush';
 import { transformeKenBurns } from '../src/lib/creer/ken-burns';
 import { ajusterPlan } from '../src/lib/creer/smart-montage';
-import type { OverlaysMontage } from '../src/lib/creer/overlays';
+import { sortieSurimpression, type OverlaysMontage } from '../src/lib/creer/overlays';
 import {
   buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
   gradientOverlayCss, DEFAULT_COLORS, TEXT_LAYOUT,
@@ -449,15 +449,8 @@ const CoucheOverlay: React.FC<{ from: number; durationInFrames: number; children
   </Sequence>
 );
 
-/**
- * Une surimpression qui FINIT AVEC LA VIDÉO n'a pas de fondu de sortie.
- * Constat (« MOTIVATION », 20/10) : le CTA, posé sur les 2,5 dernières
- * secondes, s'effaçait sur ses 0,3 dernières — ≈ 40 % d'opacité sur la
- * dernière image, celle que la plateforme fige en fin de lecture. Pure.
- */
-export function sortieSurimpression(finFenetre: number, dureeVideo: number, fps: number): boolean {
-  return !(dureeVideo > 0) || finFenetre < dureeVideo - 1 / Math.max(1, fps);
-}
+/** Règle partagée (Remotion = compositeur = aperçu) : `sortieSurimpression` (overlays.ts). */
+export { sortieSurimpression };
 
 /** Voile dégradé des surimpressions — le même en rendu complet et hybride. */
 export const VOILE_SURIMPRESSION = 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 32%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.55) 100%)';
@@ -685,8 +678,9 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 zoneSure916={format === '9:16'}
                 valueColor={props.cardValueColor || props.gradientEnd || DEFAULT_COLORS.gradientEnd}
                 // Séquence Cartes plein écran (dégradé) : valeur lisible + contour,
-                // comme l'aperçu de Créer. Surimpressions : leur propre fond.
-                fondsContraste={props.cardBackground == null ? [props.gradientStart || DEFAULT_COLORS.gradientStart, props.gradientEnd || DEFAULT_COLORS.gradientEnd] : null}
+                // comme l'aperçu de Créer — projets aux défauts lisibles
+                // (`lisible916`) seulement. Surimpressions : leur propre fond.
+                fondsContraste={props.cardBackground == null && props.cardsTypography?.lisible916 ? [props.gradientStart || DEFAULT_COLORS.gradientStart, props.gradientEnd || DEFAULT_COLORS.gradientEnd] : null}
                 // Absent = le cadre, comme depuis toujours.
                 cardStyle={props.cardStyle}
                 typography={props.cardsTypography}

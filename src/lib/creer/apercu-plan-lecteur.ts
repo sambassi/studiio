@@ -20,6 +20,7 @@
 import { creerPiloteMontage, alternerLecteurs, type LecteurVideo } from '@/lib/creer/pilote-montage';
 import { rectangleRush, type RecadragesRush } from '@/lib/creer/recadrage-rush';
 import type { RushSegment } from '@/lib/creer/multi-rush';
+import { sortieSurimpression } from '@/lib/creer/overlays';
 
 /**
  * Plus grand côté de l'image d'aperçu (px). 540 = la moitié de la sortie
@@ -44,14 +45,19 @@ export function dimensionsApercu(format: '9:16' | '1:1' | '16:9'): { w: number; 
  * l'entrée et à la sortie, glissement de 24 px (résolution vidéo) à l'entrée.
  * `null` hors de la fenêtre. Parité vérifiée par test contre le compositeur.
  */
-export function etatSurimpression(secondes: number, debut: number, fin: number, fps = 30): { opacite: number; decalage: number } | null {
+export function etatSurimpression(
+  secondes: number, debut: number, fin: number, fps = 30,
+  /** Durée de la séquence Vidéo si elle est la DERNIÈRE (`sortieSurimpression`) : pas de fondu de sortie à la fin. */
+  finVideo: number | null = null,
+): { opacite: number; decalage: number } | null {
   const bord = Math.max(1, Math.round(0.3 * fps));
   const image = Math.round(secondes * fps);
   const f = image - Math.round(debut * fps);
   const duree = Math.max(1, Math.round((fin - debut) * fps));
   if (f < 0 || f >= duree) return null;
   const entree = Math.min(1, f / bord);
-  const opacite = Math.max(0, Math.min(entree, (duree - f) / bord));
+  const sortie = sortieSurimpression(fin, finVideo, fps);
+  const opacite = Math.max(0, sortie ? Math.min(entree, (duree - f) / bord) : entree);
   if (opacite <= 0) return null;
   return { opacite, decalage: Math.round((1 - entree) * 24) };
 }
