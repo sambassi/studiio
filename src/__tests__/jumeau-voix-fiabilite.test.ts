@@ -88,7 +88,7 @@ describe('Jumeau : rapatriement de la vidéo terminée', () => {
   it('copie en échec → toujours « en cours » (nouvel essai), jamais un succès sur une adresse qui expire', async () => {
     uploadErreur = { message: 'stockage indisponible' };
     const r = await avancerStatutGeneration('u1', 'gen-1');
-    expect(r).toEqual({ status: 'processing', videoUrl: null });
+    expect(r).toEqual({ status: 'processing', videoUrl: null, etape: 'recuperation' });
     expect(misesAJour.some((p) => p.status === 'completed')).toBe(false);
     expect(credits).toEqual([]);
   });

@@ -63,7 +63,8 @@ export async function GET(req: NextRequest) {
     if (r.status === 'failed') {
       return NextResponse.json({
         success: true,
-        data: { generationId, status: 'failed', videoUrl: null, error: r.error, ...avatarVersion },
+        // `rembourse` (additif) : l'écran dit « crédits remboursés » sur la foi du serveur.
+        data: { generationId, status: 'failed', videoUrl: null, error: r.error, rembourse: r.rembourse === true, ...avatarVersion },
       });
     }
     if (r.status === 'completed') {
@@ -79,6 +80,10 @@ export async function GET(req: NextRequest) {
       success: true,
       data: {
         generationId, status: 'processing', videoUrl: null, ...avatarVersion,
+        // ADDITIFS — `status` reste « processing » pour les lecteurs d'avant :
+        // en file (`pending`) / en cours / rapatriement de la vidéo terminée.
+        ...(r.etape ? { etape: r.etape } : {}),
+        ...(r.etatFournisseur ? { etatFournisseur: r.etatFournisseur } : {}),
         // Solde de Studiio épuisé chez le fournisseur : l'écran le dit, sans le
         // nommer ; la génération reprendra seule (`attente-fournisseur.ts`).
         ...(r.enAttenteFournisseur ? { enAttente: 'fournisseur', message: MESSAGE_ATTENTE_FOURNISSEUR } : {}),

@@ -15,6 +15,10 @@
 
 import { avecConfirmationCout, MESSAGE_ANNULE, type Confirmeur } from '@/lib/fournisseurs/confirmation-client';
 import { generationDepuisRush, versionPerimee } from '@/lib/avatar/identite';
+import {
+  DETAIL_SOUS_ETAT_AVATAR, etapeDepuisStatutAvatar, progressionVideoAvatar,
+  type CleEtapeVideoAvatar, type SousEtatGenerationAvatar,
+} from '@/lib/avatar/etapes-video-avatar';
 
 export type JumeauMode = 'aucun' | 'voix' | 'avatar';
 export const JUMEAU_MODES: readonly JumeauMode[] = ['aucun', 'voix', 'avatar'];
@@ -167,17 +171,30 @@ export const DETAIL_PHASE_JUMEAU: Record<PhaseJumeau, string> = {
  */
 export function detailSuiviJumeau(phase: PhaseJumeau, etape: string | null | undefined): string {
   if (phase === 'rendu' && etape) return etape;
-  if (phase === 'traitement' && etape && (etape === MESSAGE_JUMEAU_EN_ATTENTE_FOURNISSEUR || etape.startsWith('Connexion instable'))) return etape;
+  if (phase === 'traitement' && etape && (etape === MESSAGE_JUMEAU_EN_ATTENTE_FOURNISSEUR || etape === DETAIL_SOUS_ETAT_AVATAR.en_file || etape.startsWith('Connexion instable'))) return etape;
   return DETAIL_PHASE_JUMEAU[phase];
 }
 
-/** Les étapes au format `ProgressStatus` : terminées avant, courante, à venir après. */
+/**
+ * La phase technique → l'étape du modèle PARTAGÉ (`etapes-video-avatar`) :
+ * « Traitement » / « Stockage » ne s'affichent plus — préparation et envoi
+ * sont la Vérification, le traitement la Génération de l'avatar, le stockage
+ * la Récupération de la vidéo, le rendu le Montage.
+ */
+export function etapeVideoAvatarDepuisPhaseJumeau(phase: PhaseJumeau): CleEtapeVideoAvatar {
+  if (phase === 'traitement') return 'generation';
+  if (phase === 'stockage') return 'recuperation';
+  if (phase === 'rendu') return 'montage';
+  if (phase === 'pret') return 'prete';
+  return 'verification';
+}
+
+/** Les étapes au format `ProgressStatus` (modèle partagé) : terminées avant, courante, à venir après. */
 export function etapesJumeau(phase: PhaseJumeau, echec = false): Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' | 'echouee' }> {
-  const i = PHASES_JUMEAU.findIndex((p) => p.phase === phase);
-  return PHASES_JUMEAU.map((p, k) => ({
-    libelle: p.libelle,
-    etat: k < i || (phase === 'pret' && k === i) ? 'terminee' : k === i ? (echec ? 'echouee' : 'courante') : 'a_venir',
-  }));
+  return progressionVideoAvatar({
+    etape: etapeVideoAvatarDepuisPhaseJumeau(phase),
+    echec: echec ? { message: '' } : null,
+  }).etapes;
 }
 
 /**
@@ -297,6 +314,8 @@ export async function attendreStatutJumeau(args: {
   generationId: string;
   onEtape?: (message: string) => void;
   onPhase?: (phase: PhaseJumeau) => void;
+  /** Sous-état RÉEL de la génération (en file / en cours / en pause), relu à chaque statut. */
+  onSousEtat?: (sousEtat: SousEtatGenerationAvatar) => void;
   fetchImpl?: typeof fetch;
   attendreMs?: (ms: number) => Promise<void>;
   maxAttenteMs?: number;
@@ -345,6 +364,7 @@ export async function attendreStatutJumeau(args: {
       // un échec tant que le serveur dit « en attente » (B3).
       if (d.enAttente === 'fournisseur') {
         enAttenteFournisseur = true;
+        args.onSousEtat?.('en_pause');
         args.onEtape?.(MESSAGE_JUMEAU_EN_ATTENTE_FOURNISSEUR);
         await dormir(horloge() - debut >= limite ? JUMEAU_POLL_ATTENTE_MS : JUMEAU_POLL_MS);
         continue;
@@ -354,7 +374,10 @@ export async function attendreStatutJumeau(args: {
         enAttenteFournisseur = false;
         repere = horloge();
       }
-      args.onEtape?.(DETAIL_PHASE_JUMEAU.traitement);
+      const lu = etapeDepuisStatutAvatar(d);
+      if (lu.etape === 'recuperation') args.onPhase?.('stockage');
+      else if (lu.sousEtat) args.onSousEtat?.(lu.sousEtat);
+      args.onEtape?.(lu.sousEtat === 'en_file' ? DETAIL_SOUS_ETAT_AVATAR.en_file : DETAIL_PHASE_JUMEAU.traitement);
       await dormir(JUMEAU_POLL_MS);
       continue;
     }
@@ -396,6 +419,7 @@ export async function genererEtAttendreVideoJumeau(args: {
   onLancee?: (generationId: string, avatarVersion: number) => void;
   onEtape?: (message: string) => void;
   onPhase?: (phase: PhaseJumeau) => void;
+  onSousEtat?: (sousEtat: SousEtatGenerationAvatar) => void;
   fetchImpl?: typeof fetch;
   attendreMs?: (ms: number) => Promise<void>;
   maxAttenteMs?: number;
@@ -433,6 +457,7 @@ export async function genererEtAttendreVideoJumeau(args: {
     generationId,
     onEtape: args.onEtape,
     onPhase: args.onPhase,
+    onSousEtat: args.onSousEtat,
     fetchImpl: args.fetchImpl,
     attendreMs: args.attendreMs,
     maxAttenteMs: args.maxAttenteMs,

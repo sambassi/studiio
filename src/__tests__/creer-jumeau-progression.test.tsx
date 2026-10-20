@@ -136,11 +136,14 @@ describe('A. attendreStatutJumeau — le contrat réel de /api/avatar/status', (
 });
 
 describe('B. Les étapes réelles, sans pourcentage inventé', () => {
-  it('Préparation → Envoi → Traitement → Stockage → Rendu → Prêt, dans l’ordre où elles se produisent', () => {
-    expect(PHASES_JUMEAU.map((p) => p.libelle)).toEqual(['Préparation', 'Envoi', 'Traitement', 'Stockage', 'Rendu', 'Prêt']);
-    expect(etapesJumeau('traitement').map((e) => e.etat)).toEqual(['terminee', 'terminee', 'courante', 'a_venir', 'a_venir', 'a_venir']);
+  it('phases techniques (Préparation → Envoi → Traitement → Stockage → Rendu → Prêt) montrées par le modèle PARTAGÉ, sans jargon', () => {
+    expect(PHASES_JUMEAU.map((p) => p.phase)).toEqual(['preparation', 'envoi', 'traitement', 'stockage', 'rendu', 'pret']);
+    expect(etapesJumeau('traitement').map((e) => e.libelle)).toEqual(['Vérification', 'Génération de l’avatar', 'Récupération de la vidéo', 'Montage', 'Prête']);
+    expect(etapesJumeau('traitement').map((e) => e.etat)).toEqual(['terminee', 'courante', 'a_venir', 'a_venir', 'a_venir']);
+    expect(etapesJumeau('stockage').map((e) => e.etat)).toEqual(['terminee', 'terminee', 'courante', 'a_venir', 'a_venir']);
+    expect(etapesJumeau('rendu')[3].etat).toBe('courante');
     expect(etapesJumeau('pret').every((e) => e.etat === 'terminee')).toBe(true);
-    expect(etapesJumeau('envoi', true)[1].etat).toBe('echouee');
+    expect(etapesJumeau('envoi', true)[0].etat).toBe('echouee');
   });
 
   it('⚠️ le 5 % fixe a disparu du code ; seul l’étape « Rendu » (frames mesurées) porte un pourcentage', () => {
@@ -240,7 +243,7 @@ beforeEach(() => { window.localStorage.clear(); statut = 'processing'; installer
 afterEach(() => { statut = '404'; cleanup(); vi.clearAllMocks(); });
 
 describe('C. Envoi avec le jumeau — étapes réelles pendant le rendu fournisseur', () => {
-  it('⚠️ processing sans pourcentage : barre INDÉTERMINÉE, étape « Traitement », jamais « 5 % » ; completed → polling arrêté, montage livré, un seul lancement', async () => {
+  it('⚠️ processing sans pourcentage : barre INDÉTERMINÉE, étape « Génération de l’avatar », jamais « 5 % » ; completed → polling arrêté, montage livré, un seul lancement', async () => {
     poser({ step: 4, jumeauMode: 'avatar' });
     render(<AssistantWizard />);
     await laisser(2);
@@ -261,8 +264,8 @@ describe('C. Envoi avec le jumeau — étapes réelles pendant le rendu fourniss
     expect(suivi.querySelector('[role="progressbar"]')?.hasAttribute('aria-valuenow')).toBe(false);
     expect(suivi.querySelector('[data-progress-pourcentage]')).toBeNull();
     expect([...suivi.querySelectorAll('[data-progress-etape-etat]')].map((e) => e.getAttribute('data-progress-etape-etat')))
-      .toEqual(['terminee', 'terminee', 'courante', 'a_venir', 'a_venir', 'a_venir']);
-    expect(suivi.textContent).toContain('Traitement');
+      .toEqual(['terminee', 'courante', 'a_venir', 'a_venir', 'a_venir']);
+    expect(suivi.textContent).toContain('Génération de l’avatar');
     expect(document.body.textContent).not.toMatch(/(^|\D)5\s?%/);
     expect(trace).not.toContain('reservation');
 
