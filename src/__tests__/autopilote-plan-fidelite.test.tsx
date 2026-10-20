@@ -36,7 +36,9 @@ vi.mock('@/lib/autopilot/sonde-stock', async (importOriginal) => {
 });
 vi.mock('@/lib/autopilot/poster', () => ({
   rushEncorePresent: async () => true,
-  probeRushSeconds: async (url: string) => (url.includes('/avatar/') ? 30 : url.includes('stock-') ? 10 : 15),
+  // L'avatar « généré » parle EXACTEMENT ce que l'écran estime pour le script
+  // de production (mêmes entrées) — la mesure réelle remplacera l'estimation.
+  probeRushSeconds: async (url: string) => (url.includes('/avatar/') ? paroleAvatarEstimee() : url.includes('stock-') ? 10 : 15),
   pickPosterUrl: async () => 'https://cdn.test/affiche.jpg',
   pickCustomPoster: () => null,
 }));
@@ -69,6 +71,9 @@ vi.mock('@/lib/db/supabase', () => {
 });
 
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
+import { buildAutopilotSample, postDeLEchantillon } from '@/lib/autopilot/sample';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
+import { estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
 import { DEFAULT_CONFIG, sanitizeConfig, type AutopilotConfig } from '@/lib/autopilot/rules';
 import type { ConfigSources, MediaStockRetenu, TypeCreneau } from '@/lib/autopilot/sources';
 import type { RushSegment } from '@/lib/creer/multi-rush';
@@ -102,6 +107,11 @@ const JUMEAU_PRET = {
 const AVATARS = { avatars: [{ id: 'av1', nom: 'Moi', parDefaut: true, utilisable: true, type: 'photo', versionActive: { id: 'ver-1', version: 2, source: true, type: 'photo' } }] };
 
 let configServeur: AutopilotConfig;
+/** La parole estimée par l'écran (script de production, échantillon de l'aperçu). */
+function paroleAvatarEstimee(): number {
+  const c = configServeur;
+  return estimerParoleJumeau(scriptJumeauMontage(postDeLEchantillon(buildAutopilotSample({ topics: c.topics, brief: c.brief }), c.brief), c), c.brief?.rythme);
+}
 let envois: AutopilotConfig[];
 const horsStudiio: string[] = [];
 
@@ -229,6 +239,21 @@ describe('sans plan enregistré : la suggestion affichée = les types rendus', (
       else expect(compacter(types)).toEqual(compacter(attendu));
     });
   }
+});
+
+describe('même nombre de plans à l’écran et en production', () => {
+  it('avatar + stock, durée cible 30 s : la parole estimée du script de production fixe le plan des deux côtés', async () => {
+    configServeur = {
+      ...DEFAULT_CONFIG, topics: ['yoga'], brief: { duree: 30 }, jumeauAvatar: true, rushUrls: [IMPORTE('V1')],
+      designStyle: { sources: sourcesCfg({ avatar: true, rushes: false, stock: true }, STOCK) },
+    } as AutopilotConfig;
+    await ouvrir();
+    await waitFor(() => expect(segmentsAffiches().length).toBeGreaterThan(0));
+    expect(q('[data-plan-duree-planifiee]')!.textContent).toMatch(/estimée/);
+    const { montage } = await rendre(configServeur);
+    await waitFor(() => expect(segmentsAffiches().length).toBe(montage!.length));
+    await attendreIdentique(montage);
+  });
 });
 
 describe('après chaque geste : le gabarit ENREGISTRÉ pilote le rendu à l’identique', () => {

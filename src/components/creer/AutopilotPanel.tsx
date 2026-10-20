@@ -20,6 +20,8 @@ import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type Propositi
 import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
+import { buildAutopilotSample, postDeLEchantillon } from '@/lib/autopilot/sample';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import {
   validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
@@ -775,6 +777,18 @@ export default function AutopilotPanel({
    * LE PLAN TEL QUE L'ÉCRAN LE MONTRE — enregistré, sinon suggéré. Une seule
    * expression pour « Plan avant génération » et pour l'aperçu.
    */
+  /**
+   * LE SCRIPT QUE L'AVATAR DIRA — par la MÊME fonction que la production
+   * (`scriptJumeauMontage`, dimensionnée pour la durée cible et le débit de
+   * la voix), sur l'échantillon que l'aperçu montre (`buildAutopilotSample`).
+   * Le plan en ESTIME la parole (`estimerParoleJumeau`) tant qu'aucune
+   * génération n'est mesurée. Aucun appel, aucune génération.
+   */
+  const scriptAvatarPrevu = useMemo(() => {
+    if (!config.jumeauAvatar) return null;
+    const echantillon = buildAutopilotSample({ topics: config.topics, brief: config.brief });
+    return scriptJumeauMontage(postDeLEchantillon(echantillon, config.brief), config);
+  }, [config]);
   const planSuggere = gabaritSuggere({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
@@ -1881,6 +1895,7 @@ export default function AutopilotPanel({
             rushesPerso={sources.actives.rushes ? rushesPerso : []}
             stock={sources.actives.stock ? sources.stock : []}
             stockPertinent={sources.actives.stock ? pertinent.stock : []}
+            scriptAvatar={scriptAvatarPrevu}
             vignetteAvatar={vignetteAvatar}
             avatarDisponible={etatSources.avatarActif && etatSources.avatarPret}
             disabled={!ready || saving}
