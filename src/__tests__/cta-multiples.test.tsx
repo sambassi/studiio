@@ -17,9 +17,9 @@
  *   G. Export canvas (`fillText` aux positions de chacun) et Remotion.
  *   H. Machine à écrire : chaque CTA s'écrit, sur son propre texte.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import React from 'react';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 
@@ -74,6 +74,13 @@ Object.defineProperty(HTMLMediaElement.prototype, 'pause', { configurable: true,
 
 const GEL_DRAW = JSON.parse(readFileSync(join(__dirname, 'fixtures/cta-multiples-gel-drawcta.json'), 'utf8'));
 const GEL_HTML = JSON.parse(readFileSync(join(__dirname, 'fixtures/cta-multiples-gel-html.json'), 'utf8'));
+/**
+ * Réécrire le gel HTML (changement VOULU du rendu, à justifier dans le
+ * commit) : GEL_ECRIRE=1. 20/10 : ombre du titre lisible, coupe de secours
+ * `overflow-wrap` du titre et du CTA.
+ */
+const ECRIRE_GEL_HTML = process.env.GEL_ECRIRE === '1';
+afterAll(() => { if (ECRIRE_GEL_HTML) writeFileSync(join(__dirname, 'fixtures/cta-multiples-gel-html.json'), JSON.stringify(GEL_HTML)); });
 
 const STYLE = { font: 'Inter', color: '#FFFFFF', subColor: '#EC4899', scale: 1, bold: true, italic: false, letterSpacing: 0, lineHeight: 1.2 };
 const copie = (o: Partial<CtaCopie> = {}): CtaCopie => ({
@@ -142,6 +149,7 @@ describe('A — sans copie : rendu identique à avant (gel)', () => {
   it.each(['9:16', '1:1', '16:9'] as const)('aperçu Créer %s : HTML identique au gel (liste absente ET vide)', (format) => {
     for (const extra of [{}, { ctaCopies: [] }]) {
       const { container } = render(React.createElement(Preview as never, propsApercu(format, extra) as never));
+      if (ECRIRE_GEL_HTML) GEL_HTML[`preview-${format}`] = container.innerHTML;
       expect(container.innerHTML).toBe(GEL_HTML[`preview-${format}`]);
       expect(container.querySelector('[data-cta-copie]')).toBeNull();
       cleanup();
@@ -153,6 +161,7 @@ describe('A — sans copie : rendu identique à avant (gel)', () => {
     for (const extra of [{}, { ctaCopies: [] }]) {
       const p = { format, title: '', cards: [], ctaText: 'JE ME LANCE', ctaSubText: 'LIEN EN BIO', introDuration: 0, cardsDuration: 0, videoDuration: 0, ctaDuration: 4, sequenceOrder: ['cta'], textAnimation: 'typewriter', ...extra };
       const r = render(React.createElement(CreerSimpleMontage as never, p as never));
+      if (ECRIRE_GEL_HTML) GEL_HTML[`remotion-${format}`] = r.container.innerHTML;
       expect(r.container.innerHTML).toBe(GEL_HTML[`remotion-${format}`]);
       cleanup();
     }

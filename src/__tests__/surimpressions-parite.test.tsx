@@ -85,7 +85,8 @@ describe('mise en page partagée', () => {
       cta: { text: 'Rejoins la session', typography: { font: 'Inter', color: '#fff', subColor: '#EC4899', scale: 1, bold: true, italic: false, letterSpacing: 0, lineHeight: 1.2 } },
     };
     const carte = renderToStaticMarkup(<PlateauSurimpression {...base} element={{ carte: 0 }} />);
-    expect(carte).toContain('background-color:rgba(0,0,0,0.55)');
+    // Texte sur l'image (20/10 : plus le pavé rgba(0,0,0,0.55)).
+    expect(carte).toContain(`background-color:${m.carteFond}`);
     expect(carte).toContain(`left:${m.carte.x}%;top:${m.carte.y}%`);
     expect(carte).toContain('MÉMOIRE');
     const cta = renderToStaticMarkup(<PlateauSurimpression {...base} element="cta" />);

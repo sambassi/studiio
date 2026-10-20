@@ -35,7 +35,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -174,7 +174,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -396,7 +396,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "x": 8,
       "y": 12,
     },
-    "titleScale": 1.805,
+    "titleScale": 1.9,
   },
 }
 `;
@@ -459,7 +459,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -599,7 +599,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -722,7 +722,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "x": 8,
       "y": 12,
     },
-    "titleScale": 1.805,
+    "titleScale": 1.9,
   },
 }
 `;
@@ -785,7 +785,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -924,7 +924,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -1074,7 +1074,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",

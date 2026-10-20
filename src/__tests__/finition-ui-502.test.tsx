@@ -3,6 +3,7 @@
  * (3 s), CTA lisible (panneau + bande calme MESURÉE). Référence DANSE.
  * Aucune détection de visage ou de corps : mesures d'image seulement.
  */
+import { alphaDuFond, fondHaloPire } from '@/lib/creer/contraste';
 import { describe, it, expect } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -80,12 +81,14 @@ describe('CTA : panneau, contraste, bande calme mesurée', () => {
     return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   };
   const ratio = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-  const alpha = Number(/,\s*([\d.]+)\)$/.exec(m.ctaFond)![1]);
-  // PIRE cas : un plan blanc derrière le panneau.
-  const gris = 1 - alpha;
-  const fondPire = gris <= 0.04045 ? gris / 12.92 : ((gris + 0.055) / 1.055) ** 2.4;
+  // 20/10 : plus de panneau opaque — contour fin + ombre serrée des glyphes.
+  // PIRE cas : un plan blanc derrière ; le bord des lettres est mesuré
+  // contre le contour posé sur ce blanc (`fondHaloPire`).
+  const [g] = fondHaloPire().map((v) => v / 255);
+  const fondPire = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
 
   it('CTA_CONTRAST_OK : titre blanc et ligne d’action éclaircie ≥ 3:1 même sur un plan blanc', () => {
+    expect(alphaDuFond(m.ctaFond)).toBeLessThanOrEqual(0.35);
     expect(ratio(1, fondPire)).toBeGreaterThanOrEqual(3);
     expect(ratio(lum(eclaircir('#EC4899', m.ctaActionEclaircie)!), fondPire)).toBeGreaterThanOrEqual(3);
   });
@@ -100,7 +103,9 @@ describe('CTA : panneau, contraste, bande calme mesurée', () => {
       />,
     );
     expect(html).toContain('data-cta-fond');
-    expect(html).toContain('background-color:rgba(0,0,0,0.6)');
+    // Plus de pavé rgba(0,0,0,0.6) : fond transparent, contour des glyphes.
+    expect(html).toContain('background-color:transparent');
+    expect(html).toMatch(/text-shadow:[^;]*rgba\(0,0,0,0\.55\)/);
     expect(html).toContain('LE SPORT LE PLUS COMPLET');
     expect(html).toContain('Réservez votre cours d’essai sur afroboost.com.');
   });

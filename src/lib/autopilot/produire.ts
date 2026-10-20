@@ -784,7 +784,10 @@ export async function produireUnMontage(input: {
           duree: res.duree,
           profil: profilVideo,
           nbCartes: designBase.cards?.length ?? 0,
-          finHook: res.plan[0]?.kind === 'avatar' ? res.plan[0].fin : null,
+          // Fin RÉELLE du plan d'ouverture, quel qu'il soit (avatar, rush,
+          // stock) : le titre tient jusqu'à la coupe (« MOTIVATION », 20/10 :
+          // ouverture sur un plan de stock de 4 s, titre coupé à 3 s).
+          finHook: res.plan[0]?.fin ?? null,
           voix: { video: res.duree },
         });
         // La voix de l'avatar est CONTINUE et part à 0, avec son image.

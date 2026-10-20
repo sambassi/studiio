@@ -31,7 +31,7 @@ import {
   baseSequenceFrames,
   TRANSITION_STYLE_KEYS, DEFAULT_TRANSITION_STYLE,
 } from './transitions';
-import { positionTexteParDefaut, titreSur916 } from '../src/lib/creer/zones-sures-916';
+import { positionTexteParDefaut, titreSur916, echelleTitreSansDebord } from '../src/lib/creer/zones-sures-916';
 import { lireCtaCopies, type CtaCopie } from '../src/lib/creer/cta-copies';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
@@ -612,6 +612,15 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
             police: props.titleFont || 'Inter', policeSousTitre: props.subtitleFont ?? null,
             casse: props.titleCase, casseSousTitre: props.subtitleCase,
           }) : null;
+          // Surimpression / image fixe du rendu hybride : la MÊME garde de
+          // largeur — aucun mot ne sort du cadre (« MOTIVA », 20/10), même
+          // pour des props enregistrées avant `ajusterAccroche` en largeur.
+          const echelleTitre = t916?.echelle ?? echelleTitreSansDebord({
+            format, pos: posTitre, largeur: largeurChoisie, echelle: props.titleScale ?? 1,
+            titre: props.title ?? '', sousTitre: props.subtitle, echelleSousTitre: props.subtitleScale ?? 1,
+            espacement: props.titleLetterSpacing ?? 0, police: props.titleFont || 'Inter', policeSousTitre: props.subtitleFont ?? null,
+            casse: props.titleCase, casseSousTitre: props.subtitleCase,
+          });
           return (
               <div style={titleFrameStyle(posTitre, t916 && t916.largeur !== largeurChoisie ? t916.largeur : props.titleWidth)}>
                 <SequenceTitle
@@ -620,7 +629,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   typography={{
                     font: props.titleFont || 'Inter',
                     color: titleColor,
-                    scale: t916?.echelle ?? props.titleScale ?? 1,
+                    scale: echelleTitre,
                     bold: props.titleBold ?? true,
                     italic: props.titleItalic ?? false,
                     letterSpacing: props.titleLetterSpacing ?? 0,
