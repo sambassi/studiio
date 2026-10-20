@@ -3412,9 +3412,14 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   const rushApercu = mediaVideo.type === 'rush' || (mediaVideo.type === 'stock' && mediaVideo.media === 'video')
     ? mediaVideo.url : null;
   const imageApercu = mediaVideo.type === 'stock' && mediaVideo.media === 'photo' ? mediaVideo.url : null;
+  // Avatar en lecture : sa place est réservée (« Chargement de votre avatar… »),
+  // jamais remplie par un rush ou un stock. Prêt : sa vraie vidéo si elle
+  // existe déjà (`medias.avatar.video`), sinon sa vignette.
   const avatarApercuAutopilote: ApercuAvatarCreer | null = useMemo(
     () => (mediaVideo.type === 'avatar'
-      ? { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url }
+      ? (mediaVideo.chargement
+        ? { etat: 'chargement' }
+        : { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url })
       : null),
     [mediaVideo],
   );
@@ -3743,6 +3748,27 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     () => etapesMontageApercuAutopilote(avecVideo ? medias : null, { dureeCta: dureeCtaLecture }),
     [avecVideo, medias, dureeCtaLecture],
   );
+  /** Vignettes déjà connues des médias suggérés retenus — la chronologie les montre sans rien télécharger. */
+  const vignettesMontage = useMemo(() => {
+    const v: Record<string, string> = {};
+    for (const m of medias?.stock ?? []) if (m.vignetteUrl) v[m.url] = m.vignetteUrl;
+    return v;
+  }, [medias?.stock]);
+  /**
+   * « Remplacer » un média de la chronologie : le flux EXISTANT du panneau
+   * (« Médias suggérés » : Remplacer / Conserver / recherche). Aucun second
+   * système de choix ici — on y amène l'utilisateur.
+   */
+  const allerAuxMedias = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    const cible = document.querySelector('[data-autopilot-stock-source]') ?? document.querySelector('[data-autopilot-add-rush]');
+    if (cible) { cible.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); return; }
+    // Autre étape affichée : on ouvre l'étape Rushes, puis on y descend.
+    (document.querySelector('[data-autopilot-etape="1"]') as HTMLElement | null)?.click();
+    window.setTimeout(() => {
+      document.querySelector('[data-autopilot-stock-source]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }, []);
 
   const ouvrirPanneau = useCallback((suivant: typeof panneau) => {
     // Sous le curseur, borne a la fenetre : un panneau ouvert hors de l'ecran
@@ -3754,8 +3780,14 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
 
   return (
     <div data-autopilot-apercu>
-      <h3 className="mb-2 text-sm font-semibold text-gray-100" data-autopilot-apercu-titre="style">
-        Aperçu du style — exemple
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-100" data-autopilot-apercu-titre="style">
+        Exemple de style
+        <span
+          className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-300 ring-1 ring-white/10"
+          data-autopilot-apercu-badge="exemple"
+        >
+          Exemple
+        </span>
       </h3>
       <Preview
         generated={generated}
@@ -3967,8 +3999,20 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
       {/* ── APERÇU DU MONTAGE PRÉVU ──────────────────────────────────────
           Les médias RÉELS du plan, tous, dans l'ordre, puis le CTA — le
           lecteur local de Créer (aucun rendu, aucun appel fournisseur). */}
+      {montagePrevu.avatar === 'chargement' && (
+        <section
+          data-autopilot-montage-prevu="chargement"
+          className="mt-3 rounded-xl bg-gray-900/50 ring-1 ring-white/10 p-3 min-w-0"
+        >
+          <h3 className="text-sm font-semibold text-gray-100">Aperçu de mon montage</h3>
+          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-400">
+            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+            Vérification de votre avatar… Le montage s’affichera avec lui.
+          </p>
+        </section>
+      )}
       {montagePrevu.etapes.length > 0 && (
-        <div data-autopilot-montage-prevu>
+        <div data-autopilot-montage-prevu={montagePrevu.avatar ?? 'sans-avatar'}>
           <ApercuMontageListe
             etapes={montagePrevu.etapes}
             lignes={montagePrevu.lignes}
@@ -3977,8 +4021,10 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             ctaTexte={sample.cta}
             ctaSousTexte={sample.ctaSub}
             vignetteAvatar={medias?.avatar.vignette ?? null}
-            titre="Aperçu du montage prévu"
-            sousTitre="Les médias de votre plan, dans l'ordre, puis le CTA. Durées indicatives : la vidéo finale suit la parole et les extraits réels."
+            vignettes={vignettesMontage}
+            onRemplacer={allerAuxMedias}
+            titre="Aperçu de mon montage"
+            sousTitre="Vos médias réels, dans l'ordre du plan, puis le CTA. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."
           />
         </div>
       )}
