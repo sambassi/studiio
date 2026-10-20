@@ -123,7 +123,7 @@ const ACTIVITES_PHYSIQUES: ReadonlySet<string> = new Set([
 const MOTS_CORPS_EXPOSE: ReadonlySet<string> = new Set([
   'shirtless', 'topless', 'barechested', 'nude', 'naked', 'nudity', 'torso', 'torsos', 'abs', 'sixpack',
   'lingerie', 'underwear', 'bra', 'panties', 'sensual', 'sexy', 'seductive', 'erotic', 'provocative',
-  'muscular', 'muscles', 'buttocks', 'butt', 'cleavage', 'seins', 'torse', 'nue',
+  'buttocks', 'butt', 'cleavage', 'seins', 'torse', 'nue',
 ]);
 
 /** Le média montre-t-il un corps exposé ? (mots entiers de sa description) */

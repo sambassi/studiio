@@ -77,6 +77,12 @@ describe('pertinence de contenu — quatre sujets, titres réalistes', () => {
     expect(niveau('Motivation', 'shirtless man in black and white')).toBe('hors');
     expect(corpsExpose('shirtless man in black and white')).toBe(true);
     expect(corpsExpose('man walking on the beach')).toBe(false);
+    expect(niveau('Motivation', 'shirtless man torso black and white')).toBe('hors');
+  });
+
+  it('Motivation : « muscular man training with dumbbells » n’est PAS hors sujet (muscular ≠ corps exposé)', () => {
+    expect(corpsExpose('muscular man training with dumbbells')).toBe(false);
+    expect(niveau('Motivation', 'muscular man training with dumbbells')).not.toBe('hors');
   });
 
   it('Motivation dont le brief parle d’entraînement : un torse à l’entraînement redevient acceptable', () => {
