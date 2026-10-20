@@ -18,7 +18,7 @@ import {
 import { scriptPourDuree, debitParoleAvatar } from '@/lib/autopilot/duree-cible';
 import { estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
 import { sourcesPertinentes, avatarAvecAutresSources } from '@/lib/autopilot/sources';
-import { planCompletAutopilote, segmentsDuPlan, entreeDepuisResume } from '@/lib/autopilot/plan-complet';
+import { planCompletAutopilote, segmentsDuPlan, entreeDepuisResume, paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
 import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
 import type { RushSegment } from '@/lib/creer/multi-rush';
 
@@ -230,5 +230,21 @@ describe('plan complet (créneaux + alternance + CTA) = le plan du moteur', () =
     const script = 'x'.repeat(212);
     expect(planCompletAutopilote(resume, { cible: 30, scriptAvatar: script }).duree).toBe(estimerParoleJumeau(script));
     expect(planCompletAutopilote(resume, { cible: 30 }).duree).toBe(30);
+  });
+});
+
+describe('parole prévue = celle du budget du script de production', () => {
+  it('≈ la durée cible, quel que soit le rythme ; rien sans cible', () => {
+    for (const duree of [15, 30, 45]) {
+      for (const rythme of ['calme', 'normal', 'dynamique'] as const) {
+        expect(Math.abs(paroleAvatarDuBudget({ duree, rythme })! - duree)).toBeLessThanOrEqual(0.5);
+      }
+    }
+    expect(paroleAvatarDuBudget({})).toBeNull();
+  });
+  it('mesurée > estimée par le budget > cible', () => {
+    const resume = { gabarit: [{ id: 'a', type: 'avatar' as const }], actives: { rushes: false, avatar: true, stock: false }, rushesPerso: [], stock: [], avatar: { disponible: true, vignette: null } };
+    expect(planCompletAutopilote(resume, { cible: 20, secondesAvatarEstimees: 29.8 }).duree).toBe(29.8);
+    expect(planCompletAutopilote(resume, { cible: 20, secondesAvatarEstimees: 29.8, secondesAvatar: 33 }).duree).toBe(33);
   });
 });

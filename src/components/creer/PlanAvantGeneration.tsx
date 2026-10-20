@@ -98,7 +98,7 @@ function nouvelId(lignes: CreneauGabarit[]): string {
 
 export default function PlanAvantGeneration({
   gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher, duree,
-  secondesAvatar, scriptAvatar, stockPertinent,
+  secondesAvatar, secondesAvatarEstimees, scriptAvatar, stockPertinent,
 }: {
   /**
    * Les médias stock que le MOTEUR piochera (sujet courant, `sourcesPertinentes`),
@@ -110,6 +110,8 @@ export default function PlanAvantGeneration({
   secondesAvatar?: number | null;
   /** Script que l'avatar dira (estimation de sa parole). */
   scriptAvatar?: string | null;
+  /** Parole estimée par le budget du script de production (`paroleAvatarDuBudget`). */
+  secondesAvatarEstimees?: number | null;
   /**
    * Durée cible et rythme du brief. Le minutage affiché est celui du moteur
    * (créneaux égaux) sur la durée cible — sans cible, sur ≈ 30 s. À la
@@ -148,7 +150,7 @@ export default function PlanAvantGeneration({
     actives: { rushes: true, stock: true, avatar: avatarDisponible },
     rushesPerso, stock: stockPlan,
     avatar: { disponible: avatarDisponible, vignette: null },
-  }, { cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, scriptAvatar, durees }) : null;
+  }, { cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, secondesAvatarEstimees, scriptAvatar, durees }) : null;
   const avecAvatar = !!complet?.segments.some((x) => x.genre === 'avatar');
   // Parole de l'avatar non mesurée (aucune génération) : la durée est une ESTIMATION.
   const estimee = avecAvatar && !(typeof secondesAvatar === 'number' && secondesAvatar > 0);

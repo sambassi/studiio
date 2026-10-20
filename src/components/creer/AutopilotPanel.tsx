@@ -20,8 +20,7 @@ import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type Propositi
 import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
-import { buildAutopilotSample, postDeLEchantillon } from '@/lib/autopilot/sample';
-import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
+import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import {
   validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
@@ -31,7 +30,7 @@ import {
   aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
-import { conseilDureeAvatar } from '@/lib/autopilot/duree-cible';
+import { conseilDureeAvatar, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import type { FormatStock } from '@/lib/stock/types';
@@ -778,16 +777,17 @@ export default function AutopilotPanel({
    * expression pour « Plan avant génération » et pour l'aperçu.
    */
   /**
-   * LE SCRIPT QUE L'AVATAR DIRA — par la MÊME fonction que la production
-   * (`scriptJumeauMontage`, dimensionnée pour la durée cible et le débit de
-   * la voix), sur l'échantillon que l'aperçu montre (`buildAutopilotSample`).
-   * Le plan en ESTIME la parole (`estimerParoleJumeau`) tant qu'aucune
-   * génération n'est mesurée. Aucun appel, aucune génération.
+   * LA PAROLE DE L'AVATAR PRÉVUE — celle que le BUDGET du script de
+   * production implique (`paroleAvatarDuBudget` : le script réel, écrit au
+   * créneau, est dimensionné pour la durée cible au débit de la voix clonée,
+   * donc ≈ la cible ; avatar seul : la part réservée aux séquences plein
+   * écran est déduite, comme en production). Sans durée cible : la référence
+   * du plan. Aucun appel, aucune génération ; dite « estimée » à l'écran.
    */
-  const scriptAvatarPrevu = useMemo(() => {
+  const paroleAvatarPrevue = useMemo(() => {
     if (!config.jumeauAvatar) return null;
-    const echantillon = buildAutopilotSample({ topics: config.topics, brief: config.brief });
-    return scriptJumeauMontage(postDeLEchantillon(echantillon, config.brief), config);
+    const seul = !avatarAvecAutresSources(config);
+    return paroleAvatarDuBudget(config.brief, seul ? secondesReserveesEnveloppeJumeau(config.brief?.duree) : 0);
   }, [config]);
   const planSuggere = gabaritSuggere({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
@@ -1895,7 +1895,7 @@ export default function AutopilotPanel({
             rushesPerso={sources.actives.rushes ? rushesPerso : []}
             stock={sources.actives.stock ? sources.stock : []}
             stockPertinent={sources.actives.stock ? pertinent.stock : []}
-            scriptAvatar={scriptAvatarPrevu}
+            secondesAvatarEstimees={paroleAvatarPrevue}
             vignetteAvatar={vignetteAvatar}
             avatarDisponible={etatSources.avatarActif && etatSources.avatarPret}
             disabled={!ready || saving}

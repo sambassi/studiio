@@ -162,6 +162,18 @@ export function contenuPourDuree<C extends { subtitle?: string; tagLine?: string
 }
 
 /**
+ * Le BUDGET (caractères) du script de l'avatar pour la durée cible — celui de
+ * la production (`scriptPourDuree`). Le script est dit par l'avatar : budget
+ * au débit RÉEL de sa voix clonée (`debitParoleAvatar`), jamais au débit
+ * générique — sinon 30 s visées donnaient ≈ 40 s de parole. `null` sans cible.
+ */
+export function budgetScriptAvatar(brief: VideoBrief | null | undefined, secondesReservees?: number): number | null {
+  if (!brief?.duree) return null;
+  const reserve = secondesReservees ?? 0;
+  return Math.round((reserve > 0 ? Math.max(PLAN_MIN_S, brief.duree - reserve) : brief.duree) * debitParoleAvatar(brief.rythme));
+}
+
+/**
  * Le SCRIPT de l'avatar pour la durée cible : accroche (message, titre),
  * idées (cartes), appel à l'action — par unités entières. `null` sans durée
  * cible : l'appelant garde son script d'avant.
@@ -181,13 +193,8 @@ export function scriptPourDuree(input: {
   /** A4 v2 — avatar seul : la première idée est toujours dite (message complet). */
   ideeObligatoire?: boolean;
 }): string | null {
-  if (!input.brief?.duree) return null;
-  // Le script est dit par l'avatar : budget au débit RÉEL de sa voix clonée
-  // (`debitParoleAvatar`), jamais au débit générique — sinon 30 s visées
-  // donnaient ≈ 40 s de parole.
-  const debit = debitParoleAvatar(input.brief.rythme);
-  const reserve = input.secondesReservees ?? 0;
-  const budget = Math.round((reserve > 0 ? Math.max(PLAN_MIN_S, input.brief.duree - reserve) : input.brief.duree) * debit);
+  const budget = budgetScriptAvatar(input.brief, input.secondesReservees);
+  if (budget === null) return null;
   const unites = unitesDe({ ...input, message: input.brief?.message });
   const gardees = selectionner(unites, budget);
   const vus = new Set<string>();
