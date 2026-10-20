@@ -29,3 +29,31 @@ export function transformeKenBurns(mouvement: MouvementImage | undefined, progre
   translateXPct = Math.round(translateXPct * 10000) / 10000;
   return { scale, translateXPct, css: `scale(${scale}) translateX(${translateXPct}%)` };
 }
+
+/**
+ * ZOOM LENT DES CARTES — la photo des cartes ne reste jamais une image figée.
+ *
+ * La séquence Cartes dure ce que dure sa voix (règle audio, inchangée) :
+ * jusqu'à 40 s sur UNE photo immobile. Un zoom très lent, de 1,00 à 1,06 sur
+ * toute la séquence, la fait vivre sans gêner la lecture. Uniforme (même
+ * facteur en largeur et en hauteur) et centré : l'image n'est JAMAIS
+ * déformée, son rapport largeur / hauteur est conservé.
+ */
+export const ZOOM_CARTES_DEBUT = 1;
+export const ZOOM_CARTES_FIN = 1.06;
+
+/** Échelle des cartes à `progres` (0 → 1) de la séquence. */
+export function echelleZoomCartes(progres: number): number {
+  const p = Number.isFinite(progres) ? Math.min(1, Math.max(0, progres)) : 0;
+  return Math.round((ZOOM_CARTES_DEBUT + (ZOOM_CARTES_FIN - ZOOM_CARTES_DEBUT) * p) * 10000) / 10000;
+}
+
+/** Le rectangle agrandi de `echelle` autour de son CENTRE (rapport conservé). */
+export function rectZoomeCentre(
+  r: { x: number; y: number; w: number; h: number }, echelle: number,
+): { x: number; y: number; w: number; h: number } {
+  const s = Number.isFinite(echelle) && echelle > 0 ? echelle : 1;
+  const w = r.w * s;
+  const h = r.h * s;
+  return { x: r.x + (r.w - w) / 2, y: r.y + (r.h - h) / 2, w, h };
+}

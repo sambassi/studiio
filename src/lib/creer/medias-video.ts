@@ -701,6 +701,86 @@ export function messageNarrationTropCourte(plan: PlanDetaille): string {
   return `Votre narration dure ${formatSecondes(plan.dureeParole ?? 0)} s : réduisez vos médias de ${formatSecondes(plafond1(plan.depassement))} s, puis relancez — votre avatar est déjà prêt, il ne sera pas regénéré.`;
 }
 
+/** Identifiant du créneau d'avatar posé automatiquement (jumeau sans liste). */
+export const ID_CRENEAU_JUMEAU_AUTO = 'avatar-auto';
+
+/**
+ * La liste MONTÉE quand le jumeau est demandé.
+ *
+ * Avant : sans liste enrichie, le jumeau produit à l'envoi REMPLAÇAIT toute la
+ * séquence « Vidéo » par sa seule vidéo (`rushs: null`) — les autres rushes
+ * choisis disparaissaient du montage, sans message.
+ *
+ * Désormais le jumeau prend SA place dans la liste ordonnée, et les autres
+ * médias restent :
+ *  - liste enrichie (avatar placé par l'utilisateur, photos…) : telle quelle ;
+ *  - sinon, jumeau demandé et au moins un rush : un ancien « Mon jumeau »
+ *    posé comme rush est remplacé à SA place par le créneau d'avatar ; à
+ *    défaut, le créneau ouvre la séquence (l'avatar présente, puis les
+ *    rushes, dans l'ordre choisi) ;
+ *  - aucun rush, ou jumeau non demandé : `null` (le parcours d'avant, où
+ *    rien ne peut disparaître).
+ *
+ * Fonction PURE, la même pour l'aperçu et pour l'envoi (parité).
+ */
+export function listeMontageJumeau(
+  listeEnrichie: ReadonlyArray<MediaVideo> | null | undefined,
+  listeRushs: ReadonlyArray<MediaVideo>,
+  jumeauActif: boolean,
+): MediaVideo[] | null {
+  if (listeEnrichie && estListeEnrichie(listeEnrichie)) return [...listeEnrichie];
+  if (!jumeauActif) return null;
+  const rushs = listeRushs.filter((m) => !!m.url);
+  if (rushs.length === 0) return null;
+  const creneau: MediaVideo = { id: ID_CRENEAU_JUMEAU_AUTO, source: 'avatar', type: 'video', duree: null };
+  let remplace = false;
+  const out: MediaVideo[] = [];
+  for (const m of rushs) {
+    if (m.meta?.jumeau) {
+      // Un seul créneau : l'avatar est UNE génération, à la place du premier
+      // ancien jumeau ; les anciens jumeaux suivants ne sont pas rejoués.
+      if (!remplace) { out.push(creneau); remplace = true; }
+      continue;
+    }
+    out.push(m);
+  }
+  return remplace ? out : [creneau, ...out];
+}
+
+/** Un média écarté du plan, et pourquoi — en mots de l'utilisateur. */
+export interface MediaExclu {
+  id: string;
+  libelle: string;
+  raison: string;
+}
+
+/**
+ * Les médias qui ne tiennent PAS dans la narration de l'avatar, dans l'ordre.
+ * Montrés AVANT toute génération : l'envoi est bloqué tant qu'il en reste, et
+ * la liste dit lesquels et pourquoi (jamais un média retiré en silence).
+ */
+export function mediasExclusDuPlan(plan: PlanDetaille): MediaExclu[] {
+  if (!plan.avecAvatar || plan.dureeParole === null || plan.dureeDisponible === null) return [];
+  const dispo = formatSecondes(plancher1(plan.dureeDisponible));
+  const parole = formatSecondes(plan.dureeParole);
+  const estimee = plan.sourceParole === 'reelle' ? '' : ' estimée';
+  return plan.items
+    .filter((it) => it.horsNarration)
+    .map((it) => ({
+      id: it.id,
+      libelle: libelleMedia(it.media, it.dureeEffective),
+      raison: `dépasse la narration${estimee} de l’avatar (${parole} s, dont ${dispo} s disponibles pour les médias)`,
+    }));
+}
+
+/** Le message d'arrêt à l'envoi, qui NOMME les médias exclus. */
+export function messageMediasExclus(plan: PlanDetaille): string | null {
+  const exclus = mediasExclusDuPlan(plan);
+  if (exclus.length === 0) return null;
+  const noms = exclus.map((e) => `« ${e.libelle} »`).join(', ');
+  return `${exclus.length === 1 ? 'Ce média ne tient pas' : 'Ces médias ne tiennent pas'} dans la narration de votre avatar : ${noms} — ${exclus[0].raison}. Raccourcissez ou retirez ${exclus.length === 1 ? 'ce média' : 'ces médias'} avant d’envoyer : rien n’a été généré ni débité.`;
+}
+
 /** « 4 », « 4,5 » — secondes lisibles (une décimale au plus). */
 export function formatSecondes(s: number): string {
   const v = Math.round(s * 10) / 10;

@@ -1,5 +1,7 @@
 'use client';
 
+import AvisMp4Indisponible from '@/components/calendar/AvisMp4Indisponible';
+import { renduAttendUnMp4 } from '@/lib/rendus/mp4-durable-client';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ChevronLeft,
@@ -102,6 +104,10 @@ interface PostMetadata {
   type?: 'creator' | 'infographic';
   /** Montage rendu par le serveur (Remotion) : pas de régénération navigateur. */
   serverRendered?: boolean;
+  /** MP4 durable (conversion serveur du rendu Créer confirmé) : régénérable. */
+  mp4Durable?: boolean;
+  /** La conversion MP4 durable a échoué : la vidéo reste en WebM (avis non bloquant). */
+  mp4Indisponible?: boolean;
   /** Fuseau IANA dans lequel le cron lit `scheduled_date`/`scheduled_time` (défaut Europe/Paris). */
   timezone?: string;
   subtitle?: string;
@@ -2119,19 +2125,10 @@ export default function CalendarPage() {
         // (onglet fermé) tue ffmpeg côté serveur et rend le jeton.
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), ATTENTE_CLIENT_CONVERSION_MS);
-        // Helper: trigger a direct WebM download from the original Supabase URL
-        // — used as the user-confirmed fallback when MP4 conversion fails or
-        // times out. Direct URL avoids re-fetching a 20+ MB blob into memory.
-        const downloadWebmDirect = () => {
-          const a = document.createElement('a');
-          a.href = meta.renderedVideoUrl as string;
-          a.download = `${safeName}.webm`;
-          a.target = '_blank';
-          a.rel = 'noopener';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        };
+        // Plus de repli « WebM brut » : un fichier .webm livré à la place d'un
+        // MP4 est illisible sur la plupart des téléphones et réseaux, et
+        // l'utilisateur le prenait pour la vidéo finale. Un échec de
+        // conversion s'annonce clairement ; on réessaie, on ne dégrade pas.
         try {
           // Use server-side FFmpeg conversion (reliable H.264 output)
           // 429 (« déjà en cours ») : attendu puis retenté, affiché à l'écran.
@@ -2188,9 +2185,8 @@ export default function CalendarPage() {
               const stderrInfo = typeof convertData.stderr === 'string' && convertData.stderr
                 ? `\n\nDétail FFmpeg :\n${convertData.stderr.slice(-300)}`
                 : '';
-              if (confirm(`La conversion MP4 a échoué : ${errMsg}${sizeInfo}.${stderrInfo}\n\nTélécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
-                downloadWebmDirect();
-              }
+              setExportRenderStage('Conversion MP4 impossible');
+              alert(`La conversion MP4 a échoué : ${errMsg}${sizeInfo}.${stderrInfo}\n\nAucun fichier n'a été téléchargé. Réessayez dans quelques minutes.`);
             }
           }
         } catch (err) {
@@ -2199,9 +2195,8 @@ export default function CalendarPage() {
           if ((err as any)?.name === 'AbortError') {
             // 4-min client timeout — likely a very long video or server overloaded
             console.warn(`[Export] Server conversion timed out after ${ATTENTE_CONVERSION_MIN} min`);
-            if (confirm(`La conversion MP4 prend trop de temps (>${ATTENTE_CONVERSION_MIN} min). Télécharger le fichier WebM brut à la place ? (lisible avec VLC ou QuickTime)`)) {
-              downloadWebmDirect();
-            }
+            setExportRenderStage('Conversion MP4 trop longue');
+            alert(`La conversion MP4 prend trop de temps (>${ATTENTE_CONVERSION_MIN} min). Aucun fichier n'a été téléchargé. Réessayez dans quelques minutes.`);
           } else {
             const msg = (err as Error)?.message || 'erreur réseau';
             console.error('[Export] Server conversion error:', err);
@@ -3397,6 +3392,12 @@ export default function CalendarPage() {
               <video id="preview-audio-rendered" src={meta.renderedVideoUrl} loop muted playsInline preload="auto" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }} />
             )}
           </>
+          {/* MP4 durable en échec : avis NON bloquant + « Réessayer ». */}
+          {meta?.mp4Indisponible && renduAttendUnMp4(meta?.renderedVideoUrl) && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60]" style={{ maxWidth: 'calc(100vw - 32px)' }}>
+              <AvisMp4Indisponible postId={fullPreviewPost.id} onReussi={() => { void fetchPosts(); }} />
+            </div>
+          )}
           {/* Floating back button — always visible on mobile, overlays on top of everything */}
           <button
             onClick={(e) => { e.stopPropagation(); setShowFullPreview(false); }}

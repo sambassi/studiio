@@ -20,6 +20,7 @@
  */
 import { montageEstPerime, montageRenduServeur } from '@/lib/creer/montage-perime';
 import { persistableUrl } from '@/lib/creer/draft';
+import { aUnMp4Durable } from '@/lib/rendus/mp4-durable';
 
 export type ExportBureau = 'bloque' | 'telecharger' | 'convertir' | 'recomposer';
 
@@ -32,7 +33,8 @@ export function decisionExportBureau(metadata: unknown): ExportBureau {
   const rendu = typeof meta.renderedVideoUrl === 'string' ? meta.renderedVideoUrl : '';
   if (!rendu) return 'recomposer';
   const durable = !!persistableUrl(rendu);
-  if (durable && (montageRenduServeur(meta) || MP4_AUTOPILOTE.test(rendu))) return 'telecharger';
+  // MP4 durable (Créer, `mp4-durable.ts`) : produit par ffmpeg serveur, sain.
+  if (durable && (montageRenduServeur(meta) || aUnMp4Durable(meta) || MP4_AUTOPILOTE.test(rendu))) return 'telecharger';
   // Règle historique, inchangée : un `.mp4` navigateur n'est jamais réutilisé.
   if (!rendu.endsWith('.mp4')) return 'convertir';
   return 'recomposer';

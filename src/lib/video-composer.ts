@@ -22,7 +22,7 @@ import { lireCtaCopies, designCompositeurCopie } from '@/lib/creer/cta-copies';
 import type { Lut } from '@/lib/luts/types';
 import { planRushs, segmentA, rushsDuPlan, type RushSegment } from '@/lib/creer/multi-rush';
 import { recadragePourRushPeint } from '@/lib/creer/recadrage-rush';
-import { transformeKenBurns } from '@/lib/creer/ken-burns';
+import { transformeKenBurns, echelleZoomCartes, rectZoomeCentre } from '@/lib/creer/ken-burns';
 import type { MouvementImage } from '@/lib/creer/multi-rush';
 import { ajusterPlan } from '@/lib/creer/smart-montage';
 import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
@@ -2163,7 +2163,10 @@ export function drawCards(
       // Chromium 1208, `imageSmoothingQuality = 'high'` ne change aucun pixel
       // ici (Skia utilise deja le meme reechantillonneur) et coutait ~0,7 ms
       // par frame. Le compositeur reste donc inchange sur ce blit.
-      ctx.drawImage(snap, drawX, drawY, drawW, drawH);
+      // Zoom lent (1,00 → 1,06 sur la séquence), centré et uniforme : la
+      // photo des cartes n'est jamais une image figée, ni déformée.
+      const z = rectZoomeCentre({ x: drawX, y: drawY, w: drawW, h: drawH }, echelleZoomCartes(progress));
+      ctx.drawImage(snap, z.x, z.y, z.w, z.h);
       // Ferme l'enveloppe `ctx.save()` + `applyTextAnimation` ouverte plus
       // haut. Sans ce `restore`, l'alpha (fondu), la translation (glissement)
       // ou l'echelle (pop) de l'animation FUYAIENT dans les frames suivantes
@@ -2179,7 +2182,8 @@ export function drawCards(
     const snapY = ((design?.cardsPosition?.y ?? 50) / 100) * h - snapH / 2;
     // eslint-disable-next-line no-console
     console.log('[Composer] Drawing cards from SNAPSHOT', snapW, 'x', snapH, 'at', Math.round(snapX), Math.round(snapY));
-    ctx.drawImage(snap, snapX, snapY, snapW, snapH);
+    const zs = rectZoomeCentre({ x: snapX, y: snapY, w: snapW, h: snapH }, echelleZoomCartes(progress));
+    ctx.drawImage(snap, zs.x, zs.y, zs.w, zs.h);
     ctx.restore(); // meme enveloppe d'animation a refermer (voir ci-dessus)
     return;  // short-circuit — don't draw manual cards
   }
