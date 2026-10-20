@@ -102,6 +102,45 @@ export function useDisponibiliteAvatarAutopilote(p: {
   }, [actif, avatarId, colonneReady, onPret, onVignette]);
 }
 
+/**
+ * UNE VRAIE VIDÉO DE L'AVATAR, DÉJÀ PRODUITE — pour l'aperçu du montage.
+ *
+ * `GET /api/avatar/apercu` (lecture en base, aucun fournisseur, aucun coût) :
+ * l'aperçu prêt (`apercu.statut === 'pret'`), sinon le rendu récent de la
+ * version active. Rien n'est généré. L'avatar lu est celui du compte : si
+ * l'Autopilote en a choisi un AUTRE (`avatarId`), sa vidéo n'est pas celle-ci
+ * → `null` (l'aperçu garde la vignette, jamais la vidéo d'un autre avatar).
+ */
+export async function lireVideoAvatarReelle(avatarId: string | null, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  try {
+    const r = await fetchImpl('/api/avatar/apercu', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const d = j?.success ? j.data : null;
+    if (!d) return null;
+    if (avatarId && d.avatarId !== avatarId) return null;
+    const apercu = d.apercu as { statut?: string; url?: unknown } | null | undefined;
+    if (apercu?.statut === 'pret' && typeof apercu.url === 'string' && apercu.url) return apercu.url;
+    const recent = d.renduRecent as { url?: unknown } | null | undefined;
+    return typeof recent?.url === 'string' && recent.url ? recent.url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** La vraie vidéo de l'avatar quand il porte la production ; `null` sinon (et pendant la lecture). */
+export function useVideoAvatarReelle(actif: boolean, avatarId: string | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setUrl(null);
+    if (!actif) return;
+    let vivant = true;
+    void lireVideoAvatarReelle(avatarId).then((u) => { if (vivant) setUrl(u); });
+    return () => { vivant = false; };
+  }, [actif, avatarId]);
+  return url;
+}
+
 /** Petite vignette ; repli sur l'icône si la source est illisible. */
 export function MiniatureAvatar({ vignette, className = 'w-10 h-10' }: { vignette: VignetteAvatar | null; className?: string }) {
   const [echec, setEchec] = useState(false);
