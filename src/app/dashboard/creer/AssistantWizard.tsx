@@ -162,7 +162,7 @@ import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
-import { echelleCtaAjustee, ECHELLE_CTA_LISIBLE_916 } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart } from '@/lib/creer/ajustementCta';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -4292,8 +4292,8 @@ export default function AssistantWizard() {
     cta: {
       ...ctaStyle,
       subColor: ctaStyle.subColor || gradEnd,
-      // 9:16 : plancher de lisibilité (`ECHELLE_CTA_LISIBLE_916`), puis l'ajustement anti-débordement.
-      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: format === '9:16' ? Math.max(ctaStyle.scale ?? 1, ECHELLE_CTA_LISIBLE_916) : (ctaStyle.scale ?? 1), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
+      // 9:16 : le DÉFAUT devient lisible (`echelleCtaDeDepart`) ; un réglage de l'utilisateur est gardé.
+      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: echelleCtaDeDepart(ctaStyle.scale, format), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
     },
   };
 
@@ -4794,7 +4794,8 @@ export default function AssistantWizard() {
     if (!box) return;
     const x0 = e.clientX;
     const y0 = e.clientY;
-    const echelleDepart = (el === 'title' ? titleStyle.scale : ctaStyle.scale) ?? 1;
+    // CTA : la poignée part de l'échelle AFFICHÉE (défaut 9:16 relevé compris).
+    const echelleDepart = el === 'title' ? (titleStyle.scale ?? 1) : echelleCtaDeDepart(ctaStyle.scale, format);
     const poser = el === 'title' ? setTitleStyle : setCtaStyle;
     const bouger = (ev: PointerEvent) => {
       const scale = echelleDepuisCoin({
@@ -4812,7 +4813,7 @@ export default function AssistantWizard() {
     cible.addEventListener('pointermove', bouger);
     cible.addEventListener('pointerup', finir);
     cible.addEventListener('pointercancel', finir);
-  }, [titleStyle.scale, ctaStyle.scale]);
+  }, [titleStyle.scale, ctaStyle.scale, format]);
 
   /** Bord du titre ou du CTA : la LARGEUR du bloc (export : `titleSize` / `watermarkSize`). */
   const startTextWidth = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {

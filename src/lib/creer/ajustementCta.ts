@@ -67,3 +67,14 @@ export function echelleCtaAjustee(p: {
  * déborderait : jamais de débordement, marges sûres gardées.
  */
 export const ECHELLE_CTA_LISIBLE_916 = 1.5;
+
+/**
+ * Échelle de DÉPART du CTA : le plancher 9:16 ne remplace que le DÉFAUT
+ * (échelle absente ou 1, jamais réglée). Une échelle choisie par
+ * l'utilisateur (poignée, curseur) est gardée telle quelle, plus petite
+ * comprise. Les posts déjà rendus relisent leur `ctaTextScale` enregistrée.
+ */
+export function echelleCtaDeDepart(echelle: number | null | undefined, format: string): number {
+  const e = echelle ?? 1;
+  return format === '9:16' && e === 1 ? ECHELLE_CTA_LISIBLE_916 : e;
+}

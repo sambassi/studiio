@@ -28,7 +28,7 @@ import { calageProportionnel } from '@/lib/creer/synchro-cartes';
 import { drawCards, type DesignOptions } from '@/lib/video-composer';
 import SequenceCards, { LISIBILITE_916 } from '@/components/creer/SequenceCards';
 import { optionsRenduDepuisMetadata } from '@/lib/rendus/options-depuis-metadata';
-import { echelleCtaAjustee, ECHELLE_CTA_LISIBLE_916 } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart, ECHELLE_CTA_LISIBLE_916 } from '@/lib/creer/ajustementCta';
 
 const base = { dureeCartes: 39.5, dureeVideo: 25.2, nbCartes: 5, nbSources: 3, fondCartesExplicite: false, surimpressions: false };
 
@@ -244,6 +244,15 @@ describe('drawCards — repli SANS photo : apparition progressive et fond vidéo
 });
 
 describe('CTA 9:16 : plancher de lisibilité, jamais de débordement', () => {
+  it('le plancher ne remplace que le DÉFAUT : une échelle choisie (plus petite comprise) est gardée', () => {
+    expect(echelleCtaDeDepart(undefined, '9:16')).toBe(ECHELLE_CTA_LISIBLE_916);
+    expect(echelleCtaDeDepart(1, '9:16')).toBe(ECHELLE_CTA_LISIBLE_916);
+    expect(echelleCtaDeDepart(0.7, '9:16')).toBe(0.7);
+    expect(echelleCtaDeDepart(1.2, '9:16')).toBe(1.2);
+    expect(echelleCtaDeDepart(1, '16:9')).toBe(1);
+    expect(echelleCtaDeDepart(1, '1:1')).toBe(1);
+  });
+
   it('« JE ME LANCE » : échelle 1,5 (≈ 61 px, capitale ≈ 44 px) ; un texte long reste ajusté', () => {
     const v = { w: 1080, h: 1920 };
     expect(echelleCtaAjustee({ texte: 'JE ME LANCE', sousTexte: "RÉSERVE TON COURS D'ESSAI", echelle: ECHELLE_CTA_LISIBLE_916, largeurPct: 70, video: v })).toBe(1.5);
