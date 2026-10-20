@@ -443,21 +443,32 @@ const Filigrane: React.FC<{ texte?: string; echelle: number }> = ({ texte, echel
  * fondu + léger glissement), voile dégradé haut et bas pour la lisibilité
  * sans masquer le sujet au centre.
  */
-const CoucheOverlay: React.FC<{ from: number; durationInFrames: number; children: React.ReactNode }> = ({ from, durationInFrames, children }) => (
+const CoucheOverlay: React.FC<{ from: number; durationInFrames: number; children: React.ReactNode; sortie?: boolean }> = ({ from, durationInFrames, children, sortie = true }) => (
   <Sequence from={from} durationInFrames={durationInFrames}>
-    <CoucheOverlayAnimee duree={durationInFrames}>{children}</CoucheOverlayAnimee>
+    <CoucheOverlayAnimee duree={durationInFrames} sortie={sortie}>{children}</CoucheOverlayAnimee>
   </Sequence>
 );
+
+/**
+ * Une surimpression qui FINIT AVEC LA VIDÉO n'a pas de fondu de sortie.
+ * Constat (« MOTIVATION », 20/10) : le CTA, posé sur les 2,5 dernières
+ * secondes, s'effaçait sur ses 0,3 dernières — ≈ 40 % d'opacité sur la
+ * dernière image, celle que la plateforme fige en fin de lecture. Pure.
+ */
+export function sortieSurimpression(finFenetre: number, dureeVideo: number, fps: number): boolean {
+  return !(dureeVideo > 0) || finFenetre < dureeVideo - 1 / Math.max(1, fps);
+}
 
 /** Voile dégradé des surimpressions — le même en rendu complet et hybride. */
 export const VOILE_SURIMPRESSION = 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 32%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.55) 100%)';
 
-const CoucheOverlayAnimee: React.FC<{ duree: number; children: React.ReactNode }> = ({ duree, children }) => {
+const CoucheOverlayAnimee: React.FC<{ duree: number; children: React.ReactNode; sortie?: boolean }> = ({ duree, children, sortie = true }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const bord = Math.max(1, Math.round(0.3 * fps));
   const entree = Math.min(1, frame / bord);
-  const opacite = Math.max(0, Math.min(entree, (duree - frame) / bord));
+  // Sans sortie (fin de la vidéo) : plein jusqu'à la dernière image.
+  const opacite = Math.max(0, sortie ? Math.min(entree, (duree - frame) / bord) : entree);
   return (
     <AbsoluteFill style={{ opacity: opacite }}>
       <AbsoluteFill
@@ -589,6 +600,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         const montage = montageBrut.length >= 2 || montageBrut.some((m) => m.kind === 'image' || m.kind === 'avatar') ? montageBrut : null;
         const plusieursRushs = (montage !== null || (props.rushs?.filter((r) => r?.url).length ?? 0) >= 2) && iVideo >= 0;
         const dureeVideo = iVideo >= 0 ? sequences[iVideo].duration : 0;
+        // Une séquence suit la Vidéo : sa transition fait la sortie des surimpressions.
+        const videoNonFinale = iVideo >= 0 && iVideo < sequences.length - 1;
         // ⚠️ AVATAR : jamais de remise à l'échelle — `ajusterPlan` déplacerait
         // `debut` sans `depuis`, et la bouche de l'avatar quitterait sa voix.
         // Le moteur garantit `dureePlan === videoDuration` pour ces plans.
@@ -882,6 +895,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                       key={`carte-${c.index}`}
                       from={avance(depart) + Math.round(c.debut * fps)}
                       durationInFrames={Math.max(1, Math.round((c.fin - c.debut) * fps))}
+                      sortie={videoNonFinale || sortieSurimpression(c.fin, dureeVideo, fps)}
                     >
                       {blocCartes([carte])}
                     </CoucheOverlay>
@@ -891,6 +905,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   <CoucheOverlay
                     from={avance(depart) + Math.round(props.surimpressions.cta[0] * fps)}
                     durationInFrames={Math.max(1, Math.round((props.surimpressions.cta[1] - props.surimpressions.cta[0]) * fps))}
+                    sortie={videoNonFinale || sortieSurimpression(props.surimpressions.cta[1], dureeVideo, fps)}
                   >
                     {blocCta(1)}
                   </CoucheOverlay>
