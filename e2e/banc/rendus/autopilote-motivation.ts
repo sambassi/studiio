@@ -179,7 +179,7 @@ async function main() {
     const qualite = controleQualite({
       profil: profilVideo, mesures: ms, rapport: ms ? rapportPlan(profilVideo, ms, null) : null, overlays,
       cartes: post.content.cards ?? [], cta: { texte: design.ctaText ?? '', sousTexte: design.ctaSubText ?? null },
-      ctaUtilisateur: post.brief?.cta ?? null, voixTitre: !!overlays.voix?.titre, antiGels: true,
+      ctaUtilisateur: post.brief?.cta ?? null, voixTitre: !!(overlays.voix as { titre?: unknown } | undefined)?.titre, antiGels: true,
     });
 
     if (videosOk.length !== stock.length) console.warn(`[demo] stock retenu ${videosOk.length}/${stock.length} (garde SSRF ou pertinence)`);
