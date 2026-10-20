@@ -255,7 +255,9 @@ export function buildAutopilotDesign(
       const c = ctaAutopilote(post.content.tagLine, post.brief, post.title);
       return {
         ctaText: c.cta,
-        ctaSubText: c.ctaSub,
+        // Brief AVEC CTA : comme avant (clé seulement si la petite ligne existe).
+        // Brief SANS CTA : '' explicite — jamais le repli « LIEN EN BIO » du rendu.
+        ...(c.ctaSub || !(post.brief?.cta ?? '').trim() ? { ctaSubText: c.ctaSub } : null),
         ...(c.actionEnPetiteLigne ? lisibiliteCtaAction(c, style.cta?.scale ?? 1) : null),
       };
     })(),

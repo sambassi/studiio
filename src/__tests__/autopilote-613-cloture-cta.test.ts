@@ -135,6 +135,9 @@ describe('CTA honnête — jamais de lien inventé', () => {
     expect(ctaDeLObjectif('Motiver ma communauté à bouger')).toBe('PASSE À L’ACTION AUJOURD’HUI');
     expect(ctaDeLObjectif('Expliquer les bases de la nutrition')).toBe('ENREGISTRE POUR PLUS TARD');
     expect(ctaDeLObjectif('Réserver un cours d’essai')).toBe('ÉCRIS-NOUS EN MESSAGE');
+    expect(ctaDeLObjectif('Prendre des cours de danse')).toBe('ÉCRIS-NOUS EN MESSAGE');
+    expect(ctaDeLObjectif('La course à pied')).not.toBe('ÉCRIS-NOUS EN MESSAGE');
+    expect(ctaDeLObjectif('Course à pied', null, 'parcours running')).toBe(CTA_GENERIQUE);
     expect(ctaDeLObjectif(null, null, 'Motivation')).toBe('PASSE À L’ACTION AUJOURD’HUI');
     expect(ctaDeLObjectif(null, '', 'yoga')).toBe(CTA_GENERIQUE);
   });
@@ -151,5 +154,12 @@ describe('CTA honnête — jamais de lien inventé', () => {
     expect(d.ctaText).toBe('PASSE À L’ACTION AUJOURD’HUI');
     expect(d.ctaSubText).toBe('');
     expect(`${d.ctaText} ${d.ctaSubText}`).not.toMatch(/lien en bio|https?:|www\.|\.com/i);
+  });
+  it('brief AVEC CTA : clé ctaSubText seulement si la petite ligne existe (comportement d’avant)', () => {
+    const base = { title: 'Motivation', caption: '', scheduledDate: '2026-10-20', scheduledTime: '18:00', platforms: [], rushUrl: null };
+    const egal = buildAutopilotDesign({ ...base, content: { subtitle: 'x', tagLine: 'Réserve', cards: [] }, brief: { cta: 'Réserve' } } as unknown as PreparedPost, {});
+    expect('ctaSubText' in egal).toBe(false);
+    const action = buildAutopilotDesign({ ...base, content: { subtitle: 'x', tagLine: 'SLOGAN', cards: [] }, brief: { cta: 'Réserve' } } as unknown as PreparedPost, {}) as { ctaSubText?: string };
+    expect(action.ctaSubText).toBe('Réserve');
   });
 });

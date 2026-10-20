@@ -1126,8 +1126,9 @@ export async function produireUnMontage(input: {
     // Textes en surimpression sur la vidéo continue (V3) : relus au rendu.
     ...(overlays ? { surimpressions: overlays } : null),
     // LE PLAN RÉELLEMENT RENDU, dans le vocabulaire de l'aperçu (`segmentsDuPlan`) :
-    // parole MESURÉE de l'avatar, séquence de clôture, fenêtre du CTA. Relu par
-    // l'aperçu / le Calendrier à la place du plan estimé avant génération.
+    // parole MESURÉE de l'avatar, séquence de clôture, fenêtre du CTA. Écrit pour
+    // diagnostic et pour un futur affichage : AUCUN écran ne le lit encore (le
+    // Calendrier lit `rushSegments` / `sequences`, l'aperçu recalcule son plan).
     ...(multiSources && jumeauActif && planMontageRushs ? {
       planMontage: {
         version: 1,

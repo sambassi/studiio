@@ -47,7 +47,7 @@ export interface CtaAutopilote {
  * Table ordonnée : la première règle qui reconnaît le texte l'emporte.
  */
 export const CTA_PAR_OBJECTIF: ReadonlyArray<{ cle: string; motif: RegExp; cta: string }> = [
-  { cle: 'vendre', motif: /\b(vend|achat|achet|command|reserv|inscri|essai|rendez|rdv|devis|tarif|client|boutique|cours)/, cta: 'ÉCRIS-NOUS EN MESSAGE' },
+  { cle: 'vendre', motif: /\b(vend|achat|achet|command|reserv|inscri|essai|rendez|rdv|devis|tarif|client|boutique|cours\b)/, cta: 'ÉCRIS-NOUS EN MESSAGE' },
   { cle: 'eduquer', motif: /\b(eduqu|apprend|appren|expliqu|enseign|astuce|conseil|savoir|comprend|guide|tuto|inform|decouvr)/, cta: 'ENREGISTRE POUR PLUS TARD' },
   { cle: 'motiver', motif: /\b(motiv|inspir|encourag|bouge|action|depass|disciplin|mental|confiance|lance)/, cta: 'PASSE À L’ACTION AUJOURD’HUI' },
   { cle: 'communaute', motif: /\b(communaut|abonn|notoriet|visibilit|partag|engag|fidel|rejoin)/, cta: 'ABONNE-TOI POUR LA SUITE' },
