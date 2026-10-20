@@ -38,7 +38,8 @@ import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from 
 import { avecConfirmationCout } from '@/lib/fournisseurs/confirmation-client';
 import {
   boutonProduireVisible, libelleBoutonProduire, suiteEnvoi, messageErreurTechnique, lireProgressionServeur,
-  repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, type EtatProduction,
+  repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, MESSAGE_PRODUCTION_INTERROMPUE, type EtatProduction,
+  annoncerProductionAutopilote, estEnProduction, lireProductionSuivie, noterProductionSuivie, oublierProductionSuivie, parametresSuivi,
 } from '@/lib/autopilot/etat-production-manuelle';
 import type { FormatStock } from '@/lib/stock/types';
 import {
@@ -1115,6 +1116,14 @@ export default function AutopilotPanel({
   const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string; etape?: string; avancement?: number | null } | null>(null);
   /** Montage AVEC JUMEAU : l'état RÉEL de sa ligne de file (`reserve` → `en_attente` → `en_cours`) et sa mise en file. */
   const [suiviJumeauFile, setSuiviJumeauFile] = useState<{ statut: string | null; depuis: string | null } | null>(null);
+  // Une production EN COURS est annoncée à la page (colonne d'aperçu) : aucune
+  // ancienne vidéo n'y est présentée à côté du montage qui se fabrique.
+  // Terminée (déposée, échouée, annulée) : le créneau suivi est oublié.
+  useEffect(() => {
+    annoncerProductionAutopilote(estEnProduction(produire));
+    if (produire.etat === 'fait' || produire.etat === 'erreur' || produire.etat === 'annule') oublierProductionSuivie();
+  }, [produire]);
+  useEffect(() => () => annoncerProductionAutopilote(false), []);
   useEffect(() => {
     if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); setSuiviJumeauFile(null); return; }
     let actif = true;
@@ -1123,12 +1132,15 @@ export default function AutopilotPanel({
     // cesse d'attendre en silence — il le dit et rend le bouton.
     let vides = 0;
     const lire = () => {
-      fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
+      // Le créneau SUIVI : sans avatar, si la mémoire du serveur l'a perdu,
+      // le serveur relit le Calendrier pour CE créneau (déposé ou perdu).
+      fetch(`/api/autopilot/produire-maintenant/progression${parametresSuivi(lireProductionSuivie())}`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
           if (!actif) return;
+          const lecture = lireProgressionServeur(d);
           // Un POST encore en vol (verrou client) n'a pas encore de trace : on attend sa réponse.
-          if (lireProgressionServeur(d).cas === 'rien' && !produireEnVolRef.current) {
+          if ((lecture.cas === 'rien' || lecture.cas === 'perdue') && !produireEnVolRef.current) {
             vides += 1;
             if (vides >= LECTURES_VIDES_MAX) setProduire({ etat: 'erreur', message: MESSAGE_PRODUCTION_PERDUE, code: 'introuvable' });
             return;
@@ -1142,8 +1154,9 @@ export default function AutopilotPanel({
               avancement: typeof p.avancement === 'number' ? p.avancement : null,
             });
           }
-          // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici.
-          const r = d?.resultat;
+          // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici (ou le
+          // brouillon de CE créneau, relu dans le Calendrier après un redémarrage).
+          const r = lecture.cas === 'resultat' ? lecture.resultat : null;
           if (!p && r) appliquerResultat(r);
           // Montage AVEC JUMEAU : l'état PROUVÉ par le serveur (file + post
           // relu dans le Calendrier). Seul `depose` devient un succès.
@@ -1172,14 +1185,17 @@ export default function AutopilotPanel({
   // au lieu de proposer d'en lancer une seconde.
   useEffect(() => {
     let actif = true;
-    fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
+    fetch(`/api/autopilot/produire-maintenant/progression${parametresSuivi(lireProductionSuivie())}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         if (!actif) return;
         // Ne remplace jamais un état posé entre-temps par un clic.
         const lecture = lireProgressionServeur(d);
         const reprise = repriseAuRetour(lecture);
-        if (reprise === 'en-cours') setProduire((e) => (e.etat === 'repos' ? { etat: 'en-cours' } : e));
+        // Lancée depuis cet écran, introuvable partout (mémoire, file,
+        // Calendrier) : le serveur a redémarré. On le DIT, avec la relance.
+        if (reprise === 'interrompue') setProduire((e) => (e.etat === 'repos' ? { etat: 'erreur', message: MESSAGE_PRODUCTION_INTERROMPUE, code: 'interrompue' } : e));
+        else if (reprise === 'en-cours') setProduire((e) => (e.etat === 'repos' ? { etat: 'en-cours' } : e));
         else if (reprise === 'jumeau') setProduire((e) => (e.etat === 'repos' ? { etat: 'jumeau' } : e));
         else if (reprise === 'resultat' && lecture.cas === 'resultat' && !produireEnVolRef.current) appliquerResultat(lecture.resultat);
       })
@@ -1208,6 +1224,14 @@ export default function AutopilotPanel({
       // coût ; 202 / 409 « en-cours » / verrou déjà pris : on SUIT le rendu
       // qui tourne ; refus serveur : SA raison, et une relance.
       const suite = suiteEnvoi(issue);
+      // Production ACCEPTÉE (202 ou avatar en file) : le créneau est gardé par
+      // ce navigateur, pour la retrouver — ou dire qu'elle est perdue — au retour.
+      if (!issue.annule) {
+        const accepte = (issue.json ?? {}) as { scheduledDate?: unknown; scheduledTime?: unknown; jumeau?: unknown };
+        if (issue.status === 202 || (issue.status >= 200 && issue.status < 300 && accepte.jumeau === 'en_preparation')) {
+          noterProductionSuivie({ date: accepte.scheduledDate, time: accepte.scheduledTime });
+        }
+      }
       if (suite.suite === 'etat') setProduire(suite.etat);
       else if (suite.suite === 'resultat') appliquerResultat(suite.data);
     } catch (err) {
@@ -1405,7 +1429,7 @@ export default function AutopilotPanel({
                 etapes={aff.etapes}
                 {...(aff.pourcentage !== undefined ? { pourcentage: aff.pourcentage } : {})}
                 detail={aff.message}
-                note="Vous pouvez continuer à régler l’Autopilote."
+                note="Durée indicative : quelques minutes. La production continue sur le serveur même si vous quittez cette page ; le brouillon n’apparaît dans le Calendrier qu’une fois la vidéo finale vérifiée."
               />
             </div>
           );
