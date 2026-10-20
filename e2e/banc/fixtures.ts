@@ -136,7 +136,7 @@ export const ROUTES: Array<[string, Gestionnaire]> = [
   ['POST /api/upload/signed-url', ({ corps }) => {
     const brut = String((corps as { filename?: string })?.filename ?? `fichier-${Date.now()}`);
     const nom = brut.replace(/[^A-Za-z0-9._-]+/g, '_');
-    return json({ success: true, signedUrl: `/banc-upload/${nom}`, publicUrl: `http://localhost:3100/banc-medias/upload-${nom}`, path: nom });
+    return json({ success: true, signedUrl: `/banc-upload/${nom}`, publicUrl: `http://localhost:${process.env.BANC_PORT || 3100}/banc-medias/upload-${nom}`, path: nom });
   }],
   ['GET /api/render/tarifs', () => json({ ok: true, politique: 'standard', tarifs: { reel: 10, tv: 15 } })],
   ['GET /api/creer/montage-config', () => json({ passages: false })],

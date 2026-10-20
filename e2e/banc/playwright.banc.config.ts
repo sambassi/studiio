@@ -14,6 +14,8 @@ import path from 'node:path';
  */
 const ICI = __dirname;
 const RACINE = path.resolve(ICI, '../..');
+/** Port du `next dev` du banc (3100 par défaut ; `BANC_PORT` pour isoler deux worktrees). */
+const PORT = Number(process.env.BANC_PORT || 3100);
 
 export default defineConfig({
   testDir: ICI,
@@ -30,7 +32,7 @@ export default defineConfig({
     ['html', { outputFolder: path.join(ICI, 'resultats', 'rapport-html'), open: 'never' }],
   ],
   use: {
-    baseURL: 'http://localhost:3100',
+    baseURL: `http://localhost:${PORT}`,
     headless: true,
     trace: 'on',
     screenshot: 'on',
@@ -52,9 +54,9 @@ export default defineConfig({
     { name: 'telephone', use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 } },
   ],
   webServer: {
-    command: 'npm run dev -- -p 3100',
+    command: `npm run dev -- -p ${PORT}`,
     cwd: RACINE,
-    url: 'http://localhost:3100',
+    url: `http://localhost:${PORT}`,
     reuseExistingServer: true,
     timeout: 180_000,
   },
