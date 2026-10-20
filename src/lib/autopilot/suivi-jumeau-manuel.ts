@@ -144,7 +144,7 @@ export async function suiviProductionManuelle(userId: string, date: string, time
 }
 
 /**
- * GARDE ANTI-DOUBLON — une vidéo avec avatar de CE compte est-elle encore en
+ * GARDE ANTI-DOUBLON — une production MANUELLE avec avatar de CE compte est-elle encore en
  * préparation (ligne de file non terminale, récente) ? Lecture seule. Une
  * lecture en erreur vaut « non » : le comportement d'avant, jamais un blocage
  * permanent sur une panne de lecture.
@@ -154,6 +154,9 @@ export async function jumeauEnPreparation(userId: string, now = Date.now()): Pro
     .from('autopilot_jumeau_attente')
     .select('job_id, statut, created_at')
     .eq('user_id', userId)
+    // Productions MANUELLES seulement : une ligne du cron (ou une réservation
+    // bloquée d'un créneau du cron) ne doit jamais bloquer « Produire maintenant ».
+    .like('job_id', `${PREFIXE_JOB_MANUEL}%`)
     .in('statut', STATUTS_EN_COURS)
     .order('created_at', { ascending: false })
     .limit(5);

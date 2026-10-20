@@ -161,14 +161,21 @@ describe('2. État de génération durable', () => {
 
 // ── 3. Garde anti-doublon ──
 describe('3. Aucune génération en double', () => {
-  it('ligne avatar non terminale récente → en préparation ; terminale ou ancienne → non', async () => {
+  const M = (suffixe: string) => `autopilote-manuel-${U}-${suffixe}`;
+  it('ligne MANUELLE non terminale récente → 409 ; terminale ou ancienne → non', async () => {
     expect(await jumeauEnPreparation(U, NOW)).toBe(false);
-    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: 'j-old', statut: 'en_attente', created_at: '2026-10-19T08:00:00Z' });
-    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: 'j-fini', statut: 'rendu', created_at: '2026-10-20T13:59:00Z' });
+    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: M('2026-10-19-0800'), statut: 'en_attente', created_at: '2026-10-19T08:00:00Z' });
+    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: M('2026-10-20-1359'), statut: 'rendu', created_at: '2026-10-20T13:59:00Z' });
     expect(await jumeauEnPreparation(U, NOW)).toBe(false);
-    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: 'j1', statut: 'reserve', created_at: '2026-10-20T13:58:00Z' });
+    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: M('2026-10-20-1358'), statut: 'reserve', created_at: '2026-10-20T13:58:00Z' });
     expect(await jumeauEnPreparation(U, NOW)).toBe(true);
     expect(await jumeauEnPreparation('autre', NOW)).toBe(false);
+  });
+
+  it('ligne du CRON (même non terminale, même « reserve » bloquée) → jamais de 409', async () => {
+    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: `autopilote-${U}-2026-10-20-0`, statut: 'reserve', created_at: '2026-10-20T13:58:00Z' });
+    base.table('autopilot_jumeau_attente').push({ user_id: U, job_id: `autopilote-${U}-2026-10-20-1`, statut: 'en_cours', created_at: '2026-10-20T13:59:00Z' });
+    expect(await jumeauEnPreparation(U, NOW)).toBe(false);
   });
 });
 
