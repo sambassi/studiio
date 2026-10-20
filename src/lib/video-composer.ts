@@ -4432,6 +4432,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const el = await loadVideo(f.url).catch((err) => { console.warn('[Composer] Fond en mouvement indisponible :', f.url.substring(0, 60), err?.message); return null; });
     if (!el) continue;
     el.muted = true;
+    // Rush plus court que la séquence (démo : 4 s pour un Titre de 6 s) : il
+    // boucle, comme dans l'aperçu (`loop`) — jamais une image figée.
+    el.loop = true;
     const dureeEl = Number.isFinite(el.duration) ? el.duration : null;
     const depuis = dureeEl !== null ? Math.min(Math.max(0, f.depuis ?? 0), Math.max(0, dureeEl - Math.min(seq.duration, dureeEl) - 0.05)) : Math.max(0, f.depuis ?? 0);
     const calque = document.createElement('canvas');

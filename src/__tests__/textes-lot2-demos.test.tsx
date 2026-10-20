@@ -145,4 +145,8 @@ describe('Créer : fond Titre / CTA = rush en mouvement (v2, sans affiche)', () 
     expect(src).toMatch(/fondRush=\{!fond\.url \? fondRushDeLOnglet\(fondsRushProjet, key\) : null\}/);
     expect(src).toMatch(/fondsRush: fondsRushProjet/);
   });
+  it('compositeur : le lecteur du fond boucle (rush plus court que la séquence), comme l’aperçu', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/lib/video-composer.ts'), 'utf8');
+    expect(src).toMatch(/el\.muted = true;\s*\n(?:\s*\/\/.*\n)*\s*el\.loop = true;/);
+  });
 });
