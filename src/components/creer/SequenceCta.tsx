@@ -116,6 +116,9 @@ export default function SequenceCta({
           textDecoration: trait,
           ...decoration(mainSize),
           ...leadingTrim(mainSize, typography.lineHeight),
+          // Secours : un mot plus large que le cadre passe à la ligne au lieu
+          // de sortir de l'image (`ajusterCta` réduit déjà la taille avant).
+          overflowWrap: 'break-word',
           textShadow: `0 0 ${vw * 0.02}px ${typography.color}66`,
         }}
       >

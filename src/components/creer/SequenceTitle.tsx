@@ -136,6 +136,11 @@ export default function SequenceTitle({
           textDecoration: cssTextDecoration(typography.underline, typography.strike),
           ...decoration(titleSize),
           ...leadingTrim(titleSize, typography.lineHeight),
+          // Secours : la taille est déjà réduite pour que le mot le plus long
+          // tienne (`echelleTitreSansDebord`, `ajusterAccroche`) ; si une
+          // police plus large que prévu dépasse quand même, le mot passe à la
+          // ligne au lieu de sortir de l'image (« MOTIVA »).
+          overflowWrap: 'break-word',
           filter: titleShadow(vw),
         }}
       >
@@ -164,6 +169,7 @@ export default function SequenceTitle({
             // `mt1` du compositeur, mesure depuis le BAS des glyphes du titre —
             // d'ou le retrait du demi-interligne.
             marginTop: vw * GAP_RATIO - ((typography.lineHeight - 1) * subSize) / 2,
+            overflowWrap: 'break-word',
             filter: subtitleShadow(vw),
           }}
         >

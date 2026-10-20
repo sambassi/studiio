@@ -275,6 +275,7 @@ export default function SequenceCards({
       ? ajusterBadge({
         titre: c.title, valeur: c.value ?? '', largeurPx: vw * 0.84 * (box.w / 100), echelle,
         texte: vw * CR.text, valeurPx: vw * CR.value, icone: vw * CR.icon, ecart: vw * CR.gap, padX: sansCadre ? 0 : vw * CR.padX,
+        police: typography?.font ?? 'Inter',
       })
       : null;
     const ech = aj?.echelle ?? echelle;
