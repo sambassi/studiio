@@ -161,7 +161,7 @@ describe('câblage', () => {
     expect(src('src/lib/autopilot/produire.ts')).toContain('rythme: rythmeVideo,');
     // M3-a PR3 : calcul déplacé dans `preparerPlanMontage` (export + aperçu rapide).
     expect(src('src/lib/creer/preparer-plan-montage.ts')).toContain('const rythmeVideo = acquis.rythme ? rythmeSurFenetre(acquis.rythme, entree.debutVideo, cibleEcran) : null;');
-    expect(src('src/lib/creer/preparer-plan-montage.ts')).toContain('planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });');
+    expect(src('src/lib/creer/preparer-plan-montage.ts')).toContain('planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, rushApres: entree.rushApres });');
     expect(src('src/app/dashboard/creer/AssistantWizard.tsx')).toContain('}), { analysesBrutes, rythme }, apercuPlanDisponible ? planApercuRef.current : null);');
   });
   it('le ralenti est rendu par Remotion et par le compositeur', () => {

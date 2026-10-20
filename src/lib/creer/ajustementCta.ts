@@ -1,4 +1,5 @@
 import { chassePolice, enCapitales } from '@/lib/creer/zones-sures-916';
+import { FONT_RATIO, VIDEO_SIZE, type DesignFormat } from '@/lib/creer/designSpec';
 /**
  * CTA qui ne déborde jamais — UNE règle, appliquée avant l'aperçu ET
  * l'export (elle produit l'échelle que les deux reçoivent).
@@ -122,6 +123,15 @@ export function versionLisibiliteRestauree(version: number | null | undefined, s
 
 /** Bornes de l'échelle automatique du titre (9:16) : ≈ 66 px à ≈ 113 px de corps sur 1080. */
 export const ECHELLE_TITRE_LISIBLE = { min: 1.4, max: 2.4 } as const;
+/**
+ * #613 — les MÊMES bornes en pixels de corps (image de 1080 de petit côté),
+ * pour les trois formats : un titre lisible a la même taille physique en
+ * 9:16, en 1:1 et en 16:9 (seule la largeur cible change avec le cadre).
+ */
+export const CORPS_TITRE_LISIBLE_PX = {
+  min: ECHELLE_TITRE_LISIBLE.min * VIDEO_SIZE['9:16'].w * FONT_RATIO['9:16'].title,
+  max: ECHELLE_TITRE_LISIBLE.max * VIDEO_SIZE['9:16'].w * FONT_RATIO['9:16'].title,
+} as const;
 /** Part de la largeur utile du cadre visée par la ligne de titre. */
 export const PART_LARGEUR_TITRE = 0.8;
 
@@ -132,15 +142,22 @@ export function echelleTitreDeDepart(p: {
 }): number {
   const e = p.echelle ?? 1;
   const titre = (p.titre ?? '').trim();
-  if (!p.lisible || p.format !== '9:16' || e !== 1 || !titre) return e;
-  const W = 1080;
+  // #613 : les trois formats (9:16, 1:1, 16:9) — avant, le 9:16 seul.
+  if (!p.lisible || !(p.format in VIDEO_SIZE) || e !== 1 || !titre) return e;
+  const f = p.format as DesignFormat;
+  const W = VIDEO_SIZE[f].w;
+  /** Corps du titre à l'échelle 1 (px) : le ratio du compositeur pour ce format. */
+  const corps1 = W * FONT_RATIO[f].title;
   const utile = (p.largeurPct / 100) * W * PART_LARGEUR_TITRE;
   const ch = chassePolice(p.police ?? 'Inter', enCapitales(titre, p.casse));
   const mots = titre.split(/\s+/).filter(Boolean);
   // Deux lignes au plus : le bloc reste au-dessus du rail d'actions des
   // réseaux (35 % de la hauteur), sa largeur n'y est pas rabotée.
   const lignes = Math.min(2, Math.max(1, Math.ceil(mots.length / 2)));
-  const largeurA1 = mots.reduce((t, m) => t + m.length * ch.em, 0) * W * 0.04375 + (mots.length - 1) * ch.espace * W * 0.04375;
+  const largeurA1 = mots.reduce((t, m) => t + m.length * ch.em, 0) * corps1 + (mots.length - 1) * ch.espace * corps1;
   const cible = (utile * lignes) / Math.max(1e-6, largeurA1);
-  return Math.round(Math.min(ECHELLE_TITRE_LISIBLE.max, Math.max(ECHELLE_TITRE_LISIBLE.min, cible)) * 100) / 100;
+  // Bornes en px de corps, identiques pour les trois formats (9:16 : 1,4–2,4 exactement comme avant).
+  const min = CORPS_TITRE_LISIBLE_PX.min / corps1;
+  const max = CORPS_TITRE_LISIBLE_PX.max / corps1;
+  return Math.round(Math.min(max, Math.max(min, cible)) * 100) / 100;
 }

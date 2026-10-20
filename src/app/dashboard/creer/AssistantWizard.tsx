@@ -260,7 +260,7 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, planAvecAvatar, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { ajusterPlan, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { ajusterPlan, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, plansPropres, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
@@ -2172,7 +2172,18 @@ function FondRushTexte({ fond, gradStart, gradEnd, gradientOpacity }: {
         src={`${fond.url}#t=${fond.depuis}`}
         muted
         autoPlay
-        loop
+        // #613 : plage propre connue → la boucle reste DANS [depuis, jusqua] (jamais l'image figée ni
+        // le reste d'un autre plan du début du rush), comme le compositeur.
+        loop={fond.jusqua === undefined}
+        onTimeUpdate={fond.jusqua === undefined ? undefined : (e) => {
+          const v = e.currentTarget;
+          if (v.currentTime >= (fond.jusqua as number) - 0.05) v.currentTime = fond.depuis;
+        }}
+        onEnded={fond.jusqua === undefined ? undefined : (e) => {
+          const v = e.currentTarget;
+          v.currentTime = fond.depuis;
+          void v.play().catch(() => {});
+        }}
         playsInline
         data-fond-rush-texte
         // Recadrage du rush : le style de l'aperçu de la séquence Vidéo
@@ -4312,6 +4323,9 @@ export default function AssistantWizard() {
    */
   const [versionLisibilite, setVersionLisibilite] = useState<number>(VERSION_LISIBILITE);
   const lisible = defautsLisibles(versionLisibilite);
+  /** #613 — plages propres mesurées des rushes servis en fond Titre / CTA (par URL). */
+  const [propresFonds, setPropresFonds] = useState<Record<string, Array<[number, number]>>>({});
+  const propresFondsRef = useRef<Record<string, Array<[number, number]>>>({});
   const [ctaStyle, setCtaStyle] = useState<TextStyles['cta']>({
     ...DEFAULT_TEXT_STYLES.cta,
     // Provisoire : remplace juste en dessous par la fin du degrade tant que
@@ -7694,18 +7708,50 @@ export default function AssistantWizard() {
    */
   // Fonds en mouvement Titre / CTA (v2, sans affiche) — la MÊME décision pour
   // l'aperçu et l'export (`fond-rush-texte.ts`).
-  const fondsRushBruts = fondsRushTexte({
-    lisible, affiche: !!posterUrl, fondsSequence: seqBackgrounds,
-    rushs: [{ url: rushUrl, secondes: rushSecondes }, ...rushSuivants.map((r) => ({ url: r.url, secondes: r.secondes }))],
-    dureeCta: ctaDuration,
-  });
-  // Recadrage de chaque rush de fond : celui du compositeur (aperçu = export).
-  const avecRecadrage = (f: FondRush | null): FondRush | null => (f
-    ? { ...f, recadrage: recadragePourRushPeint(f.url, { rushTransforms, rushTransform, videoUrl: rushUrl }) ?? null }
-    : null);
-  const fondsRushProjet: FondsRushTexte | null = fondsRushBruts
-    ? { intro: avecRecadrage(fondsRushBruts.intro), cta: avecRecadrage(fondsRushBruts.cta) }
-    : null;
+  // #613 : plages PROPRES des rushes de fond (ni image figée ni reste d'un autre plan), mesurées par
+  // l'analyse mémoïsée de l'export — l'aperçu et l'export choisissent le même point d'entrée.
+  const rushsDeFond = [{ url: rushUrl, secondes: rushSecondes }, ...rushSuivants.map((r) => ({ url: r.url, secondes: r.secondes }))];
+  const fondsAvecPropres = (propres: Record<string, Array<[number, number]>>): FondsRushTexte | null => {
+    const bruts = fondsRushTexte({
+      lisible, affiche: !!posterUrl, fondsSequence: seqBackgrounds,
+      rushs: rushsDeFond,
+      dureeCta: ctaDuration,
+      plansPropres: propres,
+    });
+    // Recadrage de chaque rush de fond : celui du compositeur (aperçu = export).
+    const avecRecadrage = (f: FondRush | null): FondRush | null => (f
+      ? { ...f, recadrage: recadragePourRushPeint(f.url, { rushTransforms, rushTransform, videoUrl: rushUrl }) ?? null }
+      : null);
+    return bruts ? { intro: avecRecadrage(bruts.intro), cta: avecRecadrage(bruts.cta) } : null;
+  };
+  const fondsRushProjet: FondsRushTexte | null = fondsAvecPropres(propresFonds);
+  /** URLs des rushes servis en fond (Titre / CTA) à mesurer — sans mesure, la règle d'avant. */
+  const urlsFondsAMesurer = (() => {
+    const f = fondsAvecPropres({});
+    return Array.from(new Set([f?.intro?.url, f?.cta?.url].filter((u): u is string => !!u && /^(https?:\/\/|\/)/.test(u))));
+  })();
+  /** Mesure (mémoïsée) les rushes de fond ; renvoie TOUTES les plages connues. */
+  const mesurerPropresFonds = async (): Promise<Record<string, Array<[number, number]>>> => {
+    const out: Record<string, Array<[number, number]>> = { ...propresFondsRef.current };
+    for (const url of urlsFondsAMesurer) {
+      if (out[url]) continue;
+      const a = await analyserRushMemo(url).catch(() => null);
+      if (a) out[url] = plansPropres(a);
+    }
+    propresFondsRef.current = out;
+    return out;
+  };
+  const cleFondsAMesurer = urlsFondsAMesurer.join('|');
+  useEffect(() => {
+    if (!cleFondsAMesurer) return;
+    let annule = false;
+    void mesurerPropresFonds().then((p) => {
+      if (annule) return;
+      setPropresFonds((avant) => (Object.keys(p).every((k) => avant[k]) ? avant : { ...avant, ...p }));
+    });
+    return () => { annule = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleFondsAMesurer]);
   const previewShared = {
     fondsRush: fondsRushProjet,
     generated,
@@ -7921,6 +7967,7 @@ export default function AssistantWizard() {
       methode: methodeB ? 'B' : 'A',
       voixDeTextes: !!(sequenceVoices.titre?.audioUrl || sequenceVoices.cartes?.audioUrl || sequenceVoices.cta?.audioUrl),
       format,
+      rushApres: fondsRushProjet?.cta?.url ?? null,
     })
     : null;
   const cleApercuPlan = entreeApercuPlan ? clePlanMontage(entreeApercuPlan) : null;
@@ -9557,6 +9604,10 @@ export default function AssistantWizard() {
       // Multi-rush : les rushes DURABLES de la liste (jamais une `blob:`), ce
       // que la metadata du post peut porter. Vide avec un seul rush.
       const rushsDurables = (plateau.rushs ?? []).filter((r) => !!persistableUrl(r.url));
+      // #613 : fonds Titre / CTA sur leurs plages PROPRES — les mesures déjà lues par l'aperçu
+      // (analyse mémoïsée), complétées plus bas par celles du smart montage ; jamais d'attente ici
+      // (un rush illisible ne bloque pas l'envoi : la règle d'avant s'applique).
+      let fondsExport = fondsAvecPropres(propresFondsRef.current);
 
       // ── SMART MONTAGE : analyse locale des rushes → plan d'extraits ──────
       // Seulement quand TOUS les rushes sont durables (une `blob:` ne se
@@ -9624,6 +9675,7 @@ export default function AssistantWizard() {
           methode: methodeB ? 'B' : 'A',
           voixDeTextes: !!(voixSequencesRendu?.titre || voixSequencesRendu?.cartes || voixSequencesRendu?.cta),
           format,
+          rushApres: fondsExport?.cta?.url ?? null,
         }), { analysesBrutes, rythme }, apercuPlanDisponible ? planApercuRef.current : null);
         const rythmeVideo = prepPlan.rythmeVideo;
         planMontageRushs = prepPlan.plan;
@@ -9658,6 +9710,15 @@ export default function AssistantWizard() {
         console.log('[SmartMontage] plan :', planMontageRushs
           ? planMontageRushs.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | ')
           : 'aucun (enchaînement classique)');
+      }
+
+      // #613 : les analyses du smart montage (mêmes objets mémoïsés que l'aperçu) donnent les plages
+      // propres des rushes de fond — même point d'entrée que l'aperçu une fois sa mesure arrivée.
+      if (montageInfos?.analyses.length) {
+        const mesures = { ...propresFondsRef.current };
+        for (const a of montageInfos.analyses) mesures[a.url] ??= plansPropres(a);
+        propresFondsRef.current = mesures;
+        fondsExport = fondsAvecPropres(mesures);
       }
 
       // ── SURIMPRESSIONS : même logique que l'Autopilote ─────────────────
@@ -9840,12 +9901,23 @@ export default function AssistantWizard() {
           ? sequenceVoices.cartes : null;
         const calageRendu = calageCartes(contenu.cards, voixCartesRendu)
           ?? calageProportionnel(contenu.cards, duree('cards'));
+        // #613 : la répartition tient compte de TOUT le montage — plans propres mesurés (ni image figée
+        // ni coupe de la source au départ d'un plan), matière des fonds Titre / CTA, et le rush du fond
+        // du Titre ne continue pas sous la 1re carte.
+        const fondsMontes = affiche ? null : fondsExport;
+        const avantCartes = ordre[ordre.indexOf('cards') - 1];
         const planSousCartes = narrationSurRushs && duree('cards') > 0
           ? planCartesSurRushs({
             sources: sourcesNarration,
             dureeCartes: duree('cards'),
             apparitions: calageRendu?.etapes.filter((e) => e.element === 'carte').map((e) => e.debut) ?? [],
             dejaUtilises: planVideoReference,
+            plansPropres: montageInfos ? new Map(montageInfos.analyses.map((a) => [a.url, plansPropres(a)] as const)) : null,
+            autresUsages: (['intro', 'cta'] as const).flatMap((k) => {
+              const f = fondsMontes?.[k];
+              return f && duree(k) > 0 ? [{ url: f.url, debut: 0, fin: Math.min(duree(k), (f.jusqua ?? Infinity) - f.depuis), depuis: f.depuis }] : [];
+            }),
+            rushAvant: avantCartes === 'intro' && duree('intro') > 0 ? fondsMontes?.intro?.url ?? null : null,
           })
           : null;
         if (planSousCartes) console.log('[Narration] plan sous les cartes :', planSousCartes.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | '));
@@ -10086,7 +10158,7 @@ export default function AssistantWizard() {
           // voile de degrade par-dessus — exactement ce que montre l'apercu.
           posterUrl: affiche,
           // Fonds en mouvement Titre / CTA (v2, sans affiche) : ceux de l'aperçu.
-          fondRushTexte: affiche ? null : fondsRushProjet,
+          fondRushTexte: affiche ? null : fondsExport,
           // Recadrage de l'affiche — le compositeur la pre-recadre une fois.
           posterTransform,
           // Fonds par sequence : le compositeur les substitue a l'affiche pour

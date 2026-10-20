@@ -10,10 +10,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { sortieSurimpression } from '../../remotion/CreerSimpleMontage';
 import { taillesBadge, BADGE_TEXTE_MIN_PX_916 } from '@/lib/creer/surimpressions-mise-en-page';
 import SequenceCards from '@/components/creer/SequenceCards';
-import { cardRatios } from '@/lib/creer/designSpec';
+import { cardRatios, FONT_RATIO, VIDEO_SIZE } from '@/lib/creer/designSpec';
 import { calageProportionnel, espacerApparitions, etatApres, DUREE_CARTE_LISIBLE_S } from '@/lib/creer/synchro-cartes';
-import { echelleTitreDeDepart, ECHELLE_TITRE_LISIBLE } from '@/lib/creer/ajustementCta';
-import { titreSur916, chassePolice } from '@/lib/creer/zones-sures-916';
+import { echelleTitreDeDepart, ECHELLE_TITRE_LISIBLE, CORPS_TITRE_LISIBLE_PX } from '@/lib/creer/ajustementCta';
+import { titreSur916, chassePolice, lignesRepliees, boiteTitre, BAS_TITRE_HORS_916 } from '@/lib/creer/zones-sures-916';
 import { fondsRushTexte, fondRushDeLOnglet } from '@/lib/creer/fond-rush-texte';
 import { HALO_TEXTE_ALPHA, CONTOUR_TEXTE_ALPHA, contrasteSurVoile, couleurValeurLisible, ratioContraste, hexVersRgb } from '@/lib/creer/contraste';
 
@@ -111,10 +111,11 @@ describe('Créer : titre à taille lisible par défaut', () => {
     const r = titreSur916({ format: '9:16', pos: { x: 8, y: 12 }, largeur: 84, echelle: e, titre: base.titre, police: 'Inter' });
     expect(7 * chassePolice('Inter', true).em * 1080 * 0.04375 * r.echelle).toBeLessThanOrEqual(1080 * 0.84);
   });
-  it('Default safe : v1, échelle choisie, autre format → inchangé', () => {
-    expect(echelleTitreDeDepart({ ...base, echelle: 1, lisible: false })).toBe(1);
-    expect(echelleTitreDeDepart({ ...base, echelle: 1.3, lisible: true })).toBe(1.3);
-    expect(echelleTitreDeDepart({ ...base, format: '16:9', echelle: 1, lisible: true })).toBe(1);
+  it('Default safe : v1 ou échelle choisie → inchangé (tout format)', () => {
+    for (const format of ['9:16', '1:1', '16:9']) {
+      expect(echelleTitreDeDepart({ ...base, format, echelle: 1, lisible: false })).toBe(1);
+      expect(echelleTitreDeDepart({ ...base, format, echelle: 1.3, lisible: true })).toBe(1.3);
+    }
   });
 });
 
@@ -141,13 +142,20 @@ describe('Créer : fond Titre / CTA = rush en mouvement (v2, sans affiche)', () 
   });
   it('câblage : aperçu (Preview + lecture) et export lisent la même décision', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
-    expect(src).toMatch(/fondRushTexte: affiche \? null : fondsRushProjet/);
+    // #613 : l'export lit la MÊME fonction (`fondsAvecPropres`) après avoir attendu la mesure mémoïsée des plages propres.
+    expect(src).toMatch(/const fondsRushProjet: FondsRushTexte \| null = fondsAvecPropres\(propresFonds\);/);
+    expect(src).toMatch(/let fondsExport = fondsAvecPropres\(propresFondsRef\.current\);/);
+    expect(src).toMatch(/fondRushTexte: affiche \? null : fondsExport/);
     expect(src).toMatch(/fondRush=\{!fond\.url \? fondRushDeLOnglet\(fondsRushProjet, key\) : null\}/);
     expect(src).toMatch(/fondsRush: fondsRushProjet/);
   });
   it('compositeur : le lecteur du fond boucle (rush plus court que la séquence), comme l’aperçu', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/lib/video-composer.ts'), 'utf8');
-    expect(src).toMatch(/el\.muted = true;\s*\n(?:\s*\/\/.*\n)*\s*el\.loop = true;/);
+    // Sans plage propre mesurée : la boucle native d'avant.
+    expect(src).toMatch(/\s*el\.loop = true;\n\s*const depuis = dureeEl !== null/);
+    // #613 : plage propre connue → rejouée DANS [depuis, jusqua] par un second lecteur (double tampon).
+    expect(src).toContain('plan.push({ el: els[k % els.length], debut: t, fin: Math.min(seq.duration, t + L), depuis });');
+    expect(src).toContain('const pf = creerPiloteMontage(f.plan);');
   });
 });
 
@@ -247,5 +255,41 @@ describe('R4 — aperçu du fond en mouvement : recadrage du compositeur', () =>
     expect(src).toMatch(/styleRecadrageRush\(fond\.recadrage\)/);
     const comp = readFileSync(resolve(process.cwd(), 'src/lib/video-composer.ts'), 'utf8');
     expect(comp).toMatch(/recadragePourRushPeint\(f\.url, \{ rushTransforms: options\.rushTransforms, rushTransform: options\.rushTransform, videoUrl: options\.videoUrl \}\)/);
+  });
+});
+
+// ── #613 — Titre lisible en 9:16, 1:1 ET 16:9 ───────────────────────────
+describe('Créer : titre auto-ajusté dans les trois formats (#613)', () => {
+  const formats = ['9:16', '1:1', '16:9'] as const;
+  const sousTitre = 'Danser active plus de muscles que la plupart des sports';
+  for (const format of formats) {
+    it(`${format} : corps lisible (66–113 px), 1–2 lignes, aucun mot ni bloc hors cadre`, () => {
+      const e = echelleTitreDeDepart({ titre: 'LE SPORT LE PLUS COMPLET', format, largeurPct: 84, police: 'Inter', echelle: 1, lisible: true });
+      const W = VIDEO_SIZE[format].w;
+      const corps = (x: number) => W * FONT_RATIO[format].title * x;
+      expect(corps(e)).toBeGreaterThanOrEqual(CORPS_TITRE_LISIBLE_PX.min - 0.6);
+      expect(corps(e)).toBeLessThanOrEqual(CORPS_TITRE_LISIBLE_PX.max + 0.6);
+      // Avant #613, hors 9:16 l'échelle restait 1 : 38 px de corps en 1:1.
+      if (format !== '16:9') expect(e).toBeGreaterThan(1.3);
+      const t = { format, pos: { x: 8, y: 8 }, largeur: 84, echelle: e, titre: 'LE SPORT LE PLUS COMPLET', sousTitre, police: 'Inter' };
+      const r = titreSur916(t);
+      // Aucun mot ne sort du cadre (le mot le plus long, 7 capitales).
+      expect(7 * chassePolice('Inter', true).em * corps(r.echelle)).toBeLessThanOrEqual(W * 0.84);
+      // 1 à 2 lignes de titre.
+      const n = lignesRepliees('LE SPORT LE PLUS COMPLET', corps(r.echelle), W * 0.84, chassePolice('Inter', true));
+      expect(n).toBeGreaterThanOrEqual(1);
+      expect(n).toBeLessThanOrEqual(2);
+      // Bloc (titre + sous-titre) dans l'image : hors 9:16, au-dessus de 90 % de la hauteur.
+      if (format !== '9:16') expect(boiteTitre({ ...t, echelle: r.echelle }, r.largeur, r.echelle).y1).toBeLessThanOrEqual(BAS_TITRE_HORS_916 + 1e-6);
+    });
+  }
+  it('1:1 et 16:9 : un titre long agrandi qui descendrait sous la zone sûre est réduit (jamais hors cadre)', () => {
+    for (const format of ['1:1', '16:9'] as const) {
+      const titre = 'UN TITRE TRÈS LONG QUI RACONTE BEAUCOUP DE CHOSES À LA FOIS SUR LA DANSE';
+      const t = { format, pos: { x: 8, y: 40 }, largeur: 84, echelle: 3, titre, sousTitre, police: 'Inter' };
+      const r = titreSur916(t);
+      expect(r.echelle).toBeLessThan(3);
+      expect(boiteTitre(t, r.largeur, r.echelle).y1).toBeLessThanOrEqual(BAS_TITRE_HORS_916 + 1e-6);
+    }
   });
 });

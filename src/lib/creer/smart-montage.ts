@@ -117,7 +117,41 @@ export interface OptionsMontage {
   selection?: 'grille' | 'passages';
   /** M3-a (mode passages) : mesures facultatives par clé de rush (silences, sonde, pertinence). */
   entreesPassages?: Record<string, EntreesPassages> | null;
+  /**
+   * #613 (Créer) — unicité PAR TIMECODE, extraits pris dans les PLANS PROPRES.
+   *
+   * Constat (démo « LE SPORT », 3 rushes de 4/4/5 s d'un seul plan chacun) :
+   * la séquence Vidéo tombait à 4 s. Deux règles de la sélection par défaut
+   * jugeaient un rush continu comme de la matière « répétée » :
+   *  - l'empreinte 8×8 d'un même plan filmé en continu varie à peine (écart
+   *    ≤ 0,03 < `SEUILS.similaire`) : tout 2e extrait du rush était écarté ;
+   *  - la marge anti-répétition (≥ 1 s) mangeait le reste d'un rush court.
+   * Et le pic de mouvement d'une COUPE de la source (fin d'un plan précédent
+   * collée au début du rush) passait pour un « geste fort » : extrait choisi À
+   * CHEVAL sur la coupe, au ralenti (flash de 0,2 s).
+   *
+   * Avec cette option : un extrait tient dans UN plan propre du rush
+   * (`plansPropres` : ni coupe franche ni image figée dedans) ; deux extraits
+   * d'un même rush à des timecodes DISJOINTS (marge `MARGE_TIMECODE_S`) ne
+   * sont plus « quasi identiques » — la ressemblance entre rushes différents,
+   * la variété avec le plan précédent et les pénalités de même scène restent.
+   * Absent : sélection d'avant, octet pour octet (Autopilote).
+   */
+  uniciteParTimecode?: boolean;
+  /**
+   * #613 (Créer) — rush montré JUSTE APRÈS la séquence Vidéo (fond en
+   * mouvement du CTA) : le dernier plan de la Vidéo ne vient pas de lui s'il
+   * existe une alternative (pas de répétition consécutive). Absent : rien.
+   */
+  rushApres?: string | null;
 }
+
+/** #613 — marge entre deux extraits d'un même rush en unicité par timecode (s). */
+export const MARGE_TIMECODE_S = 0.25;
+/** #613 — mouvement (écart de gris moyen 0..1) sous lequel deux images sont IDENTIQUES : image figée. */
+export const MOUVEMENT_GEL = 0.002;
+/** #613 — plus court plan propre retenu (s). */
+export const PLAN_PROPRE_MIN_S = 0.5;
 
 const arrondi = (n: number) => Math.round(n * 1000) / 1000;
 const arrondi2 = (n: number) => Math.round(n * 100) / 100;
@@ -440,6 +474,42 @@ export function grilleDeCoupes(
 
 interface StatsRush { mouvHaut: number; mouvMoyen: number; mouvMediane: number; netMediane: number; audioMax: number; coupes: number[] }
 
+/**
+ * #613 — PLANS PROPRES d'un rush : les intervalles [début, fin] (s) sans
+ * coupe franche de la source ni image figée, plus longs que
+ * `PLAN_PROPRE_MIN_S`. Mesuré sur l'analyse (échantillons espacés de `pas`) :
+ *  - COUPE FRANCHE à l'échantillon `t` : pic de mouvement (> 2,5 × la moyenne
+ *    du rush) ET image qui change (écart d'empreinte > `SEUILS.similaire`) —
+ *    la coupe tombe quelque part dans ]t − pas, t] : tout l'intervalle est
+ *    écarté (un extrait qui le chevauche montrerait un flash de l'autre plan) ;
+ *  - IMAGE FIGÉE à `t` : mouvement < `MOUVEMENT_GEL` (deux images à `pas`
+ *    d'écart identiques) — [t − pas, t] écarté (un gel dans la vidéo finale).
+ * Sans échantillon : le rush entier. Pur.
+ */
+export function plansPropres(a: Pick<AnalyseRush, 'duree' | 'echantillons'>): Array<[number, number]> {
+  const e = [...(a.echantillons ?? [])].sort((x, y) => x.t - y.t);
+  if (!(a.duree > 0)) return [];
+  if (e.length < 2) return [[0, arrondi(a.duree)]];
+  const ecarts = e.slice(1).map((x, i) => x.t - e[i].t).sort((x, y) => x - y);
+  const pas = ecarts[Math.floor(ecarts.length / 2)] || 0.5;
+  const mouvMoyen = moyenne(e.map((x) => x.mouvement)) || 1e-6;
+  const ecartes: Array<[number, number]> = [];
+  for (let i = 1; i < e.length; i++) {
+    const coupe = e[i].mouvement > mouvMoyen * SEUILS.coupeRelative
+      && (!e[i].empreinte || !e[i - 1].empreinte || ecartEmpreinte(e[i].empreinte!, e[i - 1].empreinte!) > SEUILS.similaire);
+    const fige = e[i].mouvement < MOUVEMENT_GEL;
+    if (coupe || fige) ecartes.push([Math.max(0, e[i].t - pas), e[i].t]);
+  }
+  const out: Array<[number, number]> = [];
+  let debut = 0;
+  for (const [x, y] of ecartes) {
+    if (x - debut >= PLAN_PROPRE_MIN_S - 1e-6) out.push([arrondi(debut), arrondi(x)]);
+    debut = Math.max(debut, y);
+  }
+  if (a.duree - debut >= PLAN_PROPRE_MIN_S - 1e-6) out.push([arrondi(debut), arrondi(a.duree)]);
+  return out;
+}
+
 function statsRush(a: AnalyseRush): StatsRush {
   const mouvements = a.echantillons.map((e) => e.mouvement);
   const mouvMoyen = moyenne(mouvements) || 1e-6;
@@ -554,6 +624,18 @@ export function planMontage(
   const decoupages = new Map<string, DecoupageRush>(modePassages ? rushs.map(({ a, cle }) => [cle, decouperPassages(a, entreesR.get(cle)!)]) : []);
 
   const grille = grilleDeCoupes(cible, regle, options.rythme ?? null);
+  // #613 (Créer) : unicité par timecode, extraits dans les plans propres.
+  const parTimecode = !!options.uniciteParTimecode && !modePassages;
+  const propres = new Map<string, Array<[number, number]>>(parTimecode ? rushs.map(({ a, cle }) => [cle, plansPropres(a)]) : []);
+  const cleApres = options.rushApres ? cleSource(options.rushApres) : null;
+  /** #613 — nombre d'extraits montés par rush (rotation). */
+  const usages = new Map<string, number>();
+  /** #613 — secondes de plans propres encore libres dans un rush (marge comprise). */
+  const matiereLibre = (cle: string) => (propres.get(cle) ?? []).reduce((t, [x, y]) => {
+    let libre = y - x;
+    for (const [u, v] of utilisees[cle] ?? []) libre -= Math.max(0, Math.min(y, v + MARGE_TIMECODE_S) - Math.max(x, u - MARGE_TIMECODE_S));
+    return t + Math.max(0, libre);
+  }, 0);
   // PR2 (passages) — le dernier créneau est TOUJOURS un CTA (une grille courte n'en
   // contenait parfois aucun : le dernier créneau commençait avant 90 % de la cible).
   if (modePassages && grille.length && !grille.some((c) => c.phase === 'CTA')) grille[grille.length - 1] = { ...grille[grille.length - 1], phase: 'CTA' };
@@ -643,8 +725,18 @@ export function planMontage(
     const passages = modePassages && !repli;
     for (const { a, cle, st } of rushs) {
       if (cle === exclu) continue;
-      const marge = Math.max(SEUILS.margeMin, d / 2);
+      const marge = parTimecode ? MARGE_TIMECODE_S : Math.max(SEUILS.margeMin, d / 2);
       const debutMin = Math.min(0.5, a.duree * 0.05);
+      // #613 : départs dans les plans propres — leur début, la grille de 0,5 s, et la fin du plan moins le créneau.
+      const plansDuRush = parTimecode ? propres.get(cle) ?? [] : null;
+      const departsPropres: Array<[number, number]> | null = plansDuRush
+        ? Array.from(new Set(plansDuRush.flatMap(([x, y]) => {
+          const out: number[] = [x];
+          for (let t = Math.ceil(x / 0.5) * 0.5; t + d <= y + 1e-6; t += 0.5) out.push(t);
+          if (y - d >= x) out.push(y - d);
+          return out.map(arrondi);
+        }))).sort((u, v) => u - v).filter((x) => x + d <= a.duree + 1e-6).map((x) => [x, d] as [number, number])
+        : null;
       const dp = passages ? decoupages.get(cle)! : null;
       const eR = passages ? entreesR.get(cle)! : null;
       // Mode passages : fenêtres DANS les passages (débuts, sorties de geste, puis 0,5 s),
@@ -652,17 +744,21 @@ export function planMontage(
       // plus (PR2) les fenêtres posées sur les silences mesurés et les phrases entières.
       const fen: Array<[number, number]> | null = dp
         ? [...departsCandidats(dp, d).map((x) => [x, d] as [number, number]), ...plansEntiersCourts(dp, d), ...fenetresSilences(dp, eR!.silences, d)]
-        : null;
+        : departsPropres;
       for (let k = 0, s = fen ? (fen[0]?.[0] ?? 0) : debutMin; fen ? k < fen.length : s + d <= a.duree - 0.05 + 1e-6; k++, s = fen ? (fen[k]?.[0] ?? 0) : s + 0.5) {
         const dd = fen ? fen[k][1] : d;
         const court = dd < d - 1e-6;
-        const m = mesuresFenetre(a, st, s, s + dd);
+        // #613 : l'échantillon posé PILE au départ mesure le passage depuis l'image d'AVANT le départ
+        // (une coupe de la source y vaut un « geste fort ») — seules les images DANS l'extrait comptent.
+        const m = mesuresFenetre(a, st, parTimecode ? s + 0.01 : s, s + dd);
         if (m.ratees > SEUILS.rateesMax) continue;
         // Ralenti : seulement sur un geste fort, peu de fois, profils dynamiques.
         // Mode passages : jamais (pas d'étirement pour combler la durée).
         const ralenti = !modePassages && regle.ralenti && ralentis < 2 && (creneau.phase === 'PEAK' || creneau.phase === 'HOOK') && m.geste;
         const vitesse = ralenti ? 0.6 : 1;
         const e = s + dd * vitesse;
+        // #613 : jamais à cheval sur une coupe de la source ni sur une image figée.
+        if (plansDuRush && !plansDuRush.some(([x, y]) => s >= x - 1e-6 && e <= y + 1e-6)) continue;
         // Mode passages : un extrait tient dans UN passage, aucune borne dans un geste.
         const bp = dp ? bornesAutorisees(dp, s, e, eR!) : null;
         if (bp && !bp.ok) continue;
@@ -693,7 +789,10 @@ export function planMontage(
         // la même matière — même en dernier recours (reprise 2).
         const recents = choisis.filter((_, k) => plan[k].fin > creneau.debut - FENETRE_FLASH_S);
         if (recents.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
-        if (!reprise && !continuite && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
+        // #613 (unicité par timecode) : la ressemblance n'exclut plus — un même lieu filmé à un autre moment
+        // (même rush plus loin, ou autre rush du même décor) est une autre image ; la répétition est
+        // jugée au TIMECODE (marge ci-dessus), et la ressemblance reste PÉNALISÉE plus bas.
+        if (!parTimecode && !reprise && !continuite && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
         // PR2 (passages) — JUMP CUT : deux extraits ADJACENTS jamais du même passage
         // (même plan réel), hors plan continu ; même rush mais autre plan : permis.
         const precSeg = plan[plan.length - 1];
@@ -744,7 +843,12 @@ export function planMontage(
         }
         // Variété visuelle : différent du plan précédent
         const diff: number = prec?.empreinte && m.empreinte ? borne(ecartEmpreinte(m.empreinte, prec.empreinte) / 0.25, 0, 1) : 1;
-        if (prec && diff < 0.3 && !continuite) continue; // quasi le même plan que juste avant
+        if (prec && diff < 0.3 && !continuite) {
+          // #613 (unicité par timecode) : un AUTRE fichier du même décor (plan large → plan serré d'une
+          // même chorégraphie) reste un vrai raccord — pénalisé, plus interdit ; le même rush, jamais.
+          if (!parTimecode || prec.cle === cle) continue; // quasi le même plan que juste avant
+          score -= 0.3;
+        }
         score += 0.2 * diff;
         // ANTI-RÉPÉTITION sur tout le plan : un plan visuellement nouveau,
         // même un peu moins bien noté, bat un excellent plan répétitif.
@@ -809,6 +913,14 @@ export function planMontage(
         if (dansLeSon) score -= 0.15;
         if (court) score -= 0.1;
         if (cle === interdit) score -= coh.troisiemeMemeRush;
+        // #613 : chaque rush est monté avant qu'un autre ne revienne (rotation) ; à égalité, le rush qui
+        // garde le plus de matière propre libre passe d'abord (la matière dure jusqu'au bout du montage).
+        if (parTimecode) {
+          if ((usages.get(cle) ?? 0) > Math.min(...rushs.map((r) => usages.get(r.cle) ?? 0))) score -= 0.5;
+          score += 0.15 * matiereLibre(cle) / Math.max(1e-6, ...rushs.map((r) => matiereLibre(r.cle)));
+        }
+        // #613 : le dernier plan ne vient pas du rush montré juste après (fond du CTA).
+        if (cleApres && cle === cleApres && creneauGrille === grille[grille.length - 1]) score -= 1;
         // Diversité des rushes, jamais au prix d'un mauvais plan
         const part = (partRush.get(cle) ?? 0) / Math.max(1e-6, cible);
         if (part > partJuste * 1.4) score -= 0.3 * (part - partJuste * 1.4) / partJuste;
@@ -910,6 +1022,7 @@ export function planMontage(
     }
     (utilisees[meilleur.cle] ??= []).push([meilleur.seg.depuis ?? 0, meilleur.seg.jusqua ?? 0]);
     partRush.set(meilleur.cle, (partRush.get(meilleur.cle) ?? 0) + (meilleur.seg.fin - meilleur.seg.debut));
+    usages.set(meilleur.cle, (usages.get(meilleur.cle) ?? 0) + 1);
     if (meilleur.empreinte) empreintesChoisies.push(meilleur.empreinte);
     if (meilleur.seg.effet === 'ralenti') ralentis += 1;
     precedent = { cle: meilleur.cle, empreinte: meilleur.empreinte, luminosite: meilleur.luminosite, saturation: meilleur.saturation };

@@ -45,14 +45,18 @@ const base = (o: Partial<Parameters<typeof entreePlanMontage>[0]> = {}) => entre
   ...o,
 });
 
-/** Le calcul d'avant PR3, tel qu'il était écrit dans AssistantWizard (c3f2302). */
+/**
+ * Le calcul d'avant PR3, tel qu'il était écrit dans AssistantWizard (c3f2302) —
+ * #613 : la méthode A de Créer passe désormais `uniciteParTimecode` et le rush du
+ * fond du CTA (`rushApres`) ; le reste à l'identique.
+ */
 function calculAvant(e: EntreePlanMontage, analyses: AnalyseRush[], rythme: RythmeMusique | null) {
   const cibleEcran = e.cibleEcran;
   const contexteMontage = contexteMontageDepuis({ theme: e.contexte.theme, titre: e.contexte.titre, sousTitre: e.contexte.sousTitre, objectif: e.contexte.objectif, cartes: e.contexte.cartes });
   const rythmeVideo = rythme ? rythmeSurFenetre(rythme, e.debutVideo, cibleEcran) : null;
   const plan = e.methode === 'B'
     ? planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, ...optionsModePassages(analyses) })
-    : planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage });
+    : planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, rushApres: e.rushApres });
   const profil = profilMontageDuContexte(contexteMontage).profil;
   const ms = plan ? mesuresSegments(plan, analyses) : null;
   const overlays = plan && profilEnSurimpression(profil) && !e.voixDeTextes
