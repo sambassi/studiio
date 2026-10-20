@@ -156,10 +156,13 @@ describe('Aucun fournisseur à l’écran, quelle que soit la combinaison de sou
     if (q('[data-autopilot-stock-source]')) {
       await waitFor(() => expect(q('[data-autopilot-stock-slot] [data-carte-media], [data-autopilot-stock-suffisant]')).toBeTruthy());
       const zone = await lancerRecherche();
-      // Plus de pied « fournisseurs » sur la surface principale : l'attribution
-      // vit dans « Informations du média » de chaque carte (élément de crédit).
-      expect(zone.querySelector('[data-autopilot-stock-credit]')).toBeNull();
-      expect(zone.textContent ?? '').not.toContain(CREDIT_FOURNISSEURS);
+      // Le crédit collectif est REPLIÉ (fermé par défaut), jamais supprimé,
+      // et c'est un élément de crédit.
+      const credit = zone.querySelector('[data-autopilot-stock-credit]') as HTMLDetailsElement;
+      expect(credit.tagName).toBe('DETAILS');
+      expect(credit.open).toBe(false);
+      expect(credit.hasAttribute('data-credit-media')).toBe(true);
+      expect(credit.textContent).toContain(CREDIT_FOURNISSEURS);
     }
     const t = textePrincipal(panneau);
     expect(t).not.toMatch(NOMS_FOURNISSEURS);

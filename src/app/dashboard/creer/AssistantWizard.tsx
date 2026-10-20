@@ -3760,13 +3760,19 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
    * (« Médias suggérés » : Remplacer / Conserver / recherche). Aucun second
    * système de choix ici — on y amène l'utilisateur.
    */
+  const minuterieMediasRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (minuterieMediasRef.current !== null) window.clearTimeout(minuterieMediasRef.current);
+  }, []);
   const allerAuxMedias = useCallback(() => {
     if (typeof document === 'undefined') return;
     const cible = document.querySelector('[data-autopilot-stock-source]') ?? document.querySelector('[data-autopilot-add-rush]');
     if (cible) { cible.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); return; }
     // Autre étape affichée : on ouvre l'étape Rushes, puis on y descend.
     (document.querySelector('[data-autopilot-etape="1"]') as HTMLElement | null)?.click();
-    window.setTimeout(() => {
+    if (minuterieMediasRef.current !== null) window.clearTimeout(minuterieMediasRef.current);
+    minuterieMediasRef.current = window.setTimeout(() => {
+      minuterieMediasRef.current = null;
       document.querySelector('[data-autopilot-stock-source]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     }, 150);
   }, []);

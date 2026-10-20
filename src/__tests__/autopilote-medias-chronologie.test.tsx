@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
+import StockRechercheAutopilote from '@/components/creer/StockRechercheAutopilote';
 import ChronologieMontage, { segmentsChronologie, LARGEUR_MIN_SEGMENT } from '@/components/creer/ChronologieMontage';
 import CompleterRushesStock, { CANDIDATS_PAR_PLAN, classerCandidats, repartirCandidats } from '@/components/creer/CompleterRushesStock';
 import { EVENEMENT_ECHEC_AVATAR, EVENEMENT_RELIRE_AVATAR, lireVideoAvatarReelle, relireDisponibiliteAvatar, useDisponibiliteAvatarAutopilote } from '@/components/creer/AvatarPrincipalAutopilote';
@@ -421,3 +422,29 @@ describe('Vérification de l’avatar — délai et erreur visible, jamais un sp
   });
 });
 const noop = () => {};
+
+describe('Recherche libre — crédit replié, page 2 seulement sur « Voir plus »', () => {
+  it('une seule page chargée automatiquement ; « Voir plus » charge la page 2 ; crédits repliés', async () => {
+    const appels: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      appels.push(u);
+      const page = new URLSearchParams(u.split('?')[1] ?? '').get('page');
+      const medias = [1, 2, 3].map((k) => stock(`p${page}-${k}`, { description: 'athlete training' }));
+      return { ok: true, json: async () => ({ success: true, medias, echecs: [] }) };
+    }));
+    const { container } = render(<StockRechercheAutopilote sujet="motivation" format="9:16" accent="#7C3AED" dejaRetenus={[]} onRetenir={vi.fn()} />);
+    fireEvent.click(container.querySelector('[data-autopilot-stock-mode="video"]')!);
+    fireEvent.click(container.querySelector('[data-autopilot-stock-lancer="general"]')!);
+    await waitFor(() => expect(container.querySelectorAll('[data-autopilot-stock-resultat]').length).toBe(3));
+    expect(appels.filter((u) => u.includes('/api/stock/recherche'))).toHaveLength(1);
+    const credit = container.querySelector('[data-autopilot-stock-credit]') as HTMLDetailsElement;
+    expect(credit.tagName).toBe('DETAILS');
+    expect(credit.open).toBe(false);
+    fireEvent.click(container.querySelector('[data-autopilot-stock-voir-plus="general"]')!);
+    await waitFor(() => expect(container.querySelectorAll('[data-autopilot-stock-resultat]').length).toBe(6));
+    expect(appels.filter((u) => u.includes('/api/stock/recherche'))).toHaveLength(2);
+    expect(appels[1]).toContain('page=2');
+    expect(container.querySelector('[data-autopilot-stock-voir-plus]')).toBeNull();
+  });
+});
