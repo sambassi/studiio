@@ -20,6 +20,9 @@
  */
 import type { CreneauGabarit, MediaStockRetenu, SourcesActives } from '@/lib/autopilot/sources';
 import { estRushStock } from '@/lib/autopilot/sources';
+import { AVATAR_FENETRE_S, BROLL_PHOTO_S, BROLL_VIDEO_S, MOUVEMENTS_PHOTO } from '@/lib/autopilot/plan-multi-sources';
+import { TRANSITION_DURATION_SECONDS } from '@/lib/creer/transitionPreview';
+import type { EtapeApercu, LigneChronologie } from '@/lib/creer/medias-video';
 
 /** Ce que le panneau sait des médias du plan — remonté au wizard. */
 export interface ResumeMediasApercu {
@@ -118,4 +121,82 @@ export function signatureResume(r: ResumeMediasApercu): string {
     r.avatar.vignette?.url ?? '',
     r.avatar.vignette?.type ?? '',
   ]);
+}
+
+/**
+ * APERÇU DU MONTAGE PRÉVU — TOUS les créneaux du plan, dans l'ordre.
+ *
+ * ⚠️ `mediaApercuAutopilote` ne rend que le PREMIER créneau résoluble : le
+ * bloc « Aperçu du style » montrait donc un seul média (souvent un stock, ou
+ * toujours le même rush) et jamais l'enchaînement réel. Ici, chaque créneau
+ * du gabarit devient une étape d'`ApercuMontageListe` :
+ *   - avatar → TOUJOURS un emplacement (`url: null`) : la vidéo de l'avatar
+ *     n'existe qu'à la production (« Votre avatar parlera ici »). Jamais un
+ *     stock à sa place. Source avatar décochée : le créneau est omis ;
+ *   - rush   → ROTATION sur les rushes personnels (1er créneau rush → rush 1,
+ *     2e → rush 2…), sauf média imposé par le gabarit ;
+ *   - stock  → ROTATION sur les médias retenus, sauf média imposé ;
+ *   - auto   → avatar prêt, sinon rush suivant, sinon stock suivant.
+ * Un créneau sans média réel est omis (jamais une vidéo générique).
+ *
+ * Durées INDICATIVES (celles des plans de coupe du moteur) : la vidéo finale
+ * prend la durée réelle de la parole / des extraits. Pur, sans réseau.
+ */
+export function etapesMontageApercuAutopilote(
+  resume: ResumeMediasApercu | null | undefined,
+  opts: { dureeCta?: number | null } = {},
+): { etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number } {
+  const etapes: EtapeApercu[] = [];
+  if (resume) {
+    const perso = resume.actives.rushes ? resume.rushesPerso.filter((u) => !estRushStock(u)) : [];
+    const stock = resume.actives.stock ? resume.stock : [];
+    let rangRush = 0;
+    let rangStock = 0;
+    let photos = 0;
+    let t = 0;
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+    const pousser = (e: Omit<EtapeApercu, 'debut' | 'fin' | 'depuis' | 'horsNarration' | 'id'>, secondes: number) => {
+      const debut = r3(t);
+      t += secondes;
+      etapes.push({ ...e, id: `creneau-${etapes.length + 1}`, debut, fin: r3(t), depuis: 0, horsNarration: false });
+    };
+    const avatar = (): boolean => {
+      if (!resume.actives.avatar) return false;
+      pousser({ source: 'avatar', type: 'video', url: null, libelle: 'Mon avatar' }, AVATAR_FENETRE_S);
+      return true;
+    };
+    const rush = (force?: string): boolean => {
+      if (!perso.length) return false;
+      const url = force && perso.includes(force) ? force : perso[rangRush++ % perso.length];
+      pousser({ source: 'rush', type: 'video', url, libelle: `Rush : ${nomRush(url, perso.indexOf(url))}` }, BROLL_VIDEO_S);
+      return true;
+    };
+    const media = (force?: string): boolean => {
+      if (!stock.length) return false;
+      const m = (force ? stock.find((s) => s.url === force) : undefined) ?? stock[rangStock++ % stock.length];
+      if (m.type === 'photo') {
+        pousser({
+          source: 'stock-photo', type: 'image', url: m.url, libelle: 'Photo suggérée',
+          mouvement: MOUVEMENTS_PHOTO[photos++ % MOUVEMENTS_PHOTO.length],
+        }, BROLL_PHOTO_S);
+      } else {
+        pousser({ source: 'stock-video', type: 'video', url: m.url, libelle: 'Vidéo suggérée' }, BROLL_VIDEO_S);
+      }
+      return true;
+    };
+    for (const c of resume.gabarit) {
+      if (c.type === 'avatar') avatar();
+      else if (c.type === 'rush') rush(c.media);
+      else if (c.type === 'stock') media(c.media);
+      else if (!(resume.avatar.disponible && avatar())) { if (!rush()) media(); }
+    }
+  }
+  const duree = etapes.length ? etapes[etapes.length - 1].fin : 0;
+  const lignes: LigneChronologie[] = etapes.map((e) => ({ id: e.id, libelle: e.libelle, debut: e.debut, fin: e.fin }));
+  const cta = typeof opts.dureeCta === 'number' && Number.isFinite(opts.dureeCta) && opts.dureeCta > 0 ? opts.dureeCta : null;
+  if (cta !== null && etapes.length) {
+    const fondu = Math.round(Math.min(TRANSITION_DURATION_SECONDS, duree) * 1000) / 1000;
+    lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: Math.round((duree + cta) * 1000) / 1000, cta: true, ...(fondu > 0 ? { fondu } : {}) });
+  }
+  return { etapes, lignes, duree };
 }

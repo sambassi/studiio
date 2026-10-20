@@ -39,7 +39,7 @@ beforeEach(() => { base.vider(); _reinitialiserSuivi(); });
 describe('CAS B — pas de post : jamais « déposé »', () => {
   it('montage en file (jumeau en préparation) → en_preparation, aucun post annoncé', async () => {
     file({ statut: 'en_attente' });
-    expect(await suiviProductionJumeau(U, NOW)).toEqual({ etat: 'en_preparation', jobId: expect.stringContaining('autopilote-manuel-') });
+    expect(await suiviProductionJumeau(U, NOW)).toEqual({ etat: 'en_preparation', jobId: expect.stringContaining('autopilote-manuel-'), statut: 'en_attente', depuis: '2026-10-13T09:25:40Z' });
   });
   it('file « rendu » mais post absent → échec explicite, pas de succès', async () => {
     file({ statut: 'rendu', post_id: 'post-fantome' });

@@ -21,6 +21,9 @@ import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutop
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
+import ProgressStatus from '@/components/ux/ProgressStatus';
+import { affichageProduction } from '@/lib/autopilot/progression';
+import { etapeDepuisStatutJumeauAutopilote, progressionVideoAvatar } from '@/lib/avatar/etapes-video-avatar';
 import {
   validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
   gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
@@ -1060,9 +1063,11 @@ export default function AutopilotPanel({
 
   // Progression réelle de « Produire maintenant », relue toutes les 2 s tant
   // que le rendu est en cours (`/api/autopilot/produire-maintenant/progression`).
-  const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string } | null>(null);
+  const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string; etape?: string; avancement?: number | null } | null>(null);
+  /** Montage AVEC JUMEAU : l'état RÉEL de sa ligne de file (`reserve` → `en_attente` → `en_cours`) et sa mise en file. */
+  const [suiviJumeauFile, setSuiviJumeauFile] = useState<{ statut: string | null; depuis: string | null } | null>(null);
   useEffect(() => {
-    if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); return; }
+    if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); setSuiviJumeauFile(null); return; }
     let actif = true;
     const lire = () => {
       fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
@@ -1070,13 +1075,22 @@ export default function AutopilotPanel({
         .then((d) => {
           if (!actif) return;
           const p = d?.progression;
-          if (p && typeof p.pourcent === 'number') setProgressionProduction({ pourcent: p.pourcent, libelle: String(p.libelle ?? '') });
+          if (p && typeof p.pourcent === 'number') {
+            setProgressionProduction({
+              pourcent: p.pourcent, libelle: String(p.libelle ?? ''),
+              etape: typeof p.etape === 'string' ? p.etape : undefined,
+              avancement: typeof p.avancement === 'number' ? p.avancement : null,
+            });
+          }
           // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici.
           const r = d?.resultat;
           if (!p && r) appliquerResultat(r);
           // Montage AVEC JUMEAU : l'état PROUVÉ par le serveur (file + post
           // relu dans le Calendrier). Seul `depose` devient un succès.
-          const j = d?.jumeau as { etat?: string; message?: string; post?: { postId: string; scheduledDate: string; scheduledTime: string }; sansAvatar?: boolean } | null;
+          const j = d?.jumeau as { etat?: string; message?: string; statut?: string; depuis?: string; post?: { postId: string; scheduledDate: string; scheduledTime: string }; sansAvatar?: boolean } | null;
+          if (j?.etat === 'en_preparation') {
+            setSuiviJumeauFile({ statut: typeof j.statut === 'string' ? j.statut : null, depuis: typeof j.depuis === 'string' ? j.depuis : null });
+          }
           if (!p && !r && j?.etat === 'depose' && j.post) {
             appliquerResultat({
               success: true, postId: j.post.postId, scheduledDate: j.post.scheduledDate, scheduledTime: j.post.scheduledTime,
@@ -1315,33 +1329,41 @@ export default function AutopilotPanel({
             </div>
           </div>
         )}
-        {produire.etat === 'en-cours' && (
-          <div className="space-y-1.5" data-autopilot-produire-en-cours>
-            {/* Progression RÉELLE du pipeline (étapes serveur), jamais un minuteur. */}
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progressionProduction?.pourcent ?? 0}%`, backgroundColor: accent }}
-                data-autopilot-produire-barre
+        {produire.etat === 'en-cours' && (() => {
+          // Étapes RÉELLES du pipeline ; un pourcentage SEULEMENT pendant la
+          // composition (images rendues) — plus de plages fixes par étape.
+          const aff = affichageProduction(progressionProduction);
+          return (
+            <div className="space-y-1.5" data-autopilot-produire-en-cours data-autopilot-produire-etape={progressionProduction?.etape ?? ''}>
+              <ProgressStatus
+                titre="Production de la vidéo"
+                statut="en_cours"
+                etapes={aff.etapes}
+                {...(aff.pourcentage !== undefined ? { pourcentage: aff.pourcentage } : {})}
+                detail={aff.message}
+                note="Vous pouvez continuer à régler l’Autopilote."
               />
             </div>
-            <p className="flex items-center gap-1.5 text-xs text-gray-300">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span className="tabular-nums font-medium">{progressionProduction?.pourcent ?? 0} %</span>
-              <span>{progressionProduction?.libelle ?? 'Démarrage…'}</span>
-            </p>
-            <p className="text-[11px] text-gray-500">Vous pouvez continuer à régler l’Autopilote.</p>
-          </div>
-        )}
-        {produire.etat === 'jumeau' && (
-          <div className="space-y-1" data-autopilot-produire-jumeau>
-            <p className="flex items-center gap-1.5 text-xs text-gray-300">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Votre avatar se prépare. Le brouillon n’est pas encore dans le Calendrier : il y sera déposé dès que la vidéo sera montée.
-            </p>
-            <p className="text-[11px] text-gray-500">Gardez cette page ouverte pour suivre l’avancement, ou revenez plus tard.</p>
-          </div>
-        )}
+          );
+        })()}
+        {produire.etat === 'jumeau' && (() => {
+          // L'état RÉEL de la file : réservé → génération de l'avatar →
+          // montage. Aucun pourcentage (le montage tourne côté serveur).
+          const prog = progressionVideoAvatar({ etape: etapeDepuisStatutJumeauAutopilote(suiviJumeauFile?.statut ?? 'en_attente') });
+          return (
+            <div className="space-y-1" data-autopilot-produire-jumeau data-autopilot-jumeau-statut={suiviJumeauFile?.statut ?? ''}>
+              <ProgressStatus
+                titre="Votre avatar se prépare"
+                statut="en_cours"
+                etapes={prog.etapes}
+                description={prog.message}
+                detail={prog.detail ?? undefined}
+                {...(suiviJumeauFile?.depuis ? { debutLe: suiviJumeauFile.depuis } : {})}
+                note="Le brouillon n’est pas encore dans le Calendrier : il y sera déposé dès que la vidéo sera montée. Gardez cette page ouverte pour suivre l’avancement, ou revenez plus tard."
+              />
+            </div>
+          );
+        })()}
         {produire.etat === 'fait' && (produire.avertissements ?? []).length > 0 && (
           <ul className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200" data-autopilot-produire-avertissements>
             {(produire.avertissements ?? []).map((a) => <li key={a}>{a}</li>)}

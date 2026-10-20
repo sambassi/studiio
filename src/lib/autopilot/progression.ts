@@ -36,7 +36,13 @@ export function pourcentEtape(etape: EtapeProduction, avancement = 0): number {
   return Math.round(a + (b - a) * f);
 }
 
-export interface Progression { pourcent: number; etape: EtapeProduction; libelle: string; majA: number }
+/**
+ * `avancement` (additif) : l'avancement RÉEL de la composition (images
+ * rendues, 0..1) — `null` aux autres étapes, qui n'ont aucune mesure. C'est
+ * le SEUL chiffre que l'écran affiche ; `pourcent` (bornes fixes par étape)
+ * reste pour les lecteurs d'avant.
+ */
+export interface Progression { pourcent: number; etape: EtapeProduction; libelle: string; majA: number; avancement?: number | null }
 
 const parUtilisateur = new Map<string, Progression>();
 
@@ -47,7 +53,41 @@ export function noterProgression(userId: string, etape: EtapeProduction, avancem
   parUtilisateur.set(userId, {
     pourcent: Math.max(pourcent, precedent?.pourcent ?? 0),
     etape, libelle: LIBELLES_ETAPES[etape], majA: Date.now(),
+    avancement: etape === 'composition' && Number.isFinite(avancement) ? Math.min(1, Math.max(0, avancement)) : null,
   });
+}
+
+/** Les étapes du pipeline, dans l'ordre, telles que l'écran les nomme. */
+export const ETAPES_PRODUCTION: ReadonlyArray<{ etape: EtapeProduction; libelle: string }> = [
+  { etape: 'analyse', libelle: 'Analyse des rushes' },
+  { etape: 'preparation', libelle: 'Préparation du montage' },
+  { etape: 'composition', libelle: 'Montage' },
+  { etape: 'envoi', libelle: 'Envoi de la vidéo' },
+  { etape: 'finalisation', libelle: 'Finalisation' },
+];
+
+/**
+ * Ce que l'écran montre d'une production en cours : les étapes RÉELLES, et
+ * un pourcentage SEULEMENT pendant la composition (images rendues). Aux
+ * autres étapes : aucun chiffre (barre indéterminée). Pure.
+ */
+export function affichageProduction(p: { etape?: unknown; avancement?: unknown } | null | undefined): {
+  etapes: Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' }>;
+  message: string;
+  pourcentage?: number;
+} {
+  const etape = ETAPES_PRODUCTION.some((e) => e.etape === p?.etape) ? (p!.etape as EtapeProduction) : null;
+  const i = etape ? ETAPES_PRODUCTION.findIndex((e) => e.etape === etape) : 0;
+  const etapes = ETAPES_PRODUCTION.map((e, k) => ({
+    libelle: e.libelle,
+    etat: (k < i ? 'terminee' : k === i ? 'courante' : 'a_venir') as 'terminee' | 'courante' | 'a_venir',
+  }));
+  const message = etape ? LIBELLES_ETAPES[etape] : 'Démarrage…';
+  const a = p?.avancement;
+  if (etape === 'composition' && typeof a === 'number' && Number.isFinite(a)) {
+    return { etapes, message, pourcentage: Math.round(Math.min(1, Math.max(0, a)) * 100) };
+  }
+  return { etapes, message };
 }
 
 export function lireProgression(userId: string): Progression | null {

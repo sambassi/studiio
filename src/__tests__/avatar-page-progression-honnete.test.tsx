@@ -98,11 +98,11 @@ describe('A. Le code source ne dérive plus aucune progression fournisseur du te
     }
   });
 
-  it('⚠️ la seule source de `progress` est la réponse du serveur (`json.data.progress`), ou null', () => {
+  it('⚠️ génération de l’avatar : plus AUCUN pourcentage (modèle partagé `etapes-video-avatar`, sous-état réel)', () => {
     const s = sources[0].s;
-    const lignes = s.split('\n').filter((l) => /setProgress\(/.test(l)).map((l) => l.trim());
-    expect(lignes.length).toBeGreaterThan(0);
-    for (const l of lignes) expect(l, l).toMatch(/^setProgress\((null|Math\.min\(99, Math\.max\(0, realProgress\)\))\);$/);
+    expect(s).not.toMatch(/setProgress\(/);
+    expect(s).toContain('progressionVideoAvatar({');
+    expect(s).toContain('etapeDepuisStatutAvatar(json.data)');
   });
 
   it('les messages utilisateur du périmètre touché ne nomment plus le fournisseur (hors phrase légale du consentement)', () => {
