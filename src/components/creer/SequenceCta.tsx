@@ -10,6 +10,7 @@ import {
   DECORATION_THICKNESS_RATIO, UNDERLINE_OFFSET_RATIO,
   type TextCase, type TextAlign,
 } from '@/lib/creer/textFormat';
+import { eclaircirPourContraste, PASTILLE_CSS } from '@/lib/creer/contraste';
 
 /**
  * Appel a l'action — composant PARTAGE par les deux moteurs de rendu.
@@ -42,6 +43,8 @@ export interface CtaTypography {
   align?: TextAlign;
   underline?: boolean;
   strike?: boolean;
+  /** Petite ligne sur pastille (Créer, `contraste.ts`). Absent : inchangé. */
+  sousPastille?: boolean;
 }
 
 export default function SequenceCta({
@@ -52,6 +55,7 @@ export default function SequenceCta({
   containerWidth,
   reveal = 1,
   fond = null,
+  sousPastille = false,
 }: {
   text: string;
   subText?: string;
@@ -72,8 +76,14 @@ export default function SequenceCta({
    * lisible quel que soit le plan. `null` = le CTA d'avant, sans panneau.
    */
   fond?: string | null;
+  /**
+   * Petite ligne sur une pastille sombre, teinte eclaircie jusqu'a 4,5:1 —
+   * la MEME regle que `drawCTA` (`design.ctaSousPastille`). Absent : inchange.
+   */
+  sousPastille?: boolean;
 }) {
   const vw = containerWidth;
+  const pastille = sousPastille || !!typography.sousPastille;
   const weight = typography.bold ? 900 : 400;
   const style = typography.italic ? 'italic' : 'normal';
   const mainSize = vw * FONT_RATIO[format].cta * typography.scale;
@@ -120,7 +130,7 @@ export default function SequenceCta({
             fontWeight: weight,
             fontStyle: style,
             letterSpacing: letterSpacingPx(typography.letterSpacing, vw),
-            color: typography.subColor,
+            color: pastille ? eclaircirPourContraste(typography.subColor) : typography.subColor,
             lineHeight: typography.lineHeight,
             textAlign: align,
             textDecoration: trait,
@@ -132,7 +142,13 @@ export default function SequenceCta({
             marginTop: vw * GAP_RATIO - ((typography.lineHeight - 1) * subSize) / 2,
           }}
         >
-          {revealText(subText, reveal)}
+          {pastille ? (
+            // Pastille EN LIGNE : son rembourrage vertical ne change pas la
+            // hauteur de ligne, donc ni le bloc ni son ancrage ne bougent.
+            <span style={{ backgroundColor: PASTILLE_CSS, padding: '0.22em 0.45em', borderRadius: '0.3em', boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}>
+              {revealText(subText, reveal)}
+            </span>
+          ) : revealText(subText, reveal)}
         </div>
       )}
     </>

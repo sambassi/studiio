@@ -59,3 +59,29 @@ export function echelleCtaAjustee(p: {
   while (echelle > ECHELLE_CTA_MIN && hauteur(echelle) > h * HAUTEUR_CTA_MAX) echelle *= 0.95;
   return Math.max(ECHELLE_CTA_MIN, Math.floor(echelle * 100) / 100);
 }
+
+/**
+ * 9:16 : échelle MINIMALE du CTA avant ajustement — 0,0375 × 1080 × 1,5 ≈ 61 px,
+ * hauteur de capitale ≈ 44 px (export du 20/10 : 28 px, illisible sur
+ * téléphone). `echelleCtaAjustee` ne fait ensuite que RÉDUIRE si le texte
+ * déborderait : jamais de débordement, marges sûres gardées.
+ */
+export const ECHELLE_CTA_LISIBLE_916 = 1.5;
+
+/**
+ * Échelle de DÉPART du CTA : le plancher 9:16 ne remplace que le DÉFAUT
+ * (échelle absente ou 1, jamais réglée), et seulement pour un projet créé
+ * avec les défauts lisibles (`lisible`, marqueur `versionLisibilite` du
+ * brouillon) — un ancien projet garde 1. Une échelle choisie par
+ * l'utilisateur (poignée, curseur) est gardée telle quelle, plus petite
+ * comprise. Les posts déjà rendus relisent leur `ctaTextScale` enregistrée.
+ */
+export function echelleCtaDeDepart(echelle: number | null | undefined, format: string, lisible = true): number {
+  const e = echelle ?? 1;
+  return lisible && format === '9:16' && e === 1 ? ECHELLE_CTA_LISIBLE_916 : e;
+}
+
+/** Version courante des défauts de lisibilité (projets créés à partir de #611). */
+export const VERSION_LISIBILITE = 2;
+/** Les défauts lisibles s'appliquent-ils à ce projet ? Absent (projet antérieur) : non. */
+export const defautsLisibles = (version: number | null | undefined) => (version ?? 1) >= VERSION_LISIBILITE;

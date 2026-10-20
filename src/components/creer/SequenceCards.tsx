@@ -12,6 +12,26 @@ import { ajusterBadge, badgeValide } from '@/lib/creer/surimpressions-mise-en-pa
 import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
 
 /**
+ * Planchers de lisibilité des cartes en 9:16 (fraction de la largeur vidéo) :
+ * texte ≥ 4,8 % (52 px sur 1080, hauteur de capitale ≈ 37 px), valeur ≥ 5,5 %,
+ * icône ≥ 6 %. Mesuré sur l'export du 20/10 : 29 px de texte, illisible
+ * sur téléphone.
+ */
+export const LISIBILITE_916 = { text: 0.048, value: 0.055, icon: 0.06 } as const;
+
+/** Description assez courte pour une seconde ligne lisible (cartes sur les rushes). */
+export const DESCRIPTION_COURTE_MAX = 40;
+
+export function ratiosLisibles916<R extends { text: number; value: number; icon: number }>(r: R): R {
+  return {
+    ...r,
+    text: Math.max(r.text, LISIBILITE_916.text),
+    value: Math.max(r.value, LISIBILITE_916.value),
+    icon: Math.max(r.icon, LISIBILITE_916.icon),
+  };
+}
+
+/**
  * Les cartes du montage — composant PARTAGÉ par les deux moteurs de rendu.
  *
  * C'est la pièce qui rend la parité possible « par construction » : Remotion
@@ -75,6 +95,11 @@ export interface CardsTypography {
   strike?: boolean;
   textCase?: TextCase;
   align?: TextAlign;
+  /**
+   * Planchers de lisibilité 9:16 (`LISIBILITE_916`) — posé par Créer pour les
+   * projets créés à partir de #611 seulement. Absent : tailles d'avant.
+   */
+  lisible916?: boolean;
 }
 
 export interface CardsInteraction {
@@ -184,7 +209,11 @@ export default function SequenceCards({
   zoneSure916 = false,
 }: SequenceCardsProps) {
   const vw = containerWidth;
-  const CR = cardRatios(landscape);
+  // 9:16 en flux : planchers de LISIBILITE sur téléphone (`LISIBILITE_916`).
+  // Les ratios d'origine (≈ 29 px sur 1080) se lisaient mal une fois la vidéo
+  // réduite à la largeur d'un écran. Paysage, carré et mode libre : inchangés.
+  const lisible = zoneSure916 && !landscape && !cardBoxes && !!typography?.lisible916;
+  const CR = lisible ? ratiosLisibles916(cardRatios(landscape)) : cardRatios(landscape);
   const it = interaction;
   const uiPx = it?.uiPx ?? ((n: number) => n);
   const editable = !!it?.onCardDragStart;
@@ -368,10 +397,11 @@ export default function SequenceCards({
         />
         <span
           style={{
-            // `truncate` de Tailwind = ces trois proprietes.
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            // `truncate` de Tailwind = ces trois proprietes. 9:16 lisible :
+            // retour à la ligne par MOTS, jamais d'ellipse ni de débordement.
+            ...(lisible
+              ? { whiteSpace: 'normal' as const, overflowWrap: 'break-word' as const, minWidth: 0 }
+              : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }),
             // `?? 600` : la graisse d'aujourd'hui tant que rien n'est
             // choisi. `bold: false` reste un reglage, pas une absence.
             fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
@@ -383,6 +413,14 @@ export default function SequenceCards({
           }}
         >
           {c.title}
+          {/* Cartes SUR les rushes : la description COURTE en seconde ligne.
+              Masquée (aperçu, rendu d'avant) ; seule la capture des cartes
+              posées sur un rush l'affiche (`capture-etapes-cartes.ts`). */}
+          {lisible && c.description && c.description.trim().length <= DESCRIPTION_COURTE_MAX && (
+            <span data-card-description style={{ display: 'none', fontWeight: 400, fontSize: vw * CR.text * echelle * 0.72, lineHeight: 1.2, opacity: 0.9, marginTop: vw * 0.004 }}>
+              {c.description.trim()}
+            </span>
+          )}
         </span>
         {c.value && (
           <span data-card-value
