@@ -5496,6 +5496,9 @@ export default function AssistantWizard() {
     setTelechargementApercu(true);
     try {
       const base = ((generated?.title || 'studiio').replace(/[^a-zA-Z0-9-_]+/g, '_').slice(0, 60)) || 'studiio';
+      // `.webm` VOULU : c'est ce suffixe (avec le type du blob) qui dit à
+      // `downloadBlob` de convertir ; il enregistre ensuite `${base}.mp4`, et
+      // lève si la sortie n'est pas un MP4 — jamais le WebM.
       await downloadBlob(blob, `${base}.webm`);
     } catch (err) {
       setError(err instanceof Error

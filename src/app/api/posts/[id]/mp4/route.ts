@@ -23,7 +23,7 @@ const STATUTS: Record<string, number> = {
  *
  * Après la confirmation serveur d'un rendu WebM (`<uid>/rendus/<uuid>.webm`),
  * un vrai MP4 H.264/AAC `+faststart` est déposé à côté (`<uuid>.mp4`) et le
- * post pointe dessus (`renderedVideoUrl`, `serverRendered: true`).
+ * post pointe dessus (`renderedVideoUrl`, `mp4Durable: true` — le post reste régénérable).
  *
  * Le corps est ignoré : tout est relu en base sous le compte de la session.
  * La conversion n'écoute PAS l'abandon du client : fermer l'onglet ne

@@ -246,7 +246,27 @@ export function calageProportionnel(cartes: readonly CarteDite[], dureeSequence:
     }
   });
   etapes.sort((a, b) => a.debut - b.debut);
-  return { source: 'estimation', etapes };
+  // Plafond : au prorata pur, la dernière carte tombait à 5,91 s sur 6 s —
+  // invisible. Toutes les étapes sont donc ramenées (même facteur, l'ordre et
+  // les proportions sont gardés) pour que la dernière apparaisse au plus tard
+  // à 78 % de la séquence ET reste au moins 1,2 s à l'écran (ou sa part de
+  // la séquence si celle-ci est plus courte).
+  const limite = plafondApparitionCartes(dureeSequence, nbCartes);
+  const dernier = etapes.length ? etapes[etapes.length - 1].debut : 0;
+  const k = dernier > limite && dernier > 0 ? limite / dernier : 1;
+  return { source: 'estimation', etapes: etapes.map((e) => ({ ...e, debut: r3(e.debut * k) })) };
+}
+
+/** Part maximale de la séquence avant la dernière apparition estimée. */
+export const FRACTION_MAX_APPARITION = 0.78;
+/** Temps minimal à l'écran de la dernière carte apparue (s). */
+export const VISIBLE_MIN_CARTE_S = 1.2;
+
+/** Instant au plus tard d'une apparition estimée, pour `nbCartes` sur `duree` s. */
+export function plafondApparitionCartes(duree: number, nbCartes: number): number {
+  if (!(duree > 0)) return 0;
+  const part = duree / Math.max(1, nbCartes);
+  return r3(Math.min(FRACTION_MAX_APPARITION * duree, duree - Math.min(VISIBLE_MIN_CARTE_S, part)));
 }
 
 /**

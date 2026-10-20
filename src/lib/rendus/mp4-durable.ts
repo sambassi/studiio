@@ -49,6 +49,16 @@ export function cleMp4DuRendu(cleWebm: unknown, userId: unknown): string | null 
   return `${m[1]}/rendus/${m[2]}.mp4`;
 }
 
+/** Le post porte-t-il un MP4 durable (conversion du rendu confirmé) ? */
+export function aUnMp4Durable(metadata: unknown): boolean {
+  if (typeof metadata !== 'object' || metadata === null) return false;
+  const m = metadata as Record<string, unknown>;
+  // Le drapeau ne vaut que si la vidéo EST encore ce MP4 : une régénération
+  // ultérieure (nouveau WebM) le rend caduc sans avoir à l'effacer.
+  return m.mp4Durable === true && typeof m.renderedVideoUrl === 'string'
+    && /\.mp4$/i.test(m.renderedVideoUrl.split('?')[0]);
+}
+
 /** L'identifiant de rendu porté par une clé de rendu WebM, ou `null`. */
 export function idRenduDeCle(cleWebm: unknown, userId: unknown): string | null {
   if (typeof cleWebm !== 'string' || typeof userId !== 'string' || !userId) return null;
@@ -88,9 +98,11 @@ function enObjet(v: unknown): Meta {
  * post ne pointe plus sur ce WebM (nouveau rendu, post modifié) : on ne
  * touche alors à rien.
  *
- * `serverRendered: true` : le MP4 est produit par le serveur. Le Calendrier
- * le lit tel quel, l'export Bureau le télécharge (`decisionExportBureau`),
- * et rien ne propose de le recomposer en WebM dans le navigateur.
+ * `mp4Durable: true` — et SURTOUT PAS `serverRendered` : ce dernier désigne
+ * un montage RENDU par le serveur (Autopilote), que le Calendrier interdit de
+ * régénérer. Un post Créer reste régénérable ; son MP4 durable est seulement
+ * une conversion fidèle du WebM confirmé. L'export Bureau le télécharge tel
+ * quel (`decisionExportBureau`), la publication le prend comme tout `.mp4`.
  */
 export function patchPostAvecMp4(
   post: { media_url?: unknown; metadata?: unknown },
@@ -104,7 +116,7 @@ export function patchPostAvecMp4(
     renderedVideoUrl: urls.mp4Url,
     // Le WebM d'origine reste nommé : c'est la preuve confirmée du rendu.
     renderedWebmUrl: urls.webmUrl,
-    serverRendered: true,
+    mp4Durable: true,
     mp4Indisponible: false,
   };
   if (meta.videoUrl === urls.webmUrl) metadata.videoUrl = urls.mp4Url;

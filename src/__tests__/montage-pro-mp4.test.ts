@@ -5,11 +5,11 @@ import {
   listeMontageJumeau, mediasExclusDuPlan, messageMediasExclus, planDetaille, planRenduDepuis,
   poserVideoAvatar, ID_CRENEAU_JUMEAU_AUTO, type MediaVideo,
 } from '@/lib/creer/medias-video';
-import { calageProportionnel, etatApres } from '@/lib/creer/synchro-cartes';
+import { calageProportionnel, etatApres, plafondApparitionCartes } from '@/lib/creer/synchro-cartes';
 import { echelleZoomCartes, rectZoomeCentre, ZOOM_CARTES_FIN } from '@/lib/creer/ken-burns';
 import {
   cleMp4DuRendu, idRenduDeCle, estContenuMp4, decisionStockageMp4,
-  patchPostAvecMp4, patchPostEchecMp4,
+  patchPostAvecMp4, patchPostEchecMp4, aUnMp4Durable,
 } from '@/lib/rendus/mp4-durable';
 import { renduAttendUnMp4 } from '@/lib/rendus/mp4-durable-client';
 import { decisionExportBureau } from '@/lib/rendus/export-bureau';
@@ -104,6 +104,22 @@ describe('Cartes : apparition estimée quand aucun calage exact n’existe', () 
     expect(etatApres(calage, calage.etapes.length).cartes.size).toBe(3);
   });
 
+  it('la dernière carte apparaît au plus tard à 78 % et reste visible au moins 1,2 s', () => {
+    for (const D of [4, 6, 10, 30, 40]) {
+      const calage = calageProportionnel(CARTES, D)!;
+      const dernier = calage.etapes[calage.etapes.length - 1].debut;
+      expect(dernier).toBeLessThanOrEqual(0.8 * D + 1e-9);
+      expect(D - dernier).toBeGreaterThanOrEqual(Math.min(1.2, D / 3) - 1e-9);
+      // Ordre conservé.
+      for (let i = 1; i < calage.etapes.length; i++) expect(calage.etapes[i].debut).toBeGreaterThanOrEqual(calage.etapes[i - 1].debut);
+    }
+    // 6 s : avant le correctif, la dernière carte tombait à 5,91 s.
+    expect(calageProportionnel(CARTES, 6)!.etapes.at(-1)!.debut).toBeLessThanOrEqual(4.8);
+    // Séquence très courte : la part de la séquence remplace les 1,2 s.
+    expect(plafondApparitionCartes(2, 3)).toBeCloseTo(1.333, 3);
+    expect(plafondApparitionCartes(2, 3)).toBeLessThanOrEqual(2 - 2 / 3 + 1e-9);
+  });
+
   it('pas de révélation sous deux cartes, ni sans durée', () => {
     expect(calageProportionnel(CARTES.slice(0, 1), 10)).toBeNull();
     expect(calageProportionnel(CARTES, 0)).toBeNull();
@@ -158,16 +174,26 @@ describe('MP4 durable d’un rendu confirmé', () => {
   const WEBM_URL = `https://studiio.test/storage/v1/object/public/media/${CLE}`;
   const MP4_URL = `https://studiio.test/storage/v1/object/public/media/${UID}/rendus/${ID}.mp4`;
 
-  it('le post pointe sur le MP4, rendu serveur → l’export Bureau le télécharge tel quel', () => {
+  it('le post pointe sur le MP4 durable (PAS serverRendered : il reste régénérable) → l’export Bureau le télécharge', () => {
     const patch = patchPostAvecMp4(
       { media_url: WEBM_URL, metadata: { renderedVideoUrl: WEBM_URL, cards: [1] } },
       { webmUrl: WEBM_URL, mp4Url: MP4_URL },
     )!;
     expect(patch.media_url).toBe(MP4_URL);
     expect(patch.metadata).toMatchObject({
-      renderedVideoUrl: MP4_URL, renderedWebmUrl: WEBM_URL, serverRendered: true, mp4Indisponible: false, cards: [1],
+      renderedVideoUrl: MP4_URL, renderedWebmUrl: WEBM_URL, mp4Durable: true, mp4Indisponible: false, cards: [1],
     });
+    expect(patch.metadata.serverRendered).toBeUndefined();
+    expect(aUnMp4Durable(patch.metadata)).toBe(true);
     expect(decisionExportBureau(patch.metadata)).toBe('telecharger');
+  });
+
+  it('régénéré ensuite en WebM : le drapeau caduc ne fait jamais télécharger un WebM tel quel', () => {
+    const meta = { renderedVideoUrl: WEBM_URL, mp4Durable: true };
+    expect(aUnMp4Durable(meta)).toBe(false);
+    expect(decisionExportBureau(meta)).toBe('convertir');
+    // Un .mp4 navigateur sans le drapeau reste recomposé (règle historique).
+    expect(decisionExportBureau({ renderedVideoUrl: MP4_URL })).toBe('recomposer');
   });
 
   it('un post qui ne pointe plus sur ce WebM n’est jamais écrasé', () => {
@@ -197,6 +223,19 @@ describe('Téléchargement : jamais le WebM brut', () => {
     expect(wizard).toContain('controlsList="nodownload"');
     expect(wizard).toContain('data-play-telecharger-mp4');
     expect(wizard).toMatch(/telechargerApercuMp4[\s\S]{0,800}downloadBlob\(/);
+  });
+
+  it('le Calendrier signale un MP4 indisponible, sans bloquer, avec « Réessayer »', () => {
+    expect(calendrier).toContain('meta?.mp4Indisponible && renduAttendUnMp4(meta?.renderedVideoUrl)');
+    expect(calendrier).toContain('<AvisMp4Indisponible');
+    const avis = readFileSync(resolve(__dirname, '../components/calendar/AvisMp4Indisponible.tsx'), 'utf-8');
+    expect(avis).toContain('MP4 indisponible — la vidéo reste au format WebM');
+    expect(avis).toContain('demanderMp4Durable(postId');
+  });
+
+  it('Régénérer reste proposé pour un post Créer : seul serverRendered le masque', () => {
+    expect(calendrier).toContain('!meta?.serverRendered && (regenerating');
+    expect(calendrier).not.toMatch(/mp4Durable[^\n]*regenerating/);
   });
 
   it('le Calendrier ne propose plus le WebM brut en repli', () => {

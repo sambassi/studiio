@@ -1,5 +1,7 @@
 'use client';
 
+import AvisMp4Indisponible from '@/components/calendar/AvisMp4Indisponible';
+import { renduAttendUnMp4 } from '@/lib/rendus/mp4-durable-client';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ChevronLeft,
@@ -102,6 +104,10 @@ interface PostMetadata {
   type?: 'creator' | 'infographic';
   /** Montage rendu par le serveur (Remotion) : pas de régénération navigateur. */
   serverRendered?: boolean;
+  /** MP4 durable (conversion serveur du rendu Créer confirmé) : régénérable. */
+  mp4Durable?: boolean;
+  /** La conversion MP4 durable a échoué : la vidéo reste en WebM (avis non bloquant). */
+  mp4Indisponible?: boolean;
   /** Fuseau IANA dans lequel le cron lit `scheduled_date`/`scheduled_time` (défaut Europe/Paris). */
   timezone?: string;
   subtitle?: string;
@@ -3386,6 +3392,12 @@ export default function CalendarPage() {
               <video id="preview-audio-rendered" src={meta.renderedVideoUrl} loop muted playsInline preload="auto" style={{ position: 'fixed', width: 1, height: 1, opacity: 0, pointerEvents: 'none', zIndex: -1 }} />
             )}
           </>
+          {/* MP4 durable en échec : avis NON bloquant + « Réessayer ». */}
+          {meta?.mp4Indisponible && renduAttendUnMp4(meta?.renderedVideoUrl) && (
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60]" style={{ maxWidth: 'calc(100vw - 32px)' }}>
+              <AvisMp4Indisponible postId={fullPreviewPost.id} onReussi={() => { void fetchPosts(); }} />
+            </div>
+          )}
           {/* Floating back button — always visible on mobile, overlays on top of everything */}
           <button
             onClick={(e) => { e.stopPropagation(); setShowFullPreview(false); }}
