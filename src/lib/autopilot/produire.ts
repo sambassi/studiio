@@ -32,8 +32,9 @@ import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
 import { avatarActifConfig, mediasDesSources, sourcesEffectives, sujetsCourants, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
-import { narrationDesSurimpressions, pertinencesPourPlan, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
 import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
+import { planMontageAvatar, pertinencesAutopilote, contexteMontageAutopilote, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
+import { segmentsDuPlan } from '@/lib/autopilot/plan-complet';
 import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
@@ -697,6 +698,9 @@ export async function produireUnMontage(input: {
   let contextePertinence: ContexteMontage | null = null;
   /** Multi-sources : pourquoi ce plan, et les médias stock lâchés (introuvables). */
   let explicationsSources: string[] = [];
+  /** Avec avatar : la parole MESURÉE et le début de la séquence de clôture (plan réel, écrit en metadata). */
+  let paroleRendue: number | null = null;
+  let debutClotureRendue: number | null = null;
   const mediasIgnores: string[] = [];
   /** Média stock redirigé (vers un hôte AUTORISÉ) → son URL finale : la seule que le rendu reçoit. */
   const urlsFinalesStock = new Map<string, string>();
@@ -731,13 +735,17 @@ export async function produireUnMontage(input: {
     const rushes = listeRushs.map((u) => ({ url: u, secondes: secondesParRush.has(u) ? secondesParRush.get(u) ?? null : (u === rushUrl ? rushSeconds : null) }));
     const stockVideos = videosOk.map((u, i) => ({ url: u, secondes: secondesStock[i] }));
     const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
-    const contexteMontage = contexteMontageDepuis({
-      theme: post.title,
+    // Ce que la vidéo DIT : le MÊME contexte que l'aperçu (`montage-avatar.ts`).
+    const contexteTextes: ContexteTextesAutopilote = {
+      sujets: sujetsCourants(config),
       titre: post.title,
       sousTitre: post.content?.subtitle ?? null,
-      objectif: [postUtilise.brief?.objectif, postUtilise.brief?.message].filter(Boolean).join(' ') || null,
+      objectif: postUtilise.brief?.objectif ?? null,
+      message: postUtilise.brief?.message ?? null,
+      cta: postUtilise.brief?.cta ?? null,
       cartes: post.content?.cards ?? [],
-    });
+    };
+    const contexteMontage = contexteMontageAutopilote(contexteTextes);
     profilVideo = profilMontageDuContexte(contexteMontage).profil;
     contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif ?? null };
     contextePertinence = contexteMontage;
@@ -753,46 +761,27 @@ export async function produireUnMontage(input: {
     // PERTINENCE DE CONTENU (`pertinence-medias.ts`) : chaque média stock est
     // lu contre le scénario de CETTE vidéo (sujet, brief, titre, cartes) —
     // hors sujet jamais pioché, « limite » une fois, le plus pertinent ouvre.
-    const cartesPost = post.content?.cards ?? [];
-    const scenario = scenarioPertinence({
-      sujets: [...sujetsCourants(config), postUtilise.brief?.objectif ?? null],
-      textes: [post.title, post.content?.subtitle ?? null, postUtilise.brief?.message ?? null, postUtilise.brief?.cta ?? null,
-        ...cartesPost.flatMap((c) => [c.title ?? null, c.description ?? null])],
-    });
-    const pertinences = pertinencesPourPlan(sourcesCfg.sources.stock.filter((m) => videosOk.includes(m.url) || photosOk.includes(m.url)), scenario);
+    const pertinences = pertinencesAutopilote(sourcesCfg.sources.stock.filter((m) => videosOk.includes(m.url) || photosOk.includes(m.url)), contexteTextes);
     let res: ReturnType<typeof planMultiSources>;
     if (jumeauActif) {
       // ── AVATAR + autres sources : la séquence dure la PAROLE de l'avatar,
       // textes en SURIMPRESSION (aucun raccord avant la vidéo : la voix et
-      // l'image de l'avatar partent ensemble, à 0).
+      // l'image de l'avatar partent ensemble, à 0). Parole plus courte que la
+      // durée cible : une SÉQUENCE DE CLÔTURE (plans de coupe, musique, CTA
+      // jusqu'à la dernière image) complète — la voix n'est jamais touchée.
+      // La MÊME fonction que l'aperçu (`planMontageAvatar`).
       const T = jumeauSeconds && jumeauSeconds > 0 ? jumeauSeconds : (designBase.videoDuration ?? 0);
-      // La narration (titre, cartes) sur la parole : un plan de coupe posé
-      // pendant une carte préfère le média qui montre ce qu'elle dit.
-      const narration = narrationDesSurimpressions(planOverlays({
-        duree: T, profil: profilVideo, nbCartes: designBase.cards?.length ?? 0,
-        finHook: Math.min(4, Math.max(2, T * 0.2)), voix: { video: T },
-      }), { titre: post.title, cartes: designBase.cards ?? [] });
-      res = planMultiSources({
+      const m = planMontageAvatar({
         avatar: { url: jumeauVideoUrl as string, secondes: T },
+        dureeVisee: postUtilise.brief?.duree ?? null,
         rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
-        gabarit, cible: T, pertinences, narration,
+        gabarit, pertinences, profil: profilVideo,
+        titre: post.title, cartes: designBase.cards ?? [],
         options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
       });
+      res = m.res;
       enSurimpression = true;
-      if (res.plan.length) {
-        const o = planOverlays({
-          duree: res.duree,
-          profil: profilVideo,
-          nbCartes: designBase.cards?.length ?? 0,
-          // Fin RÉELLE du plan d'ouverture, quel qu'il soit (avatar, rush,
-          // stock) : le titre tient jusqu'à la coupe (« MOTIVATION », 20/10 :
-          // ouverture sur un plan de stock de 4 s, titre coupé à 3 s).
-          finHook: res.plan[0]?.fin ?? null,
-          voix: { video: res.duree },
-        });
-        // La voix de l'avatar est CONTINUE et part à 0, avec son image.
-        overlays = { ...o, voix: { video: 0 } };
-      }
+      overlays = m.overlays;
     } else {
       // ── Rushes + stock, ou stock seul : la règle de durée du smart montage
       // (voix à porter, matière disponible) ; le stock comble ce qui manque.
@@ -825,6 +814,8 @@ export async function produireUnMontage(input: {
       }
     }
     explicationsSources = res.explications;
+    paroleRendue = res.parole;
+    debutClotureRendue = res.debutCloture;
     planMontageRushs = res.plan.length ? res.plan : null;
     if (!planMontageRushs) overlays = null;
     chrono.selection = Date.now() - t2;
@@ -1134,6 +1125,19 @@ export async function produireUnMontage(input: {
     ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
     // Textes en surimpression sur la vidéo continue (V3) : relus au rendu.
     ...(overlays ? { surimpressions: overlays } : null),
+    // LE PLAN RÉELLEMENT RENDU, dans le vocabulaire de l'aperçu (`segmentsDuPlan`) :
+    // parole MESURÉE de l'avatar, séquence de clôture, fenêtre du CTA. Relu par
+    // l'aperçu / le Calendrier à la place du plan estimé avant génération.
+    ...(multiSources && jumeauActif && planMontageRushs ? {
+      planMontage: {
+        version: 1,
+        paroleS: paroleRendue,
+        dureeS: dureePlan(planMontageRushs),
+        debutClotureS: debutClotureRendue,
+        cta: overlays?.cta ? { texte: design.ctaText ?? '', sousTexte: design.ctaSubText ?? '', debut: overlays.cta[0], fin: overlays.cta[1] } : null,
+        segments: segmentsDuPlan(planMontageRushs, debutClotureRendue),
+      },
+    } : null),
     // Profil et mesures du plan — les mêmes champs que Créer.
     ...(planMontageRushs ? { profilMontage: profilVideo } : null),
     ...(montageRapport ? { montageRapport } : null),

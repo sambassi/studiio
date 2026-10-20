@@ -10,6 +10,7 @@ import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarP
 import { DUREE_ESTIMEE_SANS_CIBLE, horodatage, minutagePlan, secondesLisibles } from '@/lib/autopilot/duree-cible';
 import { RYTHME_LABELS, type RythmeBrief } from '@/lib/creer/brief';
 import { planCompletAutopilote, type SegmentPlanComplet } from '@/lib/autopilot/plan-complet';
+import type { ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 
 /**
  * « Plan avant génération » — le GABARIT de la séquence Vidéo, édité avant
@@ -76,9 +77,10 @@ function InfosRush({ url }: { url: string }) {
 
 /** Libellé produit d'un plan du montage prévu — jamais une plateforme. */
 export function libelleSegment(s: SegmentPlanComplet): string {
-  if (s.genre === 'avatar') return s.role === 'accroche' ? 'Mon avatar — accroche' : s.role === 'cta' ? 'Mon avatar — CTA' : 'Mon avatar';
-  if (s.genre === 'rush') return 'Mes rushes';
-  return LIBELLES_ORIGINE[origineSuggeree(s.genre === 'video' ? 'video' : 'photo')];
+  if (s.genre === 'avatar') return s.role === 'accroche' ? 'Mon avatar — accroche' : s.role === 'cta' ? 'Mon avatar — CTA' : s.role === 'conclusion' ? 'Mon avatar — conclusion' : 'Mon avatar';
+  const cl = s.role === 'cloture' ? 'Clôture + CTA — ' : '';
+  if (s.genre === 'rush') return `${cl}Mes rushes`;
+  return `${cl}${LIBELLES_ORIGINE[origineSuggeree(s.genre === 'video' ? 'video' : 'photo')]}`;
 }
 
 /** Lit la durée d'une vidéo (même cache que les miniatures) et la remonte. Ne rend rien. */
@@ -99,8 +101,10 @@ function nouvelId(lignes: CreneauGabarit[]): string {
 
 export default function PlanAvantGeneration({
   gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher, duree,
-  secondesAvatar, secondesAvatarEstimees, scriptAvatar, stockPertinent, onDurees,
+  secondesAvatar, secondesAvatarEstimees, scriptAvatar, stockPertinent, onDurees, contexte,
 }: {
+  /** Ce que la vidéo dira : pertinence des médias et narration calculées comme au rendu. */
+  contexte?: ContexteTextesAutopilote | null;
   /** Durées sondées des vidéos, remontées : l'aperçu du montage prévu calcule le MÊME plan. */
   onDurees?: (durees: Record<string, number | null>) => void;
   /**
@@ -154,7 +158,12 @@ export default function PlanAvantGeneration({
     actives: { rushes: true, stock: true, avatar: avatarDisponible },
     rushesPerso, stock: stockPlan,
     avatar: { disponible: avatarDisponible, vignette: null },
-  }, { cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, secondesAvatarEstimees, scriptAvatar, durees }) : null;
+  }, {
+    cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, secondesAvatarEstimees, scriptAvatar, durees,
+    // La MÊME décision que le rendu : clôture jusqu'à la durée cible, pertinences, narration.
+    dureeVisee: cible, contexte: contexte ?? null,
+  }) : null;
+  const avecCloture = complet?.debutCloture != null;
   const avecAvatar = !!complet?.segments.some((x) => x.genre === 'avatar');
   // Parole de l'avatar non mesurée (aucune génération) : la durée est une ESTIMATION.
   const estimee = avecAvatar && !(typeof secondesAvatar === 'number' && secondesAvatar > 0);
@@ -199,7 +208,7 @@ export default function PlanAvantGeneration({
       </div>
       <p className="text-[11px] text-gray-500" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
         {ctaEnSurimpression
-          ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur les dernières secondes de la vidéo : il n’y a pas de séquence CTA séparée après.'
+          ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur la fin de la vidéo ; si la parole est plus courte que la durée cible, une clôture (plans de coupe, musique) la complète et porte le CTA jusqu’à la dernière image.'
           : 'Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.'}
       </p>
       {lignes.length > 0 && (
@@ -216,7 +225,7 @@ export default function PlanAvantGeneration({
           <dd className="text-gray-200" data-plan-rythme={duree?.rythme ?? 'normal'}>{RYTHME_LABELS[duree?.rythme ?? 'normal']}</dd>
           <dd className="col-span-2 text-[10px] text-gray-500 pt-0.5" data-plan-duree-avertissement>
             {estimee
-              ? 'Durée estimée : la voix de votre avatar n’est pas encore générée. À la production, tout le montage est recalé sur sa durée réelle (jamais accélérée) — la vidéo finale peut être plus courte ou plus longue.'
+              ? 'Durée estimée : la voix de votre avatar n’est pas encore générée. À la production, sa durée réelle est mesurée (jamais accélérée, jamais coupée) ; plus courte que la cible, une clôture complète la vidéo jusqu’à la cible (8 s au plus) ; plus longue, la vidéo suit la parole.'
               : 'Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).'}
           </dd>
         </dl>
@@ -340,7 +349,7 @@ export default function PlanAvantGeneration({
         <li className="flex items-center gap-2 rounded-lg border border-dashed border-gray-800 px-2 py-1.5 text-[11px] text-gray-400" data-plan-cta data-plan-cta-mode={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
           <Megaphone className="w-3.5 h-3.5 shrink-0" />
           {ctaEnSurimpression
-            ? <span><span className="font-medium text-gray-300">CTA</span> — en surimpression sur la fin de la vidéo</span>
+            ? <span><span className="font-medium text-gray-300">CTA</span> — {avecCloture && complet?.cta ? `en surimpression sur la clôture, ${horodatage(complet.cta[0])} → ${horodatage(complet.cta[1])}` : 'en surimpression sur la fin de la vidéo'}</span>
             : <span><span className="font-medium text-gray-300">CTA</span> — fixe, toujours en dernier</span>}
         </li>
       </ol>

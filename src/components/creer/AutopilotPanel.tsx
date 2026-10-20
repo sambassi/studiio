@@ -21,6 +21,8 @@ import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutop
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
 import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
+import { buildAutopilotSample } from '@/lib/autopilot/sample';
+import { contexteDeLEchantillon, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { affichageProduction } from '@/lib/autopilot/progression';
@@ -31,7 +33,7 @@ import {
 } from '@/lib/autopilot/medias-prevus';
 import {
   aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
-  type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
+  sujetsCourants, type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
@@ -804,11 +806,21 @@ export default function AutopilotPanel({
    * génération » ET l'aperçu du montage prévu (même avatar, même cible, même
    * rythme, même parole estimée) : les deux écrans calculent le MÊME plan.
    */
+  /**
+   * Ce que la vidéo DIRA — l'échantillon que « Produire maintenant » produit
+   * (`buildAutopilotSample`, le même que l'aperçu du style) : la pertinence
+   * des médias et la narration sont calculées comme au rendu.
+   */
+  const contextePlan = useMemo<ContexteTextesAutopilote>(
+    () => contexteDeLEchantillon(buildAutopilotSample({ topics: config.topics, brief: config.brief }), sujetsCourants(config), config.brief),
+    [config],
+  );
   const optionsPlan = {
     avatarDisponible: etatSources.avatarActif && etatSources.avatarPret,
     cible: config.brief.duree ?? null,
     rythme: config.brief.rythme ?? null,
     secondesAvatarEstimees: paroleAvatarPrevue,
+    contexte: contextePlan,
   };
   /**
    * La VRAIE vidéo de l'avatar, déjà produite (aperçu prêt, sinon rendu
@@ -837,6 +849,8 @@ export default function AutopilotPanel({
       rythme: optionsPlan.rythme,
       secondesAvatarEstimees: optionsPlan.secondesAvatarEstimees,
       durees: dureesPlan,
+      dureeVisee: optionsPlan.cible,
+      contexte: optionsPlan.contexte,
     },
   };
   // Remonté sur sa SIGNATURE : un objet neuf à chaque rendu ne relance rien.
@@ -1997,6 +2011,7 @@ export default function AutopilotPanel({
             stock={sources.actives.stock ? sources.stock : []}
             stockPertinent={sources.actives.stock ? pertinent.stock : []}
             secondesAvatarEstimees={optionsPlan.secondesAvatarEstimees}
+            contexte={optionsPlan.contexte}
             vignetteAvatar={vignetteAvatar}
             avatarDisponible={optionsPlan.avatarDisponible}
             onDurees={setDureesPlan}
