@@ -74,11 +74,11 @@ export function planOverlays(input: {
     : finHook !== null
       ? Math.min(duree, Math.max(duree * 0.25, titreMax), Math.max(2.5, finHook, Math.min(duree * 0.25, voix.titre ?? 0)))
       : Math.min(duree * 0.25, Math.max(2.5, Math.min(titreMax, 3), voix.titre ?? 0));
-  const titre: [number, number] = [0, r(finTitre)];
-
   // CTA : les 2–3 dernières secondes (plus si sa voix l'exige, ≤ 25 %).
   const dureeCta = Math.min(duree * 0.25, Math.max(2.5, Math.min(3, voix.cta ?? 2.5), voix.cta ?? 0));
   const cta: [number, number] = [r(duree - dureeCta), r(duree)];
+  // Vidéo très courte : le titre s'arrête 0,4 s avant le CTA, jamais par-dessus.
+  const titre: [number, number] = [0, r(Math.max(0, Math.min(finTitre, cta[0] - 0.4)))];
 
   // Cartes : entre le titre et le CTA, une à la fois (`carteMin`–`carteMax`),
   // avec un court répit entre deux. Trop peu de place : on en montre moins.
