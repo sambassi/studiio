@@ -17,7 +17,7 @@ import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type PropositionsStock } from '@/components/creer/CompleterRushesStock';
-import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
+import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, useVideoAvatarReelle, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
 import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
@@ -809,14 +809,24 @@ export default function AutopilotPanel({
     rythme: config.brief.rythme ?? null,
     secondesAvatarEstimees: paroleAvatarPrevue,
   };
+  /**
+   * La VRAIE vidéo de l'avatar, déjà produite (aperçu prêt, sinon rendu
+   * récent) — lecture en base, rien n'est généré. Lue seulement quand
+   * l'avatar porte la production.
+   */
+  const avatarPorte = avatarPorteLaProduction(sources.actives.avatar, avatarPret);
+  const videoAvatarReelle = useVideoAvatarReelle(avatarPorte, config.jumeauAvatarId);
   const resumeApercu: ResumeMediasApercu = {
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
     rushesPerso: sources.actives.rushes ? rushesPerso : [],
     stock: sources.actives.stock ? pertinent.stock : [],
     avatar: {
-      disponible: avatarPorteLaProduction(sources.actives.avatar, avatarPret),
+      disponible: avatarPorte,
       vignette: vignetteAvatar ? { url: vignetteAvatar.url, type: vignetteAvatar.type } : null,
+      // Avatar demandé, disponibilité pas encore lue : l'aperçu attend.
+      ...(sources.actives.avatar && avatarPret === null ? { chargement: true } : {}),
+      ...(avatarPorte && videoAvatarReelle ? { video: videoAvatarReelle } : {}),
     },
     // Les options EXACTES passées à `PlanAvantGeneration` ci-dessous.
     plan: {
@@ -1895,6 +1905,10 @@ export default function AutopilotPanel({
                 accent={accent}
                 avatar={avatarPorteLaProduction(config.jumeauAvatar, avatarPret)}
                 onPropositions={setPropositionsStock}
+                // Photos suggérées : complètent les vidéos quand elles ne suffisent
+                // pas ; retenues par le MÊME chemin que la recherche libre.
+                onRetenir={(m) => retenirStock(m)}
+                photosRetenues={sources.stock.filter((m) => m.type === 'photo').map((m) => m.url)}
                 onConserver={(url, meta) => {
                   // La même URL absolue que celle que la banque enregistre.
                   const absolue = urlPubliqueAbsolue(url, window.location.origin) ?? url;

@@ -80,6 +80,15 @@ export async function lireDisponibiliteAvatar(
  * est d'abord EFFACÉ (`null`) : une relecture qui échoue ne laisse jamais
  * l'ancien avatar « prêt » ni son ancienne vignette dans l'aperçu.
  */
+/** « Réessayer » de l'aperçu : relance la lecture de disponibilité du panneau. */
+export const EVENEMENT_RELIRE_AVATAR = 'studiio:autopilote-avatar-relire';
+/** La lecture de disponibilité a échoué (réponse illisible) : l'aperçu sort de l'attente. */
+export const EVENEMENT_ECHEC_AVATAR = 'studiio:autopilote-avatar-echec';
+
+export function relireDisponibiliteAvatar(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENEMENT_RELIRE_AVATAR));
+}
+
 export function useDisponibiliteAvatarAutopilote(p: {
   actif: boolean;
   avatarId: string | null;
@@ -88,18 +97,67 @@ export function useDisponibiliteAvatarAutopilote(p: {
   onVignette: (v: VignetteAvatar | null) => void;
 }): void {
   const { actif, avatarId, colonneReady, onPret, onVignette } = p;
+  /** Incrémenté par « Réessayer » (`EVENEMENT_RELIRE_AVATAR`) : relance la même lecture. */
+  const [relecture, setRelecture] = useState(0);
+  useEffect(() => {
+    if (!actif || typeof window === 'undefined') return;
+    const relire = () => setRelecture((n) => n + 1);
+    window.addEventListener(EVENEMENT_RELIRE_AVATAR, relire);
+    return () => window.removeEventListener(EVENEMENT_RELIRE_AVATAR, relire);
+  }, [actif]);
   useEffect(() => {
     if (!actif) return;
     let vivant = true;
     onPret(null);
     onVignette(null);
     void lireDisponibiliteAvatar(avatarId, colonneReady).then(({ pret, vignette }) => {
-      if (!vivant || pret === null) return;
+      if (!vivant) return;
+      // Lecture illisible : l'état reste inconnu, mais l'aperçu le SAIT (erreur visible).
+      if (pret === null) { window.dispatchEvent(new Event(EVENEMENT_ECHEC_AVATAR)); return; }
       onPret(pret);
       onVignette(vignette);
     });
     return () => { vivant = false; };
-  }, [actif, avatarId, colonneReady, onPret, onVignette]);
+  }, [actif, avatarId, colonneReady, onPret, onVignette, relecture]);
+}
+
+/**
+ * UNE VRAIE VIDÉO DE L'AVATAR, DÉJÀ PRODUITE — pour l'aperçu du montage.
+ *
+ * `GET /api/avatar/apercu` (lecture en base, aucun fournisseur, aucun coût) :
+ * l'aperçu prêt (`apercu.statut === 'pret'`), sinon le rendu récent de la
+ * version active. Rien n'est généré. L'avatar lu est celui du compte : si
+ * l'Autopilote en a choisi un AUTRE (`avatarId`), sa vidéo n'est pas celle-ci
+ * → `null` (l'aperçu garde la vignette, jamais la vidéo d'un autre avatar).
+ */
+export async function lireVideoAvatarReelle(avatarId: string | null, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  try {
+    const r = await fetchImpl('/api/avatar/apercu', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const d = j?.success ? j.data : null;
+    if (!d) return null;
+    if (avatarId && d.avatarId !== avatarId) return null;
+    const apercu = d.apercu as { statut?: string; url?: unknown } | null | undefined;
+    if (apercu?.statut === 'pret' && typeof apercu.url === 'string' && apercu.url) return apercu.url;
+    const recent = d.renduRecent as { url?: unknown } | null | undefined;
+    return typeof recent?.url === 'string' && recent.url ? recent.url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** La vraie vidéo de l'avatar quand il porte la production ; `null` sinon (et pendant la lecture). */
+export function useVideoAvatarReelle(actif: boolean, avatarId: string | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setUrl(null);
+    if (!actif) return;
+    let vivant = true;
+    void lireVideoAvatarReelle(avatarId).then((u) => { if (vivant) setUrl(u); });
+    return () => { vivant = false; };
+  }, [actif, avatarId]);
+  return url;
 }
 
 /** Petite vignette ; repli sur l'icône si la source est illisible. */

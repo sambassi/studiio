@@ -61,7 +61,9 @@ beforeEach(() => {
 afterEach(() => {
   // Aucune génération, aucun fournisseur, aucune écriture : que des lectures.
   for (const a of appels) {
-    expect(a).not.toMatch(/\/api\/creer\/jumeau\/generer|\/api\/avatar\/(generate|create|did|apercu)|heygen|d-id|elevenlabs/i);
+    // `GET /api/avatar/apercu` est une LECTURE en base (vraie vidéo déjà produite) ;
+    // l'ouverture d'un aperçu (POST, sous-chemin) reste interdite.
+    expect(a).not.toMatch(/\/api\/creer\/jumeau\/generer|\/api\/avatar\/(generate|create|did)|\/api\/avatar\/apercu\/|^(POST|PUT) \/api\/avatar\/apercu|heygen|d-id|elevenlabs/i);
     // Seule écriture HTTP tolérée : la sonde existante des rushes (lecture côté serveur).
     expect(a).toMatch(/^GET \/api\/|^POST \/api\/autopilot\/rush\/verifier/);
   }

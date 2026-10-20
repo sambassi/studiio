@@ -25,7 +25,7 @@
  * n'est filtré ni réordonné. Les rushes PERSONNELS ne passent jamais ici.
  * Module PUR.
  */
-import { conceptsDe, motsDe } from '@/lib/stock/requetes';
+import { CONCEPTS_ABSTRAITS, conceptsAbstraitsDe, conceptsDe, motsDe } from '@/lib/stock/requetes';
 
 export type NiveauPertinenceMedia = 'pertinent' | 'decor' | 'limite' | 'inconnu' | 'hors';
 
@@ -137,6 +137,13 @@ export interface ScenarioPertinence {
   principales: Set<string>;
   mentionnees: Set<string>;
   scenesMentionnees: Set<string>;
+  /**
+   * Concepts ABSTRAITS du sujet (motivation, confiance… — `CONCEPTS_ABSTRAITS`),
+   * lus seulement quand aucune activité principale n'est reconnue. Ils ne
+   * servent qu'à CLASSER (un média qui les illustre passe devant) : jamais un
+   * niveau `hors`, jamais un filtre. Absent : la règle d'avant.
+   */
+  abstraits?: Set<string>;
 }
 
 export function scenarioPertinence(e: {
@@ -147,7 +154,8 @@ export function scenarioPertinence(e: {
 }): ScenarioPertinence {
   const principales = lireConcepts(...e.sujets).activites;
   const lus = lireConcepts(...e.sujets, ...(e.textes ?? []));
-  return { principales, mentionnees: lus.activites, scenesMentionnees: lus.scenes };
+  const abstraits = principales.size === 0 ? new Set(conceptsAbstraitsDe(...e.sujets).map((c) => c.id)) : new Set<string>();
+  return { principales, mentionnees: lus.activites, scenesMentionnees: lus.scenes, ...(abstraits.size ? { abstraits } : {}) };
 }
 
 /** La description d'un média stock retenu : explicite, sinon le slug de sa page. */
@@ -174,6 +182,17 @@ export function pertinenceMedia(description: string, s: ScenarioPertinence): Per
   const lu = lireConcepts(description);
   const activites = Array.from(lu.activites);
   const scenes = Array.from(lu.scenes);
+  if (s.principales.size === 0 && s.abstraits?.size && description.trim()) {
+    // Sujet abstrait : un média qui l'ILLUSTRE (indices du concept) passe devant,
+    // les autres restent « inconnu » à leur score d'avant — rien n'est exclu.
+    const mots = new Set(motsDe(description));
+    const abstraits = s.abstraits;
+    const indices = CONCEPTS_ABSTRAITS.filter((c) => abstraits.has(c.id))
+      .flatMap((c) => c.indices.filter((i) => mots.has(i)));
+    const n = new Set(indices).size;
+    if (n > 0) return { niveau: 'pertinent', score: Math.min(0.95, 0.75 + 0.1 * n), activites, scenes };
+    return { niveau: 'inconnu', score: 0.5, activites, scenes };
+  }
   if (s.principales.size === 0 || !description.trim()) return { niveau: 'inconnu', score: 0.5, activites, scenes };
   const decors = new Set(Array.from(s.principales).flatMap((a) => DECORS_ACTIVITE[a] ?? []));
   const scenesDuSujet = scenes.filter((x) => decors.has(x) || s.scenesMentionnees.has(x)).length;

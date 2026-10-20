@@ -15,12 +15,19 @@
  *    « Votre avatar parlera ici » (aucune parole simulée) ;
  *  - puis la carte CTA.
  *
- * Sous le lecteur, la chronologie (« Rush personnel 0–4 s · Photo suggérée
- * 4–9 s · CTA 9–13 s ») : l'étape en cours est surlignée, un clic y saute.
+ * Sous le lecteur, la CHRONOLOGIE VISUELLE (`ChronologieMontage`) : une
+ * bande de miniatures réelles, largeur ∝ durée, icône du type et durée ;
+ * l'étape en cours est surlignée, un clic y saute.
+ *
+ * Avatar : sa VRAIE vidéo quand elle existe déjà (aperçu ou rendu récent,
+ * jamais générée ici) — jouée en boucle, avec la mention qu'elle n'est pas la
+ * parole de ce montage ; sinon sa vignette ; sinon l'emplacement
+ * « Votre avatar apparaîtra ici ». Jamais un média stock à sa place.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Pause, Play, RotateCcw, UserRound } from 'lucide-react';
 import { formatSecondes, type EtapeApercu, type LigneChronologie } from '@/lib/creer/medias-video';
+import ChronologieMontage, { segmentsChronologie, type SegmentChronologie } from '@/components/creer/ChronologieMontage';
 import { transformeKenBurns } from '@/lib/creer/ken-burns';
 
 export type FormatApercuMontage = '9:16' | '16:9' | '1:1';
@@ -45,6 +52,10 @@ export interface ApercuMontageListeProps {
   titre?: string;
   /** Ligne sous l'en-tête — défaut : l'ordre de la liste puis le CTA. */
   sousTitre?: string;
+  /** « Remplacer » un média de la chronologie (flux de l'appelant). Absent : pas de bouton. */
+  onRemplacer?: (s: SegmentChronologie) => void;
+  /** Vignettes déjà connues des médias (URL du média → URL de sa vignette). */
+  vignettes?: Readonly<Record<string, string>>;
 }
 
 const mmss = (s: number) => {
@@ -84,6 +95,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
     return i < 0 ? calendrier.length - 1 : i;
   }, [calendrier, t]);
   const ligne = indexCourant >= 0 ? calendrier[indexCourant] : null;
+  const segments = useMemo(() => segmentsChronologie(calendrier, p.etapes), [calendrier, p.etapes]);
   const etape = ligne && !ligne.cta ? p.etapes.find((e) => e.id === ligne.id) ?? null : null;
 
   const sauterA = (x: number) => { setT(Math.max(0, Math.min(total, x))); tRef.current = x; setSaut((n) => n + 1); };
@@ -97,7 +109,11 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const positionner = (el: HTMLVideoElement | null) => {
     if (!el || !etape) return;
-    try { el.currentTime = Math.max(0, etape.depuis + (tRef.current - etape.debut)); } catch { /* métadonnées absentes */ }
+    let pos = Math.max(0, etape.depuis + (tRef.current - etape.debut));
+    // La vidéo RÉELLE de l'avatar est un extrait court (aperçu, rendu récent) :
+    // on la parcourt en boucle plutôt que de figer sa dernière image.
+    if (etape.source === 'avatar' && Number.isFinite(el.duration) && el.duration > 0) pos %= el.duration;
+    try { el.currentTime = pos; } catch { /* métadonnées absentes */ }
   };
   useEffect(() => {
     const el = videoRef.current;
@@ -141,7 +157,10 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
         ) : p.vignetteAvatar?.type === 'video' ? (
           <video src={`${p.vignetteAvatar.url}#t=0.1`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-900 text-gray-500"><UserRound className="w-8 h-8" /></div>
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 bg-gray-900 text-gray-500" data-apercu-montage-avatar-emplacement>
+            <UserRound className="w-8 h-8" />
+            <span className="text-[11px] font-medium text-gray-300">Votre avatar apparaîtra ici</span>
+          </div>
         )}
         <span className="absolute left-1/2 bottom-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium text-white ring-1 ring-white/15">
           Votre avatar parlera ici
@@ -159,13 +178,22 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
       />
     );
   } else if (etape && etape.url) {
+    const avatarReel = etape.source === 'avatar';
     cadre = (
-      <video
-        key={`${etape.id}-${saut}`} ref={videoRef} src={etape.url} data-apercu-montage-video
-        muted playsInline preload="auto"
-        onLoadedMetadata={(e) => { positionner(e.currentTarget); if (lecture) e.currentTarget.play?.()?.catch?.(() => {}); }}
-        className="absolute inset-0 w-full h-full object-cover"
-      />
+      <>
+        <video
+          key={`${etape.id}-${saut}`} ref={videoRef} src={etape.url} data-apercu-montage-video
+          {...(avatarReel ? { 'data-apercu-montage-avatar': 'video-reelle' } : {})}
+          muted playsInline preload="auto" loop={avatarReel}
+          onLoadedMetadata={(e) => { positionner(e.currentTarget); if (lecture) e.currentTarget.play?.()?.catch?.(() => {}); }}
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        {avatarReel && (
+          <span className="absolute left-1/2 bottom-3 -translate-x-1/2 truncate rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium text-white ring-1 ring-white/15" style={{ maxWidth: '90%' }} data-apercu-montage-avatar-mention>
+            Votre avatar — sa parole suivra le script
+          </span>
+        )}
+      </>
     );
   } else {
     cadre = <div className="absolute inset-0 bg-gray-900" />;
@@ -214,30 +242,15 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
           Revoir
         </button>
       </div>
-      <ol data-chronologie className="flex flex-wrap gap-1 min-w-0" aria-label="Chronologie du montage">
-        {calendrier.map((l, k) => {
-          const courant = k === indexCourant;
-          return (
-            <li key={l.id} className="min-w-0 max-w-full">
-              <button
-                type="button"
-                data-ligne={l.id}
-                data-debut={l.debut}
-                data-fin={l.fin}
-                data-hors-narration={l.horsNarration ? 'oui' : undefined}
-                data-fondu={l.fondu ? l.fondu : undefined}
-                title={l.fondu ? `Le CTA apparaît en fondu pendant les ${formatSecondes(l.fondu)} dernières secondes du média précédent, qui joue jusqu’à ${formatSecondes(l.debut)} s.` : undefined}
-                aria-current={courant ? 'step' : undefined}
-                onClick={() => sauterA(l.debut)}
-                className={`max-w-full truncate rounded-md px-2 py-1 text-[10px] tabular-nums transition ${courant ? 'bg-studiio-primary/25 text-white ring-1 ring-studiio-primary/60' : 'bg-gray-800/70 text-gray-300 hover:bg-gray-800'} ${l.horsNarration ? 'ring-1 ring-amber-400/70' : ''}`}
-              >
-                {l.libelle} {formatSecondes(l.debut)}–{formatSecondes(l.fin)} s
-                {l.fondu ? <span className="text-gray-400"> · fondu {formatSecondes(l.fondu)} s</span> : null}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+      <ChronologieMontage
+        segments={segments}
+        indexCourant={indexCourant}
+        accent={p.accent}
+        onSauter={sauterA}
+        onRemplacer={p.onRemplacer}
+        vignetteAvatar={p.vignetteAvatar ?? null}
+        vignettes={p.vignettes}
+      />
       {p.narration && (
         <p
           data-chronologie-narration={p.narration.source}

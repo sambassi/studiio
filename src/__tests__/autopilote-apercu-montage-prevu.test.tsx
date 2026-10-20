@@ -35,8 +35,8 @@ function resume(o: Partial<ResumeMediasApercu> = {}): ResumeMediasApercu {
 
 describe('etapesMontageApercuAutopilote = planCompletAutopilote (le plan de « Plan avant génération »)', () => {
   it('sans résumé ou plan vide : aucune étape', () => {
-    expect(etapesMontageApercuAutopilote(null, { dureeCta: 4 })).toEqual({ etapes: [], lignes: [], duree: 0 });
-    expect(etapesMontageApercuAutopilote(resume(), { dureeCta: 4 })).toEqual({ etapes: [], lignes: [], duree: 0 });
+    expect(etapesMontageApercuAutopilote(null, { dureeCta: 4 })).toEqual({ etapes: [], lignes: [], duree: 0, avatar: null });
+    expect(etapesMontageApercuAutopilote(resume(), { dureeCta: 4 })).toEqual({ etapes: [], lignes: [], duree: 0, avatar: null });
   });
 
   it('⚠️ plan enregistré à 1 créneau + avatar : étapes == segments (nombre, ordre, genre, durées), puis CTA', () => {
