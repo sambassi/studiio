@@ -87,7 +87,9 @@ beforeEach(() => {
 afterEach(() => {
   // J : AUCUNE requête de génération d'avatar ni de fournisseur, dans aucun test.
   for (const a of appels) {
-    expect(a).not.toMatch(/\/api\/creer\/jumeau\/generer|\/api\/avatar\/(generate|create|did|apercu)|heygen|d-id|elevenlabs|unsplash/i);
+    // `GET /api/avatar/apercu` est une LECTURE en base (vraie vidéo déjà produite) ;
+    // l'ouverture d'un aperçu (POST, sous-chemin) reste interdite.
+    expect(a).not.toMatch(/\/api\/creer\/jumeau\/generer|\/api\/avatar\/(generate|create|did)|\/api\/avatar\/apercu\/|^(POST|PUT) \/api\/avatar\/apercu|heygen|d-id|elevenlabs|unsplash/i);
     expect(a.startsWith('GET /api/') || a.startsWith('PUT /api/') || a.startsWith('POST /api/')).toBe(true);
   }
   cleanup();

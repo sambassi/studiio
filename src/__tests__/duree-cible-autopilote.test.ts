@@ -198,7 +198,7 @@ describe('UI — Plan avant génération : durée, nombre, rythme, minutage', ()
     expect(segs.at(-1)!.getAttribute('data-role')).toBe('cta');
     expect(Number(segs.at(-1)!.getAttribute('data-fin'))).toBe(30);
     expect(segs.some((x) => x.getAttribute('data-genre') === 'photo')).toBe(true);
-    expect(document.querySelector('[data-plan-duree-planifiee]')!.textContent).toBe('30 s (estimée)');
+    expect(document.querySelector('[data-plan-duree-planifiee]')!.textContent).toBe('≈ 30 s (estimée)');
     expect(document.querySelector('[data-plan-duree-estimee]')!.getAttribute('data-plan-duree-estimee')).toBe('oui');
     expect(document.querySelector('[data-plan-minutage="0"]')).toBeNull();
   });

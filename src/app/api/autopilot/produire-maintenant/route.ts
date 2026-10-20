@@ -5,9 +5,9 @@ import { getUserCredits } from '@/lib/credits/system';
 import { politiqueDeLUtilisateur } from '@/lib/facturation/politique';
 import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 import { creneauImmediat } from '@/lib/autopilot/rules';
-import { preparePosts, slotKey } from '@/lib/autopilot/engine';
+import { preparePosts } from '@/lib/autopilot/engine';
 import { choisirContenuManuel } from '@/lib/autopilot/contenu-manuel';
-import { postVisibleDansCalendrier } from '@/lib/autopilot/suivi-jumeau-manuel';
+import { postVisibleDansCalendrier, jumeauEnPreparation, jobIdManuel, jetonManuel } from '@/lib/autopilot/suivi-jumeau-manuel';
 import {
   produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
@@ -77,8 +77,8 @@ export const maxDuration = 300;
 /** Utilisateurs dont une production manuelle est en cours, dans ce processus. */
 const enVol = new Set<string>();
 
-/** Préfixe des jetons manuels : jamais confondus avec un créneau du cron. */
-const PREFIXE_MANUEL = 'manuel:';
+// Préfixe des jetons manuels (`manuel:`) : jamais confondus avec un créneau
+// du cron — porté par `jetonManuel` (suivi-jumeau-manuel.ts).
 
 /**
  * Le DEVIS : ce que le clic coûtera, avant de cliquer.
@@ -169,6 +169,24 @@ export async function POST(req?: Request) {
     // Ligne absente : les défauts — sans rush, donc refus juste en dessous.
     const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
 
+    // ── Verrou 1 bis : aucune vidéo avec avatar encore en préparation ─────
+    // Sans avatar, le verrou `enVol` ne voit que CE processus et sa mémoire ;
+    // une production avec avatar du même compte attend, elle, en FILE
+    // (`autopilot_jumeau_attente`, persistante). Lancer un second montage
+    // pendant ce temps ferait deux générations pour un seul geste. Refus AVANT
+    // toute lecture coûteuse, tout rendu, tout débit. (Avec avatar : la file a
+    // déjà son propre verrou par créneau — comportement inchangé.)
+    if (!avatarActifConfig(config) && await jumeauEnPreparation(userId).catch(() => false)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Une vidéo avec votre avatar est encore en préparation. Attendez qu’elle soit déposée dans le Calendrier avant de lancer une autre production : rien n’a été lancé ni débité.',
+          code: 'generation-en-cours',
+        },
+        { status: 409 },
+      );
+    }
+
     // ── Refus SANS DÉBIT ────────────────────────────────────────────────
     // MULTI-SOURCES : le refus ne vaut que si AUCUNE source visuelle n'existe —
     // calculé ici, depuis la configuration (rushes personnels selon `actives`,
@@ -229,7 +247,8 @@ export async function POST(req?: Request) {
     // ── Le créneau : aujourd'hui, maintenant arrondi, chez l'utilisateur ──
     const now = Date.now();
     const { date, time } = creneauImmediat(now, config.runTimezone);
-    const jeton = `${PREFIXE_MANUEL}${slotKey(userId, date, time)}`;
+    // Le MÊME jeton que relit le suivi (`jetonManuel`) — `manuel:<slotKey>`.
+    const jeton = jetonManuel(userId, date, time);
 
     // ── Verrou 2 : le créneau n'a pas déjà été produit ──────────────────
     const dejaFaits = await creneauxExistants(userId);
@@ -260,7 +279,7 @@ export async function POST(req?: Request) {
 
     // Verrou 3 : `jobId` DÉTERMINISTE pour le créneau — la référence de
     // débit `autopilote:<jobId>` l'est donc aussi.
-    const jobId = `autopilote-manuel-${userId}-${date}-${time.replace(':', '')}`;
+    const jobId = jobIdManuel(userId, date, time);
     console.log(`[Autopilote/Manuel] ${userId} — sujet : ${topic}, créneau ${date} ${time}`);
 
     // ── JUMEAU : lancement ASYNCHRONE, sans navigateur ──────────────────

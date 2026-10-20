@@ -11,6 +11,8 @@
  * En mémoire du processus, par utilisateur : une seule production manuelle
  * à la fois (verrou de la route), un seul conteneur applicatif.
  */
+import { etapeDepuisStatutJumeauAutopilote, progressionVideoAvatar } from '@/lib/avatar/etapes-video-avatar';
+
 export type EtapeProduction = 'analyse' | 'preparation' | 'composition' | 'envoi' | 'finalisation';
 
 export const BORNES_ETAPES: Record<EtapeProduction, [number, number]> = {
@@ -123,4 +125,34 @@ export function lireResultat(userId: string): ResultatProduction | null {
 
 export function effacerResultat(userId: string): void {
   resultats.delete(userId);
+}
+
+// ── « Génération en cours » vue depuis le CALENDRIER ─────────────────────
+// Le Calendrier ne montre que des posts, et un post n'existe qu'APRÈS le
+// rendu, l'envoi et la relecture du MP4 final : pendant toute la production,
+// il était vide, comme si rien ne se passait. Il relit donc la MÊME source que
+// le panneau (`GET /api/autopilot/produire-maintenant/progression`) et montre
+// une carte « Génération en cours » — sans créer de post, sans rien annoncer
+// comme terminé. Pourcentage : seulement celui MESURÉ (composition).
+
+export type GenerationEnCours =
+  | { sorte: 'rendu'; etapes: Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' }>; message: string; pourcentage?: number }
+  | { sorte: 'avatar'; etapes: Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' | 'echouee' }>; message: string; detail: string | null; depuis: string | null };
+
+/** La lecture de `/progression` → la carte du Calendrier, ou `null` (rien en cours). Pure. */
+export function generationEnCoursDepuisLecture(d: unknown): GenerationEnCours | null {
+  const o = (d && typeof d === 'object' ? d : {}) as Record<string, unknown>;
+  if (o.progression && typeof o.progression === 'object') {
+    const a = affichageProduction(o.progression as { etape?: unknown; avancement?: unknown });
+    return { sorte: 'rendu', ...a };
+  }
+  const j = (o.jumeau && typeof o.jumeau === 'object' ? o.jumeau : null) as { etat?: unknown; statut?: unknown; depuis?: unknown } | null;
+  if (j?.etat === 'en_preparation') {
+    const p = progressionVideoAvatar({ etape: etapeDepuisStatutJumeauAutopilote(typeof j.statut === 'string' ? j.statut : 'en_attente') });
+    return {
+      sorte: 'avatar', etapes: p.etapes, message: p.message, detail: p.detail,
+      depuis: typeof j.depuis === 'string' ? j.depuis : null,
+    };
+  }
+  return null;
 }

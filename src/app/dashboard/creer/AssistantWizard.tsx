@@ -66,6 +66,7 @@ import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/cre
 import { evaluerPertinenceRushs, fichesDuDiagnostic, pertinenceRushsPourMetadata } from '@/lib/creer/pertinence-rushs';
 import { auPlus, chargerFichesContenu, type FichesParUrl } from '@/lib/creer/fiche-contenu-client';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
+import AttenteAvatarMontage from '@/components/creer/AttenteAvatarMontage';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
   ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar,
@@ -3412,9 +3413,14 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   const rushApercu = mediaVideo.type === 'rush' || (mediaVideo.type === 'stock' && mediaVideo.media === 'video')
     ? mediaVideo.url : null;
   const imageApercu = mediaVideo.type === 'stock' && mediaVideo.media === 'photo' ? mediaVideo.url : null;
+  // Avatar en lecture : sa place est réservée (« Chargement de votre avatar… »),
+  // jamais remplie par un rush ou un stock. Prêt : sa vraie vidéo si elle
+  // existe déjà (`medias.avatar.video`), sinon sa vignette.
   const avatarApercuAutopilote: ApercuAvatarCreer | null = useMemo(
     () => (mediaVideo.type === 'avatar'
-      ? { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url }
+      ? (mediaVideo.chargement
+        ? { etat: 'chargement' }
+        : { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url })
       : null),
     [mediaVideo],
   );
@@ -3743,6 +3749,38 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     () => etapesMontageApercuAutopilote(avecVideo ? medias : null, { dureeCta: dureeCtaLecture }),
     [avecVideo, medias, dureeCtaLecture],
   );
+  // Avatar + plans de coupe : le MP4 n'a PAS de séquence CTA (CTA en
+  // surimpression sur la fin de la parole) — la durée annoncée ne la compte pas.
+  const dureeVideoApercu = montagePrevu.ctaEnSurimpression && dureeCtaLecture
+    ? Math.round((dureeTotaleApercu - dureeCtaLecture) * 10) / 10
+    : dureeTotaleApercu;
+  /** Vignettes déjà connues des médias suggérés retenus — la chronologie les montre sans rien télécharger. */
+  const vignettesMontage = useMemo(() => {
+    const v: Record<string, string> = {};
+    for (const m of medias?.stock ?? []) if (m.vignetteUrl) v[m.url] = m.vignetteUrl;
+    return v;
+  }, [medias?.stock]);
+  /**
+   * « Remplacer » un média de la chronologie : le flux EXISTANT du panneau
+   * (« Médias suggérés » : Remplacer / Conserver / recherche). Aucun second
+   * système de choix ici — on y amène l'utilisateur.
+   */
+  const minuterieMediasRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (minuterieMediasRef.current !== null) window.clearTimeout(minuterieMediasRef.current);
+  }, []);
+  const allerAuxMedias = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    const cible = document.querySelector('[data-autopilot-stock-source]') ?? document.querySelector('[data-autopilot-add-rush]');
+    if (cible) { cible.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); return; }
+    // Autre étape affichée : on ouvre l'étape Rushes, puis on y descend.
+    (document.querySelector('[data-autopilot-etape="1"]') as HTMLElement | null)?.click();
+    if (minuterieMediasRef.current !== null) window.clearTimeout(minuterieMediasRef.current);
+    minuterieMediasRef.current = window.setTimeout(() => {
+      minuterieMediasRef.current = null;
+      document.querySelector('[data-autopilot-stock-source]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }, []);
 
   const ouvrirPanneau = useCallback((suivant: typeof panneau) => {
     // Sous le curseur, borne a la fenetre : un panneau ouvert hors de l'ecran
@@ -3754,8 +3792,14 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
 
   return (
     <div data-autopilot-apercu>
-      <h3 className="mb-2 text-sm font-semibold text-gray-100" data-autopilot-apercu-titre="style">
-        Aperçu du style — exemple
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-100" data-autopilot-apercu-titre="style">
+        Exemple de style
+        <span
+          className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-300 ring-1 ring-white/10"
+          data-autopilot-apercu-badge="exemple"
+        >
+          Exemple
+        </span>
       </h3>
       <Preview
         generated={generated}
@@ -3911,12 +3955,12 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         <p
           className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
           data-autopilot-apercu-jumeau="estimee"
-          data-autopilot-apercu-duree-totale={dureeTotaleApercu}
+          data-autopilot-apercu-duree-totale={dureeVideoApercu}
         >
           <Mic className="w-3 h-3 mt-0.5 shrink-0" />
           <span>
             <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
-            {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeTotaleApercu)}.
+            {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
             {' '}La vidéo finale prend la durée réelle de la parole de l’avatar.
             {' '}<span data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
           </span>
@@ -3967,8 +4011,11 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
       {/* ── APERÇU DU MONTAGE PRÉVU ──────────────────────────────────────
           Les médias RÉELS du plan, tous, dans l'ordre, puis le CTA — le
           lecteur local de Créer (aucun rendu, aucun appel fournisseur). */}
+      {/* Avatar en vérification : délai de 8 s et erreur visible (« Réessayer »),
+          jamais un spinner infini, jamais un stock à sa place. */}
+      {montagePrevu.avatar === 'chargement' && <AttenteAvatarMontage />}
       {montagePrevu.etapes.length > 0 && (
-        <div data-autopilot-montage-prevu>
+        <div data-autopilot-montage-prevu={montagePrevu.avatar ?? 'sans-avatar'}>
           <ApercuMontageListe
             etapes={montagePrevu.etapes}
             lignes={montagePrevu.lignes}
@@ -3977,8 +4024,12 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             ctaTexte={sample.cta}
             ctaSousTexte={sample.ctaSub}
             vignetteAvatar={medias?.avatar.vignette ?? null}
-            titre="Aperçu du montage prévu"
-            sousTitre="Les médias de votre plan, dans l'ordre, puis le CTA. Durées indicatives : la vidéo finale suit la parole et les extraits réels."
+            vignettes={vignettesMontage}
+            onRemplacer={allerAuxMedias}
+            titre="Aperçu de mon montage"
+            sousTitre={montagePrevu.ctaEnSurimpression
+              ? "Vos médias réels, dans l'ordre du plan ; le CTA s'affiche en surimpression sur les dernières secondes. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."
+              : "Vos médias réels, dans l'ordre du plan, puis le CTA. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."}
           />
         </div>
       )}
@@ -11480,7 +11531,7 @@ export default function AssistantWizard() {
                 {/* Jumeau numérique — 'aucun' par défaut ; l'état vient du serveur.
                     Deux intentions : ma voix clonée (pose `ttsVoiceId`), ou mon
                     avatar parlant (séquence « Vidéo » à l'envoi). Les textes qu'il
-                    dira sont ceux des voix par séquence, modifiables à l'étape Audio. */}
+                    dira sont ceux des voix par séquence, modifiables à l'étape Contenu. */}
                 <JumeauPanel
                   mode={jumeauMode}
                   onModeChange={setJumeauMode}
@@ -12031,7 +12082,11 @@ export default function AssistantWizard() {
                                   setPhotoDragging(true);
                                 }}
                                 onDragEnd={() => setPhotoDragging(false)}
-                                title={photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
+                                // Jamais l'auteur d'une banque d'images dans
+                                // l'infobulle (crédits : « Crédits médias »,
+                                // replié) ; une photo À SOI (importée, générée
+                                // par l'IA) garde son libellé.
+                                title={photo.source === 'upload' && photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
                                 className={`relative overflow-hidden rounded-lg border transition-colors ${
                                   retenue ? 'border-purple-500' : 'border-gray-800 hover:border-gray-600'
                                 }`}
@@ -12218,17 +12273,25 @@ export default function AssistantWizard() {
                           : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
                       </p>
                       {fondAffiche.url && stockMedias[fondAffiche.url] && (
-                        <p className="text-[11px] text-gray-500" data-fond-attribution data-credit-media>
-                          {stockMedias[fondAffiche.url].attribution}{' '}
-                          <a
-                            href={stockMedias[fondAffiche.url].sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:text-white"
-                          >
-                            (source)
-                          </a>
-                        </p>
+                        // Attribution du fond REPLIÉE (« Crédits médias ») : exigée
+                        // par la banque d'images, jamais sur la surface principale.
+                        <details className="text-[11px] text-gray-500" data-fond-attribution data-credit-media data-media-infos>
+                          <summary className="flex cursor-pointer list-none items-center gap-1 hover:text-gray-300">
+                            <Info className="w-3 h-3" aria-hidden="true" />
+                            Crédits médias
+                          </summary>
+                          <p className="mt-1 pl-4 break-words">
+                            {stockMedias[fondAffiche.url].attribution}{' '}
+                            <a
+                              href={stockMedias[fondAffiche.url].sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline hover:text-white"
+                            >
+                              (source)
+                            </a>
+                          </p>
+                        </details>
                       )}
                       <button
                         type="button"
@@ -13050,7 +13113,7 @@ export default function AssistantWizard() {
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.
                         <details className="mt-1" data-rush-attributions data-credit-media>
-                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Informations des médias</summary>
+                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Crédits médias</summary>
                           <div className="mt-1 space-y-0.5">
                           {urlsRecadrables(listeMedias).filter((u, k, t) => stockMedias[u] && t.indexOf(u) === k).map((u) => (
                             <p key={u} className="text-[11px] text-gray-500 truncate">

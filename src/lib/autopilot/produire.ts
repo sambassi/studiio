@@ -39,6 +39,7 @@ import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 import { jumeauPleinCadre } from '@/lib/avatar/jumeau-plein-cadre';
+import { buildSequences, totalDurationSeconds } from '@/lib/creer/designSpec';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
 export const RUSHS_MONTAGE_MAX = 3;
@@ -48,6 +49,59 @@ export const RUSHS_MONTAGE_MAX = 3;
  * rotation à partir du rang — deux montages voisins ne réunissent pas les
  * mêmes. Pure, testable.
  */
+/** Écart toléré entre la durée du MP4 final et celle du plan rendu (s). */
+export const TOLERANCE_DUREE_RENDU_S = 1;
+
+/**
+ * La durée que le PLAN RENDU implique : séquences titre, cartes, vidéo, CTA —
+ * la même fonction que la composition (`buildSequences`). Pure.
+ */
+export function dureePlanRendu(d: {
+  introDuration?: number; cardsDuration?: number; videoDuration?: number; ctaDuration?: number;
+  cards?: ReadonlyArray<unknown> | null; videoUrl?: string | null; montage?: ReadonlyArray<unknown> | null;
+}): number {
+  const avecVideo = !!(d.videoUrl || (d.montage && d.montage.length));
+  return Math.round(totalDurationSeconds(buildSequences({
+    introDuration: d.introDuration ?? 0,
+    cardsDuration: d.cardsDuration ?? 0,
+    videoDuration: d.videoDuration ?? 0,
+    ctaDuration: d.ctaDuration ?? 0,
+    cardCount: d.cards?.length ?? 0,
+    hasVideoBackground: avecVideo,
+    videoRequested: avecVideo,
+  })) * 1000) / 1000;
+}
+
+/**
+ * LE MP4 DIT-IL CE QUE LE PLAN DIT ? Durée MESURÉE du fichier final (en-tête
+ * du MP4 en ligne) contre la durée du plan rendu. Écart > 1 s, ou mesure
+ * impossible : `dureeVerifiee: false` — écrit en métadonnées, jamais caché,
+ * jamais « corrigé » en silence. Pure.
+ */
+export function verifierDureeRendu(dureePlanS: number | null, dureeMesureeS: number | null, tolerance = TOLERANCE_DUREE_RENDU_S): {
+  dureeVerifiee: boolean; dureePlanS: number | null; dureeMesureeS: number | null; ecartS: number | null;
+} {
+  const plan = typeof dureePlanS === 'number' && Number.isFinite(dureePlanS) && dureePlanS > 0 ? dureePlanS : null;
+  const mesure = typeof dureeMesureeS === 'number' && Number.isFinite(dureeMesureeS) && dureeMesureeS > 0
+    ? Math.round(dureeMesureeS * 1000) / 1000 : null;
+  if (plan === null || mesure === null) return { dureeVerifiee: false, dureePlanS: plan, dureeMesureeS: mesure, ecartS: null };
+  const ecartS = Math.round((mesure - plan) * 1000) / 1000;
+  return { dureeVerifiee: Math.abs(ecartS) <= tolerance, dureePlanS: plan, dureeMesureeS: mesure, ecartS };
+}
+
+/** Mesure bornée dans le temps : une sonde lente ne retient jamais le dépôt. */
+async function mesurerDureeFinale(videoUrl: string, userId: string, delaiMs = 20_000): Promise<number | null> {
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      probeRushSeconds(videoUrl, {}, userId).catch(() => null),
+      new Promise<null>((r) => { minuteur = setTimeout(() => r(null), delaiMs); }),
+    ]);
+  } finally {
+    if (minuteur) clearTimeout(minuteur);
+  }
+}
+
 export function rushsCompagnons(banque: ReadonlyArray<string>, principal: string, rang: number, n: number): string[] {
   const autres = Array.from(new Set(banque.filter((u) => typeof u === 'string' && u && u !== principal)));
   if (autres.length === 0 || n <= 0) return [];
@@ -956,6 +1010,15 @@ export async function produireUnMontage(input: {
   console.log(`${journal} ${userId} — mesures ${JSON.stringify(mesures)}`);
   input.onProgression?.('finalisation', 0);
 
+  // ── PLAN = MP4 : vérification AVANT le dépôt du post ───────────────────
+  // La durée du FICHIER final (lue dans son en-tête, en ligne) contre celle du
+  // plan rendu. Incohérente (> 1 s) ou illisible : journalisée et écrite
+  // (`dureeVerifiee: false`), jamais présentée comme conforme.
+  const verifDuree = verifierDureeRendu(dureePlanRendu(design), await mesurerDureeFinale(videoUrl, userId));
+  if (!verifDuree.dureeVerifiee) {
+    console.warn(`${journal} ${userId} — DUREE_NON_VERIFIEE ${JSON.stringify(verifDuree)}`);
+  }
+
   // ── CONSEILS (lecture seule) : ne modifient rien, ne bloquent jamais ──
   let conseils: RapportConseils | null = null;
   try {
@@ -1113,6 +1176,9 @@ export async function produireUnMontage(input: {
     ...(conseils ? { conseils } : null),
     // Le fichier FINAL a-t-il du son ? Mesuré sur le MP4 (ffmpeg), pas supposé.
     ...(audio ? { audioFinal: audio } : null),
+    // Sa DURÉE est-elle celle du plan ? Mesurée sur le MP4 en ligne.
+    dureeVerifiee: verifDuree.dureeVerifiee,
+    dureeRendu: { planS: verifDuree.dureePlanS, mesureeS: verifDuree.dureeMesureeS, ecartS: verifDuree.ecartS },
     ...(audio && audio.silencieux ? { audioSilencieux: true } : null),
         // Même exigence pour la musique configurée mais disparue du stockage.
     ...(musiqueIntrouvable ? { musiqueIgnoree: true, musiqueIgnoreeMotif: 'musique introuvable' } : null),

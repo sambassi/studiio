@@ -30,6 +30,8 @@ let enBase: AutopilotConfig;
 /** Réponse du POST de production, et état relu par `/progression`. */
 let reponsePost: Record<string, unknown>;
 let suivi: Record<string, unknown> | null;
+/** Statut HTTP du POST de production (200 par défaut). */
+let statutPost = 200;
 
 function stubApi() {
   globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
@@ -43,7 +45,7 @@ function stubApi() {
       if (init?.method === 'POST') {
         // La production démarre : la file existe à partir de maintenant.
         if (reponsePost.jumeau === 'en_preparation') suivi = { etat: 'en_preparation', jobId: 'autopilote-manuel-u-2026-10-13-1135' };
-        return ok(reponsePost);
+        return { ok: statutPost < 400, status: statutPost, json: async () => reponsePost } as unknown as Response;
       }
       return ok({ success: true, politique: 'credits', cout: 50, solde: 120, enCours: false });
     }
@@ -59,6 +61,7 @@ beforeEach(() => {
     scheduledDate: '2026-10-13', scheduledTime: '11:35', timezone: 'Europe/Paris', status: 'draft', platforms: [], cout: 50,
   };
   suivi = null;
+  statutPost = 200;
   stubApi();
 });
 afterEach(() => { cleanup(); });
@@ -116,5 +119,25 @@ describe('avatar en préparation : jamais « déposé » sans post', () => {
     await produire();
     await waitFor(() => expect(q('[data-autopilot-produire-erreur]')).not.toBeNull());
     expect(q('[data-autopilot-produire-resultat]')).toBeNull();
+  });
+});
+
+describe('garde anti-doublon : 409 « generation-en-cours »', () => {
+  it('message clair affiché, aucun état « fait », aucun créneau suivi', async () => {
+    statutPost = 409;
+    reponsePost = {
+      success: false, code: 'generation-en-cours',
+      error: 'Une vidéo avec votre avatar est encore en préparation. Attendez qu’elle soit déposée dans le Calendrier avant de lancer une autre production : rien n’a été lancé ni débité.',
+    };
+    await produire();
+    await waitFor(() => expect(q('[data-autopilot-produire-erreur]')).not.toBeNull());
+    const err = q('[data-autopilot-produire-erreur]')!;
+    expect(err.getAttribute('data-code')).toBe('generation-en-cours');
+    expect(err.textContent).toContain('encore en préparation');
+    expect(err.textContent).toContain('rien n’a été lancé ni débité');
+    expect(q('[data-autopilot-produire-resultat]')).toBeNull();
+    expect(q('[data-autopilot-produire-en-cours]')).toBeNull();
+    expect(document.body.textContent).not.toContain('Brouillon déposé dans le Calendrier');
+    expect(window.localStorage.getItem('studiio:autopilote:production-suivie')).toBeNull();
   });
 });

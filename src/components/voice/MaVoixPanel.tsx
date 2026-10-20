@@ -7,7 +7,7 @@ import {
   MESSAGES_PRONONCIATION, type Prononciation,
 } from '@/lib/voice/prononciations';
 import { MAX_CARACTERES_PREECOUTE, MESSAGE_TROP_D_ECOUTES } from '@/lib/voice/preecoute';
-import { suggererPrononciationLocale, suggestionUtile, MESSAGE_AUCUNE_SUGGESTION } from '@/lib/voice/suggestion-prononciation';
+import { suggererPrononciationLocale, suggestionUtile, expressionOrdinaire, MESSAGE_AUCUNE_SUGGESTION } from '@/lib/voice/suggestion-prononciation';
 import AudioCompletSection from '@/components/voice/AudioCompletSection';
 import LecteurVoixCompact from '@/components/voice/LecteurVoixCompact';
 
@@ -163,6 +163,12 @@ export default function MaVoixPanel() {
     const noteOk = 'Suggestion Studiio : modifiez-la si besoin, écoutez-la, puis enregistrez.';
     if (localeUtile) setBrouillon((b) => (b ? { ...b, prononce: localeUtile } : b));
     if (localeUtile && !locale.incertain) { setNoteSuggestion(noteOk); return; }
+    // Expression française ordinaire (minuscules, sans chiffre, sigle ni nom
+    // propre) : la voix la dit déjà, aucun appel serveur.
+    if (expressionOrdinaire(affiche)) {
+      setNoteSuggestion(localeUtile ? noteOk : MESSAGE_AUCUNE_SUGGESTION);
+      return;
+    }
     setSuggestionEnCours(true);
     let note = localeUtile ? 'Suggestion approximative : ajustez-la à votre oreille, puis écoutez-la.' : MESSAGE_AUCUNE_SUGGESTION;
     try {

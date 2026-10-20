@@ -45,7 +45,20 @@ describe('14. réglage changé → audio signalé périmé, jamais remplacé', (
   it('vitesse ou dynamisme changés : périmé, motif « reglages »', () => {
     expect(audioSequencePerime(sv({ reglages: { vitesse: 1.2, dynamisme: 0 }, reglagesAtGeneration: { vitesse: 1.1, dynamisme: 0 } }), 'v'))
       .toEqual({ perime: true, motif: 'reglages' });
-    expect(audioSequencePerime(sv({ reglages: { vitesse: 1, dynamisme: 0.5 } }), 'v').motif).toBe('reglages');
+    // Le dynamisme ne compte que pour une voix qui le prend en charge (ElevenLabs).
+    expect(audioSequencePerime(sv({ ttsVoice: 'elevenlabs-x', reglages: { vitesse: 1, dynamisme: 0.5 } }), 'elevenlabs-x').motif).toBe('reglages');
+  });
+  it('dynamisme changé sur une voix Edge / HeyGen / OpenAI : PAS périmé (faux positif corrigé)', () => {
+    for (const voix of ['v', 'fr-FR-DeniseNeural', 'heygen-abc', 'openai-nova']) {
+      expect(audioSequencePerime(sv({ ttsVoice: voix, reglages: { vitesse: 1, dynamisme: 0.5 } }), voix)).toEqual({ perime: false, motif: null });
+      // La vitesse, elle, compte pour toutes les voix.
+      expect(audioSequencePerime(sv({ ttsVoice: voix, reglages: { vitesse: 1.1, dynamisme: 0.5 }, reglagesAtGeneration: { vitesse: 1, dynamisme: 0.5 } }), voix).motif).toBe('reglages');
+    }
+  });
+  it('memesReglages : défaut = tout comparer ; dynamisme ignoré sur demande', () => {
+    expect(memesReglages({ vitesse: 1, dynamisme: 0.5 }, undefined)).toBe(false);
+    expect(memesReglages({ vitesse: 1, dynamisme: 0.5 }, undefined, { dynamisme: false })).toBe(true);
+    expect(memesReglages({ vitesse: 1.1, dynamisme: 0 }, undefined, { dynamisme: false })).toBe(false);
   });
   it('audio ancien sans réglages : jamais signalé à tort ; enregistrement micro : jamais', () => {
     expect(audioSequencePerime(sv({}), 'v').perime).toBe(false);
@@ -83,6 +96,48 @@ describe('11-13. panneau : stocké PAR séquence, « appliquer à toutes »', ()
     const onChange = await monter();
     fireEvent.change(curseur('Dynamisme de la voix — CTA'), { target: { value: '7' } });
     expect(onChange).toHaveBeenCalledWith('cta', { reglages: { vitesse: 1, dynamisme: 0.7 } });
+  });
+
+  it('dynamisme non pris en charge : texte visible à la place du curseur et du pourcentage', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ success: true, voices: [] }) })));
+    const { SequenceVoicesPanel } = await import('@/components/creer/SequenceVoicesPanel');
+    const noop = () => {};
+    render(
+      <SequenceVoicesPanel
+        sequenceVoices={emptySequenceVoices()} userEdited={emptySequenceVoicesUserEdited()}
+        onChange={noop} onUserEditedChange={noop} onResetText={noop}
+        introDuration={4} cardsDuration={6} videoDuration={4} ctaDuration={4}
+        hasCardsContent hasVideoOverlay batchCount={1}
+        voiceId="fr-FR-DeniseNeural" onVoiceIdChange={noop}
+      />,
+    );
+    expect(curseur('Dynamisme de la voix — CTA')).toBeNull();
+    const ligne = document.querySelector('[data-voice-reglage="dynamisme"]')!;
+    expect(ligne.textContent).toContain('Non pris en charge par cette voix');
+    expect(ligne.textContent).not.toMatch(/%/);
+    expect(document.querySelector('[data-voice-aide="dynamisme"]')!.textContent).toMatch(/clonée ou premium/);
+  });
+
+  it('repères visibles : ×1,00 = naturel, dynamisme expliqué, prochaine génération, régénération après « appliquer à toutes »', async () => {
+    await monter();
+    expect(document.querySelector('[data-voice-aide="vitesse"]')!.textContent).toContain('×1,00 = débit naturel');
+    expect(document.querySelector('[data-voice-aide="dynamisme"]')!.textContent).toMatch(/expressivité/);
+    expect(document.querySelector('[data-voice-reglages-prochaine="titre"]')!.textContent).toContain('prochaine génération');
+    expect(document.querySelector('[data-voice-reglages-tous-note="titre"]')!.textContent).toMatch(/devront être régénérés/);
+    // L'explication n'est plus seulement dans un title.
+    expect(document.querySelector('[data-voice-reglage="dynamisme"]')!.getAttribute('title')).toBeNull();
+  });
+
+  it('audio existant + vitesse changée : bandeau « Audio périmé » non tronqué, motif lisible, bouton Régénérer', async () => {
+    const voices = emptySequenceVoices();
+    voices.titre = { ...voices.titre, text: 'Bonjour', textAtGeneration: 'Bonjour', audioUrl: 'https://x/a.mp3', source: 'tts', ttsVoice: 'elevenlabs-voixclonee01', reglages: { vitesse: 1.1, dynamisme: 0 } };
+    await monter(voices);
+    const bandeau = document.querySelector('[data-voice-stale="titre"]')!;
+    expect(bandeau.getAttribute('data-voice-stale-motif')).toBe('reglages');
+    expect(bandeau.querySelector('.truncate')).toBeNull();
+    expect(bandeau.textContent).toContain('la vitesse ou le dynamisme ont changé');
+    expect(bandeau.querySelector('button')!.textContent).toBe('Régénérer');
+    expect(document.querySelector('[data-voice-reglages-prochaine="titre"]')).toBeNull();
   });
 
   it('13. « Appliquer ces réglages à toutes les voix » copie ceux de la séquence sur les trois autres', async () => {

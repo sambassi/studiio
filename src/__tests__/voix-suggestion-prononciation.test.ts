@@ -164,7 +164,7 @@ describe('POST /api/voice/prononciations/suggestion', () => {
 
   it('⚠️ cas difficile SANS clé Anthropic : suggestion locale seulement, aucun appel', async () => {
     const res = await post(SUGGERER, { affiche: 'Afroboost' });
-    expect(await res.json()).toEqual({ success: true, data: { suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' } });
+    expect(await res.json()).toEqual({ success: true, data: { suggestion: null, source: 'aucune', message: 'Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.' } });
     expect(reseau.anthropic).toEqual([]);
   });
 
@@ -177,6 +177,8 @@ describe('POST /api/voice/prononciations/suggestion', () => {
     expect(reseau.anthropic[0].headers['x-api-key']).toBe('cle-anthropic-test');
     expect(reseau.anthropic[0].body.model).toBe('claude-sonnet-4-20250514');
     expect(reseau.anthropic[0].body.messages[0].content).toContain('Afroboost');
+    // La proposition locale identique au texte n'est plus envoyée comme « proposition ».
+    expect(reseau.anthropic[0].body.messages[0].content).not.toContain('Proposition automatique');
     expect(base.ecritures).toBe(0);
     expect(reseau.autres).toEqual([]);
   });
@@ -189,7 +191,7 @@ describe('POST /api/voice/prononciations/suggestion', () => {
     reseau.reponseAnthropic = { status: 200, texte: null };
     expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data.source).toBe('aucune');
     reseau.reponseAnthropic = { status: 200, texte: 'AFROBOOST' };
-    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' });
+    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.' });
   });
 
   it('limiteur par compte : au-delà de 10 par minute → 429 avec Retry-After', async () => {
