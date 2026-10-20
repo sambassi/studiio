@@ -159,6 +159,20 @@ const typeSegment = (s: RushSegment): TypeCreneau => (s.kind === 'avatar' ? 'ava
   : s.kind === 'image' || s.source === 'stock' || s.source === 'photo' ? 'stock' : 'rush');
 const compacter = <T,>(l: T[]) => l.filter((x, i) => i === 0 || x !== l[i - 1]);
 
+/**
+ * Plan rendu conforme au plan montré. Sans avatar : identique, créneau par
+ * créneau. Avec un avatar en conclusion : les créneaux montrés d'abord, dans
+ * l'ordre, puis l'ALTERNANCE avatar ↔ plans de coupe qui remplit la parole
+ * jusqu'au CTA de l'avatar (jamais deux plans d'avatar d'affilée).
+ */
+function attendreConforme(types: TypeCreneau[], attendu: TypeCreneau[]) {
+  if (attendu.at(-1) !== 'avatar' || attendu.length < 2) { expect(types).toEqual(attendu); return; }
+  expect(types.slice(0, attendu.length - 1)).toEqual(attendu.slice(0, -1));
+  expect(types.at(-1)).toBe('avatar');
+  const suite = types.slice(attendu.length - 1);
+  for (let i = 1; i < suite.length; i++) expect(suite[i] === 'avatar' && suite[i - 1] === 'avatar').toBe(false);
+}
+
 /** Le moteur réel, sur la configuration que le serveur a ENREGISTRÉE. */
 async function rendre(c: AutopilotConfig): Promise<{ types: TypeCreneau[]; urls: string[] }> {
   const post = preparePosts({ config: c, topic: 'yoga', count: 1, now: Date.parse('2026-10-10T09:00:00Z') })[0];
@@ -193,7 +207,7 @@ describe('sans plan enregistré : la suggestion affichée = les types rendus', (
       const { types } = await rendre(configServeur);
       // Multi-sources : plan rendu = suggestion, créneau par créneau. Une source
       // seule (chemin d'avant) : la même nature de bout en bout.
-      if (new Set(attendu).size > 1) expect(types).toEqual(attendu);
+      if (new Set(attendu).size > 1) attendreConforme(types, attendu);
       else expect(compacter(types)).toEqual(compacter(attendu));
     });
   }
@@ -213,7 +227,7 @@ describe('après chaque geste : le gabarit ENREGISTRÉ pilote le rendu à l’id
     for (const [i, url] of Object.entries(forces)) expect(g[Number(i)].media).toBe(url);
     await waitFor(() => expect(typesAffiches()).toEqual(attenduTypes));
     const { types, urls } = await rendre(dernier());
-    expect(types).toEqual(attenduTypes);
+    attendreConforme(types, attenduTypes);
     for (const [i, url] of Object.entries(forces)) expect(urls[Number(i)]).toBe(url);
   }
 
@@ -277,7 +291,7 @@ describe('après chaque geste : le gabarit ENREGISTRÉ pilote le rendu à l’id
     await waitFor(() => expect(q('[data-plan-suggere]')).toBeTruthy());
     const suggestion = typesAffiches();
     expect(suggestion).toEqual(['avatar', 'rush', 'rush', 'stock', 'avatar']);
-    expect((await rendre(dernier())).types).toEqual(suggestion);
+    attendreConforme((await rendre(dernier())).types, suggestion);
   }, 30_000);
 
   it('rushes SEULS avec un plan enregistré : l’ordre forcé des rushes est rendu (avant : ignoré)', async () => {

@@ -206,7 +206,7 @@ describe('Même projet, 3 rushes (1 valide, 1 expiré, 1 refusé) : 3 configuré
     fireEvent.click(document.querySelector('[data-autopilot-etape="1"]') as Element);
     const compteur = () => document.querySelector('[data-autopilot-rushes-utilisables]') as HTMLElement | null;
     await waitFor(() => expect(compteur()?.getAttribute('data-autopilot-rushes-utilisables')).toBe('1'));
-    expect(compteur()!.textContent).toContain('1 rush prêt');
+    expect(compteur()!.textContent).toContain('1 rush personnel');
     expect(document.querySelector('[data-autopilot-rushes-indisponibles="2"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-medias-rushes]')?.getAttribute('data-autopilot-medias-rushes')).toBe('1');
     expect(document.body.textContent).not.toContain(AUTRE);

@@ -43,10 +43,16 @@ function verifierContigu(plan: RushSegment[], duree: number) {
   expect(plan[plan.length - 1].fin).toBeCloseTo(duree, 6);
 }
 
-/** Aucun média stock/photo repris deux fois ; aucune plage de rush rejouée. */
+/**
+ * Jamais deux fois de suite le même plan de coupe (le stock peut être REPRIS
+ * quand la matière manque, jamais d'affilée) ; aucune plage de rush rejouée.
+ */
 function verifierSansDoublon(plan: RushSegment[]) {
-  const stock = plan.filter((s) => s.source === 'stock' || s.kind === 'image').map((s) => s.url);
-  expect(new Set(stock).size).toBe(stock.length);
+  const broll = plan.filter((s) => s.kind !== 'avatar');
+  for (let i = 1; i < broll.length; i++) {
+    if (broll[i].source === 'rush') continue; // deux plages distinctes d'un même rush : permis
+    expect(broll[i].url).not.toBe(broll[i - 1].url);
+  }
   const rush = plan.filter((s) => s.source === 'rush');
   for (let i = 0; i < rush.length; i++) {
     for (let j = i + 1; j < rush.length; j++) {
@@ -133,7 +139,9 @@ describe('planMultiSources — les sept combinaisons rendent un plan', () => {
     verifierContigu(r.plan, 40);
     const broll = r.plan.filter((s) => s.kind !== 'avatar');
     expect(broll[0].source).toBe('rush');
-    expect(broll.map((s) => s.source ?? s.kind)).toEqual(['rush', 'stock', 'photo', 'photo']);
+    // Rush d'abord, puis le stock (vidéo, photo, photo) ; matière épuisée, le
+    // stock est REPRIS en alternance plutôt qu'un long bloc d'avatar.
+    expect(broll.map((s) => s.source ?? s.kind)).toEqual(['rush', 'stock', 'photo', 'photo', 'stock', 'photo']);
     expect(avatarSynchronise(r.plan)).toBe(true);
     verifierSansDoublon(r.plan);
   });
@@ -163,13 +171,14 @@ describe('planMultiSources — les sept combinaisons rendent un plan', () => {
 describe('planMultiSources — gabarit (choix explicites de l’utilisateur)', () => {
   const sources = { avatar: { url: AV, secondes: 20 }, rushes: [{ url: R1, secondes: 20 }], stockVideos: [{ url: SV1, secondes: 10 }], photos: [P1] };
 
-  it('respecte l’ordre et le type de chaque créneau, durées égales, total exact', () => {
+  it('respecte l’ordre et le type de chaque créneau, durées avatar (accroche, CTA) et coupes 2–4 s, total exact', () => {
     const r = planMultiSources(base({ ...sources, gabarit: [
       { id: 'a', type: 'avatar' }, { id: 'b', type: 'stock' }, { id: 'c', type: 'rush' }, { id: 'd', type: 'avatar' },
     ] }));
     verifierContigu(r.plan, 20);
     expect(r.plan.map((s) => s.kind === 'avatar' ? 'avatar' : s.source)).toEqual(['avatar', 'stock', 'rush', 'avatar']);
-    expect(r.plan.map((s) => s.fin)).toEqual([5, 10, 15, 20]);
+    // Accroche 4 s, plans de coupe de 4 s, l'avatar conclut (CTA).
+    expect(r.plan.map((s) => s.fin)).toEqual([4, 8, 12, 20]);
     expect(avatarSynchronise(r.plan)).toBe(true);
   });
 
@@ -177,9 +186,11 @@ describe('planMultiSources — gabarit (choix explicites de l’utilisateur)', (
     const r = planMultiSources(base({ ...sources, gabarit: [
       { id: 'b', type: 'stock' }, { id: 'a', type: 'avatar' }, { id: 'c', type: 'rush' }, { id: 'd', type: 'avatar' },
     ] }));
-    expect(r.plan.map((s) => s.kind === 'avatar' ? 'avatar' : s.source)).toEqual(['stock', 'avatar', 'rush', 'avatar']);
-    // L'avatar déplacé reste synchronisé : il joue SA seconde 5 à 5 s.
-    expect(r.plan[1]).toMatchObject({ kind: 'avatar', debut: 5, depuis: 5 });
+    // L'ordre du gabarit, puis l'alternance jusqu'au CTA de l'avatar.
+    expect(r.plan.map((s) => s.kind === 'avatar' ? 'avatar' : s.source).slice(0, 3)).toEqual(['stock', 'avatar', 'rush']);
+    expect(r.plan.at(-1)!.kind).toBe('avatar');
+    // L'avatar déplacé reste synchronisé : il joue SA seconde 4 à 4 s.
+    expect(r.plan[1]).toMatchObject({ kind: 'avatar', debut: 4, depuis: 4 });
   });
 
   it('FORCER un média le reprend tel quel, même contre la priorité', () => {
