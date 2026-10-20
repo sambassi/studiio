@@ -98,7 +98,7 @@ function nouvelId(lignes: CreneauGabarit[]): string {
 
 export default function PlanAvantGeneration({
   gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher, duree,
-  secondesAvatar, scriptAvatar, stockPertinent, onDurees,
+  secondesAvatar, secondesAvatarEstimees, scriptAvatar, stockPertinent, onDurees,
 }: {
   /** Durées sondées des vidéos, remontées : l'aperçu du montage prévu calcule le MÊME plan. */
   onDurees?: (durees: Record<string, number | null>) => void;
@@ -112,6 +112,8 @@ export default function PlanAvantGeneration({
   secondesAvatar?: number | null;
   /** Script que l'avatar dira (estimation de sa parole). */
   scriptAvatar?: string | null;
+  /** Parole estimée par le budget du script de production (`paroleAvatarDuBudget`). */
+  secondesAvatarEstimees?: number | null;
   /**
    * Durée cible et rythme du brief. Le minutage affiché est celui du moteur
    * (créneaux égaux) sur la durée cible — sans cible, sur ≈ 30 s. À la
@@ -151,8 +153,10 @@ export default function PlanAvantGeneration({
     actives: { rushes: true, stock: true, avatar: avatarDisponible },
     rushesPerso, stock: stockPlan,
     avatar: { disponible: avatarDisponible, vignette: null },
-  }, { cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, scriptAvatar, durees }) : null;
+  }, { cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, secondesAvatarEstimees, scriptAvatar, durees }) : null;
   const avecAvatar = !!complet?.segments.some((x) => x.genre === 'avatar');
+  // Parole de l'avatar non mesurée (aucune génération) : la durée est une ESTIMATION.
+  const estimee = avecAvatar && !(typeof secondesAvatar === 'number' && secondesAvatar > 0);
   // Sans avatar, un créneau = un plan : le minutage par créneau reste lisible.
   const minutage = avecAvatar ? [] : minutagePlan(lignes.length, reference);
   const planifiee = complet && complet.duree > 0 ? complet.duree : (minutage.length ? minutage[minutage.length - 1].fin : 0);
@@ -192,7 +196,9 @@ export default function PlanAvantGeneration({
           <dt className="text-gray-500">Durée cible</dt>
           <dd className="text-gray-200" data-plan-duree-cible={cible ?? ''}>{cible ? `${cible} s` : `automatique (≈ ${DUREE_ESTIMEE_SANS_CIBLE} s)`}</dd>
           <dt className="text-gray-500">Durée planifiée</dt>
-          <dd className="text-gray-200" data-plan-duree-planifiee={planifiee}>{secondesLisibles(planifiee)}</dd>
+          <dd className="text-gray-200" data-plan-duree-planifiee={planifiee} data-plan-duree-estimee={estimee ? 'oui' : 'non'}>
+            {secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> (estimée)</span> : null}
+          </dd>
           <dt className="text-gray-500">Nombre de séquences</dt>
           <dd className="text-gray-200" data-plan-nombre={lignes.length}>{lignes.length}</dd>
           <dt className="text-gray-500">Rythme</dt>

@@ -47,6 +47,8 @@ export interface ResumeMediasApercu {
     cible: number;
     rythme: RythmeBrief | null;
     secondesAvatar?: number | null;
+    /** Parole estimée par le budget du script de production (`paroleAvatarDuBudget`). */
+    secondesAvatarEstimees?: number | null;
     scriptAvatar?: string | null;
     /** Durées sondées des vidéos (rushes, vidéos suggérées). */
     durees?: Readonly<Record<string, number | null>>;
@@ -174,6 +176,7 @@ export function etapesMontageApercuAutopilote(
       cible: plan?.cible ?? DUREE_ESTIMEE_SANS_CIBLE,
       rythme: plan?.rythme ?? null,
       secondesAvatar: plan?.secondesAvatar ?? null,
+      secondesAvatarEstimees: plan?.secondesAvatarEstimees ?? null,
       scriptAvatar: plan?.scriptAvatar ?? null,
       durees: plan?.durees ?? {},
     });

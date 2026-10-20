@@ -15,6 +15,8 @@
  */
 import { planMultiSources, type EntreePlanMultiSources } from '@/lib/autopilot/plan-multi-sources';
 import { estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
+import { budgetScriptAvatar } from '@/lib/autopilot/duree-cible';
+import type { VideoBrief } from '@/lib/creer/brief';
 import type { ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import { estRushStock } from '@/lib/autopilot/sources';
 import type { RushSegment } from '@/lib/creer/multi-rush';
@@ -41,6 +43,8 @@ export interface OptionsPlanComplet {
   secondesAvatar?: number | null;
   /** Script que l'avatar dira : la parole est ESTIMÉE (`estimerParoleJumeau`). */
   scriptAvatar?: string | null;
+  /** Parole ESTIMÉE (s), déjà calculée (`paroleAvatarDuBudget`) — prioritaire sur `scriptAvatar`. */
+  secondesAvatarEstimees?: number | null;
   rythme?: RythmeBrief | null;
   /** Durée visée de la séquence (sans avatar, ou repli de la parole). */
   cible: number;
@@ -65,9 +69,22 @@ export function segmentsDuPlan(plan: ReadonlyArray<RushSegment>): SegmentPlanCom
   });
 }
 
+/**
+ * La parole que le BUDGET du script de production implique : le script réel
+ * est écrit au créneau, dimensionné à `budgetScriptAvatar` — sa parole
+ * estimée (`estimerParoleJumeau` sur un script de cette longueur) ≈ la cible
+ * par construction. `null` sans durée cible.
+ */
+export function paroleAvatarDuBudget(brief: VideoBrief | null | undefined, secondesReservees?: number): number | null {
+  const budget = budgetScriptAvatar(brief, secondesReservees);
+  if (!budget) return null;
+  return estimerParoleJumeau('x'.repeat(budget), brief?.rythme);
+}
+
 /** La durée de parole retenue pour l'avatar, dans l'ordre : mesurée, estimée, cible. */
-export function secondesAvatarPrevues(o: Pick<OptionsPlanComplet, 'secondesAvatar' | 'scriptAvatar' | 'rythme' | 'cible'>): number {
+export function secondesAvatarPrevues(o: Pick<OptionsPlanComplet, 'secondesAvatar' | 'secondesAvatarEstimees' | 'scriptAvatar' | 'rythme' | 'cible'>): number {
   if (typeof o.secondesAvatar === 'number' && o.secondesAvatar > 0) return o.secondesAvatar;
+  if (typeof o.secondesAvatarEstimees === 'number' && o.secondesAvatarEstimees > 0) return o.secondesAvatarEstimees;
   const estimee = o.scriptAvatar ? estimerParoleJumeau(o.scriptAvatar, o.rythme) : 0;
   return estimee > 0 ? estimee : o.cible;
 }

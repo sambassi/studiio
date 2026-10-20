@@ -20,6 +20,7 @@ import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type Propositi
 import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
+import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { affichageProduction } from '@/lib/autopilot/progression';
@@ -32,7 +33,7 @@ import {
   aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
-import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE } from '@/lib/autopilot/duree-cible';
+import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import type { FormatStock } from '@/lib/stock/types';
@@ -778,6 +779,19 @@ export default function AutopilotPanel({
    * LE PLAN TEL QUE L'ÉCRAN LE MONTRE — enregistré, sinon suggéré. Une seule
    * expression pour « Plan avant génération » et pour l'aperçu.
    */
+  /**
+   * LA PAROLE DE L'AVATAR PRÉVUE — celle que le BUDGET du script de
+   * production implique (`paroleAvatarDuBudget` : le script réel, écrit au
+   * créneau, est dimensionné pour la durée cible au débit de la voix clonée,
+   * donc ≈ la cible ; avatar seul : la part réservée aux séquences plein
+   * écran est déduite, comme en production). Sans durée cible : la référence
+   * du plan. Aucun appel, aucune génération ; dite « estimée » à l'écran.
+   */
+  const paroleAvatarPrevue = useMemo(() => {
+    if (!config.jumeauAvatar) return null;
+    const seul = !avatarAvecAutresSources(config);
+    return paroleAvatarDuBudget(config.brief, seul ? secondesReserveesEnveloppeJumeau(config.brief?.duree) : 0);
+  }, [config]);
   const planSuggere = gabaritSuggere({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
@@ -785,7 +799,17 @@ export default function AutopilotPanel({
   }, { dureeSecondes: config.brief.duree, rythme: config.brief.rythme });
   /** Durées sondées par « Plan avant génération » — reprises par l'aperçu du montage prévu (même plan). */
   const [dureesPlan, setDureesPlan] = useState<Record<string, number | null>>({});
-  const avatarDisponiblePlan = etatSources.avatarActif && etatSources.avatarPret;
+  /**
+   * LES OPTIONS DU PLAN COMPLET — UNE SEULE SOURCE pour « Plan avant
+   * génération » ET l'aperçu du montage prévu (même avatar, même cible, même
+   * rythme, même parole estimée) : les deux écrans calculent le MÊME plan.
+   */
+  const optionsPlan = {
+    avatarDisponible: etatSources.avatarActif && etatSources.avatarPret,
+    cible: config.brief.duree ?? null,
+    rythme: config.brief.rythme ?? null,
+    secondesAvatarEstimees: paroleAvatarPrevue,
+  };
   const resumeApercu: ResumeMediasApercu = {
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
@@ -797,9 +821,11 @@ export default function AutopilotPanel({
     },
     // Les options EXACTES passées à `PlanAvantGeneration` ci-dessous.
     plan: {
-      avatarDisponible: avatarDisponiblePlan,
-      cible: config.brief.duree ?? DUREE_ESTIMEE_SANS_CIBLE,
-      rythme: config.brief.rythme ?? null,
+      avatarDisponible: optionsPlan.avatarDisponible,
+      // `PlanAvantGeneration` : sans cible, la référence du plan.
+      cible: optionsPlan.cible ?? DUREE_ESTIMEE_SANS_CIBLE,
+      rythme: optionsPlan.rythme,
+      secondesAvatarEstimees: optionsPlan.secondesAvatarEstimees,
       durees: dureesPlan,
     },
   };
@@ -1913,13 +1939,14 @@ export default function AutopilotPanel({
             rushesPerso={sources.actives.rushes ? rushesPerso : []}
             stock={sources.actives.stock ? sources.stock : []}
             stockPertinent={sources.actives.stock ? pertinent.stock : []}
+            secondesAvatarEstimees={optionsPlan.secondesAvatarEstimees}
             vignetteAvatar={vignetteAvatar}
-            avatarDisponible={avatarDisponiblePlan}
+            avatarDisponible={optionsPlan.avatarDisponible}
             onDurees={setDureesPlan}
             disabled={!ready || saving}
             onChange={(g) => enregistrerSources({ ...sources, gabarit: g })}
             onRechercher={(id, lignes) => setRechercheLigne({ id, lignes })}
-            duree={{ cible: config.brief.duree ?? null, rythme: config.brief.rythme ?? null }}
+            duree={{ cible: optionsPlan.cible, rythme: optionsPlan.rythme }}
           />
           {rechercheLigne && (
             <StockRechercheAutopilote

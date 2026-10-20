@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
+import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
 import { etapesMontageApercuAutopilote, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import { planCompletAutopilote } from '@/lib/autopilot/plan-complet';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
@@ -102,5 +103,38 @@ describe('Aperçu du montage prévu — rendu', () => {
     const { container } = render(<ApercuMontageListe etapes={[]} lignes={[]} format="9:16" accent="#7C3AED" />);
     expect(container.querySelector('h3')!.textContent).toBe('Aperçu du montage');
     expect(container.textContent).toContain("Séquence Vidéo dans l'ordre de la liste, puis le CTA.");
+  });
+});
+
+describe('⚠️ parité avec « Plan avant génération » — même parole estimée (budget du script)', () => {
+  afterEach(() => cleanup());
+  it('étapes de l’aperçu == lignes « Montage prévu, plan par plan » (nombre, ordre, genre, horaires)', () => {
+    // Les MÊMES options, comme le panneau (une seule source : `optionsPlan`).
+    const optionsPlan = { avatarDisponible: true, cible: 30, rythme: null, secondesAvatarEstimees: 37.5 };
+    const gabarit = [{ id: 's1', type: 'stock' as const }];
+    const stock = [retenu(PHOTO, 'photo'), retenu(STOCK_V, 'video')];
+    const { container } = render(
+      <PlanAvantGeneration
+        gabarit={gabarit} suggestion={[]} rushesPerso={[RUSH]} stock={stock} stockPertinent={stock}
+        secondesAvatarEstimees={optionsPlan.secondesAvatarEstimees}
+        vignetteAvatar={null} avatarDisponible={optionsPlan.avatarDisponible}
+        onChange={() => {}} onRechercher={() => {}}
+        duree={{ cible: optionsPlan.cible, rythme: optionsPlan.rythme }}
+      />,
+    );
+    const lignesPlan = [...container.querySelectorAll('[data-plan-segment]')].map((li) => ({
+      genre: li.getAttribute('data-genre'), debut: Number(li.getAttribute('data-debut')), fin: Number(li.getAttribute('data-fin')),
+    }));
+    expect(lignesPlan.length).toBeGreaterThan(1);
+    // La parole estimée fixe la durée de la séquence (et non la cible).
+    expect(lignesPlan[lignesPlan.length - 1].fin).toBe(37.5);
+
+    const a = etapesMontageApercuAutopilote(resume({
+      gabarit, actives: { rushes: true, avatar: true, stock: true }, rushesPerso: [RUSH], stock,
+      avatar: { disponible: true, vignette: null },
+      plan: { ...optionsPlan, durees: {} },
+    }), { dureeCta: 4 });
+    const genre = { avatar: 'avatar', rush: 'rush', 'stock-video': 'video', 'stock-photo': 'photo' } as const;
+    expect(a.etapes.map((e) => ({ genre: genre[e.source as keyof typeof genre], debut: e.debut, fin: e.fin }))).toEqual(lignesPlan);
   });
 });
