@@ -13,10 +13,13 @@ import { describe, it, expect } from 'vitest';
 import { planMultiSources, avatarSynchronise } from '@/lib/autopilot/plan-multi-sources';
 import {
   mediasDesSources, normaliserConfigSources, libelleBanqueRushes, sujetsCourants,
-  type ConfigSources, type MediaStockRetenu,
+  type ConfigSources, type ConfigPourSources, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { scriptPourDuree, debitParoleAvatar } from '@/lib/autopilot/duree-cible';
 import { estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
+import { sourcesPertinentes, avatarAvecAutresSources } from '@/lib/autopilot/sources';
+import { planCompletAutopilote, segmentsDuPlan, entreeDepuisResume } from '@/lib/autopilot/plan-complet';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
 import type { RushSegment } from '@/lib/creer/multi-rush';
 
 const AV = 'https://minio.test/videos/u1/avatar/gen-1.mp4';
@@ -172,5 +175,60 @@ describe('budget du script de l’avatar : débit réel de la voix clonée', () 
     expect(estimerParoleJumeau(script)).toBeLessThanOrEqual(30);
     // L'ancien budget (14 car./s) aurait donné ≈ 40 s de parole réelle.
     expect(script.length).toBeLessThan(30 * 14);
+  });
+});
+
+describe('écran : les médias hors sujet ne sont ni comptés ni montrés', () => {
+  const m = (url: string, type: 'video' | 'photo', sujet?: string): MediaStockRetenu => ({
+    url, type, provider: 'pexels', providerAssetId: 'x', auteur: 'A', sourceUrl: '', licence: 'L', vignetteUrl: '', ...(sujet ? { sujet } : {}),
+  });
+  const cfg = (stock: MediaStockRetenu[], rushUrls: string[], avatar = false): ConfigPourSources => ({
+    rushUrls, jumeauAvatar: avatar, topics: ['nutrition'], brief: {},
+    designStyle: { sources: { actives: { rushes: true, avatar, stock: true }, stock, gabarit: [] } },
+  });
+
+  it('`sourcesPertinentes` : l’ordre et le filtre du moteur, la banque sans vidéo suggérée écartée', () => {
+    const r = sourcesPertinentes(cfg([m(SV2, 'video', 'Finance'), m(P1, 'photo', 'Nutrition'), m(SV1, 'video', 'nutrition')], [R1, SV1, SV2, SV4]));
+    expect(r.stock.map((x) => x.url)).toEqual([SV1, P1]);
+    expect(r.rushUrls).toEqual([R1, SV1]);
+  });
+
+  it('tout le stock hors sujet, aucun rush : le script de l’avatar prend le budget « avatar seul »', () => {
+    const horsSujet = cfg([m(SV2, 'video', 'Finance'), m(P2, 'photo', 'Danse')], [SV2], true);
+    expect(avatarAvecAutresSources(horsSujet)).toBe(false);
+    const dansSujet = cfg([m(SV1, 'video', 'Nutrition')], [SV1], true);
+    expect(avatarAvecAutresSources(dansSujet)).toBe(true);
+    const cartes = Array.from({ length: 6 }, (_, i) => ({ title: `Idée ${i + 1}`, description: `Une explication concrète, point ${i + 1}.` }));
+    const post = { title: 'Bien manger le matin', content: { cards: cartes, tagLine: 'Abonne-toi' }, brief: { duree: 30 } };
+    // Avatar seul : titre, cartes et CTA plein écran sont réservés — le script est plus court.
+    expect(scriptJumeauMontage(post, horsSujet).length).toBeLessThan(scriptJumeauMontage(post, dansSujet).length);
+  });
+});
+
+describe('plan complet (créneaux + alternance + CTA) = le plan du moteur', () => {
+  const resume = {
+    gabarit: [{ id: 's1', type: 'stock' as const }],
+    actives: { rushes: true, avatar: true, stock: true },
+    rushesPerso: [R1],
+    stock: [
+      { url: SV1, type: 'video' as const, provider: 'pexels' as const, providerAssetId: '1', auteur: '', sourceUrl: '', licence: '', vignetteUrl: '' },
+      { url: P1, type: 'photo' as const, provider: 'pexels' as const, providerAssetId: '2', auteur: '', sourceUrl: '', licence: '', vignetteUrl: '' },
+    ],
+    avatar: { disponible: true, vignette: null },
+  };
+
+  it('mêmes entrées → mêmes plans que `planMultiSources`', () => {
+    const o = { cible: 30, secondesAvatar: 31.2, durees: { [R1]: 12, [SV1]: 7 } };
+    const complet = planCompletAutopilote(resume, o);
+    expect(complet.segments).toEqual(segmentsDuPlan(planMultiSources(entreeDepuisResume(resume, o)).plan));
+    expect(complet.duree).toBe(31.2);
+    expect(complet.segments[0]).toMatchObject({ genre: 'video' });
+    expect(complet.segments.at(-1)).toMatchObject({ genre: 'avatar', role: 'cta', fin: 31.2 });
+  });
+
+  it('parole estimée depuis le script (`estimerParoleJumeau`) quand elle n’est pas mesurée', () => {
+    const script = 'x'.repeat(212);
+    expect(planCompletAutopilote(resume, { cible: 30, scriptAvatar: script }).duree).toBe(estimerParoleJumeau(script));
+    expect(planCompletAutopilote(resume, { cible: 30 }).duree).toBe(30);
   });
 });

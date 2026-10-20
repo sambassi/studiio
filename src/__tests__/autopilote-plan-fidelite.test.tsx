@@ -52,6 +52,15 @@ vi.mock('@/lib/render/proxy-rendu', async (orig) => {
   const actual = await orig<typeof import('@/lib/render/proxy-rendu')>();
   return { ...actual, urlRenduPourRush: async (url: string) => ({ url, proxy: false, cree: false }) };
 });
+// Durées lues par l'ÉCRAN (cache des miniatures) = celles que le moteur sonde.
+vi.mock('@/lib/medias/vignette-video', async (orig) => {
+  const actual = await orig<typeof import('@/lib/medias/vignette-video')>();
+  return {
+    ...actual,
+    vignetteEnMemoire: () => undefined,
+    obtenirVignette: async (url: string) => ({ url: 'blob:x', ratio: 9 / 16, duree: url.includes('stock-') ? 10 : 15 }),
+  };
+});
 vi.mock('@/lib/tarifs/serveur', () => ({ prixDe: async () => 10 }));
 vi.mock('@/lib/credits/system', () => ({ getVideoRenderCost: () => 10, deductCredits: async () => true }));
 vi.mock('@/lib/db/supabase', () => {
@@ -67,6 +76,7 @@ import { preparePosts } from '@/lib/autopilot/engine';
 import { produireUnMontage } from '@/lib/autopilot/produire';
 import { etatSourcesVisuelles, sourcesEffectives as sourcesEcran, validerEtapeRushes } from '@/lib/autopilot/medias-prevus';
 import { aUneSourceVisuelle, etatSourcesServeur } from '@/lib/autopilot/sources';
+import { segmentsDuPlan } from '@/lib/autopilot/plan-complet';
 
 const ORIGINE = 'https://studiio.pro/storage/v1/object/public/media/u1';
 const A = `${ORIGINE}/a.mp4`;
@@ -160,21 +170,28 @@ const typeSegment = (s: RushSegment): TypeCreneau => (s.kind === 'avatar' ? 'ava
 const compacter = <T,>(l: T[]) => l.filter((x, i) => i === 0 || x !== l[i - 1]);
 
 /**
- * Plan rendu conforme au plan montré. Sans avatar : identique, créneau par
- * créneau. Avec un avatar en conclusion : les créneaux montrés d'abord, dans
- * l'ordre, puis l'ALTERNANCE avatar ↔ plans de coupe qui remplit la parole
- * jusqu'au CTA de l'avatar (jamais deux plans d'avatar d'affilée).
+ * L'avatar rendu = sa vidéo ; un rush PERSONNEL tourne d'une vidéo à l'autre
+ * (le rush du créneau ouvre la liste) : l'écran dit « Mes rushes », sans le
+ * nommer — seuls les médias stock sont comparés par adresse.
  */
-function attendreConforme(types: TypeCreneau[], attendu: TypeCreneau[]) {
-  if (attendu.at(-1) !== 'avatar' || attendu.length < 2) { expect(types).toEqual(attendu); return; }
-  expect(types.slice(0, attendu.length - 1)).toEqual(attendu.slice(0, -1));
-  expect(types.at(-1)).toBe('avatar');
-  const suite = types.slice(attendu.length - 1);
-  for (let i = 1; i < suite.length; i++) expect(suite[i] === 'avatar' && suite[i - 1] === 'avatar').toBe(false);
+const urlComparable = (genre: string | null, url: string | null) => (genre === 'avatar' ? AV : genre === 'rush' ? 'rush' : url);
+/** Les plans AFFICHÉS (« Montage prévu, plan par plan »), dans le vocabulaire commun. */
+const segmentsAffiches = () => Array.from(document.querySelectorAll('[data-plan-segment]')).map((l) => ({
+  genre: l.getAttribute('data-genre'), role: l.getAttribute('data-role') || null,
+  debut: Number(l.getAttribute('data-debut')), fin: Number(l.getAttribute('data-fin')),
+  url: urlComparable(l.getAttribute('data-genre'), l.getAttribute('data-url')),
+}));
+/** Les plans RENDUS par le moteur, même vocabulaire (l'avatar rendu = sa vidéo). */
+const segmentsRendus = (montage: RushSegment[]) => segmentsDuPlan(montage).map((x) => ({ genre: x.genre, role: x.role, debut: x.debut, fin: x.fin, url: urlComparable(x.genre, x.url) }));
+
+/** STRICT : le plan montré, plan par plan (genre, rôle, horaires, média), est le plan rendu. */
+async function attendreIdentique(montage: RushSegment[] | null) {
+  expect(montage).toBeTruthy();
+  await waitFor(() => expect(segmentsAffiches()).toEqual(segmentsRendus(montage!)));
 }
 
 /** Le moteur réel, sur la configuration que le serveur a ENREGISTRÉE. */
-async function rendre(c: AutopilotConfig): Promise<{ types: TypeCreneau[]; urls: string[] }> {
+async function rendre(c: AutopilotConfig): Promise<{ types: TypeCreneau[]; urls: string[]; montage: RushSegment[] | null }> {
   const post = preparePosts({ config: c, topic: 'yoga', count: 1, now: Date.parse('2026-10-10T09:00:00Z') })[0];
   await produireUnMontage({
     userId: 'u1', config: c, post, rang: 0, now: Date.parse('2026-10-10T09:00:00Z'), jobId: 'job',
@@ -183,8 +200,8 @@ async function rendre(c: AutopilotConfig): Promise<{ types: TypeCreneau[]; urls:
   const d = lastDesign!;
   const montage = (d.montage as RushSegment[] | undefined) ?? null;
   // Chemins d'avant (une seule source) : la séquence Vidéo est `videoUrl`, ou les extraits de rushes.
-  if (!montage) return { types: [d.videoUrl === AV ? 'avatar' : 'rush'], urls: [String(d.videoUrl)] };
-  return { types: montage.map(typeSegment), urls: montage.map((s) => s.url) };
+  if (!montage) return { types: [d.videoUrl === AV ? 'avatar' : 'rush'], urls: [String(d.videoUrl)], montage: null };
+  return { types: montage.map(typeSegment), urls: montage.map((s) => s.url), montage };
 }
 
 describe('sans plan enregistré : la suggestion affichée = les types rendus', () => {
@@ -204,10 +221,11 @@ describe('sans plan enregistré : la suggestion affichée = les types rendus', (
       await waitFor(() => expect(typesAffiches()).toEqual(attendu));
       expect(q('[data-plan-suggere]')).toBeTruthy();
       expect(envois).toEqual([]);
-      const { types } = await rendre(configServeur);
-      // Multi-sources : plan rendu = suggestion, créneau par créneau. Une source
-      // seule (chemin d'avant) : la même nature de bout en bout.
-      if (new Set(attendu).size > 1) attendreConforme(types, attendu);
+      const { types, montage } = await rendre(configServeur);
+      // Multi-sources : le plan montré = le plan rendu, PLAN PAR PLAN (créneaux,
+      // alternance, CTA, horaires). Une source seule (chemin d'avant, hors
+      // orchestrateur) : la même nature de bout en bout.
+      if (new Set(attendu).size > 1) await attendreIdentique(montage);
       else expect(compacter(types)).toEqual(compacter(attendu));
     });
   }
@@ -226,8 +244,8 @@ describe('après chaque geste : le gabarit ENREGISTRÉ pilote le rendu à l’id
     expect(g.map((c) => c.type)).toEqual(attenduTypes);
     for (const [i, url] of Object.entries(forces)) expect(g[Number(i)].media).toBe(url);
     await waitFor(() => expect(typesAffiches()).toEqual(attenduTypes));
-    const { types, urls } = await rendre(dernier());
-    attendreConforme(types, attenduTypes);
+    const { urls, montage } = await rendre(dernier());
+    await attendreIdentique(montage);
     for (const [i, url] of Object.entries(forces)) expect(urls[Number(i)]).toBe(url);
   }
 
@@ -291,7 +309,7 @@ describe('après chaque geste : le gabarit ENREGISTRÉ pilote le rendu à l’id
     await waitFor(() => expect(q('[data-plan-suggere]')).toBeTruthy());
     const suggestion = typesAffiches();
     expect(suggestion).toEqual(['avatar', 'rush', 'rush', 'stock', 'avatar']);
-    attendreConforme((await rendre(dernier())).types, suggestion);
+    await attendreIdentique((await rendre(dernier())).montage);
   }, 30_000);
 
   it('rushes SEULS avec un plan enregistré : l’ordre forcé des rushes est rendu (avant : ignoré)', async () => {

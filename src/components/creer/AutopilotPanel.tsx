@@ -26,7 +26,7 @@ import {
   gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
 } from '@/lib/autopilot/medias-prevus';
 import {
-  aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal,
+  aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { conseilDureeAvatar } from '@/lib/autopilot/duree-cible';
@@ -752,7 +752,14 @@ export default function AutopilotPanel({
    */
   const rushesDispo = useMemo(() => rushesUtilisables(config.rushUrls, rushEtats), [config.rushUrls, rushEtats]);
   // Clé `sources` enregistrée ou non : la MÊME lecture que le moteur (`mediasDesSources`).
-  const etatSources = etatSourcesVisuelles(rushesDispo, sources, avatarPret, !!config.designStyle.sources);
+  /**
+   * PERTINENCE — la MÊME lecture que le moteur (`mediasDesSources`) : un média
+   * stock retenu pour un autre sujet n'est ni compté (« Médias prévus »), ni
+   * montré (plan, aperçu). La banque, elle, reste affichée en entier.
+   */
+  const pertinent = useMemo(() => sourcesPertinentes({ ...config, rushUrls: rushesDispo }), [config, rushesDispo]);
+  const sourcesEcran = useMemo(() => ({ ...sources, stock: pertinent.stock }), [sources, pertinent.stock]);
+  const etatSources = etatSourcesVisuelles(pertinent.rushUrls, sourcesEcran, avatarPret, !!config.designStyle.sources);
   const sourcePossible = aUneSourceVisuelle(etatSources);
   const montageFormat = montageDepuisStyle(config.designStyle)?.format;
   const formatStock: FormatStock = montageFormat === '16:9' || montageFormat === '1:1' ? montageFormat : '9:16';
@@ -777,7 +784,7 @@ export default function AutopilotPanel({
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
     rushesPerso: sources.actives.rushes ? rushesPerso : [],
-    stock: sources.actives.stock ? sources.stock : [],
+    stock: sources.actives.stock ? pertinent.stock : [],
     avatar: {
       disponible: avatarPorteLaProduction(sources.actives.avatar, avatarPret),
       vignette: vignetteAvatar ? { url: vignetteAvatar.url, type: vignetteAvatar.type } : null,
@@ -1172,7 +1179,7 @@ export default function AutopilotPanel({
     const rendu = contenuRendu(e);
     const personnels = e.rushesPersonnels + e.bibliotheque;
     const stockProposes = sources.actives.stock ? propositionsStock.proposes : 0;
-    const vignettes = sources.actives.stock ? sources.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
+    const vignettes = sources.actives.stock ? pertinent.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
     const { videos: videosSuggerees, photos: photosSuggerees } = mediasSuggeres(e);
     const ligne = (dt: string, dd: ReactNode, attrs: Record<string, string | number>) => (
       <div className="flex items-center justify-between gap-3 min-w-0">
@@ -1873,6 +1880,7 @@ export default function AutopilotPanel({
             suggestion={planSuggere}
             rushesPerso={sources.actives.rushes ? rushesPerso : []}
             stock={sources.actives.stock ? sources.stock : []}
+            stockPertinent={sources.actives.stock ? pertinent.stock : []}
             vignetteAvatar={vignetteAvatar}
             avatarDisponible={etatSources.avatarActif && etatSources.avatarPret}
             disabled={!ready || saving}

@@ -307,6 +307,26 @@ export function mediasDesSources(c: ConfigPourSources): { rushesPersonnels: stri
 }
 
 /**
+ * Ce que l'ÉCRAN doit compter et montrer (« Médias prévus », plan, aperçu) :
+ * les médias stock retenus que le moteur piochera (`mediasDesSources`), dans
+ * SON ordre, et la banque sans les vidéos suggérées écartées. Un média hors
+ * sujet n'est ni compté ni montré. Sans clé `sources` ou stock éteint : rien
+ * n'est filtré (le calcul d'avant). Pur.
+ */
+export function sourcesPertinentes(c: ConfigPourSources): { stock: MediaStockRetenu[]; rushUrls: string[] } {
+  const { sources, explicite } = sourcesEffectives(c);
+  const banque = Array.from(c.rushUrls ?? []);
+  if (!explicite || !sources.actives.stock) return { stock: sources.stock, rushUrls: banque };
+  const m = mediasDesSources(c);
+  const ordre = [...m.videosStock, ...m.photosStock];
+  const gardes = new Set(ordre);
+  return {
+    stock: sources.stock.filter((x) => gardes.has(x.url)).sort((a, b) => ordre.indexOf(a.url) - ordre.indexOf(b.url)),
+    rushUrls: banque.filter((u) => !estRushStock(u) || gardes.has(u)),
+  };
+}
+
+/**
  * L'avatar sera-t-il monté AVEC d'autres sources (rushes personnels, stock) ?
  * Seulement quand la clé `sources` est réglée : sans elle, le montage avatar
  * d'avant (avatar seul) reste à l'identique. Pur (client et serveur).
