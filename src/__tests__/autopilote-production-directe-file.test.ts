@@ -78,3 +78,14 @@ describe('Le verrou tranché par la base', () => {
     expect(estOrpheline({ ...l(60, 'autre'), statut: 'direct_rendu' }, t0, 'moi')).toBe(false);
   });
 });
+
+describe('Écritures du suivi : best-effort, jamais une promesse rejetée', () => {
+  it('une exception du client de base pendant la fin → false, journalisée, sans rejet', async () => {
+    expect(await reserverProductionDirecte(U, { jobId: JOB, date: '2026-10-20', time: '14:10' })).toEqual({ ok: true });
+    const espion = vi.spyOn(base.supabaseAdmin, 'from').mockImplementationOnce(() => { throw new Error('client sans update'); });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(terminerProductionDirecte(U, JOB, { ok: true, postId: 'p1' })).resolves.toBe(false);
+    expect(err).toHaveBeenCalledWith('[Autopilote/Manuel] état non écrit :', U, JOB, 'client sans update');
+    espion.mockRestore(); err.mockRestore();
+  });
+});

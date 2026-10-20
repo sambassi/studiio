@@ -426,16 +426,24 @@ export async function reserverProductionDirecte(
 }
 
 async function ecrireDirecte(userId: string, jobId: string, maj: Record<string, unknown>, seulementEnCours = true): Promise<boolean> {
-  let q = supabaseAdmin
-    .from('autopilot_jumeau_attente')
-    .update({ ...maj, updated_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('slot_key', SLOT_PRODUCTION_DIRECTE)
-    .eq('job_id', jobId);
-  if (seulementEnCours) q = q.eq('statut', STATUT_DIRECT_EN_COURS);
-  const { error } = await q;
-  if (error) { console.error('[Autopilote/Manuel] état non écrit :', userId, jobId, error.message); return false; }
-  return true;
+  // Best-effort : appelée sans attente (`void`) pendant le rendu — une panne
+  // de la base (ou une exception du client) ne doit JAMAIS devenir une
+  // promesse rejetée non rattrapée qui ferait tomber la production.
+  try {
+    let q = supabaseAdmin
+      .from('autopilot_jumeau_attente')
+      .update({ ...maj, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('slot_key', SLOT_PRODUCTION_DIRECTE)
+      .eq('job_id', jobId);
+    if (seulementEnCours) q = q.eq('statut', STATUT_DIRECT_EN_COURS);
+    const { error } = await q;
+    if (error) { console.error('[Autopilote/Manuel] état non écrit :', userId, jobId, error.message); return false; }
+    return true;
+  } catch (e) {
+    console.error('[Autopilote/Manuel] état non écrit :', userId, jobId, e instanceof Error ? e.message : String(e));
+    return false;
+  }
 }
 
 /**
