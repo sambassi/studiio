@@ -150,6 +150,12 @@ describe('Fenêtre du titre = fin du plan d\'ouverture', () => {
   it('fin inconnue : la durée d\'avant (3 s)', () => {
     expect(planOverlays({ duree: 24.68, profil: 'STANDARD', nbCartes: 4, finHook: null }).titre).toEqual([0, 3]);
   });
+  it('vidéo très courte (< 5 s) : le titre s\'arrête 0,4 s avant le CTA', () => {
+    for (const [duree, finHook] of [[4.5, 4], [4, null], [3, 2]] as const) {
+      const o = planOverlays({ duree, profil: 'STANDARD', nbCartes: 2, finHook });
+      expect(o.titre![1]).toBeLessThanOrEqual(o.cta![0] - 0.4 + 1e-9);
+    }
+  });
   it('plan d\'ouverture très long : plafonné (25 % de la vidéo)', () => {
     expect(planOverlays({ duree: 24, profil: 'STANDARD', nbCartes: 4, finHook: 12 }).titre).toEqual([0, 6]);
   });
@@ -168,6 +174,15 @@ describe('Valeur de carte qui redit le libellé : vidée', () => {
     // ANCRÉ n'est ni un mot ni un début de « HABIT STACKING » : elle apporte
     // une information (ancrer une habitude), elle reste.
     expect(vide('HABIT STACKING', 'ANCRÉ')).toBe('ANCRÉ');
+  });
+  it('valeur CHIFFRÉE jamais traitée ici : le titre perd la redite, le chiffre (autorisé) reste', () => {
+    const c1 = carteSansChiffresInventes({ title: '300+ MUSCLES', value: '300+', description: '' }, chiffresAutorises('300'));
+    expect(c1).toMatchObject({ title: 'MUSCLES', value: '300+' });
+    const c2 = carteSansChiffresInventes({ title: 'VOLS -40%', value: '-40%', description: '' }, chiffresAutorises('vols -40%'));
+    expect(c2).toMatchObject({ title: 'VOLS', value: '-40%' });
+    const c3 = carteSansChiffresInventes({ title: '100 POMPES', value: '10', description: '' }, chiffresAutorises('10 et 100'));
+    expect(c3.value).toBe('10');
+    expect(valeurRedondante('300+', '300+ MUSCLES')).toBe(false);
   });
   it('accents, casse, ponctuation, suites de mots', () => {
     expect(valeurRedondante('énergie', 'ÉNERGIE EXPRESS')).toBe(true);
