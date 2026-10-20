@@ -17,7 +17,7 @@ const base = vi.hoisted(() => ({ voices: [] as Ligne[], settings: [] as Ligne[],
 const reseau = vi.hoisted(() => ({
   eleven: [] as Array<{ url: string; body: { text: string } }>,
   anthropic: [] as Array<{ headers: Record<string, string>; body: { model: string; messages: Array<{ content: string }> } }>,
-  reponseAnthropic: { status: 200, texte: 'Afro-boust' as string | null },
+  reponseAnthropic: { status: 200, texte: 'Wousteur-chire' as string | null },
   autres: [] as string[],
 }));
 
@@ -88,7 +88,7 @@ beforeEach(() => {
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: PRONONCIATIONS } } }];
   base.ecritures = 0;
   reseau.eleven.length = 0; reseau.anthropic.length = 0; reseau.autres.length = 0;
-  reseau.reponseAnthropic = { status: 200, texte: 'Afro-boust' };
+  reseau.reponseAnthropic = { status: 200, texte: 'Wousteur-chire' };
   session.courante = { user: { id: U } };
   delete process.env.ANTHROPIC_API_KEY;
   process.env.ELEVENLABS_API_KEY = 'cle-de-test';
@@ -164,19 +164,21 @@ describe('POST /api/voice/prononciations/suggestion', () => {
 
   it('⚠️ cas difficile SANS clé Anthropic : suggestion locale seulement, aucun appel', async () => {
     const res = await post(SUGGERER, { affiche: 'Afroboost' });
-    expect(await res.json()).toEqual({ success: true, data: { suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' } });
+    expect(await res.json()).toEqual({ success: true, data: { suggestion: null, source: 'aucune', message: 'Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.' } });
     expect(reseau.anthropic).toEqual([]);
   });
 
   it('cas difficile AVEC clé : l’infrastructure Anthropic existante (mockée) propose, rien n’est enregistré', async () => {
     process.env.ANTHROPIC_API_KEY = 'cle-anthropic-test';
     session.courante = { user: { id: `ia-${compteurSession}` } };
-    const res = await post(SUGGERER, { affiche: 'Afroboost' });
-    expect(await res.json()).toEqual({ success: true, data: { suggestion: 'Afro-boust', source: 'ia' } });
+    const res = await post(SUGGERER, { affiche: 'Worcestershire' });
+    expect(await res.json()).toEqual({ success: true, data: { suggestion: 'Wousteur-chire', source: 'ia' } });
     expect(reseau.anthropic).toHaveLength(1);
     expect(reseau.anthropic[0].headers['x-api-key']).toBe('cle-anthropic-test');
     expect(reseau.anthropic[0].body.model).toBe('claude-sonnet-4-20250514');
-    expect(reseau.anthropic[0].body.messages[0].content).toContain('Afroboost');
+    expect(reseau.anthropic[0].body.messages[0].content).toContain('Worcestershire');
+    // La proposition locale identique au texte n'est plus envoyée comme « proposition ».
+    expect(reseau.anthropic[0].body.messages[0].content).not.toContain('Proposition automatique');
     expect(base.ecritures).toBe(0);
     expect(reseau.autres).toEqual([]);
   });
@@ -189,7 +191,7 @@ describe('POST /api/voice/prononciations/suggestion', () => {
     reseau.reponseAnthropic = { status: 200, texte: null };
     expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data.source).toBe('aucune');
     reseau.reponseAnthropic = { status: 200, texte: 'AFROBOOST' };
-    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' });
+    expect((await (await post(SUGGERER, { affiche: 'Afroboost' })).json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.' });
   });
 
   it('limiteur par compte : au-delà de 10 par minute → 429 avec Retry-After', async () => {

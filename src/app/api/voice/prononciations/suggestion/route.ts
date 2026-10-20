@@ -7,6 +7,8 @@
  *   1. exige une session (401 sinon) ;
  *   2. calcule la suggestion LOCALE (`suggererPrononciationLocale`) ; si elle
  *      est sûre, la rend telle quelle — aucun appel externe ;
+ *   2b. une expression française ordinaire (minuscules, sans chiffre, sigle
+ *      ni nom propre) n'est jamais envoyée au modèle ;
  *   3. sinon, et seulement si Studiio a déjà sa clé Anthropic
  *      (`ANTHROPIC_API_KEY`, la même que l'assistant et la suggestion
  *      d'icônes), demande une forme dite au modèle déjà utilisé ailleurs,
@@ -21,7 +23,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { creerLimiteurMemoire } from '@/lib/securite/limiteur-memoire';
 import { MAX_LONGUEUR_PRONONCIATION } from '@/lib/voice/prononciations';
-import { suggererPrononciationLocale, nettoyerSuggestion, suggestionUtile, MESSAGE_AUCUNE_SUGGESTION } from '@/lib/voice/suggestion-prononciation';
+import {
+  suggererPrononciationLocale, nettoyerSuggestion, suggestionUtile, expressionOrdinaire,
+  MESSAGE_AUCUNE_SUGGESTION, REPONSE_AUCUNE,
+} from '@/lib/voice/suggestion-prononciation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,6 +54,8 @@ const CONSIGNE = [
   'Réponds UNIQUEMENT par la façon de l’écrire pour qu’une voix française le dise correctement',
   '(orthographe phonétique simple, nombres en lettres, sigles épelés ou dits comme un mot selon l’usage).',
   'Une seule ligne, sans guillemets, sans explication, 80 caractères au plus.',
+  `Si une voix française le prononce déjà correctement tel quel, réponds exactement ${REPONSE_AUCUNE}.`,
+  'N’ajoute, ne double et ne retire jamais de lettre sans raison de prononciation.',
 ].join(' ');
 
 /**
@@ -79,6 +86,10 @@ export async function POST(req: NextRequest) {
   const locale = suggererPrononciationLocale(texte);
   if (!locale.incertain) return reponse(locale.suggestion, 'locale');
 
+  // Expression française ordinaire (minuscules, sans chiffre, sigle ni nom
+  // propre) : la voix la dit déjà ; aucun appel au modèle.
+  if (expressionOrdinaire(texte)) return reponse(locale.suggestion, 'locale');
+
   const cle = process.env.ANTHROPIC_API_KEY;
   if (!cle) return reponse(locale.suggestion, 'locale');
 
@@ -90,6 +101,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const propositionLocale = suggestionUtile(texte, locale.suggestion);
   try {
     const r = await fetch(POINT_ACCES, {
       method: 'POST',
@@ -98,7 +110,10 @@ export async function POST(req: NextRequest) {
         model: MODELE,
         max_tokens: JETONS_SORTIE_MAX,
         system: CONSIGNE,
-        messages: [{ role: 'user', content: `Texte à l’écran : ${texte}\nProposition automatique : ${locale.suggestion}` }],
+        // La proposition locale n'est jointe que si elle DIFFÈRE vraiment du
+        // texte : un texte recopié présenté comme « proposition » poussait
+        // le modèle à le valider ou à l'altérer à peine.
+        messages: [{ role: 'user', content: `Texte à l’écran : ${texte}${propositionLocale ? `\nProposition automatique : ${propositionLocale}` : ''}` }],
       }),
       signal: AbortSignal.timeout(DELAI_MS),
     });

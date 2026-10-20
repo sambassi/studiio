@@ -27,7 +27,7 @@ globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
       init?.signal?.addEventListener('abort', () => reject(init.signal?.reason ?? new Error('abort')));
     });
   }
-  return new Response(JSON.stringify({ content: [{ type: 'text', text: 'Afro-boust' }] }), { status: 200 });
+  return new Response(JSON.stringify({ content: [{ type: 'text', text: 'Wousteur-chire' }] }), { status: 200 });
 }) as unknown as typeof fetch;
 
 const { POST } = await import('@/app/api/voice/prononciations/suggestion/route');
@@ -54,7 +54,7 @@ describe('route suggestion — coût', () => {
     }
     expect(reseau.anthropic).toBe(0);
     // Le quota n'a pas été entamé : un cas difficile passe encore.
-    expect((await (await post('Afroboost')).json()).data.source).toBe('ia');
+    expect((await (await post('Worcestershire')).json()).data.source).toBe('ia');
   });
 
   it('(6b) Anthropic jette : suggestion locale, 200', async () => {
@@ -69,7 +69,7 @@ describe('route suggestion — coût', () => {
     reseau.mode = '500';
     const res = await post('Afroboost');
     expect(res.status).toBe(200);
-    expect((await res.json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' });
+    expect((await res.json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.' });
   });
 
   it('(6d/7) délai de 10 s : au-delà, la requête est abandonnée et la suggestion locale rendue', async () => {
@@ -88,7 +88,7 @@ describe('route suggestion — coût', () => {
     const res = await p;
     expect(AbortSignal.timeout).toHaveBeenCalledWith(10_000);
     expect(res.status).toBe(200);
-    expect((await res.json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion de prononciation différente trouvée.' });
+    expect((await res.json()).data).toEqual({ suggestion: null, source: 'aucune', message: 'Aucune suggestion fiable — vous pouvez saisir la prononciation vous-même.' });
   });
 
   it('(7) 10 par minute par compte → 429 + Retry-After, sans appel Anthropic ; un autre compte n’est pas touché', async () => {
