@@ -3,7 +3,6 @@ import { render, cleanup } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Preview } from '@/app/dashboard/creer/AssistantWizard';
-import { LISIBILITE_916 } from '@/components/creer/SequenceCards';
 
 /**
  * Aperçu des cartes en PAYSAGE — Mode simple.
@@ -87,14 +86,12 @@ describe('Le portrait ne change pas', () => {
     }
   });
 
-  it('garde ses dimensions d origine — base 330, texte au plancher de lisibilité 9:16', () => {
-    // 6/330 pour l'écart (valeur historique). Le texte, lui, est relevé au
-    // plancher de lisibilité 9:16 (#611, `LISIBILITE_916`) : 9/330 = 29 px
-    // était illisible sur téléphone (export du 20/10).
+  it('garde ses dimensions d origine — base 330', () => {
+    // 9/330 pour le texte, 6/330 pour l'écart : les valeurs historiques.
     render(<Preview {...props('9:16')} />);
     expect(grille().style.gap).toBe(`${VW['9:16'] * (6 / 330)}px`);
     const libelle = cartes()[0].querySelector('span')!;
-    expect(libelle.style.fontSize).toBe(`${VW['9:16'] * Math.max(9 / 330, LISIBILITE_916.text)}px`);
+    expect(libelle.style.fontSize).toBe(`${VW['9:16'] * (9 / 330)}px`);
   });
 
   it('le carré aussi : il tient déjà dans son conteneur', () => {

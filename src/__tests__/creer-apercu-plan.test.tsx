@@ -12,11 +12,11 @@
  * Enregistrer l'instantané (sur la base uniquement) : ENREGISTRER_APERCU_PLAN=1.
  *
  * Réenregistré VOLONTAIREMENT par #611 (lisibilité de l'export du 20/10).
- * Seules trois clés du `design` changent, rien d'autre (plans, appels,
- * signature hors ces clés) :
- *   - `cardsEtapes` : repli sans photo des cartes, apparition calée ;
- *   - `ctaSousPastille: true` : petite ligne du CTA < 4,5:1 sur le dégradé ;
- *   - `ctaTextScale` 1 → 1,5 : plancher de lisibilité du CTA en 9:16.
+ * Une seule clé du `design` change, rien d'autre (plans, appels, signature
+ * hors cette clé) : `cardsEtapes` — repli SANS photo des cartes (jsdom ne
+ * photographie pas), apparition calée au lieu de toutes les cartes figées.
+ * Ces projets sont des brouillons SANS marqueur `versionLisibilite` : leurs
+ * réglages (CTA à 1, cartes, petite ligne) sont rendus tels quels.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';

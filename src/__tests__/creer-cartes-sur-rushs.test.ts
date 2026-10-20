@@ -28,7 +28,16 @@ import { calageProportionnel } from '@/lib/creer/synchro-cartes';
 import { drawCards, type DesignOptions } from '@/lib/video-composer';
 import SequenceCards, { LISIBILITE_916 } from '@/components/creer/SequenceCards';
 import { optionsRenduDepuisMetadata } from '@/lib/rendus/options-depuis-metadata';
-import { echelleCtaAjustee, echelleCtaDeDepart, ECHELLE_CTA_LISIBLE_916 } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart, ECHELLE_CTA_LISIBLE_916, VERSION_LISIBILITE, defautsLisibles } from '@/lib/creer/ajustementCta';
+import { sanitizeDraft, DRAFT_VERSION } from '@/lib/creer/draft';
+
+const DEFAUTS_BROUILLON = {
+  themeIds: ['t'], toneIds: ['n'], formats: ['9:16'],
+  defaults: {
+    themeId: 't', toneId: 'n', format: '9:16', titleStyle: {}, subtitleStyle: {}, ctaStyle: { scale: 1 },
+    sequences: [], durations: { intro: 3, cards: 6, video: 10, cta: 3 },
+  },
+} as never;
 
 const base = { dureeCartes: 39.5, dureeVideo: 25.2, nbCartes: 5, nbSources: 3, fondCartesExplicite: false, surimpressions: false };
 
@@ -244,6 +253,21 @@ describe('drawCards — repli SANS photo : apparition progressive et fond vidéo
 });
 
 describe('CTA 9:16 : plancher de lisibilité, jamais de débordement', () => {
+  it('projets ANTÉRIEURS (brouillon/post sans marqueur) : 1 reste 1, rien ne change', () => {
+    const ancien = sanitizeDraft({ version: DRAFT_VERSION, ctaStyle: { scale: 1 } } as never, DEFAUTS_BROUILLON);
+    expect(ancien?.versionLisibilite).toBeUndefined();
+    expect(defautsLisibles(ancien?.versionLisibilite)).toBe(false);
+    expect(echelleCtaDeDepart(1, '9:16', defautsLisibles(ancien?.versionLisibilite))).toBe(1);
+    expect(echelleCtaDeDepart(0.8, '9:16', false)).toBe(0.8);
+  });
+
+  it('projet NEUF (marqueur relu du brouillon) : 1,5 ; 0,8 explicite reste 0,8', () => {
+    const neuf = sanitizeDraft({ version: DRAFT_VERSION, versionLisibilite: VERSION_LISIBILITE } as never, DEFAUTS_BROUILLON);
+    expect(neuf?.versionLisibilite).toBe(VERSION_LISIBILITE);
+    expect(echelleCtaDeDepart(1, '9:16', defautsLisibles(neuf?.versionLisibilite))).toBe(1.5);
+    expect(echelleCtaDeDepart(0.8, '9:16', defautsLisibles(neuf?.versionLisibilite))).toBe(0.8);
+  });
+
   it('le plancher ne remplace que le DÉFAUT : une échelle choisie (plus petite comprise) est gardée', () => {
     expect(echelleCtaDeDepart(undefined, '9:16')).toBe(ECHELLE_CTA_LISIBLE_916);
     expect(echelleCtaDeDepart(1, '9:16')).toBe(ECHELLE_CTA_LISIBLE_916);
@@ -279,17 +303,23 @@ describe('Contraste de la petite ligne du CTA', () => {
 describe('SequenceCards — planchers de lisibilité en 9:16', () => {
   const CARTES = [{ id: 'a', icon: 'Heart', title: 'Cardio complet', value: '3-en-1' }];
   const tailles = (html: string) => Array.from(html.matchAll(/font-size:([\d.]+)px/g)).map((m) => Number(m[1]));
-  it('9:16 (zone sûre) : texte ≥ 4 % de la largeur, sans ellipse', () => {
-    const html = renderToStaticMarkup(React.createElement(SequenceCards, { cards: CARTES, containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true }));
+  it('9:16 (zone sûre, projet neuf) : texte ≥ 4,8 % de la largeur, sans ellipse', () => {
+    const html = renderToStaticMarkup(React.createElement(SequenceCards, { cards: CARTES, containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true, typography: { lisible916: true } }));
     expect(Math.min(...tailles(html))).toBeGreaterThanOrEqual(Math.floor(1080 * LISIBILITE_916.text));
     expect(html).not.toContain('text-overflow:ellipsis');
   });
   it('description ≤ 40 caractères rendue MASQUÉE (seule la capture sur rush l’affiche) ; longue : omise', () => {
-    const court = renderToStaticMarkup(React.createElement(SequenceCards, { cards: [{ ...CARTES[0], description: 'Brûle 3x plus de calories' }], containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true }));
+    const court = renderToStaticMarkup(React.createElement(SequenceCards, { cards: [{ ...CARTES[0], description: 'Brûle 3x plus de calories' }], containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true, typography: { lisible916: true } }));
     expect(court).toContain('data-card-description');
     expect(court).toContain('display:none');
-    const long = renderToStaticMarkup(React.createElement(SequenceCards, { cards: [{ ...CARTES[0], description: 'x'.repeat(41) }], containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true }));
+    const long = renderToStaticMarkup(React.createElement(SequenceCards, { cards: [{ ...CARTES[0], description: 'x'.repeat(41) }], containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true, typography: { lisible916: true } }));
     expect(long).not.toContain('data-card-description');
+  });
+
+  it('projet antérieur (sans marqueur) : tailles d’avant, même en 9:16', () => {
+    const html = renderToStaticMarkup(React.createElement(SequenceCards, { cards: CARTES, containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true }));
+    expect(Math.min(...tailles(html))).toBeLessThan(1080 * LISIBILITE_916.text);
+    expect(html).toContain('text-overflow:ellipsis');
   });
 
   it('sans zone sûre (autres appels) : rendu d’avant', () => {

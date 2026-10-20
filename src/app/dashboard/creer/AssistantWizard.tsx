@@ -162,7 +162,7 @@ import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
-import { echelleCtaAjustee, echelleCtaDeDepart } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart, VERSION_LISIBILITE, defautsLisibles } from '@/lib/creer/ajustementCta';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -4191,6 +4191,13 @@ export default function AssistantWizard() {
   const [subtitleStyle, setSubtitleStyle] = useState<TextStyles['subtitle']>(
     DEFAULT_TEXT_STYLES.subtitle,
   );
+  /**
+   * Défauts de lisibilité (#611) : un projet NEUF part en version 2 ; un
+   * brouillon ou un post rouvert sans marqueur garde EXACTEMENT ses réglages
+   * (CTA à 1 reste 1, cartes et petite ligne comme avant).
+   */
+  const [versionLisibilite, setVersionLisibilite] = useState<number>(VERSION_LISIBILITE);
+  const lisible = defautsLisibles(versionLisibilite);
   const [ctaStyle, setCtaStyle] = useState<TextStyles['cta']>({
     ...DEFAULT_TEXT_STYLES.cta,
     // Provisoire : remplace juste en dessous par la fin du degrade tant que
@@ -4293,7 +4300,7 @@ export default function AssistantWizard() {
       ...ctaStyle,
       subColor: ctaStyle.subColor || gradEnd,
       // 9:16 : le DÉFAUT devient lisible (`echelleCtaDeDepart`) ; un réglage de l'utilisateur est gardé.
-      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: echelleCtaDeDepart(ctaStyle.scale, format), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
+      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: echelleCtaDeDepart(ctaStyle.scale, format, lisible), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
     },
   };
 
@@ -4335,7 +4342,7 @@ export default function AssistantWizard() {
    * de marque sur le rose du fond, export du 20/10) : pastille sombre et
    * teinte éclaircie, dans l'aperçu ET dans la vidéo (`contraste.ts`).
    */
-  const ctaSousPastille = besoinPastille(textStyles.cta.subColor, [gradStart, gradEnd]);
+  const ctaSousPastille = lisible && besoinPastille(textStyles.cta.subColor, [gradStart, gradEnd]);
   const texteApercu: TextStyles = ctaSousPastille ? { ...textStyles, cta: { ...textStyles.cta, sousPastille: true } } : textStyles;
   const textDesign = {
     ...(ctaSousPastille ? { ctaSousPastille: true } : {}),
@@ -4740,6 +4747,7 @@ export default function AssistantWizard() {
    * parite, sans toucher au compositeur.
    */
   const [cardsTypography, setCardsTypography] = useState<CardsTypography>({});
+  const cardsTypographyRendu: CardsTypography = lisible ? { ...cardsTypography, lisible916: true } : cardsTypography;
   const patchCards = useCallback((patch: Partial<CardsTypography>) => {
     setCardsTypography((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -4795,7 +4803,7 @@ export default function AssistantWizard() {
     const x0 = e.clientX;
     const y0 = e.clientY;
     // CTA : la poignée part de l'échelle AFFICHÉE (défaut 9:16 relevé compris).
-    const echelleDepart = el === 'title' ? (titleStyle.scale ?? 1) : echelleCtaDeDepart(ctaStyle.scale, format);
+    const echelleDepart = el === 'title' ? (titleStyle.scale ?? 1) : echelleCtaDeDepart(ctaStyle.scale, format, lisible);
     const poser = el === 'title' ? setTitleStyle : setCtaStyle;
     const bouger = (ev: PointerEvent) => {
       const scale = echelleDepuisCoin({
@@ -4813,7 +4821,7 @@ export default function AssistantWizard() {
     cible.addEventListener('pointermove', bouger);
     cible.addEventListener('pointerup', finir);
     cible.addEventListener('pointercancel', finir);
-  }, [titleStyle.scale, ctaStyle.scale, format]);
+  }, [titleStyle.scale, ctaStyle.scale, format, lisible]);
 
   /** Bord du titre ou du CTA : la LARGEUR du bloc (export : `titleSize` / `watermarkSize`). */
   const startTextWidth = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
@@ -7091,6 +7099,7 @@ export default function AssistantWizard() {
     transition,
     textAnimation,
     habillageVideoMode,
+    versionLisibilite,
     introDuration,
     cardsDuration,
     videoDuration,
@@ -7182,6 +7191,7 @@ export default function AssistantWizard() {
     transition,
     textAnimation,
     habillageVideoMode,
+    versionLisibilite,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, mediasVideo, lut, scheduledDate,
@@ -7261,6 +7271,7 @@ export default function AssistantWizard() {
     setTitleStyle(draft.titleStyle as TextStyles['title']);
     setSubtitleStyle(draft.subtitleStyle as TextStyles['subtitle']);
     setCtaStyle(draft.ctaStyle as TextStyles['cta']);
+    setVersionLisibilite(draft.versionLisibilite ?? 1);
     setWatermarkOverride(draft.watermarkOverride ?? null);
     setWatermarkEnabled(draft.watermarkEnabled !== false);
     // `sanitizeDraft` a déjà tranché : `jumeauMode` explicite, sinon l'ancien
@@ -7581,7 +7592,7 @@ export default function AssistantWizard() {
     // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
     // temps que la video.
     cardStyle,
-    cardsTypography,
+    cardsTypography: cardsTypographyRendu,
   };
 
   /* ── LE RENDU JOUE DANS LE CADRE ──────────────────────────────────────
@@ -7966,7 +7977,7 @@ export default function AssistantWizard() {
             ctaCopies={copiesCtaRendues}
             cardBoxes={effectiveCardBoxes}
             cardStyle={cardStyle}
-            cardsTypography={cardsTypography}
+            cardsTypography={cardsTypographyRendu}
             elements={freeElements}
             watermark={watermarkLabel}
             accent={accent}
@@ -9904,7 +9915,7 @@ export default function AssistantWizard() {
             ...(cardsTypography.font ? { cardsFont: cardsTypography.font } : null),
             ...(cardsTypography.scale !== undefined
               ? { cardsTextScale: cardsTypography.scale * 100 } : null),
-            cardsTextStyle: { ...cardsTypography },
+            cardsTextStyle: { ...cardsTypographyRendu },
             // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
             font: DESIGN.font,
 
@@ -10343,7 +10354,7 @@ export default function AssistantWizard() {
             ...(cardsTypography.font ? { cardsFont: cardsTypography.font } : null),
             ...(cardsTypography.scale !== undefined
               ? { cardsTextScale: cardsTypography.scale * 100 } : null),
-            cardsTextStyle: { ...cardsTypography },
+            cardsTextStyle: { ...cardsTypographyRendu },
             ...(etapesSansPhoto ? { cardsEtapes: etapesSansPhoto } : {}),
             font: DESIGN.font,
             // Persiste pour que le Calendrier (apercu HTML et regeneration)
@@ -10603,6 +10614,8 @@ export default function AssistantWizard() {
     setEnvoiIntention('brouillon');
     setReseauxProgrammes([]);
     setError(null);
+    // Nouveau montage : défauts lisibles (#611).
+    setVersionLisibilite(VERSION_LISIBILITE);
   };
 
   // ── Rendu ───────────────────────────────────────────────────────────

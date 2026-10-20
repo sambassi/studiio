@@ -71,7 +71,7 @@ describe('18. CTA : ne déborde jamais, ne fait que réduire', () => {
   it('appliquée dans `textStyles` : l’aperçu et l’export reçoivent la MÊME échelle', () => {
     // #611 : en 9:16 le DÉFAUT part de 1,5 (`echelleCtaDeDepart`) AVANT
     // l'ajustement — qui ne fait toujours que réduire ; un réglage explicite est gardé.
-    expect(wizard).toContain('scale: echelleCtaAjustee({ texte: generated?.cta ?? \'\', sousTexte: generated?.ctaSub, echelle: echelleCtaDeDepart(ctaStyle.scale, format), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),');
+    expect(wizard).toContain('scale: echelleCtaAjustee({ texte: generated?.cta ?? \'\', sousTexte: generated?.ctaSub, echelle: echelleCtaDeDepart(ctaStyle.scale, format, lisible), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),');
     expect(wizard).toContain('ctaTextScale: textStyles.cta.scale,');
   });
 });

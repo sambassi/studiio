@@ -95,6 +95,11 @@ export interface CardsTypography {
   strike?: boolean;
   textCase?: TextCase;
   align?: TextAlign;
+  /**
+   * Planchers de lisibilité 9:16 (`LISIBILITE_916`) — posé par Créer pour les
+   * projets créés à partir de #611 seulement. Absent : tailles d'avant.
+   */
+  lisible916?: boolean;
 }
 
 export interface CardsInteraction {
@@ -207,7 +212,7 @@ export default function SequenceCards({
   // 9:16 en flux : planchers de LISIBILITE sur téléphone (`LISIBILITE_916`).
   // Les ratios d'origine (≈ 29 px sur 1080) se lisaient mal une fois la vidéo
   // réduite à la largeur d'un écran. Paysage, carré et mode libre : inchangés.
-  const lisible = zoneSure916 && !landscape && !cardBoxes;
+  const lisible = zoneSure916 && !landscape && !cardBoxes && !!typography?.lisible916;
   const CR = lisible ? ratiosLisibles916(cardRatios(landscape)) : cardRatios(landscape);
   const it = interaction;
   const uiPx = it?.uiPx ?? ((n: number) => n);
