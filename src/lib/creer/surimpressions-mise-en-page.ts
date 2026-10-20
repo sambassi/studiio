@@ -747,8 +747,13 @@ export function badgeValide(c: { title?: string | null; value?: string | null } 
  */
 const EM_CARACTERE = 0.7;
 
-/** Corps minimal (px sur 1080) du TITRE d'un badge posé sur l'image en 9:16. */
-export const BADGE_TEXTE_MIN_PX_916 = 40;
+/**
+ * Corps minimal (px sur 1080) du TITRE d'un badge posé sur l'image en 9:16 :
+ * 52 px (capitale ≈ 37 px), le même plancher que les cartes lisibles en flux
+ * (`LISIBILITE_916.text`). 40 px ne changeait presque rien à l'œil sur la
+ * démo (≈ 47 px déjà rendus).
+ */
+export const BADGE_TEXTE_MIN_PX_916 = 52;
 /** La valeur est toujours plus grande que le titre du badge (× 1,25 au moins). */
 export const BADGE_VALEUR_SUR_TEXTE = 1.25;
 
@@ -756,7 +761,7 @@ export const BADGE_VALEUR_SUR_TEXTE = 1.25;
  * Tailles (px) d'un badge posé sur l'image. Constat (« MOTIVATION », 20/10) :
  * cartes en surimpression à ≈ 25 px sur 1080 — `ajusterBadge` réduisait
  * l'échelle pour tenir 2 lignes dans la boîte. En 9:16 (portrait), le titre ne
- * descend plus sous `BADGE_TEXTE_MIN_PX_916` (la boîte s'allonge, une ligne de
+ * descend plus sous `BADGE_TEXTE_MIN_PX_916` (52 px ; la boîte s'allonge, une ligne de
  * plus au besoin), la valeur reste ≥ 1,25 × le titre, l'icône suit. Pure.
  */
 export function taillesBadge(p: {

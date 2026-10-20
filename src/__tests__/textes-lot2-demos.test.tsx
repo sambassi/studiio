@@ -38,20 +38,20 @@ describe('Autopilote : badges lisibles en 9:16', () => {
   const R = cardRatios(false);
   it(`titre ≥ ${BADGE_TEXTE_MIN_PX_916} px sur 1080, valeur ≥ 1,25 × le titre`, () => {
     const t = taillesBadge({ vw: 1080, ratios: R, echelle: 0.85, portrait: true });
-    expect(t.texte).toBeGreaterThanOrEqual(40);
+    expect(t.texte).toBeGreaterThanOrEqual(52);
     expect(t.valeur).toBeGreaterThanOrEqual(t.texte * 1.25 - 1e-9);
   });
   it('paysage : tailles d’avant', () => {
     const t = taillesBadge({ vw: 1920, ratios: R, echelle: 0.85, portrait: false });
     expect(t.texte).toBeCloseTo(1920 * R.text * 0.85, 9);
   });
-  it('rendu : « HABIT STACKING » sur fond d’image ≥ 40 px, contour à 0,75', () => {
+  it('rendu : « HABIT STACKING » sur fond d’image ≥ 52 px, contour à 0,75', () => {
     const html = renderToStaticMarkup(
       <SequenceCards cards={[{ id: 'c0', icon: 'Zap', title: 'HABIT STACKING', value: 'ANCRÉ' }]} cardBoxes={{ c0: { x: 0, y: 72, w: 91.6, h: 22 } }}
         containerWidth={1080} landscape={false} zoneSure916 valueColor="#EC4899" fond="transparent" typography={{ scale: 1.6 }} />,
     );
     const tailles = Array.from(html.matchAll(/font-size:([\d.]+)px/g)).map((m) => Number(m[1]));
-    expect(Math.min(...tailles)).toBeGreaterThanOrEqual(40);
+    expect(Math.min(...tailles)).toBeGreaterThanOrEqual(52);
     expect(html).toContain('rgba(0,0,0,0.75)');
     expect(CONTOUR_TEXTE_ALPHA).toBe(0.75);
     expect(HALO_TEXTE_ALPHA).toBeGreaterThan(0.9);
