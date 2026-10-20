@@ -293,7 +293,8 @@ describe('Retenir des médias stock', () => {
     await waitFor(() => expect(envois.length).toBe(1));
     expect(importes).toEqual([{ provider: 'pexels', type: 'video', providerAssetId: 'V1' }]);
     expect(dernier().rushUrls).toEqual([A, IMPORTE('V1')]);
-    expect(dernier().designStyle.sources!.stock).toEqual([{ ...retenu('pexels', 'video', 'V1'), sourceUrl: 'https://www.pexels.com/video/V1/' }]);
+    // Le SUJET du moment est noté avec le média retenu.
+    expect(dernier().designStyle.sources!.stock).toEqual([{ ...retenu('pexels', 'video', 'V1'), sourceUrl: 'https://www.pexels.com/video/V1/', sujet: 'yoga' }]);
     await waitFor(() => expect(q('[data-autopilot-stock-retenu="pexels-video-V1"]')).toBeTruthy());
     // L'attribution n'est plus un libellé : elle vit dans « Informations du média » de l'aperçu.
     const carte = q('[data-autopilot-stock-retenu="pexels-video-V1"]')!;

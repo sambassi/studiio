@@ -222,8 +222,11 @@ describe('les combinaisons multi-sources rendent', () => {
     const { design } = await produire(c, AV);
     const plan = montageDe(design);
     // Le plan suggéré (avatar, rush, rush, stock, avatar) : les deux rushes personnels d’abord,
-    // le premier média stock libre (la vidéo) complète le créneau restant.
-    expect(plan.map((s) => s.source)).toEqual(['jumeau', 'rush', 'rush', 'stock', 'jumeau']);
+    // le premier média stock libre (la vidéo) complète le créneau restant ;
+    // puis avatar et plans de coupe (photos, vidéo reprise) ALTERNENT jusqu’au CTA.
+    expect(plan.map((s) => s.source).slice(0, 5)).toEqual(['jumeau', 'rush', 'rush', 'stock', 'jumeau']);
+    expect(plan.at(-1)!.source).toBe('jumeau');
+    expect(plan.filter((s) => s.source === 'photo').length).toBeGreaterThanOrEqual(2);
     expect(avatarSynchronise(plan)).toBe(true);
     expect(plan.at(-1)!.fin).toBe(40);
   });

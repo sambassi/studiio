@@ -230,10 +230,11 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
     expect(corpsImport).toEqual([{ provider: 'pexels', type: 'video', providerAssetId: 'P1' }]);
     const recu = JSON.parse(envois[0]) as AutopilotConfig;
     expect(recu.rushUrls).toEqual([A, IMPORTE('P1')]);
-    // UN seul PUT : la banque ET le média retenu (attribution comprise).
+    // UN seul PUT : la banque ET le média retenu (attribution comprise), avec le SUJET du moment.
     expect(recu.designStyle.sources?.stock).toEqual([{
       url: IMPORTE('P1'), type: 'video', provider: 'pexels', providerAssetId: 'P1', auteur: 'Auteur P1',
       sourceUrl: 'https://www.pexels.com/video/P1/', licence: 'Pexels License', vignetteUrl: 'https://images.pexels.com/videos/P1/thumb.jpg',
+      sujet: 'cours Afroboost cardio-danse',
     }]);
     await waitFor(() => expect(document.querySelector(`[data-autopilot-rush-stock="${IMPORTE('P1')}"]`)?.querySelector('[data-carte-libelle]')?.textContent).toBe('Vidéo suggérée'));
     expect(document.querySelector('[data-autopilot-stock-slot="plan-2"][data-etat="conserve"]')).toBeTruthy();

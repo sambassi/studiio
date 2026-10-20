@@ -120,10 +120,10 @@ describe('A5 — sans jumeau : l’aperçu d’avant, inchangé et fidèle', () 
 });
 
 describe('A5 — estimation de la parole', () => {
-  it('longueur du script au débit du rythme, au dixième', () => {
-    expect(estimerParoleJumeau('x'.repeat(140))).toBe(10);
-    expect(estimerParoleJumeau('x'.repeat(120), 'calme')).toBe(10);
-    expect(estimerParoleJumeau('x'.repeat(160), 'dynamique')).toBe(10);
+  it('longueur du script au débit de la voix de l’avatar (≈ 0,76 × le rythme), au dixième', () => {
+    expect(estimerParoleJumeau('x'.repeat(106))).toBe(10);
+    expect(estimerParoleJumeau('x'.repeat(91), 'calme')).toBe(10);
+    expect(estimerParoleJumeau('x'.repeat(122), 'dynamique')).toBe(10);
     expect(estimerParoleJumeau('   ')).toBe(0);
   });
 });
