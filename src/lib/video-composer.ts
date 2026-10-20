@@ -6,6 +6,18 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 import {
+  creerChaineMaster,
+  analyserVoix,
+  dbVersGain,
+  decoderPourDetection,
+  gainMasterDb,
+  niveauMusiqueDb,
+  planDuckingVoix,
+  planifierEnveloppe,
+  type SegmentParole,
+  type SourceVoix,
+} from './creer/mixageVoix';
+import {
   applyTextCase, decorationLines, textLeftEdge, sanitizeTextAlign,
   DEFAULT_TEXT_CASE, type TextCase, type TextAlign,
 } from '@/lib/creer/textFormat';
@@ -604,6 +616,16 @@ export interface ComposerOptions {
    * so its audio is embedded in the recording.
    */
   audioKeyframes?: AudioKeyframe[];
+  /**
+   * Ducking AUTOMATIQUE de la musique sous les voix (voix globale et voix par
+   * séquence), calé sur les niveaux mesurés : musique 15 dB sous la voix
+   * pendant la parole (baisse bornée −12…−26 dB), lit musical jamais plus fort
+   * que la voix, attaque 80 ms, relâche 600 ms ; normalisation du master
+   * bornée par les crêtes de la voix (`mixageVoix.ts`). Les keyframes
+   * manuelles restent respectées (plafond, jamais une double baisse). Défaut :
+   * actif. `false` = mixage d'avant (seul le limiteur transparent reste).
+   */
+  duckingVoixAuto?: boolean;
   /**
    * Style de transition joue entre DEUX sequences consecutives.
    *
@@ -4693,6 +4715,18 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // into the same node so a single keyframe `voiceVolume` automates them
   // together. Created lazily when the first voice source connects.
   let voiceGainNode: GainNode | null = null;
+  // Entrée du master (limiteur transparent) : TOUTES les sources y passent.
+  let sortieMix: GainNode | null = null;
+  // Ducking automatique de la musique sous les voix (couche après son gain).
+  let duckVoixNode: GainNode | null = null;
+  // Parole détectée par voix, en temps de FICHIER (null = non décodée).
+  let paroleVoixGlobale: SegmentParole[] | null = null;
+  let niveauVoixGlobaleDb: number | undefined;
+  let creteVoixGlobaleDb: number | undefined;
+  let dureeVoixGlobale = 0;
+  const paroleVoixSeq: Partial<Record<'titre' | 'cartes' | 'video' | 'cta', { segments: SegmentParole[]; niveauDb?: number; creteDb?: number }>> = {};
+  // Niveau RMS du fichier musique (profondeur adaptative) — absent : fixe.
+  let niveauMusiqueFichierDb: number | undefined;
 
   if (hasAudio) {
     // For batch mode with shared context: if it's closed or broken, create a fresh one
@@ -4723,6 +4757,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
     audioDest = audioCtx.createMediaStreamDestination();
     console.log('[Composer] AudioDestination created, stream tracks:', audioDest.stream.getAudioTracks().length);
+    // Master : limiteur de sécurité, transparent sous −2 dBFS (gain de
+    // rattrapage du compresseur annulé). Plus de somme sans garde-fou.
+    sortieMix = creerChaineMaster(audioCtx, audioDest);
 
     // ── MUSIC: try AudioBuffer first, then <audio> element ──
     if (options.musicBuffer) {
@@ -4733,7 +4770,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const musicGain = audioCtx.createGain();
         musicGain.gain.value = options.musicVolume ?? ((validVoiceBuffer || voiceEl) ? 0.5 : 0.8);
         musicBufferSource.connect(musicGain);
-        musicGain.connect(audioDest);
+        musicGain.connect(sortieMix);
         musicGainNode = musicGain;
         console.log('[Composer] ✅ Music: AudioBuffer connected | duration:', options.musicBuffer.duration.toFixed(1), 's | channels:', options.musicBuffer.numberOfChannels, '| gain:', musicGain.gain.value);
       } catch (err) {
@@ -4753,7 +4790,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const musicGain = audioCtx.createGain();
         musicGain.gain.value = options.musicVolume ?? (voiceEl ? 0.5 : 0.8);
         musicSource.connect(musicGain);
-        musicGain.connect(audioDest);
+        musicGain.connect(sortieMix);
         musicGainNode = musicGain;
         musicEl.loop = true;
         musicElConnected = true;
@@ -4769,7 +4806,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // gains still apply (options.voiceVolume scales each individually).
     const voiceBus = audioCtx.createGain();
     voiceBus.gain.value = 1.0; // keyframes drive this; individual sources scaled by options.voiceVolume below
-    voiceBus.connect(audioDest);
+    voiceBus.connect(sortieMix);
     voiceGainNode = voiceBus;
 
     // ── VOICE: try AudioBuffer first, then <audio> element ──
@@ -4862,7 +4899,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
             rushSource.connect(rushGain);
           }
         }
-        rushGain.connect(audioDest);
+        rushGain.connect(sortieMix!);
         rushGainNode = rushGain;
         console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted, '| ctx.state:', audioCtx.state);
       } catch (err) {
@@ -4888,8 +4925,57 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       duck.gain.value = 1;
       musicGainNode.disconnect();
       musicGainNode.connect(duck);
-      duck.connect(audioDest);
+      duck.connect(sortieMix);
       jumeau.duckMusique = duck;
+    }
+
+    // ── DUCKING AUTOMATIQUE SOUS LES VOIX ──
+    // La parole de chaque voix est détectée sur la piste décodée (temps du
+    // fichier) ; l'enveloppe est posée au démarrage, en temps de montage. La
+    // musique passe : gain réglé/keyframes → ducking voix → (jumeau) → master.
+    const voixPresentes = !!validVoiceBuffer || !!voiceEl || hasAnySeqVoice;
+    if (options.duckingVoixAuto !== false && musicGainNode && voixPresentes) {
+      const ctxDetection = audioCtx;
+      const [musiqueDecodee, globale, ...parSeq] = await Promise.all([
+        options.musicBuffer
+          ? Promise.resolve(options.musicBuffer)
+          : (musicUrl ? decoderPourDetection(ctxDetection, musicUrl) : Promise.resolve(null)),
+        validVoiceBuffer
+          ? Promise.resolve(validVoiceBuffer)
+          : (voiceEl && voiceUrl ? decoderPourDetection(ctxDetection, voiceUrl) : Promise.resolve(null)),
+        ...SEQ_VOICE_KEYS.map((k) => {
+          const u = options.sequenceVoiceUrls?.[k];
+          return seqVoiceEls[k] && u ? decoderPourDetection(ctxDetection, u) : Promise.resolve(null);
+        }),
+      ]);
+      if (musiqueDecodee) niveauMusiqueFichierDb = niveauMusiqueDb(musiqueDecodee);
+      if (globale) {
+        const a = analyserVoix(globale);
+        paroleVoixGlobale = a.segments;
+        niveauVoixGlobaleDb = a.niveauDb;
+        creteVoixGlobaleDb = a.creteDb;
+        dureeVoixGlobale = globale.duration;
+      }
+      else if (voiceEl) {
+        // Indécodable : on duck toute sa durée plutôt que pas du tout.
+        dureeVoixGlobale = Number.isFinite(voiceEl.duration) ? voiceEl.duration : 0;
+        paroleVoixGlobale = dureeVoixGlobale > 0 ? [{ start: 0, end: dureeVoixGlobale }] : null;
+      }
+      SEQ_VOICE_KEYS.forEach((k, i) => {
+        const el = seqVoiceEls[k];
+        if (!el) return;
+        const buf = parSeq[i];
+        const d = Number.isFinite(el.duration) ? el.duration : 0;
+        paroleVoixSeq[k] = buf ? analyserVoix(buf) : { segments: d > 0 ? [{ start: 0, end: d }] : [] };
+      });
+      const duckV = audioCtx.createGain();
+      duckV.gain.value = 1;
+      const suite: AudioNode = jumeau?.duckMusique ?? sortieMix;
+      musicGainNode.disconnect();
+      musicGainNode.connect(duckV);
+      duckV.connect(suite);
+      duckVoixNode = duckV;
+      console.log('[Composer] 🎚️ Ducking voix : parole détectée — globale', paroleVoixGlobale?.length ?? 0, 'segments | séquences', SEQ_VOICE_KEYS.map((k) => `${k}:${paroleVoixSeq[k]?.segments.length ?? '-'}`).join(' '), '| musique', niveauMusiqueFichierDb?.toFixed(1) ?? '?', 'dBFS');
     }
 
     // Final audio status
@@ -5236,7 +5322,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
             const mg = audioCtx.createGain();
             mg.gain.value = (validVoiceBuffer || voiceEl) ? 0.5 : 0.8;
             musicBufferSource.connect(mg);
-            mg.connect(jumeau?.duckMusique ?? audioDest);
+            mg.connect(duckVoixNode ?? jumeau?.duckMusique ?? sortieMix ?? audioDest);
             musicGainNode = mg;
             musicBufferSource.start(audioCtx.currentTime + 0.05);
             console.log('[Composer] ✅ Music AudioBuffer RECREATED and STARTED');
@@ -5364,6 +5450,33 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         }
         console.log('[Composer] 🎚️ Voice gain automation scheduled —', sortedKf.length, 'keyframes');
       }
+    }
+
+    // ── DUCKING AUTOMATIQUE : enveloppe de la musique sous TOUTES les voix ──
+    // Même calcul que l'aperçu (`planDuckingVoix`) ; posé sur l'horloge audio.
+    if (audioCtx && duckVoixNode) {
+      const sources: SourceVoix[] = [];
+      if (paroleVoixGlobale && voixGlobale) sources.push({ segments: paroleVoixGlobale, depart: 0, fin: dureeVoixGlobale || undefined, niveauDb: niveauVoixGlobaleDb, creteDb: creteVoixGlobaleDb });
+      for (const k of SEQ_VOICE_KEYS) {
+        const v = paroleVoixSeq[k];
+        if (!v || !seqVoiceEls[k]) continue;
+        const idx = sequences.findIndex((sq) => sq.type === (SEQ_NAME_MAP[k] || k));
+        if (idx === -1) continue;
+        sources.push({ segments: v.segments, depart: seqStarts[idx], fin: seqStarts[idx] + sequences[idx].duration, niveauDb: v.niveauDb, creteDb: v.creteDb });
+      }
+      // La séquence du jumeau a déjà sa propre baisse (×0,1) : pas de double.
+      const seqJumeau = jumeau?.duckMusique ? sequences.find((sq) => sq.type === 'video') : undefined;
+      const exclusion = seqJumeau
+        ? { start: seqStarts[sequences.indexOf(seqJumeau)], end: seqStarts[sequences.indexOf(seqJumeau)] + seqJumeau.duration }
+        : null;
+      const base = options.musicVolume ?? ((validVoiceBuffer || voiceEl) ? 0.5 : 0.8);
+      const points = planDuckingVoix({ sources, exclusion, keyframes: options.audioKeyframes, base, musiqueFichierDb: niveauMusiqueFichierDb });
+      planifierEnveloppe(duckVoixNode.gain, points, audioStartTime);
+      // Normalisation du master, identique pour TOUT le mix (voix comprise),
+      // bornée pour que les crêtes de la voix restent sous le limiteur.
+      const masterDb = gainMasterDb(sources);
+      if (sortieMix) sortieMix.gain.setValueAtTime(dbVersGain(masterDb), audioStartTime);
+      console.log('[Composer] 🎚️ Ducking voix programmé —', points.length, 'points,', sources.length, 'voix | master', masterDb.toFixed(1), 'dB');
     }
 
     // START video element
