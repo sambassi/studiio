@@ -10,6 +10,13 @@
  * - L'aperçu ne fait aucune requête de rendu, de crédits ni de facturation.
  *
  * Enregistrer l'instantané (sur la base uniquement) : ENREGISTRER_APERCU_PLAN=1.
+ *
+ * Réenregistré VOLONTAIREMENT par #611 (lisibilité de l'export du 20/10).
+ * Seules trois clés du `design` changent, rien d'autre (plans, appels,
+ * signature hors ces clés) :
+ *   - `cardsEtapes` : repli sans photo des cartes, apparition calée ;
+ *   - `ctaSousPastille: true` : petite ligne du CTA < 4,5:1 sur le dégradé ;
+ *   - `ctaTextScale` 1 → 1,5 : plancher de lisibilité du CTA en 9:16.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';

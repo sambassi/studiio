@@ -369,7 +369,11 @@ describe('Export — les mêmes valeurs partent au compositeur', () => {
     // La valeur transite par `previewShared`, l'objet que lisent l'aperçu de
     // la colonne ET la fenêtre agrandie — l'indirection est justement ce qui
     // empêche les deux instances de diverger.
-    expect(wizardSource).toMatch(/text: textStyles,/);
+    // #611 : `texteApercu` = `textStyles` + la pastille de la petite ligne du
+    // CTA (dérivée, jamais persistée) — le MÊME objet pour l'aperçu de la
+    // colonne et la fenêtre agrandie.
+    expect(wizardSource).toMatch(/text: texteApercu,/);
+    expect(wizardSource).toMatch(/const texteApercu: TextStyles = ctaSousPastille \? \{ \.\.\.textStyles,/);
     expect(wizardSource).toMatch(/titleFont: textStyles\.title\.font/);
   });
 });

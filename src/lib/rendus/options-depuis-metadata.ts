@@ -287,6 +287,9 @@ export function optionsRenduDepuisMetadata(
     design.cardsTextStyle = designMeta.cardsTextStyle;
   }
   if (prep.elements && prep.elements.length > 0) design.elements = prep.elements;
+  // Pastille de la petite ligne du CTA (Créer, `contraste.ts`) : relue telle
+  // qu'écrite. Absente des anciens posts : CTA d'avant.
+  if (designMeta.ctaSousPastille === true) design.ctaSousPastille = true;
   // CTA multiples : relus tels que Créer les a écrits (forme RENDUE, échelle
   // ajustée et couleur de sous-texte résolue). Absents des anciens posts :
   // aucune clé, rendu inchangé.
@@ -299,6 +302,13 @@ export function optionsRenduDepuisMetadata(
   if (prep.cardsSnapshot && photo) {
     design.cardsSnapshot = prep.cardsSnapshot;
     design.cardsSnapshotRect = photo.rect;
+  }
+  // Sans photo : apparition des cartes redessinées, telle que Créer l'a
+  // rendue (`design.cardsEtapes`). Absente des anciens posts : inchangé.
+  else if (Array.isArray(designMeta.cardsEtapes)) {
+    const etapes = (designMeta.cardsEtapes as unknown[]).filter((e): e is { debut: number; carte: number } =>
+      !!e && typeof e === 'object' && fini((e as { debut?: unknown }).debut) && Number.isInteger((e as { carte?: unknown }).carte));
+    if (etapes.length) design.cardsEtapes = etapes.map((e) => ({ debut: e.debut, carte: e.carte }));
   }
 
   const fidelite: Partial<ComposerOptions> = {};

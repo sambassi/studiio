@@ -69,7 +69,9 @@ describe('18. CTA : ne déborde jamais, ne fait que réduire', () => {
     expect(e).toBeGreaterThanOrEqual(ECHELLE_CTA_MIN);
   });
   it('appliquée dans `textStyles` : l’aperçu et l’export reçoivent la MÊME échelle', () => {
-    expect(wizard).toContain('scale: echelleCtaAjustee({ texte: generated?.cta ?? \'\', sousTexte: generated?.ctaSub, echelle: ctaStyle.scale ?? 1, largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),');
+    // #611 : en 9:16 l'échelle part d'un plancher de lisibilité (1,5) AVANT
+    // l'ajustement — qui ne fait toujours que réduire.
+    expect(wizard).toContain('scale: echelleCtaAjustee({ texte: generated?.cta ?? \'\', sousTexte: generated?.ctaSub, echelle: format === \'9:16\' ? Math.max(ctaStyle.scale ?? 1, ECHELLE_CTA_LISIBLE_916) : (ctaStyle.scale ?? 1), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),');
     expect(wizard).toContain('ctaTextScale: textStyles.cta.scale,');
   });
 });

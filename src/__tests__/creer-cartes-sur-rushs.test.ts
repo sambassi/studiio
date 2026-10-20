@@ -28,6 +28,7 @@ import { calageProportionnel } from '@/lib/creer/synchro-cartes';
 import { drawCards, type DesignOptions } from '@/lib/video-composer';
 import SequenceCards, { LISIBILITE_916 } from '@/components/creer/SequenceCards';
 import { optionsRenduDepuisMetadata } from '@/lib/rendus/options-depuis-metadata';
+import { echelleCtaAjustee, ECHELLE_CTA_LISIBLE_916 } from '@/lib/creer/ajustementCta';
 
 const base = { dureeCartes: 39.5, dureeVideo: 25.2, nbCartes: 5, nbSources: 3, fondCartesExplicite: false, surimpressions: false };
 
@@ -88,7 +89,10 @@ describe('planCartesSurRushs — répartition narrative', () => {
       expect(p[i].debut).toBe(p[i - 1].fin);
       expect(p[i].url).not.toBe(p[i - 1].url);
     }
-    expect(p.slice(0, 3).map((x) => x.url)).toEqual(['a.mp4', 'b.mp4', 'c.mp4']);
+    // Ordre CYCLIQUE de l'utilisateur (a → b → c → a…), décalé pour que le
+    // dernier plan ne soit pas le rush qui ouvre la Vidéo.
+    const cycle = ['a.mp4', 'b.mp4', 'c.mp4'];
+    for (let i = 1; i < p.length; i++) expect(cycle.indexOf(p[i].url)).toBe((cycle.indexOf(p[i - 1].url) + 1) % 3);
     expect(Math.max(...p.map((x) => x.fin - x.debut))).toBeLessThanOrEqual(PLAN_MAX_S + 1e-6);
   });
 
@@ -108,6 +112,18 @@ describe('planCartesSurRushs — répartition narrative', () => {
     const p = planCartesSurRushs({ sources: courts, dureeCartes: 30, dejaUtilises: [{ url: 'a.mp4', debut: 0, fin: 8.4 }, { url: 'b.mp4', debut: 8.4, fin: 16.8 }] })!;
     expect(p.at(-1)!.fin).toBe(30);
     for (const s of p) expect((s.depuis ?? 0) + (s.fin - s.debut)).toBeLessThanOrEqual(8.4 + 1e-6);
+  });
+
+  it('raccord avec la Vidéo : le dernier plan des cartes ne vient jamais du rush qui ouvre la Vidéo', () => {
+    for (const duree of [12, 20, 26, 39.5, 45]) {
+      for (const n of [2, 3]) {
+        const src = sources.slice(0, n);
+        const p = planCartesSurRushs({ sources: src, dureeCartes: duree, dejaUtilises: planVideo.slice(0, n) })!;
+        expect(p.at(-1)!.url).not.toBe('a.mp4');
+        // Rotation dans l'ordre de l'utilisateur, toujours sans doublon consécutif.
+        for (let i = 1; i < p.length; i++) expect(p[i].url).not.toBe(p[i - 1].url);
+      }
+    }
   });
 
   it('aucune source ou durée nulle : null (fond d’avant)', () => {
@@ -164,6 +180,18 @@ describe('capturerEtapesCartes — cartes sur les rushes : une carte à la fois,
     expect(etat(el)).toEqual(CARTES.map(() => 'v|rgba(255, 255, 255, 0.08)'));
   });
 
+  it('sur un rush : la description COURTE apparaît en seconde ligne pendant la photo, masquée ensuite', async () => {
+    const el = dom();
+    el.querySelector('[data-card-id="c1"] span')!.insertAdjacentHTML('beforeend', '<span data-card-description style="display: none">Court</span>');
+    const d = el.querySelector<HTMLElement>('[data-card-description]')!;
+    const vus: string[] = [];
+    await capturerEtapesCartes(el, calageProportionnel(CARTES, 12)!, CARTES.map((c) => c.id), async () => { vus.push(d.style.display); return 1; }, { cumul: false, fondCarte: '#000' });
+    expect(vus.every((v) => v === 'block')).toBe(true);
+    expect(d.style.display).toBe('none');
+    await capturerEtapesCartes(el, calageProportionnel(CARTES, 12)!, CARTES.map((c) => c.id), async () => { vus.push(d.style.display); return 1; });
+    expect(vus.at(-1)).toBe('none');
+  });
+
   it('défaut (cumulé) : inchangé — les cartes s’accumulent', async () => {
     const el = dom();
     const calage = calageProportionnel(CARTES, 12)!;
@@ -215,6 +243,14 @@ describe('drawCards — repli SANS photo : apparition progressive et fond vidéo
   });
 });
 
+describe('CTA 9:16 : plancher de lisibilité, jamais de débordement', () => {
+  it('« JE ME LANCE » : échelle 1,5 (≈ 61 px, capitale ≈ 44 px) ; un texte long reste ajusté', () => {
+    const v = { w: 1080, h: 1920 };
+    expect(echelleCtaAjustee({ texte: 'JE ME LANCE', sousTexte: "RÉSERVE TON COURS D'ESSAI", echelle: ECHELLE_CTA_LISIBLE_916, largeurPct: 70, video: v })).toBe(1.5);
+    expect(echelleCtaAjustee({ texte: 'ANTICONSTITUTIONNELLEMENT', echelle: ECHELLE_CTA_LISIBLE_916, largeurPct: 70, video: v })).toBeLessThan(1.5);
+  });
+});
+
 describe('Contraste de la petite ligne du CTA', () => {
   it('le rose de marque sur le dégradé rose/violet échoue (export du 20/10)', () => {
     expect(besoinPastille('#EC4899', ['#7C3AED', '#EC4899'])).toBe(true);
@@ -239,6 +275,14 @@ describe('SequenceCards — planchers de lisibilité en 9:16', () => {
     expect(Math.min(...tailles(html))).toBeGreaterThanOrEqual(Math.floor(1080 * LISIBILITE_916.text));
     expect(html).not.toContain('text-overflow:ellipsis');
   });
+  it('description ≤ 40 caractères rendue MASQUÉE (seule la capture sur rush l’affiche) ; longue : omise', () => {
+    const court = renderToStaticMarkup(React.createElement(SequenceCards, { cards: [{ ...CARTES[0], description: 'Brûle 3x plus de calories' }], containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true }));
+    expect(court).toContain('data-card-description');
+    expect(court).toContain('display:none');
+    const long = renderToStaticMarkup(React.createElement(SequenceCards, { cards: [{ ...CARTES[0], description: 'x'.repeat(41) }], containerWidth: 1080, landscape: false, valueColor: '#EC4899', zoneSure916: true }));
+    expect(long).not.toContain('data-card-description');
+  });
+
   it('sans zone sûre (autres appels) : rendu d’avant', () => {
     const html = renderToStaticMarkup(React.createElement(SequenceCards, { cards: CARTES, containerWidth: 1080, landscape: false, valueColor: '#EC4899' }));
     expect(Math.min(...tailles(html))).toBeLessThan(1080 * LISIBILITE_916.text);

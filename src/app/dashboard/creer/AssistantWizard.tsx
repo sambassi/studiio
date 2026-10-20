@@ -162,7 +162,7 @@ import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
-import { echelleCtaAjustee } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, ECHELLE_CTA_LISIBLE_916 } from '@/lib/creer/ajustementCta';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -4292,7 +4292,8 @@ export default function AssistantWizard() {
     cta: {
       ...ctaStyle,
       subColor: ctaStyle.subColor || gradEnd,
-      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: ctaStyle.scale ?? 1, largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
+      // 9:16 : plancher de lisibilité (`ECHELLE_CTA_LISIBLE_916`), puis l'ajustement anti-débordement.
+      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: format === '9:16' ? Math.max(ctaStyle.scale ?? 1, ECHELLE_CTA_LISIBLE_916) : (ctaStyle.scale ?? 1), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
     },
   };
 
@@ -9772,6 +9773,11 @@ export default function AssistantWizard() {
         const textDesignRendu = titre916.echelle === textStyles.title.scale
           ? textDesign
           : { ...textDesign, textScale: titre916.echelle, cardsTextScale: 100 / titre916.echelle };
+        // Repli sans photo : instants d'apparition des cartes redessinées
+        // (compositeur ET métadonnée, relue par « Régénérer »).
+        const etapesSansPhoto = !cardsSnapshot && calageRendu
+          ? calageRendu.etapes.filter((e) => e.element === 'carte').map((e) => ({ debut: e.debut, carte: e.carte }))
+          : null;
         const optionsRendu: ComposerOptions = {
           width: size.w,
           height: size.h,
@@ -9810,8 +9816,6 @@ export default function AssistantWizard() {
             ? recadragesRendu(plateau.rushUrl, plateau.rushs, planMontageRushs ?? planListe)
             : {}),
           ...(surimpressionsItem ? { surimpressions: surimpressionsItem } : {}),
-          // Cartes sur les rushes (narration longue) : plans SOUS les cartes.
-          ...(duree('video') > 0 && planSousCartes ? { cartesSurRushs: planSousCartes } : {}),
           ...(rushLut ? { rushLut } : {}),
           // Une sequence desactivee a une duree nulle : c'est ainsi que le
           // compositeur l'exclut (conditions d'inclusion), et le Calendrier la
@@ -9820,6 +9824,8 @@ export default function AssistantWizard() {
           // le compositeur retombe de toute facon sur le fondu, autant lui
           // dire explicitement ce que l'ecran annonce.
           transition,
+          // Cartes sur les rushes (narration longue) : plans SOUS les cartes.
+          ...(duree('video') > 0 && planSousCartes ? { cartesSurRushs: planSousCartes } : {}),
           introDuration: duree('intro'),
           cardsDuration: duree('cards'),
           videoDuration: duree('video'),
@@ -9938,9 +9944,7 @@ export default function AssistantWizard() {
             ...(cardsReveal ? { cardsReveal } : null),
             // Repli sans photo : les cartes redessinées apparaissent quand même
             // à leur instant (jamais toutes ensemble pendant la narration).
-            ...(!cardsSnapshot && calageRendu
-              ? { cardsEtapes: calageRendu.etapes.filter((e) => e.element === 'carte').map((e) => ({ debut: e.debut, carte: e.carte })) }
-              : null),
+            ...(etapesSansPhoto ? { cardsEtapes: etapesSansPhoto } : null),
             // Couche d'elements : le compositeur la peint sur les quatre
             // sequences. `undefined` sans element — rien ne change alors.
             elements: await rasterizeElements(),
@@ -10339,6 +10343,7 @@ export default function AssistantWizard() {
             ...(cardsTypography.scale !== undefined
               ? { cardsTextScale: cardsTypography.scale * 100 } : null),
             cardsTextStyle: { ...cardsTypography },
+            ...(etapesSansPhoto ? { cardsEtapes: etapesSansPhoto } : {}),
             font: DESIGN.font,
             // Persiste pour que le Calendrier (apercu HTML et regeneration)
             // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.

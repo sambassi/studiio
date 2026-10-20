@@ -160,9 +160,20 @@ export function planCartesSurRushs(p: {
   const coupes = coupesCartes(p.dureeCartes, p.apparitions ?? [], p.planMax ?? PLAN_MAX_S);
   const pris = new Map(sources.map((s) => [s.url, occupes(s.url, p.dejaUtilises ?? [])] as const));
   const curseurs = new Map<string, number>(sources.map((s) => [s.url, 0]));
+  // Raccord avec la séquence Vidéo : le DERNIER plan des cartes ne vient
+  // jamais du rush qui OUVRE la Vidéo (sinon le même rush continuerait au-delà
+  // de 6 s à travers la coupe, avec un saut en arrière). On décale la
+  // rotation (l'ordre cyclique de l'utilisateur est gardé) du plus petit pas
+  // qui l'évite. Un seul rush : rien à permuter.
+  const nbPlans = coupes.length - 1;
+  const ouvreVideo = [...(p.dejaUtilises ?? [])].filter((e) => !e.kind || e.kind === 'video').sort((a, b) => a.debut - b.debut)[0]?.url;
+  let decalage = 0;
+  if (ouvreVideo && sources.length > 1) {
+    while (decalage < sources.length - 1 && sources[(nbPlans - 1 + decalage) % sources.length].url === ouvreVideo) decalage += 1;
+  }
   const plan: RushSegment[] = [];
   for (let k = 1; k < coupes.length; k++) {
-    const src = sources[(k - 1) % sources.length];
+    const src = sources[(k - 1 + decalage) % sources.length];
     const debut = coupes[k - 1];
     const fin = coupes[k];
     const longueur = fin - debut;

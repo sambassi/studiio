@@ -13,10 +13,14 @@ import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
 
 /**
  * Planchers de lisibilité des cartes en 9:16 (fraction de la largeur vidéo) :
- * texte ≥ 4 % (43 px sur 1080), valeur ≥ 4,6 %, icône ≥ 5 %. Mesuré sur
- * l'export du 20/10 : 29 px de texte, illisible sur téléphone.
+ * texte ≥ 4,8 % (52 px sur 1080, hauteur de capitale ≈ 37 px), valeur ≥ 5,5 %,
+ * icône ≥ 6 %. Mesuré sur l'export du 20/10 : 29 px de texte, illisible
+ * sur téléphone.
  */
-export const LISIBILITE_916 = { text: 0.04, value: 0.046, icon: 0.05 } as const;
+export const LISIBILITE_916 = { text: 0.048, value: 0.055, icon: 0.06 } as const;
+
+/** Description assez courte pour une seconde ligne lisible (cartes sur les rushes). */
+export const DESCRIPTION_COURTE_MAX = 40;
 
 export function ratiosLisibles916<R extends { text: number; value: number; icon: number }>(r: R): R {
   return {
@@ -404,6 +408,14 @@ export default function SequenceCards({
           }}
         >
           {c.title}
+          {/* Cartes SUR les rushes : la description COURTE en seconde ligne.
+              Masquée (aperçu, rendu d'avant) ; seule la capture des cartes
+              posées sur un rush l'affiche (`capture-etapes-cartes.ts`). */}
+          {lisible && c.description && c.description.trim().length <= DESCRIPTION_COURTE_MAX && (
+            <span data-card-description style={{ display: 'none', fontWeight: 400, fontSize: vw * CR.text * echelle * 0.72, lineHeight: 1.2, opacity: 0.9, marginTop: vw * 0.004 }}>
+              {c.description.trim()}
+            </span>
+          )}
         </span>
         {c.value && (
           <span data-card-value

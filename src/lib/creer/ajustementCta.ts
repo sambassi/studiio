@@ -59,3 +59,11 @@ export function echelleCtaAjustee(p: {
   while (echelle > ECHELLE_CTA_MIN && hauteur(echelle) > h * HAUTEUR_CTA_MAX) echelle *= 0.95;
   return Math.max(ECHELLE_CTA_MIN, Math.floor(echelle * 100) / 100);
 }
+
+/**
+ * 9:16 : échelle MINIMALE du CTA avant ajustement — 0,0375 × 1080 × 1,5 ≈ 61 px,
+ * hauteur de capitale ≈ 44 px (export du 20/10 : 28 px, illisible sur
+ * téléphone). `echelleCtaAjustee` ne fait ensuite que RÉDUIRE si le texte
+ * déborderait : jamais de débordement, marges sûres gardées.
+ */
+export const ECHELLE_CTA_LISIBLE_916 = 1.5;

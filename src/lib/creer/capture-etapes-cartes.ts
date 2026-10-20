@@ -50,12 +50,19 @@ export async function capturerEtapesCartes<I>(
   // Fond sombre des cartes posées sur un rush : seulement les cartes qui ont
   // déjà un fond (« sans cadre » reste sans cadre).
   const fonds = new Map<HTMLElement, string>();
+  const descriptions = new Map<HTMLElement, string>();
   if (options.fondCarte) {
     for (const el of cartes) {
       if (!el || !el.style.backgroundColor) continue;
       fonds.set(el, el.style.backgroundColor);
       el.style.backgroundColor = options.fondCarte;
     }
+    // Sur un rush, seul le titre se lisait : la description COURTE vient en
+    // seconde ligne (`SequenceCards`, `data-card-description`).
+    conteneur.querySelectorAll<HTMLElement>('[data-card-description]').forEach((d) => {
+      descriptions.set(d, d.style.display);
+      d.style.display = 'block';
+    });
   }
 
   const out: Array<{ debut: number; image: I }> = [];
@@ -85,6 +92,7 @@ export async function capturerEtapesCartes<I>(
   } finally {
     origine.forEach((v, el) => { el.style.visibility = v; });
     fonds.forEach((v, el) => { el.style.backgroundColor = v; });
+    descriptions.forEach((v, el) => { el.style.display = v; });
   }
   return out.length > 0 ? out : null;
 }
@@ -100,14 +108,20 @@ export const FOND_CARTE_SUR_RUSH = 'rgba(10,10,15,0.72)';
 export async function avecFondCartes<T>(conteneur: HTMLElement, fond: string | null | undefined, fn: () => Promise<T>): Promise<T> {
   if (!fond) return fn();
   const avant = new Map<HTMLElement, string>();
+  const descriptions = new Map<HTMLElement, string>();
   conteneur.querySelectorAll<HTMLElement>('[data-card-id]').forEach((el) => {
     if (!el.style.backgroundColor) return;
     avant.set(el, el.style.backgroundColor);
     el.style.backgroundColor = fond;
   });
+  conteneur.querySelectorAll<HTMLElement>('[data-card-description]').forEach((d) => {
+    descriptions.set(d, d.style.display);
+    d.style.display = 'block';
+  });
   try {
     return await fn();
   } finally {
     avant.forEach((v, el) => { el.style.backgroundColor = v; });
+    descriptions.forEach((v, el) => { el.style.display = v; });
   }
 }
