@@ -275,7 +275,7 @@ describe('Autopilote — guidage par étape', () => {
     await monter();
     allerEtape(1);
     expect(document.querySelector('[data-autopilot-add-rush]')!.getAttribute('data-cta')).toBe('secondaire');
-    expect(document.querySelector('[data-autopilot-rushes-etat]')!.textContent).toMatch(/3 rushes prêts/);
+    expect(document.querySelector('[data-autopilot-rushes-etat]')!.textContent).toMatch(/3 rushes personnels/);
     expect((document.querySelector('[data-autopilot-suivant]') as HTMLButtonElement).disabled).toBe(false);
   });
 

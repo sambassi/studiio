@@ -29,17 +29,17 @@ import { cleTarifEcranMonAvatar, lignesPrixGenererAvatar, LIBELLE_BOUTON_GENERER
 import { devisVideoHeygen, dureeParoleEstimee, libelleCoutUsd, libelleDuree, LIBELLE_MOTEUR as LIBELLE_MOTEUR_DEVIS } from '@/lib/fournisseurs/devis-fournisseur';
 import { MOTEUR_PAR_QUALITE, LIBELLE_QUALITE as LIBELLE_QUALITE_ECRAN } from '@/lib/avatar/moteurs';
 import BlocPrix from '@/components/ui/BlocPrix';
-import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, LancementAnnule, type EtatJumeau, type PhaseJumeau } from '@/lib/creer/jumeau';
+import { lireEtatJumeau, genererEtAttendreVideoJumeau, attendreStatutJumeau, LancementAnnule, etapeVideoAvatarDepuisPhaseJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
 import MesAvatars from '@/components/avatar/MesAvatars';
 import PreparationPhoto from '@/components/avatar/studio/PreparationPhoto';
 import { libelleLissage } from '@/lib/avatar/preparation-source-regles';
 import { avecConfirmationCout, confirmerCreationAvatar, CHAMP_CONFIRMATION_COUT, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import { libelleAvatarActif, TITRE_SOURCE_AVATAR, TITRE_RENDU_RECENT, AUCUN_RENDU_RECENT, type RenduRecent } from '@/lib/avatar/identite';
 import { CLASSES_LECTEUR_GENERATION, ratioCadre, formatLecteurDepuisRatio } from '@/lib/ui/lecteur-generation';
+import { CLE_GENERATION_EN_COURS, lireGenerationEnCours, type GenerationEnCours } from '@/lib/avatar/progression';
 import {
-  ETAPES_GENERATION_HEYGEN, ETAPES_GENERATION_JUMEAU, DETAIL_GENERATION, etapesGeneration, detailStatutFournisseur,
-  CLE_GENERATION_EN_COURS, lireGenerationEnCours, type PhaseGenerationHeygen, type PhaseGenerationJumeau, type GenerationEnCours,
-} from '@/lib/avatar/progression';
+  etapeDepuisStatutAvatar, progressionVideoAvatar, type CleEtapeVideoAvatar, type SousEtatGenerationAvatar,
+} from '@/lib/avatar/etapes-video-avatar';
 
 /** Valeur du sélecteur pour une voix clonée : `clone:<user_voices.id>` — jamais un identifiant fournisseur. */
 const PREFIXE_VOIX_CLONEE = 'clone:';
@@ -136,9 +136,6 @@ const relireGeneration = (): GenerationEnCours | null => {
   try { return lireGenerationEnCours(window.localStorage.getItem(CLE_GENERATION_EN_COURS)); } catch { return null; }
 };
 /** Phase du moteur du jumeau → étape affichée dans Mon avatar (pas de montage ici). */
-const phaseJumeauVersEtape = (p: PhaseJumeau): PhaseGenerationJumeau => (
-  p === 'stockage' ? 'stockage' : p === 'traitement' ? 'traitement' : p === 'pret' || p === 'rendu' ? 'prete' : 'envoi'
-);
 
 export default function AvatarPage() {
   const [loading, setLoading] = useState(true);
@@ -203,10 +200,13 @@ export default function AvatarPage() {
   const tarifs = useTarifs();
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
   /** Où en est la génération (étapes RÉELLES du parcours HeyGen ou du jumeau), et son début. */
-  const [genEtape, setGenEtape] = useState<{ mode: 'heygen'; phase: PhaseGenerationHeygen } | { mode: 'jumeau'; phase: PhaseGenerationJumeau } | null>(null);
+  const [genEtape, setGenEtape] = useState<{ mode: 'heygen' | 'jumeau'; etape: CleEtapeVideoAvatar } | null>(null);
   const [genDebut, setGenDebut] = useState<number | null>(null);
   /** Le dernier statut rendu par le fournisseur (pending / processing), dit en clair. */
-  const [statutFournisseur, setStatutFournisseur] = useState<string | null>(null);
+  /** Sous-état RÉEL de la génération (en file / en cours / en pause), relu à chaque statut. */
+  const [sousEtat, setSousEtat] = useState<SousEtatGenerationAvatar | null>(null);
+  /** Le serveur a remboursé l'échec (`rembourse`) : l'écran le dit. */
+  const [genRembourse, setGenRembourse] = useState(false);
   /** L'échec de la dernière génération : l'étape où elle s'est arrêtée et le motif. */
   const [genEchec, setGenEchec] = useState<string | null>(null);
   /** Ratio RÉEL de la source (dimensions lues sur l'image / la vidéo chargée) ; `null` tant qu'inconnu. */
@@ -260,12 +260,8 @@ export default function AvatarPage() {
   const apercuGenerationRef = useRef<string | null>(null);
   const [suppressionArmee, setSuppressionArmee] = useState(false);
   const [suppressionEnCours, setSuppressionEnCours] = useState(false);
-  /**
-   * Progression RÉELLE de la génération à la demande — uniquement si l'API
-   * en rend une (`progress`). Sinon `null` : barre indéterminée. Plus aucune
-   * estimation depuis le temps écoulé (cahier UX, Annexe A).
-   */
-  const [progress, setProgress] = useState<number | null>(null);
+  // Génération de l'avatar : JAMAIS de pourcentage (aucun fournisseur n'en
+  // rend) — étapes + sous-état réel + temps écoulé (`etapes-video-avatar`).
   /** L'envoi de la source vers Studiio : octets réellement transférés (XHR), ou null hors envoi. */
   const [envoiSource, setEnvoiSource] = useState<ProgressionEnvoi | null>(null);
   const maVoixRef = useRef<HTMLElement | null>(null);
@@ -338,7 +334,6 @@ export default function AvatarPage() {
       }
       setAvatar(null);
       setVideoUrl(null);
-      setProgress(null);
       setGenStatus('idle');
       const fournisseur = json.data?.fournisseur === 'non_disponible'
         ? " La copie de votre clone conservée par notre service de génération n'est pas supprimée automatiquement."
@@ -609,8 +604,8 @@ export default function AvatarPage() {
 
   // Aucune progression ESTIMÉE pendant la génération : le fournisseur ne
   // rend qu'un statut, la barre est donc indéterminée (`ProgressStatus` sans
-  // `pourcentage`). Un pourcentage n'apparaît que si l'API en rend un réel
-  // (`progress`, lu dans `poll`). L'ancienne courbe asymptotique depuis le
+  // `pourcentage`), avec l'étape et le sous-état réels (`etapes-video-avatar`).
+  // L'ancienne courbe asymptotique depuis le
   // temps écoulé (90 × (1 − e^(−t/45))) a été retirée : elle mentait.
 
   // ── Création de l'avatar ────────────────────────────────────────────
@@ -749,12 +744,11 @@ export default function AvatarPage() {
         return;
       }
 
-      const { status, videoUrl: url, error: errMsg, progress: realProgress } = json.data;
+      const { status, videoUrl: url, error: errMsg, rembourse } = json.data;
       const estApercu = apercuGenerationRef.current === generationId;
 
       if (status === 'completed' && url) {
-        setProgress(null);
-        if (!estApercu) { memoriserGeneration(null); setGenEtape({ mode: 'heygen', phase: 'prete' }); setStatutFournisseur(null); }
+          if (!estApercu) { memoriserGeneration(null); setGenEtape({ mode: 'heygen', etape: 'prete' }); setSousEtat(null); }
         if (apercuGenerationRef.current === generationId) {
           // C'était l'aperçu : il vit dans son bloc, pas dans « votre vidéo ».
           apercuGenerationRef.current = null;
@@ -776,17 +770,14 @@ export default function AvatarPage() {
         return;
       }
       if (status === 'failed') {
-        if (!estApercu) { memoriserGeneration(null); setGenEchec(errMsg || 'La génération a échoué.'); setStatutFournisseur(null); }
+        if (!estApercu) { memoriserGeneration(null); setGenEchec(errMsg || 'La génération a échoué.'); setGenRembourse(rembourse === true); setSousEtat(null); }
         setGenStatus('failed');
         setError(errMsg || 'La génération a échoué.');
         if (apercuGenerationRef.current === generationId) { apercuGenerationRef.current = null; await loadApercu(); }
         return;
       }
-      // Pourcentage RÉEL s'il existe un jour côté API — le seul qu'on affiche.
-      if (typeof realProgress === 'number' && Number.isFinite(realProgress)) {
-        setProgress(Math.min(99, Math.max(0, realProgress)));
-      }
-      if (!estApercu) { setStatutFournisseur(typeof status === 'string' ? status : null); setGenEtape({ mode: 'heygen', phase: 'generation' }); }
+      // Étape + sous-état RÉELS (en file / en cours / en pause — reprise automatique ; rapatriement).
+      if (!estApercu) { const lu = etapeDepuisStatutAvatar(json.data); setSousEtat(lu.sousEtat); setGenEtape({ mode: 'heygen', etape: lu.etape }); }
       setGenStatus('processing');
       pollRef.current = setTimeout(() => poll(generationId), 5000);
     } catch {
@@ -800,9 +791,9 @@ export default function AvatarPage() {
     setError(null);
     setNotice(null);
     setVideoUrl(null);
-    setProgress(null);
     setGenEchec(null);
-    setStatutFournisseur(null);
+    setGenRembourse(false);
+    setSousEtat(null);
     setGenDebut(Date.now());
     setGenStatus('pending');
     // La qualité SÉLECTIONNÉE part toujours : le serveur la revérifie et REFUSE une
@@ -813,7 +804,7 @@ export default function AvatarPage() {
     // MA voix (voix clonée) : le moteur du jumeau de Créer, tel quel.
     if (voiceId.startsWith(PREFIXE_VOIX_CLONEE)) {
       const choisie = voiceId.slice(PREFIXE_VOIX_CLONEE.length);
-      setGenEtape({ mode: 'jumeau', phase: 'verification' });
+      setGenEtape({ mode: 'jumeau', etape: 'verification' });
       // Vérifiée MAINTENANT par le serveur, AVEC cette voix : du compte, prête,
       // jumeau prêt. Sinon, on le dit ; jamais une autre voix en silence.
       const etat = await lireEtatJumeau(fetch, avatar.id, choisie);
@@ -835,7 +826,7 @@ export default function AvatarPage() {
         return;
       }
       setGenStatus('processing');
-      setGenEtape({ mode: 'jumeau', phase: 'envoi' });
+      setGenEtape({ mode: 'jumeau', etape: 'verification' });
       try {
         const { url } = await genererEtAttendreVideoJumeau({
           textes: [script.trim()], aspectRatio: ratio, avatarId: avatar.id, voixId: choisie,
@@ -844,13 +835,14 @@ export default function AvatarPage() {
           ...(qualiteEnvoyee ? { qualite: qualiteEnvoyee } : {}),
           // Acceptée par le serveur : mémorisée pour reprendre le SUIVI après un rechargement.
           onLancee: (generationId) => memoriserGeneration({ generationId, mode: 'jumeau', avatarId: avatar.id, debutLe: Date.now() }),
-          onPhase: (ph) => { if (!demonteRef.current) setGenEtape({ mode: 'jumeau', phase: phaseJumeauVersEtape(ph) }); },
+          onPhase: (ph) => { if (!demonteRef.current) setGenEtape({ mode: 'jumeau', etape: etapeVideoAvatarDepuisPhaseJumeau(ph) }); },
+          onSousEtat: (se) => { if (!demonteRef.current) setSousEtat(se); },
         });
         memoriserGeneration(null);
         if (demonteRef.current) return;
         setVideoUrl(url);
         setVueApercu('video');
-        setGenEtape({ mode: 'jumeau', phase: 'prete' });
+        setGenEtape({ mode: 'jumeau', etape: 'prete' });
         setGenStatus('completed');
       } catch (e) {
         if (demonteRef.current) return;
@@ -872,7 +864,7 @@ export default function AvatarPage() {
       return;
     }
 
-    setGenEtape({ mode: 'heygen', phase: 'lancement' });
+    setGenEtape({ mode: 'heygen', etape: 'verification' });
     try {
       // Un admin voit le coût HeyGen (moteur, durée estimée, $) AVANT l'appel ; annuler = 0 appel.
       const issue = await avecConfirmationCout((confirmation) => fetch('/api/avatar/generate', {
@@ -905,8 +897,7 @@ export default function AvatarPage() {
         return;
       }
       memoriserGeneration({ generationId: json.data.generationId, mode: 'heygen', avatarId: avatar.id, debutLe: Date.now() });
-      setGenEtape({ mode: 'heygen', phase: 'generation' });
-      setStatutFournisseur(typeof json.data.status === 'string' ? json.data.status : null);
+      { const lu = etapeDepuisStatutAvatar(json.data); setGenEtape({ mode: 'heygen', etape: lu.etape }); setSousEtat(lu.sousEtat); }
       setGenStatus('processing');
       poll(json.data.generationId);
     } catch {
@@ -929,20 +920,21 @@ export default function AvatarPage() {
     setGenDebut(g.debutLe);
     setGenStatus('processing');
     if (g.mode === 'heygen') {
-      setGenEtape({ mode: 'heygen', phase: 'generation' });
+      setGenEtape({ mode: 'heygen', etape: 'generation' });
       void poll(g.generationId);
       return;
     }
-    setGenEtape({ mode: 'jumeau', phase: 'traitement' });
+    setGenEtape({ mode: 'jumeau', etape: 'generation' });
     void attendreStatutJumeau({
       generationId: g.generationId,
-      onPhase: (ph) => { if (!demonteRef.current) setGenEtape({ mode: 'jumeau', phase: phaseJumeauVersEtape(ph) }); },
+      onPhase: (ph) => { if (!demonteRef.current) setGenEtape({ mode: 'jumeau', etape: etapeVideoAvatarDepuisPhaseJumeau(ph) }); },
+      onSousEtat: (se) => { if (!demonteRef.current) setSousEtat(se); },
     }).then(({ url }) => {
       memoriserGeneration(null);
       if (demonteRef.current) return;
       setVideoUrl(url);
       setVueApercu('video');
-      setGenEtape({ mode: 'jumeau', phase: 'prete' });
+      setGenEtape({ mode: 'jumeau', etape: 'prete' });
       setGenStatus('completed');
     }).catch((e: unknown) => {
       if (demonteRef.current) return;
@@ -1013,7 +1005,6 @@ export default function AvatarPage() {
     // (préparation de la vidéo, aperçu, choix) vit dans « Mes avatars ».
     setAvatar(null);
     setVideoUrl(null);
-    setProgress(null);
     setGenStatus('idle');
     setError(null);
     setNotice(null);
@@ -1852,22 +1843,29 @@ export default function AvatarPage() {
                   indéterminée — un pourcentage n'apparaît que si l'API en rend un réel.
                   En échec, la progression s'arrête sur l'étape fautive ; en succès, elle le dit. */}
               {genEtape && (busy || genStatus === 'failed' || genStatus === 'completed') && (() => {
-                const liste = genEtape.mode === 'heygen' ? ETAPES_GENERATION_HEYGEN : ETAPES_GENERATION_JUMEAU;
-                const etapes = genEtape.mode === 'heygen'
-                  ? etapesGeneration(ETAPES_GENERATION_HEYGEN, genEtape.phase, genStatus === 'failed')
-                  : etapesGeneration(ETAPES_GENERATION_JUMEAU, genEtape.phase, genStatus === 'failed');
-                const etapeEchec = liste.find((l) => l.phase === genEtape.phase)?.libelle;
+                // LE MODÈLE PARTAGÉ (`etapes-video-avatar`) : Vérification →
+                // Génération (temps écoulé + sous-état réel, jamais de %) →
+                // Récupération → Prête. Pas d'étape Montage ici.
+                const prog = progressionVideoAvatar({
+                  etape: genStatus === 'completed' ? 'prete' : genEtape.etape,
+                  sousEtat,
+                  avecMontage: false,
+                  echec: genStatus === 'failed' ? { message: genEchec ?? 'La génération a échoué.', rembourse: genRembourse } : null,
+                });
                 return (
-                  <div data-avatar-generation-progression={genStatus} data-avatar-generation-mode={genEtape.mode} data-avatar-generation-phase={genEtape.phase}>
+                  <div data-avatar-generation-progression={genStatus} data-avatar-generation-mode={genEtape.mode} data-avatar-generation-phase={genEtape.etape} data-avatar-generation-sous-etat={busy && genEtape.etape === 'generation' ? (sousEtat ?? 'en_cours') : undefined}>
                     <ProgressStatus
                       titre={genStatus === 'completed' ? 'Votre vidéo est prête' : genStatus === 'failed' ? 'La génération a échoué' : 'Création de votre vidéo'}
                       statut={genStatus === 'completed' ? 'succes' : genStatus === 'failed' ? 'erreur' : 'en_cours'}
-                      etapes={etapes}
-                      {...(progress !== null && busy ? { pourcentage: progress } : {})}
-                      description={busy ? DETAIL_GENERATION[genEtape.phase] : undefined}
-                      detail={busy ? (detailStatutFournisseur(statutFournisseur) ?? (progress === null ? 'Progression exacte indisponible.' : undefined)) : undefined}
+                      etapes={prog.etapes}
+                      description={busy ? prog.message : undefined}
+                      detail={busy ? (prog.detail ?? undefined) : undefined}
                       debutLe={busy && genDebut ? genDebut : undefined}
-                      echec={genStatus === 'failed' ? { etape: etapeEchec, motif: genEchec ?? 'La génération a échoué.' } : undefined}
+                      echec={prog.echec ? {
+                        etape: prog.echec.etape,
+                        motif: prog.echec.motif,
+                        actions: [{ libelle: prog.echec.action, onClick: () => { void handleGenerate(); }, principale: true }],
+                      } : undefined}
                       note={busy ? 'Cela prend généralement quelques minutes. Vous pouvez recharger la page : le suivi reprendra.' : null}
                       compact={!busy && genStatus === 'completed'}
                     />

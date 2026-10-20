@@ -19,6 +19,8 @@
  * l'écran (les règles Unsplash interdisent l'usage automatisé).
  */
 
+import { themeLabel } from '@/lib/themes';
+
 export interface SourcesActives {
   /** Mes rushes personnels (la banque `rush_urls`, hors médias stock importés). */
   rushes: boolean;
@@ -41,6 +43,14 @@ export interface MediaStockRetenu {
   sourceUrl: string;
   licence: string;
   vignetteUrl: string;
+  /**
+   * Le SUJET pour lequel ce média a été retenu (`sujetStockPrincipal` au
+   * moment du clic). Facultatif : les médias retenus avant ce champ n'en ont
+   * pas — ils restent utilisables, mais passent APRÈS ceux du sujet courant
+   * (`mediasDesSources`). Un média d'un autre sujet n'est jamais pioché
+   * automatiquement.
+   */
+  sujet?: string;
 }
 
 /** Ce qu'un créneau du plan doit montrer. `auto` : l'orchestrateur choisit. */
@@ -94,6 +104,7 @@ export function normaliserConfigSources(brut: unknown): ConfigSources | undefine
       url: x.url, type: x.type, provider: x.provider,
       providerAssetId: texte(x.providerAssetId, 64), auteur: texte(x.auteur), sourceUrl: estUrl(x.sourceUrl) ? x.sourceUrl : '',
       licence: texte(x.licence, 60), vignetteUrl: estUrl(x.vignetteUrl) ? x.vignetteUrl : '',
+      ...(texte(x.sujet, 120).trim() ? { sujet: texte(x.sujet, 120).trim() } : {}),
     });
     if (stock.length >= MAX_STOCK_RETENU) break;
   }
@@ -110,6 +121,16 @@ export function normaliserConfigSources(brut: unknown): ConfigSources | undefine
 /** Le fichier d'un média stock importé dans la Médiathèque (`/api/stock/importer`). */
 export function estRushStock(url: string): boolean {
   return /\/stock-(pexels|unsplash)-(video|photo)-[A-Za-z0-9_-]+\.(mp4|jpg)(\?|$)/.test(url);
+}
+
+/**
+ * L'en-tête de la banque : rushes PERSONNELS et vidéos suggérées (stock
+ * conservé) comptés À PART — « 0 rush personnel · 2 vidéos suggérées ».
+ */
+export function libelleBanqueRushes(perso: number, suggerees: number): string {
+  const p = `${perso} rush${perso > 1 ? 'es' : ''} personnel${perso > 1 ? 's' : ''}`;
+  if (suggerees <= 0) return p;
+  return `${p} · ${suggerees} vidéo${suggerees > 1 ? 's' : ''} suggérée${suggerees > 1 ? 's' : ''}`;
 }
 
 /** Hôtes des PHOTOS stock acceptées (hotlink exigé par Unsplash ; CDN Pexels). */
@@ -199,6 +220,30 @@ export interface ConfigPourSources {
   rushUrls: readonly string[];
   jumeauAvatar: boolean;
   designStyle?: { sources?: ConfigSources } | null;
+  /** Sujets de la rotation (le sujet courant des médias stock). Absent : aucun filtre par sujet. */
+  topics?: readonly string[];
+  brief?: { objectif?: string | null; message?: string | null } | null;
+}
+
+/** Sujet comparable : minuscules, sans accents ni espaces superflus. */
+export function cleSujet(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Les sujets COURANTS de la configuration : les libellés des thèmes de la
+ * rotation, sinon l'objectif / le message du brief, sinon « fitness » — la
+ * même règle que la recherche de médias de l'écran.
+ */
+export function sujetsCourants(c: Pick<ConfigPourSources, 'topics' | 'brief'>): string[] {
+  const topics = (c.topics ?? []).filter((t) => typeof t === 'string' && t.trim());
+  if (topics.length) return topics.map((t) => themeLabel(t));
+  return [c.brief?.objectif || c.brief?.message || 'fitness'];
+}
+
+/** Le sujet sous lequel un média stock est cherché et retenu à l'écran. */
+export function sujetStockPrincipal(c: Pick<ConfigPourSources, 'topics' | 'brief'>): string {
+  return sujetsCourants(c)[0];
 }
 
 /**
@@ -227,14 +272,58 @@ export function mediasDesSources(c: ConfigPourSources): { rushesPersonnels: stri
   const { sources, explicite } = sourcesEffectives(c);
   const banque = Array.from(new Set((c.rushUrls ?? []).filter((u) => typeof u === 'string' && u)));
   if (!explicite) return { rushesPersonnels: banque, videosStock: [], photosStock: [] };
+  // Les rushes PERSONNELS ne sont jamais filtrés par sujet.
   const rushesPersonnels = sources.actives.rushes ? banque.filter((u) => !estRushStock(u)) : [];
   if (!sources.actives.stock) return { rushesPersonnels, videosStock: [], photosStock: [] };
-  const videosStock = Array.from(new Set([
-    ...banque.filter(estRushStock),
-    ...sources.stock.filter((m) => m.type === 'video').map((m) => m.url),
-  ]));
-  const photosStock = sources.stock.filter((m) => m.type === 'photo').map((m) => m.url).filter((u) => !videosStock.includes(u));
+  // ── PERTINENCE : le sujet du média retenu contre le sujet courant ──────
+  //   - même sujet : en premier ;
+  //   - sujet inconnu (retenu avant ce champ, ou import ancien de la banque) :
+  //     après, et seulement s'il n'existe AUCUN média du sujet courant ;
+  //   - autre sujet : jamais pioché automatiquement.
+  // Un média FORCÉ dans le plan (choix explicite) reste toujours disponible.
+  // Sans sujets connus (`topics`/`brief` absents) : aucun filtre, l'ordre seul.
+  const filtrer = c.topics !== undefined || c.brief !== undefined;
+  const sujets = new Set(sujetsCourants(c).map(cleSujet));
+  const forces = new Set(sources.gabarit.map((g) => g.media).filter((u): u is string => !!u));
+  const statut = (m: MediaStockRetenu | undefined): 'sujet' | 'inconnu' | 'hors' => {
+    if (!m?.sujet || !filtrer) return 'inconnu';
+    return sujets.has(cleSujet(m.sujet)) ? 'sujet' : 'hors';
+  };
+  const dansLeSujet = sources.stock.some((m) => statut(m) === 'sujet');
+  const garder = (url: string, st: 'sujet' | 'inconnu' | 'hors') => forces.has(url) || st === 'sujet' || (st === 'inconnu' && !dansLeSujet);
+  const ordonner = (retenus: MediaStockRetenu[], anciens: string[]) => {
+    const rangs: Array<{ url: string; st: 'sujet' | 'inconnu' | 'hors'; rang: number }> = [
+      ...retenus.map((m) => ({ url: m.url, st: statut(m), rang: statut(m) === 'sujet' ? 0 : statut(m) === 'inconnu' ? 1 : 3 })),
+      // Imports anciens de la banque, sans fiche retenue : sujet inconnu, en DERNIER.
+      ...anciens.map((url) => ({ url, st: 'inconnu' as const, rang: 2 })),
+    ];
+    return Array.from(new Set(rangs.filter((x) => garder(x.url, x.st)).sort((a, b) => a.rang - b.rang).map((x) => x.url)));
+  };
+  const retenusVideo = sources.stock.filter((m) => m.type === 'video');
+  const anciensBanque = banque.filter(estRushStock).filter((u) => !sources.stock.some((m) => m.url === u));
+  const videosStock = ordonner(retenusVideo, anciensBanque);
+  const photosStock = ordonner(sources.stock.filter((m) => m.type === 'photo'), []).filter((u) => !videosStock.includes(u));
   return { rushesPersonnels, videosStock, photosStock };
+}
+
+/**
+ * Ce que l'ÉCRAN doit compter et montrer (« Médias prévus », plan, aperçu) :
+ * les médias stock retenus que le moteur piochera (`mediasDesSources`), dans
+ * SON ordre, et la banque sans les vidéos suggérées écartées. Un média hors
+ * sujet n'est ni compté ni montré. Sans clé `sources` ou stock éteint : rien
+ * n'est filtré (le calcul d'avant). Pur.
+ */
+export function sourcesPertinentes(c: ConfigPourSources): { stock: MediaStockRetenu[]; rushUrls: string[] } {
+  const { sources, explicite } = sourcesEffectives(c);
+  const banque = Array.from(c.rushUrls ?? []);
+  if (!explicite || !sources.actives.stock) return { stock: sources.stock, rushUrls: banque };
+  const m = mediasDesSources(c);
+  const ordre = [...m.videosStock, ...m.photosStock];
+  const gardes = new Set(ordre);
+  return {
+    stock: sources.stock.filter((x) => gardes.has(x.url)).sort((a, b) => ordre.indexOf(a.url) - ordre.indexOf(b.url)),
+    rushUrls: banque.filter((u) => !estRushStock(u) || gardes.has(u)),
+  };
 }
 
 /**

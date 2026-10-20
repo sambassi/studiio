@@ -651,12 +651,12 @@ export function AudioStudioPanel({
                 c'est tout l'objet du bouton « Mixer », ne plus regler le volume
                 a plusieurs endroits. */}
             {!mixerEnabled && (
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] text-gray-500 w-8">Vol.</span>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="text-[9px] text-gray-500 w-8 shrink-0 truncate">Vol.</span>
                 <input type="range" min={0} max={1} step={0.05} value={musicMuted ? 0 : musicVolume}
                   onChange={(e) => { onMusicVolumeChange(Number(e.target.value)); setMusicMuted(false); }}
-                  className="flex-1 accent-purple-500" />
-                <span className="text-[9px] text-gray-400 w-8 text-right">{Math.round((musicMuted ? 0 : musicVolume) * 100)}%</span>
+                  className="flex-1 min-w-0 w-full accent-purple-500" />
+                <span className="text-[9px] text-gray-400 w-8 shrink-0 text-right">{Math.round((musicMuted ? 0 : musicVolume) * 100)}%</span>
               </div>
             )}
           </div>
@@ -715,12 +715,12 @@ export function AudioStudioPanel({
             {/* Idem musique : un seul endroit pour les niveaux quand le
                 mixeur unifie est branche. */}
             {!mixerEnabled && (
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] text-gray-500 w-8">Vol.</span>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="text-[9px] text-gray-500 w-8 shrink-0 truncate">Vol.</span>
                 <input type="range" min={0} max={1} step={0.05} value={voiceMuted ? 0 : voiceVolume}
                   onChange={(e) => { onVoiceVolumeChange(Number(e.target.value)); setVoiceMuted(false); }}
-                  className="flex-1 accent-purple-500" />
-                <span className="text-[9px] text-gray-400 w-8 text-right">{Math.round((voiceMuted ? 0 : voiceVolume) * 100)}%</span>
+                  className="flex-1 min-w-0 w-full accent-purple-500" />
+                <span className="text-[9px] text-gray-400 w-8 shrink-0 text-right">{Math.round((voiceMuted ? 0 : voiceVolume) * 100)}%</span>
               </div>
             )}
           </div>

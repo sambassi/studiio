@@ -229,7 +229,7 @@ import {
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { apercuAvatarDepuisListe, lireAvatarsPourApercu, type ApercuAvatarCreer } from '@/lib/creer/apercu-avatar';
 import {
-  aUneSequenceVideo, mediaApercuAutopilote, type MediaApercuAutopilote, type ResumeMediasApercu,
+  aUneSequenceVideo, etapesMontageApercuAutopilote, mediaApercuAutopilote, type MediaApercuAutopilote, type ResumeMediasApercu,
 } from '@/lib/autopilot/apercu-medias';
 import { useTarifs } from '@/lib/tarifs/client';
 import { AVERTISSEMENT_ANCIENNE_VERSION, libelleAvatarActif, libelleCreeAvecVersion, versionPerimee, generationDepuisRush } from '@/lib/avatar/identite';
@@ -3727,6 +3727,18 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   const dureeTotaleApercu = Math.round(etapesLecture.reduce((t, e) => t + e.seconds, 0) * 10) / 10;
   const sequenceJumeau = etapesLecture.find((e) => e.key === 'video')?.seconds ?? 0;
 
+  /**
+   * LE MONTAGE PRÉVU — tous les créneaux du plan, dans l'ordre (rotation des
+   * rushes et du stock ; l'avatar reste un emplacement tant qu'il n'est pas
+   * produit). Distinct de l'aperçu du style ci-dessus, qui n'est qu'un
+   * EXEMPLE (textes, couleurs, affiche).
+   */
+  const dureeCtaLecture = etapesLecture.find((e) => e.key === 'cta')?.seconds ?? null;
+  const montagePrevu = useMemo(
+    () => etapesMontageApercuAutopilote(avecVideo ? medias : null, { dureeCta: dureeCtaLecture }),
+    [avecVideo, medias, dureeCtaLecture],
+  );
+
   const ouvrirPanneau = useCallback((suivant: typeof panneau) => {
     // Sous le curseur, borne a la fenetre : un panneau ouvert hors de l'ecran
     // est un panneau qu'on croit casse.
@@ -3737,6 +3749,9 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
 
   return (
     <div data-autopilot-apercu>
+      <h3 className="mb-2 text-sm font-semibold text-gray-100" data-autopilot-apercu-titre="style">
+        Aperçu du style — exemple
+      </h3>
       <Preview
         generated={generated}
         format={format}
@@ -3943,6 +3958,25 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           Glissez pour le déplacer, tirez les coins pour l’agrandir.
         </p>
       </div>
+
+      {/* ── APERÇU DU MONTAGE PRÉVU ──────────────────────────────────────
+          Les médias RÉELS du plan, tous, dans l'ordre, puis le CTA — le
+          lecteur local de Créer (aucun rendu, aucun appel fournisseur). */}
+      {montagePrevu.etapes.length > 0 && (
+        <div data-autopilot-montage-prevu>
+          <ApercuMontageListe
+            etapes={montagePrevu.etapes}
+            lignes={montagePrevu.lignes}
+            format={format}
+            accent={accent}
+            ctaTexte={sample.cta}
+            ctaSousTexte={sample.ctaSub}
+            vignetteAvatar={medias?.avatar.vignette ?? null}
+            titre="Aperçu du montage prévu"
+            sousTitre="Les médias de votre plan, dans l'ordre, puis le CTA. Durées indicatives : la vidéo finale suit la parole et les extraits réels."
+          />
+        </div>
+      )}
 
       {/* ── RÉGLAGES DU TEXTE ─────────────────────────────────────────── */}
       <FloatingPanel

@@ -41,6 +41,10 @@ export interface ApercuMontageListeProps {
   narration?: { duree: number; source: 'estimee' | 'reelle' } | null;
   /** Avec avatar : de combien les médias dépassent la narration (s) — 0 : ils tiennent. */
   depassement?: number;
+  /** En-tête du bloc — défaut « Aperçu du montage » (Créer). */
+  titre?: string;
+  /** Ligne sous l'en-tête — défaut : l'ordre de la liste puis le CTA. */
+  sousTitre?: string;
 }
 
 const mmss = (s: number) => {
@@ -176,8 +180,8 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
     >
       <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-gray-100">Aperçu du montage</h3>
-          <p className="text-[11px] text-gray-500">Séquence Vidéo dans l&apos;ordre de la liste, puis le CTA.</p>
+          <h3 className="text-sm font-semibold text-gray-100">{p.titre ?? 'Aperçu du montage'}</h3>
+          <p className="text-[11px] text-gray-500">{p.sousTitre ?? "Séquence Vidéo dans l'ordre de la liste, puis le CTA."}</p>
         </div>
         <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0" data-apercu-montage-temps>{mmss(t)} / {mmss(total)}</span>
       </div>

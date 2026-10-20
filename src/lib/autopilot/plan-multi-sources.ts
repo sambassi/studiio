@@ -131,6 +131,8 @@ class ReserveRushs {
     }
   }
   get vide(): boolean { return this.totaux.size === 0; }
+  /** Nombre de rushes personnels distincts dans la réserve. */
+  get nombre(): number { return this.totaux.size; }
   private libre(url: string, a: number, b: number): boolean {
     const total = this.totaux.get(url);
     // Durée inconnue : une seule fenêtre, depuis le début.
@@ -261,19 +263,95 @@ class Plan {
 }
 
 /**
- * Le prochain plan de coupe, par priorité : rush personnel → vidéo stock →
- * photo. `d` est la durée voulue ; une vidéo stock plus courte la réduit.
+ * La mémoire de la pioche : le dernier plan de coupe posé (jamais deux fois
+ * le même d'affilée) et le genre du dernier média stock (photos et vidéos
+ * stock ALTERNENT au lieu de « toutes les vidéos, puis les photos »).
+ */
+interface EtatPioche {
+  dernierUrl: string | null;
+  dernierGenre: 'video' | 'image' | null;
+}
+
+const nouvelEtatPioche = (): EtatPioche => ({ dernierUrl: null, dernierGenre: null });
+
+/**
+ * Le prochain média STOCK libre, photos et vidéos en alternance (vidéo
+ * d'abord quand rien n'a encore été posé — l'ordre d'avant pour un seul
+ * genre). Jamais le média du plan de coupe précédent.
+ */
+function stockSuivant(
+  stock: { videos: ItemBroll[]; photos: ItemBroll[] }, utilises: Set<ItemBroll>, d: number, etat: EtatPioche,
+): ItemBroll | null {
+  const video = () => stock.videos.find((x) => !utilises.has(x) && x.url !== etat.dernierUrl && x.dispo >= Math.min(d, BROLL_MIN_S)) ?? null;
+  const photo = () => stock.photos.find((x) => !utilises.has(x) && x.url !== etat.dernierUrl) ?? null;
+  return etat.dernierGenre === 'video' ? (photo() ?? video()) : (video() ?? photo());
+}
+
+/** Note le plan de coupe posé dans la mémoire de la pioche. */
+function noterPioche(etat: EtatPioche, it: ItemBroll) {
+  etat.dernierUrl = it.url;
+  if (it.source !== 'rush') etat.dernierGenre = it.kind;
+}
+
+/**
+ * Le prochain plan de coupe, par priorité : rush personnel → stock (photos et
+ * vidéos en alternance). `d` est la durée voulue ; une vidéo stock plus
+ * courte la réduit.
  */
 function prochainBroll(
   reserve: ReserveRushs, stock: { videos: ItemBroll[]; photos: ItemBroll[] }, utilises: Set<ItemBroll>, d: number,
+  etat: EtatPioche = nouvelEtatPioche(),
 ): { it: ItemBroll; d: number } | null {
   const rush = reserve.prendre(d);
-  if (rush) return { it: rush, d };
-  const v = stock.videos.find((x) => !utilises.has(x) && x.dispo >= Math.min(d, BROLL_MIN_S));
-  if (v) { utilises.add(v); return { it: v, d: Math.min(d, v.dispo) }; }
-  const ph = stock.photos.find((x) => !utilises.has(x));
-  if (ph) { utilises.add(ph); return { it: ph, d: d === BROLL_VIDEO_S ? BROLL_PHOTO_S : d }; }
-  return null;
+  if (rush) { noterPioche(etat, rush); return { it: rush, d }; }
+  const it = stockSuivant(stock, utilises, d, etat);
+  if (!it) return null;
+  utilises.add(it);
+  noterPioche(etat, it);
+  if (it.kind === 'image') return { it, d: d === BROLL_VIDEO_S ? BROLL_PHOTO_S : d };
+  return { it, d: Math.min(d, it.dispo) };
+}
+
+/**
+ * L'ALTERNANCE avatar ↔ plans de coupe, de `p.fin` jusqu'à `finMilieu` —
+ * la boucle de `planAvecAvatar`, partagée avec le gabarit. L'avatar garde sa
+ * voix CONTINUE (jouée à part) : les plans de coupe ne sont que des images
+ * posées par-dessus, chaque fenêtre d'avatar joue sa propre seconde.
+ *
+ * Matière épuisée : les médias STOCK déjà montés sont repris (jamais deux
+ * fois de suite le même, une photo reprend avec un autre mouvement) s'il en
+ * existe au moins deux distincts — sinon l'avatar tient le reste. Les plages
+ * de rushes personnels ne sont jamais rejouées.
+ */
+function alterner(
+  p: Plan, finMilieu: number, reserve: ReserveRushs, stock: { videos: ItemBroll[]; photos: ItemBroll[] },
+  utilises: Set<ItemBroll>, etat: EtatPioche, tourInitial: 'broll' | 'avatar',
+): void {
+  const stockDistinct = new Set([...stock.videos, ...stock.photos].map((x) => x.url)).size;
+  let tour = tourInitial;
+  let epuise = false;
+  while (finMilieu - p.fin > EPS) {
+    const reste = r3(finMilieu - p.fin);
+    if (tour === 'broll' && !epuise && reste >= BROLL_MIN_S - EPS) {
+      // Un reliquat trop court pour l'avatar est absorbé par le plan de coupe.
+      let d = Math.min(reste, BROLL_VIDEO_S);
+      if (reste - d < 1 && reste <= BROLL_MAX_S) d = reste;
+      let pris = prochainBroll(reserve, stock, utilises, d, etat);
+      if (!pris && stockDistinct >= 2) {
+        // Reprise du stock : on libère les médias stock, jamais le précédent.
+        utilises.clear();
+        pris = prochainBroll(reserve, stock, utilises, d, etat);
+      }
+      if (!pris) { epuise = true; continue; }
+      p.ajouterItem(pris.it, r3(pris.d));
+      tour = 'avatar';
+    } else {
+      let d = epuise ? reste : Math.min(reste, AVATAR_FENETRE_S);
+      if (reste - d < BROLL_MIN_S) d = reste;
+      p.ajouterAvatar(d, 'avatar');
+      tour = 'broll';
+    }
+  }
 }
 
 /** Avec avatar, sans gabarit : avatar (accroche) → alternance → avatar (CTA). */
@@ -292,25 +370,7 @@ function planAvecAvatar(e: EntreePlanMultiSources, T: number, expl: string[]): R
     return p.segs;
   }
   p.ajouterAvatar(hook, 'avatar — accroche');
-  let tour: 'broll' | 'avatar' = 'broll';
-  let epuise = false;
-  while (finMilieu - p.fin > EPS) {
-    const reste = r3(finMilieu - p.fin);
-    if (tour === 'broll' && !epuise && reste >= BROLL_MIN_S - EPS) {
-      // Un reliquat trop court pour l'avatar est absorbé par le plan de coupe.
-      let d = Math.min(reste, BROLL_VIDEO_S);
-      if (reste - d < 1 && reste <= BROLL_MAX_S) d = reste;
-      const pris = prochainBroll(reserve, stock, utilises, d);
-      if (!pris) { epuise = true; continue; }
-      p.ajouterItem(pris.it, r3(pris.d));
-      tour = 'avatar';
-    } else {
-      let d = epuise ? reste : Math.min(reste, AVATAR_FENETRE_S);
-      if (reste - d < BROLL_MIN_S) d = reste;
-      p.ajouterAvatar(d, 'avatar');
-      tour = 'broll';
-    }
-  }
+  alterner(p, finMilieu, reserve, stock, utilises, nouvelEtatPioche(), 'broll');
   p.ajouterAvatar(r3(T - p.fin), 'avatar — CTA');
   const n = p.segs.filter((s) => s.kind !== 'avatar').length;
   expl.push(`Avatar en accroche et en conclusion, ${n} plan(s) de coupe intercalé(s).`);
@@ -341,7 +401,12 @@ function planSansAvatar(e: EntreePlanMultiSources, cible: number, expl: string[]
   }
   // Le stock ne comble QUE ce que les rushes n'ont pas couvert.
   const { videos, photos } = itemsStock(e);
-  const stock = [...videos, ...photos];
+  // Photos et vidéos ALTERNENT (vidéo d'abord), jamais « toutes les vidéos puis les photos ».
+  const stock: ItemBroll[] = [];
+  for (let i = 0; i < Math.max(videos.length, photos.length); i++) {
+    if (videos[i]) stock.push(videos[i]);
+    if (photos[i]) stock.push(photos[i]);
+  }
   let utilises = 0;
   for (let k = 0; k < stock.length; k++) {
     const reste = r3(cible - p.fin);
@@ -371,6 +436,15 @@ function planSansAvatar(e: EntreePlanMultiSources, cible: number, expl: string[]
  * Gabarit imposé : un plan par créneau, dans l'ordre, durées égales — un média
  * plus court que son créneau le raccourcit, les créneaux suivants se
  * partagent le reste (jamais d'image figée).
+ *
+ * AVEC AVATAR : la parole est longue (≈ 30–40 s) et le gabarit court (3 à 5
+ * créneaux) — des durées égales donnaient des blocs d'avatar de 10 s et plus.
+ * Les créneaux gardent leur ORDRE, mais leurs durées suivent la règle de
+ * `planAvecAvatar` : accroche puis fenêtres d'avatar de 3 s, plans de coupe
+ * de 2–4 s ; le dernier créneau d'avatar devient la conclusion (CTA). Le
+ * temps qui reste avant le CTA est rempli par la MÊME alternance
+ * (`alterner`) : avatar et plans de coupe (rushes personnels d'abord, puis
+ * stock) se relaient au lieu de laisser tout le reliquat à l'avatar.
  */
 function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): RushSegment[] {
   const gabarit = e.gabarit ?? [];
@@ -379,56 +453,91 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
   const reserve = new ReserveRushs(e, T);
   const { videos, photos } = itemsStock(e);
   const utilises = new Set<ItemBroll>();
-  const libre = (liste: ItemBroll[], d: number) => liste.find((x) => !utilises.has(x) && x.dispo >= Math.min(d, BROLL_MIN_S)) ?? null;
+  const etat = nouvelEtatPioche();
   const n = gabarit.length;
+  const estAvatar = (c: CreneauGabarit) => !!avatar && (c.type === 'avatar' || (!!c.media && c.media === avatar.url));
+  // Gabarit « avatar seul » explicite : l'avatar tient toute la parole, comme avant.
+  if (avatar && gabarit.every(estAvatar)) {
+    p.ajouterAvatar(T, 'avatar (gabarit : avatar seul)');
+    expl.push(`Gabarit de ${n} créneau(x) respecté.`);
+    return p.segs;
+  }
+  const hook = avatar ? r3(borne(T * 0.2, BROLL_MIN_S, BROLL_MAX_S)) : 0;
+  const cta = avatar ? r3(borne(T * 0.2, BROLL_MIN_S, BROLL_MAX_S)) : 0;
+  /** Fin de la partie « créneaux » : avec avatar, le CTA est réservé. */
+  const limite = r3(T - cta);
+  /** Durée d'un créneau d'avatar : accroche en ouverture, fenêtre de 3 s ensuite. */
+  const dureeAvatar = (k: number, d: number) => (k === 0 ? Math.min(d, hook) : Math.min(d, AVATAR_FENETRE_S));
+  /** Durée d'un plan de coupe : 2–4 s avec avatar, le créneau entier sinon. */
+  const dureeBroll = (d: number) => (avatar ? Math.min(d, BROLL_MAX_S) : d);
+  const libre = (liste: ItemBroll[], d: number) => liste.find((x) => !utilises.has(x) && x.dispo >= Math.min(d, BROLL_MIN_S)) ?? null;
   const poser = (it: ItemBroll, d: number, raison: string) => {
     utilises.add(it);
+    noterPioche(etat, it);
     p.ajouterItem(it, r3(Math.min(d, it.dispo)), raison);
   };
+  const poserAvatar = (k: number, d: number, raison: string) => p.ajouterAvatar(r3(dureeAvatar(k, d)), raison);
   gabarit.forEach((c, k) => {
-    const reste = r3(T - p.fin);
+    const reste = r3(limite - p.fin);
     if (reste <= EPS) return;
-    const d = k === n - 1 ? reste : r3(reste / (n - k));
+    // Avatar : le dernier créneau d'avatar EST la conclusion, posée après l'alternance.
+    if (avatar && k === n - 1 && k > 0 && (estAvatar(c) || c.type === 'auto')) return;
+    const nRestants = avatar && k < n - 1 && estAvatar(gabarit[n - 1]) ? n - 1 - k : n - k;
+    const d = k === n - 1 || nRestants <= 1 ? reste : r3(reste / nRestants);
     const etiquette = `créneau ${k + 1} (${c.type})`;
     // 1. Média FORCÉ : repris tel quel s'il est disponible.
     if (c.media) {
-      if (avatar && c.media === avatar.url) { p.ajouterAvatar(d, `${etiquette} — avatar forcé`); return; }
+      if (avatar && c.media === avatar.url) { poserAvatar(k, d, `${etiquette} — avatar forcé`); return; }
       const force = [...videos, ...photos].find((x) => x.url === c.media && !utilises.has(x));
-      if (force) { poser(force, d, `${etiquette} — média choisi`); return; }
-      const rushForce = reserve.prendreDans(c.media, d);
-      if (rushForce) { p.ajouterItem(rushForce, r3(rushForce.dispo), `${etiquette} — rush choisi`); return; }
+      if (force) { poser(force, dureeBroll(d), `${etiquette} — média choisi`); return; }
+      const rushForce = reserve.prendreDans(c.media, dureeBroll(d));
+      if (rushForce) { noterPioche(etat, rushForce); p.ajouterItem(rushForce, r3(rushForce.dispo), `${etiquette} — rush choisi`); return; }
       expl.push(`Créneau ${k + 1} : média choisi indisponible, remplacé selon le type « ${c.type} ».`);
     }
     // 2. Type imposé.
     let type = c.type;
     if (type === 'avatar' && !avatar) type = 'auto';
-    if (type === 'avatar') { p.ajouterAvatar(d, `${etiquette} — avatar`); return; }
+    if (type === 'avatar') { poserAvatar(k, d, `${etiquette} — avatar`); return; }
     if (type === 'rush') {
-      const pris = reserve.prendreAuPlus(d);
-      if (pris) { p.ajouterItem(pris, r3(Math.min(d, pris.dispo)), etiquette); return; }
+      const pris = reserve.prendreAuPlus(dureeBroll(d));
+      if (pris) { noterPioche(etat, pris); p.ajouterItem(pris, r3(Math.min(dureeBroll(d), pris.dispo)), etiquette); return; }
     } else if (type === 'stock') {
-      const it = libre(videos, d) ?? libre(photos, d);
-      if (it) { poser(it, d, etiquette); return; }
+      const db = dureeBroll(d);
+      // Photos et vidéos en alternance, jamais le média précédent.
+      const it = stockSuivant({ videos, photos }, utilises, db, etat) ?? libre(videos, db) ?? libre(photos, db);
+      if (it) { poser(it, db, etiquette); return; }
     }
     if (type !== 'auto') expl.push(`Créneau ${k + 1} : aucun média « ${type} » disponible, choix automatique.`);
     // 3. Automatique : avatar en ouverture / fin et en alternance, sinon priorité.
     const dernier = p.segs[p.segs.length - 1];
     if (avatar && (k === 0 || k === n - 1 || !dernier || dernier.kind !== 'avatar')) {
-      p.ajouterAvatar(d, `${etiquette} — avatar`);
+      poserAvatar(k, d, `${etiquette} — avatar`);
       return;
     }
-    const pris = prochainBroll(reserve, { videos, photos }, utilises, d);
-    if (pris) { p.ajouterItem(pris.it, r3(pris.it.kind === 'image' ? d : pris.d), etiquette); return; }
-    if (avatar) { p.ajouterAvatar(d, `${etiquette} — avatar (aucun autre média)`); return; }
+    const pris = prochainBroll(reserve, { videos, photos }, utilises, dureeBroll(d), etat);
+    if (pris) { p.ajouterItem(pris.it, r3(pris.it.kind === 'image' ? dureeBroll(d) : pris.d), etiquette); return; }
+    if (avatar) { poserAvatar(k, d, `${etiquette} — avatar (aucun autre média)`); return; }
     expl.push(`Créneau ${k + 1} : aucun média disponible.`);
   });
-  // Reliquat (dernier média plus court que son créneau) : l'avatar le couvre,
-  // une photo s'étire ; une vidéo, non — dit.
+  if (avatar) {
+    // Le temps entre les créneaux et le CTA : la même alternance que sans gabarit.
+    const avant = p.segs.length;
+    if (limite - p.fin >= BROLL_MIN_S - EPS) {
+      const dernier = p.segs[p.segs.length - 1];
+      alterner(p, limite, reserve, { videos, photos }, utilises, etat, dernier && dernier.kind === 'avatar' ? 'broll' : 'avatar');
+    }
+    p.ajouterAvatar(r3(T - p.fin), 'avatar — CTA');
+    const ajoutes = p.segs.slice(avant).filter((s) => s.kind !== 'avatar').length;
+    if (ajoutes) expl.push(`Avatar et plans de coupe alternés : ${ajoutes} plan(s) de coupe ajouté(s) après le gabarit.`);
+    expl.push(`Gabarit de ${n} créneau(x) respecté.`);
+    return p.segs;
+  }
+  // Reliquat (dernier média plus court que son créneau) : une photo s'étire ;
+  // une vidéo, non — dit.
   const manque = r3(T - p.fin);
   if (manque > EPS && p.segs.length) {
     const d = p.segs[p.segs.length - 1];
-    if (avatar) p.ajouterAvatar(manque, 'avatar — fin');
-    else if (d.kind === 'image') p.prolonger(T);
+    if (d.kind === 'image') p.prolonger(T);
     else expl.push(`Matière insuffisante : séquence de ${p.fin} s au lieu de ${r3(T)} s.`);
   }
   expl.push(`Gabarit de ${n} créneau(x) respecté.`);

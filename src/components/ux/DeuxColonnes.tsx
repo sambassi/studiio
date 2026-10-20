@@ -60,7 +60,7 @@ export default function DeuxColonnes({ nom, children, className = '', attributs,
 export function ColonneTravail({ children, className = '', attributs }: { children: ReactNode; className?: string; attributs?: Attributs }) {
   const pleine = useContext(PleineLargeur);
   return (
-    <div data-colonne="travail" {...(attributs ?? {})} className={`${pleine ? '' : 'lg:col-span-3'} space-y-4 ${className}`}>
+    <div data-colonne="travail" {...(attributs ?? {})} className={`${pleine ? '' : 'lg:col-span-3'} min-w-0 space-y-4 ${className}`}>
       {children}
     </div>
   );

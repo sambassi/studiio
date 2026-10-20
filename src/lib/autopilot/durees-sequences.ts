@@ -12,10 +12,10 @@
  * rythme du brief — le débit qui dimensionne déjà ce script. La vidéo finale
  * prend la durée MESURÉE du jumeau (`mesurerDureeJumeau`) : l'aperçu le dit.
  */
-import { auDixiemeSuperieur, enveloppeAutourDuJumeau } from '@/lib/autopilot/duree-cible';
+import { auDixiemeSuperieur, debitParoleAvatar, enveloppeAutourDuJumeau } from '@/lib/autopilot/duree-cible';
 import { DEFAULT_SEQUENCE_SECONDS, RUSH_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
 import { TRANSITION_DURATION_SECONDS } from '@/lib/creer/transitionPreview';
-import { CARACTERES_PAR_SECONDE, type RythmeBrief } from '@/lib/creer/brief';
+import type { RythmeBrief } from '@/lib/creer/brief';
 
 export interface DureesMontage {
   intro: number;
@@ -63,11 +63,11 @@ export function dureesMontageJumeau(input: {
 
 /**
  * Parole ESTIMÉE du jumeau (s) avant sa génération : longueur du script au
- * débit du rythme (`CARACTERES_PAR_SECONDE`, celui qui dimensionne le script).
- * Arrondie au dixième. Script vide : 0.
+ * débit de la voix de l'avatar (`debitParoleAvatar`, celui qui dimensionne le
+ * script). Arrondie au dixième. Script vide : 0.
  */
 export function estimerParoleJumeau(script: string, rythme?: RythmeBrief | null): number {
-  const debit = CARACTERES_PAR_SECONDE[rythme ?? 'normal'];
+  const debit = debitParoleAvatar(rythme);
   const n = (script ?? '').trim().length;
   return n > 0 ? Math.round((n / debit) * 10) / 10 : 0;
 }

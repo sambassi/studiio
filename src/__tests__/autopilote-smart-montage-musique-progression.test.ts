@@ -105,6 +105,7 @@ describe('Progression réelle', () => {
     expect(render).toContain('input.onComposition!(Math.min(1, Math.max(0, (progress - 20) / 75)))');
     const panel = src('src/components/creer/AutopilotPanel.tsx');
     expect(panel).toContain("fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })");
-    expect(panel).toContain('{progressionProduction?.pourcent ?? 0} %');
+    // Un pourcentage SEULEMENT pendant la composition (images rendues) : `affichageProduction`.
+    expect(panel).toContain('const aff = affichageProduction(progressionProduction);');
   });
 });

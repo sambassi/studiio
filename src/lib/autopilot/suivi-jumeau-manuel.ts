@@ -43,7 +43,12 @@ export interface PostVerifie {
 }
 
 export type SuiviJumeau =
-  | { etat: 'en_preparation'; jobId: string }
+  /**
+   * `statut` (additif) : l'état RÉEL de la ligne de file (`reserve` →
+   * `en_attente` → `en_cours`), que l'écran traduit en étapes ; `depuis` :
+   * l'horodatage serveur de la mise en file (temps écoulé, survit au rechargement).
+   */
+  | { etat: 'en_preparation'; jobId: string; statut?: string; depuis?: string }
   | { etat: 'depose'; jobId: string; post: PostVerifie; sansAvatar: boolean }
   | { etat: 'echec'; jobId: string; message: string };
 
@@ -90,7 +95,7 @@ export async function suiviProductionJumeau(userId: string, now = Date.now()): P
   if (!ligne || now - Date.parse(ligne.created_at) > FENETRE_SUIVI_MS) return null;
   const jobId = ligne.job_id;
 
-  if (STATUTS_EN_COURS.includes(ligne.statut)) return { etat: 'en_preparation', jobId };
+  if (STATUTS_EN_COURS.includes(ligne.statut)) return { etat: 'en_preparation', jobId, statut: ligne.statut, depuis: ligne.created_at };
 
   if (ligne.statut === 'rendu') {
     const post = ligne.post_id ? await postVisibleDansCalendrier(userId, ligne.post_id) : null;

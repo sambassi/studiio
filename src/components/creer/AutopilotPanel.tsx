@@ -20,16 +20,20 @@ import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type Propositi
 import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
+import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
+import ProgressStatus from '@/components/ux/ProgressStatus';
+import { affichageProduction } from '@/lib/autopilot/progression';
+import { etapeDepuisStatutJumeauAutopilote, progressionVideoAvatar } from '@/lib/avatar/etapes-video-avatar';
 import {
   validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
   gabaritSuggere, mediasSuggeres, type AvatarPret, type EtatMediasPrevus,
 } from '@/lib/autopilot/medias-prevus';
 import {
-  aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, MAX_STOCK_RETENU,
+  aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
   type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
-import { conseilDureeAvatar } from '@/lib/autopilot/duree-cible';
+import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { avecConfirmationCout, MESSAGE_ANNULE } from '@/lib/fournisseurs/confirmation-client';
 import type { FormatStock } from '@/lib/stock/types';
@@ -752,30 +756,77 @@ export default function AutopilotPanel({
    */
   const rushesDispo = useMemo(() => rushesUtilisables(config.rushUrls, rushEtats), [config.rushUrls, rushEtats]);
   // Clé `sources` enregistrée ou non : la MÊME lecture que le moteur (`mediasDesSources`).
-  const etatSources = etatSourcesVisuelles(rushesDispo, sources, avatarPret, !!config.designStyle.sources);
+  /**
+   * PERTINENCE — la MÊME lecture que le moteur (`mediasDesSources`) : un média
+   * stock retenu pour un autre sujet n'est ni compté (« Médias prévus »), ni
+   * montré (plan, aperçu). La banque, elle, reste affichée en entier.
+   */
+  const pertinent = useMemo(() => sourcesPertinentes({ ...config, rushUrls: rushesDispo }), [config, rushesDispo]);
+  const sourcesEcran = useMemo(() => ({ ...sources, stock: pertinent.stock }), [sources, pertinent.stock]);
+  const etatSources = etatSourcesVisuelles(pertinent.rushUrls, sourcesEcran, avatarPret, !!config.designStyle.sources);
   const sourcePossible = aUneSourceVisuelle(etatSources);
   const montageFormat = montageDepuisStyle(config.designStyle)?.format;
   const formatStock: FormatStock = montageFormat === '16:9' || montageFormat === '1:1' ? montageFormat : '9:16';
   const rushesPerso = rushesDispo.filter((u) => !estRushStock(u));
-  const sujetStock = config.topics[0] ? themeLabel(config.topics[0]) : (config.brief.objectif || config.brief.message || 'fitness');
+  // Le sujet des médias suggérés — la MÊME règle que le moteur (`sujetsCourants`).
+  const sujetStock = sujetStockPrincipal(config);
+  /** Média suggéré (stock) de la banque — jamais compté comme rush personnel. */
+  const estVideoSuggeree = (url: string) => !!(metaStock[url] || idStockDuRush(url) || estRushStock(url));
+  const nbRushesPersoBanque = rushesDispo.filter((u) => !estVideoSuggeree(u)).length;
+  const nbVideosSuggereesBanque = rushesDispo.length - nbRushesPersoBanque;
 
   /**
    * LE PLAN TEL QUE L'ÉCRAN LE MONTRE — enregistré, sinon suggéré. Une seule
    * expression pour « Plan avant génération » et pour l'aperçu.
    */
+  /**
+   * LA PAROLE DE L'AVATAR PRÉVUE — celle que le BUDGET du script de
+   * production implique (`paroleAvatarDuBudget` : le script réel, écrit au
+   * créneau, est dimensionné pour la durée cible au débit de la voix clonée,
+   * donc ≈ la cible ; avatar seul : la part réservée aux séquences plein
+   * écran est déduite, comme en production). Sans durée cible : la référence
+   * du plan. Aucun appel, aucune génération ; dite « estimée » à l'écran.
+   */
+  const paroleAvatarPrevue = useMemo(() => {
+    if (!config.jumeauAvatar) return null;
+    const seul = !avatarAvecAutresSources(config);
+    return paroleAvatarDuBudget(config.brief, seul ? secondesReserveesEnveloppeJumeau(config.brief?.duree) : 0);
+  }, [config]);
   const planSuggere = gabaritSuggere({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
     stock: etatSources.stockRetenus,
   }, { dureeSecondes: config.brief.duree, rythme: config.brief.rythme });
+  /** Durées sondées par « Plan avant génération » — reprises par l'aperçu du montage prévu (même plan). */
+  const [dureesPlan, setDureesPlan] = useState<Record<string, number | null>>({});
+  /**
+   * LES OPTIONS DU PLAN COMPLET — UNE SEULE SOURCE pour « Plan avant
+   * génération » ET l'aperçu du montage prévu (même avatar, même cible, même
+   * rythme, même parole estimée) : les deux écrans calculent le MÊME plan.
+   */
+  const optionsPlan = {
+    avatarDisponible: etatSources.avatarActif && etatSources.avatarPret,
+    cible: config.brief.duree ?? null,
+    rythme: config.brief.rythme ?? null,
+    secondesAvatarEstimees: paroleAvatarPrevue,
+  };
   const resumeApercu: ResumeMediasApercu = {
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
     rushesPerso: sources.actives.rushes ? rushesPerso : [],
-    stock: sources.actives.stock ? sources.stock : [],
+    stock: sources.actives.stock ? pertinent.stock : [],
     avatar: {
       disponible: avatarPorteLaProduction(sources.actives.avatar, avatarPret),
       vignette: vignetteAvatar ? { url: vignetteAvatar.url, type: vignetteAvatar.type } : null,
+    },
+    // Les options EXACTES passées à `PlanAvantGeneration` ci-dessous.
+    plan: {
+      avatarDisponible: optionsPlan.avatarDisponible,
+      // `PlanAvantGeneration` : sans cible, la référence du plan.
+      cible: optionsPlan.cible ?? DUREE_ESTIMEE_SANS_CIBLE,
+      rythme: optionsPlan.rythme,
+      secondesAvatarEstimees: optionsPlan.secondesAvatarEstimees,
+      durees: dureesPlan,
     },
   };
   // Remonté sur sa SIGNATURE : un objet neuf à chaque rendu ne relance rien.
@@ -819,7 +870,9 @@ export default function AutopilotPanel({
    */
   const retenirStock = useCallback((m: MediaStockRetenu, ligne?: { id: string; lignes: CreneauGabarit[] } | null) => {
     const url = urlPubliqueAbsolue(m.url, window.location.origin) ?? m.url;
-    const media: MediaStockRetenu = { ...m, url };
+    // Le SUJET du moment est noté : un média retenu pour un autre sujet ne sera
+    // jamais pioché automatiquement (`mediasDesSources`).
+    const media: MediaStockRetenu = { ...m, url, sujet: m.sujet ?? sujetStock };
     const stock = [...sources.stock.filter((s) => s.url !== url), media].slice(0, MAX_STOCK_RETENU);
     const extra: Partial<AutopilotConfig> = {};
     if (m.type === 'video') {
@@ -830,7 +883,7 @@ export default function AutopilotPanel({
       ? ligne.lignes.map((l) => (l.id === ligne.id ? { id: l.id, type: 'stock' as const, media: url } : l))
       : sources.gabarit;
     enregistrerSources({ ...sources, actives: { ...sources.actives, stock: true }, stock, gabarit }, extra);
-  }, [config.rushUrls, enregistrerSources, sources]);
+  }, [config.rushUrls, enregistrerSources, sources, sujetStock]);
 
   /** Retire un média retenu — de la banque aussi pour une vidéo, et des lignes du plan qui le forçaient. */
   const retirerStock = useCallback((url: string) => {
@@ -1060,9 +1113,11 @@ export default function AutopilotPanel({
 
   // Progression réelle de « Produire maintenant », relue toutes les 2 s tant
   // que le rendu est en cours (`/api/autopilot/produire-maintenant/progression`).
-  const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string } | null>(null);
+  const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string; etape?: string; avancement?: number | null } | null>(null);
+  /** Montage AVEC JUMEAU : l'état RÉEL de sa ligne de file (`reserve` → `en_attente` → `en_cours`) et sa mise en file. */
+  const [suiviJumeauFile, setSuiviJumeauFile] = useState<{ statut: string | null; depuis: string | null } | null>(null);
   useEffect(() => {
-    if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); return; }
+    if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); setSuiviJumeauFile(null); return; }
     let actif = true;
     const lire = () => {
       fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
@@ -1070,13 +1125,22 @@ export default function AutopilotPanel({
         .then((d) => {
           if (!actif) return;
           const p = d?.progression;
-          if (p && typeof p.pourcent === 'number') setProgressionProduction({ pourcent: p.pourcent, libelle: String(p.libelle ?? '') });
+          if (p && typeof p.pourcent === 'number') {
+            setProgressionProduction({
+              pourcent: p.pourcent, libelle: String(p.libelle ?? ''),
+              etape: typeof p.etape === 'string' ? p.etape : undefined,
+              avancement: typeof p.avancement === 'number' ? p.avancement : null,
+            });
+          }
           // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici.
           const r = d?.resultat;
           if (!p && r) appliquerResultat(r);
           // Montage AVEC JUMEAU : l'état PROUVÉ par le serveur (file + post
           // relu dans le Calendrier). Seul `depose` devient un succès.
-          const j = d?.jumeau as { etat?: string; message?: string; post?: { postId: string; scheduledDate: string; scheduledTime: string }; sansAvatar?: boolean } | null;
+          const j = d?.jumeau as { etat?: string; message?: string; statut?: string; depuis?: string; post?: { postId: string; scheduledDate: string; scheduledTime: string }; sansAvatar?: boolean } | null;
+          if (j?.etat === 'en_preparation') {
+            setSuiviJumeauFile({ statut: typeof j.statut === 'string' ? j.statut : null, depuis: typeof j.depuis === 'string' ? j.depuis : null });
+          }
           if (!p && !r && j?.etat === 'depose' && j.post) {
             appliquerResultat({
               success: true, postId: j.post.postId, scheduledDate: j.post.scheduledDate, scheduledTime: j.post.scheduledTime,
@@ -1165,7 +1229,7 @@ export default function AutopilotPanel({
     const rendu = contenuRendu(e);
     const personnels = e.rushesPersonnels + e.bibliotheque;
     const stockProposes = sources.actives.stock ? propositionsStock.proposes : 0;
-    const vignettes = sources.actives.stock ? sources.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
+    const vignettes = sources.actives.stock ? pertinent.stock.filter((m) => m.vignetteUrl).slice(0, 6) : [];
     const { videos: videosSuggerees, photos: photosSuggerees } = mediasSuggeres(e);
     const ligne = (dt: string, dd: ReactNode, attrs: Record<string, string | number>) => (
       <div className="flex items-center justify-between gap-3 min-w-0">
@@ -1315,33 +1379,41 @@ export default function AutopilotPanel({
             </div>
           </div>
         )}
-        {produire.etat === 'en-cours' && (
-          <div className="space-y-1.5" data-autopilot-produire-en-cours>
-            {/* Progression RÉELLE du pipeline (étapes serveur), jamais un minuteur. */}
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progressionProduction?.pourcent ?? 0}%`, backgroundColor: accent }}
-                data-autopilot-produire-barre
+        {produire.etat === 'en-cours' && (() => {
+          // Étapes RÉELLES du pipeline ; un pourcentage SEULEMENT pendant la
+          // composition (images rendues) — plus de plages fixes par étape.
+          const aff = affichageProduction(progressionProduction);
+          return (
+            <div className="space-y-1.5" data-autopilot-produire-en-cours data-autopilot-produire-etape={progressionProduction?.etape ?? ''}>
+              <ProgressStatus
+                titre="Production de la vidéo"
+                statut="en_cours"
+                etapes={aff.etapes}
+                {...(aff.pourcentage !== undefined ? { pourcentage: aff.pourcentage } : {})}
+                detail={aff.message}
+                note="Vous pouvez continuer à régler l’Autopilote."
               />
             </div>
-            <p className="flex items-center gap-1.5 text-xs text-gray-300">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span className="tabular-nums font-medium">{progressionProduction?.pourcent ?? 0} %</span>
-              <span>{progressionProduction?.libelle ?? 'Démarrage…'}</span>
-            </p>
-            <p className="text-[11px] text-gray-500">Vous pouvez continuer à régler l’Autopilote.</p>
-          </div>
-        )}
-        {produire.etat === 'jumeau' && (
-          <div className="space-y-1" data-autopilot-produire-jumeau>
-            <p className="flex items-center gap-1.5 text-xs text-gray-300">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Votre avatar se prépare. Le brouillon n’est pas encore dans le Calendrier : il y sera déposé dès que la vidéo sera montée.
-            </p>
-            <p className="text-[11px] text-gray-500">Gardez cette page ouverte pour suivre l’avancement, ou revenez plus tard.</p>
-          </div>
-        )}
+          );
+        })()}
+        {produire.etat === 'jumeau' && (() => {
+          // L'état RÉEL de la file : réservé → génération de l'avatar →
+          // montage. Aucun pourcentage (le montage tourne côté serveur).
+          const prog = progressionVideoAvatar({ etape: etapeDepuisStatutJumeauAutopilote(suiviJumeauFile?.statut ?? 'en_attente') });
+          return (
+            <div className="space-y-1" data-autopilot-produire-jumeau data-autopilot-jumeau-statut={suiviJumeauFile?.statut ?? ''}>
+              <ProgressStatus
+                titre="Votre avatar se prépare"
+                statut="en_cours"
+                etapes={prog.etapes}
+                description={prog.message}
+                detail={prog.detail ?? undefined}
+                {...(suiviJumeauFile?.depuis ? { debutLe: suiviJumeauFile.depuis } : {})}
+                note="Le brouillon n’est pas encore dans le Calendrier : il y sera déposé dès que la vidéo sera montée. Gardez cette page ouverte pour suivre l’avancement, ou revenez plus tard."
+              />
+            </div>
+          );
+        })()}
         {produire.etat === 'fait' && (produire.avertissements ?? []).length > 0 && (
           <ul className="space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-200" data-autopilot-produire-avertissements>
             {(produire.avertissements ?? []).map((a) => <li key={a}>{a}</li>)}
@@ -1627,12 +1699,14 @@ export default function AutopilotPanel({
                 redevient secondaire et « Continuer vers Style » prend
                 la place. */}
             <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={rushesDispo.length > 0 ? 'pret' : 'a-faire'} data-autopilot-rushes-utilisables={rushesDispo.length}>
+              <p className="text-xs font-medium text-gray-300" data-autopilot-rushes-etat={rushesDispo.length > 0 ? 'pret' : 'a-faire'} data-autopilot-rushes-utilisables={rushesDispo.length} data-autopilot-rushes-perso={nbRushesPersoBanque} data-autopilot-videos-suggerees={nbVideosSuggereesBanque}>
                 Banque de rushes
                 <span className={`ml-1.5 ${rushesDispo.length > 0 || sourcePossible ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {/* Rushes personnels et vidéos suggérées comptés À PART : une vidéo
+                      stock conservée n'est jamais annoncée comme « rush ». */}
                   {rushesDispo.length === 0
                     ? (sourcePossible ? '0 rush — facultatif avec vos autres sources' : '0 rush — aucune source pour l’instant')
-                    : `${rushesDispo.length} rush${rushesDispo.length > 1 ? 'es' : ''} prêt${rushesDispo.length > 1 ? 's' : ''}`}
+                    : libelleBanqueRushes(nbRushesPersoBanque, nbVideosSuggereesBanque)}
                 </span>
                 {nbRushesIndisponibles > 0 && (
                   <span className="ml-1.5 text-amber-400" data-autopilot-rushes-indisponibles={nbRushesIndisponibles}>
@@ -1864,12 +1938,15 @@ export default function AutopilotPanel({
             suggestion={planSuggere}
             rushesPerso={sources.actives.rushes ? rushesPerso : []}
             stock={sources.actives.stock ? sources.stock : []}
+            stockPertinent={sources.actives.stock ? pertinent.stock : []}
+            secondesAvatarEstimees={optionsPlan.secondesAvatarEstimees}
             vignetteAvatar={vignetteAvatar}
-            avatarDisponible={etatSources.avatarActif && etatSources.avatarPret}
+            avatarDisponible={optionsPlan.avatarDisponible}
+            onDurees={setDureesPlan}
             disabled={!ready || saving}
             onChange={(g) => enregistrerSources({ ...sources, gabarit: g })}
             onRechercher={(id, lignes) => setRechercheLigne({ id, lignes })}
-            duree={{ cible: config.brief.duree ?? null, rythme: config.brief.rythme ?? null }}
+            duree={{ cible: optionsPlan.cible, rythme: optionsPlan.rythme }}
           />
           {rechercheLigne && (
             <StockRechercheAutopilote

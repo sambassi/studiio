@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useState, useEffect } from 'react';
 import { ArrowDown, ArrowUp, Film, ImageIcon, Megaphone, Plus, RefreshCw, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react';
 import { LIBELLES_ORIGINE, dureeLisible, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
 import MiniatureVideo from '@/components/medias/MiniatureVideo';
@@ -8,6 +9,7 @@ import { MAX_CRENEAUX, type CreneauGabarit, type MediaStockRetenu, type TypeCren
 import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import { DUREE_ESTIMEE_SANS_CIBLE, horodatage, minutagePlan, secondesLisibles } from '@/lib/autopilot/duree-cible';
 import { RYTHME_LABELS, type RythmeBrief } from '@/lib/creer/brief';
+import { planCompletAutopilote, type SegmentPlanComplet } from '@/lib/autopilot/plan-complet';
 
 /**
  * « Plan avant génération » — le GABARIT de la séquence Vidéo, édité avant
@@ -71,6 +73,21 @@ function InfosRush({ url }: { url: string }) {
   );
 }
 
+/** Libellé produit d'un plan du montage prévu — jamais une plateforme. */
+export function libelleSegment(s: SegmentPlanComplet): string {
+  if (s.genre === 'avatar') return s.role === 'accroche' ? 'Mon avatar — accroche' : s.role === 'cta' ? 'Mon avatar — CTA' : 'Mon avatar';
+  if (s.genre === 'rush') return 'Mes rushes';
+  return LIBELLES_ORIGINE[origineSuggeree(s.genre === 'video' ? 'video' : 'photo')];
+}
+
+/** Lit la durée d'une vidéo (même cache que les miniatures) et la remonte. Ne rend rien. */
+function SondeDuree({ url, onDuree }: { url: string; onDuree: (url: string, d: number | null) => void }) {
+  const e = useVignetteVideo(url);
+  const d = e.etat === 'pret' ? e.vignette.duree : null;
+  useEffect(() => { onDuree(url, d); }, [url, d, onDuree]);
+  return null;
+}
+
 const BOUTON = 'flex items-center gap-1 rounded border border-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 hover:text-white disabled:opacity-30';
 
 function nouvelId(lignes: CreneauGabarit[]): string {
@@ -81,7 +98,22 @@ function nouvelId(lignes: CreneauGabarit[]): string {
 
 export default function PlanAvantGeneration({
   gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher, duree,
+  secondesAvatar, secondesAvatarEstimees, scriptAvatar, stockPertinent, onDurees,
 }: {
+  /** Durées sondées des vidéos, remontées : l'aperçu du montage prévu calcule le MÊME plan. */
+  onDurees?: (durees: Record<string, number | null>) => void;
+  /**
+   * Les médias stock que le MOTEUR piochera (sujet courant, `sourcesPertinentes`),
+   * dans son ordre — ceux du plan calculé. Défaut : `stock`. Les listes de choix
+   * gardent tous les médias retenus (un choix manuel reste possible).
+   */
+  stockPertinent?: MediaStockRetenu[];
+  /** Parole de l'avatar (s), si connue ; sinon estimée depuis `scriptAvatar`, sinon la durée de référence. */
+  secondesAvatar?: number | null;
+  /** Script que l'avatar dira (estimation de sa parole). */
+  scriptAvatar?: string | null;
+  /** Parole estimée par le budget du script de production (`paroleAvatarDuBudget`). */
+  secondesAvatarEstimees?: number | null;
   /**
    * Durée cible et rythme du brief. Le minutage affiché est celui du moteur
    * (créneaux égaux) sur la durée cible — sans cible, sur ≈ 30 s. À la
@@ -103,8 +135,31 @@ export default function PlanAvantGeneration({
   const lignes = fixe ? gabarit : suggestion;
   const cible = duree?.cible ?? null;
   const reference = cible ?? DUREE_ESTIMEE_SANS_CIBLE;
-  const minutage = minutagePlan(lignes.length, reference);
-  const planifiee = minutage.length ? minutage[minutage.length - 1].fin : 0;
+  // Durées des vidéos (rushes, vidéos suggérées) : celles que le moteur sondera.
+  const [durees, setDurees] = useState<Record<string, number | null>>({});
+  const noterDuree = useCallback((url: string, d: number | null) => {
+    setDurees((x) => (x[url] === d ? x : { ...x, [url]: d }));
+  }, []);
+  useEffect(() => { onDurees?.(durees); }, [durees, onDurees]);
+  const stockPlan = stockPertinent ?? stock;
+  const videos = [...rushesPerso, ...stockPlan.filter((m) => m.type === 'video').map((m) => m.url)];
+  /**
+   * LE PLAN MONTRÉ = LE PLAN RENDU : la liste ENTIÈRE des plans (créneaux,
+   * alternance avatar ↔ plans de coupe, CTA), par le même orchestrateur que
+   * le moteur (`planCompletAutopilote` → `planMultiSources`).
+   */
+  const complet = lignes.length > 0 ? planCompletAutopilote({
+    gabarit: lignes,
+    actives: { rushes: true, stock: true, avatar: avatarDisponible },
+    rushesPerso, stock: stockPlan,
+    avatar: { disponible: avatarDisponible, vignette: null },
+  }, { cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, secondesAvatarEstimees, scriptAvatar, durees }) : null;
+  const avecAvatar = !!complet?.segments.some((x) => x.genre === 'avatar');
+  // Parole de l'avatar non mesurée (aucune génération) : la durée est une ESTIMATION.
+  const estimee = avecAvatar && !(typeof secondesAvatar === 'number' && secondesAvatar > 0);
+  // Sans avatar, un créneau = un plan : le minutage par créneau reste lisible.
+  const minutage = avecAvatar ? [] : minutagePlan(lignes.length, reference);
+  const planifiee = complet && complet.duree > 0 ? complet.duree : (minutage.length ? minutage[minutage.length - 1].fin : 0);
 
   const maj = (f: (l: CreneauGabarit[]) => CreneauGabarit[]) => onChange(f(lignes.map((l) => ({ ...l }))).slice(0, MAX_CRENEAUX));
   const deplacer = (i: number, d: -1 | 1) => maj((l) => {
@@ -116,6 +171,7 @@ export default function PlanAvantGeneration({
 
   return (
     <section className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2 min-w-0" data-autopilot-plan data-plan-fixe={fixe ? 'oui' : 'non'}>
+      {videos.map((u) => <SondeDuree key={u} url={u} onDuree={noterDuree} />)}
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Plan avant génération</p>
         {fixe ? (
@@ -140,7 +196,9 @@ export default function PlanAvantGeneration({
           <dt className="text-gray-500">Durée cible</dt>
           <dd className="text-gray-200" data-plan-duree-cible={cible ?? ''}>{cible ? `${cible} s` : `automatique (≈ ${DUREE_ESTIMEE_SANS_CIBLE} s)`}</dd>
           <dt className="text-gray-500">Durée planifiée</dt>
-          <dd className="text-gray-200" data-plan-duree-planifiee={planifiee}>{secondesLisibles(planifiee)}</dd>
+          <dd className="text-gray-200" data-plan-duree-planifiee={planifiee} data-plan-duree-estimee={estimee ? 'oui' : 'non'}>
+            {secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> (estimée)</span> : null}
+          </dd>
           <dt className="text-gray-500">Nombre de séquences</dt>
           <dd className="text-gray-200" data-plan-nombre={lignes.length}>{lignes.length}</dd>
           <dt className="text-gray-500">Rythme</dt>
@@ -271,6 +329,28 @@ export default function PlanAvantGeneration({
           <span><span className="font-medium text-gray-300">CTA</span> — fixe, toujours en dernier</span>
         </li>
       </ol>
+      {complet && complet.segments.length > 0 && (
+        <div className="space-y-1 rounded-lg bg-gray-900/60 px-2 py-1.5" data-plan-montage data-plan-montage-nombre={complet.segments.length}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Montage prévu, plan par plan</p>
+          <ol className="space-y-0.5">
+            {complet.segments.map((x, i) => (
+              <li
+                key={`${i}-${x.debut}`}
+                className="flex items-center justify-between gap-2 text-[10px] text-gray-300 min-w-0"
+                data-plan-segment={i}
+                data-genre={x.genre}
+                data-role={x.role ?? ''}
+                data-debut={x.debut}
+                data-fin={x.fin}
+                data-url={x.url}
+              >
+                <span className="min-w-0 truncate">{libelleSegment(x)}</span>
+                <span className="shrink-0 text-gray-500">{horodatage(x.debut)} → {horodatage(x.fin)} · {secondesLisibles(x.duree)}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
       {lignes.length < MAX_CRENEAUX && (
         <button
           type="button"

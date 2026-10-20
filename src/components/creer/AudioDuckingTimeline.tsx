@@ -205,7 +205,7 @@ export default function AudioDuckingTimeline({
       onClick={() => toggleMute(track)}
       aria-pressed={isMuted[track]}
       title={isMuted[track] ? `Réactiver ${label}` : `Couper ${label}`}
-      className={`flex h-5 w-5 items-center justify-center rounded transition-colors ${
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors ${
         isMuted[track] ? 'text-red-400 hover:text-red-300' : 'text-gray-500 hover:text-white'
       }`}
     >
@@ -214,15 +214,15 @@ export default function AudioDuckingTimeline({
   );
 
   return (
-    <div className={flush ? 'space-y-2' : 'mt-3 rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-2'}>
+    <div className={flush ? 'min-w-0 space-y-2' : 'mt-3 min-w-0 rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-2'}>
       <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">
         Mixage audio
       </span>
 
       {/* Global volume sliders — bulk-apply to every keyframe at once */}
       <div className="rounded bg-gray-900/60 p-1.5 space-y-1">
-        <div className="flex items-center gap-1.5 text-[9px] text-gray-300">
-          <span className="w-16 text-gray-400">Musique</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
+          <span className="w-16 shrink-0 truncate text-gray-400">Musique</span>
           <input
             type="range"
             min={0}
@@ -230,14 +230,14 @@ export default function AudioDuckingTimeline({
             value={globalMusicValue}
             onChange={(e) => setGlobalMusic(parseInt(e.target.value, 10))}
             aria-label="Volume de la musique"
-            className="flex-1 accent-cyan-500"
+            className="flex-1 min-w-0 w-full accent-cyan-500"
           />
-          <span className="w-9 text-right text-cyan-300 font-mono">{globalMusicValue}%</span>
+          <span className="w-9 shrink-0 text-right text-cyan-300 font-mono">{globalMusicValue}%</span>
           <MuteButton track="music" label="la musique" />
         </div>
         <LevelBar track="music" color="bg-cyan-500" />
-        <div className="flex items-center gap-1.5 text-[9px] text-gray-300">
-          <span className="w-16 text-gray-400">Son rush</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
+          <span className="w-16 shrink-0 truncate text-gray-400">Son rush</span>
           <input
             type="range"
             min={0}
@@ -245,14 +245,14 @@ export default function AudioDuckingTimeline({
             value={globalRushValue}
             onChange={(e) => setGlobalRush(parseInt(e.target.value, 10))}
             aria-label="Volume du son du rush"
-            className="flex-1 accent-orange-500"
+            className="flex-1 min-w-0 w-full accent-orange-500"
           />
-          <span className="w-9 text-right text-orange-300 font-mono">{globalRushValue}%</span>
+          <span className="w-9 shrink-0 text-right text-orange-300 font-mono">{globalRushValue}%</span>
           <MuteButton track="rush" label="le son du rush" />
         </div>
         <LevelBar track="rush" color="bg-orange-500" />
-        <div className="flex items-center gap-1.5 text-[9px] text-gray-300">
-          <span className="w-16 text-gray-400">Voix off</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
+          <span className="w-16 shrink-0 truncate text-gray-400">Voix off</span>
           <input
             type="range"
             min={0}
@@ -260,9 +260,9 @@ export default function AudioDuckingTimeline({
             value={globalVoiceValue}
             onChange={(e) => setGlobalVoice(parseInt(e.target.value, 10))}
             aria-label="Volume de la voix off"
-            className="flex-1 accent-purple-500"
+            className="flex-1 min-w-0 w-full accent-purple-500"
           />
-          <span className="w-9 text-right text-purple-300 font-mono">{globalVoiceValue}%</span>
+          <span className="w-9 shrink-0 text-right text-purple-300 font-mono">{globalVoiceValue}%</span>
           <MuteButton track="voice" label="la voix off" />
         </div>
         <LevelBar track="voice" color="bg-purple-500" />
@@ -289,7 +289,7 @@ export default function AudioDuckingTimeline({
       {advancedOpen && (
       <>
       {sorted.length > 1 && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => onChange([{
@@ -312,7 +312,7 @@ export default function AudioDuckingTimeline({
       )}
       {/* Auto-mix — deplace ici depuis l'en-tete : c'est une aide ponctuelle,
           pas un reglage quotidien. Rien n'est retire, seulement replie. */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={onAutoDuck}
           disabled={!rushUrl || autoDuckRunning}
@@ -424,41 +424,41 @@ export default function AudioDuckingTimeline({
               </button>
             </div>
             <div className="space-y-1">
-              <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
-                <span className="w-14 text-gray-400">Musique</span>
+              <label className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
+                <span className="w-14 shrink-0 truncate text-gray-400">Musique</span>
                 <input
                   type="range"
                   min={0}
                   max={100}
                   value={Math.round(kf.musicVolume * 100)}
                   onChange={(e) => updateKeyframe(kf.id, { musicVolume: parseInt(e.target.value, 10) / 100 })}
-                  className="flex-1 accent-cyan-500"
+                  className="flex-1 min-w-0 w-full accent-cyan-500"
                 />
-                <span className="w-9 text-right text-cyan-300 font-mono">{Math.round(kf.musicVolume * 100)}%</span>
+                <span className="w-9 shrink-0 text-right text-cyan-300 font-mono">{Math.round(kf.musicVolume * 100)}%</span>
               </label>
-              <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
-                <span className="w-14 text-gray-400">Son rush</span>
+              <label className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
+                <span className="w-14 shrink-0 truncate text-gray-400">Son rush</span>
                 <input
                   type="range"
                   min={0}
                   max={100}
                   value={Math.round(kf.rushVolume * 100)}
                   onChange={(e) => updateKeyframe(kf.id, { rushVolume: parseInt(e.target.value, 10) / 100 })}
-                  className="flex-1 accent-orange-500"
+                  className="flex-1 min-w-0 w-full accent-orange-500"
                 />
-                <span className="w-9 text-right text-orange-300 font-mono">{Math.round(kf.rushVolume * 100)}%</span>
+                <span className="w-9 shrink-0 text-right text-orange-300 font-mono">{Math.round(kf.rushVolume * 100)}%</span>
               </label>
-              <label className="flex items-center gap-1.5 text-[9px] text-gray-300">
-                <span className="w-14 text-gray-400">Voix off</span>
+              <label className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
+                <span className="w-14 shrink-0 truncate text-gray-400">Voix off</span>
                 <input
                   type="range"
                   min={0}
                   max={100}
                   value={Math.round((kf.voiceVolume ?? 1) * 100)}
                   onChange={(e) => updateKeyframe(kf.id, { voiceVolume: parseInt(e.target.value, 10) / 100 })}
-                  className="flex-1 accent-purple-500"
+                  className="flex-1 min-w-0 w-full accent-purple-500"
                 />
-                <span className="w-9 text-right text-purple-300 font-mono">{Math.round((kf.voiceVolume ?? 1) * 100)}%</span>
+                <span className="w-9 shrink-0 text-right text-purple-300 font-mono">{Math.round((kf.voiceVolume ?? 1) * 100)}%</span>
               </label>
             </div>
           </div>

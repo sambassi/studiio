@@ -464,7 +464,7 @@ export default function AudioMixPreview({
   const pct = totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0;
 
   return (
-    <div className={flush ? 'space-y-2' : 'mt-3 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm'}>
+    <div className={flush ? 'min-w-0 space-y-2' : 'mt-3 min-w-0 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm'}>
       <div className={`flex items-center justify-between ${flush ? 'hidden' : ''}`}>
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
           Écouter le mixage
@@ -480,11 +480,11 @@ export default function AudioMixPreview({
         </label>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <button
           onClick={() => (isPlaying ? stop() : start())}
           disabled={!canPlay || busy}
-          className="flex items-center gap-1.5 rounded bg-purple-700 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 text-[11px] font-medium text-white transition"
+          className="flex shrink-0 items-center gap-1.5 rounded bg-purple-700 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 text-[11px] font-medium text-white transition"
           title={
             !canPlay
               ? "Upload music/voix ou rush pour activer le mixage"
@@ -494,13 +494,13 @@ export default function AudioMixPreview({
           {isPlaying ? <Pause size={12} /> : <Play size={12} />}
           {isPlaying ? 'Pause mixage' : 'Écouter le mixage'}
         </button>
-        <div className="flex-1 h-1.5 rounded bg-gray-800 overflow-hidden">
+        <div className="flex-1 min-w-0 h-1.5 rounded bg-gray-800 overflow-hidden" style={{ minWidth: 48 }}>
           <div
             className="h-full bg-purple-500"
             style={{ width: `${pct}%`, transition: 'width 80ms linear' }}
           />
         </div>
-        <span className="text-[9px] font-mono text-gray-400 w-14 text-right tabular-nums">
+        <span className="text-[9px] font-mono text-gray-400 shrink-0 whitespace-nowrap text-right tabular-nums">
           {currentTime.toFixed(1)}/{totalDuration.toFixed(1)}s
         </span>
       </div>

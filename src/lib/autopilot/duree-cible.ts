@@ -26,6 +26,23 @@ import {
 } from '@/lib/creer/brief';
 
 /**
+ * DÉBIT RÉEL DE LA VOIX DE L'AVATAR (voix clonée) : plus lent que le débit
+ * générique (`CARACTERES_PAR_SECONDE`, ≈ 14 car./s en « normal »). Mesuré en
+ * production : un script de 420 caractères (30 s × 14) a donné 39,5 s de
+ * parole, soit ≈ 10,6 car./s — un rapport de 0,76.
+ *
+ * ⚠️ LA VOIX N'EST JAMAIS ACCÉLÉRÉE pour tenir la durée : c'est le SCRIPT qui
+ * est dimensionné AVANT génération, à ce débit-là. La durée cible garde son
+ * sens (la parole visée), seul le nombre de caractères change.
+ */
+export const RATIO_DEBIT_AVATAR = 0.76;
+
+/** Débit de parole de l'avatar (caractères/s) pour un rythme. */
+export function debitParoleAvatar(r: RythmeBrief | null | undefined): number {
+  return Math.round(CARACTERES_PAR_SECONDE[r ?? 'normal'] * RATIO_DEBIT_AVATAR * 10) / 10;
+}
+
+/**
  * Longueur d'un plan selon le rythme (s). `normal` = 3,5 s, au centre de la
  * fenêtre des plans de coupe du moteur (2–4 s, `BROLL_MIN_S`/`BROLL_MAX_S`) ;
  * `dynamique` = 2,5 s (coupes rapprochées, toujours ≥ 2 s) ; `calme` = 5 s
@@ -145,6 +162,18 @@ export function contenuPourDuree<C extends { subtitle?: string; tagLine?: string
 }
 
 /**
+ * Le BUDGET (caractères) du script de l'avatar pour la durée cible — celui de
+ * la production (`scriptPourDuree`). Le script est dit par l'avatar : budget
+ * au débit RÉEL de sa voix clonée (`debitParoleAvatar`), jamais au débit
+ * générique — sinon 30 s visées donnaient ≈ 40 s de parole. `null` sans cible.
+ */
+export function budgetScriptAvatar(brief: VideoBrief | null | undefined, secondesReservees?: number): number | null {
+  if (!brief?.duree) return null;
+  const reserve = secondesReservees ?? 0;
+  return Math.round((reserve > 0 ? Math.max(PLAN_MIN_S, brief.duree - reserve) : brief.duree) * debitParoleAvatar(brief.rythme));
+}
+
+/**
  * Le SCRIPT de l'avatar pour la durée cible : accroche (message, titre),
  * idées (cartes), appel à l'action — par unités entières. `null` sans durée
  * cible : l'appelant garde son script d'avant.
@@ -164,12 +193,8 @@ export function scriptPourDuree(input: {
   /** A4 v2 — avatar seul : la première idée est toujours dite (message complet). */
   ideeObligatoire?: boolean;
 }): string | null {
-  const plein = longueurScriptCible(input.brief);
-  if (plein === null) return null;
-  const reserve = input.secondesReservees ?? 0;
-  const budget = reserve > 0 && input.brief?.duree
-    ? Math.round(Math.max(PLAN_MIN_S, input.brief.duree - reserve) * CARACTERES_PAR_SECONDE[input.brief.rythme ?? 'normal'])
-    : plein;
+  const budget = budgetScriptAvatar(input.brief, input.secondesReservees);
+  if (budget === null) return null;
   const unites = unitesDe({ ...input, message: input.brief?.message });
   const gardees = selectionner(unites, budget);
   const vus = new Set<string>();

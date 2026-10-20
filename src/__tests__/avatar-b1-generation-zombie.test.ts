@@ -191,7 +191,7 @@ describe('B1 — suivi d’une génération zombie (avancerStatutGeneration)', (
 
   it('pending sans identifiant mais RÉCENT (< 30 min) → inchangé, toujours en cours', async () => {
     base.generations = [zombie({ created_at: ilYA(10) })]; debitDuZombie();
-    expect(await avancerStatutGeneration(U, G)).toEqual({ status: 'processing', videoUrl: null, avatarVersion: 3 });
+    expect(await avancerStatutGeneration(U, G)).toEqual({ status: 'processing', videoUrl: null, avatarVersion: 3, etape: 'en_file' });
     expect(base.generations[0].status).toBe('pending');
     expect(remboursements()).toEqual([]);
   });

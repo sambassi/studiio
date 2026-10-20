@@ -58,8 +58,13 @@ function ageDepuisDernierLancement(g: { created_at: string; updated_at?: string 
 }
 
 type ResultatPoll =
-  /** `enAttenteFournisseur` : solde de Studiio épuisé chez le fournisseur, reprise automatique. */
-  | { status: 'processing'; videoUrl: null; enAttenteFournisseur?: boolean }
+  /**
+   * `enAttenteFournisseur` : solde de Studiio épuisé chez le fournisseur, reprise automatique.
+   * `etape` / `etatFournisseur` (ADDITIFS, information seulement) : où en est
+   * la génération — en file (`pending`, ou pas encore partie), en cours
+   * (`processing`), ou vidéo terminée en cours de rapatriement.
+   */
+  | { status: 'processing'; videoUrl: null; enAttenteFournisseur?: boolean; etape?: 'en_file' | 'en_cours' | 'recuperation'; etatFournisseur?: 'pending' | 'processing' }
   | { status: 'completed'; videoUrl: string }
   | { status: 'failed'; videoUrl: null; error: string; rembourse: boolean };
 
@@ -151,7 +156,7 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
       const r = relue as { status?: string; error_message?: string | null } | null;
       if (r?.status === 'failed') return { status: 'failed', videoUrl: null, error: messageUtilisateurSur(r.error_message, MESSAGES_AVATAR.nonDemarree), rembourse: false };
     }
-    return { status: 'processing', videoUrl: null };
+    return { status: 'processing', videoUrl: null, etape: 'en_file' };
   }
 
   // ⚠️ ON INTERROGE LE FOURNISSEUR AVANT LE GARDE STALE (voir en-tête).
@@ -211,7 +216,8 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
         .update({ status: 'processing', updated_at: new Date().toISOString() })
         .eq('id', g.id);
     }
-    return { status: 'processing', videoUrl: null };
+    const enFile = (remote.status as string) === 'pending';
+    return { status: 'processing', videoUrl: null, etape: enFile ? 'en_file' : 'en_cours', etatFournisseur: enFile ? 'pending' : 'processing' };
   }
 
   // Terminé mais de DURÉE NULLE annoncée : ce n'est pas une vidéo. La poser
@@ -270,7 +276,7 @@ async function avancerLigne(userId: string, g: LigneGeneration): Promise<Resulta
         rembourse,
       };
     }
-    return { status: 'processing', videoUrl: null };
+    return { status: 'processing', videoUrl: null, etape: 'recuperation' };
   }
 
   await supabaseAdmin
