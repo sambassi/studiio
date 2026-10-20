@@ -79,6 +79,19 @@ function transformationsChiffreSigle(affiche: string): number {
 const nbMots = (t: string) => t.split(/\s+/).filter(Boolean).length;
 
 /**
+ * Le texte contient-il un NOM PROPRE ou une MARQUE ? Un mot à majuscule
+ * initiale (pas tout en capitales : ça, c'est un sigle) hors début de
+ * phrase — ou le mot unique de l'entrée (« Afroboost »). Le premier mot
+ * capitalisé d'une expression (« Lien en bio ») reste un mot ordinaire.
+ */
+export function contientNomPropre(affiche: string): boolean {
+  const mots = (affiche ?? '').trim().split(/[\s'’]+/).filter(Boolean);
+  const capitalise = (m: string) => /^[^\p{L}]*\p{Lu}\p{Ll}/u.test(m);
+  if (mots.length === 1) return capitalise(mots[0]);
+  return mots.slice(1).some(capitalise);
+}
+
+/**
  * Expression française ORDINAIRE : en minuscules, sans chiffre ni sigle ni
  * nom propre (aucune capitale). La voix la dit déjà correctement : inutile
  * d'interroger un modèle (coût, et risque de « bioo »).
@@ -93,7 +106,9 @@ export function expressionOrdinaire(affiche: string): boolean {
  * simule jamais une correction.
  *  - vide, « AUCUNE », ou identique au texte (même normalisation que
  *    l'enregistrement) → null ;
- *  - sans chiffre ni sigle à transformer :
+ *  - nom propre / marque (`contientNomPropre`) : seules les règles de
+ *    plausibilité s'appliquent (« Afroboost » → « Afro-Boust » accepté) ;
+ *  - sans chiffre, sigle ni nom propre :
  *      · même clé phonétique grossière → null (« lien en bio » / « Lien-en-bioo ») ;
  *      · micro-variation : distance ≤ 2 ou ratio < 0,2 → null (« bioo ») ;
  *      · non plausible : ratio > 0,8 ou plus de deux fois plus de mots → null ;
@@ -109,10 +124,15 @@ export function suggestionUtile(affiche: string, suggestion: string | null | und
   if (transfos > 0) return nbMots(s) > 2 * motsA + 4 * transfos ? null : s;
   const ka = clePhonetique(a);
   const ks = clePhonetique(s);
-  if (ka === ks) return null;
-  const d = distanceEdition(ka, ks);
-  const ratio = d / Math.max(ka.length, ks.length, 1);
-  if (d <= 2 || ratio < 0.2) return null;
+  // Nom propre / marque : une respelling proche (« Afroboost » →
+  // « Afro-Boust ») EST la correction attendue — exempté des règles de
+  // micro-variation, mais pas de la plausibilité.
+  if (!contientNomPropre(a)) {
+    if (ka === ks) return null;
+    const d0 = distanceEdition(ka, ks);
+    if (d0 <= 2 || d0 / Math.max(ka.length, ks.length, 1) < 0.2) return null;
+  }
+  const ratio = distanceEdition(ka, ks) / Math.max(ka.length, ks.length, 1);
   if (ratio > 0.8 || nbMots(s) > 2 * motsA) return null;
   return s;
 }

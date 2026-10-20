@@ -117,14 +117,14 @@ describe('MaVoixPanel — Suggérer / Écouter / Enregistrer', () => {
   });
 
   it('cas difficile : la route serveur est appelée, sa proposition remplace la suggestion locale', async () => {
-    reponseSuggestion = { status: 200, data: { suggestion: 'Wousteur-chire', source: 'ia' } };
-    await ouvrirFormulaire('Worcestershire');
+    reponseSuggestion = { status: 200, data: { suggestion: 'Afro-boust', source: 'ia' } };
+    await ouvrirFormulaire('Afroboost');
     fireEvent.click(q('[data-prononciation-suggerer]'));
-    await waitFor(() => expect(champPrononce().value).toBe('Wousteur-chire'));
+    await waitFor(() => expect(champPrononce().value).toBe('Afro-boust'));
     const s = appels.filter((a) => a.url === '/api/voice/prononciations/suggestion');
     expect(s).toHaveLength(1);
-    expect(s[0].body).toEqual({ affiche: 'Worcestershire' });
-    expect(champAffiche().value).toBe('Worcestershire');
+    expect(s[0].body).toEqual({ affiche: 'Afroboost' });
+    expect(champAffiche().value).toBe('Afroboost');
     expect(enregistrements()).toHaveLength(0);
   });
 

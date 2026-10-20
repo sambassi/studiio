@@ -17,7 +17,7 @@ const base = vi.hoisted(() => ({ voices: [] as Ligne[], settings: [] as Ligne[],
 const reseau = vi.hoisted(() => ({
   eleven: [] as Array<{ url: string; body: { text: string } }>,
   anthropic: [] as Array<{ headers: Record<string, string>; body: { model: string; messages: Array<{ content: string }> } }>,
-  reponseAnthropic: { status: 200, texte: 'Wousteur-chire' as string | null },
+  reponseAnthropic: { status: 200, texte: 'Afro-boust' as string | null },
   autres: [] as string[],
 }));
 
@@ -88,7 +88,7 @@ beforeEach(() => {
   base.settings = [{ user_id: U, creator_preferences: { voixPersonnelle: { userVoiceId: null, prononciations: PRONONCIATIONS } } }];
   base.ecritures = 0;
   reseau.eleven.length = 0; reseau.anthropic.length = 0; reseau.autres.length = 0;
-  reseau.reponseAnthropic = { status: 200, texte: 'Wousteur-chire' };
+  reseau.reponseAnthropic = { status: 200, texte: 'Afro-boust' };
   session.courante = { user: { id: U } };
   delete process.env.ANTHROPIC_API_KEY;
   process.env.ELEVENLABS_API_KEY = 'cle-de-test';
@@ -171,12 +171,12 @@ describe('POST /api/voice/prononciations/suggestion', () => {
   it('cas difficile AVEC clé : l’infrastructure Anthropic existante (mockée) propose, rien n’est enregistré', async () => {
     process.env.ANTHROPIC_API_KEY = 'cle-anthropic-test';
     session.courante = { user: { id: `ia-${compteurSession}` } };
-    const res = await post(SUGGERER, { affiche: 'Worcestershire' });
-    expect(await res.json()).toEqual({ success: true, data: { suggestion: 'Wousteur-chire', source: 'ia' } });
+    const res = await post(SUGGERER, { affiche: 'Afroboost' });
+    expect(await res.json()).toEqual({ success: true, data: { suggestion: 'Afro-boust', source: 'ia' } });
     expect(reseau.anthropic).toHaveLength(1);
     expect(reseau.anthropic[0].headers['x-api-key']).toBe('cle-anthropic-test');
     expect(reseau.anthropic[0].body.model).toBe('claude-sonnet-4-20250514');
-    expect(reseau.anthropic[0].body.messages[0].content).toContain('Worcestershire');
+    expect(reseau.anthropic[0].body.messages[0].content).toContain('Afroboost');
     // La proposition locale identique au texte n'est plus envoyée comme « proposition ».
     expect(reseau.anthropic[0].body.messages[0].content).not.toContain('Proposition automatique');
     expect(base.ecritures).toBe(0);

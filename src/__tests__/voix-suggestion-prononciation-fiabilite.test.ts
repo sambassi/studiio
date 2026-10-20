@@ -21,7 +21,7 @@ globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
 }) as unknown as typeof fetch;
 
 const {
-  suggestionUtile, clePhonetique, distanceEdition, expressionOrdinaire, suggererPrononciationLocale,
+  suggestionUtile, clePhonetique, distanceEdition, expressionOrdinaire, suggererPrononciationLocale, contientNomPropre,
   nettoyerSuggestion, MESSAGE_AUCUNE_SUGGESTION,
 } = await import('@/lib/voice/suggestion-prononciation');
 const { POST } = await import('@/app/api/voice/prononciations/suggestion/route');
@@ -76,8 +76,18 @@ describe('suggestionUtile — filtre de fiabilité', () => {
     expect(nettoyerSuggestion('AUCUNE', 'Afroboost')).toBeNull();
     expect(nettoyerSuggestion('Aucune.', 'Afroboost')).toBeNull();
   });
-  it('une vraie forme dite d’un nom propre est gardée', () => {
+  it('noms propres et marques : exemptés des règles de micro-variation', () => {
     expect(suggestionUtile('Worcestershire', 'Wousteur-chire')).toBe('Wousteur-chire');
+    expect(suggestionUtile('Afroboost', 'Afro-Boust')).toBe('Afro-Boust');
+    expect(suggestionUtile('coach Afroboost', 'coach Afro-Boust')).toBe('coach Afro-Boust');
+    // Même clé phonétique mais nom propre : acceptée (« Afro-Boost » découpe la marque).
+    expect(suggestionUtile('Afroboost', 'Afro-Boost')).toBe('Afro-Boost');
+    // Mais une majuscule de début de phrase n'en fait pas un nom propre.
+    expect(contientNomPropre('Lien en bio')).toBe(false);
+    expect(suggestionUtile('Lien en bio', 'Lien en bioo')).toBeNull();
+    expect(contientNomPropre('Afroboost')).toBe(true);
+    expect(contientNomPropre('séance chez Afroboost')).toBe(true);
+    expect(contientNomPropre('lien en bio')).toBe(false);
   });
   it('expression ordinaire : minuscules, sans chiffre ni sigle ni nom propre', () => {
     expect(expressionOrdinaire('lien en bio')).toBe(true);
@@ -105,9 +115,14 @@ describe('route — appels au modèle', () => {
     // Aucune « proposition automatique » identique au texte n'est envoyée.
     expect(reseau.anthropic[0].content).not.toContain('Proposition automatique');
   });
-  it('le modèle renvoie une micro-variation (« Afroboostt ») → rejetée', async () => {
-    reseau.texte = 'Afroboostt';
-    expect((await post('Afroboost')).data.suggestion).toBeNull();
+  it('le modèle renvoie une micro-variation (« Lien en bioo ») → rejetée', async () => {
+    reseau.texte = 'Lien en bioo';
+    expect((await post('Lien en bio')).data.suggestion).toBeNull();
+    expect(reseau.anthropic).toHaveLength(1);
+  });
+  it('nom propre : la respelling du modèle (« Afro-Boust ») est acceptée', async () => {
+    reseau.texte = 'Afro-Boust';
+    expect((await post('Afroboost')).data).toEqual({ suggestion: 'Afro-Boust', source: 'ia' });
   });
   it('« 3 séances » : suggestion locale sûre, sans modèle', async () => {
     const r = await post('3 séances');

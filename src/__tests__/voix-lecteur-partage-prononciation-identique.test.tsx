@@ -124,9 +124,8 @@ describe('D/E/F — jamais une prononciation identique', () => {
     expect(suggestionUtile('lien en bio', 'lien en bio')).toBeNull();
     expect(suggestionUtile('lien en bio', '  LIEN EN BIO ')).toBeNull();
     expect(suggestionUtile('Afroboost', '')).toBeNull();
-    // Micro-variation (distance ≤ 2 sur la clé phonétique) : plus une correction.
-    expect(suggestionUtile('Afroboost', 'Afro-Boust')).toBeNull();
-    expect(suggestionUtile('Worcestershire', 'Wousteur-chire')).toBe('Wousteur-chire');
+    expect(suggestionUtile('Afroboost', 'Afro-Boust')).toBe('Afro-Boust');
+    expect(suggestionUtile('Afroboost', 'Afro-boust')).toBe('Afro-boust');
     expect(suggestionUtile('ADN', 'A D N')).toBe('A D N');
   });
 
@@ -146,13 +145,13 @@ describe('D/E/F — jamais une prononciation identique', () => {
   });
 
   it('F (écran). le serveur propose une forme DIFFÉRENTE → elle remplit le champ', async () => {
-    suggestionServeur = { suggestion: 'Wousteur-chire', source: 'ia' };
+    suggestionServeur = { suggestion: 'Afro-boust', source: 'ia' };
     render(<MaVoixPanel />);
     await waitFor(() => expect(q('[data-prononciation-ajouter]')).not.toBeNull());
     fireEvent.click(q('[data-prononciation-ajouter]'));
-    fireEvent.change(champAffiche(), { target: { value: 'Worcestershire' } });
+    fireEvent.change(champAffiche(), { target: { value: 'Afroboost' } });
     fireEvent.click(q('[data-prononciation-suggerer]'));
-    await waitFor(() => expect(champPrononce().value).toBe('Wousteur-chire'));
+    await waitFor(() => expect(champPrononce().value).toBe('Afro-boust'));
   });
 
   it('F (écran). même si le serveur renvoyait le même texte, il n’est jamais posé', async () => {

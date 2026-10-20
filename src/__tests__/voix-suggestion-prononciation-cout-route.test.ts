@@ -27,7 +27,7 @@ globalThis.fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
       init?.signal?.addEventListener('abort', () => reject(init.signal?.reason ?? new Error('abort')));
     });
   }
-  return new Response(JSON.stringify({ content: [{ type: 'text', text: 'Wousteur-chire' }] }), { status: 200 });
+  return new Response(JSON.stringify({ content: [{ type: 'text', text: 'Afro-boust' }] }), { status: 200 });
 }) as unknown as typeof fetch;
 
 const { POST } = await import('@/app/api/voice/prononciations/suggestion/route');
@@ -54,7 +54,7 @@ describe('route suggestion — coût', () => {
     }
     expect(reseau.anthropic).toBe(0);
     // Le quota n'a pas été entamé : un cas difficile passe encore.
-    expect((await (await post('Worcestershire')).json()).data.source).toBe('ia');
+    expect((await (await post('Afroboost')).json()).data.source).toBe('ia');
   });
 
   it('(6b) Anthropic jette : suggestion locale, 200', async () => {
