@@ -10,6 +10,7 @@ import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
 import { ajusterBadge, badgeValide } from '@/lib/creer/surimpressions-mise-en-page';
 import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
+import { estVoile, haloTexteCss } from '@/lib/creer/contraste';
 
 /**
  * Planchers de lisibilité des cartes en 9:16 (fraction de la largeur vidéo) :
@@ -317,7 +318,11 @@ export default function SequenceCards({
                 textAlign: 'center' as const,
               }
             : { alignItems: 'center' }),
-          backgroundColor: sansCadre ? undefined : (fond ?? 'rgba(255,255,255,0.08)'),
+          // Fond : voile en dégradé (surimpression, `voileLocal`) ou couleur unie.
+          ...(sansCadre ? null : estVoile(fond) ? { backgroundImage: fond! } : { backgroundColor: fond ?? 'rgba(255,255,255,0.08)' }),
+          // Badge sur l'image : halo serré autour des glyphes (hérité par les
+          // textes) — le contraste au bord des lettres, quel que soit le plan.
+          ...(badge ? { textShadow: haloTexteCss(vw) } : null),
           gap: vw * CR.gap,
           borderRadius: sansCadre ? undefined : vw * CR.radius,
           padding: sansCadre ? `${vw * CR.padY}px 0` : `${vw * CR.padY}px ${vw * CR.padX}px`,

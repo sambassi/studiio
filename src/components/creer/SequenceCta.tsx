@@ -10,7 +10,7 @@ import {
   DECORATION_THICKNESS_RATIO, UNDERLINE_OFFSET_RATIO,
   type TextCase, type TextAlign,
 } from '@/lib/creer/textFormat';
-import { eclaircirPourContraste, PASTILLE_CSS } from '@/lib/creer/contraste';
+import { eclaircirPourContraste, PASTILLE_CSS, estVoile, haloTexteCss, fondHaloPire } from '@/lib/creer/contraste';
 
 /**
  * Appel a l'action — composant PARTAGE par les deux moteurs de rendu.
@@ -91,6 +91,15 @@ export default function SequenceCta({
   const casse = cssTextTransform(typography.textCase ?? DEFAULT_TEXT_CASE);
   const align = typography.align ?? 'center';
   const trait = cssTextDecoration(typography.underline, typography.strike);
+  // Texte posé SUR l'image (fond fourni) : halo sombre serré autour des
+  // glyphes — le contraste au bord des lettres, quel que soit le plan.
+  const halo = fond ? haloTexteCss(vw) : null;
+  // Petite ligne sur l'image : teinte éclaircie (même famille) jusqu'à 4,5:1
+  // contre le PIRE fond sous ses lettres (halo sur voile sur blanc). Aucun
+  // drapeau de version : la règle vaut pour tout CTA posé sur l'image.
+  const sousCouleur = pastille
+    ? eclaircirPourContraste(typography.subColor)
+    : fond ? eclaircirPourContraste(typography.subColor, fondHaloPire()) : typography.subColor;
   // Memes ratios que le compositeur canvas — voir `textFormat.ts`.
   const decoration = (size: number) => ({
     textDecorationThickness: Math.max(1, size * DECORATION_THICKNESS_RATIO),
@@ -119,7 +128,7 @@ export default function SequenceCta({
           // Secours : un mot plus large que le cadre passe à la ligne au lieu
           // de sortir de l'image (`ajusterCta` réduit déjà la taille avant).
           overflowWrap: 'break-word',
-          textShadow: `0 0 ${vw * 0.02}px ${typography.color}66`,
+          textShadow: halo ? `${halo}, 0 0 ${vw * 0.02}px ${typography.color}66` : `0 0 ${vw * 0.02}px ${typography.color}66`,
         }}
       >
         {revealText(text, reveal)}
@@ -133,7 +142,8 @@ export default function SequenceCta({
             fontWeight: weight,
             fontStyle: style,
             letterSpacing: letterSpacingPx(typography.letterSpacing, vw),
-            color: pastille ? eclaircirPourContraste(typography.subColor) : typography.subColor,
+            color: sousCouleur,
+            ...(halo && !pastille ? { textShadow: halo } : null),
             lineHeight: typography.lineHeight,
             textAlign: align,
             textDecoration: trait,
@@ -157,8 +167,11 @@ export default function SequenceCta({
     </>
   );
   if (!fond) return contenu;
+  // Voile en dégradé (contraste discret, `voileLocal`) ou couleur unie
+  // (panneau d'avant, gardé pour les fonds déjà enregistrés).
+  const fondCss: React.CSSProperties = estVoile(fond) ? { backgroundImage: fond } : { backgroundColor: fond };
   return (
-    <div data-cta-fond style={{ backgroundColor: fond, padding: `${vw * 0.03}px ${vw * 0.04}px`, borderRadius: vw * 0.03 }}>
+    <div data-cta-fond style={{ ...fondCss, padding: `${vw * 0.03}px ${vw * 0.04}px`, borderRadius: vw * 0.03 }}>
       {contenu}
     </div>
   );

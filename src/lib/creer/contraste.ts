@@ -73,3 +73,72 @@ export function eclaircirPourContraste(texte: string, fond: Rgb = fondPastillePi
   }
   return '#FFFFFF';
 }
+
+// ── TEXTE SUR L'IMAGE : CONTRASTE DISCRET (voile local + halo) ─────────────
+//
+// Constat (MP4 du 20/10) : CTA « dans un rectangle gris opaque, sur la
+// poitrine », cartes en bandeau sombre — lisibles, mais lourds : le plan
+// disparaît derrière des pavés (`rgba(0,0,0,.55–.72)`). Les formats
+// professionnels posent le texte SUR l'image avec un contraste discret :
+//   1. un VOILE local léger, limité à la zone du texte, qui s'efface vers ses
+//      bords (aucun rectangle visible), alpha ≤ `VOILE_TEXTE_ALPHA_MAX` ;
+//   2. un HALO sombre serré autour des glyphes (contour fin + ombre douce) :
+//      c'est lui qui porte le contraste au bord de chaque lettre, quel que
+//      soit le plan derrière.
+// Le contraste se mesure donc contre le halo posé sur le voile posé sur du
+// BLANC — le pire plan possible (`fondHaloPire`).
+
+/** Opacité maximale du voile local derrière un texte posé sur l'image. */
+export const VOILE_TEXTE_ALPHA_MAX = 0.35;
+/** Opacité du halo serré (contour fin) autour des glyphes. */
+export const HALO_TEXTE_ALPHA = 0.75;
+
+/**
+ * Voile LOCAL derrière un texte (CSS `background-image`) : plus dense au
+ * centre, transparent au bord de la zone — pas de pavé. `radial` pour un bloc
+ * centré (CTA), `lineaire` pour un bloc en largeur (badge de carte : ellipse
+ * un peu plus large que la zone, presque nulle sur ses bords).
+ */
+export function voileLocal(forme: 'radial' | 'lineaire', alpha = VOILE_TEXTE_ALPHA_MAX): string {
+  const a = Math.min(VOILE_TEXTE_ALPHA_MAX, Math.max(0, alpha));
+  const r = (x: number) => Math.round(x * 1000) / 1000;
+  // L'ellipse touche les bords de la zone : alpha nul au bord, coins
+  // transparents — aucun contour de rectangle visible.
+  const arrets = `rgba(0,0,0,${r(a)}) 0%, rgba(0,0,0,${r(a)}) 40%, rgba(0,0,0,${r(a * 0.6)}) 72%, rgba(0,0,0,0) 100%`;
+  return forme === 'radial'
+    ? `radial-gradient(ellipse 50% 50% at 50% 50%, ${arrets})`
+    : `radial-gradient(ellipse 56% 54% at 50% 50%, ${arrets})`;
+}
+
+/** Un fond de texte est-il un voile en dégradé (et non une couleur unie) ? */
+export function estVoile(fond: string | null | undefined): boolean {
+  return /gradient\(/.test(fond ?? '');
+}
+
+/** Opacité MAXIMALE d'un fond (voile ou couleur `rgba`) ; 1 pour une couleur opaque, 0 si illisible. */
+export function alphaDuFond(fond: string | null | undefined): number {
+  const alphas = Array.from((fond ?? '').matchAll(/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([\d.]+)\s*\)/g)).map((m) => Number(m[1]));
+  if (alphas.length) return Math.max(...alphas);
+  return hexVersRgb(fond) ? 1 : 0;
+}
+
+/**
+ * Halo des glyphes (CSS `text-shadow`), à l'échelle de la vidéo `vw` :
+ * contour fin dense + ombre douce. Le même pour le CTA et les cartes.
+ */
+export function haloTexteCss(vw: number, alpha = HALO_TEXTE_ALPHA): string {
+  const px = (r: number) => Math.max(1, Math.round(vw * r * 10) / 10);
+  return `0 0 ${px(1 / 320)}px rgba(0,0,0,${alpha}), 0 ${px(0.6 / 320)}px ${px(2 / 320)}px rgba(0,0,0,${Math.round(alpha * 0.8 * 100) / 100}), 0 ${px(1 / 320)}px ${px(8 / 320)}px rgba(0,0,0,0.35)`;
+}
+
+/** Le fond sous le bord d'une lettre dans le pire cas : halo sur voile sur BLANC. */
+export function fondHaloPire(alphaVoile = VOILE_TEXTE_ALPHA_MAX, alphaHalo = HALO_TEXTE_ALPHA): Rgb {
+  const v = 255 * (1 - alphaVoile) * (1 - alphaHalo);
+  return [v, v, v];
+}
+
+/** Contraste WCAG d'une teinte de texte posée avec voile + halo, pire plan (blanc). */
+export function contrasteSurVoile(texte: string, alphaVoile = VOILE_TEXTE_ALPHA_MAX, alphaHalo = HALO_TEXTE_ALPHA): number {
+  const t = hexVersRgb(texte);
+  return t ? ratioContraste(t, fondHaloPire(alphaVoile, alphaHalo)) : 0;
+}

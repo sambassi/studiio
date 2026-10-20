@@ -18,6 +18,7 @@
  */
 import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
 import { FONT_RATIO, TEXT_LAYOUT, VIDEO_SIZE, CARDS_FRAME, cardRatios, type DesignFormat } from '@/lib/creer/designSpec';
+import { voileLocal } from '@/lib/creer/contraste';
 import { ZONE_SURE_916, ctaBasPourBandeHaute916, chassePolice, enCapitales, echelleMaxMot, lignesRepliees } from '@/lib/creer/zones-sures-916';
 
 export interface BoiteCarte { x: number; y: number; w: number; h: number }
@@ -32,11 +33,11 @@ export interface MiseEnPageSurimpression {
   /** Emplacement de LA carte affichée, en % du cadre des cartes (`CARDS_FRAME`). */
   carte: BoiteCarte;
   carteScale: number;
-  /** Fond du cadre de la carte (lisibilité sur un rush clair). */
+  /** Fond du cadre de la carte (lisibilité sur un rush clair) : voile local en dégradé (`voileLocal`). */
   carteFond: string;
   /** Part de blanc mêlée à la couleur d'accent de la valeur (lisible sur le fond sombre). */
   valeurEclaircie: number;
-  /** #502 — panneau sombre derrière le CTA (lisibilité sur n'importe quel plan). */
+  /** #502 — voile local derrière le CTA (lisibilité sur n'importe quel plan, `voileLocal`). */
   ctaFond: string;
   /** #502 — part de blanc mêlée à la couleur de la ligne d'action, sur ce panneau. */
   ctaActionEclaircie: number;
@@ -66,12 +67,15 @@ const DYNAMIQUE: MiseEnPageSurimpression = {
   // occupe le bas-gauche de ce cadre (≈ 64 %–75 % de l'image).
   carte: { x: 0, y: 72, w: 100, h: 22 },
   carteScale: 1.6,
-  carteFond: 'rgba(0,0,0,0.55)',
+  // Contraste DISCRET (`contraste.ts`) : voile local léger (alpha ≤ 0,35,
+  // transparent vers ses bords) + halo serré autour des glyphes, à la place
+  // des pavés opaques d'avant (0,55 / 0,6 : « rectangle gris opaque sur la
+  // poitrine », MP4 du 20/10). Contraste mesuré dans le PIRE cas (plan blanc
+  // derrière, bord des lettres sur le halo) : titre blanc ≈ 14:1, ligne
+  // d'action éclaircie ≥ 4,5:1 (`contrasteSurVoile`).
+  carteFond: voileLocal('lineaire'),
   valeurEclaircie: 0.5,
-  // Contraste mesuré dans le PIRE cas (plan blanc derrière) : titre blanc
-  // 5,1:1, ligne d'action éclaircie 3,4:1 — au-dessus du seuil 3:1 du
-  // conseiller (`REGLES_LISIBILITE.contrasteMin`).
-  ctaFond: 'rgba(0,0,0,0.6)',
+  ctaFond: voileLocal('radial'),
   ctaActionEclaircie: 0.6,
 };
 

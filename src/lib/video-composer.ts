@@ -28,6 +28,7 @@ import {
   buildSequences,
   SEQ_NAME_MAP as SPEC_SEQ_NAME_MAP,
   SEQ_NAME_REVERSE as SPEC_SEQ_NAME_REVERSE,
+  titleShadow, subtitleShadow,
 } from '@/lib/creer/designSpec';
 import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import { lireCtaCopies, designCompositeurCopie } from '@/lib/creer/cta-copies';
@@ -1368,20 +1369,14 @@ function hexToRgba(hex: string, alpha: number): string {
 const MARGE_TITRE_PART = 0.04;
 
 function dropShadowLgFilter(w: number): string {
-  const s = w / 320; // scale px from editor viewport to canvas
-  const y1 = Math.max(1, Math.round(4 * s));
-  const b1 = Math.max(1, Math.round(3 * s));
-  const y2 = Math.max(1, Math.round(10 * s));
-  const b2 = Math.max(1, Math.round(8 * s));
-  return `drop-shadow(0 ${y1}px ${b1}px rgba(0,0,0,0.1)) drop-shadow(0 ${y2}px ${b2}px rgba(0,0,0,0.04))`;
+  // La MÊME ombre que l'aperçu et Remotion (`titleShadow`, designSpec) :
+  // contour fin dense + ombre douce, lisible sur un plan clair.
+  return titleShadow(w);
 }
 
-/** Tailwind's `drop-shadow` (base) is a single softer shadow. Used for subtitle/cards. */
+/** Ombre du sous-titre et des titres secondaires — `subtitleShadow` (designSpec). */
 function dropShadowBaseFilter(w: number): string {
-  const s = w / 320;
-  const y = Math.max(1, Math.round(1 * s));
-  const b = Math.max(1, Math.round(2 * s));
-  return `drop-shadow(0 ${y}px ${b}px rgba(0,0,0,0.1))`;
+  return subtitleShadow(w);
 }
 
 /** Truncate a string at a word boundary before `maxChars`, append an
