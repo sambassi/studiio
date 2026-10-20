@@ -28,6 +28,7 @@ import {
   buildSequences,
   SEQ_NAME_MAP as SPEC_SEQ_NAME_MAP,
   SEQ_NAME_REVERSE as SPEC_SEQ_NAME_REVERSE,
+  titleShadow, subtitleShadow,
 } from '@/lib/creer/designSpec';
 import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import { lireCtaCopies, designCompositeurCopie } from '@/lib/creer/cta-copies';
@@ -43,6 +44,7 @@ import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendu
 import { imageCartesA } from '@/lib/creer/synchro-cartes';
 import { dessinerHabillageVideo } from '@/lib/creer/habillageVideo';
 import { eclaircirPourContraste, PASTILLE_CSS } from '@/lib/creer/contraste';
+import { TITRE_MIN_LISIBLE_PX } from '@/lib/creer/zones-sures-916';
 import {
   appelerConversionMp4,
   libelleOctets,
@@ -1363,21 +1365,18 @@ function hexToRgba(hex: string, alpha: number): string {
  * Returns the filter string to assign to `ctx.filter` — remember to reset it
  * to 'none' after drawing.
  */
+/** Marge de sécurité de chaque côté du titre (part de la largeur) : rien ne colle au bord de l'image. */
+const MARGE_TITRE_PART = 0.04;
+
 function dropShadowLgFilter(w: number): string {
-  const s = w / 320; // scale px from editor viewport to canvas
-  const y1 = Math.max(1, Math.round(4 * s));
-  const b1 = Math.max(1, Math.round(3 * s));
-  const y2 = Math.max(1, Math.round(10 * s));
-  const b2 = Math.max(1, Math.round(8 * s));
-  return `drop-shadow(0 ${y1}px ${b1}px rgba(0,0,0,0.1)) drop-shadow(0 ${y2}px ${b2}px rgba(0,0,0,0.04))`;
+  // La MÊME ombre que l'aperçu et Remotion (`titleShadow`, designSpec) :
+  // contour fin dense + ombre douce, lisible sur un plan clair.
+  return titleShadow(w);
 }
 
-/** Tailwind's `drop-shadow` (base) is a single softer shadow. Used for subtitle/cards. */
+/** Ombre du sous-titre et des titres secondaires — `subtitleShadow` (designSpec). */
 function dropShadowBaseFilter(w: number): string {
-  const s = w / 320;
-  const y = Math.max(1, Math.round(1 * s));
-  const b = Math.max(1, Math.round(2 * s));
-  return `drop-shadow(0 ${y}px ${b}px rgba(0,0,0,0.1))`;
+  return subtitleShadow(w);
 }
 
 /** Truncate a string at a word boundary before `maxChars`, append an
@@ -1409,6 +1408,40 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
   return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
 }
 
+/** Un mot coupé en morceaux qui tiennent chacun dans `maxWidth` (au moins une lettre par morceau). */
+function couperMot(ctx: CanvasRenderingContext2D, mot: string, maxWidth: number, spacing: number): string[] {
+  if (!mot || maxWidth <= 0 || measureLineForWrap(ctx, mot, spacing) <= maxWidth) return [mot];
+  const out: string[] = [];
+  let courant = '';
+  for (const ch of Array.from(mot)) {
+    if (courant && measureLineForWrap(ctx, courant + ch, spacing) > maxWidth) { out.push(courant); courant = ch; } else courant += ch;
+  }
+  if (courant) out.push(courant);
+  return out;
+}
+
+/**
+ * Corps du titre pour que son mot le plus long tienne dans `dispo` px — mesure
+ * RÉELLE (`measureText`, interlettrage compris). Ne fait que réduire, jamais
+ * sous `plancher` px. `appliquer(px)` pose la police à ce corps. Pure hors du
+ * contexte canvas.
+ */
+export function corpsTitreSansDebord(
+  ctx: CanvasRenderingContext2D, texte: string, corps: number, dispo: number, plancher: number,
+  spacing: number, appliquer: (px: number) => void,
+): number {
+  const motMax = () => Math.max(0, ...texte.split(/\s+/).filter(Boolean).map((m) => measureLineForWrap(ctx, m, spacing)));
+  let px = corps;
+  for (let i = 0; i < 40 && px > plancher; i++) {
+    const largeur = motMax();
+    if (largeur <= dispo) break;
+    const suivant = Math.max(plancher, Math.min(px - 1, Math.floor(px * Math.max(0.5, dispo / largeur))));
+    px = suivant;
+    appliquer(px);
+  }
+  return px;
+}
+
 /**
  * Word-wrap text to fit within maxWidth, splitting at word boundaries.
  *
@@ -1420,7 +1453,13 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
  * comportement exact d'avant.
  */
 export function wrapText(
-  ctx: CanvasRenderingContext2D, text: string, maxWidth: number, letterSpacing = 0
+  ctx: CanvasRenderingContext2D, text: string, maxWidth: number, letterSpacing = 0,
+  /**
+   * Dernier recours : un MOT plus large que `maxWidth` est coupé entre deux
+   * lettres (comme `overflow-wrap: break-word` de l'aperçu) au lieu de sortir
+   * du cadre. Défaut `false` : le comportement d'avant pour tous les appels.
+   */
+  couperMotsLongs = false,
 ): string[] {
   // Split on explicit line breaks first, then word-wrap each segment.
   // This way users typing "Bonjour\ntout le monde" in a description get two
@@ -1430,7 +1469,9 @@ export function wrapText(
   const out: string[] = [];
   for (const segment of segments) {
     if (segment.length === 0) { out.push(''); continue; }
-    const words = segment.split(' ');
+    const words = couperMotsLongs
+      ? segment.split(' ').flatMap((m) => couperMot(ctx, m, maxWidth, letterSpacing))
+      : segment.split(' ');
     let currentLine = '';
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
@@ -1796,8 +1837,8 @@ function drawIntro(
   // NO animation — editor is static, video must match exactly
   const titleAlpha = 1;
   const isReel = h > w; // 9:16 = reel, 16:9 = landscape
-  const fontSize = Math.round(w * (isReel ? 0.04375 : 0.035) * textScale);
-  const subFontSize = Math.round(w * (isReel ? 0.028 : 0.0215) * textScale);
+  let fontSize = Math.round(w * (isReel ? 0.04375 : 0.035) * textScale);
+  let subFontSize = Math.round(w * (isReel ? 0.028 : 0.0215) * textScale);
 
   // Position from design metadata — editor default is (50%, 10%)
   // The editor uses translate(-50%, 0) so Y% is the TOP edge of the text block
@@ -1884,9 +1925,30 @@ function drawIntro(
   // Make sure no legacy ctx.shadow* values leak through and double-shadow
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowOffsetX = 0;
 
+  // AUCUN MOT NE DÉBORDE (« MOTIVA », 20/10). Le mot le plus long, MESURÉ
+  // (`measureText`, interlettrage compris), tient dans le cadre ET dans
+  // l'image, marges de sécurité des réseaux comprises (`MARGE_TITRE_PART` de
+  // chaque côté) : sinon le corps baisse — jusqu'à un plancher lisible
+  // (`TITRE_MIN_LISIBLE_PX` sur 1080), puis la coupe de dernier recours de
+  // `wrapText`. Un titre qui tient garde exactement sa taille ; le
+  // sous-titre suit la même proportion (comme dans `SequenceTitle`).
+  {
+    const marge = w * MARGE_TITRE_PART;
+    const visible = titleAlign === 'left' ? w - marge - titlePosX
+      : titleAlign === 'right' ? titlePosX - marge
+      : 2 * Math.min(titlePosX - marge, w - marge - titlePosX);
+    const dispo = Math.max(w * 0.3, Math.min(titleWidth, visible));
+    const plancher = Math.min(fontSize, Math.round(TITRE_MIN_LISIBLE_PX * (w / 1080)));
+    const avant = fontSize;
+    fontSize = corpsTitreSansDebord(ctx, title, fontSize, dispo, plancher, titleLetterSpacing, (px) => {
+      ctx.font = `${fontStyle}${fontWeight} ${px}px "${fontFamily}", sans-serif`;
+    });
+    if (fontSize !== avant) subFontSize = Math.max(1, Math.round((subFontSize * fontSize) / avant));
+  }
+
   // Word-wrap title to match editor behavior (text wraps within titleWidth)
   // Coupe mesuree AVEC l'interlettrage : c'est lui qui sera trace.
-  const titleLines = wrapText(ctx, title, titleWidth, titleLetterSpacing);
+  const titleLines = wrapText(ctx, title, titleWidth, titleLetterSpacing, true);
   const lineSpacing = fontSize * (design?.titleTypography?.lineHeight || 1.1);
   // With textBaseline='top', Y = top of text — matches CSS top: Y% with translate(-50%, 0)
   // When a title icon is configured, the title is pushed below the icon.
@@ -2001,7 +2063,7 @@ function drawIntro(
     ctx.fillStyle = design?.subtitleColor || hexToRgba(titleColor, 0.8);
     ctx.filter = dropShadowBaseFilter(w);
     const mt1 = Math.round(w * (4 / 320));
-    const subLines = wrapText(ctx, subtitle, titleWidth);
+    const subLines = wrapText(ctx, subtitle, titleWidth, 0, true);
     const subLineSpacing = subSize * (design?.titleTypography?.lineHeight || 1.1);
     // Alignement PROPRE au sous-titre, celui du titre a defaut — la meme
     // regle que `SequenceTitle`, qui retombe lui aussi sur celui du titre.

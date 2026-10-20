@@ -164,7 +164,7 @@ import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
-import { echelleCtaAjustee, echelleCtaDeDepart, VERSION_LISIBILITE, defautsLisibles } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart, VERSION_LISIBILITE, defautsLisibles, versionLisibiliteRestauree } from '@/lib/creer/ajustementCta';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -7332,7 +7332,9 @@ export default function AssistantWizard() {
     setTitleStyle(draft.titleStyle as TextStyles['title']);
     setSubtitleStyle(draft.subtitleStyle as TextStyles['subtitle']);
     setCtaStyle(draft.ctaStyle as TextStyles['cta']);
-    setVersionLisibilite(draft.versionLisibilite ?? 1);
+    // Brouillon local sans version : la version COURANTE ; post enregistré
+    // sans version (modification) : v1, son rendu historique (`versionLisibiliteRestauree`).
+    setVersionLisibilite(versionLisibiliteRestauree(draft.versionLisibilite, editPostId ? 'post' : 'brouillon'));
     setWatermarkOverride(draft.watermarkOverride ?? null);
     setWatermarkEnabled(draft.watermarkEnabled !== false);
     // `sanitizeDraft` a déjà tranché : `jumeauMode` explicite, sinon l'ancien

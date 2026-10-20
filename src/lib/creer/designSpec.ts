@@ -291,17 +291,24 @@ export const TEXT_LAYOUT = {
 } as const;
 
 /**
- * Ombres du compositeur, en fraction de la largeur vidéo.
- * `dropShadowLgFilter` vaut 4/320 et 10/320 ; `dropShadowBaseFilter` 2.5/320.
+ * Ombres du titre et du sous-titre, en fraction de la largeur vidéo — les
+ * MÊMES pour l'aperçu / Remotion (`filter` CSS) et le compositeur canvas
+ * (`ctx.filter`, `dropShadowLgFilter` / `dropShadowBaseFilter`).
+ *
+ * Constat (MP4 du 20/10) : titre blanc « semi-transparent sur fond clair, peu
+ * lisible » — l'ombre d'avant (alpha 0,1 et 0,04) était invisible sur un plan
+ * clair. Deux couches : un CONTOUR fin et dense (presque collé aux glyphes)
+ * qui détache chaque lettre, puis une ombre portée douce qui la décolle du
+ * plan. Lisible sur blanc, discrète sur un fond sombre.
  */
 export function titleShadow(w: number): string {
   const px = (r: number) => Math.max(1, Math.round(w * r));
-  return `drop-shadow(0 ${px(4 / 320)}px ${px(3 / 320)}px rgba(0,0,0,0.1)) drop-shadow(0 ${px(10 / 320)}px ${px(8 / 320)}px rgba(0,0,0,0.04))`;
+  return `drop-shadow(0 ${px(0.5 / 320)}px ${px(1.2 / 320)}px rgba(0,0,0,0.6)) drop-shadow(0 ${px(3 / 320)}px ${px(8 / 320)}px rgba(0,0,0,0.35))`;
 }
 
 export function subtitleShadow(w: number): string {
   const px = (r: number) => Math.max(1, Math.round(w * r));
-  return `drop-shadow(0 ${px(2.5 / 320)}px ${px(2 / 320)}px rgba(0,0,0,0.1))`;
+  return `drop-shadow(0 ${px(0.6 / 320)}px ${px(1.6 / 320)}px rgba(0,0,0,0.6))`;
 }
 
 /**

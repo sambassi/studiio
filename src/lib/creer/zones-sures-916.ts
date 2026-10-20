@@ -189,22 +189,138 @@ const CHASSES: Record<string, readonly [number, number, number]> = {
   Sacramento: [0.96, 0.65, 0.3],
   Pacifico: [0.81, 0.65, 0.3],
 };
-function chasse(police: string | null | undefined, capitales: boolean): { em: number; espace: number } {
+/** Chasse prudente d'une police (table `CHASSES`, défaut = la plus large des familles courantes). Pure. */
+export function chassePolice(police: string | null | undefined, capitales: boolean): { em: number; espace: number } {
   const c = (police && CHASSES[police]) || CHASSE_DEFAUT;
   return { em: capitales ? c[0] : c[1], espace: c[2] };
 }
+const chasse = chassePolice;
 
-/** Lignes d'un texte replié mot à mot dans `largeur` px (comme le navigateur et `wrapText`). Pur. */
-function lignes(texte: string, px: number, largeur: number, ch: { em: number; espace: number }, espacement: number): number {
+/**
+ * Le texte s'affiche-t-il en capitales ? Casse `uppercase` (le défaut du
+ * titre et du CTA), ou texte DÉJÀ écrit en capitales sans casse imposée —
+ * « MOTIVATION » saisi en capitales a la chasse des capitales, même en
+ * casse « none ». Pure.
+ */
+export function enCapitales(texte: string | null | undefined, casse: 'none' | 'uppercase' | 'lowercase' | null | undefined, defaut: 'none' | 'uppercase' = 'uppercase'): boolean {
+  const c = casse ?? defaut;
+  if (c === 'uppercase') return true;
+  if (c === 'lowercase') return false;
+  const t = (texte ?? '').trim();
+  return !!t && t === t.toUpperCase() && t !== t.toLowerCase();
+}
+
+/**
+ * Lignes d'un texte replié mot à mot dans `largeur` px (comme le navigateur et
+ * `wrapText`). Un mot plus large que la ligne compte pour les lignes qu'il
+ * occupe une fois coupé (`overflow-wrap`, coupe du compositeur) — y compris le
+ * PREMIER mot, que l'ancienne estimation laissait déborder sur une seule
+ * ligne. Pur.
+ */
+export function lignesRepliees(texte: string, px: number, largeur: number, ch: { em: number; espace: number }, espacement = 0): number {
   const c = ch.em * px + espacement;
   const espace = ch.espace * px + espacement;
   let n = 0; let ligne = 0;
-  for (const mot of texte.trim().split(/\s+/).filter(Boolean)) {
+  for (const mot of (texte ?? '').trim().split(/\s+/).filter(Boolean)) {
     const w = mot.length * c;
-    if (n > 0 && ligne + espace + w <= largeur) ligne += espace + w;
-    else { n += 1; ligne = w; }
+    if (n > 0 && ligne + espace + w <= largeur) { ligne += espace + w; continue; }
+    if (largeur > 0 && w > largeur) {
+      const pleines = Math.ceil(w / largeur);
+      n += pleines;
+      ligne = w - (pleines - 1) * largeur;
+    } else { n += 1; ligne = w; }
   }
   return n;
+}
+const lignes = lignesRepliees;
+
+// ── AUCUN MOT NE DÉBORDE ─────────────────────────────────────────────────
+//
+// Constat (Autopilote « MOTIVATION », 20/10) : le titre d'un seul mot, agrandi
+// (échelle × 1,9 en surimpression), sortait à droite de l'image (« MOTIVA »).
+// Les règles de HAUTEUR (`ajusterAccroche`, `titreSur916`) ne voyaient rien :
+// une seule ligne, bloc bas. Le navigateur ne coupe pas un mot : c'est la
+// TAILLE qui doit baisser. Règle commune (titre, CTA, badges ; 9:16, 1:1,
+// 16:9) : le mot le plus long, à la chasse PRUDENTE de sa police (`CHASSES`)
+// et avec l'interlettrage, tient dans la largeur utile du cadre.
+
+/** Largeur (px) du mot le plus long, à `px` de corps. Pure. */
+export function largeurMotLePlusLong(texte: string | null | undefined, px: number, ch: { em: number }, espacement = 0): number {
+  const plusLong = Math.max(0, ...(texte ?? '').trim().split(/\s+/).filter(Boolean).map((m) => m.length));
+  return plusLong * (ch.em * px + espacement);
+}
+
+/**
+ * Échelle maximale pour que le mot le plus long de `texte` tienne dans
+ * `largeurUtile` px. `pxParEchelle` = corps à l'échelle 1 ; `espacement` en px
+ * (fixe, il ne suit pas l'échelle). `Infinity` si le texte est vide. Pure.
+ */
+export function echelleMaxMot(p: {
+  texte: string | null | undefined; pxParEchelle: number; largeurUtile: number;
+  police?: string | null; capitales: boolean; espacement?: number;
+}): number {
+  const plusLong = Math.max(0, ...(p.texte ?? '').trim().split(/\s+/).filter(Boolean).map((m) => m.length));
+  if (!plusLong || !(p.pxParEchelle > 0)) return Infinity;
+  const em = chasse(p.police, p.capitales).em;
+  const parCaractere = p.largeurUtile / plusLong - (p.espacement ?? 0);
+  return Math.max(0, parCaractere / (em * p.pxParEchelle));
+}
+
+/** Marge minimale (% de la largeur) entre un texte et le bord de l'image. */
+export const MARGE_BORD_PCT = 2;
+
+/** Corps minimal (px, image de 1080 de large) sous lequel un titre n'est plus lisible sur un téléphone. */
+export const TITRE_MIN_LISIBLE_PX = 40;
+
+/** Le bloc titre à tenir en largeur (positions et largeur en % de l'image). */
+export interface TitreEnLargeur {
+  format: DesignFormat | string | null | undefined;
+  /** Largeur du cadre (% de la largeur de l'image). */
+  largeur: number;
+  /**
+   * Bord gauche du cadre (% de l'image), s'il est connu : un cadre glissé
+   * près du bord droit ne compte que sa partie DANS l'image (marge
+   * `MARGE_BORD_PCT`).
+   */
+  pos?: Pos;
+  echelle: number;
+  titre: string;
+  sousTitre?: string | null;
+  echelleSousTitre?: number;
+  /** Interlettrage, en px de l'éditeur (base 320) — il s'applique au titre. */
+  espacement?: number;
+  police?: string | null;
+  policeSousTitre?: string | null;
+  casse?: 'none' | 'uppercase' | 'lowercase';
+  casseSousTitre?: 'none' | 'uppercase' | 'lowercase';
+}
+
+/**
+ * Échelle du titre pour qu'AUCUN mot (titre comme sous-titre, dont la taille
+ * suit celle du titre) ne dépasse le cadre. Ne fait que RÉDUIRE l'échelle
+ * choisie ; plancher : corps `TITRE_MIN_LISIBLE_PX` (au-delà, la coupe CSS de
+ * secours de `SequenceTitle` prend le relais — jamais de débordement). Tout
+ * format. Pure et idempotente.
+ */
+export function echelleTitreSansDebord(t: TitreEnLargeur): number {
+  if (!t.titre?.trim() && !t.sousTitre?.trim()) return t.echelle;
+  const f = (t.format === '16:9' || t.format === '1:1' ? t.format : '9:16') as DesignFormat;
+  const W = VIDEO_SIZE[f].w;
+  const visible = t.pos ? Math.min(t.largeur, 100 - MARGE_BORD_PCT - t.pos.x) : t.largeur;
+  const utile = (Math.max(LARGEUR_TITRE_MIN_916, visible) / 100) * W;
+  const eTitre = echelleMaxMot({
+    texte: t.titre, pxParEchelle: W * FONT_RATIO[f].title, largeurUtile: utile,
+    police: t.police, capitales: enCapitales(t.titre, t.casse), espacement: ((t.espacement ?? 0) * W) / 320,
+  });
+  const eSous = echelleMaxMot({
+    texte: t.sousTitre, pxParEchelle: W * FONT_RATIO[f].subtitle * (t.echelleSousTitre ?? 1), largeurUtile: utile,
+    police: t.policeSousTitre ?? t.police, capitales: enCapitales(t.sousTitre, t.casseSousTitre, 'none'),
+  });
+  const max = Math.min(eTitre, eSous);
+  if (t.echelle <= max) return t.echelle;
+  const plancher = Math.min(t.echelle, TITRE_MIN_LISIBLE_PX * (W / 1080) / (W * FONT_RATIO[f].title));
+  // Arrondi au centième INFÉRIEUR (0,1 % de marge contre les flottants) : l'échelle rendue tient.
+  return Math.max(plancher, Math.floor(max * 99.9) / 100);
 }
 
 /** Le titre plein écran à poser (positions et largeur en % de l'image). */
@@ -249,18 +365,24 @@ export function boiteTitre916(t: TitreAPlacer916, largeur: number, echelle: numb
 
 /**
  * Largeur et échelle RENDUES du titre plein écran (voir la règle ci-dessus).
- * Hors 9:16 : celles choisies, inchangées. Pur et idempotent.
+ * Tout format : l'échelle baisse si un mot sortirait du cadre
+ * (`echelleTitreSansDebord`) ; hors 9:16, rien d'autre ne change. Pur et
+ * idempotent.
  */
 export function titreSur916(t: TitreAPlacer916): { largeur: number; echelle: number } {
-  const choisi = { largeur: t.largeur, echelle: t.echelle };
+  // TOUT FORMAT : aucun mot ne sort du cadre (`echelleTitreSansDebord`). Un
+  // titre qui tient déjà garde exactement son échelle.
+  const tenue = echelleTitreSansDebord(t);
+  const choisi = { largeur: t.largeur, echelle: tenue };
   if (!estFormat916(t.format) || !t.titre?.trim()) return choisi;
   const z = ZONE_SURE_916;
   let largeur = t.largeur;
-  if (t.pos.x + largeur > z.droite && boiteTitre916(t, largeur, t.echelle).y1 > z.railHaut) {
+  if (t.pos.x + largeur > z.droite && boiteTitre916(t, largeur, tenue).y1 > z.railHaut) {
     largeur = Math.min(largeur, Math.max(LARGEUR_TITRE_MIN_916, Math.round((z.droite - t.pos.x) * 100) / 100));
   }
-  let echelle = t.echelle;
-  const plancher = Math.min(t.echelle, 1);
+  // Largeur arrêtée au rail : le mot le plus long doit tenir dans CE cadre.
+  let echelle = largeur === t.largeur ? tenue : echelleTitreSansDebord({ ...t, largeur, echelle: tenue });
+  const plancher = Math.min(echelle, 1);
   while (echelle > plancher && boiteTitre916(t, largeur, echelle).y1 > z.bas) {
     echelle = Math.max(plancher, Math.round((echelle - 0.01) * 100) / 100);
   }

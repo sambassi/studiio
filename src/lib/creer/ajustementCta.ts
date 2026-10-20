@@ -85,3 +85,23 @@ export function echelleCtaDeDepart(echelle: number | null | undefined, format: s
 export const VERSION_LISIBILITE = 2;
 /** Les défauts lisibles s'appliquent-ils à ce projet ? Absent (projet antérieur) : non. */
 export const defautsLisibles = (version: number | null | undefined) => (version ?? 1) >= VERSION_LISIBILITE;
+
+/**
+ * Version de lisibilité d'un projet RELU (brouillon local ou post enregistré).
+ *
+ * Constat (« LE_SPORT_LE_PLUS_COMPLET (2) », 20/10) : un brouillon local
+ * restauré sans `versionLisibilite` retombait en v1 — cartes minuscules, CTA
+ * à l'échelle 1, sous-ligne rose sur rose — alors que l'utilisateur
+ * travaillait sur un projet d'aujourd'hui.
+ *
+ *  - version écrite : gardée telle quelle ;
+ *  - BROUILLON LOCAL sans version : la version courante (les défauts lisibles
+ *    sont ceux de tout projet en cours) ;
+ *  - POST ENREGISTRÉ sans version (métadonnées relues en modification, que le
+ *    Calendrier relit aussi) : v1 — son rendu historique est gardé (règle
+ *    « Default safe »).
+ */
+export function versionLisibiliteRestauree(version: number | null | undefined, source: 'brouillon' | 'post'): number {
+  if (typeof version === 'number' && Number.isInteger(version) && version >= 1) return version;
+  return source === 'brouillon' ? VERSION_LISIBILITE : 1;
+}

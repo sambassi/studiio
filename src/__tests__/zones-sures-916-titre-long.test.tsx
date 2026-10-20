@@ -24,7 +24,7 @@ import { render, cleanup } from '@testing-library/react';
 import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 import {
   ZONE_SURE_916, LARGEUR_TITRE_MIN_916, positionTexteEffective, titreSur916, boiteTitre916,
-  horsZoneSure916, type TitreAPlacer916,
+  horsZoneSure916, echelleTitreSansDebord, type TitreAPlacer916,
 } from '@/lib/creer/zones-sures-916';
 import { SCALE_MAX } from '@/lib/autopilot/textStyle';
 import { FONT_RATIO, TEXT_LAYOUT, VIDEO_SIZE } from '@/lib/creer/designSpec';
@@ -184,9 +184,16 @@ describe('titre déplacé à la main : position gardée, largeur arrêtée au ra
 });
 
 describe('règle bornée au 9:16 plein écran', () => {
-  it('16:9 et 1:1 : largeur et échelle choisies, telles quelles', () => {
+  it('16:9 et 1:1 : largeur choisie telle quelle ; échelle seulement réduite si un MOT déborderait', () => {
     for (const f of ['16:9', '1:1'] as const) {
-      expect(titreSur916({ ...titre(TRES_LONG, SCALE_MAX), format: f })).toEqual({ largeur: TEXT_LAYOUT.titleWidth, echelle: SCALE_MAX });
+      // Règle « aucun mot ne déborde » (tout format, 20/10) : « RÉCUPÉRATION »
+      // à l'échelle 3 sortait du cadre (≈ 1 693 px pour 1 613 px utiles).
+      const r = titreSur916({ ...titre(TRES_LONG, SCALE_MAX), format: f });
+      expect(r.largeur).toBe(TEXT_LAYOUT.titleWidth);
+      expect(r.echelle).toBe(echelleTitreSansDebord({ ...titre(TRES_LONG, SCALE_MAX), format: f }));
+      expect(r.echelle).toBeLessThan(SCALE_MAX);
+      // Un titre dont les mots tiennent garde exactement son échelle.
+      expect(titreSur916({ ...titre('DANSE AU SOLEIL', SCALE_MAX), format: f })).toEqual({ largeur: TEXT_LAYOUT.titleWidth, echelle: SCALE_MAX });
     }
   });
   it('idempotente : la réappliquer à son résultat ne change rien', () => {

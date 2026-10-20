@@ -15,8 +15,12 @@
  * Une seule clé du `design` change, rien d'autre (plans, appels, signature
  * hors cette clé) : `cardsEtapes` — repli SANS photo des cartes (jsdom ne
  * photographie pas), apparition calée au lieu de toutes les cartes figées.
- * Ces projets sont des brouillons SANS marqueur `versionLisibilite` : leurs
- * réglages (CTA à 1, cartes, petite ligne) sont rendus tels quels.
+ * Ces projets sont des brouillons de la version de lisibilité 1 : leurs
+ * réglages (CTA à 1, cartes, petite ligne) sont rendus tels quels. Depuis le
+ * 20/10, un brouillon SANS marqueur prend la version COURANTE
+ * (`versionLisibiliteRestauree`) : le marqueur est donc écrit explicitement
+ * (`versionLisibilite: 1`) — ce test porte sur le plan de l'aperçu, pas sur
+ * la lisibilité.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
@@ -127,6 +131,7 @@ const poser = (extra: Record<string, unknown> = {}) => {
     rushUrl: RUSH_A, rushSecondes: 32, rushSuivants: [{ url: RUSH_B, name: 'b', secondes: 12 }],
     sequences: [{ key: 'intro', enabled: true }, { key: 'cards', enabled: true }, { key: 'video', enabled: true }, { key: 'cta', enabled: true }],
     introDuration: 2, cardsDuration: 2, videoDuration: 12, ctaDuration: 2,
+    versionLisibilite: 1,
     ...extra,
   }));
 };

@@ -18,7 +18,8 @@
  */
 import { TEXTES_PROFILS, type NomProfilMontage } from '@/lib/creer/smart-montage-regles';
 import { FONT_RATIO, TEXT_LAYOUT, VIDEO_SIZE, CARDS_FRAME, cardRatios, type DesignFormat } from '@/lib/creer/designSpec';
-import { ZONE_SURE_916, ctaBasPourBandeHaute916 } from '@/lib/creer/zones-sures-916';
+import { FOND_TEXTE_SUR_IMAGE, fondTexteSurImage } from '@/lib/creer/contraste';
+import { ZONE_SURE_916, ctaBasPourBandeHaute916, chassePolice, enCapitales, echelleMaxMot, lignesRepliees } from '@/lib/creer/zones-sures-916';
 
 export interface BoiteCarte { x: number; y: number; w: number; h: number }
 
@@ -32,11 +33,11 @@ export interface MiseEnPageSurimpression {
   /** Emplacement de LA carte affichée, en % du cadre des cartes (`CARDS_FRAME`). */
   carte: BoiteCarte;
   carteScale: number;
-  /** Fond du cadre de la carte (lisibilité sur un rush clair). */
+  /** Fond du cadre de la carte : transparent (contour des glyphes), ou voile discret sur fond clair et chargé. */
   carteFond: string;
   /** Part de blanc mêlée à la couleur d'accent de la valeur (lisible sur le fond sombre). */
   valeurEclaircie: number;
-  /** #502 — panneau sombre derrière le CTA (lisibilité sur n'importe quel plan). */
+  /** #502 — fond du CTA : transparent (contour des glyphes), ou voile discret sur fond clair et chargé. */
   ctaFond: string;
   /** #502 — part de blanc mêlée à la couleur de la ligne d'action, sur ce panneau. */
   ctaActionEclaircie: number;
@@ -66,12 +67,15 @@ const DYNAMIQUE: MiseEnPageSurimpression = {
   // occupe le bas-gauche de ce cadre (≈ 64 %–75 % de l'image).
   carte: { x: 0, y: 72, w: 100, h: 22 },
   carteScale: 1.6,
-  carteFond: 'rgba(0,0,0,0.55)',
+  // Texte posé SUR l'image (`contraste.ts`) : aucun aplat — contour fin
+  // sombre + ombre serrée autour des glyphes, à la place des pavés opaques
+  // d'avant (0,55 / 0,6 : « rectangle gris opaque sur la poitrine », MP4 du
+  // 20/10). Voile discret seulement sur un fond connu clair ET chargé
+  // (`fondTexte`). Contraste au bord des lettres, plan blanc derrière : texte
+  // blanc ≈ 12:1, ligne d'action éclaircie ≥ 4,5:1 (`contrasteSurVoile`).
+  carteFond: FOND_TEXTE_SUR_IMAGE,
   valeurEclaircie: 0.5,
-  // Contraste mesuré dans le PIRE cas (plan blanc derrière) : titre blanc
-  // 5,1:1, ligne d'action éclaircie 3,4:1 — au-dessus du seuil 3:1 du
-  // conseiller (`REGLES_LISIBILITE.contrasteMin`).
-  ctaFond: 'rgba(0,0,0,0.6)',
+  ctaFond: FOND_TEXTE_SUR_IMAGE,
   ctaActionEclaircie: 0.6,
 };
 
@@ -207,11 +211,19 @@ export function ajusterCta(p: {
   ratioTexte: number; ratioSousTexte: number; panneau?: boolean;
   /** Largeur du cadre CTA (part de la largeur). Absente : `CTA_LARGEUR_PART`. */
   partLargeur?: number;
+  /** Police du CTA (chasse réelle, `CHASSES`). Absente : Inter, celle du rendu par défaut. */
+  police?: string | null;
+  /** Interlettrage, en px de l'éditeur (base 320). */
+  espacement?: number;
 }): number {
   const utile = p.largeur * (p.partLargeur ?? CTA_LARGEUR_PART) - (p.panneau ? 2 * p.largeur * 0.04 : 0);
   const plusLong = (t: string | null | undefined) => Math.max(0, ...(t ?? '').trim().split(/\s+/).map((m) => m.length));
-  const tient = (e: number) => plusLong(p.texte) * EM_CTA * p.largeur * p.ratioTexte * e <= utile
-    && plusLong(p.sousTexte) * EM_CTA * p.largeur * p.ratioSousTexte * e <= utile;
+  // Chasse : la plus large de l'estimation historique (0,68 em) et de la
+  // police réelle — le CTA est en capitales par défaut.
+  const em = Math.max(EM_CTA, chassePolice(p.police ?? 'Inter', true).em);
+  const esp = ((p.espacement ?? 0) * p.largeur) / 320;
+  const tient = (e: number) => plusLong(p.texte) * (em * p.largeur * p.ratioTexte * e + esp) <= utile
+    && plusLong(p.sousTexte) * (em * p.largeur * p.ratioSousTexte * e + esp) <= utile;
   // Plancher : la ligne d'action reste lisible (≥ 34 px sur une image 1080 px).
   const plancher = Math.min(p.echelle, 34 / (p.largeur * p.ratioSousTexte));
   let e = p.echelle;
@@ -225,26 +237,56 @@ export const ACCROCHE_HAUTEUR_MAX = 0.14;
 /** Tailles minimales lisibles (px, image 1080×1920) : titre, sous-titre. */
 const ACCROCHE_MIN_PX = { titre: 64, sousTitre: 34 };
 
-/** Lignes estimées d'un texte (0,6 em par caractère, mots entiers). Pur. */
-function lignesEstimees(texte: string, px: number, largeurUtile: number, em = 0.6): number {
-  let n = 1; let ligne = 0;
-  for (const mot of texte.trim().split(/\s+/).filter(Boolean)) {
-    const w = (mot.length + 1) * em * px;
-    if (ligne > 0 && ligne + w > largeurUtile) { n += 1; ligne = w; } else ligne += w;
+/**
+ * La table `CHASSES` est PRUDENTE (mesures Chromium arrondies ≈ +5 %) : juste
+ * pour le « mot le plus long » (un débordement coupe le texte), trop pessimiste
+ * pour COMPTER des lignes — la hauteur estimée gonflerait et l'accroche
+ * tomberait au plancher lisible sans raison. Les lignes se comptent donc à la
+ * chasse MESURÉE (prudente ÷ 1,05).
+ */
+const CHASSE_MARGE = 1.05;
+
+/**
+ * Lignes estimées d'un texte, mots entiers, à la chasse RÉELLE de sa police
+ * (`CHASSES`, `lignesRepliees`) — un mot plus large que la ligne compte pour
+ * les lignes qu'il occupe, le premier compris. `em` (sans police) : chasse
+ * forfaitaire, espace compté comme un caractère comme avant. Pur.
+ */
+function lignesEstimees(texte: string, px: number, largeurUtile: number, em = 0.6, police?: { nom?: string | null; capitales: boolean; espacement?: number }): number {
+  if (!texte.trim()) return 0;
+  if (police) {
+    const c = chassePolice(police.nom ?? 'Inter', police.capitales);
+    return lignesRepliees(texte, px, largeurUtile, { em: c.em / CHASSE_MARGE, espace: c.espace / CHASSE_MARGE }, police.espacement ?? 0);
   }
-  return texte.trim() ? n : 0;
+  return lignesRepliees(texte, px, largeurUtile, { em, espace: em });
 }
 
 /** Hauteur estimée (px) du bloc titre + sous-titre — la mesure d'`ajusterAccroche`. Pur. */
 export function hauteurAccroche(p: {
   titre: string; sousTitre?: string | null; echelleTitre: number; echelleSousTitre: number;
   largeur: number; ratioTitre: number; ratioSousTitre: number; partLargeur?: number; interligneTitre?: number;
-}): number {
+} & PoliceAccroche): number {
   const largeurUtile = p.largeur * (p.partLargeur ?? 0.84);
   const pt = p.largeur * p.ratioTitre * p.echelleTitre;
   const ps = p.largeur * p.ratioSousTitre * p.echelleTitre * p.echelleSousTitre;
-  return lignesEstimees(p.titre, pt, largeurUtile) * pt * (p.interligneTitre ?? 1.1)
-    + lignesEstimees(p.sousTitre ?? '', ps, largeurUtile) * ps * 1.25 + (p.sousTitre ? ps * 0.4 : 0);
+  const esp = ((p.espacement ?? 0) * p.largeur) / 320;
+  return lignesEstimees(p.titre, pt, largeurUtile, 0.6, { nom: p.police, capitales: enCapitales(p.titre, p.casse), espacement: esp }) * pt * (p.interligneTitre ?? 1.1)
+    + lignesEstimees(p.sousTitre ?? '', ps, largeurUtile, 0.6, { nom: p.policeSousTitre ?? p.police, capitales: enCapitales(p.sousTitre, p.casseSousTitre, 'none') }) * ps * 1.25
+    + (p.sousTitre ? ps * 0.4 : 0);
+}
+
+/**
+ * Police et casse du bloc titre (chasse réelle, `CHASSES`). Absentes : Inter
+ * en capitales pour le titre (le rendu par défaut de `SequenceTitle`), casse
+ * du texte pour le sous-titre.
+ */
+export interface PoliceAccroche {
+  police?: string | null;
+  policeSousTitre?: string | null;
+  casse?: 'none' | 'uppercase' | 'lowercase';
+  casseSousTitre?: 'none' | 'uppercase' | 'lowercase';
+  /** Interlettrage du titre, en px de l'éditeur (base 320). */
+  espacement?: number;
 }
 
 /**
@@ -264,16 +306,35 @@ export function ajusterAccroche(p: {
   interligneTitre?: number;
   /** Plafond du bloc (part de la hauteur). Absent : `ACCROCHE_HAUTEUR_MAX` (9:16). */
   hauteurMax?: number;
-}): { echelleTitre: number; echelleSousTitre: number } {
+} & PoliceAccroche): { echelleTitre: number; echelleSousTitre: number } {
   const hauteurBloc = (e: number) => hauteurAccroche({ ...p, echelleTitre: e });
   const plafond = (p.hauteurMax ?? ACCROCHE_HAUTEUR_MAX) * p.hauteur;
   const minTitre = ACCROCHE_MIN_PX.titre / (p.largeur * p.ratioTitre);
   const minSous = ACCROCHE_MIN_PX.sousTitre / (p.largeur * p.ratioSousTitre * p.echelleSousTitre);
   const plancher = Math.min(p.echelleTitre, Math.max(minTitre, minSous));
-  let e = p.echelleTitre;
+  // LARGEUR d'abord : le mot le plus long (titre comme sous-titre) tient dans
+  // le cadre — « MOTIVATION » × 1,9 sortait de l'image sur une seule ligne,
+  // que la règle de hauteur laissait passer. Cette contrainte prime sur le
+  // plancher lisible, jusqu'au corps `ACCROCHE_MOT_MIN_PX`.
+  const largeurUtile = p.largeur * (p.partLargeur ?? 0.84);
+  const maxMot = Math.min(
+    echelleMaxMot({
+      texte: p.titre, pxParEchelle: p.largeur * p.ratioTitre, largeurUtile, police: p.police ?? 'Inter',
+      capitales: enCapitales(p.titre, p.casse), espacement: ((p.espacement ?? 0) * p.largeur) / 320,
+    }),
+    echelleMaxMot({
+      texte: p.sousTitre, pxParEchelle: p.largeur * p.ratioSousTitre * p.echelleSousTitre, largeurUtile,
+      police: p.policeSousTitre ?? p.police ?? 'Inter', capitales: enCapitales(p.sousTitre, p.casseSousTitre, 'none'),
+    }),
+  );
+  const plancherMot = Math.min(p.echelleTitre, ACCROCHE_MOT_MIN_PX / (p.largeur * p.ratioTitre));
+  let e = Math.min(p.echelleTitre, Math.max(plancherMot, Math.floor(maxMot * 999) / 1000));
   while (e > plancher && hauteurBloc(e) > plafond) e = Math.max(plancher, e * 0.95);
   return { echelleTitre: e, echelleSousTitre: p.echelleSousTitre };
 }
+
+/** Corps minimal (px, image 1080) auquel un mot trop long peut réduire l'accroche. */
+const ACCROCHE_MOT_MIN_PX = 40;
 
 /** Les champs de design que la mise en page renseigne (Remotion / composants partagés). */
 export interface DesignSurimpression {
@@ -295,6 +356,22 @@ export interface DesignSurimpression {
   /** Couleur de la valeur des cartes (sinon `gradientEnd`). */
   cardValueColor?: string | null;
   gradientEnd?: string;
+  /** Typographie lue pour la chasse réelle (mêmes clés que les props Remotion). */
+  titleFont?: string | null;
+  subtitleFont?: string | null;
+  titleCase?: 'none' | 'uppercase' | 'lowercase';
+  subtitleCase?: 'none' | 'uppercase' | 'lowercase';
+  titleLetterSpacing?: number;
+  ctaFont?: string | null;
+  ctaLetterSpacing?: number;
+}
+
+/** Police et casse du titre d'un design (props Remotion), pour `ajusterAccroche`. Pure. */
+function policeAccrocheDuDesign(d: DesignSurimpression): PoliceAccroche {
+  return {
+    police: d.titleFont || 'Inter', policeSousTitre: d.subtitleFont ?? null,
+    casse: d.titleCase, casseSousTitre: d.subtitleCase, espacement: d.titleLetterSpacing ?? 0,
+  };
 }
 
 /**
@@ -328,6 +405,11 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
      * en haut (il tomberait sur les yeux). Absent : la mise en page d'avant.
      */
     avatar?: boolean;
+    /**
+     * Fond MESURÉ derrière les textes, s'il est connu : clair ET chargé →
+     * voile local discret (`fondTexteSurImage`). Absent : contour seul.
+     */
+    fondTexte?: { clair?: boolean; charge?: boolean } | null;
   } = {},
 ): T {
   const d = design as DesignSurimpression & { format?: string | null };
@@ -347,10 +429,12 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
     titre: d.title ?? '', sousTitre: d.subtitle ?? null,
     echelleTitre: (d.titleScale ?? 1) * m.titleScale, echelleSousTitre: (d.subtitleScale ?? 1) * m.subtitleScale,
     largeur: 1080, hauteur: 1920, ratioTitre: FONT_RATIO['9:16'].title, ratioSousTitre: FONT_RATIO['9:16'].subtitle,
+    ...policeAccrocheDuDesign(d),
   });
   let ctaEchelle = ajusterCta({
     texte: d.ctaText ?? '', sousTexte: d.ctaSubText ?? null, echelle: (d.ctaScale ?? 1) * m.ctaScale, largeur: 1080,
     ratioTexte: FONT_RATIO['9:16'].cta, ratioSousTexte: FONT_RATIO['9:16'].ctaSub, panneau: true,
+    police: d.ctaFont || 'Inter', espacement: d.ctaLetterSpacing ?? 0,
   });
   if (surAvatar) {
     // Le panneau du CTA tient dans la bande sous le menton : jamais sur la bouche.
@@ -368,13 +452,13 @@ export function appliquerMiseEnPageSurimpression<T extends object>(
     titlePos: m.titlePos,
     titleScale: accroche.echelleTitre,
     subtitleScale: accroche.echelleSousTitre,
-    ctaBackground: m.ctaFond,
+    ctaBackground: options.fondTexte ? fondTexteSurImage('radial', options.fondTexte) : m.ctaFond,
     ctaSubColor: eclaircir(d.ctaSubColor ?? '#EC4899', m.ctaActionEclaircie) ?? d.ctaSubColor,
     ctaPos: m.ctaPos,
     ctaScale: ctaEchelle,
     cardBoxes: { c0: m.carte },
     cardsTypography: { ...(d.cardsTypography ?? {}), scale: (d.cardsTypography?.scale ?? 1) * m.carteScale },
-    cardBackground: m.carteFond,
+    cardBackground: options.fondTexte ? fondTexteSurImage('lineaire', options.fondTexte) : m.carteFond,
     cardValueColor: eclaircir(d.gradientEnd ?? '#EC4899', m.valeurEclaircie),
   } as T;
 }
@@ -525,6 +609,8 @@ export function echellesSurimpressionLarge(format: '16:9' | '1:1', p: {
   /** Échelles choisies par l'utilisateur (1 si aucune), avant la mise en page. */
   echelleTitre?: number | null; echelleSousTitre?: number | null;
   cta: string; sousTexteCta?: string | null; echelleCta?: number | null;
+  /** Typographie (chasse réelle). Absente : Inter en capitales, comme le rendu par défaut. */
+  policeTitre?: PoliceAccroche; policeCta?: string | null; espacementCta?: number;
 }): { titleScale: number; subtitleScale: number; ctaScale: number } {
   const L = MISE_EN_PAGE_LARGE[format];
   const { w: W, h: H } = VIDEO_SIZE[format];
@@ -534,9 +620,10 @@ export function echellesSurimpressionLarge(format: '16:9' | '1:1', p: {
     echelleTitre: (p.echelleTitre ?? 1) * L.titleScale, echelleSousTitre: (p.echelleSousTitre ?? 1) * L.subtitleScale,
     largeur: W, hauteur: H, ratioTitre: R.title, ratioSousTitre: R.subtitle,
     partLargeur: L.titleWidth / 100, hauteurMax: L.titleHauteurMax,
+    ...(p.policeTitre ?? {}),
   });
   const cta = { texte: p.cta, sousTexte: p.sousTexteCta ?? CTA_SOUS_TEXTE_DEFAUT, largeur: W, ratioTexte: R.cta, ratioSousTexte: R.ctaSub };
-  let ctaEchelle = ajusterCta({ ...cta, echelle: (p.echelleCta ?? 1) * L.ctaScale, panneau: true, partLargeur: L.ctaWidth / 100 });
+  let ctaEchelle = ajusterCta({ ...cta, echelle: (p.echelleCta ?? 1) * L.ctaScale, panneau: true, partLargeur: L.ctaWidth / 100, police: p.policeCta, espacement: p.espacementCta });
   const plancherCta = Math.min(ctaEchelle, 34 / (W * R.ctaSub));
   while (ctaEchelle > plancherCta && hauteurCta({ ...cta, echelle: ctaEchelle, partLargeur: L.ctaWidth / 100 }) > L.ctaHauteurMax * H) {
     ctaEchelle = Math.max(plancherCta, ctaEchelle * 0.95);
@@ -554,6 +641,7 @@ function appliquerMiseEnPageLarge<T extends object>(design: T, profil: string | 
   const e = echellesSurimpressionLarge(format, {
     titre: d.title ?? '', sousTitre: d.subtitle ?? null, echelleTitre: d.titleScale, echelleSousTitre: d.subtitleScale,
     cta: d.ctaText ?? '', sousTexteCta: d.ctaSubText, echelleCta: d.ctaScale,
+    policeTitre: policeAccrocheDuDesign(d), policeCta: d.ctaFont || 'Inter', espacementCta: d.ctaLetterSpacing ?? 0,
   });
   return {
     ...design,
@@ -675,11 +763,15 @@ export function ajusterBadge(p: {
   titre: string; valeur: string; largeurPx: number; echelle: number;
   /** Tailles à l'échelle 1, en px : texte du titre, valeur, icône, écart, rembourrage horizontal (par côté). */
   texte: number; valeurPx: number; icone: number; ecart: number; padX: number;
+  /** Police des cartes (chasse réelle, `CHASSES`). Absente : l'estimation prudente d'avant. */
+  police?: string | null;
 }): AjustementBadge {
   const motLePlusLong = Math.max(0, ...p.titre.trim().split(/\s+/).map((m) => m.length));
+  // Chasse : jamais plus étroite que l'estimation historique (0,7 em).
+  const chasse = Math.max(EM_CARACTERE, p.police ? chassePolice(p.police, true).em : 0);
   const tient = (s: number, icone: boolean) => {
     const dispo = p.largeurPx - 2 * p.padX - (icone ? p.icone * s + p.ecart : 0);
-    const em = (n: number, px: number) => n * EM_CARACTERE * px * s;
+    const em = (n: number, px: number) => n * chasse * px * s;
     return dispo > 0
       && em(p.valeur.trim().length, p.valeurPx) <= dispo
       && em(motLePlusLong, p.texte) <= dispo

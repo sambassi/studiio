@@ -348,7 +348,7 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
       "iconName": "nom d'icône lucide-react pertinent — OBLIGATOIRE — choisi UNIQUEMENT parmi: [${ICON_NAMES.join(', ')}]",
       "emoji": "emoji de fallback (utilisé seulement si iconName invalide)",
       "label": "ASPECT SPÉCIFIQUE DE ${topic.toUpperCase()} (2-4 mots)",
-      "value": "MOT COURT SANS CHIFFRE (ex: CLÉ, MALIN, ASTUCE) — un nombre seulement s\'il figure dans le sujet ou le brief",
+      "value": "MOT COURT SANS CHIFFRE (ex: CLÉ, MALIN, ASTUCE) — un nombre seulement s\'il figure dans le sujet ou le brief. JAMAIS la redite du label, d\'un de ses mots ni de son début tronqué (\"DOPA\" pour \"DOPAMINE\" est interdit). Rien de neuf à dire : chaîne VIDE \"\" (jamais \"-\")",
       "description": "PHRASE COMPLÈTE de 8 à 15 mots MAXIMUM, finit par un point, jamais tronquée, ≤ 80 caractères"
     }
   ],
@@ -483,7 +483,10 @@ function parseAndReturn(data: any, topic: string, count: number, iconNames: stri
       iconName,
       emoji: card.emoji || '📊',
       label: propre.label || 'INFO',
-      value: propre.value || '-',
+      // Vide = carte titre + icône (`badgeValide`) ; plus de « - » affiché
+      // comme une valeur. Une valeur qui redit le libellé est déjà vidée
+      // (`valeurRedondante`, dans `carteSansChiffresInventes`).
+      value: propre.value ?? '',
       description: shortenForCard(propre.description || '', 80),
     };
   });

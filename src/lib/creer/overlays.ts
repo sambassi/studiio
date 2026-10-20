@@ -55,19 +55,30 @@ export function planOverlays(input: {
   const carteMax = regles ? regles.cartes.dureeMax : 3;
   const titreMax = regles ? regles.accroche.dureeMax : 4;
 
-  // Titre : pendant le HOOK, lisible (≥ 2,5 s), jamais plus de `titreMax` —
-  // ou la durée de sa voix si elle est plus longue (dans la limite de 25 %).
+  // Titre : pendant le plan d'OUVERTURE, lisible (≥ 2,5 s), ou la durée de
+  // sa voix si elle est plus longue (dans la limite de 25 %).
+  //
+  // Fin du plan d'ouverture CONNUE (`finHook`) : le titre tient jusqu'à la
+  // COUPE, jamais avant. Constat (Autopilote « MOTIVATION », 20/10) : plafonné
+  // à `titreMax` = 3 s, il disparaissait au milieu d'un plan de 4 s — l'image
+  // continuait, sans texte, une seconde. La fenêtre s'étend donc jusqu'à la
+  // coupe, plafonnée à max(25 % de la vidéo, `titreMax`) pour qu'un plan
+  // d'ouverture très long ne garde pas le titre indéfiniment.
+  // Inconnue : la durée d'avant (≤ `titreMax`, 3 s par défaut).
   const premiere = regles?.premiereCarte ?? null;
+  const finHook = input.finHook != null && input.finHook > 0 ? input.finHook : null;
   const finTitre = premiere
     // #504 (danse) : l'accroche se resserre sur ≈ 0–2 s pour que la première
     // carte arrive entre 1,8 et 2,5 s — sauf voix de titre plus longue.
     ? Math.max(Math.min(premiere[1] - 0.4, Math.max(premiere[0] - 0.2, input.finHook ?? premiere[0])), Math.min(duree * 0.25, voix.titre ?? 0))
-    : Math.min(duree * 0.25, Math.max(2.5, Math.min(titreMax, input.finHook ?? 3), voix.titre ?? 0));
-  const titre: [number, number] = [0, r(finTitre)];
-
+    : finHook !== null
+      ? Math.min(duree, Math.max(duree * 0.25, titreMax), Math.max(2.5, finHook, Math.min(duree * 0.25, voix.titre ?? 0)))
+      : Math.min(duree * 0.25, Math.max(2.5, Math.min(titreMax, 3), voix.titre ?? 0));
   // CTA : les 2–3 dernières secondes (plus si sa voix l'exige, ≤ 25 %).
   const dureeCta = Math.min(duree * 0.25, Math.max(2.5, Math.min(3, voix.cta ?? 2.5), voix.cta ?? 0));
   const cta: [number, number] = [r(duree - dureeCta), r(duree)];
+  // Vidéo très courte : le titre s'arrête 0,4 s avant le CTA, jamais par-dessus.
+  const titre: [number, number] = [0, r(Math.max(0, Math.min(finTitre, cta[0] - 0.4)))];
 
   // Cartes : entre le titre et le CTA, une à la fois (`carteMin`–`carteMax`),
   // avec un court répit entre deux. Trop peu de place : on en montre moins.
