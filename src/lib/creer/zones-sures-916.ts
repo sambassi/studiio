@@ -331,6 +331,12 @@ export interface TitreAPlacer916 {
   largeur: number;
   /** Échelle choisie (`text.title.scale`). */
   echelle: number;
+  /**
+   * L'échelle est l'AUTO-AJUSTEMENT par défaut (`echelleTitreDeDepart`), pas
+   * un réglage de l'utilisateur : en 9:16, elle cède devant le rail d'actions
+   * (le bloc reste au-dessus) au lieu d'y rogner la largeur choisie.
+   */
+  echelleAuto?: boolean;
   titre: string;
   sousTitre?: string | null;
   /** Multiplicateur du sous-titre (sa taille = titre × ce multiplicateur). */
@@ -395,7 +401,7 @@ export function boiteTitre(t: TitreAPlacer916, largeur: number, echelle: number)
 export function titreSur916(t: TitreAPlacer916): { largeur: number; echelle: number } {
   // TOUT FORMAT : aucun mot ne sort du cadre (`echelleTitreSansDebord`). Un
   // titre qui tient déjà garde exactement son échelle.
-  const tenue = echelleTitreSansDebord(t);
+  let tenue = echelleTitreSansDebord(t);
   const choisi = { largeur: t.largeur, echelle: tenue };
   if (!t.titre?.trim()) return choisi;
   if (!estFormat916(t.format)) {
@@ -409,6 +415,19 @@ export function titreSur916(t: TitreAPlacer916): { largeur: number; echelle: num
   }
   const z = ZONE_SURE_916;
   let largeur = t.largeur;
+  // Régression (« la poignée de bord élargit le bloc », 1 fois sur 3) : un titre
+  // GÉNÉRÉ long, agrandi par l'auto-ajustement, descendait à hauteur du rail ;
+  // la largeur était alors arrêtée au rail (77 %) et la poignée de largeur ne
+  // changeait plus rien — le geste de l'utilisateur perdait. L'échelle AUTO
+  // n'est jamais un choix : elle baisse d'abord (jusqu'à 1, l'échelle par
+  // défaut d'avant) pour que le bloc reste au-dessus du rail. Une échelle
+  // réglée à la main garde la règle d'avant.
+  if (t.echelleAuto && t.pos.x + largeur > z.droite) {
+    const plancherAuto = Math.min(tenue, 1);
+    while (tenue > plancherAuto && boiteTitre916(t, largeur, tenue).y1 > z.railHaut) {
+      tenue = Math.max(plancherAuto, Math.round((tenue - 0.01) * 100) / 100);
+    }
+  }
   if (t.pos.x + largeur > z.droite && boiteTitre916(t, largeur, tenue).y1 > z.railHaut) {
     largeur = Math.min(largeur, Math.max(LARGEUR_TITRE_MIN_916, Math.round((z.droite - t.pos.x) * 100) / 100));
   }

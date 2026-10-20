@@ -236,3 +236,20 @@ describe('câblage — aperçu, compositeur, métadonnées et Remotion lisent la
     expect(r).toContain('const t916 = pleinEcran ? titreSur916({');
   });
 });
+
+describe('régression : l’échelle AUTO cède devant le rail, la largeur choisie reste au geste', () => {
+  // Titre généré long + sous-titre : à l'échelle auto (≈ 1,4–2,4), le bloc descendait
+  // à hauteur du rail → largeur arrêtée à 77 % et la poignée de largeur sans effet.
+  const LONGUE = 'LES CINQ HABITUDES SIMPLES QUI CHANGENT VRAIMENT TA FORME AU QUOTIDIEN';
+  const t = { ...titre(LONGUE, 2.4), echelleAuto: true };
+  it('auto : le bloc reste au-dessus du rail, la largeur choisie est gardée (le geste gagne)', () => {
+    expect(titreSur916({ ...t, echelleAuto: false }).largeur, 'cas qui touchait le rail').toBeLessThan(TEXT_LAYOUT.titleWidth);
+    const r = titreSur916(t);
+    expect(r.largeur).toBe(TEXT_LAYOUT.titleWidth);
+    expect(boiteTitre916(t, r.largeur, r.echelle).y1).toBeLessThanOrEqual(ZONE_SURE_916.railHaut + 1e-6);
+    // Élargir le cadre (poignée) change bien la largeur rendue.
+    expect(titreSur916({ ...t, largeur: 90 }).largeur).toBe(90);
+    // Idempotente.
+    expect(titreSur916({ ...t, echelle: r.echelle })).toEqual(r);
+  });
+});

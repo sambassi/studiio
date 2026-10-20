@@ -822,6 +822,11 @@ interface TextStyles {
     italic: boolean;
     letterSpacing: number;
     lineHeight: number;
+    /**
+     * Dérivé à l'affichage, jamais persisté : l'échelle est l'auto-ajustement
+     * par défaut (`echelleTitreDeDepart`), pas un réglage de l'utilisateur.
+     */
+    echelleAuto?: boolean;
   } & TextFormatFields;
   /**
    * Sous-titre. `null` = « suit le titre » — c'est ce que fait le
@@ -859,7 +864,7 @@ function titreRendu916(
   titre: string | null | undefined, sousTitre: string | null | undefined,
 ): { largeur: number; echelle: number } {
   return titreSur916({
-    format, pos, largeur, echelle: text.title.scale, titre: titre ?? '', sousTitre,
+    format, pos, largeur, echelle: text.title.scale, echelleAuto: !!text.title.echelleAuto, titre: titre ?? '', sousTitre,
     echelleSousTitre: text.subtitle.scale, interligne: text.title.lineHeight, espacement: text.title.letterSpacing,
     police: text.title.font, policeSousTitre: text.subtitle.font, casse: text.title.textCase, casseSousTitre: text.subtitle.textCase,
   });
@@ -4426,7 +4431,7 @@ export default function AssistantWizard() {
     police: titleStyle.font, casse: titleStyle.textCase, lisible,
   });
   const textStyles: TextStyles = {
-    title: echelleTitreAffichee === titleStyle.scale ? titleStyle : { ...titleStyle, scale: echelleTitreAffichee },
+    title: echelleTitreAffichee === titleStyle.scale ? titleStyle : { ...titleStyle, scale: echelleTitreAffichee, echelleAuto: true },
     subtitle: subtitleStyle,
     // Échelle du CTA ajustée pour qu'il ne déborde jamais (`echelleCtaAjustee`) :
     // l'aperçu ET l'export reçoivent la même — elle ne fait que réduire.
