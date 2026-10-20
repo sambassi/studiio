@@ -246,7 +246,13 @@ export function etapesMontageApercuAutopilote(
       : resume?.avatar.vignette ? 'vignette' : 'emplacement';
   const lignes: LigneChronologie[] = etapes.map((e) => ({ id: e.id, libelle: e.libelle, debut: e.debut, fin: e.fin }));
   const cta = typeof opts.dureeCta === 'number' && Number.isFinite(opts.dureeCta) && opts.dureeCta > 0 ? opts.dureeCta : null;
-  if (cta !== null && etapes.length) {
+  // ⚠️ AVATAR + AUTRES SOURCES : AUCUNE SÉQUENCE CTA APRÈS LA VIDÉO. Le moteur
+  // monte alors les textes EN SURIMPRESSION et retire la séquence CTA plein
+  // écran (`produire.ts`, `ctaDuration: 0`) : le CTA s'affiche sur les
+  // dernières secondes de la parole. L'aperçu annonçait « CTA 30–34 s », que
+  // le MP4 n'a jamais contenu. Avatar seul (pas de plan de coupe) : séquence gardée.
+  const ctaEnSurimpression = etapes.some((e) => e.source === 'avatar') && etapes.some((e) => e.source !== 'avatar');
+  if (cta !== null && etapes.length && !ctaEnSurimpression) {
     const fondu = Math.round(Math.min(TRANSITION_DURATION_SECONDS, duree) * 1000) / 1000;
     lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: Math.round((duree + cta) * 1000) / 1000, cta: true, ...(fondu > 0 ? { fondu } : {}) });
   }

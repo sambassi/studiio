@@ -534,7 +534,9 @@ describe('4. VideosPretes — les cinq états', () => {
 
     expect(await screen.findByText('0:28 · Vertical')).toBeInTheDocument();
     // Le titre DIT l'état, il ne nomme pas une rubrique.
-    expect(screen.getByText('Dernière vidéo générée')).toBeInTheDocument();
+    // Jamais « Dernière vidéo générée » : elle passait pour le résultat de l'Autopilote.
+    expect(screen.getByText('Vidéo ponctuelle de ce tournage')).toBeInTheDocument();
+    expect(screen.queryByText('Dernière vidéo générée')).not.toBeInTheDocument();
 
     const bloc = document.querySelector('[data-videos-pretes]')!;
     // ⚠️ EXACTEMENT TROIS, et ce sont celles-là. Ni « Modifier », ni
@@ -542,7 +544,7 @@ describe('4. VideosPretes — les cinq états', () => {
     expect(bloc.querySelectorAll('button, a')).toHaveLength(3);
     expect(screen.getByText('Regarder')).toBeInTheDocument();
     expect(screen.getByText('Télécharger')).toBeInTheDocument();
-    expect(screen.getByText('Planifier la publication')).toBeInTheDocument();
+    expect(screen.getByText('Ajouter en brouillon au Calendrier')).toBeInTheDocument();
     expect(screen.queryByText(/Modifier/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Créer ma vidéo|Générer une vidéo de ce rush/i)).not.toBeInTheDocument();
   });

@@ -15,7 +15,8 @@ import { planCompletAutopilote, type SegmentPlanComplet } from '@/lib/autopilot/
  * « Plan avant génération » — le GABARIT de la séquence Vidéo, édité avant
  * tout rendu : l'ordre et la nature des plans (avatar, rush personnel,
  * stock, ou laissé à Studiio). Chaque montage remplit ce plan avec ses
- * médias réels ; la séquence CTA reste fixe, à la fin.
+ * médias réels ; le CTA reste à la fin (séquence finale, ou — avec l'avatar et
+ * des plans de coupe — en surimpression sur les dernières secondes).
  *
  * ⚠️ AUCUN APPEL ICI. Le composant ne fait qu'éditer une liste et la remonter
  * (`onChange`) ; l'enregistrement est celui du panneau (`designStyle.sources
@@ -157,6 +158,14 @@ export default function PlanAvantGeneration({
   const avecAvatar = !!complet?.segments.some((x) => x.genre === 'avatar');
   // Parole de l'avatar non mesurée (aucune génération) : la durée est une ESTIMATION.
   const estimee = avecAvatar && !(typeof secondesAvatar === 'number' && secondesAvatar > 0);
+  /**
+   * ⚠️ AVATAR + PLANS DE COUPE : LE CTA EST EN SURIMPRESSION, PAS UNE SÉQUENCE.
+   * Le moteur monte les textes sur la parole continue de l'avatar et retire la
+   * séquence CTA plein écran (`produire.ts`) : le CTA s'affiche sur les
+   * dernières secondes de la vidéo. Annoncer « séquence CTA à la fin » ici
+   * promettait des secondes que le MP4 n'a jamais eues.
+   */
+  const ctaEnSurimpression = avecAvatar && !!complet?.segments.some((x) => x.genre !== 'avatar');
   // Sans avatar, un créneau = un plan : le minutage par créneau reste lisible.
   const minutage = avecAvatar ? [] : minutagePlan(lignes.length, reference);
   const planifiee = complet && complet.duree > 0 ? complet.duree : (minutage.length ? minutage[minutage.length - 1].fin : 0);
@@ -188,8 +197,10 @@ export default function PlanAvantGeneration({
           <span className="flex items-center gap-1 text-[10px] text-gray-500" data-plan-suggere><Wand2 className="w-3 h-3" /> Plan suggéré</span>
         ) : null}
       </div>
-      <p className="text-[11px] text-gray-500">
-        Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.
+      <p className="text-[11px] text-gray-500" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
+        {ctaEnSurimpression
+          ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur les dernières secondes de la vidéo : il n’y a pas de séquence CTA séparée après.'
+          : 'Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.'}
       </p>
       {lignes.length > 0 && (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-gray-900/60 px-2 py-1.5 text-[11px]" data-plan-duree>
@@ -197,14 +208,16 @@ export default function PlanAvantGeneration({
           <dd className="text-gray-200" data-plan-duree-cible={cible ?? ''}>{cible ? `${cible} s` : `automatique (≈ ${DUREE_ESTIMEE_SANS_CIBLE} s)`}</dd>
           <dt className="text-gray-500">Durée planifiée</dt>
           <dd className="text-gray-200" data-plan-duree-planifiee={planifiee} data-plan-duree-estimee={estimee ? 'oui' : 'non'}>
-            {secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> (estimée)</span> : null}
+            {estimee ? '≈ ' : ''}{secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> (estimée)</span> : null}
           </dd>
           <dt className="text-gray-500">Nombre de séquences</dt>
           <dd className="text-gray-200" data-plan-nombre={lignes.length}>{lignes.length}</dd>
           <dt className="text-gray-500">Rythme</dt>
           <dd className="text-gray-200" data-plan-rythme={duree?.rythme ?? 'normal'}>{RYTHME_LABELS[duree?.rythme ?? 'normal']}</dd>
-          <dd className="col-span-2 text-[10px] text-gray-500 pt-0.5">
-            Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).
+          <dd className="col-span-2 text-[10px] text-gray-500 pt-0.5" data-plan-duree-avertissement>
+            {estimee
+              ? 'Durée estimée : la voix de votre avatar n’est pas encore générée. À la production, tout le montage est recalé sur sa durée réelle (jamais accélérée) — la vidéo finale peut être plus courte ou plus longue.'
+              : 'Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).'}
           </dd>
         </dl>
       )}
@@ -324,9 +337,11 @@ export default function PlanAvantGeneration({
             </li>
           );
         })}
-        <li className="flex items-center gap-2 rounded-lg border border-dashed border-gray-800 px-2 py-1.5 text-[11px] text-gray-400" data-plan-cta>
+        <li className="flex items-center gap-2 rounded-lg border border-dashed border-gray-800 px-2 py-1.5 text-[11px] text-gray-400" data-plan-cta data-plan-cta-mode={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
           <Megaphone className="w-3.5 h-3.5 shrink-0" />
-          <span><span className="font-medium text-gray-300">CTA</span> — fixe, toujours en dernier</span>
+          {ctaEnSurimpression
+            ? <span><span className="font-medium text-gray-300">CTA</span> — en surimpression sur la fin de la vidéo</span>
+            : <span><span className="font-medium text-gray-300">CTA</span> — fixe, toujours en dernier</span>}
         </li>
       </ol>
       {complet && complet.segments.length > 0 && (

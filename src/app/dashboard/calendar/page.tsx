@@ -1,6 +1,7 @@
 'use client';
 
 import AvisMp4Indisponible from '@/components/calendar/AvisMp4Indisponible';
+import BandeauGenerationEnCours from '@/components/calendar/BandeauGenerationEnCours';
 import { renduAttendUnMp4 } from '@/lib/rendus/mp4-durable-client';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -2512,6 +2513,10 @@ export default function CalendarPage() {
         <h1 className="text-2xl sm:text-3xl font-bold">{t('title')}</h1>
         <p className="text-gray-400 text-xs sm:text-sm mt-1">{t('subtitle')}</p>
       </div>
+
+      {/* Production Autopilote en cours : dite ici tant que le MP4 final n'est
+          pas déposé — aucun post n'est créé avant. */}
+      <BandeauGenerationEnCours onTerminee={() => { void fetchPosts(); }} />
 
       {/* Stats Cards */}
       <div className="px-4 sm:px-8 mb-6">

@@ -161,7 +161,13 @@ describe('A1 — caractérisation : ce qui ne doit pas bouger', () => {
     const { meta } = await produire(null);
     expect(JSON.stringify(lastDesign)).toMatchSnapshot('design-sans-jumeau');
     // Seuls les chronos (`*_MS`) varient d'une exécution à l'autre : neutralisés.
-    expect(JSON.stringify(meta, (k, v) => (/_MS$/.test(k) ? 0 : v))).toMatchSnapshot('meta-sans-jumeau');
+    // Seuls ajouts (2026-10-20, plan = MP4) : la vérification ADDITIVE de la
+    // durée du MP4 final — sortie du cliché, vérifiée à part ; tout le reste
+    // reste identique à l'octet.
+    const { dureeVerifiee, dureeRendu, ...metaAvant } = meta as Record<string, unknown>;
+    expect(typeof dureeVerifiee).toBe('boolean');
+    expect(dureeRendu).toMatchObject({ planS: expect.any(Number) });
+    expect(JSON.stringify(metaAvant, (k, v) => (/_MS$/.test(k) ? 0 : v))).toMatchSnapshot('meta-sans-jumeau');
     // Aucune mesure de jumeau, aucun accès au stockage interne.
     expect(probeRushSeconds.mock.calls.some(([u]) => String(u).includes('/avatar/'))).toBe(false);
     expect(lecturesMinio).not.toHaveBeenCalled();

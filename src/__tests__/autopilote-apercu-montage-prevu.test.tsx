@@ -39,7 +39,7 @@ describe('etapesMontageApercuAutopilote = planCompletAutopilote (le plan de « P
     expect(etapesMontageApercuAutopilote(resume(), { dureeCta: 4 })).toEqual({ etapes: [], lignes: [], duree: 0, avatar: null });
   });
 
-  it('⚠️ plan enregistré à 1 créneau + avatar : étapes == segments (nombre, ordre, genre, durées), puis CTA', () => {
+  it('⚠️ plan enregistré à 1 créneau + avatar : étapes == segments (nombre, ordre, genre, durées), SANS séquence CTA après (CTA en surimpression)', () => {
     const plan = { avatarDisponible: true, cible: 30, rythme: null, durees: { [RUSH]: 12 } };
     const r = resume({
       gabarit: [{ id: 's1', type: 'stock' }],
@@ -63,9 +63,11 @@ describe('etapesMontageApercuAutopilote = planCompletAutopilote (le plan de « P
     expect(a.duree).toBe(complet.segments[complet.segments.length - 1].fin);
     // Avatar non produit : emplacement, jamais un stock à sa place.
     for (const e of a.etapes.filter((x) => x.source === 'avatar')) expect(e.url).toBeNull();
-    const cta = a.lignes[a.lignes.length - 1];
-    expect(cta).toMatchObject({ id: 'cta', cta: true, debut: a.duree, fin: a.duree + 4 });
-    expect(a.lignes).toHaveLength(complet.segments.length + 1);
+    // Avatar + plans de coupe : le moteur rend le CTA EN SURIMPRESSION sur la
+    // fin de la parole (`ctaDuration: 0`) — aucune ligne « CTA » après la vidéo
+    // (l'ancien « CTA 30–34 s » n'existait jamais dans le MP4).
+    expect(a.lignes.some((l) => l.cta)).toBe(false);
+    expect(a.lignes).toHaveLength(complet.segments.length);
   });
 
   it('sans avatar : le plan du moteur, médias réels du plan', () => {
@@ -83,7 +85,7 @@ describe('etapesMontageApercuAutopilote = planCompletAutopilote (le plan de « P
 
 describe('Aperçu du montage prévu — rendu', () => {
   afterEach(() => cleanup());
-  it('titre dédié, chronologie de TOUS les créneaux puis CTA, avatar en emplacement', () => {
+  it('titre dédié, chronologie de TOUS les créneaux (avatar + rushes : CTA en surimpression, pas de ligne CTA), avatar en emplacement', () => {
     const r = etapesMontageApercuAutopilote(resume({
       gabarit: [{ id: 'a', type: 'avatar' }, { id: 'b', type: 'rush' }, { id: 'c', type: 'rush' }],
       actives: { rushes: true, avatar: true, stock: false },
@@ -95,7 +97,7 @@ describe('Aperçu du montage prévu — rendu', () => {
       <ApercuMontageListe etapes={r.etapes} lignes={r.lignes} format="9:16" accent="#7C3AED" ctaTexte="Viens" vignetteAvatar={null} titre="Aperçu du montage prévu" />,
     );
     expect(container.querySelector('h3')!.textContent).toBe('Aperçu du montage prévu');
-    expect([...container.querySelectorAll('[data-ligne]')].map((b) => b.getAttribute('data-ligne'))).toEqual([...r.etapes.map((e) => e.id), 'cta']);
+    expect([...container.querySelectorAll('[data-ligne]')].map((b) => b.getAttribute('data-ligne'))).toEqual(r.etapes.map((e) => e.id));
     expect(container.querySelector('[data-apercu-montage-avatar="a-produire"]')!.textContent).toContain('Votre avatar parlera ici');
   });
 
