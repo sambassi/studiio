@@ -14,6 +14,8 @@
  * `BROLL_VIDEO_S`, rush : une seule fenêtre depuis son début).
  */
 import { planMultiSources, type EntreePlanMultiSources } from '@/lib/autopilot/plan-multi-sources';
+import { contexteMontageAutopilote, pertinencesAutopilote, planMontageAvatar, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
+import { profilMontageDuContexte } from '@/lib/creer/smart-montage';
 import { estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
 import { budgetScriptAvatar } from '@/lib/autopilot/duree-cible';
 import type { VideoBrief } from '@/lib/creer/brief';
@@ -29,8 +31,12 @@ export type GenreSegmentPlan = 'avatar' | 'rush' | 'video' | 'photo';
 
 export interface SegmentPlanComplet {
   genre: GenreSegmentPlan;
-  /** Accroche (premier plan d'avatar), CTA (dernier plan d'avatar), sinon `null`. */
-  role: 'accroche' | 'cta' | null;
+  /**
+   * Accroche (premier plan d'avatar), CTA (dernier plan d'avatar, sans
+   * clôture), conclusion (dernier plan d'avatar suivi d'une clôture), clôture
+   * (plans de coupe APRÈS la parole, CTA à l'écran), sinon `null`.
+   */
+  role: 'accroche' | 'cta' | 'conclusion' | 'cloture' | null;
   /** URL du média (avatar : celle de la vidéo, ou `URL_AVATAR_PREVU`). */
   url: string;
   debut: number;
@@ -54,19 +60,33 @@ export interface OptionsPlanComplet {
   urlAvatar?: string | null;
   /** Pertinence de contenu des médias stock (`pertinencesPourPlan`) — la même que le moteur. */
   pertinences?: EntreePlanMultiSources['pertinences'];
+  /**
+   * Ce que la vidéo DIT (titre, cartes, brief, thèmes) : la pertinence des
+   * médias et la narration sont alors calculées comme au rendu
+   * (`montage-avatar.ts`). Absent : sans pertinence ni narration (avant).
+   */
+  contexte?: ContexteTextesAutopilote | null;
+  /** Durée cible du brief (s) : avec avatar, la clôture complète la parole jusqu'à elle. `null` : la parole seule. */
+  dureeVisee?: number | null;
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** Les segments rendus, dans le vocabulaire de l'écran. Pur. */
-export function segmentsDuPlan(plan: ReadonlyArray<RushSegment>): SegmentPlanComplet[] {
+export function segmentsDuPlan(plan: ReadonlyArray<RushSegment>, debutCloture: number | null = null): SegmentPlanComplet[] {
+  const iCloture = debutCloture === null ? -1 : plan.findIndex((s) => s.debut >= debutCloture - 1e-3);
+  /** Fin de la parole : le plan d'avant la clôture, sinon le dernier. */
+  const finParole = iCloture > 0 ? iCloture - 1 : plan.length - 1;
   const iAvatars = plan.map((s, i) => (s.kind === 'avatar' ? i : -1)).filter((i) => i >= 0);
-  const dernierAvatar = iAvatars.length > 1 && iAvatars[iAvatars.length - 1] === plan.length - 1 ? plan.length - 1 : -1;
+  const dernierAvatar = iAvatars.length > 1 && iAvatars[iAvatars.length - 1] === finParole ? finParole : -1;
   return plan.map((s, i) => {
     const genre: GenreSegmentPlan = s.kind === 'avatar' ? 'avatar'
       : s.kind === 'image' || s.source === 'photo' ? 'photo'
         : s.source === 'stock' ? 'video' : 'rush';
-    const role = genre !== 'avatar' ? null : i === 0 && plan.length > 1 ? 'accroche' : i === dernierAvatar ? 'cta' : null;
+    const role = iCloture >= 0 && i >= iCloture ? 'cloture'
+      : genre !== 'avatar' ? null
+        : i === 0 && plan.length > 1 ? 'accroche'
+          : i === dernierAvatar ? (iCloture >= 0 ? 'conclusion' : 'cta') : null;
     return { genre, role, url: s.url, debut: r3(s.debut), fin: r3(s.fin), duree: r3(s.fin - s.debut) };
   });
 }
@@ -115,7 +135,39 @@ export function entreeDepuisResume(resume: ResumeMediasApercu, o: OptionsPlanCom
  * LE PLAN COMPLET (créneaux + alternance + CTA) pour le résumé de l'écran.
  * Même fonction que le moteur : mêmes entrées → mêmes plans.
  */
-export function planCompletAutopilote(resume: ResumeMediasApercu, o: OptionsPlanComplet): { segments: SegmentPlanComplet[]; duree: number } {
-  const r = planMultiSources(entreeDepuisResume(resume, o));
-  return { segments: segmentsDuPlan(r.plan), duree: r3(r.duree) };
+export interface PlanComplet {
+  segments: SegmentPlanComplet[];
+  duree: number;
+  /** Parole de l'avatar retenue (estimée avant génération) ; `null` sans avatar. */
+  parole: number | null;
+  /** Début de la séquence de clôture ; `null` sans clôture. */
+  debutCloture: number | null;
+  /** Fenêtre du CTA en surimpression (avatar + plans de coupe) ; `null` sinon. */
+  cta: [number, number] | null;
+}
+
+export function planCompletAutopilote(resume: ResumeMediasApercu, o: OptionsPlanComplet): PlanComplet {
+  const c = o.contexte ?? null;
+  const pertinences = o.pertinences ?? (c && resume.actives.stock ? pertinencesAutopilote(resume.stock, c) : undefined);
+  const entree = entreeDepuisResume(resume, { ...o, ...(pertinences ? { pertinences } : {}) });
+  if (entree.avatar) {
+    // AVEC AVATAR : la MÊME décision que le moteur (`produire.ts`) — narration,
+    // pertinences, clôture jusqu'à la cible, fenêtre du CTA.
+    const profil = profilMontageDuContexte(c ? contexteMontageAutopilote(c) : null).profil;
+    const { avatar, cible: _cible, ...reste } = entree;
+    const m = planMontageAvatar({
+      ...reste, avatar, dureeVisee: o.dureeVisee ?? null, profil,
+      titre: c?.titre ?? '', cartes: c?.cartes ?? [],
+    });
+    const avecCoupes = m.res.plan.some((s) => s.kind !== 'avatar');
+    return {
+      segments: segmentsDuPlan(m.res.plan, m.res.debutCloture),
+      duree: r3(m.res.duree),
+      parole: m.res.parole,
+      debutCloture: m.res.debutCloture,
+      cta: avecCoupes && m.overlays?.cta ? m.overlays.cta : null,
+    };
+  }
+  const r = planMultiSources(entree);
+  return { segments: segmentsDuPlan(r.plan), duree: r3(r.duree), parole: null, debutCloture: null, cta: null };
 }

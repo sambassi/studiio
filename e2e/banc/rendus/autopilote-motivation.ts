@@ -13,8 +13,9 @@
  *    débit → NON appelés (aucun effet de bord) ;
  *  - affiche Pexels (pickPosterUrl) → aucune : non utilisée en surimpression avatar.
  * RÉEL : preparePosts (smart-content, graine 2 = cartes du MP4 de l'utilisateur), sanitizeConfig,
- *  sourcesEffectives/mediasDesSources, buildAutopilotDesign, gabaritSuggere, scenarioPertinence,
- *  pertinencesPourPlan, narrationDesSurimpressions, planOverlays, planMultiSources, sansLisibiliteCtaAction,
+ *  sourcesEffectives/mediasDesSources, buildAutopilotDesign, gabaritSuggere, pertinencesAutopilote,
+ *  planMontageAvatar (narration, planMultiSources + clôture, planOverlays — LA fonction de produire.ts
+ *  et de l'aperçu, comparée à planCompletAutopilote → plan-apercu-vs-rendu.json), sansLisibiliteCtaAction,
  *  appliquerMiseEnPageSurimpression, controleQualite, dureePlanRendu, raisonNonEligibleHybride,
  *  rendreHybride / renderCreerSimple (bundle Remotion réel, Chromium réel).
  */
@@ -29,13 +30,12 @@ import { preparePosts } from '@/lib/autopilot/engine';
 import { buildAutopilotDesign } from '@/lib/autopilot/design';
 import { sansLisibiliteCtaAction } from '@/lib/autopilot/cta-action';
 import { sourcesEffectives, mediasDesSources, sujetsCourants, type MediaStockRetenu } from '@/lib/autopilot/sources';
-import { narrationDesSurimpressions, pertinencesPourPlan, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
-import { planMultiSources } from '@/lib/autopilot/plan-multi-sources';
+import { planMontageAvatar, pertinencesAutopilote, contexteMontageAutopilote, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
+import { planCompletAutopilote, segmentsDuPlan, paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import { dureePlanRendu, verifierDureeRendu } from '@/lib/autopilot/produire';
 import { profilMontageDuContexte, mesuresSegments, dureePlan } from '@/lib/creer/smart-montage';
-import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
-import { planOverlays } from '@/lib/creer/overlays';
+import { rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { appliquerMiseEnPageSurimpression } from '@/lib/creer/surimpressions-mise-en-page';
 import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { controleQualite } from '@/lib/creer/quality-gate';
@@ -113,7 +113,9 @@ async function main() {
       rushUrls: [], topics: ['Motivation'], runTimezone: 'Europe/Paris', publishTime: '18:00',
       voiceEnabled: false, jumeauAvatar: true, jumeauAvatarId: '11111111-1111-4111-8111-111111111111',
       cardGradientStart: '#7C3AED', cardGradientEnd: '#EC4899', titleColor: '#FFFFFF', cardsShowPoster: false,
-      musicUrl: null, keepRushAudio: false, musicVolume: 0.3, voiceVolume: 1, rushVolume: 0.5,
+      // Musique du compte (banc) — la piste doit couvrir toute la durée, clôture comprise.
+      // DEMO_SANS_MUSIQUE=1 : rendu sans musique, pour comparer la piste voix à la source.
+      musicUrl: process.env.DEMO_SANS_MUSIQUE === '1' ? null : url('musique.mp3'), keepRushAudio: false, musicVolume: 0.3, voiceVolume: 1, rushVolume: 0.5,
       posterUrls: [], posterMode: 'auto', brief: { duree: 30 },
       designStyle: { sources: { actives: { rushes: false, avatar: true, stock: true }, stock, gabarit: [] } },
     });
@@ -132,37 +134,26 @@ async function main() {
     const videosOk = medias.videosStock; // sonderMediaStock simulé : tous présents
     const photosOk = medias.photosStock;
     const stockVideos = videosOk.map((u) => ({ url: u, secondes: duree(fichierDe(u)) }));
-    const contexteMontage = contexteMontageDepuis({
-      theme: post.title, titre: post.title, sousTitre: post.content?.subtitle ?? null,
-      objectif: [post.brief?.objectif, post.brief?.message].filter(Boolean).join(' ') || null,
+    const contexteTextes: ContexteTextesAutopilote = {
+      sujets: sujetsCourants(config), titre: post.title, sousTitre: post.content?.subtitle ?? null,
+      objectif: post.brief?.objectif ?? null, message: post.brief?.message ?? null, cta: post.brief?.cta ?? null,
       cartes: post.content?.cards ?? [],
-    });
+    };
+    const contexteMontage = contexteMontageAutopilote(contexteTextes);
     const profilVideo = profilMontageDuContexte(contexteMontage).profil;
     const gabarit = gabaritSuggere({ avatar: true, rushes: 0, stock: videosOk.length + photosOk.length }, { dureeSecondes: post.brief?.duree, rythme: post.brief?.rythme });
-    const cartesPost = post.content?.cards ?? [];
-    const scenario = scenarioPertinence({
-      sujets: [...sujetsCourants(config), post.brief?.objectif ?? null],
-      textes: [post.title, post.content?.subtitle ?? null, post.brief?.message ?? null, post.brief?.cta ?? null,
-        ...cartesPost.flatMap((c) => [c.title ?? null, c.description ?? null])],
-    });
-    const pertinences = pertinencesPourPlan(sourcesCfg.sources.stock.filter((m) => videosOk.includes(m.url) || photosOk.includes(m.url)), scenario);
+    const pertinences = pertinencesAutopilote(sourcesCfg.sources.stock.filter((m) => videosOk.includes(m.url) || photosOk.includes(m.url)), contexteTextes);
     const T = jumeauSeconds;
-    const narration = narrationDesSurimpressions(planOverlays({
-      duree: T, profil: profilVideo, nbCartes: designBase.cards?.length ?? 0,
-      finHook: Math.min(4, Math.max(2, T * 0.2)), voix: { video: T },
-    }), { titre: post.title, cartes: designBase.cards ?? [] });
-    const res = planMultiSources({
-      avatar: { url: jumeauVideoUrl, secondes: T },
+    // LA MÊME fonction que produireUnMontage (branche jumeau) et que l'aperçu.
+    const m = planMontageAvatar({
+      avatar: { url: jumeauVideoUrl, secondes: T }, dureeVisee: post.brief?.duree ?? null,
       rushes: [], analyses: [], stockVideos, photos: photosOk,
-      gabarit, cible: T, pertinences, narration,
+      gabarit, pertinences, profil: profilVideo, titre: post.title, cartes: designBase.cards ?? [],
       options: { contexte: contexteMontage, plagesExclues: null },
     });
-    if (!res.plan.length) throw new Error(`plan vide : ${res.explications.join(' / ')}`);
-    const o = planOverlays({
-      duree: res.duree, profil: profilVideo, nbCartes: designBase.cards?.length ?? 0,
-      finHook: res.plan[0]?.kind === 'avatar' ? res.plan[0].fin : null, voix: { video: res.duree },
-    });
-    const overlays = { ...o, voix: { video: 0 } };
+    const res = m.res;
+    if (!res.plan.length || !m.overlays) throw new Error(`plan vide : ${res.explications.join(' / ')}`);
+    const overlays = m.overlays;
     const plan = res.plan;
     let design: typeof designBase = {
       ...designBase,
@@ -172,6 +163,25 @@ async function main() {
       surimpressions: overlays, introDuration: 0, cardsDuration: 0, ctaDuration: 0,
       videoUrl: jumeauVideoUrl, rushMuted: true, sequenceVoiceUrls: { video: jumeauVideoUrl },
     };
+    // ── L'APERÇU (« Plan avant génération ») : planCompletAutopilote sur le MÊME résumé que l'écran ──
+    const resume = {
+      gabarit, actives: { rushes: false, stock: true, avatar: true }, rushesPerso: [],
+      stock: sourcesCfg.sources.stock.filter((x) => videosOk.includes(x.url) || photosOk.includes(x.url)),
+      avatar: { disponible: true, vignette: null },
+    };
+    const durees = Object.fromEntries(stockVideos.map((v) => [v.url, v.secondes]));
+    const optionsApercu = { cible: post.brief?.duree ?? 30, rythme: post.brief?.rythme ?? null, durees, urlAvatar: jumeauVideoUrl, dureeVisee: post.brief?.duree ?? null, contexte: contexteTextes };
+    const apercuMesure = planCompletAutopilote(resume, { ...optionsApercu, secondesAvatar: T });
+    const apercuEstime = planCompletAutopilote(resume, { ...optionsApercu, secondesAvatarEstimees: paroleAvatarDuBudget(post.brief, 0) });
+    const segmentsRendu = segmentsDuPlan(plan, res.debutCloture);
+    const memes = JSON.stringify(apercuMesure.segments) === JSON.stringify(segmentsRendu);
+    fs.writeFileSync(path.join(SORTIE, 'plan-apercu-vs-rendu.json'), JSON.stringify({
+      identiques_a_parole_egale: memes,
+      rendu: { parole: res.parole, duree: res.duree, debutCloture: res.debutCloture, cta: overlays.cta, segments: segmentsRendu },
+      apercu_parole_mesuree: apercuMesure,
+      apercu_parole_estimee: apercuEstime,
+    }, null, 2));
+    console.log(`[demo] aperçu (parole mesurée) == rendu : ${memes}`);
     const zoneCta = overlays.cta ? zoneCalmeSortie(plan, [], overlays.cta[0]) : null;
     design = sansLisibiliteCtaAction(design, config.designStyle?.cta?.scale);
     design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande, avatar: plan.some((x) => x.kind === 'avatar') });

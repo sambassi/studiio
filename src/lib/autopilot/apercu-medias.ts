@@ -22,6 +22,7 @@ import type { CreneauGabarit, MediaStockRetenu, SourcesActives } from '@/lib/aut
 import { estRushStock } from '@/lib/autopilot/sources';
 import { MOUVEMENTS_PHOTO } from '@/lib/autopilot/plan-multi-sources';
 import { planCompletAutopilote, URL_AVATAR_PREVU } from '@/lib/autopilot/plan-complet';
+import type { ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { DUREE_ESTIMEE_SANS_CIBLE } from '@/lib/autopilot/duree-cible';
 import type { RythmeBrief } from '@/lib/creer/brief';
 import { TRANSITION_DURATION_SECONDS } from '@/lib/creer/transitionPreview';
@@ -68,6 +69,10 @@ export interface ResumeMediasApercu {
     scriptAvatar?: string | null;
     /** Durées sondées des vidéos (rushes, vidéos suggérées). */
     durees?: Readonly<Record<string, number | null>>;
+    /** Durée cible du brief (s) — `null` sans cible : avec avatar, la clôture complète la parole jusqu'à elle. */
+    dureeVisee?: number | null;
+    /** Ce que la vidéo dit : pertinence des médias et narration calculées comme au rendu. */
+    contexte?: ContexteTextesAutopilote | null;
   };
 }
 
@@ -187,8 +192,16 @@ export type AvatarMontageApercu = 'video-reelle' | 'vignette' | 'emplacement' | 
 export function etapesMontageApercuAutopilote(
   resume: ResumeMediasApercu | null | undefined,
   opts: { dureeCta?: number | null } = {},
-): { etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number; avatar: AvatarMontageApercu; ctaEnSurimpression: boolean } {
+): {
+  etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number; avatar: AvatarMontageApercu; ctaEnSurimpression: boolean;
+  /** Fenêtre du CTA en surimpression (s) — sur la clôture quand elle existe ; `null` sinon. */
+  ctaFenetre?: [number, number] | null;
+  /** Début de la séquence de clôture (s) ; `null` sans clôture. */
+  debutCloture?: number | null;
+} {
   const etapes: EtapeApercu[] = [];
+  let ctaFenetre: [number, number] | null = null;
+  let debutCloture: number | null = null;
   // Avatar demandé, disponibilité en lecture : AUCUN plan (il serait sans
   // avatar, donc rempli de stock) — l'écran montre un état de chargement.
   if (resume && resume.gabarit.length > 0 && resume.actives.avatar && resume.avatar.chargement && !resume.avatar.disponible) {
@@ -198,7 +211,7 @@ export function etapesMontageApercuAutopilote(
     const plan = resume.plan;
     const avatarDisponible = plan?.avatarDisponible ?? (resume.actives.avatar && resume.avatar.disponible);
     // La MÊME entrée que `PlanAvantGeneration` (sources déjà filtrées par l'écran).
-    const { segments } = planCompletAutopilote({
+    const complet = planCompletAutopilote({
       gabarit: resume.gabarit,
       actives: { rushes: true, stock: true, avatar: avatarDisponible },
       rushesPerso: resume.rushesPerso,
@@ -214,7 +227,13 @@ export function etapesMontageApercuAutopilote(
       durees: plan?.durees ?? {},
       // Sa vraie vidéo, si elle existe déjà : les segments avatar la portent.
       urlAvatar: avatarDisponible ? resume.avatar.video ?? null : null,
+      // La MÊME décision que le rendu : pertinences, narration, clôture.
+      dureeVisee: plan?.dureeVisee ?? null,
+      contexte: plan?.contexte ?? null,
     });
+    const { segments } = complet;
+    ctaFenetre = complet.cta;
+    debutCloture = complet.debutCloture;
     const perso = resume.rushesPerso;
     let photos = 0;
     segments.forEach((sg, k) => {
@@ -225,17 +244,21 @@ export function etapesMontageApercuAutopilote(
           ...base, source: 'avatar', type: 'video',
           url: sg.url === URL_AVATAR_PREVU ? null : sg.url,
           depuis: sg.debut,
-          libelle: sg.role === 'accroche' ? 'Mon avatar — accroche' : sg.role === 'cta' ? 'Mon avatar — CTA' : 'Mon avatar',
+          libelle: sg.role === 'accroche' ? 'Mon avatar — accroche' : sg.role === 'cta' ? 'Mon avatar — CTA' : sg.role === 'conclusion' ? 'Mon avatar — conclusion' : 'Mon avatar',
         });
-      } else if (sg.genre === 'photo') {
-        etapes.push({
-          ...base, source: 'stock-photo', type: 'image', url: sg.url, depuis: 0, libelle: 'Photo suggérée',
-          mouvement: MOUVEMENTS_PHOTO[photos++ % MOUVEMENTS_PHOTO.length],
-        });
-      } else if (sg.genre === 'video') {
-        etapes.push({ ...base, source: 'stock-video', type: 'video', url: sg.url, depuis: 0, libelle: 'Vidéo suggérée' });
       } else {
-        etapes.push({ ...base, source: 'rush', type: 'video', url: sg.url, depuis: 0, libelle: `Rush : ${nomRush(sg.url, Math.max(0, perso.indexOf(sg.url)))}` });
+        // Clôture : plans de coupe APRÈS la parole, CTA à l'écran jusqu'à la fin.
+        const cl = sg.role === 'cloture' ? 'Clôture + CTA — ' : '';
+        if (sg.genre === 'photo') {
+          etapes.push({
+            ...base, source: 'stock-photo', type: 'image', url: sg.url, depuis: 0, libelle: `${cl}Photo suggérée`,
+            mouvement: MOUVEMENTS_PHOTO[photos++ % MOUVEMENTS_PHOTO.length],
+          });
+        } else if (sg.genre === 'video') {
+          etapes.push({ ...base, source: 'stock-video', type: 'video', url: sg.url, depuis: 0, libelle: `${cl}Vidéo suggérée` });
+        } else {
+          etapes.push({ ...base, source: 'rush', type: 'video', url: sg.url, depuis: 0, libelle: `${cl}Rush : ${nomRush(sg.url, Math.max(0, perso.indexOf(sg.url)))}` });
+        }
       }
     });
   }
@@ -256,5 +279,5 @@ export function etapesMontageApercuAutopilote(
     const fondu = Math.round(Math.min(TRANSITION_DURATION_SECONDS, duree) * 1000) / 1000;
     lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: Math.round((duree + cta) * 1000) / 1000, cta: true, ...(fondu > 0 ? { fondu } : {}) });
   }
-  return { etapes, lignes, duree, avatar, ctaEnSurimpression };
+  return { etapes, lignes, duree, avatar, ctaEnSurimpression, ctaFenetre: ctaEnSurimpression ? ctaFenetre : null, debutCloture };
 }

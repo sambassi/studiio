@@ -221,9 +221,9 @@ describe('4. Plan = MP4', () => {
     );
     expect(container.querySelector('[data-plan-cta]')!.getAttribute('data-plan-cta-mode')).toBe('surimpression');
     expect(container.textContent).not.toContain('La séquence CTA reste toujours à la fin');
-    expect(container.textContent).toContain('il n’y a pas de séquence CTA séparée');
+    expect(container.textContent).toContain('le CTA s’affiche en surimpression sur la fin de la vidéo');
     expect(container.querySelector('[data-plan-duree-planifiee]')!.textContent).toContain('(estimée)');
-    expect(container.querySelector('[data-plan-duree-avertissement]')!.textContent).toMatch(/recalé sur sa durée réelle/);
+    expect(container.querySelector('[data-plan-duree-avertissement]')!.textContent).toMatch(/durée réelle est mesurée/);
   });
 
   it('Plan avant génération sans avatar : séquence CTA fixe à la fin (inchangé)', () => {

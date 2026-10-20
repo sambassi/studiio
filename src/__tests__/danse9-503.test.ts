@@ -40,15 +40,21 @@ describe('Autopilote : le CTA du brief est la ligne d’action', () => {
     expect(JSON.stringify(d)).not.toMatch(/LIEN EN BIO/i);
   });
 
-  it('aucun CTA utilisateur → aucune ligne envoyée (le repli « LIEN EN BIO » du rendu reste permis)', () => {
-    const d = buildAutopilotDesign(post(), {}) as { ctaSubText?: string };
-    expect(d.ctaSubText).toBeUndefined();
+  // #613 (20/10) : sans CTA utilisateur, la petite ligne est explicitement VIDE —
+  // le repli « LIEN EN BIO » du rendu inventait un lien — et la ligne principale
+  // est une action dérivée de l'objectif, jamais le slogan.
+  it('aucun CTA utilisateur → aucune ligne envoyée, jamais « LIEN EN BIO »', () => {
+    const d = buildAutopilotDesign(post(), {}) as { ctaText?: string; ctaSubText?: string };
+    expect(d.ctaSubText).toBe('');
+    expect(d.ctaText).not.toBe('LE SPORT LE PLUS COMPLET');
+    expect(JSON.stringify(d)).not.toMatch(/LIEN EN BIO/i);
     const vide = buildAutopilotDesign(post({ cta: '   ' }), {}) as { ctaSubText?: string };
-    expect(vide.ctaSubText).toBeUndefined();
+    expect(vide.ctaSubText).toBe('');
   });
 
   it('même règle que Créer (`avecCtaDuBrief`)', () => {
-    expect(readFileSync(resolve(process.cwd(), 'src/lib/autopilot/design.ts'), 'utf-8')).toContain('avecCtaDuBrief({ cta: post.content.tagLine');
+    expect(readFileSync(resolve(process.cwd(), 'src/lib/autopilot/design.ts'), 'utf-8')).toContain('ctaAutopilote(post.content.tagLine');
+    expect(readFileSync(resolve(process.cwd(), 'src/lib/autopilot/cta-action.ts'), 'utf-8')).toContain('avecCtaDuBrief({ cta: tagLine');
   });
 });
 

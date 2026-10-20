@@ -75,6 +75,16 @@ export interface EntreePlanMultiSources {
    * une valise). Absente : aucun rapprochement.
    */
   narration?: ReadonlyArray<{ debut: number; fin: number; texte: string }>;
+  /**
+   * AVEC AVATAR : la durée TOTALE visée (durée cible du brief, s). La parole
+   * n'est JAMAIS accélérée ni coupée : quand elle est plus courte que la
+   * visée, le montage continue après elle par une SÉQUENCE DE CLÔTURE (un ou
+   * deux plans de coupe, musique, CTA à l'écran) jusqu'à
+   * `dureeAvecCloture(parole, visée)` — au plus `CLOTURE_MAX_S` après la
+   * parole. Parole plus longue que la visée : rien n'est coupé, T = parole.
+   * Absente (ou sans avatar) : la règle d'avant, T = parole.
+   */
+  dureeVisee?: number | null;
 }
 
 export interface ResultatPlanMultiSources {
@@ -83,6 +93,13 @@ export interface ResultatPlanMultiSources {
   duree: number;
   /** Pourquoi ce plan, lisible (journal + métadonnées). */
   explications: string[];
+  /**
+   * Début (s) de la SÉQUENCE DE CLÔTURE (plans de coupe après la parole de
+   * l'avatar, CTA à l'écran jusqu'à la dernière image) ; `null` sans clôture.
+   */
+  debutCloture: number | null;
+  /** Avec avatar : la parole (s) sur laquelle le plan est calé ; `null` sans avatar. */
+  parole: number | null;
 }
 
 /** Plan de coupe vidéo (s) visé entre deux interventions de l'avatar. */
@@ -118,6 +135,25 @@ interface ItemBroll {
   limite?: boolean;
   /** Description du média (rapprochement avec la narration). */
   description?: string;
+}
+
+/** Au plus ce temps (s) ajouté APRÈS la parole de l'avatar (séquence de clôture). */
+export const CLOTURE_MAX_S = 8;
+/** En dessous, aucune clôture : l'écart avec la cible est négligeable. */
+export const CLOTURE_MIN_S = 1;
+/** Une clôture plus longue se coupe en DEUX plans de coupe. */
+export const CLOTURE_UN_PLAN_MAX_S = 4.5;
+
+/**
+ * La durée du montage avec avatar : la parole, prolongée jusqu'à la durée
+ * visée par une séquence de clôture — jamais plus de `CLOTURE_MAX_S` après la
+ * parole, jamais moins que la parole (rien n'est coupé, la voix n'est jamais
+ * accélérée). Pur.
+ */
+export function dureeAvecCloture(parole: number, visee: number | null | undefined): number {
+  const p = r3(Math.max(0, parole));
+  if (typeof visee !== 'number' || !Number.isFinite(visee) || visee - p < CLOTURE_MIN_S - 1e-6) return p;
+  return r3(Math.min(visee, p + CLOTURE_MAX_S));
 }
 
 /** Une reprise de média est permise au plus UNE fois par vidéo. */
@@ -455,27 +491,109 @@ function alterner(
   }
 }
 
-/** Avec avatar, sans gabarit : avatar (accroche) → alternance → avatar (CTA). */
-function planAvecAvatar(e: EntreePlanMultiSources, T: number, expl: string[]): RushSegment[] {
+/**
+ * LA SÉQUENCE DE CLÔTURE — après la parole de l'avatar : un plan de coupe
+ * (deux au-delà de `CLOTURE_UN_PLAN_MAX_S`, ou quand un seul média ne tient
+ * pas), puis le CTA à l'écran jusqu'à la dernière image (`planOverlays`,
+ * `debutCta`). JAMAIS l'avatar : sa vidéo est finie, il resterait figé et
+ * muet.
+ *
+ * La matière est RÉSERVÉE AVANT l'alternance (`preparerCloture`) : sinon la
+ * parole consommait tous les plans de coupe et la clôture n'avait plus rien
+ * (stock court). Rushes personnels d'abord (une fenêtre jamais montée), puis
+ * le stock par pertinence — sauf le plus pertinent, gardé pour OUVRIR le
+ * montage quand il y a le choix ; jamais un média « limite ». Les plans ainsi
+ * réservés ne servent nulle part ailleurs (aucun doublon). Aucune matière :
+ * pas de clôture, la vidéo finit avec la parole — dit dans `explications`.
+ */
+interface PieceCloture { it: ItemBroll; d: number }
+
+function preparerCloture(
+  total: number, reserve: ReserveRushs, stock: { videos: ItemBroll[]; photos: ItemBroll[] }, utilises: Set<ItemBroll>,
+): PieceCloture[] {
+  const C = r3(total);
+  if (C < CLOTURE_MIN_S - EPS) return [];
+  const n = C > CLOTURE_UN_PLAN_MAX_S + EPS ? 2 : 1;
+  const pieces: PieceCloture[] = [];
+  // 1. Rushes personnels : des fenêtres jamais montées.
+  for (let k = 0; k < n; k++) {
+    const d = r3(k === n - 1 ? C - pieces.reduce((t, x) => t + x.d, 0) : C / n);
+    const rush = reserve.prendre(d) ?? reserve.prendreAuPlus(d);
+    if (!rush) break;
+    pieces.push({ it: rush, d: Number.isFinite(rush.dispo) ? Math.min(d, rush.dispo) : d });
+  }
+  if (pieces.length) return pieces;
+  // 2. Stock : par pertinence (ordre reçu à égalité), le plus pertinent gardé pour l'ouverture.
+  const cle = (x: ItemBroll) => x.score ?? 0.5;
+  const candidats = [...stock.videos, ...stock.photos]
+    .filter((x) => !x.limite && !utilises.has(x) && (x.kind === 'image' || x.dispo >= Math.min(BROLL_MIN_S, C) - EPS))
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => cle(b.x) - cle(a.x) || a.i - b.i)
+    .map((o) => o.x);
+  const pool = candidats.length > n ? candidats.slice(1) : candidats;
+  // Un seul plan s'il suffit (photo, ou vidéo assez longue) ; sinon deux.
+  if (n === 1) {
+    const seul = pool.find((x) => x.kind === 'image' || x.dispo >= C - EPS);
+    if (seul) return [{ it: seul, d: C }];
+  }
+  const choisis = pool.slice(0, 2);
+  if (!choisis.length) return [];
+  if (choisis.length === 1) return [{ it: choisis[0], d: choisis[0].kind === 'image' ? C : Math.min(C, choisis[0].dispo) }];
+  // Deux plans : moitié chacun ; une vidéo plus courte cède le reste à l'autre.
+  const [a, b] = choisis;
+  let da = Math.min(C / 2, a.dispo);
+  let db = Math.min(C - da, b.dispo);
+  if (da + db < C - EPS) da = Math.min(C - db, a.dispo);
+  da = r3(da); db = r3(db);
+  return [{ it: a, d: da }, { it: b, d: db }];
+}
+
+/** Pose la clôture préparée ; rend son début, ou `null`. */
+function cloturer(p: Plan, pieces: PieceCloture[], total: number, etat: EtatPioche, expl: string[]): number | null {
+  if (!pieces.length) {
+    expl.push('Aucun plan de coupe pour la clôture : la vidéo s’arrête avec la parole de l’avatar.');
+    return null;
+  }
+  const debut = p.fin;
+  for (const { it, d } of pieces) {
+    noterPioche(etat, it, d);
+    p.ajouterItem(it, r3(d), 'clôture');
+  }
+  const dernier = p.segs[p.segs.length - 1];
+  // Une photo tient le reliquat ; une vidéo trop courte ne s'étire pas (pas de gel).
+  if (debut + total - p.fin > EPS && dernier.kind === 'image') p.prolonger(debut + total);
+  expl.push(`Clôture de ${r3(p.fin - debut)} s après la parole (${pieces.length} plan(s) de coupe, CTA à l’écran jusqu’à la fin).`);
+  if (debut + total - p.fin > EPS) expl.push(`Matière insuffisante : clôture de ${r3(p.fin - debut)} s au lieu de ${r3(total)} s.`);
+  return debut;
+}
+
+/** Avec avatar, sans gabarit : avatar (accroche) → alternance → avatar (CTA) → clôture éventuelle. */
+function planAvecAvatar(e: EntreePlanMultiSources, T: number, expl: string[], total: number): { segs: RushSegment[]; debutCloture: number | null } {
   const p = new Plan(e.avatar!);
-  const reserve = new ReserveRushs(e, T);
+  const reserve = new ReserveRushs(e, total);
   const stock = itemsStock(e);
   const utilises = new Set<ItemBroll>();
+  const etat = nouvelEtatPioche(e.narration);
   const aDuBroll = !reserve.vide || stock.videos.length > 0 || stock.photos.length > 0;
   const hook = r3(borne(T * 0.2, BROLL_MIN_S, BROLL_MAX_S));
   const fin = r3(borne(T * 0.2, BROLL_MIN_S, BROLL_MAX_S));
   const finMilieu = r3(T - fin);
+  // La clôture se RÉSERVE avant l'alternance (sinon la parole consomme tout).
+  const pieces = aDuBroll && total > T ? preparerCloture(total - T, reserve, stock, utilises) : [];
+  for (const x of pieces) utilises.add(x.it);
   if (!aDuBroll || finMilieu - hook < BROLL_MIN_S) {
     p.ajouterAvatar(T, 'avatar (parole entière)');
     expl.push(!aDuBroll ? 'Aucun plan de coupe disponible : l’avatar tient toute la séquence.' : 'Parole trop courte pour un plan de coupe : avatar seul.');
-    return p.segs;
+    const debutCloture = total > T ? cloturer(p, pieces, r3(total - T), etat, expl) : null;
+    return { segs: p.segs, debutCloture };
   }
   p.ajouterAvatar(hook, 'avatar — accroche');
-  alterner(p, finMilieu, reserve, stock, utilises, nouvelEtatPioche(e.narration), 'broll');
+  alterner(p, finMilieu, reserve, stock, utilises, etat, 'broll');
   p.ajouterAvatar(r3(T - p.fin), 'avatar — CTA');
   const n = p.segs.filter((s) => s.kind !== 'avatar').length;
   expl.push(`Avatar en accroche et en conclusion, ${n} plan(s) de coupe intercalé(s).`);
-  return p.segs;
+  const debutCloture = total > T ? cloturer(p, pieces, r3(total - T), etat, expl) : null;
+  return { segs: p.segs, debutCloture };
 }
 
 /** Sans avatar, sans gabarit : rushes (moteur de Créer) puis stock en complément. */
@@ -547,21 +665,31 @@ function planSansAvatar(e: EntreePlanMultiSources, cible: number, expl: string[]
  * (`alterner`) : avatar et plans de coupe (rushes personnels d'abord, puis
  * stock) se relaient au lieu de laisser tout le reliquat à l'avatar.
  */
-function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): RushSegment[] {
+function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[], total: number = T): { segs: RushSegment[]; debutCloture: number | null } {
   const gabarit = e.gabarit ?? [];
   const avatar = e.avatar ?? null;
   const p = new Plan(avatar);
-  const reserve = new ReserveRushs(e, T);
+  const reserve = new ReserveRushs(e, total);
   const { videos, photos } = itemsStock(e);
   const utilises = new Set<ItemBroll>();
   const etat = nouvelEtatPioche(e.narration);
   const n = gabarit.length;
   const estAvatar = (c: CreneauGabarit) => !!avatar && (c.type === 'avatar' || (!!c.media && c.media === avatar.url));
+  // Avec avatar et une clôture à poser : sa matière est RÉSERVÉE d'abord — jamais
+  // un média que le gabarit FORCE (le choix de l'utilisateur reste à sa place).
+  const forces = new Set(gabarit.map((c) => c.media).filter((u): u is string => !!u));
+  const pieces = avatar && total > T && !gabarit.every(estAvatar)
+    ? preparerCloture(total - T, reserve, {
+      videos: videos.filter((x) => !forces.has(x.url)), photos: photos.filter((x) => !forces.has(x.url)),
+    }, utilises)
+    : [];
+  for (const x of pieces) utilises.add(x.it);
   // Gabarit « avatar seul » explicite : l'avatar tient toute la parole, comme avant.
   if (avatar && gabarit.every(estAvatar)) {
+    // Choix EXPLICITE « avatar seul » : aucun plan de coupe, donc aucune clôture.
     p.ajouterAvatar(T, 'avatar (gabarit : avatar seul)');
     expl.push(`Gabarit de ${n} créneau(x) respecté.`);
-    return p.segs;
+    return { segs: p.segs, debutCloture: null };
   }
   const hook = avatar ? r3(borne(T * 0.2, BROLL_MIN_S, BROLL_MAX_S)) : 0;
   const cta = avatar ? r3(borne(T * 0.2, BROLL_MIN_S, BROLL_MAX_S)) : 0;
@@ -631,7 +759,8 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
     const ajoutes = p.segs.slice(avant).filter((s) => s.kind !== 'avatar').length;
     if (ajoutes) expl.push(`Avatar et plans de coupe alternés : ${ajoutes} plan(s) de coupe ajouté(s) après le gabarit.`);
     expl.push(`Gabarit de ${n} créneau(x) respecté.`);
-    return p.segs;
+    const debutCloture = total > T ? cloturer(p, pieces, r3(total - T), etat, expl) : null;
+    return { segs: p.segs, debutCloture };
   }
   // Reliquat (dernier média plus court que son créneau) : une photo s'étire ;
   // une vidéo, non — dit.
@@ -642,7 +771,7 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
     else expl.push(`Matière insuffisante : séquence de ${p.fin} s au lieu de ${r3(T)} s.`);
   }
   expl.push(`Gabarit de ${n} créneau(x) respecté.`);
-  return p.segs;
+  return { segs: p.segs, debutCloture: null };
 }
 
 /**
@@ -654,19 +783,22 @@ export function planMultiSources(e: EntreePlanMultiSources): ResultatPlanMultiSo
   const expl: string[] = [];
   const avatar = e.avatar && e.avatar.url && e.avatar.secondes > 0 ? e.avatar : null;
   const T = avatar ? r3(avatar.secondes) : r3(Math.max(0, e.cible));
-  if (!(T > 0)) return { plan: [], duree: 0, explications: ['Durée nulle : aucun plan.'] };
+  if (!(T > 0)) return { plan: [], duree: 0, explications: ['Durée nulle : aucun plan.'], debutCloture: null, parole: avatar ? T : null };
+  // Avec avatar : la parole entière, puis la clôture jusqu'à la durée visée.
+  const total = avatar ? dureeAvecCloture(T, e.dureeVisee) : T;
   const entree = { ...e, avatar };
   let plan: RushSegment[];
+  let debutCloture: number | null = null;
   if (e.gabarit && e.gabarit.length > 0) {
-    plan = planGabarit(entree, T, expl);
+    ({ segs: plan, debutCloture } = planGabarit(entree, T, expl, total));
   } else if (avatar) {
-    plan = planAvecAvatar(entree, T, expl);
+    ({ segs: plan, debutCloture } = planAvecAvatar(entree, T, expl, total));
   } else {
     plan = planSansAvatar(entree, T, expl);
   }
   if (avatar) cadrerAvatar(plan);
   const duree = plan.length ? plan[plan.length - 1].fin : 0;
-  return { plan, duree, explications: expl };
+  return { plan, duree, explications: expl, debutCloture, parole: avatar ? T : null };
 }
 
 /**

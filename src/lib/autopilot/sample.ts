@@ -67,6 +67,12 @@ export interface AutopilotSample {
   cards: Array<{ icon: string; title: string; description: string; value: string }>;
   cta: string;
   ctaSub: string;
+  /**
+   * Le slogan généré (`tagLine`) — ce que le script du jumeau dit en conclusion
+   * quand le brief n'a pas de CTA (le CTA affiché, lui, est l'action dérivée de
+   * l'objectif). Absent (ancien échantillon) : `cta`.
+   */
+  tagLine?: string;
   /** La petite ligne porte l'action du brief (`cta-action.ts`). Absent : le CTA d'avant. */
   ctaActionEnPetiteLigne?: true;
   /** Mots-clés de la banque d'images, pour aller chercher une affiche d'exemple. */
@@ -95,7 +101,7 @@ export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'> & {
   const contenu = contenuPourDuree(generateSmartContent(topic, seed), topic, sanitizeBrief(config.brief));
   // Le CTA du BRIEF, par la MÊME règle que le moteur (`buildAutopilotDesign`) :
   // sans elle, la vidéo portait une ligne d'action que l'aperçu ne montrait pas.
-  const cta = ctaAutopilote(contenu.tagLine, sanitizeBrief(config.brief));
+  const cta = ctaAutopilote(contenu.tagLine, sanitizeBrief(config.brief), topic);
   return {
     topic,
     seed,
@@ -109,6 +115,7 @@ export function buildAutopilotSample(config: Pick<AutopilotConfig, 'topics'> & {
     // `tagLine` EST le CTA du moteur — voir `buildAutopilotDesign`.
     cta: cta.cta,
     ctaSub: cta.ctaSub,
+    tagLine: contenu.tagLine,
     // La petite ligne porte l'action du brief : l'aperçu la rend lisible comme
     // la vidéo (`lisibiliteCtaAction`). Absent sinon : l'échantillon d'avant.
     ...(cta.actionEnPetiteLigne ? { ctaActionEnPetiteLigne: true as const } : null),
@@ -149,7 +156,8 @@ export function samplePosterVisible(
 export function postDeLEchantillon(sample: AutopilotSample, brief: unknown): PostPourScriptJumeau {
   return {
     title: sample.topic,
-    content: { subtitle: sample.subtitle, tagLine: sample.cta, cards: sample.cartesDuMontage },
+    // Le slogan, comme `preparePosts` (`content.tagLine`) : le MÊME script que la production.
+    content: { subtitle: sample.subtitle, tagLine: sample.tagLine ?? sample.cta, cards: sample.cartesDuMontage },
     brief: sanitizeBrief(brief),
   };
 }

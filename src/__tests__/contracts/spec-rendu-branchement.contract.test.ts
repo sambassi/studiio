@@ -251,7 +251,8 @@ describe('A2.2 — renderCreerSimple ≡ oracle gelé, par fixture Autopilote', 
       const { design } = await produireAuto(fx);
       const { serveur } = await verifierIdentique(design);
       expect(dimensionsHistoriques(serveur.inputProps)).toEqual({ w: VIDEO_SIZE['9:16'].w, h: VIDEO_SIZE['9:16'].h });
-      if (nom.startsWith('G-')) expect('ctaSubText' in serveur.inputProps).toBe(false);
+      // #613 : sans CTA du brief, '' explicite (Remotion n'affiche rien) — jamais le « LIEN EN BIO » des defaultProps.
+      if (nom.startsWith('G-')) expect((serveur.inputProps as { ctaSubText?: string }).ctaSubText).toBe('');
       if (nom.startsWith('H-')) {
         expect('ctaSubText' in serveur.inputProps).toBe(true);
         expect(serveur.inputProps.ctaSubText).toBe(design.ctaSubText);
