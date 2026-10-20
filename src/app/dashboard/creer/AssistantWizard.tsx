@@ -164,7 +164,8 @@ import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
-import { echelleCtaAjustee, echelleCtaDeDepart, VERSION_LISIBILITE, defautsLisibles, versionLisibiliteRestauree } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart, echelleTitreDeDepart, VERSION_LISIBILITE, defautsLisibles, versionLisibiliteRestauree } from '@/lib/creer/ajustementCta';
+import { ASSOMBRISSEMENT_FOND_TEXTE, fondsRushTexte, fondRushDeLOnglet, type FondRush, type FondsRushTexte } from '@/lib/creer/fond-rush-texte';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -2149,6 +2150,32 @@ function PlateContent({
 type PlateContentProps = Parameters<typeof PlateContent>[0];
 
 /**
+ * Fond EN MOUVEMENT d'une séquence Titre / CTA (`fond-rush-texte.ts`) : le
+ * rush muet en couverture, assombri (`ASSOMBRISSEMENT_FOND_TEXTE`), puis le
+ * voile du dégradé — l'ordre du compositeur (`fondRushTexte`).
+ */
+function FondRushTexte({ fond, gradStart, gradEnd, gradientOpacity }: {
+  fond: FondRush; gradStart: string; gradEnd: string; gradientOpacity: number;
+}) {
+  return (
+    <>
+      <video
+        key={`${fond.url}#${fond.depuis}`}
+        src={`${fond.url}#t=${fond.depuis}`}
+        muted
+        autoPlay
+        loop
+        playsInline
+        data-fond-rush-texte
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
+      />
+      <div aria-hidden style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`, pointerEvents: 'none' }} />
+      <div aria-hidden style={{ position: 'absolute', inset: 0, background: backdropVeilCSS(gradStart, gradEnd, gradientOpacity), pointerEvents: 'none' }} />
+    </>
+  );
+}
+
+/**
  * Un plateau COMPLET en lecture seule — fond, affiche, contenu d'UNE sequence.
  *
  * C'est le calque que `SequencePlayback` anime : le meme fond que le plateau
@@ -2166,6 +2193,7 @@ function PlateauLecture({
   gradientOpacity,
   posterUrl = null,
   posterTransform,
+  fondRush = null,
   ...plate
 }: Omit<PlateContentProps, 'edit'> & {
   displayScale: number;
@@ -2173,8 +2201,11 @@ function PlateauLecture({
   gradientOpacity: number;
   posterUrl?: string | null;
   posterTransform?: PosterTransform;
+  /** Fond en mouvement de cette séquence (sans affiche) — `fondRushDeLOnglet`. */
+  fondRush?: FondRush | null;
 }) {
   const { format, gradEnd } = plate;
+  const fondMouvant = !posterUrl ? fondRush : null;
   return (
     <div
       data-plateau-lecture={plate.focus}
@@ -2186,11 +2217,12 @@ function PlateauLecture({
         height: VIDEO_SIZE[format].h,
         transform: `scale(${displayScale})`,
         transformOrigin: 'top left',
-        background: posterUrl ? DARK : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
+        background: posterUrl || fondMouvant ? DARK : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
         fontFamily: 'var(--font-inter), Inter, sans-serif',
         pointerEvents: 'none',
       }}
     >
+      {fondMouvant && <FondRushTexte fond={fondMouvant} gradStart={gradStart} gradEnd={gradEnd} gradientOpacity={gradientOpacity} />}
       {posterUrl && (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2235,6 +2267,7 @@ export function Preview({
   groupedCards,
   posterUrl = null,
   posterTransform,
+  fondsRush = null,
   cropping = false,
   onPosterPanStart,
   onPosterZoomStart,
@@ -2471,6 +2504,12 @@ export function Preview({
   posterUrl?: string | null;
   /** Recadrage de l'affiche — zoom et decalages en fraction du plateau. */
   posterTransform?: PosterTransform;
+  /**
+   * Fonds en mouvement Titre / CTA (`fondsRushTexte`) : sans affiche, le rush
+   * assombri sous le voile — l'onglet Titre / Tout montre celui du Titre,
+   * l'onglet CTA le sien. Absent : le dégradé d'avant.
+   */
+  fondsRush?: FondsRushTexte | null;
   /** Mode recadrage actif : poignees visibles, fond saisissable. */
   cropping?: boolean;
   onPosterPanStart?: (e: React.PointerEvent) => void;
@@ -2575,6 +2614,8 @@ export function Preview({
   // utilisateur ou média stock ajouté) n'y est pas montré, l'envoi le remplace.
   const showAvatar = !!avatarApercu && activeOrder.includes('video')
     && (focus === 'all' || focus === 'video');
+  // Fond en mouvement de l'onglet (sans affiche) : la MÊME règle que l'export.
+  const fondMouvantApercu = !posterUrl ? fondRushDeLOnglet(fondsRush, focus) : null;
 
   /**
    * Interlettrage : le compositeur multiplie la valeur saisie par `w / 320`
@@ -2699,7 +2740,7 @@ export function Preview({
           // exactement ce que fait le compositeur — photo, puis degrade.
           background: !generated
             ? DARK
-            : posterUrl
+            : posterUrl || fondMouvantApercu
               ? DARK
               : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
           // `var(--font-inter)` est la SEULE reference valide : Next charge la
@@ -2757,6 +2798,9 @@ export function Preview({
             `transform` reproduit le recadrage : `translate` en % de la propre
             largeur du calque — donc du plateau — puis `scale`, exactement le
             `cx = w/2 + offX*w` du compositeur. */}
+        {generated && fondMouvantApercu && (
+          <FondRushTexte fond={fondMouvantApercu} gradStart={gradStart} gradEnd={gradEnd} gradientOpacity={gradientOpacity} />
+        )}
         {generated && posterUrl && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -4343,8 +4387,14 @@ export default function AssistantWizard() {
   // Déclarés ICI (avant `textStyles`) : l'ajustement du CTA lit le texte et le format.
   const [format, setFormat] = useState<Format>('9:16');
   const [generated, setGenerated] = useState<Generated | null>(null);
+  // v2, 9:16 : le titre à l'échelle par DÉFAUT occupe ≈ 80 % de son cadre
+  // (`echelleTitreDeDepart`) ; un réglage de l'utilisateur est gardé.
+  const echelleTitreAffichee = echelleTitreDeDepart({
+    echelle: titleStyle.scale, titre: generated?.title, format, largeurPct: titleWidth,
+    police: titleStyle.font, casse: titleStyle.textCase, lisible,
+  });
   const textStyles: TextStyles = {
-    title: titleStyle,
+    title: echelleTitreAffichee === titleStyle.scale ? titleStyle : { ...titleStyle, scale: echelleTitreAffichee },
     subtitle: subtitleStyle,
     // Échelle du CTA ajustée pour qu'il ne déborde jamais (`echelleCtaAjustee`) :
     // l'aperçu ET l'export reçoivent la même — elle ne fait que réduire.
@@ -4864,7 +4914,7 @@ export default function AssistantWizard() {
     const x0 = e.clientX;
     const y0 = e.clientY;
     // CTA : la poignée part de l'échelle AFFICHÉE (défaut 9:16 relevé compris).
-    const echelleDepart = el === 'title' ? (titleStyle.scale ?? 1) : echelleCtaDeDepart(ctaStyle.scale, format, lisible);
+    const echelleDepart = el === 'title' ? echelleTitreAffichee : echelleCtaDeDepart(ctaStyle.scale, format, lisible);
     const poser = el === 'title' ? setTitleStyle : setCtaStyle;
     const bouger = (ev: PointerEvent) => {
       const scale = echelleDepuisCoin({
@@ -4882,7 +4932,7 @@ export default function AssistantWizard() {
     cible.addEventListener('pointermove', bouger);
     cible.addEventListener('pointerup', finir);
     cible.addEventListener('pointercancel', finir);
-  }, [titleStyle.scale, ctaStyle.scale, format, lisible]);
+  }, [titleStyle.scale, ctaStyle.scale, format, lisible, echelleTitreAffichee]);
 
   /** Bord du titre ou du CTA : la LARGEUR du bloc (export : `titleSize` / `watermarkSize`). */
   const startTextWidth = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
@@ -7624,7 +7674,15 @@ export default function AssistantWizard() {
    * N'y figurent que des VALEURS. Les refs et les poignees d'edition restent
    * sur l'apercu principal : lui seul est mesure, edite et photographie.
    */
+  // Fonds en mouvement Titre / CTA (v2, sans affiche) — la MÊME décision pour
+  // l'aperçu et l'export (`fond-rush-texte.ts`).
+  const fondsRushProjet = fondsRushTexte({
+    lisible, affiche: !!posterUrl, fondsSequence: seqBackgrounds,
+    rushs: [{ url: rushUrl, secondes: rushSecondes }, ...rushSuivants.map((r) => ({ url: r.url, secondes: r.secondes }))],
+    dureeCta: ctaDuration,
+  });
   const previewShared = {
+    fondsRush: fondsRushProjet,
     generated,
     format,
     titlePos,
@@ -8032,6 +8090,7 @@ export default function AssistantWizard() {
             gradientOpacity={gradientOpacity}
             posterUrl={fond.url}
             posterTransform={fond.transform}
+            fondRush={!fond.url ? fondRushDeLOnglet(fondsRushProjet, key) : null}
             text={texteApercu}
             titlePos={titlePos}
             ctaPos={ctaPos}
@@ -10000,6 +10059,8 @@ export default function AssistantWizard() {
           // sequences (`posterOnAllSequences` absent vaut « partout »), avec le
           // voile de degrade par-dessus — exactement ce que montre l'apercu.
           posterUrl: affiche,
+          // Fonds en mouvement Titre / CTA (v2, sans affiche) : ceux de l'aperçu.
+          fondRushTexte: affiche ? null : fondsRushProjet,
           // Recadrage de l'affiche — le compositeur la pre-recadre une fois.
           posterTransform,
           // Fonds par sequence : le compositeur les substitue a l'affiche pour

@@ -45,6 +45,7 @@ import { imageCartesA } from '@/lib/creer/synchro-cartes';
 import { dessinerHabillageVideo } from '@/lib/creer/habillageVideo';
 import { eclaircirPourContraste, PASTILLE_CSS } from '@/lib/creer/contraste';
 import { TITRE_MIN_LISIBLE_PX } from '@/lib/creer/zones-sures-916';
+import { ASSOMBRISSEMENT_FOND_TEXTE } from '@/lib/creer/fond-rush-texte';
 import {
   appelerConversionMp4,
   libelleOctets,
@@ -676,6 +677,14 @@ export interface ComposerOptions {
    * change pas. Absent : fond de la sequence Cartes d'avant.
    */
   cartesSurRushs?: ReadonlyArray<RushSegment> | null;
+  /**
+   * FONDS EN MOUVEMENT des séquences Titre / CTA (projet aux défauts
+   * lisibles, sans affiche ni fond choisi, avec un rush) : le rush `url` joue
+   * depuis `depuis` s, MUET, sur un lecteur dédié, assombri, avec le voile du
+   * dégradé par-dessus — la même composition qu'une affiche, et que l'aperçu
+   * (`fondRushTexte` du plateau). Absent : fond d'avant (dégradé).
+   */
+  fondRushTexte?: { intro?: { url: string; depuis?: number } | null; cta?: { url: string; depuis?: number } | null } | null;
   /**
    * SURIMPRESSIONS (profils dynamiques, Créer = Autopilote) : titre, cartes
    * et CTA posés SUR le rush, pendant leurs fenêtres (`planOverlays`). Les
@@ -4191,6 +4200,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // posterOnAllSequences: when false (default), only the intro sequence
     // gets the poster image — cards/CTA/video get null (black + gradient).
     const usePoster = normalizedDesign?.posterOnAllSequences !== false || type === 'intro';
+    // Fond en mouvement (Titre / CTA, sans affiche) : servi comme une affiche.
+    const fondTexte = fondsTexte.get(type);
+    if (fondTexte?.pret && !(usePoster && posterCropped)) {
+      return { img: fondTexte.calque as unknown as HTMLImageElement, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%', zoom: 1 };
+    }
     return { img: usePoster ? posterCropped : null, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%', zoom: 1 };
   };
 
@@ -4406,6 +4420,37 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   })();
   if (planCartes) console.log('[Composer] Cartes sur les rushes :', planCartes.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s@${s.depuis.toFixed(1)}`).join(' | '));
   let lecteurCartes: HTMLVideoElement | null = null;
+
+  // Fonds en mouvement Titre / CTA (`fondRushTexte`) : un lecteur muet par
+  // séquence, peint chaque image dans un calque à la taille de la vidéo
+  // (couverture + assombrissement), que `pickSeqBg` sert comme une affiche.
+  const fondsTexte = new Map<string, { el: HTMLVideoElement; url: string; depuis: number; calque: HTMLCanvasElement; pret: boolean; seq: { type: string; duration: number } }>();
+  for (const type of ['intro', 'cta'] as const) {
+    const f = options.fondRushTexte?.[type];
+    const seq = sequences.find((x) => x.type === type);
+    if (!f?.url || !seq || !(seq.duration > 0)) continue;
+    const el = await loadVideo(f.url).catch((err) => { console.warn('[Composer] Fond en mouvement indisponible :', f.url.substring(0, 60), err?.message); return null; });
+    if (!el) continue;
+    el.muted = true;
+    const dureeEl = Number.isFinite(el.duration) ? el.duration : null;
+    const depuis = dureeEl !== null ? Math.min(Math.max(0, f.depuis ?? 0), Math.max(0, dureeEl - Math.min(seq.duration, dureeEl) - 0.05)) : Math.max(0, f.depuis ?? 0);
+    const calque = document.createElement('canvas');
+    calque.width = width; calque.height = height;
+    fondsTexte.set(type, { el, url: f.url, depuis, calque, pret: false, seq });
+  }
+  /** Peint l'image courante du lecteur dans le calque (couverture, assombri 35 %). */
+  const peindreFondTexte = (type: string, el: HTMLVideoElement | null) => {
+    const f = fondsTexte.get(type);
+    if (!f || !el || el.readyState < 2) return;
+    const c = f.calque.getContext('2d');
+    if (!c) return;
+    c.clearRect(0, 0, width, height);
+    if (!peindreRushSousCartes(c, width, height, el, recadragePourRushPeint(f.url, { rushTransforms: options.rushTransforms }), lutGrader)) return;
+    c.fillStyle = `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`;
+    c.fillRect(0, 0, width, height);
+    f.pret = true;
+  };
+  if (fondsTexte.size) console.log('[Composer] Fonds en mouvement :', Array.from(fondsTexte.entries()).map(([k, f]) => `${k}=${f.url.split('/').pop()}@${f.depuis.toFixed(1)}s`).join(' | '));
 
   console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
@@ -5560,6 +5605,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // Cartes sur les rushes : leur propre pilote (lecteurs muets dédiés).
     const piloteCartes = planCartes ? creerPiloteMontage(planCartes) : null;
     if (piloteCartes) piloteCartes.prepositionner();
+    // Fonds en mouvement : un pilote par séquence (Titre / CTA), prépositionné.
+    const pilotesFond = new Map(Array.from(fondsTexte.entries()).map(([type, f]) => {
+      const pf = creerPiloteMontage([{ el: f.el, debut: 0, fin: f.seq.duration, depuis: f.depuis }]);
+      pf.prepositionner();
+      return [type, pf] as const;
+    }));
     if (pilote && avatarEl) { avatarEl.currentTime = 0; avatarEl.pause(); }
 
     // Instrumentation des gels : instant de la derniere image NOUVELLE
@@ -5686,6 +5737,14 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       if (piloteCartes && seqCartesPlan) {
         const cs = seqStarts[sequences.indexOf(seqCartesPlan)];
         lecteurCartes = piloteCartes.image(t >= cs && t < cs + seqCartesPlan.duration ? t - cs : null);
+      }
+      for (const [type, pf] of pilotesFond) {
+        const f = fondsTexte.get(type)!;
+        const debutSeq = seqStarts[sequences.indexOf(f.seq as (typeof sequences)[number])];
+        const dedans = t >= debutSeq && t < debutSeq + f.seq.duration;
+        const el = pf.image(dedans ? t - debutSeq : null);
+        // Avant son tour (fondu entrant compris) : l'image prépositionnée.
+        peindreFondTexte(type, el ?? (f.pret ? null : f.el));
       }
 
       drawFrame(t);
