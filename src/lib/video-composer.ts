@@ -6,6 +6,18 @@
  */
 import type { AudioKeyframe } from './creer/audioDucking';
 import {
+  creerChaineMaster,
+  analyserVoix,
+  dbVersGain,
+  decoderPourDetection,
+  gainMasterDb,
+  niveauMusiqueDb,
+  planDuckingVoix,
+  planifierEnveloppe,
+  type SegmentParole,
+  type SourceVoix,
+} from './creer/mixageVoix';
+import {
   applyTextCase, decorationLines, textLeftEdge, sanitizeTextAlign,
   DEFAULT_TEXT_CASE, type TextCase, type TextAlign,
 } from '@/lib/creer/textFormat';
@@ -30,6 +42,7 @@ import type { OverlaysMontage } from '@/lib/creer/overlays';
 import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendus/medias-requis';
 import { imageCartesA } from '@/lib/creer/synchro-cartes';
 import { dessinerHabillageVideo } from '@/lib/creer/habillageVideo';
+import { eclaircirPourContraste, PASTILLE_CSS } from '@/lib/creer/contraste';
 import {
   appelerConversionMp4,
   libelleOctets,
@@ -212,6 +225,18 @@ export interface DesignOptions {
    * unique `cardsSnapshot`, comme avant.
    */
   cardsReveal?: Array<{ debut: number; image: HTMLImageElement }>;
+  /**
+   * Repli SANS photo (cartes redessinees au canvas) : instant d'apparition
+   * de chaque carte (s depuis le debut de la sequence Cartes). Absent : toutes
+   * les cartes ensemble, comme avant.
+   */
+  cardsEtapes?: Array<{ debut: number; carte: number }>;
+  /**
+   * Petite ligne du CTA sur une pastille sombre, teinte eclaircie jusqu'a
+   * 4,5:1 (`contraste.ts`). Pose par Creer quand le fond ne suffit pas.
+   * Absent : le CTA d'avant.
+   */
+  ctaSousPastille?: boolean;
   /**
    * Cadre aux couleurs du style par-dessus les bords de la séquence Vidéo
    * (`habillageVideo.ts`). Absent : rendu d'avant, inchangé.
@@ -592,6 +617,16 @@ export interface ComposerOptions {
    */
   audioKeyframes?: AudioKeyframe[];
   /**
+   * Ducking AUTOMATIQUE de la musique sous les voix (voix globale et voix par
+   * séquence), calé sur les niveaux mesurés : musique 15 dB sous la voix
+   * pendant la parole (baisse bornée −12…−26 dB), lit musical jamais plus fort
+   * que la voix, attaque 80 ms, relâche 600 ms ; normalisation du master
+   * bornée par les crêtes de la voix (`mixageVoix.ts`). Les keyframes
+   * manuelles restent respectées (plafond, jamais une double baisse). Défaut :
+   * actif. `false` = mixage d'avant (seul le limiteur transparent reste).
+   */
+  duckingVoixAuto?: boolean;
+  /**
    * Style de transition joue entre DEUX sequences consecutives.
    *
    * Defaut `'crossfade'` = le fondu historique, au pixel pres : un montage
@@ -633,6 +668,13 @@ export interface ComposerOptions {
    */
   montage?: ReadonlyArray<RushSegment> | null;
   /**
+   * CARTES SUR LES RUSHES (`narration-rushs.ts`) : plan des extraits peints
+   * SOUS les cartes pendant la sequence Cartes (`debut`/`fin` en s depuis son
+   * debut). Lecteurs dedies, MUETS et jamais routes : l'audio du montage ne
+   * change pas. Absent : fond de la sequence Cartes d'avant.
+   */
+  cartesSurRushs?: ReadonlyArray<RushSegment> | null;
+  /**
    * SURIMPRESSIONS (profils dynamiques, Créer = Autopilote) : titre, cartes
    * et CTA posés SUR le rush, pendant leurs fenêtres (`planOverlays`). Les
    * images sont des photos plein cadre, transparentes, des MÊMES composants
@@ -650,6 +692,40 @@ export interface SurimpressionsComposer {
     cartes: Record<number, CanvasImageSource>;
     cta?: CanvasImageSource | null;
   };
+}
+
+/**
+ * Voile de lisibilite des cartes posees sur un rush : l'image reste lisible
+ * (assombrie d'un tiers), le texte blanc garde son contraste partout, plus
+ * fort en haut et en bas ou passent titre, CTA et interface des reseaux.
+ */
+export function peindreVoileCartesSurVideo(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  ctx.fillRect(0, 0, w, h);
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, 'rgba(0,0,0,0.35)');
+  g.addColorStop(0.25, 'rgba(0,0,0,0)');
+  g.addColorStop(0.75, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.4)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/** Plan de rush SOUS les cartes : cadre « cover » (jamais deforme), recadrage et LUT du rush. */
+function peindreRushSousCartes(
+  ctx: CanvasRenderingContext2D, w: number, h: number, el: HTMLVideoElement,
+  recadrage: { scale?: number; offsetX?: number; offsetY?: number } | undefined, lutGrader: LutGrader | null,
+) {
+  const srcW = el.videoWidth;
+  const srcH = el.videoHeight;
+  if (!srcW || !srcH) return false;
+  const source: CanvasImageSource = lutGrader ? lutGrader.grade(el, srcW, srcH) ?? el : el;
+  const t = recadrage || {};
+  const echelle = Math.max(w / srcW, h / srcH) * (t.scale || 1);
+  const dw = srcW * echelle;
+  const dh = srcH * echelle;
+  ctx.drawImage(source, w / 2 + (t.offsetX || 0) * w - dw / 2, h / 2 + (t.offsetY || 0) * h - dh / 2, dw, dh);
+  return true;
 }
 
 /** Voile des surimpressions — les arrêts de `VOILE_SURIMPRESSION` (Remotion). */
@@ -2064,6 +2140,8 @@ export function drawCards(
   seqBgOpacity: number = 1,
   /** Secondes écoulées dans la séquence Cartes (apparition calée sur la voix). */
   secondsIn: number = Infinity,
+  /** Le fond est un plan de rush deja peint (cartes sur les rushes). */
+  fondVideo = false,
 ) {
   // Per-element gradient: separate label/value/description flags. Null →
   // keep each element's historical solid color (no regression). Backward
@@ -2091,6 +2169,12 @@ export function drawCards(
   const cardStyle = design?.cardStyle || 'Full Width';
   const isReel = h > w; // 9:16 = reel, 16:9 = landscape
 
+  // Cartes SUR LES RUSHES (narration longue, `narration-rushs.ts`) : le plan
+  // du rush est deja peint par l'appelant. Ni fond de theme ni degrade
+  // (ils masqueraient l'image) : un voile de lisibilite a la place.
+  if (fondVideo) {
+    peindreVoileCartesSurVideo(ctx, w, h);
+  } else
   // Backdrop from the color theme (or dark if the sequence is marked noColor),
   // then the seqGradient overlay on top. Matches editor's bg-gradient-to-br.
   // Per-sequence background image override (Phase 1) — drawn underneath the
@@ -2109,7 +2193,14 @@ export function drawCards(
   } else {
     paintSeqBackdrop(ctx, w, h, 'cards', design, accent);
   }
-  paintSeqGradient(ctx, w, h, 'cards', design);
+  if (!fondVideo) paintSeqGradient(ctx, w, h, 'cards', design);
+
+  // Repli SANS photo (dessin canvas) : la carte n'apparait qu'a son etape
+  // calee sur la voix (`design.cardsEtapes`). Absent : toutes, comme avant.
+  const etapesCartes = design?.cardsEtapes;
+  const carteVisible = (i: number) => !etapesCartes?.length
+    || etapesCartes.some((e) => e.carte === i && e.debut <= secondsIn + 1e-6)
+    || !etapesCartes.some((e) => e.carte === i);
 
   // Animation d'apparition des cartes. L'enveloppe couvre TOUT ce qui suit —
   // photo des cartes comprise. En Mode simple, les cartes sont justement une
@@ -2320,6 +2411,7 @@ export function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
+      if (!carteVisible(i)) return; // apparition calee sur la voix (repli sans photo)
       const gridY = cardsY + i * (cardH + gap);
       const { x, y } = applyCardPos(card, cardsX, gridY, cardW, cardH);
       const labelGrad = labelGradAt(x, y, cardW, cardH);
@@ -2353,6 +2445,7 @@ export function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
+      if (!carteVisible(i)) return; // apparition calee sur la voix (repli sans photo)
       const col = i % cols;
       const row = Math.floor(i / cols);
       const gridX = cardsX + col * (cardW + gap);
@@ -2466,6 +2559,7 @@ export function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
+      if (!carteVisible(i)) return; // apparition calee sur la voix (repli sans photo)
       const col = i % cols;
       const row = Math.floor(i / cols);
       const gridX = cardsX + col * (cardW + gap);
@@ -2565,6 +2659,7 @@ export function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
+      if (!carteVisible(i)) return; // apparition calee sur la voix (repli sans photo)
       const col = i % cols;
       const row = Math.floor(i / cols);
       const gridX = cardsX + col * (cardW + gridGap);
@@ -2651,6 +2746,7 @@ export function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - containerW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
+      if (!carteVisible(i)) return; // apparition calee sur la voix (repli sans photo)
       const col = i % cols;
       const row = Math.floor(i / cols);
       const gridX = cardsX + col * (cardW + gridGap);
@@ -2732,6 +2828,7 @@ export function drawCards(
     const cardsX = ((design?.cardsPosition?.x ?? 50) / 100) * w - cardW / 2;
 
     cards.slice(0, maxCards).forEach((card, i) => {
+      if (!carteVisible(i)) return; // apparition calee sur la voix (repli sans photo)
       const gridY = cardsY + i * (cardH + gap);
       const gridX = cardsX;
       const { x, y } = applyCardPos(card, gridX, gridY, cardW, cardH);
@@ -3320,7 +3417,22 @@ export function drawCTA(
       grad.addColorStop(1, design.ctaTypography.gradColor2);
       ctx.fillStyle = grad;
     } else {
-      ctx.fillStyle = ctaSubColor;
+      // Pastille de lisibilite (Creer, contraste < 4,5:1 sur le fond) : la
+      // teinte est eclaircie jusqu'a 4,5:1 contre la pastille (`contraste.ts`).
+      ctx.fillStyle = design?.ctaSousPastille ? eclaircirPourContraste(ctaSubColor) : ctaSubColor;
+    }
+    if (design?.ctaSousPastille && subLines.length) {
+      const encre = ctx.fillStyle;
+      ctx.fillStyle = PASTILLE_CSS;
+      const padX = subFontSize * 0.45;
+      const padY = subFontSize * 0.22;
+      subLines.forEach((line, i) => {
+        const lw = measureLineForWrap(ctx, line, ctaLetterSpacing);
+        const x0 = ctaAlign === 'left' ? ctaPosX : ctaAlign === 'right' ? ctaPosX - lw : ctaPosX - lw / 2;
+        drawRoundRect(ctx, x0 - padX, curY + i * subLineH - padY, lw + 2 * padX, subFontSize + 2 * padY, subFontSize * 0.3);
+        ctx.fill();
+      });
+      ctx.fillStyle = encre;
     }
     subLines.forEach((line, i) => {
       fillTextWithSpacing(ctx, line, ctaPosX, curY + i * subLineH, ctaLetterSpacing);
@@ -3907,6 +4019,21 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // premier charge en multi-rush, l'unique sinon.
   const videoEl: HTMLVideoElement | null = rushsDemandes ? (rushsLus[0]?.el ?? null) : videoElPrincipal;
   await imagesPromesse;
+  // ── Cartes sur les rushes : lecteurs DÉDIÉS, muets, jamais routés ────
+  // Deux extraits consécutifs du même rush prennent deux lecteurs (double
+  // tampon, comme la séquence Vidéo). Un rush illisible : le plan reste
+  // sans lui, et faute de tout lecteur le fond d'avant revient.
+  const planCartesDemande = videoDuration > 0 && cardsDuration > 0 && options.cartesSurRushs?.length
+    ? options.cartesSurRushs.filter((s) => !!s?.url && s.fin > s.debut && (s.kind ?? 'video') === 'video')
+    : [];
+  const tamponsCartes = attribuerLecteurs(planCartesDemande);
+  const lecteursCartes = new Map<string, HTMLVideoElement>();
+  await Promise.all(Array.from(new Set(planCartesDemande.map((s, k) => `${tamponsCartes[k]}|${s.url}`))).map((cle) => {
+    const url = cle.slice(cle.indexOf('|') + 1);
+    return loadVideo(url)
+      .then((el) => { el.muted = true; lecteursCartes.set(cle, el); })
+      .catch((err) => console.warn('[Composer] Rush sous les cartes indisponible :', url.substring(0, 60), err?.message));
+  }));
   // Multi-sources : TOUT média du plan est nécessaire. Un seul manquant (photo
   // ou vidéo) arrête le rendu ICI, avant canvas et enregistreur — jamais un
   // plan noir ni une redistribution silencieuse (#518).
@@ -4197,6 +4324,26 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Element peint pendant la sequence video, choisi par le pilote du rendu
   // temps reel (`null` ailleurs : `segmentA`, comme avant).
   let lecteurAffiche: HTMLVideoElement | null = null;
+  // Cartes sur les rushes : le plan ramené à la durée RÉELLE de la séquence
+  // Cartes (même facteur pour toutes les coupes), chaque extrait sur son
+  // lecteur dédié. `null` : fond d'avant.
+  const seqCartesPlan = sequences.find((s) => s.type === 'cards');
+  const planCartes: { el: HTMLVideoElement; url: string; debut: number; fin: number; depuis: number }[] | null = (() => {
+    if (!seqCartesPlan || !planCartesDemande.length) return null;
+    const fin = planCartesDemande[planCartesDemande.length - 1].fin;
+    const k = fin > 0 ? seqCartesPlan.duration / fin : 1;
+    const plan = planCartesDemande.map((s, i) => {
+      const el = lecteursCartes.get(`${tamponsCartes[i]}|${s.url}`) ?? lecteursCartes.get(`${1 - tamponsCartes[i]}|${s.url}`) ?? null;
+      const longueur = (s.fin - s.debut) * k;
+      // Point d'entrée borné à la durée RÉELLE du rush : jamais au-delà de sa fin.
+      const dureeEl = el && Number.isFinite(el.duration) ? el.duration : null;
+      const depuis = dureeEl !== null ? Math.min(s.depuis ?? 0, Math.max(0, dureeEl - longueur - 0.05)) : (s.depuis ?? 0);
+      return el ? { el, url: s.url, debut: s.debut * k, fin: s.fin * k, depuis } : null;
+    }).filter((x): x is NonNullable<typeof x> => !!x);
+    return plan.length ? plan : null;
+  })();
+  if (planCartes) console.log('[Composer] Cartes sur les rushes :', planCartes.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s@${s.depuis.toFixed(1)}`).join(' | '));
+  let lecteurCartes: HTMLVideoElement | null = null;
 
   console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
@@ -4403,7 +4550,18 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           // eslint-disable-next-line no-console
           console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
           const cardsSeq = sequences.find((s) => s.type === 'cards');
-          drawCards(target, width, height, cards, logoImg, accentColor, progress, normalizedDesign, bgImg, seqBg.opacity, cardsSeq ? progress * cardsSeq.duration : Infinity);
+          const secondesCartes = cardsSeq ? progress * cardsSeq.duration : Infinity;
+          // Cartes sur les rushes : le plan du moment (lecteur du pilote, ou
+          // l'extrait prépositionné hors lecture — transitions), puis les cartes.
+          const elSous = planCartes
+            ? (lecteurCartes ?? segmentA(planCartes, Number.isFinite(secondesCartes) ? secondesCartes : 0)?.el ?? planCartes[0].el)
+            : null;
+          const fondRush = !!elSous && peindreRushSousCartes(
+            target, width, height, elSous,
+            recadragePourRushPeint(planCartes!.find((s) => s.el === elSous)?.url ?? null, { rushTransforms: options.rushTransforms }),
+            lutGrader,
+          );
+          drawCards(target, width, height, cards, logoImg, accentColor, progress, normalizedDesign, bgImg, seqBg.opacity, secondesCartes, fondRush);
           break;
         }
         case 'video': {
@@ -4557,6 +4715,18 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // into the same node so a single keyframe `voiceVolume` automates them
   // together. Created lazily when the first voice source connects.
   let voiceGainNode: GainNode | null = null;
+  // Entrée du master (limiteur transparent) : TOUTES les sources y passent.
+  let sortieMix: GainNode | null = null;
+  // Ducking automatique de la musique sous les voix (couche après son gain).
+  let duckVoixNode: GainNode | null = null;
+  // Parole détectée par voix, en temps de FICHIER (null = non décodée).
+  let paroleVoixGlobale: SegmentParole[] | null = null;
+  let niveauVoixGlobaleDb: number | undefined;
+  let creteVoixGlobaleDb: number | undefined;
+  let dureeVoixGlobale = 0;
+  const paroleVoixSeq: Partial<Record<'titre' | 'cartes' | 'video' | 'cta', { segments: SegmentParole[]; niveauDb?: number; creteDb?: number }>> = {};
+  // Niveau RMS du fichier musique (profondeur adaptative) — absent : fixe.
+  let niveauMusiqueFichierDb: number | undefined;
 
   if (hasAudio) {
     // For batch mode with shared context: if it's closed or broken, create a fresh one
@@ -4587,6 +4757,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
     audioDest = audioCtx.createMediaStreamDestination();
     console.log('[Composer] AudioDestination created, stream tracks:', audioDest.stream.getAudioTracks().length);
+    // Master : limiteur de sécurité, transparent sous −2 dBFS (gain de
+    // rattrapage du compresseur annulé). Plus de somme sans garde-fou.
+    sortieMix = creerChaineMaster(audioCtx, audioDest);
 
     // ── MUSIC: try AudioBuffer first, then <audio> element ──
     if (options.musicBuffer) {
@@ -4597,7 +4770,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const musicGain = audioCtx.createGain();
         musicGain.gain.value = options.musicVolume ?? ((validVoiceBuffer || voiceEl) ? 0.5 : 0.8);
         musicBufferSource.connect(musicGain);
-        musicGain.connect(audioDest);
+        musicGain.connect(sortieMix);
         musicGainNode = musicGain;
         console.log('[Composer] ✅ Music: AudioBuffer connected | duration:', options.musicBuffer.duration.toFixed(1), 's | channels:', options.musicBuffer.numberOfChannels, '| gain:', musicGain.gain.value);
       } catch (err) {
@@ -4617,7 +4790,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         const musicGain = audioCtx.createGain();
         musicGain.gain.value = options.musicVolume ?? (voiceEl ? 0.5 : 0.8);
         musicSource.connect(musicGain);
-        musicGain.connect(audioDest);
+        musicGain.connect(sortieMix);
         musicGainNode = musicGain;
         musicEl.loop = true;
         musicElConnected = true;
@@ -4633,7 +4806,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // gains still apply (options.voiceVolume scales each individually).
     const voiceBus = audioCtx.createGain();
     voiceBus.gain.value = 1.0; // keyframes drive this; individual sources scaled by options.voiceVolume below
-    voiceBus.connect(audioDest);
+    voiceBus.connect(sortieMix);
     voiceGainNode = voiceBus;
 
     // ── VOICE: try AudioBuffer first, then <audio> element ──
@@ -4726,7 +4899,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
             rushSource.connect(rushGain);
           }
         }
-        rushGain.connect(audioDest);
+        rushGain.connect(sortieMix!);
         rushGainNode = rushGain;
         console.log('[Composer] ✅ Rush audio routed at gain', rushGain.gain.value, '| chain: source→gain→dest | el.muted:', videoEl.muted, '| ctx.state:', audioCtx.state);
       } catch (err) {
@@ -4752,8 +4925,57 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       duck.gain.value = 1;
       musicGainNode.disconnect();
       musicGainNode.connect(duck);
-      duck.connect(audioDest);
+      duck.connect(sortieMix);
       jumeau.duckMusique = duck;
+    }
+
+    // ── DUCKING AUTOMATIQUE SOUS LES VOIX ──
+    // La parole de chaque voix est détectée sur la piste décodée (temps du
+    // fichier) ; l'enveloppe est posée au démarrage, en temps de montage. La
+    // musique passe : gain réglé/keyframes → ducking voix → (jumeau) → master.
+    const voixPresentes = !!validVoiceBuffer || !!voiceEl || hasAnySeqVoice;
+    if (options.duckingVoixAuto !== false && musicGainNode && voixPresentes) {
+      const ctxDetection = audioCtx;
+      const [musiqueDecodee, globale, ...parSeq] = await Promise.all([
+        options.musicBuffer
+          ? Promise.resolve(options.musicBuffer)
+          : (musicUrl ? decoderPourDetection(ctxDetection, musicUrl) : Promise.resolve(null)),
+        validVoiceBuffer
+          ? Promise.resolve(validVoiceBuffer)
+          : (voiceEl && voiceUrl ? decoderPourDetection(ctxDetection, voiceUrl) : Promise.resolve(null)),
+        ...SEQ_VOICE_KEYS.map((k) => {
+          const u = options.sequenceVoiceUrls?.[k];
+          return seqVoiceEls[k] && u ? decoderPourDetection(ctxDetection, u) : Promise.resolve(null);
+        }),
+      ]);
+      if (musiqueDecodee) niveauMusiqueFichierDb = niveauMusiqueDb(musiqueDecodee);
+      if (globale) {
+        const a = analyserVoix(globale);
+        paroleVoixGlobale = a.segments;
+        niveauVoixGlobaleDb = a.niveauDb;
+        creteVoixGlobaleDb = a.creteDb;
+        dureeVoixGlobale = globale.duration;
+      }
+      else if (voiceEl) {
+        // Indécodable : on duck toute sa durée plutôt que pas du tout.
+        dureeVoixGlobale = Number.isFinite(voiceEl.duration) ? voiceEl.duration : 0;
+        paroleVoixGlobale = dureeVoixGlobale > 0 ? [{ start: 0, end: dureeVoixGlobale }] : null;
+      }
+      SEQ_VOICE_KEYS.forEach((k, i) => {
+        const el = seqVoiceEls[k];
+        if (!el) return;
+        const buf = parSeq[i];
+        const d = Number.isFinite(el.duration) ? el.duration : 0;
+        paroleVoixSeq[k] = buf ? analyserVoix(buf) : { segments: d > 0 ? [{ start: 0, end: d }] : [] };
+      });
+      const duckV = audioCtx.createGain();
+      duckV.gain.value = 1;
+      const suite: AudioNode = jumeau?.duckMusique ?? sortieMix;
+      musicGainNode.disconnect();
+      musicGainNode.connect(duckV);
+      duckV.connect(suite);
+      duckVoixNode = duckV;
+      console.log('[Composer] 🎚️ Ducking voix : parole détectée — globale', paroleVoixGlobale?.length ?? 0, 'segments | séquences', SEQ_VOICE_KEYS.map((k) => `${k}:${paroleVoixSeq[k]?.segments.length ?? '-'}`).join(' '), '| musique', niveauMusiqueFichierDb?.toFixed(1) ?? '?', 'dBFS');
     }
 
     // Final audio status
@@ -5100,7 +5322,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
             const mg = audioCtx.createGain();
             mg.gain.value = (validVoiceBuffer || voiceEl) ? 0.5 : 0.8;
             musicBufferSource.connect(mg);
-            mg.connect(jumeau?.duckMusique ?? audioDest);
+            mg.connect(duckVoixNode ?? jumeau?.duckMusique ?? sortieMix ?? audioDest);
             musicGainNode = mg;
             musicBufferSource.start(audioCtx.currentTime + 0.05);
             console.log('[Composer] ✅ Music AudioBuffer RECREATED and STARTED');
@@ -5230,6 +5452,33 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       }
     }
 
+    // ── DUCKING AUTOMATIQUE : enveloppe de la musique sous TOUTES les voix ──
+    // Même calcul que l'aperçu (`planDuckingVoix`) ; posé sur l'horloge audio.
+    if (audioCtx && duckVoixNode) {
+      const sources: SourceVoix[] = [];
+      if (paroleVoixGlobale && voixGlobale) sources.push({ segments: paroleVoixGlobale, depart: 0, fin: dureeVoixGlobale || undefined, niveauDb: niveauVoixGlobaleDb, creteDb: creteVoixGlobaleDb });
+      for (const k of SEQ_VOICE_KEYS) {
+        const v = paroleVoixSeq[k];
+        if (!v || !seqVoiceEls[k]) continue;
+        const idx = sequences.findIndex((sq) => sq.type === (SEQ_NAME_MAP[k] || k));
+        if (idx === -1) continue;
+        sources.push({ segments: v.segments, depart: seqStarts[idx], fin: seqStarts[idx] + sequences[idx].duration, niveauDb: v.niveauDb, creteDb: v.creteDb });
+      }
+      // La séquence du jumeau a déjà sa propre baisse (×0,1) : pas de double.
+      const seqJumeau = jumeau?.duckMusique ? sequences.find((sq) => sq.type === 'video') : undefined;
+      const exclusion = seqJumeau
+        ? { start: seqStarts[sequences.indexOf(seqJumeau)], end: seqStarts[sequences.indexOf(seqJumeau)] + seqJumeau.duration }
+        : null;
+      const base = options.musicVolume ?? ((validVoiceBuffer || voiceEl) ? 0.5 : 0.8);
+      const points = planDuckingVoix({ sources, exclusion, keyframes: options.audioKeyframes, base, musiqueFichierDb: niveauMusiqueFichierDb });
+      planifierEnveloppe(duckVoixNode.gain, points, audioStartTime);
+      // Normalisation du master, identique pour TOUT le mix (voix comprise),
+      // bornée pour que les crêtes de la voix restent sous le limiteur.
+      const masterDb = gainMasterDb(sources);
+      if (sortieMix) sortieMix.gain.setValueAtTime(dbVersGain(masterDb), audioStartTime);
+      console.log('[Composer] 🎚️ Ducking voix programmé —', points.length, 'points,', sources.length, 'voix | master', masterDb.toFixed(1), 'dB');
+    }
+
     // START video element
     // Chaque rush pre-positionne sur son premier extrait (0 hors multi-rush).
     // Le pilote prepare ensuite chaque extrait PENDANT le plan precedent.
@@ -5240,6 +5489,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     }) : null;
     if (pilote) pilote.prepositionner();
     else for (const el of rushEls) { el.currentTime = 0; el.pause(); }
+    // Cartes sur les rushes : leur propre pilote (lecteurs muets dédiés).
+    const piloteCartes = planCartes ? creerPiloteMontage(planCartes) : null;
+    if (piloteCartes) piloteCartes.prepositionner();
     if (pilote && avatarEl) { avatarEl.currentTime = 0; avatarEl.pause(); }
 
     // Instrumentation des gels : instant de la derniere image NOUVELLE
@@ -5361,6 +5613,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           } else if (!videoEl.paused) { videoEl.pause(); }
           suivreJumeau(t >= vs && t < ve);
         }
+      }
+
+      if (piloteCartes && seqCartesPlan) {
+        const cs = seqStarts[sequences.indexOf(seqCartesPlan)];
+        lecteurCartes = piloteCartes.image(t >= cs && t < cs + seqCartesPlan.duration ? t - cs : null);
       }
 
       drawFrame(t);

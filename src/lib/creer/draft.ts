@@ -122,6 +122,13 @@ export interface Draft {
   textAnimation?: string;
   /** Habillage de la séquence Vidéo (`degrade` | `cadre` | `aucun`). Absent : le défaut. */
   habillageVideoMode?: string;
+  /**
+   * Version des défauts de lisibilité (#611). Absente = projet antérieur :
+   * CTA, cartes et petite ligne rendus EXACTEMENT comme enregistrés.
+   * 2 = projet créé avec les défauts lisibles (CTA 9:16 ×1,5, planchers des
+   * cartes, pastille de la petite ligne).
+   */
+  versionLisibilite?: number;
   /** Miniature / couverture choisie à l'étape Envoi (`lib/social/couverture`). Absente : automatique. */
   couverture?: Couverture;
   /**
@@ -671,6 +678,8 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       : undefined,
     titleWidth: typeof raw.titleWidth === 'number' && raw.titleWidth >= 30 && raw.titleWidth <= 96 ? raw.titleWidth : undefined,
     ctaWidth: typeof raw.ctaWidth === 'number' && raw.ctaWidth >= 30 && raw.ctaWidth <= 96 ? raw.ctaWidth : undefined,
+    versionLisibilite: Number.isInteger(raw.versionLisibilite) && (raw.versionLisibilite as number) >= 1 && (raw.versionLisibilite as number) <= 9
+      ? (raw.versionLisibilite as number) : undefined,
     habillageVideoMode: raw.habillageVideoMode === 'degrade' || raw.habillageVideoMode === 'cadre' || raw.habillageVideoMode === 'aucun'
       ? (raw.habillageVideoMode as string)
       : undefined,

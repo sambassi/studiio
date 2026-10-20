@@ -3,7 +3,7 @@
 import ReglagesPublicationReseaux from '@/components/social/ReglagesPublicationReseaux';
 import type { Couverture, ReglagesTiktok } from '@/lib/social/couverture';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { urlsIntrouvables, trierMediasMorts, messageMediasBloquants, messageMediasRetires, type MediaAVerifier } from '@/lib/creer/medias-morts';
+import { diagnostiquerIntrouvables, trierMediasMorts, messageMediasBloquants, messageMediasRetires, libelleMediaManquant, nomLisible, CAUSE_TEXTE, type MediaManquant } from '@/lib/creer/medias-morts';
 import Link from 'next/link';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
@@ -50,6 +50,7 @@ import {
   X,
   UserSquare2,
   Mic,
+  Image as ImageIcon,
   Group as GroupIcon,
 } from 'lucide-react';
 import { generateSmartContent } from '@/lib/smart-content';
@@ -71,7 +72,7 @@ import {
   estimerDureeParole, nouvelIdMedia, libelleMedia, libelleSource, titreMedia, DUREE_PHOTO_DEFAUT, DUREE_MEDIA_MAX, type MediaVideo,
   avecDureeChoisie, dureeEffective, planApercuListe, chronologieListe, planDetaille, paroleDeListe, planRenduDepuis,
   itemDuPlan, bornesDuree, formatSecondes, messageNarrationTropCourte, type PlanDetaille,
-  listeMontageJumeau, mediasExclusDuPlan, messageMediasExclus,
+  listeMontageJumeau, mediasExclusDuPlan, messageMediasExclus, dureeMesuree,
 } from '@/lib/creer/medias-video';
 import {
   composeVideo, downloadBlob, CURRENT_COMPOSER_VERSION, posterTransformActive,
@@ -84,7 +85,9 @@ import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
 import { SequenceVoicesPanel } from '@/components/creer/SequenceVoicesPanel';
 import { calageCartes, calageProportionnel, morceauxCartes, lireTimingVoix, etatVoixCartes } from '@/lib/creer/synchro-cartes';
 import { normaliserReglages } from '@/lib/types/voice';
-import { capturerEtapesCartes } from '@/lib/creer/capture-etapes-cartes';
+import { besoinPastille } from '@/lib/creer/contraste';
+import { capturerEtapesCartes, avecFondCartes, FOND_CARTE_SUR_RUSH } from '@/lib/creer/capture-etapes-cartes';
+import { cartesSurRushsApplicable, planCartesSurRushs, sourcesDuPlan, type ExtraitUtilise } from '@/lib/creer/narration-rushs';
 import BriefVideo, { NarrationRecap } from '@/components/creer/BriefVideo';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
 import { voiceSequenceSeconds } from '@/lib/creer/voiceFit';
@@ -160,7 +163,7 @@ import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
-import { echelleCtaAjustee } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart, VERSION_LISIBILITE, defautsLisibles } from '@/lib/creer/ajustementCta';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -836,6 +839,8 @@ interface TextStyles {
     italic: boolean;
     letterSpacing: number;
     lineHeight: number;
+    /** Dérivé à l'affichage (`ctaSousPastille`) — jamais persisté. */
+    sousPastille?: boolean;
   } & TextFormatFields;
 }
 
@@ -4187,6 +4192,13 @@ export default function AssistantWizard() {
   const [subtitleStyle, setSubtitleStyle] = useState<TextStyles['subtitle']>(
     DEFAULT_TEXT_STYLES.subtitle,
   );
+  /**
+   * Défauts de lisibilité (#611) : un projet NEUF part en version 2 ; un
+   * brouillon ou un post rouvert sans marqueur garde EXACTEMENT ses réglages
+   * (CTA à 1 reste 1, cartes et petite ligne comme avant).
+   */
+  const [versionLisibilite, setVersionLisibilite] = useState<number>(VERSION_LISIBILITE);
+  const lisible = defautsLisibles(versionLisibilite);
   const [ctaStyle, setCtaStyle] = useState<TextStyles['cta']>({
     ...DEFAULT_TEXT_STYLES.cta,
     // Provisoire : remplace juste en dessous par la fin du degrade tant que
@@ -4288,7 +4300,8 @@ export default function AssistantWizard() {
     cta: {
       ...ctaStyle,
       subColor: ctaStyle.subColor || gradEnd,
-      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: ctaStyle.scale ?? 1, largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
+      // 9:16 : le DÉFAUT devient lisible (`echelleCtaDeDepart`) ; un réglage de l'utilisateur est gardé.
+      scale: echelleCtaAjustee({ texte: generated?.cta ?? '', sousTexte: generated?.ctaSub, echelle: echelleCtaDeDepart(ctaStyle.scale, format, lisible), largeurPct: ctaWidth, video: VIDEO_SIZE[format] }),
     },
   };
 
@@ -4325,7 +4338,15 @@ export default function AssistantWizard() {
     },
   })), [ctaCopies, gradEnd, format]);
 
+  /**
+   * Petite ligne du CTA illisible sur le dégradé (contraste < 4,5:1 : le rose
+   * de marque sur le rose du fond, export du 20/10) : pastille sombre et
+   * teinte éclaircie, dans l'aperçu ET dans la vidéo (`contraste.ts`).
+   */
+  const ctaSousPastille = lisible && besoinPastille(textStyles.cta.subColor, [gradStart, gradEnd]);
+  const texteApercu: TextStyles = ctaSousPastille ? { ...textStyles, cta: { ...textStyles.cta, sousPastille: true } } : textStyles;
   const textDesign = {
+    ...(ctaSousPastille ? { ctaSousPastille: true } : {}),
     titleFont: textStyles.title.font,
     titleColor: textStyles.title.color,
     textScale: textStyles.title.scale,
@@ -4626,7 +4647,16 @@ export default function AssistantWizard() {
   /** Média montré par « Aperçu » (id) — le panneau d'aperçu peut s'y brancher. */
   const [mediaApercuId, setMediaApercuId] = useState<string | null>(null);
   /** Médiathèque ouverte DEPUIS la liste : ajout (`null`) ou remplacement (index). */
-  const [mediathequeListe, setMediathequeListe] = useState<{ remplacer: number | null; type: 'video' | 'all' } | null>(null);
+  // `retrouver` : le média de cette place est introuvable ; le fichier choisi
+  // reprend SA place, sa durée et son recadrage (seule l'adresse change).
+  const [mediathequeListe, setMediathequeListe] = useState<{ remplacer: number | null; type: 'video' | 'all'; retrouver?: boolean } | null>(null);
+  /**
+   * Médias INDISPENSABLES introuvables au dernier « Composer et envoyer » :
+   * l'envoi est bloqué (rien composé, rien débité) tant qu'ils ne sont pas
+   * retrouvés ou remplacés. Jamais retirés ni remplacés en silence.
+   */
+  const [mediasManquants, setMediasManquants] = useState<MediaManquant[] | null>(null);
+  const messageManquantsRef = useRef<string | null>(null);
   /** Recherche stock ouverte DEPUIS la liste : les photos y entrent (pas en fond). */
   const stockVersListeRef = useRef(false);
   /** Index du média remplacé par la recherche stock (`null` = ajout). */
@@ -4727,6 +4757,7 @@ export default function AssistantWizard() {
    * parite, sans toucher au compositeur.
    */
   const [cardsTypography, setCardsTypography] = useState<CardsTypography>({});
+  const cardsTypographyRendu: CardsTypography = lisible ? { ...cardsTypography, lisible916: true } : cardsTypography;
   const patchCards = useCallback((patch: Partial<CardsTypography>) => {
     setCardsTypography((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -4781,7 +4812,8 @@ export default function AssistantWizard() {
     if (!box) return;
     const x0 = e.clientX;
     const y0 = e.clientY;
-    const echelleDepart = (el === 'title' ? titleStyle.scale : ctaStyle.scale) ?? 1;
+    // CTA : la poignée part de l'échelle AFFICHÉE (défaut 9:16 relevé compris).
+    const echelleDepart = el === 'title' ? (titleStyle.scale ?? 1) : echelleCtaDeDepart(ctaStyle.scale, format, lisible);
     const poser = el === 'title' ? setTitleStyle : setCtaStyle;
     const bouger = (ev: PointerEvent) => {
       const scale = echelleDepuisCoin({
@@ -4799,7 +4831,7 @@ export default function AssistantWizard() {
     cible.addEventListener('pointermove', bouger);
     cible.addEventListener('pointerup', finir);
     cible.addEventListener('pointercancel', finir);
-  }, [titleStyle.scale, ctaStyle.scale]);
+  }, [titleStyle.scale, ctaStyle.scale, format, lisible]);
 
   /** Bord du titre ou du CTA : la LARGEUR du bloc (export : `titleSize` / `watermarkSize`). */
   const startTextWidth = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
@@ -7077,6 +7109,7 @@ export default function AssistantWizard() {
     transition,
     textAnimation,
     habillageVideoMode,
+    versionLisibilite,
     introDuration,
     cardsDuration,
     videoDuration,
@@ -7168,6 +7201,7 @@ export default function AssistantWizard() {
     transition,
     textAnimation,
     habillageVideoMode,
+    versionLisibilite,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, mediasVideo, lut, scheduledDate,
@@ -7247,6 +7281,7 @@ export default function AssistantWizard() {
     setTitleStyle(draft.titleStyle as TextStyles['title']);
     setSubtitleStyle(draft.subtitleStyle as TextStyles['subtitle']);
     setCtaStyle(draft.ctaStyle as TextStyles['cta']);
+    setVersionLisibilite(draft.versionLisibilite ?? 1);
     setWatermarkOverride(draft.watermarkOverride ?? null);
     setWatermarkEnabled(draft.watermarkEnabled !== false);
     // `sanitizeDraft` a déjà tranché : `jumeauMode` explicite, sinon l'ancien
@@ -7558,7 +7593,7 @@ export default function AssistantWizard() {
     avatarApercu,
     watermark: watermarkLabel,
     accent,
-    text: textStyles,
+    text: texteApercu,
     titleWidth,
     ctaWidth,
     ctaCopies: copiesCtaRendues,
@@ -7567,7 +7602,7 @@ export default function AssistantWizard() {
     // Le MEME champ que le compositeur : l'apercu retire son cadre en meme
     // temps que la video.
     cardStyle,
-    cardsTypography,
+    cardsTypography: cardsTypographyRendu,
   };
 
   /* ── LE RENDU JOUE DANS LE CADRE ──────────────────────────────────────
@@ -7944,7 +7979,7 @@ export default function AssistantWizard() {
             gradientOpacity={gradientOpacity}
             posterUrl={fond.url}
             posterTransform={fond.transform}
-            text={textStyles}
+            text={texteApercu}
             titlePos={titlePos}
             ctaPos={ctaPos}
             titleWidth={titleWidth}
@@ -7952,7 +7987,7 @@ export default function AssistantWizard() {
             ctaCopies={copiesCtaRendues}
             cardBoxes={effectiveCardBoxes}
             cardStyle={cardStyle}
-            cardsTypography={cardsTypography}
+            cardsTypography={cardsTypographyRendu}
             elements={freeElements}
             watermark={watermarkLabel}
             accent={accent}
@@ -8284,6 +8319,21 @@ export default function AssistantWizard() {
   const listeMedias: MediaVideo[] = mediasVideo ?? listeDepuisRushs(rushListe, urlsStock, urlsMediatheque);
   const listeMediasRef = useRef<MediaVideo[]>(listeMedias);
   listeMediasRef.current = listeMedias;
+  // Un rush manquant retrouvé ou remplacé quitte la liste des manquants ; quand
+  // il n'en reste plus, le message de blocage qu'ils portaient s'efface.
+  const urlsListeCle = listeMedias.map((m) => m.url ?? '').join('\n');
+  useEffect(() => {
+    if (!mediasManquants) return;
+    const urls = new Set(listeMedias.map((m) => m.url));
+    const restants = mediasManquants.filter((m) => m.role !== 'rush' || urls.has(m.url));
+    if (restants.length === mediasManquants.length) return;
+    const ancien = messageManquantsRef.current;
+    const nouveau = restants.length ? messageMediasBloquants(restants) : null;
+    messageManquantsRef.current = nouveau;
+    setMediasManquants(restants.length ? restants : null);
+    setError((e) => (e === ancien ? nouveau : e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlsListeCle, mediasManquants]);
   /** Durée de parole estimée de l'avatar avant sa production (textes des voix). */
   const dureeAvatarEstimee = estimerDureeParole(Object.values(sequenceVoices).map((v) => v.text));
   /**
@@ -8409,6 +8459,36 @@ export default function AssistantWizard() {
   /** Ajoute un créneau « Mon avatar » (sa vidéo est produite à l'envoi). */
   const ajouterAvatarListe = () => {
     poserListeMedias(ajouterMedia(listeMediasRef.current, { id: nouvelIdMedia('a'), source: 'avatar', type: 'video', duree: null }));
+  };
+
+  /**
+   * « Retrouver ce fichier » : le MÊME média revient à SA place. Seule
+   * l'adresse change (et le nom s'il est connu) : durée mesurée, durée
+   * choisie, recadrage et rang dans la séquence sont conservés.
+   */
+  const retrouverMediaListe = (i: number, url: string, nom: string) => {
+    const ancien = listeMediasRef.current[i];
+    if (!ancien) return;
+    if (ancien.url && ancien.url !== url) {
+      const vieille = ancien.url;
+      setRushTransforms((prev) => (prev[vieille] && !prev[url] ? { ...prev, [url]: prev[vieille] } : prev));
+    }
+    if (ancien.url && ancien.url !== url && urlsMediatheque.has(ancien.url)) setUrlsMediatheque((prev) => new Set(prev).add(url));
+    poserListeMedias(remplacerMedia(listeMediasRef.current, i, { ...ancien, url, ...(nom ? { nom } : {}) }));
+    if (ancien.type === 'video') protegerMedia(url);
+  };
+
+  /** Ouvre le remplacement du média `i` (même chemin que le bouton de la liste). */
+  const ouvrirRemplacementMedia = (i: number) => {
+    const m = listeMediasRef.current[i];
+    if (!m) return;
+    if (m.source === 'stock-photo' || m.source === 'stock-video') {
+      stockVersListeRef.current = true;
+      remplacementStockRef.current = i;
+      setStockPanneau({ cle: 'video', type: m.type === 'image' ? 'photo' : 'video' });
+    } else {
+      setMediathequeListe({ remplacer: i, type: m.source === 'mediatheque' || m.type === 'image' ? 'all' : 'video' });
+    }
   };
 
   /** Remplace le média `i` par une vidéo (durée sondée) ou une photo, à la même place. */
@@ -9148,7 +9228,14 @@ export default function AssistantWizard() {
       //    de CE montage et c'est dit. Obligatoires (rush, narration) : arrêt
       //    ici, avant tout débit. En mode jumeau « avatar », l'ancien rush
       //    sera REMPLACÉ par la vidéo du jumeau : il n'est pas exigé.
-      const aVerifier: MediaAVerifier[] = [
+      // Nom d'origine et place de chaque rush : le message dit LEQUEL manque.
+      const infosRush = (url: string): Pick<MediaManquant, 'nom' | 'position' | 'type'> => {
+        const liste = listeMediasRef.current;
+        const i = liste.findIndex((m) => m.url === url);
+        if (i >= 0) return { nom: liste[i].nom, position: i + 1, type: liste[i].type };
+        return url === plateau.rushUrl && rushName ? { nom: rushName } : {};
+      };
+      const aVerifier: MediaManquant[] = [
         ...(musicUrl ? [{ role: 'musique' as const, url: musicUrl }] : []),
         ...Object.entries(seqBackgrounds).flatMap(([cle, b]) => (b?.url ? [{ role: 'fond' as const, url: b.url, cle }] : [])),
         ...[voiceUrl, ...Object.values(sequenceVoiceUrls ?? {})]
@@ -9158,15 +9245,22 @@ export default function AssistantWizard() {
         // ses photos sont aussi obligatoires.
         ...(jumeauMode === 'avatar' && !listeEnvoi ? [] : [plateau.rushUrl, ...rushSuivants.map((r) => r.url)]
           .filter((u): u is string => typeof u === 'string' && u.length > 0)
-          .map((url) => ({ role: 'rush' as const, url }))),
-        ...(listeEnvoi ?? []).filter((m) => m.type === 'image' && !!m.url).map((m) => ({ role: 'rush' as const, url: m.url! })),
+          .map((url) => ({ role: 'rush' as const, url, ...infosRush(url) }))),
+        ...(listeEnvoi ?? []).filter((m) => m.type === 'image' && !!m.url).map((m) => ({ role: 'rush' as const, url: m.url!, ...infosRush(m.url!) })),
       ];
-      const introuvables = await urlsIntrouvables(aVerifier.map((m) => m.url));
-      const { aRetirer, bloquants } = trierMediasMorts(aVerifier.filter((m) => introuvables.has(m.url)));
+      const introuvables = await diagnostiquerIntrouvables(aVerifier.map((m) => m.url));
+      const { aRetirer, bloquants } = trierMediasMorts(
+        aVerifier.filter((m) => introuvables.has(m.url)).map((m) => ({ ...m, cause: introuvables.get(m.url) })),
+      );
       if (bloquants.length > 0) {
-        setError(messageMediasBloquants(bloquants));
+        const message = messageMediasBloquants(bloquants);
+        messageManquantsRef.current = message;
+        setMediasManquants(bloquants);
+        setError(message);
         return;
       }
+      messageManquantsRef.current = null;
+      setMediasManquants(null);
       // Ce passage lit ces deux valeurs LOCALES, jamais l'état (qui ne sera
       // relu qu'au prochain rendu de l'écran) ; l'état est nettoyé aussi,
       // pour que le brouillon ne garde pas l'adresse morte.
@@ -9450,6 +9544,32 @@ export default function AssistantWizard() {
         dureeSurimpression = dureeDeSequence(ordre, { intro: 0, cards: 0, video: dureeVideo, cta: 0 });
       }
 
+      // ── CARTES SUR LES RUSHES (narration longue) ───────────────────
+      // Une narration des cartes LONGUE ne se joue plus 40 s sur un dégradé
+      // avant que tous les rushes passent à la fin : les cartes se posent sur
+      // des plans des rushes de l'utilisateur, dans SON ordre, coupés aux
+      // apparitions des cartes (`narration-rushs.ts`). Durées, voix, ordre et
+      // plan de la séquence Vidéo : inchangés. Fond de cartes choisi : gardé.
+      const planVideoReference: ReadonlyArray<ExtraitUtilise> = videoEstAvatar && !planListe
+        ? []
+        : planListe
+          ?? planMontageRushs
+          ?? (plateau.rushs && plateau.rushs.length >= 2 ? planRushs(plateau.rushs, duree('video')) : null)
+          ?? (plateau.rushUrl ? [{ url: plateau.rushUrl, debut: 0, fin: duree('video') }] : []);
+      const dureesSources = new Map<string, number | null>();
+      for (const m of listeMediasRef.current ?? []) if (m.url && m.type === 'video') dureesSources.set(m.url, dureeMesuree(m));
+      for (const r of plateau.rushs ?? []) if (!dureesSources.get(r.url) && r.secondes) dureesSources.set(r.url, r.secondes);
+      const sourcesNarration = sourcesDuPlan(planVideoReference, dureesSources);
+      const narrationSurRushs = cartesSurRushsApplicable({
+        dureeCartes: duree('cards'),
+        dureeVideo: duree('video'),
+        nbCartes: (generated?.cards ?? []).length,
+        nbSources: sourcesNarration.length,
+        fondCartesExplicite: !!fondsRendu.cartes,
+        surimpressions: !!overlaysCreer,
+      });
+      if (narrationSurRushs) console.log('[Narration] cartes sur les rushes :', sourcesNarration.map((x) => x.url.split('/').pop()).join(' → '));
+
       // ── Boucle du lot ──────────────────────────────────────────────
       // Une seule video : le corps s'execute une fois, exactement comme avant.
       // Le contenu courant sert TOUJOURS a la premiere — l'utilisateur vient
@@ -9575,8 +9695,32 @@ export default function AssistantWizard() {
         // l'onglet « Titre », elle aurait fige des cartes vides dans la video.
         // `flushSync` force le rendu AVANT la capture ; le `finally` restaure
         // l'onglet de l'utilisateur meme si la capture echoue.
+        // Calage des cartes sur leur voix (ou au prorata, #606) — calculé
+        // AVANT la capture : il sert aussi au repli sans photo et au plan des
+        // rushes sous les cartes.
+        const voixCartesRendu = voixSequencesRendu?.cartes && voixSequencesRendu.cartes === sequenceVoices.cartes.audioUrl
+          ? sequenceVoices.cartes : null;
+        const calageRendu = calageCartes(contenu.cards, voixCartesRendu)
+          ?? calageProportionnel(contenu.cards, duree('cards'));
+        const planSousCartes = narrationSurRushs && duree('cards') > 0
+          ? planCartesSurRushs({
+            sources: sourcesNarration,
+            dureeCartes: duree('cards'),
+            apparitions: calageRendu?.etapes.filter((e) => e.element === 'carte').map((e) => e.debut) ?? [],
+            dejaUtilises: planVideoReference,
+          })
+          : null;
+        if (planSousCartes) console.log('[Narration] plan sous les cartes :', planSousCartes.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | '));
         const focusBeforeCapture = previewFocus;
+        // CAUSE RACINE des cartes figées et minuscules (export du 20/10) : un
+        // média ouvert dans « Aperçu du média » MASQUE l'aperçu du projet
+        // (`display: none`) — conteneur des cartes à 0 px, capture sautée,
+        // cartes redessinées au canvas SANS apparition progressive. L'aperçu
+        // du média est donc refermé le temps de la capture, puis rétabli.
+        const mediaAvantCapture = { apercu: mediaApercu, id: mediaApercuId };
+        const mediaMasqueLApercu = !!(mediaAvantCapture.apercu || mediaAvantCapture.id);
         try {
+          if (mediaMasqueLApercu) flushSync(() => { setMediaApercu(null); setMediaApercuId(null); });
           // Les liseres — selection et glissement — sont des aides d'edition :
           // photographies, ils seraient blittes dans la video.
           //
@@ -9586,8 +9730,8 @@ export default function AssistantWizard() {
           // interactif. Un clic pendant l'envoi reposait la selection juste a
           // temps pour qu'elle soit gravee dans le montage.
           flushSync(() => setCapturing(true));
-          if (focusBeforeCapture !== 'all') {
-            flushSync(() => setPreviewFocus('all'));
+          if (focusBeforeCapture !== 'all' || mediaMasqueLApercu) {
+            if (focusBeforeCapture !== 'all') flushSync(() => setPreviewFocus('all'));
             // Une frame de peinture, bornee : `requestAnimationFrame` est GELE
             // dans un onglet en arriere-plan. Sans ce delai de garde, lancer
             // l'envoi puis changer d'onglet laissait la promesse pendante et le
@@ -9615,12 +9759,12 @@ export default function AssistantWizard() {
             // racine alors que ses enfants gardent leurs px natifs — contenu
             // deborde et rogne. Les fournir court-circuite ce calcul et donne au
             // clone ses dimensions de layout.
-            const canvas = await domToCanvas(cardsEl, {
+            const canvas = await avecFondCartes(cardsEl, planSousCartes ? FOND_CARTE_SUR_RUSH : null, () => domToCanvas(cardsEl, {
               backgroundColor: undefined,
               scale: 1,
               width: cardsEl.offsetWidth,
               height: cardsEl.offsetHeight,
-            });
+            }));
             console.log(
               `[Assistant] Capture cartes ${canvas.width}x${canvas.height} (1:1, resolution native)`,
             );
@@ -9649,13 +9793,10 @@ export default function AssistantWizard() {
               // Voix des cartes : chaque carte (puis sa valeur) apparaît quand
               // la voix commence à la dire — horodatage réel ElevenLabs, sinon
               // estimation. Texte retouché ou cartes changées : aucun calage.
-              const voixCartes = voixSequencesRendu?.cartes && voixSequencesRendu.cartes === sequenceVoices.cartes.audioUrl
-                ? sequenceVoices.cartes : null;
               // Sans calage exact : apparition ESTIMÉE au prorata du texte de
               // chaque carte, sur la durée de la séquence (celle de la voix,
               // inchangée) — jamais une photo figée pendant toute la narration.
-              const calage = calageCartes(contenu.cards, voixCartes)
-                ?? calageProportionnel(contenu.cards, duree('cards'));
+              const calage = calageRendu;
               if (calage) {
                 setRenderStage('Synchronisation des cartes avec la voix…');
                 const photographier = async (): Promise<HTMLImageElement | null> => {
@@ -9671,7 +9812,12 @@ export default function AssistantWizard() {
                   });
                   return etape.naturalWidth > 0 && etape.naturalHeight > 0 ? etape : null;
                 };
-                cardsReveal = (await capturerEtapesCartes(cardsEl, calage, contenu.cards.map((c) => c.id), photographier)) ?? undefined;
+                // Cartes SUR les rushes : une carte à la fois (celle que la voix
+                // dit), sur un fond sombre lisible quel que soit le plan.
+                cardsReveal = (await capturerEtapesCartes(cardsEl, calage, contenu.cards.map((c) => c.id), photographier, {
+                  cumul: !planSousCartes,
+                  fondCarte: planSousCartes ? FOND_CARTE_SUR_RUSH : null,
+                })) ?? undefined;
                 console.log(`[Assistant] Cartes calées sur la voix (${calage.source}) : ${cardsReveal ? cardsReveal.length : 0} étape(s)`);
               }
             }
@@ -9683,6 +9829,7 @@ export default function AssistantWizard() {
           console.warn('[Assistant] Capture des cartes impossible, rendu canvas de secours:', err);
         } finally {
           if (focusBeforeCapture !== 'all') setPreviewFocus(focusBeforeCapture);
+          if (mediaMasqueLApercu) { setMediaApercu(mediaAvantCapture.apercu); setMediaApercuId(mediaAvantCapture.id); }
           setCapturing(false);
         }
 
@@ -9707,6 +9854,11 @@ export default function AssistantWizard() {
         const textDesignRendu = titre916.echelle === textStyles.title.scale
           ? textDesign
           : { ...textDesign, textScale: titre916.echelle, cardsTextScale: 100 / titre916.echelle };
+        // Repli sans photo : instants d'apparition des cartes redessinées
+        // (compositeur ET métadonnée, relue par « Régénérer »).
+        const etapesSansPhoto = !cardsSnapshot && calageRendu
+          ? calageRendu.etapes.filter((e) => e.element === 'carte').map((e) => ({ debut: e.debut, carte: e.carte }))
+          : null;
         const optionsRendu: ComposerOptions = {
           width: size.w,
           height: size.h,
@@ -9753,6 +9905,8 @@ export default function AssistantWizard() {
           // le compositeur retombe de toute facon sur le fondu, autant lui
           // dire explicitement ce que l'ecran annonce.
           transition,
+          // Cartes sur les rushes (narration longue) : plans SOUS les cartes.
+          ...(duree('video') > 0 && planSousCartes ? { cartesSurRushs: planSousCartes } : {}),
           introDuration: duree('intro'),
           cardsDuration: duree('cards'),
           videoDuration: duree('video'),
@@ -9830,7 +9984,7 @@ export default function AssistantWizard() {
             ...(cardsTypography.font ? { cardsFont: cardsTypography.font } : null),
             ...(cardsTypography.scale !== undefined
               ? { cardsTextScale: cardsTypography.scale * 100 } : null),
-            cardsTextStyle: { ...cardsTypography },
+            cardsTextStyle: { ...cardsTypographyRendu },
             // Sans ce champ : titre et CTA en Helvetica, cartes en Inter.
             font: DESIGN.font,
 
@@ -9869,6 +10023,9 @@ export default function AssistantWizard() {
             cardsSnapshot,
             cardsSnapshotRect,
             ...(cardsReveal ? { cardsReveal } : null),
+            // Repli sans photo : les cartes redessinées apparaissent quand même
+            // à leur instant (jamais toutes ensemble pendant la narration).
+            ...(etapesSansPhoto ? { cardsEtapes: etapesSansPhoto } : null),
             // Couche d'elements : le compositeur la peint sur les quatre
             // sequences. `undefined` sans element — rien ne change alors.
             elements: await rasterizeElements(),
@@ -10161,6 +10318,8 @@ export default function AssistantWizard() {
               : undefined,
           // Textes en surimpression (mêmes fenêtres que l'Autopilote).
           ...(surimpressionsItem ? { surimpressions: overlaysCreer } : {}),
+          // Plans sous les cartes, relus par « Régénérer » (URL durables seules).
+          ...(duree('video') > 0 && planSousCartes && planSousCartes.every((x) => !!persistableUrl(x.url)) ? { cartesSurRushs: planSousCartes } : {}),
           // Profil, mesures du plan et conseils : les MÊMES que l'Autopilote.
           // Taille et contraste des textes ne sont pas mesurés ici (pas de
           // rendu hybride) : le conseiller le dit, il ne devine pas.
@@ -10264,7 +10423,8 @@ export default function AssistantWizard() {
             ...(cardsTypography.font ? { cardsFont: cardsTypography.font } : null),
             ...(cardsTypography.scale !== undefined
               ? { cardsTextScale: cardsTypography.scale * 100 } : null),
-            cardsTextStyle: { ...cardsTypography },
+            cardsTextStyle: { ...cardsTypographyRendu },
+            ...(etapesSansPhoto ? { cardsEtapes: etapesSansPhoto } : {}),
             font: DESIGN.font,
             // Persiste pour que le Calendrier (apercu HTML et regeneration)
             // ancre le titre a GAUCHE comme la video, et non centre sur x=8%.
@@ -10523,6 +10683,8 @@ export default function AssistantWizard() {
     setEnvoiIntention('brouillon');
     setReseauxProgrammes([]);
     setError(null);
+    // Nouveau montage : défauts lisibles (#611).
+    setVersionLisibilite(VERSION_LISIBILITE);
   };
 
   // ── Rendu ───────────────────────────────────────────────────────────
@@ -10979,7 +11141,50 @@ export default function AssistantWizard() {
         {error && (
           <div ref={erreurRef} data-creer-erreur className="flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1 space-y-2">
             <span>{error}</span>
+            {/* Médias indispensables introuvables : LEQUEL, POURQUOI, et les
+                deux gestes. Rien n'est retiré ni remplacé sans un clic. */}
+            {mediasManquants && error === messageManquantsRef.current && (
+              <ul className="space-y-1.5" data-medias-manquants>
+                {mediasManquants.map((m) => {
+                  const i = typeof m.position === 'number' ? m.position - 1 : -1;
+                  const dansListe = m.role === 'rush' && i >= 0 && listeMedias[i]?.url === m.url;
+                  const nom = nomLisible(m.nom, m.url);
+                  return (
+                    <li key={`${m.role}:${m.url}`} data-media-manquant={m.cause ?? 'inconnu'}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-red-500/20 bg-black/20 px-2.5 py-2">
+                      {m.type === 'image' ? <ImageIcon className="w-4 h-4 shrink-0 text-red-300" /> : m.role === 'narration' ? <Mic className="w-4 h-4 shrink-0 text-red-300" /> : <Film className="w-4 h-4 shrink-0 text-red-300" />}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-red-100" title={nom ?? undefined}>
+                          {typeof m.position === 'number' ? `Séquence Vidéo · ${m.type === 'image' ? 'média' : 'rush'} ${m.position}` : libelleMediaManquant({ ...m, cause: undefined })}
+                          {nom && typeof m.position === 'number' ? ` · ${nom}` : ''}
+                        </span>
+                        <span className="block text-xs text-red-300/80">
+                          {m.cause ? CAUSE_TEXTE[m.cause] : 'introuvable'}
+                          {m.role === 'narration' ? ' — régénérez ou réenregistrez cette voix' : ''}
+                        </span>
+                      </span>
+                      {dansListe && (
+                        <span className="flex flex-wrap gap-1.5">
+                          <button type="button" data-media-retrouver
+                            onClick={() => setMediathequeListe({ remplacer: i, type: m.type === 'image' ? 'all' : 'video', retrouver: true })}
+                            className="rounded-lg bg-purple-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-purple-500">
+                            Retrouver ce fichier
+                          </button>
+                          <button type="button" data-media-remplacer
+                            onClick={() => ouvrirRemplacementMedia(i)}
+                            className="rounded-lg border border-gray-600 px-2.5 py-1 text-xs font-semibold text-gray-200 hover:bg-white/10">
+                            Remplacer ce média
+                          </button>
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            </div>
             {/* Quota UTILISATEUR épuisé : le chemin vers son abonnement Studiio. */}
             {error === MESSAGES_AVATAR.quotaEpuise && (
               <a href={URL_ABONNEMENT} data-creer-erreur-abonnement className="ml-auto shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500">
@@ -12816,17 +13021,7 @@ export default function AssistantWizard() {
                           }));
                         }}
                         onDeplacer={(i, d) => poserListeMedias(deplacerMedia(listeMedias, i, d))}
-                        onRemplacer={(i) => {
-                          const m = listeMedias[i];
-                          if (!m) return;
-                          if (m.source === 'stock-photo' || m.source === 'stock-video') {
-                            stockVersListeRef.current = true;
-                            remplacementStockRef.current = i;
-                            setStockPanneau({ cle: 'video', type: m.type === 'image' ? 'photo' : 'video' });
-                          } else {
-                            setMediathequeListe({ remplacer: i, type: m.source === 'mediatheque' || m.type === 'image' ? 'all' : 'video' });
-                          }
-                        }}
+                        onRemplacer={ouvrirRemplacementMedia}
                         onSupprimer={(i) => {
                           const m = listeMedias[i];
                           if (m && m.id === mediaApercuId) setMediaApercuId(null);
@@ -12920,6 +13115,7 @@ export default function AssistantWizard() {
                           const remplace = cible?.remplacer ?? null;
                           if (cible?.type === 'all' && !estImage) setUrlsMediatheque((prev) => new Set(prev).add(url));
                           const source = cible?.type === 'all' ? 'mediatheque' as const : 'rush' as const;
+                          if (remplace !== null && cible?.retrouver) { retrouverMediaListe(remplace, url, name); return; }
                           if (remplace !== null) { remplacerMediaListe(remplace, url, name, estImage ? 'image' : 'video', source); return; }
                           if (estImage) ajouterPhotoListe(url, name, 'mediatheque');
                           else ajouterVideoListe(url, name);

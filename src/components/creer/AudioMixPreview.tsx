@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Pause, Repeat } from 'lucide-react';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
+import { analyserVoix, creerChaineMaster, dbVersGain, gainMasterDb, niveauMusiqueDb, planDuckingVoix, planifierEnveloppe, type SourceVoix } from '@/lib/creer/mixageVoix';
 
 interface Props {
   audioKeyframes: AudioKeyframe[];
@@ -46,6 +47,11 @@ interface Props {
    * l'impression de plusieurs mixers empiles.
    */
   onLevels?: (levels: { music: number; rush: number; voice: number }) => void;
+  /**
+   * Niveau de musique choisi (plafond du ducking automatique sous les voix,
+   * comme `musicVolume` dans le compositeur). Absent : le premier keyframe.
+   */
+  musicVolume?: number;
 }
 
 /**
@@ -74,6 +80,7 @@ export default function AudioMixPreview({
   onPlayStateChange,
   flush = false,
   onLevels,
+  musicVolume,
 }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -89,6 +96,10 @@ export default function AudioMixPreview({
 
   // ── Persistent across start()s ────────────────────────────────
   const audioCtxRef = useRef<AudioContext | null>(null);
+  // Master (limiteur transparent) et ducking automatique — MÊMES fonctions
+  // que le compositeur (`mixageVoix.ts`) : l'écoute sonne comme l'export.
+  const masterRef = useRef<GainNode | null>(null);
+  const duckVoixRef = useRef<GainNode | null>(null);
   const musicGainRef = useRef<GainNode | null>(null);
   const voiceGainRef = useRef<GainNode | null>(null);
   const rushGainRef = useRef<GainNode | null>(null);
@@ -224,13 +235,18 @@ export default function AudioMixPreview({
       }
 
       // ── Lazy init persistent gains + analysers ──
+      if (!masterRef.current) masterRef.current = creerChaineMaster(ctx, ctx.destination);
+      const master = masterRef.current;
       if (!musicGainRef.current) {
         const g = ctx.createGain();
+        const duck = ctx.createGain();
         const a = ctx.createAnalyser();
         a.fftSize = 512;
-        g.connect(a);
-        a.connect(ctx.destination);
+        g.connect(duck);
+        duck.connect(a);
+        a.connect(master);
         musicGainRef.current = g;
+        duckVoixRef.current = duck;
         musicAnalyserRef.current = a;
       }
       if (!voiceGainRef.current) {
@@ -238,7 +254,7 @@ export default function AudioMixPreview({
         const a = ctx.createAnalyser();
         a.fftSize = 512;
         g.connect(a);
-        a.connect(ctx.destination);
+        a.connect(master);
         voiceGainRef.current = g;
         voiceAnalyserRef.current = a;
       }
@@ -247,7 +263,7 @@ export default function AudioMixPreview({
         const a = ctx.createAnalyser();
         a.fftSize = 512;
         g.connect(a);
-        a.connect(ctx.destination);
+        a.connect(master);
         rushGainRef.current = g;
         rushAnalyserRef.current = a;
       }
@@ -339,6 +355,13 @@ export default function AudioMixPreview({
         video: introDuration + cardsDuration,
         cta: introDuration + cardsDuration + videoSeqDuration,
       };
+      // Comme le compositeur : la voix d'une séquence s'arrête avec elle.
+      const seqDurees: Record<typeof seqVoiceKeys[number], number> = {
+        titre: introDuration,
+        cartes: cardsDuration,
+        video: videoSeqDuration,
+        cta: ctaDuration,
+      };
       for (const k of seqVoiceKeys) {
         const buf = seqVoiceBufs[k];
         if (!buf) continue;
@@ -348,11 +371,31 @@ export default function AudioMixPreview({
           src.loop = false;
           src.connect(voiceGain);
           src.start(startAt + seqOffsets[k]);
+          if (seqDurees[k] > 0) src.stop(startAt + seqOffsets[k] + seqDurees[k]);
           seqVoiceSourcesRef.current.push(src);
           console.log(`[AudioMixPreview] ✅ seq voice ${k} scheduled at offset ${seqOffsets[k].toFixed(2)}s`);
         } catch (err) {
           console.warn(`[AudioMixPreview] seq voice ${k} schedule failed:`, err);
         }
+      }
+
+      // ── Ducking automatique de la musique sous toutes les voix ──
+      if (duckVoixRef.current) {
+        const sources: SourceVoix[] = [];
+        if (voiceBuf) sources.push({ ...analyserVoix(voiceBuf), depart: 0, fin: voiceBuf.duration });
+        for (const k of seqVoiceKeys) {
+          const buf = seqVoiceBufs[k];
+          if (!buf) continue;
+          sources.push({ ...analyserVoix(buf), depart: seqOffsets[k], fin: seqDurees[k] > 0 ? seqOffsets[k] + seqDurees[k] : undefined });
+        }
+        const base = musicVolume ?? sorted[0]?.musicVolume ?? 1;
+        const musiqueFichierDb = musicBuf ? niveauMusiqueDb(musicBuf) : undefined;
+        planifierEnveloppe(duckVoixRef.current.gain, planDuckingVoix({ sources, keyframes: sorted.length > 0 ? sorted : undefined, base, musiqueFichierDb }), startAt);
+        // Normalisation du master : seulement quand il y a musique ET voix,
+        // comme le compositeur (sinon rien ne bouge).
+        const masterDb = musicBuf && sources.length > 0 ? gainMasterDb(sources) : 0;
+        master.gain.cancelScheduledValues(0);
+        master.gain.setValueAtTime(dbVersGain(masterDb), startAt);
       }
 
       // ── Kick off sources ──
@@ -428,7 +471,7 @@ export default function AudioMixPreview({
     audioKeyframes, musicUrl, voiceUrl, rushUrl,
     sequenceVoiceUrls, introDuration, cardsDuration, ctaDuration,
     totalDuration, videoSeqStart, videoSeqDuration,
-    busy, cleanup, stop, onPlayStateChange, onTimeUpdate,
+    busy, cleanup, stop, onPlayStateChange, onTimeUpdate, musicVolume,
   ]);
 
   // Restart playback when keyframes change mid-play so sliders feel live.

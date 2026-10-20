@@ -795,6 +795,7 @@ export function AudioStudioPanel({
               <AudioMixPreview
                 flush
                 audioKeyframes={effectiveKeyframes}
+                musicVolume={musicVolume}
                 musicUrl={musicUrl}
                 voiceUrl={voiceUrl}
                 rushUrl={rushInMix ? rushUrl : null}

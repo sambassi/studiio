@@ -10,6 +10,13 @@
  * - L'aperçu ne fait aucune requête de rendu, de crédits ni de facturation.
  *
  * Enregistrer l'instantané (sur la base uniquement) : ENREGISTRER_APERCU_PLAN=1.
+ *
+ * Réenregistré VOLONTAIREMENT par #611 (lisibilité de l'export du 20/10).
+ * Une seule clé du `design` change, rien d'autre (plans, appels, signature
+ * hors cette clé) : `cardsEtapes` — repli SANS photo des cartes (jsdom ne
+ * photographie pas), apparition calée au lieu de toutes les cartes figées.
+ * Ces projets sont des brouillons SANS marqueur `versionLisibilite` : leurs
+ * réglages (CTA à 1, cartes, petite ligne) sont rendus tels quels.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
