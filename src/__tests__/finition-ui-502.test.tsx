@@ -126,7 +126,7 @@ describe('CTA : panneau, contraste, bande calme mesurée', () => {
     const a = readFileSync(resolve(process.cwd(), 'src/lib/autopilot/produire.ts'), 'utf-8');
     expect(w).toContain('zoneCalmeSortie(planMontageRushs, montageInfos.analyses, overlaysCreer.cta[0])');
     expect(a).toContain('zoneCalmeSortie(planMontageRushs, analysesRushs, overlays.cta[0])');
-    expect(a).toContain('appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande })');
+    expect(a).toContain('appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande, avatar: surAvatar })');
     expect(readFileSync(resolve(process.cwd(), 'remotion/CreerSimpleMontage.tsx'), 'utf-8')).toContain('fond={props.ctaBackground ?? null}');
   });
 });

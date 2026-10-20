@@ -20,6 +20,7 @@
  */
 
 import { themeLabel } from '@/lib/themes';
+import { descriptionMediaStock, pertinenceMedia, scenarioPertinence, type PertinenceMedia } from '@/lib/autopilot/pertinence-medias';
 
 export interface SourcesActives {
   /** Mes rushes personnels (la banque `rush_urls`, hors médias stock importés). */
@@ -264,6 +265,24 @@ export function avatarActifConfig(c: ConfigPourSources): boolean {
 }
 
 /**
+ * La pertinence de CONTENU de chaque média stock retenu, pour le scénario de
+ * la configuration (sujets courants + brief). Vide sans sujet connu. Pur.
+ */
+export function pertinenceDesRetenus(
+  c: Pick<ConfigPourSources, 'topics' | 'brief'>, stock: ReadonlyArray<MediaStockRetenu>,
+  textes: ReadonlyArray<string | null | undefined> = [],
+): Map<string, PertinenceMedia> {
+  const out = new Map<string, PertinenceMedia>();
+  if (c.topics === undefined && c.brief === undefined) return out;
+  const scenario = scenarioPertinence({
+    sujets: [...sujetsCourants(c), c.brief?.objectif ?? null],
+    textes: [c.brief?.message ?? null, ...textes],
+  });
+  for (const m of stock) out.set(m.url, pertinenceMedia(descriptionMediaStock(m), scenario));
+  return out;
+}
+
+/**
  * Les médias réellement utilisables, source par source, `actives` respectés.
  * Sans clé `sources` : toute la banque compte comme rushes personnels — la
  * règle d'avant, à l'identique (aucun stock).
@@ -285,19 +304,36 @@ export function mediasDesSources(c: ConfigPourSources): { rushesPersonnels: stri
   const filtrer = c.topics !== undefined || c.brief !== undefined;
   const sujets = new Set(sujetsCourants(c).map(cleSujet));
   const forces = new Set(sources.gabarit.map((g) => g.media).filter((u): u is string => !!u));
+  // ── CONTENU (`pertinence-medias.ts`) : le sujet noté au clic ne suffit pas
+  // — il vaut le sujet du MOMENT de la recherche, pas ce que montre le média
+  // (un plat trouvé pendant une recherche « voyage » était noté « Voyage »).
+  // La description du média (titre de sa page Pexels / Unsplash) est lue :
+  //   - autre activité, que le sujet et le brief ne mentionnent pas : hors sujet ;
+  //   - activité ou décor du sujet : du sujet, même retenu sans sujet noté.
+  // Sujet hors taxonomie, média sans description : la règle du sujet noté seule.
+  const pertinence = pertinenceDesRetenus(c, sources.stock);
   const statut = (m: MediaStockRetenu | undefined): 'sujet' | 'inconnu' | 'hors' => {
-    if (!m?.sujet || !filtrer) return 'inconnu';
+    if (!m || !filtrer) return 'inconnu';
+    const p = pertinence.get(m.url);
+    if (p?.niveau === 'hors') return 'hors';
+    if (!m.sujet) return p && (p.niveau === 'pertinent' || p.niveau === 'decor') ? 'sujet' : 'inconnu';
     return sujets.has(cleSujet(m.sujet)) ? 'sujet' : 'hors';
   };
   const dansLeSujet = sources.stock.some((m) => statut(m) === 'sujet');
   const garder = (url: string, st: 'sujet' | 'inconnu' | 'hors') => forces.has(url) || st === 'sujet' || (st === 'inconnu' && !dansLeSujet);
   const ordonner = (retenus: MediaStockRetenu[], anciens: string[]) => {
-    const rangs: Array<{ url: string; st: 'sujet' | 'inconnu' | 'hors'; rang: number }> = [
-      ...retenus.map((m) => ({ url: m.url, st: statut(m), rang: statut(m) === 'sujet' ? 0 : statut(m) === 'inconnu' ? 1 : 3 })),
+    // Dans un même rang : le plus PERTINENT d'abord (un média « limite » —
+    // autre activité que le brief mentionne — après ceux du sujet).
+    const score = (url: string) => {
+      const p = pertinence.get(url);
+      return !p ? 0.5 : p.niveau === 'limite' ? -1 : p.score;
+    };
+    const rangs: Array<{ url: string; st: 'sujet' | 'inconnu' | 'hors'; rang: number; score: number }> = [
+      ...retenus.map((m) => ({ url: m.url, st: statut(m), rang: statut(m) === 'sujet' ? 0 : statut(m) === 'inconnu' ? 1 : 3, score: score(m.url) })),
       // Imports anciens de la banque, sans fiche retenue : sujet inconnu, en DERNIER.
-      ...anciens.map((url) => ({ url, st: 'inconnu' as const, rang: 2 })),
+      ...anciens.map((url) => ({ url, st: 'inconnu' as const, rang: 2, score: 0.5 })),
     ];
-    return Array.from(new Set(rangs.filter((x) => garder(x.url, x.st)).sort((a, b) => a.rang - b.rang).map((x) => x.url)));
+    return Array.from(new Set(rangs.filter((x) => garder(x.url, x.st)).sort((a, b) => a.rang - b.rang || b.score - a.score).map((x) => x.url)));
   };
   const retenusVideo = sources.stock.filter((m) => m.type === 'video');
   const anciensBanque = banque.filter(estRushStock).filter((u) => !sources.stock.some((m) => m.url === u));

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth/config';
 import { shortenForCard } from '@/lib/smart-content';
 import { briefPourPrompt } from '@/lib/creer/brief';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
+import { carteSansChiffresInventes, chiffresAutorises, CONSIGNE_SANS_CHIFFRES, texteSansChiffresInventes } from '@/lib/contenu/chiffres-sources';
 
 // Fast model for card generation. Haiku 4.5 is 5-10× faster than Sonnet on
 // short JSON responses, which prevents client-side 8s AbortError timeouts
@@ -279,7 +280,7 @@ CONTEXTE: L'utilisateur tape un sujet (ex: "moringa", "manioc", "collagène", "s
 
 RÈGLES ABSOLUES:
 1. Chaque carte DOIT contenir un VRAI fait scientifique ou nutritionnel VÉRIFIÉ sur le sujet
-2. Les valeurs DOIVENT être des vrais chiffres/stats/données (ex: "60%", "2L/j", "500mg", "+30%", "48h", "3x/sem")
+2. ${CONSIGNE_SANS_CHIFFRES}
 3. Les labels DOIVENT décrire un aspect SPÉCIFIQUE du sujet (pas générique)
 4. Les descriptions DOIVENT expliquer le fait de manière claire et éducative (10-20 mots)
 5. Les emojis DOIVENT être pertinents au contenu de CHAQUE carte et tous DIFFÉRENTS
@@ -287,21 +288,17 @@ RÈGLES ABSOLUES:
 7. Le sous-titre DOIT être un fait accrocheur et vrai sur le sujet
 8. La requête Pexels DOIT être liée au sujet réel (ex: "cassava root food" pour manioc, "moringa leaves powder" pour moringa)
 
-EXEMPLES DE QUALITÉ ATTENDUE:
+EXEMPLES DE QUALITÉ ATTENDUE (aucun chiffre inventé):
 
 Sujet "manioc":
-- 🥔 ÉNERGIE PURE | 160kcal | "160 kcal pour 100g de manioc cuit, carburant idéal avant le sport"
-- 🌿 SANS GLUTEN | 100% | "Alternative parfaite pour les intolérants, riche en amidon naturel"
-- 💪 FIBRES DIGESTIVES | 1.8g | "1.8g de fibres pour 100g, améliore ta digestion au quotidien"
-- 🛡️ VITAMINE C | 20mg | "20mg de vitamine C pour 100g, renforce ton système immunitaire"
-- ⚡ GLUCIDES LENTS | 38g | "38g de glucides complexes pour une énergie longue durée"
+- 🥔 ÉNERGIE DURABLE | CARBURANT | "Riche en glucides complexes, il nourrit tes séances longues."
+- 🌿 SANS GLUTEN | NATUREL | "Une alternative simple pour les personnes qui évitent le gluten."
+- 💪 DIGESTION | FIBRES | "Ses fibres accompagnent une digestion régulière au quotidien."
 
 Sujet "moringa":
-- 🌿 PROTÉINES VÉGÉTALES | 27g | "27g de protéines pour 100g de feuilles séchées, plus que les oeufs"
-- 🦴 CALCIUM NATUREL | 2000mg | "4x plus de calcium que le lait, renforce tes os pour la danse"
-- ⚡ FER PUISSANT | 28mg | "28mg de fer pour 100g, combat la fatigue et booste ton énergie"
-- 🧠 ANTIOXYDANTS | 46x | "46 antioxydants identifiés, protège tes cellules du stress"
-- 💧 DÉTOX NATUREL | 7j | "Purifie ton organisme en 7 jours de cure, effet visible"
+- 🌿 PROTÉINES VÉGÉTALES | VÉGÉTAL | "Ses feuilles séchées apportent des protéines végétales."
+- 🦴 MINÉRAUX | ESSENTIEL | "Une source de calcium et de fer à intégrer à tes repas."
+- 🧠 ANTIOXYDANTS | PROTECTION | "Des antioxydants naturels pour accompagner ton équilibre."
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans commentaires.`;
 
@@ -333,13 +330,13 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, sans commenta
 - Chaque appel DOIT produire un "title" et un "subtitle" ENTIÈREMENT DIFFÉRENTS des sorties précédentes. Ne répète JAMAIS le même titre deux fois pour un batch.
 - Titres génériques INTERDITS : "BOOST NATUREL", "BIENFAITS NATURELS", "LE GUIDE". Trouve un angle plus spécifique.
 - Le titre doit être un HOOK frappant et SPÉCIFIQUE à l'angle (ex: "30 JOURS CHRONO", "CE QUE TU IGNORES", "MATIN VS SOIR", "L'ERREUR #1").${angleDirective}
-- Même sujet, angle, chiffres et formulations DIFFÉRENTS pour chaque appel.
+- Même sujet, angle et formulations DIFFÉRENTS pour chaque appel (jamais de chiffre inventé).
 - Nonce de variation (ne pas mentionner dans la sortie): ${nonce}`;
 
     const userPrompt = `Génère du contenu d'infographie RICHE et ÉDUCATIF sur: "${topic}"${variationPreamble}
 
 Le contenu doit être 100% axé sur "${topic}" — pas de contenu générique fitness.
-Chaque carte = un vrai fait/chiffre sur "${topic}".
+Chaque carte = un fait utile sur "${topic}", sans chiffre que l\'utilisateur n\'a pas donné.
 Les phrases de vente doivent promouvoir "${topic}" avec Afroboost.${existingCardsContext}${existingTitlesContext}${briefContext}
 
 JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
@@ -351,7 +348,7 @@ JSON requis (${locale === 'fr' ? 'tout en français' : 'tout en anglais'}):
       "iconName": "nom d'icône lucide-react pertinent — OBLIGATOIRE — choisi UNIQUEMENT parmi: [${ICON_NAMES.join(', ')}]",
       "emoji": "emoji de fallback (utilisé seulement si iconName invalide)",
       "label": "ASPECT SPÉCIFIQUE DE ${topic.toUpperCase()} (2-4 mots)",
-      "value": "CHIFFRE RÉEL (ex: 27g, +40%, 2L/j, 48h)",
+      "value": "MOT COURT SANS CHIFFRE (ex: CLÉ, MALIN, ASTUCE) — un nombre seulement s\'il figure dans le sujet ou le brief",
       "description": "PHRASE COMPLÈTE de 8 à 15 mots MAXIMUM, finit par un point, jamais tronquée, ≤ 80 caractères"
     }
   ],
@@ -409,14 +406,14 @@ Retourne EXACTEMENT ${count} cartes, ni plus ni moins. IMPORTANT: chaque carte =
           return NextResponse.json({ success: false, error: `AI API error: ${retryResponse.status}` }, { status: 500 });
         }
         const retryData = await retryResponse.json();
-        return parseAndReturn(retryData, topic, count, ICON_NAMES);
+        return parseAndReturn(retryData, topic, count, ICON_NAMES, chiffresAutorises(topic, briefContext));
       }
 
       return NextResponse.json({ success: false, error: `AI API error: ${response.status}` }, { status: 500 });
     }
 
     const data = await response.json();
-    return parseAndReturn(data, topic, count, ICON_NAMES);
+    return parseAndReturn(data, topic, count, ICON_NAMES, chiffresAutorises(topic, briefContext));
 
   } catch (error: any) {
     console.error('[AI-Generate] Error:', error?.message || error);
@@ -428,7 +425,7 @@ Retourne EXACTEMENT ${count} cartes, ni plus ni moins. IMPORTANT: chaque carte =
   }
 }
 
-function parseAndReturn(data: any, topic: string, count: number, iconNames: string[]) {
+function parseAndReturn(data: any, topic: string, count: number, iconNames: string[], autorises: ReadonlySet<string> = chiffresAutorises(topic)) {
   // Extract text content
   const textContent = data.content?.find((c: any) => c.type === 'text');
   if (!textContent?.text) {
@@ -479,12 +476,15 @@ function parseAndReturn(data: any, topic: string, count: number, iconNames: stri
     // safety net — the prompt already asks for 8-15 words, but the model
     // sometimes overshoots. Truncating server-side prevents the preview's
     // 40-char `truncate` CSS from cutting a word mid-phrase.
+    // AUCUN CHIFFRE INVENTÉ : filet après le prompt — un nombre absent du
+    // sujet et du brief de l'utilisateur est retiré (`chiffres-sources.ts`).
+    const propre = carteSansChiffresInventes({ label: String(card.label || 'INFO'), value: String(card.value ?? ''), description: String(card.description || '') }, autorises);
     return {
       iconName,
       emoji: card.emoji || '📊',
-      label: card.label || 'INFO',
-      value: card.value || '-',
-      description: shortenForCard(card.description || '', 80),
+      label: propre.label || 'INFO',
+      value: propre.value || '-',
+      description: shortenForCard(propre.description || '', 80),
     };
   });
 
@@ -498,6 +498,8 @@ function parseAndReturn(data: any, topic: string, count: number, iconNames: stri
       `Transforme ton énergie avec ${topic} et Afroboost`,
     ];
   }
+
+  if (typeof content.subtitle === 'string') content.subtitle = texteSansChiffresInventes(content.subtitle, autorises);
 
   // Ensure pexelsQuery exists
   if (!content.pexelsQuery) {

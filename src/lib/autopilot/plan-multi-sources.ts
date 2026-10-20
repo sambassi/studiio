@@ -35,6 +35,7 @@
 import { planMontage, type AnalyseRush, type OptionsMontage } from '@/lib/creer/smart-montage';
 import type { RushSegment, MouvementImage, SourceSegment } from '@/lib/creer/multi-rush';
 import type { CreneauGabarit } from '@/lib/autopilot/sources';
+import { accordAvecTexte, type NiveauPertinenceMedia } from '@/lib/autopilot/pertinence-medias';
 
 export interface SourceVideoPlan {
   url: string;
@@ -59,6 +60,21 @@ export interface EntreePlanMultiSources {
   cible: number;
   /** Transmis à `planMontage` (contexte, rythme, plages exclues). */
   options?: OptionsMontage;
+  /**
+   * PERTINENCE de contenu des médias STOCK pour le scénario de CETTE vidéo
+   * (`pertinence-medias.ts`), par URL. Absente : l'ordre reçu, comme avant.
+   *   - `hors` : jamais pioché (sauf média forcé par le gabarit) ;
+   *   - `limite` : au plus UNE fois, jamais repris ;
+   *   - les autres : le plus pertinent d'abord — il OUVRE le montage.
+   */
+  pertinences?: Readonly<Record<string, { niveau: NiveauPertinenceMedia; score: number; description?: string }>>;
+  /**
+   * La NARRATION, passage par passage (s, dans la séquence) : la carte
+   * affichée et ce qu'elle dit. Un plan de coupe posé pendant un passage
+   * préfère le média qui montre ce que dit le passage (« bagage cabine » →
+   * une valise). Absente : aucun rapprochement.
+   */
+  narration?: ReadonlyArray<{ debut: number; fin: number; texte: string }>;
 }
 
 export interface ResultatPlanMultiSources {
@@ -96,7 +112,16 @@ interface ItemBroll {
   raison: string;
   /** Champs d'analyse repris de `planMontage` (score, phase…). */
   extra?: Partial<RushSegment>;
+  /** Pertinence 0..1 pour le scénario (stock) ; 0,5 sans information. */
+  score?: number;
+  /** Autre activité que le scénario mentionne : au plus une fois. */
+  limite?: boolean;
+  /** Description du média (rapprochement avec la narration). */
+  description?: string;
 }
+
+/** Une reprise de média est permise au plus UNE fois par vidéo. */
+export const REPRISES_MAX_PAR_MEDIA = 1;
 
 /**
  * La RÉSERVE des rushes personnels : rend, à la demande, une fenêtre de `d`
@@ -208,18 +233,36 @@ class ReserveRushs {
 
 function itemsStock(e: EntreePlanMultiSources): { videos: ItemBroll[]; photos: ItemBroll[] } {
   const vus = new Set<string>();
+  const forces = new Set((e.gabarit ?? []).map((g) => g.media).filter((u): u is string => !!u));
+  const pert = (url: string) => e.pertinences?.[url];
+  // Hors sujet : jamais pioché automatiquement ; un média FORCÉ reste un choix.
+  const exclu = (url: string) => pert(url)?.niveau === 'hors' && !forces.has(url);
+  const enrichir = (it: ItemBroll): ItemBroll => {
+    const p = pert(it.url);
+    if (!p) return it;
+    return {
+      ...it, score: p.score, ...(p.niveau === 'limite' ? { limite: true } : {}), ...(p.description ? { description: p.description } : {}),
+      raison: p.niveau === 'pertinent' ? `${it.raison}, pertinent pour le sujet` : p.niveau === 'decor' ? `${it.raison}, décor du sujet` : p.niveau === 'limite' ? `${it.raison}, cité par le script (une fois)` : it.raison,
+    };
+  };
   const videos: ItemBroll[] = [];
   for (const v of e.stockVideos ?? []) {
-    if (!v?.url || vus.has(v.url)) continue;
+    if (!v?.url || vus.has(v.url) || exclu(v.url)) continue;
     vus.add(v.url);
     const total = typeof v.secondes === 'number' && v.secondes > 0 ? v.secondes : BROLL_VIDEO_S;
-    videos.push({ url: v.url, kind: 'video', source: 'stock', depuis: 0, dispo: total, raison: 'vidéo stock (complément)' });
+    videos.push(enrichir({ url: v.url, kind: 'video', source: 'stock', depuis: 0, dispo: total, raison: 'vidéo stock (complément)' }));
   }
   const photos: ItemBroll[] = [];
   for (const u of e.photos ?? []) {
-    if (!u || vus.has(u)) continue;
+    if (!u || vus.has(u) || exclu(u)) continue;
     vus.add(u);
-    photos.push({ url: u, kind: 'image', source: 'photo', depuis: 0, dispo: Infinity, raison: 'photo stock (complément)' });
+    photos.push(enrichir({ url: u, kind: 'image', source: 'photo', depuis: 0, dispo: Infinity, raison: 'photo stock (complément)' }));
+  }
+  // Le plus pertinent d'abord (tri STABLE : sans pertinence, l'ordre reçu).
+  if (e.pertinences) {
+    const cle = (x: ItemBroll) => (x.limite ? -1 : x.score ?? 0.5);
+    videos.sort((a, b) => cle(b) - cle(a));
+    photos.sort((a, b) => cle(b) - cle(a));
   }
   return { videos, photos };
 }
@@ -270,46 +313,106 @@ class Plan {
 interface EtatPioche {
   dernierUrl: string | null;
   dernierGenre: 'video' | 'image' | null;
+  /** Nombre de poses de chaque média stock dans CETTE vidéo. */
+  usages: Map<string, number>;
+  /** Fin (s, dans le fichier) du dernier extrait monté de chaque vidéo stock. */
+  finExtrait: Map<string, number>;
+  /** Narration de la séquence (rapprochement plan de coupe ↔ passage). */
+  narration: ReadonlyArray<{ debut: number; fin: number; texte: string }>;
 }
 
-const nouvelEtatPioche = (): EtatPioche => ({ dernierUrl: null, dernierGenre: null });
+const nouvelEtatPioche = (narration: EtatPioche['narration'] = []): EtatPioche => ({
+  dernierUrl: null, dernierGenre: null, usages: new Map(), finExtrait: new Map(), narration,
+});
+
+/** Le passage de narration qui couvre l'instant `t`, ou `''`. */
+function texteA(etat: EtatPioche, t: number): string {
+  return etat.narration.find((n) => t >= n.debut - EPS && t < n.fin - EPS)?.texte ?? '';
+}
+
+/** Le meilleur candidat : pertinence + accord avec le passage de narration (ordre reçu à égalité). */
+function meilleur(liste: ItemBroll[], texte: string): ItemBroll | null {
+  let best: ItemBroll | null = null;
+  let note = -Infinity;
+  for (const x of liste) {
+    const n = (x.limite ? -1 : x.score ?? 0.5) + (texte && x.description ? 0.3 * accordAvecTexte(x.description, texte) : 0);
+    if (n > note + 1e-9) { best = x; note = n; }
+  }
+  return best;
+}
 
 /**
- * Le prochain média STOCK libre, photos et vidéos en alternance (vidéo
- * d'abord quand rien n'a encore été posé — l'ordre d'avant pour un seul
- * genre). Jamais le média du plan de coupe précédent.
+ * Le prochain média STOCK libre. Premier plan de coupe : le plus PERTINENT,
+ * photo ou vidéo. Ensuite photos et vidéos en alternance (vidéo d'abord
+ * quand rien n'a encore été posé, sans pertinence — l'ordre d'avant), le plus
+ * pertinent du genre — préféré s'il montre ce que dit la narration à `t`.
+ * Jamais le média du plan de coupe précédent.
  */
 function stockSuivant(
-  stock: { videos: ItemBroll[]; photos: ItemBroll[] }, utilises: Set<ItemBroll>, d: number, etat: EtatPioche,
+  stock: { videos: ItemBroll[]; photos: ItemBroll[] }, utilises: Set<ItemBroll>, d: number, etat: EtatPioche, t = 0,
 ): ItemBroll | null {
-  const video = () => stock.videos.find((x) => !utilises.has(x) && x.url !== etat.dernierUrl && x.dispo >= Math.min(d, BROLL_MIN_S)) ?? null;
-  const photo = () => stock.photos.find((x) => !utilises.has(x) && x.url !== etat.dernierUrl) ?? null;
+  const texte = texteA(etat, t + d / 2);
+  const videos = stock.videos.filter((x) => !utilises.has(x) && x.url !== etat.dernierUrl && x.dispo >= Math.min(d, BROLL_MIN_S));
+  const photos = stock.photos.filter((x) => !utilises.has(x) && x.url !== etat.dernierUrl);
+  const avecPertinence = [...videos, ...photos].some((x) => typeof x.score === 'number');
+  if (avecPertinence && etat.dernierUrl === null && etat.dernierGenre === null) return meilleur([...videos, ...photos], texte);
+  const video = () => meilleur(videos, texte);
+  const photo = () => meilleur(photos, texte);
   return etat.dernierGenre === 'video' ? (photo() ?? video()) : (video() ?? photo());
 }
 
-/** Note le plan de coupe posé dans la mémoire de la pioche. */
-function noterPioche(etat: EtatPioche, it: ItemBroll) {
+/** Note le plan de coupe posé (`d` s) dans la mémoire de la pioche. */
+function noterPioche(etat: EtatPioche, it: ItemBroll, d?: number) {
   etat.dernierUrl = it.url;
-  if (it.source !== 'rush') etat.dernierGenre = it.kind;
+  if (it.source !== 'rush') {
+    etat.dernierGenre = it.kind;
+    etat.usages.set(it.url, (etat.usages.get(it.url) ?? 0) + 1);
+    if (it.kind === 'video' && typeof d === 'number') etat.finExtrait.set(it.url, r3(it.depuis + Math.min(d, it.dispo)));
+  }
+}
+
+/**
+ * REPRISE d'un média stock déjà monté — seulement quand plus aucun média
+ * stock n'est libre : jamais un média « limite », jamais le précédent, au
+ * plus `REPRISES_MAX_PAR_MEDIA` fois, et une VIDÉO reprend APRÈS l'extrait
+ * déjà montré (jamais le même passage ; trop courte → pas de reprise). Une
+ * photo reprend avec un autre mouvement (`Plan`).
+ */
+function repriseStock(
+  stock: { videos: ItemBroll[]; photos: ItemBroll[] }, d: number, etat: EtatPioche, t: number,
+): ItemBroll | null {
+  const texte = texteA(etat, t + d / 2);
+  const libres = (liste: ItemBroll[]) => liste.filter((x) => !x.limite && x.url !== etat.dernierUrl
+    && (etat.usages.get(x.url) ?? 0) >= 1 && (etat.usages.get(x.url) ?? 0) <= REPRISES_MAX_PAR_MEDIA);
+  const videos = libres(stock.videos).flatMap((x) => {
+    const depuis = etat.finExtrait.get(x.url) ?? 0;
+    const reste = r3(x.dispo - (depuis - x.depuis));
+    return reste >= Math.min(d, BROLL_MIN_S) ? [{ ...x, depuis, dispo: reste, raison: `${x.raison}, autre passage` }] : [];
+  });
+  const photos = libres(stock.photos);
+  const v = () => meilleur(videos, texte);
+  const ph = () => meilleur(photos, texte);
+  return etat.dernierGenre === 'video' ? (ph() ?? v()) : (v() ?? ph());
 }
 
 /**
  * Le prochain plan de coupe, par priorité : rush personnel → stock (photos et
  * vidéos en alternance). `d` est la durée voulue ; une vidéo stock plus
- * courte la réduit.
+ * courte la réduit. `reprise` : plus rien de libre, un média déjà monté
+ * revient (`repriseStock`).
  */
 function prochainBroll(
   reserve: ReserveRushs, stock: { videos: ItemBroll[]; photos: ItemBroll[] }, utilises: Set<ItemBroll>, d: number,
-  etat: EtatPioche = nouvelEtatPioche(),
+  etat: EtatPioche = nouvelEtatPioche(), t = 0, reprise = false,
 ): { it: ItemBroll; d: number } | null {
   const rush = reserve.prendre(d);
   if (rush) { noterPioche(etat, rush); return { it: rush, d }; }
-  const it = stockSuivant(stock, utilises, d, etat);
+  const it = reprise ? repriseStock(stock, d, etat, t) : stockSuivant(stock, utilises, d, etat, t);
   if (!it) return null;
   utilises.add(it);
-  noterPioche(etat, it);
-  if (it.kind === 'image') return { it, d: d === BROLL_VIDEO_S ? BROLL_PHOTO_S : d };
-  return { it, d: Math.min(d, it.dispo) };
+  const duree = it.kind === 'image' ? (d === BROLL_VIDEO_S ? BROLL_PHOTO_S : d) : Math.min(d, it.dispo);
+  noterPioche(etat, it, duree);
+  return { it, d: duree };
 }
 
 /**
@@ -318,10 +421,11 @@ function prochainBroll(
  * voix CONTINUE (jouée à part) : les plans de coupe ne sont que des images
  * posées par-dessus, chaque fenêtre d'avatar joue sa propre seconde.
  *
- * Matière épuisée : les médias STOCK déjà montés sont repris (jamais deux
- * fois de suite le même, une photo reprend avec un autre mouvement) s'il en
- * existe au moins deux distincts — sinon l'avatar tient le reste. Les plages
- * de rushes personnels ne sont jamais rejouées.
+ * Matière épuisée : un média STOCK déjà monté peut revenir UNE fois
+ * (`repriseStock` : jamais deux fois de suite le même, jamais un média
+ * « limite », une vidéo sur un AUTRE passage, une photo avec un autre
+ * mouvement) s'il en existe au moins deux distincts — sinon l'avatar tient
+ * le reste. Les plages de rushes personnels ne sont jamais rejouées.
  */
 function alterner(
   p: Plan, finMilieu: number, reserve: ReserveRushs, stock: { videos: ItemBroll[]; photos: ItemBroll[] },
@@ -336,12 +440,9 @@ function alterner(
       // Un reliquat trop court pour l'avatar est absorbé par le plan de coupe.
       let d = Math.min(reste, BROLL_VIDEO_S);
       if (reste - d < 1 && reste <= BROLL_MAX_S) d = reste;
-      let pris = prochainBroll(reserve, stock, utilises, d, etat);
-      if (!pris && stockDistinct >= 2) {
-        // Reprise du stock : on libère les médias stock, jamais le précédent.
-        utilises.clear();
-        pris = prochainBroll(reserve, stock, utilises, d, etat);
-      }
+      let pris = prochainBroll(reserve, stock, utilises, d, etat, p.fin);
+      // Reprise du stock : seulement quand plus rien n'est libre.
+      if (!pris && stockDistinct >= 2) pris = prochainBroll(reserve, stock, utilises, d, etat, p.fin, true);
       if (!pris) { epuise = true; continue; }
       p.ajouterItem(pris.it, r3(pris.d));
       tour = 'avatar';
@@ -370,7 +471,7 @@ function planAvecAvatar(e: EntreePlanMultiSources, T: number, expl: string[]): R
     return p.segs;
   }
   p.ajouterAvatar(hook, 'avatar — accroche');
-  alterner(p, finMilieu, reserve, stock, utilises, nouvelEtatPioche(), 'broll');
+  alterner(p, finMilieu, reserve, stock, utilises, nouvelEtatPioche(e.narration), 'broll');
   p.ajouterAvatar(r3(T - p.fin), 'avatar — CTA');
   const n = p.segs.filter((s) => s.kind !== 'avatar').length;
   expl.push(`Avatar en accroche et en conclusion, ${n} plan(s) de coupe intercalé(s).`);
@@ -453,7 +554,7 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
   const reserve = new ReserveRushs(e, T);
   const { videos, photos } = itemsStock(e);
   const utilises = new Set<ItemBroll>();
-  const etat = nouvelEtatPioche();
+  const etat = nouvelEtatPioche(e.narration);
   const n = gabarit.length;
   const estAvatar = (c: CreneauGabarit) => !!avatar && (c.type === 'avatar' || (!!c.media && c.media === avatar.url));
   // Gabarit « avatar seul » explicite : l'avatar tient toute la parole, comme avant.
@@ -473,7 +574,7 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
   const libre = (liste: ItemBroll[], d: number) => liste.find((x) => !utilises.has(x) && x.dispo >= Math.min(d, BROLL_MIN_S)) ?? null;
   const poser = (it: ItemBroll, d: number, raison: string) => {
     utilises.add(it);
-    noterPioche(etat, it);
+    noterPioche(etat, it, d);
     p.ajouterItem(it, r3(Math.min(d, it.dispo)), raison);
   };
   const poserAvatar = (k: number, d: number, raison: string) => p.ajouterAvatar(r3(dureeAvatar(k, d)), raison);
@@ -504,7 +605,7 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
     } else if (type === 'stock') {
       const db = dureeBroll(d);
       // Photos et vidéos en alternance, jamais le média précédent.
-      const it = stockSuivant({ videos, photos }, utilises, db, etat) ?? libre(videos, db) ?? libre(photos, db);
+      const it = stockSuivant({ videos, photos }, utilises, db, etat, p.fin) ?? libre(videos, db) ?? libre(photos, db);
       if (it) { poser(it, db, etiquette); return; }
     }
     if (type !== 'auto') expl.push(`Créneau ${k + 1} : aucun média « ${type} » disponible, choix automatique.`);
@@ -514,7 +615,7 @@ function planGabarit(e: EntreePlanMultiSources, T: number, expl: string[]): Rush
       poserAvatar(k, d, `${etiquette} — avatar`);
       return;
     }
-    const pris = prochainBroll(reserve, { videos, photos }, utilises, dureeBroll(d), etat);
+    const pris = prochainBroll(reserve, { videos, photos }, utilises, dureeBroll(d), etat, p.fin);
     if (pris) { p.ajouterItem(pris.it, r3(pris.it.kind === 'image' ? dureeBroll(d) : pris.d), etiquette); return; }
     if (avatar) { poserAvatar(k, d, `${etiquette} — avatar (aucun autre média)`); return; }
     expl.push(`Créneau ${k + 1} : aucun média disponible.`);
@@ -563,8 +664,62 @@ export function planMultiSources(e: EntreePlanMultiSources): ResultatPlanMultiSo
   } else {
     plan = planSansAvatar(entree, T, expl);
   }
+  if (avatar) cadrerAvatar(plan);
   const duree = plan.length ? plan[plan.length - 1].fin : 0;
   return { plan, duree, explications: expl };
+}
+
+/**
+ * CADRAGES de l'avatar, en alternance : plan large (1), moyen (1,15), serré
+ * (1,3) — au lieu d'une suite de gros plans identiques. L'accroche et la
+ * conclusion (CTA) gardent le cadre d'origine (titre et CTA posés autour du
+ * visage). Le zoom est centré sur la ligne du menton
+ * (`ORIGINE_CADRAGE_AVATAR`) : yeux, bouche et menton restent dans l'image,
+ * seul le haut du crâne sort du cadre. Purement visuel : `depuis`, `debut`
+ * et la vitesse ne changent pas (synchronisation labiale intacte).
+ */
+export const CADRAGES_AVATAR: readonly number[] = [1, 1.15, 1.3];
+
+/** Au-delà, un plan d'avatar sans plan de coupe est recoupé en changeant de cadre. */
+export const AVATAR_PLAN_MAX_S = 6;
+
+export function cadrerAvatar(plan: RushSegment[]): RushSegment[] {
+  // Matière épuisée : l'avatar tient seul plusieurs secondes. Plutôt qu'un
+  // long gros plan figé, la fenêtre est recoupée (≈ 3 s) et chaque morceau
+  // change de cadre — chaque morceau joue SA seconde (`depuis === debut`).
+  if (plan.some((s) => s.kind !== 'avatar')) {
+    for (let i = plan.length - 1; i >= 0; i--) {
+      const s = plan[i];
+      const d = s.fin - s.debut;
+      if (s.kind !== 'avatar' || d <= AVATAR_PLAN_MAX_S + EPS) continue;
+      const n = Math.max(2, Math.round(d / AVATAR_FENETRE_S));
+      const morceaux: RushSegment[] = [];
+      for (let k = 0; k < n; k++) {
+        const debut = r3(s.debut + (d * k) / n);
+        const fin = k === n - 1 ? s.fin : r3(s.debut + (d * (k + 1)) / n);
+        morceaux.push({ ...s, debut, fin, depuis: debut, raison: k === 0 ? s.raison : `${s.raison} (changement de cadre)` });
+      }
+      plan.splice(i, 1, ...morceaux);
+    }
+  }
+  const idx = plan.map((s, i) => (s.kind === 'avatar' ? i : -1)).filter((i) => i >= 0);
+  idx.forEach((i, k) => {
+    if (k === 0 || k === idx.length - 1) return;
+    let z = CADRAGES_AVATAR[k % CADRAGES_AVATAR.length];
+    // Juste avant la conclusion, contiguë à elle : un autre cadre (sinon les deux fusionnent).
+    if (z === 1 && k === idx.length - 2 && idx[k + 1] === i + 1) z = CADRAGES_AVATAR[1];
+    if (z !== 1) plan[i].cadrage = z;
+  });
+  // Deux morceaux contigus au même cadre = un seul plan (aucune coupe visible).
+  for (let i = plan.length - 1; i > 0; i--) {
+    const a = plan[i - 1];
+    const b = plan[i];
+    if (a.kind === 'avatar' && b.kind === 'avatar' && (a.cadrage ?? 1) === (b.cadrage ?? 1)) {
+      a.fin = b.fin;
+      plan.splice(i, 1);
+    }
+  }
+  return plan;
 }
 
 /** Invariant lip-sync : chaque extrait d'avatar joue sa propre seconde. Pur. */

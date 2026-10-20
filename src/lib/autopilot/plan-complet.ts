@@ -52,6 +52,8 @@ export interface OptionsPlanComplet {
   durees?: Readonly<Record<string, number | null | undefined>>;
   /** URL de la vidéo de l'avatar, si connue. */
   urlAvatar?: string | null;
+  /** Pertinence de contenu des médias stock (`pertinencesPourPlan`) — la même que le moteur. */
+  pertinences?: EntreePlanMultiSources['pertinences'];
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -105,6 +107,7 @@ export function entreeDepuisResume(resume: ResumeMediasApercu, o: OptionsPlanCom
     photos: stock.filter((m) => m.type === 'photo').map((m) => m.url),
     gabarit: resume.gabarit,
     cible: o.cible,
+    ...(o.pertinences ? { pertinences: o.pertinences } : {}),
   };
 }
 

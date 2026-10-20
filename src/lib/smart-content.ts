@@ -28,6 +28,8 @@ type InfoCardData = {
  * sinon CardIcon retombe sur un rendu texte du nom. Le repli ci-dessous est
  * "Sparkles", jamais un emoji.
  */
+import { carteSansChiffresInventes, chiffresAutorises, texteSansChiffresInventes, titreSansChiffresInventes } from '@/lib/contenu/chiffres-sources';
+
 const ICONS: Record<string, string> = {
   energy: "Zap", heart: "Heart", dance: "PersonStanding", audio: "Headphones", apple: "Apple",
   moon: "Moon", fire: "Flame", droplet: "Droplet", muscle: "Dumbbell", clock: "Timer",
@@ -1959,16 +1961,26 @@ export function generateSmartContent(title: string, seed?: number): SmartContent
   const rotated = offset > 0
     ? [...sourceCards.slice(offset), ...sourceCards.slice(0, offset)]
     : sourceCards;
-  const cards: InfoCardData[] = rotated.map((card) => ({
-    icon: ICONS[card.icon] || "Sparkles",  // repli SVG neutre, jamais un emoji
-    title: card.title,
-    description: shortenForCard(card.description, 80),
-    value: card.value,
-  }));
+  // AUCUN CHIFFRE INVENTÉ (`chiffres-sources.ts`) : la base locale porte des
+  // statistiques sans source (« VOLS -40% », « 7 kg = 10 jours »). Seuls les
+  // nombres écrits par l'utilisateur (son sujet) restent ; le reste devient
+  // qualitatif, et la valeur n'est jamais répétée dans le titre.
+  const autorises = chiffresAutorises(title);
+  const cards: InfoCardData[] = rotated.map((card) => {
+    const propre = carteSansChiffresInventes({ title: card.title, description: card.description, value: card.value }, autorises);
+    return {
+      icon: ICONS[card.icon] || "Sparkles",  // repli SVG neutre, jamais un emoji
+      title: propre.title ?? card.title,
+      description: shortenForCard(propre.description, 80),
+      value: propre.value ?? '',
+    };
+  });
 
   return {
-    subtitle: topicData.subtitle,
-    tagLine: topicData.tagLine,
+    // Sous-titre vidé (il n'était qu'un chiffre) : la phrase d'accroche du thème.
+    subtitle: texteSansChiffresInventes(topicData.subtitle, autorises)
+      || texteSansChiffresInventes(topicData.tagLine.charAt(0) + topicData.tagLine.slice(1).toLowerCase(), autorises),
+    tagLine: titreSansChiffresInventes(topicData.tagLine, autorises),
     cards,
   };
 }

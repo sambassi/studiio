@@ -129,7 +129,7 @@ describe('source unique, aucune règle recopiée', () => {
   it('Autopilote : mise en page partagée appliquée au design Remotion / hybride', () => {
     const p = src('src/lib/autopilot/produire.ts');
     // #502 : + la bande du CTA mesurée (zone calme), même règle que Créer.
-    expect(p).toContain('if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande });');
+    expect(p).toContain('if (overlays) design = appliquerMiseEnPageSurimpression(design, profilVideo, { ctaBande: zoneCta?.bande, avatar: surAvatar });');
     expect(p).toContain('profil: profilVideo,');
   });
   it('Créer : mêmes fenêtres, même mise en page, mêmes composants', () => {

@@ -2,7 +2,7 @@ import React from 'react';
 import {
   AbsoluteFill, Audio, OffthreadVideo, Img, Sequence, Freeze, useVideoConfig, useCurrentFrame,
 } from 'remotion';
-import { planRushs, planAvecAvatar, type RushSegment } from '../src/lib/creer/multi-rush';
+import { planRushs, planAvecAvatar, ORIGINE_CADRAGE_AVATAR, type RushSegment } from '../src/lib/creer/multi-rush';
 import { transformeKenBurns } from '../src/lib/creer/ken-burns';
 import { ajusterPlan } from '../src/lib/creer/smart-montage';
 import type { OverlaysMontage } from '../src/lib/creer/overlays';
@@ -735,7 +735,14 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                         {...(seg.depuis ? { trimBefore: Math.round(seg.depuis * fps) } : {})}
                         // V3 : ralenti ponctuel sur un geste fort.
                         {...(seg.vitesse && seg.vitesse !== 1 ? { playbackRate: seg.vitesse } : {})}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        style={{
+                          width: '100%', height: '100%', objectFit: 'cover',
+                          // Avatar : plan large / moyen / serré (`cadrerAvatar`), zoom
+                          // centré sur le menton — purement visuel, la voix reste calée.
+                          ...(seg.kind === 'avatar' && typeof seg.cadrage === 'number' && seg.cadrage > 1
+                            ? { transform: `scale(${seg.cadrage})`, transformOrigin: `${ORIGINE_CADRAGE_AVATAR.x}% ${ORIGINE_CADRAGE_AVATAR.y}%` }
+                            : null),
+                        }}
                         volume={(f) => (
                           props.rushMuted ? 0 : mixAt((depart + from + f) / fps, mixOptions).rush
                         )}
