@@ -684,6 +684,9 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 // 9:16 en flux : cartes arrêtées au rail d'actions des réseaux.
                 zoneSure916={format === '9:16'}
                 valueColor={props.cardValueColor || props.gradientEnd || DEFAULT_COLORS.gradientEnd}
+                // Séquence Cartes plein écran (dégradé) : valeur lisible + contour,
+                // comme l'aperçu de Créer. Surimpressions : leur propre fond.
+                fondsContraste={props.cardBackground == null ? [props.gradientStart || DEFAULT_COLORS.gradientStart, props.gradientEnd || DEFAULT_COLORS.gradientEnd] : null}
                 // Absent = le cadre, comme depuis toujours.
                 cardStyle={props.cardStyle}
                 typography={props.cardsTypography}

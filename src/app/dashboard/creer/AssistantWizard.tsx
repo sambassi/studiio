@@ -1909,6 +1909,8 @@ function PlateContent({
               landscape={landscapeCards}
               zoneSure916={format === '9:16'}
               valueColor={gradEnd}
+              // Valeur posée sur le dégradé : lisible (4,5:1) et contour fin.
+              fondsContraste={[accent, gradEnd]}
               interaction={{
                 onCardDragStart,
                 onDragMove,

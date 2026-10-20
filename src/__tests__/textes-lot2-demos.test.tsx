@@ -15,7 +15,7 @@ import { calageProportionnel, espacerApparitions, etatApres, DUREE_CARTE_LISIBLE
 import { echelleTitreDeDepart, ECHELLE_TITRE_LISIBLE } from '@/lib/creer/ajustementCta';
 import { titreSur916, chassePolice } from '@/lib/creer/zones-sures-916';
 import { fondsRushTexte, fondRushDeLOnglet } from '@/lib/creer/fond-rush-texte';
-import { HALO_TEXTE_ALPHA, CONTOUR_TEXTE_ALPHA, contrasteSurVoile } from '@/lib/creer/contraste';
+import { HALO_TEXTE_ALPHA, CONTOUR_TEXTE_ALPHA, contrasteSurVoile, couleurValeurLisible, ratioContraste, hexVersRgb } from '@/lib/creer/contraste';
 
 // ── 1. CTA plein jusqu'à la dernière image ────────────────────────────────
 describe('Autopilote : surimpression qui finit avec la vidéo', () => {
@@ -148,5 +148,38 @@ describe('Créer : fond Titre / CTA = rush en mouvement (v2, sans affiche)', () 
   it('compositeur : le lecteur du fond boucle (rush plus court que la séquence), comme l’aperçu', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/lib/video-composer.ts'), 'utf8');
     expect(src).toMatch(/el\.muted = true;\s*\n(?:\s*\/\/.*\n)*\s*el\.loop = true;/);
+  });
+});
+
+// ── Cartes sur le dégradé (compositeur Créer, 3 formats) ─────────────────
+describe('Créer : valeur de carte lisible sur le dégradé de marque', () => {
+  const FONDS = ['#7C3AED', '#EC4899'];
+  const sousVoile = (h: string) => hexVersRgb(h)!.map((v) => v * 0.92 + 255 * 0.08) as [number, number, number];
+  it('rose sur rose : remplissage ≥ 2:1 contre le fond le plus clair, ≥ 4,5:1 au bord des lettres (contour)', () => {
+    const v = couleurValeurLisible('#EC4899', FONDS);
+    expect(v).not.toBe('#EC4899');
+    const fond = sousVoile('#EC4899');
+    expect(ratioContraste(hexVersRgb(v)!, fond)).toBeGreaterThanOrEqual(2);
+    expect(ratioContraste(hexVersRgb(v)!, fond.map((x) => x * (1 - HALO_TEXTE_ALPHA)) as [number, number, number])).toBeGreaterThanOrEqual(4.5);
+  });
+  it('couleur déjà lisible ou fond inconnu : inchangée', () => {
+    expect(couleurValeurLisible('#EC4899', ['#0A0A0F'])).toBe('#EC4899');
+    expect(couleurValeurLisible('#EC4899', [])).toBe('#EC4899');
+  });
+  it.each([[1080, false], [1920, true], [1080, true]] as const)('rendu %i px (paysage %s) : valeur éclaircie + contour, titre cerné', (vw, landscape) => {
+    const cards = [{ id: 'a', icon: 'Target', title: 'SI-ALORS', value: 'PLAN' }];
+    const avec = renderToStaticMarkup(<SequenceCards cards={cards} containerWidth={vw} landscape={landscape} zoneSure916={!landscape} valueColor="#EC4899" fondsContraste={FONDS} />);
+    const sans = renderToStaticMarkup(<SequenceCards cards={cards} containerWidth={vw} landscape={landscape} zoneSure916={!landscape} valueColor="#EC4899" />);
+    expect(avec).toContain(`color:${couleurValeurLisible('#EC4899', FONDS)}`);
+    expect(avec.match(/text-shadow:/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // Default safe : sans fonds connus, le rendu d'avant.
+    expect(sans).toContain('color:#EC4899');
+    expect(sans).not.toContain('text-shadow:');
+  });
+  it('câblage : aperçu de Créer et séquence Cartes Remotion passent les couleurs du dégradé', () => {
+    const wiz = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
+    expect(wiz).toMatch(/fondsContraste=\{\[accent, gradEnd\]\}/);
+    const rem = readFileSync(resolve(process.cwd(), 'remotion/CreerSimpleMontage.tsx'), 'utf8');
+    expect(rem).toMatch(/fondsContraste=\{props\.cardBackground == null \?/);
   });
 });

@@ -153,6 +153,36 @@ export function haloTexteCss(vw: number, alpha = CONTOUR_TEXTE_ALPHA): string {
   return `${d}px 0 ${f}px ${c}, -${d}px 0 ${f}px ${c}, 0 ${d}px ${f}px ${c}, 0 -${d}px ${f}px ${c}, 0 ${px(2)}px ${px(5)}px rgba(0,0,0,0.4)`;
 }
 
+/**
+ * Couleur de VALEUR de carte lisible sur un fond de couleurs CONNUES (dégradé
+ * de marque) sous le voile blanc de la carte (alpha `voileCarte`), au bord des
+ * lettres cernées du contour fin. Constat
+ * (banc, 3 formats) : « PLAN », « PARTAGE » roses (#EC4899) sur le dégradé
+ * rose, ≈ 1,2:1. Teinte éclaircie (même famille) jusqu'à 4,5:1 contre le
+ * contour posé sur le plus clair de ces fonds ; inchangée si elle suffit déjà ou si les fonds sont
+ * inconnus. Pure.
+ */
+export function couleurValeurLisible(couleur: string, fonds: ReadonlyArray<string | null | undefined>, voileCarte = 0.08, avecContour = true): string {
+  const lus = fonds.map(hexVersRgb).filter((c): c is Rgb => !!c)
+    .map((c) => c.map((v) => v * (1 - voileCarte) + 255 * voileCarte) as Rgb);
+  if (!lus.length || !hexVersRgb(couleur)) return couleur;
+  const clair = lus.reduce((a, b) => (luminance(a) >= luminance(b) ? a : b));
+  // Avec le contour des glyphes (`haloTexteCss`), le contraste se mesure au
+  // BORD des lettres, sur le contour posé sur ce fond — comme la petite ligne
+  // du CTA. Sans lui, contre le fond nu (le blanc seul n'atteint pas toujours
+  // 4,5:1 sur le rose de marque).
+  // Et le REMPLISSAGE se détache du fond (≥ `CONTRASTE_REMPLISSAGE_MIN`) :
+  // une valeur rose cernée de noir sur du rose reste une valeur rose qu'on
+  // devine — éclaircie (même famille), elle se lit d'un coup d'œil.
+  if (!avecContour) return eclaircirPourContraste(couleur, clair);
+  const remplie = eclaircirPourContraste(couleur, clair, CONTRASTE_REMPLISSAGE_MIN);
+  const bord = clair.map((v) => v * (1 - HALO_TEXTE_ALPHA)) as Rgb;
+  return eclaircirPourContraste(remplie, bord);
+}
+
+/** Contraste minimal du REMPLISSAGE d'une valeur cernée de contour contre son fond. */
+export const CONTRASTE_REMPLISSAGE_MIN = 2;
+
 /** Le fond sous le bord d'une lettre dans le pire cas : contour (sur voile éventuel) sur BLANC. */
 export function fondHaloPire(alphaVoile = 0, alphaHalo = HALO_TEXTE_ALPHA): Rgb {
   const v = 255 * (1 - alphaVoile) * (1 - alphaHalo);
