@@ -3749,6 +3749,11 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     () => etapesMontageApercuAutopilote(avecVideo ? medias : null, { dureeCta: dureeCtaLecture }),
     [avecVideo, medias, dureeCtaLecture],
   );
+  // Avatar + plans de coupe : le MP4 n'a PAS de séquence CTA (CTA en
+  // surimpression sur la fin de la parole) — la durée annoncée ne la compte pas.
+  const dureeVideoApercu = montagePrevu.ctaEnSurimpression && dureeCtaLecture
+    ? Math.round((dureeTotaleApercu - dureeCtaLecture) * 10) / 10
+    : dureeTotaleApercu;
   /** Vignettes déjà connues des médias suggérés retenus — la chronologie les montre sans rien télécharger. */
   const vignettesMontage = useMemo(() => {
     const v: Record<string, string> = {};
@@ -3950,12 +3955,12 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         <p
           className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
           data-autopilot-apercu-jumeau="estimee"
-          data-autopilot-apercu-duree-totale={dureeTotaleApercu}
+          data-autopilot-apercu-duree-totale={dureeVideoApercu}
         >
           <Mic className="w-3 h-3 mt-0.5 shrink-0" />
           <span>
             <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
-            {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeTotaleApercu)}.
+            {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
             {' '}La vidéo finale prend la durée réelle de la parole de l’avatar.
             {' '}<span data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
           </span>
@@ -4022,7 +4027,9 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             vignettes={vignettesMontage}
             onRemplacer={allerAuxMedias}
             titre="Aperçu de mon montage"
-            sousTitre="Vos médias réels, dans l'ordre du plan, puis le CTA. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."
+            sousTitre={montagePrevu.ctaEnSurimpression
+              ? "Vos médias réels, dans l'ordre du plan ; le CTA s'affiche en surimpression sur les dernières secondes. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."
+              : "Vos médias réels, dans l'ordre du plan, puis le CTA. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."}
           />
         </div>
       )}

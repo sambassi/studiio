@@ -187,12 +187,12 @@ export type AvatarMontageApercu = 'video-reelle' | 'vignette' | 'emplacement' | 
 export function etapesMontageApercuAutopilote(
   resume: ResumeMediasApercu | null | undefined,
   opts: { dureeCta?: number | null } = {},
-): { etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number; avatar: AvatarMontageApercu } {
+): { etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number; avatar: AvatarMontageApercu; ctaEnSurimpression: boolean } {
   const etapes: EtapeApercu[] = [];
   // Avatar demandé, disponibilité en lecture : AUCUN plan (il serait sans
   // avatar, donc rempli de stock) — l'écran montre un état de chargement.
   if (resume && resume.gabarit.length > 0 && resume.actives.avatar && resume.avatar.chargement && !resume.avatar.disponible) {
-    return { etapes, lignes: [], duree: 0, avatar: 'chargement' };
+    return { etapes, lignes: [], duree: 0, avatar: 'chargement', ctaEnSurimpression: false };
   }
   if (resume && resume.gabarit.length > 0) {
     const plan = resume.plan;
@@ -256,5 +256,5 @@ export function etapesMontageApercuAutopilote(
     const fondu = Math.round(Math.min(TRANSITION_DURATION_SECONDS, duree) * 1000) / 1000;
     lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: Math.round((duree + cta) * 1000) / 1000, cta: true, ...(fondu > 0 ? { fondu } : {}) });
   }
-  return { etapes, lignes, duree, avatar };
+  return { etapes, lignes, duree, avatar, ctaEnSurimpression };
 }

@@ -350,7 +350,7 @@ describe('Aperçu de l’avatar — sa vraie vidéo, jamais du stock à sa place
   it('en lecture (avatarPret null) : aucun plan rempli de stock — un état de chargement', () => {
     const r = resume({ ...base, avatar: { disponible: false, vignette: null, chargement: true } });
     const a = etapesMontageApercuAutopilote(r, { dureeCta: 4 });
-    expect(a).toEqual({ etapes: [], lignes: [], duree: 0, avatar: 'chargement' });
+    expect(a).toEqual({ etapes: [], lignes: [], duree: 0, avatar: 'chargement', ctaEnSurimpression: false });
     const m = mediaApercuAutopilote(r, { rushUrls: [STOCK_V] });
     expect(m).toMatchObject({ type: 'avatar', url: null, chargement: true });
     // La fin de la lecture se remonte (signature différente).

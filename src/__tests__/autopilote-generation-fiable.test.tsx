@@ -198,6 +198,7 @@ describe('4. Plan = MP4', () => {
     }), { dureeCta: 4 });
     expect(a.etapes.some((e) => e.source === 'avatar')).toBe(true);
     expect(a.lignes.some((l) => l.cta)).toBe(false);
+    expect(a.ctaEnSurimpression).toBe(true);
     expect(a.lignes[a.lignes.length - 1].fin).toBe(a.duree);
   });
 
@@ -207,6 +208,7 @@ describe('4. Plan = MP4', () => {
       plan: { avatarDisponible: false, cible: 20, rythme: null, durees: { [RUSH]: 20 } },
     }), { dureeCta: 4 });
     expect(a.lignes[a.lignes.length - 1]).toMatchObject({ id: 'cta', cta: true, debut: a.duree });
+    expect(a.ctaEnSurimpression).toBe(false);
   });
 
   it('Plan avant génération (avatar + rush) : CTA annoncé en surimpression, durée estimée et recalée', () => {
@@ -245,5 +247,13 @@ describe('4. Plan = MP4', () => {
     expect(dureePlanRendu({ introDuration: 0, cardsDuration: 0, ctaDuration: 0, videoDuration: 24.68, videoUrl: 'v.mp4', cards: [{}] })).toBe(24.68);
     expect(dureePlanRendu({ introDuration: 3, cardsDuration: 5, ctaDuration: 4, videoDuration: 10, videoUrl: 'v.mp4', cards: [{}] })).toBe(22);
     expect(dureePlanRendu({ introDuration: 3, cardsDuration: 5, ctaDuration: 4, videoDuration: 10, videoUrl: 'v.mp4', cards: [] })).toBe(17);
+  });
+});
+
+describe('Aperçu fusionné — avatar + plans de coupe : aucune séquence CTA annoncée', () => {
+  it('expose ctaEnSurimpression pour que la durée et le sous-titre ne comptent pas de CTA', async () => {
+    const { etapesMontageApercuAutopilote } = await import('@/lib/autopilot/apercu-medias');
+    const r = etapesMontageApercuAutopilote(null, { dureeCta: 4 });
+    expect(r.ctaEnSurimpression).toBe(false);
   });
 });
