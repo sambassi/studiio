@@ -7,6 +7,8 @@ import { lireTimingVoix, type TimingVoix } from '@/lib/creer/synchro-cartes';
 import { findFont } from '@/lib/fonts/catalog';
 import { TRANSITION_KEYS } from '@/lib/video-composer';
 import { TEXT_ANIMATION_KEYS } from '@/lib/creer/textAnimation';
+import { lireStyleVideoId } from '@/lib/styles-video/styles';
+import { CARD_STYLE_NAMES } from '@/lib/creer/cardStyles';
 import { lutRefValide } from '@/lib/luts/bibliotheque';
 import type { LutRef } from '@/lib/luts/types';
 import { sanitizeBrief, briefRempli, type VideoBrief } from '@/lib/creer/brief';
@@ -129,6 +131,15 @@ export interface Draft {
    * cartes, pastille de la petite ligne).
    */
   versionLisibilite?: number;
+  /**
+   * Style vidéo choisi dans la galerie (`@/lib/styles-video/styles`). Absent :
+   * aucun style — profil de montage déduit du thème, comme avant.
+   */
+  styleVideo?: string;
+  /** Style des cartes (`CARD_STYLES`). Absent : le défaut « Compact ». */
+  cardStyle?: string;
+  /** Typographie des cartes (police, échelle…). Absente : aucune, comme avant. */
+  cardsTypography?: Record<string, unknown>;
   /** Miniature / couverture choisie à l'étape Envoi (`lib/social/couverture`). Absente : automatique. */
   couverture?: Couverture;
   /**
@@ -574,6 +585,21 @@ function sanitizeElements(raw: unknown): Draft['elements'] {
 }
 
 /**
+ * Casse, alignement et décorations d'une zone de texte (`textFormat.ts`),
+ * seulement les valeurs VALIDES : un champ absent reste absent (rendu
+ * historique). Sans cette relecture, une casse choisie (ou posée par un
+ * style vidéo) disparaissait au rechargement du brouillon.
+ */
+function formatTexteValide(t: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (t.textCase === 'none' || t.textCase === 'uppercase' || t.textCase === 'lowercase') out.textCase = t.textCase;
+  if (t.align === 'left' || t.align === 'center' || t.align === 'right') out.align = t.align;
+  if (typeof t.underline === 'boolean') out.underline = t.underline;
+  if (typeof t.strike === 'boolean') out.strike = t.strike;
+  return out;
+}
+
+/**
  * Transforme un brouillon brut en valeurs sûres.
  *
  * Renvoie `null` quand il n'y a rien d'exploitable : l'appelant garde alors
@@ -640,6 +666,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       italic: titleStyle.italic === true,
       letterSpacing: num(titleStyle.letterSpacing, -10, 40, 0),
       lineHeight: num(titleStyle.lineHeight, 0.5, 4, 1.1),
+      ...formatTexteValide(titleStyle),
     },
     subtitleStyle: {
       ...d.subtitleStyle,
@@ -649,6 +676,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
         : null,
       color: typeof subtitleStyle.color === 'string' ? hex(subtitleStyle.color, '#FFFFFF') : null,
       scale: num(subtitleStyle.scale, 0.2, 3, 1),
+      ...formatTexteValide(subtitleStyle),
     },
     ctaStyle: {
       ...d.ctaStyle,
@@ -663,6 +691,7 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
       italic: ctaStyle.italic === true,
       letterSpacing: num(ctaStyle.letterSpacing, -10, 40, 0),
       lineHeight: num(ctaStyle.lineHeight, 0.5, 4, 1.2),
+      ...formatTexteValide(ctaStyle),
     },
     watermarkOverride:
       typeof raw.watermarkOverride === 'string' ? raw.watermarkOverride.slice(0, 60) : null,
@@ -680,6 +709,20 @@ export function sanitizeDraft(raw: unknown, deps: SanitizeDeps): Draft | null {
     ctaWidth: typeof raw.ctaWidth === 'number' && raw.ctaWidth >= 30 && raw.ctaWidth <= 96 ? raw.ctaWidth : undefined,
     versionLisibilite: Number.isInteger(raw.versionLisibilite) && (raw.versionLisibilite as number) >= 1 && (raw.versionLisibilite as number) <= 9
       ? (raw.versionLisibilite as number) : undefined,
+    styleVideo: lireStyleVideoId(raw.styleVideo),
+    cardStyle: typeof raw.cardStyle === 'string' && CARD_STYLE_NAMES.includes(raw.cardStyle) ? raw.cardStyle : undefined,
+    cardsTypography: (() => {
+      const c = raw.cardsTypography;
+      if (!c || typeof c !== 'object' || Array.isArray(c)) return undefined;
+      const t = c as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      if (typeof t.font === 'string' && findFont(t.font)) out.font = t.font;
+      if (typeof t.scale === 'number' && Number.isFinite(t.scale)) out.scale = Math.min(3, Math.max(0.3, t.scale));
+      for (const k of ['bold', 'italic', 'underline', 'strike'] as const) if (typeof t[k] === 'boolean') out[k] = t[k];
+      if (t.textCase === 'none' || t.textCase === 'uppercase' || t.textCase === 'lowercase') out.textCase = t.textCase;
+      if (t.align === 'left' || t.align === 'center' || t.align === 'right') out.align = t.align;
+      return Object.keys(out).length ? out : undefined;
+    })(),
     habillageVideoMode: raw.habillageVideoMode === 'degrade' || raw.habillageVideoMode === 'cadre' || raw.habillageVideoMode === 'aucun'
       ? (raw.habillageVideoMode as string)
       : undefined,

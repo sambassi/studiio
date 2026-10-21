@@ -24,7 +24,7 @@
  * AVANT la question, l'export la repose toujours (bloquant), l'aperçu ne fait
  * que l'annoncer. Elle n'est donc jamais mise en cache.
  */
-import { planMontage, dureePlan, profilMontageDuContexte, mesuresSegments, optionsModePassages, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { planMontage, dureePlan, profilMontageDuContexte, mesuresSegments, optionsModePassages, type AnalyseRush, type ProfilMontage } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { rythmeSurFenetre, type RythmeMusique } from '@/lib/creer/rythme-musique';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
@@ -73,6 +73,12 @@ export interface EntreePlanMontage {
    * `null` : aucun.
    */
   rushApres: string | null;
+  /**
+   * Profil de montage IMPOSÉ par un style vidéo (`@/lib/styles-video`).
+   * ABSENT (pas `null`) sans style : la clé du plan et le profil déduit du
+   * thème restent exactement ceux d'avant.
+   */
+  profilImpose?: Exclude<ProfilMontage, 'STANDARD'>;
 }
 
 export function entreePlanMontage<K extends string>(e: {
@@ -91,6 +97,8 @@ export function entreePlanMontage<K extends string>(e: {
   format: string;
   /** #613 — URL du rush du fond en mouvement du CTA (`fondsRushTexte`), s'il y en a un. */
   rushApres?: string | null;
+  /** Profil imposé par le style vidéo choisi ; `null`/absent = déduit du thème (avant). */
+  profil?: Exclude<ProfilMontage, 'STANDARD'> | null;
 }): EntreePlanMontage {
   const ordre: string[] = [...e.ordre];
   const duree = e.duree as unknown as (k: string) => number;
@@ -116,6 +124,7 @@ export function entreePlanMontage<K extends string>(e: {
     voixDeTextes: e.voixDeTextes,
     format: e.format,
     rushApres: e.rushApres ?? null,
+    ...(e.profil ? { profilImpose: e.profil } : {}),
   };
 }
 
@@ -184,10 +193,10 @@ export function preparerPlanMontage(
   let plan: RushSegment[] | null;
   if (reutilise) plan = memo!.plan!.map((s) => ({ ...s }));
   // M3-a PR2 : méthode B (essai admin) = SEULE différence, l'option de sélection.
-  else if (entree.methode === 'B') plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, ...optionsModePassages(analyses) });
+  else if (entree.methode === 'B') plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, ...optionsModePassages(analyses), ...(entree.profilImpose ? { profil: entree.profilImpose } : {}) });
   // #613 : Créer monte dans les PLANS PROPRES (ni coupe de la source ni image figée), unicité au timecode.
-  else plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, rushApres: entree.rushApres });
-  const profil = profilMontageDuContexte(contexteMontage).profil;
+  else plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, rushApres: entree.rushApres, ...(entree.profilImpose ? { profil: entree.profilImpose } : {}) });
+  const profil = entree.profilImpose ?? profilMontageDuContexte(contexteMontage).profil;
   let rapport: ReturnType<typeof rapportPlan> | null = null;
   if (plan) {
     const ms = mesuresSegments(plan, analyses);

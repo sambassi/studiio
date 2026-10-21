@@ -150,6 +150,8 @@ import FreeElementsLayer, { type FreeElement } from '@/components/creer/FreeElem
 import TextAnimationLayer from '@/components/creer/TextAnimationLayer';
 import TransitionMiniPreview from '@/components/creer/TransitionMiniPreview';
 import TextAnimationMiniPreview from '@/components/creer/TextAnimationMiniPreview';
+import GalerieStylesVideo from '@/components/creer/GalerieStylesVideo';
+import { appliquerStyle, lireStyleVideoId, profilDuStyle, retouchesAuStyle, styleVideoParId, type StyleVideoId } from '@/lib/styles-video/styles';
 import SequencePlayback, { type PlaybackRequest } from '@/components/creer/SequencePlayback';
 import { transitionExtract, textAnimationExtract, type PlaybackExtract } from '@/lib/creer/transitionPreview';
 import { INTRO_WINDOW, textAnimationState } from '@/lib/creer/textAnimation';
@@ -4915,9 +4917,44 @@ export default function AssistantWizard() {
    */
   const [cardsTypography, setCardsTypography] = useState<CardsTypography>({});
   const cardsTypographyRendu: CardsTypography = lisible ? { ...cardsTypography, lisible916: true } : cardsTypography;
+  /**
+   * STYLE VIDÉO choisi dans la galerie (`@/lib/styles-video/styles`).
+   * `null` (défaut, et tout projet existant) : aucun réglage posé, profil de
+   * montage déduit du thème — le rendu d'avant, à l'identique.
+   */
+  const [styleVideo, setStyleVideo] = useState<StyleVideoId | null>(null);
   const patchCards = useCallback((patch: Partial<CardsTypography>) => {
     setCardsTypography((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  /** L'état que les styles vidéo savent régler — le même que lisent l'aperçu et l'export. */
+  const etatStylable = {
+    transition, textAnimation, titleStyle, ctaStyle, cardStyle,
+    cardsTypography: cardsTypography as Record<string, unknown>,
+    gradientOpacity, habillageVideoMode,
+  };
+  const styleVideoChoisi = styleVideoParId(styleVideo);
+  /** Réglages retouchés à la main depuis le choix du style (affichés, jamais écrasés). */
+  const retouchesStyle = styleVideoChoisi ? retouchesAuStyle(etatStylable, styleVideoChoisi) : [];
+  /**
+   * Choisir un style = POSER ses réglages, une fois, sur l'état (aperçu =
+   * export). `null` retire le style : les réglages restent, seul le rythme
+   * redevient celui déduit du thème.
+   */
+  const choisirStyleVideo = (id: StyleVideoId | null) => {
+    const style = styleVideoParId(id);
+    setStyleVideo(style ? style.id : null);
+    if (!style) return;
+    const e = appliquerStyle(etatStylable, style);
+    setTransition(e.transition);
+    setTextAnimation(e.textAnimation);
+    setTitleStyle(e.titleStyle as TextStyles['title']);
+    setCtaStyle(e.ctaStyle as TextStyles['cta']);
+    setCardStyle(e.cardStyle);
+    setCardsTypography(e.cardsTypography as CardsTypography);
+    setHabillageVideoMode(e.habillageVideoMode);
+    if (e.gradientOpacity !== gradientOpacity) setColor({ gradientOpacity: e.gradientOpacity });
+  };
 
   /**
    * Prise d'une poignee de coin sur une carte — agrandit son TEXTE.
@@ -7267,6 +7304,11 @@ export default function AssistantWizard() {
     textAnimation,
     habillageVideoMode,
     versionLisibilite,
+    // Style vidéo et réglages des cartes : `undefined` au défaut — un
+    // brouillon sans style se relit exactement comme avant.
+    styleVideo: styleVideo ?? undefined,
+    cardStyle: cardStyle === DEFAULT_CARD_STYLE ? undefined : cardStyle,
+    cardsTypography: Object.keys(cardsTypography).length ? { ...cardsTypography } : undefined,
     introDuration,
     cardsDuration,
     videoDuration,
@@ -7359,6 +7401,7 @@ export default function AssistantWizard() {
     textAnimation,
     habillageVideoMode,
     versionLisibilite,
+    styleVideo, cardStyle, cardsTypography,
     generated, audioKeyframes, musicUrl, musicName, voiceUrl, voiceName, musicVolume,
     sequenceVoices, sequenceVoicesUserEdited, ttsVoiceId,
     voiceVolume, rushUrl, rushName, rushIsClip, rushSecondes, rushSuivants, mediasVideo, lut, scheduledDate,
@@ -7466,6 +7509,11 @@ export default function AssistantWizard() {
     if (draft.transition) setTransition(draft.transition as TransitionStyle);
     if (draft.textAnimation) setTextAnimation(draft.textAnimation as TextAnimation);
     if (draft.habillageVideoMode) setHabillageVideoMode(lireModeHabillage(draft.habillageVideoMode));
+    // Style vidéo : relu tel quel, JAMAIS réappliqué (les retouches de
+    // l'utilisateur, enregistrées avec lui, priment).
+    setStyleVideo(lireStyleVideoId(draft.styleVideo) ?? null);
+    if (draft.cardStyle) setCardStyle(draft.cardStyle);
+    if (draft.cardsTypography) setCardsTypography(draft.cardsTypography as CardsTypography);
     if (draft.couverture) setCouverture(draft.couverture);
     if (draft.reglagesTiktok) setReglagesTiktok(draft.reglagesTiktok);
     setIntroDuration(draft.introDuration!);
@@ -8000,6 +8048,7 @@ export default function AssistantWizard() {
       voixDeTextes: !!(sequenceVoices.titre?.audioUrl || sequenceVoices.cartes?.audioUrl || sequenceVoices.cta?.audioUrl),
       format,
       rushApres: fondsRushProjet?.cta?.url ?? null,
+      profil: profilDuStyle(styleVideo),
     })
     : null;
   const cleApercuPlan = entreeApercuPlan ? clePlanMontage(entreeApercuPlan) : null;
@@ -9708,6 +9757,7 @@ export default function AssistantWizard() {
           voixDeTextes: !!(voixSequencesRendu?.titre || voixSequencesRendu?.cartes || voixSequencesRendu?.cta),
           format,
           rushApres: fondsExport?.cta?.url ?? null,
+          profil: profilDuStyle(styleVideo),
         }), { analysesBrutes, rythme }, apercuPlanDisponible ? planApercuRef.current : null);
         const rythmeVideo = prepPlan.rythmeVideo;
         planMontageRushs = prepPlan.plan;
@@ -10471,6 +10521,10 @@ export default function AssistantWizard() {
         const metadata = {
           type: 'infographic',
           source: 'assistant-simple',
+          // Style vidéo choisi (additif) : absent sans style. Les réglages
+          // qu'il a posés sont écrits à leurs clés habituelles (design.*,
+          // rushSegments) — c'est elles que « Régénérer » relit.
+          ...(styleVideo ? { styleVideo } : {}),
           subtitle: contenu.subtitle,
           theme: theme.id,
           cards: contenu.cards.map((c) => ({
@@ -11805,6 +11859,10 @@ export default function AssistantWizard() {
                     Le ton oriente l&apos;appel à l&apos;action et la variante de contenu retenue.
                   </p>
                 </div>
+
+                {/* Styles vidéo : un clic pose rythme, transition, typo et
+                    habillage ; les réglages ci-dessous restent libres. */}
+                <GalerieStylesVideo choisi={styleVideo} retouches={retouchesStyle} onChoisir={choisirStyleVideo} />
 
                 {/* Accordeon — une seule section ouverte a la fois. Le panneau
                     s'allongeait jusqu'a chasser l'apercu hors de l'ecran ; en

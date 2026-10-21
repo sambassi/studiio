@@ -207,6 +207,18 @@ export function toWizardDraft(post: PostLu): Partial<Draft> {
   // écarte ensuite un nom de transition inconnu.
   const transition = presence(design, 'transition');
   if (typeof transition === 'string') draft.transition = transition;
+  // Style vidéo (additif) et réglages des cartes qu'il a pu poser :
+  // `sanitizeDraft` écarte toute valeur inconnue. Absents : rien ne change.
+  const styleVideo = presence(meta, 'styleVideo');
+  if (typeof styleVideo === 'string') draft.styleVideo = styleVideo;
+  const cardStyle = presence(design, 'cardStyle');
+  if (typeof cardStyle === 'string') draft.cardStyle = cardStyle;
+  const cardsTextStyle = presence(design, 'cardsTextStyle');
+  if (estObjet(cardsTextStyle)) {
+    // `lisible916` est dérivé de la version de lisibilité, jamais un réglage.
+    const { lisible916: _derive, ...reglages } = cardsTextStyle as Record<string, unknown>;
+    if (Object.keys(reglages).length) draft.cardsTypography = reglages;
+  }
 
   const positions = presence(design, 'positions');
   if (estObjet(positions)) {

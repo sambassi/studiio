@@ -21,7 +21,12 @@ const SORTIE = process.env.DEMO_SORTIE || path.join(DOSSIER_RESULTATS, 'demos');
 const FORMAT = (process.env.DEMO_FORMAT || '9:16') as '9:16' | '1:1' | '16:9';
 /** `DEMO_CARTES=longues` : 5 cartes aux titres longs (lisibilité 16:9 / 1:1), fichiers `…-longues.*`. */
 const LONGUES = process.env.DEMO_CARTES === 'longues';
-const SUFFIXE = (FORMAT === '9:16' ? '' : `-${FORMAT.replace(':', 'x')}`) + (LONGUES ? '-longues' : '');
+/**
+ * `DEMO_STYLE=minimaliste|sport|cinematique` : le style vidéo est CHOISI dans la galerie de
+ * l'étape Style (un clic, comme l'utilisateur) après la restauration ; fichiers `…-style-<id>.*`.
+ */
+const STYLE = process.env.DEMO_STYLE || '';
+const SUFFIXE = (FORMAT === '9:16' ? '' : `-${FORMAT.replace(':', 'x')}`) + (LONGUES ? '-longues' : '') + (STYLE ? `-style-${STYLE}` : '');
 
 const CARTES = [
   { title: 'CARDIO COMPLET', value: '3-en-1', description: 'Danser fait travailler le cœur, le souffle et l’endurance en même temps.', icon: 'HeartPulse' },
@@ -136,6 +141,18 @@ test('démo Créer « LE SPORT LE PLUS COMPLET » → webm réel', async ({ page
   await expect(page.getByText(/Brouillon restauré/).first()).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(3000);
   await banc.capture(page, 'demo-creer-1-restaure', { fullPage: true });
+
+  if (STYLE) {
+    await page.getByRole('button', { name: 'Aller à l’étape Style' }).first().click();
+    await page.waitForTimeout(800);
+    const carte = page.locator(`[data-style-video="${STYLE}"] button[aria-pressed]`).first();
+    await carte.click();
+    await expect(carte).toHaveAttribute('aria-pressed', 'true');
+    await page.waitForTimeout(1500);
+    await banc.capture(page, `demo-creer-1b-style-${STYLE}`, { fullPage: true });
+    await page.getByRole('button', { name: 'Aller à l’étape Contenu' }).first().click();
+    await page.waitForTimeout(800);
+  }
 
   // 4) Envoi → brouillon → composition réelle.
   await allerA(page, 'Envoi');
