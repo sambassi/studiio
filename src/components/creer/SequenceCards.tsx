@@ -10,6 +10,7 @@ import { CardIcon } from '@/components/ui/CardIcon';
 import { cardRatios, CARDS_FRAME, CARD_RATIO_LANDSCAPE } from '@/lib/creer/designSpec';
 import { ajusterBadge, badgeValide, taillesBadge } from '@/lib/creer/surimpressions-mise-en-page';
 import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
+import { taillesCartesLisibles } from '@/lib/creer/cartes-lisibles-formats';
 import { estVoile, haloTexteCss, CONTOUR_TEXTE_ALPHA, couleurValeurLisible } from '@/lib/creer/contraste';
 
 /**
@@ -200,6 +201,17 @@ export interface SequenceCardsProps {
    * Absent : rendu d'avant.
    */
   fondsContraste?: ReadonlyArray<string | null | undefined> | null;
+  /**
+   * Hauteur de la vidéo (px, même repère que `containerWidth`) : active les
+   * tailles lisibles des cartes en flux hors 9:16 (`taillesCartesLisibles` :
+   * texte ≈ 4 % de la hauteur en 16:9, ≈ 3,4 % en 1:1, sans jamais sortir
+   * de la carte ni du cadre). Posé par
+   * Créer SEULEMENT, pour les projets aux défauts lisibles (v2) ; la
+   * composition Remotion (Autopilote) ne le passe jamais.
+   *
+   * ⚠️ ABSENT = LE RENDU D'AVANT, au pixel près.
+   */
+  plancherHauteurVideo?: number | null;
 }
 
 export default function SequenceCards({
@@ -216,13 +228,26 @@ export default function SequenceCards({
   groupeDe,
   zoneSure916 = false,
   fondsContraste = null,
+  plancherHauteurVideo = null,
 }: SequenceCardsProps) {
   const vw = containerWidth;
   // 9:16 en flux : planchers de LISIBILITE sur téléphone (`LISIBILITE_916`).
   // Les ratios d'origine (≈ 29 px sur 1080) se lisaient mal une fois la vidéo
   // réduite à la largeur d'un écran. Paysage, carré et mode libre : inchangés.
   const lisible = zoneSure916 && !landscape && !cardBoxes && !!typography?.lisible916;
-  const CR = lisible ? ratiosLisibles916(cardRatios(landscape)) : cardRatios(landscape);
+  // 16:9 et 1:1 en flux (Créer v2) : tailles lisibles proportionnées à la HAUTEUR, ajustées pour tenir
+  // dans la carte et le cadre (`taillesCartesLisibles`). Badge, mode libre et 9:16 : inchangés. L'échelle
+  // choisie (`typography.scale`) reste un facteur au-dessus.
+  const ajuste = !lisible && !zoneSure916 && !cardBoxes && fond == null && !!plancherHauteurVideo && plancherHauteurVideo > 0
+    ? taillesCartesLisibles({
+      paysage: landscape, largeur: vw, hauteur: plancherHauteurVideo!, cartes: cards,
+      police: typography?.font ?? 'Inter', casse: typography?.textCase,
+    })
+    : null;
+  const empile = !!ajuste?.empile;
+  const CR = lisible ? ratiosLisibles916(cardRatios(landscape))
+    : ajuste ? { ...cardRatios(landscape), ...ajuste.ratios }
+    : cardRatios(landscape);
   const it = interaction;
   const uiPx = it?.uiPx ?? ((n: number) => n);
   const editable = !!it?.onCardDragStart;
@@ -324,7 +349,10 @@ export default function SequenceCards({
         // ellipse.
         style={{
           display: 'flex',
-          ...(landscape && !cardBoxes
+          ...(empile
+            // Cartes lisibles 16:9 : icône à gauche, titre puis valeur empilés à sa droite.
+            ? { flexDirection: 'row' as const, alignItems: 'center', textAlign: 'left' as const }
+            : landscape && !cardBoxes
             ? {
                 flexDirection: 'column' as const,
                 alignItems: 'center',
@@ -421,11 +449,17 @@ export default function SequenceCards({
           color="#FFFFFF"
           className=""
         />
+{empile ? (
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: '1 1 0%' }}>
         <span
           style={{
             // `truncate` de Tailwind = ces trois proprietes. 9:16 lisible :
             // retour à la ligne par MOTS, jamais d'ellipse ni de débordement.
-            ...(lisible
+            ...(ajuste
+              // Cartes lisibles 16:9 / 1:1 : repli par MOTS, un mot n'est jamais coupé (la taille a été
+              // choisie pour que le plus long tienne).
+              ? { whiteSpace: 'normal' as const, overflowWrap: 'normal' as const, wordBreak: 'keep-all' as const, minWidth: 0 }
+              : lisible
               ? { whiteSpace: 'normal' as const, overflowWrap: 'break-word' as const, minWidth: 0 }
               : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }),
             // `?? 600` : la graisse d'aujourd'hui tant que rien n'est
@@ -433,9 +467,9 @@ export default function SequenceCards({
             fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
             color: '#FFFFFF',
             ...contourDegrade,
-            ...(landscape && !cardBoxes ? { maxWidth: '100%' } : { flex: '1 1 0%' }),
+            ...(empile ? { display: 'block', maxWidth: '100%' } : landscape && !cardBoxes ? { maxWidth: '100%' } : { flex: '1 1 0%' }),
             fontSize: vw * CR.text * echelle,
-            lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
+            lineHeight: ajuste ? ajuste.interligne : landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
             ...styleTexte(vw * CR.text * echelle),
           }}
         >
@@ -453,9 +487,9 @@ export default function SequenceCards({
           <span data-card-value
             style={{
               fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400),
-              ...(landscape && !cardBoxes ? null : { flexShrink: 0 }),
+              ...(empile ? { display: 'block' } : landscape && !cardBoxes ? null : { flexShrink: 0 }),
               fontSize: vw * CR.value * echelle,
-              lineHeight: landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
+              lineHeight: ajuste ? ajuste.interligne : landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
               color: couleurValeur,
               ...contourDegrade,
               ...styleTexte(vw * CR.value * echelle),
@@ -463,6 +497,58 @@ export default function SequenceCards({
           >
             {c.value}
           </span>
+        )}
+          </div>
+        ) : (
+          <>
+        <span
+          style={{
+            // `truncate` de Tailwind = ces trois proprietes. 9:16 lisible :
+            // retour à la ligne par MOTS, jamais d'ellipse ni de débordement.
+            ...(ajuste
+              // Cartes lisibles 16:9 / 1:1 : repli par MOTS, un mot n'est jamais coupé (la taille a été
+              // choisie pour que le plus long tienne).
+              ? { whiteSpace: 'normal' as const, overflowWrap: 'normal' as const, wordBreak: 'keep-all' as const, minWidth: 0 }
+              : lisible
+              ? { whiteSpace: 'normal' as const, overflowWrap: 'break-word' as const, minWidth: 0 }
+              : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }),
+            // `?? 600` : la graisse d'aujourd'hui tant que rien n'est
+            // choisi. `bold: false` reste un reglage, pas une absence.
+            fontWeight: typography?.bold === undefined ? 600 : (typography.bold ? 900 : 400),
+            color: '#FFFFFF',
+            ...contourDegrade,
+            ...(empile ? { display: 'block', maxWidth: '100%' } : landscape && !cardBoxes ? { maxWidth: '100%' } : { flex: '1 1 0%' }),
+            fontSize: vw * CR.text * echelle,
+            lineHeight: ajuste ? ajuste.interligne : landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
+            ...styleTexte(vw * CR.text * echelle),
+          }}
+        >
+          {c.title}
+          {/* Cartes SUR les rushes : la description COURTE en seconde ligne.
+              Masquée (aperçu, rendu d'avant) ; seule la capture des cartes
+              posées sur un rush l'affiche (`capture-etapes-cartes.ts`). */}
+          {lisible && c.description && c.description.trim().length <= DESCRIPTION_COURTE_MAX && (
+            <span data-card-description style={{ display: 'none', fontWeight: 400, fontSize: vw * CR.text * echelle * 0.72, lineHeight: 1.2, opacity: 0.9, marginTop: vw * 0.004 }}>
+              {c.description.trim()}
+            </span>
+          )}
+        </span>
+        {c.value && (
+          <span data-card-value
+            style={{
+              fontWeight: typography?.bold === undefined ? 700 : (typography.bold ? 900 : 400),
+              ...(empile ? { display: 'block' } : landscape && !cardBoxes ? null : { flexShrink: 0 }),
+              fontSize: vw * CR.value * echelle,
+              lineHeight: ajuste ? ajuste.interligne : landscape ? CARD_RATIO_LANDSCAPE.line : undefined,
+              color: couleurValeur,
+              ...contourDegrade,
+              ...styleTexte(vw * CR.value * echelle),
+            }}
+          >
+            {c.value}
+          </span>
+        )}
+          </>
         )}
         </>
         )}

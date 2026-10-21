@@ -19,7 +19,9 @@ import { ouvrirCreer, allerA, choisirFormat, sonder } from './parcours';
 const SORTIE = process.env.DEMO_SORTIE || path.join(DOSSIER_RESULTATS, 'demos');
 /** Format du projet : 9:16 (défaut, fichiers `creer-sport.*`), 1:1 ou 16:9 (`creer-sport-1x1.*`, `creer-sport-16x9.*`). */
 const FORMAT = (process.env.DEMO_FORMAT || '9:16') as '9:16' | '1:1' | '16:9';
-const SUFFIXE = FORMAT === '9:16' ? '' : `-${FORMAT.replace(':', 'x')}`;
+/** `DEMO_CARTES=longues` : 5 cartes aux titres longs (lisibilité 16:9 / 1:1), fichiers `…-longues.*`. */
+const LONGUES = process.env.DEMO_CARTES === 'longues';
+const SUFFIXE = (FORMAT === '9:16' ? '' : `-${FORMAT.replace(':', 'x')}`) + (LONGUES ? '-longues' : '');
 
 const CARTES = [
   { title: 'CARDIO COMPLET', value: '3-en-1', description: 'Danser fait travailler le cœur, le souffle et l’endurance en même temps.', icon: 'HeartPulse' },
@@ -27,6 +29,13 @@ const CARTES = [
   { title: 'ANTI-ÂGE', value: '-10 ans', description: 'Coordination et mémoire entretenues à chaque cours.', icon: 'Sparkles' },
   { title: '300+ MUSCLES', value: '300+', description: 'Tout le corps est sollicité, du gainage aux mollets.', icon: 'Dumbbell' },
   { title: 'RISQUE RÉDUIT', value: '-76 %', description: 'Moins de risques cardio-vasculaires avec une pratique régulière.', icon: 'ShieldCheck' },
+];
+const CARTES_LONGUES = [
+  { title: 'MÉLATONINE NATURELLE', value: '+30 %', description: 'Un sommeil plus profond.', icon: 'Moon' },
+  { title: 'RENFORCEMENT MUSCULAIRE', value: '300+', description: 'Tout le corps travaille.', icon: 'Dumbbell' },
+  { title: 'ENDURANCE CARDIOVASCULAIRE', value: '-76 %', description: 'Le cœur se renforce.', icon: 'HeartPulse' },
+  { title: 'CONCENTRATION AMÉLIORÉE', value: '+2 %/an', description: 'La mémoire est entretenue.', icon: 'Brain' },
+  { title: 'IMMUNITÉ RENFORCÉE', value: '-10 ans', description: 'Moins de fatigue.', icon: 'ShieldCheck' },
 ];
 const VOIX: Record<string, string> = {
   titre: 'Le sport le plus complet ? La danse.',
@@ -79,7 +88,7 @@ test('démo Créer « LE SPORT LE PLUS COMPLET » → webm réel', async ({ page
   d.generated = {
     title: 'LE SPORT LE PLUS COMPLET',
     subtitle: 'Danser active plus de muscles que la plupart des sports',
-    cards: CARTES.map((c, i) => ({ id: ids[i] ?? `carte-demo-${i + 1}`, ...c })),
+    cards: (LONGUES ? CARTES_LONGUES : CARTES).map((c, i) => ({ id: ids[i] ?? `carte-demo-${i + 1}`, ...c })),
     cta: 'JE ME LANCE',
     ctaSub: 'RÉSERVE TON COURS D’ESSAI',
   };

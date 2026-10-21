@@ -1922,6 +1922,11 @@ function PlateContent({
               // projets aux défauts lisibles seulement (`lisible916`, v2) : un
               // ancien post réexporté garde ses couleurs.
               fondsContraste={cardsTypography?.lisible916 ? [gradStart ?? accent, gradEnd] : null}
+              // 16:9 / 1:1, projets v2 : plancher de lisibilité proportionné à la hauteur vidéo
+              // (`LISIBILITE_HAUTEUR`). Créer seulement — Remotion ne le passe pas.
+              plancherHauteurVideo={cardsTypography?.lisible916 && format !== '9:16' && format in VIDEO_SIZE
+                ? vw * (VIDEO_SIZE[format as keyof typeof VIDEO_SIZE].h / VIDEO_SIZE[format as keyof typeof VIDEO_SIZE].w)
+                : null}
               interaction={{
                 onCardDragStart,
                 onDragMove,
@@ -2170,23 +2175,38 @@ type PlateContentProps = Parameters<typeof PlateContent>[0];
 function FondRushTexte({ fond, gradStart, gradEnd, gradientOpacity }: {
   fond: FondRush; gradStart: string; gradEnd: string; gradientOpacity: number;
 }) {
+  // Passages ENCHAÎNÉS (`fond.segments`, ≥ 2) : joués l'un après l'autre, comme le compositeur ;
+  // la chaîne n'est rejouée qu'une fois toute la matière montrée. Sinon : un seul passage (d'avant).
+  const segments = fond.segments && fond.segments.length >= 2 ? fond.segments : null;
+  const cleChaine = segments ? segments.map((x) => `${x.url}@${x.depuis}-${x.jusqua}`).join('|') : '';
+  const [rang, setRang] = useState(0);
+  useEffect(() => { setRang(0); }, [cleChaine]);
+  const courant = segments ? segments[rang % segments.length] : null;
+  const url = courant?.url ?? fond.url;
+  const depuis = courant?.depuis ?? fond.depuis;
+  const jusqua = courant?.jusqua ?? fond.jusqua;
+  const suivant = () => setRang((r) => r + 1);
   return (
     <>
       <video
-        key={`${fond.url}#${fond.depuis}`}
-        src={`${fond.url}#t=${fond.depuis}`}
+        key={`${url}#${depuis}#${segments ? rang : ''}`}
+        src={`${url}#t=${depuis}`}
         muted
         autoPlay
         // #613 : plage propre connue → la boucle reste DANS [depuis, jusqua] (jamais l'image figée ni
         // le reste d'un autre plan du début du rush), comme le compositeur.
-        loop={fond.jusqua === undefined}
-        onTimeUpdate={fond.jusqua === undefined ? undefined : (e) => {
+        loop={jusqua === undefined}
+        onTimeUpdate={jusqua === undefined ? undefined : (e) => {
           const v = e.currentTarget;
-          if (v.currentTime >= (fond.jusqua as number) - 0.05) v.currentTime = fond.depuis;
+          if (v.currentTime >= (jusqua as number) - 0.05) {
+            if (segments) suivant();
+            else v.currentTime = depuis;
+          }
         }}
-        onEnded={fond.jusqua === undefined ? undefined : (e) => {
+        onEnded={jusqua === undefined ? undefined : (e) => {
+          if (segments) { suivant(); return; }
           const v = e.currentTarget;
-          v.currentTime = fond.depuis;
+          v.currentTime = depuis;
           void v.play().catch(() => {});
         }}
         playsInline
@@ -2194,7 +2214,7 @@ function FondRushTexte({ fond, gradStart, gradEnd, gradientOpacity }: {
         // Recadrage du rush : le style de l'aperçu de la séquence Vidéo
         // (`styleRecadrageRush`), même rectangle que le compositeur. La LUT
         // n'est pas simulée dans l'aperçu (comme pour la séquence Vidéo).
-        style={{ ...(styleRecadrageRush(fond.recadrage) as React.CSSProperties), pointerEvents: 'none' }}
+        style={{ ...(styleRecadrageRush(courant ? courant.recadrage ?? fond.recadrage : fond.recadrage) as React.CSSProperties), pointerEvents: 'none' }}
       />
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`, pointerEvents: 'none' }} />
       <div aria-hidden style={{ position: 'absolute', inset: 0, background: backdropVeilCSS(gradStart, gradEnd, gradientOpacity), pointerEvents: 'none' }} />
@@ -7720,11 +7740,17 @@ export default function AssistantWizard() {
       lisible, affiche: !!posterUrl, fondsSequence: seqBackgrounds,
       rushs: rushsDeFond,
       dureeCta: ctaDuration,
+      // Titre plus long que son 1er plan propre : les passages des autres rushes s'enchaînent (aperçu = export).
+      dureeIntro: introDuration,
       plansPropres: propres,
     });
     // Recadrage de chaque rush de fond : celui du compositeur (aperçu = export).
+    const recadrageDe = (url: string) => recadragePourRushPeint(url, { rushTransforms, rushTransform, videoUrl: rushUrl }) ?? null;
     const avecRecadrage = (f: FondRush | null): FondRush | null => (f
-      ? { ...f, recadrage: recadragePourRushPeint(f.url, { rushTransforms, rushTransform, videoUrl: rushUrl }) ?? null }
+      ? {
+        ...f, recadrage: recadrageDe(f.url),
+        ...(f.segments ? { segments: f.segments.map((x) => ({ ...x, recadrage: recadrageDe(x.url) })) } : {}),
+      }
       : null);
     return bruts ? { intro: avecRecadrage(bruts.intro), cta: avecRecadrage(bruts.cta) } : null;
   };
@@ -7732,7 +7758,9 @@ export default function AssistantWizard() {
   /** URLs des rushes servis en fond (Titre / CTA) à mesurer — sans mesure, la règle d'avant. */
   const urlsFondsAMesurer = (() => {
     const f = fondsAvecPropres({});
-    return Array.from(new Set([f?.intro?.url, f?.cta?.url].filter((u): u is string => !!u && /^(https?:\/\/|\/)/.test(u))));
+    // Plusieurs rushes : TOUS sont mesurés — leurs plans propres peuvent s'enchaîner sous le Titre / CTA.
+    const tous = f && rushsDeFond.length >= 2 ? rushsDeFond.map((r) => r.url) : [];
+    return Array.from(new Set([f?.intro?.url, f?.cta?.url, ...tous].filter((u): u is string => !!u && /^(https?:\/\/|\/)/.test(u))));
   })();
   /** Mesure (mémoïsée) les rushes de fond ; renvoie TOUTES les plages connues. */
   const mesurerPropresFonds = async (): Promise<Record<string, Array<[number, number]>>> => {
@@ -9919,9 +9947,13 @@ export default function AssistantWizard() {
             plansPropres: montageInfos ? new Map(montageInfos.analyses.map((a) => [a.url, plansPropres(a)] as const)) : null,
             autresUsages: (['intro', 'cta'] as const).flatMap((k) => {
               const f = fondsMontes?.[k];
-              return f && duree(k) > 0 ? [{ url: f.url, debut: 0, fin: Math.min(duree(k), (f.jusqua ?? Infinity) - f.depuis), depuis: f.depuis }] : [];
+              if (!f || !(duree(k) > 0)) return [];
+              // Passages enchaînés : chacun est une matière déjà montrée.
+              if (f.segments?.length) return f.segments.map((x) => ({ url: x.url, debut: 0, fin: x.jusqua - x.depuis, depuis: x.depuis }));
+              return [{ url: f.url, debut: 0, fin: Math.min(duree(k), (f.jusqua ?? Infinity) - f.depuis), depuis: f.depuis }];
             }),
-            rushAvant: avantCartes === 'intro' && duree('intro') > 0 ? fondsMontes?.intro?.url ?? null : null,
+            // Le rush montré à la FIN du Titre (dernier passage enchaîné) ne continue pas sous la 1re carte.
+            rushAvant: avantCartes === 'intro' && duree('intro') > 0 ? fondsMontes?.intro?.segments?.at(-1)?.url ?? fondsMontes?.intro?.url ?? null : null,
           })
           : null;
         if (planSousCartes) console.log('[Narration] plan sous les cartes :', planSousCartes.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | '));

@@ -251,10 +251,12 @@ describe('R5 — badges : plancher pris en compte par la géométrie, coupe de d
 describe('R4 — aperçu du fond en mouvement : recadrage du compositeur', () => {
   it('le fond porte le recadrage résolu par recadragePourRushPeint, appliqué par styleRecadrageRush', () => {
     const src = readFileSync(resolve(process.cwd(), 'src/app/dashboard/creer/AssistantWizard.tsx'), 'utf8');
-    expect(src).toMatch(/recadrage: recadragePourRushPeint\(f\.url, \{ rushTransforms, rushTransform, videoUrl: rushUrl \}\)/);
-    expect(src).toMatch(/styleRecadrageRush\(fond\.recadrage\)/);
+    // Passages enchaînés : le recadrage est résolu PAR RUSH (chaque segment), même fonction.
+    expect(src).toMatch(/const recadrageDe = \(url: string\) => recadragePourRushPeint\(url, \{ rushTransforms, rushTransform, videoUrl: rushUrl \}\)/);
+    expect(src).toMatch(/recadrage: recadrageDe\(f\.url\)/);
+    expect(src).toMatch(/styleRecadrageRush\(courant \? courant\.recadrage \?\? fond\.recadrage : fond\.recadrage\)/);
     const comp = readFileSync(resolve(process.cwd(), 'src/lib/video-composer.ts'), 'utf8');
-    expect(comp).toMatch(/recadragePourRushPeint\(f\.url, \{ rushTransforms: options\.rushTransforms, rushTransform: options\.rushTransform, videoUrl: options\.videoUrl \}\)/);
+    expect(comp).toMatch(/recadragePourRushPeint\(urlDuLecteur\.get\(el\) \?\? f\.url, \{ rushTransforms: options\.rushTransforms, rushTransform: options\.rushTransform, videoUrl: options\.videoUrl \}\)/);
   });
 });
 
