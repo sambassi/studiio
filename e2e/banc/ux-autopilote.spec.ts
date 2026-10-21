@@ -133,7 +133,7 @@ async function mesurerZones(page: Page, zones: DefZone[]): Promise<{ page: { scr
           debordants.push(`${el.tagName.toLowerCase()}.${(el.className && typeof el.className === 'string' ? el.className : '').split(' ').slice(0, 3).join('.')} (${el.scrollWidth}>${el.clientWidth})`);
         }
         const rr = el.getBoundingClientRect();
-        const dansDefilant = el.parentElement?.closest('*') && (() => { let p = el.parentElement; while (p && p !== zone) { if (/auto|scroll|hidden|clip/.test(getComputedStyle(p).overflowX)) return true; p = p.parentElement; } return false; })();
+        const dansDefilant = el.parentElement?.closest('*') && (() => { let p: HTMLElement | null = el.parentElement; while (p && p !== zone) { if (/auto|scroll|hidden|clip/.test(getComputedStyle(p).overflowX)) return true; p = p.parentElement; } return false; })();
         if (!dansDefilant && (rr.right > window.innerWidth + 1 || rr.left < -1)) horsEcran += 1;
       }
       const icones = Array.from(zone.querySelectorAll('svg')).filter(visible);
