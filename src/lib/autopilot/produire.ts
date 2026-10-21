@@ -35,7 +35,7 @@ import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
 import { avatarActifConfig, mediasDesSources, sourcesEffectives, sujetsCourants, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
-import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
+import { planMultiSources, cibleSequenceSansAvatar, matiereSansAvatar } from '@/lib/autopilot/plan-multi-sources';
 import { planMontageAvatar, pertinencesAutopilote, contexteMontageAutopilote, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { segmentsDuPlan } from '@/lib/autopilot/plan-complet';
 import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
@@ -312,8 +312,24 @@ export function avertissementsMontage(m: {
   musiqueIntrouvable: boolean; audioSilencieux: boolean; voixRepliEdge: boolean; montageSimple: boolean;
   /** Une voix PERSONNELLE (clonée) était configurée — sinon on ne parle pas de « voix clonée ». */
   voixPersonnelle?: boolean;
+  /**
+   * Rush du créneau lâché (expiré, introuvable) : `remplace` = un autre rush
+   * de la banque a pris sa place, `sans` = aucun. Absent : rien à dire.
+   */
+  rushIndisponible?: 'remplace' | 'sans' | null;
+  /** Médias stock RETENUS lâchés (introuvables, ou hôte refusé) — `stockIgnores`. */
+  stockIgnores?: number;
 }): string[] {
   const out: string[] = [];
+  // Un média CHOISI par l'utilisateur n'est jamais écarté en silence : la clé
+  // de métadonnées (`rushIgnore`, `stockIgnores`) n'est lue par aucun écran.
+  if (m.rushIndisponible === 'remplace') out.push('Un de vos rushes était expiré ou introuvable : un autre de vos rushes l’a remplacé dans cette vidéo.');
+  if (m.rushIndisponible === 'sans') out.push('Un de vos rushes était expiré ou introuvable : la vidéo est sortie sans lui. Réimportez-le dans l’Autopilote.');
+  if (m.stockIgnores && m.stockIgnores > 0) {
+    out.push(m.stockIgnores === 1
+      ? 'Un média stock retenu était introuvable : la vidéo a été montée sans lui.'
+      : `${m.stockIgnores} médias stock retenus étaient introuvables : la vidéo a été montée sans eux.`);
+  }
   if (m.musiqueIntrouvable) out.push('Musique introuvable dans le stockage : la vidéo est sortie sans musique. Rechoisissez-la dans l’Autopilote.');
   if (m.voixRepliEdge) {
     out.push(m.voixPersonnelle
@@ -794,10 +810,13 @@ export async function produireUnMontage(input: {
         : secondesVoix('video');
       // Même règle que le smart montage : ~30 s, la voix couverte, jamais plus
       // que la matière (une durée illisible compte pour un plan de coupe).
-      const dispo = [...rushes, ...stockVideos].reduce((t, x) => t + (x.secondes ?? BROLL_VIDEO_S), 0) + photosOk.length * BROLL_MAX_S;
       // Durée cible du brief : elle remplace les ~30 s par défaut ; la voix
       // RÉELLE reste couverte (jamais accélérée), la matière reste le plafond.
-      const cible = Math.min(dispo, Math.max(cibleVideoDuBrief(postUtilise.brief, designBase, enSurimpression) ?? dureeCibleMontage(dispo), Math.ceil(voixAPorter)));
+      // LA MÊME règle que l'aperçu (`planCompletAutopilote`).
+      const cible = cibleSequenceSansAvatar({
+        brief: postUtilise.brief, design: designBase, enSurimpression, voixAPorter,
+        matiere: matiereSansAvatar({ rushes, stockVideos, photos: photosOk }),
+      });
       const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl, userId) : null;
       const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
       rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
@@ -1191,6 +1210,8 @@ export async function produireUnMontage(input: {
         musiqueIntrouvable, audioSilencieux: !!audio?.silencieux,
         voixRepliEdge: Object.values(voices).some((v) => v?.repli === 'edge'),
         montageSimple: !!montageSimpleMotif, voixPersonnelle: !!(config.voiceId ?? '').trim(),
+        rushIndisponible: rushMort || rushCreneauIndisponible ? (rushUrl ? 'remplace' : 'sans') : null,
+        stockIgnores: multiSources ? mediasIgnores.length : 0,
       });
       return a.length ? { avertissements: a } : null;
     })(),
@@ -1280,6 +1301,8 @@ export async function produireUnMontage(input: {
       voixRepliEdge: Object.values(voices).some((v) => v?.repli === 'edge'),
       montageSimple: !!montageSimpleMotif,
       voixPersonnelle: !!(config.voiceId ?? '').trim(),
+      rushIndisponible: rushMort || rushCreneauIndisponible ? (rushUrl ? 'remplace' : 'sans') : null,
+      stockIgnores: multiSources ? mediasIgnores.length : 0,
     }),
   };
 }

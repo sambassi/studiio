@@ -127,11 +127,9 @@ describe('C-MEDIA-MANUAL — Autopilote : rush mort jamais remplacé en silence'
     expect(meta.rushUrls).toEqual([R1]);
   });
 
-  // BUG RÉEL : `rushIgnore` est écrit en metadata mais AUCUN écran ne le lit
-  // (grep src/app, src/components : 0 occurrence) et `avertissementsMontage`
-  // ne le reprend pas ; le Calendrier n'affiche que `metadata.avertissements`.
-  // L'utilisateur ne voit donc pas que son rush a été écarté.
-  it.fails('rush expiré → un avertissement AFFICHÉ par le Calendrier (`metadata.avertissements`) le dit', async () => {
+  // CORRIGÉ : `rushIgnore` n'est lu par aucun écran ; le Calendrier n'affiche
+  // que `metadata.avertissements` — `avertissementsMontage` le reprend désormais.
+  it('rush expiré → un avertissement AFFICHÉ par le Calendrier (`metadata.avertissements`) le dit', async () => {
     rushPresent = false;
     const { meta } = await produire();
     expect(Array.isArray(meta.avertissements)).toBe(true);

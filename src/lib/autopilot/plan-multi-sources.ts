@@ -32,7 +32,8 @@
  * Déterministe (aucun hasard, aucune horloge), explicable (`explications`,
  * `raison` par plan), sans réseau.
  */
-import { planMontage, type AnalyseRush, type OptionsMontage } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, type AnalyseRush, type OptionsMontage } from '@/lib/creer/smart-montage';
+import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import type { RushSegment, MouvementImage, SourceSegment } from '@/lib/creer/multi-rush';
 import type { CreneauGabarit } from '@/lib/autopilot/sources';
 import { accordAvecTexte, type NiveauPertinenceMedia } from '@/lib/autopilot/pertinence-medias';
@@ -116,6 +117,37 @@ export const MOUVEMENTS_PHOTO: readonly MouvementImage[] = ['zoomIn', 'panG', 'z
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const borne = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 const EPS = 0.05;
+
+/**
+ * LA MATIÈRE d'un montage SANS avatar (s) : chaque vidéo pour sa durée (un
+ * plan de coupe si elle est inconnue), chaque photo pour un plan au plus. Pur.
+ */
+export function matiereSansAvatar(e: Pick<EntreePlanMultiSources, 'rushes' | 'stockVideos' | 'photos'>): number {
+  const videos = [...(e.rushes ?? []), ...(e.stockVideos ?? [])];
+  return videos.reduce((t, x) => t + (x?.secondes ?? BROLL_VIDEO_S), 0)
+    + (e.photos ?? []).length * BROLL_MAX_S;
+}
+
+/**
+ * LA DURÉE DE LA SÉQUENCE « VIDÉO » d'un montage multi-sources SANS avatar —
+ * UNE règle pour le moteur (`produire.ts`) ET l'aperçu (`planCompletAutopilote`) :
+ * la durée cible du brief (moins titre, cartes et CTA hors surimpression),
+ * sinon ≈ 30 s ; la voix couverte ; jamais plus que la matière. Pur.
+ */
+export function cibleSequenceSansAvatar(e: {
+  brief: { duree?: number } | null | undefined;
+  design: { introDuration?: number; cardsDuration?: number; ctaDuration?: number };
+  enSurimpression: boolean;
+  /** Voix que la séquence doit porter (s) ; 0 si inconnue. */
+  voixAPorter: number;
+  /** `matiereSansAvatar`. */
+  matiere: number;
+}): number {
+  return Math.min(e.matiere, Math.max(
+    cibleVideoDuBrief(e.brief, e.design, e.enSurimpression) ?? dureeCibleMontage(e.matiere),
+    Math.ceil(e.voixAPorter),
+  ));
+}
 
 /** Un média de plan de coupe disponible (un extrait de rush, une vidéo, une photo). */
 interface ItemBroll {

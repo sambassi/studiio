@@ -177,7 +177,8 @@ export default function PlanAvantGeneration({
    */
   const ctaEnSurimpression = avecAvatar && !!complet?.segments.some((x) => x.genre !== 'avatar');
   // Sans avatar, un créneau = un plan : le minutage par créneau reste lisible.
-  const minutage = avecAvatar ? [] : minutagePlan(lignes.length, reference);
+  // Sur la durée du plan RENDU (titre/cartes/CTA déduits, matière en plafond), pas sur la cible brute.
+  const minutage = avecAvatar ? [] : minutagePlan(lignes.length, complet && complet.duree > 0 ? complet.duree : reference);
   const planifiee = complet && complet.duree > 0 ? complet.duree : (minutage.length ? minutage[minutage.length - 1].fin : 0);
 
   const maj = (f: (l: CreneauGabarit[]) => CreneauGabarit[]) => onChange(f(lignes.map((l) => ({ ...l }))).slice(0, MAX_CRENEAUX));
