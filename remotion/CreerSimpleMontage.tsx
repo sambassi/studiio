@@ -16,7 +16,7 @@ import SequenceTitle, { titleFrameStyle } from '../src/components/creer/Sequence
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
 import TextAnimationLayer from '../src/components/creer/TextAnimationLayer';
-import { MusiqueEnBoucle, VoixDeSequence, mixAt, facteurMusiqueJumeau, type FenetreJumeau } from './audio';
+import { MusiqueEnBoucle, VoixDeSequence, mixAt, facteurMusiqueJumeau, fonduFinalMusique, REMONTEE_CLOTURE_S, type FenetreJumeau } from './audio';
 import type { AudioKeyframe } from '../src/lib/creer/audioDucking';
 import type { TextCase, TextAlign } from '../src/lib/creer/textFormat';
 import {
@@ -261,6 +261,12 @@ export interface CreerSimpleMontageProps {
    * l'identique.
    */
   voixJumeau?: boolean;
+  /**
+   * #613 — fin de la DERNIÈRE parole du jumeau (s, depuis le début de la
+   * séquence Vidéo) quand une clôture suit : la musique n'est atténuée que
+   * jusque-là, puis remonte et s'éteint en fondu. Absent : comportement A2.
+   */
+  finVoixJumeauS?: number;
 }
 
 /** Séquences du montage, à partir des props. */
@@ -286,7 +292,7 @@ export function planFromProps(props: CreerSimpleMontageProps): PlannedSequence[]
  * NOMINALE. `null` sans `voixJumeau` : aucun ducking.
  */
 export function fenetreVoixJumeau(
-  props: Pick<CreerSimpleMontageProps, 'voixJumeau' | 'videoUrl'>,
+  props: Pick<CreerSimpleMontageProps, 'voixJumeau' | 'videoUrl' | 'finVoixJumeauS'>,
   // Les repères du montage, calculés UNE fois par la composition.
   reperes: { sequences: PlannedSequence[]; offsets: number[]; base: number[]; tFrames: number; fps: number },
 ): FenetreJumeau | null {
@@ -296,7 +302,14 @@ export function fenetreVoixJumeau(
   if (i < 0) return null;
   // A3 — la piste démarre au début NOMINAL (après le fondu d'entrée), et
   // non plus `tFrames` plus tôt avec la séquence de la série.
-  return { debut: offsets[i] / fps, fin: (offsets[i] + base[i]) / fps };
+  const debut = offsets[i] / fps;
+  const fin = (offsets[i] + base[i]) / fps;
+  // #613 — clôture après la parole : l'atténuation s'arrête à la DERNIÈRE parole.
+  const f = props.finVoixJumeauS;
+  if (typeof f === 'number' && Number.isFinite(f) && f > 0 && debut + f < fin - 0.05) {
+    return { debut, fin: debut + f, remontee: REMONTEE_CLOTURE_S };
+  }
+  return { debut, fin };
 }
 
 /**
@@ -533,7 +546,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           fps={fps}
           totalFrames={totalFrames}
           debutSecondes={props.musicStartSeconds}
-          volume={(f) => mixAt(f / fps, mixOptions).music * facteurMusiqueJumeau(f / fps, fenetreJumeau)}
+          volume={(f) => mixAt(f / fps, mixOptions).music * facteurMusiqueJumeau(f / fps, fenetreJumeau)
+            * fonduFinalMusique(f / fps, totalFrames / fps, !!fenetreJumeau?.remontee)}
         />
       )}
       {/* Surimpressions : les voix partent à LEURS départs dans la vidéo

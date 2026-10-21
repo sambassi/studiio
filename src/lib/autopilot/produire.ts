@@ -912,6 +912,8 @@ export async function produireUnMontage(input: {
         videoUrl: jumeauVideoUrl as string,
         rushMuted: true,
         sequenceVoiceUrls: { video: jumeauVideoUrl as string },
+        // #613 — clôture : la musique ne reste atténuée que jusqu'à la dernière parole.
+        ...(debutClotureRendue !== null && debutClotureRendue > 0 ? { finVoixJumeauS: debutClotureRendue } : {}),
       } : {}),
     }
     : designBase;

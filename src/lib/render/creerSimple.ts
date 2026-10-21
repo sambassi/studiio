@@ -164,6 +164,8 @@ export interface CreerSimpleRenderInput {
    * voix, musique baissée pendant la séquence. Absent : le rendu d'avant.
    */
   voixJumeau?: boolean;
+  /** #613 — fin de la dernière parole du jumeau quand une clôture suit (voir la composition). */
+  finVoixJumeauS?: number;
 }
 
 /** Identifiant de la composition, tel qu'enregistre dans `remotion/index`. */

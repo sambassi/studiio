@@ -162,6 +162,7 @@ async function main() {
       videoDuration: dureePlan(plan),
       surimpressions: overlays, introDuration: 0, cardsDuration: 0, ctaDuration: 0,
       videoUrl: jumeauVideoUrl, rushMuted: true, sequenceVoiceUrls: { video: jumeauVideoUrl },
+      ...(res.debutCloture !== null && res.debutCloture > 0 ? { finVoixJumeauS: res.debutCloture } : {}),
     };
     // ── L'APERÇU (« Plan avant génération ») : planCompletAutopilote sur le MÊME résumé que l'écran ──
     const resume = {
