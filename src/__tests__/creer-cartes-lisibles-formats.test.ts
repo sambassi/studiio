@@ -1,6 +1,7 @@
 /**
- * Créer — cartes lisibles en 16:9 et 1:1 (projets v2) : texte ≥ 2,6 % de la
- * hauteur vidéo. Mesuré sur la démo « LE SPORT » 16:9 avant correctif :
+ * Créer — cartes lisibles en 16:9 et 1:1 (projets v2) : texte ≈ 4 % de la
+ * hauteur en 16:9, ≈ 3,4 % en 1:1, valeur ≥ 1,2 × texte, sans jamais sortir
+ * de la carte ni du cadre. Mesuré sur la démo « LE SPORT » 16:9 avant :
  * 26,25 px de corps (capitales 19 px = 1,76 % de 1080).
  *
  * Default safe : sans `plancherHauteurVideo` (Remotion / Autopilote, anciens
@@ -11,42 +12,68 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import SequenceCards, { LISIBILITE_HAUTEUR, ratiosLisiblesHauteur } from '@/components/creer/SequenceCards';
+import SequenceCards from '@/components/creer/SequenceCards';
+import { taillesCartesLisibles, CIBLE_TEXTE_CARTE, RAPPORT_VALEUR } from '@/lib/creer/cartes-lisibles-formats';
 import { cardRatios } from '@/lib/creer/designSpec';
 import { planFondEnchaine } from '@/lib/video-composer';
 
-const CARTES = [
+const DEMO = [
   { id: 'a', icon: 'HeartPulse', title: 'CARDIO COMPLET', value: '3-en-1' },
   { id: 'b', icon: 'Bone', title: 'OS RENFORCÉS', value: '+2 %/an' },
+  { id: 'c', icon: 'Sparkles', title: 'ANTI-ÂGE', value: '-10 ans' },
+  { id: 'd', icon: 'Dumbbell', title: '300+ MUSCLES', value: '300+' },
+  { id: 'e', icon: 'ShieldCheck', title: 'RISQUE RÉDUIT', value: '-76 %' },
+];
+const LONGS = [
+  { id: 'a', icon: 'Moon', title: 'MÉLATONINE NATURELLE', value: '+30 %' },
+  { id: 'b', icon: 'Dumbbell', title: 'RENFORCEMENT MUSCULAIRE', value: '300+' },
+  { id: 'c', icon: 'HeartPulse', title: 'ENDURANCE CARDIOVASCULAIRE', value: '-76 %' },
+  { id: 'd', icon: 'Brain', title: 'CONCENTRATION AMÉLIORÉE', value: '+2 %/an' },
+  { id: 'e', icon: 'ShieldCheck', title: 'IMMUNITÉ RENFORCÉE', value: '-10 ans' },
 ];
 const tailles = (html: string) => Array.from(html.matchAll(/font-size:([\d.]+)px/g)).map((m) => Number(m[1]));
-const icones = (html: string) => Array.from(html.matchAll(/<svg[^>]* width="([\d.]+)"/g)).map((m) => Number(m[1]));
-const rendre = (p: Record<string, unknown>) => renderToStaticMarkup(React.createElement(SequenceCards, { cards: CARTES, valueColor: '#EC4899', ...p } as never));
+const rendre = (p: Record<string, unknown>, cards = DEMO) => renderToStaticMarkup(React.createElement(SequenceCards, { cards, valueColor: '#EC4899', ...p } as never));
 
-describe('cartes : plancher de lisibilité proportionné à la hauteur (16:9, 1:1)', () => {
-  it('16:9 : texte 26,25 px → ≥ 2,6 % de 1080 (28,1 px) ; valeur et icône du même facteur', () => {
-    const avant = rendre({ containerWidth: 1920, landscape: true });
-    const apres = rendre({ containerWidth: 1920, landscape: true, plancherHauteurVideo: 1080 });
-    expect(Math.min(...tailles(avant))).toBeCloseTo(1920 * 7 / 512, 3);
-    expect(Math.min(...tailles(apres))).toBeGreaterThanOrEqual(1080 * LISIBILITE_HAUTEUR - 1e-6);
-    const k = Math.min(...tailles(apres)) / Math.min(...tailles(avant));
-    expect(Math.max(...tailles(apres)) / Math.max(...tailles(avant))).toBeCloseTo(k, 6);
-    expect(icones(apres)[0]).toBeGreaterThan(icones(avant)[0]);
+describe('cartes lisibles en 16:9 et 1:1 (Créer v2)', () => {
+  it('16:9 démo : texte ≈ 4 % de la hauteur (≥ 3,5 %), valeur = 1,2 × texte, icône à gauche', () => {
+    const t = taillesCartesLisibles({ paysage: true, largeur: 1920, hauteur: 1080, cartes: DEMO })!;
+    expect(t.ratios.text * 1920).toBeGreaterThanOrEqual(1080 * 0.035);
+    expect(t.ratios.text * 1920).toBeLessThanOrEqual(1080 * CIBLE_TEXTE_CARTE.paysage + 1e-6);
+    expect(t.ratios.value / t.ratios.text).toBeCloseTo(RAPPORT_VALEUR, 6);
+    expect(t.empile).toBe(true);
+    const html = rendre({ containerWidth: 1920, landscape: true, plancherHauteurVideo: 1080 });
+    expect(Math.min(...tailles(html))).toBeCloseTo(t.ratios.text * 1920, 3);
+    expect(html).toContain('flex-direction:row');
+    expect(html).not.toContain('text-overflow:ellipsis');
   });
-  it('échelle choisie par l’utilisateur : facteur AU-DESSUS du plancher ; police et couleurs gardées', () => {
+  it('1:1 démo : texte ≈ 3,4 % de la hauteur (≥ 3 %), mots entiers', () => {
+    const t = taillesCartesLisibles({ paysage: false, largeur: 1080, hauteur: 1080, cartes: DEMO })!;
+    expect(t.ratios.text * 1080).toBeGreaterThanOrEqual(1080 * 0.03);
+    expect(t.ratios.text * 1080).toBeLessThanOrEqual(1080 * CIBLE_TEXTE_CARTE.carre + 1e-6);
+    const html = rendre({ containerWidth: 1080, landscape: false, plancherHauteurVideo: 1080 });
+    expect(html).toContain('word-break:keep-all');
+  });
+  it('titres longs (5 cartes) : plus grand qu’avant, mais réduit pour tenir (jamais au-dessus de la cible)', () => {
+    for (const [paysage, W, H] of [[true, 1920, 1080], [false, 1080, 1080]] as const) {
+      const t = taillesCartesLisibles({ paysage, largeur: W, hauteur: H, cartes: LONGS });
+      expect(t, `${W}x${H}`).not.toBeNull();
+      expect(t!.ratios.text).toBeGreaterThan(cardRatios(paysage).text);
+    }
+  });
+  it('rien ne tient (police très large, mot énorme) : null → rendu d’avant', () => {
+    const t = taillesCartesLisibles({ paysage: true, largeur: 1920, hauteur: 1080, cartes: [{ title: 'ANTICONSTITUTIONNELLEMENTISSIME', value: '1' }], police: 'Rubik Mono One' });
+    expect(t).toBeNull();
+  });
+  it('échelle de l’utilisateur : facteur AU-DESSUS ; police et couleurs gardées', () => {
     const base = rendre({ containerWidth: 1920, landscape: true, plancherHauteurVideo: 1080, typography: { font: 'Anton' } });
     const x15 = rendre({ containerWidth: 1920, landscape: true, plancherHauteurVideo: 1080, typography: { font: 'Anton', scale: 1.5 } });
     expect(Math.min(...tailles(x15)) / Math.min(...tailles(base))).toBeCloseTo(1.5, 6);
     expect(x15).toContain('Anton');
     expect(x15).toContain('#EC4899');
   });
-  it('1:1 : déjà au-dessus du plancher (29,5 px ≥ 28,1) → inchangé', () => {
-    expect(rendre({ containerWidth: 1080, landscape: false, plancherHauteurVideo: 1080 })).toBe(rendre({ containerWidth: 1080, landscape: false }));
-    expect(ratiosLisiblesHauteur(cardRatios(false), 1080, 1080)).toEqual(cardRatios(false));
-  });
   it('Default safe : sans plancher, mode libre, badge ou 9:16 → DOM d’avant', () => {
     expect(rendre({ containerWidth: 1920, landscape: true, plancherHauteurVideo: null })).toBe(rendre({ containerWidth: 1920, landscape: true }));
-    const boites = { a: { x: 10, y: 10, w: 30, h: 10 }, b: { x: 10, y: 30, w: 30, h: 10 } };
+    const boites = Object.fromEntries(DEMO.map((c, i) => [c.id, { x: 10, y: 10 + i * 12, w: 30, h: 10 }]));
     expect(rendre({ containerWidth: 1920, landscape: true, cardBoxes: boites, plancherHauteurVideo: 1080 })).toBe(rendre({ containerWidth: 1920, landscape: true, cardBoxes: boites }));
     expect(rendre({ containerWidth: 1080, landscape: false, zoneSure916: true, plancherHauteurVideo: 1920, typography: { lisible916: true } }))
       .toBe(rendre({ containerWidth: 1080, landscape: false, zoneSure916: true, typography: { lisible916: true } }));
