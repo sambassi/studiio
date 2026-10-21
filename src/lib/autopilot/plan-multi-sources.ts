@@ -32,7 +32,7 @@
  * Déterministe (aucun hasard, aucune horloge), explicable (`explications`,
  * `raison` par plan), sans réseau.
  */
-import { planMontage, dureeCibleMontage, type AnalyseRush, type OptionsMontage } from '@/lib/creer/smart-montage';
+import { planMontage, dureeCibleMontage, plansPropres, type AnalyseRush, type OptionsMontage } from '@/lib/creer/smart-montage';
 import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import type { RushSegment, MouvementImage, SourceSegment } from '@/lib/creer/multi-rush';
 import type { CreneauGabarit } from '@/lib/autopilot/sources';
@@ -199,6 +199,18 @@ export function dureeAvecCloture(parole: number, visee: number | null | undefine
 export const REPRISES_MAX_PAR_MEDIA = 1;
 
 /**
+ * Options des extraits de rushes personnels : le smart montage de Créer en
+ * UNICITÉ PAR TIMECODE (#613) — un extrait tient dans un PLAN PROPRE du rush
+ * (ni coupe franche ni image figée de la source). Sans elle, l'Autopilote
+ * démarrait un plan sur la coupe de tête d'un rush (banc : rush-1 depuis 0,
+ * coupe à 0,43 s → 0,43 s d'un autre plan au MP4). Un appelant peut encore
+ * l'éteindre explicitement (`uniciteParTimecode: false`).
+ */
+function optionsRushs(e: EntreePlanMultiSources): OptionsMontage {
+  return { uniciteParTimecode: true, ...(e.options ?? {}) };
+}
+
+/**
  * La RÉSERVE des rushes personnels : rend, à la demande, une fenêtre de `d`
  * secondes jamais encore montée. Elle essaie d'abord les extraits que le
  * smart montage de Créer préfère (`planMontage`, si les rushes sont
@@ -210,6 +222,11 @@ class ReserveRushs {
   private tour = 0;
   private readonly totaux: Map<string, number>;
   private readonly preferes: Array<{ url: string; depuis: number; extra: Partial<RushSegment>; raison: string }>;
+  /**
+   * Plans propres MESURÉS (`plansPropres`) des rushes analysés : toute fenêtre
+   * tient dans l'un d'eux. Rush sans analyse : absent, fenêtres d'avant.
+   */
+  private readonly propres = new Map<string, Array<[number, number]>>();
   constructor(e: EntreePlanMultiSources, besoin: number) {
     const rushes = (e.rushes ?? []).filter((x) => x?.url);
     const analyses = (e.analyses ?? []).filter((a) => rushes.some((x) => x.url === a.url));
@@ -218,9 +235,17 @@ class ReserveRushs {
       const t = typeof x.secondes === 'number' && x.secondes > 0 ? x.secondes : a && a.duree > 0 ? a.duree : NaN;
       return [x.url, t];
     }));
+    if (optionsRushs(e).uniciteParTimecode) {
+      // Aucun plan propre (rush entièrement fixe, ex. plan sur pied) : contrainte
+      // ignorée — un rush de l'utilisateur n'est jamais écarté par cette mesure.
+      for (const a of analyses) {
+        const pp = plansPropres(a);
+        if (pp.length && !this.propres.has(a.url)) this.propres.set(a.url, pp);
+      }
+    }
     this.preferes = [];
     if (analyses.length >= 2 && besoin > 0) {
-      const plan = planMontage(analyses, besoin, { ...(e.options ?? {}), longueurExtrait: BROLL_VIDEO_S });
+      const plan = planMontage(analyses, besoin, { ...optionsRushs(e), longueurExtrait: BROLL_VIDEO_S });
       for (const s of plan ?? []) {
         this.preferes.push({
           url: s.url, depuis: s.depuis ?? 0,
@@ -239,7 +264,13 @@ class ReserveRushs {
     if (total === undefined) return false;
     if (Number.isNaN(total)) return a === 0 && !(this.utilisees.get(url)?.length);
     if (b > total + 1e-6) return false;
+    const propres = this.propres.get(url);
+    if (propres && !propres.some(([x, y]) => a >= x - 1e-6 && b <= y + 1e-6)) return false;
     return !(this.utilisees.get(url) ?? []).some(([x, y]) => a < y - 1e-6 && x < b - 1e-6);
+  }
+  /** Départs candidats : 0, le début de chaque plan propre, la fin de chaque plage montée. */
+  private departs(url: string): number[] {
+    return [0, ...(this.propres.get(url) ?? []).map(([x]) => x), ...(this.utilisees.get(url) ?? []).map(([, y]) => y)].sort((x, y) => x - y);
   }
   private reserver(url: string, a: number, b: number) {
     const l = this.utilisees.get(url) ?? [];
@@ -254,10 +285,11 @@ class ReserveRushs {
   prendreDans(url: string, d: number): ItemBroll | null {
     const total = this.totaux.get(url);
     if (total === undefined) return null;
-    for (const duree of [d, ...(Number.isFinite(total) ? [Math.min(d, total)] : [])]) {
+    // Plan propre plus court que le créneau : sa longueur (au moins 1 s), plutôt que perdre le rush forcé.
+    const plusLongPropre = Math.max(0, ...(this.propres.get(url) ?? []).map(([x, y]) => y - x));
+    for (const duree of [d, ...(Number.isFinite(total) ? [Math.min(d, total)] : []), ...(this.propres.has(url) ? [r3(Math.min(d, plusLongPropre))] : [])]) {
       if (duree < 1) continue;
-      const departs = [0, ...(this.utilisees.get(url) ?? []).map(([, y]) => y)].sort((x, y) => x - y);
-      for (const a of departs) {
+      for (const a of this.departs(url)) {
         if (this.libre(url, a, a + duree)) {
           this.reserver(url, a, a + duree);
           return { url, kind: 'video', source: 'rush', depuis: r3(a), dispo: r3(duree), raison: 'rush personnel' };
@@ -284,17 +316,21 @@ class ReserveRushs {
   /** Une fenêtre de `d` s, ou `null` si plus aucun rush ne l'a. */
   prendre(d: number): ItemBroll | null {
     for (const p of this.preferes) {
-      if (this.libre(p.url, p.depuis, p.depuis + d)) {
-        this.reserver(p.url, p.depuis, p.depuis + d);
-        return { url: p.url, kind: 'video', source: 'rush', depuis: p.depuis, dispo: d, raison: p.raison, extra: p.extra };
+      // Rush mesuré : la fenêtre recule au début de sa plage libre quand
+      // l'avant ne pourrait plus porter un créneau (< d) — sinon cette chute
+      // était perdue et le plan manquait de matière.
+      const g = this.propres.has(p.url) ? Math.max(...this.departs(p.url).filter((x) => x <= p.depuis + 1e-6)) : p.depuis;
+      const a = p.depuis - g < d - 1e-6 && this.libre(p.url, g, g + d) ? r3(g) : p.depuis;
+      if (this.libre(p.url, a, a + d)) {
+        this.reserver(p.url, a, a + d);
+        return { url: p.url, kind: 'video', source: 'rush', depuis: a, dispo: d, raison: p.raison, extra: p.extra };
       }
     }
     const urls = Array.from(this.totaux.keys());
     for (let k = 0; k < urls.length; k++) {
       const url = urls[(this.tour + k) % urls.length];
-      // Première plage libre : 0, puis la fin de chaque plage déjà montée.
-      const departs = [0, ...(this.utilisees.get(url) ?? []).map(([, y]) => y)].sort((x, y) => x - y);
-      for (const a of departs) {
+      // Première plage libre : 0, le début d'un plan propre, puis la fin de chaque plage déjà montée.
+      for (const a of this.departs(url)) {
         if (this.libre(url, a, a + d)) {
           this.reserver(url, a, a + d);
           this.tour = (this.tour + k + 1) % urls.length;
@@ -684,7 +720,7 @@ function planSansAvatar(e: EntreePlanMultiSources, cible: number, expl: string[]
   const rushes = (e.rushes ?? []).filter((x) => x?.url);
   const analyses = (e.analyses ?? []).filter((a) => rushes.some((x) => x.url === a.url));
   if (analyses.length >= 2) {
-    const plan = planMontage(analyses, cible, e.options ?? {});
+    const plan = planMontage(analyses, cible, optionsRushs(e));
     if (plan && plan.length) {
       for (const s of plan) p.segs.push({ ...s, kind: 'video', source: 'rush' });
       expl.push(`Rushes personnels : ${plan.length} extrait(s) du smart montage.`);
