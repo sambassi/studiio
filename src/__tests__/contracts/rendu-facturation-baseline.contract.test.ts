@@ -81,7 +81,7 @@ describe('1. Créer — format facturé = formatRenduFacturation(format)', () =>
     const decl = wizard.match(/const renderFormat: 'reel' \| 'tv' = ([^;]+);/g) ?? [];
     expect(decl).toEqual(["const renderFormat: 'reel' | 'tv' = formatRenduFacturation(format);"]);
     // Site 1 : la facturation du rendu.
-    expect(wizard.match(/composerEtFacturer\('calendrier', renderFormat, optionsRendu\)/g)?.length).toBe(1);
+    expect(wizard.match(/composerEtFacturer\('calendrier', renderFormat, optionsRendu, \{/g)?.length).toBe(1);
     // Sites 2 et 3 : `format: renderFormat` (fil de confirmation et colonne du post).
     expect(wizard.match(/\bformat: renderFormat,/g)?.length).toBe(2);
     // Aucun autre format ne part à composerEtFacturer.

@@ -56,4 +56,14 @@ describe('Le rendu serveur A2.3 n’est branché sur aucun parcours', () => {
     expect(dynamiques).toEqual(['tentative.uploadUrl']);
     expect(src).not.toMatch(/\/serveur\b/);
   });
+
+  it('l’envoi découpé ne parle qu’à …/upload et aux URL de morceaux signées par le serveur', () => {
+    const src = readFileSync(join(RACINE, 'src/lib/rendus/envoi-montage.ts'), 'utf-8');
+    const litteraux = [...src.matchAll(/fetch\(\s*(['"`])(.*?)\1/g)].map((m) => m[2]);
+    expect(litteraux.length).toBeGreaterThan(0);
+    expect(litteraux.filter((u) => !/^(\$\{origine\})?\/api\/render\/jobs\/\$\{[^}]+\}\/upload$/.test(u))).toEqual([]);
+    const dynamiques = [...src.matchAll(/fetch\(\s*([^'"`\s][^,)]*)/g)].map((m) => m[1].trim());
+    expect(dynamiques).toEqual(['url']);
+    expect(src).not.toMatch(/\/serveur\b/);
+  });
 });

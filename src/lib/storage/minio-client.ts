@@ -321,3 +321,95 @@ export function clientMinio(borne?: BorneReseau): ClientStockage {
     ...(borne ? optionsBornees(useSSL, borne) : {}),
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Envoi DECOUPE d'un montage vers son depot
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Un morceau tel que MinIO le liste. */
+export interface PartieDeposee {
+  part: number;
+  etag: string;
+  size: number;
+}
+
+/**
+ * Les operations d'un envoi decoupe, cote SERVEUR, sur le nom INTERNE.
+ *
+ * Ouvrir, lister, terminer et abandonner un envoi decoupe se font depuis
+ * l'application, vers `studiio-minio:9000` : aucune de ces requetes ne
+ * repasse par le nom public (et donc par Traefik). Seule la SIGNATURE des
+ * morceaux vise le nom public (`signeurPartiesPublic`). L'identifiant
+ * d'envoi est le meme des deux cotes : c'est le meme serveur MinIO.
+ *
+ * Interface etroite, comme `ClientStockage` : les tests la remplacent.
+ */
+export interface ClientEnvoiDecoupe {
+  initier(bucket: string, cle: string, contentType: string): Promise<string>;
+  lister(bucket: string, cle: string, uploadId: string): Promise<PartieDeposee[]>;
+  terminer(bucket: string, cle: string, uploadId: string, parties: Array<{ part: number; etag: string }>): Promise<unknown>;
+  abandonner(bucket: string, cle: string, uploadId: string): Promise<unknown>;
+  statObject(bucket: string, cle: string): Promise<ObjetStocke>;
+  removeObject(bucket: string, cle: string): Promise<unknown>;
+}
+
+export function clientEnvoiDecoupe(): ClientEnvoiDecoupe {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Client: MinioClient } = require('minio');
+  const secretKey = process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || '';
+  if (!secretKey) throw new Error('MINIO_SECRET_KEY/MINIO_ROOT_PASSWORD manquant (env)');
+  const useSSL = process.env.MINIO_USE_SSL === 'true';
+  const c = new MinioClient({
+    endPoint: process.env.MINIO_ENDPOINT || 'studiio-minio',
+    port: parseInt(process.env.MINIO_PORT || '9000', 10),
+    useSSL,
+    accessKey: process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER || 'studiio',
+    secretKey,
+    region: process.env.MINIO_REGION || 'us-east-1',
+  });
+  return {
+    initier: (b, k, ct) => c.initiateNewMultipartUpload(b, k, { 'Content-Type': ct }),
+    // `listParts` est declaree `protected` dans les types du SDK, mais c'est
+    // une methode publique a l'execution (minio@8, internal/client.js).
+    lister: (b, k, id) => (c as { listParts(b: string, k: string, id: string): Promise<PartieDeposee[]> })
+      .listParts(b, k, id),
+    terminer: (b, k, id, parties) => c.completeMultipartUpload(b, k, id, parties),
+    abandonner: (b, k, id) => c.abortMultipartUpload(b, k, id),
+    statObject: (b, k) => c.statObject(b, k),
+    removeObject: (b, k) => c.removeObject(b, k),
+  };
+}
+
+/**
+ * Le signeur de MORCEAUX, sur le nom PUBLIC — et il ne sait faire que ca.
+ *
+ * Meme construction que `signeurPublic` (region fixee : signature purement
+ * locale), mais il n'expose qu'UNE operation : un `PUT` de morceau, pour un
+ * identifiant d'envoi et un numero donnes. Il ne peut donc pas produire un
+ * GET, ni un PUT d'objet entier. `null` sans endpoint public.
+ */
+export function signeurPartiesPublic(): {
+  signerPartie(bucket: string, cle: string, uploadId: string, partNumber: number, ttl: number): Promise<string>;
+} | null {
+  const endPoint = process.env.MINIO_PUBLIC_ENDPOINT;
+  if (!endPoint) return null;
+  const secretKey = process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || '';
+  if (!secretKey) return null;
+  const useSSL = process.env.MINIO_PUBLIC_USE_SSL !== 'false';
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Client: MinioClient } = require('minio');
+  const portEnv = process.env.MINIO_PUBLIC_PORT;
+  const c = new MinioClient({
+    endPoint,
+    port: portEnv ? parseInt(portEnv, 10) : (useSSL ? 443 : 80),
+    useSSL,
+    accessKey: process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER || 'studiio',
+    secretKey,
+    region: process.env.MINIO_REGION || 'us-east-1',
+  });
+  return {
+    signerPartie: (b, k, id, n, ttl) => c.presignedUrl('PUT', b, k, ttl, {
+      uploadId: id, partNumber: String(n),
+    }),
+  };
+}
