@@ -15,6 +15,7 @@
  * BASE, prouve que tout le reste — sans brief, slogan déjà égal à l'action,
  * CTA de Créer, aperçu de Créer sans calque — sort à l'octet près.
  */
+import { FOND_TEXTE_SUR_IMAGE, HALO_TEXTE_ALPHA } from '@/lib/creer/contraste';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
@@ -83,7 +84,11 @@ describe('CTA d\'action de l\'Autopilote — le cas du rendu réel', () => {
   });
 
   it('contraste WCAG AA ≥ 4,5:1 pour la ligne d\'action ET le slogan, sur le pire fond du dégradé', () => {
-    const fonds = ['#7C3AED', '#EC4899'].map(hex);
+    // Plus de panneau opaque (21/10) : texte posé sur l'image, cerné du
+    // contour fin (`haloTexteCss`) — le contraste se mesure au BORD des
+    // lettres, contour posé sur le fond (`HALO_TEXTE_ALPHA`).
+    expect(d.ctaBackground).toBe(FOND_TEXTE_SUR_IMAGE);
+    const fonds = ['#7C3AED', '#EC4899'].map(hex).map((c) => c.map((v) => Math.round(v * (1 - HALO_TEXTE_ALPHA))) as Rgb);
     const pire = (couleur: string) => Math.min(...fonds.map((f) => contraste(hex(couleur), composer(d.ctaBackground, f))));
     expect(pire(d.ctaSubColor ?? '#EC4899')).toBeGreaterThanOrEqual(4.5);
     expect(pire(d.ctaColor ?? '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
@@ -99,7 +104,7 @@ describe('CTA d\'action de l\'Autopilote — le cas du rendu réel', () => {
   it('métadonnées cohérentes avec la vidéo : panneau et teinte écrits ; la légende finit par l\'action', () => {
     expect(meta.design.ctaMainText).toBe('AFRO + ENTRAÎN.');
     expect(meta.design.ctaSubText).toBe(ACTION);
-    expect(meta.design.ctaBackground).toBe('rgba(0,0,0,0.6)');
+    expect(meta.design.ctaBackground).toBe(FOND_TEXTE_SUR_IMAGE);
     expect(meta.design.ctaSubColor).toBe(d.ctaSubColor);
     expect(post.caption.split('\n\n').at(-1)).toBe(ACTION);
   });
