@@ -31,6 +31,10 @@ describe('InfoBulle', () => {
     expect(id).toBeTruthy();
     expect(document.getElementById(id)).toBe(panneau());
     expect(panneau().hidden).toBe(true);
+    // ⚠️ La CLASSE aussi : une classe `block` l'emporterait sur l'attribut seul
+    // (bug vu au banc : panneau « caché » mais affiché).
+    expect(panneau().classList.contains('hidden')).toBe(true);
+    expect(panneau().classList.contains('block')).toBe(false);
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

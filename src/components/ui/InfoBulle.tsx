@@ -18,7 +18,8 @@
  * sans imbrication HTML invalide. Le contenu passé doit l'être aussi
  * (`<span className="block">` plutôt que `<p>`).
  *
- * Le panneau reste MONTÉ fermé (`hidden`) : `aria-controls` désigne toujours
+ * Le panneau reste MONTÉ fermé (attribut `hidden` ET classe `hidden` : une
+ * classe `block` l'emporterait sur l'attribut seul) : `aria-controls` désigne toujours
  * un élément existant, et l'information existe dans la page même repliée.
  *
  * Positionnement : sous l'icône, décalé horizontalement si besoin pour ne
@@ -52,7 +53,8 @@ export interface InfoBulleProps {
 
 export default function InfoBulle({ label, titre, children, className = '', marqueur }: InfoBulleProps) {
   const [ouvert, setOuvert] = useState(false);
-  const [decalage, setDecalage] = useState(0);
+  /** Position horizontale (px, relative à l'icône) et largeur, calculées À L'OUVERTURE. */
+  const [placement, setPlacement] = useState<{ gauche: number; largeur: number }>({ gauche: 0, largeur: LARGEUR });
   const id = useId();
   const panneauId = `infobulle-${id.replace(/:/g, '')}`;
   const enveloppeRef = useRef<HTMLSpanElement | null>(null);
@@ -66,7 +68,30 @@ export default function InfoBulle({ label, titre, children, className = '', marq
     if (rendreFocus) boutonRef.current?.focus();
   }, []);
 
-  const basculer = useCallback(() => setOuvert((o) => !o), []);
+  /**
+   * ⚠️ La place se mesure AVANT d'afficher le panneau : sur mobile, un panneau
+   * qui déborde élargit la fenêtre de mise en page (innerWidth 390 → 504) et
+   * toute mesure faite après lui donnerait raison.
+   */
+  const placer = useCallback(() => {
+    const enveloppe = enveloppeRef.current;
+    if (!enveloppe || typeof window === 'undefined') return;
+    const candidats = [window.innerWidth, document.documentElement?.clientWidth, window.visualViewport?.width]
+      .filter((v): v is number => typeof v === 'number' && v > 0);
+    const largeurFenetre = candidats.length ? Math.min(...candidats) : LARGEUR + 2 * MARGE;
+    const largeur = Math.max(0, Math.min(LARGEUR, largeurFenetre - 2 * MARGE));
+    const ancre = enveloppe.getBoundingClientRect().left;
+    // Position naturelle : bord gauche du panneau aligné sur l'icône.
+    let gauche = ancre;
+    if (gauche + largeur > largeurFenetre - MARGE) gauche = largeurFenetre - MARGE - largeur;
+    if (gauche < MARGE) gauche = MARGE;
+    setPlacement({ gauche: Math.round(gauche - ancre), largeur });
+  }, []);
+
+  const basculer = useCallback(() => {
+    if (!ouvert) placer();
+    setOuvert(!ouvert);
+  }, [ouvert, placer]);
 
   // Échap et clic extérieur, seulement tant que le panneau est ouvert.
   useEffect(() => {
@@ -89,23 +114,17 @@ export default function InfoBulle({ label, titre, children, className = '', marq
     };
   }, [ouvert, fermer]);
 
-  // À l'ouverture : le panneau reste dans la fenêtre, puis reçoit le focus.
+  // À l'ouverture, le panneau reçoit le focus.
   useIsoLayoutEffect(() => {
-    if (!ouvert) { setDecalage(0); return; }
-    const panneau = panneauRef.current;
-    const enveloppe = enveloppeRef.current;
-    if (panneau && enveloppe && typeof window !== 'undefined') {
-      const largeurFenetre = window.innerWidth || document.documentElement.clientWidth || 0;
-      const ancre = enveloppe.getBoundingClientRect();
-      const largeur = panneau.getBoundingClientRect().width || Math.min(LARGEUR, largeurFenetre - 2 * MARGE);
-      // Position naturelle : bord gauche du panneau aligné sur l'icône.
-      let gauche = ancre.left;
-      if (gauche + largeur > largeurFenetre - MARGE) gauche = largeurFenetre - MARGE - largeur;
-      if (gauche < MARGE) gauche = MARGE;
-      setDecalage(Math.round(gauche - ancre.left));
-    }
-    panneau?.focus();
+    if (ouvert) panneauRef.current?.focus({ preventScroll: true });
   }, [ouvert]);
+
+  // Fenêtre redimensionnée ou tournée pendant l'ouverture : on se replace.
+  useEffect(() => {
+    if (!ouvert) return;
+    window.addEventListener('resize', placer);
+    return () => window.removeEventListener('resize', placer);
+  }, [ouvert, placer]);
 
   return (
     <span
@@ -152,8 +171,8 @@ export default function InfoBulle({ label, titre, children, className = '', marq
         tabIndex={-1}
         hidden={!ouvert}
         data-infobulle-panneau
-        className="absolute top-full z-50 block mt-1.5 rounded-xl border border-white/10 bg-gray-900/95 p-3 pr-8 text-left text-[11px] font-normal normal-case tracking-normal leading-relaxed text-gray-300 shadow-xl shadow-black/40 backdrop-blur-md focus:outline-none"
-        style={{ left: decalage, width: LARGEUR, maxWidth: `calc(100vw - ${2 * MARGE}px)` }}
+        className={`absolute top-full z-50 ${ouvert ? 'block' : 'hidden'} mt-1.5 rounded-xl border border-white/10 bg-gray-900/95 p-3 pr-8 text-left text-[11px] font-normal normal-case tracking-normal leading-relaxed text-gray-300 shadow-xl shadow-black/40 backdrop-blur-md focus:outline-none`}
+        style={{ left: placement.gauche, width: placement.largeur, maxWidth: `calc(100vw - ${2 * MARGE}px)` }}
       >
         {titre ? <span className="mb-1 block text-xs font-semibold text-white">{titre}</span> : null}
         <span className="block space-y-1.5">{children}</span>
