@@ -80,6 +80,14 @@ export interface AnalyseRush {
   sonContinu?: boolean;
   /** M3-a PR2 — sonde : `true` piste présente, `false` aucune piste, `null` inconnu (décodage impossible). */
   pisteAudio?: boolean | null;
+  /**
+   * #613 — coupes franches LOCALISÉES finement (2e mesure de l'analyseur
+   * navigateur, `localiserCoupe`) : [dernière image mesurée de l'ancien plan,
+   * première image mesurée du nouveau], au dixième de seconde, dans
+   * l'intervalle d'échantillonnage où `coupesFranches` voit la coupe. Lu par
+   * `plansPropres` seulement. Absent : la coupe écarte tout l'intervalle.
+   */
+  coupesFines?: Array<[number, number]>;
 }
 
 /** Ce que la vidéo doit raconter : sert à la PERTINENCE des extraits. */
@@ -117,6 +125,69 @@ export interface OptionsMontage {
   selection?: 'grille' | 'passages';
   /** M3-a (mode passages) : mesures facultatives par clé de rush (silences, sonde, pertinence). */
   entreesPassages?: Record<string, EntreesPassages> | null;
+  /**
+   * #613 (Créer) — unicité PAR TIMECODE, extraits pris dans les PLANS PROPRES.
+   *
+   * Constat (démo « LE SPORT », 3 rushes de 4/4/5 s d'un seul plan chacun) :
+   * la séquence Vidéo tombait à 4 s. Deux règles de la sélection par défaut
+   * jugeaient un rush continu comme de la matière « répétée » :
+   *  - l'empreinte 8×8 d'un même plan filmé en continu varie à peine (écart
+   *    ≤ 0,03 < `SEUILS.similaire`) : tout 2e extrait du rush était écarté ;
+   *  - la marge anti-répétition (≥ 1 s) mangeait le reste d'un rush court.
+   * Et le pic de mouvement d'une COUPE de la source (fin d'un plan précédent
+   * collée au début du rush) passait pour un « geste fort » : extrait choisi À
+   * CHEVAL sur la coupe, au ralenti (flash de 0,2 s).
+   *
+   * Avec cette option : un extrait tient dans UN plan propre du rush
+   * (`plansPropres` : ni coupe franche ni image figée dedans) ; deux extraits
+   * d'un même rush à des timecodes DISJOINTS (marge `MARGE_TIMECODE_S`) ne
+   * sont plus « quasi identiques » — la ressemblance entre rushes différents,
+   * la variété avec le plan précédent et les pénalités de même scène restent.
+   * Absent : sélection d'avant, octet pour octet (Autopilote).
+   */
+  uniciteParTimecode?: boolean;
+  /**
+   * #613 (Créer) — rush montré JUSTE APRÈS la séquence Vidéo (fond en
+   * mouvement du CTA) : le dernier plan de la Vidéo ne vient pas de lui s'il
+   * existe une alternative (pas de répétition consécutive). Absent : rien.
+   */
+  rushApres?: string | null;
+}
+
+/**
+ * #613 — marge entre deux extraits d'un même rush en unicité par timecode (s).
+ * Une image (~1/25 s) : deux extraits jointifs ne montrent jamais la même
+ * image, sans jeter de matière. 0,25 s laissait ~0,5 s inutilisable autour
+ * de CHAQUE extrait (démo « LE SPORT » : 3 s de 11 s propres jamais montées).
+ */
+export const MARGE_TIMECODE_S = 0.04;
+/** #613 — mouvement (écart de gris moyen 0..1) sous lequel deux images sont IDENTIQUES : image figée. */
+export const MOUVEMENT_GEL = 0.002;
+/** #613 — plus court plan propre retenu (s). */
+export const PLAN_PROPRE_MIN_S = 0.5;
+
+/**
+ * #613 — matière LIBRE d'un rush : ses plans propres moins les extraits déjà
+ * montés (`marge` de part et d'autre), morceaux d'au moins `min` s. Pur.
+ */
+export function morceauxLibres(
+  plans: ReadonlyArray<readonly [number, number]>,
+  utilisees: ReadonlyArray<readonly [number, number]> = [],
+  marge = MARGE_TIMECODE_S,
+  min = 1e-6,
+): Array<[number, number]> {
+  const pris = [...utilisees].map(([u, v]) => [u - marge, v + marge] as const).sort((a, b) => a[0] - b[0]);
+  const out: Array<[number, number]> = [];
+  for (const [x, y] of plans) {
+    let debut = x;
+    for (const [u, v] of pris) {
+      if (v <= debut || u >= y) continue;
+      if (u - debut >= min - 1e-9) out.push([arrondi(debut), arrondi(u)]);
+      debut = Math.max(debut, v);
+    }
+    if (y - debut >= min - 1e-9) out.push([arrondi(debut), arrondi(y)]);
+  }
+  return out;
 }
 
 const arrondi = (n: number) => Math.round(n * 1000) / 1000;
@@ -440,6 +511,111 @@ export function grilleDeCoupes(
 
 interface StatsRush { mouvHaut: number; mouvMoyen: number; mouvMediane: number; netMediane: number; audioMax: number; coupes: number[] }
 
+/**
+ * #613 — PLANS PROPRES d'un rush : les intervalles [début, fin] (s) sans
+ * coupe franche de la source ni image figée, plus longs que
+ * `PLAN_PROPRE_MIN_S`. Mesuré sur l'analyse (échantillons espacés de `pas`) :
+ *  - COUPE FRANCHE à l'échantillon `t` : pic de mouvement (> 2,5 × la moyenne
+ *    du rush) ET image qui change (écart d'empreinte > `SEUILS.similaire`) —
+ *    la coupe tombe quelque part dans ]t − pas, t] : tout l'intervalle est
+ *    écarté (un extrait qui le chevauche montrerait un flash de l'autre plan) ;
+ *  - IMAGE FIGÉE à `t` : mouvement < `MOUVEMENT_GEL` (deux images à `pas`
+ *    d'écart identiques) — [t − pas, t] écarté (un gel dans la vidéo finale).
+ * Sans échantillon : le rush entier. Pur.
+ */
+export function plansPropres(a: Pick<AnalyseRush, 'duree' | 'echantillons' | 'coupesFines'>): Array<[number, number]> {
+  const e = [...(a.echantillons ?? [])].sort((x, y) => x.t - y.t);
+  if (!(a.duree > 0)) return [];
+  if (e.length < 2) return [[0, arrondi(a.duree)]];
+  const ecarts = e.slice(1).map((x, i) => x.t - e[i].t).sort((x, y) => x - y);
+  const pas = ecarts[Math.floor(ecarts.length / 2)] || 0.5;
+  const coupes = new Set(coupesFranches(e));
+  const ecartes: Array<[number, number]> = [];
+  for (let i = 1; i < e.length; i++) {
+    const coupe = coupes.has(i);
+    const fige = e[i].mouvement < MOUVEMENT_GEL;
+    // #613 v3 : coupe localisée par la 2e mesure (dans CET intervalle) — seule sa fenêtre fine est écartée.
+    const fine = coupe && !fige
+      ? (a.coupesFines ?? []).find(([x, y]) => x >= e[i - 1].t - 1e-6 && y <= e[i].t + 1e-6 && y > x)
+      : undefined;
+    if (fine) ecartes.push([fine[0], fine[1]]);
+    else if (coupe || fige) ecartes.push([Math.max(0, e[i].t - pas), e[i].t]);
+  }
+  ecartes.sort((x, y) => x[0] - y[0]);
+  const out: Array<[number, number]> = [];
+  let debut = 0;
+  for (const [x, y] of ecartes) {
+    if (x - debut >= PLAN_PROPRE_MIN_S - 1e-6) out.push([arrondi(debut), arrondi(x)]);
+    debut = Math.max(debut, y);
+  }
+  if (a.duree - debut >= PLAN_PROPRE_MIN_S - 1e-6) out.push([arrondi(debut), arrondi(a.duree)]);
+  return out;
+}
+
+/**
+ * #613 — indices des échantillons où une COUPE FRANCHE de la source tombe
+ * (dans ]t[i−1], t[i]]) : pic de mouvement (> `SEUILS.coupeRelative` × la
+ * moyenne du rush) ET image qui change (écart d'empreinte > `SEUILS.similaire`).
+ * Critère de `plansPropres`, partagé avec l'analyseur (2e mesure). Pur.
+ */
+export function coupesFranches(echantillons: ReadonlyArray<EchantillonRush>): number[] {
+  const e = [...echantillons].sort((x, y) => x.t - y.t);
+  const mouvMoyen = moyenne(e.map((x) => x.mouvement)) || 1e-6;
+  const out: number[] = [];
+  for (let i = 1; i < e.length; i++) {
+    if (e[i].mouvement > mouvMoyen * SEUILS.coupeRelative
+      && (!e[i].empreinte || !e[i - 1].empreinte || ecartEmpreinte(e[i].empreinte!, e[i - 1].empreinte!) > SEUILS.similaire)) out.push(i);
+  }
+  return out;
+}
+
+/** #613 — pas de la 2e mesure d'une coupe (s). */
+export const PAS_COUPE_FINE_S = 0.1;
+
+/**
+ * #613 — LOCALISE une coupe franche entre deux échantillons : `avant` (image
+ * de l'ancien plan, à `t0`), `apres` (image du nouveau, à `t1`) et des images
+ * intermédiaires mesurées (`PAS_COUPE_FINE_S`). Une image intermédiaire est
+ * de l'ancien plan si elle est nettement plus proche de `avant` (écart au
+ * plus le tiers de l'écart avant/après), du nouveau symétriquement ; une
+ * image ambiguë (fondu, flou de bougé) reste écartée. Rend [dernière image
+ * de l'ancien plan, première du nouveau] — `null` si l'ordre est incohérent
+ * (l'intervalle entier reste écarté). Pur.
+ */
+export function localiserCoupe(
+  t0: number, avant: Float32Array, t1: number, apres: Float32Array,
+  intermediaires: ReadonlyArray<{ t: number; gris: Float32Array }>,
+): [number, number] | null {
+  const ecart = (x: Float32Array, y: Float32Array) => {
+    let s = 0;
+    for (let q = 0; q < x.length; q++) s += Math.abs(x[q] - y[q]);
+    return s / Math.max(1, x.length);
+  };
+  const D = ecart(avant, apres);
+  if (!(D > 0)) return null;
+  let dernierAncien = t0;
+  let premierNouveau = t1;
+  let nouveauVu = false;
+  for (const { t, gris } of [...intermediaires].sort((x, y) => x.t - y.t)) {
+    if (!(t > t0 && t < t1)) continue;
+    const dA = ecart(gris, avant);
+    const dN = ecart(gris, apres);
+    const ancien = dA < dN && dA <= D / 3;
+    const nouveau = dN < dA && dN <= D / 3;
+    if (ancien) {
+      if (nouveauVu) return null; // l'ancien plan revient après le nouveau : mesure incohérente
+      dernierAncien = t;
+    } else if (nouveau) {
+      if (!nouveauVu) premierNouveau = t;
+      nouveauVu = true;
+    } else if (nouveauVu) {
+      return null; // image ambiguë APRÈS le nouveau plan (fondu, flash) : mesure incertaine
+    }
+    // ambiguë avant le nouveau plan : elle reste dans la fenêtre écartée.
+  }
+  return premierNouveau > dernierAncien ? [arrondi(dernierAncien), arrondi(premierNouveau)] : null;
+}
+
 function statsRush(a: AnalyseRush): StatsRush {
   const mouvements = a.echantillons.map((e) => e.mouvement);
   const mouvMoyen = moyenne(mouvements) || 1e-6;
@@ -554,6 +730,27 @@ export function planMontage(
   const decoupages = new Map<string, DecoupageRush>(modePassages ? rushs.map(({ a, cle }) => [cle, decouperPassages(a, entreesR.get(cle)!)]) : []);
 
   const grille = grilleDeCoupes(cible, regle, options.rythme ?? null);
+  // #613 (Créer) : unicité par timecode, extraits dans les plans propres.
+  const parTimecode = !!options.uniciteParTimecode && !modePassages;
+  const propres = new Map<string, Array<[number, number]>>(parTimecode ? rushs.map(({ a, cle }) => [cle, plansPropres(a)]) : []);
+  const cleApres = options.rushApres ? cleSource(options.rushApres) : null;
+  /** #613 — nombre d'extraits montés par rush (rotation). */
+  const usages = new Map<string, number>();
+  /** #613 v3 — l'instant `t` du rush tombe-t-il dans un GESTE FORT (même critère que `mesuresFenetre`) ? */
+  const dansUnGeste = (cle: string, t: number): boolean => {
+    const r = rushs.find((x) => x.cle === cle);
+    if (!r) return false;
+    const e = r.a.echantillons;
+    const pas = e.length > 1 ? (e[e.length - 1].t - e[0].t) / (e.length - 1) : 0.5;
+    return e.some((x) => Math.abs(x.t - t) <= pas / 2 + 1e-6
+      && x.mouvement >= r.st.mouvMediane * 2.2 && x.mouvement / SEUILS.mouvementReference >= 0.5);
+  };
+  /** #613 — secondes de plans propres encore libres dans un rush (marge comprise). */
+  const matiereLibre = (cle: string) => (propres.get(cle) ?? []).reduce((t, [x, y]) => {
+    let libre = y - x;
+    for (const [u, v] of utilisees[cle] ?? []) libre -= Math.max(0, Math.min(y, v + MARGE_TIMECODE_S) - Math.max(x, u - MARGE_TIMECODE_S));
+    return t + Math.max(0, libre);
+  }, 0);
   // PR2 (passages) — le dernier créneau est TOUJOURS un CTA (une grille courte n'en
   // contenait parfois aucun : le dernier créneau commençait avant 90 % de la cible).
   if (modePassages && grille.length && !grille.some((c) => c.phase === 'CTA')) grille[grille.length - 1] = { ...grille[grille.length - 1], phase: 'CTA' };
@@ -640,11 +837,32 @@ export function planMontage(
     // (aucune passe ne la relâche) ; faute de fenêtre propre, la vidéo est plus courte, et c'est écrit.
     const chercher = (exclu: string | null, reprise: 0 | 1 | 2 = 0, repli = false, relache = false): Choix | null => {
     let meilleur: Choix | null = null;
+    // #613 v3 : matière RARE — le libre de tous les rushes ne couvre plus le reste de la cible.
+    const rare = parTimecode && rushs.reduce((t, r) => t + matiereLibre(r.cle), 0) < cible - creneau.debut + 0.5;
     const passages = modePassages && !repli;
     for (const { a, cle, st } of rushs) {
       if (cle === exclu) continue;
-      const marge = Math.max(SEUILS.margeMin, d / 2);
+      const marge = parTimecode ? MARGE_TIMECODE_S : Math.max(SEUILS.margeMin, d / 2);
       const debutMin = Math.min(0.5, a.duree * 0.05);
+      // #613 : départs dans les plans propres — leur début, la grille de 0,5 s, et la fin du plan moins le créneau.
+      const plansDuRush = parTimecode ? propres.get(cle) ?? [] : null;
+      // #613 v3 : la matière LIBRE (plans propres moins les extraits montés) — ses bords sont des départs
+      // (un extrait collé au précédent ne laisse pas de miette inutilisable), et un morceau libre plus court
+      // que le créneau devient un plan COURT (créneau raccourci, le reste passe au suivant) au lieu d'être jeté.
+      const libres = plansDuRush ? morceauxLibres(plansDuRush, utilisees[cle] ?? [], marge) : null;
+      const plancherCourt = Math.max(PLAN_PROPRE_MIN_S, regle.phases[creneau.phase][0] * 0.6);
+      const departsPropres: Array<[number, number]> | null = plansDuRush
+        ? [
+          ...Array.from(new Set([...plansDuRush, ...libres!].flatMap(([x, y]) => {
+            const out: number[] = [x];
+            for (let t = Math.ceil(x / 0.5) * 0.5; t + d <= y + 1e-6; t += 0.5) out.push(t);
+            if (y - d >= x) out.push(y - d);
+            return out.map(arrondi);
+          }))).sort((u, v) => u - v).filter((x) => x + d <= a.duree + 1e-6).map((x) => [x, d] as [number, number]),
+          // Plans courts : seulement quand la matière manque (le reste du montage ne tient plus dans le libre).
+          ...(rare ? libres! : []).filter(([x, y]) => y - x < d - 1e-6 && y - x >= plancherCourt - 1e-6).map(([x, y]) => [x, arrondi(y - x)] as [number, number]),
+        ]
+        : null;
       const dp = passages ? decoupages.get(cle)! : null;
       const eR = passages ? entreesR.get(cle)! : null;
       // Mode passages : fenêtres DANS les passages (débuts, sorties de geste, puis 0,5 s),
@@ -652,17 +870,21 @@ export function planMontage(
       // plus (PR2) les fenêtres posées sur les silences mesurés et les phrases entières.
       const fen: Array<[number, number]> | null = dp
         ? [...departsCandidats(dp, d).map((x) => [x, d] as [number, number]), ...plansEntiersCourts(dp, d), ...fenetresSilences(dp, eR!.silences, d)]
-        : null;
+        : departsPropres;
       for (let k = 0, s = fen ? (fen[0]?.[0] ?? 0) : debutMin; fen ? k < fen.length : s + d <= a.duree - 0.05 + 1e-6; k++, s = fen ? (fen[k]?.[0] ?? 0) : s + 0.5) {
         const dd = fen ? fen[k][1] : d;
         const court = dd < d - 1e-6;
-        const m = mesuresFenetre(a, st, s, s + dd);
+        // #613 : l'échantillon posé PILE au départ mesure le passage depuis l'image d'AVANT le départ
+        // (une coupe de la source y vaut un « geste fort ») — seules les images DANS l'extrait comptent.
+        const m = mesuresFenetre(a, st, parTimecode ? s + 0.01 : s, s + dd);
         if (m.ratees > SEUILS.rateesMax) continue;
         // Ralenti : seulement sur un geste fort, peu de fois, profils dynamiques.
         // Mode passages : jamais (pas d'étirement pour combler la durée).
-        const ralenti = !modePassages && regle.ralenti && ralentis < 2 && (creneau.phase === 'PEAK' || creneau.phase === 'HOOK') && m.geste;
+        const ralenti = !modePassages && !court && regle.ralenti && ralentis < 2 && (creneau.phase === 'PEAK' || creneau.phase === 'HOOK') && m.geste;
         const vitesse = ralenti ? 0.6 : 1;
         const e = s + dd * vitesse;
+        // #613 : jamais à cheval sur une coupe de la source ni sur une image figée.
+        if (plansDuRush && !plansDuRush.some(([x, y]) => s >= x - 1e-6 && e <= y + 1e-6)) continue;
         // Mode passages : un extrait tient dans UN passage, aucune borne dans un geste.
         const bp = dp ? bornesAutorisees(dp, s, e, eR!) : null;
         if (bp && !bp.ok) continue;
@@ -693,7 +915,10 @@ export function planMontage(
         // la même matière — même en dernier recours (reprise 2).
         const recents = choisis.filter((_, k) => plan[k].fin > creneau.debut - FENETRE_FLASH_S);
         if (recents.some((c) => memeTimecode({ cle, depuis: s, jusqua: e, empreinte: null }, c))) continue;
-        if (!reprise && !continuite && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
+        // #613 (unicité par timecode) : la ressemblance n'exclut plus — un même lieu filmé à un autre moment
+        // (même rush plus loin, ou autre rush du même décor) est une autre image ; la répétition est
+        // jugée au TIMECODE (marge ci-dessus), et la ressemblance reste PÉNALISÉE plus bas.
+        if (!parTimecode && !reprise && !continuite && m.empreinte && empreintesChoisies.some((p) => ecartEmpreinte(m.empreinte!, p) < SEUILS.similaire)) continue;
         // PR2 (passages) — JUMP CUT : deux extraits ADJACENTS jamais du même passage
         // (même plan réel), hors plan continu ; même rush mais autre plan : permis.
         const precSeg = plan[plan.length - 1];
@@ -744,7 +969,12 @@ export function planMontage(
         }
         // Variété visuelle : différent du plan précédent
         const diff: number = prec?.empreinte && m.empreinte ? borne(ecartEmpreinte(m.empreinte, prec.empreinte) / 0.25, 0, 1) : 1;
-        if (prec && diff < 0.3 && !continuite) continue; // quasi le même plan que juste avant
+        if (prec && diff < 0.3 && !continuite) {
+          // #613 (unicité par timecode) : un AUTRE fichier du même décor (plan large → plan serré d'une
+          // même chorégraphie) reste un vrai raccord — pénalisé, plus interdit ; le même rush, jamais.
+          if (!parTimecode || prec.cle === cle) continue; // quasi le même plan que juste avant
+          score -= 0.3;
+        }
         score += 0.2 * diff;
         // ANTI-RÉPÉTITION sur tout le plan : un plan visuellement nouveau,
         // même un peu moins bien noté, bat un excellent plan répétitif.
@@ -808,7 +1038,24 @@ export function planMontage(
           && ((parole.debut === 'incertaine' && borneDansLeSon(a, s)) || (parole.fin === 'incertaine' && borneDansLeSon(a, e)));
         if (dansLeSon) score -= 0.15;
         if (court) score -= 0.1;
+        // #613 v3 : un extrait qui laisse dans sa matière libre une MIETTE (plus courte qu'un plan court)
+        // la jette pour toute la vidéo — pénalisé à proportion.
+        if (libres) {
+          const lib = libres.find(([x, y]) => s >= x - 1e-6 && e <= y + 1e-6);
+          if (lib) {
+            const miette = (l: number) => (l > 0.05 && l < plancherCourt ? l : 0);
+            score -= 0.3 * (miette(s - lib[0] - marge) + miette(lib[1] - e - marge));
+          }
+        }
         if (cle === interdit) score -= coh.troisiemeMemeRush;
+        // #613 : chaque rush est monté avant qu'un autre ne revienne (rotation) ; à égalité, le rush qui
+        // garde le plus de matière propre libre passe d'abord (la matière dure jusqu'au bout du montage).
+        if (parTimecode) {
+          if ((usages.get(cle) ?? 0) > Math.min(...rushs.map((r) => usages.get(r.cle) ?? 0))) score -= 0.5;
+          score += 0.15 * matiereLibre(cle) / Math.max(1e-6, ...rushs.map((r) => matiereLibre(r.cle)));
+        }
+        // #613 : le dernier plan ne vient pas du rush montré juste après (fond du CTA).
+        if (cleApres && cle === cleApres && creneauGrille === grille[grille.length - 1]) score -= 1;
         // Diversité des rushes, jamais au prix d'un mauvais plan
         const part = (partRush.get(cle) ?? 0) / Math.max(1e-6, cible);
         if (part > partJuste * 1.4) score -= 0.3 * (part - partJuste * 1.4) / partJuste;
@@ -836,7 +1083,7 @@ export function planMontage(
               ? `passage de ${Math.round((bp.passage!.fin - bp.passage!.debut) * 10) / 10} s, ${moments.get(`${cle}@${bp.passage!.debut}`)} moments distincts mesurés ⇒ ${plafondPassage(bp.passage!, moments.get(`${cle}@${bp.passage!.debut}`))} extraits au plus` : null,
             bp && dp!.interviews.includes(bp.passage!.debut) ? 'plan quasi immobile gardé : interview sur pied probable (son et mouvement local mesurés)' : null,
             continuite ? 'continuité : même passage, sans saut' : null,
-            court ? 'plan entier plus court que le créneau (créneau raccourci, sans étirement)' : null,
+            court ? (parTimecode ? 'reste de matière libre plus court que le créneau (créneau raccourci, sans étirement)' : 'plan entier plus court que le créneau (créneau raccourci, sans étirement)') : null,
             decalage > 0 && bp ? 'créneau allongé du reste du plan précédent' : null,
             parole ? (parole.debut === 'pause_franche' && parole.fin === 'pause_franche' ? 'coupe dans un silence mesuré (sans preuve de fin de phrase)'
               : parole.debut === 'absente' ? (eR!.pisteAudio === true ? 'piste muette' : 'sans piste son')
@@ -907,15 +1154,25 @@ export function planMontage(
       const kp = `${meilleur.cle}@${meilleur.seg.passage.debut}`;
       usagePassage.set(kp, (usagePassage.get(kp) ?? 0) + 1);
       decalage = meilleur.seg.fin < creneau.fin - 1e-6 ? creneau.fin - meilleur.seg.fin : 0;
+    } else if (parTimecode) {
+      // #613 v3 : plan court (reste de matière libre) — le créneau suivant commence plus tôt.
+      decalage = meilleur.seg.fin < creneau.fin - 1e-6 ? creneau.fin - meilleur.seg.fin : 0;
     }
     (utilisees[meilleur.cle] ??= []).push([meilleur.seg.depuis ?? 0, meilleur.seg.jusqua ?? 0]);
     partRush.set(meilleur.cle, (partRush.get(meilleur.cle) ?? 0) + (meilleur.seg.fin - meilleur.seg.debut));
+    usages.set(meilleur.cle, (usages.get(meilleur.cle) ?? 0) + 1);
     if (meilleur.empreinte) empreintesChoisies.push(meilleur.empreinte);
     if (meilleur.seg.effet === 'ralenti') ralentis += 1;
     precedent = { cle: meilleur.cle, empreinte: meilleur.empreinte, luminosite: meilleur.luminosite, saturation: meilleur.saturation };
     choisis.push({ cle: meilleur.cle, depuis: meilleur.seg.depuis ?? 0, jusqua: meilleur.seg.jusqua ?? 0, empreinte: meilleur.empreinte });
     serieNoirBlanc = estNoirEtBlanc(meilleur.saturation) ? serieNoirBlanc + (meilleur.seg.fin - meilleur.seg.debut) : 0;
   }
+  // #613 v3 — matière épuisée avant la cible : chaque plan est PROLONGÉ sur la matière libre qui le
+  // touche dans son rush (jusqu'à la durée maximale d'un plan du profil), les suivants glissent. Les
+  // bornes déplacées tombent sur une coupe de la source ou contre un autre extrait : aucune nouvelle
+  // coupe au milieu d'un geste. Les plans calés sur un temps de la musique ne bougent pas (seul ce qui suit
+  // le dernier cut calé s'allonge).
+  if (parTimecode && plan.length) prolongerSurMatiereLibre(plan, propres, cible, regle, dansUnGeste);
   // Un plan d'UN seul rush (les autres écartés pour incohérence, #496) reste
   // un vrai montage : le refuser renvoyait à l'enchaînement brut de TOUS les
   // rushes — noir et blanc compris, le pire résultat.
@@ -931,6 +1188,15 @@ export function planMontage(
   // une fois sur la durée réellement disponible, pour garder HOOK → CTA.
   const obtenu = plan[plan.length - 1].fin;
   const passes = options.recale ?? 0;
+  // #613 v3 : le plan RETENU (recalé ou non) est prolongé vers la cible DEMANDÉE — un recalage sur une
+  // cible plus courte plafonnait la prolongation à cette cible-là.
+  const finale = (p: RushSegment[]): RushSegment[] => {
+    if (!parTimecode || passes > 0) return p;
+    const q = p.map((x) => ({ ...x }));
+    prolongerSurMatiereLibre(q, propres, cible, regle, dansUnGeste);
+    if (cleApres && !q.some((x) => x.beatCible != null)) eviterRushEnSortie(q, cleApres);
+    return q;
+  };
   if (passes < 3 && obtenu < cible - 0.5 && detection.profil !== 'STANDARD') {
     const recale = planMontage(analyses, obtenu, { ...options, profil: detection.profil, recale: passes + 1 }) ?? plan;
     // #504 VERROU — durée PROPRE maximale : le placement glouton n'est pas
@@ -944,11 +1210,99 @@ export function planMontage(
         const essai = planMontage(analyses, t, { ...options, profil: detection.profil, recale: 1 });
         if (essai && note(essai) > note(meilleur)) meilleur = essai;
       }
-      return meilleur;
+      return finale(meilleur);
     }
-    return recale;
+    return finale(recale);
   }
-  return plan;
+  return finale(plan);
+}
+
+/**
+ * #613 v3 — prolonge les plans sur la matière libre adjacente de leur rush
+ * (plans propres moins les autres extraits, `MARGE_TIMECODE_S`), sans
+ * dépasser `cible` ni la durée maximale d'un plan (`hardMax`, le maximum du
+ * CTA pour un plan CTA) ; décale les plans suivants. Jamais un ralenti.
+ * Un plan n'est prolongé que si ni lui ni aucun plan suivant n'est calé sur
+ * un temps de la musique (`beatCible`) : les cuts calés restent en place. Une borne qui ne tombe PAS sur le bord de la
+ * matière libre (prolongation plafonnée) recule hors d'un geste fort
+ * (`dansUnGeste`) : jamais une coupe au milieu d'un geste. Modifie `plan` en place.
+ */
+function prolongerSurMatiereLibre(
+  plan: RushSegment[],
+  propres: ReadonlyMap<string, ReadonlyArray<readonly [number, number]>>,
+  cible: number,
+  regle: RegleProfil,
+  dansUnGeste: (cle: string, t: number) => boolean = () => false,
+): void {
+  for (let i = 0; i < plan.length; i++) {
+    const total = plan[plan.length - 1].fin;
+    if (total >= cible - 0.05) return;
+    const seg = plan[i];
+    // Un cut calé sur la musique à partir d'ici (la fin de ce plan ou un suivant) : on n'y touche pas.
+    if (plan.slice(i).some((x) => x.beatCible != null)) continue;
+    if ((seg.vitesse ?? 1) !== 1 || typeof seg.depuis !== 'number' || typeof seg.jusqua !== 'number') continue;
+    const cle = cleSource(seg.url);
+    const autres = plan.filter((x, k) => k !== i && cleSource(x.url) === cle).map((x) => [x.depuis ?? 0, x.jusqua ?? 0] as [number, number]);
+    const lib = morceauxLibres(propres.get(cle) ?? [], autres, MARGE_TIMECODE_S)
+      .find(([x, y]) => seg.depuis! >= x - 1e-6 && seg.jusqua! <= y + 1e-6);
+    if (!lib) continue;
+    const maxPlan = seg.phase === 'CTA' ? Math.max(regle.hardMax, regle.phases.CTA[1]) : regle.hardMax;
+    let reste = Math.min(cible - total, maxPlan - (seg.fin - seg.debut));
+    let apres = Math.max(0, Math.min(lib[1] - seg.jusqua, reste));
+    // Borne plafonnée (pas au bord de la matière libre) dans un geste fort : elle recule.
+    while (apres >= 0.1 && seg.jusqua + apres < lib[1] - 1e-6 && dansUnGeste(cle, seg.jusqua + apres)) apres = arrondi(apres - 0.1);
+    reste -= apres;
+    let avant = Math.max(0, Math.min(seg.depuis - lib[0], reste));
+    while (avant >= 0.1 && seg.depuis - avant > lib[0] + 1e-6 && dansUnGeste(cle, seg.depuis - avant)) avant = arrondi(avant - 0.1);
+    const gain = arrondi((apres >= 0.1 ? apres : 0) + (avant >= 0.1 ? avant : 0));
+    if (gain <= 0) continue;
+    plan[i] = {
+      ...seg,
+      depuis: arrondi(seg.depuis - (avant >= 0.1 ? avant : 0)),
+      jusqua: arrondi(seg.jusqua + (apres >= 0.1 ? apres : 0)),
+      fin: arrondi(seg.fin + gain),
+      beatCible: null,
+      beatOffsetMs: null,
+      raison: `${seg.raison ?? ''} · prolongé de ${arrondi2(gain)} s sur la matière libre de son plan (matière épuisée avant la cible)`,
+    };
+    for (let k = i + 1; k < plan.length; k++) {
+      plan[k] = { ...plan[k], debut: arrondi(plan[k].debut + gain), fin: arrondi(plan[k].fin + gain), beatCible: null, beatOffsetMs: null };
+    }
+  }
+}
+
+/**
+ * #613 v3 — matière épuisée, le DERNIER plan peut venir du rush montré juste
+ * après (fond du CTA) : la règle de la grille ne visait que le dernier
+ * créneau prévu. Ce plan est alors DÉPLACÉ plus tôt, entre deux plans
+ * d'autres rushes (jamais deux plans de suite du même rush) ; les plans sont
+ * remis bout à bout et chaque position garde sa phase. Sans place possible :
+ * inchangé. Modifie `plan` en place.
+ */
+function eviterRushEnSortie(plan: RushSegment[], cleApres: string): void {
+  const n = plan.length;
+  const k = (s: RushSegment) => cleSource(s.url);
+  if (n < 3 || k(plan[n - 1]) !== cleApres || k(plan[n - 2]) === cleApres) return;
+  const dernier = plan[n - 1];
+  const reste = plan.slice(0, n - 1);
+  let p = -1;
+  for (let i = reste.length - 1; i >= 1; i--) {
+    if (k(reste[i - 1]) !== cleApres && k(reste[i]) !== cleApres) { p = i; break; }
+  }
+  if (p < 0) return;
+  const phases = plan.map((s) => s.phase);
+  const ordre = [...reste.slice(0, p), dernier, ...reste.slice(p)];
+  let t = plan[0].debut;
+  ordre.forEach((s, i) => {
+    const d = s.fin - s.debut;
+    const bouge = Math.abs(s.debut - t) > 1e-6;
+    plan[i] = {
+      ...s, debut: arrondi(t), fin: arrondi(t + d), phase: phases[i],
+      ...(bouge ? { beatCible: null, beatOffsetMs: null } : {}),
+      ...(s === dernier ? { raison: `${s.raison ?? ''} · avancé : le rush du fond du CTA ne clôt pas la séquence Vidéo` } : {}),
+    };
+    t += d;
+  });
 }
 
 /** Recommandation de mise en page du profil (titres/cartes en surimpression). */

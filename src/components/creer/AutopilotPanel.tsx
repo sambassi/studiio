@@ -17,10 +17,14 @@ import JumeauAutopilote from '@/components/creer/JumeauAutopilote';
 import BriefVideo, { BriefRecurrentRecap } from '@/components/creer/BriefVideo';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type PropositionsStock } from '@/components/creer/CompleterRushesStock';
-import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
+import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, useVideoAvatarReelle, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
-import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
+import { paroleAvatarPrevue as paroleAvatarDuScript } from '@/lib/autopilot/plan-complet';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
+import { useDebitParoleCompte } from '@/components/creer/useDebitParoleCompte';
+import { buildAutopilotSample, postDeLEchantillon } from '@/lib/autopilot/sample';
+import { contexteDeLEchantillon, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { affichageProduction } from '@/lib/autopilot/progression';
@@ -31,14 +35,15 @@ import {
 } from '@/lib/autopilot/medias-prevus';
 import {
   aUneSourceVisuelle, avatarActifConfig, avatarAvecAutresSources, estRushStock, libelleBanqueRushes, MAX_STOCK_RETENU, sujetStockPrincipal, sourcesPertinentes,
-  type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
+  sujetsCourants, type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
 import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import { avecConfirmationCout } from '@/lib/fournisseurs/confirmation-client';
 import {
   boutonProduireVisible, libelleBoutonProduire, suiteEnvoi, messageErreurTechnique, lireProgressionServeur,
-  repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, type EtatProduction,
+  repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, MESSAGE_PRODUCTION_INTERROMPUE, type EtatProduction,
+  annoncerProductionAutopilote, estEnProduction, lireProductionSuivie, noterProductionSuivie, oublierProductionSuivie, parametresSuivi, suivreProductionDuServeur,
 } from '@/lib/autopilot/etat-production-manuelle';
 import type { FormatStock } from '@/lib/stock/types';
 import {
@@ -779,18 +784,30 @@ export default function AutopilotPanel({
    * expression pour « Plan avant génération » et pour l'aperçu.
    */
   /**
-   * LA PAROLE DE L'AVATAR PRÉVUE — celle que le BUDGET du script de
-   * production implique (`paroleAvatarDuBudget` : le script réel, écrit au
-   * créneau, est dimensionné pour la durée cible au débit de la voix clonée,
-   * donc ≈ la cible ; avatar seul : la part réservée aux séquences plein
-   * écran est déduite, comme en production). Sans durée cible : la référence
-   * du plan. Aucun appel, aucune génération ; dite « estimée » à l'écran.
+   * L'échantillon que « Produire maintenant » produit (`buildAutopilotSample`,
+   * le même que l'aperçu du style) — UNE fois pour la parole et le contexte.
+   */
+  const echantillonPlan = useMemo(() => buildAutopilotSample({ topics: config.topics, brief: config.brief }), [config]);
+  /** Débit de parole calibré sur les rendus du compte (`null` : débit par défaut). */
+  const debitParoleCompte = useDebitParoleCompte(!!config.jumeauAvatar);
+  /**
+   * LA PAROLE DE L'AVATAR PRÉVUE — estimée depuis le SCRIPT RÉEL que le
+   * montage fera dire (`scriptJumeauMontage` sur l'échantillon, composé par
+   * unités entières SOUS le budget), au débit du compte s'il est calibré
+   * (`paroleAvatarPrevue` → `estimerParoleAvatar`, la règle du moteur).
+   * Sans script : le budget, comme avant. Aucun appel fournisseur, aucune
+   * génération ; dite « estimée » à l'écran.
    */
   const paroleAvatarPrevue = useMemo(() => {
     if (!config.jumeauAvatar) return null;
     const seul = !avatarAvecAutresSources(config);
-    return paroleAvatarDuBudget(config.brief, seul ? secondesReserveesEnveloppeJumeau(config.brief?.duree) : 0);
-  }, [config]);
+    return paroleAvatarDuScript({
+      script: scriptJumeauMontage(postDeLEchantillon(echantillonPlan, config.brief), config),
+      brief: config.brief,
+      secondesReservees: seul ? secondesReserveesEnveloppeJumeau(config.brief?.duree) : 0,
+      debitCompte: debitParoleCompte,
+    });
+  }, [config, echantillonPlan, debitParoleCompte]);
   const planSuggere = gabaritSuggere({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
@@ -803,20 +820,40 @@ export default function AutopilotPanel({
    * génération » ET l'aperçu du montage prévu (même avatar, même cible, même
    * rythme, même parole estimée) : les deux écrans calculent le MÊME plan.
    */
+  /**
+   * Ce que la vidéo DIRA — l'échantillon que « Produire maintenant » produit
+   * (`buildAutopilotSample`, le même que l'aperçu du style) : la pertinence
+   * des médias et la narration sont calculées comme au rendu.
+   */
+  const contextePlan = useMemo<ContexteTextesAutopilote>(
+    () => contexteDeLEchantillon(echantillonPlan, sujetsCourants(config), config.brief),
+    [config, echantillonPlan],
+  );
   const optionsPlan = {
     avatarDisponible: etatSources.avatarActif && etatSources.avatarPret,
     cible: config.brief.duree ?? null,
     rythme: config.brief.rythme ?? null,
     secondesAvatarEstimees: paroleAvatarPrevue,
+    contexte: contextePlan,
   };
+  /**
+   * La VRAIE vidéo de l'avatar, déjà produite (aperçu prêt, sinon rendu
+   * récent) — lecture en base, rien n'est généré. Lue seulement quand
+   * l'avatar porte la production.
+   */
+  const avatarPorte = avatarPorteLaProduction(sources.actives.avatar, avatarPret);
+  const videoAvatarReelle = useVideoAvatarReelle(avatarPorte, config.jumeauAvatarId);
   const resumeApercu: ResumeMediasApercu = {
     gabarit: sources.gabarit.length > 0 ? sources.gabarit : planSuggere,
     actives: sources.actives,
     rushesPerso: sources.actives.rushes ? rushesPerso : [],
     stock: sources.actives.stock ? pertinent.stock : [],
     avatar: {
-      disponible: avatarPorteLaProduction(sources.actives.avatar, avatarPret),
+      disponible: avatarPorte,
       vignette: vignetteAvatar ? { url: vignetteAvatar.url, type: vignetteAvatar.type } : null,
+      // Avatar demandé, disponibilité pas encore lue : l'aperçu attend.
+      ...(sources.actives.avatar && avatarPret === null ? { chargement: true } : {}),
+      ...(avatarPorte && videoAvatarReelle ? { video: videoAvatarReelle } : {}),
     },
     // Les options EXACTES passées à `PlanAvantGeneration` ci-dessous.
     plan: {
@@ -826,6 +863,8 @@ export default function AutopilotPanel({
       rythme: optionsPlan.rythme,
       secondesAvatarEstimees: optionsPlan.secondesAvatarEstimees,
       durees: dureesPlan,
+      dureeVisee: optionsPlan.cible,
+      contexte: optionsPlan.contexte,
     },
   };
   // Remonté sur sa SIGNATURE : un objet neuf à chaque rendu ne relance rien.
@@ -1085,7 +1124,9 @@ export default function AutopilotPanel({
   /** Le résultat d'une production (réponse directe, ou relu en arrière-plan). */
   const appliquerResultat = useCallback((data: Record<string, unknown>) => {
     if (!data?.success) {
-      setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.') });
+      // Le code (ex. `interrompue`, relu de la base après un redémarrage) dit
+      // si le bouton « réessaie » ou « relance ».
+      setProduire({ etat: 'erreur', message: String(data?.error ?? 'Production impossible.'), ...(typeof data?.code === 'string' ? { code: data.code } : {}) });
       return;
     }
     // ⚠️ « DÉPOSÉ » EXIGE UN POST. Un succès sans `postId` (vidéo de l'avatar
@@ -1115,6 +1156,14 @@ export default function AutopilotPanel({
   const [progressionProduction, setProgressionProduction] = useState<{ pourcent: number; libelle: string; etape?: string; avancement?: number | null } | null>(null);
   /** Montage AVEC JUMEAU : l'état RÉEL de sa ligne de file (`reserve` → `en_attente` → `en_cours`) et sa mise en file. */
   const [suiviJumeauFile, setSuiviJumeauFile] = useState<{ statut: string | null; depuis: string | null } | null>(null);
+  // Une production EN COURS est annoncée à la page (colonne d'aperçu) : aucune
+  // ancienne vidéo n'y est présentée à côté du montage qui se fabrique.
+  // Terminée (déposée, échouée, annulée) : le créneau suivi est oublié.
+  useEffect(() => {
+    annoncerProductionAutopilote(estEnProduction(produire));
+    if (produire.etat === 'fait' || produire.etat === 'erreur' || produire.etat === 'annule') oublierProductionSuivie();
+  }, [produire]);
+  useEffect(() => () => annoncerProductionAutopilote(false), []);
   useEffect(() => {
     if (produire.etat !== 'en-cours' && produire.etat !== 'jumeau') { setProgressionProduction(null); setSuiviJumeauFile(null); return; }
     let actif = true;
@@ -1123,12 +1172,16 @@ export default function AutopilotPanel({
     // cesse d'attendre en silence — il le dit et rend le bouton.
     let vides = 0;
     const lire = () => {
-      fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
+      // Le créneau SUIVI : sans avatar, si la mémoire du serveur l'a perdu,
+      // le serveur relit le Calendrier pour CE créneau (déposé ou perdu).
+      fetch(`/api/autopilot/produire-maintenant/progression${parametresSuivi(lireProductionSuivie())}`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
           if (!actif) return;
+          const lecture = lireProgressionServeur(d);
+          suivreProductionDuServeur(d);
           // Un POST encore en vol (verrou client) n'a pas encore de trace : on attend sa réponse.
-          if (lireProgressionServeur(d).cas === 'rien' && !produireEnVolRef.current) {
+          if ((lecture.cas === 'rien' || lecture.cas === 'perdue') && !produireEnVolRef.current) {
             vides += 1;
             if (vides >= LECTURES_VIDES_MAX) setProduire({ etat: 'erreur', message: MESSAGE_PRODUCTION_PERDUE, code: 'introuvable' });
             return;
@@ -1142,8 +1195,9 @@ export default function AutopilotPanel({
               avancement: typeof p.avancement === 'number' ? p.avancement : null,
             });
           }
-          // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici.
-          const r = d?.resultat;
+          // Le rendu tourne en ARRIÈRE-PLAN : son résultat arrive ici (ou le
+          // brouillon de CE créneau, relu dans le Calendrier après un redémarrage).
+          const r = lecture.cas === 'resultat' ? lecture.resultat : null;
           if (!p && r) appliquerResultat(r);
           // Montage AVEC JUMEAU : l'état PROUVÉ par le serveur (file + post
           // relu dans le Calendrier). Seul `depose` devient un succès.
@@ -1172,14 +1226,18 @@ export default function AutopilotPanel({
   // au lieu de proposer d'en lancer une seconde.
   useEffect(() => {
     let actif = true;
-    fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })
+    fetch(`/api/autopilot/produire-maintenant/progression${parametresSuivi(lireProductionSuivie())}`, { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => {
         if (!actif) return;
         // Ne remplace jamais un état posé entre-temps par un clic.
         const lecture = lireProgressionServeur(d);
+        suivreProductionDuServeur(d);
         const reprise = repriseAuRetour(lecture);
-        if (reprise === 'en-cours') setProduire((e) => (e.etat === 'repos' ? { etat: 'en-cours' } : e));
+        // Lancée depuis cet écran, introuvable partout (mémoire, file,
+        // Calendrier) : le serveur a redémarré. On le DIT, avec la relance.
+        if (reprise === 'interrompue') setProduire((e) => (e.etat === 'repos' ? { etat: 'erreur', message: MESSAGE_PRODUCTION_INTERROMPUE, code: 'interrompue' } : e));
+        else if (reprise === 'en-cours') setProduire((e) => (e.etat === 'repos' ? { etat: 'en-cours' } : e));
         else if (reprise === 'jumeau') setProduire((e) => (e.etat === 'repos' ? { etat: 'jumeau' } : e));
         else if (reprise === 'resultat' && lecture.cas === 'resultat' && !produireEnVolRef.current) appliquerResultat(lecture.resultat);
       })
@@ -1208,6 +1266,17 @@ export default function AutopilotPanel({
       // coût ; 202 / 409 « en-cours » / verrou déjà pris : on SUIT le rendu
       // qui tourne ; refus serveur : SA raison, et une relance.
       const suite = suiteEnvoi(issue);
+      // Production ACCEPTÉE (202 ou avatar en file) : le créneau est gardé par
+      // ce navigateur, pour la retrouver — ou dire qu'elle est perdue — au retour.
+      if (!issue.annule) {
+        const accepte = (issue.json ?? {}) as { scheduledDate?: unknown; scheduledTime?: unknown; jumeau?: unknown; code?: unknown };
+        // 409 `en-cours` : une production tourne déjà (autre onglet, autre
+        // processus) — le serveur dit LAQUELLE ; on suit son créneau.
+        if (issue.status === 202 || (issue.status >= 200 && issue.status < 300 && accepte.jumeau === 'en_preparation')
+          || (issue.status === 409 && accepte.code === 'en-cours' && accepte.scheduledDate)) {
+          noterProductionSuivie({ date: accepte.scheduledDate, time: accepte.scheduledTime });
+        }
+      }
       if (suite.suite === 'etat') setProduire(suite.etat);
       else if (suite.suite === 'resultat') appliquerResultat(suite.data);
     } catch (err) {
@@ -1405,7 +1474,7 @@ export default function AutopilotPanel({
                 etapes={aff.etapes}
                 {...(aff.pourcentage !== undefined ? { pourcentage: aff.pourcentage } : {})}
                 detail={aff.message}
-                note="Vous pouvez continuer à régler l’Autopilote."
+                note="Durée indicative : quelques minutes. La production continue sur le serveur même si vous quittez cette page ; le brouillon n’apparaît dans le Calendrier qu’une fois la vidéo finale vérifiée."
               />
             </div>
           );
@@ -1640,7 +1709,8 @@ export default function AutopilotPanel({
             onCommit={enregistrerBrief}
             disabled={!ready || saving}
             titre="Brief récurrent"
-            aide="Commun à toutes les vidéos produites. Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
+            aide="Commun à toutes les vidéos produites."
+            aideDetail="Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
             idPrefix="autopilot-brief"
             sujets={config.topics}
             avecDureeRythme
@@ -1895,6 +1965,10 @@ export default function AutopilotPanel({
                 accent={accent}
                 avatar={avatarPorteLaProduction(config.jumeauAvatar, avatarPret)}
                 onPropositions={setPropositionsStock}
+                // Photos suggérées : complètent les vidéos quand elles ne suffisent
+                // pas ; retenues par le MÊME chemin que la recherche libre.
+                onRetenir={(m) => retenirStock(m)}
+                photosRetenues={sources.stock.filter((m) => m.type === 'photo').map((m) => m.url)}
                 onConserver={(url, meta) => {
                   // La même URL absolue que celle que la banque enregistre.
                   const absolue = urlPubliqueAbsolue(url, window.location.origin) ?? url;
@@ -1959,6 +2033,7 @@ export default function AutopilotPanel({
             stock={sources.actives.stock ? sources.stock : []}
             stockPertinent={sources.actives.stock ? pertinent.stock : []}
             secondesAvatarEstimees={optionsPlan.secondesAvatarEstimees}
+            contexte={optionsPlan.contexte}
             vignetteAvatar={vignetteAvatar}
             avatarDisponible={optionsPlan.avatarDisponible}
             onDurees={setDureesPlan}

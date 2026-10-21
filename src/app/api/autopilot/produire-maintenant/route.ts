@@ -5,9 +5,13 @@ import { getUserCredits } from '@/lib/credits/system';
 import { politiqueDeLUtilisateur } from '@/lib/facturation/politique';
 import { compteExempteDeCredits } from '@/lib/facturation/exemption';
 import { creneauImmediat } from '@/lib/autopilot/rules';
-import { preparePosts, slotKey } from '@/lib/autopilot/engine';
+import { preparePosts } from '@/lib/autopilot/engine';
 import { choisirContenuManuel } from '@/lib/autopilot/contenu-manuel';
-import { postVisibleDansCalendrier } from '@/lib/autopilot/suivi-jumeau-manuel';
+import {
+  postVisibleDansCalendrier, jumeauEnPreparation, jobIdManuel, jetonManuel,
+  productionDirecteEnCours, reserverProductionDirecte, noterEtapeDirecte, battementDirect, terminerProductionDirecte,
+  BATTEMENT_DIRECT_MS,
+} from '@/lib/autopilot/suivi-jumeau-manuel';
 import {
   produireUnMontage, sujetsRecents, creneauxExistants, configDepuisLigne, devisMontage,
 } from '@/lib/autopilot/produire';
@@ -20,7 +24,7 @@ import { aUneSourceVisuelle, avatarActifConfig, etatSourcesServeur } from '@/lib
 import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
 import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
 import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
-import { noterProgression, effacerProgression, noterResultat, effacerResultat } from '@/lib/autopilot/progression';
+import { noterProgression, effacerProgression, noterResultat, effacerResultat, lireProgression } from '@/lib/autopilot/progression';
 
 /**
  * « Produire un brouillon maintenant » — UNE vidéo, tout de suite, pour le
@@ -64,10 +68,14 @@ import { noterProgression, effacerProgression, noterResultat, effacerResultat } 
  *      du jeton) : l'index unique `(user_id, reference_id)` rend un second
  *      débit inoffensif même si les deux premiers verrous étaient contournés.
  *
- * Le premier verrou vit en mémoire : il est exact pour UN processus — ce
- * que l'application est aujourd'hui (un conteneur). Plusieurs réplicas
- * n'auraient que les verrous 2 et 3, qui empêchent le double DÉBIT mais pas,
- * dans la fenêtre entre deux lectures, un double RENDU.
+ * Le premier verrou vit en mémoire : il est exact pour UN processus. Il est
+ * doublé, SANS AVATAR, d'un verrou PERSISTANT par compte (`reserverProductionDirecte`,
+ * ligne `manuel-direct` d'`autopilot_jumeau_attente`, unicité tranchée par la
+ * base) : un redémarrage, un second processus ou un second onglet ne lancent
+ * pas un second rendu pendant qu'un premier tourne — et l'état (étape,
+ * avancement, issue) est relu depuis la base par `/progression` et par le
+ * Calendrier. Un rendu mort avec son processus est libéré (orphelin), jamais
+ * bloquant pour toujours.
  */
 
 export const dynamic = 'force-dynamic';
@@ -77,8 +85,8 @@ export const maxDuration = 300;
 /** Utilisateurs dont une production manuelle est en cours, dans ce processus. */
 const enVol = new Set<string>();
 
-/** Préfixe des jetons manuels : jamais confondus avec un créneau du cron. */
-const PREFIXE_MANUEL = 'manuel:';
+// Préfixe des jetons manuels (`manuel:`) : jamais confondus avec un créneau
+// du cron — porté par `jetonManuel` (suivi-jumeau-manuel.ts).
 
 /**
  * Le DEVIS : ce que le clic coûtera, avant de cliquer.
@@ -116,7 +124,9 @@ export async function GET() {
     cout: devis.total,
     detail: { rendu: devis.rendu, avatar: devis.avatar, affiche: devis.affiche },
     solde,
-    enCours: enVol.has(userId),
+    // En cours dans CE processus, ou — après un redémarrage, ou dans un autre
+    // processus — d'après la réservation persistante.
+    enCours: enVol.has(userId) || !!(await productionDirecteEnCours(userId).catch(() => null)),
     ...(fournisseur ? { fournisseur } : {}),
   });
 }
@@ -152,9 +162,20 @@ export async function POST(req?: Request) {
     );
   }
   enVol.add(userId);
-  effacerResultat(userId);
   let delegue = false;
   try {
+    // ── Verrou 1 persistant : une production sans avatar déjà en cours ────
+    // (autre processus, ou celle d'avant un redémarrage encore vivante). Le
+    // créneau en cours est renvoyé : l'écran SUIT cette production au lieu
+    // d'en lancer une autre. Réservation atomique plus bas, juste avant le rendu.
+    const enCoursAilleurs = await productionDirecteEnCours(userId).catch(() => null);
+    if (enCoursAilleurs) {
+      return NextResponse.json(
+        { success: false, error: 'Une production est déjà en cours. Patientez.', code: 'en-cours', scheduledDate: enCoursAilleurs.date, scheduledTime: enCoursAilleurs.time },
+        { status: 409 },
+      );
+    }
+    effacerResultat(userId);
     const { data: lignes, error } = await supabaseAdmin
       .from('autopilot_config')
       .select('*')
@@ -168,6 +189,24 @@ export async function POST(req?: Request) {
     }
     // Ligne absente : les défauts — sans rush, donc refus juste en dessous.
     const config = configDepuisLigne((lignes?.[0] as Record<string, unknown> | undefined) ?? null);
+
+    // ── Verrou 1 bis : aucune vidéo avec avatar encore en préparation ─────
+    // Sans avatar, le verrou `enVol` ne voit que CE processus et sa mémoire ;
+    // une production avec avatar du même compte attend, elle, en FILE
+    // (`autopilot_jumeau_attente`, persistante). Lancer un second montage
+    // pendant ce temps ferait deux générations pour un seul geste. Refus AVANT
+    // toute lecture coûteuse, tout rendu, tout débit. (Avec avatar : la file a
+    // déjà son propre verrou par créneau — comportement inchangé.)
+    if (!avatarActifConfig(config) && await jumeauEnPreparation(userId).catch(() => false)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Une vidéo avec votre avatar est encore en préparation. Attendez qu’elle soit déposée dans le Calendrier avant de lancer une autre production : rien n’a été lancé ni débité.',
+          code: 'generation-en-cours',
+        },
+        { status: 409 },
+      );
+    }
 
     // ── Refus SANS DÉBIT ────────────────────────────────────────────────
     // MULTI-SOURCES : le refus ne vaut que si AUCUNE source visuelle n'existe —
@@ -229,7 +268,8 @@ export async function POST(req?: Request) {
     // ── Le créneau : aujourd'hui, maintenant arrondi, chez l'utilisateur ──
     const now = Date.now();
     const { date, time } = creneauImmediat(now, config.runTimezone);
-    const jeton = `${PREFIXE_MANUEL}${slotKey(userId, date, time)}`;
+    // Le MÊME jeton que relit le suivi (`jetonManuel`) — `manuel:<slotKey>`.
+    const jeton = jetonManuel(userId, date, time);
 
     // ── Verrou 2 : le créneau n'a pas déjà été produit ──────────────────
     const dejaFaits = await creneauxExistants(userId);
@@ -260,7 +300,7 @@ export async function POST(req?: Request) {
 
     // Verrou 3 : `jobId` DÉTERMINISTE pour le créneau — la référence de
     // débit `autopilote:<jobId>` l'est donc aussi.
-    const jobId = `autopilote-manuel-${userId}-${date}-${time.replace(':', '')}`;
+    const jobId = jobIdManuel(userId, date, time);
     console.log(`[Autopilote/Manuel] ${userId} — sujet : ${topic}, créneau ${date} ${time}`);
 
     // ── JUMEAU : lancement ASYNCHRONE, sans navigateur ──────────────────
@@ -320,10 +360,40 @@ export async function POST(req?: Request) {
     // qui laissait relancer une DEUXIÈME production (staging 30/09 : créneaux
     // 21:10 puis 21:45, un seul post voulu). Le verrou `enVol` tient jusqu'à
     // la FIN du rendu, pas jusqu'à la fin de la requête.
-    noterProgression(userId, 'analyse', 0);
+    // ── RÉSERVATION PERSISTANTE, AVANT LE RENDU ─────────────────────────
+    // La base tranche (`unique (user_id, slot_key)` + mise à jour
+    // conditionnelle) : deux onglets, deux processus, un redémarrage → un seul
+    // rendu. Base en panne : RIEN n'est lancé (jamais un rendu sans verrou).
+    const reservation = await reserverProductionDirecte(userId, {
+      jobId, date, time, timezone: config.runTimezone, title: post.title,
+    }, now);
+    if (!reservation.ok) {
+      if (reservation.raison === 'en_cours') {
+        return NextResponse.json(
+          { success: false, error: 'Une production est déjà en cours. Patientez.', code: 'en-cours', scheduledDate: reservation.date, scheduledTime: reservation.time },
+          { status: 409 },
+        );
+      }
+      console.error(`[Autopilote/Manuel] ${userId} — réservation impossible : ${reservation.message}`);
+      return NextResponse.json(
+        { success: false, error: 'Production impossible pour le moment : rien n’a été lancé ni débité. Réessayez dans un instant.', code: 'base' },
+        { status: 503 },
+      );
+    }
+
+    const noter = (etape: Parameters<typeof noterProgression>[1], avancement = 0) => {
+      noterProgression(userId, etape, avancement);
+      const p = lireProgression(userId);
+      if (p) void noterEtapeDirecte(userId, jobId, { etape: p.etape, avancement: p.avancement ?? null, pourcent: p.pourcent });
+    };
+    noter('analyse', 0);
+    // Signe de vie : sans lui, un rendu long sans changement d'étape serait
+    // pris pour un orphelin. S'arrête avec le rendu.
+    const battement = setInterval(() => { void battementDirect(userId, jobId); }, BATTEMENT_DIRECT_MS);
+    (battement as { unref?: () => void }).unref?.();
     delegue = true;
     void produireUnMontage({
-      onProgression: (etape, avancement) => noterProgression(userId, etape, avancement),
+      onProgression: (etape, avancement) => noter(etape, avancement),
       userId,
       config: configBrouillon,
       post,
@@ -340,9 +410,12 @@ export async function POST(req?: Request) {
       // sa vidéo, dans un statut que le Calendrier affiche.
       const depose = rendu.postId ? await postVisibleDansCalendrier(userId, rendu.postId) : null;
       if (!depose) {
-        noterResultat(userId, { success: false, error: 'Le rendu est terminé, mais le brouillon n’a pas été retrouvé dans le Calendrier.' });
+        const error = 'Le rendu est terminé, mais le brouillon n’a pas été retrouvé dans le Calendrier.';
+        noterResultat(userId, { success: false, error });
+        await terminerProductionDirecte(userId, jobId, { ok: false, message: error });
         return;
       }
+      await terminerProductionDirecte(userId, jobId, { ok: true, postId: depose.postId });
       noterResultat(userId, {
         success: true,
         postId: depose.postId,
@@ -364,7 +437,11 @@ export async function POST(req?: Request) {
     }).catch((err) => {
       console.error('[Autopilote/Manuel]', err instanceof Error ? err.message : err);
       noterResultat(userId, { success: false, error: 'Production impossible. Rien n’a été débité.' });
+      return terminerProductionDirecte(userId, jobId, { ok: false, message: 'Production impossible. Rien n’a été débité.' });
+    }).catch((err) => {
+      console.error('[Autopilote/Manuel] fin non écrite :', err instanceof Error ? err.message : err);
     }).finally(() => {
+      clearInterval(battement);
       enVol.delete(userId);
     });
 

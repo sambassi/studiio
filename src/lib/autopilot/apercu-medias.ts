@@ -22,6 +22,7 @@ import type { CreneauGabarit, MediaStockRetenu, SourcesActives } from '@/lib/aut
 import { estRushStock } from '@/lib/autopilot/sources';
 import { MOUVEMENTS_PHOTO } from '@/lib/autopilot/plan-multi-sources';
 import { planCompletAutopilote, URL_AVATAR_PREVU } from '@/lib/autopilot/plan-complet';
+import type { ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { DUREE_ESTIMEE_SANS_CIBLE } from '@/lib/autopilot/duree-cible';
 import type { RythmeBrief } from '@/lib/creer/brief';
 import { TRANSITION_DURATION_SECONDS } from '@/lib/creer/transitionPreview';
@@ -37,7 +38,23 @@ export interface ResumeMediasApercu {
   /** Médias stock retenus — vide si la source est décochée. */
   stock: MediaStockRetenu[];
   /** L'avatar porte-t-il la production (demandé ET prêt) ? Sa vignette, si connue. */
-  avatar: { disponible: boolean; vignette: { url: string; type: 'photo' | 'video' } | null };
+  avatar: {
+    disponible: boolean;
+    vignette: { url: string; type: 'photo' | 'video' } | null;
+    /**
+     * Avatar DEMANDÉ dont la disponibilité est encore en lecture : l'aperçu
+     * attend (état de chargement) au lieu de montrer un plan sans avatar —
+     * rempli de stock — qui disparaîtrait une seconde plus tard. Absent : la
+     * règle d'avant.
+     */
+    chargement?: boolean;
+    /**
+     * Une VRAIE vidéo de cet avatar, déjà produite et payée (aperçu prêt, sinon
+     * rendu récent — `GET /api/avatar/apercu`, lecture en base). Jamais
+     * générée pour l'aperçu. Absent : la vignette.
+     */
+    video?: string | null;
+  };
   /**
    * Les options EXACTES de « Plan avant génération » (`planCompletAutopilote`) :
    * l'aperçu du montage prévu calcule le MÊME plan. Absent : défauts du moteur.
@@ -52,11 +69,15 @@ export interface ResumeMediasApercu {
     scriptAvatar?: string | null;
     /** Durées sondées des vidéos (rushes, vidéos suggérées). */
     durees?: Readonly<Record<string, number | null>>;
+    /** Durée cible du brief (s) — `null` sans cible : avec avatar, la clôture complète la parole jusqu'à elle. */
+    dureeVisee?: number | null;
+    /** Ce que la vidéo dit : pertinence des médias et narration calculées comme au rendu. */
+    contexte?: ContexteTextesAutopilote | null;
   };
 }
 
 export type MediaApercuAutopilote =
-  | { type: 'avatar'; sequence: number; etiquette: string; url: string | null; media: 'photo' | 'video' }
+  | { type: 'avatar'; sequence: number; etiquette: string; url: string | null; media: 'photo' | 'video'; chargement?: boolean }
   | { type: 'rush'; sequence: number; etiquette: string; url: string }
   | { type: 'stock'; sequence: number; etiquette: string; url: string; media: 'video' | 'photo'; vignetteUrl: string | null }
   | { type: 'aucun'; etiquette: string };
@@ -72,9 +93,16 @@ export function nomRush(url: string, rang: number): string {
 }
 
 function resoudreCreneau(c: CreneauGabarit, n: number, r: ResumeMediasApercu): MediaApercuAutopilote | null {
-  const avatar = (): MediaApercuAutopilote | null => (r.actives.avatar && r.avatar.disponible
-    ? { type: 'avatar', sequence: n, etiquette: `Séquence ${n} — Mon avatar`, url: r.avatar.vignette?.url ?? null, media: r.avatar.vignette?.type ?? 'photo' }
-    : null);
+  const avatar = (): MediaApercuAutopilote | null => {
+    if (!r.actives.avatar) return null;
+    // En lecture : la place de l'avatar est RÉSERVÉE — jamais un rush ou un stock à sa place.
+    if (r.avatar.chargement && !r.avatar.disponible) {
+      return { type: 'avatar', sequence: n, etiquette: `Séquence ${n} — Mon avatar (vérification…)`, url: null, media: 'photo', chargement: true };
+    }
+    if (!r.avatar.disponible) return null;
+    if (r.avatar.video) return { type: 'avatar', sequence: n, etiquette: `Séquence ${n} — Mon avatar`, url: r.avatar.video, media: 'video' };
+    return { type: 'avatar', sequence: n, etiquette: `Séquence ${n} — Mon avatar`, url: r.avatar.vignette?.url ?? null, media: r.avatar.vignette?.type ?? 'photo' };
+  };
   const rush = (force?: string): MediaApercuAutopilote | null => {
     if (!r.actives.rushes) return null;
     const perso = r.rushesPerso.filter((u) => !estRushStock(u));
@@ -138,6 +166,8 @@ export function signatureResume(r: ResumeMediasApercu): string {
     r.avatar.disponible,
     r.avatar.vignette?.url ?? '',
     r.avatar.vignette?.type ?? '',
+    r.avatar.chargement ? 1 : 0,
+    r.avatar.video ?? '',
     r.plan ?? null,
   ]);
 }
@@ -157,21 +187,37 @@ export function signatureResume(r: ResumeMediasApercu): string {
  *   - rush / vidéo suggérée / photo suggérée → le média du plan.
  * Pur, sans réseau.
  */
+export type AvatarMontageApercu = 'video-reelle' | 'vignette' | 'emplacement' | 'chargement' | null;
+
 export function etapesMontageApercuAutopilote(
   resume: ResumeMediasApercu | null | undefined,
   opts: { dureeCta?: number | null } = {},
-): { etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number } {
+): {
+  etapes: EtapeApercu[]; lignes: LigneChronologie[]; duree: number; avatar: AvatarMontageApercu; ctaEnSurimpression: boolean;
+  /** Fenêtre du CTA en surimpression (s) — sur la clôture quand elle existe ; `null` sinon. */
+  ctaFenetre?: [number, number] | null;
+  /** Début de la séquence de clôture (s) ; `null` sans clôture. */
+  debutCloture?: number | null;
+} {
   const etapes: EtapeApercu[] = [];
+  let ctaFenetre: [number, number] | null = null;
+  let debutCloture: number | null = null;
+  // Avatar demandé, disponibilité en lecture : AUCUN plan (il serait sans
+  // avatar, donc rempli de stock) — l'écran montre un état de chargement.
+  if (resume && resume.gabarit.length > 0 && resume.actives.avatar && resume.avatar.chargement && !resume.avatar.disponible) {
+    return { etapes, lignes: [], duree: 0, avatar: 'chargement', ctaEnSurimpression: false };
+  }
   if (resume && resume.gabarit.length > 0) {
     const plan = resume.plan;
     const avatarDisponible = plan?.avatarDisponible ?? (resume.actives.avatar && resume.avatar.disponible);
     // La MÊME entrée que `PlanAvantGeneration` (sources déjà filtrées par l'écran).
-    const { segments } = planCompletAutopilote({
+    const complet = planCompletAutopilote({
       gabarit: resume.gabarit,
       actives: { rushes: true, stock: true, avatar: avatarDisponible },
       rushesPerso: resume.rushesPerso,
       stock: resume.stock,
-      avatar: { disponible: avatarDisponible, vignette: null },
+      // La vignette RÉELLE de l'avatar (elle était toujours `null` ici).
+      avatar: { disponible: avatarDisponible, vignette: resume.avatar.vignette ?? null },
     }, {
       cible: plan?.cible ?? DUREE_ESTIMEE_SANS_CIBLE,
       rythme: plan?.rythme ?? null,
@@ -179,7 +225,15 @@ export function etapesMontageApercuAutopilote(
       secondesAvatarEstimees: plan?.secondesAvatarEstimees ?? null,
       scriptAvatar: plan?.scriptAvatar ?? null,
       durees: plan?.durees ?? {},
+      // Sa vraie vidéo, si elle existe déjà : les segments avatar la portent.
+      urlAvatar: avatarDisponible ? resume.avatar.video ?? null : null,
+      // La MÊME décision que le rendu : pertinences, narration, clôture.
+      dureeVisee: plan?.dureeVisee ?? null,
+      contexte: plan?.contexte ?? null,
     });
+    const { segments } = complet;
+    ctaFenetre = complet.cta;
+    debutCloture = complet.debutCloture;
     const perso = resume.rushesPerso;
     let photos = 0;
     segments.forEach((sg, k) => {
@@ -190,26 +244,40 @@ export function etapesMontageApercuAutopilote(
           ...base, source: 'avatar', type: 'video',
           url: sg.url === URL_AVATAR_PREVU ? null : sg.url,
           depuis: sg.debut,
-          libelle: sg.role === 'accroche' ? 'Mon avatar — accroche' : sg.role === 'cta' ? 'Mon avatar — CTA' : 'Mon avatar',
+          libelle: sg.role === 'accroche' ? 'Mon avatar — accroche' : sg.role === 'cta' ? 'Mon avatar — CTA' : sg.role === 'conclusion' ? 'Mon avatar — conclusion' : 'Mon avatar',
         });
-      } else if (sg.genre === 'photo') {
-        etapes.push({
-          ...base, source: 'stock-photo', type: 'image', url: sg.url, depuis: 0, libelle: 'Photo suggérée',
-          mouvement: MOUVEMENTS_PHOTO[photos++ % MOUVEMENTS_PHOTO.length],
-        });
-      } else if (sg.genre === 'video') {
-        etapes.push({ ...base, source: 'stock-video', type: 'video', url: sg.url, depuis: 0, libelle: 'Vidéo suggérée' });
       } else {
-        etapes.push({ ...base, source: 'rush', type: 'video', url: sg.url, depuis: 0, libelle: `Rush : ${nomRush(sg.url, Math.max(0, perso.indexOf(sg.url)))}` });
+        // Clôture : plans de coupe APRÈS la parole, CTA à l'écran jusqu'à la fin.
+        const cl = sg.role === 'cloture' ? 'Clôture + CTA — ' : '';
+        if (sg.genre === 'photo') {
+          etapes.push({
+            ...base, source: 'stock-photo', type: 'image', url: sg.url, depuis: 0, libelle: `${cl}Photo suggérée`,
+            mouvement: MOUVEMENTS_PHOTO[photos++ % MOUVEMENTS_PHOTO.length],
+          });
+        } else if (sg.genre === 'video') {
+          etapes.push({ ...base, source: 'stock-video', type: 'video', url: sg.url, depuis: 0, libelle: `${cl}Vidéo suggérée` });
+        } else {
+          etapes.push({ ...base, source: 'rush', type: 'video', url: sg.url, depuis: 0, libelle: `${cl}Rush : ${nomRush(sg.url, Math.max(0, perso.indexOf(sg.url)))}` });
+        }
       }
     });
   }
   const duree = etapes.length ? etapes[etapes.length - 1].fin : 0;
+  const avecAvatar = etapes.some((e) => e.source === 'avatar');
+  const avatar: AvatarMontageApercu = !avecAvatar ? null
+    : etapes.some((e) => e.source === 'avatar' && e.url) ? 'video-reelle'
+      : resume?.avatar.vignette ? 'vignette' : 'emplacement';
   const lignes: LigneChronologie[] = etapes.map((e) => ({ id: e.id, libelle: e.libelle, debut: e.debut, fin: e.fin }));
   const cta = typeof opts.dureeCta === 'number' && Number.isFinite(opts.dureeCta) && opts.dureeCta > 0 ? opts.dureeCta : null;
-  if (cta !== null && etapes.length) {
+  // ⚠️ AVATAR + AUTRES SOURCES : AUCUNE SÉQUENCE CTA APRÈS LA VIDÉO. Le moteur
+  // monte alors les textes EN SURIMPRESSION et retire la séquence CTA plein
+  // écran (`produire.ts`, `ctaDuration: 0`) : le CTA s'affiche sur les
+  // dernières secondes de la parole. L'aperçu annonçait « CTA 30–34 s », que
+  // le MP4 n'a jamais contenu. Avatar seul (pas de plan de coupe) : séquence gardée.
+  const ctaEnSurimpression = etapes.some((e) => e.source === 'avatar') && etapes.some((e) => e.source !== 'avatar');
+  if (cta !== null && etapes.length && !ctaEnSurimpression) {
     const fondu = Math.round(Math.min(TRANSITION_DURATION_SECONDS, duree) * 1000) / 1000;
     lignes.push({ id: 'cta', libelle: 'CTA', debut: duree, fin: Math.round((duree + cta) * 1000) / 1000, cta: true, ...(fondu > 0 ? { fondu } : {}) });
   }
-  return { etapes, lignes, duree };
+  return { etapes, lignes, duree, avatar, ctaEnSurimpression, ctaFenetre: ctaEnSurimpression ? ctaFenetre : null, debutCloture };
 }

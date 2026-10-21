@@ -46,13 +46,13 @@ import {
   Maximize2,
   Play,
   Info,
-  MousePointerClick,
   X,
   UserSquare2,
   Mic,
   Image as ImageIcon,
   Group as GroupIcon,
 } from 'lucide-react';
+import InfoBulle from '@/components/ui/InfoBulle';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
   recadrageRushActif, styleRecadrageRush, RATIO_FORMAT, recadrageDuRush, avecRecadrageRush, recadragesPourRushs, recadragesRushAvecHeritage,
@@ -66,6 +66,7 @@ import { contenuRushsPourMetadata, decisionMontagePourMetadata } from '@/lib/cre
 import { evaluerPertinenceRushs, fichesDuDiagnostic, pertinenceRushsPourMetadata } from '@/lib/creer/pertinence-rushs';
 import { auPlus, chargerFichesContenu, type FichesParUrl } from '@/lib/creer/fiche-contenu-client';
 import ApercuMontageListe from '@/components/creer/ApercuMontageListe';
+import AttenteAvatarMontage from '@/components/creer/AttenteAvatarMontage';
 import {
   listeDepuisRushs, reconcilierListe, estListeEnrichie, avatarAProduire, rushsDeListe, urlsRecadrables,
   ajouterMedia, deplacerMedia, retirerMedia, remplacerMedia, poserVideoAvatar,
@@ -163,7 +164,9 @@ import { MESSAGES_AVATAR, URL_ABONNEMENT } from '@/lib/avatar/fournisseurs';
 import { empreinteApercu } from '@/lib/creer/empreinteApercu';
 import { geometrieAgrandie } from '@/lib/creer/apercuAgrandi';
 import { echelleDepuisCoin, largeurDepuisBord, type Coin } from '@/lib/creer/redimensionTexte';
-import { echelleCtaAjustee, echelleCtaDeDepart, VERSION_LISIBILITE, defautsLisibles } from '@/lib/creer/ajustementCta';
+import { echelleCtaAjustee, echelleCtaDeDepart, echelleTitreDeDepart, VERSION_LISIBILITE, defautsLisibles, versionLisibiliteRestauree } from '@/lib/creer/ajustementCta';
+import { recadragePourRushPeint } from '@/lib/creer/recadrage-rush';
+import { ASSOMBRISSEMENT_FOND_TEXTE, fondsRushTexte, fondRushDeLOnglet, type FondRush, type FondsRushTexte } from '@/lib/creer/fond-rush-texte';
 import {
   mesuresHabillage, angleDiagonale, cssVoile, habillagePourMode, lireModeHabillage,
   MODES_HABILLAGE, MODE_HABILLAGE_DEFAUT, type HabillageVideo, type ModeHabillage,
@@ -257,7 +260,7 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, planAvecAvatar, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { ajusterPlan, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { ajusterPlan, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, plansPropres, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
@@ -819,6 +822,11 @@ interface TextStyles {
     italic: boolean;
     letterSpacing: number;
     lineHeight: number;
+    /**
+     * Dérivé à l'affichage, jamais persisté : l'échelle est l'auto-ajustement
+     * par défaut (`echelleTitreDeDepart`), pas un réglage de l'utilisateur.
+     */
+    echelleAuto?: boolean;
   } & TextFormatFields;
   /**
    * Sous-titre. `null` = « suit le titre » — c'est ce que fait le
@@ -856,7 +864,7 @@ function titreRendu916(
   titre: string | null | undefined, sousTitre: string | null | undefined,
 ): { largeur: number; echelle: number } {
   return titreSur916({
-    format, pos, largeur, echelle: text.title.scale, titre: titre ?? '', sousTitre,
+    format, pos, largeur, echelle: text.title.scale, echelleAuto: !!text.title.echelleAuto, titre: titre ?? '', sousTitre,
     echelleSousTitre: text.subtitle.scale, interligne: text.title.lineHeight, espacement: text.title.letterSpacing,
     police: text.title.font, policeSousTitre: text.subtitle.font, casse: text.title.textCase, casseSousTitre: text.subtitle.textCase,
   });
@@ -1527,6 +1535,7 @@ function PlateContent({
   watermark,
   accent,
   gradEnd,
+  gradStart,
   habillageVideo = null,
   textAnimation,
   progress = 1,
@@ -1583,6 +1592,8 @@ function PlateContent({
   watermark?: string;
   accent: string;
   gradEnd: string;
+  /** Début du dégradé de marque (contraste des valeurs de cartes). Absent : `accent`. */
+  gradStart?: string;
   /**
    * Cadre aux couleurs du style sur la vidéo (`habillageVideo.ts`), le MÊME
    * que l'export. `null` : aucun habillage, comme avant.
@@ -1907,6 +1918,10 @@ function PlateContent({
               landscape={landscapeCards}
               zoneSure916={format === '9:16'}
               valueColor={gradEnd}
+              // Valeur posée sur le dégradé : lisible (4,5:1) et contour fin —
+              // projets aux défauts lisibles seulement (`lisible916`, v2) : un
+              // ancien post réexporté garde ses couleurs.
+              fondsContraste={cardsTypography?.lisible916 ? [gradStart ?? accent, gradEnd] : null}
               interaction={{
                 onCardDragStart,
                 onDragMove,
@@ -2148,6 +2163,46 @@ function PlateContent({
 type PlateContentProps = Parameters<typeof PlateContent>[0];
 
 /**
+ * Fond EN MOUVEMENT d'une séquence Titre / CTA (`fond-rush-texte.ts`) : le
+ * rush muet en couverture, assombri (`ASSOMBRISSEMENT_FOND_TEXTE`), puis le
+ * voile du dégradé — l'ordre du compositeur (`fondRushTexte`).
+ */
+function FondRushTexte({ fond, gradStart, gradEnd, gradientOpacity }: {
+  fond: FondRush; gradStart: string; gradEnd: string; gradientOpacity: number;
+}) {
+  return (
+    <>
+      <video
+        key={`${fond.url}#${fond.depuis}`}
+        src={`${fond.url}#t=${fond.depuis}`}
+        muted
+        autoPlay
+        // #613 : plage propre connue → la boucle reste DANS [depuis, jusqua] (jamais l'image figée ni
+        // le reste d'un autre plan du début du rush), comme le compositeur.
+        loop={fond.jusqua === undefined}
+        onTimeUpdate={fond.jusqua === undefined ? undefined : (e) => {
+          const v = e.currentTarget;
+          if (v.currentTime >= (fond.jusqua as number) - 0.05) v.currentTime = fond.depuis;
+        }}
+        onEnded={fond.jusqua === undefined ? undefined : (e) => {
+          const v = e.currentTarget;
+          v.currentTime = fond.depuis;
+          void v.play().catch(() => {});
+        }}
+        playsInline
+        data-fond-rush-texte
+        // Recadrage du rush : le style de l'aperçu de la séquence Vidéo
+        // (`styleRecadrageRush`), même rectangle que le compositeur. La LUT
+        // n'est pas simulée dans l'aperçu (comme pour la séquence Vidéo).
+        style={{ ...(styleRecadrageRush(fond.recadrage) as React.CSSProperties), pointerEvents: 'none' }}
+      />
+      <div aria-hidden style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`, pointerEvents: 'none' }} />
+      <div aria-hidden style={{ position: 'absolute', inset: 0, background: backdropVeilCSS(gradStart, gradEnd, gradientOpacity), pointerEvents: 'none' }} />
+    </>
+  );
+}
+
+/**
  * Un plateau COMPLET en lecture seule — fond, affiche, contenu d'UNE sequence.
  *
  * C'est le calque que `SequencePlayback` anime : le meme fond que le plateau
@@ -2165,6 +2220,7 @@ function PlateauLecture({
   gradientOpacity,
   posterUrl = null,
   posterTransform,
+  fondRush = null,
   ...plate
 }: Omit<PlateContentProps, 'edit'> & {
   displayScale: number;
@@ -2172,8 +2228,11 @@ function PlateauLecture({
   gradientOpacity: number;
   posterUrl?: string | null;
   posterTransform?: PosterTransform;
+  /** Fond en mouvement de cette séquence (sans affiche) — `fondRushDeLOnglet`. */
+  fondRush?: FondRush | null;
 }) {
   const { format, gradEnd } = plate;
+  const fondMouvant = !posterUrl ? fondRush : null;
   return (
     <div
       data-plateau-lecture={plate.focus}
@@ -2185,11 +2244,12 @@ function PlateauLecture({
         height: VIDEO_SIZE[format].h,
         transform: `scale(${displayScale})`,
         transformOrigin: 'top left',
-        background: posterUrl ? DARK : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
+        background: posterUrl || fondMouvant ? DARK : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
         fontFamily: 'var(--font-inter), Inter, sans-serif',
         pointerEvents: 'none',
       }}
     >
+      {fondMouvant && <FondRushTexte fond={fondMouvant} gradStart={gradStart} gradEnd={gradEnd} gradientOpacity={gradientOpacity} />}
       {posterUrl && (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2216,7 +2276,7 @@ function PlateauLecture({
           />
         </>
       )}
-      <PlateContent {...plate} />
+      <PlateContent {...plate} gradStart={gradStart} />
     </div>
   );
 }
@@ -2234,6 +2294,7 @@ export function Preview({
   groupedCards,
   posterUrl = null,
   posterTransform,
+  fondsRush = null,
   cropping = false,
   onPosterPanStart,
   onPosterZoomStart,
@@ -2470,6 +2531,12 @@ export function Preview({
   posterUrl?: string | null;
   /** Recadrage de l'affiche — zoom et decalages en fraction du plateau. */
   posterTransform?: PosterTransform;
+  /**
+   * Fonds en mouvement Titre / CTA (`fondsRushTexte`) : sans affiche, le rush
+   * assombri sous le voile — l'onglet Titre / Tout montre celui du Titre,
+   * l'onglet CTA le sien. Absent : le dégradé d'avant.
+   */
+  fondsRush?: FondsRushTexte | null;
   /** Mode recadrage actif : poignees visibles, fond saisissable. */
   cropping?: boolean;
   onPosterPanStart?: (e: React.PointerEvent) => void;
@@ -2574,6 +2641,8 @@ export function Preview({
   // utilisateur ou média stock ajouté) n'y est pas montré, l'envoi le remplace.
   const showAvatar = !!avatarApercu && activeOrder.includes('video')
     && (focus === 'all' || focus === 'video');
+  // Fond en mouvement de l'onglet (sans affiche) : la MÊME règle que l'export.
+  const fondMouvantApercu = !posterUrl ? fondRushDeLOnglet(fondsRush, focus) : null;
 
   /**
    * Interlettrage : le compositeur multiplie la valeur saisie par `w / 320`
@@ -2698,7 +2767,7 @@ export function Preview({
           // exactement ce que fait le compositeur — photo, puis degrade.
           background: !generated
             ? DARK
-            : posterUrl
+            : posterUrl || fondMouvantApercu
               ? DARK
               : backdropCSS(format, gradStart, gradEnd, gradientOpacity),
           // `var(--font-inter)` est la SEULE reference valide : Next charge la
@@ -2756,6 +2825,9 @@ export function Preview({
             `transform` reproduit le recadrage : `translate` en % de la propre
             largeur du calque — donc du plateau — puis `scale`, exactement le
             `cx = w/2 + offX*w` du compositeur. */}
+        {generated && fondMouvantApercu && (
+          <FondRushTexte fond={fondMouvantApercu} gradStart={gradStart} gradEnd={gradEnd} gradientOpacity={gradientOpacity} />
+        )}
         {generated && posterUrl && (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2896,6 +2968,7 @@ export function Preview({
             watermark={watermark}
             accent={accent}
             gradEnd={gradEnd}
+            gradStart={gradStart}
             habillageVideo={habillagePourMode(habillageVideoMode, { debut: gradStart, fin: gradEnd, accent, opacite: gradientOpacity }) ?? null}
             edit={{
               cardsRef, onCardDragStart, onDragMove, onDragEnd, draggingCard, selectedCards,
@@ -3412,9 +3485,14 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   const rushApercu = mediaVideo.type === 'rush' || (mediaVideo.type === 'stock' && mediaVideo.media === 'video')
     ? mediaVideo.url : null;
   const imageApercu = mediaVideo.type === 'stock' && mediaVideo.media === 'photo' ? mediaVideo.url : null;
+  // Avatar en lecture : sa place est réservée (« Chargement de votre avatar… »),
+  // jamais remplie par un rush ou un stock. Prêt : sa vraie vidéo si elle
+  // existe déjà (`medias.avatar.video`), sinon sa vignette.
   const avatarApercuAutopilote: ApercuAvatarCreer | null = useMemo(
     () => (mediaVideo.type === 'avatar'
-      ? { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url }
+      ? (mediaVideo.chargement
+        ? { etat: 'chargement' }
+        : { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url })
       : null),
     [mediaVideo],
   );
@@ -3743,6 +3821,41 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     () => etapesMontageApercuAutopilote(avecVideo ? medias : null, { dureeCta: dureeCtaLecture }),
     [avecVideo, medias, dureeCtaLecture],
   );
+  // Avatar + plans de coupe : le MP4 n'a PAS de séquence CTA (CTA en
+  // surimpression sur la fin de la parole) — la durée annoncée ne la compte pas.
+  // Avec une clôture, la durée est celle du plan complet (parole + clôture) — la même que le rendu.
+  const dureeVideoApercu = montagePrevu.ctaEnSurimpression && montagePrevu.debutCloture != null && montagePrevu.duree > 0
+    ? Math.round(montagePrevu.duree * 10) / 10
+    : montagePrevu.ctaEnSurimpression && dureeCtaLecture
+      ? Math.round((dureeTotaleApercu - dureeCtaLecture) * 10) / 10
+      : dureeTotaleApercu;
+  /** Vignettes déjà connues des médias suggérés retenus — la chronologie les montre sans rien télécharger. */
+  const vignettesMontage = useMemo(() => {
+    const v: Record<string, string> = {};
+    for (const m of medias?.stock ?? []) if (m.vignetteUrl) v[m.url] = m.vignetteUrl;
+    return v;
+  }, [medias?.stock]);
+  /**
+   * « Remplacer » un média de la chronologie : le flux EXISTANT du panneau
+   * (« Médias suggérés » : Remplacer / Conserver / recherche). Aucun second
+   * système de choix ici — on y amène l'utilisateur.
+   */
+  const minuterieMediasRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (minuterieMediasRef.current !== null) window.clearTimeout(minuterieMediasRef.current);
+  }, []);
+  const allerAuxMedias = useCallback(() => {
+    if (typeof document === 'undefined') return;
+    const cible = document.querySelector('[data-autopilot-stock-source]') ?? document.querySelector('[data-autopilot-add-rush]');
+    if (cible) { cible.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); return; }
+    // Autre étape affichée : on ouvre l'étape Rushes, puis on y descend.
+    (document.querySelector('[data-autopilot-etape="1"]') as HTMLElement | null)?.click();
+    if (minuterieMediasRef.current !== null) window.clearTimeout(minuterieMediasRef.current);
+    minuterieMediasRef.current = window.setTimeout(() => {
+      minuterieMediasRef.current = null;
+      document.querySelector('[data-autopilot-stock-source]')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }, []);
 
   const ouvrirPanneau = useCallback((suivant: typeof panneau) => {
     // Sous le curseur, borne a la fenetre : un panneau ouvert hors de l'ecran
@@ -3754,8 +3867,48 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
 
   return (
     <div data-autopilot-apercu>
-      <h3 className="mb-2 text-sm font-semibold text-gray-100" data-autopilot-apercu-titre="style">
-        Aperçu du style — exemple
+      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-100" data-autopilot-apercu-titre="style">
+        Exemple de style
+        <span
+          className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-300 ring-1 ring-white/10"
+          data-autopilot-apercu-badge="exemple"
+        >
+          Exemple
+        </span>
+        {/* Le libellé honnête ET le mode d'emploi, à la demande (docs/UX-PREMIUM.md) :
+            le badge « Exemple » dit l'essentiel en permanence ; le détail
+            (exemple ≠ prochaine vidéo, vue de composition, double-clic pour
+            régler) vit derrière UNE icône — deux icônes Info côte à côte
+            se confondraient. */}
+        <InfoBulle label="En savoir plus sur l’aperçu du style" titre="Aperçu du style" marqueur="apercu-style">
+          <span className="block" data-autopilot-apercu-mention>
+            <span className="text-gray-200" data-autopilot-apercu-badge="style">Aperçu du style</span>
+            {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
+            {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
+            changent à chaque vidéo ; le style, non.
+            {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
+                est généré à chaque production, à partir du brief récurrent. */}
+            <span data-autopilot-script-exemple>
+              {' '}Exemple de démonstration — le script de chaque vidéo est généré à sa
+              production à partir de votre brief.
+            </span>
+            {/* Ce que l'onglet « Tout » montre : une composition ou le montage. */}
+            {focus === 'all' && (
+              <span data-autopilot-apercu-lecture={lectureEnCours ? 'lecture' : 'composition'}>
+                {lectureEnCours
+                  ? ' Lecture des séquences : l’ordre réel du montage, avec ses transitions.'
+                  : ' Vue de composition : titre, cartes et CTA sont superposés ici, mais se succèdent dans la vidéo — le bouton Lire les joue dans l’ordre.'}
+              </span>
+            )}
+          </span>
+          {/* Police, taille, position et icônes se règlent SUR l'aperçu (le
+              wizard reste à six étapes). Ancien grand encadré violet. */}
+          <span className="block" data-autopilot-apercu-aide>
+            <span className="font-medium text-white">Double-cliquez un élément</span>
+            {' '}— titre, CTA ou carte — pour régler sa police, sa taille et son icône.
+            Glissez pour le déplacer, tirez les coins pour l’agrandir.
+          </span>
+        </InfoBulle>
       </h3>
       <Preview
         generated={generated}
@@ -3870,37 +4023,14 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         ) : null}
       />
 
-      {/* ── LE LIBELLÉ HONNÊTE ───────────────────────────────────────────
-          Sans lui, l'utilisateur lit cet aperçu comme la prochaine vidéo et
-          s'étonne d'en recevoir une autre. Ce qu'il regarde prouve le style,
-          rien d'autre. */}
-      <p
-        className="mt-2 flex items-start gap-1.5 text-[11px] text-gray-500 leading-relaxed"
-        data-autopilot-apercu-mention
-      >
-        <Info className="w-3 h-3 mt-0.5 shrink-0" />
-        <span>
-          <span className="text-gray-300" data-autopilot-apercu-badge="style">Aperçu du style</span>
-          {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
-          {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
-          changent à chaque vidéo ; le style, non.
-          {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
-              est généré à chaque production, à partir du brief récurrent. */}
-          <span data-autopilot-script-exemple>
-            {' '}Exemple de démonstration — le script de chaque vidéo est généré à sa
-            production à partir de votre brief.
-          </span>
-          {/* Ce que l'onglet « Tout » montre : une composition ou le montage.
-              Sans cette phrase, les trois séquences empilées passent pour
-              l'image finale. */}
-          {focus === 'all' && (
-            <span data-autopilot-apercu-lecture={lectureEnCours ? 'lecture' : 'composition'}>
-              {lectureEnCours
-                ? ' Lecture des séquences : l’ordre réel du montage, avec ses transitions.'
-                : ' Vue de composition : titre, cartes et CTA sont superposés ici, mais se succèdent dans la vidéo — ▶ pour les lire dans l’ordre.'}
-            </span>
-          )}
-        </span>
+      {/* ── LA PORTE DU DOUBLE-CLIC, TOUJOURS VISIBLE ─────────────────────
+          Le double-clic est le SEUL accès à la police, la taille et l'icône :
+          invisible, la fonction est introuvable. Une ligne courte et
+          discrète (sans encadré) ; le mode d'emploi complet est dans
+          l'InfoBulle du titre. */}
+      {/* Texte seul : une icône sans action serait décorative (règle 7 de docs/UX-PREMIUM.md). */}
+      <p className="mt-2 text-[11px] text-gray-400" data-autopilot-apercu-indice-double-clic>
+        Double-cliquez un élément pour le régler
       </p>
 
       {/* ── A5 — LE JUMEAU : DURÉE ESTIMÉE ET VOIX ─────────────────────────
@@ -3909,17 +4039,23 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           et la voix de l'avatar ne s'entend que dans la vidéo finale. */}
       {paroleJumeauEstimee !== null && (
         <p
-          className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
+          className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-400"
           data-autopilot-apercu-jumeau="estimee"
-          data-autopilot-apercu-duree-totale={dureeTotaleApercu}
+          data-autopilot-apercu-duree-totale={dureeVideoApercu}
         >
-          <Mic className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>
+          <Mic className="w-3 h-3 shrink-0" aria-hidden="true" />
+          {/* Information honnête : visible, en UNE ligne. Le pourquoi est à la demande. */}
+          <span className="min-w-0">
             <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
-            {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeTotaleApercu)}.
-            {' '}La vidéo finale prend la durée réelle de la parole de l’avatar.
-            {' '}<span data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
+            {' '}— avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}
           </span>
+          <InfoBulle label="En savoir plus sur la durée estimée" titre="Durée estimée" marqueur="apercu-duree">
+            <span className="block">
+              Séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
+              {' '}La vidéo finale prend la durée réelle de la parole de l’avatar (jamais accélérée) ; si elle est plus courte que la durée cible, une clôture avec le CTA complète la vidéo.
+            </span>
+            <span className="block" data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
+          </InfoBulle>
         </p>
       )}
 
@@ -3929,46 +4065,29 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           jamais l'affiche d'exemple avec son propre rush. */}
       {avecVideo && (
         <p
-          className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
+          className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-400"
           data-autopilot-apercu-medias={mediaVideo.type}
         >
-          <Film className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>
-            <span className="text-gray-200" data-autopilot-apercu-badge="medias">Médias réels du plan</span>
-            {' '}— séquence vidéo : <span data-autopilot-apercu-media-etiquette>{mediaVideo.etiquette}</span>
-          </span>
+          <Film className="w-3 h-3 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 truncate text-gray-300" data-autopilot-apercu-media-etiquette>{mediaVideo.etiquette}</span>
+          <InfoBulle label="En savoir plus sur les médias du plan" marqueur="apercu-medias">
+            <span className="block">
+              <span className="text-gray-200" data-autopilot-apercu-badge="medias">Médias réels du plan</span>
+              {' '}— la séquence Vidéo de l’aperçu n’est pas un exemple : elle montre le premier média réel de votre plan,
+              {' '}contrairement à l’affiche et aux textes d’exemple. Vous le remplacez à l’étape Rushes.
+            </span>
+          </InfoBulle>
         </p>
       )}
-
-      {/* ── LE MODE D'EMPLOI ─────────────────────────────────────────────
-          ⚠️ IL REMPLACE UNE ÉTAPE ENTIÈRE, ET IL ÉTAIT INVISIBLE. Police,
-          taille, position et icônes se règlent SUR l'aperçu : rien de tout
-          cela n'ajoute un champ dans la colonne de gauche, et le wizard reste
-          à six étapes. Mais la première version de cette phrase était écrite
-          en `text-gray-600` sous un autre paragraphe gris — personne ne la
-          lisait, donc personne ne découvrait le double-clic, donc la
-          fonctionnalité n'existait pas.
-
-          Un ENCART, et non une ligne de plus : bordure, icône de curseur et
-          contraste lisible. C'est le minimum pour qu'un geste caché se
-          découvre. */}
-      <div
-        className="mt-2 flex items-start gap-2 rounded-lg border border-purple-500/30 bg-purple-600/10 px-2.5 py-2"
-        data-autopilot-apercu-aide
-      >
-        <MousePointerClick className="w-3.5 h-3.5 mt-0.5 shrink-0 text-purple-300" />
-        <p className="text-[11px] text-gray-300 leading-relaxed">
-          <span className="font-medium text-white">Double-cliquez un élément</span>
-          {' '}— titre, CTA ou carte — pour régler sa police, sa taille et son icône.
-          Glissez pour le déplacer, tirez les coins pour l’agrandir.
-        </p>
-      </div>
 
       {/* ── APERÇU DU MONTAGE PRÉVU ──────────────────────────────────────
           Les médias RÉELS du plan, tous, dans l'ordre, puis le CTA — le
           lecteur local de Créer (aucun rendu, aucun appel fournisseur). */}
+      {/* Avatar en vérification : délai de 8 s et erreur visible (« Réessayer »),
+          jamais un spinner infini, jamais un stock à sa place. */}
+      {montagePrevu.avatar === 'chargement' && <AttenteAvatarMontage />}
       {montagePrevu.etapes.length > 0 && (
-        <div data-autopilot-montage-prevu>
+        <div data-autopilot-montage-prevu={montagePrevu.avatar ?? 'sans-avatar'}>
           <ApercuMontageListe
             etapes={montagePrevu.etapes}
             lignes={montagePrevu.lignes}
@@ -3976,9 +4095,18 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             accent={accent}
             ctaTexte={sample.cta}
             ctaSousTexte={sample.ctaSub}
+            ctaSurimpression={montagePrevu.ctaFenetre ?? null}
             vignetteAvatar={medias?.avatar.vignette ?? null}
-            titre="Aperçu du montage prévu"
-            sousTitre="Les médias de votre plan, dans l'ordre, puis le CTA. Durées indicatives : la vidéo finale suit la parole et les extraits réels."
+            vignettes={vignettesMontage}
+            onRemplacer={allerAuxMedias}
+            titre="Aperçu de mon montage"
+            // Le mode d'emploi est à la demande ; lecture, durée et chronologie restent visibles.
+            sousTitreEnInfo
+            sousTitre={montagePrevu.ctaEnSurimpression
+              ? (montagePrevu.debutCloture != null
+                ? "Vos médias réels, dans l'ordre du plan ; après la parole de l'avatar, une clôture (plans de coupe et musique) porte le CTA jusqu'à la dernière image. Seule la parole est estimée : à la production, elle est mesurée, jamais accélérée, et la clôture complète jusqu'à la durée cible."
+                : "Vos médias réels, dans l'ordre du plan ; le CTA s'affiche en surimpression sur les dernières secondes. Seule la parole est estimée : à la production, elle est mesurée (jamais accélérée) et une clôture complète la vidéo jusqu'à la durée cible si la parole est plus courte.")
+              : "Vos médias réels, dans l'ordre du plan, puis le CTA. Durées indicatives : la vidéo finale suit la parole réelle de l'avatar et les extraits retenus."}
           />
         </div>
       )}
@@ -4199,6 +4327,9 @@ export default function AssistantWizard() {
    */
   const [versionLisibilite, setVersionLisibilite] = useState<number>(VERSION_LISIBILITE);
   const lisible = defautsLisibles(versionLisibilite);
+  /** #613 — plages propres mesurées des rushes servis en fond Titre / CTA (par URL). */
+  const [propresFonds, setPropresFonds] = useState<Record<string, Array<[number, number]>>>({});
+  const propresFondsRef = useRef<Record<string, Array<[number, number]>>>({});
   const [ctaStyle, setCtaStyle] = useState<TextStyles['cta']>({
     ...DEFAULT_TEXT_STYLES.cta,
     // Provisoire : remplace juste en dessous par la fin du degrade tant que
@@ -4292,8 +4423,14 @@ export default function AssistantWizard() {
   // Déclarés ICI (avant `textStyles`) : l'ajustement du CTA lit le texte et le format.
   const [format, setFormat] = useState<Format>('9:16');
   const [generated, setGenerated] = useState<Generated | null>(null);
+  // v2, 9:16 : le titre à l'échelle par DÉFAUT occupe ≈ 80 % de son cadre
+  // (`echelleTitreDeDepart`) ; un réglage de l'utilisateur est gardé.
+  const echelleTitreAffichee = echelleTitreDeDepart({
+    echelle: titleStyle.scale, titre: generated?.title, format, largeurPct: titleWidth,
+    police: titleStyle.font, casse: titleStyle.textCase, lisible,
+  });
   const textStyles: TextStyles = {
-    title: titleStyle,
+    title: echelleTitreAffichee === titleStyle.scale ? titleStyle : { ...titleStyle, scale: echelleTitreAffichee, echelleAuto: true },
     subtitle: subtitleStyle,
     // Échelle du CTA ajustée pour qu'il ne déborde jamais (`echelleCtaAjustee`) :
     // l'aperçu ET l'export reçoivent la même — elle ne fait que réduire.
@@ -4813,7 +4950,7 @@ export default function AssistantWizard() {
     const x0 = e.clientX;
     const y0 = e.clientY;
     // CTA : la poignée part de l'échelle AFFICHÉE (défaut 9:16 relevé compris).
-    const echelleDepart = el === 'title' ? (titleStyle.scale ?? 1) : echelleCtaDeDepart(ctaStyle.scale, format, lisible);
+    const echelleDepart = el === 'title' ? echelleTitreAffichee : echelleCtaDeDepart(ctaStyle.scale, format, lisible);
     const poser = el === 'title' ? setTitleStyle : setCtaStyle;
     const bouger = (ev: PointerEvent) => {
       const scale = echelleDepuisCoin({
@@ -4831,7 +4968,7 @@ export default function AssistantWizard() {
     cible.addEventListener('pointermove', bouger);
     cible.addEventListener('pointerup', finir);
     cible.addEventListener('pointercancel', finir);
-  }, [titleStyle.scale, ctaStyle.scale, format, lisible]);
+  }, [titleStyle.scale, ctaStyle.scale, format, lisible, echelleTitreAffichee]);
 
   /** Bord du titre ou du CTA : la LARGEUR du bloc (export : `titleSize` / `watermarkSize`). */
   const startTextWidth = useCallback((el: 'title' | 'cta', e: React.PointerEvent) => {
@@ -7281,7 +7418,9 @@ export default function AssistantWizard() {
     setTitleStyle(draft.titleStyle as TextStyles['title']);
     setSubtitleStyle(draft.subtitleStyle as TextStyles['subtitle']);
     setCtaStyle(draft.ctaStyle as TextStyles['cta']);
-    setVersionLisibilite(draft.versionLisibilite ?? 1);
+    // Brouillon local sans version : la version COURANTE ; post enregistré
+    // sans version (modification) : v1, son rendu historique (`versionLisibiliteRestauree`).
+    setVersionLisibilite(versionLisibiliteRestauree(draft.versionLisibilite, editPostId ? 'post' : 'brouillon'));
     setWatermarkOverride(draft.watermarkOverride ?? null);
     setWatermarkEnabled(draft.watermarkEnabled !== false);
     // `sanitizeDraft` a déjà tranché : `jumeauMode` explicite, sinon l'ancien
@@ -7571,7 +7710,54 @@ export default function AssistantWizard() {
    * N'y figurent que des VALEURS. Les refs et les poignees d'edition restent
    * sur l'apercu principal : lui seul est mesure, edite et photographie.
    */
+  // Fonds en mouvement Titre / CTA (v2, sans affiche) — la MÊME décision pour
+  // l'aperçu et l'export (`fond-rush-texte.ts`).
+  // #613 : plages PROPRES des rushes de fond (ni image figée ni reste d'un autre plan), mesurées par
+  // l'analyse mémoïsée de l'export — l'aperçu et l'export choisissent le même point d'entrée.
+  const rushsDeFond = [{ url: rushUrl, secondes: rushSecondes }, ...rushSuivants.map((r) => ({ url: r.url, secondes: r.secondes }))];
+  const fondsAvecPropres = (propres: Record<string, Array<[number, number]>>): FondsRushTexte | null => {
+    const bruts = fondsRushTexte({
+      lisible, affiche: !!posterUrl, fondsSequence: seqBackgrounds,
+      rushs: rushsDeFond,
+      dureeCta: ctaDuration,
+      plansPropres: propres,
+    });
+    // Recadrage de chaque rush de fond : celui du compositeur (aperçu = export).
+    const avecRecadrage = (f: FondRush | null): FondRush | null => (f
+      ? { ...f, recadrage: recadragePourRushPeint(f.url, { rushTransforms, rushTransform, videoUrl: rushUrl }) ?? null }
+      : null);
+    return bruts ? { intro: avecRecadrage(bruts.intro), cta: avecRecadrage(bruts.cta) } : null;
+  };
+  const fondsRushProjet: FondsRushTexte | null = fondsAvecPropres(propresFonds);
+  /** URLs des rushes servis en fond (Titre / CTA) à mesurer — sans mesure, la règle d'avant. */
+  const urlsFondsAMesurer = (() => {
+    const f = fondsAvecPropres({});
+    return Array.from(new Set([f?.intro?.url, f?.cta?.url].filter((u): u is string => !!u && /^(https?:\/\/|\/)/.test(u))));
+  })();
+  /** Mesure (mémoïsée) les rushes de fond ; renvoie TOUTES les plages connues. */
+  const mesurerPropresFonds = async (): Promise<Record<string, Array<[number, number]>>> => {
+    const out: Record<string, Array<[number, number]>> = { ...propresFondsRef.current };
+    for (const url of urlsFondsAMesurer) {
+      if (out[url]) continue;
+      const a = await analyserRushMemo(url).catch(() => null);
+      if (a) out[url] = plansPropres(a);
+    }
+    propresFondsRef.current = out;
+    return out;
+  };
+  const cleFondsAMesurer = urlsFondsAMesurer.join('|');
+  useEffect(() => {
+    if (!cleFondsAMesurer) return;
+    let annule = false;
+    void mesurerPropresFonds().then((p) => {
+      if (annule) return;
+      setPropresFonds((avant) => (Object.keys(p).every((k) => avant[k]) ? avant : { ...avant, ...p }));
+    });
+    return () => { annule = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleFondsAMesurer]);
   const previewShared = {
+    fondsRush: fondsRushProjet,
     generated,
     format,
     titlePos,
@@ -7785,6 +7971,7 @@ export default function AssistantWizard() {
       methode: methodeB ? 'B' : 'A',
       voixDeTextes: !!(sequenceVoices.titre?.audioUrl || sequenceVoices.cartes?.audioUrl || sequenceVoices.cta?.audioUrl),
       format,
+      rushApres: fondsRushProjet?.cta?.url ?? null,
     })
     : null;
   const cleApercuPlan = entreeApercuPlan ? clePlanMontage(entreeApercuPlan) : null;
@@ -7979,6 +8166,7 @@ export default function AssistantWizard() {
             gradientOpacity={gradientOpacity}
             posterUrl={fond.url}
             posterTransform={fond.transform}
+            fondRush={!fond.url ? fondRushDeLOnglet(fondsRushProjet, key) : null}
             text={texteApercu}
             titlePos={titlePos}
             ctaPos={ctaPos}
@@ -8004,7 +8192,8 @@ export default function AssistantWizard() {
           <>
             {plateauLu}
             {key === 'video' && fenetresApercu && baseSurimpApercu && (
-              <CoucheSurimpressionsApercu fenetres={fenetresApercu} secondes={secondesVideo} base={baseSurimpApercu} displayScale={displayScale} />
+              <CoucheSurimpressionsApercu fenetres={fenetresApercu} secondes={secondesVideo} base={baseSurimpApercu} displayScale={displayScale}
+                finVideo={ordreApercu[ordreApercu.length - 1] === 'video' ? dureeVideoApercu : null} />
             )}
             <FiligraneApercu largeur={VIDEO_SIZE[format].w} hauteur={VIDEO_SIZE[format].h} />
           </>
@@ -9419,6 +9608,10 @@ export default function AssistantWizard() {
       // Multi-rush : les rushes DURABLES de la liste (jamais une `blob:`), ce
       // que la metadata du post peut porter. Vide avec un seul rush.
       const rushsDurables = (plateau.rushs ?? []).filter((r) => !!persistableUrl(r.url));
+      // #613 : fonds Titre / CTA sur leurs plages PROPRES — les mesures déjà lues par l'aperçu
+      // (analyse mémoïsée), complétées plus bas par celles du smart montage ; jamais d'attente ici
+      // (un rush illisible ne bloque pas l'envoi : la règle d'avant s'applique).
+      let fondsExport = fondsAvecPropres(propresFondsRef.current);
 
       // ── SMART MONTAGE : analyse locale des rushes → plan d'extraits ──────
       // Seulement quand TOUS les rushes sont durables (une `blob:` ne se
@@ -9486,6 +9679,7 @@ export default function AssistantWizard() {
           methode: methodeB ? 'B' : 'A',
           voixDeTextes: !!(voixSequencesRendu?.titre || voixSequencesRendu?.cartes || voixSequencesRendu?.cta),
           format,
+          rushApres: fondsExport?.cta?.url ?? null,
         }), { analysesBrutes, rythme }, apercuPlanDisponible ? planApercuRef.current : null);
         const rythmeVideo = prepPlan.rythmeVideo;
         planMontageRushs = prepPlan.plan;
@@ -9520,6 +9714,15 @@ export default function AssistantWizard() {
         console.log('[SmartMontage] plan :', planMontageRushs
           ? planMontageRushs.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | ')
           : 'aucun (enchaînement classique)');
+      }
+
+      // #613 : les analyses du smart montage (mêmes objets mémoïsés que l'aperçu) donnent les plages
+      // propres des rushes de fond — même point d'entrée que l'aperçu une fois sa mesure arrivée.
+      if (montageInfos?.analyses.length) {
+        const mesures = { ...propresFondsRef.current };
+        for (const a of montageInfos.analyses) mesures[a.url] ??= plansPropres(a);
+        propresFondsRef.current = mesures;
+        fondsExport = fondsAvecPropres(mesures);
       }
 
       // ── SURIMPRESSIONS : même logique que l'Autopilote ─────────────────
@@ -9702,12 +9905,23 @@ export default function AssistantWizard() {
           ? sequenceVoices.cartes : null;
         const calageRendu = calageCartes(contenu.cards, voixCartesRendu)
           ?? calageProportionnel(contenu.cards, duree('cards'));
+        // #613 : la répartition tient compte de TOUT le montage — plans propres mesurés (ni image figée
+        // ni coupe de la source au départ d'un plan), matière des fonds Titre / CTA, et le rush du fond
+        // du Titre ne continue pas sous la 1re carte.
+        const fondsMontes = affiche ? null : fondsExport;
+        const avantCartes = ordre[ordre.indexOf('cards') - 1];
         const planSousCartes = narrationSurRushs && duree('cards') > 0
           ? planCartesSurRushs({
             sources: sourcesNarration,
             dureeCartes: duree('cards'),
             apparitions: calageRendu?.etapes.filter((e) => e.element === 'carte').map((e) => e.debut) ?? [],
             dejaUtilises: planVideoReference,
+            plansPropres: montageInfos ? new Map(montageInfos.analyses.map((a) => [a.url, plansPropres(a)] as const)) : null,
+            autresUsages: (['intro', 'cta'] as const).flatMap((k) => {
+              const f = fondsMontes?.[k];
+              return f && duree(k) > 0 ? [{ url: f.url, debut: 0, fin: Math.min(duree(k), (f.jusqua ?? Infinity) - f.depuis), depuis: f.depuis }] : [];
+            }),
+            rushAvant: avantCartes === 'intro' && duree('intro') > 0 ? fondsMontes?.intro?.url ?? null : null,
           })
           : null;
         if (planSousCartes) console.log('[Narration] plan sous les cartes :', planSousCartes.map((x) => `${x.url.split('/').pop()}@${x.depuis ?? 0}s→${x.debut}-${x.fin}`).join(' | '));
@@ -9947,6 +10161,8 @@ export default function AssistantWizard() {
           // sequences (`posterOnAllSequences` absent vaut « partout »), avec le
           // voile de degrade par-dessus — exactement ce que montre l'apercu.
           posterUrl: affiche,
+          // Fonds en mouvement Titre / CTA (v2, sans affiche) : ceux de l'aperçu.
+          fondRushTexte: affiche ? null : fondsExport,
           // Recadrage de l'affiche — le compositeur la pre-recadre une fois.
           posterTransform,
           // Fonds par sequence : le compositeur les substitue a l'affiche pour
@@ -11478,7 +11694,7 @@ export default function AssistantWizard() {
                 {/* Jumeau numérique — 'aucun' par défaut ; l'état vient du serveur.
                     Deux intentions : ma voix clonée (pose `ttsVoiceId`), ou mon
                     avatar parlant (séquence « Vidéo » à l'envoi). Les textes qu'il
-                    dira sont ceux des voix par séquence, modifiables à l'étape Audio. */}
+                    dira sont ceux des voix par séquence, modifiables à l'étape Contenu. */}
                 <JumeauPanel
                   mode={jumeauMode}
                   onModeChange={setJumeauMode}
@@ -12029,7 +12245,11 @@ export default function AssistantWizard() {
                                   setPhotoDragging(true);
                                 }}
                                 onDragEnd={() => setPhotoDragging(false)}
-                                title={photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
+                                // Jamais l'auteur d'une banque d'images dans
+                                // l'infobulle (crédits : « Crédits médias »,
+                                // replié) ; une photo À SOI (importée, générée
+                                // par l'IA) garde son libellé.
+                                title={photo.source === 'upload' && photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
                                 className={`relative overflow-hidden rounded-lg border transition-colors ${
                                   retenue ? 'border-purple-500' : 'border-gray-800 hover:border-gray-600'
                                 }`}
@@ -12216,17 +12436,25 @@ export default function AssistantWizard() {
                           : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
                       </p>
                       {fondAffiche.url && stockMedias[fondAffiche.url] && (
-                        <p className="text-[11px] text-gray-500" data-fond-attribution data-credit-media>
-                          {stockMedias[fondAffiche.url].attribution}{' '}
-                          <a
-                            href={stockMedias[fondAffiche.url].sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:text-white"
-                          >
-                            (source)
-                          </a>
-                        </p>
+                        // Attribution du fond REPLIÉE (« Crédits médias ») : exigée
+                        // par la banque d'images, jamais sur la surface principale.
+                        <details className="text-[11px] text-gray-500" data-fond-attribution data-credit-media data-media-infos>
+                          <summary className="flex cursor-pointer list-none items-center gap-1 hover:text-gray-300">
+                            <Info className="w-3 h-3" aria-hidden="true" />
+                            Crédits médias
+                          </summary>
+                          <p className="mt-1 pl-4 break-words">
+                            {stockMedias[fondAffiche.url].attribution}{' '}
+                            <a
+                              href={stockMedias[fondAffiche.url].sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline hover:text-white"
+                            >
+                              (source)
+                            </a>
+                          </p>
+                        </details>
                       )}
                       <button
                         type="button"
@@ -13048,7 +13276,7 @@ export default function AssistantWizard() {
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.
                         <details className="mt-1" data-rush-attributions data-credit-media>
-                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Informations des médias</summary>
+                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Crédits médias</summary>
                           <div className="mt-1 space-y-0.5">
                           {urlsRecadrables(listeMedias).filter((u, k, t) => stockMedias[u] && t.indexOf(u) === k).map((u) => (
                             <p key={u} className="text-[11px] text-gray-500 truncate">

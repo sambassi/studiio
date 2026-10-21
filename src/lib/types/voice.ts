@@ -323,8 +323,11 @@ export function audioSequencePerime(
   }
   // Réglages de voix changés depuis la génération (TTS seulement). Absents
   // des deux côtés = valeurs par défaut : un audio ancien n'est jamais
-  // signalé à tort.
-  if (sv.source === 'tts' && !memesReglages(sv.reglages, sv.reglagesAtGeneration)) {
+  // signalé à tort. Seuls les réglages que la voix de l'audio prend en
+  // charge comptent : un dynamisme changé sur une voix HeyGen / Edge /
+  // OpenAI ne rend pas l'audio périmé (il ne l'aurait pas changé).
+  const voixAudio = sv.ttsVoice || currentVoiceId;
+  if (sv.source === 'tts' && !memesReglages(sv.reglages, sv.reglagesAtGeneration, { dynamisme: voixPrendDynamisme(voixAudio) })) {
     return { perime: true, motif: 'reglages' };
   }
   return { perime: false, motif: null };
@@ -367,11 +370,25 @@ export function normaliserReglages(brut: unknown): ReglagesVoix | undefined {
   return { vitesse, dynamisme };
 }
 
-/** Mêmes réglages une fois normalisés (absent = défaut). */
-export function memesReglages(a: unknown, b: unknown): boolean {
+/**
+ * La voix prend-elle en charge le dynamisme ? ElevenLabs seulement (voix
+ * clonée / premium) : HeyGen, Edge et OpenAI ne reçoivent que la vitesse.
+ * Lecture d'état uniquement — ne décide pas de ce qui part au fournisseur.
+ */
+export function voixPrendDynamisme(voiceId: string | undefined | null): boolean {
+  return isElevenLabsVoiceId(voiceId);
+}
+
+/**
+ * Mêmes réglages une fois normalisés (absent = défaut). `dynamisme: false`
+ * ignore le dynamisme — pour une voix qui ne le prend pas en charge, un
+ * dynamisme changé ne change rien à l'audio. Défaut : tout est comparé.
+ */
+export function memesReglages(a: unknown, b: unknown, options: { dynamisme?: boolean } = {}): boolean {
   const x = normaliserReglages(a) ?? REGLAGES_VOIX_DEFAUT;
   const y = normaliserReglages(b) ?? REGLAGES_VOIX_DEFAUT;
-  return x.vitesse === y.vitesse && x.dynamisme === y.dynamisme;
+  if (x.vitesse !== y.vitesse) return false;
+  return options.dynamisme === false || x.dynamisme === y.dynamisme;
 }
 
 /** `rate` msedge-tts depuis la vitesse : « +10% », « -15% ». */

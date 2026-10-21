@@ -180,8 +180,9 @@ describe('La recherche', () => {
     // L'API renvoie `configured: false` quand la clé manque côté serveur.
     // Sans cette distinction, l'utilisateur reformule sa recherche sans fin.
     expect(etatDepuisReponse({ configured: false })).toBe('non-configure');
+    // Sans nom de fournisseur : l'utilisateur ne voit jamais la banque d'images.
     expect(messagePhotos('non-configure', 'unsplash'))
-      .toBe('Unsplash n’est pas configuré sur ce serveur.');
+      .toBe('La recherche de photos n’est pas disponible sur ce serveur.');
     expect(wizard).toContain('etatDepuisReponse(data)');
   });
 });

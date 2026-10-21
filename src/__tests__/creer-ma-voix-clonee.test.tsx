@@ -346,7 +346,10 @@ describe('3b. SequenceVoicesPanel — « Audio périmé — régénérer »', ()
     await act(async () => { fireEvent.click(document.querySelector('[data-changer-voix]')!); });
     expect(badge()).not.toBeNull();
     expect(badge()!.getAttribute('data-voice-stale-motif')).toBe('voix');
-    expect(badge()!.textContent).toContain('Audio périmé — régénérer');
+    expect(badge()!.textContent).toContain('Audio périmé');
+    // Le texte ne redit plus « régénérer » : c'est le bouton qui le porte.
+    expect(badge()!.textContent).not.toMatch(/périmé\s*—\s*régénérer/);
+    expect(badge()!.querySelector('button')!.textContent).toBe('Régénérer');
     expect(badge()!.textContent).toContain('Henri');
     // L'audio est toujours là (lecteur présent), et aucune synthèse n'est partie toute seule.
     expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();

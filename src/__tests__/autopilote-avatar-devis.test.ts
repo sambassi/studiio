@@ -27,8 +27,19 @@ let configEnBase: Record<string, unknown> | null;
 let posts: Array<Record<string, unknown>>;
 let insertions: Array<Record<string, unknown>>;
 
-vi.mock('@/lib/db/supabase', () => {
+/**
+ * `autopilot_jumeau_attente` : une VRAIE table en mémoire (unicité
+ * `(user_id, slot_key)` comprise) — la réservation persistante d'une
+ * production sans avatar s'y écrit. Hissée : survit à `vi.resetModules()`
+ * comme une base survit au redémarrage du processus.
+ */
+const fileAttente = vi.hoisted(() => ({ base: null as null | ReturnType<typeof import('./helpers/fausse-base')['creerFausseBase']> }));
+
+vi.mock('@/lib/db/supabase', async () => {
+  const { creerFausseBase } = await import('./helpers/fausse-base');
+  fileAttente.base ??= creerFausseBase();
   const from = (table: string) => {
+    if (table === 'autopilot_jumeau_attente') return fileAttente.base!.supabaseAdmin.from(table);
     const chaine: Record<string, unknown> = {};
     const self = () => chaine;
     Object.assign(chaine, {
@@ -114,6 +125,7 @@ const ligne = (extra: Record<string, unknown> = {}) => ({
 });
 
 beforeEach(() => {
+  fileAttente.base?.vider();
   authMock.mockResolvedValue({ user: { id: 'u1' } });
   coutAdmin.actif = false;
   configEnBase = ligne();

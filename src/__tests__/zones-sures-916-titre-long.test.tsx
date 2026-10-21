@@ -24,7 +24,7 @@ import { render, cleanup } from '@testing-library/react';
 import { Preview } from '@/app/dashboard/creer/AssistantWizard';
 import {
   ZONE_SURE_916, LARGEUR_TITRE_MIN_916, positionTexteEffective, titreSur916, boiteTitre916,
-  horsZoneSure916, type TitreAPlacer916,
+  horsZoneSure916, echelleTitreSansDebord, boiteTitre, BAS_TITRE_HORS_916, type TitreAPlacer916,
 } from '@/lib/creer/zones-sures-916';
 import { SCALE_MAX } from '@/lib/autopilot/textStyle';
 import { FONT_RATIO, TEXT_LAYOUT, VIDEO_SIZE } from '@/lib/creer/designSpec';
@@ -184,9 +184,21 @@ describe('titre déplacé à la main : position gardée, largeur arrêtée au ra
 });
 
 describe('règle bornée au 9:16 plein écran', () => {
-  it('16:9 et 1:1 : largeur et échelle choisies, telles quelles', () => {
+  it('16:9 et 1:1 : largeur choisie telle quelle ; échelle réduite si un MOT déborderait ou si le bloc sortait du bas (#613)', () => {
     for (const f of ['16:9', '1:1'] as const) {
-      expect(titreSur916({ ...titre(TRES_LONG, SCALE_MAX), format: f })).toEqual({ largeur: TEXT_LAYOUT.titleWidth, echelle: SCALE_MAX });
+      // Règle « aucun mot ne déborde » (tout format, 20/10) : « RÉCUPÉRATION »
+      // à l'échelle 3 sortait du cadre (≈ 1 693 px pour 1 613 px utiles).
+      const r = titreSur916({ ...titre(TRES_LONG, SCALE_MAX), format: f });
+      expect(r.largeur).toBe(TEXT_LAYOUT.titleWidth);
+      expect(r.echelle).toBeLessThanOrEqual(echelleTitreSansDebord({ ...titre(TRES_LONG, SCALE_MAX), format: f }));
+      expect(r.echelle).toBeLessThan(SCALE_MAX);
+      // #613 : aucun texte hors cadre — le bloc reste au-dessus de la zone sûre basse.
+      expect(boiteTitre({ ...titre(TRES_LONG, SCALE_MAX), format: f }, r.largeur, r.echelle).y1).toBeLessThanOrEqual(BAS_TITRE_HORS_916 + 1e-6);
+      // Un titre qui tient (mots ET bloc) garde exactement son échelle.
+      expect(titreSur916({ ...titre('DANSE AU SOLEIL', 1.5), format: f })).toEqual({ largeur: TEXT_LAYOUT.titleWidth, echelle: 1.5 });
+      // #613 : à l'échelle 3, le bloc (titre + sous-titre) descendait sous la zone sûre : il est réduit juste assez.
+      const grand = titreSur916({ ...titre('DANSE AU SOLEIL', SCALE_MAX), format: f });
+      expect(boiteTitre({ ...titre('DANSE AU SOLEIL', SCALE_MAX), format: f }, grand.largeur, grand.echelle).y1).toBeLessThanOrEqual(BAS_TITRE_HORS_916 + 1e-6);
     }
   });
   it('idempotente : la réappliquer à son résultat ne change rien', () => {
@@ -222,5 +234,22 @@ describe('câblage — aperçu, compositeur, métadonnées et Remotion lisent la
     expect(r).toContain('{blocTitre(1)}');
     expect(r).toContain('<AbsoluteFill>{blocTitre(1)}</AbsoluteFill>');
     expect(r).toContain('const t916 = pleinEcran ? titreSur916({');
+  });
+});
+
+describe('régression : l’échelle AUTO cède devant le rail, la largeur choisie reste au geste', () => {
+  // Titre généré long + sous-titre : à l'échelle auto (≈ 1,4–2,4), le bloc descendait
+  // à hauteur du rail → largeur arrêtée à 77 % et la poignée de largeur sans effet.
+  const LONGUE = 'LES CINQ HABITUDES SIMPLES QUI CHANGENT VRAIMENT TA FORME AU QUOTIDIEN';
+  const t = { ...titre(LONGUE, 2.4), echelleAuto: true };
+  it('auto : le bloc reste au-dessus du rail, la largeur choisie est gardée (le geste gagne)', () => {
+    expect(titreSur916({ ...t, echelleAuto: false }).largeur, 'cas qui touchait le rail').toBeLessThan(TEXT_LAYOUT.titleWidth);
+    const r = titreSur916(t);
+    expect(r.largeur).toBe(TEXT_LAYOUT.titleWidth);
+    expect(boiteTitre916(t, r.largeur, r.echelle).y1).toBeLessThanOrEqual(ZONE_SURE_916.railHaut + 1e-6);
+    // Élargir le cadre (poignée) change bien la largeur rendue.
+    expect(titreSur916({ ...t, largeur: 90 }).largeur).toBe(90);
+    // Idempotente.
+    expect(titreSur916({ ...t, echelle: r.echelle })).toEqual(r);
   });
 });

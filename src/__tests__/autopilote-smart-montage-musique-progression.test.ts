@@ -99,12 +99,16 @@ describe('Progression réelle', () => {
 
   it('câblage : route, rendu et panneau', () => {
     const route = src('src/app/api/autopilot/produire-maintenant/route.ts');
-    expect(route).toContain('onProgression: (etape, avancement) => noterProgression(userId, etape, avancement),');
+    expect(route).toContain('onProgression: (etape, avancement) => noter(etape, avancement),');
+    // `noter` = mémoire du processus + état persistant (`noterEtapeDirecte`).
+    expect(route).toContain('noterProgression(userId, etape, avancement);');
+    expect(route).toContain('noterEtapeDirecte(userId, jobId,');
     expect(route).toContain('effacerProgression(userId);');
     const render = src('src/lib/autopilot/render.ts');
     expect(render).toContain('input.onComposition!(Math.min(1, Math.max(0, (progress - 20) / 75)))');
     const panel = src('src/components/creer/AutopilotPanel.tsx');
-    expect(panel).toContain("fetch('/api/autopilot/produire-maintenant/progression', { cache: 'no-store' })");
+    // Le créneau suivi voyage avec la relecture (production retrouvée ou dite interrompue).
+    expect(panel).toContain("fetch(`/api/autopilot/produire-maintenant/progression${parametresSuivi(lireProductionSuivie())}`, { cache: 'no-store' })");
     // Un pourcentage SEULEMENT pendant la composition (images rendues) : `affichageProduction`.
     expect(panel).toContain('const aff = affichageProduction(progressionProduction);');
   });

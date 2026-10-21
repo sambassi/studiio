@@ -122,8 +122,9 @@ async function modules() {
 /** Somme réellement débitée par la RPC (montant = 2e argument). */
 const debiteRpc = () => rpcDebit.mock.calls.reduce((t, c) => t + Number(c[1]), 0);
 
+/** Attend une production d'arrière-plan (≤ 12 s, sous le délai de 15 s des tests : la CI est plus lente). */
 async function attendre(cond: () => boolean) {
-  for (let i = 0; i < 600 && !cond(); i += 1) await new Promise((ok) => setTimeout(ok, 5));
+  for (let i = 0; i < 2400 && !cond(); i += 1) await new Promise((ok) => setTimeout(ok, 5));
 }
 
 interface Cas { nom: string; ligne: Record<string, unknown>; avatar: boolean; attendu: { rendu: number; avatar: number; affiche: number } }
@@ -173,7 +174,7 @@ async function parcours(c: Cas) {
     await m.deductCredits('u1', GRILLE['avatar.jumeau'], 'avatar', 'jumeau:g1');
     await m.produireUnMontage({ userId: 'u1', config: snap.config, post: snap.post, rang: 0, now: Date.now(), jobId: snap.jobId, slotKey: snap.slotKey, jumeauVideoUrl: JUMEAU });
   } else {
-    await attendre(() => posts.length > 0);
+    await attendre(() => renderAndUpload.mock.calls.length > 0 && posts.length > 0);
     await attendre(() => rpcDebit.mock.calls.length >= (c.attendu.affiche ? 2 : 1) || utilisateur.role === 'admin');
   }
   return { devis, total, refusStatut, statut: res.status, corps };
@@ -226,7 +227,8 @@ describe('administrateur : 0 crédit débité, aucune RPC', () => {
         expect(await m.deductCredits('u1', GRILLE['avatar.jumeau'], 'avatar', 'jumeau:g1')).toBe(true);
         await m.produireUnMontage({ userId: 'u1', config: snap.config, post: snap.post, rang: 0, now: Date.now(), jobId: snap.jobId, slotKey: snap.slotKey, jumeauVideoUrl: JUMEAU });
       } else {
-        await attendre(() => posts.length > 0);
+        // Le rendu ET le dépôt : sinon la production d'arrière-plan déborde sur le cas suivant.
+        await attendre(() => renderAndUpload.mock.calls.length > 0 && posts.length > 0);
         await new Promise((ok) => setTimeout(ok, 20));
       }
       expect(renderAndUpload).toHaveBeenCalledTimes(1);

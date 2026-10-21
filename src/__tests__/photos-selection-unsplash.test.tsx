@@ -204,9 +204,11 @@ describe('5. Les quatre raisons d une grille vide sont distinctes', () => {
     for (const e of ['vide', 'non-configure', 'auth', 'quota', 'indisponible'] as const) {
       const m = messagePhotos(e, 'unsplash');
       expect(m).not.toMatch(/\b(401|403|429|500)\b/);
-      // Le NOM de la source est légitime — c'est le nom de la VARIABLE
-      // d'environnement qui ne doit jamais apparaître.
       expect(m).not.toMatch(/UNSPLASH_ACCESS_KEY|PEXELS_API_KEY|process\.env/);
+      // Ni le nom du fournisseur : les messages d'état restent neutres
+      // (les crédits vivent dans « Crédits médias », replié).
+      expect(m).not.toMatch(/Unsplash|Pexels/i);
+      expect(messagePhotos(e, 'pexels')).not.toMatch(/Unsplash|Pexels/i);
     }
     expect(nomSource('unsplash')).toBe('Unsplash');
     expect(nomSource('pexels')).toBe('Pexels');

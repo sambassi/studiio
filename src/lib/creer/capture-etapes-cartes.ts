@@ -1,9 +1,10 @@
 import { etatApres, type CalageCartes } from '@/lib/creer/synchro-cartes';
+import { FOND_TEXTE_SUR_IMAGE, estVoile, haloTexteCss } from '@/lib/creer/contraste';
 
 /**
  * Photographie le conteneur des cartes à chaque étape d'apparition calée
  * sur la voix (`calageCartes`) : à l'étape k, seules les cartes déjà dites
- * sont visibles, et parmi elles seules les valeurs déjà dites.
+ * sont visibles, avec leurs valeurs (une valeur paraît avec sa carte).
  *
  * Un cadre de groupe (`data-card-group`) suit ses cartes : masqué tant
  * qu'aucune d'elles n'est dite, visible dès la première.
@@ -49,13 +50,12 @@ export async function capturerEtapesCartes<I>(
 
   // Fond sombre des cartes posées sur un rush : seulement les cartes qui ont
   // déjà un fond (« sans cadre » reste sans cadre).
-  const fonds = new Map<HTMLElement, string>();
+  const fonds: Array<() => void> = [];
   const descriptions = new Map<HTMLElement, string>();
   if (options.fondCarte) {
     for (const el of cartes) {
       if (!el || !el.style.backgroundColor) continue;
-      fonds.set(el, el.style.backgroundColor);
-      el.style.backgroundColor = options.fondCarte;
+      fonds.push(poserFondCarte(el, options.fondCarte, conteneur));
     }
     // Sur un rush, seul le titre se lisait : la description COURTE vient en
     // seconde ligne (`SequenceCards`, `data-card-description`).
@@ -91,14 +91,36 @@ export async function capturerEtapesCartes<I>(
     }
   } finally {
     origine.forEach((v, el) => { el.style.visibility = v; });
-    fonds.forEach((v, el) => { el.style.backgroundColor = v; });
+    fonds.forEach((rendre) => rendre());
     descriptions.forEach((v, el) => { el.style.display = v; });
   }
   return out.length > 0 ? out : null;
 }
 
-/** Fond des cartes posées sur un rush : noir de marque, opaque à 72 %. */
-export const FOND_CARTE_SUR_RUSH = 'rgba(10,10,15,0.72)';
+/**
+ * Fond des cartes posées sur un rush : aucun aplat — contour fin sombre et
+ * ombre serrée des glyphes (`contraste.ts`) — et non plus le pavé noir opaque
+ * à 72 % (« bandeau sombre opaque », MP4 du 20/10).
+ */
+export const FOND_CARTE_SUR_RUSH = FOND_TEXTE_SUR_IMAGE;
+
+/**
+ * Pose `fond` sur une carte (couleur unie, ou voile en dégradé) avec le halo
+ * des glyphes (hérité par ses textes), et rend la fonction qui restaure ses
+ * styles.
+ */
+function poserFondCarte(el: HTMLElement, fond: string, conteneur: HTMLElement): () => void {
+  const avant = { bg: el.style.backgroundColor, img: el.style.backgroundImage, ombre: el.style.textShadow };
+  if (estVoile(fond)) {
+    el.style.backgroundColor = 'transparent';
+    el.style.backgroundImage = fond;
+  } else {
+    el.style.backgroundColor = fond;
+  }
+  // Halo à l'échelle du conteneur photographié (l'aperçu, pas la vidéo).
+  el.style.textShadow = haloTexteCss(conteneur.getBoundingClientRect().width || 320);
+  return () => { el.style.backgroundColor = avant.bg; el.style.backgroundImage = avant.img; el.style.textShadow = avant.ombre; };
+}
 
 /**
  * Exécute `fn` (une photo) avec `fond` posé sur chaque carte encadrée du
@@ -107,12 +129,11 @@ export const FOND_CARTE_SUR_RUSH = 'rgba(10,10,15,0.72)';
  */
 export async function avecFondCartes<T>(conteneur: HTMLElement, fond: string | null | undefined, fn: () => Promise<T>): Promise<T> {
   if (!fond) return fn();
-  const avant = new Map<HTMLElement, string>();
+  const avant: Array<() => void> = [];
   const descriptions = new Map<HTMLElement, string>();
   conteneur.querySelectorAll<HTMLElement>('[data-card-id]').forEach((el) => {
     if (!el.style.backgroundColor) return;
-    avant.set(el, el.style.backgroundColor);
-    el.style.backgroundColor = fond;
+    avant.push(poserFondCarte(el, fond, conteneur));
   });
   conteneur.querySelectorAll<HTMLElement>('[data-card-description]').forEach((d) => {
     descriptions.set(d, d.style.display);
@@ -121,7 +142,7 @@ export async function avecFondCartes<T>(conteneur: HTMLElement, fond: string | n
   try {
     return await fn();
   } finally {
-    avant.forEach((v, el) => { el.style.backgroundColor = v; });
+    avant.forEach((rendre) => rendre());
     descriptions.forEach((v, el) => { el.style.display = v; });
   }
 }

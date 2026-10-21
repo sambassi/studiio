@@ -28,6 +28,7 @@ import {
   buildSequences,
   SEQ_NAME_MAP as SPEC_SEQ_NAME_MAP,
   SEQ_NAME_REVERSE as SPEC_SEQ_NAME_REVERSE,
+  titleShadow, subtitleShadow,
 } from '@/lib/creer/designSpec';
 import { createLutGrader, type LutGrader } from '@/lib/luts/grader';
 import { lireCtaCopies, designCompositeurCopie } from '@/lib/creer/cta-copies';
@@ -38,11 +39,13 @@ import { transformeKenBurns, echelleZoomCartes, rectZoomeCentre } from '@/lib/cr
 import type { MouvementImage } from '@/lib/creer/multi-rush';
 import { ajusterPlan } from '@/lib/creer/smart-montage';
 import { attribuerLecteurs, creerPiloteMontage } from '@/lib/creer/pilote-montage';
-import type { OverlaysMontage } from '@/lib/creer/overlays';
+import { sortieSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { MediaIndisponibleError, estMemeOrigine, videoExigee } from '@/lib/rendus/medias-requis';
 import { imageCartesA } from '@/lib/creer/synchro-cartes';
 import { dessinerHabillageVideo } from '@/lib/creer/habillageVideo';
 import { eclaircirPourContraste, PASTILLE_CSS } from '@/lib/creer/contraste';
+import { TITRE_MIN_LISIBLE_PX } from '@/lib/creer/zones-sures-916';
+import { ASSOMBRISSEMENT_FOND_TEXTE } from '@/lib/creer/fond-rush-texte';
 import {
   appelerConversionMp4,
   libelleOctets,
@@ -675,6 +678,14 @@ export interface ComposerOptions {
    */
   cartesSurRushs?: ReadonlyArray<RushSegment> | null;
   /**
+   * FONDS EN MOUVEMENT des séquences Titre / CTA (projet aux défauts
+   * lisibles, sans affiche ni fond choisi, avec un rush) : le rush `url` joue
+   * depuis `depuis` s, MUET, sur un lecteur dédié, assombri, avec le voile du
+   * dégradé par-dessus — la même composition qu'une affiche, et que l'aperçu
+   * (`fondRushTexte` du plateau). Absent : fond d'avant (dégradé).
+   */
+  fondRushTexte?: { intro?: { url: string; depuis?: number; jusqua?: number } | null; cta?: { url: string; depuis?: number; jusqua?: number } | null } | null;
+  /**
    * SURIMPRESSIONS (profils dynamiques, Créer = Autopilote) : titre, cartes
    * et CTA posés SUR le rush, pendant leurs fenêtres (`planOverlays`). Les
    * images sont des photos plein cadre, transparentes, des MÊMES composants
@@ -728,6 +739,17 @@ function peindreRushSousCartes(
   return true;
 }
 
+/**
+ * Arrête et vide des lecteurs vidéo : `pause()`, source retirée, `load()` —
+ * le navigateur libère le décodeur et cesse le téléchargement (un lecteur en
+ * `loop` tournerait sinon jusqu'à la fermeture de la page). Tolérant.
+ */
+export function libererLecteurs(els: Iterable<Pick<HTMLVideoElement, 'pause' | 'removeAttribute' | 'load'>>): void {
+  for (const el of els) {
+    try { el.pause(); el.removeAttribute('src'); el.load(); } catch { /* déjà libéré */ }
+  }
+}
+
 /** Voile des surimpressions — les arrêts de `VOILE_SURIMPRESSION` (Remotion). */
 function peindreVoileSurimpression(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -747,6 +769,8 @@ function peindreVoileSurimpression(ctx: CanvasRenderingContext2D, w: number, h: 
  */
 export function dessinerSurimpressions(
   ctx: CanvasRenderingContext2D, w: number, h: number, secondes: number, s: SurimpressionsComposer, fps = 30,
+  /** Durée de la séquence Vidéo si elle est la DERNIÈRE : une fenêtre qui finit avec elle n'a pas de fondu de sortie (`sortieSurimpression`). */
+  finVideo: number | null = null,
 ) {
   const bord = Math.max(1, Math.round(0.3 * fps));
   const image = Math.round(secondes * fps);
@@ -756,7 +780,8 @@ export function dessinerSurimpressions(
     const duree = Math.max(1, Math.round((fin - debut) * fps));
     if (f < 0 || f >= duree) return;
     const entree = Math.min(1, f / bord);
-    const opacite = Math.max(0, Math.min(entree, (duree - f) / bord));
+    const sortie = sortieSurimpression(fin, finVideo, fps);
+    const opacite = Math.max(0, sortie ? Math.min(entree, (duree - f) / bord) : entree);
     if (opacite <= 0) return;
     ctx.save();
     ctx.globalAlpha = opacite;
@@ -1363,21 +1388,18 @@ function hexToRgba(hex: string, alpha: number): string {
  * Returns the filter string to assign to `ctx.filter` — remember to reset it
  * to 'none' after drawing.
  */
+/** Marge de sécurité de chaque côté du titre (part de la largeur) : rien ne colle au bord de l'image. */
+const MARGE_TITRE_PART = 0.04;
+
 function dropShadowLgFilter(w: number): string {
-  const s = w / 320; // scale px from editor viewport to canvas
-  const y1 = Math.max(1, Math.round(4 * s));
-  const b1 = Math.max(1, Math.round(3 * s));
-  const y2 = Math.max(1, Math.round(10 * s));
-  const b2 = Math.max(1, Math.round(8 * s));
-  return `drop-shadow(0 ${y1}px ${b1}px rgba(0,0,0,0.1)) drop-shadow(0 ${y2}px ${b2}px rgba(0,0,0,0.04))`;
+  // La MÊME ombre que l'aperçu et Remotion (`titleShadow`, designSpec) :
+  // contour fin dense + ombre douce, lisible sur un plan clair.
+  return titleShadow(w);
 }
 
-/** Tailwind's `drop-shadow` (base) is a single softer shadow. Used for subtitle/cards. */
+/** Ombre du sous-titre et des titres secondaires — `subtitleShadow` (designSpec). */
 function dropShadowBaseFilter(w: number): string {
-  const s = w / 320;
-  const y = Math.max(1, Math.round(1 * s));
-  const b = Math.max(1, Math.round(2 * s));
-  return `drop-shadow(0 ${y}px ${b}px rgba(0,0,0,0.1))`;
+  return subtitleShadow(w);
 }
 
 /** Truncate a string at a word boundary before `maxChars`, append an
@@ -1409,6 +1431,40 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
   return lo > 0 ? text.slice(0, lo) + ellipsis : ellipsis;
 }
 
+/** Un mot coupé en morceaux qui tiennent chacun dans `maxWidth` (au moins une lettre par morceau). */
+function couperMot(ctx: CanvasRenderingContext2D, mot: string, maxWidth: number, spacing: number): string[] {
+  if (!mot || maxWidth <= 0 || measureLineForWrap(ctx, mot, spacing) <= maxWidth) return [mot];
+  const out: string[] = [];
+  let courant = '';
+  for (const ch of Array.from(mot)) {
+    if (courant && measureLineForWrap(ctx, courant + ch, spacing) > maxWidth) { out.push(courant); courant = ch; } else courant += ch;
+  }
+  if (courant) out.push(courant);
+  return out;
+}
+
+/**
+ * Corps du titre pour que son mot le plus long tienne dans `dispo` px — mesure
+ * RÉELLE (`measureText`, interlettrage compris). Ne fait que réduire, jamais
+ * sous `plancher` px. `appliquer(px)` pose la police à ce corps. Pure hors du
+ * contexte canvas.
+ */
+export function corpsTitreSansDebord(
+  ctx: CanvasRenderingContext2D, texte: string, corps: number, dispo: number, plancher: number,
+  spacing: number, appliquer: (px: number) => void,
+): number {
+  const motMax = () => Math.max(0, ...texte.split(/\s+/).filter(Boolean).map((m) => measureLineForWrap(ctx, m, spacing)));
+  let px = corps;
+  for (let i = 0; i < 40 && px > plancher; i++) {
+    const largeur = motMax();
+    if (largeur <= dispo) break;
+    const suivant = Math.max(plancher, Math.min(px - 1, Math.floor(px * Math.max(0.5, dispo / largeur))));
+    px = suivant;
+    appliquer(px);
+  }
+  return px;
+}
+
 /**
  * Word-wrap text to fit within maxWidth, splitting at word boundaries.
  *
@@ -1420,7 +1476,13 @@ function truncateToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: 
  * comportement exact d'avant.
  */
 export function wrapText(
-  ctx: CanvasRenderingContext2D, text: string, maxWidth: number, letterSpacing = 0
+  ctx: CanvasRenderingContext2D, text: string, maxWidth: number, letterSpacing = 0,
+  /**
+   * Dernier recours : un MOT plus large que `maxWidth` est coupé entre deux
+   * lettres (comme `overflow-wrap: break-word` de l'aperçu) au lieu de sortir
+   * du cadre. Défaut `false` : le comportement d'avant pour tous les appels.
+   */
+  couperMotsLongs = false,
 ): string[] {
   // Split on explicit line breaks first, then word-wrap each segment.
   // This way users typing "Bonjour\ntout le monde" in a description get two
@@ -1430,7 +1492,9 @@ export function wrapText(
   const out: string[] = [];
   for (const segment of segments) {
     if (segment.length === 0) { out.push(''); continue; }
-    const words = segment.split(' ');
+    const words = couperMotsLongs
+      ? segment.split(' ').flatMap((m) => couperMot(ctx, m, maxWidth, letterSpacing))
+      : segment.split(' ');
     let currentLine = '';
     for (const word of words) {
       const testLine = currentLine ? `${currentLine} ${word}` : word;
@@ -1796,8 +1860,8 @@ function drawIntro(
   // NO animation — editor is static, video must match exactly
   const titleAlpha = 1;
   const isReel = h > w; // 9:16 = reel, 16:9 = landscape
-  const fontSize = Math.round(w * (isReel ? 0.04375 : 0.035) * textScale);
-  const subFontSize = Math.round(w * (isReel ? 0.028 : 0.0215) * textScale);
+  let fontSize = Math.round(w * (isReel ? 0.04375 : 0.035) * textScale);
+  let subFontSize = Math.round(w * (isReel ? 0.028 : 0.0215) * textScale);
 
   // Position from design metadata — editor default is (50%, 10%)
   // The editor uses translate(-50%, 0) so Y% is the TOP edge of the text block
@@ -1884,9 +1948,30 @@ function drawIntro(
   // Make sure no legacy ctx.shadow* values leak through and double-shadow
   ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowOffsetX = 0;
 
+  // AUCUN MOT NE DÉBORDE (« MOTIVA », 20/10). Le mot le plus long, MESURÉ
+  // (`measureText`, interlettrage compris), tient dans le cadre ET dans
+  // l'image, marges de sécurité des réseaux comprises (`MARGE_TITRE_PART` de
+  // chaque côté) : sinon le corps baisse — jusqu'à un plancher lisible
+  // (`TITRE_MIN_LISIBLE_PX` sur 1080), puis la coupe de dernier recours de
+  // `wrapText`. Un titre qui tient garde exactement sa taille ; le
+  // sous-titre suit la même proportion (comme dans `SequenceTitle`).
+  {
+    const marge = w * MARGE_TITRE_PART;
+    const visible = titleAlign === 'left' ? w - marge - titlePosX
+      : titleAlign === 'right' ? titlePosX - marge
+      : 2 * Math.min(titlePosX - marge, w - marge - titlePosX);
+    const dispo = Math.max(w * 0.3, Math.min(titleWidth, visible));
+    const plancher = Math.min(fontSize, Math.round(TITRE_MIN_LISIBLE_PX * (w / 1080)));
+    const avant = fontSize;
+    fontSize = corpsTitreSansDebord(ctx, title, fontSize, dispo, plancher, titleLetterSpacing, (px) => {
+      ctx.font = `${fontStyle}${fontWeight} ${px}px "${fontFamily}", sans-serif`;
+    });
+    if (fontSize !== avant) subFontSize = Math.max(1, Math.round((subFontSize * fontSize) / avant));
+  }
+
   // Word-wrap title to match editor behavior (text wraps within titleWidth)
   // Coupe mesuree AVEC l'interlettrage : c'est lui qui sera trace.
-  const titleLines = wrapText(ctx, title, titleWidth, titleLetterSpacing);
+  const titleLines = wrapText(ctx, title, titleWidth, titleLetterSpacing, true);
   const lineSpacing = fontSize * (design?.titleTypography?.lineHeight || 1.1);
   // With textBaseline='top', Y = top of text — matches CSS top: Y% with translate(-50%, 0)
   // When a title icon is configured, the title is pushed below the icon.
@@ -2001,7 +2086,7 @@ function drawIntro(
     ctx.fillStyle = design?.subtitleColor || hexToRgba(titleColor, 0.8);
     ctx.filter = dropShadowBaseFilter(w);
     const mt1 = Math.round(w * (4 / 320));
-    const subLines = wrapText(ctx, subtitle, titleWidth);
+    const subLines = wrapText(ctx, subtitle, titleWidth, 0, true);
     const subLineSpacing = subSize * (design?.titleTypography?.lineHeight || 1.1);
     // Alignement PROPRE au sous-titre, celui du titre a defaut — la meme
     // regle que `SequenceTitle`, qui retombe lui aussi sur celui du titre.
@@ -4129,6 +4214,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // posterOnAllSequences: when false (default), only the intro sequence
     // gets the poster image — cards/CTA/video get null (black + gradient).
     const usePoster = normalizedDesign?.posterOnAllSequences !== false || type === 'intro';
+    // Fond en mouvement (Titre / CTA, sans affiche) : servi comme une affiche.
+    const fondTexte = fondsTexte.get(type);
+    if (fondTexte?.pret && !(usePoster && posterCropped)) {
+      return { img: fondTexte.calque as unknown as HTMLImageElement, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%', zoom: 1 };
+    }
     return { img: usePoster ? posterCropped : null, opacity: 1, canvasFilter: 'none', vignette: 0, objectPosition: '50% 50%', zoom: 1 };
   };
 
@@ -4345,6 +4435,68 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   if (planCartes) console.log('[Composer] Cartes sur les rushes :', planCartes.map((s) => `${s.debut.toFixed(1)}-${s.fin.toFixed(1)}s@${s.depuis.toFixed(1)}`).join(' | '));
   let lecteurCartes: HTMLVideoElement | null = null;
 
+  // Fonds en mouvement Titre / CTA (`fondRushTexte`) : un lecteur muet par
+  // séquence, peint chaque image dans un calque à la taille de la vidéo
+  // (couverture + assombrissement), que `pickSeqBg` sert comme une affiche.
+  const fondsTexte = new Map<string, {
+    el: HTMLVideoElement; url: string; depuis: number; calque: HTMLCanvasElement; pret: boolean; seq: { type: string; duration: number };
+    /** #613 — extraits DANS la plage propre (double tampon) quand elle est plus courte que la séquence. */
+    plan: Array<{ el: HTMLVideoElement; debut: number; fin: number; depuis: number }>;
+    /** Lecteurs à libérer (le second tampon compris). */
+    els: HTMLVideoElement[];
+  }>();
+  for (const type of ['intro', 'cta'] as const) {
+    const f = options.fondRushTexte?.[type];
+    const seq = sequences.find((x) => x.type === type);
+    if (!f?.url || !seq || !(seq.duration > 0)) continue;
+    const el = await loadVideo(f.url).catch((err) => { console.warn('[Composer] Fond en mouvement indisponible :', f.url.substring(0, 60), err?.message); return null; });
+    if (!el) continue;
+    el.muted = true;
+    const dureeEl = Number.isFinite(el.duration) ? el.duration : null;
+    const calque = document.createElement('canvas');
+    calque.width = width; calque.height = height;
+    // #613 — plage PROPRE connue (`jusqua`, `plansPropres`) : le fond ne joue que [depuis, jusqua].
+    // Démo « LE SPORT » : le CTA partait dans l'image figée du 3e rush (gel 0,27 s + flash) et le
+    // Titre rebouclait sur le reste d'un autre plan. Plage plus courte que la séquence : elle est
+    // REJOUÉE depuis son début par un second lecteur préparé à l'avance (double tampon, comme les
+    // coupes de la séquence Vidéo) — jamais un repositionnement qui fige l'image.
+    if (typeof f.jusqua === 'number' && f.jusqua > (f.depuis ?? 0) + 0.3) {
+      el.loop = false;
+      const depuis = Math.max(0, Math.min(f.depuis ?? 0, dureeEl !== null ? dureeEl - 0.3 : Infinity));
+      const L = Math.max(0.3, Math.min(f.jusqua, dureeEl ?? f.jusqua) - depuis - 0.05);
+      const els = [el];
+      if (L < seq.duration - 0.05) {
+        const second = await loadVideo(f.url).catch(() => null);
+        if (second) { second.muted = true; second.loop = false; els.push(second); }
+      }
+      const plan: Array<{ el: HTMLVideoElement; debut: number; fin: number; depuis: number }> = [];
+      for (let k = 0, t = 0; t < seq.duration - 1e-6; k++, t += L) {
+        plan.push({ el: els[k % els.length], debut: t, fin: Math.min(seq.duration, t + L), depuis });
+      }
+      fondsTexte.set(type, { el, url: f.url, depuis, calque, pret: false, seq, plan, els });
+      continue;
+    }
+    // Rush plus court que la séquence (démo : 4 s pour un Titre de 6 s) : il
+    // boucle, comme dans l'aperçu (`loop`) — jamais une image figée.
+    el.loop = true;
+    const depuis = dureeEl !== null ? Math.min(Math.max(0, f.depuis ?? 0), Math.max(0, dureeEl - Math.min(seq.duration, dureeEl) - 0.05)) : Math.max(0, f.depuis ?? 0);
+    fondsTexte.set(type, { el, url: f.url, depuis, calque, pret: false, seq, plan: [{ el, debut: 0, fin: seq.duration, depuis }], els: [el] });
+  }
+  /** Peint l'image courante du lecteur dans le calque (couverture, assombri 35 %). */
+  const peindreFondTexte = (type: string, el: HTMLVideoElement | null) => {
+    const f = fondsTexte.get(type);
+    if (!f || !el || el.readyState < 2) return;
+    const c = f.calque.getContext('2d');
+    if (!c) return;
+    c.clearRect(0, 0, width, height);
+    // Recadrage : la même résolution que l'aperçu (`fondsRushProjet`) et que la séquence Vidéo.
+    if (!peindreRushSousCartes(c, width, height, el, recadragePourRushPeint(f.url, { rushTransforms: options.rushTransforms, rushTransform: options.rushTransform, videoUrl: options.videoUrl }), lutGrader)) return;
+    c.fillStyle = `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`;
+    c.fillRect(0, 0, width, height);
+    f.pret = true;
+  };
+  if (fondsTexte.size) console.log('[Composer] Fonds en mouvement :', Array.from(fondsTexte.entries()).map(([k, f]) => `${k}=${f.url.split('/').pop()}@${f.depuis.toFixed(1)}s`).join(' | '));
+
   console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
   onProgress?.(10, 'Préparation...');
@@ -4523,7 +4675,9 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
 
     // `target` : le canvas sur lequel dessiner. C'est le canvas final dans le
     // cas general ; les transitions geometriques passent un calque hors-ecran.
-    const drawSeq = (type: string, progress: number, target: CanvasRenderingContext2D = ctx) => {
+    // `entrante` : la séquence ENTRE par une transition (dessinée à
+    // `t × 0,3` pour ses animations de texte, rétro-compat).
+    const drawSeq = (type: string, progress: number, target: CanvasRenderingContext2D = ctx, entrante = false) => {
       // Resolve per-sequence background override (or fall back to posterImg).
       // Opacity is applied to the BG image only — text/cards/etc. drawn on
       // top stay fully opaque. Canvas filters (Phase 2) are pre-applied to
@@ -4550,7 +4704,11 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           // eslint-disable-next-line no-console
           console.log('[Composer] About to call drawCards. Snapshot in design?', !!normalizedDesign?.cardsSnapshot, 'Snapshot in options?', !!(options as any)?.cardsSnapshot);
           const cardsSeq = sequences.find((s) => s.type === 'cards');
-          const secondesCartes = cardsSeq ? progress * cardsSeq.duration : Infinity;
+          // Séquence ENTRANTE : ses étapes datées restent à 0 s. Constat
+          // (« LE SPORT », 20/10) : `t × 0,3` de 14 s datait les cartes jusqu'à
+          // 4,2 s pendant le fondu — la carte 2 (« OS RENFORCÉS ») paraissait
+          // AVANT la carte 1, puis la séquence retombait à 0 au raccord.
+          const secondesCartes = entrante ? 0 : cardsSeq ? progress * cardsSeq.duration : Infinity;
           // Cartes sur les rushes : le plan du moment (lecteur du pilote, ou
           // l'extrait prépositionné hors lecture — transitions), puis les cartes.
           const elSous = planCartes
@@ -4593,7 +4751,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
           drawVideoSeq(target, width, height, rushCourant, logoImg, progress, normalizedDesign, recadrageCourant, videoImageEl, secondsIn, bgImg, seqBg.opacity, lutGrader);
           }
           // Surimpressions (profils dynamiques) : posées sur le rush qui continue.
-          if (options.surimpressions) dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps);
+          if (options.surimpressions) {
+            const videoFinale = sequences[sequences.length - 1]?.type === 'video';
+            dessinerSurimpressions(target, width, height, secondsIn, options.surimpressions, fps, videoFinale && videoSeq ? videoSeq.duration : null);
+          }
           break;
         }
         case 'cta': drawCTA(target, width, height, accentColor, ctaText, ctaSubText, salesPhrase, watermarkText, logoImg, progress, normalizedDesign, bgImg, seqBg.opacity); break;
@@ -4634,7 +4795,7 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
         // surimpressions datés de la séquence paraissaient pendant le fondu
         // puis disparaissaient au raccord (temps retombé à 0) : un saut.
         // Titre / Cartes / CTA entrants gardent `t * 0,3` (rétro-compat).
-        (p, target) => drawSeq(sequences[seqIdx + 1].type, sequences[seqIdx + 1].type === 'video' ? 0 : p, target),
+        (p, target) => drawSeq(sequences[seqIdx + 1].type, sequences[seqIdx + 1].type === 'video' ? 0 : p, target, true),
         transProgress,
         style,
         // Les calques ne sont crees que si un style en a besoin : un montage
@@ -5084,7 +5245,10 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       `[Composer] LUT rush ${lutGrader ? 'active' : 'ignoree (rien a etalonner ou GPU indisponible)'} — ${options.rushLut.lut.kind}, ${options.rushLut.lut.size} pas, intensite ${options.rushLut.intensity}`,
     );
   }
-  const libererEtalonneur = () => { lutGrader?.dispose(); };
+  // Lecteurs des fonds en mouvement (`loop`) : arrêtés et vidés à CHAQUE
+  // fin — normale, erreur, abandon — en même temps que l'étalonneur (les
+  // mêmes appels `onstop` / `onerror` / `.finally`). Idempotent.
+  const libererEtalonneur = () => { lutGrader?.dispose(); libererLecteurs(Array.from(fondsTexte.values(), (f) => f.els).flat()); fondsTexte.clear(); };
 
   // ═══════════════════════════════════════════════════════════
   // UNIFIED MODE: Both with and without audio use the same render loop.
@@ -5492,6 +5656,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     // Cartes sur les rushes : leur propre pilote (lecteurs muets dédiés).
     const piloteCartes = planCartes ? creerPiloteMontage(planCartes) : null;
     if (piloteCartes) piloteCartes.prepositionner();
+    // Fonds en mouvement : un pilote par séquence (Titre / CTA), prépositionné.
+    const pilotesFond = new Map(Array.from(fondsTexte.entries()).map(([type, f]) => {
+      const pf = creerPiloteMontage(f.plan);
+      pf.prepositionner();
+      return [type, pf] as const;
+    }));
     if (pilote && avatarEl) { avatarEl.currentTime = 0; avatarEl.pause(); }
 
     // Instrumentation des gels : instant de la derniere image NOUVELLE
@@ -5618,6 +5788,14 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
       if (piloteCartes && seqCartesPlan) {
         const cs = seqStarts[sequences.indexOf(seqCartesPlan)];
         lecteurCartes = piloteCartes.image(t >= cs && t < cs + seqCartesPlan.duration ? t - cs : null);
+      }
+      for (const [type, pf] of pilotesFond) {
+        const f = fondsTexte.get(type)!;
+        const debutSeq = seqStarts[sequences.indexOf(f.seq as (typeof sequences)[number])];
+        const dedans = t >= debutSeq && t < debutSeq + f.seq.duration;
+        const el = pf.image(dedans ? t - debutSeq : null);
+        // Avant son tour (fondu entrant compris) : l'image prépositionnée.
+        peindreFondTexte(type, el ?? (f.pret ? null : f.el));
       }
 
       drawFrame(t);

@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useEffect } from 'react';
 import { ArrowDown, ArrowUp, Film, ImageIcon, Megaphone, Plus, RefreshCw, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react';
+import InfoBulle from '@/components/ui/InfoBulle';
 import { LIBELLES_ORIGINE, dureeLisible, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
 import MiniatureVideo from '@/components/medias/MiniatureVideo';
 import { useVignetteVideo } from '@/lib/hooks/useVignetteVideo';
@@ -10,12 +11,14 @@ import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarP
 import { DUREE_ESTIMEE_SANS_CIBLE, horodatage, minutagePlan, secondesLisibles } from '@/lib/autopilot/duree-cible';
 import { RYTHME_LABELS, type RythmeBrief } from '@/lib/creer/brief';
 import { planCompletAutopilote, type SegmentPlanComplet } from '@/lib/autopilot/plan-complet';
+import type { ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 
 /**
  * « Plan avant génération » — le GABARIT de la séquence Vidéo, édité avant
  * tout rendu : l'ordre et la nature des plans (avatar, rush personnel,
  * stock, ou laissé à Studiio). Chaque montage remplit ce plan avec ses
- * médias réels ; la séquence CTA reste fixe, à la fin.
+ * médias réels ; le CTA reste à la fin (séquence finale, ou — avec l'avatar et
+ * des plans de coupe — en surimpression sur les dernières secondes).
  *
  * ⚠️ AUCUN APPEL ICI. Le composant ne fait qu'éditer une liste et la remonter
  * (`onChange`) ; l'enregistrement est celui du panneau (`designStyle.sources
@@ -75,9 +78,10 @@ function InfosRush({ url }: { url: string }) {
 
 /** Libellé produit d'un plan du montage prévu — jamais une plateforme. */
 export function libelleSegment(s: SegmentPlanComplet): string {
-  if (s.genre === 'avatar') return s.role === 'accroche' ? 'Mon avatar — accroche' : s.role === 'cta' ? 'Mon avatar — CTA' : 'Mon avatar';
-  if (s.genre === 'rush') return 'Mes rushes';
-  return LIBELLES_ORIGINE[origineSuggeree(s.genre === 'video' ? 'video' : 'photo')];
+  if (s.genre === 'avatar') return s.role === 'accroche' ? 'Mon avatar — accroche' : s.role === 'cta' ? 'Mon avatar — CTA' : s.role === 'conclusion' ? 'Mon avatar — conclusion' : 'Mon avatar';
+  const cl = s.role === 'cloture' ? 'Clôture + CTA — ' : '';
+  if (s.genre === 'rush') return `${cl}Mes rushes`;
+  return `${cl}${LIBELLES_ORIGINE[origineSuggeree(s.genre === 'video' ? 'video' : 'photo')]}`;
 }
 
 /** Lit la durée d'une vidéo (même cache que les miniatures) et la remonte. Ne rend rien. */
@@ -98,8 +102,10 @@ function nouvelId(lignes: CreneauGabarit[]): string {
 
 export default function PlanAvantGeneration({
   gabarit, suggestion, rushesPerso, stock, vignetteAvatar, avatarDisponible, disabled, onChange, onRechercher, duree,
-  secondesAvatar, secondesAvatarEstimees, scriptAvatar, stockPertinent, onDurees,
+  secondesAvatar, secondesAvatarEstimees, scriptAvatar, stockPertinent, onDurees, contexte,
 }: {
+  /** Ce que la vidéo dira : pertinence des médias et narration calculées comme au rendu. */
+  contexte?: ContexteTextesAutopilote | null;
   /** Durées sondées des vidéos, remontées : l'aperçu du montage prévu calcule le MÊME plan. */
   onDurees?: (durees: Record<string, number | null>) => void;
   /**
@@ -153,10 +159,23 @@ export default function PlanAvantGeneration({
     actives: { rushes: true, stock: true, avatar: avatarDisponible },
     rushesPerso, stock: stockPlan,
     avatar: { disponible: avatarDisponible, vignette: null },
-  }, { cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, secondesAvatarEstimees, scriptAvatar, durees }) : null;
+  }, {
+    cible: reference, rythme: duree?.rythme ?? null, secondesAvatar, secondesAvatarEstimees, scriptAvatar, durees,
+    // La MÊME décision que le rendu : clôture jusqu'à la durée cible, pertinences, narration.
+    dureeVisee: cible, contexte: contexte ?? null,
+  }) : null;
+  const avecCloture = complet?.debutCloture != null;
   const avecAvatar = !!complet?.segments.some((x) => x.genre === 'avatar');
   // Parole de l'avatar non mesurée (aucune génération) : la durée est une ESTIMATION.
   const estimee = avecAvatar && !(typeof secondesAvatar === 'number' && secondesAvatar > 0);
+  /**
+   * ⚠️ AVATAR + PLANS DE COUPE : LE CTA EST EN SURIMPRESSION, PAS UNE SÉQUENCE.
+   * Le moteur monte les textes sur la parole continue de l'avatar et retire la
+   * séquence CTA plein écran (`produire.ts`) : le CTA s'affiche sur les
+   * dernières secondes de la vidéo. Annoncer « séquence CTA à la fin » ici
+   * promettait des secondes que le MP4 n'a jamais eues.
+   */
+  const ctaEnSurimpression = avecAvatar && !!complet?.segments.some((x) => x.genre !== 'avatar');
   // Sans avatar, un créneau = un plan : le minutage par créneau reste lisible.
   const minutage = avecAvatar ? [] : minutagePlan(lignes.length, reference);
   const planifiee = complet && complet.duree > 0 ? complet.duree : (minutage.length ? minutage[minutage.length - 1].fin : 0);
@@ -173,7 +192,24 @@ export default function PlanAvantGeneration({
     <section className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2 min-w-0" data-autopilot-plan data-plan-fixe={fixe ? 'oui' : 'non'}>
       {videos.map((u) => <SondeDuree key={u} url={u} onDuree={noterDuree} />)}
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Plan avant génération</p>
+        <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+          Plan avant génération
+          {/* Le fonctionnement du plan et du minutage : à la demande (docs/UX-PREMIUM.md). */}
+          <InfoBulle label="En savoir plus sur le plan avant génération" titre="Plan avant génération" marqueur="plan">
+            <span className="block" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
+              {ctaEnSurimpression
+                ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur la fin de la vidéo ; si la parole est plus courte que la durée cible, une clôture (plans de coupe, musique) la complète et porte le CTA jusqu’à la dernière image.'
+                : 'Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.'}
+            </span>
+            {lignes.length > 0 && (
+              <span className="block" data-plan-duree-avertissement>
+                {estimee
+                  ? 'Durée estimée : la voix de votre avatar n’est pas encore générée. À la production, sa durée réelle est mesurée (jamais accélérée, jamais coupée) ; plus courte que la cible, une clôture complète la vidéo jusqu’à la cible (8 s au plus) ; plus longue, la vidéo suit la parole.'
+                  : 'Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).'}
+              </span>
+            )}
+          </InfoBulle>
+        </p>
         {fixe ? (
           <button
             type="button"
@@ -188,24 +224,18 @@ export default function PlanAvantGeneration({
           <span className="flex items-center gap-1 text-[10px] text-gray-500" data-plan-suggere><Wand2 className="w-3 h-3" /> Plan suggéré</span>
         ) : null}
       </div>
-      <p className="text-[11px] text-gray-500">
-        Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.
-      </p>
       {lignes.length > 0 && (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-gray-900/60 px-2 py-1.5 text-[11px]" data-plan-duree>
           <dt className="text-gray-500">Durée cible</dt>
           <dd className="text-gray-200" data-plan-duree-cible={cible ?? ''}>{cible ? `${cible} s` : `automatique (≈ ${DUREE_ESTIMEE_SANS_CIBLE} s)`}</dd>
           <dt className="text-gray-500">Durée planifiée</dt>
           <dd className="text-gray-200" data-plan-duree-planifiee={planifiee} data-plan-duree-estimee={estimee ? 'oui' : 'non'}>
-            {secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> (estimée)</span> : null}
+            {estimee ? '≈ ' : ''}{secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> (estimée)</span> : null}
           </dd>
           <dt className="text-gray-500">Nombre de séquences</dt>
           <dd className="text-gray-200" data-plan-nombre={lignes.length}>{lignes.length}</dd>
           <dt className="text-gray-500">Rythme</dt>
           <dd className="text-gray-200" data-plan-rythme={duree?.rythme ?? 'normal'}>{RYTHME_LABELS[duree?.rythme ?? 'normal']}</dd>
-          <dd className="col-span-2 text-[10px] text-gray-500 pt-0.5">
-            Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).
-          </dd>
         </dl>
       )}
       {lignes.length === 0 && (
@@ -324,9 +354,11 @@ export default function PlanAvantGeneration({
             </li>
           );
         })}
-        <li className="flex items-center gap-2 rounded-lg border border-dashed border-gray-800 px-2 py-1.5 text-[11px] text-gray-400" data-plan-cta>
+        <li className="flex items-center gap-2 rounded-lg border border-dashed border-gray-800 px-2 py-1.5 text-[11px] text-gray-400" data-plan-cta data-plan-cta-mode={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
           <Megaphone className="w-3.5 h-3.5 shrink-0" />
-          <span><span className="font-medium text-gray-300">CTA</span> — fixe, toujours en dernier</span>
+          {ctaEnSurimpression
+            ? <span><span className="font-medium text-gray-300">CTA</span> — {avecCloture && complet?.cta ? `en surimpression sur la clôture, ${horodatage(complet.cta[0])} → ${horodatage(complet.cta[1])}` : 'en surimpression sur la fin de la vidéo'}</span>
+            : <span><span className="font-medium text-gray-300">CTA</span> — fixe, toujours en dernier</span>}
         </li>
       </ol>
       {complet && complet.segments.length > 0 && (

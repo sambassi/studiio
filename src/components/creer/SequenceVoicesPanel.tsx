@@ -13,6 +13,7 @@ import {
   grouperVoixPourSelecteur,
   audioSequencePerime,
   normaliserReglages,
+  voixPrendDynamisme,
   VITESSE_MIN,
   VITESSE_MAX,
   SEQUENCE_KEYS,
@@ -67,6 +68,10 @@ const REGLAGE_LIGNE_STYLE: CSSProperties = {
 /** Sans `min-width: 0`, un input range garde sa largeur intrinsèque et déborde. */
 const REGLAGE_CURSEUR_STYLE: CSSProperties = { width: '100%', minWidth: 0 };
 const REGLAGE_VALEUR_STYLE: CSSProperties = { fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+/** Texte qui remplace [curseur | valeur] (réglage non pris en charge) : il passe à la ligne, ne déborde pas. */
+const REGLAGE_TEXTE_PLEIN_STYLE: CSSProperties = { gridColumn: '2 / 4', minWidth: 0, overflowWrap: 'anywhere' };
+/** Aide sous un réglage : alignée sur le curseur, jamais sous le libellé. */
+const REGLAGE_AIDE_STYLE: CSSProperties = { paddingLeft: 'calc(4.25rem + 0.5rem)', overflowWrap: 'anywhere' };
 
 function PreviewPlayer({
   src,
@@ -251,7 +256,7 @@ export function SequenceVoicesPanel({
   // suit quand meme chaque changement, pour que localStorage reste juste.
   const selectedTtsVoiceId = voiceId ?? localTtsVoiceId;
   /** Le dynamisme n'agit qu'avec une voix ElevenLabs (clonée / premium). */
-  const voixElevenLabs = isElevenLabsVoiceId(selectedTtsVoiceId);
+  const voixElevenLabs = voixPrendDynamisme(selectedTtsVoiceId);
 
   /**
    * Change les réglages d'UNE séquence. Aucun audio n'est touché : s'il
@@ -737,36 +742,60 @@ export function SequenceVoicesPanel({
                   />
                   <span className="text-right text-gray-300" style={REGLAGE_VALEUR_STYLE}>×{(normaliserReglages(sv.reglages)?.vitesse ?? 1).toFixed(2).replace('.', ',')}</span>
                 </label>
+                <p className="text-[10px] text-gray-500" style={REGLAGE_AIDE_STYLE} data-voice-aide="vitesse">
+                  ×1,00 = débit naturel
+                </p>
                 <label
                   className="text-[10px] text-gray-400"
                   style={REGLAGE_LIGNE_STYLE}
                   data-voice-reglage="dynamisme"
-                  title={voixElevenLabs ? 'Expressivité de la voix' : 'Le dynamisme n’agit qu’avec une voix clonée / premium'}
+                  data-voice-reglage-pris-en-charge={voixElevenLabs ? 'oui' : 'non'}
                 >
                   <span className="truncate">Dynamisme</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={10}
-                    step={1}
-                    value={Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 10)}
-                    onChange={(e) => changerReglages(key, { dynamisme: Number(e.target.value) / 10 })}
-                    disabled={!voixElevenLabs}
-                    aria-label={`Dynamisme de la voix — ${SEQUENCE_LABELS[key]}`}
-                    className="h-1 accent-purple-500 disabled:opacity-40"
-                    style={REGLAGE_CURSEUR_STYLE}
-                  />
-                  <span className="text-right text-gray-300" style={REGLAGE_VALEUR_STYLE}>{Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 100)}%</span>
+                  {voixElevenLabs ? (
+                    <>
+                      <input
+                        type="range"
+                        min={0}
+                        max={10}
+                        step={1}
+                        value={Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 10)}
+                        onChange={(e) => changerReglages(key, { dynamisme: Number(e.target.value) / 10 })}
+                        aria-label={`Dynamisme de la voix — ${SEQUENCE_LABELS[key]}`}
+                        className="h-1 accent-purple-500"
+                        style={REGLAGE_CURSEUR_STYLE}
+                      />
+                      <span className="text-right text-gray-300" style={REGLAGE_VALEUR_STYLE}>{Math.round((normaliserReglages(sv.reglages)?.dynamisme ?? 0) * 100)}%</span>
+                    </>
+                  ) : (
+                    // Pas de curseur ni de pourcentage : une valeur affichée
+                    // laisserait croire qu'elle agit sur cette voix.
+                    <span className="text-gray-500" style={REGLAGE_TEXTE_PLEIN_STYLE} data-voice-dynamisme-non-pris-en-charge={key}>
+                      Non pris en charge par cette voix
+                    </span>
+                  )}
                 </label>
+                <p className="text-[10px] text-gray-500" style={REGLAGE_AIDE_STYLE} data-voice-aide="dynamisme">
+                  {voixElevenLabs
+                    ? '0 % = posé ; plus haut = plus d’expressivité et d’intonation.'
+                    : 'Le dynamisme (expressivité) n’agit qu’avec une voix clonée ou premium.'}
+                </p>
                 <button
                   type="button"
                   onClick={() => appliquerATous(key)}
                   data-voice-reglages-tous={key}
                   className="block max-w-full text-left text-[10px] text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
-                  title="Mettre la même vitesse et le même dynamisme sur toutes les voix (à régénérer)"
                 >
                   Appliquer ces réglages à toutes les voix
                 </button>
+                <p className="text-[10px] text-gray-500" data-voice-reglages-tous-note={key}>
+                  Les audios déjà générés des autres séquences devront être régénérés.
+                </p>
+                {!sv.audioUrl && (
+                  <p className="text-[10px] text-gray-500" data-voice-reglages-prochaine={key}>
+                    Réglages appliqués à la prochaine génération de cette voix.
+                  </p>
+                )}
               </div>
 
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -823,14 +852,22 @@ export function SequenceVoicesPanel({
                     <div
                       data-voice-stale={key}
                       data-voice-stale-motif={perime.motif ?? ''}
-                      className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-200"
+                      className="flex flex-wrap items-start gap-1 rounded bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-200"
                     >
-                      <AlertTriangle size={10} className="flex-shrink-0 text-amber-400" />
-                      <span className="flex-1 min-w-0 truncate">
-                        Audio périmé — régénérer
-                        {perime.motif === 'voix' && voixDeGeneration ? ` (généré avec ${voixDeGeneration})` : ''}
-                        {perime.motif === 'texte' ? ' (le texte a changé)' : ''}
-                        {perime.motif === 'reglages' ? ' (réglages de voix modifiés)' : ''}
+                      <AlertTriangle size={10} className="mt-0.5 flex-shrink-0 text-amber-400" />
+                      {/* Jamais tronqué : le motif est ce qui permet de décider. */}
+                      <span className="flex-1 min-w-0" style={{ overflowWrap: 'anywhere' }}>
+                        <span className="font-semibold">Audio périmé</span>
+                        {' — '}
+                        {perime.motif === 'voix'
+                          ? (voixDeGeneration ? `généré avec ${voixDeGeneration}, une autre voix que celle choisie.` : 'généré avec une autre voix que celle choisie.')
+                          : perime.motif === 'texte'
+                            ? 'le texte a changé depuis la génération.'
+                            : perime.motif === 'reglages'
+                              ? (voixPrendDynamisme(sv.ttsVoice || selectedTtsVoiceId)
+                                ? 'la vitesse ou le dynamisme ont changé depuis la génération.'
+                                : 'la vitesse a changé depuis la génération.')
+                              : ''}
                       </span>
                       <button
                         type="button"

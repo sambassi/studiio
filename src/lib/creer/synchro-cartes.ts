@@ -254,7 +254,42 @@ export function calageProportionnel(cartes: readonly CarteDite[], dureeSequence:
   const limite = plafondApparitionCartes(dureeSequence, nbCartes);
   const dernier = etapes.length ? etapes[etapes.length - 1].debut : 0;
   const k = dernier > limite && dernier > 0 ? limite / dernier : 1;
-  return { source: 'estimation', etapes: etapes.map((e) => ({ ...e, debut: r3(e.debut * k) })) };
+  const ramenees = etapes.map((e) => ({ ...e, debut: r3(e.debut * k) }));
+  // Durée LISIBLE par carte : au prorata du texte, une carte courte ne
+  // restait que ≈ 2 s (« LE SPORT », 20/10 : 2 s × 4 puis 5,5 s pour la
+  // dernière). Chaque carte tient au moins `dureeCarteLisible` — 3 s si la
+  // séquence le permet, sinon sa part égale —, l'ordre est gardé.
+  const debuts = espacerApparitions(ramenees.filter((e) => e.element === 'carte').map((e) => e.debut), dureeSequence);
+  const parCarte = new Map<number, number>();
+  ramenees.filter((e) => e.element === 'carte').forEach((e, i) => parCarte.set(e.carte, debuts[i]));
+  return {
+    source: 'estimation',
+    etapes: ramenees
+      .map((e) => ({ ...e, debut: e.element === 'carte' ? parCarte.get(e.carte)! : Math.max(e.debut, parCarte.get(e.carte) ?? 0) }))
+      .sort((a, b) => a.debut - b.debut),
+  };
+}
+
+/** Durée visée par carte (s), si la séquence le permet. */
+export const DUREE_CARTE_LISIBLE_S = 3;
+
+/**
+ * Débuts d'apparition espacés d'au moins `min(DUREE_CARTE_LISIBLE_S, duree / n)`
+ * et dont la dernière carte reste aussi longtemps à l'écran : chaque début est
+ * ramené dans [précédent + d, duree − (n − i) × d]. Ordre gardé ; des débuts
+ * déjà assez espacés ne bougent pas. Pure.
+ */
+export function espacerApparitions(debuts: readonly number[], duree: number): number[] {
+  const n = debuts.length;
+  if (!n || !(duree > 0)) return [...debuts];
+  const d = Math.min(DUREE_CARTE_LISIBLE_S, duree / n);
+  const out: number[] = [];
+  debuts.forEach((b, i) => {
+    const bas = i === 0 ? 0 : out[i - 1] + d;
+    const haut = duree - (n - i) * d;
+    out.push(r3(Math.min(Math.max(b, bas), Math.max(bas, haut))));
+  });
+  return out;
 }
 
 /** Part maximale de la séquence avant la dernière apparition estimée. */
@@ -271,18 +306,20 @@ export function plafondApparitionCartes(duree: number, nbCartes: number): number
 
 /**
  * Ce qui est visible après les `k` premières étapes : les cartes montrées,
- * et parmi elles celles dont la valeur l'est aussi. Une carte dont la valeur
- * n'est pas dite (pas de valeur) la montre avec elle.
+ * et leurs valeurs — LA VALEUR PARAÎT AVEC SA CARTE et reste visible toute
+ * sa durée. Constat (« LE SPORT », 20/10) : calée sur le moment où la voix la
+ * dit, la valeur (« 3-en-1 », « +2 %/an », « -10 ans », « 300+ ») arrivait en
+ * fin de carte, ou jamais quand la carte suivante la remplaçait avant. Les
+ * étapes `valeur` restent dans le calage (sans effet visible). Pure.
  */
 export function etatApres(calage: CalageCartes, k: number): { cartes: Set<number>; valeurs: Set<number> } {
   const cartes = new Set<number>();
   const valeurs = new Set<number>();
-  const avecEtapeValeur = new Set(calage.etapes.filter((e) => e.element === 'valeur').map((e) => e.carte));
   for (const e of calage.etapes.slice(0, k)) {
     if (e.element === 'carte') {
       cartes.add(e.carte);
-      if (!avecEtapeValeur.has(e.carte)) valeurs.add(e.carte);
-    } else valeurs.add(e.carte);
+      valeurs.add(e.carte);
+    }
   }
   return { cartes, valeurs };
 }

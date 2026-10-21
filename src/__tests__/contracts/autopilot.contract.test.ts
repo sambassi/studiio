@@ -21,8 +21,10 @@ describe('AUTOPILOTE — CTA', () => {
     expect(d.ctaSubText).toBe(CTA);
     expect(JSON.stringify(d)).not.toMatch(/LIEN EN BIO/i);
   });
-  it('aucun CTA utilisateur → aucune ligne inventée', () => {
-    expect((buildAutopilotDesign(post(), {}) as { ctaSubText?: string }).ctaSubText).toBeUndefined();
+  it('aucun CTA utilisateur → aucune ligne inventée (petite ligne vide : jamais le « LIEN EN BIO » du rendu)', () => {
+    const d = buildAutopilotDesign(post(), {}) as { ctaSubText?: string };
+    expect(d.ctaSubText).toBe('');
+    expect(JSON.stringify(d)).not.toMatch(/LIEN EN BIO/i);
   });
 });
 

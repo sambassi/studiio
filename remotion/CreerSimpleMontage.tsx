@@ -5,7 +5,7 @@ import {
 import { planRushs, planAvecAvatar, ORIGINE_CADRAGE_AVATAR, type RushSegment } from '../src/lib/creer/multi-rush';
 import { transformeKenBurns } from '../src/lib/creer/ken-burns';
 import { ajusterPlan } from '../src/lib/creer/smart-montage';
-import type { OverlaysMontage } from '../src/lib/creer/overlays';
+import { sortieSurimpression, type OverlaysMontage } from '../src/lib/creer/overlays';
 import {
   buildSequences, sequenceFrameOffsets, totalDurationFrames, isReelFormat, editorViewportPx,
   gradientOverlayCss, DEFAULT_COLORS, TEXT_LAYOUT,
@@ -16,7 +16,7 @@ import SequenceTitle, { titleFrameStyle } from '../src/components/creer/Sequence
 import SequenceCta, { ctaFrameStyle } from '../src/components/creer/SequenceCta';
 import FreeElementsLayer, { type FreeElement } from '../src/components/creer/FreeElementsLayer';
 import TextAnimationLayer from '../src/components/creer/TextAnimationLayer';
-import { MusiqueEnBoucle, VoixDeSequence, mixAt, facteurMusiqueJumeau, type FenetreJumeau } from './audio';
+import { MusiqueEnBoucle, VoixDeSequence, mixAt, facteurMusiqueJumeau, fonduFinalMusique, REMONTEE_CLOTURE_S, type FenetreJumeau } from './audio';
 import type { AudioKeyframe } from '../src/lib/creer/audioDucking';
 import type { TextCase, TextAlign } from '../src/lib/creer/textFormat';
 import {
@@ -31,7 +31,7 @@ import {
   baseSequenceFrames,
   TRANSITION_STYLE_KEYS, DEFAULT_TRANSITION_STYLE,
 } from './transitions';
-import { positionTexteParDefaut, titreSur916 } from '../src/lib/creer/zones-sures-916';
+import { positionTexteParDefaut, titreSur916, echelleTitreSansDebord } from '../src/lib/creer/zones-sures-916';
 import { lireCtaCopies, type CtaCopie } from '../src/lib/creer/cta-copies';
 import { fontStack } from '../src/lib/fonts/catalog';
 import { useMontageFonts } from './useMontageFonts';
@@ -261,6 +261,12 @@ export interface CreerSimpleMontageProps {
    * l'identique.
    */
   voixJumeau?: boolean;
+  /**
+   * #613 — fin de la DERNIÈRE parole du jumeau (s, depuis le début de la
+   * séquence Vidéo) quand une clôture suit : la musique n'est atténuée que
+   * jusque-là, puis remonte et s'éteint en fondu. Absent : comportement A2.
+   */
+  finVoixJumeauS?: number;
 }
 
 /** Séquences du montage, à partir des props. */
@@ -286,7 +292,7 @@ export function planFromProps(props: CreerSimpleMontageProps): PlannedSequence[]
  * NOMINALE. `null` sans `voixJumeau` : aucun ducking.
  */
 export function fenetreVoixJumeau(
-  props: Pick<CreerSimpleMontageProps, 'voixJumeau' | 'videoUrl'>,
+  props: Pick<CreerSimpleMontageProps, 'voixJumeau' | 'videoUrl' | 'finVoixJumeauS'>,
   // Les repères du montage, calculés UNE fois par la composition.
   reperes: { sequences: PlannedSequence[]; offsets: number[]; base: number[]; tFrames: number; fps: number },
 ): FenetreJumeau | null {
@@ -296,7 +302,14 @@ export function fenetreVoixJumeau(
   if (i < 0) return null;
   // A3 — la piste démarre au début NOMINAL (après le fondu d'entrée), et
   // non plus `tFrames` plus tôt avec la séquence de la série.
-  return { debut: offsets[i] / fps, fin: (offsets[i] + base[i]) / fps };
+  const debut = offsets[i] / fps;
+  const fin = (offsets[i] + base[i]) / fps;
+  // #613 — clôture après la parole : l'atténuation s'arrête à la DERNIÈRE parole.
+  const f = props.finVoixJumeauS;
+  if (typeof f === 'number' && Number.isFinite(f) && f > 0 && debut + f < fin - 0.05) {
+    return { debut, fin: debut + f, remontee: REMONTEE_CLOTURE_S };
+  }
+  return { debut, fin };
 }
 
 /**
@@ -443,21 +456,25 @@ const Filigrane: React.FC<{ texte?: string; echelle: number }> = ({ texte, echel
  * fondu + léger glissement), voile dégradé haut et bas pour la lisibilité
  * sans masquer le sujet au centre.
  */
-const CoucheOverlay: React.FC<{ from: number; durationInFrames: number; children: React.ReactNode }> = ({ from, durationInFrames, children }) => (
+const CoucheOverlay: React.FC<{ from: number; durationInFrames: number; children: React.ReactNode; sortie?: boolean }> = ({ from, durationInFrames, children, sortie = true }) => (
   <Sequence from={from} durationInFrames={durationInFrames}>
-    <CoucheOverlayAnimee duree={durationInFrames}>{children}</CoucheOverlayAnimee>
+    <CoucheOverlayAnimee duree={durationInFrames} sortie={sortie}>{children}</CoucheOverlayAnimee>
   </Sequence>
 );
+
+/** Règle partagée (Remotion = compositeur = aperçu) : `sortieSurimpression` (overlays.ts). */
+export { sortieSurimpression };
 
 /** Voile dégradé des surimpressions — le même en rendu complet et hybride. */
 export const VOILE_SURIMPRESSION = 'linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0) 32%, rgba(0,0,0,0) 62%, rgba(0,0,0,0.55) 100%)';
 
-const CoucheOverlayAnimee: React.FC<{ duree: number; children: React.ReactNode }> = ({ duree, children }) => {
+const CoucheOverlayAnimee: React.FC<{ duree: number; children: React.ReactNode; sortie?: boolean }> = ({ duree, children, sortie = true }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const bord = Math.max(1, Math.round(0.3 * fps));
   const entree = Math.min(1, frame / bord);
-  const opacite = Math.max(0, Math.min(entree, (duree - frame) / bord));
+  // Sans sortie (fin de la vidéo) : plein jusqu'à la dernière image.
+  const opacite = Math.max(0, sortie ? Math.min(entree, (duree - frame) / bord) : entree);
   return (
     <AbsoluteFill style={{ opacity: opacite }}>
       <AbsoluteFill
@@ -529,7 +546,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
           fps={fps}
           totalFrames={totalFrames}
           debutSecondes={props.musicStartSeconds}
-          volume={(f) => mixAt(f / fps, mixOptions).music * facteurMusiqueJumeau(f / fps, fenetreJumeau)}
+          volume={(f) => mixAt(f / fps, mixOptions).music * facteurMusiqueJumeau(f / fps, fenetreJumeau)
+            * fonduFinalMusique(f / fps, totalFrames / fps, !!fenetreJumeau?.remontee)}
         />
       )}
       {/* Surimpressions : les voix partent à LEURS départs dans la vidéo
@@ -589,6 +607,8 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
         const montage = montageBrut.length >= 2 || montageBrut.some((m) => m.kind === 'image' || m.kind === 'avatar') ? montageBrut : null;
         const plusieursRushs = (montage !== null || (props.rushs?.filter((r) => r?.url).length ?? 0) >= 2) && iVideo >= 0;
         const dureeVideo = iVideo >= 0 ? sequences[iVideo].duration : 0;
+        // Une séquence suit la Vidéo : sa transition fait la sortie des surimpressions.
+        const videoNonFinale = iVideo >= 0 && iVideo < sequences.length - 1;
         // ⚠️ AVATAR : jamais de remise à l'échelle — `ajusterPlan` déplacerait
         // `debut` sans `depuis`, et la bouche de l'avatar quitterait sa voix.
         // Le moteur garantit `dureePlan === videoDuration` pour ces plans.
@@ -612,6 +632,15 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
             police: props.titleFont || 'Inter', policeSousTitre: props.subtitleFont ?? null,
             casse: props.titleCase, casseSousTitre: props.subtitleCase,
           }) : null;
+          // Surimpression / image fixe du rendu hybride : la MÊME garde de
+          // largeur — aucun mot ne sort du cadre (« MOTIVA », 20/10), même
+          // pour des props enregistrées avant `ajusterAccroche` en largeur.
+          const echelleTitre = t916?.echelle ?? echelleTitreSansDebord({
+            format, pos: posTitre, largeur: largeurChoisie, echelle: props.titleScale ?? 1,
+            titre: props.title ?? '', sousTitre: props.subtitle, echelleSousTitre: props.subtitleScale ?? 1,
+            espacement: props.titleLetterSpacing ?? 0, police: props.titleFont || 'Inter', policeSousTitre: props.subtitleFont ?? null,
+            casse: props.titleCase, casseSousTitre: props.subtitleCase,
+          });
           return (
               <div style={titleFrameStyle(posTitre, t916 && t916.largeur !== largeurChoisie ? t916.largeur : props.titleWidth)}>
                 <SequenceTitle
@@ -620,7 +649,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   typography={{
                     font: props.titleFont || 'Inter',
                     color: titleColor,
-                    scale: t916?.echelle ?? props.titleScale ?? 1,
+                    scale: echelleTitre,
                     bold: props.titleBold ?? true,
                     italic: props.titleItalic ?? false,
                     letterSpacing: props.titleLetterSpacing ?? 0,
@@ -662,6 +691,10 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                 // 9:16 en flux : cartes arrêtées au rail d'actions des réseaux.
                 zoneSure916={format === '9:16'}
                 valueColor={props.cardValueColor || props.gradientEnd || DEFAULT_COLORS.gradientEnd}
+                // Séquence Cartes plein écran (dégradé) : valeur lisible + contour,
+                // comme l'aperçu de Créer — projets aux défauts lisibles
+                // (`lisible916`) seulement. Surimpressions : leur propre fond.
+                fondsContraste={props.cardBackground == null && props.cardsTypography?.lisible916 ? [props.gradientStart || DEFAULT_COLORS.gradientStart, props.gradientEnd || DEFAULT_COLORS.gradientEnd] : null}
                 // Absent = le cadre, comme depuis toujours.
                 cardStyle={props.cardStyle}
                 typography={props.cardsTypography}
@@ -873,6 +906,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                       key={`carte-${c.index}`}
                       from={avance(depart) + Math.round(c.debut * fps)}
                       durationInFrames={Math.max(1, Math.round((c.fin - c.debut) * fps))}
+                      sortie={videoNonFinale || sortieSurimpression(c.fin, dureeVideo, fps)}
                     >
                       {blocCartes([carte])}
                     </CoucheOverlay>
@@ -882,6 +916,7 @@ export const CreerSimpleMontage: React.FC<CreerSimpleMontageProps> = (props) => 
                   <CoucheOverlay
                     from={avance(depart) + Math.round(props.surimpressions.cta[0] * fps)}
                     durationInFrames={Math.max(1, Math.round((props.surimpressions.cta[1] - props.surimpressions.cta[0]) * fps))}
+                    sortie={videoNonFinale || sortieSurimpression(props.surimpressions.cta[1], dureeVideo, fps)}
                   >
                     {blocCta(1)}
                   </CoucheOverlay>

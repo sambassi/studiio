@@ -1,4 +1,7 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { estimerParoleAvatar, paroleEstimationPourMetadata } from '@/lib/autopilot/debit-parole';
+import { lireDebitParoleCompte } from '@/lib/autopilot/debit-parole-compte';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
 import { signatureContenu } from '@/lib/creer/signature-contenu';
 import { deductCredits } from '@/lib/credits/system';
 import { prixDe } from '@/lib/tarifs/serveur';
@@ -32,13 +35,15 @@ import { zoneCalmeSortie } from '@/lib/creer/zone-calme';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
 import { controleQualite } from '@/lib/creer/quality-gate';
 import { avatarActifConfig, mediasDesSources, sourcesEffectives, sujetsCourants, urlStockAutorisee, type MediaStockRetenu } from '@/lib/autopilot/sources';
-import { narrationDesSurimpressions, pertinencesPourPlan, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
 import { planMultiSources, BROLL_MAX_S, BROLL_VIDEO_S } from '@/lib/autopilot/plan-multi-sources';
+import { planMontageAvatar, pertinencesAutopilote, contexteMontageAutopilote, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
+import { segmentsDuPlan } from '@/lib/autopilot/plan-complet';
 import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
 import { jumeauPleinCadre } from '@/lib/avatar/jumeau-plein-cadre';
+import { buildSequences, totalDurationSeconds } from '@/lib/creer/designSpec';
 
 /** Nombre maximal de rushes réunis dans un smart montage Autopilote. */
 export const RUSHS_MONTAGE_MAX = 3;
@@ -48,6 +53,59 @@ export const RUSHS_MONTAGE_MAX = 3;
  * rotation à partir du rang — deux montages voisins ne réunissent pas les
  * mêmes. Pure, testable.
  */
+/** Écart toléré entre la durée du MP4 final et celle du plan rendu (s). */
+export const TOLERANCE_DUREE_RENDU_S = 1;
+
+/**
+ * La durée que le PLAN RENDU implique : séquences titre, cartes, vidéo, CTA —
+ * la même fonction que la composition (`buildSequences`). Pure.
+ */
+export function dureePlanRendu(d: {
+  introDuration?: number; cardsDuration?: number; videoDuration?: number; ctaDuration?: number;
+  cards?: ReadonlyArray<unknown> | null; videoUrl?: string | null; montage?: ReadonlyArray<unknown> | null;
+}): number {
+  const avecVideo = !!(d.videoUrl || (d.montage && d.montage.length));
+  return Math.round(totalDurationSeconds(buildSequences({
+    introDuration: d.introDuration ?? 0,
+    cardsDuration: d.cardsDuration ?? 0,
+    videoDuration: d.videoDuration ?? 0,
+    ctaDuration: d.ctaDuration ?? 0,
+    cardCount: d.cards?.length ?? 0,
+    hasVideoBackground: avecVideo,
+    videoRequested: avecVideo,
+  })) * 1000) / 1000;
+}
+
+/**
+ * LE MP4 DIT-IL CE QUE LE PLAN DIT ? Durée MESURÉE du fichier final (en-tête
+ * du MP4 en ligne) contre la durée du plan rendu. Écart > 1 s, ou mesure
+ * impossible : `dureeVerifiee: false` — écrit en métadonnées, jamais caché,
+ * jamais « corrigé » en silence. Pure.
+ */
+export function verifierDureeRendu(dureePlanS: number | null, dureeMesureeS: number | null, tolerance = TOLERANCE_DUREE_RENDU_S): {
+  dureeVerifiee: boolean; dureePlanS: number | null; dureeMesureeS: number | null; ecartS: number | null;
+} {
+  const plan = typeof dureePlanS === 'number' && Number.isFinite(dureePlanS) && dureePlanS > 0 ? dureePlanS : null;
+  const mesure = typeof dureeMesureeS === 'number' && Number.isFinite(dureeMesureeS) && dureeMesureeS > 0
+    ? Math.round(dureeMesureeS * 1000) / 1000 : null;
+  if (plan === null || mesure === null) return { dureeVerifiee: false, dureePlanS: plan, dureeMesureeS: mesure, ecartS: null };
+  const ecartS = Math.round((mesure - plan) * 1000) / 1000;
+  return { dureeVerifiee: Math.abs(ecartS) <= tolerance, dureePlanS: plan, dureeMesureeS: mesure, ecartS };
+}
+
+/** Mesure bornée dans le temps : une sonde lente ne retient jamais le dépôt. */
+async function mesurerDureeFinale(videoUrl: string, userId: string, delaiMs = 20_000): Promise<number | null> {
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      probeRushSeconds(videoUrl, {}, userId).catch(() => null),
+      new Promise<null>((r) => { minuteur = setTimeout(() => r(null), delaiMs); }),
+    ]);
+  } finally {
+    if (minuteur) clearTimeout(minuteur);
+  }
+}
+
 export function rushsCompagnons(banque: ReadonlyArray<string>, principal: string, rang: number, n: number): string[] {
   const autres = Array.from(new Set(banque.filter((u) => typeof u === 'string' && u && u !== principal)));
   if (autres.length === 0 || n <= 0) return [];
@@ -643,6 +701,9 @@ export async function produireUnMontage(input: {
   let contextePertinence: ContexteMontage | null = null;
   /** Multi-sources : pourquoi ce plan, et les médias stock lâchés (introuvables). */
   let explicationsSources: string[] = [];
+  /** Avec avatar : la parole MESURÉE et le début de la séquence de clôture (plan réel, écrit en metadata). */
+  let paroleRendue: number | null = null;
+  let debutClotureRendue: number | null = null;
   const mediasIgnores: string[] = [];
   /** Média stock redirigé (vers un hôte AUTORISÉ) → son URL finale : la seule que le rendu reçoit. */
   const urlsFinalesStock = new Map<string, string>();
@@ -677,13 +738,17 @@ export async function produireUnMontage(input: {
     const rushes = listeRushs.map((u) => ({ url: u, secondes: secondesParRush.has(u) ? secondesParRush.get(u) ?? null : (u === rushUrl ? rushSeconds : null) }));
     const stockVideos = videosOk.map((u, i) => ({ url: u, secondes: secondesStock[i] }));
     const secondesVoix = (cle: string) => (voices as Record<string, { seconds?: number } | undefined>)[cle]?.seconds ?? 0;
-    const contexteMontage = contexteMontageDepuis({
-      theme: post.title,
+    // Ce que la vidéo DIT : le MÊME contexte que l'aperçu (`montage-avatar.ts`).
+    const contexteTextes: ContexteTextesAutopilote = {
+      sujets: sujetsCourants(config),
       titre: post.title,
       sousTitre: post.content?.subtitle ?? null,
-      objectif: [postUtilise.brief?.objectif, postUtilise.brief?.message].filter(Boolean).join(' ') || null,
+      objectif: postUtilise.brief?.objectif ?? null,
+      message: postUtilise.brief?.message ?? null,
+      cta: postUtilise.brief?.cta ?? null,
       cartes: post.content?.cards ?? [],
-    });
+    };
+    const contexteMontage = contexteMontageAutopilote(contexteTextes);
     profilVideo = profilMontageDuContexte(contexteMontage).profil;
     contexteConseil = { theme: contexteMontage.theme ?? null, objectif: contexteMontage.objectif ?? null };
     contextePertinence = contexteMontage;
@@ -699,43 +764,27 @@ export async function produireUnMontage(input: {
     // PERTINENCE DE CONTENU (`pertinence-medias.ts`) : chaque média stock est
     // lu contre le scénario de CETTE vidéo (sujet, brief, titre, cartes) —
     // hors sujet jamais pioché, « limite » une fois, le plus pertinent ouvre.
-    const cartesPost = post.content?.cards ?? [];
-    const scenario = scenarioPertinence({
-      sujets: [...sujetsCourants(config), postUtilise.brief?.objectif ?? null],
-      textes: [post.title, post.content?.subtitle ?? null, postUtilise.brief?.message ?? null, postUtilise.brief?.cta ?? null,
-        ...cartesPost.flatMap((c) => [c.title ?? null, c.description ?? null])],
-    });
-    const pertinences = pertinencesPourPlan(sourcesCfg.sources.stock.filter((m) => videosOk.includes(m.url) || photosOk.includes(m.url)), scenario);
+    const pertinences = pertinencesAutopilote(sourcesCfg.sources.stock.filter((m) => videosOk.includes(m.url) || photosOk.includes(m.url)), contexteTextes);
     let res: ReturnType<typeof planMultiSources>;
     if (jumeauActif) {
       // ── AVATAR + autres sources : la séquence dure la PAROLE de l'avatar,
       // textes en SURIMPRESSION (aucun raccord avant la vidéo : la voix et
-      // l'image de l'avatar partent ensemble, à 0).
+      // l'image de l'avatar partent ensemble, à 0). Parole plus courte que la
+      // durée cible : une SÉQUENCE DE CLÔTURE (plans de coupe, musique, CTA
+      // jusqu'à la dernière image) complète — la voix n'est jamais touchée.
+      // La MÊME fonction que l'aperçu (`planMontageAvatar`).
       const T = jumeauSeconds && jumeauSeconds > 0 ? jumeauSeconds : (designBase.videoDuration ?? 0);
-      // La narration (titre, cartes) sur la parole : un plan de coupe posé
-      // pendant une carte préfère le média qui montre ce qu'elle dit.
-      const narration = narrationDesSurimpressions(planOverlays({
-        duree: T, profil: profilVideo, nbCartes: designBase.cards?.length ?? 0,
-        finHook: Math.min(4, Math.max(2, T * 0.2)), voix: { video: T },
-      }), { titre: post.title, cartes: designBase.cards ?? [] });
-      res = planMultiSources({
+      const m = planMontageAvatar({
         avatar: { url: jumeauVideoUrl as string, secondes: T },
+        dureeVisee: postUtilise.brief?.duree ?? null,
         rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
-        gabarit, cible: T, pertinences, narration,
+        gabarit, pertinences, profil: profilVideo,
+        titre: post.title, cartes: designBase.cards ?? [],
         options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
       });
+      res = m.res;
       enSurimpression = true;
-      if (res.plan.length) {
-        const o = planOverlays({
-          duree: res.duree,
-          profil: profilVideo,
-          nbCartes: designBase.cards?.length ?? 0,
-          finHook: res.plan[0]?.kind === 'avatar' ? res.plan[0].fin : null,
-          voix: { video: res.duree },
-        });
-        // La voix de l'avatar est CONTINUE et part à 0, avec son image.
-        overlays = { ...o, voix: { video: 0 } };
-      }
+      overlays = m.overlays;
     } else {
       // ── Rushes + stock, ou stock seul : la règle de durée du smart montage
       // (voix à porter, matière disponible) ; le stock comble ce qui manque.
@@ -768,6 +817,8 @@ export async function produireUnMontage(input: {
       }
     }
     explicationsSources = res.explications;
+    paroleRendue = res.parole;
+    debutClotureRendue = res.debutCloture;
     planMontageRushs = res.plan.length ? res.plan : null;
     if (!planMontageRushs) overlays = null;
     chrono.selection = Date.now() - t2;
@@ -861,6 +912,8 @@ export async function produireUnMontage(input: {
         videoUrl: jumeauVideoUrl as string,
         rushMuted: true,
         sequenceVoiceUrls: { video: jumeauVideoUrl as string },
+        // #613 — clôture : la musique ne reste atténuée que jusqu'à la dernière parole.
+        ...(debutClotureRendue !== null && debutClotureRendue > 0 ? { finVoixJumeauS: debutClotureRendue } : {}),
       } : {}),
     }
     : designBase;
@@ -953,6 +1006,15 @@ export async function produireUnMontage(input: {
   console.log(`${journal} ${userId} — mesures ${JSON.stringify(mesures)}`);
   input.onProgression?.('finalisation', 0);
 
+  // ── PLAN = MP4 : vérification AVANT le dépôt du post ───────────────────
+  // La durée du FICHIER final (lue dans son en-tête, en ligne) contre celle du
+  // plan rendu. Incohérente (> 1 s) ou illisible : journalisée et écrite
+  // (`dureeVerifiee: false`), jamais présentée comme conforme.
+  const verifDuree = verifierDureeRendu(dureePlanRendu(design), await mesurerDureeFinale(videoUrl, userId));
+  if (!verifDuree.dureeVerifiee) {
+    console.warn(`${journal} ${userId} — DUREE_NON_VERIFIEE ${JSON.stringify(verifDuree)}`);
+  }
+
   // ── CONSEILS (lecture seule) : ne modifient rien, ne bloquent jamais ──
   let conseils: RapportConseils | null = null;
   try {
@@ -1016,6 +1078,18 @@ export async function produireUnMontage(input: {
     pertinenceRushs = null; // un diagnostic ne bloque jamais un montage
   }
 
+  // PAROLE DE L'AVATAR : la PRÉVISION (la règle de l'aperçu, `estimerParoleAvatar`,
+  // sur le script que le jumeau a dit) à côté de la MESURE — pour comparer, et
+  // pour calibrer le débit du compte (`lireDebitParoleCompte`). Lu AVANT
+  // l'insertion de ce post : jamais calibré sur lui-même. Ne lève jamais.
+  const paroleEstimation = jumeauActif && jumeauSeconds && jumeauSeconds > 0
+    ? paroleEstimationPourMetadata(
+      estimerParoleAvatar(scriptJumeauMontage(post, config), {
+        rythme: postUtilise.brief?.rythme, debitCompte: await lireDebitParoleCompte(userId),
+      }),
+      jumeauSeconds,
+    )
+    : null;
   const metadata = {
     ...buildAutopilotMetadata({
       post: postUtilise, design, videoUrl, thumbnailUrl, mode: config.mode,
@@ -1068,6 +1142,22 @@ export async function produireUnMontage(input: {
     ...(montageSimpleMotif ? { montageSimple: true, montageSimpleMotif } : null),
     // Textes en surimpression sur la vidéo continue (V3) : relus au rendu.
     ...(overlays ? { surimpressions: overlays } : null),
+    // LE PLAN RÉELLEMENT RENDU, dans le vocabulaire de l'aperçu (`segmentsDuPlan`) :
+    // parole MESURÉE de l'avatar, séquence de clôture, fenêtre du CTA. Écrit pour
+    // diagnostic et pour un futur affichage : AUCUN écran ne le lit encore (le
+    // Calendrier lit `rushSegments` / `sequences`, l'aperçu recalcule son plan).
+    ...(multiSources && jumeauActif && planMontageRushs ? {
+      planMontage: {
+        version: 1,
+        paroleS: paroleRendue,
+        dureeS: dureePlan(planMontageRushs),
+        debutClotureS: debutClotureRendue,
+        cta: overlays?.cta ? { texte: design.ctaText ?? '', sousTexte: design.ctaSubText ?? '', debut: overlays.cta[0], fin: overlays.cta[1] } : null,
+        segments: segmentsDuPlan(planMontageRushs, debutClotureRendue),
+      },
+    } : null),
+    // Parole de l'avatar : estimée (règle de l'aperçu) ET mesurée.
+    ...(paroleEstimation ? { paroleEstimation } : null),
     // Profil et mesures du plan — les mêmes champs que Créer.
     ...(planMontageRushs ? { profilMontage: profilVideo } : null),
     ...(montageRapport ? { montageRapport } : null),
@@ -1110,6 +1200,9 @@ export async function produireUnMontage(input: {
     ...(conseils ? { conseils } : null),
     // Le fichier FINAL a-t-il du son ? Mesuré sur le MP4 (ffmpeg), pas supposé.
     ...(audio ? { audioFinal: audio } : null),
+    // Sa DURÉE est-elle celle du plan ? Mesurée sur le MP4 en ligne.
+    dureeVerifiee: verifDuree.dureeVerifiee,
+    dureeRendu: { planS: verifDuree.dureePlanS, mesureeS: verifDuree.dureeMesureeS, ecartS: verifDuree.ecartS },
     ...(audio && audio.silencieux ? { audioSilencieux: true } : null),
         // Même exigence pour la musique configurée mais disparue du stockage.
     ...(musiqueIntrouvable ? { musiqueIgnoree: true, musiqueIgnoreeMotif: 'musique introuvable' } : null),

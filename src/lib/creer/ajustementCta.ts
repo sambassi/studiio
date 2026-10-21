@@ -1,3 +1,5 @@
+import { chassePolice, enCapitales } from '@/lib/creer/zones-sures-916';
+import { FONT_RATIO, VIDEO_SIZE, type DesignFormat } from '@/lib/creer/designSpec';
 /**
  * CTA qui ne déborde jamais — UNE règle, appliquée avant l'aperçu ET
  * l'export (elle produit l'échelle que les deux reçoivent).
@@ -85,3 +87,77 @@ export function echelleCtaDeDepart(echelle: number | null | undefined, format: s
 export const VERSION_LISIBILITE = 2;
 /** Les défauts lisibles s'appliquent-ils à ce projet ? Absent (projet antérieur) : non. */
 export const defautsLisibles = (version: number | null | undefined) => (version ?? 1) >= VERSION_LISIBILITE;
+
+/**
+ * Version de lisibilité d'un projet RELU (brouillon local ou post enregistré).
+ *
+ * Constat (« LE_SPORT_LE_PLUS_COMPLET (2) », 20/10) : un brouillon local
+ * restauré sans `versionLisibilite` retombait en v1 — cartes minuscules, CTA
+ * à l'échelle 1, sous-ligne rose sur rose — alors que l'utilisateur
+ * travaillait sur un projet d'aujourd'hui.
+ *
+ *  - version écrite : gardée telle quelle ;
+ *  - BROUILLON LOCAL sans version : la version courante (les défauts lisibles
+ *    sont ceux de tout projet en cours) ;
+ *  - POST ENREGISTRÉ sans version (métadonnées relues en modification, que le
+ *    Calendrier relit aussi) : v1 — son rendu historique est gardé (règle
+ *    « Default safe »).
+ */
+export function versionLisibiliteRestauree(version: number | null | undefined, source: 'brouillon' | 'post'): number {
+  if (typeof version === 'number' && Number.isInteger(version) && version >= 1) return version;
+  return source === 'brouillon' ? VERSION_LISIBILITE : 1;
+}
+
+// ── TITRE LISIBLE PAR DÉFAUT (v2, 9:16) ──────────────────────────────────
+//
+// Constat (démo « LE SPORT », lot 2) : écran titre de 5 s avec un titre
+// minuscule en haut à gauche (≈ 40 px de capitale sur 1080) — l'échelle 1 du
+// titre est celle de l'éditeur d'origine, pensée pour un plateau de 320 px.
+// Pour un projet aux défauts lisibles (`versionLisibilite` ≥ 2) en 9:16, le
+// titre à l'échelle par DÉFAUT (1) est ajusté pour occuper ≈ 80 % de la
+// largeur utile de son cadre, sur 1 ou 2 lignes selon son nombre de mots,
+// entre `ECHELLE_TITRE_LISIBLE` min et max. Une échelle réglée par
+// l'utilisateur (poignée, curseur) est gardée telle quelle — la même règle que
+// le CTA (`echelleCtaDeDepart`). La garde « aucun mot ne déborde »
+// (`titreSur916`) s'applique ensuite.
+
+/** Bornes de l'échelle automatique du titre (9:16) : ≈ 66 px à ≈ 113 px de corps sur 1080. */
+export const ECHELLE_TITRE_LISIBLE = { min: 1.4, max: 2.4 } as const;
+/**
+ * #613 — les MÊMES bornes en pixels de corps (image de 1080 de petit côté),
+ * pour les trois formats : un titre lisible a la même taille physique en
+ * 9:16, en 1:1 et en 16:9 (seule la largeur cible change avec le cadre).
+ */
+export const CORPS_TITRE_LISIBLE_PX = {
+  min: ECHELLE_TITRE_LISIBLE.min * VIDEO_SIZE['9:16'].w * FONT_RATIO['9:16'].title,
+  max: ECHELLE_TITRE_LISIBLE.max * VIDEO_SIZE['9:16'].w * FONT_RATIO['9:16'].title,
+} as const;
+/** Part de la largeur utile du cadre visée par la ligne de titre. */
+export const PART_LARGEUR_TITRE = 0.8;
+
+export function echelleTitreDeDepart(p: {
+  echelle: number | null | undefined; titre: string | null | undefined; format: string;
+  /** Largeur du cadre titre (% de la vidéo). */
+  largeurPct: number; police?: string | null; casse?: 'none' | 'uppercase' | 'lowercase'; lisible?: boolean;
+}): number {
+  const e = p.echelle ?? 1;
+  const titre = (p.titre ?? '').trim();
+  // #613 : les trois formats (9:16, 1:1, 16:9) — avant, le 9:16 seul.
+  if (!p.lisible || !(p.format in VIDEO_SIZE) || e !== 1 || !titre) return e;
+  const f = p.format as DesignFormat;
+  const W = VIDEO_SIZE[f].w;
+  /** Corps du titre à l'échelle 1 (px) : le ratio du compositeur pour ce format. */
+  const corps1 = W * FONT_RATIO[f].title;
+  const utile = (p.largeurPct / 100) * W * PART_LARGEUR_TITRE;
+  const ch = chassePolice(p.police ?? 'Inter', enCapitales(titre, p.casse));
+  const mots = titre.split(/\s+/).filter(Boolean);
+  // Deux lignes au plus : le bloc reste au-dessus du rail d'actions des
+  // réseaux (35 % de la hauteur), sa largeur n'y est pas rabotée.
+  const lignes = Math.min(2, Math.max(1, Math.ceil(mots.length / 2)));
+  const largeurA1 = mots.reduce((t, m) => t + m.length * ch.em, 0) * corps1 + (mots.length - 1) * ch.espace * corps1;
+  const cible = (utile * lignes) / Math.max(1e-6, largeurA1);
+  // Bornes en px de corps, identiques pour les trois formats (9:16 : 1,4–2,4 exactement comme avant).
+  const min = CORPS_TITRE_LISIBLE_PX.min / corps1;
+  const max = CORPS_TITRE_LISIBLE_PX.max / corps1;
+  return Math.round(Math.min(max, Math.max(min, cible)) * 100) / 100;
+}

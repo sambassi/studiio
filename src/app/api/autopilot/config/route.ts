@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { sanitizeConfig, DEFAULT_CONFIG, type AutopilotConfig } from '@/lib/autopilot/rules';
+import { lireDebitParoleCompte } from '@/lib/autopilot/debit-parole-compte';
 
 /**
  * Configuration de l'Autopilote.
@@ -227,6 +228,9 @@ export async function GET() {
       briefReady: await briefReady(),
       jumeauReady: await jumeauReady(),
       config: fromRow((data?.[0] as Record<string, unknown>) ?? null),
+      // Débit de parole de l'avatar calibré sur les rendus du compte (lecture
+      // seule) — l'aperçu estime la parole avec ; `null` : débit par défaut.
+      debitParole: await lireDebitParoleCompte(session.user.id),
     });
   } catch (err) {
     console.error('[Autopilote] lecture :', err instanceof Error ? err.message : err);

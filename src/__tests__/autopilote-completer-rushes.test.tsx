@@ -193,12 +193,16 @@ describe('Activé — « cours Afroboost cardio-danse », 1 rush', () => {
     expect(document.querySelector('[data-autopilot-stock-vignette="P1"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-stock-vignette="P2"]')).toBeTruthy();
     expect(document.querySelector('[data-autopilot-stock-vignette="L1"]')).toBeNull();
-    // Recherche Pexels vidéo uniquement.
-    for (const u of appelsStock) {
-      expect(u).toContain('type=video');
-      expect(u).toContain('fournisseurs=pexels');
+    // Pexels uniquement ; les VIDÉOS d'abord — des photos ne complètent qu'ensuite
+    // (ici les vidéos ne donnent pas 3 propositions par plan).
+    const recherches = appelsStock.filter((u) => u.startsWith('/api/stock/recherche'));
+    for (const u of recherches) {
+      expect(u).toMatch(/fournisseurs=pexels(&|$)/);
       expect(u).toContain('format=9%3A16');
     }
+    const premierePhoto = recherches.findIndex((u) => u.includes('type=photo'));
+    expect(recherches[0]).toContain('type=video');
+    if (premierePhoto >= 0) expect(recherches.slice(premierePhoto).every((u) => u.includes('type=photo'))).toBe(true);
     // Attribution : plus de lien à l'écran ; dans l'aperçu, « Informations du média »
     // révèle le lien vers la page du média (rel noopener) — seulement au clic.
     expect(document.querySelector('a[href="https://www.pexels.com/video/P1/"]')).toBeNull();

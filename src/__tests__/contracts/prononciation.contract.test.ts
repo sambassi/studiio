@@ -42,7 +42,12 @@ describe('C-PRONUNCIATION — jamais identique', () => {
   });
 
   it('une forme DIFFÉRENTE reste acceptée (le garde-fou ne bloque pas les vraies corrections)', () => {
+    expect(suggestionUtile('Worcestershire', 'Wousteur-chire')).toBe('Wousteur-chire');
+    expect(suggestionUtile('3 séances', 'trois séances')).toBe('trois séances');
+    // Nom propre / marque : la respelling proche reste une vraie correction.
     expect(suggestionUtile('Afroboost', 'Afro-Boust')).toBe('Afro-Boust');
+    // Expression ordinaire : une micro-variation (« bioo ») n'en est pas une.
+    expect(suggestionUtile('lien en bio', 'lien en bioo')).toBeNull();
     expect(prononciationValide({ affiche: 'ADN', prononce: 'A D N' })).toMatchObject({ ok: true });
   });
 

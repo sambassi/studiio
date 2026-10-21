@@ -73,3 +73,126 @@ export function eclaircirPourContraste(texte: string, fond: Rgb = fondPastillePi
   }
   return '#FFFFFF';
 }
+
+// ── TEXTE SUR L'IMAGE : CONTOUR FIN + OMBRE SERRÉE ─────────────────────────
+//
+// Constat (MP4 du 20/10) : CTA « dans un rectangle gris opaque, sur la
+// poitrine », cartes en bandeau sombre — lourds (`rgba(0,0,0,.55–.72)`).
+// Un premier remplacement par un voile radial (alpha 0,35) donnait, sur un
+// fond clair, une TACHE grise floue. Rendu cible (sous-titres des formats
+// courts, type Captions / OpusClip) :
+//   1. lettres posées DIRECTEMENT sur l'image, avec un CONTOUR fin sombre
+//      (2 px à 1080, alpha 0,75, quatre directions — 0,55 ne suffisait pas
+//      sur le papier blanc du plan « écriture », lot 2) et une ombre portée
+//      douce et serrée — c'est lui qui porte le contraste au bord des lettres ;
+//   2. un voile local SEULEMENT quand le fond derrière le texte est connu
+//      clair ET chargé (`fondTexteSurImage`), discret (alpha ≤ 0,22), qui suit
+//      la boîte du texte et s'efface sur ses bords — jamais une forme visible.
+// Le contraste se mesure au BORD des lettres : contour posé (sur le voile
+// éventuel) sur du BLANC, le pire plan possible (`fondHaloPire`).
+
+/** Opacité maximale du voile local (fond clair ET chargé seulement). */
+export const VOILE_TEXTE_ALPHA_MAX = 0.22;
+/** Opacité d'UNE couche du contour fin. */
+export const CONTOUR_TEXTE_ALPHA = 0.75;
+/**
+ * Opacité effective du contour au bord d'une lettre : deux couches décalées
+ * (horizontale + verticale) s'y superposent toujours → 1 − (1 − 0,75)².
+ */
+export const HALO_TEXTE_ALPHA = Math.round((1 - (1 - CONTOUR_TEXTE_ALPHA) ** 2) * 1000) / 1000;
+/** Fond d'un texte posé sur l'image sans voile : aucun aplat, contour seul. */
+export const FOND_TEXTE_SUR_IMAGE = 'transparent';
+
+/**
+ * Voile LOCAL discret derrière un texte (CSS `background-image`) : ellipse
+ * inscrite dans la boîte du texte, bords très doux, alpha ≤ 0,22. `lineaire`
+ * (badge de carte) : un peu plus large que haute.
+ */
+export function voileLocal(forme: 'radial' | 'lineaire', alpha = VOILE_TEXTE_ALPHA_MAX): string {
+  const a = Math.min(VOILE_TEXTE_ALPHA_MAX, Math.max(0, alpha));
+  const r = (x: number) => Math.round(x * 1000) / 1000;
+  const arrets = `rgba(0,0,0,${r(a)}) 0%, rgba(0,0,0,${r(a * 0.75)}) 45%, rgba(0,0,0,${r(a * 0.3)}) 75%, rgba(0,0,0,0) 100%`;
+  return forme === 'radial'
+    ? `radial-gradient(ellipse 50% 50% at 50% 50%, ${arrets})`
+    : `radial-gradient(ellipse 52% 50% at 50% 50%, ${arrets})`;
+}
+
+/**
+ * Fond d'un texte posé sur l'image : transparent (contour seul) par défaut ;
+ * voile discret seulement si le fond derrière le texte est connu clair ET
+ * chargé (détail fort), où le contour seul ne suffit plus à détacher la forme
+ * des lettres.
+ */
+export function fondTexteSurImage(forme: 'radial' | 'lineaire', fond?: { clair?: boolean; charge?: boolean } | null): string {
+  return fond?.clair && fond?.charge ? voileLocal(forme) : FOND_TEXTE_SUR_IMAGE;
+}
+
+/** Un fond de texte est-il un voile en dégradé (et non une couleur unie) ? */
+export function estVoile(fond: string | null | undefined): boolean {
+  return /gradient\(/.test(fond ?? '');
+}
+
+/** Opacité MAXIMALE d'un fond (voile ou couleur `rgba`) ; 1 pour une couleur opaque, 0 si transparent / illisible. */
+export function alphaDuFond(fond: string | null | undefined): number {
+  const alphas = Array.from((fond ?? '').matchAll(/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*([\d.]+)\s*\)/g)).map((m) => Number(m[1]));
+  if (alphas.length) return Math.max(...alphas);
+  return hexVersRgb(fond) ? 1 : 0;
+}
+
+/**
+ * Contour fin + ombre serrée des glyphes (CSS `text-shadow`), à l'échelle de
+ * la vidéo `vw` (valeurs données pour 1080) : quatre décalages de 2 px à
+ * alpha 0,75 (un trait fin tout autour), puis une ombre portée douce de
+ * 2 px / 5 px. Le même pour le CTA et les cartes.
+ */
+export function haloTexteCss(vw: number, alpha = CONTOUR_TEXTE_ALPHA): string {
+  const k = vw / 1080;
+  const px = (v: number) => Math.max(0.5, Math.round(v * k * 10) / 10);
+  const c = `rgba(0,0,0,${alpha})`;
+  const d = px(2); const f = px(1);
+  return `${d}px 0 ${f}px ${c}, -${d}px 0 ${f}px ${c}, 0 ${d}px ${f}px ${c}, 0 -${d}px ${f}px ${c}, 0 ${px(2)}px ${px(5)}px rgba(0,0,0,0.4)`;
+}
+
+/**
+ * Couleur de VALEUR de carte lisible sur un fond de couleurs CONNUES (dégradé
+ * de marque) sous le voile blanc de la carte (alpha `voileCarte`), au bord des
+ * lettres cernées du contour fin. Constat
+ * (banc, 3 formats) : « PLAN », « PARTAGE » roses (#EC4899) sur le dégradé
+ * rose, ≈ 1,2:1. Teinte éclaircie au minimum (même famille) : remplissage
+ * ≥ 1,6:1 contre le plus clair de ces fonds, bord des lettres ≥ 4,5:1 sur le
+ * contour ; inchangée si elle suffit déjà ou si les fonds sont
+ * inconnus. Pure.
+ */
+export function couleurValeurLisible(couleur: string, fonds: ReadonlyArray<string | null | undefined>, voileCarte = 0.08, avecContour = true): string {
+  const lus = fonds.map(hexVersRgb).filter((c): c is Rgb => !!c)
+    .map((c) => c.map((v) => v * (1 - voileCarte) + 255 * voileCarte) as Rgb);
+  if (!lus.length || !hexVersRgb(couleur)) return couleur;
+  const clair = lus.reduce((a, b) => (luminance(a) >= luminance(b) ? a : b));
+  // Avec le contour des glyphes (`haloTexteCss`), le contraste se mesure au
+  // BORD des lettres, sur le contour posé sur ce fond — comme la petite ligne
+  // du CTA. Sans lui, contre le fond nu (le blanc seul n'atteint pas toujours
+  // 4,5:1 sur le rose de marque).
+  // Et le REMPLISSAGE se détache du fond (≥ `CONTRASTE_REMPLISSAGE_MIN`,
+  // l'éclaircissement MINIMAL qui garde la teinte — #EC4899 → #F6A4CC) :
+  // une valeur rose cernée de noir sur du rose reste une valeur rose qu'on
+  // devine — éclaircie (même famille), elle se lit d'un coup d'œil.
+  if (!avecContour) return eclaircirPourContraste(couleur, clair);
+  const remplie = eclaircirPourContraste(couleur, clair, CONTRASTE_REMPLISSAGE_MIN);
+  const bord = clair.map((v) => v * (1 - HALO_TEXTE_ALPHA)) as Rgb;
+  return eclaircirPourContraste(remplie, bord);
+}
+
+/** Contraste minimal du REMPLISSAGE d'une valeur cernée de contour contre son fond. */
+export const CONTRASTE_REMPLISSAGE_MIN = 1.6;
+
+/** Le fond sous le bord d'une lettre dans le pire cas : contour (sur voile éventuel) sur BLANC. */
+export function fondHaloPire(alphaVoile = 0, alphaHalo = HALO_TEXTE_ALPHA): Rgb {
+  const v = 255 * (1 - alphaVoile) * (1 - alphaHalo);
+  return [v, v, v];
+}
+
+/** Contraste WCAG d'une teinte de texte au bord de ses lettres, pire plan (blanc), sans voile par défaut. */
+export function contrasteSurVoile(texte: string, alphaVoile = 0, alphaHalo = HALO_TEXTE_ALPHA): number {
+  const t = hexVersRgb(texte);
+  return t ? ratioContraste(t, fondHaloPire(alphaVoile, alphaHalo)) : 0;
+}

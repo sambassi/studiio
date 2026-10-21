@@ -35,7 +35,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -48,6 +48,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "cards",
     "cardsDuration",
     "ctaDuration",
+    "ctaSubText",
     "ctaText",
     "format",
     "gradientEnd",
@@ -72,8 +73,8 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   ],
   "cta": {
     "copies": null,
-    "principal": "SAVIEZ-VOUS ?",
-    "sous": null,
+    "principal": "ENREGISTRE POUR PLUS TARD",
+    "sous": "",
   },
   "durees": {
     "cards": 6,
@@ -174,7 +175,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -195,6 +196,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "ctaPos",
     "ctaScale",
     "ctaSubColor",
+    "ctaSubText",
     "ctaText",
     "format",
     "gradientEnd",
@@ -225,8 +227,8 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   ],
   "cta": {
     "copies": null,
-    "principal": "SAVIEZ-VOUS ?",
-    "sous": null,
+    "principal": "ENREGISTRE POUR PLUS TARD",
+    "sous": "",
   },
   "durees": {
     "cards": 0,
@@ -396,7 +398,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "x": 8,
       "y": 12,
     },
-    "titleScale": 1.805,
+    "titleScale": 1.9,
   },
 }
 `;
@@ -459,7 +461,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -472,6 +474,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "cards",
     "cardsDuration",
     "ctaDuration",
+    "ctaSubText",
     "ctaText",
     "format",
     "gradientEnd",
@@ -497,8 +500,8 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   ],
   "cta": {
     "copies": null,
-    "principal": "SAVIEZ-VOUS ?",
-    "sous": null,
+    "principal": "ENREGISTRE POUR PLUS TARD",
+    "sous": "",
   },
   "durees": {
     "cards": 6,
@@ -599,7 +602,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -620,6 +623,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "ctaPos",
     "ctaScale",
     "ctaSubColor",
+    "ctaSubText",
     "ctaText",
     "format",
     "gradientEnd",
@@ -650,8 +654,8 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   ],
   "cta": {
     "copies": null,
-    "principal": "SAVIEZ-VOUS ?",
-    "sous": null,
+    "principal": "ENREGISTRE POUR PLUS TARD",
+    "sous": "",
   },
   "durees": {
     "cards": 0,
@@ -722,7 +726,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "x": 8,
       "y": 12,
     },
-    "titleScale": 1.805,
+    "titleScale": 1.9,
   },
 }
 `;
@@ -785,7 +789,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -798,6 +802,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "cards",
     "cardsDuration",
     "ctaDuration",
+    "ctaSubText",
     "ctaText",
     "format",
     "gradientEnd",
@@ -822,8 +827,8 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   ],
   "cta": {
     "copies": null,
-    "principal": "SAVIEZ-VOUS ?",
-    "sous": null,
+    "principal": "ENREGISTRE POUR PLUS TARD",
+    "sous": "",
   },
   "durees": {
     "cards": 6,
@@ -924,7 +929,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -1074,7 +1079,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
       "description": "Ton corps a besoin de temps pour se reconstruire : soigne ta récupération.",
       "icon": "Dumbbell",
       "title": "MUSCLES & RÉCUP",
-      "value": "RÉCUP",
+      "value": "",
     },
     {
       "description": "Alimentation équilibrée et cours réguliers forment un duo gagnant.",
@@ -1087,6 +1092,7 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
     "cards",
     "cardsDuration",
     "ctaDuration",
+    "ctaSubText",
     "ctaText",
     "format",
     "gradientEnd",
@@ -1111,8 +1117,8 @@ exports[`1. AUTOPILOTE — entrée de rendu figée (produireUnMontage → render
   ],
   "cta": {
     "copies": null,
-    "principal": "SAVIEZ-VOUS ?",
-    "sous": null,
+    "principal": "ENREGISTRE POUR PLUS TARD",
+    "sous": "",
   },
   "durees": {
     "cards": 7.5,
@@ -3018,8 +3024,8 @@ exports[`3. Invariants Autopilote ↔ Calendrier (même projet) > DIFFÉRENCE EX
   },
   "ctaText": {
     "calendrierCtaSubText": "LIEN EN BIO",
-    "calendrierCtaText": "SAVIEZ-VOUS ?",
-    "watermarkText": "SAVIEZ-VOUS ?",
+    "calendrierCtaText": "ENREGISTRE POUR PLUS TARD",
+    "watermarkText": "ENREGISTRE POUR PLUS TARD",
   },
   "serveur": {
     "ctaPos": null,

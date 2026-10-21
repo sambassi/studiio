@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Check, Info, Loader2, Plus, Search, X } from 'lucide-react';
 import CarteMedia, { GrilleMedias } from '@/components/medias/CarteMedia';
 import { CREDIT_FOURNISSEURS, LIBELLES_ORIGINE, creditMedia, origineSuggeree } from '@/lib/medias/libelles';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import type { FormatStock, MediaStock, TypeStock } from '@/lib/stock/types';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
+import { accepteAutomatiquement, descriptionMediaStock, MESSAGE_PEU_PERTINENTS, pertinenceMedia, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
 
 /**
  * Rechercher et RETENIR des médias stock pour l'Autopilote — vidéos Pexels,
@@ -28,9 +29,13 @@ import type { MediaStockRetenu } from '@/lib/autopilot/sources';
  * ⚠️ AUCUN FOURNISSEUR À L'ÉCRAN, AUCUNE NAVIGATION. Un filtre Tout / Vidéos
  * / Photos (jamais un choix de plateforme), des cartes « Vidéo suggérée » /
  * « Photo suggérée » dont le clic ouvre un APERÇU dans la page. L'attribution
- * exigée par les plateformes vit dans « Informations du média » (aperçu) et
- * dans le pied discret de la recherche — éléments `data-credit-media`.
+ * exigée par les plateformes vit dans « Informations du média » (aperçu de
+ * chaque carte, élément `data-credit-media`) et dans « Crédits médias »,
+ * l'attribution collective REPLIÉE en pied de recherche (fermée par défaut).
  */
+
+/** Résultats montrés par recherche libre (vidéos et photos entrelacées). */
+export const MAX_RESULTATS_RECHERCHE = 18;
 
 export const MESSAGE_RECHERCHE_INDISPONIBLE = 'Recherche de médias indisponible pour le moment. Réessayez plus tard.';
 
@@ -53,9 +58,9 @@ const FILTRES: Array<{ v: Filtre; label: string }> = [
 ];
 
 /** Une recherche d'UN type, telle que le moteur commun la sert. */
-async function chercherType(type: TypeStock, requete: string, format: FormatStock) {
+async function chercherType(type: TypeStock, requete: string, format: FormatStock, page = 1) {
   const r = await rechercherStockClient({
-    requete, type, format, fournisseurs: type === 'video' ? ['pexels'] : ['pexels', 'unsplash'],
+    requete, type, format, fournisseurs: type === 'video' ? ['pexels'] : ['pexels', 'unsplash'], page,
   });
   // Une seule plateforme sert des vidéos : un résultat vidéo d'une autre n'existe pas.
   const medias = r.medias.filter((m) => m.type === type && (type === 'photo' || m.provider === 'pexels'));
@@ -92,6 +97,22 @@ export default function StockRechercheAutopilote({
   const [enCours, setEnCours] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [imports, setImports] = useState<Record<string, 'import' | 'erreur'>>({});
+  /** Recherche d'un seul type à compléter par la page 2, sur « Voir plus ». */
+  const [suite, setSuite] = useState<{ type: TypeStock; texte: string } | null>(null);
+
+  const voirPlus = useCallback(async () => {
+    if (!suite) return;
+    setEnCours(true);
+    const r = await chercherType(suite.type, suite.texte, format, 2);
+    setResultats((avant) => {
+      const deja = avant ?? [];
+      const ajout = r.medias.filter((m) => !deja.some((x) => cleMediaStock(x) === cleMediaStock(m)));
+      return [...deja, ...ajout].slice(0, MAX_RESULTATS_RECHERCHE);
+    });
+    if (r.echec) setMessage('Certains résultats sont indisponibles pour le moment.');
+    setSuite(null);
+    setEnCours(false);
+  }, [suite, format]);
 
   const chercher = useCallback(async (f: Filtre, q: string) => {
     const texte = q.trim().slice(0, 80);
@@ -102,11 +123,26 @@ export default function StockRechercheAutopilote({
     const r = await Promise.all(types.map((t) => chercherType(t, texte, format)));
     const medias = r.length === 2 ? entrelacer(r[0].medias, r[1].medias) : r[0].medias;
     const echec = r.some((x) => x.echec);
-    setResultats(medias.slice(0, 8));
+    // Un seul type : la page suivante n'est chargée QUE sur « Voir plus » (geste de
+    // l'utilisateur) — jamais un second appel automatique aux fournisseurs.
+    setSuite(types.length === 1 && !echec && medias.length > 0 && medias.length < MAX_RESULTATS_RECHERCHE
+      ? { type: types[0], texte } : null);
+    setResultats(medias.slice(0, MAX_RESULTATS_RECHERCHE));
     if (medias.length === 0) setMessage(echec ? MESSAGE_RECHERCHE_INDISPONIBLE : 'Aucun résultat pour cette recherche.');
     else if (echec) setMessage('Certains résultats sont indisponibles pour le moment.');
     setEnCours(false);
   }, [format]);
+
+  /**
+   * AFFICHAGE SEUL (#613) : aucun résultat dont le contenu soit reconnu du
+   * sujet → on le dit. Rien n'est masqué ni réordonné : la recherche libre
+   * reste le choix de l'utilisateur.
+   */
+  const peuPertinents = useMemo(() => {
+    if (!resultats || resultats.length === 0) return false;
+    const scenario = scenarioPertinence({ sujets: [sujet] });
+    return !resultats.some((m) => accepteAutomatiquement(pertinenceMedia(m.description || descriptionMediaStock(m), scenario).niveau));
+  }, [resultats, sujet]);
 
   const retenir = useCallback(async (m: MediaStock) => {
     const cle = cleMediaStock(m);
@@ -152,7 +188,7 @@ export default function StockRechercheAutopilote({
             key={t.v}
             type="button"
             aria-pressed={filtre === t.v}
-            onClick={() => { setFiltre(t.v); setResultats(null); setMessage(null); }}
+            onClick={() => { setFiltre(t.v); setResultats(null); setMessage(null); setSuite(null); }}
             data-autopilot-stock-mode={t.v}
             className={`rounded px-2 py-0.5 text-[10px] border ${filtre === t.v ? 'border-purple-500 text-white bg-purple-500/10' : 'border-gray-800 text-gray-400 hover:text-white'}`}
           >
@@ -185,6 +221,11 @@ export default function StockRechercheAutopilote({
       {message && (
         <p className="flex items-start gap-1.5 text-[11px] text-gray-400" data-autopilot-stock-recherche-message>
           <Info className="w-3 h-3 mt-0.5 shrink-0" /> {message}
+        </p>
+      )}
+      {peuPertinents && (
+        <p className="flex items-start gap-1.5 text-[11px] text-amber-300" data-autopilot-stock-recherche-peu-pertinents>
+          <Info className="w-3 h-3 mt-0.5 shrink-0" /> {MESSAGE_PEU_PERTINENTS}
         </p>
       )}
       {resultats && resultats.length > 0 && (
@@ -223,7 +264,23 @@ export default function StockRechercheAutopilote({
           })}
         </GrilleMedias>
       )}
-      <p className="text-[9px] text-gray-600" data-credit-media data-autopilot-stock-credit>{CREDIT_FOURNISSEURS}</p>
+      {suite && resultats && resultats.length > 0 && (
+        <button
+          type="button"
+          onClick={() => { void voirPlus(); }}
+          disabled={enCours}
+          data-autopilot-stock-voir-plus={ident}
+          className="w-full rounded border border-gray-800 px-2 py-1 text-[10px] text-gray-300 hover:text-white disabled:opacity-40"
+        >
+          Voir plus
+        </button>
+      )}
+      {/* L'attribution COLLECTIVE reste, repliée et discrète (jamais supprimée) ;
+          celle de chaque média vit dans « Informations du média ». */}
+      <details className="text-[9px] text-gray-600" data-credit-media data-autopilot-stock-credit>
+        <summary className="cursor-pointer select-none">Crédits médias</summary>
+        <p className="mt-0.5">{CREDIT_FOURNISSEURS}</p>
+      </details>
     </div>
   );
 }

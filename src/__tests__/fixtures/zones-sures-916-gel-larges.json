@@ -11,9 +11,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -32,7 +32,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|CARDIO_DANCE|haut": {
@@ -46,9 +46,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -67,7 +67,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|CARDIO_DANCE|bas": {
@@ -81,9 +81,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -102,7 +102,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|EVENT_IMMERSIVE|-": {
@@ -116,9 +116,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -137,7 +137,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|EVENT_IMMERSIVE|haut": {
@@ -151,9 +151,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -172,7 +172,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|EVENT_IMMERSIVE|bas": {
@@ -186,9 +186,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -207,7 +207,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|STANDARD|-": {
@@ -221,9 +221,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -242,7 +242,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|STANDARD|haut": {
@@ -256,9 +256,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -277,7 +277,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|STANDARD|bas": {
@@ -291,9 +291,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -312,7 +312,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|TUTORIAL_EDUCATION|-": {
@@ -326,9 +326,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -347,7 +347,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|TUTORIAL_EDUCATION|haut": {
@@ -361,9 +361,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -382,7 +382,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|TUTORIAL_EDUCATION|bas": {
@@ -396,9 +396,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -417,7 +417,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|null|-": {
@@ -431,9 +431,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -452,7 +452,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|null|haut": {
@@ -466,9 +466,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -487,7 +487,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|sommeil|null|bas": {
@@ -501,9 +501,9 @@
     "y": 8
    },
    "titleWidth": 31,
-   "titleScale": 1.0059152187499998,
+   "titleScale": 1.0588581249999998,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -522,7 +522,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|court|CARDIO_DANCE|-": {
@@ -540,7 +540,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -558,7 +558,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|CARDIO_DANCE|haut": {
@@ -576,7 +576,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -594,7 +594,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|CARDIO_DANCE|bas": {
@@ -612,7 +612,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -630,7 +630,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|EVENT_IMMERSIVE|-": {
@@ -648,7 +648,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -666,7 +666,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|EVENT_IMMERSIVE|haut": {
@@ -684,7 +684,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -702,7 +702,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|EVENT_IMMERSIVE|bas": {
@@ -720,7 +720,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -738,7 +738,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|STANDARD|-": {
@@ -756,7 +756,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -774,7 +774,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|STANDARD|haut": {
@@ -792,7 +792,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -810,7 +810,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|STANDARD|bas": {
@@ -828,7 +828,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -846,7 +846,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|TUTORIAL_EDUCATION|-": {
@@ -864,7 +864,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -882,7 +882,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|TUTORIAL_EDUCATION|haut": {
@@ -900,7 +900,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -918,7 +918,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|TUTORIAL_EDUCATION|bas": {
@@ -936,7 +936,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -954,7 +954,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|null|-": {
@@ -972,7 +972,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -990,7 +990,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|null|haut": {
@@ -1008,7 +1008,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1026,7 +1026,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|court|null|bas": {
@@ -1044,7 +1044,7 @@
    },
    "titleWidth": 31,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1062,7 +1062,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "16:9|vide|CARDIO_DANCE|-": {
@@ -1074,7 +1074,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1093,7 +1093,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|CARDIO_DANCE|haut": {
@@ -1105,7 +1105,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1124,7 +1124,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|CARDIO_DANCE|bas": {
@@ -1136,7 +1136,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1155,7 +1155,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|EVENT_IMMERSIVE|-": {
@@ -1167,7 +1167,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1186,7 +1186,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|EVENT_IMMERSIVE|haut": {
@@ -1198,7 +1198,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1217,7 +1217,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|EVENT_IMMERSIVE|bas": {
@@ -1229,7 +1229,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1248,7 +1248,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|STANDARD|-": {
@@ -1260,7 +1260,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1279,7 +1279,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|STANDARD|haut": {
@@ -1291,7 +1291,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1310,7 +1310,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|STANDARD|bas": {
@@ -1322,7 +1322,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1341,7 +1341,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|TUTORIAL_EDUCATION|-": {
@@ -1353,7 +1353,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1372,7 +1372,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|TUTORIAL_EDUCATION|haut": {
@@ -1384,7 +1384,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1403,7 +1403,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|TUTORIAL_EDUCATION|bas": {
@@ -1415,7 +1415,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1434,7 +1434,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|null|-": {
@@ -1446,7 +1446,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1465,7 +1465,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|null|haut": {
@@ -1477,7 +1477,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1496,7 +1496,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "16:9|vide|null|bas": {
@@ -1508,7 +1508,7 @@
    "titleWidth": 31,
    "titleScale": 1.3,
    "subtitleScale": 0.85,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1527,7 +1527,7 @@
    "cardsTypography": {
     "scale": 2
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|CARDIO_DANCE|-": {
@@ -1543,7 +1543,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1562,7 +1562,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|CARDIO_DANCE|haut": {
@@ -1578,7 +1578,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1597,7 +1597,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|CARDIO_DANCE|bas": {
@@ -1613,7 +1613,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1632,7 +1632,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|EVENT_IMMERSIVE|-": {
@@ -1648,7 +1648,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1667,7 +1667,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|EVENT_IMMERSIVE|haut": {
@@ -1683,7 +1683,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1702,7 +1702,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|EVENT_IMMERSIVE|bas": {
@@ -1718,7 +1718,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1737,7 +1737,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|STANDARD|-": {
@@ -1753,7 +1753,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1772,7 +1772,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|STANDARD|haut": {
@@ -1788,7 +1788,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1807,7 +1807,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|STANDARD|bas": {
@@ -1823,7 +1823,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1842,7 +1842,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|TUTORIAL_EDUCATION|-": {
@@ -1858,7 +1858,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1877,7 +1877,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|TUTORIAL_EDUCATION|haut": {
@@ -1893,7 +1893,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1912,7 +1912,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|TUTORIAL_EDUCATION|bas": {
@@ -1928,7 +1928,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1947,7 +1947,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|null|-": {
@@ -1963,7 +1963,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -1982,7 +1982,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|null|haut": {
@@ -1998,7 +1998,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2017,7 +2017,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|sommeil|null|bas": {
@@ -2033,7 +2033,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2052,7 +2052,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|court|CARDIO_DANCE|-": {
@@ -2070,7 +2070,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2088,7 +2088,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|CARDIO_DANCE|haut": {
@@ -2106,7 +2106,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2124,7 +2124,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|CARDIO_DANCE|bas": {
@@ -2142,7 +2142,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2160,7 +2160,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|EVENT_IMMERSIVE|-": {
@@ -2178,7 +2178,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2196,7 +2196,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|EVENT_IMMERSIVE|haut": {
@@ -2214,7 +2214,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2232,7 +2232,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|EVENT_IMMERSIVE|bas": {
@@ -2250,7 +2250,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2268,7 +2268,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|STANDARD|-": {
@@ -2286,7 +2286,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2304,7 +2304,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|STANDARD|haut": {
@@ -2322,7 +2322,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2340,7 +2340,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|STANDARD|bas": {
@@ -2358,7 +2358,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2376,7 +2376,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|TUTORIAL_EDUCATION|-": {
@@ -2394,7 +2394,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2412,7 +2412,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|TUTORIAL_EDUCATION|haut": {
@@ -2430,7 +2430,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2448,7 +2448,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|TUTORIAL_EDUCATION|bas": {
@@ -2466,7 +2466,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2484,7 +2484,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|null|-": {
@@ -2502,7 +2502,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2520,7 +2520,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|null|haut": {
@@ -2538,7 +2538,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2556,7 +2556,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|court|null|bas": {
@@ -2574,7 +2574,7 @@
    },
    "titleWidth": 88,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2592,7 +2592,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#899aab"
   },
   "1:1|vide|CARDIO_DANCE|-": {
@@ -2604,7 +2604,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2623,7 +2623,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|CARDIO_DANCE|haut": {
@@ -2635,7 +2635,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2654,7 +2654,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|CARDIO_DANCE|bas": {
@@ -2666,7 +2666,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2685,7 +2685,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|EVENT_IMMERSIVE|-": {
@@ -2697,7 +2697,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2716,7 +2716,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|EVENT_IMMERSIVE|haut": {
@@ -2728,7 +2728,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2747,7 +2747,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|EVENT_IMMERSIVE|bas": {
@@ -2759,7 +2759,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2778,7 +2778,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|STANDARD|-": {
@@ -2790,7 +2790,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2809,7 +2809,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|STANDARD|haut": {
@@ -2821,7 +2821,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2840,7 +2840,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|STANDARD|bas": {
@@ -2852,7 +2852,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2871,7 +2871,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|TUTORIAL_EDUCATION|-": {
@@ -2883,7 +2883,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2902,7 +2902,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|TUTORIAL_EDUCATION|haut": {
@@ -2914,7 +2914,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2933,7 +2933,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|TUTORIAL_EDUCATION|bas": {
@@ -2945,7 +2945,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2964,7 +2964,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|null|-": {
@@ -2976,7 +2976,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -2995,7 +2995,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|null|haut": {
@@ -3007,7 +3007,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -3026,7 +3026,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   },
   "1:1|vide|null|bas": {
@@ -3038,7 +3038,7 @@
    "titleWidth": 88,
    "titleScale": 1.6,
    "subtitleScale": 1,
-   "ctaBackground": "rgba(0,0,0,0.6)",
+   "ctaBackground": "transparent",
    "ctaSubColor": "#f7b6d6",
    "ctaPos": {
     "x": 50,
@@ -3057,7 +3057,7 @@
    "cardsTypography": {
     "scale": 2.6
    },
-   "cardBackground": "rgba(0,0,0,0.55)",
+   "cardBackground": "transparent",
    "cardValueColor": "#f6a4cc"
   }
  },
@@ -3081,9 +3081,9 @@
     "h": 25
    },
    "carteScale": 2,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 31,
    "ctaWidth": 64
@@ -3107,9 +3107,9 @@
     "h": 25
    },
    "carteScale": 2,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 31,
    "ctaWidth": 64
@@ -3133,9 +3133,9 @@
     "h": 25
    },
    "carteScale": 2,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 31,
    "ctaWidth": 64
@@ -3159,9 +3159,9 @@
     "h": 25
    },
    "carteScale": 2,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 31,
    "ctaWidth": 64
@@ -3185,9 +3185,9 @@
     "h": 25
    },
    "carteScale": 2,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 31,
    "ctaWidth": 64
@@ -3211,9 +3211,9 @@
     "h": 25
    },
    "carteScale": 2,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 31,
    "ctaWidth": 64
@@ -3246,9 +3246,9 @@
     "h": 25
    },
    "carteScale": 2.6,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 88,
    "ctaWidth": 84
@@ -3272,9 +3272,9 @@
     "h": 25
    },
    "carteScale": 2.6,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 88,
    "ctaWidth": 84
@@ -3298,9 +3298,9 @@
     "h": 25
    },
    "carteScale": 2.6,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 88,
    "ctaWidth": 84
@@ -3324,9 +3324,9 @@
     "h": 25
    },
    "carteScale": 2.6,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 88,
    "ctaWidth": 84
@@ -3350,9 +3350,9 @@
     "h": 25
    },
    "carteScale": 2.6,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 88,
    "ctaWidth": 84
@@ -3376,9 +3376,9 @@
     "h": 25
    },
    "carteScale": 2.6,
-   "carteFond": "rgba(0,0,0,0.55)",
+   "carteFond": "transparent",
    "valeurEclaircie": 0.5,
-   "ctaFond": "rgba(0,0,0,0.6)",
+   "ctaFond": "transparent",
    "ctaActionEclaircie": 0.6,
    "titleWidth": 88,
    "ctaWidth": 84
@@ -3394,14 +3394,14 @@
   "1:1|null|bas": null
  },
  "preview": {
-  "16:9|court|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; filter: drop-shadow(0 24px 18px rgba(0,0,0,0.1)) drop-shadow(0 60px 48px rgba(0,0,0,0.04));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: grid; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 22.5px; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center;\"><div data-card-id=\"c1\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; text-shadow: 0 0 38.4px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
-  "16:9|court|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; filter: drop-shadow(0 24px 18px rgba(0,0,0,0.1)) drop-shadow(0 60px 48px rgba(0,0,0,0.04));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; text-shadow: 0 0 38.4px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
-  "16:9|long|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; filter: drop-shadow(0 24px 18px rgba(0,0,0,0.1)) drop-shadow(0 60px 48px rgba(0,0,0,0.04));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 41.279999999999994px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 2.4767999999999994px; text-underline-offset: 5.7791999999999994px; margin-top: 21.936px; margin-bottom: -2.0640000000000014px; filter: drop-shadow(0 15px 12px rgba(0,0,0,0.1));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: grid; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 22.5px; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center;\"><div data-card-id=\"c1\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; text-shadow: 0 0 38.4px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
-  "16:9|long|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; filter: drop-shadow(0 24px 18px rgba(0,0,0,0.1)) drop-shadow(0 60px 48px rgba(0,0,0,0.04));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 41.279999999999994px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 2.4767999999999994px; text-underline-offset: 5.7791999999999994px; margin-top: 21.936px; margin-bottom: -2.0640000000000014px; filter: drop-shadow(0 15px 12px rgba(0,0,0,0.1));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; text-shadow: 0 0 38.4px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
-  "1:1|court|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; filter: drop-shadow(0 14px 10px rgba(0,0,0,0.1)) drop-shadow(0 34px 27px rgba(0,0,0,0.04));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: flex; flex-direction: column; justify-content: center; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 19.636363636363637px;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; text-shadow: 0 0 21.6px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
-  "1:1|court|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; filter: drop-shadow(0 14px 10px rgba(0,0,0,0.1)) drop-shadow(0 34px 27px rgba(0,0,0,0.04));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; text-shadow: 0 0 21.6px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
-  "1:1|long|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; filter: drop-shadow(0 14px 10px rgba(0,0,0,0.1)) drop-shadow(0 34px 27px rgba(0,0,0,0.04));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 23.22px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 1.3931999999999998px; text-underline-offset: 3.2508000000000004px; margin-top: 12.338999999999999px; margin-bottom: -1.161000000000001px; filter: drop-shadow(0 8px 7px rgba(0,0,0,0.1));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: flex; flex-direction: column; justify-content: center; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 19.636363636363637px;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; text-shadow: 0 0 21.6px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
-  "1:1|long|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; filter: drop-shadow(0 14px 10px rgba(0,0,0,0.1)) drop-shadow(0 34px 27px rgba(0,0,0,0.04));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 23.22px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 1.3931999999999998px; text-underline-offset: 3.2508000000000004px; margin-top: 12.338999999999999px; margin-bottom: -1.161000000000001px; filter: drop-shadow(0 8px 7px rgba(0,0,0,0.1));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; text-shadow: 0 0 21.6px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>"
+  "16:9|court|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; overflow-wrap: break-word; filter: drop-shadow(0 3px 7px rgba(0,0,0,0.6)) drop-shadow(0 18px 48px rgba(0,0,0,0.35));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: grid; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 22.5px; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center;\"><div data-card-id=\"c1\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; overflow-wrap: break-word; text-shadow: 0 0 38.4px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
+  "16:9|court|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; overflow-wrap: break-word; filter: drop-shadow(0 3px 7px rgba(0,0,0,0.6)) drop-shadow(0 18px 48px rgba(0,0,0,0.35));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; overflow-wrap: break-word; text-shadow: 0 0 38.4px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
+  "16:9|long|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; overflow-wrap: break-word; filter: drop-shadow(0 3px 7px rgba(0,0,0,0.6)) drop-shadow(0 18px 48px rgba(0,0,0,0.35));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 41.279999999999994px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 2.4767999999999994px; text-underline-offset: 5.7791999999999994px; margin-top: 21.936px; margin-bottom: -2.0640000000000014px; overflow-wrap: break-word; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: grid; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 22.5px; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: center;\"><div data-card-id=\"c1\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); max-width: 100%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; overflow-wrap: break-word; text-shadow: 0 0 38.4px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
+  "16:9|long|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 16 / 9; --apercu-w: 16; --apercu-h: 9; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1920px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(119.36deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 67.2px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 4.032px; text-underline-offset: 9.408000000000001px; margin-top: -3.360000000000003px; margin-bottom: -3.360000000000003px; overflow-wrap: break-word; filter: drop-shadow(0 3px 7px rgba(0,0,0,0.6)) drop-shadow(0 18px 48px rgba(0,0,0,0.35));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 41.279999999999994px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 2.4767999999999994px; text-underline-offset: 5.7791999999999994px; margin-top: 21.936px; margin-bottom: -2.0640000000000014px; overflow-wrap: break-word; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 22.5px; border-radius: 30px; padding: 22.5px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 26.25px; line-height: 1.5; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 33.75px; line-height: 1.5; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 59.519999999999996px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 3.5711999999999997px; text-underline-offset: 8.3328px; margin-top: -5.951999999999998px; margin-bottom: -5.951999999999998px; overflow-wrap: break-word; text-shadow: 0 0 38.4px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 44.16px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 2.6495999999999995px; text-underline-offset: 6.1824px; margin-top: 19.584000000000003px; margin-bottom: -4.415999999999999px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
+  "1:1|court|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; overflow-wrap: break-word; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)) drop-shadow(0 10px 27px rgba(0,0,0,0.35));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: flex; flex-direction: column; justify-content: center; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 19.636363636363637px;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; overflow-wrap: break-word; text-shadow: 0 0 21.6px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
+  "1:1|court|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; overflow-wrap: break-word; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)) drop-shadow(0 10px 27px rgba(0,0,0,0.35));\">GO</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; overflow-wrap: break-word; text-shadow: 0 0 21.6px #FFFFFF66;\">GO</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
+  "1:1|long|flux": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; overflow-wrap: break-word; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)) drop-shadow(0 10px 27px rgba(0,0,0,0.35));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 23.22px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 1.3931999999999998px; text-underline-offset: 3.2508000000000004px; margin-top: 12.338999999999999px; margin-bottom: -1.161000000000001px; overflow-wrap: break-word; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.6));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; display: flex; flex-direction: column; justify-content: center; left: 8%; right: 8%; top: 30%; bottom: 22%; gap: 19.636363636363637px;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; overflow-wrap: break-word; text-shadow: 0 0 21.6px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>",
+  "1:1|long|libre": "<div class=\"card-base p-4\"><div class=\"flex items-center gap-2 mb-3\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-monitor-play w-4 h-4 text-gray-500\"><path d=\"M10 7.75a.75.75 0 0 1 1.142-.638l3.664 2.249a.75.75 0 0 1 0 1.278l-3.664 2.25a.75.75 0 0 1-1.142-.64z\"></path><path d=\"M12 17v4\"></path><path d=\"M8 21h8\"></path><rect x=\"2\" y=\"3\" width=\"20\" height=\"14\" rx=\"2\"></rect></svg><span class=\"text-xs font-semibold uppercase tracking-wider text-gray-500\">Aperçu du style</span></div><div class=\"apercu-cadre w-full rounded-xl overflow-hidden relative\" style=\"aspect-ratio: 1 / 1; --apercu-w: 1; --apercu-h: 1; border: medium; background-color: rgb(10, 10, 15);\"><div style=\"position: absolute; top: 0px; left: 0px; width: 1080px; height: 1080px; transform: scale(0.25); transform-origin: top left; background: linear-gradient(180deg, rgba(124, 58, 237, 0.3) 0%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0) 60%, rgba(236, 72, 153, 0.3) 100%), linear-gradient(135.00deg, rgb(124, 58, 237) 0%, rgb(236, 72, 153) 100%); font-family: var(--font-inter), Inter, sans-serif;\"><div data-guide-key=\"title\" data-guide-label=\"Titre\" data-title-block=\"true\" style=\"position: absolute; left: 8%; top: 8%; width: 84%; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 37.800000000000004px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.1; text-align: left; text-decoration-thickness: 2.2680000000000002px; text-underline-offset: 5.292000000000001px; margin-top: -1.890000000000002px; margin-bottom: -1.890000000000002px; overflow-wrap: break-word; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)) drop-shadow(0 10px 27px rgba(0,0,0,0.35));\">TROIS ERREURS DU SOIR QUI SABOTENT VOTRE SOMMEIL ET VOTRE ÉNERGIE</div><div data-subtitle-block=\"true\" style=\"font-family: var(--font-inter), 'Inter', sans-serif; font-size: 23.22px; font-weight: 900; font-style: normal; color: rgba(255, 255, 255, 0.8); line-height: 1.1; text-transform: none; text-align: left; text-decoration-thickness: 1.3931999999999998px; text-underline-offset: 3.2508000000000004px; margin-top: 12.338999999999999px; margin-bottom: -1.161000000000001px; overflow-wrap: break-word; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.6));\">Et comment les corriger dès ce soir, sans médicament</div></div><div data-cards-grid=\"true\" style=\"position: absolute; left: 8%; right: 8%; top: 30%; bottom: 22%;\"><div data-card-id=\"c1\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; position: absolute; left: 10%; top: 10%; width: 50%; height: 20%; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Énergie</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+60%</span></div><div data-card-id=\"c2\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Cerveau boosté</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">+15%</span></div><div data-card-id=\"c3\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Mitochondries</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">×2</span></div><div data-card-id=\"c4\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Calories brûlées par séance</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">600</span></div><div data-card-id=\"c5\" style=\"display: flex; align-items: center; background-color: rgba(255, 255, 255, 0.08); gap: 19.636363636363637px; border-radius: 26.181818181818183px; padding: 19.636363636363637px 26.181818181818183px; outline-offset: 8px;\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"43\" height=\"43\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: rgb(255, 255, 255); flex: 1 1 0%; font-size: 29.454545454545453px; text-transform: none;\">Sommeil</span><span data-card-value=\"true\" style=\"font-weight: 700; flex-shrink: 0; font-size: 29.454545454545453px; color: rgb(236, 72, 153); text-transform: none;\">8 h</span></div></div><div data-guide-key=\"cta\" data-guide-label=\"CTA\" data-cta-block=\"true\" style=\"position: absolute; left: 50%; top: 92%; transform: translate(-50%, -100%); width: 70%; text-align: center; outline-offset: 8px;\"><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 33.48px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(255, 255, 255); line-height: 1.2; text-align: center; text-decoration-thickness: 2.0088px; text-underline-offset: 4.6872px; margin-top: -3.347999999999999px; margin-bottom: -3.347999999999999px; overflow-wrap: break-word; text-shadow: 0 0 21.6px #FFFFFF66;\">Réservez votre bilan sommeil gratuit sur afroboost.com</div><div style=\"text-transform: uppercase; font-family: var(--font-inter), 'Inter', sans-serif; font-size: 24.84px; font-weight: 900; font-style: normal; letter-spacing: 0px; color: rgb(236, 72, 153); line-height: 1.2; text-align: center; text-decoration-thickness: 1.4904px; text-underline-offset: 3.4776000000000002px; margin-top: 11.016px; margin-bottom: -2.4839999999999995px; overflow-wrap: normal; word-break: keep-all;\">LIEN EN BIO</div></div></div><div class=\"pointer-events-none absolute inset-0 z-30 overflow-hidden\" aria-hidden=\"true\"></div><div class=\"absolute bottom-2 left-2 z-40 flex gap-1\"><button type=\"button\" aria-pressed=\"false\" title=\"Afficher les repères (centre + tiers)\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-crosshair\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"22\" x2=\"18\" y1=\"12\" y2=\"12\"></line><line x1=\"6\" x2=\"2\" y1=\"12\" y2=\"12\"></line><line x1=\"12\" x2=\"12\" y1=\"6\" y2=\"2\"></line><line x1=\"12\" x2=\"12\" y1=\"22\" y2=\"18\"></line></svg></button><button type=\"button\" aria-pressed=\"false\" title=\"Afficher la grille\" class=\"flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition bg-gray-900/60 text-gray-400 hover:text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-grid3x3\"><rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\"></rect><path d=\"M3 9h18\"></path><path d=\"M3 15h18\"></path><path d=\"M9 3v18\"></path><path d=\"M15 3v18\"></path></svg></button></div></div><p class=\"mt-3 text-[10px] text-gray-600 leading-relaxed\">Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.</p></div>"
  },
  "cartes": {
   "16:9|une": "<div data-cards-grid=\"true\" style=\"position:absolute;display:grid;left:8%;right:8%;top:30%;bottom:22%;gap:22.5px;grid-template-columns:repeat(3, minmax(0, 1fr));align-content:center\"><div data-card-id=\"c1\" style=\"display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background-color:rgba(255,255,255,0.08);gap:22.5px;border-radius:30px;padding:22.5px 22.5px\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"68\" height=\"68\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" class=\"lucide lucide-zap\"><path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"></path></svg><span style=\"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:#FFFFFF;max-width:100%;font-size:26.25px;line-height:1.5;text-transform:none\">Énergie</span><span data-card-value=\"true\" style=\"font-weight:700;font-size:33.75px;line-height:1.5;color:#EC4899;text-transform:none\">+60%</span></div></div>",

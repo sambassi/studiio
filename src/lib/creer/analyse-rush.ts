@@ -9,12 +9,66 @@
  * classique, jamais un montage cassé.
  */
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
-import { mesurerImage, saturationRgb, ANALYSE_L as L, ANALYSE_H as H, type EchantillonRush } from '@/lib/creer/smart-montage';
+import {
+  mesurerImage, saturationRgb, coupesFranches, localiserCoupe, PAS_COUPE_FINE_S, ANALYSE_L as L, ANALYSE_H as H, type EchantillonRush,
+} from '@/lib/creer/smart-montage';
 import { HD_L, HD_H, HD_IMAGES, mesurerNetteteHD, agregerNetteteHD, type AnalyseRushQualite } from '@/lib/creer/nettete-hd';
 import { silencesDepuisEchantillons } from '@/lib/creer/silences-audio';
 
 /** Au-delà, on n'échantillonne pas plus finement (≈ 240 images par rush). */
 const ECHANTILLONS_MAX = 240;
+/** #613 — seeks de la 2e mesure des coupes, au plus, par rush (chacun peut attendre jusqu'à 1,5 s). */
+export const SEEKS_FINS_MAX = 120;
+/** #613 — au-delà de ce pas d'échantillonnage (rush long), pas de 2e mesure : la règle d'avant. */
+export const PAS_LOCALISATION_MAX_S = 1;
+
+/**
+ * #613 — 2e mesure LOCALE des coupes franches : chaque coupe vue entre deux
+ * échantillons est localisée au dixième de seconde (`localiserCoupe`).
+ * Bornée : seulement si le pas d'échantillonnage ≤ `PAS_LOCALISATION_MAX_S`,
+ * et au plus `SEEKS_FINS_MAX` images lues ; une coupe qui ne tient plus dans
+ * le budget garde la règle d'avant (tout l'intervalle écarté). `onProgress`
+ * avance de 0,95 à 1 pendant la passe (monotone). `lireA(t)` lit l'image
+ * d'analyse à l'instant `t`.
+ */
+export async function localiserCoupesFines(
+  echantillons: ReadonlyArray<EchantillonRush>,
+  images: ReadonlyArray<Float32Array>,
+  pas: number,
+  lireA: (t: number) => Promise<Float32Array>,
+  onProgress?: (fraction: number) => void,
+): Promise<Array<[number, number]>> {
+  const out: Array<[number, number]> = [];
+  if (!(pas <= PAS_LOCALISATION_MAX_S)) return out;
+  const coupes = coupesFranches(echantillons);
+  const instants = (i: number) => {
+    const ts: number[] = [];
+    for (let t = echantillons[i - 1].t + PAS_COUPE_FINE_S; t < echantillons[i].t - 1e-3; t += PAS_COUPE_FINE_S) ts.push(Math.round(t * 1000) / 1000);
+    return ts;
+  };
+  // Budget : les coupes dans l'ordre, tant que leurs images tiennent dans le plafond.
+  const plan: Array<{ i: number; ts: number[] }> = [];
+  let budget = SEEKS_FINS_MAX;
+  for (const i of coupes) {
+    const ts = instants(i);
+    if (ts.length > budget) break;
+    budget -= ts.length;
+    plan.push({ i, ts });
+  }
+  const total = SEEKS_FINS_MAX - budget;
+  let faits = 0;
+  for (const { i, ts } of plan) {
+    const inter: Array<{ t: number; gris: Float32Array }> = [];
+    for (const t of ts) {
+      inter.push({ t, gris: await lireA(t) });
+      faits += 1;
+      onProgress?.(0.95 + 0.05 * (faits / Math.max(1, total)) * 0.99);
+    }
+    const fine = localiserCoupe(echantillons[i - 1].t, images[i - 1], echantillons[i].t, images[i], inter);
+    if (fine) out.push(fine);
+  }
+  return out;
+}
 /** Au-delà, l'audio n'est pas décodé (mémoire) : énergie audio à 0. */
 export const AUDIO_OCTETS_MAX = 150 * 1024 * 1024;
 /**
@@ -156,6 +210,15 @@ export async function analyserRush(
     const mesuresHD: Array<{ finesse: number; detail: number }> = [];
 
     const echantillons: EchantillonRush[] = [];
+    /** Images d'analyse gardées (64×36, ~9 Ko chacune) : la 2e mesure des coupes les compare. */
+    const images: Float32Array[] = [];
+    const lireGris = (): Float32Array => {
+      ctx.drawImage(video!, 0, 0, L, H);
+      const px = ctx.getImageData(0, 0, L, H).data;
+      const g = new Float32Array(L * H);
+      for (let p = 0, q = 0; p < px.length; p += 4, q++) g[q] = (px[p] * 0.299 + px[p + 1] * 0.587 + px[p + 2] * 0.114) / 255;
+      return g;
+    };
     let prec: Float32Array | null = null;
     const total = Math.floor(duree / pas);
     for (let i = 0, t = 0; t < duree; i++, t = i * pas) {
@@ -168,6 +231,7 @@ export async function analyserRush(
       }
       const m = mesurerImage(gris, prec);
       prec = gris;
+      images.push(gris);
       echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, saturation: saturationRgb(px, 4), audio: 0 });
       if (ctxHD && Math.floor(t / pasHD) > trancheHD) {
         trancheHD = Math.floor(t / pasHD);
@@ -179,13 +243,20 @@ export async function analyserRush(
       }
       onProgress?.(Math.min(0.95, (i + 1) / Math.max(1, total)));
     }
+    // #613 — 2e mesure LOCALE (vidéo déjà chargée, aucun octet de plus) : chaque coupe franche vue entre
+    // deux échantillons est localisée au dixième de seconde. Sans elle, `plansPropres` écarte tout
+    // l'intervalle (0,5 s) : démo « LE SPORT », 0,5 s de matière valide jetée sur 3 rushes.
+    const coupesFines = await localiserCoupesFines(echantillons, images, pas, async (t) => {
+      await attendreSeek(video!, t);
+      return lireGris();
+    }, onProgress);
     const son = await audioP;
     const audio = son.energie;
     echantillons.forEach((e, i) => { e.audio = audio[i] ?? 0; });
     onProgress?.(1);
     const netteteHD = agregerNetteteHD(mesuresHD);
     const sonFin = { pisteAudio: son.pisteAudio, ...(son.silences ? { silences: son.silences, sonContinu: !!son.sonContinu } : null) };
-    return { url, duree, echantillons, ...(netteteHD ? { netteteHD } : null), ...(partielle ? { partielle: true as const } : null), ...sonFin };
+    return { url, duree, echantillons, ...(coupesFines.length ? { coupesFines } : null), ...(netteteHD ? { netteteHD } : null), ...(partielle ? { partielle: true as const } : null), ...sonFin };
   } catch (err) {
     console.warn('[SmartMontage] analyse impossible, enchaînement classique :', url.slice(0, 60), err);
     return null;

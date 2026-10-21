@@ -83,18 +83,44 @@ export function mixAt(t: number, o: MixOptions): { music: number; voice: number;
 export const DUCK_MUSIQUE_JUMEAU = 0.1;
 export const RAMPE_DUCK_JUMEAU_S = 0.25;
 
-/** Fenêtre (secondes) pendant laquelle le jumeau parle — `null` : aucune. */
-export interface FenetreJumeau { debut: number; fin: number }
+/**
+ * #613 — SÉQUENCE DE CLÔTURE (Autopilote, parole plus courte que la cible) :
+ * après la DERNIÈRE parole, la musique remonte PROGRESSIVEMENT (courbe douce
+ * sur `REMONTEE_CLOTURE_S`) puis s'éteint en fondu sur `FONDU_FINAL_CLOTURE_S`.
+ * Pendant la parole, rien ne change (×0,1, rampe d'entrée 0,25 s). Sans
+ * clôture, la remontée reste celle d'A2 (0,25 s) et il n'y a aucun fondu final.
+ */
+export const REMONTEE_CLOTURE_S = 1.2;
+export const FONDU_FINAL_CLOTURE_S = 1.5;
+
+/**
+ * Fenêtre (secondes) pendant laquelle le jumeau parle — `null` : aucune.
+ * `remontee` : durée de la remontée après `fin` (clôture), sinon la rampe A2.
+ */
+export interface FenetreJumeau { debut: number; fin: number; remontee?: number }
+
+/** Courbe en S (0 → 1) : ni départ ni arrivée brusques. */
+const enS = (x: number) => (1 - Math.cos(Math.PI * Math.min(1, Math.max(0, x)))) / 2;
 
 /** Facteur appliqué à la musique à l'instant `t` (1 hors de la fenêtre). */
 export function facteurMusiqueJumeau(t: number, fenetre: FenetreJumeau | null): number {
   if (!fenetre || !(fenetre.fin > fenetre.debut)) return 1;
   const { debut, fin } = fenetre;
   const r = RAMPE_DUCK_JUMEAU_S;
-  if (t <= debut - r || t >= fin + r) return 1;
+  const rSortie = fenetre.remontee && fenetre.remontee > 0 ? fenetre.remontee : r;
+  if (t <= debut - r || t >= fin + rSortie) return 1;
   if (t < debut) return 1 + (DUCK_MUSIQUE_JUMEAU - 1) * ((t - (debut - r)) / r);
   if (t <= fin) return DUCK_MUSIQUE_JUMEAU;
-  return DUCK_MUSIQUE_JUMEAU + (1 - DUCK_MUSIQUE_JUMEAU) * ((t - fin) / r);
+  const x = (t - fin) / rSortie;
+  return DUCK_MUSIQUE_JUMEAU + (1 - DUCK_MUSIQUE_JUMEAU) * (fenetre.remontee ? enS(x) : x);
+}
+
+/** Fondu final de la musique (clôture seulement) : 1, puis 0 en douceur sur la fin. */
+export function fonduFinalMusique(t: number, total: number, actif: boolean): number {
+  if (!actif || !(total > 0)) return 1;
+  const d = Math.min(FONDU_FINAL_CLOTURE_S, total / 2);
+  if (t <= total - d) return 1;
+  return 1 - enS((t - (total - d)) / d);
 }
 
 /**
