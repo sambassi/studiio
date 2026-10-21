@@ -37,8 +37,10 @@ import type { RushSegment } from '@/lib/creer/multi-rush';
  * incrémenter si l'analyse ou les règles changent de sens : tout plan mis en
  * cache devient alors périmé.
  */
-export const VERSION_PLAN_MONTAGE = 2;
+export const VERSION_PLAN_MONTAGE = 3;
 // v2 (#613) : unicité par timecode dans les plans propres des rushes + rush du fond du CTA évité en fin.
+// v3 (#613) : marge d'une image entre extraits, restes de matière libre en plans courts, plans prolongés
+// sur la matière libre jusqu'à la cible, coupes de la source localisées au dixième de seconde.
 
 /** Toutes les entrées réelles du plan, du raccourci et des surimpressions. */
 export interface EntreePlanMontage {

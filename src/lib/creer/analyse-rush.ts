@@ -9,12 +9,16 @@
  * classique, jamais un montage cassé.
  */
 import { analyserRythme, type RythmeMusique } from '@/lib/creer/rythme-musique';
-import { mesurerImage, saturationRgb, ANALYSE_L as L, ANALYSE_H as H, type EchantillonRush } from '@/lib/creer/smart-montage';
+import {
+  mesurerImage, saturationRgb, coupesFranches, localiserCoupe, PAS_COUPE_FINE_S, ANALYSE_L as L, ANALYSE_H as H, type EchantillonRush,
+} from '@/lib/creer/smart-montage';
 import { HD_L, HD_H, HD_IMAGES, mesurerNetteteHD, agregerNetteteHD, type AnalyseRushQualite } from '@/lib/creer/nettete-hd';
 import { silencesDepuisEchantillons } from '@/lib/creer/silences-audio';
 
 /** Au-delà, on n'échantillonne pas plus finement (≈ 240 images par rush). */
 const ECHANTILLONS_MAX = 240;
+/** #613 — coupes localisées finement au plus par rush (2e mesure, quelques seeks chacune). */
+const COUPES_FINES_MAX = 40;
 /** Au-delà, l'audio n'est pas décodé (mémoire) : énergie audio à 0. */
 export const AUDIO_OCTETS_MAX = 150 * 1024 * 1024;
 /**
@@ -156,6 +160,15 @@ export async function analyserRush(
     const mesuresHD: Array<{ finesse: number; detail: number }> = [];
 
     const echantillons: EchantillonRush[] = [];
+    /** Images d'analyse gardées (64×36, ~9 Ko chacune) : la 2e mesure des coupes les compare. */
+    const images: Float32Array[] = [];
+    const lireGris = (): Float32Array => {
+      ctx.drawImage(video!, 0, 0, L, H);
+      const px = ctx.getImageData(0, 0, L, H).data;
+      const g = new Float32Array(L * H);
+      for (let p = 0, q = 0; p < px.length; p += 4, q++) g[q] = (px[p] * 0.299 + px[p + 1] * 0.587 + px[p + 2] * 0.114) / 255;
+      return g;
+    };
     let prec: Float32Array | null = null;
     const total = Math.floor(duree / pas);
     for (let i = 0, t = 0; t < duree; i++, t = i * pas) {
@@ -168,6 +181,7 @@ export async function analyserRush(
       }
       const m = mesurerImage(gris, prec);
       prec = gris;
+      images.push(gris);
       echantillons.push({ t: Math.round(t * 1000) / 1000, ...m, saturation: saturationRgb(px, 4), audio: 0 });
       if (ctxHD && Math.floor(t / pasHD) > trancheHD) {
         trancheHD = Math.floor(t / pasHD);
@@ -179,13 +193,28 @@ export async function analyserRush(
       }
       onProgress?.(Math.min(0.95, (i + 1) / Math.max(1, total)));
     }
+    // #613 — 2e mesure LOCALE (vidéo déjà chargée, aucun octet de plus) : chaque coupe franche vue entre
+    // deux échantillons est localisée au dixième de seconde. Sans elle, `plansPropres` écarte tout
+    // l'intervalle (0,5 s) : démo « LE SPORT », 0,5 s de matière valide jetée sur 3 rushes.
+    const coupesFines: Array<[number, number]> = [];
+    for (const i of coupesFranches(echantillons).slice(0, COUPES_FINES_MAX)) {
+      const t0 = echantillons[i - 1].t;
+      const t1 = echantillons[i].t;
+      const inter: Array<{ t: number; gris: Float32Array }> = [];
+      for (let t = t0 + PAS_COUPE_FINE_S; t < t1 - 1e-3; t += PAS_COUPE_FINE_S) {
+        await attendreSeek(video, t);
+        inter.push({ t: Math.round(t * 1000) / 1000, gris: lireGris() });
+      }
+      const fine = localiserCoupe(t0, images[i - 1], t1, images[i], inter);
+      if (fine) coupesFines.push(fine);
+    }
     const son = await audioP;
     const audio = son.energie;
     echantillons.forEach((e, i) => { e.audio = audio[i] ?? 0; });
     onProgress?.(1);
     const netteteHD = agregerNetteteHD(mesuresHD);
     const sonFin = { pisteAudio: son.pisteAudio, ...(son.silences ? { silences: son.silences, sonContinu: !!son.sonContinu } : null) };
-    return { url, duree, echantillons, ...(netteteHD ? { netteteHD } : null), ...(partielle ? { partielle: true as const } : null), ...sonFin };
+    return { url, duree, echantillons, ...(coupesFines.length ? { coupesFines } : null), ...(netteteHD ? { netteteHD } : null), ...(partielle ? { partielle: true as const } : null), ...sonFin };
   } catch (err) {
     console.warn('[SmartMontage] analyse impossible, enchaînement classique :', url.slice(0, 60), err);
     return null;
