@@ -73,6 +73,13 @@ export function cleDepot(cle: string): string {
   return `${base}.depot${ext}`;
 }
 
+/**
+ * Taille d'un morceau d'envoi decoupe : 8 Mio (minimum S3 : 5 Mio, sauf le
+ * dernier). Partagee client/serveur : le serveur en deduit le numero de
+ * morceau maximal pour une taille declaree.
+ */
+export const TAILLE_MORCEAU = 8 * 1024 * 1024;
+
 /** Types acceptes a l'ENTREE du relais. Tout le reste est refuse. */
 export const TYPES_TELEVERSEMENT = [
   'video/webm', 'video/mp4', 'video/quicktime', 'application/octet-stream',

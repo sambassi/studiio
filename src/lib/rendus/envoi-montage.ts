@@ -14,9 +14,9 @@
  * Le contenu du fichier n'est jamais modifie : on envoie des `Blob.slice`.
  */
 import { planParts, backoffMs } from '@/lib/storage/uploadFile';
+import { TAILLE_MORCEAU } from '@/lib/rendus/cible-upload';
 
-/** Taille d'un morceau : 8 Mio (minimum S3 : 5 Mio, sauf le dernier). */
-export const TAILLE_MORCEAU = 8 * 1024 * 1024;
+export { TAILLE_MORCEAU };
 /** En dessous, l'envoi en un bloc historique est garde tel quel. */
 export const SEUIL_DECOUPE = TAILLE_MORCEAU;
 /** Morceaux en vol simultanement. */
@@ -173,7 +173,12 @@ export async function envoyerMontageDecoupe(
         if (sig.status !== 200 || !sig.json?.ok || typeof sig.json.url !== 'string') {
           // Tentative close, quota… : re-essayer ne changera rien.
           if (sig.status === 409 || sig.status === 400) {
-            throw Object.assign(new EchecEnvoi(`signature refusee (${sig.status})`), { definitif: true, tentativeClose: sig.status === 409 });
+            // `envoi_inconnu` : cet envoi n'est plus celui de la tentative —
+            // une reprise en ouvrira un neuf. `non_reserve` : tentative close.
+            if (sig.json?.motif === 'envoi_inconnu') { etat.uploadId = undefined; etat.faits.clear(); }
+            throw Object.assign(new EchecEnvoi(`signature refusee (${sig.status})`), {
+              definitif: true, tentativeClose: sig.status === 409 && sig.json?.motif !== 'envoi_inconnu',
+            });
           }
           throw new EchecEnvoi(`signature indisponible (${sig.status})`);
         }

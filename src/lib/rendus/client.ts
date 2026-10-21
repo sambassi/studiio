@@ -99,7 +99,8 @@ export function reinitialiserEnvoiEnAttente(): void {
 
 /** L'echec dit-il que la tentative n'accepte plus d'envoi ? */
 function tentativeFermee(e: unknown): boolean {
-  if ((e as { tentativeClose?: boolean })?.tentativeClose) return true;
+  const drapeau = (e as { tentativeClose?: boolean })?.tentativeClose;
+  if (typeof drapeau === 'boolean') return drapeau;
   return e instanceof Error && /non_reserve|\b409\b/.test(e.message);
 }
 

@@ -43,6 +43,8 @@ function s3Factice() {
     async abandonner(_b, _c, id) { envois.delete(id); },
     async statObject(_b, cle) { const o = objets.get(cle); if (!o) throw new Error('Not Found'); return { size: o.data.length, metaData: { 'content-type': o.type } }; },
     async removeObject(_b, cle) { objets.delete(cle); },
+    async ecrireTexte(_b, cle, t) { objets.set(cle, { data: Buffer.from(t), type: 'application/json' }); },
+    async lireTexte(_b, cle) { return objets.get(cle)?.data.toString() ?? null; },
   };
   const signeur = {
     async signerPartie(_b: string, cle: string, id: string, part: number) {
@@ -103,6 +105,40 @@ describe('A. traiterActionDecoupe — le depot, rien que le depot', () => {
     expect((await traiterActionDecoupe(LIGNE, 'multipart-initiate', { taille: 9 * MIO, contentType: 'text/html' }, d)).status).toBe(415);
     expect((await traiterActionDecoupe(LIGNE, 'multipart-initiate', { taille: 600 * MIO }, d)).status).toBe(413);
     expect(s3.envois.size).toBe(0);
+  });
+
+  it('UN envoi par tentative : second initiate de meme taille -> meme uploadId ; autre taille -> l ancien est abandonne', async () => {
+    const s3 = s3Factice();
+    const d = { client: s3.client, signeur: s3.signeur };
+    const a = await traiterActionDecoupe(LIGNE, 'multipart-initiate', { taille: 20 * MIO }, d);
+    const b = await traiterActionDecoupe(LIGNE, 'multipart-initiate', { taille: 20 * MIO }, d);
+    expect(b.body.uploadId).toBe(a.body.uploadId);
+    expect(s3.envois.size).toBe(1);
+    const c = await traiterActionDecoupe(LIGNE, 'multipart-initiate', { taille: 30 * MIO }, d);
+    expect(c.body.uploadId).not.toBe(a.body.uploadId);
+    expect(s3.envois.size).toBe(1); // l'ancien est abandonne
+    expect(s3.envois.has(String(a.body.uploadId))).toBe(false);
+    // L'ancien uploadId n'est plus signable.
+    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: a.body.uploadId, partNumber: 1 }, d)).status).toBe(409);
+  });
+
+  it('uploadId etranger -> 409 sur sign / complete / abort ; partNumber au-dela de ceil(taille / 8 Mio) -> 400', async () => {
+    const s3 = s3Factice();
+    const d = { client: s3.client, signeur: s3.signeur };
+    const { body } = await traiterActionDecoupe(LIGNE, 'multipart-initiate', { taille: 17 * MIO }, d);
+    // Un envoi ouvert ailleurs (autre tentative, ou a la main) n'est pas le sien.
+    const etranger = await s3.client.initier('media', 'moi/rendus/j1.depot.webm', 'video/webm');
+    for (const action of ['multipart-sign', 'multipart-complete', 'multipart-abort'] as const) {
+      const r = await traiterActionDecoupe(LIGNE, action, { uploadId: etranger, partNumber: 1, taille: 17 * MIO }, d);
+      expect(r.status, action).toBe(409);
+      expect(r.body.motif).toBe('envoi_inconnu');
+    }
+    // 17 Mio -> 3 morceaux au plus.
+    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 3 }, d)).status).toBe(200);
+    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 4 }, d)).status).toBe(400);
+    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 10_000 }, d)).status).toBe(400);
+    // L'assemblage se juge sur la taille DECLAREE, pas sur celle annoncee ensuite.
+    expect((await traiterActionDecoupe(LIGNE, 'multipart-complete', { uploadId: body.uploadId, taille: 9 * MIO }, d)).status).toBe(400);
   });
 
   it('la garde de sortie s applique aux URL de morceaux', async () => {
@@ -347,6 +383,8 @@ decrireMinio('C. bout en bout — MinIO local, 60 Mo, rendreEtFacturer', () => {
     expect(etapes.some((e) => /Envoi du montage… \d+ %/.test(e))).toBe(true);
     // Le depot a ete promu puis efface : aucun reliquat.
     await expect(minio.statObject('media', t.cle_objet.replace('.webm', '.depot.webm'))).rejects.toBeTruthy();
+    // Le temoin d'envoi (uploadId + taille declaree) est efface a l'assemblage.
+    await expect(minio.statObject('media', t.cle_objet.replace('.webm', '.depot.webm.envoi.json'))).rejects.toBeTruthy();
     expect(await envoisIncomplets()).toBe(0);
     expect(JSON.stringify(warn.mock.calls)).not.toMatch(/X-Amz-Signature|uploadId=/);
   }, 120_000);

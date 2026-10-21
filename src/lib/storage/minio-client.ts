@@ -351,6 +351,10 @@ export interface ClientEnvoiDecoupe {
   abandonner(bucket: string, cle: string, uploadId: string): Promise<unknown>;
   statObject(bucket: string, cle: string): Promise<ObjetStocke>;
   removeObject(bucket: string, cle: string): Promise<unknown>;
+  /** Petit objet texte ecrit par le SERVEUR (temoin d'envoi). */
+  ecrireTexte(bucket: string, cle: string, texte: string): Promise<unknown>;
+  /** Lit un petit objet texte ; `null` s'il n'existe pas. */
+  lireTexte(bucket: string, cle: string): Promise<string | null>;
 }
 
 export function clientEnvoiDecoupe(): ClientEnvoiDecoupe {
@@ -377,6 +381,21 @@ export function clientEnvoiDecoupe(): ClientEnvoiDecoupe {
     abandonner: (b, k, id) => c.abortMultipartUpload(b, k, id),
     statObject: (b, k) => c.statObject(b, k),
     removeObject: (b, k) => c.removeObject(b, k),
+    ecrireTexte: (b, k, t) => c.putObject(b, k, Buffer.from(t, 'utf-8'), Buffer.byteLength(t, 'utf-8'), {
+      'Content-Type': 'application/json',
+    }),
+    lireTexte: async (b, k) => {
+      try {
+        const flux = await c.getObject(b, k);
+        const morceaux: Buffer[] = [];
+        for await (const m of flux) morceaux.push(m as Buffer);
+        return Buffer.concat(morceaux).toString('utf-8');
+      } catch (e) {
+        const msg = e instanceof Error ? `${(e as { code?: string }).code ?? ''} ${e.message}` : String(e);
+        if (/NoSuchKey|not found|does not exist|NotFound/i.test(msg)) return null;
+        throw e;
+      }
+    },
   };
 }
 
