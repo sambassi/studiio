@@ -1,4 +1,7 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { estimerParoleAvatar, paroleEstimationPourMetadata } from '@/lib/autopilot/debit-parole';
+import { lireDebitParoleCompte } from '@/lib/autopilot/debit-parole-compte';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
 import { signatureContenu } from '@/lib/creer/signature-contenu';
 import { deductCredits } from '@/lib/credits/system';
 import { prixDe } from '@/lib/tarifs/serveur';
@@ -1073,6 +1076,18 @@ export async function produireUnMontage(input: {
     pertinenceRushs = null; // un diagnostic ne bloque jamais un montage
   }
 
+  // PAROLE DE L'AVATAR : la PRÉVISION (la règle de l'aperçu, `estimerParoleAvatar`,
+  // sur le script que le jumeau a dit) à côté de la MESURE — pour comparer, et
+  // pour calibrer le débit du compte (`lireDebitParoleCompte`). Lu AVANT
+  // l'insertion de ce post : jamais calibré sur lui-même. Ne lève jamais.
+  const paroleEstimation = jumeauActif && jumeauSeconds && jumeauSeconds > 0
+    ? paroleEstimationPourMetadata(
+      estimerParoleAvatar(scriptJumeauMontage(post, config), {
+        rythme: postUtilise.brief?.rythme, debitCompte: await lireDebitParoleCompte(userId),
+      }),
+      jumeauSeconds,
+    )
+    : null;
   const metadata = {
     ...buildAutopilotMetadata({
       post: postUtilise, design, videoUrl, thumbnailUrl, mode: config.mode,
@@ -1139,6 +1154,8 @@ export async function produireUnMontage(input: {
         segments: segmentsDuPlan(planMontageRushs, debutClotureRendue),
       },
     } : null),
+    // Parole de l'avatar : estimée (règle de l'aperçu) ET mesurée.
+    ...(paroleEstimation ? { paroleEstimation } : null),
     // Profil et mesures du plan — les mêmes champs que Créer.
     ...(planMontageRushs ? { profilMontage: profilVideo } : null),
     ...(montageRapport ? { montageRapport } : null),

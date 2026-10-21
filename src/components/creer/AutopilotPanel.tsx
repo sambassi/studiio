@@ -20,8 +20,10 @@ import CompleterRushesStock, { idStockDuRush, type MetaRushStock, type Propositi
 import AvatarPrincipalAutopilote, { MiniatureAvatar, useDisponibiliteAvatarAutopilote, useVideoAvatarReelle, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import StockRechercheAutopilote, { cleMediaStock } from '@/components/creer/StockRechercheAutopilote';
 import PlanAvantGeneration from '@/components/creer/PlanAvantGeneration';
-import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
-import { buildAutopilotSample } from '@/lib/autopilot/sample';
+import { paroleAvatarPrevue as paroleAvatarDuScript } from '@/lib/autopilot/plan-complet';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
+import { useDebitParoleCompte } from '@/components/creer/useDebitParoleCompte';
+import { buildAutopilotSample, postDeLEchantillon } from '@/lib/autopilot/sample';
 import { contexteDeLEchantillon, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import ProgressStatus from '@/components/ux/ProgressStatus';
@@ -782,18 +784,30 @@ export default function AutopilotPanel({
    * expression pour « Plan avant génération » et pour l'aperçu.
    */
   /**
-   * LA PAROLE DE L'AVATAR PRÉVUE — celle que le BUDGET du script de
-   * production implique (`paroleAvatarDuBudget` : le script réel, écrit au
-   * créneau, est dimensionné pour la durée cible au débit de la voix clonée,
-   * donc ≈ la cible ; avatar seul : la part réservée aux séquences plein
-   * écran est déduite, comme en production). Sans durée cible : la référence
-   * du plan. Aucun appel, aucune génération ; dite « estimée » à l'écran.
+   * L'échantillon que « Produire maintenant » produit (`buildAutopilotSample`,
+   * le même que l'aperçu du style) — UNE fois pour la parole et le contexte.
+   */
+  const echantillonPlan = useMemo(() => buildAutopilotSample({ topics: config.topics, brief: config.brief }), [config]);
+  /** Débit de parole calibré sur les rendus du compte (`null` : débit par défaut). */
+  const debitParoleCompte = useDebitParoleCompte(!!config.jumeauAvatar);
+  /**
+   * LA PAROLE DE L'AVATAR PRÉVUE — estimée depuis le SCRIPT RÉEL que le
+   * montage fera dire (`scriptJumeauMontage` sur l'échantillon, composé par
+   * unités entières SOUS le budget), au débit du compte s'il est calibré
+   * (`paroleAvatarPrevue` → `estimerParoleAvatar`, la règle du moteur).
+   * Sans script : le budget, comme avant. Aucun appel fournisseur, aucune
+   * génération ; dite « estimée » à l'écran.
    */
   const paroleAvatarPrevue = useMemo(() => {
     if (!config.jumeauAvatar) return null;
     const seul = !avatarAvecAutresSources(config);
-    return paroleAvatarDuBudget(config.brief, seul ? secondesReserveesEnveloppeJumeau(config.brief?.duree) : 0);
-  }, [config]);
+    return paroleAvatarDuScript({
+      script: scriptJumeauMontage(postDeLEchantillon(echantillonPlan, config.brief), config),
+      brief: config.brief,
+      secondesReservees: seul ? secondesReserveesEnveloppeJumeau(config.brief?.duree) : 0,
+      debitCompte: debitParoleCompte,
+    });
+  }, [config, echantillonPlan, debitParoleCompte]);
   const planSuggere = gabaritSuggere({
     avatar: etatSources.avatarActif && etatSources.avatarPret,
     rushes: etatSources.rushesPersonnels + etatSources.bibliotheque,
@@ -812,8 +826,8 @@ export default function AutopilotPanel({
    * des médias et la narration sont calculées comme au rendu.
    */
   const contextePlan = useMemo<ContexteTextesAutopilote>(
-    () => contexteDeLEchantillon(buildAutopilotSample({ topics: config.topics, brief: config.brief }), sujetsCourants(config), config.brief),
-    [config],
+    () => contexteDeLEchantillon(echantillonPlan, sujetsCourants(config), config.brief),
+    [config, echantillonPlan],
   );
   const optionsPlan = {
     avatarDisponible: etatSources.avatarActif && etatSources.avatarPret,

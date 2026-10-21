@@ -18,6 +18,7 @@ import { contexteMontageAutopilote, pertinencesAutopilote, planMontageAvatar, ty
 import { profilMontageDuContexte } from '@/lib/creer/smart-montage';
 import { estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
 import { budgetScriptAvatar } from '@/lib/autopilot/duree-cible';
+import { estimerParoleAvatar } from '@/lib/autopilot/debit-parole';
 import type { VideoBrief } from '@/lib/creer/brief';
 import type { ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import { estRushStock } from '@/lib/autopilot/sources';
@@ -101,6 +102,28 @@ export function paroleAvatarDuBudget(brief: VideoBrief | null | undefined, secon
   const budget = budgetScriptAvatar(brief, secondesReservees);
   if (!budget) return null;
   return estimerParoleJumeau('x'.repeat(budget), brief?.rythme);
+}
+
+/**
+ * LA PAROLE DE L'AVATAR PRÉVUE PAR L'APERÇU — depuis le SCRIPT RÉEL que le
+ * montage fera dire (`scriptJumeauMontage`), au débit du compte s'il est
+ * calibré (`estimerParoleAvatar`, la MÊME règle que celle écrite par le
+ * moteur dans `metadata.paroleEstimation`). Sans script : le budget
+ * (`paroleAvatarDuBudget`).
+ *
+ * ⚠️ SANS DURÉE CIBLE : RIEN NE CHANGE (`null`, la référence du plan, comme
+ * avant) — rétro-compatibilité des configurations existantes.
+ */
+export function paroleAvatarPrevue(input: {
+  script: string | null | undefined;
+  brief: VideoBrief | null | undefined;
+  secondesReservees?: number;
+  debitCompte?: number | null;
+}): number | null {
+  if (!input.brief?.duree) return null;
+  const e = estimerParoleAvatar(input.script, { rythme: input.brief?.rythme, debitCompte: input.debitCompte });
+  if (e.secondes > 0) return e.secondes;
+  return paroleAvatarDuBudget(input.brief, input.secondesReservees);
 }
 
 /** La durée de parole retenue pour l'avatar, dans l'ordre : mesurée, estimée, cible. */

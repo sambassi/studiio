@@ -66,13 +66,19 @@ vi.mock('@/lib/medias/vignette-video', async (orig) => {
 vi.mock('@/lib/tarifs/serveur', () => ({ prixDe: async () => 10 }));
 vi.mock('@/lib/credits/system', () => ({ getVideoRenderCost: () => 10, deductCredits: async () => true }));
 vi.mock('@/lib/db/supabase', () => {
-  const from = () => ({ insert: () => ({ select: async () => ({ data: [{ id: 'p1' }], error: null }) }) });
+  const from = () => ({ insert: (ligne: unknown) => {
+    (globalThis as { __ligneInseree?: unknown }).__ligneInseree = ligne;
+    return { select: async () => ({ data: [{ id: 'p1' }], error: null }) };
+  } });
   return { supabaseAdmin: { from }, supabase: { from } };
 });
 
 import AutopilotPanel from '@/components/creer/AutopilotPanel';
-import { paroleAvatarDuBudget } from '@/lib/autopilot/plan-complet';
-import { DUREE_ESTIMEE_SANS_CIBLE } from '@/lib/autopilot/duree-cible';
+import { paroleAvatarPrevue } from '@/lib/autopilot/plan-complet';
+import { DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
+import { scriptJumeauMontage } from '@/lib/autopilot/script-jumeau';
+import { buildAutopilotSample, postDeLEchantillon } from '@/lib/autopilot/sample';
+import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
 import { DEFAULT_CONFIG, sanitizeConfig, type AutopilotConfig } from '@/lib/autopilot/rules';
 import type { ConfigSources, MediaStockRetenu, TypeCreneau } from '@/lib/autopilot/sources';
 import type { RushSegment } from '@/lib/creer/multi-rush';
@@ -106,9 +112,18 @@ const JUMEAU_PRET = {
 const AVATARS = { avatars: [{ id: 'av1', nom: 'Moi', parDefaut: true, utilisable: true, type: 'photo', versionActive: { id: 'ver-1', version: 2, source: true, type: 'photo' } }] };
 
 let configServeur: AutopilotConfig;
-/** La parole estimée par l'écran : celle du BUDGET du script de production (≈ la cible), sinon la référence. */
+/**
+ * La parole estimée par l'écran : celle du SCRIPT RÉEL de l'échantillon
+ * (`scriptJumeauMontage`, débit par défaut — aucun rendu calibrant ici),
+ * sinon la référence.
+ */
 function paroleAvatarEstimee(): number {
-  return paroleAvatarDuBudget(configServeur.brief) ?? DUREE_ESTIMEE_SANS_CIBLE;
+  const seul = !avatarAvecAutresSources(configServeur);
+  return paroleAvatarPrevue({
+    script: scriptJumeauMontage(postDeLEchantillon(buildAutopilotSample({ topics: configServeur.topics, brief: configServeur.brief }), configServeur.brief), configServeur),
+    brief: configServeur.brief,
+    secondesReservees: seul ? secondesReserveesEnveloppeJumeau(configServeur.brief?.duree) : 0,
+  }) ?? DUREE_ESTIMEE_SANS_CIBLE;
 }
 let envois: AutopilotConfig[];
 const horsStudiio: string[] = [];
@@ -240,7 +255,7 @@ describe('sans plan enregistré : la suggestion affichée = les types rendus', (
 });
 
 describe('même nombre de plans à l’écran et en production', () => {
-  it('avatar + stock, durée cible 30 s : la parole du budget du script de production (≈ 30 s) fixe le plan des deux côtés', async () => {
+  it('avatar + stock, durée cible 30 s : la parole estimée du script réel (sous le budget) fixe le plan des deux côtés', async () => {
     configServeur = {
       ...DEFAULT_CONFIG, topics: ['yoga'], brief: { duree: 30 }, jumeauAvatar: true, rushUrls: [IMPORTE('V1')],
       designStyle: { sources: sourcesCfg({ avatar: true, rushes: false, stock: true }, STOCK) },
@@ -248,10 +263,18 @@ describe('même nombre de plans à l’écran et en production', () => {
     await ouvrir();
     await waitFor(() => expect(segmentsAffiches().length).toBeGreaterThan(0));
     expect(q('[data-plan-duree-planifiee]')!.textContent).toMatch(/estimée/);
-    expect(Math.abs(paroleAvatarEstimee() - 30)).toBeLessThanOrEqual(0.5);
+    // Le script réel est composé par unités entières SOUS le budget : sa parole
+    // ne dépasse pas la cible, et la clôture complète jusqu'à elle.
+    expect(paroleAvatarEstimee()).toBeGreaterThan(0);
+    expect(paroleAvatarEstimee()).toBeLessThanOrEqual(30);
     const { montage } = await rendre(configServeur);
     await waitFor(() => expect(segmentsAffiches().length).toBe(montage!.length));
     await attendreIdentique(montage);
+    // La metadata du post porte la PRÉVISION (règle de l'aperçu) ET la MESURE.
+    const meta = ((globalThis as { __ligneInseree?: { metadata?: Record<string, unknown> } }).__ligneInseree?.metadata ?? {}) as { paroleEstimation?: Record<string, unknown> };
+    expect(meta.paroleEstimation).toMatchObject({ version: 1, methode: 'defaut', mesureeS: paroleAvatarEstimee() });
+    expect(typeof meta.paroleEstimation!.estimeeS).toBe('number');
+    expect(meta.paroleEstimation!.caracteres).toBeGreaterThan(0);
   });
 });
 
