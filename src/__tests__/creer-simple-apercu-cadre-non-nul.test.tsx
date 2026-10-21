@@ -186,7 +186,12 @@ describe('L indice « double-clic » de l Autopilote se voit', () => {
     expect(bouton.getAttribute('aria-expanded')).toBe('true');
     expect((bulle.querySelector('[data-infobulle-panneau]') as HTMLElement).hidden).toBe(false);
     expect(aide.textContent).toContain('Double-cliquez');
-    expect(aide.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+    expect(aide.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);    // Mais la PORTE reste visible : une ligne courte, sans encadré, hors InfoBulle.
+    const indice = document.querySelector('[data-autopilot-apercu-indice-double-clic]') as HTMLElement;
+    expect(indice.textContent!.trim()).toBe('Double-cliquez un élément pour le régler');
+    expect(indice.textContent!.trim().length).toBeLessThanOrEqual(50);
+    expect(indice.closest('[data-infobulle]')).toBeNull();
+    expect(indice.className).not.toMatch(/border/);
   });
 });
 

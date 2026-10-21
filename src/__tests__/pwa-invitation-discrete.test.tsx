@@ -46,6 +46,11 @@ describe('Invitation à installer — discrète et mémorisée', () => {
     expect(inv.style.right).toBe('88px');
     expect(inv.style.maxWidth).toContain('100vw');
     expect(screen.getByText('Installer Studiio')).toBeTruthy();
+    // Cible tactile du bouton Fermer ≥ 44 px ; icône décorative masquée.
+    const fermer = screen.getByRole('button', { name: 'Fermer l’invitation à installer' });
+    expect(parseInt(fermer.style.minWidth, 10)).toBeGreaterThanOrEqual(44);
+    expect(parseInt(fermer.style.minHeight, 10)).toBeGreaterThanOrEqual(44);
+    expect(fermer.querySelector('svg')!.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('la fermeture est mémorisée 30 jours', () => {

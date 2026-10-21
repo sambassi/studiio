@@ -150,7 +150,7 @@ export default function PWAInstallPrompt() {
       role="region"
       aria-label={showPrompt ? 'Installer Studiio' : 'Ajouter Studiio à l’écran d’accueil'}
       data-pwa-invitation={showPrompt ? 'installer' : 'ios'}
-      className="fixed z-40 flex items-center gap-2 rounded-xl border border-white/10 bg-gray-900/95 py-1.5 pl-3 pr-1.5 shadow-lg shadow-black/40 backdrop-blur-md"
+      className="fixed z-40 flex items-center gap-2 rounded-xl border border-white/10 bg-gray-900/95 py-0.5 pl-3 pr-0.5 shadow-lg shadow-black/40 backdrop-blur-md"
       style={{ bottom: 20, right: 88, maxWidth: 'calc(100vw - 104px)' }}
     >
       {showPrompt ? (
@@ -172,11 +172,13 @@ export default function PWAInstallPrompt() {
       )}
       <button
         onClick={handleDismiss}
-        className="flex-shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:text-white"
+        // Cible tactile ≥ 44 px (WCAG 2.5.5) ; l'icône reste petite.
+        className="flex flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:text-white"
+        style={{ minWidth: 44, minHeight: 44 }}
         aria-label="Fermer l’invitation à installer"
         data-pwa-fermer
       >
-        <X className="w-3.5 h-3.5" />
+        <X className="w-3.5 h-3.5" aria-hidden="true" />
       </button>
     </div>
   );

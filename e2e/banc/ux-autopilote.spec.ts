@@ -45,7 +45,9 @@ const ZONES_STRUCTURELLES = ['colonne-apercu', 'brief-recap', 'montage-prevu'];
 const ZONES_ETAPE_1: DefZone[] = [
   { nom: 'colonne-apercu', ancres: [TITRE_COLONNE], remontee: 'titre-parent' },
   { nom: 'mention-style', ancres: ['textes et affiche d.exemple'], remontee: 'paragraphe' },
-  { nom: 'aide-double-clic', ancres: ['Double-cliquez un élément'], remontee: 'encadre' },
+  // `paragraphe` (et non `encadre`) : depuis l'épuration, l'indice est une ligne SANS encadré ; remonter
+  // au premier ancêtre bordé mesurerait toute la carte d'aperçu. Avant, la phrase était déjà dans un <p>.
+  { nom: 'aide-double-clic', ancres: ['Double-cliquez un élément'], remontee: 'paragraphe' },
   { nom: 'brief-recap', ancres: ['^Ce que dira chaque vidéo$'], remontee: 'encadre' },
 ];
 const ZONES_ETAPE_2: DefZone[] = [
@@ -54,7 +56,9 @@ const ZONES_ETAPE_2: DefZone[] = [
   { nom: 'duree-estimee-sources', ancres: ['^Durée estimée : la voix'], remontee: 'paragraphe' },
   { nom: 'duree-estimee-apercu', ancres: ['^Durée estimée — séquence'], remontee: 'paragraphe' },
   { nom: 'medias-reels', ancres: ['Médias réels du plan'], remontee: 'paragraphe' },
-  { nom: 'aide-double-clic', ancres: ['Double-cliquez un élément'], remontee: 'encadre' },
+  // `paragraphe` (et non `encadre`) : depuis l'épuration, l'indice est une ligne SANS encadré ; remonter
+  // au premier ancêtre bordé mesurerait toute la carte d'aperçu. Avant, la phrase était déjà dans un <p>.
+  { nom: 'aide-double-clic', ancres: ['Double-cliquez un élément'], remontee: 'paragraphe' },
   { nom: 'montage-prevu', ancres: ['^Aperçu (du|de mon) montage'], remontee: 'encadre' },
 ];
 
@@ -281,8 +285,21 @@ test.describe('UX Autopilote — cible UX premium', () => {
     attenduAvantCorrection('encart « Double-cliquez un élément » toujours visible en plus des mentions');
     await ouvrirEtape2(page, banc);
     // Cible : l'explication du double-clic n'est plus un encart permanent — elle vit derrière l'icône info.
-    const encart = page.getByText('Double-cliquez un élément').first();
+    // Sélecteur ciblé sur la phrase LONGUE du grand encadré : une ligne-indice courte
+    // (≤ 50 caractères, sans encadré) reste permise — le double-clic est la seule porte
+    // vers police / taille / icône et doit rester découvrable.
+    const encart = page.getByText(/Double-cliquez un élément — titre, CTA ou carte/).first();
     expect(await encart.isVisible().catch(() => false), 'encart « Double-cliquez » visible sans action').toBe(false);
+    const indice = page.getByText(/^Double-cliquez un élément/).first();
+    if (await indice.isVisible().catch(() => false)) {
+      const t = (await indice.innerText()).trim();
+      expect(t.length, 'indice double-clic court').toBeLessThanOrEqual(50);
+      const borde = await indice.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return parseFloat(s.borderTopWidth) >= 1 || parseFloat(s.borderLeftWidth) >= 1;
+      });
+      expect(borde, 'indice double-clic sans encadré').toBe(false);
+    }
   });
 
   test('« Ce que dira chaque vidéo » : synthèse courte, la note détaillée derrière une icône', async ({ page, banc }) => {

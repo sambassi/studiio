@@ -4023,6 +4023,16 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         ) : null}
       />
 
+      {/* ── LA PORTE DU DOUBLE-CLIC, TOUJOURS VISIBLE ─────────────────────
+          Le double-clic est le SEUL accès à la police, la taille et l'icône :
+          invisible, la fonction est introuvable. Une ligne courte et
+          discrète (sans encadré) ; le mode d'emploi complet est dans
+          l'InfoBulle du titre. */}
+      {/* Texte seul : une icône sans action serait décorative (règle 7 de docs/UX-PREMIUM.md). */}
+      <p className="mt-2 text-[11px] text-gray-400" data-autopilot-apercu-indice-double-clic>
+        Double-cliquez un élément pour le régler
+      </p>
+
       {/* ── A5 — LE JUMEAU : DURÉE ESTIMÉE ET VOIX ─────────────────────────
           L'aperçu joue la durée que le montage prendra (même règle que le
           rendu), mais la parole n'existe pas encore : c'est une ESTIMATION,
