@@ -13,7 +13,9 @@
  * Les durées de médias inconnues suivent les replis du moteur (vidéo stock :
  * `BROLL_VIDEO_S`, rush : une seule fenêtre depuis son début).
  */
-import { planMultiSources, type EntreePlanMultiSources } from '@/lib/autopilot/plan-multi-sources';
+import { planMultiSources, cibleSequenceSansAvatar, matiereSansAvatar, type EntreePlanMultiSources } from '@/lib/autopilot/plan-multi-sources';
+import { profilEnSurimpression } from '@/lib/creer/overlays';
+import { DEFAULT_SEQUENCE_SECONDS } from '@/lib/creer/designSpec';
 import { contexteMontageAutopilote, pertinencesAutopilote, planMontageAvatar, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { profilMontageDuContexte } from '@/lib/creer/smart-montage';
 import { estimerParoleJumeau } from '@/lib/autopilot/durees-sequences';
@@ -191,6 +193,17 @@ export function planCompletAutopilote(resume: ResumeMediasApercu, o: OptionsPlan
       cta: avecCoupes && m.overlays?.cta ? m.overlays.cta : null,
     };
   }
-  const r = planMultiSources(entree);
+  // SANS AVATAR : la MÊME durée de séquence que le moteur (`cibleSequenceSansAvatar`) —
+  // titre, cartes et CTA hors surimpression déduits de la cible, la matière en
+  // plafond. Seule la voix (inconnue avant génération) n'y entre pas.
+  // Sans contexte (appel d'avant) : la cible reçue, à l'identique.
+  const cible = c ? cibleSequenceSansAvatar({
+    brief: { duree: o.dureeVisee ?? undefined },
+    design: { introDuration: DEFAULT_SEQUENCE_SECONDS.intro, cardsDuration: DEFAULT_SEQUENCE_SECONDS.cards, ctaDuration: DEFAULT_SEQUENCE_SECONDS.cta },
+    enSurimpression: profilEnSurimpression(profilMontageDuContexte(contexteMontageAutopilote(c)).profil),
+    voixAPorter: 0,
+    matiere: matiereSansAvatar(entree),
+  }) : entree.cible;
+  const r = planMultiSources({ ...entree, cible });
   return { segments: segmentsDuPlan(r.plan), duree: r3(r.duree), parole: null, debutCloture: null, cta: null };
 }
