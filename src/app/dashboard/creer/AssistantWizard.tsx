@@ -3880,7 +3880,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             (exemple ≠ prochaine vidéo, vue de composition, double-clic pour
             régler) vit derrière UNE icône — deux icônes Info côte à côte
             se confondraient. */}
-        <InfoBulle label="À propos de l’aperçu du style" titre="Aperçu du style" marqueur="apercu-style">
+        <InfoBulle label="En savoir plus sur l’aperçu du style" titre="Aperçu du style" marqueur="apercu-style">
           <span className="block" data-autopilot-apercu-mention>
             <span className="text-gray-200" data-autopilot-apercu-badge="style">Aperçu du style</span>
             {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
@@ -3897,7 +3897,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
               <span data-autopilot-apercu-lecture={lectureEnCours ? 'lecture' : 'composition'}>
                 {lectureEnCours
                   ? ' Lecture des séquences : l’ordre réel du montage, avec ses transitions.'
-                  : ' Vue de composition : titre, cartes et CTA sont superposés ici, mais se succèdent dans la vidéo — ▶ pour les lire dans l’ordre.'}
+                  : ' Vue de composition : titre, cartes et CTA sont superposés ici, mais se succèdent dans la vidéo — le bouton Lire les joue dans l’ordre.'}
               </span>
             )}
           </span>
@@ -4039,7 +4039,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
             {' '}— avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}
           </span>
-          <InfoBulle label="À propos de la durée estimée" titre="Durée estimée" marqueur="apercu-duree">
+          <InfoBulle label="En savoir plus sur la durée estimée" titre="Durée estimée" marqueur="apercu-duree">
             <span className="block">
               Séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
               {' '}La vidéo finale prend la durée réelle de la parole de l’avatar (jamais accélérée) ; si elle est plus courte que la durée cible, une clôture avec le CTA complète la vidéo.
@@ -4060,7 +4060,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         >
           <Film className="w-3 h-3 shrink-0" aria-hidden="true" />
           <span className="min-w-0 truncate text-gray-300" data-autopilot-apercu-media-etiquette>{mediaVideo.etiquette}</span>
-          <InfoBulle label="À propos des médias du plan" marqueur="apercu-medias">
+          <InfoBulle label="En savoir plus sur les médias du plan" marqueur="apercu-medias">
             <span className="block">
               <span className="text-gray-200" data-autopilot-apercu-badge="medias">Médias réels du plan</span>
               {' '}— la séquence Vidéo de l’aperçu n’est pas un exemple : elle montre le premier média réel de votre plan,

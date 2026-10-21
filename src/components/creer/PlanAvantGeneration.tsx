@@ -195,7 +195,7 @@ export default function PlanAvantGeneration({
         <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
           Plan avant génération
           {/* Le fonctionnement du plan et du minutage : à la demande (docs/UX-PREMIUM.md). */}
-          <InfoBulle label="À propos du plan avant génération" titre="Plan avant génération" marqueur="plan">
+          <InfoBulle label="En savoir plus sur le plan avant génération" titre="Plan avant génération" marqueur="plan">
             <span className="block" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
               {ctaEnSurimpression
                 ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur la fin de la vidéo ; si la parole est plus courte que la durée cible, une clôture (plans de coupe, musique) la complète et porte le CTA jusqu’à la dernière image.'

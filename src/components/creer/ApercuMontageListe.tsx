@@ -224,7 +224,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
           <h3 className="flex items-center gap-1 text-sm font-semibold text-gray-100">
             {p.titre ?? 'Aperçu du montage'}
             {p.sousTitreEnInfo ? (
-              <InfoBulle label="À propos de l’aperçu du montage" marqueur="apercu-montage">
+              <InfoBulle label="En savoir plus sur l’aperçu du montage" marqueur="apercu-montage">
                 <span className="block" data-apercu-montage-sous-titre>{p.sousTitre ?? "Séquence Vidéo dans l'ordre de la liste, puis le CTA."}</span>
               </InfoBulle>
             ) : null}

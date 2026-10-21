@@ -160,7 +160,7 @@ export default function BriefVideo({
           <div className="flex items-center gap-1 text-sm font-medium text-white">
             {titre}
             {aideDetail ? (
-              <InfoBulle label={`À propos du ${(titre ?? 'brief').toLowerCase()}`} titre={titre} marqueur="brief-aide">
+              <InfoBulle label={`En savoir plus sur le ${(titre ?? 'brief').toLowerCase()}`} titre={titre} marqueur="brief-aide">
                 <span className="block" data-brief-aide-detail>{aideDetail}</span>
               </InfoBulle>
             ) : null}
@@ -454,6 +454,9 @@ export function NarrationRecap({
  * le sujet, le brief, la durée et le rythme visés, dit si le brief est
  * cohérent avec le thème — et ne génère rien.
  */
+/** Libellés COURTS du récapitulatif (la saisie garde les libellés complets). */
+const LIBELLES_COURTS: Record<BriefKey, string> = { objectif: 'Objectif', message: 'Message', public: 'Public', cta: 'CTA' };
+
 export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
   brief: VideoBrief;
   sujets?: ReadonlyArray<string>;
@@ -469,12 +472,12 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
   // (score admin, fonctionnement de la narration) est à la demande. Le COÛT,
   // lui, reste visible en une ligne : « Aucun coût à cette étape ».
   const lignes: Array<{ cle: string; libelle: string; valeur: string; attr: Record<string, string | boolean> }> = [];
-  if (sujetPrincipal) lignes.push({ cle: 'sujet', libelle: liste.length > 1 ? 'Sujets' : 'Sujet principal', valeur: sujetPrincipal, attr: { 'data-autopilot-brief-recap-sujet': true } });
+  if (sujetPrincipal) lignes.push({ cle: 'sujet', libelle: liste.length > 1 ? 'Sujets' : 'Sujet', valeur: sujetPrincipal, attr: { 'data-autopilot-brief-recap-sujet': true } });
   for (const k of BRIEF_KEYS) {
     const v = (brief[k] ?? '').trim();
-    if (v) lignes.push({ cle: k, libelle: BRIEF_LABELS[k], valeur: brief[k] as string, attr: { 'data-autopilot-brief-recap-champ': k } });
+    if (v) lignes.push({ cle: k, libelle: LIBELLES_COURTS[k], valeur: brief[k] as string, attr: { 'data-autopilot-brief-recap-champ': k } });
   }
-  if (brief.duree) lignes.push({ cle: 'duree', libelle: 'Durée cible', valeur: `${brief.duree} s`, attr: { 'data-autopilot-brief-recap-duree': true } });
+  if (brief.duree) lignes.push({ cle: 'duree', libelle: 'Durée', valeur: `${brief.duree} s`, attr: { 'data-autopilot-brief-recap-duree': true } });
   if (brief.rythme) lignes.push({ cle: 'rythme', libelle: 'Rythme', valeur: RYTHME_LABELS[brief.rythme], attr: { 'data-autopilot-brief-recap-rythme': true } });
   return (
     <div
@@ -495,7 +498,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
             Cohérent
           </span>
         )}
-        <InfoBulle label="À propos de ce que dira chaque vidéo" titre="Ce que dira chaque vidéo" marqueur="brief-recap">
+        <InfoBulle label="En savoir plus sur ce que dira chaque vidéo" titre="Ce que dira chaque vidéo" marqueur="brief-recap">
           <span className="block" data-autopilot-brief-recap-note>
             La narration exacte de chaque vidéo est produite à chaque cycle, à partir de ce brief et du
             sujet du jour. Aucun audio n’existe avant le rendu — rien n’est généré ni facturé ici.
