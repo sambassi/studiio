@@ -19,9 +19,18 @@
 import { avecCtaDuBrief } from '@/lib/creer/validation-rendu';
 import { ajusterCta, eclaircir } from '@/lib/creer/surimpressions-mise-en-page';
 import { FONT_RATIO } from '@/lib/creer/designSpec';
+import { FOND_TEXTE_SUR_IMAGE } from '@/lib/creer/contraste';
 
-/** Le panneau du CTA en surimpression (#502, `ctaFond`) — le même sombre. */
-export const CTA_ACTION_PANNEAU = 'rgba(0,0,0,0.6)';
+/**
+ * « Panneau » du CTA d'action : plus d'aplat opaque (`rgba(0,0,0,0.6)` d'avant,
+ * « rectangle gris » relevé sur l'aperçu du style et le MP4 du 20/10). Le CTA
+ * est posé sur l'image avec le contour fin des glyphes (`SequenceCta`, fond
+ * fourni ⇒ `haloTexteCss`) : la MÊME règle que les surimpressions
+ * (`FOND_TEXTE_SUR_IMAGE`). La petite ligne est éclaircie jusqu'à 4,5:1 au
+ * bord des lettres (`fondHaloPire`). Un post enregistré avec l'ancien panneau
+ * le garde (sa métadonnée porte la couleur).
+ */
+export const CTA_ACTION_PANNEAU = FOND_TEXTE_SUR_IMAGE;
 /** Rose par défaut du sous-texte (`SequenceCta`), éclairci comme en #502 (`ctaActionEclaircie`). */
 export const CTA_ACTION_SOUS_COULEUR = eclaircir('#EC4899', 0.6) as string;
 /** Échelle du CTA en surimpression 9:16 (#502, `ctaScale`). */
