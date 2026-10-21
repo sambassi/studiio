@@ -375,6 +375,24 @@ function correspond(cle: string, methode: string, chemin: string): boolean {
   return chemin === motif;
 }
 
+/** CSS `@font-face` sous les VRAIS noms de famille demandés, pointant sur les fichiers `next/font` du banc. */
+function feuillePolicesLocales(url: URL, referer: string): string {
+  const origine = (() => { try { return new URL(referer).origin; } catch { return `http://localhost:${process.env.BANC_PORT || '3100'}`; } })();
+  let css = '';
+  try { css = fs.readFileSync(path.resolve(__dirname, '../../.next/static/css/app/layout.css'), 'utf-8'); } catch { return ''; }
+  const familles = url.searchParams.getAll('family').map((f) => f.split(':')[0].replace(/\+/g, ' '));
+  const faces = css.match(/@font-face\s*\{[^}]*\}/g) ?? [];
+  const out: string[] = [];
+  for (const fam of familles) {
+    const interne = new RegExp(`font-family:\\s*'__${fam.replace(/ /g, '_')}_[0-9a-f]+'`);
+    for (const f of faces) {
+      if (!interne.test(f)) continue;
+      out.push(f.replace(interne, `font-family: '${fam}'`).replace(/url\((\/_next\/[^)]+)\)/g, (_m, u) => `url(${origine}${u})`));
+    }
+  }
+  return out.join('\n');
+}
+
 async function installer(context: BrowserContext, banc: Banc, surcharges: Array<[string, Gestionnaire]>, serveur: string[]) {
   await context.route('**/*', async (route) => {
     const req = route.request();
@@ -383,6 +401,14 @@ async function installer(context: BrowserContext, banc: Banc, surcharges: Array<
     if (url.protocol === 'data:' || url.protocol === 'blob:') { await route.continue(); return; }
     if (url.hostname === HOTE_MEDIAS) { await servirMedia(route, url); return; }
     const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+    // Polices : opt-in `BANC_POLICES_LOCALES=1` — la feuille Google demandée par le
+    // compositeur est servie depuis les fichiers `next/font` DÉJÀ servis par le
+    // `next dev` du banc (aucun accès externe). Sans cela le canvas du banc dessine
+    // tout en police de repli (Inter compris), alors que la production charge Google.
+    if (process.env.BANC_POLICES_LOCALES === '1' && url.hostname === 'fonts.googleapis.com' && url.pathname === '/css2') {
+      await route.fulfill({ status: 200, contentType: 'text/css', body: feuillePolicesLocales(url, req.headers()['referer'] ?? '') });
+      return;
+    }
     if (!local) {
       banc.externes.push(`${req.method()} ${url.origin}${url.pathname}`);
       if (HOTES_INTERDITS.test(url.hostname)) banc.externesInterdits.push(`${req.method()} ${url.origin}${url.pathname}`);

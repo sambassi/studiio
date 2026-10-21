@@ -145,7 +145,7 @@ export const STYLES_VIDEO: readonly StyleVideo[] = Object.freeze([
     transition: { cle: 'blur-dissolve', secondes: DUREE_TRANSITION_MOTEUR },
     animationTexte: 'fade',
     titre: { font: 'Bebas Neue', textCase: 'uppercase', bold: false, letterSpacing: 6, lineHeight: 1.1, scale: 1 },
-    cta: { font: 'Syne', textCase: 'uppercase', bold: true, letterSpacing: 3, lineHeight: 1.2, scale: 1 },
+    cta: { font: 'Syne', textCase: 'uppercase', bold: true, letterSpacing: 1.5, lineHeight: 1.2, scale: 1 },
     cartes: { style: 'Minimal Line', font: 'Syne', scale: 1 },
     habillage: { mode: 'aucun', voile: 0.45 },
   },

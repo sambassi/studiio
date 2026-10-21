@@ -15,7 +15,7 @@
  * Re-cliquer le style choisi le retire : les réglages restent, seul le
  * rythme redevient celui déduit du thème.
  */
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import InfoBulle from '@/components/ui/InfoBulle';
 import { classesCarteOption } from '@/lib/ui/etats';
@@ -29,26 +29,29 @@ export interface GalerieStylesVideoProps {
   onChoisir: (id: StyleVideoId | null) => void;
 }
 
-function CarteStyle({ style, choisi, retouches, onChoisir, reduire }: {
+function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
   style: StyleVideo;
   choisi: boolean;
   retouches: readonly string[];
   onChoisir: (id: StyleVideoId | null) => void;
-  reduire: boolean;
+  /** Un seul exemple joue à la fois (survol / focus), jamais avec la réduction des animations. */
+  joue: boolean;
+  onSurvol: (actif: boolean) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const ex = exempleStyle(style.id);
-  const lire = () => {
-    const v = videoRef.current;
-    if (!v || reduire) return;
-    v.play().catch(() => { /* lecture refusée : le poster reste */ });
-  };
-  const arreter = () => {
+  useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    v.pause();
-    try { v.currentTime = 0; } catch { /* pas encore chargé */ }
-  };
+    if (joue) {
+      v.play().catch(() => { /* lecture refusée : le poster reste */ });
+    } else if (!v.paused || v.currentTime > 0) {
+      v.pause();
+      try { v.currentTime = 0; } catch { /* pas encore chargé */ }
+    }
+  }, [joue]);
+  const lire = () => onSurvol(true);
+  const arreter = () => onSurvol(false);
   return (
     <div className="relative min-w-0" data-style-video={style.id}>
       <button
@@ -62,7 +65,7 @@ function CarteStyle({ style, choisi, retouches, onChoisir, reduire }: {
         aria-label={`Style ${style.libelle}${choisi ? ' (choisi)' : ''}`}
         className={`w-full min-w-0 flex flex-col rounded-lg border p-1.5 text-left ${classesCarteOption(choisi)}`}
       >
-        <span className="relative block w-full overflow-hidden rounded-md bg-black" style={{ aspectRatio: '9 / 12' }}>
+        <span className="relative block w-full overflow-hidden rounded-md bg-black" style={{ aspectRatio: '4 / 5', maxHeight: 150 }}>
           <video
             ref={videoRef}
             src={ex.video}
@@ -73,7 +76,7 @@ function CarteStyle({ style, choisi, retouches, onChoisir, reduire }: {
             preload="none"
             aria-hidden="true"
             tabIndex={-1}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover object-top"
           />
           {choisi && (
             <span className="absolute top-1 left-1 flex h-4 w-4 items-center justify-center rounded-full bg-studiio-primary text-white" data-coche>
@@ -81,10 +84,10 @@ function CarteStyle({ style, choisi, retouches, onChoisir, reduire }: {
             </span>
           )}
         </span>
-        <span className="mt-1.5 block truncate text-[11px] font-semibold text-white">{style.libelle}</span>
-        <span className="block text-[10px] leading-snug text-gray-400 line-clamp-2">{style.description}</span>
+        <span className="mt-1.5 block text-[11px] font-semibold leading-tight text-white">{style.libelle}</span>
+        <span className="mt-0.5 text-[10px] leading-snug text-gray-400 line-clamp-2">{style.description}</span>
         {choisi && retouches.length > 0 && (
-          <span className="mt-0.5 block truncate text-[10px] text-amber-300" data-style-retouche>
+          <span className="mt-0.5 block text-[10px] leading-snug text-amber-300" data-style-retouche>
             Retouché : {retouches.join(', ')}
           </span>
         )}
@@ -103,6 +106,7 @@ function CarteStyle({ style, choisi, retouches, onChoisir, reduire }: {
 
 export default function GalerieStylesVideo({ choisi, retouches, onChoisir }: GalerieStylesVideoProps) {
   const reduire = usePrefersReducedMotion();
+  const [actif, setActif] = useState<StyleVideoId | null>(null);
   return (
     <div role="group" aria-label="Styles vidéo" className="grid grid-cols-3 gap-2" data-galerie-styles>
       {STYLES_VIDEO.map((s) => (
@@ -112,7 +116,8 @@ export default function GalerieStylesVideo({ choisi, retouches, onChoisir }: Gal
           choisi={choisi === s.id}
           retouches={choisi === s.id ? retouches : []}
           onChoisir={onChoisir}
-          reduire={reduire}
+          joue={!reduire && actif === s.id}
+          onSurvol={(oui) => setActif((prev) => (oui ? s.id : prev === s.id ? null : prev))}
         />
       ))}
     </div>
