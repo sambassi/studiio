@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useEffect } from 'react';
 import { ArrowDown, ArrowUp, Film, ImageIcon, Megaphone, Plus, RefreshCw, RotateCcw, Search, Trash2, Wand2 } from 'lucide-react';
+import InfoBulle from '@/components/ui/InfoBulle';
 import { LIBELLES_ORIGINE, dureeLisible, nomTechnique, origineSuggeree } from '@/lib/medias/libelles';
 import MiniatureVideo from '@/components/medias/MiniatureVideo';
 import { useVignetteVideo } from '@/lib/hooks/useVignetteVideo';
@@ -191,7 +192,24 @@ export default function PlanAvantGeneration({
     <section className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2 min-w-0" data-autopilot-plan data-plan-fixe={fixe ? 'oui' : 'non'}>
       {videos.map((u) => <SondeDuree key={u} url={u} onDuree={noterDuree} />)}
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Plan avant génération</p>
+        <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+          Plan avant génération
+          {/* Le fonctionnement du plan et du minutage : à la demande (docs/UX-PREMIUM.md). */}
+          <InfoBulle label="En savoir plus sur le plan avant génération" titre="Plan avant génération" marqueur="plan">
+            <span className="block" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
+              {ctaEnSurimpression
+                ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur la fin de la vidéo ; si la parole est plus courte que la durée cible, une clôture (plans de coupe, musique) la complète et porte le CTA jusqu’à la dernière image.'
+                : 'Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.'}
+            </span>
+            {lignes.length > 0 && (
+              <span className="block" data-plan-duree-avertissement>
+                {estimee
+                  ? 'Durée estimée : la voix de votre avatar n’est pas encore générée. À la production, sa durée réelle est mesurée (jamais accélérée, jamais coupée) ; plus courte que la cible, une clôture complète la vidéo jusqu’à la cible (8 s au plus) ; plus longue, la vidéo suit la parole.'
+                  : 'Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).'}
+              </span>
+            )}
+          </InfoBulle>
+        </p>
         {fixe ? (
           <button
             type="button"
@@ -206,11 +224,6 @@ export default function PlanAvantGeneration({
           <span className="flex items-center gap-1 text-[10px] text-gray-500" data-plan-suggere><Wand2 className="w-3 h-3" /> Plan suggéré</span>
         ) : null}
       </div>
-      <p className="text-[11px] text-gray-500" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
-        {ctaEnSurimpression
-          ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur la fin de la vidéo ; si la parole est plus courte que la durée cible, une clôture (plans de coupe, musique) la complète et porte le CTA jusqu’à la dernière image.'
-          : 'Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.'}
-      </p>
       {lignes.length > 0 && (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-gray-900/60 px-2 py-1.5 text-[11px]" data-plan-duree>
           <dt className="text-gray-500">Durée cible</dt>
@@ -223,11 +236,6 @@ export default function PlanAvantGeneration({
           <dd className="text-gray-200" data-plan-nombre={lignes.length}>{lignes.length}</dd>
           <dt className="text-gray-500">Rythme</dt>
           <dd className="text-gray-200" data-plan-rythme={duree?.rythme ?? 'normal'}>{RYTHME_LABELS[duree?.rythme ?? 'normal']}</dd>
-          <dd className="col-span-2 text-[10px] text-gray-500 pt-0.5" data-plan-duree-avertissement>
-            {estimee
-              ? 'Durée estimée : la voix de votre avatar n’est pas encore générée. À la production, sa durée réelle est mesurée (jamais accélérée, jamais coupée) ; plus courte que la cible, une clôture complète la vidéo jusqu’à la cible (8 s au plus) ; plus longue, la vidéo suit la parole.'
-              : 'Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).'}
-          </dd>
         </dl>
       )}
       {lignes.length === 0 && (

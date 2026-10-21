@@ -1709,7 +1709,8 @@ export default function AutopilotPanel({
             onCommit={enregistrerBrief}
             disabled={!ready || saving}
             titre="Brief récurrent"
-            aide="Commun à toutes les vidéos produites. Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
+            aide="Commun à toutes les vidéos produites."
+            aideDetail="Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
             idPrefix="autopilot-brief"
             sujets={config.topics}
             avecDureeRythme

@@ -46,13 +46,13 @@ import {
   Maximize2,
   Play,
   Info,
-  MousePointerClick,
   X,
   UserSquare2,
   Mic,
   Image as ImageIcon,
   Group as GroupIcon,
 } from 'lucide-react';
+import InfoBulle from '@/components/ui/InfoBulle';
 import { generateSmartContent } from '@/lib/smart-content';
 import {
   recadrageRushActif, styleRecadrageRush, RATIO_FORMAT, recadrageDuRush, avecRecadrageRush, recadragesPourRushs, recadragesRushAvecHeritage,
@@ -3875,6 +3875,40 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         >
           Exemple
         </span>
+        {/* Le libellé honnête ET le mode d'emploi, à la demande (docs/UX-PREMIUM.md) :
+            le badge « Exemple » dit l'essentiel en permanence ; le détail
+            (exemple ≠ prochaine vidéo, vue de composition, double-clic pour
+            régler) vit derrière UNE icône — deux icônes Info côte à côte
+            se confondraient. */}
+        <InfoBulle label="En savoir plus sur l’aperçu du style" titre="Aperçu du style" marqueur="apercu-style">
+          <span className="block" data-autopilot-apercu-mention>
+            <span className="text-gray-200" data-autopilot-apercu-badge="style">Aperçu du style</span>
+            {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
+            {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
+            changent à chaque vidéo ; le style, non.
+            {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
+                est généré à chaque production, à partir du brief récurrent. */}
+            <span data-autopilot-script-exemple>
+              {' '}Exemple de démonstration — le script de chaque vidéo est généré à sa
+              production à partir de votre brief.
+            </span>
+            {/* Ce que l'onglet « Tout » montre : une composition ou le montage. */}
+            {focus === 'all' && (
+              <span data-autopilot-apercu-lecture={lectureEnCours ? 'lecture' : 'composition'}>
+                {lectureEnCours
+                  ? ' Lecture des séquences : l’ordre réel du montage, avec ses transitions.'
+                  : ' Vue de composition : titre, cartes et CTA sont superposés ici, mais se succèdent dans la vidéo — le bouton Lire les joue dans l’ordre.'}
+              </span>
+            )}
+          </span>
+          {/* Police, taille, position et icônes se règlent SUR l'aperçu (le
+              wizard reste à six étapes). Ancien grand encadré violet. */}
+          <span className="block" data-autopilot-apercu-aide>
+            <span className="font-medium text-white">Double-cliquez un élément</span>
+            {' '}— titre, CTA ou carte — pour régler sa police, sa taille et son icône.
+            Glissez pour le déplacer, tirez les coins pour l’agrandir.
+          </span>
+        </InfoBulle>
       </h3>
       <Preview
         generated={generated}
@@ -3989,37 +4023,14 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         ) : null}
       />
 
-      {/* ── LE LIBELLÉ HONNÊTE ───────────────────────────────────────────
-          Sans lui, l'utilisateur lit cet aperçu comme la prochaine vidéo et
-          s'étonne d'en recevoir une autre. Ce qu'il regarde prouve le style,
-          rien d'autre. */}
-      <p
-        className="mt-2 flex items-start gap-1.5 text-[11px] text-gray-500 leading-relaxed"
-        data-autopilot-apercu-mention
-      >
-        <Info className="w-3 h-3 mt-0.5 shrink-0" />
-        <span>
-          <span className="text-gray-300" data-autopilot-apercu-badge="style">Aperçu du style</span>
-          {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
-          {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
-          changent à chaque vidéo ; le style, non.
-          {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
-              est généré à chaque production, à partir du brief récurrent. */}
-          <span data-autopilot-script-exemple>
-            {' '}Exemple de démonstration — le script de chaque vidéo est généré à sa
-            production à partir de votre brief.
-          </span>
-          {/* Ce que l'onglet « Tout » montre : une composition ou le montage.
-              Sans cette phrase, les trois séquences empilées passent pour
-              l'image finale. */}
-          {focus === 'all' && (
-            <span data-autopilot-apercu-lecture={lectureEnCours ? 'lecture' : 'composition'}>
-              {lectureEnCours
-                ? ' Lecture des séquences : l’ordre réel du montage, avec ses transitions.'
-                : ' Vue de composition : titre, cartes et CTA sont superposés ici, mais se succèdent dans la vidéo — ▶ pour les lire dans l’ordre.'}
-            </span>
-          )}
-        </span>
+      {/* ── LA PORTE DU DOUBLE-CLIC, TOUJOURS VISIBLE ─────────────────────
+          Le double-clic est le SEUL accès à la police, la taille et l'icône :
+          invisible, la fonction est introuvable. Une ligne courte et
+          discrète (sans encadré) ; le mode d'emploi complet est dans
+          l'InfoBulle du titre. */}
+      {/* Texte seul : une icône sans action serait décorative (règle 7 de docs/UX-PREMIUM.md). */}
+      <p className="mt-2 text-[11px] text-gray-400" data-autopilot-apercu-indice-double-clic>
+        Double-cliquez un élément pour le régler
       </p>
 
       {/* ── A5 — LE JUMEAU : DURÉE ESTIMÉE ET VOIX ─────────────────────────
@@ -4028,17 +4039,23 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           et la voix de l'avatar ne s'entend que dans la vidéo finale. */}
       {paroleJumeauEstimee !== null && (
         <p
-          className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
+          className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-400"
           data-autopilot-apercu-jumeau="estimee"
           data-autopilot-apercu-duree-totale={dureeVideoApercu}
         >
-          <Mic className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>
+          <Mic className="w-3 h-3 shrink-0" aria-hidden="true" />
+          {/* Information honnête : visible, en UNE ligne. Le pourquoi est à la demande. */}
+          <span className="min-w-0">
             <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
-            {' '}— séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
-            {' '}La vidéo finale prend la durée réelle de la parole de l’avatar (jamais accélérée) ; si elle est plus courte que la durée cible, une clôture avec le CTA complète la vidéo.
-            {' '}<span data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
+            {' '}— avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}
           </span>
+          <InfoBulle label="En savoir plus sur la durée estimée" titre="Durée estimée" marqueur="apercu-duree">
+            <span className="block">
+              Séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
+              {' '}La vidéo finale prend la durée réelle de la parole de l’avatar (jamais accélérée) ; si elle est plus courte que la durée cible, une clôture avec le CTA complète la vidéo.
+            </span>
+            <span className="block" data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
+          </InfoBulle>
         </p>
       )}
 
@@ -4048,40 +4065,20 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           jamais l'affiche d'exemple avec son propre rush. */}
       {avecVideo && (
         <p
-          className="mt-1.5 flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed"
+          className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-400"
           data-autopilot-apercu-medias={mediaVideo.type}
         >
-          <Film className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>
-            <span className="text-gray-200" data-autopilot-apercu-badge="medias">Médias réels du plan</span>
-            {' '}— séquence vidéo : <span data-autopilot-apercu-media-etiquette>{mediaVideo.etiquette}</span>
-          </span>
+          <Film className="w-3 h-3 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 truncate text-gray-300" data-autopilot-apercu-media-etiquette>{mediaVideo.etiquette}</span>
+          <InfoBulle label="En savoir plus sur les médias du plan" marqueur="apercu-medias">
+            <span className="block">
+              <span className="text-gray-200" data-autopilot-apercu-badge="medias">Médias réels du plan</span>
+              {' '}— la séquence Vidéo de l’aperçu n’est pas un exemple : elle montre le premier média réel de votre plan,
+              {' '}contrairement à l’affiche et aux textes d’exemple. Vous le remplacez à l’étape Rushes.
+            </span>
+          </InfoBulle>
         </p>
       )}
-
-      {/* ── LE MODE D'EMPLOI ─────────────────────────────────────────────
-          ⚠️ IL REMPLACE UNE ÉTAPE ENTIÈRE, ET IL ÉTAIT INVISIBLE. Police,
-          taille, position et icônes se règlent SUR l'aperçu : rien de tout
-          cela n'ajoute un champ dans la colonne de gauche, et le wizard reste
-          à six étapes. Mais la première version de cette phrase était écrite
-          en `text-gray-600` sous un autre paragraphe gris — personne ne la
-          lisait, donc personne ne découvrait le double-clic, donc la
-          fonctionnalité n'existait pas.
-
-          Un ENCART, et non une ligne de plus : bordure, icône de curseur et
-          contraste lisible. C'est le minimum pour qu'un geste caché se
-          découvre. */}
-      <div
-        className="mt-2 flex items-start gap-2 rounded-lg border border-purple-500/30 bg-purple-600/10 px-2.5 py-2"
-        data-autopilot-apercu-aide
-      >
-        <MousePointerClick className="w-3.5 h-3.5 mt-0.5 shrink-0 text-purple-300" />
-        <p className="text-[11px] text-gray-300 leading-relaxed">
-          <span className="font-medium text-white">Double-cliquez un élément</span>
-          {' '}— titre, CTA ou carte — pour régler sa police, sa taille et son icône.
-          Glissez pour le déplacer, tirez les coins pour l’agrandir.
-        </p>
-      </div>
 
       {/* ── APERÇU DU MONTAGE PRÉVU ──────────────────────────────────────
           Les médias RÉELS du plan, tous, dans l'ordre, puis le CTA — le
@@ -4103,6 +4100,8 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             vignettes={vignettesMontage}
             onRemplacer={allerAuxMedias}
             titre="Aperçu de mon montage"
+            // Le mode d'emploi est à la demande ; lecture, durée et chronologie restent visibles.
+            sousTitreEnInfo
             sousTitre={montagePrevu.ctaEnSurimpression
               ? (montagePrevu.debutCloture != null
                 ? "Vos médias réels, dans l'ordre du plan ; après la parole de l'avatar, une clôture (plans de coupe et musique) porte le CTA jusqu'à la dernière image. Seule la parole est estimée : à la production, elle est mesurée, jamais accélérée, et la clôture complète jusqu'à la durée cible."
