@@ -32,6 +32,20 @@ Si tu te surprends à écrire plus d'une instruction → efface, garde juste la 
 
 ---
 
+## ⚠️ RÈGLE UX PREMIUM PERMANENTE — INTERFACE ÉPURÉE
+
+Toute modification d'interface respecte `docs/UX-PREMIUM.md` (à relire avant de
+toucher une page). En bref : interface épurée, classe et discrète ; petites
+icônes SVG uniformes plutôt que gros boutons texte ; le détail derrière une
+icône d'information (popover/panneau fermable, clavier, mobile, libellés
+accessibles) ; jamais d'icône décorative ; ne JAMAIS masquer une information
+de sécurité, un coût, une erreur, une progression critique ou une action
+principale ; identité Studiio inchangée ; pas de nouvelle dépendance UI.
+Application progressive aux autres pages dans des PR UX distinctes, après
+accord de l'utilisateur.
+
+---
+
 ## Qu'est-ce que Studiio ?
 
 Studiio (https://studiio.pro) est une plateforme SaaS de creation de videos et d'infographies animees pour les reseaux sociaux. L'utilisateur cree du contenu visuel (infographies, videos), ajoute de l'audio, planifie la publication sur un calendrier, et publie automatiquement sur Instagram, TikTok, Facebook et YouTube.
