@@ -307,9 +307,12 @@ export async function mesurerSourceLue(url: string, source: string, dureeSeconde
     // UN SEUL passage pour l'image ET le son.
     // Même sélection d'images pour le gris (mesures) et la couleur
     // (saturation, en 16×9 : quelques octets par image, coût négligeable).
-    const selection = (clesSeules: boolean, p = pas) => (clesSeules
-      ? `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${p})'`
-      : `fps=${1 / p}`);
+    // Décodage complet (repli) : la MÊME sélection `select`, jamais `fps=` —
+    // `fps` (arrondi au plus proche) étiquette « 0,5 s » l'image source de
+    // 0,73 s : une coupe ou un gel de la source paraissait ~pas/2 trop tôt et
+    // `plansPropres` laissait un extrait démarrer dessus (banc, rush-3 figé
+    // 0–0,63 s : « propre » dès 0,5 s). `select` garde l'instant réel.
+    const selection = (_clesSeules: boolean, p = pas) => `select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,${p})'`;
     const argsImages = (clesSeules: boolean, avecSon = true) => [
       '-hide_banner', '-loglevel', 'info', '-nostats', '-threads', '0',
       ...(clesSeules ? ['-skip_frame', 'nokey'] : ['-skip_loop_filter', 'all']),
