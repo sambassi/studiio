@@ -99,12 +99,15 @@ export type LectureProgression =
 
 export function lireProgressionServeur(d: unknown): LectureProgression {
   const o = (d && typeof d === 'object' ? d : {}) as Record<string, unknown>;
-  if (o.progression && typeof o.progression === 'object') return { cas: 'progression' };
-  if (o.resultat && typeof o.resultat === 'object') return { cas: 'resultat', resultat: o.resultat as Record<string, unknown> };
   const j = (o.jumeau && typeof o.jumeau === 'object' ? o.jumeau : null) as
     | { etat?: string; message?: string; post?: { postId: string; scheduledDate: string; scheduledTime: string }; sansAvatar?: boolean }
     | null;
+  // Avec avatar, le montage final publie AUSSI une `progression` : la file
+  // en préparation l'emporte, l'écran garde le suivi « avatar » (et y montre
+  // ce pourcentage réel) — y compris après un rechargement.
   if (j?.etat === 'en_preparation') return { cas: 'jumeau' };
+  if (o.progression && typeof o.progression === 'object') return { cas: 'progression' };
+  if (o.resultat && typeof o.resultat === 'object') return { cas: 'resultat', resultat: o.resultat as Record<string, unknown> };
   if (j?.etat === 'depose' && j.post) {
     return {
       cas: 'jumeau-depose',

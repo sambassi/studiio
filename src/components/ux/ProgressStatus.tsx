@@ -104,7 +104,10 @@ export default function ProgressStatus({
   const ecoulee = useDureeEcoulee(debutLe);
   const determinee = statut === 'succes' ? true : typeof pourcentage === 'number';
   const valeur = statut === 'succes' ? 100 : determinee ? borne(pourcentage as number) : null;
-  const workflow = etapes ? pourcentageWorkflow(etapes) : null;
+  // UN seul pourcentage à l'écran : quand un pourcentage RÉEL est affiché,
+  // celui du workflow (étapes terminées / total) se tait — sinon « 0 % » et
+  // « Progression du workflow : 40 % » se contredisaient.
+  const workflow = etapes && !determinee ? pourcentageWorkflow(etapes) : null;
   const total = etapes?.length ?? totalEtapes;
   const courante = etapes ? etapes.findIndex((e) => e.etat === 'courante' || e.etat === 'echouee') + 1 || undefined : etapeCourante;
   const enCours = statut === 'en_cours' || statut === 'info';
