@@ -139,7 +139,10 @@ describe('fonds en mouvement Titre / CTA — plages propres (#613)', () => {
     const f = fondsRushTexte({ lisible: true, affiche: false, rushs, dureeCta: 4.5, plansPropres: Object.fromEntries(propres) })!;
     expect(f.intro).toEqual({ url: R1, depuis: 0.5, jusqua: 4 });
     // Avant : depuis 0,5 s → 0,13 s d'image figée puis le flash de l'ancien plan.
-    expect(f.cta).toEqual({ url: R3, depuis: 1, jusqua: 5 });
+    // Le CTA (4,5 s) dépasse ce plan propre (4 s) : un passage d'un autre rush le PRÉCÈDE au lieu d'un
+    // rebouclage avant la dernière image ; la séquence finit toujours sur la fin du plan propre du rush 3.
+    expect(f.cta!.segments!.at(-1)).toEqual({ url: R3, depuis: 1.25, jusqua: 4.95 });
+    expect(f.cta!.segments!.every((s) => s.url === R3 ? s.depuis >= 1 : true)).toBe(true);
     // Sans mesure : la règle d'avant.
     expect(fondsRushTexte({ lisible: true, affiche: false, rushs, dureeCta: 4.5 })!.cta).toEqual({ url: R3, depuis: 0.5 });
   });

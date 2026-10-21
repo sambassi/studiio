@@ -20,6 +20,25 @@ import { estVoile, haloTexteCss, CONTOUR_TEXTE_ALPHA, couleurValeurLisible } fro
  */
 export const LISIBILITE_916 = { text: 0.048, value: 0.055, icon: 0.06 } as const;
 
+/**
+ * Plancher de lisibilité des cartes en 16:9 et 1:1 (Créer, projets v2) : le
+ * texte d'une carte fait au moins 2,6 % de la HAUTEUR vidéo — la proportion
+ * du plancher 9:16 (52 px sur 1920). Mesuré sur le MP4 16:9 de la démo
+ * « LE SPORT » : 26 px de corps (capitales de 19 px, 1,76 % de 1080).
+ */
+export const LISIBILITE_HAUTEUR = 0.026;
+
+/**
+ * Ratios relevés au plancher `LISIBILITE_HAUTEUR` : texte, valeur et icône
+ * grandissent du MÊME facteur (proportions de la carte gardées) ; espacements
+ * et marges inchangés. Jamais de réduction.
+ */
+export function ratiosLisiblesHauteur<R extends { text: number; value: number; icon: number }>(r: R, largeur: number, hauteur: number): R {
+  if (!(largeur > 0) || !(hauteur > 0)) return r;
+  const k = Math.max(1, (LISIBILITE_HAUTEUR * hauteur) / (largeur * r.text));
+  return k === 1 ? r : { ...r, text: r.text * k, value: r.value * k, icon: r.icon * k };
+}
+
 /** Description assez courte pour une seconde ligne lisible (cartes sur les rushes). */
 export const DESCRIPTION_COURTE_MAX = 40;
 
@@ -200,6 +219,15 @@ export interface SequenceCardsProps {
    * Absent : rendu d'avant.
    */
   fondsContraste?: ReadonlyArray<string | null | undefined> | null;
+  /**
+   * Hauteur de la vidéo (px, même repère que `containerWidth`) : active le
+   * plancher `LISIBILITE_HAUTEUR` des cartes en flux hors 9:16. Posé par
+   * Créer SEULEMENT, pour les projets aux défauts lisibles (v2) ; la
+   * composition Remotion (Autopilote) ne le passe jamais.
+   *
+   * ⚠️ ABSENT = LE RENDU D'AVANT, au pixel près.
+   */
+  plancherHauteurVideo?: number | null;
 }
 
 export default function SequenceCards({
@@ -216,13 +244,19 @@ export default function SequenceCards({
   groupeDe,
   zoneSure916 = false,
   fondsContraste = null,
+  plancherHauteurVideo = null,
 }: SequenceCardsProps) {
   const vw = containerWidth;
   // 9:16 en flux : planchers de LISIBILITE sur téléphone (`LISIBILITE_916`).
   // Les ratios d'origine (≈ 29 px sur 1080) se lisaient mal une fois la vidéo
   // réduite à la largeur d'un écran. Paysage, carré et mode libre : inchangés.
   const lisible = zoneSure916 && !landscape && !cardBoxes && !!typography?.lisible916;
-  const CR = lisible ? ratiosLisibles916(cardRatios(landscape)) : cardRatios(landscape);
+  // 16:9 et 1:1 en flux (Créer v2) : plancher proportionné à la HAUTEUR (`LISIBILITE_HAUTEUR`). Badge,
+  // mode libre et 9:16 : inchangés. L'échelle choisie (`typography.scale`) reste un facteur au-dessus.
+  const plancherHauteur = !lisible && !zoneSure916 && !cardBoxes && fond == null && !!plancherHauteurVideo && plancherHauteurVideo > 0;
+  const CR = lisible ? ratiosLisibles916(cardRatios(landscape))
+    : plancherHauteur ? ratiosLisiblesHauteur(cardRatios(landscape), vw, plancherHauteurVideo!)
+    : cardRatios(landscape);
   const it = interaction;
   const uiPx = it?.uiPx ?? ((n: number) => n);
   const editable = !!it?.onCardDragStart;

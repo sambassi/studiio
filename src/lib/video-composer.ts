@@ -683,8 +683,10 @@ export interface ComposerOptions {
    * depuis `depuis` s, MUET, sur un lecteur dédié, assombri, avec le voile du
    * dégradé par-dessus — la même composition qu'une affiche, et que l'aperçu
    * (`fondRushTexte` du plateau). Absent : fond d'avant (dégradé).
+   * `segments` (≥ 2) : passages propres ENCHAÎNÉS dans cet ordre
+   * (`fondsRushTexte`), rejoués seulement une fois toute la matière montrée.
    */
-  fondRushTexte?: { intro?: { url: string; depuis?: number; jusqua?: number } | null; cta?: { url: string; depuis?: number; jusqua?: number } | null } | null;
+  fondRushTexte?: { intro?: FondTexteComposer | null; cta?: FondTexteComposer | null } | null;
   /**
    * SURIMPRESSIONS (profils dynamiques, Créer = Autopilote) : titre, cartes
    * et CTA posés SUR le rush, pendant leurs fenêtres (`planOverlays`). Les
@@ -931,6 +933,34 @@ function loadVideo(src: string, timeoutMs = 30000): Promise<HTMLVideoElement> {
  * qu'une voix PAR SÉQUENCE est configurée : les deux systèmes ne se
  * superposent jamais. Oui pour les montages qui n'en ont aucune (legacy).
  */
+/** Fond en mouvement d'une séquence Titre / CTA (voir `fondRushTexte`). */
+export interface FondTexteComposer {
+  url: string; depuis?: number; jusqua?: number;
+  segments?: ReadonlyArray<{ url: string; depuis: number; jusqua: number }>;
+}
+
+/**
+ * Plan de lecture des passages ENCHAÎNÉS d'un fond Titre / CTA : chaque
+ * passage [depuis, jusqua] bout à bout sur `duree` ; la chaîne n'est rejouée
+ * que si la matière manque. Une fin de séquence plus courte que 0,2 s n'ouvre
+ * pas un nouveau passage (pas de flash) : le précédent la couvre. Pur.
+ */
+export function planFondEnchaine<E>(
+  segments: ReadonlyArray<{ el: E; depuis: number; longueur: number }>, duree: number,
+): Array<{ el: E; debut: number; fin: number; depuis: number }> {
+  const plan: Array<{ el: E; debut: number; fin: number; depuis: number }> = [];
+  if (!segments.length || !(duree > 0)) return plan;
+  for (let k = 0, t = 0; t < duree - 1e-6; k++) {
+    const s = segments[k % segments.length];
+    const L = Math.max(0.3, s.longueur);
+    let fin = Math.min(duree, t + L);
+    if (duree - fin < 0.2) fin = duree;
+    plan.push({ el: s.el, debut: t, fin, depuis: s.depuis });
+    t = fin;
+  }
+  return plan;
+}
+
 export function voixGlobaleActive(options: Pick<ComposerOptions, 'sequenceVoiceUrls'>): boolean {
   const v = options.sequenceVoiceUrls;
   return !(v && Object.values(v).some((u) => typeof u === 'string' && u.length > 0));
@@ -4438,6 +4468,8 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
   // Fonds en mouvement Titre / CTA (`fondRushTexte`) : un lecteur muet par
   // séquence, peint chaque image dans un calque à la taille de la vidéo
   // (couverture + assombrissement), que `pickSeqBg` sert comme une affiche.
+  /** Passages enchaînés : l'URL lue par chaque lecteur (recadrage propre à chaque rush). */
+  const urlDuLecteur = new Map<HTMLVideoElement, string>();
   const fondsTexte = new Map<string, {
     el: HTMLVideoElement; url: string; depuis: number; calque: HTMLCanvasElement; pret: boolean; seq: { type: string; duration: number };
     /** #613 — extraits DANS la plage propre (double tampon) quand elle est plus courte que la séquence. */
@@ -4455,6 +4487,28 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     const dureeEl = Number.isFinite(el.duration) ? el.duration : null;
     const calque = document.createElement('canvas');
     calque.width = width; calque.height = height;
+    // Passages propres ENCHAÎNÉS (`f.segments`, plusieurs rushes) : un lecteur par passage, joués bout à
+    // bout — fini le rebouclage visible du même plan (Titre 6 s sur 3,5 s de matière). Un lecteur
+    // indisponible : son passage est retiré ; moins de deux : la règle à un passage ci-dessous.
+    if (f.segments && f.segments.length >= 2) {
+      const lus: Array<{ el: HTMLVideoElement; depuis: number; longueur: number; url: string }> = [];
+      for (const [i, sg] of f.segments.entries()) {
+        const e = i === 0 && sg.url === f.url ? el : await loadVideo(sg.url).catch(() => null);
+        if (!e) continue;
+        e.muted = true; e.loop = false;
+        const d = Number.isFinite(e.duration) ? e.duration : null;
+        const depuisSg = Math.max(0, Math.min(sg.depuis, d !== null ? d - 0.3 : Infinity));
+        lus.push({ el: e, depuis: depuisSg, longueur: Math.min(sg.jusqua, d !== null ? d - 0.05 : sg.jusqua) - depuisSg, url: sg.url });
+      }
+      if (lus.length >= 2) {
+        if (!lus.some((x) => x.el === el)) libererLecteurs([el]);
+        for (const x of lus) urlDuLecteur.set(x.el, x.url);
+        const plan = planFondEnchaine(lus, seq.duration);
+        fondsTexte.set(type, { el: lus[0].el, url: lus[0].url, depuis: lus[0].depuis, calque, pret: false, seq, plan, els: lus.map((x) => x.el) });
+        continue;
+      }
+      libererLecteurs(lus.map((x) => x.el).filter((x) => x !== el));
+    }
     // #613 — plage PROPRE connue (`jusqua`, `plansPropres`) : le fond ne joue que [depuis, jusqua].
     // Démo « LE SPORT » : le CTA partait dans l'image figée du 3e rush (gel 0,27 s + flash) et le
     // Titre rebouclait sur le reste d'un autre plan. Plage plus courte que la séquence : elle est
@@ -4490,12 +4544,12 @@ export async function composeVideo(options: ComposerOptions): Promise<{ video: B
     if (!c) return;
     c.clearRect(0, 0, width, height);
     // Recadrage : la même résolution que l'aperçu (`fondsRushProjet`) et que la séquence Vidéo.
-    if (!peindreRushSousCartes(c, width, height, el, recadragePourRushPeint(f.url, { rushTransforms: options.rushTransforms, rushTransform: options.rushTransform, videoUrl: options.videoUrl }), lutGrader)) return;
+    if (!peindreRushSousCartes(c, width, height, el, recadragePourRushPeint(urlDuLecteur.get(el) ?? f.url, { rushTransforms: options.rushTransforms, rushTransform: options.rushTransform, videoUrl: options.videoUrl }), lutGrader)) return;
     c.fillStyle = `rgba(0,0,0,${ASSOMBRISSEMENT_FOND_TEXTE})`;
     c.fillRect(0, 0, width, height);
     f.pret = true;
   };
-  if (fondsTexte.size) console.log('[Composer] Fonds en mouvement :', Array.from(fondsTexte.entries()).map(([k, f]) => `${k}=${f.url.split('/').pop()}@${f.depuis.toFixed(1)}s`).join(' | '));
+  if (fondsTexte.size) console.log('[Composer] Fonds en mouvement :', Array.from(fondsTexte.entries()).map(([k, f]) => `${k}=${f.plan.map((p) => `${(urlDuLecteur.get(p.el) ?? f.url).split('/').pop()}@${p.depuis.toFixed(2)}s→${p.debut.toFixed(2)}-${p.fin.toFixed(2)}`).join(' + ')}`).join(' | '));
 
   console.log('[Composer] Duration:', totalDuration.toFixed(1), 's | Sequences:', sequences.map(s => s.type).join(' → '));
 
