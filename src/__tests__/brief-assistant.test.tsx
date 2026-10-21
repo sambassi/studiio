@@ -203,7 +203,12 @@ describe('UI — Brief récurrent', () => {
     expect(document.querySelector('[data-brief-conflit]')).toBeNull();
     expect(commit).toHaveBeenCalledTimes(1);
     expect((screen.getByLabelText(/Objectif de la vidéo/) as HTMLTextAreaElement).value).not.toBe('remplir ma salle de sport');
-    expect(document.querySelector('[data-autopilot-brief-recap-coherent]')!.textContent).toContain('Brief cohérent avec le thème Finance');
+    // UX premium : un petit indicateur « Cohérent » ; la phrase complète reste
+    // en libellé (title) et dans l'icône Info du récapitulatif.
+    const coherent = document.querySelector('[data-autopilot-brief-recap-coherent]')!;
+    expect(coherent.textContent).toContain('Cohérent');
+    expect(coherent.getAttribute('title')).toContain('Brief cohérent avec le thème Finance');
+    expect(document.querySelector('[data-infobulle="brief-recap"]')!.textContent).toContain('Brief cohérent avec le thème Finance');
     // Le texte remplacé se rétablit en un clic.
     fireEvent.click(document.querySelector('[data-brief-retablir="objectif"]')!);
     expect((screen.getByLabelText(/Objectif de la vidéo/) as HTMLTextAreaElement).value).toBe('remplir ma salle de sport');

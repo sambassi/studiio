@@ -27,6 +27,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Pause, Play, RotateCcw, UserRound } from 'lucide-react';
 import { formatSecondes, type EtapeApercu, type LigneChronologie } from '@/lib/creer/medias-video';
+import InfoBulle from '@/components/ui/InfoBulle';
 import ChronologieMontage, { segmentsChronologie, type SegmentChronologie } from '@/components/creer/ChronologieMontage';
 import { transformeKenBurns } from '@/lib/creer/ken-burns';
 
@@ -58,6 +59,12 @@ export interface ApercuMontageListeProps {
   titre?: string;
   /** Ligne sous l'en-tête — défaut : l'ordre de la liste puis le CTA. */
   sousTitre?: string;
+  /**
+   * Le sous-titre passe derrière une icône Info près du titre (détail à la
+   * demande, docs/UX-PREMIUM.md) au lieu d'une ligne toujours visible.
+   * Défaut `false` : Créer garde sa ligne.
+   */
+  sousTitreEnInfo?: boolean;
   /** « Remplacer » un média de la chronologie (flux de l'appelant). Absent : pas de bouton. */
   onRemplacer?: (s: SegmentChronologie) => void;
   /** Vignettes déjà connues des médias (URL du média → URL de sa vignette). */
@@ -214,8 +221,17 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
     >
       <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-gray-100">{p.titre ?? 'Aperçu du montage'}</h3>
-          <p className="text-[11px] text-gray-500">{p.sousTitre ?? "Séquence Vidéo dans l'ordre de la liste, puis le CTA."}</p>
+          <h3 className="flex items-center gap-1 text-sm font-semibold text-gray-100">
+            {p.titre ?? 'Aperçu du montage'}
+            {p.sousTitreEnInfo ? (
+              <InfoBulle label="À propos de l’aperçu du montage" marqueur="apercu-montage">
+                <span className="block" data-apercu-montage-sous-titre>{p.sousTitre ?? "Séquence Vidéo dans l'ordre de la liste, puis le CTA."}</span>
+              </InfoBulle>
+            ) : null}
+          </h3>
+          {p.sousTitreEnInfo ? null : (
+            <p className="text-[11px] text-gray-500" data-apercu-montage-sous-titre>{p.sousTitre ?? "Séquence Vidéo dans l'ordre de la liste, puis le CTA."}</p>
+          )}
         </div>
         <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0" data-apercu-montage-temps>{mmss(t)} / {mmss(total)}</span>
       </div>

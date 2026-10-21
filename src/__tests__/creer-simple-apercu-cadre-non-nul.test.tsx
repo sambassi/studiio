@@ -169,14 +169,23 @@ describe('L indice « double-clic » de l Autopilote se voit', () => {
     }
   });
 
-  it('c est un encart, pas une ligne noyee dans le gris', () => {
-    // LOT UX : le choix du mode n'a plus d'aperçu — on ouvre l'Autopilote, où il vit toujours.
+  it('UX premium : plus d’encart permanent, l’aide est à la demande derrière une icône Info', () => {
+    // Le grand encadré violet a été retiré (docs/UX-PREMIUM.md) : l'aide vit
+    // dans l'InfoBulle du titre « Exemple de style », ouverte au clic.
     window.localStorage.setItem('studiio:creer:parcours', 'autopilote');
     render(<AssistantWizard />);
     const aide = document.querySelector('[data-autopilot-apercu-aide]') as HTMLElement;
-    expect(aide.className).toMatch(/border/);
+    expect(aide.className).not.toMatch(/border/);
+    const bulle = aide.closest('[data-infobulle="apercu-style"]') as HTMLElement;
+    expect(bulle).toBeTruthy();
+    const bouton = bulle.querySelector('[data-infobulle-bouton]') as HTMLButtonElement;
     // Une icone lucide, jamais un emoji.
-    expect(aide.querySelector('svg')).toBeTruthy();
+    expect(bouton.querySelector('svg')).toBeTruthy();
+    expect(bouton.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(bouton);
+    expect(bouton.getAttribute('aria-expanded')).toBe('true');
+    expect((bulle.querySelector('[data-infobulle-panneau]') as HTMLElement).hidden).toBe(false);
+    expect(aide.textContent).toContain('Double-cliquez');
     expect(aide.textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
   });
 });

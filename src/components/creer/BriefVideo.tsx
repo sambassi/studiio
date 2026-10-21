@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Pencil, Sparkles, Wand2 } from 'lucide-react';
+import InfoBulle from '@/components/ui/InfoBulle';
 import {
   BRIEF_KEYS, BRIEF_LABELS, BRIEF_MAX_CHARS, DUREES_BRIEF, DUREE_BRIEF_MIN, DUREE_BRIEF_MAX,
   RYTHMES_BRIEF, RYTHME_LABELS, briefRempli,
@@ -48,6 +49,7 @@ export default function BriefVideo({
   disabled = false,
   titre = 'Brief de la vidéo',
   aide = 'Un thème ne dit pas ce que la vidéo doit transmettre. Ces quatre lignes guident le contenu généré et la narration.',
+  aideDetail,
   idPrefix = 'brief',
   sujets,
   avecDureeRythme = false,
@@ -67,6 +69,8 @@ export default function BriefVideo({
   disabled?: boolean;
   titre?: string;
   aide?: string;
+  /** Détail de l'aide, à la demande (icône Info près du titre). Absent : pas d'icône. */
+  aideDetail?: string;
   /** Préfixe des `id` des champs — deux instances sur une même page ne doivent pas se lier. */
   idPrefix?: string;
   /** Le ou les thèmes choisis — active l'assistant de brief. */
@@ -153,7 +157,14 @@ export default function BriefVideo({
     <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-2.5" data-brief-video data-brief-theme={libelleTheme ?? ''}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-white">{titre}</div>
+          <div className="flex items-center gap-1 text-sm font-medium text-white">
+            {titre}
+            {aideDetail ? (
+              <InfoBulle label={`À propos du ${(titre ?? 'brief').toLowerCase()}`} titre={titre} marqueur="brief-aide">
+                <span className="block" data-brief-aide-detail>{aideDetail}</span>
+              </InfoBulle>
+            ) : null}
+          </div>
           <p className="text-[11px] text-gray-500 mt-0.5">{aide}</p>
         </div>
         {profil && (
@@ -453,6 +464,18 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
   const liste = (sujets ?? []).filter((s) => s && s.trim());
   const coherence = analyserCoherenceBrief(liste, brief);
   const sujetPrincipal = liste.length > 0 ? liste.map(themeLabel).join(', ') : null;
+  // Présentation SYNTHÉTIQUE (docs/UX-PREMIUM.md) : une grille libellé /
+  // valeur discrète ; ce qui signale un problème reste en clair ; le détail
+  // (score admin, fonctionnement de la narration) est à la demande. Le COÛT,
+  // lui, reste visible en une ligne : « Aucun coût à cette étape ».
+  const lignes: Array<{ cle: string; libelle: string; valeur: string; attr: Record<string, string | boolean> }> = [];
+  if (sujetPrincipal) lignes.push({ cle: 'sujet', libelle: liste.length > 1 ? 'Sujets' : 'Sujet principal', valeur: sujetPrincipal, attr: { 'data-autopilot-brief-recap-sujet': true } });
+  for (const k of BRIEF_KEYS) {
+    const v = (brief[k] ?? '').trim();
+    if (v) lignes.push({ cle: k, libelle: BRIEF_LABELS[k], valeur: brief[k] as string, attr: { 'data-autopilot-brief-recap-champ': k } });
+  }
+  if (brief.duree) lignes.push({ cle: 'duree', libelle: 'Durée cible', valeur: `${brief.duree} s`, attr: { 'data-autopilot-brief-recap-duree': true } });
+  if (brief.rythme) lignes.push({ cle: 'rythme', libelle: 'Rythme', valeur: RYTHME_LABELS[brief.rythme], attr: { 'data-autopilot-brief-recap-rythme': true } });
   return (
     <div
       className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-2"
@@ -460,42 +483,49 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
       data-brief-coherence={coherence.niveau}
       data-brief-score={coherence.score ?? ''}
     >
-      <div className="text-sm font-medium text-white">Ce que dira chaque vidéo</div>
-      <ul className="space-y-1">
-        {sujetPrincipal && (
-          <li className="text-xs" data-autopilot-brief-recap-sujet>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">{liste.length > 1 ? 'Sujets' : 'Sujet principal'}</span>
-            <span className="text-gray-300">{sujetPrincipal}</span>
-          </li>
+      <div className="flex items-center gap-1.5">
+        <div className="text-sm font-medium text-white">Ce que dira chaque vidéo</div>
+        {coherence.niveau === 'bonne' && (
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-[11px] text-emerald-400 order-last"
+            data-autopilot-brief-recap-coherent
+            title={`Brief cohérent avec ${liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}`}
+          >
+            <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+            Cohérent
+          </span>
         )}
-        {BRIEF_KEYS.filter((k) => (brief[k] ?? '').trim()).map((k) => (
-          <li key={k} className="text-xs" data-autopilot-brief-recap-champ={k}>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">{BRIEF_LABELS[k]}</span>
-            <span className="text-gray-300">{brief[k]}</span>
-          </li>
-        ))}
-        {brief.duree && (
-          <li className="text-xs" data-autopilot-brief-recap-duree>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">Durée cible</span>
-            <span className="text-gray-300">{brief.duree} s</span>
-          </li>
-        )}
-        {brief.rythme && (
-          <li className="text-xs" data-autopilot-brief-recap-rythme>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">Rythme</span>
-            <span className="text-gray-300">{RYTHME_LABELS[brief.rythme]}</span>
-          </li>
-        )}
-      </ul>
+        <InfoBulle label="À propos de ce que dira chaque vidéo" titre="Ce que dira chaque vidéo" marqueur="brief-recap">
+          <span className="block" data-autopilot-brief-recap-note>
+            La narration exacte de chaque vidéo est produite à chaque cycle, à partir de ce brief et du
+            sujet du jour. Aucun audio n’existe avant le rendu — rien n’est généré ni facturé ici.
+          </span>
+          {coherence.niveau === 'bonne' && (
+            <span className="block text-emerald-400">
+              Brief cohérent avec {liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}.
+            </span>
+          )}
+          {admin && coherence.score !== null && (
+            <span className="block text-[10px] text-gray-500" data-autopilot-brief-recap-score>Score de cohérence (admin) : {coherence.score}/100</span>
+          )}
+        </InfoBulle>
+      </div>
+      {lignes.length > 0 && (
+        <dl
+          className="grid gap-x-3 gap-y-1 text-xs"
+          style={{ gridTemplateColumns: 'minmax(0, max-content) minmax(0, 1fr)' }}
+        >
+          {lignes.map((l) => (
+            <div key={l.cle} className="contents" {...l.attr}>
+              <dt className="text-[11px] text-gray-500">{l.libelle}</dt>
+              <dd className="min-w-0 break-words text-gray-300">{l.valeur}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {!rempli && (
         <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-vide>
           Aucun brief : chaque vidéo ne dira que ce que son sujet du jour inspire.
-        </p>
-      )}
-      {coherence.niveau === 'bonne' && (
-        <p className="flex items-start gap-1.5 text-[11px] text-emerald-400" data-autopilot-brief-recap-coherent>
-          <CheckCircle2 className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>Brief cohérent avec {liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}</span>
         </p>
       )}
       {coherence.niveau === 'a-verifier' && (
@@ -508,16 +538,8 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
           </span>
         </p>
       )}
-      {admin && coherence.score !== null && (
-        <p className="text-[10px] text-gray-500" data-autopilot-brief-recap-score>Score de cohérence (admin) : {coherence.score}/100</p>
-      )}
-      <p className="flex items-start gap-1.5 text-[11px] text-gray-500" data-autopilot-brief-recap-note>
-        <Info className="w-3 h-3 mt-0.5 shrink-0" />
-        <span>
-          La narration exacte de chaque vidéo est produite à chaque cycle, à partir de ce brief et du
-          sujet du jour. Aucun audio n’existe avant le rendu — rien n’est généré ni facturé ici.
-        </span>
-      </p>
+      {/* Information de COÛT : jamais masquée, en une ligne. */}
+      <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-cout>Aucun coût à cette étape</p>
     </div>
   );
 }
