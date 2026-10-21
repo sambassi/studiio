@@ -73,6 +73,16 @@ export const ETAPES_PRODUCTION: ReadonlyArray<{ etape: EtapeProduction; libelle:
  * un pourcentage SEULEMENT pendant la composition (images rendues). Aux
  * autres étapes : aucun chiffre (barre indéterminée). Pure.
  */
+/**
+ * Pourcentage RÉEL du montage affiché (images rendues, 0..1 → 0..99) ;
+ * `undefined` sans mesure. Plafonné à 99 : 100 % n'est dit qu'une fois la
+ * vidéo finale livrée. Partagé avec le suivi « avec avatar ». Pure.
+ */
+export function pourcentageMontageAffiche(avancement: unknown): number | undefined {
+  if (typeof avancement !== 'number' || !Number.isFinite(avancement)) return undefined;
+  return Math.min(99, Math.round(Math.min(1, Math.max(0, avancement)) * 100));
+}
+
 export function affichageProduction(p: { etape?: unknown; avancement?: unknown } | null | undefined): {
   etapes: Array<{ libelle: string; etat: 'terminee' | 'courante' | 'a_venir' }>;
   message: string;
@@ -87,7 +97,9 @@ export function affichageProduction(p: { etape?: unknown; avancement?: unknown }
   const message = etape ? LIBELLES_ETAPES[etape] : 'Démarrage…';
   const a = p?.avancement;
   if (etape === 'composition' && typeof a === 'number' && Number.isFinite(a)) {
-    return { etapes, message, pourcentage: Math.round(Math.min(1, Math.max(0, a)) * 100) };
+    // 100 % est réservé au MP4 LIVRÉ (brouillon relu dans le Calendrier) :
+    // la fin de la composition n'est pas la fin de la production.
+    return { etapes, message, pourcentage: pourcentageMontageAffiche(a) as number };
   }
   return { etapes, message };
 }

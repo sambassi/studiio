@@ -69,13 +69,16 @@ export async function GET(req?: Request) {
   // et, tant qu'il est en préparation, on fait avancer la file de ce compte.
   let jumeau = null;
   let manuel = null;
-  if (!progression && !resultat) {
+  if (!resultat) {
+    // Avec avatar, le montage final (finaliseur) publie aussi une
+    // `progression` mesurée : la file reste lue pour que l'écran garde le
+    // suivi « avatar » et y montre ce pourcentage réel.
     jumeau = await suiviProductionJumeau(userId).catch(() => null);
-    if (jumeau?.etat === 'en_preparation') avancerFileDuCompte(userId);
+    if (jumeau?.etat === 'en_preparation' && !progression) avancerFileDuCompte(userId);
     // L'écran suit un créneau PRÉCIS : un dépôt / un échec jumeau d'une AUTRE
     // production (plus ancienne) n'est pas le sien.
     if (suivi && jumeau && jumeau.etat !== 'en_preparation' && jumeau.jobId !== jobIdManuel(userId, suivi.date, suivi.time)) jumeau = null;
-    if (suivi && !jumeau) manuel = await suiviProductionManuelle(userId, suivi.date, suivi.time).catch(() => null);
+    if (suivi && !jumeau && !progression) manuel = await suiviProductionManuelle(userId, suivi.date, suivi.time).catch(() => null);
   }
   return NextResponse.json({ success: true, progression, resultat, jumeau, manuel, ...(production ? { production } : {}) });
 }

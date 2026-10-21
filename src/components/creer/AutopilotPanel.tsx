@@ -27,7 +27,7 @@ import { buildAutopilotSample, postDeLEchantillon } from '@/lib/autopilot/sample
 import { contexteDeLEchantillon, type ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
 import { signatureResume, type ResumeMediasApercu } from '@/lib/autopilot/apercu-medias';
 import ProgressStatus from '@/components/ux/ProgressStatus';
-import { affichageProduction } from '@/lib/autopilot/progression';
+import { affichageProduction, pourcentageMontageAffiche } from '@/lib/autopilot/progression';
 import { etapeDepuisStatutJumeauAutopilote, progressionVideoAvatar } from '@/lib/avatar/etapes-video-avatar';
 import {
   validerEtapeRushes, avatarPorteLaProduction, contenuRendu, sourcesEffectives, etatSourcesVisuelles,
@@ -38,8 +38,8 @@ import {
   sujetsCourants, type ConfigSources, type CreneauGabarit, type MediaStockRetenu,
 } from '@/lib/autopilot/sources';
 import { conseilDureeAvatar, DUREE_ESTIMEE_SANS_CIBLE, secondesReserveesEnveloppeJumeau } from '@/lib/autopilot/duree-cible';
-import { budgetAutopilote, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
-import { avecConfirmationCout } from '@/lib/fournisseurs/confirmation-client';
+import { budgetAutopilote, libelleCoutUsd, lignesBudgetAutopilote, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
+import { avecConfirmationCout, champsConfirmation } from '@/lib/fournisseurs/confirmation-client';
 import {
   boutonProduireVisible, libelleBoutonProduire, suiteEnvoi, messageErreurTechnique, lireProgressionServeur,
   repriseAuRetour, LECTURES_VIDES_MAX, MESSAGE_PRODUCTION_PERDUE, MESSAGE_PRODUCTION_INTERROMPUE, type EtatProduction,
@@ -437,6 +437,19 @@ const PLATEFORMES = [
   { id: 'facebook', label: 'Facebook' },
   { id: 'youtube', label: 'YouTube' },
 ];
+
+/**
+ * Le devis fournisseur (HeyGen) d'UNE vidéo avatar à montrer dans le cadre
+ * « Lancer le rendu » — et donc confirmé par ce clic. `null` : pas d'avatar,
+ * ou compte non admin (aucun coût fournisseur à confirmer). Pur.
+ */
+export function devisFournisseurProduction(
+  devis: { fournisseur: { devisParVideo: DevisFournisseur | null } | null } | null | undefined,
+  config: Parameters<typeof avatarActifConfig>[0],
+): DevisFournisseur | null {
+  if (!avatarActifConfig(config)) return null;
+  return devis?.fournisseur?.devisParVideo ?? null;
+}
 
 export default function AutopilotPanel({
   accent, onConfigChange, onPatchReady, onSessionChange, onVideoLancee, onApercuMediasChange,
@@ -1257,10 +1270,20 @@ export default function AutopilotPanel({
       // d'un sujet tiré ailleurs — voir `choisirContenuManuel`.
       // ADMIN + avatar : le coût HeyGen de CETTE vidéo est montré AVANT l'appel
       // (428 + devis) ; annuler = 0 appel, rien de réservé ni débité.
+      // UN CLIC : le coût fournisseur de la vidéo avatar est AFFICHÉ dans le
+      // cadre « Lancer le rendu » (`devisFournisseurProduction`) — ce clic le
+      // confirme, la requête part confirmée du premier coup. Sans cela, le
+      // serveur répondait 428 et une 2e fenêtre redemandait le même accord
+      // (2e clic). Si le moteur a changé depuis l'affichage, le serveur
+      // redemande (428) : jamais d'appel fournisseur sur un devis non montré.
+      const devisMontre = devisFournisseurProduction(devis, config);
       const issue = await avecConfirmationCout((confirmation) => fetch('/api/autopilot/produire-maintenant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apercuSignature: signatureApercuAutopilote(config), ...(confirmation ?? {}) }),
+        body: JSON.stringify({
+          apercuSignature: signatureApercuAutopilote(config),
+          ...(confirmation ?? (devisMontre ? champsConfirmation(devisMontre) : {})),
+        }),
       }), { cle: 'autopilote:produire' });
       // « Opération annulée » SEULEMENT quand l'utilisateur a refusé le
       // coût ; 202 / 409 « en-cours » / verrou déjà pris : on SUIT le rendu
@@ -1284,7 +1307,7 @@ export default function AutopilotPanel({
     } finally {
       produireEnVolRef.current = false;
     }
-  }, [appliquerResultat, config]);
+  }, [appliquerResultat, config, devis]);
 
   /**
    * Le bloc « prochaines échéances » + « Produire un brouillon maintenant »,
@@ -1440,6 +1463,15 @@ export default function AutopilotPanel({
                 ? ` · solde actuel : ${devis.solde} crédits`
                 : ''}
             </p>
+            {(() => {
+              const d = devisFournisseurProduction(devis, config);
+              return d ? (
+                <p className="text-purple-100" data-autopilot-produire-cout-fournisseur>
+                  Coût fournisseur estimé (HeyGen, cette vidéo) : <strong>{d.coutUsd ? libelleCoutUsd(d.coutUsd) : 'inconnu'}</strong>
+                  {' '}— « Lancer le rendu » le confirme.
+                </p>
+              ) : null;
+            })()}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1482,13 +1514,22 @@ export default function AutopilotPanel({
         {produire.etat === 'jumeau' && (() => {
           // L'état RÉEL de la file : réservé → génération de l'avatar →
           // montage. Aucun pourcentage (le montage tourne côté serveur).
-          const prog = progressionVideoAvatar({ etape: etapeDepuisStatutJumeauAutopilote(suiviJumeauFile?.statut ?? 'en_attente') });
+          // Pendant le montage final, son avancement RÉEL (images rendues,
+          // plafonné à 99 % jusqu'au brouillon livré) ; sinon aucun chiffre.
+          const montageMesure = progressionProduction?.etape === 'composition'
+            ? pourcentageMontageAffiche(progressionProduction.avancement)
+            : undefined;
+          const prog = progressionVideoAvatar({
+            etape: progressionProduction ? 'montage' : etapeDepuisStatutJumeauAutopilote(suiviJumeauFile?.statut ?? 'en_attente'),
+            ...(montageMesure !== undefined ? { pourcentMontage: montageMesure } : {}),
+          });
           return (
             <div className="space-y-1" data-autopilot-produire-jumeau data-autopilot-jumeau-statut={suiviJumeauFile?.statut ?? ''}>
               <ProgressStatus
                 titre="Votre avatar se prépare"
                 statut="en_cours"
                 etapes={prog.etapes}
+                {...(prog.pourcentage !== undefined ? { pourcentage: prog.pourcentage } : {})}
                 description={prog.message}
                 detail={prog.detail ?? undefined}
                 {...(suiviJumeauFile?.depuis ? { debutLe: suiviJumeauFile.depuis } : {})}

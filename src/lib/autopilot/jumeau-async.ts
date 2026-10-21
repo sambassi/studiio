@@ -34,6 +34,7 @@
  * jamais un remplacement silencieux. La voix clonée reste la voix off.
  */
 
+import { noterProgression, effacerProgression } from '@/lib/autopilot/progression';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import {
   CODE_DUREE_A_CONFIRMER, dureeAConfirmerAvecAvatar, messageDureeAConfirmer,
@@ -643,18 +644,31 @@ async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promi
   if (await dejaRendu(ligne)) return;
   const s = ligne.snapshot;
   const tardif = await renduTardif(ligne);
-  const rendu = await produireUnMontage({
-    userId: ligne.user_id,
-    config: tardif.config,
-    post: s.post,
-    rang: s.rang,
-    now: s.now,
-    jobId: ligne.job_id,
-    slotKey: ligne.slot_key,
-    journal: s.journal ?? '[Autopilote/Jumeau]',
-    metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeau: true },
-    jumeauVideoUrl,
-  });
+  // Production MANUELLE (« Produire maintenant ») : l'écran suit l'avancement
+  // RÉEL du montage (images rendues), comme sans avatar — au lieu d'une
+  // barre figée sur « Montage ». Préfixe = `PREFIXE_JOB_MANUEL`
+  // (suivi-jumeau-manuel.ts, non importé : il importe ce module).
+  const manuel = ligne.job_id.startsWith('autopilote-manuel-');
+  let rendu: Awaited<ReturnType<typeof produireUnMontage>>;
+  try {
+    rendu = await produireUnMontage({
+      userId: ligne.user_id,
+      config: tardif.config,
+      post: s.post,
+      rang: s.rang,
+      now: s.now,
+      jobId: ligne.job_id,
+      slotKey: ligne.slot_key,
+      journal: s.journal ?? '[Autopilote/Jumeau]',
+      metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeau: true },
+      jumeauVideoUrl,
+      ...(manuel ? { onProgression: (etape, avancement) => noterProgression(ligne.user_id, etape, avancement) } : {}),
+    });
+  } finally {
+    // Fin (ou échec) du rendu : l'écran repasse sur l'état PROUVÉ de la file
+    // (`depose` seulement quand le brouillon est relu dans le Calendrier).
+    if (manuel) effacerProgression(ligne.user_id);
+  }
   await supabaseAdmin
     .from('autopilot_jumeau_attente')
     .update({ statut: 'rendu', post_id: rendu.postId, updated_at: new Date().toISOString() })
