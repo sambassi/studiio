@@ -189,7 +189,7 @@ describe('Debit : aucune nouvelle surface de facturation', () => {
   it('debite AVANT de livrer, contre une preuve serveur', () => {
     // L'ordre du socle : tentative, composition, televersement vers LA cle
     // attribuee, verification, puis seulement livraison.
-    expect(wizard).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu)");
+    expect(wizard).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu, {");
     expect(wizard).toContain('rendreEtFacturer({');
   });
 

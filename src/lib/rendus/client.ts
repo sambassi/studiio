@@ -18,6 +18,10 @@
  * d'ici : le corps de la reservation ne porte que l'operation et le format.
  */
 
+import {
+  envoyerMontageDecoupe, abandonnerEnvoiDecoupe, SEUIL_DECOUPE, type EtatEnvoiDecoupe,
+} from '@/lib/rendus/envoi-montage';
+
 export type OperationRendu =
   | 'apercu' | 'bureau' | 'calendrier' | 'avance-brouillon' | 'avance-bureau';
 
@@ -43,6 +47,61 @@ export interface Livraison {
   jobId?: string;
   /** Ce qui a empeche la livraison, en clair. */
   motif?: string;
+  /** Ce que le compositeur a rendu a cote du montage (vignette…). */
+  annexe?: unknown;
+  /**
+   * L'envoi a echoue mais le montage est garde en memoire : un nouvel appel
+   * avec la meme `cleReprise` reprend l'ENVOI SEUL, sans recomposer.
+   */
+  reprenable?: boolean;
+}
+
+/**
+ * Un montage compose dont l'envoi a echoue — gardé tant que la page vit.
+ *
+ * Une seule place : un nouvel envoi d'un AUTRE contenu l'abandonne. La
+ * tentative reste `reserved` (aucun debit possible sans confirmation) ;
+ * `null` quand elle a ete close entre-temps : la reprise en ouvre une neuve,
+ * toujours sans recomposer.
+ */
+interface EnvoiEnAttente {
+  cle: string;
+  operation: OperationRendu;
+  format: 'reel' | 'tv';
+  tentative: Tentative | null;
+  blob: Blob;
+  annexe?: unknown;
+  decoupe: EtatEnvoiDecoupe;
+}
+let enAttente: EnvoiEnAttente | null = null;
+
+/** Un montage attend-il un nouvel essai d'envoi ? */
+export function envoiEnAttente(): boolean {
+  return enAttente !== null;
+}
+
+/** Libere le montage en attente : envoi decoupe abandonne, tentative close. */
+export async function oublierEnvoiEnAttente(): Promise<void> {
+  const e = enAttente;
+  enAttente = null;
+  if (!e?.tentative) return;
+  await abandonnerEnvoiDecoupe(e.tentative.jobId, e.decoupe);
+  await abandonner(e.tentative.jobId, 'envoi abandonne');
+}
+
+/**
+ * Efface le montage en attente SANS appel reseau (tests, ou page qui
+ * repart de zero). La tentative laissee `reserved` ne debite rien.
+ */
+export function reinitialiserEnvoiEnAttente(): void {
+  enAttente = null;
+}
+
+/** L'echec dit-il que la tentative n'accepte plus d'envoi ? */
+function tentativeFermee(e: unknown): boolean {
+  const drapeau = (e as { tentativeClose?: boolean })?.tentativeClose;
+  if (typeof drapeau === 'boolean') return drapeau;
+  return e instanceof Error && /non_reserve|\b409\b/.test(e.message);
 }
 
 /** Messages destines a l'utilisateur, pas au journal. */
@@ -117,50 +176,142 @@ async function abandonner(jobId: string, motif: string): Promise<void> {
 export async function rendreEtFacturer(params: {
   operation: OperationRendu;
   format: 'reel' | 'tv';
-  composer: () => Promise<Blob>;
+  /** Le montage ; ou `{ video, annexe }` pour garder une vignette avec lui. */
+  composer: () => Promise<Blob | { video: Blob; annexe?: unknown }>;
   /** Signale l'avancement, si l'ecran veut l'afficher. */
   etape?: (texte: string) => void;
+  /**
+   * Signature du CONTENU. Fournie, un echec d'envoi garde le montage en
+   * memoire, et un nouvel appel avec la meme cle reprend l'envoi sans
+   * recomposer. Absente : comportement historique (tentative close).
+   */
+  cleReprise?: string;
 }): Promise<Livraison> {
-  const { operation, format, composer, etape } = params;
+  const { operation, format, composer, etape, cleReprise } = params;
 
-  etape?.('Ouverture du rendu…');
-  const tentative = await ouvrir(operation, format);
-  if (!tentative) return { ok: false, motif: 'socle_absent' };
+  const reprise = cleReprise && enAttente && enAttente.cle === cleReprise
+    && enAttente.operation === operation && enAttente.format === format
+    ? enAttente : null;
+  // Un autre contenu part : l'ancien montage en attente n'a plus d'avenir.
+  if (enAttente && !reprise) await oublierEnvoiEnAttente();
+  enAttente = null;
 
+  let tentative: Tentative;
   let blob: Blob;
-  try {
-    etape?.('Composition du montage…');
-    blob = await composer();
-  } catch (e) {
-    await abandonner(tentative.jobId, e instanceof Error ? e.message : 'composition');
-    return { ok: false, motif: 'composition', jobId: tentative.jobId };
+  let annexe: unknown;
+  let decoupe: EtatEnvoiDecoupe = { faits: new Set() };
+
+  if (reprise) {
+    // ── REPRISE : le montage est deja compose, on ne le refait pas ──────
+    blob = reprise.blob;
+    annexe = reprise.annexe;
+    if (reprise.tentative) {
+      tentative = reprise.tentative;
+      decoupe = reprise.decoupe;
+    } else {
+      etape?.('Ouverture du rendu…');
+      const neuve = await ouvrir(operation, format);
+      if (!neuve) {
+        enAttente = reprise;
+        return { ok: false, motif: 'socle_absent', reprenable: true };
+      }
+      tentative = neuve;
+    }
+  } else {
+    etape?.('Ouverture du rendu…');
+    const ouverte = await ouvrir(operation, format);
+    if (!ouverte) return { ok: false, motif: 'socle_absent' };
+    tentative = ouverte;
+
+    try {
+      etape?.('Composition du montage…');
+      const rendu = await composer();
+      if (rendu instanceof Blob) blob = rendu;
+      else { blob = rendu.video; annexe = rendu.annexe; }
+    } catch (e) {
+      await abandonner(tentative.jobId, e instanceof Error ? e.message : 'composition');
+      return { ok: false, motif: 'composition', jobId: tentative.jobId };
+    }
+
+    if (!blob || blob.size === 0) {
+      await abandonner(tentative.jobId, 'montage vide');
+      return { ok: false, motif: 'composition', jobId: tentative.jobId };
+    }
   }
 
-  if (!blob || blob.size === 0) {
-    await abandonner(tentative.jobId, 'montage vide');
-    return { ok: false, motif: 'composition', jobId: tentative.jobId };
-  }
-
+  const envoyer = async () => {
+    let envoye = false;
+    etape?.(reprise ? 'Reprise de l’envoi…' : 'Envoi du montage…');
+    // ── Gros montage : envoi DECOUPE, chaque morceau re-essayable ───────
+    // Un PUT unique de plusieurs dizaines de Mo n'a aucun point de reprise :
+    // c'est l'echec `ERR_TIMED_OUT` vu en production sur 62 Mo. Le serveur
+    // repond `indisponible` sans endpoint public : on garde alors l'envoi
+    // historique ci-dessous, inchange.
+    if (blob.size > SEUIL_DECOUPE) {
+      const r = await envoyerMontageDecoupe(tentative.jobId, blob, {
+        onProgress: (p) => etape?.(`Envoi du montage… ${p} %`),
+        etat: decoupe,
+        conserverSiEchec: !!cleReprise,
+      });
+      envoye = r.ok;
+    }
+    if (!envoye) await envoyerEnUnBloc(tentative, blob);
+  };
   try {
-    etape?.('Envoi du montage…');
-    tentative.uploadUrl = await cibleApresComposition(tentative);
-    // Le relais de l'application est SAME-ORIGIN et authentifie par le
-    // cookie de session : sans `credentials`, `fetch` ne l'envoie pas sur
-    // une requete construite a la main, et la route repondrait 401. Une URL
-    // presignee, elle, est absolue et ne doit recevoir aucun cookie.
-    const relais = tentative.uploadUrl.startsWith('/');
-    const put = await fetch(tentative.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': blob.type || 'video/webm' },
-      body: blob,
-      ...(relais ? { credentials: 'include' as const } : {}),
-    });
-    if (!put.ok) throw new Error(`PUT ${put.status}`);
+    try {
+      await envoyer();
+    } catch (e) {
+      // Reprise sur une tentative close entre-temps (expiree, annulee
+      // ailleurs) : on en ouvre UNE neuve et on renvoie le meme montage,
+      // toujours sans recomposer. Une seule fois.
+      if (!reprise || !tentativeFermee(e)) throw e;
+      await abandonnerEnvoiDecoupe(tentative.jobId, decoupe);
+      const neuve = await ouvrir(operation, format);
+      if (!neuve) throw e;
+      tentative = neuve;
+      decoupe = { faits: new Set() };
+      await envoyer();
+    }
   } catch (e) {
+    if (cleReprise) {
+      // Rien n'est debite, rien n'est livre : le montage reste en memoire.
+      const fermee = tentativeFermee(e);
+      if (fermee) await abandonnerEnvoiDecoupe(tentative.jobId, decoupe);
+      enAttente = {
+        cle: cleReprise, operation, format, blob, annexe, decoupe,
+        tentative: fermee ? null : tentative,
+      };
+      return { ok: false, motif: 'televersement', jobId: tentative.jobId, reprenable: true };
+    }
     await abandonner(tentative.jobId, e instanceof Error ? e.message : 'televersement');
     return { ok: false, motif: 'televersement', jobId: tentative.jobId };
   }
 
+  const livraison = await confirmerEtLivrer(tentative, blob, etape);
+  return { ...livraison, annexe };
+}
+
+/** L'envoi historique : un seul PUT vers la cible remise apres composition. */
+async function envoyerEnUnBloc(tentative: Tentative, blob: Blob): Promise<void> {
+  tentative.uploadUrl = await cibleApresComposition(tentative);
+  // Le relais de l'application est SAME-ORIGIN et authentifie par le
+  // cookie de session : sans `credentials`, `fetch` ne l'envoie pas sur
+  // une requete construite a la main, et la route repondrait 401. Une URL
+  // presignee, elle, est absolue et ne doit recevoir aucun cookie.
+  const relais = tentative.uploadUrl.startsWith('/');
+  const put = await fetch(tentative.uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': blob.type || 'video/webm' },
+    body: blob,
+    ...(relais ? { credentials: 'include' as const } : {}),
+  });
+  if (!put.ok) throw new Error(`PUT ${put.status}`);
+}
+
+/** Fait confirmer par le serveur — qui seul debite — puis livre. */
+async function confirmerEtLivrer(
+  tentative: Tentative, blob: Blob, etape?: (texte: string) => void,
+): Promise<Livraison> {
   etape?.('Vérification…');
   const res = await fetch(`/api/render/jobs/${tentative.jobId}/confirm`, { method: 'POST' });
   const json = await res.json().catch(() => null);

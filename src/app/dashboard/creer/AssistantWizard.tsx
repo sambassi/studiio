@@ -5183,6 +5183,13 @@ export default function AssistantWizard() {
    * montage… » qui ne le concerne pas.
    */
   const [renderTarget, setRenderTarget] = useState<'calendrier' | 'bureau' | 'apercu' | null>(null);
+  /**
+   * Destination dont l'ENVOI a echoue apres un montage termine, ou `null`.
+   * Le montage reste en memoire (`rendus/client`, `cleReprise`) : le bouton
+   * « Réessayer l'envoi » relance la meme destination, qui reprend l'envoi
+   * sans recomposer. Rien n'a ete debite ni publie.
+   */
+  const [repriseEnvoi, setRepriseEnvoi] = useState<'calendrier' | 'bureau' | 'apercu' | null>(null);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Le message d'erreur vit en haut de l'écran ; le bouton « Composer et
@@ -9270,6 +9277,7 @@ export default function AssistantWizard() {
    */
   const runRender = async (destination: 'calendrier' | 'bureau' | 'apercu') => {
     if (!prendre(VERROU.serie)) return;
+    setRepriseEnvoi(null);
     try { await runRenderInterne(destination); }
     finally { rendre(VERROU.serie); }
   };
@@ -10411,7 +10419,12 @@ export default function AssistantWizard() {
           // -> verification serveur -> livraison. Il LEVE si le serveur ne
           // confirme pas, et le `catch` de la boucle arrete l'envoi : aucun
           // post n'est cree pour un montage non prouve.
-          composed = await composerEtFacturer('calendrier', renderFormat, optionsRendu);
+          composed = await composerEtFacturer('calendrier', renderFormat, optionsRendu, {
+            etape: (t) => setRenderStage(t),
+            // Echec d'envoi : le montage reste en memoire, « Réessayer
+            // l'envoi » le renvoie sans recomposer (meme contenu = meme cle).
+            cleReprise: signature,
+          });
         } else {
           // ── Aperçu et bureau : parcours facturé COMPLET ──────────────
           // Le serveur ouvre une tentative et attribue une clé de stockage ;
@@ -10424,6 +10437,7 @@ export default function AssistantWizard() {
             operation: destination === 'apercu' ? 'apercu' : 'bureau',
             format: renderFormat,
             etape: (t) => setRenderStage(t),
+            cleReprise: signature,
             composer: async () => {
               try {
                 const rendu = await composeVideo(optionsRendu);
@@ -10444,9 +10458,15 @@ export default function AssistantWizard() {
             // confirmé. La tentative est déjà close de son côté.
             setError(mediaManquant ?? messagePour(livraison.motif));
             majItem(itemEnCours, 'echoue', { erreur: livraison.motif || 'rendu refusé' });
+            if (livraison.reprenable && total === 1) setRepriseEnvoi(destination);
             return;
           }
 
+          // Reprise d'envoi : le compositeur n'a pas tourne, la vignette
+          // revient avec le montage garde en memoire.
+          if (destination === 'apercu' && !vignetteApercu && livraison.annexe instanceof Blob) {
+            vignetteApercu = livraison.annexe;
+          }
           renduConfirme = { jobId: livraison.jobId ?? '', url: livraison.url ?? null };
           composed = {
             blob: livraison.blob,
@@ -10924,6 +10944,9 @@ export default function AssistantWizard() {
           ? `Le rendu a échoué : ${err.message}`
           : 'Le rendu du montage a échoué. Réessayez.',
       );
+      // Envoi seul en echec, montage garde : on propose de le renvoyer. Pas
+      // sur une serie — la relancer recreerait les posts deja envoyes.
+      if ((err as { reprenable?: boolean })?.reprenable && total === 1) setRepriseEnvoi(destination);
     } finally {
       setSending(false);
       setRenderTarget(null);
@@ -11487,6 +11510,14 @@ export default function AssistantWizard() {
               </ul>
             )}
             </div>
+            {repriseEnvoi && !sending && (
+              <button type="button" data-reprise-envoi
+                onClick={() => { void runRender(repriseEnvoi); }}
+                className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-red-400/40 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-white/10">
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Réessayer l’envoi
+              </button>
+            )}
             {/* Quota UTILISATEUR épuisé : le chemin vers son abonnement Studiio. */}
             {error === MESSAGES_AVATAR.quotaEpuise && (
               <a href={URL_ABONNEMENT} data-creer-erreur-abonnement className="ml-auto shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500">
