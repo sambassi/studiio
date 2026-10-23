@@ -122,7 +122,7 @@ describe('A. traiterActionDecoupe — le depot, rien que le depot', () => {
     expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: a.body.uploadId, partNumber: 1 }, d)).status).toBe(409);
   });
 
-  it('uploadId etranger -> 409 sur sign / complete / abort ; partNumber au-dela de ceil(taille / 8 Mio) -> 400', async () => {
+  it('uploadId etranger -> 409 sur sign / complete / abort ; partNumber au-dela de ceil(taille / 5 Mio) -> 400', async () => {
     const s3 = s3Factice();
     const d = { client: s3.client, signeur: s3.signeur };
     const { body } = await traiterActionDecoupe(LIGNE, 'multipart-initiate', { taille: 17 * MIO }, d);
@@ -133,9 +133,9 @@ describe('A. traiterActionDecoupe — le depot, rien que le depot', () => {
       expect(r.status, action).toBe(409);
       expect(r.body.motif).toBe('envoi_inconnu');
     }
-    // 17 Mio -> 3 morceaux au plus.
-    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 3 }, d)).status).toBe(200);
-    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 4 }, d)).status).toBe(400);
+    // 17 Mio -> 4 morceaux de 5 Mio au plus.
+    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 4 }, d)).status).toBe(200);
+    expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 5 }, d)).status).toBe(400);
     expect((await traiterActionDecoupe(LIGNE, 'multipart-sign', { uploadId: body.uploadId, partNumber: 10_000 }, d)).status).toBe(400);
     // L'assemblage se juge sur la taille DECLAREE, pas sur celle annoncee ensuite.
     expect((await traiterActionDecoupe(LIGNE, 'multipart-complete', { uploadId: body.uploadId, taille: 9 * MIO }, d)).status).toBe(400);
@@ -197,15 +197,46 @@ describe('B. envoyerMontageDecoupe — reprise et honnetete', () => {
         onOctets(corps.size);
       },
     });
-    expect(r).toEqual({ ok: true, taille: 30 * MIO, morceaux: 4 });
+    expect(r).toEqual({ ok: true, taille: 30 * MIO, morceaux: 6 });
     expect(essais.get(2)).toBe(2);
     expect(essais.get(3)).toBe(2);
     const obj = s3.objets.get('moi/rendus/j1.depot.webm')!;
     expect(createHash('sha256').update(obj.data).digest('hex')).toBe(sha);
     // Une signature par ESSAI : jamais une URL expiree reutilisee.
-    expect(appels.filter((a) => a.action === 'multipart-sign')).toHaveLength(6);
+    expect(appels.filter((a) => a.action === 'multipart-sign')).toHaveLength(8);
     expect(progres.at(-1)).toBe(100);
     expect(Math.max(...progres.slice(0, -1))).toBeLessThanOrEqual(99);
+  });
+
+  it('apres un morceau echoue (coupure du proxy a 60 s), un seul morceau en vol a la fois', async () => {
+    const s3 = s3Factice();
+    brancher(s3);
+    const { blob, sha } = blobAleatoire(30 * MIO);
+    let enCours = 0;
+    let maxAvant = 0;
+    let echoue = false;
+    const apresEchec: number[] = [];
+    const r = await envoyerMontageDecoupe('j1', blob, {
+      attente: () => 0,
+      transport: async (url, corps, onOctets) => {
+        enCours += 1;
+        if (echoue) apresEchec.push(enCours); else maxAvant = Math.max(maxAvant, enCours);
+        try {
+          await new Promise((res) => setTimeout(res, 5));
+          if (!echoue && new URL(url).searchParams.get('partNumber') === '1') {
+            echoue = true;
+            throw new EchecEnvoi('morceau : connexion perdue');
+          }
+          await s3.deposer(url, corps);
+          onOctets(corps.size);
+        } finally { enCours -= 1; }
+      },
+    });
+    expect(r).toEqual({ ok: true, taille: 30 * MIO, morceaux: 6 });
+    expect(maxAvant).toBe(3);
+    expect(apresEchec.length).toBeGreaterThan(0);
+    expect(Math.max(...apresEchec)).toBe(1);
+    expect(createHash('sha256').update(s3.objets.get('moi/rendus/j1.depot.webm')!.data).digest('hex')).toBe(sha);
   });
 
   it('echec definitif d un morceau -> EchecEnvoi, envoi decoupe abandonne, aucun objet', async () => {
@@ -438,7 +469,7 @@ decrireMinio('C. bout en bout — MinIO local, 60 Mo, rendreEtFacturer', () => {
     expect(envoiEnAttente()).toBe(true);
     expect(await envoisIncomplets()).toBe(1); // morceaux deposes conserves
     const deja = new Set(etat.morceauxEnvoyes);
-    expect(deja.size).toBe(7); // 8 morceaux, le 6e jamais passe
+    expect(deja.size).toBe(11); // 12 morceaux de 5 Mio, le 6e jamais passe
 
     // Le reseau revient ; l'utilisateur clique « Réessayer l'envoi ».
     pannes.couperToujours = false;
@@ -480,6 +511,78 @@ decrireMinio('C. bout en bout — MinIO local, 60 Mo, rendreEtFacturer', () => {
     const t2 = [...etat.tentatives.values()][1];
     expect((await sha256Objet(t2.cle_objet)).sha).toBe(sha);
     expect(await envoisIncomplets()).toBe(0);
+  }, 180_000);
+
+  /**
+   * Le proxy de `s3.studiio.pro` ferme toute requete au-dela de 60 s sans
+   * reponse (mesure le 23/10). Reproduit ici a l'echelle 1/20 : 3 s de
+   * coupure, 2 Mio/s de debit montant PARTAGE entre les connexions.
+   */
+  it('proxy qui coupe a 3 s, debit 2 Mio/s : PUT unique et 3 x 8 Mio echouent ; 5 Mio adaptatif passe, fichier identique', async () => {
+    const http = await import('http');
+    const COUPURE_MS = 3_000;
+    const DEBIT = 2 * MIO;
+    let libre = Date.now();
+    const proxy = http.createServer((req, res) => {
+      const amont = http.request({ host: hote, port: Number(port), method: req.method, path: req.url, headers: req.headers }, (r) => {
+        res.writeHead(r.statusCode ?? 502, r.headers); r.pipe(res);
+      });
+      amont.on('error', () => res.destroy());
+      const coupe = setTimeout(() => { amont.destroy(); req.socket.destroy(); }, COUPURE_MS);
+      res.on('close', () => clearTimeout(coupe));
+      req.on('data', (c: Buffer) => {
+        req.pause();
+        libre = Math.max(Date.now(), libre) + (c.length / DEBIT) * 1000;
+        setTimeout(() => { amont.write(c); req.resume(); }, libre - Date.now());
+      });
+      req.on('end', () => { setTimeout(() => amont.end(), Math.max(0, libre - Date.now())); });
+    });
+    await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', () => r()));
+    const portProxy = (proxy.address() as { port: number }).port;
+    const portPublic = process.env.MINIO_PUBLIC_PORT;
+    process.env.MINIO_PUBLIC_PORT = String(portProxy);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { clientEnvoiDecoupe, signeurPartiesPublic, signeurPublic } = await import('@/lib/storage/minio-client');
+      const { blob, sha } = blobAleatoire(20 * MIO);
+
+      // Avant #619 : un seul PUT de 20 Mio -> 10 s > 3 s, coupe.
+      const urlUnique = await signeurPublic()!.presignedPutObject('media', `${USER}/rendus/unique.webm`, 300);
+      await expect(vraiFetch(urlUnique, { method: 'PUT', body: blob })).rejects.toBeTruthy();
+
+      const lancer = (id: string, options: Parameters<typeof envoyerMontageDecoupe>[2]) => {
+        const t = { id, bucket: 'media', cle_objet: `${USER}/rendus/${id}.webm`, etat: 'reserved' };
+        toutesLesCles.push(t.cle_objet);
+        globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+          const u = String(url);
+          if (u.startsWith('/api/')) {
+            const corps = JSON.parse(String(init?.body || '{}'));
+            const r = await traiterActionDecoupe(t, corps.action, corps, {
+              client: clientEnvoiDecoupe(), signeur: signeurPartiesPublic(), urlSure: () => true,
+            });
+            return new Response(JSON.stringify(r.body), { status: r.status });
+          }
+          return vraiFetch(u, init);
+        }) as typeof fetch;
+        return envoyerMontageDecoupe(id, blob, { attente: () => 200, ...options });
+      };
+
+      // Premiere version de #619 : 3 morceaux de 8 Mio en parallele -> toujours coupes.
+      libre = Date.now();
+      await expect(lancer('proxy-8mio', { tailleMorceau: 8 * MIO, parallelisme: 3 })).rejects.toBeInstanceOf(EchecEnvoi);
+
+      // Correction : 5 Mio, et un seul morceau en vol des le premier echec.
+      libre = Date.now();
+      const t0 = Date.now();
+      const r = await lancer('proxy-5mio', {});
+      console.info(`[preuve proxy] 20 Mio en ${Date.now() - t0} ms, ${r.ok ? r.morceaux : 0} morceaux`);
+      expect(r).toEqual({ ok: true, taille: 20 * MIO, morceaux: 4 });
+      expect(await sha256Objet(`${USER}/rendus/proxy-5mio.depot.webm`)).toEqual({ sha, taille: 20 * MIO });
+      expect(await envoisIncomplets()).toBe(0);
+    } finally {
+      process.env.MINIO_PUBLIC_PORT = portPublic;
+      await new Promise((r) => proxy.close(r));
+    }
   }, 180_000);
 
   it('un AUTRE contenu efface le montage en attente (jamais d envoi d un montage perime)', async () => {

@@ -19,7 +19,7 @@ import { TAILLE_MORCEAU } from '@/lib/rendus/cible-upload';
 export { TAILLE_MORCEAU };
 /** En dessous, l'envoi en un bloc historique est garde tel quel. */
 export const SEUIL_DECOUPE = TAILLE_MORCEAU;
-/** Morceaux en vol simultanement. */
+/** Morceaux en vol simultanement ; 1 des le premier morceau echoue. */
 export const PARALLELISME = 3;
 /** Essais par morceau (le premier compris). */
 export const ESSAIS_PAR_MORCEAU = 4;
@@ -163,10 +163,23 @@ export async function envoyerMontageDecoupe(
     if (p !== dernierPourcent) { dernierPourcent = p; options.onProgress?.(p); }
   };
 
+  // Le proxy coupe toute requete au-dela de 60 s : des morceaux paralleles
+  // se partagent le debit montant et peuvent tous depasser ensemble. Au
+  // premier morceau echoue, on passe a UN morceau en vol a la fois.
+  let limite = parallelisme;
+  let enVol = 0;
+  const enAttente: Array<() => void> = [];
+  const prendre = async () => {
+    while (enVol >= limite) await new Promise<void>((r) => { enAttente.push(r); });
+    enVol += 1;
+  };
+  const rendre = () => { enVol -= 1; enAttente.splice(0).forEach((r) => r()); };
+
   const envoyerUn = async (m: { partNumber: number; start: number; end: number }) => {
     let derniere: unknown = null;
     for (let essai = 1; essai <= essais; essai += 1) {
       envoyes.set(m.partNumber, 0);
+      await prendre();
       try {
         // URL signee juste avant CET essai : jamais expiree sur une reprise.
         const sig = await action({ action: 'multipart-sign', uploadId, partNumber: m.partNumber });
@@ -200,11 +213,14 @@ export async function envoyerMontageDecoupe(
         }
         envoyes.set(m.partNumber, m.end - m.start);
         etat.faits.add(m.partNumber);
+        rendre();
         signaler();
         return;
       } catch (e) {
+        rendre();
         derniere = e;
         envoyes.set(m.partNumber, 0);
+        limite = 1;
         // 404 sur un morceau : l'envoi decoupe n'existe plus (abandonne ou
         // purge). Inutile d'insister ; une reprise en ouvrira un neuf.
         if (e instanceof EchecEnvoi && /HTTP 404\b/.test(e.message)) {

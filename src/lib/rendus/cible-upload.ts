@@ -74,11 +74,13 @@ export function cleDepot(cle: string): string {
 }
 
 /**
- * Taille d'un morceau d'envoi decoupe : 8 Mio (minimum S3 : 5 Mio, sauf le
- * dernier). Partagee client/serveur : le serveur en deduit le numero de
+ * Taille d'un morceau d'envoi decoupe : 5 Mio, le minimum S3 (sauf le
+ * dernier). Le proxy de `s3.studiio.pro` coupe toute requete au-dela de
+ * 60 s (mesure le 23/10) : un morceau de 5 Mio y tient des ~0,7 Mbit/s
+ * montants. Partagee client/serveur : le serveur en deduit le numero de
  * morceau maximal pour une taille declaree.
  */
-export const TAILLE_MORCEAU = 8 * 1024 * 1024;
+export const TAILLE_MORCEAU = 5 * 1024 * 1024;
 
 /** Types acceptes a l'ENTREE du relais. Tout le reste est refuse. */
 export const TYPES_TELEVERSEMENT = [
