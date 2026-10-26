@@ -58,6 +58,10 @@ export const SONDAGE_MIN_MS = 3_000;
 export const SONDAGE_MAX_MS = 8_000;
 
 export const VARIABLE_MAX = 'STUDIIO_RENDUS_MAX_SIMULTANES';
+/** Places SUPPLÉMENTAIRES réservées aux actions interactives de Créer (export, MP4) : jamais bloquées par Autopilote seul. */
+export const VARIABLE_RESERVE_INTERACTIF = 'STUDIIO_RENDUS_RESERVE_INTERACTIF';
+export const RESERVE_INTERACTIF_PAR_DEFAUT = 1;
+export const RESERVE_INTERACTIF_BORNE = 8;
 export const VARIABLE_ATTENTE = 'STUDIIO_RENDUS_ATTENTE_MAX_S';
 
 type Env = Record<string, string | undefined>;
@@ -72,6 +76,16 @@ function entierBorne(brut: string | undefined, min: number, max: number, defaut:
 /** Combien de rendus Autopilote en même temps, sur toute la machine. Valeur invalide : le défaut (prudent). */
 export function rendusMaxSimultanes(env: Env = process.env): number {
   return entierBorne(env[VARIABLE_MAX], 1, RENDUS_MAX_BORNE, RENDUS_MAX_PAR_DEFAUT);
+}
+
+/**
+ * Plafond des actions INTERACTIVES (Créer : export serveur, MP4, rendu de plan) sur le même pool de baux.
+ * = plafond d'Autopilote + réserve : Autopilote (en arrière-plan) cède la place à un utilisateur qui attend,
+ * mais l'ensemble reste borné (1 + 1 = 2 par défaut). Jamais plus de 16, borne du pool.
+ */
+export function rendusMaxInteractifs(env: Env = process.env): number {
+  const reserve = entierBorne(env[VARIABLE_RESERVE_INTERACTIF], 0, RESERVE_INTERACTIF_BORNE, RESERVE_INTERACTIF_PAR_DEFAUT);
+  return Math.min(RENDUS_MAX_BORNE, rendusMaxSimultanes(env) + reserve);
 }
 
 /** Attente maximale d'une place (ms). `0` accepté : refus immédiat si occupé. */
@@ -221,6 +235,8 @@ export interface OptionsLimite {
   instance?: string;
   /** Appelée à chaque tour d'attente (la progression « en file d'attente »). */
   onAttente?: () => void;
+  /** Plafond imposé par l'appelant (actions interactives : `rendusMaxInteractifs`). Défaut : `rendusMaxSimultanes`. */
+  max?: number;
   /** Attente maximale (ms) imposée par l'appelant, avant la variable. `0` = refus immédiat (cron). */
   attenteMaxMs?: number;
   /** Exécutée bail OBTENU, avant le travail ; si elle lève, le bail est libéré et le travail n'a pas lieu. */
@@ -260,7 +276,7 @@ export async function avecLimiteRendus<T>(
 ): Promise<T> {
   const rpc = o.rpc ?? rpcParDefaut;
   const env = o.env ?? process.env;
-  const max = rendusMaxSimultanes(env);
+  const max = o.max ?? rendusMaxSimultanes(env);
   const attenteMax = o.attenteMaxMs ?? attenteMaxMs(env);
   const instance = o.instance ?? instanceLocale();
   const maintenant = o.maintenant ?? Date.now;
@@ -363,3 +379,64 @@ function instanceLocale(): string {
   if (!g.__studiioInstanceAutopilote) g.__studiioInstanceAutopilote = `i-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   return g.__studiioInstanceAutopilote;
 }
+
+// ── Places tenues par une route (travail linéaire avec `finally`) ───────────
+
+/** Un bail tenu : à rendre avec `liberer()` (idempotent). `verifierBail` prouve qu'il est encore le nôtre. */
+export interface BailTenu {
+  liberer: () => Promise<void>;
+  verifierBail: () => Promise<void>;
+}
+
+/**
+ * Prend un bail et le TIENT (renouvelé en arrière-plan) jusqu'à `liberer()`. Pour les routes dont le
+ * travail est une suite d'étapes avec un `finally`, où envelopper dans une fonction serait invasif.
+ * Mêmes garanties que `avecLimiteRendus` : mêmes erreurs, avant tout travail.
+ */
+export function reserverBail(userId: string, jobId: string, o: OptionsLimite = {}): Promise<BailTenu> {
+  return new Promise<BailTenu>((resoudre, rejeter) => {
+    let fin!: () => void;
+    const tenu = new Promise<void>((r) => { fin = r; });
+    const termine = avecLimiteRendus(userId, jobId, async (ctx) => {
+      resoudre({
+        liberer: async () => { fin(); await termine.catch(() => undefined); },
+        verifierBail: ctx.verifierBail,
+      });
+      await tenu;
+    }, o);
+    termine.catch(rejeter); // sans effet une fois résolue : la libération passe par `liberer()`
+  });
+}
+
+export type PlaceInteractive =
+  | { ok: true; bail: BailTenu }
+  | { ok: false; motif: 'occupe' | 'doublon' | 'indetermine'; message: string };
+
+/**
+ * Place d'une action INTERACTIVE de Créer : sans attente (l'écran réessaie après `Retry-After`),
+ * plafond = Autopilote + réserve. Ne lève jamais : le refus est une valeur que la route traduit en 429/503.
+ */
+export async function prendrePlaceInteractive(
+  userId: string, jobId: string, o: OptionsLimite = {},
+): Promise<PlaceInteractive> {
+  try {
+    const env = o.env ?? process.env;
+    const bail = await reserverBail(userId, jobId, { max: rendusMaxInteractifs(env), attenteMaxMs: 0, ...o });
+    return { ok: true, bail };
+  } catch (e) {
+    if (e instanceof RenduDoublonError) return { ok: false, motif: 'doublon', message: e.message };
+    if (e instanceof RenduIndeterminError) return { ok: false, motif: 'indetermine', message: e.message };
+    if (e instanceof RenduOccupeError) return { ok: false, motif: 'occupe', message: e.message };
+    throw e;
+  }
+}
+
+/** Rend le bail avec la place existante : le `liberer()` d'origine (jeton, place de rendu) libère aussi le bail. */
+export function lierBailALaPlace<P extends { liberer: () => void }>(place: P, bail: BailTenu): P {
+  const origine = place.liberer.bind(place);
+  place.liberer = () => { origine(); void bail.liberer(); };
+  return place;
+}
+
+/** Délai conseillé (s) à un écran refusé faute de place : de l'ordre d'un rendu court. */
+export const RETRY_AFTER_INTERACTIF_S = 30;

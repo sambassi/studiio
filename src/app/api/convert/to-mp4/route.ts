@@ -7,6 +7,7 @@ import { auth } from '@/lib/auth/config';
 import { supabaseAdmin } from '@/lib/db/supabase';
 import { clientMinio } from '@/lib/storage/minio-client';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
+import { prendrePlaceInteractive, lierBailALaPlace } from '@/lib/autopilot/limite-rendus';
 import {
   downloadMediaToFile,
   ErreurTelechargement,
@@ -242,6 +243,20 @@ export async function POST(req: NextRequest) {
         { status: 429, headers: { 'Retry-After': String(RETRY_AFTER_CONVERSION_S) } },
       );
     }
+
+    // 5 bis. Plafond COMMUN des rendus lourds (Autopilote, export serveur, MP4) : même pool PostgreSQL
+    // que les rendus Autopilote. Sans attente — l'écran réessaie après `Retry-After`. Rien n'est
+    // téléchargé ni converti tant qu'il n'est pas obtenu ; le bail est rendu avec le jeton.
+    const place = await prendrePlaceInteractive(userId, `convertir:${cle}`);
+    if (!place.ok) {
+      jeton.liberer();
+      console.warn('[CONVERT-API]', { conversionId, etape: 'refus_plafond_commun', motif: place.motif });
+      return NextResponse.json(
+        place.motif === 'doublon' ? REPONSE_429_COMPTE : REPONSE_429_GLOBAL,
+        { status: place.motif === 'indetermine' ? 503 : 429, headers: { 'Retry-After': String(RETRY_AFTER_CONVERSION_S) } },
+      );
+    }
+    lierBailALaPlace(jeton, place.bail);
 
     console.log('[CONVERT-API]', { conversionId, etape: 'debut', userId: userId.slice(0, 8), bucket });
 

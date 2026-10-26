@@ -15,6 +15,11 @@ const bd = vi.hoisted(() => ({
   majs: [] as Array<{ table: string; id: unknown; user: unknown }>,
   tablesLues: new Set<string>(),
 }));
+const baux = vi.hoisted(() => ({
+  /** Pool de baux simulé (mêmes règles que `rendu_bail_*`) ; `null` = fonctions absentes (migration non appliquée). */
+  actif: false,
+  pris: new Map<string, string>(),
+}));
 const spies = vi.hoisted(() => ({
   telechargements: [] as string[],
   controles: 0,
@@ -47,6 +52,18 @@ vi.mock('@/lib/db/supabase', () => {
   };
   return {
     supabaseAdmin: {
+      rpc: async (fn: string, p: Record<string, unknown>) => {
+        if (!baux.actif) return { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
+        const job = String(p.p_job);
+        if (fn === 'rendu_bail_prendre') {
+          if (baux.pris.has(job)) return { data: [{ pris: false, motif: 'doublon', actifs: baux.pris.size }], error: null };
+          if (baux.pris.size >= Number(p.p_max)) return { data: [{ pris: false, motif: 'occupe', actifs: baux.pris.size }], error: null };
+          baux.pris.set(job, String(p.p_user));
+          return { data: [{ pris: true, motif: null, actifs: baux.pris.size }], error: null };
+        }
+        if (fn === 'rendu_bail_liberer') { const ok = baux.pris.get(job) === p.p_user; if (ok) baux.pris.delete(job); return { data: [{ ok }], error: null }; }
+        return { data: [{ ok: baux.pris.has(job) }], error: null };
+      },
       from: requete,
       storage: { from: (b: string) => ({
         getPublicUrl: (cle: string) => ({ data: { publicUrl: `/storage/v1/object/public/${b}/${cle}` } }),
@@ -91,6 +108,7 @@ const meta = (postId: string) => bd.tables.scheduled_posts.find((p) => p.id === 
 const ENV0 = { ...process.env };
 beforeEach(() => {
   bd.tables.scheduled_posts = []; bd.tables.rendus = []; bd.majs = []; bd.tablesLues = new Set();
+  baux.actif = false; baux.pris = new Map();
   spies.telechargements = []; spies.controles = 0; spies.deverrou = null; spies.bloquer = false;
   delete process.env.STORAGE_PROVIDER;
   delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
@@ -195,5 +213,59 @@ describe('rendus simultanés : un compte n’en gêne pas un autre, la machine r
     expect((await a).ok).toBe(true);
     expect((await b).ok).toBe(true);
     expect((await produireMp4DuPost('user-c', 'post-c')).ok).toBe(true);
+  });
+});
+
+describe('plafond COMMUN des rendus lourds (pool PostgreSQL partagé avec l’Autopilote)', () => {
+  it('un rendu Autopilote tient sa place (plafond 1) : une conversion de Créer passe (réserve interactive), une seconde est refusée « occupe » avant tout téléchargement', async () => {
+    baux.actif = true;
+    baux.pris.set('autopilote-x-2026-10-27-0900', 'user-b'); // rendu Autopilote en cours
+    spies.bloquer = true;
+    const premiere = produireMp4DuPost('admin-1', 'post-admin');
+    await vi.waitFor(() => expect(spies.deverrou).not.toBeNull());
+    expect(baux.pris.size).toBe(2);
+    spies.bloquer = false;
+    const avant = spies.telechargements.length;
+    expect(await produireMp4DuPost('user-c', 'post-c')).toEqual({ ok: false, motif: 'occupe' });
+    expect(spies.telechargements.length).toBe(avant); // refusé AVANT tout téléchargement
+    expect(baux.pris.size).toBe(2);
+    spies.deverrou!();
+    expect((await premiere).ok).toBe(true);
+    expect(baux.pris.size).toBe(1); // le bail est rendu ; il ne reste que l'Autopilote
+  });
+
+  it('reprise : une fois la place rendue, la conversion refusée passe, sans double conversion ni double mise à jour', async () => {
+    baux.actif = true;
+    baux.pris.set('a1', 'x'); baux.pris.set('a2', 'x'); // pool plein (1 + réserve 1)
+    expect(await produireMp4DuPost('user-c', 'post-c')).toEqual({ ok: false, motif: 'occupe' });
+    expect(bd.majs).toEqual([]);
+    baux.pris.delete('a2');
+    expect((await produireMp4DuPost('user-c', 'post-c')).ok).toBe(true);
+    expect(bd.majs).toEqual([{ table: 'scheduled_posts', id: 'post-c', user: 'user-c' }]);
+    expect(baux.pris.size).toBe(1);
+  });
+
+  it('même fichier converti deux fois en même temps : une seule conversion (« occupe » pour la seconde), bail rendu à la fin', async () => {
+    baux.actif = true;
+    spies.bloquer = true;
+    const a = produireMp4DuPost('user-b', 'post-b');
+    await vi.waitFor(() => expect(spies.deverrou).not.toBeNull());
+    spies.bloquer = false;
+    expect(await produireMp4DuPost('user-b', 'post-b')).toEqual({ ok: false, motif: 'occupe' });
+    spies.deverrou!();
+    expect((await a).ok).toBe(true);
+    expect(baux.pris.size).toBe(0);
+  });
+
+  it('base des baux en panne : la conversion Créer est refusée proprement (occupe), rien téléchargé ni mis à jour', async () => {
+    baux.actif = true;
+    const rpcOriginal = (await import('@/lib/db/supabase')).supabaseAdmin as unknown as { rpc: unknown };
+    const sauvegarde = rpcOriginal.rpc;
+    rpcOriginal.rpc = async () => { throw new Error('ECONNREFUSED'); };
+    try {
+      expect(await produireMp4DuPost('user-b', 'post-b')).toEqual({ ok: false, motif: 'occupe' });
+    } finally { rpcOriginal.rpc = sauvegarde; }
+    expect(spies.telechargements).toEqual([]);
+    expect(bd.majs).toEqual([]);
   });
 });

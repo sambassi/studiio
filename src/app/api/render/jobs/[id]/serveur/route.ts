@@ -32,6 +32,7 @@ import {
   prendreExecution, renduServeurEnCours, retryAfterSecondes, validerSpecServeur,
 } from '@/lib/render/moteur-export-serveur';
 import { rendusRemotionActifs } from '@/lib/render/occupation-remotion';
+import { prendrePlaceInteractive, lierBailALaPlace, RETRY_AFTER_INTERACTIF_S } from '@/lib/autopilot/limite-rendus';
 import type { LigneRendu } from '@/lib/rendus/confirmation';
 
 export const dynamic = 'force-dynamic';
@@ -142,7 +143,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ ok: false, motif: 'format_incoherent' }, { status: 422 });
     }
 
+    // Plafond COMMUN des rendus lourds (même pool que l'Autopilote), pris AVANT la place locale :
+    // refusé, rien n'a été réservé ni lancé. Rendu avec la place (`liberer`), y compris au `finally`.
+    const commun = await prendrePlaceInteractive(userId, `export-serveur:${rendu.id}`);
+    if (!commun.ok) {
+      if (commun.motif === 'doublon') return NextResponse.json({ ok: false, motif: 'deja_en_cours' }, { status: 409 });
+      return NextResponse.json(
+        { ok: false, motif: 'capacite_saturee', error: 'Un rendu est déjà en cours sur ce serveur.' },
+        { status: commun.motif === 'indetermine' ? 503 : 429, headers: { 'Retry-After': String(Math.max(retryAfterSecondes(), RETRY_AFTER_INTERACTIF_S)) } },
+      );
+    }
     const prise = prendreExecution(rendu.id, rendusRemotionActifs());
+    if (prise.ok) lierBailALaPlace(prise.place, commun.bail);
+    else await commun.bail.liberer();
     if (!prise.ok) {
       if (prise.motif === 'deja_en_cours') {
         return NextResponse.json({ ok: false, motif: 'deja_en_cours' }, { status: 409 });

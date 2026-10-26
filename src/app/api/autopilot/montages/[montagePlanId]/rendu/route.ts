@@ -34,6 +34,7 @@ import {
   type RenduMontage,
 } from '@/lib/autopilot/analyse/rendu-service';
 import { rendreEtPublier, type IssueConsignation } from '@/lib/autopilot/analyse/rendu';
+import { prendrePlaceInteractive, lierBailALaPlace } from '@/lib/autopilot/limite-rendus';
 import { renduPublic } from '@/lib/autopilot/analyse/rendu-presentation';
 
 export const dynamic = 'force-dynamic';
@@ -146,7 +147,30 @@ export async function POST(
     // Une place refusée ne doit laisser AUCUNE ligne derrière elle : sinon le
     // refus le plus bénin occuperait l'index actif et interdirait toute
     // relance pendant la péremption.
+    // Plafond COMMUN des rendus lourds (même pool que les rendus Autopilote et Créer), pris d'abord :
+    // refusé, aucune place locale ni ligne n'a été prise. Rendu avec la place.
+    const commun = await prendrePlaceInteractive(userId, `plan-rendu:${plan.id}`);
+    if (!commun.ok && commun.motif !== 'doublon') {
+      const actif = await lireRenduActif(userId, plan.id);
+      return NextResponse.json({
+        ok: false, motif: 'capacite_saturee' as MotifRendu,
+        error: 'Un rendu est déjà en cours sur ce serveur.',
+        rendu: actif.rendu ? renduPublic(actif.rendu) : null,
+      }, {
+        status: commun.motif === 'indetermine' ? 503 : 429,
+        headers: { 'Retry-After': String(Math.ceil(BUDGET_RENDU_MAX_MS / 1000)) },
+      });
+    }
+    if (!commun.ok) {
+      const actif = await lireRenduActif(userId, plan.id);
+      return NextResponse.json({
+        ok: false, motif: 'rendu_actif', error: 'Un rendu de ce montage est déjà en cours.',
+        rendu: actif.rendu ? renduPublic(actif.rendu) : null,
+      }, { status: 409 });
+    }
     place = prendrePlaceRendu();
+    if (place) lierBailALaPlace(place, commun.bail);
+    else await commun.bail.liberer();
     if (!place) {
       const actif = await lireRenduActif(userId, plan.id);
       return NextResponse.json({

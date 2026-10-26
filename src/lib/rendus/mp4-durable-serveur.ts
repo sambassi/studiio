@@ -40,6 +40,7 @@ import {
   limiteurConversions, tailleMaxSourceConversion, DELAI_DEPOT_MS,
 } from '@/lib/ffmpeg/limiteur-conversions';
 import { BUCKET_RENDUS } from '@/lib/rendus/service';
+import { prendrePlaceInteractive, lierBailALaPlace } from '@/lib/autopilot/limite-rendus';
 import {
   cleMp4DuRendu, idRenduDeCle, decisionStockageMp4,
   patchPostAvecMp4, patchPostEchecMp4,
@@ -147,6 +148,11 @@ export async function produireMp4DuPost(userId: string, postId: string): Promise
 
   const jeton = limiteurConversions().acquerir(userId);
   if (!jeton.ok) return { ok: false, motif: 'occupe' };
+  // Plafond COMMUN des rendus lourds (même pool que l'Autopilote) : sans attente, le client réessaie.
+  // Le bail est rendu avec le jeton (`finally`).
+  const place = await prendrePlaceInteractive(userId, `mp4-durable:${cleMp4}`);
+  if (!place.ok) { jeton.liberer(); return { ok: false, motif: 'occupe' }; }
+  lierBailALaPlace(jeton, place.bail);
 
   const id = randomUUID();
   const entree = join(tmpdir(), `mp4durable_${id}.webm`);
