@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "_consigne": "Copier ce fichier en annotations/<nom-du-rush>.json (ex. danse-1.json) et le remplir en REGARDANT le rush. Ne PAS le remplir à partir des descriptions ou des plans du moteur : il sert de référence indépendante. Laisser null ce que vous ne savez pas.",
+  "rush": "danse-1.mp4",
+  "annotateur": "initiales ou nom",
+  "date": "AAAA-MM-JJ",
+  "passages": [
+    {
+      "debut": 0,
+      "fin": 4.5,
+      "action": "ce qui est réellement visible, en une phrase",
+      "interet": 3,
+      "qualiteImage": "nette",
+      "paroleAudible": false,
+      "horsSujet": false
+    }
+  ],
+  "_legende": {
+    "interet": "1 = ordinaire, 2 = correct, 3 = bon, 4 = très bon, 5 = moment fort",
+    "qualiteImage": "nette | moyenne | floue",
+    "paroleAudible": "true si on entend une personne parler distinctement",
+    "horsSujet": "true si le passage n'a aucun rapport avec le thème du scénario"
+  }
+}

@@ -50,7 +50,9 @@ describe('Créer (AssistantWizard) : branchement minimal', () => {
     const demande = aw.indexOf('fichesCreer = chargerFichesContenu(rushsDurables.map((r) => r.url));');
     // M3-a PR3 : le calcul du plan est déplacé dans `preparerPlanMontage`, qui ne reçoit jamais les fiches.
     const plan = aw.indexOf('const prepPlan = preparerPlanMontage(entreePlanMontage({');
-    expect(readFileSync('src/lib/creer/preparer-plan-montage.ts', 'utf8')).not.toMatch(/fiche/i);
+    // Lot 4 : le plan peut lire des FICHES DE SCÈNES (`fiche-scenes.ts`, éteint par défaut) — jamais les
+    // fiches de CONTENU M2 (diagnostic) : aucune mention d'elles hors de la fiche de scènes.
+    expect(readFileSync('src/lib/creer/preparer-plan-montage.ts', 'utf8').replace(/fiche-scenes|FicheScenes|FICHE_SCENES_ACTIVE/g, '')).not.toMatch(/fiche/i);
     const rendu = aw.indexOf('composed = await composerEtFacturer(');
     const attente = aw.indexOf('const fichesRecues = await auPlus(fichesCreer, 1500, new Map() as FichesParUrl);');
     expect(demande).toBeGreaterThan(0);

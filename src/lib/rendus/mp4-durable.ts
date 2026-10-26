@@ -107,6 +107,8 @@ function enObjet(v: unknown): Meta {
 export function patchPostAvecMp4(
   post: { media_url?: unknown; metadata?: unknown },
   urls: { webmUrl: string; mp4Url: string },
+  /** Contrôle qualité du MP4 (`controle-qualite-mp4.ts`) : écrit tel quel, ses avertissements s'ajoutent à ceux du post. */
+  controle?: { resultat: unknown; avertissements: string[] } | null,
 ): { media_url?: string; metadata: Meta } | null {
   const meta = enObjet(post.metadata);
   if (meta.renderedVideoUrl !== urls.webmUrl) return null;
@@ -120,6 +122,13 @@ export function patchPostAvecMp4(
     mp4Indisponible: false,
   };
   if (meta.videoUrl === urls.webmUrl) metadata.videoUrl = urls.mp4Url;
+  if (controle) {
+    metadata.controleQualiteMp4 = controle.resultat;
+    // Le Calendrier lit `avertissements` : même endroit que l'Autopilote, sans doublon.
+    const deja = Array.isArray(meta.avertissements) ? meta.avertissements.filter((a): a is string => typeof a === 'string') : [];
+    const tous = [...deja, ...controle.avertissements.filter((a) => !deja.includes(a))];
+    if (tous.length) metadata.avertissements = tous;
+  }
   return post.media_url === urls.webmUrl
     ? { media_url: urls.mp4Url, metadata }
     : { metadata };

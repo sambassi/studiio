@@ -32,6 +32,8 @@ import { downloadMediaToFile } from '@/lib/storage/fetch-media';
 import {
   extraireCibleStockage, originesStockageConfigurees,
 } from '@/lib/storage/acces-objet';
+import { montageAmelioreActifPourCompte } from '@/lib/creer/montage-ameliore-config';
+import { controlerMp4, messagesControle, type AttentesMp4, type ResultatControleMp4 } from '@/lib/render/controle-qualite-mp4';
 import { transcodeWebmToMp4WithLadder } from '@/lib/ffmpeg/transcode-to-mp4';
 import { cheminFfmpeg } from '@/lib/ffmpeg/binaires';
 import {
@@ -72,6 +74,21 @@ async function deposer(bucket: string, cle: string, octets: Buffer): Promise<boo
   return !error;
 }
 
+/**
+ * Ce que le post dit de sa vidéo : durée du montage, son prévu, format. Rien d'inventé : inconnu reste inconnu.
+ *  - durée : `sequences.total` SEUL — Créer l'écrit comme « la durée RÉELLE de la vidéo »
+ *    (AssistantWizard). Les durées par séquence n'en tiennent pas lieu : en surimpression,
+ *    titre / cartes / CTA gardent les durées de l'éditeur, posées SUR la vidéo.
+ *  - format : `videoFormat` (9:16, 1:1, 16:9). Jamais `format`, valeur de FACTURATION où le
+ *    carré vaut « tv » — il faisait signaler à tort chaque vidéo carrée comme mal orientée.
+ */
+export function attentesDuPost(meta: Record<string, unknown>): AttentesMp4 {
+  const seq = (meta.sequences ?? null) as Record<string, unknown> | null;
+  const dureeS = seq && typeof seq.total === 'number' && seq.total > 0 ? seq.total : null;
+  const format = meta.videoFormat === '9:16' ? 'reel' : meta.videoFormat === '16:9' ? 'tv' : meta.videoFormat === '1:1' ? 'carre' : null;
+  return { dureeS, son: meta.hasAudio === true ? 'attendu' : 'inconnu', format };
+}
+
 async function marquerEchec(userId: string, postId: string, post: { metadata?: unknown }, webmUrl: string, motif: MotifMp4) {
   const patch = patchPostEchecMp4(post, webmUrl, motif);
   if (!patch) return;
@@ -106,12 +123,14 @@ export async function produireMp4DuPost(userId: string, postId: string): Promise
     return { ok: false, motif: 'non_confirme' };
   }
 
-  const appliquer = async (mp4Url: string, reutilise: boolean): Promise<IssueMp4> => {
+  const appliquer = async (
+    mp4Url: string, reutilise: boolean, controle: { resultat: unknown; avertissements: string[] } | null = null,
+  ): Promise<IssueMp4> => {
     // Relu juste avant d'écrire : un rendu plus récent a pu arriver.
     const { data: frais } = await supabaseAdmin
       .from('scheduled_posts').select('id, media_url, metadata')
       .eq('id', postId).eq('user_id', userId).maybeSingle();
-    const patch = frais ? patchPostAvecMp4(frais, { webmUrl, mp4Url }) : null;
+    const patch = frais ? patchPostAvecMp4(frais, { webmUrl, mp4Url }, controle) : null;
     if (!patch) return { ok: true, mp4Url, reutilise, postMisAJour: false };
     const { error } = await supabaseAdmin
       .from('scheduled_posts').update(patch).eq('id', postId).eq('user_id', userId);
@@ -158,6 +177,26 @@ export async function produireMp4DuPost(userId: string, postId: string): Promise
       return { ok: false, motif: decision.motif };
     }
 
+    // Contrôle qualité du MP4 produit (ffmpeg local, aucun crédit) : observe, ne change pas l'encodage.
+    // Illisible / sans vidéo / presque noir : même gestion d'erreur qu'une sortie invalide (le WebM reste).
+    // Défauts mineurs : avertissements discrets sur le post, lus par le Calendrier. Panne du contrôle : ignorée.
+    // « Montage amélioré » : compte administrateur seulement (`montage-ameliore-config.ts`, relu en base
+    // par le serveur) — faux pour les autres : aucun contrôle, le MP4 est déposé comme en production.
+    let controle: { resultat: ResultatControleMp4; avertissements: string[] } | null = null;
+    try {
+      if (await montageAmelioreActifPourCompte(userId)) {
+        const resultat = await controlerMp4(sortie, attentesDuPost(meta), { ffmpeg: cheminFfmpeg() });
+        if (resultat) controle = { resultat, avertissements: messagesControle(resultat) };
+      }
+    } catch (err) {
+      console.warn('[MP4-DURABLE] controle qualite indisponible', err instanceof Error ? err.message : String(err));
+    }
+    if (controle?.resultat.niveau === 'inutilisable') {
+      console.error('[MP4-DURABLE] sortie inutilisable', controle.resultat.problemes.map((p) => p.code).join(','));
+      await marquerEchec(userId, postId, post, webmUrl, 'sortie_invalide');
+      return { ok: false, motif: 'sortie_invalide' };
+    }
+
     if (!(await deposer(cible.bucket, decision.cleMp4, octets))) {
       // Course : un autre appel l'a peut-être déposé entre-temps.
       const revu = await verifierObjet(cible.bucket, decision.cleMp4, userId);
@@ -166,7 +205,7 @@ export async function produireMp4DuPost(userId: string, postId: string): Promise
         return { ok: false, motif: 'depot' };
       }
     }
-    return appliquer(urlPublique(cible.bucket, decision.cleMp4), false);
+    return appliquer(urlPublique(cible.bucket, decision.cleMp4), false, controle);
   } finally {
     jeton.liberer();
     await unlink(entree).catch(() => {});

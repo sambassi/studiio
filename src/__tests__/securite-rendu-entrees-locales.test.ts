@@ -21,6 +21,7 @@ const rendreHybride = vi.fn();
 vi.mock('@/lib/render/hybride/rendu', () => ({ raisonNonEligibleHybride: () => 'test', rendreHybride: (...a: unknown[]) => rendreHybride(...a) }));
 vi.mock('@/lib/storage/upload', () => ({ uploadToStorage: async (o: { bucket: string; storagePath: string }) => `${ORIGINES[0]}/storage/v1/object/public/${o.bucket}/${o.storagePath}` }));
 vi.mock('@/lib/render/audio-fichier', () => ({ mesurerAudioFichier: async () => null }));
+vi.mock('@/lib/render/controle-qualite-mp4', () => ({ controlerMp4: async () => null, messagesControle: () => [] }));
 
 // Copies déjà en cache pour les médias légitimes (aucun réseau) ; tout autre
 // média part au fetch sûr, avec ses DÉFAUTS de production.

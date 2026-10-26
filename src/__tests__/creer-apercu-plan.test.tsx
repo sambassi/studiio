@@ -70,7 +70,13 @@ vi.mock('@/lib/creer/analyse-rush', async () => {
 });
 vi.mock('@/lib/creer/smart-montage', async () => {
   const actual = await vi.importActual<typeof import('@/lib/creer/smart-montage')>('@/lib/creer/smart-montage');
-  sp.planMontage.mockImplementation((...a: unknown[]) => (actual.planMontage as (...x: unknown[]) => unknown)(...a));
+  // L'instantané c3f2302 précède la protection de la parole (lot 2) : le moteur est appelé SANS elle pour
+  // que ce test continue de prouver le câblage aperçu ↔ export ; la protection a ses propres tests
+  // (`smart-montage-protection-parole.test.ts`), et l'option reste vérifiée dans les appels (`sansNetteteCommune`).
+  sp.planMontage.mockImplementation((...a: unknown[]) => {
+    const { protectionParole: _p, ...o } = (a[2] ?? {}) as Record<string, unknown>;
+    return (actual.planMontage as (...x: unknown[]) => unknown)(a[0], a[1], o);
+  });
   return { ...actual, planMontage: (...a: unknown[]) => sp.planMontage(...a) };
 });
 vi.mock('@/lib/video-composer', async () => {
@@ -165,10 +171,13 @@ const telecharger = async () => {
   await act(async () => { fireEvent.click(document.querySelector('[data-export-bureau]')!); });
   await derouler();
 };
+/** `netteteCommune` et `protectionParole` sont les SEULES options ajoutées depuis l'instantané : on les retire pour prouver que le reste est inchangé. */
+const sansNetteteCommune = (o: unknown) => { if (!o || typeof o !== 'object') return o; const { netteteCommune: _n, protectionParole: _p, ...reste } = o as Record<string, unknown>; return reste; };
+
 /** Ce qui doit être identique : options du compositeur + appels du moteur de plan. */
 const empreinte = () => ({
   options: sp.composeVideo.mock.calls.map((c) => renderSignature(c[0])),
-  plans: sp.planMontage.mock.calls.map((c) => renderSignature([(c[0] as Array<{ url: string }>).map((a) => a.url), c[1], c[2]])),
+  plans: sp.planMontage.mock.calls.map((c) => renderSignature([(c[0] as Array<{ url: string }>).map((a) => a.url), c[1], sansNetteteCommune(c[2])])),
 });
 const facturation = () => appels.filter((a) => /\/api\/(rendus|credits|render)/.test(a.u));
 

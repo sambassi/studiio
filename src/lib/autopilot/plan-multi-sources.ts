@@ -207,6 +207,8 @@ export const REPRISES_MAX_PAR_MEDIA = 1;
  * l'éteindre explicitement (`uniciteParTimecode: false`).
  */
 function optionsRushs(e: EntreePlanMultiSources): OptionsMontage {
+  // Les options du « montage amélioré » (compte administrateur) viennent de `e.options`, posées par
+  // `produireUnMontage` SEULEMENT pour un compte admin avec l'interrupteur serveur : jamais par défaut ici.
   return { uniciteParTimecode: true, ...(e.options ?? {}) };
 }
 
