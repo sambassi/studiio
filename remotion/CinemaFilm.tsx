@@ -6,16 +6,24 @@
  * sa chronologie finirait par ne plus montrer ce que l'aperçu annonce.
  *
  * Trois etats de plan, du plus riche au plus pauvre :
- *   1. `mediaUrl` video  → `OffthreadVideo` (le plan filme ou genere) ;
- *   2. `mediaUrl` image  → `Img` avec une lente derive (effet Ken Burns) ;
- *   3. aucun media       → CARTE DE PLAN dessinee ici, cout zero.
+ *   1. media VIDEO  → `OffthreadVideo`, coupe a la duree du plan, et sa
+ *      DERNIERE IMAGE FIGEE si la video est plus courte que la parole ;
+ *   2. media IMAGE  → `Img` avec une lente derive (effet Ken Burns) ;
+ *   3. aucun media  → CARTE DE PLAN dessinee ici, cout zero.
  *
- * L'etat 3 est celui du prototype : il est honnete (on voit le plan, son
- * cadre, sa replique) et il ne pretend pas etre une image generee.
+ * L'etat 3 n'est JAMAIS un repli : il n'arrive que si le plan ne declare
+ * aucun media. Un media declare et introuvable fait echouer la production
+ * avant le rendu (`mediasManquants`), parce qu'un film livre avec des cartes
+ * a la place des rushes ressemble a un film reussi.
+ *
+ * ⚠️ CADRAGE : `objectFit: 'cover'` — UN seul facteur pour les deux axes.
+ * Le media remplit le cadre et ce qui depasse est rogne ; rien n'est jamais
+ * etire. `montage.cadrage` chiffre ce rognage pour que les tests le
+ * verifient au lieu de le supposer.
  */
 import React from 'react';
 import {
-  AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, interpolate, staticFile, useCurrentFrame, useVideoConfig,
+  AbsoluteFill, Audio, Freeze, Img, OffthreadVideo, Sequence, interpolate, staticFile, useCurrentFrame, useVideoConfig,
 } from 'remotion';
 import type { MontageFilm, SegmentMontage } from '../src/lib/cinema/montage';
 import { framesDe } from '../src/lib/cinema/montage';
@@ -35,7 +43,38 @@ const LIBELLE_CADRE: Record<string, string> = {
  */
 const source = (url: string) => (/^(https?:|data:|blob:)/.test(url) ? url : staticFile(url.replace(/^\//, '')));
 
-const estImage = (url: string) => /\.(png|jpe?g|webp|avif)(\?|$)/i.test(url);
+const REMPLIT: React.CSSProperties = { width: '100%', height: '100%', objectFit: 'cover' };
+
+/**
+ * Le media d'un plan, a sa place dans le temps du plan.
+ *
+ * Une video plus COURTE que le plan ne raccourcit pas le plan : la parole
+ * commande (elle n'est jamais acceleree), donc la derniere image est figee
+ * pour le reste. Une video plus LONGUE est simplement coupee a la fin du
+ * plan — aucune accélération, aucun saut.
+ */
+const MediaDuPlan: React.FC<{ media: NonNullable<SegmentMontage['media']>; duree: number; derive: number }> = ({ media, duree, derive }) => {
+  const { fps } = useVideoConfig();
+  if (media.genre === 'image') {
+    return <Img src={source(media.url)} style={{ ...REMPLIT, transform: `scale(${derive})` }} />;
+  }
+  const framesMedia = Math.max(1, Math.floor((media.dureeS ?? 0) * fps));
+  const joue = Math.min(framesMedia, duree);
+  return (
+    <>
+      <Sequence from={0} durationInFrames={joue}>
+        <OffthreadVideo src={source(media.url)} style={REMPLIT} muted={media.sonActif !== true} />
+      </Sequence>
+      {joue < duree && (
+        <Sequence from={joue} durationInFrames={duree - joue}>
+          <Freeze frame={Math.max(0, joue - 1)}>
+            <OffthreadVideo src={source(media.url)} style={REMPLIT} muted />
+          </Freeze>
+        </Sequence>
+      )}
+    </>
+  );
+};
 
 /** Fondu d'entree et de sortie d'un plan — 6 frames, assez court pour ne pas manger la parole. */
 const FONDU = 6;
@@ -60,13 +99,9 @@ const Plan: React.FC<{ segment: SegmentMontage; duree: number; indexPlan: number
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#0A0A0F', fontFamily: POLICE, opacity: opacite }}>
-      {/* Fond : media s'il existe, sinon le degrade de la scene. */}
-      {segment.mediaUrl ? (
-        estImage(segment.mediaUrl) ? (
-          <Img src={source(segment.mediaUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${echelle})` }} />
-        ) : (
-          <OffthreadVideo src={source(segment.mediaUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted />
-        )
+      {/* Fond : le media du plan s'il existe, sinon le degrade de la scene. */}
+      {segment.media ? (
+        <MediaDuPlan media={segment.media} duree={duree} derive={echelle} />
       ) : (
         <AbsoluteFill
           style={{

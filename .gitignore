@@ -91,3 +91,6 @@ e2e/banc/resultats/
 # Cinema IA — films, voix et rendus locaux (jamais versionnes)
 var/
 public/cinema/
+
+# Medias de test generes localement
+tests-cinema/medias/

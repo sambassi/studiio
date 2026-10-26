@@ -18,20 +18,44 @@ import path from 'path';
 import { cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import type { MontageFilm } from '@/lib/cinema/montage';
 
-export interface SortieCommande { code: number | null; stdout: string; stderr: string }
+export interface SortieCommande {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  /** Sortie BRUTE, seulement en mode `binaire` (une image, des octets bruts). */
+  stdoutBrut?: Buffer;
+}
 
-export function executer(commande: string, args: string[], options: { cwd?: string; timeoutMs?: number } = {}): Promise<SortieCommande> {
+/**
+ * Lance un binaire et rend sa sortie.
+ *
+ * `binaire: true` conserve les OCTETS au lieu de les concatener en texte :
+ * une frame rendue en `rawvideo` passe par la sortie standard, et la
+ * convertir en chaine la corromprait silencieusement.
+ */
+export function executer(
+  commande: string,
+  args: string[],
+  options: { cwd?: string; timeoutMs?: number; binaire?: boolean } = {},
+): Promise<SortieCommande> {
   return new Promise((resolve, reject) => {
     const proc = spawn(commande, args, { cwd: options.cwd, env: process.env });
+    const morceaux: Buffer[] = [];
     let stdout = '';
     let stderr = '';
     const minuterie = options.timeoutMs
       ? setTimeout(() => { proc.kill('SIGKILL'); reject(new Error(`delai depasse : ${commande}`)); }, options.timeoutMs)
       : null;
-    proc.stdout.on('data', (d) => { stdout += String(d); });
+    proc.stdout.on('data', (d) => {
+      if (options.binaire) morceaux.push(Buffer.from(d));
+      else stdout += String(d);
+    });
     proc.stderr.on('data', (d) => { stderr += String(d); });
     proc.on('error', (e) => { if (minuterie) clearTimeout(minuterie); reject(e); });
-    proc.on('close', (code) => { if (minuterie) clearTimeout(minuterie); resolve({ code, stdout, stderr }); });
+    proc.on('close', (code) => {
+      if (minuterie) clearTimeout(minuterie);
+      resolve(options.binaire ? { code, stdout, stderr, stdoutBrut: Buffer.concat(morceaux) } : { code, stdout, stderr });
+    });
   });
 }
 

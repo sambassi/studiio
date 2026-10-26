@@ -4,10 +4,14 @@
  * Un film regenere en entier a chaque aperçu, c'est un cout fournisseur qui se
  * repaie pour un resultat identique. L'empreinte est le hash de ce qui CHANGE
  * l'image : le texte des plans, les cadres, les durees, les personnages
- * presents et la VERSION de leur reference. Elle ignore volontairement l'etat
- * (`validee`), le cout deja paye et les URL de medias deja produits — sinon
- * produire un media changerait l'empreinte et demanderait aussitot de le
- * reproduire.
+ * presents, la VERSION de leur reference, et le MEDIA IMPORTE du plan. Elle
+ * ignore volontairement l'etat (`validee`), le cout deja paye et les medias
+ * GENERES par le rendu — sinon produire un media changerait l'empreinte et
+ * demanderait aussitot de le reproduire.
+ *
+ * La distinction tient en une phrase : un media que l'UTILISATEUR choisit
+ * change le film et doit le marquer ; un media que le RENDU fabrique est une
+ * consequence du film, pas une cause.
  *
  * Hash non cryptographique (FNV-1a) : il tourne dans le navigateur comme sur
  * le serveur, sans dependance. On compare des empreintes, on n'en protege
@@ -37,6 +41,10 @@ export function matiereScene(scene: SceneCinema, versionsReferences: Record<stri
     // plan muet, elle, est un choix de montage et compte.
     p.dialogue ? '' : p.dureeS.toFixed(1),
     p.dialogue?.texte ?? '',
+    // Media IMPORTE seulement : l'url, son genre, sa duree et son son.
+    p.media && p.media.origine === 'import'
+      ? `${p.media.url}|${p.media.genre}|${p.media.dureeS ?? ''}|${p.media.sonActif ? 1 : 0}`
+      : '',
     p.personnages.map((id) => `${id}@${versionsReferences[id] ?? 0}`).join(','),
   ].join('|'));
   return [scene.titre, scene.lieu, scene.intention, ...plans].join('\n');

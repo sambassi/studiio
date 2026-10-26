@@ -15,7 +15,7 @@ import path from 'path';
 import { copyFile, mkdir } from 'fs/promises';
 import { auth } from '@/lib/auth/config';
 import { lireFilm } from '@/lib/cinema/store';
-import { produireFilm } from '@/lib/cinema/atelier';
+import { ErreurMediasManquants, produireFilm } from '@/lib/cinema/atelier';
 import { appartientA } from '@/lib/cinema/acces';
 
 export const dynamic = 'force-dynamic';
@@ -67,6 +67,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       avertissements: resultat.avertissements,
     });
   } catch (e) {
+    // Un media manquant est une erreur DE L'UTILISATEUR sur SON film : il a
+    // droit a la liste des plans concernes, c'est la seule chose qui lui
+    // permet de la corriger.
+    if (e instanceof ErreurMediasManquants) {
+      return NextResponse.json(
+        { ok: false, erreur: 'media introuvable', manquants: e.manquants },
+        { status: 400 },
+      );
+    }
     // Le detail (stderr de Remotion, chemins du serveur) part dans le JOURNAL
     // du serveur ; la reponse ne porte qu'un numero. Un message d'erreur brut
     // renvoye au client decrit l'interieur de la machine a qui le demande.

@@ -26,12 +26,34 @@ aux jetons de relais), `lib/rendus/*`, `lib/credits/*`. La composition
 Remotion, elle, est partagee : c'est le morceau qu'un futur rendu serveur
 reprendra tel quel.
 
-## 2. Architecture
+## 2. Lot 2 — de la carte au media reel
+
+Un plan peut desormais porter une IMAGE ou une VIDEO locale, et c'est elle
+que le MP4 montre.
+
+| Point | Ce qui est tenu |
+|---|---|
+| Import | `POST /api/cinema/films/<id>/medias` recoit des OCTETS (multipart), jamais une URL. Le serveur ecrit le fichier sous `public/cinema/<film>/medias/`, puis le MESURE a `ffprobe`. |
+| Validation | extension dans la liste, taille <= 200 Mo, et surtout **le contenu doit correspondre** : un `.mp4` qui n'est pas une video est efface et refuse. Le nom du fichier ecrit ne vient jamais du client (identifiant du plan + tirage aleatoire). |
+| Cadrage | `objectFit: cover` — UNE echelle pour les deux axes, donc **aucun etirement**. `montage.cadrage` chiffre le rognage (`rogneX`, `rogneY`), ce qui permet de le tester. |
+| Duree | une video sans parole **commande** son plan (bornee a 12 s) ; avec parole, c'est la PAROLE qui commande : la video trop longue est coupee, la trop courte voit sa **derniere image figee**. La voix n'est jamais acceleree. |
+| Son | le son d'un rush est **coupe par defaut** (`sonActif: false`) : il couvrirait la replique. Un bouton par plan le rend. |
+| Media manquant | un media declare et introuvable **arrete le rendu** (`ErreurMediasManquants`, 400 avec la liste des plans). En aperçu, il est signale. Il n'est JAMAIS remplace en silence par une carte. |
+| Regeneration | le media importe entre dans l'empreinte de sa scene : le changer ne refait que cette scene. Un media `genere` par le rendu, lui, n'y entre pas. |
+
+⚠️ `montage.ts` et `types.ts` sont compiles dans le bundle NAVIGATEUR de
+Remotion : les fonctions pures partagees (`cadrage`, `dureePlanAvecMedia`)
+vivent dans `types.ts`, jamais dans `medias.ts` qui ouvre des fichiers. Les y
+importer embarquait `fs` dans webpack, qui echouait sur « Can't resolve
+'url' ».
+
+## 3. Architecture
 
 ```
 src/lib/cinema/
   types.ts        Film -- Scene[] -- PlanCinema[]  (+ dureeFilm, TAILLES)
   scenario.ts     histoire -> scenes (LOCAL, deterministe, sans reseau)
+  medias.ts       import, sonde ffprobe, medias manquants (SERVEUR)
   personnages.ts  references VERSIONNEES, apparence pour prompt
   empreinte.ts    hash de ce qui change l'image -> quoi reproduire
   couts.ts        devis AVANT production, tarif inconnu != zero
@@ -72,14 +94,14 @@ tests-cinema/                  banc de production reelle (config a part)
   guillemets, la ligne est une **narration**, dite par le narrateur, sans nom
   affiche.
 
-## 3. Couts
+## 4. Couts
 
 `FOURNISSEURS_VISUELS` declare les emplacements ; un seul est **actif** :
 `cartes-remotion`, local, `0 USD/s`. Les autres ont `usdParSeconde: null` et
 `actif: false` — et `devisFilm` rend alors un total **`null`**, affiche comme
 « tarif non declare », jamais comme gratuit.
 
-## 4. Gardes d'acces (revue de securite du 2026-10-26)
+## 5. Gardes d'acces (revue de securite du 2026-10-26)
 
 `/api/cinema/*` n'est PAS dans le `matcher` du middleware : chaque route
 verifie donc elle-meme. `src/lib/cinema/acces.ts` tient les trois regles,
@@ -96,20 +118,22 @@ devient inaccessible plutot que public — l'un se repare, l'autre fuite.
 L'echec de `produire` rend une reference courte ; le detail (stderr, chemins)
 reste dans le journal du serveur.
 
-## 5. Etat reel
+## 6. Etat reel
 
 **Fonctionnel et verifie** : decoupage, casting versionne, empreintes,
 devis, chronologie, voix (moteur hors ligne sur ce poste), rendu scene par
 scene, cache de scene, recollage, controle ffprobe, API REST, page du parcours.
 
-**Simule / en place mais non prouve** : les visuels sont des **cartes de plan**
-dessinees par Remotion, pas des images generees ; la coherence visuelle d'un
-personnage en generation IA **n'a pas ete testee** et n'est pas promise ; la
-persistance est un fichier JSON local, pas une table.
+**Simule / en place mais non prouve** : aucune generation IA n'est branchee —
+les plans sans media importe restent des **cartes de plan** dessinees par
+Remotion ; la coherence visuelle d'un personnage en generation IA **n'a pas
+ete testee** et n'est pas promise ; la persistance est un fichier JSON local,
+pas une table ; les transitions sont des fondus courts par plan, sans fondu
+enchaine entre scenes (le recollage se fait en copie de flux).
 
 **A faire pour un vrai Studio Cinema IA** : voir le rapport de session.
 
-## 6. Commandes
+## 7. Commandes
 
 ```bash
 npm test                                  # suite du depot (cinema inclus, sans reseau)
@@ -124,7 +148,7 @@ du depot interdit toute socket — y compris la socket **locale** de Remotion �
 et parce que `jsdom` casse esbuild. Le garde-fou n'est pas affaibli : il est
 contourne dans un fichier qu'on lance a la main.
 
-## 7. Mesures du 2026-10-26 (poste local, Apple Silicon)
+## 8. Mesures du 2026-10-26 (poste local, Apple Silicon)
 
 Banc `npm run test:cinema`, histoire de 8 phrases, 2 personnages, 4 scenes,
 format 16:9, qualite standard :
@@ -144,3 +168,18 @@ Moteur de voix reellement utilise : **`systeme`** (macOS `say` + ffmpeg).
 `msedge-tts` a echoue a ouvrir son WebSocket sur ce poste
 (« Connect Error ») ; le repli est annonce dans `avertissements`, jamais
 silencieux.
+
+## 9. Mesures du lot 2 (2026-10-26)
+
+Banc `tests-cinema/medias.cinema.test.ts`, 4 scenes, 4 medias locaux (une
+video 1920x1080 de 8 s, une video 1280x720 de 2,5 s, une image 1920x1080, une
+image verticale 270x480), format 16:9 :
+
+| Mesure | Valeur |
+|---|---|
+| MP4 | 43,6 s · 5,99 Mo · 1920x1080 · h264 + aac |
+| Medias a l'image | dominante de couleur du MP4 = celle du fichier source, pour les 4 plans |
+| Cadrage vertical (270x480 dans 16:9) | `rogneX = 0`, `rogneY ≈ 0,68`, une seule echelle |
+| Image au format du film | `echelle = 1`, aucun rognage |
+| Changement d'un media | 1 scene rendue, 3 reprises du cache |
+| Media efface du disque | rendu refuse (`ErreurMediasManquants`), aperçu avertit |

@@ -9,8 +9,12 @@
  * Les segments portent des temps ABSOLUS (debut, fin) : Remotion en derive ses
  * `Sequence`, ffmpeg en derive ses points de coupe, sans recalculer l'ordre.
  */
-import type { Film, FormatFilm } from '@/lib/cinema/types';
-import { TAILLES } from '@/lib/cinema/types';
+import type { Cadrage, Film, FormatFilm, MediaPlan } from '@/lib/cinema/types';
+// ⚠️ Rien de ce fichier ne doit tirer un module SERVEUR : il est compile
+// dans le bundle navigateur de Remotion (`CinemaFilm.tsx`). `cadrage` et
+// `dureePlanAvecMedia` sont donc pris dans `types.ts`, pas dans `medias.ts`
+// qui ouvre des fichiers.
+import { TAILLES, cadrage, dureePlanAvecMedia } from '@/lib/cinema/types';
 import { apparencePourPrompt } from '@/lib/cinema/personnages';
 
 /** Palette Studiio — violet primaire, rose accent. Aucune couleur d'une autre marque. */
@@ -41,7 +45,10 @@ export interface SegmentMontage {
   debutS: number;
   finS: number;
   dureeS: number;
-  mediaUrl: string | null;
+  /** Le media du plan, mesure a l'import. `null` = carte de plan dessinee. */
+  media: MediaPlan | null;
+  /** Cadrage du media dans le cadre du film (jamais d'etirement). */
+  cadrage: Cadrage | null;
   /** Fichier de voix deja synthetise pour ce plan, s'il existe. */
   voixUrl: string | null;
   couleurs: [string, string];
@@ -74,7 +81,9 @@ export function monterFilm(film: Film, voix: VoixParPlan = {}): MontageFilm {
         ? film.personnages.find((p) => p.id === plan.dialogue?.personnageId) ?? null
         : null;
       const apparence = apparencePourPrompt(film.personnages, plan.personnages) || null;
-      const duree = Math.max(0.5, Math.round(plan.dureeS * 10) / 10);
+      // La duree tient compte du media : une video sans parole epouse sa
+      // propre duree (voir `dureePlanAvecMedia`).
+      const duree = Math.max(0.5, Math.round(dureePlanAvecMedia(plan, plan.media) * 10) / 10);
       segments.push({
         sceneId: scene.id,
         sceneIndex: scene.index,
@@ -90,7 +99,8 @@ export function monterFilm(film: Film, voix: VoixParPlan = {}): MontageFilm {
         debutS: Math.round(curseur * 10) / 10,
         finS: Math.round((curseur + duree) * 10) / 10,
         dureeS: duree,
-        mediaUrl: plan.mediaUrl,
+        media: plan.media,
+        cadrage: plan.media ? cadrage(plan.media, { w: taille.w, h: taille.h }) : null,
         voixUrl: voix[plan.id] ?? null,
         couleurs: PALETTE[scene.index % PALETTE.length],
       });

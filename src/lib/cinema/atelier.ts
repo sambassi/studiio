@@ -25,7 +25,22 @@ import { monterFilm, montageDeScene, type MontageFilm } from '@/lib/cinema/monta
 import { ajusterDureesSurVoix, synthetiserFilm, type MoteurVoix, type VoixPlan } from '@/lib/cinema/voix';
 import { concatener, controlerMp4, dureesDesVoix, rendreMontages, type ControleMp4, type TacheRendu } from '@/lib/cinema/rendu-local';
 import { enregistrerFilm } from '@/lib/cinema/store';
+import { mediasManquants } from '@/lib/cinema/medias';
 import type { Film, FormatFilm, NiveauQualite } from '@/lib/cinema/types';
+
+/**
+ * Un plan declare un media que le disque n'a pas.
+ *
+ * C'est une erreur NOMMEE, et pas une carte de secours : un film livre avec
+ * des cartes a la place de ses rushes ressemble a un film reussi, et
+ * personne ne regarde les 40 secondes du milieu avant de le publier.
+ */
+export class ErreurMediasManquants extends Error {
+  constructor(public readonly manquants: Array<{ sceneId: string; planId: string; url: string; motif: string }>) {
+    super(`media introuvable pour ${manquants.length} plan(s) : ${manquants.map((m) => `${m.planId} (${m.motif})`).join(', ')}`);
+    this.name = 'ErreurMediasManquants';
+  }
+}
 
 export interface EntreeAtelier {
   titre?: string | null;
@@ -120,6 +135,18 @@ export async function produireFilm(filmInitial: Film, options: OptionsProduction
 
   // ── 4. Devis AVANT toute production ─────────────────────────────────────
   const devis = devisFilm(filmInitial, [...aProduire]);
+
+  // ── Medias declares : presents, ou l'on s'arrete ─────────────────────────
+  //
+  // En RENDU, un media manquant arrete tout : mieux vaut un echec lisible
+  // qu'un MP4 ou trois plans sur quinze ont ete remplaces par une carte.
+  // En APERCU (`rendre: false`), il est signale et le reste continue : on
+  // veut pouvoir regarder son montage pendant qu'on cherche le fichier.
+  const manquants = await mediasManquants(filmInitial, racinePublique);
+  if (manquants.length) {
+    if (options.rendre !== false) throw new ErreurMediasManquants(manquants);
+    for (const m of manquants) avertissements.push(`media introuvable (plan ${m.planId}) : ${m.url} — ${m.motif}`);
+  }
 
   // ── 5. Voix : seules les scenes a produire sont synthetisees, et un
   //      fichier deja present est repris tel quel.

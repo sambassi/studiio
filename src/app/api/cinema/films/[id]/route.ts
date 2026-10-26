@@ -13,7 +13,8 @@ import { monterFilm } from '@/lib/cinema/montage';
 import { scenesAReproduire } from '@/lib/cinema/empreinte';
 import { devisFilm } from '@/lib/cinema/couts';
 import { ajouterReference } from '@/lib/cinema/personnages';
-import { appartientA, mediaAccepte } from '@/lib/cinema/acces';
+import { appartientA } from '@/lib/cinema/acces';
+import { remplacerMedia, reglerSonMedia } from '@/lib/cinema/medias';
 import type { Film } from '@/lib/cinema/types';
 
 export const dynamic = 'force-dynamic';
@@ -64,14 +65,22 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const corps = await req.json().catch(() => null);
   let suivant = film as Film;
 
-  // Un media REFUSE arrete la requete : l'accepter en silence laisserait
-  // croire qu'il a ete pris en compte, et l'URL finirait chargee par
-  // Chromium au rendu suivant.
+  // ⚠️ AUCUNE URL DE MEDIA N'ENTRE PAR ICI. Poser un media passe par
+  // `POST .../medias`, qui ECRIT le fichier et le MESURE. Accepter une URL
+  // en PATCH revenait a laisser l'appelant choisir ce que Chromium ira
+  // charger pendant le rendu. Ce PATCH ne sait que RETIRER (`media: null`)
+  // et regler le son (`sonMedia`).
   if (Array.isArray(corps?.plans)) {
     for (const p of corps.plans) {
-      if (p?.mediaUrl !== undefined && !mediaAccepte(p.mediaUrl).ok) {
+      if (p?.media !== undefined && p.media !== null) {
         return NextResponse.json(
-          { ok: false, erreur: 'media refuse : seuls les fichiers locaux sous cinema/ sont acceptes' },
+          { ok: false, erreur: 'un media s\'importe par POST /medias, il ne se declare pas par URL' },
+          { status: 400 },
+        );
+      }
+      if (p?.mediaUrl !== undefined) {
+        return NextResponse.json(
+          { ok: false, erreur: 'un media s\'importe par POST /medias, il ne se declare pas par URL' },
           { status: 400 },
         );
       }
@@ -80,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   // Repliques et durees : plan par plan, par identifiant.
   if (Array.isArray(corps?.plans)) {
-    const patchs = new Map<string, { texte?: string; dureeS?: number; mediaUrl?: string | null }>();
+    const patchs = new Map<string, { texte?: string; dureeS?: number; media?: null; sonMedia?: boolean; personnages?: string[] }>();
     for (const p of corps.plans) if (typeof p?.id === 'string') patchs.set(p.id, p);
     suivant = {
       ...suivant,
@@ -90,21 +99,34 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           const patch = patchs.get(plan.id);
           if (!patch) return plan;
           const texte = typeof patch.texte === 'string' ? patch.texte.slice(0, 500) : null;
+          const connus = new Set(film!.personnages.map((p) => p.id));
           return {
             ...plan,
+            // Les personnages PRESENTS dans le plan : ce sont eux dont
+            // l'apparence part a l'image (et, demain, dans un prompt).
+            personnages: Array.isArray(patch.personnages)
+              ? patch.personnages.filter((id) => connus.has(id))
+              : plan.personnages,
             description: texte && !plan.dialogue ? texte : plan.description,
             dialogue: plan.dialogue && texte ? { ...plan.dialogue, texte } : plan.dialogue,
             dureeS: !plan.dialogue && Number.isFinite(patch.dureeS)
               ? Math.min(20, Math.max(0.5, Number(patch.dureeS)))
               : plan.dureeS,
-            mediaUrl: patch.mediaUrl === undefined
-              ? plan.mediaUrl
-              : (mediaAccepte(patch.mediaUrl) as { ok: true; url: string | null }).url,
-            origineMedia: patch.mediaUrl ? 'import' : plan.origineMedia,
           };
         }),
       })),
     };
+  }
+
+  // Retrait d'un media, et son du media. Deux operations explicites : un
+  // media retire laisse son FICHIER en place (il peut etre reattache), seul
+  // le plan cesse de le designer.
+  if (Array.isArray(corps?.plans)) {
+    for (const p of corps.plans) {
+      if (typeof p?.id !== 'string') continue;
+      if (p.media === null) suivant = remplacerMedia(suivant, p.id, null);
+      if (typeof p.sonMedia === 'boolean') suivant = reglerSonMedia(suivant, p.id, p.sonMedia);
+    }
   }
 
   // Association personnage <-> scene, et etat de la scene.

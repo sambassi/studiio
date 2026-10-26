@@ -183,8 +183,7 @@ export function decouperHistoire(entree: EntreeScenario): Film {
       personnages: distribution,
       dialogue: null,
       dureeS: DUREE_ENSEMBLE_S,
-      mediaUrl: null,
-      origineMedia: 'aucun',
+      media: null,
     }];
 
     lignes.forEach((ligne, k) => {
@@ -211,8 +210,7 @@ export function decouperHistoire(entree: EntreeScenario): Film {
           dureeS: dureeReplique(texte),
         },
         dureeS: dureeReplique(texte),
-        mediaUrl: null,
-        origineMedia: 'aucun',
+        media: null,
       });
     });
 

@@ -82,6 +82,32 @@ export interface Dialogue {
   dureeS: number;
 }
 
+export type GenreMedia = 'image' | 'video';
+
+/**
+ * Le media d'un plan : une image ou une video LOCALE, mesuree a l'import.
+ *
+ * Les dimensions et la duree sont stockees parce qu'elles decident du
+ * montage (cadrage sans deformation, coupe ou image figee). Les redemander a
+ * ffprobe a chaque rendu couterait une sonde par plan et par passe.
+ */
+export interface MediaPlan {
+  /** Chemin LOCAL servi par `public/`, toujours sous `cinema/`. */
+  url: string;
+  genre: GenreMedia;
+  largeur: number;
+  hauteur: number;
+  /** Duree du media. `null` pour une image. */
+  dureeS: number | null;
+  octets: number;
+  origine: 'import' | 'genere';
+  /**
+   * Garder le son du media. Defaut `false` : le son d'ambiance d'un rush et
+   * la voix du plan se couvrent, et c'est la parole qu'on perd.
+   */
+  sonActif?: boolean;
+}
+
 export interface PlanCinema {
   id: string;
   cadre: CadrePlan;
@@ -91,9 +117,12 @@ export interface PlanCinema {
   personnages: string[];
   dialogue: Dialogue | null;
   dureeS: number;
-  /** Media du plan. `null` = carte de plan dessinee par Remotion (cout zero). */
-  mediaUrl: string | null;
-  origineMedia: 'aucun' | 'import' | 'genere';
+  /**
+   * Media du plan. `null` = carte de plan dessinee par Remotion (cout zero).
+   * Un media DECLARE et introuvable fait echouer la production : il n'est
+   * jamais remplace en silence par la carte.
+   */
+  media: MediaPlan | null;
   /** Reference utilisee au moment du rendu de ce plan (tracabilite). */
   referencesUtilisees?: string[];
 }
@@ -134,16 +163,27 @@ export interface Film {
   proprietaire?: string | null;
 }
 
+/**
+ * Duree d'un plan telle que le montage la retient — media compris.
+ *
+ * UNE seule regle, lue ici par tout le monde : le devis, l'aperçu et le MP4
+ * annoncent la meme duree. Deux calculs finissaient par ne plus coincider,
+ * et c'est l'ecart aperçu / rendu que ce module evite par construction.
+ */
+export function dureePlan(plan: Pick<PlanCinema, 'dureeS' | 'dialogue' | 'media'>): number {
+  return dureePlanAvecMedia(plan, plan.media);
+}
+
 /** Duree totale d'un film : la somme des plans, jamais une valeur stockee. */
 export function dureeFilm(film: Pick<Film, 'scenes'>): number {
   return Math.round(
-    film.scenes.reduce((t, s) => t + s.plans.reduce((u, p) => u + p.dureeS, 0), 0) * 10,
+    film.scenes.reduce((t, s) => t + s.plans.reduce((u, p) => u + dureePlan(p), 0), 0) * 10,
   ) / 10;
 }
 
 /** Duree d'une scene. */
 export function dureeScene(scene: Pick<SceneCinema, 'plans'>): number {
-  return Math.round(scene.plans.reduce((t, p) => t + p.dureeS, 0) * 10) / 10;
+  return Math.round(scene.plans.reduce((t, p) => t + dureePlan(p), 0) * 10) / 10;
 }
 
 /**
@@ -166,3 +206,47 @@ export const TAILLES: Record<NiveauQualite, Record<FormatFilm, { w: number; h: n
   standard: PLEIN,
   cinema: PLEIN,
 };
+
+export interface Cadrage {
+  /** Facteur applique au media pour remplir le cadre SANS deformation. */
+  echelle: number;
+  /** Fraction rognee horizontalement et verticalement (0 = rien). */
+  rogneX: number;
+  rogneY: number;
+  /** Le media a-t-il le meme rapport que le cadre ? */
+  memeRapport: boolean;
+}
+
+/**
+ * Le cadrage d'un media dans le cadre du film : `cover`, donc UN SEUL
+ * facteur pour les deux axes — c'est ce qui garantit qu'aucune image n'est
+ * etiree. Ce qui depasse est rogne, et `rogneX`/`rogneY` le chiffrent.
+ */
+export function cadrage(media: Pick<MediaPlan, 'largeur' | 'hauteur'>, cadre: { w: number; h: number }): Cadrage {
+  const echelle = Math.max(cadre.w / media.largeur, cadre.h / media.hauteur);
+  const largeurRendue = media.largeur * echelle;
+  const hauteurRendue = media.hauteur * echelle;
+  const arrondi = (v: number) => Math.round(v * 1000) / 1000;
+  return {
+    echelle: arrondi(echelle),
+    rogneX: arrondi(Math.max(0, (largeurRendue - cadre.w) / largeurRendue)),
+    rogneY: arrondi(Math.max(0, (hauteurRendue - cadre.h) / hauteurRendue)),
+    memeRapport: Math.abs(media.largeur / media.hauteur - cadre.w / cadre.h) < 0.01,
+  };
+}
+
+/**
+ * La duree d'un plan qui porte une video.
+ *
+ * Regle : la PAROLE commande (elle n'est jamais acceleree, cf. `voix.ts`).
+ * Une video plus courte que la parole ne raccourcit donc pas le plan : sa
+ * derniere image est figee pour le reste (`CinemaFilm.tsx`). Une video plus
+ * longue est coupee a la duree du plan.
+ */
+export function dureePlanAvecMedia(plan: Pick<PlanCinema, 'dureeS' | 'dialogue'>, media: MediaPlan | null): number {
+  if (!media || media.genre !== 'video' || media.dureeS === null) return plan.dureeS;
+  // Sans parole, le plan epouse la video (bornee a 12 s pour ne pas endormir
+  // le montage sur un rush oublie).
+  if (!plan.dialogue) return Math.round(Math.min(media.dureeS, 12) * 10) / 10;
+  return plan.dureeS;
+}

@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Clapperboard, Users, Wand2, Link2, MessageSquare, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
+  ImageIcon, Film, Volume2, VolumeX, Upload,
 } from 'lucide-react';
 
 interface SegmentApi {
@@ -22,10 +23,12 @@ interface SegmentApi {
   titreScene: string; lieu: string; intention: string; texte: string;
   locuteur: string | null; apparence: string | null;
   debutS: number; finS: number; dureeS: number;
-  mediaUrl: string | null; voixUrl: string | null; couleurs: [string, string];
+  media: MediaApi | null; cadrage: { echelle: number; rogneX: number; rogneY: number; memeRapport: boolean } | null;
+  voixUrl: string | null; couleurs: [string, string];
 }
+interface MediaApi { url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean }
 interface MontageApi { filmId: string; titre: string; format: string; largeur: number; hauteur: number; fps: number; segments: SegmentApi[]; dureeS: number }
-interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number }
+interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number; media: MediaApi | null }
 interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number }
 interface PersonnageApi { id: string; nom: string; role: string; voix: string; references: Array<{ id: string; version: number; description: string }>; referenceActiveId: string | null }
 interface FilmApi { id: string; titre: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[] }
@@ -96,7 +99,14 @@ export default function CinemaPage() {
     try {
       const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
       const data = await r.json();
-      if (!r.ok || data?.ok === false) throw new Error(data?.erreur ?? `echec (${r.status})`);
+      if (!r.ok || data?.ok === false) {
+        // Un media manquant est nomme plan par plan : c'est la seule
+        // information qui permet de le corriger.
+        const details = Array.isArray(data?.manquants)
+          ? ` — ${data.manquants.map((m: { planId: string; url: string }) => `${m.planId} : ${m.url}`).join(' / ')}`
+          : '';
+        throw new Error(`${data?.erreur ?? `echec (${r.status})`}${details}`);
+      }
       appliquer(data);
       return data;
     } catch (e) {
@@ -113,6 +123,29 @@ export default function CinemaPage() {
   }, 'scenario');
 
   const enregistrer = (corps: any) => film && appel(`/api/cinema/films/${film.id}`, { method: 'PATCH', body: JSON.stringify(corps) }, 'enregistrement');
+
+  /**
+   * Importe le media d'un plan. Le fichier part en OCTETS : aucune URL n'est
+   * declaree, c'est le serveur qui ecrit et MESURE le fichier.
+   */
+  const importerMedia = async (planId: string, fichier: File) => {
+    if (!film) return;
+    setEnCours(`media:${planId}`);
+    setErreur(null);
+    try {
+      const formulaire = new FormData();
+      formulaire.append('planId', planId);
+      formulaire.append('fichier', fichier);
+      const r = await fetch(`/api/cinema/films/${film.id}/medias`, { method: 'POST', body: formulaire });
+      const data = await r.json();
+      if (!r.ok || data?.ok === false) throw new Error(data?.erreur ?? `echec (${r.status})`);
+      appliquer(data);
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'echec de l import');
+    } finally {
+      setEnCours(null);
+    }
+  };
 
   /**
    * Prepare les VOIX sans rendre la video : l'apercu a besoin du son, pas de
@@ -304,21 +337,78 @@ export default function CinemaPage() {
 
                   <div className="mt-3 space-y-2">
                     {scene.plans.map((plan) => (
-                      <div key={plan.id} className="flex flex-col md:flex-row md:items-center gap-2">
-                        <span className="text-xs text-slate-500 w-32 shrink-0">{plan.cadre} · {plan.dureeS.toFixed(1)} s</span>
-                        <input
-                          defaultValue={plan.dialogue?.texte ?? plan.description}
-                          onBlur={(e) => {
-                            const texte = e.target.value;
-                            if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
-                          }}
-                          className="flex-1 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
-                        />
-                        {plan.dialogue && (
-                          <span className="text-xs text-pink-300 w-24 shrink-0">
-                            {film.personnages.find((p) => p.id === plan.dialogue?.personnageId)?.nom ?? 'narrateur'}
-                          </span>
-                        )}
+                      <div key={plan.id} className="rounded border border-slate-800/80 bg-slate-900/40 p-2">
+                        <div className="flex flex-col md:flex-row md:items-center gap-2">
+                          <span className="text-xs text-slate-500 w-32 shrink-0">{plan.cadre} · {plan.dureeS.toFixed(1)} s</span>
+                          <input
+                            defaultValue={plan.dialogue?.texte ?? plan.description}
+                            onBlur={(e) => {
+                              const texte = e.target.value;
+                              if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
+                            }}
+                            className="flex-1 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
+                          />
+                          {plan.dialogue && (
+                            <span className="text-xs text-pink-300 w-24 shrink-0">
+                              {film.personnages.find((p) => p.id === plan.dialogue?.personnageId)?.nom ?? 'narrateur'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                          {/* Media du plan : importe en octets, mesure par le serveur. */}
+                          {plan.media ? (
+                            <>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                                {plan.media.genre === 'image' ? <ImageIcon className="w-3 h-3" /> : <Film className="w-3 h-3" />}
+                                {plan.media.largeur}x{plan.media.hauteur}
+                                {plan.media.dureeS !== null && ` · ${plan.media.dureeS.toFixed(1)} s`}
+                                {` · ${(plan.media.octets / 1_000_000).toFixed(1)} Mo`}
+                              </span>
+                              {plan.media.genre === 'video' && (
+                                <button
+                                  onClick={() => enregistrer({ plans: [{ id: plan.id, sonMedia: !plan.media?.sonActif }] })}
+                                  className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-violet-500/50"
+                                >
+                                  {plan.media.sonActif ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+                                  {plan.media.sonActif ? 'son du rush garde' : 'son du rush coupe'}
+                                </button>
+                              )}
+                              <button
+                                onClick={() => enregistrer({ plans: [{ id: plan.id, media: null }] })}
+                                className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-red-500/50"
+                              >
+                                <Trash2 className="w-3 h-3" /> retirer
+                              </button>
+                            </>
+                          ) : (
+                            <label className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 cursor-pointer hover:border-violet-500/50">
+                              {enCours === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                              Importer une image ou une video
+                              <input
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
+                                className="hidden"
+                                onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
+                              />
+                            </label>
+                          )}
+
+                          {/* Personnages presents DANS CE PLAN. */}
+                          <span className="text-slate-600">|</span>
+                          {film.personnages.map((p) => {
+                            const present = plan.personnages.includes(p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => enregistrer({ plans: [{ id: plan.id, personnages: present ? plan.personnages.filter((x) => x !== p.id) : [...plan.personnages, p.id] }] })}
+                                className={`rounded-full px-2 py-1 border ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-800 text-slate-500'}`}
+                              >
+                                {p.nom}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -437,6 +527,20 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
           background: `radial-gradient(130% 110% at 25% 15%, ${segment.couleurs[0]} 0%, ${segment.couleurs[1]} 55%, #0A0A0F 100%)`,
         }}
       >
+        {/* Le media reel du plan, cadre comme au rendu (cover, sans etirement). */}
+        {segment.media && (
+          segment.media.genre === 'image' ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`} alt="" className="absolute inset-0 w-full h-full" style={{ objectFit: 'cover' }} />
+          ) : (
+            <video
+              src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`}
+              className="absolute inset-0 w-full h-full"
+              style={{ objectFit: 'cover' }}
+              muted autoPlay loop playsInline
+            />
+          )
+        )}
         <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.15) 45%, rgba(10,10,15,0.85) 100%)' }} />
         <div className="absolute top-4 left-4 right-4">
           <div className="text-[10px] tracking-[0.2em] text-pink-400 font-bold">SCENE {segment.sceneIndex + 1} · {segment.intention.toUpperCase()}</div>
