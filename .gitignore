@@ -87,3 +87,7 @@ skills-lock.json
 # Banc E2E local (médias extraits, résultats) — jamais versionnés
 e2e/banc/medias/
 e2e/banc/resultats/
+
+# Cinema IA — films, voix et rendus locaux (jamais versionnes)
+var/
+public/cinema/
