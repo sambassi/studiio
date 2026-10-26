@@ -20,6 +20,7 @@ import {
   lancerJumeauMontage, creneauxJumeauEnAttente, finaliserJumeauxPrets,
 } from '@/lib/autopilot/jumeau-async';
 import { doitPasserLeRush, rushReussi } from '@/lib/autopilot/echec-rush';
+import { estErreurDeFile } from '@/lib/autopilot/limite-rendus';
 
 /**
  * Moteur de l'Autopilote — un passage par appel.
@@ -440,6 +441,13 @@ export async function GET(req: NextRequest) {
           rushReussi(userId, rushUrl);
           reussis += 1;
         } catch (err) {
+          // File de rendu (`limite-rendus.ts`) : serveur occupé ou même créneau déjà en
+          // cours de rendu. Ni le rush ni le montage n'y sont pour rien : rien n'a été rendu
+          // ni débité, la rotation ne bouge pas, le créneau sera retenté au passage suivant.
+          if (estErreurDeFile(err)) {
+            console.warn(`[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} reporté : ${err.message}`);
+            continue;
+          }
           echecs += 1;
           const message = err instanceof Error ? err.message : String(err);
           // ⚠️ LA ROTATION N'AVANCE SUR UN ECHEC QUE SI LE RUSH EN EST LA

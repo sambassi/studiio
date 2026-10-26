@@ -45,6 +45,7 @@ import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
+import { avecLimiteRendus } from '@/lib/autopilot/limite-rendus';
 import { jumeauPleinCadre } from '@/lib/avatar/jumeau-plein-cadre';
 import { buildSequences, totalDurationSeconds } from '@/lib/creer/designSpec';
 
@@ -359,6 +360,21 @@ export function avertissementsMontage(m: {
 }
 
 /**
+ * Rend UN montage sous la LIMITE GLOBALE de rendus (`limite-rendus.ts`) : tous comptes,
+ * toutes instances. Le rendu attend sa place (progression « en file d'attente ») au lieu
+ * de s'ajouter aux autres ; `RenduOccupeError` / `RenduDoublonError` sont levées AVANT
+ * tout travail, donc avant tout débit (le débit vient après le dépôt). Le moteur lui-même,
+ * `produireUnMontageInterne`, est inchangé.
+ */
+export function produireUnMontage(
+  input: Parameters<typeof produireUnMontageInterne>[0],
+): ReturnType<typeof produireUnMontageInterne> {
+  return avecLimiteRendus(input.userId, input.jobId, () => produireUnMontageInterne(input), {
+    onAttente: () => input.onProgression?.('attente', 0),
+  });
+}
+
+/**
  * Rend UN montage, le dépose, le débite.
  *
  * L'ordre est celui du chemin manuel : rendu, puis dépôt, puis débit. Débiter
@@ -369,7 +385,7 @@ export function avertissementsMontage(m: {
  * insertion) : l'appelant décide ce qu'il en fait — le cron isole chaque
  * montage, la production manuelle répond une erreur.
  */
-export async function produireUnMontage(input: {
+async function produireUnMontageInterne(input: {
   userId: string;
   config: AutopilotConfig;
   post: PreparedPost;

@@ -25,6 +25,7 @@ import { rushesUtilisablesServeur } from '@/lib/autopilot/validite-rush';
 import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
 import { mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { noterProgression, effacerProgression, noterResultat, effacerResultat, lireProgression } from '@/lib/autopilot/progression';
+import { estErreurDeFile } from '@/lib/autopilot/limite-rendus';
 
 /**
  * « Produire un brouillon maintenant » — UNE vidéo, tout de suite, pour le
@@ -436,8 +437,12 @@ export async function POST(req?: Request) {
       });
     }).catch((err) => {
       console.error('[Autopilote/Manuel]', err instanceof Error ? err.message : err);
-      noterResultat(userId, { success: false, error: 'Production impossible. Rien n’a été débité.' });
-      return terminerProductionDirecte(userId, jobId, { ok: false, message: 'Production impossible. Rien n’a été débité.' });
+      // File de rendu : un serveur saturé n'est pas une panne du montage — on le dit.
+      const message = estErreurDeFile(err)
+        ? err.message
+        : 'Production impossible. Rien n’a été débité.';
+      noterResultat(userId, { success: false, error: message });
+      return terminerProductionDirecte(userId, jobId, { ok: false, message });
     }).catch((err) => {
       console.error('[Autopilote/Manuel] fin non écrite :', err instanceof Error ? err.message : err);
     }).finally(() => {
