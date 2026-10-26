@@ -2,7 +2,8 @@
 
 > Branche `feat/cinema-ia`, worktree `/Users/afroboost/studiio-cinema-ia`, base
 > `origin/main` (`02fedad`). Rien n'est pousse, rien n'est deploye, aucune
-> table n'est creee, aucun fournisseur payant n'est actif.
+> table n'est creee EN PRODUCTION (la migration du lot 4 est ecrite et testee
+> sur un PostgreSQL local, pas appliquee), aucun fournisseur payant n'est actif.
 
 ## 1. Ce que c'est
 
@@ -185,3 +186,96 @@ image verticale 270x480), format 16:9 :
 | Image au format du film | `echelle = 1`, aucun rognage |
 | Changement d'un media | 1 scene rendue, 3 reprises du cache |
 | Media efface du disque | rendu refuse (`ErreurMediasManquants`), aperçu avertit |
+
+## 10. Lot 4 — stockage durable et production asynchrone (2026-10-26)
+
+### 10.1 Ce qui change, en une phrase
+
+Les films, leurs medias et leurs MP4 ne vivent plus dans `var/` et `public/`
+d'un serveur : ils vivent dans PostgreSQL et MinIO, **prives par compte**, et
+la production tourne **en arriere-plan**, reprenable.
+
+### 10.2 Deux modes, un interrupteur
+
+| `CINEMA_STOCKAGE` | Films | Travaux | Objets (medias, MP4) |
+|---|---|---|---|
+| absent / autre (**defaut**) | `var/cinema/films/*.json` | memoire du processus | `var/cinema/objets/` |
+| `durable` | table `cinema_films` | table `cinema_travaux` | MinIO, compartiment `media` |
+
+Le defaut ne parle ni a la base ni a MinIO : tant que la migration n'est pas
+appliquee et la variable posee, **rien de Studiio ne change**. Dans les deux
+modes, **aucun media n'est ecrit dans `public/`** (les anciens benchs du
+lot 1-3 l'utilisent encore, via `produireFilm`, comme outil local).
+`CINEMA_PLAFOND_USD` fixe le plafond de depense par film (defaut 2 $, borne 10 $,
+valeur invalide = defaut). Le client ne peut que le RABAISSER.
+
+### 10.3 Stockage — ce qui est reutilise
+
+| Besoin | Reutilise | Ajoute |
+|---|---|---|
+| Fichiers | MinIO et son client (`lib/storage/minio-client`), compartiment `media` | `stockage/objets.ts` : une interface (memoire / dossier / MinIO) |
+| Propriete | `cleDuCompteStrict`, la regle du relais de stockage | `stockage/cles.ts` : toute cle est `<compte>/cinema/<film>/…`, fabriquee par le serveur |
+| Lecture privee | la doctrine des vignettes d'analyse (cle relue en base, 404 partout) | routes `…/medias/<plan>`, `…/voix/<plan>`, `…/references/<perso>`, `…/travaux/<id>/export` ; `Range` 206/416, `nosniff`, CSP, cache prive |
+| Base | PostgREST, `supabaseAdmin`, modele de moindre privilege (#533) | `migrations/2026-10-27-cinema-ia.sql` (2 tables, 2 fonctions) |
+
+Cles : `medias/`, `references/`, `voix/<plan>-<empreinte>.mp3`,
+`scenes/<scene>-<empreinte>.mp4`, `exports/film-<empreinte>.mp4`. La cle d'une
+scene porte l'empreinte de ce qui la produit : **modifier une scene change sa
+cle**, l'ancienne n'est jamais servie pour la nouvelle.
+
+### 10.4 Production asynchrone
+
+```
+POST …/produire {rendre:true}  → 202 { travail }          (quelques ms)
+GET  …/travaux/<id>            → etat reel, progression    (sondage de l'ecran)
+POST …/travaux/<id>/annuler    → arret a la prochaine note
+GET  …/travaux/<id>/export     → le MP4 (proprietaire seulement)
+```
+
+| Besoin | Mecanisme |
+|---|---|
+| Ne pas bloquer le navigateur | l'executeur tourne dans le processus Node (long-vivant), file locale d'UN rendu a la fois |
+| Progression reelle | `pourcent` derive des scenes `faite`/`reutilisee`, ecrit dans la ligne du travail |
+| Conserver les scenes terminees | une scene est deposee (objet durable) AVANT d'etre annoncee `faite` |
+| Reprendre apres interruption | **bail** renouvele par battement de coeur ; bail expire = reprenable ; relu a chaque lecture d'un travail (30 s) ; 5 prises max |
+| Ne regenerer que le modifie | cache par empreinte de scene ; scene demandee = refaite, les autres reprises |
+| Pas de double generation | **un seul travail actif par film** (index unique partiel), jeton de prise (`tentatives`) : un executeur perime ne peut rien ecrire |
+| Pas d'ecrasement film/rendu | film versionne, `modifierFilm` rejoue sur la version recente |
+
+Pas de cron : la table EST la file, et un cron pourrait la rappeler sans
+risque (`reprendreOrphelins`).
+
+### 10.5 Couts et securite
+
+- Aucun fournisseur payant actif ; `lib/credits`, Stripe, `lib/rendus` ne sont
+  importes nulle part (un test lit le code source).
+- Plafond cote serveur, verifie a la route (402) ET re-verifie par l'executeur ;
+  tarif inconnu = refus.
+- Images de reference : octets seulement, plus d'URL libre (`referenceCinemaValide`).
+- Medias : octets verifies avant ecriture, ffprobe verrouille (lot 2), taille
+  refusee avant lecture du corps.
+- Dossiers de travail `var/cinema/travail/<travail>-<prise>/`, effaces a la fin ;
+  les medias y sont copies pour Remotion (`publicDir`), jamais exposes.
+- Erreurs : une phrase + une reference ; le detail reste dans le journal.
+
+### 10.6 Ordre de mise en service (regle du projet : base d'abord)
+
+1. appliquer `migrations/2026-10-27-cinema-ia.sql` ;
+2. `docker kill -s SIGUSR1 studiio-postgrest` ;
+3. verifier (requetes de controle en pied de migration) ;
+4. SEULEMENT ENSUITE deployer l'application avec `CINEMA_STOCKAGE=durable`.
+
+Retour arriere : retirer la variable (l'application retombe sur le mode local),
+puis `migrations/rollback/2026-10-27-cinema-ia.rollback.sql` si besoin.
+
+### 10.7 Tests
+
+| Suite | Fichier | Ce qu'elle prouve |
+|---|---|---|
+| unitaire | `cinema-stockage.test.ts` | cles, objets (3 implementations), films (isolement, versions), service `Range` |
+| unitaire | `cinema-travaux.test.ts` | file, reprise, jeton, annulation, cache par scene, plafond |
+| unitaire | `cinema-routes.test.ts` | HTTP de bout en bout, isolation entre comptes, import/generation reels (ffprobe, ffmpeg) |
+| unitaire | `cinema-page.test.tsx` | progression, erreurs visibles, icones accessibles, simulation annoncee |
+| PostgreSQL reel + PostgREST reel | `tests-pg/cinema-ia.pg.test.ts` | migration, droits, concurrence (8 creations → 1 travail ; 8 prises → 1 gagnant), depots TypeScript sur la vraie base |
+| banc (Remotion reel) | `tests-cinema/durable.cinema.test.ts` | MP4 reel depuis medias prives, couleur mesuree, relance sans rien refaire, une scene, reprise apres « mort » |
+

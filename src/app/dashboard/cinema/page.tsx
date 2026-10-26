@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Clapperboard, Users, Wand2, Link2, MessageSquare, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
-  ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles,
+  ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
 } from 'lucide-react';
 
 interface SegmentApi {
@@ -31,7 +31,14 @@ interface MontageApi { filmId: string; titre: string; format: string; largeur: n
 interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number; media: MediaApi | null }
 interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number }
 interface PersonnageApi { id: string; nom: string; role: string; voix: string; references: Array<{ id: string; version: number; description: string }>; referenceActiveId: string | null }
-interface FilmApi { id: string; titre: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[] }
+interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[] }
+type StatutTravailApi = 'en_attente' | 'en_cours' | 'termine' | 'echec' | 'annule';
+interface TravailApi {
+  id: string; filmId: string; statut: StatutTravailApi; erreur: string | null; reference: string | null; annulationDemandee: boolean;
+  progression: { etape: string; scenes: Record<string, 'a_faire' | 'en_cours' | 'faite' | 'reutilisee' | 'echec'>; pourcent: number; message: string | null };
+  resultat: { aMp4: boolean; scenesRendues: string[]; scenesReutilisees: string[]; avertissements: string[]; dureeS: number | null; octets: number | null; largeur: number | null; hauteur: number | null; codecVideo: string | null; codecAudio: string | null; coutUsd: number } | null;
+}
+const ACTIF = (t: TravailApi | null) => !!t && (t.statut === 'en_attente' || t.statut === 'en_cours');
 interface DevisApi { totalUsd: number | null; secondesAProduire: number; fournisseur: { libelle: string } | null; lignes: Array<{ sceneId: string; titre: string; secondes: number; usd: number | null; motif: string }> }
 
 const HISTOIRE_EXEMPLE = "Nina entre dans la salle avant le lever du jour. Le tatami est encore froid et personne ne parle. Marco la regarde sans bouger. Nina sait que le combat a deja commence. Marco avance et le silence se brise. Nina tient bon jusqu au dernier instant. Le jour se leve sur la salle vide.";
@@ -83,8 +90,8 @@ export default function CinemaPage() {
   const [aProduire, setAProduire] = useState<string[]>([]);
   const [enCours, setEnCours] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [rendu, setRendu] = useState<{ urlPublique: string | null; dureeS: number | null; octets: number; largeur: number | null; hauteur: number | null; codecVideo: string | null; codecAudio: string | null } | null>(null);
-  const [journalRendu, setJournalRendu] = useState<string[]>([]);
+  const [travail, setTravail] = useState<TravailApi | null>(null);
+  const [mesFilms, setMesFilms] = useState<Array<{ id: string; titre: string; majLe: string }>>([]);
 
   const appliquer = useCallback((data: any) => {
     if (data?.film) setFilm(data.film);
@@ -117,10 +124,13 @@ export default function CinemaPage() {
     }
   }, [appliquer]);
 
-  const composer = () => appel('/api/cinema/films', {
-    method: 'POST',
-    body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting }),
-  }, 'scenario');
+  const composer = async () => {
+    const data = await appel('/api/cinema/films', {
+      method: 'POST',
+      body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting }),
+    }, 'scenario');
+    if (data) { setTravail(null); chargerListe(); }
+  };
 
   const enregistrer = (corps: any) => film && appel(`/api/cinema/films/${film.id}`, { method: 'PATCH', body: JSON.stringify(corps) }, 'enregistrement');
 
@@ -169,22 +179,115 @@ export default function CinemaPage() {
     body: JSON.stringify({ rendre: false }),
   }, 'voix');
 
-  const produire = async (scenes?: string[]) => {
-    if (!film) return;
-    const data = await appel(`/api/cinema/films/${film.id}/produire`, {
-      method: 'POST',
-      body: JSON.stringify({ rendre: true, scenes }),
-    }, 'rendu');
-    if (data?.mp4) {
-      setRendu(data.mp4);
-      setJournalRendu([
-        `voix : ${data.voix?.produites ?? 0} repliques (moteur ${data.voix?.moteur})`,
-        `scenes rendues : ${data.scenesRendues?.join(', ') || 'aucune'}`,
-        `scenes reprises du cache : ${data.scenesReutilisees?.join(', ') || 'aucune'}`,
-        ...(data.avertissements ?? []),
-      ]);
+  /** Les films du compte : ils survivent a un redemarrage du serveur. */
+  const chargerListe = useCallback(async () => {
+    try {
+      const r = await fetch('/api/cinema/films');
+      const data = await r.json();
+      if (data?.ok) setMesFilms(data.films);
+    } catch { /* la liste est un confort : son absence ne bloque rien */ }
+  }, []);
+  useEffect(() => { chargerListe(); }, [chargerListe]);
+
+  /** Relit le film (scenes scellees, a reproduire) apres un travail. */
+  const rafraichirFilm = useCallback(async (id: string) => {
+    try {
+      const r = await fetch(`/api/cinema/films/${id}`);
+      const data = await r.json();
+      if (data?.ok) appliquer(data);
+    } catch { /* le prochain geste relira */ }
+  }, [appliquer]);
+
+  /** Rouvre un film enregistre — et retrouve sa derniere production, active ou finie. */
+  const ouvrirFilm = async (id: string) => {
+    if (!id) return;
+    setEnCours('ouverture');
+    setErreur(null);
+    try {
+      const r = await fetch(`/api/cinema/films/${id}`);
+      const data = await r.json();
+      if (!r.ok || data?.ok === false) throw new Error(data?.erreur ?? `echec (${r.status})`);
+      appliquer(data);
+      setTitre(data.film.titre);
+      if (typeof data.film.histoire === 'string') setHistoire(data.film.histoire);
+      setFormat(data.film.format === '9:16' ? '9:16' : '16:9');
+      setQualite(data.film.qualite);
+      setCasting(data.film.personnages.map((p: PersonnageApi) => ({
+        nom: p.nom, role: p.role,
+        description: p.references.find((x) => x.id === p.referenceActiveId)?.description ?? p.references.at(-1)?.description ?? '',
+        urlImage: '',
+      })));
+      const t = await fetch(`/api/cinema/films/${id}/travaux`).then((x) => x.json()).catch(() => null);
+      setTravail(t?.ok ? t.travail : null);
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'ouverture impossible');
+    } finally {
+      setEnCours(null);
     }
   };
+
+  /**
+   * Lance la production EN ARRIERE-PLAN : la requete rend un identifiant en
+   * quelques millisecondes, la page ne bloque pas et peut etre fermee. Un
+   * second clic RETROUVE le travail en cours au lieu d'en lancer un autre.
+   */
+  const produire = async (scenes?: string[]) => {
+    if (!film) return;
+    setEnCours('lancement');
+    setErreur(null);
+    try {
+      const r = await fetch(`/api/cinema/films/${film.id}/produire`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rendre: true, scenes }),
+      });
+      const data = await r.json();
+      if (!r.ok || data?.ok === false) throw new Error(data?.erreur ?? `echec (${r.status})`);
+      if (data.devis) setDevis(data.devis);
+      setTravail(data.travail);
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'lancement impossible');
+    } finally {
+      setEnCours(null);
+    }
+  };
+
+  const arreterProduction = async () => {
+    if (!film || !travail) return;
+    try {
+      const r = await fetch(`/api/cinema/films/${film.id}/travaux/${travail.id}/annuler`, { method: 'POST' });
+      const data = await r.json();
+      if (data?.ok) setTravail(data.travail);
+    } catch { /* le prochain sondage dira l'etat reel */ }
+  };
+
+  // Sondage de l'etat REEL du travail (jamais une animation). Il s'espace en
+  // cas d'erreur reseau et s'arrete a la fin ; la fin relit le film.
+  const filmId = film?.id ?? null;
+  const travailId = travail?.id ?? null;
+  const actif = ACTIF(travail);
+  useEffect(() => {
+    if (!filmId || !travailId || !actif) return;
+    let arrete = false;
+    let delai = 1500;
+    let minuteur: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/cinema/films/${filmId}/travaux/${travailId}`);
+        const data = await r.json();
+        if (arrete) return;
+        if (data?.ok) {
+          setTravail(data.travail);
+          delai = 1500;
+          if (!ACTIF(data.travail)) { rafraichirFilm(filmId); return; }
+        } else if (r.status === 404) { return; }
+      } catch {
+        delai = Math.min(delai * 2, 10_000);
+      }
+      if (!arrete) minuteur = setTimeout(tick, delai);
+    };
+    minuteur = setTimeout(tick, 600);
+    return () => { arrete = true; clearTimeout(minuteur); };
+  }, [filmId, travailId, actif, rafraichirFilm]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 text-slate-100">
@@ -198,6 +301,20 @@ export default function CinemaPage() {
           Une histoire devient un film : scenes, personnages, plans, voix, puis un MP4.
           <Detail texte="Le decoupage est local et deterministe : aucune IA generative n'est appelee, aucun fournisseur payant n'est actif. Les visuels sont des cartes de plan rendues par Remotion." />
         </p>
+        {mesFilms.length > 0 && (
+          <label className="mt-4 inline-flex items-center gap-2 text-xs text-slate-400">
+            Reprendre un film
+            <select
+              value={film?.id ?? ''}
+              onChange={(e) => ouvrirFilm(e.target.value)}
+              disabled={enCours !== null}
+              className="rounded bg-slate-950 border border-slate-700 px-2 py-1 text-slate-200"
+            >
+              <option value="">—</option>
+              {mesFilms.map((f) => <option key={f.id} value={f.id}>{f.titre || f.id}</option>)}
+            </select>
+          </label>
+        )}
       </header>
 
       {/* Rail des etapes */}
@@ -318,18 +435,26 @@ export default function CinemaPage() {
                     <span className="font-semibold">{scene.titre}</span>
                     <span className="text-xs text-slate-400">{scene.lieu}</span>
                     {scene.etat === 'validee' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                    {/* Actions secondaires : icones, libelle accessible (UX-PREMIUM.md). */}
                     <button
+                      type="button"
                       onClick={() => enregistrer({ scenes: [{ id: scene.id, etat: scene.etat === 'validee' ? 'brouillon' : 'validee' }] })}
-                      className="ml-auto text-xs rounded border border-slate-700 px-2 py-1 hover:border-emerald-500/50"
+                      aria-label={scene.etat === 'validee' ? 'Repasser la scene en brouillon' : 'Valider la scene'}
+                      aria-pressed={scene.etat === 'validee'}
+                      title={scene.etat === 'validee' ? 'Repasser en brouillon' : 'Valider la scene'}
+                      className="ml-auto rounded p-1.5 text-slate-500 hover:text-emerald-300 transition-colors"
                     >
-                      {scene.etat === 'validee' ? 'Repasser en brouillon' : 'Valider la scene'}
+                      <CheckCircle2 className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => produire([scene.id])}
-                      disabled={enCours !== null}
-                      className="text-xs inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-violet-500/50 disabled:opacity-50"
+                      disabled={enCours !== null || ACTIF(travail)}
+                      aria-label="Regenerer cette scene"
+                      title="Regenerer cette scene"
+                      className="rounded p-1.5 text-slate-500 hover:text-violet-300 transition-colors disabled:opacity-40"
                     >
-                      <RefreshCw className="w-3 h-3" /> Regenerer cette scene
+                      <RefreshCw className="w-4 h-4" />
                     </button>
                   </div>
 
@@ -459,37 +584,122 @@ export default function CinemaPage() {
             {devis && (
               <p className="text-sm text-slate-300 mb-3">
                 Devis : {devis.totalUsd === null ? 'cout inconnu (tarif non declare)' : devis.totalUsd === 0 ? 'gratuit (rendu local)' : `${devis.totalUsd.toFixed(4)} USD`} pour {devis.secondesAProduire.toFixed(1)} s a produire.
-                <Detail texte="Le devis est etabli AVANT le rendu. Une scene validee et inchangee n'est pas refacturee : son MP4 est repris tel quel et recolle." />
+                <Detail texte="Le devis est etabli AVANT le rendu. Une scene inchangee n'est pas refaite : son MP4 est repris tel quel et recolle. Le plafond de depense est fixe par le serveur." />
               </p>
             )}
-            <button onClick={() => produire()} disabled={enCours !== null} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
-              {enCours === 'rendu' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Exporter le film
+            <button onClick={() => produire()} disabled={enCours !== null || ACTIF(travail)} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
+              {enCours === 'lancement' || ACTIF(travail) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {ACTIF(travail) ? 'Production en cours' : 'Exporter le film'}
             </button>
-            {enCours === 'rendu' && <p className="mt-3 text-xs text-amber-300">Rendu synchrone : plusieurs minutes, ne pas fermer la page.</p>}
-
-            {rendu && (
-              <div className="mt-5">
-                <p className="text-sm text-slate-300">
-                  {rendu.dureeS?.toFixed(1)} s · {rendu.largeur}x{rendu.hauteur} · {rendu.codecVideo}/{rendu.codecAudio ?? 'sans audio'} · {(rendu.octets / 1_000_000).toFixed(2)} Mo
-                </p>
-                {rendu.urlPublique && (
-                  <>
-                    <video src={rendu.urlPublique} controls className="mt-3 w-full rounded-lg border border-slate-800" style={{ maxHeight: 480 }} />
-                    <a href={rendu.urlPublique} download className="mt-3 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200">
-                      <Download className="w-4 h-4" /> Telecharger le MP4
-                    </a>
-                  </>
-                )}
-                {journalRendu.length > 0 && (
-                  <ul className="mt-3 text-xs text-slate-400 space-y-1">
-                    {journalRendu.map((l, i) => <li key={i}>{l}</li>)}
-                  </ul>
-                )}
-              </div>
-            )}
+            {travail && film && <Production film={film} travail={travail} surArreter={arreterProduction} />}
           </section>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * PRODUCTION — l'etat REEL d'un travail en arriere-plan.
+ *
+ * Tout ici vient de la ligne du travail (pourcentage, scenes, message) ; rien
+ * n'est anime pour faire patienter. L'erreur et sa reference restent
+ * visibles : on ne masque jamais un echec pour epurer. Arreter est une
+ * action secondaire : une icone, avec son libelle accessible.
+ */
+const ETAPES_LIBELLE: Record<string, string> = {
+  preparation: 'Preparation', voix: 'Voix des repliques', rendu: 'Rendu des scenes', assemblage: 'Assemblage', termine: 'Termine',
+};
+
+function Production({ film, travail, surArreter }: { film: FilmApi; travail: TravailApi; surArreter: () => void }) {
+  const actif = ACTIF(travail);
+  const pct = Math.max(0, Math.min(100, travail.progression.pourcent));
+  const urlMp4 = `/api/cinema/films/${film.id}/travaux/${travail.id}/export`;
+  const r = travail.resultat;
+
+  return (
+    <div className="mt-5" data-testid="production">
+      {actif && (
+        <div>
+          <div className="flex items-center gap-3 text-sm text-slate-300">
+            <span>{travail.progression.message ?? ETAPES_LIBELLE[travail.progression.etape] ?? travail.progression.etape}</span>
+            <span className="tabular-nums text-slate-400">{pct} %</span>
+            <button
+              type="button"
+              onClick={surArreter}
+              disabled={travail.annulationDemandee}
+              aria-label="Arreter la production"
+              title={travail.annulationDemandee ? 'Arret demande' : 'Arreter la production'}
+              className="ml-auto rounded p-1.5 text-slate-500 hover:text-red-300 transition-colors disabled:opacity-40"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div
+            role="progressbar" aria-label="Progression de la production" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
+            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800"
+          >
+            <div className="h-full rounded-full bg-violet-500 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+          </div>
+          <ul className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="Etat des scenes">
+            {film.scenes.map((sc) => {
+              const etat = travail.progression.scenes[sc.id] ?? 'a_faire';
+              const fait = etat === 'faite' || etat === 'reutilisee';
+              return (
+                <li
+                  key={sc.id}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 ${fait ? 'border-emerald-500/40 text-emerald-200' : etat === 'en_cours' ? 'border-violet-500/50 text-violet-200' : 'border-slate-700 text-slate-500'}`}
+                >
+                  {fait ? <Check className="w-3 h-3" /> : etat === 'en_cours' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Circle className="w-3 h-3" />}
+                  <span>Scene {sc.index + 1}</span>
+                  <span className="sr-only">{etat === 'reutilisee' ? 'reprise du stockage' : etat === 'faite' ? 'rendue' : etat === 'en_cours' ? 'en cours' : 'en attente'}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-3 text-xs text-slate-500">
+            La production continue sur le serveur : vous pouvez fermer cette page et revenir.
+            <Detail texte="Les scenes terminees sont conservees. Si le serveur redemarre, la production reprend la ou elle s'est arretee, sans refaire les scenes deja rendues." />
+          </p>
+        </div>
+      )}
+
+      {travail.statut === 'echec' && (
+        <div className="flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200" role="alert">
+          <AlertTriangle className="w-5 h-5 shrink-0" />
+          <span>
+            {travail.erreur ?? 'La production a echoue.'}
+            <Detail texte="Les scenes deja rendues sont conservees : relancer l'export ne refait que ce qui manque." />
+          </span>
+        </div>
+      )}
+
+      {travail.statut === 'annule' && (
+        <p className="text-sm text-amber-300">
+          Production arretee. Les scenes deja rendues sont conservees.
+        </p>
+      )}
+
+      {travail.statut === 'termine' && r && (
+        <div>
+          <p className="text-sm text-slate-300">
+            {r.dureeS?.toFixed(1)} s · {r.largeur}x{r.hauteur} · {r.codecVideo}/{r.codecAudio ?? 'sans audio'} · {((r.octets ?? 0) / 1_000_000).toFixed(2)} Mo
+            <Detail texte={`${r.scenesRendues.length} scene(s) rendue(s), ${r.scenesReutilisees.length} reprise(s) du stockage. Cout : ${r.coutUsd === 0 ? 'gratuit (rendu local)' : `${r.coutUsd.toFixed(4)} USD`}.`} />
+          </p>
+          {r.aMp4 && (
+            <>
+              <video src={urlMp4} controls className="mt-3 w-full rounded-lg border border-slate-800" style={{ maxHeight: 480 }} />
+              <a href={urlMp4} download={`${film.titre || film.id}.mp4`} className="mt-3 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200">
+                <Download className="w-4 h-4" /> Telecharger le MP4
+              </a>
+            </>
+          )}
+          {r.avertissements.length > 0 && (
+            <ul className="mt-3 text-xs text-amber-300 space-y-1">
+              {r.avertissements.map((l, i) => <li key={i}>{l}</li>)}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

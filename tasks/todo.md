@@ -749,3 +749,18 @@ psql -U studiio -d studiio -f migrations/2026-08-08-zernio.sql
 docker kill -s SIGUSR1 studiio-postgrest
 ```
 Variables Coolify : `ZERNIO_API_KEY` (sk_…) et `ZERNIO_WEBHOOK_SECRET`.
+
+## 2026-10-26 — Cinema IA lot 4 : stockage durable + production asynchrone
+
+- [x] Migration `2026-10-27-cinema-ia.sql` (+ rollback) : `cinema_films`, `cinema_travaux`, 2 fonctions SECURITY DEFINER — ECRITE, TESTEE sur PostgreSQL local, NON APPLIQUEE
+- [x] Stockage : cles par compte (`stockage/cles.ts`), objets memoire/dossier/MinIO, depots de films (versionnes) memoire/dossier/PostgreSQL
+- [x] Production : travaux, bail, jeton de prise, un actif par film, cache de scene par empreinte, annulation, plafond serveur
+- [x] Routes : film/PATCH versionne, medias, references, voix, travaux, export, generation (plafond serveur)
+- [x] Page : progression reelle, reprise d'un film, erreurs visibles, actions secondaires en icones
+- [x] Tests : 191 unitaires cinema, 21 pg reels (PostgreSQL + PostgREST), 4 benches Remotion reels
+- [ ] **Appliquer la migration en production** (puis `docker kill -s SIGUSR1 studiio-postgrest`) — SEULEMENT sur GO explicite
+- [ ] Poser `CINEMA_STOCKAGE=durable` dans Coolify APRES la migration
+- [ ] Garde d'acces au module (admin / drapeau) avant toute exposition aux utilisateurs
+- [ ] Suppression d'un film + purge des objets MinIO (aucune route aujourd'hui) — rejoint `tasks/dette-rgpd-purge-stockage.md`
+- [ ] Ne pas lancer deux Chromium : brancher `rendusRemotionActifs()` dans le lanceur
+

@@ -1,0 +1,162 @@
+/**
+ * CINEMA IA — la page : production asynchrone, reprise, erreurs visibles.
+ *
+ * Le serveur est simule par un `fetch` programme : on verifie ce que la page
+ * AFFICHE a chaque etat reel d'un travail, pas la mecanique serveur (testee
+ * ailleurs).
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, waitFor, within, fireEvent, cleanup } from '@testing-library/react';
+import CinemaPage from '@/app/dashboard/cinema/page';
+import { preparerFilm } from '@/lib/cinema/atelier';
+import { monterFilm } from '@/lib/cinema/montage';
+import { presenterMontage } from '@/lib/cinema/stockage/presentation';
+import { devisFilm } from '@/lib/cinema/couts';
+
+const HISTOIRE = 'Nina entre dans la salle avant le lever du jour. Le tatami est encore froid. Marco la regarde sans bouger. Marco hoche la tete. Le jour se leve sur la salle vide.';
+const film = { ...preparerFilm({ histoire: HISTOIRE, personnages: [{ nom: 'Nina', description: 'veste rouge' }, { nom: 'Marco', description: 'ceinture noire' }], idFilm: 'film-ui-1', titre: 'Mon film' }), proprietaire: 'u1' };
+const reponseFilm = () => ({
+  ok: true, film, montage: presenterMontage(monterFilm(film), film.id),
+  scenesAProduire: film.scenes.map((s) => s.id), devis: devisFilm(film, film.scenes.map((s) => s.id)),
+});
+
+const scenes = (etats: string[]) => Object.fromEntries(film.scenes.map((s, i) => [s.id, etats[i] ?? 'a_faire']));
+const travail = (o: Record<string, unknown>) => ({
+  id: '33333333-3333-4333-8333-333333333333', filmId: film.id, statut: 'en_cours', erreur: null, reference: null, annulationDemandee: false,
+  progression: { etape: 'rendu', scenes: scenes(['faite', 'en_cours']), pourcent: 40, message: 'Rendu de la scene « X »' }, resultat: null, ...o,
+});
+
+let appels: Array<{ url: string; method: string }>;
+let etatTravail: ReturnType<typeof travail> | null;
+let reponses: Record<string, () => unknown>;
+
+beforeEach(() => {
+  appels = [];
+  etatTravail = null;
+  reponses = {};
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    appels.push({ url, method });
+    const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json' } });
+    for (const [motif, f] of Object.entries(reponses)) if (url.includes(motif)) return json(f());
+    if (url === '/api/cinema/films' && method === 'GET') return json({ ok: true, films: [{ id: film.id, titre: 'Mon film', majLe: film.majLe }] });
+    if (url === `/api/cinema/films/${film.id}`) return json(reponseFilm());
+    if (url.endsWith('/travaux')) return json({ ok: true, travail: etatTravail });
+    if (url.includes('/annuler')) return json({ ok: true, travail: { ...etatTravail, annulationDemandee: true } });
+    if (url.includes('/travaux/')) return json({ ok: true, travail: etatTravail });
+    if (url.endsWith('/produire')) return json({ ok: true, dejaEnCours: false, travail: etatTravail, devis: reponseFilm().devis }, 202);
+    return json({ ok: false, erreur: 'inattendu' }, 404);
+  }));
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+async function ouvrir() {
+  render(<CinemaPage />);
+  const select = await screen.findByLabelText(/reprendre un film/i);
+  fireEvent.change(select, { target: { value: film.id } });
+  await screen.findByText(/Export MP4/);
+}
+
+describe('page Cinema IA — production asynchrone', () => {
+  it('retrouve un film apres rechargement, et la production en cours avec sa vraie progression', async () => {
+    etatTravail = travail({});
+    await ouvrir();
+    const barre = await screen.findByRole('progressbar', { name: /progression de la production/i });
+    expect(barre.getAttribute('aria-valuenow')).toBe('40');
+    expect(screen.getByText('40 %')).toBeTruthy();
+    expect(screen.getByText(/Rendu de la scene/)).toBeTruthy();
+    // L'etat de chaque scene est lisible (texte pour lecteur d'ecran).
+    const liste = screen.getByRole('list', { name: /etat des scenes/i });
+    expect(within(liste).getByText('rendue')).toBeTruthy();
+    expect(within(liste).getByText('en cours')).toBeTruthy();
+    // Le bouton principal reflete l'etat et ne permet pas un second lancement.
+    const principal = screen.getByRole('button', { name: /production en cours/i }) as HTMLButtonElement;
+    expect(principal.disabled).toBe(true);
+    // Plus aucune mention d'un rendu qui bloque la page.
+    expect(screen.queryByText(/ne pas fermer la page/i)).toBeNull();
+    expect(screen.getByText(/vous pouvez fermer cette page/i)).toBeTruthy();
+  });
+
+  it('un travail termine montre le MP4 par la route authentifiee — jamais un fichier public', async () => {
+    etatTravail = travail({
+      statut: 'termine', progression: { etape: 'termine', scenes: scenes(['faite', 'faite', 'reutilisee']), pourcent: 100, message: null },
+      resultat: { aMp4: true, scenesRendues: ['a', 'b'], scenesReutilisees: ['c'], avertissements: [], dureeS: 22, octets: 2_500_000, largeur: 1920, hauteur: 1080, codecVideo: 'h264', codecAudio: 'aac', coutUsd: 0 },
+    });
+    const { container } = render(<CinemaPage />);
+    fireEvent.change(await screen.findByLabelText(/reprendre un film/i), { target: { value: film.id } });
+    await waitFor(() => expect(container.querySelector('video')).toBeTruthy());
+    const attendu = `/api/cinema/films/${film.id}/travaux/${etatTravail.id}/export`;
+    expect(container.querySelector('video')!.getAttribute('src')).toBe(attendu);
+    expect(screen.getByRole('link', { name: /telecharger le mp4/i }).getAttribute('href')).toBe(attendu);
+    expect(container.innerHTML).not.toMatch(/\/cinema\/film-ui-1\/film\.mp4|storage\/v1/);
+    expect(within(screen.getByTestId('production')).getByText(/22\.0 s/)).toBeTruthy();
+  });
+
+  it('un echec reste VISIBLE avec sa reference, et propose de relancer sans perdre les scenes', async () => {
+    etatTravail = travail({ statut: 'echec', erreur: 'echec de production (reference ab12cd34)', reference: 'ab12cd34' });
+    await ouvrir();
+    const alerte = await screen.findByRole('alert');
+    expect(alerte.textContent).toContain('reference ab12cd34');
+    const relancer = screen.getByRole('button', { name: /exporter le film/i }) as HTMLButtonElement;
+    expect(relancer.disabled).toBe(false);
+  });
+
+  it('exporter lance un travail en arriere-plan et affiche la progression sans bloquer', async () => {
+    await ouvrir();                                   // aucun travail : bouton actif
+    etatTravail = travail({ statut: 'en_attente', progression: { etape: 'preparation', scenes: scenes([]), pourcent: 0, message: 'Preparation' } });
+    fireEvent.click(screen.getByRole('button', { name: /exporter le film/i }));
+    await waitFor(() => expect(appels.some((a) => a.url.endsWith('/produire') && a.method === 'POST')).toBe(true));
+    const barre = await screen.findByRole('progressbar');
+    expect(barre.getAttribute('aria-valuenow')).toBe('0');
+    // Le corps demande bien un travail, pas un rendu synchrone.
+    const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls.find((c) => String(c[0]).endsWith('/produire'))!;
+    expect(JSON.parse((init as RequestInit).body as string).rendre).toBe(true);
+  });
+
+  it('le sondage suit l\'etat reel jusqu\'a la fin, puis relit le film', async () => {
+    etatTravail = travail({});
+    await ouvrir();
+    await screen.findByRole('progressbar');
+    etatTravail = travail({
+      statut: 'termine', progression: { etape: 'termine', scenes: scenes(['faite', 'faite', 'faite']), pourcent: 100, message: null },
+      resultat: { aMp4: true, scenesRendues: ['a'], scenesReutilisees: [], avertissements: [], dureeS: 9, octets: 1_000_000, largeur: 1280, hauteur: 720, codecVideo: 'h264', codecAudio: 'aac', coutUsd: 0 },
+    });
+    await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull(), { timeout: 5000 });
+    expect(screen.getByRole('link', { name: /telecharger le mp4/i })).toBeTruthy();
+    // La fin du travail declenche une relecture du film (scenes scellees).
+    const lectures = appels.filter((a) => a.url === `/api/cinema/films/${film.id}` && a.method === 'GET').length;
+    expect(lectures).toBeGreaterThanOrEqual(2);
+  }, 10_000);
+
+  it('arreter est une ICONE avec son libelle accessible, et appelle la route d\'annulation', async () => {
+    etatTravail = travail({});
+    await ouvrir();
+    const arreter = await screen.findByRole('button', { name: /arreter la production/i });
+    expect(arreter.textContent?.trim()).toBe('');          // icone seule, pas de gros bouton texte
+    fireEvent.click(arreter);
+    await waitFor(() => expect(appels.some((a) => a.url.endsWith('/annuler') && a.method === 'POST')).toBe(true));
+  });
+
+  it('les actions secondaires d\'une scene sont des icones accessibles', async () => {
+    await ouvrir();
+    const regenerer = screen.getAllByRole('button', { name: /regenerer cette scene/i });
+    expect(regenerer.length).toBe(film.scenes.length);
+    expect(regenerer[0].textContent?.trim()).toBe('');
+    expect(screen.getAllByRole('button', { name: /valider la scene/i }).length).toBe(film.scenes.length);
+  });
+
+  it('la generation IA reste clairement identifiee comme SIMULEE', async () => {
+    await ouvrir();
+    const boutons = screen.getAllByRole('button', { name: /generer \(ia, simule\)/i });
+    expect(boutons.length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/animer en video|generer \(ia, simule\)/i).length).toBeGreaterThan(0);
+  });
+
+  it('une erreur de lancement (plafond) est affichee telle quelle', async () => {
+    await ouvrir();
+    reponses['/produire'] = () => ({ ok: false, erreur: 'plafond depasse : 2.00 $' });
+    fireEvent.click(screen.getByRole('button', { name: /exporter le film/i }));
+    await waitFor(() => expect(screen.getByText(/plafond depasse/)).toBeTruthy());
+  });
+});

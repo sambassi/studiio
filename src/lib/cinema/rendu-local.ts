@@ -187,11 +187,27 @@ export async function concatener(fichiers: readonly string[], sortie: string): P
  */
 export interface TacheRendu { montage: MontageFilm; sortie: string }
 
-export async function rendreMontages(
-  taches: readonly TacheRendu[],
-  options: { racine: string; concurrence?: number },
-): Promise<ControleMp4[]> {
-  if (!taches.length) return [];
+export interface OptionsPreparationRendu {
+  racine: string;
+  concurrence?: number;
+  /**
+   * Dossier des medias du rendu, a la place de `<racine>/public`.
+   *
+   * ⚠️ C'est ce qui garde les medias PRIVES hors de `public/` : Remotion copie
+   * ce dossier dans son bundle et `staticFile()` y puise. Les medias d'un film
+   * (rushes, voix, images) sont materialises dans un dossier de travail du
+   * serveur, jamais dans le dossier que Next sert au monde entier.
+   */
+  publicDir?: string;
+}
+
+/**
+ * Prepare le rendu UNE fois (le bundle prend des dizaines de secondes) et
+ * rend une fonction qui produit UNE scene. Un executeur qui rend scene par
+ * scene — pour noter sa progression et survivre a une interruption — ne paie
+ * donc pas un bundle par scene.
+ */
+export async function preparerRendu(options: OptionsPreparationRendu): Promise<(tache: TacheRendu) => Promise<ControleMp4>> {
   const { bundle } = await import('@remotion/bundler');
   const { renderMedia, selectComposition } = await import('@remotion/renderer');
   const { remotionWebpackOverride } = await import('@/lib/render/webpackOverride');
@@ -199,10 +215,10 @@ export async function rendreMontages(
   const serveUrl = await bundle({
     entryPoint: path.resolve(options.racine, 'remotion/index.tsx'),
     webpackOverride: remotionWebpackOverride,
+    ...(options.publicDir ? { publicDir: options.publicDir } : {}),
   });
 
-  const controles: ControleMp4[] = [];
-  for (const tache of taches) {
+  return async (tache) => {
     await mkdir(path.dirname(tache.sortie), { recursive: true });
     const inputProps = { montage: tache.montage };
     const composition = await selectComposition({ serveUrl, id: 'cinema-film', inputProps });
@@ -224,7 +240,17 @@ export async function rendreMontages(
       enforceAudioTrack: true,
       audioCodec: 'aac',
     });
-    controles.push(await controlerMp4(tache.sortie));
-  }
+    return controlerMp4(tache.sortie);
+  };
+}
+
+export async function rendreMontages(
+  taches: readonly TacheRendu[],
+  options: { racine: string; concurrence?: number; publicDir?: string },
+): Promise<ControleMp4[]> {
+  if (!taches.length) return [];
+  const rendre = await preparerRendu(options);
+  const controles: ControleMp4[] = [];
+  for (const tache of taches) controles.push(await rendre(tache));
   return controles;
 }

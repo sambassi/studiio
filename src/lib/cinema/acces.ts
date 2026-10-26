@@ -67,6 +67,19 @@ export function mediaCinemaValide(url: unknown): url is string {
   return MOTIF_MEDIA.test(url);
 }
 
+/**
+ * L'image de reference d'un personnage : un chemin LOGIQUE local, de la forme
+ * exacte que l'import fabrique (`cinema/<film>/references/<perso>-<hex>.<ext>`).
+ * Une adresse libre (http, data:, 169.254.x) est refusee : demain un
+ * fournisseur d'images la chargerait cote serveur, c'est le meme defaut que
+ * l'URL d'un media de plan.
+ */
+export const MOTIF_REFERENCE = /^cinema\/film-[a-z0-9][a-z0-9-]{0,62}\/references\/[A-Za-z0-9][A-Za-z0-9-]{0,63}-[0-9a-f]{8}\.(jpg|jpeg|png|webp)$/;
+
+export function referenceCinemaValide(url: unknown): url is string {
+  return typeof url === 'string' && !url.includes('..') && MOTIF_REFERENCE.test(url);
+}
+
 /** Le media retenu pour un plan : `null` efface, une URL invalide est REFUSEE. */
 export function mediaAccepte(valeur: unknown): { ok: true; url: string | null } | { ok: false } {
   if (valeur === null) return { ok: true, url: null };

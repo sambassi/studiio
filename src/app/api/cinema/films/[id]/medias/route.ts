@@ -1,93 +1,102 @@
 /**
- * CINEMA IA — importer le media d'un plan (image ou video LOCALE).
+ * CINEMA IA — importer un media (image ou video) sur un plan.
  *
- * C'est la SEULE porte d'entree d'un media. Elle recoit des OCTETS, pas une
- * URL : rien de ce que l'appelant envoie ne devient une adresse que le
- * serveur ira chercher. Le fichier est ecrit, puis MESURE par ffprobe ; s'il
- * n'est pas lisible, il est efface et refuse.
- *
- * ⚠️ Pourquoi pas `/api/upload` ni `lib/storage` : ils televersent vers MinIO
- * / le stockage distant et supposent des variables d'environnement de
- * production. Cinema IA est encore local : son media doit etre un fichier que
- * Remotion peut lire sans credential, sous `public/cinema/<film>/medias/`.
- * Le jour du passage en service, c'est cette route-la qui deleguera au
- * stockage du depot — un seul endroit a changer.
+ * La route recoit des OCTETS, jamais une URL. Le fichier est ecrit dans un
+ * dossier de travail jetable, MESURE par ffprobe, puis depose dans le
+ * stockage prive du compte (`<compte>/cinema/<film>/medias/…`). Il ne passe
+ * jamais par `public/`.
  */
-import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import { auth } from '@/lib/auth/config';
-import { appartientA } from '@/lib/cinema/acces';
-import { lireFilm, enregistrerFilm } from '@/lib/cinema/store';
-import { importerMedia, TAILLE_MAX_MEDIA } from '@/lib/cinema/medias';
+import { NextRequest, NextResponse } from 'next/server';
+import { importerMedia, remplacerMedia, fichierDuMedia, TAILLE_MAX_MEDIA } from '@/lib/cinema/medias';
 import { monterFilm } from '@/lib/cinema/montage';
 import { scenesAReproduire } from '@/lib/cinema/empreinte';
 import { devisFilm } from '@/lib/cinema/couts';
+import { contexteCinema } from '@/lib/cinema/contexte';
+import { avecDossierTemporaire, filmInconnu, sessionCinema } from '@/lib/cinema/routes-aide';
+import { cleMedia } from '@/lib/cinema/stockage/cles';
+import { modifierFilm } from '@/lib/cinema/stockage/depot-films';
+import { presenterMontage } from '@/lib/cinema/stockage/presentation';
+import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
+import type { Film } from '@/lib/cinema/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ ok: false, erreur: 'non autorise' }, { status: 401 });
+  const s = await sessionCinema();
+  if ('refus' in s) return s.refus;
+  const ctx = contexteCinema();
+  const lu = await ctx.films.lire(params.id, s.userId);
+  if (!lu) return filmInconnu();
 
-  const racine = process.cwd();
-  const film = await lireFilm(racine, params.id);
-  if (!film || !appartientA(film, session.user.id)) {
-    return NextResponse.json({ ok: false, erreur: 'film inconnu' }, { status: 404 });
-  }
-
-  // ⚠️ LA TAILLE EST REFUSEE AVANT D'ETRE LUE. `req.formData()` charge tout
-  // le corps en memoire : verifier la taille APRES, c'est avoir deja accepte
-  // les octets. Un corps sans `Content-Length` est refuse pour la meme
-  // raison — on ne sait pas ce qu'on s'apprete a avaler.
+  // ⚠️ LA TAILLE EST REFUSEE AVANT D'ETRE LUE. `req.formData()` charge tout le
+  // corps en memoire : verifier APRES, c'est avoir deja accepte les octets.
   const annonce = req.headers.get('content-length');
   const octetsAnnonces = annonce === null ? null : Number(annonce);
   if (octetsAnnonces === null || !Number.isFinite(octetsAnnonces)) {
     return NextResponse.json({ ok: false, erreur: 'taille du corps non annoncee' }, { status: 411 });
   }
-  // Marge pour l'enveloppe multipart (frontieres, en-tetes de parties).
   if (octetsAnnonces > TAILLE_MAX_MEDIA + 64 * 1024) {
     return NextResponse.json({ ok: false, erreur: 'fichier trop volumineux (200 Mo maximum)' }, { status: 413 });
   }
 
   let formulaire: FormData;
-  try {
-    formulaire = await req.formData();
-  } catch {
-    return NextResponse.json({ ok: false, erreur: 'corps multipart attendu' }, { status: 400 });
-  }
+  try { formulaire = await req.formData(); }
+  catch { return NextResponse.json({ ok: false, erreur: 'corps multipart attendu' }, { status: 400 }); }
 
   const planId = formulaire.get('planId');
   const fichier = formulaire.get('fichier');
   if (typeof planId !== 'string' || !(fichier instanceof File)) {
     return NextResponse.json({ ok: false, erreur: 'planId et fichier sont requis' }, { status: 400 });
   }
-  // La taille est verifiee AVANT de tout charger en memoire.
   if (fichier.size > TAILLE_MAX_MEDIA) {
     return NextResponse.json({ ok: false, erreur: 'fichier trop volumineux (200 Mo maximum)' }, { status: 413 });
   }
 
-  const resultat = await importerMedia({
-    film,
-    planId,
-    // `basename` : un nom de fichier qui porterait un chemin ne sert qu'a en
-    // sortir. Seule l'extension sera reprise de toute façon.
-    nomOrigine: path.basename(fichier.name || 'media'),
-    donnees: Buffer.from(await fichier.arrayBuffer()),
-    racinePublique: path.join(racine, 'public'),
-  });
+  const ancienneUrl = lu.film.scenes.flatMap((x) => x.plans).find((p) => p.id === planId)?.media?.url ?? null;
 
+  const resultat = await avecDossierTemporaire(ctx, async (racinePublique) => {
+    const r = await importerMedia({
+      film: lu.film, planId,
+      // `basename` : un nom de fichier qui porterait un chemin ne sert qu'a en sortir.
+      nomOrigine: path.basename(fichier.name || 'media'),
+      donnees: Buffer.from(await fichier.arrayBuffer()),
+      racinePublique,
+    });
+    if (!r.ok) return r;
+    const cle = cleMedia(s.userId, lu.film.id, r.media.url);
+    if (!cle) return { ok: false as const, erreur: 'chemin de media refuse' };
+    await ctx.objets.deposerFichier(cle, fichierDuMedia(racinePublique, r.media.url), typeContenuDepuisCle(cle));
+    return r;
+  });
   if (!resultat.ok) return NextResponse.json({ ok: false, erreur: resultat.erreur }, { status: 400 });
 
-  await enregistrerFilm(racine, resultat.film);
-  const aProduire = scenesAReproduire(resultat.film).map((s) => s.id);
+  let film: Film | null;
+  try {
+    film = await modifierFilm(ctx.films, params.id, s.userId, (f) => remplacerMedia(f, planId, resultat.media));
+  } catch { film = null; }
+  if (!film) {
+    // Le film a disparu ou ne se laisse pas ecrire : l'objet depose n'a plus de proprietaire.
+    const cle = cleMedia(s.userId, params.id, resultat.media.url);
+    if (cle) await ctx.objets.supprimer(cle).catch(() => {});
+    return NextResponse.json({ ok: false, erreur: 'film modifie en parallele, reessayez' }, { status: 409 });
+  }
+
+  // L'ancien media n'est plus designe par aucun plan : on le retire du stockage.
+  if (ancienneUrl && ancienneUrl !== resultat.media.url && !film.scenes.some((x) => x.plans.some((p) => p.media?.url === ancienneUrl))) {
+    const ancienne = cleMedia(s.userId, params.id, ancienneUrl);
+    if (ancienne) await ctx.objets.supprimer(ancienne).catch(() => {});
+  }
+
+  const aProduire = scenesAReproduire(film).map((x) => x.id);
   return NextResponse.json({
     ok: true,
-    media: resultat.media,
-    film: resultat.film,
-    montage: monterFilm(resultat.film),
+    media: { ...resultat.media, url: undefined },
+    film,
+    montage: presenterMontage(monterFilm(film), film.id),
     scenesAProduire: aProduire,
-    devis: devisFilm(resultat.film, aProduire),
+    devis: devisFilm(film, aProduire),
   });
 }
