@@ -102,6 +102,12 @@ export interface MediaPlan {
   octets: number;
   origine: 'import' | 'genere';
   /**
+   * Fournisseur de generation (lot 3) a l'origine du media, quand
+   * `origine === 'genere'`. Sert UNIQUEMENT a la tracabilite et au rapport
+   * de continuite (`generation/coherence.ts`) ; ne change rien au montage.
+   */
+  fournisseurGeneration?: string;
+  /**
    * Garder le son du media. Defaut `false` : le son d'ambiance d'un rush et
    * la voix du plan se couvrent, et c'est la parole qu'on perd.
    */
@@ -161,6 +167,14 @@ export interface Film {
    * l'appelant (`acces.appartientA`).
    */
   proprietaire?: string | null;
+  /**
+   * Ce que la GENERATION IA (lot 3) a deja coute sur ce film, en USD.
+   * Distinct de `SceneCinema.coutUsd` (cout de RENDU, lot 1) : deux depenses
+   * de nature differente, jamais additionnees l'une dans l'autre. Absent ou
+   * `undefined` = 0 — tous les films des lots 1 et 2 restent valides sans
+   * migration.
+   */
+  coutGenerationUsd?: number;
 }
 
 /**

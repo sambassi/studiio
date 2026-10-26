@@ -18,7 +18,7 @@
 import { stat } from 'fs/promises';
 import path from 'path';
 import type { Film, GenreMedia, MediaPlan } from '@/lib/cinema/types';
-import { mediaCinemaValide } from '@/lib/cinema/acces';
+import { idPlanValide, mediaCinemaValide } from '@/lib/cinema/acces';
 
 export type { GenreMedia, MediaPlan };
 /**
@@ -199,6 +199,11 @@ export async function importerMedia(args: {
 }): Promise<{ ok: true; film: Film; media: MediaPlan } | { ok: false; erreur: string }> {
   const { mkdir, writeFile, rm } = await import('fs/promises');
   const { randomBytes } = await import('crypto');
+
+  // Forme de l'id AVANT toute recherche : voir le commentaire de
+  // `idPlanValide` (acces.ts) sur pourquoi ce controle est structurel et ne
+  // doit pas dependre uniquement de « aucun plan de ce nom n'existe ».
+  if (!idPlanValide(args.planId)) return { ok: false, erreur: 'identifiant de plan refuse' };
 
   const plan = args.film.scenes.flatMap((s) => s.plans).find((p) => p.id === args.planId);
   if (!plan) return { ok: false, erreur: 'plan inconnu' };

@@ -7,9 +7,12 @@
  * (IDOR).
  */
 import { describe, it, expect } from 'vitest';
-import { appartientA, idFilmValide, mediaAccepte, mediaCinemaValide } from '@/lib/cinema/acces';
+import { appartientA, idFilmValide, idPlanValide, mediaAccepte, mediaCinemaValide } from '@/lib/cinema/acces';
 import { enregistrerFilm, lireFilm } from '@/lib/cinema/store';
 import { preparerFilm } from '@/lib/cinema/atelier';
+import { importerMedia } from '@/lib/cinema/medias';
+import { tmpdir } from 'os';
+import path from 'path';
 
 describe('identifiant de film', () => {
   it('accepte ceux que le module fabrique', () => {
@@ -30,6 +33,34 @@ describe('identifiant de film', () => {
 
   it('ne lit rien pour un identifiant non conforme', async () => {
     expect(await lireFilm('/tmp', '../../etc/passwd')).toBeNull();
+  });
+});
+
+describe('identifiant de plan — traversee de chemin trouvee le 2026-10-26', () => {
+  it('accepte la forme que `scenario.ts` fabrique', () => {
+    expect(idPlanValide('s1-p-1')).toBe(true);
+    expect(idPlanValide('s12-p-4')).toBe(true);
+  });
+
+  it('refuse toute forme qui pourrait echapper au dossier du film une fois normalisee', () => {
+    // `../x` concatene puis `path.posix.join`-e PERD son `..` : le resultat
+    // ne contient plus de `..` et passait l'ancienne verification
+    // post-hoc. Il est refuse ICI, sur la FORME, avant toute concatenation.
+    for (const mauvais of ['../x', '../../x', '../../other-film/medias/evil', 's1-p-1/../x', '', 's1-p-', 'p-1', null, 42]) {
+      expect(idPlanValide(mauvais)).toBe(false);
+    }
+  });
+
+  it('importerMedia refuse un planId hors forme AVANT toute ecriture sur le disque, meme s il ne correspond a aucun plan', async () => {
+    const film = preparerFilm({ histoire: 'Une phrase. Une autre phrase. Une troisieme.', personnages: [{ nom: 'A' }], idFilm: 'film-traversee-test' });
+    const racinePublique = path.join(tmpdir(), 'cinema-traversee-test-' + Date.now());
+    const resultat = await importerMedia({
+      film, planId: '../../autre-film/medias/evil', nomOrigine: 'x.png',
+      donnees: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0]),
+      racinePublique,
+    });
+    expect(resultat.ok).toBe(false);
+    if (!resultat.ok) expect(resultat.erreur).toMatch(/identifiant de plan refuse/);
   });
 });
 

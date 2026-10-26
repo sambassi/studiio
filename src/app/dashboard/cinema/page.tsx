@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Clapperboard, Users, Wand2, Link2, MessageSquare, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
-  ImageIcon, Film, Volume2, VolumeX, Upload,
+  ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles,
 } from 'lucide-react';
 
 interface SegmentApi {
@@ -146,6 +146,19 @@ export default function CinemaPage() {
       setEnCours(null);
     }
   };
+
+  /**
+   * Genere le media d'un plan par IA (lot 3). Le SEUL fournisseur branche
+   * est `simule` (local, gratuit, deterministe) : aucune generation
+   * payante ne part d'ici. Le serveur refuse tout fournisseur eteint et
+   * tout depassement du plafond de depense AVANT d'appeler quoi que ce
+   * soit — voir `generation/atelier.ts`.
+   */
+  const genererMedia = (planId: string, operation: 'image' | 'video') => film && appel(
+    `/api/cinema/films/${film.id}/generation`,
+    { method: 'POST', body: JSON.stringify({ planId, operation, fournisseurId: 'simule' }) },
+    `generation:${planId}:${operation}`,
+  );
 
   /**
    * Prepare les VOIX sans rendre la video : l'apercu a besoin du son, pas de
@@ -382,16 +395,36 @@ export default function CinemaPage() {
                               </button>
                             </>
                           ) : (
-                            <label className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 cursor-pointer hover:border-violet-500/50">
-                              {enCours === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                              Importer une image ou une video
-                              <input
-                                type="file"
-                                accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
-                                className="hidden"
-                                onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
-                              />
-                            </label>
+                            <>
+                              <label className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 cursor-pointer hover:border-violet-500/50">
+                                {enCours === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                                Importer une image ou une video
+                                <input
+                                  type="file"
+                                  accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
+                                  className="hidden"
+                                  onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
+                                />
+                              </label>
+                              <button
+                                onClick={() => genererMedia(plan.id, 'image')}
+                                disabled={enCours !== null}
+                                className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
+                              >
+                                {enCours === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                Generer (IA, simule)
+                              </button>
+                            </>
+                          )}
+                          {plan.media?.genre === 'image' && (
+                            <button
+                              onClick={() => genererMedia(plan.id, 'video')}
+                              disabled={enCours !== null}
+                              className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
+                            >
+                              {enCours === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                              Animer en video (IA, simule)
+                            </button>
                           )}
 
                           {/* Personnages presents DANS CE PLAN. */}

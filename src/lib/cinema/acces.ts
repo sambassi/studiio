@@ -25,6 +25,34 @@ export function idFilmValide(id: unknown): id is string {
 }
 
 /**
+ * Identifiant de PLAN accepte : exactement la forme que `scenario.ts`
+ * fabrique (`s<scene>-p-<plan>`), et rien d'autre.
+ *
+ * ⚠️ POURQUOI CE CONTROLE EXISTE, ALORS QUE `medias.importerMedia` verifie
+ * DEJA que le plan existe dans le film avant d'ecrire quoi que ce soit.
+ * `importerMedia` construit son chemin de fichier par CONCATENATION
+ * (`${planId}-${alea}${ext}`) PUIS `path.posix.join` : un `planId` tel que
+ * `../../autre-film/medias/x` se NORMALISE en route et peut ne plus
+ * contenir `..` du tout dans le resultat, passant alors la verification
+ * `mediaCinemaValide` qui s'applique APRES coup sur la chaine deja
+ * normalisee — constate le 2026-10-26 (`path.posix.join('cinema','film-1',
+ * 'medias','../../autre-film/medias/x-abcd.png')` donne
+ * `cinema/autre-film/medias/x-abcd.png`, sans aucun `..` visible).
+ *
+ * Aujourd'hui, seuls les plans reellement generes par `scenario.ts`
+ * (toujours `s<N>-p-<M>`) peuvent correspondre a un plan existant, donc
+ * l'exploit n'est PAS accessible par l'API publique actuelle — mais s'y fier
+ * suffit a rendre la protection fragile au premier refactor qui accepterait
+ * un autre format d'id. Ce motif la rend STRUCTURELLE : un `planId` hors
+ * forme est refuse avant meme de chercher s'il correspond a un plan.
+ */
+export const MOTIF_ID_PLAN = /^s[0-9]+-p-[0-9]+$/;
+
+export function idPlanValide(id: unknown): id is string {
+  return typeof id === 'string' && MOTIF_ID_PLAN.test(id);
+}
+
+/**
  * Un media de plan : un chemin RELATIF sous `cinema/`, servi par `public/`.
  * Pas de schema, pas d'hote, pas de remontee de dossier. Le jour ou un
  * fournisseur externe sera branche, c'est ICI qu'une liste d'hotes autorises
