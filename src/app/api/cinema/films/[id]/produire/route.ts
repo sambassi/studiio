@@ -16,6 +16,7 @@ import { copyFile, mkdir } from 'fs/promises';
 import { auth } from '@/lib/auth/config';
 import { lireFilm } from '@/lib/cinema/store';
 import { produireFilm } from '@/lib/cinema/atelier';
+import { appartientA } from '@/lib/cinema/acces';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,7 +28,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const racine = process.cwd();
   const film = await lireFilm(racine, params.id);
-  if (!film) return NextResponse.json({ ok: false, erreur: 'film inconnu' }, { status: 404 });
+  // Meme regle que GET/PATCH : un film d'un autre compte est « inconnu ».
+  // Sans cela, n'importe quel compte connecte pouvait declencher un rendu
+  // Remotion sur le film d'autrui — du calcul, et des medias, a sa charge.
+  if (!film || !appartientA(film, session.user.id)) {
+    return NextResponse.json({ ok: false, erreur: 'film inconnu' }, { status: 404 });
+  }
 
   const corps = await req.json().catch(() => ({}));
   const rendre = corps?.rendre === true;
@@ -61,10 +67,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       avertissements: resultat.avertissements,
     });
   } catch (e) {
-    // L'echec est RENDU tel quel : un rendu qui echoue en silence coute plus
-    // cher a diagnostiquer qu'un message brut.
+    // Le detail (stderr de Remotion, chemins du serveur) part dans le JOURNAL
+    // du serveur ; la reponse ne porte qu'un numero. Un message d'erreur brut
+    // renvoye au client decrit l'interieur de la machine a qui le demande.
+    const reference = Math.random().toString(36).slice(2, 10);
+    console.error(`[cinema/produire] ${reference} —`, e instanceof Error ? e.stack ?? e.message : e);
     return NextResponse.json(
-      { ok: false, erreur: e instanceof Error ? e.message : 'echec de production' },
+      { ok: false, erreur: `echec de production (reference ${reference})`, reference },
       { status: 500 },
     );
   }

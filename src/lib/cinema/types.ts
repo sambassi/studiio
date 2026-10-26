@@ -125,6 +125,13 @@ export interface Film {
   scenes: SceneCinema[];
   creeLe: string;
   majLe: string;
+  /**
+   * Le compte qui possede ce film. Optionnel dans le TYPE parce que le
+   * scenariste, lui, ne connait aucun compte ; OBLIGATOIRE des que le film
+   * passe par l'API, qui refuse tout film dont le proprietaire n'est pas
+   * l'appelant (`acces.appartientA`).
+   */
+  proprietaire?: string | null;
 }
 
 /** Duree totale d'un film : la somme des plans, jamais une valeur stockee. */

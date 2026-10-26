@@ -79,7 +79,24 @@ tests-cinema/                  banc de production reelle (config a part)
 `actif: false` — et `devisFilm` rend alors un total **`null`**, affiche comme
 « tarif non declare », jamais comme gratuit.
 
-## 4. Etat reel
+## 4. Gardes d'acces (revue de securite du 2026-10-26)
+
+`/api/cinema/*` n'est PAS dans le `matcher` du middleware : chaque route
+verifie donc elle-meme. `src/lib/cinema/acces.ts` tient les trois regles,
+testees dans `src/__tests__/cinema-acces.test.ts` :
+
+| Regle | Defaut evite | Verifie |
+|---|---|---|
+| Un film a un **proprietaire**, compare a la session sur GET, PATCH et `produire` ; la liste est filtree | IDOR : l'identifiant suffisait a lire, modifier et faire rendre le film d'autrui | 404 sur les trois routes, liste vide |
+| Un identifiant suit `^film-[a-z0-9][a-z0-9-]{0,62}$`, a la lecture **comme a l'ecriture** | traversee de chemin (`../`) dans le magasin | 404, et `enregistrerFilm` leve |
+| Un media de plan est un chemin **local** sous `cinema/` | SSRF : l'URL d'un plan est chargee par Chromium au rendu | 400 sur `http://169.254.169.254/...` |
+
+Un film d'avant cette regle (sans proprietaire) n'appartient a personne : il
+devient inaccessible plutot que public — l'un se repare, l'autre fuite.
+L'echec de `produire` rend une reference courte ; le detail (stderr, chemins)
+reste dans le journal du serveur.
+
+## 5. Etat reel
 
 **Fonctionnel et verifie** : decoupage, casting versionne, empreintes,
 devis, chronologie, voix (moteur hors ligne sur ce poste), rendu scene par
@@ -92,7 +109,7 @@ persistance est un fichier JSON local, pas une table.
 
 **A faire pour un vrai Studio Cinema IA** : voir le rapport de session.
 
-## 5. Commandes
+## 6. Commandes
 
 ```bash
 npm test                                  # suite du depot (cinema inclus, sans reseau)
@@ -107,7 +124,7 @@ du depot interdit toute socket — y compris la socket **locale** de Remotion �
 et parce que `jsdom` casse esbuild. Le garde-fou n'est pas affaibli : il est
 contourne dans un fichier qu'on lance a la main.
 
-## 6. Mesures du 2026-10-26 (poste local, Apple Silicon)
+## 7. Mesures du 2026-10-26 (poste local, Apple Silicon)
 
 Banc `npm run test:cinema`, histoire de 8 phrases, 2 personnages, 4 scenes,
 format 16:9, qualite standard :

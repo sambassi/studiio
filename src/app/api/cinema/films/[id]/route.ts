@@ -13,6 +13,7 @@ import { monterFilm } from '@/lib/cinema/montage';
 import { scenesAReproduire } from '@/lib/cinema/empreinte';
 import { devisFilm } from '@/lib/cinema/couts';
 import { ajouterReference } from '@/lib/cinema/personnages';
+import { appartientA, mediaAccepte } from '@/lib/cinema/acces';
 import type { Film } from '@/lib/cinema/types';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +21,18 @@ export const runtime = 'nodejs';
 
 const racine = () => process.cwd();
 
-async function filmOuErreur(id: string) {
+/**
+ * Le film DU COMPTE, ou 404.
+ *
+ * Un film qui ne lui appartient pas rend « inconnu », pas « interdit » :
+ * distinguer les deux revient a confirmer l'existence d'un film d'autrui a
+ * qui connait son identifiant.
+ */
+async function filmOuErreur(id: string, userId: string) {
   const film = await lireFilm(racine(), id);
-  if (!film) return { erreur: NextResponse.json({ ok: false, erreur: 'film inconnu' }, { status: 404 }) };
+  if (!film || !appartientA(film, userId)) {
+    return { erreur: NextResponse.json({ ok: false, erreur: 'film inconnu' }, { status: 404 }) };
+  }
   return { film };
 }
 
@@ -40,7 +50,7 @@ function reponse(film: Film) {
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ ok: false, erreur: 'non autorise' }, { status: 401 });
-  const { film, erreur } = await filmOuErreur(params.id);
+  const { film, erreur } = await filmOuErreur(params.id, session.user.id);
   if (erreur) return erreur;
   return reponse(film!);
 }
@@ -48,11 +58,25 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ ok: false, erreur: 'non autorise' }, { status: 401 });
-  const { film, erreur } = await filmOuErreur(params.id);
+  const { film, erreur } = await filmOuErreur(params.id, session.user.id);
   if (erreur) return erreur;
 
   const corps = await req.json().catch(() => null);
   let suivant = film as Film;
+
+  // Un media REFUSE arrete la requete : l'accepter en silence laisserait
+  // croire qu'il a ete pris en compte, et l'URL finirait chargee par
+  // Chromium au rendu suivant.
+  if (Array.isArray(corps?.plans)) {
+    for (const p of corps.plans) {
+      if (p?.mediaUrl !== undefined && !mediaAccepte(p.mediaUrl).ok) {
+        return NextResponse.json(
+          { ok: false, erreur: 'media refuse : seuls les fichiers locaux sous cinema/ sont acceptes' },
+          { status: 400 },
+        );
+      }
+    }
+  }
 
   // Repliques et durees : plan par plan, par identifiant.
   if (Array.isArray(corps?.plans)) {
@@ -73,7 +97,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             dureeS: !plan.dialogue && Number.isFinite(patch.dureeS)
               ? Math.min(20, Math.max(0.5, Number(patch.dureeS)))
               : plan.dureeS,
-            mediaUrl: patch.mediaUrl === undefined ? plan.mediaUrl : patch.mediaUrl,
+            mediaUrl: patch.mediaUrl === undefined
+              ? plan.mediaUrl
+              : (mediaAccepte(patch.mediaUrl) as { ok: true; url: string | null }).url,
             origineMedia: patch.mediaUrl ? 'import' : plan.origineMedia,
           };
         }),

@@ -22,7 +22,9 @@ const racine = () => process.cwd();
 export async function GET() {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ ok: false, erreur: 'non autorise' }, { status: 401 });
-  return NextResponse.json({ ok: true, films: await listerFilms(racine()) });
+  // Les films d'AUTRES comptes ne sont pas listes : l'identifiant d'un film
+  // suffirait ensuite a le lire.
+  return NextResponse.json({ ok: true, films: await listerFilms(racine(), session.user.id) });
 }
 
 export async function POST(req: NextRequest) {
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, erreur: 'au moins un personnage est requis' }, { status: 400 });
   }
 
-  const film = preparerFilm({
+  const filmSansProprietaire = preparerFilm({
     titre: typeof corps?.titre === 'string' ? corps.titre : null,
     histoire,
     format: (corps?.format === '9:16' ? '9:16' : '16:9') as FormatFilm,
@@ -53,6 +55,9 @@ export async function POST(req: NextRequest) {
     })).filter((p: { nom: string }) => p.nom.length > 0),
   });
 
+  // Le proprietaire est pose A LA CREATION : c'est lui que GET, PATCH et
+  // `produire` compareront a la session.
+  const film = { ...filmSansProprietaire, proprietaire: session.user.id };
   await enregistrerFilm(racine(), film);
   return NextResponse.json({
     ok: true,
