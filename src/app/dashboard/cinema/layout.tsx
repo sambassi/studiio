@@ -1,8 +1,8 @@
 /**
- * Cinema IA — le verrou de la PAGE. Composant serveur : la decision est prise
- * avant qu'une ligne de la page ne parte au navigateur. Fermé par défaut
- * (`CINEMA_COMPTE_AUTORISE`, voir `lib/cinema/garde.ts`) ; un compte non
- * autorise voit une 404, sans indice sur le module.
+ * Cinema IA — l'interrupteur de la PAGE. Composant serveur : la decision est prise
+ * avant qu'une ligne de la page ne parte au navigateur. Eteint par defaut
+ * (`CINEMA_ACTIVE`, voir `lib/cinema/garde.ts`) : 404. Allume, tout utilisateur
+ * authentifie y accede.
  */
 import { notFound } from 'next/navigation';
 import { auth } from '@/lib/auth/config';

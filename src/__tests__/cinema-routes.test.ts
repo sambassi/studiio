@@ -17,8 +17,8 @@ vi.mock('@/lib/auth/config', () => ({
   auth: async () => (session.userId ? { user: { id: session.userId, email: 'x@example.org' } } : null),
 }));
 
-// Le verrou d'acces a ses propres tests (cinema-acces.test.ts) ; ici on teste l'isolation ENTRE comptes.
-vi.mock('@/lib/cinema/garde', () => ({ accesCinemaAutorise: () => true }));
+// L'interrupteur a ses propres tests (cinema-verrou.test.ts) ; ici le module est allume.
+process.env.CINEMA_ACTIVE = 'true';
 
 import { depotFilmsMemoire } from '@/lib/cinema/stockage/depot-films';
 import { objetsMemoire } from '@/lib/cinema/stockage/objets';

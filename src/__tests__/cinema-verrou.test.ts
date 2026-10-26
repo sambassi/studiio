@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * CINEMA IA — le VERROU D'ACCES : ferme par defaut, un seul compte, page ET routes.
+ * CINEMA IA — l'INTERRUPTEUR GENERAL : eteint par defaut, ouvert a tout utilisateur authentifie.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
@@ -12,7 +12,7 @@ vi.mock('@/lib/auth/config', () => ({ auth: async () => (session.user ? { user: 
 const notFound = vi.hoisted(() => vi.fn(() => { throw new Error('NEXT_NOT_FOUND'); }));
 vi.mock('next/navigation', () => ({ notFound }));
 
-import { accesCinemaAutorise, compteAutorise } from '@/lib/cinema/garde';
+import { accesCinemaAutorise, cinemaActive } from '@/lib/cinema/garde';
 import CinemaLayout from '@/app/dashboard/cinema/layout';
 import * as filmsRoute from '@/app/api/cinema/films/route';
 import * as filmRoute from '@/app/api/cinema/films/[id]/route';
@@ -28,64 +28,50 @@ import * as refsRoute from '@/app/api/cinema/films/[id]/references/route';
 import * as refPersoRoute from '@/app/api/cinema/films/[id]/references/[personnageId]/route';
 import * as generationRoute from '@/app/api/cinema/films/[id]/generation/route';
 
-const MOI = 'abcdef01-1111-4111-8111-111111111111';
-const AUTRE_ADMIN = '33333333-3333-4333-8333-333333333333';
-const STANDARD = '22222222-2222-4222-8222-222222222222';
-const EMAIL_ADMIN = 'contact.artboost@gmail.com';
-const EMAIL_STANDARD = 'quelquun@example.org';
+const USER = { id: 'abcdef01-1111-4111-8111-111111111111', email: 'quelquun@example.org' };
+const env = (v?: string) => ({ CINEMA_ACTIVE: v }) as unknown as NodeJS.ProcessEnv;
 
 let avant: string | undefined;
-beforeEach(() => { avant = process.env.CINEMA_COMPTE_AUTORISE; session.user = null; notFound.mockClear(); });
-afterEach(() => { if (avant === undefined) delete process.env.CINEMA_COMPTE_AUTORISE; else process.env.CINEMA_COMPTE_AUTORISE = avant; });
+beforeEach(() => { avant = process.env.CINEMA_ACTIVE; session.user = null; notFound.mockClear(); });
+afterEach(() => { if (avant === undefined) delete process.env.CINEMA_ACTIVE; else process.env.CINEMA_ACTIVE = avant; });
 
 const req = (m = 'GET') => new NextRequest('http://localhost/x', { method: m, body: m === 'GET' ? undefined : '{}', headers: { 'content-type': 'application/json' } });
 const P = { params: { id: 'film-x', planId: 's1-p-1', travailId: '00000000-0000-4000-8000-000000000000', personnageId: 'perso-1' } } as never;
 
-describe('verrou — la regle', () => {
-  it('ferme par defaut : variable absente, vide, ou mal formee', () => {
-    for (const v of [undefined, '', '   ', '../x', 'a/b', 'x'.repeat(80), '*']) {
-      const env = { CINEMA_COMPTE_AUTORISE: v } as unknown as NodeJS.ProcessEnv;
-      expect(compteAutorise(env)).toBeNull();
-      expect(accesCinemaAutorise({ id: MOI, email: EMAIL_ADMIN }, env)).toBe(false);
-    }
+describe('interrupteur — la regle', () => {
+  it('eteint par defaut : seules « true » et « 1 » l\'allument', () => {
+    for (const v of [undefined, '', ' ', 'false', '0', 'yes', 'on', 'truee', '*']) expect(cinemaActive(env(v)), String(v)).toBe(false);
+    for (const v of ['true', 'TRUE', ' true ', '1']) expect(cinemaActive(env(v)), v).toBe(true);
   });
-  const env = { CINEMA_COMPTE_AUTORISE: MOI } as unknown as NodeJS.ProcessEnv;
-  it('ouvre pour ce compte, administrateur, et personne d\'autre', () => {
-    expect(accesCinemaAutorise({ id: MOI, email: EMAIL_ADMIN }, env)).toBe(true);
-    expect(accesCinemaAutorise({ id: AUTRE_ADMIN, email: 'bassicustomshoes@gmail.com' }, env)).toBe(false);
-    expect(accesCinemaAutorise({ id: STANDARD, email: EMAIL_STANDARD }, env)).toBe(false);
-    // Le bon identifiant sans etre administrateur : refuse (les deux conditions).
-    expect(accesCinemaAutorise({ id: MOI, email: EMAIL_STANDARD }, env)).toBe(false);
-    expect(accesCinemaAutorise({ id: MOI.toUpperCase(), email: EMAIL_ADMIN }, env)).toBe(false);
-    expect(accesCinemaAutorise({ id: MOI + ' ', email: EMAIL_ADMIN }, env)).toBe(false);
-    expect(accesCinemaAutorise({ id: null, email: EMAIL_ADMIN }, env)).toBe(false);
-    expect(accesCinemaAutorise(null, env)).toBe(false);
-    expect(accesCinemaAutorise({ id: { toString: () => MOI } as never, email: EMAIL_ADMIN }, env)).toBe(false);
+  it('allume : tout utilisateur authentifie (pas de role), mais ni anonyme ni identifiant douteux', () => {
+    expect(accesCinemaAutorise(USER, env('true'))).toBe(true);
+    expect(accesCinemaAutorise({ id: '22222222-2222-4222-8222-222222222222' }, env('true'))).toBe(true);
+    for (const u of [null, undefined, {}, { id: null }, { id: '' }, { id: '../x' }, { id: 'a/b' }]) expect(accesCinemaAutorise(u as never, env('true'))).toBe(false);
+    expect(accesCinemaAutorise(USER, env(undefined))).toBe(false);
   });
-  it('la variable n\'est jamais publique', () => {
-    const src = readFileSync('src/lib/cinema/garde.ts', 'utf8');
-    expect(src).not.toMatch(/NEXT_PUBLIC_CINEMA/);
-    for (const f of ['src/app/dashboard/cinema/page.tsx']) expect(readFileSync(f, 'utf8')).not.toMatch(/CINEMA_COMPTE_AUTORISE/);
+  it('la variable est serveur et n\'est lue par aucune page', () => {
+    expect(readFileSync('src/lib/cinema/garde.ts', 'utf8')).not.toMatch(/NEXT_PUBLIC_CINEMA/);
+    expect(readFileSync('src/app/dashboard/cinema/page.tsx', 'utf8')).not.toMatch(/CINEMA_ACTIVE/);
+  });
+  it('l\'ancienne restriction a un compte est supprimee du code', () => {
+    const lire = (d: string): string[] => readdirSync(d).flatMap((n) => { const c = path.join(d, n); return statSync(c).isDirectory() ? lire(c) : /\.(ts|tsx)$/.test(n) ? [readFileSync(c, 'utf8')] : []; });
+    for (const src of [...lire('src/lib/cinema'), ...lire('src/app/api/cinema'), ...lire('src/app/dashboard/cinema')]) expect(src).not.toMatch(/CINEMA_COMPTE_AUTORISE|isAdmin/);
   });
 });
 
-describe('verrou — la page', () => {
-  it('404 pour tous sauf le compte autorise (et 404 sans configuration)', async () => {
-    session.user = { id: MOI, email: EMAIL_ADMIN };
-    delete process.env.CINEMA_COMPTE_AUTORISE;
+describe('interrupteur — la page', () => {
+  it('404 tant que le module est eteint ; allume, tout utilisateur connecte entre, pas l\'anonyme', async () => {
+    session.user = USER;
+    delete process.env.CINEMA_ACTIVE;
     await expect(CinemaLayout({ children: null })).rejects.toThrow('NEXT_NOT_FOUND');
-    process.env.CINEMA_COMPTE_AUTORISE = MOI;
+    process.env.CINEMA_ACTIVE = 'true';
     await expect(CinemaLayout({ children: 'ok' })).resolves.toBeTruthy();
-    session.user = { id: AUTRE_ADMIN, email: 'bassicustomshoes@gmail.com' };
-    await expect(CinemaLayout({ children: null })).rejects.toThrow('NEXT_NOT_FOUND');
-    session.user = { id: STANDARD, email: EMAIL_STANDARD };
-    await expect(CinemaLayout({ children: null })).rejects.toThrow('NEXT_NOT_FOUND');
     session.user = null;
     await expect(CinemaLayout({ children: null })).rejects.toThrow('NEXT_NOT_FOUND');
   });
 });
 
-describe('verrou — TOUTES les routes API', () => {
+describe('interrupteur — TOUTES les routes API', () => {
   const appels: Array<[string, () => Promise<Response>]> = [
     ['films GET', () => filmsRoute.GET()],
     ['films POST', () => filmsRoute.POST(req('POST'))],
@@ -105,33 +91,38 @@ describe('verrou — TOUTES les routes API', () => {
     ['generation POST', () => generationRoute.POST(req('POST'), P)],
   ];
 
-  it('le balayage couvre chaque fichier route.ts du dossier', () => {
+  it('le balayage couvre chaque route.ts : 13 fichiers, 16 handlers, tous derriere sessionCinema', () => {
     const trouves: string[] = [];
     const marche = (d: string) => { for (const n of readdirSync(d)) { const c = path.join(d, n); statSync(c).isDirectory() ? marche(c) : n === 'route.ts' && trouves.push(c); } };
     marche('src/app/api/cinema');
     expect(trouves.length).toBe(13);
-    for (const f of trouves) expect(readFileSync(f, 'utf8')).toMatch(/sessionCinema\(\)|sessionCinema\b/);
-    // Autant de handlers appeles ci-dessus que de handlers exportes.
+    for (const f of trouves) expect(readFileSync(f, 'utf8')).toMatch(/sessionCinema\b/);
     const handlers = trouves.reduce((n, f) => n + (readFileSync(f, 'utf8').match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? []).length, 0);
     expect(handlers).toBe(appels.length);
   });
 
-  const cas: Array<[string, { id: string; email: string } | null, string | undefined, number[]]> = [
-    ['sans configuration (compte ok)', { id: MOI, email: EMAIL_ADMIN }, undefined, [404]],
-    ['un autre administrateur', { id: AUTRE_ADMIN, email: 'bassicustomshoes@gmail.com' }, MOI, [404]],
-    ['un utilisateur standard', { id: STANDARD, email: EMAIL_STANDARD }, MOI, [404]],
-    ['sans session', null, MOI, [401, 404]],
-  ];
-  for (const [nom, user, cfg, statuts] of cas) {
-    it(`${nom} : aucune route ne repond autre chose que ${statuts.join('/')}`, async () => {
-      session.user = user;
-      if (cfg) process.env.CINEMA_COMPTE_AUTORISE = cfg; else delete process.env.CINEMA_COMPTE_AUTORISE;
-      for (const [route, appel] of appels) {
-        const r = await appel();
-        expect(statuts, `${route} -> ${r.status}`).toContain(r.status);
-        const corps = await r.text();
-        expect(corps).not.toContain(MOI);
-      }
-    });
-  }
+  it('module eteint : TOUTES les routes repondent 404, meme connecte', async () => {
+    session.user = USER;
+    delete process.env.CINEMA_ACTIVE;
+    for (const [route, appel] of appels) expect((await appel()).status, route).toBe(404);
+    process.env.CINEMA_ACTIVE = 'false';
+    for (const [route, appel] of appels) expect((await appel()).status, route).toBe(404);
+  });
+
+  it('module allume, sans session : jamais de donnees (401, ou 404 pour les fichiers)', async () => {
+    process.env.CINEMA_ACTIVE = 'true';
+    session.user = null;
+    for (const [route, appel] of appels) {
+      const r = await appel();
+      expect([401, 404], `${route} -> ${r.status}`).toContain(r.status);
+    }
+  });
+
+  it('module allume, utilisateur standard (aucun role) : pas de 401/403 — la requete est traitee', async () => {
+    process.env.CINEMA_ACTIVE = 'true';
+    session.user = USER;
+    const r = await filmsRoute.GET();
+    expect(r.status).not.toBe(401);
+    expect(r.status).not.toBe(403);
+  });
 });

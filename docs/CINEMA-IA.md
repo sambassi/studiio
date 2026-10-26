@@ -282,24 +282,19 @@ puis `migrations/rollback/2026-10-27-cinema-ia.rollback.sql` si besoin.
 
 ## 11. Lot 5 — securite d'acces, compatibilite serveur, suppression
 
-### 11.1 Le verrou d'acces (`lib/cinema/garde.ts`)
+### 11.1 L'interrupteur general (`lib/cinema/garde.ts`) — remplace le verrou a un compte
 
-Ferme par defaut. Cinema IA n'est ouvert qu'a UN compte :
+Cinema IA est destine a TOUS les utilisateurs authentifies, derriere un interrupteur
+serveur **eteint par defaut** : `CINEMA_ACTIVE=true` (ou `1`) l'allume ; toute autre
+valeur, ou l'absence, ferme le module (404 sur la page et sur les 13 routes, meme pour
+une session valide). La restriction a un compte administrateur (`CINEMA_COMPTE_AUTORISE`)
+est supprimee.
 
-| Condition | Resultat |
-|---|---|
-| `CINEMA_COMPTE_AUTORISE` absente, vide ou mal formee | personne n'entre (404) |
-| session absente | 401 (API) / 404 (page) |
-| un autre administrateur | 404 |
-| un utilisateur standard | 404 |
-| l'identifiant exact **et** administrateur | acces |
-
-- La variable est une variable SERVEUR (jamais `NEXT_PUBLIC_*`), comparee a temps
-  constant ; l'identifiant n'est jamais renvoye au navigateur.
-- La page est protegee par `app/dashboard/cinema/layout.tsx` (composant serveur,
-  decision avant l'envoi de la page) ; **toutes** les routes `/api/cinema/*` passent
-  par `sessionCinema()`. Un test balaie chaque `route.ts` et chaque handler.
-- Reglage dans Coolify : `CINEMA_COMPTE_AUTORISE=<uuid du compte admin de test>`.
+Allume, ce qui protege ne depend d'aucun role : session obligatoire (401), isolation
+par compte (film d'autrui = inconnu, fichiers sous `<compte>/cinema/…`), bornes par
+compte (50 films, 2 travaux actifs, plafond de depense serveur, 10 Mo de reference).
+La page est gardee par `dashboard/cinema/layout.tsx` (composant serveur), les routes par
+`sessionCinema()`.
 
 ### 11.2 MinIO
 
@@ -360,7 +355,7 @@ corbeille, puis coche de confirmation.
 
 | Suite | Fichier |
 |---|---|
-| acces (regle, page, balayage des routes) | `cinema-verrou.test.ts` |
+| interrupteur (regle, page, balayage des 13 routes / 16 handlers) | `cinema-verrou.test.ts` |
 | suppression (memoire, routes, page) | `cinema-suppression.test.ts`, `cinema-routes.test.ts`, `cinema-page.test.tsx` |
 | ressources, voix, dossier de travail | `cinema-travaux.test.ts` |
 | objets : `lister` sur les 3 implementations | `cinema-stockage.test.ts` |
