@@ -14,8 +14,12 @@
  *      (jamais `NEXT_PUBLIC_*`) — absent ou autre chose : ÉTEINT POUR TOUS, c'est le retour
  *      arrière rapide (retirer la variable, redémarrer ; aucune donnée à toucher) ;
  *   2. un utilisateur authentifié est connu (identifiant issu de la session ou du propriétaire
- *      du post, jamais du corps ou de l'URL d'une requête).
- * Aucun rôle ni identifiant particulier n'est exigé. Pas d'utilisateur ⇒ FAUX.
+ *      du post, jamais du corps ou de l'URL d'une requête) ;
+ *   3. LISTE BLANCHE FACULTATIVE `STUDIIO_MONTAGE_AMELIORE_COMPTES` (identifiants séparés par
+ *      des virgules) : variable ABSENTE ⇒ tout utilisateur connecté (comportement de #621) ;
+ *      variable DÉFINIE ⇒ seuls les identifiants listés, comparaison exacte. Définie mais vide
+ *      ou sans identifiant valide ⇒ personne (jamais « tout le monde » par erreur).
+ * Aucun rôle n'est exigé. Pas d'utilisateur ⇒ FAUX.
  *
  * Aucun réglage du navigateur n'active quoi que ce soit : le navigateur de Créer reçoit la
  * réponse de la route serveur `/api/creer/montage-ameliore`, et les traitements serveur
@@ -30,13 +34,25 @@ export function montageAmelioreServeurActif(env: Record<string, string | undefin
   return env.STUDIIO_MONTAGE_AMELIORE_ENABLED === 'true';
 }
 
+/** Vrai si `userId` passe la liste blanche facultative (variable absente : tout le monde). */
+export function compteDansListeBlanche(
+  userId: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const liste = env.STUDIIO_MONTAGE_AMELIORE_COMPTES;
+  if (liste === undefined) return true;
+  return liste.split(',').map((x) => x.trim()).filter(Boolean).includes(userId);
+}
+
 export async function montageAmelioreActifPourCompte(
   userId: string | null | undefined,
   deps: { env?: Record<string, string | undefined> } = {},
 ): Promise<boolean> {
   try {
     if (!userId) return false;
-    return montageAmelioreServeurActif(deps.env ?? process.env);
+    const env = deps.env ?? process.env;
+    if (!montageAmelioreServeurActif(env)) return false;
+    return compteDansListeBlanche(userId, env);
   } catch {
     return false;
   }

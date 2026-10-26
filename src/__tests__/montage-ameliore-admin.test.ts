@@ -19,7 +19,7 @@ vi.mock('@/lib/creer/smart-montage', async () => {
   return { ...actual, planMontage: (...a: unknown[]) => { spy.plans.push(a); return (actual.planMontage as (...x: unknown[]) => unknown)(...a); } };
 });
 
-import { montageAmelioreActifPourCompte, montageAmelioreServeurActif } from '@/lib/creer/montage-ameliore-config';
+import { montageAmelioreActifPourCompte, montageAmelioreServeurActif, compteDansListeBlanche } from '@/lib/creer/montage-ameliore-config';
 import { GET } from '@/app/api/creer/montage-ameliore/route';
 import { preparerPlanMontage } from '@/lib/creer/preparer-plan-montage';
 import type { AnalyseRush, EchantillonRush } from '@/lib/creer/smart-montage';
@@ -45,6 +45,49 @@ describe('décision serveur', () => {
     expect(await montageAmelioreActifPourCompte(undefined, { env: ADMIN_ON })).toBe(false);
     expect(await montageAmelioreActifPourCompte(null, { env: ADMIN_ON })).toBe(false);
     expect(await montageAmelioreActifPourCompte('', { env: ADMIN_ON })).toBe(false);
+  });
+});
+
+describe('liste blanche facultative STUDIIO_MONTAGE_AMELIORE_COMPTES', () => {
+  const avec = (v: string) => ({ ...ADMIN_ON, STUDIIO_MONTAGE_AMELIORE_COMPTES: v });
+  it('variable absente : comportement de #621 (tout utilisateur connecté), inchangé', async () => {
+    expect(await montageAmelioreActifPourCompte('u1', { env: ADMIN_ON })).toBe(true);
+    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(true);
+    expect(compteDansListeBlanche('u2', {})).toBe(true);
+  });
+  it('variable définie : seuls les identifiants listés (exact, espaces tolérés autour des virgules)', async () => {
+    expect(await montageAmelioreActifPourCompte('u1', { env: avec('u1') })).toBe(true);
+    expect(await montageAmelioreActifPourCompte('u2', { env: avec(' u1 , u2 ') })).toBe(true);
+    expect(await montageAmelioreActifPourCompte('u3', { env: avec('u1,u2') })).toBe(false);
+    for (const v of ['U1', 'u', '1', 'u1x', 'xu1']) expect(await montageAmelioreActifPourCompte('u1', { env: avec(v) })).toBe(false);
+  });
+  it('définie mais vide ou sans identifiant : personne (jamais tout le monde par erreur)', async () => {
+    for (const v of ['', '   ', ',', ' , ,']) expect(await montageAmelioreActifPourCompte('u1', { env: avec(v) })).toBe(false);
+  });
+  it('interrupteur non « true » : éteint pour tous, même un compte listé', async () => {
+    for (const e of [undefined, 'false', 'TRUE', '1']) {
+      const env: Record<string, string | undefined> = { STUDIIO_MONTAGE_AMELIORE_COMPTES: 'u1' };
+      if (e !== undefined) env.STUDIIO_MONTAGE_AMELIORE_ENABLED = e;
+      expect(await montageAmelioreActifPourCompte('u1', { env })).toBe(false);
+    }
+  });
+  it('sans identifiant : refusé même si la liste est absente', async () => {
+    expect(await montageAmelioreActifPourCompte(undefined, { env: ADMIN_ON })).toBe(false);
+    expect(await montageAmelioreActifPourCompte('', { env: avec('') })).toBe(false);
+  });
+  it('route : un compte non listé reçoit { ameliore: false }, le compte listé true', async () => {
+    const on = process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; const liste = process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES;
+    try {
+      process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
+      process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES = 'u1';
+      session.id = 'u2';
+      expect((await (await GET()).json())).toEqual({ ameliore: false });
+      session.id = 'u1';
+      expect((await (await GET()).json())).toEqual({ ameliore: true });
+    } finally {
+      if (on === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; else process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = on;
+      if (liste === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES; else process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES = liste;
+    }
   });
 });
 
