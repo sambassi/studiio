@@ -32,7 +32,7 @@ const deductCredits = vi.fn(async () => true);
 vi.mock('@/lib/credits/system', () => ({ getVideoRenderCost: () => 10, deductCredits: (...a: unknown[]) => deductCredits(...(a as [])) }));
 vi.mock('@/lib/credits/atomique', () => ({ referenceOperation: (p: string, id: string) => `${p}:${id}` }));
 vi.mock('@/lib/db/supabase', () => {
-  const from = () => ({ insert: () => ({ select: async () => ({ data: [{ id: 'p1' }], error: null }) }) });
+  const from = () => ({ select: () => { const q: Record<string, unknown> = { eq: () => q, then: (ok: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok) }; return q; }, insert: () => ({ select: async () => ({ data: [{ id: 'p1' }], error: null }) }) });
   return { supabaseAdmin: { from }, supabase: { from } };
 });
 const jumeauPleinCadre = vi.fn();

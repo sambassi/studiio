@@ -49,7 +49,7 @@ import { notifyOnce } from '@/lib/notifications/store';
 import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
 import { scriptJumeauMontage as scriptJumeauPur } from '@/lib/autopilot/script-jumeau';
 import { estJumeauIllisible, MESSAGE_JUMEAU_ILLISIBLE } from '@/lib/autopilot/duree-jumeau';
-import { estErreurDeFile } from '@/lib/autopilot/limite-rendus';
+import { estErreurDeFile, RenduDoublonError } from '@/lib/autopilot/limite-rendus';
 import {
   echeanceDecisionJumeau, instantPublicationCreneau, libelleCreneau, politiqueRepliJumeau,
   type PolitiqueRepliJumeau,
@@ -674,7 +674,7 @@ async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promi
       metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeau: true },
       jumeauVideoUrl,
       ...(manuel ? { onProgression: (etape, avancement) => noterProgression(ligne.user_id, etape, avancement) } : {}),
-    });
+    }, { sansAttente: !manuel });
   } finally {
     // Fin (ou échec) du rendu : l'écran repasse sur l'état PROUVÉ de la file
     // (`depose` seulement quand le brouillon est relu dans le Calendrier).
@@ -711,10 +711,12 @@ async function rendreSansJumeau(ligne: LigneAttente, motif: string, o: { garderS
       journal: s.journal ?? '[Autopilote/Jumeau]',
       metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeauIgnore: true, jumeauIgnoreMotif: motif },
       // Pas de jumeauVideoUrl : montage ordinaire.
-    });
+    }, { sansAttente: !ligne.job_id.startsWith('autopilote-manuel-') });
     if (tardif.tardif) await notifierBrouillonTardif(ligne, 'sans');
     return true;
   } catch (e) {
+    // Créneau produit par un autre passage pendant l'attente : il est traité, rien à refaire.
+    if (e instanceof RenduDoublonError && e.raison === 'deja_produit') return true;
     console.error(`[Autopilote/Jumeau] ${ligne.user_id} — montage de repli (sans jumeau) impossible :`, e instanceof Error ? e.message : e);
     return false;
   }

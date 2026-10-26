@@ -87,10 +87,25 @@ export class RenduOccupeError extends Error {
 /** Ce travail (même `jobId`) tient déjà un bail vivant : un autre exécutant le traite. */
 export class RenduDoublonError extends Error {
   readonly code = 'rendu-doublon';
-  constructor(readonly jobId: string) {
-    super(`Ce montage est déjà en cours de rendu (${jobId}). Rien n’a été lancé en double.`);
+  constructor(readonly jobId: string, readonly raison: 'en_cours' | 'deja_produit' = 'en_cours') {
+    super(raison === 'deja_produit'
+      ? `Ce créneau a déjà été produit (${jobId}). Rien n’a été lancé en double.`
+      : `Ce montage est déjà en cours de rendu (${jobId}). Rien n’a été lancé en double.`);
     this.name = 'RenduDoublonError';
   }
+}
+
+/**
+ * À appeler UNE FOIS LE BAIL OBTENU : le créneau a-t-il été produit pendant l'attente ?
+ * Le bail n'empêche que les rendus SIMULTANÉS ; un second passage qui attendait derrière
+ * le premier obtient le bail dès qu'il le libère — le post existe alors déjà. On relit donc
+ * les créneaux produits avant tout travail : s'il y est, `RenduDoublonError('deja_produit')`
+ * (levée avant tout rendu et tout débit, le bail est libéré par l'appelant).
+ */
+export async function verifierCreneauLibre(
+  jobId: string, jeton: string, lire: () => Promise<Set<string>>,
+): Promise<void> {
+  if ((await lire()).has(jeton)) throw new RenduDoublonError(jobId, 'deja_produit');
 }
 
 /** Les erreurs de file : jamais imputables au rush ni au montage, jamais un échec à compter. */
@@ -163,6 +178,10 @@ export interface OptionsLimite {
   instance?: string;
   /** Appelée à chaque tour d'attente (la progression « en file d'attente »). */
   onAttente?: () => void;
+  /** Attente maximale (ms) imposée par l'appelant, avant la variable. `0` = refus immédiat (cron). */
+  attenteMaxMs?: number;
+  /** Exécutée bail OBTENU, avant le travail ; si elle lève, le bail est libéré et le travail n'a pas lieu. */
+  apresBail?: () => Promise<void>;
   /** Injectables pour les tests. */
   maintenant?: () => number;
   dormir?: (ms: number) => Promise<void>;
@@ -185,7 +204,7 @@ export async function avecLimiteRendus<T>(
   const rpc = o.rpc ?? rpcParDefaut;
   const env = o.env ?? process.env;
   const max = rendusMaxSimultanes(env);
-  const attenteMax = attenteMaxMs(env);
+  const attenteMax = o.attenteMaxMs ?? attenteMaxMs(env);
   const instance = o.instance ?? instanceLocale();
   const maintenant = o.maintenant ?? Date.now;
   const dormir = o.dormir ?? dormirReel;
@@ -230,6 +249,7 @@ export async function avecLimiteRendus<T>(
         (battement as { unref?: () => void }).unref?.();
       }
       try {
+        await o.apresBail?.();
         return await travail();
       } finally {
         if (battement) clearInterval(battement);

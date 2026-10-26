@@ -98,6 +98,7 @@ let insertions: Array<Record<string, unknown>>;
 const ecrituresInterdites = vi.fn();
 vi.mock('@/lib/db/supabase', () => {
   const from = (table: string) => ({
+    select: () => { const q: Record<string, unknown> = { eq: () => q, then: (ok: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok) }; return q; },
     insert(row: Record<string, unknown>) {
       insertions.push(row);
       return { select: async () => ({ data: [{ id: `p${insertions.length}` }], error: null }) };

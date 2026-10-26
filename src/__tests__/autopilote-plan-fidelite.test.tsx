@@ -66,7 +66,7 @@ vi.mock('@/lib/medias/vignette-video', async (orig) => {
 vi.mock('@/lib/tarifs/serveur', () => ({ prixDe: async () => 10 }));
 vi.mock('@/lib/credits/system', () => ({ getVideoRenderCost: () => 10, deductCredits: async () => true }));
 vi.mock('@/lib/db/supabase', () => {
-  const from = () => ({ insert: (ligne: unknown) => {
+  const from = () => ({ select: () => { const q: Record<string, unknown> = { eq: () => q, then: (ok: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok) }; return q; }, insert: (ligne: unknown) => {
     (globalThis as { __ligneInseree?: unknown }).__ligneInseree = ligne;
     return { select: async () => ({ data: [{ id: 'p1' }], error: null }) };
   } });

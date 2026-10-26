@@ -433,7 +433,7 @@ export async function GET(req: NextRequest) {
             // Smart montage : les extraits déjà montés dans ce cycle sont
             // évités par les vidéos suivantes (tant qu'il reste mieux).
             plagesCycle,
-          });
+          }, { sansAttente: true });
           const { rushUrl } = rendu;
 
           dejaFaits.add(jeton);

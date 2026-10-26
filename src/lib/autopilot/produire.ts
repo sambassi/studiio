@@ -45,7 +45,7 @@ import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
-import { avecLimiteRendus } from '@/lib/autopilot/limite-rendus';
+import { avecLimiteRendus, verifierCreneauLibre } from '@/lib/autopilot/limite-rendus';
 import { jumeauPleinCadre } from '@/lib/avatar/jumeau-plein-cadre';
 import { buildSequences, totalDurationSeconds } from '@/lib/creer/designSpec';
 
@@ -368,23 +368,18 @@ export function avertissementsMontage(m: {
  */
 export function produireUnMontage(
   input: Parameters<typeof produireUnMontageInterne>[0],
+  /** `sansAttente` : le cron et le finaliseur reportent au passage suivant au lieu d'attendre une place. */
+  options: { sansAttente?: boolean } = {},
 ): ReturnType<typeof produireUnMontageInterne> {
+  const jeton = input.slotKey ?? slotKey(input.userId, input.post.scheduledDate, input.post.scheduledTime);
   return avecLimiteRendus(input.userId, input.jobId, () => produireUnMontageInterne(input), {
     onAttente: () => input.onProgression?.('attente', 0),
+    ...(options.sansAttente ? { attenteMaxMs: 0 } : null),
+    // Après une attente, le créneau a pu être produit par le passage qui tenait le bail.
+    apresBail: () => verifierCreneauLibre(input.jobId, jeton, () => creneauxExistants(input.userId)),
   });
 }
 
-/**
- * Rend UN montage, le dépose, le débite.
- *
- * L'ordre est celui du chemin manuel : rendu, puis dépôt, puis débit. Débiter
- * avant ferait payer un rendu qui peut encore échouer ; et un débit manqué
- * ne retire pas un montage livré — il est dit fort, c'est tout.
- *
- * Lève sur tout échec AVANT le débit (rush illisible, Chromium, stockage,
- * insertion) : l'appelant décide ce qu'il en fait — le cron isole chaque
- * montage, la production manuelle répond une erreur.
- */
 async function produireUnMontageInterne(input: {
   userId: string;
   config: AutopilotConfig;
