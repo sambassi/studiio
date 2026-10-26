@@ -24,8 +24,31 @@ import { GET } from '@/app/api/creer/montage-ameliore/route';
 import { preparerPlanMontage } from '@/lib/creer/preparer-plan-montage';
 import type { AnalyseRush, EchantillonRush } from '@/lib/creer/smart-montage';
 
-const ADMIN_ON = { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'true' };
+const ADMIN_ON = { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'true', STUDIIO_MONTAGE_AMELIORE_USER_ID: 'u1' };
 beforeEach(() => { base.ligne = null; base.erreur = false; session.id = undefined; session.boom = false; spy.plans.length = 0; });
+
+describe('compte testeur unique', () => {
+  it('autre administrateur (rôle ou e-mail) : refusé, même interrupteur allumé', async () => {
+    base.ligne = { role: 'admin', email: 'bassicustomshoes@gmail.com' };
+    expect(await montageAmelioreActifPourCompte('u9', { env: ADMIN_ON })).toBe(false);
+    base.ligne = { role: 'user', email: 'contact.artboost@gmail.com' };
+    expect(await montageAmelioreActifPourCompte('u9', { env: ADMIN_ON })).toBe(false);
+  });
+  it('identifiant de test absent, vide ou différent (casse, espace) : refusé pour tous, même le testeur', async () => {
+    base.ligne = { role: 'admin', email: 'x@y.z' };
+    const on = { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'true' };
+    for (const env of [on, { ...on, STUDIIO_MONTAGE_AMELIORE_USER_ID: '' }, { ...on, STUDIIO_MONTAGE_AMELIORE_USER_ID: 'U1' }, { ...on, STUDIIO_MONTAGE_AMELIORE_USER_ID: 'u1 ' }, { ...on, STUDIIO_MONTAGE_AMELIORE_USER_ID: 'u2' }]) {
+      expect(await montageAmelioreActifPourCompte('u1', { env })).toBe(false);
+    }
+  });
+  it('identifiant exact + administrateur + interrupteur : seul cas accepté ; la base n’est pas lue pour un autre identifiant', async () => {
+    base.ligne = { role: 'admin', email: 'x@y.z' };
+    expect(await montageAmelioreActifPourCompte('u1', { env: ADMIN_ON })).toBe(true);
+    let lectures = 0;
+    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON, estAdmin: async () => { lectures++; return true; } })).toBe(false);
+    expect(lectures).toBe(0);
+  });
+});
 
 describe('décision serveur', () => {
   it('interrupteur absent ou autre que « true » : éteint pour TOUS, administrateur compris', async () => {
@@ -43,7 +66,7 @@ describe('décision serveur', () => {
   });
   it('interrupteur + compte standard : éteint', async () => {
     base.ligne = { role: 'user', email: 'client@example.com' };
-    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(false);
+    expect(await montageAmelioreActifPourCompte('u1', { env: ADMIN_ON })).toBe(false); // bon identifiant mais pas administrateur
     base.ligne = { role: 'Administrateur', email: 'client@example.com' }; // rôle non prévu : pas de porte
     expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(false);
   });
@@ -61,8 +84,10 @@ describe('route /api/creer/montage-ameliore', () => {
   const lire = async () => { const r = await GET(); return { corps: await r.json(), cache: r.headers.get('Cache-Control') }; };
   it('sans session, standard, interrupteur éteint, panne : { ameliore: false }, jamais en cache', async () => {
     const env = process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
+    const cible = process.env.STUDIIO_MONTAGE_AMELIORE_USER_ID;
     try {
       process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
+      process.env.STUDIIO_MONTAGE_AMELIORE_USER_ID = 'u1';
       expect((await lire()).corps).toEqual({ ameliore: false }); // pas de session
       session.id = 'u2'; base.ligne = { role: 'user', email: 'client@example.com' };
       expect((await lire()).corps).toEqual({ ameliore: false }); // standard
@@ -72,10 +97,19 @@ describe('route /api/creer/montage-ameliore', () => {
       delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
       expect((await lire()).corps).toEqual({ ameliore: false }); // interrupteur éteint
       process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
+      session.id = 'u7'; // autre administrateur
+      expect((await lire()).corps).toEqual({ ameliore: false });
+      session.id = 'u1';
+      delete process.env.STUDIIO_MONTAGE_AMELIORE_USER_ID;
+      expect((await lire()).corps).toEqual({ ameliore: false }); // identifiant de test absent
+      process.env.STUDIIO_MONTAGE_AMELIORE_USER_ID = 'u1';
       const r = await lire();
       expect(r.corps).toEqual({ ameliore: true }); // administrateur + interrupteur
       expect(r.cache).toBe('private, no-store');
-    } finally { if (env === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; else process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = env; }
+    } finally {
+      if (env === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; else process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = env;
+      if (cible === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_USER_ID; else process.env.STUDIIO_MONTAGE_AMELIORE_USER_ID = cible;
+    }
   });
 });
 
